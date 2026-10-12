@@ -2,7 +2,7 @@ with Interfaces;
 with Intel_GPU_Display_Topology;
 with Intel_GPU_Plane_Decode;
 --  Which pipe scans out the firmware framebuffer that the kernel handed to
---  display.svc (SYSINFO FB width, height and pitch). Pure selection from
+--  display.svc (the system facts framebuffer width, height and pitch). Pure selection from
 --  the boot inventory's plane-1 samples, no MMIO.
 --
 --  A pipe matches when its primary plane decodes as the supported linear
@@ -75,7 +75,7 @@ package Intel_GPU_Firmware_Output with SPARK_Mode is
       end case;
    end record;
 
-   --  Framebuffer geometry as SYSINFO reports it (64-bit words).
+   --  Framebuffer geometry as the system facts publication reports it.
    function Framebuffer_Valid (Width, Height, Pitch : Unsigned_64) return Boolean is
      (Width in 1 .. Extent_Limit and then Height in 1 .. Extent_Limit and then
       Pitch <= Pitch_Limit and then Pitch >= Width * Bytes_Per_Pixel);

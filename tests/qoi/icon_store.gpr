@@ -1,0 +1,14 @@
+--  Hosted tests and proof scope for Desktop_Icon_Store (make -C kernel
+--  test-qoi / prove-qoi).
+project Icon_Store is
+   for Source_Dirs use (".", "../../userspace/lib/image", "../../userspace/services/desktop",
+     "../../userspace/runtime/gnat");
+   for Source_Files use ("icon_store_tests.adb", "cubit.ads", "cubit-qoi.ads", "cubit-qoi.adb",
+     "desktop_icons.ads", "desktop_icon_store.ads", "desktop_icon_store.adb");
+   for Object_Dir use "build/icon-store";
+   for Exec_Dir use "build";
+   for Main use ("icon_store_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-gnatwa", "-O2");
+   end Compiler;
+end Icon_Store;

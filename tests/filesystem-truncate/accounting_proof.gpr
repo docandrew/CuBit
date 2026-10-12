@@ -16,6 +16,9 @@ project Accounting_Proof is
                         "directory_blocks.ads", "directory_blocks.adb",
                         "dirty_runs.ads", "dirty_runs.adb",
                         "dentry_cache.ads", "dentry_cache.adb",
+                        "ext2_format.ads", "ext2_format.adb",
+                        "ext2_geometry.ads", "ext2_geometry.adb",
+                        "ext2_bitmaps.ads", "ext2_bitmaps.adb",
                         "cubit.ads", "cubit-directory_paths.ads",
                         "cubit-directory_paths.adb");
    for Object_Dir use Fs_Obj;

@@ -2,3 +2,5 @@ gnat
 gnarl
 ../../shared/time
 ../../shared/interrupts
+../../shared/launch
+../../shared/publications

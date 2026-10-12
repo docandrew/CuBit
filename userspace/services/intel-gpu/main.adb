@@ -1,4 +1,5 @@
 with Intel_GPU_ADLN_L3;
+with Intel_GPU_Map_Report;
 with Intel_GPU_Record_Store;
 with Intel_GPU_Table_Provenance.Backing;
 with Intel_GPU_Table_Allocations;
@@ -22,6 +23,7 @@ with Intel_GPU_Probe_Export;
 with Native_GPU_Probe_Protocol;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.System_Facts;
 with Intel_GPU_Boot;
 with Intel_GPU_Device_Query;
 with Intel_GPU_Memory_Admission;
@@ -1831,16 +1833,30 @@ procedure Main is
             if Offset > Unsigned_64'Last - Plan.Physical_Base then return "address-overflow"; end if;
             if syscall (SYSCALL_MAP_DEVICE, Plan.Physical_Base + Offset,
                         Reset_Write_Base + Unsigned_64 (Index) * 4096, 1, 0) /= 0
-            then return "map-denied"; end if;
+            then return Intel_GPU_Map_Report.Denied (Plan.Physical_Base + Offset, 4096); end if;
          end;
       end loop;
       Reset_Pages_Mapped := True;
       return "ready (NOT reset)";
    end Map_Reset_Pages;
+   -- Startup lines carry the milliseconds since the driver's first line
+   -- (NUC startup hang 2026-10-11): a photo or Boot logs shows where and
+   -- when startup stopped. Ends when the request loop starts serving.
+   Startup_Timing : Boolean := True;
+   Startup_Start_Ms : Unsigned_64 := 0;
    procedure Publish_Snapshot (Text : String;
      Level : CuBit.Log_Records.Severity := CuBit.Log_Records.Information) is
+      Now : Unsigned_64;
    begin
-      Intel_GPU_Diagnostics.Capture (Text, Level);
+      if Startup_Timing then
+         Now := syscall (SYSCALL_GETTIME);
+         if Startup_Start_Ms = 0 or else Now < Startup_Start_Ms then Startup_Start_Ms := Now; end if;
+         Intel_GPU_Diagnostics.Capture
+           (Text & " t=" & Unsigned_64'Image (Now - Startup_Start_Ms) & "ms",
+            Intel_GPU_Map_Report.Escalate (Text, Level));
+      else
+         Intel_GPU_Diagnostics.Capture (Text, Intel_GPU_Map_Report.Escalate (Text, Level));
+      end if;
       Intel_GPU_Diagnostics.Tick;
    end Publish_Snapshot;
    procedure Display_Log (Text : String) is
@@ -2237,6 +2253,9 @@ procedure Main is
    -- OP_GPU_BOOST hints since the last waitboost step, and those refused
    -- (not on a live session's own endpoint) since the last report.
    Boost_Hint_Pending : Boolean := False;
+   -- On unless a session's policy message (Desktop's gpu.power.waitboost)
+   -- turns it off; logged at SLPC start and on every change.
+   Waitboost_Enabled : Boolean := True;
    Boost_Hints_Refused : Unsigned_64 := 0;
    function SLPC_Name (Item : SLPC_Outcome) return String is
      (case Item is
@@ -2847,12 +2866,133 @@ procedure Main is
       Response.words (GQ.Wake_Result_Word) := GQ.Wake_Result'Enum_Rep (Result);
       Delivered := reply (From, Response);
    end Handle_GPU_Wake;
-   -- A request found while GPU work was in flight and not safe then: kept
-   -- (its reply capability stays in the kernel's reply slot, since nothing
-   -- else is received meanwhile) and dispatched once the GPU is idle.
+   -- A request that cannot be dispatched now (GPU work in flight, or the
+   -- request gate closed by VM, metadata or retirement work) is set aside
+   -- and dispatched once that clears (NUC freeze 2026-10-12).
+   --
+   -- Set aside with a saved reply capability (Deferral_Queue): its reply
+   -- capability moves to its own slot (saveReplyCap), so the loop keeps
+   -- receiving and display.svc's requests (flips, cursor) are always
+   -- served. When it is dispatched the capability is restored as the
+   -- current one (restoreReplyCap), so every handler sees it exactly as if
+   -- just received. Before this, one deferred request kept the kernel's
+   -- single reply slot, nothing more was received, and a gate that stayed
+   -- closed froze display.svc and the pointer with it.
+   --
+   -- Held (Deferred_Found): only when no deferral slot is free; then its
+   -- reply capability stays the current one and nothing more is received
+   -- until it is dispatched (the old behaviour, now the overflow case).
    Deferred_Found : Boolean := False;
    Deferred_Sender : Process_ID := No_Process;
    Deferred_Request : Message := NULL_MESSAGE;
+   -- Candidate slots, outside every slot the driver's policy fills
+   -- (manifest 4..6, pipe 9..12, frequency 13, devmgr 15, reset 16..22 and
+   -- 32..39, log 23 and 27, display/GGTT/PHY 24..31, recipients and replies
+   -- 40..62); each is used only if it is empty when the request loop
+   -- starts (Find_Deferral_Slots).
+   type Deferral_Index is range 1 .. 3;
+   Deferral_Candidates : constant array (Deferral_Index) of CapabilitySlot := [7, 8, 14];
+   type Deferral_Entry is record
+      Usable, Busy : Boolean := False;
+      Slot : CapabilitySlot := 0;
+      Sender : Process_ID := No_Process;
+      Request : Message := NULL_MESSAGE;
+      Order : Unsigned_64 := 0;
+   end record;
+   Deferral_Queue : array (Deferral_Index) of Deferral_Entry;
+   Deferral_Order : Unsigned_64 := 0;
+   Deferrals_Saved, Deferrals_Held, Deferral_Restore_Failures : Unsigned_64 := 0;
+   function Deferred_Saved return Natural is
+      Count : Natural := 0;
+   begin
+      for E of Deferral_Queue loop
+         if E.Busy then Count := Count + 1; end if;
+      end loop;
+      return Count;
+   end Deferred_Saved;
+   function Deferred_Pending return Boolean is (Deferred_Found or else Deferred_Saved > 0);
+   procedure Find_Deferral_Slots is
+      Raw : aliased array (1 .. 6) of Unsigned_64 := [others => 0];
+      Self : constant Unsigned_64 := syscall (SYSCALL_GETPID);
+      Found : Natural := 0;
+   begin
+      for I in Deferral_Index loop
+         Raw := [others => 0];
+         if syscall (SYSCALL_INSPECT_CAPABILITY, Self, Unsigned_64 (Deferral_Candidates (I)),
+                     Unsigned_64 (System.Storage_Elements.To_Integer (Raw'Address))) = 1
+           and then Raw (1) = 0
+         then
+            Deferral_Queue (I).Usable := True;
+            Deferral_Queue (I).Slot := Deferral_Candidates (I);
+            Found := Found + 1;
+         end if;
+      end loop;
+      Publish_Snapshot ("intel-gpu: request deferral slots=" & Natural'Image (Found) &
+        " of" & Natural'Image (Deferral_Candidates'Length) &
+        (if Found = 0 then " (none empty: a deferred request stops receiving)" else ""),
+        (if Found = 0 then CuBit.Log_Records.Warning else CuBit.Log_Records.Information));
+   end Find_Deferral_Slots;
+   -- Set Request aside. Its reply capability is the current one.
+   procedure Set_Aside (Sender : Process_ID; Request : Message) is
+   begin
+      for E of Deferral_Queue loop
+         if E.Usable and then not E.Busy then
+            if saveReplyCap (Unsigned_64 (E.Slot)) = 1 then
+               Deferral_Order := Deferral_Order + 1;
+               E.Busy := True; E.Sender := Sender; E.Request := Request;
+               E.Order := Deferral_Order;
+               if Deferrals_Saved < Unsigned_64'Last then Deferrals_Saved := Deferrals_Saved + 1; end if;
+               return;
+            end if;
+            -- Not empty after all (something was granted there): never again.
+            E.Usable := False;
+         end if;
+      end loop;
+      Deferred_Found := True;
+      Deferred_Sender := Sender;
+      Deferred_Request := Request;
+      if Deferrals_Held < Unsigned_64'Last then Deferrals_Held := Deferrals_Held + 1; end if;
+   end Set_Aside;
+   -- The next request set aside, made current again for dispatch. Found =
+   -- False when none, or its reply capability could not be restored (it is
+   -- then answered with a failure and logged; it is never dropped silently).
+   procedure Take_Deferred (Sender : out Process_ID; Request : out Message; Found : out Boolean) is
+      Oldest : Deferral_Index := Deferral_Index'First;
+      Any : Boolean := False;
+      Unused : Unsigned_64;
+   begin
+      Sender := No_Process; Request := NULL_MESSAGE; Found := False;
+      if Deferred_Found then
+         -- Held in the current reply slot: it must go first (a restore
+         -- needs that slot empty).
+         Sender := Deferred_Sender; Request := Deferred_Request;
+         Deferred_Found := False; Found := True;
+         return;
+      end if;
+      for I in Deferral_Index loop
+         if Deferral_Queue (I).Busy and then
+           (not Any or else Deferral_Queue (I).Order < Deferral_Queue (Oldest).Order)
+         then
+            Oldest := I; Any := True;
+         end if;
+      end loop;
+      if not Any then return; end if;
+      declare
+         E : Deferral_Entry renames Deferral_Queue (Oldest);
+      begin
+         E.Busy := False;
+         if restoreReplyCap (Unsigned_64 (E.Slot)) = 1 then
+            Sender := E.Sender; Request := E.Request; Found := True;
+         else
+            if Deferral_Restore_Failures < Unsigned_64'Last then
+               Deferral_Restore_Failures := Deferral_Restore_Failures + 1;
+            end if;
+            Unused := replyCap (E.Slot, NULL_MESSAGE);
+            Publish_Snapshot ("intel-gpu: deferred request label=" & Hex (E.Request.tag.label) &
+              " could not be restored; answered as failed", CuBit.Log_Records.Error);
+         end if;
+      end;
+   end Take_Deferred;
    -- Requests safe to dispatch while GPU work is in flight: they publish
    -- no VM, buffer or context change and park nothing. Every other request
    -- found then is deferred until the GPU is idle.
@@ -3918,6 +4058,11 @@ procedure Main is
       -- Removal captures one expected page per turn after this table sweep.
       Accepted := Captured_Mapping_Ready;
    end Capture_Removal;
+   -- Upper bound on one publication loop (the receipts take one leaf write
+   -- or at most 32 route comparisons per step).
+   Publication_Step_Limit : constant := 1_048_576;
+   type Stall_Cause is (No_Cause, Publication_Unfinished, In_Place_Deadline);
+   Stall_Reason : Stall_Cause := No_Cause;
    procedure Drain_Update (OK : out Boolean) is
    begin
       -- The hold was acquired before asynchronous allocation. The service
@@ -3930,7 +4075,10 @@ procedure Main is
       OK := False;
       if not Update_Exclusive then return; end if;
       if In_Place_Active then
-         while Insertion_Table_Check.Status (Insertion_Tables) = Insertion_Table_Check.Running loop
+         -- Every loop here is bounded: a step that never finishes fails the
+         -- update (logged by the caller) instead of stopping the driver.
+         for Step in 1 .. Publication_Step_Limit loop
+            exit when Insertion_Table_Check.Status (Insertion_Tables) /= Insertion_Table_Check.Running;
             Insertion_Table_Check.Step (Insertion_Tables);
          end loop;
          if Insertion_Table_Check.Status (Insertion_Tables) /= Insertion_Table_Check.Complete then return; end if;
@@ -3939,10 +4087,12 @@ procedure Main is
               Private_Contexts (Update_Index).Source, Removal_Revision, Removal_GPU,
               Natural (Removal_Bytes / 4096), OK);
             if not OK then return; end if;
-            while Live_Removal.Publishing (Removal_States (Update_Index)) loop
+            for Step in 1 .. Publication_Step_Limit loop
+               exit when not Live_Removal.Publishing (Removal_States (Update_Index));
                Live_Removal.Step (Removal_States (Update_Index), Private_Contexts (Update_Index).Source);
             end loop;
             OK := Live_Removal.Published (Removal_States (Update_Index));
+            if not OK then Stall_Reason := Publication_Unfinished; end if;
             return;
          end if;
          Start_Insertion_Stream (Insertion_State,
@@ -3950,10 +4100,12 @@ procedure Main is
            Natural (Removal_Bytes / 4096), Intel_GPU_ADLN_PPGTT.Write_Back,
            Intel_GPU_ADLN_PPGTT.Read_Write, OK);
          if not OK then return; end if;
-         while Live_Insertion.Publishing (Insertion_State) loop
+         for Step in 1 .. Publication_Step_Limit loop
+            exit when not Live_Insertion.Publishing (Insertion_State);
             Live_Insertion.Step (Insertion_State, Private_Contexts (Update_Index).Source);
          end loop;
          OK := Live_Insertion.Published (Insertion_State);
+         if not OK then Stall_Reason := Publication_Unfinished; end if;
          return;
       end if;
       declare
@@ -6898,7 +7050,7 @@ procedure Main is
       --  Separate alias: retain the original read-only register mapping.
       if syscall (SYSCALL_MAP_DEVICE, Plan.Physical_Base + 16#A000#,
                   Write_Base, 1, 0) /= 0
-      then return "write-map-denied"; end if;
+      then return "write " & Intel_GPU_Map_Report.Denied (Plan.Physical_Base + 16#A000#, 4096); end if;
       FW.Acquire (Object, 100, Status);
       if Status /= FW.Ready then return "acquire-" & Describe (Status); end if;
       -- Fuse register lies in the existing read-only mapping. Hold GT awake
@@ -6992,7 +7144,7 @@ procedure Main is
       end loop;
       if Physical = 0 or else Physical mod 4096 /= 0 or else
         Physical > Unsigned_64'Last - Table_Bytes
-      then return "map-denied"; end if;
+      then return Intel_GPU_Map_Report.Denied (Physical, Table_Bytes) & " (bad grant range)"; end if;
       -- Every supported table is a multiple of 2MiB. Map disjoint chunks
       -- below MAP_DEVICE's per-call limit; keep every alias read-only.
       -- A partial failure leaves only process-lived read-only aliases and
@@ -7001,7 +7153,8 @@ procedure Main is
          if syscall (SYSCALL_MAP_DEVICE,
            Physical + Chunk * (2 * 1024 * 1024),
            Virtual + Chunk * (2 * 1024 * 1024), 512, 1) /= 0
-         then return "map-denied"; end if;
+         then return Intel_GPU_Map_Report.Denied
+                (Physical + Chunk * (2 * 1024 * 1024), 2 * 1024 * 1024); end if;
       end loop;
       -- Diagnostic sampling, not an atomic table snapshot or a free-space map.
       GGTT_Inspection_Mapped := True;
@@ -7246,7 +7399,7 @@ procedure Main is
            " in-place=" & Boolean'Image (In_Place_Active) &
            " update=" & Unsigned_64'Image (Update_Pending) &
            " in-flight=" & Natural'Image (Queue_Service.Stats (Queue_State).In_Flight) &
-           " deferred=" & Boolean'Image (Deferred_Found) & Submission_Counters,
+           " deferred=" & Boolean'Image (Deferred_Pending) & Submission_Counters,
            CuBit.Log_Records.Error);
       end if;
    end Note_Request_Gate;
@@ -7276,6 +7429,33 @@ procedure Main is
    end Sleep_While_GPU_Busy;
    -- Dispatch one client request. May_Defer: GPU work is in flight, and a
    -- submit that finds no room is deferred (Deferred) rather than refused.
+   -- OP_GPU_BOOST, one way: an input hint (no words) or the waitboost
+   -- policy (one word), only on a live render session's own endpoint, whose
+   -- kernel-stamped tag names the session. Touches no VM or context state,
+   -- so it is served even while VM, metadata or retirement work holds the
+   -- request gate (a queued hint must never block display.svc behind it).
+   procedure Handle_Boost_Request (Sender : Process_ID; Request : Message) is
+      Session : constant Unsigned_64 := Application_Session (To_Word (Sender), Request.authorityTag);
+   begin
+      if Session = 0 or else Request.tag.length > 1 or else
+        (Request.tag.length = 1 and then
+         Request.words (0) not in GQ.Boost_Policy_Off | GQ.Boost_Policy_On)
+      then
+         if Boost_Hints_Refused < Unsigned_64'Last then
+            Boost_Hints_Refused := Boost_Hints_Refused + 1;
+         end if;
+      elsif Request.tag.length = 0 then
+         Boost_Hint_Pending := Waitboost_Enabled;
+      else
+         Waitboost_Enabled := Request.words (0) = GQ.Boost_Policy_On;
+         if not Waitboost_Enabled and then Boost_Active then
+            Intel_GPU_Waitboost.Release (Boost, DC_Now_Us);
+         end if;
+         Boost_Hint_Pending := False;
+         Publish_Snapshot ("intel-gpu: waitboost " & (if Waitboost_Enabled then "on" else "off") &
+           " (policy from session" & Unsigned_64'Image (Session) & ")");
+      end if;
+   end Handle_Boost_Request;
    procedure Dispatch_Request
      (Sender : Process_ID; Request : Message; May_Defer : Boolean; Deferred : out Boolean)
    is
@@ -7339,15 +7519,7 @@ procedure Main is
       elsif Request.tag.label = GQ.OP_GPU_WAKE then
          Handle_GPU_Wake (Sender, Request);
       elsif Request.tag.label = GQ.OP_GPU_BOOST then
-         -- One-way input hint (waitboost): only on a live render session's
-         -- own endpoint, whose kernel-stamped tag names the session.
-         if Request.tag.length = 0 and then
-           Application_Session (To_Word (Sender), Request.authorityTag) /= 0
-         then
-            Boost_Hint_Pending := True;
-         elsif Boost_Hints_Refused < Unsigned_64'Last then
-            Boost_Hints_Refused := Boost_Hints_Refused + 1;
-         end if;
+         Handle_Boost_Request (Sender, Request);
       else
          declare
             package DQ renames Intel_GPU_Device_Query;
@@ -7381,7 +7553,12 @@ procedure Main is
       Update_Image_Pending or else Cleanup_Work_Ready or else Recycle_In_Progress or else
       Buffer_Memory.Local_Work_Pending (Buffer_Pool) or else Buffer_Memory.Pending (Buffer_Pool) or else
       Directory_Update not in No_Directory_Update | Allocate_Directories or else
-      Activation_Reply_Pending or else Pending_Cleanups > 0);
+      Activation_Reply_Pending or else Pending_Cleanups > 0 or else
+      -- VM updates step only while no GPU work is in flight. Without
+      -- quiescing for them they advanced once per Background_Interval_Us
+      -- (Desktop saw ~99 ms per vm-update call on the NUC) while the
+      -- request gate stayed closed.
+      In_Place_Active or else Update_Pending /= 0);
    -- Periodic idle work (retirement polls, the context drain, map polls)
    -- gets a turn at least this often while the GPU is kept busy.
    Background_Interval_Us : constant Unsigned_64 := 20_000;
@@ -7495,6 +7672,8 @@ procedure Main is
             if Plan.RPe < Plan.RP0 then
                Boost := Intel_GPU_Waitboost.Start (Plan.RPe, Plan.RP0, DC_Now_Us);
                Boost_Active := True;
+               Publish_Snapshot ("intel-gpu: waitboost " & (if Waitboost_Enabled then "on" else "off") &
+                 " (default; Desktop's gpu.power.waitboost setting may change it)");
             end if;
             Publish_Snapshot ("intel-gpu: SLPC running task_min_mhz=" &
               Unsigned_32'Image (S.Task_Min_MHz (Frequency)) & " task_max_mhz=" &
@@ -7537,8 +7716,9 @@ procedure Main is
       use type CT_Send.Result;
    begin
       if not Boost_Active or else SLPC_State /= Running then return; end if;
-      Intel_GPU_Waitboost.Step (Boost, not Queue_Service.Idle (Queue_State), Boost_Hint_Pending,
-                                DC_Now_Us);
+      Intel_GPU_Waitboost.Step
+        (Boost, Waitboost_Enabled and then not Queue_Service.Idle (Queue_State),
+         Waitboost_Enabled and then Boost_Hint_Pending, DC_Now_Us);
       Boost_Hint_Pending := False;
       -- Ramp latency: the actual frequency, read each turn of a ramp.
       if Boost.Ramping then
@@ -7571,8 +7751,134 @@ procedure Main is
            CT_Send.Result'Image (Status) & "); waitboost off", CuBit.Log_Records.Warning);
       end if;
    end Service_Waitboost;
+   ---------------------------------------------------------------------------
+   --  Stall watchdog (NUC freeze 2026-10-11). Every pending piece of work
+   --  that holds clients is timed from when it was first seen pending. A
+   --  `stalled` line names everything pending longer than Stall_Report_Ms,
+   --  once per second. An in-place VM update (the client's bind call waits
+   --  on it, and requests are not served while it runs) that outlives
+   --  In_Place_Deadline_Ms fails with a logged reason instead of holding
+   --  every client forever.
+   ---------------------------------------------------------------------------
+   Stall_Report_Ms : constant := 1_000;
+   In_Place_Deadline_Ms : constant := 3_000;
+   In_Place_Since, Update_Since, Deferred_Since, Memory_Since, Busy_Since, Gate_Since : Unsigned_64 := 0;
+   Stall_Reported_At : Unsigned_64 := 0;
+   Stalls_Reported : Unsigned_64 := 0;
+   procedure Track (Pending : Boolean; Since : in out Unsigned_64; Now : Unsigned_64) is
+   begin
+      if not Pending then Since := 0;
+      elsif Since = 0 then Since := Now;
+      end if;
+   end Track;
+   function Age (Since, Now : Unsigned_64) return Unsigned_64 is
+     (if Since = 0 or else Now < Since then 0 else Now - Since);
+   procedure Fail_Stalled_In_Place (Now : Unsigned_64) is
+      Words : Application_Buffers.Words := [Application_Buffers.Unavailable, 1, 0, 0];
+   begin
+      Stall_Reason := In_Place_Deadline;
+      Publish_Snapshot ("intel-gpu: in-place " & (if In_Place_Inserting then "bind" else "unbind") &
+        " missed its" & Unsigned_64'Image (Unsigned_64 (In_Place_Deadline_Ms)) & " ms deadline after" &
+        Unsigned_64'Image (Age (In_Place_Since, Now)) & " ms phase=" &
+        In_Place_Phase'Image (Current_In_Place_Phase) & " held=" & Boolean'Image (Update_Held) &
+        " exclusive=" & Boolean'Image (Update_Exclusive) & " contexts-stopped=" &
+        Boolean'Image (All_Contexts_Stopped) & " memory-pending=" &
+        Boolean'Image (Buffer_Memory.Pending (Buffer_Pool)) &
+        "; the update fails, its session is retired", CuBit.Log_Records.Error);
+      Insertion_Range_Pending := False; Growth_Inspection_Pending := False;
+      Live_Metadata_Pending := False; Insertion_Metadata_Pending := False;
+      Directory_Metadata_Pending := False;
+      if Update_Index in Private_Contexts'Range then
+         Reply_In_Place (Words);
+      else
+         In_Place_Active := False; Update_Held := False;
+      end if;
+      In_Place_Since := 0;
+   end Fail_Stalled_In_Place;
+   procedure Watch_Stalls is
+      Now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+      Stats : constant Queue_Service.Statistics := Queue_Service.Stats (Queue_State);
+      Line : String (1 .. 480) := [others => ' '];
+      Last : Natural := 0;
+      procedure Add (Text : String) is
+      begin
+         if Last + Text'Length <= Line'Last then
+            Line (Last + 1 .. Last + Text'Length) := Text; Last := Last + Text'Length;
+         end if;
+      end Add;
+      function Img (V : Unsigned_64) return String is
+        (Unsigned_64'Image (V) (2 .. Unsigned_64'Image (V)'Last));
+      procedure Item (Name : String; Since : Unsigned_64) is
+      begin
+         if Age (Since, Now) >= Stall_Report_Ms then
+            Add (" " & Name & "=" & Img (Age (Since, Now)) & "ms");
+         end if;
+      end Item;
+   begin
+      if Now = Unsigned_64'Last then return; end if;
+      Track (In_Place_Active, In_Place_Since, Now);
+      Track (Update_Pending /= 0, Update_Since, Now);
+      Track (Deferred_Pending, Deferred_Since, Now);
+      Track (Buffer_Memory.Pending (Buffer_Pool), Memory_Since, Now);
+      Track (not Queue_Service.Idle (Queue_State), Busy_Since, Now);
+      Track (Buffer_Retirement_Pending /= 0 or else Metadata_Busy or else Map_Metadata_Busy or else
+             In_Place_Active, Gate_Since, Now);
+      if In_Place_Active and then Age (In_Place_Since, Now) >= In_Place_Deadline_Ms then
+         Fail_Stalled_In_Place (Now);
+      end if;
+      if Now < Stall_Reported_At + Stall_Report_Ms then return; end if;
+      Item ("in-place", In_Place_Since);
+      Item ("vm-update", Update_Since);
+      Item ("deferred-request", Deferred_Since);
+      Item ("backing-alloc", Memory_Since);
+      Item ("gpu-busy", Busy_Since);
+      Item ("request-gate-closed", Gate_Since);
+      if Last = 0 then return; end if;
+      if In_Place_Active then
+         Add (" phase=" & In_Place_Phase'Image (Current_In_Place_Phase) &
+              " held=" & Boolean'Image (Update_Held));
+      end if;
+      if Update_Pending /= 0 then
+         Add (" directories=" & Directory_Phase'Image (Directory_Update));
+      end if;
+      if Age (Gate_Since, Now) >= Stall_Report_Ms then
+         Add (" gate:" & (if Buffer_Retirement_Pending /= 0 then " retirement" else "") &
+              (if Metadata_Busy then " metadata" else "") &
+              (if Map_Metadata_Busy then " map-metadata" else "") &
+              (if In_Place_Active then " in-place" else ""));
+      end if;
+      if Deferred_Found then
+         Add (" held-label=" & Hex (Deferred_Request.tag.label));
+      end if;
+      for E of Deferral_Queue loop
+         if E.Busy then Add (" deferred-label=" & Hex (E.Request.tag.label)); end if;
+      end loop;
+      if Deferrals_Held > 0 or else Deferral_Restore_Failures > 0 then
+         Add (" deferrals saved/held/restore-failed=" & Img (Deferrals_Saved) & "/" &
+              Img (Deferrals_Held) & "/" & Img (Deferral_Restore_Failures));
+      end if;
+      for I in 1 .. Context_Pool.Count (Contexts) loop
+         declare
+            ID : constant Unsigned_32 := First_Context_ID + Unsigned_32 (I - 1);
+            State : constant Context_Life.Phase := Context_Pool.State (Contexts, ID);
+         begin
+            if not Context_Life.Scheduling_Stopped (State) then
+               Add (" ctx" & Unsigned_32'Image (ID) & "=" & Context_Life.Phase'Image (State));
+            end if;
+         end;
+      end loop;
+      Add (" in-flight=" & Img (Unsigned_64 (Stats.In_Flight)) &
+           " fast-stream=" & (if Fast_Fences.Failed (Fast_Stream) then "FAILED" else "ok") &
+           " runtime-fault=" & Boolean'Image (Runtime_Fault) &
+           " slpc_min=" & (if Boost_Active then Img (Unsigned_64 (Intel_GPU_Waitboost.Desired (Boost)))
+                           else "n/a"));
+      Stall_Reported_At := Now;
+      if Stalls_Reported < Unsigned_64'Last then Stalls_Reported := Stalls_Reported + 1; end if;
+      Publish_Snapshot ("intel-gpu: stalled" & Line (1 .. Last), CuBit.Log_Records.Warning);
+   end Watch_Stalls;
 begin
    debugPrint ("intel-gpu: awaiting device-scoped bootstrap" & ASCII.LF);
+   Publish_Snapshot ("intel-gpu: startup step=begin");
    declare
       First : constant CuBit.Monotonic.Reading := CuBit.Monotonic.Read;
       Last : CuBit.Monotonic.Reading;
@@ -7620,7 +7926,9 @@ begin
    Result := syscall (SYSCALL_MAP_DEVICE, Plan.Physical_Base,
                       Register_Virtual_Base, Plan.Bytes / 4096, 1);
    if Result /= 0 then
-      debugPrint ("intel-gpu: read-only mapping denied" & ASCII.LF);
+      Publish_Snapshot ("intel-gpu: read-only register mapping " &
+        Intel_GPU_Map_Report.Denied (Plan.Physical_Base, Plan.Bytes),
+        CuBit.Log_Records.Warning);
       return;
    end if;
    debugPrint ("intel-gpu: read-only register mapping ready; firmware scanout retained" & ASCII.LF);
@@ -7704,14 +8012,18 @@ begin
            ("intel-gpu: display PW request+state ABCD=" & Bits & " (snapshot only)");
       end;
       Publish_Snapshot ("intel-gpu: forcewake=" & Forcewake_Result);
-      Publish_Snapshot ("intel-gpu: clock startup=" &
-        Unsigned_64'Image (getInfo (SYSINFO_MONOTONIC_DIAGNOSTIC, 0)) &
-        " HPET id=" & Hex (Unsigned_32 (getInfo (SYSINFO_MONOTONIC_DIAGNOSTIC, 1) and 16#FFFF_FFFF#)) &
-        " period-fs=" & Unsigned_64'Image (getInfo (SYSINFO_MONOTONIC_DIAGNOSTIC, 2)));
-      Publish_Snapshot ("intel-gpu: clock timer offset=" &
-        Hex (Unsigned_32 (getInfo (SYSINFO_MONOTONIC_DIAGNOSTIC, 3) and 16#FFFF_FFFF#)) &
-        " before=" & Hex (Unsigned_32 (getInfo (SYSINFO_MONOTONIC_DIAGNOSTIC, 4) and 16#FFFF_FFFF#)) &
-        " after=" & Hex (Unsigned_32 (getInfo (SYSINFO_MONOTONIC_DIAGNOSTIC, 5) and 16#FFFF_FFFF#)));
+      declare
+         Clock : constant CuBit.System_Facts.SP.Clock_Diagnostic := CuBit.System_Facts.Clock;
+      begin
+         Publish_Snapshot ("intel-gpu: clock startup=" &
+           Unsigned_64'Image (Clock.Status) &
+           " HPET id=" & Hex (Unsigned_32 (Clock.HPET_ID and 16#FFFF_FFFF#)) &
+           " period-fs=" & Unsigned_64'Image (Clock.Period_Fs));
+         Publish_Snapshot ("intel-gpu: clock timer offset=" &
+           Hex (Unsigned_32 (Clock.Timer_Offset and 16#FFFF_FFFF#)) &
+           " before=" & Hex (Unsigned_32 (Clock.Timer_Before and 16#FFFF_FFFF#)) &
+           " after=" & Hex (Unsigned_32 (Clock.Timer_After and 16#FFFF_FFFF#)));
+      end;
       if Forcewake_Result = "release-ready; domains-release-ready" then
          declare
             Mapping_Result : constant String := Map_Reset_Pages;
@@ -8255,7 +8567,7 @@ begin
                   declare
                      Policy : constant Intel_GPU_Buffer_Backing.Heap_Policy :=
                        Intel_GPU_Buffer_Backing.Native_System_Heap
-                         (getInfo (Intel_GPU_Buffer_Backing.Managed_RAM_Query));
+                         (CuBit.System_Facts.Memory_Bytes);
                      Accepted : Boolean;
                   begin
                      Buffer_Memory.Configure_Heap
@@ -8686,6 +8998,11 @@ begin
       end if;
    end if;
    Submit_Budget_Query;
+   Publish_Snapshot ("intel-gpu: startup step=request-loop (serving requests; GuC " &
+     (if Runtime_Admitted then "running" else "not running") & ", render " &
+     (if RCS_Ready then "ready" else "not ready") & ")");
+   Startup_Timing := False;
+   Find_Deferral_Slots;
    loop
       Refresh_Runtime_Health;
       Service_Device_Interrupts;
@@ -8702,6 +9019,7 @@ begin
       Service_Waitboost;
       Process_Pending_Quarantines;
       Service_Evictions;
+      Watch_Stalls;
       Sync_Counters;
       if not Queue_Service.Idle (Queue_State) then
          -- GPU work in flight: no background step runs (it may park), and
@@ -8711,12 +9029,23 @@ begin
             Now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
             Found, Defer : Boolean := False;
          begin
-            Note_Request_Gate (not Deferred_Found, Now);
-            if not Deferred_Found and then Buffer_Retirement_Pending = 0 and then
-              not Metadata_Busy and then not Map_Metadata_Busy and then not In_Place_Active
-            then
+            Note_Request_Gate (not Deferred_Pending, Now);
+            -- display.svc's requests (flips, cursor) never wait behind VM,
+            -- metadata or retirement work, or behind a deferred request:
+            -- they touch none of it. Any other request found while that
+            -- work runs is set aside (Set_Aside) and receiving goes on.
+            if not Deferred_Found then
                Poll_Service_Request (Sender, Request, Found);
-               if Found and then Safe_While_Busy (Request.tag.label) then
+               if Found and then Display_Executor.Owns_Label (Request.tag.label) then
+                  Dispatch_Started := DC_Now_Us;
+                  Display_Executor.Handle (Sender, Request);
+                  Note_Request_Time (Request.tag.label, Dispatch_Started);
+               elsif Found and then Request.tag.label = GQ.OP_GPU_BOOST then
+                  Handle_Boost_Request (Sender, Request);
+               elsif Found and then Safe_While_Busy (Request.tag.label) and then
+                 Buffer_Retirement_Pending = 0 and then not Metadata_Busy and then
+                 not Map_Metadata_Busy and then not In_Place_Active
+               then
                   Dispatch_Started := DC_Now_Us;
                   Dispatch_Request (Sender, Request, True, Defer);
                   Note_Request_Time (Request.tag.label, Dispatch_Started);
@@ -8724,13 +9053,11 @@ begin
                   Defer := Found;
                end if;
                if Defer then
-                  Deferred_Found := True;
-                  Deferred_Sender := Sender;
-                  Deferred_Request := Request;
+                  Set_Aside (Sender, Request);
                end if;
             end if;
             Queue_Service.Set_Quiesce
-              (Queue_State, Deferred_Found or else Background_Wanted or else
+              (Queue_State, Deferred_Pending or else Background_Wanted or else
                             Background_Due (DC_Now_Us));
             Sleep_While_GPU_Busy;
          end;
@@ -8864,15 +9191,23 @@ begin
             begin
                Note_Request_Gate (Open, Now);
                if Open then
-                  if Deferred_Found then
-                     -- Its reply capability is still the kernel's reply slot:
-                     -- nothing was received since it was deferred.
-                     Sender := Deferred_Sender;
-                     Request := Deferred_Request;
-                     Deferred_Found := False;
-                     Found := True;
+                  if Deferred_Pending then
+                     -- Oldest first; its reply capability is current again.
+                     Take_Deferred (Sender, Request, Found);
                   else
                      Poll_Service_Request (Sender, Request, Found);
+                  end if;
+               elsif not Deferred_Found then
+                  -- Gate closed: display.svc's requests are still served;
+                  -- anything else is set aside until it opens, and
+                  -- receiving goes on (its reply capability is saved).
+                  Poll_Service_Request (Sender, Request, Found);
+                  if Found and then Request.tag.label = GQ.OP_GPU_BOOST then
+                     Handle_Boost_Request (Sender, Request);
+                     Found := False;
+                  elsif Found and then not Display_Executor.Owns_Label (Request.tag.label) then
+                     Set_Aside (Sender, Request);
+                     Found := False;
                   end if;
                end if;
                if Found then

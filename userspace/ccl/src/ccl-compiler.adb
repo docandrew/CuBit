@@ -14,12 +14,28 @@ is
    use type CCL.Language.Node_Kind;
    use type CCL.Language.Static_Type;
    use type CCL.VM.Program_Length;
+   use type CCL.VM.Local_Count;
+   use type CCL.VM.Match_Count;
+   use type CCL.VM.Constant_Count;
    use type CCL.Host_Values.Value_Kind;
    use type CCL.Debug_Maps.Add_Result;
    use type CCL.Catalog.Intern_Result;
    use type CCL.Types.Shape;
    use type CCL.Resource_Policies.Layout_Result;
    use type CCL.VM.Validation_Error;
+
+   --  The analyser counts with Natural; these convert its positions to the
+   --  VM's typed counts and indexes (each within the VM's bound).
+   function Parameter (N : Natural) return CCL.VM.Parameter_Index is (CCL.VM.Parameter_Index (N))
+     with Pre => N in 1 .. CCL.VM.MAX_PARAMETERS;
+   function Parameters (N : Natural) return CCL.VM.Parameter_Count is (CCL.VM.Parameter_Count (N))
+     with Pre => N <= CCL.VM.MAX_PARAMETERS;
+   function Function_Slot (N : Natural) return CCL.VM.Function_Index is (CCL.VM.Function_Index (N))
+     with Pre => N < CCL.VM.MAX_FUNCTIONS;
+   function Functions (N : Natural) return CCL.VM.Function_Count is (CCL.VM.Function_Count (N))
+     with Pre => N <= CCL.VM.MAX_FUNCTIONS;
+   function Local_Position (N : Natural) return CCL.VM.Local_Count is (CCL.VM.Local_Count (N))
+     with Pre => N <= CCL.Ownership.MAX_BINDINGS;
 
    type Local_Binding is record
       Identifier : CCL.Language.Name;
@@ -31,7 +47,7 @@ is
    end record;
 
    type Local_Environment is
-     array (Natural range 0 .. CCL.Language.MAX_BINDINGS - 1) of Local_Binding;
+     array (CCL.VM.Local_Count range 0 .. CCL.Language.MAX_BINDINGS - 1) of Local_Binding;
 
    procedure Compile
      (Analysis : CCL.Language.Analysis_Result;
@@ -51,6 +67,7 @@ is
       Layout_Result : CCL.Resource_Policies.Layout_Result;
       Checked : CCL.VM.Validated_Program;
       Validation : CCL.VM.Validation_Error;
+      Type_Total : CCL.Resource_Policies.Layout_Count;
       --  Compiling a function body: bindings live on the operand stack,
       --  never in program locals (docs/ccl-bytecode-format.md, "Functions").
       In_Function : Boolean := False;
@@ -523,7 +540,7 @@ is
                      if Next_Local = CCL.Ownership.MAX_BINDINGS then
                         Fail (Too_Many_Locals, Index); return;
                      end if;
-                     Local := Next_Local;
+                     Local := CCL.VM.Local_At (Next_Local);
                      Next_Local := Next_Local + 1;
                      Program.Locals_Length := Next_Local;
                      Program.Dynamic_Locals_Length := Next_Local;
@@ -864,13 +881,15 @@ is
                   for C in 0 .. Program.Constants_Length - 1 loop
                      declare
                         K : constant CCL.VM.Text_Constant := Program.Constants (C);
+                        First : constant Natural := Natural (K.First);
+                        Length : constant Natural := Natural (K.Length);
                      begin
-                        if K.First + K.Length - 1 > Used then
-                           Used := K.First + K.Length - 1;
+                        if First + Length - 1 > Used then
+                           Used := First + Length - 1;
                         end if;
-                        if Found = Program.Constants_Length and then K.Length = Text'Length and then
-                          K.Length <= CCL.VM.MAX_CONSTANT_BYTES - K.First + 1 and then
-                          Program.Constant_Text (K.First .. K.First + K.Length - 1) = Text
+                        if Found = Program.Constants_Length and then Length = Text'Length and then
+                          CCL.VM.In_Pool (K) and then
+                          Program.Constant_Text (First .. First + Length - 1) = Text
                         then
                            Found := C;
                         end if;
@@ -883,7 +902,7 @@ is
                         Fail (Program_Full, Index, Item.Source_Position); return;
                      end if;
                      Program.Constants (Program.Constants_Length) :=
-                       (First => Used + 1, Length => Text'Length);
+                       (First => CCL.VM.Constant_First (Used + 1), Length => CCL.VM.Constant_Length (Text'Length));
                      Program.Constant_Text (Used + 1 .. Used + Text'Length) := Text;
                      Program.Constants_Length := Program.Constants_Length + 1;
                   end if;
@@ -972,7 +991,8 @@ is
       end loop;
       CCL.Resource_Policies.Layout
         (Program.Data_Types, CCL.Language.Analysis_Resource_Policies (Analysis), Resource_Roots,
-         Resource_Tags, Program.Types, Program.Types_Length, Layout_Result);
+         Resource_Tags, Program.Types, Type_Total, Layout_Result);
+      Program.Types_Length := CCL.VM.Type_Count (Type_Total);
       if Layout_Result /= CCL.Resource_Policies.Ready then
          Result.Status := Unsupported_Form; return;
       end if;
@@ -997,12 +1017,13 @@ is
             Function_Kind (Decl.Result_Kind, Target.Result, Target.Result_Data_Type, Supported);
             for C in 1 .. Decl.Captured loop
                exit when not Supported;
-               Function_Kind (Decl.Captures (C).Kind, Target.Kinds (C), Target.Data_Types (C), Supported);
+               Function_Kind (Decl.Captures (C).Kind, Target.Kinds (Parameter (C)),
+                              Target.Data_Types (Parameter (C)), Supported);
             end loop;
             for P in 1 .. Decl.Count loop
                exit when not Supported;
-               Function_Kind (Decl.Parameters (P).Kind, Target.Kinds (Decl.Captured + P),
-                              Target.Data_Types (Decl.Captured + P), Supported);
+               Function_Kind (Decl.Parameters (P).Kind, Target.Kinds (Parameter (Decl.Captured + P)),
+                              Target.Data_Types (Parameter (Decl.Captured + P)), Supported);
             end loop;
             if not Supported then
                Fail (Unsupported_Form, CCL.Language.NO_NODE); exit;
@@ -1010,22 +1031,22 @@ is
             Mark_Target (Entry_PC, Ok);
             exit when not Ok;
             Target.Entry_PC := Entry_PC;
-            Target.Captures := Decl.Captured;
-            Target.Count := Decl.Captured + Decl.Count;
-            Program.Functions (F - 1) := Target;
-            Program.Functions_Length := F;
+            Target.Captures := Parameters (Decl.Captured);
+            Target.Count := Parameters (Decl.Captured + Decl.Count);
+            Program.Functions (Function_Slot (F - 1)) := Target;
+            Program.Functions_Length := Functions (F);
             Environment_Length := 0;
             for C in 1 .. Decl.Captured loop
-               Environment (C - 1) :=
+               Environment (Local_Position (C - 1)) :=
                  (Identifier => Decl.Captures (C).Identifier, Kind => Decl.Captures (C).Kind,
                   On_Stack => True, Stack_Level => C - 1, others => <>);
             end loop;
             for P in 1 .. Decl.Count loop
-               Environment (Decl.Captured + P - 1) :=
+               Environment (Local_Position (Decl.Captured + P - 1)) :=
                  (Identifier => Decl.Parameters (P).Identifier, Kind => Decl.Parameters (P).Kind,
                   On_Stack => True, Stack_Level => Decl.Captured + P - 1, others => <>);
             end loop;
-            Environment_Length := Decl.Captured + Decl.Count;
+            Environment_Length := Local_Position (Decl.Captured + Decl.Count);
             Emit_Node (Decl.Body_Node, 0, False, Decl.Captured + Decl.Count);
             Enter (Decl.Result_Kind);
             Emit (CCL.VM.Return_Function);

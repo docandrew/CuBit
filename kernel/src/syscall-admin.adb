@@ -17,6 +17,10 @@ with Capabilities;
 with Capabilities.IRQ;
 with Config;
 with Device_Interrupts;
+with Device_Memory_Admission;
+with Device_Memory_Authority;
+with Device_Memory_Diagnostics;
+with Device_Memory_Publication;
 with Device_Vector_ABI;
 with Capabilities.Operations;
 with InterruptNumbers;
@@ -34,7 +38,11 @@ with Process_Identities;
 with User_Buffer_Copy;
 with Spinlocks;
 with Process_Lifetime;
-with Sysinfo;
+with Physical_Range_Map;
+with Boot_Output;
+with Publication_Pages;
+with Service_Registry;
+with System_Publications;
 with TextIO; use TextIO;
 with Time;
 with Util;
@@ -163,7 +171,7 @@ package body Syscall.Admin is
     begin
         retval := reterr;
 
-        if arg0 > Unsigned_64 (Sysinfo.DriverID'Last) then
+        if arg0 > Service_Registry.DriverID'Last then
             return;
         end if;
 
@@ -195,15 +203,23 @@ package body Syscall.Admin is
             return;
         end if;
 
-        retval := Sysinfo.registerDriver (
-            pid    => callerPID,
-            driver => Sysinfo.DriverID(arg0));
-        -- The registrant's identity, not its slot (KERN-003).
-        if retval = Unsigned_64 (callerPID) then
-            retval := Process_Identities.To_Word (Process.identityOf (callerPID));
-            Boot_Timeline.Note_Event (Natural (callerPID),
-                                      Boot_Timeline.Registered);
+        -- The log service turns the kernel's device-memory refusals into
+        -- records (Device_Memory_Publication); only it reads that page.
+        if arg0 = Service_Registry.DRIVER_LOGSTORE then
+            declare
+                mapped : Boolean;
+            begin
+                Device_Memory_Diagnostics.Map_Into (callerPID, mapped);
+                if not mapped then
+                    println ("REGISTER_DRIVER: logstore refused, diagnostics page unmapped");
+                    return;
+                end if;
+            end;
         end if;
+        Service_Registry.Register (pid => callerPID, driver => arg0);
+        -- The registrant's identity, not its slot (KERN-003).
+        retval := Process_Identities.To_Word (Process.identityOf (callerPID));
+        Boot_Timeline.Note_Event (Natural (callerPID), Boot_Timeline.Registered);
     end handleRegisterDriver;
 
     ---------------------------------------------------------------------------
@@ -219,12 +235,12 @@ package body Syscall.Admin is
 
         --  The driver role whose registration authority may mark each
         --  milestone: the service that owns the event.
-        Owner : constant array (BT.Milestone) of Sysinfo.DriverID :=
-          [BT.Startup_Profile_Started  => Sysinfo.DRIVER_PROCMGR,
-           BT.Startup_Profile_Launched => Sysinfo.DRIVER_PROCMGR,
-           BT.Display_Leased           => Sysinfo.DRIVER_DISPLAY,
-           BT.First_Frame_Presented    => Sysinfo.DRIVER_DESKTOP,
-           BT.First_Input_Accepted     => Sysinfo.DRIVER_DESKTOP];
+        Owner : constant array (BT.Milestone) of Service_Registry.DriverID :=
+          [BT.Startup_Profile_Started  => Service_Registry.DRIVER_PROCMGR,
+           BT.Startup_Profile_Launched => Service_Registry.DRIVER_PROCMGR,
+           BT.Display_Leased           => Service_Registry.DRIVER_DISPLAY,
+           BT.First_Frame_Presented    => Service_Registry.DRIVER_DESKTOP,
+           BT.First_Input_Accepted     => Service_Registry.DRIVER_DESKTOP];
 
         function Holds (Kind : Capabilities.CapabilityType;
                         Right : Capabilities.CapabilityRight;
@@ -403,54 +419,6 @@ package body Syscall.Admin is
                 retval := reterr;
         end case;
     end handlePortIO;
-
-    ---------------------------------------------------------------------------
-    -- handleVirtToPhys
-    ---------------------------------------------------------------------------
-    procedure handleVirtToPhys (callerPID : Process.ProcessID;
-                                arg0      : Unsigned_64;
-                                retval    : out Unsigned_64) with
-        SPARK_Mode => Off
-    is
-        use type Capabilities.CapabilityType;
-
-
-        phys   : Virtmem.PhysAddress;
-        hasCap : Boolean := False;
-    begin
-        -- Kernel-mode threads exempt
-        if Process.threadOf (callerPID).mode = Process.KERNEL then
-            hasCap := True;
-        else
-            for slot in Capabilities.CapabilitySlot loop
-                if Process.proctab(callerPID).caps(slot).capType =
-                   Capabilities.CAP_DEVICE_MEM
-                then
-                    hasCap := True;
-                    exit;
-                end if;
-            end loop;
-        end if;
-
-        if not hasCap then
-            Process.IPC.notifySupervisor (
-                callerPID,
-                IPC_Labels.EVENT_CAP_FAULT,
-                Unsigned_64 (SyscallNumber'Enum_Rep (
-                    SYSCALL_VIRT_TO_PHYS)),
-                arg0, 0);
-            retval := reterr;
-        else
-            phys := Virtmem.tableWalk (
-                Virtmem.VirtAddress(arg0),
-                Process.addrtab(callerPID), Allow_Big => True);
-            if phys = 0 then
-                retval := reterr;
-            else
-                retval := Unsigned_64(phys) + (arg0 and 16#FFF#);
-            end if;
-        end if;
-    end handleVirtToPhys;
 
     ---------------------------------------------------------------------------
     -- handleCapSend
@@ -934,6 +902,25 @@ package body Syscall.Admin is
                         return;
                     end if;
 
+                    -- Policy chooses who gets which device; the kernel
+                    -- refuses a device range that is not entirely
+                    -- device-mappable (CAP-001): never RAM, kernel memory,
+                    -- boot modules, ACPI memory or kernel MMIO.
+                    if ct = Capabilities.CAP_DEVICE_MEM and then
+                       not Device_Memory_Authority.Mint_Admissible
+                         (Physical_Range_Map.Kernel_Map, arg2, arg3)
+                    then
+                        Device_Memory_Diagnostics.Record_Denial
+                          (callerPID, Device_Memory_Publication.Policy_Mint, arg2, arg3,
+                           (if newRights (Capabilities.RIGHT_WRITE)
+                            then Device_Memory_Admission.Read_Write
+                            else Device_Memory_Admission.Read_Only),
+                           Device_Memory_Authority.Explain_Mint
+                             (Physical_Range_Map.Kernel_Map, arg2, arg3));
+                        retval := reterr;
+                        return;
+                    end if;
+
                     if ct = Capabilities.CAP_CSPACE and then
                        not canDelegateCspace
                          (callerPID, targetPID, objectRef, newRights)
@@ -1349,66 +1336,6 @@ package body Syscall.Admin is
     end handleSendControl;
 
     ---------------------------------------------------------------------------
-    -- handleSetWellKnown
-    -- arg0 = role (ServiceRole), arg1 = PID to register
-    ---------------------------------------------------------------------------
-    procedure handleSetWellKnown (callerPID : Process.ProcessID;
-                                   arg0, arg1 : Unsigned_64;
-                                   retval     : out Unsigned_64) with
-        SPARK_Mode => Off
-    is
-        use type Process.ProcessState;
-
-        targetPID : Process.ProcessID;
-    begin
-        if arg0 > Unsigned_64 (Config.ServiceRole'Last) then
-            println ("SET_WELL_KNOWN: invalid role");
-            retval := reterr;
-            return;
-        end if;
-
-        targetPID := Process.processOfIdentity (Process_Identities.From_Word (arg1));
-        if targetPID = Process.NO_PROCESS then
-            println ("SET_WELL_KNOWN: invalid identity");
-            retval := reterr;
-            return;
-        end if;
-
-        declare
-            procedure performLocked is
-            begin
-                if not Process.proctab(targetPID).admitted or else
-                   Process_Lifetime.Closing (Process.threadOf (targetPID).lifetime) then
-                    retval := reterr;
-                    return;
-                end if;
-
-                if not hasCapProcessFor (callerPID, targetPID,
-                                         Capabilities.RIGHT_GRANT)
-                then
-                    println ("SET_WELL_KNOWN: denied, no RIGHT_GRANT");
-                    retval := reterr;
-                    return;
-                end if;
-
-                Config.wellKnownServices (Config.ServiceRole (arg0)) :=
-                    (pid => Natural (targetPID),
-                     gen => Process.generationOf (targetPID));
-
-                print ("SET_WELL_KNOWN: role ");
-                print (Integer (arg0));
-                print (" => PID ");
-                println (Integer (targetPID));
-                retval := 0;
-            end performLocked;
-        begin
-            Spinlocks.enterCriticalSection (Process.mailtab(targetPID).lock);
-            performLocked;
-            Spinlocks.exitCriticalSection (Process.mailtab(targetPID).lock);
-        end;
-    end handleSetWellKnown;
-
-    ---------------------------------------------------------------------------
     -- handleEnableIrq
     ---------------------------------------------------------------------------
     procedure handleEnableIrq (callerPID  : Process.ProcessID;
@@ -1691,38 +1618,48 @@ package body Syscall.Admin is
     end handleReadDeviceVector;
 
     ---------------------------------------------------------------------------
-    -- handleSetSysinfo
+    -- handlePublish (SYSCALL_PUBLISH, KERN-002 writer)
+    -- arg0 = System_Publications.Published_Value, arg1 = the word. Each value
+    -- has one publisher: the wall-clock offset the registered clock service,
+    -- the boot display handoff the registered device manager.
     ---------------------------------------------------------------------------
-    procedure handleSetSysinfo (callerPID  : Process.ProcessID;
-                                arg0, arg1 : Unsigned_64;
-                                retval     : out Unsigned_64) with
+    procedure handlePublish (callerPID  : Process.ProcessID;
+                             arg0, arg1 : Unsigned_64;
+                             retval     : out Unsigned_64) with
         SPARK_Mode => Off
     is
-        use type Capabilities.CapabilityType;
-
-
-        --  Who may set what: the wall-clock offset only the registered
-        --  clock service; device configuration only the registered device
-        --  manager. (Any write-capable CAP_PROCESS used to suffice, and every
-        --  process holds one for itself.)
-        owner : constant Sysinfo.DriverID :=
-            (if arg0 = Sysinfo.WALL_CLOCK_OFFSET then Sysinfo.DRIVER_CLOCK
-             else Sysinfo.DRIVER_DEVMGR);
-        hasCap : constant Boolean :=
-            Process.threadOf (callerPID).mode = Process.KERNEL or else
-            Sysinfo.getInfo (Sysinfo.REGISTERED_DRIVER, Unsigned_64 (owner)) =
-                Unsigned_64 (callerPID);
+        package SP renames System_Publications;
+        function Registered_As (Owner : Service_Registry.DriverID) return Boolean is
+          (Process.threadOf (callerPID).mode = Process.KERNEL or else
+           Service_Registry.Registered (Owner) = callerPID);
     begin
-        if not hasCap then
-            println ("SET_SYSINFO: denied, caller is not the registered owner");
-            retval := reterr;
-        elsif Sysinfo.setInfo (arg0, arg1) then
+        retval := reterr;
+        if arg0 = SP.Published_Value'Enum_Rep (SP.Wall_Clock_Offset) then
+            if not Registered_As (Service_Registry.DRIVER_CLOCK) then
+                println ("PUBLISH: denied, caller is not the registered clock");
+                return;
+            end if;
+            Publication_Pages.Set_Wall_Clock (arg1);
+            retval := 0;
+        elsif arg0 = SP.Published_Value'Enum_Rep (SP.Boot_Display_Native) then
+            if not Registered_As (Service_Registry.DRIVER_DEVMGR) then
+                println ("PUBLISH: denied, caller is not the registered device manager");
+                return;
+            elsif arg1 > 1 then
+                return;
+            end if;
+            --  The boot-adapter handoff precedes starting its native driver:
+            --  retire the firmware renderer before that driver can reset or
+            --  reprogram the display, not afterward.
+            if arg1 = 1 then
+                Boot_Output.Retire;
+            end if;
+            Publication_Pages.Set_Boot_Display_Native (arg1 = 1);
             retval := 0;
         else
-            println ("SET_SYSINFO: unknown queryID");
-            retval := reterr;
+            println ("PUBLISH: unknown value");
         end if;
-    end handleSetSysinfo;
+    end handlePublish;
 
     ---------------------------------------------------------------------------
     -- handleSetCpu
@@ -1830,5 +1767,32 @@ package body Syscall.Admin is
         Spinlocks.exitCriticalSection (Process.mailtab(callerPID).lock);
         retval := 1;
     end handleSaveReplyCap;
+
+    procedure handleRestoreReplyCap (callerPID : Process.ProcessID;
+                                     arg0      : Unsigned_64;
+                                     retval    : out Unsigned_64) with
+        SPARK_Mode => Off
+    is
+        moved : Boolean;
+    begin
+        retval := 0;
+        if arg0 > Unsigned_64(Capabilities.CapabilitySlot'Last) or else
+          Capabilities.CapabilitySlot(arg0) = Capabilities.REPLY_CAP_SLOT
+        then
+            return;
+        end if;
+        -- Same lock as the save: authorized cspace edits and inspection.
+        Spinlocks.enterCriticalSection (Process.mailtab(callerPID).lock);
+        Capabilities.Operations.restoreReplyCapTo
+          (table         => Process.proctab(callerPID).caps,
+           deferredSlots => Process.proctab(callerPID).deferredReplyCaps,
+           slot          => Capabilities.CapabilitySlot(arg0),
+           dest          => Process.threadtab (PerCPUData.getCurrentThread).replyCap,
+           moved         => moved);
+        Spinlocks.exitCriticalSection (Process.mailtab(callerPID).lock);
+        if moved then
+            retval := 1;
+        end if;
+    end handleRestoreReplyCap;
 
 end Syscall.Admin;

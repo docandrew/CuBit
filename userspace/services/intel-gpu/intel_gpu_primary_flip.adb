@@ -334,6 +334,23 @@ package body Intel_GPU_Primary_Flip is
       end loop;
    end Clear;
 
+   function Stall return Stall_View is
+      Now : constant Unsigned_64 := Now_Us;
+      Item : Stall_View;
+   begin
+      Item.Owed := S.Owed;
+      Item.Faulted := S.Faulted;
+      if S.Armed in FS.Buffer then
+         Item.Armed := Index (FS.Buffer'Pos (S.Armed) - FS.Buffer'Pos (FS.Buffer'First));
+      end if;
+      Item.Owed_Us := (if S.Owed and then Now /= Unsigned_64'Last and then Now >= Armed_Us
+                       then Now - Armed_Us else 0);
+      Item.Surface_Word := Read (Surface_Offset);
+      Item.Live_Word := Read (Live_Surface_Offset);
+      Item.Frame_Count := Read (Frame_Count_Offset);
+      return Item;
+   end Stall;
+
    procedure Take (Item : out Counters) is
       Count_Now : constant Unsigned_32 := Read (Frame_Count_Offset);
    begin

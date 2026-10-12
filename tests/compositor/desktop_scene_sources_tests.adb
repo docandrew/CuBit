@@ -4,7 +4,7 @@ with Compositor_Formats; with Compositor_Source_Content;
 with Desktop_GPU_Scene; with Desktop_GPU_Scene.Images; with Desktop_GPU_Scene.Drawing;
 with Desktop_Image_Registry;
 with Desktop_Image_Source; with Desktop_Vulkan_Startup; with Vulkan_Device_Mock;
-with Vulkan_Submission; with Vulkan_Scene;
+with Vulkan_Submission; with Vulkan_Scene; with Vulkan_Owned_Targets; with Compositor_Upload;
 -- Whole scenes over the native mocks: twelve client windows (more than the
 -- former eight client slots) drawn every frame while every window publishes
 -- a new version each frame. The old runtime software switch fired on a
@@ -103,6 +103,41 @@ begin
       end if;
    end loop;
    pragma Assert (G.Peak_Layers (S) = Vulkan_Scene.Maximum_Layers);
+   -- Freeze regression (NUC 2026-10-11): an image chunk staged by a capture
+   -- that is then abandoned before Images.Complete (the old only flusher)
+   -- must not block a single-write producer (atlas, glyph, wallpaper)
+   -- forever: Begin_Write drives the batch (flush, then observe).
+   declare
+      Lease_A, Lease_B : Vulkan_Owned_Targets.A.Ticket;
+      Reply : D.Source_Result;
+      Write : D.Write_Ticket;
+      Plan : Compositor_Upload.Plan;
+      Mapping : System.Address;
+      Tries : Natural := 0;
+      use type D.Source_Result, System.Address;
+   begin
+      D.Allocate_Backing (0, 16, 16, True, Lease_A, Reply); pragma Assert (Reply = D.Source_Accepted);
+      D.Allocate_Backing (1, 16, 16, True, Lease_B, Reply); pragma Assert (Reply = D.Source_Accepted);
+      D.Begin_Staged_Write (0, Lease_A, Write, Plan, Mapping, Reply);
+      pragma Assert (Reply = D.Source_Accepted and Mapping /= System.Null_Address);
+      D.Stage_Write (Write, True, Reply); pragma Assert (Reply = D.Source_Accepted);
+      pragma Assert (D.Staged_Writes = 1);
+      --  The first attempt submits the staged batch; Drive_Uploads (as
+      --  Complete_Output and Begin_Output call it) observes its fence.
+      D.Begin_Write (1, Lease_B, Write, Plan, Mapping, Reply);
+      pragma Assert (Reply = D.Source_Busy and D.Upload_Pending,
+                     "asking for the writer submits the staged batch");
+      loop
+         Tries := Tries + 1;
+         D.Drive_Uploads;
+         D.Begin_Write (1, Lease_B, Write, Plan, Mapping, Reply);
+         exit when Reply = D.Source_Accepted or else Tries = 8;
+         pragma Assert (Reply = D.Source_Busy);
+      end loop;
+      pragma Assert (Reply = D.Source_Accepted, "a staged batch never blocks a single write");
+      D.Cancel_Write (Write, True, OK); pragma Assert (OK);
+      pragma Assert (D.Staged_Writes = 0, "the staged chunk went to the GPU");
+   end;
    G.Close (S, OK); pragma Assert (OK);
    R.Close (Reg, True, OK); pragma Assert (OK);
    D.Stop;

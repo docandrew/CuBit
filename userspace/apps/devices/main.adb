@@ -11,6 +11,7 @@ with CCL_Manifest_Bindings;
 
 with CuBit.Devices;
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.System_Facts;
 with CuBit.UI;
 with CuBit.UI.App;
 with CuBit.UI.Clipboard;
@@ -606,7 +607,7 @@ procedure main is
            (c, (x => content.x, y => y, w => content.w, h => 24), colors,
             "Processors");
          y := y + 34;
-         Pair ("Logical processors", Decimal (getInfo (SYSINFO_NUM_CPUS)));
+         Pair ("Logical processors", Decimal (CuBit.System_Facts.Processor_Count));
          Pair ("Architecture", "x86-64");
          Pair ("Authority", "Inspection only");
       elsif selectedNode = NODE_MEMORY then
@@ -614,8 +615,16 @@ procedure main is
            (c, (x => content.x, y => y, w => content.w, h => 24), colors,
             "Physical memory");
          y := y + 34;
-         Pair ("Total", Decimal (getInfo (1601) / (1024 * 1024)) & " MiB");
-         Pair ("Available", Decimal (getInfo (1600) / (1024 * 1024)) & " MiB");
+         declare
+            Statistics : CuBit.System_Facts.SP.Statistics;
+            Read : Boolean;
+         begin
+            CuBit.System_Facts.Read_Statistics (Statistics, Read);
+            Pair ("Total", Decimal (CuBit.System_Facts.Memory_Bytes / (1024 * 1024)) & " MiB");
+            Pair ("Available",
+                  (if Read then Decimal (Statistics.Free_Memory_Bytes / (1024 * 1024)) & " MiB"
+                   else "unknown"));
+         end;
          Pair ("Authority", "Inspection only");
       elsif selectedNode = NODE_PS2 then
          CuBit.UI.Labels.Label

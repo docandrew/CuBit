@@ -2,12 +2,23 @@ with Interfaces; use Interfaces;
 with System;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Launch_Configurations;
+with Launch_Configuration;
 with CuBit.Memory_Grants;
 with CuBit.Grant_References;
 with CuBit.Kernel_Calls;
 with CuBit.Kernel_ABI;
 with Cpio;
 procedure DMA_Retirement_Native is
+   --  The boot image's size: the kernel's launch configuration for the
+   --  process it starts in devmgr's place.
+   function Boot_Image_Bytes return Unsigned_64 is
+      Configuration : Launch_Configuration.Device_Manager_Configuration;
+      Configured : Boolean;
+   begin
+      CuBit.Launch_Configurations.Get (Configuration, Configured);
+      return (if Configured then Configuration.Boot_Image else 0);
+   end Boot_Image_Bytes;
    PID : constant Unsigned_64 := syscall (SYSCALL_GETPID);
    Child : constant Unsigned_64 := 42;
    Failed : constant Unsigned_64 := Unsigned_64'Last;
@@ -67,7 +78,7 @@ begin
    end if;
    debugPrint ("native DMA retirement: disposable real owner cleanup (NO GPU)" & ASCII.LF);
    Cpio.init (Archive, To_Address (16#0000_5000_0000_0000#),
-     getInfo (SYSINFO_RAMDISK_SIZE), OK);
+     Boot_Image_Bytes, OK);
    Check (OK, "initrd");
    Cpio.fileView (Archive, Cpio.findFile (Archive, "devmgr.svc"), ELF, ELF_Size, OK);
    Check (OK and then Spawn = Child, "spawn");

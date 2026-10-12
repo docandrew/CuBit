@@ -36,7 +36,7 @@ procedure Owned_Local_Tests is
    procedure Transfer_Program (Tag : Type_Id; Mode : Ownership_Mode) is
    begin
       Candidate := (others => <>);
-      Candidate.Types_Length := Tag + 1;
+      Candidate.Types_Length := CCL.VM.Type_Count (Tag) + 1;
       Candidate.Types (Tag).Mode := Mode;
       Candidate.Locals_Length := 2;
       Candidate.Dynamic_Locals_Length := 1;
@@ -104,7 +104,7 @@ begin
             -- A forged primitive has tag zero, but is unrestricted. Even tag
             -- zero ownership types cannot acquire it as an owned resource.
             Candidate := (others => <>);
-            Candidate.Types_Length := Tag + 1;
+            Candidate.Types_Length := CCL.VM.Type_Count (Tag) + 1;
             Candidate.Types (Tag).Mode := Mode;
             Candidate.Locals_Length := 1;
             Candidate.Dynamic_Locals_Length := 1;

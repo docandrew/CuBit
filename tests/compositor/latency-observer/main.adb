@@ -34,7 +34,7 @@ begin
          CuBit.Metrics.Query (Watcher, Next, Rows, Written, Next, Result);
          exit when Result /= P.OK;
          for I in 0 .. Written - 1 loop
-            if Rows (I) (P.Row_Source) = getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_DESKTOP)
+            if Rows (I) (P.Row_Source) = To_Word (Registered_Driver (DRIVER_DESKTOP))
               and then Watched (Rows (I) (P.Row_Key))
             then
                debugPrint ("DESKTOP-LATENCY: " & Name (Rows (I) (P.Row_Key)) &

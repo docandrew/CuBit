@@ -27,7 +27,6 @@ with MemoryAreas;
 with Firmware_Frames;
 with InterruptNumbers;
 with Modules;
-with Pci;
 with PerCpuData;
 with Pic;
 with Process;
@@ -477,48 +476,7 @@ begin
     end initIOAPIC;
     showBootStage ("Interrupt routing ready");
     Boot_Timeline.Mark_Stage (BT.Interrupt_Routing_Ready);
-    Boot_Diagnostics.Begin_Step ("Enumerating PCI devices");
-
-
-    initPCI: declare
-        procedure mapBigIOArea is new Mem_mgr.mapBigIOArea(BuddyAllocator.allocFrame);
-
-        -- PCI extended config area should be exactly 256M.
-        startAddr : constant Virtmem.PhysAddress := Integer_Address(acpi.pcieConfig.baseAddr);
-        endAddr   : constant Virtmem.PhysAddress := startAddr + 268_435_456 - 1;
-
-        pciConfigArea : MemoryAreas.MemoryArea := (kind      => MemoryAreas.IO,
-                                                   startAddr => startAddr,
-                                                   endAddr   => endAddr);
-    begin
-        println;
-        println ("-----------------------------------------------------");
-        println ("                       PCI Bus                       ", LT_BLUE, BLACK);
-        println ("-----------------------------------------------------");
-
-        mapBigIOArea (pciConfigArea);
-        Boot_Timeline.Mark_Stage (BT.PCI_Config_Mapped);
-        PCI.enumerateDevicesPCIe (Virtmem.P2Va (startAddr));
-    end initPCI;
-    showBootStage ("PCI devices enumerated");
-    Boot_Timeline.Mark_Stage (BT.PCI_Enumerated);
     Boot_Diagnostics.Begin_Step ("Loading the live system image");
-
-
-    -- @TODO not sure if it makes sense to map the entire configuration space here,
-    -- given that it's going to be around 256M. Maybe map as large pages?
-    -- initNVMe: declare
-    --     procedure mapIOArea is new Mem_mgr.mapIOArea(BuddyAllocator.allocFrame);
-
-    --     pciConfigArea : MemoryAreas.MemoryArea := (kind      => MemoryAreas.IO,
-    --                                                startAddr => acpi.pcieConfig.baseAddr,
-    --                                                endAddr   => acpi.pcieConfig.baseAddr + );
-    -- begin
-
-    --     -- Map PCI Configuration Space into our kernel. It should be exactly
-    --         --
-    --     mapBigIOArea (pciConfigArea);
-    -- end initNVMe;
 
 
     initModules: declare

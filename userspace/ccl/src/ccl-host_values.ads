@@ -14,10 +14,27 @@ package CCL.Host_Values with SPARK_Mode => On is
    use type CCL.Objects.Schema_Key;
    use type CCL.Types.Type_Reference;
    use type CCL.VM.Value_Kind;
+   use type CCL.VM.Import_Text_Length;
    use type CCL.Types.Name;
    use type CCL.Imports.Transfer_Mode;
-   Maximum_Text_Length : constant := 1_024;
+   --  A host-owned text value holds at most Maximum_Text_Length bytes, the
+   --  VM's host text bound (also a result's text).
+   Maximum_Text_Length : constant := CCL.VM.MAX_HOST_TEXT;
    subtype Text_Length is Natural range 0 .. Maximum_Text_Length;
+   --  An import contract's text limit: at most what a host text value holds.
+   --  A distinct type from the VM's CCL.VM.Import_Text_Length (a whole
+   --  string): between them only To_Import_Limit and To_Host_Limit convert.
+   type Text_Limit is range 0 .. Maximum_Text_Length;
+   function To_Import_Limit (Limit : Text_Limit) return CCL.VM.Import_Text_Length is
+     (CCL.VM.Import_Text_Length (Limit));
+   function Host_Limit_Fits (Limit : CCL.VM.Import_Text_Length) return Boolean is
+     (Limit <= CCL.VM.Import_Text_Length (Maximum_Text_Length));
+   function To_Host_Limit (Limit : CCL.VM.Import_Text_Length) return Text_Limit is
+     (Text_Limit (Limit))
+     with Pre => Host_Limit_Fits (Limit);
+   --  Whether Length bytes fit Limit.
+   function Within (Length : Text_Length; Limit : Text_Limit) return Boolean is
+     (Length <= Natural (Limit));
    type Text is record
       Length : Text_Length := 0;
       Data : String (1 .. Maximum_Text_Length) := [others => ' '];
@@ -68,7 +85,7 @@ package CCL.Host_Values with SPARK_Mode => On is
    type Import_Declaration is record
       Argument : Value_Kind := Integer_Value;
       Result : Value_Kind := Integer_Value;
-      Argument_Text_Limit, Result_Text_Limit : Text_Length := 0;
+      Argument_Text_Limit, Result_Text_Limit : Text_Limit := 0;
       -- Approved nominal identities, not program-local type numbers or grants.
       Argument_Schema, Result_Schema : CCL.Objects.Schema_Key := CCL.Objects.No_Schema;
       Argument_Resource, Result_Resource : CCL.Types.Name;
@@ -98,6 +115,10 @@ package CCL.Host_Values with SPARK_Mode => On is
       Argument_Schema, Result_Schema : CCL.Objects.Schema_Key) return Boolean is
      (Item.Argument /= CCL.VM.Resource_Value and then Item.Result /= CCL.VM.Resource_Value and then
       Item.Result_Type_Tag = 0 and then not CCL.VM.Has_Receiver (Item) and then
+      --  A plain text limit must fit a host text value (a schema-bound
+      --  String image carries the whole string instead).
+      (Argument_Schema /= CCL.Objects.No_Schema or else Host_Limit_Fits (Item.Argument_Text_Limit)) and then
+      (Result_Schema /= CCL.Objects.No_Schema or else Host_Limit_Fits (Item.Result_Text_Limit)) and then
       (if Item.Argument in CCL.VM.Object_Value | CCL.VM.List_Value then
           Item.Argument_Data_Type /= CCL.Types.Invalid_Type and Argument_Schema /= CCL.Objects.No_Schema
        elsif Item.Argument = CCL.VM.Variant_Value then
@@ -159,9 +180,9 @@ package CCL.Host_Values with SPARK_Mode => On is
       Types : CCL.Types.Registry) return Boolean;
    -- Typed in-memory linkage. Resource tag/policy approval is a separate
    -- catalog check; this only compares the complete operation signature.
-   function Matches (Item : Value; Kind : Value_Kind; Limit : Text_Length) return Boolean is
+   function Matches (Item : Value; Kind : Value_Kind; Limit : Text_Limit) return Boolean is
      (Kind not in Object_Value | Resource_Value and then Item.Kind = Kind and then
-      (Item.Kind /= Text_Value or else Item.Content.Length <= Limit));
+      (Item.Kind /= Text_Value or else Within (Item.Content.Length, Limit)));
    -- An object's self-asserted schema key alone never admits it. The host must
    -- supply the independently approved binding and validate the complete image.
    function Matches (Item : Value; Contract : CCL.Objects.Binding) return Boolean is

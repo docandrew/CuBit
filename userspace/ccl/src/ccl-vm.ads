@@ -26,14 +26,26 @@ is
    MAX_STACK_DEPTH  : constant := 64;
    MAX_IMPORTS      : constant := 16;
 
+   --  Each dimension is its own type, so a count or index of one kind never
+   --  flows into another without one of the named conversions below.
    type Instruction_Index is mod MAX_INSTRUCTIONS;
    type Stack_Index is range 0 .. MAX_STACK_DEPTH - 1;
    type Program_Length is range 0 .. MAX_INSTRUCTIONS;
    type Stack_Depth is range 0 .. MAX_STACK_DEPTH;
-   subtype Import_Index is Natural range 0 .. MAX_IMPORTS - 1;
-   subtype Import_Count is Natural range 0 .. MAX_IMPORTS;
-   subtype Local_Count is Natural range 0 .. CCL.Ownership.MAX_BINDINGS;
-   subtype Type_Count is Natural range 0 .. CCL.Ownership.MAX_TYPES;
+   type Import_Count is range 0 .. MAX_IMPORTS;
+   subtype Import_Index is Import_Count range 0 .. MAX_IMPORTS - 1;
+   --  A program's locals are its first Local_Count ownership bindings, and
+   --  its ownership types the first Type_Count type ids.
+   type Local_Count is range 0 .. CCL.Ownership.MAX_BINDINGS;
+   type Type_Count is range 0 .. CCL.Ownership.MAX_TYPES;
+   function Declared_Local (Local : CCL.Ownership.Binding_Id; Count : Local_Count) return Boolean is
+     (Local_Count (Local) < Count);
+   function Declared_Type (Id : CCL.Ownership.Type_Id; Count : Type_Count) return Boolean is
+     (Type_Count (Id) < Count);
+   --  The binding at 0-based position Position of the locals.
+   function Local_At (Position : Local_Count) return CCL.Ownership.Binding_Id is
+     (CCL.Ownership.Binding_Id (Position))
+     with Pre => Position < Local_Count'Last;
    type Local_Type_Array is
      array (CCL.Ownership.Binding_Id) of CCL.Ownership.Type_Id;
 
@@ -53,10 +65,13 @@ is
    --  alternative). The interpreter's bounds (CCL.Language uses these).
    MAX_VALUE_NODES : constant := 512;
    MAX_VALUE_SLOTS : constant := 2_048;
-   subtype Node_Count is Natural range 0 .. MAX_VALUE_NODES;
-   subtype Node_Index is Positive range 1 .. MAX_VALUE_NODES;
-   subtype Slot_Count is Natural range 0 .. MAX_VALUE_SLOTS;
-   subtype Slot_Index is Positive range 1 .. MAX_VALUE_SLOTS;
+   type Node_Count is range 0 .. MAX_VALUE_NODES;
+   subtype Node_Index is Node_Count range 1 .. MAX_VALUE_NODES;
+   --  Slot positions run one past the last slot: a node's First when it
+   --  ends the arena.
+   type Slot_Position is range 0 .. MAX_VALUE_SLOTS + 1;
+   subtype Slot_Count is Slot_Position range 0 .. MAX_VALUE_SLOTS;
+   subtype Slot_Index is Slot_Position range 1 .. MAX_VALUE_SLOTS;
 
    --  Text (docs/ccl-bytecode-format.md, "Version 8 plan", step 2): a run's
    --  strings live in a bounded region of its machine state; a Text_Value
@@ -65,33 +80,43 @@ is
    --  The interpreter's bounds (CCL.Language), so a program fails at the
    --  same point in both: a string holds at most 8 KiB (the interpreter
    --  keeps longer-than-1-KiB strings in object images of that size), a
-   --  result carries at most 1 KiB out, and as many live strings as a
-   --  program has syntax nodes.
-   MAX_STRING_BYTES   : constant := 8_192;
+   --  host-owned text value (CCL.Host_Values.Text), and so a result's text,
+   --  at most 1 KiB, and as many live strings as a program has syntax nodes.
+   MAX_STRING_BYTES   : constant := CCL.Objects.Maximum_Text_Bytes;
+   MAX_HOST_TEXT      : constant := 1_024;
    MAX_TEXT_BYTES     : constant := 65_536;
    MAX_TEXT_VALUES    : constant := 512;
-   MAX_RESULT_TEXT    : constant := 1_024;
+   MAX_RESULT_TEXT    : constant := MAX_HOST_TEXT;
    MAX_CONSTANTS      : constant := 32;
    MAX_CONSTANT_BYTES : constant := 4_096;
    package Text_Regions is new CCL.Secondary_Stacks
      (Capacity => MAX_TEXT_BYTES, Max_Values => MAX_TEXT_VALUES,
       Max_String_Length => MAX_STRING_BYTES);
-   subtype Constant_Count is Natural range 0 .. MAX_CONSTANTS;
-   subtype Constant_Index is Natural range 0 .. MAX_CONSTANTS - 1;
-   subtype Constant_Length is Natural range 0 .. MAX_CONSTANT_BYTES;
+   type Constant_Count is range 0 .. MAX_CONSTANTS;
+   subtype Constant_Index is Constant_Count range 0 .. MAX_CONSTANTS - 1;
+   --  Byte positions in the constant pool's text, one past its end for an
+   --  empty constant there.
+   type Constant_Position is range 0 .. MAX_CONSTANT_BYTES + 1;
+   subtype Constant_Length is Constant_Position range 0 .. MAX_CONSTANT_BYTES;
+   subtype Constant_First is Constant_Position range 1 .. MAX_CONSTANT_BYTES + 1;
    type Text_Constant is record
-      First  : Positive range 1 .. MAX_CONSTANT_BYTES + 1 := 1;
+      First  : Constant_First := 1;
       Length : Constant_Length := 0;
    end record;
    type Text_Constants is array (Constant_Index) of Text_Constant;
-   subtype Result_Text_Length is Natural range 0 .. MAX_RESULT_TEXT;
+   --  Whether a pool entry lies inside the pool's text.
+   function In_Pool (Item : Text_Constant) return Boolean is
+     (Item.Length <= MAX_CONSTANT_BYTES - (Item.First - 1));
+   type Result_Text_Length is range 0 .. MAX_RESULT_TEXT;
    type Result_Text is record
       Length : Result_Text_Length := 0;
       Data   : String (1 .. MAX_RESULT_TEXT) := [others => ' '];
    end record;
-   --  Text crossing a host import: up to a whole string (an object image's
-   --  text bound, CCL.Objects.Maximum_Text_Bytes).
-   subtype Import_Text_Length is Natural range 0 .. MAX_STRING_BYTES;
+   --  Text crossing a host import, and an import contract's text limit: up
+   --  to a whole string (an object image's text bound,
+   --  CCL.Objects.Maximum_Text_Bytes). A plain host text value holds at most
+   --  MAX_HOST_TEXT of it (CCL.Host_Values.To_Host_Limit).
+   type Import_Text_Length is range 0 .. MAX_STRING_BYTES;
    type Import_Text is record
       Length : Import_Text_Length := 0;
       Data   : String (1 .. MAX_STRING_BYTES) := [others => ' '];
@@ -99,10 +124,24 @@ is
    --  A record or list result's printed literal: room for a whole table,
    --  as the console shows it.
    MAX_LITERAL_TEXT : constant := 4_096;
+   type Literal_Length is range 0 .. MAX_LITERAL_TEXT;
    type Literal_Text is record
-      Length : Natural range 0 .. MAX_LITERAL_TEXT := 0;
+      Length : Literal_Length := 0;
       Data   : String (1 .. MAX_LITERAL_TEXT) := [others => ' '];
    end record;
+   --  The characters each text record holds, and how many.
+   function Length_Of (Item : Result_Text) return Natural is (Natural (Item.Length))
+     with Post => Length_Of'Result <= MAX_RESULT_TEXT;
+   function Image (Item : Result_Text) return String is (Item.Data (1 .. Length_Of (Item)));
+   function Length_Of (Item : Import_Text) return Natural is (Natural (Item.Length))
+     with Post => Length_Of'Result <= MAX_STRING_BYTES;
+   function Image (Item : Import_Text) return String is (Item.Data (1 .. Length_Of (Item)));
+   function Length_Of (Item : Literal_Text) return Natural is (Natural (Item.Length))
+     with Post => Length_Of'Result <= MAX_LITERAL_TEXT;
+   function Image (Item : Literal_Text) return String is (Item.Data (1 .. Length_Of (Item)));
+   --  Whether Count bytes fit an import text limit.
+   function Within (Count : Natural; Limit : Import_Text_Length) return Boolean is
+     (Count <= Natural (Limit));
 
    --  Lists (step 3): a run's lists live in a bounded region of its machine
    --  state, as strings do; a List_Value holds a checked descriptor and
@@ -147,9 +186,24 @@ is
    --  A list result: its first elements as values (Integer, Boolean; a
    --  Character as its code; an enumeration member as its position) or, for
    --  strings, as consecutive slices of List_Text ending at List_Text_Ends.
-   subtype List_Result_Count is Natural range 0 .. MAX_LIST_RESULT;
-   type List_Result_Values is array (1 .. MAX_LIST_RESULT) of Value;
-   type List_Result_Ends is array (1 .. MAX_LIST_RESULT) of Result_Text_Length;
+   type List_Result_Count is range 0 .. MAX_LIST_RESULT;
+   subtype List_Result_Index is List_Result_Count range 1 .. MAX_LIST_RESULT;
+   type List_Result_Values is array (List_Result_Index) of Value;
+   type List_Result_Ends is array (List_Result_Index) of Result_Text_Length;
+   --  String element I of a list result: its slice of Text.
+   function List_Piece
+     (Text : Result_Text; Ends : List_Result_Ends; I : List_Result_Index) return String is
+     (Text.Data (Natural (if I = List_Result_Index'First then 0 else Ends (I - 1)) + 1 ..
+                 Natural (Ends (I))));
+   --  Elements across all lists of a run (a list's length, a position in it).
+   type List_Element_Count is range 0 .. MAX_LIST_ELEMENTS;
+   function Element_Count (Items : List_Regions.Array_Value) return List_Element_Count is
+     (List_Element_Count (List_Regions.Length (Items)));
+   --  How many of Total a list result carries out.
+   function Carried (Total : List_Element_Count) return List_Result_Count is
+     (if Total >= MAX_LIST_RESULT then List_Result_Count'Last else List_Result_Count (Total));
+   function Count_Of (Count : List_Result_Count) return Natural is (Natural (Count));
+   function Count_Of (Count : List_Element_Count) return Natural is (Natural (Count));
 
    function Integer_Constant (Item : Integer_64) return Value is
      ((Kind => Integer_Value, Integer => Item, others => <>));
@@ -505,8 +559,8 @@ is
    type Instruction_Array is array (Instruction_Index) of Instruction;
 
    Maximum_Matches : constant := 16;
-   subtype Match_Count is Natural range 0 .. Maximum_Matches;
-   subtype Match_Index is Natural range 0 .. Maximum_Matches - 1;
+   type Match_Count is range 0 .. Maximum_Matches;
+   subtype Match_Index is Match_Count range 0 .. Maximum_Matches - 1;
    type Alternative_Targets is array (CCL.Types.Component_Index) of Instruction_Index;
    type Match_Table is record
       Data_Type : CCL.Types.Type_Reference := CCL.Types.Invalid_Type;
@@ -523,10 +577,18 @@ is
    --  anonymous function's captured values are its leading parameters: a
    --  language function's 8 parameters plus 4 captures.
    MAX_PARAMETERS : constant := 12;
-   subtype Function_Count is Natural range 0 .. MAX_FUNCTIONS;
-   subtype Function_Index is Natural range 0 .. MAX_FUNCTIONS - 1;
-   subtype Parameter_Count is Natural range 0 .. MAX_PARAMETERS;
-   subtype Parameter_Index is Positive range 1 .. MAX_PARAMETERS;
+   type Function_Count is range 0 .. MAX_FUNCTIONS;
+   subtype Function_Index is Function_Count range 0 .. MAX_FUNCTIONS - 1;
+   type Parameter_Count is range 0 .. MAX_PARAMETERS;
+   subtype Parameter_Index is Parameter_Count range 1 .. MAX_PARAMETERS;
+   --  A parameter position as a type's component position (a function
+   --  type's parts are its parameters, then its result), and back.
+   function Component_Of (P : Parameter_Count) return CCL.Types.Component_Count is
+     (CCL.Types.Component_Count (P))
+     with Pre => Natural (P) <= CCL.Types.Maximum_Components;
+   function Parameters_Of (Count : CCL.Types.Component_Count) return Parameter_Count is
+     (Parameter_Count (Count))
+     with Pre => Count <= MAX_PARAMETERS;
    type Parameter_Kinds is array (Parameter_Index) of Value_Kind;
    type Parameter_Data_Types is array (Parameter_Index) of CCL.Types.Type_Reference;
    type Function_Declaration is record
@@ -657,7 +719,7 @@ is
       --  A list result (Result_Value.Kind = List_Value): List_Length of its
       --  List_Total elements are carried out.
       List_Length : List_Result_Count := 0;
-      List_Total : Natural range 0 .. MAX_LIST_ELEMENTS := 0;
+      List_Total : List_Element_Count := 0;
       List_Values : List_Result_Values := [others => (others => <>)];
       List_Text : Result_Text := (others => <>);
       List_Text_Ends : List_Result_Ends := [others => 0];
@@ -739,6 +801,8 @@ is
    function Snapshot (State : Machine_State) return Machine_Snapshot;
 
    type Stack_Snapshot_Array is array (Stack_Index) of Value;
+   --  The depth of a stack whose deepest value is at Position.
+   function Depth_After (Position : Stack_Index) return Stack_Depth is (Stack_Depth (Position) + 1);
 
    type Local_Inspection is record
       Value           : CCL.VM.Value := (others => <>);
@@ -818,9 +882,11 @@ private
    type Arena_Node is record
       Data_Type : CCL.Types.Type_Reference := CCL.Types.Invalid_Type;
       Alternative : CCL.Types.Component_Count := 0;
-      First : Positive range 1 .. MAX_VALUE_SLOTS + 1 := 1;
+      First : Slot_Position range 1 .. MAX_VALUE_SLOTS + 1 := 1;
       Count : CCL.Types.Component_Count := 0;
    end record;
+   --  A node's component count as arena slots.
+   function Slots_For (Count : CCL.Types.Component_Count) return Slot_Count is (Slot_Count (Count));
    type Node_Array is array (Node_Index) of Arena_Node;
    type Slot_Array is array (Slot_Index) of Slot;
    type Value_Arena is record
@@ -831,6 +897,10 @@ private
    end record;
    type Component_Values is array (CCL.Types.Component_Index) of Value;
 
+   --  Live calls: frames on the call table, at most one per function.
+   type Call_Depth is range 0 .. MAX_FUNCTIONS;
+   subtype Frame_Index is Call_Depth range 0 .. MAX_FUNCTIONS - 1;
+
    --  A List_Apply in progress: at most one per live frame level (the main
    --  body and each call), so the table never needs more entries.
    MAX_ITERATIONS : constant := MAX_FUNCTIONS + 1;
@@ -839,21 +909,22 @@ private
       --  Calling the function for element Position: its result is next.
       In_Call : Boolean := False;
       At_PC : Instruction_Index := 0;
-      Frame_Level : Natural range 0 .. MAX_FUNCTIONS := 0;
+      Frame_Level : Call_Depth := 0;
       Operation : CCL.List_Operations.Apply_Operation := CCL.List_Operations.Each_Items;
       List_Type : CCL.Types.Type_Reference := CCL.Types.Invalid_Type;
       Subject : Value := (others => <>);
       Callee : Value := (others => <>);
       --  fold's accumulator; count's count; any/all's answer so far.
       Accumulator : Value := (others => <>);
-      Position : Natural range 0 .. MAX_LIST_ELEMENTS := 0;
+      Position : List_Element_Count := 0;
       --  each/where/sort-by build into Built (Kept elements); sort-by's keys.
       Built : Value := (others => <>);
-      Kept : Natural range 0 .. MAX_LIST_ELEMENTS := 0;
+      Kept : List_Element_Count := 0;
       Keys : List_Regions.Array_Value;
    end record;
-   subtype Iteration_Count is Natural range 0 .. MAX_ITERATIONS;
-   type Iteration_Array is array (1 .. MAX_ITERATIONS) of Iteration;
+   type Iteration_Count is range 0 .. MAX_ITERATIONS;
+   subtype Iteration_Index is Iteration_Count range 1 .. MAX_ITERATIONS;
+   type Iteration_Array is array (Iteration_Index) of Iteration;
 
    --  A value of type Ref (Kind_For_Type) as a cell, and back. From_Slot
    --  checks what a cell cannot carry by itself: a character's range, a
@@ -911,7 +982,7 @@ private
       Return_PC : Instruction_Index := 0;
       Callee    : Function_Index := 0;
    end record;
-   type Call_Frames is array (Function_Index) of Call_Frame;
+   type Call_Frames is array (Frame_Index) of Call_Frame;
 
    type Machine_State is record
       Stack               : Runtime_Stacks.Stack;
@@ -931,7 +1002,7 @@ private
       Ownership           : CCL.Ownership.Environment;
       Locals              : Local_Value_Array := [others => (others => <>)];
       Frames              : Call_Frames := [others => (others => <>)];
-      Frame_Count         : Function_Count := 0;
+      Frame_Count         : Call_Depth := 0;
       Text                : Text_Regions.Stack;
       Lists               : List_Regions.Stack;
       Arena               : Value_Arena;
@@ -954,7 +1025,7 @@ private
    function Is_Well_Formed
      (Item : Validated_Program; State : Machine_State) return Boolean is
      ((not State.Waiting or else
-       Natural (State.Waiting_Import) < Item.Content.Imports_Length) and then
+       State.Waiting_Import < Item.Content.Imports_Length) and then
       (not State.Waiting_Owned or else
        (State.Waiting and then
         CCL.Imports.Phase (State.Import_Lifecycle) in

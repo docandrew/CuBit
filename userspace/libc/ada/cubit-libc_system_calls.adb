@@ -10,6 +10,7 @@ with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Published_Clock;
 with CuBit.Kernel_ABI;
 with CuBit.Kernel_Calls;
+with CuBit.System_Facts;
 with CuBit.Process_IDs;
 with CuBit.Libc_ABI; use CuBit.Libc_ABI;
 with CuBit.Libc_Time; use CuBit.Libc_Time;
@@ -216,13 +217,13 @@ package body CuBit.Libc_System_Calls is
               else Count * Nanoseconds_Per_Microsecond);
    end Now_Nanoseconds;
 
-   --  Milliseconds since the Unix epoch: the kernel's wall-clock offset,
-   --  published by clock.svc while its time is current, plus the
-   --  millisecond clock. Without one, time since boot, reported once.
+   --  Milliseconds since the Unix epoch: the wall-clock offset clock.svc
+   --  publishes while its time is current (a memory read, the kernel's
+   --  wall clock publication), plus the millisecond clock. Without one, time since boot, reported once.
    Wall_Clock_Missing_Reported : Boolean := False with Volatile;
    function Realtime_Milliseconds return Unsigned_64;
    function Realtime_Milliseconds return Unsigned_64 is
-      Offset : constant Unsigned_64 := Kernel (K.Info, K.Wall_Clock_Offset);
+      Offset : constant Unsigned_64 := CuBit.System_Facts.Wall_Clock_Offset;
       Now : constant Unsigned_64 := Now_Milliseconds;
    begin
       if Offset /= 0 and then Offset /= K.Failed then

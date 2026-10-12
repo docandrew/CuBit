@@ -1,0 +1,14 @@
+--  Hosted VM dispatch-loop benchmark (run.sh). Same optimization and checks
+--  as the native ccl-vm app (-O2, run-time checks on).
+with "../../userspace/ccl/cubit_shared.gpr";
+with "../../userspace/lib/tls/sparktls_host.gpr";
+project CCL_VM_Bench is
+   for Source_Dirs use (".", "../../userspace/ccl/src", "../../userspace/ccl/modules",
+                        "../ccl-module-support", external ("CBOR_ADA_SRC") & "/src");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("vm_bench.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-O2", "-gnat2022");
+   end Compiler;
+end CCL_VM_Bench;

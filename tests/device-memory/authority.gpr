@@ -1,0 +1,24 @@
+--  CAP-001: physical classification, device-memory authority, mint bound
+--  and attenuation. Hosted tests (authority_tests) and the SPARK proof
+--  target (tests/prove-all.targets: device-memory-authority).
+project Authority is
+   for Source_Dirs use (".", "fixture", "../../kernel/src",
+     "../../shared/publications", "../../shared/time");
+   for Source_Files use ("authority_tests.adb", "config.ads",
+     "capabilities.ads", "device_memory_admission.ads",
+     "device_memory_publication.ads", "clock_publication.ads", "clock_publication.adb",
+     "physical_ranges.ads", "physical_ranges.adb",
+     "device_memory_authority.ads", "device_memory_authority.adb");
+   for Object_Dir use "build-authority";
+   for Exec_Dir use "build-authority";
+   for Main use ("authority_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-gnat2022", "-gnata", "-gnato", "-gnatwa", "-O2");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use
+        ("--level=2", "--prover=cvc5,z3", "--checks-as-errors=on",
+         "--report=fail", "-j2");
+   end Prove;
+end Authority;

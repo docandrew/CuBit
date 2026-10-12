@@ -1,12 +1,30 @@
 #!/usr/bin/env python3
 """Independently inspect the ISO primary tree and bootstrap archive membership."""
 import hashlib
+import json
 import pathlib
 import struct
 import sys
 
 image = pathlib.Path(sys.argv[1])
 data = image.read_bytes()
+# Optional: the realizer's debug-split records (tools/image_debug.py). Staged
+# executables have no debug information, so a notice that names the hash of
+# the built binary is matched through its record: the unstripped input had
+# that hash and was staged as exactly these bytes (docs/image-debug-info.md).
+split = {}
+if len(sys.argv) > 2:
+    split = {r['destination']: r for r in json.loads(pathlib.Path(sys.argv[2]).read_text())
+             if r.get('build_id')}
+
+
+def built_hash(destination, staged):
+    """The hash of the binary as built (before staging stripped it)."""
+    digest = hashlib.sha256(staged).hexdigest()
+    record = split.get(destination)
+    if record is not None and record['staged_sha256'] == digest:
+        return record['input_sha256']
+    return digest
 
 def dual32(blob, offset):
     little = struct.unpack_from('<I', blob, offset)[0]
@@ -68,7 +86,7 @@ assert {'MESA-SOURCE.tar.gz', 'UPSTREAM-LICENSE.rst', 'SOURCE.nix',
         'CUBIT-PLATFORM.patch', 'ELF-SHA256.txt', 'LINKED-SOURCES.json',
         'LINK-MAP.txt', 'licenses'} <= mesa_notices.keys()
 mesa_hash = contents(mesa_notices['ELF-SHA256.txt']).decode().split()[0]
-assert hashlib.sha256(contents(apps['mesa-cube.app'])).hexdigest() == mesa_hash
+assert built_hash('apps/mesa-cube.app', contents(apps['mesa-cube.app'])) == mesa_hash
 assert contents(mesa_notices['MESA-SOURCE.tar.gz'])[:2] == b'\x1f\x8b'
 print('MESA IMAGE AUDIT PASS: app matches recorded hash; source and notice bundle present')
 cartridges = entries(*apps['sameboy'])

@@ -1,6 +1,6 @@
 project Admission is
    for Source_Dirs use (".", "../../kernel/src");
-   for Source_Files use ("main.adb", "device_memory_admission.ads", "device_memory_admission.adb");
+   for Source_Files use ("main.adb", "device_memory_admission.ads");
    for Object_Dir use "build";
    for Exec_Dir use "build";
    for Main use ("main.adb");

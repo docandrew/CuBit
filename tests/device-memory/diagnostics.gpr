@@ -1,0 +1,19 @@
+--  CAP-001 NUC diagnostics, user side: the Desktop bootstrap screen's note
+--  keeper and intel-gpu's refusal reports. Hosted tests (diagnostics_tests)
+--  and the SPARK proof (tests/prove-all.targets: device-memory-diagnostics).
+project Diagnostics is
+   for Source_Dirs use (".", "../../userspace/services/desktop",
+     "../../userspace/services/intel-gpu", "../../userspace/runtime/gnat");
+   for Source_Files use ("diagnostics_tests.adb",
+     "desktop_bootstrap_notes.ads", "desktop_bootstrap_notes.adb",
+     "intel_gpu_map_report.ads", "intel_gpu_map_report.adb",
+     "cubit.ads", "cubit-protocols.ads", "cubit-log_records.ads",
+     "cubit-log_records.adb");
+   for Object_Dir use "build-diagnostics";
+   for Exec_Dir use "build-diagnostics";
+   for Main use ("diagnostics_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-gnat2022", "-gnata", "-gnato", "-gnatwa", "-O2", "-I-");
+   end Compiler;
+end Diagnostics;

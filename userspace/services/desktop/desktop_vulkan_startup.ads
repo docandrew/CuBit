@@ -148,6 +148,14 @@ package Desktop_Vulkan_Startup with SPARK_Mode,
    -- write. Source_Busy: nothing staged, or a write is still being produced.
    procedure Flush_Staged (Result : out Source_Result)
      with Global => (In_Out => Engine), Pre => Valid, Post => Valid;
+   --  Move the batch on, never waiting: submit staged writes, or make one
+   --  fence observation of the batch in flight. Every path that needs the
+   --  writer (single writes, capture admission, polls) calls this first, so
+   --  a staged batch can never be left unsubmitted (NUC freeze 2026-10-11:
+   --  a capture staged an image, an atlas upload then waited for the
+   --  writer, and only the abandoned capture's completion would flush).
+   procedure Drive_Uploads
+     with Global => (In_Out => Engine), Pre => Valid, Post => Valid;
    -- New content for the same live allocation: every row (Restart_Content)
    -- or only rows First .. Last - 1, keeping the rest (Update_Content). The
    -- descriptor must already be released; Import_Backing republishes it only

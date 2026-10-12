@@ -4,7 +4,8 @@ with CuBit.Messages;
 --  Registered services by name: the service catalog's names
 --  (userspace/ccl/catalogs/native-runtime-services.ccl) for the drivers that
 --  register, so a person can say "netstack" where the kernel says driver 3.
---  The process behind a name is SYSINFO_REGISTERED_DRIVER's answer.
+--  The process behind a name is the kernel service registry's answer
+--  (CuBit.Messages.Registered_Driver).
 package CuBit.Service_Names is
    NO_DRIVER : constant Unsigned_64 := 0;
 

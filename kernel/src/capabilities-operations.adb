@@ -4,7 +4,6 @@
 --
 -- Capability Table Operations - Implementation
 -------------------------------------------------------------------------------
-with Device_Memory_Admission;
 with Process_Identities;
 package body Capabilities.Operations with
     SPARK_Mode => On
@@ -27,6 +26,28 @@ is
         source := NULL_CAPABILITY;
         moved := True;
     end moveReplyCapFrom;
+
+    procedure restoreReplyCapTo
+      (table         : in out CapabilityTable;
+       deferredSlots : in out Unsigned_64;
+       slot          : in     CapabilitySlot;
+       dest          : in out Capability;
+       moved         :    out Boolean)
+    is
+        cap : Capability;
+    begin
+        moved := False;
+        if slot = REPLY_CAP_SLOT
+          or else dest.capType /= CAP_NULL
+          or else table(slot).capType /= CAP_REPLY
+        then
+            return;
+        end if;
+        retireReplyCap (table, deferredSlots, slot, cap, moved);
+        if moved then
+            dest := cap;
+        end if;
+    end restoreReplyCapTo;
 
     procedure takeReplyCapFrom (source : in out Capability;
                                 cap    :    out Capability;
@@ -385,39 +406,5 @@ is
             end if;
         end loop;
     end checkPortAccess;
-
-    ---------------------------------------------------------------------------
-    -- checkDeviceMemAccess
-    ---------------------------------------------------------------------------
-    procedure checkDeviceMemAccess (table   : in     CapabilityTable;
-                                    base    : in     Unsigned_64;
-                                    size    : in     Unsigned_64;
-                                    allowed :    out Boolean;
-                                    requireWrite : in Boolean := True)
-    is
-        capBase : Unsigned_64;
-        capSize : Unsigned_64;
-    begin
-        allowed := False;
-
-        for i in CapabilitySlot loop
-            if table(i).capType = CAP_DEVICE_MEM then
-                capBase := table(i).object.ref;
-                capSize := table(i).object.param;
-
-                -- Check range coverage: [base .. base+size-1] within
-                -- [capBase .. capBase+capSize-1]
-                if Device_Memory_Admission.Covers (capBase, capSize, base, size) then
-                    if Device_Memory_Admission.Allows
-                      (table(i).rights(RIGHT_READ), table(i).rights(RIGHT_WRITE),
-                       (if requireWrite then Device_Memory_Admission.Read_Write
-                        else Device_Memory_Admission.Read_Only)) then
-                        allowed := True;
-                        return;
-                    end if;
-                end if;
-            end if;
-        end loop;
-    end checkDeviceMemAccess;
 
 end Capabilities.Operations;

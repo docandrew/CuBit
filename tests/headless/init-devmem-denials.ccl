@@ -1,0 +1,10 @@
+# Headless device-memory denial test (CAP-001 diagnostics): devmem-check
+# asks for device memory it has no authority for, before the desktop starts;
+# the kernel's records must reach logstore and the Desktop bootstrap screen.
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "clock.svc" (priority 5))
+  (start "devmem-check.app" (priority 5))
+  (start "display.svc" (priority 5))
+  (start "desktop.svc" (priority 4))
+)

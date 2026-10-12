@@ -57,7 +57,7 @@ begin
    CCL.VM.Verify (Compiled.Program, Program, Valid); Check (Valid = CCL.VM.Valid);
    CCL.VM.Execute (Program, 4096, Executed);
    Check (Executed.Status = CCL.VM.Completed and Executed.Has_Literal and
-          Executed.Literal.Data (1 .. Executed.Literal.Length) = "MaybeDocument.Missing");
+          CCL.VM.Image (Executed.Literal) = "MaybeDocument.Missing");
    Define (Source, (Identifier => Named ("TextReading"), Form => Sum, Count => 1,
      Parts => [1 => (Named ("Value"), String_Type), others => <>]), Ref, Defined_As);
    Check (Defined_As = Defined);
@@ -75,7 +75,7 @@ begin
    CCL.VM.Verify (Compiled.Program, Program, Valid); Check (Valid = CCL.VM.Valid);
    CCL.VM.Execute (Program, 4096, Executed);
    Check (Executed.Status = CCL.VM.Completed and Executed.Has_Literal and
-          Executed.Literal.Data (1 .. Executed.Literal.Length) = "(TextReading.Value ""hello"")");
+          CCL.VM.Image (Executed.Literal) = "(TextReading.Value ""hello"")");
    CCL.Evaluation.Evaluate
      ("(match (TextReading.Value ""hello"") ((TextReading.Value text) (length text)))", 4096, Catalog, Interpreted);
    Check (Interpreted.Status = CCL.Language.Succeeded and Interpreted.Result_Value = CCL.VM.Integer_Constant (5));

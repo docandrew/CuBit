@@ -9,7 +9,7 @@ with Interfaces; use Interfaces;
 
 with Process.IPC;
 with TextIO; use TextIO;
-with Sysinfo;
+with Service_Registry;
 with Time;
 with x86; use x86;
 
@@ -30,9 +30,7 @@ package body Services.Keyboard with SPARK_Mode => Off is
 
         while driverPID = Process.NO_PROCESS loop
             Process.sleep (100 * Milliseconds);
-            driverPID := Process.ProcessID(
-                Sysinfo.getInfo (query  => Sysinfo.REGISTERED_DRIVER,
-                                 detail => Sysinfo.DRIVER_KEYBOARD));
+            driverPID := Service_Registry.Registered (Service_Registry.DRIVER_KEYBOARD);
         end loop;
 
         println ("Services.Keyboard: found upper-half driver!");
@@ -72,10 +70,7 @@ package body Services.Keyboard with SPARK_Mode => Off is
                     -- that when a new process (e.g. DOOM) calls
                     -- registerDriver, we start routing to it without
                     -- restarting the service.
-                    driverPID := Process.ProcessID(
-                        Sysinfo.getInfo (
-                            query  => Sysinfo.REGISTERED_DRIVER,
-                            detail => Sysinfo.DRIVER_KEYBOARD));
+                    driverPID := Service_Registry.Registered (Service_Registry.DRIVER_KEYBOARD);
 
                     if driverPID /= Process.NO_PROCESS then
                         Process.IPC.sendEvent (driverPID,

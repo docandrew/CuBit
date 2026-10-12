@@ -28,8 +28,15 @@ mutant() {   # kind name file old new
     total=$((total + 1))
     rm -rf "$work/src" && cp -r "$src" "$work/src" && rm -rf "$work/src/build"
     python3 - "$work/src/$3" "$4" "$5" <<'PY'
-import sys
+import glob, os, sys
 p, old, new = sys.argv[1:]
+if os.path.basename(p) == 'ext2.adb':
+    # The Ext2 driver is ext2.adb and its child units ext2-*.adb (CODE-002):
+    # the one file holding the text.
+    hits = [f for f in sorted(glob.glob(os.path.join(os.path.dirname(p), 'ext2*.adb')))
+            if old in open(f).read()]
+    assert len(hits) == 1, (hits, old)
+    p = hits[0]
 s = open(p).read()
 assert s.count(old) == 1, (p, old)
 open(p, 'w').write(s.replace(old, new))
@@ -194,15 +201,44 @@ mutant journal "recovery reuses the torn sequence" jbd2_recovery.adb \
 # --- Directory records (SPARK) -----------------------------------------------
 D=directory_blocks.adb
 mutant prove+journal "removed record merged with a wrong span" $D \
-    "         Set_Span (Data, Match_Previous, Match_End - Match_Previous);" \
-    "         Set_Span (Data, Match_Previous, Match_End - Match_Start);"
+    "         Set_Span (Data, Match_Previous, Match_End - Match_Previous);
+      else
+         Put_Inode (Data, Match_Start, 0);" \
+    "         Set_Span (Data, Match_Previous, Match_End - Match_Start);
+      else
+         Put_Inode (Data, Match_Start, 0);"
 mutant prove+journal "first record not cleared" $D \
-    "         Put_Inode (Data, Match_Start, 0);" "         null;"
+    "      else
+         Put_Inode (Data, Match_Start, 0);
+      end if;
+      Removed := Number;" \
+    "      else
+         null;
+      end if;
+      Removed := Number;"
 mutant prove+journal "children not counted" $D \
     "            Children := Children + 1;" "            null;"
 mutant prove+journal "'..' span short" $D \
     "      Set_Span (Data, Dot_Span, Size - Dot_Span);" \
     "      Set_Span (Data, Dot_Span, Size - Dot_Span - 4);"
+
+# --- Ext2 format, geometry and bitmaps (SPARK core) ---------------------------
+mutant prove "reservation takes a bit in use" ext2_bitmaps.adb \
+    "         if not Is_Set (Map, Bit) then" "         if True then"
+mutant prove "clear sets the bit" ext2_bitmaps.adb \
+    "      Map (Index) := Map (Index) and not Mask (Bit);" \
+    "      Map (Index) := Map (Index) or Mask (Bit);"
+mutant prove "group first block one group late" ext2_geometry.adb \
+    "      return Block_Number (Shape.First_Data_Block + Count_32 (Group) * Shape.Blocks_Per_Group);" \
+    "      return Block_Number (Shape.First_Data_Block + (Count_32 (Group) + 1) * Shape.Blocks_Per_Group);"
+mutant prove "superblock admits inodes larger than a block" ext2_geometry.adb \
+    "        Inode_Bytes <= Size and then" "        Inode_Bytes <= 2 * Size and then"
+mutant prove "record length not rounded up" ext2_format.ads \
+    "     ((Record_Header_Bytes + Length + Record_Alignment - 1) / Record_Alignment *" \
+    "     ((Record_Header_Bytes + Length) / Record_Alignment *"
+mutant prove "record header span from the name length byte" ext2_format.adb \
+    "       Span      => Natural (Le16 (Data, Position + Span_Field))," \
+    "       Span      => Natural (Le16 (Data, Position + Length_Field)),"
 
 # --- Ext2 block map (hosted tests) --------------------------------------------
 E=ext2.adb
@@ -257,14 +293,14 @@ mutant journal "run inode not in its operation" $E \
     "                        dataStatus := Write_Complete;"
 mutant journal "unlink keeps the link" $E \
     "      ino.numHardLinks := 0;
-      writeInode (fs, target, ino, writeStatus);" \
-    "      writeInode (fs, target, ino, writeStatus);"
+      Stamp (ino, Inode_Changed);" \
+    "      Stamp (ino, Inode_Changed);"
 mutant journal "freed inode not counted free" $E \
     "         bgd.numFreeInodes := bgd.numFreeInodes + 1;" "         null;"
 mutant journal "mkdir leaves the parent link count" $E \
     "         parent.numHardLinks := parent.numHardLinks + 1;
-         grownParent.numHardLinks := parent.numHardLinks;" \
-    "         grownParent.numHardLinks := parent.numHardLinks;"
+         writeInode (fs, dirInodeNum, parent, status);" \
+    "         writeInode (fs, dirInodeNum, parent, status);"
 mutant journal "rmdir of a non-empty directory" $E \
     "            elsif children /= 0 then" "            elsif False then"
 mutant journal "rmdir leaves the parent link count" $E \
@@ -279,8 +315,8 @@ mutant journal "rename leaves the directory complete" $E \
     "      null;"
 mutant journal "unlink keeps its cached name" $E \
     "         forgetName (fs, parentNum, leaf);
-         removeEntry (fs, dir, leaf, target, status);" \
-    "         removeEntry (fs, dir, leaf, target, status);"
+         unindexDirectory (fs, parentNum, dir, writeStatus);" \
+    "         unindexDirectory (fs, parentNum, dir, writeStatus);"
 mutant test "admission keeps cached names" $E \
     "      Dentry_Cache.Discard_Volume (Names, capSlot);" "      null;"
 mutant journal "spill copy not consulted by writes" $E \

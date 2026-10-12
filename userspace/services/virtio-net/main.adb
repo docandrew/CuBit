@@ -22,6 +22,8 @@ with System.Storage_Elements; use System.Storage_Elements;
 with System.Machine_Code;
 
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Launch_Configurations;
+with Launch_Configuration;
 with Virtio;
 with Virtio.Modern;
 with Descriptor_Pool;
@@ -783,14 +785,21 @@ begin
       debugPrint ("" & LF);
    end if;
 
-   --  2. Get DMA physical base address
-   DMA_PHYS_BASE := virtToPhys (DMA_BASE);
-
-   if DMA_PHYS_BASE = Unsigned_64'Last then
-      Reject_Configuration;
-      debugPrint ("virtio-net: DMA virt-to-phys failed." & LF);
-      return;
-   end if;
+   --  2. The DMA region's device address, from devmgr's launch
+   --  configuration (devmgr allocated it at DMA_BASE).
+   declare
+      Configuration : Launch_Configuration.Queue_Configuration;
+      Configured : Boolean;
+   begin
+      CuBit.Launch_Configurations.Get
+        (Launch_Configuration.Virtio_Net, Configuration, Configured);
+      if not Configured or else Configuration.DMA = 0 then
+         Reject_Configuration;
+         debugPrint ("virtio-net: no DMA region configured." & LF);
+         return;
+      end if;
+      DMA_PHYS_BASE := Configuration.DMA;
+   end;
 
    --  3. Initialize the device and read its MAC address.
    if modern then

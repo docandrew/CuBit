@@ -8,6 +8,8 @@
 with System.Storage_Elements; use System.Storage_Elements;
 
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Launch_Configurations;
+with Launch_Configuration;
 with HDA_Amplifiers;
 
 package body HDA is
@@ -149,8 +151,16 @@ package body HDA is
       outputConfigured := False;
       transportFailed := False;
       --  Map BAR0 into our address space
-      bar0Phys := getInfo (SYSINFO_HDA_BAR0);
-      dmaPhysBase := getInfo (SYSINFO_HDA_DMA_PHYS);
+      --  BAR0 and the DMA region from devmgr's launch configuration.
+      declare
+         Configuration : Launch_Configuration.Controller_Configuration;
+         Configured : Boolean;
+      begin
+         CuBit.Launch_Configurations.Get
+           (Launch_Configuration.HDA_Controller, Configuration, Configured);
+         bar0Phys := (if Configured then Configuration.Registers else 0);
+         dmaPhysBase := (if Configured then Configuration.DMA else 0);
+      end;
       if bar0Phys = 0 or else dmaPhysBase = 0 then
          debugPrint ("hda: missing controller/DMA allocation" & ASCII.LF);
          return;

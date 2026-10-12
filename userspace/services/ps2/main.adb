@@ -406,28 +406,28 @@ begin
 
    --  Main event loop
    loop
-      if Pointer_Pending.Count (pointerPending) = 0 and then
-        Keyboard_Pending.Count (keyboardPending) = 0 then
-         -- No retry timer when idle: ordinary input is interrupt-driven.
-         event := Wait_Event;
-      else
-         -- The final refused packet must be retried even if the mouse stops.
-         -- A one-millisecond deadline is a retry bound, not a latency promise.
-         declare
-            now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
-            activity : Activity_Result;
-         begin
-            activity := Wait_For_Activity_Until
-              (Keyboard_Pending.Wake_Deadline (keyboardPending, now,
-                Pointer_Pending.Wake_Deadline (pointerPending, now, Unsigned_64'Last)));
-            if activity = Unavailable then
-               ignore := syscall (SYSCALL_SLEEP, 1);
-            end if;
-            for I in 1 .. MAX_INPUT_BYTES_PER_BATCH loop
-               exit when not Poll_Event (event);
-            end loop;
-         end;
-      end if;
+      declare
+         idle : constant Boolean :=
+           Pointer_Pending.Count (pointerPending) = 0 and then
+           Keyboard_Pending.Count (keyboardPending) = 0;
+         now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+         activity : Activity_Result;
+      begin
+         --  Idle: no retry timer, ordinary input is interrupt-driven (the
+         --  interrupt event wakes the wait). Otherwise the final refused
+         --  packet must be retried even if the mouse stops; a one-millisecond
+         --  deadline is a retry bound, not a latency promise.
+         activity := Wait_For_Activity_Until
+           (if idle then Unsigned_64'Last
+            else Keyboard_Pending.Wake_Deadline (keyboardPending, now,
+                   Pointer_Pending.Wake_Deadline (pointerPending, now, Unsigned_64'Last)));
+         if activity = Unavailable then
+            ignore := syscall (SYSCALL_SLEEP, 1);
+         end if;
+         for I in 1 .. MAX_INPUT_BYTES_PER_BATCH loop
+            exit when not Poll_Event (event);
+         end loop;
+      end;
 
       refreshConsumers;
       flushKeyboard;

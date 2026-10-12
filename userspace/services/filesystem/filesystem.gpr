@@ -33,6 +33,10 @@ project Filesystem is
         for Default_Switches ("Ada") use
         (
             "-O2",
+            --  Link-time optimization: inlining across the service's units
+            --  (ext2 and the server are split by concern; CODE-002), as
+            --  when each was one unit.
+            "-flto=auto",
             "-gnat2022",
             "-fstack-usage",
             "-fomit-frame-pointer",
@@ -53,9 +57,20 @@ project Filesystem is
     package Linker is
         for Default_Switches ("Ada") use
         (
+            --  Code is generated at link time: the compiler's code-generation
+            --  options again.
+            "-flto=auto",
+            "-O2",
+            "-fomit-frame-pointer",
+            "-mno-red-zone",
+            "-fno-pic",
             "-nostdlib",
             "-static",
             "-no-pie",
+            --  Must equal Process_Layout.Initial_Stack_Bytes: the user runtime
+            --  places the secondary stack at Stack_Top - Initial_Stack_Bytes, so a
+            --  smaller main stack leaves it unmapped (filesystem.svc faulted at
+            --  0x7FFFFF000008, 2026-10-11).
             "-Wl,-z,stack-size=16777216",
             "-lgnat-user",
             "-T", "../../c/link.ld",

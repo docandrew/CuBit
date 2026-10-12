@@ -1,0 +1,16 @@
+--  Hosted tests and proofs for the typed launch configuration and the
+--  system publication layouts (run.sh).
+project Launch_Configuration_Tests is
+   for Source_Dirs use (".", "../../shared/launch", "../../shared/publications",
+                        "../../shared/time");
+   for Object_Dir use "build/obj";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-gnat2022", "-O2", "-gnata", "-gnato", "-gnatwa", "-gnatwe");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=2", "--checks-as-errors=on");
+   end Prove;
+end Launch_Configuration_Tests;

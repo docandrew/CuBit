@@ -6,12 +6,14 @@
 --  Display scanout service prototype
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with CuBit.Log;
 with CuBit.Boot_Milestone_Codes;
 with CuBit.Boot_Milestones;
 with Interfaces; use Interfaces;
 with System; use System;
 with System.Storage_Elements; use System.Storage_Elements;
 
+with CuBit.System_Facts;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Display_Protocol;
 with CuBit.Desktop_Messages;
@@ -64,11 +66,6 @@ procedure main is
    use type Outputs.Mutation_Result, Outputs.Output_Reference;
    use type PS.Phase, PS.Admission;
    use ASCII;
-
-   SYSINFO_FB_WIDTH  : constant Unsigned_64 := 1100;
-   SYSINFO_FB_HEIGHT : constant Unsigned_64 := 1101;
-   SYSINFO_FB_PITCH  : constant Unsigned_64 := 1102;
-   SYSINFO_FB_BPP    : constant Unsigned_64 := 1103;
 
    OP_DISPLAY_GET_INFO      : constant Unsigned_32 := DSP.Operation'Enum_Rep (DSP.Get_Information);
    OP_DISPLAY_ATTACH_BUFFER : constant Unsigned_32 := DSP.Operation'Enum_Rep (DSP.Attach_Buffer);
@@ -173,6 +170,8 @@ procedure main is
       --  Captured continuation; never resolve a completion through whatever
       --  output the most recently received request happened to select.
       backendToken : Unsigned_64 := 0;
+      --  When backendToken was submitted (SYSCALL_GETTIME milliseconds).
+      backendStarted : Unsigned_64 := 0;
       backendFrame : DSP.Frame_Result;
       backendID : PS.Submission_ID := PS.No_Submission;
       backendTarget : Gpu_Buffer_Index := 0;
@@ -325,7 +324,10 @@ procedure main is
 
    procedure setupBackend is
       status : Message;
-      gpuPrimary : constant Boolean := getInfo (SYSINFO_GPU_IS_PRIMARY) /= 0;
+      gpuPrimary : constant Boolean := CuBit.System_Facts.Boot_Display_Native;
+      --  The firmware framebuffer (kernel system facts publication).
+      Firmware : constant CuBit.System_Facts.SP.Framebuffer_Geometry :=
+        CuBit.System_Facts.Framebuffer;
       State : Output_State renames outputStates (selectedOutput);
       Width, Height, Pitch, Bits, Mapping : Unsigned_64;
       Layout : DSP.Buffer_Layout;
@@ -343,17 +345,17 @@ procedure main is
          begin
             intelTakeover := Scanout.Valid and then
               Scanout.Value.Source = GP.Firmware_Framebuffer and then
-              Unsigned_64 (Scanout.Value.Width) = getInfo (SYSINFO_FB_WIDTH) and then
-              Unsigned_64 (Scanout.Value.Height) = getInfo (SYSINFO_FB_HEIGHT) and then
-              Unsigned_64 (Scanout.Value.Pitch) = getInfo (SYSINFO_FB_PITCH) and then
-              status.words (2) = getInfo (SYSINFO_FB_WIDTH) and then
-              status.words (3) = getInfo (SYSINFO_FB_HEIGHT);
+              Unsigned_64 (Scanout.Value.Width) = Firmware.Width and then
+              Unsigned_64 (Scanout.Value.Height) = Firmware.Height and then
+              Unsigned_64 (Scanout.Value.Pitch) = Firmware.Pitch and then
+              status.words (2) = Firmware.Width and then
+              status.words (3) = Firmware.Height;
          end;
       end if;
       if intelTakeover then
          Width := status.words (2);
          Height := status.words (3);
-         Pitch := getInfo (SYSINFO_FB_PITCH);
+         Pitch := Firmware.Pitch;
          Bits := 32;
       elsif gpuPrimary then
          --  Once the boot adapter is driven natively its old firmware mode is
@@ -364,10 +366,10 @@ procedure main is
          Pitch := Width * 4;
          Bits := 32;
       else
-         Width := getInfo (SYSINFO_FB_WIDTH);
-         Height := getInfo (SYSINFO_FB_HEIGHT);
-         Pitch := getInfo (SYSINFO_FB_PITCH);
-         Bits := getInfo (SYSINFO_FB_BPP);
+         Width := Firmware.Width;
+         Height := Firmware.Height;
+         Pitch := Firmware.Pitch;
+         Bits := Firmware.Bits_Per_Pixel;
       end if;
       if Width not in 1 .. Unsigned_64 (DSP.DP.Positive_Extent'Last) or else
         Height not in 1 .. Unsigned_64 (DSP.DP.Positive_Extent'Last) or else
@@ -386,17 +388,24 @@ procedure main is
          debugPrint ("display: backend intel flips (tear-free, 3 buffers)" &
            Width'Image & " x" & Height'Image & LF);
       elsif gpuPrimary then
-         --  Publishing GPU_IS_PRIMARY retires kernel boot drawing before
+         --  devmgr publishing the boot display handoff retires kernel boot drawing before
          --  driver startup. Native outputs need no firmware mapping, even
          --  for diagnostics: kernel panic cannot reactivate that renderer.
          State.backend := (Kind => Native_GPU);
          debugPrint ("display: backend virtio-gpu" & LF);
          debugPrint ("display: native boot handoff" &
-           getInfo (SYSINFO_FB_WIDTH)'Image & " x" & getInfo (SYSINFO_FB_HEIGHT)'Image &
+           Firmware.Width'Image & " x" & Firmware.Height'Image &
            " ->" & Width'Image & " x" & Height'Image & "; firmware rendering retired" & LF);
       else
          Mapping := syscall (SYSCALL_MAPFB);
-         if Mapping = 0 or else Mapping = Unsigned_64'Last then return; end if;
+         if Mapping = 0 or else Mapping = Unsigned_64'Last then
+            --  The kernel's "kernel: device-memory denied" record names the
+            --  physical pages and why; this names the framebuffer.
+            CuBit.Log.Warning ("display: MAPFB refused for the firmware framebuffer" &
+              Firmware.Width'Image & " x" & Firmware.Height'Image &
+              " (see the kernel device-memory record)");
+            return;
+         end if;
          State.backend :=
            (Firmware_Framebuffer, To_Address (Integer_Address (Mapping)));
          if gpuDetected then
@@ -934,9 +943,40 @@ procedure main is
       end loop;
    end noteFlipped;
 
+   procedure collectFrames;
    --  Legacy (non-pool) presentation on a native output: copy into the
-   --  target and submit asynchronously; collectFrames completes it. A
-   --  present arriving meanwhile waits in pendingRect (coalesced).
+   --  target and submit asynchronously, then wait (bounded) for collectFrames
+   --  to complete it, so the legacy request still returns after its flip, as
+   --  legacy clients expect. The wait is on display's own completion queue
+   --  with an explicit deadline; the GPU never blocks display.
+   --  Every present completes or fails within this (the driver answers
+   --  an unlatched flip as stalled after one second).
+   Present_Deadline_Ms : constant := 2_000;
+   Legacy_Present_Deadline_Ms : constant := Present_Deadline_Ms;
+   --  Wake at least this often while a present is outstanding.
+   Present_Check_Ms : constant := 100;
+   procedure awaitLegacyPresent is
+      State : Output_State renames outputStates (selectedOutput);
+      Started : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+      Now : Unsigned_64;
+      Activity : Activity_Result;
+      pragma Unreferenced (Activity);
+   begin
+      while State.legacyToken /= 0 loop
+         Now := syscall (SYSCALL_GETTIME);
+         if Started = Unsigned_64'Last or else Now = Unsigned_64'Last or else
+           Now - Started >= Legacy_Present_Deadline_Ms
+         then
+            debugPrint ("display: legacy present completion timed out" & LF);
+            State.presentationFault := True;
+            BT.Quarantine (State.Targets);
+            return;
+         end if;
+         Activity := Wait_For_Activity_Until (Now + 1);
+         collectFrames;
+      end loop;
+   end awaitLegacyPresent;
+
    function startGpuPresent (damage : Rect) return Boolean is
       State : Output_State renames outputStates (selectedOutput);
       request : Message;
@@ -964,7 +1004,8 @@ procedure main is
          return False;
       end if;
       State.legacyToken := token;
-      return True;
+      awaitLegacyPresent;
+      return BT.Current (State.Targets) = BT.Idle;
    end startGpuPresent;
 
    procedure flushPendingPresent is
@@ -1164,14 +1205,17 @@ procedure main is
    function Output_Of (O : Output_Index) return DPL.Output_Id is
      (DPL.Output_Id (O));
 
+   Plane_Call_Deadline_Ms : constant := 1_000;
    function callGpuOn (Output : Output_Index; Request : DSP.Wire_Message)
       return DSP.Wire_Message
    is
       Msg : Message := CuBit.Desktop_Messages.From_Wire
         (DSP.With_Output (Request, Output));
    begin
+      --  Plane calls are answered at once by the driver; a short deadline
+      --  keeps display.svc (and so the pointer) responsive if it is stuck.
       Msg.tag := capCall (CAP_SLOT_GPU, Msg,
-                          CuBit.Messages.Deadline_After (GPU_Call_Deadline_Ms));
+                          CuBit.Messages.Deadline_After (Plane_Call_Deadline_Ms));
       if Msg.tag.label = CuBit.Messages.REPLY_TIMEOUT then
          debugPrint ("display: gpu plane call timed out" & LF);
       end if;
@@ -1893,6 +1937,41 @@ procedure main is
       end loop;
    end collectFrames;
 
+   --  A pool frame whose backend completion has not arrived within
+   --  Present_Deadline_Ms fails, with a logged reason, and the output is
+   --  quarantined (its buffers' state is uncertain). Never an endless wait.
+   procedure checkPresentDeadlines is
+      Now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+      Response : Message;
+      Ignored : Unsigned_64;
+      pragma Unreferenced (Ignored);
+   begin
+      if Now = Unsigned_64'Last then return; end if;
+      for Output in Output_Index loop
+         declare
+            State : Output_State renames outputStates (Output);
+         begin
+            if State.backendToken /= 0 and then State.backendStarted /= Unsigned_64'Last and then
+              Now >= State.backendStarted and then
+              Now - State.backendStarted >= Present_Deadline_Ms
+            then
+               debugPrint ("display: present stalled output" & Output'Image &
+                 " token" & State.backendToken'Image & " age_ms" &
+                 Unsigned_64'Image (Now - State.backendStarted) &
+                 " (no GPU completion); frame failed, output quarantined" & LF);
+               BT.Quarantine (State.Targets);
+               finishFrame (Output, State.backendID, State.backendFrame,
+                            False, False, Response);
+               State.backendToken := 0;
+               Ignored := replyCap (frameReplySlot (Output), Response);
+            end if;
+         end;
+      end loop;
+   end checkPresentDeadlines;
+
+   function presentPending return Boolean is
+     (for some State of outputStates => State.backendToken /= 0);
+
    --  Epoch of the plan frame being decoded (Submit_Plan_Frame), else none.
    pendingFrameEpoch : DPL.Plan_Epoch := DPL.No_Epoch;
 
@@ -1998,6 +2077,7 @@ procedure main is
               capSubmit (CAP_SLOT_GPU, backendRequest, token)
             then
                State.backendToken := token;
+               State.backendStarted := syscall (SYSCALL_GETTIME);
                statsPresents := statsPresents + 1;
                statsPixels := statsPixels + Unsigned_64 (r.w) * Unsigned_64 (r.h);
                statsCopyMs := statsCopyMs + syscall (SYSCALL_GETTIME) - started;
@@ -2767,6 +2847,7 @@ begin
 
    loop
       collectFrames;
+      checkPresentDeadlines;
       retryMoves;
       Poll_Service_Request (from, msg, found);
       if found then
@@ -2779,7 +2860,10 @@ begin
       end if;
       maybePrintStats;
       if not found and then not Poll_Event (eventMsg) then
-         if Wait_For_Activity_Until (Unsigned_64'Last) = Unavailable then
+         if Wait_For_Activity_Until
+              (if presentPending then syscall (SYSCALL_GETTIME) + Present_Check_Ms
+               else Unsigned_64'Last) = Unavailable
+         then
             debugPrint ("display: activity wait unavailable" & LF);
             return;
          end if;

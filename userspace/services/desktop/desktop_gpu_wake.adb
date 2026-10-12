@@ -7,7 +7,10 @@ package body Desktop_GPU_Wake is
    use Interfaces;
 
    Armed_Token : Unsigned_64 := 0;
+   Waitboost_On : Boolean := True;
+   Policy_Pending : Boolean := False;
    Looked_Again : Boolean := False;
+   Disabled : Boolean := False;
 
    --  Evidence for the current report period.
    Report_Period_Ms : constant := 1_000;
@@ -34,7 +37,7 @@ package body Desktop_GPU_Wake is
          Period_Start_Ms := Now_Ms;
          return;
       end if;
-      if Now_Ms - Period_Start_Ms < Report_Period_Ms then
+      if Disabled or else Now_Ms - Period_Start_Ms < Report_Period_Ms then
          return;
       end if;
       Hook.Blocking_Report (Mesa, Last);
@@ -71,6 +74,15 @@ package body Desktop_GPU_Wake is
    begin
       Report (Now_Ms);
       Mode := Timer;
+      if Disabled then
+         return;
+      end if;
+      --  The policy goes out once the GPU queue is open (rendering).
+      if Policy_Pending and then Rendering and then Hook.Boost_Policy (Waitboost_On) then
+         Policy_Pending := False;
+         Desktop_Logs.Write ("desktop: gpu waitboost " & (if Waitboost_On then "on" else "off") &
+                             " sent to the driver" & ASCII.LF);
+      end if;
       if not Rendering then
          Looked_Again := False;
          return;
@@ -118,14 +130,27 @@ package body Desktop_GPU_Wake is
       end case;
    end Woke;
 
+   procedure Set_Waitboost (On : Boolean) is
+   begin
+      Waitboost_On := On;
+      Policy_Pending := True;
+   end Set_Waitboost;
+
    procedure Input_Hint is
    begin
+      if Disabled or else not Waitboost_On then return; end if;
       if Hook.Boost_Hint then
          Period.Hints_Sent := Period.Hints_Sent + 1;
       else
          Period.Hints_Coalesced := Period.Hints_Coalesced + 1;
       end if;
    end Input_Hint;
+
+   procedure Disable is
+   begin
+      Disabled := True;
+      Policy_Pending := False;
+   end Disable;
 
    function Matches (Token : Unsigned_64) return Boolean is
      (Token /= 0 and then Token = Armed_Token);

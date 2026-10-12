@@ -1,0 +1,18 @@
+--  Hosted tests and proof: the filesystem service's pure core
+--  (handle and tag codes, hashes, resume tokens; path checks).
+--  FS_SRC: the units' directory.
+project Server_Core is
+   Fs_Src := external ("FS_SRC", "../../userspace/services/filesystem");
+   for Source_Dirs use (".", Fs_Src);
+   for Source_Files use
+     ("main.adb", "fs_handle_codes.ads", "fs_handle_codes.adb",
+      "fs_path_checks.ads", "fs_path_checks.adb",
+      "volume_list.ads", "volume_list.adb");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-gnat2022", "-gnata", "-gnato", "-gnatwa", "-gnatwe", "-O2");
+   end Compiler;
+end Server_Core;

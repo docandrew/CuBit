@@ -13,6 +13,7 @@ with System;
 with System.Storage_Elements;
 with System.Machine_Code; use System.Machine_Code;
 with CuBit.Published_Clock;
+with CuBit.System_Facts;
 
 package body CuBit.Messages is
 
@@ -362,18 +363,6 @@ package body CuBit.Messages is
                       msg.words (3)) = 1;
    end trySendEvent;
 
-   --  Wait_Event
-   --  RECEIVE_EVENT: no args; returns the event tag in RAX.
-
-   function Wait_Event return Message is
-      retTag : Unsigned_64;
-      msg : Message := NULL_MESSAGE;
-   begin
-      retTag := syscall (SYSCALL_RECEIVE_EVENT);
-      msg.tag := u64ToTag (retTag);
-      return msg;
-   end Wait_Event;
-
    --  Poll_Event
    --  POLL_EVENT: RDI=pointer to Message struct
    --  Returns: RAX=1 if event found, 0 if not
@@ -396,10 +385,7 @@ package body CuBit.Messages is
    end revokeGrant;
 
    function Registered_Driver (Driver : Unsigned_64) return Process_ID is
-      Word : constant Unsigned_64 := getInfo (SYSINFO_REGISTERED_DRIVER, Driver);
-   begin
-      return (if Word = Unsigned_64'Last then No_Process else From_Word (Word));
-   end Registered_Driver;
+     (From_Word (CuBit.System_Facts.Registered (Driver)));
 
    function Own_Process return Process_ID is
      (From_Word (syscall (SYSCALL_GETPID)));
@@ -408,30 +394,6 @@ package body CuBit.Messages is
    begin
       return syscall (SYSCALL_KILL, To_Word (pid));
    end killProcess;
-
-   function setWellKnown
-     (role : Unsigned_64;
-      pid  : Process_ID) return Unsigned_64
-   is
-   begin
-      return syscall (SYSCALL_SET_WELL_KNOWN, role, To_Word (pid));
-   end setWellKnown;
-
-   --  Legacy wrappers
-
-   function recvMsg (from : out Unsigned_64) return Unsigned_64 is
-      retfrom : Unsigned_64;
-      pragma Unreferenced (from);
-   begin
-      return syscall (SYSCALL_RECEIVE, toNum (retfrom'Address));
-   end recvMsg;
-
-   function getInfo
-     (query : Unsigned_64; detail : Unsigned_64 := 0) return Unsigned_64
-   is
-   begin
-      return syscall (SYSCALL_INFO, query, detail);
-   end getInfo;
 
    function registerDriver (driver : Unsigned_64) return Unsigned_64 is
    begin
@@ -452,7 +414,7 @@ package body CuBit.Messages is
             (Source => Unsigned_64,
              Target => System.Secondary_Stack.SS_Stack_Ptr);
    begin
-      return toPtr (getInfo (SYSINFO_SECONDARY_STACK));
+      return toPtr (CuBit.System_Facts.Secondary_Stack_Address);
    end getSecondaryStack;
 
    --  saveReplyCap
@@ -463,6 +425,11 @@ package body CuBit.Messages is
    begin
       return syscall (SYSCALL_MOVE_REPLY_CAPABILITY, destSlot);
    end saveReplyCap;
+
+   function restoreReplyCap (srcSlot : Unsigned_64) return Unsigned_64 is
+   begin
+      return syscall (SYSCALL_RESTORE_REPLY_CAPABILITY, srcSlot);
+   end restoreReplyCap;
 
    --  Port I/O wrappers
 
@@ -501,11 +468,6 @@ package body CuBit.Messages is
    begin
       return syscall (SYSCALL_OUTP32, Unsigned_64 (port), Unsigned_64 (val));
    end portOutp32;
-
-   function virtToPhys (addr : System.Address) return Unsigned_64 is
-   begin
-      return syscall (SYSCALL_VIRT_TO_PHYS, toNum (addr));
-   end virtToPhys;
 
    --  Device manager wrappers
 
@@ -551,14 +513,6 @@ package body CuBit.Messages is
       return syscall (SYSCALL_MAP_INTO,
                       To_Word (targetPID), physAddr, virtAddr, numPages, flags);
    end mapInto;
-
-   function setSysinfo
-     (queryID : Unsigned_64;
-      value   : Unsigned_64) return Unsigned_64
-   is
-   begin
-      return syscall (SYSCALL_SET_SYSINFO, queryID, value);
-   end setSysinfo;
 
    function setCpu
      (targetPID : Process_ID;

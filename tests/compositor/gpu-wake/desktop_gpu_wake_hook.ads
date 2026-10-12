@@ -7,8 +7,12 @@ package Desktop_GPU_Wake_Hook is
    function Arm (Token : Interfaces.Unsigned_64) return Arm_Result;
    function Collect (Receipt : CuBit.Messages.CompletionEntry) return Boolean;
    function Boost_Hint return Boolean;
+   function Boost_Policy (On : Boolean) return Boolean;
+   Policies : Natural := 0;
+   Last_Policy : Boolean := True;
    procedure Blocking_Report (Text : out String; Last : out Natural);
    Hints : Natural := 0;
+   Reports : Natural := 0;   --  Blocking_Report calls
    procedure Job_Report (Text : out String; Last : out Natural);
 
    Next_Answer : Arm_Result := Armed;

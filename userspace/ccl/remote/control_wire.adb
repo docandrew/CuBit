@@ -128,8 +128,8 @@ package body Control_Wire with SPARK_Mode is
             elsif Element_Type = CCL.Language.Boolean_Type then
                Flag (Item.List_Values (I).Boolean);
             elsif Element_Type = CCL.Language.String_Type then
-               Text (Item.List_Text.Data (Text_First .. Item.List_Text_Ends (I)));
-               Text_First := Item.List_Text_Ends (I) + 1;
+               Text (Item.List_Text.Data (Text_First .. Natural (Item.List_Text_Ends (I))));
+               Text_First := Natural (Item.List_Text_Ends (I)) + 1;
             elsif Element_Type = CCL.Language.Character_Type then
                Text ([1 => Character'Val (Natural (Item.List_Values (I).Integer) mod 256)]);
             else

@@ -11,6 +11,9 @@ is
    use type CCL.Imports.Cancellation_Mode;
    use type CCL.Objects.Schema_Key;
    use type CCL.VM.Value_Kind;
+   use type CCL.VM.Import_Count;
+   use type CCL.VM.Local_Count;
+   use type CCL.VM.Type_Count;
    use type CCL.Resource_Policies.Description;
    use type CCL.Ownership.Ownership_Mode;
    use type CCL.Ownership.Disposition_Effect;
@@ -117,7 +120,11 @@ is
       Error      : out Catalog_Error)
    is
    begin
-      if not CCL.VM.Scalar_Import (Import) then
+      --  A text limit beyond a host text value cannot be a host contract's.
+      if not CCL.VM.Scalar_Import (Import) or else
+        not CCL.Host_Values.Host_Limit_Fits (Import.Argument_Text_Limit) or else
+        not CCL.Host_Values.Host_Limit_Fits (Import.Result_Text_Limit)
+      then
          Item := (others => <>);
          Error := Invalid_Host_Contract;
          return;
@@ -530,11 +537,15 @@ is
       Visible : constant CCL.Types.Registry := Visible_Types (Catalog);
       Any_Resource : Boolean := False;
    begin
-      for I in 0 .. Program.Locals_Length - 1 loop
-         if Program.Local_Kinds (I) = CCL.VM.Resource_Value then
-            Roots (Program.Local_Data_Types (I)) := True;
-            Any_Resource := True;
-         end if;
+      for Position in 1 .. Program.Locals_Length loop
+         declare
+            I : constant CCL.Ownership.Binding_Id := CCL.VM.Local_At (Position - 1);
+         begin
+            if Program.Local_Kinds (I) = CCL.VM.Resource_Value then
+               Roots (Program.Local_Data_Types (I)) := True;
+               Any_Resource := True;
+            end if;
+         end;
       end loop;
       for I in 0 .. Program.Imports_Length - 1 loop
          if Program.Imports (I).Argument = CCL.VM.Resource_Value then
@@ -566,13 +577,17 @@ is
       CCL.Resource_Policies.Layout
         (Program.Data_Types, Policies, Roots, Bindings, Definitions, Count, Result);
       if Result /= CCL.Resource_Policies.Ready or else
-        Program.Types_Length /= Count or else Program.Types /= Definitions
+        Program.Types_Length /= CCL.VM.Type_Count (Count) or else Program.Types /= Definitions
       then return False; end if;
-      for I in 0 .. Program.Locals_Length - 1 loop
-         if Program.Local_Kinds (I) = CCL.VM.Resource_Value then
-            if Program.Local_Types (I) /= Bindings (Program.Local_Data_Types (I)) then return False; end if;
-         elsif Program.Local_Types (I) /= 0 then return False;
-         end if;
+      for Position in 1 .. Program.Locals_Length loop
+         declare
+            I : constant CCL.Ownership.Binding_Id := CCL.VM.Local_At (Position - 1);
+         begin
+            if Program.Local_Kinds (I) = CCL.VM.Resource_Value then
+               if Program.Local_Types (I) /= Bindings (Program.Local_Data_Types (I)) then return False; end if;
+            elsif Program.Local_Types (I) /= 0 then return False;
+            end if;
+         end;
       end loop;
       for I in 0 .. Program.Imports_Length - 1 loop
          if Program.Imports (I).Result = CCL.VM.Resource_Value and then

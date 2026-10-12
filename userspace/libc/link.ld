@@ -25,6 +25,14 @@ SECTIONS
         *(.rodata .rodata.*)
     }
 
+    /* GNU build-id (every link passes --build-id): names the program's
+     * debug file, which image staging keeps on the host
+     * (docs/image-debug-info.md). Placed before /DISCARD/ drops .note.*. */
+    .note.gnu.build-id : ALIGN(4)
+    {
+        KEEP(*(.note.gnu.build-id))
+    }
+
     .eh_frame_hdr : { *(.eh_frame_hdr) }
     .eh_frame : { KEEP(*(.eh_frame)) }
     .gcc_except_table : { *(.gcc_except_table .gcc_except_table.*) }

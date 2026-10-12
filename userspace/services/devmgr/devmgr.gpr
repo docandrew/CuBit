@@ -4,12 +4,16 @@ project Devmgr is
 
     for Object_Dir use "build";
 
-    for Source_Dirs use (".", "../filesystem", "../xhci", "../intel-gpu", "../../ccl/src", "../../lib/time", "../../mesa/anv", "../../lib/display");
+    for Source_Dirs use (".", "../filesystem", "../xhci", "../intel-gpu", "../../ccl/src", "../../lib/time", "../../mesa/anv", "../../lib/display", "../../lib/logging");
 
     for Main use ("main.adb");
 
     --  Explicit list excludes other service mains and hardware adapters.
     for Source_Files use ("main.adb", "cpio.ads", "cpio.adb", "ccl.ads",
+       --  Warnings kept until logstore runs (CAP-001 diagnostics).
+       "deferred_warnings.ads", "deferred_warnings.adb",
+       --  Children by name, for their exit lines.
+       "devmgr_children.ads", "devmgr_children.adb",
        --  Message-signaled interrupts (docs/msi-interrupts.md).
        "pci_message_interrupts.ads", "pci_message_interrupts.adb",
        "pci_message_functions.ads", "pci_message_functions.adb",
@@ -63,7 +67,12 @@ project Devmgr is
        "ccl-ownership-bytecode.ads", "ccl-ownership-bytecode.adb",
        "ccl-secondary_stacks.ads", "ccl-secondary_stacks.adb",
        "ccl-secondary_arrays.ads", "ccl-secondary_arrays.adb",
-       "ccl-vm.ads", "ccl-vm.adb", "ccl-streams.ads", "ccl-types-shapes.ads", "ccl-types-shapes.adb",
+       "ccl-vm.ads", "ccl-vm.adb",
+       "ccl-vm-machine.ads", "ccl-vm-machine.adb", "ccl-vm-operations.ads", "ccl-vm-operations.adb", "ccl-vm-scalar_ops.ads", "ccl-vm-scalar_ops.adb", "ccl-vm-text_ops.ads", "ccl-vm-text_ops.adb",
+       "ccl-vm-data_ops.ads", "ccl-vm-data_ops.adb", "ccl-vm-list_ops.ads", "ccl-vm-list_ops.adb", "ccl-vm-call_ops.ads", "ccl-vm-call_ops.adb", "ccl-vm-local_ops.ads", "ccl-vm-local_ops.adb",
+       "ccl-vm-results.ads", "ccl-vm-results.adb", "ccl-vm-verifier_state.ads", "ccl-vm-verifier_state.adb", "ccl-vm-verifier_values.ads", "ccl-vm-verifier_values.adb", "ccl-vm-verifier_texts.ads", "ccl-vm-verifier_texts.adb",
+       "ccl-vm-verifier_flow.ads", "ccl-vm-verifier_flow.adb", "ccl-vm-verifier_tables.ads", "ccl-vm-verifier_tables.adb", "ccl-vm-verifier_sweep.ads", "ccl-vm-verifier_sweep.adb",
+       "ccl-streams.ads", "ccl-types-shapes.ads", "ccl-types-shapes.adb",
        "ccl-text_operations.ads", "ccl-text_operations.adb",
        "ccl-list_operations.ads", "ccl-list_operations.adb",
        "ccl-resources.ads", "ccl-resources.adb",
@@ -87,7 +96,7 @@ project Devmgr is
        "ccl-vm-resource_values.ads", "ccl-vm-resource_values.adb",
        "ccl-scheduling_limits.ads",
        "ccl-configurations.ads", "ccl-configurations.adb",
-       "ccl-typed_settings.ads", "ccl-typed_settings.adb", "ccl-interfaces-desktop_input.ads", "ccl-interfaces.ads",
+       "ccl-typed_settings.ads", "ccl-typed_settings.adb", "ccl-interfaces-desktop_input.ads", "ccl-interfaces-gpu_power.ads", "ccl-interfaces.ads",
        "ccl-interfaces-desktop_launch.ads");
 
     for Runtime ("Ada") use "../../runtime";

@@ -73,6 +73,7 @@
   (artifact "sameboy-test" repository "userspace/ports/sameboy/build/test.gb")
   (artifact "wallpaper-cubes" repository "kernel/build/Assets/cubit-wallpapers/1/cubes.qoi")
   (artifact "wallpaper-cubie" repository "kernel/build/Assets/cubit-wallpapers/1/cubie.qoi")
+  (artifact "icons-applications" repository "kernel/build/Assets/cubit-icons/1/applications.qoi")
   (artifact "doom-wad" supplied-file "doom-wad")
   (artifact "intel-guc" supplied-file "intel-guc")
   (artifact "intel-firmware-license" supplied-file "intel-firmware-license")

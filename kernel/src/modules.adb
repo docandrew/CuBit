@@ -10,8 +10,6 @@
 -- per-driver capability granting, cross-service endpoints, CPU affinity,
 -- startup ordering) is handled by the userspace device manager.
 -------------------------------------------------------------------------------
-with Interfaces; use Interfaces;
-
 with BuddyAllocator;
 with Capabilities;
 with Capabilities.Operations;
@@ -26,11 +24,26 @@ with Boot_Timeline;
 with Boot_Timeline_Layout;
 with Process_Identities;
 with Owned_Memory_Layout;
-with Sysinfo;
+with Launch_Configuration;
+with Process_Launch;
+with Publication_Pages;
+with Util;
+with Physical_Range_Map;
+with Device_Memory_Diagnostics;
+with Physical_Ranges;
+with Service_Registry;
 with TextIO; use TextIO;
 with Virtmem;
 
 package body Modules with SPARK_Mode => Off is
+
+    -- devmgr's device-memory roots (CAP-001): one slot per device run,
+    -- Physical_Ranges.Max_Roots of them, clear of devmgr's other slots.
+    DEVICE_ROOT_FIRST_SLOT : constant Capabilities.CapabilitySlot := 48;
+    pragma Compile_Time_Error
+      (DEVICE_ROOT_FIRST_SLOT + Physical_Ranges.Max_Roots - 1 >=
+         Capabilities.REPLY_CAP_SLOT,
+       "device-memory root slots overlap the reply slot");
 
     initrdAddr  : Virtmem.PhysAddress := 0;
     initrdSize  : Storage_Count := 0;
@@ -160,10 +173,74 @@ package body Modules with SPARK_Mode => Off is
             end if;
         end loop;
 
-        MAGIC_RAMDISK_ADDRESS := base;
-        MAGIC_RAMDISK_SIZE    := size;
         println ("Modules: Initrd mapping complete.");
     end mapInitrd;
+
+    ---------------------------------------------------------------------------
+    -- Initrd_Pages
+    ---------------------------------------------------------------------------
+    procedure Initrd_Pages (Offset, Bytes : Unsigned_64;
+                            Physical      : out Unsigned_64;
+                            Valid         : out Boolean)
+    is
+        Page : constant Unsigned_64 := Unsigned_64 (Virtmem.PAGE_SIZE);
+        Image_Pages : constant Unsigned_64 :=
+          (Unsigned_64 (initrdSize) + Page - 1) / Page;
+    begin
+        Physical := 0;
+        Valid := initrdAddr /= 0 and then Offset mod Page = 0 and then
+          Bytes /= 0 and then Offset <= Image_Pages * Page and then
+          Bytes <= Image_Pages * Page - Offset;
+        if Valid then
+            Physical := Unsigned_64 (initrdAddr) + Offset;
+        end if;
+    end Initrd_Pages;
+
+    ---------------------------------------------------------------------------
+    -- installDevmgrConfiguration
+    -- devmgr's typed launch configuration (Launch_Configuration): the boot
+    -- image's size and the boot framebuffer's pages. Installed as a launch
+    -- block, exactly as SYSCALL_INSTALL_LAUNCH_ARGUMENTS would, before its
+    -- first instruction.
+    ---------------------------------------------------------------------------
+    procedure installDevmgrConfiguration (pid : Process.ProcessID) is
+        use type Process.Page_Allocation_Result;
+        package LC renames Launch_Configuration;
+        Framebuffer : LC.Physical_Span;
+        Block : LC.Encoded;
+        storage : System.Address;
+        result : Process.Page_Allocation_Result;
+        Ignore : System.Address;
+    begin
+        if Multiboot.Has_Graphics then
+            Framebuffer :=
+              (First => Unsigned_64 (Multiboot.Framebuffer.Map_First),
+               Bytes => Unsigned_64 (Multiboot.Framebuffer.Map_Limit) -
+                        Unsigned_64 (Multiboot.Framebuffer.Map_First));
+        end if;
+        Block := LC.Encode (LC.Device_Manager_Configuration'
+          (Boot_Image  => Unsigned_64 (initrdSize),
+           Framebuffer => Framebuffer));
+        Process.lockAddressSpace (pid);
+        Process.proctab (pid).frames.capacity :=
+          Process.proctab (pid).frames.capacity + 1;
+        Process.tryAddPage
+          (proc    => Process.proctab (pid),
+           mapTo   => To_Address (Process_Launch.Arguments_Base),
+           storage => storage,
+           result  => result,
+           flags   => Virtmem.PG_USERDATARO);
+        Process.unlockAddressSpace (pid);
+        if result /= Process.Page_Added then
+            raise ModuleException with "No page for the device manager's configuration";
+        end if;
+        -- Fresh frames are zeroed.
+        Ignore := Util.memcpy (storage, Block.Words'Address,
+                               Storage_Count (Block.Length * LC.Word_Bytes));
+        Process.threadOf (pid).kernelStack.interruptFrame.rdi :=
+          Unsigned_64 (Block.Length * LC.Word_Bytes);
+        Process.proctab (pid).launch := Process_Launch.Arguments_Installed;
+    end installDevmgrConfiguration;
 
     ---------------------------------------------------------------------------
     -- setup
@@ -180,7 +257,12 @@ package body Modules with SPARK_Mode => Off is
             raise ModuleException with "Boot module startup is one-shot";
         end if;
         setupStarted := True;
-        MAGIC_RAMDISK_ADDRESS := System.Null_Address;
+        -- The physical classification is final before any user process
+        -- exists; device-memory authority consults nothing else.
+        Physical_Range_Map.Seal_From_Boot;
+        Device_Memory_Diagnostics.Publish_Classification;
+        -- System facts are final now; every process maps them from its start.
+        Publication_Pages.Publish_Facts;
         initrdAddr  := 0;
         initrdSize  := 0;
         devmgrPID   := Process.NO_PROCESS;
@@ -248,6 +330,7 @@ package body Modules with SPARK_Mode => Off is
 
         -- Map initrd into devmgr's address space (read-only)
         mapInitrd (devmgrPID, initrdAddr, initrdSize);
+        installDevmgrConfiguration (devmgrPID);
 
         -- Slot 4: process-management policy (not capability construction).
         Capabilities.Operations.insertCapAt (
@@ -293,19 +376,41 @@ package body Modules with SPARK_Mode => Off is
                       rights   => (Capabilities.RIGHT_WRITE => True,
                                    others => False),
                       authorityTag => Capabilities.NO_AUTHORITY_TAG,
-                      object   => (ref   => Unsigned_64 (Sysinfo.DRIVER_DEVMGR),
+                      object   => (ref   => Unsigned_64 (Service_Registry.DRIVER_DEVMGR),
                                    param => 0),
                       gen      => Capabilities.INITIAL_GENERATION));
 
-        -- Slot 7: CAP_DEVICE_MEM for virtToPhys (devmgr needs phys addrs)
-        Capabilities.Operations.insertCapAt (
-            table => Process.proctab(devmgrPID).caps,
-            slot  => 7,
-            cap   => (capType  => Capabilities.CAP_DEVICE_MEM,
-                      rights   => Capabilities.READ_WRITE,
-                      authorityTag => Capabilities.NO_AUTHORITY_TAG,
-                      object   => (ref => 0, param => 16#FFFF_FFFF#),
-                      gen      => Capabilities.INITIAL_GENERATION));
+        -- Slots 48..55: device-memory roots (CAP-001). One CAP_DEVICE_MEM
+        -- per maximal run of device-mappable pages in the boot
+        -- classification (PCI holes, firmware-reserved MMIO such as ECAM,
+        -- and everything above the top of described memory, so BARs above
+        -- 4 GiB are covered), largest first. Never RAM, kernel memory, boot
+        -- modules, ACPI memory or kernel MMIO. devmgr maps BARs (its own
+        -- MSI-X tables, drivers' registers via MAP_INTO) under these; the
+        -- initrd it shares is a boot module, not device memory.
+        declare
+            Runs  : Physical_Ranges.Run_Array;
+            Count : Physical_Ranges.Root_Count;
+        begin
+            Physical_Ranges.Largest_Device_Runs
+              (Physical_Range_Map.Kernel_Map, Runs, Count);
+            for Index in 1 .. Count loop
+                Capabilities.Operations.insertCapAt (
+                    table => Process.proctab(devmgrPID).caps,
+                    slot  => DEVICE_ROOT_FIRST_SLOT + (Index - 1),
+                    cap   => (capType  => Capabilities.CAP_DEVICE_MEM,
+                              rights   => Capabilities.READ_WRITE,
+                              authorityTag => Capabilities.NO_AUTHORITY_TAG,
+                              object   => (ref   => Runs (Index).First,
+                                           param => Runs (Index).Last -
+                                                    Runs (Index).First + 1),
+                              gen      => Capabilities.INITIAL_GENERATION));
+                print ("Modules: devmgr device root ");
+                print (Runs (Index).First);
+                print (" .. ");
+                println (Runs (Index).Last);
+            end loop;
+        end;
 
         -- Device vector authority (docs/msi-interrupts.md): a CAP_IRQ naming
         -- the whole device range. GRANT allocates and releases blocks for

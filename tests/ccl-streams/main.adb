@@ -260,7 +260,7 @@ procedure Main is
              Interpreted.Result_Text.Data (1 .. Interpreted.Result_Text.Length) = Value,
              Name & " (interpreter)");
       Check (Compiled_Ok and then Executed.Status = CCL.VM.Completed and then Executed.Has_Result_Text and then
-             Executed.Result_Text_Value.Data (1 .. Executed.Result_Text_Value.Length) = Value,
+             CCL.VM.Image (Executed.Result_Text_Value) = Value,
              Name & " (bytecode)");
    end Expect_Text;
 

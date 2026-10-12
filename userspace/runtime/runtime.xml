@@ -1,5 +1,12 @@
 <?xml version="1.0" ?>
 <gprconfig>
   <configuration>
+    <config>
+   --  Every user program carries a GNU build-id: image staging keeps its
+   --  debug information on the host under it (docs/image-debug-info.md).
+   package Linker is
+      for Required_Switches use Linker'Required_Switches &amp; ("-Wl,--build-id=sha1");
+   end Linker;
+    </config>
   </configuration>
 </gprconfig>

@@ -15,8 +15,8 @@ all:
 	as --64 build/manifest.S -o build/manifest.o
 	as --64 build/denied.S -o build/denied.o
 	CUBIT_BINDINGS_DIR=$(CURDIR)/build $(CARGO) build --locked --offline --release -p cubit-rust-probe
-	ld -nostdlib -static -z noexecstack -z stack-size=1048576 -T ../c/link.ld --start-group $(LIB) ../allocator/build/native-lib/libcubit_allocator.a --end-group build/manifest.o -o build/rust-probe.app
-	ld -nostdlib -static -z noexecstack -z stack-size=1048576 -T ../c/link.ld --start-group $(LIB) ../allocator/build/native-lib/libcubit_allocator.a --end-group build/denied.o -o build/rust-probe-denied.app
+	ld -nostdlib -static --build-id=sha1 -z noexecstack -z stack-size=1048576 -T ../c/link.ld --start-group $(LIB) ../allocator/build/native-lib/libcubit_allocator.a --end-group build/manifest.o -o build/rust-probe.app
+	ld -nostdlib -static --build-id=sha1 -z noexecstack -z stack-size=1048576 -T ../c/link.ld --start-group $(LIB) ../allocator/build/native-lib/libcubit_allocator.a --end-group build/denied.o -o build/rust-probe-denied.app
 
 .PHONY: fonts-host fonts-native fonts-test
 .PHONY: fonts-bench

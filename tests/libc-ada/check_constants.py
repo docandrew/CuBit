@@ -16,7 +16,7 @@ def value(text):
 known = {n: int(v) for n, v in re.findall(r"(SYSCALL_\w+)\s*=>\s*(\d+)\s*,", kernel)}
 pairs = {
     "Exit_Process": "SYSCALL_EXIT", "Get_Process_Id": "SYSCALL_GETPID",
-    "Grow_Heap": "SYSCALL_SBRK", "Write": "SYSCALL_WRITE", "Info": "SYSCALL_INFO",
+    "Grow_Heap": "SYSCALL_SBRK", "Write": "SYSCALL_WRITE",
     "Receive": "SYSCALL_RECEIVE", "Reply": "SYSCALL_REPLY",
     "Poll_Any_IPC": "SYSCALL_POLL_ANY_IPC",
     "Create_Shared_Memory_Grant_For_Process_Id": "SYSCALL_CREATE_SHARED_MEMORY_GRANT_FOR_PROCESS_ID",
@@ -32,6 +32,7 @@ pairs = {
     "Commit_Owned_Memory_Prefix": "SYSCALL_COMMIT_OWNED_MEMORY_PREFIX",
     "Release_Owned_Reservation": "SYSCALL_RELEASE_OWNED_RESERVATION",
     "Send_Control": "SYSCALL_SEND_CONTROL",
+    "Read_Statistics": "SYSCALL_READ_STATISTICS", "Publish": "SYSCALL_PUBLISH",
     "Thread_Exit": "SYSCALL_THREAD_EXIT", "Futex_Wait": "SYSCALL_FUTEX_WAIT",
     "Futex_Wake": "SYSCALL_FUTEX_WAKE",
     "Create_Shared_Memory_Grant_Via_Capability": "SYSCALL_CREATE_SHARED_MEMORY_GRANT_VIA_CAPABILITY",
@@ -83,9 +84,7 @@ for ours_name, theirs in (("Futex_Woken", "FUTEX_WOKEN"), ("Futex_Retry", "FUTEX
     if not a or not b or a.group(1) != b.group(1):
         bad.append(f"{ours_name} differs from the kernel's {theirs}")
 messages = (repo / "userspace/runtime/gnat/cubit-messages.ads").read_text()
-for ours_name, theirs in (("Wall_Clock_Offset", "SYSINFO_WALL_CLOCK_OFFSET"),
-                          ("Registered_Driver", "SYSINFO_REGISTERED_DRIVER"),
-                          ("Driver_Netstack", "DRIVER_NETSTACK")):
+for ours_name, theirs in (("Driver_Netstack", "DRIVER_NETSTACK"),):
     a = re.search(ours_name + r"\s*:\s*constant[^:]*:=\s*(\d+)", abi)
     b = re.search(theirs + r"\s*:\s*constant[^:]*:=\s*(\d+)", messages)
     if not a or not b or a.group(1) != b.group(1):

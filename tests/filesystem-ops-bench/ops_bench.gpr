@@ -1,0 +1,21 @@
+with "bench_runtime.gpr";
+project Ops_Bench is
+   --  FS_SRC selects the filesystem sources (A/B runs build a baseline copy).
+   Fs_Src := external ("FS_SRC", "../../userspace/services/filesystem");
+   Fs_Obj := external ("FS_OBJ", "build");
+   --  "-flto" (A/B of link-time inlining across the split units).
+   Lto := external ("LTO", "");
+   for Languages use ("Ada");
+   for Source_Dirs use (".", Fs_Src);
+   --  The filesystem service's main is not part of this program.
+   for Excluded_Source_Files use ("main.adb");
+   for Object_Dir use Fs_Obj;
+   for Exec_Dir use Fs_Obj;
+   for Main use ("ops_bench.adb");
+   package Linker is
+      for Default_Switches ("Ada") use (Lto, "-O2");
+   end Linker;
+   package Compiler is
+      for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-I-", Lto);
+   end Compiler;
+end Ops_Bench;

@@ -34,6 +34,15 @@ package acpi is
     -- The number of IOAPICs found in the call to setupACPI
     numIOAPICs : Natural := 0;
 
+    -- Every I/O APIC register window the MADT names (only the first is
+    -- driven today). Kept so device-memory authority can refuse all of
+    -- them (CAP-001); a MADT naming more than MAX_IOAPICS is recorded in
+    -- ioapicOverflow and makes the physical classification incomplete.
+    MAX_IOAPICS : constant := 16;
+    type IOAPICAddressArray is array (1 .. MAX_IOAPICS) of Virtmem.PhysAddress;
+    ioapicAddrs    : IOAPICAddressArray := (others => 0);
+    ioapicOverflow : Boolean := False;
+
     ---------------------------------------------------------------------------
     -- ACPI Root System Description Pointer (RSDP)
     -- Gives us the address of the Root System Description Table (RSDT)

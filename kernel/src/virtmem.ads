@@ -369,7 +369,7 @@ is
     --
     -- Misaligned physical/virtual addresses are rejected before allocation.
     -- User mappings reject populated P2 slots, including retained addresses.
-    -- Kernel direct-map PCI setup still uses legacy replacement behavior.
+    -- Kernel direct-map setup still uses legacy replacement behavior.
     -- Caller must serialize the address space. Does not perform TLB shootdown.
     ---------------------------------------------------------------------------
     generic

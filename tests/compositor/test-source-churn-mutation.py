@@ -76,6 +76,20 @@ MUTATIONS = {
         'userspace/services/desktop/desktop_image_source.adb',
         'if Copied then D.Stage_Write (Write, True, Reply);',
         'if Copied then D.Submit_Write (Write, True, Reply);'),
+    'a single write waits behind an unsubmitted batch (freeze)': (SCENE,
+        'userspace/services/desktop/desktop_vulkan_startup.adb',
+        '      if Writer = Staged then\n         declare\n            Flushed : Source_Result;\n'
+        '         begin\n            Flush_Staged (Flushed);\n         end;\n      end if;\n'
+        '      if Writer /= Available or else V.Current (Submission) /= V.Idle then Result := Source_Busy; return; end if;\n'
+        '      if not Can_Produce (Index, Lease) then return; end if;\n'
+        '      if U.Current (Upload) /= U.Live or else U.Capacity (Upload) not in 1 .. G.Byte_Count\'Last or else\n'
+        '         U.Mapping (Upload) = System.Null_Address then return; end if;\n'
+        '      CP.Begin_Write (Coverage (Index), G.Byte_Count (U.Capacity (Upload)), Plan, Chunk, Discard, Accepted, Row_Pixels);',
+        '      if Writer /= Available or else V.Current (Submission) /= V.Idle then Result := Source_Busy; return; end if;\n'
+        '      if not Can_Produce (Index, Lease) then return; end if;\n'
+        '      if U.Current (Upload) /= U.Live or else U.Capacity (Upload) not in 1 .. G.Byte_Count\'Last or else\n'
+        '         U.Mapping (Upload) = System.Null_Address then return; end if;\n'
+        '      CP.Begin_Write (Coverage (Index), G.Byte_Count (U.Capacity (Upload)), Plan, Chunk, Discard, Accepted, Row_Pixels);'),
     'scene budget back to 512 layers': (SCENE,
         'userspace/lib/compositor/vulkan_submission.ads',
         'Maximum_Draws : constant := 16384;',

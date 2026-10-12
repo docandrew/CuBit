@@ -49,6 +49,9 @@
   # Keyboard auto-repeat (Desktop, docs/development-backlog.md UI-022): the
   # delay before a held key's first repeat and the repeats per second. The
   # CCL type Key_Repeat (CCL.Interfaces.Desktop_Input) bounds both.
+  # GPU waitboost (docs/gpu-async-submission.md "SLPC waitboost"): RP0
+  # while clients wait on the GPU or Desktop takes input. Set false to A/B.
+  (setting "gpu.power.waitboost" (GPU_Waitboost enabled => true))
   (setting "desktop.input.key-repeat"
     (Key_Repeat enabled => true delay_ms => 500 rate_hz => 30))
   (setting "clock.time-zone" "UTC")

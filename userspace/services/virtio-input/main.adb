@@ -28,6 +28,8 @@ with System.Storage_Elements; use System.Storage_Elements;
 with System.Machine_Code;
 
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Launch_Configurations;
+with Launch_Configuration;
 with CuBit.Input; use CuBit.Input;
 with CuBit.Virtio_Input_Control;
 with CuBit.Device_Interrupts;
@@ -360,11 +362,20 @@ begin
       end if;
    end;
 
-   DMA_Phys := virtToPhys (DMA_BASE);
-   if DMA_Phys = Unsigned_64'Last then
-      Reject ("DMA translation failed");
-      return;
-   end if;
+   --  The DMA page's device address, from devmgr's launch configuration
+   --  (devmgr allocated it at DMA_BASE).
+   declare
+      Configuration : Launch_Configuration.Queue_Configuration;
+      Configured : Boolean;
+   begin
+      CuBit.Launch_Configurations.Get
+        (Launch_Configuration.Virtio_Input, Configuration, Configured);
+      if not Configured or else Configuration.DMA = 0 then
+         Reject ("no DMA region configured");
+         return;
+      end if;
+      DMA_Phys := Configuration.DMA;
+   end;
 
    declare
       OK : Boolean;

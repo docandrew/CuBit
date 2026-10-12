@@ -105,6 +105,17 @@ package Intel_GPU_Primary_Flip is
    end record;
    procedure Take (Item : out Counters);
 
+   --  For the stall watchdog: the owed flip's buffer and age, and the
+   --  registers as read now.
+   type Stall_View is record
+      Owed : Boolean := False;
+      Faulted : Boolean := False;
+      Armed : Index := 0;
+      Owed_Us : Unsigned_64 := 0;
+      Surface_Word, Live_Word, Frame_Count : Unsigned_32 := 0;
+   end record;
+   function Stall return Stall_View;
+
    --  Pipe page offsets (i915 v6.16 skl_universal_plane_regs.h, i915_reg.h).
    Surface_Offset      : constant Unsigned_32 := 16#19C#;
    Live_Surface_Offset : constant Unsigned_32 := 16#1AC#;

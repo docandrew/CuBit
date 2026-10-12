@@ -16,6 +16,8 @@ with Interfaces; use Interfaces;
 with System; use System;
 
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Launch_Configurations;
+with Launch_Configuration;
 with CuBit.Block_Devices; use CuBit.Block_Devices;
 with CuBit.Memory_Grants;
 with CuBit.Busy_Poll;
@@ -272,12 +274,19 @@ begin
       end if;
    end;
 
-   --  1. Query sysinfo for NVMe BAR0 and DMA physical addresses
-   bar0Phys := getInfo (SYSINFO_NVME_BAR0);
-   dmaPhys  := getInfo (SYSINFO_NVME_DMA_PHYS);
+   --  1. BAR0 and the DMA region from devmgr's launch configuration
+   declare
+      Configuration : Launch_Configuration.Controller_Configuration;
+      Configured : Boolean;
+   begin
+      CuBit.Launch_Configurations.Get
+        (Launch_Configuration.NVMe_Controller, Configuration, Configured);
+      bar0Phys := (if Configured then Configuration.Registers else 0);
+      dmaPhys  := (if Configured then Configuration.DMA else 0);
+   end;
 
-   if bar0Phys = 0 or bar0Phys = Unsigned_64'Last then
-      debugPrint ("NVMe Driver: No BAR0 in sysinfo, exiting." & LF);
+   if bar0Phys = 0 then
+      debugPrint ("NVMe Driver: No BAR0 configured, exiting." & LF);
       --  Signal devmgr that no hardware is present
       declare
          CAP_SLOT_READY  : constant Unsigned_64 := CCL_Manifest_Bindings.Slot_ready;

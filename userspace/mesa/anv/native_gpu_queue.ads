@@ -135,5 +135,9 @@ package Native_GPU_Queue is
    Boost_Hint_Interval_Ms : constant := 16;
    function Boost_Hint return Unsigned_32
      with Export, Convention => C, External_Name => "cubit_gpu_boost_hint";
+   --  The driver's waitboost policy (On: 1, off: 0), one way, on the one
+   --  open queue. 1: sent; 0: no single open queue or refused.
+   function Boost_Policy (On : Unsigned_32) return Unsigned_32
+     with Export, Convention => C, External_Name => "cubit_gpu_boost_policy";
 
 end Native_GPU_Queue;

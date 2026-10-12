@@ -73,6 +73,14 @@ package body Intel_GPU_Waitboost with SPARK_Mode is
       end if;
    end Note_Actual;
 
+   procedure Release (S : in out State; Now : Microseconds) is
+   begin
+      if S.Current = Boosted then
+         Add (S.Boosted_Us, Elapsed (S.Since, Now));
+      end if;
+      S.Current := Idle; S.Hinted := False; S.Ramping := False;
+   end Release;
+
    procedure Take_Stats
      (S : in out State; Now : Microseconds;
       Boosts, Hints, Sends, Boosted_Us, Ramps, Unreached, Ramp_Avg_Us, Ramp_Max_Us : out Unsigned_64) is

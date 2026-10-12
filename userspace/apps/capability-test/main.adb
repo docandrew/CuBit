@@ -11,6 +11,7 @@ with System;
 with System.Storage_Elements;
 
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.System_Facts;
 
 procedure Main is
    use ASCII;
@@ -186,6 +187,35 @@ begin
    Result := syscall (23, Process_Manager_PID, 0, 0, 0, 0,
                       NO_COMPLETION_TOKEN);
    Check (Result = 0, "retired PID submit rejected");
+   --  The retired INFO (15), RECEIVE_EVENT (20), VIRT_TO_PHYS (50),
+   --  SET_SYSINFO (77) and SET_WELL_KNOWN (107) are unknown now
+   --  (docs/syscall-retirement.md); each used to answer something nonzero
+   --  here (the secondary stack, a physical address, a registration).
+   Check (syscall (15, 1001) = 0, "retired INFO rejected");
+   Check (syscall (50, Address_Number (Main'Address)) = 0, "retired VIRT_TO_PHYS rejected");
+   Check (syscall (77, 1403, 1) = 0, "retired SET_SYSINFO rejected");
+   Check (syscall (107, 1, PID) = 0, "retired SET_WELL_KNOWN rejected");
+   --  Their replacements: the publications, and the typed self query.
+   declare
+      Statistics : CuBit.System_Facts.SP.Statistics;
+      Read : Boolean;
+   begin
+      Check (CuBit.System_Facts.Processor_Count >= 1 and then
+             CuBit.System_Facts.Memory_Bytes > 0, "system facts published");
+      Check (Registered_Driver (DRIVER_PROCMGR) /= No_Process,
+             "the service registry names procmgr");
+      CuBit.System_Facts.Read_Statistics (Statistics, Read);
+      Check (Read and then Statistics.Owned_Bytes > 0 and then
+             Statistics.Free_Memory_Bytes > 0 and then
+             Statistics.Free_Memory_Bytes < CuBit.System_Facts.Memory_Bytes,
+             "own statistics read");
+      Check (not CuBit.System_Facts.Publish
+               (CuBit.System_Facts.SP.Wall_Clock_Offset, 1),
+             "only the clock service publishes the wall clock");
+      Check (not CuBit.System_Facts.Publish
+               (CuBit.System_Facts.SP.Boot_Display_Native, 1),
+             "only devmgr publishes the boot display handoff");
+   end;
    Check (not capSubmit (TEST_SLOT, NULL_MESSAGE, NO_COMPLETION_TOKEN),
           "authorityless capability submit rejected");
    --  A synchronous call through it is refused too (the IPC fast path,

@@ -14,24 +14,25 @@ with CuBit.Memory_Grants;
 with Volume_Admission;
 with Ext2_Inodes;
 with Jbd2_Format;
+with Ext2_Format;
 
 package Ext2 is
-   SUPERBLOCK_OFFSET : constant := 1024;
-   EXT2_SIGNATURE    : constant := 16#EF53#;
-   ROOT_INODE        : constant := 2;
+   SUPERBLOCK_OFFSET : constant := Ext2_Format.Superblock_Offset;
+   EXT2_SIGNATURE    : constant := Ext2_Format.Signature;
+   ROOT_INODE        : constant := Ext2_Format.Root_Inode;
 
    --  Number of direct block pointers per inode
    NUM_DIRECT_BLOCKS : constant := Ext2_Inodes.NUM_DIRECT_BLOCKS;
 
    --  File type nibble in inode typeAndPermissions (upper 4 bits of Unsigned_16)
-   INODE_DIRECTORY    : constant Unsigned_8 := 16#4#;
-   INODE_REGULAR_FILE : constant Unsigned_8 := 16#8#;
-   INODE_SYMBOLIC_LINK : constant Unsigned_8 := 16#A#;
+   INODE_DIRECTORY    : constant Unsigned_8 := Ext2_Format.Type_Directory;
+   INODE_REGULAR_FILE : constant Unsigned_8 := Ext2_Format.Type_Regular;
+   INODE_SYMBOLIC_LINK : constant Unsigned_8 := Ext2_Format.Type_Symlink;
 
    --  Directory entry file types
-   FILETYPE_REGULAR   : constant Unsigned_8 := 1;
-   FILETYPE_DIRECTORY : constant Unsigned_8 := 2;
-   FILETYPE_SYMLINK   : constant Unsigned_8 := 7;
+   FILETYPE_REGULAR   : constant Unsigned_8 := Ext2_Format.Filetype_Regular;
+   FILETYPE_DIRECTORY : constant Unsigned_8 := Ext2_Format.Filetype_Directory;
+   FILETYPE_SYMLINK   : constant Unsigned_8 := Ext2_Format.Filetype_Symlink;
 
    --  Superblock (at byte offset 1024 in the filesystem image)
    type Superblock is record
@@ -117,15 +118,22 @@ package Ext2 is
       nameLength : Unsigned_8;
       fileType   : Unsigned_8;
    end record with Convention => C;
+   pragma Compile_Time_Error
+     (DirectoryEntry'Size /= Ext2_Format.Record_Header_Bytes * 8,
+      "Ext2 directory record header layout changed");
 
    --  Get block size from superblock
-   function blockSize (sb : Superblock) return Unsigned_32;
+   function blockSize (sb : Superblock) return Unsigned_32 is
+     (Shift_Left (Unsigned_32'(Ext2_Format.Minimum_Block_Bytes), Natural (sb.blockShift)));
 
    --  Get inode type (upper 4 bits of typeAndPermissions >> 12)
-   function inodeType (ino : Inode) return Unsigned_8;
+   function inodeType (ino : Inode) return Unsigned_8 is
+     (Ext2_Format.Inode_Type (ino.typeAndPermissions));
 
    --  Get file size (combining sizeLo and sizeHi)
-   function fileSize (ino : Inode) return Unsigned_64;
+   function fileSize (ino : Inode) return Unsigned_64 is
+     (Ext2_Format.File_Size (ino.sizeLo, ino.sizeHi_DirACL));
+   pragma Inline_Always (blockSize, inodeType, fileSize);
 
    --  File writes have an explicit terminal state.  In particular, a zero
    --  byte result is not sufficient to distinguish an empty write from an
@@ -210,7 +218,7 @@ package Ext2 is
    --  references (jbd2's rule for freed blocks).
    Maximum_Pending_Releases : constant := 4096;
    subtype Pending_Count is Natural range 0 .. Maximum_Pending_Releases;
-   type Pending_Blocks is array (1 .. Maximum_Pending_Releases) of Unsigned_32;
+   type Pending_Blocks is array (1 .. Maximum_Pending_Releases) of Ext2_Format.Block_Number;
 
    --  Context for an Ext2 filesystem
    type Filesystem is record
@@ -224,12 +232,12 @@ package Ext2 is
       pendingCount : Pending_Count := 0;
       --  Where the last allocation ended: the next one without a goal of
       --  its own starts there, not at the volume's first (full) groups.
-      allocationHint : Unsigned_32 := 0;
+      allocationHint : Ext2_Format.Block_Number := Ext2_Format.No_Block;
       --  Where the last inode allocation was (group, bitmap byte): the next
       --  search starts there and wraps, rather than rescanning the used
       --  start of the bitmaps each time.
-      inodeHintGroup : Unsigned_32 := 0;
-      inodeHintByte  : Unsigned_32 := 0;
+      inodeHintGroup : Ext2_Format.Group_Number := 0;
+      inodeHintByte  : Natural := 0;
    end record;
 
    --  Make every completed write durable. A journaled volume first commits
@@ -440,7 +448,7 @@ package Ext2 is
       Remove_Durability_Unsupported, Remove_Recovery_Required);
 
    --  ext2's link limit (EXT2_LINK_MAX): mkdir refuses a parent at it.
-   Maximum_Links : constant := 32_000;
+   Maximum_Links : constant := 32_000;   --  EXT2_LINK_MAX
 
    --  Remove a regular file's name and its (single) link. With keepOrphan
    --  (handles still hold it) the unlinked inode keeps its blocks for

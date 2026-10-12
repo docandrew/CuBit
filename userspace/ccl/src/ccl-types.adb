@@ -458,7 +458,14 @@ package body CCL.Types with SPARK_Mode is
    procedure Specialize_Handle
      (Item : in out Registry; Element : Type_Reference; Form : Shape; Prefix : String;
       Ref : out Type_Reference; Result : out Stream_Result)
-   with Pre => Form in Stream | Async;
+   with Pre  => Form in Stream | Async and then Prefix'First = 1 and then
+                Prefix'Length <= Maximum_Name_Length,
+        Post =>
+          (if Result = Stream_Specialized then Ref = Last (Item) and
+             Last (Item) = Last (Item'Old) + 1
+           elsif Result = Stream_Already_Specialized then
+             Ref /= Invalid_Type and Item = Item'Old
+           else Ref = Invalid_Type and Item = Item'Old);
    procedure Specialize_Handle
      (Item : in out Registry; Element : Type_Reference; Form : Shape; Prefix : String;
       Ref : out Type_Reference; Result : out Stream_Result)

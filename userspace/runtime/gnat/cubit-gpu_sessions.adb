@@ -15,7 +15,8 @@ package body CuBit.GPU_Sessions is
      (To_Address (Integer_Address (Base)));
 
    procedure Open
-     (S : in out Session; Endpoint : CuBit.Messages.CapabilitySlot; Opened : out Boolean)
+     (S : in out Session; Endpoint : CuBit.Messages.CapabilitySlot; Deadline : Unsigned_64;
+      Opened : out Boolean)
    is
       use type CuBit.Channels.Open_Result;
       Result : CuBit.Channels.Open_Result;
@@ -27,7 +28,7 @@ package body CuBit.GPU_Sessions is
       end if;
       CuBit.Channels.Open
         (Endpoint, GQ.QUEUE_CONTRACT, CuBit.Channels.Producing, S.Queue, Result,
-         Ignore_Refusal, Connector => GQ.Queue_Connector);
+         Ignore_Refusal, Connector => GQ.Queue_Connector, Deadline => Deadline);
       if Result /= CuBit.Channels.Opened then
          return;
       end if;
@@ -127,6 +128,18 @@ package body CuBit.GPU_Sessions is
       M.tag := (label => GQ.OP_GPU_BOOST, length => 0, flags => 0, reserved => 0);
       Sent := CuBit.Messages.capSubmit (S.Endpoint, M, CuBit.Messages.NO_COMPLETION_TOKEN);
    end Hint_Boost;
+
+   procedure Set_Boost_Policy (S : Session; On : Boolean; Sent : out Boolean) is
+      M : CuBit.Messages.Message := CuBit.Messages.NULL_MESSAGE;
+   begin
+      Sent := False;
+      if not S.Opened then
+         return;
+      end if;
+      M.tag := (label => GQ.OP_GPU_BOOST, length => 1, flags => 0, reserved => 0);
+      M.words (0) := (if On then GQ.Boost_Policy_On else GQ.Boost_Policy_Off);
+      Sent := CuBit.Messages.capSubmit (S.Endpoint, M, CuBit.Messages.NO_COMPLETION_TOKEN);
+   end Set_Boost_Policy;
 
    procedure Arm_Wake
      (S : in out Session; Context : GQ.Context_Index; Target : GQ.Timeline_Value;

@@ -274,7 +274,7 @@ case "$TEST_NAME" in
         ;;
     grant-forward|grant-forward-intermediary-exit|grant-forward-owner-exit|grant-forward-desktop|config-tree|config-inspection|log-authority|log-fields|metrics|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
         ;;
-    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline)
+    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -511,6 +511,16 @@ case "$TEST_NAME" in
         ;;
     logs)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-logs.ccl"
+        ;;
+    process-kill)
+        # A process the kernel kills for a fault is recorded, logged and
+        # shown on the Desktop bootstrap screen.
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-process-kill.ccl"
+        ;;
+    devmem-denials)
+        # CAP-001 diagnostics: refused device memory is recorded, logged
+        # and shown on the Desktop bootstrap screen.
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-devmem-denials.ccl"
         ;;
     capability-security)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-capability-security.ccl"
@@ -962,6 +972,8 @@ if [ -n "$INIT_PROFILE" ]; then
        [ "$TEST_NAME" = "ccl-workspace" ] ||
        [ "$TEST_NAME" = "ccl-console" ] ||
        [ "$TEST_NAME" = "logs" ] ||
+       [ "$TEST_NAME" = "devmem-denials" ] ||
+       [ "$TEST_NAME" = "process-kill" ] ||
        [ "$TEST_NAME" = "input-stream" ] ||
        [ "$TEST_NAME" = "managed-ui" ] ||
        [ "$TEST_NAME" = "devices" ] ||
@@ -994,21 +1006,23 @@ if [ -n "$INIT_PROFILE" ]; then
                 exit 1
             fi
         done
-        # Desktop's wallpaper package (docs/assets.md), from the current build.
-        WALLPAPER_PACKAGE=Assets/cubit-wallpapers/1
-        for WALLPAPER_DIR in Assets Assets/cubit-wallpapers "$WALLPAPER_PACKAGE"; do
-            debugfs -w -R "mkdir $WALLPAPER_DIR" "$TEMP_DISK" >/dev/null 2>&1
-        done
-        for WALLPAPER_NAME in cubes.qoi cubie.qoi; do
-            WALLPAPER_FILE="$KERNEL_DIR/build/$WALLPAPER_PACKAGE/$WALLPAPER_NAME"
-            if [ ! -f "$WALLPAPER_FILE" ]; then
-                echo "headless: build wallpaper-assets first: $WALLPAPER_FILE" >&2
+        # Desktop's asset packages (docs/assets.md), from the current build:
+        # the wallpapers and the application icon atlas.
+        debugfs -w -R "mkdir Assets" "$TEMP_DISK" >/dev/null 2>&1
+        for ASSET_ITEM in cubit-wallpapers/1/cubes.qoi cubit-wallpapers/1/cubie.qoi \
+          cubit-icons/1/applications.qoi; do
+            ASSET_PACKAGE="Assets/${ASSET_ITEM%/*}"
+            debugfs -w -R "mkdir ${ASSET_PACKAGE%/*}" "$TEMP_DISK" >/dev/null 2>&1
+            debugfs -w -R "mkdir $ASSET_PACKAGE" "$TEMP_DISK" >/dev/null 2>&1
+            ASSET_FILE="$KERNEL_DIR/build/Assets/$ASSET_ITEM"
+            if [ ! -f "$ASSET_FILE" ]; then
+                echo "headless: build wallpaper-assets and icon-assets first: $ASSET_FILE" >&2
                 exit 1
             fi
-            debugfs -w -R "rm $WALLPAPER_PACKAGE/$WALLPAPER_NAME" "$TEMP_DISK" >/dev/null 2>&1
-            if ! debugfs -w -R "write $WALLPAPER_FILE $WALLPAPER_PACKAGE/$WALLPAPER_NAME" \
+            debugfs -w -R "rm Assets/$ASSET_ITEM" "$TEMP_DISK" >/dev/null 2>&1
+            if ! debugfs -w -R "write $ASSET_FILE Assets/$ASSET_ITEM" \
               "$TEMP_DISK" >/dev/null 2>&1; then
-                echo "headless: failed to install $WALLPAPER_PACKAGE/$WALLPAPER_NAME" >&2
+                echo "headless: failed to install Assets/$ASSET_ITEM" >&2
                 exit 1
             fi
         done
@@ -1357,6 +1371,26 @@ if [ -n "$INIT_PROFILE" ]; then
             if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/$CLOCK_IMAGE $CLOCK_IMAGE" \
               "$TEMP_DISK" >/dev/null 2>&1; then
                 echo "headless: failed to install $CLOCK_IMAGE" >&2
+                exit 1
+            fi
+        done
+    fi
+    if [ "$TEST_NAME" = "process-kill" ]; then
+        for KILL_IMAGE in logstore.svc clock.svc fault-check.app; do
+            debugfs -w -R "rm $KILL_IMAGE" "$TEMP_DISK" >/dev/null 2>&1
+            if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/$KILL_IMAGE $KILL_IMAGE" \
+              "$TEMP_DISK" >/dev/null 2>&1; then
+                echo "headless: failed to install $KILL_IMAGE" >&2
+                exit 1
+            fi
+        done
+    fi
+    if [ "$TEST_NAME" = "devmem-denials" ]; then
+        for DEVMEM_IMAGE in logstore.svc clock.svc devmem-check.app; do
+            debugfs -w -R "rm $DEVMEM_IMAGE" "$TEMP_DISK" >/dev/null 2>&1
+            if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/$DEVMEM_IMAGE $DEVMEM_IMAGE" \
+              "$TEMP_DISK" >/dev/null 2>&1; then
+                echo "headless: failed to install $DEVMEM_IMAGE" >&2
                 exit 1
             fi
         done
@@ -3785,6 +3819,7 @@ ipctest-client: starting
 ipctest-departing: exiting with saved reply
 ipctest-server: dead caller reply retired and slot reused
 ipctest-client: call deadlines PASS
+ipctest-client: restored reply capability PASS
 ipctest-client: four receive fairness paths PASS
 ipctest-client: activity request wake PASS
 ipctest-client: activity wait PASS
@@ -3857,6 +3892,26 @@ virtio-gpu: page flipping active
 ccl-workbench: native window ready
 ccl-workbench: first frame presented
 ui-app: protected frame published
+"
+        ;;
+    process-kill)
+        required_markers="
+fault-check: writing an unmapped address
+process killed: fault-check.app
+kernel: process killed #
+name=fault-check.app
+procmgr: process com.cubit.fault-check
+DESKTOP-BOOTSTRAP-NOTE: kernel: process killed #
+"
+        ;;
+    devmem-denials)
+        required_markers="
+devmem-check: kernel-image and bus mappings refused
+device-memory denied: devmem-check.app MAP_DEVICE
+devmem-check.app (identity
+kernel: physical map:
+DESKTOP-BOOTSTRAP-NOTE: kernel: device-memory denied #
+DESKTOP-BOOTSTRAP: logs as of t=
 "
         ;;
     logs)
@@ -4043,6 +4098,7 @@ mixer: HDA period IRQ active
         required_markers="
 display: gpu not primary, using linear-fb
 desktop: wallpaper loaded @nvme:0/Assets/cubit-wallpapers/1/cubes.qoi
+desktop: icons loaded @nvme:0/Assets/cubit-icons/1/applications.qoi
 desktop: active outputs= 1 primary= 0
 desktop: internal shell active
 shell: cwd=@nvme:0/

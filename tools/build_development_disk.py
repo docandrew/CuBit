@@ -8,9 +8,10 @@ import argparse
 import hashlib
 import os
 from pathlib import Path, PurePosixPath
-import shutil
 import subprocess
 import tempfile
+
+import image_debug
 
 
 def sha256(path):
@@ -18,7 +19,7 @@ def sha256(path):
         return hashlib.file_digest(stream, 'sha256').digest()
 
 
-def build(output, files):
+def build(output, files, debug_dir=None):
     payloads = {}
     for destination, source in files:
         path = PurePosixPath(destination)
@@ -36,6 +37,9 @@ def build(output, files):
     size = max(2 * quantum, ((sum(p.stat().st_size for p in payloads.values())
                               * 2 + quantum - 1) // quantum) * quantum)
     output = output.resolve()
+    # Executables are staged without debug information; the debug files go
+    # to the host (tools/image_debug.py, docs/image-debug-info.md).
+    splitter = image_debug.Splitter(debug_dir or output.parent / 'debug', output.name)
     with tempfile.TemporaryDirectory(prefix='.cubit-disk-', dir=output.parent) as tmp:
         root = Path(tmp)
         stage = root / 'root'
@@ -44,7 +48,7 @@ def build(output, files):
         for destination, source in payloads.items():
             target = stage / destination
             target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(source, target)
+            target.write_bytes(splitter.split(destination, source.read_bytes()))
             target.chmod(source.stat().st_mode & 0o777)
             expected[destination] = sha256(target)
         candidate = root / 'disk.img'
@@ -66,7 +70,11 @@ def build(output, files):
             if not dumped.is_file() or sha256(dumped) != digest:
                 raise RuntimeError(f'image payload mismatch: {destination}\n{result.stderr}')
         os.replace(candidate, output)
-    print(f'ext2: {len(payloads)} payloads verified, {size // (1024 * 1024)} MiB image')
+    summary = splitter.summary()
+    manifest = splitter.write_manifest()
+    print(f'ext2: {len(payloads)} payloads verified, {size // (1024 * 1024)} MiB image; '
+          f'{summary["binaries"]} executables {summary["input_bytes"]} -> '
+          f'{summary["staged_bytes"]} bytes, build-ids: {manifest}')
 
 
 def main():
@@ -74,12 +82,14 @@ def main():
     parser.add_argument('output', type=Path)
     parser.add_argument('--boot', type=Path, nargs='*', default=[])
     parser.add_argument('--file', action='append', default=[], metavar='DEST=SOURCE')
+    parser.add_argument('--debug-dir', type=Path,
+                        help='host directory for separated debug files (default: debug/ next to the output)')
     args = parser.parse_args()
     files = [(path.name, path) for path in args.boot]
     for item in args.file:
         destination, source = item.split('=', 1)
         files.append((destination, Path(source)))
-    build(args.output, files)
+    build(args.output, files, args.debug_dir)
 
 
 if __name__ == '__main__':

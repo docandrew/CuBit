@@ -190,6 +190,27 @@ procedure Primary_Flip_Tests is
       Check (Ok and then M.Live = Bases (0) and then Memory (0) = 16#00FF_0000# and then
              Memory (Memory'Last) = 16#00FF_0000#, "clear with buffer 0 live ends on buffer 0");
       Check (M.Writes_To_Live = 0, "takeover and clear never write a live buffer");
+      --  Watchdog view: an armed flip that never latches ages and stays owed.
+      declare
+         Result : Flip.Submit_Result;
+         Superseded : Boolean;
+         Latched : Boolean;
+         View : Flip.Stall_View;
+      begin
+         M.Latch_Percent := 0;
+         Flip.Submit (1, 0, Frame_H, Result, Superseded);
+         Check (Result = Flip.Armed, "watchdog: armed");
+         M.Clock := M.Clock + 1_500_000;
+         Flip.Service (Latched);
+         View := Flip.Stall;
+         Check (not Latched and then View.Owed and then
+                Flip."=" (View.Armed, 1) and then View.Owed_Us >= 1_500_000 and then View.Surface_Word = Bases (1) and then
+                View.Live_Word = Bases (0), "watchdog sees an unlatched flip and its age");
+         Vblank;
+         Flip.Service (Latched);
+         Check (Latched and then not Flip.Stall.Owed, "a late latch still completes");
+         M.Latch_Percent := 30;
+      end;
    end Takeover_Cases;
 
    --  display.svc's pattern (one frame at a time, rotating over three) plus

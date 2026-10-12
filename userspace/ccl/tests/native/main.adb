@@ -612,9 +612,9 @@ procedure Main is
       Check
         (Outcome.Status = CCL.Language.Succeeded and then Outcome.Has_List and then
          Outcome.List_Length = 3 and then
-         Outcome.List_Text.Data (1 .. Outcome.List_Text_Ends (1)) = "alpha" and then
-         Outcome.List_Text.Data (Outcome.List_Text_Ends (1) + 1 .. Outcome.List_Text_Ends (2)) = "be" and then
-         Outcome.List_Text.Data (Outcome.List_Text_Ends (2) + 1 .. Outcome.List_Text_Ends (3)) = "gamma",
+         Outcome.List_Text.Data (1 .. Natural (Outcome.List_Text_Ends (1))) = "alpha" and then
+         Outcome.List_Text.Data (Natural (Outcome.List_Text_Ends (1)) + 1 .. Natural (Outcome.List_Text_Ends (2))) = "be" and then
+         Outcome.List_Text.Data (Natural (Outcome.List_Text_Ends (2)) + 1 .. Natural (Outcome.List_Text_Ends (3))) = "gamma",
          "a list of strings");
       CCL.Evaluation.Evaluate ("(length (at [""cubit"" ""os""] 1))", 64, Outcome);
       Check
@@ -923,7 +923,7 @@ procedure Main is
         ("(let ((p ""ab"")) (each (fn ((s String)) (concat p s)) [""x"" ""y""]))", 512, Outcome);
       Check
         (Outcome.Status = CCL.Language.Succeeded and then Outcome.List_Length = 2 and then
-         Outcome.List_Text.Data (1 .. Outcome.List_Text_Ends (1)) = "abx",
+         Outcome.List_Text.Data (1 .. Natural (Outcome.List_Text_Ends (1))) = "abx",
          "a String is captured");
       CCL.Evaluation.Evaluate
         ("(let ((xs [1 2])) (let ((f (fn ((n Integer)) (length xs)))) (f 1)))", 512, Outcome);
@@ -977,7 +977,7 @@ procedure Main is
       CCL.Evaluation.Evaluate ("(first 2 [""x"" ""y"" ""z""])", 512, Outcome);
       Check
         (Outcome.Status = CCL.Language.Succeeded and then Outcome.List_Length = 2 and then
-         Outcome.List_Text.Data (1 .. Outcome.List_Text_Ends (2)) = "xy",
+         Outcome.List_Text.Data (1 .. Natural (Outcome.List_Text_Ends (2))) = "xy",
          "first takes a prefix");
       CCL.Evaluation.Evaluate ("(length (range 5 1))", 256, Outcome);
       Check
@@ -1030,7 +1030,7 @@ procedure Main is
               Outcome.List_Length = Expected'Length;
             if Same then
                for I in Expected'Range loop
-                  Same := Same and then Outcome.List_Values (I - Expected'First + 1).Integer = Expected (I);
+                  Same := Same and then Outcome.List_Values (CCL.VM.List_Result_Index (I - Expected'First + 1)).Integer = Expected (I);
                end loop;
             end if;
             Check (Same, Label);
@@ -1460,7 +1460,7 @@ procedure Main is
                Check (False, Label & " (execute)");
             elsif Outcome.Has_Literal or else Interpreted.Has_Literal then
                Check (Outcome.Has_Literal and then Interpreted.Has_Literal and then
-                      Outcome.Literal.Data (1 .. Outcome.Literal.Length) =
+                      CCL.VM.Image (Outcome.Literal) =
                         Interpreted.Literal.Data (1 .. Interpreted.Literal.Length), Label);
             elsif Outcome.Result_Value.Kind = Integer_Value then
                Check (Outcome.Result_Value.Integer = Interpreted.Result_Value.Integer, Label);
@@ -1470,10 +1470,10 @@ procedure Main is
                declare
                   Same_List : Boolean :=
                     Interpreted.Has_List and then
-                    Outcome.List_Total = Interpreted.List_Total and then
+                    CCL.VM.Count_Of (Outcome.List_Total) = Interpreted.List_Total and then
                     Outcome.List_Length = Interpreted.List_Length and then
-                    Outcome.List_Text.Length = Interpreted.List_Text.Length and then
-                    Outcome.List_Text.Data (1 .. Outcome.List_Text.Length) =
+                    CCL.VM.Length_Of (Outcome.List_Text) = Interpreted.List_Text.Length and then
+                    CCL.VM.Image (Outcome.List_Text) =
                       Interpreted.List_Text.Data (1 .. Interpreted.List_Text.Length);
                begin
                   for I in 1 .. Outcome.List_Length loop
@@ -1492,7 +1492,7 @@ procedure Main is
                         Character'Pos (Interpreted.Result_Character), Label);
             elsif Outcome.Result_Value.Kind = Text_Value then
                Check (Interpreted.Has_Text and then Outcome.Has_Result_Text and then
-                      Outcome.Result_Text_Value.Data (1 .. Outcome.Result_Text_Value.Length) =
+                      CCL.VM.Image (Outcome.Result_Text_Value) =
                         Interpreted.Result_Text.Data (1 .. Interpreted.Result_Text.Length), Label);
             else
                Check (Outcome.Result_Value.Kind = Boolean_Value and then
@@ -1903,7 +1903,7 @@ procedure Main is
          if Format_Status = CCL.Format.Format_Valid then
             Execute (Decoded, 64, Outcome);
             Check (Outcome.Status = Completed and then Outcome.Result_Value.Kind = Text_Value and then
-                   Outcome.Result_Text_Value.Data (1 .. Outcome.Result_Text_Value.Length) = "abcd",
+                   CCL.VM.Image (Outcome.Result_Text_Value) = "abcd",
                    "run text decoded from a module");
          end if;
          for PC in Instruction_Index loop
@@ -1968,7 +1968,7 @@ procedure Main is
          if Format_Status = CCL.Format.Format_Valid then
             Execute (Decoded, 64, Outcome);
             Check (Outcome.Status = Completed and then Outcome.Result_Value.Kind = Text_Value and then
-                   Outcome.Result_Text_Value.Data (1 .. Outcome.Result_Text_Value.Length) = "Green7",
+                   CCL.VM.Image (Outcome.Result_Text_Value) = "Green7",
                    "run characters and to-string decoded from a module");
          end if;
          Tamper (Text_Builtin, Text_Builtin, Immediate => 99);
@@ -2032,7 +2032,7 @@ procedure Main is
          if Format_Status = CCL.Format.Format_Valid then
             Execute (Decoded, 64, Outcome);
             Check (Outcome.Status = Completed and then Outcome.Result_Value.Kind = List_Value and then
-                   Outcome.List_Total = 2 and then Outcome.List_Text.Data (1 .. Outcome.List_Text.Length) = "ca",
+                   Outcome.List_Total = 2 and then CCL.VM.Image (Outcome.List_Text) = "ca",
                    "run lists decoded from a module");
          end if;
          --  A list of another element type where this one is expected.
@@ -2141,7 +2141,7 @@ procedure Main is
          if Format_Status = CCL.Format.Format_Valid then
             Execute (Decoded, 64, Outcome);
             Check (Outcome.Status = Completed and then Outcome.Has_Literal and then
-                   Outcome.Literal.Data (1 .. Outcome.Literal.Length) = "(K.Boxed (L ""m"" 5))",
+                   CCL.VM.Image (Outcome.Literal) = "(K.Boxed (L ""m"" 5))",
                    "run records decoded from a module");
          end if;
       end;

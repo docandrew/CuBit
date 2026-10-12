@@ -55,6 +55,13 @@ SECTIONS
         *(.rodata .rodata.*)
     }
 
+    /* GNU build-id (ld --build-id): names the kernel's debug file, which
+     * image staging keeps on the host (docs/image-debug-info.md). */
+    .note.gnu.build-id :
+    {
+        KEEP(*(.note.gnu.build-id))
+    }
+
     . = ALIGN(4K);
     erodata = .;
     

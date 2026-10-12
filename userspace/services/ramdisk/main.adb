@@ -2,6 +2,8 @@ with Interfaces; use Interfaces;
 with System;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Launch_Configurations;
+with Launch_Configuration;
 with Cpio;
 with Ram_Device;
 
@@ -18,9 +20,19 @@ procedure Main is
    Ignore : Unsigned_64;
    Tag : MessageTag;
 begin
-   Cpio.init
-     (Archive, toAddr (getInfo (SYSINFO_RAMDISK_ADDRESS)),
-      getInfo (SYSINFO_RAMDISK_SIZE), Valid);
+   --  The boot image devmgr mapped for us, from its launch configuration.
+   declare
+      Configuration : Launch_Configuration.Boot_Image_Configuration;
+      Configured : Boolean;
+   begin
+      CuBit.Launch_Configurations.Get (Configuration, Configured);
+      Valid := Configured and then Configuration.Boot_Image /= 0;
+      if Valid then
+         Cpio.init
+           (Archive, toAddr (Launch_Configuration.Boot_Image_Address),
+            Configuration.Boot_Image, Valid);
+      end if;
+   end;
    if Valid then
       Index := Cpio.findFile (Archive, "live-rw.ext2");
       if Index < Archive.count then

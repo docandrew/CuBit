@@ -210,16 +210,33 @@ is
 
 
     ---------------------------------------------------------------------------
+    -- isSubrangeOf
+    -- For range objects (DEVICE_MEM: base, size in bytes): the child range is
+    -- nonempty, nonwrapping and lies within the nonempty, nonwrapping parent
+    -- range.
+    ---------------------------------------------------------------------------
+    function isSubrangeOf (child  : ObjectRef;
+                           parent : ObjectRef) return Boolean is
+        (child.param > 0 and then parent.param > 0
+         and then child.param - 1 <= Unsigned_64'Last - child.ref
+         and then parent.param - 1 <= Unsigned_64'Last - parent.ref
+         and then child.ref >= parent.ref
+         and then child.ref + (child.param - 1) <= parent.ref + (parent.param - 1));
+
+    ---------------------------------------------------------------------------
     -- isAttenuationOf
-    -- A derived capability denotes the same object, generation, and authority tag as
-    -- its parent and carries no rights absent from the parent.  This is the
-    -- ordinary-derivation non-amplification relation; authority tag-changing minting
-    -- is intentionally outside this relation.
+    -- A derived capability denotes the same object (or, for device memory, a
+    -- subrange of it), generation, and authority tag as its parent and
+    -- carries no rights absent from the parent.  This is the
+    -- ordinary-derivation non-amplification relation; authority tag-changing
+    -- minting is intentionally outside this relation.
     ---------------------------------------------------------------------------
     function isAttenuationOf (child  : Capability;
                               parent : Capability) return Boolean is
         (child.capType = parent.capType
-         and then child.object = parent.object
+         and then (child.object = parent.object
+                   or else (child.capType = CAP_DEVICE_MEM
+                            and then isSubrangeOf (child.object, parent.object)))
          and then child.gen = parent.gen
          and then child.authorityTag = parent.authorityTag
          and then isSubsetOf (child.rights, parent.rights))
@@ -263,6 +280,28 @@ is
           Pre  => isOrdinarilyDerivable (parent.capType)
                   and then isSubsetOf (newRights, parent.rights),
           Post => isAttenuationOf (derive'Result, parent);
+
+    ---------------------------------------------------------------------------
+    -- deriveDeviceRange
+    -- Narrow a device-memory capability to a subrange and a subset of its
+    -- rights. The only way a device range may change under derivation.
+    ---------------------------------------------------------------------------
+    function deriveDeviceRange (parent    : Capability;
+                                base      : Unsigned_64;
+                                size      : Unsigned_64;
+                                newRights : CapabilityRights) return Capability is
+        (Capability'(
+            capType      => parent.capType,
+            rights       => parent.rights and newRights,
+            authorityTag => parent.authorityTag,
+            object       => (ref => base, param => size),
+            gen          => parent.gen))
+        with
+          Pre  => parent.capType = CAP_DEVICE_MEM
+                  and then isSubsetOf (newRights, parent.rights)
+                  and then isSubrangeOf ((ref => base, param => size),
+                                         parent.object),
+          Post => isAttenuationOf (deriveDeviceRange'Result, parent);
 
     ---------------------------------------------------------------------------
     -- mint

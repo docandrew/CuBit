@@ -94,15 +94,13 @@ is
       if Item.Locals_Length > 0 and then Item.Types_Length = 0 then
          return False;
       end if;
-      if Item.Locals_Length > 0 then
-         for Local in 0 .. Item.Locals_Length - 1 loop
-            if Natural (Item.Local_Types (Local)) >= Item.Types_Length then
-               return False;
-            end if;
-         end loop;
-      end if;
+      for Position in 1 .. Item.Locals_Length loop
+         if not Declared_Type (Item.Local_Types (Local_At (Position - 1)), Item.Types_Length) then
+            return False;
+         end if;
+      end loop;
       if Item.Types_Length > 0 then
-         for T in 0 .. Item.Types_Length - 1 loop
+         for T in 0 .. Natural (Item.Types_Length) - 1 loop
             for D in 0 .. CCL.Ownership.MAX_DISPOSITIONS - 1 loop
                if D >= Item.Types (T).Dispositions_Length then
                   if Item.Types (T).Dispositions (D) /=
@@ -114,9 +112,7 @@ is
                elsif Item.Types (T).Dispositions (D).Effect =
                  CCL.Ownership.Transition
                then
-                  if Natural (Item.Types (T).Dispositions (D).Next_Type) >=
-                    Item.Types_Length
-                  then
+                  if not Declared_Type (Item.Types (T).Dispositions (D).Next_Type, Item.Types_Length) then
                      return False;
                   end if;
                elsif Item.Types (T).Dispositions (D).Next_Type /= 0 then
@@ -362,8 +358,8 @@ is
       Put_Unsigned (Unsigned_64 (Limits.In_Flight));
 
       --  Ownership types.
-      Put_Array (Candidate.Types_Length);
-      for T in 0 .. Candidate.Types_Length - 1 loop
+      Put_Array (Natural (Candidate.Types_Length));
+      for T in 0 .. Natural (Candidate.Types_Length) - 1 loop
          Put_Array (2);
          Put_Unsigned (Unsigned_64 (Mode_Number (Candidate.Types (T).Mode)));
          Put_Array (Candidate.Types (T).Dispositions_Length);
@@ -398,7 +394,7 @@ is
       end loop;
 
       --  Match tables.
-      Put_Array (Candidate.Matches_Length);
+      Put_Array (Natural (Candidate.Matches_Length));
       for M in 0 .. Candidate.Matches_Length - 1 loop
          Put_Array (2);
          Put_Type (Candidate.Matches (M).Data_Type);
@@ -411,8 +407,8 @@ is
       --  Locals.
       Put_Array (2);
       Put_Unsigned (Unsigned_64 (Candidate.Dynamic_Locals_Length));
-      Put_Array (Candidate.Locals_Length);
-      for L in 0 .. Candidate.Locals_Length - 1 loop
+      Put_Array (Natural (Candidate.Locals_Length));
+      for L in 0 .. Natural (Candidate.Locals_Length) - 1 loop
          Put_Array (3);
          Put_Kind (Candidate.Local_Kinds (L));
          Put_Unsigned (Unsigned_64 (Candidate.Local_Types (L)));
@@ -420,7 +416,7 @@ is
       end loop;
 
       --  Imports, with their descriptor-pinned linkage.
-      Put_Array (Candidate.Imports_Length);
+      Put_Array (Natural (Candidate.Imports_Length));
       for I in 0 .. Candidate.Imports_Length - 1 loop
          declare
             Resolved : constant CCL.Catalog.Resolved_Operation := CCL.Catalog.Element (Linkage, I);
@@ -452,12 +448,12 @@ is
       end loop;
 
       --  Functions.
-      Put_Array (Candidate.Functions_Length);
+      Put_Array (Natural (Candidate.Functions_Length));
       for F in 0 .. Candidate.Functions_Length - 1 loop
          Put_Array (FUNCTION_FIELDS);
          Put_Unsigned (Unsigned_64 (Candidate.Functions (F).Entry_PC));
          Put_Unsigned (Unsigned_64 (Candidate.Functions (F).Captures));
-         Put_Array (Candidate.Functions (F).Count);
+         Put_Array (Natural (Candidate.Functions (F).Count));
          for P in 1 .. Candidate.Functions (F).Count loop
             Put_Array (2);
             Put_Kind (Candidate.Functions (F).Kinds (P));
@@ -468,19 +464,19 @@ is
       end loop;
 
       --  Text constants.
-      Put_Array (Candidate.Constants_Length);
+      Put_Array (Natural (Candidate.Constants_Length));
       for C in 0 .. Candidate.Constants_Length - 1 loop
          declare
             Item : constant Text_Constant := Candidate.Constants (C);
             Bytes : CBOR.Byte_Array (1 .. MAX_CONSTANT_BYTES) := [others => 0];
          begin
-            if Item.Length > MAX_CONSTANT_BYTES - (Item.First - 1) then
+            if not In_Pool (Item) then
                Error := Invalid_Operand;
                return;
             end if;
-            for I in 1 .. Item.Length loop
+            for I in 1 .. Natural (Item.Length) loop
                Bytes (CBOR.SE_Offset (I)) :=
-                 CBOR.Byte (Character'Pos (Candidate.Constant_Text (Item.First + I - 1)));
+                 CBOR.Byte (Character'Pos (Candidate.Constant_Text (Natural (Item.First) + I - 1)));
             end loop;
             Put_Bytes (Bytes (1 .. CBOR.SE_Offset (Item.Length)));
          end;
@@ -799,7 +795,7 @@ is
       --  Ownership types.
       Get_Array (Count, CCL.Ownership.MAX_TYPES);
       if Error /= Format_Valid then return; end if;
-      Candidate.Types_Length := Count;
+      Candidate.Types_Length := Type_Count (Count);
       for T in 0 .. Count - 1 loop
          Expect_Array (2);
          Get_Unsigned (Value, Unsigned_64 (Mode_Number (CCL.Ownership.Ownership_Mode'Last)));
@@ -918,8 +914,8 @@ is
       --  Match tables.
       Get_Array (Count, Maximum_Matches);
       if Error /= Format_Valid then return; end if;
-      Candidate.Matches_Length := Count;
-      for M in 0 .. Count - 1 loop
+      Candidate.Matches_Length := Match_Count (Count);
+      for M in 0 .. Candidate.Matches_Length - 1 loop
          Expect_Array (2);
          Get_Type (Candidate.Matches (M).Data_Type);
          Expect_Array (CCL.Types.Maximum_Components);
@@ -942,13 +938,15 @@ is
          Error := Invalid_Ownership_Metadata;
          return;
       end if;
-      Candidate.Dynamic_Locals_Length := Natural (Value);
-      Candidate.Locals_Length := Count;
+      Candidate.Dynamic_Locals_Length := Local_Count (Value);
+      Candidate.Locals_Length := Local_Count (Count);
       for L in 0 .. Count - 1 loop
          Expect_Array (3);
          Get_Kind (Candidate.Local_Kinds (L));
          Get_Unsigned (Value, Unsigned_64 (CCL.Ownership.Type_Id'Last));
-         if Error /= Format_Valid or else Natural (Value) >= Candidate.Types_Length then
+         if Error /= Format_Valid or else
+           not Declared_Type (CCL.Ownership.Type_Id (Value), Candidate.Types_Length)
+         then
             Error := Invalid_Ownership_Metadata;
             return;
          end if;
@@ -960,8 +958,8 @@ is
       --  Imports and their linkage.
       Get_Array (Count, MAX_IMPORTS);
       if Error /= Format_Valid then return; end if;
-      Candidate.Imports_Length := Count;
-      for I in 0 .. Count - 1 loop
+      Candidate.Imports_Length := Import_Count (Count);
+      for I in 0 .. Candidate.Imports_Length - 1 loop
          declare
             Argument, Result : Value_Kind;
             Authority, Ownership, Local, Transfer, Cancellation, Parameters,
@@ -1054,21 +1052,22 @@ is
       --  Functions.
       Get_Array (Count, MAX_FUNCTIONS);
       if Error /= Format_Valid then return; end if;
-      Candidate.Functions_Length := Count;
-      for F in 0 .. Count - 1 loop
+      Candidate.Functions_Length := Function_Count (Count);
+      for F in 0 .. Candidate.Functions_Length - 1 loop
          declare
-            Parameters : Natural;
+            Parameters, Captures : Natural;
          begin
             Expect_Array (FUNCTION_FIELDS);
             Get_Unsigned (Value, MAX_INSTRUCTIONS - 1);
             if Error /= Format_Valid then Error := Invalid_Function; return; end if;
             Candidate.Functions (F).Entry_PC := Instruction_Index (Value);
-            Get_Natural (Candidate.Functions (F).Captures, MAX_PARAMETERS);
+            Get_Natural (Captures, MAX_PARAMETERS);
             if Error /= Format_Valid then Error := Invalid_Function; return; end if;
+            Candidate.Functions (F).Captures := Parameter_Count (Captures);
             Get_Array (Parameters, MAX_PARAMETERS);
             if Error /= Format_Valid then Error := Invalid_Function; return; end if;
-            Candidate.Functions (F).Count := Parameters;
-            for P in 1 .. Parameters loop
+            Candidate.Functions (F).Count := Parameter_Count (Parameters);
+            for P in 1 .. Candidate.Functions (F).Count loop
                Expect_Array (2);
                Get_Kind (Candidate.Functions (F).Kinds (P));
                Get_Type (Candidate.Functions (F).Data_Types (P));
@@ -1083,20 +1082,20 @@ is
       --  Text constants, packed into the pool in order.
       Get_Array (Count, MAX_CONSTANTS);
       if Error /= Format_Valid then return; end if;
-      Candidate.Constants_Length := Count;
+      Candidate.Constants_Length := Constant_Count (Count);
       declare
          Pool_Used : Natural range 0 .. MAX_CONSTANT_BYTES := 0;
          Bytes : CBOR.Byte_Array (1 .. MAX_CONSTANT_BYTES);
          Used : Natural;
       begin
-         for C in 0 .. Count - 1 loop
+         for C in 0 .. Candidate.Constants_Length - 1 loop
             Get_Bytes (Bytes, Used, MAX_CONSTANT_BYTES);
             if Error /= Format_Valid then return; end if;
             if Used > MAX_CONSTANT_BYTES - Pool_Used then
                Error := Invalid_Operand;
                return;
             end if;
-            Candidate.Constants (C) := (First => Pool_Used + 1, Length => Used);
+            Candidate.Constants (C) := (First => Constant_First (Pool_Used + 1), Length => Constant_Length (Used));
             for I in 1 .. Used loop
                Candidate.Constant_Text (Pool_Used + I) :=
                  Character'Val (Bytes (CBOR.SE_Offset (I)));

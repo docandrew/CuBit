@@ -1,0 +1,10 @@
+# Headless process-kill test: fault-check faults on purpose before the
+# desktop starts; the kernel's kill record must reach logstore, procmgr's
+# exit line and the Desktop bootstrap screen.
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "clock.svc" (priority 5))
+  (start "fault-check.app" (priority 5))
+  (start "display.svc" (priority 5))
+  (start "desktop.svc" (priority 4))
+)

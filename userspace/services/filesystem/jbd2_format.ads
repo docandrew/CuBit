@@ -53,6 +53,8 @@ package Jbd2_Format with Pure, SPARK_Mode is
    Tail_Bytes : constant := 4; -- descriptor/revoke block checksum
    Revoke_Header_Bytes : constant := 16;
    Superblock_Bytes : constant := 1024;
+   Superblock_Sequence_Offset : constant := 16#18#;   --  s_sequence: first transaction
+   Superblock_Start_Offset : constant := 16#1C#;      --  s_start: log start (0: empty)
    Superblock_Checksum_Offset : constant := 16#FC#;
    Commit_Checksum_Type_Offset : constant := 12;
    Commit_Checksum_Size_Offset : constant := 13;

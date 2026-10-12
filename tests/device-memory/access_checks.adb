@@ -1,17 +1,25 @@
 with Ada.Text_IO;
 with Interfaces; use Interfaces;
 with Capabilities; use Capabilities;
-with Capabilities.Operations;
+with Device_Memory_Admission;
+with Device_Memory_Authority;
+with Physical_Ranges;
 procedure Access_Checks is
    Table : CapabilityTable := EMPTY_TABLE;
    Allowed : Boolean;
+   -- Nothing described: every page is bus address space, so these checks
+   -- isolate the capability-table half of the decision.
+   All_Device : Physical_Ranges.Map := Physical_Ranges.Empty_Map;
    procedure Check (Base, Size : Unsigned_64; Write, Expected : Boolean) is
    begin
-      Capabilities.Operations.checkDeviceMemAccess
-        (Table, Base, Size, Allowed, requireWrite => Write);
+      Allowed := Device_Memory_Authority.Authorize
+        (Table, All_Device, Base, Size,
+         (if Write then Device_Memory_Admission.Read_Write
+          else Device_Memory_Admission.Read_Only));
       pragma Assert (Allowed = Expected);
    end Check;
 begin
+   Physical_Ranges.Seal (All_Device);
    Check (16#1000#, 4096, False, False);
    Table (0).capType := CAP_DEVICE_MEM;
    Table (0).object.ref := 16#1000#;

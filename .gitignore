@@ -36,6 +36,9 @@ src/build.ads
 /kernel/*.iso.plan.json
 /kernel/*.img.plan.json
 /kernel/isodir/boot/*.img.plan.json
+# Separated debug files of image binaries, by build-id (docs/image-debug-info.md).
+/kernel/debug/
+/kernel/isodir/boot/debug/
 /kernel/isodir/licenses/cbor_ada.txt
 # Local A/B backups of built images.
 /kernel/*.pre-*
@@ -58,6 +61,9 @@ src/build.ads
 /userspace/c/netsurf/
 /userspace/c/netsurf_deps/
 /userspace/c/netsurf_src/
+# Retired apps, kept locally for reference (user, 2026-10-11).
+/userspace/apps/security-center/
+/userspace/apps/ui-lab/
 /userspace/c/sameboy_src/
 /userspace/c/sameboy_build/
 /tests/mesa-software/target/

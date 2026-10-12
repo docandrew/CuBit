@@ -1,7 +1,12 @@
 with CuBit.Boot_Milestone_Codes;
+with Desktop_Bootstrap_Logs;
+with Desktop_Bootstrap_Notes;
+with Desktop_Startup_Clock;
 with CuBit.Boot_Milestones;
 with Compositor_Transfer_Delta;
 with Desktop_Renderer_Startup;
+with Desktop_Renderer_Worker;
+with Desktop_Startup_Progress;
 with Desktop_Input_Overlay;
 with Compositor_Frame_Replacement;
 with Desktop_Input_Diagnostic;
@@ -71,6 +76,7 @@ with System; use System;
 with System.Storage_Elements; use System.Storage_Elements;
 
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.System_Facts;
 with CuBit.Display_Protocol;
 with CuBit.Display_Layouts;
 with CuBit.Display_Arrangement;
@@ -92,6 +98,7 @@ with CuBit.Fonts;
 with Desktop_Window_Icons;
 with Desktop_Wallpaper;
 with Desktop_Wallpaper_Assets;
+with Desktop_Icon_Assets;
 with Desktop_Wallpaper_Layers;
 with Desktop_Settings;
 with Desktop_Launch;
@@ -104,6 +111,7 @@ with Clipboard_Store;
 with Clipboard_Menu;
 with Key_Repeat;
 with Desktop_Key_Repeat_Settings;
+with Desktop_GPU_Power_Settings;
 with Client_Popup_Layout;
 with CCL.Interfaces.Desktop_Launch;
 with CuBit.Appearance;
@@ -147,11 +155,6 @@ procedure main is
    use type CuBit.Input.Device_Class;
    use type CuBit.Input.Delivery_Class;
 
-   SYSINFO_FB_WIDTH  : constant Unsigned_64 := 1100;
-   SYSINFO_FB_HEIGHT : constant Unsigned_64 := 1101;
-   SYSINFO_FB_PITCH  : constant Unsigned_64 := 1102;
-   SYSINFO_FB_BPP    : constant Unsigned_64 := 1103;
-   SYSINFO_EVENT_DROPS_SELF : constant Unsigned_64 := 1401;
 
    EVENT_KEYBOARD : constant Unsigned_32 := 1;
    EVENT_MOUSE    : constant Unsigned_32 := 2;
@@ -297,6 +300,29 @@ procedure main is
    procedure exitCompositor (Status : Integer)
      with Import, Convention => C, External_Name => "_exit", No_Return;
    Bootstrap_CPU : Boolean := False;
+   --  The bootstrap screen's stage line (drawBootstrapDiagnostics).
+   Stage_Presenting : aliased constant String := "bootstrap frame (Display)";
+   Waiting_Display  : aliased constant String := "Display to show this frame";
+   Stage_Renderer   : aliased constant String := "renderer startup next";
+   Waiting_GPU      : aliased constant String :=
+     "the render service (intel-gpu) to create the Vulkan device; " &
+     "if this stays, Desktop is blocked there";
+   bootstrapStage   : access constant String := Stage_Presenting'Access;
+   bootstrapWaiting : access constant String := Waiting_Display'Access;
+   --  While the renderer worker runs (Wait_For_Renderer), the bootstrap
+   --  screen is redrawn every Bootstrap_Tick_Ms with the step in progress,
+   --  so a photo shows whether Desktop is alive and where startup stands.
+   --  Renderer_Startup_Budget_Ms bounds the whole startup, whatever the GPU
+   --  stack does (it may block outside IPC too). Each GPU-service call is
+   --  bounded separately (5 s, Desktop_Renderer_Startup) and a stalled
+   --  service fails the rest at once (Native_GPU_Calls), so a service that
+   --  never answers ends startup by the bound; the budget is that plus 1 s.
+   Bootstrap_Tick_Ms          : constant := 500;
+   Renderer_Startup_Budget_Ms : constant := 6_000;
+   rendererWorkerActive : Boolean := False;
+   rendererStartedMs    : Unsigned_64 := 0;
+   bootstrapFrames      : Unsigned_64 := 0;
+   bootstrapReleased    : Boolean := False;
    Diagnostic_Loops, Diagnostic_Keys, Diagnostic_Mouse,
      Diagnostic_Requests, Diagnostic_Frames, Diagnostic_Buttons : Unsigned_64 := 0;
    package DI renames Desktop_Input_Diagnostic;
@@ -1104,6 +1130,35 @@ procedure main is
    --  desktop.input.key-repeat (Desktop_Key_Repeat_Settings). Absent keeps
    --  the defaults; an invalid value is reported and keeps them too. The
    --  effective settings are logged either way.
+   --  gpu.power.waitboost (Desktop_GPU_Power_Settings): logged either way,
+   --  handed to the GPU driver once its queue is open.
+   procedure Load_GPU_Power is
+      use type CuBit.Config.ConfigStatus;
+      Value  : System.Address;
+      Length : Natural;
+      Status : CuBit.Config.ConfigStatus;
+      On     : Boolean := Desktop_GPU_Power_Settings.Default_Waitboost;
+      OK     : Boolean := False;
+   begin
+      CuBit.Config.get (Desktop_GPU_Power_Settings.Config_Key, Value, Length, Status);
+      if Status = CuBit.Config.OK and then Value /= System.Null_Address and then
+        Length in 1 .. Desktop_GPU_Power_Settings.Maximum_Source
+      then
+         declare
+            Source : String (1 .. Length) with Import, Address => Value;
+         begin
+            Desktop_GPU_Power_Settings.Decode (Source, On, OK);
+         end;
+         if not OK then
+            On := Desktop_GPU_Power_Settings.Default_Waitboost;
+            debugPrint ("desktop: invalid " & Desktop_GPU_Power_Settings.Config_Key &
+                        "; using the default" & LF);
+         end if;
+      end if;
+      Desktop_GPU_Wake.Set_Waitboost (On);
+      debugPrint ("desktop: gpu waitboost " & (if On then "on" else "off") &
+                  (if OK then " (configured)" else " (default)") & LF);
+   end Load_GPU_Power;
    procedure Load_Key_Repeat is
       use type CuBit.Config.ConfigStatus;
       Value  : System.Address;
@@ -1661,7 +1716,15 @@ procedure main is
       if now < statsStartMs or else now - statsStartMs < 1000 then
          return;
       end if;
-      eventDrops := getInfo (SYSINFO_EVENT_DROPS_SELF);
+      --  This process's mailbox drops (kernel READ_STATISTICS); Last when
+      --  the kernel refused.
+      declare
+         Statistics : CuBit.System_Facts.SP.Statistics;
+         Read : Boolean;
+      begin
+         CuBit.System_Facts.Read_Statistics (Statistics, Read);
+         eventDrops := (if Read then Statistics.Event_Drops else Unsigned_64'Last);
+      end;
       DI.Observe_Drops (Input_Diagnostic, eventDrops);
 
       if eventDrops /= Unsigned_64'Last then
@@ -3487,8 +3550,7 @@ procedure main is
       if drawNativeIcon ((Desktop_Icon_Pixels.Application, id), x, y) then return; end if;
       for yy in 0 .. Desktop_Icons.ICON_SIZE - 1 loop
          for xx in 0 .. Desktop_Icons.ICON_SIZE - 1 loop
-            pixel := Desktop_Icons.Pixels (id)
-              (yy * Desktop_Icons.ICON_SIZE + xx);
+            pixel := Desktop_Icon_Pixels.Pixel ((Desktop_Icon_Pixels.Application, id), xx, yy);
             if Shift_Right (pixel, 24) /= 0 then
                putPixel (x + xx, y + yy, iconPixelOver (pixel, bg));
             end if;
@@ -5078,6 +5140,88 @@ procedure main is
       end loop;
    end drawCurrentScene;
 
+   --  Below the bootstrap text (CAP-001 NUC diagnostics): what Desktop does
+   --  next and since when, the latest Warning-or-worse log records
+   --  (device-memory denials, intel-gpu startup failures) and the kernel's
+   --  physical map, as gathered just before this frame (Desktop_Bootstrap_Logs).
+   procedure drawBootstrapDiagnostics is
+      package Notes renames Desktop_Bootstrap_Notes;
+      Fg     : constant Unsigned_32 := 16#00FFFFFF#;
+      Dim    : constant Unsigned_32 := 16#00B0C4D8#;
+      Warn   : constant Unsigned_32 := 16#00FFD060#;
+      Bg     : constant Unsigned_32 := 16#00203648#;
+      Left   : constant := 24;
+      First_Row : constant := 140;
+      Row_Height : constant := 24;
+      Section_Gap : constant := 10;
+      Kept   : constant Notes.Notes := Desktop_Bootstrap_Logs.Current;
+      Y      : Natural := First_Row;
+      procedure Row (Text : String; Color : Unsigned_32) is
+      begin
+         if Y + Row_Height <= fbHeight then
+            drawUIText (Left, Y, Text, Color, Bg);
+         end if;
+         Y := Y + Row_Height;
+      end Row;
+   begin
+      Row ("Stage: " & bootstrapStage.all & "  (t=" &
+           Unsigned_64'Image (Desktop_Startup_Clock.Elapsed_Ms) & " ms since Desktop started)", Fg);
+      Row ("Waiting on: " & bootstrapWaiting.all, Fg);
+      if rendererWorkerActive then
+         declare
+            Now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+            Running : constant Unsigned_64 :=
+              (if Now >= rendererStartedMs then Now - rendererStartedMs else 0);
+         begin
+            Row ("Renderer startup step " &
+                 Desktop_Breadcrumbs.Name (Desktop_Startup_Progress.Current) & " for" &
+                 Unsigned_64'Image (Running) & " ms; software at" &
+                 Unsigned_64'Image (Unsigned_64'(Renderer_Startup_Budget_Ms)) &
+                 " ms if not done", Fg);
+         end;
+      end if;
+      Row ("Frame" & Unsigned_64'Image (bootstrapFrames) & "; redrawn every" &
+           Unsigned_64'Image (Unsigned_64'(Bootstrap_Tick_Ms)) &
+           " ms while startup runs (t= frozen: Desktop or Display stopped)", Dim);
+      if Kept.Driver.Length > 0 then
+         Row ("intel-gpu latest: " & Notes.Text_Of (Kept.Driver), Fg);
+      else
+         Row ("intel-gpu latest: no line in the log yet", Dim);
+      end if;
+      Row ("Logs as of t=" & Unsigned_64'Image (Desktop_Bootstrap_Logs.Gathered_At_Ms) &
+           " ms; kernel device-memory denials:" &
+           Unsigned_64'Image (Desktop_Bootstrap_Logs.Kernel_Denials) &
+           (if Unsigned_64 (Kept.Highest_Denial) >= Desktop_Bootstrap_Logs.Kernel_Denials
+            then " (all in the log)"
+            else " (" & Natural'Image (Kept.Highest_Denial) & " reached the log)"), Fg);
+      --  Processes the kernel killed for a fault (count read directly; the
+      --  lines come through logstore), shown apart from other warnings.
+      Row ("Kernel process kills:" & Unsigned_64'Image (Desktop_Bootstrap_Logs.Kernel_Kills) &
+           (if Unsigned_64 (Kept.Highest_Kill) >= Desktop_Bootstrap_Logs.Kernel_Kills
+            then " (all in the log)"
+            else " (" & Natural'Image (Kept.Highest_Kill) & " reached the log)"),
+           (if Desktop_Bootstrap_Logs.Kernel_Kills = 0 then Fg else Warn));
+      for I in 1 .. Kept.Kills_Used loop
+         Row (Notes.Text_Of (Kept.Kills (I)), Warn);
+      end loop;
+      Y := Y + Section_Gap;
+      if Kept.Recent_Used = 0 then
+         Row ("Recent warnings: none (or logstore unavailable)", Dim);
+      else
+         Row ("Recent warnings (latest" & Natural'Image (Kept.Recent_Used) & " of" &
+              Natural'Image (Kept.Shown_Total) & "):", Fg);
+         for I in 1 .. Kept.Recent_Used loop
+            Row (Notes.Text_Of (Kept.Recent (I)), Warn);
+         end loop;
+      end if;
+      if Kept.Map_Used > 0 then
+         Y := Y + Section_Gap;
+         for I in 1 .. Kept.Map_Used loop
+            Row (Notes.Text_Of (Kept.Map (I)), Dim);
+         end loop;
+      end if;
+   end drawBootstrapDiagnostics;
+
    procedure renderOutput (Output : Output_Index; Area : Rect) is
       Saved_Clip : constant Rect := clipRect;
       Saved_Enabled : constant Boolean := clipEnabled;
@@ -5098,6 +5242,7 @@ procedure main is
          drawUIText (24, 32, "CuBit Desktop reached", 16#00FFFFFF#, 16#00203648#);
          drawUIText (24, 68, "Preparing renderer startup", 16#00FFFFFF#, 16#00203648#);
          drawUIText (24, 104, "If this remains visible, photograph this screen.", 16#00FFFFFF#, 16#00203648#);
+         drawBootstrapDiagnostics;
       else
          drawCurrentScene;
          drawCursorOverlay;
@@ -9639,6 +9784,10 @@ procedure main is
       end if;
    end handleEvent;
 
+   --  Desktop's calls to display.svc never wait forever: a display
+   --  stuck behind the GPU driver fails the call (the caller treats it
+   --  as a refused request) instead of freezing the desktop.
+   Display_Call_Deadline_Ms : constant := 10_000;
    function callDisplay
       (label : Unsigned_32;
        w0    : Unsigned_64 := 0;
@@ -9654,7 +9803,7 @@ procedure main is
          words    => [w0, w1, w2, w3]);
       tag : MessageTag;
    begin
-      tag := capCall (CAP_SLOT_DISPLAY, msg, CuBit.Messages.Wait_Forever);
+      tag := capCall (CAP_SLOT_DISPLAY, msg, CuBit.Messages.Deadline_After (Display_Call_Deadline_Ms));
       msg.tag := tag;
       return msg;
    end callDisplay;
@@ -9936,13 +10085,13 @@ procedure main is
          if not Granted then closeOutput (Output); return; end if;
          Response := CuBit.Desktop_Messages.From_Wire (DSP.With_Output
            (PW.Encode (PW.Attachment'(B, (P.Targets (B).Grant, Layout))), Output));
-         Response.tag := capCall (CAP_SLOT_DISPLAY, Response, CuBit.Messages.Wait_Forever);
+         Response.tag := capCall (CAP_SLOT_DISPLAY, Response, CuBit.Messages.Deadline_After (Display_Call_Deadline_Ms));
          if Response.tag.label /= PW.Attach_Buffer or else Response.tag.length /= 1 or else
            Response.tag.flags /= 0 or else Response.tag.reserved /= 0 or else Response.words (0) /= 0
          then closeOutput (Output); return; end if;
       end loop;
       Response := CuBit.Desktop_Messages.From_Wire (DSP.With_Output (PW.Encode_Open, Output));
-      Response.tag := capCall (CAP_SLOT_DISPLAY, Response, CuBit.Messages.Wait_Forever);
+      Response.tag := capCall (CAP_SLOT_DISPLAY, Response, CuBit.Messages.Deadline_After (Display_Call_Deadline_Ms));
       if Response.tag.label /= PW.Open_Session or else Response.tag.length /= 4 or else
         Response.tag.flags /= 0 or else Response.tag.reserved /= 0 or else
         Response.words (0) /= 0 or else Response.words (1) = 0 or else
@@ -10354,64 +10503,190 @@ procedure main is
       ok := True;
    end activateInternalSession;
 
-   procedure Present_Bootstrap (Ready : out Boolean) is
+   --  The CPU bootstrap frame (no renderer/GPU owner). Submit_Bootstrap draws
+   --  and submits one; Poll_Bootstrap advances it once, without waiting, and
+   --  says when Display has released it (storage writable, nothing shown
+   --  from it, no fault): only then may a renderer use the pool.
+   procedure Submit_Bootstrap (Submitted : out Boolean) is
       P : Output_Presentation renames presentations (primaryOutput);
-      Started : constant Unsigned_64 := nowMs;
-      Ignore : Unsigned_64;
    begin
-      Ready := False;
+      Submitted := False;
       if not backBufferReady or else not P.Enabled or else
-        not CP.Writable (P.Transfer) or else not BP.Writable (P.Pool, BP.Writer (P.Pool)) or else
-        Started = Unsigned_64'Last
+        not CP.Writable (P.Transfer) or else not BP.Writable (P.Pool, BP.Writer (P.Pool))
       then return; end if;
       -- This CPU frame has no renderer/GPU owner. Do not call Begin_Output:
       -- early renderer admission would irreversibly select software.
       Bootstrap_CPU := True;
       Compositor_Damage.Add (P.Damage, (0, 0, Natural (P.Geometry.Width), Natural (P.Geometry.Height)));
       pumpOutput (primaryOutput);
-      if CP.Current (P.Transfer) not in CP.Prepared | CP.In_Flight then return; end if;
-      for Attempt in 1 .. 2000 loop
+      Submitted := CP.Current (P.Transfer) in CP.Prepared | CP.In_Flight;
+      if Submitted and then bootstrapFrames < Unsigned_64'Last then
+         bootstrapFrames := bootstrapFrames + 1;
+      end if;
+   end Submit_Bootstrap;
+
+   procedure Poll_Bootstrap (Released : out Boolean) is
+      P : Output_Presentation renames presentations (primaryOutput);
+   begin
+      Released := False;
+      if CP.Current (P.Transfer) = CP.Prepared then
+         submitPreparedOutput (primaryOutput);
+      end if;
+      -- Sole existing CQ dispatcher authenticates exact token/session/frame,
+      -- retires Display ownership and routes unrelated completions normally.
+      collectPresentations;
+      if CP.Writable (P.Transfer) and then BP.Displayed (P.Pool) = BP.None and then
+        not BP.Faulted (P.Pool) and then not BP.Rendering (P.Pool)
+      then
+         Bootstrap_CPU := False;
+         RP.Invalidate (P.Repaint, (0, 0, Natural (P.Geometry.Width), Natural (P.Geometry.Height)));
+         Compositor_Damage.Add (P.Damage, (0, 0, Natural (P.Geometry.Width), Natural (P.Geometry.Height)));
+         Released := True;
+         if not bootstrapReleased then
+            bootstrapReleased := True;
+            debugPrint ("DESKTOP-BOOTSTRAP: released; renderer may start" & LF);
+         end if;
+      end if;
+   end Poll_Bootstrap;
+
+   --  Wait for the bootstrap frame in flight to be released, at most
+   --  Limit_Ms (the clock checked between 1 ms sleeps, attempts bounded too).
+   Bootstrap_Release_Limit_Ms : constant := 2_000;
+   procedure Await_Bootstrap (Limit_Ms : Unsigned_64; Ready : out Boolean) is
+      Started : constant Unsigned_64 := nowMs;
+      Ignore : Unsigned_64;
+   begin
+      Ready := False;
+      if Started = Unsigned_64'Last then return; end if;
+      for Attempt in 1 .. Bootstrap_Release_Limit_Ms loop
          -- Bound attempts even if the clock freezes. Exhaustion never
          -- authorizes renderer startup or release of uncertain storage.
-         if CP.Current (P.Transfer) = CP.Prepared then
-            submitPreparedOutput (primaryOutput);
-         end if;
-         -- Sole existing CQ dispatcher authenticates exact token/session/frame,
-         -- retires Display ownership and routes unrelated completions normally.
-         collectPresentations;
-         if CP.Writable (P.Transfer) and then BP.Displayed (P.Pool) = BP.None and then
-           not BP.Faulted (P.Pool) and then not BP.Rendering (P.Pool)
-         then
-            Bootstrap_CPU := False;
-            RP.Invalidate (P.Repaint, (0, 0, Natural (P.Geometry.Width), Natural (P.Geometry.Height)));
-            Compositor_Damage.Add (P.Damage, (0, 0, Natural (P.Geometry.Width), Natural (P.Geometry.Height)));
-            Ready := True;
-            debugPrint ("DESKTOP-BOOTSTRAP: released; renderer may start" & LF);
-            return;
-         end if;
+         Poll_Bootstrap (Ready);
+         if Ready then return; end if;
          declare Now : constant Unsigned_64 := nowMs; begin
-            if Now = Unsigned_64'Last or else Now < Started or else Now - Started >= 2000 then return; end if;
+            if Now = Unsigned_64'Last or else Now < Started or else Now - Started >= Limit_Ms then return; end if;
          end;
          Ignore := syscall (SYSCALL_SLEEP, 1);
       end loop;
+   end Await_Bootstrap;
+
+   procedure Present_Bootstrap (Ready : out Boolean) is
+      Submitted : Boolean;
+   begin
+      Ready := False;
+      Submit_Bootstrap (Submitted);
+      if Submitted then
+         Await_Bootstrap (Bootstrap_Release_Limit_Ms, Ready);
+      end if;
    end Present_Bootstrap;
+
+   --  The renderer worker runs; keep the bootstrap screen alive and log the
+   --  steps it passes, until it finishes or Renderer_Startup_Budget_Ms has
+   --  passed. Finished: it did. Storage_Ready: the bootstrap pool is
+   --  released (no frame of ours in flight), as a renderer requires.
+   procedure Wait_For_Renderer (Finished, Storage_Ready : out Boolean) is
+      Poll_Ms : constant := 10;
+      Started : constant Unsigned_64 := nowMs;
+      Next_Tick : Unsigned_64 := Started + Bootstrap_Tick_Ms;
+      In_Flight : Boolean := False;
+      Held_Reported : Boolean := False;
+      Released, Submitted : Boolean;
+      Now : Unsigned_64;
+      Ignore : Unsigned_64;
+   begin
+      Finished := False;
+      Storage_Ready := False;
+      loop
+         Desktop_Breadcrumbs.Mark (Desktop_Startup_Progress.Current);
+         Finished := Desktop_Renderer_Worker.Finished;
+         exit when Finished;
+         Now := nowMs;
+         exit when Now = Unsigned_64'Last or else Now < Started or else
+           Now - Started >= Renderer_Startup_Budget_Ms;
+         if In_Flight then
+            Poll_Bootstrap (Released);
+            In_Flight := not Released;
+         end if;
+         if Now >= Next_Tick then
+            Next_Tick := Now + Bootstrap_Tick_Ms;
+            if In_Flight then
+               -- A whole tick without a release: Display still holds the
+               -- frame, so nothing new is drawn into its storage. It is
+               -- polled every turn; drawing resumes once it is released.
+               if not Held_Reported then
+                  Held_Reported := True;
+                  debugPrint ("DESKTOP-BOOTSTRAP: frame" & Unsigned_64'Image (bootstrapFrames) &
+                    " not released in" & Unsigned_64'Image (Unsigned_64'(Bootstrap_Tick_Ms)) &
+                    " ms; waiting for Display" & LF);
+               end if;
+            else
+               Desktop_Bootstrap_Logs.Gather (Desktop_Bootstrap_Logs.Call_Limit_Ms);
+               Submit_Bootstrap (Submitted);
+               In_Flight := Submitted;
+            end if;
+         end if;
+         Ignore := syscall (SYSCALL_SLEEP, Poll_Ms);
+      end loop;
+      Desktop_Breadcrumbs.Mark (Desktop_Startup_Progress.Current);
+      if In_Flight then
+         Await_Bootstrap (Bootstrap_Release_Limit_Ms, Released);
+         In_Flight := not Released;
+      end if;
+      Storage_Ready := not In_Flight;
+   end Wait_For_Renderer;
 
    procedure Start_Renderer (Allow_GPU : Boolean) is
       package Selection renames Compositor_Backend_Selection;
       Evidence : Selection.Readiness := (others => False);
       Diagnostic : Desktop_Renderer_Startup.Pipeline_Diagnostic := (others => <>);
       Accepted : Boolean;
+      Started, Finished, Storage_Ready : Boolean := False;
+      Abandoned : Boolean := False;
+      use type Desktop_Breadcrumbs.Stage;
    begin
-      -- No GPU owner exists before Initialize. On an unconfirmed CPU bootstrap,
-      -- select software without entering foreign initialization or cleanup.
+      -- No GPU owner exists before the worker runs. On an unconfirmed CPU
+      -- bootstrap, select software without entering foreign initialization.
       if Allow_GPU then
-      Desktop_Renderer_Startup.Initialize
-        (Configuration => backBufferReady and then desktopLayout.Count = 1 and then
-           primaryOutput = 0 and then presentations (0).Enabled,
-         Width => Unsigned_64 (presentations (0).Geometry.Width),
-         Height => Unsigned_64 (presentations (0).Geometry.Height),
-         Epoch => BP.Writer (presentations (0).Pool).Epoch,
-         Evidence => Evidence, Diagnostic => Diagnostic);
+         Desktop_Breadcrumbs.Mark (Desktop_Breadcrumbs.Init_Before);
+         Desktop_Renderer_Worker.Start
+           (Configuration => backBufferReady and then desktopLayout.Count = 1 and then
+              primaryOutput = 0 and then presentations (0).Enabled,
+            Width => Unsigned_64 (presentations (0).Geometry.Width),
+            Height => Unsigned_64 (presentations (0).Geometry.Height),
+            Epoch => BP.Writer (presentations (0).Pool).Epoch,
+            Started => Started);
+         if not Started then
+            debugPrint ("desktop: renderer worker thread unavailable" & LF);
+         else
+            rendererStartedMs := nowMs;
+            rendererWorkerActive := True;
+            Wait_For_Renderer (Finished, Storage_Ready);
+            rendererWorkerActive := False;
+            debugPrint ("DESKTOP-BOOTSTRAP: renderer startup " &
+              (if Finished then "finished" else "unfinished") & " after" &
+              Unsigned_64'Image (nowMs - rendererStartedMs) & " ms; bootstrap frames" &
+              Unsigned_64'Image (bootstrapFrames) & LF);
+            if Finished then
+               Desktop_Renderer_Worker.Take (Evidence, Diagnostic);
+               Desktop_Renderer_Startup.Report (Evidence, Diagnostic);
+               if Desktop_Startup_Progress.Current < Desktop_Breadcrumbs.Init_After then
+                  Desktop_Breadcrumbs.Mark (Desktop_Breadcrumbs.Init_After);
+               end if;
+               if not Storage_Ready then
+                  debugPrint ("DESKTOP-BOOTSTRAP: frame still held by Display; software selected" & LF);
+                  Evidence := (others => False);
+               end if;
+            else
+               -- Never touch the worker's state again: the GPU stack may still
+               -- be running on it. Software, and no call into the Mesa glue.
+               Abandoned := True;
+               Desktop_GPU_Wake.Disable;
+               debugPrint ("DESKTOP-VULKAN: renderer startup exceeded" &
+                 Unsigned_64'Image (Unsigned_64'(Renderer_Startup_Budget_Ms)) &
+                 " ms at step " & Desktop_Breadcrumbs.Name (Desktop_Startup_Progress.Current) &
+                 "; worker abandoned" & LF);
+            end if;
+         end if;
       end if;
       if Diagnostic.Valid and then not Diagnostic_Pipeline_Valid then
          Diagnostic_Pipeline_Stage := Diagnostic.Stage;
@@ -10425,10 +10700,11 @@ procedure main is
          debugPrint ("DESKTOP-VULKAN: startup=READY" & LF);
       else
          debugPrint ("DESKTOP-VULKAN: startup=SOFTWARE" & LF);
-         if Allow_GPU then Desktop_Renderer_Startup.Stop; end if;
+         if Allow_GPU and then Finished then Desktop_Renderer_Startup.Stop; end if;
          if Desktop_Renderer_Startup.GPU_Capable then
             softwareAnnounced := True;
-            debugPrint ((if Allow_GPU then "desktop: software rendering (GPU unavailable at startup)"
+            debugPrint ((if Abandoned then "desktop: software rendering (GPU startup did not finish in time)"
+                         elsif Allow_GPU then "desktop: software rendering (GPU unavailable at startup)"
                          else "desktop: software rendering (GPU not started; bootstrap unconfirmed)") & LF);
          end if;
       end if;
@@ -10451,9 +10727,11 @@ begin
    end if;
    Read_Appearance;
    Desktop_Wallpaper_Assets.Prepare (appearance.Backdrop);
+   Desktop_Icon_Assets.Load;
    Read_Trace_Configuration;
    Load_Launch_Menu;
    Load_Key_Repeat;
+   Load_GPU_Power;
    Desktop_Launch_Refresh.Initialize;
 
    ret := setLatencyContract
@@ -10489,6 +10767,14 @@ begin
 
    Desktop_Breadcrumbs.Mark (Desktop_Breadcrumbs.Entered);
    declare Bootstrap_Ready : Boolean; begin
+      --  The one frame shown before renderer startup carries the log
+      --  records gathered so far and names the step that follows, so a
+      --  stall there is photographed with its likely cause.
+      Desktop_Bootstrap_Logs.Gather_Before_Bootstrap;
+      if Desktop_Renderer_Startup.GPU_Capable then
+         bootstrapStage := Stage_Renderer'Access;
+         bootstrapWaiting := Waiting_GPU'Access;
+      end if;
       Present_Bootstrap (Bootstrap_Ready);
       if not Bootstrap_Ready then
          debugPrint ("DESKTOP-BOOTSTRAP: unconfirmed; software event loop selected" & LF);

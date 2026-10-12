@@ -12,6 +12,7 @@ package body Desktop_GPU_Wake_Hook is
       return False;
    end Collect;
    function Boost_Hint return Boolean is (False);
+   function Boost_Policy (On : Boolean) return Boolean is (True);
    procedure Blocking_Report (Text : out String; Last : out Natural) is
    begin
       Text := [others => ' '];

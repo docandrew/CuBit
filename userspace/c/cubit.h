@@ -52,13 +52,11 @@ typedef long                ssize_t;
 #define SYSCALL_KILL            7
 #define SYSCALL_SBRK            8
 #define SYSCALL_WRITE           12
-#define SYSCALL_INFO            15
 
 /* IPC - Synchronous */
 #define SYSCALL_RECEIVE         17
 #define SYSCALL_REPLY           18
 #define SYSCALL_SEND_EVENT      19
-#define SYSCALL_RECEIVE_EVENT   20
 #define SYSCALL_RECEIVE_UNTIL_MONOTONIC_MILLISECOND 21
 #define SYSCALL_POLL_ANY_IPC    22
 
@@ -87,9 +85,6 @@ typedef long                ssize_t;
 #define SYSCALL_INP32           36
 #define SYSCALL_OUTP32          37
 
-/* Virtual-to-physical address translation */
-#define SYSCALL_VIRT_TO_PHYS    50
-
 /* Move reply cap from slot 63 to another slot (deferred replies) */
 #define SYSCALL_MOVE_REPLY_CAPABILITY  51
 #define SYSCALL_REPLY_AND_CONSUME_REPLY_CAPABILITY 52
@@ -115,7 +110,6 @@ typedef long                ssize_t;
 #define SYSCALL_CREATE_SHARED_MEMORY_GRANT_FOR_PROCESS_ID      102
 #define SYSCALL_REVOKE_SHARED_MEMORY_GRANT                     103
 #define SYSCALL_CREATE_SHARED_MEMORY_GRANT_VIA_CAPABILITY      106
-#define SYSCALL_SET_WELL_KNOWN  107
 /* Owned inactive slot => 0; active/revoking => generation; error => -1. */
 #define SYSCALL_GET_OWNED_SHARED_MEMORY_GRANT_GENERATION       108
 #define SYSCALL_ACQUIRE_SHARED_MEMORY_GRANT                    109
@@ -133,10 +127,6 @@ typedef long                ssize_t;
 /* Kernel trace controls */
 #define SYSCALL_TRACE_RESET     82
 #define SYSCALL_TRACE_SUMMARY   83
-
-/* Well-known service roles */
-#define ROLE_FILESYSTEM         1
-#define ROLE_PROCMGR            2
 
 /* Well-known capability slots */
 #define CAP_SLOT_SELF           0
@@ -201,8 +191,8 @@ typedef char cubit_completion_size_must_be_88[
 /* Driver registration */
 #define SYSCALL_REGISTER_DRIVER 2000
 
-/* Sysinfo queries */
-#define SYSINFO_REGISTERED_DRIVER 2000
+/* Service roles of the kernel's service registry (read from its
+   publication, CuBit.System_Facts; there is no query system call). */
 #define DRIVER_CONFIG             11
 #define DRIVER_IPCTEST            14
 #define DRIVER_DESKTOP            15

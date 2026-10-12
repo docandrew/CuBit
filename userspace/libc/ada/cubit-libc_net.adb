@@ -7,6 +7,7 @@ with System.Machine_Code; use System.Machine_Code;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Kernel_ABI;
 with CuBit.Kernel_Calls;
+with CuBit.System_Facts;
 with CuBit.Libc_ABI; use CuBit.Libc_ABI;
 with CuBit.Libc_Imports;
 with CuBit.Channel_Rings;
@@ -179,7 +180,7 @@ package body CuBit.Libc_Net is
       Lock (Scopes_Lock'Access);
       if not Scopes_Known then
          Self := Kernel (K.Get_Process_Id);
-         Netstack := Kernel (K.Info, K.Registered_Driver, K.Driver_Netstack);
+         Netstack := CuBit.System_Facts.Registered (K.Driver_Netstack);
          for Slot in 0 .. K.Capability_Slots - 1 loop
             exit when Scope_Count = Maximum_Scopes;
             Info := [others => 0];

@@ -19,6 +19,10 @@ with Multiboot;
 with Capabilities;
 with Capabilities.IRQ;
 with Capabilities.Operations;
+with Device_Memory_Admission;
+with Device_Memory_Authority;
+with Device_Memory_Diagnostics;
+with Device_Memory_Publication;
 with InterruptNumbers;
 with IPC_Labels;
 with ELF;
@@ -26,6 +30,7 @@ with Heap_Admission;
 with Heap_Growth;
 with Interrupts;
 with Memory_Grants;
+with Modules;
 with Owned_Memory_Layout;
 with PerCpuData;
 with PerCPUData;
@@ -38,7 +43,9 @@ with Process.Loader;
 with Process.User_Memory;
 with Spinlocks;
 with Process_Lifetime;
-with Sysinfo;
+with Physical_Range_Map;
+with Service_Registry;
+with System_Publications;
 with TextIO; use TextIO;
 with TLB_Shootdown;
 with Util;
@@ -62,6 +69,13 @@ package body Syscall.IPC is
     --  monopolize the kernel.  Larger regions are mapped by a sequence of
     --  bounded calls.
     MAX_MAP_INTO_PAGES_PER_CALL : constant Unsigned_64 := 1024;
+    -- MAP_INTO arg4: what kind of physical memory is shared.
+    -- Boot image: arg1 is a byte offset into the initrd, never a physical
+    -- address (docs/syscall-retirement.md); the pages map read-only.
+    MAP_INTO_BOOT_MODULE : constant Unsigned_64 := 1;
+    MAP_INTO_DEVICE      : constant Unsigned_64 := 2;  -- uncached device pages
+    -- Exclusive end of the lower-half user address space.
+    USER_ADDRESS_LIMIT   : constant Unsigned_64 := 16#0000_8000_0000_0000#;
 
     function toErr is
         new Ada.Unchecked_Conversion (Long_Integer, Unsigned_64);
@@ -224,6 +238,12 @@ package body Syscall.IPC is
           arg1 >= 16#0000_8000_0000_0000# or else
           numPages * 4096 > 16#0000_8000_0000_0000# - arg1
         then
+            Device_Memory_Diagnostics.Record_Denial
+              (callerPID, Device_Memory_Publication.Map_Device, arg0,
+               (if numPages <= 1024 then numPages * Unsigned_64 (Virtmem.PAGE_SIZE) else 0),
+               (if arg3 = 1 then Device_Memory_Admission.Read_Only
+                else Device_Memory_Admission.Read_Write),
+               (Why => Device_Memory_Publication.Invalid_Range, others => <>));
             return;
         end if;
         if Memory_Grants.Overlaps_Received_Region
@@ -234,15 +254,26 @@ package body Syscall.IPC is
             return; -- only the grant subsystem may mutate its aperture
         end if;
 
-        Capabilities.Operations.checkDeviceMemAccess (
-            table   => Process.proctab(callerPID).caps,
-            base    => arg0,
-            size    => numPages * Unsigned_64 (Virtmem.PAGE_SIZE),
-            allowed => capAllowed,
-            requireWrite => arg3 = 0);
+        -- Device-mappable pages only (CAP-001): RAM, kernel memory, boot
+        -- modules, ACPI memory and kernel MMIO are refused whatever
+        -- CAP_DEVICE_MEM the caller holds.
+        capAllowed := Device_Memory_Authority.Authorize
+          (Process.proctab(callerPID).caps, Physical_Range_Map.Kernel_Map,
+           arg0, numPages * Unsigned_64 (Virtmem.PAGE_SIZE),
+           (if arg3 = 0 then Device_Memory_Admission.Read_Write
+            else Device_Memory_Admission.Read_Only));
 
         if not capAllowed then
-            println ("MAP_DEVICE: denied, no CAP_DEVICE_MEM");
+            Device_Memory_Diagnostics.Record_Denial
+              (callerPID, Device_Memory_Publication.Map_Device, arg0,
+               numPages * Unsigned_64 (Virtmem.PAGE_SIZE),
+               (if arg3 = 0 then Device_Memory_Admission.Read_Write
+                else Device_Memory_Admission.Read_Only),
+               Device_Memory_Authority.Explain
+                 (Process.proctab(callerPID).caps, Physical_Range_Map.Kernel_Map,
+                  arg0, numPages * Unsigned_64 (Virtmem.PAGE_SIZE),
+                  (if arg3 = 0 then Device_Memory_Admission.Read_Write
+                   else Device_Memory_Admission.Read_Only)));
             return;
         end if;
 
@@ -627,19 +658,79 @@ package body Syscall.IPC is
         hasCap    : Boolean := False;
         ok        : Boolean;
         pgFlags   : Unsigned_64;
+        -- The first physical page: arg1 itself for device pages, the
+        -- resolved boot-image offset for the boot image.
+        physFirst : Unsigned_64 := arg1;
 
         procedure mapPage is new Virtmem.mapPage
             (BuddyAllocator.allocFrame);
+
+        -- Every refusal of what may be shared is a device-memory denial
+        -- record (Device_Memory_Diagnostics), with the request as given.
+        procedure Refuse_Into (Why : Device_Memory_Authority.Explanation) is
+        begin
+            Device_Memory_Diagnostics.Record_Denial
+              (callerPID, Device_Memory_Publication.Map_Into, arg1,
+               (if arg3 <= MAX_MAP_INTO_PAGES_PER_CALL
+                then arg3 * Unsigned_64 (Virtmem.PAGE_SIZE) else 0),
+               (if arg4 = MAP_INTO_BOOT_MODULE then Device_Memory_Admission.Read_Only
+                else Device_Memory_Admission.Read_Write),
+               Why);
+        end Refuse_Into;
     begin
         retval := reterr;
 
         Process.resolveIdentity (Process_Identities.From_Word (arg0), targetPID, targetGeneration);
         if targetPID = Process.NO_PROCESS then
             return;
-        elsif arg3 = 0 or else arg3 > MAX_MAP_INTO_PAGES_PER_CALL then
-            println ("MAP_INTO: invalid page count");
+        elsif arg3 = 0 or else arg3 > MAX_MAP_INTO_PAGES_PER_CALL or else
+          arg1 mod Unsigned_64 (Virtmem.PAGE_SIZE) /= 0 or else
+          arg2 = 0 or else arg2 mod Unsigned_64 (Virtmem.PAGE_SIZE) /= 0 or else
+          arg2 >= USER_ADDRESS_LIMIT or else
+          arg3 * Unsigned_64 (Virtmem.PAGE_SIZE) > USER_ADDRESS_LIMIT - arg2
+        then
+            Refuse_Into ((Why => Device_Memory_Publication.Invalid_Range, others => <>));
             return;
         end if;
+
+        -- What may be shared (CAP-001). Read-only: pages of the boot image
+        -- (the initrd), named by offset, the only RAM this call maps. I/O:
+        -- device pages the CALLER holds CAP_DEVICE_MEM for. RAM, kernel
+        -- memory and other processes' memory are never mapped, whatever the
+        -- grant.
+        case arg4 is
+            when MAP_INTO_BOOT_MODULE =>
+                declare
+                    valid : Boolean;
+                begin
+                    Modules.Initrd_Pages
+                      (arg1, arg3 * Unsigned_64 (Virtmem.PAGE_SIZE), physFirst, valid);
+                    if not valid or else not Physical_Range_Map.Within_Boot_Module
+                      (physFirst, arg3 * Unsigned_64 (Virtmem.PAGE_SIZE))
+                    then
+                        Refuse_Into ((Why => Device_Memory_Publication.Not_Boot_Module,
+                                      others => <>));
+                        return;
+                    end if;
+                end;
+                pgFlags := Virtmem.PG_USERDATARO;
+            when MAP_INTO_DEVICE =>
+                if not Device_Memory_Authority.Authorize
+                  (Process.proctab(callerPID).caps, Physical_Range_Map.Kernel_Map,
+                   arg1, arg3 * Unsigned_64 (Virtmem.PAGE_SIZE),
+                   Device_Memory_Admission.Read_Write)
+                then
+                    Refuse_Into (Device_Memory_Authority.Explain
+                      (Process.proctab(callerPID).caps, Physical_Range_Map.Kernel_Map,
+                       arg1, arg3 * Unsigned_64 (Virtmem.PAGE_SIZE),
+                       Device_Memory_Admission.Read_Write));
+                    return;
+                end if;
+                pgFlags := Virtmem.PG_USERIO;
+            when others =>
+                Refuse_Into ((Why => Device_Memory_Publication.Invalid_Range, others => <>));
+                return;
+        end case;
         if Memory_Grants.Overlaps_Received_Region
           (arg2, Memory_Grants.Page_Count (arg3))
           or else Owned_Memory_Layout.Conflicts
@@ -683,24 +774,17 @@ package body Syscall.IPC is
                     return;
                 end if;
 
-                case arg4 is
-                    when 0 => pgFlags := Virtmem.PG_USERDATA;
-                    when 1 => pgFlags := Virtmem.PG_USERDATARO;
-                    when 2 => pgFlags := Virtmem.PG_USERIO;
-                    when others => pgFlags := Virtmem.PG_USERDATA;
-                end case;
-
                 ok := True;
                 Process.Owned_Memory.Lock;
                 if Process.Owned_Memory.Physical_Conflict
-                  (arg1, arg3 * Unsigned_64 (Virtmem.PAGE_SIZE)) then
+                  (physFirst, arg3 * Unsigned_64 (Virtmem.PAGE_SIZE)) then
                     Process.Owned_Memory.Unlock;
                     return;
                 end if;
                 Process.lockAddressSpace (targetPID);
                 for i in 0 .. Natural (arg3) - 1 loop
                     mapPage (
-                        phys    => Virtmem.PhysAddress (arg1) +
+                        phys    => Virtmem.PhysAddress (physFirst) +
                             Virtmem.PhysAddress (i * Virtmem.PAGE_SIZE),
                         virt    => Virtmem.VirtAddress (arg2) +
                             Virtmem.VirtAddress (i * Virtmem.PAGE_SIZE),
@@ -840,13 +924,25 @@ package body Syscall.IPC is
         fbPhys := Virtmem.PhysAddress (Item.Map_First);
         numPages := (Storage_Count (Item.Map_Limit) - Storage_Count (Item.Map_First)) /
           Virtmem.PAGE_SIZE;
-        Capabilities.Operations.checkDeviceMemAccess (
-            table   => Process.proctab(callerPID).caps,
-            base    => 0,
-            size    => Unsigned_64(Item.Bytes),
-            allowed => capAllowed);
+        -- The capability must cover the framebuffer's real pages, which
+        -- must be device-mappable (CAP-001).
+        capAllowed := Device_Memory_Authority.Authorize
+          (Process.proctab(callerPID).caps, Physical_Range_Map.Kernel_Map,
+           Unsigned_64 (Item.Map_First),
+           Unsigned_64 (Item.Map_Limit) - Unsigned_64 (Item.Map_First),
+           Device_Memory_Admission.Read_Write);
 
         if not capAllowed then
+            Device_Memory_Diagnostics.Record_Denial
+              (callerPID, Device_Memory_Publication.Map_Framebuffer,
+               Unsigned_64 (Item.Map_First),
+               Unsigned_64 (Item.Map_Limit) - Unsigned_64 (Item.Map_First),
+               Device_Memory_Admission.Read_Write,
+               Device_Memory_Authority.Explain
+                 (Process.proctab(callerPID).caps, Physical_Range_Map.Kernel_Map,
+                  Unsigned_64 (Item.Map_First),
+                  Unsigned_64 (Item.Map_Limit) - Unsigned_64 (Item.Map_First),
+                  Device_Memory_Admission.Read_Write));
             retval := reterr;
         else
             --  Close and drain kernel rendering BEFORE any usable mapping is
@@ -1066,11 +1162,9 @@ package body Syscall.IPC is
                    Process.proctab(callerPID).caps(slot).rights(
                        Capabilities.RIGHT_READ) and then
                    Process.proctab(callerPID).caps(slot).object.ref <=
-                       Unsigned_64 (Sysinfo.DriverID'Last) and then
-                   Sysinfo.getInfo
-                     (Sysinfo.REGISTERED_DRIVER,
-                      Process.proctab(callerPID).caps(slot).object.ref) =
-                       Unsigned_64 (destPID)
+                       Service_Registry.DriverID'Last and then
+                   Service_Registry.Registered
+                     (Process.proctab(callerPID).caps(slot).object.ref) = destPID
                 then
                     hasCap := True;
                     authorityTag :=
@@ -1526,111 +1620,35 @@ package body Syscall.IPC is
     end handleRevokeGrantReference;
 
     ---------------------------------------------------------------------------
-    -- handleInfo
+    -- handleReadStatistics (SYSCALL_READ_STATISTICS)
+    -- arg0 = address of a System_Publications.Statistics in the caller's own
+    -- writable memory, arg1 = its size. Only the caller's own counters and
+    -- the system's free memory: callerPID comes from the running thread, so
+    -- no argument can select another process.
     ---------------------------------------------------------------------------
-    procedure handleInfo (callerPID  : Process.ProcessID;
-                          arg0, arg1 : Unsigned_64;
-                          retval     : out Unsigned_64) with
+    procedure handleReadStatistics (callerPID  : Process.ProcessID;
+                                    arg0, arg1 : Unsigned_64;
+                                    retval     : out Unsigned_64) with
         SPARK_Mode => Off
     is
-        use type Capabilities.CapabilityType;
-
-
-        isPublic     : Boolean := False;
-        isDeviceInfo : Boolean := False;
-        hasCap       : Boolean := False;
-
-        -- The answer as userspace sees it: a registered driver is named by
-        -- its identity (KERN-003). Teardown clears a dying process's
-        -- registrations, so the slot read here is its current life.
-        function userInfo return Unsigned_64 is
-            answer : constant Unsigned_64 := Sysinfo.getInfo (arg0, arg1);
-        begin
-            if arg0 = Sysinfo.REGISTERED_DRIVER and then
-               answer <= Unsigned_64 (Process.ProcessID'Last)
-            then
-                return Process_Identities.To_Word (Process.identityOf (Process.ProcessID (answer)));
-            end if;
-            return answer;
-        end userInfo;
+        Snapshot : constant System_Publications.Statistics :=
+          (Owned_Bytes       => Unsigned_64 (Process.proctab(callerPID).frames.length) *
+                                  Unsigned_64 (Virtmem.PAGE_SIZE),
+           Event_Drops       => Process.proctab(callerPID).eventDrops,
+           Free_Memory_Bytes => Unsigned_64 (BuddyAllocator.getFreeBytes));
+        copied : Boolean;
     begin
-        if arg0 = Sysinfo.MEM_OWNED_SELF then
-            -- callerPID is derived from the running thread by syscall dispatch;
-            -- arg1 cannot select another process. A live telemetry snapshot.
-            retval := Unsigned_64 (Process.proctab(callerPID).frames.length) *
-              Unsigned_64 (Virtmem.PAGE_SIZE);
+        retval := reterr;
+        if arg1 /= System_Publications.Statistics_Bytes then
             return;
         end if;
-        if arg0 = Sysinfo.EVENT_DROPS_SELF then
-            retval := Process.proctab(callerPID).eventDrops;
-            return;
+        Process.User_Memory.Copy_To_User
+          (callerPID, arg0, Snapshot'Address,
+           System_Publications.Statistics_Bytes, copied);
+        if copied then
+            retval := 0;
         end if;
-
-        case arg0 is
-            when Sysinfo.FB_WIDTH | Sysinfo.FB_HEIGHT |
-                 Sysinfo.FB_PITCH | Sysinfo.FB_BPP |
-                 Sysinfo.NUM_CPUS |
-                 Sysinfo.MONOTONIC_DIAGNOSTIC |
-                 Sysinfo.REGISTERED_DRIVER |
-                 Sysinfo.MAGIC_RAMDISK_ADDRESS |
-                 Sysinfo.RAMDISK_SIZE =>
-                --  The ramdisk address is a fixed virtual address, not a
-                --  physical address.  Learning it conveys no access: only a
-                --  process into which the pages were explicitly mapped can
-                --  read them.
-                isPublic := True;
-            when Sysinfo.NVME_BAR0 | Sysinfo.NVME_DMA_PHYS |
-                 Sysinfo.HDA_BAR0 | Sysinfo.HDA_DMA_PHYS |
-                 Sysinfo.NET_IOBASE =>
-                isDeviceInfo := True;
-            when others =>
-                null;
-        end case;
-
-        if isPublic then
-            retval := userInfo;
-            return;
-        end if;
-
-        -- Kernel-mode threads exempt
-        if Process.threadOf (callerPID).mode = Process.KERNEL then
-            hasCap := True;
-        elsif isDeviceInfo then
-            -- Physical addresses require CAP_DEVICE_MEM
-            for slot in Capabilities.CapabilitySlot loop
-                if Process.proctab(callerPID).caps(slot).capType =
-                   Capabilities.CAP_DEVICE_MEM
-                then
-                    hasCap := True;
-                    exit;
-                end if;
-            end loop;
-        else
-            -- Other non-public queries require CAP_PROCESS+READ
-            for slot in Capabilities.CapabilitySlot loop
-                if Process.proctab(callerPID).caps(slot).capType =
-                   Capabilities.CAP_PROCESS and then
-                   Process.proctab(callerPID).caps(slot).rights(
-                       Capabilities.RIGHT_READ)
-                then
-                    hasCap := True;
-                    exit;
-                end if;
-            end loop;
-        end if;
-
-        if not hasCap then
-            Process.IPC.notifySupervisor (
-                callerPID,
-                IPC_Labels.EVENT_CAP_FAULT,
-                Unsigned_64 (SyscallNumber'Enum_Rep (SYSCALL_INFO)),
-                arg0, arg1);
-            retval := reterr;
-            return;
-        end if;
-
-        retval := userInfo;
-    end handleInfo;
+    end handleReadStatistics;
 
     ---------------------------------------------------------------------------
     -- handleGrantViaCap

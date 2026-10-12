@@ -30,7 +30,7 @@ fi
 lib() { "$gxx" -print-file-name="$1"; }
 exec "$gxx" "${common[@]}" -nostdlib -static \
     -Wl,-T,"$sysroot/lib/cubit.ld" -Wl,-z,stack-size="${CUBIT_STACK_SIZE:-1048576}" \
-    -Wl,-z,noexecstack -Wl,-z,noseparate-code \
+    -Wl,-z,noexecstack -Wl,-z,noseparate-code -Wl,--build-id=sha1 \
     "$sysroot/lib/cubit-crt1.o" "$sysroot/lib/crti.o" "$(lib crtbeginT.o)" \
     "${args[@]}" "${manifest[@]}" \
     -Wl,--start-group "$(lib libstdc++.a)" "$(lib libsupc++.a)" "$sysroot/lib/libc.a" \

@@ -62,6 +62,19 @@ package Native_GPU_Job_Rules with Pure, SPARK_Mode is
                                Call_Deadline'Result - Now_Ms >
                                  Remaining_Ns / Nanoseconds_Per_Millisecond))));
 
+   --  The same deadline, but never later than Bound_Ms from now when the
+   --  process bounds its GPU calls (Bound_Ms /= 0; Desktop does): a wait for
+   --  ever then ends by the bound instead (NUC startup hang 2026-10-11).
+   function Bounded_Deadline (Now_Ms, Remaining_Ns, Bound_Ms : Unsigned_64) return Unsigned_64 is
+     (if Bound_Ms = 0 or else Bound_Ms >= Forever - 1 - Now_Ms then Call_Deadline (Now_Ms, Remaining_Ns)
+      else Unsigned_64'Min (Call_Deadline (Now_Ms, Remaining_Ns), Now_Ms + Bound_Ms))
+     with Pre  => Now_Ms < Forever,
+          Post => Bounded_Deadline'Result <= Call_Deadline (Now_Ms, Remaining_Ns) and then
+                  (if Bound_Ms /= 0 and then Bound_Ms < Forever - 1 - Now_Ms then
+                     Bounded_Deadline'Result < Forever and then
+                     Bounded_Deadline'Result <= Now_Ms + Bound_Ms) and then
+                  (if Bound_Ms = 0 then Bounded_Deadline'Result = Call_Deadline (Now_Ms, Remaining_Ns));
+
    --  A status line's state: the context still runs work (Active), or the
    --  session has no such context (Unused). Anything else, or a value the
    --  driver does not write, means the device is lost to this session.

@@ -342,7 +342,8 @@ package body CuBit.Channels is
    procedure Open
      (Endpoint : CuBit.Messages.CapabilitySlot; Item : CC.Contract; This_Side : Side;
       C : out Channel; Result : out Open_Result; Refusal : out CP.Open_Refusal;
-      Connector : Unsigned_16 := 0)
+      Connector : Unsigned_16 := 0;
+      Deadline : Unsigned_64 := CuBit.Messages.Wait_Forever)
    is
       M : CuBit.Messages.Message;
       Prepared : Boolean;
@@ -354,7 +355,8 @@ package body CuBit.Channels is
          Result := Failed;
          return;
       end if;
-      Ignore_Tag := CuBit.Messages.capCall (Endpoint, M, CuBit.Messages.Wait_Forever);
+      --  On REPLY_TIMEOUT M is not an acceptance: Finish_Open closes C.
+      Ignore_Tag := CuBit.Messages.capCall (Endpoint, M, Deadline);
       Finish_Open (C, M, Result, Refusal);
    end Open;
 

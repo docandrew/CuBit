@@ -22,6 +22,7 @@ package body Desktop_GPU_Wake_Hook is
    end Collect;
    procedure Blocking_Report (Text : out String; Last : out Natural) is
    begin
+      Reports := Reports + 1;
       Text := [others => ' '];
       Text (Text'First .. Text'First + Report_Last - 1) := Report_Text (1 .. Report_Last);
       Last := Text'First + Report_Last - 1;
@@ -37,4 +38,10 @@ package body Desktop_GPU_Wake_Hook is
       Hints := Hints + 1;
       return Hints mod 2 = 1;   --  every other hint coalesced
    end Boost_Hint;
+   function Boost_Policy (On : Boolean) return Boolean is
+   begin
+      Policies := Policies + 1;
+      Last_Policy := On;
+      return True;
+   end Boost_Policy;
 end Desktop_GPU_Wake_Hook;

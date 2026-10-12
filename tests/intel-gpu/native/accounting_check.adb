@@ -2,6 +2,8 @@ with Interfaces; use Interfaces;
 with System;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Launch_Configurations;
+with Launch_Configuration;
 with Cpio;
 with Native_GPU_Buffers;
 with Intel_GPU_Buffer_Requests;
@@ -9,6 +11,15 @@ with Intel_GPU_Buffer_Backing;
 with Intel_GPU_Buffer_Reply;
 with Intel_GPU_Extent_Allocator;
 procedure Accounting_Check is
+   --  The boot image's size: the kernel's launch configuration for the
+   --  process it starts in devmgr's place.
+   function Boot_Image_Bytes return Unsigned_64 is
+      Configuration : Launch_Configuration.Device_Manager_Configuration;
+      Configured : Boolean;
+   begin
+      CuBit.Launch_Configurations.Get (Configuration, Configured);
+      return (if Configured then Configuration.Boot_Image else 0);
+   end Boot_Image_Bytes;
    PID : constant Unsigned_64 := syscall (SYSCALL_GETPID);
    Child : constant Unsigned_64 := 42;
    Ignore : Unsigned_64;
@@ -83,7 +94,7 @@ begin
    debugPrint ("native accounting adapter: production client and handler, separate processes (NO GPU)" & ASCII.LF);
    B.Configure_Client_Budgets (Object, 12288, OK); Check (OK, "budget");
    Cpio.init (Archive, To_Address (16#0000_5000_0000_0000#),
-     getInfo (SYSINFO_RAMDISK_SIZE), OK); Check (OK, "initrd");
+     Boot_Image_Bytes, OK); Check (OK, "initrd");
    Cpio.fileView (Archive, Cpio.findFile (Archive, "devmgr.svc"), ELF, ELF_Size, OK);
    Check (OK, "ELF");
    Check (syscall (SYSCALL_SPAWN, Unsigned_64 (To_Integer (ELF)), ELF_Size,

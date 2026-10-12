@@ -4,4 +4,7 @@
   (version "0.1.0")
   (request-framebuffer read-write framebuffer)
   # Runtime falls back to the linear framebuffer if GPU service is absent.
-  (request-service gpu read-write gpu))
+  (request-service gpu read-write gpu)
+  # Warnings (a refused framebuffer mapping) reach logstore and the Desktop
+  # bootstrap screen.
+  (request-service logstore read-write logstore))

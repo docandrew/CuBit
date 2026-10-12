@@ -1,4 +1,5 @@
 with System.Storage_Elements; use System.Storage_Elements;
+with CuBit.System_Facts;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Desktop_Messages;
 with CuBit.Display_Protocol;
@@ -31,11 +32,6 @@ package body Intel_GPU_Display_Executor is
    use type FO.Outcome, CS.Readiness, Topology.Pipe, DPL.Plane_Count;
    use type CuBit.Display_Protocol.Wire_Message;
 
-   --  SYSINFO queries for the firmware framebuffer (kernel/src/sysinfo.ads).
-   Sysinfo_FB_Width  : constant Unsigned_64 := 1100;
-   Sysinfo_FB_Height : constant Unsigned_64 := 1101;
-   Sysinfo_FB_Pitch  : constant Unsigned_64 := 1102;
-   Sysinfo_FB_Bits   : constant Unsigned_64 := 1103;
    Framebuffer_Bits  : constant Unsigned_64 := 32;
 
    --  Scanout protocol labels display.svc sends a native GPU (0x0A03 Clear,
@@ -270,7 +266,10 @@ package body Intel_GPU_Display_Executor is
    procedure Select_Output
      (Planes : FO.Primaries; Table_Bytes, Register_Base : Unsigned_64)
    is
-      Bits : constant Unsigned_64 := getInfo (Sysinfo_FB_Bits);
+      --  The firmware framebuffer (kernel system facts publication).
+      Firmware : constant CuBit.System_Facts.SP.Framebuffer_Geometry :=
+        CuBit.System_Facts.Framebuffer;
+      Bits : constant Unsigned_64 := Firmware.Bits_Per_Pixel;
    begin
       Active_Pipes := 0;
       for P in Topology.Pipe loop
@@ -281,8 +280,7 @@ package body Intel_GPU_Display_Executor is
          end if;
       end loop;
       Selection := FO.Select_Output
-        (Planes, Table_Bytes, getInfo (Sysinfo_FB_Width), getInfo (Sysinfo_FB_Height),
-         getInfo (Sysinfo_FB_Pitch));
+        (Planes, Table_Bytes, Firmware.Width, Firmware.Height, Firmware.Pitch);
       if Selection.State = FO.Selected and then Bits /= Framebuffer_Bits then
          Selection := (State => FO.Invalid_Framebuffer);
       end if;
@@ -544,19 +542,65 @@ package body Intel_GPU_Display_Executor is
       end if;
    end Handle_Scanout;
 
-   procedure Service is
-      Latched : Boolean;
+   --  Every Present is answered within Present_Deadline_Us: at latch, or
+   --  as a failure with a logged reason (flips faulted, or no latch seen).
+   Stall_Report_Us : constant := 100_000;
+   Present_Deadline_Us : constant := 1_000_000;
+   Stall_Log_Interval_Us : constant := 1_000_000;
+   GPU_Status_Stalled : constant Unsigned_64 := 7;
+   Last_Stall_Log_Us : Unsigned_64 := 0;
+
+   procedure Answer_Present (Code : Unsigned_64) is
       Reply_Message : Message := NULL_MESSAGE;
       Replied : Unsigned_64;
       pragma Unreferenced (Replied);
    begin
+      Reply_Message.tag := (OP_GPU_Present_Buffer, 1, 0, 0);
+      Reply_Message.words := [Code, 0, 0, 0];
+      Replied := replyCap (Present_Reply_Slot, Reply_Message);
+      Present_Reply_Owed := False;
+   end Answer_Present;
+
+   procedure Log_Stall (Reason : String; View : Flip.Stall_View) is
+   begin
+      Log ("intel-gpu: flips stalled reason=" & Reason &
+           " owed=" & Boolean'Image (View.Owed) &
+           " armed=" & Flip.Index'Image (View.Armed) &
+           " owed_ms=" & Unsigned_64'Image (View.Owed_Us / 1_000) &
+           " surf=" & Hex (Unsigned_64 (View.Surface_Word)) &
+           " surflive=" & Hex (Unsigned_64 (View.Live_Word)) &
+           " frame=" & Unsigned_32'Image (View.Frame_Count) &
+           " reply_owed=" & Boolean'Image (Present_Reply_Owed));
+   end Log_Stall;
+
+   procedure Service is
+      Latched : Boolean;
+      Now : constant Unsigned_64 := Monotonic_Us;
+   begin
       Flip.Service (Latched);
       if Latched and then Present_Reply_Owed then
-         Reply_Message.tag := (OP_GPU_Present_Buffer, 1, 0, 0);
-         Reply_Message.words := [GPU_Status_OK, 0, 0, 0];
-         Replied := replyCap (Present_Reply_Slot, Reply_Message);
-         Present_Reply_Owed := False;
+         Answer_Present (GPU_Status_OK);
       end if;
+      if not Present_Reply_Owed or else Now = Unsigned_64'Last then
+         return;
+      end if;
+      declare
+         View : constant Flip.Stall_View := Flip.Stall;
+      begin
+         if not Flip.Ready then
+            --  Faulted (an impossible PLANE_SURFLIVE): flips have stopped.
+            Log_Stall ("flips-faulted", View);
+            Answer_Present (GPU_Error_Bad_State);
+         elsif View.Owed and then View.Owed_Us >= Present_Deadline_Us then
+            Log_Stall ("no-latch-within-deadline", View);
+            Answer_Present (GPU_Status_Stalled);
+         elsif View.Owed and then View.Owed_Us >= Stall_Report_Us and then
+           Now - Last_Stall_Log_Us >= Stall_Log_Interval_Us
+         then
+            Last_Stall_Log_Us := Now;
+            Log_Stall ("latch-late", View);
+         end if;
+      end;
    end Service;
 
    function Wake_Ms (Now_Ms : Unsigned_64) return Unsigned_64 is

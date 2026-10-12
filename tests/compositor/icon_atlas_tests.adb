@@ -1,6 +1,7 @@
 with Ada.Text_IO;
 with Interfaces;
 with Desktop_Icons;
+with Desktop_Icon_Store;
 with Desktop_Cursors;
 with Desktop_Window_Icons;
 with Desktop_Icon_Pixels.Atlases;
@@ -35,7 +36,7 @@ procedure Icon_Atlas_Tests is
          Rows : constant array (Desktop_Cursors.Cursor_ID) of Natural := (45, 73, 97, 115, 140);
       begin
          if Kind = P.Application then
-            return Desktop_Icons.Pixels (Desktop_Icons.Icon_ID'Val (Y / 24)) ((Y mod 24) * 24 + X);
+            return Desktop_Icon_Store.Pixel (Desktop_Icons.Icon_ID'Val (Y / 24), X, Y mod 24);
          elsif Y < 45 then
             return (if X < 9 then Desktop_Window_Icons.Pixels (Desktop_Window_Icons.Icon_ID'Val (Y / 9)) ((Y mod 9) * 9 + X) else 0);
          else

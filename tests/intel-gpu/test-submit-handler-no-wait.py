@@ -155,7 +155,9 @@ poll_ms = re.search(r'Submission_Poll_Ms : constant Unsigned_64 := ([\d_]+);', m
 if not poll_us or int(poll_us.group(1).replace('_', '')) > 1000 or \
    not poll_ms or int(poll_ms.group(1).replace('_', '')) > 1:
     raise SystemExit('FAIL: in-flight sleep exceeds 1 ms')
-loop_start = main.index('   Submit_Budget_Query;\n   loop')
+# The service loop: the first loop after the budget query (startup
+# markers may sit between them).
+loop_start = main.index('\n   loop\n', main.index('   Submit_Budget_Query;\n'))
 loop_text = main[loop_start:]
 for step in ('Service_Context_Events;', 'Process_Retained_Events;', 'Queue_Service.Turn (Queue_State);',
              'Process_Pending_Quarantines;', 'Report_Submit_Latency;', 'Sleep_While_GPU_Busy;',

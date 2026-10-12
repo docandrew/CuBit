@@ -33,7 +33,7 @@ begin
       CuBit.Metrics.Query (Watcher, 0, Rows, Written, Next, Result);
       if Result /= P.OK then Fail ("observer query"); end if;
       for I in 0 .. Written - 1 loop
-         if Rows (I) (P.Row_Source) = getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_DESKTOP) and then
+         if Rows (I) (P.Row_Source) = To_Word (Registered_Driver (DRIVER_DESKTOP)) and then
            Rows (I) (P.Row_Key) in 1 | 3 | 5 | 6
          then
             if not P.Is_Publisher (Rows (I) (P.Row_Publisher_Tag)) or else

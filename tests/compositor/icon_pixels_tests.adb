@@ -2,6 +2,7 @@ with Ada.Text_IO;
 with Interfaces;
 with Desktop_Icon_Pixels;
 with Desktop_Icons;
+with Desktop_Icon_Store;
 with Desktop_Window_Icons;
 with Compositor_Upload;
 procedure Icon_Pixels_Tests is
@@ -16,7 +17,7 @@ procedure Icon_Pixels_Tests is
       Plan : U.Plan;
       OK, Done : Boolean;
       function Reference (X, Y : Natural) return Interfaces.Unsigned_32 is
-        (if Item.Kind = P.Application then Desktop_Icons.Pixels (Item.Icon) (Y * N + X)
+        (if Item.Kind = P.Application then Desktop_Icon_Store.Pixel (Item.Icon, X, Y)
          else Desktop_Window_Icons.Pixels (Item.Control) (Y * N + X));
    begin
       for First in 0 .. N - 1 loop

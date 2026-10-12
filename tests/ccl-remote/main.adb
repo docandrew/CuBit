@@ -6,6 +6,7 @@ with CBOR; use CBOR;
 with CBOR.Encoding;
 with CBOR.Decoding;
 with CCL.Control;
+with CCL.VM;
 with CCL.Sessions;
 
 procedure Main is
@@ -92,7 +93,7 @@ begin
    Control_Wire.Decode (Query (2, "(range 1 100)"), Q, Valid);
    pragma Assert (Valid);
    CCL.Control.Execute (Session, Q.Op, Q.Source (1 .. Q.Length), (others => <>), Value);
-   pragma Assert (Value.Outcome.List_Length = 64 and Value.Outcome.List_Total = 100);
+   pragma Assert (CCL.VM.Count_Of (Value.Outcome.List_Length) = 64 and Value.Outcome.List_Total = 100);
    Control_Wire.Encode (Q, Value, Encoded);
    declare
       D : constant Decode_All_Result := Decoding.Decode_All_Strict (Encoded.Data (1 .. SE_Offset (Encoded.Length)));

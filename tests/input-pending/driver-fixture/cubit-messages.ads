@@ -30,7 +30,6 @@ package CuBit.Messages is
    function capSend (Slot : Unsigned_64; Msg : Message; Deadline : Unsigned_64) return MessageTag;
    function Registered_Driver (Driver : Unsigned_64) return Process_ID;
    function trySendEvent (Dest : Process_ID; Msg : Message) return Boolean;
-   function Wait_Event return Message;
    function Poll_Event (Msg : out Message) return Boolean;
    function Wait_For_Activity_Until (Deadline : Unsigned_64) return Activity_Result;
 end CuBit.Messages;

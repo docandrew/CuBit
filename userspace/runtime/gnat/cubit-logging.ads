@@ -50,10 +50,15 @@ package CuBit.Logging is
    --  Minimum filters by severity inside logstore.
    --  Records at or above Minimum from Source (a process; Every_Source for
    --  all). A new subscription first replays matching retained history.
+   --  Limit_Ms bounds each call to logstore this subscription makes (the
+   --  first and every renewal): a reader that must not block on logstore
+   --  (the Desktop bootstrap screen) gets Unavailable instead of waiting.
+   No_Limit : constant Unsigned_64 := Unsigned_64'Last;
    procedure Subscribe
      (Item : in out Reader; Result : out CuBit.Log_Protocol.Status;
       Minimum : CuBit.Log_Records.Severity := CuBit.Log_Records.Trace;
-      Source : Unsigned_64 := CuBit.Log_Protocol.Every_Source);
+      Source : Unsigned_64 := CuBit.Log_Protocol.Every_Source;
+      Limit_Ms : Unsigned_64 := No_Limit);
    --  The next event, from the reader's stream channel (CuBit.Log_Streams):
    --  logstore produces into it, so reading takes no IPC. Result is Gap (with
    --  Lost) where logstore could not keep events for this reader, Empty when
@@ -117,5 +122,6 @@ private
       Source : Unsigned_64 := CuBit.Log_Protocol.Every_Source;
       Renewed_Ms : Unsigned_64 := 0;
       Subscription : Unsigned_64 := 0;
+      Limit_Ms : Unsigned_64 := No_Limit;
    end record;
 end CuBit.Logging;

@@ -102,7 +102,7 @@ cubit_kernel: build/libcubit.a build/init.bin build/boot.o cubit.gpr linker.ld M
 		fail=1 } \
 		END { if (fail) exit 1 }' build/*.su
 # Link - GRUB fails to identify this as a multiboot object without the -n
-	ld -n -o cubit_kernel -T linker.ld \
+	ld -n --build-id=sha1 -o cubit_kernel -T linker.ld \
 		build/*.o \
 		-b binary build/init.bin \
 		-Map cubit_kernel.map
@@ -522,16 +522,22 @@ prove-stream-policies: prepare-stream-policies
 
 # The streaming QOI decoder and the wallpaper store (tests/qoi/README.md).
 .PHONY: test-qoi prove-qoi
-test-qoi: wallpaper-assets
+test-qoi: wallpaper-assets icon-assets
 	python3 ../tests/qoi/make_fixtures.py ../tests/qoi/build/fixtures
 	python3 ../tools/build_wallpaper_assets.py ../assets/wallpapers ../tests/qoi/build/Assets \
 		--reference ../tests/qoi/build/reference >/dev/null
 	$(ALR) gprbuild -q -p -P ../tests/qoi/qoi.gpr
 	../tests/qoi/build/qoi_tests ../tests/qoi/build/fixtures ../tests/qoi/build/Assets ../tests/qoi/build/reference
+	python3 ../tools/build_icon_assets.py ../tests/qoi/build/Assets/cubit-icons/1 \
+		--reference ../tests/qoi/build/reference >/dev/null
+	python3 ../tests/qoi/make_icon_fixtures.py ../tests/qoi/build/fixtures
+	$(ALR) gprbuild -q -p -P ../tests/qoi/icon_store.gpr
+	bash ../tests/qoi/run-icon-store.sh ../tests/qoi/build
 
 prove-qoi:
 	$(ALR) gnatprove -P ../tests/qoi/qoi.gpr -u cubit-qoi.adb --mode=all --level=1 --timeout=10 -j2
 	$(ALR) gnatprove -P ../tests/qoi/store.gpr -u desktop_wallpaper_store.adb --mode=all --level=1 --timeout=10 -j2
+	$(ALR) gnatprove -P ../tests/qoi/icon_store.gpr -u desktop_icon_store.adb --mode=all --level=2 --timeout=15 -j2
 
 .PHONY: test-appearance prove-appearance
 test-appearance: ui-fonts-host
@@ -1169,6 +1175,24 @@ avx-check: user_runtime ccl-manifest
 	$(ALR) gprbuild -P ../userspace/apps/avx-check/avx_check.gpr
 	cp ../userspace/apps/avx-check/build/avx-check.app isodir/boot/avx-check.app
 
+# CAP-001 diagnostics check: device memory without authority is refused
+# and recorded (tests/headless: devmem-denials).
+.PHONY : devmem-check
+devmem-check: user_runtime ccl-manifest
+	mkdir -p ../userspace/apps/devmem-check/build
+	$(call compile_ccl_manifest,../userspace/apps/devmem-check)
+	$(ALR) gprbuild -P ../userspace/apps/devmem-check/devmem_check.gpr
+	cp ../userspace/apps/devmem-check/build/devmem-check.app isodir/boot/devmem-check.app
+
+# Process-kill diagnostics check: faults on purpose (tests/headless:
+# process-kill).
+.PHONY : fault-check
+fault-check: user_runtime ccl-manifest
+	mkdir -p ../userspace/apps/fault-check/build
+	$(call compile_ccl_manifest,../userspace/apps/fault-check)
+	$(ALR) gprbuild -P ../userspace/apps/fault-check/fault_check.gpr
+	cp ../userspace/apps/fault-check/build/fault-check.app isodir/boot/fault-check.app
+
 .PHONY : futex-check
 futex-check: user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/futex-check/build
@@ -1589,6 +1613,22 @@ wallpaper-assets: $(WALLPAPER_ASSETS)
 $(WALLPAPER_ASSETS) &: $(WALLPAPER_SOURCES) ../tools/build_wallpaper_assets.py ../tools/qoi.py
 	$(ALR) python3 ../tools/build_wallpaper_assets.py ../assets/wallpapers build/$(WALLPAPER_PACKAGE)
 
+# Desktop's application icon atlas (Desktop_Icon_Assets): the CuBit icon
+# PNGs in Desktop_Icons.Icon_ID order, packed by tools/build_icon_assets.py.
+ICON_PACKAGE := $(ASSET_ROOT)/cubit-icons/1
+ICON_ASSETS := build/$(ICON_PACKAGE)/applications.qoi
+ICON_SOURCES := $(wildcard ../assets/desktop-icons/png/*-24.png) ../assets/penny/penny-24.png
+ICON_DISK_FILES = --file "$(ICON_PACKAGE)/applications.qoi=$(ICON_ASSETS)"
+
+.PHONY : icon-assets
+icon-assets: $(ICON_ASSETS)
+$(ICON_ASSETS): $(ICON_SOURCES) ../tools/build_icon_assets.py ../tools/generate_desktop_icons.py ../tools/qoi.py
+	$(ALR) python3 ../tools/build_icon_assets.py build/$(ICON_PACKAGE)
+
+# Every asset package Desktop reads, and their disk placements.
+DESKTOP_ASSETS = $(WALLPAPER_ASSETS) $(ICON_ASSETS)
+DESKTOP_ASSET_DISK_FILES = $(WALLPAPER_DISK_FILES) $(ICON_DISK_FILES)
+
 # Build the userspace display scanout service prototype
 .PHONY : display
 CUBIT_COMPOSITOR ?= vulkan
@@ -1661,7 +1701,7 @@ DISK_CONTENTS := isodir/boot/shell.app isodir/boot/doom.elf isodir/boot/sleep.ap
 	isodir/boot/logstore.svc isodir/boot/display.svc isodir/boot/desktop.svc \
 	build/tls-roots.der \
 	../init.ccl ../userspace/motd.txt $(DOOM_WAD) \
-	$(SERVO_DISK_CONTENTS) $(WALLPAPER_ASSETS)
+	$(SERVO_DISK_CONTENTS) $(DESKTOP_ASSETS)
 
 SERVO_FONT_DIR = $(dir $(IBM_PLEX_SANS_FONT))
 SERVO_DISK_FILES = $(if $(SERVO_DISK_CONTENTS), \
@@ -1690,11 +1730,11 @@ DESKTOP_OVERLAY := isodir/boot/desktop.svc isodir/boot/display.svc isodir/boot/m
 DESKTOP_SAMPLE_ARGS = $(foreach sample,$(DESKTOP_CONFIG_SAMPLES),--file "work/$(notdir $(sample))=$(sample)")
 
 .PHONY : prepare-desktop-disk
-prepare-desktop-disk: $(WALLPAPER_ASSETS)
+prepare-desktop-disk: $(DESKTOP_ASSETS)
 	python3 ../tools/prepare_desktop_disk.py "$(DESKTOP_BASE_DISK)" "$(DESKTOP_SCRATCH_DISK)" --replace \
 		--boot $(DESKTOP_OVERLAY) \
 		--file "init.ccl=../tests/headless/init-desktop-session.ccl" $(DESKTOP_SAMPLE_ARGS) \
-		$(WALLPAPER_DISK_FILES)
+		$(DESKTOP_ASSET_DISK_FILES)
 
 .PHONY : servo
 servo: libc ccl-manifest
@@ -1727,7 +1767,7 @@ ata_disk.img nvme_disk.img: $(DISK_CONTENTS) $(DESKTOP_CONFIG_SAMPLES) ../tools/
 		--file "init.ccl=../init.ccl" \
 		$(DESKTOP_SAMPLE_ARGS) \
 		$(SERVO_DISK_FILES) \
-		$(WALLPAPER_DISK_FILES)
+		$(DESKTOP_ASSET_DISK_FILES)
 
 # Convenience aliases for manual rebuilds (e.g. make ata_disk)
 .PHONY : ata_disk nvme_disk
@@ -1764,7 +1804,7 @@ capability-security-image: cubit_kernel $(CAPABILITY_SECURITY_STAGE1) $(CAPABILI
 .PHONY : initrd
 initrd: $(INITRD_SERVICES) ccl-image ../images/development-initrd.ccl $(CCL_IMAGE_CATALOG) ../system.ccl
 	$(ALR) python3 $(CCL_IMAGE_REALIZER) ../images/development-initrd.ccl \
-		--output isodir/boot/initrd.img
+		--debug-dir debug --output isodir/boot/initrd.img
 
 # Self-contained, read-only userspace image for real-hardware bring-up.  Keep
 # this separate from the normal two-stage image: the laptop must reach a
@@ -1781,7 +1821,7 @@ CCL_WORKSPACE_SAMPLES := $(sort $(wildcard ../userspace/ccl/samples/*.ccl))
 # Native USB optical edition. Keep the original initrd-only laptop image as
 # an independent fallback; no ATA/NVMe driver is admitted in this profile.
 .PHONY: usb-live-iso run-usb-live run-usb-live-fast
-usb-live-iso: ccl-image ../images/laptop-usb.ccl $(CCL_IMAGE_CATALOG) cubit_kernel $(LAPTOP_LIVE_STAGE1) $(LAPTOP_LIVE_STAGE2) intel-gpu gpu-viewer config-storage mesa-cube $(LAPTOP_LIVE_RW_DISK) $(WALLPAPER_ASSETS)
+usb-live-iso: ccl-image ../images/laptop-usb.ccl $(CCL_IMAGE_CATALOG) cubit_kernel $(LAPTOP_LIVE_STAGE1) $(LAPTOP_LIVE_STAGE2) intel-gpu gpu-viewer config-storage mesa-cube $(LAPTOP_LIVE_RW_DISK) $(DESKTOP_ASSETS)
 	@test -s isodir/boot/cubitshell.app || (echo "missing Servo payload; run make -C kernel servo first" && false)
 	bash ../tests/usb-optical/build-live.sh "$(DOOM_WAD)"
 
@@ -1831,7 +1871,7 @@ test-ccl-images: $(LAPTOP_LIVE_RW_DISK)
 .PHONY : laptop-live-initrd
 laptop-live-initrd: ccl-image ../images/laptop-initrd.ccl $(CCL_IMAGE_CATALOG) $(LAPTOP_LIVE_STAGE1) $(LAPTOP_LIVE_STAGE2) $(LAPTOP_LIVE_RW_DISK)
 	$(ALR) python3 $(CCL_IMAGE_REALIZER) ../images/laptop-initrd.ccl \
-		--input "doom-wad=$(DOOM_WAD)" --output isodir/boot/laptop-live-initrd.img
+		--input "doom-wad=$(DOOM_WAD)" --debug-dir debug --output isodir/boot/laptop-live-initrd.img
 
 # A blank SATA disk is attached to QEMU through Q35's ICH9 AHCI controller.
 # Runtime boots must use a copy so driver development cannot damage the base.
@@ -1946,7 +1986,7 @@ test-programs: $(TEST_PROGRAMS)
 # make invocation builds each once.
 IMAGE_ONLY_BINARIES := ramdisk intel-gpu gpu-viewer mesa-cube
 
-world: trace-viewer test-programs $(IMAGE_ONLY_BINARIES) cubit_kernel doom sameboy sleep thread-check futex-check clock-check avx-check bench-spread capability-test storage-check ipctest-server ipctest-client bench-ipc-server bench-ipc-client ccl-test-host clock timesync tls ccl-vm ccl-workbench filesystem ata nvme virtio-net virtio-gpu netstack wget devices files config-inspector desktop-shell procmgr shell hda mixer ps2 xhci virtio-input config config-storage netmgr logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso
+world: trace-viewer test-programs $(IMAGE_ONLY_BINARIES) cubit_kernel doom sameboy sleep thread-check futex-check clock-check avx-check devmem-check fault-check bench-spread capability-test storage-check ipctest-server ipctest-client bench-ipc-server bench-ipc-client ccl-test-host clock timesync tls ccl-vm ccl-workbench filesystem ata nvme virtio-net virtio-gpu netstack wget devices files config-inspector desktop-shell procmgr shell hda mixer ps2 xhci virtio-input config config-storage netmgr logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso
 
 .PHONY : headless-test
 headless-test: world

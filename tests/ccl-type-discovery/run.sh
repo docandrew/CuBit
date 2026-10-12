@@ -17,6 +17,8 @@ alr exec -- gprbuild -p -P ../tests/ccl-type-discovery/native_objects.gpr
 ../tests/ccl-type-discovery/build/native-objects/native_object_tests
 alr exec -- gprbuild -p -P ../tests/ccl-type-discovery/log_view.gpr
 ../tests/ccl-type-discovery/build/log-view/log_view_tests
+alr exec -- gprbuild -p -P ../tests/ccl-type-discovery/text_limits.gpr
+../tests/ccl-type-discovery/build/text-limits/text_limit_tests
 if [[ ${1:-} == --prove ]]; then
     alr exec -- gnatprove -P ../tests/ccl-type-discovery/discovery.gpr \
         -u ccl-types.adb --level=2 -j2 \

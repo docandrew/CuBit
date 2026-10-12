@@ -15,9 +15,12 @@ import shutil
 import stat
 import struct
 import subprocess
+import sys
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[4]
+sys.path.insert(0, str(ROOT / "tools"))
+import image_debug  # noqa: E402  (tools/image_debug.py, docs/image-debug-info.md)
 CCL = ROOT / "userspace/ccl/build/image/ccl-image"
 CONFIG = ROOT / "userspace/ccl/build/config/ccl-config"
 MAX_FILE = 128 * 1024 * 1024
@@ -359,13 +362,34 @@ def check_iso(path, expected, efi=False):
         raise ValueError("undeclared ISO payload: " + ", ".join(sorted(extras)))
 
 
-def realize(files, report, output, audit_usb=False, grub_directory=None):
+def split_debug(files, report, splitter):
+    """Stage executables without debug information (tools/image_debug.py);
+    the plan then records the bytes actually staged and their build-ids."""
+    staged = []
+    for item in files:
+        data = splitter.split(item.destination, item.data)
+        staged.append(item if data is item.data else File(
+            item.region, item.role, item.artifact, item.destination, data, item.private))
+    identities = {r["destination"]: r for r in splitter.records}
+    for entry, item in zip(report["files"], sorted(staged, key=lambda f: (f.region, f.destination))):
+        entry["size"], entry["sha256"] = len(item.data), digest(item.data)
+        record = identities.get(item.destination)
+        if record is not None and record["build_id"]:
+            entry["build_id"] = record["build_id"]
+            entry["unstripped_sha256"] = record["input_sha256"]
+    report["debug"] = splitter.summary()
+    return staged
+
+
+def realize(files, report, output, audit_usb=False, grub_directory=None, debug_dir=None):
     optical_layout = report["layout"] == "OPTICAL_IMAGE"
     # Layout comes from the checked CCL plan, not the burner's preferred
     # filename. Optical images may use .img without changing their contents.
     extensions = (".iso", ".img") if optical_layout else (".img",)
     if output.suffix not in extensions:
         raise ValueError("output extension must match the declared layout")
+    splitter = image_debug.Splitter(debug_dir or output.parent / "debug", output.name)
+    files = split_debug(files, report, splitter)
     # Retain staging and its input hashes for inspection/reproduction.
     directory = Path(tempfile.mkdtemp(prefix="cubit-ccl-image."))
     bootstrap, optical = stage(files, directory)
@@ -390,7 +414,10 @@ def realize(files, report, output, audit_usb=False, grub_directory=None):
         expected["boot/initrd.img"] = archive.read_bytes()
         check_iso(result, expected, efi=grub_directory is not None)
         if audit_usb:
-            subprocess.run(["python3", ROOT / "tests/usb-optical/check-image.py", result], check=True)
+            records = directory / "debug-split.json"
+            records.write_text(json.dumps(splitter.records))
+            subprocess.run(["python3", ROOT / "tests/usb-optical/check-image.py", result, records],
+                           check=True)
     report["output_sha256"] = digest(result.read_bytes())
     if grub_directory is not None:
         report["grub_module_directory"] = str(grub_directory)
@@ -398,7 +425,12 @@ def realize(files, report, output, audit_usb=False, grub_directory=None):
     report_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
     publish(result, output)
     publish(report_path, output.with_name(output.name + ".plan.json"))
-    print(f"CCL image: {output}\nChecked plan and staging: {directory}")
+    manifest = splitter.write_manifest(report["output_sha256"])
+    summary = report["debug"]
+    print(f"CCL image: {output}\nChecked plan and staging: {directory}\n"
+          f"Debug files: {splitter.debug_dir} ({summary['binaries']} executables, "
+          f"{summary['input_bytes']} -> {summary['staged_bytes']} bytes staged); "
+          f"build-ids: {manifest}")
 
 
 def main():
@@ -411,6 +443,8 @@ def main():
     parser.add_argument("--check-only", action="store_true")
     parser.add_argument("--output", type=Path)
     parser.add_argument("--audit-usb", action="store_true")
+    parser.add_argument("--debug-dir", type=Path,
+                        help="host directory for separated debug files (default: debug/ next to the output)")
     parser.add_argument("--grub-directory", type=Path,
                         help="trusted build input: explicit GRUB platform module directory")
     args = parser.parse_args()
@@ -428,7 +462,7 @@ def main():
         if args.check_only:
             print(json.dumps(report, indent=2, sort_keys=True))
         else:
-            realize(files, report, args.output, args.audit_usb, args.grub_directory)
+            realize(files, report, args.output, args.audit_usb, args.grub_directory, args.debug_dir)
     except (OSError, ValueError, subprocess.SubprocessError) as error:
         parser.exit(1, f"ccl-image: {error}\n")
 

@@ -1,0 +1,5 @@
+project Text_Limits extends "discovery.gpr" is
+   for Object_Dir use "build/text-limits";
+   for Exec_Dir use "build/text-limits";
+   for Main use ("text_limit_tests.adb");
+end Text_Limits;

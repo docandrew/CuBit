@@ -1,4 +1,5 @@
 with Interfaces; use Interfaces;
+with Intel_GPU_Map_Report;
 with CuBit.Messages; use CuBit.Messages;
 package body Intel_GPU_Pipe_Mapping is
    package PP renames Intel_GPU_Pipe_Pages;
@@ -57,7 +58,7 @@ package body Intel_GPU_Pipe_Mapping is
       if not Granted then return "grant-denied"; end if;
       if syscall (SYSCALL_MAP_DEVICE, Register_Base + PP.Offset (Item),
                   PP.Address (Item), 1, 0) /= 0
-      then return "map-denied"; end if;
+      then return Intel_GPU_Map_Report.Denied (Register_Base + PP.Offset (Item), 4096); end if;
       Mapped (Item) := True;
       return "ready (NO power reference)";
    end Prepare;

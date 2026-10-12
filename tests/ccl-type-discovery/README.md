@@ -383,3 +383,23 @@ checks (two in each of three instances) and 303 flow/termination/non-aliasing
 checks, none unproved. Command: use `-u interpreter_host.adb` and
 `--limit-region=ccl-language.adb:1247:1255` with the project above. Log:
 `/tmp/cubit-root-export-host-proof.log`.
+
+## Import text limits (`text_limit_tests.adb`, 2026-10-11)
+
+An import's text limit has two types: the VM's `CCL.VM.Import_Text_Length`
+(up to a whole string, 8 KiB, the bound of a schema-bound String image) and
+a host contract's `CCL.Host_Values.Text_Limit` (up to a host text value,
+1 KiB). They are distinct types, so a VM limit can reach a host contract
+only through `CCL.Host_Values.To_Host_Limit`, whose precondition
+`Host_Limit_Fits` every caller must establish; `Portable_Contract` (the
+precondition of `From_Bytecode`) now includes it for plain text. Before,
+both were `Natural` subtypes and `From_Bytecode` copied the 8 KiB-capable
+VM limit into the 0 .. 1024 host field: a CCLB module declaring a plain text
+limit of 2048 raised `Constraint_Error` at ccl-host_values.adb:41 when
+decoded with checks on, and stored an out-of-range limit under `-gnatp`.
+The test round-trips a module at the 1 KiB bound, then raises the encoded
+limit to 2048 and expects `Invalid_Linkage`. Run by `run.sh`; on its own:
+
+```sh
+nix develop -c bash -c 'cd kernel && alr exec -- gprbuild -p -P ../tests/ccl-type-discovery/text_limits.gpr && ../tests/ccl-type-discovery/build/text-limits/text_limit_tests'
+```

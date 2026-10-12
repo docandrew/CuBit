@@ -2,6 +2,7 @@ with Interfaces; use Interfaces;
 with System;
 with CuBit.Config;
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.System_Facts;
 with Civil_Time;
 with Time_Zones;
 with Clock_Discipline;
@@ -81,14 +82,16 @@ package body Wall_Clock is
       UTC_MS : Clock_Discipline.UTC_Milliseconds;
       Current : Boolean;
       Offset : Unsigned_64;
-      Ignore : Unsigned_64;
    begin
       Clock_Discipline.Current (Discipline, Now, UTC_MS, Current);
       if Current and then Unsigned_64 (UTC_MS) > Now then
          Offset := Unsigned_64 (UTC_MS) - Now;
          if Offset /= Last_Published then
-            Ignore := setSysinfo (SYSINFO_WALL_CLOCK_OFFSET, Offset);
-            Last_Published := Offset;
+            if CuBit.System_Facts.Publish
+                 (CuBit.System_Facts.SP.Wall_Clock_Offset, Offset)
+            then
+               Last_Published := Offset;
+            end if;
          end if;
       end if;
    end Publish;

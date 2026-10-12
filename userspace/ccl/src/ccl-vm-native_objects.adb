@@ -69,8 +69,8 @@ package body CCL.VM.Native_Objects with SPARK_Mode is
    begin
       return Need.Elements <= MAX_LIST_ELEMENTS - List_Regions.Used_Bytes (State.Lists) and then
         (Need.Elements = 0 or else List_Regions.Live_Values (State.Lists) < MAX_LIST_VALUES) and then
-        Need.Nodes <= MAX_VALUE_NODES - State.Arena.Nodes_Used and then
-        Need.Slots <= MAX_VALUE_SLOTS - State.Arena.Slots_Used and then
+        Need.Nodes <= MAX_VALUE_NODES - Natural (State.Arena.Nodes_Used) and then
+        Need.Slots <= MAX_VALUE_SLOTS - Natural (State.Arena.Slots_Used) and then
         Need.Strings <= MAX_TEXT_VALUES - Text_Regions.Live_Values (State.Text) and then
         (Need.Strings = 0 or else
          CCL.Objects.Maximum_Text_Bytes <= MAX_TEXT_BYTES - Text_Regions.Used_Bytes (State.Text));
@@ -426,7 +426,7 @@ package body CCL.VM.Native_Objects with SPARK_Mode is
    begin
       if not Ready_For_Completion (Item, State) then return; end if;
       Good := Accepted and then State.Core.Waiting_Result_Kind = Text_Value and then
-        Response'Length <= Item.Content.Imports (State.Core.Waiting_Import).Result_Text_Limit;
+        Within (Response'Length, Item.Content.Imports (State.Core.Waiting_Import).Result_Text_Limit);
       if Good then
          Text_Regions.Allocate_String (State.Core.Text, Response, Result.Text, Status);
          if Status /= Text_Regions.Operation_Ok then

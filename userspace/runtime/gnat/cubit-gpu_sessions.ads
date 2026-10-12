@@ -36,9 +36,11 @@ package CuBit.GPU_Sessions is
    type Session is limited private;
 
    --  Open the queue on the GPU driver behind Endpoint (the session's
-   --  contexts must be registered).
+   --  contexts must be registered), waiting for the driver until Deadline
+   --  (an absolute monotonic millisecond, or CuBit.Messages.Wait_Forever).
    procedure Open
-     (S : in out Session; Endpoint : CuBit.Messages.CapabilitySlot; Opened : out Boolean);
+     (S : in out Session; Endpoint : CuBit.Messages.CapabilitySlot; Deadline : Unsigned_64;
+      Opened : out Boolean);
    --  Close the channel. A held wake is answered by the driver then.
    procedure Close (S : in out Session);
    function Is_Open (S : Session) return Boolean;
@@ -64,6 +66,8 @@ package CuBit.GPU_Sessions is
    --  OP_GPU_BOOST, one way: never waits, never gets a reply. Sent False:
    --  not open, or the kernel refused it (the hint is simply lost).
    procedure Hint_Boost (S : Session; Sent : out Boolean);
+   --  OP_GPU_BOOST [policy], one way: the driver's waitboost on or off.
+   procedure Set_Boost_Policy (S : Session; On : Boolean; Sent : out Boolean);
 
    --  The wake: OP_GPU_WAKE for Context and Target submitted with Wake_Token
    --  (process-wide unique, increasing). Accepted False: not sent (one is

@@ -93,8 +93,6 @@ procedure Main is
         when Clock_Calibrated         => "clock calibrated",
         when Scheduling_Clock_Started => "scheduling clock started",
         when Interrupt_Routing_Ready  => "interrupt routing ready",
-        when PCI_Config_Mapped        => "PCIe configuration mapped",
-        when PCI_Enumerated           => "PCI devices listed",
         when Initrd_Parsed            => "initrd parsed",
         when Device_Manager_Loaded    => "devmgr loaded",
         when Secondary_CPUs_Ready     => "secondary CPUs ready",

@@ -22,7 +22,6 @@ package CuBit.Kernel_ABI with Pure, SPARK_Mode is
    Get_Process_Id               : constant System_Call := 6;
    Grow_Heap                    : constant System_Call := 8;
    Write                        : constant System_Call := 12;
-   Info                         : constant System_Call := 15;
    Receive                      : constant System_Call := 17;
    Reply                        : constant System_Call := 18;
    Poll_Any_IPC                 : constant System_Call := 22;
@@ -62,6 +61,10 @@ package CuBit.Kernel_ABI with Pure, SPARK_Mode is
    --  A control message to a child, or to a process this one holds the
    --  process capability for (CuBit.Control_Events).
    Send_Control                 : constant System_Call := 127;
+   --  This process's statistics and free memory (System_Publications).
+   Read_Statistics              : constant System_Call := 134;
+   --  A value published through the kernel (System_Publications).
+   Publish                      : constant System_Call := 135;
    --  The most one commit may add (kernel Owned_Reservation_Policy).
    Maximum_Owned_Commit_Bytes : constant := 16 * 1024 * 1024;
 
@@ -83,12 +86,7 @@ package CuBit.Kernel_ABI with Pure, SPARK_Mode is
    --  The largest owned-memory region (kernel Process.Owned_Memory).
    Maximum_Owned_Bytes : constant := 256 * 1024 * 1024;
 
-   --  SYSINFO_WALL_CLOCK_OFFSET: UTC milliseconds at monotonic zero, set by
-   --  the clock service while its time is current (0 until then).
-   Wall_Clock_Offset : constant := 1403;
-   --  SYSINFO_REGISTERED_DRIVER (key + driver): the PID registered as a
-   --  driver; DRIVER_NETSTACK names netstack (CuBit.Messages).
-   Registered_Driver : constant := 2000;
+   --  The service role netstack registers (CuBit.Messages.DRIVER_NETSTACK).
    Driver_Netstack   : constant := 3;
    --  SYSCALL_INSPECT_CAPABILITY: six words; an endpoint's kind is 1.
    Capability_Words    : constant := 6;

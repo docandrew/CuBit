@@ -18,12 +18,16 @@ with Ada.Unchecked_Conversion;
 with BuddyAllocator;
 with Boot_Timeline;
 with Clock_Page;
+with Publication_Pages;
 with Memory_Accounting;
 with Process_Memory_Budget;
 with Build;
 with Trace;
 with Capabilities.IRQ;
 with Device_Interrupts;
+with Device_Memory_Diagnostics;
+with Device_Memory_Publication;
+with InterruptNumbers;
 with Capabilities.Operations;
 with IPC_Labels;
 with IPI;
@@ -49,7 +53,7 @@ with Scheduling_Budgets;
 with Realtime_Admission;
 with Segment;
 with Spinlocks;
-with Sysinfo;
+with Service_Registry;
 with TextIO; use TextIO;
 with x86;
 with CPUID;
@@ -987,6 +991,10 @@ package body Process is
             mapped : Boolean;
         begin
             Clock_Page.Map (addrtab(pid), mapped);
+            -- And the system publications beside it (docs/syscall-retirement.md).
+            if mapped then
+                Publication_Pages.Map (addrtab(pid), mapped);
+            end if;
             if not mapped then
                 discardUnpublished (pid);
                 return NO_PROCESS;
@@ -1932,12 +1940,12 @@ package body Process is
         IPC.closeNotices (pid);
         IPC.revokeAllGrants (pid);
         IPC.revokeAllGrantsTo (pid);
-        --  Unregister IRQ and sysinfo driver registrations. Device vectors
+        --  Unregister IRQ and service registrations. Device vectors
         --  are retired, not freed: the device may still send until the
         --  device manager masks it and releases them.
         Capabilities.IRQ.unregisterAllByPID (Unsigned_64 (pid));
         Device_Interrupts.retireProcess (pid);
-        Sysinfo.unregisterDriverByPID (pid);
+        Service_Registry.Unregister_Process (pid);
 
         -- Bump the generation counter to invalidate caps held by others.  A
         -- PID whose generation space is exhausted must never be reused: doing
@@ -2018,17 +2026,7 @@ package body Process is
         -- retirement, whoever launched the process: it releases what
         -- services hold for it (netstack's channels and scopes).
         setExitReport;
-        declare
-            registered : constant Unsigned_64 := Sysinfo.getInfo
-              (Unsigned_64 (Sysinfo.REGISTERED_DRIVER),
-               Unsigned_64 (Sysinfo.DRIVER_PROCMGR));
-        begin
-            if registered /= Unsigned_64 (NO_PROCESS) and then
-               registered <= Unsigned_64 (ProcessID'Last)
-            then
-                manager := ProcessID (registered);
-            end if;
-        end;
+        manager := Service_Registry.Registered (Service_Registry.DRIVER_PROCMGR);
         IPC.reportExit
           (pid, exitMsg, parent, (if parent = NO_PROCESS then 0 else parentGen),
            manager, generationOf (manager), ringParent, ringManager);
@@ -2364,6 +2362,9 @@ package body Process is
                   (pid => pid, faultLabel => IPC_Labels.EVENT_PROCESS_FAULT,
                    detail0 => 14, detail1 => Unsigned_64 (To_Integer (addr)),
                    detail2 => Unsigned_64 (Page_Allocation_Result'Pos (result)));
+                Device_Memory_Diagnostics.Record_Kill
+                  (pid, Device_Memory_Publication.Out_Of_Memory, Unsigned_64 (InterruptNumbers.PAGE_FAULT),
+                   Unsigned_64 (To_Integer (addr)), Unsigned_64 (To_Integer (lastFaultRIP)));
                 kill (pid);
             end if;
         else
@@ -2401,6 +2402,9 @@ package body Process is
                 detail0    => 14,  -- #PF vector
                 detail1    => Unsigned_64 (To_Integer (addr)),
                 detail2    => 0);
+            Device_Memory_Diagnostics.Record_Kill
+              (pid, Device_Memory_Publication.Not_Present, Unsigned_64 (InterruptNumbers.PAGE_FAULT),
+               Unsigned_64 (To_Integer (addr)), Unsigned_64 (To_Integer (lastFaultRIP)));
             kill (pid);
         end if;
     end pageFault;

@@ -118,6 +118,13 @@ package Intel_GPU_Waitboost with Pure, SPARK_Mode is
                       Actual + Reach_Tolerance_MHz >= S.Boost
                    then not S.Ramping);
 
+   --  Waitboost turned off: back to the floor now, holds dropped.
+   procedure Release (S : in out State; Now : Microseconds)
+     with Pre => Valid (S),
+          Post => Valid (S) and then S.Current = Idle and then Desired (S) = S.Floor and then
+                  S.Floor = S.Floor'Old and then S.Boost = S.Boost'Old and then S.Sent = S.Sent'Old and then
+                  not S.Hinted;
+
    procedure Take_Stats
      (S : in out State; Now : Microseconds;
       Boosts, Hints, Sends, Boosted_Us, Ramps, Unreached, Ramp_Avg_Us, Ramp_Max_Us : out Unsigned_64)

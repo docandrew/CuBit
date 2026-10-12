@@ -36,6 +36,9 @@ procedure main is
    OP_DEADLINE_BUSY   : constant Unsigned_32 := 16#0914#;
    OP_DEADLINE_QUEUED : constant Unsigned_32 := 16#0915#;
    OP_DEADLINE_STATUS : constant Unsigned_32 := 16#0916#;
+   OP_RESTORE_ECHO    : constant Unsigned_32 := 16#0917#;
+   RESTORE_WORD       : constant Unsigned_64 := 5;
+   RESTORE_DEADLINE_MS : constant Unsigned_64 := 1_000;
    DEADLINE_MS : constant Unsigned_64 := 50;
    --  The server's busy time (300 ms) less a margin: a timeout must come
    --  from the deadline, not from the server getting round to the call.
@@ -608,6 +611,24 @@ begin
          end if;
          if ok then
             debugPrint ("ipctest-client: call deadlines PASS" & LF);
+         end if;
+      end;
+   end if;
+
+   --  A reply capability saved and restored (RESTORE_REPLY_CAPABILITY)
+   --  answers the call it came with.
+   if ok then
+      declare
+         msg : Message := NULL_MESSAGE;
+         tag : MessageTag;
+      begin
+         msg.tag := (OP_RESTORE_ECHO, 1, 0, 0);
+         msg.words (0) := RESTORE_WORD;
+         tag := capCall (CAP_SLOT_IPCTEST, msg, Deadline_After (RESTORE_DEADLINE_MS));
+         if tag.label /= REPLY_OK or else msg.words (0) /= (RESTORE_WORD xor XOR_MAGIC) then
+            fail ("restore-reply-answer");
+         else
+            debugPrint ("ipctest-client: restored reply capability PASS" & LF);
          end if;
       end;
    end if;

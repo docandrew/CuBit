@@ -112,7 +112,7 @@ begin
       -- Check live stage rows independently of release-row ordering. These
       -- values traversed real publication, collector, retired grant and CCL.
       for I in 0 .. Written - 1 loop
-         if Rows (I) (P.Row_Source) = getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_DESKTOP) and then
+         if Rows (I) (P.Row_Source) = To_Word (Registered_Driver (DRIVER_DESKTOP)) and then
            Rows (I) (P.Row_Key) in 3 .. 6
          then
             declare
@@ -138,7 +138,7 @@ begin
          end if;
       end loop;
       for I in 0 .. Written - 1 loop
-         if Rows (I) (P.Row_Source) = getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_DESKTOP) and then
+         if Rows (I) (P.Row_Source) = To_Word (Registered_Driver (DRIVER_DESKTOP)) and then
            Rows (I) (P.Row_Key) = 1
          then
             if Rows (I) (P.Row_Kind) /= R.Record_Kind'Enum_Rep (R.Span) or else

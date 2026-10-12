@@ -7,7 +7,7 @@ with Interfaces; use Interfaces;
 --  connect to comes from their manifest's (tls-scope "host:port") entries,
 --  installed by procmgr before the client runs.
 package CuBit.TLS_Protocol with Pure is
-   --  Registered service identity (SYSINFO_REGISTERED_DRIVER) and catalog
+   --  Registered service identity (the kernel service registry) and catalog
    --  service number.
    Service_Role : constant Unsigned_64 := 23;
 

@@ -24,11 +24,9 @@ package CuBit.Messages is
    SYSCALL_KILL            : constant Unsigned_64 := 7;
    SYSCALL_SBRK            : constant Unsigned_64 := 8;
    SYSCALL_WRITE           : constant Unsigned_64 := 12;
-   SYSCALL_INFO            : constant Unsigned_64 := 15;
    SYSCALL_RECEIVE         : constant Unsigned_64 := 17;
    SYSCALL_REPLY           : constant Unsigned_64 := 18;
    SYSCALL_SEND_EVENT      : constant Unsigned_64 := 19;
-   SYSCALL_RECEIVE_EVENT   : constant Unsigned_64 := 20;
    SYSCALL_RECEIVE_UNTIL_MONOTONIC_MILLISECOND :
       constant Unsigned_64 := 21;
    SYSCALL_POLL_ANY_IPC    : constant Unsigned_64 := 22;
@@ -82,8 +80,6 @@ package CuBit.Messages is
 
    SYSCALL_MAPFB           : constant Unsigned_64 := 29;
 
-   SYSCALL_VIRT_TO_PHYS    : constant Unsigned_64 := 50;
-
    SYSCALL_SPAWN           : constant Unsigned_64 := 60;
 
    SYSCALL_MAP_DEVICE      : constant Unsigned_64 := 70;
@@ -93,6 +89,10 @@ package CuBit.Messages is
      constant Unsigned_64 := 120;
    SYSCALL_POLICY_DELEGATE_ENDPOINT : constant Unsigned_64 := 121;
    SYSCALL_RESUME          : constant Unsigned_64 := 73;
+   --  Before a suspended child's first resume, once: the spawner's bytes
+   --  mapped read-only into it (docs/process-arguments.md; typed launch
+   --  configuration, shared/launch). arg0 child, arg1 address, arg2 bytes.
+   SYSCALL_INSTALL_LAUNCH_ARGUMENTS : constant Unsigned_64 := 126;
 
    --  Device manager syscalls
    SYSCALL_ALLOC_DMA       : constant Unsigned_64 := 74;
@@ -101,7 +101,6 @@ package CuBit.Messages is
    --  Subpage grants pin constituent frames and map 4 KiB recipient leaves.
    SYSCALL_ENABLE_IRQ      : constant Unsigned_64 := 75;
    SYSCALL_MAP_INTO        : constant Unsigned_64 := 76;
-   SYSCALL_SET_SYSINFO     : constant Unsigned_64 := 77;
    SYSCALL_SET_CPU         : constant Unsigned_64 := 78;
    SYSCALL_SET_LATENCY_CONTRACT : constant Unsigned_64 := 81;
    SYSCALL_TRACE_RESET     : constant Unsigned_64 := 82;
@@ -126,6 +125,7 @@ package CuBit.Messages is
 
    --  Move reply cap from slot 63 to another slot (deferred replies)
    SYSCALL_MOVE_REPLY_CAPABILITY : constant Unsigned_64 := 51;
+   SYSCALL_RESTORE_REPLY_CAPABILITY : constant Unsigned_64 := 136;
    SYSCALL_REPLY_AND_CONSUME_REPLY_CAPABILITY :
       constant Unsigned_64 := 52;
 
@@ -133,8 +133,6 @@ package CuBit.Messages is
    SYSCALL_CREATE_SHARED_MEMORY_GRANT_VIA_CAPABILITY :
       constant Unsigned_64 := 106;
 
-   --  Transitional service discovery syscall
-   SYSCALL_SET_WELL_KNOWN  : constant Unsigned_64 := 107;
    --  Returns zero for an owned inactive slot; Last for invalid/foreign slots.
    --  Nonzero generation includes pending revocation, not just available use.
    SYSCALL_GET_OWNED_SHARED_MEMORY_GRANT_GENERATION :
@@ -164,10 +162,6 @@ package CuBit.Messages is
    function Wait_For_Activity_Until (Deadline : Unsigned_64)
       return Activity_Result;
 
-   --  Well-known service roles (must match kernel Config.ServiceRole)
-   ROLE_FILESYSTEM : constant Unsigned_64 := 1;
-   ROLE_PROCMGR    : constant Unsigned_64 := 2;
-
    --  Well-known capability slots
    CAP_SLOT_SELF      : constant Unsigned_64 := 0;
    CAP_SLOT_FS        : constant Unsigned_64 := 1;
@@ -193,35 +187,8 @@ package CuBit.Messages is
 
    STDOUT : constant Unsigned_64 := 1;
 
-   --  Sysinfo query IDs (must match kernel/src/sysinfo.ads)
-   SYSINFO_RAMDISK_ADDRESS    : constant Unsigned_64 := 1000;
-   SYSINFO_SECONDARY_STACK    : constant Unsigned_64 := 1001;
-   SYSINFO_RAMDISK_SIZE       : constant Unsigned_64 := 1002;
-   SYSINFO_NET_IOBASE         : constant Unsigned_64 := 1200;
-   SYSINFO_NVME_BAR0          : constant Unsigned_64 := 1300;
-   SYSINFO_NVME_DMA_PHYS      : constant Unsigned_64 := 1301;
-   SYSINFO_HDA_BAR0           : constant Unsigned_64 := 1500;
-   SYSINFO_HDA_DMA_PHYS       : constant Unsigned_64 := 1501;
-   SYSINFO_GPU_BAR0           : constant Unsigned_64 := 1700;
-   SYSINFO_GPU_DMA_PHYS       : constant Unsigned_64 := 1701;
-   SYSINFO_GPU_COMMON_OFF     : constant Unsigned_64 := 1702;
-   SYSINFO_GPU_NOTIFY_OFF     : constant Unsigned_64 := 1703;
-   SYSINFO_GPU_ISR_OFF        : constant Unsigned_64 := 1704;
-   SYSINFO_GPU_DEVICE_OFF     : constant Unsigned_64 := 1705;
-   SYSINFO_GPU_NOTIFY_MULT    : constant Unsigned_64 := 1706;
-   SYSINFO_GPU_IS_PRIMARY     : constant Unsigned_64 := 1707;
-   SYSINFO_GPU_SECOND_DMA_PHYS : constant Unsigned_64 := 1708;
-   SYSINFO_NUM_CPUS           : constant Unsigned_64 := 1400;
-   SYSINFO_MONOTONIC_DIAGNOSTIC : constant Unsigned_64 := 1402;
-   --  UTC milliseconds since the Unix epoch at monotonic time zero (UTC now
-   --  = this + SYSCALL_GETTIME), or 0 while unknown. Set only by the
-   --  registered clock service.
-   SYSINFO_WALL_CLOCK_OFFSET  : constant Unsigned_64 := 1403;
-   SYSINFO_MEM_OWNED_SELF     : constant Unsigned_64 := 1602;
-   SYSINFO_EVENT_DROPS_SELF   : constant Unsigned_64 := 1401;
-   SYSINFO_REGISTERED_DRIVER  : constant Unsigned_64 := 2000;
-
-   --  Driver IDs for SYSINFO_REGISTERED_DRIVER queries
+   --  Service roles of the kernel's service registry (kernel
+   --  Service_Registry; read with Registered_Driver).
    DRIVER_KEYBOARD : constant Unsigned_64 := 1;
    DRIVER_ATA      : constant Unsigned_64 := 2;
    DRIVER_NETSTACK : constant Unsigned_64 := 3;
@@ -387,7 +354,7 @@ package CuBit.Messages is
    --    * a one-way service message, with no reply cap minted.
    --
    --  It never consumes keyboard/mouse input, device events, or lifecycle
-   --  events. Those belong to Poll_Event/Wait_Event. If found is False, from
+   --  events. Those belong to Poll_Event. If found is False, from
    --  is No_Process and msg is NULL_MESSAGE.
    procedure Poll_Service_Request
      (from  : out Process_ID;
@@ -469,10 +436,6 @@ package CuBit.Messages is
    --  publication; caller-supplied authority tags are never trusted.
    function trySendEvent (dest : Process_ID; msg : Message) return Boolean;
 
-   --  Blocking receive for unsolicited events. The current ABI returns only
-   --  the event tag; migrate this to the unified wait primitive.
-   function Wait_Event return Message;
-
    --  Poll_Event
    --
    --  Non-blocking event receive. Returns True if an event was available and
@@ -483,17 +446,17 @@ package CuBit.Messages is
    --  Kill a process by PID. Returns 0 on success, -1 on error.
    function killProcess (pid : Process_ID) return Unsigned_64;
 
-   --  Register a well-known service role in the kernel registry.
-   function setWellKnown
-     (role : Unsigned_64;
-      pid  : Process_ID) return Unsigned_64;
-
    --  Revoke a shared memory grant.
    procedure revokeGrant (id : Unsigned_64);
 
    --  Save the reply cap from slot 63 to destSlot (for deferred replies).
    --  Returns 1 on success, 0 on failure.
    function saveReplyCap (destSlot : Unsigned_64) return Unsigned_64;
+
+   --  The reverse: the reply cap saved in srcSlot becomes the current one
+   --  again, so a request set aside is served as if just received. Only
+   --  while no current reply cap is held. Returns 1 on success, 0 on failure.
+   function restoreReplyCap (srcSlot : Unsigned_64) return Unsigned_64;
 
    --  Port I/O wrappers for userspace drivers.
    function portInp8 (port : Unsigned_16) return Unsigned_64;
@@ -505,9 +468,6 @@ package CuBit.Messages is
    function portInp32 (port : Unsigned_16) return Unsigned_64;
    function portOutp32
      (port : Unsigned_16; val : Unsigned_32) return Unsigned_64;
-
-   --  Translate a virtual address to its physical address
-   function virtToPhys (addr : System.Address) return Unsigned_64;
 
    --  Device manager wrappers
 
@@ -530,19 +490,20 @@ package CuBit.Messages is
       levelTriggered : Boolean := False;
       activeLow      : Boolean := False) return Unsigned_64;
 
-   --  Map physical pages into a target process's address space.
-   --  flags: 0=RW, 1=RO, 2=IO (uncacheable)
+   --  Map pages into a target process's address space (privileged: the
+   --  caller holds CAP_PROCESS with RIGHT_GRANT for it). Kind
+   --  MAP_INTO_BOOT_IMAGE: Source is a page-aligned byte offset into the
+   --  boot image (initrd), mapped read-only. MAP_INTO_DEVICE: Source is the
+   --  physical address of device pages the caller holds CAP_DEVICE_MEM
+   --  for, mapped uncached.
+   MAP_INTO_BOOT_IMAGE : constant Unsigned_64 := 1;
+   MAP_INTO_DEVICE     : constant Unsigned_64 := 2;
    function mapInto
      (targetPID : Process_ID;
       physAddr  : Unsigned_64;
       virtAddr  : Unsigned_64;
       numPages  : Unsigned_64;
       flags     : Unsigned_64) return Unsigned_64;
-
-   --  Set a sysinfo query value from userspace.
-   function setSysinfo
-     (queryID : Unsigned_64;
-      value   : Unsigned_64) return Unsigned_64;
 
    --  Set CPU affinity for a process.
    function setCpu
@@ -558,15 +519,9 @@ package CuBit.Messages is
       budgetUs     : Unsigned_64;
       flags        : Unsigned_64 := 0) return Unsigned_64;
 
-   --  Legacy/convenience wrappers
-
-   function recvMsg (from : out Unsigned_64) return Unsigned_64;
-
-   function getInfo
-     (query : Unsigned_64; detail : Unsigned_64 := 0) return Unsigned_64;
-
    --  The process registered for a driver or service role (DRIVER_*), or
-   --  No_Process (none registered, or the query refused).
+   --  No_Process: read from the kernel's registry publication
+   --  (CuBit.System_Facts), no system call.
    function Registered_Driver (Driver : Unsigned_64) return Process_ID;
 
    --  This process.

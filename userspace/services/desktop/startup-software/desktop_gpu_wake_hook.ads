@@ -12,6 +12,7 @@ package Desktop_GPU_Wake_Hook is
    function Collect (Receipt : CuBit.Messages.CompletionEntry) return Boolean;
    --  No GPU queue: no hint to send.
    function Boost_Hint return Boolean;
+   function Boost_Policy (On : Boolean) return Boolean;
    --  The glue's blocking calls since the last report, by call site.
    procedure Blocking_Report (Text : out String; Last : out Natural);
    --  Desktop's GPU jobs since the last report, by kinds: counts, sizes and

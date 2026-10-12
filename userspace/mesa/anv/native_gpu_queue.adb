@@ -5,6 +5,8 @@ with CuBit.GPU_Queues.Kinds;
 with CuBit.GPU_Sessions;
 with CuBit.Messages;
 with CuBit.Monotonic;
+with CuBit.Channel_Protocol;
+with Native_GPU_Calls;
 with Native_GPU_Job_Rules;
 
 package body Native_GPU_Queue is
@@ -81,6 +83,7 @@ package body Native_GPU_Queue is
 
    function Open (Slot : Unsigned_64) return Queue_Status is
       Opened : Boolean;
+      Open_Deadline : Unsigned_64;
    begin
       if not Valid_Slot (Slot) then
          return Invalid;
@@ -91,8 +94,17 @@ package body Native_GPU_Queue is
          if Sessions.Is_Open (State.Session) then
             return Invalid;
          end if;
-         Sessions.Open (State.Session, CuBit.Messages.CapabilitySlot (Slot), Opened);
+         --  Bounded like every startup call of a process that bounds its
+         --  GPU calls (Desktop): a driver that never answers costs the GPU
+         --  path, never the process.
+         Open_Deadline := Native_GPU_Calls.Call_Deadline;
+         Sessions.Open (State.Session, CuBit.Messages.CapabilitySlot (Slot), Open_Deadline, Opened);
          if not Opened then
+            if Open_Deadline /= CuBit.Messages.Wait_Forever and then
+              CuBit.Monotonic.Milliseconds >= Open_Deadline
+            then
+               Native_GPU_Calls.Note_Timeout (CuBit.Channel_Protocol.OP_OPEN_PRODUCING);
+            end if;
             return Closed;
          end if;
          State.Failed := False;
@@ -245,7 +257,8 @@ package body Native_GPU_Queue is
          elsif State.Failed then
             return Failed;
          end if;
-         Deadline := Rules.Call_Deadline (CuBit.Monotonic.Milliseconds, Remaining_Ns);
+         Deadline := Rules.Bounded_Deadline
+           (CuBit.Monotonic.Milliseconds, Remaining_Ns, Native_GPU_Calls.Bound_Ms);
          if Exchange (State.Waiter'Address, 1, Sequentially_Consistent) = 0 then
             Sessions.Wait_Reached
               (State.Session, GQ.Context_Index (Context), GQ.Timeline_Value (Target), Deadline, Result);
@@ -253,6 +266,13 @@ package body Native_GPU_Queue is
          else
             Sessions.Poll_Reached
               (State.Session, GQ.Context_Index (Context), GQ.Timeline_Value (Target), Deadline, Result);
+         end if;
+         --  A wait for ever that the process bound ended: the GPU did not
+         --  answer within it, so the session is failed, not timed out.
+         if Result = Sessions.Deadline_Reached and then Remaining_Ns = Rules.No_Timeout_Ns then
+            Native_GPU_Calls.Note_Timeout (GQ.OP_GPU_WAKE);
+            State.Failed := True;
+            return Failed;
          end if;
          return (case Result is
                    when Sessions.Reached_Target => OK,
@@ -338,6 +358,24 @@ package body Native_GPU_Queue is
       Last_Hint_Ms := Now; Hinted := True;
       return (if Sent then 1 else 0);
    end Boost_Hint;
+
+   function Boost_Policy (On : Unsigned_32) return Unsigned_32 is
+      Open_Count : Natural := 0;
+      Found : CuBit.Messages.CapabilitySlot := 0;
+      Sent : Boolean;
+   begin
+      for Slot in Slots'Range loop
+         if Sessions.Is_Open (Slots (Slot).Session) then
+            Open_Count := Open_Count + 1;
+            Found := Slot;
+         end if;
+      end loop;
+      if Open_Count /= 1 or else Boolean (Slots (Found).Failed) then
+         return 0;
+      end if;
+      Sessions.Set_Boost_Policy (Slots (Found).Session, On /= 0, Sent);
+      return (if Sent then 1 else 0);
+   end Boost_Policy;
 
    function Collect_Wake (Receipt : System.Address) return Unsigned_32 is
       Item : constant CuBit.Messages.CompletionEntry with Import, Address => Receipt;

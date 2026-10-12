@@ -76,11 +76,11 @@ package Intel_GPU_Buffer_Backing with SPARK_Mode is
    -- Backing quota, DMA address ceiling and CPU metadata budget are independent.
    Default_Heap : constant Heap_Policy :=
      (Byte_Quota => Capacity, DMA_Limit => 2 ** 32, Metadata_Bytes => 65536);
-   -- Existing kernel SYSINFO MEM_TOTAL: immutable buddy-managed RAM bytes,
-   -- not free memory and not device-local VRAM. Both native endpoints select
-   -- the same policy before their first allocation. Unknown inventory fails
-   -- closed rather than silently retaining the experimental 32MiB default.
-   Managed_RAM_Query : constant Unsigned_64 := 1601;
+   -- Managed RAM is the kernel's system facts Memory_Bytes
+   -- (CuBit.System_Facts): immutable buddy-managed RAM bytes, not free
+   -- memory and not device-local VRAM. Both native endpoints select the same
+   -- policy before their first allocation. Unknown inventory fails closed
+   -- rather than silently retaining the experimental 32MiB default.
    -- System-backed Intel bring-up policy: at most one quarter of managed RAM
    -- and half the current DMA aperture. Neither quantity reserves physical
    -- pages; allocator failure remains possible. The 32-bit DMA ceiling is

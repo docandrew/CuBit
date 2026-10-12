@@ -1,4 +1,5 @@
 with Interfaces; use Interfaces;
+with Intel_GPU_Map_Report;
 with CuBit.Messages; use CuBit.Messages;
 with Intel_GPU_Display_Pages;
 package body Intel_GPU_Display_Mapping is
@@ -57,7 +58,9 @@ package body Intel_GPU_Display_Mapping is
             if syscall (SYSCALL_MAP_DEVICE,
                 Register_Base + Intel_GPU_Display_Pages.Offset (Index),
                 Virtual_Base + Unsigned_64 (Index) * 4096, 1, 0) /= 0
-            then return "map-denied (partial mappings retained)"; end if;
+            then return Intel_GPU_Map_Report.Denied
+                   (Register_Base + Intel_GPU_Display_Pages.Offset (Index), 4096) &
+                 " (partial mappings retained)"; end if;
          end;
       end loop;
       Mapped := True;

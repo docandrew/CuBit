@@ -22,10 +22,6 @@ is
                             arg0, arg1 : Unsigned_64;
                             retval     : out Unsigned_64);
 
-    procedure handleVirtToPhys (callerPID : Process.ProcessID;
-                                arg0      : Unsigned_64;
-                                retval    : out Unsigned_64);
-
     procedure handleCapSend (callerPID : Process.ProcessID;
                              arg0, arg1, arg2, arg3,
                              arg4, arg5, arg6 : Unsigned_64;
@@ -119,9 +115,9 @@ is
                                arg0, arg1, arg2 : Unsigned_64;
                                retval     : out Unsigned_64);
 
-    procedure handleSetSysinfo (callerPID  : Process.ProcessID;
-                                arg0, arg1 : Unsigned_64;
-                                retval     : out Unsigned_64);
+    procedure handlePublish (callerPID  : Process.ProcessID;
+                             arg0, arg1 : Unsigned_64;
+                             retval     : out Unsigned_64);
 
     procedure handleSetCpu (callerPID  : Process.ProcessID;
                             arg0, arg1 : Unsigned_64;
@@ -130,6 +126,14 @@ is
     procedure handleSaveReplyCap (callerPID : Process.ProcessID;
                                    arg0      : Unsigned_64;
                                    retval    : out Unsigned_64);
+
+    -- RESTORE_REPLY_CAPABILITY: arg0 = a slot holding a reply capability
+    -- saved by MOVE_REPLY_CAPABILITY; it becomes the calling thread's
+    -- current reply authority again. 1 on success, 0 if the slot holds no
+    -- reply capability or the thread already has a current one.
+    procedure handleRestoreReplyCap (callerPID : Process.ProcessID;
+                                     arg0      : Unsigned_64;
+                                     retval    : out Unsigned_64);
 
     procedure handleKill (callerPID : Process.ProcessID;
                           arg0      : Unsigned_64;
@@ -145,9 +149,5 @@ is
     procedure handleSendControl (callerPID : Process.ProcessID;
                                  arg0, arg1 : Unsigned_64;
                                  retval     : out Unsigned_64);
-
-    procedure handleSetWellKnown (callerPID : Process.ProcessID;
-                                   arg0, arg1 : Unsigned_64;
-                                   retval     : out Unsigned_64);
 
 end Syscall.Admin;

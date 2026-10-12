@@ -24,11 +24,9 @@ is
         SYSCALL_KILL,
         SYSCALL_SBRK,
         SYSCALL_WRITE,
-        SYSCALL_INFO,
         SYSCALL_RECEIVE,
         SYSCALL_REPLY,
         SYSCALL_SEND_EVENT,
-        SYSCALL_RECEIVE_EVENT,
         SYSCALL_RECEIVE_UNTIL_MONOTONIC_MILLISECOND,
         SYSCALL_POLL_ANY_IPC,
         SYSCALL_WAIT_COMPLETION,
@@ -45,7 +43,6 @@ is
         SYSCALL_OUTP32,
         SYSCALL_SUBMIT_VIA_ENDPOINT_CAPABILITY,
         SYSCALL_REPLY_WAIT,
-        SYSCALL_VIRT_TO_PHYS,
         SYSCALL_MOVE_REPLY_CAPABILITY,
         SYSCALL_REPLY_AND_CONSUME_REPLY_CAPABILITY,
         SYSCALL_SPAWN,
@@ -56,7 +53,6 @@ is
         SYSCALL_ALLOC_DMA,
         SYSCALL_ENABLE_IRQ,
         SYSCALL_MAP_INTO,
-        SYSCALL_SET_SYSINFO,
         SYSCALL_SET_CPU,
         SYSCALL_POLL_SERVICE_REQUEST,
         SYSCALL_SET_LATENCY_CONTRACT,
@@ -70,7 +66,6 @@ is
         SYSCALL_CREATE_SHARED_MEMORY_GRANT_FOR_PROCESS_ID,
         SYSCALL_REVOKE_SHARED_MEMORY_GRANT,
         SYSCALL_CREATE_SHARED_MEMORY_GRANT_VIA_CAPABILITY,
-        SYSCALL_SET_WELL_KNOWN,
         SYSCALL_GET_OWNED_SHARED_MEMORY_GRANT_GENERATION,
         SYSCALL_ACQUIRE_SHARED_MEMORY_GRANT,
         SYSCALL_REVOKE_SHARED_MEMORY_GRANT_REFERENCE,
@@ -97,6 +92,9 @@ is
         SYSCALL_RELEASE_DEVICE_VECTORS,
         SYSCALL_READ_DEVICE_VECTOR,
         SYSCALL_BOOT_TIMELINE,
+        SYSCALL_READ_STATISTICS,
+        SYSCALL_PUBLISH,
+        SYSCALL_RESTORE_REPLY_CAPABILITY,
         SYSCALL_REGISTER_DRIVER)
     with Size => Unsigned_64'Size;
 
@@ -121,11 +119,9 @@ is
         SYSCALL_POLICY_DELEGATE_ENDPOINT => 121,
         SYSCALL_DERIVE_SHARED_MEMORY_GRANT_VIA_CAPABILITY => 122,
         SYSCALL_WRITE                => 12,
-        SYSCALL_INFO                 => 15,
         SYSCALL_RECEIVE              => 17,
         SYSCALL_REPLY                => 18,
         SYSCALL_SEND_EVENT           => 19,
-        SYSCALL_RECEIVE_EVENT        => 20,
         SYSCALL_RECEIVE_UNTIL_MONOTONIC_MILLISECOND => 21,
         SYSCALL_POLL_ANY_IPC         => 22,
         SYSCALL_WAIT_COMPLETION      => 24,
@@ -151,9 +147,17 @@ is
         SYSCALL_READ_DEVICE_VECTOR      => 132,
         -- docs/boot-timeline.md
         SYSCALL_BOOT_TIMELINE => Boot_Timeline_Layout.System_Call_Number,
+        -- docs/syscall-retirement.md: a typed self query and the KERN-002
+        -- publication writer. Retired numbers stay unused: 15 (INFO), 20
+        -- (RECEIVE_EVENT), 50 (VIRT_TO_PHYS), 77 (SET_SYSINFO), 107
+        -- (SET_WELL_KNOWN).
+        SYSCALL_READ_STATISTICS => 134,
+        SYSCALL_PUBLISH         => 135,
+        -- A reply capability saved in a slot back to the calling thread's
+        -- current reply authority (the reverse of 51).
+        SYSCALL_RESTORE_REPLY_CAPABILITY => 136,
         SYSCALL_SUBMIT_VIA_ENDPOINT_CAPABILITY => 42,
         SYSCALL_REPLY_WAIT           => 48,
-        SYSCALL_VIRT_TO_PHYS         => 50,
         SYSCALL_MOVE_REPLY_CAPABILITY              => 51,
         SYSCALL_REPLY_AND_CONSUME_REPLY_CAPABILITY => 52,
         SYSCALL_SPAWN                => 60,
@@ -164,7 +168,6 @@ is
         SYSCALL_ALLOC_DMA            => 74,
         SYSCALL_ENABLE_IRQ           => 75,
         SYSCALL_MAP_INTO             => 76,
-        SYSCALL_SET_SYSINFO          => 77,
         SYSCALL_SET_CPU              => 78,
         SYSCALL_POLL_SERVICE_REQUEST => 80,
         SYSCALL_SET_LATENCY_CONTRACT => 81,
@@ -179,7 +182,6 @@ is
         SYSCALL_CREATE_SHARED_MEMORY_GRANT_FOR_PROCESS_ID => 102,
         SYSCALL_REVOKE_SHARED_MEMORY_GRANT                  => 103,
         SYSCALL_CREATE_SHARED_MEMORY_GRANT_VIA_CAPABILITY => 106,
-        SYSCALL_SET_WELL_KNOWN       => 107,
         SYSCALL_GET_OWNED_SHARED_MEMORY_GRANT_GENERATION => 108,
         SYSCALL_ACQUIRE_SHARED_MEMORY_GRANT => 109,
         SYSCALL_REVOKE_SHARED_MEMORY_GRANT_REFERENCE => 110,

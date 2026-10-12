@@ -113,7 +113,7 @@ procedure Main is
       package CP renames CuBit.Channel_Protocol;
       Endpoint : constant CuBit.Messages.CapabilitySlot :=
         CuBit.Messages.CapabilitySlot (CCL_Manifest_Bindings.Slot_ipc_test);
-      Producer : constant Unsigned_64 := getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_IPCTEST);
+      Producer : constant Unsigned_64 := To_Word (Registered_Driver (DRIVER_IPCTEST));
       Offer : constant CuBit.Channel_Contracts.Contract :=
         CuBit.Outlet_Channels.Offer (CuBit.Protocols.TEXT_LINE_CONTRACT);
       Link, Probe : CuBit.Channels.Channel;

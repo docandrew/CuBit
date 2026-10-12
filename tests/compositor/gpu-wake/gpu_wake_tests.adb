@@ -102,6 +102,36 @@ begin
           Ada.Strings.Fixed.Index (Ada.Strings.Unbounded.To_String (Desktop_Logs.Last_Line), "boost_hints=2/2") > 0,
           "report carries sent/coalesced hints");
 
+   --  Waitboost off: the policy goes out once, at the next rendering wait,
+   --  and input hints stop.
+   W.Set_Waitboost (False);
+   W.Input_Hint;
+   Check (H.Hints = 4, "no hints while waitboost is off");
+   W.Prepare_Wait (False, Sequence, Now, Mode);
+   Check (H.Policies = 0, "policy waits for an open queue (rendering)");
+   W.Prepare_Wait (True, Sequence, Now, Mode);
+   W.Prepare_Wait (True, Sequence, Now, Mode);
+   Check (H.Policies = 1 and not H.Last_Policy, "policy sent once, off");
+
+   --  Abandoned renderer startup: no call into the glue from here on, not
+   --  even a report, a hint or an arm while rendering.
+   W.Set_Waitboost (True);
+   W.Disable;
+   declare
+      Arms_Before : constant Natural := H.Arms;
+      Lines_Before : constant Natural := Desktop_Logs.Lines;
+      Reports_Before : constant Natural := H.Reports;
+   begin
+      W.Input_Hint;
+      Now := Now + 1_500;
+      W.Prepare_Wait (True, Sequence, Now, Mode);
+      Check (H.Hints = 4 and then H.Policies = 1 and then H.Arms = Arms_Before,
+             "disabled: no hint, policy or arm");
+      Check (Mode = W.Timer, "disabled: the loop keeps its timer");
+      Check (Desktop_Logs.Lines = Lines_Before and then H.Reports = Reports_Before,
+             "disabled: no report from the glue");
+   end;
+
    if Failures = 0 then
       Put_Line ("Desktop GPU wake PASS:" & Checks'Image & " checks");
    else

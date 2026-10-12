@@ -210,23 +210,29 @@ package body CuBit.Logging is
    procedure Subscribe
      (Item : in out Reader; Result : out Status;
       Minimum : Logs.Severity := Logs.Trace;
-      Source : Unsigned_64 := Every_Source) is
+      Source : Unsigned_64 := Every_Source;
+      Limit_Ms : Unsigned_64 := No_Limit) is
       Msg : Message := Request (CuBit.Log_Protocol.Subscribe);
       Tag : MessageTag;
       Opened : Channels.Open_Result;
       Ignore_Refusal : CuBit.Channel_Protocol.Open_Refusal;
+      function Deadline return Unsigned_64 is
+        (if Limit_Ms = No_Limit then CuBit.Messages.Wait_Forever
+         else CuBit.Messages.Deadline_After (Limit_Ms));
    begin
       Result := Unavailable;
+      Item.Limit_Ms := Limit_Ms;
       if not Item.Link.Active then
          Channels.Open (Item.Slot, CuBit.Log_Streams.CONTRACT, Channels.Consuming, Item.Link,
-                        Opened, Ignore_Refusal);
+                        Opened, Ignore_Refusal, Deadline => Deadline);
          if Opened /= Channels.Opened then
             return;
          end if;
       end if;
       Msg.words := [Logs.Severity'Pos (Minimum), Source, Item.Link.Peer_Number, 0];
-      Tag := capCall (Item.Slot, Msg, CuBit.Messages.Wait_Forever);
-      Result := (if Tag.label = 0 then Unavailable else Reply_Status (Msg));
+      Tag := capCall (Item.Slot, Msg, Deadline);
+      Result := (if Tag.label = 0 or else Tag.label = CuBit.Messages.REPLY_TIMEOUT
+                 then Unavailable else Reply_Status (Msg));
       --  The reply confirms the handle and the source filter applied.
       if Result = OK and then Msg.words (0) /= 0 and then
         Msg.words (1) = Source and then Msg.words (2 .. 3) = [0, 0]
@@ -268,7 +274,7 @@ package body CuBit.Logging is
          --  Nothing to read: a good moment to keep the subscription alive.
          Now := CuBit.Published_Clock.Milliseconds;
          if Now >= Item.Renewed_Ms + RENEW_MS then
-            Subscribe (Item, Renewal, Item.Minimum, Item.Source);
+            Subscribe (Item, Renewal, Item.Minimum, Item.Source, Item.Limit_Ms);
          end if;
          return;
       end if;

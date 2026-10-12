@@ -4,8 +4,8 @@ root=Path.cwd()
 assert os.environ.get("IN_NIX_SHELL")
 work=Path(tempfile.mkdtemp(prefix="icon-staging-",dir=root/"tests/compositor/build"))
 print(work,flush=True)
-files=["userspace/services/desktop/"+n for n in ["desktop_icon_pixels-atlases.ads","desktop_icon_pixels-atlases.adb","desktop_icon_pixels.ads","desktop_icon_pixels.adb","desktop_icon_mapping.ads","desktop_icon_mapping.adb","desktop_icons.ads","desktop_window_icons.ads","desktop_cursors.ads"]]
-files += ["userspace/lib/compositor/compositor_source_region.ads","userspace/lib/compositor/compositor_upload.ads","userspace/lib/compositor/compositor_upload.adb","tests/compositor/icon_pixels_tests.adb","tests/compositor/icon_mapping_tests.adb","tests/compositor/icon_atlas_tests.adb"]
+files=["userspace/services/desktop/"+n for n in ["desktop_icon_pixels-atlases.ads","desktop_icon_pixels-atlases.adb","desktop_icon_pixels.ads","desktop_icon_pixels.adb","desktop_icon_mapping.ads","desktop_icon_mapping.adb","desktop_icons.ads","desktop_icon_store.ads","desktop_icon_store.adb","desktop_window_icons.ads","desktop_cursors.ads"]]
+files += ["userspace/lib/image/cubit-qoi.ads","userspace/lib/image/cubit-qoi.adb","userspace/runtime/gnat/cubit.ads","userspace/lib/compositor/compositor_source_region.ads","userspace/lib/compositor/compositor_upload.ads","userspace/lib/compositor/compositor_upload.adb","tests/compositor/icon_pixels_tests.adb","tests/compositor/icon_mapping_tests.adb","tests/compositor/icon_atlas_tests.adb"]
 hashes={}
 for p in files:
  data=(root/p).read_bytes();hashes[p]=hashlib.sha256(data).hexdigest();(work/Path(p).name).write_bytes(data)

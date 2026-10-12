@@ -90,10 +90,13 @@ package CuBit.Channels is
    --  the peer has one kind of channel). Refused: the peer said why
    --  (Refusal). The peer may answer with a different queue capacity (a
    --  consumer then uses the producer's).
+   --  Deadline: the absolute time (CuBit.Messages.Deadline_After) after
+   --  which the open counts as Failed instead of waiting for the peer.
    procedure Open
      (Endpoint : CuBit.Messages.CapabilitySlot; Item : CC.Contract; This_Side : Side;
       C : out Channel; Result : out Open_Result; Refusal : out CP.Open_Refusal;
-      Connector : Unsigned_16 := 0)
+      Connector : Unsigned_16 := 0;
+      Deadline : Unsigned_64 := CuBit.Messages.Wait_Forever)
    with Pre => CC.Valid (Item);
 
    --  The same without waiting: the request goes out as a submission whose

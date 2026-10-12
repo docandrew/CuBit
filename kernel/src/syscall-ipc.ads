@@ -103,9 +103,9 @@ is
                             arg0      : Unsigned_64;
                             retval    : out Unsigned_64);
 
-    procedure handleInfo (callerPID  : Process.ProcessID;
-                          arg0, arg1 : Unsigned_64;
-                          retval     : out Unsigned_64);
+    procedure handleReadStatistics (callerPID  : Process.ProcessID;
+                                    arg0, arg1 : Unsigned_64;
+                                    retval     : out Unsigned_64);
 
     procedure handleDeriveGrantViaCap
       (callerPID : Process.ProcessID;

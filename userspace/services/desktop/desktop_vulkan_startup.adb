@@ -411,6 +411,16 @@ package body Desktop_Vulkan_Startup with SPARK_Mode,
       if Writer = Unsafe or else D.Current (Device) = D.Quarantined or else V.Current (Submission) = V.Quarantined then
          Result := Source_Unsafe; return;
       end if;
+      --  A staged batch is submitted here, not left for a capture's
+      --  completion that may never come (its fence is observed by polls,
+      --  Drive_Uploads and the next capture admission).
+      if Writer = Staged then
+         declare
+            Flushed : Source_Result;
+         begin
+            Flush_Staged (Flushed);
+         end;
+      end if;
       if Writer /= Available or else V.Current (Submission) /= V.Idle then Result := Source_Busy; return; end if;
       if not Can_Produce (Index, Lease) then return; end if;
       if U.Current (Upload) /= U.Live or else U.Capacity (Upload) not in 1 .. G.Byte_Count'Last or else
@@ -626,12 +636,25 @@ package body Desktop_Vulkan_Startup with SPARK_Mode,
       end if;
    end Observe_Batch;
    procedure Poll_Upload (Result : out Poll_Result) is
+      Flushed : Source_Result;
    begin
       Result := Idle;
+      if Writer = Unsafe then Result := GPU_Failed; return; end if;
+      if Writer = Staged then Flush_Batch (Flushed); end if;
       if Writer = Unsafe then Result := GPU_Failed; return; end if;
       if Writer /= Transferring then return; end if;
       Observe_Batch (Result);
    end Poll_Upload;
+   procedure Drive_Uploads is
+      Flushed : Source_Result;
+      Observed : Poll_Result;
+   begin
+      if Writer = Staged then
+         Flush_Batch (Flushed);
+      elsif Writer = Transferring then
+         Observe_Batch (Observed);
+      end if;
+   end Drive_Uploads;
    procedure Poll_Slot_Upload (Index : Backing_Slot; Result : out Poll_Result) is
       Flushed : Source_Result;
    begin

@@ -122,6 +122,30 @@ is
                   or else source'Old.capType /= CAP_REPLY
                   or else table'Old(dest).capType /= CAP_NULL));
 
+    -- Move a reply capability saved in a slot back to the thread's current
+    -- reply authority (RESTORE_REPLY_CAPABILITY): the reverse of
+    -- moveReplyCapFrom, so a server that set a request aside can serve it
+    -- later exactly as if it had just been received. Only into an empty
+    -- current authority; on failure nothing changes.
+    procedure restoreReplyCapTo
+      (table         : in out CapabilityTable;
+       deferredSlots : in out Unsigned_64;
+       slot          : in     CapabilitySlot;
+       dest          : in out Capability;
+       moved         :    out Boolean) with
+        Post =>
+          (if moved then
+               slot /= REPLY_CAP_SLOT
+               and then dest'Old.capType = CAP_NULL
+               and then table'Old(slot).capType = CAP_REPLY
+               and then dest = table'Old(slot)
+               and then isSingleSlotUpdate (table, table'Old, slot, NULL_CAPABILITY)
+               and then deferredSlots =
+                 (deferredSlots'Old and not Shift_Left (Unsigned_64'(1), slot))
+           else
+               dest = dest'Old and then table = table'Old
+               and then deferredSlots = deferredSlots'Old);
+
     -- Consume a thread's current reply capability, if present.
     procedure takeReplyCapFrom (source : in out Capability;
                                 cap    :    out Capability;
@@ -415,18 +439,5 @@ is
                                accessSize : in     Unsigned_64;
                                forWrite   : in     Boolean;
                                allowed    :    out Boolean);
-
-    ---------------------------------------------------------------------------
-    -- checkDeviceMemAccess
-    -- Scan the capability table for a CAP_DEVICE_MEM whose range
-    -- [object.ref .. object.ref+object.param-1] covers [base .. base+size-1]
-    -- with READ rights and, when requireWrite is True, WRITE rights.
-    -- Empty or wrapping request/capability ranges are rejected.
-    ---------------------------------------------------------------------------
-    procedure checkDeviceMemAccess (table   : in     CapabilityTable;
-                                    base    : in     Unsigned_64;
-                                    size    : in     Unsigned_64;
-                                    allowed :    out Boolean;
-                                    requireWrite : in Boolean := True);
 
 end Capabilities.Operations;

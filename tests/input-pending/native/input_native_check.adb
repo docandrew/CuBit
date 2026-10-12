@@ -1,5 +1,6 @@
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.System_Facts;
 with CuBit.Input;
 with Input_Pending;
 procedure Input_Native_Check is
@@ -27,6 +28,15 @@ procedure Input_Native_Check is
         delivery => I.ACCUMULABLE_DISPLACEMENT,
         flags => [I.RESYNCHRONIZE => Value.Recover],
         payload => Value.Payload, snapshot => Value.Payload and 16#FF#)));
+   --  This process's mailbox drops (kernel READ_STATISTICS).
+   function Event_Drops return Unsigned_64 is
+      Statistics : CuBit.System_Facts.SP.Statistics;
+      Read : Boolean;
+   begin
+      CuBit.System_Facts.Read_Statistics (Statistics, Read);
+      Check (Read, "statistics refused");
+      return Statistics.Event_Drops;
+   end Event_Drops;
    procedure Run (Overflow : Boolean) is
       Queue : P.Queue;
       Msg, Received : Message := NULL_MESSAGE;
@@ -34,7 +44,7 @@ procedure Input_Native_Check is
       Valid, Lost, Refused : Boolean := False;
       Filled, Drained, Delivered : Natural := 0;
       Number : Natural;
-      Before_Drops : constant Unsigned_64 := getInfo (1401);
+      Before_Drops : constant Unsigned_64 := Event_Drops;
       Deadline : Unsigned_64;
       Count : constant Positive := (if Overflow then 40 else 6);
       First : constant Positive := (if Overflow then 33 else 1);
@@ -58,7 +68,7 @@ procedure Input_Native_Check is
          Check (not trySendEvent (PID, Encode (Saved)), "full mailbox admitted report");
          Check (P.Element (Queue, 0) = Saved, "refusal changed pending head");
       end loop;
-      Check (getInfo (1401) - Before_Drops = Unsigned_64 (Count + 1),
+      Check (Event_Drops - Before_Drops = Unsigned_64 (Count + 1),
              "mailbox rejection metric");
       -- Act as receiver, freeing capacity without any further source report.
       for N in 1 .. Filled loop

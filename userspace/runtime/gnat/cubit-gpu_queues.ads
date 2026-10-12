@@ -45,7 +45,9 @@
 --  OP_GPU_BOOST [] is a one-way hint, sent without a completion token: the
 --  client is about to submit latency-sensitive work (Desktop on input), so
 --  the driver raises the GT frequency now (SLPC waitboost). No reply; the
---  driver accepts it only on the session's own endpoint.
+--  driver accepts it only on the session's own endpoint. With one word it
+--  sets the driver's waitboost policy instead (Boost_Policy_Off/On; Desktop
+--  sends its gpu.power.waitboost setting once), logged by the driver.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
 with Interfaces; use Interfaces;
@@ -57,6 +59,8 @@ package CuBit.GPU_Queues with Pure, SPARK_Mode is
 
    OP_GPU_WAKE : constant := 16#0A31#;
    OP_GPU_BOOST : constant := 16#0A32#;
+   Boost_Policy_Off : constant := 0;
+   Boost_Policy_On  : constant := 1;
 
    Queue_Connector : constant := 1;
 

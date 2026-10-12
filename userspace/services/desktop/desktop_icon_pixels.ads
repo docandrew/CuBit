@@ -2,8 +2,10 @@ with Interfaces;
 with Desktop_Icons;
 with Desktop_Window_Icons;
 with Compositor_Upload;
--- Immutable embedded icons retain straight alpha. Copy only on initial upload;
--- never preblend against a background or create a second premultiplied atlas.
+-- Icons retain straight alpha: application icons from the atlas loaded at
+-- startup (Desktop_Icon_Store), window controls embedded. Copy only on initial
+-- upload; never preblend against a background or create a second
+-- premultiplied atlas.
 package Desktop_Icon_Pixels with SPARK_Mode is
    package U renames Compositor_Upload;
    type Family is (Application, Window_Control);

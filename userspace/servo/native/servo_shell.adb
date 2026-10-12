@@ -1,5 +1,5 @@
 with Servo_Session;
-with CuBit.Messages;
+with CuBit.System_Facts;
 with CuBit.Config;
 package body Servo_Shell is
    function Config_Scope_Check return Unsigned_32 is
@@ -39,8 +39,14 @@ package body Servo_Shell is
       return 0;
    end Config_Scope_Check;
 
+   --  This process's own frames in bytes (kernel READ_STATISTICS).
    function Memory_Owned return Unsigned_64 is
-     (CuBit.Messages.getInfo (CuBit.Messages.SYSINFO_MEM_OWNED_SELF));
+      Statistics : CuBit.System_Facts.SP.Statistics;
+      Read : Boolean;
+   begin
+      CuBit.System_Facts.Read_Statistics (Statistics, Read);
+      return (if Read then Statistics.Owned_Bytes else Unsigned_64'Last);
+   end Memory_Owned;
    package S1 is new Servo_Session;
    package S2 is new Servo_Session;
    package S3 is new Servo_Session;

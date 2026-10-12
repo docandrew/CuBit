@@ -12,7 +12,7 @@ as --64 "$B/std-hello-manifest/manifest.S" -o "$B/std-hello-manifest/manifest.o"
 (
     cd hello
     CARGO_TARGET_DIR="$B/std-hello" \
-    RUSTFLAGS="-C link-arg=-T$(realpath ../../../c/link.ld) -C link-arg=-zstack-size=1048576 -C link-arg=$B/std-hello-manifest/manifest.o" \
+    RUSTFLAGS="-C link-arg=-T$(realpath ../../../c/link.ld) -C link-arg=-zstack-size=1048576 -C link-arg=--build-id=sha1 -C link-arg=$B/std-hello-manifest/manifest.o" \
     bash ../cargo-cubit.sh sh -c 'cargo build --offline -Zbuild-std=std,panic_abort \
         -Zjson-target-spec --target "$CUBIT_RUST_TARGET" --release'
 )

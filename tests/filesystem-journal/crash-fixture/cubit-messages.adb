@@ -102,8 +102,10 @@ package body CuBit.Messages is
       Ada.Text_IO.Put (value);
    end debugPrint;
 
-   function capCall (slot : Unsigned_64; msg : in out Message) return MessageTag is
-      pragma Unreferenced (slot);
+   function capCall
+     (slot : Unsigned_64; msg : in out Message; Deadline : Unsigned_64)
+     return MessageTag is
+      pragma Unreferenced (slot, Deadline);
       Op : constant Unsigned_32 := msg.tag.label;
       First : constant Unsigned_64 := msg.words (0);
       Count : constant Unsigned_64 := msg.words (2) * 512;
@@ -174,14 +176,6 @@ package body CuBit.Messages is
    begin
       if call = SYSCALL_GETTIME then
          return 0;
-      elsif call = SYSCALL_INFO and then arg0 = SYSINFO_WALL_CLOCK_OFFSET then
-         declare
-            Clock : constant String :=
-              Ada.Environment_Variables.Value ("CUBIT_TEST_WALL_CLOCK", "");
-         begin
-            return (if Clock = "" then Unsigned_64'Last
-                    else Unsigned_64'Value (Clock) * 1_000);
-         end;
       end if;
       if call /= SYSCALL_ALLOCATE_OWNED_MEMORY or else arg0 = 0 or else
         arg0 > 16 * 1024 * 1024

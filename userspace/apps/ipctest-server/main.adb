@@ -36,6 +36,7 @@ procedure main is
    OP_DEADLINE_BUSY   : constant Unsigned_32 := 16#0914#;
    OP_DEADLINE_QUEUED : constant Unsigned_32 := 16#0915#;
    OP_DEADLINE_STATUS : constant Unsigned_32 := 16#0916#;
+   OP_RESTORE_ECHO    : constant Unsigned_32 := 16#0917#;
    SILENT_SLOT : constant CapabilitySlot := 13;
    --  Long enough for the caller's 50 ms deadline to pass while queued.
    BUSY_MS : constant Unsigned_64 := 300;
@@ -401,6 +402,22 @@ begin
                   debugPrint ("ipctest-server: dead caller reply retired and slot reused" & LF);
                end if;
             end if;
+         end if;
+      elsif msg.tag.label = OP_RESTORE_ECHO then
+         -- Set aside and taken back (RESTORE_REPLY_CAPABILITY): the
+         -- restored authority answers the call as if just received. A
+         -- second restore from the now empty slot, or from a slot holding
+         -- no reply capability, is refused.
+         if saveReplyCap (REPLY_SLOT) /= 1 then
+            debugPrint ("TEST: FAIL async-ipc restore-save" & LF);
+         elsif restoreReplyCap (Unsigned_64 (REPLY_SLOT)) /= 1 then
+            debugPrint ("TEST: FAIL async-ipc restore-reply-cap" & LF);
+         elsif restoreReplyCap (Unsigned_64 (REPLY_SLOT)) /= 0 then
+            debugPrint ("TEST: FAIL async-ipc restore-twice" & LF);
+         elsif restoreReplyCap (CAP_SLOT_SELF) /= 0 then
+            debugPrint ("TEST: FAIL async-ipc restore-non-reply" & LF);
+         else
+            sendReply (from, REPLY_OK, msg.words (0) xor XOR_MAGIC);
          end if;
       elsif msg.tag.label = OP_DEADLINE_SILENT then
          -- Hold the call and never answer it: the caller's deadline ends it.

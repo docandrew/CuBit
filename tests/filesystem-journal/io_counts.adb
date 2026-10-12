@@ -30,6 +30,10 @@ procedure IO_Counts is
      ("f" & Index'Image (2 .. Index'Image'Last));
 begin
    Open_Image (Ada.Command_Line.Argument (1));
+   --  The 1,000 small files (4,000 dirty blocks) fit the cache: the claim is
+   --  that nothing is written before the commit, not cache pressure (the
+   --  default 4 MiB cache, sized for 128 MiB machines, holds 1,024 blocks).
+   configureCache (32);
    initBlockDevice (Fs, 1, (slot => 1, generation => 1), Grant_Buffer'Address,
                     Grant_Buffer'Length, Admission);
    pragma Assert (Admission = Admitted);

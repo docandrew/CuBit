@@ -18,7 +18,7 @@ enum Syscall {
     Exit = 0,
     GrowHeap = 8,
     DebugWrite = 12,
-    CallViaEndpointCapability = 41,
+    CallViaEndpointCapability = 128,
     ThreadCreate = 90,
     ThreadExit = 91,
     FutexWait = 92,
@@ -37,6 +37,10 @@ pub fn debug_write(text: &str) {
             lateout("rcx") _, lateout("r11") _, options(nostack));
     }
 }
+
+/// A synchronous call's deadline: none (docs/ipc-fastpath.md, "Call
+/// deadlines"; the kernel takes an absolute monotonic millisecond).
+const WAIT_FOREVER: u64 = u64::MAX;
 
 /// Two-argument raw machine boundary for native operations.
 ///
@@ -153,10 +157,11 @@ impl EndpointSlot {
         // message lives until the synchronous syscall returns. The kernel
         // copies the request before blocking; it retains no pointer afterward.
         let returned_tag = unsafe {
-            syscall2(
+            syscall3(
                 Syscall::CallViaEndpointCapability,
                 self.0,
                 &mut message as *mut Message as u64,
+                WAIT_FOREVER,
             )
         };
         if returned_tag == u64::MAX {

@@ -1,13 +1,17 @@
+with Desktop_Icon_Store;
 package body Desktop_Icon_Pixels with SPARK_Mode is
-   --  The icon tables are large constants: only these two bodies name
-   --  them, so the provers see them only for the index checks here.
+   --  Application icons come from the atlas loaded at startup
+   --  (Desktop_Icon_Store: its built-in fallback glyph until then, or if it
+   --  is unavailable). The window-control table is a small constant: only
+   --  Control_Pixel names it, so the provers see it only for the index check.
    function Application_Pixel
      (Icon : Desktop_Icons.Icon_ID; Index : Natural) return Interfaces.Unsigned_32
      with Pre => Index < Desktop_Icons.ICON_SIZE * Desktop_Icons.ICON_SIZE;
    function Application_Pixel
      (Icon : Desktop_Icons.Icon_ID; Index : Natural) return Interfaces.Unsigned_32 is
    begin
-      return Desktop_Icons.Pixels (Icon) (Index);
+      return Desktop_Icon_Store.Pixel
+        (Icon, Index mod Desktop_Icons.ICON_SIZE, Index / Desktop_Icons.ICON_SIZE);
    end Application_Pixel;
 
    function Control_Pixel

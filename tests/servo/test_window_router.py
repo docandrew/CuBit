@@ -14,7 +14,8 @@ with tempfile.TemporaryDirectory(prefix="servo-window-router-") as tmp:
     for name in ["servo_shell.ads", "servo_shell.adb", "servo_session.ads"]:
         (d / name).write_text((root / "userspace/servo/native" / name).read_text())
     (d / "cubit.ads").write_text("package CuBit is end CuBit;")
-    (d / "cubit-messages.ads").write_text("with Interfaces; use Interfaces; package CuBit.Messages is SYSINFO_MEM_OWNED_SELF : constant Unsigned_64 := 1602; function getInfo (Query : Unsigned_64) return Unsigned_64 is (0); end CuBit.Messages;")
+    (d / "cubit-system_facts.ads").write_text("with Interfaces; use Interfaces; package CuBit.System_Facts is package SP is type Statistics is record Owned_Bytes, Event_Drops, Free_Memory_Bytes : Unsigned_64 := 0; end record; end SP; procedure Read_Statistics (Value : out SP.Statistics; Success : out Boolean); end CuBit.System_Facts;")
+    (d / "cubit-system_facts.adb").write_text("package body CuBit.System_Facts is procedure Read_Statistics (Value : out SP.Statistics; Success : out Boolean) is begin Value := (others => 0); Success := True; end Read_Statistics; end CuBit.System_Facts;")
     (d / "faults.ads").write_text("package Faults is Deny_Close : Boolean := False; end Faults;")
     (d / "servo_session.adb").write_text('''with Faults;
 package body Servo_Session is

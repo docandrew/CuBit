@@ -23,6 +23,7 @@ procedure Lowering_Tests is
    package O renames CCL.Ownership;
    package R renames CCL.Resources;
    package V renames CCL.VM;
+   use type V.Import_Count;
    package N renames V.Native_Objects;
    use type C.Catalog_Error;
    use type C.Resource_Publication;

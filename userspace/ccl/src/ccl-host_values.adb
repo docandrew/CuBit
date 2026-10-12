@@ -38,8 +38,10 @@ package body CCL.Host_Values with SPARK_Mode => On is
       Result_Schema : CCL.Objects.Schema_Key := CCL.Objects.No_Schema) return Import_Declaration is
      ((Argument => (if Argument_Schema /= CCL.Objects.No_Schema then Object_Value else Data_Kind_Of (Item.Argument)),
        Result => (if Result_Schema /= CCL.Objects.No_Schema then Object_Value else Data_Kind_Of (Item.Result)),
-       Argument_Text_Limit => (if Argument_Schema = CCL.Objects.No_Schema then Item.Argument_Text_Limit else 0),
-       Result_Text_Limit => (if Result_Schema = CCL.Objects.No_Schema then Item.Result_Text_Limit else 0),
+       Argument_Text_Limit =>
+         (if Argument_Schema = CCL.Objects.No_Schema then To_Host_Limit (Item.Argument_Text_Limit) else 0),
+       Result_Text_Limit =>
+         (if Result_Schema = CCL.Objects.No_Schema then To_Host_Limit (Item.Result_Text_Limit) else 0),
        Argument_Schema => Argument_Schema, Result_Schema => Result_Schema,
        Authority => Item.Authority, Binding => Item.Binding,
        Ownership_Argument => Item.Ownership_Argument, Local => Item.Local,
@@ -98,9 +100,9 @@ package body CCL.Host_Values with SPARK_Mode => On is
         (if Ref in CCL.Types.Integer_Type | CCL.Types.Boolean_Type | CCL.Types.String_Type
          then CCL.Types.Invalid_Type else Ref);
       --  A text contract's own limit; a String image holds a host text value.
-      function Limit (Kind : Value_Kind; Declared : Text_Length; Ref : CCL.Types.Type_Reference)
+      function Limit (Kind : Value_Kind; Declared : Text_Limit; Ref : CCL.Types.Type_Reference)
         return CCL.VM.Import_Text_Length is
-        (if Kind = Text_Value then Declared
+        (if Kind = Text_Value then To_Import_Limit (Declared)
          elsif Ref = CCL.Types.String_Type then CCL.Objects.Maximum_Text_Bytes else 0);
    begin
       Import := (others => <>);

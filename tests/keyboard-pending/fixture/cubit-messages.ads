@@ -27,7 +27,6 @@ package CuBit.Messages is
    function portInp8 (Port : Unsigned_16) return Unsigned_64;
    function capSend (Slot : Unsigned_64; Msg : Message) return MessageTag;
    function trySendEvent (Dest : Process_ID; Msg : Message) return Boolean;
-   function Wait_Event return Message;
    function Poll_Event (Msg : out Message) return Boolean;
    function Wait_For_Activity_Until (Deadline : Unsigned_64) return Activity_Result;
 end CuBit.Messages;

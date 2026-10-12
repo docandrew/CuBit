@@ -21,6 +21,7 @@ with CuBit.Config;
 with CuBit.Filesystems;
 with CuBit.Directory_Pages;
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.System_Facts;
 with CuBit.Process_IDs.Text;
 with CuBit.Process_IDs;
 with CuBit.Process_List;
@@ -71,14 +72,6 @@ procedure main is
    DISPLAY_OK                 : constant Unsigned_64 := 0;
    DISPLAY_BACKEND_VIRTIO_GPU : constant Unsigned_64 := 3;
 
-   --  Sysinfo query IDs for framebuffer
-   SYSINFO_FB_WIDTH  : constant Unsigned_64 := 1100;
-   SYSINFO_FB_HEIGHT : constant Unsigned_64 := 1101;
-   SYSINFO_FB_PITCH  : constant Unsigned_64 := 1102;
-
-   --  Sysinfo query IDs for memory
-   SYSINFO_MEM_FREE  : constant Unsigned_64 := 1600;
-   SYSINFO_MEM_TOTAL : constant Unsigned_64 := 1601;
 
    --  Framebuffer state
    fbWidth  : Natural := 0;
@@ -1492,10 +1485,16 @@ procedure main is
       free  : Unsigned_64;
       used  : Unsigned_64;
    begin
-      total := getInfo (SYSINFO_MEM_TOTAL);
-      free  := getInfo (SYSINFO_MEM_FREE);
+      declare
+         Statistics : CuBit.System_Facts.SP.Statistics;
+         Read : Boolean;
+      begin
+         CuBit.System_Facts.Read_Statistics (Statistics, Read);
+         total := CuBit.System_Facts.Memory_Bytes;
+         free  := (if Read then Statistics.Free_Memory_Bytes else Unsigned_64'Last);
+      end;
 
-      if total = Unsigned_64'Last or free = Unsigned_64'Last then
+      if total = 0 or free = Unsigned_64'Last or free > total then
          putStr ("error: memory info not available" & LF);
          return;
       end if;
@@ -1516,27 +1515,24 @@ procedure main is
    ---------------------------------------------------------------------------
    --  cmdSysinfo
    ---------------------------------------------------------------------------
-   SYSINFO_NUM_CPUS  : constant Unsigned_64 := 1400;
-   SYSINFO_FB_BPP    : constant Unsigned_64 := 1103;
-
    procedure cmdSysinfo is
       val : Unsigned_64;
    begin
       --  CPU count
-      val := getInfo (SYSINFO_NUM_CPUS);
+      val := CuBit.System_Facts.Processor_Count;
       putStr ("CPUs:         ");
       putDec (Unsigned_32 (val));
       putChar (LF);
 
       --  Framebuffer
       putStr ("Framebuffer:  ");
-      putDec (Unsigned_32 (getInfo (SYSINFO_FB_WIDTH)));
+      putDec (Unsigned_32 (CuBit.System_Facts.Framebuffer.Width));
       putChar ('x');
-      putDec (Unsigned_32 (getInfo (SYSINFO_FB_HEIGHT)));
+      putDec (Unsigned_32 (CuBit.System_Facts.Framebuffer.Height));
       putStr (" pitch=");
-      putDec (Unsigned_32 (getInfo (SYSINFO_FB_PITCH)));
+      putDec (Unsigned_32 (CuBit.System_Facts.Framebuffer.Pitch));
       putStr (" bpp=");
-      putDec (Unsigned_32 (getInfo (SYSINFO_FB_BPP)));
+      putDec (Unsigned_32 (CuBit.System_Facts.Framebuffer.Bits_Per_Pixel));
       putChar (LF);
 
       --  Registered drivers
@@ -3602,9 +3598,9 @@ begin
    end;
 
    --  Query framebuffer dimensions
-   fbWidth  := Natural (getInfo (SYSINFO_FB_WIDTH));
-   fbHeight := Natural (getInfo (SYSINFO_FB_HEIGHT));
-   fbPitch  := Natural (getInfo (SYSINFO_FB_PITCH));
+   fbWidth  := Natural (CuBit.System_Facts.Framebuffer.Width);
+   fbHeight := Natural (CuBit.System_Facts.Framebuffer.Height);
+   fbPitch  := Natural (CuBit.System_Facts.Framebuffer.Pitch);
 
    debugPrint ("shell: FB ");
    printDec (Unsigned_32 (fbWidth));
@@ -3763,8 +3759,8 @@ begin
    --  Main loop: poll keyboard events, or wait for foreground child
    loop
       if foregroundPID /= No_Process then
-         --  Poll for child exit event. We use Poll_Event because the
-         --  legacy blocking Wait_Event path only returns the tag.
+         --  Poll for child exit event (Poll_Event returns the whole
+         --  message).
          declare
             found : Boolean;
          begin

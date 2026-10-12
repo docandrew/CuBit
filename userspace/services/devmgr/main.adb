@@ -9,6 +9,8 @@
 --  and startup ordering. Replaces the kernel-side policy in modules.adb.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with Devmgr_Children;
+with CuBit.Child_Exits;
 with Interfaces; use Interfaces;
 with CuBit.Log_Protocol;
 with CuBit.Capability_Grants;
@@ -20,6 +22,9 @@ with System; use System;
 with System.Storage_Elements; use System.Storage_Elements;
 
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Launch_Configurations;
+with CuBit.System_Facts;
+with Launch_Configuration;
 with CuBit.Network_Authority;
 with CuBit.Devices;
 with CuBit.Virtio_Net_Control;
@@ -35,6 +40,7 @@ with CuBit.Filesystems;
 with CuBit.Memory_Grants;
 with CuBit.File_Access;
 with Cpio;
+with Deferred_Warnings;
 with XHCI_DMA_Layout;
 with XHCI_Capabilities;
 with Intel_GPU_Probe;
@@ -85,11 +91,14 @@ procedure main is
    DRIVER_DESKTOP  : constant Unsigned_64 := 15;
    DRIVER_GPU      : constant Unsigned_64 := 17;
 
-   --  (SERVICE_FILESYSTEM_PID removed: now uses dynamic PID assignment
-   --  and kernel well-known service registry)
+   --  Address where kernel mapped the initrd into our space; we map it at
+   --  the same address into the filesystem and the RAM block driver.
+   INITRD_BASE : constant Unsigned_64 := Launch_Configuration.Boot_Image_Address;
 
-   --  Address where kernel mapped the initrd into our space
-   INITRD_BASE : constant Unsigned_64 := 16#0000_5000_0000_0000#;
+   package LC renames Launch_Configuration;
+   --  The boot framebuffer's physical pages (the kernel's launch
+   --  configuration for devmgr), passed on to procmgr.
+   bootFramebuffer : LC.Physical_Span;
 
    --  DMA virtual base for drivers
    DMA_VIRT_BASE : constant Unsigned_64 := 16#0000_7000_0000_0000#;
@@ -151,11 +160,6 @@ procedure main is
    RIGHT_WRITE   : constant Unsigned_64 := 2;
    RIGHT_EXECUTE : constant Unsigned_64 := 4;
    RIGHT_GRANT   : constant Unsigned_64 := 8;
-
-   --  MAP_INTO flags
-   MAP_FLAG_RW : constant Unsigned_64 := 0;
-   MAP_FLAG_RO : constant Unsigned_64 := 1;
-   MAP_FLAG_IO : constant Unsigned_64 := 2;
 
    --  PCI device info (found during scanning)
    type PCIDeviceInfo is record
@@ -292,7 +296,7 @@ procedure main is
          declare
             Policy : constant Intel_GPU_Buffer_Backing.Heap_Policy :=
               Intel_GPU_Buffer_Backing.Native_System_Heap
-                (getInfo (Intel_GPU_Buffer_Backing.Managed_RAM_Query));
+                (CuBit.System_Facts.Memory_Bytes);
          begin
             Buffer_Allocations.Configure_Heap
               (Intel_Buffer_Pool, Policy.Byte_Quota, Policy.DMA_Limit,
@@ -950,12 +954,56 @@ procedure main is
       end if;
       --  What its manifest asks of its device (docs/msi-interrupts.md).
       Record_Manifest (From_Word (Spawned), addr, size);
+      --  Its exit is logged by name (Log_Child_Exits).
+      Devmgr_Children.Remember (From_Word (Spawned), name);
       return From_Word (Spawned);
    end spawnFromBootStorage;
 
    ---------------------------------------------------------------------------
    -- Mint a capability into a target process
    ---------------------------------------------------------------------------
+   --  Refused maps and mints reach logstore once it runs (the kernel's own
+   --  "kernel: device-memory denied" record says why).
+   package Warnings is new Deferred_Warnings (Issuance => 3);
+   function Hex (Value : Unsigned_64) return String renames Warnings.Hex;
+
+   --  "devmgr: child <name> (<identity>) stopped (killed or faulted)" or
+   --  "... exited code N": a driver or service devmgr started has ended.
+   --  The kernel's "kernel: process killed" record says why when it faulted.
+   Exit_Check_Interval_Ms : constant := 250;
+   Next_Exit_Check : Unsigned_64 := 0;
+   procedure Log_Child_Exits (Now : Unsigned_64) is
+      Child  : Process_ID;
+      Name   : Devmgr_Children.Child_Name;
+      Length : Natural;
+      Report : CuBit.Child_Exits.Report;
+      Found  : Boolean;
+      use type CuBit.Child_Exits.Termination_Kind;
+   begin
+      if Now < Next_Exit_Check then
+         return;
+      end if;
+      Next_Exit_Check := (if Now <= Unsigned_64'Last - Exit_Check_Interval_Ms
+                          then Now + Exit_Check_Interval_Ms else Unsigned_64'Last);
+      loop
+         Devmgr_Children.Take_Next_Exit (Child, Name, Length, Report, Found);
+         exit when not Found;
+         declare
+            Line : constant String :=
+              "devmgr: child " & Name (1 .. Length) & " (" & Hex (To_Word (Child)) & ") " &
+              (if Report.Kind = CuBit.Child_Exits.Stopped
+               then "stopped (killed or faulted)"
+               else "exited code" & Unsigned_64'Image (Report.Code));
+         begin
+            if Report.Kind = CuBit.Child_Exits.Stopped or else Report.Code /= 0 then
+               Warnings.Warn (Line);
+            else
+               Warnings.Inform (Line);
+            end if;
+         end;
+      end loop;
+   end Log_Child_Exits;
+
    procedure mintCap (target   : Process_ID;
                       capType  : Unsigned_64;
                       objRef   : Unsigned_64;
@@ -968,7 +1016,9 @@ procedure main is
       ret := syscall (SYSCALL_POLICY_MINT_CAPABILITY,
                       To_Word (target), capType, objRef, objParam, rights, capSlot);
       if ret = reterr then
-         debugPrint ("devmgr: mint_cap failed" & LF);
+         Warnings.Warn ("devmgr: mint refused: type" & Unsigned_64'Image (capType) &
+           " object " & Hex (objRef) & " +" & Hex (objParam) &
+           " slot" & Unsigned_64'Image (capSlot) & " for " & Hex (To_Word (target)));
       end if;
    end mintCap;
 
@@ -1092,6 +1142,23 @@ procedure main is
       end loop;
       return 0;
    end cpuOf;
+
+   ---------------------------------------------------------------------------
+   -- Install a typed launch configuration (shared/launch) in a suspended,
+   -- never-started child: visible to that child alone, read before its
+   -- first instruction. Replaces the global SET_SYSINFO board.
+   ---------------------------------------------------------------------------
+   procedure installConfiguration
+     (pid : Process_ID; block : LC.Encoded; name : String) is
+      ret : Unsigned_64;
+   begin
+      ret := syscall (SYSCALL_INSTALL_LAUNCH_ARGUMENTS, To_Word (pid),
+                      Unsigned_64 (To_Integer (block.Words'Address)),
+                      Unsigned_64 (block.Length) * LC.Word_Bytes);
+      if ret /= 0 then
+         debugPrint ("devmgr: launch configuration refused for " & name & LF);
+      end if;
+   end installConfiguration;
 
    ---------------------------------------------------------------------------
    -- Resume a suspended process
@@ -1480,8 +1547,9 @@ procedure main is
                          PAGE_BYTES - 1) / PAGE_BYTES;
                window := MSIX_TABLE_WINDOW_BASE +
                  Unsigned_64 (nextTableWindow) * MSIX_TABLE_WINDOW_BYTES;
-               if mapInto (myPID, page, window, pages, MAP_FLAG_IO) = reterr then
-                  debugPrint ("devmgr: " & name & " MSI-X table map failed" & LF);
+               if mapInto (myPID, page, window, pages, MAP_INTO_DEVICE) = reterr then
+                  Warnings.Warn ("devmgr: " & name & " MSI-X table map refused " &
+                    Hex (page) & " +" & Hex (pages * PAGE_BYTES));
                else
                   nextTableWindow := nextTableWindow + 1;
                   F.Vectors := CuBit.Device_Interrupts.Allocate
@@ -1555,11 +1623,8 @@ procedure main is
       bar0Phys  : Unsigned_64;
       pciCmd    : Unsigned_16;
       dmaPhys   : Unsigned_64;
-      ret       : Unsigned_64;
 
       DMA_ORDER : constant Unsigned_64 := 8;  --  256 pages = 1 MiB
-      DMA_PAGES : constant Unsigned_64 := 256;
-      DMA_SIZE  : constant Unsigned_64 := DMA_PAGES * 4096;
    begin
       if not nvmeDev.found or nvmePID = No_Process then
          return;
@@ -1594,13 +1659,11 @@ procedure main is
       mintCap (nvmePID, CAP_DEVICE_MEM, bar0Phys, 16384,
                RIGHT_READ or RIGHT_WRITE, 4);
 
-      --  Slot 6: CAP_DEVICE_MEM for DMA region
-      mintCap (nvmePID, CAP_DEVICE_MEM, 0, DMA_SIZE,
-               RIGHT_READ or RIGHT_WRITE, 6);
-
-      --  Publish BAR0 and DMA phys via sysinfo
-      ret := setSysinfo (SYSINFO_NVME_BAR0, bar0Phys);
-      ret := setSysinfo (SYSINFO_NVME_DMA_PHYS, dmaPhys);
+      --  BAR0 and the DMA region, for the driver alone.
+      installConfiguration
+        (nvmePID, LC.Encode (LC.Controller_Configuration'
+           (Registers => bar0Phys, DMA => dmaPhys), LC.NVMe_Controller),
+         "nvme.drv");
 
       debugPrint ("devmgr: NVMe setup complete" & LF);
    end setupNvme;
@@ -1712,8 +1775,6 @@ procedure main is
       --  Rings, a full queue of receive buffers and the transmit buffers
       --  (virtio-net's main.adb lays them out).
       DMA_ORDER : constant Unsigned_64 := 8;  --  256 pages = 1 MiB
-      DMA_PAGES : constant Unsigned_64 := 2 ** Natural (DMA_ORDER);
-      DMA_SIZE  : constant Unsigned_64 := DMA_PAGES * 4096;
    begin
       if not netDev.found or virtioNetPID = No_Process then
          return;
@@ -1763,9 +1824,10 @@ procedure main is
          --  The register BAR, mapped where the driver expects it.
          ret := mapInto (virtioNetPID, netModernBar,
            CuBit.Virtio_Net_Control.Modern_Virtual_Address,
-           netModernBytes / 4096, MAP_FLAG_IO);
+           netModernBytes / 4096, MAP_INTO_DEVICE);
          if ret = reterr then
-            debugPrint ("devmgr: virtio-net register BAR map failed" & LF);
+            Warnings.Warn ("devmgr: virtio-net register BAR map refused " &
+              Hex (netModernBar) & " +" & Hex (netModernBytes));
             return;
          end if;
          debugPrint ("devmgr: virtio-net modern (virtio 1.0) transport" & LF);
@@ -1775,12 +1837,11 @@ procedure main is
                   RIGHT_READ or RIGHT_WRITE, 4);
       end if;
 
-      --  Slot 6: CAP_DEVICE_MEM for DMA region
-      mintCap (virtioNetPID, CAP_DEVICE_MEM, 0, DMA_SIZE,
-               RIGHT_READ or RIGHT_WRITE, 6);
-
-      --  Publish BAR0 via sysinfo
-      ret := setSysinfo (SYSINFO_NET_IOBASE, bar0Base);
+      --  Its DMA region's device address, for the driver alone (it no longer
+      --  translates its own addresses, so it holds no device memory).
+      installConfiguration
+        (virtioNetPID, LC.Encode (LC.Queue_Configuration'(DMA => dmaPhys), LC.Virtio_Net),
+         "virtio-net.drv");
       netIOBase := bar0Base;
       netTransportReady := True;
 
@@ -1803,8 +1864,6 @@ procedure main is
       msiReady  : Boolean := False;
 
       DMA_ORDER : constant Unsigned_64 := 5;   --  32 pages = 128KB
-      DMA_PAGES : constant Unsigned_64 := 32;
-      DMA_SIZE  : constant Unsigned_64 := DMA_PAGES * 4096;
    begin
       if not hdaDev.found or hdaPID = No_Process then
          return;
@@ -1859,13 +1918,11 @@ procedure main is
       mintCap (hdaPID, CAP_DEVICE_MEM, bar0Phys, 16384,
                RIGHT_READ or RIGHT_WRITE, 4);
 
-      --  Slot 6: CAP_DEVICE_MEM for DMA region
-      mintCap (hdaPID, CAP_DEVICE_MEM, 0, DMA_SIZE,
-               RIGHT_READ or RIGHT_WRITE, 6);
-
-      --  Publish HDA BAR0 and DMA phys via sysinfo
-      ret := setSysinfo (SYSINFO_HDA_BAR0, bar0Phys);
-      ret := setSysinfo (SYSINFO_HDA_DMA_PHYS, dmaPhys);
+      --  BAR0 and the DMA region, for the driver alone.
+      installConfiguration
+        (hdaPID, LC.Encode (LC.Controller_Configuration'
+           (Registers => bar0Phys, DMA => dmaPhys), LC.HDA_Controller),
+         "hda.drv");
 
       debugPrint ("devmgr: HDA setup complete" & LF);
    end setupHDA;
@@ -1906,18 +1963,18 @@ procedure main is
       -- of up to 1920x1080, so a mode change (a resized VM window) never
       -- reallocates; a machine without that much contiguous memory gets
       -- 8 MiB banks (up to 1280x800). Both banks have one size, which
-      -- virtio-gpu reads from its DMA capability. A missing second bank
-      -- must not prevent the boot output.
+      -- virtio-gpu reads from its launch configuration. A missing second
+      -- bank must not prevent the boot output.
       secondDmaPhys : Unsigned_64;
       LARGE_DMA_ORDER : constant Unsigned_64 := 12;
       SMALL_DMA_ORDER : constant Unsigned_64 := 11;
       --  32 MiB of large banks is a desktop VM's budget, not a small VM's:
-      --  below this much RAM (kernel MEM_TOTAL) the banks stay 8 MiB, as
-      --  before resizable modes, so 128 MiB guests keep their memory.
+      --  below this much RAM (the kernel's system facts) the banks stay
+      --  8 MiB, as before resizable modes, so 128 MiB guests keep their
+      --  memory.
       LARGE_BANK_MINIMUM_MEMORY : constant Unsigned_64 := 1024 * 1024 * 1024;
-      SYSINFO_MEM_TOTAL : constant Unsigned_64 := 1601;
       DMA_ORDER : Unsigned_64 :=
-        (if getInfo (SYSINFO_MEM_TOTAL) >= LARGE_BANK_MINIMUM_MEMORY
+        (if CuBit.System_Facts.Memory_Bytes >= LARGE_BANK_MINIMUM_MEMORY
          then LARGE_DMA_ORDER else SMALL_DMA_ORDER);
       DMA_SIZE  : Unsigned_64;
       function Fits (Offset, Bytes, Limit : Unsigned_64) return Boolean is
@@ -2085,7 +2142,6 @@ procedure main is
          secondDmaPhys := 0;
          debugPrint ("devmgr: second GPU DMA bank unavailable" & LF);
       end if;
-      ret := setSysinfo (SYSINFO_GPU_SECOND_DMA_PHYS, secondDmaPhys);
 
       --  Slot 4: virtio modern MMIO BAR.
       mintCap (virtioGpuPID, CAP_DEVICE_MEM, barPhys, barBytes,
@@ -2095,22 +2151,28 @@ procedure main is
       mintCap (virtioGpuPID, CAP_DEVICE_MEM,
                barPhys + Unsigned_64 (notifyOff), Unsigned_64 (notifyBytes),
                RIGHT_WRITE, 7);
-      --  Slot 6: mapped DMA banks; actual frame ownership is tracked per bank.
-      mintCap (virtioGpuPID, CAP_DEVICE_MEM, 0,
-               (if secondDmaPhys = 0 then DMA_SIZE else DMA_SIZE * 2),
-               RIGHT_READ or RIGHT_WRITE, 6);
 
-      ret := setSysinfo (SYSINFO_GPU_BAR0, barPhys);
-      ret := setSysinfo (SYSINFO_GPU_DMA_PHYS, dmaPhys);
-      ret := setSysinfo (SYSINFO_GPU_COMMON_OFF, Unsigned_64 (commonOff));
-      ret := setSysinfo (SYSINFO_GPU_NOTIFY_OFF, Unsigned_64 (notifyOff));
-      ret := setSysinfo (SYSINFO_GPU_ISR_OFF, Unsigned_64 (isrOff));
-      ret := setSysinfo (SYSINFO_GPU_DEVICE_OFF, Unsigned_64 (deviceOff));
-      ret := setSysinfo (SYSINFO_GPU_NOTIFY_MULT, Unsigned_64 (notifyMult));
-      if gpuIsPrimary then
-         ret := setSysinfo (SYSINFO_GPU_IS_PRIMARY, 1);
-      else
-         ret := setSysinfo (SYSINFO_GPU_IS_PRIMARY, 0);
+      --  The transport and its DMA banks, for the driver alone.
+      installConfiguration
+        (virtioGpuPID, LC.Encode (LC.Virtio_GPU_Configuration'
+           (Registers         => barPhys,
+            DMA               => dmaPhys,
+            Second_DMA        => secondDmaPhys,
+            DMA_Bytes         => (if secondDmaPhys = 0 then DMA_SIZE else DMA_SIZE * 2),
+            Common_Offset     => Unsigned_64 (commonOff),
+            Notify_Offset     => Unsigned_64 (notifyOff),
+            ISR_Offset        => Unsigned_64 (isrOff),
+            Device_Offset     => Unsigned_64 (deviceOff),
+            Notify_Multiplier => Unsigned_64 (notifyMult),
+            Boot_Display      => gpuIsPrimary)),
+         "virtio-gpu.drv");
+      --  The boot-adapter handoff precedes starting its native driver: the
+      --  kernel retires its firmware renderer now, and display.svc reads
+      --  the handoff from the system facts publication.
+      if gpuIsPrimary and then not CuBit.System_Facts.Publish
+        (CuBit.System_Facts.SP.Boot_Display_Native, 1)
+      then
+         debugPrint ("devmgr: boot display handoff refused" & LF);
       end if;
 
       debugPrint ("devmgr: virtio-gpu setup complete" & LF);
@@ -2224,16 +2286,23 @@ procedure main is
          return;
       end if;
       ret := mapInto (virtioInputPID, modernBar, VIC.Modern_Virtual_Address,
-        inputModernBytes / 4096, MAP_FLAG_IO);
+        inputModernBytes / 4096, MAP_INTO_DEVICE);
       if ret = reterr then
-         debugPrint ("devmgr: virtio-input register BAR map failed" & LF);
+         Warnings.Warn ("devmgr: virtio-input register BAR map refused " &
+           Hex (modernBar) & " +" & Hex (inputModernBytes));
          return;
       end if;
 
-      --  Slot 6: its DMA page; slot 7: publication to the registered mouse
-      --  consumer (the desktop). The interrupt capability is the kernel's,
-      --  installed by allocation in the manifest's slot.
-      mintCap (virtioInputPID, CAP_DEVICE_MEM, 0, VIC.DMA_Pages * 4096,
+      --  Slot 6: its register BAR, as its manifest declares (CAP-001:
+      --  device authority names device pages only); slot 7: publication to
+      --  the registered mouse consumer (the desktop). The interrupt
+      --  capability is the kernel's, installed by allocation in the
+      --  manifest's slot. Its DMA page's device address is in its launch
+      --  configuration.
+      installConfiguration
+        (virtioInputPID, LC.Encode (LC.Queue_Configuration'(DMA => dmaPhys), LC.Virtio_Input),
+         "virtio-input.drv");
+      mintCap (virtioInputPID, CAP_DEVICE_MEM, modernBar, inputModernBytes,
                RIGHT_READ or RIGHT_WRITE, 6);
       mintCap (virtioInputPID, CAP_NOTIFICATION, DRIVER_MOUSE, 0, RIGHT_READ, 7);
       inputTransportReady := True;
@@ -2429,9 +2498,10 @@ procedure main is
          debugPrint ("devmgr: xHCI using queued polling fallback" & LF);
       end if;
 
-      irqRet := mapInto (myPID, bar0Phys, CAPABILITY_PROBE_BASE, 1, MAP_FLAG_IO);
+      irqRet := mapInto (myPID, bar0Phys, CAPABILITY_PROBE_BASE, 1, MAP_INTO_DEVICE);
       if irqRet = reterr then
-         debugPrint ("devmgr: xHCI capability mapping failed" & LF);
+         Warnings.Warn ("devmgr: xHCI capability page map refused " &
+           Hex (bar0Phys) & " +" & Hex (PAGE_BYTES));
          return;
       end if;
       declare
@@ -2451,9 +2521,6 @@ procedure main is
       mintCap
         (xhciPID, CAP_DEVICE_MEM, bar0Phys, barPages * 4096,
          RIGHT_READ or RIGHT_WRITE, 4);
-      mintCap
-        (xhciPID, CAP_DEVICE_MEM, 0, XHCI_DMA_Layout.Bytes (dmaLayout),
-         RIGHT_READ or RIGHT_WRITE, 6);
       --  Slot 7: may publish mouse-class events only to the currently
       --  registered mouse consumer.  RIGHT_READ cannot register or replace
       --  that consumer; desktop.svc holds the complementary RIGHT_WRITE.
@@ -2504,9 +2571,7 @@ procedure main is
    -- Main entry point
    ---------------------------------------------------------------------------
 
-   initrdAddr   : Unsigned_64;
    initrdSize   : Unsigned_64;
-   initrdPhys   : Unsigned_64;
    initrdPages  : Unsigned_64;
    ret          : Unsigned_64;
    msg          : Message;
@@ -2524,12 +2589,19 @@ begin
       end if;
    end;
 
-   --  Get initrd info from sysinfo
-   initrdAddr := getInfo (SYSINFO_RAMDISK_ADDRESS);
-   initrdSize := getInfo (SYSINFO_RAMDISK_SIZE);
-   numCPUs    := getInfo (SYSINFO_NUM_CPUS);
+   --  The boot image the kernel mapped at INITRD_BASE, from the kernel's
+   --  launch configuration for devmgr; the CPU count from the system facts.
+   declare
+      Configuration : LC.Device_Manager_Configuration;
+      Configured : Boolean;
+   begin
+      CuBit.Launch_Configurations.Get (Configuration, Configured);
+      initrdSize := (if Configured then Configuration.Boot_Image else 0);
+      bootFramebuffer := (if Configured then Configuration.Framebuffer else (0, 0));
+   end;
+   numCPUs    := CuBit.System_Facts.Processor_Count;
 
-   if initrdAddr = 0 or initrdSize = 0 then
+   if initrdSize = 0 then
       debugPrint ("devmgr: no initrd found, halting" & LF);
       ret := syscall (SYSCALL_EXIT);
       return;
@@ -2558,7 +2630,6 @@ begin
    if Cpio.findFile (cpioArchive, "live-rw.ext2") < cpioArchive.count then
       ramdiskPID := spawnFromBootStorage ("ramdisk.drv", 5);
       if ramdiskPID /= No_Process then
-         initrdPhys := virtToPhys (To_Address (Integer_Address (INITRD_BASE)));
          initrdPages := (initrdSize + 4095) / 4096;
          declare
             Mapped : Unsigned_64 := 0;
@@ -2568,8 +2639,8 @@ begin
                Count := Unsigned_64'Min
                  (MAX_MAP_INTO_PAGES_PER_CALL, initrdPages - Mapped);
                ret := mapInto
-                 (ramdiskPID, initrdPhys + Mapped * 4096,
-                  INITRD_BASE + Mapped * 4096, Count, MAP_FLAG_RO);
+                 (ramdiskPID, Mapped * 4096,
+                  INITRD_BASE + Mapped * 4096, Count, MAP_INTO_BOOT_IMAGE);
                exit when ret = reterr;
                Mapped := Mapped + Count;
             end loop;
@@ -2579,6 +2650,9 @@ begin
                return;
             end if;
          end;
+         installConfiguration
+           (ramdiskPID, LC.Encode (LC.Boot_Image_Configuration'(Boot_Image => initrdSize)),
+            "ramdisk.drv");
          assignCPU (ramdiskPID, "ramdisk.drv");
          mintCap (ramdiskPID, CAP_ENDPOINT, To_Word (myPID), 0,
                   RIGHT_READ or RIGHT_WRITE, CAP_SLOT_READY);
@@ -2606,16 +2680,9 @@ begin
       debugPrint ("devmgr: filesystem.svc spawn failed" & LF);
    end if;
 
-   --  Register FS PID in kernel well-known service registry
    if filesystemPID /= No_Process then
-      ret := setWellKnown (ROLE_FILESYSTEM, filesystemPID);
-   end if;
-
-   if filesystemPID /= No_Process then
-      --  Map initrd into FS server for serving ramdisk files
-      --  Get the physical address: kernel mapped initrd at INITRD_BASE in
-      --  our space, but the physical address was stored for us.
-      initrdPhys := virtToPhys (To_Address (Integer_Address (INITRD_BASE)));
+      --  Map initrd into FS server for serving ramdisk files: the boot
+      --  image by offset (the kernel knows where it is; we never do).
       initrdPages := (initrdSize + 4095) / 4096;
 
       --  MAP_INTO deliberately bounds each kernel entry.  A live image may
@@ -2631,21 +2698,26 @@ begin
               (MAX_MAP_INTO_PAGES_PER_CALL, initrdPages - mappedPages);
             ret := mapInto
               (filesystemPID,
-               initrdPhys + mappedPages * 4096,
+               mappedPages * 4096,
                INITRD_BASE + mappedPages * 4096,
                pageCount,
-               MAP_FLAG_RO);
+               MAP_INTO_BOOT_IMAGE);
             exit when ret = reterr;
             mappedPages := mappedPages + pageCount;
          end loop;
       end;
       if ret = reterr then
-         debugPrint ("devmgr: initrd mapping into FS failed" & LF);
+         Warnings.Warn ("devmgr: boot image map into the filesystem refused" &
+           " (pages" & Unsigned_64'Image (initrdPages) & ")");
       end if;
 
-      --  Set sysinfo for ramdisk (so FS server can query it)
-      ret := setSysinfo (SYSINFO_RAMDISK_ADDRESS, INITRD_BASE);
-      ret := setSysinfo (SYSINFO_RAMDISK_SIZE, initrdSize);
+      --  The boot image's size, for the filesystem alone (it is mapped at
+      --  INITRD_BASE only when the mapping above succeeded).
+      installConfiguration
+        (filesystemPID,
+         LC.Encode (LC.Boot_Image_Configuration'
+           (Boot_Image => (if ret = reterr then 0 else initrdSize))),
+         "filesystem.svc");
 
       --  CAP_NOTIFICATION for DRIVER_FS registration (slot 7)
       mintCap (filesystemPID, CAP_NOTIFICATION, DRIVER_FS, 0,
@@ -3391,6 +3463,12 @@ begin
       mintCap (procmgrPID, CAP_PROCESS, 0, 0,
                RIGHT_READ or RIGHT_EXECUTE or RIGHT_GRANT, 4);
       mintCap (procmgrPID, CAP_CSPACE, 0, 0, RIGHT_GRANT, 10);
+      --  The boot framebuffer's pages: procmgr mints framebuffer authority
+      --  over exactly these for a manifest's framebuffer request.
+      installConfiguration
+        (procmgrPID,
+         LC.Encode (LC.Process_Manager_Configuration'(Framebuffer => bootFramebuffer)),
+         "procmgr.svc");
 
       --  Grant FS endpoint at slot 1
       if filesystemPID /= No_Process then
@@ -3451,6 +3529,8 @@ begin
       -- One completion, one admission step and one request per iteration:
       -- incoming device traffic cannot starve pending GPU launch completion.
       Launch_Now := syscall (SYSCALL_GETTIME);
+      Warnings.Pump;
+      Log_Child_Exits (Launch_Now);
       if Poll_Completion (Launch_Receipt'Address) = 1 then
          GPU_Launch.Complete
            (GPU_Launches, Launch_Receipt, Launch_Now, Receipt_Consumed);
@@ -3467,7 +3547,11 @@ begin
          if not GPU_Launch.Runnable (GPU_Launches) and then
            not Intel_Allocation_Growth.Pending (Intel_Allocations) then
             Launch_Activity := Wait_For_Activity_Until
-              (GPU_Launch.Next_Deadline (GPU_Launches));
+              (if Warnings.Pending and then
+                  Launch_Now <= Unsigned_64'Last - Warnings.Pump_Interval_Ms
+               then Unsigned_64'Min (GPU_Launch.Next_Deadline (GPU_Launches),
+                                     Launch_Now + Warnings.Pump_Interval_Ms)
+               else GPU_Launch.Next_Deadline (GPU_Launches));
             if Launch_Activity = Unavailable then
                -- Exceptional kernel failure, not periodic broker polling.
                ret := syscall (SYSCALL_SLEEP, 1);

@@ -169,7 +169,7 @@ begin
          for I in 0 .. N - 1 loop
             S.Feed (Collector, O.Incarnation (Raw), Page (I), Capture);
             if Capture.Success and then
-              Capture.Pid = getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_DESKTOP)
+              Capture.Pid = To_Word (Registered_Driver (DRIVER_DESKTOP))
             then
                if Publisher = 0 then Publisher := Capture.Publisher; end if;
                if Capture.Publisher /= Publisher or else

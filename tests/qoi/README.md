@@ -30,3 +30,21 @@ pixels. Malformed streams name the failure the decoder must report.
 Proved: absence of run-time errors and the stated contracts of `CuBit.QOI`
 and `Desktop_Wallpaper_Store`. Not proved: that decoding equals the QOI
 specification. The tests cover that against two encoders.
+
+## Icon atlas store
+
+`Desktop_Icon_Store` holds Desktop's application icon atlas
+(`Assets/cubit-icons/1/applications.qoi`, docs/assets.md). `make test-qoi`
+also builds the atlas with its RGBA oracle (`tools/build_icon_assets.py
+--reference`) and runs `icon_store_tests` once per case
+(`run-icon-store.sh`; the store loads once per process):
+- the real atlas, fed at once and in 1, 7 and 4096-byte chunks, equals the
+  source PNGs pixel for pixel, for every icon;
+- a truncated, corrupt (bad magic) or wrong-size atlas (`make_icon_fixtures.py`),
+  or a failed read, never loads, and then every icon is the fallback glyph;
+- before any load every icon is the fallback glyph, and the glyph has its
+  transparent margin, frame, cross and fill.
+
+Proved (`make prove-qoi`, level 2): absence of run-time errors in
+`Desktop_Icon_Store` and that an icon read before or without a complete
+atlas is the fallback glyph (`Pixel`'s postcondition).

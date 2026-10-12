@@ -83,5 +83,12 @@ begin
           "stats: boosts, hints, boosted time, ramp avg/max");
    Take_Stats (S, Now, Boosts, Hints, Sends_Count, Boosted_Time, Ramps, Unreached, Avg, Max);
    Check (Boosts = 0 and Hints = 0 and Ramps = 0 and Avg = 0, "stats reset");
+   --  Policy off: back to RPe at once, the input hold dropped.
+   Turn (False, Hint => True);
+   Check (S.Current = Boosted, "boosted before release");
+   Release (S, Now);
+   Check (S.Current = Idle and Desired (S) = 300 and not S.Hinted, "release drops to RPe now");
+   Turn (False);
+   Check (S.Current = Idle and S.Sent = 300, "release sends RPe on the next turn");
    Ada.Text_IO.Put_Line ("SLPC waitboost PASS:" & Natural'Image (Checks) & " checks");
 end Waitboost_Tests;

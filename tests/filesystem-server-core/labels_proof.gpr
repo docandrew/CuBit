@@ -1,0 +1,17 @@
+--  Proof only: Fs_Reply_Labels (Ext2 outcome -> reply label). It needs the
+--  Ext2 spec and the specs that spec names; no bodies are analysed.
+project Labels_Proof is
+   Fs_Src := external ("FS_SRC", "../../userspace/services/filesystem");
+   for Source_Dirs use
+     (Fs_Src, "../filesystem-interop/fixture", "../../userspace/runtime/gnat");
+   for Source_Files use
+     ("fs_reply_labels.ads", "ext2.ads", "ext2_inodes.ads", "jbd2_format.ads", "ext2_format.ads",
+      "volume_admission.ads", "cubit.ads", "cubit-messages.ads",
+      "cubit-memory_grants.ads", "cubit-grant_references.ads",
+      "cubit-block_devices.ads", "cubit-directory_pages.ads",
+      "cubit-directory_paths.ads", "cubit-filesystems.ads");
+   for Object_Dir use "build/labels";
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-I-");
+   end Compiler;
+end Labels_Proof;

@@ -15,6 +15,9 @@ package body Desktop_GPU_Wake_Hook is
    function Hint return Interfaces.Unsigned_32
      with Import, Convention => C, External_Name => "cubit_gpu_boost_hint";
    function Boost_Hint return Boolean is (Hint = 1);
+   function Policy (On : Interfaces.Unsigned_32) return Interfaces.Unsigned_32
+     with Import, Convention => C, External_Name => "cubit_gpu_boost_policy";
+   function Boost_Policy (On : Boolean) return Boolean is (Policy (if On then 1 else 0) = 1);
    --  Native_GPU_Queue.Wake_Arm's representation.
    Armed_Code : constant := 0;
    Idle_Code  : constant := 1;

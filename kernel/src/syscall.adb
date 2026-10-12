@@ -2,7 +2,6 @@
 -- CuBitOS
 -- Copyright (C) 2020 Jon Andrew
 -------------------------------------------------------------------------------
-with Ada.Unchecked_Conversion;
 with System.Storage_Elements; use System.Storage_Elements;
 
 with PerCpuData;
@@ -24,7 +23,6 @@ with Build;
 with Boot_Timeline;
 with Boot_Timeline_Layout;
 
-use type Process.MessageTag;
 
 package body Syscall is
 
@@ -107,11 +105,9 @@ package body Syscall is
             when 120  => number := SYSCALL_POLICY_MINT_CAPABILITY_FOR_INCARNATION;
             when 121  => number := SYSCALL_POLICY_DELEGATE_ENDPOINT;
             when 12   => number := SYSCALL_WRITE;
-            when 15   => number := SYSCALL_INFO;
             when 17   => number := SYSCALL_RECEIVE;
             when 18   => number := SYSCALL_REPLY;
             when 19   => number := SYSCALL_SEND_EVENT;
-            when 20   => number := SYSCALL_RECEIVE_EVENT;
             when 21   =>
                 number := SYSCALL_RECEIVE_UNTIL_MONOTONIC_MILLISECOND;
             when 22   => number := SYSCALL_POLL_ANY_IPC;
@@ -135,9 +131,11 @@ package body Syscall is
             when 132  => number := SYSCALL_READ_DEVICE_VECTOR;
             when Boot_Timeline_Layout.System_Call_Number =>
                 number := SYSCALL_BOOT_TIMELINE;
+            when 134  => number := SYSCALL_READ_STATISTICS;
+            when 135  => number := SYSCALL_PUBLISH;
+            when 136  => number := SYSCALL_RESTORE_REPLY_CAPABILITY;
             when 42   => number := SYSCALL_SUBMIT_VIA_ENDPOINT_CAPABILITY;
             when 48   => number := SYSCALL_REPLY_WAIT;
-            when 50   => number := SYSCALL_VIRT_TO_PHYS;
             when 51   => number := SYSCALL_MOVE_REPLY_CAPABILITY;
             when 52   =>
                 number := SYSCALL_REPLY_AND_CONSUME_REPLY_CAPABILITY;
@@ -149,7 +147,6 @@ package body Syscall is
             when 74   => number := SYSCALL_ALLOC_DMA;
             when 75   => number := SYSCALL_ENABLE_IRQ;
             when 76   => number := SYSCALL_MAP_INTO;
-            when 77   => number := SYSCALL_SET_SYSINFO;
             when 78   => number := SYSCALL_SET_CPU;
             when 80   => number := SYSCALL_POLL_SERVICE_REQUEST;
             when 81   => number := SYSCALL_SET_LATENCY_CONTRACT;
@@ -167,7 +164,6 @@ package body Syscall is
             when 106  =>
                 number :=
                     SYSCALL_CREATE_SHARED_MEMORY_GRANT_VIA_CAPABILITY;
-            when 107  => number := SYSCALL_SET_WELL_KNOWN;
             when 108  =>
                 number :=
                     SYSCALL_GET_OWNED_SHARED_MEMORY_GRANT_GENERATION;
@@ -251,8 +247,7 @@ package body Syscall is
                 -- the process's Ready (its request loop).
                 when SYSCALL_RECEIVE | SYSCALL_REPLY_WAIT |
                      SYSCALL_RECEIVE_UNTIL_MONOTONIC_MILLISECOND |
-                     SYSCALL_WAIT_FOR_IPC_OR_COMPLETION_UNTIL_MONOTONIC_MILLISECOND |
-                     SYSCALL_RECEIVE_EVENT =>
+                     SYSCALL_WAIT_FOR_IPC_OR_COMPLETION_UNTIL_MONOTONIC_MILLISECOND =>
                     Boot_Timeline.Note_Event
                       (Natural (Process.processOf (percpu.currentThread)),
                        Boot_Timeline.Received);
@@ -436,16 +431,6 @@ package body Syscall is
                 IPC.handleReplyCap (
                     arg0, arg1, arg2, arg3, arg4, arg5, retval);
 
-            when SYSCALL_RECEIVE_EVENT =>
-                declare
-                    function tagToU64 is new Ada.Unchecked_Conversion
-                        (Process.MessageTag, Unsigned_64);
-                    eventMsg : constant Process.Message :=
-                        Process.IPC.receiveEvent;
-                begin
-                    retval := tagToU64 (eventMsg.tag);
-                end;
-
             when SYSCALL_RECEIVE_EVENT_NB =>
                 IPC.handleReceiveEventNB (arg0, retval);
 
@@ -499,8 +484,12 @@ package body Syscall is
                   (Process.processOf (percpu.currentThread),
                    arg0, arg1, arg2, arg3, arg4, arg5, retval);
 
-            when SYSCALL_INFO =>
-                IPC.handleInfo (
+            when SYSCALL_READ_STATISTICS =>
+                IPC.handleReadStatistics (
+                    Process.processOf (percpu.currentThread), arg0, arg1, retval);
+
+            when SYSCALL_PUBLISH =>
+                Admin.handlePublish (
                     Process.processOf (percpu.currentThread), arg0, arg1, retval);
 
             when SYSCALL_REGISTER_DRIVER =>
@@ -514,12 +503,12 @@ package body Syscall is
                     Process.processOf (percpu.currentThread), syscallNum,
                     arg0, arg1, retval);
 
-            when SYSCALL_VIRT_TO_PHYS =>
-                Admin.handleVirtToPhys (
-                    Process.processOf (percpu.currentThread), arg0, retval);
-
             when SYSCALL_MOVE_REPLY_CAPABILITY =>
                 Admin.handleSaveReplyCap (
+                    Process.processOf (percpu.currentThread), arg0, retval);
+
+            when SYSCALL_RESTORE_REPLY_CAPABILITY =>
+                Admin.handleRestoreReplyCap (
                     Process.processOf (percpu.currentThread), arg0, retval);
 
             when SYSCALL_SEND_VIA_ENDPOINT_CAPABILITY =>
@@ -611,10 +600,6 @@ package body Syscall is
                     Process.processOf (percpu.currentThread),
                     arg0, arg1, arg2, arg3, arg4, retval);
 
-            when SYSCALL_SET_SYSINFO =>
-                Admin.handleSetSysinfo (
-                    Process.processOf (percpu.currentThread), arg0, arg1, retval);
-
             when SYSCALL_SET_CPU =>
                 Admin.handleSetCpu (
                     Process.processOf (percpu.currentThread), arg0, arg1, retval);
@@ -686,10 +671,6 @@ package body Syscall is
                 IPC.handleGrantViaCap (
                     Process.processOf (percpu.currentThread),
                     arg0, arg1, arg2, arg3, retval);
-
-            when SYSCALL_SET_WELL_KNOWN =>
-                Admin.handleSetWellKnown (
-                    Process.processOf (percpu.currentThread), arg0, arg1, retval);
 
         end case;
 

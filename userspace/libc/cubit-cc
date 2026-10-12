@@ -34,7 +34,7 @@ fi
 crt() { "$(cat "$here/build/cross-gcc")/bin/x86_64-unknown-linux-musl-gcc" -print-file-name="$1"; }
 exec gcc "${common[@]}" -nostdlib -static -L"$sysroot/lib" \
     -Wl,-T,"$sysroot/lib/cubit.ld" -Wl,-z,stack-size="${CUBIT_STACK_SIZE:-1048576}" \
-    -Wl,-z,noexecstack -Wl,-z,noseparate-code \
+    -Wl,-z,noexecstack -Wl,-z,noseparate-code -Wl,--build-id=sha1 \
     "$sysroot/lib/cubit-crt1.o" "$sysroot/lib/crti.o" "$(crt crtbeginT.o)" \
     "${args[@]}" "${manifest[@]}" \
     -Wl,--start-group "$sysroot/lib/libc.a" "$(gcc -print-libgcc-file-name)" -Wl,--end-group \

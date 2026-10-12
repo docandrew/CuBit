@@ -462,6 +462,12 @@ package body acpi is
                         getIOAPIC(To_Address(entries_i), ioapic, ok);
                         if ok then
                             numIOAPICs := numIOAPICs + 1;
+                            if numIOAPICs <= MAX_IOAPICS then
+                                ioapicAddrs (numIOAPICs) :=
+                                  Virtmem.PhysAddress (ioapic.apicAddress);
+                            else
+                                ioapicOverflow := True;
+                            end if;
                             print(" ID: ");
                             print(ioapic.apicID);
                             print(", Address: ");

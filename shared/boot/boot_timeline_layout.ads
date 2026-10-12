@@ -62,8 +62,6 @@ is
       Clock_Calibrated,         --  TSC rate from CPUID 15h or the PIT
       Scheduling_Clock_Started, --  LAPIC tick and the clock publication
       Interrupt_Routing_Ready,  --  I/O APIC programmed
-      PCI_Config_Mapped,        --  the 256 MiB PCIe configuration window
-      PCI_Enumerated,           --  the kernel's diagnostic device listing
       Initrd_Parsed,            --  CPIO archive indexed (Modules.setup)
       Device_Manager_Loaded,    --  devmgr.svc loaded and resumed
       Secondary_CPUs_Ready,

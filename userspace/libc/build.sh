@@ -57,6 +57,7 @@ for unit in "$here/../runtime/gnat/cubit-channel_rings.adb" "$here/../runtime/gn
     "$here/../runtime/gnat/cubit-path_names.adb" "$here/../runtime/gnat/cubit-path_names_c.adb" \
     "$here/../runtime/gnat/cubit-kernel_calls.adb" "$here/../runtime/gnat/cubit-child_table.adb" \
     "$here/../../shared/time/clock_publication.adb" "$here/../runtime/gnat/cubit-published_clock.adb" \
+    "$here/../runtime/gnat/cubit-system_facts.adb" \
     "$here/ada/cubit-libc_process.adb" "$here/ada/cubit-libc_time.adb" \
     "$here/ada/cubit-libc_select.adb" "$here/ada/cubit-libc_reports.adb" \
     "$here/ada/cubit-libc_system_calls.adb" "$here/ada/cubit-libc_start.adb" \
@@ -80,6 +81,7 @@ for unit in "$here/../runtime/gnat/cubit-channel_rings.adb" "$here/../runtime/gn
     (cd "$ada_obj" && "$gnat_gcc" -c -O2 -g -gnatp -gnatn -fno-pic -ffunction-sections \
         -gnat2022 -gnatwa -gnatys -gnatec="$here/libc-ada.adc" \
         -I"$here/ada" -I"$here/../runtime/gnat" -I"$here/../../shared/time" \
+        -I"$here/../../shared/publications" -I"$here/../../shared/launch" \
         -I"$here/../allocator/src" -I"$here/../allocator/process" "$unit")
 done
 ar rcs "$sysroot/lib/libc.a" "$ada_obj"/*.o

@@ -132,17 +132,6 @@ package Mem_mgr is
         Pre => area.kind = MemoryAreas.IO;
 
     ---------------------------------------------------------------------------
-    -- mapBigIOArea
-    -- Given a memory area that's big-frame aligned with type MemoryAreas.IO,
-    -- map all the big frames within it into the kernel's page tables.
-    ---------------------------------------------------------------------------
-    generic
-        with procedure allocate (newFrame : out Virtmem.PhysAddress);
-    procedure mapBigIOArea (area  : in MemoryAreas.MemoryArea;
-                            flags : in Unsigned_64 := Virtmem.PG_IO) with
-        Pre => area.kind = MemoryAreas.IO;
-
-    ---------------------------------------------------------------------------
     -- mapKernelMemIntoProcess - during syscalls, this copies the kernel's
     -- higher-half P4 mappings into a process' page tables. Reloads the 
     -- CR3 register to flush TLB. 

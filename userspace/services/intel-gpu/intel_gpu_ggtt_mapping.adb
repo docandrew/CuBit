@@ -1,4 +1,5 @@
 with Interfaces; use Interfaces;
+with Intel_GPU_Map_Report;
 with CuBit.Messages; use CuBit.Messages;
 with Intel_GPU_GGTT_Access;
 package body Intel_GPU_GGTT_Mapping is
@@ -63,7 +64,8 @@ package body Intel_GPU_GGTT_Mapping is
       for Chunk in Unsigned_64 range 0 .. Table_Bytes / Chunk_Bytes - 1 loop
          if syscall (SYSCALL_MAP_DEVICE, Physical + Chunk * Chunk_Bytes,
            Virtual_Base + Chunk * Chunk_Bytes, 512, 0) /= 0
-         then return "map-denied (partial mappings retained)"; end if;
+         then return Intel_GPU_Map_Report.Denied (Physical + Chunk * Chunk_Bytes, Chunk_Bytes) &
+              " (partial mappings retained)"; end if;
       end loop;
       Mapped_Bytes := Table_Bytes;
       Mapped := True;

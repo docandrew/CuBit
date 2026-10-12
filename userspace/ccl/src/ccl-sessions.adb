@@ -6,6 +6,7 @@ package body CCL.Sessions with SPARK_Mode is
    use type CCL.Language.Interpretation_Status;
    use type CCL.Language.Diagnostic_Code;
    use type CCL.VM.Value_Kind;
+   use type CCL.VM.List_Result_Count;
    use type CCL.Language.Views.Conversion_Status;
 
    function Slot (First : History_Index; Offset : History_Count) return History_Index is
@@ -274,7 +275,7 @@ package body CCL.Sessions with SPARK_Mode is
          Kept := False;
       elsif Outcome.Has_List then
          --  A complete list whose literal the reader accepts (at most 16).
-         if Outcome.List_Total /= Outcome.List_Length or else Outcome.List_Length > 16 or else
+         if Outcome.List_Total /= CCL.VM.Count_Of (Outcome.List_Length) or else Outcome.List_Length > 16 or else
            Outcome.List_Length = 0 or else
            Outcome.List_Element_Type not in CCL.Language.Integer_Type | CCL.Language.Boolean_Type |
              CCL.Language.String_Type
@@ -285,8 +286,8 @@ package body CCL.Sessions with SPARK_Mode is
             for I in 1 .. Outcome.List_Length loop
                if I > 1 then Add (" "); end if;
                if Outcome.List_Element_Type = CCL.Language.String_Type then
-                  Add_Quoted (Outcome.List_Text.Data (Text_First .. Outcome.List_Text_Ends (I)));
-                  Text_First := Outcome.List_Text_Ends (I) + 1;
+                  Add_Quoted (Outcome.List_Text.Data (Text_First .. Natural (Outcome.List_Text_Ends (I))));
+                  Text_First := Natural (Outcome.List_Text_Ends (I)) + 1;
                elsif Outcome.List_Element_Type = CCL.Language.Boolean_Type then
                   Add ((if Outcome.List_Values (I).Boolean then "true" else "false"));
                else
@@ -1048,8 +1049,8 @@ package body CCL.Sessions with SPARK_Mode is
          if I > 1 then Add (", "); end if;
          if Element_Type = CCL.Language.String_Type then
             Add ('"' & Outcome.List_Text.Data
-                   (Text_First .. Outcome.List_Text_Ends (I)) & '"');
-            Text_First := Outcome.List_Text_Ends (I) + 1;
+                   (Text_First .. Natural (Outcome.List_Text_Ends (I))) & '"');
+            Text_First := Natural (Outcome.List_Text_Ends (I)) + 1;
          elsif Element_Type = CCL.Language.Boolean_Type then
             Add ((if Outcome.List_Values (I).Boolean then "true" else "false"));
          elsif Element_Type = CCL.Language.Character_Type then
@@ -1060,9 +1061,9 @@ package body CCL.Sessions with SPARK_Mode is
             Add ("#" & Trimmed (Interfaces.Integer_64'Image (Outcome.List_Values (I).Integer)));
          end if;
       end loop;
-      if Outcome.List_Total > Outcome.List_Length then
+      if Outcome.List_Total > CCL.VM.Count_Of (Outcome.List_Length) then
          Add ((if Outcome.List_Length > 0 then ", " else "") & "... " &
-              Trimmed (Natural'Image (Outcome.List_Total - Outcome.List_Length)) & " more");
+              Trimmed (Natural'Image (Outcome.List_Total - CCL.VM.Count_Of (Outcome.List_Length))) & " more");
       end if;
       return "List<" &
         (if Element_Type = CCL.Language.String_Type then "String"

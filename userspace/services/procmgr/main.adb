@@ -13,6 +13,7 @@
 --    1 = CAP_ENDPOINT to filesystem server
 --    4 = CAP_PROCESS with RIGHT_EXECUTE + RIGHT_GRANT
 ------------------------------------------------------------------------------
+with Deferred_Warnings;
 with Ada.Unchecked_Conversion;
 with Config_Worker_Startup;
 with Interfaces; use Interfaces;
@@ -22,6 +23,8 @@ with System; use System;
 with System.Storage_Elements; use System.Storage_Elements;
 
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Launch_Configurations;
+with Launch_Configuration;
 with CuBit.Process_IDs.Text;
 with CuBit.Audio_Control;
 with CuBit.Clock_Control;
@@ -62,6 +65,9 @@ with Intel_Render_Launch_Client;
 procedure main is
    function Image (Process : Process_ID) return String
      renames CuBit.Process_IDs.Text.Image;
+   --  Refused mints reach logstore once it runs (the kernel's own
+   --  "kernel: device-memory denied" record says why).
+   package Warnings is new Deferred_Warnings (Issuance => 4);
    use ASCII;
    --  Never reuse issuance identities within this bootstrap issuer lifetime.
    --  Independent procmgr restart requires an epoch protocol, not yet supported.
@@ -87,7 +93,6 @@ procedure main is
    --  IPC label constants
    OP_SPAWN   : constant Unsigned_32 := 16#0100#;
    OP_LAUNCH  : constant Unsigned_32 := CuBit.Launch_Arguments.Launch_Operation;
-   SYSCALL_INSTALL_LAUNCH_ARGUMENTS : constant Unsigned_64 := 126;
    --  The kernel's retirement notice (kernel/src/ipc_labels.ads).
    EVENT_CHILD_EXIT : constant Unsigned_32 := 16#0103#;
    REPLY_OK     : constant Unsigned_32 := 16#F000#;
@@ -1246,12 +1251,39 @@ procedure main is
                               end;
 
                            when REQ_FRAMEBUFFER =>
-                              --  CAP_DEVICE_MEM, ref=0, param=0x1000_0000
-                              mintRecorded
-                                (childPID, CAP_TYPE_DEVICE_MEM, 0,
-                                 16#1000_0000#, rightsMask,
-                                 Unsigned_64 (slotNum), AUTH_SOURCE_MANIFEST,
-                                 AUTH_REASON_MANIFEST_REQUEST, True, ignore);
+                              --  CAP_DEVICE_MEM over the boot framebuffer's
+                              --  pages; the kernel refuses anything that is
+                              --  not device memory. No framebuffer: no mint
+                              --  (recorded as a failed request).
+                              --  The span is the boot framebuffer's physical
+                              --  pages from devmgr's launch configuration
+                              --  for procmgr; MAPFB checks exactly these.
+                              declare
+                                 configuration : Launch_Configuration.Process_Manager_Configuration;
+                                 configured : Boolean;
+                                 fbFirst, fbBytes : Unsigned_64 := 0;
+                                 valid : Boolean;
+                              begin
+                                 CuBit.Launch_Configurations.Get (configuration, configured);
+                                 if configured then
+                                    fbFirst := configuration.Framebuffer.First;
+                                    fbBytes := configuration.Framebuffer.Bytes;
+                                 end if;
+                                 valid := configured and then fbBytes /= 0;
+                                 mintRecorded
+                                   (childPID, CAP_TYPE_DEVICE_MEM,
+                                    (if valid then fbFirst else 0),
+                                    (if valid then fbBytes else 0), rightsMask,
+                                    Unsigned_64 (slotNum), AUTH_SOURCE_MANIFEST,
+                                    AUTH_REASON_MANIFEST_REQUEST, True, ignore);
+                                 if ignore = Unsigned_64'Last then
+                                    Warnings.Warn
+                                      ("procmgr: framebuffer mint refused " &
+                                       Warnings.Hex (fbFirst) & " +" & Warnings.Hex (fbBytes) &
+                                       (if valid then "" else " (no framebuffer pages configured)") &
+                                       " for pid" & Image (childPID));
+                                 end if;
+                              end;
                               debugPrint ("procmgr: minted FB cap" & LF);
 
                            when REQ_IOPORT =>
@@ -3960,6 +3992,7 @@ begin
    --  Main service loop
    loop
       receive (sender, msg);
+      Warnings.Pump;
 
       case msg.tag.label is
          when OP_SPAWN =>
@@ -3986,7 +4019,31 @@ begin
             then
                declare
                   Exited : constant Process_ID := From_Word (msg.words (0));
+                  Known  : constant Records.Index := Records.Find (Exited);
+                  Report : constant CuBit.Child_Exits.Report :=
+                    CuBit.Child_Exits.Decode (msg.words (0), msg.words (1), msg.words (2));
+                  use type CuBit.Child_Exits.Termination_Kind;
                begin
+                  --  Processes procmgr launched, by manifest identity; the
+                  --  kernel's "kernel: process killed" record says why when
+                  --  one faulted. Others (devmgr's) are devmgr's to log.
+                  if Known /= 0 and then Records.Values (Known).Valid then
+                     declare
+                        Line : constant String :=
+                          "procmgr: process " &
+                          Records.Values (Known).Identity (1 .. Records.Values (Known).Identity_Length) &
+                          " pid" & Image (Exited) &
+                          (if Report.Kind = CuBit.Child_Exits.Stopped
+                           then " stopped (killed or faulted)"
+                           else " exited code" & Unsigned_64'Image (Report.Code));
+                     begin
+                        if Report.Kind = CuBit.Child_Exits.Stopped or else Report.Code /= 0 then
+                           Warnings.Warn (Line);
+                        else
+                           Warnings.Inform (Line);
+                        end if;
+                     end;
+                  end if;
                   releaseRings (Exited);
                   forgetLaunchState (Exited);
                   Records.Remove (Exited);

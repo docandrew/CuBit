@@ -347,12 +347,12 @@ begin
       N.Initialize (Checked, 64, Machine); Advance;
       N.Complete_Object (Checked, Machine, Entries, Recent, True); Advance;
       Check (Outcome.Status = Completed and Outcome.Has_Result_Text and
-             Outcome.Result_Text_Value.Data (1 .. Outcome.Result_Text_Value.Length) = "link up");
+             CCL.VM.Image (Outcome.Result_Text_Value) = "link up");
       Compile ("(logs.recent)");
       N.Initialize (Checked, 64, Machine); Advance;
       N.Complete_Object (Checked, Machine, Entries, Recent, True); Advance;
       Check (Outcome.Status = Completed and Outcome.Has_Literal and
-             Outcome.Literal.Data (1 .. Outcome.Literal.Length) =
+             CCL.VM.Image (Outcome.Literal) =
                "[(Entry ""boot"" 1) (Entry ""link up"" 2) (Entry ""ready"" 1)]");
       N.Export_Result (Checked, Machine, Entries, Output, Good);
       Check (Good and Output = Recent);

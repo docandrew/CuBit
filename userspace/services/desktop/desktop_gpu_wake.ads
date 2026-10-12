@@ -42,6 +42,14 @@ package Desktop_GPU_Wake is
    --  frame is submitted (one-way OP_GPU_BOOST, coalesced in the glue).
    --  Never waits.
    procedure Input_Hint;
+   --  Desktop's gpu.power.waitboost: sent to the driver once its GPU queue
+   --  is open (the next rendering wait); while off, no input hints are sent.
+   procedure Set_Waitboost (On : Boolean);
+
+   --  The renderer worker was abandoned mid-startup (Desktop_Renderer_Worker):
+   --  the Mesa glue may still be in use on that thread, so from now on no
+   --  call goes into it from here (no reports, hints, policy or arms).
+   procedure Disable;
 
    function Matches (Token : Interfaces.Unsigned_64) return Boolean;
    procedure Collect (C : CuBit.Messages.CompletionEntry; Now_Ms : Interfaces.Unsigned_64);

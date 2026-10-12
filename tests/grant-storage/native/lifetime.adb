@@ -2,6 +2,8 @@ with Interfaces; use Interfaces;
 with System; use type System.Address;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Launch_Configurations;
+with Launch_Configuration;
 with CuBit.Memory_Grants;
 with CuBit.Grant_References;
 with Cpio;
@@ -9,6 +11,15 @@ with Cpio;
 -- Disposable privileged bootstrap and its unprivileged child, same ELF.
 -- No GPU is involved. The host runner bounds hangs and owns the guest.
 procedure Lifetime is
+   --  The boot image's size: the kernel's launch configuration for the
+   --  process it starts in devmgr's place.
+   function Boot_Image_Bytes return Unsigned_64 is
+      Configuration : Launch_Configuration.Device_Manager_Configuration;
+      Configured : Boolean;
+   begin
+      CuBit.Launch_Configurations.Get (Configuration, Configured);
+      return (if Configured then Configuration.Boot_Image else 0);
+   end Boot_Image_Bytes;
    package G renames CuBit.Memory_Grants;
    package R renames CuBit.Grant_References;
    Child : constant Unsigned_64 := 42;
@@ -91,7 +102,7 @@ begin
    end if;
    debugPrint ("grant lifetime: disposable native owner/PID oracle (NO GPU)" & ASCII.LF);
    Cpio.init (Archive, To_Address (16#0000_5000_0000_0000#),
-     getInfo (SYSINFO_RAMDISK_SIZE), OK);
+     Boot_Image_Bytes, OK);
    Check (OK, "trusted initrd");
    Cpio.fileView (Archive, Cpio.findFile (Archive, "devmgr.svc"), ELF, ELF_Size, OK);
    Check (OK, "child ELF view");

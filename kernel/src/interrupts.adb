@@ -13,6 +13,8 @@ with Boot_Timer_Probe;
 with Boot_Diagnostics;
 with Config;
 with Device_Interrupts;
+with Device_Memory_Diagnostics;
+with Device_Memory_Publication;
 with ioapic;
 with IPC_Labels;
 with InterruptNumbers; use InterruptNumbers;
@@ -352,6 +354,10 @@ is
                         detail0    => Interfaces.Unsigned_64 (interruptNumber),
                         detail1    => Util.addrToNum (frame.rip),
                         detail2    => Interfaces.Unsigned_64 (frame.errorCode));
+                    Device_Memory_Diagnostics.Record_Kill
+                      (PerCPUData.getCurrentPID, Device_Memory_Publication.CPU_Exception,
+                       Interfaces.Unsigned_64 (interruptNumber), 0,
+                       Util.addrToNum (frame.rip));
                     Process.kill (PerCPUData.getCurrentPID);
                 else
                     TextIO.stopAsynchronous;
@@ -405,6 +411,16 @@ is
         userMode        : constant Boolean := Util.isBitSet (err, 2);
         reservedWrite   : constant Boolean := Util.isBitSet (err, 3);
         nxeViolation    : constant Boolean := Util.isBitSet (err, 4);
+
+        -- The kernel's record of the kill (Device_Memory_Diagnostics), so
+        -- it reaches logstore and the Desktop bootstrap screen.
+        procedure Record_Fault (Kind : Device_Memory_Publication.Kill_Kind) is
+            RIP : constant System.Address := Process.lastFaultRIP;
+        begin
+            Device_Memory_Diagnostics.Record_Kill
+              (pid, Kind, Unsigned_64 (InterruptNumbers.PAGE_FAULT), Util.addrToNum (faultAddr),
+               Util.addrToNum (RIP));
+        end Record_Fault;
     begin
         -- Reserved PTE bits indicate invalid paging structures, never a
         -- demand-page request. Do not try to repair them by allocating RAM.
@@ -419,6 +435,7 @@ is
             if userMode then
                 -- if it was a user process, then kill it.
                 println("NXE violation in user process!");
+                Record_Fault (Device_Memory_Publication.Execute_Protection);
                 Process.kill (pid);
                 return;
             else
@@ -442,6 +459,7 @@ is
                                   Integer'Image (Integer (pid)) & " address" &
                                   Unsigned_64'Image (Unsigned_64 (To_Integer (faultAddr))) &
                                   " kind=write-protection");
+                                Record_Fault (Device_Memory_Publication.Write_Protection);
                                 Process.kill (pid);
                             when False =>
                                 -- kernel page-protection wr violation. we goofed.
@@ -459,6 +477,7 @@ is
                                   Integer'Image (Integer (pid)) & " address" &
                                   Unsigned_64'Image (Unsigned_64 (To_Integer (faultAddr))) &
                                   " kind=read-protection");
+                                Record_Fault (Device_Memory_Publication.Read_Protection);
                                 Process.kill (pid);
                             when False =>
                                 -- kernel page-protection rd violation. we goofed.

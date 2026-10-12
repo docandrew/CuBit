@@ -2582,7 +2582,7 @@ package body CCL_Workbench is
          CuBit.UI.Draw_Table_Header
            (Execution_Canvas, Locals_Table_Regions.Header,
             Colors, "Local", "Value", "Ownership", Locals_Columns);
-         if Has_VM_Inspection and then VM_Inspection.Locals_Length > 0 and then
+         if Has_VM_Inspection and then Natural (VM_Inspection.Locals_Length) > 0 and then
            Locals_Table_Regions.Rows.h > 0
          then
             declare

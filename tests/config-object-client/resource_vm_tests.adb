@@ -30,6 +30,7 @@ procedure Resource_VM_Tests is
    use type CCL.Objects.Build_Result;
    use type V.Validation_Error;
    use type V.Execution_Status;
+   use type V.Import_Count;
    use type V.Value_Kind;
    Types : T.Registry;
    Kind : T.Type_Reference;

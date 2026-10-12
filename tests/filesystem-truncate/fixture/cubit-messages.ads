@@ -13,8 +13,11 @@ package CuBit.Messages is
    end record;
    NULL_MESSAGE : constant Message :=
      ((0, 0, 0, 0), 0, [others => 0]);
+   --  As the runtime's: the caller gives a deadline (ignored here).
+   Wait_Forever : constant Unsigned_64 := Unsigned_64'Last;
    function capCall
-     (slot : Unsigned_64; msg : in out Message) return MessageTag;
+     (slot : Unsigned_64; msg : in out Message; Deadline : Unsigned_64)
+     return MessageTag;
    procedure debugPrint (value : String) is null;
 
    --  Test-only transport: real Ext2 code, simulated sector device.
@@ -45,12 +48,9 @@ package CuBit.Messages is
    --  Test-only: owned-memory allocation (zero-filled, page aligned), as
    --  the kernel's SYSCALL_ALLOCATE_OWNED_MEMORY. Other calls return Last.
    SYSCALL_ALLOCATE_OWNED_MEMORY : constant Unsigned_64 := 115;
-   --  The wall clock as the kernel publishes it (UTC ms at monotonic 0) and
-   --  the monotonic ms clock. Hosted: the offset is CUBIT_TEST_WALL_CLOCK
-   --  (UTC seconds) when set, else unknown (Last), and monotonic time is 0.
-   SYSCALL_INFO : constant Unsigned_64 := 15;
+   --  The monotonic ms clock: 0 hosted. The wall clock is the fixture's
+   --  CuBit.System_Facts (CUBIT_TEST_WALL_CLOCK).
    SYSCALL_GETTIME : constant Unsigned_64 := 27;
-   SYSINFO_WALL_CLOCK_OFFSET : constant Unsigned_64 := 1403;
    function syscall
      (call : Unsigned_64; arg0 : Unsigned_64 := 0; arg1 : Unsigned_64 := 0;
       arg2 : Unsigned_64 := 0; arg3 : Unsigned_64 := 0;

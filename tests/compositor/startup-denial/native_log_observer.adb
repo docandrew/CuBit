@@ -27,7 +27,7 @@ procedure Main is
 begin
    Deadline := syscall (SYSCALL_GETTIME) + 30000;
    loop
-      Source := getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_DESKTOP);
+      Source := To_Word (Registered_Driver (DRIVER_DESKTOP));
       exit when Source /= 0;
       Check (syscall (SYSCALL_GETTIME) < Deadline, "desktop registration timeout");
       Ignore := syscall (SYSCALL_SLEEP, 10);

@@ -102,6 +102,45 @@ package body Multiboot with SPARK_Mode => On is
           (bootMapSnapshot (1 .. bootMapCount), Base, Base + (Length - 1));
     end Firmware_Reclaim_Pages;
 
+    procedure Describe_Physical_Ranges (M : in out Physical_Ranges.Map)
+      with SPARK_Mode => Off
+    is
+        package PR renames Physical_Ranges;
+        use type Multiboot_Memory_Map.Region_Kind;
+        Classes : constant array (Multiboot_Memory_Map.Region_Kind) of PR.Range_Class :=
+          [Multiboot_Memory_Map.Usable       => PR.Usable_RAM,
+           Multiboot_Memory_Map.Reserved     => PR.Firmware_Reserved,
+           Multiboot_Memory_Map.ACPI_Reclaim => PR.ACPI_Tables,
+           Multiboot_Memory_Map.ACPI_NVS     => PR.ACPI_NVS,
+           Multiboot_Memory_Map.Defective    => PR.Defective_RAM];
+    begin
+        if not bootSnapshotReady then
+            -- No published map: nothing is known to be RAM, so nothing may
+            -- be authorized. Force the map incomplete.
+            PR.Invalidate (M);
+            return;
+        end if;
+        for Region of bootMapSnapshot (1 .. bootMapCount) loop
+            if not Region.Empty then
+                PR.Add (M, Region.First, Region.Last, Classes (Region.Kind));
+            end if;
+        end loop;
+        for Index in 1 .. Boot_Modules.Count (bootCatalog) loop
+            declare
+                Item : constant Boot_Modules.Image :=
+                  Boot_Modules.Get (bootCatalog, Index);
+            begin
+                PR.Add (M, Unsigned_64 (Item.First),
+                        Unsigned_64 (Item.Page_Limit) - 1, PR.Boot_Module);
+            end;
+        end loop;
+        if Has_Graphics then
+            PR.Add (M, Unsigned_64 (bootFramebuffer.Value.Map_First),
+                    Unsigned_64 (bootFramebuffer.Value.Map_Limit) - 1,
+                    PR.Firmware_Framebuffer);
+        end if;
+    end Describe_Physical_Ranges;
+
     function Framebuffer return Boot_Framebuffer.Description
       with SPARK_Mode => Off
     is

@@ -14,6 +14,7 @@ with CuBit.Channel_Protocol;
 with CuBit.Channels;
 with CuBit.Control_Events;
 with CuBit.Process_Events;
+with Kernel_Device_Memory;
 
 procedure Main is
    function Image (Process : Process_ID) return String
@@ -40,6 +41,11 @@ procedure Main is
    --  A reader's ring was full: drain again soon rather than in a second.
    Backlog : Boolean := False;
    IDLE_WAKE_MS : constant := 1_000;
+   --  During boot, wake more often so the kernel's device-memory records
+   --  (Kernel_Device_Memory) reach the Desktop bootstrap screen.
+   STARTUP_WAKE_MS   : constant := 200;
+   STARTUP_WINDOW_MS : constant := 15_000;
+   Started_Ms : Unsigned_64 := 0;
    BACKLOG_WAKE_MS : constant := 20;
    Budgets : Log_Budgets.Limiter;
    From : Process_ID;
@@ -65,6 +71,9 @@ procedure Main is
       end if;
    end Note;
 
+   --  The kernel's device-memory refusals and physical map (CAP-001).
+   package Kernel_Records is new Kernel_Device_Memory (Note);
+
    procedure Read_Minimum_Setting is
       Value : Settings.Text;
       Result : Settings.Status;
@@ -86,6 +95,7 @@ procedure Main is
    end Read_Minimum_Setting;
 begin
    Now_Ms := syscall (SYSCALL_GETTIME);
+   Started_Ms := Now_Ms;
    Decoded := Logs.Make ("logstore: typed diagnostics ready");
    if Decoded.Success then
       Log_Fanout.Publish
@@ -108,8 +118,12 @@ begin
       end if;
       receiveUntil
         ((if Waiting_Records then Now_Ms
-          else Now_Ms + Unsigned_64'Min ((if Backlog then BACKLOG_WAKE_MS else IDLE_WAKE_MS),
-                                         Unsigned_64'Last - Now_Ms)),
+          else Now_Ms + Unsigned_64'Min
+                 ((if Backlog then BACKLOG_WAKE_MS
+                   elsif Now_Ms >= Started_Ms and then Now_Ms - Started_Ms < STARTUP_WINDOW_MS
+                   then STARTUP_WAKE_MS
+                   else IDLE_WAKE_MS),
+                  Unsigned_64'Last - Now_Ms)),
          From, Request, Received);
       Publisher_Rings.Disarm (Publishers);
       Now_Ms := syscall (SYSCALL_GETTIME);
@@ -118,6 +132,7 @@ begin
       end if;
       Log_Fanout.Advance_Time (Store, Now_Ms);
       Log_Budgets.Advance_Time (Budgets, Now_Ms);
+      Kernel_Records.Poll;
       --  Publishers that closed or died: their last records first.
       loop
          CuBit.Process_Events.Next (Ended_Event, Have_Event);

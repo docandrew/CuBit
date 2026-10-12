@@ -13,6 +13,7 @@ with Config;
 with Boot_Modules;
 with Boot_Framebuffer;
 with Firmware_Tables;
+with Physical_Ranges;
 
 package Multiboot with
     SPARK_Mode => On
@@ -194,6 +195,12 @@ is
     -- Entire aligned range is unambiguously ACPI-reclaim RAM in the boot map.
     -- This does not establish cache attributes, pins, or mapping authority.
     function Firmware_Reclaim_Pages (Base, Length : Unsigned_64) return Boolean;
+    -- Adds the loader's descriptions to the physical classification
+    -- (CAP-001): every firmware memory-map entry by kind, every boot module
+    -- and the boot framebuffer. Called once, after boot map publication.
+    procedure Describe_Physical_Ranges (M : in out Physical_Ranges.Map)
+      with Pre  => not M.Sealed and then Physical_Ranges.Well_Formed (M),
+           Post => not M.Sealed and then Physical_Ranges.Well_Formed (M);
     
     -- Fixed kernel workspace, independent of untrusted mmap_length. The
     -- decoder itself accepts caller-sized output; this is a boot resource budget.

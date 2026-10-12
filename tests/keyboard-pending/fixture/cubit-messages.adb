@@ -118,25 +118,6 @@ package body CuBit.Messages is
       pragma Assert (CuBit.Input.Pointer_Time (Report.snapshot) = 100);
       return True;
    end trySendEvent;
-   function Wait_Event return Message is
-   begin
-      IRQ_Waits := IRQ_Waits + 1;
-      if IRQ_Waits = 1 then
-         Byte_Limit := (if Mode = "key-overflow" then 33 elsif Mode = "key-partial-switch" then 1
-                        elsif Keyboard_Mode then 6 else Packets * 3);
-         return Empty;
-      elsif Mode = "key-partial-switch" and IRQ_Waits in 2 .. 3 then
-         Consumer := 2;
-         Byte_Limit := (if IRQ_Waits = 2 then 2 else 4);
-         return Empty;
-      elsif (Mode = "replace" or Mode = "key-replace") and IRQ_Waits = 2 then
-         pragma Assert (Timer_Waits = 1 and Delivered = 0);
-         Byte_Index := 0;
-         Byte_Limit := (if Keyboard_Mode then 2 else 3);
-         return Empty;
-      end if;
-      raise Finished;
-   end Wait_Event;
    function Poll_Event (Msg : out Message) return Boolean is
    begin
       Msg := Empty;
@@ -144,6 +125,26 @@ package body CuBit.Messages is
    end Poll_Event;
    function Wait_For_Activity_Until (Deadline : Unsigned_64) return Activity_Result is
    begin
+      --  No deadline: the idle wait for the controller's interrupt event.
+      if Deadline = Unsigned_64'Last then
+         IRQ_Waits := IRQ_Waits + 1;
+         if IRQ_Waits = 1 then
+            Byte_Limit := (if Mode = "key-overflow" then 33 elsif Mode = "key-partial-switch" then 1
+                           elsif Keyboard_Mode then 6 else Packets * 3);
+            return Work_Available;
+         elsif Mode = "key-partial-switch" and IRQ_Waits in 2 .. 3 then
+            Consumer := 2;
+            Byte_Limit := (if IRQ_Waits = 2 then 2 else 4);
+            return Work_Available;
+         elsif (Mode = "replace" or Mode = "key-replace") and IRQ_Waits = 2 then
+            pragma Assert (Timer_Waits = 1 and Delivered = 0);
+            Byte_Index := 0;
+            Byte_Limit := (if Keyboard_Mode then 2 else 3);
+            return Work_Available;
+         end if;
+         raise Finished;
+      end if;
+      --  A deadline: the retry timer for a refused packet.
       pragma Assert (Deadline = 101 and Byte_Index = Byte_Limit);
       Timer_Waits := Timer_Waits + 1;
       pragma Assert (Timer_Waits = 1);

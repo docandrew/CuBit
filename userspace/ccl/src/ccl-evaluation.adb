@@ -220,9 +220,9 @@ package body CCL.Evaluation is
                return;
             end if;
             Result.Has_Text := True;
-            Result.Result_Text.Length := Step.Result_Text_Value.Length;
-            Result.Result_Text.Data (1 .. Step.Result_Text_Value.Length) :=
-              Step.Result_Text_Value.Data (1 .. Step.Result_Text_Value.Length);
+            Result.Result_Text.Length := CCL.VM.Length_Of (Step.Result_Text_Value);
+            Result.Result_Text.Data (1 .. CCL.VM.Length_Of (Step.Result_Text_Value)) :=
+              CCL.VM.Image (Step.Result_Text_Value);
          when CCL.VM.Character_Value =>
             Result.Has_Character := True;
             Result.Result_Character := Character'Val (V.Integer);
@@ -244,8 +244,8 @@ package body CCL.Evaluation is
                Result.Has_Literal := True;
                Result.Literal_Type := V.Data_Type;
                Result.Literal_Type_Name := CCL.Types.Describe (Types, V.Data_Type).Identifier;
-               Result.Literal.Length := Step.Literal.Length;
-               Result.Literal.Data (1 .. Step.Literal.Length) := Step.Literal.Data (1 .. Step.Literal.Length);
+               Result.Literal.Length := CCL.VM.Length_Of (Step.Literal);
+               Result.Literal.Data (1 .. CCL.VM.Length_Of (Step.Literal)) := CCL.VM.Image (Step.Literal);
                Result.Literal_Shape := Step.Literal_Shape;
             elsif V.Kind = CCL.VM.List_Value and then
               CCL.VM.Element_Kind (Types, V.Data_Type) /= CCL.VM.Object_Value
@@ -254,9 +254,9 @@ package body CCL.Evaluation is
                Result.List_Type := V.Data_Type;
                Result.List_Element_Type := CCL.Types.Element_Of (Types, V.Data_Type);
                Result.List_Length := Step.List_Length;
-               Result.List_Total := Step.List_Total;
+               Result.List_Total := CCL.VM.Count_Of (Step.List_Total);
                Result.List_Values := Step.List_Values;
-               Result.List_Text.Length := Natural'Min (Step.List_Text.Length, L.MAX_TEXT_BYTES);
+               Result.List_Text.Length := Natural'Min (CCL.VM.Length_Of (Step.List_Text), L.MAX_TEXT_BYTES);
                Result.List_Text.Data (1 .. Result.List_Text.Length) :=
                  Step.List_Text.Data (1 .. Result.List_Text.Length);
                Result.List_Text_Ends := Step.List_Text_Ends;
@@ -344,7 +344,7 @@ package body CCL.Evaluation is
                      CCL.Catalog.Resolve_Schema (Visible_Interfaces, Op.Argument_Schema, Contract);
                      Image := CCL.Objects.Empty (Contract);
                      CCL.Objects.Append_Text
-                       (Image, Step.Request_Text.Data (1 .. Step.Request_Text.Length), Built);
+                       (Image, CCL.VM.Image (Step.Request_Text), Built);
                      Good := CCL.Objects."=" (Built, CCL.Objects.Added) and then
                        CCL.Objects.Validate (Image, Contract);
                      if Good then Argument := CCL.Host_Values.Object_Constant (Image); end if;
@@ -354,7 +354,7 @@ package body CCL.Evaluation is
                      Text : CCL.Host_Values.Text;
                   begin
                      CCL.Host_Values.Copy_Text
-                       (Step.Request_Text.Data (1 .. Step.Request_Text.Length), Text, Good);
+                       (CCL.VM.Image (Step.Request_Text), Text, Good);
                      if Good then Argument := CCL.Host_Values.Text_Constant (Text); end if;
                   end;
                end if;
@@ -393,7 +393,7 @@ package body CCL.Evaluation is
          end if;
          if Op.Result = CCL.Host_Values.Text_Value then
             if Reply.Success and then Reply.Value.Kind = CCL.Host_Values.Text_Value and then
-              Reply.Value.Content.Length > Op.Result_Text_Limit
+              not CCL.Host_Values.Within (Reply.Value.Content.Length, Op.Result_Text_Limit)
             then
                Mismatched := True;
             end if;

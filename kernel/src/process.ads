@@ -40,6 +40,7 @@ with Descriptors;
 with Device_Vector_ABI;
 with Execution_Accounting;
 with Process_Launch;
+with Process_Layout;
 with Process_Identities;
 with Kernel_Controls;
 with Kernel_Credits;
@@ -93,7 +94,7 @@ package Process is
     -- Limit a user-mode process to 256GiB of memory space. Later we'll add
     --  ASLR, and make the process' stack top some random negative offset
     --  from here.
-    PROCESS_STACK_TOP_VIRT : constant System.Address := To_Address (16#0000_8000_0000_0000#);
+    PROCESS_STACK_TOP_VIRT : constant System.Address := To_Address (Process_Layout.Stack_Top);
 
     -- Every userspace ELF must declare its primary-stack reservation in its
     -- PT_GNU_STACK program header.  These are loader policy limits, not a
@@ -105,7 +106,7 @@ package Process is
 
     -- The bootstrap process is a raw binary embedded in the kernel rather
     -- than an ELF, so its stack reservation is necessarily kernel-owned.
-    INIT_PROCESS_STACK_SIZE : constant UserStackSize := 16 * 1024 * 1024;
+    INIT_PROCESS_STACK_SIZE : constant UserStackSize := Process_Layout.Initial_Stack_Bytes;
 
     -- Initial tracking headroom, separate from the ELF image and declared
     -- stack. sbrk extends it on demand; it is neither a BSS nor a heap quota.
@@ -114,12 +115,9 @@ package Process is
 
     BAD_HEAP_ADDRESS       : constant System.Address := To_Address (16#DEAD_DEAD_DEAD_DEAD#);
 
-    -- Secondary stack starts at the bottom of the stack and eats upwards into it.
-    --
-    -- @TODO this is fine for ZFP user runtime for now, but eventually we'll
-    -- get rid of this in favor of the real GNAT runtime.
-    SECONDARY_STACK_START  : constant System.Address :=
-        PROCESS_STACK_TOP_VIRT - INIT_PROCESS_STACK_SIZE;
+    -- The user runtime's secondary stack starts at the bottom of the main
+    -- stack and grows into it: Process_Layout.Secondary_Stack_Address, a
+    -- constant the runtime uses without asking the kernel.
 
     subtype ProcessPriority is Integer range -1..100;
 

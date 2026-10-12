@@ -26,10 +26,12 @@ procedure GPU_Timeline_Tests is
             TL.Point, TL.Wait;
 
    Hang_Budget : constant := 1_000_000;   -- 1 s, as the driver
+   Patience : constant := 3_500_000;      -- as the driver (GPU-005)
    package Service is new Intel_GPU_Queue_Service
      (M.Session_Id, M.Select_Context, M.Owner_Ready, M.Batch_Ready, M.Scheduling_Resident, M.Publish_Ready,
-      M.Write_Segment, M.Segment_Bytes, M.Kick, M.Read_Timeline, M.Read_Job_Time, M.Now_Us, M.Quarantine,
-      M.Call_Finished, M.Answer_Wake, M.Client_Region, M.Server_Region, Hang_Budget);
+      M.Write_Segment, M.Segment_Bytes, M.Kick, M.Read_Timeline, M.Read_Job_Time, M.Job_Started,
+      M.Now_Us, M.Quarantine, M.Call_Finished, M.Answer_Wake, M.Client_Region, M.Server_Region,
+      Hang_Budget, Patience);
 
    T : access Service.Table;
    Client : constant access Clients.Client := new Clients.Client;

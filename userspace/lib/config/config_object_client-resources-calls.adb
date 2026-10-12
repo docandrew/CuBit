@@ -10,6 +10,7 @@ package body Config_Object_Client.Resources.Calls is
    use type R.Reference;
    use type R.Ticket;
    use type V.Execution_Status;
+   use type V.Import_Count;
    use type V.Value;
    use type W.Operation;
    use type CCL.Host_Values.Value_Kind;

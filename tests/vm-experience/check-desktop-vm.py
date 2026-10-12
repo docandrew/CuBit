@@ -272,16 +272,16 @@ def check_drag(size, label):
     """The hardware pointer follows a window drag (title bar): every step of
     the drag must reach the host cursor plane while Desktop repaints the
     moved window (regression: the repaint path never moved the plane)."""
-    # Open the CCL workbench (first Apps entry: Meta, then Return), as
-    # check-dual-desktop.py does; the run installs ccl-workbench.app.
+    # Open the CCL workbench: Apps (Meta), Development (second row: Down),
+    # its first entry (Right, Return), as desktop-doom's multi-app run does;
+    # the run installs ccl-workbench.app.
     mark = len(log_text())
-    wait_for("desktop: menu refresh ready", f"{label}: Apps menu ready")
     move(20, 300, size)                 # off the taskbar: no hover selection
     time.sleep(0.3)
-    for attempt in range(3):
-        command("send-key", {"keys": [{"type": "qcode", "data": "meta_l"}]})
-        time.sleep(0.5)
-        command("send-key", {"keys": [{"type": "qcode", "data": "ret"}]})
+    for attempt in range(4):
+        for key, pause in (("meta_l", 0.5), ("down", 0.3), ("right", 0.3), ("ret", 0.1)):
+            command("send-key", {"keys": [{"type": "qcode", "data": key}]})
+            time.sleep(pause)
         until = time.monotonic() + 5
         while "desktop: launch submitted" not in log_text()[mark:] and time.monotonic() < until:
             time.sleep(0.1)

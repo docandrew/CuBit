@@ -13,6 +13,8 @@ package Desktop_GPU_Wake_Hook is
    --  Input arrived: one coalesced, one-way OP_GPU_BOOST hint (never waits).
    --  True when a hint went out (false: coalesced or no GPU queue).
    function Boost_Hint return Boolean;
+   --  The driver's waitboost policy, one way. True when sent.
+   function Boost_Policy (On : Boolean) return Boolean;
    --  The glue's blocking calls since the last report, by call site.
    procedure Blocking_Report (Text : out String; Last : out Natural);
    --  Desktop's GPU jobs since the last report, by kinds: counts, sizes and

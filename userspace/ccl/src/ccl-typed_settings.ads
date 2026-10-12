@@ -11,7 +11,7 @@ with CCL.Objects.Views;
 --  Users: desktop.launch.* (CCL.Interfaces.Desktop_Launch) and
 --  desktop.input.key-repeat (CCL.Interfaces.Desktop_Input).
 package CCL.Typed_Settings is
-   type Setting_Kind is (Untyped, Launch_Entry_Setting, Key_Repeat_Setting);
+   type Setting_Kind is (Untyped, Launch_Entry_Setting, Key_Repeat_Setting, GPU_Waitboost_Setting);
    function Kind_Of (Key : String) return Setting_Kind;
 
    MAXIMUM_CANONICAL : constant := 1_024;

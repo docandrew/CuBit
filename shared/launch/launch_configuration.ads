@@ -1,0 +1,256 @@
+------------------------------------------------------------------------------
+--  CuBit
+--  Copyright (C) 2026 Jon Andrew
+--
+--  @summary
+--  Typed launch configuration: what a spawner tells one child it starts,
+--  installed before the child's first instruction (docs/syscall-retirement.md).
+--
+--  @description
+--  The spawner installs the encoded words with
+--  SYSCALL_INSTALL_LAUNCH_ARGUMENTS while the child is suspended and never
+--  started; the kernel maps them read-only at Block_Address in that child
+--  only, and starts it with RDI = the byte length. For devmgr, the first
+--  process, the kernel installs its Device_Manager configuration itself.
+--  It replaces the global SYSCALL_INFO / SET_SYSINFO board: a driver's
+--  registers and DMA addresses are visible to that driver, nobody else.
+--
+--  Wire form, little-endian 64-bit words:
+--
+--     0  Magic ("CUBITCFG"; never a launch-argument format version)
+--     1  Configuration_Kind
+--     2  field count (Field_Count (Kind))
+--     3  the fields, in the order of the Kind's record below
+--
+--  Decoding is total and proved free of run-time errors; a decoder refuses
+--  any block that is not a header for its kind followed by in-range fields.
+--  tests/launch-configuration proves that decoding an encoder's output
+--  returns the value unchanged (Decode (Encode (X)) = X).
+------------------------------------------------------------------------------
+pragma Ada_2022;
+with Interfaces; use Interfaces;
+
+package Launch_Configuration with Pure, SPARK_Mode is
+
+   --  Where the kernel maps a launch block (kernel Process_Launch).
+   Block_Address : constant := 16#0000_5A00_0000_0000#;
+   --  Where devmgr, the filesystem and the RAM block driver see the boot
+   --  image (initrd), read-only (kernel Modules, devmgr MAP_INTO).
+   Boot_Image_Address : constant := 16#0000_5000_0000_0000#;
+
+   Magic : constant Unsigned_64 := 16#4746_4354_4942_5543#;  --  "CUBITCFG"
+   Word_Bytes   : constant := 8;
+   Header_Words : constant := 3;
+   Maximum_Fields : constant := 12;
+   Maximum_Words  : constant := Header_Words + Maximum_Fields;
+
+   subtype Word_Count is Natural range 0 .. Maximum_Words;
+   subtype Word_Index is Positive range 1 .. Maximum_Words;
+   type Word_Array is array (Word_Index range <>) of Unsigned_64;
+
+   --  An encoded configuration: Words (1 .. Length).
+   type Encoded is record
+      Words  : Word_Array (Word_Index) := [others => 0];
+      Length : Word_Count := 0;
+   end record;
+
+   --  x86-64 physical addresses have at most 52 bits.
+   Physical_Bits : constant := 52;
+   subtype Physical_Address is Unsigned_64 range 0 .. 2 ** Physical_Bits - 1;
+   subtype Byte_Count is Unsigned_64 range 0 .. 2 ** Physical_Bits;
+   --  A register offset or multiplier inside one BAR (virtio's are u32).
+   subtype Register_Offset is Unsigned_64 range 0 .. 2 ** 32 - 1;
+
+   --  Physical pages: First and Bytes, or Bytes = 0 for none.
+   type Physical_Span is record
+      First : Physical_Address := 0;
+      Bytes : Byte_Count := 0;
+   end record;
+
+   type Configuration_Kind is
+     (Device_Manager, Process_Manager, Boot_Image_Reader, NVMe_Controller,
+      HDA_Controller, Virtio_Net, Virtio_Input, Virtio_GPU);
+   for Configuration_Kind use
+     (Device_Manager    => 1,
+      Process_Manager   => 2,
+      Boot_Image_Reader => 3,
+      NVMe_Controller   => 4,
+      HDA_Controller    => 5,
+      Virtio_Net        => 6,
+      Virtio_Input      => 7,
+      Virtio_GPU        => 8);
+
+   --  Kernel to devmgr: the boot image's size and the boot framebuffer's
+   --  physical pages (procmgr mints framebuffer authority over them).
+   type Device_Manager_Configuration is record
+      Boot_Image  : Byte_Count := 0;
+      Framebuffer : Physical_Span;
+   end record;
+
+   --  devmgr to procmgr.
+   type Process_Manager_Configuration is record
+      Framebuffer : Physical_Span;
+   end record;
+
+   --  devmgr to the filesystem and the RAM block driver: the size of the
+   --  boot image mapped at Boot_Image_Address.
+   type Boot_Image_Configuration is record
+      Boot_Image : Byte_Count := 0;
+   end record;
+
+   --  devmgr to NVMe and HDA: the register BAR and the DMA region devmgr
+   --  allocated for the driver.
+   type Controller_Configuration is record
+      Registers : Physical_Address := 0;
+      DMA       : Physical_Address := 0;
+   end record;
+
+   --  devmgr to virtio-net and virtio-input: their DMA region (queues and
+   --  buffers), which devmgr allocated at the driver's fixed address.
+   type Queue_Configuration is record
+      DMA : Physical_Address := 0;
+   end record;
+
+   --  devmgr to virtio-gpu: the modern transport and its DMA banks.
+   type Virtio_GPU_Configuration is record
+      Registers         : Physical_Address := 0;
+      DMA               : Physical_Address := 0;
+      Second_DMA        : Physical_Address := 0;   --  0: one bank
+      DMA_Bytes         : Byte_Count := 0;         --  all banks together
+      Common_Offset     : Register_Offset := 0;
+      Notify_Offset     : Register_Offset := 0;
+      ISR_Offset        : Register_Offset := 0;
+      Device_Offset     : Register_Offset := 0;
+      Notify_Multiplier : Register_Offset := 0;
+      --  It drives the boot display adapter (the firmware framebuffer).
+      Boot_Display      : Boolean := False;
+   end record;
+
+   function Field_Count (Kind : Configuration_Kind) return Natural is
+     (case Kind is
+         when Device_Manager    => 3,
+         when Process_Manager   => 2,
+         when Boot_Image_Reader => 1,
+         when NVMe_Controller | HDA_Controller => 2,
+         when Virtio_Net | Virtio_Input => 1,
+         when Virtio_GPU        => 10)
+   with Post => Field_Count'Result <= Maximum_Fields;
+
+   --  Words (1 .. Length) is a header for Kind with the right length.
+   function Header_Valid
+     (Words : Word_Array; Kind : Configuration_Kind) return Boolean
+   is (Words'First = 1
+       and then Words'Length = Header_Words + Field_Count (Kind)
+       and then Words (1) = Magic
+       and then Words (2) = Configuration_Kind'Enum_Rep (Kind)
+       and then Words (3) = Unsigned_64 (Field_Count (Kind)));
+
+   --  Encoders: the header for the kind, then the fields in order.
+   function Encode (Value : Device_Manager_Configuration) return Encoded
+   with Post => Encode'Result.Length = Header_Words + Field_Count (Device_Manager)
+                and then Header_Valid (Encode'Result.Words (1 .. Encode'Result.Length),
+                                       Device_Manager)
+                and then Encode'Result.Words (4) = Value.Boot_Image
+                and then Encode'Result.Words (5) = Value.Framebuffer.First
+                and then Encode'Result.Words (6) = Value.Framebuffer.Bytes;
+   function Encode (Value : Process_Manager_Configuration) return Encoded
+   with Post => Encode'Result.Length = Header_Words + Field_Count (Process_Manager)
+                and then Header_Valid (Encode'Result.Words (1 .. Encode'Result.Length),
+                                       Process_Manager)
+                and then Encode'Result.Words (4) = Value.Framebuffer.First
+                and then Encode'Result.Words (5) = Value.Framebuffer.Bytes;
+   function Encode (Value : Boot_Image_Configuration) return Encoded
+   with Post => Encode'Result.Length = Header_Words + Field_Count (Boot_Image_Reader)
+                and then Header_Valid (Encode'Result.Words (1 .. Encode'Result.Length),
+                                       Boot_Image_Reader)
+                and then Encode'Result.Words (4) = Value.Boot_Image;
+   function Encode
+     (Value : Controller_Configuration; Kind : Configuration_Kind) return Encoded
+   with Pre  => Kind in NVMe_Controller | HDA_Controller,
+        Post => Encode'Result.Length = Header_Words + Field_Count (Kind)
+                and then Header_Valid (Encode'Result.Words (1 .. Encode'Result.Length), Kind)
+                and then Encode'Result.Words (4) = Value.Registers
+                and then Encode'Result.Words (5) = Value.DMA;
+   function Encode
+     (Value : Queue_Configuration; Kind : Configuration_Kind) return Encoded
+   with Pre  => Kind in Virtio_Net | Virtio_Input,
+        Post => Encode'Result.Length = Header_Words + Field_Count (Kind)
+                and then Header_Valid (Encode'Result.Words (1 .. Encode'Result.Length), Kind)
+                and then Encode'Result.Words (4) = Value.DMA;
+   function Encode (Value : Virtio_GPU_Configuration) return Encoded
+   with Post => Encode'Result.Length = Header_Words + Field_Count (Virtio_GPU)
+                and then Header_Valid (Encode'Result.Words (1 .. Encode'Result.Length),
+                                       Virtio_GPU)
+                and then Encode'Result.Words (4) = Value.Registers
+                and then Encode'Result.Words (5) = Value.DMA
+                and then Encode'Result.Words (6) = Value.Second_DMA
+                and then Encode'Result.Words (7) = Value.DMA_Bytes
+                and then Encode'Result.Words (8) = Value.Common_Offset
+                and then Encode'Result.Words (9) = Value.Notify_Offset
+                and then Encode'Result.Words (10) = Value.ISR_Offset
+                and then Encode'Result.Words (11) = Value.Device_Offset
+                and then Encode'Result.Words (12) = Value.Notify_Multiplier
+                and then Encode'Result.Words (13) = (if Value.Boot_Display then 1 else 0);
+
+   --  Decoders: Valid exactly when Words is a header for the kind followed
+   --  by in-range fields; then Value holds the fields.
+   procedure Decode
+     (Words : Word_Array; Value : out Device_Manager_Configuration; Valid : out Boolean)
+   with Post => Valid = (Header_Valid (Words, Device_Manager)
+                         and then Words (4) in Byte_Count
+                         and then Words (5) in Physical_Address
+                         and then Words (6) in Byte_Count)
+                and then (if Valid then
+                            Value.Boot_Image = Words (4)
+                            and then Value.Framebuffer.First = Words (5)
+                            and then Value.Framebuffer.Bytes = Words (6));
+   procedure Decode
+     (Words : Word_Array; Value : out Process_Manager_Configuration; Valid : out Boolean)
+   with Post => Valid = (Header_Valid (Words, Process_Manager)
+                         and then Words (4) in Physical_Address
+                         and then Words (5) in Byte_Count)
+                and then (if Valid then
+                            Value.Framebuffer.First = Words (4)
+                            and then Value.Framebuffer.Bytes = Words (5));
+   procedure Decode
+     (Words : Word_Array; Value : out Boot_Image_Configuration; Valid : out Boolean)
+   with Post => Valid = (Header_Valid (Words, Boot_Image_Reader)
+                         and then Words (4) in Byte_Count)
+                and then (if Valid then Value.Boot_Image = Words (4));
+   procedure Decode
+     (Words : Word_Array; Kind : Configuration_Kind;
+      Value : out Controller_Configuration; Valid : out Boolean)
+   with Pre  => Kind in NVMe_Controller | HDA_Controller,
+        Post => Valid = (Header_Valid (Words, Kind)
+                         and then Words (4) in Physical_Address
+                         and then Words (5) in Physical_Address)
+                and then (if Valid then
+                            Value.Registers = Words (4) and then Value.DMA = Words (5));
+   procedure Decode
+     (Words : Word_Array; Kind : Configuration_Kind;
+      Value : out Queue_Configuration; Valid : out Boolean)
+   with Pre  => Kind in Virtio_Net | Virtio_Input,
+        Post => Valid = (Header_Valid (Words, Kind)
+                         and then Words (4) in Physical_Address)
+                and then (if Valid then Value.DMA = Words (4));
+   procedure Decode
+     (Words : Word_Array; Value : out Virtio_GPU_Configuration; Valid : out Boolean)
+   with Post => Valid = (Header_Valid (Words, Virtio_GPU)
+                         and then Words (4) in Physical_Address
+                         and then Words (5) in Physical_Address
+                         and then Words (6) in Physical_Address
+                         and then Words (7) in Byte_Count
+                         and then (for all I in 8 .. 12 => Words (I) in Register_Offset)
+                         and then Words (13) <= 1)
+                and then (if Valid then
+                            Value.Registers = Words (4)
+                            and then Value.DMA = Words (5)
+                            and then Value.Second_DMA = Words (6)
+                            and then Value.DMA_Bytes = Words (7)
+                            and then Value.Common_Offset = Words (8)
+                            and then Value.Notify_Offset = Words (9)
+                            and then Value.ISR_Offset = Words (10)
+                            and then Value.Device_Offset = Words (11)
+                            and then Value.Notify_Multiplier = Words (12)
+                            and then Value.Boot_Display = (Words (13) = 1));
+end Launch_Configuration;

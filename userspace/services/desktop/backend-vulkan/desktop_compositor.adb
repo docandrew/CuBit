@@ -213,6 +213,8 @@ package body GPU with Refined_State => (State => (Scene, Sources, Backdrops, Atl
       if Compositor_Damage.Count (Writer_Repair) > 0 and then
         (Compositor_Damage.Bounds (Writer_Repair).Right > Natural (Target.Width) or else
          Compositor_Damage.Bounds (Writer_Repair).Bottom > Natural (Target.Height)) then return; end if;
+      --  Uploads staged by an earlier capture go to the GPU now.
+      D.Drive_Uploads;
       if D.Admit_Capture (Screen) = D.Capture_Busy then Result := Deferred; return; end if;
       if not Compositor_Damage.Valid (Repaint) then return; end if;
       -- Only new scene changes dirty every GPU target. A target's historical
@@ -377,6 +379,9 @@ package body GPU with Refined_State => (State => (Scene, Sources, Backdrops, Atl
    begin
       Result := Unsafe;
       if not Opened or Secondary or Target /= Destination.Pixels or Writer /= Held_Writer then return; end if;
+      --  Staged image uploads must not wait behind an atlas or wallpaper
+      --  upload that itself waits for the writer.
+      D.Drive_Uploads;
       for Index in Backdrops'Range loop
          if B.Current (Backdrops (Index)) = B.Quarantined then return; end if;
          if B.Current (Backdrops (Index)) in B.Uploading | B.Ready_To_Upload then

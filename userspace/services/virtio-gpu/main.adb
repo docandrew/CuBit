@@ -18,6 +18,8 @@ with System.Storage_Elements; use System.Storage_Elements;
 with System.Machine_Code;
 
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Launch_Configurations;
+with Launch_Configuration;
 with CuBit.Memory_Grants;
 with CuBit.Output_Discovery;
 with CuBit.Output_Modes;
@@ -86,7 +88,6 @@ procedure main is
    --  1280x800 (8 MiB) at 32 bits per pixel.
    LARGE_BANK_BYTES : constant Storage_Offset := 16#1000000#;
    SMALL_BANK_BYTES : constant Storage_Offset := 16#800000#;
-   DMA_CAP_SLOT : constant := 6;
    bankBytes : Storage_Offset := SMALL_BANK_BYTES;
    PAGE_BYTES : constant := 4096;
 
@@ -233,6 +234,7 @@ procedure main is
 
    dmaPhys : Unsigned_64 := 0;
    secondDmaPhys : Unsigned_64 := 0;
+   dmaBytes : Unsigned_64 := 0;  --  all DMA banks together
    barPhys : Unsigned_64 := 0;
    commonOff : Unsigned_64 := 0;
    notifyOff : Unsigned_64 := 0;
@@ -1837,16 +1839,28 @@ procedure main is
 begin
    debugPrint ("virtio-gpu: starting" & LF);
 
-   trace ("read devmgr sysinfo");
-   barPhys := getInfo (SYSINFO_GPU_BAR0);
-   dmaPhys := getInfo (SYSINFO_GPU_DMA_PHYS);
-   secondDmaPhys := getInfo (SYSINFO_GPU_SECOND_DMA_PHYS);
-   commonOff := getInfo (SYSINFO_GPU_COMMON_OFF);
-   notifyOff := getInfo (SYSINFO_GPU_NOTIFY_OFF);
-   isrOff := getInfo (SYSINFO_GPU_ISR_OFF);
-   deviceOff := getInfo (SYSINFO_GPU_DEVICE_OFF);
-   notifyMult := getInfo (SYSINFO_GPU_NOTIFY_MULT);
-   gpuPrimary := getInfo (SYSINFO_GPU_IS_PRIMARY) /= 0;
+   trace ("read launch configuration");
+   --  devmgr's typed launch configuration for this driver alone.
+   declare
+      Configuration : Launch_Configuration.Virtio_GPU_Configuration;
+      Configured : Boolean;
+   begin
+      CuBit.Launch_Configurations.Get (Configuration, Configured);
+      if not Configured then
+         fail ("missing launch configuration");
+         return;
+      end if;
+      barPhys := Configuration.Registers;
+      dmaPhys := Configuration.DMA;
+      secondDmaPhys := Configuration.Second_DMA;
+      dmaBytes := Configuration.DMA_Bytes;
+      commonOff := Configuration.Common_Offset;
+      notifyOff := Configuration.Notify_Offset;
+      isrOff := Configuration.ISR_Offset;
+      deviceOff := Configuration.Device_Offset;
+      notifyMult := Configuration.Notify_Multiplier;
+      gpuPrimary := Configuration.Boot_Display;
+   end;
    debugPrint ("virtio-gpu: bar=");
    printDec (barPhys);
    debugPrint (" dma=");
@@ -1865,27 +1879,16 @@ begin
    end if;
    debugPrint ("" & LF);
 
-   if barPhys = 0 or else barPhys = Unsigned_64'Last or else
-      dmaPhys = 0 or else dmaPhys = Unsigned_64'Last
-   then
+   if barPhys = 0 or else dmaPhys = 0 then
       fail ("missing devmgr transport info");
       return;
    end if;
 
-   --  Bank size from the DMA capability devmgr minted: one bank, or two of
-   --  equal size when the second exists.
+   --  Bank size from the launch configuration's DMA bytes: the bytes of one
+   --  bank, or of two equal banks when the second exists.
    declare
-      type Capability_Words is array (0 .. 5) of Unsigned_64;
-      Cap : aliased Capability_Words := [others => 0];
-      Total : Unsigned_64;
+      Total : Unsigned_64 := dmaBytes;
    begin
-      if syscall (SYSCALL_INSPECT_CAPABILITY, syscall (SYSCALL_GETPID), DMA_CAP_SLOT,
-                  Unsigned_64 (To_Integer (Cap'Address))) /= 1
-      then
-         fail ("DMA capability unavailable");
-         return;
-      end if;
-      Total := Cap (4);
       if secondDmaPhys /= 0 then
          Total := Total / 2;
       end if;

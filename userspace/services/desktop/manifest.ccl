@@ -4,6 +4,8 @@
   (version "0.1.0")
   (request-render-optional read-write render)
   (request-service logstore read-write logstore)
+  # The bootstrap screen shows recent Warning records (Desktop_Bootstrap_Logs).
+  (request-service log-observer read-write log-observer)
   (request-service config read-write config)
   (config-scope (rights read write) "desktop.appearance.")
   # The Apps menu entries (Desktop_Launch).
@@ -16,11 +18,14 @@
   (request-service clock read-write clock)
   (request-service display read-write display)
   (request-service process-manager read-write process-manager)
-  # Wallpapers (docs/assets.md): read-only, exactly the wallpaper package on
-  # each image's system volume; system.assets.root names the asset root.
+  # Wallpapers and icons (docs/assets.md): read-only, exactly the wallpaper
+  # and icon packages on each image's system volume; system.assets.root
+  # names the asset root.
   (request-service filesystem read-write filesystem)
   (filesystem-scope (rights read) "@nvme:0/Assets/cubit-wallpapers/")
   (filesystem-scope (rights read) "@cd:0/Assets/cubit-wallpapers/")
+  (filesystem-scope (rights read) "@nvme:0/Assets/cubit-icons/")
+  (filesystem-scope (rights read) "@cd:0/Assets/cubit-icons/")
   (config-scope (rights read) "system.assets.")
   (request-notification keyboard manage keyboard)
   (request-notification mouse manage mouse))

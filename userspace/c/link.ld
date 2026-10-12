@@ -25,6 +25,14 @@ SECTIONS
         *(.rodata .rodata.*)
     }
 
+    /* GNU build-id (every link passes --build-id): names the program's
+     * debug file, which image staging keeps on the host
+     * (docs/image-debug-info.md). Placed before /DISCARD/ drops .note.*. */
+    .note.gnu.build-id : ALIGN(4)
+    {
+        KEEP(*(.note.gnu.build-id))
+    }
+
     .data : ALIGN(4096)
     {
         *(.data .data.*)
