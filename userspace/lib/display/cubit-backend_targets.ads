@@ -50,6 +50,15 @@ package CuBit.Backend_Targets with SPARK_Mode, Pure is
           Current (S) = Idle and Active (S) = Target (S'Old) and Token (S) = 0 and
           Count (S) = Count (S'Old)
         else Current (S) = Failed and Active (S) = Active (S'Old) and Token (S) = Token (S'Old));
+   -- The backend refused the sealed frame with certainty (nothing was armed,
+   -- so nothing will be scanned out from it): the stage returns to Idle and
+   -- the active buffer stays. Any other completion fails the instance.
+   procedure Abandon (S : in out State; ID : Identifier)
+     with Pre => Valid (S), Post => Valid (S) and Active (S) = Active (S'Old) and
+       Count (S) = Count (S'Old) and
+       (if Current (S'Old) = In_Flight and ID = Token (S'Old) then
+          Current (S) = Idle and Token (S) = 0
+        else Current (S) = Failed and Token (S) = Token (S'Old));
    procedure Quarantine (S : in out State)
      with Pre => Valid (S), Post => Valid (S) and Current (S) = Failed and
        Active (S) = Active (S'Old) and Token (S) = Token (S'Old);

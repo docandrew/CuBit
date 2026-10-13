@@ -2890,8 +2890,18 @@ procedure Main is
    -- 32..39, log 23 and 27, display/GGTT/PHY 24..31, recipients and replies
    -- 40..62); each is used only if it is empty when the request loop
    -- starts (Find_Deferral_Slots).
-   type Deferral_Index is range 1 .. 3;
-   Deferral_Candidates : constant array (Deferral_Index) of CapabilitySlot := [7, 8, 14];
+   -- The first empty one carries display.svc's owed Present reply
+   -- (Display_Executor.Set_Present_Reply_Slot); the rest defer requests.
+   -- Policy-filled slots are never candidates: 0 self endpoint, 3 self
+   -- process (kernel), 4..6 manifest (6 also devmgr's firmware endpoint),
+   -- 8 GPU service registration (devmgr), 9..12 pipe pages, 13 GT
+   -- frequency page, 15 devmgr, 16..39 reset/display/GGTT/PHY pages and
+   -- logging, 40..63 recipients and saved replies. 1 and 2 are left empty
+   -- by the kernel (no filesystem or keyboard authority here); 7 was found
+   -- occupied on the NUC (2026-10-12), so it is tried last. Each is used
+   -- only if the loop-start scan finds it empty (Find_Deferral_Slots).
+   type Deferral_Index is range 1 .. 4;
+   Deferral_Candidates : constant array (Deferral_Index) of CapabilitySlot := [14, 2, 1, 7];
    type Deferral_Entry is record
       Usable, Busy : Boolean := False;
       Slot : CapabilitySlot := 0;
@@ -2915,22 +2925,64 @@ procedure Main is
       Raw : aliased array (1 .. 6) of Unsigned_64 := [others => 0];
       Self : constant Unsigned_64 := syscall (SYSCALL_GETPID);
       Found : Natural := 0;
+      Present_Slot_Chosen : Boolean := False;
+      Occupied, Unreadable : Unsigned_64 := 0;
+      Chosen : String (1 .. 32) := [others => ' '];
+      Chosen_Last : Natural := 0;
+      function Hex64 (V : Unsigned_64) return String is
+        (Hex (Unsigned_32 (Shift_Right (V, 32))) & Hex (Unsigned_32 (V and 16#FFFF_FFFF#)));
    begin
+      --  The whole table at loop start, logged: a photo or Logs then shows
+      --  which slots policy filled, and so whether a choice below collides.
+      for S in Unsigned_64 range 0 .. 63 loop
+         Raw := [others => 0];
+         if syscall (SYSCALL_INSPECT_CAPABILITY, Self, S,
+                     Unsigned_64 (System.Storage_Elements.To_Integer (Raw'Address))) /= 1
+         then
+            Unreadable := Unreadable or Shift_Left (Unsigned_64'(1), Natural (S));
+         elsif Raw (1) /= 0 then
+            Occupied := Occupied or Shift_Left (Unsigned_64'(1), Natural (S));
+         end if;
+      end loop;
+      Publish_Snapshot ("intel-gpu: capability slots occupied=0x" & Hex64 (Occupied) &
+        " unreadable=0x" & Hex64 (Unreadable),
+        (if Unreadable /= 0 then CuBit.Log_Records.Warning else CuBit.Log_Records.Information));
       for I in Deferral_Index loop
          Raw := [others => 0];
          if syscall (SYSCALL_INSPECT_CAPABILITY, Self, Unsigned_64 (Deferral_Candidates (I)),
                      Unsigned_64 (System.Storage_Elements.To_Integer (Raw'Address))) = 1
            and then Raw (1) = 0
          then
-            Deferral_Queue (I).Usable := True;
-            Deferral_Queue (I).Slot := Deferral_Candidates (I);
-            Found := Found + 1;
+            if not Present_Slot_Chosen then
+               --  The first empty candidate holds the owed Present's reply
+               --  (display.svc's flips): it must never be borrowed.
+               Present_Slot_Chosen := True;
+               Display_Executor.Set_Present_Reply_Slot (Deferral_Candidates (I));
+               Publish_Snapshot ("intel-gpu: present reply slot=" &
+                 Unsigned_64'Image (Unsigned_64 (Deferral_Candidates (I))));
+            else
+               Deferral_Queue (I).Usable := True;
+               Deferral_Queue (I).Slot := Deferral_Candidates (I);
+               Found := Found + 1;
+               declare
+                  Img : constant String := Unsigned_64'Image (Unsigned_64 (Deferral_Candidates (I)));
+               begin
+                  if Chosen_Last + Img'Length <= Chosen'Last then
+                     Chosen (Chosen_Last + 1 .. Chosen_Last + Img'Length) := Img;
+                     Chosen_Last := Chosen_Last + Img'Length;
+                  end if;
+               end;
+            end if;
          end if;
       end loop;
+      if not Present_Slot_Chosen then
+         Publish_Snapshot ("intel-gpu: no empty slot for the present reply; " &
+           "presents are answered before their flip latches", CuBit.Log_Records.Error);
+      end if;
       Publish_Snapshot ("intel-gpu: request deferral slots=" & Natural'Image (Found) &
-        " of" & Natural'Image (Deferral_Candidates'Length) &
+        " of" & Natural'Image (Deferral_Candidates'Length - 1) & " [" & Chosen (1 .. Chosen_Last) & " ]" &
         (if Found = 0 then " (none empty: a deferred request stops receiving)" else ""),
-        (if Found = 0 then CuBit.Log_Records.Warning else CuBit.Log_Records.Information));
+        (if Found = 0 then CuBit.Log_Records.Error else CuBit.Log_Records.Information));
    end Find_Deferral_Slots;
    -- Set Request aside. Its reply capability is the current one.
    procedure Set_Aside (Sender : Process_ID; Request : Message) is

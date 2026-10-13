@@ -1760,7 +1760,7 @@ procedure main is
    procedure finishFrame
      (Output : Output_Index; ID : PS.Submission_ID;
       Result : in out DSP.Frame_Result; Published, Certain : Boolean;
-      Response : out Message)
+      Response : out Message; Dropped : Boolean := False)
    is
       State : Output_State renames outputStates (Output);
       Released_State : PS.State;
@@ -1793,7 +1793,11 @@ procedure main is
       else
          State.presentationFault := True;
       end if;
-      if not Published then State.presentationFault := True; end if;
+      --  Dropped: the GPU refused the frame with certainty (nothing armed),
+      --  the source is returned and the client redraws. Not a fault.
+      if not Published and then not (Dropped and then Certain) then
+         State.presentationFault := True;
+      end if;
       if State.presentationFault then
          BT.Quarantine (State.Targets);
          PS.Close (State.frameState);
@@ -1835,6 +1839,10 @@ procedure main is
    end finishFrame;
 
    procedure collectGpuWatch (Completion : CompletionEntry);
+   --  intel-gpu's Present answers that certify nothing was armed.
+   GPU_Present_Refused    : constant Unsigned_64 := 3;
+   GPU_Present_Superseded : constant Unsigned_64 := 6;
+   droppedFrames : Unsigned_64 := 0;
    procedure collectFrames is
       Completion : aliased CompletionEntry;
       Response : Message;
@@ -1898,11 +1906,43 @@ procedure main is
                  State.backendToken = Completion.token
                then
                   Matched := True;
+                  --  A certain refusal (3: nothing armed, the buffer is not
+                  --  shown; 6: superseded before latching) drops this frame:
+                  --  the targets stay as they were and the client redraws.
+                  if Completion.valid and then Completion.status = COMPLETION_OK and then
+                    Completion.msg.tag = (OP_GPU_PRESENT_BUFFER, 1, 0, 0) and then
+                    Completion.msg.words (0) in GPU_Present_Refused | GPU_Present_Superseded
+                  then
+                     BT.Abandon (State.Targets, Completion.token);
+                     if BT.Current (State.Targets) = BT.Idle then
+                        if droppedFrames < Unsigned_64'Last then droppedFrames := droppedFrames + 1; end if;
+                        if droppedFrames = 1 or else droppedFrames mod 64 = 0 then
+                           CuBit.Log.Warning ("display: GPU refused present status" &
+                             Completion.msg.words (0)'Image & " target" &
+                             State.backendTarget'Image & "; frame dropped, source released (" &
+                             droppedFrames'Image & " dropped)");
+                        end if;
+                        finishFrame (Output, State.backendID, State.backendFrame,
+                                     False, True, Response, Dropped => True);
+                        State.backendToken := 0;
+                        Ignored := replyCap (frameReplySlot (Output), Response);
+                        goto Next_Output;
+                     end if;
+                  end if;
                   Published := Completion.valid and then Completion.status = COMPLETION_OK and then
                     Completion.msg.tag = (OP_GPU_PRESENT_BUFFER, 1, 0, 0) and then
                     Completion.msg.words (0) = 0 and then
                     State.backendFrame.Session = State.activeSession and then
                     State.sessionOutput = State.currentOutput;
+                  if not Published then
+                     CuBit.Log.Warning ("display: present failed valid=" & Completion.valid'Image &
+                       " ok=" & Boolean'Image (Completion.status = COMPLETION_OK) &
+                       " label=" & Completion.msg.tag.label'Image &
+                       " status=" & Completion.msg.words (0)'Image &
+                       " session_match=" & Boolean'Image (State.backendFrame.Session = State.activeSession) &
+                       " output_match=" & Boolean'Image (State.sessionOutput = State.currentOutput) &
+                       "; output quarantined");
+                  end if;
                   --  Validate the captured output directly, not selectedOutput.
                   Published := Published and then
                     State.sourceOutput = State.currentOutput and then
@@ -1924,6 +1964,7 @@ procedure main is
                   Ignored := replyCap (frameReplySlot (Output), Response);
                end if;
             end;
+            <<Next_Output>>
          end loop;
          if not Matched then
             --  Never guess which buffer an unrecognized completion releases.
@@ -1955,10 +1996,10 @@ procedure main is
               Now >= State.backendStarted and then
               Now - State.backendStarted >= Present_Deadline_Ms
             then
-               debugPrint ("display: present stalled output" & Output'Image &
+               CuBit.Log.Warning ("display: present stalled output" & Output'Image &
                  " token" & State.backendToken'Image & " age_ms" &
                  Unsigned_64'Image (Now - State.backendStarted) &
-                 " (no GPU completion); frame failed, output quarantined" & LF);
+                 " (no GPU completion); frame failed, output quarantined");
                BT.Quarantine (State.Targets);
                finishFrame (Output, State.backendID, State.backendFrame,
                             False, False, Response);

@@ -56,6 +56,19 @@ package Compositor_Presentation with SPARK_Mode, Pure is
      with Post => Writable (S) = Releases (S'Old, Reply) and
        Current (S) = (if Releases (S'Old, Reply) then Available else Quarantined) and
        Session (S) = Session (S'Old) and Token (S) = Token (S'Old);
+   -- An authenticated answer for exactly this frame that returns the buffer
+   -- (Released) but says it was not shown: the frame was dropped, nothing
+   -- of it is on screen, and the storage is the client's again.
+   function Drops (S : State; Reply : Completion) return Boolean is
+     (Current (S) = In_Flight and then
+      Reply.Kernel_Valid and then Reply.Kernel_OK and then Reply.Payload_Valid and then
+      Reply.Kernel_Token = Token (S) and then Reply.Payload_Frame = Token (S) and then
+      Reply.Payload_Session = Session (S) and then not Reply.Published and then Reply.Released);
+   -- The caller redraws what the dropped frame carried before relying on
+   -- the screen's contents.
+   procedure Complete_Dropped (S : in out State; Reply : Completion)
+     with Pre => Drops (S, Reply),
+          Post => Writable (S) and Session (S) = Session (S'Old) and Token (S) = Token (S'Old);
 private
    type State is record
       Status : Phase := Closed;

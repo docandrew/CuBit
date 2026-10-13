@@ -64,7 +64,10 @@ package body Desktop_Icon_Atlas_Owner with SPARK_Mode is
       if S.Status = Quarantined then Result := Unsafe; return; end if;
       if S.Status = Resident then Result := Available; return; end if;
       if S.Status = Uploading then
-         D.Poll_Upload (Reply);
+         --  This image's own chunk: the batch may already have been
+         --  observed by another poll (D.Drive_Uploads), after which the
+         --  batch-wide Poll_Upload answers Idle (NUC startup exit 2026-10-12).
+         D.Poll_Slot_Upload (S.Index, Reply);
          case Reply is
             when D.Pending => Result := Pending; return;
             when D.Completed => S.Status := Ready_To_Upload;

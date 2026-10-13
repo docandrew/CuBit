@@ -39,4 +39,9 @@ package body Compositor_Presentation with SPARK_Mode is
          Quarantine (S);
       end if;
    end Complete;
+   procedure Complete_Dropped (S : in out State; Reply : Completion) is
+      pragma Unreferenced (Reply);
+   begin
+      S.Status := Available;
+   end Complete_Dropped;
 end Compositor_Presentation;

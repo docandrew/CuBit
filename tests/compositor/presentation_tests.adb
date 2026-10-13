@@ -145,5 +145,34 @@ begin
       pragma Assert (BP.Displayed (Pool) = BP.None and not BP.Faulted (Pool));
       pragma Assert (BP.Writable (Pool, Next_Writer));
    end;
-   Ada.Text_IO.Put_Line ("presentation: PASS" & Checks'Image & " completion faults and lifecycle traces");
+   --  A dropped frame (authenticated, released, not published) is the only
+   --  non-published answer that leaves the storage writable.
+   declare
+      Drop : constant Completion := (Good with delta Published => False);
+   begin
+      In_Flight_State;
+      pragma Assert (Drops (S, Drop) and not Releases (S, Drop));
+      Complete_Dropped (S, Drop);
+      pragma Assert (Writable (S) and Session (S) = 23 and Token (S) = 7);
+      Checks := Checks + 1;
+      for Field in 1 .. 6 loop
+         In_Flight_State;
+         declare
+            Bad : constant Completion :=
+              (case Field is
+                 when 1 => (Drop with delta Released => False),
+                 when 2 => (Drop with delta Kernel_OK => False),
+                 when 3 => (Drop with delta Payload_Valid => False),
+                 when 4 => (Drop with delta Kernel_Token => 8),
+                 when 5 => (Drop with delta Payload_Session => 24),
+                 when others => (Drop with delta Payload_Frame => 6));
+         begin
+            pragma Assert (not Drops (S, Bad));
+            Complete (S, Bad);
+            pragma Assert (Current (S) = Quarantined);
+            Checks := Checks + 1;
+         end;
+      end loop;
+   end;
+   Ada.Text_IO.Put_Line ("presentation: PASS" & Checks'Image & " completion faults and lifecycle traces; dropped frames");
 end Presentation_Tests;

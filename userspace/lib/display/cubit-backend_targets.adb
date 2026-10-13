@@ -24,6 +24,13 @@ package body CuBit.Backend_Targets with SPARK_Mode is
          S := (Idle, (S.Front + 1) mod S.Buffers, 0, S.Buffers);
       else S.Stage := Failed; end if;
    end Complete;
+   procedure Abandon (S : in out State; ID : Identifier) is
+   begin
+      if S.Stage = In_Flight and ID = S.Pending then
+         S.Stage := Idle;
+         S.Pending := 0;
+      else S.Stage := Failed; end if;
+   end Abandon;
    procedure Quarantine (S : in out State) is
    begin S.Stage := Failed; end Quarantine;
 end CuBit.Backend_Targets;

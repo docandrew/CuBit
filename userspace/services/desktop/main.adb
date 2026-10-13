@@ -1,3 +1,5 @@
+with Desktop_Log_IO;
+with GNAT.Source_Info;
 with CuBit.Boot_Milestone_Codes;
 with Desktop_Bootstrap_Logs;
 with Desktop_Bootstrap_Notes;
@@ -297,8 +299,25 @@ procedure main is
    mesaTextAnnounced, mesaTextFallbackAnnounced, retainedTextAnnounced : Boolean := False;
    textSceneRetry : Boolean := False;
    physicalClientAnnounced : Boolean := False;
-   procedure exitCompositor (Status : Integer)
+   procedure exitProcess (Status : Integer)
      with Import, Convention => C, External_Name => "_exit", No_Return;
+   --  Every exit says why first (a Warning naming the exit's source
+   --  location, flushed to logstore): Desktop never exits silently (NUC
+   --  freeze 2026-10-12: a silent _exit left the screen on its last frame
+   --  and nothing in Logs).
+   procedure exitCompositor
+     (Status : Integer;
+      Where : String := GNAT.Source_Info.Source_Location;
+      Unit : String := GNAT.Source_Info.Enclosing_Entity) with No_Return;
+   procedure exitCompositor
+     (Status : Integer;
+      Where : String := GNAT.Source_Info.Source_Location;
+      Unit : String := GNAT.Source_Info.Enclosing_Entity) is
+   begin
+      Desktop_Logs.Warn ("desktop: exiting (code" & Status'Image & ") at " & Where & " in " & Unit);
+      Desktop_Log_IO.Flush;
+      exitProcess (Status);
+   end exitCompositor;
    Bootstrap_CPU : Boolean := False;
    --  The bootstrap screen's stage line (drawBootstrapDiagnostics).
    Stage_Presenting : aliased constant String := "bootstrap frame (Display)";
@@ -380,8 +399,14 @@ procedure main is
       Started_Us : Unsigned_64 := Compositor_Elapsed.Unavailable;
       Transfer : CP.State;
       Damage, Frame_Damage : Compositor_Damage.State;
+      --  Frames Display dropped in a row (CP.Drops); bounded below.
+      Dropped_In_Row : Natural := 0;
    end record;
    presentations : array (Output_Index) of Output_Presentation;
+   --  Consecutive dropped frames tolerated on one output before the
+   --  transfer counts as broken; and all dropped frames, for the log.
+   Max_Dropped_In_Row : constant := 8;
+   droppedFrames : Unsigned_64 := 0;
 
    --  Output mode changes (a resized VM window; docs/vm-guide.md). Display
    --  answers the watch when its catalog changes; an output whose host
@@ -2735,23 +2760,56 @@ procedure main is
                      result : constant PW.Completion_Decoding :=
                        PW.Decode_Completion
                          (CuBit.Desktop_Messages.To_Wire (completion.msg));
+                     Reply : constant CP.Completion :=
+                       (Kernel_Valid => completion.valid,
+                        Kernel_OK => completion.status = COMPLETION_OK,
+                        Payload_Valid => result.Valid and then result.Value.Buffer = BP.Displayed (P.Pool).Buffer,
+                        Kernel_Token => completion.token,
+                        Payload_Session => (if result.Valid then result.Value.Result.Session else 0),
+                        Payload_Frame => (if result.Valid then result.Value.Result.Frame else 0),
+                        Published => result.Valid and then result.Value.Result.Outcome = DSP.Published,
+                        Released => result.Valid and then result.Value.Result.Buffer_State = DSP.Released);
+                     Expected_Token : constant Unsigned_64 := CP.Token (P.Transfer);
+                     Dropped : constant Boolean := CP.Drops (P.Transfer, Reply);
                   begin
                      -- The non-reused kernel completion token selects the
                      -- output. Payload session/frame values only validate it.
-                     CP.Complete
-                       (P.Transfer,
-                        (Kernel_Valid => completion.valid,
-                         Kernel_OK => completion.status = COMPLETION_OK,
-                         Payload_Valid => result.Valid and then result.Value.Buffer = BP.Displayed (P.Pool).Buffer,
-                         Kernel_Token => completion.token,
-                         Payload_Session => (if result.Valid then result.Value.Result.Session else 0),
-                         Payload_Frame => (if result.Valid then result.Value.Result.Frame else 0),
-                         Published => result.Valid and then result.Value.Result.Outcome = DSP.Published,
-                         Released => result.Valid and then result.Value.Result.Buffer_State = DSP.Released));
+                     if Dropped then
+                        --  Display returned the buffer without showing the
+                        --  frame (the GPU refused it with certainty): reuse
+                        --  the buffer and redraw everything, a bounded
+                        --  number of times in a row.
+                        CP.Complete_Dropped (P.Transfer, Reply);
+                        if P.Dropped_In_Row < Natural'Last then P.Dropped_In_Row := P.Dropped_In_Row + 1; end if;
+                        if droppedFrames < Unsigned_64'Last then droppedFrames := droppedFrames + 1; end if;
+                        if P.Dropped_In_Row = 1 or else droppedFrames mod 64 = 0 then
+                           Desktop_Logs.Warn ("desktop: Display dropped frame" & Reply.Payload_Frame'Image &
+                             " (not shown, buffer released); full redraw, in a row" &
+                             P.Dropped_In_Row'Image & ", total" & droppedFrames'Image);
+                        end if;
+                        framePending := True;
+                        frameDamage := (x => 0, y => 0, w => fbWidth, h => fbHeight);
+                     else
+                        CP.Complete (P.Transfer, Reply);
+                        if CP.Writable (P.Transfer) then P.Dropped_In_Row := 0; end if;
+                     end if;
                      BP.Retire_Display (P.Pool, BP.Displayed (P.Pool), CP.Writable (P.Transfer));
-                     if not CP.Writable (P.Transfer) or else BP.Faulted (P.Pool) then
-                        debugPrint ("desktop: asynchronous transfer quarantined" & LF);
+                     if not CP.Writable (P.Transfer) or else BP.Faulted (P.Pool) or else
+                       P.Dropped_In_Row > Max_Dropped_In_Row
+                     then
+                        Desktop_Logs.Warn ("desktop: asynchronous transfer quarantined: kernel_valid=" &
+                          Reply.Kernel_Valid'Image & " kernel_ok=" & Reply.Kernel_OK'Image &
+                          " payload_valid=" & Reply.Payload_Valid'Image &
+                          " decoded=" & result.Valid'Image &
+                          " token=" & Reply.Kernel_Token'Image & "/" & Expected_Token'Image &
+                          " frame=" & Reply.Payload_Frame'Image &
+                          " session=" & Reply.Payload_Session'Image & "/" & CP.Session (P.Transfer)'Image &
+                          " published=" & Reply.Published'Image & " released=" & Reply.Released'Image &
+                          " pool_faulted=" & BP.Faulted (P.Pool)'Image &
+                          " dropped_in_row=" & P.Dropped_In_Row'Image);
                         exitCompositor (1);
+                     elsif Dropped then
+                        null;
                      else
                         --  Boot timeline (docs/boot-timeline.md): the first
                         --  frame Display published. One branch after that.

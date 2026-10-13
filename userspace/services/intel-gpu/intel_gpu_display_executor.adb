@@ -156,8 +156,16 @@ package body Intel_GPU_Display_Executor is
    GPU_Status_Superseded : constant Unsigned_64 := 6;
    GPU_Status_OK : constant Unsigned_64 := 0;
    GPU_Error_Bad_State : constant Unsigned_64 := 3;
-   Present_Reply_Slot : constant CapabilitySlot := 13;
+   Present_Reply_Slot : CapabilitySlot := 0;
+   Present_Reply_Slot_Set : Boolean := False;
    Present_Reply_Owed : Boolean := False;
+   --  Presents answered before their flip latched (no reply slot held).
+   Unpaced_Presents : Natural := 0;
+   procedure Set_Present_Reply_Slot (Slot : CuBit.Messages.CapabilitySlot) is
+   begin
+      Present_Reply_Slot := Slot;
+      Present_Reply_Slot_Set := True;
+   end Set_Present_Reply_Slot;
    Scanout_Status : Flip.Takeover_Result := Flip.Not_Configured;
    Scanout_Arena_Pages : constant := 4_096;
 
@@ -521,6 +529,10 @@ package body Intel_GPU_Display_Executor is
             Flip.Submit (Flip.Index (Item), Natural (Y), Natural (Unsigned_64'Min (Rows, H - Y)),
                          Result, Superseded);
             if Result /= Flip.Armed then
+               --  display.svc reads 3 as "not shown, buffer free": it drops
+               --  the frame and redraws (never a quarantine).
+               Log ("intel-gpu: present refused result=" & Flip.Submit_Result'Image (Result) &
+                    " buffer=" & Unsigned_64'Image (Item));
                Answer (GPU_Error_Bad_State);
                return;
             end if;
@@ -532,8 +544,18 @@ package body Intel_GPU_Display_Executor is
                Present_Reply_Owed := False;
             end if;
             --  Answered when the flip has latched (Service).
-            Present_Reply_Owed := saveReplyCap (Unsigned_64 (Present_Reply_Slot)) = 1;
+            Present_Reply_Owed := Present_Reply_Slot_Set and then
+              saveReplyCap (Unsigned_64 (Present_Reply_Slot)) = 1;
             if not Present_Reply_Owed then
+               --  Unpaced: the reply precedes the latch. Logged on the first
+               --  and every 1024th, never silent.
+               if Unpaced_Presents mod 1024 = 0 then
+                  Log ("intel-gpu: present answered before latch (reply slot" &
+                       (if Present_Reply_Slot_Set then Unsigned_64'Image (Unsigned_64 (Present_Reply_Slot)) &
+                          " not free" else " unset") &
+                       ") count=" & Natural'Image (Unpaced_Presents + 1));
+               end if;
+               if Unpaced_Presents < Natural'Last then Unpaced_Presents := Unpaced_Presents + 1; end if;
                Answer (GPU_Status_OK);
             end if;
          end;

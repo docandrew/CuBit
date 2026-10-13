@@ -58,5 +58,25 @@ begin
          end loop;
       end;
    end loop;
-   Ada.Text_IO.Put_Line ("BACKEND-TARGETS: PASS 10000 two-buffer and 3000 three-buffer flips and stale/unknown/faulted lease retention");
+   --  Abandon (a certain GPU refusal): back to Idle on the same active
+   --  buffer and target; any other token fails the instance.
+   for N in B.Buffer_Count loop
+      declare Item : B.State; Before_Target : B.Buffer; begin
+         B.Set_Count (Item, N); B.Cleared (Item);
+         for Round in 1 .. 50 loop
+            B.Prepare (Item, Accepted); pragma Assert (Accepted);
+            Before_Target := B.Target (Item);
+            B.Seal (Item, B.Identifier (Round));
+            B.Abandon (Item, B.Identifier (Round));
+            pragma Assert (B.Current (Item) = B.Idle and B.Token (Item) = 0 and
+                           B.Target (Item) = Before_Target and B.Count (Item) = N);
+         end loop;
+         B.Prepare (Item, Accepted); B.Seal (Item, 77);
+         B.Abandon (Item, 78);
+         pragma Assert (B.Current (Item) = B.Failed and B.Token (Item) = 77);
+         B.Abandon (Item, 77);
+         pragma Assert (B.Current (Item) = B.Failed);
+      end;
+   end loop;
+   Ada.Text_IO.Put_Line ("BACKEND-TARGETS: PASS 10000 two-buffer and 3000 three-buffer flips and stale/unknown/faulted lease retention; abandon");
 end Backend_Targets_Tests;

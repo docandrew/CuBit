@@ -78,6 +78,13 @@ package Intel_GPU_Display_Executor is
    --  latch) and the per-second cursor and flip lines.
    procedure Service;
    procedure Report (Now_Ms : Unsigned_64);
+   --  The empty capability slot the owed Present's reply capability is
+   --  saved in until its flip latches (chosen by the driver at loop start
+   --  from slots no policy fills). Without one every Present is answered
+   --  at once, before its flip latches: display.svc could then rotate onto
+   --  a buffer still being scanned out (NUC freeze 2026-10-12, when this
+   --  was slot 13, already holding the GT frequency page).
+   procedure Set_Present_Reply_Slot (Slot : CuBit.Messages.CapabilitySlot);
    --  Deadline (SYSCALL_GETTIME milliseconds) for the loop's idle wait so
    --  the owed flip is polled just after the predicted vblank;
    --  Unsigned_64'Last when nothing is owed.

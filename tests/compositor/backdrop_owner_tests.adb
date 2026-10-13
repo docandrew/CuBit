@@ -40,7 +40,12 @@ begin
    for Chunk in 1 .. Chunks loop
       Set (3, 1);
       for I in 1 .. 10 loop O.Poll (Owner, Result); pragma Assert (Result = O.Pending); end loop;
-      Set (3, 0); O.Poll (Owner, Result);
+      Set (3, 0);
+      --  Scenario 3 (NUC startup exit 2026-10-12): another poll (the
+      --  renderer's Drive_Uploads) observes the batch first; the owner's
+      --  own poll must still see its chunk done, never "no batch" = Unsafe.
+      if Scenario = 3 then D.Drive_Uploads; end if;
+      O.Poll (Owner, Result);
       pragma Assert (Result = (if Chunk = Chunks then O.Available else O.Pending));
    end loop;
    Queues := Calls (2); pragma Assert (Queues = U32 (Chunks));

@@ -127,7 +127,8 @@ package body Desktop_Glyph_Residency with SPARK_Mode is
       Result := Deferred;
       if S.Stage = Quarantined then Result := Unsafe; return; end if;
       if S.Stage /= Transferring then return; end if;
-      D.Poll_Upload (Observed);
+      --  This glyph's own chunk (see Desktop_Backdrop_Owner.Poll).
+      D.Poll_Slot_Upload (Index (S.Active.Position), Observed);
       if Observed = D.Pending then Result := Uploading; return; end if;
       if Observed /= D.Completed then S.Stage := Quarantined; Result := Unsafe; return; end if;
       D.Import_Backing (Index (S.Active.Position), S.Backings (S.Active.Position), S.Sources (S.Active.Position), Native);
