@@ -2,6 +2,7 @@ with System.Storage_Elements; use System.Storage_Elements;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Net_Channels;
+with CCL_Native_Bindings;
 
 package body Control_Transport is
    package Channels renames CuBit.Net_Channels;
@@ -29,12 +30,12 @@ package body Control_Transport is
       Raw := syscall (SYSCALL_SBRK, 2 * Buffer_Bytes);
       if Raw = Unsigned_64'Last then return; end if;
       Channels.Create_Arena
-        (Arena, CAP_SLOT_NET, To_Address (Integer_Address (Raw)), Ring_Size, Ring_Size, 2,
+        (Arena, CCL_Native_Bindings.Network, To_Address (Integer_Address (Raw)), Ring_Size, Ring_Size, 2,
          Granted);
       if not Granted then return; end if;
-      Channels.Prepare (Listener, Arena, 0, 0, CAP_SLOT_NET);
+      Channels.Prepare (Listener, Arena, 0, 0, CCL_Native_Bindings.Network);
       Channels.Submit_Open
-        (Listener, CAP_SLOT_NET, "@net:tcp-listen:10.0.2.15:8080", Token, Submitted);
+        (Listener, CCL_Native_Bindings.Network, "@net:tcp-listen:10.0.2.15:8080", Token, Submitted);
       if not Submitted then return; end if;
       Channels.Wait_For (Token, Reply, Answered);
       Listening := Answered and then Channels.Opened (Listener, Reply);
@@ -49,7 +50,7 @@ package body Control_Transport is
       Success := False;
       if not Listening or Connected then return; end if;
       if not Offered then
-         Channels.Prepare (Stream, Arena, 1, 1, CAP_SLOT_NET);
+         Channels.Prepare (Stream, Arena, 1, 1, CCL_Native_Bindings.Network);
          Channels.Offer (Listener, Arena, 1, Offered);
          if not Offered then return; end if;
       end if;
@@ -63,7 +64,7 @@ package body Control_Transport is
             return;
          end if;
          Channels.Await
-           (Listener, CAP_SLOT_NET, Channels.Layout.Want_Readable, Deadline, Next_Wait, Ready);
+           (Listener, CCL_Native_Bindings.Network, Channels.Layout.Want_Readable, Deadline, Next_Wait, Ready);
          if not Ready or else Channels.Failed (Listener) then return; end if;
       end loop;
    end Accept_Connection;
@@ -75,7 +76,7 @@ package body Control_Transport is
       Data := [others => Character'Val (0)]; Count := 0; Success := False;
       if not Connected or Data'Length = 0 then return; end if;
       Channels.Await
-        (Stream, CAP_SLOT_NET, Channels.Layout.Want_Readable, Deadline, Next_Wait, Ready);
+        (Stream, CCL_Native_Bindings.Network, Channels.Layout.Want_Readable, Deadline, Next_Wait, Ready);
       Channels.Read (Stream, Data'Address, Data'Length, Count);
       Success := Ready and then Count > 0;
    end Read_Some;
@@ -93,7 +94,7 @@ package body Control_Transport is
          if Put = 0 then
             if Channels.Failed (Stream) then return; end if;
             Channels.Await
-              (Stream, CAP_SLOT_NET, Channels.Layout.Want_Writable,
+              (Stream, CCL_Native_Bindings.Network, Channels.Layout.Want_Writable,
                syscall (SYSCALL_GETTIME) + 30_000, Next_Wait, Ready);
             if not Ready then return; end if;
          end if;
@@ -103,7 +104,7 @@ package body Control_Transport is
    procedure Close_Connection is
    begin
       if Connected then
-         Channels.Close (Stream, CAP_SLOT_NET); Connected := False;
+         Channels.Close (Stream, CCL_Native_Bindings.Network); Connected := False;
       end if;
    end Close_Connection;
    procedure Close is
@@ -112,8 +113,8 @@ package body Control_Transport is
       Close_Connection;
       if Listening then
          --  An outstanding offer goes with the listener.
-         Channels.Close (Listener, CAP_SLOT_NET); Listening := False; Offered := False;
+         Channels.Close (Listener, CCL_Native_Bindings.Network); Listening := False; Offered := False;
       end if;
-      if Granted then Channels.Release_Arena (Arena, CAP_SLOT_NET, Ignore); Granted := False; end if;
+      if Granted then Channels.Release_Arena (Arena, CCL_Native_Bindings.Network, Ignore); Granted := False; end if;
    end Close;
 end Control_Transport;

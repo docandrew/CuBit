@@ -42,7 +42,7 @@ procedure Receiver_Tests is
    Active, Saved, Current, Allow_Acquire, Allow_Return, Allow_Save, Allow_Delivery : Boolean := False;
    Mutate_On_Return : Boolean := False;
    Saved_Caller, Current_Caller, Last_Caller : Process_ID := PID (0);
-   Last_Slot : CapabilitySlot := 0;
+   Last_Slot : Unsigned_64 := 0;
    Last_Reply : Message := NULL_MESSAGE;
    Expected_Offset, Expected_Length : Unsigned_64 := 0;
    Expected_Access : G.Required_Access := G.Read_Access;
@@ -78,25 +78,33 @@ procedure Receiver_Tests is
       if Success then Active := False; end if;
       if Mutate_On_Return then Input.Value := (others => <>); end if;
    end Return_Acquisition;
-   function Save_Reply (Slot : Unsigned_64) return Unsigned_64 is
+   --  Reply handles are numbers here: the saved one is Saved_Handle; a
+   --  reply to the current request is recorded as Current_Target.
+   Saved_Handle : constant Unsigned_64 := 62;
+   Current_Target : constant Unsigned_64 := 63;
+   procedure Save_Reply (Handle : out Unsigned_64; Was_Saved : out Boolean) is
    begin
       Saves := Saves + 1;
-      Check (Slot = 62 and not Saved and Current and not Active);
-      if not Allow_Save then return 0; end if;
+      Check (not Saved and Current and not Active);
+      Handle := 0; Was_Saved := False;
+      if not Allow_Save then return; end if;
       Saved := True; Current := False; Saved_Caller := Current_Caller;
-      return 1;
+      Handle := Saved_Handle; Was_Saved := True;
    end Save_Reply;
-   function Send_Reply (Slot : CapabilitySlot; Message : CuBit.Messages.Message) return Unsigned_64 is
+   function Send_Saved_Reply (Handle : Unsigned_64; Message : CuBit.Messages.Message) return Unsigned_64 is
    begin
-      Replies := Replies + 1; Last_Reply := Message; Last_Slot := Slot;
-      if Slot = 62 then
-         Check (Saved); Saved := False; Last_Caller := Saved_Caller;
-      else
-         Check (Slot = 63 and Current); Current := False; Last_Caller := Current_Caller;
-      end if;
+      Replies := Replies + 1; Last_Reply := Message; Last_Slot := Saved_Handle;
+      Check (Handle = Saved_Handle and Saved); Saved := False; Last_Caller := Saved_Caller;
       return (if Allow_Delivery then 1 else 0);
-   end Send_Reply;
-   package R is new Config_Object_Receiver (62, Acquire, Return_Acquisition, Save_Reply, Send_Reply);
+   end Send_Saved_Reply;
+   function Send_Current_Reply (Sender : Process_ID; Message : CuBit.Messages.Message) return Unsigned_64 is
+   begin
+      Replies := Replies + 1; Last_Reply := Message; Last_Slot := Current_Target;
+      Check (Current and Sender = Current_Caller); Current := False; Last_Caller := Current_Caller;
+      return (if Allow_Delivery then 1 else 0);
+   end Send_Current_Reply;
+   package R is new Config_Object_Receiver
+     (Unsigned_64, Acquire, Return_Acquisition, Save_Reply, Send_Saved_Reply, Send_Current_Reply);
    Object : R.State;
    Store : T.State;
    Authority : A.Authority_State;
@@ -128,7 +136,7 @@ procedure Receiver_Tests is
       R.Handle (Object, Store, Authority, Caller, Request, Token, Staged);
       Check (not Current);
    end Call;
-   procedure Is_Reply (Code : W.Status; Caller : Process_ID := PID (42); Slot : CapabilitySlot := 63) is
+   procedure Is_Reply (Code : W.Status; Caller : Process_ID := PID (42); Slot : Unsigned_64 := 63) is
    begin
       Check (Last_Reply.tag.label = W.Status'Enum_Rep (Code) and Last_Caller = Caller and Last_Slot = Slot);
    end Is_Reply;

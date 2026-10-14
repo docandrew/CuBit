@@ -167,7 +167,7 @@ package body Fs_Server.Directory_Requests is
          ignored : Unsigned_64;
       begin
          replyMsg.tag :=
-           (label => REPLY_OK, length => 2, flags => 0, reserved => 0);
+           (label => REPLY_OK, length => 2, protocol => 0, ipc => <>, reserved => 0);
          replyMsg.words (0) := handleId;
          replyMsg.words (1) :=
            (if filesystemKind = CPIO_ARCHIVE then 0 else

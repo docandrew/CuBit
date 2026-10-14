@@ -1,3 +1,4 @@
+with CCL_Native_Bindings;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Logging;
@@ -102,7 +103,7 @@ procedure Main is
    end Serve;
 begin
    debugPrint ("ccl-control: DEVELOPMENT PLAINTEXT; own bindings only" & ASCII.LF);
-   CuBit.Logging.Announce ("ccl-control: started (development plaintext listener)", Success);
+   CuBit.Logging.Announce ("ccl-control: started (development plaintext listener)", Success, CCL_Native_Bindings.Logstore);
    Host.Process_Id := syscall (SYSCALL_GETPID);
    Host.Clock_Process := To_Word (Registered_Driver (DRIVER_CLOCK));
    Control_Host.Initialize (Success);

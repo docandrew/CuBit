@@ -1,3 +1,4 @@
 (executable-manifest v1
   (identity "com.cubit.ipctest.server")
-  (version "0.1.0"))
+  (version "0.1.0")
+  (request-notification ipc-test-registration manage registration))

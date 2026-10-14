@@ -7,7 +7,7 @@
 --
 --  @description
 --  Provides audio stream management for userspace applications. Connects
---  to the mixer service via capCall on CAP_SLOT_MIXER. Audio data flows
+--  to the mixer service via capCall on the endpoint given to Bind. Audio data flows
 --  through a shared ring buffer (grant) with zero syscall overhead per
 --  sample.
 --
@@ -28,7 +28,12 @@ with Interfaces; use Interfaces;
 with System;
 with CuBit.Grant_References;
 
+with CuBit.Handles;
 package CuBit.Audio is
+
+   --  The mixer endpoint every following call uses (the program's
+   --  startup handle for it); before Bind every call fails.
+   procedure Bind (Service : CuBit.Handles.Endpoint);
 
    --  Audio format
    FORMAT_S16LE : constant Unsigned_16 := 0;

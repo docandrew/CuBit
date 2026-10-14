@@ -1,3 +1,4 @@
+with CuBit.Handles.Fixture;
 with Ada.Text_IO;
 with Interfaces;
 with Desktop_Vulkan_Startup;
@@ -12,14 +13,14 @@ procedure Desktop_Vulkan_Startup_Tests is
    Usable : Boolean;
 begin
    M.Set (True, True, 0); Context_Set (0, 0);
-   S.Initialize (25);
+   S.Initialize (CuBit.Handles.Fixture.Endpoint_Of (25));
    pragma Assert (S.Current = Vulkan_Device_Owner.Ready and M.Starts = 1);
-   S.Initialize (26);
+   S.Initialize (CuBit.Handles.Fixture.Endpoint_Of (26));
    pragma Assert (M.Starts = 1);
    S.Check_Health (Usable); pragma Assert (Usable);
    S.Stop;
    pragma Assert (S.Current = Vulkan_Device_Owner.Retired and M.Closes = 1);
-   S.Initialize (25); S.Stop;
+   S.Initialize (CuBit.Handles.Fixture.Endpoint_Of (25)); S.Stop;
    S.Check_Health (Usable);
    pragma Assert (not Usable and M.Starts = 1 and M.Closes = 1);
    Ada.Text_IO.Put_Line ("PASS Desktop singleton device/context startup, health and retirement");

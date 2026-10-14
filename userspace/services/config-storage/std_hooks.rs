@@ -1,8 +1,16 @@
 // Shared by the native probe and storage worker until the general Rust std
-// runtime port owns these hooks. Endpoint/allocator constants come from host.
-use super::{ALLOCATOR, SLOT_CLOCK};
+// runtime port owns these hooks. The allocator and binding names come from
+// the host; the clock is its "clock" startup entry (CAP-002).
+use super::{ALLOCATOR, BINDING_CLOCK};
 use core::alloc::{GlobalAlloc, Layout};
-use cubit::{EndpointSlot, Message};
+use cubit::{Endpoint, Message, startup::Table};
+use std::sync::OnceLock;
+
+/// The clock endpoint, looked up once.
+fn clock() -> Option<Endpoint> {
+    static CLOCK: OnceLock<Option<Endpoint>> = OnceLock::new();
+    *CLOCK.get_or_init(|| Table::from_start().and_then(|t| t.endpoint(BINDING_CLOCK)))
+}
 // All bridge pointers originate in the matching patched std and are borrowed
 // only for the duration of the call. No Rust unwind crosses this ABI.
 #[unsafe(no_mangle)]
@@ -31,7 +39,7 @@ unsafe extern "C" fn cubit_std_diagnostic(ptr: *const u8, len: usize) {
 }
 #[unsafe(no_mangle)]
 unsafe extern "C" fn cubit_std_time(wall: bool, secs: *mut u64, nanos: *mut u32) -> bool {
-    let Some(clock) = EndpointSlot::new(SLOT_CLOCK) else {
+    let Some(clock) = clock() else {
         return false;
     };
     let operation = if wall { 0x0b01 } else { 0x0b00 };
@@ -40,7 +48,7 @@ unsafe extern "C" fn cubit_std_time(wall: bool, secs: *mut u64, nanos: *mut u32)
     };
     if reply.tag.label != 0xf000
         || reply.tag.length != if wall { 4 } else { 1 }
-        || reply.tag.flags != 0
+        || reply.tag.flags != cubit::TagFlags::NONE
         || reply.tag.reserved != 0
         || (wall && !(1..=3).contains(&reply.words[3]))
     {

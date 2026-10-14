@@ -17,8 +17,19 @@ with Compositor_Input_Queue;
 procedure Recovery_Integration is
    package IQ renames Compositor_Input_Queue;
    use type IQ.Queue;
+   --  CAP-002: a saved reply is a handle; numbers stand in for them here
+   --  (channel I's waiter holds 32 + I).
+   package CuBit is
+      package Handles is
+         type Reply is new Unsigned_64;
+         No_Reply : constant Reply := 0;
+      end;
+      package Click_Sequences is
+         procedure Reset (V : in out Natural);
+      end;
+   end;
+   use type CuBit.Handles.Reply;
    subtype SurfaceIndex is Natural range 0 .. 1;
-   subtype CapabilitySlot is Unsigned_64;
    subtype ProcessID is Unsigned_64;
    NO_PROCESS : constant ProcessID := 0;
    subtype PendingInputQueue is IQ.Queue;
@@ -29,7 +40,7 @@ procedure Recovery_Integration is
       active : Boolean := False;
       owner : ProcessID := 0;
       target,afterSerial,deadline : Unsigned_64 := 0;
-      replySlot : CapabilitySlot := 32;
+      saved : CuBit.Handles.Reply := CuBit.Handles.No_Reply;
    end record;
    type Channel is record
       target : Unsigned_64 := 0;
@@ -60,11 +71,6 @@ procedure Recovery_Integration is
    cursorY : Natural := 500;
    lastButtons : Unsigned_64 := 5;
    titleClicks : Natural := 1;
-   package CuBit is
-      package Click_Sequences is
-         procedure Reset (V : in out Natural);
-      end;
-   end;
    package body CuBit is
       package body Click_Sequences is
          procedure Reset(V : in out Natural) is begin V:=0; end;
@@ -80,9 +86,9 @@ procedure Recovery_Integration is
    function findSurface(T : Unsigned_64) return Integer is (findInputChannel(T));
    procedure completeInputWaiter(T : Unsigned_64) is
    begin Notifications:=Notifications+1; end;
-   function replyCap(Slot : CapabilitySlot; M : Message) return Unsigned_64 is
+   function replyCap(Saved : CuBit.Handles.Reply; M : Message) return Unsigned_64 is
    begin
-      pragma Assert(not inputChannels(SurfaceIndex(Slot-32)).waiter.active);
+      pragma Assert(not inputChannels(SurfaceIndex(Saved-32)).waiter.active);
       Replies:=Replies+1; Last_Reply:=M; return 0;
    end;
    Fatal : exception;
@@ -117,7 +123,7 @@ begin
          pragma Assert(not IQ.Has_After(inputChannels(I).events,0));
          pragma Assert(inputChannels(I).nextSerial=18 and inputChannels(I).snapshot.generation=1);
       end loop;
-      inputChannels(0).waiter:=(active=>True,replySlot=>32,others=><>);
+      inputChannels(0).waiter:=(active=>True,saved=>32,others=><>);
       clearInputForTarget(11);
       pragma Assert(Replies=1 and Last_Reply.words(0)=INPUT_RESYNC and Last_Reply.words(1)=18);
       pragma Assert(inputChannels(0).target=0 and not inputChannels(0).waiter.active
@@ -130,7 +136,7 @@ begin
    begin forceInputResynchronization; raise Program_Error;
    exception when Fatal=>null; end;
    pragma Assert(inputChannels(0).nextSerial=Unsigned_64'Last);
-   inputChannels(0).waiter:=(active=>True,replySlot=>32,others=><>);
+   inputChannels(0).waiter:=(active=>True,saved=>32,others=><>);
    begin clearInputForTarget(11); raise Program_Error;
    exception when Fatal=>null; end;
    pragma Assert(Replies=1 and inputChannels(0).waiter.active);

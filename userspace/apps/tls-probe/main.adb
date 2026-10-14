@@ -2,7 +2,6 @@ pragma Ada_2022;
 with Interfaces; use Interfaces;
 with System;
 with System.Storage_Elements; use System.Storage_Elements;
-with CCL_Manifest_Bindings;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Net_Channels;
 with TLS_Clock;
@@ -17,6 +16,8 @@ with SPARKTLSCrypto.Hashing.SHA256;
 with SPARKTLSCrypto.MAC;
 with X509;
 with TLS_Probe_Roots;
+with CuBit.Handles;
+with Startup;
 
 --  Native SPARKTLS probe (headless tls-probe regression). Links SPARKTLS into
 --  a CuBit process, seeds its RBG from SPARKEntropy, loads a test root from
@@ -24,7 +25,7 @@ with TLS_Probe_Roots;
 --  fixture in tests/tls/server.py. This validates the library on CuBit
 --  before the TLS client service is built around the same adapter.
 procedure Main is
-   Slot : constant CapabilitySlot := CCL_Manifest_Bindings.Slot_Tls_Test;
+   Slot : constant CuBit.Handles.Endpoint := Startup.Tls_Test;
    package Channels renames CuBit.Net_Channels;
    Server_Name : constant String := "tls-test.cubit.internal";
    Transfer_Size : constant := 16 * 4_096;

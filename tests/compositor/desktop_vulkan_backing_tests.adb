@@ -1,3 +1,4 @@
+with CuBit.Handles.Fixture;
 with Compositor_Upload;
 with Ada.Command_Line; with Ada.Text_IO; with Interfaces;
 with System; with System.Storage_Elements;
@@ -39,7 +40,7 @@ begin
    Image_Set (4096, 1, 0, 0, 0); Metadata_Set (0);
    S.Allocate_Backing (0, 32, 24, False, Lease, Result);
    pragma Assert (Lease = A.No_Ticket and Result = S.Source_Rejected and Metadata_Calls = 0);
-   S.Initialize (25); S.Configure_Targets (32, 24, 1, (if Scenario = 1 then 12288 else 32768), OK);
+   S.Initialize (CuBit.Handles.Fixture.Endpoint_Of (25)); S.Configure_Targets (32, 24, 1, (if Scenario = 1 then 12288 else 32768), OK);
    pragma Assert (OK); S.Prepare_Pipeline (OK); pragma Assert (OK);
    Image_Set (4096, 1, (if Scenario = 3 then 2 else 0), (if Scenario = 4 then 2 else 0),
       (if Scenario = 5 then 2 else 0));

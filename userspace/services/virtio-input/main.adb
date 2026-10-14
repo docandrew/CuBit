@@ -33,7 +33,8 @@ with Launch_Configuration;
 with CuBit.Input; use CuBit.Input;
 with CuBit.Virtio_Input_Control;
 with CuBit.Device_Interrupts;
-with CCL_Manifest_Bindings;
+with CuBit.Startup_State;
+with Startup;
 with Input_Pending;
 with Absolute_Pointer;
 with Absolute_Pending;
@@ -51,7 +52,6 @@ procedure main is
    REPLY_OK  : constant Unsigned_32 := 16#F000#;
    REPLY_ERR : constant Unsigned_32 := 16#F001#;
    OP_READY  : constant Unsigned_32 := 16#FF00#;
-   CAP_SLOT_READY : constant CapabilitySlot := CCL_Manifest_Bindings.Slot_ready;
 
    DMA_BASE : constant System.Address := To_Address (16#0000_7000_0000_0000#);
 
@@ -196,13 +196,13 @@ procedure main is
          exit when Consumer = No_Process or else Absolute_Pending.Count (Pending) = 0;
          Item := Absolute_Pending.Element (Pending, 0);
          if not trySendEvent (Consumer, Encode
-           (Source_Report'(sourceAuthorityTag => 0, sequence => Item.Sequence,
+           (Source_Report'(sourceIdentity => 0, sequence => Item.Sequence,
              generation => 1, device => CuBit.Input.ABSOLUTE_POINTER,
              delivery => REPLACEABLE_STATE,
              flags => [RESYNCHRONIZE => Item.Recover],
              payload => Item.Payload,
              snapshot => Pointer_Snapshot
-               (Item.Payload and AP.Byte_Mask, Item.Observed_Ms))))
+               (Item.Payload and AP.Byte_Mask, Item.Observed_Ms))), Startup.Pointer_Events)
          then
             Busy := Busy + 1;
             exit;
@@ -323,11 +323,15 @@ procedure main is
       debugPrint ("virtio-input: " & Why & LF);
       VT.Reset;
       Ignore := reply (Config_Sender,
-        (tag => (label => REPLY_ERR, length => 0, flags => 0, reserved => 0),
+        (tag => (label => REPLY_ERR, length => 0, protocol => 0, ipc => <>, reserved => 0),
          authorityTag => 0, words => [others => 0]));
    end Reject;
 begin
    debugPrint ("virtio-input: starting" & LF);
+   if not CuBit.Startup_State.Ready (Startup.Verify) then
+      debugPrint ("virtio-input: startup capabilities missing" & LF);
+      return;
+   end if;
 
    --  Startup is bound to the registered device manager's kernel-supplied
    --  sender identity.
@@ -353,10 +357,10 @@ begin
       --  manifest's device slot (docs/msi-interrupts.md); without it there
       --  is no interrupt path.
       if not Valid or else
-        not CuBit.Device_Interrupts.Block_Of (CCL_Manifest_Bindings.Slot_device).Valid
+        not CuBit.Device_Interrupts.Block_Of (Startup.Device).Valid
       then
          Ignore := reply (Config_Sender,
-           (tag => (label => REPLY_ERR, length => 0, flags => 0, reserved => 0),
+           (tag => (label => REPLY_ERR, length => 0, protocol => 0, ipc => <>, reserved => 0),
             authorityTag => 0, words => [others => 0]));
          return;
       end if;
@@ -464,17 +468,17 @@ begin
    end;
 
    Ignore := reply (Config_Sender,
-     (tag => (label => REPLY_OK, length => 0, flags => 0, reserved => 0),
+     (tag => (label => REPLY_OK, length => 0, protocol => 0, ipc => <>, reserved => 0),
       authorityTag => 0, words => [others => 0]));
    debugPrint ("virtio-input: tablet ready; queue ");
    printDec (Unsigned_64 (Queue_Size));
    debugPrint (" vector ");
    printDec (Unsigned_64
-     (CuBit.Device_Interrupts.Block_Of (CCL_Manifest_Bindings.Slot_device).Head));
+     (CuBit.Device_Interrupts.Block_Of (Startup.Device).Head));
    debugPrint (LF & "");
 
-   Ignore_Tag := capSend (CAP_SLOT_READY,
-     (tag => (label => OP_READY, length => 0, flags => 0, reserved => 0),
+   Ignore_Tag := capSend (Startup.Ready,
+     (tag => (label => OP_READY, length => 0, protocol => 0, ipc => <>, reserved => 0),
       authorityTag => 0, words => [others => 0]), CuBit.Messages.Wait_Forever);
 
    loop

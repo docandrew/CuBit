@@ -7,17 +7,21 @@
  *
  * The kernel starts the main thread with RDI = the length of its launch
  * argument block (0: none), mapped read-only at a fixed address
- * (docs/process-arguments.md). It is kept in __cubit_launch_arguments_length
- * for Ada.Command_Line. An Ada main is a procedure: when Ada.Command_Line
+ * (docs/process-arguments.md). Its whole length is kept in
+ * __cubit_launch_block_length (for the startup table, CuBit.Launch_Block)
+ * and its payload's in __cubit_launch_arguments_length (for
+ * Ada.Command_Line and the launch-configuration readers). An Ada main is a procedure: when Ada.Command_Line
  * set an exit status, that is the exit code instead of main's RAX.
  */
 
 .section .bss
 .balign 8
 .global __cubit_launch_arguments_length
+.global __cubit_launch_block_length
 .global __cubit_exit_status
 .global __cubit_exit_status_set
 __cubit_launch_arguments_length: .quad 0
+__cubit_launch_block_length:     .quad 0
 __cubit_exit_status:             .quad 0
 __cubit_exit_status_set:         .quad 0
 
@@ -44,7 +48,30 @@ _start:
     xorq    %rax, %rax
     rep     stosq
 .bss_done:
-    movq    %rbx, __cubit_launch_arguments_length(%rip)
+    movq    %rbx, __cubit_launch_block_length(%rip)
+    /* CAP-002: the launch block may end with the startup table and a
+     * trailer (u64 table bytes, u64 "CUBITLB1"; CuBit.Launch_Envelopes).
+     * Its payload readers see only the payload's length. */
+    movq    %rbx, %rax            /* payload length, unless a trailer says less */
+    cmpq    $16, %rbx
+    jb      .launch_split_done
+    movabsq $0x00005A0000000000, %rcx  /* Launch_Envelopes block address */
+    addq    %rbx, %rcx            /* the block's end */
+    movabsq $0x31424C5449425543, %rdx
+    cmpq    -8(%rcx), %rdx
+    jne     .launch_split_done
+    movq    -16(%rcx), %rdx         /* table bytes */
+    cmpq    $3216, %rdx             /* Startup_Tables.Maximum_Table_Bytes */
+    ja      .launch_split_done
+    addq    $7, %rdx
+    andq    $-8, %rdx               /* padded to a word */
+    addq    $16, %rdx               /* and the trailer */
+    cmpq    %rbx, %rdx
+    ja      .launch_split_done
+    movq    %rbx, %rax
+    subq    %rdx, %rax
+.launch_split_done:
+    movq    %rax, __cubit_launch_arguments_length(%rip)
 
     /* Run C constructors (libnsfb surface registration uses these). */
     leaq    __init_array_start(%rip), %r12

@@ -37,7 +37,7 @@ as --64 "$b/spawn-check-launch.S" -o "$b/spawn-check-launch.o"
 
 mkdir -p "$here/ada/build/generated"
 "$manifest_tool" "$catalog" "$here/ada/manifest.ccl" \
-    --ada-output "$here/ada/build/generated/ccl_manifest_bindings.ads" \
+    --startup-output "$here/ada/build/generated/startup.ads" \
     > "$here/ada/build/manifest.S"
 as --64 "$here/ada/build/manifest.S" -o "$here/ada/build/manifest.o"
 # gprbuild does not track crt0.o or the runtime library: always relink.

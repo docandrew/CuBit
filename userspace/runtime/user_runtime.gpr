@@ -1,6 +1,7 @@
 library project user_runtime is
     for Source_Dirs use ("gnat", "../../shared/time", "../../shared/interrupts",
-                         "../../shared/launch", "../../shared/publications");
+                         "../../shared/launch", "../../shared/publications",
+                         "../../shared/capabilities", "../../shared/boot");
 
     for Object_Dir use "build";
 

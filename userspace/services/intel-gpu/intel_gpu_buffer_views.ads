@@ -1,5 +1,5 @@
 with Interfaces; use Interfaces;
-with CuBit.Messages;
+with CuBit.Handles;
 with CuBit.Grant_References;
 with Intel_GPU_Buffer_Handles;
 with Intel_GPU_Buffer_Reply;
@@ -14,24 +14,24 @@ package Intel_GPU_Buffer_Views is
    generic
       with function Completed_Backing return Intel_GPU_Buffer_Reply.Backing;
    procedure Share_Completed
-     (Object : in out View; Recipient : CuBit.Messages.CapabilitySlot;
+     (Object : in out View; Recipient : CuBit.Handles.Reply;
       Identity : Unsigned_64);
    -- Trusted driver-only source: returns ONLY completed, coherent pixel pages,
    -- never context/table storage. It must reject after ownership loss and keep
    -- the source immutable/retained until all readers retire. Export is always
    -- read-only and terminal-forwardable. Rechecked after grant creation; loss
    -- or changed backing retires the grant without publishing its reference.
-   -- Session is already authenticated; Recipient is a stable endpoint cap
-   -- for that SAME session, not a PID or a caller-selected capability slot.
+   -- Session is already authenticated; Recipient is the saved reply of that
+   -- session's authenticated request (the kernel grants to the process the
+   -- reply answers, CAP-002), never a PID or a request-selected capability.
    -- Identity is Recipient_Identity from trusted render admission, not request
-   -- data. Keep the slot unchanged until Share returns (including supervisor
-   -- edits); the kernel then checks the endpoint's generation during creation.
+   -- data, and is nonzero.
    -- Registry must contain application BOs only (never context/page tables).
    procedure Share
      (Object : in out View; Buffers : in out Intel_GPU_Buffer_Handles.Registry;
       Session : Intel_GPU_Buffer_Handles.Session_ID;
       ID : Intel_GPU_Buffer_Handles.Handle;
-      Recipient : CuBit.Messages.CapabilitySlot;
+      Recipient : CuBit.Handles.Reply;
       Identity : Unsigned_64;
       Offset, Bytes : Unsigned_64; Writable : Boolean;
       Presentation : Boolean := False);
@@ -41,7 +41,7 @@ package Intel_GPU_Buffer_Views is
    procedure Share_Retained
      (Object : in out View; Buffers : in out Intel_GPU_Buffer_Handles.Registry;
       Source : Intel_GPU_Buffer_Handles.Retained_Reference;
-      Recipient : CuBit.Messages.CapabilitySlot; Identity : Unsigned_64;
+      Recipient : CuBit.Handles.Reply; Identity : Unsigned_64;
       Offset, Bytes : Unsigned_64);
    -- Trusted coordinator only: authenticate recipient and its read rights
    -- separately; a lifetime pin is NOT delegation authority. Creates a

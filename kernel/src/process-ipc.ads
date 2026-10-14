@@ -23,6 +23,7 @@
 -- process-lifetime / mailbox teardown protocol in kernel-process-retirement.md.
 -------------------------------------------------------------------------------
 with Capabilities;
+with Capability_ABI;
 with IPC_Labels;
 with Kernel_Controls;
 with Memory_Grants;
@@ -162,10 +163,13 @@ package Process.IPC is
     ---------------------------------------------------------------------------
     -- receiveEventNB
     -- Non-blocking event receive. Pops from the event ring buffer.
-    -- @param msg   - the event message (valid only if found is True)
-    -- @param found - True if an event was available
+    -- @param msg       - the event message (valid only if found is True)
+    -- @param found     - True if an event was available
+    -- @param publisher - the process that published it; NO_PROCESS for the
+    --                    kernel's own notices and doorbells
     ---------------------------------------------------------------------------
-    procedure receiveEventNB (msg : out Message; found : out Boolean);
+    procedure receiveEventNB (msg : out Message; found : out Boolean;
+                              publisher : out ProcessID);
 
     ---------------------------------------------------------------------------
     -- reply
@@ -180,15 +184,54 @@ package Process.IPC is
 
     ---------------------------------------------------------------------------
     -- replyCap
-    -- Reply using a specific CAP_REPLY slot. This lets deferred-reply servers
-    -- choose the exact saved reply authority/request ID to complete.
-    -- A selected reply is consumed even if the peer is dead/stale or delivery
-    -- otherwise fails. A non-reply slot is never changed by this operation.
+    -- Reply using a saved CAP_REPLY, named by its handle (MOVE_REPLY_
+    -- CAPABILITY placed it). The saved reply is consumed (its handle closed)
+    -- even if the peer is dead/stale or delivery otherwise fails. A handle
+    -- naming anything else is never changed by this operation.
     -- @return 1 on success.
     ---------------------------------------------------------------------------
     function replyCap
-        (capSlot : Capabilities.CapabilitySlot;
-         msg     : Message) return Unsigned_64;
+        (handle : Unsigned_64;
+         msg    : Message) return Unsigned_64;
+
+    ---------------------------------------------------------------------------
+    -- replyWithCapability (REPLY_WITH_CAPABILITY, CAP-002)
+    -- Reply to replyTo with the calling thread's current reply authority,
+    -- carrying a copy of the caller's capability `derivation` names
+    -- (Capability_ABI.Derivation, already copied in). Only when replyTo's
+    -- request set Capability_ABI.Accepts_Capability (the reply authority then
+    -- holds RIGHT_GRANT). The copy is placed in replyTo's table; the delivered
+    -- reply's authorityTag is its handle word and its flags say
+    -- Capability_Transferred. When the copy cannot be placed in replyTo's
+    -- table (its limit, its memory), the reply is still delivered, with
+    -- Capability_Refused and the refusal code. A copy whose reply is not
+    -- delivered (the caller went away) is closed again.
+    -- @return the handle word in replyTo's table, or a refusal code; the
+    --  reply authority is kept on Not_Accepted and on a refused derivation.
+    ---------------------------------------------------------------------------
+    function replyWithCapability
+        (replyTo    : ProcessID;
+         msg        : Message;
+         derivation : Capability_ABI.Derivation) return Unsigned_64;
+
+    ---------------------------------------------------------------------------
+    -- failReply
+    -- A saved reply was closed unanswered (CLOSE_HANDLE): wake the
+    -- synchronous caller it answers with an empty reply, as when its server
+    -- exits. Caller holds no Process lock.
+    ---------------------------------------------------------------------------
+    procedure failReply (cap : Capabilities.Capability);
+
+    ---------------------------------------------------------------------------
+    -- replySavedWithCapability (REPLY_SAVED_WITH_CAPABILITY, CAP-002)
+    -- replyWithCapability for a request set aside with MOVE_REPLY_CAPABILITY,
+    -- named by its saved reply's handle. Nothing is consumed unless the
+    -- request accepted a capability and the copy is allowed.
+    ---------------------------------------------------------------------------
+    function replySavedWithCapability
+        (handle     : Unsigned_64;
+         msg        : Message;
+         derivation : Capability_ABI.Derivation) return Unsigned_64;
 
     ---------------------------------------------------------------------------
     -- replyWait
@@ -400,14 +443,16 @@ package Process.IPC is
 
     ---------------------------------------------------------------------------
     -- capSend
-    -- Resolve the endpoint capability at capSlot in the caller's cap table,
+    -- Resolve the endpoint capability the handle names in the caller's table,
     -- stamp the message authority tag from the capability, and perform a synchronous
     -- send to the resolved destination.
     -- @return the reply message tag (NULL_TAG on capability error).
     ---------------------------------------------------------------------------
-    function capSend (capSlot : Capabilities.CapabilitySlot;
+    function capSend (handle  : Unsigned_64;
                       msg     : Message;
-                      deadlineMs : Unsigned_64) return MessageTag;
+                      deadlineMs : Unsigned_64;
+                      kernelFlags : Capability_ABI.IPC_Flags := Capability_ABI.No_IPC_Flags)
+      return MessageTag;
 
     ---------------------------------------------------------------------------
     -- capCall
@@ -416,16 +461,38 @@ package Process.IPC is
     -- The caller should read the full reply from threadOf (pid).replyMsg.
     -- @return the reply message tag (NULL_TAG on capability error).
     ---------------------------------------------------------------------------
-    function capCall (capSlot : Capabilities.CapabilitySlot;
+    function capCall (handle  : Unsigned_64;
                       msg     : Message;
                       deadlineMs : Unsigned_64) return MessageTag;
+
+    ---------------------------------------------------------------------------
+    -- capCallOffering (CALL_OFFERING_CAPABILITY, CAP-002)
+    -- capCall offering one capability, already derived from the caller's
+    -- table (Capability_Install.Derive): the delivered request carries
+    -- Capability_ABI.Capability_Offered, the server may take the offer with
+    -- acceptOffered while it answers, and whatever it leaves is dropped when
+    -- the call ends.
+    ---------------------------------------------------------------------------
+    function capCallOffering (handle  : Unsigned_64;
+                              msg     : Message;
+                              deadlineMs : Unsigned_64;
+                              offer   : Capabilities.Capability) return MessageTag;
+
+    ---------------------------------------------------------------------------
+    -- acceptOffered (ACCEPT_OFFERED_CAPABILITY, CAP-002)
+    -- Take what requester's current synchronous call offers into the
+    -- caller's table: only while the calling thread answers that call.
+    -- @return the handle word, or a refusal code (Not_Accepted: nothing was
+    --  offered; Not_Permitted: not answering requester's call).
+    ---------------------------------------------------------------------------
+    function acceptOffered (requester : ProcessID) return Unsigned_64;
 
     ---------------------------------------------------------------------------
     -- capSubmit
     -- Resolve endpoint capability, stamp authority tag, perform async submit.
     -- @return True on success, False on capability error or mailbox full.
     ---------------------------------------------------------------------------
-    function capSubmit (capSlot : Capabilities.CapabilitySlot;
+    function capSubmit (handle  : Unsigned_64;
                         msg     : Message;
                         token   : Unsigned_64) return Boolean;
 

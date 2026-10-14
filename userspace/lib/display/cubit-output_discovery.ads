@@ -7,6 +7,7 @@ with CuBit.Desktop_Protocol;
 package CuBit.Output_Discovery with SPARK_Mode, Pure is
    package DP renames CuBit.Desktop_Protocol;
    use type DP.Wire_Message;
+   use type DP.Protocol_Flags;
    type Provider is (Display_Broker, GPU_Backend);
    type Operation is (Get_Catalog, Get_Description);
    function Code (Service : Provider; Action : Operation) return Unsigned_32 is

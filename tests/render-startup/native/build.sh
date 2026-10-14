@@ -8,7 +8,10 @@ python3 - <<'PY'
 from pathlib import Path
 import struct
 out = Path('tests/render-startup/native/build')
-for name, slot, flags in [('optional', 25, 1), ('occupied', 3, 1), ('invalid', 25, 2)]:
+# CAP-002: the slot field is reserved zero (no capability is placed at a
+# number). 'occupied' keeps an old-style slot request (3, a bootstrap
+# slot): the loader must refuse the executable before any render attempt.
+for name, slot, flags in [('optional', 0, 1), ('occupied', 3, 1), ('invalid', 0, 2)]:
     # Same canonical .cubit.caps wire ABI as request-render. Optional flags=1.
     # Keep this independent of CCL syntax so the native decoder is exercised.
     (out / (name + '.caps')).write_bytes(

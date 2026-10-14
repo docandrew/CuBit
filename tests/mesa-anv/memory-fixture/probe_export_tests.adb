@@ -1,6 +1,7 @@
 with Ada.Text_IO;
 with Interfaces; use Interfaces;
-with CuBit.Messages;
+with CuBit.Handles;
+with CuBit.Handles.Fixture;
 with CuBit.Memory_Grants;
 with Intel_GPU_Buffer_Reply;
 with Intel_GPU_Buffer_Backing;
@@ -21,15 +22,17 @@ procedure Probe_Export_Tests is
    function Source return Intel_GPU_Buffer_Reply.Backing is
      (Intel_GPU_Buffer_Reply.From_Linear (16#10001000#, Base + 4096,
         Bytes, 16#10000000#));
+   --  The saved reply of the viewer's request: the probe grants to it.
+   Client : constant CuBit.Handles.Reply := CuBit.Handles.Fixture.Reply_Of (7);
    procedure Recipient (Sender, Stamp : Unsigned_64;
-     Slot : out CuBit.Messages.CapabilitySlot; ID : out Unsigned_64) is
+     Grantee : out CuBit.Handles.Reply; ID : out Unsigned_64) is
    begin
       Auth_Calls := Auth_Calls + 1;
       if Try_Nested then
          Try_Nested := False;
          Attempt_Nested;
       end if;
-      Slot := 7;
+      Grantee := Client;
       ID := (if Sender = 42 and then Stamp = 123 and then
                 not (Revoke_Authority and Auth_Calls > 1) then Identity else 0);
    end Recipient;
@@ -51,7 +54,7 @@ procedure Probe_Export_Tests is
       E.Handle (Object, Sender, Stamp, Q.Label, 4, 0, 0, Request, Response);
    end Call;
 begin
-   G.Expected_Slot := 7; G.Expected_Offset := Base + 4096;
+   G.Expected_Slot := CuBit.Handles.Fixture.Word_Of (Client); G.Expected_Offset := Base + 4096;
    G.Expected_Bytes := Q.Pixel_Bytes; G.Expected_Access := G.Read_Access;
    G.Expected_Reference := (slot => 8, generation => 9);
    for Bad in 0 .. 3 loop

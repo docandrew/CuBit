@@ -9,11 +9,11 @@ nix develop -c bash -c 'set -e; cd kernel; alr exec -- gprbuild -p -P ../tests/a
 ```
 
 The kernel appends CAP_HARDWARE_GROUP and CAP_HARDWARE_REGISTER after existing
-kinds, preserving their ordinals. Generic POLICY_MINT_CAPABILITY accepts raw
-object words, so its handler uses isPolicyMintable to deny these two kinds.
-They must originate through trusted catalog admission or checked membership
-delegation. Ordinary derivation can reduce rights but preserves the existing
-object, generation and authority tag; it cannot select another group member.
+kinds, preserving their ordinals. They must originate through trusted catalog
+admission or checked membership delegation. Since CAP-002 (no POLICY_MINT, no
+slot derivation) the test checks that Capability_Install never copies either
+kind into another table: every rights combination, with or without
+narrowing, is refused as Not_Transferable.
 
 2026-10-01: after promotion under the shared build lock, 273 hosted checks and
 14 SPARK analysis checks passed, with no unproved or justified checks. The

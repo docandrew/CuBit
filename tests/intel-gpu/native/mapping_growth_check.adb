@@ -2,7 +2,12 @@ with Interfaces; use Interfaces;
 with System; use type System.Address;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Messages; use CuBit.Messages;
-with CuBit.Capability_Grants;
+with CuBit.Process_IDs;
+with CuBit.Handles;
+with CuBit.Handles.Boot_Roots;
+with CuBit.Handles.Control;
+with Startup;
+with Self_Requests;
 with CuBit.Memory_Grants;
 with CuBit.Grant_References;
 with Intel_GPU_Extent_Allocator;
@@ -27,15 +32,22 @@ procedure Mapping_Growth_Check is
    function Owner return Boolean is (True);
    function Session_Of (Sender, Stamp : Unsigned_64) return Unsigned_64 is
      (if Active and Sender = PID and Stamp = 16#4947# then Identity else 0);
+   -- Runs in devmgr's place. Grants answer one self request (Client), so
+   -- they come back to this process, which acquires them through
+   -- Startup.Device_Manager (its badged self endpoint).
+   Roots : constant CuBit.Handles.Boot_Roots.Roots := CuBit.Handles.Boot_Roots.Get;
+   Self_Label : constant Unsigned_32 := 16#7A01#;
+   Client : CuBit.Handles.Reply := CuBit.Handles.No_Reply;
    procedure Recipient_Of
-     (Sender, Stamp : Unsigned_64; Slot : out CapabilitySlot;
+     (Sender, Stamp : Unsigned_64; Grantee : out CuBit.Handles.Reply;
       Target : out Unsigned_64) is
    begin
-      Slot := 15;
+      Grantee := Client;
       Target := Session_Of (Sender, Stamp);
    end Recipient_Of;
    function Allocate (CPU : Unsigned_64) return Unsigned_64 is
-     (syscall (SYSCALL_ALLOC_DMA, PID, 9, CPU, 3, 2 ** 32));
+     (CuBit.Handles.Control.Allocate_DMA
+        (CuBit.Process_IDs.From_Word (PID), Roots.Process_Root, 9, CPU, 3, 2 ** 32));
    package A is new Intel_GPU_Extent_Allocator (Owner, Allocate);
    package B is new Intel_GPU_Buffer_Requests (Session_Of, Owner);
    package S is new B.Sharing (Recipient_Of);
@@ -82,7 +94,7 @@ procedure Mapping_Growth_Check is
    end Grow;
    procedure Acquire (Ref : G.Grant_Reference) is
    begin
-      G.Acquire_Via_Capability (15, Ref, 0, 4096, G.Read_Access, Address, OK);
+      G.Acquire_Via_Capability (Startup.Device_Manager, Ref, 0, 4096, G.Read_Access, Address, OK);
       Check (OK and Address /= System.Null_Address, "reader acquisition");
       declare Word : Unsigned_64 with Import, Volatile, Address => Address; begin
          Check (Word = 16#CAFE_0065#, "retained content");
@@ -90,10 +102,11 @@ procedure Mapping_Growth_Check is
    end Acquire;
 begin
    debugPrint ("native mapping growth: forced metadata, real self-grants (NO GPU/ISOLATION)" & ASCII.LF);
-   Check (syscall (SYSCALL_POLICY_MINT_CAPABILITY, PID, 1, PID,
-     16#4947#, 3, 15) /= Unsigned_64'Last, "self endpoint");
-   Identity := CuBit.Capability_Grants.Incarnation (CuBit.Capability_Grants.Capture (15));
-   Check (Identity /= 0, "endpoint identity");
+   Check (Roots.Valid and CuBit.Handles.Valid (Startup.Device_Manager), "self endpoint");
+   Client := Self_Requests.Open (Self_Label, 10_000);
+   Check (CuBit.Handles.Valid (Client), "self request reply");
+   -- The admitted session identity: this process (no render admission here).
+   Identity := PID;
    A.Acquire_Buffer (Pool, PID, 1, 1, 1, Buffer, OK); Check (OK, "backing");
    declare Word : Unsigned_64 with Import, Volatile,
      Address => To_Address (Integer_Address (R.CPU_Address (Buffer))); begin
@@ -185,7 +198,7 @@ begin
          -- certifies only this CPU-only test; it is not GPU completion evidence.
          B.Acknowledge_Retirement (Object, Identity, Replacement_Ticket, True, OK);
          Check (OK, "acknowledged CPU-only replacement");
-         G.Acquire_Via_Capability (15, Ref, 0, 4096, G.Read_Access, Address, OK);
+         G.Acquire_Via_Capability (Startup.Device_Manager, Ref, 0, 4096, G.Read_Access, Address, OK);
          Check (not OK and Address = System.Null_Address, "old grant stays denied");
          Acquire (First_Ref);
          G.Return_Acquisition (First_Ref, OK); Check (OK, "neighbor extra reader");
@@ -241,10 +254,11 @@ begin
    Check (B.Can_Retire (Object, Identity, Buffer_Ticket),
      "buffer name and CPU pins drained, no GPU or backing release implied");
    debugPrint ("TEST: PASS native bounded mapping poll retained readers drained" & ASCII.LF);
-   G.Acquire_Via_Capability (15, Expanded_Ref, 0, 4096, G.Read_Access, Address, OK);
+   G.Acquire_Via_Capability (Startup.Device_Manager, Expanded_Ref, 0, 4096, G.Read_Access, Address, OK);
    Check (not OK and Address = System.Null_Address, "stale grant denied");
    S.Map (Object, Table, PID, 16#4947#, ID, 0, 4096, False, Current, Wire);
    Check (Current = 0 and Wire = 0, "closed admission denied");
+   Check (Self_Requests.Close (Client, Self_Label, 10_000), "self request answered");
    debugPrint ("TEST: PASS native mapping growth 64-128-256 record65 retained readers drained (NO GPU/ISOLATION)" & ASCII.LF);
    loop Ignore := syscall (SYSCALL_SLEEP, 1000); end loop;
 end Mapping_Growth_Check;

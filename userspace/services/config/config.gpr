@@ -5,7 +5,7 @@ project Config is
     for Object_Dir use "build";
 
     CBOR_Source := external ("CBOR_ADA_SRC");
-    for Source_Dirs use (".", "../../lib/config", "../../ccl/src",
+    for Source_Dirs use (".", "build/generated", "../../lib/config", "../../ccl/src",
       "../../ccl/persistence", CBOR_Source & "/src");
 
     for Main use ("main.adb");
@@ -61,7 +61,8 @@ project Config is
             "-Wl,-z,stack-size=16777216",
             "-lgnat-user",
             "-T", "../../c/link.ld",
-            "../../c/build/crt0.o"
+            "../../c/build/crt0.o",
+            "build/manifest.o"
         );
     end Linker;
 

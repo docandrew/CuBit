@@ -4,14 +4,15 @@ with CuBit.Metric_Raw_Observer;
 with CuBit.Metric_Protocol;
 with Compositor_Trace_Stream;
 with Compositor_Render_Trace;
-with CCL_Manifest_Bindings;
+with CuBit.Startup_State;
+with Startup;
 procedure Main is
    package P renames CuBit.Metric_Protocol;
    package O renames CuBit.Metric_Raw_Observer;
    package S renames Compositor_Trace_Stream;
    package W renames S.W;
    use type P.Status, W.Event_Kind, Compositor_Render_Trace.Phase;
-   Raw : O.Observer (CCL_Manifest_Bindings.Slot_metrics_observer);
+   Raw : O.Observer;
    Collector : S.State;
    Page : P.Raw_Page;
    N : P.Raw_Row_Count;
@@ -30,6 +31,11 @@ procedure Main is
       loop Ignore := syscall (SYSCALL_SLEEP, 1000); end loop;
    end Fail;
 begin
+   if not CuBit.Startup_State.Ready (Startup.Verify) then
+      debugPrint ("TEST: FAIL startup capabilities" & ASCII.LF);
+      return;
+   end if;
+   O.Bind (Raw, Startup.Metrics_Observer);
    -- Bounded collector workload. It may lag and lose history; identity and
    -- completeness checks never turn an incomplete fragment group into an event.
    for Tick in 1 .. 1000 loop
@@ -40,14 +46,14 @@ begin
             Fail ("raw query");
          end if;
          if not Started then
-            if O.Incarnation (Raw) = 0 then Fail ("missing endpoint"); end if;
-            S.Start (Collector, O.Incarnation (Raw), Cursor);
+            if O.Incarnation (Raw) = No_Process then Fail ("missing endpoint"); end if;
+            S.Start (Collector, To_Word (O.Incarnation (Raw)), Cursor);
             Started := True;
          end if;
          if Lost < History_Loss then Fail ("history loss decreased"); end if;
          History_Loss := Lost;
          for I in 0 .. N - 1 loop
-            S.Feed (Collector, O.Incarnation (Raw), Page (I), Capture);
+            S.Feed (Collector, To_Word (O.Incarnation (Raw)), Page (I), Capture);
             if Capture.Success and then
               Capture.Pid = To_Word (Registered_Driver (DRIVER_DESKTOP))
             then

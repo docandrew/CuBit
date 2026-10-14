@@ -1,23 +1,45 @@
 project Broker is
+   --  CAP-002: the broker by handle, over mocked IPC (broker_*_mock).
    for Source_Dirs use (".", "../../../userspace/lib/display",
-     "../../../userspace/runtime/gnat", "../../../userspace/services/intel-gpu");
-   for Source_Files use ("broker_tests.adb", "cubit.ads",
-     "cubit-process_ids.ads", "cubit-process_ids.adb",
-     "messages_mock.ads", "messages_mock.adb",
-     "cubit-capability_grants.ads", "cubit-capability_grants.adb",
-     "cubit-async_requests.ads", "cubit-async_requests.adb",
-     "intel_gpu_render_sessions.ads", "intel_gpu_render_sessions.adb",
-     "intel_gpu_broker_request.ads", "intel_gpu_broker_request.adb",
-     "intel_gpu_broker_launches.ads", "intel_gpu_broker_launches.adb",
-     "intel_render_admission.ads", "intel_render_admission.adb",
-     "intel_render_admission_native.ads", "intel_render_admission_native.adb",
-     "intel_render_admission_dispatch.ads", "intel_render_admission_dispatch.adb",
-     "intel_render_broker.ads", "intel_render_broker.adb");
+     "../../../userspace/runtime/gnat", "../../../userspace/services/intel-gpu",
+     "../../../shared/capabilities");
+   for Source_Files use
+    ("broker_tests.adb",
+     "cubit.ads",
+     "cubit-process_ids.ads",
+     "cubit-process_ids.adb",
+     "cubit-handles.ads",
+     "capability_abi.ads",
+     "capability_abi.adb",
+     "broker_messages_mock.ads",
+     "broker_messages_mock.adb",
+     "broker_ipc_mock.ads",
+     "broker_ipc_mock.adb",
+     "broker_handles_fixture.ads",
+     "broker_handles_fixture.adb",
+     "cubit-async_requests.ads",
+     "cubit-async_requests.adb",
+     "intel_render_admission.ads",
+     "intel_render_admission.adb",
+     "intel_render_admission_native.ads",
+     "intel_render_admission_native.adb",
+     "intel_render_admission_dispatch.ads",
+     "intel_render_admission_dispatch.adb",
+     "intel_gpu_broker_request.ads",
+     "intel_gpu_broker_request.adb",
+     "intel_gpu_broker_launches.ads",
+     "intel_gpu_broker_launches.adb",
+     "intel_render_broker.ads",
+     "intel_render_broker.adb");
    for Object_Dir use "build-broker";
    for Main use ("broker_tests.adb");
    package Naming is
-      for Spec ("CuBit.Messages") use "messages_mock.ads";
-      for Body ("CuBit.Messages") use "messages_mock.adb";
+      for Spec ("CuBit.Messages") use "broker_messages_mock.ads";
+      for Body ("CuBit.Messages") use "broker_messages_mock.adb";
+      for Spec ("CuBit.Handles.IPC") use "broker_ipc_mock.ads";
+      for Body ("CuBit.Handles.IPC") use "broker_ipc_mock.adb";
+      for Spec ("CuBit.Handles.Fixture") use "broker_handles_fixture.ads";
+      for Body ("CuBit.Handles.Fixture") use "broker_handles_fixture.adb";
    end Naming;
    package Compiler is
       for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato");

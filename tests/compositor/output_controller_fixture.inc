@@ -57,7 +57,11 @@ procedure Output_Controller_Tests is
    Lease_Calls : array (Output_Index) of Natural := (others => 0);
    Attempts : Natural := 0;
    Allow_Submit : Boolean := False;
-   CAP_SLOT_DISPLAY : constant Natural := 1;
+   --  CAP-002: Desktop's display endpoint is a startup handle; one number
+   --  stands in for it here.
+   package Desktop_Endpoints is
+      Display_Service : constant Natural := 1;
+   end Desktop_Endpoints;
    package CR is
       procedure Allocate (Sequence : in out Unsigned_64; Token : out Unsigned_64);
    end CR;
@@ -81,9 +85,9 @@ procedure Output_Controller_Tests is
          function From_Wire (Value : Message) return Message is (Value);
       end Desktop_Messages;
    end CuBit;
-   function capSubmit (Slot : Natural; Value : Message; Token : Unsigned_64) return Boolean is
+   function capSubmit (Target : Natural; Value : Message; Token : Unsigned_64) return Boolean is
    begin
-      pragma Assert (Slot = CAP_SLOT_DISPLAY and Value.tag.label = OP_DISPLAY_RELEASE and Token > 100);
+      pragma Assert (Target = Desktop_Endpoints.Display_Service and Value.tag.label = OP_DISPLAY_RELEASE and Token > 100);
       Attempts := Attempts + 1;
       if Allow_Submit then
          Lease_Calls (Value.tag.reserved) := Lease_Calls (Value.tag.reserved) + 1;

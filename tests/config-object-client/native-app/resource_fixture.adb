@@ -1,3 +1,4 @@
+with Startup;
 with CuBit.Messages; use CuBit.Messages;
 with CCL.Types;
 with CCL.Resources;
@@ -14,6 +15,7 @@ with Config_Object_Client;
 with Config_Object_Messages;
 
 package body Resource_Fixture is
+   use type Ccl.Vm.Import_Count;
    use Interfaces;
    package T renames CCL.Types;
    package R renames CCL.Resources;
@@ -133,7 +135,7 @@ package body Resource_Fixture is
       if not Good then return; end if;
       R.Start (Owner, Types, Session, Result); Good := Result = R.Succeeded;
       if not Good then return; end if;
-      C.Initialize (Client, CAP_SLOT_CONFIG, Good); if not Good then return; end if;
+      C.Initialize (Client, Startup.Config, Good); if not Good then return; end if;
       V.Initialize (Checked, 16, State);
       for Op in Operation loop
          V.Continue_Execution (Checked, State, Step);

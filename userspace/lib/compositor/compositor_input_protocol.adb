@@ -1,5 +1,6 @@
 with Interfaces;
 package body Compositor_Input_Protocol with SPARK_Mode is
+   use type CuBit.Desktop_Protocol.Protocol_Flags;
    use type Interfaces.Unsigned_8;
    use type Interfaces.Unsigned_16;
    use type Interfaces.Unsigned_32;

@@ -1,6 +1,6 @@
 pragma Ada_2022;
+with CuBit.Handles;
 with Interfaces; use Interfaces;
-with CuBit.Messages;
 with CuBit.Log_Protocol;
 with CuBit.Log_Records;
 with CuBit.Channels;
@@ -11,10 +11,11 @@ with CuBit.Channels;
 --  Readers remain process-lived.
 --  Calls on each object are serialized by its application event loop.
 package CuBit.Logging is
-   type Publisher
-     (Slot : CuBit.Messages.CapabilitySlot :=
-        CuBit.Log_Protocol.Publisher_Slot)
-     is limited private;
+   type Publisher is limited private;
+   --  The logstore endpoint a publisher's channel goes to (the program's
+   --  startup "logstore" handle). Bind before the first Emit; a publisher
+   --  never bound emits nothing (Submitted False, counted as dropped).
+   procedure Bind (Item : in out Publisher; Target : CuBit.Handles.Endpoint);
    --  A publisher's records go into its own channel to logstore
    --  (CuBit.Log_Publish_Rings, CuBit.Channels), opened on the first Emit.
    --  Emitting is a copy into shared memory: no IPC, no waiting, no
@@ -41,9 +42,10 @@ package CuBit.Logging is
    --  until logstore lets go of them).
    procedure Disconnect (Item : in out Publisher; Done : out Boolean);
 
-   type Reader
-     (Slot : CuBit.Messages.CapabilitySlot := CuBit.Log_Protocol.Observer_Slot)
-     is limited private;
+   type Reader is limited private;
+   --  The logstore observer endpoint a reader subscribes through. Bind
+   --  before Subscribe.
+   procedure Bind (Item : in out Reader; Target : CuBit.Handles.Endpoint);
    --  Interactive synchronous operations. Never use these in interrupt or
    --  latency-sensitive service paths. Close ends the subscription and its
    --  channel; Subscribe again opens a new one.
@@ -85,37 +87,36 @@ package CuBit.Logging is
    procedure Set_Minimum
      (Level : CuBit.Log_Records.Severity; Previous : out CuBit.Log_Records.Severity;
       Result : out CuBit.Log_Protocol.Status;
-      Slot : CuBit.Messages.CapabilitySlot := CuBit.Log_Protocol.Control_Slot);
+      Target : CuBit.Handles.Endpoint);
    procedure Get_Minimum
      (Level : out CuBit.Log_Records.Severity; Result : out CuBit.Log_Protocol.Status;
-      Slot : CuBit.Messages.CapabilitySlot := CuBit.Log_Protocol.Observer_Slot);
+      Target : CuBit.Handles.Endpoint);
 
    --  One record, through the process's own announcement publisher (its
    --  ring), then waiting briefly (Flush) until logstore has taken it: for
    --  startup and exit paths, where waiting is harmless. Result is OK
    --  (kept), Below_Minimum (taken, not kept), or Unavailable (no binding,
    --  shed, or not taken in time); Kept_From is the minimum logstore keeps.
+   --  Target is the process's logstore endpoint; the announcement publisher
+   --  binds to the first one given.
    procedure Publish_Now
      (Value : CuBit.Log_Records.Log_Record; Result : out CuBit.Log_Protocol.Status;
-      Kept_From : out CuBit.Log_Records.Severity);
+      Kept_From : out CuBit.Log_Records.Severity; Target : CuBit.Handles.Endpoint);
 
    procedure Announce
-     (Text : String; Published : out Boolean;
+     (Text : String; Published : out Boolean; Target : CuBit.Handles.Endpoint;
       Level : CuBit.Log_Records.Severity := CuBit.Log_Records.Information);
 private
    type Writer_State is (Uninitialized, Ready, Disabled);
-   type Publisher
-     (Slot : CuBit.Messages.CapabilitySlot :=
-        CuBit.Log_Protocol.Publisher_Slot)
-     is limited record
+   type Publisher is limited record
+      Slot : CuBit.Handles.Endpoint := CuBit.Handles.No_Endpoint;
       Link : CuBit.Channels.Channel;
       State : Writer_State := Uninitialized;
       Loss : Unsigned_64 := 0;
       Disconnecting : Boolean := False;
    end record;
-   type Reader
-     (Slot : CuBit.Messages.CapabilitySlot := CuBit.Log_Protocol.Observer_Slot)
-     is limited record
+   type Reader is limited record
+      Slot : CuBit.Handles.Endpoint := CuBit.Handles.No_Endpoint;
       Link : CuBit.Channels.Channel;
       --  The filter, resent when the lease is renewed, and when it was.
       Minimum : CuBit.Log_Records.Severity := CuBit.Log_Records.Trace;

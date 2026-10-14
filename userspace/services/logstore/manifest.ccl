@@ -4,4 +4,5 @@
   (version "1.0.0")
   # logs.minimum-level: the least severe record kept at startup.
   (request-service config read-write config)
-  (config-scope (rights read) "logs."))
+  (config-scope (rights read) "logs.")
+  (request-notification logstore manage registration))

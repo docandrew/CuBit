@@ -1,3 +1,4 @@
+with CuBit.Handles.Fixture;
 with Ada.Command_Line; with Ada.Text_IO; with Interfaces;
 with System; with System.Storage_Elements;
 with Desktop_GPU_Scene; with Desktop_Vulkan_Startup; with Vulkan_Device_Mock;
@@ -33,7 +34,7 @@ procedure Desktop_GPU_Image_Reader_Tests is
 begin
    Reset; Context_Set (0, 0); Pipeline_Set (0, 0);
    Vulkan_Device_Mock.Set (True, True, 0); Image_Set (4096, 1, 0, 0, 0);
-   D.Initialize (25); D.Configure_Targets (32, 24, 1, 16384, OK); pragma Assert (OK);
+   D.Initialize (CuBit.Handles.Fixture.Endpoint_Of (25)); D.Configure_Targets (32, 24, 1, 16384, OK); pragma Assert (OK);
    D.Prepare_Pipeline (OK); pragma Assert (OK);
    D.Import_Owned_Source (128, Address, Source, Imported); pragma Assert (Imported = D.Source_Accepted);
    if Scenario = 3 then

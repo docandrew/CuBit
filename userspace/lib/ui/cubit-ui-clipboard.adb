@@ -4,6 +4,7 @@ with CuBit.Messages; use CuBit.Messages;
 with CuBit.Memory_Grants;
 with CuBit.Desktop_Messages;
 with CuBit.Desktop_Protocol;
+with UI_Desktop_Service;
 
 package body CuBit.UI.Clipboard is
    package MG renames CuBit.Memory_Grants;
@@ -37,7 +38,7 @@ package body CuBit.UI.Clipboard is
            Base <= Unsigned_64'Last - P.Maximum_Payload
          then
             MG.Create_Via_Capability
-              (CAP_SLOT_DESKTOP, To_Address (Integer_Address (Base)),
+              (UI_Desktop_Service.Endpoint, To_Address (Integer_Address (Base)),
                P.Window_Pages, True, Window_Grant, Created);
          end if;
          State := (if Created then Ready else Disabled);
@@ -58,7 +59,7 @@ package body CuBit.UI.Clipboard is
    function Call (Request : DP.Wire_Message) return DP.Wire_Message is
       Message : CuBit.Messages.Message := CuBit.Desktop_Messages.From_Wire (Request);
    begin
-      Message.tag := capCall (CAP_SLOT_DESKTOP, Message,
+      Message.tag := capCall (UI_Desktop_Service.Endpoint, Message,
                               Deadline_After (Call_Deadline_Ms));
       return CuBit.Desktop_Messages.To_Wire (Message);
    end Call;

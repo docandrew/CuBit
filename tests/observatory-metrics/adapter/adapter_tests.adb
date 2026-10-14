@@ -1,3 +1,4 @@
+with CuBit.Handles.Fixture;
 with Ada.Text_IO; use Ada.Text_IO;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
@@ -17,7 +18,7 @@ procedure Adapter_Tests is
       if not OK then raise Program_Error with "adapter check" & Checks'Image; end if;
    end Check;
    procedure Scenario (Mode : Natural) is
-      package O is new Observatory_Metric_Observer (17);
+      package O is new Observatory_Metric_Observer (CuBit.Handles.Fixture.Endpoint_Of (17));
       Sequence : Unsigned_64 := 0;
       Submitted, Success : Boolean;
       Rows, Result : P.Summary_Page := [others => [others => 0]];
@@ -52,7 +53,8 @@ procedure Adapter_Tests is
       if Mode = 4 then Rows (0) (P.Row_Flags) := 4; end if;
       G.Write_Page (Rows);
       C := (token => 2, valid => True, status => 0,
-            msg => (tag => (P.Status'Enum_Rep (P.OK), 4, 0, 0), words => [1, 512, 512, 0]));
+            msg => (tag => (label => P.Status'Enum_Rep (P.OK), length => 4,
+                            protocol => 0, ipc => <>, reserved => 0), words => [1, 512, 512, 0]));
       O.Collect (C); O.Tick (20);
       Check (not O.Ready and not O.Disabled and G.Revokes = 0);
       C.token := 1;
@@ -85,14 +87,15 @@ procedure Adapter_Tests is
       O.Close; O.Collect (C); Check (O.Disabled and not O.Ready);
    end Scenario;
    procedure Happy is
-      package O is new Observatory_Metric_Observer (17);
+      package O is new Observatory_Metric_Observer (CuBit.Handles.Fixture.Endpoint_Of (17));
       Sequence : Unsigned_64 := 0;
       OK : Boolean;
       Rows : P.Summary_Page;
       Written : P.Row_Count;
       Next : Observatory_Metric_Queries.Cursor;
       C : CompletionEntry := (token => 1, valid => True, status => 0,
-        msg => (tag => (P.Status'Enum_Rep (P.OK), 4, 0, 0), words => [0, 512, 512, 0]));
+        msg => (tag => (label => P.Status'Enum_Rep (P.OK), length => 4,
+                        protocol => 0, ipc => <>, reserved => 0), words => [0, 512, 512, 0]));
    begin
       G.Allow_Create := True; G.Allow_Revoke := True; G.Allow_Retirement := True; Allow_Submit := True;
       O.Begin_Query (0, Sequence, 0, OK); Check (OK);
@@ -104,14 +107,15 @@ procedure Adapter_Tests is
       O.Close; Check (O.Disabled and not O.Ready);
    end Happy;
    procedure Revoke_And_Limits is
-      package O is new Observatory_Metric_Observer (17);
-      package Exhausted is new Observatory_Metric_Observer (17);
-      package Clock_End is new Observatory_Metric_Observer (17);
+      package O is new Observatory_Metric_Observer (CuBit.Handles.Fixture.Endpoint_Of (17));
+      package Exhausted is new Observatory_Metric_Observer (CuBit.Handles.Fixture.Endpoint_Of (17));
+      package Clock_End is new Observatory_Metric_Observer (CuBit.Handles.Fixture.Endpoint_Of (17));
       Sequence : Unsigned_64 := 0;
       End_Sequence : Unsigned_64 := Unsigned_64'Last - 1;
       OK : Boolean;
       C : constant CompletionEntry := (token => 1, valid => True, status => 0,
-        msg => (tag => (P.Status'Enum_Rep (P.OK), 4, 0, 0), words => [0, 512, 512, 0]));
+        msg => (tag => (label => P.Status'Enum_Rep (P.OK), length => 4,
+                        protocol => 0, ipc => <>, reserved => 0), words => [0, 512, 512, 0]));
    begin
       G.Creates := 0; G.Revokes := 0; G.Checks := 0;
       G.Allow_Create := True; Allow_Submit := True;

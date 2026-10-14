@@ -31,7 +31,10 @@ VkResult _vk_device_set_lost(struct vk_device *device, const char *file,
    return VK_ERROR_DEVICE_LOST;
 }
 
-#define SLOT 5u
+/* The session queue under test (a test endpoint handle). */
+#include "../../userspace/c/cubit_handles.h"
+#define TEST_ENDPOINT(n) ((cubit_endpoint){(UINT64_C(1) << 32) | (uint64_t)(n)})
+#define SLOT TEST_ENDPOINT(5)
 static struct vk_device device;
 static struct vk_physical_device physical;
 static struct vk_sync_binary_type binary_type;
@@ -255,9 +258,9 @@ int main(void)
    checks += 4;
 
    /* A point from another queue cannot join this timeline. */
-   assert(cubit_gpu_queue_open(SLOT + 1) == CUBIT_GPU_QUEUE_OK);
+   assert(cubit_gpu_queue_open(TEST_ENDPOINT(6)) == CUBIT_GPU_QUEUE_OK);
    const struct vk_sync_signal foreign = {.sync = full, .signal_value = 67};
-   assert(anv_cubit_sync_add_point(&device, &foreign, SLOT + 1, 0, 1) == VK_ERROR_DEVICE_LOST);
+   assert(anv_cubit_sync_add_point(&device, &foreign, TEST_ENDPOINT(6), 0, 1) == VK_ERROR_DEVICE_LOST);
    p_atomic_set(&device._lost.lost, 0);
    checks++;
 

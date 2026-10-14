@@ -2,9 +2,11 @@
 --  CuBit typed input-source publication protocol.
 --
 --  A report is a state-bearing message, not an unauthenticated device event.
---  The kernel stamps Message.authorityTag from the publication capability; the
---  sequence, generation, and recovery flag make bounded transport loss
---  observable. This is the driver-facing half of the future input.svc stream.
+--  It is accepted only through a publication capability carrying the input
+--  badge (Publisher_Tag, minted by devmgr or procmgr for an input role's
+--  publish notification), and its source is the publisher's identity as the
+--  kernel reports it; the sequence, generation, and recovery flag make
+--  bounded transport loss observable. This is the driver-facing half of the future input.svc stream.
 ------------------------------------------------------------------------------
 with Interfaces; use Interfaces;
 
@@ -13,6 +15,13 @@ with CuBit.Messages;
 package CuBit.Input with SPARK_Mode => On is
 
    OP_SOURCE_REPORT : constant Unsigned_32 := 16#0A00#;
+
+   --  The badge on every input publication capability ("INPUT", version 1).
+   Publisher_Tag : constant Unsigned_64 := 16#494E_5055_5400_0001#;
+
+   --  The roles whose publish notifications carry Publisher_Tag.
+   function Is_Input_Role (Role : Unsigned_64) return Boolean is
+     (Role in CuBit.Messages.DRIVER_KEYBOARD | CuBit.Messages.DRIVER_MOUSE);
 
    --  RELATIVE_POINTER reports carry displacement (Pointer_Pending wire
    --  layout, ACCUMULABLE_DISPLACEMENT); ABSOLUTE_POINTER reports carry a
@@ -36,7 +45,9 @@ package CuBit.Input with SPARK_Mode => On is
    subtype Source_Sequence is Unsigned_64;
 
    type Source_Report is record
-      sourceAuthorityTag : Unsigned_64 := 0;
+      --  The publisher's identity (Decode sets it from the kernel's report;
+      --  a publisher leaves it zero).
+      sourceIdentity : Unsigned_64 := 0;
       sequence    : Source_Sequence := 0;
       generation  : Source_Generation := 0;
       device      : Device_Class := KEYBOARD;
@@ -69,13 +80,15 @@ package CuBit.Input with SPARK_Mode => On is
 
    function Encode (report : Source_Report) return CuBit.Messages.Message;
 
+   --  Publisher: the kernel-reported publisher of the event (Poll_Event).
    function Is_Source_Report
-     (msg : CuBit.Messages.Message) return Boolean;
+     (msg : CuBit.Messages.Message; publisher : CuBit.Messages.Process_ID) return Boolean;
 
    procedure Decode
-     (msg    : CuBit.Messages.Message;
-      report : out Source_Report;
-      valid  : out Boolean);
+     (msg       : CuBit.Messages.Message;
+      publisher : CuBit.Messages.Process_ID;
+      report    : out Source_Report;
+      valid     : out Boolean);
 
    --  Sequence zero is reserved for uninitialized state. Wrap to one.
    function Next_Sequence (sequence : Source_Sequence)

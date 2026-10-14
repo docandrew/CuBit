@@ -10,6 +10,8 @@
 with Interfaces; use Interfaces;
 with System;
 with CuBit.Process_IDs;
+with CuBit.Handles;
+with Capability_ABI;
 
 pragma Warnings (Off, "internal GNAT unit");
 with System.Secondary_Stack;
@@ -21,12 +23,10 @@ package CuBit.Messages is
 
    SYSCALL_EXIT            : constant Unsigned_64 := 0;
    SYSCALL_GETPID          : constant Unsigned_64 := 6;
-   SYSCALL_KILL            : constant Unsigned_64 := 7;
    SYSCALL_SBRK            : constant Unsigned_64 := 8;
    SYSCALL_WRITE           : constant Unsigned_64 := 12;
    SYSCALL_RECEIVE         : constant Unsigned_64 := 17;
    SYSCALL_REPLY           : constant Unsigned_64 := 18;
-   SYSCALL_SEND_EVENT      : constant Unsigned_64 := 19;
    SYSCALL_RECEIVE_UNTIL_MONOTONIC_MILLISECOND :
       constant Unsigned_64 := 21;
    SYSCALL_POLL_ANY_IPC    : constant Unsigned_64 := 22;
@@ -71,67 +71,17 @@ package CuBit.Messages is
    SYSCALL_CREATE_SHARED_MEMORY_GRANT_FOR_PROCESS_ID :
       constant Unsigned_64 := 102;
    SYSCALL_REVOKE_SHARED_MEMORY_GRANT : constant Unsigned_64 := 103;
-   SYSCALL_INP8            : constant Unsigned_64 := 30;
-   SYSCALL_OUTP8           : constant Unsigned_64 := 31;
-   SYSCALL_INP16           : constant Unsigned_64 := 32;
-   SYSCALL_OUTP16          : constant Unsigned_64 := 33;
-   SYSCALL_INP32           : constant Unsigned_64 := 36;
-   SYSCALL_OUTP32          : constant Unsigned_64 := 37;
 
-   SYSCALL_MAPFB           : constant Unsigned_64 := 29;
+   --  Every system call that takes or returns a capability handle is
+   --  reached through CuBit.Handles and its children (CAP-002): their
+   --  numbers are not here, so no program can pass a number for a handle.
 
-   SYSCALL_SPAWN           : constant Unsigned_64 := 60;
-
-   SYSCALL_MAP_DEVICE      : constant Unsigned_64 := 70;
-   SYSCALL_PROCLIST        : constant Unsigned_64 := 71;
-   SYSCALL_POLICY_MINT_CAPABILITY : constant Unsigned_64 := 72;
-   SYSCALL_POLICY_MINT_CAPABILITY_FOR_INCARNATION :
-     constant Unsigned_64 := 120;
-   SYSCALL_POLICY_DELEGATE_ENDPOINT : constant Unsigned_64 := 121;
-   SYSCALL_RESUME          : constant Unsigned_64 := 73;
-   --  Before a suspended child's first resume, once: the spawner's bytes
-   --  mapped read-only into it (docs/process-arguments.md; typed launch
-   --  configuration, shared/launch). arg0 child, arg1 address, arg2 bytes.
-   SYSCALL_INSTALL_LAUNCH_ARGUMENTS : constant Unsigned_64 := 126;
-
-   --  Device manager syscalls
-   SYSCALL_ALLOC_DMA       : constant Unsigned_64 := 74;
-   --  ALLOC_DMA arg3: 0 ordinary, 1 retained with 4 KiB CPU leaves,
-   --  3 retained driver-private 2 MiB CPU leaf (order9/aligned VA only).
-   --  Subpage grants pin constituent frames and map 4 KiB recipient leaves.
-   SYSCALL_ENABLE_IRQ      : constant Unsigned_64 := 75;
-   SYSCALL_MAP_INTO        : constant Unsigned_64 := 76;
-   SYSCALL_SET_CPU         : constant Unsigned_64 := 78;
    SYSCALL_SET_LATENCY_CONTRACT : constant Unsigned_64 := 81;
    SYSCALL_TRACE_RESET     : constant Unsigned_64 := 82;
    SYSCALL_TRACE_SUMMARY   : constant Unsigned_64 := 83;
-   SYSCALL_INSPECT_CAPABILITY : constant Unsigned_64 := 84;
-   --  Device vectors (docs/msi-interrupts.md; CuBit.Device_Interrupts).
-   SYSCALL_ALLOCATE_DEVICE_VECTORS : constant Unsigned_64 := 130;
-   SYSCALL_RELEASE_DEVICE_VECTORS  : constant Unsigned_64 := 131;
-   SYSCALL_READ_DEVICE_VECTOR      : constant Unsigned_64 := 132;
-
-   SYSCALL_REGISTER_DRIVER : constant Unsigned_64 := 2000;
-
-   --  Capability-aware IPC syscalls
-   --  Synchronous calls take a deadline (docs/ipc-fastpath.md, "Call
-   --  deadlines").
-   SYSCALL_SEND_VIA_ENDPOINT_CAPABILITY        : constant Unsigned_64 := 129;
-   SYSCALL_CALL_VIA_ENDPOINT_CAPABILITY        : constant Unsigned_64 := 128;
-   SYSCALL_SUBMIT_VIA_ENDPOINT_CAPABILITY      : constant Unsigned_64 := 42;
 
    --  Atomic reply+receive
    SYSCALL_REPLY_WAIT      : constant Unsigned_64 := 48;
-
-   --  Move reply cap from slot 63 to another slot (deferred replies)
-   SYSCALL_MOVE_REPLY_CAPABILITY : constant Unsigned_64 := 51;
-   SYSCALL_RESTORE_REPLY_CAPABILITY : constant Unsigned_64 := 136;
-   SYSCALL_REPLY_AND_CONSUME_REPLY_CAPABILITY :
-      constant Unsigned_64 := 52;
-
-   --  Capability-directed shared-memory grant
-   SYSCALL_CREATE_SHARED_MEMORY_GRANT_VIA_CAPABILITY :
-      constant Unsigned_64 := 106;
 
    --  Returns zero for an owned inactive slot; Last for invalid/foreign slots.
    --  Nonzero generation includes pending revocation, not just available use.
@@ -142,10 +92,6 @@ package CuBit.Messages is
       constant Unsigned_64 := 110;
    SYSCALL_RETURN_SHARED_MEMORY_GRANT_ACQUISITION :
       constant Unsigned_64 := 111;
-   SYSCALL_ACQUIRE_SHARED_MEMORY_GRANT_VIA_CAPABILITY :
-      constant Unsigned_64 := 112;
-   SYSCALL_DERIVE_SHARED_MEMORY_GRANT_VIA_CAPABILITY :
-      constant Unsigned_64 := 122;
    SYSCALL_WAIT_FOR_IPC_OR_COMPLETION_UNTIL_MONOTONIC_MILLISECOND :
       constant Unsigned_64 := 113;
 
@@ -161,25 +107,6 @@ package CuBit.Messages is
    --  drain it before the caller polls; this does not reserve queue entries.
    function Wait_For_Activity_Until (Deadline : Unsigned_64)
       return Activity_Result;
-
-   --  Well-known capability slots
-   CAP_SLOT_SELF      : constant Unsigned_64 := 0;
-   CAP_SLOT_FS        : constant Unsigned_64 := 1;
-   CAP_SLOT_KEYBOARD  : constant Unsigned_64 := 2;
-   CAP_SLOT_SELF_PROC : constant Unsigned_64 := 3;
-   CAP_SLOT_ATA       : constant Unsigned_64 := 10;
-   CAP_SLOT_RAMDISK   : constant Unsigned_64 := 13;
-   CAP_SLOT_NVME      : constant Unsigned_64 := 11;
-   CAP_SLOT_NET       : constant Unsigned_64 := 11;
-   CAP_SLOT_PROCMGR   : constant Unsigned_64 := 12;
-   CAP_SLOT_MIXER     : constant Unsigned_64 := 14;
-   CAP_SLOT_MIXER_NTF : constant Unsigned_64 := 15;
-   CAP_SLOT_CONFIG    : constant Unsigned_64 := 20;
-   CAP_SLOT_DESKTOP   : constant Unsigned_64 := 21;
-   CAP_SLOT_DISPLAY   : constant Unsigned_64 := 22;
-   CAP_SLOT_CLOCK     : constant Unsigned_64 := 25;
-
-   subtype CapabilitySlot is Unsigned_64 range 0 .. 63;
 
    --  Maximum work accepted by one privileged MAP_INTO syscall.  Callers
    --  map larger regions in bounded chunks so the kernel remains responsive.
@@ -217,22 +144,37 @@ package CuBit.Messages is
 
    --  IPC Message Types (matching kernel Process.Message)
 
+   --  The tag's flag byte is two typed components (Capability_ABI): the
+   --  protocol's low nibble, and the IPC layer's flags, set only by name.
+   --  Declared here (derived) so a "use CuBit.Messages" sees their
+   --  operations.
+   type Protocol_Flags is new Capability_ABI.Protocol_Flags;
+   type IPC_Flags is new Capability_ABI.IPC_Flags;
+   No_IPC_Flags : constant IPC_Flags := (others => False);
+
    type MessageTag is record
-      label  : Unsigned_32;
-      length : Unsigned_8;
-      flags  : Unsigned_8;
+      label    : Unsigned_32;
+      length   : Unsigned_8;
+      protocol : Protocol_Flags := 0;
+      ipc      : IPC_Flags := No_IPC_Flags;
       reserved : Unsigned_16; -- Not authenticated; never an authority tag
    end record with Size => 64;
 
    for MessageTag use record
-      label  at 0 range 0 .. 31;
-      length at 4 range 0 .. 7;
-      flags  at 5 range 0 .. 7;
-      reserved  at 6 range 0 .. 15;
+      label    at 0 range 0 .. 31;
+      length   at 4 range 0 .. 7;
+      protocol at 5 range 0 .. 3;
+      ipc      at 5 range 4 .. 7;
+      reserved at 6 range 0 .. 15;
    end record;
 
    NULL_TAG : constant MessageTag :=
-     (label => 0, length => 0, flags => 0, reserved => 0);
+     (label => 0, length => 0, protocol => 0, ipc => No_IPC_Flags, reserved => 0);
+
+   --  The tag's whole flag byte, for decoders that validate it exactly.
+   function Flag_Byte (Tag : MessageTag) return Unsigned_8 is
+     (Capability_ABI.Flag_Byte (Capability_ABI.Protocol_Flags (Tag.protocol),
+                                Capability_ABI.IPC_Flags (Tag.ipc)));
 
    type MessageWords is array (0 .. 3) of Unsigned_64;
 
@@ -329,11 +271,11 @@ package CuBit.Messages is
    function reply
      (replyTo : Process_ID; msg : Message) return Unsigned_64;
 
-   --  Reply using a specific saved CAP_REPLY slot.
-   --  Consumes a selected reply even if delivery fails (including caller
-   --  death). Other capability types are rejected without modification.
+   --  Answer a request saved with CuBit.Handles.IPC.Save_Reply. The saved
+   --  reply is used up even if delivery fails (including caller death).
+   --  Nonzero when delivered.
    function replyCap
-     (slot : CapabilitySlot; msg : Message) return Unsigned_64;
+     (saved : CuBit.Handles.Reply; msg : Message) return Unsigned_64;
 
    --  Atomic reply+receive (seL4 ReplyRecv pattern).
    --  Replies to replyTo with replyMsg, then blocks receiving next message.
@@ -375,11 +317,6 @@ package CuBit.Messages is
       msg   : out Message;
       found : out Boolean);
 
-   --  Resolve an already-held endpoint, never acquire authority from a PID.
-   --  capSubmit revalidates the selected capability's rights and generation.
-   procedure Find_Endpoint_Capability
-     (Target : Process_ID; Slot : out CapabilitySlot; Found : out Boolean);
-
    --  Async completion queue wrappers
 
    --  Block until at least minWait completions available, return up to max.
@@ -416,25 +353,37 @@ package CuBit.Messages is
 
    --  Synchronous send: resolve endpoint cap, stamp authority tag, send.
    function capSend
-     (slot : CapabilitySlot; msg : Message; Deadline : Unsigned_64) return MessageTag;
+     (target : CuBit.Handles.Endpoint; msg : Message; Deadline : Unsigned_64)
+      return MessageTag;
 
    --  Cap-aware call: resolve cap, send, return full reply via msg pointer.
    function capCall
-     (slot : CapabilitySlot; msg : in out Message; Deadline : Unsigned_64) return MessageTag;
+     (target : CuBit.Handles.Endpoint; msg : in out Message; Deadline : Unsigned_64)
+      return MessageTag;
 
    --  Cap-aware async submit: resolve cap, stamp authority tag, submit.
    function capSubmit
-     (slot  : CapabilitySlot;
-      msg   : Message;
-      token : Unsigned_64) return Boolean;
+     (target : CuBit.Handles.Endpoint;
+      msg    : Message;
+      token  : Unsigned_64) return Boolean;
 
-   --  Send async event (non-blocking, intended for interrupt contexts).
-   procedure sendEvent (dest : Process_ID; msg : Message);
+   --  Send an async event (non-blocking, intended for interrupt contexts)
+   --  through the capability that authorizes it: a notification covering a
+   --  role dest is registered for, or an endpoint to dest.
+   procedure sendEvent
+     (dest : Process_ID; msg : Message; authority : CuBit.Handles.Notification);
+   procedure sendEvent
+     (dest : Process_ID; msg : Message; authority : CuBit.Handles.Endpoint);
 
    --  Send an async event and report bounded-queue backpressure. The kernel
    --  replaces msg.authorityTag with the tag of the authorizing capability;
-   --  publication; caller-supplied authority tags are never trusted.
-   function trySendEvent (dest : Process_ID; msg : Message) return Boolean;
+   --  caller-supplied authority tags are never trusted.
+   function trySendEvent
+     (dest : Process_ID; msg : Message; authority : CuBit.Handles.Notification)
+      return Boolean;
+   function trySendEvent
+     (dest : Process_ID; msg : Message; authority : CuBit.Handles.Endpoint)
+      return Boolean;
 
    --  Poll_Event
    --
@@ -442,32 +391,30 @@ package CuBit.Messages is
    --  fills msg with the event payload. It never consumes service requests or
    --  completions.
    function Poll_Event (msg : out Message) return Boolean;
+   --  The same, with the event's publisher as the kernel reports it
+   --  (No_Process for the kernel's own notices): who sent it, which a
+   --  receiver authenticates by; the authority tag is the capability's badge.
+   function Poll_Event (msg : out Message; publisher : out Process_ID) return Boolean;
 
-   --  Kill a process by PID. Returns 0 on success, -1 on error.
-   function killProcess (pid : Process_ID) return Unsigned_64;
+   --  Kill a process, with process authority (Write) over it. Returns 0 on
+   --  success, -1 on error.
+   function killProcess
+     (pid : Process_ID; authority : CuBit.Handles.Process) return Unsigned_64;
 
    --  Revoke a shared memory grant.
    procedure revokeGrant (id : Unsigned_64);
 
-   --  Save the reply cap from slot 63 to destSlot (for deferred replies).
-   --  Returns 1 on success, 0 on failure.
-   function saveReplyCap (destSlot : Unsigned_64) return Unsigned_64;
-
-   --  The reverse: the reply cap saved in srcSlot becomes the current one
-   --  again, so a request set aside is served as if just received. Only
-   --  while no current reply cap is held. Returns 1 on success, 0 on failure.
-   function restoreReplyCap (srcSlot : Unsigned_64) return Unsigned_64;
-
-   --  Port I/O wrappers for userspace drivers.
-   function portInp8 (port : Unsigned_16) return Unsigned_64;
+   --  Port I/O for userspace drivers, through a CAP_IOPORT handle covering
+   --  the port. Reads return the value, writes 0; -1 when refused.
+   function portInp8 (ports : CuBit.Handles.IO_Ports; port : Unsigned_16) return Unsigned_64;
    function portOutp8
-     (port : Unsigned_16; val : Unsigned_8) return Unsigned_64;
-   function portInp16 (port : Unsigned_16) return Unsigned_64;
+     (ports : CuBit.Handles.IO_Ports; port : Unsigned_16; val : Unsigned_8) return Unsigned_64;
+   function portInp16 (ports : CuBit.Handles.IO_Ports; port : Unsigned_16) return Unsigned_64;
    function portOutp16
-     (port : Unsigned_16; val : Unsigned_16) return Unsigned_64;
-   function portInp32 (port : Unsigned_16) return Unsigned_64;
+     (ports : CuBit.Handles.IO_Ports; port : Unsigned_16; val : Unsigned_16) return Unsigned_64;
+   function portInp32 (ports : CuBit.Handles.IO_Ports; port : Unsigned_16) return Unsigned_64;
    function portOutp32
-     (port : Unsigned_16; val : Unsigned_32) return Unsigned_64;
+     (ports : CuBit.Handles.IO_Ports; port : Unsigned_16; val : Unsigned_32) return Unsigned_64;
 
    --  Device manager wrappers
 
@@ -476,7 +423,8 @@ package CuBit.Messages is
    function allocDma
      (targetPID : Process_ID;
       order     : Unsigned_64;
-      virtBase  : Unsigned_64) return Unsigned_64;
+      virtBase  : Unsigned_64;
+      authority : CuBit.Handles.Process) return Unsigned_64;
 
    --  Enable IOAPIC routing and register an IRQ subscriber. PCI INTx callers
    --  must request level-triggered, active-low routing; ISA-style sources use
@@ -487,6 +435,8 @@ package CuBit.Messages is
      (vector    : Unsigned_64;
       ownerPID  : Process_ID;
       targetCPU : Unsigned_64;
+      authority : CuBit.Handles.Process;
+      lines     : CuBit.Handles.Interrupt;
       levelTriggered : Boolean := False;
       activeLow      : Boolean := False) return Unsigned_64;
 
@@ -503,12 +453,15 @@ package CuBit.Messages is
       physAddr  : Unsigned_64;
       virtAddr  : Unsigned_64;
       numPages  : Unsigned_64;
-      flags     : Unsigned_64) return Unsigned_64;
+      flags     : Unsigned_64;
+      authority : CuBit.Handles.Process;
+      region    : CuBit.Handles.Device_Memory) return Unsigned_64;
 
    --  Set CPU affinity for a process.
    function setCpu
      (targetPID : Process_ID;
-      cpu       : Unsigned_64) return Unsigned_64;
+      cpu       : Unsigned_64;
+      authority : CuBit.Handles.Process) return Unsigned_64;
 
    --  Declare this process' scheduler latency contract. The kernel records
    --  the class, period, and budget now; later scheduler work will use the
@@ -527,7 +480,10 @@ package CuBit.Messages is
    --  This process.
    function Own_Process return Process_ID;
 
-   function registerDriver (driver : Unsigned_64) return Unsigned_64;
+   --  Register for a service role, with a notification handle (Write)
+   --  covering it. This process's identity word, or -1.
+   function registerDriver
+     (driver : Unsigned_64; authority : CuBit.Handles.Notification) return Unsigned_64;
 
    procedure debugPrint (str : String);
 

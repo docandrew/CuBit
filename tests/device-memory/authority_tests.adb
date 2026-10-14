@@ -224,10 +224,11 @@ procedure Authority_Tests is
    end Runs;
 
    procedure Authorization is
-      T : CapabilityTable := EMPTY_TABLE;
+      --  The one capability a mapping call names (CAP-002: by handle).
+      T : Capability := NULL_CAPABILITY;
       procedure Set (Base, Bytes : Unsigned_64; Rights : CapabilityRights) is
       begin
-         T (3) := (capType => CAP_DEVICE_MEM, rights => Rights,
+         T := (capType => CAP_DEVICE_MEM, rights => Rights,
                    authorityTag => NO_AUTHORITY_TAG,
                    object => (ref => Base, param => Bytes), gen => INITIAL_GENERATION);
       end Set;
@@ -252,8 +253,13 @@ procedure Authority_Tests is
       Expect (not Authorize (T, Q, 0, Page, Read_Write), "dma token at 0 maps nothing");
       Set (16#60_0000_0000#, 16 * MiB, Capabilities.READ_WRITE);
       Expect (Authorize (T, Q, 16#60_0080_0000#, 2 * MiB, Read_Only), "ggtt above 4 GiB");
-      T := EMPTY_TABLE;
+      T := NULL_CAPABILITY;
       Expect (not Authorize (T, Q, 16#FEB0_0000#, Page, Read_Only), "no capability");
+      --  A capability of another kind authorizes nothing.
+      T := (capType => CAP_IOPORT, rights => Capabilities.READ_WRITE,
+            authorityTag => NO_AUTHORITY_TAG,
+            object => (ref => 16#FEB0_0000#, param => 16#4000#), gen => INITIAL_GENERATION);
+      Expect (not Authorize (T, Q, 16#FEB0_0000#, Page, Read_Only), "wrong kind");
       --  Mint bound.
       Expect (Mint_Admissible (Q, FB_First, FB_Last - FB_First + 1), "mint framebuffer");
       Expect (Mint_Admissible (Q, 16#60_0000_0000#, 16 * MiB), "mint high bar");
@@ -273,7 +279,9 @@ procedure Authority_Tests is
          gen => INITIAL_GENERATION);
       C : Capability;
    begin
-      C := deriveDeviceRange (P, 16#FEB0_1000#, Page, Capabilities.READ_ONLY);
+      --  The copy Capability_Install would derive (tests/capability-install).
+      C := (P with delta rights => P.rights and Capabilities.READ_ONLY,
+                         object => (16#FEB0_1000#, Page));
       Checks := Checks + 1; pragma Assert (isAttenuationOf (C, P), "derived subrange attenuates");
       Expect (C.rights = Capabilities.READ_ONLY and then C.object = (16#FEB0_1000#, Page), "derived fields");
       Checks := Checks + 1; pragma Assert (isAttenuationOf (P, P), "identity attenuates");
@@ -389,7 +397,7 @@ procedure Authority_Tests is
    procedure Explanations is
       package Pub renames Device_Memory_Publication;
       use type Pub.Reason;
-      T : constant CapabilityTable := EMPTY_TABLE;
+      T : constant Capability := NULL_CAPABILITY;
       E : Device_Memory_Authority.Explanation;
       U : constant Map := Empty_Map;
    begin

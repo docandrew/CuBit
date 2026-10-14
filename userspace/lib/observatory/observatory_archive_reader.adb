@@ -74,7 +74,7 @@ package body Observatory_Archive_Reader with SPARK_Mode => Off is
       Admitted := Value.valid and then Value.status = 0 and then
         Value.msg.tag.label = FS.REPLY_OK and then
         Value.msg.tag.length = (if Pending = Opening then 2 else 1) and then
-        Value.msg.tag.flags = 0 and then Value.msg.tag.reserved = 0 and then
+        Value.msg.tag.protocol = 0 and then Value.msg.tag.reserved = 0 and then
         (for all I in 2 .. 3 => Value.msg.words (I) = 0) and then
         (if Pending /= Opening then Value.msg.words (1) = 0) and then
         (case Pending is

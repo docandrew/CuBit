@@ -2,7 +2,12 @@ with Interfaces; use Interfaces;
 with System; use type System.Address;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Messages; use CuBit.Messages;
-with CuBit.Capability_Grants;
+with CuBit.Process_IDs;
+with CuBit.Handles;
+with CuBit.Handles.Boot_Roots;
+with CuBit.Handles.Control;
+with Startup;
+with Self_Requests;
 with CuBit.Memory_Grants;
 with CuBit.Grant_References;
 with Intel_GPU_Extent_Allocator;
@@ -22,8 +27,15 @@ procedure View_Retention_Check is
    use type V.View_State;
    PID : constant Unsigned_64 := syscall (SYSCALL_GETPID);
    function Owner return Boolean is (True);
+   -- Runs in devmgr's place. Views grant via one self request's reply
+   -- (Client), so grants come back to this process, which acquires and
+   -- derives through Startup.Device_Manager (its badged self endpoint).
+   Boot : constant CuBit.Handles.Boot_Roots.Roots := CuBit.Handles.Boot_Roots.Get;
+   Self_Label : constant Unsigned_32 := 16#7A01#;
+   Client : CuBit.Handles.Reply := CuBit.Handles.No_Reply;
    function Allocate (CPU : Unsigned_64) return Unsigned_64 is
-     (syscall (SYSCALL_ALLOC_DMA, PID, 9, CPU, 3, 2 ** 32));
+     (CuBit.Handles.Control.Allocate_DMA
+        (CuBit.Process_IDs.From_Word (PID), Boot.Process_Root, 9, CPU, 3, 2 ** 32));
    package A is new Intel_GPU_Extent_Allocator (Owner, Allocate);
    Pool : A.Pool;
    Registry : H.Registry;
@@ -41,11 +53,11 @@ procedure View_Retention_Check is
    end Check;
 begin
    debugPrint ("native view retention: real self-grants (NO GPU/ISOLATION)" & ASCII.LF);
-   Check (syscall (SYSCALL_POLICY_MINT_CAPABILITY, PID, 1, PID,
-     16#4947#, 3, 15) /= Unsigned_64'Last, "self endpoint");
-   Identity := CuBit.Capability_Grants.Incarnation
-     (CuBit.Capability_Grants.Capture (15));
-   Check (Identity /= 0, "endpoint identity");
+   Check (Boot.Valid and CuBit.Handles.Valid (Startup.Device_Manager), "self endpoint");
+   Client := Self_Requests.Open (Self_Label, 10_000);
+   Check (CuBit.Handles.Valid (Client), "self request reply");
+   -- The admitted session identity: this process (no render admission here).
+   Identity := PID;
    A.Acquire_Buffer (Pool, PID, 1, 1, 1, Buffer, OK);
    Check (OK, "backing");
    Backing := B.From_View (Buffer);
@@ -57,11 +69,11 @@ begin
    begin
       Word := 16#A70C_1C00#;
       G.Create_Via_Capability
-        (15, To_Address (Integer_Address (Backing.CPU_Address)),
+        (Startup.Device_Manager, To_Address (Integer_Address (Backing.CPU_Address)),
          1, False, Reference, OK);
       Check (OK, "legacy revoke setup");
       G.Acquire_Via_Capability
-        (15, Reference, 0, 4096, G.Read_Access, Address, OK);
+        (Startup.Device_Manager, Reference, 0, 4096, G.Read_Access, Address, OK);
       Check (OK, "legacy revoke reader");
       Check (syscall (SYSCALL_REVOKE_SHARED_MEMORY_GRANT,
         Unsigned_64'Last) = 0, "legacy revoke wrong owner rejected");
@@ -69,7 +81,7 @@ begin
         Reference.slot) = 1, "legacy revoke active accepted");
       Check (not G.Retirement_Confirmed (Reference), "legacy revoke reader retains mapping");
       G.Acquire_Via_Capability
-        (15, Reference, 0, 4096, G.Read_Access, Denied, OK);
+        (Startup.Device_Manager, Reference, 0, 4096, G.Read_Access, Denied, OK);
       Check (not OK, "legacy revoke closes admission");
       declare Alias : Unsigned_64 with Import, Volatile, Address => Address; begin
          Check (Alias = Word, "legacy revoke retained content");
@@ -110,27 +122,27 @@ begin
          Word := 16#CAFE_0000# + Unsigned_64 (Cycle);
          H.Register (Registry, Identity, Backing, Name);
          Check (Name /= 0, "register");
-         V.Share (First, Registry, Identity, Name, 15, Identity, 0, 4096,
+         V.Share (First, Registry, Identity, Name, Client, Identity, 0, 4096,
            Writable => False, Presentation => True);
-         V.Share (Second, Registry, Identity, Name, 15, Identity, 0, 4096,
+         V.Share (Second, Registry, Identity, Name, Client, Identity, 0, 4096,
            Writable => False);
          Check (V.State (First) = V.Shared and V.State (Second) = V.Shared,
            "two kernel grants");
          Reference := CuBit.Grant_References.Decode (V.Wire_Reference (First));
-         G.Acquire_Via_Capability (15, Reference, 0, 4096, G.Write_Access, Denied, OK);
+         G.Acquire_Via_Capability (Startup.Device_Manager, Reference, 0, 4096, G.Write_Access, Denied, OK);
          Check (not OK and Denied = System.Null_Address, "write escalation rejected");
-         G.Acquire_Via_Capability (15, Reference, 0, 4096, G.Read_Access, Address, OK);
+         G.Acquire_Via_Capability (Startup.Device_Manager, Reference, 0, 4096, G.Read_Access, Address, OK);
          Check (OK, "read acquisition");
          declare Alias : Unsigned_64 with Import, Volatile, Address => Address; begin
             Check (Alias = Word, "shared content");
          end;
-         G.Derive_Via_Capability (15, Reference, 0, 1, True, Rejected, OK);
+         G.Derive_Via_Capability (Startup.Device_Manager, Reference, 0, 1, True, Rejected, OK);
          Check (not OK, "forwarding cannot add write access");
-         G.Derive_Via_Capability (15, Reference, 0, 1, False, Child, OK);
+         G.Derive_Via_Capability (Startup.Device_Manager, Reference, 0, 1, False, Child, OK);
          Check (OK, "terminal child");
-         G.Acquire_Via_Capability (15, Child, 0, 4096, G.Read_Access, Child_Address, OK);
+         G.Acquire_Via_Capability (Startup.Device_Manager, Child, 0, 4096, G.Read_Access, Child_Address, OK);
          Check (OK, "child acquisition");
-         G.Derive_Via_Capability (15, Child, 0, 1, False, Rejected, OK);
+         G.Derive_Via_Capability (Startup.Device_Manager, Child, 0, 1, False, Rejected, OK);
          Check (not OK, "child cannot forward again");
          H.Retain_Backing (Registry, Identity, Name, Export_Pin, OK);
          Check (OK, "independent lifetime admission");
@@ -150,7 +162,7 @@ begin
          Poll (Queue);
          Check (V.State (First) = V.Retiring, "forwarded reader still pins root");
          Check (not H.Can_Release_Backing (Registry, Identity, Name), "forwarded pin");
-         G.Acquire_Via_Capability (15, Child, 0, 4096, G.Read_Access, Denied, OK);
+         G.Acquire_Via_Capability (Startup.Device_Manager, Child, 0, 4096, G.Read_Access, Denied, OK);
          Check (not OK, "root revocation closes child admission");
          declare Alias : Unsigned_64 with Import, Volatile, Address => Child_Address; begin
             Check (Alias = Word, "held child content survives parent return");
@@ -171,7 +183,7 @@ begin
          Check (OK, "independent internal user retires");
          H.Release_Retired_Backing (Registry, Identity, Name, True, OK);
          Check (OK, "release after both grants");
-         G.Acquire_Via_Capability (15, Reference, 0, 4096, G.Read_Access, Denied, OK);
+         G.Acquire_Via_Capability (Startup.Device_Manager, Reference, 0, 4096, G.Read_Access, Denied, OK);
          Check (not OK, "stale grant rejected");
          Check (Word = 16#CAFE_0000# + Unsigned_64 (Cycle), "owner backing retained");
       end;
@@ -196,7 +208,7 @@ begin
         Exclude_Writes => True);
       Check (OK, "native write hold acquired");
       Check (H.Is_Open (Registry, Identity, Name), "write denial uses open name");
-      V.Share (Writer, Registry, Identity, Name, 15, Identity, 0, 4096, True);
+      V.Share (Writer, Registry, Identity, Name, Client, Identity, 0, 4096, True);
       Check (V.State (Writer) = V.Retired and V.Wire_Reference (Writer) = 0,
         "independent hold denies writable export with open producer");
       H.Close (Registry, Identity, Name, OK);
@@ -208,7 +220,7 @@ begin
          (Intel_GPU_Image_Layout.BGRA8_UNorm, Intel_GPU_Image_Layout.Linear,
           16, 16, 64, 0), True, True, OK);
       Check (OK, "native retained image lease");
-      V.Share_Retained (Reader, Registry, Frozen, 15, Identity, 0, 4096);
+      V.Share_Retained (Reader, Registry, Frozen, Client, Identity, 0, 4096);
       Check (V.State (Reader) = V.Shared, "reader handoff from retained backing");
       H.Return_Reference (Registry, Frozen, True, OK);
       Check (OK and H.Writes_Excluded (Registry, Identity, Name),
@@ -217,11 +229,11 @@ begin
       Check (OK and then not H.Can_Release_Backing (Registry, Identity, Name),
         "reader pin outlives producer pin");
       Reference := CuBit.Grant_References.Decode (V.Wire_Reference (Reader));
-      G.Acquire_Via_Capability (15, Reference, 0, 4096, G.Write_Access, Denied, OK);
+      G.Acquire_Via_Capability (Startup.Device_Manager, Reference, 0, 4096, G.Write_Access, Denied, OK);
       Check (not OK and Denied = System.Null_Address, "retained reader write denied");
-      G.Acquire_Via_Capability (15, Reference, 0, 4096, G.Read_Access, Address, OK);
+      G.Acquire_Via_Capability (Startup.Device_Manager, Reference, 0, 4096, G.Read_Access, Address, OK);
       Check (OK, "retained reader acquisition");
-      G.Derive_Via_Capability (15, Reference, 0, 1, False, Rejected, OK);
+      G.Derive_Via_Capability (Startup.Device_Manager, Reference, 0, 1, False, Rejected, OK);
       Check (not OK, "retained reader forwarding denied");
       V.Retire (Reader, Registry);
       Check (V.State (Reader) = V.Retiring and V.Wire_Reference (Reader) = 0,
@@ -231,7 +243,7 @@ begin
       Check (not OK, "image lease waits for CPU reader");
       H.Release_Retired_Backing (Registry, Identity, Name, True, OK);
       Check (not OK, "held reader blocks backing release");
-      G.Acquire_Via_Capability (15, Reference, 0, 4096, G.Read_Access, Denied, OK);
+      G.Acquire_Via_Capability (Startup.Device_Manager, Reference, 0, 4096, G.Read_Access, Denied, OK);
       Check (not OK, "revoked reader denies new acquisition");
       declare Alias : Unsigned_64 with Import, Volatile, Address => Address; begin
          Check (Alias = Word, "held reader content after producer closure and revoke");
@@ -272,29 +284,29 @@ begin
          Word := 16#B10C_0000# + Unsigned_64 (Round);
          for Index in Roots'Range loop
             G.Create_Forwardable_Via_Capability
-              (15, To_Address (Integer_Address (Backing.CPU_Address)),
+              (Startup.Device_Manager, To_Address (Integer_Address (Backing.CPU_Address)),
                1, False, Roots (Index), OK);
             Check (OK, "block root creation");
             G.Acquire_Via_Capability
-              (15, Roots (Index), 0, 4096, G.Read_Access, Address, OK);
+              (Startup.Device_Manager, Roots (Index), 0, 4096, G.Read_Access, Address, OK);
             Check (OK, "block root acquisition");
             G.Derive_Via_Capability
-              (15, Roots (Index), 0, 1, False, Children (Index), OK);
+              (Startup.Device_Manager, Roots (Index), 0, 1, False, Children (Index), OK);
             Check (OK, "block child creation");
             G.Acquire_Via_Capability
-              (15, Children (Index), 0, 4096, G.Read_Access, Addresses (Index), OK);
+              (Startup.Device_Manager, Children (Index), 0, 4096, G.Read_Access, Addresses (Index), OK);
             Check (OK, "block child acquisition");
             -- New block initialization must preserve all earlier scopes.
             for Previous in Roots'First .. Index loop
                G.Acquire_Via_Capability
-                 (15, Children (Previous), 0, 4096, G.Read_Access, Address, OK);
+                 (Startup.Device_Manager, Children (Previous), 0, 4096, G.Read_Access, Address, OK);
                Check (OK, "neighbour scope preserved");
                G.Return_Acquisition (Children (Previous), OK);
                Check (OK, "extra neighbour reader returned");
             end loop;
          end loop;
          G.Create_Forwardable_Via_Capability
-           (15, To_Address (Integer_Address (Backing.CPU_Address)),
+           (Startup.Device_Manager, To_Address (Integer_Address (Backing.CPU_Address)),
             1, False, Extra, OK);
          Check (OK, "seventeenth grant admitted without disturbing scopes");
          G.Revoke (Extra, OK);
@@ -305,7 +317,7 @@ begin
             Check (OK, "block root reader return");
             Check (not G.Retirement_Confirmed (Roots (Index)), "child retains root");
             G.Acquire_Via_Capability
-              (15, Children (Index), 0, 4096, G.Read_Access, Denied, OK);
+              (Startup.Device_Manager, Children (Index), 0, 4096, G.Read_Access, Denied, OK);
             Check (not OK, "closed block child denies new reader");
             declare Alias : Unsigned_64 with Import, Volatile,
               Address => Addresses (Index); begin
@@ -318,12 +330,13 @@ begin
             Check (G.Retirement_Confirmed (Children (Index)) and
               G.Retirement_Confirmed (Roots (Index)), "block confirmed retirement");
             G.Acquire_Via_Capability
-              (15, Children (Index), 0, 4096, G.Read_Access, Denied, OK);
+              (Startup.Device_Manager, Children (Index), 0, 4096, G.Read_Access, Denied, OK);
             Check (not OK, "retired block child stale");
          end loop;
       end;
    end loop;
    debugPrint ("native forwarding blocks: 32 rounds eight retained roots and children PASS" & ASCII.LF);
+   Check (Self_Requests.Close (Client, Self_Label, 10_000), "self request answered");
    debugPrint ("TEST: PASS native view retention 3 cycles two pins terminal child queued retirement (NO GPU/ISOLATION)" & ASCII.LF);
    loop Ignore := syscall (SYSCALL_SLEEP, 1000); end loop;
 end View_Retention_Check;

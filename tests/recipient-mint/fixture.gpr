@@ -1,14 +1,24 @@
 project Fixture is
-   -- Hosted mock-transport test of the actual runtime wrapper. This does
-   -- not compile or execute the kernel handlers, GPU driver or hardware.
-   for Source_Dirs use (".", "../../userspace/runtime/gnat");
-   for Source_Files use ("test.adb", "messages.ads", "messages.adb", "cubit.ads",
+   -- Hosted mock-kernel test of the actual runtime wrappers (CAP-002):
+   -- CuBit.Capability_Grants, CuBit.Handles.IPC and CuBit.Handles.Control
+   -- over a scripted CuBit.Handles.Kernel. This does not compile or execute
+   -- the kernel handlers; the kernel's own decisions are proved and tested
+   -- in tests/capability-install and tests/capability-tables.
+   for Source_Dirs use (".", "../../userspace/runtime/gnat", "../../shared/capabilities");
+   for Source_Files use ("test.adb", "messages.ads", "kernel_mock.ads", "handles_kernel_mock.adb",
+     "cubit-handles-recipient_fixture.ads", "cubit-handles-recipient_fixture.adb",
+     "cubit.ads", "cubit-process_ids.ads", "cubit-process_ids.adb",
+     "capability_abi.ads", "capability_abi.adb",
+     "cubit-handles.ads", "cubit-handles-kernel.ads",
+     "cubit-handles-ipc.ads", "cubit-handles-ipc.adb",
+     "cubit-handles-control.ads", "cubit-handles-control.adb",
+     "cubit-startup_tables.ads", "cubit-startup_tables.adb",
      "cubit-capability_grants.ads", "cubit-capability_grants.adb");
    for Object_Dir use "build";
    for Main use ("test.adb");
    package Naming is
       for Spec ("CuBit.Messages") use "messages.ads";
-      for Body ("CuBit.Messages") use "messages.adb";
+      for Body ("CuBit.Handles.Kernel") use "handles_kernel_mock.adb";
    end Naming;
    package Compiler is
       for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato");

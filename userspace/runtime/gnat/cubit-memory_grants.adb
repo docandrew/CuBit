@@ -5,6 +5,7 @@
 with Ada.Unchecked_Conversion;
 with CuBit.Kernel_ABI;
 
+with CuBit.Handles.Grants;
 package body CuBit.Memory_Grants is
    function To_Address is new Ada.Unchecked_Conversion
      (Unsigned_64, System.Address);
@@ -78,7 +79,7 @@ package body CuBit.Memory_Grants is
    end Create_For_Process;
 
    procedure Create_Via_Capability
-     (slot      : CuBit.Messages.CapabilitySlot;
+     (slot      : CuBit.Handles.Endpoint;
       localAddr : System.Address;
       numPages  : Natural;
       readWrite : Boolean;
@@ -86,9 +87,8 @@ package body CuBit.Memory_Grants is
       success   : out Boolean;
       notify    : Boolean := False)
    is
-      Raw : constant Unsigned_64 := CuBit.Messages.syscall
-        (CuBit.Messages.SYSCALL_CREATE_SHARED_MEMORY_GRANT_VIA_CAPABILITY,
-         Unsigned_64 (slot), To_Number (localAddr), Unsigned_64 (numPages),
+      Raw : constant Unsigned_64 := CuBit.Handles.Grants.Create
+        (slot, To_Number (localAddr), Unsigned_64 (numPages),
          Creation_Flags (readWrite, notify));
    begin
       reference := (slot => 0, generation => 1);
@@ -102,7 +102,7 @@ package body CuBit.Memory_Grants is
    end Create_Via_Capability;
 
    procedure Create_Forwardable_Via_Capability
-     (slot : CuBit.Messages.CapabilitySlot; localAddr : System.Address;
+     (slot : CuBit.Handles.Endpoint; localAddr : System.Address;
       numPages : Natural; readWrite : Boolean;
       reference : out Grant_Reference; success : out Boolean;
       notify : Boolean := False)
@@ -115,9 +115,8 @@ package body CuBit.Memory_Grants is
       if numPages not in 1 .. 4096 then
          return;
       end if;
-      Raw := CuBit.Messages.syscall
-        (CuBit.Messages.SYSCALL_CREATE_SHARED_MEMORY_GRANT_VIA_CAPABILITY,
-         slot, To_Number (localAddr), Unsigned_64 (numPages),
+      Raw := CuBit.Handles.Grants.Create
+        (slot, To_Number (localAddr), Unsigned_64 (numPages),
          KA.Grant_Forwardable + (if readWrite then KA.Grant_Read_Write else KA.Grant_Read_Only)
          + (if notify then KA.Grant_Notify else 0));
       if Raw = Unsigned_64'Last then
@@ -126,8 +125,53 @@ package body CuBit.Memory_Grants is
       Finish_Creation (Raw, reference, success);
    end Create_Forwardable_Via_Capability;
 
+   procedure Create_Via_Reply
+     (peer      : CuBit.Handles.Reply;
+      localAddr : System.Address;
+      numPages  : Natural;
+      readWrite : Boolean;
+      reference : out Grant_Reference;
+      success   : out Boolean;
+      notify    : Boolean := False)
+   is
+      Raw : constant Unsigned_64 := CuBit.Handles.Grants.Create
+        (peer, To_Number (localAddr), Unsigned_64 (numPages),
+         Creation_Flags (readWrite, notify));
+   begin
+      reference := (slot => 0, generation => 1);
+      success := False;
+      if Raw = Unsigned_64'Last then
+         return;
+      end if;
+      Finish_Creation (Raw, reference, success);
+   end Create_Via_Reply;
+
+   procedure Create_Forwardable_Via_Reply
+     (peer : CuBit.Handles.Reply; localAddr : System.Address;
+      numPages : Natural; readWrite : Boolean;
+      reference : out Grant_Reference; success : out Boolean;
+      notify : Boolean := False)
+   is
+      package KA renames CuBit.Kernel_ABI;
+      Raw : Unsigned_64;
+   begin
+      reference := (slot => 0, generation => 1);
+      success := False;
+      if numPages not in 1 .. 4096 then
+         return;
+      end if;
+      Raw := CuBit.Handles.Grants.Create
+        (peer, To_Number (localAddr), Unsigned_64 (numPages),
+         KA.Grant_Forwardable + (if readWrite then KA.Grant_Read_Write else KA.Grant_Read_Only)
+         + (if notify then KA.Grant_Notify else 0));
+      if Raw = Unsigned_64'Last then
+         return;
+      end if;
+      Finish_Creation (Raw, reference, success);
+   end Create_Forwardable_Via_Reply;
+
    procedure Derive_Via_Capability
-     (recipient : CuBit.Messages.CapabilitySlot; parent : Grant_Reference;
+     (recipient : CuBit.Handles.Endpoint; parent : Grant_Reference;
       pageOffset, numPages : Natural; readWrite : Boolean;
       reference : out Grant_Reference; success : out Boolean)
    is
@@ -138,9 +182,8 @@ package body CuBit.Memory_Grants is
       if pageOffset > 4095 or else numPages not in 1 .. 4096 then
          return;
       end if;
-      Raw := CuBit.Messages.syscall
-        (CuBit.Messages.SYSCALL_DERIVE_SHARED_MEMORY_GRANT_VIA_CAPABILITY,
-         recipient, parent.slot, parent.generation, Unsigned_64 (pageOffset),
+      Raw := CuBit.Handles.Grants.Derive
+        (recipient, parent.slot, parent.generation, Unsigned_64 (pageOffset),
          Unsigned_64 (numPages), (if readWrite then 1 else 0));
       if CuBit.Grant_References.Valid_Wire (Raw) then
          reference := CuBit.Grant_References.Decode (Raw);
@@ -176,7 +219,7 @@ package body CuBit.Memory_Grants is
    end Acquire;
 
    procedure Acquire_Via_Capability
-     (slot           : CuBit.Messages.CapabilitySlot;
+     (slot           : CuBit.Handles.Endpoint;
       reference      : Grant_Reference;
       byteOffset     : Unsigned_64;
       byteLength     : Unsigned_64;
@@ -184,9 +227,8 @@ package body CuBit.Memory_Grants is
       mappedAddress  : out System.Address;
       success        : out Boolean)
    is
-      rawAddress : constant Unsigned_64 := CuBit.Messages.syscall
-        (CuBit.Messages.SYSCALL_ACQUIRE_SHARED_MEMORY_GRANT_VIA_CAPABILITY,
-         slot,
+      rawAddress : constant Unsigned_64 := CuBit.Handles.Grants.Acquire
+        (slot,
          reference.slot,
          reference.generation,
          byteOffset,

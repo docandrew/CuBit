@@ -1,5 +1,6 @@
 project Bridge is
-   for Source_Dirs use (".", "../../../userspace/mesa/anv");
+   for Source_Dirs use (".", "../../support/handles", "../../support/handles/runtime",
+     "../../../shared/capabilities", "../../../userspace/mesa/anv");
    for Object_Dir use "build";
    for Main use ("bridge_tests.adb");
    package Compiler is

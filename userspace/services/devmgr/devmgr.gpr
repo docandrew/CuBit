@@ -18,6 +18,10 @@ project Devmgr is
        "pci_message_interrupts.ads", "pci_message_interrupts.adb",
        "pci_message_functions.ads", "pci_message_functions.adb",
        "driver_manifests.ads", "driver_manifests.adb",
+       --  Launching children by handle (CAP-002).
+       "devmgr_launches.ads", "devmgr_launches.adb",
+       "devmgr_authority.ads", "devmgr_authority.adb",
+       "fs_attachments.ads",
        "ccl-resource_sections.ads", "ccl-resource_sections.adb",
        "boot_rtc.ads", "boot_rtc.adb", "civil_time.ads", "civil_time.adb",
        "intel_gpu_probe.ads", "intel_gpu_probe.adb",

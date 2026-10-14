@@ -35,7 +35,6 @@ begin
  T.Reset; Run(T.Health,Expected=>"configuration",Epoch=>0); pragma Assert(not E.Configuration);
  T.Reset; Run(T.Health,Expected=>"configuration",Width=>0); pragma Assert(not E.Configuration);
  T.Reset; Run(T.Health,Expected=>"configuration",Width=>2**62+1024); pragma Assert(not E.Configuration);
- T.Reset; T.Empty_Slot:=True; Run(T.Device,Expected=>"admission"); pragma Assert(not E.Admitted);
- T.Reset; T.Inspect_OK:=False; Run(T.Device,Expected=>"admission"); pragma Assert(not E.Admitted);
+ T.Reset; T.Render_Absent:=True; Run(T.Device,Expected=>"admission"); pragma Assert(not E.Admitted);
  Ada.Text_IO.Put_Line("PASS startup external-denial cases=" & Cases'Image);
 end Startup_Denial_Tests;

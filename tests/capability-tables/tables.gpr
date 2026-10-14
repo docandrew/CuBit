@@ -1,0 +1,18 @@
+project Tables is
+   for Source_Dirs use (".", "../../kernel/src");
+   for Source_Files use
+     ("main.adb", "checks.ads", "checks.adb",
+      "differential.ads", "differential.adb", "test_tables.ads", "fake_pages.ads", "fake_pages.adb",
+      "capabilities.ads",
+      "capability_tables.ads", "capability_tables.adb");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-gnat2022", "-gnata", "-gnato", "-O2", "-gnatwa", "-gnatwJ");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--counterexamples=off");
+   end Prove;
+end Tables;

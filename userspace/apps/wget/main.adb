@@ -18,8 +18,9 @@ with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Memory_Grants;
 with CuBit.TLS_Protocol;
-with CCL_Manifest_Bindings;
 with CuBit.Streams;
+with CuBit.Handles;
+with Startup;
 
 procedure main is
    use ASCII;
@@ -35,7 +36,7 @@ procedure main is
    OP_NET_SHUT  : Unsigned_32 renames CuBit.TLS_Protocol.Shut_Operation;
    REPLY_OK     : Unsigned_32 renames CuBit.TLS_Protocol.Reply_OK;
    REPLY_EOF    : Unsigned_32 renames CuBit.TLS_Protocol.Reply_EOF;
-   CAP_SLOT_NET : constant CapabilitySlot := CCL_Manifest_Bindings.Slot_Tls;
+   TLS_Service : constant CuBit.Handles.Endpoint := Startup.Tls;
 
    dataBuf     : System.Address := System.Null_Address;
    transfer    : CuBit.Memory_Grants.Grant_Reference;
@@ -142,7 +143,7 @@ begin
       ok : Boolean;
    begin
       CuBit.Memory_Grants.Create_Via_Capability
-        (CAP_SLOT_NET, dataBuf, DATA_BUF_PAGES, True, transfer, ok);
+        (TLS_Service, dataBuf, DATA_BUF_PAGES, True, transfer, ok);
 
       if not ok then
          debugPrint ("wget: transfer grant to tls.svc failed" & LF);
@@ -157,18 +158,6 @@ begin
 
    debugPrint ("wget: grant created" & LF);
 
-   --  Signal devmgr that we are ready
-   declare
-      CAP_SLOT_READY : constant Unsigned_64 := 15;
-      OP_READY       : constant Unsigned_32 := 16#FF00#;
-      rdyIgnore : MessageTag;
-   begin
-      rdyIgnore := capSend (CAP_SLOT_READY,
-         (tag      => (label => OP_READY, length => 0,
-                       flags => 0, reserved => 0),
-          authorityTag => 0,
-          words    => (others => 0)), CuBit.Messages.Wait_Forever);
-   end;
 
    --  4. Write scheme string into grant buffer, then OP_NET_OPEN
    --  (DNS resolve + TCP connect in one deferred call)
@@ -188,12 +177,12 @@ begin
    msg := NULL_MESSAGE;
    msg.tag := (label  => OP_NET_OPEN,
                length => Unsigned_8 (SCHEME'Length),
-               flags  => 0,
+               protocol  => 0, ipc => <>,
                reserved  => 0);
    msg.words (0) := transfer.slot;
    msg.words (1) := Unsigned_64 (DATA_BUF_SIZE);
    msg.words (3) := transfer.generation;
-   tag := capCall (CAP_SLOT_NET, msg, CuBit.Messages.Wait_Forever);
+   tag := capCall (TLS_Service, msg, CuBit.Messages.Wait_Forever);
 
    if tag.label /= REPLY_OK then
       declare
@@ -237,12 +226,12 @@ begin
    msg := NULL_MESSAGE;
    msg.tag := (label  => OP_NET_WRITE,
                length => 3,
-               flags  => 0,
+               protocol  => 0, ipc => <>,
                reserved  => 0);
    msg.words (0) := chanHandle;
    msg.words (1) := 0;   -- offset
    msg.words (2) := Unsigned_64 (HTTP_REQ'Length);
-   tag := capCall (CAP_SLOT_NET, msg, CuBit.Messages.Wait_Forever);
+   tag := capCall (TLS_Service, msg, CuBit.Messages.Wait_Forever);
 
    if tag.label /= REPLY_OK then
       debugPrint ("wget: write failed" & LF);
@@ -270,12 +259,12 @@ begin
       msg := NULL_MESSAGE;
       msg.tag := (label  => OP_NET_READ,
                   length => 3,
-                  flags  => 0,
+                  protocol  => 0, ipc => <>,
                   reserved  => 0);
       msg.words (0) := chanHandle;
       msg.words (1) := 0;      -- offset in grant buffer
       msg.words (2) := Unsigned_64 (DATA_BUF_SIZE);
-      tag := capCall (CAP_SLOT_NET, msg, CuBit.Messages.Wait_Forever);
+      tag := capCall (TLS_Service, msg, CuBit.Messages.Wait_Forever);
 
       if tag.label = REPLY_EOF then
          debugPrint ("wget: EOF, closing" & LF);
@@ -338,13 +327,13 @@ begin
    msg := NULL_MESSAGE;
    msg.tag := (label  => OP_NET_SHUT,
                length => 1,
-               flags  => 0,
+               protocol  => 0, ipc => <>,
                reserved  => 0);
    msg.words (0) := chanHandle;
    declare
       ignore : MessageTag;
    begin
-      ignore := capCall (CAP_SLOT_NET, msg, CuBit.Messages.Wait_Forever);
+      ignore := capCall (TLS_Service, msg, CuBit.Messages.Wait_Forever);
    end;
 
    --  Drain any pending stream IPC before exit

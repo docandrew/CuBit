@@ -2,6 +2,7 @@ with Ada.Text_IO;
 with Interfaces; use Interfaces;
 with System;
 with Native_Storage;
+with CuBit.Handles.Startup;
 with Storage_Channel;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Memory_Grants;
@@ -39,8 +40,12 @@ procedure Native_Bridge_Tests is
 begin
    Grants.Expected_Pages := Storage_Channel.Transfer_Bytes / 4096;
    Check (Native_Storage.Transfer_Capacity = Storage_Channel.Transfer_Bytes);
-   Check (Native_Storage.Initialize (64) = REPLY_ERR);
-   Check (Native_Storage.Initialize (12) = REPLY_OK);
+   --  Without a "filesystem" startup entry the bridge refuses; with it,
+   --  it binds that endpoint.
+   CuBit.Handles.Startup.Filesystem_Present := False;
+   Check (Native_Storage.Initialize = REPLY_ACCESS_DENIED);
+   CuBit.Handles.Startup.Filesystem_Present := True;
+   Check (Native_Storage.Initialize = REPLY_OK);
    Denied (0);
    Denied (Storage_Channel.Transfer_Bytes + 1);
    Denied (Position => Unsigned_64'Last);
@@ -50,7 +55,7 @@ begin
    Vector (1) := (Header'Address, Storage_Channel.Transfer_Bytes); Denied;
    Vector (1) := (Header'Address, Unsigned_64'Last); Denied;
    Vector (1) := (Header'Address, Header'Length);
-   Wait_Reply := ((REPLY_OK, 1, 0, 0), 0, [0 => Storage_Channel.Transfer_Bytes, others => 0]);
+   Wait_Reply := ((label => REPLY_OK, length => 1, protocol => 0, ipc => <>, reserved => 0), 0, [0 => Storage_Channel.Transfer_Bytes, others => 0]);
    Code := Native_Storage.Write_Vector (23, 17, Vector'Address, 2, Value'Access);
    Check (Code = REPLY_OK and Value = Storage_Channel.Transfer_Bytes);
    Check (Submissions = 1 and Waits = 1 and Last_Request.words (3) = 17);

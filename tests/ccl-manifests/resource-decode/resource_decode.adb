@@ -49,8 +49,7 @@ begin
              Image (Interfaces.Unsigned_64 (Plan.Match.Values (2))) & " " &
              Image (Interfaces.Unsigned_64 (Plan.Match.Values (3))));
    for Item of Plan.Entries (1 .. Plan.Count) loop
-      Put_Line (Item.Kind'Image & " " & Item.Rights'Image & " slot=" &
-                Image (Interfaces.Unsigned_64 (Item.Slot)) & " index=" &
+      Put_Line (Item.Kind'Image & " " & Item.Rights'Image & " index=" &
                 Image (Interfaces.Unsigned_64 (Item.Index)) & " amount=" &
                 Image (Item.Amount) & " extra=" & Image (Item.Extra));
    end loop;

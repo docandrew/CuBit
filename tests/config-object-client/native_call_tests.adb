@@ -1,3 +1,4 @@
+with CuBit.Handles.Fixture;
 with Ada.Text_IO;
 with Interfaces; use Interfaces;
 with CCL.Types; use CCL.Types;
@@ -134,7 +135,7 @@ begin
    Install (Grants, Resolved, 78, Installed); Check (Installed = Grant_Added);
 
    G.Expected_Pages := W.Creation_Bytes / 4096;
-   C.Initialize (Object, 5, Good); Check (Good);
+   C.Initialize (Object, CuBit.Handles.Fixture.Endpoint_Of (5), Good); Check (Good);
    C.Create (Object, "org.cubit.test", Contract, W.Read_Write, 0, Token, Sent); Check (Sent = C.Submitted);
    Prepare ("(config-test.read)");
    B.Submit (Object, B.Read_Value, Program, Machine, Description, 77, 0, Token + 1, Sent);
@@ -204,7 +205,7 @@ begin
    declare
       Other : C.Client;
    begin
-      C.Initialize (Other, 5, Good); Check (Good);
+      C.Initialize (Other, CuBit.Handles.Fixture.Endpoint_Of (5), Good); Check (Good);
       C.Open (Other, "org.cubit.test", Contract, W.Read_Only, 0, 1, Sent); Check (Sent = C.Submitted);
       C.Complete (Other, Answer (1, W.Success, 56), Done); Check (Done = C.Completed);
       C.Take_Result (Other, Native, Taken); Check (Taken and Native.Valid);

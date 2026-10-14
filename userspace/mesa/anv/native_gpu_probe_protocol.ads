@@ -5,10 +5,6 @@ package Native_GPU_Probe_Protocol with Pure, SPARK_Mode is
    Label : constant Unsigned_32 := 16#0A29#;
    Desktop_Binding_Label : constant Unsigned_32 := 16#0A2B#;
    Viewer_Tag : constant Unsigned_64 := 16#4750_5631#;
-   Driver_Recipient_Slot : constant := 56;
-   Supervisor_Recipient_Slot : constant := 57;
-   Viewer_Driver_Slot : constant := 4;
-   Viewer_Supervisor_Slot : constant := 15;
    Pixel_Bytes : constant Unsigned_64 := 16_384;
    type Words is array (Natural range 0 .. 3) of Unsigned_64;
    type Operation is (Read_Target, Retire_Target);

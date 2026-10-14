@@ -5,6 +5,8 @@ with CuBit.Desktop_Protocol; use CuBit.Desktop_Protocol;
 with CuBit.Desktop_Messages; use CuBit.Desktop_Messages;
 with CuBit.Benchmark_Clock;
 with CuBit.Timing_Histograms;
+with CuBit.Startup_State;
+with Startup;
 
 --  Closed-loop diagnostic, NOT an interrupt-to-app or open-loop SLA test.
 --  The same process publishes a normalized key and receives the focused
@@ -42,7 +44,7 @@ procedure Main is
    function Send (Wire : Wire_Message) return Wire_Message is
       Msg : Message := From_Wire (Wire);
    begin
-      Msg.tag := capCall (CAP_SLOT_DESKTOP, Msg, CuBit.Messages.Wait_Forever);
+      Msg.tag := capCall (Startup.Desktop, Msg, CuBit.Messages.Wait_Forever);
       return To_Wire (Msg);
    end Send;
 
@@ -81,7 +83,7 @@ procedure Main is
          Request := Input.Encode (Report);
          Deadline := syscall (SYSCALL_GETTIME) + 1_000;
          Started := Clock.Read_Counter;
-         if not trySendEvent (Consumer, Request) then
+         if not trySendEvent (Consumer, Request, Startup.Keyboard) then
             Fail ("publication rejected"); return;
          end if;
          Published := Clock.Read_Counter;
@@ -187,6 +189,10 @@ procedure Main is
       end if;
    end Exercise;
 begin
+   if not CuBit.Startup_State.Ready (Startup.Verify) then
+      Fail ("startup capabilities");
+      Ignored := syscall (SYSCALL_EXIT, 1);
+   end if;
    Exercise;
    Ignored := syscall (SYSCALL_EXIT, (if Passed then 0 else 1));
 end Main;

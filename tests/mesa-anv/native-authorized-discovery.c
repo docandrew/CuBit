@@ -35,9 +35,9 @@
 #include "native-scene-consumer.h"
 #endif
 
-uint32_t cubit_test_mesa_authorized_discovery(uint64_t slot);
+uint32_t cubit_test_mesa_authorized_discovery(cubit_endpoint endpoint);
 void cubit_test_mesa_init_stage(const char *stage, int returned, int result);
-extern uint64_t cubit_test_render_slot(void);
+extern cubit_endpoint cubit_test_render_endpoint(void);
 extern uint32_t cubit_test_run_logged(uint32_t (*callback)(void *));
 extern void cubit_test_log(void *context, const char *text, uint32_t length);
 static void *log_context;
@@ -134,9 +134,9 @@ static VkResult open_logical_device(void *context, struct anv_device *device)
 #endif
 }
 
-uint32_t cubit_test_mesa_authorized_discovery(uint64_t slot)
+uint32_t cubit_test_mesa_authorized_discovery(cubit_endpoint endpoint)
 {
-   if (!cubit_mesa_launch_start(&probe, slot))
+   if (!cubit_mesa_launch_start(&probe, endpoint))
       return 1;
    enum cubit_gpu_memory_contract policy;
    if (!cubit_gpu_query_memory(cubit_gpu_native_query_call,
@@ -284,9 +284,9 @@ uint32_t cubit_test_mesa_authorized_discovery(uint64_t slot)
 static uint32_t run_probe(void *context)
 {
    log_context = context;
-   const uint64_t slot = cubit_test_render_slot();
+   const cubit_endpoint endpoint = cubit_test_render_endpoint();
    report("MESA-DISCOVERY admitted app entered\n");
-   uint32_t status = cubit_test_mesa_authorized_discovery(slot);
+   uint32_t status = cubit_test_mesa_authorized_discovery(endpoint);
    enum cubit_mesa_retirement retirement = cubit_mesa_launch_finish(&probe);
    report("MESA-DEVICE retirement state=%u (0 retired, 1 pending, 2 unsafe)\n",
           (unsigned)retirement);
@@ -303,7 +303,7 @@ static uint32_t run_probe(void *context)
       }
    }
    report("MESA-DISCOVERY result=%u close=0\n", status);
-   /* Retirement does not imply GPU backing reclamation or cap-slot reuse. */
+   /* Retirement does not imply GPU backing reclamation or handle reuse. */
    log_context = NULL;
    return status == 0 ? 0 : 1;
 }

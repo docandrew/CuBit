@@ -4,6 +4,9 @@ with Desktop_Density_Text;
 with Client_Frame_Damage;
 with Client_Frame_Buffer;
 with Interfaces; use Interfaces;
+with UI_Desktop_Service;
+with CuBit.Startup_State;
+with Startup;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Desktop_Protocol.Publication;
 with CuBit.Memory_Grants;
@@ -31,7 +34,7 @@ procedure Main is
    function Send (Wire : Wire_Message) return Wire_Message is
       Msg : Message := From_Wire (Wire);
    begin
-      Msg.tag := capCall (CAP_SLOT_DESKTOP, Msg, CuBit.Messages.Wait_Forever);
+      Msg.tag := capCall (UI_Desktop_Service.Endpoint, Msg, CuBit.Messages.Wait_Forever);
       return To_Wire (Msg);
    end Send;
    procedure Check_Publication_Protocol is
@@ -63,7 +66,7 @@ procedure Main is
          Address : constant Integer_Address := Integer_Address ((Raw + 4095) and not Unsigned_64'(4095));
       begin
          for I in Grants'Range loop
-            MG.Create_Via_Capability (CAP_SLOT_DESKTOP,
+            MG.Create_Via_Capability (UI_Desktop_Service.Endpoint,
               To_Address (Address + Integer_Address ((I - 1) * Pages * 4096)), Pages, False, Grants (I), OK);
             Check (OK, "publication pair grant created");
             if not OK then return; end if;
@@ -285,14 +288,14 @@ procedure Main is
          Address : constant Integer_Address :=
            Integer_Address ((Raw + 4095) and not Unsigned_64'(4095));
       begin
-         MG.Create_Via_Capability (CAP_SLOT_DESKTOP, To_Address (Address), 16, False, Grant, OK);
+         MG.Create_Via_Capability (UI_Desktop_Service.Endpoint, To_Address (Address), 16, False, Grant, OK);
          Check (OK, "publication grant created");
          if not OK then return; end if;
          Config := Pub.Decode_Configuration
            (Send (Pub.Encode_Query ((Fixture.Surface, 0), False)));
          Check (Config.Status = Success, "publication configuration");
          if Config.Status /= Success then return; end if;
-         MG.Create_Via_Capability (CAP_SLOT_DESKTOP, To_Address (Address), 1, False, Short, OK);
+         MG.Create_Via_Capability (UI_Desktop_Service.Endpoint, To_Address (Address), 1, False, Short, OK);
          Check (OK, "short publication grant created");
          if OK then
             Result := Send (Pub.Encode_Stage ((Fixture.Surface, Config.Value.Epoch, Short)));
@@ -575,7 +578,7 @@ procedure Main is
                     with Address => To_Address (Address), Volatile;
                begin
                   Pixels := [others => 16#FF80_8080#];
-                  MG.Create_Via_Capability (CAP_SLOT_DESKTOP, To_Address (Address), 1, False, Grant, Ok);
+                  MG.Create_Via_Capability (UI_Desktop_Service.Endpoint, To_Address (Address), 1, False, Grant, Ok);
                   Check (Ok, "session cleanup grant");
                   if Ok then
                      Result := Send (Encode_Attachment ((Fixture.Surface, Grant, (4, 2, 16))));
@@ -824,13 +827,13 @@ procedure Main is
                   -- sleep-based assumption that the waiter is installed.
                   Request := Encode_Input_Request
                     ((Wait_Input, Fixture.Surface, Event.Value.Serial, 0));
-                  Submitted := capSubmit (CAP_SLOT_DESKTOP, From_Wire (Request), Wait_Token);
+                  Submitted := capSubmit (UI_Desktop_Service.Endpoint, From_Wire (Request), Wait_Token);
                   Request := Encode_Input_Request ((Poll_Input, Fixture.Surface, 0));
                   Request.Length := 3;
                   Submitted := Submitted and then
-                    capSubmit (CAP_SLOT_DESKTOP, From_Wire (Request), Bad_Token);
+                    capSubmit (UI_Desktop_Service.Endpoint, From_Wire (Request), Bad_Token);
                   Submitted := Submitted and then capSubmit
-                    (CAP_SLOT_DESKTOP,
+                    (UI_Desktop_Service.Endpoint,
                      From_Wire (Encode_Destroy ((Surface => Fixture.Surface))), Destroy_Token);
                   Check (Submitted, "deferred destruction submitted");
                   if Submitted then
@@ -893,6 +896,10 @@ procedure Main is
       end if;
    end Check_Input_Boundaries;
 begin
+   if not CuBit.Startup_State.Ready (Startup.Verify) then
+      debugPrint ("TEST: FAIL desktop protocol startup capabilities" & ASCII.LF);
+      return;
+   end if;
    Wire := Encode_Create ((320, 200, Plain_Surface));
    Wire.Words (0) := Unsigned_64'Last;
    Response := Send (Wire);
@@ -1004,7 +1011,7 @@ begin
          begin
             Pixels := [others => 16#FF80_4020#];
             MG.Create_Via_Capability
-              (CAP_SLOT_DESKTOP, To_Address (Address), 1, False, First, Ok);
+              (UI_Desktop_Service.Endpoint, To_Address (Address), 1, False, First, Ok);
             Check (Ok, "create desktop grant");
             if Ok then
                -- More than the kernel's acquisition limit: each replacement
@@ -1034,7 +1041,7 @@ begin
                Response := Send (Encode_Present ((Surface, (0, 0, 0, 0))));
                Check (Response.Words (0) = 0, "present during pending revoke");
                MG.Create_Via_Capability
-                 (CAP_SLOT_DESKTOP, To_Address (Address), 1, False, Second, Ok);
+                 (UI_Desktop_Service.Endpoint, To_Address (Address), 1, False, Second, Ok);
                Check (Ok, "replacement grant creation");
                if Ok then
                   Response := Send (Encode_Attachment ((Surface, Second, (4, 2, 16))));
@@ -1042,7 +1049,7 @@ begin
                   Check (syscall (SYSCALL_GET_OWNED_SHARED_MEMORY_GRANT_GENERATION,
                                   First.slot) = 0, "replacement completes old revoke");
                   MG.Create_Via_Capability
-                    (CAP_SLOT_DESKTOP, To_Address (Address), 1, False, Reused, Ok);
+                    (UI_Desktop_Service.Endpoint, To_Address (Address), 1, False, Reused, Ok);
                   --  One global grant table: the slot may go to another
                   --  process first; a reused slot carries a new generation.
                   Check (Ok and then Reused /= First, "replacement is a new reference");
@@ -1113,7 +1120,7 @@ begin
             begin
                Pixels := [others => 16#FF40_8040#];
                MG.Create_Via_Capability
-                 (CAP_SLOT_DESKTOP, To_Address (Address), 1, False, Grant, Ok);
+                 (UI_Desktop_Service.Endpoint, To_Address (Address), 1, False, Grant, Ok);
                Check (Ok, "exit fixture grant");
                if Ok then
                   Response := Send (Encode_Attachment

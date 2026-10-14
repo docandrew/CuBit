@@ -3,20 +3,25 @@
 #include "../../userspace/mesa/anv/native_gpu_mapping.h"
 #include <assert.h>
 #include <stdio.h>
+#include "../../userspace/c/cubit_handles.h"
+/* A test endpoint handle (generation 1). */
+#define TEST_ENDPOINT(n) ((cubit_endpoint){(UINT64_C(1) << 32) | (uint64_t)(n)})
+/* The index a test endpoint was made from. */
+#define TEST_INDEX(e) ((unsigned)((e).opaque & 0xffffffffu))
 static unsigned creates;
 static unsigned drains, closes, polls;
 bool cubit_cpu_tracker_drain(struct cubit_cpu_mapping_tracker *tracker)
-{ assert(tracker->slot == 63); drains++; return true; }
-uint32_t cubit_intel_close_session(uint64_t slot, uint64_t *tag)
-{ assert(slot == 63 && drains == 1); closes++; *tag = 1; return 0; }
-uint32_t cubit_intel_poll_session_retirement(uint64_t slot)
-{ assert(slot == 63 && closes == 1); return ++polls == 1 ? 4 : 0; }
-uint32_t cubit_intel_prepare_context(uint64_t slot)
-{ assert(slot == 62); return 0; }
-uint32_t cubit_intel_register_context(uint64_t slot)
-{ assert(slot == 62); return 0; }
-uint32_t cubit_intel_create_buffer(uint64_t slot, uint64_t bytes, uint32_t *handle)
-{ assert(slot == 63 && bytes == 4096); creates++; *handle = 17; return 0; }
+{ assert(tracker->endpoint.opaque == TEST_ENDPOINT(63).opaque); drains++; return true; }
+uint32_t cubit_intel_close_session(cubit_endpoint endpoint, uint64_t *tag)
+{ assert(endpoint.opaque == TEST_ENDPOINT(63).opaque && drains == 1); closes++; *tag = 1; return 0; }
+uint32_t cubit_intel_poll_session_retirement(cubit_endpoint endpoint)
+{ assert(endpoint.opaque == TEST_ENDPOINT(63).opaque && closes == 1); return ++polls == 1 ? 4 : 0; }
+uint32_t cubit_intel_prepare_context(cubit_endpoint endpoint)
+{ assert(endpoint.opaque == TEST_ENDPOINT(62).opaque); return 0; }
+uint32_t cubit_intel_register_context(cubit_endpoint endpoint)
+{ assert(endpoint.opaque == TEST_ENDPOINT(62).opaque); return 0; }
+uint32_t cubit_intel_create_buffer(cubit_endpoint endpoint, uint64_t bytes, uint32_t *handle)
+{ assert(endpoint.opaque == TEST_ENDPOINT(63).opaque && bytes == 4096); creates++; *handle = 17; return 0; }
 VkResult _vk_device_set_lost(struct vk_device *d, const char *file,
                             int line, const char *message, ...)
 { (void)d; (void)file; (void)line; (void)message; return VK_ERROR_DEVICE_LOST; }
@@ -31,7 +36,7 @@ int main(void)
    physical.sys.region = &region;
    physical.memory.need_flush = true;
    device.physical = &physical;
-   assert(anv_cubit_memory_init(&device, 63) == VK_SUCCESS);
+   assert(anv_cubit_memory_init(&device, TEST_ENDPOINT(63)) == VK_SUCCESS);
    uint64_t actual = 99;
    enum anv_bo_alloc_flags flags = ANV_BO_ALLOC_HOST_CACHED | ANV_BO_ALLOC_NULL_INITIALIZED_HEAP;
    assert(!anv_cubit_gem_create(&device, regions, 1, 4096, flags, &actual));
@@ -77,17 +82,17 @@ int main(void)
    assert(creates == 1);
    static struct anv_device late;
    late.physical = &physical;
-   assert(anv_cubit_memory_init(&late, 62) == VK_SUCCESS);
+   assert(anv_cubit_memory_init(&late, TEST_ENDPOINT(62)) == VK_SUCCESS);
    assert(anv_cubit_prepare_submission(&late) == VK_SUCCESS);
    assert(anv_cubit_vm_bind(&late, &submit, 1) != VK_SUCCESS);
    assert(anv_cubit_memory_finish(&device) == VK_ERROR_DEVICE_LOST);
    assert(device.cubit_cpu_mappings == NULL && drains == 1 && closes == 1 && polls == 1);
-   assert(anv_cubit_memory_slot_retained(63));
+   assert(anv_cubit_memory_endpoint_retained(TEST_ENDPOINT(63)));
    assert(anv_cubit_memory_poll() == 0);
-   assert(!anv_cubit_memory_slot_retained(63) && drains == 1 && closes == 1 && polls == 2);
+   assert(!anv_cubit_memory_endpoint_retained(TEST_ENDPOINT(63)) && drains == 1 && closes == 1 && polls == 2);
    static struct anv_device reused;
    reused.physical = &physical;
-   assert(anv_cubit_memory_init(&reused, 63) == VK_SUCCESS);
+   assert(anv_cubit_memory_init(&reused, TEST_ENDPOINT(63)) == VK_SUCCESS);
    assert(anv_cubit_vm_bind(&reused, &submit, 1) == VK_SUCCESS);
    puts("ANV null heap PASS: exact lifecycle, reject sparse/sync/replay, gated BO flags (mock IPC)");
 }

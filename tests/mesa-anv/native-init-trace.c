@@ -6,6 +6,7 @@
 #include "intel/compiler/brw/brw_compiler.h"
 #include "util/build_id.h"
 #include <string.h>
+#include "../../userspace/c/cubit_handles.h"
 
 extern void cubit_test_mesa_init_stage(const char *, int, int);
 
@@ -33,11 +34,11 @@ VkResult __wrap_anv_device_alloc_bo(struct anv_device *device, const char *name,
    return result;
 }
 
-extern uint32_t __real_cubit_intel_create_buffer(uint64_t, uint64_t, uint32_t *);
-uint32_t __wrap_cubit_intel_create_buffer(uint64_t, uint64_t, uint32_t *);
-uint32_t __wrap_cubit_intel_create_buffer(uint64_t slot, uint64_t bytes, uint32_t *handle)
+extern uint32_t __real_cubit_intel_create_buffer(cubit_endpoint, uint64_t, uint32_t *);
+uint32_t __wrap_cubit_intel_create_buffer(cubit_endpoint, uint64_t, uint32_t *);
+uint32_t __wrap_cubit_intel_create_buffer(cubit_endpoint endpoint, uint64_t bytes, uint32_t *handle)
 {
-   uint32_t status = __real_cubit_intel_create_buffer(slot, bytes, handle);
+   uint32_t status = __real_cubit_intel_create_buffer(endpoint, bytes, handle);
    if (status) {
       cubit_test_mesa_init_stage("allocation:backing-bytes-low", 1, (uint32_t)bytes);
       cubit_test_mesa_init_stage("allocation:backing-bytes-high", 1, bytes >> 32);

@@ -1,8 +1,13 @@
-# DRAFT, not yet attached to mixer.svc: devmgr still mints these grants itself
-# (MIXER_REALTIME_BUDGET_US / MIXER_REALTIME_PERIOD_US).
-(executable-manifest v1
-  (identity "com.cubit.mixer")
-  (version "0.1.0")
-  (request-scheduling scheduling realtime (budget-us 1500) (period-us 5000))
-  (request-notification mixer manage registration)
-  (request-service device-manager read-write ready))
+# mixer.svc's authority (CAP-002): real-time CPU for one audio period
+# (1.5 ms of every 5 ms, docs/scheduler.md "Soft real time"), its role
+# registration, the HDA driver's endpoint ("hda", absent without audio
+# hardware) and its endpoint to devmgr.
+(Executable_Manifest
+  identity => "com.cubit.mixer"
+  version => "0.1.0"
+  requests => [
+    (scheduling "scheduling" 1500 5000)
+    (notification "mixer" Notify_Access.Manage "registration")
+    (service "launcher-peer" "hda")
+    (service "device-manager" "ready")]
+  optional => ["hda"])

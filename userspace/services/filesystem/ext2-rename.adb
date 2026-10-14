@@ -348,7 +348,7 @@ package body Ext2.Rename is
       uncertainDirectory (fs, oldParentNum);
       uncertainDirectory (fs, newParentNum);
       if sourceDirectory then
-         Dentry_Cache.Forget_Directory (Names, fs.device.endpointSlot, sourceNum);
+         Dentry_Cache.Forget_Directory (Names, fs.device.volumeKey, sourceNum);
       end if;
 
       --  1. One more link: from here the file always has a name.
@@ -489,7 +489,7 @@ package body Ext2.Rename is
             for index in retired'Range loop
                retired (index) := Block_Number (target.directBlocks (index - 1));
             end loop;
-            Dentry_Cache.Forget_Directory (Names, fs.device.endpointSlot, targetNum);
+            Dentry_Cache.Forget_Directory (Names, fs.device.volumeKey, targetNum);
             target.numHardLinks := 0;
             target.sizeLo := 0;
             target.directBlocks := [others => 0];

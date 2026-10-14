@@ -1,16 +1,26 @@
-# Driver CSPACE layout that devmgr hand-mints today (docs/ccl-driver-manifests.md):
-# 4..8 device resources and driver registration, 9 real-time scheduling,
-# 15 the devmgr ready endpoint. Slot 62 is reserved for a driver's saved
-# reply capability (intel-gpu buffer-object replies) and is never allocated
-# or granted from a manifest. Binding data only; no policy approval is implied.
+# The services and registration roles devmgr's children may name in their
+# manifests (docs/ccl-driver-manifests.md). Numbers are service roles; a
+# program gets its capabilities by binding name in its startup table
+# (CAP-002). Binding data only; no policy approval is implied.
 (service-catalog v1
-  (application-slots 4 14)
+  (service network-stack 3 read-write)
+  (service filesystem 6 read-write)
   (service device-manager 7 read-write)
+  (service mixer 9 read-write)
+  (service config 11 read-write)
+  (service gpu 17 read-write)
+  # An endpoint the launcher wires by binding name (devmgr answers it from
+  # what it prepared for that name): a NIC for netstack, hda for mixer, the
+  # ramdisk for filesystem.
+  (service launcher-peer 30 read-write)
   (notification keyboard 1 publish-and-manage)
   (notification ata 2 publish-and-manage)
   (notification nvme 5 publish-and-manage)
   (notification hda 8 publish-and-manage)
   (notification mixer 9 publish-and-manage)
   (notification mouse 10 publish-and-manage)
-  (fixed-binding scheduling 9)
-  (fixed-binding ready 15))
+  (notification netstack 3 publish-and-manage)
+  (notification filesystem 6 publish-and-manage)
+  (notification config 11 publish-and-manage)
+  (notification netmgr 12 publish-and-manage)
+  (notification gpu 17 publish-and-manage))

@@ -17,7 +17,8 @@
 ------------------------------------------------------------------------------
 pragma Ada_2022;
 with Interfaces; use Interfaces;
-with CCL_Manifest_Bindings;
+with CuBit.Startup_State;
+with Startup;
 with CuBit.Child_Exits;
 with CuBit.Control_Events;
 with CuBit.Kernel_ABI;
@@ -66,10 +67,9 @@ procedure Main is
       Junk : Message := NULL_MESSAGE;
       Flood_Limit : constant := 64;
    begin
-      Junk.tag := (label => Flood_Label, length => 0, flags => 0, reserved => 0);
+      Junk.tag := (label => Flood_Label, length => 0, protocol => 0, ipc => <>, reserved => 0);
       for N in 1 .. Flood_Limit loop
-         exit when not capSubmit (CuBit.Messages.CapabilitySlot (CCL_Manifest_Bindings.Slot_ipc_test),
-                                  Junk, NO_COMPLETION_TOKEN);
+         exit when not capSubmit (Startup.Ipc_Test, Junk, NO_COMPLETION_TOKEN);
          Flooded := Flooded + 1;
       end loop;
    end Top_Up_Flood;
@@ -148,6 +148,8 @@ procedure Main is
    Item : CV.Event;
    Returned : Boolean := False;
 begin
+   Say ("the startup capabilities are present", CuBit.Startup_State.Ready (Startup.Verify));
+   CuBit.Launching.Bind (Startup.Process_Manager);
    Say ("the child starts with a lent ring", Start);
    Say ("the child writes into it", Ready);
 

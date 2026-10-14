@@ -1,5 +1,6 @@
 pragma Ada_2022;
 with CuBit.Audio;
+with CuBit.Libc_Startup;
 with CuBit.Messages;
 
 package body CuBit.Doom_Sound is
@@ -44,6 +45,8 @@ package body CuBit.Doom_Sound is
    begin
       Pending_First := Mix_Frames;
       Channels := [others => Silent];
+      --  The mixer: the startup "mixer" binding (manifest.ccl).
+      CuBit.Audio.Bind (CuBit.Libc_Startup.Endpoint_Named ("mixer"));
       Stream := CuBit.Audio.open (Output_Rate, Stereo);
       if not CuBit.Audio.isValid (Stream) then
          CuBit.Messages.debugPrint ("doom_snd: mixer open failed" & ASCII.LF);

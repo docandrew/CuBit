@@ -8,8 +8,14 @@ with CuBit.Memory_Grants;
 with CuBit.Grant_References;
 with CuBit.Kernel_Calls;
 with CuBit.Kernel_ABI;
+with CuBit.Process_IDs;
+with CuBit.Startup_Tables;
+with CuBit.Handles.Boot_Roots;
+with CuBit.Handles.Control;
+with CuBit.Handles.IPC;
 with Cpio;
 procedure DMA_Retirement_Native is
+   package HC renames CuBit.Handles.Control;
    --  The boot image's size: the kernel's launch configuration for the
    --  process it starts in devmgr's place.
    function Boot_Image_Bytes return Unsigned_64 is
@@ -19,11 +25,10 @@ procedure DMA_Retirement_Native is
       CuBit.Launch_Configurations.Get (Configuration, Configured);
       return (if Configured then Configuration.Boot_Image else 0);
    end Boot_Image_Bytes;
-   PID : constant Unsigned_64 := syscall (SYSCALL_GETPID);
-   Child : constant Unsigned_64 := 42;
+   --  The supervisor runs in devmgr's place (boot roots); the children it
+   --  spawns from the same ELF have none.
+   Roots : constant CuBit.Handles.Boot_Roots.Roots := CuBit.Handles.Boot_Roots.Get;
    Failed : constant Unsigned_64 := Unsigned_64'Last;
-   Resource_Capability : constant Unsigned_64 := 9;
-   Resource_Slot : constant Unsigned_64 := 20;
    Base : constant Unsigned_64 := 16#7600_0000#;
    Block_Bytes : constant Unsigned_64 := 2 * 1024 * 1024;
    Physical : array (1 .. 40) of Unsigned_64;
@@ -36,9 +41,36 @@ procedure DMA_Retirement_Native is
    Msg : aliased Message;
    From : Process_ID;
    Exit_Seen : Boolean := False;
-   function Spawn return Unsigned_64 is
-     (syscall (SYSCALL_SPAWN, Unsigned_64 (To_Integer (ELF)), ELF_Size,
-               5, 0, Child, PID));
+   Child : HC.Spawned_Child;
+   --  A fresh suspended child from this ELF, or False if SPAWN refuses
+   --  (for instance while a dead owner's cleanup is still pending).
+   function Spawn return Boolean is
+      Answer : constant HC.Spawn_Result :=
+        HC.Spawn (Roots.Process_Root, ELF, ELF_Size, 5, "dma-owner",
+                  CuBit.Process_IDs.No_Process,
+                  (Kind => CuBit.Startup_Tables.Standard_Limit));
+   begin
+      if Answer.Spawned then
+         Child := Answer.Value;
+      end if;
+      return Answer.Spawned;
+   end Spawn;
+   --  Kill the current child and give up this process's handles to it, so
+   --  the lifecycle loops below do not accumulate them.
+   function Kill return Boolean is
+      Killed : constant Boolean := HC.Kill (Child.Child, Child.Control);
+      Closed : CuBit.Handles.IPC.Close_Result;
+      pragma Unreferenced (Closed);
+   begin
+      Closed := CuBit.Handles.IPC.Close (Child.Mailbox);
+      Closed := CuBit.Handles.IPC.Close (Child.Space);
+      Closed := CuBit.Handles.IPC.Close (Child.Control);
+      return Killed;
+   end Kill;
+   function Allocate_DMA (Order, Virtual, Mode, Ceiling : Unsigned_64) return Unsigned_64 is
+     (HC.Allocate_DMA (Child.Child, Roots.Process_Root, Order, Virtual, Mode, Ceiling));
+   function Resume (Max_Frames : Unsigned_64) return Boolean is
+     (HC.Resume (Child.Child, Child.Control, Max_Frames, 0));
    procedure Drain_Events is
    begin
       -- This disposable supervisor is the sole reader of its event lane.
@@ -60,7 +92,7 @@ procedure DMA_Retirement_Native is
       end if;
    end Check;
 begin
-   if PID = Child then
+   if not Roots.Valid then
       receive (From, Msg);
       declare
          Word : Unsigned_64 with Import, Volatile,
@@ -72,7 +104,7 @@ begin
          Check (OK, "child grant");
       end;
       Msg.words (0) := CuBit.Grant_References.Encode (Loan);
-      Msg.tag := (16#F000#, 1, 0, 0);
+      Msg.tag := (label => 16#F000#, length => 1, protocol => 0, ipc => <>, reserved => 0);
       Ignored := reply (From, Msg);
       loop Ignored := syscall (SYSCALL_SLEEP, 100); end loop;
    end if;
@@ -81,64 +113,53 @@ begin
      Boot_Image_Bytes, OK);
    Check (OK, "initrd");
    Cpio.fileView (Archive, Cpio.findFile (Archive, "devmgr.svc"), ELF, ELF_Size, OK);
-   Check (OK and then Spawn = Child, "spawn");
+   Check (OK and then Roots.Valid and then Spawn, "spawn");
    for I in Physical'Range loop
-      Physical (I) := syscall (SYSCALL_ALLOC_DMA, Child, 9,
-        Base + Unsigned_64 (I - 1) * Block_Bytes, 3, 2 ** 32);
+      Physical (I) := Allocate_DMA (9, Base + Unsigned_64 (I - 1) * Block_Bytes, 3, 2 ** 32);
       Check (Physical (I) /= Failed, "allocation" & I'Image);
    end loop;
-   Check (syscall (SYSCALL_POLICY_MINT_CAPABILITY, PID, 1, Child,
-     0, 3, 15) /= Failed, "child endpoint");
    -- ELF loading has already charged more than one ordinary page. Refusal
    -- must leave the same child suspended and its allocations intact. Repeat
    -- to catch accidental launch-state transitions or quota rollback damage.
-   Check (syscall (SYSCALL_POLICY_MINT_CAPABILITY, Child,
-     Resource_Capability, 1, 0, 0, Resource_Slot) = 0, "small quota");
    for Attempt in 1 .. 3 loop
-      Check (syscall (SYSCALL_RESUME, Child) = Failed,
-        "overcharged resume must refuse");
+      Check (not Resume (1), "overcharged resume must refuse");
    end loop;
    -- 32 MiB exceeds the ELF's ordinary footprint but not its 80 MiB DMA
    -- backing. This refusal specifically requires DMA quota integration.
-   Check (syscall (SYSCALL_POLICY_MINT_CAPABILITY, Child,
-     Resource_Capability, 8192, 0, 0, Resource_Slot) = 0, "DMA-small quota");
-   Check (syscall (SYSCALL_RESUME, Child) = Failed, "DMA charge adoption refusal");
-   Check (syscall (SYSCALL_POLICY_MINT_CAPABILITY, Child,
-     Resource_Capability, 22000, 0, 0, Resource_Slot) = 0, "finite quota");
-   Check (syscall (SYSCALL_RESUME, Child) = 0, "resume child");
+   Check (not Resume (8192), "DMA charge adoption refusal");
+   Check (Resume (22000), "resume child");
    -- Failed overlap maps must refund bound charges exactly once. Four leaked
    -- 512-page reservations would exhaust the finite headroom below.
    for Attempt in 1 .. 4 loop
-      Check (syscall (SYSCALL_ALLOC_DMA, Child, 9, Base, 0, 2 ** 32) = Failed,
+      Check (Allocate_DMA (9, Base, 0, 2 ** 32) = Failed,
         "overlap DMA refusal");
    end loop;
-   Check (syscall (SYSCALL_ALLOC_DMA, Child, 11,
-     Base + 64 * Block_Bytes, 0, 2 ** 32) = Failed, "running DMA quota refusal");
-   Check (syscall (SYSCALL_ALLOC_DMA, Child, 9,
-     Base + 64 * Block_Bytes, 0, 2 ** 32) /= Failed, "rollback preserves quota headroom");
+   Check (Allocate_DMA (11, Base + 64 * Block_Bytes, 0, 2 ** 32) = Failed,
+     "running DMA quota refusal");
+   Check (Allocate_DMA (9, Base + 64 * Block_Bytes, 0, 2 ** 32) /= Failed,
+     "rollback preserves quota headroom");
    Msg := NULL_MESSAGE;
-   Msg.tag := (1, 0, 0, 0);
-   Msg.tag := capCall (15, Msg, Wait_Forever);
+   Msg.tag := (label => 1, length => 0, protocol => 0, ipc => <>, reserved => 0);
+   Msg.tag := capCall (Child.Mailbox, Msg, Wait_Forever);
    Check (Msg.tag.label = 16#F000#, "child response");
    debugPrint ("native DMA quota: adoption runtime denial overlap rollback and child response PASS" & ASCII.LF);
    Loan := CuBit.Grant_References.Decode (Msg.words (0));
    CuBit.Memory_Grants.Acquire_Via_Capability
-     (15, Loan, 0, 4096, CuBit.Memory_Grants.Read_Access, Mapped, OK);
+     (Child.Mailbox, Loan, 0, 4096, CuBit.Memory_Grants.Read_Access, Mapped, OK);
    Check (OK, "borrow DMA");
-   Check (killProcess (Process_ID (Child)) = 0, "kill");
+   Check (Kill, "kill");
    for Attempt in 1 .. 2000 loop
       if CuBit.Kernel_Calls.Call
         (CuBit.Kernel_ABI.Receive_Event_Nonblocking,
          Unsigned_64 (To_Integer (Msg'Address))) = CuBit.Kernel_ABI.Event_Received
       then
          Exit_Seen := Msg.tag.label = 16#0103# and then Msg.tag.length = 4
-           and then Msg.words (0) = Child;
+           and then Msg.words (0) = CuBit.Process_IDs.To_Word (Child.Child);
          exit when Exit_Seen;
       end if;
       Ignored := syscall (SYSCALL_SLEEP, 1);
    end loop;
    Check (Exit_Seen, "owner retirement report");
-   Check (Spawn = Failed, "acquired DMA grant retains PID after report drain");
    declare
       Word : Unsigned_64 with Import, Volatile, Address => Mapped;
    begin
@@ -149,52 +170,52 @@ begin
    debugPrint ("native DMA retirement: live grant pins dead owner and readable backing PASS" & ASCII.LF);
    Result := Failed;
    -- Reports also retain a PID; drain them rather than bypassing that gate.
+   OK := False;
    for Attempt in 1 .. 2000 loop
       Drain_Events;
-      Result := Spawn;
-      exit when Result = Child;
+      OK := Spawn;
+      exit when OK;
       Ignored := syscall (SYSCALL_SLEEP, 1);
    end loop;
-   Check (Result = Child, "bounded cleanup finishes and exact PID reusable");
+   Check (OK, "bounded cleanup finishes and a replacement spawns");
    for I in 1 .. 8 loop
-      Result := syscall (SYSCALL_ALLOC_DMA, Child, 9,
-        Base + Unsigned_64 (I - 1) * Block_Bytes, 0, 2 ** 32);
+      Result := Allocate_DMA (9, Base + Unsigned_64 (I - 1) * Block_Bytes, 0, 2 ** 32);
       Check (Result /= Failed, "replacement ordinary allocation");
       for Old of Physical loop
          Check (Result /= Old, "retained orphan backing reused");
       end loop;
    end loop;
-   Check (killProcess (Process_ID (Child)) = 0, "replacement kill");
-   Result := Failed;
+   Check (Kill, "replacement kill");
+   OK := False;
    for Attempt in 1 .. 2000 loop
       Drain_Events;
-      Result := Spawn;
-      exit when Result = Child;
+      OK := Spawn;
+      exit when OK;
       Ignored := syscall (SYSCALL_SLEEP, 1);
    end loop;
-   Check (Result = Child, "ordinary cleanup completes");
+   Check (OK, "ordinary cleanup completes");
    -- Each fresh incarnation needs its own arena and record page. Leaking
    -- even one of these per exit would exhaust the 512MiB fixture's shared
    -- metadata budget before completing this loop. The original retained
    -- owner's orphan backing must remain untouched throughout.
    for Round in 1 .. 160 loop
-      Result := syscall (SYSCALL_ALLOC_DMA, Child, 0, Base, 0, 2 ** 32);
+      Result := Allocate_DMA (0, Base, 0, 2 ** 32);
       Check (Result /= Failed, "metadata churn allocation" & Round'Image);
       for Old of Physical loop
          Check (Result < Old or else Result >= Old + Block_Bytes,
            "churn reused retained orphan page");
       end loop;
-      Check (killProcess (Process_ID (Child)) = 0, "metadata churn kill");
-      Result := Failed;
+      Check (Kill, "metadata churn kill");
+      OK := False;
       for Attempt in 1 .. 2000 loop
          Drain_Events;
-         Result := Spawn;
-         exit when Result = Child;
+         OK := Spawn;
+         exit when OK;
          Ignored := syscall (SYSCALL_SLEEP, 1);
       end loop;
-      Check (Result = Child, "metadata churn PID reuse" & Round'Image);
+      Check (OK, "metadata churn respawn" & Round'Image);
    end loop;
    debugPrint ("native DMA metadata: 160 owner lifecycles reclaim slabs and preserve orphan backing PASS" & ASCII.LF);
-   debugPrint ("TEST: PASS native DMA retirement 40 retained records orphan backing survives PID reuse ordinary cleanup (NO GPU)" & ASCII.LF);
+   debugPrint ("TEST: PASS native DMA retirement 40 retained records orphan backing survives owner replacement ordinary cleanup (NO GPU)" & ASCII.LF);
    loop Ignored := syscall (SYSCALL_SLEEP, 100); end loop;
 end DMA_Retirement_Native;

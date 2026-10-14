@@ -1,7 +1,12 @@
 with Interfaces; use Interfaces;
 with System; use type System.Address;
 with CuBit.Messages; use CuBit.Messages;
-with CuBit.Capability_Grants;
+with CuBit.Process_IDs;
+with CuBit.Handles;
+with CuBit.Handles.Boot_Roots;
+with CuBit.Handles.Control;
+with Startup;
+with Self_Requests;
 with CuBit.Memory_Grants;
 with CuBit.Grant_References;
 with Intel_GPU_Extent_Allocator;
@@ -24,11 +29,18 @@ procedure Image_Provider_Check is
    function Owner return Boolean is (True);
    function Session_Of (Sender, Stamp : Unsigned_64) return Unsigned_64 is
      (if Sender = PID and Stamp = 16#4947# then Identity else 0);
+   -- Runs in devmgr's place. Grants answer one self request (Client), so
+   -- they come back to this process, which acquires them through
+   -- Startup.Device_Manager (its badged self endpoint).
+   Roots : constant CuBit.Handles.Boot_Roots.Roots := CuBit.Handles.Boot_Roots.Get;
+   Self_Label : constant Unsigned_32 := 16#7A01#;
+   Client : CuBit.Handles.Reply := CuBit.Handles.No_Reply;
    procedure Recipient (Sender, Stamp : Unsigned_64;
-      Slot : out CapabilitySlot; Target : out Unsigned_64) is
-   begin Slot := 15; Target := Session_Of (Sender, Stamp); end Recipient;
+      Grantee : out CuBit.Handles.Reply; Target : out Unsigned_64) is
+   begin Grantee := Client; Target := Session_Of (Sender, Stamp); end Recipient;
    function Allocate (CPU : Unsigned_64) return Unsigned_64 is
-     (syscall (SYSCALL_ALLOC_DMA, PID, 9, CPU, 3, 2 ** 32));
+     (CuBit.Handles.Control.Allocate_DMA
+        (CuBit.Process_IDs.From_Word (PID), Roots.Process_Root, 9, CPU, 3, 2 ** 32));
    package A is new Intel_GPU_Extent_Allocator (Owner, Allocate);
    package B is new Intel_GPU_Buffer_Requests (Session_Of, Owner);
    package S is new B.Sharing (Recipient);
@@ -69,10 +81,11 @@ procedure Image_Provider_Check is
    end Check;
 begin
    debugPrint ("native image provider: real CPU grants, synthetic GPU/output (NO GPU/ISOLATION)" & ASCII.LF);
-   Check (syscall (SYSCALL_POLICY_MINT_CAPABILITY, PID, 1, PID,
-     16#4947#, 3, 15) /= Unsigned_64'Last, "self endpoint");
-   Identity := CuBit.Capability_Grants.Incarnation (CuBit.Capability_Grants.Capture (15));
-   Check (Identity /= 0, "identity");
+   Check (Roots.Valid and CuBit.Handles.Valid (Startup.Device_Manager), "self endpoint");
+   Client := Self_Requests.Open (Self_Label, 10_000);
+   Check (CuBit.Handles.Valid (Client), "self request reply");
+   -- The admitted session identity: this process (no render admission here).
+   Identity := PID;
    A.Acquire_Buffer (Pool, PID, 1, 1, 1, Buffer, OK); Check (OK, "backing");
    B.Handle (Object, PID, 16#4947#, B.Label, 4, 0, 0,
      [1, B.Create, 4096, 0], Reply, Ticket);
@@ -83,7 +96,7 @@ begin
    S.Map (Object, Table, PID, 16#4947#, Key.Allocation, 0, 4096, True, Writer, Wire);
    Check (Writer /= 0 and Wire /= 0, "writer export");
    Ref := CuBit.Grant_References.Decode (Wire);
-   G.Acquire_Via_Capability (15, Ref, 0, 4096, G.Write_Access, Address, OK);
+   G.Acquire_Via_Capability (Startup.Device_Manager, Ref, 0, 4096, G.Write_Access, Address, OK);
    Check (OK and Address /= System.Null_Address, "writer acquire");
    P.Prepare (Object, PID, 16#4947#, Key, Image, Lease, OK);
    Check (not OK and L.Current (Lease) = L.Empty, "live writer blocks lease");
@@ -103,7 +116,7 @@ begin
    S.Map (Object, Table, PID, 16#4947#, Key.Allocation, 0, 4096, False, Reader, Wire);
    Check (Reader /= 0 and Wire /= 0, "consumer read export");
    Ref := CuBit.Grant_References.Decode (Wire);
-   G.Acquire_Via_Capability (15, Ref, 0, 4096, G.Read_Access, Address, OK);
+   G.Acquire_Via_Capability (Startup.Device_Manager, Ref, 0, 4096, G.Read_Access, Address, OK);
    Check (OK, "consumer acquisition");
    C.Stop (Consumers, Key, OK); Check (OK, "close consumer dispatch");
    -- This serialized fixture admits no more readers after Stop. Production
@@ -130,6 +143,7 @@ begin
    Check (OK, "final writer retire");
    S.Poll (Object, Table);
    Check (not S.Writable_Buffer_Held (Table, Identity, Key.Allocation), "final drain");
+   Check (Self_Requests.Close (Client, Self_Label, 10_000), "self request answered");
    debugPrint ("TEST: PASS native image provider writer drain lease exclusion and retirement (NO GPU/ISOLATION)" & ASCII.LF);
    loop Ignore := syscall (SYSCALL_SLEEP, 1000); end loop;
 end Image_Provider_Check;

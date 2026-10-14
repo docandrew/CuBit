@@ -9,10 +9,12 @@ static unsigned mode, creates, attaches, presents, destroys, releases, waits;
 static bool unhealthy;
 static jmp_buf retained;
 static void report(const char *format, ...) { (void)format; }
-uint64_t cubit_test_render_slot(void);
+cubit_endpoint cubit_test_render_endpoint(void);
 #include "native-triangle-present.h"
-uint64_t cubit_test_render_slot(void) { return 7; }
-uint64_t cubit_test_desktop_slot(void) { return 12; }
+#include "../../userspace/c/cubit_handles.h"
+#define TEST_ENDPOINT(n) ((cubit_endpoint){(UINT64_C(1) << 32) | (uint64_t)(n)})
+cubit_endpoint cubit_test_render_endpoint(void) { return TEST_ENDPOINT(7); }
+cubit_endpoint cubit_test_desktop_endpoint(void) { return TEST_ENDPOINT(12); }
 VkResult anv_cubit_check_status(struct vk_device *device)
 { (void)device; return unhealthy ? VK_ERROR_DEVICE_LOST : VK_SUCCESS; }
 uint64_t cubit_test_triangle_create(uint32_t width,uint32_t height) { assert(width==CUBIT_TEST_FRAME_SIZE && height==CUBIT_TEST_FRAME_SIZE); creates++; return mode==1 ? 0 : 15; }
@@ -21,10 +23,10 @@ uint32_t cubit_test_triangle_present(uint64_t surface,uint32_t width,uint32_t he
 uint32_t cubit_test_triangle_destroy(uint64_t surface)
 { assert(surface==15 && attaches==1); destroys++; return mode==3 ? 1 : 0; }
 uint32_t cubit_presenter_attach_completed_linear(struct cubit_presenter *p,
-   uint64_t render, uint64_t desktop, uint32_t bo, uint64_t surface,
+   cubit_endpoint render, cubit_endpoint desktop, uint32_t bo, uint64_t surface,
    uint64_t offset, uint32_t width, uint32_t height, uint32_t pitch)
 {
-   assert(render==7 && desktop==12 && bo==3 && surface==15 && offset==0);
+   assert(render.opaque==TEST_ENDPOINT(7).opaque && desktop.opaque==TEST_ENDPOINT(12).opaque && bo==3 && surface==15 && offset==0);
    assert(width==CUBIT_TEST_FRAME_SIZE && height==CUBIT_TEST_FRAME_SIZE && pitch==(CUBIT_TEST_FRAME_SIZE*4) && p->state==CUBIT_PRESENTER_EMPTY);
    attaches++;
    p->state=mode==4 ? CUBIT_PRESENTER_RETIRING : CUBIT_PRESENTER_ATTACHED;
@@ -46,7 +48,7 @@ int usleep(useconds_t delay)
 }
 int main(void)
 {
-   struct cubit_cpu_mapping_tracker tracker={.slot=7};
+   struct cubit_cpu_mapping_tracker tracker={.endpoint=TEST_ENDPOINT(7)};
    struct anv_device device={0};
    struct anv_bo bo={.gem_handle=3,.size=(CUBIT_TEST_FRAME_SIZE*CUBIT_TEST_FRAME_SIZE*4),.actual_size=(CUBIT_TEST_FRAME_SIZE*CUBIT_TEST_FRAME_SIZE*4)};
    struct anv_device_memory memory={0};
@@ -81,7 +83,7 @@ int main(void)
       bo.map=invalid==5 ? (void *)1 : NULL;
       bo.alloc_flags=invalid==6 ? ANV_BO_ALLOC_EXTERNAL : 0;
       device.cubit_cpu_mappings=invalid==7 ? NULL : &tracker;
-      tracker.slot=invalid==8 ? 8 : 7;
+      tracker.endpoint=invalid==8 ? TEST_ENDPOINT(8) : TEST_ENDPOINT(7);
       memory.bo=invalid==9 ? NULL : &bo;
       memory.vk.size=invalid==10 ? (CUBIT_TEST_FRAME_SIZE*CUBIT_TEST_FRAME_SIZE*4-1) : (CUBIT_TEST_FRAME_SIZE*CUBIT_TEST_FRAME_SIZE*4);
       bo.gem_handle=invalid==11 ? 0 : 3;

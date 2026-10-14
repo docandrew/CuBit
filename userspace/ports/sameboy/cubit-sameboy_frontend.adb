@@ -7,12 +7,18 @@ with CuBit.Audio;
 with CuBit.Desktop_Messages;
 with CuBit.Desktop_Protocol;
 with CuBit.Memory_Grants;
+with CuBit.Handles;
+with CuBit.Libc_Startup;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.SameBoy_Batches;
 with CuBit.SameBoy_Frames; use CuBit.SameBoy_Frames;
 with CuBit.SameBoy_Keys;
 
 package body CuBit.SameBoy_Frontend is
+
+   --  Desktop's endpoint: the startup "desktop" binding (manifest.ccl).
+   function Desktop return CuBit.Handles.Endpoint is
+     (CuBit.Libc_Startup.Endpoint_Named ("desktop"));
 
    package C renames Interfaces.C;
    package D renames CuBit.Desktop_Protocol;
@@ -264,7 +270,7 @@ package body CuBit.SameBoy_Frontend is
       Msg : Message := CuBit.Desktop_Messages.From_Wire (Request);
       Returned : MessageTag;
    begin
-      Returned := capCall (CAP_SLOT_DESKTOP, Msg, Wait_Forever);
+      Returned := capCall (Desktop, Msg, Wait_Forever);
       if Returned /= Msg.tag then
          return (others => <>);
       end if;
@@ -304,6 +310,8 @@ package body CuBit.SameBoy_Frontend is
       Audio_Started := False;
       Audio_Enabled := False;
       if not Paused then
+         --  The mixer: the startup "mixer" binding (manifest.ccl).
+         CuBit.Audio.Bind (CuBit.Libc_Startup.Endpoint_Named ("mixer"));
          Stream := CuBit.Audio.open (Audio_Rate, Stereo);
          Audio_Enabled := CuBit.Audio.isValid (Stream);
       end if;
@@ -419,7 +427,7 @@ package body CuBit.SameBoy_Frontend is
          return False;
       end if;
       CuBit.Memory_Grants.Create_Via_Capability
-        (CAP_SLOT_DESKTOP, View'Address, View_Pages, False, Grant, Lent);
+        (Desktop, View'Address, View_Pages, False, Grant, Lent);
       if not Lent or else D.Decode_Status (Send (D.Encode_Attachment
            ((Surface => Created.Surface, Grant => Grant,
              Layout  => (View_Width, View_Height,

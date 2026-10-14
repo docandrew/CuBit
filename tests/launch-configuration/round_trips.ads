@@ -8,12 +8,14 @@ package Round_Trips with SPARK_Mode is
    procedure Device_Manager (Value : Device_Manager_Configuration;
                              Decoded : out Device_Manager_Configuration;
                              Valid : out Boolean)
-   with Post => Valid and then Decoded = Value;
+   with Pre  => Handles_Well_Formed (Value.Handles),
+        Post => Valid and then Decoded = Value;
 
    procedure Process_Manager (Value : Process_Manager_Configuration;
                               Decoded : out Process_Manager_Configuration;
                               Valid : out Boolean)
-   with Post => Valid and then Decoded = Value;
+   with Pre  => Process_Handles_Well_Formed (Value.Handles),
+        Post => Valid and then Decoded = Value;
 
    procedure Boot_Image (Value : Boot_Image_Configuration;
                          Decoded : out Boot_Image_Configuration;

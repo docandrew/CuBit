@@ -20,6 +20,10 @@ with System; use System;
 with System.Storage_Elements; use System.Storage_Elements;
 
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Handles;
+with CuBit.Handles.IPC;
+with CuBit.Startup_State;
+with Startup;
 with CuBit.Process_IDs;
 with CuBit.Busy_Poll;
 with Net;
@@ -100,7 +104,24 @@ package body Netstack_Service is
    listeners : TCP_Listeners.Table;
 
    --  Well-known capability slots (granted by kernel modules.adb)
-   CAP_SLOT_NET_DRV : constant CapabilitySlot := 10;
+   --  The NIC driver's endpoint (its manifest's optional "nic" binding),
+   --  or the null handle without a NIC: submissions through it fail.
+   function NIC return CuBit.Handles.Endpoint is
+     (if Startup.Nic.Present then Startup.Nic.Value else CuBit.Handles.No_Endpoint);
+
+   --  Where an answer goes (CAP-002): the request being handled now
+   --  (answered by reply to its sender), or one saved with Save_Reply.
+   type Reply_Target is record
+      Saved  : Boolean := False;
+      Handle : CuBit.Handles.Reply := CuBit.Handles.No_Reply;
+   end record;
+   Current_Request : constant Reply_Target := (others => <>);
+   --  The sender of the request being handled (set by the message loop).
+   Current_Sender : Process_ID := No_Process;
+
+   function Send_Answer (Target : Reply_Target; Msg : Message) return Unsigned_64 is
+     (if Target.Saved then replyCap (Target.Handle, Msg)
+      else reply (Current_Sender, Msg));
 
    --  The packet grant shared with the driver: a header page, then the
    --  receive and transmit frame rings (CuBit.Frame_Rings). The driver
@@ -545,7 +566,7 @@ package body Netstack_Service is
       maxLen     : Natural := 0;
       txid       : Unsigned_16 := 0;
       dstPort    : Unsigned_16 := 0;
-      replySlot  : CapabilitySlot := CapabilitySlot'First;
+      replySlot  : Reply_Target := Current_Request;
       --  PENDING_RESOLVE / PENDING_OPEN: the query's random source port and
       --  a keyed hash of the question name it asked.
       queryPort  : Unsigned_16 := 0;
@@ -634,7 +655,7 @@ package body Netstack_Service is
             return Request.tag.length in 1 .. 32 and then Network_Grants.May_Resolve
               (networkGrants, Owner, Request.authorityTag);
          when OP_NET_OPEN =>
-            return Request.tag.flags = 0 and then
+            return Request.tag.protocol = 0 and then
               Request.tag.length in 1 .. Layout.Target_Maximum and then
               Network_Grants.Owned (networkGrants, Owner, Request.authorityTag);
          when Layout.OP_NET_ARENA =>
@@ -950,7 +971,7 @@ package body Netstack_Service is
       doorbell : constant Message :=
         (tag      => (label  => OP_NET_TX,
                       length => 0,
-                      flags  => 1,      -- no reply
+                      protocol  => 1, ipc => <>,      -- no reply
                       reserved  => 0),
          authorityTag => 0,
          words    => [others => 0]);
@@ -969,7 +990,7 @@ package body Netstack_Service is
          begin
             if seen /= 0 and then seen /= txRungEpoch then
                txRungEpoch := seen;
-               ignore := capSubmit (CAP_SLOT_NET_DRV, doorbell, Unsigned_64'Last);
+               ignore := capSubmit (NIC, doorbell, Unsigned_64'Last);
             end if;
          end;
       end if;
@@ -1327,7 +1348,7 @@ package body Netstack_Service is
                         dstPort : Unsigned_16) return Integer;
    procedure replyError
      (to   : Process_ID;
-      slot : CapabilitySlot := CapabilitySlot'Last);
+      slot : Reply_Target := Current_Request);
 
    --  A query that will not be answered: its requester gets an error, and
    --  an OPEN's channel is released.
@@ -1345,7 +1366,7 @@ package body Netstack_Service is
       owner : Process_ID;
       dstIP : Net.IPv4Address;
       port  : Unsigned_16;
-      slot  : CapabilitySlot);
+      slot  : Reply_Target);
 
    ---------------------------------------------------------------------------
    --  handleDNSResponse - parse DNS A-record response, extract IP
@@ -1423,13 +1444,13 @@ package body Netstack_Service is
                replyMsg : constant Message :=
                  (tag      => (label  => REPLY_OK,
                                length => 1,
-                               flags  => 0,
+                               protocol  => 0, ipc => <>,
                                reserved  => 0),
                   authorityTag => 0,
                   words    => [0 => ipPacked, others => 0]);
                ignore : Unsigned_64;
             begin
-               ignore := replyCap (pendingReqs (i).replySlot, replyMsg);
+               ignore := Send_Answer (pendingReqs (i).replySlot, replyMsg);
             end;
             pendingReqs (i).kind := PENDING_NONE;
             exit;
@@ -2042,7 +2063,7 @@ package body Netstack_Service is
    procedure replyOKWord
      (to   : Process_ID;
       w0   : Unsigned_64;
-      slot : CapabilitySlot := CapabilitySlot'Last);
+      slot : Reply_Target := Current_Request);
 
    ---------------------------------------------------------------------------
    --  completePendingConnect - complete a PENDING_CONNECT for connIdx
@@ -2432,7 +2453,7 @@ package body Netstack_Service is
       msg : constant Message :=
         (tag      => (label  => REPLY_OK,
                       length => 2,
-                      flags  => 0,
+                      protocol  => 0, ipc => <>,
                       reserved  => 0),
          authorityTag => 0,
          words    => [0 => mask,
@@ -2440,7 +2461,7 @@ package body Netstack_Service is
                       others => 0]);
       ignore : Unsigned_64;
    begin
-      ignore := replyCap (P.replySlot, msg);
+      ignore := Send_Answer (P.replySlot, msg);
    end replyWait;
 
    procedure answerQueue (route : Reply_Route; ok : Boolean; value : Unsigned_64) is
@@ -2815,7 +2836,7 @@ package body Netstack_Service is
       kickChannels (snd, m.words (0));
       mask := readyMask (snd, m.words (2));
       if answersWaiting (snd) then
-         replyWait ((replySlot => CapabilitySlot'Last, others => <>), mask, True);
+         replyWait ((replySlot => Current_Request, others => <>), mask, True);
       elsif mask /= 0 or else m.words (1) <= clockNow then
          replyOKWord (snd, mask);
       elsif not addPending ((kind => PENDING_WAIT, sender => snd,
@@ -3416,7 +3437,7 @@ package body Netstack_Service is
                sentAt : constant Unsigned_64 :=
                  Unsigned_64 (To_Integer (pendingReqs (i).bufAddr));
                replyMsg : constant Message :=
-                 (tag          => (label => REPLY_OK, length => 3, flags => 0, reserved => 0),
+                 (tag          => (label => REPLY_OK, length => 3, protocol => 0, ipc => <>, reserved => 0),
                   authorityTag => 0,
                   words        => [0 => Unsigned_64 (Sequence),
                                    1 => Net.packIPv4 (source),
@@ -3424,7 +3445,7 @@ package body Netstack_Service is
                                    3 => 0]);
                ignore : Unsigned_64;
             begin
-               ignore := replyCap (pendingReqs (i).replySlot, replyMsg);
+               ignore := Send_Answer (pendingReqs (i).replySlot, replyMsg);
             end;
             pendingReqs (i).kind := PENDING_NONE;
             return;
@@ -3611,7 +3632,6 @@ package body Netstack_Service is
    --  addPending - store a pending request in the first free slot
    ---------------------------------------------------------------------------
    function addPending (req : PendingRequest) return Boolean is
-      savedSlot : CapabilitySlot;
    begin
       for i in pendingReqs'Range loop
          if pendingReqs (i).kind = PENDING_NONE and then curRoute.queue /= No_Queue then
@@ -3620,16 +3640,17 @@ package body Netstack_Service is
             pendingReqs (i).route := curRoute;
             return True;
          elsif pendingReqs (i).kind = PENDING_NONE then
-            savedSlot := CapabilitySlot (16 + i);
-
             --  Deferral is valid only if the kernel moved the current
-            --  one-use reply authority into our selected pending slot.
-            if saveReplyCap (Unsigned_64 (savedSlot)) /= 1 then
-               return False;
-            end if;
-
-            pendingReqs (i) := req;
-            pendingReqs (i).replySlot := savedSlot;
+            --  one-use reply authority into a reply handle.
+            declare
+               Saved : constant CuBit.Handles.IPC.Saved_Reply := CuBit.Handles.IPC.Save_Reply;
+            begin
+               if not Saved.Saved then
+                  return False;
+               end if;
+               pendingReqs (i) := req;
+               pendingReqs (i).replySlot := (Saved => True, Handle => Saved.Handle);
+            end;
             return True;
          end if;
       end loop;
@@ -3644,23 +3665,23 @@ package body Netstack_Service is
    ---------------------------------------------------------------------------
    procedure replyError
      (to   : Process_ID;
-      slot : CapabilitySlot := CapabilitySlot'Last)
+      slot : Reply_Target := Current_Request)
    is
       errMsg : constant Message :=
         (tag      => (label  => REPLY_ERR,
                       length => 0,
-                      flags  => 0,
+                      protocol  => 0, ipc => <>,
                       reserved  => 0),
          authorityTag => 0,
          words    => [others => 0]);
       ignore : Unsigned_64;
    begin
       pragma Unreferenced (to);
-      if slot = CapabilitySlot'Last and then curRoute.queue /= No_Queue then
+      if not slot.Saved and then curRoute.queue /= No_Queue then
          answerQueue (curRoute, False, 0);
          return;
       end if;
-      ignore := replyCap (slot, errMsg);
+      ignore := Send_Answer (slot, errMsg);
    end replyError;
 
    ---------------------------------------------------------------------------
@@ -3669,23 +3690,23 @@ package body Netstack_Service is
    procedure replyOKWord
      (to   : Process_ID;
       w0   : Unsigned_64;
-      slot : CapabilitySlot := CapabilitySlot'Last)
+      slot : Reply_Target := Current_Request)
    is
       okMsg : constant Message :=
         (tag      => (label  => REPLY_OK,
                       length => 1,
-                      flags  => 0,
+                      protocol  => 0, ipc => <>,
                       reserved  => 0),
          authorityTag => 0,
          words    => [0 => w0, others => 0]);
       ignore : Unsigned_64;
    begin
       pragma Unreferenced (to);
-      if slot = CapabilitySlot'Last and then curRoute.queue /= No_Queue then
+      if not slot.Saved and then curRoute.queue /= No_Queue then
          answerQueue (curRoute, True, w0);
          return;
       end if;
-      ignore := replyCap (slot, okMsg);
+      ignore := Send_Answer (slot, okMsg);
    end replyOKWord;
 
    --  Deferred answers: to the request's queue, or its saved capability.
@@ -3958,7 +3979,7 @@ package body Netstack_Service is
           maxLen     => 0,
           txid       => txid,
           dstPort    => dstPort,
-          replySlot  => 0,
+          replySlot  => Current_Request,
           queryPort  => port,
           nameHash   => nameHashOf (name (0 .. nameLen - 1)),
           queryDeadline => deadlineAfter (now, DNS_TIMEOUT_MS),
@@ -4031,7 +4052,7 @@ package body Netstack_Service is
    --  handleNetOpen - open a network channel (DNS + connect in one call)
    --
    --  Request: tag.label=OP_NET_OPEN, tag.length=scheme string length,
-   --           tag.flags=channel kind (0=client),
+   --           tag.protocol=channel kind (0=client),
    --           words(0)=grant slot, words(1)=buffer size, words(3)=generation
    --  Scheme string is at offset 0 of the grant buffer.
    --  Reply: deferred until DNS+TCP handshake completes
@@ -4047,7 +4068,7 @@ package body Netstack_Service is
       owner : Process_ID;
       dstIP : Net.IPv4Address;
       port  : Unsigned_16;
-      slot  : CapabilitySlot)
+      slot  : Reply_Target)
    is
       ok : Boolean := False;
    begin
@@ -4284,7 +4305,7 @@ package body Netstack_Service is
                return;
             end if;
             --  No handshake: the reply is immediate.
-            openDatagram (chIdx, snd, dstIP, scheme.port, CapabilitySlot'Last);
+            openDatagram (chIdx, snd, dstIP, scheme.port, Current_Request);
          end;
       elsif scheme.isIPLiteral then
          --  Parse IP directly, skip DNS
@@ -4327,7 +4348,7 @@ package body Netstack_Service is
                 maxLen     => 0,
                 txid       => 0,
                 dstPort    => scheme.port,
-                replySlot  => 0,
+                replySlot  => Current_Request,
           others     => <>));
             if not ok then
                releaseChannel (chIdx);
@@ -4455,7 +4476,7 @@ package body Netstack_Service is
          curRoute := (queue => q, token => item.Tag);
          declare
             m : Message :=
-              (tag => (label => 0, length => 0, flags => 0, reserved => 0),
+              (tag => (label => 0, length => 0, protocol => 0, ipc => <>, reserved => 0),
                authorityTag => tag,
                words => [others => 0]);
          begin
@@ -4464,14 +4485,14 @@ package body Netstack_Service is
               Network_Grants.Owned (networkGrants, owner, tag)
             then
                m.tag := (label => OP_NET_OPEN, length => Unsigned_8 (item.Item.Length),
-                         flags => 0, reserved => 0);
+                         protocol => 0, ipc => <>, reserved => 0);
                m.words (0) := item.Item.Object;
                m.words (1) := Unsigned_64 (item.Item.Buffer);
                handleNetOpen (owner, m);
             elsif item.Item.Operation = Layout.Queue_Shut and then
               Network_Grants.Owned (networkGrants, owner, tag)
             then
-               m.tag := (label => OP_NET_SHUT, length => 1, flags => 0, reserved => 0);
+               m.tag := (label => OP_NET_SHUT, length => 1, protocol => 0, ipc => <>, reserved => 0);
                m.words (0) := item.Item.Object;
                handleNetShut (owner, m);
             else
@@ -4611,7 +4632,7 @@ package body Netstack_Service is
          replyMsg : constant Message :=
            (tag      => (label  => REPLY_OK,
                          length => 2,
-                         flags  => 0,
+                         protocol  => 0, ipc => <>,
                          reserved  => 0),
             authorityTag => 0,
             words    => [0 => CuBit.Grant_References.Encode
@@ -4620,7 +4641,7 @@ package body Netstack_Service is
                          others => 0]);
          ignore : Unsigned_64;
       begin
-         ignore := replyCap (CapabilitySlot'Last, replyMsg);
+         ignore := Send_Answer (Current_Request, replyMsg);
       end;
 
       debugPrint ("netstack: attached to driver pid=");
@@ -4837,6 +4858,10 @@ package body Netstack_Service is
       found   : Boolean;
    begin
    debugPrint ("netstack: starting..." & LF);
+   if not CuBit.Startup_State.Ready (Startup.Verify) then
+      debugPrint ("netstack: startup capabilities missing" & LF);
+      return;
+   end if;
    CuBit.Busy_Poll.Calibrate;
    TCP_Engine.Pool.Initialize (tcpPool);
    isnKey := (K0 => hardwareRandom, K1 => hardwareRandom);
@@ -4848,25 +4873,24 @@ package body Netstack_Service is
    declare
       ret : Unsigned_64;
    begin
-      ret := registerDriver (DRIVER_NETSTACK);
+      ret := registerDriver (DRIVER_NETSTACK, Startup.Registration);
       debugPrint ("netstack: registered as driver ");
       printDec (Unsigned_32 (ret));
       debugPrint ("" & LF);
    end;
 
-   --  Query the driver's MAC address via capCall to CAP_SLOT_NET_DRV
+   --  Query the driver's MAC address via capCall to its endpoint (NIC)
    --  We do this after the driver starts and sends us OP_NET_ATTACH.
    --  For now, just enter the message loop and wait.
 
    --  Signal devmgr that we are ready
    declare
-      CAP_SLOT_READY : constant Unsigned_64 := 15;
       OP_READY       : constant Unsigned_32 := 16#FF00#;
       rdyIgnore : MessageTag;
    begin
-      rdyIgnore := capSend (CAP_SLOT_READY,
+      rdyIgnore := capSend (Startup.Ready,
          (tag      => (label => OP_READY, length => 0,
-                       flags => 0, reserved => 0),
+                       protocol => 0, ipc => <>, reserved => 0),
           authorityTag => 0,
           words    => [others => 0]), CuBit.Messages.Wait_Forever);
    end;
@@ -4967,6 +4991,7 @@ package body Netstack_Service is
 
       --  4. Dispatch message
       if found then
+         Current_Sender := sender;
          if not admittedRequest (sender, msg) then
             replyError (sender);
          else
@@ -5154,7 +5179,7 @@ package body Netstack_Service is
                         detailMsg : constant Message :=
                           (tag      => (label  => REPLY_OK,
                                         length => 4,
-                                        flags  => 0,
+                                        protocol  => 0, ipc => <>,
                                         reserved  => 0),
                            authorityTag => 0,
                            words    => [
@@ -5167,7 +5192,7 @@ package body Netstack_Service is
                                    Shift_Left (dnsSec, 32)]);
                         ignore : Unsigned_64;
                      begin
-                        ignore := replyCap (CapabilitySlot'Last, detailMsg);
+                        ignore := Send_Answer (Current_Request, detailMsg);
                      end;
                   else
                      replyError (sender);
@@ -5218,8 +5243,10 @@ package body Netstack_Service is
                      routeReply : constant Message :=
                        (tag      => (label  => REPLY_OK,
                                      length => Unsigned_8 (total),
-                                     flags  => Unsigned_8 (nextStart),
-                                     reserved  => 0),
+                                     --  The next page's first index; tag
+                                     --  flags are not data (IPC layer bits).
+                                     protocol  => 0, ipc => <>,
+                                     reserved  => Unsigned_16 (nextStart)),
                         authorityTag => 0,
                         words    => [0 => packed (0),
                                      1 => packed (1),
@@ -5227,7 +5254,7 @@ package body Netstack_Service is
                                      3 => packed (3)]);
                      ignore : Unsigned_64;
                   begin
-                     ignore := replyCap (CapabilitySlot'Last, routeReply);
+                     ignore := Send_Answer (Current_Request, routeReply);
                   end;
                end;
 
@@ -5269,7 +5296,7 @@ package body Netstack_Service is
                         loopReply : Message :=
                           (tag      => (label  => REPLY_OK,
                                         length => 3,
-                                        flags  => 0,
+                                        protocol  => 0, ipc => <>,
                                         reserved  => 0),
                            authorityTag => 0,
                            words    => [0 => Unsigned_64 (seq),
@@ -5278,7 +5305,7 @@ package body Netstack_Service is
                                         others => 0]);
                         ignore : Unsigned_64;
                      begin
-                        ignore := replyCap (CapabilitySlot'Last, loopReply);
+                        ignore := Send_Answer (Current_Request, loopReply);
                      end;
                   else
                      routeLookup (dstIP, rIfIdx, nextHop);
@@ -5300,7 +5327,7 @@ package body Netstack_Service is
                             maxLen     => 0,
                             txid       => seq,
                             dstPort    => 0,
-                            replySlot  => 0,
+                            replySlot  => Current_Request,
           others     => <>));
 
                         if ok then
@@ -5412,7 +5439,7 @@ package body Netstack_Service is
                      return w;
                   end half;
                   answer : constant Message :=
-                    (tag => (label => REPLY_OK, length => 3, flags => 0, reserved => 0),
+                    (tag => (label => REPLY_OK, length => 3, protocol => 0, ipc => <>, reserved => 0),
                      authorityTag => 0,
                      words => [half (0), half (8),
                                (Network_Authority.Descriptor (item) and not prefixBits) or
@@ -5421,7 +5448,7 @@ package body Netstack_Service is
                                0]);
                   ignore : Unsigned_64;
                begin
-                  ignore := replyCap (CapabilitySlot'Last, answer);
+                  ignore := Send_Answer (Current_Request, answer);
                end;
 
             when Layout.OP_NET_QUEUE =>
@@ -5466,13 +5493,13 @@ package body Netstack_Service is
                   replyMsg : constant Message :=
                     (tag      => (label  => REPLY_ERR,
                                   length => 0,
-                                  flags  => 0,
+                                  protocol  => 0, ipc => <>,
                                   reserved  => 0),
                      authorityTag => 0,
                      words    => [others => 0]);
                   ignore : Unsigned_64;
                begin
-                  ignore := replyCap (CapabilitySlot'Last, replyMsg);
+                  ignore := Send_Answer (Current_Request, replyMsg);
                end;
          end case;
          end if;

@@ -1,3 +1,4 @@
+with CuBit.Handles;
 with Vulkan_Glyph_Sources;
 with Compositor_Upload;
 with Compositor_Upload_Progress;
@@ -21,7 +22,7 @@ package Desktop_Vulkan_Startup with SPARK_Mode,
    function Current return Vulkan_Device_Owner.Phase with Global => (Input => Engine);
    -- Nonzero must be the manifest-bound endpoint already admitted by procmgr.
    -- Zero selects software without Mesa IPC. Repeated calls do not retry.
-   procedure Initialize (Admitted_Slot : Interfaces.Unsigned_64)
+   procedure Initialize (Render : CuBit.Handles.Endpoint)
      with Global => (In_Out => Engine),
        Pre => Valid, Post => Valid and Current /= Vulkan_Device_Owner.Fresh;
    procedure Check_Health (Usable : out Boolean)

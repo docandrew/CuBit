@@ -1,3 +1,4 @@
+with CuBit.Handles.Fixture;
 with Ada.Text_IO;
 with Interfaces; use Interfaces;
 with CCL.Types; use CCL.Types;
@@ -214,7 +215,7 @@ begin
       CuBit.Memory_Grants.Expected_Pages := W.Creation_Bytes / 4096;
       Prepare (Other_Type, Definition);
       H.Take_Read_Outcome (Object, Definition, Reply, State); Check (State = H.No_Outcome);
-      C.Initialize (Object, 5, Good); Check (Good);
+      C.Initialize (Object, CuBit.Handles.Fixture.Endpoint_Of (5), Good); Check (Good);
       C.Open (Object, "org.cubit.settings", Other_Type, W.Read_Only, 0, 1, Sent); Check (Sent = C.Submitted);
       C.Complete (Object, Answer (1, W.Success, 55), Done); Check (Done = C.Completed);
       H.Take_Read_Outcome (Object, Definition, Reply, State); Check (State = H.Other_Operation);

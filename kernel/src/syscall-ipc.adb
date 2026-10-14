@@ -19,6 +19,8 @@ with Multiboot;
 with Capabilities;
 with Capabilities.IRQ;
 with Capabilities.Operations;
+with Capability_ABI;
+with Process_Capabilities;
 with Device_Memory_Admission;
 with Device_Memory_Authority;
 with Device_Memory_Diagnostics;
@@ -59,6 +61,7 @@ use type Process.ProcessMode;
 use type Capabilities.Operations.OperationStatus;
 
 package body Syscall.IPC is
+    use type Process_Capabilities.Tables.Slot_Base;
     -- Shared-memory grant flags (arg3 of the create-grant calls): bit 0
     -- read-write, then these.
     Grant_Flag_Forwardable : constant Unsigned_64 := 2;
@@ -88,21 +91,83 @@ package body Syscall.IPC is
     function u64ToRights is new Ada.Unchecked_Conversion
         (Unsigned_8, Capabilities.CapabilityRights);
 
+    ---------------------------------------------------------------------------
+    -- Authority by handle (CAP-002): every call names the capability it
+    -- relies on; nothing searches the caller's table for one of a type.
+    -- The *Held forms expect the caller's mailbox lock to be held.
+    ---------------------------------------------------------------------------
+    function onlyRight (right : Capabilities.CapabilityRight)
+                        return Capabilities.CapabilityRights
+    is
+        rights : Capabilities.CapabilityRights := Capabilities.NO_RIGHTS;
+    begin
+        rights (right) := True;
+        return rights;
+    end onlyRight;
+
+    function findOwn (callerPID : Process.ProcessID;
+                      handle    : Unsigned_64;
+                      kind      : Capabilities.CapabilityType;
+                      rights    : Capabilities.CapabilityRights)
+                      return Process_Capabilities.Found
+    is
+        found : Process_Capabilities.Found;
+    begin
+        Spinlocks.enterCriticalSection (Process.mailtab(callerPID).lock);
+        found := Process_Capabilities.Find
+          (Process.proctab(callerPID).caps, handle, kind, rights);
+        Spinlocks.exitCriticalSection (Process.mailtab(callerPID).lock);
+        return found;
+    end findOwn;
+
+    -- A CAP_PROCESS with RIGHT_GRANT for targetPID (or the wildcard).
+    function processAuthorityHeld (callerPID : Process.ProcessID;
+                                   handle    : Unsigned_64;
+                                   targetPID : Process.ProcessID) return Boolean
+    is
+        found : constant Process_Capabilities.Found := Process_Capabilities.Find
+          (Process.proctab(callerPID).caps, handle, Capabilities.CAP_PROCESS,
+           onlyRight (Capabilities.RIGHT_GRANT));
+    begin
+        return found.OK and then
+          (found.Cap.object.ref = 0 or else
+           (found.Cap.object.ref = Unsigned_64 (targetPID) and then
+            found.Cap.gen = Process.generationOf (targetPID)));
+    end processAuthorityHeld;
+
+    -- The capability a handle names in the caller's table (a snapshot), or
+    -- the null capability.
+    function ownCap (callerPID : Process.ProcessID; handle : Unsigned_64)
+                     return Capabilities.Capability
+    is
+        found : Process_Capabilities.Found;
+    begin
+        Spinlocks.enterCriticalSection (Process.mailtab(callerPID).lock);
+        found := Process_Capabilities.Find_Any (Process.proctab(callerPID).caps, handle);
+        Spinlocks.exitCriticalSection (Process.mailtab(callerPID).lock);
+        return (if found.OK then found.Cap else Capabilities.NULL_CAPABILITY);
+    end ownCap;
+
+    -- The CAP_DEVICE_MEM a handle names (no particular right: Authorize
+    -- checks the mode), or a null capability.
+    function deviceMemoryOf (callerPID : Process.ProcessID; handle : Unsigned_64)
+                             return Capabilities.Capability
+    is
+        found : constant Process_Capabilities.Found :=
+          findOwn (callerPID, handle, Capabilities.CAP_DEVICE_MEM, Capabilities.NO_RIGHTS);
+    begin
+        return (if found.OK then found.Cap else Capabilities.NULL_CAPABILITY);
+    end deviceMemoryOf;
+
     procedure handleSpawn (callerPID : Process.ProcessID;
-                           arg0      : Unsigned_64;
-                           arg1      : Unsigned_64;
-                           arg2      : Unsigned_64;
-                           arg3      : Unsigned_64;
-                           arg4      : Unsigned_64;
+                           arg0, arg1, arg2 : Unsigned_64;
                            retval    : out Unsigned_64) with
         SPARK_Mode => Off   -- Raw syscall/process integration; pure helpers proved separately
     is
-        use type ELF.SegmentType;
-        use type Capabilities.CapabilityType;
-
-
-        hasCap   : Boolean := False;
-        elfAddr  : constant System.Address := Util.numToAddr (arg0);
+        package ABI renames Capability_ABI;
+        request  : aliased ABI.Spawn_Request := [others => 0];
+        result   : aliased ABI.Spawn_Result := [others => 0];
+        elfAddr  : System.Address;
         elfSize  : Storage_Count;
         priority : Process.ProcessPriority;
         elfHeader : aliased ELF.ELFFileHeader;
@@ -110,66 +175,83 @@ package body Syscall.IPC is
         copied : Boolean;
         newPID   : Process.ProcessID;
         parent   : Process.ProcessID := callerPID;
+        limit    : Process_Capabilities.Tables.Handle_Limit;
+        limitOK  : Boolean;
         started  : constant Unsigned_64 := Boot_Timeline.Now;
+        refuse   : ABI.Refusal := ABI.Invalid_Argument;
+
+        procedure refused (why : ABI.Refusal; text : String) is
+        begin
+            println (text);
+            retval := ABI.Refusal_Word (why);
+        end refused;
     begin
-        retval := reterr;
+        retval := ABI.Refusal_Word (ABI.Invalid_Argument);
 
-        for slot in Capabilities.CapabilitySlot loop
-            if Process.proctab(callerPID).caps(slot).capType =
-               Capabilities.CAP_PROCESS and then
-               Process.proctab(callerPID).caps(slot).rights(
-                   Capabilities.RIGHT_EXECUTE)
-            then
-                hasCap := True;
-                exit;
-            end if;
-        end loop;
-
-        if not hasCap then
-            println ("SPAWN: denied, no CAP_PROCESS/EXECUTE");
-            return;
-        elsif arg1 < ELF.ELFFileHeader'Size / 8 or else
-          not User_Buffer_Copy.Valid_Range (arg0, arg1) then
-            println ("SPAWN: invalid ELF source range");
+        -- arg0 names the spawn authority: a CAP_PROCESS with RIGHT_EXECUTE.
+        if not findOwn (callerPID, arg0, Capabilities.CAP_PROCESS,
+                        onlyRight (Capabilities.RIGHT_EXECUTE)).OK
+        then
+            refused (ABI.Not_Permitted, "SPAWN: denied, no CAP_PROCESS/EXECUTE");
             return;
         end if;
-        -- Validate before converting the unsigned ABI length or reading it.
-        elfSize := Storage_Count (arg1);
         Process.User_Memory.Copy
-          (callerPID, arg0, elfHeader'Address, ELF.ELFFileHeader'Size / 8, copied);
+          (callerPID, arg1, request'Address, ABI.Spawn_Request_Bytes, copied);
+        if not copied or else
+           not Process.User_Memory.Writable_Range (callerPID, arg2, ABI.Spawn_Result_Bytes)
+        then
+            refused (refuse, "SPAWN: request or result unreadable");
+            return;
+        end if;
+        Process_Capabilities.Limit_Of
+          (request (ABI.Limit), request (ABI.Limit_Count), limit, limitOK);
+        if not limitOK then
+            refused (refuse, "SPAWN: invalid handle limit");
+            return;
+        elsif request (ABI.Image_Bytes) < ELF.ELFFileHeader'Size / 8 or else
+          not User_Buffer_Copy.Valid_Range (request (ABI.Image), request (ABI.Image_Bytes))
+        then
+            refused (refuse, "SPAWN: invalid ELF source range");
+            return;
+        end if;
+        elfAddr := Util.numToAddr (request (ABI.Image));
+        -- Validate before converting the unsigned ABI length or reading it.
+        elfSize := Storage_Count (request (ABI.Image_Bytes));
+        Process.User_Memory.Copy
+          (callerPID, request (ABI.Image), elfHeader'Address, ELF.ELFFileHeader'Size / 8, copied);
         if not copied then
-            println ("SPAWN: ELF header source unreadable");
+            refused (refuse, "SPAWN: ELF header source unreadable");
             return;
         end if;
 
         if not Process.Loader.isValidELF (elfHeader) then
-            println ("SPAWN: invalid ELF header");
+            refused (refuse, "SPAWN: invalid ELF header");
             return;
         end if;
 
-        if arg2 > 10 then
+        if request (ABI.Priority) > 10 then
             priority := 5;
-        elsif arg2 = 0 then
+        elsif request (ABI.Priority) = 0 then
             priority := 1;
         else
-            priority := Process.ProcessPriority (arg2);
+            priority := Process.ProcessPriority (request (ABI.Priority));
         end if;
 
         -- The parent by identity; a stale one refuses the spawn rather than
         -- naming whoever holds the slot now.
-        if arg4 /= 0 then
-            parent := Process.processOfIdentity (Process_Identities.From_Word (arg4));
+        if request (ABI.Parent) /= 0 then
+            parent := Process.processOfIdentity (Process_Identities.From_Word (request (ABI.Parent)));
             if parent = Process.NO_PROCESS then
-                println ("SPAWN: parent identity is stale");
+                refused (ABI.Target_Gone, "SPAWN: parent identity is stale");
                 return;
             end if;
         end if;
 
-        -- arg3 = name pointer (0 = default "spawned")
-        if arg3 /= 0 then
-            Process.User_Memory.Copy_Name (callerPID, arg3, name, copied);
+        -- The name (0 = default "spawned").
+        if request (ABI.Name) /= 0 then
+            Process.User_Memory.Copy_Name (callerPID, request (ABI.Name), name, copied);
             if not copied then
-                println ("SPAWN: process name unreadable");
+                refused (refuse, "SPAWN: process name unreadable");
                 return;
             end if;
         else
@@ -184,24 +266,96 @@ package body Syscall.IPC is
             requestedPID => Process.NO_PROCESS,
             priority     => priority,
             ppid         => parent,
-            sourcePID    => callerPID);
+            sourcePID    => callerPID,
+            handleLimit  => limit);
 
         if newPID = Process.NO_PROCESS then
-            println ("SPAWN: load failed");
+            refused (ABI.Out_Of_Memory, "SPAWN: load failed");
             return;
         end if;
 
+        -- The spawner's handles for the new process, kernel objects for
+        -- their owner: control (all rights), an untagged endpoint it may
+        -- badge and pass on, and the CSPACE for installing the child's
+        -- startup capabilities until it first runs. Placed under the
+        -- spawner's mailbox lock.
+        declare
+            gen : constant Capabilities.Generation := Process.generationOf (newPID);
+            ref : constant Unsigned_64 := Unsigned_64 (newPID);
+            words : array (1 .. 3) of Unsigned_64;
+        begin
+            Spinlocks.enterCriticalSection (Process.mailtab(callerPID).lock);
+            Process_Capabilities.Insert
+              (Process.proctab(callerPID).caps,
+               (capType => Capabilities.CAP_PROCESS,
+                rights  => (Capabilities.RIGHT_READ | Capabilities.RIGHT_WRITE |
+                            Capabilities.RIGHT_EXECUTE | Capabilities.RIGHT_GRANT => True,
+                            others => False),
+                authorityTag => Capabilities.NO_AUTHORITY_TAG,
+                object  => (ref => ref, param => 0),
+                gen     => gen), words (1));
+            Process_Capabilities.Insert
+              (Process.proctab(callerPID).caps,
+               (capType => Capabilities.CAP_ENDPOINT,
+                rights  => (Capabilities.RIGHT_READ | Capabilities.RIGHT_WRITE |
+                            Capabilities.RIGHT_GRANT => True, others => False),
+                authorityTag => Capabilities.NO_AUTHORITY_TAG,
+                object  => (ref => ref, param => 0),
+                gen     => gen), words (2));
+            Process_Capabilities.Insert
+              (Process.proctab(callerPID).caps,
+               (capType => Capabilities.CAP_CSPACE,
+                rights  => (Capabilities.RIGHT_GRANT => True, others => False),
+                authorityTag => Capabilities.NO_AUTHORITY_TAG,
+                object  => (ref => ref, param => 0),
+                gen     => gen), words (3));
+            if not (for all W of words => ABI.Is_Handle_Word (W)) then
+                -- The spawner's table is full: undo, and discard the child.
+                for W of words loop
+                    if ABI.Is_Handle_Word (W) then
+                        declare
+                            ignoreCap  : Capabilities.Capability;
+                            ignoreWord : Unsigned_64;
+                        begin
+                            Process_Capabilities.Close
+                              (Process.proctab(callerPID).caps, W, ignoreCap, ignoreWord);
+                        end;
+                    else
+                        refuse := ABI.To_Refusal (W);
+                    end if;
+                end loop;
+                Spinlocks.exitCriticalSection (Process.mailtab(callerPID).lock);
+                -- Published and suspended, never run: stop it (the reaper
+                -- releases it).
+                if not Process.killProcess (newPID, Process.generationOf (newPID)) then
+                    println ("SPAWN: rollback stop refused");
+                end if;
+                refused (refuse, "SPAWN: no room for the spawner's handles");
+                return;
+            end if;
+            Spinlocks.exitCriticalSection (Process.mailtab(callerPID).lock);
+            result :=
+              [ABI.Child              => Process_Identities.To_Word (Process.identityOf (newPID)),
+               ABI.Process            => words (1),
+               ABI.Endpoint           => words (2),
+               ABI.Cspace             => words (3),
+               ABI.Child_Self         => Process.proctab(newPID).selfHandle,
+               ABI.Child_Self_Process => Process.proctab(newPID).selfProcessHandle];
+        end;
+
         Boot_Timeline.Note_Spawn
           (Slot     => Natural (newPID),
-           Identity => Process_Identities.To_Word (Process.identityOf (newPID)),
+           Identity => result (ABI.Child),
            Spawner  => Process_Identities.To_Word (Process.identityOf (callerPID)),
            Spawner_Slot => Natural (callerPID),
            Name     => name,
            Started  => started);
-        -- Always spawn suspended; caller resumes after granting caps
+        Process.User_Memory.Copy_To_User
+          (callerPID, arg2, result'Address, ABI.Spawn_Result_Bytes, copied);
+        -- Always spawn suspended; the spawner installs and resumes.
         print ("SPAWN: created suspended PID ");
         println (Integer (newPID));
-        retval := Process_Identities.To_Word (Process.identityOf (newPID));
+        retval := (if copied then 0 else ABI.Refusal_Word (ABI.Invalid_Argument));
     end handleSpawn;
 
     ---------------------------------------------------------------------------
@@ -214,6 +368,7 @@ package body Syscall.IPC is
                                arg1      : Unsigned_64;
                                arg2      : Unsigned_64;
                                arg3      : Unsigned_64;
+                               arg4      : Unsigned_64;
                                retval    : out Unsigned_64) with
         SPARK_Mode => Off   -- generic instantiation
     is
@@ -227,6 +382,8 @@ package body Syscall.IPC is
         numPages : constant Unsigned_64 := arg2;
         capAllowed : Boolean;
         ok : Boolean := True;
+        -- arg4 names the CAP_DEVICE_MEM this mapping relies on.
+        authority : constant Capabilities.Capability := deviceMemoryOf (callerPID, arg4);
     begin
         retval := reterr;
 
@@ -258,7 +415,7 @@ package body Syscall.IPC is
         -- modules, ACPI memory and kernel MMIO are refused whatever
         -- CAP_DEVICE_MEM the caller holds.
         capAllowed := Device_Memory_Authority.Authorize
-          (Process.proctab(callerPID).caps, Physical_Range_Map.Kernel_Map,
+          (authority, Physical_Range_Map.Kernel_Map,
            arg0, numPages * Unsigned_64 (Virtmem.PAGE_SIZE),
            (if arg3 = 0 then Device_Memory_Admission.Read_Write
             else Device_Memory_Admission.Read_Only));
@@ -270,7 +427,7 @@ package body Syscall.IPC is
                (if arg3 = 0 then Device_Memory_Admission.Read_Write
                 else Device_Memory_Admission.Read_Only),
                Device_Memory_Authority.Explain
-                 (Process.proctab(callerPID).caps, Physical_Range_Map.Kernel_Map,
+                 (authority, Physical_Range_Map.Kernel_Map,
                   arg0, numPages * Unsigned_64 (Virtmem.PAGE_SIZE),
                   (if arg3 = 0 then Device_Memory_Admission.Read_Write
                    else Device_Memory_Admission.Read_Only)));
@@ -319,6 +476,7 @@ package body Syscall.IPC is
     -- stack frame with mapPage generic instantiation + locals.
     ---------------------------------------------------------------------------
     procedure allocateDma (callerPID : Process.ProcessID;
+                              authority : Unsigned_64;
                               arg0      : Unsigned_64;
                               arg1      : Unsigned_64;
                               arg2      : Unsigned_64;
@@ -397,22 +555,9 @@ package body Syscall.IPC is
             return;
         end if;
 
-        -- Check CAP_PROCESS with RIGHT_GRANT matching target (ref=0 wildcard)
-        for slot in Capabilities.CapabilitySlot loop
-            if Process.proctab(callerPID).caps(slot).capType =
-               Capabilities.CAP_PROCESS and then
-               Process.proctab(callerPID).caps(slot).rights(
-                   Capabilities.RIGHT_GRANT) and then
-               (Process.proctab(callerPID).caps(slot).object.ref = 0 or
-                (Process.proctab(callerPID).caps(slot).gen =
-                     Process.generationOf (targetPID) and then
-                 Process.proctab(callerPID).caps(slot).object.ref =
-                     Unsigned_64 (targetPID)))
-            then
-                hasCap := True;
-                exit;
-            end if;
-        end loop;
+        -- The caller names a CAP_PROCESS with RIGHT_GRANT for the target
+        -- (or the wildcard). Its mailbox lock is held (handleAllocDma).
+        hasCap := processAuthorityHeld (callerPID, authority, targetPID);
 
         if not hasCap then
             println ("ALLOC_DMA: denied, no RIGHT_GRANT");
@@ -571,13 +716,14 @@ package body Syscall.IPC is
 
     procedure allocateDmaRequest
       (callerPID : Process.ProcessID;
+       authority : Unsigned_64;
        arg0, arg1, arg2, arg3, arg4 : Unsigned_64;
        retval : out Unsigned_64) with SPARK_Mode => Off
     is
     begin
         retval := reterr;
         if arg3 = 0 then
-            allocateDma (callerPID, arg0, arg1, arg2, False, False, arg4, retval);
+            allocateDma (callerPID, authority, arg0, arg1, arg2, False, False, arg4, retval);
             return;
         elsif (arg3 /= 1 and then arg3 /= 3) or else arg1 > 14 or else
           (arg3 = 3 and then arg1 /= 9)
@@ -586,12 +732,12 @@ package body Syscall.IPC is
         end if;
         -- The common ledger reserves global and owner budgets together after
         -- authorization. Bound charges refund only at actual physical free.
-        allocateDma (callerPID, arg0, arg1, arg2, True, arg3 = 3, arg4, retval);
+        allocateDma (callerPID, authority, arg0, arg1, arg2, True, arg3 = 3, arg4, retval);
     end allocateDmaRequest;
 
     procedure handleAllocDma
       (callerPID : Process.ProcessID;
-       arg0, arg1, arg2, arg3, arg4 : Unsigned_64;
+       arg0, arg1, arg2, arg3, arg4, arg5 : Unsigned_64;
        retval : out Unsigned_64) with SPARK_Mode => Off
     is
         use type Process.ProcessID;
@@ -623,7 +769,7 @@ package body Syscall.IPC is
             then
                 -- Below this point the target is the resolved slot.
                 allocateDmaRequest
-                  (callerPID, Unsigned_64 (Target), arg1, arg2, arg3, arg4, retval);
+                  (callerPID, arg5, Unsigned_64 (Target), arg1, arg2, arg3, arg4, retval);
             else
                 println ("ALLOC_DMA: process closing or unavailable");
             end if;
@@ -645,6 +791,8 @@ package body Syscall.IPC is
                              arg2      : Unsigned_64;
                              arg3      : Unsigned_64;
                              arg4      : Unsigned_64;
+                             arg5      : Unsigned_64;
+                             arg6      : Unsigned_64;
                              retval    : out Unsigned_64) with
         SPARK_Mode => Off   -- generic instantiation
     is
@@ -716,12 +864,12 @@ package body Syscall.IPC is
                 pgFlags := Virtmem.PG_USERDATARO;
             when MAP_INTO_DEVICE =>
                 if not Device_Memory_Authority.Authorize
-                  (Process.proctab(callerPID).caps, Physical_Range_Map.Kernel_Map,
+                  (deviceMemoryOf (callerPID, arg6), Physical_Range_Map.Kernel_Map,
                    arg1, arg3 * Unsigned_64 (Virtmem.PAGE_SIZE),
                    Device_Memory_Admission.Read_Write)
                 then
                     Refuse_Into (Device_Memory_Authority.Explain
-                      (Process.proctab(callerPID).caps, Physical_Range_Map.Kernel_Map,
+                      (deviceMemoryOf (callerPID, arg6), Physical_Range_Map.Kernel_Map,
                        arg1, arg3 * Unsigned_64 (Virtmem.PAGE_SIZE),
                        Device_Memory_Admission.Read_Write));
                     return;
@@ -739,6 +887,21 @@ package body Syscall.IPC is
             return;
         end if;
 
+        -- arg5 names a CAP_PROCESS with RIGHT_GRANT for the target (or the
+        -- wildcard), read under the caller's own mailbox lock; the target's
+        -- generation it was checked against is rechecked under the
+        -- target's lock below.
+        declare
+            authority : constant Process_Capabilities.Found :=
+              findOwn (callerPID, arg5, Capabilities.CAP_PROCESS,
+                       onlyRight (Capabilities.RIGHT_GRANT));
+        begin
+            hasCap := authority.OK and then
+              (authority.Cap.object.ref = 0 or else
+               (authority.Cap.object.ref = Unsigned_64 (targetPID) and then
+                authority.Cap.gen = targetGeneration));
+        end;
+
         declare
             procedure performLocked is
             begin
@@ -749,22 +912,6 @@ package body Syscall.IPC is
                     return;
                 end if;
 
-                -- Check CAP_PROCESS with RIGHT_GRANT matching target (ref=0 wildcard)
-                for slot in Capabilities.CapabilitySlot loop
-                    if Process.proctab(callerPID).caps(slot).capType =
-                       Capabilities.CAP_PROCESS and then
-                       Process.proctab(callerPID).caps(slot).rights(
-                           Capabilities.RIGHT_GRANT) and then
-                       (Process.proctab(callerPID).caps(slot).object.ref = 0 or
-                        (Process.proctab(callerPID).caps(slot).gen =
-                             Process.generationOf (targetPID) and then
-                         Process.proctab(callerPID).caps(slot).object.ref =
-                             Unsigned_64 (targetPID)))
-                    then
-                        hasCap := True;
-                        exit;
-                    end if;
-                end loop;
 
                 if not hasCap then
                     println ("MAP_INTO: denied, no RIGHT_GRANT");
@@ -899,6 +1046,7 @@ package body Syscall.IPC is
     -- handleMapFB
     ---------------------------------------------------------------------------
     procedure handleMapFB (callerPID : Process.ProcessID;
+                           arg0      : Unsigned_64;
                            retval    : out Unsigned_64) with
         SPARK_Mode => Off
     is
@@ -915,6 +1063,8 @@ package body Syscall.IPC is
 
         ok : Boolean := True;
         capAllowed : Boolean;
+        -- arg0 names the CAP_DEVICE_MEM covering the framebuffer.
+        authority : constant Capabilities.Capability := deviceMemoryOf (callerPID, arg0);
     begin
         retval := reterr;
         if not Multiboot.Has_Graphics then
@@ -927,7 +1077,7 @@ package body Syscall.IPC is
         -- The capability must cover the framebuffer's real pages, which
         -- must be device-mappable (CAP-001).
         capAllowed := Device_Memory_Authority.Authorize
-          (Process.proctab(callerPID).caps, Physical_Range_Map.Kernel_Map,
+          (authority, Physical_Range_Map.Kernel_Map,
            Unsigned_64 (Item.Map_First),
            Unsigned_64 (Item.Map_Limit) - Unsigned_64 (Item.Map_First),
            Device_Memory_Admission.Read_Write);
@@ -939,7 +1089,7 @@ package body Syscall.IPC is
                Unsigned_64 (Item.Map_Limit) - Unsigned_64 (Item.Map_First),
                Device_Memory_Admission.Read_Write,
                Device_Memory_Authority.Explain
-                 (Process.proctab(callerPID).caps, Physical_Range_Map.Kernel_Map,
+                 (authority, Physical_Range_Map.Kernel_Map,
                   Unsigned_64 (Item.Map_First),
                   Unsigned_64 (Item.Map_Limit) - Unsigned_64 (Item.Map_First),
                   Device_Memory_Admission.Read_Write));
@@ -1069,19 +1219,70 @@ package body Syscall.IPC is
             authorityTag => 0,
             words    => (arg2, arg3, arg4, arg5));
     begin
-        if arg0 > Unsigned_64(Capabilities.CapabilitySlot'Last) then
-            retval := 0;
-        else
-            retval := Process.IPC.replyCap (
-                capSlot => Capabilities.CapabilitySlot(arg0),
-                msg     => replyMsg);
-        end if;
+        -- arg0: a saved reply's handle (MOVE_REPLY_CAPABILITY). The current
+        -- reply is answered with REPLY or REPLY_WAIT, by the caller's identity.
+        retval := Process.IPC.replyCap (handle => arg0, msg => replyMsg);
     end handleReplyCap;
+
+    ---------------------------------------------------------------------------
+    -- handleReplyWithCap (REPLY_WITH_CAPABILITY, CAP-002): arg0 = the
+    -- requester's identity, arg1 = address of the reply message, arg2 =
+    -- address of a Capability_ABI.Derivation. See Process.IPC.
+    ---------------------------------------------------------------------------
+    procedure handleReplyWithCap (callerPID : Process.ProcessID;
+                                  arg0, arg1, arg2 : Unsigned_64;
+                                  retval : out Unsigned_64) with
+        SPARK_Mode => Off
+    is
+        replyMsg   : Process.Message;
+        derivation : aliased Capability_ABI.Derivation := [others => 0];
+        ok         : Boolean;
+    begin
+        retval := Capability_ABI.Refusal_Word (Capability_ABI.Invalid_Argument);
+        Process.User_Memory.Read_Message (callerPID, arg1, replyMsg, ok);
+        if not ok then
+            return;
+        end if;
+        Process.User_Memory.Copy
+          (callerPID, arg2, derivation'Address, Capability_ABI.Derivation_Bytes, ok);
+        if not ok then
+            return;
+        end if;
+        -- The kernel stamps the reply's authority tag (the new handle).
+        replyMsg.authorityTag := 0;
+        retval := Process.IPC.replyWithCapability
+          (replyTo    => Process.processOfIdentity (Process_Identities.From_Word (arg0)),
+           msg        => replyMsg,
+           derivation => derivation);
+    end handleReplyWithCap;
+
+    procedure handleReplySavedWithCap (callerPID : Process.ProcessID;
+                                       arg0, arg1, arg2 : Unsigned_64;
+                                       retval : out Unsigned_64) with
+        SPARK_Mode => Off
+    is
+        replyMsg   : Process.Message;
+        derivation : aliased Capability_ABI.Derivation := [others => 0];
+        ok         : Boolean;
+    begin
+        retval := Capability_ABI.Refusal_Word (Capability_ABI.Invalid_Argument);
+        Process.User_Memory.Read_Message (callerPID, arg1, replyMsg, ok);
+        if not ok then
+            return;
+        end if;
+        Process.User_Memory.Copy
+          (callerPID, arg2, derivation'Address, Capability_ABI.Derivation_Bytes, ok);
+        if not ok then
+            return;
+        end if;
+        replyMsg.authorityTag := 0;
+        retval := Process.IPC.replySavedWithCapability (arg0, replyMsg, derivation);
+    end handleReplySavedWithCap;
 
     ---------------------------------------------------------------------------
     -- handleReceiveEventNB
     ---------------------------------------------------------------------------
-    procedure handleReceiveEventNB (arg0   : Unsigned_64;
+    procedure handleReceiveEventNB (arg0, arg1 : Unsigned_64;
                                     retval : out Unsigned_64) with
         SPARK_Mode => Off
     is
@@ -1089,14 +1290,28 @@ package body Syscall.IPC is
         eventMsg : Process.Message;
         found    : Boolean;
         ok       : Boolean;
+        publisher : Process.ProcessID;
+        -- arg1, when nonzero: where to write the publisher's identity (0 for
+        -- the kernel's own notices), the sender a receiver authenticates.
+        identity : aliased Unsigned_64 := 0;
     begin
-        if not Process.User_Memory.Message_Writable (caller, arg0) then
+        if not Process.User_Memory.Message_Writable (caller, arg0) or else
+           (arg1 /= 0 and then not Process.User_Memory.Writable_Range
+                                     (caller, arg1, Unsigned_64'Size / 8))
+        then
             retval := 0;
             return;
         end if;
-        Process.IPC.receiveEventNB (eventMsg, found);
+        Process.IPC.receiveEventNB (eventMsg, found, publisher);
         if found then
             Process.User_Memory.Write_Message (caller, arg0, eventMsg, ok);
+            if ok and then arg1 /= 0 then
+                if publisher /= Process.NO_PROCESS then
+                    identity := Process_Identities.To_Word (Process.identityOf (publisher));
+                end if;
+                Process.User_Memory.Copy_To_User
+                  (caller, arg1, identity'Address, Unsigned_64'Size / 8, ok);
+            end if;
             retval := (if ok then 1 else 0);
         else
             retval := 0;
@@ -1108,7 +1323,7 @@ package body Syscall.IPC is
     ---------------------------------------------------------------------------
     procedure handleSendEvent (callerPID : Process.ProcessID;
                                arg0, arg1, arg2, arg3,
-                               arg4, arg5 : Unsigned_64;
+                               arg4, arg5, arg6 : Unsigned_64;
                                retval     : out Unsigned_64) with
         SPARK_Mode => Off
     is
@@ -1140,8 +1355,10 @@ package body Syscall.IPC is
             words    => (arg2, arg3, arg4, arg5));
 
         -- The kernel's own events (child exits, faults, grant lifecycle,
-        -- control messages) cannot be forged: receivers act on them.
-        if IPC_Labels.Is_Kernel_Event (eventMsg.tag.label) then
+        -- control messages) and flags cannot be forged: receivers act on them.
+        if IPC_Labels.Is_Kernel_Event (eventMsg.tag.label)
+          or else Capability_ABI.Claims_Kernel_Flags (eventMsg.tag.ipc)
+        then
             retval := reterr;
             return;
         end if;
@@ -1155,50 +1372,52 @@ package body Syscall.IPC is
         --  publication authority.  Its object is a service/driver class, and
         --  it reaches only the process currently registered for that class.
         --  The complementary RIGHT_WRITE authorizes registration itself.
+        -- arg6 names the authority: a notification capability (RIGHT_READ)
+        -- covering a role destPID is registered for, or an endpoint
+        -- (RIGHT_WRITE) to destPID in its current incarnation.
         if not hasCap then
-            for slot in Capabilities.CapabilitySlot loop
-                if Process.proctab(callerPID).caps(slot).capType =
-                   Capabilities.CAP_NOTIFICATION and then
-                   Process.proctab(callerPID).caps(slot).rights(
-                       Capabilities.RIGHT_READ) and then
-                   Process.proctab(callerPID).caps(slot).object.ref <=
-                       Service_Registry.DriverID'Last and then
-                   Service_Registry.Registered
-                     (Process.proctab(callerPID).caps(slot).object.ref) = destPID
-                then
-                    hasCap := True;
-                    authorityTag :=
-                      Process.proctab(callerPID).caps(slot).authorityTag;
-                    exit;
-                end if;
-            end loop;
-        end if;
-
-        if not hasCap then
-            for slot in Capabilities.CapabilitySlot loop
-                if Process.proctab(callerPID).caps(slot).capType =
-                   Capabilities.CAP_ENDPOINT and then
-                   Process.proctab(callerPID).caps(slot).object.ref =
-                   Unsigned_64 (destPID)
-                then
+            declare
+                found : Process_Capabilities.Found;
+            begin
+                Spinlocks.enterCriticalSection (Process.mailtab(callerPID).lock);
+                found := Process_Capabilities.Find_Any (Process.proctab(callerPID).caps, arg6);
+                Spinlocks.exitCriticalSection (Process.mailtab(callerPID).lock);
+                if not found.OK then
+                    null;
+                elsif found.Cap.capType = Capabilities.CAP_NOTIFICATION then
+                    if found.Cap.rights (Capabilities.RIGHT_READ)
+                      and then found.Cap.object.param > 0
+                      and then found.Cap.object.ref <= Service_Registry.DriverID'Last
+                    then
+                        for role in found.Cap.object.ref ..
+                          (if found.Cap.object.param - 1 >=
+                                Service_Registry.DriverID'Last - found.Cap.object.ref
+                           then Service_Registry.DriverID'Last
+                           else found.Cap.object.ref + (found.Cap.object.param - 1))
+                        loop
+                            if Service_Registry.Registered (role) = destPID then
+                                hasCap := True;
+                                authorityTag := found.Cap.authorityTag;
+                                exit;
+                            end if;
+                        end loop;
+                    end if;
+                elsif found.Cap.object.ref = Unsigned_64 (destPID) then
                     Capabilities.Operations.resolveCurrentEndpoint
-                      (table => Process.proctab(callerPID).caps,
-                       slot => slot,
+                      (cap => found.Cap,
                        rights => publishRights,
-                       currentGeneration =>
-                         Process.generationOf (destPID),
+                       currentGeneration => Process.generationOf (destPID),
                        destPID => resolvedPID,
                        authorityTag => resolvedAuthorityTag,
                        status => resolveStatus);
                     if resolveStatus = Capabilities.Operations.OP_OK and then
                        resolvedPID = Unsigned_64 (destPID)
                     then
-                       hasCap := True;
-                       authorityTag := resolvedAuthorityTag;
-                       exit;
+                        hasCap := True;
+                        authorityTag := resolvedAuthorityTag;
                     end if;
                 end if;
-            end loop;
+            end;
         end if;
 
         if not hasCap then
@@ -1365,28 +1584,10 @@ package body Syscall.IPC is
         if Process.threadOf (callerPID).mode = Process.KERNEL then
             hasCap := True;
         else
-            -- Forward: caller has endpoint or reply cap to grantee
-            for slot in Capabilities.CapabilitySlot loop
-                if Process.proctab(callerPID).caps(slot).capType =
-                   Capabilities.CAP_ENDPOINT and then
-                   Process.proctab(callerPID).caps(slot).object.ref =
-                   Unsigned_64 (granteePID) and then
-                   Process.proctab(callerPID).caps(slot).gen = generation
-                then
-                    hasCap := True;
-                    exit;
-                end if;
-                if Process.proctab(callerPID).caps(slot).capType =
-                   Capabilities.CAP_REPLY
-                then
-                    Process.IPC.replyTargetOf
-                      (Process.proctab(callerPID).caps(slot), replyPID, replyTID);
-                    if replyPID = granteePID then
-                        hasCap := True;
-                        exit;
-                    end if;
-                end if;
-            end loop;
+            -- An endpoint or a saved reply to the grantee is named by
+            -- handle: CREATE_SHARED_MEMORY_GRANT_VIA_CAPABILITY. Here only
+            -- the calling thread's current reply (answering the grantee) or
+            -- the grantee's opt-in below authorize.
             -- The calling thread's current reply authority.
             if not hasCap then
                 Process.IPC.replyTargetOf
@@ -1399,21 +1600,31 @@ package body Syscall.IPC is
         -- Reverse: grantee has endpoint to caller
         -- with RIGHT_GRANT (explicit opt-in to
         -- receiving grants from that service).
+        -- This looks in the grantee's table, never the caller's: the
+        -- grantee consented by holding it (follow-up: name the opt-in
+        -- explicitly once channels replace this path).
         if not hasCap then
-            for slot in Capabilities.CapabilitySlot loop
-                if Process.proctab(granteePID).caps(slot).capType =
-                   Capabilities.CAP_ENDPOINT and then
-                   Process.proctab(granteePID).caps(slot).object.ref =
-                   Unsigned_64 (callerPID) and then
-                   Process.proctab(granteePID).caps(slot).gen =
-                     Process.generationOf (callerPID) and then
-                   Process.proctab(granteePID).caps(slot).rights(
-                       Capabilities.RIGHT_GRANT)
-                then
-                    hasCap := True;
-                    exit;
+            Spinlocks.enterCriticalSection (Process.mailtab(granteePID).lock);
+            for slot in 0 .. Process_Capabilities.Tables.High_Water
+                               (Process.proctab(granteePID).caps) - 1
+            loop
+                if Process_Capabilities.Tables.Is_Live_At (Process.proctab(granteePID).caps, slot) then
+                    declare
+                        cap : constant Capabilities.Capability :=
+                          Process_Capabilities.Tables.Item_At (Process.proctab(granteePID).caps, slot);
+                    begin
+                        if cap.capType = Capabilities.CAP_ENDPOINT and then
+                           cap.object.ref = Unsigned_64 (callerPID) and then
+                           cap.gen = Process.generationOf (callerPID) and then
+                           cap.rights (Capabilities.RIGHT_GRANT)
+                        then
+                            hasCap := True;
+                            exit;
+                        end if;
+                    end;
                 end if;
             end loop;
+            Spinlocks.exitCriticalSection (Process.mailtab(granteePID).lock);
         end if;
 
         if not hasCap then
@@ -1538,8 +1749,7 @@ package body Syscall.IPC is
         mappedAddress : System.Address;
         success : Boolean;
     begin
-        if arg0 > Unsigned_64 (Capabilities.CapabilitySlot'Last) or else
-           arg1 > Unsigned_64 (Memory_Grants.Global_Slot'Last) or else
+        if arg1 > Unsigned_64 (Memory_Grants.Global_Slot'Last) or else
            not Memory_Grants.Is_Valid_Generation_Field (arg2) or else
            arg5 > 1
         then
@@ -1547,8 +1757,7 @@ package body Syscall.IPC is
             return;
         end if;
 
-        cap := Process.proctab(callerPID).caps
-          (Capabilities.CapabilitySlot (arg0));
+        cap := ownCap (callerPID, arg0);
         if cap.capType /= Capabilities.CAP_ENDPOINT or else
            not cap.rights (Capabilities.RIGHT_READ) or else
            cap.object.ref = 0 or else
@@ -1670,16 +1879,34 @@ package body Syscall.IPC is
         perm : Process.GrantPermission;
         ok : Boolean;
     begin
-        if arg0 > Unsigned_64 (Capabilities.CapabilitySlot'Last) or else
-           not Memory_Grants.Valid_Creation_Request (arg2, arg3) then
+        if not Memory_Grants.Valid_Creation_Request (arg2, arg3) then
             println
-              ("CREATE_SHARED_MEMORY_GRANT_VIA_CAPABILITY: invalid slot, size or flags");
+              ("CREATE_SHARED_MEMORY_GRANT_VIA_CAPABILITY: invalid size or flags");
             retval := reterr;
             return;
         end if;
 
-        cap := Process.proctab(callerPID).caps(
-            Capabilities.CapabilitySlot (arg0));
+        cap := ownCap (callerPID, arg0);
+
+        -- A saved reply names the process it answers: a server may share
+        -- memory with a client whose request it set aside.
+        if cap.capType = Capabilities.CAP_REPLY then
+            declare
+                replyPID : Process.ProcessID;
+                replyTID : Process.ThreadID;
+            begin
+                Process.IPC.replyTargetOf (cap, replyPID, replyTID);
+                if replyPID = Process.NO_PROCESS then
+                    retval := reterr;
+                    return;
+                end if;
+                cap := (capType => Capabilities.CAP_ENDPOINT,
+                        rights  => Capabilities.READ_WRITE,
+                        authorityTag => Capabilities.NO_AUTHORITY_TAG,
+                        object  => (ref => Unsigned_64 (replyPID), param => 0),
+                        gen     => Process.generationOf (replyPID));
+            end;
+        end if;
 
         if cap.capType /= Capabilities.CAP_ENDPOINT then
             println
@@ -1756,8 +1983,7 @@ package body Syscall.IPC is
         success : Boolean;
     begin
         retval := reterr;
-        if arg0 > Unsigned_64 (Capabilities.CapabilitySlot'Last) or else
-           arg1 > Unsigned_64 (Memory_Grants.Global_Slot'Last) or else
+        if arg1 > Unsigned_64 (Memory_Grants.Global_Slot'Last) or else
            not Memory_Grants.Is_Valid_Generation_Field (arg2) or else
            arg3 > Unsigned_64 (Memory_Grants.Page_Offset'Last) or else
            arg4 not in 1 .. Unsigned_64 (Memory_Grants.Page_Count'Last) or else
@@ -1765,7 +1991,7 @@ package body Syscall.IPC is
         then
             return;
         end if;
-        cap := Process.proctab(callerPID).caps(Capabilities.CapabilitySlot (arg0));
+        cap := ownCap (callerPID, arg0);
         if cap.capType /= Capabilities.CAP_ENDPOINT or else
            not cap.rights (Capabilities.RIGHT_READ) or else
            cap.object.ref = 0 or else

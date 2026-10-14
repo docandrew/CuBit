@@ -23,6 +23,7 @@
 --  No dirty arena: a session never holds a write delegation.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with CuBit.Handles;
 with Interfaces; use Interfaces;
 with System;
 with CuBit.Async_Requests;
@@ -42,7 +43,7 @@ package CuBit.Filesystem_Sessions is
    --  Open the queue on the filesystem behind Endpoint, with a transfer
    --  arena of Arena_Pages pages. A process has one queue at the service.
    procedure Open
-     (S : in out Session; Endpoint : CuBit.Messages.CapabilitySlot;
+     (S : in out Session; Endpoint : CuBit.Handles.Endpoint;
       Arena_Pages : Positive; Opened : out Boolean)
    with Pre => Arena_Pages <= FQ.Transfer_Pages;
    --  Close the channels. A held wake is answered by the service then.
@@ -108,7 +109,7 @@ package CuBit.Filesystem_Sessions is
 
 private
    type Session is limited record
-      Endpoint  : CuBit.Messages.CapabilitySlot := 0;
+      Endpoint  : CuBit.Handles.Endpoint := CuBit.Handles.No_Endpoint;
       Transfer  : CuBit.Channels.Channel;
       Queue     : CuBit.Channels.Channel;
       Events    : CuBit.Channels.Channel;

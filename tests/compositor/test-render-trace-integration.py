@@ -7,7 +7,7 @@ root=Path(__file__).resolve().parents[2]
 s=(root/'userspace/services/desktop/main.adb').read_text()
 a=s.index('   procedure noteClientDraw ');b=s.index('   end noteClientDraw;',a)+len('   end noteClientDraw;')
 helper=s[a:b]
-a=s.index('      if capSubmit (CAP_SLOT_DISPLAY, request, CP.Token (P.Transfer)) then')
+a=s.index('      Accepted := capSubmit (Desktop_Endpoints.Display_Service, request, CP.Token (P.Transfer));')
 a=s.index('         if Desktop_Timing_Policy.Enabled then',a);b=s.index('         end if;',a)+len('         end if;')
 submit=s[a:b]
 a=s.index('      for I in 1 .. RT.Count (renderTrace) loop');b=s.index('      RT.Reset (renderTrace);',a)+len('      RT.Reset (renderTrace);')

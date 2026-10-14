@@ -1,3 +1,5 @@
+with CuBit.Startup_State;
+with Startup;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Benchmark_Clock;
@@ -109,13 +111,14 @@ procedure Benchmark is
       end loop;
    end Report;
 begin
+   Check (CuBit.Startup_State.Ready (Startup.Verify), "startup capabilities");
    Clock.Calibrate (Rate);
    Check (Rate > 0, "counter calibration");
    CCL.Objects.Bind (Types, CCL.Types.Integer_Type, [1, 2, 3, 4], Contract, Good);
    Check (Good, "binding");
-   Client.Initialize (Writer, CAP_SLOT_CONFIG, Good);
+   Client.Initialize (Writer, Startup.Config, Good);
    Check (Good, "writer grant");
-   Client.Initialize (Reader, CAP_SLOT_CONFIG, Good);
+   Client.Initialize (Reader, Startup.Config, Good);
    Check (Good, "reader grant");
    Client.Create (Writer, Name, Contract, Wire.Read_Write, 0, Next_Token, Sent);
    Finish (Writer, Item);

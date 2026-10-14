@@ -1,3 +1,4 @@
+with CuBit.Handles.Fixture;
 with Ada.Text_IO;
 with Interfaces; use Interfaces;
 with CCL.Types; use CCL.Types;
@@ -54,7 +55,7 @@ begin
    Bind (Types, Integer_Type, [1, 2, 3, 4], Contract, Good); Check (Good);
    Value := Empty (Contract); Append (Value, Integer_Cell (42), Built); Check (Built = Added);
    B.Take_Outcome (Object, Types, Reply); Check (Reply.State = B.No_Outcome);
-   C.Initialize (Object, 5, Good); Check (Good);
+   C.Initialize (Object, CuBit.Handles.Fixture.Endpoint_Of (5), Good); Check (Good);
    C.Create (Object, "org.cubit.test", Contract, W.Read_Write, 0, Token, Sent);
    Check (Sent = C.Submitted);
    C.Complete (Object, Answer (Token, W.Success, 55), Done); Check (Done = C.Completed);
@@ -173,7 +174,7 @@ begin
       Bind (Types, String_Type, [5, 6, 7, 8], Text_Contract, Good); Check (Good);
       Text_Value := Empty (Text_Contract);
       Append_Text (Text_Value, "native text", Built); Check (Built = Added);
-      C.Initialize (Text_Client, 5, Good); Check (Good);
+      C.Initialize (Text_Client, CuBit.Handles.Fixture.Endpoint_Of (5), Good); Check (Good);
       C.Open (Text_Client, "org.cubit.text", Text_Contract, W.Read_Only, 0, 1, Sent);
       Check (Sent = C.Submitted);
       C.Complete (Text_Client, Answer (1, W.Success, 55), Done); Check (Done = C.Completed);
@@ -198,7 +199,7 @@ begin
       Pending_Client : C.Client;
       Empty_Types : Registry;
    begin
-      C.Initialize (Pending_Client, 5, Good); Check (Good);
+      C.Initialize (Pending_Client, CuBit.Handles.Fixture.Endpoint_Of (5), Good); Check (Good);
       C.Open (Pending_Client, "org.cubit.test", Contract, W.Read_Write, 0, 1, Sent); Check (Sent = C.Submitted);
       C.Complete (Pending_Client, Answer (1, W.Success, 55), Done); Check (Done = C.Completed);
       C.Take_Result (Pending_Client, Native, Taken); Check (Taken and Native.Valid);

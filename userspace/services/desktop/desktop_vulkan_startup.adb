@@ -116,12 +116,12 @@ package body Desktop_Vulkan_Startup with SPARK_Mode,
         Vulkan_Submission.Owner_Context (Submission) = System.Null_Address and
         Vulkan_Submission.Can_Destroy (Submission)));
    function Current return D.Phase is (D.Current (Device));
-   procedure Initialize (Admitted_Slot : Interfaces.Unsigned_64) is
+   procedure Initialize (Render : CuBit.Handles.Endpoint) is
    begin
       -- Guard here also establishes the fresh-context precondition when the
       -- package has already progressed to live/retired/quarantined state.
       if D.Current (Device) = D.Fresh then
-         D.Start (Device, Context, Submission, Admitted_Slot);
+         D.Start (Device, Context, Submission, Render);
       end if;
    end Initialize;
    procedure Check_Health (Usable : out Boolean) is

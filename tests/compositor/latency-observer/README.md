@@ -25,7 +25,7 @@ cd kernel
 mkdir -p ../tests/compositor/latency-observer/build/generated
 ../userspace/ccl/build/manifest/ccl-manifest ../userspace/ccl/catalogs/native-runtime-services.ccl \
   ../tests/compositor/latency-observer/manifest.ccl \
-  --ada-output ../tests/compositor/latency-observer/build/generated/ccl_manifest_bindings.ads \
+  --startup-output ../tests/compositor/latency-observer/build/generated/startup.ads \
   > ../tests/compositor/latency-observer/build/manifest.S
 alr exec -- gcc -c ../tests/compositor/latency-observer/build/manifest.S \
   -o ../tests/compositor/latency-observer/build/manifest.o

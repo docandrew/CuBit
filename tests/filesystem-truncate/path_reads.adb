@@ -1,3 +1,4 @@
+with CuBit.Handles.Fixture;
 with Ada.Text_IO; use Ada.Text_IO;
 with Interfaces; use Interfaces;
 with Ext2; use Ext2;
@@ -58,7 +59,7 @@ procedure Path_Reads is
       rootName := "folder";
       leafName := "file";
       initBlockDevice
-        (fs, 1, (slot => 1, generation => 1), Grant_Buffer'Address,
+        (fs, CuBit.Handles.Fixture.Endpoint_Of (1), 1, (slot => 1, generation => 1), Grant_Buffer'Address,
          Grant_Buffer'Length, admission);
       pragma Assert (admission = Admitted);
       Calls := 0;
@@ -75,7 +76,7 @@ begin
    leafEntry.inode := 5;
    leafName := "othe";
    initBlockDevice
-     (fs, 1, (slot => 1, generation => 1), Grant_Buffer'Address,
+     (fs, CuBit.Handles.Fixture.Endpoint_Of (1), 1, (slot => 1, generation => 1), Grant_Buffer'Address,
       Grant_Buffer'Length, admission);
    pragma Assert (admission = Admitted);
    resolvePath (fs, "/folder/file", found, lookup);

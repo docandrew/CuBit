@@ -9,6 +9,7 @@ with CCL.Host_Values;
 with CCL_Config_Bindings;
 with CCL_Image_Bindings;
 with CCL_Stream_Table;
+with CCL_Native_Bindings;
 
 package body Control_Host is
    use Interfaces;
@@ -53,8 +54,8 @@ package body Control_Host is
       Tag : MessageTag;
    begin
       Request.tag := (label => CuBit.Protocols.CLOCK_OP_MONOTONIC_MS,
-                      length => 1, flags => 0, reserved => 0);
-      Tag := capCall (CAP_SLOT_CLOCK, Request, CuBit.Messages.Wait_Forever);
+                      length => 1, protocol => 0, ipc => <>, reserved => 0);
+      Tag := capCall (CCL_Native_Bindings.Clock, Request, CuBit.Messages.Wait_Forever);
       Available := Tag.label = 16#F000# and Tag.length = 1;
       Value := (if Available then Request.words (0) else 0);
    end Read_Clock;

@@ -1,4 +1,5 @@
 with CuBit.Audio;
+with CuBit.Handles.Startup;
 
 package body Penny_Audio_Transport is
    package Audio renames CuBit.Audio;
@@ -8,6 +9,15 @@ package body Penny_Audio_Transport is
    function Open return Interfaces.C.int is
    begin
       if Audio.isValid (Stream) then return 0; end if;
+      --  The program's "mixer" startup entry (none: open fails).
+      declare
+         Found : constant CuBit.Handles.Startup.Optional_Endpoint :=
+           CuBit.Handles.Startup.Optional_Endpoint_Named ("mixer");
+      begin
+         if Found.Present then
+            Audio.Bind (Found.Value);
+         end if;
+      end;
       Stream := Audio.open (48_000, 2);
       return (if Audio.isValid (Stream) then 1 else 0);
    end Open;

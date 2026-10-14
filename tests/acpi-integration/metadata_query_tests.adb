@@ -1,3 +1,4 @@
+with CuBit.Handles.Fixture;
 with ACPI_Requests; use ACPI_Requests;
 with ACPI_Endpoint;
 with ACPI_Native_Blocks;
@@ -105,7 +106,7 @@ begin
                Native_Reply : Packet;
                Acquisitions : constant Natural := CuBit.Memory_Grants.Acquisitions;
             begin
-               ACPI_Native_Blocks.Dispatch (Adapter, Server, Config, Stamp, 5,
+               ACPI_Native_Blocks.Dispatch (Adapter, Server, Config, Stamp, CuBit.Handles.Fixture.Endpoint_Of (5),
                  (Label => Label, Data => [Prior, Table_Index, A, B], others => <>), Native_Reply);
                Check (Native_Reply = Wire);
                Check (CuBit.Memory_Grants.Acquisitions = Acquisitions

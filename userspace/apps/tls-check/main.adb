@@ -2,16 +2,17 @@ pragma Ada_2022;
 with Interfaces; use Interfaces;
 with System;
 with System.Storage_Elements; use System.Storage_Elements;
-with CCL_Manifest_Bindings;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Memory_Grants;
 with CuBit.TLS_Protocol; use CuBit.TLS_Protocol;
+with CuBit.Handles;
+with Startup;
 
 --  Headless check for tls.svc (tls-service regression). This app holds no
 --  network authority and links no TLS library: every connection goes
 --  through tls.svc, limited to its manifest's tls-scope.
 procedure Main is
-   Slot : constant CapabilitySlot := CCL_Manifest_Bindings.Slot_Tls;
+   Slot : constant CuBit.Handles.Endpoint := Startup.Tls;
    Size : constant := 4_096;
    Allocation : constant Unsigned_64 := syscall (SYSCALL_SBRK, Size);
    Buffer : String (1 .. Size) with Import,

@@ -14,6 +14,7 @@ with System;
 with CuBit.Memory_Grants;
 with CuBit.Messages;
 
+with CuBit.Handles;
 package DHCP is
 
    --  DHCP message types (option 53)
@@ -78,14 +79,14 @@ package DHCP is
    ---------------------------------------------------------------------------
    procedure sendDiscover
      (state   : in out DHCPState;
-      netSlot : CuBit.Messages.CapabilitySlot);
+      netstack : CuBit.Handles.Endpoint);
 
    ---------------------------------------------------------------------------
    --  sendRequest - send DHCP REQUEST for the offered IP
    ---------------------------------------------------------------------------
    procedure sendRequest
      (state   : in out DHCPState;
-      netSlot : CuBit.Messages.CapabilitySlot);
+      netstack : CuBit.Handles.Endpoint);
 
    ---------------------------------------------------------------------------
    --  handlePacket - process a DHCP response packet

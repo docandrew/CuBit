@@ -27,7 +27,7 @@ package body CuBit.Libc_Net_Addresses with SPARK_Mode is
    Byte_Mask    : constant := 16#FF#;
 
    procedure Decode
-     (Slot : Natural; Word_0, Word_1, Descriptor : Unsigned_64;
+     (Slot : Unsigned_64; Word_0, Word_1, Descriptor : Unsigned_64;
       Result : out Scope; Valid : out Boolean)
    is
       Prefix : constant Unsigned_64 := Shift_Right (Descriptor, Prefix_Shift) and Byte_Mask;

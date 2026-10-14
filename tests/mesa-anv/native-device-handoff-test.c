@@ -5,6 +5,7 @@ int native_probe_main(void);
 #include "native-authorized-discovery.c"
 #undef main
 #include <assert.h>
+#include "../support/handles/cubit_test_handles.h"
 
 static unsigned attach_calls;
 static bool take_pin;
@@ -24,10 +25,10 @@ void cubit_test_log(void *context, const char *text, uint32_t length)
    log_calls++;
 }
 
-VkResult anv_cubit_attach_owned_session(struct anv_device *device, uint64_t slot,
+VkResult anv_cubit_attach_owned_session(struct anv_device *device, cubit_endpoint endpoint,
                                       struct anv_cubit_endpoint_pin *pin)
 {
-   assert(device && slot == 24 && pin && pin->retired);
+   assert(device && endpoint.opaque == TEST_ENDPOINT(24).opaque && pin && pin->retired);
    attach_calls++;
    if (take_pin) {
       saved = *pin;
@@ -48,7 +49,7 @@ int main(void)
    report("debug-only\n");
    assert(log_calls == 2);
    for (unsigned mode = 0; mode < 3; mode++) {
-      struct discovery_probe owner = {.endpoint = {.slot = 24}};
+      struct discovery_probe owner = {.endpoint = {.endpoint = TEST_ENDPOINT(24)}};
       take_pin = mode != 0;
       attach_result = mode == 2 ? VK_SUCCESS : VK_ERROR_DEVICE_LOST;
       const unsigned before = attach_calls;

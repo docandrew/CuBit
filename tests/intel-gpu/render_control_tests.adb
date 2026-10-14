@@ -12,11 +12,10 @@ procedure Render_Control_Tests is
    Tag : Unsigned_64;
    procedure Call (Operation, Session : Unsigned_64; Ready : Boolean := True;
                    Who : Unsigned_64 := 42; Stamp : Unsigned_64 := 99;
-                   Target : Unsigned_64 := Identity;
-                   Recipient_Ready : Boolean := True) is
+                   Target : Unsigned_64 := Identity) is
    begin
       Handle (Object, Who, Stamp, Ready, Label, 4, 0, 0,
-              [Version, Target, Session, Operation], Reply, Recipient_Ready);
+              [Version, Target, Session, Operation], Reply);
    end Call;
 begin
    declare
@@ -55,34 +54,30 @@ begin
       Check (Storage_Index (Fresh, 0) = 0);
       Check (not Retired_Admission (Fresh, 0));
       Check (not Retired_Admission (Fresh, Unsigned_64'Last));
-      Check (Stored_Recipient_Slot (Fresh, 0) = 0);
-      Check (Stored_Recipient_Slot (Fresh, Unsigned_64'Last) = 0);
       Check (Issued_Tag (Fresh, 0) = 0);
       Check (Storage_Index (Fresh, Unsigned_64'Last) = 0);
       Bind (Fresh, 42, 99);
       for I in Tags'Range loop
          Check (Storage_Index (Fresh, Base + Unsigned_64 (I)) = 0);
-         Check (Stored_Recipient_Slot (Fresh, Base + Unsigned_64 (I)) = 0);
          Check (Issued_Tag (Fresh, I) = 0);
          Handle (Fresh, 42, 99, True, Label, 4, 0, 0,
            [Version, Identity, 0, Reserve], Reply);
          Check (Reply (0) = OK);
          Tags (I) := Reply (2);
-         Check (Reply (3) = Unsigned_64 (39 + I));
-         Check (Stored_Recipient_Slot (Fresh, Tags (I)) = Reply (3));
+         --  No recipient capability: the reply's last word is always 0.
+         Check (Reply (3) = 0);
          Check (Storage_Index (Fresh, Tags (I)) = I);
          Check (Issued_Tag (Fresh, I) = Tags (I));
          Check (Resolve (Fresh, Identity, Tags (I)) = 0);
          Check (not Retired_Admission (Fresh, Tags (I))); -- still reserved
          Handle (Fresh, 42, 99, True, Label, 4, 0, 0,
-           [Version, Identity, Tags (I), Activate], Reply, True);
+           [Version, Identity, Tags (I), Activate], Reply);
          Check (Reply (0) = OK);
          Check (Resolve (Fresh, Identity, Tags (I)) = Tags (I));
          Check (not Retired_Admission (Fresh, Tags (I))); -- active
          Check (Resolve (Fresh, 43, Tags (I)) = 0);
          Reject_Delivery (Fresh, Identity, Tags (I));
          Check (Retired_Admission (Fresh, Tags (I)));
-         Check (Stored_Recipient_Slot (Fresh, Tags (I)) = Unsigned_64 (39 + I));
          Check (Storage_Index (Fresh, Tags (I)) = I);
          Check (Resolve (Fresh, Identity, Tags (I)) = 0);
       end loop;
@@ -90,7 +85,6 @@ begin
       for I in Tags'Range loop
          Check (not Retired_Admission (Fresh, Tags (I)));
          Check (Storage_Index (Fresh, Tags (I)) = I);
-         Check (Stored_Recipient_Slot (Fresh, Tags (I)) = Unsigned_64 (39 + I));
          Check (Issued_Tag (Fresh, I) = Tags (I));
          Check (Resolve (Fresh, Identity, Tags (I)) = 0);
          Check (Resolve_Retired (Fresh, Identity, Tags (I)) = 0);
@@ -105,22 +99,21 @@ begin
       Book : L.Ledger;
       ID, Denied_ID : L.Ticket;
       Taken : Boolean;
-      Request : B.Decoded := (True, 40, 16, 1);
+      Request : B.Decoded := (True, Identity, 1);
    begin
-      L.Reserve (Book, (Valid => False), Identity, ID);
+      L.Reserve (Book, (Valid => False), ID);
       pragma Assert (ID = 0);
-      L.Reserve (Book, Request, 0, ID);
-      pragma Assert (ID = 0);
-      L.Reserve (Book, Request, Identity, ID);
+      L.Reserve (Book, Request, ID);
       pragma Assert (ID = 1 and L.State (Book, ID) = L.Pending);
-      L.Reserve (Book, Request, Identity, Denied_ID);
+      pragma Assert (L.Identity (Book, ID) = Identity);
+      L.Reserve (Book, Request, Denied_ID);
       pragma Assert (Denied_ID = 0); -- exact replay
       Request.Nonce := 2;
-      L.Reserve (Book, Request, Identity, Denied_ID);
-      pragma Assert (Denied_ID = 0); -- destination alias
-      Request.Destination := 17;
-      L.Reserve (Book, Request, Identity + 2 ** 32, Denied_ID);
-      pragma Assert (Denied_ID = 0); -- source repurposed for reused PID
+      L.Reserve (Book, Request, Denied_ID);
+      pragma Assert (Denied_ID = 0); -- second admission for the same child
+      Request := (True, Identity + 2 ** 32, 1);
+      L.Reserve (Book, Request, Denied_ID);
+      pragma Assert (Denied_ID = 0); -- replayed nonce for another child
       L.Take_Reply (Book, ID, Taken);
       pragma Assert (not Taken);
       L.Delivered (Book, ID, True);
@@ -135,17 +128,17 @@ begin
       L.Delivered (Book, ID, True); -- no retry can turn failure into active
       pragma Assert (L.State (Book, ID) = L.Retained);
       for I in 2 .. L.Capacity loop
-         L.Reserve (Book, (True, 40, I + 16, Unsigned_64 (I)), Identity, ID);
+         L.Reserve (Book, (True, Identity + Unsigned_64 (I) * 2 ** 32, Unsigned_64 (I)), ID);
          pragma Assert (ID = I);
       end loop;
-      L.Reserve (Book, (True, 41, 60, 99), Identity, Denied_ID);
+      L.Reserve (Book, (True, Identity + 99 * 2 ** 32, 99), Denied_ID);
       pragma Assert (Denied_ID = 0); -- retained entries never recycled
       for Value in L.Outcome loop
          for Sent in Boolean loop
             declare
                Fresh : L.Ledger;
             begin
-               L.Reserve (Fresh, (True, 40, 16, 1), Identity, ID);
+               L.Reserve (Fresh, (True, Identity, 1), ID);
                L.Finish (Fresh, ID, Value);
                L.Take_Reply (Fresh, ID, Taken); pragma Assert (Taken);
                L.Delivered (Fresh, ID, Sent);
@@ -162,26 +155,25 @@ begin
       package B renames Intel_GPU_Broker_Request;
       D : B.Decoded;
    begin
-      for Source in 0 .. 64 loop
-         for Destination in 0 .. 64 loop
-            D := B.Decode (17, 17, B.Authority_Tag, B.Label, 4, 0, 0,
-              [B.Version, Unsigned_64 (Source), Unsigned_64 (Destination), 99]);
-            pragma Assert (D.Valid = (Source in 40 .. 55 and Destination <= 63));
+      for Child in Unsigned_64 range 0 .. 2 loop
+         for Reserved in Unsigned_64 range 0 .. 1 loop
+            D := B.Decode (17, 17, B.Authority_Tag, B.Label, 4, B.Request_Flags, 0,
+              [B.Version, Child, Reserved, 99]);
+            pragma Assert (D.Valid = (Child /= 0 and Reserved = 0));
             if D.Valid then
-               pragma Assert (D.Source = Source and D.Destination = Destination);
-               pragma Assert (D.Nonce = 99);
+               pragma Assert (D.Identity = Child and D.Nonce = 99);
             end if;
          end loop;
       end loop;
       -- The launcher is an opaque full-width process identity, not a u32 PID.
       D := B.Decode (16#1234_0000_002A#, 16#1234_0000_002A#,
-        B.Authority_Tag, B.Label, 4, 0, 0, [B.Version, 40, 16, 99]);
+        B.Authority_Tag, B.Label, 4, B.Request_Flags, 0, [B.Version, Identity, 0, 99]);
       pragma Assert (D.Valid);
       D := B.Decode (16#1234_0000_002A#, 42,
-        B.Authority_Tag, B.Label, 4, 0, 0, [B.Version, 40, 16, 99]);
+        B.Authority_Tag, B.Label, 4, B.Request_Flags, 0, [B.Version, Identity, 0, 99]);
       pragma Assert (not D.Valid);
       D := B.Decode (16#1234_0000_002A#, 16#1235_0000_002A#,
-        B.Authority_Tag, B.Label, 4, 0, 0, [B.Version, 40, 16, 99]);
+        B.Authority_Tag, B.Label, 4, B.Request_Flags, 0, [B.Version, Identity, 0, 99]);
       pragma Assert (not D.Valid);
       for Fault in 0 .. 12 loop
          D := B.Decode
@@ -190,11 +182,11 @@ begin
             (if Fault = 3 then B.Authority_Tag + 1 else B.Authority_Tag),
             (if Fault = 4 then B.Label + 1 else B.Label),
             (if Fault = 5 then 3 else 4),
-            (if Fault = 6 then 1 else 0),
+            (if Fault = 6 then 0 else B.Request_Flags),
             (if Fault = 7 then 1 else 0),
             [(if Fault = 8 then B.Version + 1 else B.Version),
-             (if Fault = 9 then Unsigned_64'Last else 40),
-             (if Fault = 10 then Unsigned_64'Last else 16),
+             (if Fault = 9 then 0 else Identity),
+             (if Fault = 10 then Unsigned_64'Last else 0),
              (if Fault = 11 then 0 else 99)]);
          pragma Assert (D.Valid = (Fault = 12));
       end loop;
@@ -260,8 +252,6 @@ begin
       pragma Assert (Activation_Identity (Object, 42, 99, Label, 4, 0, 0,
         [Version, Identity, Invalid_Tag, Activate]) = 0);
    end loop;
-   Call (Activate, Tag, Recipient_Ready => False);
-   pragma Assert (Reply (0) = Unavailable and Resolve (Object, Identity, Tag) = 0);
    Call (Activate, Tag); pragma Assert (Reply (0) = OK);
    -- Full identity required: neither old PID nor a different generation works.
    pragma Assert (Resolve (Object, 42, Tag) = 0);
@@ -342,7 +332,7 @@ begin
       pragma Assert (Reply (0) = OK);
       Fresh_Tag := Reply (2);
       Handle (Fresh, 42, 99, True, Label, 4, 0, 0,
-              [Version, Identity, Fresh_Tag, Activate], Reply, True);
+              [Version, Identity, Fresh_Tag, Activate], Reply);
       pragma Assert (Reply (0) = OK);
       Quarantine (Fresh);
       pragma Assert (Resolve (Fresh, Identity, Fresh_Tag) = 0);
@@ -351,7 +341,7 @@ begin
               [Version, Identity, 0, Reserve], Reply);
       pragma Assert (Reply = [Unavailable, Version, 0, 0]);
       Handle (Fresh, 42, 99, True, Label, 4, 0, 0,
-              [Version, Identity, Fresh_Tag, Activate], Reply, True);
+              [Version, Identity, Fresh_Tag, Activate], Reply);
       pragma Assert (Reply = [Bad_State, Version, 0, 0]);
    end;
    declare
@@ -364,7 +354,7 @@ begin
               [Version, Identity, 0, Reserve], Reply);
       Old_Tag := Reply (2);
       Handle (Reused_PID, 42, 99, True, Label, 4, 0, 0,
-              [Version, Identity, Old_Tag, Activate], Reply, True);
+              [Version, Identity, Old_Tag, Activate], Reply);
       pragma Assert (Recipient_Identity (Reused_PID, Identity, Old_Tag) = Identity);
       Handle (Reused_PID, 42, 99, True, Label, 4, 0, 0,
               [Version, Identity, Old_Tag, Abort_Session], Reply);
@@ -372,7 +362,7 @@ begin
               [Version, New_Identity, 0, Reserve], Reply);
       New_Tag := Reply (2);
       Handle (Reused_PID, 42, 99, True, Label, 4, 0, 0,
-              [Version, New_Identity, New_Tag, Activate], Reply, True);
+              [Version, New_Identity, New_Tag, Activate], Reply);
       pragma Assert (Reply (0) = OK and New_Tag /= Old_Tag);
       pragma Assert (Recipient_Identity (Reused_PID, New_Identity, New_Tag) = New_Identity);
       pragma Assert (Recipient_Identity (Reused_PID, Identity, Old_Tag) = 0);
@@ -388,7 +378,7 @@ begin
          Lost_Tag := Reply (2);
          if Activated then
             Handle (Lost, 42, 99, True, Label, 4, 0, 0,
-                    [Version, Identity, Lost_Tag, Activate], Reply, True);
+                    [Version, Identity, Lost_Tag, Activate], Reply);
          end if;
          Reject_Delivery (Lost, Identity + 2 ** 32, Lost_Tag);
          pragma Assert (Resolve (Lost, Identity, Lost_Tag) = (if Activated then Lost_Tag else 0));
@@ -397,7 +387,7 @@ begin
          Reject_Delivery (Lost, Identity, Unsigned_64'Last);
          pragma Assert (Resolve (Lost, Identity, Lost_Tag) = 0);
          Handle (Lost, 42, 99, True, Label, 4, 0, 0,
-                 [Version, Identity, Lost_Tag, Activate], Reply, True);
+                 [Version, Identity, Lost_Tag, Activate], Reply);
          pragma Assert (Reply (0) = Bad_State);
       end;
    end loop;
@@ -411,7 +401,7 @@ begin
            [Version, Identity, 0, Reserve], Reply);
          if I = 1 then First := Reply (2); else Other := Reply (2); end if;
          Handle (Own, 42, 99, True, Label, 4, 0, 0,
-           [Version, Identity, Reply (2), Activate], Reply, True);
+           [Version, Identity, Reply (2), Activate], Reply);
          pragma Assert (Reply (0) = OK);
       end loop;
       for Fault in 0 .. 9 loop

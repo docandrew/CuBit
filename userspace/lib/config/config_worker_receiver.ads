@@ -1,5 +1,6 @@
 with Interfaces;
 with CuBit.Messages;
+with CuBit.Handles;
 with CCL.Objects.Persistence;
 with Config_Worker;
 with Config_Worker_Protocol;
@@ -13,7 +14,7 @@ with Config_Schema_Worker;
 --  from the request's PID/bytes. Only authenticated Config may provision types;
 --  a normal object's schema key can only select an already approved binding.
 generic
-   Owner_Endpoint : CuBit.Messages.CapabilitySlot;
+   Owner_Endpoint : CuBit.Handles.Endpoint;
    with function Authorized_Source
      (Sender : CuBit.Messages.Process_ID; Authority_Tag : Interfaces.Unsigned_64) return Boolean;
    with procedure Invoke

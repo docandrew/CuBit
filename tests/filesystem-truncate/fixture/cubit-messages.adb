@@ -29,7 +29,7 @@ package body CuBit.Messages is
    end Reset;
 
    function capCall
-     (slot : Unsigned_64; msg : in out Message; Deadline : Unsigned_64)
+     (slot : CuBit.Handles.Endpoint; msg : in out Message; Deadline : Unsigned_64)
      return MessageTag
    is
       pragma Unreferenced (slot, Deadline);
@@ -173,8 +173,8 @@ package body CuBit.Messages is
          end case;
       end if;
       Failed := fail;
-      msg.tag := (if fail and Reply_Style = Error_Label then (REPLY_ERROR, 1, 0, 0)
-                  else (REPLY_OK, 1, 0, 0));
+      msg.tag := (if fail and Reply_Style = Error_Label then (label => REPLY_ERROR, length => 1, protocol => 0, ipc => <>, reserved => 0)
+                  else (label => REPLY_OK, length => 1, protocol => 0, ipc => <>, reserved => 0));
       msg.words := [0 => (if op = OP_FLUSH_DEVICE then 0
                          else Unsigned_64 (count)), others => 0];
       if op = OP_DESCRIBE_DEVICE and not fail then
@@ -191,7 +191,7 @@ package body CuBit.Messages is
             when Short_Transfer =>
                msg.words (0) := (if op = OP_FLUSH_DEVICE then 1 else 0);
             when Bad_Length => msg.tag.length := 0;
-            when Bad_Flags => msg.tag.flags := 1;
+            when Bad_Flags => msg.tag.protocol := 1;
             when Bad_Reserved => msg.tag.reserved := 1;
          end case;
       end if;

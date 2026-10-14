@@ -32,7 +32,10 @@ with CuBit.Display_Planes;
 with CuBit.GPU_Plane_Protocol;
 with GPU_Test_Policy;
 with CuBit.Device_Interrupts;
-with CCL_Manifest_Bindings;
+with Startup;
+with CuBit.Handles;
+with CuBit.Handles.IPC;
+with CuBit.Handles.Devices;
 
 procedure main is
    use ASCII;
@@ -292,8 +295,34 @@ procedure main is
      (CMD_OFF + Storage_Offset (Head) * Command_Stride);
    function Response_Offset (Head : Head_Index) return Storage_Offset is
      (RESP_OFF + Storage_Offset (Head) * Command_Stride);
-   function Reply_Slot (Head : Head_Index) return CapabilitySlot is
-     (CapabilitySlot (32 + Head));
+   --  A saved reply (CAP-002): the kernel moves a request's reply into this
+   --  process's handle table (a Reply handle, no slot to choose); it is
+   --  answered once, later. Keep refuses when one is already held.
+   type Owed_Reply is record
+      Handle : CuBit.Handles.Reply := CuBit.Handles.No_Reply;
+   end record;
+   function Keep (Item : in out Owed_Reply) return Boolean is
+   begin
+      if CuBit.Handles.Valid (Item.Handle) then return False; end if;
+      declare
+         Saved : constant CuBit.Handles.IPC.Saved_Reply := CuBit.Handles.IPC.Save_Reply;
+      begin
+         if not Saved.Saved then return False; end if;
+         Item.Handle := Saved.Handle;
+         return True;
+      end;
+   end Keep;
+   function Answer (Item : in out Owed_Reply; Msg : Message) return Unsigned_64 is
+      Delivered : Unsigned_64 := 0;
+   begin
+      if CuBit.Handles.Valid (Item.Handle) then
+         Delivered := replyCap (Item.Handle, Msg);
+         Item.Handle := CuBit.Handles.No_Reply;
+      end if;
+      return Delivered;
+   end Answer;
+   Head_Replies : array (Head_Index) of Owed_Reply;
+   Cursor_Reply, Watch_Reply : Owed_Reply;
 
    function framebufferOffset
      (index : Natural) return Storage_Offset is
@@ -328,8 +357,8 @@ procedure main is
    procedure signalReady (label : Unsigned_32) is
       ignore : MessageTag;
    begin
-      ignore := capSend (15,
-         (tag      => (label => label, length => 0, flags => 0, reserved => 0),
+      ignore := capSend (Startup.Ready,
+         (tag      => (label => label, length => 0, protocol => 0, ipc => <>, reserved => 0),
           authorityTag => 0,
           words    => [others => 0]), CuBit.Messages.Wait_Forever);
    end signalReady;
@@ -545,37 +574,41 @@ procedure main is
       status : Unsigned_8;
       qsz : Unsigned_16;
       ret : Unsigned_64;
-      type Capability_Words is array (0 .. 5) of Unsigned_64;
-      Cap, Notify_Cap : aliased Capability_Words := (others => 0);
+      Registers : constant CuBit.Handles.IPC.Description :=
+        CuBit.Handles.IPC.Describe (Startup.Registers);
+      Notify : constant CuBit.Handles.IPC.Description :=
+        CuBit.Handles.IPC.Describe (Startup.Notify);
       Notify_Displacement : Unsigned_64;
+      use type CuBit.Handles.ABI.Kind;
       function Fits (Offset, Bytes, Limit : Unsigned_64) return Boolean is
         (Bytes /= 0 and then Offset <= Limit and then Bytes <= Limit - Offset);
    begin
-      ret := syscall (SYSCALL_INSPECT_CAPABILITY, syscall (SYSCALL_GETPID),
-                      4, Unsigned_64 (To_Integer (Cap'Address)));
-      if ret /= 1 or else Cap (0) /= 7 or else (Cap (1) and 3) /= 3 or else
-        Cap (3) /= barPhys or else barPhys mod 4096 /= 0 or else
-        Cap (4) < 4096 or else Cap (4) > 1024 * 1024 or else
-        Cap (4) mod 4096 /= 0 or else barPhys > Unsigned_64'Last - Cap (4)
+      --  The startup "registers" region devmgr granted: the whole register
+      --  BAR, read and write (CAP-002: described by handle, no slot).
+      if not Registers.Current or else Registers.Kind /= CuBit.Handles.ABI.Device_Memory
+        or else not Registers.Held.Read or else not Registers.Held.Write
+        or else Registers.Object /= barPhys or else barPhys mod 4096 /= 0
+        or else Registers.Parameter < 4096 or else Registers.Parameter > 1024 * 1024
+        or else Registers.Parameter mod 4096 /= 0
+        or else barPhys > Unsigned_64'Last - Registers.Parameter
       then fail ("invalid BAR capability"); return; end if;
-      barBytes := Cap (4);
+      barBytes := Registers.Parameter;
       if commonOff mod 4 /= 0 or else notifyOff mod 2 /= 0 or else
         not Fits (commonOff, 56, barBytes) or else
         not Fits (notifyOff, 2, barBytes) or else
         not Fits (isrOff, 1, barBytes) or else
         notifyMult > Unsigned_64 (Unsigned_32'Last)
       then fail ("invalid BAR register spans"); return; end if;
-      ret := syscall (SYSCALL_INSPECT_CAPABILITY, syscall (SYSCALL_GETPID),
-                      7, Unsigned_64 (To_Integer (Notify_Cap'Address)));
-      if ret /= 1 or else Notify_Cap (0) /= 7 or else
-        (Notify_Cap (1) and 2) = 0 or else
-        Notify_Cap (3) /= barPhys + notifyOff or else
-        not Fits (notifyOff, Notify_Cap (4), barBytes) or else Notify_Cap (4) < 2
+      if not Notify.Current or else Notify.Kind /= CuBit.Handles.ABI.Device_Memory
+        or else not Notify.Held.Write
+        or else Notify.Object /= barPhys + notifyOff
+        or else not Fits (notifyOff, Notify.Parameter, barBytes) or else Notify.Parameter < 2
       then fail ("invalid notify capability"); return; end if;
-      notifyBytes := Notify_Cap (4);
+      notifyBytes := Notify.Parameter;
       trace ("map BAR");
-      ret := syscall (SYSCALL_MAP_DEVICE, barPhys, BAR_VIRT_BASE, barBytes / 4096);
-      if ret = Unsigned_64'Last then
+      if not CuBit.Handles.Devices.Map_Device
+           (Startup.Registers, barPhys, BAR_VIRT_BASE, barBytes / 4096, Read_Only => False)
+      then
          fail ("BAR map failed");
          return;
       end if;
@@ -635,7 +668,7 @@ procedure main is
       end if;
 
       interruptBlock :=
-        CuBit.Device_Interrupts.Block_Of (CCL_Manifest_Bindings.Slot_device);
+        CuBit.Device_Interrupts.Block_Of (Startup.Device);
       messageInterrupts := interruptBlock.Valid;
       if messageInterrupts then
          configEntry := (if interruptBlock.Count >= 2 then CONFIG_ENTRY else MSIX_ENTRY);
@@ -800,7 +833,6 @@ procedure main is
    CURSOR_TRANSFER_ID : constant Natural := 4;
    CURSOR_TRANSFER_CMD : constant Storage_Offset := CMD_OFF + 2 * 512;
    CURSOR_TRANSFER_RESP : constant Storage_Offset := RESP_OFF + 2 * 512;
-   CURSOR_REPLY_SLOT : constant CapabilitySlot := 34;
    UPDATE_CURSOR_BYTES : constant Unsigned_32 := 56;
 
    function cursorResource (Head : Head_Index) return Unsigned_32 is
@@ -1134,7 +1166,6 @@ procedure main is
    GPU_CONFIG_EVENTS_CLEAR : constant Unsigned_64 := 4;
    GPU_CONFIG_BYTES : constant := 16;
    CMD_RESOURCE_UNREF : constant Unsigned_32 := 16#0102#;
-   WATCH_REPLY_SLOT : constant CapabilitySlot := 35;
    deviceOff : Unsigned_64 := 0;
    deviceConfigReady : Boolean := False;
    modeRevision : OM.Revision := 1;
@@ -1166,7 +1197,7 @@ procedure main is
    begin
       if watchArmed then
          watchArmed := False;
-         Ignored := replyCap (WATCH_REPLY_SLOT, CuBit.Desktop_Messages.From_Wire
+         Ignored := Answer (Watch_Reply, CuBit.Desktop_Messages.From_Wire
            (OM.Encode_Watch (OD.GPU_Backend, modeRevision)));
       end if;
    end answerWatch;
@@ -1272,7 +1303,8 @@ procedure main is
    procedure finishPresentation (Head : Head_Index; Success : Boolean) is
       Item : Pending_Presentation renames Pending (Head);
       Response : constant Message :=
-        (tag => (Item.Label, 1, 0, 0), authorityTag => 0,
+        (tag => (label => Item.Label, length => 1,
+                 protocol => 0, ipc => <>, reserved => 0), authorityTag => 0,
          words => [(if Success then GPU_OK else GPU_ERR_BAD_STATE), 0, 0, 0]);
       Ignored : Unsigned_64;
    begin
@@ -1283,7 +1315,7 @@ procedure main is
          end if;
       end if;
       if Item.Phase in Transfer | Awaiting_Scanout | Set_Scanout | Flush then
-         Ignored := replyCap (Reply_Slot (Head), Response);
+         Ignored := Answer (Head_Replies (Head), Response);
       end if;
       Item.Phase := (if Success then Idle else Quarantined);
       --  Failure is permanent until a separately designed adapter reset.
@@ -1379,7 +1411,7 @@ procedure main is
          cursorTransfer.Phase := Quarantined;
          debugPrint ("virtio-gpu: cursor upload failed" & LF);
       end if;
-      Ignored := replyCap (CURSOR_REPLY_SLOT, CuBit.Desktop_Messages.From_Wire
+      Ignored := Answer (Cursor_Reply, CuBit.Desktop_Messages.From_Wire
         (GP.Encode_Status (GP.Show_Plane,
            (if Success then GP.Accepted else GP.Bad_State))));
    end finishCursorTransfer;
@@ -1546,7 +1578,8 @@ procedure main is
               OM.Decode_Watch (OD.GPU_Backend, CuBit.Desktop_Messages.To_Wire (request));
          begin
             if not D.Valid then
-               replyMsg.tag := (request.tag.label, 1, 0, 0);
+               replyMsg.tag := (label => request.tag.label, length => 1,
+                                protocol => 0, ipc => <>, reserved => 0);
                replyMsg.words (0) := GPU_ERR_UNSUPPORTED;
             elsif D.Value /= modeRevision then
                replyMsg := CuBit.Desktop_Messages.From_Wire
@@ -1555,22 +1588,24 @@ procedure main is
                --  One watcher: a newer watch supersedes (and answers) an
                --  older one, so no saved reply is ever stranded.
                answerWatch;
-               if saveReplyCap (Unsigned_64 (WATCH_REPLY_SLOT)) = 1 then
+               if Keep (Watch_Reply) then
                   watchArmed := True;
                   return; -- answered on the next revision
                end if;
-               replyMsg.tag := (request.tag.label, 1, 0, 0);
+               replyMsg.tag := (label => request.tag.label, length => 1,
+                                protocol => 0, ipc => <>, reserved => 0);
                replyMsg.words (0) := GPU_ERR_BAD_STATE;
             end if;
             ignore := reply (from, replyMsg);
             return;
          end;
       end if;
-      if request.tag.length /= 4 or else request.tag.flags /= 0 or else
+      if request.tag.length /= 4 or else request.tag.protocol /= 0 or else
         request.tag.reserved > Unsigned_16 (Head_Index'Last) or else
         not readyHeads (Natural (request.tag.reserved))
       then
-         replyMsg.tag := (request.tag.label, 1, 0, 0);
+         replyMsg.tag := (label => request.tag.label, length => 1,
+                          protocol => 0, ipc => <>, reserved => 0);
          replyMsg.words (0) := GPU_ERR_UNSUPPORTED;
          ignore := reply (from, replyMsg);
          return;
@@ -1650,7 +1685,7 @@ procedure main is
                begin
                   if D.Valid and then D.Value.Plane = CURSOR_PLANE and then
                     C.Ready and then cursorTransfer.Phase = Idle and then
-                    saveReplyCap (Unsigned_64 (CURSOR_REPLY_SLOT)) = 1
+                    Keep (Cursor_Reply)
                   then
                      cursorTransfer := (Phase => Transfer, Head => selectedHead,
                                         Show => D.Value, others => <>);
@@ -1698,7 +1733,8 @@ procedure main is
       if Pending (selectedHead).Phase /= Idle and then
         request.tag.label not in OP_GPU_GET_INFO | OP_GPU_GET_STATUS
       then
-         replyMsg.tag := (request.tag.label, 1, 0, 0);
+         replyMsg.tag := (label => request.tag.label, length => 1,
+                          protocol => 0, ipc => <>, reserved => 0);
          replyMsg.words (0) := GPU_ERR_BAD_STATE;
          ignore := reply (from, replyMsg);
          return;
@@ -1706,7 +1742,7 @@ procedure main is
       case request.tag.label is
          when OP_GPU_GET_INFO =>
             replyMsg.tag := (label => OP_GPU_GET_INFO,
-                             length => 4, flags => 0, reserved => 0);
+                             length => 4, protocol => 0, ipc => <>, reserved => 0);
             replyMsg.words (0) := Unsigned_64 (Frame_Width (selectedHead));
             replyMsg.words (1) := Unsigned_64 (Frame_Height (selectedHead));
             replyMsg.words (2) := Unsigned_64 (Frame_Width (selectedHead)) * 4;
@@ -1714,7 +1750,7 @@ procedure main is
 
          when OP_GPU_GET_STATUS =>
             replyMsg.tag := (label => OP_GPU_GET_STATUS,
-                             length => 4, flags => 0, reserved => 0);
+                             length => 4, protocol => 0, ipc => <>, reserved => 0);
             replyMsg.words (0) :=
               (if Pending (selectedHead).Phase = Quarantined
                then GPU_ERR_BAD_STATE else GPU_OK);
@@ -1733,7 +1769,7 @@ procedure main is
                grantOk : Boolean;
             begin
                replyMsg.tag := (label => OP_GPU_MAP_FRAMEBUFFER,
-                                length => 4, flags => 0, reserved => 0);
+                                length => 4, protocol => 0, ipc => <>, reserved => 0);
                if bufferIndexRaw <= 1 then
                   bufferIndex := Natural (bufferIndexRaw);
                   CuBit.Memory_Grants.Create_For_Process
@@ -1770,7 +1806,7 @@ procedure main is
                packedWH : constant Unsigned_64 := request.words (2);
             begin
                replyMsg.tag := (label => OP_GPU_PRESENT_BUFFER,
-                                length => 1, flags => 0, reserved => 0);
+                                length => 1, protocol => 0, ipc => <>, reserved => 0);
                if bufferIndexRaw > 1 or else request.words (3) /= 0 or else
                  (packedXY and 16#FFFF_FFFF#) >= Unsigned_64 (Frame_Width (selectedHead)) or else
                  Shift_Right (packedXY, 32) >= Unsigned_64 (Frame_Height (selectedHead)) or else
@@ -1780,7 +1816,7 @@ procedure main is
                   replyMsg.words (0) := GPU_ERR_UNSUPPORTED;
                else
                   bufferIndex := Natural (bufferIndexRaw);
-                  if saveReplyCap (Unsigned_64 (Reply_Slot (selectedHead))) = 1 then
+                  if Keep (Head_Replies (selectedHead)) then
                      Pending (selectedHead) :=
                        (Phase => Transfer, Buffer => bufferIndex,
                         X => Natural (packedXY and 16#FFFF_FFFF#),
@@ -1802,12 +1838,12 @@ procedure main is
 
          when OP_GPU_CLEAR =>
             replyMsg.tag := (label => OP_GPU_CLEAR,
-                             length => 1, flags => 0, reserved => 0);
+                             length => 1, protocol => 0, ipc => <>, reserved => 0);
             if GPU_Test_Policy.Reject_Client_Clear and then
               Test_Startup_Clear_Seen (selectedHead)
             then
                debugPrint ("virtio-gpu: injected clear rejection head" & selectedHead'Image & LF);
-            elsif saveReplyCap (Unsigned_64 (Reply_Slot (selectedHead))) = 1 then
+            elsif Keep (Head_Replies (selectedHead)) then
                if GPU_Test_Policy.Reject_Client_Clear then
                   Test_Startup_Clear_Seen (selectedHead) := True;
                end if;
@@ -1824,7 +1860,7 @@ procedure main is
 
          when others =>
             replyMsg.tag := (label => request.tag.label,
-                             length => 1, flags => 0, reserved => 0);
+                             length => 1, protocol => 0, ipc => <>, reserved => 0);
             replyMsg.words (0) := GPU_ERR_UNSUPPORTED;
       end case;
 
@@ -1916,7 +1952,9 @@ begin
    declare
       ignore : Unsigned_64;
    begin
-      ignore := registerDriver (DRIVER_GPU);
+      if Startup.Registration.Present then
+         ignore := registerDriver (DRIVER_GPU, Startup.Registration.Value);
+      end if;
    end;
 
    debugPrint ("virtio-gpu: ready" & LF);

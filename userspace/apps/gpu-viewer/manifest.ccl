@@ -1,3 +1,10 @@
-(executable-manifest v1
-  (identity "com.cubit.gpu-probe-viewer")
-  (version "0.1.0"))
+# The boot GPU probe viewer (a diagnostic devmgr launches with intel-gpu).
+# Startup endpoints, both badged Native_GPU_Probe_Protocol.Viewer_Tag by
+# devmgr: "gpu-probe" to intel-gpu (the completed boot pixels only) and
+# "device-manager" to devmgr (asks for Desktop's endpoint).
+(Executable_Manifest
+  identity => "com.cubit.gpu-probe-viewer"
+  version => "0.1.0"
+  requests => [
+    (service "gpu" "gpu-probe")
+    (service "device-manager" "device-manager")])

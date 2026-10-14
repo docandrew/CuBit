@@ -1,3 +1,4 @@
+with CuBit.Handles;
 with Ada.Text_IO;
 with Interfaces; use Interfaces;
 with CuBit.Messages;
@@ -35,8 +36,8 @@ procedure Image_Provider_Tests is
        (if Key.Serial = 1 then C.Drained (Consumers, Key)
         else C.Drained (Cleanup_Consumers, Key)));
    procedure Recipient (Sender, Stamp : Unsigned_64;
-      Slot : out CuBit.Messages.CapabilitySlot; Identity : out Unsigned_64) is
-   begin Slot := 7; Identity := 42; end Recipient;
+      Grantee : out CuBit.Handles.Reply; Identity : out Unsigned_64) is
+   begin Grantee := CuBit.Handles.Test_Reply (7); Identity := 42; end Recipient;
    package B is new Intel_GPU_Buffer_Requests (Session_Of, Owner_Ready);
    package P is new B.Images (Authorize, Producer_Drained, Consumers_Drained);
    package M is new B.Sharing (Recipient);

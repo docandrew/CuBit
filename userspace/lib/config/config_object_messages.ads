@@ -83,7 +83,7 @@ package Config_Object_Messages with SPARK_Mode is
    function Valid_Request (Item : CuBit.Messages.Message; Action : Operation) return Boolean;
    function Reply (Code : Status; Value : Unsigned_64 := 0) return CuBit.Messages.Message is
      (tag => (label => Status'Enum_Rep (Code),
-              length => (if Code in Success | Stale then 1 else 0), flags => 0, reserved => 0),
+              length => (if Code in Success | Stale then 1 else 0), protocol => 0, ipc => <>, reserved => 0),
       authorityTag => 0,
       words => [0 => (if Code in Success | Stale then Value else 0), others => 0]);
    --  Success carries opened handle/read revision/committed revision; Close

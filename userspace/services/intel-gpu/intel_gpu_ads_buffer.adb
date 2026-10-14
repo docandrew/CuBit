@@ -1,6 +1,7 @@
 with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Messages; use CuBit.Messages;
+with Intel_GPU_Supervisor;
 with Intel_GPU_ADS_Backing; use Intel_GPU_ADS_Backing;
 with Intel_GPU_ADS_Initialization;
 with Intel_GPU_ADS_Materialize;
@@ -57,8 +58,8 @@ package body Intel_GPU_ADS_Buffer is
       if Attempted then return "already-attempted"; end if;
       Attempted := True;
       if Start = Unsigned_64'Last then return "clock-unavailable"; end if;
-      Msg.tag := (Request_Label, 0, 0, 0);
-      if not capSubmit (15, Msg, Token) then return "submit-failed"; end if;
+      Msg.tag := (label => Request_Label, length => 0, protocol => 0, ipc => <>, reserved => 0);
+      if not Intel_GPU_Supervisor.Submit (Msg, Token) then return "submit-failed"; end if;
       for Poll in 1 .. 30_000 loop
          Now := syscall (SYSCALL_GETTIME);
          if Now = Unsigned_64'Last or else Now < Last_Time or else Now - Start >= 30_000 then
@@ -67,13 +68,13 @@ package body Intel_GPU_ADS_Buffer is
          Last_Time := Now;
          if Poll_Completion (Receipt'Address) /= 0 and then Receipt.token = Token then
             if Receipt.status = COMPLETION_OK and then
-              Receipt.msg.tag = (16#F002#, 0, 0, 0) and then
+              Intel_GPU_Supervisor.Reply_Tag (Receipt) = (label => 16#F002#, length => 0, protocol => 0, ipc => <>, reserved => 0) and then
               Receipt.msg.words = [0, 0, 0, 0]
             then
-               if not capSubmit (15, Msg, Token) then return "retry-failed"; end if;
+               if not Intel_GPU_Supervisor.Submit (Msg, Token) then return "retry-failed"; end if;
             else
                if Receipt.status /= COMPLETION_OK or else
-                 Receipt.msg.tag /= (16#F000#, 3, 0, 0) or else
+                 Intel_GPU_Supervisor.Reply_Tag (Receipt) /= (label => 16#F000#, length => 3, protocol => 0, ipc => <>, reserved => 0) or else
                  Receipt.msg.words (1 .. 3) /= [CPU_Address, Capacity, 0] or else
                  not Valid_Physical (Receipt.msg.words (0))
                then return "allocation-denied"; end if;

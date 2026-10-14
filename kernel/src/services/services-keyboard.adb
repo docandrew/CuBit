@@ -76,7 +76,7 @@ package body Services.Keyboard with SPARK_Mode => Off is
                         Process.IPC.sendEvent (driverPID,
                             (tag      => (label  => 1,
                                           length => 1,
-                                          flags  => 0,
+                                          protocol  => 0, ipc => <>,
                                           reserved  => 0),
                              authorityTag => 0,
                              words    => (0 => Unsigned_64(code),

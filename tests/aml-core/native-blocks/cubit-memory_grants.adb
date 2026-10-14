@@ -1,6 +1,6 @@
 package body CuBit.Memory_Grants is
    procedure Acquire_Via_Capability
-     (slot : CuBit.Messages.CapabilitySlot; reference : Grant_Reference;
+     (slot : CuBit.Handles.Endpoint; reference : Grant_Reference;
       byteOffset, byteLength : Unsigned_64; requiredAccess : Required_Access;
       mappedAddress : out System.Address; success : out Boolean) is
    begin

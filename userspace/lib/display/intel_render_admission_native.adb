@@ -1,81 +1,39 @@
-with CuBit.Process_IDs;
 package body Intel_Render_Admission_Native is
    package Core renames Intel_Render_Admission;
-   package Grants renames CuBit.Capability_Grants;
    use CuBit.Messages;
    use type Core.Phase;
-   Control_Tag : constant MessageTag := (16#0A21#, 4, 0, 0);
+   Control_Tag : constant MessageTag := (label => 16#0A21#, length => 4,
+                                         protocol => 0, ipc => <>, reserved => 0);
    function State (Item : Broker_Request) return Core.Phase is
      (Core.State (Item.Transaction));
+   function Session (Item : Broker_Request) return Unsigned_64 is
+     (Core.Session (Item.Transaction));
    procedure Start
-     (Item : in out Broker_Request; Target : Grants.Recipient;
-      Source, Application_Source, Destination : CapabilitySlot) is
-      Driver : Grants.Recipient;
+     (Item : in out Broker_Request; Identity : Unsigned_64;
+      Driver : CuBit.Handles.Endpoint; Driver_PID : Unsigned_64) is
    begin
       if State (Item) /= Core.Idle then return; end if;
-      Driver := Grants.Capture (Source);
-      if not Grants.Valid (Target) or not Grants.Valid (Driver) then
+      if Identity = 0 or else Driver_PID = 0 or else not CuBit.Handles.Valid (Driver) then
          Core.Cancel (Item.Transaction);
          return;
       end if;
-      Item.Recipient := Target;
       Item.Driver := Driver;
-      Item.Source := Source;
-      Item.Application_Source := Application_Source;
-      Item.Destination := Destination;
-      Item.Driver_PID := CuBit.Process_IDs.To_Word (Grants.Process_ID (Driver));
-      Core.Start (Item.Transaction, CuBit.Process_IDs.To_Word (Grants.Incarnation (Target)));
+      Item.Driver_PID := Driver_PID;
+      Core.Start (Item.Transaction, Identity);
    end Start;
    procedure Advance (Item : in out Broker_Request; Token : Unsigned_64) is
       Accepted : Boolean;
       Payload : Core.Words;
       Msg : Message := NULL_MESSAGE;
-      Result : Unsigned_64;
-      Session : Unsigned_64;
    begin
-      if State (Item) = Core.Delegate_Ready then
-         if not Item.Recipient_Installed then
-            Session := Core.Session (Item.Transaction);
-            -- The authenticated reservation names a dedicated recipient slot.
-            -- Never infer CSPACE layout from the opaque session identity.
-            if Session = 0 or else Core.Driver_Recipient_Slot (Item.Transaction) not in 40 .. 55
-            then
-               Core.Delegated (Item.Transaction, False);
-               return;
-            end if;
-            -- Sources remain immutable under the single dispatcher owner.
-            -- Derivation preserves the endpoint's object generation; never
-            -- mint from Process_ID (Recipient), which could be reused.
-            if not Grants.Endpoint_Matches
-              (Item.Application_Source, Grants.Incarnation (Item.Recipient))
-            then
-               Core.Delegated (Item.Transaction, False);
-               return;
-            end if;
-            Result := Grants.Delegate_Endpoint
-              (Item.Driver, Item.Application_Source,
-               CapabilitySlot (Core.Driver_Recipient_Slot (Item.Transaction)),
-               1, Session);
-            Item.Recipient_Installed := Result = 0;
-            if not Item.Recipient_Installed then
-               Core.Delegated (Item.Transaction, False);
-            end if;
-            -- Yield even on success. Cancellation before the next Advance
-            -- aborts the reservation without installing the client endpoint.
-            return;
-         end if;
-         Result := Grants.Delegate_Endpoint
-           (Item.Recipient, Item.Source, Item.Destination, 3,
-            Core.Session (Item.Transaction));
-         Core.Delegated (Item.Transaction, Result = 0);
-      elsif State (Item) in Core.Reserve_Ready | Core.Activate_Ready |
+      if State (Item) in Core.Reserve_Ready | Core.Activate_Ready |
         Core.Abort_Ready then
          Payload := Core.Request (Item.Transaction);
          Core.Prepare (Item.Transaction, Token, Accepted);
          if not Accepted then return; end if;
          Msg.tag := Control_Tag;
          Msg.words := [Payload (0), Payload (1), Payload (2), Payload (3)];
-         Accepted := capSubmit (Item.Source, Msg, Token);
+         Accepted := capSubmit (Item.Driver, Msg, Token);
          Core.Submitted (Item.Transaction, Accepted);
       end if;
    end Advance;

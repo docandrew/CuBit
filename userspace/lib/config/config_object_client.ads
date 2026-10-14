@@ -4,6 +4,7 @@ with CuBit.Messages;
 with CuBit.Memory_Grants;
 with Config_Object_Messages;
 with CuBit.Async_Requests;
+with CuBit.Handles;
 
 --  Nonblocking, single-owner native Config client. One collection per client;
 --  separate clients may share an endpoint but require a common token allocator
@@ -22,7 +23,7 @@ package Config_Object_Client is
    end record;
    function Status (Object : Client) return Phase;
    procedure Initialize
-     (Object : in out Client; Endpoint : CuBit.Messages.CapabilitySlot; Success : out Boolean);
+     (Object : in out Client; Endpoint : CuBit.Handles.Endpoint; Success : out Boolean);
    procedure Open
      (Object : in out Client; Name : String; Contract : CCL.Objects.Binding;
       Access_Rights : Config_Object_Messages.Access_Mode; Context, Token : Number;
@@ -66,7 +67,7 @@ private
       Contract : CCL.Objects.Binding;
       Output : Response;
       Current : Phase := Fresh;
-      Endpoint : CuBit.Messages.CapabilitySlot := 0;
+      Endpoint : CuBit.Handles.Endpoint := CuBit.Handles.No_Endpoint;
       Grant : CuBit.Memory_Grants.Grant_Reference;
       Has_Grant, Revocation_Requested, Poisoned : Boolean := False;
       Handle, Expected_Revision : Number := 0;

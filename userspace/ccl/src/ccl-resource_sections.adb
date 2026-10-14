@@ -99,7 +99,7 @@ package body CCL.Resource_Sections with SPARK_Mode => On is
 
       Count : Unsigned_16;
       Kind_Code, Rights_Code : Unsigned_8;
-      Slot_Code : Unsigned_16;
+      Reserved_Code : Unsigned_16;
       Item : Resource;
       Known : Boolean;
       Base : Positive;
@@ -146,14 +146,10 @@ package body CCL.Resource_Sections with SPARK_Mode => On is
          pragma Loop_Invariant
            (for all I in 1 .. Plan.Count =>
               Valid_Resource (Plan.Match, Plan.Entries (I)));
-         pragma Loop_Invariant
-           (for all I in 1 .. Plan.Count =>
-              (for all J in 1 .. Plan.Count =>
-                 I = J or else Plan.Entries (I).Slot /= Plan.Entries (J).Slot));
          Base := ENTRIES_FIRST + (Number - 1) * ENTRY_BYTES;
          Kind_Code := U8 (Base);
          Rights_Code := U8 (Base + 1);
-         Slot_Code := U16 (Base + 2);
+         Reserved_Code := U16 (Base + 2);
          Item := (others => <>);
          Known := False;
          for Kind in Resource_Kind loop
@@ -173,11 +169,10 @@ package body CCL.Resource_Sections with SPARK_Mode => On is
                Known := True;
             end if;
          end loop;
-         if not Known or else Slot_Code not in 1 .. Unsigned_16 (Slot_Number'Last) then
+         if not Known or else Reserved_Code /= 0 then
             Status := Invalid_Entry;
             return;
          end if;
-         Item.Slot := Slot_Number (Slot_Code);
          Item.Index := U32 (Base + 4);
          Item.Amount := U64 (Base + 8);
          Item.Extra := U64 (Base + 16);
@@ -189,14 +184,6 @@ package body CCL.Resource_Sections with SPARK_Mode => On is
             Status := Invalid_Entry;
             return;
          end if;
-         for I in 1 .. Plan.Count loop
-            if Plan.Entries (I).Slot = Item.Slot then
-               Status := Duplicate_Slot;
-               return;
-            end if;
-            pragma Loop_Invariant
-              (for all J in 1 .. I => Plan.Entries (J).Slot /= Item.Slot);
-         end loop;
          Plan.Count := Number;
          Plan.Entries (Number) := Item;
       end loop;

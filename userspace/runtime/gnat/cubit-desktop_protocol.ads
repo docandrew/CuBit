@@ -35,10 +35,14 @@ package CuBit.Desktop_Protocol with SPARK_Mode, Pure is
      (Success => 0, Denied => 1, Bad_Object => 2, Bad_State => 3,
       Invalid_Request => 4, Unsupported => 5, Resources_Exhausted => 6);
    type Payload is array (Natural range 0 .. 3) of Unsigned_64;
+   --  A tag's protocol flags (the low nibble of its flag byte; the IPC
+   --  layer's nibble never reaches a protocol decoder).
+   type Protocol_Flags is mod 2 ** 4;
+
    type Wire_Message is record
       Label : Unsigned_32 := 0;
       Length : Unsigned_8 := 0;
-      Flags : Unsigned_8 := 0;
+      Flags : Protocol_Flags := 0;  --  the tag's protocol nibble
       Reserved : Unsigned_16 := 0;
       Words : Payload := [others => 0];
    end record;
@@ -141,7 +145,7 @@ package CuBit.Desktop_Protocol with SPARK_Mode, Pure is
       Serial, Payload0, Payload1 : Unsigned_64 := 0;
       More_Pending : Boolean := False;
    end record;
-   More_Pending_Flag : constant Unsigned_8 := 1;
+   More_Pending_Flag : constant Protocol_Flags := 1;
    --  Key events: Payload0 is the set-1 scan code; Payload1's low word holds
    --  the modifiers, its high word the key flags. Text events: Payload1 is
    --  the key flags alone. Repeat marks an event the desktop synthesized for

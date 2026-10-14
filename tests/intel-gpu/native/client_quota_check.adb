@@ -1,11 +1,25 @@
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Process_IDs;
+with CuBit.Handles;
+with CuBit.Handles.Boot_Roots;
+with CuBit.Handles.Control;
+with CuBit.Handles.IPC;
 with Intel_GPU_Buffer_Requests;
 with Intel_GPU_Buffer_Backing;
 with Intel_GPU_Buffer_Reply;
 with Intel_GPU_Extent_Allocator;
 procedure Client_Quota_Check is
    PID : constant Unsigned_64 := syscall (SYSCALL_GETPID);
+   -- Runs in devmgr's place: boot roots allocate, and two badged copies of
+   -- the self endpoint stand for two client sessions.
+   Roots : constant CuBit.Handles.Boot_Roots.Roots := CuBit.Handles.Boot_Roots.Get;
+   function Session_Endpoint (Tag : Unsigned_64) return CuBit.Handles.Endpoint is
+     (CuBit.Handles.Control.Derive
+        (CuBit.Handles.Badged (Roots.Self_Grantable, CuBit.Handles.Read_Write, Tag)));
+   First : constant CuBit.Handles.Endpoint := Session_Endpoint (16#4947#);
+   Second : constant CuBit.Handles.Endpoint := Session_Endpoint (16#4948#);
+   Saved_Reply : CuBit.Handles.Reply;
    Ignore : Unsigned_64;
    function Owner return Boolean is (True);
    function Session_Of (Sender, Stamp : Unsigned_64) return Unsigned_64 is
@@ -25,7 +39,8 @@ procedure Client_Quota_Check is
    function Allocate (CPU : Unsigned_64) return Unsigned_64 is
    begin
       Calls := Calls + 1;
-      return syscall (SYSCALL_ALLOC_DMA, PID, 9, CPU, 3, 2 ** 32);
+      return CuBit.Handles.Control.Allocate_DMA
+        (CuBit.Process_IDs.From_Word (PID), Roots.Process_Root, 9, CPU, 3, 2 ** 32);
    end Allocate;
    package A is new Intel_GPU_Extent_Allocator (Owner, Allocate);
    Pool : A.Pool;
@@ -33,7 +48,7 @@ procedure Client_Quota_Check is
    Reply_Words : B.Words;
    Handle : Unsigned_64;
    OK : Boolean;
-   procedure Exchange (Endpoint : CapabilitySlot; Request : B.Words;
+   procedure Exchange (Target : CuBit.Handles.Endpoint; Request : B.Words;
                        Fail_Backing : Boolean := False; Query : Boolean := False) is
       Msg, Response : Message := NULL_MESSAGE;
       From : Process_ID;
@@ -45,27 +60,33 @@ procedure Client_Quota_Check is
       Deadline : Unsigned_64;
    begin
       Token := Token + 1;
-      Msg.tag := ((if Query then B.Accounting_Label else B.Label), 4, 0, 0);
+      Msg.tag := (label => (if Query then B.Accounting_Label else B.Label), length => 4,
+                  protocol => 0, ipc => <>, reserved => 0);
       Msg.words := [Request (0), Request (1), Request (2), Request (3)];
-      Check (capSubmit (Endpoint, Msg, Token), "submit");
+      Check (capSubmit (Target, Msg, Token), "submit");
       Deadline := syscall (SYSCALL_GETTIME) + 10_000;
       loop
          Poll_Service_Request (From, Msg, Found); exit when Found;
          Check (syscall (SYSCALL_GETTIME) < Deadline, "request deadline");
       end loop;
-      Check (Unsigned_64 (From) = PID, "kernel sender");
+      Check (CuBit.Process_IDs.To_Word (From) = PID, "kernel sender");
       if Query then
          Ticket := 0;
-         B.Query_Accounting (Object, Unsigned_64 (From), Msg.authorityTag, Msg.tag.label,
-           Msg.tag.length, Msg.tag.flags, Msg.tag.reserved,
+         B.Query_Accounting (Object, CuBit.Process_IDs.To_Word (From), Msg.authorityTag, Msg.tag.label,
+           Msg.tag.length, Msg.tag.protocol, Msg.tag.reserved,
            [Msg.words (0), Msg.words (1), Msg.words (2), Msg.words (3)], Reply_Words);
       else
-         B.Handle (Object, Unsigned_64 (From), Msg.authorityTag, Msg.tag.label,
-           Msg.tag.length, Msg.tag.flags, Msg.tag.reserved,
+         B.Handle (Object, CuBit.Process_IDs.To_Word (From), Msg.authorityTag, Msg.tag.label,
+           Msg.tag.length, Msg.tag.protocol, Msg.tag.reserved,
            [Msg.words (0), Msg.words (1), Msg.words (2), Msg.words (3)], Reply_Words, Ticket);
       end if;
       if Ticket /= 0 then
-         Check (saveReplyCap (58) = 1, "save reply");
+         declare
+            Saved : constant CuBit.Handles.IPC.Saved_Reply := CuBit.Handles.IPC.Save_Reply;
+         begin
+            Check (Saved.Saved, "save reply");
+            Saved_Reply := Saved.Handle;
+         end;
          if not Fail_Backing then
             A.Acquire_Buffer (Pool, PID, B.Ticket_Slot (Ticket),
               Intel_GPU_Buffer_Backing.Page_Count (Request (2) / 4096),
@@ -75,11 +96,12 @@ procedure Client_Quota_Check is
          B.Complete (Object, Ticket, Result, Reply_Words, Consumed);
          Check (Consumed, "completion");
       end if;
-      Response.tag := ((if Query then B.Accounting_Label else B.Label), 4, 0, 0);
+      Response.tag := (label => (if Query then B.Accounting_Label else B.Label), length => 4,
+                       protocol => 0, ipc => <>, reserved => 0);
       Response.words := [Reply_Words (0), Reply_Words (1), Reply_Words (2), Reply_Words (3)];
       if Ticket /= 0 then
-         Check (replyCap (58, Response) = 1, "saved delivery");
-         Check (replyCap (58, Response) /= 1, "single delivery");
+         Check (CuBit.Handles.IPC.Answer (Saved_Reply, Response), "saved delivery");
+         Check (not CuBit.Handles.IPC.Answer (Saved_Reply, Response), "single delivery");
       else Check (reply (From, Response) = 1, "immediate delivery"); end if;
       loop
          exit when Poll_Completion (Receipt'Address) /= 0;
@@ -91,38 +113,38 @@ procedure Client_Quota_Check is
    end Exchange;
 begin
    debugPrint ("native client quota: real IPC and backing, forced startup policy (NO GPU/ISOLATION)" & ASCII.LF);
-   Check (syscall (SYSCALL_POLICY_MINT_CAPABILITY, PID, 1, PID, 16#4947#, 3, 15) /= Unsigned_64'Last, "endpoint one");
-   Check (syscall (SYSCALL_POLICY_MINT_CAPABILITY, PID, 1, PID, 16#4948#, 3, 16) /= Unsigned_64'Last, "endpoint two");
+   Check (Roots.Valid and CuBit.Handles.Valid (First), "endpoint one");
+   Check (CuBit.Handles.Valid (Second), "endpoint two");
    B.Configure_Client_Budgets (Object, 12288, OK); Check (OK, "quota policy");
-   Exchange (15, [1, 0, 0, 0], Query => True);
+   Exchange (First, [1, 0, 0, 0], Query => True);
    Check (Reply_Words = [B.Unavailable, 1, 0, 0], "unknown account not zero usage");
-   Exchange (15, [1, B.Create, 8192, 0]);
+   Exchange (First, [1, B.Create, 8192, 0]);
    Check (Reply_Words (0) = B.OK and Calls = 1, "initial create"); Handle := Reply_Words (2);
-   Exchange (15, [1, 0, 0, 0], Query => True);
+   Exchange (First, [1, 0, 0, 0], Query => True);
    Check (Reply_Words = [B.OK, 1, 12288, 8192], "own account query");
-   Exchange (16, [1, 0, 0, 0], Query => True);
+   Exchange (Second, [1, 0, 0, 0], Query => True);
    Check (Reply_Words = [B.Unavailable, 1, 0, 0], "second endpoint cannot read first account");
-   Exchange (15, [1, B.Create, 8192, 0]);
+   Exchange (First, [1, B.Create, 8192, 0]);
    Check (Reply_Words (0) = B.Unavailable and Calls = 1, "quota denial before backing");
    Check (B.Client_Usage (Object, 16#4947#).Charged = 8192, "denial preserves charge");
-   Exchange (15, [1, B.Create, 4096, 0]);
+   Exchange (First, [1, B.Create, 4096, 0]);
    Check (Reply_Words (0) = B.OK and Reply_Words (2) /= Handle, "smaller create after denial");
    Check (Calls = 1 and B.Client_Usage (Object, 16#4947#).Charged = 12288,
      "remaining quota and retained extent used");
-   Exchange (15, [1, B.Close, Handle, 0]); Check (Reply_Words (0) = B.OK, "close");
-   Exchange (15, [1, 0, 0, 0], Query => True);
+   Exchange (First, [1, B.Close, Handle, 0]); Check (Reply_Words (0) = B.OK, "close");
+   Exchange (First, [1, 0, 0, 0], Query => True);
    Check (Reply_Words = [B.OK, 1, 12288, 12288], "closed name retains observable charge");
-   Exchange (15, [1, B.Create, 4096, 0]);
+   Exchange (First, [1, B.Create, 4096, 0]);
    Check (Reply_Words (0) = B.Unavailable and Calls = 1, "close is not retirement");
-   Exchange (16, [1, B.Create, 12288, 0], Fail_Backing => True);
+   Exchange (Second, [1, B.Create, 12288, 0], Fail_Backing => True);
    Check (Reply_Words (0) = B.Unavailable, "forced backing failure");
    Check (B.Client_Usage (Object, 16#4948#).Charged = 12288, "failed backing charge retained");
-   Exchange (16, [1, 0, 0, 0], Query => True);
+   Exchange (Second, [1, 0, 0, 0], Query => True);
    Check (Reply_Words = [B.OK, 1, 12288, 12288], "failed allocation charge query");
-   Exchange (16, [1, B.Create, 4096, 0]);
+   Exchange (Second, [1, B.Create, 4096, 0]);
    Check (Reply_Words (0) = B.Unavailable and Calls = 1, "failure does not reopen quota");
    Check (B.Client_Usage (Object, 16#4947#).Charged = 12288, "independent account unchanged");
-   Exchange (15, [1, 16#4948#, 0, 0], Query => True);
+   Exchange (First, [1, 16#4948#, 0, 0], Query => True);
    Check (Reply_Words = [B.Bad_Request, 1, 0, 0] and Calls = 1, "no caller-selected account");
    Check (Token = 13, "request count");
    debugPrint ("TEST: PASS native client quota thirteen IPC replies own accounting denial recovery retained charges (NO GPU/ISOLATION)" & ASCII.LF);

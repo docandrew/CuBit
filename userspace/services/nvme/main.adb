@@ -23,7 +23,8 @@ with CuBit.Memory_Grants;
 with CuBit.Busy_Poll;
 with CuBit.NVMe_Control;
 with CuBit.Device_Interrupts;
-with CCL_Manifest_Bindings;
+with CuBit.Startup_State;
+with Startup;
 with NVMe;
 
 procedure main is
@@ -42,7 +43,7 @@ procedure main is
    begin
       replyMsg.tag := (label  => label,
                        length => 1,
-                       flags  => 0,
+                       protocol  => 0, ipc => <>,
                        reserved  => 0);
       replyMsg.words := [0 => word0, others => 0];
       ignore := reply (dest, replyMsg);
@@ -136,7 +137,7 @@ procedure main is
    begin
       if msg.tag.length /= 4 or else
          --  WRITE_FLAG_FUA is the only request flag this device honours.
-         (msg.tag.flags and not WRITE_FLAG_FUA) /= 0 or else
+         (msg.tag.protocol and not WRITE_FLAG_FUA) /= 0 or else
          msg.tag.reserved /= 0 or else
          msg.words (1) > CuBit.Memory_Grants.MAXIMUM_GLOBAL_SLOT or else
          msg.words (3) = 0 or else
@@ -173,7 +174,7 @@ procedure main is
       end if;
 
       bytesWritten := NVMe.writeBlocks
-        (lba, sectorCt, grantAddr, fua => (msg.tag.flags and WRITE_FLAG_FUA) /= 0);
+        (lba, sectorCt, grantAddr, fua => (msg.tag.protocol and WRITE_FLAG_FUA) /= 0);
       CuBit.Memory_Grants.Return_Acquisition
         ((slot => CuBit.Memory_Grants.Global_Grant_Slot (msg.words (1)),
           generation =>
@@ -212,7 +213,7 @@ procedure main is
          end if;
 
          replyMsg.tag := (label => REPLY_OK, length => 4,
-                          flags => 0, reserved => 0);
+                          protocol => 0, ipc => <>, reserved => 0);
          replyMsg.authorityTag := 0;
          replyMsg.words :=
            [0 => NVMe.nsBlockCount,
@@ -249,6 +250,10 @@ procedure main is
 #end if;
 begin
    debugPrint ("NVMe Driver: Starting..." & LF);
+   if not CuBit.Startup_State.Ready (Startup.Verify) then
+      debugPrint ("NVMe Driver: startup capabilities missing" & LF);
+      return;
+   end if;
 
    --  0. The first message is devmgr's interrupt configuration, bound to
    --  the registered devmgr's kernel-supplied identity.
@@ -264,8 +269,7 @@ begin
          --  The vectors are the capability in the manifest's completion
          --  slot; devmgr programmed the table entries for them.
          configValid := configMessage.tag.length = 0 and then
-           CuBit.Device_Interrupts.Block_Of
-             (CCL_Manifest_Bindings.Slot_completion).Valid;
+           CuBit.Device_Interrupts.Block_Of (Startup.Completion).Valid;
          useInterrupts := configValid;
       elsif configValid then
          configValid :=
@@ -289,14 +293,13 @@ begin
       debugPrint ("NVMe Driver: No BAR0 configured, exiting." & LF);
       --  Signal devmgr that no hardware is present
       declare
-         CAP_SLOT_READY  : constant Unsigned_64 := CCL_Manifest_Bindings.Slot_ready;
          OP_NOT_PRESENT  : constant Unsigned_32 := 16#FF01#;
          rdyIgnore : MessageTag;
          ignore : Unsigned_64;
       begin
-         rdyIgnore := capSend (CAP_SLOT_READY,
+         rdyIgnore := capSend (Startup.Ready,
             (tag      => (label => OP_NOT_PRESENT, length => 0,
-                          flags => 0, reserved => 0),
+                          protocol => 0, ipc => <>, reserved => 0),
              authorityTag => 0,
              words    => [others => 0]), CuBit.Messages.Wait_Forever);
          ignore := syscall (SYSCALL_EXIT);
@@ -308,7 +311,7 @@ begin
 
    --  2. Initialize controller (maps BAR0, resets, sets up admin queues)
    CuBit.Busy_Poll.Calibrate;   --  completion waits are timed by the TSC
-   NVMe.initController (bar0Phys, dmaPhys);
+   NVMe.initController (Startup.Registers, bar0Phys, dmaPhys);
 
    --  3. Identify controller and namespace
    NVMe.identifyController;
@@ -334,18 +337,17 @@ begin
    declare
       ignore : Unsigned_64;
    begin
-      ignore := registerDriver (DRIVER_NVME);
+      ignore := registerDriver (DRIVER_NVME, Startup.Registration);
    end;
 
    --  Signal devmgr that we are ready
    declare
-      CAP_SLOT_READY  : constant Unsigned_64 := CCL_Manifest_Bindings.Slot_ready;
       OP_READY       : constant Unsigned_32 := 16#FF00#;
       ignore : MessageTag;
    begin
-      ignore := capSend (CAP_SLOT_READY,
+      ignore := capSend (Startup.Ready,
          (tag      => (label => OP_READY, length => 0,
-                       flags => 0, reserved => 0),
+                       protocol => 0, ipc => <>, reserved => 0),
           authorityTag => 0,
           words    => [others => 0]), CuBit.Messages.Wait_Forever);
    end;
@@ -372,7 +374,7 @@ begin
 #end if;
             --  Without a volatile write cache every completed write is
             --  already durable: the barrier needs no controller command.
-            if msg.tag.length = 0 and then msg.tag.flags = 0 and then
+            if msg.tag.length = 0 and then msg.tag.protocol = 0 and then
               msg.tag.reserved = 0 and then
               (not NVMe.volatileWriteCache or else NVMe.flush)
             then

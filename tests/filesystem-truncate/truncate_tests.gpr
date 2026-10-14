@@ -5,9 +5,9 @@ project Truncate_Tests is
    for Languages use ("Ada");
    for Source_Dirs use
      (".", "fixture", Fs_Src,
-      "../../userspace/runtime/gnat");
+      "../../userspace/runtime/gnat", "../../shared/capabilities");
    for Source_Files use
-     ("main.adb", "open_options_check.adb", "indirect_reads.adb", "path_reads.adb", "admission.adb",
+     ("cubit-handles.ads", "capability_abi.ads", "capability_abi.adb", "cubit-handles-fixture.ads", "cubit-handles-fixture.adb", "main.adb", "open_options_check.adb", "indirect_reads.adb", "path_reads.adb", "admission.adb",
       "overwrites.adb", "allocation_scan.adb", "sector_counts.adb", "object_admission.adb", "inode_slots.adb",
       "resizing.adb", "double_resize.adb", "triple_resize.adb", "batched_io.adb", "path_decoding.adb", "volume_admission.ads", "block_paths.ads", "block_paths.adb",
       "sector_accounting.ads", "sector_accounting.adb",

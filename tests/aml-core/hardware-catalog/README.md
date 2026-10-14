@@ -19,7 +19,8 @@ already-authenticated kernel capability; passing them as user assertions would
 not provide security. `Hardware_Grants` implements parent-child revocation
 linkage, and `Hardware_Grants.Cspace` checks installed capability type, registry
 identity, generation and rights before reserving an access. Those separate
-policy units are exercised by the hardware-grants and hardware-cspace targets;
+policy units are exercised by the hardware-grants target (the slot-based
+hardware-cspace installers were removed with CAP-002);
 this catalog target alone does not validate them. Boot admission, current-caller
 syscall dispatch, synchronization and real hardware access remain unwired.
 

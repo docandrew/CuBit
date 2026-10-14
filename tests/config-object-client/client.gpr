@@ -1,7 +1,8 @@
 project Client is
    for Source_Dirs use
      (".", "../storage-channel/fixture", "../../userspace/lib/config",
-      "../../userspace/ccl/src", "../../userspace/runtime/gnat", "../../userspace/services/config");
+      "../../userspace/ccl/src", "../../userspace/runtime/gnat", "../../userspace/services/config",
+      "../../shared/capabilities");
    for Source_Files use
      ("cubit-async_requests.ads", "cubit-async_requests.adb") &
      ("cubit-failures.ads", "cubit-failures.adb") &
@@ -19,7 +20,9 @@ project Client is
       "ccl-objects-schemas.ads", "ccl-objects-schemas.adb",
       "ccl-bounded_stacks.ads", "ccl-bounded_stacks.adb",
       "cubit.ads", "cubit-messages.ads", "cubit-messages.adb",
-      "cubit-memory_grants.ads", "cubit-memory_grants.adb", "cubit-grant_references.ads");
+      "cubit-memory_grants.ads", "cubit-memory_grants.adb", "cubit-grant_references.ads",
+      "cubit-handles.ads", "capability_abi.ads", "capability_abi.adb",
+      "cubit-handles-fixture.ads", "cubit-handles-fixture.adb");
    for Object_Dir use "build";
    for Exec_Dir use "build";
    for Main use ("client_tests.adb", "dispatch_tests.adb", "receiver_tests.adb", "startup_tests.adb");

@@ -9,7 +9,6 @@ with Interfaces; use Interfaces;
 package CuBit.Clock_Control with SPARK_Mode is
    Service_Role : constant Unsigned_64 := 22;
    Authority_Tag : constant Unsigned_64 := 16#8000_0000_0000_0002#;
-   Endpoint_Slot : constant Unsigned_64 := 28;
    Submit_Sample : constant Unsigned_32 := 16#0B02#;
 
    Maximum_Sources : constant := 255;

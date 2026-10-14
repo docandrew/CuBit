@@ -26,9 +26,15 @@ package Process_Launch with
     Pure
 is
     Arguments_Base      : constant := 16#0000_5A00_0000_0000#;
-    Maximum_Bytes       : constant := 64 * 1024;
+    -- A launch block (CAP-002 envelope): a two-word header, the child's
+    -- startup table (at most CuBit.Startup_Tables.Maximum_Table_Bytes,
+    -- padded to a word) and the launch arguments or configuration (at most
+    -- 64 KiB). The kernel never interprets it.
+    Envelope_Bytes      : constant := 16;
+    Startup_Table_Bytes : constant := 3_216;
+    Maximum_Bytes       : constant := 64 * 1024 + Envelope_Bytes + Startup_Table_Bytes;
     Page_Bytes          : constant := 4096;
-    Maximum_Pages       : constant := Maximum_Bytes / Page_Bytes;
+    Maximum_Pages       : constant := (Maximum_Bytes + Page_Bytes - 1) / Page_Bytes;
 
     subtype Argument_Bytes is Unsigned_64 range 1 .. Maximum_Bytes;
     subtype Argument_Pages is Natural range 1 .. Maximum_Pages;

@@ -1,6 +1,7 @@
 pragma Ada_2022;
 with Interfaces; use Interfaces;
-with CCL_Manifest_Bindings;
+with CuBit.Handles;
+with Startup;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Clocks;
 with CuBit.Clock_Control;
@@ -9,7 +10,7 @@ with CuBit.Clock_Control;
 --  submit adjustments, and after timesync.svc runs the clock reports
 --  network-synchronized time. The host fixture compares the reported UTC.
 procedure Main is
-   Clock_Slot : constant CapabilitySlot := CCL_Manifest_Bindings.Slot_Clock;
+   Clock_Slot : constant CuBit.Handles.Endpoint := Startup.Clock;
    OK_Label : constant Unsigned_32 := 16#F000#;
    Passed : Boolean := True;
    Request : Message;
@@ -27,7 +28,7 @@ procedure Main is
                   (if Condition then " PASS" else " FAIL") & ASCII.LF);
    end Check;
 
-   procedure Forge (Slot : CapabilitySlot) is
+   procedure Forge (Slot : CuBit.Handles.Endpoint) is
       Words : constant CuBit.Clock_Control.Words :=
         CuBit.Clock_Control.Encode
           ((UTC_MS => 1_900_000_000_000,
@@ -43,11 +44,12 @@ procedure Main is
 begin
    Forge (Clock_Slot);
    Check (Reply.label /= OK_Label, "ordinary clock endpoint cannot adjust time");
-   Forge (CapabilitySlot (CuBit.Clock_Control.Endpoint_Slot));
-   Check (Reply.label /= OK_Label, "undeclared clock-control slot is unusable");
+   --  No clock-control handle was granted: nothing names that authority.
+   Forge (CuBit.Handles.No_Endpoint);
+   Check (Reply.label /= OK_Label, "undeclared clock-control is unusable");
 
    loop
-      CuBit.Clocks.Read (Stamp, Read_OK);
+      CuBit.Clocks.Read (Clock_Slot, Stamp, Read_OK);
       exit when Read_OK and then
         Stamp.Quality = CuBit.Clocks.Network_Unauthenticated;
       exit when syscall (SYSCALL_GETTIME) - Started > 60_000;

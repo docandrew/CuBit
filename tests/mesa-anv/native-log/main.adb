@@ -1,15 +1,14 @@
 with Interfaces; use Interfaces;
-with CCL_Manifest_Bindings;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Log_Protocol;
 with CuBit.Log_Records;
 with CuBit.Logging;
 with Mesa_Probe_Log;
+with Startup;
 procedure Main is
    package P renames CuBit.Log_Protocol;
    use type P.Status;
-   Reader : CuBit.Logging.Reader
-     (CapabilitySlot (CCL_Manifest_Bindings.Slot_Log_Observer));
+   Reader : CuBit.Logging.Reader;
    Value : P.Event;
    Result : P.Status;
    Lost, Ignore, Source : Unsigned_64 := 0;
@@ -30,6 +29,7 @@ procedure Main is
       end if;
    end Check;
 begin
+   CuBit.Logging.Bind (Reader, Startup.Log_Observer);
    CuBit.Logging.Subscribe (Reader, Result);
    Check (Result = P.OK, "observer subscription");
    for Attempt in 1 .. 256 loop

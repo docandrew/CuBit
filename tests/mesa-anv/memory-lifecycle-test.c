@@ -9,6 +9,11 @@
 #include <stdatomic.h>
 #include <sched.h>
 #include "../../userspace/mesa/anv/native_gpu_buffers.h"
+#include "../../userspace/c/cubit_handles.h"
+/* A test endpoint handle (generation 1). */
+#define TEST_ENDPOINT(n) ((cubit_endpoint){(UINT64_C(1) << 32) | (uint64_t)(n)})
+/* The index a test endpoint was made from. */
+#define TEST_INDEX(e) ((unsigned)((e).opaque & 0xffffffffu))
 
 static atomic_uint active_calls, create_calls;
 static bool fail_directory, fail_record;
@@ -25,9 +30,9 @@ void *__wrap_calloc(size_t count, size_t bytes)
    return fail_record ? NULL : __real_calloc(count, bytes);
 }
 static uint64_t expected_bytes = 4096;
-uint32_t cubit_intel_create_buffer(uint64_t slot, uint64_t bytes, uint32_t *handle)
+uint32_t cubit_intel_create_buffer(cubit_endpoint endpoint, uint64_t bytes, uint32_t *handle)
 {
-   assert(slot == 63 && bytes == expected_bytes);
+   assert(endpoint.opaque == TEST_ENDPOINT(63).opaque && bytes == expected_bytes);
    assert(atomic_fetch_add(&active_calls, 1) == 0);
    sched_yield();
    *handle = atomic_fetch_add(&create_calls, 1) + 1;
@@ -54,16 +59,16 @@ static bool drained;
 static unsigned closes, retirement_queries;
 static uint32_t retirement_status = 4;
 static uint32_t close_status;
-uint32_t cubit_intel_close_session(uint64_t slot, uint64_t *tag)
+uint32_t cubit_intel_close_session(cubit_endpoint endpoint, uint64_t *tag)
 {
-   assert(slot <= 63 && drained);
+   assert(cubit_endpoint_present(endpoint) && drained);
    closes++;
    *tag = close_status ? 0 : UINT64_C(0x4750000000000001);
    return close_status;
 }
-uint32_t cubit_intel_poll_session_retirement(uint64_t slot)
+uint32_t cubit_intel_poll_session_retirement(cubit_endpoint endpoint)
 {
-   assert(slot <= 63 && closes && drained);
+   assert(cubit_endpoint_present(endpoint) && closes && drained);
    retirement_queries++;
    return retirement_status;
 }
@@ -83,7 +88,7 @@ static void VKAPI_PTR release(void *user, void *ptr)
 }
 bool cubit_cpu_tracker_drain(struct cubit_cpu_mapping_tracker *tracker)
 {
-   assert(tracker && tracker->slot <= 63);
+   assert(tracker && cubit_endpoint_present(tracker->endpoint));
    drains++;
    tracker->lost = true;
    return drained;
@@ -103,18 +108,18 @@ int main(void)
    device.vk.alloc.pfnAllocation = allocate;
    device.vk.alloc.pfnFree = release;
    assert(anv_cubit_memory_finish(&device) == VK_SUCCESS && drains == 0);
-   assert(!anv_cubit_memory_slot_retained(63));
-   assert(anv_cubit_memory_slot_retained(64));
-   assert(anv_cubit_memory_init(&device, 64) == VK_ERROR_INITIALIZATION_FAILED);
+   assert(!anv_cubit_memory_endpoint_retained(TEST_ENDPOINT(63)));
+   assert(anv_cubit_memory_endpoint_retained(CUBIT_NO_ENDPOINT));
+   assert(anv_cubit_memory_init(&device, CUBIT_NO_ENDPOINT) == VK_ERROR_INITIALIZATION_FAILED);
    assert(allocations == 0 && !device.cubit_cpu_mappings);
    fail_directory = true;
-   assert(anv_cubit_memory_init(&device, 63) == VK_ERROR_OUT_OF_HOST_MEMORY);
-   assert(!device.cubit_cpu_mappings && !anv_cubit_memory_slot_retained(63));
+   assert(anv_cubit_memory_init(&device, TEST_ENDPOINT(63)) == VK_ERROR_OUT_OF_HOST_MEMORY);
+   assert(!device.cubit_cpu_mappings && !anv_cubit_memory_endpoint_retained(TEST_ENDPOINT(63)));
    fail_directory = false; fail_record = true;
-   assert(anv_cubit_memory_init(&device, 63) == VK_ERROR_OUT_OF_HOST_MEMORY);
-   assert(!device.cubit_cpu_mappings && !anv_cubit_memory_slot_retained(63));
+   assert(anv_cubit_memory_init(&device, TEST_ENDPOINT(63)) == VK_ERROR_OUT_OF_HOST_MEMORY);
+   assert(!device.cubit_cpu_mappings && !anv_cubit_memory_endpoint_retained(TEST_ENDPOINT(63)));
    fail_record = false;
-   assert(anv_cubit_memory_init(&device, 63) == VK_SUCCESS);
+   assert(anv_cubit_memory_init(&device, TEST_ENDPOINT(63)) == VK_SUCCESS);
    static struct anv_physical_device physical;
    static struct intel_memory_class_instance region;
    physical.sys.region = &region;
@@ -215,25 +220,25 @@ int main(void)
    assert(actual == 0 && create_calls == 400);
    assert(!device.cubit_cpu_mappings->lost);
    struct cubit_cpu_mapping_tracker *saved = device.cubit_cpu_mappings;
-   assert(anv_cubit_memory_slot_retained(63));
-   assert(saved && saved->slot == 63 && !saved->lost && saved->used == 0);
+   assert(anv_cubit_memory_endpoint_retained(TEST_ENDPOINT(63)));
+   assert(saved && saved->endpoint.opaque == TEST_ENDPOINT(63).opaque && !saved->lost && saved->used == 0);
    for (unsigned i = 0; i < CUBIT_CPU_MAPPING_CAPACITY; i++)
       assert(saved->records[i].state == CUBIT_MAP_EMPTY);
-   assert(anv_cubit_memory_init(&device, 62) == VK_ERROR_INITIALIZATION_FAILED);
+   assert(anv_cubit_memory_init(&device, TEST_ENDPOINT(62)) == VK_ERROR_INITIALIZATION_FAILED);
    assert(allocations == 0 && device.cubit_cpu_mappings == saved);
    static struct anv_device second;
    p_atomic_set(&second.vk._lost.lost, 1);
-   assert(anv_cubit_memory_init(&second, 62) == VK_ERROR_INITIALIZATION_FAILED);
-   assert(!second.cubit_cpu_mappings && !anv_cubit_memory_slot_retained(62));
+   assert(anv_cubit_memory_init(&second, TEST_ENDPOINT(62)) == VK_ERROR_INITIALIZATION_FAILED);
+   assert(!second.cubit_cpu_mappings && !anv_cubit_memory_endpoint_retained(TEST_ENDPOINT(62)));
    /* Reset only the uninitialized test fixture, never a live lost device. */
    memset(&second, 0, sizeof(second));
-   assert(anv_cubit_memory_init(&second, 63) == VK_ERROR_INITIALIZATION_FAILED);
+   assert(anv_cubit_memory_init(&second, TEST_ENDPOINT(63)) == VK_ERROR_INITIALIZATION_FAILED);
    assert(!second.cubit_cpu_mappings);
    assert(anv_cubit_memory_finish(&device) == VK_ERROR_DEVICE_LOST);
    assert(!device.cubit_cpu_mappings && frees == 0 && losses == 1);
    assert(saved->lost);
-   assert(anv_cubit_memory_slot_retained(63));
-   assert(anv_cubit_memory_init(&second, 63) == VK_ERROR_INITIALIZATION_FAILED);
+   assert(anv_cubit_memory_endpoint_retained(TEST_ENDPOINT(63)));
+   assert(anv_cubit_memory_init(&second, TEST_ENDPOINT(63)) == VK_ERROR_INITIALIZATION_FAILED);
    assert(!second.cubit_cpu_mappings);
    /* Destroy every byte of the wrapper; polling must not use it or alloc. */
    memset(&device, 0xA5, sizeof(device));
@@ -242,25 +247,25 @@ int main(void)
    drained = true;
    assert(anv_cubit_memory_poll() == 1 && drains == 3);
    assert(closes == 1 && retirement_queries == 1);
-   assert(anv_cubit_memory_slot_retained(63));
+   assert(anv_cubit_memory_endpoint_retained(TEST_ENDPOINT(63)));
    assert(anv_cubit_memory_poll() == 1 && drains == 3);
    assert(closes == 1 && retirement_queries == 2);
    retirement_status = 0;
    assert(anv_cubit_memory_poll() == 0 && drains == 3);
-   assert(!anv_cubit_memory_slot_retained(63));
+   assert(!anv_cubit_memory_endpoint_retained(TEST_ENDPOINT(63)));
    assert(anv_cubit_memory_poll() == 0 && drains == 3);
    memset(&device, 0, sizeof(device));
    for (unsigned i = 0; i < 128; i++) {
-      assert(anv_cubit_memory_init(&device, 63) == VK_SUCCESS);
+      assert(anv_cubit_memory_init(&device, TEST_ENDPOINT(63)) == VK_SUCCESS);
       assert(device.cubit_cpu_mappings == saved);
       assert(!saved->lost && !saved->used);
       for (unsigned j = 0; j < CUBIT_CPU_MAPPING_CAPACITY; j++)
          assert(saved->records[j].state == CUBIT_MAP_EMPTY);
       assert(anv_cubit_memory_finish(&device) == VK_SUCCESS);
-      assert(!anv_cubit_memory_slot_retained(63));
+      assert(!anv_cubit_memory_endpoint_retained(TEST_ENDPOINT(63)));
    }
    for (unsigned i = 0; i < 2; i++) {
-      assert(anv_cubit_memory_init(&device, i ? 62 : 63) == VK_SUCCESS);
+      assert(anv_cubit_memory_init(&device, TEST_ENDPOINT(i ? 62 : 63)) == VK_SUCCESS);
       close_status = i ? 0 : 4;
       retirement_status = i ? 5 : 0;
       assert(anv_cubit_memory_finish(&device) ==
@@ -269,44 +274,46 @@ int main(void)
    unsigned previous_closes = closes, previous_queries = retirement_queries;
    assert(anv_cubit_memory_poll() == 2);
    assert(closes == previous_closes && retirement_queries == previous_queries);
-   assert(anv_cubit_memory_slot_retained(63) && anv_cubit_memory_slot_retained(62));
+   assert(anv_cubit_memory_endpoint_retained(TEST_ENDPOINT(63)) && anv_cubit_memory_endpoint_retained(TEST_ENDPOINT(62)));
    close_status = 0; retirement_status = 0;
-   assert(anv_cubit_memory_init(&device, 61) == VK_SUCCESS);
+   assert(anv_cubit_memory_init(&device, TEST_ENDPOINT(61)) == VK_SUCCESS);
    assert(device.cubit_cpu_mappings != saved); /* uncertain record retained */
    assert(anv_cubit_memory_finish(&device) == VK_SUCCESS);
    /* Grow beyond the former 16 records without reclaiming uncertain owners.
-    * Work is bounded by the real capability-slot namespace (64), not a
+    * Work is bounded by the test endpoint index range (64), not a
     * separately smaller bookkeeping cap. */
    close_status = 4;
    /* Keep a live tracker while both directory and record allocation fail,
     * then while the directory grows. The pointer must never move. */
    static struct anv_device held;
-   assert(anv_cubit_memory_init(&held, 0) == VK_SUCCESS);
+   assert(anv_cubit_memory_init(&held, TEST_ENDPOINT(0)) == VK_SUCCESS);
    struct cubit_cpu_mapping_tracker *held_tracker = held.cubit_cpu_mappings;
-   for (unsigned slot = 1; slot <= 61; slot++) {
-      if (slot == 2) {
+   for (unsigned index = 1; index <= 61; index++) {
+      const cubit_endpoint endpoint = TEST_ENDPOINT(index);
+      if (endpoint.opaque == TEST_ENDPOINT(2).opaque) {
          fail_directory = true;
-         assert(anv_cubit_memory_init(&device, slot) == VK_ERROR_OUT_OF_HOST_MEMORY);
-         assert(held.cubit_cpu_mappings == held_tracker && held_tracker->slot == 0);
-         assert(!device.cubit_cpu_mappings && !anv_cubit_memory_slot_retained(slot));
+         assert(anv_cubit_memory_init(&device, endpoint) == VK_ERROR_OUT_OF_HOST_MEMORY);
+         assert(held.cubit_cpu_mappings == held_tracker && held_tracker->endpoint.opaque == TEST_ENDPOINT(0).opaque);
+         assert(!device.cubit_cpu_mappings && !anv_cubit_memory_endpoint_retained(endpoint));
          fail_directory = false;
       }
-      if (slot == 8 || slot == 24) {
+      if (endpoint.opaque == TEST_ENDPOINT(8).opaque || endpoint.opaque == TEST_ENDPOINT(24).opaque) {
          fail_record = true;
-         assert(anv_cubit_memory_init(&device, slot) == VK_ERROR_OUT_OF_HOST_MEMORY);
-         assert(!device.cubit_cpu_mappings && !anv_cubit_memory_slot_retained(slot));
+         assert(anv_cubit_memory_init(&device, endpoint) == VK_ERROR_OUT_OF_HOST_MEMORY);
+         assert(!device.cubit_cpu_mappings && !anv_cubit_memory_endpoint_retained(endpoint));
          fail_record = false;
       }
-      assert(anv_cubit_memory_init(&device, slot) == VK_SUCCESS);
-      assert(held.cubit_cpu_mappings == held_tracker && held_tracker->slot == 0);
+      assert(anv_cubit_memory_init(&device, endpoint) == VK_SUCCESS);
+      assert(held.cubit_cpu_mappings == held_tracker && held_tracker->endpoint.opaque == TEST_ENDPOINT(0).opaque);
       assert(anv_cubit_memory_finish(&device) == VK_ERROR_DEVICE_LOST);
    }
    assert(anv_cubit_memory_poll() == 63);
    assert(anv_cubit_memory_finish(&held) == VK_ERROR_DEVICE_LOST);
    assert(anv_cubit_memory_poll() == 64);
-   for (unsigned slot = 0; slot < 64; slot++) {
-      assert(anv_cubit_memory_slot_retained(slot));
-      assert(anv_cubit_memory_init(&device, slot) == VK_ERROR_INITIALIZATION_FAILED);
+   for (unsigned index = 0; index < 64; index++) {
+      const cubit_endpoint endpoint = TEST_ENDPOINT(index);
+      assert(anv_cubit_memory_endpoint_retained(endpoint));
+      assert(anv_cubit_memory_init(&device, endpoint) == VK_ERROR_INITIALIZATION_FAILED);
    }
    assert(!device.cubit_cpu_mappings && allocations == 0 && frees == 0);
    puts("ANV memory lifecycle PASS (actual types, 128 completed reuse cycles, growth to 64 quarantined records, detached cleanup)");

@@ -12,7 +12,7 @@ spec=importlib.util.spec_from_file_location('guard',root/'tools/verify_desktop_v
 guard=importlib.util.module_from_spec(spec);spec.loader.exec_module(guard);guard.verify(linked)
 cmds=json.loads((linked/'build-commands.json').read_text())
 manifest=list(cmds[0]['argv']);native=list(cmds[1]['argv'][:3]);link=list(cmds[-1]['argv'][:4])
-assert len(manifest)==7 and manifest[3]=='--schema' and manifest[5]=='--ada-output'
+assert len(manifest)==7 and manifest[3]=='--schema' and manifest[5]=='--startup-output'
 assert native[0]=='bash' and native[2]=='c' and link[:2]==native[:2] and link[2:]==['cpp','--manifest']
 out.mkdir(parents=True,exist_ok=False);(out/'obj').mkdir();(out/'generated').mkdir()
 for name in ('main.adb','manifest.ccl'):shutil.copyfile(Path(__file__).with_name(name),out/name)
@@ -26,7 +26,7 @@ inputs.extend(sorted(path for path in (runtime/'gnat').rglob('*') if path.is_fil
 hashes={str(path):digest(path) for path in inputs};commands=[]
 def run(argv,**kw):
  commands.append(list(map(str,argv)));subprocess.run(commands[-1],check=True,**kw)
-manifest[2]=str(out/'manifest.ccl');manifest[-1]=str(out/'generated/ccl_manifest_bindings.ads')
+manifest[2]=str(out/'manifest.ccl');manifest[-1]=str(out/'generated/startup.ads')
 with (out/'manifest.S').open('w') as f:run(manifest,stdout=f)
 run(native+['-c',out/'manifest.S','-o',out/'manifest.o'])
 run(['alr','exec','--','gprbuild','-q','-p','-c','-b','-P',out/'test.gpr'],cwd=root/'kernel')

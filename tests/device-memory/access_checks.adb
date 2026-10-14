@@ -5,7 +5,8 @@ with Device_Memory_Admission;
 with Device_Memory_Authority;
 with Physical_Ranges;
 procedure Access_Checks is
-   Table : CapabilityTable := EMPTY_TABLE;
+   --  The one capability a mapping call names (CAP-002: by handle).
+   Table : Capability := NULL_CAPABILITY;
    Allowed : Boolean;
    -- Nothing described: every page is bus address space, so these checks
    -- isolate the capability-table half of the decision.
@@ -21,14 +22,14 @@ procedure Access_Checks is
 begin
    Physical_Ranges.Seal (All_Device);
    Check (16#1000#, 4096, False, False);
-   Table (0).capType := CAP_DEVICE_MEM;
-   Table (0).object.ref := 16#1000#;
-   Table (0).object.param := 8192;
+   Table.capType := CAP_DEVICE_MEM;
+   Table.object.ref := 16#1000#;
+   Table.object.param := 8192;
    for Read_Right in Boolean loop
       for Write_Right in Boolean loop
-         Table (0).rights := NO_RIGHTS;
-         Table (0).rights (RIGHT_READ) := Read_Right;
-         Table (0).rights (RIGHT_WRITE) := Write_Right;
+         Table.rights := NO_RIGHTS;
+         Table.rights (RIGHT_READ) := Read_Right;
+         Table.rights (RIGHT_WRITE) := Write_Right;
          for Write_Request in Boolean loop
             Check (16#1000#, 8192, Write_Request,
                    Read_Right and (not Write_Request or Write_Right));
@@ -42,12 +43,12 @@ begin
          end loop;
       end loop;
    end loop;
-   Table (0).rights := ALL_RIGHTS;
-   Table (0).object.ref := Unsigned_64'Last - 4095;
-   Table (0).object.param := 8192;
+   Table.rights := ALL_RIGHTS;
+   Table.object.ref := Unsigned_64'Last - 4095;
+   Table.object.param := 8192;
    Check (Unsigned_64'Last - 4095, 1, False, False);
-   Table (0).object.ref := 16#1000#;
-   Table (0).object.param := 0;
+   Table.object.ref := 16#1000#;
+   Table.object.param := 0;
    Check (16#1000#, 1, False, False);
    Ada.Text_IO.Put_Line ("device memory rights/range PASS");
 end Access_Checks;

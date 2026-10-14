@@ -103,7 +103,7 @@ package body CuBit.Messages is
    end debugPrint;
 
    function capCall
-     (slot : Unsigned_64; msg : in out Message; Deadline : Unsigned_64)
+     (slot : CuBit.Handles.Endpoint; msg : in out Message; Deadline : Unsigned_64)
      return MessageTag is
       pragma Unreferenced (slot, Deadline);
       Op : constant Unsigned_32 := msg.tag.label;
@@ -117,18 +117,18 @@ package body CuBit.Messages is
          end if;
          if Commands = Fail_At and then not Fail_After then
             Ada.Text_IO.Put_Line ("FAILED command" & Commands'Image);
-            msg := ((REPLY_ERROR, 1, 0, 0), 0, [others => 0]);
+            msg := ((label => REPLY_ERROR, length => 1, protocol => 0, ipc => <>, reserved => 0), 0, [others => 0]);
             return msg.tag;
          end if;
       end if;
       if Op = OP_DESCRIBE_DEVICE then
-         msg := ((REPLY_OK, 4, 0, 0), 0,
+         msg := ((label => REPLY_OK, length => 4, protocol => 0, ipc => <>, reserved => 0), 0,
                  [Image_Size / 512, Pack_Sizes (512, 512), 8,
                   Pack_Properties (FEATURE_FLUSH or FEATURE_VOLATILE_CACHE or FEATURE_FUA,
                                    Fixed_Media)]);
       elsif Op = OP_FLUSH_DEVICE then
          Drain;
-         msg := ((REPLY_OK, 1, 0, 0), 0, [others => 0]);
+         msg := ((label => REPLY_OK, length => 1, protocol => 0, ipc => <>, reserved => 0), 0, [others => 0]);
       else
          pragma Assert (Op in OP_READ_BLOCKS | OP_WRITE_BLOCKS);
          pragma Assert (Count in 1 .. Grant_Buffer'Length);
@@ -145,7 +145,7 @@ package body CuBit.Messages is
                   else
                      IO.Read (Image, Data, IO.Positive_Count (Number + 1));
                   end if;
-               elsif (msg.tag.flags and WRITE_FLAG_FUA) /= 0 then
+               elsif (msg.tag.protocol and WRITE_FLAG_FUA) /= 0 then
                   Cached.Exclude (Number);
                   Order.Exclude (Number);
                   Persist (Number, Data);
@@ -156,11 +156,11 @@ package body CuBit.Messages is
                end if;
             end;
          end loop;
-         msg := ((REPLY_OK, 1, 0, 0), 0, [0 => Count, others => 0]);
+         msg := ((label => REPLY_OK, length => 1, protocol => 0, ipc => <>, reserved => 0), 0, [0 => Count, others => 0]);
       end if;
       if Commands = Fail_At and then Fail_After and then Op /= OP_DESCRIBE_DEVICE then
          Ada.Text_IO.Put_Line ("FAILED command" & Commands'Image);
-         msg := ((REPLY_ERROR, 1, 0, 0), 0, [others => 0]);
+         msg := ((label => REPLY_ERROR, length => 1, protocol => 0, ipc => <>, reserved => 0), 0, [others => 0]);
       end if;
       return msg.tag;
    end capCall;

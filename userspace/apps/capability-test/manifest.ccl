@@ -1,5 +1,7 @@
-# Requested authority only; the existing launch path remains in control.
-(executable-manifest v1
-  (identity "com.cubit.cap-test")
-  (version "1.0.0")
-  (requests-none))
+# Capability security regression (CAP-002). Requests nothing: its only
+# handles are the launcher's self entries. The small handle limit is what
+# the test checks Limit_Reached against (main.adb Handle_Limit).
+(Executable_Manifest
+  identity => "com.cubit.cap-test"
+  version => "1.0.0"
+  handles => (Handle_Limit.At_Most 8))

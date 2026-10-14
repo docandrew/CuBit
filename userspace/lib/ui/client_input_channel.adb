@@ -5,6 +5,7 @@ with CuBit.Messages; use CuBit.Messages;
 with CuBit.Memory_Grants;
 with CuBit.Desktop_Messages;
 with Client_Input_Channel_Policy;
+with UI_Desktop_Service;
 package body Client_Input_Channel with SPARK_Mode => Off is
    package Policy renames Client_Input_Channel_Policy;
    package MG renames CuBit.Memory_Grants;
@@ -41,7 +42,7 @@ package body Client_Input_Channel with SPARK_Mode => Off is
             Base := syscall (SYSCALL_ALLOCATE_OWNED_MEMORY, 4096);
             OK := Base /= 0 and then Base mod 4096 = 0 and then Base <= Unsigned_64'Last - 4096;
             if OK then
-               MG.Create_Via_Capability (CAP_SLOT_DESKTOP,
+               MG.Create_Via_Capability (UI_Desktop_Service.Endpoint,
                  To_Address (Integer_Address (Base)), 1, True, Grant, OK);
             end if;
             Policy.Finish_Setup (Control, OK);
@@ -51,7 +52,7 @@ package body Client_Input_Channel with SPARK_Mode => Off is
          if Identity = 0 then return; end if;
          Reply := CuBit.Desktop_Messages.From_Wire
            (Cache.P.Encode (Cache.P.Request'(Surface, After, Grant, Identity)));
-         Reply.tag := capCall (CAP_SLOT_DESKTOP, Reply, CuBit.Messages.Wait_Forever);
+         Reply.tag := capCall (UI_Desktop_Service.Endpoint, Reply, CuBit.Messages.Wait_Forever);
          if Cache.P.Decode (CuBit.Desktop_Messages.To_Wire (Reply), Identity).Status /= Cache.DP.Success then
             -- A failed reply may conceal a retained writer. Never reuse or
             -- release this page; its bounded storage lives until process exit.

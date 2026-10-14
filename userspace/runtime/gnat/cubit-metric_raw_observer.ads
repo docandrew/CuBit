@@ -1,14 +1,15 @@
 pragma Ada_2022;
+with CuBit.Handles;
 with Interfaces; use Interfaces;
-with CuBit.Messages;
 with CuBit.Memory_Grants;
 with CuBit.Metric_Protocol;
 with CuBit.Process_IDs;
 package CuBit.Metric_Raw_Observer with SPARK_Mode is
    package P renames CuBit.Metric_Protocol;
-   --  Synchronous collector only. Serialize calls and keep Slot unchanged;
+   --  Synchronous collector only. Serialize calls and bind it once;
    --  retain this object until Disconnect reports Done. Never use in rendering.
-   type Observer (Slot : CuBit.Messages.CapabilitySlot) is limited private;
+   type Observer is limited private;
+   procedure Bind (Item : in out Observer; Target : CuBit.Handles.Endpoint);
    function Disabled (Item : Observer) return Boolean;
    function Incarnation (Item : Observer) return CuBit.Process_IDs.Process_ID;
    procedure Query (Item : in out Observer; Cursor : Unsigned_64;
@@ -17,7 +18,8 @@ package CuBit.Metric_Raw_Observer with SPARK_Mode is
    procedure Disconnect (Item : in out Observer; Done : out Boolean);
 private
    type Buffer is new P.Raw_Page with Alignment => 4096;
-   type Observer (Slot : CuBit.Messages.CapabilitySlot) is limited record
+   type Observer is limited record
+      Slot : CuBit.Handles.Endpoint := CuBit.Handles.No_Endpoint;
       Page : Buffer := (others => (others => 0));
       Grant : CuBit.Memory_Grants.Grant_Reference;
       Has_Grant, Off : Boolean := False;

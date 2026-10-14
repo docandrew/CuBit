@@ -1,4 +1,5 @@
 with Interfaces;
+with CuBit.Handles;
 with System;
 with Vulkan_Context_Owner;
 with Vulkan_Submission;
@@ -15,7 +16,7 @@ package Vulkan_Device_Owner with SPARK_Mode is
    -- Context/submission and S must be exclusively owned and never reset/copied.
    procedure Start
      (S : in out State; Context : in out C.State;
-      Submission : in out V.State; Slot : Interfaces.Unsigned_64)
+      Submission : in out V.State; Render : CuBit.Handles.Endpoint)
      with Pre => (if Current (S) = Fresh then
        C.Current (Context) = C.Fresh and C.Empty (Context) and
        V.Owner_Context (Submission) = System.Null_Address and V.Can_Destroy (Submission)),

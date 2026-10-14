@@ -39,15 +39,82 @@ procedure Main is
 begin
    --  Round trips for every kind.
    declare
+      --  Handle words: generation in the high half, slot in the low half.
+      function H (Slot : Unsigned_64) return Unsigned_64 is (2 ** 32 + Slot);
+      Handles : constant Device_Manager_Handles :=
+        (Self => H (0), Self_Process => H (1), Self_Grantable => H (2),
+         Process_Root => H (3), PCI_Ports => H (4), Registration => H (5),
+         Vector_Authority => H (6), IO_Ports => H (7), Legacy_Interrupts => H (8),
+         Notifications => H (9), Scheduling => H (10), Root_Count => 3,
+         Device_Roots => [H (11), H (12), H (13), others => 0]);
       V : Device_Manager_Configuration :=
-        (Boot_Image => 40 * 1024 * 1024, Framebuffer => (16#FD00_0000#, 16#30_0000#));
+        (Boot_Image => 40 * 1024 * 1024, Framebuffer => (16#FD00_0000#, 16#30_0000#),
+         Handles => Handles);
       D : Device_Manager_Configuration; OK : Boolean;
+      E : Encoded;
    begin
       Round_Trips.Device_Manager (V, D, OK);
       Check (OK and then D = V, "device manager round trip");
       V.Framebuffer := (0, 0);
       Round_Trips.Device_Manager (V, D, OK);
       Check (OK and then D = V, "device manager without framebuffer");
+      V.Handles.Root_Count := Maximum_Device_Roots;
+      V.Handles.Device_Roots := [for R in Device_Root_Index => H (20 + Unsigned_64 (R))];
+      Round_Trips.Device_Manager (V, D, OK);
+      Check (OK and then D = V, "device manager with every root");
+      --  Refusals: a named handle that is not one, a root count past the
+      --  array, a root in use that is zero, an unused root that is not.
+      V := (Boot_Image => 1, Framebuffer => (0, 0), Handles => Handles);
+      E := Encode (V);
+      for Bad in 7 .. 17 loop
+         declare
+            W : Word_Array := E.Words (1 .. E.Length);
+         begin
+            W (Bad) := 5;   --  a refusal-sized word, generation zero
+            Decode (W, D, OK);
+            Check (not OK, "named handle without a generation refused");
+         end;
+      end loop;
+      declare
+         W : Word_Array := E.Words (1 .. E.Length);
+      begin
+         W (18) := Maximum_Device_Roots + 1;
+         Decode (W, D, OK);
+         Check (not OK, "root count past the array refused");
+         W (18) := 4;
+         Decode (W, D, OK);
+         Check (not OK, "a zero root in use refused");
+         W (18) := 2;
+         Decode (W, D, OK);
+         Check (not OK, "a handle in an unused root refused");
+      end;
+   end;
+   declare
+      function H (Slot : Unsigned_64) return Unsigned_64 is (2 ** 32 + Slot);
+      V : Process_Manager_Configuration :=
+        (Framebuffer => (16#FD00_0000#, 16#30_0000#),
+         Handles => (Self => H (0), Self_Process => H (1), Self_Grantable => H (2),
+                     Process_Root => H (3), Registration => H (4),
+                     Notifications => H (5), Filesystem => H (6), Config => H (7),
+                     Netstack => H (8), Network_Policy => H (9), Mixer => 0,
+                     Device_Manager => H (10), Ready => H (11), Framebuffer => H (12),
+                     Device_Inspection => H (13)));
+      D : Process_Manager_Configuration; OK : Boolean;
+      E : Encoded;
+   begin
+      Round_Trips.Process_Manager (V, D, OK);
+      Check (OK and then D = V, "process manager round trip");
+      V.Handles.Framebuffer := 0;
+      Round_Trips.Process_Manager (V, D, OK);
+      Check (OK and then D = V, "process manager without framebuffer");
+      E := Encode (V);
+      declare
+         W : Word_Array := E.Words (1 .. E.Length);
+      begin
+         W (9) := 7;   --  process root without a generation
+         Decode (W, D, OK);
+         Check (not OK, "process manager refuses a non-handle root");
+      end;
    end;
    declare
       D : Virtio_GPU_Configuration; OK : Boolean;
@@ -91,7 +158,7 @@ begin
 
    --  Random words never decode, and never raise (-gnata -gnato).
    declare
-      W : Word_Array (1 .. 6);
+      W : Word_Array (1 .. 26);
       D : Device_Manager_Configuration; OK : Boolean;
       Accepted : Natural := 0;
    begin
@@ -102,7 +169,7 @@ begin
          if Round mod 2 = 0 then
             W (1) := Magic;
             W (2) := Configuration_Kind'Enum_Rep (Device_Manager);
-            W (3) := 3;
+            W (3) := Unsigned_64 (Field_Count (Device_Manager));
          end if;
          Decode (W, D, OK);
          if OK then

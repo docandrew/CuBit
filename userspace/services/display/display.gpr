@@ -7,13 +7,13 @@ project Display is
     case Test_Mode is
         when "production" =>
             for Object_Dir use "build";
-            for Source_Dirs use ("../../lib/display", "../../lib/compositor", ".", "production");
+            for Source_Dirs use ("../../lib/display", "../../lib/compositor", ".", "production", "build/generated");
         when "delayed" =>
             for Object_Dir use "build-delayed";
-            for Source_Dirs use ("../../lib/display", "../../lib/compositor", ".", "test-delayed");
+            for Source_Dirs use ("../../lib/display", "../../lib/compositor", ".", "test-delayed", "build/generated");
         when "output-rebind" =>
             for Object_Dir use "build-output-rebind";
-            for Source_Dirs use ("../../lib/display", "../../lib/compositor", ".", "test-output");
+            for Source_Dirs use ("../../lib/display", "../../lib/compositor", ".", "test-output", "build/generated");
     end case;
 
     for Main use ("main.adb");

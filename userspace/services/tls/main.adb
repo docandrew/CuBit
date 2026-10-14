@@ -3,7 +3,10 @@ with CuBit.Log;
 with Interfaces; use Interfaces;
 with System;
 with System.Storage_Elements; use System.Storage_Elements;
-with CCL_Manifest_Bindings;
+with CuBit.Handles;
+with CuBit.Handles.IPC;
+with CuBit.Startup_State;
+with Startup;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Memory_Grants;
 with CuBit.Net_Channels;
@@ -30,8 +33,9 @@ procedure Main is
    use ASCII;
    use type System.Address;
 
-   Net_Slot : constant CapabilitySlot := CCL_Manifest_Bindings.Slot_Tcp;
-   FS_Slot : constant CapabilitySlot := CCL_Manifest_Bindings.Slot_Filesystem;
+   Net_Service : constant CuBit.Handles.Endpoint := Startup.Tcp;
+   FS_Service : constant CuBit.Handles.Endpoint := Startup.Filesystem;
+   use type CuBit.Handles.Reply;
 
    package Streams renames CuBit.Net_Channels;
 
@@ -107,35 +111,64 @@ procedure Main is
    Hosts : array (1 .. Maximum_Hosts) of Host_Entry;
    Host_Count : Natural := 0;
 
-   --  A synchronous call to netstack replaces the reply capability of the
-   --  request being handled, so handlers that call out first save it here.
-   Held_Reply_Slot : constant CapabilitySlot := 47;
+   --  Requests answered later: each channel's waiting open and read, and
+   --  the request of a handler that calls out first (a synchronous call to
+   --  netstack must not answer for it). The client being served answers
+   --  directly (Client_Now).
+   Held_Reply : CuBit.Handles.Reply := CuBit.Handles.No_Reply;
+   Open_Replies, Read_Replies : array (Channel_Index) of CuBit.Handles.Reply :=
+     [others => CuBit.Handles.No_Reply];
+   Client_Now : Process_ID := No_Process;
 
-   function Open_Slot (I : Channel_Index) return CapabilitySlot is
-     (CapabilitySlot (48 + 2 * I));
-   function Read_Slot (I : Channel_Index) return CapabilitySlot is
-     (CapabilitySlot (49 + 2 * I));
+   --  Set a request aside to answer later; False when the kernel refused.
+   function Save (Into : out CuBit.Handles.Reply) return Boolean is
+      Saved : constant CuBit.Handles.IPC.Saved_Reply := CuBit.Handles.IPC.Save_Reply;
+   begin
+      Into := (if Saved.Saved then Saved.Handle else CuBit.Handles.No_Reply);
+      return Saved.Saved;
+   end Save;
 
    function Token (I : Channel_Index; Op : Net_Operation) return Unsigned_64 is
      (Shift_Left (Channels (I).Id, 8) or Shift_Left (Unsigned_64 (I), 4) or
       Unsigned_64 (Net_Operation'Enum_Rep (Op)));
 
+   --  Answer a saved request (used up) ...
    procedure Send_Reply
-     (Slot : CapabilitySlot; Label : Unsigned_32; Length : Unsigned_8;
+     (Saved : in out CuBit.Handles.Reply; Label : Unsigned_32; Length : Unsigned_8;
       W0 : Unsigned_64 := 0; W1 : Unsigned_64 := 0)
    is
       Ignore : Unsigned_64;
    begin
       Ignore := replyCap
-        (Slot,
-         (tag => (label => Label, length => Length, flags => 0, reserved => 0),
+        (Saved,
+         (tag => (label => Label, length => Length, protocol => 0, ipc => <>, reserved => 0),
           authorityTag => 0,
           words => [W0, W1, 0, 0]));
+      Saved := CuBit.Handles.No_Reply;
    end Send_Reply;
 
-   procedure Fail_Request (Code : Failure; Slot : CapabilitySlot := CapabilitySlot'Last) is
+   --  ... or the request being served.
+   procedure Send_Current
+     (Label : Unsigned_32; Length : Unsigned_8;
+      W0 : Unsigned_64 := 0; W1 : Unsigned_64 := 0)
+   is
+      Ignore : Unsigned_64;
    begin
-      Send_Reply (Slot, Reply_Error, 1, Unsigned_64 (Failure'Enum_Rep (Code)));
+      Ignore := reply
+        (Client_Now,
+         (tag => (label => Label, length => Length, protocol => 0, ipc => <>, reserved => 0),
+          authorityTag => 0,
+          words => [W0, W1, 0, 0]));
+   end Send_Current;
+
+   procedure Fail_Request (Code : Failure; Saved : in out CuBit.Handles.Reply) is
+   begin
+      Send_Reply (Saved, Reply_Error, 1, Unsigned_64 (Failure'Enum_Rep (Code)));
+   end Fail_Request;
+
+   procedure Fail_Request (Code : Failure) is
+   begin
+      Send_Current (Reply_Error, 1, Unsigned_64 (Failure'Enum_Rep (Code)));
    end Fail_Request;
 
    function Map_Error (Code : Error_Code) return Failure is
@@ -174,20 +207,20 @@ procedure Main is
    begin
       if C.Open_Waiting then
          C.Open_Waiting := False;
-         Fail_Request (Code, Open_Slot (I));
+         Fail_Request (Code, Open_Replies (I));
       end if;
       if C.Read_Waiting and then C.Plain_Position >= C.Plain_Length then
          C.Read_Waiting := False;
          if Code = Peer_Closed then
-            Send_Reply (Read_Slot (I), Reply_EOF, 0);
+            Send_Reply (Read_Replies (I), Reply_EOF, 0);
          else
-            Fail_Request (Code, Read_Slot (I));
+            Fail_Request (Code, Read_Replies (I));
          end if;
       end if;
       Drop (Sessions (I));
       --  Synchronous shut: netstack takes what the send ring holds (a
       --  close_notify), sends FIN and releases its acquisition of our grant.
-      Streams.Close (C.Net, Net_Slot);
+      Streams.Close (C.Net, Net_Service);
       C.Blocked := False;
       C.Error := Code;
       C.Deadline := Unsigned_64'Last;
@@ -217,7 +250,7 @@ procedure Main is
       end;
       C.Plain_Position := C.Plain_Position + Count;
       C.Read_Waiting := False;
-      Send_Reply (Read_Slot (I), Reply_OK, 1, Unsigned_64 (Count));
+      Send_Reply (Read_Replies (I), Reply_OK, 1, Unsigned_64 (Count));
    end Serve_Read;
 
    ---------------------------------------------------------------------------
@@ -323,7 +356,7 @@ procedure Main is
                C.Deadline := Unsigned_64'Last;
                if C.Open_Waiting then
                   C.Open_Waiting := False;
-                  Send_Reply (Open_Slot (I), Reply_OK, 1, C.Id);
+                  Send_Reply (Open_Replies (I), Reply_OK, 1, C.Id);
                end if;
                CuBit.Log.Info ("tls: channel" & C.Id'Image & " established with " &
                            C.Name (1 .. C.Name_Length));
@@ -480,7 +513,7 @@ procedure Main is
             exit;
          end if;
       end loop;
-      if Free_Index < 0 or else saveReplyCap (Unsigned_64 (Open_Slot (Free_Index))) /= 1 then
+      if Free_Index < 0 or else not Save (Open_Replies (Free_Index)) then
          CuBit.Memory_Grants.Return_Acquisition (Reference, Returned);
          Fail_Request (Quota_Exceeded);
          return;
@@ -517,7 +550,7 @@ procedure Main is
              Verify_Mode => Mode_WebPKI,
              others => <>));
          Streams.Reset (C.Net);
-         Streams.Submit_Open (C.Net, Net_Slot, Scheme, Token (I, Op_Open), Submitted);
+         Streams.Submit_Open (C.Net, Net_Service, Scheme, Token (I, Op_Open), Submitted);
          if Submitted then
             C.Net_Pending := Op_Open;
          else
@@ -557,7 +590,7 @@ procedure Main is
             begin
                Write_Plaintext (Sessions (Index), Data, Written);
             end;
-            Send_Reply (CapabilitySlot'Last, Reply_OK, 1, Unsigned_64 (Written));
+            Send_Current (Reply_OK, 1, Unsigned_64 (Written));
             Drive (Index);
          end if;
       end;
@@ -584,13 +617,13 @@ procedure Main is
             Fail_Request (Malformed_Request);
          elsif C.Phase = Closed and then C.Plain_Position >= C.Plain_Length then
             if C.Error = Peer_Closed then
-               Send_Reply (CapabilitySlot'Last, Reply_EOF, 0);
+               Send_Current (Reply_EOF, 0);
             else
                Fail_Request (C.Error);
             end if;
          elsif C.Phase /= Established and then C.Phase /= Closed then
             Fail_Request (Busy);
-         elsif saveReplyCap (Unsigned_64 (Read_Slot (Index))) /= 1 then
+         elsif not Save (Read_Replies (Index)) then
             Fail_Request (Service_Failure);
          else
             C.Read_Waiting := True;
@@ -616,7 +649,7 @@ procedure Main is
          Fail_Request (Unknown_Channel);
          return;
       end if;
-      if saveReplyCap (Unsigned_64 (Held_Reply_Slot)) /= 1 then
+      if not Save (Held_Reply) then
          return;
       end if;
       declare
@@ -645,7 +678,7 @@ procedure Main is
          end if;
          Free (Index);
       end;
-      Send_Reply (Held_Reply_Slot, Reply_OK, 0);
+      Send_Reply (Held_Reply, Reply_OK, 0);
    end Handle_Shut;
 
    procedure Handle_Info (From : Process_ID; Request : Message) is
@@ -655,8 +688,7 @@ procedure Main is
          Fail_Request (Unknown_Channel);
          return;
       end if;
-      Send_Reply
-        (CapabilitySlot'Last, Reply_OK, 2,
+      Send_Current (Reply_OK, 2,
          Unsigned_64 (TLS_Version'Pos (Get_Version (Sessions (Index)))),
          Unsigned_64 (Negotiated_Suite (Sessions (Index))));
    end Handle_Info;
@@ -715,7 +747,7 @@ procedure Main is
       Client_Scopes.Install
         (Scopes, Client, List, Client_Scopes.Scope_Count (Count), Installed);
       if Installed then
-         Send_Reply (CapabilitySlot'Last, Reply_OK, 0);
+         Send_Current (Reply_OK, 0);
       else
          Fail_Request (Quota_Exceeded);
       end if;
@@ -728,7 +760,7 @@ procedure Main is
          Fail_Request (Malformed_Request);
          return;
       end if;
-      if saveReplyCap (Unsigned_64 (Held_Reply_Slot)) /= 1 then
+      if not Save (Held_Reply) then
          return;
       end if;
       Client_Scopes.Revoke (Scopes, Client);
@@ -742,7 +774,7 @@ procedure Main is
             end if;
          end if;
       end loop;
-      Send_Reply (Held_Reply_Slot, Reply_OK, 0);
+      Send_Reply (Held_Reply, Reply_OK, 0);
    end Handle_Revoke;
 
    ---------------------------------------------------------------------------
@@ -767,7 +799,7 @@ procedure Main is
          return False;
       end if;
       CuBit.Memory_Grants.Create_Via_Capability
-        (FS_Slot, Buffer_Address, Roots_Capacity / 4_096, True, Reference, Granted);
+        (FS_Service, Buffer_Address, Roots_Capacity / 4_096, True, Reference, Granted);
       if not Granted then
          return False;
       end if;
@@ -777,19 +809,19 @@ procedure Main is
          Path := Roots_Path;
       end;
       Msg := Open_Request (Reference, Roots_Path'Length, OPEN_READ_ONLY);
-      Msg.tag := capCall (FS_Slot, Msg, CuBit.Messages.Wait_Forever);
+      Msg.tag := capCall (FS_Service, Msg, CuBit.Messages.Wait_Forever);
       if Msg.tag.label /= CuBit.Filesystems.REPLY_OK then
          CuBit.Log.Warning ("tls: cannot open " & Roots_Path);
          return False;
       end if;
       Handle := File_Handle (Msg.words (0));
       Msg := Read_At_Request (Handle, Reference, Roots_Capacity, 0);
-      Msg.tag := capCall (FS_Slot, Msg, CuBit.Messages.Wait_Forever);
+      Msg.tag := capCall (FS_Service, Msg, CuBit.Messages.Wait_Forever);
       if Msg.tag.label = CuBit.Filesystems.REPLY_OK and then Msg.words (0) <= Roots_Capacity then
          Total := Natural (Msg.words (0));
       end if;
       Msg := Close_Request (Handle);
-      Msg.tag := capCall (FS_Slot, Msg, CuBit.Messages.Wait_Forever);
+      Msg.tag := capCall (FS_Service, Msg, CuBit.Messages.Wait_Forever);
       if Total = 0 or else Total = Roots_Capacity then
          CuBit.Log.Warning ("tls: root bundle empty or larger than" &
                      Roots_Capacity'Image & " bytes");
@@ -872,13 +904,13 @@ procedure Main is
       end if;
       --  One arena lent to netstack; each channel keeps its own buffer.
       Streams.Create_Arena
-        (Net_Arena, Net_Slot, To_Address (Integer_Address (Allocation)),
+        (Net_Arena, Net_Service, To_Address (Integer_Address (Allocation)),
          Send_Ring_Bytes, Receive_Ring_Bytes, Maximum_Channels, Granted);
       if not Granted then
          return False;
       end if;
       for I in Channel_Index loop
-         Streams.Prepare (Channels (I).Net, Net_Arena, I, I, Net_Slot);
+         Streams.Prepare (Channels (I).Net, Net_Arena, I, I, Net_Service);
       end loop;
       return True;
    end Setup_Buffers;
@@ -907,7 +939,7 @@ procedure Main is
                Retire (I, Timeout);
             elsif C.Read_Waiting and then Now >= C.Read_Deadline then
                C.Read_Waiting := False;
-               Fail_Request (Timeout, Read_Slot (I));
+               Fail_Request (Timeout, Read_Replies (I));
             end if;
          end;
       end loop;
@@ -920,6 +952,10 @@ procedure Main is
    Completion : CompletionEntry;
    Ignore : Unsigned_64;
 begin
+   if not CuBit.Startup_State.Ready (Startup.Verify) then
+      CuBit.Log.Warning ("tls: startup capabilities missing; exiting");
+      return;
+   end if;
    CuBit.Log.Info ("tls: starting");
    SPARKTLS.RBG.Init (Entropy_OK);
    if not Entropy_OK then
@@ -935,7 +971,7 @@ begin
       CuBit.Log.Warning ("tls: netstack buffers unavailable; exiting");
       return;
    end if;
-   Ignore := registerDriver (Service_Role);
+   Ignore := registerDriver (Service_Role, Startup.Registration);
    if Ignore = Unsigned_64'Last then
       CuBit.Log.Warning ("tls: registration failed");
       return;
@@ -970,6 +1006,7 @@ begin
       end loop;
 
       Poll_Service_Request (From, Request, Found);
+      Client_Now := From;
       if Found then
          Progress := True;
          if Request.authorityTag = Policy_Tag then
@@ -1002,7 +1039,7 @@ begin
             end loop;
             if Interest /= 0 then
                Streams.Submit_Wait
-                 (Net_Slot, 0, Interest, Next_Deadline, Wait_Token, Wait_Outstanding);
+                 (Net_Service, 0, Interest, Next_Deadline, Wait_Token, Wait_Outstanding);
             end if;
          end;
       end if;

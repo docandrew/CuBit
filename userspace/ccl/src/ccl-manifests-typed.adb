@@ -15,6 +15,7 @@ with CCL.Diagnostics;
 with CCL.Types;
 with CuBit.Failures;
 with CuBit.Program_Descriptions;
+with CuBit.Startup_Tables;
 
 package body CCL.Manifests.Typed with SPARK_Mode => On is
    use Standard.Interfaces;
@@ -359,7 +360,10 @@ package body CCL.Manifests.Typed with SPARK_Mode => On is
                   if Existing.Kind = Render_Request then Fail (Duplicate_Field); end if;
                end loop;
                Item.Kind := Render_Request;
-               if Kind = "Optional_Render" then Item.Service := 1; end if;
+               if Kind = "Optional_Render" then
+                  Item.Service := 1;
+                  Item.Requirement := CuBit.Startup_Tables.Optional;
+               end if;
                Item.Rights := Read_Write;
                Binding (Body_Cursor, Item);
          elsif Kind = "Network" then
@@ -472,6 +476,114 @@ package body CCL.Manifests.Typed with SPARK_Mode => On is
          end if;
          Store (Item);
       end Add_Request;
+
+      --  Startup capabilities (CAP-002, docs/capability-handles.md): the
+      --  requests named in `optional`, the handle limit, the channels this
+      --  program serves; catalog connections (step 4) are refused for now.
+      procedure Add_Startup (Root : Views.Cursor) is
+         package ST renames CuBit.Startup_Tables;
+         use type ST.Need;
+         Optional : constant Views.Cursor := Named (Root, "optional");
+         Limit : constant Views.Cursor := Named (Root, "handles");
+         Channels : constant Views.Cursor := Named (Root, "channels");
+         Connections : constant Views.Cursor := Named (Root, "connections");
+      begin
+         for Index in 1 .. Views.Length (Object, Optional) loop
+            Locate (Entry_Text ("optional", Index));
+            declare
+               Name : constant String := Text (Views.Element (Object, Optional, Index));
+               Found : Natural := 0;
+            begin
+               for Request_Index in 1 .. Decl.Count loop
+                  if Decl.Requests (Request_Index).Name.Data (1 .. Decl.Requests (Request_Index).Name.Length) = Name
+                  then
+                     Found := Request_Index;
+                  end if;
+               end loop;
+               if Found = 0 then
+                  Fail (Unknown_Optional_Name, """" & Name & """ is not the binding of a request",
+                        "name a request's binding");
+                  return;
+               end if;
+               if Decl.Requests (Found).Requirement = ST.Optional then
+                  Fail (Unknown_Optional_Name, """" & Name & """ is listed twice", "list each binding once");
+                  return;
+               end if;
+               Decl.Requests (Found).Requirement := ST.Optional;
+            end;
+         end loop;
+
+         Locate ("handles");
+         if Alt (Limit) = "At_Most" then
+            declare
+               Count : constant Integer_64 := Number (Views.Payload (Object, Limit));
+            begin
+               if not In_Range (Count, 1, ST.Maximum_Handle_Limit) then
+                  Fail (Invalid_Handle_Limit,
+                        "At_Most" & Integer_64'Image (Count) & " is not 1 to" &
+                        Natural'Image (ST.Maximum_Handle_Limit) & " handles",
+                        "write Handle_Limit.Kernel_Limit for no limit of the program's own");
+                  return;
+               end if;
+               Decl.Handles := (Kind => ST.At_Most, Count => ST.Handle_Count (Count));
+            end;
+         elsif Alt (Limit) = "Kernel_Limit" then
+            Decl.Handles := (Kind => ST.Kernel_Limit);
+         else
+            Decl.Handles := (Kind => ST.Standard_Limit);
+         end if;
+
+         for Index in 1 .. Views.Length (Object, Channels) loop
+            Locate (Entry_Text ("channels", Index));
+            declare
+               Offer : constant Views.Cursor := Views.Element (Object, Channels, Index);
+               Contract : constant String := Text (Named (Offer, "contract"));
+               Per_Client : constant Integer_64 := Number (Named (Offer, "per_client"));
+               Total : constant Integer_64 := Number (Named (Offer, "total"));
+               Item : Channel_Offer;
+            begin
+               if not Valid_Metadata_Text (Contract) then
+                  Fail (Invalid_Channel_Limit, "contract """ & Contract &
+                        """ is not 1 to 64 letters, digits, '.', '-' or '_'");
+                  return;
+               end if;
+               if not In_Range (Total, 1, MAX_CHANNEL_TOTAL) then
+                  Fail (Invalid_Channel_Limit, "total" & Integer_64'Image (Total) & " is not 1 to" &
+                        Natural'Image (MAX_CHANNEL_TOTAL),
+                        "declare the server's real capacity for this contract");
+                  return;
+               end if;
+               if not In_Range (Per_Client, 1, Total) then
+                  Fail (Invalid_Channel_Limit, "per_client" & Integer_64'Image (Per_Client) &
+                        " is not 1 to the total" & Integer_64'Image (Total));
+                  return;
+               end if;
+               for Existing of Decl.Channels (1 .. Decl.Channel_Count) loop
+                  if Existing.Contract.Data (1 .. Existing.Contract.Length) = Contract then
+                     Fail (Invalid_Channel_Limit, "contract """ & Contract & """ is listed twice");
+                     return;
+                  end if;
+               end loop;
+               if Decl.Channel_Count = MAX_CHANNEL_OFFERS then
+                  Fail (Invalid_Channel_Limit, "at most" & Natural'Image (MAX_CHANNEL_OFFERS) &
+                        " contracts may be served");
+                  return;
+               end if;
+               Set_Text (Item.Contract, Contract);
+               Item.Per_Client := Channel_Limit (Per_Client);
+               Item.Total := Channel_Limit (Total);
+               Item.Class := (if Alt (Named (Offer, "class")) = "Urgent" then Urgent else Normal);
+               Decl.Channel_Count := Decl.Channel_Count + 1;
+               Decl.Channels (Decl.Channel_Count) := Item;
+            end;
+         end loop;
+
+         if Views.Length (Object, Connections) > 0 then
+            Locate ("connections");
+            Fail (Not_Yet_Supported, "offers, uses and aliases come with the catalog and Connect",
+                  "leave connections empty until CAP-002 step 4");
+         end if;
+      end Add_Startup;
 
       procedure Add_Scope (At_Cursor : Views.Cursor) is
          Item : Scope;
@@ -1000,6 +1112,9 @@ package body CCL.Manifests.Typed with SPARK_Mode => On is
             Locate (Entry_Text ("scopes", Index));
             Add_Scope (Views.Element (Object, Scopes, Index));
          end loop;
+         if not Failed then
+            Add_Startup (Root);
+         end if;
          Decl.Explicit_No_Requests := Flag (Named (Root, "requests_none"));
          declare
             Launches : constant Views.Cursor := Named (Root, "may_launch");
@@ -1018,7 +1133,7 @@ package body CCL.Manifests.Typed with SPARK_Mode => On is
          end if;
       end;
       if Failed then return; end if;
-      Encoding.Encode (Decl, Cat, 0, Result);
+      Encoding.Encode (Decl, 0, Result);
    end Compile_Compacted;
 
    procedure Compile (Source, Catalog_Source, Schema_Source : String; Result : out Compilation_Result) is

@@ -4,7 +4,7 @@ r=Path(__file__).resolve().parents[2];w=Path(tempfile.mkdtemp(prefix='desktop-lo
 with (r/'coordination/build.lock').open('a') as lock:
  fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
  d=r/'userspace/services/desktop';k=r/'kernel'
- with (d/'build/manifest.S').open('w') as out:subprocess.run([str(r/'userspace/ccl/build/manifest/ccl-manifest'),str(r/'userspace/ccl/catalogs/native-runtime-services.ccl'),str(d/'manifest.ccl'),'--ada-output',str(d/'build/generated/ccl_manifest_bindings.ads')],stdout=out,check=True)
+ with (d/'build/manifest.S').open('w') as out:subprocess.run([str(r/'userspace/ccl/build/manifest/ccl-manifest'),str(r/'userspace/ccl/catalogs/native-runtime-services.ccl'),str(d/'manifest.ccl'),'--startup-output',str(d/'build/generated/startup.ads')],stdout=out,check=True)
  subprocess.run(['alr','exec','--','gcc','-c',str(d/'build/manifest.S'),'-o',str(d/'build/manifest.o')],cwd=k,check=True)
  exe=w/'desktop-vulkan-link.svc'
  subprocess.run(['alr','exec','--','gprbuild','-p','-P',str(d/'desktop.gpr'),'-XCUBIT_COMPOSITOR=legacy','-XCUBIT_COMPOSITOR_METRICS=off','-o',str(exe)],cwd=k,check=True)

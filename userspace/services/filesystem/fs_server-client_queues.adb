@@ -15,6 +15,7 @@ with Fs_Server.Watches; use Fs_Server.Watches;
 with Fs_Server.Delegations; use Fs_Server.Delegations;
 with Fs_Server.Access_Control; use Fs_Server.Access_Control;
 
+with CuBit.Handles.IPC;
 package body Fs_Server.Client_Queues is
 
    use ASCII;
@@ -252,9 +253,17 @@ package body Fs_Server.Client_Queues is
             end if;
             if outcome.Answer_Now then
                sendReply (sender, REPLY_OK, 0);
-            elsif saveReplyCap (Unsigned_64 (WAKE_REPLY_SLOT_BASE + q)) /= 1 then
-               Queue_Wakes.Hold_Failed (clientQueues (q).wake);
-               sendReply (sender, REPLY_ERR, 0);
+            else
+               declare
+                  Saved : constant CuBit.Handles.IPC.Saved_Reply := CuBit.Handles.IPC.Save_Reply;
+               begin
+                  if Saved.Saved then
+                     wakeReplies (q) := Saved.Handle;
+                  else
+                     Queue_Wakes.Hold_Failed (clientQueues (q).wake);
+                     sendReply (sender, REPLY_ERR, 0);
+                  end if;
+               end;
             end if;
             return;
          end if;
@@ -267,7 +276,7 @@ package body Fs_Server.Client_Queues is
       owner : constant Process_ID := clientQueues (q).owner;
       r : FQ.Request renames item.Item;
       m : Message :=
-        (tag => (label => 0, length => 0, flags => 0, reserved => 0),
+        (tag => (label => 0, length => 0, protocol => 0, ipc => <>, reserved => 0),
          authorityTag => 0,
          words => [others => 0]);
       inArena : constant Boolean :=
@@ -281,7 +290,7 @@ package body Fs_Server.Client_Queues is
       case r.Operation is
          when FQ.Queue_Open =>
             if inArena then
-               m.tag := (label => OP_OPEN, length => 4, flags => 0, reserved => 0);
+               m.tag := (label => OP_OPEN, length => 4, protocol => 0, ipc => <>, reserved => 0);
                m.words := [0 => 0, 1 => r.Length, 2 => Unsigned_64 (r.Options), 3 => 1];
                handleOpen (owner, m);
             else
@@ -291,7 +300,7 @@ package body Fs_Server.Client_Queues is
             if inArena then
                m.tag := (label => (if r.Operation = FQ.Queue_Read_At then OP_READ_AT
                                    else OP_WRITE_AT),
-                         length => 4, flags => 0, reserved => 0);
+                         length => 4, protocol => 0, ipc => <>, reserved => 0);
                m.words := [0 => r.Handle, 1 => 0, 2 => r.Length, 3 => 1];
                if r.Operation = FQ.Queue_Read_At then
                   handleRead (owner, m, Explicit_Offset, r.Position);
@@ -302,13 +311,13 @@ package body Fs_Server.Client_Queues is
                sendReply (owner, REPLY_ERR, 0);
             end if;
          when FQ.Queue_Close =>
-            m.tag := (label => OP_CLOSE, length => 1, flags => 0, reserved => 0);
+            m.tag := (label => OP_CLOSE, length => 1, protocol => 0, ipc => <>, reserved => 0);
             m.words (0) := r.Handle;
             handleClose (owner, m);
          when FQ.Queue_Park =>
             handlePark (owner, r.Handle);
          when FQ.Queue_Flush =>
-            m.tag := (label => OP_FLUSH_FILE, length => 1, flags => 0, reserved => 0);
+            m.tag := (label => OP_FLUSH_FILE, length => 1, protocol => 0, ipc => <>, reserved => 0);
             m.words (0) := r.Handle;
             handleFlush (owner, m);
          when FQ.Queue_Unlink | FQ.Queue_Mkdir | FQ.Queue_Rmdir =>
@@ -317,7 +326,7 @@ package body Fs_Server.Client_Queues is
                                      when FQ.Queue_Unlink => OP_UNLINK,
                                      when FQ.Queue_Mkdir  => OP_MKDIR,
                                      when others          => OP_RMDIR),
-                         length => 4, flags => 0, reserved => 0);
+                         length => 4, protocol => 0, ipc => <>, reserved => 0);
                m.words := [0 => 0, 1 => r.Length,
                            2 => (if r.Operation = FQ.Queue_Unlink then r.Handle else 0),
                            3 => 1];
@@ -343,14 +352,14 @@ package body Fs_Server.Client_Queues is
             end if;
          when FQ.Queue_Open_Directory =>
             if inArena then
-               m.tag := (label => OP_OPEN_DIRECTORY, length => 3, flags => 0, reserved => 0);
+               m.tag := (label => OP_OPEN_DIRECTORY, length => 3, protocol => 0, ipc => <>, reserved => 0);
                m.words := [0 => 0, 1 => r.Length, 2 => 1, 3 => 0];
                handleOpenDirectory (owner, m);
             else
                sendReply (owner, REPLY_ERR, 0);
             end if;
          when FQ.Queue_Close_Directory =>
-            m.tag := (label => OP_CLOSE_DIRECTORY, length => 1, flags => 0, reserved => 0);
+            m.tag := (label => OP_CLOSE_DIRECTORY, length => 1, protocol => 0, ipc => <>, reserved => 0);
             m.words (0) := r.Handle;
             handleCloseDirectory (owner, m);
          when FQ.Queue_Read_Directory =>
@@ -415,14 +424,14 @@ package body Fs_Server.Client_Queues is
             --  Both paths in the arena range, split at Position; the
             --  handler copies them out before it checks either.
             if inArena and then r.Length >= 2 and then r.Position in 1 .. r.Length - 1 then
-               m.tag := (label => OP_RENAME, length => 4, flags => 0, reserved => 0);
+               m.tag := (label => OP_RENAME, length => 4, protocol => 0, ipc => <>, reserved => 0);
                m.words := [0 => 0, 1 => r.Position, 2 => r.Length - r.Position, 3 => 1];
                handleRename (owner, m);
             else
                sendReply (owner, REPLY_ERR, 0);
             end if;
          when FQ.Queue_Resize =>
-            m.tag := (label => OP_RESIZE_FILE, length => 2, flags => 0, reserved => 0);
+            m.tag := (label => OP_RESIZE_FILE, length => 2, protocol => 0, ipc => <>, reserved => 0);
             m.words (0) := r.Handle;
             m.words (1) := r.Length;
             handleResize (owner, m);

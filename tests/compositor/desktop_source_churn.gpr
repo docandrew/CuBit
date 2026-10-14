@@ -1,5 +1,5 @@
 project Desktop_Source_Churn extends "desktop_vulkan_startup.gpr" is
-   for Source_Dirs use (".", "../../userspace/lib/compositor", "../../userspace/lib/display", "../../userspace/runtime/gnat", "../../userspace/services/desktop");
+   for Source_Dirs use (".", "../../userspace/lib/compositor", "../../userspace/lib/display", "../../userspace/runtime/gnat", "../../shared/capabilities", "../support/handles", "../../userspace/services/desktop");
    for Source_Files use Desktop_Vulkan_Startup'Source_Files &
      ("compositor_formats.ads", "compositor_upload_copy.ads", "compositor_upload_copy.adb",
       "compositor_source_content.ads", "compositor_source_residency.ads", "compositor_source_residency.adb",

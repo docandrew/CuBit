@@ -4,7 +4,7 @@ project ATA is
 
     for Object_Dir use "build";
 
-    for Source_Dirs use (".");
+    for Source_Dirs use (".", "build/generated");
 
     for Main use ("main.adb");
 
@@ -58,7 +58,8 @@ project ATA is
             "-Wl,-z,stack-size=16777216",
             "-lgnat-user",
             "-T", "../../c/link.ld",
-            "../../c/build/crt0.o"
+            "../../c/build/crt0.o",
+            "build/manifest.o"
         );
     end Linker;
 

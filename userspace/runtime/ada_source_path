@@ -4,3 +4,5 @@ gnarl
 ../../shared/interrupts
 ../../shared/launch
 ../../shared/publications
+../../shared/capabilities
+../../shared/boot

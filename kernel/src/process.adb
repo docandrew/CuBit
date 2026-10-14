@@ -28,7 +28,7 @@ with Device_Interrupts;
 with Device_Memory_Diagnostics;
 with Device_Memory_Publication;
 with InterruptNumbers;
-with Capabilities.Operations;
+with Capability_ABI;
 with IPC_Labels;
 with IPI;
 with Config;
@@ -428,7 +428,8 @@ package body Process is
         threadOf (pid).kernelStackTop := System.Null_Address;
         threadOf (pid).context := System.Null_Address;
         threadOf (pid).fpu := System.Null_Address;
-        Capabilities.Operations.clearTable (proctab(pid).caps);
+        -- Before the account closes: the refund goes to it.
+        Process_Capabilities.Tables.Release_All (proctab(pid).caps);
         threadOf (pid).state := INVALID;
         -- No access to this slot after returning its PID to the allocator.
         if proctab(pid).memoryAccount /= 0 then
@@ -830,6 +831,7 @@ package body Process is
                      procStack    : in System.Address;
                      stackSize    : in UserStackSize;
                      imageFrames  : in Natural;
+                     handleLimit  : in Process_Capabilities.Tables.Handle_Limit;
                      requestedPID : in ProcessID := NO_PROCESS) return ProcessID
 
     is
@@ -978,11 +980,46 @@ package body Process is
         mailtab(pid).nextReceiveLane := Queued_Messages;
         Spinlocks.exitCriticalSection (mailtab(pid).lock);
 
-        -- Grant initial capabilities for well-known services
-        Capabilities.Operations.grantInitialCaps (
-            table => proctab(pid).caps,
-            pid   => Unsigned_64(pid),
-            gen   => generationOf (pid));
+        -- The handle table (CAP-002): charged to this process's account,
+        -- with the limit its spawner asked for. It starts with the process's
+        -- own endpoint and process capabilities only; everything else is
+        -- installed by its spawner (a CSPACE, before it first runs) or given
+        -- in replies it asked for.
+        declare
+            selfEndpoint : constant Capabilities.Capability :=
+              (capType  => Capabilities.CAP_ENDPOINT,
+               -- Grant/revoke rights are intentionally absent: this handle
+               -- cannot pass on or construct authority.
+               rights   => Capabilities.READ_WRITE,
+               -- The default sender tag is the holder's identity
+               -- (KERN-003), the same word a receiver gets as the sender.
+               authorityTag => Process_Identities.To_Word (identityOf (pid)),
+               object   => (ref => Unsigned_64 (pid), param => 0),
+               gen      => generationOf (pid));
+            -- Self inspection/termination only: EXECUTE, GRANT and REVOKE
+            -- are absent, so a process cannot spawn or construct authority
+            -- merely because it can control its own lifecycle.
+            selfProcess : constant Capabilities.Capability :=
+              (capType  => Capabilities.CAP_PROCESS,
+               rights   => Capabilities.READ_WRITE,
+               authorityTag => Capabilities.NO_AUTHORITY_TAG,
+               object   => (ref => Unsigned_64 (pid), param => 0),
+               gen      => generationOf (pid));
+        begin
+            Process_Capabilities.Tables.Configure
+              (proctab(pid).caps, proctab(pid).memoryAccount, handleLimit);
+            Process_Capabilities.Insert
+              (proctab(pid).caps, selfEndpoint, proctab(pid).selfHandle);
+            Process_Capabilities.Insert
+              (proctab(pid).caps, selfProcess, proctab(pid).selfProcessHandle);
+            if not Capability_ABI.Is_Handle_Word (proctab(pid).selfHandle)
+              or else not Capability_ABI.Is_Handle_Word (proctab(pid).selfProcessHandle)
+            then
+                -- A limit below two, or no page for the table.
+                discardUnpublished (pid);
+                return NO_PROCESS;
+            end if;
+        end;
 
         zeroize (addrtab(pid));
         Mem_mgr.mapKernelMemIntoProcess (addrtab(pid));
@@ -1322,6 +1359,10 @@ package body Process is
         ignore : System.Address;
     begin
         ignore := Util.memset (P'Address, 0, Process'Size / 8);
+        -- The handle table's empty state is not all zeros (its free list
+        -- ends are No_Link). A reset record holds no table page: Release_All
+        -- ran when its process ended.
+        Process_Capabilities.Tables.Clear (P.caps);
         P.requestSequence := IPC_Request_Ids.Initial_Sequence;
         P.admitted := False;
         P.mainThread := NO_THREAD;
@@ -1388,6 +1429,7 @@ package body Process is
     ---------------------------------------------------------------------------
     procedure reserveRealtime
       (pid      : ProcessID;
+       authority : Capabilities.Capability;
        budgetUs : Unsigned_32;
        periodUs : Unsigned_32;
        granted  : out Boolean)
@@ -1408,23 +1450,18 @@ package body Process is
             return;
         end if;
         Spinlocks.enterCriticalSection (lock);
-        for slot in Capabilities.CapabilitySlot loop
-            declare
-                cap : Capabilities.Capability renames proctab (pid).caps (slot);
-                use type Capabilities.CapabilityType;
-            begin
-                if cap.capType = Capabilities.CAP_SCHEDULING and then
-                  cap.object.ref in 1 .. Unsigned_64 (RA.Microseconds'Last) and then
-                  cap.object.param in 1 .. Unsigned_64 (RA.Microseconds'Last) and then
-                  RA.Covers (RA.Microseconds (cap.object.ref),
-                             RA.Microseconds (cap.object.param),
-                             RA.Microseconds (budgetUs), RA.Microseconds (periodUs))
-                then
-                    covered := True;
-                    exit;
-                end if;
-            end;
-        end loop;
+        declare
+            use type Capabilities.CapabilityType;
+        begin
+            -- The CAP_SCHEDULING the caller named (SET_LATENCY_CONTRACT's
+            -- handle), never one found by searching its table.
+            covered := authority.capType = Capabilities.CAP_SCHEDULING and then
+              authority.object.ref in 1 .. Unsigned_64 (RA.Microseconds'Last) and then
+              authority.object.param in 1 .. Unsigned_64 (RA.Microseconds'Last) and then
+              RA.Covers (RA.Microseconds (authority.object.ref),
+                         RA.Microseconds (authority.object.param),
+                         RA.Microseconds (budgetUs), RA.Microseconds (periodUs));
+        end;
         if covered then
             if threadtab (tid).rtAdmitted then
                 RA.Release (realtimeAdmitted, threadtab (tid).rtShare);
@@ -1682,7 +1719,8 @@ package body Process is
                        priority    => 3,
                        procStack   => PROCESS_STACK_TOP_VIRT,
                        stackSize   => INIT_PROCESS_STACK_SIZE,
-                       imageFrames => 1);
+                       imageFrames => 1,
+                       handleLimit => Process_Capabilities.Tables.Default_Limit);
 
         if pid = NO_PROCESS then
             raise ProcessException with "Insufficient memory for bootstrap process";
@@ -1924,7 +1962,7 @@ package body Process is
         begin
             exitMsg.tag := (label => IPC_Labels.EVENT_CHILD_EXIT,
                             length => Process_Launch.Child_Exit_Words,
-                            flags => 0, reserved => 0);
+                            protocol => 0, ipc => <>, reserved => 0);
             exitMsg.words(0) := Process_Identities.To_Word (Process_Identities.Encode
               (Process_Identities.Slot (pid),
                Process_Identities.Generation (lifeGeneration)));
@@ -1970,8 +2008,9 @@ package body Process is
         -- DMA cleanup is deferred until CPU address-space teardown and all
         -- acquired grants have retired, then serviced in bounded worker steps.
 
-        -- Clear capability table
-        Capabilities.Operations.clearTable (proctab(pid).caps);
+        -- Release the capability table (every page), before the memory
+        -- account closes: the refund goes to it.
+        Process_Capabilities.Tables.Release_All (proctab(pid).caps);
         if proctab(pid).memoryAccount /= 0 then
             declare
                 closed : Boolean;

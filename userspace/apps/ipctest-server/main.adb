@@ -1,13 +1,17 @@
 ------------------------------------------------------------------------------
 --  CuBit headless IPC regression server
 --
---  Receives async requests, saves the kernel-minted reply capability, and
---  completes the request later via replyCap.
+--  Receives async requests, saves each request's reply (a Reply handle,
+--  CAP-002), and completes the request later with replyCap.
 ------------------------------------------------------------------------------
 with Interfaces; use Interfaces;
 with System.Machine_Code; use System.Machine_Code;
 
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Handles;
+with CuBit.Handles.IPC;
+with CuBit.Startup_State;
+with Startup;
 
 procedure main is
    use ASCII;
@@ -37,7 +41,7 @@ procedure main is
    OP_DEADLINE_QUEUED : constant Unsigned_32 := 16#0915#;
    OP_DEADLINE_STATUS : constant Unsigned_32 := 16#0916#;
    OP_RESTORE_ECHO    : constant Unsigned_32 := 16#0917#;
-   SILENT_SLOT : constant CapabilitySlot := 13;
+   SILENT_SLOT : CuBit.Handles.Reply := CuBit.Handles.No_Reply;
    --  Long enough for the caller's 50 ms deadline to pass while queued.
    BUSY_MS : constant Unsigned_64 := 300;
    LATE_MARK : constant Unsigned_64 := 16#1A7E_0000#;
@@ -52,23 +56,22 @@ procedure main is
    REPLY_OK      : constant Unsigned_32 := 16#F000#;
    REPLY_ERR     : constant Unsigned_32 := 16#F001#;
 
-   REPLY_SLOT : constant CapabilitySlot := 10;
+   REPLY_SLOT : CuBit.Handles.Reply := CuBit.Handles.No_Reply;
    REVERSE_COUNT : constant Natural := 3;
    PRESSURE_COUNT : constant Natural := 16;
    XOR_MAGIC  : constant Unsigned_64 := 16#C0B1_7000#;
    FPU_SENTINEL : constant Unsigned_64 := 16#51D0_CAFE_F00D_BAAD#;
 
-   reverseSlots  : array (1 .. REVERSE_COUNT) of CapabilitySlot :=
-      (20, 21, 22);
+   reverseSlots  : array (1 .. REVERSE_COUNT) of CuBit.Handles.Reply :=
+      (others => CuBit.Handles.No_Reply);
    reverseValues : array (1 .. REVERSE_COUNT) of Unsigned_64 :=
       (others => 0);
    reverseFrom   : array (1 .. REVERSE_COUNT) of Process_ID :=
       (others => No_Process);
    reversePending : Natural := 0;
 
-   pressureSlots  : array (1 .. PRESSURE_COUNT) of CapabilitySlot :=
-      (30, 31, 32, 33, 34, 35, 36, 37,
-       38, 39, 40, 41, 42, 43, 44, 45);
+   pressureSlots  : array (1 .. PRESSURE_COUNT) of CuBit.Handles.Reply :=
+      (others => CuBit.Handles.No_Reply);
    pressureValues : array (1 .. PRESSURE_COUNT) of Unsigned_64 :=
       (others => 0);
    pressureFrom   : array (1 .. PRESSURE_COUNT) of Process_ID :=
@@ -78,13 +81,22 @@ procedure main is
    oneWaySaveRejected : Boolean := False;
    doubleUseRejected  : Boolean := False;
    occupiedValue      : Unsigned_64 := 0;
-   DEPARTING_SLOT : constant CapabilitySlot := 12;
+   DEPARTING_SLOT : CuBit.Handles.Reply := CuBit.Handles.No_Reply;
    departingCaller : Process_ID := No_Process;
    departingReady : Boolean := False;
 
    from : Process_ID;
    msg  : Message;
    ret  : Unsigned_64;
+
+   --  Set the request being served aside into Saved: 1 when saved, 0 when
+   --  the kernel refused (as MOVE_REPLY_CAPABILITY reported).
+   function Save_Into (Saved : out CuBit.Handles.Reply) return Unsigned_64 is
+      Result : constant CuBit.Handles.IPC.Saved_Reply := CuBit.Handles.IPC.Save_Reply;
+   begin
+      Saved := (if Result.Saved then Result.Handle else CuBit.Handles.No_Reply);
+      return (if Result.Saved then 1 else 0);
+   end Save_Into;
 
    function boolWord (value : Boolean) return Unsigned_64 is
    begin
@@ -126,13 +138,12 @@ procedure main is
    begin
       replyMsg.tag := (label  => label,
                        length => 3,
-                       flags  => 0,
+                       protocol  => 0, ipc => <>,
                        reserved  => 0);
       replyMsg.words (0) := word0;
       replyMsg.words (1) := word1;
       replyMsg.words (2) := word2;
-      pragma Unreferenced (replyTo);
-      ignore := replyCap (CapabilitySlot'Last, replyMsg);
+      ignore := reply (replyTo, replyMsg);
    end sendReply;
 
    function makeEchoReply
@@ -143,7 +154,7 @@ procedure main is
    begin
       replyMsg.tag := (label  => REPLY_OK,
                        length => 3,
-                       flags  => 0,
+                       protocol  => 0, ipc => <>,
                        reserved  => 0);
       replyMsg.words (0) := value;
       replyMsg.words (1) := value xor XOR_MAGIC;
@@ -153,7 +164,11 @@ procedure main is
 begin
    debugPrint ("ipctest-server: starting" & LF);
 
-   ret := registerDriver (DRIVER_IPCTEST);
+   if not CuBit.Startup_State.Ready (Startup.Verify) then
+      debugPrint ("TEST: FAIL async-ipc server-startup" & LF);
+      return;
+   end if;
+   ret := registerDriver (DRIVER_IPCTEST, Startup.Registration);
    if ret = Unsigned_64'Last then
       debugPrint ("TEST: FAIL async-ipc server-register" & LF);
       loop
@@ -208,7 +223,7 @@ begin
          ret := syscall (SYSCALL_SLEEP, 25);
       elsif msg.tag.label = OP_FAIR_QUEUED then
          fairSeen := True;
-         if saveReplyCap (11) /= 0 then
+         if CuBit.Handles.IPC.Save_Reply.Saved then
             debugPrint ("TEST: FAIL async-ipc fairness-oneway-authority" & LF);
          end if;
       elsif msg.tag.label = OP_FAIR_POLL then
@@ -226,7 +241,7 @@ begin
                debugPrint ("TEST: FAIL async-ipc activity-reply-authority" & LF);
             end if;
          end;
-         ret := saveReplyCap (REPLY_SLOT);
+         ret := Save_Into (REPLY_SLOT);
          if ret /= 1 then
             debugPrint ("TEST: FAIL async-ipc save-reply-cap" & LF);
          else
@@ -252,7 +267,7 @@ begin
             reversePending := reversePending + 1;
             reverseValues (reversePending) := msg.words (0);
             reverseFrom (reversePending) := from;
-            ret := saveReplyCap (reverseSlots (reversePending));
+            ret := Save_Into (reverseSlots (reversePending));
             if ret /= 1 then
                debugPrint ("TEST: FAIL async-ipc reverse-save" & LF);
             end if;
@@ -275,14 +290,14 @@ begin
             reversePending := 0;
          end if;
       elsif msg.tag.label = OP_ONEWAY_PROBE then
-         ret := saveReplyCap (REPLY_SLOT);
+         ret := Save_Into (REPLY_SLOT);
          if ret = 0 then
             oneWaySaveRejected := True;
          else
             debugPrint ("TEST: FAIL async-ipc oneway-reply-cap" & LF);
          end if;
       elsif msg.tag.label = OP_DOUBLE_REPLY then
-         ret := saveReplyCap (REPLY_SLOT);
+         ret := Save_Into (REPLY_SLOT);
          if ret /= 1 then
             debugPrint ("TEST: FAIL async-ipc double-save" & LF);
          else
@@ -304,22 +319,26 @@ begin
          end if;
       elsif msg.tag.label = OP_OCCUPIED_HOLD then
          occupiedValue := msg.words (0);
-         ret := saveReplyCap (REPLY_SLOT);
+         ret := Save_Into (REPLY_SLOT);
          if ret /= 1 then
             debugPrint ("TEST: FAIL async-ipc occupied-hold-save" & LF);
          end if;
       elsif msg.tag.label = OP_OCCUPIED_PROBE then
-         --  REPLY_SLOT still owns the preceding HOLD request. Saving this
-         --  request over it must fail and must leave slot 63 untouched.
-         ret := saveReplyCap (REPLY_SLOT);
-         if ret /= 0 then
-            debugPrint ("TEST: FAIL async-ipc occupied-overwrite" & LF);
-         else
+         --  REPLY_SLOT still holds the preceding HOLD request. Saving this
+         --  request too places a second, distinct handle: the held one is
+         --  untouched and each answers its own call.
+         declare
+            probe : CuBit.Handles.Reply;
+         begin
+            ret := Save_Into (probe);
+            if ret /= 1 or else CuBit.Handles."=" (probe, REPLY_SLOT) then
+               debugPrint ("TEST: FAIL async-ipc occupied-overwrite" & LF);
+            end if;
             declare
                currentReply : Message := makeEchoReply (msg.words (0), from);
                heldReply    : Message := makeEchoReply (occupiedValue, from);
             begin
-               ret := replyCap (CapabilitySlot'Last, currentReply);
+               ret := replyCap (probe, currentReply);
                if ret /= 1 then
                   debugPrint
                     ("TEST: FAIL async-ipc occupied-current-reply" & LF);
@@ -331,7 +350,7 @@ begin
                     ("TEST: FAIL async-ipc occupied-held-reply" & LF);
                end if;
             end;
-         end if;
+         end;
       elsif msg.tag.label = OP_STATUS then
          sendReply (from,
                     REPLY_OK,
@@ -343,7 +362,7 @@ begin
             pressurePending := pressurePending + 1;
             pressureValues (pressurePending) := msg.words (0);
             pressureFrom (pressurePending) := from;
-            ret := saveReplyCap (pressureSlots (pressurePending));
+            ret := Save_Into (pressureSlots (pressurePending));
             if ret /= 1 then
                debugPrint ("TEST: FAIL async-ipc pressure-save" & LF);
             end if;
@@ -364,7 +383,7 @@ begin
          end loop;
          pressurePending := 0;
       elsif msg.tag.label = OP_DEPARTING_HOLD then
-         ret := saveReplyCap (DEPARTING_SLOT);
+         ret := Save_Into (DEPARTING_SLOT);
          if ret /= 1 then
             debugPrint ("TEST: FAIL async-ipc departing save" & LF);
             sendReply (from, REPLY_ERR);
@@ -390,7 +409,7 @@ begin
             if ret /= 0 then
                debugPrint ("TEST: FAIL async-ipc dead caller double reply" & LF);
             end if;
-            ret := saveReplyCap (DEPARTING_SLOT);
+            ret := Save_Into (DEPARTING_SLOT);
             if ret /= 1 then
                debugPrint ("TEST: FAIL async-ipc dead caller reply slot leaked" & LF);
                sendReply (from, REPLY_ERR, 2);
@@ -404,24 +423,26 @@ begin
             end if;
          end if;
       elsif msg.tag.label = OP_RESTORE_ECHO then
-         -- Set aside and taken back (RESTORE_REPLY_CAPABILITY): the
-         -- restored authority answers the call as if just received. A
-         -- second restore from the now empty slot, or from a slot holding
-         -- no reply capability, is refused.
-         if saveReplyCap (REPLY_SLOT) /= 1 then
-            debugPrint ("TEST: FAIL async-ipc restore-save" & LF);
-         elsif restoreReplyCap (Unsigned_64 (REPLY_SLOT)) /= 1 then
-            debugPrint ("TEST: FAIL async-ipc restore-reply-cap" & LF);
-         elsif restoreReplyCap (Unsigned_64 (REPLY_SLOT)) /= 0 then
-            debugPrint ("TEST: FAIL async-ipc restore-twice" & LF);
-         elsif restoreReplyCap (CAP_SLOT_SELF) /= 0 then
-            debugPrint ("TEST: FAIL async-ipc restore-non-reply" & LF);
-         else
-            sendReply (from, REPLY_OK, msg.words (0) xor XOR_MAGIC);
-         end if;
+         -- Set aside, then answered through the saved handle (RESTORE is
+         -- retired: a saved reply answers its call directly). The handle is
+         -- used up: answering through it again is refused.
+         declare
+            saved : CuBit.Handles.Reply;
+            answer : Message := NULL_MESSAGE;
+         begin
+            answer.tag := (label => REPLY_OK, length => 3, protocol => 0, ipc => <>, reserved => 0);
+            answer.words (0) := msg.words (0) xor XOR_MAGIC;
+            if Save_Into (saved) /= 1 then
+               debugPrint ("TEST: FAIL async-ipc restore-save" & LF);
+            elsif replyCap (saved, answer) /= 1 then
+               debugPrint ("TEST: FAIL async-ipc restore-reply-cap" & LF);
+            elsif replyCap (saved, answer) /= 0 then
+               debugPrint ("TEST: FAIL async-ipc restore-twice" & LF);
+            end if;
+         end;
       elsif msg.tag.label = OP_DEADLINE_SILENT then
          -- Hold the call and never answer it: the caller's deadline ends it.
-         silentHeld := saveReplyCap (SILENT_SLOT) = 1;
+         silentHeld := Save_Into (SILENT_SLOT) = 1;
       elsif msg.tag.label = OP_DEADLINE_LATE then
          -- The silent call's caller timed out and is now in this call. The
          -- late answer must be refused, not delivered to this call.
@@ -434,9 +455,9 @@ begin
          declare
             forged : Message := NULL_MESSAGE;
          begin
-            forged.tag := (label => REPLY_TIMEOUT, length => 0, flags => 0,
+            forged.tag := (label => REPLY_TIMEOUT, length => 0, protocol => 0, ipc => <>,
                            reserved => 0);
-            forgedRefused := replyCap (CapabilitySlot'Last, forged) = 0;
+            forgedRefused := reply (from, forged) /= 1;
          end;
          sendReply (from, REPLY_OK, msg.words (0), boolWord (lateRefused),
                     boolWord (forgedRefused));

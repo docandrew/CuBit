@@ -1,6 +1,7 @@
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Filesystems; use CuBit.Filesystems;
 with Storage_Channel;
+with CuBit.Handles.Startup;
 
 package body Native_Storage is
    use type System.Address;
@@ -13,11 +14,15 @@ package body Native_Storage is
    function Transfer_Capacity return Unsigned_64 is
      (Storage_Channel.Transfer_Bytes);
 
-   function Initialize (Endpoint : Unsigned_64) return Unsigned_32 is
+   function Initialize return Unsigned_32 is
+      Service : constant CuBit.Handles.Startup.Optional_Endpoint :=
+        CuBit.Handles.Startup.Optional_Endpoint_Named (Filesystem_Binding);
       Ok : Boolean;
    begin
-      if Endpoint > 63 then return REPLY_ERR; end if;
-      Storage_Channel.Initialize (Object, CapabilitySlot (Endpoint), Ok);
+      if not Service.Present then
+         return REPLY_ACCESS_DENIED;
+      end if;
+      Storage_Channel.Initialize (Object, Service.Value, Ok);
       return (if Ok then REPLY_OK else REPLY_ACCESS_DENIED);
    end Initialize;
 

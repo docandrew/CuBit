@@ -1,12 +1,11 @@
 with Interfaces; use Interfaces;
+with CuBit.Handles;
 with CuBit.Messages;
-with CuBit.Capability_Grants;
 with Intel_Render_Admission;
 with Intel_Render_Admission_Native;
 
 -- Single-owner startup dispatcher component. Reserve an exclusive completion
--- token range across all dispatchers in the process. The caller owns source
--- slots and destination reservations for these retained lifetimes.
+-- token range across all dispatchers in the process.
 generic
    Capacity : Positive := 16;
    First_Token : Unsigned_64;
@@ -14,12 +13,15 @@ generic
 package Intel_Render_Admission_Dispatch is
    subtype Ticket is Natural range 0 .. Capacity;
    type Dispatcher is limited private;
+   -- Identity: the application's process identity; Driver: devmgr's
+   -- endpoint to the driver; Driver_PID: the driver's identity.
    procedure Start
      (Object : in out Dispatcher;
-      Target : CuBit.Capability_Grants.Recipient;
-      Source, Application_Source, Destination : CuBit.Messages.CapabilitySlot;
+      Identity : Unsigned_64;
+      Driver : CuBit.Handles.Endpoint;
+      Driver_PID : Unsigned_64;
       Now, Deadline : Unsigned_64; ID : out Ticket);
-   -- At most one submission/delegation per call (plus read-only inspection).
+   -- At most one submission per call.
    -- Time is monotonic in caller units.
    -- Deadline cancels admission, not its pending IPC or remote reservation.
    procedure Step (Object : in out Dispatcher; Now : Unsigned_64);
@@ -37,14 +39,15 @@ package Intel_Render_Admission_Dispatch is
    procedure Cancel (Object : in out Dispatcher; ID : Ticket);
    function State (Object : Dispatcher; ID : Ticket)
      return Intel_Render_Admission.Phase;
-   -- Tickets and slot reservations are never recycled by this component.
+   -- The session tag intel-gpu reserved (0 before the reservation).
+   function Session (Object : Dispatcher; ID : Ticket) return Unsigned_64;
+   -- Tickets are never recycled by this component.
    -- Abort is NOT backing retirement. Capacity/token exhaustion fails closed;
    -- reclamation needs a separately confirmed retirement protocol.
 private
    type Entry_Record is limited record
       Request : Intel_Render_Admission_Native.Broker_Request;
       Identity, Deadline, Token_Base : Unsigned_64 := 0;
-      Destination : CuBit.Messages.CapabilitySlot := 0;
       Deadline_Observed : Boolean := False;
    end record;
    type Entry_Array is array (Positive range <>) of Entry_Record;

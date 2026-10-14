@@ -1,4 +1,4 @@
-with CCL_Manifest_Bindings;
+with Startup;
 with CuBit.Messages;
 with CuBit.Desktop_Messages;
 with CuBit.Desktop_Protocol;
@@ -7,12 +7,12 @@ package body Mesa_Triangle_Surface is
    package D renames CuBit.Desktop_Protocol;
    use type D.Status_Code;
    use type D.Wire_Message;
-   function Desktop_Slot return Unsigned_64 is
-     (CCL_Manifest_Bindings.Slot_Desktop);
+   function Desktop_Endpoint return CuBit.Handles.C_ABI.C_Endpoint is
+     (CuBit.Handles.C_ABI.To_C (Startup.Desktop));
    function Send (Request : D.Wire_Message) return D.Wire_Message is
       Message : M.Message := CuBit.Desktop_Messages.From_Wire (Request);
    begin
-      Message.tag := M.capCall (M.CapabilitySlot (Desktop_Slot), Message, M.Wait_Forever);
+      Message.tag := M.capCall (Startup.Desktop, Message, M.Wait_Forever);
       return CuBit.Desktop_Messages.To_Wire (Message);
    end Send;
    function Create (Width, Height : Unsigned_32) return Unsigned_64 is

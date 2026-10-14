@@ -1,6 +1,6 @@
-with Interfaces; with Compositor_Pool; with Vulkan_Device_Owner;
+with Interfaces; with Compositor_Pool; with Vulkan_Device_Owner; with CuBit.Handles;
 package Desktop_Vulkan_Startup is
- procedure Initialize(Slot : Interfaces.Unsigned_64);
+ procedure Initialize(Render : CuBit.Handles.Endpoint);
  function Current return Vulkan_Device_Owner.Phase;
  procedure Check_Health(Usable : out Boolean);
  procedure Configure_Targets(Width, Height : Interfaces.Unsigned_32; Epoch : Compositor_Pool.ID; Byte_Limit : Natural; Ready : out Boolean);

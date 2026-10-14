@@ -9,7 +9,7 @@ for fixture in metrics-load metrics-load-observer; do
   ../userspace/ccl/build/manifest/ccl-manifest \
     ../userspace/ccl/catalogs/native-runtime-services.ccl \
     ../tests/compositor/$fixture/manifest.ccl \
-    --ada-output ../tests/compositor/$fixture/build/generated/ccl_manifest_bindings.ads \
+    --startup-output ../tests/compositor/$fixture/build/generated/startup.ads \
     > ../tests/compositor/$fixture/build/manifest.S
   alr exec -- gcc -c ../tests/compositor/$fixture/build/manifest.S \
     -o ../tests/compositor/$fixture/build/manifest.o

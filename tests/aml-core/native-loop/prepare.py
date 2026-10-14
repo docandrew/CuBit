@@ -7,14 +7,15 @@ root = Path(__file__).resolve().parents[3]
 runtime = root / "userspace/runtime/gnat"
 source_path = runtime / "cubit-messages.ads"
 source = source_path.read_text()
-start = source.index("   type MessageTag is record")
+start = source.index("   --  The tag's flag byte is two typed components")
 end = source.index("   COMPLETION_QUEUE_SIZE", start)
 out = root / "tests/aml-core/build/native-loop/abi"
 out.mkdir(parents=True, exist_ok=True)
 inputs = [source_path, Path(__file__).resolve()]
 for directory, names in ((runtime, ("cubit.ads", "cubit-process_ids.ads", "cubit-process_ids.adb")),
                          (root / "tests/aml-core/native-blocks",
-                          ("cubit-memory_grants.ads", "cubit-memory_grants.adb"))):
+                          ("cubit-memory_grants.ads", "cubit-memory_grants.adb",
+                           "cubit-handles-fixture.ads", "cubit-handles-fixture.adb"))):
     for name in names:
         path = directory / name
         inputs.append(path)
@@ -34,12 +35,20 @@ def declaration(prefix):
             return source[begin:index + 1] + "\n"
     raise ValueError("Unterminated runtime declaration: " + prefix)
 
-prefixes = ("   subtype CapabilitySlot", "   SYSCALL_GETTIME ",
+# CAP-002: the real handle types, for the fixtures here and in native-blocks.
+handles = root / "tests/aml-core/build/handles"
+handles.mkdir(parents=True, exist_ok=True)
+handles_source = runtime / "cubit-handles.ads"
+inputs.append(handles_source)
+(handles / "cubit-handles.ads").write_bytes(handles_source.read_bytes())
+(out / "cubit-handles.ads").write_bytes(handles_source.read_bytes())
+
+prefixes = ("   SYSCALL_GETTIME ",
             "   type Activity_Result", "   procedure Poll_Any_Ipc\n",
             "   function Poll_Completion\n", "   function Wait_For_Activity_Until ",
             "   function syscall\n", "   function reply\n")
 (out / "cubit-messages.ads").write_text(
-    "with Interfaces; use Interfaces;\nwith System;\nwith CuBit.Process_IDs;\n"
+    "with Interfaces; use Interfaces;\nwith System;\nwith Capability_ABI;\nwith CuBit.Process_IDs;\nwith CuBit.Handles;\n"
     "package CuBit.Messages is\n" + source[start:end]
     + "".join(declaration(prefix) for prefix in prefixes) + """   type Script is array (Positive range 1 .. 8) of Message;
    Incoming, Replies : Script := [others => NULL_MESSAGE];

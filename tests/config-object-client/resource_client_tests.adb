@@ -1,3 +1,4 @@
+with CuBit.Handles.Fixture;
 with Ada.Text_IO;
 with GNAT.Source_Info;
 with Interfaces; use Interfaces;
@@ -76,11 +77,11 @@ begin
          R.Start (Owner, Types, Session, Outcome); Check (Outcome = R.Succeeded);
          Check (H.State (Object) = H.Vacant);
          Count := IPC.Submissions;
-         H.Create (Object, Owner, Session, Wrong_Kind, 5, "org.cubit.test", Contract, W.Read_Write, 0, 1, Sent);
+         H.Create (Object, Owner, Session, Wrong_Kind, CuBit.Handles.Fixture.Endpoint_Of (5), "org.cubit.test", Contract, W.Read_Write, 0, 1, Sent);
          Check (Sent = C.Invalid_Request and IPC.Submissions = Count and R.Empty (Owner));
          IPC.Accept_Submission := Test /= Refused_Submission;
          G.Allow_Grant := Test /= Failed_Grant;
-         H.Create (Object, Owner, Session, Kind, 5, "org.cubit.test", Contract, W.Read_Write, 0, 1, Sent);
+         H.Create (Object, Owner, Session, Kind, CuBit.Handles.Fixture.Endpoint_Of (5), "org.cubit.test", Contract, W.Read_Write, 0, 1, Sent);
          IPC.Accept_Submission := True; G.Allow_Grant := True;
          if Test in Refused_Submission | Failed_Grant then
             Check (Sent = (if Test = Failed_Grant then C.Unavailable else C.Not_Submitted));
@@ -139,7 +140,7 @@ begin
          if Test in Uncertain_Acquire | Uncertain_Close then
             Check (Cleanup = H.Quarantine_Required and H.State (Object) = H.Quarantined and not R.Empty (Owner));
             Count := IPC.Submissions;
-            H.Create (Object, Owner, Session, Kind, 5, "org.cubit.test", Contract, W.Read_Write, 0, 5, Sent);
+            H.Create (Object, Owner, Session, Kind, CuBit.Handles.Fixture.Endpoint_Of (5), "org.cubit.test", Contract, W.Read_Write, 0, 5, Sent);
             Check (Sent = C.Busy and IPC.Submissions = Count);
          else
             if Cleanup = H.Close_Submitted then
@@ -154,9 +155,9 @@ begin
             end if;
             Check (Cleanup = H.Released and H.State (Object) = H.Vacant and R.Empty (Owner));
             if Test = Normal then
-               H.Create (Object, Owner, Session, Kind, 5, "org.cubit.test", Contract, W.Read_Write, 0, Last_Operation, Sent);
+               H.Create (Object, Owner, Session, Kind, CuBit.Handles.Fixture.Endpoint_Of (5), "org.cubit.test", Contract, W.Read_Write, 0, Last_Operation, Sent);
                Check (Sent = C.Invalid_Request and R.Empty (Owner));
-               H.Create (Object, Owner, Session, Kind, 5, "org.cubit.test", Contract, W.Read_Write, 0, 10, Sent);
+               H.Create (Object, Owner, Session, Kind, CuBit.Handles.Fixture.Endpoint_Of (5), "org.cubit.test", Contract, W.Read_Write, 0, 10, Sent);
                Check (Sent = C.Submitted);
                H.Complete (Object, Owner, Reply (1, W.Success, 55), Done); Check (Done = C.Ignored);
                H.Complete (Object, Owner, Reply (10, W.Success, 56), Done); Check (Done = C.Completed);
@@ -189,9 +190,9 @@ begin
    begin
       R.Start (Owner, Types, Session, Outcome); Check (Outcome = R.Succeeded);
       R.Start (Foreign, Types, Foreign_Run, Outcome); Check (Outcome = R.Succeeded);
-      H.Create (A, Owner, Session, Kind, 5, "org.cubit.a", Contract, W.Read_Write, 0, 1, Sent);
+      H.Create (A, Owner, Session, Kind, CuBit.Handles.Fixture.Endpoint_Of (5), "org.cubit.a", Contract, W.Read_Write, 0, 1, Sent);
       Check (Sent = C.Submitted); A_Mapping := G.Mapping;
-      H.Create (B, Owner, Session, Kind, 6, "org.cubit.b", Contract, W.Read_Write, 0, 2, Sent);
+      H.Create (B, Owner, Session, Kind, CuBit.Handles.Fixture.Endpoint_Of (6), "org.cubit.b", Contract, W.Read_Write, 0, 2, Sent);
       Check (Sent = C.Submitted); B_Mapping := G.Mapping;
       H.Complete (A, Owner, Reply (2, W.Success, 66), Done); Check (Done = C.Ignored);
       H.Complete (A, Foreign, Reply (1, W.Success, 55), Done); Check (Done = C.Ignored);
@@ -230,7 +231,7 @@ begin
       -- same stable loan storage; old refs and tokens never become valid again.
       Old_Ref := A_Ref;
       for Cycle in 1 .. 3 * R.Maximum_Resources loop
-         H.Create (A, Owner, Session, Kind, 5, "org.cubit.a", Contract, W.Read_Write, 0, Token, Sent);
+         H.Create (A, Owner, Session, Kind, CuBit.Handles.Fixture.Endpoint_Of (5), "org.cubit.a", Contract, W.Read_Write, 0, Token, Sent);
          Check (Sent = C.Submitted);
          H.Complete (A, Owner, Reply (Token, W.Success, 55), Done); Check (Done = C.Completed);
          H.Take_Result (A, Owner, Answer, Taken); Check (Taken);

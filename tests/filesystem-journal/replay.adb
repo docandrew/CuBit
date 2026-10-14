@@ -1,3 +1,4 @@
+with CuBit.Handles.Fixture;
 with Ada.Command_Line; use Ada.Command_Line;
 with Ada.Text_IO; use Ada.Text_IO;
 with Interfaces; use Interfaces;
@@ -25,10 +26,10 @@ procedure Replay is
       Msg : Message := NULL_MESSAGE;
       Tag : MessageTag;
    begin
-      Msg.tag := (label => Op, length => 4, flags => 0, reserved => 0);
+      Msg.tag := (label => Op, length => 4, protocol => 0, ipc => <>, reserved => 0);
       Msg.words := [0 => Block_Number * Unsigned_64 (Size / Sector_Bytes), 1 => 1,
                     2 => Unsigned_64 (Size / Sector_Bytes), 3 => 1];
-      Tag := capCall (1, Msg, Wait_Forever);
+      Tag := capCall (CuBit.Handles.Fixture.Endpoint_Of (1), Msg, Wait_Forever);
       Ok := Tag.label = REPLY_OK;
    end Transfer;
 begin
@@ -40,7 +41,7 @@ begin
          Detached : Ext2.Flush_Status;
       begin
          Ext2.initBlockDevice
-           (Fs, 1, (slot => 1, generation => 1), Grant_Buffer'Address,
+           (Fs, CuBit.Handles.Fixture.Endpoint_Of (1), 1, (slot => 1, generation => 1), Grant_Buffer'Address,
             Grant_Buffer'Length, Result);
          Put_Line ("ADMISSION " & Result'Image);
          if Result = Admitted then

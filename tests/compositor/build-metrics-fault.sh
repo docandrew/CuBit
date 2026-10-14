@@ -5,7 +5,7 @@ cd kernel
 mkdir -p ../tests/compositor/metrics-fault/build/generated
 ../userspace/ccl/build/manifest/ccl-manifest ../userspace/ccl/catalogs/native-runtime-services.ccl \
   ../tests/compositor/metrics-fault/manifest.ccl \
-  --ada-output ../tests/compositor/metrics-fault/build/generated/ccl_manifest_bindings.ads \
+  --startup-output ../tests/compositor/metrics-fault/build/generated/startup.ads \
   > ../tests/compositor/metrics-fault/build/manifest.S
 alr exec -- gcc -c ../tests/compositor/metrics-fault/build/manifest.S \
   -o ../tests/compositor/metrics-fault/build/manifest.o

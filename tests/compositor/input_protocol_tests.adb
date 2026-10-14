@@ -7,6 +7,7 @@ procedure Input_Protocol_Tests is
    use type P.Request_Decoding;
    use type P.Receipt;
    use type DP.Status_Code;
+   use type DP.Protocol_Flags;
    use type Interfaces.Unsigned_8;
    use type P.W.Word;
    Request : constant P.Request := (42, 100, (17, 23), 123);
@@ -17,8 +18,11 @@ begin
    for Byte in Interfaces.Unsigned_8 loop
       Wire := Canonical; Wire.Length := Byte;
       pragma Assert (P.Decode (Wire).Accepted = (Byte = 4));
-      Wire := Canonical; Wire.Flags := Byte;
-      pragma Assert (P.Decode (Wire).Accepted = (Byte = 0));
+   end loop;
+   --  Every protocol flag value: only none is accepted.
+   for Value in DP.Protocol_Flags loop
+      Wire := Canonical; Wire.Flags := Value;
+      pragma Assert (P.Decode (Wire).Accepted = (Value = 0));
    end loop;
    for Field in DP.Payload'Range loop
       if Field /= 1 then

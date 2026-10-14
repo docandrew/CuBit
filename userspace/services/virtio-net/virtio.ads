@@ -10,6 +10,7 @@
 ------------------------------------------------------------------------------
 with Interfaces; use Interfaces;
 
+with CuBit.Handles;
 package Virtio is
 
    ---------------------------------------------------------------------------
@@ -125,6 +126,10 @@ package Virtio is
    ---------------------------------------------------------------------------
    --  Device operations (all via port I/O syscalls)
    ---------------------------------------------------------------------------
+   --  The legacy register ports every access below goes through.
+   procedure Bind_Ports (Item : CuBit.Handles.IO_Ports);
+   function Bound_Ports return CuBit.Handles.IO_Ports;
+
    procedure resetDevice (ioBase : Unsigned_16);
    procedure initDevice  (ioBase : Unsigned_16);
    procedure startDevice (ioBase : Unsigned_16);

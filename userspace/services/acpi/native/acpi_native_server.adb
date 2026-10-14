@@ -1,12 +1,14 @@
 with Interfaces; use Interfaces;
 with ACPI_Native_Endpoint;
 with ACPI_Launch;
+with CuBit.Handles.IPC;
+with CuBit.Handles;
 package body ACPI_Native_Server is
    use CuBit.Messages;
    Retry_Milliseconds : constant Unsigned_64 := 100;
    procedure Await_Configuration
      (Config : out ACPI_Endpoint.Configuration;
-      Provider_Slot : out CuBit.Messages.CapabilitySlot;
+      Provider : out CuBit.Handles.Endpoint;
       Accepted : out Boolean) is
       Request, Response : Message;
       From : Process_ID;
@@ -14,7 +16,7 @@ package body ACPI_Native_Server is
       Found : Boolean;
       Ignore : Unsigned_64;
    begin
-      Config := (0, 0); Provider_Slot := 0; Accepted := False;
+      Config := (0, 0); Provider := CuBit.Handles.No_Endpoint; Accepted := False;
       loop
          if Poll_Completion (Completion'Address) /= 0 then return; end if;
          Poll_Any_Ipc (From, Request, Found);
@@ -22,15 +24,28 @@ package body ACPI_Native_Server is
             declare
                Parsed : constant ACPI_Launch.Decision := ACPI_Launch.Decode
                  (Request.authorityTag,
-                  (Request.tag.label, Request.tag.length, Request.tag.flags,
+                  --  The offer's kernel flag says nothing about the request.
+                  (Request.tag.label, Request.tag.length,
+                   Unsigned_8 (Request.tag.protocol),
                    Request.tag.reserved, ACPI_Requests.Words (Request.words)));
             begin
                Response := NULL_MESSAGE;
-               Response.tag := (ACPI_Endpoint.Reply_Error, 4, 0, 0);
+               Response.tag := (label => ACPI_Endpoint.Reply_Error, length => 4,
+                                protocol => 0, ipc => <>, reserved => 0);
                Response.words (0) := ACPI_Requests.Outcome'Pos (ACPI_Requests.Denied);
-               if Parsed.Accepted then
-                  Config := Parsed.Config; Provider_Slot := Parsed.Provider_Slot;
-                  Accepted := True;
+               --  The provider's endpoint comes offered with the call.
+               if Parsed.Accepted and then CuBit.Handles.IPC.Offers (Request) then
+                  declare
+                     Offered : constant CuBit.Handles.IPC.Accepted_Endpoint :=
+                       CuBit.Handles.IPC.Accept_Endpoint (CuBit.Handles.IPC.Accept_Offered (From));
+                  begin
+                     if Offered.OK then
+                        Config := Parsed.Config; Provider := Offered.Value;
+                        Accepted := True;
+                     end if;
+                  end;
+               end if;
+               if Accepted then
                   Response.tag.label := ACPI_Endpoint.Reply_OK;
                   Response.words := [others => 0];
                end if;
@@ -47,7 +62,7 @@ package body ACPI_Native_Server is
      (Server : in out ACPI_Requests.State;
       Adapter : in out ACPI_Native_Blocks.State;
       Config : ACPI_Endpoint.Configuration;
-      Provider_Slot : CuBit.Messages.CapabilitySlot;
+      Provider : CuBit.Handles.Endpoint;
       Reason : out Stop_Reason) is
       Request, Response : Message;
       From : Process_ID;
@@ -87,7 +102,7 @@ package body ACPI_Native_Server is
          Poll_Any_Ipc (From, Request, Found);
          if Found then
             ACPI_Native_Endpoint.Dispatch
-              (Adapter, Server, Config, Provider_Slot, Request, Response);
+              (Adapter, Server, Config, Provider, Request, Response);
             -- A failed reply (including one-way messages or dead callers) does
             -- not undo/repeat dispatch. Kernel reply-cap checks decide delivery.
             Ignore := reply (From, Response);

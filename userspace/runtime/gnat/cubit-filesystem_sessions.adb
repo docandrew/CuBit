@@ -27,7 +27,7 @@ package body CuBit.Filesystem_Sessions is
      (To_Address (Integer_Address (S.Queue.Peer_Base)) + Storage_Offset (Offset));
 
    procedure Open
-     (S : in out Session; Endpoint : CuBit.Messages.CapabilitySlot;
+     (S : in out Session; Endpoint : CuBit.Handles.Endpoint;
       Arena_Pages : Positive; Opened : out Boolean)
    is
       use type CuBit.Channels.Open_Result;
@@ -231,7 +231,7 @@ package body CuBit.Filesystem_Sessions is
      (S : in out Session; Wake_Token : CuBit.Async_Requests.Token; Accepted : out Boolean)
    is
       Request : constant CuBit.Messages.Message :=
-        (tag => (label => FQ.OP_FS_WAKE, length => 0, flags => 0, reserved => 0),
+        (tag => (label => FQ.OP_FS_WAKE, length => 0, protocol => 0, ipc => <>, reserved => 0),
          authorityTag => 0, words => [others => 0]);
    begin
       Accepted := False;
@@ -283,7 +283,7 @@ package body CuBit.Filesystem_Sessions is
             return;
          end if;
          Request :=
-           (tag => (label => FQ.OP_FS_WAKE, length => 0, flags => 0, reserved => 0),
+           (tag => (label => FQ.OP_FS_WAKE, length => 0, protocol => 0, ipc => <>, reserved => 0),
             authorityTag => 0, words => [others => 0]);
          Reply := CuBit.Messages.capCall (S.Endpoint, Request, Deadline);
          if Reply.label = CuBit.Messages.REPLY_TIMEOUT then

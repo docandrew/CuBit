@@ -1,6 +1,7 @@
 pragma Ada_2022;
 
 package body CuBit.GPU_Plane_Protocol with SPARK_Mode is
+   use type D.DP.Protocol_Flags;
    use type DPL.Local_Coordinate;
    Half : constant Unsigned_64 := 2 ** 32;
 

@@ -17,12 +17,12 @@ with Capabilities;
 with Capabilities.IRQ;
 with Config;
 with Device_Interrupts;
-with Device_Memory_Admission;
-with Device_Memory_Authority;
 with Device_Memory_Diagnostics;
-with Device_Memory_Publication;
 with Device_Vector_ABI;
 with Capabilities.Operations;
+with Capability_ABI;
+with Capability_Install;
+with Process_Capabilities;
 with InterruptNumbers;
 with IPC_Labels;
 with Kernel_Controls;
@@ -38,7 +38,6 @@ with Process_Identities;
 with User_Buffer_Copy;
 with Spinlocks;
 with Process_Lifetime;
-with Physical_Range_Map;
 with Boot_Output;
 with Publication_Pages;
 with Service_Registry;
@@ -54,6 +53,7 @@ use type Process.ProcessMode;
 use type Capabilities.Operations.OperationStatus;
 
 package body Syscall.Admin is
+    use type Process_Capabilities.Tables.Slot_Base;
 
     function toErr is
         new Ada.Unchecked_Conversion (Long_Integer, Unsigned_64);
@@ -69,104 +69,73 @@ package body Syscall.Admin is
         (Integer_16, Unsigned_16);
 
     ---------------------------------------------------------------------------
-    -- hasCapProcessFor - check if caller has CAP_PROCESS with a given right
-    -- targeting a specific PID (ref=0 is wildcard, otherwise gen must match).
+    -- findOwn
+    -- The capability a handle names in the caller's own table, if it is of
+    -- Kind and holds Rights (CAP-002: authority is always named by handle;
+    -- nothing searches a table for "a capability of this type"). A snapshot
+    -- taken under the caller's mailbox lock, which serializes edits of its
+    -- table; objects are generation-checked by the caller as before.
     ---------------------------------------------------------------------------
-    function hasCapProcessFor (callerPID : Process.ProcessID;
-                               targetPID : Process.ProcessID;
-                               right     : Capabilities.CapabilityRight)
-                               return Boolean
+    function findOwn (callerPID : Process.ProcessID;
+                      handle    : Unsigned_64;
+                      kind      : Capabilities.CapabilityType;
+                      rights    : Capabilities.CapabilityRights)
+                      return Process_Capabilities.Found
     is
-        use type Capabilities.CapabilityType;
-        cap : Capabilities.Capability;
+        found : Process_Capabilities.Found;
     begin
-        for slot in Capabilities.CapabilitySlot loop
-            cap := Process.proctab(callerPID).caps(slot);
-            if cap.capType = Capabilities.CAP_PROCESS and then
-               cap.rights(right) and then
-               (cap.object.ref = 0 or
-                (cap.gen = Process.generationOf (targetPID)
-                 and then cap.object.ref = Unsigned_64 (targetPID)))
-            then
-                return True;
-            end if;
-        end loop;
-        return False;
-    end hasCapProcessFor;
+        Spinlocks.enterCriticalSection (Process.mailtab(callerPID).lock);
+        found := Process_Capabilities.Find
+          (Process.proctab(callerPID).caps, handle, kind, rights);
+        Spinlocks.exitCriticalSection (Process.mailtab(callerPID).lock);
+        return found;
+    end findOwn;
+
+    function onlyRight (right : Capabilities.CapabilityRight)
+                        return Capabilities.CapabilityRights
+    is
+        rights : Capabilities.CapabilityRights := Capabilities.NO_RIGHTS;
+    begin
+        rights (right) := True;
+        return rights;
+    end onlyRight;
+
+    -- A notification capability names service roles ref .. ref + param - 1.
+    function coversRole (cap : Capabilities.Capability; role : Unsigned_64)
+                         return Boolean is
+        (cap.object.param > 0 and then role >= cap.object.ref
+         and then role - cap.object.ref < cap.object.param);
 
     ---------------------------------------------------------------------------
-    -- hasCspaceGrantFor
-    --
-    -- Installing authority into another process is a capability-space
-    -- administration operation. It must never be inferred from ordinary
-    -- CAP_PROCESS control. A scoped CAP_CSPACE is generation-bound to its
-    -- target; ref=0 is the explicit bootstrap policy root.
+    -- holdsProcessAuthority
+    -- The caller's handle names a CAP_PROCESS with Right over targetPID: one
+    -- naming that process (in its current incarnation), or the wildcard
+    -- (ref = 0, the device manager's boot root and procmgr's copy of it).
     ---------------------------------------------------------------------------
-    function hasCspaceGrantFor
-      (callerPID : Process.ProcessID;
-       targetPID : Process.ProcessID) return Boolean
+    function holdsProcessAuthority (callerPID : Process.ProcessID;
+                                    handle    : Unsigned_64;
+                                    targetPID : Process.ProcessID;
+                                    right     : Capabilities.CapabilityRight)
+                                    return Boolean
     is
-        use type Capabilities.CapabilityType;
-        cap : Capabilities.Capability;
+        found : constant Process_Capabilities.Found :=
+          findOwn (callerPID, handle, Capabilities.CAP_PROCESS, onlyRight (right));
     begin
-        for slot in Capabilities.CapabilitySlot loop
-            cap := Process.proctab(callerPID).caps(slot);
-            if cap.capType = Capabilities.CAP_CSPACE and then
-               cap.rights(Capabilities.RIGHT_GRANT) and then
-               (cap.object.ref = 0 or else
-                (cap.object.ref = Unsigned_64 (targetPID) and then
-                 cap.gen = Process.generationOf (targetPID)))
-            then
-                return True;
-            end if;
-        end loop;
-        return False;
-    end hasCspaceGrantFor;
-
-    ---------------------------------------------------------------------------
-    -- canDelegateCspace
-    --
-    -- A CAP_CSPACE may itself be delegated, but never with a wider target
-    -- scope or additional rights. This is the non-amplification rule for the
-    -- policy-root capability rather than a special case in userspace policy.
-    ---------------------------------------------------------------------------
-    function canDelegateCspace
-      (callerPID : Process.ProcessID;
-       targetPID : Process.ProcessID;
-       newRef    : Unsigned_64;
-       newRights : Capabilities.CapabilityRights) return Boolean
-    is
-        use type Capabilities.CapabilityType;
-        cap : Capabilities.Capability;
-    begin
-        for slot in Capabilities.CapabilitySlot loop
-            cap := Process.proctab(callerPID).caps(slot);
-            if cap.capType = Capabilities.CAP_CSPACE and then
-               cap.rights(Capabilities.RIGHT_GRANT) and then
-               (cap.object.ref = 0 or else
-                (cap.object.ref = Unsigned_64 (targetPID) and then
-                 cap.gen = Process.generationOf (targetPID))) and then
-               Capabilities.isSubsetOf (newRights, cap.rights) and then
-               (cap.object.ref = 0 or else newRef = cap.object.ref)
-            then
-                return True;
-            end if;
-        end loop;
-        return False;
-    end canDelegateCspace;
+        return found.OK and then
+          (found.Cap.object.ref = 0 or else
+           (found.Cap.object.ref = Unsigned_64 (targetPID) and then
+            found.Cap.gen = Process.generationOf (targetPID)));
+    end holdsProcessAuthority;
 
 
     ---------------------------------------------------------------------------
     -- handleRegisterDriver
     ---------------------------------------------------------------------------
     procedure handleRegisterDriver (callerPID : Process.ProcessID;
-                                    arg0      : Unsigned_64;
+                                    arg0, arg1 : Unsigned_64;
                                     retval    : out Unsigned_64) with
         SPARK_Mode => Off
     is
-        use type Capabilities.CapabilityType;
-
-
         hasCap : Boolean := False;
     begin
         retval := reterr;
@@ -175,22 +144,18 @@ package body Syscall.Admin is
             return;
         end if;
 
-        -- Kernel-mode threads are exempt
+        -- Kernel-mode threads are exempt; others name a notification
+        -- capability (RIGHT_WRITE) covering the role (arg1).
         if Process.threadOf (callerPID).mode = Process.KERNEL then
             hasCap := True;
         else
-            for slot in Capabilities.CapabilitySlot loop
-                if Process.proctab(callerPID).caps(slot).capType =
-                   Capabilities.CAP_NOTIFICATION and then
-                   Process.proctab(callerPID).caps(slot).object.ref =
-                   arg0 and then
-                   Process.proctab(callerPID).caps(slot).rights(
-                       Capabilities.RIGHT_WRITE)
-                then
-                    hasCap := True;
-                    exit;
-                end if;
-            end loop;
+            declare
+                found : constant Process_Capabilities.Found :=
+                  findOwn (callerPID, arg1, Capabilities.CAP_NOTIFICATION,
+                           onlyRight (Capabilities.RIGHT_WRITE));
+            begin
+                hasCap := found.OK and then coversRole (found.Cap, arg0);
+            end;
         end if;
 
         if not hasCap then
@@ -226,7 +191,7 @@ package body Syscall.Admin is
     -- handleBootTimeline (docs/boot-timeline.md)
     ---------------------------------------------------------------------------
     procedure handleBootTimeline (callerPID : Process.ProcessID;
-                                  arg0, arg1, arg2, arg3 : Unsigned_64;
+                                  arg0, arg1, arg2, arg3, arg4 : Unsigned_64;
                                   retval    : out Unsigned_64) with
         SPARK_Mode => Off
     is
@@ -242,21 +207,17 @@ package body Syscall.Admin is
            BT.First_Frame_Presented    => Service_Registry.DRIVER_DESKTOP,
            BT.First_Input_Accepted     => Service_Registry.DRIVER_DESKTOP];
 
+        -- arg4 names the authority: a process capability with RIGHT_READ to
+        -- read, the milestone owner's notification (RIGHT_WRITE) to mark.
         function Holds (Kind : Capabilities.CapabilityType;
                         Right : Capabilities.CapabilityRight;
                         Object : Unsigned_64;
                         Any_Object : Boolean) return Boolean is
+            found : constant Process_Capabilities.Found :=
+              findOwn (callerPID, arg4, Kind, onlyRight (Right));
         begin
-            for slot in Capabilities.CapabilitySlot loop
-                if Process.proctab (callerPID).caps (slot).capType = Kind
-                  and then Process.proctab (callerPID).caps (slot).rights (Right)
-                  and then (Any_Object or else
-                            Process.proctab (callerPID).caps (slot).object.ref = Object)
-                then
-                    return True;
-                end if;
-            end loop;
-            return False;
+            return found.OK and then
+              (Any_Object or else coversRole (found.Cap, Object));
         end Holds;
     begin
         retval := reterr;
@@ -304,12 +265,25 @@ package body Syscall.Admin is
     ---------------------------------------------------------------------------
     procedure handlePortIO (callerPID  : Process.ProcessID;
                             syscallNum : SyscallNumber;
-                            arg0, arg1 : Unsigned_64;
+                            arg0, arg1, arg2 : Unsigned_64;
                             retval     : out Unsigned_64) with
         SPARK_Mode => Off
     is
-
+        use type Capabilities.CapabilityType;
         capAllowed : Boolean;
+        -- arg2 names the CAP_IOPORT this access relies on.
+        held : Process_Capabilities.Found;
+
+        procedure checkPortAccess (port, accessSize : Unsigned_64;
+                                   forWrite : Boolean; allowed : out Boolean) is
+        begin
+            allowed := held.OK and then held.Cap.capType = Capabilities.CAP_IOPORT
+              and then port >= held.Cap.object.ref
+              and then port - held.Cap.object.ref <= held.Cap.object.param
+              and then accessSize <= held.Cap.object.param - (port - held.Cap.object.ref)
+              and then (if forWrite then held.Cap.rights (Capabilities.RIGHT_WRITE)
+                        else held.Cap.rights (Capabilities.RIGHT_READ));
+        end checkPortAccess;
 
         procedure logDenied (port : Unsigned_64;
                              size : Unsigned_64;
@@ -327,11 +301,10 @@ package body Syscall.Admin is
             println (writeAccess);
         end logDenied;
     begin
+        held := findOwn (callerPID, arg2, Capabilities.CAP_IOPORT, Capabilities.NO_RIGHTS);
         case syscallNum is
             when SYSCALL_INP8 =>
-                Capabilities.Operations.checkPortAccess (
-                    Process.proctab(callerPID).caps,
-                    arg0 and 16#FFFF#, 1, False, capAllowed);
+                checkPortAccess (arg0 and 16#FFFF#, 1, False, capAllowed);
                 if not capAllowed then
                     logDenied (arg0, 1, False);
                     retval := reterr;
@@ -345,9 +318,7 @@ package body Syscall.Admin is
                 end if;
 
             when SYSCALL_OUTP8 =>
-                Capabilities.Operations.checkPortAccess (
-                    Process.proctab(callerPID).caps,
-                    arg0 and 16#FFFF#, 1, True, capAllowed);
+                checkPortAccess (arg0 and 16#FFFF#, 1, True, capAllowed);
                 if not capAllowed then
                     logDenied (arg0, 1, True);
                     retval := reterr;
@@ -358,9 +329,7 @@ package body Syscall.Admin is
                 end if;
 
             when SYSCALL_INP16 =>
-                Capabilities.Operations.checkPortAccess (
-                    Process.proctab(callerPID).caps,
-                    arg0 and 16#FFFF#, 2, False, capAllowed);
+                checkPortAccess (arg0 and 16#FFFF#, 2, False, capAllowed);
                 if not capAllowed then
                     logDenied (arg0, 2, False);
                     retval := reterr;
@@ -374,9 +343,7 @@ package body Syscall.Admin is
                 end if;
 
             when SYSCALL_OUTP16 =>
-                Capabilities.Operations.checkPortAccess (
-                    Process.proctab(callerPID).caps,
-                    arg0 and 16#FFFF#, 2, True, capAllowed);
+                checkPortAccess (arg0 and 16#FFFF#, 2, True, capAllowed);
                 if not capAllowed then
                     logDenied (arg0, 2, True);
                     retval := reterr;
@@ -387,9 +354,7 @@ package body Syscall.Admin is
                 end if;
 
             when SYSCALL_INP32 =>
-                Capabilities.Operations.checkPortAccess (
-                    Process.proctab(callerPID).caps,
-                    arg0 and 16#FFFF#, 4, False, capAllowed);
+                checkPortAccess (arg0 and 16#FFFF#, 4, False, capAllowed);
                 if not capAllowed then
                     logDenied (arg0, 4, False);
                     retval := reterr;
@@ -403,9 +368,7 @@ package body Syscall.Admin is
                 end if;
 
             when SYSCALL_OUTP32 =>
-                Capabilities.Operations.checkPortAccess (
-                    Process.proctab(callerPID).caps,
-                    arg0 and 16#FFFF#, 4, True, capAllowed);
+                checkPortAccess (arg0 and 16#FFFF#, 4, True, capAllowed);
                 if not capAllowed then
                     logDenied (arg0, 4, True);
                     retval := reterr;
@@ -439,19 +402,17 @@ package body Syscall.Admin is
             words    => (arg2, arg3, arg4, arg5));
         replyTag : Process.MessageTag;
     begin
-        if arg0 > Unsigned_64(Capabilities.CapabilitySlot'Last) then
-            retval := reterr;
-        else
-            -- arg6: the deadline (absolute monotonic ms; Unsigned_64'Last is
-            -- for ever, as the caller chose: docs/ipc-fastpath.md).
-            replyTag := Process.IPC.capSend (
-                capSlot => Capabilities.CapabilitySlot(arg0),
-                msg     => sendMsg,
-                deadlineMs => arg6);
-            Process.threadtab (PerCPUData.getCurrentThread).replyMsg :=
-                Process.NULL_MESSAGE;
-            retval := tagToU64 (replyTag);
-        end if;
+        pragma Unreferenced (callerPID);
+        -- arg0: the endpoint handle. arg6: the deadline (absolute monotonic
+        -- ms; Unsigned_64'Last is for ever, as the caller chose:
+        -- docs/ipc-fastpath.md).
+        replyTag := Process.IPC.capSend (
+            handle  => arg0,
+            msg     => sendMsg,
+            deadlineMs => arg6);
+        Process.threadtab (PerCPUData.getCurrentThread).replyMsg :=
+            Process.NULL_MESSAGE;
+        retval := tagToU64 (replyTag);
     end handleCapSend;
 
     ---------------------------------------------------------------------------
@@ -469,9 +430,7 @@ package body Syscall.Admin is
         -- arg1 is a user pointer: read and written through
         -- Process.User_Memory, never dereferenced; the reply's destination
         -- is checked before the call is made.
-        if arg0 > Unsigned_64 (Capabilities.CapabilitySlot'Last) or else
-           not Process.User_Memory.Message_Writable (callerPID, arg1)
-        then
+        if not Process.User_Memory.Message_Writable (callerPID, arg1) then
             retval := reterr;
             return;
         end if;
@@ -487,16 +446,20 @@ package body Syscall.Admin is
             Started   : constant Unsigned_64 :=
               (if Recording then Boot_Timeline.Now else 0);
             -- The callee as the capability named it when the call began.
+            Named     : constant Process_Capabilities.Found :=
+              (if Recording
+               then findOwn (callerPID, arg0, Capabilities.CAP_ENDPOINT,
+                             Capabilities.NO_RIGHTS)
+               else (OK => False, Why => Capability_ABI.Invalid_Handle));
             Callee    : constant Unsigned_64 :=
-              Process.proctab (callerPID).caps (Capabilities.CapabilitySlot (arg0)).object.ref;
+              (if Named.OK then Named.Cap.object.ref else 0);
             Target    : constant Unsigned_64 :=
               (if Recording and then Callee in 1 .. Unsigned_64 (Process.ProctabRange'Last)
                then Process_Identities.To_Word (Process.identityOf (Process.ProcessID (Callee)))
                else Boot_Timeline_Layout.No_Identity);
         begin
             replyTag := Process.IPC.capCall
-              (capSlot => Capabilities.CapabilitySlot (arg0), msg => localMsg,
-               deadlineMs => arg2);
+              (handle => arg0, msg => localMsg, deadlineMs => arg2);
             if Recording then
                 Boot_Timeline.Note_Wait
                   (Slot    => Natural (callerPID),
@@ -514,6 +477,55 @@ package body Syscall.Admin is
     end handleCapCall;
 
     ---------------------------------------------------------------------------
+    -- handleCapCallOffering
+    ---------------------------------------------------------------------------
+    procedure handleCapCallOffering (callerPID : Process.ProcessID;
+                                     arg0, arg1, arg2, arg3 : Unsigned_64;
+                                     retval : out Unsigned_64) with
+        SPARK_Mode => Off
+    is
+        localMsg   : Process.Message;
+        replyTag   : Process.MessageTag;
+        derivation : aliased Capability_ABI.Derivation := [others => 0];
+        source     : Process_Capabilities.Found;
+        offer      : Capability_Install.Outcome;
+        ok         : Boolean;
+    begin
+        retval := tagToU64 (Process.NULL_TAG);
+        if not Process.User_Memory.Message_Writable (callerPID, arg1) then
+            return;
+        end if;
+        Process.User_Memory.Read_Message (callerPID, arg1, localMsg, ok);
+        if not ok then
+            return;
+        end if;
+        Process.User_Memory.Copy
+          (callerPID, arg2, derivation'Address, Capability_ABI.Derivation_Bytes, ok);
+        if not ok or else not Capability_Install.Well_Formed (derivation) then
+            return;
+        end if;
+        -- The offer is a narrowed copy of the caller's own capability (it
+        -- must hold RIGHT_GRANT): nothing is created.
+        Spinlocks.enterCriticalSection (Process.mailtab(callerPID).lock);
+        source := Process_Capabilities.Find_Any
+          (Process.proctab(callerPID).caps, derivation (Capability_ABI.Source));
+        if source.OK then
+            offer := Capability_Install.Derive
+              (source.Cap, Capability_Install.Decode (derivation));
+        end if;
+        Spinlocks.exitCriticalSection (Process.mailtab(callerPID).lock);
+        if not source.OK or else not offer.Accepted then
+            return;
+        end if;
+        replyTag := Process.IPC.capCallOffering
+          (handle => arg0, msg => localMsg, deadlineMs => arg3, offer => offer.Copy);
+        Process.User_Memory.Write_Message
+          (callerPID, arg1, Process.threadtab (PerCPUData.getCurrentThread).replyMsg, ok);
+        Process.threadtab (PerCPUData.getCurrentThread).replyMsg := Process.NULL_MESSAGE;
+        retval := (if ok then tagToU64 (replyTag) else reterr);
+    end handleCapCallOffering;
+
+    ---------------------------------------------------------------------------
     -- handleCapSubmit
     ---------------------------------------------------------------------------
     procedure handleCapSubmit (arg0, arg1, arg2, arg3,
@@ -529,19 +541,11 @@ package body Syscall.Admin is
             words    => [arg2, arg3, arg4, arg5]);
         ok : Boolean;
     begin
-        if arg0 > Unsigned_64(Capabilities.CapabilitySlot'Last) then
-            retval := 0;
-        else
-            ok := Process.IPC.capSubmit (
-                capSlot => Capabilities.CapabilitySlot(arg0),
-                msg     => submitMsg,
-                token   => arg6);
-            if ok then
-                retval := 1;
-            else
-                retval := 0;
-            end if;
-        end if;
+        ok := Process.IPC.capSubmit (
+            handle  => arg0,
+            msg     => submitMsg,
+            token   => arg6);
+        retval := (if ok then 1 else 0);
     end handleCapSubmit;
 
     ---------------------------------------------------------------------------
@@ -579,7 +583,7 @@ package body Syscall.Admin is
     -- handleProclist
     ---------------------------------------------------------------------------
     procedure handleProclist (callerPID  : Process.ProcessID;
-                              arg0, arg1 : Unsigned_64;
+                              arg0, arg1, arg2 : Unsigned_64;
                               retval     : out Unsigned_64) with
         SPARK_Mode => Off
     is
@@ -593,17 +597,9 @@ package body Syscall.Admin is
         maxEntries : Unsigned_64;
         count      : Unsigned_64 := 0;
     begin
-        -- Check CAP_PROCESS with RIGHT_READ (no target PID)
-        for slot in Capabilities.CapabilitySlot loop
-            if Process.proctab(callerPID).caps(slot).capType =
-               Capabilities.CAP_PROCESS and then
-               Process.proctab(callerPID).caps(slot).rights(
-                   Capabilities.RIGHT_READ)
-            then
-                hasCap := True;
-                exit;
-            end if;
-        end loop;
+        -- arg2 names a CAP_PROCESS with RIGHT_READ (any target).
+        hasCap := findOwn (callerPID, arg2, Capabilities.CAP_PROCESS,
+                           onlyRight (Capabilities.RIGHT_READ)).OK;
 
         if not hasCap then
             Process.IPC.notifySupervisor (
@@ -674,382 +670,197 @@ package body Syscall.Admin is
     -- handleInspectCap
     ---------------------------------------------------------------------------
     procedure handleInspectCap (callerPID  : Process.ProcessID;
-                                arg0, arg1, arg2 : Unsigned_64;
+                                arg0, arg1 : Unsigned_64;
                                 retval     : out Unsigned_64) with
         SPARK_Mode => Off
     is
         use type Capabilities.CapabilityType;
-        use type Process.ProcessState;
-
-        targetPID : Process.ProcessID;
-        slot      : Capabilities.CapabilitySlot;
+        found     : Process_Capabilities.Found;
         cap       : Capabilities.Capability;
-        -- arg2 is a user pointer: six words, built here and copied out
-        -- through Process.User_Memory.
-        Inspection_Words : constant := 6;
-        type Inspection is array (1 .. Inspection_Words) of Unsigned_64;
-        result    : aliased Inspection := (others => 0);
+        -- arg1 is a user pointer: a Capability_ABI.Inspection, built here
+        -- and copied out through Process.User_Memory.
+        result    : aliased Capability_ABI.Inspection := [others => 0];
         copied    : Boolean;
-        rights    : Unsigned_64 := 0;
     begin
-        targetPID := Process.processOfIdentity (Process_Identities.From_Word (arg0));
-        if targetPID = Process.NO_PROCESS or else
-           arg1 > Unsigned_64 (Capabilities.CapabilitySlot'Last) or else
-           arg2 = 0
-        then
-            retval := reterr;
+        -- arg0: a handle in the caller's own table. Another process's
+        -- entries are never read.
+        Spinlocks.enterCriticalSection (Process.mailtab(callerPID).lock);
+        found := Process_Capabilities.Find_Any (Process.proctab(callerPID).caps, arg0);
+        Spinlocks.exitCriticalSection (Process.mailtab(callerPID).lock);
+        if not found.OK then
+            retval := Capability_ABI.Refusal_Word (found.Why);
             return;
         end if;
-
-        slot := Capabilities.CapabilitySlot (arg1);
-
-        Spinlocks.enterCriticalSection (Process.mailtab(targetPID).lock);
-        if not Process.proctab(targetPID).admitted or else
-           Process_Lifetime.Closing (Process.threadOf (targetPID).lifetime)
-        then
-            Spinlocks.exitCriticalSection (Process.mailtab(targetPID).lock);
-            retval := reterr;
-            return;
-        elsif not hasCapProcessFor (callerPID, targetPID,
-                                    Capabilities.RIGHT_READ)
-        then
-            Spinlocks.exitCriticalSection (Process.mailtab(targetPID).lock);
-            Process.IPC.notifySupervisor (
-                callerPID,
-                IPC_Labels.EVENT_CAP_FAULT,
-                Unsigned_64 (SyscallNumber'Enum_Rep (
-                    SYSCALL_INSPECT_CAPABILITY)),
-                arg0, arg1);
-            retval := reterr;
-            return;
-        end if;
-
-        cap := Process.proctab(targetPID).caps(slot);
-        Spinlocks.exitCriticalSection (Process.mailtab(targetPID).lock);
-        if cap.rights(Capabilities.RIGHT_READ) then
-            rights := rights or 1;
-        end if;
-        if cap.rights(Capabilities.RIGHT_WRITE) then
-            rights := rights or 2;
-        end if;
-        if cap.rights(Capabilities.RIGHT_EXECUTE) then
-            rights := rights or 4;
-        end if;
-        if cap.rights(Capabilities.RIGHT_GRANT) then
-            rights := rights or 8;
-        end if;
-        if cap.rights(Capabilities.RIGHT_REVOKE) then
-            rights := rights or 16;
-        end if;
-
-        result := (Unsigned_64 (Capabilities.CapabilityType'Pos (cap.capType)),
-                   rights, cap.authorityTag,
-                   -- Its process by identity (the slot and generation it
-                   -- was made for), not the bare slot.
-                   (if cap.capType in Capabilities.CAP_ENDPOINT |
-                                      Capabilities.CAP_PROCESS |
-                                      Capabilities.CAP_CSPACE
-                       and then cap.object.ref /= 0
-                       and then cap.object.ref <= Unsigned_64 (Process.ProcessID'Last)
-                    then Process_Identities.To_Word (Process_Identities.Encode
-                           (Process_Identities.Slot (cap.object.ref),
-                            Process_Identities.Generation (cap.gen)))
-                    else cap.object.ref),
-                   cap.object.param, Unsigned_64 (cap.gen));
+        cap := found.Cap;
+        result :=
+          [Capability_ABI.Capability_Kind =>
+             Unsigned_64 (Capabilities.CapabilityType'Pos (cap.capType)),
+           Capability_ABI.Rights_Mask   => Capability_Install.Mask_Of (cap.rights),
+           Capability_ABI.Authority_Tag => cap.authorityTag,
+           -- Its process by identity (the slot and generation it was made
+           -- for), not the bare slot.
+           Capability_ABI.Object =>
+             (if cap.capType in Capabilities.CAP_ENDPOINT |
+                                Capabilities.CAP_PROCESS |
+                                Capabilities.CAP_CSPACE
+                 and then cap.object.ref /= 0
+                 and then cap.object.ref <= Unsigned_64 (Process.ProcessID'Last)
+              then Process_Identities.To_Word (Process_Identities.Encode
+                     (Process_Identities.Slot (cap.object.ref),
+                      Process_Identities.Generation (cap.gen)))
+              else cap.object.ref),
+           Capability_ABI.Parameter  => cap.object.param,
+           Capability_ABI.Generation => Unsigned_64 (cap.gen)];
         Process.User_Memory.Copy_To_User
-          (callerPID, arg2, result'Address, result'Size / 8, copied);
-        if not copied then
-            retval := reterr;
-            return;
-        end if;
-
-        retval := 1;
+          (callerPID, arg1, result'Address, result'Size / 8, copied);
+        -- 0 on success, like CLOSE_HANDLE: every nonzero word is a refusal
+        -- code (1 is Invalid_Handle), so success can never look like one.
+        retval := (if copied then 0
+                   else Capability_ABI.Refusal_Word (Capability_ABI.Invalid_Argument));
     end handleInspectCap;
 
     ---------------------------------------------------------------------------
-    -- handleMintCap
+    -- handleInstallCap (INSTALL_CAPABILITY, CAP-002)
+    -- arg0: a CSPACE handle (SPAWN gave it, one per child); arg1: address of
+    -- a Capability_ABI.Derivation naming one of the caller's capabilities.
+    -- Places a narrowed copy in the CSPACE's process, which must still be
+    -- the incarnation it names and must not have started running. Returns
+    -- the handle word in that process's table, or a refusal code. Nothing
+    -- else about another process's table can be read or changed.
     ---------------------------------------------------------------------------
-    procedure handleMintCap (callerPID : Process.ProcessID;
-                             arg0, arg1, arg2, arg3,
-                             arg4, arg5 : Unsigned_64;
-                             retval : out Unsigned_64;
-                             boundRecipient : Boolean := False) with
+    procedure handleInstallCap (callerPID : Process.ProcessID;
+                                arg0, arg1 : Unsigned_64;
+                                retval : out Unsigned_64) with
+        SPARK_Mode => Off
+    is
+        use type Process_Launch.Launch_Phase;
+        derivation : aliased Capability_ABI.Derivation := [others => 0];
+        copied     : Boolean;
+        cspace     : Process_Capabilities.Found;
+        source     : Process_Capabilities.Found;
+        targetPID  : Process.ProcessID;
+        firstPID, secondPID : Process.ProcessID;
+        placed     : Process_Capabilities.Placement.Place_Result;
+    begin
+        retval := Capability_ABI.Refusal_Word (Capability_ABI.Invalid_Argument);
+        Process.User_Memory.Copy
+          (callerPID, arg1, derivation'Address, Capability_ABI.Derivation_Bytes, copied);
+        if not copied or else not Capability_Install.Well_Formed (derivation) then
+            return;
+        end if;
+        cspace := findOwn (callerPID, arg0, Capabilities.CAP_CSPACE,
+                           onlyRight (Capabilities.RIGHT_GRANT));
+        if not cspace.OK then
+            retval := Capability_ABI.Refusal_Word (cspace.Why);
+            return;
+        elsif cspace.Cap.object.ref not in 1 .. Unsigned_64 (Process.ProctabRange'Last) then
+            retval := Capability_ABI.Refusal_Word (Capability_ABI.Target_Gone);
+            return;
+        end if;
+        targetPID := Process.ProcessID (cspace.Cap.object.ref);
+        firstPID := Process.ProcessID'Min (callerPID, targetPID);
+        secondPID := Process.ProcessID'Max (callerPID, targetPID);
+        -- The IPC two-mailbox ascending-PID order. The CSPACE, the source and
+        -- the target's table are read and changed as one operation.
+        Spinlocks.enterCriticalSection (Process.mailtab(firstPID).lock);
+        if secondPID /= firstPID then
+            Spinlocks.enterCriticalSection (Process.mailtab(secondPID).lock);
+        end if;
+        cspace := Process_Capabilities.Find_Any (Process.proctab(callerPID).caps, arg0);
+        source := Process_Capabilities.Find_Any
+          (Process.proctab(callerPID).caps, derivation (Capability_ABI.Source));
+        if not cspace.OK then
+            retval := Capability_ABI.Refusal_Word (cspace.Why);
+        elsif not source.OK then
+            retval := Capability_ABI.Refusal_Word (source.Why);
+        elsif not Process.proctab(targetPID).admitted or else
+              Process_Lifetime.Closing (Process.threadOf (targetPID).lifetime)
+        then
+            retval := Capability_ABI.Refusal_Word (Capability_ABI.Target_Gone);
+        else
+            Process_Capabilities.Placement.Place
+              (Target   => Process.proctab(targetPID).caps,
+               Admitted => Capability_Install.Cspace_Admits
+                             (Cspace            => cspace.Cap,
+                              Target            => Unsigned_64 (targetPID),
+                              Target_Generation => Process.generationOf (targetPID),
+                              Target_Started    =>
+                                Process.proctab(targetPID).launch = Process_Launch.Started),
+               Source   => source.Cap,
+               Item     => Capability_Install.Decode (derivation),
+               Result   => placed);
+            retval := Process_Capabilities.Result_Word (placed);
+        end if;
+        if secondPID /= firstPID then
+            Spinlocks.exitCriticalSection (Process.mailtab(secondPID).lock);
+        end if;
+        Spinlocks.exitCriticalSection (Process.mailtab(firstPID).lock);
+    end handleInstallCap;
+
+    ---------------------------------------------------------------------------
+    -- handleDeriveCap (DERIVE_CAPABILITY): the caller derives a copy of one
+    -- of its own capabilities into its own table. The same proved placement
+    -- as INSTALL_CAPABILITY (never wider than the source, Set_Tag only on an
+    -- untagged endpoint, existing entries untouched); no CSPACE is involved
+    -- because nothing leaves the caller.
+    ---------------------------------------------------------------------------
+    procedure handleDeriveCap (callerPID : Process.ProcessID;
+                               arg0      : Unsigned_64;
+                               retval    : out Unsigned_64) with
+        SPARK_Mode => Off
+    is
+        derivation : aliased Capability_ABI.Derivation := [others => 0];
+        copied     : Boolean;
+        source     : Process_Capabilities.Found;
+        placed     : Process_Capabilities.Placement.Place_Result;
+    begin
+        retval := Capability_ABI.Refusal_Word (Capability_ABI.Invalid_Argument);
+        Process.User_Memory.Copy
+          (callerPID, arg0, derivation'Address, Capability_ABI.Derivation_Bytes, copied);
+        if not copied or else not Capability_Install.Well_Formed (derivation) then
+            return;
+        end if;
+        Spinlocks.enterCriticalSection (Process.mailtab(callerPID).lock);
+        source := Process_Capabilities.Find_Any
+          (Process.proctab(callerPID).caps, derivation (Capability_ABI.Source));
+        if not source.OK then
+            retval := Capability_ABI.Refusal_Word (source.Why);
+        else
+            Process_Capabilities.Placement.Place
+              (Target   => Process.proctab(callerPID).caps,
+               Admitted => (Admitted => True),
+               Source   => source.Cap,
+               Item     => Capability_Install.Decode (derivation),
+               Result   => placed);
+            retval := Process_Capabilities.Result_Word (placed);
+        end if;
+        Spinlocks.exitCriticalSection (Process.mailtab(callerPID).lock);
+    end handleDeriveCap;
+
+    ---------------------------------------------------------------------------
+    -- handleCloseHandle (CLOSE_HANDLE): give up one of the caller's own
+    -- entries. 0, or a refusal code (the handle was not current).
+    ---------------------------------------------------------------------------
+    procedure handleCloseHandle (callerPID : Process.ProcessID;
+                                 arg0      : Unsigned_64;
+                                 retval    : out Unsigned_64) with
         SPARK_Mode => Off
     is
         use type Capabilities.CapabilityType;
-        use type Process.ProcessState;
-
-
-        targetPID  : Process.ProcessID;
-        capTypePos : Natural;
-        newCap     : Capabilities.Capability;
-        newRights  : Capabilities.CapabilityRights;
-        targetSlot : Capabilities.CapabilitySlot;
-        expectedGeneration : Capabilities.Generation;
+        removed : Capabilities.Capability;
     begin
-        -- The recipient by identity (KERN-003): its generation is part of it.
-        Process.resolveIdentity (Process_Identities.From_Word (arg0), targetPID, expectedGeneration);
-        if targetPID = Process.NO_PROCESS or else
-           (boundRecipient and then arg4 > 31)
-        then
-            println ("POLICY_MINT_CAPABILITY: invalid target identity");
-            retval := reterr;
-            return;
+        Spinlocks.enterCriticalSection (Process.mailtab(callerPID).lock);
+        Process_Capabilities.Close (Process.proctab(callerPID).caps, arg0, removed, retval);
+        Spinlocks.exitCriticalSection (Process.mailtab(callerPID).lock);
+        -- A saved reply closed unanswered: its caller learns now, as when a
+        -- server exits holding it.
+        if retval = 0 and then removed.capType = Capabilities.CAP_REPLY then
+            Process.IPC.failReply (removed);
         end if;
-
-        declare
-            procedure performLocked is
-            begin
-                -- Recipient generation is checked under the same mailbox
-                -- lock as installation. Root CSPACE authority cannot bypass
-                -- a stale recipient identity.
-                if expectedGeneration /= Process.generationOf (targetPID)
-                then
-                    retval := reterr;
-                    return;
-                end if;
-                if not Process.proctab(targetPID).admitted or else
-                   Process_Lifetime.Closing (Process.threadOf (targetPID).lifetime) then
-                    retval := reterr;
-                    return;
-                end if;
-
-                if not hasCspaceGrantFor (callerPID, targetPID)
-                then
-                    println
-                      ("POLICY_MINT_CAPABILITY: denied, no capability-space grant");
-                    retval := reterr;
-                    return;
-                elsif arg5 >
-                      Unsigned_64 (Capabilities.CapabilitySlot'Last)
-                then
-                    println ("POLICY_MINT_CAPABILITY: invalid slot");
-                    retval := reterr;
-                    return;
-                elsif arg1 >
-                      Unsigned_64 (Capabilities.CapabilityType'Pos (
-                          Capabilities.CapabilityType'Last))
-                then
-                    println ("POLICY_MINT_CAPABILITY: invalid capability type");
-                    retval := reterr;
-                    return;
-                elsif not Capabilities.isPolicyMintable
-                  (Capabilities.CapabilityType'Val (Natural (arg1)))
-                then
-                    println
-                      ("POLICY_MINT_CAPABILITY: capability type cannot be minted");
-                    retval := reterr;
-                    return;
-                end if;
-
-                targetSlot := Capabilities.CapabilitySlot (arg5);
-                if boundRecipient and then
-                   Process.proctab(targetPID).caps(targetSlot).capType /=
-                     Capabilities.CAP_NULL
-                then
-                    retval := reterr;
-                    return;
-                end if;
-                capTypePos := Natural (arg1);
-
-                -- Build rights from bitmask
-                newRights := (
-                    Capabilities.RIGHT_READ    => (arg4 and 1) /= 0,
-                    Capabilities.RIGHT_WRITE   => (arg4 and 2) /= 0,
-                    Capabilities.RIGHT_EXECUTE => (arg4 and 4) /= 0,
-                    Capabilities.RIGHT_GRANT   => (arg4 and 8) /= 0,
-                    Capabilities.RIGHT_REVOKE  => (arg4 and 16) /= 0);
-
-                -- Process-referencing capabilities are generation-bound to the
-                -- referenced object, not to the process receiving the capability.
-                -- Reject nonexistent references so a capability cannot spring into
-                -- validity later when that PID is first allocated or recycled.
-                declare
-                    use type Capabilities.CapabilityType;
-                    capGen : Capabilities.Generation;
-                    ct     : constant Capabilities.CapabilityType :=
-                        Capabilities.CapabilityType'Val (capTypePos);
-                    objectPID : Process.ProcessID := Process.NO_PROCESS;
-                    -- The object as stored: a process-referencing
-                    -- capability keeps its slot (and generation in gen).
-                    objectRef : Unsigned_64 := arg2;
-                begin
-                    -- arg2 names a process by identity for these types. Zero
-                    -- is the wildcard; a stale identity must not become it.
-                    if ct in Capabilities.CAP_ENDPOINT | Capabilities.CAP_PROCESS |
-                             Capabilities.CAP_CSPACE and then arg2 /= 0
-                    then
-                        objectPID := Process.processOfIdentity (Process_Identities.From_Word (arg2));
-                        if objectPID = Process.NO_PROCESS then
-                            println
-                              ("POLICY_MINT_CAPABILITY: referenced process not valid");
-                            retval := reterr;
-                            return;
-                        end if;
-                        objectRef := Unsigned_64 (objectPID);
-                    end if;
-
-                    -- Device vectors are allocated with their owner
-                    -- (ALLOCATE_DEVICE_VECTORS), never minted: a minted one
-                    -- could name a vector bound to someone else.
-                    if ct = Capabilities.CAP_IRQ and then
-                       arg2 in Device_Vector_ABI.First_Vector ..
-                               Device_Vector_ABI.Last_Vector
-                    then
-                        println
-                          ("POLICY_MINT_CAPABILITY: device vectors are allocated, not minted");
-                        retval := reterr;
-                        return;
-                    end if;
-
-                    -- Policy chooses who gets which device; the kernel
-                    -- refuses a device range that is not entirely
-                    -- device-mappable (CAP-001): never RAM, kernel memory,
-                    -- boot modules, ACPI memory or kernel MMIO.
-                    if ct = Capabilities.CAP_DEVICE_MEM and then
-                       not Device_Memory_Authority.Mint_Admissible
-                         (Physical_Range_Map.Kernel_Map, arg2, arg3)
-                    then
-                        Device_Memory_Diagnostics.Record_Denial
-                          (callerPID, Device_Memory_Publication.Policy_Mint, arg2, arg3,
-                           (if newRights (Capabilities.RIGHT_WRITE)
-                            then Device_Memory_Admission.Read_Write
-                            else Device_Memory_Admission.Read_Only),
-                           Device_Memory_Authority.Explain_Mint
-                             (Physical_Range_Map.Kernel_Map, arg2, arg3));
-                        retval := reterr;
-                        return;
-                    end if;
-
-                    if ct = Capabilities.CAP_CSPACE and then
-                       not canDelegateCspace
-                         (callerPID, targetPID, objectRef, newRights)
-                    then
-                        println
-                          ("POLICY_MINT_CAPABILITY: CSPACE delegation would " &
-                           "amplify authority");
-                        retval := reterr;
-                        return;
-                    end if;
-
-                    if ct = Capabilities.CAP_ENDPOINT or else
-                       ((ct = Capabilities.CAP_PROCESS or else
-                         ct = Capabilities.CAP_CSPACE) and then arg2 /= 0)
-                    then
-                        -- The referenced process by identity; a stale one
-                        -- names no one.
-                        Process.resolveIdentity (Process_Identities.From_Word (arg2), objectPID, capGen);
-                        if objectPID = Process.NO_PROCESS or else
-                           Process.threadOf (objectPID).state = Process.INVALID
-                        then
-                            println
-                              ("POLICY_MINT_CAPABILITY: referenced process not valid");
-                            retval := reterr;
-                            return;
-                        end if;
-                    else
-                        capGen := Capabilities.INITIAL_GENERATION;
-                    end if;
-
-                    newCap := (
-                        capType  => ct,
-                        rights   => newRights,
-                        --  Endpoint object.param is its explicit authority
-                        --  context when supplied by the capability-space
-                        --  policy holder. Zero retains the sender-ID tag.
-                        authorityTag =>
-                          (if ct = Capabilities.CAP_ENDPOINT and arg3 /= 0
-                           then arg3 else Process_Identities.To_Word (Process.identityOf (targetPID))),
-                        object   => (ref   => objectRef,
-                                     param => arg3),
-                        gen      => capGen);
-                end;
-
-                Capabilities.Operations.insertCapAt (
-                    table => Process.proctab(targetPID).caps,
-                    slot  => targetSlot,
-                    cap   => newCap);
-
-                retval := 0;
-            end performLocked;
-        begin
-            Spinlocks.enterCriticalSection (Process.mailtab(targetPID).lock);
-            performLocked;
-            Spinlocks.exitCriticalSection (Process.mailtab(targetPID).lock);
-        end;
-    end handleMintCap;
-
-    ---------------------------------------------------------------------------
-    -- handleResume
-    ---------------------------------------------------------------------------
-    procedure handleDelegateEndpoint
-      (callerPID : Process.ProcessID;
-       recipient, sourceSlot, destinationSlot, rights, tag, reserved : Unsigned_64;
-       retval : out Unsigned_64) with SPARK_Mode => Off
-    is
-        use type Capabilities.CapabilityType;
-        -- The recipient by identity (KERN-003): slot and generation.
-        generation : Capabilities.Generation;
-        targetPID, firstPID, secondPID : Process.ProcessID;
-        procedure performLocked is
-            parent : constant Capabilities.Capability :=
-              Process.proctab(callerPID).caps(Capabilities.CapabilitySlot(sourceSlot));
-            requested : constant Capabilities.CapabilityRights :=
-              (Capabilities.RIGHT_READ => (rights and 1) /= 0,
-               Capabilities.RIGHT_WRITE => (rights and 2) /= 0,
-               Capabilities.RIGHT_EXECUTE => (rights and 4) /= 0,
-               Capabilities.RIGHT_GRANT => (rights and 8) /= 0,
-               Capabilities.RIGHT_REVOKE => (rights and 16) /= 0);
-        begin
-            if not Process.proctab(targetPID).admitted or else
-               Process_Lifetime.Closing (Process.threadOf(targetPID).lifetime) or else
-               generation /= Process.generationOf(targetPID) or else
-               not hasCspaceGrantFor(callerPID, targetPID) or else
-               parent.capType /= Capabilities.CAP_ENDPOINT or else
-               not parent.rights(Capabilities.RIGHT_GRANT) or else
-               parent.gen = 0 or else parent.object.ref = 0 or else
-               not Capabilities.isSubsetOf(requested, parent.rights) or else
-               Process.proctab(targetPID).caps
-                 (Capabilities.CapabilitySlot(destinationSlot)).capType /=
-                   Capabilities.CAP_NULL
-            then
-                return;
-            end if;
-            -- Preserve the exact source object and generation. Never resolve
-            -- its PID again: a stale endpoint remains stale, not redirected.
-            Capabilities.Operations.insertCapAt
-              (Process.proctab(targetPID).caps,
-               Capabilities.CapabilitySlot(destinationSlot),
-               Capabilities.mint(parent, tag, requested));
-            retval := 0;
-        end performLocked;
-    begin
-        retval := reterr;
-        Process.resolveIdentity (Process_Identities.From_Word (recipient), targetPID, generation);
-        if targetPID = Process.NO_PROCESS or else
-           reserved /= 0 or else rights > 31 or else
-           sourceSlot > Unsigned_64(Capabilities.CapabilitySlot'Last) or else
-           destinationSlot > Unsigned_64(Capabilities.CapabilitySlot'Last)
-        then
-            return;
-        end if;
-        firstPID := Process.ProcessID'Min(callerPID, targetPID);
-        secondPID := Process.ProcessID'Max(callerPID, targetPID);
-        -- Follow the IPC two-mailbox ascending-PID order. Source snapshot,
-        -- CSPACE authorization and destination installation are one operation.
-        Spinlocks.enterCriticalSection(Process.mailtab(firstPID).lock);
-        if secondPID /= firstPID then
-            Spinlocks.enterCriticalSection(Process.mailtab(secondPID).lock);
-        end if;
-        performLocked;
-        if secondPID /= firstPID then
-            Spinlocks.exitCriticalSection(Process.mailtab(secondPID).lock);
-        end if;
-        Spinlocks.exitCriticalSection(Process.mailtab(firstPID).lock);
-    end handleDelegateEndpoint;
+    end handleCloseHandle;
 
     procedure handleResume (callerPID : Process.ProcessID;
-                            arg0      : Unsigned_64;
+                            arg0, arg1, arg2, arg3 : Unsigned_64;
                             retval    : out Unsigned_64) with
         SPARK_Mode => Off
     is
@@ -1077,8 +888,8 @@ package body Syscall.Admin is
                     return;
                 end if;
 
-                if not hasCapProcessFor (callerPID, targetPID,
-                                         Capabilities.RIGHT_EXECUTE)
+                if not holdsProcessAuthority (callerPID, arg1, targetPID,
+                                              Capabilities.RIGHT_EXECUTE)
                 then
                     println ("RESUME: denied, no RIGHT_EXECUTE");
                     retval := reterr;
@@ -1086,28 +897,14 @@ package body Syscall.Admin is
                     println ("RESUME: target not suspended");
                     retval := reterr;
                 else
-                    -- Scan child's cap table for CAP_RESOURCE and populate quota
-                    for slot in Capabilities.CapabilitySlot loop
-                        if Process.proctab(targetPID).caps(slot).capType =
-                           Capabilities.CAP_RESOURCE
-                        then
-                            declare
-                                cap : Capabilities.Capability renames
-                                    Process.proctab(targetPID).caps(slot);
-                                q   : Process.ResourceQuota renames
-                                    candidateQuota;
-                            begin
-                                q.maxFrames := cap.object.ref;
-                                q.cpuQuotaUs :=
-                                    Unsigned_32 (cap.object.param and 16#FFFF_FFFF#);
-                                q.cpuPeriodUs :=
-                                    Unsigned_32 (Shift_Right (cap.object.param, 32));
-                                q.cpuUsedTicks    := 0;
-                                q.periodStartTick := Time.msTicks;
-                            end;
-                            exit;
-                        end if;
-                    end loop;
+                    -- The quota is the launcher's explicit choice (arg2 =
+                    -- most frames, 0 unlimited; arg3 = CPU quota in the low
+                    -- 32 bits and its period in the high 32, 0 unlimited).
+                    candidateQuota.maxFrames := arg2;
+                    candidateQuota.cpuQuotaUs := Unsigned_32 (arg3 and 16#FFFF_FFFF#);
+                    candidateQuota.cpuPeriodUs := Unsigned_32 (Shift_Right (arg3, 32));
+                    candidateQuota.cpuUsedTicks := 0;
+                    candidateQuota.periodStartTick := Time.msTicks;
 
                     -- Launch arguments can no longer be installed.
                     Memory_Accounting.Adopt (Process.proctab(targetPID).memoryAccount,
@@ -1137,7 +934,7 @@ package body Syscall.Admin is
     ---------------------------------------------------------------------------
     procedure handleInstallLaunchArguments
        (callerPID        : Process.ProcessID;
-        arg0, arg1, arg2 : Unsigned_64;
+        arg0, arg1, arg2, arg3 : Unsigned_64;
         retval           : out Unsigned_64) with
         SPARK_Mode => Off   -- page-table and process-table integration
     is
@@ -1173,8 +970,8 @@ package body Syscall.Admin is
                    Process_Lifetime.Closing (Process.threadOf (targetPID).lifetime)
                 then
                     return;
-                elsif not hasCapProcessFor (callerPID, targetPID,
-                                            Capabilities.RIGHT_EXECUTE)
+                elsif not holdsProcessAuthority (callerPID, arg3, targetPID,
+                                                 Capabilities.RIGHT_EXECUTE)
                 then
                     println ("LAUNCH-ARGS: denied, no RIGHT_EXECUTE");
                     return;
@@ -1240,7 +1037,7 @@ package body Syscall.Admin is
     -- handleKill
     ---------------------------------------------------------------------------
     procedure handleKill (callerPID : Process.ProcessID;
-                          arg0      : Unsigned_64;
+                          arg0, arg1 : Unsigned_64;
                           retval    : out Unsigned_64) with
         SPARK_Mode => Off
     is
@@ -1262,8 +1059,8 @@ package body Syscall.Admin is
             return;
         end if;
 
-        if not hasCapProcessFor (callerPID, targetPID,
-                                 Capabilities.RIGHT_WRITE)
+        if not holdsProcessAuthority (callerPID, arg1, targetPID,
+                                      Capabilities.RIGHT_WRITE)
         then
             println ("KILL: denied, no RIGHT_WRITE");
             retval := reterr;
@@ -1288,7 +1085,7 @@ package body Syscall.Admin is
     end handleKill;
 
     procedure handleSendControl (callerPID : Process.ProcessID;
-                                 arg0, arg1 : Unsigned_64;
+                                 arg0, arg1, arg2 : Unsigned_64;
                                  retval     : out Unsigned_64) with
         SPARK_Mode => Off
     is
@@ -1320,7 +1117,8 @@ package body Syscall.Admin is
         if not ((Process.proctab (targetPID).ppid = callerPID
                  and then Process.proctab (targetPID).parentGeneration =
                             Process.generationOf (callerPID))
-                or else hasCapProcessFor (callerPID, targetPID, Capabilities.RIGHT_WRITE))
+                or else holdsProcessAuthority (callerPID, arg2, targetPID,
+                                               Capabilities.RIGHT_WRITE))
         then
             return;
         end if;
@@ -1339,7 +1137,7 @@ package body Syscall.Admin is
     -- handleEnableIrq
     ---------------------------------------------------------------------------
     procedure handleEnableIrq (callerPID  : Process.ProcessID;
-                               arg0, arg1, arg2 : Unsigned_64;
+                               arg0, arg1, arg2, arg3, arg4 : Unsigned_64;
                                retval     : out Unsigned_64) with
         SPARK_Mode => Off
     is
@@ -1355,6 +1153,19 @@ package body Syscall.Admin is
 
         irqOk  : Boolean;
         targetPID : Process.ProcessID;
+
+        -- The caller's handle names a CAP_IRQ (RIGHT_GRANT: it may route the
+        -- line to someone) whose range holds the vector: the device
+        -- manager's legacy-line root or a copy of it.
+        function legacyLineHeld (handle, vector : Unsigned_64) return Boolean is
+            found : constant Process_Capabilities.Found :=
+              findOwn (callerPID, handle, Capabilities.CAP_IRQ,
+                       onlyRight (Capabilities.RIGHT_GRANT));
+        begin
+            return found.OK and then found.Cap.object.param > 0
+              and then vector >= found.Cap.object.ref
+              and then vector - found.Cap.object.ref < found.Cap.object.param;
+        end legacyLineHeld;
     begin
         -- Validate args before cap check (arg1 is the owner PID)
         -- Only legacy lines with installed device-interrupt stubs may be
@@ -1385,11 +1196,13 @@ package body Syscall.Admin is
         then
             retval := reterr;
         else
-            if not hasCapProcessFor (callerPID,
-                                     targetPID,
-                                     Capabilities.RIGHT_GRANT)
+            if not holdsProcessAuthority (callerPID, arg3, targetPID,
+                                          Capabilities.RIGHT_GRANT)
             then
                 println ("ENABLE_IRQ: denied, no RIGHT_GRANT");
+                retval := reterr;
+            elsif not legacyLineHeld (arg4, arg0) then
+                println ("ENABLE_IRQ: denied, no interrupt capability for the line");
                 retval := reterr;
             else
                 --  The resolved slot: delivery finds owners by slot.
@@ -1417,56 +1230,53 @@ package body Syscall.Admin is
 
     ---------------------------------------------------------------------------
     -- hasVectorAuthority
-    -- The caller holds a CAP_IRQ naming the whole device range with the
-    -- given right: the device manager's vector authority (Modules).
+    -- The caller's handle names a CAP_IRQ over the whole device range with
+    -- the given right: the device manager's vector authority (Modules).
     ---------------------------------------------------------------------------
     function hasVectorAuthority (callerPID : Process.ProcessID;
+                                 handle    : Unsigned_64;
                                  right     : Capabilities.CapabilityRight)
                                  return Boolean
     is
-        use type Capabilities.CapabilityType;
-        cap : Capabilities.Capability;
+        found : constant Process_Capabilities.Found :=
+          findOwn (callerPID, handle, Capabilities.CAP_IRQ, onlyRight (right));
     begin
-        for slot in Capabilities.CapabilitySlot loop
-            cap := Process.proctab(callerPID).caps(slot);
-            if cap.capType = Capabilities.CAP_IRQ and then
-               cap.rights(right) and then
-               cap.object.ref = Device_Vector_ABI.First_Vector and then
-               cap.object.param = Device_Vector_ABI.Vector_Count
-            then
-                return True;
-            end if;
-        end loop;
-        return False;
+        return found.OK and then
+          found.Cap.object.ref = Device_Vector_ABI.First_Vector and then
+          found.Cap.object.param = Device_Vector_ABI.Vector_Count;
     end hasVectorAuthority;
 
     ---------------------------------------------------------------------------
     -- handleAllocateDeviceVectors
     ---------------------------------------------------------------------------
     procedure handleAllocateDeviceVectors
-      (callerPID              : Process.ProcessID;
-       arg0, arg1, arg2, arg3 : Unsigned_64;
-       retval                 : out Unsigned_64) with
+      (callerPID : Process.ProcessID;
+       arg0, arg1, arg2, arg3, arg4, arg5 : Unsigned_64;
+       retval    : out Unsigned_64) with
         SPARK_Mode => Off
     is
-        use type Capabilities.CapabilityType;
         use type Device_Interrupts.Allocation_Outcome;
-
+        use type Process_Launch.Launch_Phase;
         targetPID : Process.ProcessID;
         expectedGeneration : Capabilities.Generation;
+        cspace : Process_Capabilities.Found;
+        result : aliased Capability_ABI.Vector_Allocation := [others => 0];
+        copied : Boolean;
     begin
-        retval := reterr;
-        if not hasVectorAuthority (callerPID, Capabilities.RIGHT_GRANT) then
+        retval := Capability_ABI.Refusal_Word (Capability_ABI.Invalid_Argument);
+        if not hasVectorAuthority (callerPID, arg4, Capabilities.RIGHT_GRANT) then
             println ("ALLOCATE_DEVICE_VECTORS: denied, no vector authority");
+            retval := Capability_ABI.Refusal_Word (Capability_ABI.Not_Permitted);
             return;
         elsif arg1 not in 1 .. Device_Vector_ABI.Max_Block_Vectors then
             println ("ALLOCATE_DEVICE_VECTORS: invalid count");
             return;
-        elsif arg2 > Unsigned_64 (Capabilities.CapabilitySlot'Last) then
-            println ("ALLOCATE_DEVICE_VECTORS: invalid slot");
-            return;
         elsif arg3 > Unsigned_64 (Natural'Last) then
             println ("ALLOCATE_DEVICE_VECTORS: invalid CPU");
+            return;
+        elsif not Process.User_Memory.Writable_Range
+                    (callerPID, arg5, Capability_ABI.Vector_Allocation_Bytes)
+        then
             return;
         end if;
 
@@ -1474,31 +1284,38 @@ package body Syscall.Admin is
                                  targetPID, expectedGeneration);
         if targetPID = Process.NO_PROCESS then
             println ("ALLOCATE_DEVICE_VECTORS: invalid owner identity");
+            retval := Capability_ABI.Refusal_Word (Capability_ABI.Target_Gone);
             return;
         end if;
 
         declare
             procedure performLocked is
-                slot : constant Capabilities.CapabilitySlot :=
-                  Capabilities.CapabilitySlot (arg2);
                 head : Device_Interrupts.Vector;
                 destination : Device_Vector_ABI.Destination_ID;
                 outcome : Device_Interrupts.Allocation_Outcome;
                 count : constant Device_Interrupts.Block_Size :=
                   Device_Interrupts.Block_Size (arg1);
+                admitted : Capability_Install.Admission;
+                word : Unsigned_64;
             begin
                 if expectedGeneration /= Process.generationOf (targetPID) or else
                    not Process.proctab(targetPID).admitted or else
                    Process_Lifetime.Closing (Process.threadOf (targetPID).lifetime)
                 then
+                    retval := Capability_ABI.Refusal_Word (Capability_ABI.Target_Gone);
                     return;
-                elsif not hasCspaceGrantFor (callerPID, targetPID) then
-                    println ("ALLOCATE_DEVICE_VECTORS: denied, no capability-space grant");
-                    return;
-                elsif Process.proctab(targetPID).caps(slot).capType /=
-                        Capabilities.CAP_NULL
-                then
-                    println ("ALLOCATE_DEVICE_VECTORS: owner slot occupied");
+                end if;
+                -- The owner's CAP_IRQ goes into its table through the
+                -- CSPACE the caller holds for it (arg2), before it runs.
+                admitted := Capability_Install.Cspace_Admits
+                  (Cspace            => cspace.Cap,
+                   Target            => Unsigned_64 (targetPID),
+                   Target_Generation => Process.generationOf (targetPID),
+                   Target_Started    =>
+                     Process.proctab(targetPID).launch = Process_Launch.Started);
+                if not admitted.Admitted then
+                    println ("ALLOCATE_DEVICE_VECTORS: denied by the owner's CSPACE");
+                    retval := Capability_ABI.Refusal_Word (admitted.Why);
                     return;
                 end if;
 
@@ -1509,29 +1326,60 @@ package body Syscall.Admin is
                         -- The owner's interrupt capability: first vector and
                         -- count, receive-only. Delivery follows the table,
                         -- the capability names what was granted.
-                        Capabilities.Operations.insertCapAt (
-                            table => Process.proctab(targetPID).caps,
-                            slot  => slot,
-                            cap   => (capType  => Capabilities.CAP_IRQ,
-                                      rights   => Capabilities.READ_ONLY,
-                                      authorityTag => Process_Identities.To_Word
-                                        (Process.identityOf (targetPID)),
-                                      object   => (ref   => Unsigned_64 (head),
-                                                   param => Unsigned_64 (count)),
-                                      gen      => Capabilities.INITIAL_GENERATION));
-                        retval := Device_Vector_ABI.Allocation_Word
-                          (head, count, destination);
+                        Process_Capabilities.Insert
+                          (Process.proctab(targetPID).caps,
+                           (capType  => Capabilities.CAP_IRQ,
+                            rights   => Capabilities.READ_ONLY,
+                            authorityTag => Process_Identities.To_Word
+                              (Process.identityOf (targetPID)),
+                            object   => (ref   => Unsigned_64 (head),
+                                         param => Unsigned_64 (count)),
+                            gen      => Capabilities.INITIAL_GENERATION),
+                           word);
+                        if not Capability_ABI.Is_Handle_Word (word) then
+                            -- No room in the owner's table: give the
+                            -- vectors back rather than deliver unnamed.
+                            declare
+                                released : Boolean;
+                                ignoreCount : Device_Interrupts.Block_Size;
+                                ignoreOwner : Unsigned_64;
+                            begin
+                                Device_Interrupts.release
+                                  (head, ignoreCount, ignoreOwner, released);
+                            end;
+                            retval := word;
+                            return;
+                        end if;
+                        result := [Capability_ABI.Allocation =>
+                                     Device_Vector_ABI.Allocation_Word
+                                       (head, count, destination),
+                                   Capability_ABI.Owner_Handle => word];
+                        retval := 0;
                     when Device_Interrupts.Vectors_Exhausted =>
                         println ("ALLOCATE_DEVICE_VECTORS: device vectors exhausted");
+                        retval := Capability_ABI.Refusal_Word (Capability_ABI.Out_Of_Memory);
                     when Device_Interrupts.Invalid_CPU =>
                         println ("ALLOCATE_DEVICE_VECTORS: CPU not running");
                 end case;
             end performLocked;
         begin
+            cspace := findOwn (callerPID, arg2, Capabilities.CAP_CSPACE,
+                               onlyRight (Capabilities.RIGHT_GRANT));
+            if not cspace.OK then
+                retval := Capability_ABI.Refusal_Word (cspace.Why);
+                return;
+            end if;
             Spinlocks.enterCriticalSection (Process.mailtab(targetPID).lock);
             performLocked;
             Spinlocks.exitCriticalSection (Process.mailtab(targetPID).lock);
         end;
+        if retval = 0 then
+            Process.User_Memory.Copy_To_User
+              (callerPID, arg5, result'Address, Capability_ABI.Vector_Allocation_Bytes, copied);
+            if not copied then
+                retval := Capability_ABI.Refusal_Word (Capability_ABI.Invalid_Argument);
+            end if;
+        end if;
     end handleAllocateDeviceVectors;
 
     ---------------------------------------------------------------------------
@@ -1539,7 +1387,7 @@ package body Syscall.Admin is
     ---------------------------------------------------------------------------
     procedure handleReleaseDeviceVectors
       (callerPID : Process.ProcessID;
-       arg0      : Unsigned_64;
+       arg0, arg1 : Unsigned_64;
        retval    : out Unsigned_64) with
         SPARK_Mode => Off
     is
@@ -1550,7 +1398,7 @@ package body Syscall.Admin is
         ownerPID : Process.ProcessID;
     begin
         retval := reterr;
-        if not hasVectorAuthority (callerPID, Capabilities.RIGHT_GRANT) then
+        if not hasVectorAuthority (callerPID, arg1, Capabilities.RIGHT_GRANT) then
             println ("RELEASE_DEVICE_VECTORS: denied, no vector authority");
             return;
         elsif arg0 not in Device_Vector_ABI.First_Vector .. Device_Vector_ABI.Last_Vector then
@@ -1569,20 +1417,24 @@ package body Syscall.Admin is
         ownerPID := Process.processOfIdentity (Process_Identities.From_Word (owner));
         if ownerPID /= Process.NO_PROCESS then
             Spinlocks.enterCriticalSection (Process.mailtab(ownerPID).lock);
-            for slot in Capabilities.CapabilitySlot loop
-                declare
-                    cap : constant Capabilities.Capability :=
-                      Process.proctab(ownerPID).caps(slot);
-                    status : Capabilities.Operations.OperationStatus;
-                begin
-                    if cap.capType = Capabilities.CAP_IRQ and then
-                       cap.object.ref = arg0 and then
-                       cap.object.param = Unsigned_64 (count)
-                    then
-                        Capabilities.Operations.removeCap
-                          (Process.proctab(ownerPID).caps, slot, status);
-                    end if;
-                end;
+            -- Revocation from outside: the owner's handle reports Revoked.
+            for slot in 0 .. Process_Capabilities.Tables.High_Water
+                               (Process.proctab(ownerPID).caps) - 1
+            loop
+                if Process_Capabilities.Tables.Is_Live_At (Process.proctab(ownerPID).caps, slot)
+                then
+                    declare
+                        cap : constant Capabilities.Capability :=
+                          Process_Capabilities.Tables.Item_At (Process.proctab(ownerPID).caps, slot);
+                    begin
+                        if cap.capType = Capabilities.CAP_IRQ and then
+                           cap.object.ref = arg0 and then
+                           cap.object.param = Unsigned_64 (count)
+                        then
+                            Process_Capabilities.Revoke_At (Process.proctab(ownerPID).caps, slot);
+                        end if;
+                    end;
+                end if;
             end loop;
             Spinlocks.exitCriticalSection (Process.mailtab(ownerPID).lock);
         end if;
@@ -1594,7 +1446,7 @@ package body Syscall.Admin is
     ---------------------------------------------------------------------------
     procedure handleReadDeviceVector
       (callerPID  : Process.ProcessID;
-       arg0, arg1 : Unsigned_64;
+       arg0, arg1, arg2 : Unsigned_64;
        retval     : out Unsigned_64) with
         SPARK_Mode => Off
     is
@@ -1602,7 +1454,7 @@ package body Syscall.Admin is
         v : Device_Interrupts.Vector;
     begin
         retval := reterr;
-        if not hasVectorAuthority (callerPID, Capabilities.RIGHT_READ) or else
+        if not hasVectorAuthority (callerPID, arg2, Capabilities.RIGHT_READ) or else
            arg0 not in First_Vector .. Last_Vector
         then
             return;
@@ -1665,7 +1517,7 @@ package body Syscall.Admin is
     -- handleSetCpu
     ---------------------------------------------------------------------------
     procedure handleSetCpu (callerPID  : Process.ProcessID;
-                            arg0, arg1 : Unsigned_64;
+                            arg0, arg1, arg2 : Unsigned_64;
                             retval     : out Unsigned_64) with
         SPARK_Mode => Off
     is
@@ -1693,8 +1545,8 @@ package body Syscall.Admin is
                     return;
                 end if;
 
-                if not hasCapProcessFor (callerPID, targetPID,
-                                         Capabilities.RIGHT_GRANT)
+                if not holdsProcessAuthority (callerPID, arg2, targetPID,
+                                              Capabilities.RIGHT_GRANT)
                 then
                     println ("SET_CPU: denied, no RIGHT_GRANT");
                     retval := reterr;
@@ -1718,81 +1570,32 @@ package body Syscall.Admin is
     end handleSetCpu;
 
     ---------------------------------------------------------------------------
-    -- handleSaveReplyCap
-    -- Move the calling thread's CAP_REPLY to the specified process slot.
-    -- Used by servers that need to defer replies (e.g. netstack).
+    -- handleSaveReplyCap (MOVE_REPLY_CAPABILITY)
+    -- Move the calling thread's current reply authority into the process's
+    -- table, where the kernel chooses: servers that answer later (netstack,
+    -- the filesystem, intel-gpu) keep the returned handle and answer with
+    -- REPLY_AND_CONSUME_REPLY_CAPABILITY. Returns the handle word, or a
+    -- refusal code (no current reply: Invalid_Argument; the table's limit,
+    -- capacity or memory); on refusal the thread keeps its reply authority.
     ---------------------------------------------------------------------------
     procedure handleSaveReplyCap (callerPID : Process.ProcessID;
-                                   arg0      : Unsigned_64;
                                    retval    : out Unsigned_64) with
         SPARK_Mode => Off
     is
         use type Capabilities.CapabilityType;
-
-        destSlot : Capabilities.CapabilitySlot;
-        moved    : Boolean;
+        me : constant Process.ThreadID := PerCPUData.getCurrentThread;
     begin
-        -- Validate destination slot
-        if arg0 > Unsigned_64(Capabilities.CapabilitySlot'Last) then
-            retval := 0;
-            return;
-        end if;
-
-        destSlot := Capabilities.CapabilitySlot(arg0);
-
-        -- Cannot save to slot 63 itself
-        if destSlot = Capabilities.REPLY_CAP_SLOT then
-            retval := 0;
-            return;
-        end if;
-
-        -- The same lock serializes authorized cspace edits and inspection.
-        -- The reply capability comes from the calling thread.
         Spinlocks.enterCriticalSection (Process.mailtab(callerPID).lock);
-        Capabilities.Operations.moveReplyCapFrom
-          (source => Process.threadtab (PerCPUData.getCurrentThread).replyCap,
-           table  => Process.proctab(callerPID).caps,
-           dest   => destSlot,
-           moved  => moved);
-
-        if not moved then
-            Spinlocks.exitCriticalSection (Process.mailtab(callerPID).lock);
-            retval := 0;
-            return;
+        if Process.threadtab (me).replyCap.capType /= Capabilities.CAP_REPLY then
+            retval := Capability_ABI.Refusal_Word (Capability_ABI.Invalid_Argument);
+        else
+            Process_Capabilities.Insert
+              (Process.proctab(callerPID).caps, Process.threadtab (me).replyCap, retval);
+            if Capability_ABI.Is_Handle_Word (retval) then
+                Process.threadtab (me).replyCap := Capabilities.NULL_CAPABILITY;
+            end if;
         end if;
-
-        Process.proctab(callerPID).deferredReplyCaps :=
-            Process.proctab(callerPID).deferredReplyCaps or
-            Shift_Left (Unsigned_64'(1), destSlot);
         Spinlocks.exitCriticalSection (Process.mailtab(callerPID).lock);
-        retval := 1;
     end handleSaveReplyCap;
-
-    procedure handleRestoreReplyCap (callerPID : Process.ProcessID;
-                                     arg0      : Unsigned_64;
-                                     retval    : out Unsigned_64) with
-        SPARK_Mode => Off
-    is
-        moved : Boolean;
-    begin
-        retval := 0;
-        if arg0 > Unsigned_64(Capabilities.CapabilitySlot'Last) or else
-          Capabilities.CapabilitySlot(arg0) = Capabilities.REPLY_CAP_SLOT
-        then
-            return;
-        end if;
-        -- Same lock as the save: authorized cspace edits and inspection.
-        Spinlocks.enterCriticalSection (Process.mailtab(callerPID).lock);
-        Capabilities.Operations.restoreReplyCapTo
-          (table         => Process.proctab(callerPID).caps,
-           deferredSlots => Process.proctab(callerPID).deferredReplyCaps,
-           slot          => Capabilities.CapabilitySlot(arg0),
-           dest          => Process.threadtab (PerCPUData.getCurrentThread).replyCap,
-           moved         => moved);
-        Spinlocks.exitCriticalSection (Process.mailtab(callerPID).lock);
-        if moved then
-            retval := 1;
-        end if;
-    end handleRestoreReplyCap;
 
 end Syscall.Admin;

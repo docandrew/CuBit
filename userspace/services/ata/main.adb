@@ -8,9 +8,8 @@
 --  Performs PIO reads on the primary ATA channel. Runs IDENTIFY at startup
 --  to detect the drive, then offers the shared Block.Device.V1 protocol.
 --
---  All hardware access is via capability-checked portOutp8/portInp8/portInp16
---  syscalls,
---  validated by IOPORT capabilities granted at load time.
+--  All hardware access is port I/O through the I/O port handles devmgr gave
+--  it at launch (its manifest's command-block and control bindings).
 ------------------------------------------------------------------------------
 with Interfaces; use Interfaces;
 with System; use System;
@@ -19,6 +18,9 @@ with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Block_Devices; use CuBit.Block_Devices;
 with CuBit.Memory_Grants;
+with CuBit.Handles;
+with CuBit.Startup_State;
+with Startup;
 
 procedure main is
    use ASCII;
@@ -72,15 +74,20 @@ procedure main is
    ---------------------------------------------------------------------------
    --  outb / inb wrappers (call syscall port I/O)
    ---------------------------------------------------------------------------
+   --  The control port has its own handle; every other register is in
+   --  the command block.
+   function Ports_For (port : Unsigned_16) return CuBit.Handles.IO_Ports is
+     (if port = CTRL_PORT then Startup.Control else Startup.Command_Block);
+
    procedure outb (port : Unsigned_16; val : Unsigned_8) is
       ignore : Unsigned_64;
    begin
-      ignore := portOutp8 (port, val);
+      ignore := portOutp8 (Ports_For (port), port, val);
    end outb;
 
    function inb (port : Unsigned_16) return Unsigned_8 is
    begin
-      return Unsigned_8 (portInp8 (port) and 16#FF#);
+      return Unsigned_8 (portInp8 (Ports_For (port), port) and 16#FF#);
    end inb;
 
    --  Floating bus value (no controller present)
@@ -196,7 +203,7 @@ procedure main is
       --  Read 256 words of identify data via individual portInp16 calls.
       --  The former bulk rep-insw syscall was not reliable from userspace.
       for i in buf'Range loop
-         buf (i) := Unsigned_16 (portInp16 (REG_DATA) and 16#FFFF#);
+         buf (i) := Unsigned_16 (portInp16 (Startup.Command_Block, REG_DATA) and 16#FFFF#);
       end loop;
 
       --  This driver currently issues 28-bit PIO commands, so report only the
@@ -275,7 +282,7 @@ procedure main is
          begin
             for i in sectorWords'Range loop
                sectorWords (i) :=
-                 Unsigned_16 (portInp16 (REG_DATA) and 16#FFFF#);
+                 Unsigned_16 (portInp16 (Startup.Command_Block, REG_DATA) and 16#FFFF#);
             end loop;
          end;
       end loop;
@@ -339,7 +346,7 @@ procedure main is
             ignore : Unsigned_64;
          begin
             for i in sectorWords'Range loop
-               ignore := portOutp16 (REG_DATA, sectorWords (i));
+               ignore := portOutp16 (Startup.Command_Block, REG_DATA, sectorWords (i));
             end loop;
          end;
       end loop;
@@ -381,7 +388,7 @@ procedure main is
    begin
       replyMsg.tag := (label  => label,
                        length => 1,
-                       flags  => 0,
+                       protocol  => 0, ipc => <>,
                        reserved  => 0);
       replyMsg.words := (0 => word0, others => 0);
       ignore := reply (dest, replyMsg);
@@ -480,7 +487,7 @@ procedure main is
       end if;
 
       --  No request flags are honoured: FUA is not advertised.
-      if msg.tag.length /= 4 or else msg.tag.flags /= 0 or else
+      if msg.tag.length /= 4 or else msg.tag.protocol /= 0 or else
          msg.tag.reserved /= 0 or else
          msg.words (1) > CuBit.Memory_Grants.MAXIMUM_GLOBAL_SLOT or else
          msg.words (3) = 0 or else
@@ -541,7 +548,7 @@ procedure main is
    begin
       if identification = Identified then
          replyMsg.tag := (label => REPLY_OK, length => 4,
-                          flags => 0, reserved => 0);
+                          protocol => 0, ipc => <>, reserved => 0);
          replyMsg.authorityTag := 0;
          replyMsg.words :=
            (0 => driveBlockCount,
@@ -564,6 +571,10 @@ procedure main is
    msg    : Message;
 begin
    debugPrint ("ATA Driver: Starting..." & LF);
+   if not CuBit.Startup_State.Ready (Startup.Verify) then
+      debugPrint ("ATA Driver: startup capabilities missing" & LF);
+      return;
+   end if;
 
    --  Run IDENTIFY to detect primary master drive
    identification := doIdentify;
@@ -576,18 +587,17 @@ begin
    declare
       ignore : Unsigned_64;
    begin
-      ignore := registerDriver (2);  --  DRIVER_ATA = 2
+      ignore := registerDriver (DRIVER_ATA, Startup.Registration);
    end;
 
    --  Signal devmgr that we are ready
    declare
-      CAP_SLOT_READY : constant Unsigned_64 := 15;
       OP_READY       : constant Unsigned_32 := 16#FF00#;
       ignore : MessageTag;
    begin
-      ignore := capSend (CAP_SLOT_READY,
+      ignore := capSend (Startup.Ready,
          (tag      => (label => OP_READY, length => 0,
-                       flags => 0, reserved => 0),
+                       protocol => 0, ipc => <>, reserved => 0),
           authorityTag => 0,
           words    => (others => 0)), CuBit.Messages.Wait_Forever);
    end;
@@ -607,7 +617,7 @@ begin
             handleDescribe (sender);
          when OP_FLUSH_DEVICE =>
             if identification = Identified and then msg.tag.length = 0 and then
-              msg.tag.flags = 0 and then msg.tag.reserved = 0 and then
+              msg.tag.protocol = 0 and then msg.tag.reserved = 0 and then
               (not writeCacheEnabled or else flushCache)
             then
                sendReply (sender, REPLY_OK, 0);

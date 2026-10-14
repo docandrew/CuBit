@@ -4,6 +4,7 @@ with CuBit.Log_Protocol;
 with CuBit.Log_Records;
 with CuBit.System_Facts;
 with Desktop_Startup_Clock;
+with Desktop_Endpoints;
 package body Desktop_Bootstrap_Logs is
    use Interfaces;
    package P renames CuBit.Log_Protocol;
@@ -28,6 +29,7 @@ package body Desktop_Bootstrap_Logs is
          end if;
          Next_Try := Started + Retry_Ms;
          --  Information and up: Warnings plus the kernel's physical map.
+         CuBit.Logging.Bind (Reader, Desktop_Endpoints.Log_Observer);
          CuBit.Logging.Subscribe (Reader, Status, CuBit.Log_Records.Information,
                                   Limit_Ms => Call_Limit_Ms);
          if Status not in P.OK | P.Empty | P.Gap then

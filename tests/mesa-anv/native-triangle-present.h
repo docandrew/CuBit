@@ -1,9 +1,9 @@
 /* Test-only synchronous Desktop consumer. Not Mesa WSI or a public export API.
- * Included after report() and the render-slot declaration in native test glue.
+ * Included after report() and the render-endpoint declaration in native test glue.
  * Vulkan objects remain live in mesa_triangle_probe until this returns. */
 #include "native_gpu_presenter.h"
 #include "native_gpu_mapping.h"
-extern uint64_t cubit_test_desktop_slot(void);
+extern cubit_endpoint cubit_test_desktop_endpoint(void);
 extern uint64_t cubit_test_triangle_create(uint32_t width,uint32_t height);
 extern uint32_t cubit_test_triangle_present(uint64_t surface,uint32_t width,uint32_t height);
 #ifndef CUBIT_TEST_FRAME_SIZE
@@ -33,7 +33,7 @@ present_completed_triangle(VkDevice handle, VkDeviceMemory allocation,
       return triangle_export_rejected("Vulkan CPU mapping still live",VK_ERROR_INITIALIZATION_FAILED);
    if (!device->cubit_cpu_mappings || device->cubit_cpu_mappings->lost)
       return triangle_export_rejected("CPU grant tracker unavailable/lost",VK_ERROR_DEVICE_LOST);
-   if (device->cubit_cpu_mappings->slot!=cubit_test_render_slot())
+   if (!cubit_endpoint_same(device->cubit_cpu_mappings->endpoint, cubit_test_render_endpoint()))
       return triangle_export_rejected("render session mismatch",VK_ERROR_INITIALIZATION_FAILED);
    if (memory->vk.size<bytes || !memory->bo)
       return triangle_export_rejected("allocation backing too small/missing",VK_ERROR_INITIALIZATION_FAILED);
@@ -47,7 +47,7 @@ present_completed_triangle(VkDevice handle, VkDeviceMemory allocation,
    if (!surface) return triangle_export_rejected("Desktop surface creation failed",VK_ERROR_INITIALIZATION_FAILED);
    struct cubit_presenter presenter={0};
    uint32_t attached=cubit_presenter_attach_completed_linear(&presenter,
-      cubit_test_render_slot(),cubit_test_desktop_slot(),bo->gem_handle,
+      cubit_test_render_endpoint(),cubit_test_desktop_endpoint(),bo->gem_handle,
       surface,0,width,height,pitch);
    VkResult result=VK_ERROR_UNKNOWN;
    if (!attached && !cubit_test_triangle_present(surface,width,height)) {

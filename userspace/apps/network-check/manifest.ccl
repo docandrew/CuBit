@@ -20,4 +20,6 @@
   # Names only: the resolver's own queries go to the configured server.
   (request-network udp-connect (ipv4 "10.0.2.3" 32)
     (ports 53 53) (dns allow)
-    (connections 1) test-resolve))
+    (connections 1) test-resolve)
+  (optional test-connect) (optional test-listen) (optional test-datagram)
+  (optional test-refused) (optional test-resolve))

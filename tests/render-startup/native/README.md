@@ -10,23 +10,24 @@ hardware rendering/presentation performance.
 | --- | --- | --- |
 | render-denied | Required, unapproved | No submission; stopped without running |
 | render-unavailable | Required, approved | One submission; stopped without running |
-| render-software | Optional, unapproved | No submission; runs with empty render slot |
+| render-software | Optional, unapproved | No submission; runs holding no render capability |
 | render-fallback | Optional, approved | Failed GPU child stopped; one fresh software child runs |
-| render-occupied | Optional, unapproved, destination is bootstrap process slot | Stopped without running; no retry |
+| render-occupied | Optional, unapproved, asks for slot 3 (an old-style placement) | Refused at load (CAP-002: the slot field is reserved zero); no render attempt |
 | render-invalid | Unknown request flags | Stopped without running; no retry |
 
-The software fixture inspects slot 25 and emits its kernel-captured incarnation
-only if the slot is empty and self-identity capture succeeds. The observer
+The software fixture checks that its startup table holds no granted render
+entry and emits the incarnation captured from its self endpoint (CAP-002:
+no slots to inspect). The observer
 matches those identities to procmgr's accepted software attempts. It rejects
-execution of a failed GPU child or an occupied-slot child, reused incarnations,
+execution of a failed GPU child or a refused slot-request child, reused incarnations,
 extra submissions, extra retries, cleanup errors and missing Devices startup.
 Eleven synthetic faulty traces exercise the observer's negative controls.
 
 `build.sh` encodes canonical `.cubit.caps` bytes directly rather than depending
 on new CCL syntax. Request type 11, rights 3, param0 0 means required rendering;
 param0 1 opts into optional rendering. Param1 and the reserved byte remain zero.
-The optional destination is 25; the occupied negative case uses bootstrap slot
-3. Unknown flags are invalid. Executable metadata requests authority; it never
+The slot field is reserved zero (CAP-002); the occupied negative case keeps
+slot 3 to check the loader refuses a placement request. Unknown flags are invalid. Executable metadata requests authority; it never
 approves it. The CCL compiler spelling is a separate owner integration request.
 
 Run from the repository root inside Nix, with the shared build lock held:

@@ -7,7 +7,7 @@ package body CuBit.Messages is
       Output := (1, Last_Token, Wait_Reply, 42, COMPLETION_OK, True);
       return 1;
    end waitCompletion;
-   function capSubmit (slot : CapabilitySlot; msg : Message; token : Unsigned_64) return Boolean is
+   function capSubmit (slot : CuBit.Handles.Endpoint; msg : Message; token : Unsigned_64) return Boolean is
    begin
       Last_Request := msg;
       Last_Token := token;

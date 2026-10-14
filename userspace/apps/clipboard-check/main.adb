@@ -12,6 +12,8 @@
 ------------------------------------------------------------------------------
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Startup_State;
+with Startup;
 with CuBit.UI; use CuBit.UI;
 with CuBit.UI.App;
 with CuBit.UI.State;
@@ -160,6 +162,10 @@ procedure Main is
    procedure Run is new App.Run (UI, Map, Render => Render, Handle_Event => Handle);
    OK, Accepted : Boolean;
 begin
+   if not CuBit.Startup_State.Ready (Startup.Verify) then
+      debugPrint ("clipboard-check: startup capabilities missing" & ASCII.LF);
+      return;
+   end if;
    Editor.Initialize (Fields (Name_Field), "", Accepted);
    Editor.Initialize (Fields (Secret_Field), "", Accepted, Kind => Editor.Sensitive);
    App.Open (Win, WINDOW_W, WINDOW_H,

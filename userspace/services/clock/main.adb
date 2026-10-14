@@ -7,6 +7,9 @@ with CuBit.Clock_Control;
 with CuBit.Logging;
 with CuBit.Log_Records;
 with Wall_Clock;
+with CuBit.Config;
+with CuBit.Startup_State;
+with Startup;
 
 procedure Main is
    use ASCII;
@@ -26,8 +29,14 @@ procedure Main is
    Found, Handled, Submitted : Boolean;
 begin
    debugPrint ("clock: starting" & LF);
+   if not CuBit.Startup_State.Ready (Startup.Verify) then
+      debugPrint ("clock: startup capabilities missing" & LF);
+      return;
+   end if;
+   CuBit.Config.Bind (Startup.Config);
+   CuBit.Logging.Bind (Logger, Startup.Logstore);
    Wall_Clock.Initialize;
-   Ignore := registerDriver (DRIVER_CLOCK);
+   Ignore := registerDriver (DRIVER_CLOCK, Startup.Registration);
    if Ignore = Unsigned_64'Last then
       debugPrint ("clock: registration failed" & LF);
       return;
@@ -61,7 +70,7 @@ begin
          then
             Now_Ms := syscall (SYSCALL_GETTIME);
             Response.tag :=
-              (label => REPLY_OK, length => 1, flags => 0, reserved => 0);
+              (label => REPLY_OK, length => 1, protocol => 0, ipc => <>, reserved => 0);
             Response.words (0) := Unsigned_64'Min
               (Now_Ms, MAX_CCL_MILLISECONDS);
          elsif Request.tag.label = CuBit.Clock_Control.Submit_Sample then
@@ -75,7 +84,7 @@ begin
                use type CuBit.Clock_Control.Outcome;
             begin
                if Request.authorityTag = CuBit.Clock_Control.Authority_Tag and then
-                 Request.tag.length = 4 and then Request.tag.flags = 0 and then
+                 Request.tag.length = 4 and then Request.tag.protocol = 0 and then
                  Request.tag.reserved = 0
                then
                   CuBit.Clock_Control.Decode
@@ -87,7 +96,7 @@ begin
                   Wall_Clock.Adjust (Candidate, Result, Quality);
                   Wall_Clock.Publish;
                   Response.tag :=
-                    (label => REPLY_OK, length => 2, flags => 0, reserved => 0);
+                    (label => REPLY_OK, length => 2, protocol => 0, ipc => <>, reserved => 0);
                   Response.words (0) :=
                     Unsigned_64 (CuBit.Clock_Control.Outcome'Enum_Rep (Result));
                   Response.words (1) :=
@@ -99,17 +108,17 @@ begin
                else
                   debugPrint ("clock: adjustment denied" & LF);
                   Response.tag :=
-                    (label => REPLY_ERROR, length => 0, flags => 0, reserved => 0);
+                    (label => REPLY_ERROR, length => 0, protocol => 0, ipc => <>, reserved => 0);
                end if;
             end;
          elsif Request.tag.label = CuBit.Clocks.Snapshot_Operation and then
-           Request.tag.length = 0 and then Request.tag.flags = 0 and then
+           Request.tag.length = 0 and then Request.tag.protocol = 0 and then
            Request.tag.reserved = 0 and then Request.words = [0, 0, 0, 0]
          then
             Response := Wall_Clock.Snapshot;
          else
             Response.tag :=
-              (label => REPLY_ERROR, length => 0, flags => 0, reserved => 0);
+              (label => REPLY_ERROR, length => 0, protocol => 0, ipc => <>, reserved => 0);
          end if;
          Ignore := reply (From, Response);
       end if;

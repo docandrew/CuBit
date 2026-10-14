@@ -1,3 +1,4 @@
+with CuBit.Handles.Fixture;
 with Vulkan_Scene;
 with Ada.Command_Line; with Ada.Text_IO; with Interfaces;
 with Desktop_Glyph_Upload; with Desktop_Vulkan_Startup;
@@ -38,7 +39,7 @@ begin
    Reset; Context_Set (0, 0); Vulkan_Device_Mock.Set (True, True, 0);
    Pipeline_Set (0, 0); Image_Set (4096, 1, 0, 0, 0); Metadata_Set (0); Font_Set (U32 (Case_No));
    Upload_Set (4096, 1, 0, 0, 0, 0);
-   D.Initialize (25); D.Configure_Targets (32, 24, 1, 32768, OK); pragma Assert (OK);
+   D.Initialize (CuBit.Handles.Fixture.Endpoint_Of (25)); D.Configure_Targets (32, 24, 1, 32768, OK); pragma Assert (OK);
    D.Prepare_Pipeline (OK); pragma Assert (OK);
    D.Configure_Upload ((if Case_No = 4 then 128 else 2048), OK); pragma Assert (OK);
    D.Allocate_Backing (127, (if Case_No = 6 then 41 else 40), 22, Case_No /= 5, Lease, Result);

@@ -1,0 +1,24 @@
+project Install is
+   for Source_Dirs use
+     (".", "../capability-tables", "../../kernel/src",
+      "../../shared/capabilities", "../../shared/interrupts");
+   for Source_Files use
+     ("main.adb", "test_install.ads", "reference.ads", "reference.adb",
+      "fake_pages.ads", "fake_pages.adb",
+      "capabilities.ads", "realtime_admission.ads", "realtime_admission.adb",
+      "device_vector_abi.ads", "device_vector_abi.adb",
+      "capability_abi.ads", "capability_abi.adb",
+      "capability_tables.ads", "capability_tables.adb",
+      "capability_install.ads", "capability_install.adb",
+      "capability_install-placement.ads", "capability_install-placement.adb");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-gnat2022", "-gnata", "-gnato", "-O2", "-gnatwa", "-gnatwJ");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--counterexamples=off");
+   end Prove;
+end Install;

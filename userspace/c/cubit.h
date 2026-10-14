@@ -44,6 +44,9 @@ typedef long                ssize_t;
 #define NULL ((void *)0)
 #endif
 
+/* Capability handles (CAP-002): opaque per-kind structs, never slots. */
+#include "cubit_handles.h"
+
 /*---------------------------------------------------------------------------
  * Syscall Numbers
  *---------------------------------------------------------------------------*/
@@ -85,7 +88,7 @@ typedef long                ssize_t;
 #define SYSCALL_INP32           36
 #define SYSCALL_OUTP32          37
 
-/* Move reply cap from slot 63 to another slot (deferred replies) */
+/* Save the current request's reply as a handle; answer a saved reply. */
 #define SYSCALL_MOVE_REPLY_CAPABILITY  51
 #define SYSCALL_REPLY_AND_CONSUME_REPLY_CAPABILITY 52
 
@@ -99,7 +102,6 @@ typedef long                ssize_t;
 #define CUBIT_KERNEL_REPLY_FIRST 0xFFFF0000u
 #define CUBIT_REPLY_TIMEOUT      0xFFFF0001u
 #define SYSCALL_SUBMIT_VIA_ENDPOINT_CAPABILITY 42
-#define SYSCALL_INSPECT_CAPABILITY             84
 
 #define SYSCALL_REPLY_WAIT      48
 
@@ -128,18 +130,6 @@ typedef long                ssize_t;
 #define SYSCALL_TRACE_RESET     82
 #define SYSCALL_TRACE_SUMMARY   83
 
-/* Well-known capability slots */
-#define CAP_SLOT_SELF           0
-#define CAP_SLOT_FS             1
-#define CAP_SLOT_KEYBOARD       2
-#define CAP_SLOT_SELF_PROC      3
-#define CAP_SLOT_ATA            10
-#define CAP_SLOT_NET            11
-#define CAP_SLOT_MIXER          14
-#define CAP_SLOT_MIXER_NTF      15
-#define CAP_SLOT_CONFIG         20
-#define CAP_SLOT_DESKTOP        21
-
 /* Asynchronous capability IPC. Message layout matches CuBit.Messages. */
 #define CUBIT_NO_COMPLETION_TOKEN (~(uint64_t)0)
 #define CUBIT_COMPLETION_OK             0
@@ -150,9 +140,19 @@ typedef long                ssize_t;
 typedef struct {
     uint32_t label;
     uint8_t length;
-    uint8_t flags;
+    /* One byte, two fields (Capability_ABI): the protocol's own flags in the
+     * low nibble; the IPC layer's in the high nibble (bit 4 accepts a
+     * capability; 5 transferred, 6 refused, 7 offered are the kernel's, and
+     * a send claiming them is refused). */
+    uint8_t protocol : 4;
+    uint8_t ipc : 4;
     uint16_t reserved;
 } cubit_async_message_tag_t;
+#ifdef __cplusplus
+static_assert(sizeof(cubit_async_message_tag_t) == 8, "message tag is one word");
+#else
+_Static_assert(sizeof(cubit_async_message_tag_t) == 8, "message tag is one word");
+#endif
 
 typedef struct {
     cubit_async_message_tag_t tag;
@@ -184,13 +184,6 @@ typedef char cubit_completion_size_must_be_88[
     sizeof(cubit_completion_t) == 88 ? 1 : -1];
 
 
-/* Capability minting (for process managers) */
-#define SYSCALL_POLICY_MINT_CAPABILITY        72
-#define SYSCALL_RESUME          73
-
-/* Driver registration */
-#define SYSCALL_REGISTER_DRIVER 2000
-
 /* Service roles of the kernel's service registry (read from its
    publication, CuBit.System_Facts; there is no query system call). */
 #define DRIVER_CONFIG             11
@@ -210,16 +203,9 @@ typedef char cubit_completion_size_must_be_88[
 #define OP_STREAM_GONE        0x0707
 
 /*---------------------------------------------------------------------------
- * ELF Capability Manifest (.cubit.caps section)
- *
- * Allows ELF binaries to declare required capabilities. The process manager
- * reads this section and mints capabilities into the spawned process.
- *
- * Header (8 bytes): magic(4) + version(2) + count(2)
- * Entry (16 bytes): reqType(1) + rights(1) + slot(1) + reserved(1) +
- *                   param0(4) + param1(8)
+ * ELF identity and stream declarations. A program's capabilities are
+ * declared in its typed CCL manifest (manifest.ccl), never in C.
  *---------------------------------------------------------------------------*/
-#define CUBIT_CAP_MAGIC      0x43424954  /* "CBIT" in little-endian */
 #define CUBIT_ID_MAGIC       0x44494243  /* "CBID" LE */
 #define CUBIT_STREAMS_MAGIC  0x54534243  /* "CBST" LE */
 
@@ -228,16 +214,6 @@ typedef char cubit_completion_size_must_be_88[
     ((pages) & 0xFF), (((pages) >> 8) & 0xFF), \
     ((type_tag) & 0xFF), (((type_tag) >> 8) & 0xFF), \
     ((flags) & 0xFF), (((flags) >> 8) & 0xFF)
-
-/* Request types */
-#define CUBIT_REQ_FRAMEBUFFER  1
-#define CUBIT_REQ_SERVICE      2
-#define CUBIT_REQ_IOPORT       3
-#define CUBIT_REQ_IRQ          4
-#define CUBIT_REQ_DEVICE_MEM   5
-#define CUBIT_REQ_PROCESS      6
-#define CUBIT_REQ_NOTIFICATION 7
-#define CUBIT_REQ_RESOURCE     9
 
 /* Well-known stream IDs */
 #define CUBIT_STREAM_STDIN    0x01
@@ -251,14 +227,6 @@ typedef char cubit_completion_size_must_be_88[
 #define CUBIT_TYPE_RAW        0x0000
 #define CUBIT_TYPE_TEXT        0x0001
 
-/* Rights bitmask */
-#define CUBIT_RIGHT_R     0x01
-#define CUBIT_RIGHT_W     0x02
-#define CUBIT_RIGHT_RW    0x03
-#define CUBIT_RIGHT_X     0x04
-#define CUBIT_RIGHT_GRANT 0x08
-
-/* Convenience macro: declare a framebuffer capability manifest */
 /*---------------------------------------------------------------------------
  * ELF Filesystem Access Declaration (.cubit.access section)
  *
@@ -285,31 +253,6 @@ typedef char cubit_completion_size_must_be_88[
 #define CUBIT_SANDBOX_NONE        0
 #define CUBIT_SANDBOX_RUN_FOLDER  1
 #define CUBIT_SANDBOX_APP_FOLDER  2
-
-#define CUBIT_MANIFEST_FRAMEBUFFER(slot_num) \
-    static const unsigned char __cubit_manifest[] \
-        __attribute__((section(".cubit.caps"), used)) = { \
-        0x54, 0x49, 0x42, 0x43, \
-        0x01, 0x00, 0x01, 0x00, \
-        0x01, 0x03, (slot_num), 0x00, \
-        0x00, 0x00, 0x00, 0x00, \
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00  \
-    };
-
-/* Convenience macro: declare a resource quota manifest entry.
- * slot       = capability slot number
- * max_frames = max physical frames (0 = unlimited)
- * cpu_q_us   = CPU quota in microseconds per period (0 = unlimited)
- * cpu_p_us   = CPU period in microseconds
- * Packed param1: cpu_q_us in low 32 bits, cpu_p_us in high 32 bits. */
-#define CUBIT_MANIFEST_RESOURCE_ENTRY(slot, max_frames, cpu_q_us, cpu_p_us) \
-    0x09, 0x01, (slot), 0x00, \
-    ((max_frames) & 0xFF), (((max_frames) >> 8) & 0xFF), \
-    (((max_frames) >> 16) & 0xFF), (((max_frames) >> 24) & 0xFF), \
-    ((cpu_q_us) & 0xFF), (((cpu_q_us) >> 8) & 0xFF), \
-    (((cpu_q_us) >> 16) & 0xFF), (((cpu_q_us) >> 24) & 0xFF), \
-    ((cpu_p_us) & 0xFF), (((cpu_p_us) >> 8) & 0xFF), \
-    (((cpu_p_us) >> 16) & 0xFF), (((cpu_p_us) >> 24) & 0xFF)
 
 /*---------------------------------------------------------------------------
  * Standard Descriptors

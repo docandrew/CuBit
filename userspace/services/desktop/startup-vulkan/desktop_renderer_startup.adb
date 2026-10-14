@@ -2,7 +2,8 @@ with Desktop_Startup_Layout;
 with Vulkan_Device_Pipeline_FFI;
 with Desktop_Vulkan_Startup;
 with Vulkan_Device_Owner;
-with CCL_Manifest_Bindings;
+with CuBit.Handles;
+with Desktop_Endpoints;
 with Mesa_Service;
 pragma Elaborate_All (Mesa_Service);
 with Vulkan_Context_Owner;
@@ -10,7 +11,6 @@ pragma Elaborate_All (Vulkan_Context_Owner);
 with Desktop_Breadcrumbs;
 with Desktop_Startup_Progress;
 with Desktop_Logs;
-with Desktop_Capability_IO;
 with Desktop_GPU_Calls;
 package body Desktop_Renderer_Startup with SPARK_Mode,
   Refined_State => (Observed => (Admission, Device_Created)) is
@@ -36,24 +36,20 @@ package body Desktop_Renderer_Startup with SPARK_Mode,
       Diagnostic : out Pipeline_Diagnostic) is
       use type Vulkan_Device_Owner.Phase;
       package Step renames Desktop_Startup_Progress;
-      Capability : Desktop_Capability_IO.Words;
-      Inspected : Boolean;
-      Slot : Unsigned_64 := 0;
+      Render : CuBit.Handles.Endpoint := CuBit.Handles.No_Endpoint;
       Bytes : Natural;
    begin
       Evidence := (others => False);
       Diagnostic := (others => <>);
       Admission := Unknown_Slot;
       Desktop_GPU_Calls.Bound (GPU_Call_Timeout_Ms);
-      Desktop_Capability_IO.Inspect
-        (CCL_Manifest_Bindings.Slot_render, Capability, Inspected);
-      Evidence.Admitted := Inspected and then Capability (0) = 1 and then
-        Capability (1) = 3 and then Capability (3) /= 0;
-      if Evidence.Admitted then Slot := CCL_Manifest_Bindings.Slot_render; Admission := Admitted;
-      elsif Inspected and then Capability (0) = 0 then Admission := Empty_Slot;
+      --  procmgr installs the render entry only for an admitted session.
+      Evidence.Admitted := CuBit.Handles.Valid (Desktop_Endpoints.Render);
+      if Evidence.Admitted then Render := Desktop_Endpoints.Render; Admission := Admitted;
+      else Admission := Empty_Slot;
       end if;
       Step.Enter (Desktop_Breadcrumbs.Init_Before);
-      GPU.Initialize (Slot);
+      GPU.Initialize (Render);
       Step.Enter (Desktop_Breadcrumbs.Init_After);
       Device_Created := GPU.Current = Vulkan_Device_Owner.Ready;
       Evidence.Device := Device_Created;

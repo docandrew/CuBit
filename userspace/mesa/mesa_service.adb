@@ -1,7 +1,8 @@
+with CuBit.Handles.C_ABI;
 package body Mesa_Service is
    use type System.Address;
    use type Interfaces.Unsigned_32;
-   function C_Start (Slot : Interfaces.Unsigned_64; Handle : access System.Address)
+   function C_Start (Render : CuBit.Handles.C_ABI.C_Endpoint; Handle : access System.Address)
                      return Result
      with Import, Convention => C, External_Name => "cubit_mesa_service_start";
    function C_Borrow (Handle : System.Address; View : access Device_View)
@@ -12,7 +13,7 @@ package body Mesa_Service is
    function C_Close (Handle : System.Address) return Interfaces.Unsigned_32
      with Import, Convention => C, External_Name => "cubit_mesa_service_close";
 
-   procedure Start (Object : in out Owner; Slot : Interfaces.Unsigned_64;
+   procedure Start (Object : in out Owner; Render : CuBit.Handles.Endpoint;
                     Status : out Result) is
       Handle : aliased System.Address := System.Null_Address;
    begin
@@ -21,7 +22,7 @@ package body Mesa_Service is
          return;
       end if;
       Object.Attempted := True;
-      Status := C_Start (Slot, Handle'Access);
+      Status := C_Start (CuBit.Handles.C_ABI.To_C (Render), Handle'Access);
       Object.Handle := Handle; --  Retain even on a failing VkResult.
    end Start;
 

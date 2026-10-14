@@ -21,7 +21,7 @@ cd kernel
 ../userspace/ccl/build/manifest/ccl-manifest \
   ../userspace/ccl/catalogs/native-runtime-services.ccl \
   ../userspace/services/desktop/build-metrics-manifest/manifest.ccl \
-  --ada-output ../userspace/services/desktop/build-metrics-manifest/generated/ccl_manifest_bindings.ads \
+  --startup-output ../userspace/services/desktop/build-metrics-manifest/generated/startup.ads \
   > ../userspace/services/desktop/build-metrics-manifest/manifest.S
 alr exec -- gcc -c ../userspace/services/desktop/build-metrics-manifest/manifest.S \
   -o ../userspace/services/desktop/build-metrics-manifest/manifest.o

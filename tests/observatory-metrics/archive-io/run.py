@@ -36,7 +36,11 @@ for pattern in ('observatory_trace_*.ad?', 'observatory_archive_*.ad?',
     files += list((root / 'userspace/lib/observatory').glob(pattern))
 files += [root / 'userspace/runtime/gnat' / name for name in
           ('cubit.ads', 'cubit-metric_records.ads', 'cubit-metric_records.adb',
-           'cubit-metric_protocol.ads', 'cubit-failures.ads', 'cubit-failures.adb')]
+           'cubit-metric_protocol.ads', 'cubit-failures.ads', 'cubit-failures.adb',
+           'cubit-handles.ads')]
+files += [root / 'shared/capabilities' / name for name in ('capability_abi.ads', 'capability_abi.adb')]
+files += [root / 'tests/support/handles' / name for name in
+          ('cubit-handles-fixture.ads', 'cubit-handles-fixture.adb')]
 for source in files:
     assert not (src / source.name).exists(), source
     copy(source, src / source.name)

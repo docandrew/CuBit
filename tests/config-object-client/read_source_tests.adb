@@ -1,3 +1,4 @@
+with CuBit.Handles.Fixture;
 with GNAT.Source_Info;
 with CCL.Evaluation;
 with Ada.Text_IO;

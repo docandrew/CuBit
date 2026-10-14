@@ -11,10 +11,14 @@ with CuBit.Display_Planes;
 with CuBit.Display_Plane_Protocol;
 with Presentation_Test_Policy;
 with GPU_Test_Policy;
+with CuBit.Handles;
+with CuBit.Startup_State;
+with Startup;
 
 --  Dedicated fixture: never starts alongside a desktop session. Only authority
 --  is an endpoint to display.svc (including grants addressed to that service).
 procedure Main is
+   use type DP.Protocol_Flags;
    package MG renames CuBit.Memory_Grants;
    use type MG.Grant_Reference;
    package OD renames CuBit.Output_Discovery;
@@ -27,6 +31,8 @@ procedure Main is
    Wire : Wire_Message;
    Raw : Unsigned_64;
    Ignored : Unsigned_64;
+   --  The display service endpoint (manifest "display").
+   Display_Service : constant CuBit.Handles.Endpoint := Startup.Display;
    Frame_Token : Unsigned_64 := 0;
    procedure Check (Condition : Boolean; Name : String) is
    begin
@@ -38,16 +44,24 @@ procedure Main is
    function Send (Request : Wire_Message) return Wire_Message is
       Msg : Message := From_Wire (Request);
    begin
-      Msg.tag := capCall (CAP_SLOT_DISPLAY, Msg, CuBit.Messages.Wait_Forever);
+      Msg.tag := capCall (Display_Service, Msg, CuBit.Messages.Wait_Forever);
       return To_Wire (Msg);
    end Send;
    procedure Expect (Request : Wire_Message; Status : DP.Status_Code;
                      Name : String) is
       Response : constant Wire_Message := Send (Request);
+      Good : constant Boolean :=
+        Response.Label = Request.Label and then Response.Length = 1 and then
+        Response.Flags = 0 and then Response.Reserved = 0 and then
+        Response.Words (0) = DP.Status_Code'Enum_Rep (Status);
    begin
-      Check (Response.Label = Request.Label and then Response.Length = 1 and then
-             Response.Flags = 0 and then Response.Reserved = 0 and then
-             Response.Words (0) = DP.Status_Code'Enum_Rep (Status), Name);
+      if not Good then
+         --  What came back, to tell a refusal from a transport failure.
+         debugPrint ("display-check: " & Name & ": answer label" &
+                     Response.Label'Image & " length" & Response.Length'Image &
+                     " status" & Response.Words (0)'Image & ASCII.LF);
+      end if;
+      Check (Good, Name);
    end Expect;
    function Source_Name (Source : OD.Output_Source) return String is
      (case Source is
@@ -126,7 +140,7 @@ procedure Main is
       Activity : Activity_Result;
    begin
       Frame_Token := Frame_Token + 1;
-      if not capSubmit (CAP_SLOT_DISPLAY, Msg, Frame_Token) then
+      if not capSubmit (Display_Service, Msg, Frame_Token) then
          Check (False, "frame transport admission"); return;
       end if;
       loop
@@ -163,7 +177,7 @@ procedure Main is
       begin
          Pixels := [others => 16#FF80_4020#];
          MG.Create_Via_Capability
-           (CAP_SLOT_DISPLAY, To_Address (Address), 1, False, First, Ok);
+           (Display_Service, To_Address (Address), 1, False, First, Ok);
          Check (Ok, "create read-only grant");
          if not Ok then return; end if;
          Expect (Encode_Attachment ((First, (4, 2, 16))), DP.Denied,
@@ -255,7 +269,7 @@ procedure Main is
                Check (Opened.Words (0) = DP.Status_Code'Enum_Rep (DP.Bad_State),
                       "stale attachment cannot reopen");
                MG.Create_Via_Capability
-                 (CAP_SLOT_DISPLAY, To_Address (Address), 1, False, Rebinding, Ok);
+                 (Display_Service, To_Address (Address), 1, False, Rebinding, Ok);
                Check (Ok, "replacement grant after output invalidation");
                if not Ok then return; end if;
                Expect (Encode_Attachment ((Rebinding, (4, 2, 16))), DP.Success,
@@ -289,7 +303,7 @@ procedure Main is
          Expect ((Code (Present_Rectangle), 4, 0, 0, [0, 0, 4, 2]), DP.Success,
                  "old attachment still readable after rejection and revocation");
          MG.Create_Via_Capability
-           (CAP_SLOT_DISPLAY, To_Address (Address), 1, False, Second, Ok);
+           (Display_Service, To_Address (Address), 1, False, Second, Ok);
          Check (Ok, "create replacement");
          if not Ok then return; end if;
          Expect (Encode_Attachment ((Second, (4, 2, 16))), DP.Success, "replace buffer");
@@ -307,7 +321,7 @@ procedure Main is
          end;
          Check (Generation (First) = 0, "replacement returns old pin");
          MG.Create_Via_Capability
-           (CAP_SLOT_DISPLAY, To_Address (Address), 1, False, Reused, Ok);
+           (Display_Service, To_Address (Address), 1, False, Reused, Ok);
          Check (Ok, "create reused slot");
          if Ok then
             --  One global grant table: the slot may go to another process
@@ -366,7 +380,7 @@ procedure Main is
          for H in Head loop
             Frame_Token := Frame_Token + 1;
             Tokens (H) := Frame_Token;
-            Check (capSubmit (CAP_SLOT_DISPLAY, From_Wire
+            Check (capSubmit (Display_Service, From_Wire
               (With_Output (Encode_Frame ((Sessions (H), 1, (0, 0, 32, 32))), H)),
                Tokens (H)), "concurrent frame admission");
          end loop;
@@ -435,7 +449,7 @@ procedure Main is
            Integer_Address ((Raw + 4095) and not Unsigned_64'(4095));
          Paint (Output, (if Output = 0 then 16#00E0_3020# else 16#0020_50E0#));
          MG.Create_Via_Capability
-           (CAP_SLOT_DISPLAY, To_Address (Addresses (Output)), 1, False,
+           (Display_Service, To_Address (Addresses (Output)), 1, False,
             Grants (Output), Ok);
          Check (Ok, "per-output grant");
          if not Ok then return; end if;
@@ -499,7 +513,7 @@ procedure Main is
          Activity : Activity_Result;
       begin
          Frame_Token := Frame_Token + 1;
-         Check (capSubmit (CAP_SLOT_DISPLAY, Msg, Frame_Token), "pool submit transport");
+         Check (capSubmit (Display_Service, Msg, Frame_Token), "pool submit transport");
          if not Passed then return; end if;
          if GPU_Test_Policy.Delay_First_Output_Ms /= 0 and then Outcome = Published then
             Wire := Send ((Label => Code (Get_Information), others => <>));
@@ -544,7 +558,7 @@ procedure Main is
          Check (Raw /= Unsigned_64'Last, "pool storage");
          if not Passed then return; end if;
          Addresses (B) := Integer_Address ((Raw + 4095) and not Unsigned_64'(4095));
-         MG.Create_Via_Capability (CAP_SLOT_DISPLAY, To_Address (Addresses (B)), 1, False, Grants (B), Ok);
+         MG.Create_Via_Capability (Display_Service, To_Address (Addresses (B)), 1, False, Grants (B), Ok);
          Check (Ok, "pool root grant");
          if not Passed then return; end if;
          Expect (P.Encode (P.Attachment'(B, (Grants (B), (32, 32, 128)))),
@@ -670,7 +684,7 @@ procedure Main is
                     (if X < 8 and then Y < 8 then 0 else Colors (R));
                end loop;
             end loop;
-            MG.Create_Via_Capability (CAP_SLOT_DISPLAY, To_Address (Base),
+            MG.Create_Via_Capability (Display_Service, To_Address (Base),
                                       Image_Pages, False, Images (R), Ok);
             Check (Ok, "cursor image grant");
          end;
@@ -740,7 +754,7 @@ procedure Main is
                Check (Raw /= Unsigned_64'Last, "plan frame storage");
                if not Passed then return; end if;
                MG.Create_Via_Capability
-                 (CAP_SLOT_DISPLAY, To_Address (Integer_Address ((Raw + 4095) and not Unsigned_64'(4095))),
+                 (Display_Service, To_Address (Integer_Address ((Raw + 4095) and not Unsigned_64'(4095))),
                   1, False, Grant, Ok);
                Expect (P.Encode (P.Attachment'(B, (Grant, (32, 32, 128)))),
                        DP.Success, "plan frame slot");
@@ -750,7 +764,7 @@ procedure Main is
             Session := Wire.Words (1);
             if not Passed then return; end if;
             Frame_Token := Frame_Token + 1;
-            Check (capSubmit (CAP_SLOT_DISPLAY, From_Wire (PP.Encode (PP.Plan_Frame'
+            Check (capSubmit (Display_Service, From_Wire (PP.Encode (PP.Plan_Frame'
                      ((1, (Session, 1, (0, 0, 32, 32))), Epoch))), Frame_Token),
                    "plan frame submit");
             Deadline := syscall (SYSCALL_GETTIME) + 5000;
@@ -818,6 +832,11 @@ procedure Main is
       if Passed then debugPrint ("DISPLAY-BACKEND-FAILURE-CHECK: PASS" & ASCII.LF); end if;
    end Exercise_Backend_Failure;
 begin
+   if not CuBit.Startup_State.Ready (Startup.Verify) then
+      debugPrint ("DISPLAY-GRANTS-CHECK: FAIL startup capabilities" & ASCII.LF);
+      Ignored := syscall (SYSCALL_EXIT, 1);
+      return;
+   end if;
    if GPU_Test_Policy.Reject_Client_Clear then
       Exercise_Backend_Failure;
    else

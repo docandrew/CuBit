@@ -22,7 +22,7 @@ cubit_cpu_mapping_release(struct cubit_cpu_mapping *r, bool replace)
    }
    if (r->state != CUBIT_MAP_RETIRING)
       return 5;
-   const uint32_t result = cubit_intel_retire_mapping(r->slot, r->mapping);
+   const uint32_t result = cubit_intel_retire_mapping(r->endpoint, r->mapping);
    if (result == 4)
       return 4;
    r->state = result == 0 ? CUBIT_MAP_RETIRED : CUBIT_MAP_FAILED;
@@ -30,24 +30,24 @@ cubit_cpu_mapping_release(struct cubit_cpu_mapping *r, bool replace)
 }
 
 uint32_t
-cubit_cpu_mapping_open(struct cubit_cpu_mapping *r, uint64_t slot,
+cubit_cpu_mapping_open(struct cubit_cpu_mapping *r, cubit_endpoint endpoint,
    uint32_t handle, uint64_t offset, uint64_t bytes, uint32_t writable)
 {
    if (!r || r->state != CUBIT_MAP_EMPTY)
       return 5;
    r->state = CUBIT_MAP_FAILED;
-   r->slot = slot;
+   r->endpoint = endpoint;
    r->bytes = bytes;
    r->bo_offset = offset;
    r->bo_handle = handle;
    r->lookup_address = 0;
    r->address = r->reference = 0;
    r->mapping = 0;
-   if (cubit_intel_map_buffer(slot, handle, offset, bytes, writable,
+   if (cubit_intel_map_buffer(endpoint, handle, offset, bytes, writable,
                              &r->mapping, &r->reference) != 0)
       return 5;
    r->state = CUBIT_MAP_RETIRING;
-   if (cubit_intel_acquire_view(slot, r->reference, 0, bytes, writable,
+   if (cubit_intel_acquire_view(endpoint, r->reference, 0, bytes, writable,
                               &r->address) != 0) {
       r->address = 0;
       /* No successful acquisition => no borrow to return. Retire the grant. */
@@ -74,7 +74,7 @@ cubit_cpu_tracker_map(struct cubit_cpu_mapping_tracker *t, uint32_t handle,
       /* Only the tracker owns these records, under its caller's lock. Move
        * outstanding records in order so reverse lookup still selects the
        * newest borrow. A retired tombstone has no remaining transport work;
-       * dropping it does NOT reclaim BOs, GPU addresses or endpoint slots. */
+       * dropping it does NOT reclaim BOs, GPU addresses or endpoint handles. */
       uint32_t retained = 0;
       for (uint32_t i = 0; i < t->used; i++) {
          if (records[i].state != CUBIT_MAP_RETIRED) {
@@ -104,7 +104,7 @@ cubit_cpu_tracker_map(struct cubit_cpu_mapping_tracker *t, uint32_t handle,
       records = grown;
    }
    struct cubit_cpu_mapping *r = &records[t->used++];
-   const uint32_t result = cubit_cpu_mapping_open(r, t->slot, handle, offset, bytes, writable);
+   const uint32_t result = cubit_cpu_mapping_open(r, t->endpoint, handle, offset, bytes, writable);
    if (result != 0) {
       t->lost = true;
       return result;

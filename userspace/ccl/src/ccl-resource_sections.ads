@@ -40,10 +40,6 @@ package CCL.Resource_Sections with Pure, SPARK_Mode => On is
    PCI_ID_LAST : constant := 16#FFFF#;
    PCI_CODE_LAST : constant := 16#FF#;
 
-   --  Slot 0 is bootstrap, 62 a driver's saved reply capability, 63 the
-   --  reply slot: a resource never lands in any of them.
-   subtype Slot_Number is Natural range 1 .. 61;
-
    subtype Match_Value_Index is Positive range 1 .. 3;
    type Match_Values is array (Match_Value_Index) of Unsigned_16;
    type Match_Info is record
@@ -54,7 +50,6 @@ package CCL.Resource_Sections with Pure, SPARK_Mode => On is
    type Resource is record
       Kind : Resource_Kind := Scheduling;
       Rights : Rights_Kind := Read_Only;
-      Slot : Slot_Number := Slot_Number'First;
       --  BAR or platform resource index.
       Index : Unsigned_32 := 0;
       --  Bytes, ports, vectors, or the scheduling budget in microseconds.
@@ -73,7 +68,7 @@ package CCL.Resource_Sections with Pure, SPARK_Mode => On is
 
    type Decode_Status is
      (Decoded, Invalid_Length, Invalid_Header, Invalid_Match, Invalid_Entry,
-      Duplicate_Slot, Device_Without_Match, Match_Without_Device);
+      Device_Without_Match, Match_Without_Device);
 
    --  Whether Match is one the compiler can emit.
    function Valid_Match (Match : Match_Info) return Boolean;
@@ -90,10 +85,6 @@ package CCL.Resource_Sections with Pure, SPARK_Mode => On is
                    and then Valid_Match (Plan.Match)
                    and then (for all I in 1 .. Plan.Count =>
                                Valid_Resource (Plan.Match, Plan.Entries (I)))
-                   and then (for all I in 1 .. Plan.Count =>
-                               (for all J in 1 .. Plan.Count =>
-                                  I = J or else
-                                  Plan.Entries (I).Slot /= Plan.Entries (J).Slot))
                    and then (Plan.Match.Kind /= No_Match) =
                      (for some I in 1 .. Plan.Count =>
                         Plan.Entries (I).Kind in Device_Resource));

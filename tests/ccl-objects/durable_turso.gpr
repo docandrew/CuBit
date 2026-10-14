@@ -3,10 +3,12 @@ project Durable_Turso is
    for Source_Dirs use (".", "../../userspace/ccl/src", "../../userspace/ccl/persistence",
       "../../userspace/services/config", "../../userspace/lib/config",
       "../config-worker", "../storage-channel/fixture",
-      "../../userspace/runtime/gnat", CBOR_Source & "/src");
+      "../../userspace/runtime/gnat", "../../shared/capabilities", CBOR_Source & "/src");
    for Source_Files use
      ("ccl-types-correspondence.ads", "ccl-types-correspondence.adb") &
      ("typed_store_turso.adb", "native_probe_host.adb", "schema_store_turso.adb",
+      "cubit-handles.ads", "capability_abi.ads", "capability_abi.adb",
+      "cubit-handles-fixture.ads", "cubit-handles-fixture.adb",
       "config_native_probe.ads", "config_native_probe.adb",
       "config_objects.ads", "config_objects.adb",
       "config_typed_store.ads", "config_typed_store.adb",

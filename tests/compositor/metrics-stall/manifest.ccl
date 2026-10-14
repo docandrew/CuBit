@@ -2,4 +2,5 @@
 # Trusted startup grants registration only for this exact service identity.
 (executable-manifest v1
   (identity "com.cubit.metrics")
-  (version "0.1.0"))
+  (version "0.1.0")
+  (request-notification metrics manage registration))

@@ -5,6 +5,9 @@ with Interfaces; use Interfaces;
 
 with CuBit.Input; use CuBit.Input;
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Handles;
+with CuBit.Startup_State;
+with Startup;
 
 procedure Main is
    use ASCII;
@@ -23,12 +26,13 @@ procedure Main is
 
    procedure Publish
      (destination : Process_ID;
+      authority   : CuBit.Handles.Notification;
       report      : Source_Report)
    is
       pending : Source_Report := report;
    begin
       for attempt in 1 .. 100 loop
-         if trySendEvent (destination, Encode (pending)) then
+         if trySendEvent (destination, Encode (pending), authority) then
             if pending.flags (RESYNCHRONIZE) then
                resyncReports := resyncReports + 1;
             end if;
@@ -52,8 +56,8 @@ procedure Main is
    begin
       pointerSequence := Next_Sequence (pointerSequence);
       Publish
-        (pointerConsumer,
-         (sourceAuthorityTag => 0,
+        (pointerConsumer, Startup.Mouse,
+         (sourceIdentity => 0,
           sequence => pointerSequence,
           generation => 1,
           device => RELATIVE_POINTER,
@@ -67,8 +71,8 @@ procedure Main is
    begin
       keyboardSequence := Next_Sequence (keyboardSequence);
       Publish
-        (keyboardConsumer,
-         (sourceAuthorityTag => 0,
+        (keyboardConsumer, Startup.Keyboard,
+         (sourceIdentity => 0,
           sequence => keyboardSequence,
           generation => 1,
           device => KEYBOARD,
@@ -79,6 +83,10 @@ procedure Main is
    end Publish_Key;
 
 begin
+   if not CuBit.Startup_State.Ready (Startup.Verify) then
+      debugPrint ("input-stress: FAIL startup capabilities missing" & LF);
+      return;
+   end if;
    debugPrint ("input-stress: waiting for input consumers" & LF);
    for attempt in 1 .. 200 loop
       pointerConsumer :=

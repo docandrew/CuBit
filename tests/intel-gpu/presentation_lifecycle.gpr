@@ -4,7 +4,7 @@ project Presentation_Lifecycle is
    for Object_Dir use "build-presentation-lifecycle";
    for Source_Files use ("poll_budget_tests.adb", "presentation_exclusion_tests.adb", "cubit.ads",
      "cubit-grant_references.ads", "fixture_messages.ads",
-     "fixture_capability_grants.ads", "fixture_memory_grants.ads",
+     "fixture_capability_grants.ads", "fixture_handles.ads", "fixture_memory_grants.ads",
      "fixture_memory_grants.adb", "intel_gpu_buffer_views.ads",
      "intel_gpu_buffer_views.adb", "intel_gpu_buffer_handles.ads",
      "intel_gpu_name_index.ads", "intel_gpu_name_index.adb",
@@ -19,6 +19,7 @@ project Presentation_Lifecycle is
    package Naming is
       for Spec ("CuBit.Messages") use "fixture_messages.ads";
       for Spec ("CuBit.Capability_Grants") use "fixture_capability_grants.ads";
+      for Spec ("CuBit.Handles") use "fixture_handles.ads";
       for Spec ("CuBit.Memory_Grants") use "fixture_memory_grants.ads";
       for Body ("CuBit.Memory_Grants") use "fixture_memory_grants.adb";
    end Naming;

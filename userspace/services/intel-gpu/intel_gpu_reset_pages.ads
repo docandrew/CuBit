@@ -17,13 +17,6 @@ package Intel_GPU_Reset_Pages with SPARK_Mode, Pure is
          when 13 => 16#1C3000#, when 14 => 16#1D3000#,
          when 15 => 16#A000#)
      with Post => Offset'Result mod 4096 = 0 and Offset'Result < 16#200000#;
-   -- Do not extend16..22 into23: logging owns that slot. Display, GGTT and
-   -- PHY grants occupy24..31. Slots32..39 are within the64-slot process table and
-   -- is fixed by this policy, never chosen by the requester. The
-   -- frequency page takes slot13: the driver's table is otherwise full
-   -- (9..12 pipe pages, 15 devmgr, 40..62 recipients/replies, 63 kernel
-   -- reply), and slot13 is a ramdisk convention of the filesystem only.
-   function Slot (Index : Page_Index) return Unsigned_64 is
-     (if Index = Frequency_Page then 13
-      elsif Index >= 7 then 25 + Unsigned_64 (Index) else 16 + Unsigned_64 (Index));
+   -- devmgr answers each page's grant request with exactly that page
+   -- (CAP-002: the reply carries the device memory; no slot is chosen).
 end Intel_GPU_Reset_Pages;

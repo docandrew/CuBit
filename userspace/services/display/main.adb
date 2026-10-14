@@ -19,6 +19,13 @@ with CuBit.Display_Protocol;
 with CuBit.Desktop_Messages;
 with CuBit.Memory_Grants;
 with CuBit.Capability_Grants;
+with CuBit.Handles;
+with CuBit.Handles.IPC;
+with CuBit.Handles.Startup;
+with CuBit.Handles.Devices;
+with CuBit.Startup_Tables;
+with CuBit.Startup_State;
+with Startup;
 with CuBit.Presentation_State;
 with CuBit.Display_Pool_Protocol;
 with CuBit.Display_Pool_Registry;
@@ -99,7 +106,10 @@ procedure main is
    DISPLAY_CAP_GPU_PRESENT  : constant Unsigned_64 := 16#0004#;
    DISPLAY_CAP_PAGE_FLIP    : constant Unsigned_64 := 16#0008#;
 
-   CAP_SLOT_GPU : constant CapabilitySlot := 9;
+   --  The GPU service (optional: without one, the firmware framebuffer).
+   function Lookup_GPU return CuBit.Handles.Endpoint is
+     (if Startup.Gpu.Present then Startup.Gpu.Value else CuBit.Handles.No_Endpoint);
+   GPU_Service : constant CuBit.Handles.Endpoint := Lookup_GPU;
 
    type Rect is record
       x, y, w, h : Natural := 0;
@@ -184,8 +194,25 @@ procedure main is
    sessionSequence : Unsigned_64 := 0;
    backendSequence : Unsigned_64 := 0;
    deferredReply : Boolean := False;
-   function frameReplySlot (Output : Output_Index) return CapabilitySlot is
-     (CapabilitySlot (32 + Natural (Output)));
+   --  Each output's frame request, answered when its present completes.
+   frameReplies : array (Output_Index) of CuBit.Handles.Reply :=
+     [others => CuBit.Handles.No_Reply];
+
+   --  Set the request being served aside; False when the kernel refused.
+   function saveInto (Saved : out CuBit.Handles.Reply) return Boolean is
+      Result : constant CuBit.Handles.IPC.Saved_Reply := CuBit.Handles.IPC.Save_Reply;
+   begin
+      Saved := (if Result.Saved then Result.Handle else CuBit.Handles.No_Reply);
+      return Result.Saved;
+   end saveInto;
+
+   --  Answer a saved request; it is used up.
+   function answerSaved (Saved : in out CuBit.Handles.Reply; Msg : Message) return Unsigned_64 is
+      Result : constant Unsigned_64 := replyCap (Saved, Msg);
+   begin
+      Saved := CuBit.Handles.No_Reply;
+      return Result;
+   end answerSaved;
    gpuDetected : Boolean := False;
    --  DISP-000a: the GPU (intel-gpu) flips the firmware mode's own scanout:
    --  same geometry, driver buffers, no firmware framebuffer mapping.
@@ -199,12 +226,13 @@ procedure main is
    gpuRevision : OM.Revision := 1;
    gpuWatchToken : Unsigned_64 := 0;
    outputWatchArmed : Boolean := False;
-   OUTPUT_WATCH_SLOT : constant CapabilitySlot := 34;
+   outputWatch : CuBit.Handles.Reply := CuBit.Handles.No_Reply;
    -- Bind registry lifetime to this process incarnation, not a reusable PID
    -- or a constant shared by successive Display instances. The fallback is
    -- only an inert discriminant: registration rejects a failed capture.
    displayIdentity : constant Process_ID := CuBit.Capability_Grants.Incarnation
-     (CuBit.Capability_Grants.Capture (CapabilitySlot (CAP_SLOT_SELF_PROC)));
+     (CuBit.Capability_Grants.Capture
+        (CuBit.Handles.Startup.Process_Named (CuBit.Startup_Tables.Self_Process_Text)));
    outputRegistry : Outputs.State
      (Outputs.Registry_Incarnation (if Is_Process (displayIdentity) then To_Word (displayIdentity) else 1));
 
@@ -222,9 +250,9 @@ procedure main is
       if not Is_Process (displayIdentity) then return False; end if;
       if outputStates (selectedOutput).backend.Kind = Native_GPU then
          driverIdentity := CuBit.Capability_Grants.Incarnation
-           (CuBit.Capability_Grants.Capture (CAP_SLOT_GPU));
+           (CuBit.Capability_Grants.Capture (GPU_Service));
          if not Is_Process (driverIdentity) or else not CuBit.Capability_Grants.Endpoint_Matches
-           (CAP_SLOT_GPU, driverIdentity)
+           (GPU_Service, driverIdentity)
          then return False; end if;
       elsif outputStates (selectedOutput).backend.Kind /= Firmware_Framebuffer then
          return False;
@@ -307,13 +335,13 @@ procedure main is
        w3    : Unsigned_64 := 0) return Message
    is
       msg : Message :=
-        (tag      => (label => label, length => 4, flags => 0,
+        (tag      => (label => label, length => 4, protocol => 0, ipc => <>,
                      reserved => Unsigned_16 (selectedOutput)),
          authorityTag => 0,
          words    => [w0, w1, w2, w3]);
       tag : MessageTag;
    begin
-      tag := capCall (CAP_SLOT_GPU, msg,
+      tag := capCall (GPU_Service, msg,
                       CuBit.Messages.Deadline_After (GPU_Call_Deadline_Ms));
       if tag.label = CuBit.Messages.REPLY_TIMEOUT then
          debugPrint ("display: gpu call timed out" & LF);
@@ -333,7 +361,7 @@ procedure main is
       Layout : DSP.Buffer_Layout;
    begin
       status := callGpu (OP_GPU_GET_STATUS);
-      gpuDetected := status.tag = (OP_GPU_GET_STATUS, 4, 0, 0) and then status.words (0) = 0 and then
+      gpuDetected := status.tag = (label => OP_GPU_GET_STATUS, length => 4, protocol => 0, ipc => <>, reserved => 0) and then status.words (0) = 0 and then
         status.words (1) = 1;
       if not gpuPrimary and then gpuDetected then
          --  A driver that took over the firmware mode's own scanout (Intel,
@@ -397,7 +425,9 @@ procedure main is
            Firmware.Width'Image & " x" & Firmware.Height'Image &
            " ->" & Width'Image & " x" & Height'Image & "; firmware rendering retired" & LF);
       else
-         Mapping := syscall (SYSCALL_MAPFB);
+         Mapping := (if Startup.Framebuffer.Present
+                     then CuBit.Handles.Devices.Map_Framebuffer (Startup.Framebuffer.Value)
+                     else Unsigned_64'Last);
          if Mapping = 0 or else Mapping = Unsigned_64'Last then
             --  The kernel's "kernel: device-memory denied" record names the
             --  physical pages and why; this names the framebuffer.
@@ -410,7 +440,7 @@ procedure main is
            (Firmware_Framebuffer, To_Address (Integer_Address (Mapping)));
          if gpuDetected then
             debugPrint ("display: gpu not primary, using linear-fb" & LF);
-         elsif status.tag = (OP_GPU_GET_STATUS, 4, 0, 0) and then status.words (0) = 0 then
+         elsif status.tag = (label => OP_GPU_GET_STATUS, length => 4, protocol => 0, ipc => <>, reserved => 0) and then status.words (0) = 0 then
             --  intel-gpu answered but cannot flip (its log says why).
             debugPrint ("display: gpu scanout unavailable, using linear-fb" & LF);
          else
@@ -699,7 +729,7 @@ procedure main is
          return False;
       end if;
       reply := callGpu (OP_GPU_CLEAR, color, 0, 0, 0);
-      if reply.tag = (OP_GPU_CLEAR, 1, 0, 0) and then reply.words (0) = 0 then
+      if reply.tag = (label => OP_GPU_CLEAR, length => 1, protocol => 0, ipc => <>, reserved => 0) and then reply.words (0) = 0 then
          BT.Cleared (outputStates (selectedOutput).Targets);
          outputStates (selectedOutput).gpuStale := [others => (others => 0)];
          return True;
@@ -805,7 +835,7 @@ procedure main is
                   return False;
                end if;
                MG.Acquire_Via_Capability
-                 (CAP_SLOT_GPU, decoded.Value.Grant, 0,
+                 (GPU_Service, decoded.Value.Grant, 0,
                   DSP.DP.Byte_Length (decoded.Value.Layout), MG.Write_Access, mapped, acquired);
                if not acquired then
                   debugPrint ("display: GPU mapping acquisition rejected" & LF);
@@ -921,8 +951,8 @@ procedure main is
       packedWH := Unsigned_64 (transfer.w) or
         Shift_Left (Unsigned_64 (transfer.h), 32);
 
-      return (tag => (OP_GPU_PRESENT_BUFFER, 4, 0,
-                      Unsigned_16 (selectedOutput)),
+      return (tag => (label => OP_GPU_PRESENT_BUFFER, length => 4,
+                      protocol => 0, ipc => <>, reserved => Unsigned_16 (selectedOutput)),
               authorityTag => 0,
               words => [Unsigned_64 (target), packedXY, packedWH, 0]);
    end prepareGpuRect;
@@ -996,7 +1026,7 @@ procedure main is
       State.legacyDamage := clampGpuRect (damage);
       BT.Seal (State.Targets, token);
       if BT.Current (State.Targets) /= BT.In_Flight or else
-        not capSubmit (CAP_SLOT_GPU, request, token)
+        not capSubmit (GPU_Service, request, token)
       then
          BT.Quarantine (State.Targets);
          State.presentationFault := True;
@@ -1214,7 +1244,7 @@ procedure main is
    begin
       --  Plane calls are answered at once by the driver; a short deadline
       --  keeps display.svc (and so the pointer) responsive if it is stuck.
-      Msg.tag := capCall (CAP_SLOT_GPU, Msg,
+      Msg.tag := capCall (GPU_Service, Msg,
                           CuBit.Messages.Deadline_After (Plane_Call_Deadline_Ms));
       if Msg.tag.label = CuBit.Messages.REPLY_TIMEOUT then
          debugPrint ("display: gpu plane call timed out" & LF);
@@ -1274,7 +1304,7 @@ procedure main is
             Acquired := False;
             if Mapping.Valid then
                MG.Acquire_Via_Capability
-                 (CAP_SLOT_GPU, Mapping.Value.Grant, 0,
+                 (GPU_Service, Mapping.Value.Grant, 0,
                   GP.Bytes (Mapping.Value), MG.Write_Access, Mapped, Acquired);
             end if;
             if Acquired then
@@ -1321,7 +1351,7 @@ procedure main is
          return;
       end if;
       Compositor_Requests.Allocate (backendSequence, Token);
-      if capSubmit (CAP_SLOT_GPU, CuBit.Desktop_Messages.From_Wire
+      if capSubmit (GPU_Service, CuBit.Desktop_Messages.From_Wire
            (DSP.With_Output (GP.Encode (GP.Move'(Plane, B.Position)), Output)),
          Token)
       then
@@ -1871,7 +1901,7 @@ procedure main is
                   Matched := True;
                   BT.Complete (State.Targets, Completion.token,
                                Completion.valid and then Completion.status = COMPLETION_OK and then
-                               Completion.msg.tag = (OP_GPU_PRESENT_BUFFER, 1, 0, 0) and then
+                               Completion.msg.tag = (label => OP_GPU_PRESENT_BUFFER, length => 1, protocol => 0, ipc => <>, reserved => 0) and then
                                Completion.msg.words (0) = 0 and then
                                State.legacyTarget = BT.Target (State.Targets));
                   State.legacyToken := 0;
@@ -1910,7 +1940,7 @@ procedure main is
                   --  shown; 6: superseded before latching) drops this frame:
                   --  the targets stay as they were and the client redraws.
                   if Completion.valid and then Completion.status = COMPLETION_OK and then
-                    Completion.msg.tag = (OP_GPU_PRESENT_BUFFER, 1, 0, 0) and then
+                    Completion.msg.tag = (label => OP_GPU_PRESENT_BUFFER, length => 1, protocol => 0, ipc => <>, reserved => 0) and then
                     Completion.msg.words (0) in GPU_Present_Refused | GPU_Present_Superseded
                   then
                      BT.Abandon (State.Targets, Completion.token);
@@ -1925,12 +1955,12 @@ procedure main is
                         finishFrame (Output, State.backendID, State.backendFrame,
                                      False, True, Response, Dropped => True);
                         State.backendToken := 0;
-                        Ignored := replyCap (frameReplySlot (Output), Response);
+                        Ignored := answerSaved (frameReplies (Output), Response);
                         goto Next_Output;
                      end if;
                   end if;
                   Published := Completion.valid and then Completion.status = COMPLETION_OK and then
-                    Completion.msg.tag = (OP_GPU_PRESENT_BUFFER, 1, 0, 0) and then
+                    Completion.msg.tag = (label => OP_GPU_PRESENT_BUFFER, length => 1, protocol => 0, ipc => <>, reserved => 0) and then
                     Completion.msg.words (0) = 0 and then
                     State.backendFrame.Session = State.activeSession and then
                     State.sessionOutput = State.currentOutput;
@@ -1961,7 +1991,7 @@ procedure main is
                   finishFrame (Output, State.backendID, State.backendFrame,
                                Published, Published, Response);
                   State.backendToken := 0;
-                  Ignored := replyCap (frameReplySlot (Output), Response);
+                  Ignored := answerSaved (frameReplies (Output), Response);
                end if;
             end;
             <<Next_Output>>
@@ -2004,7 +2034,7 @@ procedure main is
                finishFrame (Output, State.backendID, State.backendFrame,
                             False, False, Response);
                State.backendToken := 0;
-               Ignored := replyCap (frameReplySlot (Output), Response);
+               Ignored := answerSaved (frameReplies (Output), Response);
             end if;
          end;
       end loop;
@@ -2035,7 +2065,8 @@ procedure main is
       token : Unsigned_64;
    begin
       replyMsg := NULL_MESSAGE;
-      replyMsg.tag := (request.tag.label, 1, 0, 0);
+      replyMsg.tag := (label => request.tag.label, length => 1,
+                       protocol => 0, ipc => <>, reserved => 0);
       replyMsg.words (0) := DISPLAY_ERR_BAD_OBJECT;
       if request.tag.label = Pool_Wire.Submit_Frame then
          Pool_Decoded := Pool_Wire.Decode_Frame (CuBit.Desktop_Messages.To_Wire (request));
@@ -2105,7 +2136,7 @@ procedure main is
       elsif State.backend.Kind = Native_GPU then
          backendRequest := prepareGpuRect (r);
          if backendRequest.tag.length /= 0 and then
-           saveReplyCap (Unsigned_64 (frameReplySlot (selectedOutput))) = 1
+           saveInto (frameReplies (selectedOutput))
          then
             deferredReply := True;
             Compositor_Requests.Allocate (backendSequence, token);
@@ -2115,7 +2146,7 @@ procedure main is
             State.backendDamage := clampGpuRect (r);
             BT.Seal (State.Targets, token);
             if BT.Current (State.Targets) = BT.In_Flight and then
-              capSubmit (CAP_SLOT_GPU, backendRequest, token)
+              capSubmit (GPU_Service, backendRequest, token)
             then
                State.backendToken := token;
                State.backendStarted := syscall (SYSCALL_GETTIME);
@@ -2128,7 +2159,7 @@ procedure main is
             finishFrame (selectedOutput, id, result, False, True, replyMsg);
             declare
                Ignored : constant Unsigned_64 :=
-                 replyCap (frameReplySlot (selectedOutput), replyMsg);
+                 answerSaved (frameReplies (selectedOutput), replyMsg);
             begin
                null;
             end;
@@ -2165,7 +2196,7 @@ procedure main is
    begin
       if outputWatchArmed then
          outputWatchArmed := False;
-         Ignored := replyCap (OUTPUT_WATCH_SLOT, CuBit.Desktop_Messages.From_Wire
+         Ignored := answerSaved (outputWatch, CuBit.Desktop_Messages.From_Wire
            (OM.Encode_Watch (OD.Display_Broker, catalogRevision)));
       end if;
    end answerOutputWatch;
@@ -2187,7 +2218,7 @@ procedure main is
          return;
       end if;
       Compositor_Requests.Allocate (backendSequence, Token);
-      if Token /= 0 and then capSubmit (CAP_SLOT_GPU, CuBit.Desktop_Messages.From_Wire
+      if Token /= 0 and then capSubmit (GPU_Service, CuBit.Desktop_Messages.From_Wire
            (OM.Encode_Watch (OD.GPU_Backend, gpuRevision)), Token)
       then
          gpuWatchToken := Token;
@@ -2353,7 +2384,7 @@ procedure main is
       else
          Call := CuBit.Desktop_Messages.From_Wire (DSP.With_Output
            (OM.Encode_Set_Mode (OD.GPU_Backend, Wanted.Value), selectedOutput));
-         Call.tag := capCall (CAP_SLOT_GPU, Call,
+         Call.tag := capCall (GPU_Service, Call,
                               CuBit.Messages.Deadline_After (GPU_Call_Deadline_Ms));
          Answer := OM.Decode_Result (OD.GPU_Backend, CuBit.Desktop_Messages.To_Wire (Call));
          if Answer.Valid then
@@ -2387,7 +2418,8 @@ procedure main is
               (OD.Display_Broker, outputCatalog, catalogRevision,
                CuBit.Desktop_Messages.To_Wire (request)));
          else
-            replyMsg.tag := (request.tag.label, 1, 0, 0);
+            replyMsg.tag := (label => request.tag.label, length => 1,
+                             protocol => 0, ipc => <>, reserved => 0);
             replyMsg.words (0) := DISPLAY_ERR_BAD_STATE;
          end if;
          return;
@@ -2399,7 +2431,8 @@ procedure main is
               OM.Decode_Watch (OD.Display_Broker, CuBit.Desktop_Messages.To_Wire (request));
          begin
             if not Known.Valid then
-               replyMsg.tag := (request.tag.label, 1, 0, 0);
+               replyMsg.tag := (label => request.tag.label, length => 1,
+                                protocol => 0, ipc => <>, reserved => 0);
                replyMsg.words (0) := DISPLAY_ERR_BAD_OBJECT;
             elsif Known.Value /= catalogRevision then
                replyMsg := CuBit.Desktop_Messages.From_Wire
@@ -2407,11 +2440,12 @@ procedure main is
             else
                --  One watcher: a newer watch answers (supersedes) the older.
                answerOutputWatch;
-               if saveReplyCap (Unsigned_64 (OUTPUT_WATCH_SLOT)) = 1 then
+               if saveInto (outputWatch) then
                   outputWatchArmed := True;
                   deferredReply := True;
                else
-                  replyMsg.tag := (request.tag.label, 1, 0, 0);
+                  replyMsg.tag := (label => request.tag.label, length => 1,
+                                   protocol => 0, ipc => <>, reserved => 0);
                   replyMsg.words (0) := DISPLAY_ERR_BAD_STATE;
                end if;
             end if;
@@ -2423,7 +2457,8 @@ procedure main is
         request.tag.reserved > Unsigned_16 (Output_Index'Last) or else
         not readyOutputs (Output_Index (request.tag.reserved))
       then
-         replyMsg.tag := (request.tag.label, 1, 0, 0);
+         replyMsg.tag := (label => request.tag.label, length => 1,
+                          protocol => 0, ipc => <>, reserved => 0);
          replyMsg.words (0) := DISPLAY_ERR_BAD_OBJECT;
          return;
       end if;
@@ -2439,14 +2474,16 @@ procedure main is
         --  must not wait for presentation.
         not PP.Decode_Operation (request.tag.label).Valid
       then
-         replyMsg.tag := (request.tag.label, 1, 0, 0);
+         replyMsg.tag := (label => request.tag.label, length => 1,
+                          protocol => 0, ipc => <>, reserved => 0);
          replyMsg.words (0) := DISPLAY_ERR_BAD_STATE;
          return;
       end if;
 
       case request.tag.label is
          when Pool_Wire.Attach_Buffer =>
-            replyMsg.tag := (request.tag.label, 1, 0, 0);
+            replyMsg.tag := (label => request.tag.label, length => 1,
+                             protocol => 0, ipc => <>, reserved => 0);
             replyMsg.words (0) := DISPLAY_ERR_BAD_STATE;
             declare
                State : Output_State renames outputStates (selectedOutput);
@@ -2458,6 +2495,7 @@ procedure main is
                if not ownsDisplay (from) then
                   replyMsg.words (0) := DISPLAY_ERR_DENIED;
                elsif not A.Valid then
+                  debugPrint ("display: pool attach refused: malformed request" & LF);
                   replyMsg.words (0) := DISPLAY_ERR_BAD_OBJECT;
                elsif State.presentationFault or else State.srcAcquired or else
                  State.activeSession /= 0 or else not Pool_Registry.Admits (State.Pool, A.Value)
@@ -2471,6 +2509,7 @@ procedure main is
                   MG.Acquire (A.Value.Source.Grant, from, 0,
                     DSP.DP.Byte_Length (A.Value.Source.Layout), MG.Read_Access, Mapped, Acquired);
                   if not Acquired then
+                     debugPrint ("display: pool attach refused: grant not acquired" & LF);
                      replyMsg.words (0) := DISPLAY_ERR_BAD_OBJECT;
                   else
                      Pool_Registry.Register (State.Pool, A.Value, Accepted);
@@ -2495,7 +2534,8 @@ procedure main is
             end;
 
          when Pool_Wire.Open_Session =>
-            replyMsg.tag := (request.tag.label, 4, 0, 0);
+            replyMsg.tag := (label => request.tag.label, length => 4,
+                             protocol => 0, ipc => <>, reserved => 0);
             replyMsg.words (0) := DISPLAY_ERR_BAD_STATE;
             declare
                State : Output_State renames outputStates (selectedOutput);
@@ -2523,7 +2563,8 @@ procedure main is
             end;
 
          when OP_OPEN_SESSION =>
-            replyMsg.tag := (request.tag.label, 4, 0, 0);
+            replyMsg.tag := (label => request.tag.label, length => 4,
+                             protocol => 0, ipc => <>, reserved => 0);
             replyMsg.words (0) := DISPLAY_ERR_BAD_STATE;
             if not DSP.Valid_Open_Session (CuBit.Desktop_Messages.To_Wire (request)) then
                replyMsg.words (0) := DISPLAY_ERR_BAD_OBJECT;
@@ -2569,7 +2610,8 @@ procedure main is
                     (Pool_Wire.Encode (Tagged_Frame.Value.Item)), replyMsg);
                   pendingFrameEpoch := DPL.No_Epoch;
                else
-                  replyMsg.tag := (request.tag.label, 1, 0, 0);
+                  replyMsg.tag := (label => request.tag.label, length => 1,
+                                   protocol => 0, ipc => <>, reserved => 0);
                   replyMsg.words (0) := DISPLAY_ERR_BAD_OBJECT;
                end if;
             end;
@@ -2577,7 +2619,7 @@ procedure main is
          when OP_DISPLAY_GET_INFO =>
             replyMsg.tag := (label  => OP_DISPLAY_GET_INFO,
                              length => 4,
-                             flags  => 0,
+                             protocol  => 0, ipc => <>,
                              reserved  => 0);
             replyMsg.words (0) := Unsigned_64 (outputStates (selectedOutput).fbWidth);
             replyMsg.words (1) := Unsigned_64 (outputStates (selectedOutput).fbHeight);
@@ -2587,7 +2629,7 @@ procedure main is
          when OP_DISPLAY_GET_STATUS =>
             replyMsg.tag := (label  => OP_DISPLAY_GET_STATUS,
                              length => 4,
-                             flags  => 0,
+                             protocol  => 0, ipc => <>,
                              reserved  => 0);
             replyMsg.words (0) := backendId;
             replyMsg.words (1) := backendCaps;
@@ -2596,7 +2638,7 @@ procedure main is
 
          when OP_DISPLAY_ACQUIRE =>
             replyMsg.tag := (label => OP_DISPLAY_ACQUIRE,
-                             length => 1, flags => 0, reserved => 0);
+                             length => 1, protocol => 0, ipc => <>, reserved => 0);
             if not DSP.Valid_Lease_Request
               (CuBit.Desktop_Messages.To_Wire (request), DSP.Acquire_Display)
             then
@@ -2609,14 +2651,14 @@ procedure main is
                outputStates (selectedOutput).displayOwner := from;
                outputStates (selectedOutput).leasedOutput := outputStates (selectedOutput).currentOutput;
                replyMsg.words (0) := DISPLAY_OK;
-               CuBit.Boot_Milestones.Mark (CuBit.Boot_Milestone_Codes.Display_Leased);
+               CuBit.Boot_Milestones.Mark (CuBit.Boot_Milestone_Codes.Display_Leased, Startup.Registration);
             else
                replyMsg.words (0) := DISPLAY_ERR_DENIED;
             end if;
 
          when OP_DISPLAY_RELEASE =>
             replyMsg.tag := (label => OP_DISPLAY_RELEASE,
-                             length => 1, flags => 0, reserved => 0);
+                             length => 1, protocol => 0, ipc => <>, reserved => 0);
             if not DSP.Valid_Lease_Request
               (CuBit.Desktop_Messages.To_Wire (request), DSP.Release_Display)
             then
@@ -2641,7 +2683,7 @@ procedure main is
 
          when OP_DISPLAY_ATTACH_BUFFER =>
             replyMsg.tag := (label => OP_DISPLAY_ATTACH_BUFFER,
-                             length => 1, flags => 0, reserved => 0);
+                             length => 1, protocol => 0, ipc => <>, reserved => 0);
             if outputStates (selectedOutput).presentationFault then
                replyMsg.words (0) := DISPLAY_ERR_BAD_STATE;
             elsif not ownsDisplay (from) then
@@ -2697,7 +2739,7 @@ procedure main is
 
          when OP_DISPLAY_MAP_BACKBUFFER =>
             replyMsg.tag := (label => OP_DISPLAY_MAP_BACKBUFFER,
-                             length => 4, flags => 0, reserved => 0);
+                             length => 4, protocol => 0, ipc => <>, reserved => 0);
             if not ownsDisplay (from) then
                replyMsg.words (0) := DISPLAY_ERR_DENIED;
             else
@@ -2712,7 +2754,7 @@ procedure main is
          when OP_DISPLAY_PRESENT_RECT |
               OP_DISPLAY_PRESENT_IMMEDIATE_RECT =>
             replyMsg.tag := (label => request.tag.label,
-                             length => 1, flags => 0, reserved => 0);
+                             length => 1, protocol => 0, ipc => <>, reserved => 0);
             if outputStates (selectedOutput).activeSession /= 0 or else
               Pool_Registry.Count (outputStates (selectedOutput).Pool) /= 0 or else
               outputStates (selectedOutput).presentationFault then
@@ -2752,7 +2794,7 @@ procedure main is
          when OP_DISPLAY_PRESENT_REGION |
               OP_DISPLAY_PRESENT_IMMEDIATE_REGION =>
             replyMsg.tag := (label => request.tag.label,
-                             length => 1, flags => 0, reserved => 0);
+                             length => 1, protocol => 0, ipc => <>, reserved => 0);
             if outputStates (selectedOutput).activeSession /= 0 or else
               Pool_Registry.Count (outputStates (selectedOutput).Pool) /= 0 or else
               outputStates (selectedOutput).presentationFault then
@@ -2775,7 +2817,7 @@ procedure main is
 
          when OP_DISPLAY_CLEAR =>
             replyMsg.tag := (label => OP_DISPLAY_CLEAR,
-                             length => 1, flags => 0, reserved => 0);
+                             length => 1, protocol => 0, ipc => <>, reserved => 0);
             if outputStates (selectedOutput).activeSession /= 0 or else
               Pool_Registry.Count (outputStates (selectedOutput).Pool) /= 0 or else
               outputStates (selectedOutput).presentationFault then
@@ -2800,7 +2842,7 @@ procedure main is
                else
                   replyMsg.tag := (label  => request.tag.label,
                                    length => 1,
-                                   flags  => 0,
+                                   protocol  => 0, ipc => <>,
                                    reserved  => 0);
                   replyMsg.words (0) := DISPLAY_ERR_UNSUPPORTED;
                end if;
@@ -2835,7 +2877,11 @@ begin
       return;
    end if;
 
-   ret := registerDriver (DRIVER_DISPLAY);
+   if not CuBit.Startup_State.Ready (Startup.Verify) then
+      debugPrint ("display: startup capabilities missing" & LF);
+      return;
+   end if;
+   ret := registerDriver (DRIVER_DISPLAY, Startup.Registration);
    if ret = Unsigned_64'Last then
       debugPrint ("display: register failed" & LF);
    end if;

@@ -14,23 +14,15 @@ begin
    pragma Assert (Intel_GPU_Display_Pages.Offset (1) = 16#46000#);
    pragma Assert (Intel_GPU_Display_Pages.Offset (2) = 16#44000#);
    for Page in Intel_GPU_Display_Pages.Page_Index loop
-      pragma Assert (Intel_GPU_Display_Pages.Slot (Page) =
-        (if Page = 2 then 28 else 24 + Unsigned_64 (Page)));
-      pragma Assert (Intel_GPU_Display_Pages.Slot (Page) /= 26);
       for Other in Intel_GPU_Display_Pages.Page_Index loop
          if Other /= Page then
-            pragma Assert (Intel_GPU_Display_Pages.Slot (Page) /= Intel_GPU_Display_Pages.Slot (Other));
             pragma Assert (Intel_GPU_Display_Pages.Offset (Page) /= Intel_GPU_Display_Pages.Offset (Other));
          end if;
       end loop;
-      pragma Assert (Intel_GPU_Display_Pages.Slot (Page) /= CuBit.Log_Protocol.Publisher_Slot);
-      pragma Assert (Intel_GPU_Display_Pages.Slot (Page) /= CuBit.Log_Protocol.Observer_Slot);
       for Reset_Page in Intel_GPU_Reset_Pages.Page_Index loop
-         pragma Assert (Intel_GPU_Display_Pages.Slot (Page) /= Intel_GPU_Reset_Pages.Slot (Reset_Page));
          pragma Assert (Intel_GPU_Display_Pages.Offset (Page) /= Intel_GPU_Reset_Pages.Offset (Reset_Page));
       end loop;
    end loop;
-   pragma Assert (Intel_GPU_Display_Pages.Slot (0) /= Intel_GPU_Display_Pages.Slot (1));
    for Designated in Unsigned_64 range 0 .. 2 loop
       for Caller in Unsigned_64 range 0 .. 2 loop
          for Badge in Boolean loop

@@ -4,6 +4,7 @@ with ACPI_Service;
 with ACPI_Native_Blocks;
 with ACPI_Native_Server;
 with CuBit.Messages;
+with CuBit.Handles;
 package body ACPI_Native_Instance is
    -- Fixed, process-lifetime limited storage creates one owned arena in place.
    -- Discovery-sized allocation remains future bootstrap work; construction
@@ -16,18 +17,18 @@ package body ACPI_Native_Instance is
    Started : Boolean := False;
    procedure Start is
       Config : ACPI_Endpoint.Configuration;
-      Provider_Slot : CuBit.Messages.CapabilitySlot;
+      Provider : CuBit.Handles.Endpoint;
       Accepted : Boolean;
       Reason : ACPI_Native_Server.Stop_Reason;
    begin
       if Started then return; end if;
       Started := True;
-      ACPI_Native_Server.Await_Configuration (Config, Provider_Slot, Accepted);
+      ACPI_Native_Server.Await_Configuration (Config, Provider, Accepted);
       if not Accepted then
          CuBit.Messages.debugPrint ("acpi: bootstrap unavailable" & ASCII.LF);
          return;
       end if;
-      ACPI_Native_Server.Run (Server, Adapter, Config, Provider_Slot, Reason);
+      ACPI_Native_Server.Run (Server, Adapter, Config, Provider, Reason);
       CuBit.Messages.debugPrint ("acpi: stopped: " & Reason'Image & ASCII.LF);
    end Start;
 end ACPI_Native_Instance;

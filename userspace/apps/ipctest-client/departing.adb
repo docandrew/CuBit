@@ -3,9 +3,12 @@
 pragma Ada_2022;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Handles;
+with CuBit.Handles.Startup;
 
 procedure Departing is
-   Service : constant CapabilitySlot := 18;
+   --  The departing fixture's manifest is the client's: its ipc-test entry.
+   Service : constant CuBit.Handles.Endpoint := CuBit.Handles.Startup.Endpoint_Named ("ipc-test");
    Hold : constant Unsigned_32 := 16#090B#;
    Ready : constant Unsigned_32 := 16#090C#;
    Hold_Token : constant Unsigned_64 := 16#D1ED_0001#;
@@ -14,7 +17,7 @@ procedure Departing is
    Entries : CompletionRing := [others => NULL_COMPLETION];
    Count, Ignored : Unsigned_64;
 begin
-   Msg.tag := (Hold, 0, 0, 0);
+   Msg.tag := (label => Hold, length => 0, protocol => 0, ipc => <>, reserved => 0);
    if not capSubmit (Service, Msg, Hold_Token) then
       debugPrint ("TEST: FAIL async-ipc departing hold submit" & ASCII.LF);
       return;

@@ -2,6 +2,8 @@ with Interfaces; use Interfaces;
 with System;
 with System.Storage_Elements;
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Handles;
+with CuBit.Handles.IPC;
 with CuBit.Block_Devices; use CuBit.Block_Devices;
 with CuBit.Memory_Grants;
 with CuBit.String;
@@ -10,22 +12,32 @@ with XHCI;
 
 package body Optical_Service is
    use type USB_Optical.Status_Result;
-   Deferred_Reply : constant CapabilitySlot := 62;
+   --  The saved reply of the read in progress.
+   Deferred_Reply : CuBit.Handles.Reply := CuBit.Handles.No_Reply;
    Pending : Boolean := False;
    Destination : System.Address := System.Null_Address;
    Reference : CuBit.Memory_Grants.Grant_Reference;
    Transfer_Bytes : Unsigned_64 := 0;
 
-   procedure Respond
-     (Slot : CapabilitySlot; Success : Boolean; Bytes : Unsigned_64 := 0)
-   is
+   function Answer (Success : Boolean; Bytes : Unsigned_64) return Message is
+     ((tag => (label => (if Success then REPLY_OK else REPLY_ERROR),
+               length => 1, protocol => 0, ipc => <>, reserved => 0),
+       authorityTag => 0, words => [0 => Bytes, others => 0]));
+
+   --  Answer the request just received from To.
+   procedure Respond (To : Process_ID; Success : Boolean; Bytes : Unsigned_64 := 0) is
       Ignored : Unsigned_64;
    begin
-      Ignored := replyCap
-        (Slot, (tag => (label => (if Success then REPLY_OK else REPLY_ERROR),
-                        length => 1, flags => 0, reserved => 0),
-                authorityTag => 0, words => [0 => Bytes, others => 0]));
+      Ignored := reply (To, Answer (Success, Bytes));
    end Respond;
+
+   --  Answer the deferred read (its saved reply is used up).
+   procedure Respond_Deferred (Success : Boolean; Bytes : Unsigned_64 := 0) is
+      Ignored : Unsigned_64;
+   begin
+      Ignored := replyCap (Deferred_Reply, Answer (Success, Bytes));
+      Deferred_Reply := CuBit.Handles.No_Reply;
+   end Respond_Deferred;
 
    procedure Poll (Progressed : out Boolean) is
       Sender : Process_ID;
@@ -48,8 +60,8 @@ package body Optical_Service is
                   System.Storage_Elements.Storage_Count (Transfer_Bytes));
             end if;
             CuBit.Memory_Grants.Return_Acquisition (Reference, Returned);
-            Respond (Deferred_Reply,
-                     Returned and then Result = USB_Optical.Command_Passed,
+            Respond_Deferred
+                    (Returned and then Result = USB_Optical.Command_Passed,
                      (if Returned and then Result = USB_Optical.Command_Passed
                       then Transfer_Bytes else 0));
             Pending := False;
@@ -66,15 +78,15 @@ package body Optical_Service is
       if Owner = No_Process or else
         Sender /= Owner or else XHCI.Optical_Block_Count = 0
       then
-         Respond (CapabilitySlot'Last, False);
+         Respond (Sender, False);
          return;
       end if;
       if Request.tag.label = OP_DESCRIBE_DEVICE and then
         Request.tag.length = 0
       then
-         Ignored := replyCap
-           (CapabilitySlot'Last,
-            (tag => (label => REPLY_OK, length => 4, flags => 0, reserved => 0),
+         Ignored := reply
+           (Sender,
+            (tag => (label => REPLY_OK, length => 4, protocol => 0, ipc => <>, reserved => 0),
              authorityTag => 0,
              words => [XHCI.Optical_Block_Count, Pack_Sizes (2048, 2048), 16,
                        Pack_Properties (FEATURE_READ_ONLY or FEATURE_REMOVABLE,
@@ -89,7 +101,7 @@ package body Optical_Service is
         Request.words (1) > CuBit.Memory_Grants.MAXIMUM_GLOBAL_SLOT or else
         Request.words (3) not in 1 .. CuBit.Memory_Grants.MAXIMUM_GENERATION
       then
-         Respond (CapabilitySlot'Last, False);
+         Respond (Sender, False);
          return;
       end if;
       Reference :=
@@ -101,20 +113,25 @@ package body Optical_Service is
         (Reference, Sender, 0, Transfer_Bytes, CuBit.Memory_Grants.Write_Access,
          Destination, Accepted);
       if not Accepted then
-         Respond (CapabilitySlot'Last, False);
+         Respond (Sender, False);
          return;
       end if;
-      if saveReplyCap (Unsigned_64 (Deferred_Reply)) /= 1 then
-         CuBit.Memory_Grants.Return_Acquisition (Reference, Returned);
-         Respond (CapabilitySlot'Last, False);
-         return;
-      end if;
+      declare
+         Saved : constant CuBit.Handles.IPC.Saved_Reply := CuBit.Handles.IPC.Save_Reply;
+      begin
+         if not Saved.Saved then
+            CuBit.Memory_Grants.Return_Acquisition (Reference, Returned);
+            Respond (Sender, False);
+            return;
+         end if;
+         Deferred_Reply := Saved.Handle;
+      end;
       XHCI.Start_Optical_Read
         (Unsigned_32 (Request.words (0)),
          USB_Optical.Read_Block_Count (Request.words (2)), Accepted);
       if not Accepted then
          CuBit.Memory_Grants.Return_Acquisition (Reference, Returned);
-         Respond (Deferred_Reply, False);
+         Respond_Deferred (False);
          return;
       end if;
       Pending := True;

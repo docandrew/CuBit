@@ -7,7 +7,12 @@ with ACPI_Requests; use ACPI_Requests;
 with ACPI_Endpoint; use ACPI_Endpoint;
 with ACPI_Native_Blocks; use ACPI_Native_Blocks;
 with CuBit.Memory_Grants; use CuBit.Memory_Grants;
+with CuBit.Handles;
+with CuBit.Handles.Fixture;
 procedure Block_Tests is
+   use type CuBit.Handles.Endpoint;
+   --  The snapshot provider's endpoint (from the launcher's offer).
+   Provider : constant CuBit.Handles.Endpoint := CuBit.Handles.Fixture.Endpoint_Of (7);
    Small_Table_Limit : constant := 65_536;
    subtype Scenario_Index is Positive range 1 .. 8;
    type Scenario_States is array (Scenario_Index) of aliased
@@ -48,7 +53,7 @@ procedure Block_Tests is
    procedure Import (Stamp : Unsigned_64 := 31; Length : Natural := 36;
                      Token : Unsigned_64 := Revision (Server.all)) is
    begin
-      Import_Grant (Adapter, Server.all, Config, Stamp, 7, Reference,
+      Import_Grant (Adapter, Server.all, Config, Stamp, Provider, Reference,
                     Token, 1, ACPI_Service.DSDT, Length, Reply, Status);
    end Import;
 begin
@@ -90,7 +95,7 @@ begin
    Import;
    Check (Status = Cleanup_Pending and Pending (Adapter));
    Check (Reply.Label = Reply_OK and Observe (Server.all).Tables = 1);
-   Check (Last_Slot = 7 and Last_Reference = Reference and Last_Offset = 0 and Last_Length = 36);
+   Check (Last_Slot = Provider and Last_Reference = Reference and Last_Offset = 0 and Last_Length = 36);
    Check (Last_Access = Read_Access and Returned_Reference = Reference);
    Before := Model (Server.all);
    declare
@@ -162,7 +167,7 @@ begin
       procedure Reject_Wire (Stamp : Unsigned_64 := 31) is
       begin
          Before := Model (Server.all); Old_Acquisitions := Acquisitions;
-         Dispatch (Adapter, Server.all, Config, Stamp, 7, Request, Reply);
+         Dispatch (Adapter, Server.all, Config, Stamp, Provider, Request, Reply);
          pragma Assert (Model (Server.all) = Before);
       Check (Acquisitions = Old_Acquisitions);
          Check (Reply.Label = Reply_Error);
@@ -198,26 +203,26 @@ begin
       Reject_Wire; Check (Reply.Data (0) = Outcome'Pos (Stale));
       Reset_Request; Acquire_OK := False;
       Before := Model (Server.all);
-      Dispatch (Adapter, Server.all, Config, 31, 7, Request, Reply);
+      Dispatch (Adapter, Server.all, Config, 31, Provider, Request, Reply);
       pragma Assert (Model (Server.all) = Before);
       Check (Reply.Data (0) = Outcome'Pos (Denied));
       Acquire_OK := True; Return_OK := False;
-      Dispatch (Adapter, Server.all, Config, 31, 7, Request, Reply);
+      Dispatch (Adapter, Server.all, Config, 31, Provider, Request, Reply);
       Check (Reply.Label = Reply_OK and Pending (Adapter));
-      Check (Last_Reference = Reference and Last_Length = 36 and Last_Slot = 7);
+      Check (Last_Reference = Reference and Last_Length = 36 and Last_Slot = Provider);
       Before := Model (Server.all); Old_Acquisitions := Acquisitions;
-      Dispatch (Adapter, Server.all, Config, 31, 7, Request, Reply);
+      Dispatch (Adapter, Server.all, Config, 31, Provider, Request, Reply);
       pragma Assert (Model (Server.all) = Before);
       Check (Acquisitions = Old_Acquisitions);
       Check (Reply.Label = Reply_Error); -- Never replay an imported block.
       Return_OK := True; Retry_Return (Adapter); Check (not Pending (Adapter));
       Start; Reset_Request;
       Request.Data (1) := Unsigned_64 (Unsigned_32'Last) * Base + 4095;
-      Dispatch (Adapter, Server.all, Config, 31, 7, Request, Reply);
+      Dispatch (Adapter, Server.all, Config, 31, Provider, Request, Reply);
       Check (Reply.Label = Reply_OK and not Pending (Adapter));
       Check (Last_Reference.slot = 4095 and Last_Reference.generation = Unsigned_64 (Unsigned_32'Last));
       Request := (Label => Read_Metrics, others => <>);
-      Dispatch (Adapter, Server.all, Config, 17, 7, Request, Reply);
+      Dispatch (Adapter, Server.all, Config, 17, Provider, Request, Reply);
       Check (Reply.Label = Reply_OK); -- Scalar operations share this dispatcher.
    end;
    -- Construction-time capacities travel through the actual grant adapter and
@@ -249,14 +254,14 @@ begin
       Old_Revision : Revision_Number;
    begin
       Acquire_OK := True; Return_OK := True;
-      Dispatch (Loan, Large, Config, 17, 7,
+      Dispatch (Loan, Large, Config, 17, Provider,
         (Label => Read_Metrics, Data => [4, 0, 0, 0], others => <>), Reply);
       Check (Reply.Label = Reply_OK and Reply.Data (1 .. 3) = [Length, Total, 35]);
-      Dispatch (Loan, Large, Config, 31, 7,
+      Dispatch (Loan, Large, Config, 31, Provider,
         (Label => Start_Snapshot, Data => [0, 35, 0, 0], others => <>), Reply);
       Check (Reply.Label = Reply_OK);
       Source := Small'Address;
-      Import_Grant (Loan, Large, Config, 31, 7, Reference, Revision (Large),
+      Import_Grant (Loan, Large, Config, 31, Provider, Reference, Revision (Large),
         1, ACPI_Service.DSDT, 36, Reply, Status);
       Check (Status = Processed and Reply.Label = Reply_OK);
       Source := Big'Address;
@@ -264,22 +269,22 @@ begin
         Data => [Revision (Large), 27 * Base + 19, 2, 2 * Base + Length], others => <>);
       Old_Acquisitions := Acquisitions;
       Request.Data (3) := 2 * Base + Length + 1;
-      Dispatch (Loan, Large, Config, 31, 7, Request, Reply);
+      Dispatch (Loan, Large, Config, 31, Provider, Request, Reply);
       Check (Reply.Label = Reply_Error and Reply.Data (0) = Outcome'Pos (Malformed)
              and Acquisitions = Old_Acquisitions);
       Request.Data (3) := 2 * Base + Length;
-      Dispatch (Loan, Large, Config, 17, 7, Request, Reply);
+      Dispatch (Loan, Large, Config, 17, Provider, Request, Reply);
       Check (Reply.Data (0) = Outcome'Pos (Denied) and Acquisitions = Old_Acquisitions);
       Return_OK := False;
       Old_Returns := Returns;
-      Dispatch (Loan, Large, Config, 31, 7, Request, Reply);
+      Dispatch (Loan, Large, Config, 31, Provider, Request, Reply);
       Check (Reply.Label = Reply_OK and Pending (Loan));
       Check (Acquisitions = Old_Acquisitions + 1 and Returns = Old_Returns + 1);
       Check (Last_Length = Length and Last_Offset = 0 and Last_Access = Read_Access
-             and Last_Slot = 7 and Last_Reference = Reference);
+             and Last_Slot = Provider and Last_Reference = Reference);
       Big := [others => 0];
       Old_Revision := Revision (Large);
-      Dispatch (Loan, Large, Config, 31, 7, Request, Reply);
+      Dispatch (Loan, Large, Config, 31, Provider, Request, Reply);
       Check (Reply.Data (0) = Outcome'Pos (Resource_Limit)
              and Acquisitions = Old_Acquisitions + 1 and Revision (Large) = Old_Revision);
       Return_OK := True;
@@ -288,18 +293,18 @@ begin
       Small := Make_Table ("TEST", 36);
       Source := Small'Address;
       for I in 3 .. 35 loop
-         Import_Grant (Loan, Large, Config, 31, 7, Reference, Revision (Large),
+         Import_Grant (Loan, Large, Config, 31, Provider, Reference, Revision (Large),
            I, ACPI_Service.Description, 36, Reply, Status);
          Check (Status = Processed and Reply.Label = Reply_OK);
       end loop;
-      Dispatch (Loan, Large, Config, 31, 7,
+      Dispatch (Loan, Large, Config, 31, Provider,
         (Label => Finish_Snapshot, Data => [Revision (Large), 0, 0, 0], others => <>), Reply);
       Check (Reply.Label = Reply_OK and Current (Large) = Complete
              and Observe (Large).Tables = 35 and Observe (Large).Bytes = Total);
-      Dispatch (Loan, Large, Config, 17, 7,
+      Dispatch (Loan, Large, Config, 17, Provider,
         (Label => Read_Table_Info, Data => [Revision (Large), 35, 0, 0], others => <>), Reply);
       Check (Reply.Label = Reply_OK and Reply.Data (1) = 35 and Reply.Data (2) = 36);
-      Dispatch (Loan, Large, Config, 17, 7,
+      Dispatch (Loan, Large, Config, 17, Provider,
         (Label => Read_Table_Chunk, Data => [Revision (Large), 2, Length - 1, 0], others => <>), Reply);
       Check (Reply.Label = Reply_OK and Reply.Data (1 .. 3) = [1, 16#A5#, 0]);
       Source := Raw'Address;

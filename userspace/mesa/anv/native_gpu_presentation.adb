@@ -1,3 +1,4 @@
+with Native_GPU_Calls;
 with CuBit.Messages;
 with CuBit.Memory_Grants;
 with CuBit.Grant_References;
@@ -9,26 +10,26 @@ package body Native_GPU_Presentation is
    package R renames CuBit.Grant_References;
    package D renames CuBit.Desktop_Protocol;
    function Forward
-     (Desktop_Slot, Parent, Offset, Bytes : Unsigned_64;
+     (Desktop : Native_GPU_Calls.C_Endpoint; Parent, Offset, Bytes : Unsigned_64;
       Output : access Unsigned_64) return Unsigned_32 is
       Child : G.Grant_Reference;
       OK : Boolean;
    begin
       if Output = null then return 1; end if;
       Output.all := 0;
-      if Desktop_Slot > Unsigned_64 (M.CapabilitySlot'Last) or else
+      if not Native_GPU_Calls.Present (Desktop) or else
         not R.Valid_Wire (Parent) or else Bytes = 0 or else
         Bytes > D.Maximum_Buffer_Bytes or else Offset mod 4096 /= 0 or else
         Bytes mod 4096 /= 0 or else Offset > D.Maximum_Buffer_Bytes - Bytes
       then return 1; end if;
-      G.Derive_Via_Capability (M.CapabilitySlot (Desktop_Slot), R.Decode (Parent),
+      G.Derive_Via_Capability (Native_GPU_Calls.Target_Of (Desktop), R.Decode (Parent),
         Natural (Offset / 4096), Natural (Bytes / 4096), False, Child, OK);
       if not OK then return 1; end if;
       Output.all := R.Encode (Child);
       return 0;
    end Forward;
    function Attach_Linear
-     (Desktop_Slot, Surface, Child, Width, Height, Pitch : Unsigned_64)
+     (Desktop : Native_GPU_Calls.C_Endpoint; Surface, Child, Width, Height, Pitch : Unsigned_64)
       return Unsigned_32 is
       Layout : D.Buffer_Layout;
       Msg : M.Message;
@@ -37,7 +38,7 @@ package body Native_GPU_Presentation is
       use type M.MessageTag;
       use type D.Wire_Message;
    begin
-      if Desktop_Slot > Unsigned_64 (M.CapabilitySlot'Last) or else Surface = 0
+      if not Native_GPU_Calls.Present (Desktop) or else Surface = 0
         or else not R.Valid_Wire (Child) or else Width not in 1 .. 65535
         or else Height not in 1 .. 65535 or else Pitch > D.Maximum_Buffer_Bytes
       then return 7; end if;
@@ -45,7 +46,7 @@ package body Native_GPU_Presentation is
       if not D.Valid_Layout (Layout) then return 7; end if;
       Msg := CuBit.Desktop_Messages.From_Wire
         (D.Encode_Attachment ((D.Live_Surface_Name (Surface), R.Decode (Child), Layout)));
-      Expected := M.capCall (M.CapabilitySlot (Desktop_Slot), Msg, CuBit.Messages.Wait_Forever);
+      Expected := M.capCall (Native_GPU_Calls.Target_Of (Desktop), Msg, CuBit.Messages.Wait_Forever);
       if Expected /= Msg.tag then return 7; end if;
       Wire := CuBit.Desktop_Messages.To_Wire (Msg);
       -- Decode_Status's Invalid_Request fallback cannot distinguish malformed

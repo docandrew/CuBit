@@ -56,9 +56,24 @@
 (type Parameter (record (name String) (kind Parameter_Kind) (many Boolean false) (required Boolean true) (in_arguments Boolean true)))
 (type Conditional_Literal (record (parameter String) (text String)))
 (type Argument_Piece (variant (Literal String) (Value String) (When_Set Conditional_Literal)))
+# CAP-002: a request's binding is its startup name (Startup.<Name>). Names in
+# `optional` may be left absent at launch; every other request is required.
+# Standard_Limit is CuBit.Startup_Tables.Standard_Handle_Limit (4096).
+(type Handle_Limit (variant (Standard_Limit) (At_Most Integer) (Kernel_Limit)))
+# A server's channel limits per contract (docs/capability-handles.md section 4)
+# and its service class: Urgent channels are served before Normal ones
+# (Display's to intel-gpu).
+(type Channel_Class (enum Normal Urgent))
+(type Channel_Offer (record (contract String) (per_client Integer) (total Integer)
+  (class Channel_Class Channel_Class.Normal)))
+# Catalog and Connect (step 4): interfaces offered and used, aliases.
+# Refused while non-empty; their payloads become typed records then.
+(type Connection (variant (Offers String) (Uses String) (Alias String)))
 (type Executable_Manifest (record
   (identity String) (version String)
   (requests (List Request) []) (scopes (List Scope) [])
+  (optional (List String) []) (handles Handle_Limit Handle_Limit.Standard_Limit)
+  (channels (List Channel_Offer) []) (connections (List Connection) [])
   (device Device_Match Device_Match.No_Device) (requests_none Boolean false)
   (may_launch (List Launch) [])
   (parameters (List Parameter) []) (arguments (List Argument_Piece) [])

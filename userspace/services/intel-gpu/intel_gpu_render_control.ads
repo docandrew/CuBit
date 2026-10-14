@@ -41,14 +41,6 @@ package Intel_GPU_Render_Control with SPARK_Mode is
    -- admitting work. Zero rejects unissued identities, not just bad ranges.
    function Storage_Index (Object : Controller; Tag : Unsigned_64)
                           return Intel_GPU_Render_Sessions.Slot_Index;
-   -- Trusted metadata observation, NOT authentication. Retained after close
-   -- and quarantine for cleanup. Authenticate independently before use.
-   -- Zero denotes no recorded recipient slot; never reconstruct from index.
-   function Stored_Recipient_Slot
-     (Object : Controller; Tag : Unsigned_64) return Unsigned_64
-     with Post => Stored_Recipient_Slot'Result = 0 or else
-       (Stored_Recipient_Slot'Result in 40 .. 55 and
-        Storage_Index (Object, Tag) /= 0);
    function Issued_Tag
      (Object : Controller; Index : Intel_GPU_Render_Sessions.Slot_Index)
       return Unsigned_64
@@ -59,8 +51,8 @@ package Intel_GPU_Render_Control with SPARK_Mode is
      (Object : Controller; Sender, Stamped_Tag : Unsigned_64) return Boolean;
    procedure Bind
      (Object : in out Controller; Broker, Broker_Tag : Unsigned_64);
-   -- Authenticate an activation before inspecting its driver-side recipient
-   -- endpoint. Returns the reserved incarnation, never authority by itself.
+   -- Authenticate an activation. Returns the reserved incarnation, never
+   -- authority by itself.
    function Activation_Identity
      (Object : Controller; Sender, Stamped_Tag : Unsigned_64;
       Request_Label : Unsigned_32; Length, Flags : Unsigned_8;
@@ -72,26 +64,24 @@ package Intel_GPU_Render_Control with SPARK_Mode is
    -- Request [version, captured generation32/PID32, session-tag, operation].
    -- Reserve uses tag zero. Activate follows successful endpoint delegation;
    -- Abort retires a reservation/active session without freeing GPU backing.
-   -- Response [status, version, session-tag-or-zero, recipient-slot-or-zero].
-   -- Successful Reserve returns the dedicated driver recipient slot40..55.
-   -- All other replies return slot zero. Never derive a slot from the tag.
+   -- Response [status, version, session-tag-or-zero, 0].
+   -- The driver holds no capability to the application (CAP-002): requests
+   -- are authenticated by the kernel sender and the session tag stamped by
+   -- the render endpoint the broker badged, and memory is granted to the
+   -- saved reply of the authenticated request itself.
    -- Ready is supplied by the actual allocation/submission backend, not by
    -- the request or by merely observing firmware/engine startup.
-   -- Supervisor must keep the captured recipient and selected source endpoint
-   -- stable across policy evaluation and delegation. Lost/uncertain admission
-   -- replies require Abort, never Activate as a retry. Dispatch is serialized;
-   -- this controller neither supplies IPC transport nor revokes kernel caps.
+   -- Lost/uncertain admission replies require Abort, never Activate as a
+   -- retry. Dispatch is serialized; this controller neither supplies IPC
+   -- transport nor revokes kernel caps.
    -- Abort is idempotent for a known identity/tag, including after quarantine.
    procedure Handle
      (Object : in out Controller; Sender, Stamped_Tag : Unsigned_64;
       Ready : Boolean; Request_Label : Unsigned_32;
       Length, Flags : Unsigned_8; Reserved : Unsigned_16;
-      Request : Words; Response : out Words;
-      Recipient_Ready : Boolean := False)
-     with Post => (if Request (3) = Activate and not Recipient_Ready
-                   then Response (0) /= OK);
-   -- Recipient_Ready must come from a kernel endpoint/incarnation check of
-   -- the immutable driver-side sharing slot, not an IPC request flag.
+      Request : Words; Response : out Words)
+     with Post => Response (3) = 0 and
+       (if Request (3) = Activate and not Ready then Response (0) /= OK);
    function Resolve
      (Object : Controller; Sender, Stamped_Tag : Unsigned_64) return Unsigned_64;
    -- Active-session observation only: [version,0,0,0] -> [status,version,0,0].
@@ -124,15 +114,14 @@ package Intel_GPU_Render_Control with SPARK_Mode is
    -- [OK,version,retired-tag,0]. Dispatcher must then retire its resources.
    -- Success is NOT GPU disable completion, grant drain or backing release.
    -- A repeated request is denied (no active session); never replay on an
-   -- uncertain reply or infer that the capability slot can be replaced.
+   -- uncertain reply or infer that the session's render endpoint is reusable.
    procedure Close_Own
      (Object : in out Controller; Sender, Stamped_Tag : Unsigned_64;
       Request_Label : Unsigned_32; Length, Flags : Unsigned_8;
       Reserved : Unsigned_16; Request : Words; Response : out Words);
    -- Captured process incarnation for an authenticated ACTIVE session only.
-   -- The dispatcher must compare this with its stable recipient endpoint
-   -- before creating a buffer grant. This identity is not grant authority;
-   -- never reconstruct a capability from its PID or accept it from app words.
+   -- This identity is not grant authority; never reconstruct a capability
+   -- from it or accept it from app words.
    function Recipient_Identity
      (Object : Controller; Sender, Stamped_Tag : Unsigned_64) return Unsigned_64
      with Post =>
@@ -152,10 +141,5 @@ private
       Broker, Broker_Tag : Unsigned_64 := 0;
       Sessions : Intel_GPU_Render_Sessions.Registry;
       Recipients : Identities := [others => 0];
-      Recipient_Slots : Identities := [others => 0];
-      -- Bootstrap capability pool, separate from issued-record indices.
-      -- Permanently consume on reservation, including failed activation.
-      -- 56 is exhaustion, never a destination. Growth needs owned new slots.
-      Next_Recipient_Slot : Unsigned_64 range 40 .. 56 := 40;
    end record;
 end Intel_GPU_Render_Control;

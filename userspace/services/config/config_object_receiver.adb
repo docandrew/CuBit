@@ -15,24 +15,32 @@ package body Config_Object_Receiver is
    use type Config_Collections.Result;
    use type Wire.Status;
    use type CCL.Objects.Schema_Key;
-   Current_Reply : constant CuBit.Messages.CapabilitySlot := 63;
+   --  Where a reply goes: the request being handled, or the saved one.
+   type Reply_Target is (Current_Request, Saved_Request);
    function Needs_Recovery (Object : State) return Boolean is (Object.Failed_Transfer);
    function Waiting (Object : State) return Boolean is (D.Waiting (Object.Dispatch) or Object.Acquiring_Definition);
    function Definition_Pending (Object : State) return Boolean is (Object.Acquiring_Definition);
 
-   procedure Deliver (Slot : CuBit.Messages.CapabilitySlot; Reply : CuBit.Messages.Message) is
+   function Send (Object : State; Slot : Reply_Target; Reply : CuBit.Messages.Message)
+     return Interfaces.Unsigned_64 is
+     (case Slot is
+         when Current_Request    => Send_Current_Reply (Object.Current_Sender, Reply),
+         when Saved_Request => Send_Saved_Reply (Object.Saved_Reply, Reply));
+
+   procedure Deliver (Object : State; Slot : Reply_Target; Reply : CuBit.Messages.Message) is
       Ignored : Interfaces.Unsigned_64;
    begin
       --  Kernel reply consumes the selected authority even if its caller died.
       --  A failed delivery does not undo the operation or authorize a retry.
-      Ignored := Send_Reply (Slot, Reply);
+      Ignored := Send (Object, Slot, Reply);
    end Deliver;
 
    procedure Deliver_Acquisition
-     (Store : in out Config_Typed_Store.State; Subject : Config_Authority.Subject_ID;
-      Slot : CuBit.Messages.CapabilitySlot; Reply : CuBit.Messages.Message)
+     (Object : State;
+      Store : in out Config_Typed_Store.State; Subject : Config_Authority.Subject_ID;
+      Slot : Reply_Target; Reply : CuBit.Messages.Message)
    is
-      Delivered : constant Interfaces.Unsigned_64 := Send_Reply (Slot, Reply);
+      Delivered : constant Interfaces.Unsigned_64 := Send (Object, Slot, Reply);
       Closed : Config_Collections.Result;
    begin
       -- Only Open/Create replies carry a freshly minted handle in word 0.
@@ -62,18 +70,19 @@ package body Config_Object_Receiver is
       Requested : A.Rights;
    begin
       Staged := False;
-      if Needs_Recovery (Object) or Saved_Reply_Slot = Current_Reply then
-         Deliver (Current_Reply, Wire.Reply (Wire.Unavailable)); return;
+      Object.Current_Sender := Sender;
+      if Needs_Recovery (Object) then
+         Deliver (Object, Current_Request, Wire.Reply (Wire.Unavailable)); return;
       end if;
       if not Wire.Valid_Request (Request, Action) then
-         Deliver (Current_Reply, Wire.Reply (Wire.Invalid_Request)); return;
+         Deliver (Object, Current_Request, Wire.Reply (Wire.Invalid_Request)); return;
       end if;
       if not A.Has_Profile (Authority, Sender) then
-         Deliver (Current_Reply, Wire.Reply (Wire.Denied)); return;
+         Deliver (Object, Current_Request, Wire.Reply (Wire.Denied)); return;
       end if;
       Reference := CuBit.Grant_References.Decode (Request.words (0));
       Acquire (Reference, Sender, 0, Wire.Control_Bytes, Grants.Read_Access, Address, Good);
-      if not Good then Deliver (Current_Reply, Wire.Reply (Wire.Unavailable)); return; end if;
+      if not Good then Deliver (Object, Current_Request, Wire.Reply (Wire.Unavailable)); return; end if;
       declare
          Shared : Wire.Open_Descriptor with Import, Volatile, Address => Address;
       begin
@@ -82,10 +91,10 @@ package body Config_Object_Receiver is
       Return_Acquisition (Reference, Returned);
       if not Returned then
          Object.Failed_Transfer := True;
-         Deliver (Current_Reply, Wire.Reply (Wire.Unavailable)); return;
+         Deliver (Object, Current_Request, Wire.Reply (Wire.Unavailable)); return;
       end if;
       if not Wire.Valid_Descriptor (Control) or else Control.Context /= Config_Collections.Machine_Context then
-         Deliver (Current_Reply, Wire.Reply (Wire.Invalid_Request)); return;
+         Deliver (Object, Current_Request, Wire.Reply (Wire.Invalid_Request)); return;
       end if;
       Requested := [A.Read_Config => Control.Access_Rights /= Wire.Access_Mode'Enum_Rep (Wire.Write_Only),
                     A.Write_Config => Control.Access_Rights /= Wire.Access_Mode'Enum_Rep (Wire.Read_Only),
@@ -94,14 +103,14 @@ package body Config_Object_Receiver is
           not A.Allows (Authority, Sender, Control.Name (1 .. Natural (Control.Name_Length)), A.Write_Config))
         or else (Requested (A.Read_Config) and then
           not A.Allows (Authority, Sender, Control.Name (1 .. Natural (Control.Name_Length)), A.Read_Config))
-      then Deliver (Current_Reply, Wire.Reply (Wire.Denied)); return; end if;
+      then Deliver (Object, Current_Request, Wire.Reply (Wire.Denied)); return; end if;
       if Action = Wire.Open_Collection then
          -- Cached opens never queue disk work or compete for the saved reply.
          Config_Typed_Store.Open (Store, Authority, Sender,
            Control.Name (1 .. Natural (Control.Name_Length)), Control.Context,
            Requested, Control.Schema, Handle, Admission);
          if Admission /= Config_Collections.Missing then
-            Deliver_Acquisition (Store, Sender, Current_Reply, Wire.Reply
+            Deliver_Acquisition (Object, Store, Sender, Current_Request, Wire.Reply
               ((case Admission is
                   when Config_Collections.Opened => Wire.Success,
                   when Config_Collections.Denied => Wire.Denied,
@@ -112,13 +121,13 @@ package body Config_Object_Receiver is
          end if;
       end if;
       if Waiting (Object) or else not Storage_Available then
-         Deliver (Current_Reply, Wire.Reply (if Waiting (Object) then Wire.Busy else Wire.Unavailable)); return;
+         Deliver (Object, Current_Request, Wire.Reply (if Waiting (Object) then Wire.Busy else Wire.Unavailable)); return;
       end if;
       if Action = Wire.Create_Collection then
          -- Type metadata is borrowed only AFTER namespace/rights admission.
          Acquire (Reference, Sender, Wire.Control_Bytes, CCL.Objects.Schemas.Native_Schema_Bytes,
            Grants.Read_Access, Address, Good);
-         if not Good then Deliver (Current_Reply, Wire.Reply (Wire.Unavailable)); return; end if;
+         if not Good then Deliver (Object, Current_Request, Wire.Reply (Wire.Unavailable)); return; end if;
          declare
             Shared : CCL.Objects.Schemas.Image with Import, Volatile, Address => Address;
          begin
@@ -127,25 +136,30 @@ package body Config_Object_Receiver is
          Return_Acquisition (Reference, Returned);
          if not Returned then
             Object.Failed_Transfer := True;
-            Deliver (Current_Reply, Wire.Reply (Wire.Unavailable)); return;
+            Deliver (Object, Current_Request, Wire.Reply (Wire.Unavailable)); return;
          end if;
          CCL.Objects.Schemas.Read (Metadata, Contract, Good);
          if not Good or else CCL.Objects.Identity (Contract) /= Control.Schema then
-            Deliver (Current_Reply, Wire.Reply (Wire.Schema_Mismatch)); return;
+            Deliver (Object, Current_Request, Wire.Reply (Wire.Schema_Mismatch)); return;
          end if;
          Config_Typed_Store.Check_Registration (Store, Control.Name (1 .. Natural (Control.Name_Length)),
            Contract, ID, Admission);
          if Admission not in Config_Collections.Registered | Config_Collections.Already_Registered then
-            Deliver (Current_Reply, Wire.Reply
+            Deliver (Object, Current_Request, Wire.Reply
               (if Admission = Config_Collections.Capacity_Exceeded then Wire.Capacity_Exceeded
                elsif Admission = Config_Collections.Management_Conflict then Wire.Denied
                else Wire.Schema_Mismatch));
             return;
          end if;
       end if;
-      if Save_Reply (Saved_Reply_Slot) /= 1 then
-         Deliver (Current_Reply, Wire.Reply (Wire.Unavailable)); return;
-      end if;
+      declare
+         Saved : Boolean;
+      begin
+         Save_Reply (Object.Saved_Reply, Saved);
+         if not Saved then
+            Deliver (Object, Current_Request, Wire.Reply (Wire.Unavailable)); return;
+         end if;
+      end;
       Object.Definition_Control := Control; Object.Definition_Contract := Contract;
       Object.Caller := Sender; Object.Grant_Revision := A.Revision (Authority, Sender);
       Object.Definition_Action := Action;
@@ -195,7 +209,7 @@ package body Config_Object_Receiver is
                  else Wire.Unavailable));
          end if;
       end if;
-      Deliver_Acquisition (Store, Object.Caller, Saved_Reply_Slot, Wire.Reply (Reply_Code, Handle));
+      Deliver_Acquisition (Object, Store, Object.Caller, Saved_Request, Wire.Reply (Reply_Code, Handle));
    end Finish_Definition;
 
    procedure Handle
@@ -213,11 +227,12 @@ package body Config_Object_Receiver is
       Value : CCL.Objects.Image;
       Reply : CuBit.Messages.Message;
       Next : D.Disposition;
-      Reply_Slot : CuBit.Messages.CapabilitySlot := Current_Reply;
+      Reply_To : Reply_Target := Current_Request;
    begin
       Staged := False;
-      if Needs_Recovery (Object) or else Saved_Reply_Slot = Current_Reply then
-         Deliver (Current_Reply, Wire.Reply (Wire.Unavailable)); return;
+      Object.Current_Sender := Sender;
+      if Needs_Recovery (Object) then
+         Deliver (Object, Current_Request, Wire.Reply (Wire.Unavailable)); return;
       end if;
       --  Never convert an unchecked wire word into an enumeration.
       for Candidate in Wire.Operation loop
@@ -226,21 +241,21 @@ package body Config_Object_Receiver is
          end if;
       end loop;
       if not Known or else not Wire.Valid_Request (Request, Action) then
-         Deliver (Current_Reply, Wire.Reply (Wire.Invalid_Request)); return;
+         Deliver (Object, Current_Request, Wire.Reply (Wire.Invalid_Request)); return;
       end if;
       if Action = Wire.Create_Collection then
          -- Only the owning service may start the durable multi-stage path.
-         Deliver (Current_Reply, Wire.Reply (Wire.Unavailable)); return;
+         Deliver (Object, Current_Request, Wire.Reply (Wire.Unavailable)); return;
       end if;
       if Action = Wire.Set_Object then
          if not Config_Typed_Store.Check_Access
            (Store, Authority, Sender, Request.words (0), Config_Authority.Write_Config)
          then
-            Deliver (Current_Reply, Wire.Reply (Wire.Denied)); return;
+            Deliver (Object, Current_Request, Wire.Reply (Wire.Denied)); return;
          end if;
          --  In particular, do not overwrite another client's saved reply.
          if Waiting (Object) then
-            Deliver (Current_Reply, Wire.Reply (Wire.Busy)); return;
+            Deliver (Object, Current_Request, Wire.Reply (Wire.Busy)); return;
          end if;
       end if;
       if Action /= Wire.Close_Collection then
@@ -253,7 +268,7 @@ package body Config_Object_Receiver is
            (if Action = Wire.Open_Collection then Wire.Control_Bytes else CCL.Objects.Native_Image_Bytes),
            Grants.Read_Access, Address, Acquired);
          if not Acquired then
-            Deliver (Current_Reply, Wire.Reply (Wire.Unavailable)); return;
+            Deliver (Object, Current_Request, Wire.Reply (Wire.Unavailable)); return;
          end if;
          if Action = Wire.Open_Collection then
             declare
@@ -271,12 +286,12 @@ package body Config_Object_Receiver is
          Return_Acquisition (Reference, Returned);
          if not Returned then
             Object.Failed_Transfer := True;
-            Deliver (Current_Reply, Wire.Reply (Wire.Unavailable)); return;
+            Deliver (Object, Current_Request, Wire.Reply (Wire.Unavailable)); return;
          end if;
       end if;
       if Action = Wire.Set_Object then
-         Reserved := Save_Reply (Saved_Reply_Slot) = 1;
-         if Reserved then Reply_Slot := Saved_Reply_Slot; end if;
+         Save_Reply (Object.Saved_Reply, Reserved);
+         if Reserved then Reply_To := Saved_Request; end if;
       end if;
       D.Handle (Object.Dispatch, Store, Authority, Sender, Action, Request,
                 Input, Storage_Token, Reserved, Reply, Value, Next);
@@ -303,9 +318,9 @@ package body Config_Object_Receiver is
          end if;
       end if;
       if Action = Wire.Open_Collection then
-         Deliver_Acquisition (Store, Sender, Reply_Slot, Reply);
+         Deliver_Acquisition (Object, Store, Sender, Reply_To, Reply);
       else
-         Deliver (Reply_Slot, Reply);
+         Deliver (Object, Reply_To, Reply);
       end if;
    end Handle;
 
@@ -317,7 +332,7 @@ package body Config_Object_Receiver is
       Ready : Boolean;
    begin
       D.Finish (Object.Dispatch, Store, Response, Reply, Ready);
-      if Ready then Deliver (Saved_Reply_Slot, Reply); end if;
+      if Ready then Deliver (Object, Saved_Request, Reply); end if;
    end Finish;
 
    procedure Lost
@@ -328,12 +343,12 @@ package body Config_Object_Receiver is
       Ready : Boolean;
    begin
       D.Lost (Object.Dispatch, Store, Session, Reply, Ready);
-      if Ready then Deliver (Saved_Reply_Slot, Reply); end if;
+      if Ready then Deliver (Object, Saved_Request, Reply); end if;
       if Object.Acquiring_Definition then
          Object.Acquiring_Definition := False;
          -- Create can have persisted its definition before the receipt or
          -- subsequent value recovery was lost. An Open lookup is read-only.
-         Deliver (Saved_Reply_Slot, Wire.Reply
+         Deliver (Object, Saved_Request, Wire.Reply
            (if Object.Definition_Action = Wire.Create_Collection then Wire.Uncertain
             else Wire.Unavailable));
       end if;

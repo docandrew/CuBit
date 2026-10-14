@@ -1,6 +1,8 @@
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Logging;
+with CuBit.Handles.IPC;
+with Startup;
 with CuBit.Log_Records;
 package body Boot_Log is
    Capture_Capacity : constant := 512;
@@ -13,6 +15,9 @@ package body Boot_Log is
    Summary_Sent : Boolean := False;
    Due : Unsigned_64 := 1;
    Token : constant Unsigned_64 := 16#584C_0001#;
+   --  devmgr's log-publisher grant for xhci, and its success label.
+   Log_Grant_Label : constant Unsigned_32 := 16#0228#;
+   REPLY_OK_LABEL  : constant Unsigned_32 := 16#F000#;
    function Deadline return Unsigned_64 is (if not Enabled or else Finished then 0 else Due);
    procedure Write (Text : String) is
    begin
@@ -44,7 +49,19 @@ package body Boot_Log is
          if Requested and then Receipt.token = Token then
             debugPrint ("xhci-log: grant reply received" & ASCII.LF);
             Requested := False;
-            Granted := Receipt.status = COMPLETION_OK and then Receipt.msg.tag.label = 16#F000#;
+            --  The reply carries logstore's endpoint, badged for this
+            --  publisher (devmgr's runtime grant).
+            if Receipt.status = COMPLETION_OK and then Receipt.msg.tag.label = REPLY_OK_LABEL then
+               declare
+                  Collector : constant CuBit.Handles.IPC.Accepted_Endpoint :=
+                    CuBit.Handles.IPC.Accept_Endpoint (CuBit.Handles.IPC.Carried_By (Receipt.msg));
+               begin
+                  if Collector.OK then
+                     CuBit.Logging.Bind (Writer, Collector.Value);
+                     Granted := True;
+                  end if;
+               end;
+            end if;
          end if;
       end if;
       if Now < Due then return; end if;
@@ -55,8 +72,9 @@ package body Boot_Log is
             return;
          end if;
          if not Requested then
-            Msg.tag := (16#0228#, 0, 0, 0);
-            Requested := capSubmit (15, Msg, Token);
+            Msg.tag := (label => Log_Grant_Label, length => 0,
+                        protocol => 0, ipc => <>, reserved => 0);
+            Requested := CuBit.Handles.IPC.Submit_Accepting (Startup.Ready, Msg, Token);
             if Requested then debugPrint ("xhci-log: grant requested" & ASCII.LF); end if;
          end if;
          Due := Now + 1000;

@@ -7,7 +7,8 @@
 --
 --  @description
 --  Provides typed access to the config store service for userspace
---  applications. Connects via capCall on CAP_SLOT_CONFIG. A single
+--  applications, through the config endpoint given to Bind (the program's
+--  startup "config" handle); before Bind every call fails. A single
 --  page-aligned two-page grant buffer is lazily allocated and shared with
 --  Config using an owner- and generation-checked reference. Two pages allow
 --  the full 4096-byte value plus its key without overrunning the buffer.
@@ -16,13 +17,18 @@
 --  buffer. Callers must copy data before the next config call.
 --  This borrowed-buffer API is not reentrant; callers must serialize access.
 ------------------------------------------------------------------------------
-with Interfaces;
 with System;
-with CuBit.Process_IDs;
+with CuBit.Handles;
 
 package CuBit.Config is
 
    type ConfigStatus is (OK, NotFound, Error, AccessDenied);
+
+   --  The config service endpoint every following call uses. Without a
+   --  Bind, the first call uses the program's "config" startup entry
+   --  (manifest: request-service config read-write config).
+   Config_Binding : constant String := "config";
+   procedure Bind (Service : CuBit.Handles.Endpoint);
 
    ---------------------------------------------------------------------------
    --  get
@@ -66,24 +72,5 @@ package CuBit.Config is
       keys     : out System.Address;
       count    : out Natural;
       status   : out ConfigStatus);
-
-   ---------------------------------------------------------------------------
-   --  SchemeInfo
-   --  Result of resolving a scheme name (e.g., "config", "fs", "net").
-   ---------------------------------------------------------------------------
-   type SchemeInfo is record
-      driverID : Interfaces.Unsigned_64;
-      capSlot  : Interfaces.Unsigned_64;
-      pid      : CuBit.Process_IDs.Process_ID;
-      found    : Boolean;
-   end record;
-
-   ---------------------------------------------------------------------------
-   --  resolveScheme
-   --  Look up a scheme by name. Builds "scheme.<name>.driver" and
-   --  "scheme.<name>.slot" keys, queries config store, parses decimal
-   --  values, and resolves driver PID via sysinfo.
-   ---------------------------------------------------------------------------
-   function resolveScheme (name : String) return SchemeInfo;
 
 end CuBit.Config;

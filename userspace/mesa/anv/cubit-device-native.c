@@ -13,14 +13,14 @@ cubit_gpu_native_query_call(void *endpoint,
       return false;
    const struct cubit_gpu_native_endpoint *native = endpoint;
    const bool budget = request->label == 0x0a2e;
-   if (native->slot > 63 || (!budget && request->label != 0x0a20) ||
+   if (!cubit_endpoint_present(native->endpoint) || (!budget && request->label != 0x0a20) ||
        request->length != 4 || request->flags || request->reserved ||
        request->words[0] != (budget ? 2 : 1) || request->words[1] > (budget ? 0 : 4) ||
        request->words[2] || request->words[3])
       return false;
    struct cubit_gpu_query_message result = {.label = request->label, .length = 4};
-   const uint32_t transport = budget ? cubit_intel_budget(native->slot, result.words) :
-      cubit_intel_query(native->slot, request->words[1], result.words);
+   const uint32_t transport = budget ? cubit_intel_budget(native->endpoint, result.words) :
+      cubit_intel_query(native->endpoint, request->words[1], result.words);
    if (transport != 0)
       return false;
    *reply = result;

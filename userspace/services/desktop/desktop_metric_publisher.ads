@@ -1,11 +1,12 @@
 with Interfaces;
 with CuBit.Messages;
+with CuBit.Handles;
 with Compositor_Frame_Trace;
 with Compositor_Stage_Metrics;
 with Compositor_Work_Metrics;
 with Compositor_Trace_Wire;
 generic
-   Capability : CuBit.Messages.CapabilitySlot;
+   Capability : CuBit.Handles.Endpoint;
 package Desktop_Metric_Publisher with SPARK_Mode => Off is
    -- Serialized by Desktop's event loop. This adapter owns the SDK's two
    -- pages for its entire lifetime, including after telemetry quarantine.

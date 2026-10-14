@@ -15,17 +15,17 @@ package body Native_GPU_Calls is
       Bounded := True;
    end Bound_Calls;
 
-   function Call (Slot : CapabilitySlot; Msg : in out Message) return MessageTag is
+   function Call (Target : CuBit.Handles.Endpoint; Msg : in out Message) return MessageTag is
       Request  : constant Unsigned_32 := Msg.tag.label;
       Returned : MessageTag;
    begin
       if Stalled then
          if Count < Unsigned_32'Last then Count := Count + 1; end if;
          Label := Request;
-         return (label => REPLY_TIMEOUT, length => 0, flags => 0, reserved => 0);
+         return (label => REPLY_TIMEOUT, length => 0, protocol => 0, ipc => <>, reserved => 0);
       end if;
       Returned := capCall
-        (Slot, Msg, (if Bounded then Deadline_After (Limit) else Wait_Forever));
+        (Target, Msg, (if Bounded then Deadline_After (Limit) else Wait_Forever));
       if Returned.label = REPLY_TIMEOUT then
          if Count < Unsigned_32'Last then Count := Count + 1; end if;
          Label := Request;

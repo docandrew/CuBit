@@ -19,6 +19,7 @@
 --  The C mirror for the libc is userspace/libc/overlay/src/cubit/net.c.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with CuBit.Handles;
 with Interfaces; use Interfaces;
 with System;
 with CuBit.Messages; use CuBit.Messages;
@@ -68,7 +69,7 @@ package CuBit.Net_Channels is
    --  arenas are set up once, not per channel.
    procedure Create_Arena
      (A       : out Arena;
-      Slot    : CapabilitySlot;
+      Slot    : CuBit.Handles.Endpoint;
       Memory  : System.Address;
       Tx_Size : Rings.Ring_Size;
       Rx_Size : Rings.Ring_Size;
@@ -78,7 +79,7 @@ package CuBit.Net_Channels is
 
    --  Take the arena back (no channel may hold a buffer) and revoke it.
    procedure Release_Arena
-     (A : in out Arena; Slot : CapabilitySlot; OK : out Boolean);
+     (A : in out Arena; Slot : CuBit.Handles.Endpoint; OK : out Boolean);
 
    --  Use buffer Buffer of A for a stream and lay out its header. Bit is
    --  this channel's bit in WAIT and KICK masks; the program keeps them
@@ -88,7 +89,7 @@ package CuBit.Net_Channels is
       A      : Arena;
       Buffer : Natural;
       Bit    : Wait_Bit;
-      Slot   : CapabilitySlot)
+      Slot   : CuBit.Handles.Endpoint)
    with Pre => Buffer < A.Count;
 
    --  Reuse a prepared stream's buffer for a new channel: reset its header
@@ -98,7 +99,7 @@ package CuBit.Net_Channels is
    --  Submit OPEN for Target ("@net:tcp:host:port"); its completion
    --  carries the handle (Opened).
    procedure Submit_Open
-     (S : in out Stream; Slot : CapabilitySlot; Target : String;
+     (S : in out Stream; Slot : CuBit.Handles.Endpoint; Target : String;
       Token : Unsigned_64; Submitted : out Boolean)
    with Pre => Target'Length in 1 .. Layout.Target_Maximum;
 
@@ -175,17 +176,17 @@ package CuBit.Net_Channels is
    procedure Want (S : Stream; Flags : Unsigned_32);
 
    --  FIN once netstack has sent what the send ring holds.
-   procedure Shut_Write (S : in out Stream; Slot : CapabilitySlot);
+   procedure Shut_Write (S : in out Stream; Slot : CuBit.Handles.Endpoint);
 
    --  Release the channel (netstack takes what is left in the send ring,
    --  then sends FIN) and its grant.
-   procedure Close (S : in out Stream; Slot : CapabilitySlot);
+   procedure Close (S : in out Stream; Slot : CuBit.Handles.Endpoint);
 
    --  Submit this process's WAIT: it completes with the wait bits of the
    --  ready channels among Interest, or 0 at Deadline (monotonic
    --  milliseconds). netstack services the channels in Kicks first.
    procedure Submit_Wait
-     (Slot : CapabilitySlot; Kicks, Interest : Unsigned_64;
+     (Slot : CuBit.Handles.Endpoint; Kicks, Interest : Unsigned_64;
       Deadline : Unsigned_64; Token : Unsigned_64; Submitted : out Boolean);
 
    --  This stream's bit in WAIT and KICK masks.
@@ -202,7 +203,7 @@ package CuBit.Net_Channels is
    --  WAIT with Token. Uses Wait_For: only for programs whose only
    --  asynchronous work is this.
    procedure Await
-     (S : in out Stream; Slot : CapabilitySlot; Flags : Unsigned_32;
+     (S : in out Stream; Slot : CuBit.Handles.Endpoint; Flags : Unsigned_32;
       Deadline : Unsigned_64; Token : Unsigned_64; Ready : out Boolean);
 
    --  Block until the completion with Token arrives. Completions for other

@@ -1,3 +1,4 @@
+with CuBit.Handles.Fixture;
 with Ada.Text_IO; use Ada.Text_IO;
 with Interfaces; use Interfaces;
 with Ext2; use Ext2;
@@ -52,7 +53,7 @@ procedure Indirect_Reads is
       sb.inodeSize := 128;
       --  Use the real volume admission path to reset volume/cache lifetime.
       initBlockDevice
-        (fs, 1, (slot => 1, generation => 1), Grant_Buffer'Address,
+        (fs, CuBit.Handles.Fixture.Endpoint_Of (1), 1, (slot => 1, generation => 1), Grant_Buffer'Address,
          Grant_Buffer'Length, admission);
       pragma Assert (admission = Admitted);
       Calls := 0;
@@ -260,7 +261,7 @@ begin
    second (255) := 25;
    --  Reset volume caches after deliberately changing the fixture in place.
    initBlockDevice
-     (fs, 1, (slot => 1, generation => 1), Grant_Buffer'Address,
+     (fs, CuBit.Handles.Fixture.Endpoint_Of (1), 1, (slot => 1, generation => 1), Grant_Buffer'Address,
       Grant_Buffer'Length, admission);
    pragma Assert (admission = Admitted);
    --  An absent triple root is a sparse hole, like an absent double root.
@@ -290,12 +291,12 @@ begin
    Setup;
    Check_Data (Single_Offset, 'S');
    single (0) := 25;
-   fs.device.endpointSlot := 2;
+   fs.device.volumeKey := 2;
    Check_Data (Single_Offset, 'T');
    Setup;
    Check_Data (Single_Offset, 'S');
    single (0) := 25;
-   initBlockDevice (fs, 1, (slot => 1, generation => 1),
+   initBlockDevice (fs, CuBit.Handles.Fixture.Endpoint_Of (1), 1, (slot => 1, generation => 1),
                     Grant_Buffer'Address, Grant_Buffer'Length, admission);
    pragma Assert (admission = Admitted);
    previous := Calls;
@@ -360,7 +361,7 @@ begin
    Map_Final_Triple;
    Check_Data (Limit_Offset - 1024, 'U');
    tripleLeaf (255) := 25;
-   fs.device.endpointSlot := 2;
+   fs.device.volumeKey := 2;
    Check_Data (Limit_Offset - 1024, 'T');
    Put_Line ("TRIPLE-READ-CHECK: PASS 60 faults, holes, malformed levels, cache identity");
 

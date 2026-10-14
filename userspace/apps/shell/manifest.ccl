@@ -10,6 +10,9 @@
   (request-network tcp-connect (ipv4 "0.0.0.0" 0)
     (ports 1 65535) (dns allow)
     (connections 8) network)
+  # Network commands need policy approval; without it the shell still runs
+  # and those commands report the refusal.
+  (optional network)
   (request-service display read-write display)
   (request-notification keyboard manage keyboard)
   (request-notification mouse manage mouse)

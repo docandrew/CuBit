@@ -21,7 +21,6 @@ pairs = {
     "Poll_Any_IPC": "SYSCALL_POLL_ANY_IPC",
     "Create_Shared_Memory_Grant_For_Process_Id": "SYSCALL_CREATE_SHARED_MEMORY_GRANT_FOR_PROCESS_ID",
     "Wait_Completion": "SYSCALL_WAIT_COMPLETION",
-    "Inspect_Capability": "SYSCALL_INSPECT_CAPABILITY",
     "Receive_Event_Nonblocking": "SYSCALL_RECEIVE_EVENT_NB",
     "Get_Time": "SYSCALL_GETTIME",
     "Call_Via_Endpoint_Capability": "SYSCALL_CALL_VIA_ENDPOINT_CAPABILITY",

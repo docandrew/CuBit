@@ -124,6 +124,14 @@ with CuBit.UI.Theme_Data;
 with CuBit.Desktop_Protocol;
 with CuBit.Grant_References;
 with CuBit.Memory_Grants;
+with CuBit.Handles;
+with CuBit.Handles.IPC;
+with CuBit.Handles.Control;
+with CuBit.Handles.Startup;
+with CuBit.Startup_Tables;
+with CuBit.Startup_State;
+with Startup;
+with Desktop_Endpoints;
 with CuBit.Graphics_Metrics;
 with CuBit.Graphics_Metrics_IO;
 with Presentation_Test_Policy;
@@ -176,7 +184,7 @@ procedure main is
    OP_STREAM_AVAILABLE  : constant Unsigned_32 := 16#0706#;
    OP_INPUT_POLL       : constant Unsigned_32 := DP.Operation'Enum_Rep (DP.Poll_Input);
    OP_INPUT_WAIT       : constant Unsigned_32 := DP.Operation'Enum_Rep (DP.Wait_Input);
-   INPUT_REPLY_MORE_PENDING : constant Unsigned_8 := 1;
+   INPUT_REPLY_MORE_PENDING : constant Protocol_Flags := 1;
 
    OP_DISPLAY_GET_INFO      : constant Unsigned_32 := DSP.Operation'Enum_Rep (DSP.Get_Information);
    OP_DISPLAY_ATTACH_BUFFER : constant Unsigned_32 := DSP.Operation'Enum_Rep (DSP.Attach_Buffer);
@@ -637,17 +645,16 @@ procedure main is
       generation      : Unsigned_64 := 0;
    end record;
 
-   --  A client blocks in OP_INPUT_WAIT while desktop retains the kernel-minted
-   --  one-use reply capability. One slot per surface makes waiter ownership
-   --  explicit and prevents one client from consuming another client's wake.
-   INPUT_REPLY_SLOT_FIRST : constant CapabilitySlot := 32;
+   --  A client blocks in OP_INPUT_WAIT while desktop retains its saved
+   --  one-use reply. One per surface makes waiter ownership explicit and
+   --  prevents one client from consuming another client's wake.
    type InputWaiter is record
       active      : Boolean := False;
       owner       : Process_ID := No_Process;
       target      : Unsigned_64 := 0;
       afterSerial : Unsigned_64 := 0;
       deadline    : Unsigned_64 := 0;
-      replySlot   : CapabilitySlot := INPUT_REPLY_SLOT_FIRST;
+      saved       : CuBit.Handles.Reply := CuBit.Handles.No_Reply;
    end record;
 
    --  Input channels are keyed by stable surface ID, not z-order table index.
@@ -682,7 +689,7 @@ procedure main is
    subtype InputSourceIndex is Natural range 0 .. MAX_INPUT_SOURCES - 1;
    type InputSourceState is record
       used       : Boolean := False;
-      authorityTag      : Unsigned_64 := 0;
+      identity   : Unsigned_64 := 0;  --  the publisher, as the kernel names it
       device     : CuBit.Input.Device_Class := CuBit.Input.KEYBOARD;
       generation : CuBit.Input.Source_Generation := 0;
       sequence   : CuBit.Input.Source_Sequence := 0;
@@ -2360,9 +2367,10 @@ procedure main is
          return True;
       end if;
 
-      count := syscall (SYSCALL_PROCLIST,
-                        Unsigned_64 (To_Integer (psBufAddr)),
-                        PS_BUF_SIZE);
+      --  Any process handle with Read lists processes: Desktop's own.
+      count := CuBit.Handles.Control.Process_List
+        (CuBit.Handles.Startup.Process_Named (CuBit.Startup_Tables.Self_Process_Text),
+         psBufAddr, PS_BUF_SIZE);
       if count = Unsigned_64'Last then
          return True;
       end if;
@@ -2644,7 +2652,7 @@ procedure main is
    procedure collectLaunch (C : CompletionEntry) is
       M : Message renames C.msg;
       Envelope_OK : constant Boolean := C.valid and C.status = COMPLETION_OK and
-        M.tag.length = 1 and M.tag.flags = 0 and M.tag.reserved = 0 and
+        M.tag.length = 1 and M.tag.protocol = 0 and M.tag.reserved = 0 and
         M.words (1) = 0 and M.words (2) = 0 and M.words (3) = 0;
       --  The reply names the new process by its full identity (KERN-003).
       Success : constant Boolean := Envelope_OK and M.tag.label = REPLY_OK and
@@ -2738,7 +2746,7 @@ procedure main is
                   LR.Complete (outputLeaseRequests (Output), completion.token,
                     completion.valid and then completion.status = COMPLETION_OK and then
                     completion.msg.tag.label = OP_DISPLAY_RELEASE and then
-                    completion.msg.tag.length = 1 and then completion.msg.tag.flags = 0 and then
+                    completion.msg.tag.length = 1 and then completion.msg.tag.protocol = 0 and then
                     completion.msg.tag.reserved = 0 and then
                     (for all Word of completion.msg.words => Word = 0));
                   if LR.Status (outputLeaseRequests (Output)) /= LR.Released then
@@ -2814,7 +2822,7 @@ procedure main is
                         --  Boot timeline (docs/boot-timeline.md): the first
                         --  frame Display published. One branch after that.
                         if result.Valid and then result.Value.Result.Outcome = DSP.Published then
-                           CuBit.Boot_Milestones.Mark (CuBit.Boot_Milestone_Codes.First_Frame_Presented);
+                           CuBit.Boot_Milestones.Mark (CuBit.Boot_Milestone_Codes.First_Frame_Presented, Startup.Registration);
                         end if;
                         if not gpuProgress (P.Trace_Output).Published and then
                           GPU_Frame /= BP.None and then
@@ -2904,7 +2912,7 @@ procedure main is
       P.Started := Attempt_Time;
       P.Started_Us := presentationNow;
       if not Bootstrap_CPU then Desktop_Breadcrumbs.Mark (Desktop_Breadcrumbs.Submit); end if;
-      Accepted := capSubmit (CAP_SLOT_DISPLAY, request, CP.Token (P.Transfer));
+      Accepted := capSubmit (Desktop_Endpoints.Display_Service, request, CP.Token (P.Transfer));
       CP.Submitted (P.Transfer, Accepted, Attempt_Time);
       if Accepted then
          if Desktop_Compositor.Full_Output and then not gpuProgress (Output).Published then
@@ -6192,9 +6200,10 @@ procedure main is
          focusTopmostVisibleWindow (damage);
       end if;
 
-      if oldOwner /= No_Process and then processAlive (oldOwner) then
-         ignore := killProcess (oldOwner);
-      end if;
+      --  Desktop holds no process authority over its clients: closing a
+      --  window does not stop its owner (the kernel refused the old kill
+      --  too). Stopping the owner belongs to its launcher (procmgr).
+      null;
    end closeSurface;
 
    procedure reapDeadClientSurfaces (damage : in out Rect) is
@@ -6628,9 +6637,9 @@ procedure main is
 
          response.tag :=
            (label => OP_INPUT_WAIT, length => 4,
-            flags =>
+            protocol =>
               (if hasInputAfter (target, event.serial)
-               then INPUT_REPLY_MORE_PENDING else 0),
+               then INPUT_REPLY_MORE_PENDING else 0), ipc => <>,
             reserved => 0);
          response.words (0) := event.kind;
          response.words (1) := event.serial;
@@ -6640,10 +6649,10 @@ procedure main is
          --  Clear software ownership before consuming the one-use kernel
          --  authority. A failed reply cannot leave an immortal waiter.
          declare
-            slot : constant CapabilitySlot := waiter.replySlot;
+            saved : constant CuBit.Handles.Reply := waiter.saved;
          begin
-            waiter := (replySlot => slot, others => <>);
-            ignore := replyCap (slot, response);
+            waiter := (others => <>);
+            ignore := replyCap (saved, response);
          end;
       end;
    end completeInputWaiter;
@@ -6675,14 +6684,15 @@ procedure main is
             -- consumes the same one-use reply, without inventing an input
             -- serial or clearing queued events.
             response := NULL_MESSAGE;
-            response.tag := (OP_INPUT_WAIT, 4, 0, 0);
+            response.tag := (label => OP_INPUT_WAIT, length => 4,
+                             protocol => 0, ipc => <>, reserved => 0);
             response.words (0) := INPUT_NONE;
             response.words (1) := channel.waiter.afterSerial;
             declare
-               slot : constant CapabilitySlot := channel.waiter.replySlot;
+               saved : constant CuBit.Handles.Reply := channel.waiter.saved;
             begin
-               channel.waiter := (replySlot => slot, others => <>);
-               ignore := replyCap (slot, response);
+               channel.waiter := (others => <>);
+               ignore := replyCap (saved, response);
             end;
          end if;
       end loop;
@@ -6777,7 +6787,7 @@ procedure main is
 
       if inputChannels (SurfaceIndex (channelSlot)).waiter.active then
          response.tag :=
-           (label => OP_INPUT_WAIT, length => 4, flags => 0, reserved => 0);
+           (label => OP_INPUT_WAIT, length => 4, protocol => 0, ipc => <>, reserved => 0);
          response.words (0) := INPUT_RESYNC;
          IQ.Reserve (inputChannels (SurfaceIndex (channelSlot)).nextSerial,
            response.words (1));
@@ -6786,12 +6796,11 @@ procedure main is
             exitCompositor (1);
          end if;
          declare
-            slot : constant CapabilitySlot :=
-              inputChannels (SurfaceIndex (channelSlot)).waiter.replySlot;
+            saved : constant CuBit.Handles.Reply :=
+              inputChannels (SurfaceIndex (channelSlot)).waiter.saved;
          begin
-            inputChannels (SurfaceIndex (channelSlot)).waiter :=
-              (replySlot => slot, others => <>);
-            ignore := replyCap (slot, response);
+            inputChannels (SurfaceIndex (channelSlot)).waiter := (others => <>);
+            ignore := replyCap (saved, response);
          end;
       end if;
 
@@ -6971,14 +6980,14 @@ procedure main is
       --  at startup, but it does not steal keyboard/mouse focus until a real
       --  shell/client surface connects. That lets the CLI shell stay usable
       --  long enough to run `spawn desktop-shell.app`.
-      r := registerDriver (DRIVER_KEYBOARD);
+      r := registerDriver (DRIVER_KEYBOARD, Startup.Keyboard);
       if r = Unsigned_64'Last then
          debugPrint ("desktop: register keyboard failed" & LF);
       else
          debugPrint ("desktop: registered keyboard" & LF);
       end if;
 
-      r := registerDriver (DRIVER_MOUSE);
+      r := registerDriver (DRIVER_MOUSE, Startup.Mouse);
       if r = Unsigned_64'Last then
          debugPrint ("desktop: register mouse failed" & LF);
       else
@@ -7440,7 +7449,7 @@ procedure main is
       if request.tag.label = DP.Code (DP.Get_Appearance) then
          --  Read-only observation over the existing desktop endpoint. There
          --  is deliberately no client-supplied appearance mutation request.
-         if request.tag.length = 1 and then request.tag.flags = 0 and then
+         if request.tag.length = 1 and then request.tag.protocol = 0 and then
            request.tag.reserved = 0 and then request.words (0) <= 3 and then
            request.words (1) = 0 and then request.words (2) = 0 and then request.words (3) = 0
          then
@@ -7449,7 +7458,8 @@ procedure main is
                  CuBit.UI.Theme_Data.Chunk (CuBit.UI.Theme_Data.Colors (CuBit.UI.Current_Theme),
                    CuBit.UI.Theme_Data.Chunk_Index (request.words (0)));
             begin
-               replyMsg.tag := (DP.Code (DP.Get_Appearance), 4, 0, 0);
+               replyMsg.tag := (label => DP.Code (DP.Get_Appearance), length => 4,
+                                protocol => 0, ipc => <>, reserved => 0);
                replyMsg.words := [themeRevision, Data (1), Data (2), Data (3)];
             end;
          else
@@ -7472,7 +7482,8 @@ procedure main is
       elsif request.tag.label = OP_SURFACE_PRESENT then
          present := DP.Decode_Present (CuBit.Desktop_Messages.To_Wire (request));
          if not present.Valid then
-            replyMsg.tag := (OP_SURFACE_PRESENT, 1, 0, 0);
+            replyMsg.tag := (label => OP_SURFACE_PRESENT, length => 1,
+                             protocol => 0, ipc => <>, reserved => 0);
             replyMsg.words (0) := DP.Status_Code'Enum_Rep (DP.Invalid_Request);
             ignore := reply (from, replyMsg);
             return;
@@ -7923,7 +7934,8 @@ procedure main is
                Acquisition : DP.Status_Code;
                Loan : Source_Loans.Ticket;
             begin
-               replyMsg.tag := (OP_SURFACE_ATTACH_BUFFER, 1, 0, 0);
+               replyMsg.tag := (label => OP_SURFACE_ATTACH_BUFFER, length => 1,
+                                protocol => 0, ipc => <>, reserved => 0);
                if not decoded.Valid then
                   replyMsg.words (0) := DP.Status_Code'Enum_Rep (DP.Invalid_Request);
                elsif idx < 0 then
@@ -7970,7 +7982,7 @@ procedure main is
          when OP_SURFACE_PRESENT =>
             replyMsg.tag := (label  => OP_SURFACE_PRESENT,
                              length => 1,
-                             flags  => 0,
+                             protocol  => 0, ipc => <>,
                              reserved  => 0);
             replyMsg.words (0) := UI_OK;
             declare
@@ -8071,7 +8083,7 @@ procedure main is
          when OP_INPUT_POLL | OP_INPUT_WAIT =>
             replyMsg.tag := (label  => request.tag.label,
                              length => 4,
-                             flags  => 0,
+                             protocol  => 0, ipc => <>,
                              reserved  => 0);
             declare
                found : Boolean;
@@ -8087,7 +8099,7 @@ procedure main is
                dequeueInput (target, afterSerial, found, event);
                if found then
                   if hasInputAfter (target, event.serial) then
-                     replyMsg.tag.flags := INPUT_REPLY_MORE_PENDING;
+                     replyMsg.tag.protocol := INPUT_REPLY_MORE_PENDING;
                   end if;
                   replyMsg.words (0) := event.kind;
                   replyMsg.words (1) := event.serial;
@@ -8100,17 +8112,17 @@ procedure main is
                    (SurfaceIndex (channelSlot)).waiter.active
                then
                   declare
-                     slot : constant CapabilitySlot :=
-                       INPUT_REPLY_SLOT_FIRST + CapabilitySlot (channelSlot);
+                     saved : constant CuBit.Handles.IPC.Saved_Reply :=
+                       CuBit.Handles.IPC.Save_Reply;
                   begin
-                     if saveReplyCap (Unsigned_64 (slot)) = 1 then
+                     if saved.Saved then
                         inputChannels (SurfaceIndex (channelSlot)).waiter :=
                           (active      => True,
                            owner       => from,
                            target      => target,
                            afterSerial => afterSerial,
                            deadline    => deadline,
-                           replySlot   => slot);
+                           saved       => saved.Handle);
                         replyNow := False;
                      else
                         replyMsg.words (0) := INPUT_RESYNC;
@@ -8154,7 +8166,7 @@ procedure main is
          when others =>
             replyMsg.tag := (label  => request.tag.label,
                              length => 1,
-                             flags  => 0,
+                             protocol  => 0, ipc => <>,
                              reserved  => 0);
             replyMsg.words (0) := UI_ERR_UNSUPPORTED;
       end case;
@@ -8349,7 +8361,7 @@ procedure main is
       aligned := alignUpPage (raw);
       spawnGrantAddr := To_Address (Integer_Address (aligned));
       CuBit.Memory_Grants.Create_Via_Capability
-        (slot      => CAP_SLOT_PROCMGR,
+        (slot      => Desktop_Endpoints.Process_Manager,
          localAddr => spawnGrantAddr,
          numPages  => 1,
          readWrite => True,
@@ -8394,7 +8406,7 @@ procedure main is
 
       msg.tag := (label  => OP_SPAWN,
                   length => Unsigned_8 (len),
-                  flags  => 0,
+                  protocol  => 0, ipc => <>,
                   reserved  => 0);
       msg.words (0) := CuBit.Grant_References.Encode (spawnGrant);
       --  Scheduling priority: higher runs first. Launched applications run
@@ -8412,7 +8424,7 @@ procedure main is
       launchName (1 .. len) := name;
       launchNameLength := len;
       launchInputAnnounced := False;
-      if capSubmit (CAP_SLOT_PROCMGR, msg, New_Token) then
+      if capSubmit (Desktop_Endpoints.Process_Manager, msg, New_Token) then
          debugPrint ("desktop: launch submitted token=" & Decimal (New_Token) & LF);
       else
          CR.Quarantine (launchRequest);
@@ -9350,7 +9362,7 @@ procedure main is
 
       for i in inputSources'Range loop
          if inputSources (i).used and then
-            inputSources (i).authorityTag = report.sourceAuthorityTag and then
+            inputSources (i).identity = report.sourceIdentity and then
             inputSources (i).device = report.device
          then
             slot := Integer (i);
@@ -9416,7 +9428,7 @@ procedure main is
             end if;
          end if;
          source.used := True;
-         source.authorityTag := report.sourceAuthorityTag;
+         source.identity := report.sourceIdentity;
          source.device := report.device;
          source.generation := report.generation;
          source.sequence := report.sequence;
@@ -9645,7 +9657,8 @@ procedure main is
       end;
    end pumpKeyRepeat;
 
-   procedure handleEvent (eventMsg : Message; running : in out Boolean) is
+   procedure handleEvent (eventMsg : Message; publisher : Process_ID;
+                          running : in out Boolean) is
       raw : Unsigned_8;
       packed : Unsigned_64;
       sourceReport : CuBit.Input.Source_Report :=
@@ -9660,7 +9673,7 @@ procedure main is
         eventMsg.words (1), eventMsg.words (2), eventMsg.words (3), Diagnostic_Last_Us);
 
       if eventMsg.tag.label = CuBit.Input.OP_SOURCE_REPORT then
-         CuBit.Input.Decode (eventMsg, sourceReport, sourceValid);
+         CuBit.Input.Decode (eventMsg, publisher, sourceReport, sourceValid);
          if sourceValid then
             acceptSourceReport
               (sourceReport, sourceAccepted, sourceDiscontinuity,
@@ -9678,7 +9691,7 @@ procedure main is
         eventMsg.tag.label = EVENT_MOUSE
       then
          --  Boot timeline (docs/boot-timeline.md); one branch after the first.
-         CuBit.Boot_Milestones.Mark (CuBit.Boot_Milestone_Codes.First_Input_Accepted);
+         CuBit.Boot_Milestones.Mark (CuBit.Boot_Milestone_Codes.First_Input_Accepted, Startup.Registration);
          --  A frame follows: let the GPU clock rise now (one-way, coalesced).
          Desktop_GPU_Wake.Input_Hint;
       end if;
@@ -9855,13 +9868,13 @@ procedure main is
        Output : DSP.Output_Number := 0) return Message
    is
       msg : Message :=
-        (tag      => (label => label, length => 4, flags => 0,
+        (tag      => (label => label, length => 4, protocol => 0, ipc => <>,
                      reserved => Unsigned_16 (Output)),
          authorityTag => 0,
          words    => [w0, w1, w2, w3]);
       tag : MessageTag;
    begin
-      tag := capCall (CAP_SLOT_DISPLAY, msg, CuBit.Messages.Deadline_After (Display_Call_Deadline_Ms));
+      tag := capCall (Desktop_Endpoints.Display_Service, msg, CuBit.Messages.Deadline_After (Display_Call_Deadline_Ms));
       msg.tag := tag;
       return msg;
    end callDisplay;
@@ -9977,7 +9990,7 @@ procedure main is
                -- A false capSubmit result confirms no request was published.
                -- Retain the lease and retry once on a later bounded loop pass.
                LR.Submitted (outputLeaseRequests (Output),
-                 capSubmit (CAP_SLOT_DISPLAY, Request, Token));
+                 capSubmit (Desktop_Endpoints.Display_Service, Request, Token));
             end;
          end if;
          if LR.Status (outputLeaseRequests (Output)) = LR.Released then
@@ -10079,7 +10092,7 @@ procedure main is
    function validDisplayInfo (Info : Message) return Boolean is
    begin
       if Info.tag.label /= OP_DISPLAY_GET_INFO or else Info.tag.length /= 4 or else
-        Info.tag.flags /= 0 or else Info.tag.reserved /= 0 or else
+        Info.tag.protocol /= 0 or else Info.tag.reserved /= 0 or else
         Info.words (0) not in 1 .. Unsigned_64 (DP.Positive_Extent'Last) or else
         Info.words (1) not in 1 .. Unsigned_64 (DP.Positive_Extent'Last) or else
         Info.words (2) > DP.Maximum_Buffer_Bytes or else Info.words (3) /= 32
@@ -10137,21 +10150,21 @@ procedure main is
          if Raw = Unsigned_64'Last then closeOutput (Output); return; end if;
          P.Targets (B).Address := To_Address (Integer_Address (Raw));
          MG.Create_Via_Capability
-           (CAP_SLOT_DISPLAY, P.Targets (B).Address, Natural (Pages), False,
+           (Desktop_Endpoints.Display_Service, P.Targets (B).Address, Natural (Pages), False,
             P.Targets (B).Grant, Granted);
          P.Targets (B).Granted := Granted;
          if not Granted then closeOutput (Output); return; end if;
          Response := CuBit.Desktop_Messages.From_Wire (DSP.With_Output
            (PW.Encode (PW.Attachment'(B, (P.Targets (B).Grant, Layout))), Output));
-         Response.tag := capCall (CAP_SLOT_DISPLAY, Response, CuBit.Messages.Deadline_After (Display_Call_Deadline_Ms));
+         Response.tag := capCall (Desktop_Endpoints.Display_Service, Response, CuBit.Messages.Deadline_After (Display_Call_Deadline_Ms));
          if Response.tag.label /= PW.Attach_Buffer or else Response.tag.length /= 1 or else
-           Response.tag.flags /= 0 or else Response.tag.reserved /= 0 or else Response.words (0) /= 0
+           Response.tag.protocol /= 0 or else Response.tag.reserved /= 0 or else Response.words (0) /= 0
          then closeOutput (Output); return; end if;
       end loop;
       Response := CuBit.Desktop_Messages.From_Wire (DSP.With_Output (PW.Encode_Open, Output));
-      Response.tag := capCall (CAP_SLOT_DISPLAY, Response, CuBit.Messages.Deadline_After (Display_Call_Deadline_Ms));
+      Response.tag := capCall (Desktop_Endpoints.Display_Service, Response, CuBit.Messages.Deadline_After (Display_Call_Deadline_Ms));
       if Response.tag.label /= PW.Open_Session or else Response.tag.length /= 4 or else
-        Response.tag.flags /= 0 or else Response.tag.reserved /= 0 or else
+        Response.tag.protocol /= 0 or else Response.tag.reserved /= 0 or else
         Response.words (0) /= 0 or else Response.words (1) = 0 or else
         Response.words (2) /= 3 or else Response.words (3) /= 1
       then closeOutput (Output); return; end if;
@@ -10437,7 +10450,7 @@ procedure main is
          return;
       end if;
       CR.Allocate (requestSequence, Token);
-      if Token /= 0 and then capSubmit (CAP_SLOT_DISPLAY, CuBit.Desktop_Messages.From_Wire
+      if Token /= 0 and then capSubmit (Desktop_Endpoints.Display_Service, CuBit.Desktop_Messages.From_Wire
            (OM.Encode_Watch (CuBit.Output_Discovery.Display_Broker, outputRevisionSeen)), Token)
       then
          outputWatchToken := Token;
@@ -10505,7 +10518,7 @@ procedure main is
             Call := CuBit.Desktop_Messages.From_Wire (DSP.With_Output
               (OM.Encode_Set_Mode (CuBit.Output_Discovery.Display_Broker,
                                    wantedModes (Output).Mode), Output));
-            Call.tag := capCall (CAP_SLOT_DISPLAY, Call,
+            Call.tag := capCall (Desktop_Endpoints.Display_Service, Call,
                                  CuBit.Messages.Deadline_After (MODE_CALL_DEADLINE_MS));
             Answer := OM.Decode_Result (CuBit.Output_Discovery.Display_Broker,
                                         CuBit.Desktop_Messages.To_Wire (Call));
@@ -10779,7 +10792,11 @@ begin
    --  Announce the session before anything slow (configuration, wallpaper
    --  reads): a framebuffer shell started next to the desktop checks this
    --  and leaves the display to it (shell setupDisplayPresent).
-   ret := registerDriver (DRIVER_DESKTOP);
+   if not CuBit.Startup_State.Ready (Startup.Verify) then
+      debugPrint ("desktop: startup capabilities missing" & LF);
+      return;
+   end if;
+   ret := registerDriver (DRIVER_DESKTOP, Startup.Registration);
    if ret = Unsigned_64'Last then
       debugPrint ("desktop: register failed" & LF);
    end if;
@@ -10849,6 +10866,7 @@ begin
    while running or else not shutdownRequested or else outputDrainRequested or else sourceRetirementPending loop
       declare
          eventMsg   : Message;
+         eventPublisher : Process_ID := No_Process;
          eventFound : Boolean := False;
          activity : Activity_Result;
          metricsDelayUs : Unsigned_64 := Unsigned_64'Last;
@@ -10857,7 +10875,7 @@ begin
          begin
             DB.Begin_Input_Phase (inputBatch, dispatchNow);
             while running and then DB.Can_Input (inputBatch, dispatchNow) loop
-               eventFound := Poll_Event (eventMsg);
+               eventFound := Poll_Event (eventMsg, eventPublisher);
                exit when not eventFound;
                DB.Charge_Input (inputBatch);
                if Desktop_Timing_Policy.Enabled and then CR.Busy (launchRequest) and then
@@ -10879,7 +10897,7 @@ begin
                   if pendingInputUs = Compositor_Elapsed.Unavailable then
                      pendingInputUs := dispatchNow;
                   end if;
-                  handleEvent (eventMsg, running);
+                  handleEvent (eventMsg, eventPublisher, running);
                   noteTiming (Input_Dispatch, Started);
                end;
             end loop;

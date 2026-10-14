@@ -6,8 +6,8 @@ procedure Render_Admission_Tests is
    package GPU renames Intel_GPU_Render_Control;
    Target : constant Unsigned_64 := 16#1234_0000_002A#;
 begin
-   -- Tags are opaque, not CSPACE indices. Only the explicit, authenticated
-   -- reserve slot selects the dedicated driver recipient range.
+   -- CAP-002: a reservation reply names no recipient slot (word 3 is 0);
+   -- any nonzero word 3 is the retired protocol and is quarantined.
    for Slot in Unsigned_64 range 0 .. 64 loop
       declare
          Item : Transaction;
@@ -18,18 +18,10 @@ begin
          Submitted (Item, True);
          Complete (Item, 1, True, [0, 1, 17, Slot], Used);
          pragma Assert (Used);
-         if Slot in 40 .. 55 then
-            pragma Assert (State (Item) = Delegate_Ready and Session (Item) = 17);
-            pragma Assert (Unsigned_64 (Driver_Recipient_Slot (Item)) = Slot);
-            Delegated (Item, True);
-            Prepare (Item, 2, Used); pragma Assert (Used);
-            Submitted (Item, True);
-            Complete (Item, 2, True, [0, 1, 17, Slot], Used);
-            pragma Assert (State (Item) = Quarantined);
-            pragma Assert (Unsigned_64 (Driver_Recipient_Slot (Item)) = Slot);
+         if Slot = 0 then
+            pragma Assert (State (Item) = Activate_Ready and Session (Item) = 17);
          else
-            pragma Assert (State (Item) = Quarantined);
-            pragma Assert (Session (Item) = 0 and Driver_Recipient_Slot (Item) = 0);
+            pragma Assert (State (Item) = Quarantined and Session (Item) = 0);
          end if;
       end;
    end loop;
@@ -47,7 +39,7 @@ begin
             Prepare (Item, Next_ID, Accepted); pragma Assert (Accepted);
             Submitted (Item, True);
             GPU.Handle (Driver, 10, 99, True, GPU.Label, 4, 0, 0,
-              GPU.Words (Payload), Reply, Recipient_Ready => True);
+              GPU.Words (Payload), Reply);
             if Cancel_Pending then Cancel (Item); end if;
             Complete (Item, Next_ID + 1, True, Words (Reply), Consumed);
             pragma Assert (not Consumed);
@@ -61,13 +53,15 @@ begin
          Start (Item, Target);
          Exchange (Cancel_At = 1);
          pragma Assert (Identity (Item) = Target and Session (Item) /= 0);
-         pragma Assert (Driver_Recipient_Slot (Item) = 40);
          if Cancel_At = 1 then
             pragma Assert (State (Item) = Abort_Ready);
          else
-            pragma Assert (State (Item) = Delegate_Ready);
-            Delegated (Item, Cancel_At /= 2);
-            if Cancel_At /= 2 then Exchange (Cancel_At = 3); end if;
+            pragma Assert (State (Item) = Activate_Ready);
+            if Cancel_At = 2 then
+               Cancel (Item);
+            else
+               Exchange (Cancel_At = 3);
+            end if;
          end if;
          if Cancel_At = 0 then
             pragma Assert (State (Item) = Active);
@@ -95,5 +89,5 @@ begin
          pragma Assert (OK and State (Item) = Quarantined);
       end;
    end loop;
-   Put_Line ("RENDER-ADMISSION: PASS actual controller, mock receipt/delegation");
+   Put_Line ("RENDER-ADMISSION: PASS actual controller, mock receipt, no delegation");
 end Render_Admission_Tests;

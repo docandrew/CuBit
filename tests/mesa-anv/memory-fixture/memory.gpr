@@ -1,11 +1,15 @@
 project Memory is
    for Languages use ("Ada", "C");
    for Source_Dirs use (".", "../../../userspace/mesa/anv",
-     "../../../userspace/runtime/gnat");
+     "../../../userspace/runtime/gnat", "../../support/handles",
+     "../../../shared/capabilities");
    for Source_Files use ("memory_tests.adb", "messages_mock.ads", "messages_mock.adb",
      "memory_mock.ads", "memory_mock.adb", "cubit.ads",
      "cubit-grant_references.ads", "native_gpu_memory.ads", "native_gpu_memory.adb",
-     "memory_c_test.c");
+     "memory_c_test.c", "native_gpu_calls.ads", "native_gpu_calls.adb",
+     "cubit-handles.ads", "cubit-handles-c_abi.ads", "cubit-handles-fixture.ads",
+     "cubit-handles-fixture.adb", "capability_abi.ads", "capability_abi.adb",
+     "cubit-process_ids.ads", "cubit-process_ids.adb");
    for Object_Dir use "build";
    for Main use ("memory_tests.adb");
    package Naming is

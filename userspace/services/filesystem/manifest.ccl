@@ -1,0 +1,13 @@
+# filesystem.svc's authority (CAP-002). devmgr maps the boot image into it
+# (launch configuration), answers "ramdisk" with the RAM block driver's
+# endpoint when the live image is writable, and attaches the ATA, NVMe and
+# optical drivers later by offer (Fs_Attachments). Its clients reach it by
+# their own endpoints; procmgr and devmgr manage its access profiles.
+(Executable_Manifest
+  identity => "com.cubit.filesystem"
+  version => "0.1.0"
+  requests => [
+    (notification "filesystem" Notify_Access.Manage "registration")
+    (service "launcher-peer" "ramdisk")
+    (service "device-manager" "ready")]
+  optional => ["ramdisk"])

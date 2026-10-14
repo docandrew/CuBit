@@ -18,9 +18,6 @@ package CuBit.Boot_Milestone_Codes with
    Pure, SPARK_Mode
 is
    --  Boot_Timeline_Layout.System_Call_Number and Operation.
-   System_Call    : constant := 133;
-   Read_Operation : constant := 0;
-   Mark_Operation : constant := 1;
    Read_Chunk_Bytes : constant := 256;
 
    type Milestone is

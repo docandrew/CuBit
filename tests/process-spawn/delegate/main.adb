@@ -6,6 +6,7 @@ with Interfaces; use Interfaces;
 with CuBit.Launch_Arguments;
 with CuBit.Launch_Grants;
 with CuBit.Launching;
+with CuBit.Handles.Startup;
 with CuBit.Messages; use CuBit.Messages;
 
 procedure Main is
@@ -62,6 +63,8 @@ procedure Main is
    Result : CuBit.Launching.Launch_Result;
    Failure : LA.Launch_Failure;
 begin
+   --  procmgr, the "process-manager" startup entry its manifest asks for.
+   CuBit.Launching.Bind (CuBit.Handles.Startup.Endpoint_Named ("process-manager"));
    --  Its own manifest does not let args-check read the place.
    Start ("denied", 0, "", Result, Failure);
    Say ("child started without delegation", Result = CuBit.Launching.Launched);

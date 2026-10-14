@@ -19,7 +19,7 @@ package body CuBit.Input with SPARK_Mode => On is
 
       return
         (tag => (label => OP_SOURCE_REPORT, length => 4,
-                 flags => 0, reserved => 0),
+                 protocol => 0, ipc => <>, reserved => 0),
          --  This field is deliberately ignored on send and kernel-stamped.
          authorityTag => 0,
          words => (0 => report.sequence,
@@ -29,15 +29,19 @@ package body CuBit.Input with SPARK_Mode => On is
    end Encode;
 
    function Is_Source_Report
-     (msg : CuBit.Messages.Message) return Boolean
+     (msg : CuBit.Messages.Message; publisher : CuBit.Messages.Process_ID) return Boolean
    is
+      use type CuBit.Messages.Process_ID;
       deviceRep   : constant Unsigned_64 := msg.words (1) and DEVICE_MASK;
       deliveryRep : constant Unsigned_64 :=
         Shift_Right (msg.words (1) and DELIVERY_MASK, 8);
    begin
       return msg.tag.label = OP_SOURCE_REPORT and then
         msg.tag.length = 4 and then
-        msg.authorityTag /= 0 and then
+        --  Published through an input publication capability (its badge),
+        --  by a process the kernel names.
+        msg.authorityTag = Publisher_Tag and then
+        publisher /= CuBit.Messages.No_Process and then
         msg.words (0) /= 0 and then
         (msg.words (1) and RESERVED_FLAG_MASK) = 0 and then
         (msg.words (1) and GENERATION_MASK) /= 0 and then
@@ -50,22 +54,23 @@ package body CuBit.Input with SPARK_Mode => On is
    end Is_Source_Report;
 
    procedure Decode
-     (msg    : CuBit.Messages.Message;
-      report : out Source_Report;
-      valid  : out Boolean)
+     (msg       : CuBit.Messages.Message;
+      publisher : CuBit.Messages.Process_ID;
+      report    : out Source_Report;
+      valid     : out Boolean)
    is
       deviceRep   : Unsigned_64;
       deliveryRep : Unsigned_64;
    begin
       report := NULL_SOURCE_REPORT;
-      valid := Is_Source_Report (msg);
+      valid := Is_Source_Report (msg, publisher);
       if not valid then
          return;
       end if;
 
       deviceRep := msg.words (1) and DEVICE_MASK;
       deliveryRep := Shift_Right (msg.words (1) and DELIVERY_MASK, 8);
-      report.sourceAuthorityTag := msg.authorityTag;
+      report.sourceIdentity := CuBit.Messages.To_Word (publisher);
       report.sequence := msg.words (0);
       report.generation := Source_Generation
         (Shift_Right (msg.words (1) and GENERATION_MASK, 32));

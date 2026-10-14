@@ -16,6 +16,7 @@ with Ext2_Inodes;
 with Jbd2_Format;
 with Ext2_Format;
 
+with CuBit.Handles;
 package Ext2 is
    SUPERBLOCK_OFFSET : constant := Ext2_Format.Superblock_Offset;
    EXT2_SIGNATURE    : constant := Ext2_Format.Signature;
@@ -282,7 +283,8 @@ package Ext2 is
    --  Initialize a filesystem over any Block.Device.V1 endpoint.
    procedure initBlockDevice
      (fs         : out Filesystem;
-      capSlot    : Unsigned_64;
+      endpoint   : CuBit.Handles.Endpoint;
+      volume     : Unsigned_64;
       grant      : CuBit.Memory_Grants.Grant_Reference;
       grantBuf   : System.Address;
       grantBytes : Unsigned_32;

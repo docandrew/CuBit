@@ -5,8 +5,13 @@ with CuBit.Messages; use CuBit.Messages;
 with CuBit.Memory_Grants;
 with CuBit.Filesystems; use CuBit.Filesystems;
 with Storage_Channel; use Storage_Channel;
+with CuBit.Handles;
+with CuBit.Handles.Fixture;
 
 procedure Channel_Tests is
+   function EP (Word : Unsigned_64) return CuBit.Handles.Endpoint
+     renames CuBit.Handles.Fixture.Endpoint_Of;
+   use type CuBit.Handles.Endpoint;
    use type System.Address;
    package Grants renames CuBit.Memory_Grants;
    Cases : Natural := 0;
@@ -14,7 +19,7 @@ procedure Channel_Tests is
    function Answer (Token, Value : Unsigned_64; Code : Unsigned_32 := REPLY_OK;
                     Words : Unsigned_8 := 1) return CompletionEntry is
      (requestId => Token + 100, token => Token,
-      msg => ((Code, Words, 0, 0), 0, [0 => Value, others => 0]),
+      msg => ((label => Code, length => Words, protocol => 0, ipc => <>, reserved => 0), 0, [0 => Value, others => 0]),
       from => 42, status => COMPLETION_OK, valid => True);
 
    procedure Check_Operation (Op : Operation) is
@@ -28,7 +33,7 @@ procedure Channel_Tests is
       Input : String (17 .. 20) := "abcd";
       Reply : CompletionEntry;
    begin
-      Initialize (Object, 12, Ok);
+      Initialize (Object, EP (12), Ok);
       pragma Assert (Ok and Status (Object) = Ready);
       declare
          Page : String (1 .. 4096) with Import, Address => Grants.Mapping;
@@ -37,7 +42,7 @@ procedure Channel_Tests is
            (if Op in Open_Existing | Storage_Channel.Open_Create | Write_Data then Input else ""),
            (if Op = Read_Data then 4 else 0), 1, Sent);
          pragma Assert (Sent = Submitted and Status (Object) = Waiting);
-         pragma Assert (Last_Endpoint = 12 and Last_Token = 1);
+         pragma Assert (Last_Endpoint = EP (12) and Last_Token = 1);
          if Op in Open_Existing | Storage_Channel.Open_Create | Write_Data then
             Input := "xxxx";
             pragma Assert (Page (1 .. 4) = "abcd");
@@ -77,7 +82,7 @@ procedure Channel_Tests is
          pragma Assert (Sent = Invalid_Request);
          Retire (Object, Ok);
          pragma Assert (Ok and Status (Object) = Retired);
-         Initialize (Object, 12, Ok);
+         Initialize (Object, EP (12), Ok);
          pragma Assert (not Ok);
       end;
       Cases := Cases + 1;
@@ -93,7 +98,7 @@ procedure Channel_Tests is
       Code : Unsigned_32;
       Value : Unsigned_64;
    begin
-      Initialize (Object, 1, Ok);
+      Initialize (Object, EP (1), Ok);
       pragma Assert (Ok);
       Submit (Object, Read_Data, 1, 0, "", 4, 1, Sent);
       pragma Assert (Sent = Submitted);
@@ -104,7 +109,7 @@ procedure Channel_Tests is
          when 4 => Reply.status := Unsigned_64'Last;
          when 5 => Reply.requestId := 0;
          when 6 => Reply.msg.tag.length := 2;
-         when 7 => Reply.msg.tag.flags := 1;
+         when 7 => Reply.msg.tag.protocol := 1;
          when 8 => Reply.msg.tag.reserved := 1;
          when 9 => Reply.msg.words (0) := 5;
          when 10 => Reply.msg.tag.label := REPLY_IO_ERROR;
@@ -136,7 +141,7 @@ procedure Channel_Tests is
       Code : Unsigned_32;
       Value : Unsigned_64;
    begin
-      Initialize (Object, 1, Ok);
+      Initialize (Object, EP (1), Ok);
       Submit (Object, Open_Existing, 0, 0, "db", 0, 1, Sent);
       pragma Assert (Sent = Submitted);
       Complete (Object, Answer (1, 0, Label), Done);
@@ -157,7 +162,7 @@ procedure Channel_Tests is
       Value : Unsigned_64;
       Reply : CompletionEntry := Answer (1, 5);
    begin
-      Initialize (Object, 1, Ok);
+      Initialize (Object, EP (1), Ok);
       Submit (Object, Op, 1, 0,
         (if Op in Open_Existing | Storage_Channel.Open_Create | Write_Data then "data" else ""),
         (if Op = Read_Data then 4 else 0), 1, Sent);
@@ -166,7 +171,7 @@ procedure Channel_Tests is
          when Open_Existing | Storage_Channel.Open_Create =>
             Reply.msg.tag.length := 2;
             Reply.msg.words (0) := 0;
-         when Size => Reply.msg.tag.flags := 1;
+         when Size => Reply.msg.tag.protocol := 1;
          when others => null;
       end case;
       Complete (Object, Reply, Done);
@@ -188,7 +193,7 @@ procedure Channel_Tests is
       Input : String (17 .. 16 + Length) := [others => 'W'];
       Output : String (23 .. 24 + Length) := [others => '?'];
    begin
-      Initialize (Object, 12, Ok);
+      Initialize (Object, EP (12), Ok);
       pragma Assert (Ok);
       declare
          Page : String (1 .. Transfer_Bytes) with Import, Address => Grants.Mapping;
@@ -240,7 +245,7 @@ begin
    begin
       Send (Object, Write_Data, 23, 0, 4097, 0, 1, Sent);
       pragma Assert (Sent = Unavailable and Filled = 0);
-      Initialize (Object, 12, Ok); pragma Assert (Ok);
+      Initialize (Object, EP (12), Ok); pragma Assert (Ok);
       Send (Object, Write_Data, 0, 0, 4097, 0, 1, Sent);
       pragma Assert (Sent = Invalid_Request and Filled = 0);
       Send (Object, Write_Data, 23, 0, Transfer_Bytes + 1, 0, 1, Sent);
@@ -288,7 +293,7 @@ begin
       Sent : Submission;
       Done : Completion_Result;
    begin
-      Initialize (Object, 1, Ok);
+      Initialize (Object, EP (1), Ok);
       pragma Assert (Ok);
       Accept_Submission := False;
       Submit (Object, Flush, 1, 0, "", 0, 1, Sent);
@@ -330,7 +335,7 @@ begin
       Sent : Submission;
    begin
       Grants.Allow_Grant := False;
-      Initialize (Object, 1, Ok);
+      Initialize (Object, EP (1), Ok);
       pragma Assert (not Ok and Status (Object) = Failed);
       Submit (Object, Close, 1, 0, "", 0, 1, Sent);
       pragma Assert (Sent = Unavailable);
@@ -350,7 +355,7 @@ begin
       Value : Unsigned_64;
       Last : constant Unsigned_64 := NO_COMPLETION_TOKEN - 1;
    begin
-      Initialize (Object, 1, Ok);
+      Initialize (Object, EP (1), Ok);
       Submit (Object, Flush, 1, 0, "", 0, 1, Sent);
       Complete (Object, Answer (1, 0), Done);
       Take_Result (Object, Empty, Code, Value, Ok);
@@ -376,7 +381,7 @@ begin
       Ok : Boolean;
       Before : constant Natural := Grants.Revocations;
    begin
-      Initialize (Object, 1, Ok);
+      Initialize (Object, EP (1), Ok);
       pragma Assert (Ok);
       Grants.Allow_Revoke := False;
       Grants.Is_Retired := False;

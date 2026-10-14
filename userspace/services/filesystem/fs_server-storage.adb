@@ -1,4 +1,7 @@
 with CuBit.Block_Devices;
+with CuBit.Handles.IPC;
+with Fs_Attachments;
+with Startup;
 with CuBit.Filesystems; use CuBit.Filesystems;
 with CuBit.Volume_Descriptions;
 with Ext2_Support;
@@ -29,6 +32,9 @@ package body Fs_Server.Storage is
       if Context.Status /= Provider_Not_Ready then
          return;
       end if;
+      if not CuBit.Handles.Valid (Device.Endpoint) then
+         return; -- not attached yet
+      end if;
       if Device.Ready_Role /= 0 then
          Provider := Registered_Driver (Device.Ready_Role);
          if Provider = No_Process then
@@ -53,7 +59,7 @@ package body Fs_Server.Storage is
          return;
       end if;
       Ext2.initBlockDevice
-        (Context.Fs, Device.Endpoint, Context.Grant, Context.Buffer,
+        (Context.Fs, Device.Endpoint, Unsigned_64 (Volume), Context.Grant, Context.Buffer,
          Unsigned_32 (Device.Transfer_Pages) * FS_PAGE_SIZE, Result);
       Context.Status := Result;
       bumpNamespace;   --  names on this volume resolve anew
@@ -87,7 +93,9 @@ package body Fs_Server.Storage is
          begin
             Register
               (Volumes, "mem:0",
-               (Endpoint => CAP_SLOT_RAMDISK, Ready_Role => 0, Transfer_Pages => 128),
+               (Endpoint => (if Startup.Ramdisk.Present then Startup.Ramdisk.Value
+                             else CuBit.Handles.No_Endpoint),
+                Ready_Role => 0, Transfer_Pages => 128),
                Default_Write_Volume, Result);
             if Result = Registered then
                ensureVolume (Volume_Index (Default_Write_Volume), admission);
@@ -105,14 +113,14 @@ package body Fs_Server.Storage is
    begin
       ok := False;
       Register (Volumes, "ata:0",
-        (Endpoint => CAP_SLOT_ATA, Ready_Role => DRIVER_ATA, Transfer_Pages => 8),
+        (Endpoint => CuBit.Handles.No_Endpoint, Ready_Role => DRIVER_ATA, Transfer_Pages => 8),
         Volume, Result);
       if Result /= Registered then
          debugPrint ("FS Server: volume list initialization failed." & LF);
          return;
       end if;
       Register (Volumes, "nvme:0",
-        (Endpoint => CAP_SLOT_NVME, Ready_Role => DRIVER_NVME, Transfer_Pages => 128),
+        (Endpoint => CuBit.Handles.No_Endpoint, Ready_Role => DRIVER_NVME, Transfer_Pages => 128),
         Volume, Result);
       if Result /= Registered then
          debugPrint ("FS Server: volume list initialization failed." & LF);
@@ -120,6 +128,49 @@ package body Fs_Server.Storage is
       end if;
       ok := True;
    end registerVolumes;
+
+   procedure handleAttach (sender : Process_ID; msg : Message) is
+      Device : Unsigned_64;
+      Attached : Boolean := False;
+      Volume : Volume_Reference := No_Volume;
+   begin
+      if sender = No_Process or else sender /= Registered_Driver (DRIVER_DEVMGR)
+        or else msg.tag.length /= Fs_Attachments.Attach_Words
+        or else not CuBit.Handles.IPC.Offers (msg)
+      then
+         sendReply (sender, REPLY_ERR, 0);
+         return;
+      end if;
+      Device := msg.words (0);
+      declare
+         Offered : constant CuBit.Handles.IPC.Accepted_Endpoint :=
+           CuBit.Handles.IPC.Accept_Endpoint (CuBit.Handles.IPC.Accept_Offered (sender));
+      begin
+         if Offered.OK then
+            if Device = Fs_Attachments.Device_Code (Fs_Attachments.Optical_Device) then
+               ISO9660.Attach (Offered.Value, Attached);
+            else
+               Volume := Volume_List.Find
+                 (Volumes,
+                  (if Device = Fs_Attachments.Device_Code (Fs_Attachments.ATA_Device) then "ata:0"
+                   elsif Device = Fs_Attachments.Device_Code (Fs_Attachments.NVMe_Device) then "nvme:0"
+                   else ""));
+               if Volume /= No_Volume then
+                  Volume_List.Attach (Volumes, Volume, Offered.Value, Attached);
+               end if;
+            end if;
+            if not Attached then
+               declare
+                  Ignore : constant CuBit.Handles.IPC.Close_Result :=
+                    CuBit.Handles.IPC.Close (Offered.Value);
+               begin
+                  null;
+               end;
+            end if;
+         end if;
+      end;
+      sendReply (sender, (if Attached then REPLY_OK else REPLY_ERR), 0);
+   end handleAttach;
 
    package VD renames CuBit.Volume_Descriptions;
    use type VD.Volume_Kind;

@@ -11,7 +11,8 @@ with CuBit.Messages; use CuBit.Messages;
 with CuBit.Input; use CuBit.Input;
 with CuBit.Devices;
 with CuBit.Device_Interrupts;
-with CCL_Manifest_Bindings;
+with CuBit.Startup_State;
+with Startup;
 with XHCI;
 with XHCI_Capabilities;
 with Optical_Service;
@@ -56,7 +57,6 @@ procedure main is
    diagnostics : XHCI.Boot_Mouse_Diagnostics;
    diagnosticsStartMs : Unsigned_64 := 0;
    diagnosticsCountdown : Natural := 64;
-   CAP_SLOT_DEVMGR : constant CapabilitySlot := 15;
    storageProgress, irqAvailable : Boolean;
    activity : Activity_Result;
    keyboardState : USB_Keyboards.State;
@@ -88,13 +88,13 @@ procedure main is
            Pointer_Pending.Count (pointerPending) = 0;
          pending := Pointer_Pending.Element (pointerPending, 0);
          report :=
-           (sourceAuthorityTag => 0, sequence => pending.Sequence,
+           (sourceIdentity => 0, sequence => pending.Sequence,
             generation => 1, device => RELATIVE_POINTER,
             delivery => ACCUMULABLE_DISPLACEMENT,
             flags => [RESYNCHRONIZE => pending.Recover],
             payload => pending.Payload,
             snapshot => Pointer_Snapshot (pending.Payload, pending.Observed_Ms));
-         if not trySendEvent (mouseConsumer, Encode (report)) then
+         if not trySendEvent (mouseConsumer, Encode (report), Startup.Mouse_Events) then
             publishBusy := publishBusy + 1;
             exit;
          end if;
@@ -118,9 +118,9 @@ procedure main is
          exit when keyboardConsumer = No_Process or else Keyboard_Pending.Count (keyboardPending) = 0;
          Pending := Keyboard_Pending.Element (keyboardPending, 0);
          if not trySendEvent (keyboardConsumer, Encode
-           (Source_Report'(sourceAuthorityTag => 0, sequence => Pending.Sequence,
+           (Source_Report'(sourceIdentity => 0, sequence => Pending.Sequence,
              generation => 1, device => KEYBOARD, delivery => ORDERED_TRANSITION,
-             flags => [RESYNCHRONIZE => Pending.Recover], payload => Pending.Payload, snapshot => 0)))
+             flags => [RESYNCHRONIZE => Pending.Recover], payload => Pending.Payload, snapshot => 0)), Startup.Keyboard_Events)
          then
             publishBusy := publishBusy + 1;
             exit;
@@ -239,7 +239,7 @@ procedure main is
       Boot_Log.Write (LF & "");
       publish :=
         (tag => (label => CuBit.Devices.OP_PUBLISH_XHCI_STATS,
-                 length => 3, flags => 0, reserved => 0),
+                 length => 3, protocol => 0, ipc => <>, reserved => 0),
          authorityTag => 0,
          words =>
            [0 => (diagnostics.decodedReports and 16#FFFF_FFFF#) or
@@ -257,7 +257,7 @@ procedure main is
       --  Input diagnostics must never wait for devmgr. A full destination
       --  ring merely loses this replaceable snapshot; the next one follows.
       if not capSubmit
-        (CAP_SLOT_DEVMGR, publish, NO_COMPLETION_TOKEN)
+        (Startup.Ready, publish, NO_COMPLETION_TOKEN)
       then
          null;
       end if;
@@ -270,14 +270,18 @@ procedure main is
       word1 : Unsigned_64 := 0)
    is
    begin
-      ignore := replyCap
-        (CapabilitySlot'Last,
-         (tag => (label => label, length => 2, flags => 0, reserved => 0),
+      ignore := reply
+        (sender,
+         (tag => (label => label, length => 2, protocol => 0, ipc => <>, reserved => 0),
           authorityTag => 0,
           words => [0 => word0, 1 => word1, others => 0]));
    end Reply_With;
 
 begin
+   if not CuBit.Startup_State.Ready (Startup.Verify) then
+      Boot_Log.Write ("xhci: startup capabilities missing" & LF);
+      return;
+   end if;
    Boot_Log.Write ("xhci: awaiting bounded controller authority" & LF);
    receive (sender, msg);
 
@@ -313,7 +317,7 @@ begin
       return;
    end if;
    if interruptMode in XHCI.INTERRUPT_MSI | XHCI.INTERRUPT_MSIX and then
-     not CuBit.Device_Interrupts.Block_Of (CCL_Manifest_Bindings.Slot_events).Valid
+     not CuBit.Device_Interrupts.Block_Of (Startup.Events).Valid
    then
       Boot_Log.Write ("xhci: no interrupt capability; polling" & LF);
       interruptMode := XHCI.INTERRUPT_POLLING;

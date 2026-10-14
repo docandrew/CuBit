@@ -1,6 +1,6 @@
 with System;
 with Interfaces;
-with CuBit.Messages;
+with CuBit.Handles;
 with CuBit.Grant_References;
 package CuBit.Memory_Grants is
    -- Controlled transport outcomes only; real driver view/registry code runs.
@@ -14,12 +14,14 @@ package CuBit.Memory_Grants is
    Retirement_Queries : Natural := 0;
    Forwardable_Creates : Natural := 0;
    Last_Writable : Boolean := False;
-   procedure Create_Via_Capability
-     (Slot : CuBit.Messages.CapabilitySlot; LocalAddr : System.Address;
+   --  Grants go to the saved reply of the client's request (CAP-002); the
+   --  fixture accepts only the reply the tests name their client by (7).
+   procedure Create_Via_Reply
+     (Peer : CuBit.Handles.Reply; LocalAddr : System.Address;
       NumPages : Natural; ReadWrite : Boolean;
       Reference : out CuBit.Grant_References.Reference; Success : out Boolean);
-   procedure Create_Forwardable_Via_Capability
-     (Slot : CuBit.Messages.CapabilitySlot; LocalAddr : System.Address;
+   procedure Create_Forwardable_Via_Reply
+     (Peer : CuBit.Handles.Reply; LocalAddr : System.Address;
       NumPages : Natural; ReadWrite : Boolean;
       Reference : out CuBit.Grant_References.Reference; Success : out Boolean);
    procedure Revoke

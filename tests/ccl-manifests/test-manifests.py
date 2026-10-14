@@ -26,8 +26,8 @@ class Manifests(unittest.TestCase):
         definitions = self.directory / 'catalog.ccl'
         manifest.write_text(source)
         definitions.write_text(catalog)
-        result = subprocess.run([TOOL, definitions, manifest, '--ada-output',
-                                 self.directory / 'ccl_manifest_bindings.ads', '--schema', SCHEMA],
+        result = subprocess.run([TOOL, definitions, manifest, '--startup-output',
+                                 self.directory / 'startup.ads', '--schema', SCHEMA],
                                 capture_output=True,
                                 text=True, timeout=5)
         self.assertNotIn('raised ', result.stderr, result.stderr)
@@ -46,6 +46,21 @@ class Manifests(unittest.TestCase):
         source.write_text(assembly)
         subprocess.run(['gcc', '-c', source, '-o', obj], check=True, capture_output=True)
         return self.extract(obj)
+
+    def startup(self, section):
+        """Decode .cubit.startup (CuBit.Startup_Tables) independently:
+        ((limit kind, limit count), [(name, kind, need, state, handle)])."""
+        magic, version, count, limit_kind, limit_count = struct.unpack_from('<IHHB3xI', section, 0)
+        self.assertEqual((magic, version), (0x54534243, 1))
+        self.assertEqual(len(section), 16 + 80 * count)
+        entries = []
+        for i in range(count):
+            kind, need, state, length, reserved, handle = struct.unpack_from('<BBBBIQ', section, 16 + 80 * i)
+            name = section[16 + 80 * i + 16:16 + 80 * i + 80]
+            self.assertEqual(reserved, 0)
+            self.assertEqual(name[length:], bytes(64 - length))
+            entries.append((name[:length].decode(), kind, need, state, handle))
+        return (limit_kind, limit_count), entries
 
     def extract(self, obj):
         sections = {}
@@ -84,11 +99,11 @@ class Manifests(unittest.TestCase):
         catalog = (ROOT / 'userspace/ccl/catalogs/native-runtime-services.ccl').read_text()
         typed = self.compile(self.TLS_TYPED, catalog)
         self.assertEqual(typed.returncode, 0, typed.stderr)
-        typed_bindings = (self.directory / 'ccl_manifest_bindings.ads').read_text()
+        typed_bindings = (self.directory / 'startup.ads').read_text()
         keywords = self.compile(self.TLS_KEYWORDS, catalog)
         self.assertEqual(keywords.returncode, 0, keywords.stderr)
         self.assertEqual(self.sections(typed.stdout), self.sections(keywords.stdout))
-        self.assertEqual(typed_bindings, (self.directory / 'ccl_manifest_bindings.ads').read_text())
+        self.assertEqual(typed_bindings, (self.directory / 'startup.ads').read_text())
 
     def test_typed_manifest_named_fields_and_defaults(self):
         catalog = (ROOT / 'userspace/ccl/catalogs/native-runtime-services.ccl').read_text()
@@ -191,11 +206,19 @@ class Manifests(unittest.TestCase):
         result = self.compile()
         self.assertEqual(result.returncode, 0, result.stderr)
         sections = self.sections(result.stdout)
-        self.assertEqual(sections, legacy)
+        # CAP-002 added .cubit.startup and made the caps entries' slot field
+        # a reserved zero; every other byte is identical.
+        self.assertEqual({k: v for k, v in sections.items() if k not in ('.cubit.startup', '.cubit.caps')},
+                         {k: v for k, v in legacy.items() if k != '.cubit.caps'})
+        self.assertEqual(self.startup(sections['.cubit.startup']),
+                         ((1, 0), [('test-host', 1, 1, 1, 0), ('clock', 1, 1, 1, 0)]))
         self.assertEqual(sections['.cubit.caps'],
                          struct.pack('<IHH', 0x43424954, 1, 2) +
-                         struct.pack('<BBHIQ', 2, 3, 24, 18, 0) +
-                         struct.pack('<BBHIQ', 2, 3, 25, 19, 0))
+                         struct.pack('<BBHIQ', 2, 3, 0, 18, 0) +
+                         struct.pack('<BBHIQ', 2, 3, 0, 19, 0))
+        old = bytearray(legacy['.cubit.caps'])
+        old[10:12] = old[26:28] = bytes(2)
+        self.assertEqual(sections['.cubit.caps'], bytes(old))
         native = ROOT / 'userspace/ccl/apps/ccl-vm/build/ccl-vm.app'
         self.assertEqual(sections, self.extract(native))
 
@@ -210,8 +233,8 @@ class Manifests(unittest.TestCase):
     def test_real_ccl_expressions_and_comments(self):
         source = SOURCE.replace('"com.cubit.ccl-vm"',
                                 '(concat "com.cubit." "ccl-vm")')
-        catalog = CATALOG.replace('application-slots 24',
-                                  'application-slots (let ((base 20)) (+ base 4))')
+        catalog = CATALOG.replace('(service clock 19',
+                                  '(service clock (let ((base 15)) (+ base 4))')
         result = self.compile(source, catalog)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout, self.compile().stdout)
@@ -222,43 +245,40 @@ class Manifests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         caps = self.sections(result.stdout)['.cubit.caps']
         self.assertEqual(struct.unpack_from('<I', caps, 28)[0], 9001)
-        self.reject(catalog='(service-catalog v1 (application-slots 24 62))', diagnostic='UNKNOWN_SERVICE')
+        self.reject(catalog='(service-catalog v1)', diagnostic='UNKNOWN_SERVICE')
 
-    def test_named_bindings_follow_layout_and_declaration_order(self):
+    def test_named_bindings_follow_declaration_order(self):
+        # No slots: the caps entries carry a reserved zero, and the startup
+        # table and Startup package name the requests in declaration order.
         result = self.compile()
         self.assertEqual(result.returncode, 0, result.stderr)
-        bindings = self.directory / 'ccl_manifest_bindings.ads'
-        self.assertIn('Slot_test_host : constant Interfaces.Unsigned_64 := 24;', bindings.read_text())
-        self.assertIn('Slot_clock : constant Interfaces.Unsigned_64 := 25;', bindings.read_text())
-        result = self.compile(catalog=CATALOG.replace('application-slots 24 62', 'application-slots 30 31'))
-        self.assertEqual(result.returncode, 0, result.stderr)
         caps = self.sections(result.stdout)['.cubit.caps']
-        self.assertEqual(struct.unpack_from('<H', caps, 10)[0], 30)
-        self.assertEqual(struct.unpack_from('<H', caps, 26)[0], 31)
-        self.assertIn('Slot_test_host : constant Interfaces.Unsigned_64 := 30;', bindings.read_text())
-        self.assertIn('Slot_clock : constant Interfaces.Unsigned_64 := 31;', bindings.read_text())
+        self.assertEqual(struct.unpack_from('<H', caps, 10)[0], 0)
+        self.assertEqual(struct.unpack_from('<H', caps, 26)[0], 0)
+        startup = (self.directory / 'startup.ads').read_text()
+        self.assertLess(startup.index('function Test_Host'), startup.index('function Clock'))
+        _, entries = self.startup(self.sections(result.stdout)['.cubit.startup'])
+        self.assertEqual([e[0] for e in entries], ['test-host', 'clock'])
         requests = ['(request-service ccl-test-host read-write test-host)',
                     '(request-service clock read-write clock)']
         result = self.compile(SOURCE.replace(requests[0], 'PLACEHOLDER').replace(
             requests[1], requests[0]).replace('PLACEHOLDER', requests[1]))
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn('Slot_clock : constant Interfaces.Unsigned_64 := 24;', bindings.read_text())
-        self.assertIn('Slot_test_host : constant Interfaces.Unsigned_64 := 25;', bindings.read_text())
+        _, entries = self.startup(self.sections(result.stdout)['.cubit.startup'])
+        self.assertEqual([e[0] for e in entries], ['clock', 'test-host'])
 
     def test_rust_bindings_share_the_validated_manifest(self):
-        for base in (24, 30):
-            with self.subTest(base=base):
-                ada = self.compile(catalog=CATALOG.replace(
-                    'application-slots 24 62', f'application-slots {base} 62'))
-                output = self.directory / 'bindings.rs'
-                result = subprocess.run([
-                    TOOL, self.directory / 'catalog.ccl',
-                    self.directory / 'manifest.ccl', '--rust-output', output],
-                    capture_output=True, text=True, timeout=5)
-                self.assertEqual(result.returncode, 0, result.stderr)
-                self.assertEqual(result.stdout, ada.stdout)
-                self.assertIn(f'pub const SLOT_TEST_HOST : u64 = {base};', output.read_text())
-                self.assertIn(f'pub const SLOT_CLOCK : u64 = {base + 1};', output.read_text())
+        ada = self.compile()
+        output = self.directory / 'bindings.rs'
+        result = subprocess.run([
+            TOOL, self.directory / 'catalog.ccl',
+            self.directory / 'manifest.ccl', '--rust-output', output],
+            capture_output=True, text=True, timeout=5)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, ada.stdout)
+        self.assertIn('pub const BINDING_TEST_HOST : &str = "test-host";', output.read_text())
+        self.assertIn('pub const BINDING_CLOCK : &str = "clock";', output.read_text())
+        self.assertNotIn('SLOT', output.read_text())
 
     def test_binding_name_validation(self):
         for name in ['25', 'bad_name', 'Clock', 'a--b', 'a-', '-a', '"clock"', 'x;bad']:
@@ -268,13 +288,12 @@ class Manifests(unittest.TestCase):
         self.reject(SOURCE.replace('read-write clock)', 'read-write test-host)'),
                     diagnostic='DUPLICATE_BINDING')
 
-    def test_slot_layout_validation(self):
-        for layout in ['0 62', '24 63', '30 29', '-1 62', 'true 62', '"24" 62']:
-            self.reject(catalog=CATALOG.replace('24 62', layout), diagnostic='INVALID_SLOT')
-        self.reject(catalog=CATALOG.replace('(application-slots 24 62)', ''), diagnostic='MISSING_FIELD')
-        self.reject(catalog=CATALOG.replace('24 62', '24 24'), diagnostic='SLOTS_EXHAUSTED')
-        self.reject(catalog=CATALOG.replace('(application-slots 24 62)',
-                    '(application-slots 24 62) (application-slots 1 23)'), diagnostic='DUPLICATE_FIELD')
+    def test_retired_slot_declarations_are_refused(self):
+        # CAP-002: catalogs no longer lay out slots.
+        for retired in ['(application-slots 24 62)', '(fixed-binding clock 25)']:
+            with self.subTest(retired=retired):
+                self.reject(catalog=CATALOG[:-2] + ' ' + retired + ')',
+                            diagnostic='UNKNOWN_DECLARATION')
 
     def test_restricted_catalog_rights(self):
         catalog = CATALOG.replace('clock 19 read-write', 'clock 19 read')
@@ -330,33 +349,16 @@ class Manifests(unittest.TestCase):
             text = ''.join(rng.choice('()#"\\ abc123\n') for _ in range(rng.randrange(160)))
             self.reject(source=text)
 
-    def test_fixed_runtime_bindings(self):
-        catalog = CATALOG[:-2] + ' (fixed-binding test-host 18) (fixed-binding clock 25))'
-        result = self.compile(catalog=catalog)
-        self.assertEqual(result.returncode, 0, result.stderr)
-        caps = self.sections(result.stdout)['.cubit.caps']
-        self.assertEqual(struct.unpack_from('<H', caps, 10)[0], 18)
-        self.assertEqual(struct.unpack_from('<H', caps, 26)[0], 25)
-        self.reject(catalog=catalog.replace('clock 25', 'clock 18'), diagnostic='DUPLICATE_SLOT')
-        self.reject(catalog=catalog.replace('clock 25', 'clock 63'), diagnostic='INVALID_SLOT')
-        self.reject(catalog=catalog.replace('fixed-binding clock', 'fixed-binding test-host'),
-                    diagnostic='DUPLICATE_BINDING')
-        # Even a later fixed binding reserves its slot before automatic allocation.
-        result = self.compile(catalog=CATALOG[:-2] + ' (fixed-binding clock 24))')
-        self.assertEqual(result.returncode, 0, result.stderr)
-        caps = self.sections(result.stdout)['.cubit.caps']
-        self.assertEqual(struct.unpack_from('<H', caps, 10)[0], 25)
-        self.assertEqual(struct.unpack_from('<H', caps, 26)[0], 24)
-
     def test_identity_only_and_explicit_empty_requests(self):
         source = '(executable-manifest v1 (identity "a") (version "1"))'
         result = self.compile(source)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertNotIn('with Interfaces;',
-                         (self.directory / 'ccl_manifest_bindings.ads').read_text())
+        self.assertNotIn('function ', (self.directory / 'startup.ads').read_text().split('function Verify')[0])
         result = self.compile(source)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(set(self.sections(result.stdout)), {'.cubit.id'})
+        sections = self.sections(result.stdout)
+        self.assertEqual(set(sections), {'.cubit.id', '.cubit.startup'})
+        self.assertEqual(sections['.cubit.startup'], struct.pack('<IHHB3xI', 0x54534243, 1, 0, 1, 0))
         result = self.compile(source[:-1] + ' (requests-none))')
         self.assertEqual(self.sections(result.stdout)['.cubit.caps'],
                          struct.pack('<IHH', 0x43424954, 1, 0))
@@ -438,7 +440,7 @@ class Manifests(unittest.TestCase):
                              f'{directory}: native executable manifests must be CCL')
 
     def test_notification_and_framebuffer_requests(self):
-        catalog = '''(service-catalog v1 (application-slots 24 62)
+        catalog = '''(service-catalog v1
           (notification keys 1 publish-and-manage)
           (service unrelated 1 read-write))'''
         source = '''(executable-manifest v1 (identity "test") (version "1")
@@ -449,21 +451,21 @@ class Manifests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.sections(result.stdout)['.cubit.caps'],
                          struct.pack('<IHH', 0x43424954, 1, 3) +
-                         struct.pack('<BBHIQ', 7, 1, 24, 1, 0) +
-                         struct.pack('<BBHIQ', 7, 2, 25, 1, 0) +
-                         struct.pack('<BBHIQ', 1, 3, 26, 0, 0))
+                         struct.pack('<BBHIQ', 7, 1, 0, 1, 0) +
+                         struct.pack('<BBHIQ', 7, 2, 0, 1, 0) +
+                         struct.pack('<BBHIQ', 1, 3, 0, 0, 0))
         self.reject(source.replace('keys publish', 'unrelated publish'), catalog,
                     'UNKNOWN_NOTIFICATION')
         self.reject(source.replace('request-notification keys publish',
                                    'request-service keys read'), catalog, 'UNKNOWN_SERVICE')
         self.reject(source, catalog.replace('publish-and-manage', 'publish'), 'RIGHTS_NOT_OFFERED')
         self.reject(source.replace('keys publish', 'keys read'), catalog, 'UNKNOWN_RIGHTS')
-        self.reject(source, catalog.replace('keys 1', 'keys 18'), 'INVALID_NOTIFICATION_ID')
+        self.reject(source, catalog.replace('keys 1', 'keys 128'), 'INVALID_NOTIFICATION_ID')
         self.reject(source.replace('focus)', 'events)'), catalog, 'DUPLICATE_BINDING')
         self.reject(source.replace('framebuffer)', 'Bad_name)'), catalog, 'INVALID_BINDING_NAME')
 
     def test_render_request_is_distinct_from_scanout_service(self):
-        catalog = '''(service-catalog v1 (application-slots 24 62)
+        catalog = '''(service-catalog v1
           (service gpu 17 read-write))'''
         source = '''(executable-manifest v1 (identity "test") (version "1")
           (request-service gpu read-write scanout)
@@ -472,8 +474,8 @@ class Manifests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.sections(result.stdout)['.cubit.caps'],
                          struct.pack('<IHH', 0x43424954, 1, 2) +
-                         struct.pack('<BBHIQ', 2, 3, 24, 17, 0) +
-                         struct.pack('<BBHIQ', 11, 3, 25, 0, 0))
+                         struct.pack('<BBHIQ', 2, 3, 0, 17, 0) +
+                         struct.pack('<BBHIQ', 11, 3, 0, 0, 0))
         for rights in ('read', 'write', 'publish'):
             self.reject(source.replace('request-render read-write',
                                        'request-render ' + rights),
@@ -509,14 +511,14 @@ class Manifests(unittest.TestCase):
         descriptor = 80 | (443 << 16) | (24 << 32) | (1 << 40) | (1 << 48) | (6 << 49)
         self.assertEqual(self.sections(result.stdout)['.cubit.caps'],
                          struct.pack('<IHH', 0x43424954, 1, 1) +
-                         struct.pack('<BBHIQ', 10, 3, 24, 0x0a000200, descriptor))
+                         struct.pack('<BBHIQ', 10, 3, 0, 0x0a000200, descriptor))
         listener = template.replace('tcp-connect', 'tcp-listen').replace(
             '10.0.2.0" 24', '10.0.2.15" 32').replace('80 443', '8080 8080').replace('dns allow', 'dns deny')
         result = self.compile(listener)
         self.assertEqual(result.returncode, 0, result.stderr)
         descriptor = 8080 | (8080 << 16) | (32 << 32) | (2 << 40) | (6 << 49)
         self.assertEqual(self.sections(result.stdout)['.cubit.caps'][8:],
-                         struct.pack('<BBHIQ', 10, 3, 24, 0x0a00020f, descriptor))
+                         struct.pack('<BBHIQ', 10, 3, 0, 0x0a00020f, descriptor))
         broad = template.replace('10.0.2.0" 24', '0.0.0.0" 0').replace('80 443', '1 65535')
         self.assertEqual(self.compile(broad).returncode, 0)
         most = template.replace('connections 6', 'connections 32767')
@@ -527,7 +529,7 @@ class Manifests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         descriptor = 123 | (123 << 16) | (32 << 32) | (3 << 40) | (1 << 48) | (6 << 49)
         self.assertEqual(self.sections(result.stdout)['.cubit.caps'][8:],
-                         struct.pack('<BBHIQ', 10, 3, 24, 0x0a000202, descriptor))
+                         struct.pack('<BBHIQ', 10, 3, 0, 0x0a000202, descriptor))
         for old, bad in [
                 ('tcp-connect', 'udp-listen'), ('tcp-connect', 'udp'),
                 ('"10.0.2.0"', '123'),
@@ -590,13 +592,12 @@ class Manifests(unittest.TestCase):
         # Device resources never appear as endpoint capability requests.
         self.assertNotIn('.cubit.caps', sections)
         header = struct.pack('<IHH', 0x53524243, 1, 3) + struct.pack('<BBHHHQ', 1, 0, 1, 8, 2, 0)
-        entries = (struct.pack('<BBHIQQ', 16, 3, 24, 0, 16384, 0) +
-                   struct.pack('<BBHIQQ', 18, 1, 25, 0, 1, 1) +
-                   struct.pack('<BBHIQQ', 19, 3, 26, 0, 1048576, 0))
+        entries = (struct.pack('<BBHIQQ', 16, 3, 0, 0, 16384, 0) +
+                   struct.pack('<BBHIQQ', 18, 1, 0, 0, 1, 1) +
+                   struct.pack('<BBHIQQ', 19, 3, 0, 0, 1048576, 0))
         self.assertEqual(sections['.cubit.resources'], header + entries)
-        bindings = (self.directory / 'ccl_manifest_bindings.ads').read_text()
-        for name, slot in (('registers', 24), ('completion', 25), ('queues', 26)):
-            self.assertIn(f'Slot_{name} : constant Interfaces.Unsigned_64 := {slot};', bindings)
+        _, startup = self.startup(sections['.cubit.startup'])
+        self.assertEqual([e[0] for e in startup], ['registers', 'completion', 'queues'])
         # Truncation must fail without exceptions or partial ELF output.
         for end in range(len(template) - 1):
             self.reject(template[:end])
@@ -613,10 +614,10 @@ class Manifests(unittest.TestCase):
         resources = self.sections(result.stdout)['.cubit.resources']
         self.assertEqual(resources[:24], struct.pack('<IHH', 0x53524243, 1, 4) +
                          struct.pack('<BBHHHQ', 3, 0, 1, 0, 0, 0))
-        self.assertEqual(resources[24:], struct.pack('<BBHIQQ', 17, 3, 24, 0, 1, 0) +
-                         struct.pack('<BBHIQQ', 17, 3, 25, 1, 1, 0) +
-                         struct.pack('<BBHIQQ', 18, 1, 26, 2, 1, 4) +
-                         struct.pack('<BBHIQQ', 18, 1, 27, 3, 1, 4))
+        self.assertEqual(resources[24:], struct.pack('<BBHIQQ', 17, 3, 0, 0, 1, 0) +
+                         struct.pack('<BBHIQQ', 17, 3, 0, 1, 1, 0) +
+                         struct.pack('<BBHIQQ', 18, 1, 0, 2, 1, 4) +
+                         struct.pack('<BBHIQQ', 18, 1, 0, 3, 1, 4))
         # PCI spelling on a platform device, and the reverse.
         self.reject(template.replace('(resource 0)', '(bar 0)'),
                     diagnostic='INVALID_DEVICE_RESOURCE')
@@ -675,7 +676,7 @@ class Manifests(unittest.TestCase):
         self.assertNotIn('.cubit.caps', sections)
         self.assertEqual(sections['.cubit.resources'],
                          struct.pack('<IHH', 0x53524243, 1, 1) + bytes(16) +
-                         struct.pack('<BBHIQQ', 20, 1, 24, 0, 1500, 5000))
+                         struct.pack('<BBHIQQ', 20, 1, 0, 0, 1500, 5000))
         # The kernel admits at most 70% of a CPU and budget <= period <= 2^30 us.
         for budget, period in [('5000', '7143'), ('1', '1073741824'), ('700', '1000')]:
             with self.subTest(budget=budget, period=period):
@@ -693,42 +694,28 @@ class Manifests(unittest.TestCase):
         both = template.replace('(request-scheduling', '(request-service filesystem read-write fs)\n  (request-scheduling')
         sections = self.sections(self.compile(both).stdout)
         self.assertEqual(sections['.cubit.caps'],
-                         struct.pack('<IHH', 0x43424954, 1, 1) + struct.pack('<BBHIQ', 2, 3, 24, 6, 0))
+                         struct.pack('<IHH', 0x43424954, 1, 1) + struct.pack('<BBHIQ', 2, 3, 0, 6, 0))
         self.assertEqual(sections['.cubit.resources'][24:],
-                         struct.pack('<BBHIQQ', 20, 1, 25, 0, 1500, 5000))
+                         struct.pack('<BBHIQQ', 20, 1, 0, 0, 1500, 5000))
         self.assertEqual(self.compile(template.replace(
             '(request-scheduling', '(requests-none)\n  (request-scheduling')).returncode, 0)
 
     def test_driver_draft_manifests(self):
-        # Driver manifests against the slots devmgr mints. nvme, xhci,
-        # virtio-net and hda are typed and linked: devmgr installs their
-        # interrupt capability in the slot named here (docs/msi-interrupts.md).
-        # ps2, ata and mixer are drafts. Differences are listed so a migration
-        # handles them deliberately: ps2 mouse notification (devmgr 9, now
-        # reserved for scheduling), hda and mixer registration (devmgr 8).
+        # Every driver manifest compiles against the driver catalog, with a
+        # startup table naming each request (devmgr grants them by name).
         catalog = (ROOT / 'userspace/ccl/catalogs/driver-services.ccl').read_text()
-        expected = {
-            'nvme': {'registers': 4, 'completion': 5, 'queues': 6, 'registration': 7, 'ready': 15},
-            'ata': {'command-block': 4, 'control': 5, 'channel': 6, 'registration': 7, 'ready': 15},
-            'virtio-net': {'registers': 4, 'device': 5, 'rings': 6, 'ready': 15},
-            'xhci': {'registers': 4, 'events': 5, 'rings': 6, 'mouse-events': 7,
-                     'keyboard-events': 8, 'ready': 15},
-            'ps2': {'data': 4, 'command': 5, 'keyboard-line': 6, 'mouse-line': 7,
-                    'keyboard-events': 8, 'mouse-events': 10, 'ready': 15},
-            'hda': {'registers': 4, 'controller': 5, 'streams': 6, 'registration': 7, 'ready': 15},
-            'mixer': {'scheduling': 9, 'registration': 4, 'ready': 15},
-        }
-        for name, slots in expected.items():
+        for name in ('nvme', 'ata', 'virtio-net', 'xhci', 'ps2', 'hda', 'mixer'):
             with self.subTest(driver=name):
                 source = (ROOT / f'userspace/services/{name}/manifest.ccl').read_text()
                 result = self.compile(source, catalog)
                 self.assertEqual(result.returncode, 0, result.stderr)
-                bindings = (self.directory / 'ccl_manifest_bindings.ads').read_text()
-                for binding, slot in slots.items():
-                    ada = binding.replace('-', '_')
-                    self.assertIn(f'Slot_{ada} : constant Interfaces.Unsigned_64 := {slot};',
-                                  bindings)
-                self.assertIn('.cubit.resources', self.sections(result.stdout))
+                sections = self.sections(result.stdout)
+                self.assertIn('.cubit.resources', sections)
+                _, startup = self.startup(sections['.cubit.startup'])
+                self.assertTrue(startup)
+                package = (self.directory / 'startup.ads').read_text()
+                for entry in startup:
+                    self.assertIn(f'("{entry[0]}"', package)
 
     def decode(self, section):
         path = self.directory / 'resources.bin'
@@ -762,19 +749,19 @@ class Manifests(unittest.TestCase):
                                           catalog).stdout)['.cubit.resources']
         self.assertEqual(self.decode(nvme).stdout.splitlines(), [
             'match PCI_CLASS_MATCH 1 8 2',
-            'DEVICE_MEMORY READ_WRITE slot=4 index=0 amount=16384 extra=0',
-            'INTERRUPT READ_ONLY slot=5 index=0 amount=1 extra=1',
-            'DMA READ_WRITE slot=6 index=0 amount=1048576 extra=0'])
+            'DEVICE_MEMORY READ_WRITE index=0 amount=16384 extra=0',
+            'INTERRUPT READ_ONLY index=0 amount=1 extra=1',
+            'DMA READ_WRITE index=0 amount=1048576 extra=0'])
         # Hand-made sections the compiler never emits are refused.
         header = struct.pack('<IHH', 0x53524243, 1, 1)
         pci = struct.pack('<BBHHHQ', 1, 0, 1, 8, 2, 0)
         memory = lambda **f: struct.pack('<BBHIQQ', f.get('kind', 16), f.get('rights', 3),
-                                         f.get('slot', 4), f.get('index', 0),
+                                         f.get('reserved', 0), f.get('index', 0),
                                          f.get('amount', 4096), f.get('extra', 0))
         self.assertEqual(self.decode(header + pci + memory()).returncode, 0)
         for bad, status in [
-                (header + pci + memory(slot=62), 'INVALID_ENTRY'),
-                (header + pci + memory(slot=0), 'INVALID_ENTRY'),
+                (header + pci + memory(reserved=4), 'INVALID_ENTRY'),
+                (header + pci + memory(reserved=0x8000), 'INVALID_ENTRY'),
                 (header + pci + memory(amount=4097), 'INVALID_ENTRY'),
                 (header + pci + memory(rights=2), 'INVALID_ENTRY'),
                 (header + pci + memory(index=6), 'INVALID_ENTRY'),
@@ -784,10 +771,8 @@ class Manifests(unittest.TestCase):
                 (header + struct.pack('<BBHHHQ', 1, 1, 1, 8, 2, 0) + memory(), 'INVALID_MATCH'),
                 (header + struct.pack('<BBHHHQ', 1, 0, 1, 8, 2, 1) + memory(), 'INVALID_MATCH'),
                 (header + struct.pack('<BBHHHQ', 2, 0, 0xFFFF, 1, 0, 0) + memory(), 'INVALID_MATCH'),
-                (header + pci + struct.pack('<BBHIQQ', 20, 1, 4, 0, 1500, 5000),
+                (header + pci + struct.pack('<BBHIQQ', 20, 1, 0, 0, 1500, 5000),
                  'MATCH_WITHOUT_DEVICE'),
-                (struct.pack('<IHH', 0x53524243, 1, 2) + pci + memory() + memory(),
-                 'DUPLICATE_SLOT'),
                 (struct.pack('<IHH', 0x53524243, 2, 1) + pci + memory(), 'INVALID_HEADER'),
                 (struct.pack('<IHH', 0x53524243, 1, 0) + pci, 'INVALID_HEADER')]:
             with self.subTest(status=status, bad=bad.hex()):
@@ -796,19 +781,174 @@ class Manifests(unittest.TestCase):
                 self.assertEqual(result.stdout.strip(), status)
         # Scheduling beyond the kernel's real-time share is refused.
         scheduling = struct.pack('<IHH', 0x53524243, 1, 1) + bytes(16)
-        self.assertEqual(self.decode(scheduling + struct.pack('<BBHIQQ', 20, 1, 4, 0, 3500, 5000)).returncode, 0)
-        self.assertEqual(self.decode(scheduling + struct.pack('<BBHIQQ', 20, 1, 4, 0, 3501, 5000)).stdout.strip(),
+        self.assertEqual(self.decode(scheduling + struct.pack('<BBHIQQ', 20, 1, 0, 0, 3500, 5000)).returncode, 0)
+        self.assertEqual(self.decode(scheduling + struct.pack('<BBHIQQ', 20, 1, 0, 0, 3501, 5000)).stdout.strip(),
                          'INVALID_ENTRY')
 
-    def test_resources_never_take_saved_reply_slot(self):
-        catalog = '(service-catalog v1 (application-slots 61 62))'
-        two = '''(executable-manifest v1 (identity "m") (version "1")
-          (request-scheduling a realtime (budget-us 1) (period-us 2))
-          (request-scheduling b realtime (budget-us 1) (period-us 2)))'''
-        self.reject(two, catalog, diagnostic='INVALID_SLOT')
-        one = two.replace('\n          (request-scheduling b realtime (budget-us 1) (period-us 2))', '')
-        self.assertEqual(self.compile(one, catalog).returncode, 0)
+    # ------------------------------------------------------------------
+    # CAP-002 step 2: startup capabilities by name.
+    # ------------------------------------------------------------------
+    NATIVE = (ROOT / 'userspace/ccl/catalogs/native-runtime-services.ccl').read_text()
+    DRIVER = (ROOT / 'userspace/ccl/catalogs/driver-services.ccl').read_text()
+    FIXTURE = (ROOT / 'tests/ccl-manifests/fixtures/startup/manifest.ccl').read_text()
+    GOLDEN = ROOT / 'tests/startup-tables/generated/startup.ads'
 
+    def generate(self, source, catalog):
+        manifest = self.directory / 'manifest.ccl'
+        definitions = self.directory / 'catalog.ccl'
+        manifest.write_text(source)
+        definitions.write_text(catalog)
+        output = self.directory / 'startup.ads'
+        result = subprocess.run([TOOL, definitions, manifest, '--startup-output', output,
+                                 '--schema', SCHEMA], capture_output=True, text=True, timeout=5)
+        self.assertNotIn('raised ', result.stderr, result.stderr)
+        return result, output
+
+    def test_startup_section_declares_every_request(self):
+        result = self.compile(self.FIXTURE, self.DRIVER)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        limit, entries = self.startup(self.sections(result.stdout)['.cubit.startup'])
+        self.assertEqual(limit, (2, 512))
+        self.assertEqual(entries, [('registers', 6, 1, 1, 0), ('device', 8, 1, 1, 0),
+                                   ('devmgr', 1, 1, 1, 0), ('pointer-events', 2, 2, 1, 0),
+                                   ('real-time', 10, 1, 1, 0)])
+
+    def test_startup_handle_limits(self):
+        for spelling, expected in [('', (1, 0)), ('handles => Handle_Limit.Standard_Limit', (1, 0)),
+                                   ('handles => Handle_Limit.Kernel_Limit', (3, 0)),
+                                   ('handles => (Handle_Limit.At_Most 1)', (2, 1)),
+                                   ('handles => (Handle_Limit.At_Most 32768)', (2, 32768))]:
+            with self.subTest(spelling=spelling):
+                result = self.compile(self.TLS_TYPED.replace(
+                    '  scopes =>', f'  {spelling}\n  scopes =>'), self.NATIVE)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(self.startup(self.sections(result.stdout)['.cubit.startup'])[0], expected)
+        for count in (0, -1, 32769):
+            with self.subTest(count=count):
+                result = self.compile(self.TLS_TYPED.replace(
+                    '  scopes =>', f'  handles => (Handle_Limit.At_Most {count})\n  scopes =>'), self.NATIVE)
+                self.assertEqual(result.returncode, 1)
+                self.assertEqual(result.stdout, '')
+                self.assertIn('handles: At_Most', result.stderr)
+                self.assertIn('Handle_Limit.Kernel_Limit', result.stderr)
+
+    def test_startup_optional_names(self):
+        typed = self.TLS_TYPED.replace('  scopes =>', '  optional => ["clock" "tcp"]\n  scopes =>')
+        result = self.compile(typed, self.NATIVE)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        entries = self.startup(self.sections(result.stdout)['.cubit.startup'])[1]
+        self.assertEqual([(e[0], e[1], e[2]) for e in entries],
+                         [('config', 1, 1), ('clock', 1, 2), ('tcp', 5, 2)])
+        # Optional does not change any older section.
+        plain = self.sections(self.compile(self.TLS_TYPED, self.NATIVE).stdout)
+        optional = self.sections(result.stdout)
+        self.assertEqual({k: v for k, v in plain.items() if k != '.cubit.startup'},
+                         {k: v for k, v in optional.items() if k != '.cubit.startup'})
+        for names, message in [('["clok"]', 'optional entry 1: "clok" is not the binding of a request'),
+                               ('["clock" "clock"]', 'optional entry 2: "clock" is listed twice')]:
+            with self.subTest(names=names):
+                result = self.compile(self.TLS_TYPED.replace(
+                    '  scopes =>', f'  optional => {names}\n  scopes =>'), self.NATIVE)
+                self.assertEqual(result.returncode, 1)
+                self.assertEqual(result.stdout, '')
+                self.assertIn(message, result.stderr)
+
+    def test_startup_optional_render_both_frontends(self):
+        keyword = ('(executable-manifest v1 (identity "a") (version "1") '
+                   '(request-render-optional read-write render))')
+        result = self.compile(keyword, self.NATIVE)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.startup(self.sections(result.stdout)['.cubit.startup'])[1],
+                         [('render', 4, 2, 1, 0)])
+        typed = '(Executable_Manifest identity => "a" version => "1" requests => [(Request.Optional_Render "render")])'
+        self.assertEqual(self.sections(self.compile(typed, self.NATIVE).stdout),
+                         self.sections(result.stdout))
+        typed = '(Executable_Manifest identity => "a" version => "1" requests => [(render "render")])'
+        result = self.compile(typed, self.NATIVE)
+        self.assertEqual(self.startup(self.sections(result.stdout)['.cubit.startup'])[1],
+                         [('render', 4, 1, 1, 0)])
+
+    def test_startup_channel_limits(self):
+        def channels(text):
+            return self.TLS_TYPED.replace('  scopes =>', f'  channels => [{text}]\n  scopes =>')
+        for text in ['(Channel_Offer "gpu.urgent" 1 1 Channel_Class.Urgent)', '(Channel_Offer "fs" 4 4096)',
+                     '(Channel_Offer contract => "a" total => 65536 per_client => 65536)',
+                     '(Channel_Offer "a" 1 2) (Channel_Offer "b" 1 2)']:
+            with self.subTest(text=text):
+                result = self.compile(channels(text), self.NATIVE)
+                self.assertEqual(result.returncode, 0, result.stderr)
+        many = ' '.join(f'(Channel_Offer "c{i}" 1 1)' for i in range(9))
+        for text, message in [
+                ('(Channel_Offer "a" 0 1)', 'channels entry 1: per_client 0 is not 1 to the total 1'),
+                ('(Channel_Offer "a" 3 2)', 'channels entry 1: per_client 3 is not 1 to the total 2'),
+                ('(Channel_Offer "a" 1 0)', 'channels entry 1: total 0 is not 1 to 65536'),
+                ('(Channel_Offer "a" 1 65537)', 'channels entry 1: total 65537 is not 1 to 65536'),
+                ('(Channel_Offer "a b" 1 1)', 'channels entry 1: contract "a b" is not 1 to 64'),
+                ('(Channel_Offer "" 1 1)', 'channels entry 1: contract "" is not 1 to 64'),
+                ('(Channel_Offer "a" 1 1) (Channel_Offer "a" 1 1)', 'channels entry 2: contract "a" is listed twice'),
+                (many, 'channels entry 9: at most 8 contracts may be served'),
+                ('(Channel_Offer "a" 1)', 'field total')]:
+            with self.subTest(text=text):
+                result = self.compile(channels(text), self.NATIVE)
+                self.assertEqual(result.returncode, 1, result.stderr)
+                self.assertEqual(result.stdout, '')
+                self.assertIn(message, result.stderr)
+
+    def test_startup_connections_reserved_for_the_catalog(self):
+        for item in ['(Connection.Offers "net.socket")', '(Connection.Uses "@my_network")',
+                     '(Connection.Alias "@storage")']:
+            with self.subTest(item=item):
+                result = self.compile(self.TLS_TYPED.replace(
+                    '  scopes =>', f'  connections => [{item}]\n  scopes =>'), self.NATIVE)
+                self.assertEqual(result.returncode, 1)
+                self.assertEqual(result.stdout, '')
+                self.assertIn('connections: offers, uses and aliases come with the catalog and Connect', result.stderr)
+
+    def test_startup_reserved_self_names(self):
+        for name in ('self', 'self-process'):
+            with self.subTest(name=name):
+                self.reject(SOURCE.replace('read-write clock)', f'read-write {name})'),
+                            diagnostic='RESERVED_BINDING_NAME')
+                result = self.compile(self.TLS_TYPED.replace('"clock" "clock"', f'"clock" "{name}"'), self.NATIVE)
+                self.assertEqual(result.returncode, 1)
+                self.assertEqual(result.stdout, '')
+
+    def test_startup_binding_golden(self):
+        result, output = self.generate(self.FIXTURE, self.DRIVER)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        text = output.read_text()
+        self.assertEqual(text, self.GOLDEN.read_text())
+        # Names, never numbers: no slot constants and no integer literals
+        # outside comments.
+        code = '\n'.join(line.split('--')[0] for line in text.splitlines())
+        self.assertNotIn('Slot', code)
+        self.assertNotRegex(code, r'(?<![A-Za-z0-9_])[0-9]')
+        # The sections are the same with or without the binding.
+        self.assertEqual(self.sections(result.stdout),
+                         self.sections(self.compile(self.FIXTURE, self.DRIVER).stdout))
+
+    def test_startup_binding_for_every_tree_manifest_kind(self):
+        result, output = self.generate(SOURCE, CATALOG)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        text = output.read_text()
+        self.assertIn('function Test_Host return Standard.CuBit.Handles.Endpoint is', text)
+        self.assertIn('function Clock return Standard.CuBit.Handles.Endpoint is', text)
+        self.assertIn('--  Handle limit: standard (4096).', text)
+        empty, output = self.generate('(executable-manifest v1 (identity "a") (version "1"))', CATALOG)
+        self.assertEqual(empty.returncode, 0, empty.stderr)
+        self.assertIn('(Standard.CuBit.Startup_State.Verify ([]));', output.read_text())
+
+    def test_startup_binding_refuses_unusable_names(self):
+        for name in ('range', 'body', 'standard', 'verify', 'xor'):
+            with self.subTest(name=name):
+                result, output = self.generate(SOURCE.replace('read-write clock)', f'read-write {name})'), CATALOG)
+                self.assertEqual(result.returncode, 1)
+                self.assertEqual(result.stdout, '')
+                self.assertIn(f'binding "{name}" cannot name a startup function', result.stderr)
+                self.assertFalse(output.exists())
+        # As a part of a longer name they are fine.
+        result, _ = self.generate(SOURCE.replace('read-write clock)', 'read-write range-limit)'), CATALOG)
+        self.assertEqual(result.returncode, 0, result.stderr)
 
 if __name__ == '__main__':
     unittest.main()

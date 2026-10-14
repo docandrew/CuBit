@@ -1,3 +1,12 @@
+> **CAP-002 (2026-10-13):** the recipient-slot design below is superseded.
+> The driver holds no capability to the application: requests are
+> authenticated by the kernel sender and the session tag stamped by the
+> render endpoint devmgr badges, and memory is granted to the saved reply of
+> the map request. procmgr asks devmgr's broker with an asynchronous
+> Submit_Accepting naming the child; the admitted reply carries the render
+> endpoint, which procmgr installs into the child (lib/display
+> Intel_Render_Launch_Client). The native admission probes were removed.
+
 # Native discovery and session admission integration
 
 Source audit, 2026-10-01. This is an implementation handoff, not a claim that

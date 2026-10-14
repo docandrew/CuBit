@@ -5,7 +5,7 @@ cd kernel
 mkdir -p ../tests/compositor/metrics-stall/build/generated
 ../userspace/ccl/build/manifest/ccl-manifest ../userspace/ccl/catalogs/native-runtime-services.ccl \
   ../tests/compositor/metrics-stall/manifest.ccl \
-  --ada-output ../tests/compositor/metrics-stall/build/generated/ccl_manifest_bindings.ads \
+  --startup-output ../tests/compositor/metrics-stall/build/generated/startup.ads \
   > ../tests/compositor/metrics-stall/build/manifest.S
 alr exec -- gcc -c ../tests/compositor/metrics-stall/build/manifest.S \
   -o ../tests/compositor/metrics-stall/build/manifest.o

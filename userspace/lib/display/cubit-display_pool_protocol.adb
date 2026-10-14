@@ -3,7 +3,7 @@ with Interfaces; use Interfaces;
 package body CuBit.Display_Pool_Protocol with SPARK_Mode is
    function Encode (Item : Attachment) return D.Wire_Message is
      (D.Encode_Attachment (Item.Source) with delta Label => Attach_Buffer,
-      Flags => Unsigned_8 (Item.Buffer));
+      Flags => D.DP.Protocol_Flags (Item.Buffer));
    function Decode_Attachment (Wire : D.Wire_Message) return Attachment_Result is
       Decoded : D.Attachment_Decoding;
    begin
@@ -17,7 +17,7 @@ package body CuBit.Display_Pool_Protocol with SPARK_Mode is
    end Decode_Attachment;
    function Encode (Item : Frame) return D.Wire_Message is
      (D.Encode_Frame (Item.Request) with delta Label => Submit_Frame,
-      Flags => Unsigned_8 (Item.Buffer));
+      Flags => D.DP.Protocol_Flags (Item.Buffer));
    function Decode_Frame (Wire : D.Wire_Message) return Frame_Decoding is
       Decoded : D.Frame_Decoding;
    begin
@@ -31,7 +31,7 @@ package body CuBit.Display_Pool_Protocol with SPARK_Mode is
    end Decode_Frame;
    function Encode (Item : Completion) return D.Wire_Message is
      (D.Encode_Frame_Result (Item.Result) with delta Label => Submit_Frame,
-      Flags => Unsigned_8 (Item.Buffer));
+      Flags => D.DP.Protocol_Flags (Item.Buffer));
    function Decode_Completion (Wire : D.Wire_Message) return Completion_Decoding is
       Decoded : D.Frame_Result_Decoding;
    begin

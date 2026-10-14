@@ -1,3 +1,4 @@
+with CuBit.Handles.Fixture;
 with Ada.Command_Line;
 with Ada.Text_IO;
 with System;
@@ -84,7 +85,7 @@ procedure Schema_Store_Turso is
       Calls := Calls + 1;
       Config_Database.Schemas.Invoke (Database, Action, Name, Context, Contract, Recovered, Result);
    end Invoke_Type;
-   package Receiver is new Config_Worker_Receiver (12, Trusted, Invoke_Value, Invoke_Type);
+   package Receiver is new Config_Worker_Receiver (CuBit.Handles.Fixture.Endpoint_Of (12), Trusted, Invoke_Value, Invoke_Type);
 begin
    CCL.Objects.Bind (Registry, CCL.Types.Integer_Type, [1,2,3,4], Integer_Type, Good); Check (Good);
    CCL.Objects.Bind (Registry, CCL.Types.Boolean_Type, [5,6,7,8], Boolean_Type, Good); Check (Good);
@@ -147,7 +148,7 @@ begin
          Grants.Expected_Pages := Loan_Bytes_Count / 4096;
          Grants.Expected_Transfer_Bytes := P.Frame_Bytes;
          Grants.Active_Acquisitions := 0; Grants.Fail_Return := 0; Grants.Deny_Acquisition := 0;
-         Initialize (Client, 4, Good); Check (Good);
+         Initialize (Client, CuBit.Handles.Fixture.Endpoint_Of (4), Good); Check (Good);
          -- Persisted class survives three fresh worker/database lifetimes.
          -- Create, including an equivalent schema, cannot downscope it to state.
          Exchange (P.Recover, "org.cubit.managed", Integer_Type, P.Loaded_Managed);

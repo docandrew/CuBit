@@ -1,3 +1,4 @@
+with CuBit.Handles.Fixture;
 with Ada.Text_IO; use Ada.Text_IO;
 with Interfaces; use Interfaces;
 with Ext2; use Ext2;
@@ -126,7 +127,7 @@ begin
             Leaf (0) := 8;
             Leaf (1) := 14;
             Other (0) := 13;
-            initBlockDevice (Fs, 1, (slot => 1, generation => 1),
+            initBlockDevice (Fs, CuBit.Handles.Fixture.Endpoint_Of (1), 1, (slot => 1, generation => 1),
                              Grant_Buffer'Address, Grant_Buffer'Length, Admission);
             pragma Assert (Admission = Admitted);
             Calls := 0;

@@ -32,6 +32,7 @@
 --  in a layout the element names (a request ring one way, answers back).
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with CuBit.Handles;
 with Interfaces; use Interfaces;
 with System;
 with CuBit.Channel_Contracts;
@@ -61,7 +62,7 @@ package CuBit.Channels is
       This_Side : Side := Producing;
       Opener    : Boolean := False;
       --  The opener's way to the peer, or the acceptor's peer.
-      Endpoint  : CuBit.Messages.CapabilitySlot := 0;
+      Endpoint  : CuBit.Handles.Endpoint := CuBit.Handles.No_Endpoint;
       Peer      : CuBit.Messages.Process_ID := CuBit.Messages.No_Process;
       --  The channel's number at the peer (an opener's OP_KICK and
       --  OP_CLOSE carry it).
@@ -93,7 +94,7 @@ package CuBit.Channels is
    --  Deadline: the absolute time (CuBit.Messages.Deadline_After) after
    --  which the open counts as Failed instead of waiting for the peer.
    procedure Open
-     (Endpoint : CuBit.Messages.CapabilitySlot; Item : CC.Contract; This_Side : Side;
+     (Endpoint : CuBit.Handles.Endpoint; Item : CC.Contract; This_Side : Side;
       C : out Channel; Result : out Open_Result; Refusal : out CP.Open_Refusal;
       Connector : Unsigned_16 := 0;
       Deadline : Unsigned_64 := CuBit.Messages.Wait_Forever)
@@ -103,7 +104,7 @@ package CuBit.Channels is
    --  completion carries Token; pass the completion's message to
    --  Finish_Open. Submitted False: nothing was sent (C is inactive).
    procedure Begin_Open
-     (Endpoint : CuBit.Messages.CapabilitySlot; Item : CC.Contract; This_Side : Side;
+     (Endpoint : CuBit.Handles.Endpoint; Item : CC.Contract; This_Side : Side;
       Token : Unsigned_64; C : out Channel; Submitted : out Boolean;
       Connector : Unsigned_16 := 0)
    with Pre => CC.Valid (Item);

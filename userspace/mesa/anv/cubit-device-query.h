@@ -1,5 +1,6 @@
 #pragma once
 #include <stdbool.h>
+#include "cubit_handles.h"
 #include <stdint.h>
 
 /* Adapter values, NOT a C overlay of CuBit's native IPC message structure.
@@ -64,9 +65,9 @@ struct cubit_gpu_budget_snapshot {
 bool cubit_gpu_query_budget(cubit_gpu_query_call call, void *endpoint,
                             struct cubit_gpu_budget_snapshot *out);
 
-/* Caller owns this slot for the entire query sequence, without slot
+/* Caller owns this endpoint for the entire query sequence, without endpoint
  * replacement by another thread. No process ID lookup or implicit grants. */
-struct cubit_gpu_native_endpoint { uint64_t slot; };
+struct cubit_gpu_native_endpoint { cubit_endpoint endpoint; };
 bool cubit_gpu_native_query_call(void *endpoint,
                                  const struct cubit_gpu_query_message *request,
                                  struct cubit_gpu_query_message *reply);

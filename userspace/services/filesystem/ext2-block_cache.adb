@@ -50,10 +50,10 @@ package body Ext2.Block_Cache is
    procedure selectCacheIdentity (fs : Filesystem) is
    begin
       if not cacheIdentityValid or else
-         cachedCapSlot /= fs.device.endpointSlot
+         cachedCapSlot /= fs.device.volumeKey
       then
          invalidateBlockCache;
-         cachedCapSlot := fs.device.endpointSlot;
+         cachedCapSlot := fs.device.volumeKey;
          cacheIdentityValid := True;
       end if;
    end selectCacheIdentity;
@@ -139,7 +139,7 @@ package body Ext2.Block_Cache is
 
    function cacheKey (fs : Filesystem; number : Unsigned_32)
       return Block_Cache_Index.Block_Key is
-     ((Volume => fs.device.endpointSlot, Block => number));
+     ((Volume => fs.device.volumeKey, Block => number));
 
    function cacheable (fs : Filesystem) return Boolean is
      (fs.blkSize in 1024 | 2048 | 4096);
@@ -152,32 +152,32 @@ package body Ext2.Block_Cache is
    begin
       if Dentry_Cache.Cacheable (name) then
          Dentry_Cache.Insert
-           (Names, Dentry_Cache.Make_Key (fs.device.endpointSlot, directory, name),
+           (Names, Dentry_Cache.Make_Key (fs.device.volumeKey, directory, name),
             inode, displaced, from);
       end if;
    end rememberName;
 
    procedure uncertainDirectory (fs : Filesystem; directory : Unsigned_32) is
    begin
-      Dentry_Cache.Mark_Incomplete (Names, fs.device.endpointSlot, directory);
+      Dentry_Cache.Mark_Incomplete (Names, fs.device.volumeKey, directory);
    end uncertainDirectory;
 
    function completeDirectory (fs : Filesystem; directory : Unsigned_32) return Boolean is
-     (Dentry_Cache.Is_Complete (Names, fs.device.endpointSlot, directory));
+     (Dentry_Cache.Is_Complete (Names, fs.device.volumeKey, directory));
 
    procedure forgetName (fs : Filesystem; directory : Unsigned_32; name : String) is
    begin
       if Dentry_Cache.Cacheable (name) then
          Dentry_Cache.Forget
-           (Names, Dentry_Cache.Make_Key (fs.device.endpointSlot, directory, name));
+           (Names, Dentry_Cache.Make_Key (fs.device.volumeKey, directory, name));
       end if;
    end forgetName;
 
    procedure forgetVolume (fs : Filesystem) is
    begin
-      Dentry_Cache.Discard_Volume (Names, fs.device.endpointSlot);
-      dropSpill (fs.device.endpointSlot);
-      Block_Cache_Index.Discard_Volume (Cache_Index, fs.device.endpointSlot);
+      Dentry_Cache.Discard_Volume (Names, fs.device.volumeKey);
+      dropSpill (fs.device.volumeKey);
+      Block_Cache_Index.Discard_Volume (Cache_Index, fs.device.volumeKey);
    end forgetVolume;
 
    procedure cachedBlock

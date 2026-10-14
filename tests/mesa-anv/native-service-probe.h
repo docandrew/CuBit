@@ -8,7 +8,7 @@ static uint32_t run_service_probe(void *context)
    log_context = context;
    struct cubit_mesa_service *owner = NULL;
    report("MESA-SERVICE startup beginning\n");
-   VkResult result = cubit_mesa_service_start(cubit_test_render_slot(), &owner);
+   VkResult result = cubit_mesa_service_start(cubit_test_render_endpoint(), &owner);
    report_transport_failure();
    report("MESA-SERVICE startup=%d owner-retained=%u\n", result, owner != NULL);
    struct cubit_mesa_service_device facts;

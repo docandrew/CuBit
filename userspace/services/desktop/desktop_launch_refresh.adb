@@ -1,3 +1,4 @@
+with Desktop_Endpoints;
 with System; use System;
 with System.Storage_Elements; use System.Storage_Elements;
 with Interfaces; use Interfaces;
@@ -40,7 +41,7 @@ package body Desktop_Launch_Refresh is
       if Raw > Unsigned_64'Last - 3 * 4096 then Quarantine; return; end if;
       Aligned := (Raw + 4095) and not Unsigned_64 (4095);
       Buffer_Address := To_Address (Integer_Address (Aligned));
-      MG.Create_Via_Capability (CAP_SLOT_CONFIG, Buffer_Address, 2, True, Grant, OK);
+      MG.Create_Via_Capability (Desktop_Endpoints.Config_Service, Buffer_Address, 2, True, Grant, OK);
       if not OK then Quarantine; return; end if;
       Initialized := True;
    end Initialize;
@@ -85,12 +86,12 @@ package body Desktop_Launch_Refresh is
       CR.Allocate (Sequence, New_Token);
       CR.Begin_Request (Flight, New_Token, Accepted);
       if not Accepted then Quarantine; return; end if;
-      if not capSubmit (CAP_SLOT_CONFIG, Msg, New_Token) then Quarantine; end if;
+      if not capSubmit (Desktop_Endpoints.Config_Service, Msg, New_Token) then Quarantine; end if;
    end Pump;
 
    procedure Collect (C : CompletionEntry) is
       Envelope : constant Boolean := C.valid and then C.status = COMPLETION_OK and then
-        C.msg.tag.length = 1 and then C.msg.tag.flags = 0 and then C.msg.tag.reserved = 0 and then
+        C.msg.tag.length = 1 and then C.msg.tag.protocol = 0 and then C.msg.tag.reserved = 0 and then
         C.msg.words (1) = 0 and then C.msg.words (2) = 0 and then C.msg.words (3) = 0;
       Success : constant Boolean := Envelope and then C.msg.tag.label = 16#F000# and then
         (if RF.Current (Schedule) = RF.Listing then C.msg.words (0) <= 256

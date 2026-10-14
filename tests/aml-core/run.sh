@@ -31,8 +31,6 @@ alr exec -- gprbuild -p -P ../tests/aml-core/transactions/transactions.gpr
 python3 ../tests/aml-core/native-endpoint/prepare.py
 alr exec -- gprbuild -p -P ../tests/aml-core/native-endpoint/endpoint.gpr
 ../tests/aml-core/build/native-endpoint/endpoint_tests
-alr exec -- gprbuild -p -P ../tests/aml-core/hardware-cspace/hardware_cspace.gpr
-../tests/aml-core/build/hardware-cspace/hardware_cspace_tests
 alr exec -- gprbuild -p -P ../tests/aml-core/hardware-grants/grants.gpr
 ../tests/aml-core/build/hardware-grants/hardware_grants_tests
 alr exec -- gprbuild -p -P ../tests/aml-core/hardware-catalog/catalog.gpr
@@ -104,10 +102,6 @@ if [[ $prove == yes ]]; then
         -u acpi_launch.adb --mode=all --level=2 \
         --prover=cvc5,z3 --checks-as-errors=on -j2 \
         2>&1 | tee ../tests/aml-core/build/launch-proof.log
-    alr exec -- gnatprove -P ../tests/aml-core/hardware-cspace/hardware_cspace.gpr \
-        -u hardware_grants-cspace.adb --mode=all --level=2 \
-        --prover=cvc5,z3 --checks-as-errors=on -j2 \
-        2>&1 | tee ../tests/aml-core/build/hardware-cspace-proof.log
     alr exec -- gnatprove -P ../tests/aml-core/hardware-grants/grants.gpr \
         -u hardware_grants.adb hardware_catalog.adb hardware_authority.ads --mode=all --level=2 \
         --prover=cvc5,z3 --checks-as-errors=on -j2 \

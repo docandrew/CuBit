@@ -1,3 +1,4 @@
+with CuBit.Handles.Fixture;
 with Ada.Text_IO;
 with Interfaces;
 with System;
@@ -30,9 +31,9 @@ begin
                begin
                   M.Set (Owned, Description, Interfaces.Unsigned_32 (Retirement));
                   Context_Set (Interfaces.Unsigned_32 (Creation), 0);
-                  D.Start (S, Context, Submission, 25);
+                  D.Start (S, Context, Submission, CuBit.Handles.Fixture.Endpoint_Of (25));
                   pragma Assert (M.Starts = 1);
-                  D.Start (S, Context, Submission, 25);
+                  D.Start (S, Context, Submission, CuBit.Handles.Fixture.Endpoint_Of (25));
                   pragma Assert (M.Starts = 1);
                   if Owned and Description and Creation = 0 then
                      pragma Assert (D.Current (S) = D.Ready);
@@ -73,9 +74,9 @@ begin
       Submission : V.State := V.Open (System.Null_Address);
    begin
       M.Set (True, True, 0);
-      D.Start (S, Context, Submission, 0);
+      D.Start (S, Context, Submission, CuBit.Handles.No_Endpoint);
       pragma Assert (D.Current (S) = D.Software and M.Starts = 0);
-      D.Start (S, Context, Submission, 25);
+      D.Start (S, Context, Submission, CuBit.Handles.Fixture.Endpoint_Of (25));
       pragma Assert (M.Starts = 0);
       D.Close (S, Context, Submission);
       pragma Assert (D.Current (S) = D.Retired and M.Closes = 0);
@@ -93,7 +94,7 @@ begin
       begin
          M.Set (True, True, 0); Context_Set (0, Interfaces.Unsigned_32 (Release_Code));
          Submission_Reset;
-         D.Start (S, Context, Submission, 25);
+         D.Start (S, Context, Submission, CuBit.Handles.Fixture.Endpoint_Of (25));
          -- A foreign/fresh context or a foreign idle submission cannot retire
          -- the process device, even when both have no outstanding children.
          D.Close (S, Foreign, Submission); pragma Assert (M.Closes = 0);

@@ -16,7 +16,14 @@ with CuBit.Program_Descriptions;
 with CuBit.Stream_Regions;
 with CuBit.Stream_Rings;
 
+with CuBit.Libc_Startup;
+with CuBit.Startup_Tables;
 package body CuBit.Libc_Child_Outlets is
+
+   --  The process manager endpoint its launcher granted (startup name
+   --  "process-manager"), or 0: then spawning fails.
+   function Process_Manager_Handle return Unsigned_64 is
+     (CuBit.Libc_Startup.Granted ("process-manager", CuBit.Startup_Tables.Endpoint));
 
    use type Interfaces.C.int;
    use type Interfaces.C.long;
@@ -85,7 +92,7 @@ package body CuBit.Libc_Child_Outlets is
          return;
       end if;
       Slot := CuBit.Kernel_Calls.Call
-        (Create_Shared_Memory_Grant_Via_Capability, Process_Manager_Slot,
+        (Create_Shared_Memory_Grant_Via_Capability, Process_Manager_Handle,
          Unsigned_64 (To_Integer (Area)), Unsigned_64 (Pages), Flags);
       Generation := (if Slot = Failed then 0
                      else CuBit.Kernel_Calls.Call (Get_Owned_Shared_Memory_Grant_Generation, Slot));
@@ -125,7 +132,7 @@ package body CuBit.Libc_Child_Outlets is
       begin
          Area (1 .. Program'Length) := Program;
          Label := Unsigned_32 (CuBit.Kernel_Calls.Call
-           (Call_Via_Endpoint_Capability, Process_Manager_Slot,
+           (Call_Via_Endpoint_Capability, Process_Manager_Handle,
             Unsigned_64 (To_Integer (M'Address)), CuBit.Kernel_ABI.Forever) and 16#FFFF_FFFF#);
          if Label /= Reply_OK or else M.Words (0) not in 1 .. PD.Maximum_Descriptor_Bytes then
             return;
@@ -211,7 +218,7 @@ package body CuBit.Libc_Child_Outlets is
             T.Pages := Pages;
             Regions.Initialize (T.Base, SR.ELEMENT_TEXT_LINE);
             Slot_Number := CuBit.Kernel_Calls.Call
-              (Create_Shared_Memory_Grant_Via_Capability, Process_Manager_Slot,
+              (Create_Shared_Memory_Grant_Via_Capability, Process_Manager_Handle,
                T.Base, Unsigned_64 (SR.Region_Pages (Regions.Declared (Pages))),
                Grant_Forwardable_Read_Write);
             if Slot_Number = Failed then

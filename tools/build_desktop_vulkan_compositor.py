@@ -185,16 +185,22 @@ def main():
                 if (path.is_file() and path.suffix in ('.ads', '.adb', '.gpr', '.c', '.h', '.vert', '.frag')
                         and not any(p.startswith('build') for p in path.relative_to(source / directory).parts)):
                     copy(path, path.relative_to(source))
-        for directory in ('userspace/runtime/gnat', 'userspace/runtime/adalib'):
+        for directory in ('userspace/runtime/gnat', 'userspace/runtime/adalib',
+                          # The runtime's ada_source_path names these.
+                          'shared/time', 'shared/interrupts', 'shared/launch',
+                          'shared/publications', 'shared/capabilities', 'shared/boot'):
             for path in sorted((source / directory).rglob('*')):
                 if path.is_file():
                     copy(path, path.relative_to(source))
         for relative in ('userspace/runtime/ada_source_path', 'userspace/runtime/ada_object_path',
                          'userspace/runtime/runtime.xml', 'userspace/runtime/target_properties',
                          'userspace/mesa/mesa_service.ads', 'userspace/mesa/mesa_service.adb',
-                         'userspace/mesa/service-device.h', 'userspace/services/desktop/manifest.ccl',
+                         'userspace/mesa/service-device.h',
+                         'userspace/c/cubit_handles.h', 'userspace/services/desktop/manifest.ccl',
                          'userspace/rust/build/font-native/libcubit_fonts.a'):
             copy(source / relative, Path(relative))
+        # anv/cubit_handles.h is a link to the C ABI header: copy its target.
+        copy(source / 'userspace/c/cubit_handles.h', Path('userspace/mesa/anv/cubit_handles.h'))
         shader_script = Path('tests/compositor/build-vulkan-affine-shaders.py')
         copy(toolchain / shader_script, shader_script)
         desktop = out / 'userspace/services/desktop'
@@ -214,7 +220,7 @@ def main():
             selected_manifest.write_text(base[:-1] + '\n  (request-service metrics read-write metrics))\n')
         with (metadata / 'manifest.S').open('w') as assembly:
             run([compiler, catalog, selected_manifest, '--schema', schema,
-                 '--ada-output', generated / 'ccl_manifest_bindings.ads'], stdout=assembly)
+                 '--startup-output', generated / 'startup.ads'], stdout=assembly)
         run([*c_prefix, '-c', metadata / 'manifest.S', '-o', metadata / 'manifest.o'])
         run(['alr', 'exec', '--', 'gprbuild', '-q', '-p', '-c', '-b', '-P',
              desktop / 'desktop.gpr', '-XCUBIT_COMPOSITOR=vulkan',
@@ -256,7 +262,7 @@ def main():
         for relative, expected in copies.items():
             if digest(out / relative) != expected:
                 raise ValueError('Copied input changed: ' + relative)
-        for generated_input in (selected_manifest, generated / 'ccl_manifest_bindings.ads', metadata / 'manifest.S'):
+        for generated_input in (selected_manifest, generated / 'startup.ads', metadata / 'manifest.S'):
             copies[str(generated_input.relative_to(out))] = digest(generated_input)
         manifest = out / 'compositor-sources.json'
         manifest.write_text(json.dumps(copies, indent=2) + '\n')

@@ -1,0 +1,17 @@
+# Startup-binding fixture (CAP-002 step 2): every startup feature of the
+# schema once. Its generated Startup package is checked in as
+# tests/startup-tables/generated/startup.ads and compiled by those tests.
+(Executable_Manifest
+  identity => "com.cubit.test.startup"
+  version => "0.1.0"
+  device => (Device_Match.PCI_Class (PCI_Class 3 0 0))
+  requests => [
+    (device-memory "registers" 0 16777216 Access.Read)
+    (interrupt "device" Interrupt_Mode.MSI 1)
+    (service "device-manager" "devmgr")
+    (notification "mouse" Notify_Access.Publish "pointer-events")
+    (scheduling "real-time" 1500 5000)]
+  optional => ["pointer-events"]
+  handles => (Handle_Limit.At_Most 512)
+  channels => [(Channel_Offer contract => "gpu.urgent" per_client => 1 total => 1 class => Channel_Class.Urgent)
+               (Channel_Offer "gpu.render" 4 64)])

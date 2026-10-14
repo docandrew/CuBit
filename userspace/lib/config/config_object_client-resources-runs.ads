@@ -2,6 +2,7 @@ with CCL.VM.Native_Objects;
 with Config_Object_Client.Resources.Calls;
 with Config_Object_Interfaces;
 with Config_Read_Outcomes;
+with CuBit.Handles;
 
 -- Single-owner event-loop coordinator, independent of widgets or a transport
 -- wait primitive. The program, machine, registry and collection have ONE stable
@@ -15,7 +16,7 @@ package Config_Object_Client.Resources.Runs is
      (Host : in out Runner; Types : CCL.Types.Registry;
       Kind : CCL.Types.Type_Reference; Contract : CCL.Objects.Binding;
       Reads : Config_Read_Outcomes.Description; Bindings : Binding_Table;
-      Endpoint : CuBit.Messages.CapabilitySlot; Name : String;
+      Endpoint : CuBit.Handles.Endpoint; Name : String;
       Accepted : out Boolean);
    -- Trusted host-only: metadata and endpoint must come from its approved
    -- catalog/grants. One collection slot per run; concurrent opens fail locally.
@@ -65,7 +66,7 @@ private
       Contract : CCL.Objects.Binding;
       Reads : Config_Read_Outcomes.Description;
       Bindings : Binding_Table := [others => 0];
-      Endpoint : CuBit.Messages.CapabilitySlot := 0;
+      Endpoint : CuBit.Handles.Endpoint := CuBit.Handles.No_Endpoint;
       Name : String (1 .. Config_Object_Messages.Maximum_Name) := [others => ' '];
       Name_Length : Natural range 0 .. Config_Object_Messages.Maximum_Name := 0;
       Revision : Number := 0;

@@ -30,7 +30,12 @@ with CuBit.Outlet_Rings;
 with CuBit.Streams;
 with CuBit.Memory_Grants;
 
+with CuBit.Handles;
 package CuBit.Launching is
+
+   --  The process manager endpoint every following call uses (the program's
+   --  startup handle for it); before Bind every call fails.
+   procedure Bind (Service : CuBit.Handles.Endpoint);
 
    type Launch_Result is
      (Launched,

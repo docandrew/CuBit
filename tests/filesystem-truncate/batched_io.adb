@@ -1,3 +1,4 @@
+with CuBit.Handles.Fixture;
 with Ada.Text_IO; use Ada.Text_IO;
 with Interfaces; use Interfaces;
 with Ext2; use Ext2;
@@ -94,7 +95,7 @@ procedure Batched_IO is
       Item := NULL_INODE;
       Item.typeAndPermissions := 16#8000#;
       Item.numHardLinks := 1;
-      initBlockDevice (Fs, 1, (slot => 1, generation => 1),
+      initBlockDevice (Fs, CuBit.Handles.Fixture.Endpoint_Of (1), 1, (slot => 1, generation => 1),
                        Grant_Buffer'Address, Grant_Buffer'Length, Admission);
       pragma Assert (Admission = Admitted);
       Candidate := Item;

@@ -480,7 +480,7 @@ package body CuBit.Streams is
    ---------------------------------------------------------------------------
 
    procedure Subscribe_Begin
-     (Endpoint : CuBit.Messages.CapabilitySlot; Stream : StreamId;
+     (Endpoint : CuBit.Handles.Endpoint; Stream : StreamId;
       Element : CuBit.Protocols.Schema_Contract; Token : Unsigned_64;
       Sub : out SubInfo; Submitted : out Boolean) is
    begin

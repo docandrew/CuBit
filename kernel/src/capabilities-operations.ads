@@ -3,27 +3,21 @@
 -- Copyright (C) 2024 Jon Andrew
 --
 -- @summary
--- Capability Table Operations
+-- Capability operations on single capabilities
 --
--- Table manipulation for per-process capability tables: lookup, insert,
--- remove, clear, and search. All operations take a CapabilityTable in/out
--- and have no dependency on Process (Process withs Capabilities, not the
--- reverse).
---
--- All routines are SPARK-provable linear scans over the 64-element table.
+-- Endpoint resolution and the per-thread reply authority. Tables of
+-- capabilities are Process_Capabilities (CAP-002): a system call finds the
+-- capability its handle names there, then resolves it here.
 -------------------------------------------------------------------------------
-with Process_Identities;
-
 package Capabilities.Operations with
     SPARK_Mode => On
 is
 
     ---------------------------------------------------------------------------
-    -- Operation status codes returned by table manipulation procedures.
+    -- Operation status codes returned by resolution procedures.
     ---------------------------------------------------------------------------
     type OperationStatus is (
         OP_OK,
-        OP_TABLE_FULL,
         OP_INVALID_SLOT,
         OP_STALE_GENERATION,
         OP_INSUFFICIENT_RIGHTS,
@@ -31,120 +25,12 @@ is
     );
 
     ---------------------------------------------------------------------------
-    -- isSingleSlotUpdate
-    -- Proof-only model for a capability-table update: the selected slot has
-    -- exactly the requested value and every other slot is unchanged.
-    ---------------------------------------------------------------------------
-    function isSingleSlotUpdate (updated  : CapabilityTable;
-                                 original : CapabilityTable;
-                                 slot     : CapabilitySlot;
-                                 cap      : Capability) return Boolean is
-        (updated(slot) = cap
-         and then
-           (for all i in CapabilitySlot =>
-              (if i /= slot then updated(i) = original(i))))
-        with Ghost;
-
-    ---------------------------------------------------------------------------
-    -- isReplyTakeResult
-    -- Proof-only model for consuming a selected one-use reply capability.
-    -- Success returns the exact old capability and clears only its slot;
-    -- failure returns no authority and changes nothing.
-    ---------------------------------------------------------------------------
-    function isReplyTakeResult (updated  : CapabilityTable;
-                                original : CapabilityTable;
-                                slot     : CapabilitySlot;
-                                cap      : Capability;
-                                taken    : Boolean) return Boolean is
-        (if original(slot).capType = CAP_REPLY then
-             taken
-             and then cap = original(slot)
-             and then isSingleSlotUpdate
-               (updated, original, slot, NULL_CAPABILITY)
-         else
-             not taken
-             and then cap = NULL_CAPABILITY
-             and then updated = original)
-        with Ghost;
-
-    ---------------------------------------------------------------------------
-    -- takeReplyCap
-    -- Consume and return the reply capability in slot, if present.
-    ---------------------------------------------------------------------------
-    procedure takeReplyCap (table : in out CapabilityTable;
-                            slot  : in     CapabilitySlot;
-                            cap   :    out Capability;
-                            taken :    out Boolean) with
-        Post => isReplyTakeResult
-          (table, table'Old, slot, cap, taken);
-
-    -- Retire a selected reply and its deferred-slot bookkeeping together.
-    -- Delivery validity is checked afterward. Dead peers cannot leave an
-    -- unusable reply occupying a slot; non-reply authority is unchanged.
-    procedure retireReplyCap
-      (table         : in out CapabilityTable;
-       deferredSlots : in out Unsigned_64;
-       slot          : in     CapabilitySlot;
-       cap           :    out Capability;
-       taken         :    out Boolean) with
-        Post => isReplyTakeResult (table, table'Old, slot, cap, taken)
-          and then deferredSlots =
-            (if taken then deferredSlots'Old and
-                 not Shift_Left (Unsigned_64'(1), slot)
-             else deferredSlots'Old);
-
-    ---------------------------------------------------------------------------
     -- Per-thread reply authority (docs/threads.md). The reply capability for
-    -- the request a thread is serving lives in that thread's record, not in
-    -- the process table's slot 63, so two threads of one process serving
-    -- requests at once cannot overwrite each other's reply authority. Slot
-    -- 63 still names "my reply capability" in the ABI, resolved per thread.
+    -- the request a thread is serving lives in that thread's record, so two
+    -- threads of one process serving requests at once cannot overwrite each
+    -- other's reply authority. MOVE_REPLY_CAPABILITY places it in the
+    -- process's table as an ordinary kernel-placed handle.
     ---------------------------------------------------------------------------
-
-    -- Move a thread's current reply capability into an unused slot of its
-    -- process's table (MOVE_REPLY_CAPABILITY). Existing authority is never
-    -- overwritten; on failure nothing changes.
-    procedure moveReplyCapFrom (source : in out Capability;
-                                table  : in out CapabilityTable;
-                                dest   : in     CapabilitySlot;
-                                moved  :    out Boolean) with
-        Post =>
-          (if moved then
-               dest /= REPLY_CAP_SLOT
-               and then source'Old.capType = CAP_REPLY
-               and then table'Old(dest).capType = CAP_NULL
-               and then source = NULL_CAPABILITY
-               and then isSingleSlotUpdate (table, table'Old, dest, source'Old)
-           else
-               source = source'Old and then table = table'Old
-               and then
-                 (dest = REPLY_CAP_SLOT
-                  or else source'Old.capType /= CAP_REPLY
-                  or else table'Old(dest).capType /= CAP_NULL));
-
-    -- Move a reply capability saved in a slot back to the thread's current
-    -- reply authority (RESTORE_REPLY_CAPABILITY): the reverse of
-    -- moveReplyCapFrom, so a server that set a request aside can serve it
-    -- later exactly as if it had just been received. Only into an empty
-    -- current authority; on failure nothing changes.
-    procedure restoreReplyCapTo
-      (table         : in out CapabilityTable;
-       deferredSlots : in out Unsigned_64;
-       slot          : in     CapabilitySlot;
-       dest          : in out Capability;
-       moved         :    out Boolean) with
-        Post =>
-          (if moved then
-               slot /= REPLY_CAP_SLOT
-               and then dest'Old.capType = CAP_NULL
-               and then table'Old(slot).capType = CAP_REPLY
-               and then dest = table'Old(slot)
-               and then isSingleSlotUpdate (table, table'Old, slot, NULL_CAPABILITY)
-               and then deferredSlots =
-                 (deferredSlots'Old and not Shift_Left (Unsigned_64'(1), slot))
-           else
-               dest = dest'Old and then table = table'Old
-               and then deferredSlots = deferredSlots'Old);
 
     -- Consume a thread's current reply capability, if present.
     procedure takeReplyCapFrom (source : in out Capability;
@@ -158,8 +44,7 @@ is
                not taken and then cap = NULL_CAPABILITY
                and then source = source'Old);
 
-    -- Ghost: a thread's reply authority is single-use, whether it is taken
-    -- directly or moved to a deferred slot first.
+    -- Ghost: a thread's reply authority is single-use.
     procedure proveThreadReplySingleUse
       (source      : in out Capability;
        firstTaken  :    out Boolean;
@@ -168,276 +53,54 @@ is
         Post => not (firstTaken and secondTaken);
 
     ---------------------------------------------------------------------------
-    -- proveReplyCapSingleUse
-    -- Ghost proof harness: two consecutive takes from the same slot cannot
-    -- both return reply authority.
-    ---------------------------------------------------------------------------
-    procedure proveReplyCapSingleUse
-      (table       : in out CapabilityTable;
-       slot        : in     CapabilitySlot;
-       firstTaken  :    out Boolean;
-       secondTaken :    out Boolean) with
-        Ghost,
-        Post => not (firstTaken and secondTaken);
-
-    ---------------------------------------------------------------------------
-    -- isEndpointResolution
-    -- Proof-only model of endpoint lookup and rights enforcement.  A failed
-    -- resolution discloses neither an object reference nor a authority tag.  The
-    -- target object's live generation is checked by the IPC operation after
-    -- this table-local resolution succeeds.
-    ---------------------------------------------------------------------------
-    function isEndpointResolution (table    : CapabilityTable;
-                                   slot     : CapabilitySlot;
-                                   rights   : CapabilityRights;
-                                   destPID  : Unsigned_64;
-                                   authorityTag : Authority_Tag;
-                                   status   : OperationStatus)
-                                   return Boolean is
-        (if table(slot).capType = CAP_NULL then
-             status = OP_NULL_CAPABILITY
-             and then destPID = 0
-             and then authorityTag = NO_AUTHORITY_TAG
-         elsif table(slot).capType /= CAP_ENDPOINT then
-             status = OP_INVALID_SLOT
-             and then destPID = 0
-             and then authorityTag = NO_AUTHORITY_TAG
-         elsif not isSubsetOf (rights, table(slot).rights) then
-             status = OP_INSUFFICIENT_RIGHTS
-             and then destPID = 0
-             and then authorityTag = NO_AUTHORITY_TAG
-         else
-             status = OP_OK
-             and then destPID = table(slot).object.ref
-             and then authorityTag = table(slot).authorityTag)
-        with Ghost;
-
-    ---------------------------------------------------------------------------
     -- isCurrentEndpointResolution
-    -- Proof-only model extending endpoint resolution with the target object's
-    -- current generation.  A stale capability cannot disclose or select a
-    -- destination even if its type and rights are otherwise valid.
+    -- Proof-only model of endpoint resolution: kind, rights and the target
+    -- object's current generation. A failed resolution discloses neither an
+    -- object reference nor an authority tag.
     ---------------------------------------------------------------------------
     function isCurrentEndpointResolution
-      (table             : CapabilityTable;
-       slot              : CapabilitySlot;
+      (cap               : Capability;
        rights            : CapabilityRights;
        currentGeneration : Generation;
        destPID           : Unsigned_64;
-       authorityTag          : Authority_Tag;
+       authorityTag      : Authority_Tag;
        status            : OperationStatus) return Boolean is
-        (if table(slot).capType = CAP_NULL then
+        (if cap.capType = CAP_NULL then
              status = OP_NULL_CAPABILITY
              and then destPID = 0
              and then authorityTag = NO_AUTHORITY_TAG
-         elsif table(slot).capType /= CAP_ENDPOINT then
+         elsif cap.capType /= CAP_ENDPOINT then
              status = OP_INVALID_SLOT
              and then destPID = 0
              and then authorityTag = NO_AUTHORITY_TAG
-         elsif not isSubsetOf (rights, table(slot).rights) then
+         elsif not isSubsetOf (rights, cap.rights) then
              status = OP_INSUFFICIENT_RIGHTS
              and then destPID = 0
              and then authorityTag = NO_AUTHORITY_TAG
-         elsif table(slot).gen /= currentGeneration then
+         elsif cap.gen /= currentGeneration then
              status = OP_STALE_GENERATION
              and then destPID = 0
              and then authorityTag = NO_AUTHORITY_TAG
          else
              status = OP_OK
-             and then destPID = table(slot).object.ref
-             and then authorityTag = table(slot).authorityTag)
+             and then destPID = cap.object.ref
+             and then authorityTag = cap.authorityTag)
         with Ghost;
-
-    ---------------------------------------------------------------------------
-    -- isInsertionResult
-    -- Proof-only model for safe automatic insertion.  Success writes only an
-    -- originally empty slot; failure reports a full table and changes nothing.
-    ---------------------------------------------------------------------------
-    function isInsertionResult (updated  : CapabilityTable;
-                                original : CapabilityTable;
-                                cap      : Capability;
-                                slot     : CapabilitySlot;
-                                status   : OperationStatus)
-                                return Boolean is
-        (if status = OP_OK then
-             original(slot).capType = CAP_NULL
-             and then isSingleSlotUpdate (updated, original, slot, cap)
-         else
-             status = OP_TABLE_FULL
-             and then slot = CapabilitySlot'First
-             and then updated = original)
-        with Ghost;
-
-    ---------------------------------------------------------------------------
-    -- isGenerationAdvance
-    -- Proof-only model for revocation generation advancement.  An object may
-    -- be reused only when its generation advances; terminal generations force
-    -- permanent retirement instead of allowing stale capabilities to revive.
-    ---------------------------------------------------------------------------
-    function isGenerationAdvance (updated  : Generation;
-                                  original : Generation;
-                                  reusable : Boolean) return Boolean is
-        (if original < Generation'Last then
-             reusable and then updated = original + 1
-         else
-             not reusable and then updated = original)
-        with Ghost;
-
-    ---------------------------------------------------------------------------
-    -- advanceGeneration
-    -- Invalidate capabilities referring to an object before considering its
-    -- identifier for reuse.  reusable=False means the identifier must remain
-    -- retired because the generation space is exhausted.
-    ---------------------------------------------------------------------------
-    procedure advanceGeneration (current  : in out Generation;
-                                 reusable :    out Boolean) with
-        Post => isGenerationAdvance
-          (current, current'Old, reusable);
-
-    ---------------------------------------------------------------------------
-    -- lookupCap
-    -- Return the capability at the given slot. If the slot contains a
-    -- NULL_CAPABILITY, status is set to OP_NULL_CAPABILITY.
-    ---------------------------------------------------------------------------
-    procedure lookupCap (table  : in     CapabilityTable;
-                         slot   : in     CapabilitySlot;
-                         cap    :    out Capability;
-                         status :    out OperationStatus);
-
-    ---------------------------------------------------------------------------
-    -- insertCap
-    -- Find the first free (CAP_NULL) slot and insert the given capability.
-    -- Returns the slot index via the out parameter. OP_TABLE_FULL if none.
-    ---------------------------------------------------------------------------
-    procedure insertCap (table  : in out CapabilityTable;
-                         cap    : in     Capability;
-                         slot   :    out CapabilitySlot;
-                         status :    out OperationStatus) with
-        Post => isInsertionResult (table, table'Old, cap, slot, status);
-
-    ---------------------------------------------------------------------------
-    -- insertCapAt
-    -- Insert a capability at a specific slot, overwriting whatever was there.
-    ---------------------------------------------------------------------------
-    procedure insertCapAt (table : in out CapabilityTable;
-                           slot  : in     CapabilitySlot;
-                           cap   : in     Capability) with
-        Post => isSingleSlotUpdate (table, table'Old, slot, cap);
-
-    ---------------------------------------------------------------------------
-    -- removeCap
-    -- Clear the slot to NULL_CAPABILITY. OP_NULL_CAPABILITY if already empty.
-    ---------------------------------------------------------------------------
-    procedure removeCap (table  : in out CapabilityTable;
-                         slot   : in     CapabilitySlot;
-                         status :    out OperationStatus);
-
-    ---------------------------------------------------------------------------
-    -- clearTable
-    -- Zero all slots to NULL_CAPABILITY.
-    ---------------------------------------------------------------------------
-    procedure clearTable (table : in out CapabilityTable);
-
-    ---------------------------------------------------------------------------
-    -- findByType
-    -- Return the first slot whose capability matches the given type.
-    -- OP_NULL_CAPABILITY if no match found.
-    ---------------------------------------------------------------------------
-    procedure findByType (table  : in     CapabilityTable;
-                          wanted : in     CapabilityType;
-                          slot   :    out CapabilitySlot;
-                          status :    out OperationStatus);
-
-    ---------------------------------------------------------------------------
-    -- findByAuthorityTag
-    -- Return the first slot whose capability authority tag matches the given value.
-    -- OP_NULL_CAPABILITY if no match found.
-    ---------------------------------------------------------------------------
-    procedure findByAuthorityTag (table  : in     CapabilityTable;
-                           wanted : in     Authority_Tag;
-                           slot   :    out CapabilitySlot;
-                           status :    out OperationStatus);
-
-    ---------------------------------------------------------------------------
-    -- resolveEndpoint
-    -- Given a capability slot, verify it holds a valid CAP_ENDPOINT with
-    -- the required rights. On success, return the destination PID (from
-    -- object.ref) and the authority tag.
-    ---------------------------------------------------------------------------
-    procedure resolveEndpoint (table    : in     CapabilityTable;
-                               slot     : in     CapabilitySlot;
-                               rights   : in     CapabilityRights;
-                               destPID  :    out Unsigned_64;
-                               authorityTag :    out Authority_Tag;
-                               status   :    out OperationStatus) with
-        Post => isEndpointResolution
-          (table, slot, rights, destPID, authorityTag, status);
 
     ---------------------------------------------------------------------------
     -- resolveCurrentEndpoint
-    -- Resolve an endpoint and reject capabilities from an obsolete object
-    -- generation.  The caller obtains currentGeneration only after validating
-    -- that the capability's object reference is safe to use as an object-table
-    -- index.
+    -- Resolve an endpoint capability and reject one from an obsolete object
+    -- generation. The caller obtains currentGeneration only after validating
+    -- that the capability's object reference is safe to use as an index.
     ---------------------------------------------------------------------------
     procedure resolveCurrentEndpoint
-      (table             : in     CapabilityTable;
-       slot              : in     CapabilitySlot;
+      (cap               : in     Capability;
        rights            : in     CapabilityRights;
        currentGeneration : in     Generation;
        destPID           :    out Unsigned_64;
-       authorityTag          :    out Authority_Tag;
+       authorityTag      :    out Authority_Tag;
        status            :    out OperationStatus) with
         Post => isCurrentEndpointResolution
-          (table, slot, rights, currentGeneration,
-           destPID, authorityTag, status);
-
-    ---------------------------------------------------------------------------
-    -- grantInitialCaps
-    -- Populate a freshly-created process' table with authority over its own
-    -- mailbox and lifecycle only. Service endpoints are never ambient: the
-    -- launcher installs them after manifest and policy admission. Takes
-    -- Unsigned_64 for PID to avoid depending on Process. gen is the process's
-    -- current capability generation (preserved across PID recycling).
-    --
-    -- Slot layout:
-    --   0: CAP_ENDPOINT  self, READ+WRITE (ref=pid)          authority tag=pid
-    --   3: CAP_PROCESS   self, READ+WRITE (ref=pid)          authority tag=0
-    ---------------------------------------------------------------------------
-    procedure grantInitialCaps (table :    out CapabilityTable;
-                                pid   : in     Unsigned_64;
-                                gen   : in     Generation) with
-        Pre  => pid <= Process_Identities.Slot'Last,
-        Post =>
-          table(0) =
-            (capType  => CAP_ENDPOINT,
-             rights   => READ_WRITE,
-             authorityTag => Process_Identities.To_Word (Process_Identities.Encode
-                               (Process_Identities.Slot (pid),
-                                Process_Identities.Generation (gen))),
-             object   => (ref => pid, param => 0),
-             gen      => gen)
-          and then table(3) =
-            (capType  => CAP_PROCESS,
-             rights   => READ_WRITE,
-             authorityTag => NO_AUTHORITY_TAG,
-             object   => (ref => pid, param => 0),
-             gen      => gen)
-          and then
-            (for all slot in CapabilitySlot =>
-               (if slot /= 0 and then slot /= 3 then
-                    table(slot) = NULL_CAPABILITY));
-
-    ---------------------------------------------------------------------------
-    -- checkPortAccess
-    -- Scan the capability table for a CAP_IOPORT that covers the requested
-    -- port range [port .. port+accessSize-1] with the appropriate read/write
-    -- right.
-    ---------------------------------------------------------------------------
-    procedure checkPortAccess (table      : in     CapabilityTable;
-                               port       : in     Unsigned_64;
-                               accessSize : in     Unsigned_64;
-                               forWrite   : in     Boolean;
-                               allowed    :    out Boolean);
+          (cap, rights, currentGeneration, destPID, authorityTag, status);
 
 end Capabilities.Operations;

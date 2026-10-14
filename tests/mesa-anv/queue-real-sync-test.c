@@ -16,19 +16,19 @@
 
 static unsigned preparations, registrations, health_queries, drains, closes, retirements;
 static unsigned chains, flushes, range_flushes;
-uint32_t cubit_intel_memory_contract(uint64_t slot) { (void)slot; return 1; }
-uint32_t cubit_intel_session_status(uint64_t slot) { (void)slot; health_queries++; return 0; }
+uint32_t cubit_intel_memory_contract(cubit_endpoint endpoint) { (void)endpoint; return 1; }
+uint32_t cubit_intel_session_status(cubit_endpoint endpoint) { (void)endpoint; health_queries++; return 0; }
 bool cubit_cpu_tracker_drain(struct cubit_cpu_mapping_tracker *tracker)
 { (void)tracker; drains++; return true; }
-uint32_t cubit_intel_close_session(uint64_t slot, uint64_t *tag)
+uint32_t cubit_intel_close_session(cubit_endpoint endpoint, uint64_t *tag)
 {
    /* The queue closes before the session does. */
-   assert(!gpu_queue_mock[slot].open);
-   closes++; *tag = slot + 1; return 0;
+   assert(!gpu_queue_mock[TEST_INDEX(endpoint)].open);
+   closes++; *tag = TEST_INDEX(endpoint) + 1; return 0;
 }
-uint32_t cubit_intel_poll_session_retirement(uint64_t slot) { (void)slot; retirements++; return 0; }
-uint32_t cubit_intel_prepare_context(uint64_t slot) { (void)slot; preparations++; return 0; }
-uint32_t cubit_intel_register_context(uint64_t slot) { (void)slot; registrations++; return 0; }
+uint32_t cubit_intel_poll_session_retirement(cubit_endpoint endpoint) { (void)endpoint; retirements++; return 0; }
+uint32_t cubit_intel_prepare_context(cubit_endpoint endpoint) { (void)endpoint; preparations++; return 0; }
+uint32_t cubit_intel_register_context(cubit_endpoint endpoint) { (void)endpoint; registrations++; return 0; }
 void anv_cmd_buffer_chain_command_buffers(struct anv_cmd_buffer **cmds, uint32_t count)
 { assert(cmds && count); chains++; }
 void anv_cmd_buffer_clflush(struct anv_cmd_buffer **cmds, uint32_t count)
@@ -43,6 +43,11 @@ VkResult _vk_device_set_lost(struct vk_device *device, const char *file,
 }
 
 #include "queue-rig.h"
+#include "../../userspace/c/cubit_handles.h"
+/* A test endpoint handle (generation 1). */
+#define TEST_ENDPOINT(n) ((cubit_endpoint){(UINT64_C(1) << 32) | (uint64_t)(n)})
+/* The index a test endpoint was made from. */
+#define TEST_INDEX(e) ((unsigned)((e).opaque & 0xffffffffu))
 static unsigned checks;
 #define CHECK(condition) do { assert(condition); checks++; } while (0)
 
@@ -64,14 +69,14 @@ int main(void)
    /* Startup: the first internal batch prepares, registers and opens the
     * queue, then writes one descriptor and returns before the GPU runs it. */
    static struct rig r;
-   open_rig(&r, 60);
+   open_rig(&r, TEST_ENDPOINT(60));
    CHECK(!preparations && !gpu_queue_mock_opens && health_queries == 1);
    struct vk_sync *init_fence = make(&r, &binary_type.sync, 0);
    struct vk_sync *output = make(&r, types[0], VK_SYNC_IS_TIMELINE);
    const struct vk_sync_signal out1 = {.sync = output, .signal_value = 1};
    CHECK(startup(&r, init_fence, 1, &out1) == VK_SUCCESS);
    CHECK(preparations == 1 && registrations == 1 && gpu_queue_mock_opens == 1);
-   const struct gpu_queue_mock_slot *q = &gpu_queue_mock[r.slot];
+   const struct gpu_queue_mock_slot *q = &gpu_queue_mock[TEST_INDEX(r.endpoint)];
    CHECK(q->executes == 1 && q->last.operation == CUBIT_GPU_EXECUTE && q->last.handle == 17 &&
          q->last.gpu == 0x20000 && q->last.offset == 0 && q->last.bytes == 4096 &&
          q->last.context == 0 && !q->last.first.target && !q->last.second.target &&
@@ -80,7 +85,7 @@ int main(void)
    const uint64_t startup_value = q->submitted.value[0];
    CHECK(!done(&r, init_fence, 0) && !done(&r, output, 1));
    CHECK(vk_sync_wait(&r.device.vk, output, 1, VK_SYNC_WAIT_PENDING, 0) == VK_SUCCESS);
-   gpu_queue_mock_complete(r.slot, 0, startup_value);
+   gpu_queue_mock_complete(r.endpoint, 0, startup_value);
    CHECK(done(&r, init_fence, 0) && done(&r, output, 1));
 
    /* vkQueueSubmit: two chained command buffers waiting on the startup
@@ -106,10 +111,10 @@ int main(void)
    CHECK(chains == 8 && flushes == 8 && q->executes == 9);
    uint64_t reached;
    CHECK(vk_sync_get_value(&r.device.vk, timeline, &reached) == VK_SUCCESS && reached == 0);
-   gpu_queue_mock_complete(r.slot, 0, values[4]);
+   gpu_queue_mock_complete(r.endpoint, 0, values[4]);
    CHECK(vk_sync_get_value(&r.device.vk, timeline, &reached) == VK_SUCCESS && reached == 5);
    CHECK(!done(&r, fence, 0));
-   gpu_queue_mock_complete(r.slot, 0, values[7]);
+   gpu_queue_mock_complete(r.endpoint, 0, values[7]);
    CHECK(done(&r, fence, 0) && done(&r, timeline, 8));
 
    /* A same-session point on another context is a descriptor wait. */
@@ -117,9 +122,9 @@ int main(void)
    struct cubit_gpu_job side = {.operation = CUBIT_GPU_SIGNAL, .context = 1,
                                 .deadline_us = CUBIT_GPU_NO_DEADLINE};
    uint64_t on_other;
-   CHECK(cubit_gpu_queue_submit(r.slot, &side, &on_other) == CUBIT_GPU_QUEUE_OK);
+   CHECK(cubit_gpu_queue_submit(r.endpoint, &side, &on_other) == CUBIT_GPU_QUEUE_OK);
    const struct vk_sync_signal other_point = {.sync = other, .signal_value = 4};
-   CHECK(anv_cubit_sync_add_point(&r.device.vk, &other_point, r.slot, 1, on_other) == VK_SUCCESS);
+   CHECK(anv_cubit_sync_add_point(&r.device.vk, &other_point, r.endpoint, 1, on_other) == VK_SUCCESS);
    const struct vk_sync_wait cross[] = {{.sync = other, .wait_value = 4},
                                         {.sync = timeline, .wait_value = 8}};
    const struct vk_sync_signal t9 = {.sync = timeline, .signal_value = 9};
@@ -132,7 +137,7 @@ int main(void)
    const struct vk_sync_signal t10 = {.sync = timeline, .signal_value = 10};
    CHECK(submit(&r, 0, 0, NULL, 1, &t10) == VK_SUCCESS && q->jobs == jobs);
    CHECK(!done(&r, timeline, 10));
-   gpu_queue_mock_complete(r.slot, 0, q->submitted.value[0]);
+   gpu_queue_mock_complete(r.endpoint, 0, q->submitted.value[0]);
    CHECK(done(&r, timeline, 10));
    const struct vk_sync_signal t11 = {.sync = timeline, .signal_value = 11};
    CHECK(submit(&r, 0, 0, NULL, 1, &t11) == VK_SUCCESS && q->jobs == jobs && done(&r, timeline, 11));
@@ -142,8 +147,8 @@ int main(void)
    CHECK(submit(&r, 0, 1, &cross_only, 1, &t12) == VK_SUCCESS);
    CHECK(q->jobs == jobs + 1 && q->last.operation == CUBIT_GPU_SIGNAL &&
          q->last.first.context == 1 && q->last.first.target == on_other && !q->last.handle);
-   gpu_queue_mock_complete(r.slot, 1, on_other);
-   gpu_queue_mock_complete(r.slot, 0, q->submitted.value[0]);
+   gpu_queue_mock_complete(r.endpoint, 1, on_other);
+   gpu_queue_mock_complete(r.endpoint, 0, q->submitted.value[0]);
    CHECK(done(&r, timeline, 12));
 
    /* The pre-lock hook: a pending point needs no wait call; a wait whose
@@ -173,24 +178,24 @@ int main(void)
    /* Sequencing error: a wait nobody will signal reaching the queue is a
     * lost device, sticky, never a wait under device->mutex. */
    static struct rig e;
-   open_rig(&e, 59);
+   open_rig(&e, TEST_ENDPOINT(59));
    struct vk_sync *e_fence = make(&e, &binary_type.sync, 0);
    CHECK(startup(&e, e_fence, 0, NULL) == VK_SUCCESS);
    struct vk_sync *never = make(&e, types[0], VK_SYNC_IS_TIMELINE);
    const struct vk_sync_wait missing = {.sync = never, .wait_value = 1};
-   jobs = gpu_queue_mock[e.slot].jobs;
+   jobs = gpu_queue_mock[TEST_INDEX(e.endpoint)].jobs;
    CHECK(submit(&e, 1, 1, &missing, 0, NULL) == VK_ERROR_DEVICE_LOST);
    p_atomic_set(&e.device.vk._lost.lost, 0);
-   CHECK(submit(&e, 1, 0, NULL, 0, NULL) == VK_ERROR_DEVICE_LOST && gpu_queue_mock[e.slot].jobs == jobs);
+   CHECK(submit(&e, 1, 0, NULL, 0, NULL) == VK_ERROR_DEVICE_LOST && gpu_queue_mock[TEST_INDEX(e.endpoint)].jobs == jobs);
    close_rig(&e);
 
    /* A failed descriptor write fails the session; nothing is signalled. */
    static struct rig f;
-   open_rig(&f, 58);
+   open_rig(&f, TEST_ENDPOINT(58));
    struct vk_sync *f_fence = make(&f, &binary_type.sync, 0);
    struct vk_sync *f_out = make(&f, types[0], VK_SYNC_IS_TIMELINE);
    CHECK(startup(&f, f_fence, 0, NULL) == VK_SUCCESS);
-   gpu_queue_mock[f.slot].inject = CUBIT_GPU_QUEUE_FAILED;
+   gpu_queue_mock[TEST_INDEX(f.endpoint)].inject = CUBIT_GPU_QUEUE_FAILED;
    const struct vk_sync_signal f1 = {.sync = f_out, .signal_value = 1};
    CHECK(submit(&f, 1, 0, NULL, 1, &f1) == VK_ERROR_DEVICE_LOST);
    CHECK(vk_sync_wait(&f.device.vk, f_out, 1, VK_SYNC_WAIT_PENDING, 0) == VK_ERROR_DEVICE_LOST);
@@ -201,10 +206,10 @@ int main(void)
    /* The GPU hangs: a fence waiter is woken with the device lost, and the
     * status lines report it. */
    static struct rig h;
-   open_rig(&h, 57);
+   open_rig(&h, TEST_ENDPOINT(57));
    struct vk_sync *h_fence = make(&h, &binary_type.sync, 0);
    CHECK(startup(&h, h_fence, 0, NULL) == VK_SUCCESS);
-   gpu_queue_mock_fail(h.slot);
+   gpu_queue_mock_fail(h.endpoint);
    CHECK(vk_sync_wait(&h.device.vk, h_fence, 0, 0, UINT64_MAX) == VK_ERROR_DEVICE_LOST);
    p_atomic_set(&h.device.vk._lost.lost, 0);
    CHECK(anv_cubit_check_status(&h.device.vk) == VK_ERROR_DEVICE_LOST);
@@ -212,7 +217,7 @@ int main(void)
 
    /* Waits on three contexts exceed a descriptor's two. */
    static struct rig w;
-   open_rig(&w, 56);
+   open_rig(&w, TEST_ENDPOINT(56));
    struct vk_sync *w_fence = make(&w, &binary_type.sync, 0);
    CHECK(startup(&w, w_fence, 0, NULL) == VK_SUCCESS);
    struct vk_sync_wait three[3];
@@ -221,9 +226,9 @@ int main(void)
       struct cubit_gpu_job j = {.operation = CUBIT_GPU_SIGNAL, .context = c,
                                 .deadline_us = CUBIT_GPU_NO_DEADLINE};
       uint64_t gpu;
-      CHECK(cubit_gpu_queue_submit(w.slot, &j, &gpu) == CUBIT_GPU_QUEUE_OK);
+      CHECK(cubit_gpu_queue_submit(w.endpoint, &j, &gpu) == CUBIT_GPU_QUEUE_OK);
       const struct vk_sync_signal s = {.sync = sync, .signal_value = 1};
-      CHECK(anv_cubit_sync_add_point(&w.device.vk, &s, w.slot, c, gpu) == VK_SUCCESS);
+      CHECK(anv_cubit_sync_add_point(&w.device.vk, &s, w.endpoint, c, gpu) == VK_SUCCESS);
       three[c - 1] = (struct vk_sync_wait){.sync = sync, .wait_value = 1};
    }
    CHECK(submit(&w, 1, 2, three, 0, NULL) == VK_SUCCESS);
@@ -232,7 +237,7 @@ int main(void)
 
    /* Null-heap teardown forbids later GPU work. */
    static struct rig n;
-   open_rig(&n, 55);
+   open_rig(&n, TEST_ENDPOINT(55));
    struct anv_vm_bind null_bind = {.address = 0x20000, .size = UINT64_C(8) << 30, .op = ANV_VM_BIND};
    struct anv_sparse_submission null_submit = {.binds = &null_bind, .binds_len = 1, .binds_capacity = 1};
    CHECK(anv_cubit_vm_bind(&n.device, &null_submit, ANV_VM_BIND_FLAG_SIGNAL_BIND_TIMELINE) == VK_SUCCESS);
@@ -246,7 +251,7 @@ int main(void)
 
    /* A queue the driver refuses to open fails device creation's first batch. */
    static struct rig o;
-   open_rig(&o, 54);
+   open_rig(&o, TEST_ENDPOINT(54));
    gpu_queue_mock_refuse_open = 54;
    struct vk_sync *o_fence = make(&o, &binary_type.sync, 0);
    CHECK(startup(&o, o_fence, 0, NULL) == VK_ERROR_DEVICE_LOST);

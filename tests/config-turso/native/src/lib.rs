@@ -25,11 +25,16 @@ global_asm!(
     .section .text._start,"ax",@progbits
     .global _start
     _start:
+        mov [rip + __cubit_launch_block_length], rdi
         xor rbp, rbp
         and rsp, -16
         cld
         call rust_main
         ud2
+    .section .bss.cubit_launch,"aw",@nobits
+    .balign 8
+    .global __cubit_launch_block_length
+    __cubit_launch_block_length: .quad 0
     .section .note.GNU-stack,"",@progbits
 "#
 );
@@ -198,7 +203,7 @@ fn run_persistent() {
     const DATABASE: &str = "@nvme:0/turso-native/profile.sqlite";
     const WORKLOAD: &str = "@nvme:0/turso-native/workload.bin";
     const THREADED_WORKLOAD: &str = "@nvme:0/turso-native/threaded.bin";
-    let bridge = storage::Bridge::new(SLOT_FILESYSTEM);
+    let bridge = storage::Bridge::new();
     #[cfg(feature = "sql-bench")]
     let (bridge, metrics) =
         config_storage::transport_metrics::Meter::new(bridge, sql_benchmark::counter);

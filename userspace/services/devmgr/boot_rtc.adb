@@ -2,10 +2,14 @@ with CuBit.Messages; use CuBit.Messages;
 with Interfaces; use Interfaces;
 with Civil_Time;
 package body Boot_RTC is
-   procedure Read (UTC_Seconds, Monotonic_Ms : out Unsigned_64;
+   CMOS_Index : constant Unsigned_16 := 16#70#;
+   CMOS_Data  : constant Unsigned_16 := 16#71#;
+
+   procedure Read (Ports : CuBit.Handles.IO_Ports;
+                   UTC_Seconds, Monotonic_Ms : out Unsigned_64;
                    Valid : out Boolean) is
       type Registers is array (Positive range 1 .. 7) of Unsigned_8;
-      Ports : constant Registers := [0, 2, 4, 7, 8, 9, 16#0B#];
+      Selectors : constant Registers := [0, 2, 4, 7, 8, 9, 16#0B#];
       A, B : Registers;
       OK : Boolean := True;
       function Get (Index : Unsigned_8) return Unsigned_8 is
@@ -13,9 +17,9 @@ package body Boot_RTC is
       begin
          --  Kernel boot CMOS users have finished. Match its NMI-enabled
          --  selector convention; no competing runtime CMOS owner is admitted.
-         Result := portOutp8 (16#70#, Index);
+         Result := portOutp8 (Ports, CMOS_Index, Index);
          if Result = Unsigned_64'Last then OK := False; return 0; end if;
-         Result := portInp8 (16#71#);
+         Result := portInp8 (Ports, CMOS_Data);
          if Result > 255 then OK := False; return 0; end if;
          return Unsigned_8 (Result);
       end Get;
@@ -36,8 +40,8 @@ package body Boot_RTC is
       --  window. Failed/invalid hardware never blocks boot indefinitely.
       for Attempt in 1 .. 20 loop
          if (Get (16#0A#) and 16#80#) = 0 then
-            for I in A'Range loop A (I) := Get (Ports (I)); end loop;
-            for I in B'Range loop B (I) := Get (Ports (I)); end loop;
+            for I in A'Range loop A (I) := Get (Selectors (I)); end loop;
+            for I in B'Range loop B (I) := Get (Selectors (I)); end loop;
             Monotonic_Ms := syscall (SYSCALL_GETTIME);
             if OK and then A = B and then (Get (16#0A#) and 16#80#) = 0
               and then (Get (16#0D#) and 16#80#) /= 0

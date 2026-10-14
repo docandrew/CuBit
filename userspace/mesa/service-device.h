@@ -2,6 +2,7 @@
 #pragma once
 #include <vulkan/vulkan.h>
 #include <stdint.h>
+#include "anv/cubit_handles.h"
 
 struct cubit_mesa_service;
 struct cubit_mesa_service_device {
@@ -25,7 +26,8 @@ enum cubit_mesa_service_retirement {
  * Failure with NULL *out never accepted ownership; the caller retains it.
  * No authority is acquired and no attempt is replayed, even after retirement.
  */
-VkResult cubit_mesa_service_start(uint64_t slot, struct cubit_mesa_service **out);
+VkResult cubit_mesa_service_start(cubit_endpoint render,
+                                  struct cubit_mesa_service **out);
 
 /* Borrow handles only while ready, before close; no ownership transfer.
  * All consumers must retire before close, including compositor/display reads.
@@ -45,7 +47,7 @@ VkResult cubit_mesa_service_status(struct cubit_mesa_service *owner);
  * consumers. No WaitIdle, sleep, retry, or poll loop. Vulkan teardown and each
  * native IPC call can still block; this is not asynchronous IPC. Close destroys
  * each device/instance once, then performs one retirement pass. Repeat close
- * only polls; pending/unsafe never release or recycle the endpoint slot.
+ * only polls; pending/unsafe never release the render endpoint.
  * Context/budget storage is process-static and is never freed or reset. */
 enum cubit_mesa_service_retirement
 cubit_mesa_service_close(struct cubit_mesa_service *owner);

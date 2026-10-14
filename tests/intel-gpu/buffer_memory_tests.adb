@@ -68,7 +68,7 @@ procedure Buffer_Memory_Tests is
       Bad_Token := False; Bad_Status := False; Submit_Fails := False;
       Pending := False; Retry_First := False;
       Submissions := 0; Polls := 0; Now := 0; Step := 0;
-      Response := ((16#F004#, 4, 0, 0),
+      Response := ((label => 16#F004#, length => 4, protocol => 0, ipc => <>, reserved => 0),
         [Layout.CPU_Base + 4096, 4096, 7, Layout.Allocation_Key (1, 1)]);
       RAM := [others => Sentinel];
    end Reset;
@@ -82,12 +82,12 @@ begin
      (Layout.Request_Label, 3, 0, 0, Unsigned_64 (Layout.Slot'Last), 1, 1, 0));
    for Fault in 0 .. 12 loop
       declare
-         Request : Message := ((Layout.Request_Label, 3, 0, 0), [1, 1, 1, 0]);
+         Request : Message := ((label => Layout.Request_Label, length => 3, protocol => 0, ipc => <>, reserved => 0), [1, 1, 1, 0]);
       begin
          case Fault is
             when 0 => null;
             when 1 => Request.tag.length := 2;
-            when 2 => Request.tag.flags := 1;
+            when 2 => Request.tag.protocol := 1;
             when 3 => Request.tag.reserved := 1;
             when 4 => Request.words (0) := 0;
             when 5 => Request.words (0) := Unsigned_64 (Layout.Slot'Last) + 1;
@@ -101,7 +101,7 @@ begin
             when others => null;
          end case;
          pragma Assert (Layout.Valid_Allocation_Request
-           (Request.tag.label, Request.tag.length, Request.tag.flags, Request.tag.reserved,
+           (Request.tag.label, Request.tag.length, Flag_Byte (Request.tag), Request.tag.reserved,
             Request.words (0), Request.words (1), Request.words (2), Request.words (3)) =
            (Fault = 0 or Fault = 12));
       end;
@@ -109,7 +109,7 @@ begin
    Ada.Text_IO.Put_Line ("Allocation request shape PASS: generation bounds and obsolete/malformed rejection");
    for Fault in 0 .. 15 loop
       declare
-         Request : Message := ((Layout.Retire_Request_Label, 4, 0, 0), [1, 1, 7, 1]);
+         Request : Message := ((label => Layout.Retire_Request_Label, length => 4, protocol => 0, ipc => <>, reserved => 0), [1, 1, 7, 1]);
          Sender, Owner : Unsigned_64 := 7;
          Authority : Unsigned_64 := 16#4947#;
          Granted : Boolean := True;
@@ -127,14 +127,14 @@ begin
             when 9 => Request.words (2) := 8;
             when 10 => Request.words (3) := 0;
             when 11 => Request.tag.length := 3;
-            when 12 => Request.tag.flags := 1;
+            when 12 => Request.tag.protocol := 1;
             when 13 => Request.tag.reserved := 1;
             when 14 => Request.tag.label := Layout.Request_Label;
             when 15 => Request.words := [16, 2 ** 32 - 2, 7, 1];
             when others => null;
          end case;
          pragma Assert (Layout.Retirement_Authorized
-           (Request.tag.label, Request.tag.length, Request.tag.flags, Request.tag.reserved,
+           (Request.tag.label, Request.tag.length, Flag_Byte (Request.tag), Request.tag.reserved,
             Layout.Budget_Words (Request.words), Sender, Authority, Owner, Granted) =
            (Fault = 0 or Fault = 15));
       end;
@@ -171,7 +171,7 @@ begin
          pragma Assert (Consumed);
          pragma Assert (not Buffers.Local_Work_Pending (Object));
          Receipt := (Last_Token, COMPLETION_OK,
-           ((16#F003#, 4, 0, 0), [0, 16#0200_0000#, Layout.CPU_Base, 7]));
+           ((label => 16#F003#, length => 4, protocol => 0, ipc => <>, reserved => 0), [0, 16#0200_0000#, Layout.CPU_Base, 7]));
          Buffers.Complete (Object, Receipt, Consumed);
          pragma Assert (Consumed and Buffers.Pending (Object));
          pragma Assert (Buffers.Local_Work_Pending (Object));
@@ -241,7 +241,7 @@ begin
       pragma Assert (Started);
       Old_Token := Last_Token;
       Receipt := (Old_Token, COMPLETION_OK,
-        ((16#F002#, 0, 0, 0), [others => 0]));
+        ((label => 16#F002#, length => 0, protocol => 0, ipc => <>, reserved => 0), [others => 0]));
       Buffers.Complete (Object, Receipt, Consumed);
       pragma Assert (Consumed and Last_Token > Old_Token and Submissions = 2);
       Receipt.status := 1;
@@ -256,7 +256,7 @@ begin
       -- A4KiB allocation needs only the first committed2MiB extent.
       for I in 0 .. 0 loop
          Receipt := (Last_Token, COMPLETION_OK,
-           ((16#F003#, 4, 0, 0),
+           ((label => 16#F003#, length => 4, protocol => 0, ipc => <>, reserved => 0),
             [Unsigned_64 (I), 16#0200_0000# + Unsigned_64 (I) * 4 * 1024 * 1024,
              Layout.CPU_Base + Unsigned_64 (I) * 2 * 1024 * 1024, 7]));
          Old_Token := Last_Token;
@@ -302,7 +302,7 @@ begin
       for Word of RAM loop pragma Assert (Word = Sentinel); end loop;
       for I in 0 .. 0 loop
          Receipt := (Last_Token, COMPLETION_OK,
-           ((16#F003#, 4, 0, 0),
+           ((label => 16#F003#, length => 4, protocol => 0, ipc => <>, reserved => 0),
             [Unsigned_64 (I), 16#0200_0000# + Unsigned_64 (I) * 4 * 1024 * 1024,
              Layout.CPU_Base + Unsigned_64 (I) * 2 * 1024 * 1024, 7]));
          Buffers.Complete (Object, Receipt, Consumed);
@@ -333,7 +333,7 @@ begin
             Buffers.Complete (Object, Receipt, Consumed);
             for I in 0 .. Bad_At loop
                Receipt := (Last_Token, COMPLETION_OK,
-                 ((16#F003#, 4, 0, 0),
+                 ((label => 16#F003#, length => 4, protocol => 0, ipc => <>, reserved => 0),
                   [Unsigned_64 (I), 16#0200_0000# + Unsigned_64 (I) * 4 * 1024 * 1024,
                    Layout.CPU_Base + Unsigned_64 (I) * 2 * 1024 * 1024, 7]));
                if I = Bad_At then
@@ -341,7 +341,7 @@ begin
                      when 1 => Receipt.msg.words (3) := 8;
                      when 2 => Receipt.msg.words (1) := 2 ** 32;
                      when 3 => Receipt.status := 1;
-                     when 4 => Receipt.msg.tag.flags := 1;
+                     when 4 => Receipt.msg.tag.protocol := 1;
                      when others => null;
                   end case;
                end if;
@@ -418,7 +418,7 @@ begin
             when 1 => Bad_Token := True;
             when 2 => Bad_Status := True;
             when 3 => Submit_Fails := True;
-            when 4 => Response.tag.flags := 1;
+            when 4 => Response.tag.protocol := 1;
             when 5 => Now := Unsigned_64'Last;
             when 6 => Pending := True; Step := 1_000;
             when 7 => Pending := True;
@@ -461,10 +461,10 @@ begin
    end;
    Reset;
    declare Object : Buffers.Pool; begin
-      Response := ((16#F001#, 0, 0, 0), [others => 0]);
+      Response := ((label => 16#F001#, length => 0, protocol => 0, ipc => <>, reserved => 0), [others => 0]);
       Result := Buffers.Acquire (Object, 1, 1);
       pragma Assert (not Result.Ready);
-      Response := ((16#F004#, 4, 0, 0),
+      Response := ((label => 16#F004#, length => 4, protocol => 0, ipc => <>, reserved => 0),
         [Layout.CPU_Base + 4096, 4096, 7, Layout.Allocation_Key (2, 1)]);
       Result := Buffers.Acquire (Object, 2, 1);
       pragma Assert (Result.Ready and Submissions = 2);
@@ -474,7 +474,7 @@ begin
    for Fault in 0 .. 6 loop
       Reset;
       declare Object : Buffers.Pool; begin
-         Response := ((16#F001#, 4, 0, 0),
+         Response := ((label => 16#F001#, length => 4, protocol => 0, ipc => <>, reserved => 0),
            [Layout.Denial_Version, Layout.Allocation_Key (1, 1), 4096,
             Unsigned_64 (Layout.Allocation_Reason'Pos (Layout.Physical_Refused))]);
          case Fault is
@@ -483,14 +483,14 @@ begin
             when 3 => Response.words (2) := 8192;
             when 4 => Response.words (3) := Unsigned_64'Last;
             when 5 => Response.words (3) := Unsigned_64 (Layout.Allocation_Reason'Pos (Layout.Ready));
-            when 6 => Response.tag.flags := 1;
+            when 6 => Response.tag.protocol := 1;
             when others => null;
          end case;
          Result := Buffers.Acquire (Object, 1, 1);
          pragma Assert (not Result.Ready);
          pragma Assert ((Buffers.Last_Stage (Object) = Buffers.Denied) = (Fault = 0));
          for Word of RAM loop pragma Assert (Word = Sentinel); end loop;
-         Response := ((16#F004#, 4, 0, 0),
+         Response := ((label => 16#F004#, length => 4, protocol => 0, ipc => <>, reserved => 0),
            [Layout.CPU_Base + 4096, 4096, 7, Layout.Allocation_Key (2, 1)]);
          Result := Buffers.Acquire (Object, 2, 1);
          pragma Assert (Result.Ready = (Fault = 0));
@@ -541,7 +541,7 @@ begin
       Old_Token : Unsigned_64;
    begin
       for Generation in Unsigned_32 range 1 .. 128 loop
-         Response := ((16#F004#, 4, 0, 0),
+         Response := ((label => 16#F004#, length => 4, protocol => 0, ipc => <>, reserved => 0),
            [Layout.CPU_Base + 4096, 4096, 7, Layout.Allocation_Key (1, Generation)]);
          RAM (512 .. 1023) := [others => Sentinel];
          Result := Buffers.Acquire (Object, 1, 1);
@@ -566,7 +566,7 @@ begin
          Buffers.Start (Object, 1, 1, Started);
          pragma Assert (not Started and Last_Token = Old_Token);
          Receipt := (Old_Token, COMPLETION_OK,
-           ((Layout.Retire_Request_Label, 4, 0, 0),
+           ((label => Layout.Retire_Request_Label, length => 4, protocol => 0, ipc => <>, reserved => 0),
             [0, Layout.Allocation_Key (1, Generation), 7, 0]));
          Buffers.Complete (Object, Receipt, Consumed);
          pragma Assert (Consumed and not Buffers.Pending (Object));
@@ -595,17 +595,18 @@ begin
          Buffers.Retire (Object, 1, 1, True, Started);
          pragma Assert (Started = (Fault /= 8));
          Receipt := (Last_Token, COMPLETION_OK,
-           ((Layout.Retire_Request_Label, 4, 0, 0), [0, Layout.Allocation_Key (1, 1), 7, 0]));
+           ((label => Layout.Retire_Request_Label, length => 4, protocol => 0, ipc => <>, reserved => 0), [0, Layout.Allocation_Key (1, 1), 7, 0]));
          case Fault is
             when 1 => Receipt.msg.words (1) := Layout.Allocation_Key (1, 2);
             when 2 => Receipt.msg.words (2) := 8;
             when 3 => Receipt.msg.words (0) := 1;
-            when 4 => Receipt.msg.tag := (16#F002#, 0, 0, 0); -- never retry retirement
+            when 4 => Receipt.msg.tag := (label => 16#F002#, length => 0,
+                                          protocol => 0, ipc => <>, reserved => 0); -- never retry retirement
             when 5 => Receipt.status := 1;
             when 6 => Now := 30_000;
             when 7 => Fail_Owner := Owner_Calls + 1;
             when 9 => Receipt.msg.tag.length := 3;
-            when 10 => Receipt.msg.tag.flags := 1;
+            when 10 => Receipt.msg.tag.protocol := 1;
             when 11 => Receipt.msg.tag.reserved := 1;
             when 12 => Receipt.msg.words (3) := 1;
             when others => null;
@@ -843,7 +844,7 @@ begin
             Calls := Calls + 1; Waits := Waits + 1;
             if Waits = 3 then
                Receipt := (Last_Token, COMPLETION_OK,
-                 ((Layout.Retire_Request_Label, 4, 0, 0),
+                 ((label => Layout.Retire_Request_Label, length => 4, protocol => 0, ipc => <>, reserved => 0),
                   [0, Ticket + (if Fault = 3 or (Fault = 4 and Releases = 2)
                                 then 2 ** 32 else 0), 7, 0]));
                if Fault = 2 then
@@ -881,7 +882,7 @@ begin
          Control : D.Controller;
       begin
          for Slot in 1 .. 2 loop
-            Response := ((16#F004#, 4, 0, 0),
+            Response := ((label => 16#F004#, length => 4, protocol => 0, ipc => <>, reserved => 0),
               [Layout.CPU_Base + Unsigned_64 (Slot) * 4096, 4096, 7,
                Layout.Allocation_Key (Slot, 1)]);
             Retained (Slot) := Buffers.Acquire (Object, Slot, 1);

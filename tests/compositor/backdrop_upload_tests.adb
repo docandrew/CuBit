@@ -1,3 +1,4 @@
+with CuBit.Handles.Fixture;
 with Ada.Text_IO; with Ada.Command_Line; with Interfaces;
 with Desktop_Backdrop_Upload; with Desktop_Vulkan_Startup;
 with Vulkan_Owned_Targets; with Vulkan_Submission; with Vulkan_Device_Mock;
@@ -19,7 +20,7 @@ procedure Backdrop_Upload_Tests is
 begin
    Reset; Context_Set (0, 0); Pipeline_Set (0, 0); Image_Set (4096, 1, 0, 0, 0);
    Vulkan_Device_Mock.Set (True, True, 0); Upload_Set (65536, 1, 0, 0, 0, 0);
-   D.Initialize (25); D.Configure_Targets (32, 24, 1, 1048576, OK); pragma Assert (OK);
+   D.Initialize (CuBit.Handles.Fixture.Endpoint_Of (25)); D.Configure_Targets (32, 24, 1, 1048576, OK); pragma Assert (OK);
    D.Prepare_Pipeline (OK); pragma Assert (OK); D.Configure_Upload (65536, OK); pragma Assert (OK);
    D.Allocate_Backing (128, 2048, (if Scenario = 1 then 575 else 576), False, Lease, Result);
    pragma Assert (Result = D.Source_Accepted);

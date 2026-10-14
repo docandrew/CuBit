@@ -35,7 +35,9 @@ package Process.Loader is
                    requestedPID : ProcessID := NO_PROCESS;
                    priority     : ProcessPriority := 1;
                    ppid         : ProcessID := NO_PROCESS;
-                   sourcePID    : ProcessID := NO_PROCESS) return ProcessID
+                   sourcePID    : ProcessID := NO_PROCESS;
+                   handleLimit  : Process_Capabilities.Tables.Handle_Limit :=
+                     Process_Capabilities.Tables.Default_Limit) return ProcessID
         with SPARK_Mode => Off; -- Allocates and maps a live address space.
 
 end Process.Loader;

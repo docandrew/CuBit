@@ -1,12 +1,13 @@
 #include "cubit-device-query.h"
+#include "../../../userspace/c/cubit_handles.h"
 
 /* Test glue only. Use the real Mesa-port decoder and Ada transport, not a
- * second implementation of its protocol. The app retains its manifest slot
+ * second implementation of its protocol. The app retains its startup render handle
  * throughout this sequence; there is no lookup, admission, or cap mutation. */
 uint32_t
-cubit_test_native_discovery(uint64_t slot)
+cubit_test_native_discovery(cubit_endpoint render)
 {
-   struct cubit_gpu_native_endpoint endpoint = { .slot = slot };
+   struct cubit_gpu_native_endpoint endpoint = { .endpoint = render };
    struct cubit_gpu_device_snapshot device;
    struct cubit_gpu_vm_contract vm;
    struct cubit_gpu_budget_snapshot budget;

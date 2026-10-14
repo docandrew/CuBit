@@ -7,7 +7,9 @@
 ------------------------------------------------------------------------------
 with CuBit.Logging;
 with Interfaces; use Interfaces;
-with CCL_Manifest_Bindings;
+with CuBit.Handles;
+with CuBit.Startup_State;
+with Startup;
 
 with CuBit.Devices;
 with CuBit.Messages; use CuBit.Messages;
@@ -30,8 +32,8 @@ procedure main is
 
    INITIAL_WIDTH  : constant Positive := 900;
    INITIAL_HEIGHT : constant Positive := 580;
-   CAP_SLOT_DEVICE_INSPECTION : constant CapabilitySlot :=
-     CCL_Manifest_Bindings.Slot_Device_Manager;
+   --  devmgr's read-only inspection endpoint (manifest "device-manager").
+   Device_Inspection : constant CuBit.Handles.Endpoint := Startup.Device_Manager;
 
    CONTROL_REFRESH    : constant CuBit.UI.Controls.Control_ID := 1;
    CONTROL_SPLITTER   : constant CuBit.UI.Controls.Control_ID := 2;
@@ -219,8 +221,8 @@ procedure main is
 
       msg := NULL_MESSAGE;
       msg.tag := (label => CuBit.Devices.OP_INVENTORY_COUNT,
-                  length => 0, flags => 0, reserved => 0);
-      tag := capCall (CAP_SLOT_DEVICE_INSPECTION, msg, CuBit.Messages.Wait_Forever);
+                  length => 0, protocol => 0, ipc => <>, reserved => 0);
+      tag := capCall (Device_Inspection, msg, CuBit.Messages.Wait_Forever);
       if tag.label /= CuBit.Devices.REPLY_OK then
          return;
       end if;
@@ -236,9 +238,9 @@ procedure main is
       for index in 1 .. count loop
          msg := NULL_MESSAGE;
          msg.tag := (label => CuBit.Devices.OP_INVENTORY_ITEM,
-                     length => 1, flags => 0, reserved => 0);
+                     length => 1, protocol => 0, ipc => <>, reserved => 0);
          msg.words (0) := Unsigned_64 (index);
-         tag := capCall (CAP_SLOT_DEVICE_INSPECTION, msg, CuBit.Messages.Wait_Forever);
+         tag := capCall (Device_Inspection, msg, CuBit.Messages.Wait_Forever);
          if tag.label = CuBit.Devices.REPLY_OK then
             locationWord := msg.words (0);
             identityWord := msg.words (1);
@@ -274,9 +276,9 @@ procedure main is
                --  Its vectors and how many interrupts they delivered.
                msg := NULL_MESSAGE;
                msg.tag := (label => CuBit.Devices.OP_INTERRUPT_VECTORS,
-                           length => 1, flags => 0, reserved => 0);
+                           length => 1, protocol => 0, ipc => <>, reserved => 0);
                msg.words (0) := Unsigned_64 (index);
-               tag := capCall (CAP_SLOT_DEVICE_INSPECTION, msg,
+               tag := capCall (Device_Inspection, msg,
                                CuBit.Messages.Wait_Forever);
                if tag.label = CuBit.Devices.REPLY_OK and then
                  msg.words (0) <= Unsigned_64
@@ -302,8 +304,8 @@ procedure main is
 
       msg := NULL_MESSAGE;
       msg.tag := (label => CuBit.Devices.OP_XHCI_DIAGNOSTICS,
-                  length => 0, flags => 0, reserved => 0);
-      tag := capCall (CAP_SLOT_DEVICE_INSPECTION, msg, CuBit.Messages.Wait_Forever);
+                  length => 0, protocol => 0, ipc => <>, reserved => 0);
+      tag := capCall (Device_Inspection, msg, CuBit.Messages.Wait_Forever);
       if tag.label = CuBit.Devices.REPLY_OK then
          modeRep := Shift_Right (msg.words (3), 48) and 16#FF#;
          diagnostic :=
@@ -938,7 +940,11 @@ procedure main is
    Announced : Boolean;
 begin
    debugPrint ("devices: starting read-only hardware inspector" & LF);
-   CuBit.Logging.Announce ("devices: started (read-only inspector)", Announced);
+   if not CuBit.Startup_State.Ready (Startup.Verify) then
+      debugPrint ("devices: startup capabilities missing" & LF);
+      return;
+   end if;
+   CuBit.Logging.Announce ("devices: started (read-only inspector)", Announced, Startup.Logstore);
    Load_Inventory;
    declare
       ok : Boolean;

@@ -19,6 +19,9 @@ with System; use System;
 
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Input; use CuBit.Input;
+with CuBit.Handles;
+with CuBit.Startup_State;
+with Startup;
 with PS2_Boot_Probe;
 with Input_Pending;
 with Pointer_Pending;
@@ -52,15 +55,20 @@ procedure main is
    ---------------------------------------------------------------------------
    --  outb / inb wrappers
    ---------------------------------------------------------------------------
+   --  The data port and the status/command port each have a handle
+   --  (its manifest's data and command bindings).
+   function Ports_For (port : Unsigned_16) return CuBit.Handles.IO_Ports is
+     (if port = DATA_PORT then Startup.Data else Startup.Command);
+
    procedure outb (port : Unsigned_16; val : Unsigned_8) is
       ignore : Unsigned_64;
    begin
-      ignore := portOutp8 (port, val);
+      ignore := portOutp8 (Ports_For (port), port, val);
    end outb;
 
    function inb (port : Unsigned_16) return Unsigned_8 is
    begin
-      return Unsigned_8 (portInp8 (port) and 16#FF#);
+      return Unsigned_8 (portInp8 (Ports_For (port), port) and 16#FF#);
    end inb;
 
    ---------------------------------------------------------------------------
@@ -215,7 +223,7 @@ procedure main is
            Pointer_Pending.Count (pointerPending) = 0;
          pending := Pointer_Pending.Element (pointerPending, 0);
          report :=
-           (sourceAuthorityTag => 0,
+           (sourceIdentity => 0,
             sequence => pending.Sequence,
             generation => 1,
             device => RELATIVE_POINTER,
@@ -223,7 +231,7 @@ procedure main is
             flags => (RESYNCHRONIZE => pending.Recover),
             payload => pending.Payload,
             snapshot => Pointer_Snapshot (pending.Payload, pending.Observed_Ms));
-         exit when not trySendEvent (mouseConsumer, Encode (report));
+         exit when not trySendEvent (mouseConsumer, Encode (report), Startup.Mouse_Events);
          Pointer_Pending.Acknowledge (pointerPending);
       end loop;
    end flushPointer;
@@ -238,10 +246,10 @@ procedure main is
          exit when kbdConsumer = No_Process or else Keyboard_Pending.Count (keyboardPending) = 0;
          pending := Keyboard_Pending.Element (keyboardPending, 0);
          exit when not trySendEvent (kbdConsumer, Encode
-           (Source_Report'(sourceAuthorityTag => 0, sequence => pending.Sequence,
+           (Source_Report'(sourceIdentity => 0, sequence => pending.Sequence,
             generation => 1, device => KEYBOARD, delivery => ORDERED_TRANSITION,
             flags => (RESYNCHRONIZE => pending.Recover),
-            payload => pending.Payload, snapshot => 0)));
+            payload => pending.Payload, snapshot => 0)), Startup.Keyboard_Events);
          Keyboard_Pending.Acknowledge (keyboardPending);
       end loop;
    end flushKeyboard;
@@ -352,6 +360,10 @@ procedure main is
 
 begin
    debugPrint ("ps2: starting" & LF);
+   if not CuBit.Startup_State.Ready (Startup.Verify) then
+      debugPrint ("ps2: startup capabilities missing" & LF);
+      return;
+   end if;
 
    --  Discard firmware/bootloader residue before enabling live reports.  A
    --  flush after F4 could consume only the first byte of a packet and leave
@@ -359,7 +371,6 @@ begin
    declare
       use type Boot_Probe.Probe_Result;
       Probe : Boot_Probe.Probe_Result;
-      CAP_SLOT_READY : constant Unsigned_64 := 15;
       OP_NOT_PRESENT : constant Unsigned_32 := 16#FF01#;
       Ready_Result : MessageTag;
    begin
@@ -370,9 +381,9 @@ begin
          else
             debugPrint ("ps2: controller drain limit reached; skipping" & LF);
          end if;
-         Ready_Result := capSend (CAP_SLOT_READY,
+         Ready_Result := capSend (Startup.Ready,
            (tag => (label => OP_NOT_PRESENT, length => 0,
-                    flags => 0, reserved => 0),
+                    protocol => 0, ipc => <>, reserved => 0),
             authorityTag => 0, words => (others => 0)), CuBit.Messages.Wait_Forever);
          ignore := syscall (SYSCALL_EXIT);
          return;
@@ -384,13 +395,12 @@ begin
 
    --  Signal devmgr that we are ready
    declare
-      CAP_SLOT_READY : constant Unsigned_64 := 15;
       OP_READY       : constant Unsigned_32 := 16#FF00#;
       rdyIgnore : MessageTag;
    begin
-      rdyIgnore := capSend (CAP_SLOT_READY,
+      rdyIgnore := capSend (Startup.Ready,
          (tag      => (label => OP_READY, length => 0,
-                       flags => 0, reserved => 0),
+                       protocol => 0, ipc => <>, reserved => 0),
           authorityTag => 0,
           words    => (others => 0)), CuBit.Messages.Wait_Forever);
    end;

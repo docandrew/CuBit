@@ -16,7 +16,8 @@ procedure Main is
 
    procedure Transfer (Op : Unsigned_32; LBA, Count : Unsigned_64) is
    begin
-      Request := (tag => (Op, 4, 0, 0), authorityTag => 0,
+      Request := (tag => (label => Op, length => 4,
+                          protocol => 0, ipc => <>, reserved => 0), authorityTag => 0,
                   words => [LBA, 1, Count, 7]);
    end Transfer;
 
@@ -84,8 +85,8 @@ begin
          Request.words (1) := 2; Reject; -- foreign grant
          Transfer (Unsigned_32 (Op), 0, 1);
          Request.tag.length := 3; Reject;
-         Request.tag.length := 4; Request.tag.flags := 1; Reject;
-         Request.tag.flags := 0; Request.tag.reserved := 1; Reject;
+         Request.tag.length := 4; Request.tag.protocol := 1; Reject;
+         Request.tag.protocol := 0; Request.tag.reserved := 1; Reject;
       end if;
    end loop;
    Transfer (OP_READ_BLOCKS, 0, 1);
@@ -125,7 +126,7 @@ begin
 
    --  RAM rejects FUA: it advertises no persistence, so no request flag.
    Transfer (OP_WRITE_BLOCKS, 0, 1);
-   Request.tag.flags := WRITE_FLAG_FUA;
+   Request.tag.protocol := WRITE_FLAG_FUA;
    Allow_Return := True;
    Reject;
 

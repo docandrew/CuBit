@@ -18,7 +18,10 @@
 ------------------------------------------------------------------------------
 pragma Ada_2022;
 with Interfaces; use Interfaces;
-with CCL_Manifest_Bindings;
+with CuBit.Handles;
+with CuBit.Handles.Devices;
+with CuBit.Startup_State;
+with Startup;
 with CuBit.Channel_Contracts;
 with CuBit.Channel_Protocol;
 with CuBit.Child_Exits;
@@ -86,7 +89,7 @@ procedure Main is
       Taken : CuBit.Channels.Take_Result;
    begin
       CuBit.Channels.Open
-        (CuBit.Messages.CapabilitySlot (CCL_Manifest_Bindings.Slot_ipc_test),
+        (Startup.Ipc_Test,
          CuBit.Outlet_Channels.Offer (CuBit.Protocols.TEXT_LINE_CONTRACT),
          CuBit.Channels.Consuming, Link, Opened, Ignore_Refusal, Connector => 1);
       if Opened /= CuBit.Channels.Opened then
@@ -111,9 +114,9 @@ procedure Main is
       use type CuBit.Channels.Open_Result;
       use type CuBit.Channels.Take_Result;
       package CP renames CuBit.Channel_Protocol;
-      Endpoint : constant CuBit.Messages.CapabilitySlot :=
-        CuBit.Messages.CapabilitySlot (CCL_Manifest_Bindings.Slot_ipc_test);
-      Producer : constant Unsigned_64 := To_Word (Registered_Driver (DRIVER_IPCTEST));
+      Endpoint : constant CuBit.Handles.Endpoint := Startup.Ipc_Test;
+      Producer_ID : constant Process_ID := Registered_Driver (DRIVER_IPCTEST);
+      Producer : constant Unsigned_64 := To_Word (Producer_ID);
       Offer : constant CuBit.Channel_Contracts.Contract :=
         CuBit.Outlet_Channels.Offer (CuBit.Protocols.TEXT_LINE_CONTRACT);
       Link, Probe : CuBit.Channels.Channel;
@@ -126,14 +129,16 @@ procedure Main is
       Tag : MessageTag;
       Ignore : Boolean;
 
-      --  SEND_EVENT with a kernel label: the kernel must refuse it.
+      --  An event with a kernel label, sent with the one authority this
+      --  process holds over the producer (its endpoint): the kernel must
+      --  refuse it all the same.
       function Forged (Label : Unsigned_32) return Boolean is
-         Length_Shift : constant := 32;
          Words : constant := 3;
+         Event : Message := NULL_MESSAGE;
       begin
-         return syscall (SYSCALL_SEND_EVENT, Producer,
-                         Unsigned_64 (Label) or Shift_Left (Unsigned_64 (Words), Length_Shift),
-                         1, 1, Producer, 0) /= Unsigned_64'Last;
+         Event.tag := (label => Label, length => Words, protocol => 0, ipc => <>, reserved => 0);
+         Event.words := [1, 1, To_Word (Producer_ID), 0];
+         return CuBit.Handles.Devices.Send_Event (Producer_ID, Event, Endpoint);
       end Forged;
 
       function Say (Text : String; Refused : Boolean) return Boolean is
@@ -160,7 +165,7 @@ procedure Main is
                           not Forged (CuBit.Child_Exits.Event_Label)) and All_Refused;
       --  Malformed and mismatched opens.
       M := NULL_MESSAGE;
-      M.tag := (label => CP.OP_OPEN_CONSUMING, length => CP.Open_Words, flags => 0, reserved => 1);
+      M.tag := (label => CP.OP_OPEN_CONSUMING, length => CP.Open_Words, protocol => 0, ipc => <>, reserved => 1);
       M.words := [Unsigned_64'Last, Unsigned_64'Last, Unsigned_64'Last, 0];
       Tag := capCall (Endpoint, M, Wait_Forever);
       All_Refused := Say ("malformed contract", Tag.label /= CuBit.Kernel_ABI.Reply_OK) and All_Refused;
@@ -179,7 +184,7 @@ procedure Main is
       --  nothing; there is no reply to judge by).
       for Number of Foreign_Numbers'(0, Link.Peer_Number + 1, Unsigned_64'Last) loop
          M := NULL_MESSAGE;
-         M.tag := (label => CP.OP_CLOSE, length => 1, flags => 0, reserved => 0);
+         M.tag := (label => CP.OP_CLOSE, length => 1, protocol => 0, ipc => <>, reserved => 0);
          M.words (0) := Number;
          Ignore := capSubmit (Endpoint, M, NO_COMPLETION_TOKEN);
       end loop;
@@ -203,8 +208,7 @@ procedure Main is
    --  the producer), then open again.
    function Flood_Survived return Boolean is
       use type CuBit.Channels.Open_Result;
-      Endpoint : constant CuBit.Messages.CapabilitySlot :=
-        CuBit.Messages.CapabilitySlot (CCL_Manifest_Bindings.Slot_ipc_test);
+      Endpoint : constant CuBit.Handles.Endpoint := Startup.Ipc_Test;
       Offer : constant CuBit.Channel_Contracts.Contract :=
         CuBit.Outlet_Channels.Offer (CuBit.Protocols.TEXT_LINE_CONTRACT);
       Links : array (1 .. CuBit.Streams.MAX_SUBSCRIBERS) of CuBit.Channels.Channel;
@@ -225,7 +229,7 @@ procedure Main is
             return False;
          end if;
       end loop;
-      Junk.tag := (label => Junk_Label, length => 0, flags => 0, reserved => 0);
+      Junk.tag := (label => Junk_Label, length => 0, protocol => 0, ipc => <>, reserved => 0);
       while Flooded < Flood_Limit and then capSubmit (Endpoint, Junk, NO_COMPLETION_TOKEN) loop
          Flooded := Flooded + 1;
       end loop;
@@ -264,6 +268,10 @@ procedure Main is
       return Flooded >= Own_Credit and then Flooded < Flood_Limit;
    end Flood_Survived;
 begin
+   if not CuBit.Startup_State.Ready (Startup.Verify) then
+      Finish (Unread);
+      return;
+   end if;
    if not Flood_Survived then
       Finish (Attacked);
       return;

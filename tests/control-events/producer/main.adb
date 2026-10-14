@@ -15,6 +15,8 @@ with CuBit.Messages; use CuBit.Messages;
 with CuBit.Process_Events;
 with CuBit.Protocols;
 with CuBit.Streams;
+with CuBit.Startup_State;
+with Startup;
 
 procedure Main is
    Outlet : constant CuBit.Streams.StreamId := 1;
@@ -25,7 +27,9 @@ procedure Main is
    Ignore_Handled : Boolean;
    Ignore_Written : Unsigned_32;
 begin
-   if registerDriver (DRIVER_IPCTEST) = Unsigned_64'Last then
+   if not CuBit.Startup_State.Ready (Startup.Verify)
+     or else registerDriver (DRIVER_IPCTEST, Startup.Registration) = Unsigned_64'Last
+   then
       debugPrint ("control-producer: registration FAIL" & ASCII.LF);
       return;
    end if;

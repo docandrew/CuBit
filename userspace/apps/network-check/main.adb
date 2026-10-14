@@ -1,5 +1,8 @@
 with Interfaces; use Interfaces;
-with CCL_Manifest_Bindings;
+with CuBit.Handles;
+with CuBit.Handles.IPC;
+with CuBit.Handles.Startup;
+with Startup;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Net_Channels;
@@ -7,12 +10,17 @@ with CuBit.Net_Address;
 with CuBit.Network_Authority; use CuBit.Network_Authority;
 
 procedure Main is
-   Connect_Slot : constant CapabilitySlot := CCL_Manifest_Bindings.Slot_Test_Connect;
-   Listen_Slot : constant CapabilitySlot := CCL_Manifest_Bindings.Slot_Test_Listen;
-   Datagram_Slot : constant CapabilitySlot := CCL_Manifest_Bindings.Slot_Test_Datagram;
-   Inspect_Slot : constant CapabilitySlot := CCL_Manifest_Bindings.Slot_Network;
-   Resolve_Slot : constant CapabilitySlot := CCL_Manifest_Bindings.Slot_Test_Resolve;
-   Refused_Slot : constant CapabilitySlot := CCL_Manifest_Bindings.Slot_Test_Refused;
+   --  The scopes are optional: launched without network approval, the
+   --  program runs with none of them and checks that.
+   function Scope (Item : CuBit.Handles.Startup.Optional_Endpoint) return CuBit.Handles.Endpoint is
+     (if Item.Present then Item.Value else CuBit.Handles.No_Endpoint);
+   Connect_Slot : constant CuBit.Handles.Endpoint := Scope (Startup.Test_Connect);
+   Listen_Slot : constant CuBit.Handles.Endpoint := Scope (Startup.Test_Listen);
+   Datagram_Slot : constant CuBit.Handles.Endpoint := Scope (Startup.Test_Datagram);
+   Inspect_Slot : constant CuBit.Handles.Endpoint := Startup.Network;
+   Resolve_Slot : constant CuBit.Handles.Endpoint := Scope (Startup.Test_Resolve);
+   Refused_Slot : constant CuBit.Handles.Endpoint := Scope (Startup.Test_Refused);
+   Listen_Info : constant CuBit.Handles.IPC.Description := CuBit.Handles.IPC.Describe (Listen_Slot);
    --  Page-aligned memory for an arena (a grant starts on a page; the
    --  break need not be on one): a page more than asked, rounded up.
    Page_Bytes : constant := 4096;
@@ -49,7 +57,6 @@ procedure Main is
    Reply_Tag : MessageTag;
    Listener, Replacement, Channel : Unsigned_64;
    Previous_Channel : Unsigned_64 := 0;
-   Inspection : array (0 .. 5) of Unsigned_64 := [others => 0];
    Result : Unsigned_64;
    procedure Check (Condition : Boolean; Name : String) is
    begin
@@ -62,7 +69,7 @@ procedure Main is
       return Image (Image'First + 1 .. Image'Last);
    end Decimal;
    --  OPEN a listener on Address:Port in arena buffer Buffer.
-   procedure Bind (Slot : CapabilitySlot; Address, Port : Unsigned_64;
+   procedure Bind (Slot : CuBit.Handles.Endpoint; Address, Port : Unsigned_64;
                    Buffer : Natural := Listener_Buffer) is
       Target : constant String :=
         "@net:tcp-listen:" & Decimal (Shift_Right (Address, 24) and 255) & "." &
@@ -86,15 +93,13 @@ procedure Main is
       end if;
    end Bind;
    --  A listener closes like any channel.
-   procedure Close_Listener (Slot : CapabilitySlot; Handle : Unsigned_64) is
+   procedure Close_Listener (Slot : CuBit.Handles.Endpoint; Handle : Unsigned_64) is
    begin
       Request := NULL_MESSAGE; Request.tag.label := Shut_Label;
       Request.tag.length := 1; Request.words (0) := Handle;
       Reply_Tag := capCall (Slot, Request, CuBit.Messages.Wait_Forever);
    end Close_Listener;
 begin
-   Result := syscall (SYSCALL_INSPECT_CAPABILITY, syscall (SYSCALL_GETPID), Listen_Slot,
-                      Unsigned_64 (To_Integer (Inspection'Address)));
    declare
       Allocation : constant Unsigned_64 :=
         Aligned_Allocation (Arena_Buffers * Stream_Bytes);
@@ -102,7 +107,7 @@ begin
    begin
       Check (Allocation /= Unsigned_64'Last, "arena allocation");
       if Allocation = Unsigned_64'Last then return; end if;
-      if Result = 1 and Inspection (0) = 0 then
+      if not Listen_Info.Current then
          --  Without approval netstack takes no memory, let alone a listener.
          Channels.Create_Arena
            (Arena, Listen_Slot, To_Address (Integer_Address (Allocation)),
@@ -119,7 +124,8 @@ begin
    end;
    Bind (Inspect_Slot, 16#0A00_020F#, 8080);
    Check (Reply_Tag.label = Error_Label, "general endpoint cannot listen");
-   Check (Result = 1 and Inspection (0) = 1 and Inspection (2) >= First_Grant_Tag,
+   Check (Listen_Info.Current and then CuBit.Handles.ABI."=" (Listen_Info.Kind, CuBit.Handles.ABI.Endpoint)
+          and then Listen_Info.Authority_Tag >= First_Grant_Tag,
           "approved endpoint carries scope tag");
    Bind (Connect_Slot, 16#0A00_020F#, 8080);
    Check (Reply_Tag.label = Error_Label, "outbound cannot listen");
@@ -165,7 +171,7 @@ begin
       Token : Unsigned_64 := 16#A531_8000_0000_0000#;
       Text : String (1 .. 4);
       Got : Natural;
-      function Exchange (Slot : CapabilitySlot) return MessageTag is
+      function Exchange (Slot : CuBit.Handles.Endpoint) return MessageTag is
          Completion : CompletionEntry;
          Started : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
          Ignored : Unsigned_64;
@@ -290,7 +296,7 @@ begin
       Got : Natural;
       Text : String (1 .. 64);
       Oversized : constant String (1 .. 1473) := [others => 'O'];
-      procedure Open (Slot : CapabilitySlot; Name : String) is
+      procedure Open (Slot : CuBit.Handles.Endpoint; Name : String) is
          Target : String (1 .. Name'Length) with Import,
            Address => Stream.Base + Storage_Offset (Channels.Layout.Target_At);
       begin
@@ -302,7 +308,7 @@ begin
          Request.words (1) := Unsigned_64 (Stream.Buffer);
          Reply_Tag := capCall (Slot, Request, CuBit.Messages.Wait_Forever);
       end Open;
-      procedure Shut (Slot : CapabilitySlot; Handle : Unsigned_64) is
+      procedure Shut (Slot : CuBit.Handles.Endpoint; Handle : Unsigned_64) is
       begin
          Request := NULL_MESSAGE; Request.tag.label := Shut_Label;
          Request.tag.length := 1; Request.words (0) := Handle;
@@ -420,7 +426,7 @@ begin
       Payload : String (1 .. 8);
       Reply_Text : String (1 .. 8);
       Item : Channels.Arrival;
-      procedure Shut (Slot : CapabilitySlot; Handle : Unsigned_64) is
+      procedure Shut (Slot : CuBit.Handles.Endpoint; Handle : Unsigned_64) is
       begin
          Request := NULL_MESSAGE; Request.tag.label := Shut_Label;
          Request.tag.length := 1; Request.words (0) := Handle;

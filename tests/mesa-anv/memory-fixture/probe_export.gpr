@@ -1,10 +1,14 @@
 project Probe_Export extends "views.gpr" is
    for Source_Dirs use (".", "../../../userspace/services/intel-gpu",
-     "../../../userspace/runtime/gnat", "../../../userspace/mesa/anv");
+     "../../../userspace/runtime/gnat", "../../../userspace/mesa/anv",
+     "../../support/handles", "../../../shared/capabilities");
    for Source_Files use
      ("probe_export_tests.adb", "messages_mock.ads", "messages_mock.adb",
       "memory_mock.ads", "memory_mock.adb", "cubit.ads",
-      "cubit-capability_grants.ads", "cubit-capability_grants.adb",
+      "cubit-handles.ads", "cubit-handles-fixture.ads", "cubit-handles-fixture.adb",
+      "capability_abi.ads", "capability_abi.adb", "cubit-process_ids.ads", "cubit-process_ids.adb",
+      "intel_gpu_extent_directory.ads", "intel_gpu_extent_directory.adb",
+      "intel_gpu_record_store.ads", "intel_gpu_record_store.adb",
       "cubit-grant_references.ads", "intel_gpu_buffer_views.ads",
       "intel_gpu_buffer_views.adb", "intel_gpu_buffer_handles.ads",
      "intel_gpu_name_index.ads", "intel_gpu_name_index.adb",

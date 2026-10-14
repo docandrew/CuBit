@@ -14,6 +14,7 @@ with CuBit.Output_Discovery;
 --  Set_Mode is an ordinary downward call. The output travels in the tag's
 --  routing field (CuBit.Display_Protocol.With_Output), not in the payload.
 package CuBit.Output_Modes with SPARK_Mode, Pure is
+   use type CuBit.Desktop_Protocol.Protocol_Flags;
    package DP renames CuBit.Desktop_Protocol;
    package OD renames CuBit.Output_Discovery;
    use type DP.Wire_Message, DP.Status_Code;

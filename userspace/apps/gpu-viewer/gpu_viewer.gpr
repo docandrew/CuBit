@@ -1,7 +1,7 @@
 project GPU_Viewer is
    for Languages use ("Ada");
    for Object_Dir use "build";
-   for Source_Dirs use (".", "../../mesa/anv");
+   for Source_Dirs use (".", "../../mesa/anv", "build/generated");
    for Main use ("main.adb");
    for Runtime ("Ada") use "../../runtime";
    package Builder is

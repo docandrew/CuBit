@@ -15,6 +15,8 @@ with CuBit.Channels;
 with CuBit.Control_Events;
 with CuBit.Process_Events;
 with Kernel_Device_Memory;
+with CuBit.Startup_State;
+with Startup;
 
 procedure Main is
    function Image (Process : Process_ID) return String
@@ -78,7 +80,7 @@ procedure Main is
       Value : Settings.Text;
       Result : Settings.Status;
    begin
-      CuBit.Config_Reader.Query (Settings.Read_Value, MINIMUM_SETTING, Value, Result);
+      CuBit.Config_Reader.Query (Startup.Config, Settings.Read_Value, MINIMUM_SETTING, Value, Result);
       if Result = Settings.OK then
          Minimum_Settled := True;
          if Logs.Is_Severity_Literal (Value.Data (1 .. Value.Length)) then
@@ -102,7 +104,11 @@ begin
         (Store, (Source => syscall (SYSCALL_GETPID), Node => This_Node, Publication_Tag => 0,
                  Monotonic_Ms => Now_Ms, Data => Decoded.Value));
    end if;
-   Ignore := registerDriver (DRIVER_LOGSTORE);
+   if not CuBit.Startup_State.Ready (Startup.Verify) then
+      debugPrint ("logstore: startup capabilities missing" & ASCII.LF);
+      return;
+   end if;
+   Ignore := registerDriver (DRIVER_LOGSTORE, Startup.Registration);
    if Ignore = Unsigned_64'Last then
       debugPrint ("logstore: registration failed" & ASCII.LF);
       return;
@@ -169,7 +175,7 @@ begin
       elsif Received then
          Response := NULL_MESSAGE;
          Response.tag := (label => Status'Enum_Rep (Denied), length => 4,
-                          flags => 0, reserved => 0);
+                          protocol => 0, ipc => <>, reserved => 0);
          Known := False;
          for Candidate in Operation loop
             if Request.tag.label = Operation'Enum_Rep (Candidate) then
@@ -183,7 +189,7 @@ begin
            May_Invoke (Request.authorityTag, Op)
          then
             Result := Invalid_Request;
-            if Request.tag.length = 4 and then Request.tag.flags = 0
+            if Request.tag.length = 4 and then Request.tag.protocol = 0
               and then Request.tag.reserved = 0
             then
                case Op is

@@ -1,5 +1,6 @@
 with Interfaces;
 with System;
+with CuBit.Handles;
 
 --  Trusted in-process adapter for service-device.h, NOT GPU authority or a
 --  general Vulkan binding. Foreign calls and hardware observations are not
@@ -13,7 +14,7 @@ package Mesa_Service with SPARK_Mode => Off is
    type Owner is limited private;
 
    --  Native CuBit x86-64 ABI. These are opaque, same-process borrowed Vulkan
-   --  handles/function pointer, NEVER capability slots or IPC payloads.
+   --  handles/function pointer, NEVER capability handles or IPC payloads.
    type Device_View is record
       Instance, Physical, Device, Queue : System.Address := System.Null_Address;
       Family : Interfaces.Unsigned_32 := 0;
@@ -35,7 +36,8 @@ package Mesa_Service with SPARK_Mode => Off is
    --  implementation. Slot must already be admitted and remain unchanged.
    --  A failed Result with Accepted=True STILL requires retaining the slot
    --  and calling Close after all consumers retire. No reset/retry API.
-   procedure Start (Object : in out Owner; Slot : Interfaces.Unsigned_64;
+   --  Render is the admitted render endpoint (the startup "render" entry).
+   procedure Start (Object : in out Owner; Render : CuBit.Handles.Endpoint;
                     Status : out Result);
    function Accepted (Object : Owner) return Boolean;
    procedure Borrow (Object : Owner; View : out Device_View; Ready : out Boolean);

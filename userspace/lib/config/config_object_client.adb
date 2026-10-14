@@ -1,4 +1,5 @@
 with CCL.Objects.Schemas;
+with CuBit.Handles;
 package body Config_Object_Client is
    package Wire renames Config_Object_Messages;
    package Grants renames CuBit.Memory_Grants;
@@ -16,7 +17,7 @@ package body Config_Object_Client is
       else Submitted);
 
    procedure Initialize
-     (Object : in out Client; Endpoint : IPC.CapabilitySlot; Success : out Boolean) is
+     (Object : in out Client; Endpoint : CuBit.Handles.Endpoint; Success : out Boolean) is
    begin
       Success := False;
       if Object.Current /= Fresh then return; end if;

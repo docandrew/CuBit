@@ -1,3 +1,4 @@
+with CuBit.Handles;
 package body Config_Object_Client.Resources is
    package R renames CCL.Resources;
    package T renames CCL.Types;
@@ -21,7 +22,7 @@ package body Config_Object_Client.Resources is
    procedure Create
      (Object : in out Collection; Owner : in out R.Registry;
       Session : R.Run; Kind : T.Type_Reference;
-      Endpoint : CuBit.Messages.CapabilitySlot; Name : String;
+      Endpoint : CuBit.Handles.Endpoint; Name : String;
       Contract : CCL.Objects.Binding; Access_Rights : W.Access_Mode;
       Context, Token : Number; Result : out Submission)
    is

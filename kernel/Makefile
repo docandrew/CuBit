@@ -85,6 +85,8 @@ cubit_kernel: build/libcubit.a build/init.bin build/boot.o cubit.gpr linker.ld M
               $(wildcard ../shared/time/*.ads ../shared/time/*.adb) \
               $(wildcard ../shared/interrupts/*.ads ../shared/interrupts/*.adb) \
               $(wildcard ../shared/boot/*.ads ../shared/boot/*.adb) \
+              $(wildcard ../shared/capabilities/*.ads ../shared/capabilities/*.adb) \
+              $(wildcard ../shared/launch/*.ads ../shared/launch/*.adb) \
               $(wildcard src/*.ads src/*.adb src/*.asm src/*.adc \
                          src/services/*.ads src/services/*.adb src/*.inc)
 # Compile and bind only
@@ -266,6 +268,26 @@ prove-id-ledger:
 	$(ALR) gnatprove -P../tests/id-ledger/ledger.gpr -u test_ledger.ads \
 		--level=2 --report=all --checks-as-errors=on -j2
 	@cat ../tests/id-ledger/build/gnatprove/gnatprove.out
+
+.PHONY : test-capability-tables prove-capability-tables
+test-capability-tables:
+	$(ALR) gprbuild -p -P../tests/capability-tables/tables.gpr
+	../tests/capability-tables/build/main
+	$(ALR) gprbuild -p -P../tests/capability-tables/geometry.gpr
+	../tests/capability-tables/build/geometry
+
+# CAP-002: copying a capability into another table (CSPACE installs and
+# reply transfers): hosted tests, and the level-2 proof (--prove).
+.PHONY : test-capability-install prove-capability-install
+test-capability-install:
+	bash ../tests/capability-install/run.sh
+prove-capability-install:
+	bash ../tests/capability-install/run.sh --prove
+
+prove-capability-tables:
+	$(ALR) gnatprove -P../tests/capability-tables/tables.gpr -u test_tables.ads \
+		--level=2 --report=all --checks-as-errors=on -j2
+	@cat ../tests/capability-tables/build/gnatprove/gnatprove.out
 
 .PHONY : test-work-stealing prove-work-stealing
 test-work-stealing:
@@ -643,7 +665,7 @@ grant-forward: user_runtime ccl-manifest
 	  manifest=$$role; case $$role in *_exit) manifest=client;; esac; \
 	  mkdir -p $$dir/build/$$role/generated; \
 	  ../userspace/ccl/build/manifest/ccl-manifest ../userspace/ccl/catalogs/native-runtime-services.ccl \
-	    $$dir/$$manifest-manifest.ccl --ada-output $$dir/build/$$role/generated/ccl_manifest_bindings.ads \
+	    $$dir/$$manifest-manifest.ccl --startup-output $$dir/build/$$role/generated/startup.ads \
 	    > $$dir/build/$$role/manifest.S; \
 	  $(ALR) gcc -c $$dir/build/$$role/manifest.S -o $$dir/build/$$role/manifest.o; \
 	  $(ALR) gprbuild -p -P $$dir/fixture.gpr -XROLE=$$role; \
@@ -990,7 +1012,7 @@ endef
 # (docs/msi-interrupts.md), and the bindings give the driver the same slot.
 define compile_driver_manifest
 mkdir -p $(1)/build/generated
-../userspace/ccl/build/manifest/ccl-manifest ../userspace/ccl/catalogs/driver-services.ccl $(1)/manifest.ccl --ada-output $(1)/build/generated/ccl_manifest_bindings.ads > $(1)/build/manifest.S
+../userspace/ccl/build/manifest/ccl-manifest ../userspace/ccl/catalogs/driver-services.ccl $(1)/manifest.ccl --startup-output $(1)/build/generated/startup.ads > $(1)/build/manifest.S
 $(ALR) gcc -c $(1)/build/manifest.S -o $(1)/build/manifest.o
 endef
 
@@ -998,13 +1020,21 @@ endef
 # Named fixed bindings in this catalog preserve shared-runtime ABI conventions.
 define compile_ccl_manifest
 mkdir -p $(1)/build/generated
-../userspace/ccl/build/manifest/ccl-manifest ../userspace/ccl/catalogs/native-runtime-services.ccl $(1)/manifest.ccl --ada-output $(1)/build/generated/ccl_manifest_bindings.ads > $(1)/build/manifest.S
+../userspace/ccl/build/manifest/ccl-manifest ../userspace/ccl/catalogs/native-runtime-services.ccl $(1)/manifest.ccl --startup-output $(1)/build/generated/startup.ads > $(1)/build/manifest.S
 $(ALR) gcc -c $(1)/build/manifest.S -o $(1)/build/manifest.o
 endef
 
 .PHONY: ccl-migrated-manifests
 ccl-migrated-manifests: ccl-manifest
 	$(ALR) python3 ../tests/ccl-manifests/test-migrations.py
+
+# CAP-002 step 2: the startup-table record, the launcher-side builder, the
+# capability handles and a generated Startup binding (hosted; --prove: level 2).
+.PHONY : test-startup-tables prove-startup-tables
+test-startup-tables:
+	bash ../tests/startup-tables/run.sh
+prove-startup-tables:
+	bash ../tests/startup-tables/run.sh --prove
 
 .PHONY : test-ccl-manifests
 test-ccl-manifests: ccl-vm
@@ -1030,7 +1060,7 @@ ccl-vm: user_runtime ccl-manifest
 	../userspace/ccl/build/manifest/ccl-manifest \
 		../userspace/ccl/catalogs/bootstrap-services.ccl \
 		../userspace/ccl/apps/ccl-vm/manifest.ccl \
-		--ada-output ../userspace/ccl/apps/ccl-vm/build/generated/ccl_manifest_bindings.ads \
+		--startup-output ../userspace/ccl/apps/ccl-vm/build/generated/startup.ads \
 		> ../userspace/ccl/apps/ccl-vm/build/manifest.S
 	$(ALR) gcc -c ../userspace/ccl/apps/ccl-vm/build/manifest.S \
 		-o ../userspace/ccl/apps/ccl-vm/build/manifest.o
@@ -1073,14 +1103,20 @@ timesync: user_runtime ccl-manifest
 
 # Headless-test variant: the same executable with only .cubit.caps replaced by
 # tests/timesync/manifest-test.ccl (loopback fixture ports instead of 123).
-# Fails unless slot bindings and the capability section size are identical.
+# Fails unless the startup bindings, the startup table (.cubit.startup) and
+# the capability section size are identical.
 TIMESYNC_VARIANT := ../tests/timesync/build/variant
 timesync-test: timesync
 	mkdir -p $(TIMESYNC_VARIANT)/build/generated
 	cp ../tests/timesync/manifest-test.ccl $(TIMESYNC_VARIANT)/manifest.ccl
 	$(call compile_ccl_manifest,$(TIMESYNC_VARIANT))
-	cmp $(TIMESYNC_VARIANT)/build/generated/ccl_manifest_bindings.ads \
-		../userspace/services/timesync/build/generated/ccl_manifest_bindings.ads
+	cmp $(TIMESYNC_VARIANT)/build/generated/startup.ads \
+		../userspace/services/timesync/build/generated/startup.ads
+	$(ALR) objcopy --dump-section .cubit.startup=$(TIMESYNC_VARIANT)/startup-test.bin \
+		$(TIMESYNC_VARIANT)/build/manifest.o
+	$(ALR) objcopy --dump-section .cubit.startup=$(TIMESYNC_VARIANT)/startup-production.bin \
+		../userspace/services/timesync/build/timesync.svc
+	cmp $(TIMESYNC_VARIANT)/startup-test.bin $(TIMESYNC_VARIANT)/startup-production.bin
 	rm -f $(TIMESYNC_VARIANT)/caps-test.bin $(TIMESYNC_VARIANT)/caps-production.bin
 	$(ALR) objcopy --dump-section .cubit.caps=$(TIMESYNC_VARIANT)/caps-test.bin \
 		$(TIMESYNC_VARIANT)/build/manifest.o
@@ -1285,22 +1321,25 @@ user_runtime:
 
 # RAM storage uses the same block-device protocol as hardware drivers.
 .PHONY : ramdisk
-ramdisk: user_runtime
+ramdisk: user_runtime ccl-manifest
 	mkdir -p ../userspace/services/ramdisk/build
+	$(call compile_driver_manifest,../userspace/services/ramdisk)
 	$(ALR) gprbuild -P ../userspace/services/ramdisk/ramdisk.gpr
 	cp ../userspace/services/ramdisk/build/ramdisk.drv isodir/boot/ramdisk.drv
 
 # Build the userspace filesystem server
 .PHONY : filesystem
-filesystem: user_runtime
+filesystem: user_runtime ccl-manifest
 	mkdir -p ../userspace/services/filesystem/build
+	$(call compile_driver_manifest,../userspace/services/filesystem)
 	$(ALR) gprbuild -P ../userspace/services/filesystem/filesystem.gpr
 	cp ../userspace/services/filesystem/build/filesystem.svc isodir/boot/filesystem.svc
 
 # Build the userspace ATA driver
 .PHONY : ata
-ata: user_runtime
+ata: user_runtime ccl-manifest
 	mkdir -p ../userspace/services/ata/build
+	$(call compile_driver_manifest,../userspace/services/ata)
 	$(ALR) gprbuild -P ../userspace/services/ata/ata.gpr
 	cp ../userspace/services/ata/build/ata.drv isodir/boot/ata.drv
 
@@ -1332,8 +1371,9 @@ virtio-gpu: user_runtime ccl-manifest
 
 # Build the userspace network stack service
 .PHONY : netstack
-netstack: user_runtime
+netstack: user_runtime ccl-manifest
 	mkdir -p ../userspace/services/netstack/build
+	$(call compile_driver_manifest,../userspace/services/netstack)
 	$(ALR) gprbuild -P ../userspace/services/netstack/netstack.gpr
 	cp ../userspace/services/netstack/build/netstack.svc isodir/boot/netstack.svc
 
@@ -1482,15 +1522,17 @@ hda: user_runtime ccl-manifest
 
 # Build the userspace audio mixer service
 .PHONY : mixer
-mixer: user_runtime
+mixer: user_runtime ccl-manifest
 	mkdir -p ../userspace/services/mixer/build
+	$(call compile_driver_manifest,../userspace/services/mixer)
 	$(ALR) gprbuild -P ../userspace/services/mixer/mixer.gpr
 	cp ../userspace/services/mixer/build/mixer.svc isodir/boot/mixer.svc
 
 # Build the userspace PS/2 keyboard + mouse driver
 .PHONY : ps2
-ps2: user_runtime
+ps2: user_runtime ccl-manifest
 	mkdir -p ../userspace/services/ps2/build
+	$(call compile_driver_manifest,../userspace/services/ps2)
 	$(ALR) gprbuild -P ../userspace/services/ps2/ps2.gpr
 	cp ../userspace/services/ps2/build/ps2.drv isodir/boot/ps2.drv
 
@@ -1523,8 +1565,9 @@ config-check: user_runtime ccl-manifest
 	$(ALR) gprbuild -P ../userspace/apps/config-denied/config_denied.gpr
 	cp ../userspace/apps/config-denied/build/config-denied.app isodir/boot/config-denied.app
 
-config: user_runtime
+config: user_runtime ccl-manifest
 	mkdir -p ../userspace/services/config/build
+	$(call compile_driver_manifest,../userspace/services/config)
 	$(ALR) gprbuild -P ../userspace/services/config/config.gpr
 	$(ALR) objcopy \
 		--add-section .cubit.interfaces=../userspace/ccl/interfaces/config.ccl-interface \
@@ -1650,8 +1693,9 @@ display: user_runtime ccl-manifest
 
 # Build the userspace network manager service
 .PHONY : netmgr
-netmgr: user_runtime
+netmgr: user_runtime ccl-manifest
 	mkdir -p ../userspace/services/netmgr/build
+	$(call compile_driver_manifest,../userspace/services/netmgr)
 	$(ALR) gprbuild -P ../userspace/services/netmgr/netmgr.gpr
 	cp ../userspace/services/netmgr/build/netmgr.svc isodir/boot/netmgr.svc
 
@@ -1986,7 +2030,14 @@ test-programs: $(TEST_PROGRAMS)
 # make invocation builds each once.
 IMAGE_ONLY_BINARIES := ramdisk intel-gpu gpu-viewer mesa-cube
 
-world: trace-viewer test-programs $(IMAGE_ONLY_BINARIES) cubit_kernel doom sameboy sleep thread-check futex-check clock-check avx-check devmem-check fault-check bench-spread capability-test storage-check ipctest-server ipctest-client bench-ipc-server bench-ipc-client ccl-test-host clock timesync tls ccl-vm ccl-workbench filesystem ata nvme virtio-net virtio-gpu netstack wget devices files config-inspector desktop-shell procmgr shell hda mixer ps2 xhci virtio-input config config-storage netmgr logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso
+# CAP-002: capabilities are named by handles, never numbers. Runs first in
+# world; --self-test shows it rejecting each forbidden form.
+.PHONY : check-capability-numbers
+check-capability-numbers:
+	python3 ../tools/check_capability_numbers.py --self-test
+	python3 ../tools/check_capability_numbers.py --root ..
+
+world: check-capability-numbers trace-viewer test-programs $(IMAGE_ONLY_BINARIES) cubit_kernel doom sameboy sleep thread-check futex-check clock-check avx-check devmem-check fault-check bench-spread capability-test storage-check ipctest-server ipctest-client bench-ipc-server bench-ipc-client ccl-test-host clock timesync tls ccl-vm ccl-workbench filesystem ata nvme virtio-net virtio-gpu netstack wget devices files config-inspector desktop-shell procmgr shell hda mixer ps2 xhci virtio-input config config-storage netmgr logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso
 
 .PHONY : headless-test
 headless-test: world

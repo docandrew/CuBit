@@ -251,7 +251,8 @@ package body Process.Loader is
                    requestedPID : ProcessID := NO_PROCESS;
                    priority     : ProcessPriority := 1;
                    ppid         : ProcessID := NO_PROCESS;
-                   sourcePID    : ProcessID := NO_PROCESS) return ProcessID with
+                   sourcePID    : ProcessID;
+                   handleLimit  : Process_Capabilities.Tables.Handle_Limit) return ProcessID with
         SPARK_Mode => Off
     is
         use type ELF.SegmentType;
@@ -368,6 +369,7 @@ package body Process.Loader is
                                procStack    => PROCESS_STACK_TOP_VIRT,
                                stackSize    => UserStackSize (requestedStackSize),
                                imageFrames  => imagePages,
+                               handleLimit  => handleLimit,
                                requestedPID => requestedPID);
 
                 if pid = NO_PROCESS then return NO_PROCESS; end if;
@@ -403,7 +405,9 @@ package body Process.Loader is
                    requestedPID : ProcessID := NO_PROCESS;
                    priority : ProcessPriority := 1;
                    ppid : ProcessID := NO_PROCESS;
-                   sourcePID : ProcessID := NO_PROCESS) return ProcessID
+                   sourcePID : ProcessID := NO_PROCESS;
+                   handleLimit : Process_Capabilities.Tables.Handle_Limit :=
+                     Process_Capabilities.Tables.Default_Limit) return ProcessID
       with SPARK_Mode => Off
     is
         header : constant ELF.ELFFileHeader := elfHeader;
@@ -430,7 +434,8 @@ package body Process.Loader is
           snapshot, sourcePID, copied);
         if copied then
             pid := loadSnapshot (header, objStart, size, strAddr, snapshot,
-                                 requestedPID, priority, ppid, sourcePID);
+                                 requestedPID, priority, ppid, sourcePID,
+                                 handleLimit);
         else
             println ("Process.Loader: program-header source unreadable");
             pid := NO_PROCESS;

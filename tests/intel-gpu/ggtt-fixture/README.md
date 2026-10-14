@@ -10,10 +10,12 @@ done
 ```
 
 Each process tests the production `Intel_GPU_GGTT_Mapping` body with fresh
-one-shot state. The local `CuBit.Messages` fixture supplies only its transport
-surface. Fixture syscall numbers are symbolic test values, not the kernel ABI.
-It asserts exact request shape, endpoint, mapping addresses, chunk lengths and
-writable mode; it never accesses MMIO. A second call must never submit or map.
+one-shot state. The fixtures stand in for `CuBit.Messages` (clock and
+completions; fixture syscall numbers are symbolic, not the kernel ABI),
+`Intel_GPU_Supervisor` (the accepting grant request to devmgr and the region
+its reply carries) and `CuBit.Handles.Devices` (Map_Device). They assert the
+exact request shape, granted region, mapping addresses, chunk lengths and
+writable mode; nothing accesses MMIO. A second call must never submit or map.
 
 Cases 0/19/20 cover 8/2/4 MiB success; 1/2 changed physical address/length;
 3 denial; 4 explicit startup-busy then success; 5 failed submission;

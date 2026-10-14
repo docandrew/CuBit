@@ -396,8 +396,7 @@ begin
          pragma Assert (Admission_Reply (0) = Control.OK);
          Session := Admission_Reply (2);
          Control.Handle (Admission, 9, 77, True, Control.Label, 4, 0, 0,
-           [1, Identity, Session, Control.Activate], Admission_Reply,
-           Recipient_Ready => True); -- mocked sharing-endpoint check
+           [1, Identity, Session, Control.Activate], Admission_Reply);
          pragma Assert (Admission_Reply (0) = Control.OK);
          Requests.Handle (Registry, 42, Session, Requests.Label, 4, 0, 0,
            [1, Requests.Create, 8192, 0], Reply, Ticket);

@@ -4,7 +4,7 @@ project Boot_Timeline is
 
     for Object_Dir use "build";
 
-    for Source_Dirs use (".", "../../lib/display", "../../../shared/boot");
+    for Source_Dirs use (".", "build/generated", "../../lib/display", "../../../shared/boot");
 
     for Main use ("main.adb");
 

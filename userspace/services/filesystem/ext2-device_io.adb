@@ -85,7 +85,7 @@ package body Ext2.Device_IO is
             --  Read multiple sectors from driver
             msg.tag := (label  => OP_READ_BLOCKS,
                         length => 4,
-                        flags  => 0,
+                        protocol  => 0, ipc => <>,
                         reserved  => 0);
             msg.authorityTag := 0;
             msg.words := [0 => lba,
@@ -94,11 +94,11 @@ package body Ext2.Device_IO is
                           3 => fs.device.grant.generation];
 
             deviceCalls := deviceCalls + 1;
-            ignore := capCall (fs.device.endpointSlot, msg, CuBit.Messages.Wait_Forever);
+            ignore := capCall (fs.device.endpoint, msg, CuBit.Messages.Wait_Forever);
 
             if msg.tag.label /= REPLY_OK or else
                msg.tag.length /= 1 or else
-               msg.tag.flags /= 0 or else msg.tag.reserved /= 0 or else
+               msg.tag.protocol /= 0 or else msg.tag.reserved /= 0 or else
                msg.words (0) /= sectorsNeeded * deviceBlockSize
             then
                debugPrint ("Ext2: read reply not OK." & ASCII.LF);
@@ -198,7 +198,7 @@ package body Ext2.Device_IO is
                elsif not fromCache then
                   msg.tag := (label  => OP_READ_BLOCKS,
                               length => 4,
-                              flags  => 0,
+                              protocol  => 0, ipc => <>,
                               reserved  => 0);
                   msg.authorityTag := 0;
                   msg.words := [0 => lba,
@@ -206,11 +206,11 @@ package body Ext2.Device_IO is
                                 2 => 1,
                                 3 => fs.device.grant.generation];
             deviceCalls := deviceCalls + 1;
-            ignore := capCall (fs.device.endpointSlot, msg, CuBit.Messages.Wait_Forever);
+            ignore := capCall (fs.device.endpoint, msg, CuBit.Messages.Wait_Forever);
 
                   if msg.tag.label /= REPLY_OK or else
                      msg.tag.length /= 1 or else
-                     msg.tag.flags /= 0 or else msg.tag.reserved /= 0 or else
+                     msg.tag.protocol /= 0 or else msg.tag.reserved /= 0 or else
                      msg.words (0) /= deviceBlockSize
                   then
                      debugPrint
@@ -235,7 +235,7 @@ package body Ext2.Device_IO is
                --  Write the modified sector back
                msg.tag := (label  => OP_WRITE_BLOCKS,
                            length => 4,
-                           flags  => 0,
+                           protocol  => 0, ipc => <>,
                            reserved  => 0);
                msg.authorityTag := 0;
                msg.words := [0 => lba,
@@ -243,11 +243,11 @@ package body Ext2.Device_IO is
                              2 => 1,
                              3 => fs.device.grant.generation];
             deviceCalls := deviceCalls + 1;
-            ignore := capCall (fs.device.endpointSlot, msg, CuBit.Messages.Wait_Forever);
+            ignore := capCall (fs.device.endpoint, msg, CuBit.Messages.Wait_Forever);
 
                if msg.tag.label /= REPLY_OK or else
                   msg.tag.length /= 1 or else
-                  msg.tag.flags /= 0 or else msg.tag.reserved /= 0 or else
+                  msg.tag.protocol /= 0 or else msg.tag.reserved /= 0 or else
                   msg.words (0) /= deviceBlockSize
                then
                   debugPrint
@@ -294,7 +294,7 @@ package body Ext2.Device_IO is
                   --  Write sectors
                   msg.tag := (label  => OP_WRITE_BLOCKS,
                               length => 4,
-                              flags  => (if fua then WRITE_FLAG_FUA else 0),
+                              protocol  => (if fua then WRITE_FLAG_FUA else 0), ipc => <>,
                               reserved  => 0);
                   msg.authorityTag := 0;
                   msg.words := [0 => lba,
@@ -302,11 +302,11 @@ package body Ext2.Device_IO is
                                 2 => sectorsNeeded,
                                 3 => fs.device.grant.generation];
             deviceCalls := deviceCalls + 1;
-            ignore := capCall (fs.device.endpointSlot, msg, CuBit.Messages.Wait_Forever);
+            ignore := capCall (fs.device.endpoint, msg, CuBit.Messages.Wait_Forever);
 
                   if msg.tag.label /= REPLY_OK or else
                      msg.tag.length /= 1 or else
-                     msg.tag.flags /= 0 or else msg.tag.reserved /= 0 or else
+                     msg.tag.protocol /= 0 or else msg.tag.reserved /= 0 or else
                      msg.words (0) /= copyLen
                   then
                      debugPrint
@@ -332,12 +332,12 @@ package body Ext2.Device_IO is
          Home_Writes_Pending := False;
          return;
       end if;
-      msg.tag := (label => OP_FLUSH_DEVICE, length => 0, flags => 0, reserved => 0);
+      msg.tag := (label => OP_FLUSH_DEVICE, length => 0, protocol => 0, ipc => <>, reserved => 0);
       deviceCalls := deviceCalls + 1;
       deviceFlushes := deviceFlushes + 1;
-      msg.tag := capCall (fs.device.endpointSlot, msg, CuBit.Messages.Wait_Forever);
+      msg.tag := capCall (fs.device.endpoint, msg, CuBit.Messages.Wait_Forever);
       ok := msg.tag.label = CuBit.Block_Devices.REPLY_OK and then
-        msg.tag.length = 1 and then msg.tag.flags = 0 and then
+        msg.tag.length = 1 and then msg.tag.protocol = 0 and then
         msg.tag.reserved = 0 and then msg.words (0) = 0;
       if ok then
          Home_Writes_Pending := False;

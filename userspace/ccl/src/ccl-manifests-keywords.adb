@@ -19,6 +19,9 @@ package body CCL.Manifests.Keywords with SPARK_Mode => On is
    use type CCL.Language.Interpretation_Status;
    use type CCL.VM.Value_Kind;
 
+   --  The highest service role (System_Publications.Maximum_Role).
+   Maximum_Notification_Role : constant := 127;
+
 
    procedure Run
      (Source, Catalog_Source : String; Catalog_Only : Boolean;
@@ -37,11 +40,6 @@ package body CCL.Manifests.Keywords with SPARK_Mode => On is
       Count : Request_Count renames Decl.Count;
       Services : Service_Array renames Cat.Services;
       Service_Count : Request_Count renames Cat.Service_Count;
-      First_Slot : Slot_Number renames Cat.First_Slot;
-      Last_Slot : Slot_Number renames Cat.Last_Slot;
-      Have_Slots : Boolean := False;
-      Fixed : Binding_Array renames Cat.Fixed;
-      Fixed_Count : Natural renames Cat.Fixed_Count;
       Scopes : Scope_Array renames Decl.Scopes;
       Scope_Count : Scope_Count_Type renames Decl.Scope_Count;
       Explicit_No_Requests : Boolean renames Decl.Explicit_No_Requests;
@@ -213,14 +211,17 @@ package body CCL.Manifests.Keywords with SPARK_Mode => On is
          end if;
       end Store_Request;
 
-      procedure Add_Request (Kind : Request_Kind; Optional_Render : Boolean := False) is
+      --  Optional: the program runs without it (an optional startup
+      --  capability, recorded Absent when its launcher cannot obtain it).
+      procedure Add_Request (Kind : Request_Kind; Optional : Boolean := False) is
          Name : Metadata_Text;
          Item : Request;
          Offered : Rights_Kind := Read_Only;
          Found : Boolean := False;
       begin
          Item.Kind := Kind;
-         if Kind = Render_Request and then Optional_Render then Item.Service := 1; end if;
+         if Kind = Render_Request and then Optional then Item.Service := 1; end if;
+         if Optional then Item.Requirement := CuBit.Startup_Tables.Optional; end if;
          if Kind = Render_Request then
             -- One admitted session per launch. Distinct binding names must
             -- not disguise duplicate requests that procmgr will reject.
@@ -528,19 +529,6 @@ package body CCL.Manifests.Keywords with SPARK_Mode => On is
          Store_Request (Item, Named => True);
       end Add_Scheduling;
 
-      procedure Slot_Expression (Slot : out Slot_Number) is
-      begin
-         Slot := Slot_Number'First;
-         Expression;
-         if Failed then return; end if;
-         if not CCL.Language.Has_Scalar (Value)
-           or else Value.Result_Value.Kind /= CCL.VM.Integer_Value
-           or else Value.Result_Value.Integer not in
-             Integer_64 (Slot_Number'First) .. Integer_64 (Slot_Number'Last)
-         then Fail (Invalid_Slot, Cursor);
-         else Slot := Natural (Value.Result_Value.Integer);
-         end if;
-      end Slot_Expression;
 
 
       procedure Add_Scope (Domain : Access_Domain) is
@@ -666,66 +654,47 @@ package body CCL.Manifests.Keywords with SPARK_Mode => On is
             exit when Failed or else Cursor > Last or else Text (Cursor) = ')';
             Expect ('(');
             Atom (Name);
-            if Is_Text (Name, "application-slots") then
-               if Have_Slots then Fail (Duplicate_Field, Cursor); end if;
-               Slot_Expression (First_Slot);
-               Slot_Expression (Last_Slot);
-               if First_Slot > Last_Slot then Fail (Invalid_Slot, Cursor); end if;
-               Have_Slots := True;
-               Expect (')');
-            elsif Is_Text (Name, "fixed-binding") then
-               declare
-                  Binding : Named_Binding;
-               begin
-                  Read_Binding_Name (Binding.Name);
-                  Slot_Expression (Binding.Slot);
-                  Expect (')');
-                  for Existing of Fixed (1 .. Fixed_Count) loop
-                     if Existing.Name = Binding.Name then Fail (Duplicate_Binding, Cursor); end if;
-                  end loop;
-                  if Fixed_Count = MAX_BINDINGS then Fail (Too_Many_Requests, Cursor);
-                  elsif not Failed then Fixed_Count := Fixed_Count + 1; Fixed (Fixed_Count) := Binding;
-                  end if;
-               end;
-            else
-               if Is_Text (Name, "service") then Item.Kind := Service_Request;
-               elsif Is_Text (Name, "notification") then Item.Kind := Notification_Request;
-               else Fail (Unknown_Declaration, Cursor);
-               end if;
-               Atom (Item.Name);
-               Expression;
-               if Failed then return; end if;
-               if not CCL.Language.Has_Scalar (Value)
-                 or else Value.Result_Value.Kind /= CCL.VM.Integer_Value
-                 or else Value.Result_Value.Integer not in 1 .. Integer_64 (Unsigned_32'Last)
+            if Is_Text (Name, "service") then Item.Kind := Service_Request;
+            elsif Is_Text (Name, "notification") then Item.Kind := Notification_Request;
+            else Fail (Unknown_Declaration, Cursor);
+            end if;
+            Atom (Item.Name);
+            Expression;
+            if Failed then return; end if;
+            if not CCL.Language.Has_Scalar (Value)
+              or else Value.Result_Value.Kind /= CCL.VM.Integer_Value
+              or else Value.Result_Value.Integer not in 1 .. Integer_64 (Unsigned_32'Last)
+            then
+               Fail (Invalid_Service_ID, Cursor);
+               return;
+            end if;
+            Item.ID := Unsigned_32 (Value.Result_Value.Integer);
+            --  A notification names one service role (the kernel
+            --  registry's bound, System_Publications.Maximum_Role).
+            if Item.Kind = Notification_Request
+              and then Item.ID > Maximum_Notification_Role
+            then
+               Fail (Invalid_Notification_ID, Cursor);
+            end if;
+            Read_Rights (Item.Rights, Item.Kind);
+            Expect (')');
+            for Binding of Services (1 .. Service_Count) loop
+               --  A service and a notification may share a name.
+               if Binding.Kind = Item.Kind and then
+                 (Binding.Name = Item.Name or else Binding.ID = Item.ID)
                then
-                  Fail (Invalid_Service_ID, Cursor);
-                  return;
+                  Fail (Duplicate_Service, Cursor);
                end if;
-               Item.ID := Unsigned_32 (Value.Result_Value.Integer);
-               if Item.Kind = Notification_Request and then Item.ID > 17 then
-                  Fail (Invalid_Notification_ID, Cursor);
-               end if;
-               Read_Rights (Item.Rights, Item.Kind);
-               Expect (')');
-               for Binding of Services (1 .. Service_Count) loop
-                  if Binding.Name = Item.Name or else
-                    (Binding.Kind = Item.Kind and then Binding.ID = Item.ID)
-                  then
-                     Fail (Duplicate_Service, Cursor);
-                  end if;
-               end loop;
-               if Service_Count = MAX_REQUESTS then Fail (Too_Many_Services, Cursor);
-               elsif not Failed then
-                  Service_Count := Service_Count + 1;
-                  Services (Service_Count) := Item;
-               end if;
+            end loop;
+            if Service_Count = MAX_REQUESTS then Fail (Too_Many_Services, Cursor);
+            elsif not Failed then
+               Service_Count := Service_Count + 1;
+               Services (Service_Count) := Item;
             end if;
          end loop;
          Expect (')');
          Skip;
          if Cursor <= Last then Fail (Trailing_Input, Cursor); end if;
-         if not Have_Slots then Fail (Missing_Field, Cursor); end if;
       end Catalog;
 
 
@@ -770,8 +739,12 @@ package body CCL.Manifests.Keywords with SPARK_Mode => On is
             Text_Field (Version);
             Have_Version := True;
          elsif Is_Text (Name, "request-service") then Add_Request (Service_Request);
+         elsif Is_Text (Name, "request-service-optional") then
+            Add_Request (Service_Request, Optional => True);
          elsif Is_Text (Name, "request-notification") then Add_Request (Notification_Request);
          elsif Is_Text (Name, "request-framebuffer") then Add_Request (Framebuffer_Request);
+         elsif Is_Text (Name, "request-framebuffer-optional") then
+            Add_Request (Framebuffer_Request, Optional => True);
          elsif Is_Text (Name, "request-network") then Add_Network;
          elsif Is_Text (Name, "request-render") then Add_Request (Render_Request);
          elsif Is_Text (Name, "request-render-optional") then Add_Request (Render_Request, True);
@@ -786,6 +759,24 @@ package body CCL.Manifests.Keywords with SPARK_Mode => On is
          elsif Is_Text (Name, "interrupt") then Add_Resource (Interrupt_Request);
          elsif Is_Text (Name, "dma") then Add_Resource (DMA_Request);
          elsif Is_Text (Name, "request-scheduling") then Add_Scheduling;
+         elsif Is_Text (Name, "optional") then
+            --  (optional BINDING): a request declared above that the program
+            --  runs without (its startup entry may be Absent).
+            declare
+               Target : Binding_Name;
+               Found : Boolean := False;
+            begin
+               Read_Binding_Name (Target);
+               for Index in 1 .. Count loop
+                  if Requests (Index).Name = Target then
+                     Requests (Index).Requirement := CuBit.Startup_Tables.Optional;
+                     Found := True;
+                  end if;
+               end loop;
+               if not Found and then not Failed then
+                  Fail (Unknown_Optional_Name, Cursor);
+               end if;
+            end;
          elsif Is_Text (Name, "requests-none") then
             if Explicit_No_Requests then Fail (Duplicate_Field, Cursor); end if;
             Explicit_No_Requests := True;
@@ -798,7 +789,7 @@ package body CCL.Manifests.Keywords with SPARK_Mode => On is
       if Cursor <= Last then Fail (Trailing_Input, Cursor); end if;
       if not Have_Identity or else not Have_Version then Fail (Missing_Field, Cursor); end if;
       if Failed then return; end if;
-      Encoding.Encode (Decl, Cat, Cursor, Result);
+      Encoding.Encode (Decl, Cursor, Result);
    end Run;
 
    procedure Compile (Source, Catalog_Source : String; Result : out Compilation_Result) is

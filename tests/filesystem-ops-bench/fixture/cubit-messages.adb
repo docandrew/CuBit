@@ -27,7 +27,7 @@ package body CuBit.Messages is
 
    procedure debugPrint (value : String) is null;
 
-   function capCall (slot : Unsigned_64; msg : in out Message; Deadline : Unsigned_64)
+   function capCall (slot : CuBit.Handles.Endpoint; msg : in out Message; Deadline : Unsigned_64)
      return MessageTag
    is
       pragma Unreferenced (slot, Deadline);
@@ -37,11 +37,11 @@ package body CuBit.Messages is
    begin
       Commands := Commands + 1;
       if Op = OP_DESCRIBE_DEVICE then
-         msg := ((REPLY_OK, 4, 0, 0), 0,
+         msg := ((label => REPLY_OK, length => 4, protocol => 0, ipc => <>, reserved => 0), 0,
                  [Image'Length / Sector_Bytes, Pack_Sizes (Sector_Bytes, Sector_Bytes), 1024,
                   Pack_Properties (FEATURE_FLUSH or FEATURE_VOLATILE_CACHE, Fixed_Media)]);
       elsif Op = OP_FLUSH_DEVICE then
-         msg := ((REPLY_OK, 1, 0, 0), 0, [others => 0]);
+         msg := ((label => REPLY_OK, length => 1, protocol => 0, ipc => <>, reserved => 0), 0, [others => 0]);
       else
          pragma Assert (Op in OP_READ_BLOCKS | OP_WRITE_BLOCKS);
          pragma Assert (Count in 1 .. Grant_Buffer'Length);
@@ -58,7 +58,7 @@ package body CuBit.Messages is
                Device := Buffer;
             end if;
          end;
-         msg := ((REPLY_OK, 1, 0, 0), 0, [0 => Count, others => 0]);
+         msg := ((label => REPLY_OK, length => 1, protocol => 0, ipc => <>, reserved => 0), 0, [0 => Count, others => 0]);
       end if;
       return msg.tag;
    end capCall;

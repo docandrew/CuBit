@@ -7,6 +7,8 @@ with CuBit.Log_Records;
 with CuBit.Logging;
 with CuBit.Service_Names;
 with CCL.Interfaces.Logs;
+with CCL_Native_Bindings;
+with CuBit.Handles;
 
 --  logs.recent on CuBit: a subscription to logstore filtered to one process,
 --  which replays that process's retained records; the newest that fit one
@@ -15,7 +17,7 @@ package body CCL_Log_IO is
    procedure Announce (Text : String) is
       Published : Boolean;
    begin
-      CuBit.Logging.Announce (Text, Published);
+      CuBit.Logging.Announce (Text, Published, CCL_Native_Bindings.Logstore);
    end Announce;
    package P renames CuBit.Log_Protocol;
    package L renames CuBit.Log_Records;
@@ -33,14 +35,11 @@ package body CCL_Log_IO is
 
    function Logstore return CuBit.Messages.Process_ID is (CuBit.Service_Names.Process_Of ("logstore"));
 
+   --  Observing logs needs the program's log-observer endpoint and a
+   --  running logstore.
    function Available return Boolean is
-      Slot : CuBit.Messages.CapabilitySlot;
-      Found : Boolean;
-   begin
-      if CuBit.Messages."=" (Logstore, CuBit.Messages.No_Process) then return False; end if;
-      CuBit.Messages.Find_Endpoint_Capability (Logstore, Slot, Found);
-      return Found;
-   end Available;
+     (CuBit.Handles.Valid (CCL_Native_Bindings.Log_Observer)
+      and then CuBit.Messages."/=" (Logstore, CuBit.Messages.No_Process));
 
    --  A service name, or a process written in decimal (its Image): the log
    --  source word the log protocol carries.
@@ -103,6 +102,7 @@ package body CCL_Log_IO is
             "name a running service, or give its process number");
          return;
       end if;
+      CuBit.Logging.Bind (Reader, CCL_Native_Bindings.Log_Observer);
       CuBit.Logging.Subscribe (Reader, Result, Source => Source);
       Success := Result = P.OK;
       if not Success then
@@ -161,7 +161,7 @@ package body CCL_Log_IO is
       Kept : L.Severity;
       Result : P.Status;
    begin
-      CuBit.Logging.Get_Minimum (Kept, Result);
+      CuBit.Logging.Get_Minimum (Kept, Result, CCL_Native_Bindings.Logstore);
       Level := Logs.Severity'Val (L.Severity'Pos (Kept));
       Success := Result = P.OK;
       Why := (if Success then (others => <>)
@@ -175,7 +175,7 @@ package body CCL_Log_IO is
       Before : L.Severity;
       Result : P.Status;
    begin
-      CuBit.Logging.Set_Minimum (L.Severity'Val (Logs.Severity'Pos (Level)), Before, Result);
+      CuBit.Logging.Set_Minimum (L.Severity'Val (Logs.Severity'Pos (Level)), Before, Result, CCL_Native_Bindings.Log_Control);
       Previous := Logs.Severity'Val (L.Severity'Pos (Before));
       Success := Result = P.OK;
       if Success then

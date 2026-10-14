@@ -3,6 +3,11 @@
 #include "../../userspace/mesa/launch-session.h"
 #include <assert.h>
 #include <stdio.h>
+#include "../../userspace/c/cubit_handles.h"
+/* A test endpoint handle (generation 1). */
+#define TEST_ENDPOINT(n) ((cubit_endpoint){(UINT64_C(1) << 32) | (uint64_t)(n)})
+/* The index a test endpoint was made from. */
+#define TEST_INDEX(e) ((unsigned)((e).opaque & 0xffffffffu))
 
 static unsigned calls, opens;
 static bool fail_query, transfer;
@@ -12,16 +17,16 @@ static unsigned closes, polls, tracker_polls;
 static uint32_t close_status, poll_status, tracker_pending;
 static uint64_t close_tag = 1;
 
-uint32_t cubit_intel_close_session(uint64_t slot, uint64_t *tag)
+uint32_t cubit_intel_close_session(cubit_endpoint endpoint, uint64_t *tag)
 {
-   assert(slot == 7);
+   assert(endpoint.opaque == TEST_ENDPOINT(7).opaque);
    closes++;
    *tag = close_tag;
    return close_status;
 }
-uint32_t cubit_intel_poll_session_retirement(uint64_t slot)
+uint32_t cubit_intel_poll_session_retirement(cubit_endpoint endpoint)
 {
-   assert(slot == 7);
+   assert(endpoint.opaque == TEST_ENDPOINT(7).opaque);
    polls++;
    return poll_status;
 }
@@ -36,16 +41,16 @@ bool cubit_gpu_native_query_call(void *context,
    struct cubit_gpu_query_message *reply)
 {
    const struct cubit_gpu_native_endpoint *endpoint = context;
-   assert(endpoint->slot == 7 && request);
+   assert(endpoint->endpoint.opaque == TEST_ENDPOINT(7).opaque && request);
    calls++;
    reply->words[0] = 123;
    return !fail_query;
 }
 
-VkResult anv_cubit_attach_owned_session(struct anv_device *device, uint64_t slot,
+VkResult anv_cubit_attach_owned_session(struct anv_device *device, cubit_endpoint endpoint,
    struct anv_cubit_endpoint_pin *pin)
 {
-   assert(device && slot == 7 && pin->context && pin->retired);
+   assert(device && endpoint.opaque == TEST_ENDPOINT(7).opaque && pin->context && pin->retired);
    opens++;
    if (transfer) {
       pending = *pin;
@@ -64,9 +69,9 @@ int main(void)
       const struct anv_cubit_provider p = cubit_mesa_launch_provider(&owner, &budget);
       assert(p.budget == &budget);
       assert(!p.retain(p.context));
-      assert(!cubit_mesa_launch_start(&owner, 64));
-      assert(cubit_mesa_launch_start(&owner, 7));
-      assert(!cubit_mesa_launch_start(&owner, 8) && owner.endpoint.slot == 7);
+      assert(!cubit_mesa_launch_start(&owner, CUBIT_NO_ENDPOINT));
+      assert(cubit_mesa_launch_start(&owner, TEST_ENDPOINT(7)));
+      assert(!cubit_mesa_launch_start(&owner, TEST_ENDPOINT(8)) && owner.endpoint.endpoint.opaque == TEST_ENDPOINT(7).opaque);
       assert(!p.query(p.context, &request, &reply));
       assert(p.retain(p.context));
       fail_query = false;
@@ -90,14 +95,14 @@ int main(void)
          assert(p_atomic_read(&owner.retired) == 1);
          assert(!p.retain(p.context));
       }
-      assert(!cubit_mesa_launch_start(&owner, 7));
+      assert(!cubit_mesa_launch_start(&owner, TEST_ENDPOINT(7)));
       p.release(p.context);
       assert(owner.lifetime_error && !p.retain(p.context));
    }
    assert(calls == 6 && opens == 3);
    for (unsigned scenario = 0; scenario < 6; scenario++) {
       struct cubit_mesa_launch_session owner = {0};
-      assert(cubit_mesa_launch_start(&owner, 7));
+      assert(cubit_mesa_launch_start(&owner, TEST_ENDPOINT(7)));
       closes = polls = 0;
       close_status = scenario == 1 ? 3 : 0;
       close_tag = scenario == 2 ? 0 : 1;

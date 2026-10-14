@@ -71,8 +71,8 @@ anv_cubit_bo_flags(struct anv_device *device, enum anv_bo_alloc_flags flags)
 
 /* Process-owned retained lifetimes. No Vulkan allocator/user-data dependency.
  * Growable stable records: recycle only detached, confirmed-complete records.
- * The current 64-slot capability namespace bounds lookup/poll work, not an
- * arbitrary smaller metadata array. Endpoint slots remain retained on failure.
+ * The current 64-endpoint capability namespace bounds lookup/poll work, not an
+ * arbitrary smaller metadata array. Endpoint handles remain retained on failure.
  * The endpoint capability must remain stable through deferred cleanup.
  *
  * Locks. lifetime_mutex guards the directory and the session lifecycle
@@ -85,7 +85,8 @@ anv_cubit_bo_flags(struct anv_device *device, enum anv_bo_alloc_flags flags)
  * and their generation; it is taken with neither of the others. Order with
  * the sync layer: queue_mutex, then its timeline lock. */
 #define CUBIT_MEMORY_LIFETIMES UINT_MAX
-#define CUBIT_ENDPOINT_SLOTS 64u
+/* At most this many device lifetimes (open or retiring) per process. */
+#define CUBIT_LIFETIME_LIMIT 64u
 /* The session's one backed GPU context (GPU-001 step 2: context 0). */
 #define CUBIT_RENDER_CONTEXT 0u
 static pthread_mutex_t lifetime_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -145,9 +146,9 @@ init_record_locks(struct cubit_memory_lifetime *record)
 static bool grow_lifetimes(void)
 {
    if (lifetime_count < lifetime_capacity) return true;
-   if (lifetime_capacity == CUBIT_ENDPOINT_SLOTS) return false;
+   if (lifetime_capacity == CUBIT_LIFETIME_LIMIT) return false;
    unsigned capacity = lifetime_capacity ? lifetime_capacity * 2 : 4;
-   if (capacity > CUBIT_ENDPOINT_SLOTS) capacity = CUBIT_ENDPOINT_SLOTS;
+   if (capacity > CUBIT_LIFETIME_LIMIT) capacity = CUBIT_LIFETIME_LIMIT;
    void *directory = realloc(lifetimes, capacity * sizeof(*lifetimes));
    if (!directory) return false;
    lifetimes = directory;
@@ -155,7 +156,7 @@ static bool grow_lifetimes(void)
    return true;
 }
 
-static VkResult memory_init(struct anv_device *device, uint64_t slot,
+static VkResult memory_init(struct anv_device *device, cubit_endpoint endpoint,
                             struct anv_cubit_endpoint_pin *pin);
 
 /* Protected by lifetime_mutex. The index is process-owned and survives device
@@ -235,7 +236,7 @@ anv_cubit_check_status(struct vk_device *vk_device)
    if (record && p_atomic_read(&record->queue_open)) {
       struct native_gpu_values completed, submitted;
       enum cubit_gpu_queue_status status =
-         cubit_gpu_queue_observe(record->tracker.slot, &completed, &submitted);
+         cubit_gpu_queue_observe(record->tracker.endpoint, &completed, &submitted);
       if (status == CUBIT_GPU_QUEUE_OK)
          return VK_SUCCESS;
       transport_failure("queue-health", status, 0);
@@ -246,7 +247,7 @@ anv_cubit_check_status(struct vk_device *vk_device)
    unsigned i = submission_lifetime(device);
    bool healthy = i != CUBIT_MEMORY_LIFETIMES;
    if (healthy) {
-      uint32_t status = cubit_intel_session_status((*lifetimes[i]).tracker.slot);
+      uint32_t status = cubit_intel_session_status((*lifetimes[i]).tracker.endpoint);
       healthy = status == 0;
       if (!healthy) transport_failure("session-health", status, 0);
       if (!healthy) (*lifetimes[i]).tracker.lost = true;
@@ -258,12 +259,12 @@ anv_cubit_check_status(struct vk_device *vk_device)
 }
 
 static VkResult
-attach_session(struct anv_device *device, uint64_t slot,
+attach_session(struct anv_device *device, cubit_endpoint endpoint,
                struct anv_cubit_endpoint_pin *pin)
 {
    if (!device || !device->physical)
       return VK_ERROR_INITIALIZATION_FAILED;
-   VkResult result = memory_init(device, slot, pin);
+   VkResult result = memory_init(device, endpoint, pin);
    if (result != VK_SUCCESS)
       return result; /* Did not acquire this session: do not close it. */
    result = anv_cubit_check_status(&device->vk);
@@ -271,7 +272,7 @@ attach_session(struct anv_device *device, uint64_t slot,
       pthread_mutex_lock(&lifetime_mutex);
       unsigned i = submission_lifetime(device);
       uint32_t policy = i == CUBIT_MEMORY_LIFETIMES ? 0 :
-         cubit_intel_memory_contract((*lifetimes[i]).tracker.slot);
+         cubit_intel_memory_contract((*lifetimes[i]).tracker.endpoint);
       if ((policy != 1 && policy != 2) ||
           (policy == 1 && !device->physical->memory.need_flush)) {
          result = VK_ERROR_INITIALIZATION_FAILED;
@@ -286,18 +287,18 @@ attach_session(struct anv_device *device, uint64_t slot,
 }
 
 VkResult
-anv_cubit_attach_session(struct anv_device *device, uint64_t slot)
+anv_cubit_attach_session(struct anv_device *device, cubit_endpoint endpoint)
 {
-   return attach_session(device, slot, NULL);
+   return attach_session(device, endpoint, NULL);
 }
 
 VkResult
-anv_cubit_attach_owned_session(struct anv_device *device, uint64_t slot,
+anv_cubit_attach_owned_session(struct anv_device *device, cubit_endpoint endpoint,
                                struct anv_cubit_endpoint_pin *pin)
 {
    if (!pin || !pin->retired)
       return VK_ERROR_INITIALIZATION_FAILED;
-   return attach_session(device, slot, pin);
+   return attach_session(device, endpoint, pin);
 }
 
 VkResult
@@ -412,9 +413,9 @@ change_binding_locked(struct anv_device *device, struct anv_bo *bo, uint64_t gpu
       return VK_ERROR_INITIALIZATION_FAILED;
    }
    uint32_t status = remove ?
-      cubit_intel_unbind_buffer((*lifetimes[i]).tracker.slot,
+      cubit_intel_unbind_buffer((*lifetimes[i]).tracker.endpoint,
          bo->gem_handle, gpu, 0, bo->actual_size) :
-      cubit_intel_bind_buffer((*lifetimes[i]).tracker.slot,
+      cubit_intel_bind_buffer((*lifetimes[i]).tracker.endpoint,
          bo->gem_handle, gpu, 0, bo->actual_size);
    if (status != 0) {
       /* No rollback/replay: a failed response may follow a successful change. */
@@ -470,7 +471,7 @@ update_bo_live(struct anv_device *device, struct anv_bo *bo,
    }
    const uint32_t previous = record->vm_generation;
    uint32_t status = previous == UINT32_MAX ? 4 :
-      cubit_intel_update_binding(record->tracker.slot, bo->gem_handle,
+      cubit_intel_update_binding(record->tracker.endpoint, bo->gem_handle,
          gpu, offset, bytes, remove, previous, &generation);
    const bool committed = status == 0 && previous != UINT32_MAX &&
                           generation == previous + 1;
@@ -567,12 +568,12 @@ prepare_submission_timed(struct anv_device *device, bool allow_ready)
       return VK_ERROR_INITIALIZATION_FAILED;
    }
    (*lifetimes[i]).submission_attempted = true;
-   uint64_t slot = (*lifetimes[i]).tracker.slot;
+   cubit_endpoint endpoint = (*lifetimes[i]).tracker.endpoint;
    /* The session queue opens once the context is registered: every batch,
     * the startup ones included, goes through it from here on. */
-   if (cubit_intel_prepare_context(slot) != 0 ||
-       cubit_intel_register_context(slot) != 0 ||
-       cubit_gpu_queue_open(slot) != CUBIT_GPU_QUEUE_OK) {
+   if (cubit_intel_prepare_context(endpoint) != 0 ||
+       cubit_intel_register_context(endpoint) != 0 ||
+       cubit_gpu_queue_open(endpoint) != CUBIT_GPU_QUEUE_OK) {
       (*lifetimes[i]).tracker.lost = true;
       pthread_mutex_unlock(&lifetime_mutex);
       return vk_device_set_lost(&device->vk, "CuBit context preparation failed; session retained");
@@ -655,7 +656,7 @@ queue_submit_locked(struct anv_device *device, struct cubit_memory_lifetime *rec
                     const struct vk_sync_wait *waits, const struct signal_list *lists,
                     uint32_t list_count, uint32_t kinds, const char **why)
 {
-   const uint64_t slot = record->tracker.slot;
+   const cubit_endpoint endpoint = record->tracker.endpoint;
    if (!record->queue_admitting || record->queue_failed) {
       *why = "CuBit submission queue closed";
       return VK_ERROR_DEVICE_LOST;
@@ -670,7 +671,7 @@ queue_submit_locked(struct anv_device *device, struct cubit_memory_lifetime *rec
       enum native_gpu_wait_kind kind;
       uint32_t context, merged;
       uint64_t gpu;
-      if (anv_cubit_sync_find(&device->vk, &waits[i], slot, &kind, &context, &gpu) != VK_SUCCESS ||
+      if (anv_cubit_sync_find(&device->vk, &waits[i], endpoint, &kind, &context, &gpu) != VK_SUCCESS ||
           kind == NATIVE_GPU_WAIT_UNSUBMITTED) {
          *why = "CuBit queue dependency not submitted";
          return VK_ERROR_DEVICE_LOST;
@@ -699,7 +700,7 @@ queue_submit_locked(struct anv_device *device, struct cubit_memory_lifetime *rec
       } else {
          job.operation = CUBIT_GPU_SIGNAL;   /* a timeline-only barrier */
       }
-      enum cubit_gpu_queue_status status = cubit_gpu_queue_submit(slot, &job, &signal);
+      enum cubit_gpu_queue_status status = cubit_gpu_queue_submit(endpoint, &job, &signal);
       if (status != CUBIT_GPU_QUEUE_OK) {
          transport_failure("queue-submit", status, job.handle);
          *why = "CuBit queue submission failed; session retained";
@@ -709,7 +710,7 @@ queue_submit_locked(struct anv_device *device, struct cubit_memory_lifetime *rec
       /* No commands and nothing to wait for on the GPU: the signals follow
        * the queue's last job (ring order), or happen now if it is done. */
       struct native_gpu_values completed, submitted;
-      if (cubit_gpu_queue_observe(slot, &completed, &submitted) != CUBIT_GPU_QUEUE_OK) {
+      if (cubit_gpu_queue_observe(endpoint, &completed, &submitted) != CUBIT_GPU_QUEUE_OK) {
          *why = "CuBit GPU session failed";
          return VK_ERROR_DEVICE_LOST;
       }
@@ -721,7 +722,7 @@ queue_submit_locked(struct anv_device *device, struct cubit_memory_lifetime *rec
          const struct vk_sync_signal *s = &lists[l].signals[i];
          VkResult result = on_cpu ?
             vk_sync_signal(&device->vk, s->sync, s->signal_value) :
-            anv_cubit_sync_add_point(&device->vk, s, slot, CUBIT_RENDER_CONTEXT, signal);
+            anv_cubit_sync_add_point(&device->vk, s, endpoint, CUBIT_RENDER_CONTEXT, signal);
          if (result != VK_SUCCESS) {
             *why = "CuBit queue signal failed";
             return VK_ERROR_DEVICE_LOST;
@@ -884,33 +885,34 @@ anv_cubit_queue_exec_async(struct anv_async_submit *submit,
 }
 
 static bool
-slot_retained_locked(uint64_t slot)
+endpoint_retained_locked(cubit_endpoint endpoint)
 {
-   if (slot >= CUBIT_ENDPOINT_SLOTS)
+   if (!cubit_endpoint_present(endpoint))
       return true;
    for (unsigned i = 0; i < lifetime_count; i++) {
-      if ((*lifetimes[i]).tracker.slot == slot && !(*lifetimes[i]).complete)
+      if (cubit_endpoint_same((*lifetimes[i]).tracker.endpoint, endpoint) &&
+          !(*lifetimes[i]).complete)
          return true;
    }
    return false;
 }
 
 bool
-anv_cubit_memory_slot_retained(uint64_t slot)
+anv_cubit_memory_endpoint_retained(cubit_endpoint endpoint)
 {
    pthread_mutex_lock(&lifetime_mutex);
-   bool retained = slot_retained_locked(slot);
+   bool retained = endpoint_retained_locked(endpoint);
    pthread_mutex_unlock(&lifetime_mutex);
    return retained;
 }
 
 static VkResult
-memory_init(struct anv_device *device, uint64_t slot,
+memory_init(struct anv_device *device, cubit_endpoint endpoint,
             struct anv_cubit_endpoint_pin *pin)
 {
    pthread_mutex_lock(&lifetime_mutex);
    if (vk_device_is_lost_no_report(&device->vk) ||
-       slot_retained_locked(slot) || device->cubit_cpu_mappings) {
+       endpoint_retained_locked(endpoint) || device->cubit_cpu_mappings) {
       pthread_mutex_unlock(&lifetime_mutex);
       return VK_ERROR_INITIALIZATION_FAILED;
    }
@@ -947,7 +949,7 @@ memory_init(struct anv_device *device, uint64_t slot,
       return VK_ERROR_INITIALIZATION_FAILED;
    }
    struct cubit_cpu_mapping_tracker *tracker = &(*lifetimes[index]).tracker;
-   tracker->slot = slot;
+   tracker->endpoint = endpoint;
    if (pin) {
       (*lifetimes[index]).pin = *pin;
       *pin = (struct anv_cubit_endpoint_pin){0};
@@ -958,9 +960,9 @@ memory_init(struct anv_device *device, uint64_t slot,
 }
 
 VkResult
-anv_cubit_memory_init(struct anv_device *device, uint64_t slot)
+anv_cubit_memory_init(struct anv_device *device, cubit_endpoint endpoint)
 {
-   return memory_init(device, slot, NULL);
+   return memory_init(device, endpoint, NULL);
 }
 
 /* No device pointer or application allocator survives detachment. CPU-view
@@ -976,16 +978,16 @@ drain_lifetime(unsigned i)
          return false;
       (*lifetimes[i]).cpu_drained = true;
    }
-   const uint64_t slot = (*lifetimes[i]).tracker.slot;
+   const cubit_endpoint endpoint = (*lifetimes[i]).tracker.endpoint;
    if (!(*lifetimes[i]).close_attempted) {
       (*lifetimes[i]).close_attempted = true;
       uint64_t retired_tag = 0;
-      if (cubit_intel_close_session(slot, &retired_tag) != 0 || !retired_tag) {
+      if (cubit_intel_close_session(endpoint, &retired_tag) != 0 || !retired_tag) {
          (*lifetimes[i]).retirement_failed = true;
          return false; /* Never replay an uncertain close. */
       }
    }
-   uint32_t status = cubit_intel_poll_session_retirement(slot);
+   uint32_t status = cubit_intel_poll_session_retirement(endpoint);
    if (status == 0) {
       struct anv_cubit_endpoint_pin pin = (*lifetimes[i]).pin;
       (*lifetimes[i]).pin = (struct anv_cubit_endpoint_pin){0};
@@ -1021,7 +1023,7 @@ anv_cubit_memory_finish(struct anv_device *device)
       (*lifetimes[i]).queue_admitting = false;
       if ((*lifetimes[i]).queue_open) {
          p_atomic_set(&(*lifetimes[i]).queue_open, false);
-         cubit_gpu_queue_close(tracker->slot);
+         cubit_gpu_queue_close(tracker->endpoint);
       }
       pthread_mutex_unlock(&(*lifetimes[i]).queue_mutex);
       device->cubit_cpu_mappings = NULL;
@@ -1129,7 +1131,7 @@ gem_create_locked(struct anv_device *device,
        bytes > UINT64_C(16) * 1024 * 1024)
       return 0;
    uint32_t handle = 0;
-   const uint32_t status = cubit_intel_create_buffer(tracker->slot, bytes, &handle);
+   const uint32_t status = cubit_intel_create_buffer(tracker->endpoint, bytes, &handle);
    if (status != 0) {
       if (status == 4) {
          tracker->lost = true;
@@ -1164,7 +1166,7 @@ gem_close_locked(struct anv_device *device, struct anv_bo *bo)
    }
    /* This retires only the name. The service retains backing; neither this
     * call nor CPU-view retirement substitutes for a GPU completion fence. */
-   uint32_t status = cubit_intel_close_buffer(tracker->slot, handle);
+   uint32_t status = cubit_intel_close_buffer(tracker->endpoint, handle);
    if (status != 0) {
       transport_failure("close-buffer", status, handle);
       tracker->lost = true;

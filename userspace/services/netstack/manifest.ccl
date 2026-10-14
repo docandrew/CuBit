@@ -1,0 +1,10 @@
+# netstack.svc's authority (CAP-002): its role registration, its endpoint
+# to devmgr, and the NIC driver's endpoint ("nic", absent without a NIC).
+(Executable_Manifest
+  identity => "com.cubit.netstack"
+  version => "0.1.0"
+  requests => [
+    (notification "netstack" Notify_Access.Manage "registration")
+    (service "launcher-peer" "nic")
+    (service "device-manager" "ready")]
+  optional => ["nic"])

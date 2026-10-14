@@ -14,8 +14,8 @@ root = Path(__file__).resolve().parents[2]
 runtime = root / 'userspace/runtime/gnat'
 
 messages = '''with Interfaces; use Interfaces;
+with CuBit.Handles;
 package CuBit.Messages is
- subtype CapabilitySlot is Unsigned_64 range 0..63;
  type MessageTag is record
   label:Unsigned_32:=0; length,flags:Unsigned_8:=0; reserved:Unsigned_16:=0;
  end record;
@@ -31,24 +31,24 @@ package CuBit.Messages is
  end record;
  Submit_OK:Boolean:=True;
  Submissions:Natural:=0;
- function capSubmit(Slot:CapabilitySlot; Msg:Message; Token:Unsigned_64) return Boolean;
+ function capSubmit(Target:CuBit.Handles.Endpoint; Msg:Message; Token:Unsigned_64) return Boolean;
  Wait_Forever:constant Unsigned_64:=Unsigned_64'Last;
- function capCall(Slot:CapabilitySlot; Msg:in out Message; Deadline:Unsigned_64) return MessageTag;
+ function capCall(Target:CuBit.Handles.Endpoint; Msg:in out Message; Deadline:Unsigned_64) return MessageTag;
 end CuBit.Messages;
 '''
 message_body = '''package body CuBit.Messages is
- function capSubmit(Slot:CapabilitySlot; Msg:Message; Token:Unsigned_64) return Boolean is
+ function capSubmit(Target:CuBit.Handles.Endpoint; Msg:Message; Token:Unsigned_64) return Boolean is
  begin Submissions:=Submissions+1; return Submit_OK; end;
- function capCall(Slot:CapabilitySlot; Msg:in out Message; Deadline:Unsigned_64) return MessageTag is
+ function capCall(Target:CuBit.Handles.Endpoint; Msg:in out Message; Deadline:Unsigned_64) return MessageTag is
  begin return (0,0,0,0); end;
 end CuBit.Messages;
 '''
 grants = '''with Interfaces; use Interfaces;
-with System; with CuBit.Messages;
+with System; with CuBit.Handles;
 package CuBit.Memory_Grants is
  type Grant_Reference is record slot,generation:Unsigned_64:=1; end record;
  procedure Create_Via_Capability
-  (Cap:CuBit.Messages.CapabilitySlot; Address:System.Address; Pages:Natural;
+  (Cap:CuBit.Handles.Endpoint; Address:System.Address; Pages:Natural;
    Writable:Boolean; Ref:out Grant_Reference; Created:out Boolean);
  procedure Revoke(Ref:in out Grant_Reference; Accepted:out Boolean);
  function Retirement_Confirmed(Ref:Grant_Reference) return Boolean;
@@ -56,7 +56,7 @@ end CuBit.Memory_Grants;
 '''
 grant_body = '''package body CuBit.Memory_Grants is
  procedure Create_Via_Capability
-  (Cap:CuBit.Messages.CapabilitySlot; Address:System.Address; Pages:Natural;
+  (Cap:CuBit.Handles.Endpoint; Address:System.Address; Pages:Natural;
    Writable:Boolean; Ref:out Grant_Reference; Created:out Boolean) is
  begin Ref:=(1,1); Created:=True; end;
  procedure Revoke(Ref:in out Grant_Reference; Accepted:out Boolean) is
@@ -68,11 +68,12 @@ main = '''with Ada.Command_Line; with Ada.Text_IO;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Metrics; with CuBit.Metric_Records; with CuBit.Metric_Protocol;
+with CuBit.Handles.Fixture;
 procedure Check is
  package M renames CuBit.Metrics;
  package R renames CuBit.Metric_Records;
  package P renames CuBit.Metric_Protocol;
- Item:M.Publisher(10);
+ Item:M.Publisher;
  Value:constant R.Metric_Record:=(R.Counter,1,0,1,0);
  Accepted,Submitted,Handled:Boolean;
  C:CompletionEntry;
@@ -85,6 +86,7 @@ procedure Check is
   M.Flush(Item,Token,Submitted); pragma Assert(Submitted);
  end;
 begin
+ M.Bind(Item,CuBit.Handles.Fixture.Endpoint_Of(10));
  C.token:=11; C.valid:=True;
  C.msg.tag:=(P.Status'Enum_Rep(P.OK),P.Message_Words,0,0);
  C.msg.words:=(63,0,0,0);
@@ -127,6 +129,12 @@ def run(adapter_dir, expect_known_bugs=False):
                      'cubit-metric_batches.ads', 'cubit-metric_batches.adb',
                      'cubit-metric_protocol.ads'):
             shutil.copyfile(runtime / name, d / name)
+        # CAP-002: the publisher's endpoint is a handle; the fixture makes one.
+        shutil.copyfile(runtime / 'cubit-handles.ads', d / 'cubit-handles.ads')
+        for name in ('capability_abi.ads', 'capability_abi.adb'):
+            shutil.copyfile(root / 'shared/capabilities' / name, d / name)
+        for name in ('cubit-handles-fixture.ads', 'cubit-handles-fixture.adb'):
+            shutil.copyfile(root / 'tests/support/handles' / name, d / name)
         for name in ('cubit-metrics.ads', 'cubit-metrics.adb'):
             shutil.copyfile(adapter_dir / name, d / name)
         for name, source in {'cubit-messages.ads': messages, 'cubit-messages.adb': message_body,

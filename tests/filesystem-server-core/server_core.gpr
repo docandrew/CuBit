@@ -3,11 +3,12 @@
 --  FS_SRC: the units' directory.
 project Server_Core is
    Fs_Src := external ("FS_SRC", "../../userspace/services/filesystem");
-   for Source_Dirs use (".", Fs_Src);
+   for Source_Dirs use (".", Fs_Src, "../../userspace/runtime/gnat", "../../shared/capabilities");
    for Source_Files use
      ("main.adb", "fs_handle_codes.ads", "fs_handle_codes.adb",
       "fs_path_checks.ads", "fs_path_checks.adb",
-      "volume_list.ads", "volume_list.adb");
+      "volume_list.ads", "volume_lists.ads", "volume_lists.adb",
+      "cubit.ads", "cubit-handles.ads", "capability_abi.ads", "capability_abi.adb");
    for Object_Dir use "build";
    for Exec_Dir use "build";
    for Main use ("main.adb");

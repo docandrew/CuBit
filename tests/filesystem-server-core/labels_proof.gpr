@@ -3,10 +3,12 @@
 project Labels_Proof is
    Fs_Src := external ("FS_SRC", "../../userspace/services/filesystem");
    for Source_Dirs use
-     (Fs_Src, "../filesystem-interop/fixture", "../../userspace/runtime/gnat");
+     (Fs_Src, "../filesystem-interop/fixture", "../../userspace/runtime/gnat",
+      "../../shared/capabilities");
    for Source_Files use
      ("fs_reply_labels.ads", "ext2.ads", "ext2_inodes.ads", "jbd2_format.ads", "ext2_format.ads",
-      "volume_admission.ads", "cubit.ads", "cubit-messages.ads",
+      "volume_admission.ads", "cubit.ads", "cubit-messages.ads", "cubit-handles.ads",
+      "capability_abi.ads", "capability_abi.adb",
       "cubit-memory_grants.ads", "cubit-grant_references.ads",
       "cubit-block_devices.ads", "cubit-directory_pages.ads",
       "cubit-directory_paths.ads", "cubit-filesystems.ads");

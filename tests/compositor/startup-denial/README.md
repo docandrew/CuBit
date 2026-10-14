@@ -11,9 +11,10 @@ capability interface and readiness policy into an isolated build. External
 operations and the startup declaration are mocked; production SPARK contracts
 are checked separately by desktop_policy_proof.gpr.
 
-Thirteen cases cover successful setup, denial at every stage, disabled/invalid
-configuration, zero epoch, dimension overflow, absent capability and failed
-inspection. Stage call counts reject work after failure, especially readback
+Twelve cases cover successful setup, denial at every stage, disabled/invalid
+configuration, zero epoch, dimension overflow and an absent render entry.
+(CAP-002 removed the thirteenth, a failed slot inspection: Desktop no longer
+inspects a slot; its render entry is a startup handle or absent.) Stage call counts reject work after failure, especially readback
 after upload denial. A historical body without that guard fails this test.
 
 This is hosted control-flow evidence, not native allocator-denial, GPU fence,
@@ -21,7 +22,7 @@ physical memory reclamation or hardware rendering evidence. Failed build and
 test directories are retained.
 
 
-The same thirteen cases now require exactly one `setup unavailable stage=...`
+The same twelve cases now require exactly one `setup unavailable stage=...`
 record for the first unmet startup gate, and none on success. Device creation
 and health checks are distinguished; missing authority is reported as admission,
 not as an inferred allocator failure. Pipeline-specific Vulkan diagnostics remain

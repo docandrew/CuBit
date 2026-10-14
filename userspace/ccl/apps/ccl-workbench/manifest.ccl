@@ -5,7 +5,8 @@
   # One "started" record (CuBit.Logging.Announce).
   (request-service logstore read-write logstore)
   (request-service desktop read-write desktop)
-  (request-service clock read-write clock)
+  # CCL's time built-ins; without clock.svc they report no wall time.
+  (request-service-optional clock read-write clock)
   # The REPL's (logs.recent "service"): read-only log observation.
   (request-service log-observer read-write log-observer)
   # (logs.set-minimum ...) / the Logs "Keep" box: what logstore keeps.

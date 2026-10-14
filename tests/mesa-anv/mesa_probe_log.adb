@@ -1,13 +1,12 @@
 with System.Address_To_Access_Conversions;
-with CCL_Manifest_Bindings;
+with Startup;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Logging;
 with CuBit.Log_Records;
 package body Mesa_Probe_Log is
    use type System.Address;
    type Log_Context is limited record
-      Writer : CuBit.Logging.Publisher
-        (CapabilitySlot (CCL_Manifest_Bindings.Slot_Logstore));
+      Writer : CuBit.Logging.Publisher;
       Enabled : Boolean := True;
    end record;
    package Pointers is new System.Address_To_Access_Conversions (Log_Context);
@@ -39,6 +38,8 @@ package body Mesa_Probe_Log is
       Ignore : Unsigned_64;
    begin
       if Callback = null then return 1; end if;
+      --  The startup "logstore" endpoint (CAP-002).
+      CuBit.Logging.Bind (Item.Writer, Startup.Logstore);
       Result := Callback (Item'Address);
       declare
          Hex_Digits : constant String := "0123456789ABCDEF";

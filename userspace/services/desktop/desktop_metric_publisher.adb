@@ -205,7 +205,7 @@ package body Desktop_Metric_Publisher with SPARK_Mode => Off is
       Handled : Boolean;
       Reply : constant MC.Reply :=
         (Completion.valid, Completion.status, Completion.msg.tag.label,
-         Completion.msg.tag.length, Completion.msg.tag.flags, Completion.msg.tag.reserved,
+         Completion.msg.tag.length, Completion.msg.tag.protocol, Completion.msg.tag.reserved,
          [for I in MC.Payload'Range => Completion.msg.words (I)]);
    begin
       for I in Flights'Range loop

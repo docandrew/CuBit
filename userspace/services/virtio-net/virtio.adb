@@ -4,7 +4,7 @@
 --
 --  @summary
 --  Virtio legacy PCI transport layer - body.
---  All device register access via port I/O syscalls.
+--  All device register access is port I/O through its register-port handle.
 ------------------------------------------------------------------------------
 with CuBit.Messages; use CuBit.Messages;
 
@@ -12,40 +12,50 @@ with CuBit.Virtio_Net_Control;
 
 package body Virtio is
 
+   --  The legacy register ports (its manifest's "registers" binding).
+   Ports : CuBit.Handles.IO_Ports := CuBit.Handles.No_IO_Ports;
+
+   procedure Bind_Ports (Item : CuBit.Handles.IO_Ports) is
+   begin
+      Ports := Item;
+   end Bind_Ports;
+
+   function Bound_Ports return CuBit.Handles.IO_Ports is (Ports);
+
    ---------------------------------------------------------------------------
    --  outb / inp8 / outp16 / inp16 / outp32 / inp32 wrappers
    ---------------------------------------------------------------------------
    procedure outb (port : Unsigned_16; val : Unsigned_8) is
       ignore : Unsigned_64;
    begin
-      ignore := portOutp8 (port, val);
+      ignore := portOutp8 (Ports, port, val);
    end outb;
 
    function inb (port : Unsigned_16) return Unsigned_8 is
    begin
-      return Unsigned_8 (portInp8 (port) and 16#FF#);
+      return Unsigned_8 (portInp8 (Ports, port) and 16#FF#);
    end inb;
 
    procedure outw (port : Unsigned_16; val : Unsigned_16) is
       ignore : Unsigned_64;
    begin
-      ignore := portOutp16 (port, val);
+      ignore := portOutp16 (Ports, port, val);
    end outw;
 
    function inw (port : Unsigned_16) return Unsigned_16 is
    begin
-      return Unsigned_16 (portInp16 (port) and 16#FFFF#);
+      return Unsigned_16 (portInp16 (Ports, port) and 16#FFFF#);
    end inw;
 
    procedure outl (port : Unsigned_16; val : Unsigned_32) is
       ignore : Unsigned_64;
    begin
-      ignore := portOutp32 (port, val);
+      ignore := portOutp32 (Ports, port, val);
    end outl;
 
    function inl (port : Unsigned_16) return Unsigned_32 is
    begin
-      return Unsigned_32 (portInp32 (port) and 16#FFFF_FFFF#);
+      return Unsigned_32 (portInp32 (Ports, port) and 16#FFFF_FFFF#);
    end inl;
 
    ---------------------------------------------------------------------------

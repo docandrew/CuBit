@@ -1,3 +1,4 @@
+with CuBit.Handles.Fixture;
 with ACPI_Requests; use ACPI_Requests;
 with ACPI_Endpoint;
 with ACPI_Native_Blocks;
@@ -64,7 +65,7 @@ procedure SRAT_Query_Tests is
       for Stamp in Unsigned_64 range 9 .. 11 loop
          ACPI_Endpoint.Dispatch (Server, Config, Stamp,
            (Label => Label, Data => [Prior, Table_Index, A, B], others => <>), Wire);
-         ACPI_Native_Blocks.Dispatch (Adapter, Server, Config, Stamp, 5,
+         ACPI_Native_Blocks.Dispatch (Adapter, Server, Config, Stamp, CuBit.Handles.Fixture.Endpoint_Of (5),
            (Label => Label, Data => [Prior, Table_Index, A, B], others => <>), Native_Reply);
          Check (Wire = Native_Reply);
          Check (CuBit.Memory_Grants.Acquisitions = Acquisitions and

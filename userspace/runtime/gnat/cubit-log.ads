@@ -23,6 +23,9 @@ with CuBit.Log_Records;
 package CuBit.Log is
    package Logs renames CuBit.Log_Records;
 
+   --  The startup entry the records go to (CuBit.Handles.Startup).
+   Logstore_Binding : constant String := "logstore";
+
    --  Echo each record to the debug console as well (default on).
    procedure Set_Echo (Enabled : Boolean);
 

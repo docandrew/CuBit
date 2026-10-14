@@ -6,20 +6,19 @@
 -- Capability Types and Data Structures
 --
 -- Foundational capability type system for CuBitOS. Defines capability records,
--- rights bitmasks, authority tags, generation counters, and per-process capability
--- tables. Draws on seL4 (authority tags, endpoint caps), EROS (generation-counter
--- revocation), and Zircon (flat handle table with rights bitmask).
+-- rights bitmasks, authority tags and generation counters. Draws on seL4
+-- (authority tags, endpoint caps), EROS (generation-counter revocation), and
+-- Zircon (handle table with rights bitmask).
 --
--- This is a spec-only package; all operations are expression functions. More
--- complex table operations (lookup, insert, revoke) will go in future child
--- packages.
+-- This is a spec-only package; all operations are expression functions. A
+-- process's table of capabilities is Process_Capabilities (CAP-002: handles
+-- with kernel-chosen slots and generations); what may be copied between
+-- tables is Capability_Install.
 --
 -- No dependency on Process — Process will `with Capabilities`, not the
 -- reverse.
 -------------------------------------------------------------------------------
 with Interfaces; use Interfaces;
-
-with Config;
 
 package Capabilities with
     SPARK_Mode => On
@@ -108,15 +107,15 @@ is
     -- | Cap Type     | ref                  | param          |
     -- |--------------|----------------------|----------------|
     -- | ENDPOINT     | Mailbox owner PID    | (reserved)     |
-    -- | NOTIFICATION | Target PID           | (reserved)     |
+    -- | NOTIFICATION | First service role   | Role count     |
     -- | MEMORY       | Base physical address | Size in bytes |
     -- | IOPORT       | Base port number     | Port count     |
-    -- | IRQ          | Interrupt vector     | (reserved)     |
-    -- | PROCESS      | Target PID           | (reserved)     |
+    -- | IRQ          | First vector         | Vector count   |
+    -- | PROCESS      | Target PID (0=all)   | (reserved)     |
     -- | DEVICE_MEM   | Base physical address | Size in bytes |
-    -- | REPLY        | Sender PID           | (reserved)     |
-    -- | RESOURCE     | maxFrames            | cpuQuota(lo32)|cpuPeriod(hi32)|
-    -- | CSPACE       | Target PID (0=all)   | (reserved)     |
+    -- | REPLY        | Sender thread or PID | Request ID     |
+    -- | RESOURCE     | (retired: quotas are RESUME arguments) |  |
+    -- | CSPACE       | Target PID (one child, until it runs) | (reserved) |
     -- | SCHEDULING   | Budget µs            | Period µs      |
     --
     -- Two plain fields instead of a variant record (README warns against
@@ -149,20 +148,6 @@ is
     );
 
     ---------------------------------------------------------------------------
-    -- Per-Process Capability Table
-    ---------------------------------------------------------------------------
-    subtype CapabilitySlot is Natural range 0 ..
-        Config.PER_PROCESS_CAPABILITIES - 1;
-
-    -- Well-known slot for kernel-minted reply capabilities.
-    -- Highest slot, not used by any service convention.
-    REPLY_CAP_SLOT : constant CapabilitySlot := CapabilitySlot'Last;
-
-    type CapabilityTable is array (CapabilitySlot) of Capability;
-
-    EMPTY_TABLE : constant CapabilityTable := (others => NULL_CAPABILITY);
-
-    ---------------------------------------------------------------------------
     -- Expression Functions
     ---------------------------------------------------------------------------
 
@@ -190,24 +175,6 @@ is
     function hasRights (cap      : Capability;
                         required : CapabilityRights) return Boolean is
         (isValid (cap) and then isSubsetOf (required, cap.rights));
-
-    ---------------------------------------------------------------------------
-    -- isOrdinarilyDerivable
-    -- Null slots carry no authority, and reply capabilities are consumed-or-
-    -- returned one-use authority. Neither may pass through ordinary copying,
-    -- derivation, or authority tag-minting paths.
-    ---------------------------------------------------------------------------
-    function isOrdinarilyDerivable (capType : CapabilityType)
-        return Boolean is
-        (capType /= CAP_NULL and then capType /= CAP_REPLY);
-
-    -- Hardware references may only originate in trusted catalog admission or
-    -- checked group-member delegation. The generic policy syscall accepts raw
-    -- object words, so it must never manufacture these capability types.
-    function isPolicyMintable (capType : CapabilityType) return Boolean is
-        (isOrdinarilyDerivable (capType)
-         and then capType not in CAP_HARDWARE_GROUP | CAP_HARDWARE_REGISTER);
-
 
     ---------------------------------------------------------------------------
     -- isSubrangeOf
@@ -241,87 +208,5 @@ is
          and then child.authorityTag = parent.authorityTag
          and then isSubsetOf (child.rights, parent.rights))
         with Ghost;
-
-    ---------------------------------------------------------------------------
-    -- isMintOf
-    -- A minted capability is an attenuation of its parent except that its
-    -- authority tag is replaced by the explicitly requested authority tag.  Minting cannot
-    -- redirect the capability to another object or amplify its rights.
-    ---------------------------------------------------------------------------
-    function isMintOf (child    : Capability;
-                       parent   : Capability;
-                       newAuthorityTag : Authority_Tag) return Boolean is
-        (child.capType = parent.capType
-         and then child.object = parent.object
-         and then child.gen = parent.gen
-         and then child.authorityTag = newAuthorityTag
-         and then isSubsetOf (child.rights, parent.rights))
-        with Ghost;
-
-    ---------------------------------------------------------------------------
-    -- derive
-    -- Create a new capability with rights reduced to the intersection of the
-    -- parent's rights and the requested rights. The authority tag, object reference,
-    -- and generation are inherited from the parent.
-    --
-    -- Precondition: newRights must be a subset of the parent's rights
-    -- (monotonic rights reduction).
-    ---------------------------------------------------------------------------
-    function derive (parent    : Capability;
-                     newRights : CapabilityRights) return Capability is
-        (Capability'(
-            capType    => parent.capType,
-            rights     => parent.rights and newRights,
-            authorityTag   => parent.authorityTag,
-            object     => parent.object,
-            gen        => parent.gen
-        ))
-        with
-          Pre  => isOrdinarilyDerivable (parent.capType)
-                  and then isSubsetOf (newRights, parent.rights),
-          Post => isAttenuationOf (derive'Result, parent);
-
-    ---------------------------------------------------------------------------
-    -- deriveDeviceRange
-    -- Narrow a device-memory capability to a subrange and a subset of its
-    -- rights. The only way a device range may change under derivation.
-    ---------------------------------------------------------------------------
-    function deriveDeviceRange (parent    : Capability;
-                                base      : Unsigned_64;
-                                size      : Unsigned_64;
-                                newRights : CapabilityRights) return Capability is
-        (Capability'(
-            capType      => parent.capType,
-            rights       => parent.rights and newRights,
-            authorityTag => parent.authorityTag,
-            object       => (ref => base, param => size),
-            gen          => parent.gen))
-        with
-          Pre  => parent.capType = CAP_DEVICE_MEM
-                  and then isSubsetOf (newRights, parent.rights)
-                  and then isSubrangeOf ((ref => base, param => size),
-                                         parent.object),
-          Post => isAttenuationOf (deriveDeviceRange'Result, parent);
-
-    ---------------------------------------------------------------------------
-    -- mint
-    -- Derive a capability with reduced rights and a new authority tag stamped on it.
-    --
-    -- Precondition: newRights must be a subset of the parent's rights.
-    ---------------------------------------------------------------------------
-    function mint (parent    : Capability;
-                   newAuthorityTag  : Authority_Tag;
-                   newRights : CapabilityRights) return Capability is
-        (Capability'(
-            capType    => parent.capType,
-            rights     => parent.rights and newRights,
-            authorityTag   => newAuthorityTag,
-            object     => parent.object,
-            gen        => parent.gen
-        ))
-        with
-          Pre  => isOrdinarilyDerivable (parent.capType)
-                  and then isSubsetOf (newRights, parent.rights),
-          Post => isMintOf (mint'Result, parent, newAuthorityTag);
 
 end Capabilities;

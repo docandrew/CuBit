@@ -4,6 +4,11 @@
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include "../../userspace/c/cubit_handles.h"
+/* A test endpoint handle (generation 1). */
+#define TEST_ENDPOINT(n) ((cubit_endpoint){(UINT64_C(1) << 32) | (uint64_t)(n)})
+/* The index a test endpoint was made from. */
+#define TEST_INDEX(e) ((unsigned)((e).opaque & 0xffffffffu))
 
 #ifdef CUBIT_TEST_ALLOC_FAILURE
 static bool fail_metadata;
@@ -37,20 +42,20 @@ static void wait_retirement(void)
    if (waits == finish_after)
       retire_result = finish_status;
 }
-uint32_t cubit_intel_map_buffer(uint64_t slot, uint32_t handle,
+uint32_t cubit_intel_map_buffer(cubit_endpoint endpoint, uint32_t handle,
    uint64_t offset, uint64_t bytes, uint32_t writable,
    uint32_t *mapping, uint64_t *reference)
 {
-   assert(slot == 63 && handle == 1 && offset == 4096 && bytes == 8192 && writable == 1);
+   assert(endpoint.opaque == TEST_ENDPOINT(63).opaque && handle == 1 && offset == 4096 && bytes == 8192 && writable == 1);
    maps++;
    *mapping = map_result ? 0 : 1;
    *reference = map_result ? 0 : UINT64_C(0x700000008);
    return map_result;
 }
-uint32_t cubit_intel_acquire_view(uint64_t slot, uint64_t reference,
+uint32_t cubit_intel_acquire_view(cubit_endpoint endpoint, uint64_t reference,
    uint64_t offset, uint64_t bytes, uint64_t writable, uint64_t *output)
 {
-   assert(slot == 63 && reference == UINT64_C(0x700000008));
+   assert(endpoint.opaque == TEST_ENDPOINT(63).opaque && reference == UINT64_C(0x700000008));
    assert(offset == 0 && bytes == 8192 && writable == 1);
    acquires++;
    *output = acquire_result ? 0 : 0x100000;
@@ -62,16 +67,16 @@ uint32_t cubit_intel_return_view(uint64_t reference)
    returns++;
    return return_result;
 }
-uint32_t cubit_intel_retire_mapping(uint64_t slot, uint32_t mapping)
+uint32_t cubit_intel_retire_mapping(cubit_endpoint endpoint, uint32_t mapping)
 {
-   assert(slot == 63 && mapping == 1);
+   assert(endpoint.opaque == TEST_ENDPOINT(63).opaque && mapping == 1);
    retires++;
    return retire_result;
 }
 int main(void)
 {
    for (unsigned pending_first = 0; pending_first < 2; pending_first++) {
-      struct cubit_cpu_mapping_tracker t = {.slot = 63};
+      struct cubit_cpu_mapping_tracker t = {.endpoint = TEST_ENDPOINT(63)};
       uint64_t address;
       maps = acquires = returns = retires = 0;
       map_result = acquire_result = return_result = retire_result = 0;
@@ -103,7 +108,7 @@ int main(void)
    /* Boundaries: immediate, first/last permitted poll, exhaustion, error,
     * failed borrow return, and a previously lost tracker never revived. */
    for (unsigned scenario = 0; scenario < 7; scenario++) {
-      struct cubit_cpu_mapping_tracker t = {.slot = 63};
+      struct cubit_cpu_mapping_tracker t = {.endpoint = TEST_ENDPOINT(63)};
       uint64_t address;
       maps = acquires = returns = retires = waits = 0;
       map_result = acquire_result = return_result = retire_result = 0;
@@ -133,10 +138,10 @@ int main(void)
       acquire_result = failure == 2 ? 1 : 0;
       return_result = failure == 3 ? 1 : 0;
       retire_result = failure == 4 ? 5 : 4;
-      uint32_t result = cubit_cpu_mapping_open(&r, 63, 1, 4096, 8192, 1);
+      uint32_t result = cubit_cpu_mapping_open(&r, TEST_ENDPOINT(63), 1, 4096, 8192, 1);
       assert(maps == 1);
       assert(r.bo_handle == 1 && r.bo_offset == 4096 && r.bytes == 8192);
-      assert(cubit_cpu_mapping_open(&r, 63, 1, 4096, 8192, 1) == 5 && maps == 1);
+      assert(cubit_cpu_mapping_open(&r, TEST_ENDPOINT(63), 1, 4096, 8192, 1) == 5 && maps == 1);
       if (failure == 1) {
          assert(result == 5 && acquires == 0 && retires == 0);
          assert(r.state == CUBIT_MAP_FAILED);
@@ -168,7 +173,7 @@ int main(void)
       }
    }
    for (unsigned pending = 0; pending < 2; pending++) {
-      struct cubit_cpu_mapping_tracker t = {.slot = 63};
+      struct cubit_cpu_mapping_tracker t = {.endpoint = TEST_ENDPOINT(63)};
       uint64_t address;
       maps = acquires = returns = retires = 0;
       map_result = acquire_result = return_result = 0;
@@ -195,7 +200,7 @@ int main(void)
    {
       /* Distinct grants may expose the same address and BO range. Retiring
        * one must not hide the other live borrow behind a tombstone. */
-      struct cubit_cpu_mapping_tracker t = {.slot = 63};
+      struct cubit_cpu_mapping_tracker t = {.endpoint = TEST_ENDPOINT(63)};
       uint64_t first, second;
       maps = acquires = returns = retires = 0;
       map_result = acquire_result = return_result = retire_result = 0;
@@ -212,7 +217,7 @@ int main(void)
       assert(returns == 2 && retires == 2);
    }
    for (unsigned failure = 0; failure < 2; failure++) {
-      struct cubit_cpu_mapping_tracker t = {.slot = 63};
+      struct cubit_cpu_mapping_tracker t = {.endpoint = TEST_ENDPOINT(63)};
       uint64_t address;
       maps = acquires = returns = retires = 0;
       map_result = acquire_result = return_result = retire_result = 0;
@@ -237,7 +242,7 @@ int main(void)
       assert(cubit_cpu_tracker_map(&t, 1, 4096, 8192, 1, &address) == 5);
    }
    {
-      struct cubit_cpu_mapping_tracker t = {.slot = 63};
+      struct cubit_cpu_mapping_tracker t = {.endpoint = TEST_ENDPOINT(63)};
       uint64_t address;
       maps = acquires = returns = retires = 0;
       map_result = acquire_result = return_result = retire_result = 0;
@@ -251,7 +256,7 @@ int main(void)
       assert(cubit_cpu_tracker_drain(&t));
    }
    {
-      struct cubit_cpu_mapping_tracker t = {.slot = 63};
+      struct cubit_cpu_mapping_tracker t = {.endpoint = TEST_ENDPOINT(63)};
       uint64_t address;
       maps = acquires = returns = retires = 0;
       /* Alternate retired and live records, all sharing the same CPU VA. */
@@ -272,7 +277,7 @@ int main(void)
       assert(returns == maps && retires == maps);
    }
    {
-      struct cubit_cpu_mapping_tracker t = {.slot = 63};
+      struct cubit_cpu_mapping_tracker t = {.endpoint = TEST_ENDPOINT(63)};
       uint64_t address;
       maps = acquires = returns = retires = 0;
       for (unsigned i = 0; i < 4096; i++) {
@@ -295,7 +300,7 @@ int main(void)
    }
 #ifdef CUBIT_TEST_ALLOC_FAILURE
    {
-      struct cubit_cpu_mapping_tracker t = {.slot = 63};
+      struct cubit_cpu_mapping_tracker t = {.endpoint = TEST_ENDPOINT(63)};
       uint64_t address;
       maps = acquires = returns = retires = 0;
       map_result = acquire_result = return_result = retire_result = 0;

@@ -5,6 +5,7 @@ with CuBit.Memory_Grants;
 with Config_Worker_Protocol;
 with CCL.Objects.Schemas;
 with Config_Schema_Protocol;
+with CuBit.Handles;
 
 --  One nonblocking, single-dispatcher channel to an authorized worker.
 --  Keep this limited object alive at a stable address until Retire confirms
@@ -18,7 +19,7 @@ package Config_Worker_Channel is
    function Status (Object : Channel) return Phase;
    function Pending_Token (Object : Channel) return Interfaces.Unsigned_64;
    procedure Initialize
-     (Object : in out Channel; Endpoint : CuBit.Messages.CapabilitySlot;
+     (Object : in out Channel; Endpoint : CuBit.Handles.Endpoint;
       Success : out Boolean);
 
    --  Caller already authorized namespace/context and supplied a trusted type
@@ -63,7 +64,7 @@ private
       Type_Original, Type_Response : Config_Schema_Protocol.Frame;
       Contract : CCL.Objects.Binding;
       Current : Phase := Fresh;
-      Endpoint : CuBit.Messages.CapabilitySlot := 0;
+      Endpoint : CuBit.Handles.Endpoint := CuBit.Handles.No_Endpoint;
       Grant : CuBit.Memory_Grants.Grant_Reference := (slot => 0, generation => 1);
       Has_Grant, Revocation_Requested : Boolean := False;
       Valid_Response, Poisoned : Boolean := False;

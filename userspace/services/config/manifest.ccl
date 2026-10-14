@@ -1,0 +1,8 @@
+# config.svc's authority (CAP-002): its role registration and its endpoint
+# to devmgr. Its storage worker is attached later by procmgr's offer.
+(Executable_Manifest
+  identity => "com.cubit.config"
+  version => "0.1.0"
+  requests => [
+    (notification "config" Notify_Access.Manage "registration")
+    (service "device-manager" "ready")])

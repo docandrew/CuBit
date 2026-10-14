@@ -69,7 +69,7 @@ Run the same command with an additional `ipc` argument. This selects
 `allocation_ipc_check.adb`, composing production `Buffer_Memory`,
 `Allocation_Growth`, `Extent_Allocator`, metadata growth and extent decoding
 with actual kernel async submit/receive/completion syscalls. The supervisor
-side uses saved reply slot 58, as devmgr does. A second request is received and
+side saves each reply as a reply handle (`CuBit.Handles.IPC.Save_Reply`), as devmgr does. A second request is received and
 answered while the first allocation remains pending; its reply must not replace
 the saved allocation reply. Each saved reply is consumed exactly once, and an
 immediate attempt to reuse it must fail.
@@ -105,7 +105,7 @@ marker above. This remains allocation/IPC evidence, not Intel rendering.
 Root-grant large-leaf resolution has now been promoted to the main kernel.
 Historical references below to private-only kernel behavior describe the
 staged validation runs. Event `4D55` is an optional sacrificial permission test:
-grant the owner a self endpoint at slot6, then send that event after regrant.
+grant the owner a self endpoint, then send that event after regrant.
 It acquires a read-only alias, verifies the sentinel, and writes through it.
 Require the read marker followed by a user write-protection fault; reject
 `FAIL readonly large alias write returned`. This run intentionally stops before
@@ -190,13 +190,10 @@ also rejects4095 and succeeds below4GiB after retained quota exhaustion.
 These impossible limits exercise early rejection, not fragmented-pool search
 exhaustion or concurrent free/reallocation; those remain separate coverage.
 
-`child-main.adb` is the test child's main (install as `main.adb` in the
-private map-check app). Its start event has no sender identity; the response
-uses endpoint slot 5 with capSubmit, not a reply to the event's NO_PROCESS
-sender. The supervisor must grant slot 5 to itself, authenticate the received
-request's caller against the spawned PID, validate the encoded reference,
-then acquire and check the sentinel. No completion token is requested: the
-fixture deliberately kills the child while the acquisition remains held.
+The DMA-retention child (`child-main.adb`, installed as the private map-check
+app's main) was removed with CAP-002: it answered through an endpoint the
+supervisor planted at fixed slot 5, and no fixture in this tree spawns it.
+A replacement would take its endpoint from a startup table or an offer.
 ## Native CPU-export retention
 
 Run under Nix and the shared build lock:
@@ -267,7 +264,7 @@ Driver dispatch compiles natively; the disposable fixture tests the production
 handler with real IPC, not a live Desktop/Intel endpoint. Existing NUC image84b099
 predates this protocol.
 
-The Mesa C adapter `cubit_intel_query_accounting(slot, &limit, &charged)` now
+The Mesa C adapter `cubit_intel_query_accounting(endpoint, &limit, &charged)` now
 validates both reply tags, version, status, zero error payloads and page-aligned
 successful accounting with charged <= limit. It returns the service status or
 4 for local/transport/protocol failure; writable outputs clear on failure.
@@ -308,3 +305,16 @@ but packaging failed due to an inherited output path;54089 rejected shared
 object directories. The final standalone project uses isolated output paths.
 Misplaced generated binder files and executable from58589 were moved into its
 `demand-backing.euVxIy/obj` evidence directory. No production image was replaced.
+
+## Handles (CAP-002, 2026-10-13)
+
+These supervisors run in devmgr's place, so they take their authority from
+`CuBit.Handles.Boot_Roots.Get`: DMA is allocated with `Process_Root`, and
+children are spawned with `CuBit.Handles.Control.Spawn` (any PID; the old
+fixed child PID 42 is gone, so `dma-retirement` now checks that a replacement
+spawns after cleanup rather than that the exact PID is reused). The driver
+code's device-manager endpoint is the fixture `Startup` package: a badged
+(`16#4947#`) copy of `Self_Grantable`. Grants that the driver code makes via a
+saved reply answer one self request (`Self_Requests`). The accounting child
+receives its three session endpoints as offers (`IPC.Call_Offering`). After
+conversion all ten mains compile and link; they have not been rerun in QEMU.

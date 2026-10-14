@@ -12,7 +12,7 @@ crate-type = ["staticlib"]
 [dependencies]
 # Backend is still being hardened in its isolated evaluation workspace.
 config-storage = { package = "cubit-config-turso-spike", path = "../../../tests/config-turso" }
-cubit = { path = "../../rust/cubit" }
+cubit = { path = "../../rust/cubit", features = ["start-symbols"] }
 cubit-allocator = { path = "../../rust/allocator" }
 getrandom02 = { package = "getrandom", version = "=0.2.17", features = ["rdrand"] }
 getrandom = "=0.3.4"

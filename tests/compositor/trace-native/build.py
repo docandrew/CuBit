@@ -76,7 +76,7 @@ def main():
         (directory / 'generated').mkdir(parents=True, exist_ok=True)
         with (directory / 'manifest.S').open('w') as stream:
             run([args.manifest_compiler, args.catalog, app / manifest,
-                 '--schema', args.schema, '--ada-output', directory / 'generated/ccl_manifest_bindings.ads'], stdout=stream)
+                 '--schema', args.schema, '--startup-output', directory / 'generated/startup.ads'], stdout=stream)
         run(['alr', 'exec', '--', 'gcc', '-c', directory / 'manifest.S', '-o', directory / 'manifest.o'])
         run(['alr', 'exec', '--', 'gprbuild', '-p', '-P', app / project])
     binaries = (app / 'build/desktop-trace-observer.app', app / 'build/client/trace-publication.app', app / 'summary/build/desktop-metrics-observer.app')

@@ -69,7 +69,7 @@ for adaptation in device-platform.patch device-topology.patch device-build.patch
 done
 # Keep the upstream adaptation reproducible from our owned transport sources.
 # These compile into ANV, but do not select or advertise a usable backend.
-for transport in anv_cubit_memory.c anv_cubit_memory.h anv_cubit_sync.c anv_cubit_sync.h \
+for transport in cubit_handles.h anv_cubit_memory.c anv_cubit_memory.h anv_cubit_sync.c anv_cubit_sync.h \
   anv_cubit_sync_types.c anv_backend_sync.h anv_cubit_physical.c anv_cubit_physical.h \
   native_gpu_mapping.c native_gpu_mapping.h native_gpu_buffers.h native_gpu_memory.h native_gpu_query.h \
   native_gpu_queue.h native_gpu_timeline.h \

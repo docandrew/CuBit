@@ -5,14 +5,19 @@
 #include <assert.h>
 #include <math.h>
 #include <stdio.h>
+#include "../../userspace/c/cubit_handles.h"
+/* A test endpoint handle (generation 1). */
+#define TEST_ENDPOINT(n) ((cubit_endpoint){(UINT64_C(1) << 32) | (uint64_t)(n)})
+/* The index a test endpoint was made from. */
+#define TEST_INDEX(e) ((unsigned)((e).opaque & 0xffffffffu))
 static unsigned drains, closes, polls;
 static uint32_t retirement = 4;
 bool cubit_cpu_tracker_drain(struct cubit_cpu_mapping_tracker *tracker)
-{ assert(tracker->slot == 61); drains++; return true; }
-uint32_t cubit_intel_close_session(uint64_t slot, uint64_t *tag)
-{ assert(slot == 61); closes++; *tag = 1; return 0; }
-uint32_t cubit_intel_poll_session_retirement(uint64_t slot)
-{ assert(slot == 61); polls++; return retirement; }
+{ assert(tracker->endpoint.opaque == TEST_ENDPOINT(61).opaque); drains++; return true; }
+uint32_t cubit_intel_close_session(cubit_endpoint endpoint, uint64_t *tag)
+{ assert(endpoint.opaque == TEST_ENDPOINT(61).opaque); closes++; *tag = 1; return 0; }
+uint32_t cubit_intel_poll_session_retirement(cubit_endpoint endpoint)
+{ assert(endpoint.opaque == TEST_ENDPOINT(61).opaque); polls++; return retirement; }
 VkResult _vk_device_set_lost(struct vk_device *device, const char *file,
                              int line, const char *message, ...)
 { (void)file; (void)line; (void)message;
@@ -33,7 +38,7 @@ int main(void)
    struct anv_queue queue = {.device = &device, .family = &physical.queue.families[0]};
    struct anv_queue foreign = {.device = &device, .family = &physical.queue.families[0]};
    assert(anv_cubit_setup_context(&device, &c, 1) == VK_ERROR_INITIALIZATION_FAILED);
-   assert(anv_cubit_memory_init(&device, 61) == VK_SUCCESS);
+   assert(anv_cubit_memory_init(&device, TEST_ENDPOINT(61)) == VK_SUCCESS);
    assert(anv_cubit_create_engine(&device, &queue, &q) == VK_ERROR_INITIALIZATION_FAILED);
    for (unsigned i = 0; i < 10; i++) {
       VkDeviceQueueCreateInfo saved = q;
@@ -69,16 +74,16 @@ int main(void)
    assert(!drains && !closes && !polls);
    assert(!anv_cubit_destroy_context(&device)); /* pending, retained */
    assert(!device.cubit_cpu_mappings && drains == 1 && closes == 1 && polls == 1);
-   assert(anv_cubit_memory_slot_retained(61));
+   assert(anv_cubit_memory_endpoint_retained(TEST_ENDPOINT(61)));
    assert(anv_cubit_destroy_context(&device)); /* no close replay */
    anv_cubit_close_device(&device);
    assert(drains == 1 && closes == 1 && polls == 1);
    retirement = 0;
    assert(anv_cubit_memory_poll() == 0);
-   assert(!anv_cubit_memory_slot_retained(61));
+   assert(!anv_cubit_memory_endpoint_retained(TEST_ENDPOINT(61)));
    /* Failed creation before context setup still closes the open transport. */
    static struct anv_device failed;
-   assert(anv_cubit_memory_init(&failed, 61) == VK_SUCCESS);
+   assert(anv_cubit_memory_init(&failed, TEST_ENDPOINT(61)) == VK_SUCCESS);
    anv_cubit_close_device(&failed);
    assert(!failed.cubit_cpu_mappings && drains == 2 && closes == 2 && polls == 3);
    anv_cubit_close_device(&failed);

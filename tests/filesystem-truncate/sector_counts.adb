@@ -1,3 +1,4 @@
+with CuBit.Handles.Fixture;
 with Ada.Text_IO;
 with Interfaces; use Interfaces;
 with Ext2; use Ext2;
@@ -62,7 +63,7 @@ procedure Sector_Counts is
       candidate.typeAndPermissions := 16#8000#;
       candidate.numHardLinks := 1;
       diskInode := candidate;
-      initBlockDevice (fs, 1, (slot => 1, generation => 1), Grant_Buffer'Address,
+      initBlockDevice (fs, CuBit.Handles.Fixture.Endpoint_Of (1), 1, (slot => 1, generation => 1), Grant_Buffer'Address,
                        Grant_Buffer'Length, admission);
       pragma Assert (admission = Admitted);
       Calls := 0;
@@ -548,7 +549,7 @@ begin
                   --  this volume's warm mappings. Reload each pointer level.
                   --  A never-used endpoint: the block cache outlives Setup.
                   Fresh_Endpoint := Fresh_Endpoint + 1;
-                  fs.device.endpointSlot := Fresh_Endpoint;
+                  fs.device.volumeKey := Fresh_Endpoint;
                   Before_Fresh := Calls;
                   readData (fs, candidate, Offset, Output'Address, 4,
                             Read_Count, Read_Result);

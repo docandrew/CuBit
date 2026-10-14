@@ -3,14 +3,37 @@ with CCL.Resource_Sections;
 with CuBit.Network_Authority;
 with CuBit.Launch_Authority;
 with CuBit.Program_Descriptions;
+with CuBit.Startup_Tables;
 
 package body CCL.Manifests.Encoding with SPARK_Mode => On is
    use Interfaces;
    use Model;
    use all type CCL.Resource_Sections.Match_Kind;
+   package ST renames CuBit.Startup_Tables;
+
+   --  The startup table holds every request plus the launcher's two self
+   --  entries, in a section of the usual size.
+   pragma Compile_Time_Error
+     (MAX_REQUESTS + 2 > ST.Maximum_Entries or else MAX_NAME_TEXT > ST.Maximum_Name_Bytes
+      or else ST.Maximum_Table_Bytes > MAX_SECTION_BYTES,
+      "a manifest's startup table must fit CuBit.Startup_Tables and a section");
+
+   --  The startup kind of each request kind.
+   function Startup_Kind (Kind : Request_Kind) return ST.Capability_Kind is
+     (case Kind is
+         when Framebuffer_Request   => ST.Framebuffer,
+         when Service_Request       => ST.Endpoint,
+         when Notification_Request  => ST.Notification,
+         when Network_Request       => ST.Network,
+         when Render_Request        => ST.Render,
+         when Device_Memory_Request => ST.Device_Memory,
+         when IO_Port_Request       => ST.IO_Ports,
+         when Interrupt_Request     => ST.Interrupt,
+         when DMA_Request           => ST.DMA,
+         when Scheduling_Request    => ST.Scheduling);
 
    procedure Encode
-     (Decl : in out Model.Declaration; Catalog : Model.Catalog_Model;
+     (Decl : in out Model.Declaration;
       Position : Natural; Result : in out Compilation_Result)
    is
       Requests : Request_Array renames Decl.Requests;
@@ -22,10 +45,6 @@ package body CCL.Manifests.Encoding with SPARK_Mode => On is
       Explicit_No_Requests : Boolean renames Decl.Explicit_No_Requests;
       Identity : Metadata_Text renames Decl.Identity;
       Version : Metadata_Text renames Decl.Version;
-      Fixed : Binding_Array renames Catalog.Fixed;
-      Fixed_Count : Natural renames Catalog.Fixed_Count;
-      First_Slot : Slot_Number renames Catalog.First_Slot;
-      Last_Slot : Slot_Number renames Catalog.Last_Slot;
       Cursor : constant Natural := Position;
       Failed : Boolean := False;
       Resource_Count, Capability_Count : Request_Count := 0;
@@ -39,34 +58,6 @@ package body CCL.Manifests.Encoding with SPARK_Mode => On is
          end if;
       end Fail;
 
-      procedure Allocate_Slots is
-         Used : array (Slot_Number) of Boolean := [others => False];
-         Reserved : array (Slot_Number) of Boolean := [others => False];
-         Found : Boolean;
-      begin
-         for Item of Fixed (1 .. Fixed_Count) loop Reserved (Item.Slot) := True; end loop;
-         for Index in 1 .. Count loop
-            Found := False;
-            for Item of Fixed (1 .. Fixed_Count) loop
-               if Item.Name = Requests (Index).Name then
-                  Requests (Index).Slot := Item.Slot;
-                  Found := True;
-               end if;
-            end loop;
-            if not Found then
-               for Slot in First_Slot .. Last_Slot loop
-                  if not Used (Slot) and then not Reserved (Slot) then
-                     Requests (Index).Slot := Slot;
-                     Found := True;
-                     exit;
-                  end if;
-               end loop;
-            end if;
-            if not Found then Fail (Slots_Exhausted, Cursor); return; end if;
-            if Used (Requests (Index).Slot) then Fail (Duplicate_Slot, Cursor); return; end if;
-            Used (Requests (Index).Slot) := True;
-         end loop;
-      end Allocate_Slots;
 
       procedure Append (Output : in out Section; N : Unsigned_64; Bytes : Positive) is
       begin
@@ -100,16 +91,6 @@ package body CCL.Manifests.Encoding with SPARK_Mode => On is
          Fail (Duplicate_Field, Cursor);
       end if;
       if Failed then return; end if;
-      Allocate_Slots;
-      if Failed then return; end if;
-      --  Resources never take the reserved saved-reply slot.
-      for Item of Requests (1 .. Count) loop
-         if Item.Kind in Resource_Request and then Item.Slot > Sections.Slot_Number'Last then
-            Fail (Invalid_Slot, Cursor);
-            return;
-         end if;
-      end loop;
-
       --  Canonical little-endian wire ABI; no host layout/padding dependence.
       Append (Result.Identity, 16#4449_4243#, 4);
       Append (Result.Identity, 1, 2);
@@ -124,7 +105,7 @@ package body CCL.Manifests.Encoding with SPARK_Mode => On is
          if Item.Kind not in Resource_Request then
          Append (Result.Capabilities, Unsigned_64 (Request_Kind'Enum_Rep (Item.Kind)), 1);
          Append (Result.Capabilities, Unsigned_64 (Rights_Kind'Enum_Rep (Item.Rights)), 1);
-         Append (Result.Capabilities, Unsigned_64 (Item.Slot), 2);
+         Append (Result.Capabilities, 0, 2);   --  reserved
          if Item.Kind = Network_Request then
             Append (Result.Capabilities, Unsigned_64 (Item.Network.Network), 4);
             Append (Result.Capabilities, CuBit.Network_Authority.Descriptor (Item.Network), 8);
@@ -137,7 +118,7 @@ package body CCL.Manifests.Encoding with SPARK_Mode => On is
       end if;
       --  .cubit.resources: "CBRS", version, entry count; a 16-byte match
       --  (kind, reserved, three 16-bit values, reserved); then 24-byte
-      --  entries (kind, rights, slot, index, amount, extra).
+      --  entries (kind, rights, reserved u16, index, amount, extra).
       if Resource_Count > 0 then
          Append (Result.Resources, Sections.MAGIC, 4);
          Append (Result.Resources, Sections.VERSION, 2);
@@ -152,7 +133,7 @@ package body CCL.Manifests.Encoding with SPARK_Mode => On is
             if Item.Kind in Resource_Request then
                Append (Result.Resources, Unsigned_64 (Request_Kind'Enum_Rep (Item.Kind)), 1);
                Append (Result.Resources, Unsigned_64 (Rights_Kind'Enum_Rep (Item.Rights)), 1);
-               Append (Result.Resources, Unsigned_64 (Item.Slot), 2);
+               Append (Result.Resources, 0, 2);   --  reserved
                Append (Result.Resources, Unsigned_64 (Item.Index), 4);
                Append (Result.Resources, Item.Amount, 8);
                Append (Result.Resources, Item.Extra, 8);
@@ -205,10 +186,70 @@ package body CCL.Manifests.Encoding with SPARK_Mode => On is
             Append (Result.Access_Scopes, 0, 8);
          end loop;
       end if;
+      --  An optional render session (either frontend's spelling) is an
+      --  optional startup capability.
+      for Item of Requests (1 .. Count) loop
+         if Item.Kind = Render_Request and then Item.Service = 1 then
+            Item.Requirement := ST.Optional;
+         end if;
+         --  A DMA region is memory devmgr allocates and maps, not a
+         --  capability: its startup entry is always Absent (launchers record
+         --  it so), so it is optional.
+         if Item.Kind = DMA_Request then
+            Item.Requirement := ST.Optional;
+         end if;
+      end loop;
+      --  .cubit.startup: the declared table (CuBit.Startup_Tables), every
+      --  entry Unassigned, in request order; emitted only when it decodes.
+      declare
+         Table : ST.Table := ST.Empty_Table;
+         Bytes : ST.Bytes (1 .. ST.Maximum_Table_Bytes);
+         Length : ST.Table_Length;
+         Check : ST.Table;
+         Outcome : ST.Decode_Result;
+         use type ST.Decode_Result;
+      begin
+         Table.Limit := Decl.Handles;
+         for Index in 1 .. Count loop
+            declare
+               Name : constant String := Requests (Index).Name.Data (1 .. Requests (Index).Name.Length);
+            begin
+               if Name = ST.Self_Text or else Name = ST.Self_Process_Text then
+                  Fail (Reserved_Binding_Name, Cursor);
+                  return;
+               end if;
+               if not ST.Valid_Name_Text (Name) then
+                  Fail (Invalid_Binding_Name, Cursor);
+                  return;
+               end if;
+               Table.Entries (Index) :=
+                 (Label => ST.To_Name (Name), Kind => Startup_Kind (Requests (Index).Kind),
+                  Requirement => Requests (Index).Requirement, State => ST.Unassigned,
+                  Handle => ST.No_Handle);
+               Table.Count := Index;
+            end;
+         end loop;
+         if not ST.Valid_Table (Table) then
+            Fail (Duplicate_Binding, Cursor);
+            return;
+         end if;
+         ST.Encode (Table, Bytes, Length);
+         ST.Decode (Bytes (1 .. Length), Check, Outcome);
+         if Outcome /= ST.Decoded then
+            Fail (Invalid_Binding_Name, Cursor);
+            return;
+         end if;
+         for I in 1 .. Length loop
+            Result.Startup.Data (I) := Bytes (I);
+         end loop;
+         Result.Startup.Length := Length;
+         Result.Handles := Decl.Handles;
+      end;
       Result.Binding_Count := Count;
       for Index in 1 .. Count loop
          Result.Bindings (Index) := (Name => Requests (Index).Name,
-                                     Slot => Requests (Index).Slot);
+                                     Kind => Startup_Kind (Requests (Index).Kind),
+                                     Requirement => Requests (Index).Requirement);
       end loop;
       Result.Success := True;
       --  .cubit.launch: "LNCH", version, count, then each name as a length

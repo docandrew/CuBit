@@ -13,7 +13,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 DIRS = ['userspace/lib/compositor', 'userspace/lib/display', 'userspace/runtime/gnat',
-        'userspace/lib/image', 'userspace/lib/theme', 'userspace/services/desktop', 'tests/compositor']
+        'userspace/lib/image', 'userspace/lib/theme', 'userspace/services/desktop', 'tests/compositor',
+        'shared/capabilities', 'tests/support/handles']
 SKIP = shutil.ignore_patterns('build*', 'obj', 'gnatprove', '*.o', '*.ali', 'proof*', '__pycache__')
 
 CHURN = ('desktop_source_churn.gpr', 'build/desktop-source-churn/desktop_source_churn_tests', [],

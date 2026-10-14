@@ -11,6 +11,9 @@ with Process.Futex;
 with Process.Owned_Memory;
 with Process.IPC;
 with Process.User_Memory;
+with Capabilities;
+with Process_Capabilities;
+with Spinlocks;
 with Process_Launch;
 with Syscall.IPC;
 with Syscall.Admin;
@@ -102,8 +105,6 @@ package body Syscall is
             when 127  => number := SYSCALL_SEND_CONTROL;
             when 118  => number := SYSCALL_YIELD;
             when 119  => number := SYSCALL_SLEEP_UNTIL_MONOTONIC_MICROSECOND;
-            when 120  => number := SYSCALL_POLICY_MINT_CAPABILITY_FOR_INCARNATION;
-            when 121  => number := SYSCALL_POLICY_DELEGATE_ENDPOINT;
             when 12   => number := SYSCALL_WRITE;
             when 17   => number := SYSCALL_RECEIVE;
             when 18   => number := SYSCALL_REPLY;
@@ -133,7 +134,13 @@ package body Syscall is
                 number := SYSCALL_BOOT_TIMELINE;
             when 134  => number := SYSCALL_READ_STATISTICS;
             when 135  => number := SYSCALL_PUBLISH;
-            when 136  => number := SYSCALL_RESTORE_REPLY_CAPABILITY;
+            when 137  => number := SYSCALL_CLOSE_HANDLE;
+            when 138  => number := SYSCALL_INSTALL_CAPABILITY;
+            when 139  => number := SYSCALL_REPLY_WITH_CAPABILITY;
+            when 140  => number := SYSCALL_CALL_OFFERING_CAPABILITY;
+            when 141  => number := SYSCALL_ACCEPT_OFFERED_CAPABILITY;
+            when 142  => number := SYSCALL_REPLY_SAVED_WITH_CAPABILITY;
+            when 143  => number := SYSCALL_DERIVE_CAPABILITY;
             when 42   => number := SYSCALL_SUBMIT_VIA_ENDPOINT_CAPABILITY;
             when 48   => number := SYSCALL_REPLY_WAIT;
             when 51   => number := SYSCALL_MOVE_REPLY_CAPABILITY;
@@ -142,7 +149,6 @@ package body Syscall is
             when 60   => number := SYSCALL_SPAWN;
             when 70   => number := SYSCALL_MAP_DEVICE;
             when 71   => number := SYSCALL_PROCLIST;
-            when 72   => number := SYSCALL_POLICY_MINT_CAPABILITY;
             when 73   => number := SYSCALL_RESUME;
             when 74   => number := SYSCALL_ALLOC_DMA;
             when 75   => number := SYSCALL_ENABLE_IRQ;
@@ -185,6 +191,22 @@ package body Syscall is
         end case;
     end decodeSyscall;
 
+
+    -- The CAP_SCHEDULING a handle names in pid's table (a snapshot taken
+    -- under its mailbox lock), or the null capability.
+    function schedulingAuthority (pid : Process.ProcessID; handle : Unsigned_64)
+                                  return Capabilities.Capability
+      with SPARK_Mode => Off
+    is
+        found : Process_Capabilities.Found;
+    begin
+        Spinlocks.enterCriticalSection (Process.mailtab(pid).lock);
+        found := Process_Capabilities.Find
+          (Process.proctab(pid).caps, handle, Capabilities.CAP_SCHEDULING,
+           Capabilities.NO_RIGHTS);
+        Spinlocks.exitCriticalSection (Process.mailtab(pid).lock);
+        return (if found.OK then found.Cap else Capabilities.NULL_CAPABILITY);
+    end schedulingAuthority;
 
     ---------------------------------------------------------------------------
     -- syscallHandler — thin dispatcher
@@ -273,11 +295,11 @@ package body Syscall is
 
             when SYSCALL_BOOT_TIMELINE =>
                 Admin.handleBootTimeline
-                  (Process.processOf (percpu.currentThread), arg0, arg1, arg2, arg3, retval);
+                  (Process.processOf (percpu.currentThread), arg0, arg1, arg2, arg3, arg4, retval);
 
             when SYSCALL_KILL =>
                 Admin.handleKill (
-                    Process.processOf (percpu.currentThread), arg0, retval);
+                    Process.processOf (percpu.currentThread), arg0, arg1, retval);
 
             when SYSCALL_GETPID =>
                 retval := Process_Identities.To_Word (Process.identityOf (Process.processOf (percpu.currentThread)));
@@ -412,7 +434,7 @@ package body Syscall is
 
             when SYSCALL_MAPFB =>
                 IPC.handleMapFB (
-                    Process.processOf (percpu.currentThread), retval);
+                    Process.processOf (percpu.currentThread), arg0, retval);
 
             when SYSCALL_RECEIVE =>
                 IPC.handleReceive (arg0, retval);
@@ -432,12 +454,12 @@ package body Syscall is
                     arg0, arg1, arg2, arg3, arg4, arg5, retval);
 
             when SYSCALL_RECEIVE_EVENT_NB =>
-                IPC.handleReceiveEventNB (arg0, retval);
+                IPC.handleReceiveEventNB (arg0, arg1, retval);
 
             when SYSCALL_SEND_EVENT =>
                 IPC.handleSendEvent (
                     Process.processOf (percpu.currentThread),
-                    arg0, arg1, arg2, arg3, arg4, arg5, retval);
+                    arg0, arg1, arg2, arg3, arg4, arg5, arg6, retval);
 
             when SYSCALL_POLL_ANY_IPC =>
                 IPC.handlePollAnyIpc (arg0, retval);
@@ -494,22 +516,46 @@ package body Syscall is
 
             when SYSCALL_REGISTER_DRIVER =>
                 Admin.handleRegisterDriver (
-                    Process.processOf (percpu.currentThread), arg0, retval);
+                    Process.processOf (percpu.currentThread), arg0, arg1, retval);
 
             when SYSCALL_INP8 | SYSCALL_OUTP8 |
                  SYSCALL_INP16 | SYSCALL_OUTP16 |
                  SYSCALL_INP32 | SYSCALL_OUTP32 =>
                 Admin.handlePortIO (
                     Process.processOf (percpu.currentThread), syscallNum,
-                    arg0, arg1, retval);
+                    arg0, arg1, arg2, retval);
 
             when SYSCALL_MOVE_REPLY_CAPABILITY =>
                 Admin.handleSaveReplyCap (
+                    Process.processOf (percpu.currentThread), retval);
+
+            when SYSCALL_CLOSE_HANDLE =>
+                Admin.handleCloseHandle (
                     Process.processOf (percpu.currentThread), arg0, retval);
 
-            when SYSCALL_RESTORE_REPLY_CAPABILITY =>
-                Admin.handleRestoreReplyCap (
+            when SYSCALL_INSTALL_CAPABILITY =>
+                Admin.handleInstallCap (
+                    Process.processOf (percpu.currentThread), arg0, arg1, retval);
+
+            when SYSCALL_DERIVE_CAPABILITY =>
+                Admin.handleDeriveCap (
                     Process.processOf (percpu.currentThread), arg0, retval);
+
+            when SYSCALL_REPLY_WITH_CAPABILITY =>
+                IPC.handleReplyWithCap (
+                    Process.processOf (percpu.currentThread), arg0, arg1, arg2, retval);
+
+            when SYSCALL_CALL_OFFERING_CAPABILITY =>
+                Admin.handleCapCallOffering (
+                    Process.processOf (percpu.currentThread), arg0, arg1, arg2, arg3, retval);
+
+            when SYSCALL_REPLY_SAVED_WITH_CAPABILITY =>
+                IPC.handleReplySavedWithCap (
+                    Process.processOf (percpu.currentThread), arg0, arg1, arg2, retval);
+
+            when SYSCALL_ACCEPT_OFFERED_CAPABILITY =>
+                retval := Process.IPC.acceptOffered
+                  (Process.processOfIdentity (Process_Identities.From_Word (arg0)));
 
             when SYSCALL_SEND_VIA_ENDPOINT_CAPABILITY =>
                 Admin.handleCapSend (
@@ -530,79 +576,63 @@ package body Syscall is
             when SYSCALL_SPAWN =>
                 IPC.handleSpawn (
                     Process.processOf (percpu.currentThread),
-                    arg0, arg1, arg2, arg3, arg4, retval);
+                    arg0, arg1, arg2, retval);
 
             when SYSCALL_MAP_DEVICE =>
                 IPC.handleMapDevice (
-                    Process.processOf (percpu.currentThread), arg0, arg1, arg2, arg3, retval);
+                    Process.processOf (percpu.currentThread), arg0, arg1, arg2, arg3, arg4, retval);
 
             when SYSCALL_PROCLIST =>
                 Admin.handleProclist (
-                    Process.processOf (percpu.currentThread), arg0, arg1, retval);
+                    Process.processOf (percpu.currentThread), arg0, arg1, arg2, retval);
 
             when SYSCALL_INSPECT_CAPABILITY =>
                 Admin.handleInspectCap (
-                    Process.processOf (percpu.currentThread), arg0, arg1, arg2, retval);
-
-            when SYSCALL_POLICY_MINT_CAPABILITY =>
-                Admin.handleMintCap (
-                    Process.processOf (percpu.currentThread),
-                    arg0, arg1, arg2, arg3, arg4, arg5, retval);
-
-            when SYSCALL_POLICY_MINT_CAPABILITY_FOR_INCARNATION =>
-                Admin.handleMintCap (
-                    Process.processOf (percpu.currentThread),
-                    arg0, arg1, arg2, arg3, arg4, arg5, retval,
-                    boundRecipient => True);
-
-            when SYSCALL_POLICY_DELEGATE_ENDPOINT =>
-                Admin.handleDelegateEndpoint
-                  (Process.processOf (percpu.currentThread),
-                   arg0, arg1, arg2, arg3, arg4, arg5, retval);
+                    Process.processOf (percpu.currentThread), arg0, arg1, retval);
 
             when SYSCALL_RESUME =>
                 Admin.handleResume (
-                    Process.processOf (percpu.currentThread), arg0, retval);
+                    Process.processOf (percpu.currentThread), arg0, arg1, arg2, arg3, retval);
 
             when SYSCALL_SEND_CONTROL =>
                 Admin.handleSendControl (
                     Process.processOf (percpu.currentThread),
-                    arg0, arg1, retval);
+                    arg0, arg1, arg2, retval);
 
             when SYSCALL_INSTALL_LAUNCH_ARGUMENTS =>
                 Admin.handleInstallLaunchArguments (
                     Process.processOf (percpu.currentThread),
-                    arg0, arg1, arg2, retval);
+                    arg0, arg1, arg2, arg3, retval);
 
             when SYSCALL_ALLOC_DMA =>
                 IPC.handleAllocDma (
-                    Process.processOf (percpu.currentThread), arg0, arg1, arg2, arg3, arg4, retval);
+                    Process.processOf (percpu.currentThread), arg0, arg1, arg2, arg3, arg4, arg5, retval);
 
             when SYSCALL_ENABLE_IRQ =>
                 Admin.handleEnableIrq (
-                    Process.processOf (percpu.currentThread), arg0, arg1, arg2, retval);
+                    Process.processOf (percpu.currentThread), arg0, arg1, arg2, arg3, arg4, retval);
 
             when SYSCALL_ALLOCATE_DEVICE_VECTORS =>
                 Admin.handleAllocateDeviceVectors (
                     Process.processOf (percpu.currentThread),
-                    arg0, arg1, arg2, arg3, retval);
+                    arg0, arg1, arg2, arg3, arg4, arg5, retval);
 
             when SYSCALL_RELEASE_DEVICE_VECTORS =>
                 Admin.handleReleaseDeviceVectors (
-                    Process.processOf (percpu.currentThread), arg0, retval);
+                    Process.processOf (percpu.currentThread), arg0, arg1, retval);
 
             when SYSCALL_READ_DEVICE_VECTOR =>
                 Admin.handleReadDeviceVector (
-                    Process.processOf (percpu.currentThread), arg0, arg1, retval);
+                    Process.processOf (percpu.currentThread), arg0, arg1, arg2, retval);
 
             when SYSCALL_MAP_INTO =>
                 IPC.handleMapInto (
                     Process.processOf (percpu.currentThread),
-                    arg0, arg1, arg2, arg3, arg4, retval);
+                    arg0, arg1, arg2, arg3, arg4, arg5, arg6, retval);
 
             when SYSCALL_SET_CPU =>
                 Admin.handleSetCpu (
-                    Process.processOf (percpu.currentThread), arg0, arg1, retval);
+                    Process.processOf (percpu.currentThread), arg0, arg1, arg2, retval);
 
             when SYSCALL_SET_LATENCY_CONTRACT =>
                 -- Process-local scheduler contract, validated at the syscall
@@ -628,8 +658,11 @@ package body Syscall is
                         granted : Boolean := True;
                     begin
                         if class = Process.LATENCY_REALTIME then
+                            -- arg4 names the CAP_SCHEDULING relied on.
                             Process.reserveRealtime
                               (Process.processOf (percpu.currentThread),
+                               authority => schedulingAuthority
+                                 (Process.processOf (percpu.currentThread), arg4),
                                budgetUs => Unsigned_32 (arg2),
                                periodUs => Unsigned_32 (arg1),
                                granted  => granted);

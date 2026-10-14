@@ -7,13 +7,14 @@
 --
 --  Implements controller reset, admin commands (Identify, Create I/O Queue),
 --  and I/O read via submission/completion queue pairs.  All register access
---  is through MMIO mapped at BAR_VIRT_BASE via SYSCALL_MAP_DEVICE.  Queue
+--  is through MMIO mapped at BAR_VIRT_BASE through its register handle.  Queue
 --  memory lives in the DMA region at DMA_VIRT_BASE, pre-mapped by kernel.
 ------------------------------------------------------------------------------
 with System.Storage_Elements; use System.Storage_Elements;
 with System.Machine_Code;
 
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Handles.Devices;
 with CuBit.Busy_Poll;
 #if nvme_io_profile = "on" then
 with CuBit.Benchmark_Clock;
@@ -220,15 +221,20 @@ package body NVMe is
    ---------------------------------------------------------------------------
    --  initController
    ---------------------------------------------------------------------------
-   procedure initController (barPhys : Unsigned_64; dmaPhys : Unsigned_64) is
+   procedure initController
+     (registers : CuBit.Handles.Device_Memory; barPhys : Unsigned_64; dmaPhys : Unsigned_64) is
       ignore : Unsigned_64;
+      mapped : Boolean;
       cap    : Unsigned_64;
       dstrd  : Unsigned_32;
       csts   : Unsigned_32;
    begin
       --  1. Map BAR0 MMIO into our address space
-      ignore := syscall (SYSCALL_MAP_DEVICE, barPhys,
-                          BAR_VIRT_BASE, BAR_MAP_PAGES);
+      mapped := CuBit.Handles.Devices.Map_Device
+        (registers, barPhys, BAR_VIRT_BASE, BAR_MAP_PAGES, Read_Only => False);
+      if not mapped then
+         debugPrint ("NVMe: register window map refused" & ASCII.LF);
+      end if;
 
       barBase := System.Storage_Elements.To_Address (BAR_VIRT_BASE);
       dmaBase := dmaPhys;

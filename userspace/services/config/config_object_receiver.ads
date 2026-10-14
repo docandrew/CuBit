@@ -13,7 +13,8 @@ with Config_Object_Messages;
 --  primitives, substituted by deterministic fault injection in hosted tests.
 --  Not a SPARK proof of shared memory, kernel identity or reply-cap lifetime.
 generic
-   Saved_Reply_Slot : CuBit.Messages.CapabilitySlot;
+   --  A reply set aside to answer later (natively CuBit.Handles.Reply).
+   type Reply_Handle is private;
    with procedure Acquire
      (Reference : CuBit.Memory_Grants.Grant_Reference;
       Expected_Owner : CuBit.Messages.Process_ID;
@@ -22,12 +23,18 @@ generic
       Mapped_Address : out System.Address; Success : out Boolean);
    with procedure Return_Acquisition
      (Reference : CuBit.Memory_Grants.Grant_Reference; Success : out Boolean);
-   with function Save_Reply (Slot : Interfaces.Unsigned_64) return Interfaces.Unsigned_64;
-   with function Send_Reply
-     (Slot : CuBit.Messages.CapabilitySlot; Message : CuBit.Messages.Message)
+   --  Set the current request's reply authority aside (Saved False: it
+   --  stays with the request and can still be answered now).
+   with procedure Save_Reply (Handle : out Reply_Handle; Saved : out Boolean);
+   --  Answer a saved request, or the request being handled (its Sender).
+   with function Send_Saved_Reply
+     (Handle : Reply_Handle; Message : CuBit.Messages.Message)
       return Interfaces.Unsigned_64;
-   -- Native replyCap returns 1 only after delivery, 0 on failure. Consumes the
-   -- one-use reply even on failure. Test substitutes must preserve this ABI.
+   with function Send_Current_Reply
+     (Sender : CuBit.Messages.Process_ID; Message : CuBit.Messages.Message)
+      return Interfaces.Unsigned_64;
+   -- Native replies return 1 only after delivery, 0 on failure. They consume
+   -- the one-use reply even on failure. Test substitutes must preserve this ABI.
 package Config_Object_Receiver is
    use all type Config_Object_Messages.Operation;
    type State is limited private;
@@ -54,9 +61,9 @@ package Config_Object_Receiver is
       Sender : CuBit.Messages.Process_ID; Request : CuBit.Messages.Message;
       Storage_Token : Interfaces.Unsigned_64; Staged : out Boolean);
    --  Called only with a request and sender returned by kernel RECEIVE, with
-   --  that request's CURRENT reply cap still installed on this same thread.
-   --  The saved slot must be initially empty, not slot 63, and exclusively
-   --  owned by this instance for its entire lifetime. Do not reset/copy State.
+   --  that request's CURRENT reply authority still with this same thread.
+   --  This instance holds at most one saved reply, its own, for its entire
+   --  lifetime. Do not reset/copy State.
    --  Staged asks the caller to submit Store.Pending exactly once. If enqueue
    --  fails, call Lost, not Handle again. No client mapping survives staging.
    procedure Finish
@@ -77,5 +84,9 @@ private
       Definition_Contract : CCL.Objects.Binding;
       Caller : Config_Authority.Subject_ID := Config_Authority.No_Subject;
       Grant_Revision : Interfaces.Unsigned_64 := 0;
+      --  The reply saved for a deferred Set or definition.
+      Saved_Reply : Reply_Handle;
+      --  The sender of the request being handled.
+      Current_Sender : CuBit.Messages.Process_ID := CuBit.Messages.No_Process;
    end record;
 end Config_Object_Receiver;

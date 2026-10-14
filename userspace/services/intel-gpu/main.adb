@@ -18,7 +18,6 @@ with Intel_GPU_VM_Image.Growth.Backing;
 with Intel_GPU_VM_Image.Growth.Backing.Writer;
 with Intel_GPU_Table_Provenance.IO;
 with Intel_GPU_Deferred_Retirement;
-with CuBit.Capability_Grants;
 with Intel_GPU_Probe_Export;
 with Native_GPU_Probe_Protocol;
 with Interfaces; use Interfaces;
@@ -156,8 +155,15 @@ with Intel_GPU_Waitboost;
 with Intel_GPU_Native_GT_Frequency;
 with Intel_GPU_Native_GuC_Invalidate;
 with CuBit.Device_Interrupts;
-with CCL_Manifest_Bindings;
+with Startup;
+with CuBit.Startup_State;
+with CuBit.Handles;
+with CuBit.Handles.Devices;
+with Intel_GPU_Replies;
+with Intel_GPU_Supervisor;
 procedure Main is
+   package Replies renames Intel_GPU_Replies;
+   package Supervisor renames Intel_GPU_Supervisor;
    package Parent_One is new Intel_GPU_Native_Parent (Intel_GPU_Display_Topology.PW1);
    package Parent_Two is new Intel_GPU_Native_Parent (Intel_GPU_Display_Topology.PW2);
    package DC_Snapshot is new Intel_GPU_Native_DC_State (Parent_One.Held);
@@ -347,7 +353,7 @@ procedure Main is
    Budget_Query : Intel_GPU_Budget_Query.Query;
    Budget_Logged : Boolean := False;
    Budget_Reply_Pending : Boolean := False;
-   Budget_Reply_Slot : constant CapabilitySlot := 61;
+   Budget_Reply : Replies.Owed;
    Runtime_Admitted, Runtime_Fault : Boolean := False;
    CPU_Coherence_Checked, GPU_Coherence_Checked : Boolean := False;
    Submission_Slot : constant Intel_GPU_Buffer_Backing.Slot := 1;
@@ -372,23 +378,18 @@ procedure Main is
    -- register as an application BO or release with an individual session.
    Retirement_Scratch : Intel_GPU_Buffer_Reply.Backing;
    Boot_Update_Candidate : Submission_Buffers.VM.Image;
+   -- The saved reply of the map request being handled (Handle_Application_Map
+   -- keeps it before sharing): memory is granted to the process it answers.
+   Map_Reply : Replies.Owed;
    procedure Application_Recipient
-     (From, Stamp : Unsigned_64; Slot : out CapabilitySlot;
+     (From, Stamp : Unsigned_64; Grantee : out CuBit.Handles.Reply;
       Identity : out Unsigned_64) is
-      Session : constant Unsigned_64 := Application_Session (From, Stamp);
-      Recorded_Slot : constant Unsigned_64 :=
-        Intel_GPU_Render_Control.Stored_Recipient_Slot (Render_Admission, Session);
    begin
-      Slot := 0;
-      Identity := 0;
-      if Recorded_Slot = 0 then return; end if;
-      -- Startup layout: one immutable recipient endpoint per session
-      -- in40..55, after hardware pages32..39. No capability is minted here.
-      -- The broker populates this range before activation and retains slots
-      -- through retirement. Activation checks the kernel recipient identity.
-      Slot := CapabilitySlot (Recorded_Slot);
-      Identity := Intel_GPU_Render_Control.Recipient_Identity
-        (Render_Admission, From, Stamp);
+      Grantee := Replies.Grantee (Map_Reply);
+      Identity := (if Replies.Held (Map_Reply) then
+                     Intel_GPU_Render_Control.Recipient_Identity
+                       (Render_Admission, From, Stamp)
+                   else 0);
    end Application_Recipient;
    package Application_Maps is new Application_Buffers.Sharing (Application_Recipient);
    Application_Map_State : Application_Maps.Mapping_Table;
@@ -416,26 +417,33 @@ procedure Main is
       Created : Application_Maps.Mapping_ID;
       Reply_Message : Message := NULL_MESSAGE;
       Delivery : Unsigned_64;
+      Kept : Boolean;
    begin
-      if Msg.tag.length = 4 and then Msg.tag.flags = 0 and then Msg.tag.reserved = 0 and then
+      if Msg.tag.length = 4 and then Msg.tag.protocol = 0 and then Msg.tag.reserved = 0 and then
         (Msg.words (0) and 16#FFFF_FFFF#) = Application_Buffers.Version and then
         Shift_Right (Msg.words (0), 32) = Application_Maps.Map_Presentation and then
         not Application_Work_Drained
           (Application_Session (To_Word (From), Msg.authorityTag))
       then
-         Reply_Message.tag := (Application_Maps.Map_Label, 4, 0, 0);
+         Reply_Message.tag := (label => Application_Maps.Map_Label, length => 4,
+                               protocol => 0, ipc => <>, reserved => 0);
          Reply_Message.words := [Application_Buffers.Denied, Application_Buffers.Version, 0, 0];
-         Delivery := reply (From, Reply_Message);
+         Delivery := Replies.Respond (From, Reply_Message);
          return;
       end if;
+      -- The grant goes to the process this request's saved reply answers;
+      -- without one (handle limit) nothing is shared and the map is refused.
+      Kept := Replies.Keep (Map_Reply);
       Application_Maps.Handle
         (Application_Buffer_State, Application_Map_State,
          To_Word (From), Msg.authorityTag, Msg.tag.label, Msg.tag.length,
-         Msg.tag.flags, Msg.tag.reserved,
+         CuBit.Messages.Flag_Byte (Msg.tag), Msg.tag.reserved,
          [Msg.words (0), Msg.words (1), Msg.words (2), Msg.words (3)], Response, Created);
-      Reply_Message.tag := (Application_Maps.Map_Label, 4, 0, 0);
+      Reply_Message.tag := (label => Application_Maps.Map_Label, length => 4,
+                            protocol => 0, ipc => <>, reserved => 0);
       Reply_Message.words := [Response (0), Response (1), Response (2), Response (3)];
-      Delivery := reply (From, Reply_Message);
+      Delivery := (if Kept then Replies.Answer (Map_Reply, Reply_Message)
+                   else Replies.Respond (From, Reply_Message));
       if Delivery /= 1 then
          Application_Maps.Reject_Delivery (Application_Buffer_State, Application_Map_State, Created);
       end if;
@@ -640,7 +648,7 @@ procedure Main is
    Last_Table_Retirement_Slot : Natural := 0;
    Private_Session, Private_Identity : Unsigned_64 := 0;
    -- Separate from budget61 and application62; reserved through completion.
-   Activation_Reply_Slot : constant CapabilitySlot := 60;
+   Activation_Reply : Replies.Owed;
    Activation_Reply_Pending : Boolean := False;
    Activation_Session, Activation_Identity : Unsigned_64 := 0;
    function Session_Healthy (Session : Unsigned_64) return Boolean;
@@ -756,29 +764,25 @@ procedure Main is
    function Try_Offline_Bind_Growth (From : Process_ID; Msg : Message) return Boolean;
    procedure Complete_Render_Activation is
       package Control renames Intel_GPU_Render_Control;
-      Recorded_Slot : constant Unsigned_64 :=
-        Control.Stored_Recipient_Slot (Render_Admission, Activation_Session);
       Response : Message := NULL_MESSAGE;
       Accepted : Boolean;
       Delivery : Unsigned_64;
    begin
       if not Activation_Reply_Pending or else Private_Pending /= 0 or else
         Table_Ledger_Busy then return; end if;
-      Accepted := Recorded_Slot /= 0 and then Control.Recipient_Identity (Render_Admission,
+      Accepted := Control.Recipient_Identity (Render_Admission,
           Activation_Identity, Activation_Session) = Activation_Identity
-        and then CuBit.Capability_Grants.Endpoint_Matches
-          (CapabilitySlot (Recorded_Slot),
-           From_Word (Activation_Identity))
         and then Session_Healthy (Activation_Session);
       if not Accepted then
          Control.Reject_Delivery (Render_Admission, Activation_Identity, Activation_Session);
          Retire_Application_Resources (Activation_Session);
       end if;
-      Response.tag := (Control.Label, 4, 0, 0);
+      Response.tag := (label => Control.Label, length => 4,
+                       protocol => 0, ipc => <>, reserved => 0);
       Response.words := [(if Accepted then Control.OK else Control.Unavailable),
                         Control.Version, Activation_Session, 0];
       Activation_Reply_Pending := False;
-      Delivery := replyCap (Activation_Reply_Slot, Response);
+      Delivery := Replies.Answer (Activation_Reply, Response);
       if Delivery /= 1 and then Accepted then
          Control.Reject_Delivery (Render_Admission, Activation_Identity, Activation_Session);
          Retire_Application_Resources (Activation_Session);
@@ -803,14 +807,15 @@ procedure Main is
                Application_Binding.Handle
                  (Application_Buffer_State, Private_Contexts (Index).Source, Session,
                   To_Word (From), Msg.authorityTag, Msg.tag.label, Msg.tag.length,
-                  Msg.tag.flags, Msg.tag.reserved,
+                  CuBit.Messages.Flag_Byte (Msg.tag), Msg.tag.reserved,
                   [Msg.words (0), Msg.words (1), Msg.words (2), Msg.words (3)], Response);
             end if;
          end;
       end if;
-      Reply_Message.tag := (Application_Binding.Bind_Label, 4, 0, 0);
+      Reply_Message.tag := (label => Application_Binding.Bind_Label, length => 4,
+                            protocol => 0, ipc => <>, reserved => 0);
       Reply_Message.words := [Response (0), Response (1), Response (2), Response (3)];
-      Delivery := reply (From, Reply_Message);
+      Delivery := Replies.Respond (From, Reply_Message);
       if Delivery /= 1 and then Response (0) = Application_Buffers.OK then
          -- A committed mapping with an undelivered reply cannot safely be
          -- treated as an allocation failure by Mesa followed by VA reuse.
@@ -821,9 +826,9 @@ procedure Main is
          Retire_Application_Resources (Session);
       end if;
    end Handle_Application_Bind;
-   -- Dedicated empty deferred-reply slot. saveReplyCap fails without replacing
-   -- an occupied slot; no incoming request may select this capability slot.
-   Application_Reply_Slot : constant CapabilitySlot := 62;
+   -- The one application request answered later (allocation completion);
+   -- keeping a second fails without replacing the first (Replies.Keep).
+   Application_Reply : Replies.Owed;
    procedure Submit_Budget_Query is
       Token : Unsigned_64;
       Outgoing : Message := NULL_MESSAGE;
@@ -832,9 +837,10 @@ procedure Main is
         (Budget_Query, syscall (SYSCALL_GETTIME),
          Publication_Owner_Ready and then not Runtime_Fault, Token);
       if Token /= 0 then
-         Outgoing.tag := (Intel_GPU_Buffer_Backing.Budget_Request_Label, 4, 0, 0);
+         Outgoing.tag := (label => Intel_GPU_Buffer_Backing.Budget_Request_Label, length => 4,
+                          protocol => 0, ipc => <>, reserved => 0);
          Outgoing.words := [Intel_GPU_Buffer_Backing.Budget_Version, 0, 0, 0];
-         if not capSubmit (15, Outgoing, Token) then
+         if not Supervisor.Submit (Outgoing, Token) then
             Intel_GPU_Budget_Query.Cancel (Budget_Query);
          end if;
       end if;
@@ -846,7 +852,7 @@ procedure Main is
       Delivered : Unsigned_64;
       pragma Unreferenced (Delivered);
    begin
-      if P.Valid_Request (Msg.tag.label, Msg.tag.length, Msg.tag.flags,
+      if P.Valid_Request (Msg.tag.label, Msg.tag.length, CuBit.Messages.Flag_Byte (Msg.tag),
                           Msg.tag.reserved, Intel_GPU_Buffer_Backing.Budget_Words (Msg.words)) then
          Code := P.Unavailable;
          if Budget_Reply_Pending or else Intel_GPU_Budget_Query.Pending (Budget_Query) then
@@ -854,16 +860,16 @@ procedure Main is
          elsif Publication_Owner_Ready and then not Runtime_Fault then
             -- Capture kernel reply authority, never defer by reusable PID.
             -- A failed save does not replace a previously occupied slot.
-            if saveReplyCap (Unsigned_64 (Budget_Reply_Slot)) = 1 then
+            if Replies.Keep (Budget_Reply) then
                Budget_Reply_Pending := True;
                Submit_Budget_Query;
                return;
             end if;
          end if;
       end if;
-      Response.tag := (P.Label, 4, 0, 0);
+      Response.tag := (label => P.Label, length => 4, protocol => 0, ipc => <>, reserved => 0);
       Response.words := [Code, 0, 0, 0];
-      Delivered := reply (From, Response);
+      Delivered := Replies.Respond (From, Response);
    end Handle_Budget_Query;
    procedure Finish_Application_Buffer (Backing : Intel_GPU_Buffer_Reply.Backing) is
       Ticket : constant Application_Buffers.Ticket := Application_Pending;
@@ -883,9 +889,10 @@ procedure Main is
          Publish_Snapshot ("intel-gpu: allocation backing stage=" &
            Buffer_Memory.Allocation_Stage'Image (Buffer_Memory.Last_Stage (Buffer_Pool)));
       end if;
-      Reply_Message.tag := (Application_Buffers.Label, 4, 0, 0);
+      Reply_Message.tag := (label => Application_Buffers.Label, length => 4,
+                            protocol => 0, ipc => <>, reserved => 0);
       Reply_Message.words := [Response (0), Response (1), Response (2), Response (3)];
-      Delivery := replyCap (Application_Reply_Slot, Reply_Message);
+      Delivery := Replies.Answer (Application_Reply, Reply_Message);
       if Delivery /= 1 then
          Application_Buffers.Reject_Delivery (Application_Buffer_State, Ticket);
       end if;
@@ -900,14 +907,15 @@ procedure Main is
    begin
       if Buffer_Retirement_Pending /= 0 then
          Publish_Snapshot ("intel-gpu: allocation unavailable reason=RETIREMENT_PENDING");
-         Reply_Message.tag := (Application_Buffers.Label, 4, 0, 0);
+         Reply_Message.tag := (label => Application_Buffers.Label, length => 4,
+                               protocol => 0, ipc => <>, reserved => 0);
          Reply_Message.words := [Application_Buffers.Unavailable, 1, 0, 0];
-         Ignored := reply (From, Reply_Message);
+         Ignored := Replies.Respond (From, Reply_Message);
          return;
       end if;
       Application_Buffers.Handle
         (Application_Buffer_State, To_Word (From), Msg.authorityTag,
-         Msg.tag.label, Msg.tag.length, Msg.tag.flags, Msg.tag.reserved,
+         Msg.tag.label, Msg.tag.length, CuBit.Messages.Flag_Byte (Msg.tag), Msg.tag.reserved,
          [Msg.words (0), Msg.words (1), Msg.words (2), Msg.words (3)], Response, Deferred);
       if Deferred = 0 and then Response (0) = Application_Buffers.Unavailable then
          Publish_Snapshot ("intel-gpu: allocation unavailable reason=" &
@@ -924,7 +932,7 @@ procedure Main is
               Msg.words (2))'Image);
       end if;
       if Deferred /= 0 then
-         if saveReplyCap (Unsigned_64 (Application_Reply_Slot)) = 1 then
+         if Replies.Keep (Application_Reply) then
             Application_Pending := Deferred;
             Buffer_Memory.Start
               (Buffer_Pool, Application_Buffers.Ticket_Slot (Deferred),
@@ -939,7 +947,8 @@ procedure Main is
          Publish_Snapshot
            ("intel-gpu: allocation unavailable reason=REPLY_CAP_UNAVAILABLE");
       end if;
-      Reply_Message.tag := (Application_Buffers.Label, 4, 0, 0);
+      Reply_Message.tag := (label => Application_Buffers.Label, length => 4,
+                            protocol => 0, ipc => <>, reserved => 0);
       Reply_Message.words := [Response (0), Response (1), Response (2), Response (3)];
       if Msg.words (1) = Application_Buffers.Close and then
         Response (0) = Application_Buffers.OK
@@ -964,7 +973,7 @@ procedure Main is
             end;
          end loop;
       end if;
-      Ignored := reply (From, Reply_Message);
+      Ignored := Replies.Respond (From, Reply_Message);
    end Handle_Application_Buffer;
    procedure Retire_Application_Context (Session : Unsigned_64);
    -- The session's GPU queue ends with it (its held wake is answered).
@@ -1033,16 +1042,17 @@ procedure Main is
       Delivery : Unsigned_64;
    begin
       Control.Close_Own (Render_Admission, To_Word (From), Msg.authorityTag,
-        Msg.tag.label, Msg.tag.length, Msg.tag.flags, Msg.tag.reserved,
+        Msg.tag.label, Msg.tag.length, CuBit.Messages.Flag_Byte (Msg.tag), Msg.tag.reserved,
         [Msg.words (0), Msg.words (1), Msg.words (2), Msg.words (3)], Response);
       if Response (0) = Control.OK then
          -- Admission is already closed. Resource retirement may be pending;
          -- this reply does not acknowledge hardware/grant drain completion.
          Retire_Application_Resources (Response (2));
       end if;
-      Reply_Message.tag := (Control.Close_Own_Label, 4, 0, 0);
+      Reply_Message.tag := (label => Control.Close_Own_Label, length => 4,
+                            protocol => 0, ipc => <>, reserved => 0);
       Reply_Message.words := [Response (0), Response (1), Response (2), Response (3)];
-      Delivery := reply (From, Reply_Message);
+      Delivery := Replies.Respond (From, Reply_Message);
    end Handle_Close_Own;
    procedure Handle_Render_Control (From : Process_ID; Msg : Message) is
       package Control renames Intel_GPU_Render_Control;
@@ -1050,42 +1060,27 @@ procedure Main is
       Reply_Message : Message := NULL_MESSAGE;
       Delivery : Unsigned_64;
       Started : Boolean;
-      Recipient : constant Unsigned_64 := Control.Activation_Identity
-        (Render_Admission, To_Word (From), Msg.authorityTag,
-         Msg.tag.label, Msg.tag.length, Msg.tag.flags, Msg.tag.reserved,
-         [Msg.words (0), Msg.words (1), Msg.words (2), Msg.words (3)]);
-      Recorded_Slot : constant Unsigned_64 :=
-        Control.Stored_Recipient_Slot (Render_Admission, Msg.words (2));
-      Recipient_Ready : Boolean := False;
       Backend_Ready : Boolean := False;
    begin
-      if Recipient /= 0 and then Recorded_Slot /= 0 then
-         -- Same immutable slots as Application_Recipient. Inspection does
-         -- not authorize replacement: bootstrap must pin through retirement.
-         Recipient_Ready := CuBit.Capability_Grants.Endpoint_Matches
-           (CapabilitySlot (Recorded_Slot),
-            From_Word (Recipient));
-      end if;
       -- Authenticate before probing backend registers. Abort requires no
       -- hardware readiness and remains possible after ownership loss.
       if Control.Is_Broker (Render_Admission, To_Word (From), Msg.authorityTag)
-        and then Msg.tag = (Control.Label, 4, 0, 0)
+        and then Msg.tag = (label => Control.Label, length => 4, protocol => 0, ipc => <>, reserved => 0)
         and then Msg.words (0) = Control.Version
         and then Msg.words (3) in Control.Reserve | Control.Activate
       then
          Backend_Ready := Render_Backend_Ready;
       end if;
       Control.Handle (Render_Admission, To_Word (From), Msg.authorityTag,
-        Backend_Ready, Msg.tag.label, Msg.tag.length, Msg.tag.flags, Msg.tag.reserved,
-        [Msg.words (0), Msg.words (1), Msg.words (2), Msg.words (3)], Response,
-        Recipient_Ready => Recipient_Ready);
+        Backend_Ready, Msg.tag.label, Msg.tag.length, CuBit.Messages.Flag_Byte (Msg.tag), Msg.tag.reserved,
+        [Msg.words (0), Msg.words (1), Msg.words (2), Msg.words (3)], Response);
       if Response (0) = Control.OK and then Msg.words (3) = Control.Abort_Session then
          -- Handle has closed admission before handles/grants are drained.
          Retire_Application_Resources (Response (2));
       end if;
       if Response (0) = Control.OK and then Msg.words (3) = Control.Activate then
          if not Activation_Reply_Pending and then Private_Pending = 0 and then
-           saveReplyCap (Unsigned_64 (Activation_Reply_Slot)) = 1
+           Replies.Keep (Activation_Reply)
          then
             Activation_Reply_Pending := True;
             Activation_Session := Response (2);
@@ -1104,9 +1099,10 @@ procedure Main is
          Retire_Application_Resources (Response (2));
          Response (0) := Control.Unavailable;
       end if;
-      Reply_Message.tag := (Control.Label, 4, 0, 0);
+      Reply_Message.tag := (label => Control.Label, length => 4,
+                            protocol => 0, ipc => <>, reserved => 0);
       Reply_Message.words := [Response (0), Response (1), Response (2), Response (3)];
-      Delivery := reply (From, Reply_Message);
+      Delivery := Replies.Respond (From, Reply_Message);
       if Delivery /= 1 and then Response (0) = Control.OK then
          Control.Reject_Delivery (Render_Admission, Msg.words (1), Response (2));
          Retire_Application_Resources (Response (2));
@@ -1333,38 +1329,24 @@ procedure Main is
    end GuC_Pause;
    package Native_GuC is new Intel_GPU_GuC_Upload
      (GuC_Read, GuC_Write, GuC_Byte, GuC_Now, GuC_Pause);
-   -- Optional supervisor-installed diagnostic recipient. Unlike render
-   -- admission, this endpoint can only obtain the completed boot pixels.
-   Probe_Recipient_Slot : constant CapabilitySlot := Native_GPU_Probe_Protocol.Driver_Recipient_Slot;
+   -- Optional boot diagnostic viewer devmgr launches. Only devmgr holds the
+   -- driver's untagged endpoint, so a request stamped Viewer_Tag came over
+   -- the badged endpoint devmgr gave the viewer: that stamp authenticates
+   -- it, and its first sender is pinned. Like render admission it can only
+   -- obtain the completed boot pixels, granted to the saved reply of its
+   -- own request (Probe_Reply).
    Probe_Stamp : constant Unsigned_64 := Native_GPU_Probe_Protocol.Viewer_Tag;
    Probe_Identity : Unsigned_64 := 0;
-   procedure Capture_Probe_Recipient is
-      Endpoint_Kind : constant Unsigned_64 := 1;
-      Read_Right : constant Unsigned_64 := 1;
-      Data : aliased array (0 .. 5) of Unsigned_64 := [others => 0];
-      Result : Unsigned_64;
-   begin
-      Result := syscall (SYSCALL_INSPECT_CAPABILITY, syscall (SYSCALL_GETPID),
-        Unsigned_64 (Probe_Recipient_Slot),
-        Unsigned_64 (System.Storage_Elements.To_Integer (Data'Address)));
-      if Result = 1 and then Data (0) = Endpoint_Kind and then
-        (Data (1) and Read_Right) /= 0 and then
-        Data (3) /= 0
-      then
-         --  Word 3: the endpoint's process identity (KERN-003).
-         Probe_Identity := Data (3);
-      end if;
-   end Capture_Probe_Recipient;
+   Probe_Reply : Replies.Owed;
    procedure Probe_Recipient
-     (From, Stamp : Unsigned_64; Slot : out CapabilitySlot;
+     (From, Stamp : Unsigned_64; Grantee : out CuBit.Handles.Reply;
       Identity : out Unsigned_64) is
    begin
-      Slot := Probe_Recipient_Slot;
+      Grantee := Replies.Grantee (Probe_Reply);
       Identity := 0;
-      if Probe_Identity /= 0 and then Stamp = Probe_Stamp and then
-        From = Probe_Identity and then
-        CuBit.Capability_Grants.Endpoint_Matches (Slot, From_Word (Probe_Identity))
-      then Identity := Probe_Identity; end if;
+      if Stamp /= Probe_Stamp or else From = 0 then return; end if;
+      if Probe_Identity = 0 then Probe_Identity := From; end if;
+      if From = Probe_Identity then Identity := Probe_Identity; end if;
    end Probe_Recipient;
    function Probe_Pixels return Intel_GPU_Buffer_Reply.Backing is
      (if Runtime_Fault then (Ready => False) else Completed_Probe_Pixels);
@@ -1374,13 +1356,16 @@ procedure Main is
       Response : Native_GPU_Probe_Protocol.Words;
       Reply_Message : Message := NULL_MESSAGE;
       Delivery : Unsigned_64;
+      Kept : constant Boolean := Replies.Keep (Probe_Reply);
    begin
       Probe_Export.Handle (Probe_State, To_Word (From), Msg.authorityTag,
-        Msg.tag.label, Msg.tag.length, Msg.tag.flags, Msg.tag.reserved,
+        Msg.tag.label, Msg.tag.length, CuBit.Messages.Flag_Byte (Msg.tag), Msg.tag.reserved,
         Native_GPU_Probe_Protocol.Words (Msg.words), Response);
-      Reply_Message.tag := (Native_GPU_Probe_Protocol.Label, 4, 0, 0);
+      Reply_Message.tag := (label => Native_GPU_Probe_Protocol.Label, length => 4,
+                            protocol => 0, ipc => <>, reserved => 0);
       Reply_Message.words := MessageWords (Response);
-      Delivery := reply (From, Reply_Message);
+      Delivery := (if Kept then Replies.Answer (Probe_Reply, Reply_Message)
+                   else Replies.Respond (From, Reply_Message));
       if Delivery /= 1 and then Response (0) = 0 then
          Probe_Export.Reject_Delivery (Probe_State);
       end if;
@@ -1763,8 +1748,8 @@ procedure Main is
       end if;
       if Label = 16#022E# and then not Reset_Pages_Mapped then return False; end if;
       if Started = Unsigned_64'Last then return False; end if;
-      Msg.tag := (Label, 0, 0, 0);
-      if not capSubmit (15, Msg, Token) then return False; end if;
+      Msg.tag := (label => Label, length => 0, protocol => 0, ipc => <>, reserved => 0);
+      if not Supervisor.Submit (Msg, Token) then return False; end if;
       for Poll in 1 .. 30_000 loop
          Now := syscall (SYSCALL_GETTIME);
          if Now = Unsigned_64'Last or else Now < Previous or else
@@ -1773,13 +1758,13 @@ procedure Main is
          Previous := Now;
          if Intel_GPU_Diagnostics.Poll_Driver (Receipt'Address) /= 0 and then Receipt.token = Token then
             if Receipt.status = COMPLETION_OK and then
-              Receipt.msg.tag = (16#F002#, 0, 0, 0) and then
+              Supervisor.Reply_Tag (Receipt) = (label => 16#F002#, length => 0, protocol => 0, ipc => <>, reserved => 0) and then
               Receipt.msg.words = [0, 0, 0, 0]
             then
-               if not capSubmit (15, Msg, Token) then return False; end if;
+               if not Supervisor.Submit (Msg, Token) then return False; end if;
             else
                return Receipt.status = COMPLETION_OK and then
-                 Receipt.msg.tag = (16#F000#, 0, 0, 0) and then
+                 Supervisor.Reply_Tag (Receipt) = (label => 16#F000#, length => 0, protocol => 0, ipc => <>, reserved => 0) and then
                  Receipt.msg.words = [0, 0, 0, 0];
             end if;
          end if;
@@ -1794,6 +1779,7 @@ procedure Main is
       Started : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
       Now : Unsigned_64;
       Granted : Boolean;
+      Region : CuBit.Handles.Device_Memory := CuBit.Handles.No_Device_Memory;
       Activity : Activity_Result;
       Clock : constant CuBit.Monotonic.Reading := CuBit.Monotonic.Read;
       pragma Unreferenced (Activity);
@@ -1806,23 +1792,25 @@ procedure Main is
             Token : constant Unsigned_64 := 16#4947_0010# + Unsigned_64 (Index);
             Offset : constant Unsigned_64 := Intel_GPU_Reset_Pages.Offset (Index);
          begin
-            Msg.tag := (16#022D#, 1, 0, 0);
+            Msg.tag := (label => 16#022D#, length => 1, protocol => 0, ipc => <>, reserved => 0);
             Msg.words := [Unsigned_64 (Index), 0, 0, 0];
-            if not capSubmit (15, Msg, Token) then return "submit-failed"; end if;
+            if not Supervisor.Submit_Accepting (Msg, Token) then return "submit-failed"; end if;
             Granted := False;
             loop
                Now := syscall (SYSCALL_GETTIME);
                if Now < Started or else Now - Started >= 30_000 then return "grant-timeout"; end if;
                if Intel_GPU_Diagnostics.Poll_Driver (Receipt'Address) /= 0 and then Receipt.token = Token then
                   if Receipt.status = COMPLETION_OK and then
-                    Receipt.msg.tag = (16#F002#, 0, 0, 0) and then
+                    Supervisor.Reply_Tag (Receipt) = (label => 16#F002#, length => 0, protocol => 0, ipc => <>, reserved => 0) and then
                     Receipt.msg.words = [0, 0, 0, 0]
                   then
-                     if not capSubmit (15, Msg, Token) then return "retry-failed"; end if;
+                     if not Supervisor.Submit_Accepting (Msg, Token) then return "retry-failed"; end if;
                   else
                      Granted := Receipt.status = COMPLETION_OK and then
-                       Receipt.msg.tag = (16#F000#, 0, 0, 0) and then
+                       Supervisor.Reply_Tag (Receipt) = (label => 16#F000#, length => 0, protocol => 0, ipc => <>, reserved => 0) and then
                        Receipt.msg.words = [0, 0, 0, 0];
+                     Region := Supervisor.Granted_Region (Receipt);
+                     Granted := Granted and then CuBit.Handles.Valid (Region);
                      exit;
                   end if;
                end if;
@@ -1831,8 +1819,9 @@ procedure Main is
             end loop;
             if not Granted then return "grant-denied"; end if;
             if Offset > Unsigned_64'Last - Plan.Physical_Base then return "address-overflow"; end if;
-            if syscall (SYSCALL_MAP_DEVICE, Plan.Physical_Base + Offset,
-                        Reset_Write_Base + Unsigned_64 (Index) * 4096, 1, 0) /= 0
+            if not CuBit.Handles.Devices.Map_Device
+                 (Region, Plan.Physical_Base + Offset,
+                  Reset_Write_Base + Unsigned_64 (Index) * 4096, 1, Read_Only => False)
             then return Intel_GPU_Map_Report.Denied (Plan.Physical_Base + Offset, 4096); end if;
          end;
       end loop;
@@ -1919,7 +1908,7 @@ procedure Main is
          Code := Application_Buffers.Unavailable;
       elsif Stored /= 0 then
          Code := Application_Buffers.Bad_Request;
-         if Msg.tag.length = 4 and then Msg.tag.flags = 0 and then Msg.tag.reserved = 0 and then
+         if Msg.tag.length = 4 and then Msg.tag.protocol = 0 and then Msg.tag.reserved = 0 and then
            Msg.words (0) = 1 and then Msg.words (1) = 0 and then
            Msg.words (2) = 0 and then Msg.words (3) = 0
          then
@@ -1976,9 +1965,10 @@ procedure Main is
             Preparing_Index := 0; Preparing_Identity := 0; Preparing_Session := 0;
          end if;
       end if;
-      Response.tag := (Prepare_Context_Label, 4, 0, 0);
+      Response.tag := (label => Prepare_Context_Label, length => 4,
+                       protocol => 0, ipc => <>, reserved => 0);
       Response.words := [Code, 1, 0, 0];
-      Delivered := reply (From, Response);
+      Delivered := Replies.Respond (From, Response);
       if Delivered /= 1 and then Prepared then
          Intel_GPU_Render_Control.Reject_Delivery (Render_Admission, Identity, Session);
          Retire_Application_Resources (Session);
@@ -2005,7 +1995,7 @@ procedure Main is
          Code := Application_Buffers.Unavailable;
       elsif Stored /= 0 then
          Code := Application_Buffers.Bad_Request;
-         if Msg.tag.length = 4 and then Msg.tag.flags = 0 and then Msg.tag.reserved = 0 and then
+         if Msg.tag.length = 4 and then Msg.tag.protocol = 0 and then Msg.tag.reserved = 0 and then
            Msg.words (0) = 1 and then Msg.words (1) = 0 and then
            Msg.words (2) = 0 and then Msg.words (3) = 0
          then
@@ -2105,9 +2095,10 @@ procedure Main is
             end if;
          end if;
       end if;
-      Response.tag := (Register_Context_Label, 4, 0, 0);
+      Response.tag := (label => Register_Context_Label, length => 4,
+                       protocol => 0, ipc => <>, reserved => 0);
       Response.words := [Code, 1, 0, 0];
-      Delivered := reply (From, Response);
+      Delivered := Replies.Respond (From, Response);
       if Delivered /= 1 and then Code = Application_Buffers.OK then
          Intel_GPU_Render_Control.Reject_Delivery (Render_Admission, Identity, Session);
          Retire_Application_Resources (Session);
@@ -2363,8 +2354,8 @@ procedure Main is
    -- the other deferred replies). One held wake (OP_GPU_WAKE) driver-wide: the 64-slot capability table
    -- has no room for one per session (Intel_GPU_Queue_Service answers
    -- Not_Held then).
-   Submission_Reply_Slot : constant CapabilitySlot := 59;
-   Wake_Reply_Slot : constant CapabilitySlot := 58;
+   Submission_Reply : Replies.Owed;
+   Wake_Reply : Replies.Owed;
    -- The client a session's requests and queue come from (its recipient
    -- identity is checked on every selection by Submission_Owner).
    Session_Sender, Session_Stamp : array (Session_Slot) of Unsigned_64 := [others => 0];
@@ -2491,7 +2482,7 @@ procedure Main is
       Pending_Quarantine (S) := True;
       Pending_Why (S) := Why;
    end Quarantine_Session;
-   -- [Code, 1, value, 0] through the saved reply slot, consuming it.
+   -- [Code, 1, value, 0] through the saved reply, consuming it.
    -- Completed work cannot be replayed safely after a lost reply.
    procedure Call_Finished (S : Session_Slot; V : Unsigned_64; OK : Boolean) is
       Response : Message := NULL_MESSAGE;
@@ -2504,11 +2495,11 @@ procedure Main is
          return;
       end if;
       Call_Outstanding := False;
-      Response.tag := (Submit_Label, 4, 0, 0);
+      Response.tag := (label => Submit_Label, length => 4, protocol => 0, ipc => <>, reserved => 0);
       Response.words :=
         [(if OK then Application_Buffers.OK else Application_Buffers.Unavailable), 1,
          (if OK then V else 0), 0];
-      Delivered := replyCap (Submission_Reply_Slot, Response);
+      Delivered := Replies.Answer (Submission_Reply, Response);
       if Delivered /= 1 and then OK then
          Quarantine_Session (S, GQ.Session_Ended);
       end if;
@@ -2518,10 +2509,11 @@ procedure Main is
       Delivered : Unsigned_64;
       pragma Unreferenced (S, Delivered);
    begin
-      Response.tag := (GQ.OP_GPU_WAKE, 1, 0, 0);
+      Response.tag := (label => GQ.OP_GPU_WAKE, length => 1,
+                       protocol => 0, ipc => <>, reserved => 0);
       Response.words (GQ.Wake_Result_Word) := GQ.Wake_Result'Enum_Rep (Result);
       -- A lost wake answer loses nothing: the client's deadline still holds.
-      Delivered := replyCap (Wake_Reply_Slot, Response);
+      Delivered := Replies.Answer (Wake_Reply, Response);
    end Answer_Wake;
    function Client_Region (S : Session_Slot) return System.Address is
      (System.Storage_Elements.To_Address
@@ -2706,7 +2698,7 @@ procedure Main is
    -- is saved before any publication, so a published job is always
    -- answerable; Call_Finished sends the reply. While GPU work is in flight
    -- and the call finds no room (May_Defer), the request is deferred, not
-   -- refused: its reply capability stays in the kernel's reply slot.
+   -- refused: its reply stays the current one until it is set aside.
    procedure Handle_Application_Submission
      (From : Process_ID; Msg : Message; May_Defer : Boolean; Deferred : out Boolean)
    is
@@ -2727,7 +2719,7 @@ procedure Main is
       then
          Code := Application_Buffers.Bad_Request;
          -- [version | (byte offset << 32), BO handle, raw48 GPU address, bytes]
-         if Msg.tag.length = 4 and then Msg.tag.flags = 0 and then Msg.tag.reserved = 0 and then
+         if Msg.tag.length = 4 and then Msg.tag.protocol = 0 and then Msg.tag.reserved = 0 and then
            (Msg.words (0) and 16#FFFF_FFFF#) = 1
          then
             Code := Application_Buffers.Unavailable;
@@ -2748,7 +2740,7 @@ procedure Main is
                -- Capture reply authority before any GPU publication.
                -- A failed save does not replace an occupied slot.
                Saved := not Call_Outstanding and then
-                 saveReplyCap (Unsigned_64 (Submission_Reply_Slot)) = 1;
+                 Replies.Keep (Submission_Reply);
                if Saved then
                   Submitted_Jobs := Submitted_Jobs + 1;
                   Call_Outstanding := True;
@@ -2768,11 +2760,11 @@ procedure Main is
             end if;
          end if;
       end if;
-      Response.tag := (Submit_Label, 4, 0, 0);
+      Response.tag := (label => Submit_Label, length => 4, protocol => 0, ipc => <>, reserved => 0);
       Response.words := [Code, 1, 0, 0];
       -- Never OK here: no work was published.
-      Delivered := (if Saved then replyCap (Submission_Reply_Slot, Response)
-                    else reply (From, Response));
+      Delivered := (if Saved then Replies.Answer (Submission_Reply, Response)
+                    else Replies.Respond (From, Response));
    end Handle_Application_Submission;
 
    -- Channel protocol on the driver endpoint: a session's client opens its
@@ -2796,20 +2788,20 @@ procedure Main is
       if not Valid or else Connector /= GQ.Queue_Connector or else
         Offered /= GQ.QUEUE_CONTRACT or else Opener_Side /= CuBit.Channels.Producing
       then
-         Delivered := reply (From, CuBit.Channels.Refusal_Reply
+         Delivered := Replies.Respond (From, CuBit.Channels.Refusal_Reply
            (if Valid then CuBit.Channel_Protocol.Unknown_Type else CuBit.Channel_Protocol.Unsupported));
          return;
       end if;
       if Stored = 0 or else not Application_Setup_Complete (Stored) or else
         Queue_Links (Stored).Active or else Runtime_Fault
       then
-         Delivered := reply (From, CuBit.Channels.Refusal_Reply (CuBit.Channel_Protocol.No_Room));
+         Delivered := Replies.Respond (From, CuBit.Channels.Refusal_Reply (CuBit.Channel_Protocol.No_Room));
          return;
       end if;
       Session_Sender (Stored) := To_Word (From);
       Session_Stamp (Stored) := Msg.authorityTag;
       if not Select_Session (Stored) then
-         Delivered := reply (From, CuBit.Channels.Refusal_Reply (CuBit.Channel_Protocol.No_Room));
+         Delivered := Replies.Respond (From, CuBit.Channels.Refusal_Reply (CuBit.Channel_Protocol.No_Room));
          return;
       end if;
       Ensure_Context (Stored);
@@ -2821,7 +2813,7 @@ procedure Main is
             Answer := CuBit.Channels.Refusal_Reply (CuBit.Channel_Protocol.No_Room);
          end if;
       end if;
-      Delivered := reply (From, Answer);
+      Delivered := Replies.Respond (From, Answer);
    end Handle_Channel_Open;
    procedure Handle_Channel_Close (From : Process_ID; Msg : Message) is
       Number : constant Unsigned_64 := CuBit.Channels.Number_Of (Msg);
@@ -2855,63 +2847,46 @@ procedure Main is
             Answer_Wake (Stored, GQ.Woken);
          end if;
          if not Answer_Now then
-            if saveReplyCap (Unsigned_64 (Wake_Reply_Slot)) = 1 then
+            if Replies.Keep (Wake_Reply) then
                return;
             end if;
             Queue_Service.Wake_Hold_Failed (Queue_State, Stored);
             Result := GQ.Not_Held;
          end if;
       end if;
-      Response.tag := (GQ.OP_GPU_WAKE, 1, 0, 0);
+      Response.tag := (label => GQ.OP_GPU_WAKE, length => 1,
+                       protocol => 0, ipc => <>, reserved => 0);
       Response.words (GQ.Wake_Result_Word) := GQ.Wake_Result'Enum_Rep (Result);
-      Delivered := reply (From, Response);
+      Delivered := Replies.Respond (From, Response);
    end Handle_GPU_Wake;
    -- A request that cannot be dispatched now (GPU work in flight, or the
    -- request gate closed by VM, metadata or retirement work) is set aside
    -- and dispatched once that clears (NUC freeze 2026-10-12).
    --
-   -- Set aside with a saved reply capability (Deferral_Queue): its reply
-   -- capability moves to its own slot (saveReplyCap), so the loop keeps
+   -- Set aside with its saved reply (Deferral_Queue): the kernel moves the
+   -- reply into the driver's handle table (Replies.Keep), so the loop keeps
    -- receiving and display.svc's requests (flips, cursor) are always
-   -- served. When it is dispatched the capability is restored as the
-   -- current one (restoreReplyCap), so every handler sees it exactly as if
-   -- just received. Before this, one deferred request kept the kernel's
-   -- single reply slot, nothing more was received, and a gate that stayed
-   -- closed froze display.svc and the pointer with it.
+   -- served. When it is dispatched its saved reply becomes the owed one
+   -- (Replies.Dispatch) and every handler answers it with Replies.Respond,
+   -- exactly as if just received (CAP-002: no reply slots, no restore).
    --
-   -- Held (Deferred_Found): only when no deferral slot is free; then its
-   -- reply capability stays the current one and nothing more is received
-   -- until it is dispatched (the old behaviour, now the overflow case).
+   -- Held (Deferred_Found): only when the queue is full or the kernel
+   -- refuses to save (handle limit); then its reply stays the current one
+   -- and nothing more is received until it is dispatched.
    Deferred_Found : Boolean := False;
    Deferred_Sender : Process_ID := No_Process;
    Deferred_Request : Message := NULL_MESSAGE;
-   -- Candidate slots, outside every slot the driver's policy fills
-   -- (manifest 4..6, pipe 9..12, frequency 13, devmgr 15, reset 16..22 and
-   -- 32..39, log 23 and 27, display/GGTT/PHY 24..31, recipients and replies
-   -- 40..62); each is used only if it is empty when the request loop
-   -- starts (Find_Deferral_Slots).
-   -- The first empty one carries display.svc's owed Present reply
-   -- (Display_Executor.Set_Present_Reply_Slot); the rest defer requests.
-   -- Policy-filled slots are never candidates: 0 self endpoint, 3 self
-   -- process (kernel), 4..6 manifest (6 also devmgr's firmware endpoint),
-   -- 8 GPU service registration (devmgr), 9..12 pipe pages, 13 GT
-   -- frequency page, 15 devmgr, 16..39 reset/display/GGTT/PHY pages and
-   -- logging, 40..63 recipients and saved replies. 1 and 2 are left empty
-   -- by the kernel (no filesystem or keyboard authority here); 7 was found
-   -- occupied on the NUC (2026-10-12), so it is tried last. Each is used
-   -- only if the loop-start scan finds it empty (Find_Deferral_Slots).
-   type Deferral_Index is range 1 .. 4;
-   Deferral_Candidates : constant array (Deferral_Index) of CapabilitySlot := [14, 2, 1, 7];
-   type Deferral_Entry is record
-      Usable, Busy : Boolean := False;
-      Slot : CapabilitySlot := 0;
+   type Deferral_Index is range 1 .. 16;
+   type Deferral_Entry is limited record
+      Busy : Boolean := False;
+      Owed : Replies.Owed;
       Sender : Process_ID := No_Process;
       Request : Message := NULL_MESSAGE;
       Order : Unsigned_64 := 0;
    end record;
    Deferral_Queue : array (Deferral_Index) of Deferral_Entry;
    Deferral_Order : Unsigned_64 := 0;
-   Deferrals_Saved, Deferrals_Held, Deferral_Restore_Failures : Unsigned_64 := 0;
+   Deferrals_Saved, Deferrals_Held : Unsigned_64 := 0;
    function Deferred_Saved return Natural is
       Count : Natural := 0;
    begin
@@ -2921,83 +2896,19 @@ procedure Main is
       return Count;
    end Deferred_Saved;
    function Deferred_Pending return Boolean is (Deferred_Found or else Deferred_Saved > 0);
-   procedure Find_Deferral_Slots is
-      Raw : aliased array (1 .. 6) of Unsigned_64 := [others => 0];
-      Self : constant Unsigned_64 := syscall (SYSCALL_GETPID);
-      Found : Natural := 0;
-      Present_Slot_Chosen : Boolean := False;
-      Occupied, Unreadable : Unsigned_64 := 0;
-      Chosen : String (1 .. 32) := [others => ' '];
-      Chosen_Last : Natural := 0;
-      function Hex64 (V : Unsigned_64) return String is
-        (Hex (Unsigned_32 (Shift_Right (V, 32))) & Hex (Unsigned_32 (V and 16#FFFF_FFFF#)));
-   begin
-      --  The whole table at loop start, logged: a photo or Logs then shows
-      --  which slots policy filled, and so whether a choice below collides.
-      for S in Unsigned_64 range 0 .. 63 loop
-         Raw := [others => 0];
-         if syscall (SYSCALL_INSPECT_CAPABILITY, Self, S,
-                     Unsigned_64 (System.Storage_Elements.To_Integer (Raw'Address))) /= 1
-         then
-            Unreadable := Unreadable or Shift_Left (Unsigned_64'(1), Natural (S));
-         elsif Raw (1) /= 0 then
-            Occupied := Occupied or Shift_Left (Unsigned_64'(1), Natural (S));
-         end if;
-      end loop;
-      Publish_Snapshot ("intel-gpu: capability slots occupied=0x" & Hex64 (Occupied) &
-        " unreadable=0x" & Hex64 (Unreadable),
-        (if Unreadable /= 0 then CuBit.Log_Records.Warning else CuBit.Log_Records.Information));
-      for I in Deferral_Index loop
-         Raw := [others => 0];
-         if syscall (SYSCALL_INSPECT_CAPABILITY, Self, Unsigned_64 (Deferral_Candidates (I)),
-                     Unsigned_64 (System.Storage_Elements.To_Integer (Raw'Address))) = 1
-           and then Raw (1) = 0
-         then
-            if not Present_Slot_Chosen then
-               --  The first empty candidate holds the owed Present's reply
-               --  (display.svc's flips): it must never be borrowed.
-               Present_Slot_Chosen := True;
-               Display_Executor.Set_Present_Reply_Slot (Deferral_Candidates (I));
-               Publish_Snapshot ("intel-gpu: present reply slot=" &
-                 Unsigned_64'Image (Unsigned_64 (Deferral_Candidates (I))));
-            else
-               Deferral_Queue (I).Usable := True;
-               Deferral_Queue (I).Slot := Deferral_Candidates (I);
-               Found := Found + 1;
-               declare
-                  Img : constant String := Unsigned_64'Image (Unsigned_64 (Deferral_Candidates (I)));
-               begin
-                  if Chosen_Last + Img'Length <= Chosen'Last then
-                     Chosen (Chosen_Last + 1 .. Chosen_Last + Img'Length) := Img;
-                     Chosen_Last := Chosen_Last + Img'Length;
-                  end if;
-               end;
-            end if;
-         end if;
-      end loop;
-      if not Present_Slot_Chosen then
-         Publish_Snapshot ("intel-gpu: no empty slot for the present reply; " &
-           "presents are answered before their flip latches", CuBit.Log_Records.Error);
-      end if;
-      Publish_Snapshot ("intel-gpu: request deferral slots=" & Natural'Image (Found) &
-        " of" & Natural'Image (Deferral_Candidates'Length - 1) & " [" & Chosen (1 .. Chosen_Last) & " ]" &
-        (if Found = 0 then " (none empty: a deferred request stops receiving)" else ""),
-        (if Found = 0 then CuBit.Log_Records.Error else CuBit.Log_Records.Information));
-   end Find_Deferral_Slots;
-   -- Set Request aside. Its reply capability is the current one.
+   -- Set Request aside. Its reply is the one owed now.
    procedure Set_Aside (Sender : Process_ID; Request : Message) is
    begin
       for E of Deferral_Queue loop
-         if E.Usable and then not E.Busy then
-            if saveReplyCap (Unsigned_64 (E.Slot)) = 1 then
+         if not E.Busy then
+            if Replies.Keep (E.Owed) then
                Deferral_Order := Deferral_Order + 1;
                E.Busy := True; E.Sender := Sender; E.Request := Request;
                E.Order := Deferral_Order;
                if Deferrals_Saved < Unsigned_64'Last then Deferrals_Saved := Deferrals_Saved + 1; end if;
                return;
             end if;
-            -- Not empty after all (something was granted there): never again.
-            E.Usable := False;
+            exit;
          end if;
       end loop;
       Deferred_Found := True;
@@ -3005,18 +2916,15 @@ procedure Main is
       Deferred_Request := Request;
       if Deferrals_Held < Unsigned_64'Last then Deferrals_Held := Deferrals_Held + 1; end if;
    end Set_Aside;
-   -- The next request set aside, made current again for dispatch. Found =
-   -- False when none, or its reply capability could not be restored (it is
-   -- then answered with a failure and logged; it is never dropped silently).
+   -- The next request set aside, with its reply owed again for dispatch.
+   -- Found = False when none.
    procedure Take_Deferred (Sender : out Process_ID; Request : out Message; Found : out Boolean) is
       Oldest : Deferral_Index := Deferral_Index'First;
       Any : Boolean := False;
-      Unused : Unsigned_64;
    begin
       Sender := No_Process; Request := NULL_MESSAGE; Found := False;
       if Deferred_Found then
-         -- Held in the current reply slot: it must go first (a restore
-         -- needs that slot empty).
+         -- Held as the current reply: it goes first.
          Sender := Deferred_Sender; Request := Deferred_Request;
          Deferred_Found := False; Found := True;
          return;
@@ -3033,16 +2941,8 @@ procedure Main is
          E : Deferral_Entry renames Deferral_Queue (Oldest);
       begin
          E.Busy := False;
-         if restoreReplyCap (Unsigned_64 (E.Slot)) = 1 then
-            Sender := E.Sender; Request := E.Request; Found := True;
-         else
-            if Deferral_Restore_Failures < Unsigned_64'Last then
-               Deferral_Restore_Failures := Deferral_Restore_Failures + 1;
-            end if;
-            Unused := replyCap (E.Slot, NULL_MESSAGE);
-            Publish_Snapshot ("intel-gpu: deferred request label=" & Hex (E.Request.tag.label) &
-              " could not be restored; answered as failed", CuBit.Log_Records.Error);
-         end if;
+         Replies.Dispatch (E.Owed);
+         Sender := E.Sender; Request := E.Request; Found := True;
       end;
    end Take_Deferred;
    -- Requests safe to dispatch while GPU work is in flight: they publish
@@ -3518,7 +3418,7 @@ procedure Main is
         (Application_Buffer_State, Private_Contexts (Update_Index).Source,
          Update_Session, Offline_Epoch, Update_Sender, Update_Stamp,
          Update_Request.tag.label, Update_Request.tag.length,
-         Update_Request.tag.flags, Update_Request.tag.reserved,
+         CuBit.Messages.Flag_Byte (Update_Request.tag), Update_Request.tag.reserved,
          [Update_Request.words (0), Update_Request.words (1),
           Update_Request.words (2), Update_Request.words (3)], Status);
       return Status = Application_Binding.Eligible;
@@ -3632,7 +3532,7 @@ procedure Main is
                         Application_Binding.Handle (Application_Buffer_State,
                           Private_Contexts (Update_Index).Source, Update_Session,
                           Update_Sender, Update_Stamp, Update_Request.tag.label,
-                          Update_Request.tag.length, Update_Request.tag.flags, Update_Request.tag.reserved,
+                          Update_Request.tag.length, CuBit.Messages.Flag_Byte (Update_Request.tag), Update_Request.tag.reserved,
                           [Update_Request.words (0), Update_Request.words (1),
                            Update_Request.words (2), Update_Request.words (3)], Words);
                         end if;
@@ -3648,9 +3548,10 @@ procedure Main is
          Publish_Snapshot ("intel-gpu: offline backing growth failed; backing retained");
          Reject_Offline_Bind;
       end if;
-      Response.tag := (Application_Binding.Bind_Label, 4, 0, 0);
+      Response.tag := (label => Application_Binding.Bind_Label, length => 4,
+                       protocol => 0, ipc => <>, reserved => 0);
       Response.words := [Words (0), Words (1), Words (2), Words (3)];
-      Delivered := replyCap (Application_Reply_Slot, Response);
+      Delivered := Replies.Answer (Application_Reply, Response);
       if Delivered /= 1 then Reject_Offline_Bind; end if;
       Offline_Bind_State := No_Offline_Bind;
       Update_Pending := 0; Update_Table_Pages := 0; Update_Index := 0;
@@ -3672,7 +3573,7 @@ procedure Main is
       Application_Binding.Check_Offline_Bind_Request
         (Application_Buffer_State, Private_Contexts (Stored).Source, Session,
          Application_VM.Revision (Private_Contexts (Stored).Source), To_Word (From), Msg.authorityTag,
-         Msg.tag.label, Msg.tag.length, Msg.tag.flags, Msg.tag.reserved,
+         Msg.tag.label, Msg.tag.length, CuBit.Messages.Flag_Byte (Msg.tag), Msg.tag.reserved,
          [Msg.words (0), Msg.words (1), Msg.words (2), Msg.words (3)], Status);
       if Status /= Application_Binding.Eligible then return False; end if;
       Needed := Application_Topology.Inspect_Offline
@@ -3693,7 +3594,7 @@ procedure Main is
         Pages => Update_Table_Pages);
       if Update_Pending = 0 then Update_Index := 0; Update_Table_Pages := 0; return False; end if;
       Offline_Bind_State := Grow_Offline_Metadata;
-      if not Offline_Bind_Owner or else saveReplyCap (Unsigned_64 (Application_Reply_Slot)) /= 1 then
+      if not Offline_Bind_Owner or else not Replies.Keep (Application_Reply) then
          Reject_Offline_Bind;
          Application_Buffers.Finish_Private (Application_Buffer_State, Update_Pending, Consumed);
          Offline_Bind_State := No_Offline_Bind; Update_Pending := 0;
@@ -4413,10 +4314,11 @@ procedure Main is
          Buffer_Memory.Cancel (Buffer_Pool);
          Application_Buffers.Quarantine (Application_Buffer_State);
       end if;
-      Response.tag := (Application_Buffers.Label, 4, 0, 0);
+      Response.tag := (label => Application_Buffers.Label, length => 4,
+                       protocol => 0, ipc => <>, reserved => 0);
       Response.words := [(if Accepted then Application_Buffers.OK else Application_Buffers.Unavailable), 1, 0, 0];
       if Buffer_Retirement_Has_Reply then
-         Delivered := replyCap (Application_Reply_Slot, Response);
+         Delivered := Replies.Answer (Application_Reply, Response);
          if Delivered /= 1 then
             -- This reply contains only close status, not a new handle/grant.
             -- A departed caller cannot undo an exact supervisor retirement
@@ -4465,7 +4367,7 @@ procedure Main is
               Application_Buffers.Can_Retire (Application_Buffer_State, Session, Candidate.ID)
             then
                if With_Reply and then
-                 saveReplyCap (Unsigned_64 (Application_Reply_Slot)) /= 1 then return False; end if;
+                 not Replies.Keep (Application_Reply) then return False; end if;
                Buffer_Retirement_Has_Reply := With_Reply;
                Buffer_Retirement_Is_Private := False;
                Buffer_Retirement_Pending := Candidate.ID;
@@ -4618,9 +4520,10 @@ procedure Main is
            (if In_Place_Inserting then "bind" else "unbind") & " failed; backing retained");
          Fail_Update;
       end if;
-      Response.tag := (Application_Binding.Update_Label, 4, 0, 0);
+      Response.tag := (label => Application_Binding.Update_Label, length => 4,
+                       protocol => 0, ipc => <>, reserved => 0);
       Response.words := [Words (0), Words (1), Words (2), Words (3)];
-      Delivered := replyCap (Application_Reply_Slot, Response);
+      Delivered := Replies.Answer (Application_Reply, Response);
       if Delivered /= 1 then Fail_Update; end if;
       In_Place_Active := False; Update_Held := False; Update_Index := 0;
    end Reply_In_Place;
@@ -4887,7 +4790,7 @@ procedure Main is
                      Begin_Insertion (Application_Buffer_State,
                        Private_Contexts (Update_Index).Source, Live_VM_States (Update_Index),
                        Update_Session, Update_Sender, Update_Stamp, Update_Request.tag.label,
-                       Update_Request.tag.length, Update_Request.tag.flags, Update_Request.tag.reserved,
+                       Update_Request.tag.length, CuBit.Messages.Flag_Byte (Update_Request.tag), Update_Request.tag.reserved,
                        [Update_Request.words (0), Update_Request.words (1),
                         Update_Request.words (2), Update_Request.words (3)], Words, Started);
                      if not Started then Reply_In_Place (Words); end if;
@@ -4966,7 +4869,7 @@ procedure Main is
            (Application_Buffer_State, Private_Contexts (Update_Index).Source,
             Application_State.Updates (Application_Buffers.Ticket_Slot (Update_Pending)).Candidate, Update_Table_Pages,
             Live_VM_States (Update_Index), Update_Session, Update_Sender, Update_Stamp,
-            Update_Request.tag.label, Update_Request.tag.length, Update_Request.tag.flags,
+            Update_Request.tag.label, Update_Request.tag.length, CuBit.Messages.Flag_Byte (Update_Request.tag),
             Update_Request.tag.reserved,
             [Update_Request.words (0), Update_Request.words (1),
              Update_Request.words (2), Update_Request.words (3)], Response);
@@ -5007,9 +4910,10 @@ procedure Main is
          Publish_Snapshot ("intel-gpu: VM update failed stage=FINISH_TICKET");
          Fail_Update; Response := [Application_Buffers.Unavailable, 1, 0, 0];
       end if;
-      Message_Out.tag := (Application_Binding.Update_Label, 4, 0, 0);
+      Message_Out.tag := (label => Application_Binding.Update_Label, length => 4,
+                          protocol => 0, ipc => <>, reserved => 0);
       Message_Out.words := [Response (0), Response (1), Response (2), Response (3)];
-      Delivered := replyCap (Application_Reply_Slot, Message_Out);
+      Delivered := Replies.Answer (Application_Reply, Message_Out);
       if Delivered /= 1 then Fail_Update; end if;
       if Delivered = 1 and then Response (0) = Application_Buffers.OK then
          declare
@@ -5066,12 +4970,12 @@ procedure Main is
       function Save_Update_Reply return Boolean is
       begin
          if not Reply_Saved then
-            Reply_Saved := saveReplyCap (Unsigned_64 (Application_Reply_Slot)) = 1;
+            Reply_Saved := Replies.Keep (Application_Reply);
          end if;
          return Reply_Saved;
       end Save_Update_Reply;
       function Send_Update_Reply (Value : Message) return Unsigned_64 is
-        (if Reply_Saved then replyCap (Application_Reply_Slot, Value) else reply (From, Value));
+        (if Reply_Saved then Replies.Answer (Application_Reply, Value) else Replies.Respond (From, Value));
    begin
       if Stored /= 0 then
          At_Stage := Busy_Check;
@@ -5090,7 +4994,7 @@ procedure Main is
                  (Application_Buffer_State, Private_Contexts (Update_Index).Source,
                   Session, Live_VM.Generation (Live_VM_States (Update_Index)),
                   Update_Sender, Update_Stamp, Msg.tag.label, Msg.tag.length,
-                  Msg.tag.flags, Msg.tag.reserved,
+                  CuBit.Messages.Flag_Byte (Msg.tag), Msg.tag.reserved,
                   [Msg.words (0), Msg.words (1), Msg.words (2), Msg.words (3)], Status);
                Code := (case Status is
                  when Application_Binding.Malformed => Application_Buffers.Bad_Request,
@@ -5125,7 +5029,8 @@ procedure Main is
                         return;
                      end if;
                      -- No GPU work started. Do not enter insertion without storage.
-                     Response.tag := (Application_Binding.Update_Label, 4, 0, 0);
+                     Response.tag := (label => Application_Binding.Update_Label, length => 4,
+                                      protocol => 0, ipc => <>, reserved => 0);
                      Response.words := [Application_Buffers.Unavailable, 1, 0, 0];
                      Delivered := Send_Update_Reply (Response);
                      Update_Index := 0;
@@ -5143,7 +5048,8 @@ procedure Main is
                         Insertion_Range_Pending := True;
                         return;
                      end if;
-                     Response.tag := (Application_Binding.Update_Label, 4, 0, 0);
+                     Response.tag := (label => Application_Binding.Update_Label, length => 4,
+                                      protocol => 0, ipc => <>, reserved => 0);
                      Response.words := [Application_Buffers.Unavailable, 1, 0, 0];
                      Delivered := Send_Update_Reply (Response);
                      Update_Index := 0;
@@ -5166,13 +5072,13 @@ procedure Main is
                               Begin_Insertion (Application_Buffer_State,
                                 Private_Contexts (Update_Index).Source, Live_VM_States (Update_Index),
                                 Session, Update_Sender, Update_Stamp, Msg.tag.label,
-                                Msg.tag.length, Msg.tag.flags, Msg.tag.reserved,
+                                Msg.tag.length, CuBit.Messages.Flag_Byte (Msg.tag), Msg.tag.reserved,
                                 [Msg.words (0), Msg.words (1), Msg.words (2), Msg.words (3)], Words, Started);
                            else
                               Begin_Removal (Application_Buffer_State,
                              Private_Contexts (Update_Index).Source, Live_VM_States (Update_Index),
                              Session, Update_Sender, Update_Stamp, Msg.tag.label,
-                             Msg.tag.length, Msg.tag.flags, Msg.tag.reserved,
+                             Msg.tag.length, CuBit.Messages.Flag_Byte (Msg.tag), Msg.tag.reserved,
                              [Msg.words (0), Msg.words (1), Msg.words (2), Msg.words (3)], Words, Started);
                            end if;
                            if not Started then Reply_In_Place (Words); end if;
@@ -5183,7 +5089,8 @@ procedure Main is
                      end if;
                      Fail_Update;
                      In_Place_Active := False; Update_Held := False; Update_Index := 0;
-                     Response.tag := (Application_Binding.Update_Label, 4, 0, 0);
+                     Response.tag := (label => Application_Binding.Update_Label, length => 4,
+                                      protocol => 0, ipc => <>, reserved => 0);
                      Response.words := [Application_Buffers.Unavailable, 1, 0, 0];
                      Delivered := Send_Update_Reply (Response);
                      return;
@@ -5202,7 +5109,8 @@ procedure Main is
                         Growth_Inspection_Pending := True;
                         return;
                      end if;
-                     Response.tag := (Application_Binding.Update_Label, 4, 0, 0);
+                     Response.tag := (label => Application_Binding.Update_Label, length => 4,
+                                      protocol => 0, ipc => <>, reserved => 0);
                      Response.words := [Application_Buffers.Unavailable, 1, 0, 0];
                      Delivered := Send_Update_Reply (Response);
                      Update_Index := 0;
@@ -5243,7 +5151,8 @@ procedure Main is
                            if Started then return; end if;
                            Live_Metadata_Pending := False; In_Place_Active := False;
                         end if;
-                        Response.tag := (Application_Binding.Update_Label, 4, 0, 0);
+                        Response.tag := (label => Application_Binding.Update_Label, length => 4,
+                                         protocol => 0, ipc => <>, reserved => 0);
                         Response.words := [Application_Buffers.Unavailable, 1, 0, 0];
                         Delivered := Send_Update_Reply (Response);
                         Update_Index := 0;
@@ -5283,7 +5192,8 @@ procedure Main is
                                  In_Place_Active := True; Directory_Metadata_Pending := True;
                                  return;
                               end if;
-                              Response.tag := (Application_Binding.Update_Label, 4, 0, 0);
+                              Response.tag := (label => Application_Binding.Update_Label, length => 4,
+                                               protocol => 0, ipc => <>, reserved => 0);
                               Response.words := [Application_Buffers.Unavailable, 1, 0, 0];
                               Delivered := Send_Update_Reply (Response);
                               Update_Index := 0;
@@ -5343,7 +5253,8 @@ procedure Main is
       Publish_Snapshot ("intel-gpu: VM update rejected stage=" & Admission_Stage'Image (At_Stage) &
         " status=" & Unsigned_64'Image (Code) &
         " handle=" & Unsigned_64'Image (Msg.words (1) and 16#FFFF_FFFF#));
-      Response.tag := (Application_Binding.Update_Label, 4, 0, 0);
+      Response.tag := (label => Application_Binding.Update_Label, length => 4,
+                       protocol => 0, ipc => <>, reserved => 0);
       Response.words := [Code, 1, 0, 0];
       Delivered := Send_Update_Reply (Response);
    end Handle_VM_Update;
@@ -5366,10 +5277,11 @@ procedure Main is
             return;
          end if;
       end if;
-      Response.tag := (Application_Binding.Update_Label, 4, 0, 0);
+      Response.tag := (label => Application_Binding.Update_Label, length => 4,
+                       protocol => 0, ipc => <>, reserved => 0);
       Response.words := [Application_Buffers.Unavailable, 1, 0, 0];
       Fail_Update;
-      Delivered := replyCap (Application_Reply_Slot, Response);
+      Delivered := Replies.Answer (Application_Reply, Response);
       Live_Metadata_Pending := False; In_Place_Active := False;
       Update_Held := False; Update_Index := 0;
    end Advance_Live_Metadata;
@@ -5400,10 +5312,11 @@ procedure Main is
       end if;
       -- No table ticket or GPU hold was acquired. Retain CPU metadata and
       -- quarantine on lost authority; never publish from a stale saved request.
-      Response.tag := (Application_Binding.Update_Label, 4, 0, 0);
+      Response.tag := (label => Application_Binding.Update_Label, length => 4,
+                       protocol => 0, ipc => <>, reserved => 0);
       Response.words := [Application_Buffers.Unavailable, 1, 0, 0];
       Fail_Update;
-      Delivered := replyCap (Application_Reply_Slot, Response);
+      Delivered := Replies.Answer (Application_Reply, Response);
       Directory_Metadata_Pending := False; In_Place_Active := False;
       Update_Held := False; Update_Index := 0;
    end Advance_Directory_Metadata;
@@ -5428,10 +5341,11 @@ procedure Main is
          end if;
       end if;
       Insertion_Ranges.Cancel (Insertion_Range);
-      Response.tag := (Application_Binding.Update_Label, 4, 0, 0);
+      Response.tag := (label => Application_Binding.Update_Label, length => 4,
+                       protocol => 0, ipc => <>, reserved => 0);
       Response.words := [Application_Buffers.Unavailable, 1, 0, 0];
       Fail_Update;
-      Delivered := replyCap (Application_Reply_Slot, Response);
+      Delivered := Replies.Answer (Application_Reply, Response);
       Insertion_Range_Pending := False; In_Place_Active := False;
       Update_Held := False; Update_Index := 0;
    end Advance_Insertion_Range;
@@ -5460,10 +5374,11 @@ procedure Main is
          end if;
       end if;
       Application_Topology.Cancel_Inspection (Growth_Inspection);
-      Response.tag := (Application_Binding.Update_Label, 4, 0, 0);
+      Response.tag := (label => Application_Binding.Update_Label, length => 4,
+                       protocol => 0, ipc => <>, reserved => 0);
       Response.words := [Application_Buffers.Unavailable, 1, 0, 0];
       Fail_Update;
-      Delivered := replyCap (Application_Reply_Slot, Response);
+      Delivered := Replies.Answer (Application_Reply, Response);
       Growth_Inspection_Pending := False; In_Place_Active := False;
       Update_Held := False; Update_Index := 0;
    end Advance_Growth_Inspection;
@@ -5486,10 +5401,11 @@ procedure Main is
             return;
          end if;
       end if;
-      Response.tag := (Application_Binding.Update_Label, 4, 0, 0);
+      Response.tag := (label => Application_Binding.Update_Label, length => 4,
+                       protocol => 0, ipc => <>, reserved => 0);
       Response.words := [Application_Buffers.Unavailable, 1, 0, 0];
       Fail_Update;
-      Delivered := replyCap (Application_Reply_Slot, Response);
+      Delivered := Replies.Answer (Application_Reply, Response);
       Insertion_Metadata_Pending := False; In_Place_Active := False;
       Update_Held := False; Update_Index := 0;
    end Advance_Insertion_Metadata;
@@ -6159,7 +6075,7 @@ procedure Main is
    begin
       if Session /= 0 and then Stored /= 0 then
          Code := Control.Bad_Request;
-         if Msg.tag = (Control.Retirement_Label, 4, 0, 0) and then
+         if Msg.tag = (label => Control.Retirement_Label, length => 4, protocol => 0, ipc => <>, reserved => 0) and then
            Msg.words = [Control.Version, 0, 0, 0]
          then
             GPU := Context_Drain.Observe (Contexts, Session);
@@ -6205,9 +6121,10 @@ procedure Main is
             Code := Control.Drain_Status (Facts);
          end if;
       end if;
-      Response.tag := (Control.Retirement_Label, 4, 0, 0);
+      Response.tag := (label => Control.Retirement_Label, length => 4,
+                       protocol => 0, ipc => <>, reserved => 0);
       Response.words := [Code, Control.Version, 0, 0];
-      Delivered := reply (From, Response);
+      Delivered := Replies.Respond (From, Response);
    end Handle_Retirement_Query;
    function Session_Healthy (Session : Unsigned_64) return Boolean is
       ID : Unsigned_32;
@@ -6238,18 +6155,19 @@ procedure Main is
    begin
       -- Do not touch device registers on behalf of an unauthenticated caller.
       if Session /= 0 and then
-        Msg.tag = (Control.Status_Label, 4, 0, 0) and then
+        Msg.tag = (label => Control.Status_Label, length => 4, protocol => 0, ipc => <>, reserved => 0) and then
         Msg.words = [Control.Version, 0, 0, 0]
       then
          Healthy := Session_Healthy (Session);
       end if;
       Data := Control.Session_Status
         (Render_Admission, To_Word (From), Msg.authorityTag, Healthy,
-         Msg.tag.label, Msg.tag.length, Msg.tag.flags, Msg.tag.reserved,
+         Msg.tag.label, Msg.tag.length, CuBit.Messages.Flag_Byte (Msg.tag), Msg.tag.reserved,
          [Msg.words (0), Msg.words (1), Msg.words (2), Msg.words (3)]);
-      Response.tag := (Control.Status_Label, 4, 0, 0);
+      Response.tag := (label => Control.Status_Label, length => 4,
+                       protocol => 0, ipc => <>, reserved => 0);
       Response.words := [Data (0), Data (1), Data (2), Data (3)];
-      Delivered := reply (From, Response);
+      Delivered := Replies.Respond (From, Response);
    end Handle_Session_Status;
    function VM_Query_Policy (From : Process_ID; Msg : Message)
       return Intel_GPU_Device_Query.VM_Contract
@@ -6257,7 +6175,7 @@ procedure Main is
       package DQ renames Intel_GPU_Device_Query;
       Session : Unsigned_64;
    begin
-      if Msg.tag /= (DQ.Label, 4, 0, 0) or else
+      if Msg.tag /= (label => DQ.Label, length => 4, protocol => 0, ipc => <>, reserved => 0) or else
         Msg.words /= [DQ.Version, DQ.Virtual_Memory, 0, 0]
       then return DQ.VM_Unavailable; end if;
       Session := Intel_GPU_Render_Control.Resolve
@@ -6274,7 +6192,7 @@ procedure Main is
       package DQ renames Intel_GPU_Device_Query;
       Session : Unsigned_64;
    begin
-      if Msg.tag /= (DQ.Label, 4, 0, 0) or else
+      if Msg.tag /= (label => DQ.Label, length => 4, protocol => 0, ipc => <>, reserved => 0) or else
         Msg.words /= [DQ.Version, DQ.Memory, 0, 0]
       then return DQ.Not_Admitted; end if;
       Session := Intel_GPU_Render_Control.Resolve
@@ -7008,6 +6926,7 @@ procedure Main is
       Now : Unsigned_64;
       Activity : Activity_Result;
       Granted : Boolean := False;
+      Region : CuBit.Handles.Device_Memory := CuBit.Handles.No_Device_Memory;
       pragma Unreferenced (Activity);
       function Clock return Unsigned_64 is (syscall (SYSCALL_GETTIME));
       function Read_Ack (Offset : Unsigned_32) return Unsigned_32 is
@@ -7071,8 +6990,8 @@ procedure Main is
          end case;
       end Describe;
    begin
-      Msg.tag := (16#022A#, 0, 0, 0);
-      if not capSubmit (15, Msg, Token) then return "grant-submit-failed"; end if;
+      Msg.tag := (label => 16#022A#, length => 0, protocol => 0, ipc => <>, reserved => 0);
+      if not Supervisor.Submit_Accepting (Msg, Token) then return "grant-submit-failed"; end if;
       loop
          Now := Clock;
          if Now < Started or else Now - Started >= 30_000 then
@@ -7080,18 +6999,20 @@ procedure Main is
          end if;
          if Intel_GPU_Diagnostics.Poll_Driver (Receipt'Address) /= 0 and then Receipt.token = Token then
             if Receipt.status = COMPLETION_OK and then
-              Receipt.msg.tag = (16#F002#, 0, 0, 0) and then
+              Supervisor.Reply_Tag (Receipt) = (label => 16#F002#, length => 0, protocol => 0, ipc => <>, reserved => 0) and then
               Receipt.msg.words = [0, 0, 0, 0]
             then
                --  Devmgr is still collecting other drivers' ready messages.
                --  This completed request minted nothing; retry within budget.
-               if not capSubmit (15, Msg, Token) then
+               if not Supervisor.Submit_Accepting (Msg, Token) then
                   return "grant-retry-failed";
                end if;
             else
             Granted := Receipt.status = COMPLETION_OK and then
-              Receipt.msg.tag = (16#F000#, 0, 0, 0) and then
+              Supervisor.Reply_Tag (Receipt) = (label => 16#F000#, length => 0, protocol => 0, ipc => <>, reserved => 0) and then
               Receipt.msg.words = [0, 0, 0, 0];
+            Region := Supervisor.Granted_Region (Receipt);
+            Granted := Granted and then CuBit.Handles.Valid (Region);
             exit;
             end if;
          end if;
@@ -7100,8 +7021,8 @@ procedure Main is
       end loop;
       if not Granted then return "grant-denied"; end if;
       --  Separate alias: retain the original read-only register mapping.
-      if syscall (SYSCALL_MAP_DEVICE, Plan.Physical_Base + 16#A000#,
-                  Write_Base, 1, 0) /= 0
+      if not CuBit.Handles.Devices.Map_Device
+           (Region, Plan.Physical_Base + 16#A000#, Write_Base, 1, Read_Only => False)
       then return "write " & Intel_GPU_Map_Report.Denied (Plan.Physical_Base + 16#A000#, 4096); end if;
       FW.Acquire (Object, 100, Status);
       if Status /= FW.Ready then return "acquire-" & Describe (Status); end if;
@@ -7165,28 +7086,31 @@ procedure Main is
       Receipt : aliased CompletionEntry;
       Start : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
       Now, Physical : Unsigned_64;
+      Region : CuBit.Handles.Device_Memory := CuBit.Handles.No_Device_Memory;
       Activity : Activity_Result;
       Low, High : Unsigned_32;
       Present : Natural := 0;
       pragma Unreferenced (Activity);
    begin
       if Table_Bytes = 0 then return "unavailable"; end if;
-      Msg.tag := (16#022B#, 0, 0, 0);
-      if not capSubmit (15, Msg, Token) then return "submit-failed"; end if;
+      Msg.tag := (label => 16#022B#, length => 0, protocol => 0, ipc => <>, reserved => 0);
+      if not Supervisor.Submit_Accepting (Msg, Token) then return "submit-failed"; end if;
       loop
          Now := syscall (SYSCALL_GETTIME);
          if Now < Start or else Now - Start >= 30_000 then return "timeout"; end if;
          if Intel_GPU_Diagnostics.Poll_Driver (Receipt'Address) /= 0 and then Receipt.token = Token then
             if Receipt.status = COMPLETION_OK and then
-              Receipt.msg.tag = (16#F002#, 0, 0, 0) and then
+              Supervisor.Reply_Tag (Receipt) = (label => 16#F002#, length => 0, protocol => 0, ipc => <>, reserved => 0) and then
               Receipt.msg.words = [0, 0, 0, 0]
             then
-               if not capSubmit (15, Msg, Token) then return "retry-failed"; end if;
+               if not Supervisor.Submit_Accepting (Msg, Token) then return "retry-failed"; end if;
             else
                if Receipt.status /= COMPLETION_OK or else
-                 Receipt.msg.tag /= (16#F000#, 2, 0, 0) or else
+                 Supervisor.Reply_Tag (Receipt) /= (label => 16#F000#, length => 2, protocol => 0, ipc => <>, reserved => 0) or else
                  Receipt.msg.words (1 .. 3) /= [Table_Bytes, 0, 0]
                then return "grant-denied"; end if;
+               Region := Supervisor.Granted_Region (Receipt);
+               if not CuBit.Handles.Valid (Region) then return "grant-carried-nothing"; end if;
                Physical := Receipt.msg.words (0);
                exit;
             end if;
@@ -7202,9 +7126,9 @@ procedure Main is
       -- A partial failure leaves only process-lived read-only aliases and
       -- returns before inspecting any table entry. No retry/remap here.
       for Chunk in Unsigned_64 range 0 .. Table_Bytes / (2 * 1024 * 1024) - 1 loop
-         if syscall (SYSCALL_MAP_DEVICE,
-           Physical + Chunk * (2 * 1024 * 1024),
-           Virtual + Chunk * (2 * 1024 * 1024), 512, 1) /= 0
+         if not CuBit.Handles.Devices.Map_Device
+           (Region, Physical + Chunk * (2 * 1024 * 1024),
+            Virtual + Chunk * (2 * 1024 * 1024), 512, Read_Only => True)
          then return Intel_GPU_Map_Report.Denied
                 (Physical + Chunk * (2 * 1024 * 1024), 2 * 1024 * 1024); end if;
       end loop;
@@ -7528,12 +7452,13 @@ procedure Main is
          begin
             Application_Buffers.Query_Accounting
               (Application_Buffer_State, To_Word (Sender), Request.authorityTag,
-               Request.tag.label, Request.tag.length, Request.tag.flags,
+               Request.tag.label, Request.tag.length, CuBit.Messages.Flag_Byte (Request.tag),
                Request.tag.reserved,
                [Request.words (0), Request.words (1), Request.words (2), Request.words (3)], Words);
-            Response.tag := (Application_Buffers.Accounting_Label, 4, 0, 0);
+            Response.tag := (label => Application_Buffers.Accounting_Label, length => 4,
+                             protocol => 0, ipc => <>, reserved => 0);
             Response.words := [Words (0), Words (1), Words (2), Words (3)];
-            Delivered := reply (Sender, Response);
+            Delivered := Replies.Respond (Sender, Response);
          end;
       elsif Request.tag.label = Native_GPU_Probe_Protocol.Label then
          Handle_Probe (Sender, Request);
@@ -7582,7 +7507,7 @@ procedure Main is
                DSS_Mask => Intel_GPU_Native_Reset.ADS_Execution_Units.DSS_Mask,
                EU_Mask => Intel_GPU_Native_Reset.ADS_Execution_Units.EU_Mask);
             Response : constant DQ.Words := DQ.Respond
-              (Data, Request.tag.label, Request.tag.length, Request.tag.flags,
+              (Data, Request.tag.label, Request.tag.length, CuBit.Messages.Flag_Byte (Request.tag),
                Request.tag.reserved,
                [Request.words (0), Request.words (1),
                 Request.words (2), Request.words (3)],
@@ -7591,10 +7516,11 @@ procedure Main is
                VM_Policy => VM_Query_Policy (Sender, Request));
             Reply_Message : Message := NULL_MESSAGE;
          begin
-            Reply_Message.tag := (Request.tag.label, 4, 0, 0);
+            Reply_Message.tag := (label => Request.tag.label, length => 4,
+                                  protocol => 0, ipc => <>, reserved => 0);
             Reply_Message.words :=
               [Response (0), Response (1), Response (2), Response (3)];
-            Unused := reply (Sender, Reply_Message);
+            Unused := Replies.Respond (Sender, Reply_Message);
          end;
       end if;
    end Dispatch_Request;
@@ -7905,9 +7831,9 @@ procedure Main is
       for E of Deferral_Queue loop
          if E.Busy then Add (" deferred-label=" & Hex (E.Request.tag.label)); end if;
       end loop;
-      if Deferrals_Held > 0 or else Deferral_Restore_Failures > 0 then
-         Add (" deferrals saved/held/restore-failed=" & Img (Deferrals_Saved) & "/" &
-              Img (Deferrals_Held) & "/" & Img (Deferral_Restore_Failures));
+      if Deferrals_Held > 0 then
+         Add (" deferrals saved/held=" & Img (Deferrals_Saved) & "/" &
+              Img (Deferrals_Held));
       end if;
       for I in 1 .. Context_Pool.Count (Contexts) loop
          declare
@@ -7929,6 +7855,17 @@ procedure Main is
       Publish_Snapshot ("intel-gpu: stalled" & Line (1 .. Last), CuBit.Log_Records.Warning);
    end Watch_Stalls;
 begin
+   declare
+      use type CuBit.Startup_State.Verification_Status;
+      Check : constant CuBit.Startup_State.Verification := Startup.Verify;
+   begin
+      if Check.Status /= CuBit.Startup_State.Ready then
+         debugPrint ("intel-gpu: startup capabilities incomplete (" &
+           CuBit.Startup_State.Verification_Status'Image (Check.Status) &
+           " at" & Natural'Image (Check.Index) & ")" & ASCII.LF);
+         return;
+      end if;
+   end;
    debugPrint ("intel-gpu: awaiting device-scoped bootstrap" & ASCII.LF);
    Publish_Snapshot ("intel-gpu: startup step=begin");
    declare
@@ -7951,7 +7888,7 @@ begin
      Sender /= Registered_Driver (DRIVER_DEVMGR) or else
      Request.authorityTag /= Intel_GPU_Boot.Broker_Tag or else
      Request.tag.label /= Intel_GPU_Boot.Configure_Label or else
-     Request.tag.length /= 4 or else Request.tag.flags /= 0 or else
+     Request.tag.length /= 4 or else Request.tag.protocol /= 0 or else
      Request.tag.reserved /= 0
    then
       debugPrint ("intel-gpu: bootstrap rejected" & ASCII.LF);
@@ -7969,15 +7906,15 @@ begin
      (Render_Admission, To_Word (Sender), Intel_GPU_Boot.Broker_Tag);
    -- Capture identity only after sender/protocol/resource admission. Later
    -- IPC requests must not become the source of firmware startup identity.
-   Capture_Probe_Recipient;
    Display_Executor.Register_Service;
    PCI_Device := Unsigned_16 (Shift_Right (Request.words (1), 16) and 16#FFFF#);
    PCI_Revision := Unsigned_8 (Shift_Right (Request.words (1), 32) and 16#FF#);
    debugPrint ("intel-gpu: GGC=" & Hex (Unsigned_32 (GGC)) &
      " GGTT table bytes" & Unsigned_64'Image (Table_Bytes) & ASCII.LF);
-   Result := syscall (SYSCALL_MAP_DEVICE, Plan.Physical_Base,
-                      Register_Virtual_Base, Plan.Bytes / 4096, 1);
-   if Result /= 0 then
+   if not CuBit.Handles.Devices.Map_Device
+        (Startup.Registers, Plan.Physical_Base, Register_Virtual_Base,
+         Plan.Bytes / 4096, Read_Only => True)
+   then
       Publish_Snapshot ("intel-gpu: read-only register mapping " &
         Intel_GPU_Map_Report.Denied (Plan.Physical_Base, Plan.Bytes),
         CuBit.Log_Records.Warning);
@@ -8006,7 +7943,7 @@ begin
            " enabled=" & Flag (IRQ.MSIX_Enabled) & " masked=" & Flag (IRQ.MSIX_Masked));
       end if;
       Device_Interrupt :=
-        CuBit.Device_Interrupts.Block_Of (CCL_Manifest_Bindings.Slot_device);
+        CuBit.Device_Interrupts.Block_Of (Startup.Device);
       Publish_Snapshot
         (if Device_Interrupt.Valid then
            "intel-gpu: MSI vector" & Natural'Image (Device_Interrupt.Head) &
@@ -8038,7 +7975,8 @@ begin
       debugPrint ("intel-gpu: forcewake " & Forcewake_Result & ASCII.LF);
       debugPrint ("intel-gpu: GGTT read-only " & GGTT_Result & ASCII.LF);
       Intel_GPU_Firmware_File.Load
-        (6, Firmware_Address, Firmware_Bytes, Firmware_Plan, Firmware_Status);
+        ((if Startup.Firmware.Present then Startup.Firmware.Value
+          else CuBit.Handles.No_Endpoint), Firmware_Address, Firmware_Bytes, Firmware_Plan, Firmware_Status);
       debugPrint ("intel-gpu: firmware file " &
         Intel_GPU_Firmware_File.Name (Firmware_Status) &
         " bytes" & Unsigned_64'Image (Firmware_Bytes) &
@@ -9054,7 +8992,6 @@ begin
      (if Runtime_Admitted then "running" else "not running") & ", render " &
      (if RCS_Ready then "ready" else "not ready") & ")");
    Startup_Timing := False;
-   Find_Deferral_Slots;
    loop
       Refresh_Runtime_Health;
       Service_Device_Interrupts;
@@ -9143,7 +9080,7 @@ begin
                  (Budget_Query, Receipt.token, Now,
                   Publication_Owner_Ready and then not Runtime_Fault,
                   Receipt.status = COMPLETION_OK, Receipt.msg.tag.label,
-                  Receipt.msg.tag.length, Receipt.msg.tag.flags, Receipt.msg.tag.reserved,
+                  Receipt.msg.tag.length, CuBit.Messages.Flag_Byte (Receipt.msg.tag), Receipt.msg.tag.reserved,
                   Intel_GPU_Buffer_Backing.Budget_Words (Receipt.msg.words), Consumed);
             end if;
             Intel_GPU_Budget_Query.Tick
@@ -9156,11 +9093,12 @@ begin
                   Delivered : Unsigned_64;
                   pragma Unreferenced (Delivered);
                begin
-                  Response.tag := (Intel_GPU_Budget_Protocol.Label, 4, 0, 0);
+                  Response.tag := (label => Intel_GPU_Budget_Protocol.Label, length => 4,
+                                   protocol => 0, ipc => <>, reserved => 0);
                   Response.words := [Data (0), Data (1), Data (2), Data (3)];
                   Budget_Reply_Pending := False;
                   -- A lost read-only reply requires no resource rollback/replay.
-                  Delivered := replyCap (Budget_Reply_Slot, Response);
+                  Delivered := Replies.Answer (Budget_Reply, Response);
                end;
             end if;
             if not Budget_Logged and then not Intel_GPU_Budget_Query.Pending (Budget_Query) then
@@ -9269,6 +9207,9 @@ begin
                   Queue_Service.Set_Quiesce (Queue_State, not Safe_While_Busy (Request.tag.label));
                   Dispatch_Started := DC_Now_Us;
                   Dispatch_Request (Sender, Request, False, Defer);
+                  -- A set-aside request's reply its handler left: answered
+                  -- as failed, never dropped.
+                  Replies.Settle (NULL_MESSAGE);
                   Note_Request_Time (Request.tag.label, Dispatch_Started);
                end if;
             end;

@@ -21,6 +21,7 @@
 --  Not_Held and Wait_Reached sleeps one millisecond between looks instead.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with CuBit.Handles;
 with Interfaces; use Interfaces;
 with CuBit.Async_Requests;
 with CuBit.Channels;
@@ -39,7 +40,7 @@ package CuBit.GPU_Sessions is
    --  contexts must be registered), waiting for the driver until Deadline
    --  (an absolute monotonic millisecond, or CuBit.Messages.Wait_Forever).
    procedure Open
-     (S : in out Session; Endpoint : CuBit.Messages.CapabilitySlot; Deadline : Unsigned_64;
+     (S : in out Session; Endpoint : CuBit.Handles.Endpoint; Deadline : Unsigned_64;
       Opened : out Boolean);
    --  Close the channel. A held wake is answered by the driver then.
    procedure Close (S : in out Session);
@@ -101,7 +102,7 @@ package CuBit.GPU_Sessions is
 
 private
    type Session is limited record
-      Endpoint : CuBit.Messages.CapabilitySlot := 0;
+      Endpoint : CuBit.Handles.Endpoint := CuBit.Handles.No_Endpoint;
       Queue    : CuBit.Channels.Channel;
       Opened   : Boolean := False;
       Client   : Clients.Client;

@@ -9,7 +9,7 @@ from pathlib import Path
 import argparse,hashlib,importlib.util,json,os,shutil,subprocess
 parser=argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--device-startup-probe', action='store_true', help='exercise no-authority startup/retirement in private Desktop')
-parser.add_argument('--optional-render-probe', action='store_true', help='test-only optional capability metadata and empty-slot check')
+parser.add_argument('--optional-render-probe', action='store_true', help='test-only check that the startup table declares render optional')
 parser.add_argument('--prepare-pipeline', action='store_true', help='opt-in existing Vulkan texture pipeline/source pool startup; requires target preparation')
 parser.add_argument('--prepare-targets', action='store_true', help='opt-in first-output GPU target allocation with a 64 MiB image budget; no GPU drawing')
 parser.add_argument('--admitted-startup', action='store_true', help='opt-in real Mesa startup on an inspected admitted render endpoint; software drawing retained')
@@ -37,28 +37,28 @@ for rel in ('userspace/services/desktop','userspace/lib/compositor','userspace/l
  'userspace/lib/ui','userspace/lib/input','userspace/ccl/src','userspace/allocator/src','userspace/services/display/production'):
  for path in (root/rel).rglob('*'):
   if path.is_file() and path.suffix in ('.ads','.adb','.gpr','.c','.h','.vert','.frag') and not any(p.startswith('build') for p in path.relative_to(root/rel).parts):copy(path)
-for rel in ('userspace/runtime/gnat','userspace/runtime/adalib'):
+for rel in ('userspace/runtime/gnat','userspace/runtime/adalib','shared/time','shared/interrupts','shared/launch',
+ 'shared/publications','shared/capabilities','shared/boot'):
  for path in (root/rel).rglob('*'):
   if path.is_file():copy(path)
 for rel in ('userspace/runtime/ada_source_path','userspace/runtime/ada_object_path','userspace/runtime/runtime.xml','userspace/runtime/target_properties',
- 'userspace/mesa/mesa_service.ads','userspace/mesa/mesa_service.adb','userspace/mesa/service-device.h',
- 'userspace/services/desktop/build/generated/ccl_manifest_bindings.ads','userspace/services/desktop/build/manifest.o',
+ 'userspace/mesa/mesa_service.ads','userspace/mesa/mesa_service.adb','userspace/mesa/service-device.h','userspace/c/cubit_handles.h',
+ 'userspace/services/desktop/build/generated/startup.ads','userspace/services/desktop/build/manifest.o',
  'userspace/rust/build/font-native/libcubit_fonts.a','tests/compositor/build-vulkan-affine-shaders.py'):
  copy(root/rel)
+# anv/cubit_handles.h links to the C ABI header.
+data=(root/'userspace/c/cubit_handles.h').read_bytes();dest=out/'userspace/mesa/anv/cubit_handles.h';dest.parent.mkdir(parents=True,exist_ok=True);dest.write_bytes(data)
 desktop=out/'userspace/services/desktop';main=desktop/'main.adb';main.write_text('with Mesa_Service;\npragma Elaborate_All (Mesa_Service);\nwith Vulkan_Context_Owner;\npragma Elaborate_All (Vulkan_Context_Owner);\n'+main.read_text())
 if args.optional_render_probe:
- helper=root/'tests/render-startup/desktop_optional_manifest.py';copy(helper)
- spec=importlib.util.spec_from_file_location('optional_manifest',out/helper.relative_to(root))
- optional=importlib.util.module_from_spec(spec);spec.loader.exec_module(optional)
- caps=out/'original.caps';manifest=desktop/'build/manifest.o'
- subprocess.run(['objcopy','--dump-section','.cubit.caps='+str(caps),str(manifest)],check=True)
- original=caps.read_bytes();modified=optional.append_optional(original)
- caps=out/'optional.caps';caps.write_bytes(modified)
- subprocess.run(['objcopy','--update-section','.cubit.caps='+str(caps),str(manifest)],check=True)
- verify=out/'verified.caps'
- subprocess.run(['objcopy','--dump-section','.cubit.caps='+str(verify),str(manifest)],check=True)
- assert verify.read_bytes()==modified
- (out/'optional-render.json').write_text(json.dumps({'test_only':True,'slot':62,'original_sha256':hashlib.sha256(original).hexdigest(),'optional_sha256':hashlib.sha256(modified).hexdigest()},indent=2)+'\n')
+ # CAP-002: Desktop's manifest declares its render session optional; check
+ # the startup table says so (nothing is rewritten).
+ table=out/'startup.bin';manifest=desktop/'build/manifest.o'
+ subprocess.run(['objcopy','--dump-section','.cubit.startup='+str(table),str(manifest)],check=True)
+ data=table.read_bytes();count=int.from_bytes(data[6:8],'little')
+ entries=[data[16+80*i:16+80*(i+1)] for i in range(count)]
+ render=[e for e in entries if e[16:16+e[3]]==b'render']
+ assert len(render)==1 and render[0][0]==4 and render[0][1]==2,'Desktop must declare an optional render entry'
+ (out/'optional-render.json').write_text(json.dumps({'test_only':True,'binding':'render','startup_sha256':hashlib.sha256(data).hexdigest()},indent=2)+'\n')
 if args.device_startup_probe:
  source=main.read_text()
  source='with Vulkan_Device_Owner;\nwith Vulkan_Submission;\n'+source

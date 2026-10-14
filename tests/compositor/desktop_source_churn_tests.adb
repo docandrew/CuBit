@@ -1,3 +1,4 @@
+with CuBit.Handles.Fixture;
 with Ada.Text_IO;
 with Interfaces; with System; with System.Storage_Elements;
 with Compositor_Formats; with Compositor_Source_Content;
@@ -82,7 +83,7 @@ begin
    Reset; Context_Set (0, 0); Vulkan_Device_Mock.Set (True, True, 0);
    Pipeline_Set (0, 0); Image_Set (4096, 1, 0, 0, 0); Metadata_Set (0);
    Upload_Set (Staging_Bytes, 1, 0, 0, 0, 0); Real_Mapping (1); Record_Set (0);
-   D.Initialize (25); D.Configure_Targets (32, 24, 1, Budget, OK); Check (OK, "targets");
+   D.Initialize (CuBit.Handles.Fixture.Endpoint_Of (25)); D.Configure_Targets (32, 24, 1, Budget, OK); Check (OK, "targets");
    D.Prepare_Pipeline (OK); Check (OK, "pipeline");
    D.Configure_Upload (Staging_Bytes, OK); Check (OK, "upload staging");
 

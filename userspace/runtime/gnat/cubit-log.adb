@@ -1,6 +1,7 @@
 pragma Ada_2022;
 with CuBit.Logging;
 with CuBit.Messages;
+with CuBit.Handles.Startup;
 
 package body CuBit.Log is
    use type Logs.Severity;
@@ -19,8 +20,30 @@ package body CuBit.Log is
       end if;
    end Lose;
 
+   --  The Writer goes to the program's "logstore" startup entry, looked up
+   --  once, on first use (none: records are only echoed).
+   Bound : Boolean := False;
+   procedure Ensure_Bound;
+   procedure Ensure_Bound is
+   begin
+      if not Bound then
+         Bound := True;
+         declare
+            Found : constant CuBit.Handles.Startup.Optional_Endpoint :=
+              CuBit.Handles.Startup.Optional_Endpoint_Named (Logstore_Binding);
+         begin
+            if Found.Present then
+               CuBit.Logging.Bind (Writer, Found.Value);
+            end if;
+         end;
+      end if;
+   end Ensure_Bound;
+
    function Wanted (Level : Logs.Severity) return Boolean is
-     (CuBit.Logging.Wanted (Writer, Level));
+   begin
+      Ensure_Bound;
+      return CuBit.Logging.Wanted (Writer, Level);
+   end Wanted;
 
    procedure Set_Echo (Enabled : Boolean) is
    begin

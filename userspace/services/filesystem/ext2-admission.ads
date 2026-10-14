@@ -25,7 +25,8 @@ private package Ext2.Admission is
 
    procedure initBlockDevice
      (fs         : out Filesystem;
-      capSlot    : Unsigned_64;
+      endpoint   : CuBit.Handles.Endpoint;
+      volume     : Unsigned_64;
       grant      : CuBit.Memory_Grants.Grant_Reference;
       grantBuf   : System.Address;
       grantBytes : Unsigned_32;

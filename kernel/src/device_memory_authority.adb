@@ -3,22 +3,12 @@ pragma Ada_2022;
 package body Device_Memory_Authority with SPARK_Mode is
 
    function Authorize
-     (Table : CapabilityTable; M : Physical_Ranges.Map;
+     (Cap : Capability; M : Physical_Ranges.Map;
       Base, Bytes : Unsigned_64; Mode : Access_Mode) return Boolean
    is
    begin
-      if not Physical_Ranges.Device_Bytes (M, Base, Bytes) then
-         return False;
-      end if;
-      for S in CapabilitySlot loop
-         if Slot_Grants (Table, S, Base, Bytes, Mode) then
-            return True;
-         end if;
-         pragma Loop_Invariant
-           (for all T in CapabilitySlot'First .. S =>
-              not Slot_Grants (Table, T, Base, Bytes, Mode));
-      end loop;
-      return False;
+      return Physical_Ranges.Device_Bytes (M, Base, Bytes)
+        and then Holds (Cap, Base, Bytes, Mode);
    end Authorize;
 
    function Explain_Mint
@@ -45,7 +35,7 @@ package body Device_Memory_Authority with SPARK_Mode is
    end Explain_Mint;
 
    function Explain
-     (Table : CapabilityTable; M : Physical_Ranges.Map;
+     (Cap : Capability; M : Physical_Ranges.Map;
       Base, Bytes : Unsigned_64; Mode : Access_Mode) return Explanation is
    begin
       if not Physical_Ranges.Device_Bytes (M, Base, Bytes) then
@@ -56,7 +46,7 @@ package body Device_Memory_Authority with SPARK_Mode is
    end Explain;
 
    procedure Lemma_Authorized_Mapping_Excludes_RAM
-     (Table : CapabilityTable; M : Physical_Ranges.Map;
+     (Cap : Capability; M : Physical_Ranges.Map;
       Base, Bytes : Unsigned_64; Mode : Access_Mode) is
    begin
       Physical_Ranges.Lemma_Device_Range_Excludes_RAM

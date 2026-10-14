@@ -2,5 +2,6 @@
 (executable-manifest v1
   (identity "com.cubit.ipctest.server")
   (version "1.0.0")
-  (request-service ipc-test read-write ipc-test)
-  (request-service ccl-test-host read-write ccl-test-host))
+  # The owner provides ipc-test and calls no other role: it asks for no
+  # service (the shared fixture's lookups find none).
+  (request-notification ipc-test-registration manage registration))

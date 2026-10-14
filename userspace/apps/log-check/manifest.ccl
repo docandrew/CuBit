@@ -3,5 +3,5 @@
   (version "0.1.0")
   (request-service logstore read-write logstore)
   (request-service ipc-test read-write ipc-test)
-  (request-service log-observer read-write log-observer)
+  (request-service-optional log-observer read-write log-observer)
   (request-service process-manager read-write process-manager))

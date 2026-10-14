@@ -15,7 +15,7 @@ package body CuBit.GPU_Sessions is
      (To_Address (Integer_Address (Base)));
 
    procedure Open
-     (S : in out Session; Endpoint : CuBit.Messages.CapabilitySlot; Deadline : Unsigned_64;
+     (S : in out Session; Endpoint : CuBit.Handles.Endpoint; Deadline : Unsigned_64;
       Opened : out Boolean)
    is
       use type CuBit.Channels.Open_Result;
@@ -98,7 +98,7 @@ package body CuBit.GPU_Sessions is
    is
       Request : CuBit.Messages.Message := CuBit.Messages.NULL_MESSAGE;
    begin
-      Request.tag := (label => GQ.OP_GPU_WAKE, length => 2, flags => 0, reserved => 0);
+      Request.tag := (label => GQ.OP_GPU_WAKE, length => 2, protocol => 0, ipc => <>, reserved => 0);
       Request.words (GQ.Wake_Context_Word) := Unsigned_64 (Context);
       Request.words (GQ.Wake_Target_Word) := Unsigned_64 (Target);
       return Request;
@@ -125,7 +125,7 @@ package body CuBit.GPU_Sessions is
       if not S.Opened then
          return;
       end if;
-      M.tag := (label => GQ.OP_GPU_BOOST, length => 0, flags => 0, reserved => 0);
+      M.tag := (label => GQ.OP_GPU_BOOST, length => 0, protocol => 0, ipc => <>, reserved => 0);
       Sent := CuBit.Messages.capSubmit (S.Endpoint, M, CuBit.Messages.NO_COMPLETION_TOKEN);
    end Hint_Boost;
 
@@ -136,7 +136,7 @@ package body CuBit.GPU_Sessions is
       if not S.Opened then
          return;
       end if;
-      M.tag := (label => GQ.OP_GPU_BOOST, length => 1, flags => 0, reserved => 0);
+      M.tag := (label => GQ.OP_GPU_BOOST, length => 1, protocol => 0, ipc => <>, reserved => 0);
       M.words (0) := (if On then GQ.Boost_Policy_On else GQ.Boost_Policy_Off);
       Sent := CuBit.Messages.capSubmit (S.Endpoint, M, CuBit.Messages.NO_COMPLETION_TOKEN);
    end Set_Boost_Policy;

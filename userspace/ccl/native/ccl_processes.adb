@@ -3,6 +3,7 @@ with CuBit.Messages;
 with CuBit.Memory_Grants;
 with CuBit.Grant_References;
 with CuBit.Process_Observer;
+with CCL_Native_Bindings;
 
 --  proc.list on CuBit: procmgr's process-observer role. The console lends
 --  procmgr one page; procmgr fills it with the kernel's process table joined
@@ -40,15 +41,15 @@ package body CCL_Processes is
       Total := 0;
       Result := Unavailable;
       CuBit.Memory_Grants.Create_Via_Capability
-        (CuBit.Messages.CapabilitySlot (PO.Observer_Slot), Page'Address, 1, True, Loan, Lent);
+        (CCL_Native_Bindings.Process_Observer, Page'Address, 1, True, Loan, Lent);
       if not Lent then
          --  No endpoint in the observer slot: the role was not granted.
          Result := Not_Granted;
          return;
       end if;
-      Request.tag := (label => PO.List_Label, length => 1, flags => 0, reserved => 0);
+      Request.tag := (label => PO.List_Label, length => 1, protocol => 0, ipc => <>, reserved => 0);
       Request.words (0) := CuBit.Grant_References.Encode (Loan);
-      Reply_Tag := CuBit.Messages.capCall (CuBit.Messages.CapabilitySlot (PO.Observer_Slot), Request, CuBit.Messages.Wait_Forever);
+      Reply_Tag := CuBit.Messages.capCall (CCL_Native_Bindings.Process_Observer, Request, CuBit.Messages.Wait_Forever);
       CuBit.Memory_Grants.Revoke (Loan, Revoked);
       if Reply_Tag.label = Unsigned_32 (PO.Status'Enum_Rep (PO.Denied)) then
          Result := Not_Granted;

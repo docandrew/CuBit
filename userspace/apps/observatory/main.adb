@@ -11,7 +11,7 @@ with Observatory_CCL;
 with Observatory_History;
 with Observatory_Format_Budget;
 with Compositor_Requests;
-with CCL_Manifest_Bindings;
+with Startup;
 with CCL.Catalog;
 with CCL.Host_Values;
 with CCL.Sessions;
@@ -28,7 +28,7 @@ procedure Main is
    Selected : P.Row_Index := 0;
    Graphs : Boolean := True;
    package O is new Observatory_Metric_Observer
-     (CCL_Manifest_Bindings.Slot_metrics_observer);
+     (Startup.Metrics_Observer);
    use type CCL.Catalog.Catalog_Error;
    use type CCL.Catalog.Grant_Result;
    use type CCL.Language.Interpretation_Status;

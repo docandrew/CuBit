@@ -2,8 +2,9 @@ with Interfaces;
 with CuBit.Messages;
 with CuBit.Metric_Protocol;
 with Observatory_Metric_Queries;
+with CuBit.Handles;
 generic
-   Capability : CuBit.Messages.CapabilitySlot;
+   Capability : CuBit.Handles.Endpoint;
 package Observatory_Metric_Observer with SPARK_Mode => Off is
    -- Single event-loop owner, static page lifetime. No call waits for a reply.
    -- Sequence is shared with every other async route in the application.

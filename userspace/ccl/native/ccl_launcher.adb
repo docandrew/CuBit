@@ -1,4 +1,5 @@
 with CuBit.Child_Exits;
+with CuBit.Handles.Startup;
 with CuBit.Launch_Arguments;
 with CuBit.Launch_Authority;
 with CuBit.Launch_Grants;
@@ -308,4 +309,15 @@ package body CCL_Launcher is
       end loop;
       State := (others => <>);
    end Release;
+begin
+   --  procmgr's endpoint: the program's "process-manager" startup entry
+   --  (loaded before units elaborate). Without one every launch is refused.
+   declare
+      Found : constant CuBit.Handles.Startup.Optional_Endpoint :=
+        CuBit.Handles.Startup.Optional_Endpoint_Named ("process-manager");
+   begin
+      if Found.Present then
+         CuBit.Launching.Bind (Found.Value);
+      end if;
+   end;
 end CCL_Launcher;

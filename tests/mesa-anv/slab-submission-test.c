@@ -6,15 +6,20 @@
 #include "../../userspace/mesa/anv/native_gpu_buffers.h"
 #include "../../userspace/mesa/anv/native_gpu_mapping.h"
 #include <stdio.h>
+#include "../../userspace/c/cubit_handles.h"
+/* A test endpoint handle (generation 1). */
+#define TEST_ENDPOINT(n) ((cubit_endpoint){(UINT64_C(1) << 32) | (uint64_t)(n)})
+/* The index a test endpoint was made from. */
+#define TEST_INDEX(e) ((unsigned)((e).opaque & 0xffffffffu))
 
-uint32_t cubit_intel_memory_contract(uint64_t slot) { (void)slot; return 1; }
-uint32_t cubit_intel_session_status(uint64_t slot) { (void)slot; return 0; }
+uint32_t cubit_intel_memory_contract(cubit_endpoint endpoint) { (void)endpoint; return 1; }
+uint32_t cubit_intel_session_status(cubit_endpoint endpoint) { (void)endpoint; return 0; }
 bool cubit_cpu_tracker_drain(struct cubit_cpu_mapping_tracker *tracker)
 { (void)tracker; return true; }
-uint32_t cubit_intel_close_session(uint64_t slot, uint64_t *tag) { *tag = slot + 1; return 0; }
-uint32_t cubit_intel_poll_session_retirement(uint64_t slot) { (void)slot; return 0; }
-uint32_t cubit_intel_prepare_context(uint64_t slot) { (void)slot; return 0; }
-uint32_t cubit_intel_register_context(uint64_t slot) { (void)slot; return 0; }
+uint32_t cubit_intel_close_session(cubit_endpoint endpoint, uint64_t *tag) { *tag = TEST_INDEX(endpoint) + 1; return 0; }
+uint32_t cubit_intel_poll_session_retirement(cubit_endpoint endpoint) { (void)endpoint; return 0; }
+uint32_t cubit_intel_prepare_context(cubit_endpoint endpoint) { (void)endpoint; return 0; }
+uint32_t cubit_intel_register_context(cubit_endpoint endpoint) { (void)endpoint; return 0; }
 void util_flush_range(void *start, size_t size) { (void)start; (void)size; }
 VkResult _vk_device_set_lost(struct vk_device *device, const char *file,
    int line, const char *message, ...)
@@ -31,7 +36,7 @@ int main(void)
    static uint32_t memory[4096];
    struct anv_bo parent = {.gem_handle = 17, .actual_size = 16384};
    struct anv_bo child = {.slab_parent = &parent, .actual_size = 4096, .size = 4096, .map = memory};
-   open_rig(&r, 63);
+   open_rig(&r, TEST_ENDPOINT(63));
    r.batches[0] = &child;
    struct vk_sync *fence = make(&r, &binary_type.sync, 0);
    const uint64_t bases[] = {0x10000, (UINT64_C(1) << 47) - 4096, (UINT64_C(1) << 47) + 4096};
@@ -42,10 +47,10 @@ int main(void)
          child.offset = intel_canonical_address(bases[b] + 4096 + offset);
          assert(vk_sync_reset(&r.device.vk, fence) == VK_SUCCESS);
          assert(startup(&r, fence, 0, NULL) == VK_SUCCESS);
-         const struct gpu_queue_mock_slot *q = &gpu_queue_mock[r.slot];
+         const struct gpu_queue_mock_slot *q = &gpu_queue_mock[TEST_INDEX(r.endpoint)];
          assert(q->last.handle == 17 && q->last.offset == 4096 + offset && q->last.bytes == 4096 &&
                 q->last.gpu == intel_48b_address(child.offset));
-         gpu_queue_mock_complete(r.slot, 0, q->submitted.value[0]);
+         gpu_queue_mock_complete(r.endpoint, 0, q->submitted.value[0]);
          assert(vk_sync_wait(&r.device.vk, fence, 0, 0, 0) == VK_SUCCESS);
          slices++;
       }
@@ -67,11 +72,11 @@ int main(void)
          parent.offset = child.offset = intel_canonical_address((UINT64_C(1) << 48) - 4096);
          break; /* parent extent crosses the GPU address-space limit */
       }
-      open_rig(&rejected[n], 62 - n);
+      open_rig(&rejected[n], TEST_ENDPOINT(62 - n));
       rejected[n].batches[0] = &child;
       struct vk_sync *f = make(&rejected[n], &binary_type.sync, 0);
       assert(startup(&rejected[n], f, 0, NULL) == VK_ERROR_DEVICE_LOST);
-      assert(gpu_queue_mock[rejected[n].slot].jobs == 0);
+      assert(gpu_queue_mock[TEST_INDEX(rejected[n].endpoint)].jobs == 0);
       close_rig(&rejected[n]);
    }
    close_rig(&r);

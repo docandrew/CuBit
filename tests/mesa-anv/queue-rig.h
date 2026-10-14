@@ -28,7 +28,7 @@ struct rig {
    struct anv_bo cmd_bo[2];
    struct anv_batch_bo cmd_batch[2];
    struct anv_cmd_buffer *cmds[2];
-   uint64_t slot;
+   cubit_endpoint endpoint;
 };
 
 static struct vk_sync *make(struct rig *r, const struct vk_sync_type *type,
@@ -40,13 +40,13 @@ static struct vk_sync *make(struct rig *r, const struct vk_sync_type *type,
 }
 
 /* attach, logical context and engine: what device creation does first. */
-static void open_rig(struct rig *r, uint64_t slot)
+static void open_rig(struct rig *r, cubit_endpoint endpoint)
 {
-   r->slot = slot;
+   r->endpoint = endpoint;
    r->device.physical = &physical;
    r->device.vk.physical = &physical.vk;
    r->device.batch_bo_pool.bo_alloc_flags = ANV_BO_ALLOC_HOST_CACHED;
-   assert(anv_cubit_attach_session(&r->device, slot) == VK_SUCCESS);
+   assert(anv_cubit_attach_session(&r->device, endpoint) == VK_SUCCESS);
    assert(anv_cubit_setup_context(&r->device, &device_info, 1) == VK_SUCCESS);
    r->queue = (struct anv_queue){.device = &r->device, .family = &physical.queue.families[0]};
    assert(anv_cubit_create_engine(&r->device, &r->queue, &queue_info) == VK_SUCCESS);

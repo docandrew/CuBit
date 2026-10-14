@@ -1,3 +1,4 @@
+with CuBit.Handles.Fixture;
 with Ada.Command_Line;
 with Ada.Text_IO;
 with Interfaces;
@@ -36,7 +37,7 @@ begin
    Vulkan_Scene.Append_Physical_Fill (Scene, (1, 1, 4, 3), 16#ABCDEF#, OK); pragma Assert (OK);
    Vulkan_Scene.Seal (Scene, OK); pragma Assert (OK);
    S.Render (Scene, Frame); pragma Assert (Frame = S.Rejected and Calls (2) = 0);
-   S.Initialize (25); S.Configure_Targets (32, 24, 1, 16384, OK); pragma Assert (OK);
+   S.Initialize (CuBit.Handles.Fixture.Endpoint_Of (25)); S.Configure_Targets (32, 24, 1, 16384, OK); pragma Assert (OK);
    S.Prepare_Pipeline (OK); pragma Assert (OK and S.Pipeline_Ready);
    if Scenario = 3 then Set (2, 2); end if;
    if Scenario = 5 then Prepare_Fault (2); end if;

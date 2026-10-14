@@ -9,6 +9,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "../../userspace/c/cubit_handles.h"
+/* A test endpoint handle (generation 1). */
+#define TEST_ENDPOINT(n) ((cubit_endpoint){(UINT64_C(1) << 32) | (uint64_t)(n)})
+/* The index a test endpoint was made from. */
+#define TEST_INDEX(e) ((unsigned)((e).opaque & 0xffffffffu))
 
 static unsigned mode, instance_destroys, device_destroys, closes;
 static bool installed, transferred, allow_retire;
@@ -83,10 +88,10 @@ static void properties(VkPhysicalDevice p, uint32_t *count, VkQueueFamilyPropert
    if (out) *out = (VkQueueFamilyProperties){.queueCount=1,
       .queueFlags=mode == 12 ? VK_QUEUE_TRANSFER_BIT : VK_QUEUE_GRAPHICS_BIT};
 }
-VkResult anv_cubit_attach_owned_session(struct anv_device *d, uint64_t slot,
+VkResult anv_cubit_attach_owned_session(struct anv_device *d, cubit_endpoint endpoint,
                                        struct anv_cubit_endpoint_pin *incoming)
 {
-   assert(d == &device && slot == 7);
+   assert(d == &device && endpoint.opaque == TEST_ENDPOINT(7).opaque);
    pin = *incoming;
    *incoming = (struct anv_cubit_endpoint_pin){0};
    transferred = true;
@@ -122,10 +127,10 @@ PFN_vkVoidFunction anv_GetInstanceProcAddr(VkInstance i, const char *name)
 #undef PROC
    return NULL;
 }
-uint32_t cubit_intel_close_session(uint64_t slot, uint64_t *tag)
-{ assert(slot == 7 && !transferred); closes++; *tag=1; return mode == 8 ? 3 : 0; }
-uint32_t cubit_intel_poll_session_retirement(uint64_t slot)
-{ assert(slot == 7 && closes == 1); return allow_retire ? 0 : 4; }
+uint32_t cubit_intel_close_session(cubit_endpoint endpoint, uint64_t *tag)
+{ assert(endpoint.opaque == TEST_ENDPOINT(7).opaque && !transferred); closes++; *tag=1; return mode == 8 ? 3 : 0; }
+uint32_t cubit_intel_poll_session_retirement(cubit_endpoint endpoint)
+{ assert(endpoint.opaque == TEST_ENDPOINT(7).opaque && closes == 1); return allow_retire ? 0 : 4; }
 uint32_t anv_cubit_memory_poll(void)
 {
    assert(transferred);
@@ -140,14 +145,14 @@ int main(int argc, char **argv)
    instance.vk.base.type = VK_OBJECT_TYPE_INSTANCE;
    device.vk.base.type = VK_OBJECT_TYPE_DEVICE;
    struct cubit_mesa_service *owner = NULL, *other = NULL;
-   assert(cubit_mesa_service_start(64, &owner) != VK_SUCCESS && !owner);
-   VkResult result = cubit_mesa_service_start(7, &owner);
+   assert(cubit_mesa_service_start(CUBIT_NO_ENDPOINT, &owner) != VK_SUCCESS && !owner);
+   VkResult result = cubit_mesa_service_start(TEST_ENDPOINT(7), &owner);
    assert((result == VK_SUCCESS) == (mode == 0 || (mode >= 16 && mode <= 18)));
    if (mode == 19 || mode == 21) assert(result == VK_ERROR_INITIALIZATION_FAILED);
    if (mode == 20) assert(result == VK_ERROR_DEVICE_LOST);
    if (mode == 22) assert(result == VK_INCOMPLETE);
    assert(owner); /* Accepted endpoint remains owned even when setup fails. */
-   assert(cubit_mesa_service_start(7, &other) != VK_SUCCESS && !other);
+   assert(cubit_mesa_service_start(TEST_ENDPOINT(7), &other) != VK_SUCCESS && !other);
    struct cubit_mesa_service_device facts;
    assert(cubit_mesa_service_device(owner, &facts) == (result == VK_SUCCESS));
    if (result == VK_SUCCESS) assert(facts.device && facts.queue && facts.instance_proc);
@@ -180,7 +185,7 @@ int main(int argc, char **argv)
       assert(instance_destroys == instances_after_close);
       assert(device_destroys == devices_after_close && closes == closes_after_close);
       assert(!cubit_mesa_service_device(owner, &facts) && !facts.device);
-      assert(cubit_mesa_service_start(7, &other) != VK_SUCCESS && !other);
+      assert(cubit_mesa_service_start(TEST_ENDPOINT(7), &other) != VK_SUCCESS && !other);
    }
    allow_retire = true;
    for (unsigned i=0; i<4; i++)
@@ -190,6 +195,6 @@ int main(int argc, char **argv)
    assert(device_destroys == (mode == 0 || mode == 7 ||
       (mode >= 16 && mode <= 18) ? 1u : 0u));
    assert(closes == (transferred ? 0u : 1u));
-   assert(cubit_mesa_service_start(7, &other) != VK_SUCCESS && !other);
+   assert(cubit_mesa_service_start(TEST_ENDPOINT(7), &other) != VK_SUCCESS && !other);
    printf("Service bootstrap scenario %u PASS: retained failure, borrowed facts, one-shot teardown\n", mode);
 }

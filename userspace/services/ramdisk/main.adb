@@ -7,6 +7,9 @@ with Launch_Configuration;
 with Cpio;
 with Ram_Device;
 
+with CuBit.Startup_State;
+with Startup;
+
 procedure Main is
    function toAddr (Value : Unsigned_64) return System.Address is
      (To_Address (Integer_Address (Value)));
@@ -20,6 +23,10 @@ procedure Main is
    Ignore : Unsigned_64;
    Tag : MessageTag;
 begin
+   if not CuBit.Startup_State.Ready (Startup.Verify) then
+      debugPrint ("ramdisk: startup capabilities missing" & ASCII.LF);
+      return;
+   end if;
    --  The boot image devmgr mapped for us, from its launch configuration.
    declare
       Configuration : Launch_Configuration.Boot_Image_Configuration;
@@ -63,7 +70,7 @@ begin
    end if;
    debugPrint ("ramdisk: volatile block device ready" & ASCII.LF);
    Tag := capSend
-     (15, (tag => (label => 16#FF00#, length => 0, flags => 0, reserved => 0),
+     (Startup.Ready, (tag => (label => 16#FF00#, length => 0, protocol => 0, ipc => <>, reserved => 0),
            authorityTag => 0, words => [others => 0]),
       CuBit.Messages.Wait_Forever);
    loop

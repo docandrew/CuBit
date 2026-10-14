@@ -1,3 +1,4 @@
+with CuBit.Handles.Fixture;
 with Ada.Command_Line;
 with Ada.Real_Time; use Ada.Real_Time;
 with Ada.Text_IO; use Ada.Text_IO;
@@ -69,7 +70,7 @@ procedure Ops_Bench is
 begin
    Open_Image (Ada.Command_Line.Argument (1));
    configureCache (16);
-   initBlockDevice (Fs, 1, (slot => 1, generation => 1), Grant_Buffer'Address,
+   initBlockDevice (Fs, CuBit.Handles.Fixture.Endpoint_Of (1), 1, (slot => 1, generation => 1), Grant_Buffer'Address,
                     Grant_Buffer'Length, Admission);
    pragma Assert (Admission = Admitted);
    makeDirectoryPath (Fs, "bench", Dir, Lookup, Written);

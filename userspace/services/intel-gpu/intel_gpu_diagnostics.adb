@@ -1,7 +1,9 @@
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Logging;
 with CuBit.Log_Records;
+with CuBit.Handles;
 with Intel_GPU_Diagnostic_Capture;
+with Intel_GPU_Supervisor;
 package body Intel_GPU_Diagnostics is
    use Interfaces;
    package Buffering is new Intel_GPU_Diagnostic_Capture (512, 512);
@@ -36,8 +38,10 @@ package body Intel_GPU_Diagnostics is
       Due := (if Now <= Unsigned_64'Last - 100 then Now + 100 else Unsigned_64'Last);
       if Phase = Need_Grant then
          if CuBit.Messages."=" (Registered_Driver (DRIVER_LOGSTORE), No_Process) then return; end if;
-         Msg.tag := (16#0229#, 0, 0, 0);
-         Phase := (if capSubmit (15, Msg, Grant_Token) then Grant_Pending else Stopped);
+         Msg.tag := (label => 16#0229#, length => 0, protocol => 0, ipc => <>, reserved => 0);
+         --  devmgr answers with a badged logstore endpoint (CAP-002).
+         Phase := (if Intel_GPU_Supervisor.Submit_Accepting (Msg, Grant_Token)
+                   then Grant_Pending else Stopped);
          return;
       end if;
       for Count in 1 .. Batch_Records loop
@@ -69,9 +73,20 @@ package body Intel_GPU_Diagnostics is
          if Poll_Completion (Result) = 0 then return 0; end if;
          if Receipt.token = Grant_Token then
             if Phase = Grant_Pending and then Receipt.status = COMPLETION_OK and then
-              Receipt.msg.tag = (16#F000#, 0, 0, 0) and then
+              Intel_GPU_Supervisor.Reply_Tag (Receipt) = (label => 16#F000#, length => 0, protocol => 0, ipc => <>, reserved => 0) and then
               Receipt.msg.words = [0, 0, 0, 0]
-            then Phase := Ready;
+            then
+               declare
+                  Logstore : constant CuBit.Handles.Endpoint :=
+                    Intel_GPU_Supervisor.Granted_Endpoint (Receipt);
+               begin
+                  if CuBit.Handles.Valid (Logstore) then
+                     CuBit.Logging.Bind (Writer, Logstore);
+                     Phase := Ready;
+                  else
+                     Phase := Stopped;
+                  end if;
+               end;
             else Phase := Stopped; end if;
          else
             return 1;

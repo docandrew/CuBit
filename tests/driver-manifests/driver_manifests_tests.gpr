@@ -1,0 +1,19 @@
+--  Hosted tests and proof of devmgr's manifest reader (Driver_Manifests),
+--  over the ELF objects ccl-manifest produces (run.sh).
+project Driver_Manifests_Tests is
+   for Source_Dirs use (".", "../../userspace/services/devmgr",
+     "../../userspace/ccl/src", "../../userspace/runtime/gnat");
+   for Source_Files use ("main.adb", "driver_manifests.ads", "driver_manifests.adb",
+     "ccl.ads", "ccl-resource_sections.ads", "ccl-resource_sections.adb",
+     "ccl-scheduling_limits.ads", "cubit.ads", "cubit-startup_tables.ads",
+     "cubit-startup_tables.adb");
+   for Object_Dir use "build/obj";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-O1", "-gnata", "-gnato", "-gnatwa");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=2", "--checks-as-errors=on");
+   end Prove;
+end Driver_Manifests_Tests;

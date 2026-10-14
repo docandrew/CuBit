@@ -1,15 +1,15 @@
-with CuBit.Capability_Grants;
+with CuBit.Handles.IPC;
 with Intel_GPU_Broker_Request;
 with Intel_Render_Admission;
-with CuBit.Process_IDs;
 package body Intel_Render_Broker is
    package M renames CuBit.Messages;
-   package G renames CuBit.Capability_Grants;
+   package H renames CuBit.Handles;
+   package IPC renames CuBit.Handles.IPC;
    package R renames Intel_GPU_Broker_Request;
    package C renames Intel_Render_Admission;
    use type L.Phase;
    use type L.Outcome;
-   use type M.CapabilitySlot;
+   use type IPC.Reply_Outcome;
 
    function State (Object : Broker; ID : Ticket) return L.Phase is
      (L.State (Object.Launches, ID));
@@ -20,38 +20,33 @@ package body Intel_Render_Broker is
    is
       Decoded : constant R.Decoded := R.Decode
         (Expected_Launcher, Sender, Stamped_Tag, Request.tag.label,
-         Request.tag.length, Request.tag.flags, Request.tag.reserved,
+         Request.tag.length, CuBit.Messages.Flag_Byte (Request.tag), Request.tag.reserved,
          [Request.words (0), Request.words (1),
           Request.words (2), Request.words (3)]);
-      Target : G.Recipient;
-      Slot : M.CapabilitySlot;
       Reserved : Ticket;
    begin
       ID := 0;
       if not Decoded.Valid or else L.Count (Object.Launches) = L.Capacity
+        or else not L.Can_Reserve (Object.Launches, Decoded)
       then return; end if;
-      Target := G.Capture (M.CapabilitySlot (Decoded.Source));
-      if not G.Endpoint_Matches (M.CapabilitySlot (Decoded.Source),
-                                G.Incarnation (Target)) or else
-        not L.Can_Reserve (Object.Launches, Decoded, CuBit.Process_IDs.To_Word (G.Incarnation (Target)))
-      then return; end if;
-      Slot := Reply_Slot (L.Count (Object.Launches) + 1);
-      -- Never overwrite a source, implicit reply, or another retained reply.
-      -- Other service slots remain a trusted caller reservation obligation.
-      if Slot = Driver_Source or Slot = 63 or
-        Slot in M.CapabilitySlot (R.Source_Slot'First) ..
-                M.CapabilitySlot (R.Source_Slot'Last)
-      then return; end if;
-      for I in 1 .. L.Count (Object.Launches) loop
-         if Object.Replies (I) = Slot then return; end if;
-      end loop;
-      if M.saveReplyCap (Unsigned_64 (Slot)) /= 1 then return; end if;
-      -- Can_Reserve is stable within this single-owner, non-reentrant call.
-      L.Reserve (Object.Launches, Decoded, CuBit.Process_IDs.To_Word (G.Incarnation (Target)), Reserved);
-      ID := Reserved;
-      Object.Replies (ID) := Slot;
-      D.Start (Object.Admissions, Target, Driver_Source,
-        M.CapabilitySlot (Decoded.Source), M.CapabilitySlot (Decoded.Destination),
+      declare
+         Saved : constant IPC.Saved_Reply := IPC.Save_Reply;
+      begin
+         if not Saved.Saved then return; end if;
+         -- Can_Reserve is stable within this single-owner, non-reentrant call.
+         L.Reserve (Object.Launches, Decoded, Reserved);
+         ID := Reserved;
+         if ID = 0 then
+            --  Not reachable (Can_Reserve held); answer rather than leak.
+            declare
+               Ignore : constant Boolean := IPC.Answer (Saved.Handle, M.NULL_MESSAGE);
+            begin
+               return;
+            end;
+         end if;
+         Object.Replies (ID) := Saved.Handle;
+      end;
+      D.Start (Object.Admissions, Decoded.Identity, Driver, Driver_PID,
         Now, Deadline, Object.IDs (ID));
       if Object.IDs (ID) = 0 then
          L.Finish (Object.Launches, ID, L.Rejected);
@@ -96,13 +91,37 @@ package body Intel_Render_Broker is
             end if;
             L.Take_Reply (Object.Launches, I, Taken);
             if Taken then
-               Reply.tag := (R.Label, 4, 0, 0);
+               Reply.tag := (label => R.Label, length => 4,
+                             protocol => 0, ipc => <>, reserved => 0);
                -- [version, status: 0 admitted/1 rejected/2 uncertain, nonce,
-               -- captured application identity]. Not a new authority token.
+               -- application identity]. Not a new authority token.
                Reply.words := [R.Version,
                  Unsigned_64 (L.Outcome'Pos (L.Result (Object.Launches, I))),
                  L.Nonce (Object.Launches, I), L.Identity (Object.Launches, I)];
-               Sent := M.replyCap (Object.Replies (I), Reply) = 1;
+               if L.Result (Object.Launches, I) = L.Admitted then
+                  declare
+                     Result : constant IPC.Reply_Result := IPC.Reply_Saved_With
+                       (Object.Replies (I), Reply,
+                        H.Badged (Render_Source,
+                                  (Read | Write | Grant => True, others => False),
+                                  D.Session (Object.Admissions, Object.IDs (I))));
+                  begin
+                     Sent := Result.Outcome = IPC.Transferred;
+                     if Result.Outcome = IPC.Refused then
+                        -- The saved reply is kept on a refusal: answer it.
+                        Reply.words (1) := Unsigned_64 (L.Outcome'Pos (L.Uncertain));
+                        Sent := False;
+                        declare
+                           Ignore : constant Boolean := IPC.Answer (Object.Replies (I), Reply);
+                        begin
+                           null;
+                        end;
+                     end if;
+                  end;
+               else
+                  Sent := IPC.Answer (Object.Replies (I), Reply);
+               end if;
+               Object.Replies (I) := H.No_Reply;
                L.Delivered (Object.Launches, I, Sent);
                if L.Abort_Required (Object.Launches, I) then
                   D.Cancel (Object.Admissions, Object.IDs (I));

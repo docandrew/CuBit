@@ -1,8 +1,6 @@
-# Test-local slot layout for the UNMODIFIED production viewer main.
+# Test-local catalog for the UNMODIFIED production viewer main: its startup
+# bindings (gpu-probe, device-manager) both name the owner fixture (ipc-test).
 (service-catalog v1
-  (application-slots 24 62)
   (service ipc-test 14 read-write)
   (service desktop 15 read-write)
-  (fixed-binding test-driver 4)
-  (fixed-binding test-supervisor 15)
-  (fixed-binding desktop 21))
+  (notification ipc-test-registration 14 publish-and-manage))

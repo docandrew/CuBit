@@ -320,7 +320,7 @@ package body Intel_GPU_Buffer_Requests.Sharing is
       Writable : Boolean; View : in out Intel_GPU_Buffer_Views.View;
       Accepted : out Boolean; Presentation : Boolean := False) is
       Session : constant Unsigned_64 := Session_Of (Sender, Stamp);
-      Slot : CuBit.Messages.CapabilitySlot;
+      Grantee : CuBit.Handles.Reply;
       Identity : Unsigned_64;
       use type Intel_GPU_Buffer_Views.View_State;
    begin
@@ -329,7 +329,7 @@ package body Intel_GPU_Buffer_Requests.Sharing is
         ID = 0 or else ID > Unsigned_64 (Intel_GPU_Buffer_Handles.Handle'Last)
         or else Intel_GPU_Buffer_Views.State (View) /= Intel_GPU_Buffer_Views.Empty
       then return; end if;
-      Recipient_Of (Sender, Stamp, Slot, Identity);
+      Recipient_Of (Sender, Stamp, Grantee, Identity);
       -- Admission may have changed across the trusted recipient lookup. Do
       -- not create a kernel alias using a now-closed or replacement session.
       if Identity = 0 or else Object.Failed or else not Owner_Ready or else
@@ -340,7 +340,7 @@ package body Intel_GPU_Buffer_Requests.Sharing is
       then return; end if;
       Intel_GPU_Buffer_Views.Share
         (View, Object.Handles, Session, Intel_GPU_Buffer_Handles.Handle (ID),
-         Slot, Identity, Offset, Bytes, Writable, Presentation);
+         Grantee, Identity, Offset, Bytes, Writable, Presentation);
       Accepted := Intel_GPU_Buffer_Views.State (View) = Intel_GPU_Buffer_Views.Shared;
    end Share;
 end Intel_GPU_Buffer_Requests.Sharing;

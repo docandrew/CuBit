@@ -38,8 +38,8 @@ package body Ram_Device is
    begin
       Response := NULL_MESSAGE;
       Response.tag := (label => REPLY_ERROR, length => 1,
-                       flags => 0, reserved => 0);
-      if Blocks = 0 or else Request.tag.flags /= 0 or else
+                       protocol => 0, ipc => <>, reserved => 0);
+      if Blocks = 0 or else Request.tag.protocol /= 0 or else
         Request.tag.reserved /= 0
       then
          return;
@@ -49,7 +49,7 @@ package body Ram_Device is
             return;
          end if;
          Response.tag := (label => REPLY_OK, length => 4,
-                          flags => 0, reserved => 0);
+                          protocol => 0, ipc => <>, reserved => 0);
          Response.words :=
            [0 => Blocks, 1 => Pack_Sizes (Block_Size, Block_Size),
             2 => Maximum_Transfer_Blocks,

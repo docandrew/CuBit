@@ -1,3 +1,4 @@
+with CuBit.Handles.Fixture;
 with Ada.Command_Line; with Ada.Text_IO; with Interfaces;
 with Desktop_Vulkan_Startup; with Vulkan_Device_Mock; with Vulkan_Upload_Owner;
 with Vulkan_Owned_Targets; with Vulkan_Scene;
@@ -27,7 +28,7 @@ begin
    Reset; Context_Set (0, 0); M.Set (True, True, 0); Pipeline_Set (0, 0);
    Image_Set (4096, 1, 0, 0, 0); Metadata_Set (0);
    S.Configure_Upload (384, OK); pragma Assert (not OK and Metadata_Calls = 0);
-   S.Initialize (25); S.Configure_Upload (384, OK); pragma Assert (not OK and Metadata_Calls = 0);
+   S.Initialize (CuBit.Handles.Fixture.Endpoint_Of (25)); S.Configure_Upload (384, OK); pragma Assert (not OK and Metadata_Calls = 0);
    S.Configure_Targets (32, 24, 1, (if Scenario = 1 then 12288 else 36864), OK); pragma Assert (OK);
    S.Configure_Upload (384, OK); pragma Assert (not OK and Metadata_Calls = 0);
    S.Prepare_Pipeline (OK); pragma Assert (OK);

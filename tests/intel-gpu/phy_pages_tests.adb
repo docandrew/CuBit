@@ -16,13 +16,13 @@ procedure PHY_Pages_Tests is
    Found : Unsigned_64;
 begin
    pragma Assert (Offset (0) = 16#64000# and Offset (1) = 16#162000# and Offset (2) = 16#6C000#);
+   --  Distinct from the display-power and reset pages it might be confused with.
    for I in Page_Index loop
-      pragma Assert (Slot (I) in 29 .. 31);
       for J in Intel_GPU_Display_Pages.Page_Index loop
-         pragma Assert (Slot (I) /= Intel_GPU_Display_Pages.Slot (J));
+         pragma Assert (Offset (I) /= Intel_GPU_Display_Pages.Offset (J));
       end loop;
       for J in Intel_GPU_Reset_Pages.Page_Index loop
-         pragma Assert (Slot (I) /= Intel_GPU_Reset_Pages.Slot (J));
+         pragma Assert (Offset (I) /= Intel_GPU_Reset_Pages.Offset (J));
       end loop;
    end loop;
    -- Every byte offset, not only aligned offsets: no unintended registers.
@@ -34,5 +34,5 @@ begin
       pragma Assert (Write_Address (R) = Found);
    end loop;
    pragma Assert (Write_Address (Unsigned_32'Last) = 0);
-   Ada.Text_IO.Put_Line ("PHY pages PASS: exhaustive 2MiB byte offsets, 17 exact writes, distinct slots");
+   Ada.Text_IO.Put_Line ("PHY pages PASS: exhaustive 2MiB byte offsets, 17 exact writes, distinct pages");
 end PHY_Pages_Tests;

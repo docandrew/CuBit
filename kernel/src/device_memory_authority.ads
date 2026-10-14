@@ -19,31 +19,26 @@ package Device_Memory_Authority with SPARK_Mode is
 
    subtype Access_Mode is Device_Memory_Admission.Access_Mode;
 
-   -- Slot S holds a CAP_DEVICE_MEM covering [Base, Base + Bytes) with the
-   -- rights Mode needs.
-   function Slot_Grants
-     (Table : CapabilityTable; S : CapabilitySlot;
-      Base, Bytes : Unsigned_64; Mode : Access_Mode) return Boolean
-   is (Table (S).capType = CAP_DEVICE_MEM
-       and then Device_Memory_Admission.Covers
-                  (Table (S).object.ref, Table (S).object.param, Base, Bytes)
-       and then Device_Memory_Admission.Allows
-                  (Table (S).rights (RIGHT_READ), Table (S).rights (RIGHT_WRITE),
-                   Mode));
-
+   -- Cap is a CAP_DEVICE_MEM covering [Base, Base + Bytes) with the rights
+   -- Mode needs. A system call that maps device memory names the one
+   -- capability it relies on (its handle); nothing searches a table.
    function Holds
-     (Table : CapabilityTable; Base, Bytes : Unsigned_64; Mode : Access_Mode)
+     (Cap : Capability; Base, Bytes : Unsigned_64; Mode : Access_Mode)
       return Boolean
-   is (for some S in CapabilitySlot => Slot_Grants (Table, S, Base, Bytes, Mode));
+   is (Cap.capType = CAP_DEVICE_MEM
+       and then Device_Memory_Admission.Covers
+                  (Cap.object.ref, Cap.object.param, Base, Bytes)
+       and then Device_Memory_Admission.Allows
+                  (Cap.rights (RIGHT_READ), Cap.rights (RIGHT_WRITE), Mode));
 
-   -- May a process with Table map [Base, Base + Bytes) in Mode?
+   -- May a process holding Cap map [Base, Base + Bytes) in Mode?
    function Authorize
-     (Table : CapabilityTable; M : Physical_Ranges.Map;
+     (Cap : Capability; M : Physical_Ranges.Map;
       Base, Bytes : Unsigned_64; Mode : Access_Mode) return Boolean
    with Pre  => Physical_Ranges.Well_Formed (M),
         Post => Authorize'Result =
                   (Physical_Ranges.Device_Bytes (M, Base, Bytes)
-                   and then Holds (Table, Base, Bytes, Mode));
+                   and then Holds (Cap, Base, Bytes, Mode));
 
    -- May policy mint a CAP_DEVICE_MEM naming [Base, Base + Bytes)? Policy
    -- still chooses who gets which device; the kernel only refuses ranges
@@ -77,15 +72,15 @@ package Device_Memory_Authority with SPARK_Mode is
 
    -- The refusal of a mapping.
    function Explain
-     (Table : CapabilityTable; M : Physical_Ranges.Map;
+     (Cap : Capability; M : Physical_Ranges.Map;
       Base, Bytes : Unsigned_64; Mode : Access_Mode) return Explanation
    with Pre  => Physical_Ranges.Well_Formed (M)
-                and then not Authorize (Table, M, Base, Bytes, Mode),
+                and then not Authorize (Cap, M, Base, Bytes, Mode),
         Post => Explained (M, Base, Bytes, Explain'Result)
                 and then
                 (if Explain'Result.Why = Pub.No_Covering_Capability then
                    Physical_Ranges.Device_Bytes (M, Base, Bytes)
-                   and then not Holds (Table, Base, Bytes, Mode));
+                   and then not Holds (Cap, Base, Bytes, Mode));
 
    -- What each reason states about the request.
    function Explained
@@ -112,11 +107,11 @@ package Device_Memory_Authority with SPARK_Mode is
    -- A mapping authorized here never includes a page of a non-mappable
    -- class: in particular never a RAM page.
    procedure Lemma_Authorized_Mapping_Excludes_RAM
-     (Table : CapabilityTable; M : Physical_Ranges.Map;
+     (Cap : Capability; M : Physical_Ranges.Map;
       Base, Bytes : Unsigned_64; Mode : Access_Mode)
    with Ghost, Global => null,
         Pre  => Physical_Ranges.Well_Formed (M)
-                and then Authorize (Table, M, Base, Bytes, Mode),
+                and then Authorize (Cap, M, Base, Bytes, Mode),
         Post => Bytes > 0 and then Base < Physical_Ranges.Address_Limit
                 and then Bytes - 1 <= Physical_Ranges.Address_Limit - 1 - Base
                 and then

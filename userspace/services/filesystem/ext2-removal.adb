@@ -726,7 +726,7 @@ package body Ext2.Removal is
             return;
          end if;
          forgetName (fs, parentNum, leaf);
-         Dentry_Cache.Forget_Directory (Names, fs.device.endpointSlot, target);
+         Dentry_Cache.Forget_Directory (Names, fs.device.volumeKey, target);
          unindexDirectory (fs, parentNum, parent, writeStatus);
          if writeStatus /= Write_Complete then
             fs.writeQuarantined := True;

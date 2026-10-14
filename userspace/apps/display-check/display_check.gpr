@@ -12,14 +12,14 @@ project Display_Check is
    end case;
    case Test_Mode is
       when "production" | "delayed" =>
-         for Source_Dirs use ("../../lib/display", ".", "../../services/display/production", GPU_Test_Dir);
+         for Source_Dirs use ("../../lib/display", ".", "build/generated", "../../services/display/production", GPU_Test_Dir);
          case GPU_Test_Mode is
             when "production" => for Object_Dir use "build";
             when "delayed" => for Object_Dir use "build-gpu-delayed";
             when "clear-failure" => for Object_Dir use "build-gpu-clear-failure";
          end case;
       when "output-rebind" =>
-         for Source_Dirs use ("../../lib/display", ".", "../../services/display/test-output", GPU_Test_Dir);
+         for Source_Dirs use ("../../lib/display", ".", "build/generated", "../../services/display/test-output", GPU_Test_Dir);
          for Object_Dir use "build-output-rebind";
    end case;
    for Main use ("main.adb");

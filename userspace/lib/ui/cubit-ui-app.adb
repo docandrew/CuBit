@@ -15,6 +15,7 @@ with CuBit.Memory_Grants;
 with CuBit.UI.Theme_Data;
 with Client_Frame_Wakeup;
 with Client_Input_Channel;
+with UI_Desktop_Service;
 
 package body CuBit.UI.App is
    use ASCII;
@@ -159,7 +160,7 @@ package body CuBit.UI.App is
          raw := syscall (SYSCALL_SBRK, pages * 4096 + 4096);
          if raw = Unsigned_64'Last then return; end if;
          candidateAddr := To_Address (Integer_Address (Align_Up_Page (raw)));
-         MG.Create_Via_Capability (CAP_SLOT_DESKTOP, candidateAddr, Natural (pages), False,
+         MG.Create_Via_Capability (UI_Desktop_Service.Endpoint, candidateAddr, Natural (pages), False,
                                    candidateGrant, created);
          if not created then return; end if;
          replacing := True;
@@ -167,7 +168,7 @@ package body CuBit.UI.App is
       request := CuBit.Desktop_Messages.From_Wire
         (DP.Encode_Attachment ((DP.Live_Surface_Name (win.surfaceId), candidateGrant,
            (DP.Positive_Extent (width), DP.Positive_Extent (height), width * 4))));
-      request.tag := capCall (CAP_SLOT_DESKTOP, request, CuBit.Messages.Wait_Forever);
+      request.tag := capCall (UI_Desktop_Service.Endpoint, request, CuBit.Messages.Wait_Forever);
       ok := DP.Decode_Status (CuBit.Desktop_Messages.To_Wire (request), DP.Attach_Buffer) = DP.Success;
       if ok then
          if replacing and win.bufferPages /= 0 then MG.Revoke (win.bufferGrant, revoked); end if;
@@ -314,7 +315,7 @@ package body CuBit.UI.App is
 
       hello := CuBit.Desktop_Messages.From_Wire
         (DP.Encode_Hello (DP.Current_Revision));
-      hello.tag := capCall (CAP_SLOT_DESKTOP, hello, CuBit.Messages.Wait_Forever);
+      hello.tag := capCall (UI_Desktop_Service.Endpoint, hello, CuBit.Messages.Wait_Forever);
       if DP.Decode_Hello_Result (CuBit.Desktop_Messages.To_Wire (hello)).Status /= DP.Success then
          debugPrint ("ui-app: desktop hello failed" & LF);
          return;
@@ -323,7 +324,7 @@ package body CuBit.UI.App is
       Refresh_Theme;
       info := CuBit.Desktop_Messages.From_Wire
         (DP.Encode_Empty_Request (DP.Get_Information));
-      info.tag := capCall (CAP_SLOT_DESKTOP, info, CuBit.Messages.Wait_Forever);
+      info.tag := capCall (UI_Desktop_Service.Endpoint, info, CuBit.Messages.Wait_Forever);
       if DP.Decode_Information_Result (CuBit.Desktop_Messages.To_Wire (info)).Status /= DP.Success then
          debugPrint ("ui-app: desktop info failed" & LF);
          return;
@@ -331,7 +332,7 @@ package body CuBit.UI.App is
 
       created := CuBit.Desktop_Messages.From_Wire
         (DP.Encode_Create ((DP.Pixel_Extent (initialW), DP.Pixel_Extent (initialH), DP.Window_Surface)));
-      created.tag := capCall (CAP_SLOT_DESKTOP, created, CuBit.Messages.Wait_Forever);
+      created.tag := capCall (UI_Desktop_Service.Endpoint, created, CuBit.Messages.Wait_Forever);
       creation := DP.Decode_Creation_Result (CuBit.Desktop_Messages.To_Wire (created));
       if creation.Status /= DP.Success then
          debugPrint ("ui-app: surface create failed" & LF);
@@ -349,7 +350,7 @@ package body CuBit.UI.App is
            (flags and DP.Window_Feature'Enum_Rep (feature)) /= 0;
       end loop;
       reply := CuBit.Desktop_Messages.From_Wire (DP.Encode_Limits (limits));
-      reply.tag := capCall (CAP_SLOT_DESKTOP, reply, CuBit.Messages.Wait_Forever);
+      reply.tag := capCall (UI_Desktop_Service.Endpoint, reply, CuBit.Messages.Wait_Forever);
       if DP.Decode_Limits_Result
         (CuBit.Desktop_Messages.To_Wire (reply)).Status /= DP.Success
       then
@@ -379,7 +380,7 @@ package body CuBit.UI.App is
       request := CuBit.Desktop_Messages.From_Wire
         (DP.Encode_Title
            ((DP.Live_Surface_Name (win.surfaceId), DP.Make_Title (title))));
-      request.tag := capCall (CAP_SLOT_DESKTOP, request, CuBit.Messages.Wait_Forever);
+      request.tag := capCall (UI_Desktop_Service.Endpoint, request, CuBit.Messages.Wait_Forever);
       if DP.Decode_Status (CuBit.Desktop_Messages.To_Wire (request),
                            DP.Set_Window_Title) /= DP.Success
       then
@@ -395,11 +396,12 @@ package body CuBit.UI.App is
    begin
       for Index in Theme_Data.Chunk_Index loop
          Response := NULL_MESSAGE;
-         Response.tag := (DP.Code (DP.Get_Appearance), 1, 0, 0);
+         Response.tag := (label => DP.Code (DP.Get_Appearance), length => 1,
+                          protocol => 0, ipc => <>, reserved => 0);
          Response.words (0) := Unsigned_64 (Index);
-         Response.tag := capCall (CAP_SLOT_DESKTOP, Response, CuBit.Messages.Wait_Forever);
+         Response.tag := capCall (UI_Desktop_Service.Endpoint, Response, CuBit.Messages.Wait_Forever);
          if Response.tag.label /= DP.Code (DP.Get_Appearance) or else
-           Response.tag.length /= 4 or else Response.tag.flags /= 0 or else
+           Response.tag.length /= 4 or else Response.tag.protocol /= 0 or else
            Response.tag.reserved /= 0 or else Response.words (0) = 0
          then return; end if;
          if Index = 0 then Revision := Response.words (0);
@@ -492,7 +494,7 @@ package body CuBit.UI.App is
         (DP.Encode_Input_Request ((DP.Wait_Input, DP.Live_Surface_Name (win.surfaceId), win.lastEvent, deadline)));
       CuBit.Async_Requests.Reserve (win.inputRequest, token, accepted);
       if not accepted then return; end if;
-      accepted := capSubmit (CAP_SLOT_DESKTOP, request, token);
+      accepted := capSubmit (UI_Desktop_Service.Endpoint, request, token);
       CuBit.Async_Requests.Submitted (win.inputRequest, accepted);
    end Submit_Input_Wait;
 
@@ -596,7 +598,7 @@ package body CuBit.UI.App is
         ((if operation = DP.Poll_Input then
             DP.Encode_Input_Request ((DP.Poll_Input, DP.Live_Surface_Name (win.surfaceId), win.lastEvent))
           else DP.Encode_Input_Request ((DP.Wait_Input, DP.Live_Surface_Name (win.surfaceId), win.lastEvent, deadline))));
-      reply.tag := capCall (CAP_SLOT_DESKTOP, reply, CuBit.Messages.Wait_Forever);
+      reply.tag := capCall (UI_Desktop_Service.Endpoint, reply, CuBit.Messages.Wait_Forever);
       Apply_Input_Result (win,
         DP.Decode_Input_Result (CuBit.Desktop_Messages.To_Wire (reply), operation), event, found);
    end Receive_Input;
@@ -654,7 +656,7 @@ package body CuBit.UI.App is
                 when Pointer_Resize_Horizontal => DP.Horizontal_Resize_Cursor,
                 when Pointer_Resize_Vertical => DP.Vertical_Resize_Cursor,
                 when Pointer_Resize_Diagonal => DP.Diagonal_Resize_Cursor))));
-      reply.tag := capCall (CAP_SLOT_DESKTOP, reply, CuBit.Messages.Wait_Forever);
+      reply.tag := capCall (UI_Desktop_Service.Endpoint, reply, CuBit.Messages.Wait_Forever);
       return DP.Decode_Status (CuBit.Desktop_Messages.To_Wire (reply),
                                DP.Set_Pointer_Cursor) = DP.Success;
    end Request_Pointer_Cursor;
@@ -698,7 +700,7 @@ package body CuBit.UI.App is
            ((DP.Live_Surface_Name (win.surfaceId),
              (DP.Pixel_Coordinate (r.x), DP.Pixel_Coordinate (r.y),
               DP.Pixel_Extent (r.w), DP.Pixel_Extent (r.h)))));
-      tag := capCall (CAP_SLOT_DESKTOP, request, CuBit.Messages.Wait_Forever);
+      tag := capCall (UI_Desktop_Service.Endpoint, request, CuBit.Messages.Wait_Forever);
    end Present;
 
    procedure Apply_Pointer_Event
@@ -1103,7 +1105,7 @@ package body CuBit.UI.App is
       if win.surfaceId = 0 then return; end if;
       reply := CuBit.Desktop_Messages.From_Wire
         (DP.Encode_Destroy ((Surface => DP.Surface_Name (win.surfaceId))));
-      reply.tag := capCall (CAP_SLOT_DESKTOP, reply, CuBit.Messages.Wait_Forever);
+      reply.tag := capCall (UI_Desktop_Service.Endpoint, reply, CuBit.Messages.Wait_Forever);
       if DP.Decode_Status (CuBit.Desktop_Messages.To_Wire (reply), DP.Destroy_Surface) /= DP.Success then
          debugPrint ("ui-app: surface destroy failed; retaining window state" & LF);
          return;

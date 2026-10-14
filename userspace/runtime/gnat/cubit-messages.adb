@@ -10,10 +10,12 @@
 pragma Ada_2022;
 with Ada.Unchecked_Conversion;
 with System;
-with System.Storage_Elements;
 with System.Machine_Code; use System.Machine_Code;
 with CuBit.Published_Clock;
 with CuBit.System_Facts;
+with CuBit.Handles.Control;
+with CuBit.Handles.Devices;
+with CuBit.Handles.IPC;
 
 package body CuBit.Messages is
 
@@ -80,8 +82,6 @@ package body CuBit.Messages is
 
    function tagToU64 is new Ada.Unchecked_Conversion
       (MessageTag, Unsigned_64);
-   function u64ToTag is new Ada.Unchecked_Conversion
-      (Unsigned_64, MessageTag);
    function toNum is new Ada.Unchecked_Conversion
       (System.Address, Unsigned_64);
 
@@ -134,17 +134,8 @@ package body CuBit.Messages is
    --  REPLY_CAP: RDI=reply cap slot, RSI=tag, RDX=w0, R10=w1, R8=w2, R9=w3
 
    function replyCap
-     (slot : CapabilitySlot; msg : Message) return Unsigned_64
-   is
-   begin
-      return syscall (SYSCALL_REPLY_AND_CONSUME_REPLY_CAPABILITY,
-                       slot,
-                       tagToU64 (msg.tag),
-                       msg.words (0),
-                       msg.words (1),
-                       msg.words (2),
-                       msg.words (3));
-   end replyCap;
+     (saved : CuBit.Handles.Reply; msg : Message) return Unsigned_64 is
+     (if CuBit.Handles.IPC.Answer (saved, msg) then 1 else 0);
 
    --  replyWait
    --  REPLY_WAIT: RDI=replyTo, RSI=pointer to Message
@@ -200,36 +191,6 @@ package body CuBit.Messages is
       found := (ret /= 0);
    end Poll_Any_Ipc;
 
-   procedure Find_Endpoint_Capability
-     (Target : Process_ID; Slot : out CapabilitySlot; Found : out Boolean)
-   is
-      --  INSPECT_CAPABILITY's fixed six-word result; only inspect our table.
-      Info : array (0 .. 5) of Unsigned_64 := [others => 0];
-      Self : constant Unsigned_64 := syscall (SYSCALL_GETPID);
-      Result : Unsigned_64;
-      Endpoint_Kind : constant Unsigned_64 := 1;
-      Read_Write_Rights : constant Unsigned_64 := 3;
-   begin
-      Slot := CapabilitySlot'First;
-      Found := False;
-      if Target = No_Process then
-         return;
-      end if;
-      for Candidate in CapabilitySlot loop
-         Result := syscall
-           (SYSCALL_INSPECT_CAPABILITY, Self, Candidate,
-            Unsigned_64 (System.Storage_Elements.To_Integer (Info'Address)));
-         if Result = 1 and then Info (0) = Endpoint_Kind and then
-           (Info (1) and Read_Write_Rights) = Read_Write_Rights and then
-           Info (3) = To_Word (Target)
-         then
-            Slot := Candidate;
-            Found := True;
-            return;
-         end if;
-      end loop;
-   end Find_Endpoint_Capability;
-
    --  waitCompletion
    --  WAIT_COMPLETION: RDI=pointer to buffer, RSI=maxEntries, RDX=minWait
    --  Returns: RAX=numReturned
@@ -265,44 +226,18 @@ package body CuBit.Messages is
    end Deadline_After;
 
    function capSend
-     (slot : CapabilitySlot; msg : Message; Deadline : Unsigned_64) return MessageTag
-   is
-      retTag : Unsigned_64;
-   begin
-      --  Seven arguments: the deadline goes in R12, as capSubmit's token.
-      Asm
-        ("mov %5, %%r10" & ASCII.LF &
-         "mov %6, %%r8" & ASCII.LF &
-         "mov %7, %%r9" & ASCII.LF &
-         "mov %8, %%r12" & ASCII.LF & "syscall",
-         Outputs => Unsigned_64'Asm_Output ("=a", retTag),
-         Inputs =>
-           (Unsigned_64'Asm_Input
-              ("a", SYSCALL_SEND_VIA_ENDPOINT_CAPABILITY),
-            Unsigned_64'Asm_Input ("D", slot),
-            Unsigned_64'Asm_Input ("S", tagToU64 (msg.tag)),
-            Unsigned_64'Asm_Input ("d", msg.words (0)),
-            Unsigned_64'Asm_Input ("rm", msg.words (1)),
-            Unsigned_64'Asm_Input ("rm", msg.words (2)),
-            Unsigned_64'Asm_Input ("rm", msg.words (3)),
-            Unsigned_64'Asm_Input ("rm", Deadline)),
-         Clobber => "r10, r8, r9, r12, rcx, r11, memory",
-         Volatile => True);
-      return u64ToTag (retTag);
-   end capSend;
+     (target : CuBit.Handles.Endpoint; msg : Message; Deadline : Unsigned_64)
+      return MessageTag is (CuBit.Handles.IPC.Send (target, msg, Deadline));
 
    --  capCall
    --  CAP_CALL: RDI=cap_slot, RSI=pointer to Message struct (in/out)
    --  Returns: reply tag in RAX
 
    function capCall
-     (slot : CapabilitySlot; msg : in out Message; Deadline : Unsigned_64) return MessageTag
-   is
-      retTag : Unsigned_64;
+     (target : CuBit.Handles.Endpoint; msg : in out Message; Deadline : Unsigned_64)
+      return MessageTag is
    begin
-      retTag := syscall
-        (SYSCALL_CALL_VIA_ENDPOINT_CAPABILITY, slot, toNum (msg'Address), Deadline);
-      return u64ToTag (retTag);
+      return CuBit.Handles.IPC.Call (target, msg, Deadline);
    end capCall;
 
    --  capSubmit
@@ -310,58 +245,37 @@ package body CuBit.Messages is
    --  R12=completion token. All four payload words reach the receiver.
 
    function capSubmit
-     (slot  : CapabilitySlot;
-      msg   : Message;
-      token : Unsigned_64) return Boolean
-   is
-      ret : Unsigned_64;
-   begin
-      Asm
-        ("mov %5, %%r10" & ASCII.LF &
-         "mov %6, %%r8" & ASCII.LF &
-         "mov %7, %%r9" & ASCII.LF &
-         "mov %8, %%r12" & ASCII.LF & "syscall",
-         Outputs => Unsigned_64'Asm_Output ("=a", ret),
-         Inputs =>
-           (Unsigned_64'Asm_Input
-              ("a", SYSCALL_SUBMIT_VIA_ENDPOINT_CAPABILITY),
-            Unsigned_64'Asm_Input ("D", slot),
-            Unsigned_64'Asm_Input ("S", tagToU64 (msg.tag)),
-            Unsigned_64'Asm_Input ("d", msg.words (0)),
-            Unsigned_64'Asm_Input ("rm", msg.words (1)),
-            Unsigned_64'Asm_Input ("rm", msg.words (2)),
-            Unsigned_64'Asm_Input ("rm", msg.words (3)),
-            Unsigned_64'Asm_Input ("rm", token)),
-         Clobber => "r10, r8, r9, r12, rcx, r11, memory",
-         Volatile => True);
-      return (ret = 1);
-   end capSubmit;
+     (target : CuBit.Handles.Endpoint;
+      msg    : Message;
+      token  : Unsigned_64) return Boolean is
+     (CuBit.Handles.IPC.Submit (target, msg, token));
 
    --  sendEvent
    --  SEND_EVENT: RDI=dest, RSI=tag, RDX=w0, R10=w1, R8=w2, R9=w3
 
-   procedure sendEvent (dest : Process_ID; msg : Message) is
-      ignore : Unsigned_64;
+   procedure sendEvent
+     (dest : Process_ID; msg : Message; authority : CuBit.Handles.Notification)
+   is
+      ignore : constant Boolean := CuBit.Handles.Devices.Send_Event (dest, msg, authority);
    begin
-      ignore := syscall (SYSCALL_SEND_EVENT,
-                          To_Word (dest),
-                          tagToU64 (msg.tag),
-                          msg.words (0),
-                          msg.words (1),
-                          msg.words (2),
-                          msg.words (3));
+      null;
    end sendEvent;
 
-   function trySendEvent (dest : Process_ID; msg : Message) return Boolean is
+   procedure sendEvent
+     (dest : Process_ID; msg : Message; authority : CuBit.Handles.Endpoint)
+   is
+      ignore : constant Boolean := CuBit.Handles.Devices.Send_Event (dest, msg, authority);
    begin
-      return syscall (SYSCALL_SEND_EVENT,
-                      To_Word (dest),
-                      tagToU64 (msg.tag),
-                      msg.words (0),
-                      msg.words (1),
-                      msg.words (2),
-                      msg.words (3)) = 1;
-   end trySendEvent;
+      null;
+   end sendEvent;
+
+   function trySendEvent
+     (dest : Process_ID; msg : Message; authority : CuBit.Handles.Notification)
+      return Boolean is (CuBit.Handles.Devices.Send_Event (dest, msg, authority));
+
+   function trySendEvent
+     (dest : Process_ID; msg : Message; authority : CuBit.Handles.Endpoint)
+      return Boolean is (CuBit.Handles.Devices.Send_Event (dest, msg, authority));
 
    --  Poll_Event
    --  POLL_EVENT: RDI=pointer to Message struct
@@ -372,6 +286,16 @@ package body CuBit.Messages is
    begin
       msg := NULL_MESSAGE;
       ret := syscall (SYSCALL_POLL_EVENT, toNum (msg'Address));
+      return (ret = 1);
+   end Poll_Event;
+
+   function Poll_Event (msg : out Message; publisher : out Process_ID) return Boolean is
+      ret : Unsigned_64;
+      identity : aliased Unsigned_64 := 0;
+   begin
+      msg := NULL_MESSAGE;
+      ret := syscall (SYSCALL_POLL_EVENT, toNum (msg'Address), toNum (identity'Address));
+      publisher := (if ret = 1 then From_Word (identity) else No_Process);
       return (ret = 1);
    end Poll_Event;
 
@@ -390,15 +314,13 @@ package body CuBit.Messages is
    function Own_Process return Process_ID is
      (From_Word (syscall (SYSCALL_GETPID)));
 
-   function killProcess (pid : Process_ID) return Unsigned_64 is
-   begin
-      return syscall (SYSCALL_KILL, To_Word (pid));
-   end killProcess;
+   function killProcess
+     (pid : Process_ID; authority : CuBit.Handles.Process) return Unsigned_64 is
+     (if CuBit.Handles.Control.Kill (pid, authority) then 0 else Unsigned_64'Last);
 
-   function registerDriver (driver : Unsigned_64) return Unsigned_64 is
-   begin
-      return syscall (SYSCALL_REGISTER_DRIVER, driver);
-   end registerDriver;
+   function registerDriver
+     (driver : Unsigned_64; authority : CuBit.Handles.Notification) return Unsigned_64 is
+     (CuBit.Handles.Devices.Register (driver, authority));
 
    procedure debugPrint (str : String) is
       ignore : Unsigned_64;
@@ -421,69 +343,44 @@ package body CuBit.Messages is
    --  SAVE_REPLY_CAP: RDI=destSlot
    --  Returns: RAX=1 on success, 0 on failure
 
-   function saveReplyCap (destSlot : Unsigned_64) return Unsigned_64 is
-   begin
-      return syscall (SYSCALL_MOVE_REPLY_CAPABILITY, destSlot);
-   end saveReplyCap;
-
-   function restoreReplyCap (srcSlot : Unsigned_64) return Unsigned_64 is
-   begin
-      return syscall (SYSCALL_RESTORE_REPLY_CAPABILITY, srcSlot);
-   end restoreReplyCap;
-
    --  Port I/O wrappers
 
-   function portInp8 (port : Unsigned_16) return Unsigned_64 is
-   begin
-      return syscall (SYSCALL_INP8, Unsigned_64 (port));
-   end portInp8;
+   function portInp8 (ports : CuBit.Handles.IO_Ports; port : Unsigned_16) return Unsigned_64 is
+     (CuBit.Handles.Devices.In_8 (ports, port));
 
    function portOutp8
-     (port : Unsigned_16; val : Unsigned_8) return Unsigned_64
-   is
-   begin
-      return syscall (SYSCALL_OUTP8, Unsigned_64 (port), Unsigned_64 (val));
-   end portOutp8;
+     (ports : CuBit.Handles.IO_Ports; port : Unsigned_16; val : Unsigned_8) return Unsigned_64 is
+     (if CuBit.Handles.Devices.Out_8 (ports, port, val) then 0 else Unsigned_64'Last);
 
-   function portInp16 (port : Unsigned_16) return Unsigned_64 is
-   begin
-      return syscall (SYSCALL_INP16, Unsigned_64 (port));
-   end portInp16;
+   function portInp16 (ports : CuBit.Handles.IO_Ports; port : Unsigned_16) return Unsigned_64 is
+     (CuBit.Handles.Devices.In_16 (ports, port));
 
    function portOutp16
-     (port : Unsigned_16; val : Unsigned_16) return Unsigned_64
-   is
-   begin
-      return syscall (SYSCALL_OUTP16, Unsigned_64 (port), Unsigned_64 (val));
-   end portOutp16;
+     (ports : CuBit.Handles.IO_Ports; port : Unsigned_16; val : Unsigned_16) return Unsigned_64 is
+     (if CuBit.Handles.Devices.Out_16 (ports, port, val) then 0 else Unsigned_64'Last);
 
-   function portInp32 (port : Unsigned_16) return Unsigned_64 is
-   begin
-      return syscall (SYSCALL_INP32, Unsigned_64 (port));
-   end portInp32;
+   function portInp32 (ports : CuBit.Handles.IO_Ports; port : Unsigned_16) return Unsigned_64 is
+     (CuBit.Handles.Devices.In_32 (ports, port));
 
    function portOutp32
-     (port : Unsigned_16; val : Unsigned_32) return Unsigned_64
-   is
-   begin
-      return syscall (SYSCALL_OUTP32, Unsigned_64 (port), Unsigned_64 (val));
-   end portOutp32;
+     (ports : CuBit.Handles.IO_Ports; port : Unsigned_16; val : Unsigned_32) return Unsigned_64 is
+     (if CuBit.Handles.Devices.Out_32 (ports, port, val) then 0 else Unsigned_64'Last);
 
    --  Device manager wrappers
 
    function allocDma
      (targetPID : Process_ID;
       order     : Unsigned_64;
-      virtBase  : Unsigned_64) return Unsigned_64
-   is
-   begin
-      return syscall (SYSCALL_ALLOC_DMA, To_Word (targetPID), order, virtBase);
-   end allocDma;
+      virtBase  : Unsigned_64;
+      authority : CuBit.Handles.Process) return Unsigned_64 is
+     (CuBit.Handles.Control.Allocate_DMA (targetPID, authority, order, virtBase, 0, 0));
 
    function enableIrq
      (vector    : Unsigned_64;
       ownerPID  : Process_ID;
       targetCPU : Unsigned_64;
+      authority : CuBit.Handles.Process;
+      lines     : CuBit.Handles.Interrupt;
       levelTriggered : Boolean := False;
       activeLow      : Boolean := False) return Unsigned_64
    is
@@ -499,7 +396,9 @@ package body CuBit.Messages is
       if activeLow then
          route := route or ROUTE_ACTIVE_LOW;
       end if;
-      return syscall (SYSCALL_ENABLE_IRQ, vector, To_Word (ownerPID), route);
+      return (if CuBit.Handles.Control.Enable_IRQ
+                    (vector, ownerPID, route, authority, lines)
+              then 0 else Unsigned_64'Last);
    end enableIrq;
 
    function mapInto
@@ -507,20 +406,19 @@ package body CuBit.Messages is
       physAddr  : Unsigned_64;
       virtAddr  : Unsigned_64;
       numPages  : Unsigned_64;
-      flags     : Unsigned_64) return Unsigned_64
-   is
-   begin
-      return syscall (SYSCALL_MAP_INTO,
-                      To_Word (targetPID), physAddr, virtAddr, numPages, flags);
-   end mapInto;
+      flags     : Unsigned_64;
+      authority : CuBit.Handles.Process;
+      region    : CuBit.Handles.Device_Memory) return Unsigned_64 is
+     (if CuBit.Handles.Control.Map_Into
+           (targetPID, authority, region, physAddr, virtAddr, numPages, flags)
+      then 0 else Unsigned_64'Last);
 
    function setCpu
      (targetPID : Process_ID;
-      cpu       : Unsigned_64) return Unsigned_64
-   is
-   begin
-      return syscall (SYSCALL_SET_CPU, To_Word (targetPID), cpu);
-   end setCpu;
+      cpu       : Unsigned_64;
+      authority : CuBit.Handles.Process) return Unsigned_64 is
+     (if CuBit.Handles.Control.Set_CPU (targetPID, authority, cpu)
+      then 0 else Unsigned_64'Last);
 
    function setLatencyContract
      (latencyClass : Unsigned_64;

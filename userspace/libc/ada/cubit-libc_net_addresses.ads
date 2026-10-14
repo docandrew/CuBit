@@ -48,7 +48,7 @@ package CuBit.Libc_Net_Addresses with Pure, SPARK_Mode is
    Connect_UDP : constant := 3;
 
    type Scope is record
-      Slot    : Natural range 0 .. 63 := 0;   --  the endpoint's capability slot
+      Slot    : Unsigned_64 := 0;             --  the endpoint's handle word
       Action  : Unsigned_8 := 0;
       Prefix  : Prefix_Length := 0;
       Network : Address := [others => 0];
@@ -60,10 +60,9 @@ package CuBit.Libc_Net_Addresses with Pure, SPARK_Mode is
    --  address is the low byte of word 0), word 2 the descriptor (ports,
    --  prefix, action, DNS). Valid is False for an unusable prefix.
    procedure Decode
-     (Slot : Natural; Word_0, Word_1, Descriptor : Unsigned_64;
+     (Slot : Unsigned_64; Word_0, Word_1, Descriptor : Unsigned_64;
       Result : out Scope; Valid : out Boolean)
-   with Pre => Slot <= 63,
-        Post => (if Valid then Result.Slot = Slot);
+   with Post => (if Valid then Result.Slot = Slot);
 
    --  Whether S allows Action on port Port to Target, or to a host name
    --  when Named.

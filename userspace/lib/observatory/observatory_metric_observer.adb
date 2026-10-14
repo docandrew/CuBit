@@ -47,7 +47,8 @@ package body Observatory_Metric_Observer with SPARK_Mode => Off is
       G.Create_Via_Capability (Capability, Page'Address, 1, True, Grant, Has_Grant);
       if not Has_Grant then Close; return; end if;
       Revoked := False;
-      Msg.tag := (P.Operation'Enum_Rep (P.Query_Summaries), P.Message_Words, 0, 0);
+      Msg.tag := (label => P.Operation'Enum_Rep (P.Query_Summaries), length => P.Message_Words,
+                  protocol => 0, ipc => <>, reserved => 0);
       Msg.words := [Cursor, Grant.slot, Grant.generation, CuBit.Metric_Records.Page_Bytes];
       Submitted := capSubmit (Capability, Msg, Token);
       if not Submitted then Close; end if;
@@ -56,7 +57,7 @@ package body Observatory_Metric_Observer with SPARK_Mode => Off is
    begin
       if L.Status (Life) /= L.Waiting or else not Matches (Value.token) then return; end if;
       Reply := (Value.valid, Value.status, Value.msg.tag.label, Value.msg.tag.length,
-                Value.msg.tag.flags, Value.msg.tag.reserved,
+                CuBit.Messages.Flag_Byte (Value.msg.tag), Value.msg.tag.reserved,
                 [for I in Q.Words'Range => Value.msg.words (I)]);
       L.Receive (Life, Value.token, Q.Admitted (Reply, Requested));
       -- Do not read the writable page on completion alone. Independently

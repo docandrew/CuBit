@@ -1,79 +1,81 @@
 with Ada.Text_IO; use Ada.Text_IO;
 with Interfaces; use Interfaces;
+with CuBit.Handles;
+with CuBit.Handles.Fixture;
 with CuBit.Messages; use CuBit.Messages;
-with CuBit.Capability_Grants; use CuBit.Capability_Grants;
 with Intel_Render_Admission;
 with Intel_Render_Admission_Native; use Intel_Render_Admission_Native;
+--  CAP-002: admission by asynchronous submissions to the driver's endpoint;
+--  the reservation's session tag is the only authority (no delegation).
 procedure Admission_Native_Tests is
    package Core renames Intel_Render_Admission;
    use type Core.Phase;
+   use type CuBit.Handles.Endpoint;
    Item : Broker_Request;
-   Target : Recipient;
    Receipt : CompletionEntry;
    Used : Boolean;
    Session : constant Unsigned_64 := 16#A123_0000_0000_0087#;
-   -- Opaque ABI words: each pair differs only above the kernel slot bits.
    Client_ID : constant Unsigned_64 := 16#1234_5678_0700_002A#;
-   Other_Client_ID : constant Unsigned_64 := 16#1234_5678_0800_002A#;
    Driver_ID : constant Unsigned_64 := 16#2345_6789_0900_004D#;
    Other_Driver_ID : constant Unsigned_64 := 16#2345_6789_0A00_004D#;
+   Driver : constant CuBit.Handles.Endpoint :=
+     CuBit.Handles.Fixture.Endpoint_Of (16#0000_0003_0000_001F#);
+   Control : constant MessageTag := (label => 16#0A21#, length => 4,
+                                     protocol => 0, ipc => <>, reserved => 0);
 begin
-   Inspection := [1, 1, 0, Client_ID, 0, 0];
-   Target := Capture (7);
-   Inspection := [1, 11, 0, Driver_ID, 0, 0];
-   Start (Item, Target, 31, 30, 4);
+   --  No identity, no driver: refused before any submission.
+   declare
+      Bad : Broker_Request;
+   begin
+      Start (Bad, 0, Driver, Driver_ID);
+      pragma Assert (State (Bad) = Core.Failed);
+      Start (Bad, Client_ID, CuBit.Handles.No_Endpoint, Driver_ID);
+      pragma Assert (State (Bad) = Core.Failed);
+   end;
+   Start (Item, Client_ID, Driver, Driver_ID);
    Advance (Item, 100);
    pragma Assert (State (Item) = Core.Reserve_Pending);
-   pragma Assert (Last_Submit.tag = (16#0A21#, 4, 0, 0));
-   pragma Assert (Last_Submit.words = [1, Client_ID, 0, 0]);
-   pragma Assert (Last_Slot = 31 and Last_Token = 100);
+   pragma Assert (Last_Submit.tag = Control and Last_Submit.words = [1, Client_ID, 0, 0]);
+   pragma Assert (Last_Target = Driver and Last_Token = 100);
    Receipt := (token => 99, from => Driver_ID, status => 0,
-               msg => ((16#0A21#, 4, 0, 0), [0, 1, Session, 40]), valid => True);
+               msg => (Control, 0, [0, 1, Session, 0]), valid => True);
    Complete (Item, Receipt, Used); pragma Assert (not Used);
    Receipt.token := 100;
    Complete (Item, Receipt, Used);
-   pragma Assert (Used and State (Item) = Core.Delegate_Ready);
-   Inspection := [1, 9, 0, Client_ID, 0, 0];
-   Grant_Result := 0;
-   Advance (Item, 101);
-   pragma Assert (Last_Arguments = [Driver_ID, 30, 40, 1, Session, 0]);
-   pragma Assert (State (Item) = Core.Delegate_Ready);
-   -- Later inspection changes do not replace either captured recipient.
-   Inspection := [1, 1, 0, Other_Client_ID, 0, 0];
-   Advance (Item, 101);
-   pragma Assert (Last_Arguments = [Client_ID, 31, 4, 3, Session, 0]);
-   pragma Assert (State (Item) = Core.Activate_Ready);
+   pragma Assert (Used and State (Item) = Core.Activate_Ready);
+   pragma Assert (Intel_Render_Admission_Native.Session (Item) = Session);
    Advance (Item, 101);
    pragma Assert (Last_Submit.words = [1, Client_ID, Session, 1]);
-   Cancel (Item);
    Receipt.token := 101;
-   Receipt.msg.words (3) := 0;
    Complete (Item, Receipt, Used);
-   pragma Assert (Used and State (Item) = Core.Abort_Ready);
+   pragma Assert (Used and State (Item) = Core.Active);
+   Cancel (Item);
+   pragma Assert (State (Item) = Core.Abort_Ready);
    Advance (Item, 102);
    pragma Assert (Last_Submit.words = [1, Client_ID, Session, 2]);
    Receipt.token := 102;
    Complete (Item, Receipt, Used);
    pragma Assert (Used and State (Item) = Core.Failed);
+   --  Every malformed or misattributed receipt quarantines (or is ignored).
    for Fault in 0 .. 8 loop
       declare
          Broken : Broker_Request;
          Bad : CompletionEntry :=
            (token => 200, from => Driver_ID, status => 0,
-            msg => ((16#0A21#, 4, 0, 0), [0, 1, 123, 40]), valid => True);
+            msg => (Control, 0, [0, 1, 123, 0]), valid => True);
       begin
-         Inspection := [1, 11, 0, Driver_ID, 0, 0];
-         Start (Broken, Target, 31, 30, 4);
+         Start (Broken, Client_ID, Driver, Driver_ID);
          Advance (Broken, 200);
          case Fault is
             when 0 => Bad.from := Other_Driver_ID;
             when 1 => Bad.status := 1;
             when 2 => Bad.msg.tag.label := 0;
             when 3 => Bad.msg.tag.length := 3;
-            when 4 => Bad.msg.tag.flags := 1;
+            when 4 => Bad.msg.tag.protocol := 1;
             when 5 => Bad.msg.tag.reserved := 1;
             when 6 => Bad.msg.words (1) := 2;
-            when 7 => Bad.msg.words (3) := 1;
+            --  A reply naming a recipient slot (the retired protocol).
+            when 7 => Bad.msg.words (3) := 40;
             when others => Bad.valid := False;
          end case;
          Complete (Broken, Bad, Used);
@@ -89,11 +91,11 @@ begin
          end if;
       end;
    end loop;
+   --  A refused submission fails the reservation; nothing is retried.
    declare
       Rejected : Broker_Request;
    begin
-      Inspection := [1, 11, 0, Driver_ID, 0, 0];
-      Start (Rejected, Target, 31, 30, 4);
+      Start (Rejected, Client_ID, Driver, Driver_ID);
       Submit_Result := False;
       Advance (Rejected, 300);
       pragma Assert (State (Rejected) = Core.Failed);
@@ -101,76 +103,22 @@ begin
       Advance (Rejected, 301);
       pragma Assert (State (Rejected) = Core.Failed and Last_Token = 300);
    end;
-   for Index in 1 .. 16 loop
-      declare
-         Mapped : Broker_Request;
-         Tag : constant Unsigned_64 := Session - 1 + Unsigned_64 (Index);
-         R : constant CompletionEntry :=
-           (token => 350, from => Driver_ID, status => 0,
-            msg => ((16#0A21#, 4, 0, 0), [0, 1, Tag, 56 - Unsigned_64 (Index)]), valid => True);
-      begin
-         Inspection := [1, 11, 0, Driver_ID, 0, 0];
-         Start (Mapped, Target, 31, 30, 4);
-         Advance (Mapped, 350);
-         Complete (Mapped, R, Used);
-         Inspection := [1, 9, 0, Client_ID, 0, 0];
-         Grant_Result := 0;
-         Advance (Mapped, 351);
-         pragma Assert (Last_Arguments =
-           [Driver_ID, 30, 56 - Unsigned_64 (Index), 1, Tag, 0]);
-         pragma Assert (State (Mapped) = Core.Delegate_Ready and Last_Token = 350);
-         Advance (Mapped, 351);
-         pragma Assert (Last_Arguments = [Client_ID, 31, 4, 3, Tag, 0]);
-         pragma Assert (State (Mapped) = Core.Activate_Ready and Last_Token = 350);
-      end;
-   end loop;
-   -- Each partial-install failure must abort, never activate. No destination
-   -- slot is revoked/recycled by this adapter, even after successful abort.
-   for Fault in 0 .. 8 loop
-      declare
-         Partial : Broker_Request;
-         R : CompletionEntry :=
-           (token => 400, from => Driver_ID, status => 0,
-            msg => ((16#0A21#, 4, 0, 0), [0, 1, Session, 40]), valid => True);
-      begin
-         Inspection := [1, 11, 0, Driver_ID, 0, 0];
-         Start (Partial, Target, 31, 30, 4);
-         Advance (Partial, 400);
-         if Fault = 6 then R.msg.words (3) := 39;
-         elsif Fault = 7 then R.msg.words (3) := 56;
-         end if;
-         Complete (Partial, R, Used);
-         Inspection := [1, 9, 0, Client_ID, 0, 0];
-         if Fault = 0 then Inspection (3) := Other_Client_ID; end if;
-         if Fault = 1 then Inspection (0) := 6; end if;
-         if Fault = 8 then Inspection (1) := 8; end if;
-         Grant_Result := (if Fault = 2 then Unsigned_64'Last else 0);
-         Last_Arguments := [others => 0];
-         Advance (Partial, 401);
-         if Fault in 0 | 1 | 6 | 7 | 8 then
-            pragma Assert (Last_Arguments = [0, 0, 0, 0, 0, 0]);
-         elsif Fault in 3 .. 5 then
-            pragma Assert (State (Partial) = Core.Delegate_Ready);
-            pragma Assert (Last_Arguments (2) = 40);
-            if Fault = 3 then
-               Cancel (Partial);
-            else
-               Grant_Result := (if Fault = 4 then Unsigned_64'Last else 0);
-               Advance (Partial, 401);
-               if Fault = 5 then
-                  pragma Assert (State (Partial) = Core.Activate_Ready);
-                  Cancel (Partial);
-               end if;
-            end if;
-         end if;
-         if Fault in 6 .. 7 then
-            pragma Assert (State (Partial) = Core.Quarantined);
-         else
-            pragma Assert (State (Partial) = Core.Abort_Ready);
-            Advance (Partial, 402);
-            pragma Assert (Last_Submit.words (3) = 2);
-         end if;
-      end;
-   end loop;
-   Put_Line ("NATIVE-ADMISSION-ADAPTER: PASS mocked IPC and delegation");
+   --  A refused activation submission aborts the reservation.
+   declare
+      Late : Broker_Request;
+      R : constant CompletionEntry :=
+        (token => 400, from => Driver_ID, status => 0,
+         msg => (Control, 0, [0, 1, Session, 0]), valid => True);
+   begin
+      Start (Late, Client_ID, Driver, Driver_ID);
+      Advance (Late, 400);
+      Complete (Late, R, Used);
+      Submit_Result := False;
+      Advance (Late, 401);
+      Submit_Result := True;
+      pragma Assert (State (Late) = Core.Abort_Ready);
+      Advance (Late, 402);
+      pragma Assert (Last_Submit.words (3) = 2);
+   end;
+   Put_Line ("NATIVE-ADMISSION-ADAPTER: PASS mocked IPC, no delegation");
 end Admission_Native_Tests;

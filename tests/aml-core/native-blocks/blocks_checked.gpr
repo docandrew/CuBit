@@ -1,7 +1,7 @@
 project Blocks_checked is
    for Source_Dirs use (".", "../../../userspace/services/acpi",
      "../../../userspace/services/acpi/native", "../../../userspace/lib/acpi",
-     "../../../shared/firmware");
+     "../../../shared/firmware", "../../../shared/capabilities", "../build/handles");
    for Object_Dir use "../build/blocks-checked/obj";
    for Exec_Dir use "../build/blocks-checked";
    for Main use ("block_tests.adb");

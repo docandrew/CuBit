@@ -4,9 +4,11 @@ project Ramdisk is
 
     for Object_Dir use "build";
 
-    for Source_Dirs use (".", "../filesystem");
+    for Source_Dirs use (".", "build/generated", "../filesystem");
     for Source_Files use ("main.adb", "ram_device.ads", "ram_device.adb",
-                          "cpio.ads", "cpio.adb");
+                          "cpio.ads", "cpio.adb",
+                          --  Its startup capabilities (generated from manifest.ccl).
+                          "startup.ads");
 
     for Main use ("main.adb");
 
@@ -61,7 +63,8 @@ project Ramdisk is
             "-Wl,-z,stack-size=16777216",
             "-lgnat-user",
             "-T", "../../c/link.ld",
-            "../../c/build/crt0.o"
+            "../../c/build/crt0.o",
+            "build/manifest.o"
         );
     end Linker;
 

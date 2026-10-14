@@ -11,7 +11,7 @@
 --  native_gpu_queue.h.
 --
 --  @description
---  One queue per render endpoint capability slot. Threads: Open, Close and
+--  One queue per render endpoint handle. Threads: Open, Close and
 --  Submit are serialized per slot by the caller (its per-queue lock);
 --  Observe and Wait may run on any thread meanwhile. They read only the
 --  driver's region and values Submit publishes atomically.
@@ -36,10 +36,14 @@ with Interfaces; use Interfaces;
 with System;
 with CuBit.GPU_Queues;
 with Native_GPU_Timeline;
+with CuBit.Handles.C_ABI;
 
 package Native_GPU_Queue is
 
    package GQ renames CuBit.GPU_Queues;
+
+   --  A render endpoint as C holds it (struct cubit_endpoint, CAP-002).
+   subtype C_Endpoint is CuBit.Handles.C_ABI.C_Endpoint;
 
    type Queue_Status is (OK, Full, Failed, Closed, Invalid, Timed_Out) with Convention => C;
    for Queue_Status use
@@ -72,12 +76,12 @@ package Native_GPU_Queue is
    Room_Budget_Ms : constant := 2_000;
    Room_Pause_Ms  : constant := 1;
 
-   --  Open Slot's queue (the session's contexts are registered). OK, or
+   --  Open Endpoint's queue (the session's contexts are registered). OK, or
    --  Closed: the driver refused it; Invalid: a bad slot or already open.
-   function Open (Slot : Unsigned_64) return Queue_Status
+   function Open (Endpoint : C_Endpoint) return Queue_Status
      with Export, Convention => C, External_Name => "cubit_gpu_queue_open";
    --  Close the channel (a held wake is answered by the driver).
-   procedure Close (Slot : Unsigned_64)
+   procedure Close (Endpoint : C_Endpoint)
      with Export, Convention => C, External_Name => "cubit_gpu_queue_close";
 
    --  Write one descriptor: its signal value (the context's next) comes
@@ -85,7 +89,7 @@ package Native_GPU_Queue is
    --  full past Room_Budget_Ms; Invalid: the job is malformed (nothing was
    --  written); Closed.
    function Submit
-     (Slot : Unsigned_64; Item : access constant Job; Signal : access Unsigned_64)
+     (Endpoint : C_Endpoint; Item : access constant Job; Signal : access Unsigned_64)
       return Queue_Status
      with Export, Convention => C, External_Name => "cubit_gpu_queue_submit";
 
@@ -93,7 +97,7 @@ package Native_GPU_Queue is
    --  record reaped since if later) and the last value submitted on it.
    --  OK; Failed: a context faulted, hung or was lost, or a record failed.
    function Observe
-     (Slot : Unsigned_64; Completed, Submitted : access Native_GPU_Timeline.Completed_Values)
+     (Endpoint : C_Endpoint; Completed, Submitted : access Native_GPU_Timeline.Completed_Values)
       return Queue_Status
      with Export, Convention => C, External_Name => "cubit_gpu_queue_observe";
 
@@ -102,7 +106,7 @@ package Native_GPU_Queue is
    --  reached; Failed: the context failed; Timed_Out; Closed: the queue
    --  ended.
    function Wait
-     (Slot : Unsigned_64; Context : Unsigned_32; Target, Remaining_Ns : Unsigned_64)
+     (Endpoint : C_Endpoint; Context : Unsigned_32; Target, Remaining_Ns : Unsigned_64)
       return Queue_Status
      with Export, Convention => C, External_Name => "cubit_gpu_queue_wait";
 

@@ -1,4 +1,6 @@
 with Compositor_Requests;
+with CuBit.Handles;
+with Desktop_Endpoints;
 package body Desktop_Status_Refresh is
    use Interfaces;
    use CuBit.Messages;
@@ -30,7 +32,7 @@ package body Desktop_Status_Refresh is
    function Audio_Token return Unsigned_64 is
      (if CR.Busy (Audio_Flight) then CR.Token (Audio_Flight) else 0);
 
-   procedure Submit (Flight : in out CR.State; Slot : Unsigned_64; Msg : Message;
+   procedure Submit (Flight : in out CR.State; Service : CuBit.Handles.Endpoint; Msg : Message;
                      Sequence : in out Unsigned_64) is
       Token : Unsigned_64;
       Accepted : Boolean;
@@ -41,7 +43,7 @@ package body Desktop_Status_Refresh is
       CR.Begin_Request (Flight, Token, Accepted);
       if not Accepted then CR.Quarantine (Flight); return; end if;
       --  A refused submission published nothing: the flight is free again.
-      if not capSubmit (Slot, Msg, Token) then
+      if not capSubmit (Service, Msg, Token) then
          CR.Complete (Flight, Token, True);
       end if;
    end Submit;
@@ -50,7 +52,7 @@ package body Desktop_Status_Refresh is
       Msg : Message := NULL_MESSAGE;
    begin
       Msg.tag.label := Clocks.Snapshot_Operation;
-      Submit (Clock_Flight, Clocks.Endpoint_Slot, Msg, Sequence);
+      Submit (Clock_Flight, Desktop_Endpoints.Clock_Service, Msg, Sequence);
    end Request_Clock;
 
    procedure Request_Audio (Sequence : in out Unsigned_64) is
@@ -66,7 +68,7 @@ package body Desktop_Status_Refresh is
       else
          Msg.tag.label := Audio.Get_State;
       end if;
-      Submit (Audio_Flight, Audio.Endpoint_Slot, Msg, Sequence);
+      Submit (Audio_Flight, Desktop_Endpoints.Mixer_Control, Msg, Sequence);
    end Request_Audio;
 
    procedure Set_Audio (Level : Audio.Percent; Muted : Boolean;
@@ -78,7 +80,7 @@ package body Desktop_Status_Refresh is
 
    function Envelope (Reply : Message) return Boolean is
      (Reply.tag.label = Reply_OK and then Reply.tag.length = Reply_Words
-      and then Reply.tag.flags = 0 and then Reply.tag.reserved = 0);
+      and then Reply.tag.protocol = 0 and then Reply.tag.reserved = 0);
 
    procedure Decode_Clock (Reply : Message) is
       Y : constant Unsigned_64 := Shift_Right (Reply.words (1), 40);

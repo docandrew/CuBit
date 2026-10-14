@@ -9,8 +9,8 @@ with Intel_GPU_Timeline;
 -- the condition holds (at once if it already does), when a newer wake
 -- supersedes it (Woken: look again), or when the queue ends. Each held wake
 -- is answered exactly once: Hold is the only way in, and every way out says
--- to answer it. A wake that would need a saved-reply slot while the
--- driver's slots are all held by other sessions is answered Not_Held at
+-- to answer it. A wake that would need a saved reply while the driver's
+-- one wake reply is held by another session is answered Not_Held at
 -- once; nothing is held for it.
 package Intel_GPU_Queue_Wakes with SPARK_Mode is
    package Q renames CuBit.GPU_Queues;
@@ -37,8 +37,8 @@ package Intel_GPU_Queue_Wakes with SPARK_Mode is
    end record;
 
    -- A wake request for Context and Target arrives. Holds: its condition
-   -- holds now. Slot_Free: a saved-reply slot is free for this session
-   -- (superseding its own held wake reuses that one's slot).
+   -- holds now. Slot_Free: the driver's wake reply is free for this session
+   -- (superseding its own held wake reuses that one's reply).
    procedure Arrive
      (Item : in out State; Context : Q.Context_Index; Target : Value;
       Holds, Slot_Free : Boolean; Outcome : out Arrival)

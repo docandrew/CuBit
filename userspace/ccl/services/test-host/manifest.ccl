@@ -1,4 +1,5 @@
 # Requested authority only; the existing launch path remains in control.
 (executable-manifest v1
   (identity "com.cubit.ccl-test-host")
-  (version "0.1.0"))
+  (version "0.1.0")
+  (request-notification ccl-test-host manage registration))

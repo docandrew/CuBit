@@ -23,7 +23,7 @@ procedure Input_Native_Check is
      (if not Overflow and Number > 4 then (if Number = 5 then 1 else 0)
       else 16#FBA# * 256);
    function Encode (Value : P.Item) return Message is
-     (I.Encode ((sourceAuthorityTag => 0, sequence => Value.Sequence,
+     (I.Encode ((sourceIdentity => 0, sequence => Value.Sequence,
         generation => 1, device => I.RELATIVE_POINTER,
         delivery => I.ACCUMULABLE_DISPLACEMENT,
         flags => [I.RESYNCHRONIZE => Value.Recover],
@@ -53,7 +53,7 @@ procedure Input_Native_Check is
       Activity : Activity_Result;
    begin
       Check (not Poll_Event (Received), "initial mailbox not empty");
-      Msg.tag := (16#0B00#, 1, 0, 0);
+      Msg.tag := (label => 16#0B00#, length => 1, protocol => 0, ipc => <>, reserved => 0);
       -- Refusal must come from a genuinely full mailbox, not absent authority.
       for Attempt in 1 .. 4096 loop
          Msg.words (0) := Unsigned_64 (Attempt);
@@ -92,7 +92,7 @@ procedure Input_Native_Check is
          Check (Poll_Event (Received), "accepted report missing");
          I.Decode (Received, Report, Valid);
          Number := First + Delivered;
-         Check (Valid and Report.sourceAuthorityTag = Authority, "typed authority");
+         Check (Valid and Report.sourceIdentity = Authority, "typed authority");
          Check (Report.sequence = Unsigned_64 (Number), "source sequence/order");
          Check (Report.payload = Packet (Number, Overflow), "displacement/button payload");
          Check (Report.snapshot = (Report.payload and 16#FF#), "button snapshot");

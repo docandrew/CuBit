@@ -8,6 +8,8 @@
 with Interfaces; use Interfaces;
 
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Startup_State;
+with Startup;
 
 procedure main is
    use ASCII;
@@ -27,7 +29,7 @@ procedure main is
    begin
       replyMsg.tag := (label  => REPLY_OK,
                        length => 3,
-                       flags  => 0,
+                       protocol  => 0, ipc => <>,
                        reserved  => 0);
       replyMsg.words (0) := value;
       replyMsg.words (1) := value xor XOR_MAGIC;
@@ -36,7 +38,11 @@ procedure main is
    end makeReply;
 
 begin
-   ret := registerDriver (DRIVER_IPCTEST);
+   if not CuBit.Startup_State.Ready (Startup.Verify) then
+      debugPrint ("BENCH: FAIL ipc server-startup" & LF);
+      return;
+   end if;
+   ret := registerDriver (DRIVER_IPCTEST, Startup.Registration);
    if ret = Unsigned_64'Last then
       debugPrint ("BENCH: FAIL ipc server-register" & LF);
       loop
@@ -67,7 +73,7 @@ begin
          begin
             replyMsg.tag := (label  => 16#F001#,
                              length => 1,
-                             flags  => 0,
+                             protocol  => 0, ipc => <>,
                              reserved  => 0);
             replyMsg.words (0) := Unsigned_64 (msg.tag.label);
             replyWait (from, replyMsg, from, msg);

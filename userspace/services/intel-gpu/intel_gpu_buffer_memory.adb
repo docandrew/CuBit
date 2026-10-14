@@ -1,6 +1,7 @@
 with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Messages; use CuBit.Messages;
+with Intel_GPU_Supervisor;
 with Intel_GPU_Diagnostics;
 with Intel_GPU_DMA_Cache;
 package body Intel_GPU_Buffer_Memory is
@@ -116,12 +117,13 @@ package body Intel_GPU_Buffer_Memory is
       if Object.Serial = Unsigned_32'Last then return False; end if;
       Object.Serial := Object.Serial + 1;
       Object.Completion_Token := 16#4947_5000_0000_0000# + Unsigned_64 (Object.Serial);
-      return capSubmit (15, Request, Object.Completion_Token);
+      return Intel_GPU_Supervisor.Submit (Request, Object.Completion_Token);
    end Submit_Message;
    function Submit (Object : in out Pool) return Boolean is
       Request : Message := NULL_MESSAGE;
    begin
-      Request.tag := (Layout.Request_Label, 3, 0, 0);
+      Request.tag := (label => Layout.Request_Label, length => 3,
+                      protocol => 0, ipc => <>, reserved => 0);
       Request.words := [Unsigned_64 (Object.Index), Unsigned_64 (Object.Pages),
                         Unsigned_64 (Object.Generation), 0];
       return Submit_Message (Object, Request);
@@ -134,7 +136,8 @@ package body Intel_GPU_Buffer_Memory is
          Object.Stage := Awaiting_Extent_Metadata;
          return True;
       end if;
-      Request.tag := (Layout.Extent_Request_Label, 2, 0, 0);
+      Request.tag := (label => Layout.Extent_Request_Label, length => 2,
+                      protocol => 0, ipc => <>, reserved => 0);
       Request.words := [Unsigned_64 (Object.Extent_Index), Object.Arena_ID, 0, 0];
       return Submit_Message (Object, Request);
    end Submit_Extent;
@@ -186,7 +189,8 @@ package body Intel_GPU_Buffer_Memory is
       Object.Started_At := syscall (SYSCALL_GETTIME);
       Object.Previous := Object.Started_At;
       if Object.Started_At > Unsigned_64'Last - 30_000 then return; end if;
-      Request.tag := (Layout.Retire_Request_Label, 4, 0, 0);
+      Request.tag := (label => Layout.Retire_Request_Label, length => 4,
+                      protocol => 0, ipc => <>, reserved => 0);
       Request.words := [Unsigned_64 (Index), Unsigned_64 (Generation), Object.Arena_ID, 1];
       if not Submit_Message (Object, Request) then return; end if;
       Object.Stage := Awaiting_Retirement;
@@ -249,7 +253,8 @@ package body Intel_GPU_Buffer_Memory is
       Object.Stage := Validate_Reply;
       if Receipt.status /= COMPLETION_OK then Cancel (Object); return; end if;
       if Object.Retiring then
-         if Receipt.msg.tag /= (Layout.Retire_Request_Label, 4, 0, 0) or else
+         if Receipt.msg.tag /= (label => Layout.Retire_Request_Label, length => 4,
+                                protocol => 0, ipc => <>, reserved => 0) or else
            Receipt.msg.words /=
              [0, Layout.Allocation_Key (Object.Index, Object.Generation), Object.Arena_ID, 0]
          then Cancel (Object); return; end if;
@@ -264,7 +269,7 @@ package body Intel_GPU_Buffer_Memory is
          return;
       end if;
       if Object.Fetching then
-         if Receipt.msg.tag /= (16#F003#, 4, 0, 0) then Cancel (Object); return; end if;
+         if Intel_GPU_Supervisor.Reply_Tag (Receipt) /= (label => 16#F003#, length => 4, protocol => 0, ipc => <>, reserved => 0) then Cancel (Object); return; end if;
          Intel_GPU_Extent_Replies.Accept_Reply
            (Object.Assembly, Intel_GPU_Extent_Replies.Words (Receipt.msg.words), Accepted);
          if not Accepted then Cancel (Object); return; end if;
@@ -281,14 +286,14 @@ package body Intel_GPU_Buffer_Memory is
             " arena quota=" & Unsigned_64'Image (Object.Heap_Limit));
          Object.Fetching := False;
       else
-         if Receipt.msg.tag = (16#F002#, 0, 0, 0) and then
+         if Intel_GPU_Supervisor.Reply_Tag (Receipt) = (label => 16#F002#, length => 0, protocol => 0, ipc => <>, reserved => 0) and then
            Receipt.msg.words = [0, 0, 0, 0]
          then
                Object.Stage := Submit_Request;
                if not Submit (Object) then Cancel (Object); end if;
                if Object.Active then Object.Stage := Awaiting_Reply; end if;
                return;
-         elsif Receipt.msg.tag = (16#F001#, 4, 0, 0) then
+         elsif Intel_GPU_Supervisor.Reply_Tag (Receipt) = (label => 16#F001#, length => 4, protocol => 0, ipc => <>, reserved => 0) then
             if Receipt.msg.words (0) /= Layout.Denial_Version or else
               Receipt.msg.words (1) /= Layout.Allocation_Key (Object.Index, Object.Generation) or else
               Receipt.msg.words (2) /= Unsigned_64 (Object.Pages) * 4096 or else
@@ -307,14 +312,14 @@ package body Intel_GPU_Buffer_Memory is
                " bytes=" & Receipt.msg.words (2)'Image &
                " slot=" & Object.Index'Image);
             return;
-         elsif Receipt.msg.tag = (16#F001#, 0, 0, 0) and then
+         elsif Intel_GPU_Supervisor.Reply_Tag (Receipt) = (label => 16#F001#, length => 0, protocol => 0, ipc => <>, reserved => 0) and then
            Receipt.msg.words = [0, 0, 0, 0]
          then
                Object.Stage := Denied;
                Object.Active := False; Object.Broken := False;
                return;
          end if;
-         if Receipt.msg.tag /= (16#F004#, 4, 0, 0) or else
+         if Intel_GPU_Supervisor.Reply_Tag (Receipt) /= (label => 16#F004#, length => 4, protocol => 0, ipc => <>, reserved => 0) or else
            Receipt.msg.words (3) /= Layout.Allocation_Key
              (Object.Index, Object.Generation) or else
            Receipt.msg.words (2) = 0 or else

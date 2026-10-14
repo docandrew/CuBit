@@ -14,7 +14,7 @@ procedure Refresh_Transport_Tests is
    procedure Reply (Label : Unsigned_32; Value : Unsigned_64) is
    begin
       C := (token => Last_Token, msg => NULL_MESSAGE, others => <>);
-      C.msg.tag := (label => Label, length => 1, flags => 0, reserved => 0);
+      C.msg.tag := (label => Label, length => 1, protocol => 0, ipc => <>, reserved => 0);
       C.msg.words (0) := Value;
    end Reply;
    procedure Assert_Held is

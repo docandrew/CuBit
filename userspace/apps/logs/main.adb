@@ -18,6 +18,7 @@ with CuBit.UI.Editor_Clipboard;
 with Clipboard_Chords;
 with Clipboard_Text;
 with Log_View;
+with Startup;
 
 --  Logs (docs/logs-app.md): every service's records, live, through the
 --  log-observer role; sources named through procmgr's process-observer
@@ -81,11 +82,11 @@ procedure Main is
       Request : Message := NULL_MESSAGE;
       Reply_Tag : MessageTag;
    begin
-      CuBit.Memory_Grants.Create_Via_Capability (CapabilitySlot (PO.Observer_Slot), Page'Address, 1, True, Loan, Lent);
+      CuBit.Memory_Grants.Create_Via_Capability (Startup.Process_Observer, Page'Address, 1, True, Loan, Lent);
       if not Lent then return; end if;
-      Request.tag := (label => PO.List_Label, length => 1, flags => 0, reserved => 0);
+      Request.tag := (label => PO.List_Label, length => 1, protocol => 0, ipc => <>, reserved => 0);
       Request.words (0) := CuBit.Grant_References.Encode (Loan);
-      Reply_Tag := capCall (CapabilitySlot (PO.Observer_Slot), Request, CuBit.Messages.Wait_Forever);
+      Reply_Tag := capCall (Startup.Process_Observer, Request, CuBit.Messages.Wait_Forever);
       CuBit.Memory_Grants.Revoke (Loan, Revoked);
       if Reply_Tag.label /= Unsigned_32 (PO.Status'Enum_Rep (PO.OK)) then return; end if;
       for Index in 0 .. Natural (Unsigned_64'Min (Request.words (1), PO.Page_Records)) - 1 loop
@@ -127,7 +128,7 @@ procedure Main is
       Level : CuBit.Log_Records.Severity;
       Result : P.Status;
    begin
-      CuBit.Logging.Get_Minimum (Level, Result);
+      CuBit.Logging.Get_Minimum (Level, Result, Startup.Logstore);
       if Result = P.OK then
          Log_View.Set_Kept (View, Level);
       end if;
@@ -143,7 +144,7 @@ procedure Main is
       if not Requested then
          return;
       end if;
-      CuBit.Logging.Set_Minimum (Level, Previous, Result);
+      CuBit.Logging.Set_Minimum (Level, Previous, Result, Startup.Log_Control);
       case Result is
          when P.OK => null;
          when P.Denied | P.Unavailable =>
@@ -267,6 +268,7 @@ procedure Main is
       Due := Now + POLL_MS;
       Log_View.Set_Time (View, Now);
       if Status not in P.OK | P.Empty | P.Gap then
+         CuBit.Logging.Bind (Reader, Startup.Log_Observer);
          CuBit.Logging.Subscribe (Reader, Status);
          Log_View.Set_Connection
            (View, (if Status in P.OK | P.Empty | P.Gap then Log_View.Connected
@@ -309,7 +311,7 @@ procedure Main is
      (UI, Controls, Render => Render, Handle_Event => Handle_Event,
       Next_Deadline => Deadline, On_Deadline => Tick);
 begin
-   CuBit.Logging.Announce ("logs: started", Opened);
+   CuBit.Logging.Announce ("logs: started", Opened, Startup.Logstore);
    Log_View.Initialize (View);
    CuBit.UI.App.Open (Win, WINDOW_WIDTH, WINDOW_HEIGHT,
      CuBit.Desktop_Protocol.Feature_Bits

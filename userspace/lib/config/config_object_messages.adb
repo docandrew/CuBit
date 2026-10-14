@@ -1,6 +1,7 @@
 with Config_Worker_Protocol;
 
 package body Config_Object_Messages with SPARK_Mode is
+   use type CuBit.Messages.Protocol_Flags;
    use type CCL.Objects.Schema_Key;
    package Grants renames CuBit.Grant_References;
 
@@ -51,7 +52,7 @@ package body Config_Object_Messages with SPARK_Mode is
    end Request;
 
    function Valid_Request (Item : CuBit.Messages.Message; Action : Operation) return Boolean is
-     (Item.tag.label = Operation'Enum_Rep (Action) and then Item.tag.flags = 0 and then Item.tag.reserved = 0 and then
+     (Item.tag.label = Operation'Enum_Rep (Action) and then Item.tag.protocol = 0 and then Item.tag.reserved = 0 and then
       Item.words (3) = 0 and then
       (case Action is
          when Open_Collection | Create_Collection => Item.tag.length = 1 and then Grants.Valid_Wire (Item.words (0)) and then
@@ -67,7 +68,7 @@ package body Config_Object_Messages with SPARK_Mode is
      (Item : CuBit.Messages.Message; Action : Operation;
       Expected_Revision : Unsigned_64 := 0) return Boolean is
    begin
-      if Item.tag.flags /= 0 or Item.tag.reserved /= 0 or
+      if Item.tag.protocol /= 0 or Item.tag.reserved /= 0 or
         (for some I in 1 .. 3 => Item.words (I) /= 0)
       then return False; end if;
       if Item.tag.label = Status'Enum_Rep (Success) then

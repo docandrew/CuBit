@@ -9,6 +9,7 @@ extern crate std;
 
 use core::arch::asm;
 
+pub mod startup;
 pub mod sync;
 #[cfg(feature = "alloc")]
 pub mod thread;
@@ -89,12 +90,40 @@ unsafe fn syscall5(number: Syscall, arg0: u64, arg1: u64, arg2: u64, arg3: u64,
     result
 }
 
+/// The tag's flag byte (Capability_ABI): the protocol's own four flags in
+/// the low nibble, the IPC layer's in the high nibble. A program sets
+/// protocol flags only; the kernel's (transferred, refused, offered) are
+/// read-only here, and a send claiming them is refused.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct TagFlags(u8);
+
+impl TagFlags {
+    pub const NONE: Self = Self(0);
+    const PROTOCOL_MASK: u8 = 0x0F;
+    const ACCEPTS_CAPABILITY: u8 = 0x10;
+    const CAPABILITY_TRANSFERRED: u8 = 0x20;
+    const CAPABILITY_REFUSED: u8 = 0x40;
+    const CAPABILITY_OFFERED: u8 = 0x80;
+
+    /// Protocol flags; `None` when they do not fit in four bits.
+    pub const fn with_protocol(protocol: u8) -> Option<Self> {
+        if protocol & !Self::PROTOCOL_MASK == 0 { Some(Self(protocol)) } else { None }
+    }
+    pub const fn protocol(self) -> u8 { self.0 & Self::PROTOCOL_MASK }
+    pub const fn accepts_capability(self) -> bool { self.0 & Self::ACCEPTS_CAPABILITY != 0 }
+    pub const fn capability_transferred(self) -> bool { self.0 & Self::CAPABILITY_TRANSFERRED != 0 }
+    pub const fn capability_refused(self) -> bool { self.0 & Self::CAPABILITY_REFUSED != 0 }
+    pub const fn capability_offered(self) -> bool { self.0 & Self::CAPABILITY_OFFERED != 0 }
+    pub const fn bits(self) -> u8 { self.0 }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(C)]
 pub struct MessageTag {
     pub label: u32,
     pub length: u8,
-    pub flags: u8,
+    pub flags: TagFlags,
     pub reserved: u16,
 }
 
@@ -113,7 +142,7 @@ impl Message {
             tag: MessageTag {
                 label,
                 length,
-                flags: 0,
+                flags: TagFlags::NONE,
                 reserved: 0,
             },
             authority_tag: 0,
@@ -140,15 +169,13 @@ pub enum CallError {
     MalformedReply,
 }
 
-/// A reference to a slot, NOT minted authority. Every call is checked by the
-/// kernel. Constructing or copying this number cannot grant access.
-pub struct EndpointSlot(u64);
+/// An endpoint handle (CAP-002): a name in this process's capability table,
+/// obtained only from the startup table (`startup::Table::endpoint`). Every
+/// call is checked by the kernel against the entry the handle names.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Endpoint(pub(crate) u64);
 
-impl EndpointSlot {
-    pub const fn new(slot: u64) -> Option<Self> {
-        if slot <= 63 { Some(Self(slot)) } else { None }
-    }
-
+impl Endpoint {
     pub fn call(&self, mut message: Message) -> Result<Message, CallError> {
         if message.tag.length > 4 || message.tag.reserved != 0 {
             return Err(CallError::InvalidMessage);
@@ -172,7 +199,7 @@ impl EndpointSlot {
         }
         let expected_tag = u64::from(message.tag.label)
             | (u64::from(message.tag.length) << 32)
-            | (u64::from(message.tag.flags) << 40)
+            | (u64::from(message.tag.flags.bits()) << 40)
             | (u64::from(message.tag.reserved) << 48);
         if expected_tag != returned_tag || message.tag.length > 4 {
             return Err(CallError::MalformedReply);
@@ -210,16 +237,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn slots_are_references_not_minted_authority() {
-        assert!(EndpointSlot::new(0).is_some());
-        assert!(EndpointSlot::new(63).is_some());
-        assert!(EndpointSlot::new(64).is_none());
-        assert!(EndpointSlot::new(u64::MAX).is_none());
-    }
-
-    #[test]
     fn invalid_messages_never_enter_the_kernel() {
-        let endpoint = EndpointSlot::new(25).unwrap();
+        let endpoint = Endpoint((1 << 32) | 25);
         assert_eq!(
             endpoint.call(Message::new(1, 5, [0; 4])),
             Err(CallError::InvalidMessage)
@@ -227,5 +246,23 @@ mod tests {
         let mut message = Message::new(1, 1, [0; 4]);
         message.tag.reserved = 1;
         assert_eq!(endpoint.call(message), Err(CallError::InvalidMessage));
+    }
+}
+
+#[cfg(test)]
+mod tag_flags_tests {
+    use super::TagFlags;
+
+    #[test]
+    fn protocol_flags_are_four_bits_and_never_ipc() {
+        for value in 0u8..=15 {
+            let flags = TagFlags::with_protocol(value).expect("four bits fit");
+            assert_eq!(flags.protocol(), value);
+            assert!(!flags.accepts_capability() && !flags.capability_transferred());
+            assert!(!flags.capability_refused() && !flags.capability_offered());
+        }
+        for value in 16u8..=255 {
+            assert!(TagFlags::with_protocol(value).is_none(), "{value} would set an IPC bit");
+        }
     }
 }

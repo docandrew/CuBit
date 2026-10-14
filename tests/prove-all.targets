@@ -30,6 +30,8 @@ scheduler-budgets       | sched    | kernel | make prove-scheduler-budgets
 scheduler-turns         | sched    | kernel | make prove-scheduler-turns
 quiescent-reclamation   | sched    | kernel | make prove-quiescent-reclamation
 id-ledger               | sched    | kernel | make prove-id-ledger
+capability-tables       | kernel   | kernel | make prove-capability-tables
+capability-install      | kernel   | kernel | make prove-capability-install
 work-stealing           | sched    | kernel | make prove-work-stealing
 futex-queues            | sched    | kernel | make prove-futex-queues
 scheduler-timing        | sched    | kernel | make prove-scheduler-timing
@@ -92,6 +94,7 @@ kernel-controls         | kernel   | . | bash tests/kernel-controls/run.sh --pro
 kernel-credits          | kernel   | . | bash tests/kernel-credits/run.sh --prove
 kernel-reports          | kernel   | . | bash tests/kernel-reports/run.sh --prove
 launch-arguments        | process  | . | bash tests/launch-arguments/run.sh --prove
+startup-tables          | process  | kernel | make prove-startup-tables
 launch-grants           | process  | . | bash tests/launch-grants/run.sh --prove
 libc-ada                | runtime  | kernel | alr exec -- gnatprove -P ../tests/libc-ada/libc_ada.gpr -u cubit-child_table.adb -u cubit-libc_time.adb -u cubit-libc_select.adb -u cubit-libc_reports.adb -u cubit-libc_start_layout.adb -u cubit-libc_rings.adb -u cubit-libc_directory_entries.adb -u cubit-libc_descriptor_rules.adb -u cubit-libc_file_cache.adb -u cubit-libc_dirty_map.adb -u cubit-libc_park_table.adb -u cubit-libc_net_addresses.adb -u cubit-libc_net_targets.adb -u cubit-libc_net_names.adb --level=2 -j4 --checks-as-errors=on
 multiboot2              | boot     | . | bash tests/multiboot2/run.sh --prove
@@ -135,7 +138,6 @@ display-pool            | desktop  | . | bash tests/compositor/check-display-poo
 allocation-failures     | kernel   | kernel | alr exec -- gnatprove -P ../tests/allocation-failures/allocation_tests.gpr -u page_admission.adb allocation_proof.adb elf_admission.adb heap_growth_proof.adb --mode=all --level=2 --checks-as-errors=on -j2
 aml-hardware-capabilities | acpi   | kernel | alr exec -- gnatprove -P ../tests/aml-core/hardware-capabilities/capabilities.gpr -u capabilities.ads --mode=all --level=2 --prover=cvc5,z3 --checks-as-errors=on -j2
 aml-hardware-catalog    | acpi     | kernel | alr exec -- gnatprove -P ../tests/aml-core/hardware-catalog/catalog.gpr -u hardware_catalog.adb hardware_authority.ads --mode=all --level=2 --prover=cvc5,z3 --checks-as-errors=on -j2
-aml-hardware-cspace     | acpi     | kernel | alr exec -- gnatprove -P ../tests/aml-core/hardware-cspace/hardware_cspace.gpr -u hardware_grants-cspace.adb hardware_grants.adb hardware_catalog.adb hardware_authority.ads capabilities.ads --mode=all --level=2 --prover=cvc5,z3 --checks-as-errors=on -j2
 aml-hardware-grants     | acpi     | kernel | alr exec -- gnatprove -P ../tests/aml-core/hardware-grants/grants.gpr -u hardware_grants.adb hardware_catalog.adb hardware_authority.ads --mode=all --level=2 --prover=cvc5,z3 --checks-as-errors=on -j2
 aml-provisioning        | acpi     | . | gnatprove -P tests/aml-core/provisioning/provisioning.gpr -u firmware_tables-provisioning.adb --mode=all --level=2 --timeout=30 --memlimit=2000 --prover=cvc5,z3 --checks-as-errors=on -j2
 aml-snapshots           | acpi     | kernel | ulimit -S -s 65536; alr exec -- gnatprove -P ../tests/aml-core/snapshots/snapshots.gpr -u firmware_tables-snapshots.adb --mode=all --level=2 --prover=cvc5,z3 --checks-as-errors=on -j2
@@ -203,7 +205,6 @@ device-memory-authority | kernel   | kernel | alr exec -- gnatprove -P ../tests/
 device-memory-diagnostics | kernel | kernel | alr exec -- gnatprove -P ../tests/device-memory/diagnostics.gpr -u desktop_bootstrap_notes.adb intel_gpu_map_report.adb --mode=all --level=2 --prover=cvc5,z3 --checks-as-errors=on -j2
 directory-pages         | fs       | kernel | alr exec -- gnatprove -P ../tests/directory-pages/pages.gpr -u cubit-directory_pages.adb --level=2 -j2 --report=fail --checks-as-errors=on
 display-planes          | display  | kernel | bash ../tests/display-planes/prepare.sh && alr exec -- gnatprove -P ../tests/display-planes/planes.gpr -u cubit-display_planes.adb cubit-display_plane_protocol.adb cubit-gpu_plane_protocol.adb --level=2 --report=fail --checks-as-errors=on -j4
-endpoint-disposal       | kernel   | . | gnatprove -P tests/endpoint-disposal/disposal.gpr -u capabilities-endpoint_disposal.adb --mode=all --level=2 --report=all -j2
 filesystem-copy         | fs       | kernel | alr exec -- gnatprove -P ../tests/filesystem-copy/copy.gpr -u copy_slices.adb --level=2 --report=all -j2
 filesystem-events       | fs       | kernel | alr exec -- gnatprove -P ../tests/filesystem-events/events.gpr -u cubit-filesystem_events.adb watch_reserve.adb --level=2 --report=all -j2
 filesystem-queue-wakes  | fs       | kernel | alr exec -- gnatprove -P ../tests/filesystem-queue-wakes/wakes.gpr -u queue_wakes.adb --level=2 --report=all -j2
@@ -249,7 +250,7 @@ usb-configurations      | drivers  | kernel | alr exec -- gnatprove -P ../tests/
 xhci-topology           | drivers  | kernel | alr exec -- gnatprove -P ../tests/usb-input-discovery/discovery.gpr -u xhci_topology.adb --level=1 --report=all --checks-as-errors=on -j2
 user-memory             | kernel   | kernel | alr exec -- gnatprove -P ../tests/user-memory/user_memory_tests.gpr -u copy_proof.adb --mode=all --level=1 --checks-as-errors=on -j2
 volume-descriptions     | fs       | kernel | alr exec -- gnatprove -P ../tests/volume-descriptions/volumes.gpr -u cubit-volume_descriptions.adb --level=2 --report=all -j2
-volume-list             | fs       | kernel | alr exec -- gnatprove -P ../tests/volume-list/volumes.gpr -u volume_list.adb --level=1 --timeout=5 --checks-as-errors=on -j2
+volume-list             | fs       | kernel | alr exec -- gnatprove -P ../tests/volume-list/volumes.gpr -u volume_list.ads --level=1 --timeout=5 --checks-as-errors=on -j2
 
 # --- Added by the second proof sweep (2026-10-10 night) --------------------
 msi-vectors             | kernel   | . | bash tests/msi-vectors/run.sh --prove
@@ -259,3 +260,5 @@ output-modes            | display  | . | bash tests/output-modes/prepare.sh && g
 gpu-slpc                | gpu      | kernel | alr exec -- gnatprove -P ../tests/intel-gpu/slpc.gpr -u intel_gpu_slpc.adb --level=2 --report=fail --checks-as-errors=on -j2
 boot-timeline           | boot     | kernel | make prove-boot-timeline
 gpu-cursor-plane        | gpu      | kernel | alr exec -- gnatprove -P ../tests/intel-gpu/cursor_plane.gpr -u intel_gpu_cursor_surfaces.adb intel_gpu_cursor_ddb.adb intel_gpu_cursor_plane.adb intel_gpu_cursor_program.adb --level=2 --report=fail -j2
+driver-manifests        | ccl      | . | bash tests/driver-manifests/run.sh --prove
+render-admission        | gpu      | kernel | alr exec -- gnatprove -P ../tests/intel-gpu/render_admission.gpr -u intel_render_admission.adb --level=2 --checks-as-errors=on -j2

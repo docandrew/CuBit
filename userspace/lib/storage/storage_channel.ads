@@ -6,6 +6,7 @@ with CuBit.Async_Requests;
 --  Single-dispatcher asynchronous filesystem channel. No borrowed buffer is
 --  retained: submissions copy into this object's aligned grant buffer.
 --  Keep the limited object alive and at a stable address through retirement.
+with CuBit.Handles;
 package Storage_Channel is
    Transfer_Bytes : constant := 64 * 1024;
    type Operation is
@@ -24,7 +25,7 @@ package Storage_Channel is
    function Status (Object : Channel) return Phase;
    function Pending_Token (Object : Channel) return Unsigned_64;
    procedure Initialize
-     (Object : in out Channel; Endpoint : CuBit.Messages.CapabilitySlot;
+     (Object : in out Channel; Endpoint : CuBit.Handles.Endpoint;
       Success : out Boolean);
 
    --  Token comes from the dispatcher's process-wide, non-reusing allocator.
@@ -70,7 +71,7 @@ private
    type Channel is limited record
       Buffer : Transfer_Buffer (1 .. Transfer_Bytes) := [others => Character'Val (0)];
       Current : Phase := Fresh;
-      Endpoint : CuBit.Messages.CapabilitySlot := 0;
+      Endpoint : CuBit.Handles.Endpoint := CuBit.Handles.No_Endpoint;
       Grant : CuBit.Memory_Grants.Grant_Reference := (slot => 0, generation => 1);
       Has_Grant : Boolean := False;
       Revocation_Requested : Boolean := False;

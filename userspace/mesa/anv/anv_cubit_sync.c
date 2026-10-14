@@ -14,8 +14,8 @@
 
 struct cubit_gpu_timeline {
    struct vk_sync base;
-   uint64_t slot;        /* the session queue every point belongs to */
-   bool bound;           /* slot is set: the first point fixed it */
+   cubit_endpoint endpoint;        /* the session queue every point belongs to */
+   bool bound;           /* endpoint is set: the first point fixed it */
    struct native_gpu_timeline state;
 };
 
@@ -116,7 +116,7 @@ static bool resolve_locked(struct cubit_gpu_timeline *t)
 {
    if (!t->bound) return true;
    struct native_gpu_values completed, submitted;
-   if (cubit_gpu_queue_observe(t->slot, &completed, &submitted) != CUBIT_GPU_QUEUE_OK)
+   if (cubit_gpu_queue_observe(t->endpoint, &completed, &submitted) != CUBIT_GPU_QUEUE_OK)
       return false;
    native_gpu_timeline_resolve(&t->state, &completed);
    return true;
@@ -135,7 +135,7 @@ static VkResult initialize(struct vk_device *device, struct vk_sync *sync, uint6
    VkResult result = anv_cubit_sync_prepare();
    if (result != VK_SUCCESS) return result;
    struct cubit_gpu_timeline *t = (struct cubit_gpu_timeline *)sync;
-   t->slot = 0;
+   t->endpoint = CUBIT_NO_ENDPOINT;
    t->bound = false;
    native_gpu_timeline_initialize(&t->state, initial);
    return VK_SUCCESS;
@@ -189,7 +189,8 @@ static VkResult wait_values(struct vk_device *device, uint32_t count,
       if (vk_device_is_lost_no_report(device)) { result = VK_ERROR_DEVICE_LOST; break; }
       uint32_t satisfied = 0;
       bool healthy = true, on_gpu = false, on_cpu = false;
-      uint64_t slot = 0, target = 0;
+      cubit_endpoint endpoint = CUBIT_NO_ENDPOINT;
+      uint64_t target = 0;
       uint32_t context = 0;
       for (uint32_t i = 0; i < count; i++) {
          struct cubit_gpu_timeline *t = as_timeline(waits[i].sync);
@@ -202,9 +203,9 @@ static VkResult wait_values(struct vk_device *device, uint32_t count,
             satisfied++;
          } else if (kind == NATIVE_GPU_WAIT_ON_GPU) {
             /* ALL: any unmet point will do. ANY: the earliest on one context. */
-            if (!on_gpu || (any && t->slot == slot && point_context == context &&
+            if (!on_gpu || (any && cubit_endpoint_same(t->endpoint, endpoint) && point_context == context &&
                             point_gpu < target)) {
-               slot = t->slot; context = point_context; target = point_gpu;
+               endpoint = t->endpoint; context = point_context; target = point_gpu;
             }
             on_gpu = true;
          } else {
@@ -226,7 +227,7 @@ static VkResult wait_values(struct vk_device *device, uint32_t count,
             remaining = MIXED_WAIT_SLICE_NS;
          pthread_mutex_unlock(&sync_mutex);
          const uint64_t started = anv_cubit_blocking_start();
-         enum cubit_gpu_queue_status status = cubit_gpu_queue_wait(slot, context, target, remaining);
+         enum cubit_gpu_queue_status status = cubit_gpu_queue_wait(endpoint, context, target, remaining);
          anv_cubit_blocking_note(ANV_CUBIT_BLOCK_GPU_WAIT, started);
          if (status != CUBIT_GPU_QUEUE_OK && status != CUBIT_GPU_QUEUE_TIMED_OUT)
             return lost(device);
@@ -261,7 +262,7 @@ const struct vk_sync_type anv_cubit_gpu_timeline_type = {
 };
 
 VkResult
-anv_cubit_sync_find(struct vk_device *device, const struct vk_sync_wait *wait, uint64_t slot,
+anv_cubit_sync_find(struct vk_device *device, const struct vk_sync_wait *wait, cubit_endpoint endpoint,
                     enum native_gpu_wait_kind *kind, uint32_t *context, uint64_t *gpu)
 {
    uint64_t value = wait->wait_value;
@@ -271,7 +272,7 @@ anv_cubit_sync_find(struct vk_device *device, const struct vk_sync_wait *wait, u
    bool healthy = resolve_locked(t);
    native_gpu_timeline_find(&t->state, value, kind, context, gpu);
    /* A point from another device's queue cannot be a descriptor wait. */
-   bool foreign = *kind == NATIVE_GPU_WAIT_ON_GPU && t->slot != slot;
+   bool foreign = *kind == NATIVE_GPU_WAIT_ON_GPU && !cubit_endpoint_same(t->endpoint, endpoint);
    pthread_mutex_unlock(&sync_mutex);
    if (!healthy) return lost(device);
    return foreign ? VK_ERROR_FEATURE_NOT_PRESENT : VK_SUCCESS;
@@ -279,17 +280,17 @@ anv_cubit_sync_find(struct vk_device *device, const struct vk_sync_wait *wait, u
 
 VkResult
 anv_cubit_sync_add_point(struct vk_device *device, const struct vk_sync_signal *signal,
-                         uint64_t slot, uint32_t context, uint64_t gpu)
+                         cubit_endpoint endpoint, uint32_t context, uint64_t gpu)
 {
    uint64_t value = signal->signal_value;
    struct cubit_gpu_timeline *t = timeline_point(signal->sync, &value);
    if (!t) return VK_ERROR_FEATURE_NOT_PRESENT;
    pthread_mutex_lock(&sync_mutex);
    VkResult result = VK_SUCCESS;
-   if (t->bound && t->slot != slot) {
+   if (t->bound && !cubit_endpoint_same(t->endpoint, endpoint)) {
       result = VK_ERROR_FEATURE_NOT_PRESENT;
    } else {
-      t->slot = slot;
+      t->endpoint = endpoint;
       t->bound = true;
       /* Resolve first: every point left then belongs to a job the queue
        * still owes a record, which bounds the table. */
@@ -330,7 +331,7 @@ static VkResult move_payload(struct vk_device *device, struct vk_sync *dst,
       if (ok) {
          to->next_point = target_next;
          from->next_point = source_next;
-         target->slot = source->slot;
+         target->endpoint = source->endpoint;
          target->bound = source->bound;
          result = pthread_cond_broadcast(&sync_changed) ? VK_ERROR_UNKNOWN : VK_SUCCESS;
       }

@@ -12,15 +12,20 @@
 #include <stdatomic.h>
 #include <stdio.h>
 #include <string.h>
+#include "../../userspace/c/cubit_handles.h"
+/* A test endpoint handle (generation 1). */
+#define TEST_ENDPOINT(n) ((cubit_endpoint){(UINT64_C(1) << 32) | (uint64_t)(n)})
+/* The index a test endpoint was made from. */
+#define TEST_INDEX(e) ((unsigned)((e).opaque & 0xffffffffu))
 
-uint32_t cubit_intel_memory_contract(uint64_t slot) { (void)slot; return 1; }
-uint32_t cubit_intel_session_status(uint64_t slot) { (void)slot; return 0; }
+uint32_t cubit_intel_memory_contract(cubit_endpoint endpoint) { (void)endpoint; return 1; }
+uint32_t cubit_intel_session_status(cubit_endpoint endpoint) { (void)endpoint; return 0; }
 bool cubit_cpu_tracker_drain(struct cubit_cpu_mapping_tracker *tracker)
 { (void)tracker; return true; }
-uint32_t cubit_intel_close_session(uint64_t slot, uint64_t *tag) { *tag = slot + 1; return 0; }
-uint32_t cubit_intel_poll_session_retirement(uint64_t slot) { (void)slot; return 0; }
-uint32_t cubit_intel_prepare_context(uint64_t slot) { (void)slot; return 0; }
-uint32_t cubit_intel_register_context(uint64_t slot) { (void)slot; return 0; }
+uint32_t cubit_intel_close_session(cubit_endpoint endpoint, uint64_t *tag) { *tag = TEST_INDEX(endpoint) + 1; return 0; }
+uint32_t cubit_intel_poll_session_retirement(cubit_endpoint endpoint) { (void)endpoint; return 0; }
+uint32_t cubit_intel_prepare_context(cubit_endpoint endpoint) { (void)endpoint; return 0; }
+uint32_t cubit_intel_register_context(cubit_endpoint endpoint) { (void)endpoint; return 0; }
 void anv_cmd_buffer_chain_command_buffers(struct anv_cmd_buffer **c, uint32_t n) { (void)c; (void)n; }
 void anv_cmd_buffer_clflush(struct anv_cmd_buffer **c, uint32_t n) { (void)c; (void)n; }
 void util_flush_range(void *start, size_t size) { (void)start; (void)size; }
@@ -47,19 +52,19 @@ static void held(bool *inside)
    while (hold) pthread_cond_wait(&gate_changed, &gate);
    pthread_mutex_unlock(&gate);
 }
-uint32_t cubit_intel_update_binding(uint64_t slot, uint32_t handle, uint64_t gpu,
+uint32_t cubit_intel_update_binding(cubit_endpoint endpoint, uint32_t handle, uint64_t gpu,
    uint64_t offset, uint64_t bytes, uint32_t remove, uint32_t previous, uint32_t *generation)
 {
    (void)handle; (void)gpu; (void)offset; (void)bytes; (void)remove;
    if (hold) held(&update_inside);
-   assert(previous == atomic_load(&generations[slot]));
-   *generation = atomic_fetch_add(&generations[slot], 1) + 1;
+   assert(previous == atomic_load(&generations[TEST_INDEX(endpoint)]));
+   *generation = atomic_fetch_add(&generations[TEST_INDEX(endpoint)], 1) + 1;
    atomic_fetch_add(&updates, 1);
    return 0;
 }
-uint32_t cubit_intel_close_buffer(uint64_t slot, uint32_t handle)
+uint32_t cubit_intel_close_buffer(cubit_endpoint endpoint, uint32_t handle)
 {
-   (void)slot; (void)handle;
+   (void)endpoint; (void)handle;
    if (hold) held(&close_inside);
    return 0;
 }
@@ -114,8 +119,8 @@ static void *gpu(void *argument)
    while (atomic_load(&submitting))
       for (unsigned i = 0; i < 4; i++) {
          struct native_gpu_values completed, submitted;
-         assert(cubit_gpu_queue_observe(rigs[i].slot, &completed, &submitted) == CUBIT_GPU_QUEUE_OK);
-         gpu_queue_mock_complete(rigs[i].slot, 0, submitted.value[0]);
+         assert(cubit_gpu_queue_observe(rigs[i].endpoint, &completed, &submitted) == CUBIT_GPU_QUEUE_OK);
+         gpu_queue_mock_complete(rigs[i].endpoint, 0, submitted.value[0]);
       }
    return NULL;
 }
@@ -125,7 +130,7 @@ int main(void)
    const struct vk_sync_type *const *types = rig_physical();
    unsigned checks = 0;
    for (unsigned i = 0; i < 4; i++) {
-      open_rig(&rigs[i], 40 + i);
+      open_rig(&rigs[i], TEST_ENDPOINT(40 + i));
       struct vk_sync *fence = make(&rigs[i], &binary_type.sync, 0);
       assert(startup(&rigs[i], fence, 0, NULL) == VK_SUCCESS);
       timelines[i] = make(&rigs[i], types[0], VK_SYNC_IS_TIMELINE);
@@ -148,7 +153,7 @@ int main(void)
       assert(anv_cubit_queue_exec_locked(&r->queue, 0, NULL, 1, r->cmds, 1, &s,
                                          NULL, 0, NULL) == VK_SUCCESS);
       assert(anv_cubit_check_status(&r->device.vk) == VK_SUCCESS);
-      gpu_queue_mock_complete(r->slot, 0, gpu_queue_mock[r->slot].submitted.value[0]);
+      gpu_queue_mock_complete(r->endpoint, 0, gpu_queue_mock[TEST_INDEX(r->endpoint)].submitted.value[0]);
       assert(vk_sync_wait(&r->device.vk, fence, 0, 0, UINT64_MAX) == VK_SUCCESS);
       checks += 3;
    }

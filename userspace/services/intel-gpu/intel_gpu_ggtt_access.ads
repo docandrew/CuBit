@@ -2,7 +2,6 @@ with Interfaces; use Interfaces;
 with Intel_GPU_PCI_Power;
 package Intel_GPU_GGTT_Access with SPARK_Mode is
    Write_Request_Label : constant := 16#0233#;
-   Write_Slot : constant Unsigned_64 := 26;
    type Grant_Plan is record
       Valid : Boolean := False;
       Physical, Bytes : Unsigned_64 := 0;

@@ -1,7 +1,7 @@
 project Channel_Tests is
    for Source_Dirs use
      (".", "fixture", "../../userspace/lib/storage", "../../userspace/lib/storage/native",
-      "../../userspace/runtime/gnat");
+      "../../userspace/runtime/gnat", "../../shared/capabilities");
    for Source_Files use
      ("cubit-async_requests.ads", "cubit-async_requests.adb") &
      ("channel_tests.adb", "storage_channel.ads", "storage_channel.adb",
@@ -9,7 +9,12 @@ project Channel_Tests is
       "cubit.ads", "cubit-messages.ads", "cubit-messages.adb",
       "cubit-memory_grants.ads", "cubit-memory_grants.adb",
       "cubit-grant_references.ads", "cubit-filesystems.ads", "cubit-filesystems.adb",
-      "cubit-directory_paths.ads", "cubit-directory_paths.adb");
+      "cubit-directory_paths.ads", "cubit-directory_paths.adb",
+      "cubit-handles.ads", "capability_abi.ads", "capability_abi.adb",
+      "cubit-process_ids.ads", "cubit-process_ids.adb",
+      "cubit-directory_pages.ads", "cubit-directory_pages.adb",
+      "cubit-handles-fixture.ads", "cubit-handles-fixture.adb",
+      "cubit-handles-startup.ads", "cubit-handles-startup.adb");
    for Object_Dir use "build";
    for Exec_Dir use "build";
    for Main use ("channel_tests.adb", "native_bridge_tests.adb");

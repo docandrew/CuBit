@@ -1,3 +1,4 @@
+with CuBit.Handles.Fixture;
 with Ada.Text_IO;
 with GNAT.Source_Info;
 with Interfaces; use Interfaces;
@@ -73,7 +74,7 @@ begin
       begin
          R.Start (Owner, Types, Session, Result); Check (Result = R.Succeeded);
          R.Reserve (Owner, Session, Kind, Factory, Result); Check (Result = R.Succeeded);
-         C.Initialize (Object, 5, Good); Check (Good);
+         C.Initialize (Object, CuBit.Handles.Fixture.Endpoint_Of (5), Good); Check (Good);
          C.Create (Object, "org.cubit.settings", Contract, W.Read_Write, 0, 1, Sent);
          Check (Sent = C.Submitted and W.Valid_Request (IPC.Last_Request, W.Create_Collection));
          if Test = Stop_During_Create then

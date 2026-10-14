@@ -1,3 +1,4 @@
+with CuBit.Handles.Fixture;
 with Ada.Text_IO;
 with Interfaces; with System;
 with Compositor_Formats; with Compositor_Source_Content;
@@ -50,7 +51,7 @@ begin
    Reset; Context_Set (0, 0); Pipeline_Set (0, 0);
    Vulkan_Device_Mock.Set (True, True, 0); Image_Set (4096, 1, 0, 0, 0);
    Upload_Set (65536, 1, 0, 0, 0, 0); Real_Mapping (1);
-   D.Initialize (25); D.Configure_Targets (32, 24, 1, 4096 * 200, OK); pragma Assert (OK);
+   D.Initialize (CuBit.Handles.Fixture.Endpoint_Of (25)); D.Configure_Targets (32, 24, 1, 4096 * 200, OK); pragma Assert (OK);
    D.Prepare_Pipeline (OK); pragma Assert (OK);
    D.Configure_Upload (65536, OK); pragma Assert (OK);
    for Frame in 1 .. Frames loop

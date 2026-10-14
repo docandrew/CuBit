@@ -1,6 +1,7 @@
 with Interfaces; use Interfaces;
 with System.Storage_Elements;
-with CCL_Manifest_Bindings;
+with Startup;
+with CuBit.Handles.C_ABI;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Logging;
 with CuBit.Log_Records;
@@ -12,16 +13,17 @@ pragma Elaborate_All (Native_GPU_Query);
 procedure Main is
    package Buffers renames Native_GPU_Buffers;
    package Memory renames Native_GPU_Memory;
-   Slot : constant Unsigned_64 := CCL_Manifest_Bindings.Slot_Render;
+   --  The admitted render endpoint (startup "render"), as the glue takes it.
+   Render : constant CuBit.Handles.C_ABI.C_Endpoint :=
+     CuBit.Handles.C_ABI.To_C (Startup.Render);
    GPU_Address : constant Unsigned_64 := 16#1_0000_0000#;
    Handle, Mapping : aliased Unsigned_32 := 0;
    Reference, CPU, Retired : aliased Unsigned_64 := 0;
    Status : Unsigned_32;
    Failed : Boolean := False;
-   Writer : CuBit.Logging.Publisher
-     (CapabilitySlot (CCL_Manifest_Bindings.Slot_Logstore));
+   Writer : CuBit.Logging.Publisher;
    Logging_Enabled : Boolean := True;
-   function Discovery_Check (Endpoint : Unsigned_64) return Unsigned_32
+   function Discovery_Check (Endpoint : CuBit.Handles.C_ABI.C_Endpoint) return Unsigned_32
      with Import, Convention => C, External_Name => "cubit_test_native_discovery";
 
    procedure Report (Text : String) is
@@ -58,21 +60,21 @@ procedure Main is
 
    procedure Exercise is
    begin
-      Check ("health", Buffers.Session_Status (Slot));
+      Check ("health", Buffers.Session_Status (Render));
       if Failed then return; end if;
-      Check ("mesa-query-decoders", Discovery_Check (Slot));
+      Check ("mesa-query-decoders", Discovery_Check (Render));
       if Failed then return; end if;
-      Status := Buffers.Memory_Contract (Slot);
+      Status := Buffers.Memory_Contract (Render);
       Report ("RENDER-SESSION memory-policy=" & Status'Image);
       if Status not in 1 .. 2 then Failed := True; return; end if;
       -- Explicit-maintenance memory is sufficient for this CPU-only test.
       -- No GPU execution or CPU/GPU coherence is inferred from these writes.
-      Check ("create", Buffers.Create (Slot, 4096, Handle'Access));
+      Check ("create", Buffers.Create (Render, 4096, Handle'Access));
       if Failed then return; end if;
       Check ("map", Buffers.Map
-        (Slot, Handle, 0, 4096, 1, Mapping'Access, Reference'Access));
+        (Render, Handle, 0, 4096, 1, Mapping'Access, Reference'Access));
       if Failed then return; end if;
-      Check ("acquire", Memory.Acquire (Slot, Reference, 0, 4096, 1, CPU'Access));
+      Check ("acquire", Memory.Acquire (Render, Reference, 0, 4096, 1, CPU'Access));
       if Failed then return; end if;
       if CPU = 0 or else CPU mod 4 /= 0 or else CPU > Unsigned_64'Last - 4095 then
          Failed := True;
@@ -94,7 +96,7 @@ procedure Main is
       Check ("return-borrow", Memory.Return_Borrow (Reference));
       if Failed then return; end if;
       -- A pending retirement is not permission to replay Map or free backing.
-      Status := Buffers.Retire_Map (Slot, Mapping);
+      Status := Buffers.Retire_Map (Render, Mapping);
       if Status = 4 then
          Report ("RENDER-SESSION mapping retirement pending; backing retained");
       else
@@ -103,25 +105,26 @@ procedure Main is
       if Failed then return; end if;
       -- Use the same BO throughout; no CPU/DMA address crosses this API.
       -- Offline unbind/rebind tests names without freeing physical backing.
-      Check ("bind", Buffers.Bind_GPU (Slot, Handle, GPU_Address, 0, 4096));
+      Check ("bind", Buffers.Bind_GPU (Render, Handle, GPU_Address, 0, 4096));
       if Failed then return; end if;
-      Check ("unbind", Buffers.Unbind_GPU (Slot, Handle, GPU_Address, 0, 4096));
+      Check ("unbind", Buffers.Unbind_GPU (Render, Handle, GPU_Address, 0, 4096));
       if Failed then return; end if;
-      Check ("rebind", Buffers.Bind_GPU (Slot, Handle, GPU_Address, 0, 4096));
+      Check ("rebind", Buffers.Bind_GPU (Render, Handle, GPU_Address, 0, 4096));
       if Failed then return; end if;
-      Check ("prepare-context", Buffers.Prepare_Context (Slot));
+      Check ("prepare-context", Buffers.Prepare_Context (Render));
       if Failed then return; end if;
-      Check ("register-context", Buffers.Register_Context (Slot));
+      Check ("register-context", Buffers.Register_Context (Render));
       -- The driver executes its own initialization marker and disables the
       -- context before success. The app's BO contains data, never commands;
       -- do not submit it or close its name while the sealed VM retains it.
    end Exercise;
 begin
+   CuBit.Logging.Bind (Writer, Startup.Logstore);
    Report ("RENDER-SESSION admitted app entered");
    Exercise;
    -- Exactly one close attempt, also on error. Uncertain resources stay held
    -- by the driver; this app never treats session close as completed reclaim.
-   Check ("close-session", Buffers.Close_Session (Slot, Retired'Access));
+   Check ("close-session", Buffers.Close_Session (Render, Retired'Access));
    if Failed then
       Report ("TEST: FAIL native render session");
    else

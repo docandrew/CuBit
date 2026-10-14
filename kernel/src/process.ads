@@ -35,6 +35,8 @@ with Interfaces; use Interfaces;
 
 with BuddyAllocator;
 with Capabilities;
+with Capability_ABI;
+with Process_Capabilities;
 with Config;
 with Descriptors;
 with Device_Vector_ABI;
@@ -320,20 +322,26 @@ package Process is
     -- carries the tag plus 4 data words, fitting in 5 registers total.
     ---------------------------------------------------------------------------
     type MessageTag is record
-        label  : Unsigned_32;   -- Protocol-defined operation code
-        length : Unsigned_8;    -- Number of valid words (0-4)
-        flags  : Unsigned_8;    -- Reserved for future (grant, capability, etc.)
-        reserved : Unsigned_16; -- Not authenticated; never an authority tag
+        label    : Unsigned_32;   -- Protocol-defined operation code
+        length   : Unsigned_8;    -- Number of valid words (0-4)
+        -- The tag's flag byte: the protocol's low nibble and the IPC
+        -- layer's high nibble (Capability_ABI).
+        protocol : Capability_ABI.Protocol_Flags := 0;
+        ipc      : Capability_ABI.IPC_Flags := Capability_ABI.No_IPC_Flags;
+        reserved : Unsigned_16;   -- Not authenticated; never an authority tag
     end record with Size => 64;
 
     for MessageTag use record
-        label  at 0 range 0..31;
-        length at 4 range 0..7;
-        flags  at 5 range 0..7;
-        reserved  at 6 range 0..15;
+        label    at 0 range 0..31;
+        length   at 4 range 0..7;
+        protocol at 5 range 0..3;
+        ipc      at 5 range 4..7;
+        reserved at 6 range 0..15;
     end record;
 
-    NULL_TAG : constant MessageTag := (label => 0, length => 0, flags => 0, reserved => 0);
+    NULL_TAG : constant MessageTag :=
+      (label => 0, length => 0, protocol => 0,
+       ipc => Capability_ABI.No_IPC_Flags, reserved => 0);
 
     type MessageWords is array (0..3) of Unsigned_64;
 
@@ -803,6 +811,14 @@ package Process is
         -- by the owning process's mailbox lock, like its capability table.
         replyCap            : Capabilities.Capability :=
                                 Capabilities.NULL_CAPABILITY;
+
+        -- A capability this thread offers with the call it is making
+        -- (CALL_OFFERING_CAPABILITY, CAP-002): already derived from its
+        -- process's table, taken by the server only through
+        -- ACCEPT_OFFERED_CAPABILITY while it answers this call, dropped when
+        -- the call ends. Protected by the process's mailbox lock.
+        offeredCap          : Capabilities.Capability :=
+                                Capabilities.NULL_CAPABILITY;
     end record;
 
     type Process is
@@ -849,13 +865,16 @@ package Process is
         grantTeardownReady : Boolean := False;
         pidReusableAfterGrants : Boolean := False;
 
-        caps                : Capabilities.CapabilityTable :=
-                                  Capabilities.EMPTY_TABLE;
-
-        -- Bitmap of slots holding deferred reply caps (set by
-        -- SAVE_REPLY_CAP, cleared when consumed by reply/replyWait).
-        -- Bit N set means caps(N) holds a CAP_REPLY.
-        deferredReplyCaps   : Unsigned_64 := 0;
+        -- The process's capability handles (CAP-002): kernel-placed
+        -- entries named by slot and generation, charged to memoryAccount,
+        -- edited only under mailtab (pid).lock. Configured at create;
+        -- released (every page) before the account closes. A saved reply is
+        -- an ordinary CAP_REPLY entry here.
+        caps                : Process_Capabilities.Tables.Table;
+        -- Its own endpoint and process handles, placed first at create, for
+        -- the spawner's startup table (SPAWN's result).
+        selfHandle          : Unsigned_64 := 0;
+        selfProcessHandle   : Unsigned_64 := 0;
 
         -- Number of events published to this process that were refused
         -- because their publisher's ring here was full (the publisher is
@@ -1011,11 +1030,12 @@ package Process is
     realtimeAdmitted : Realtime_Admission.Total := 0;
 
     -- Reserve real-time CPU for pid's main thread: Budget microseconds every
-    -- Period, if the process holds a CAP_SCHEDULING covering it and the
-    -- system total stays within Realtime_Admission's share. A previous
+    -- Period, if authority (the CAP_SCHEDULING its handle named) covers it
+    -- and the system total stays within Realtime_Admission's share. A previous
     -- reservation is released first. Caller holds no Process lock.
     procedure reserveRealtime
       (pid      : ProcessID;
+       authority : Capabilities.Capability;
        budgetUs : Unsigned_32;
        periodUs : Unsigned_32;
        granted  : out Boolean);
@@ -1186,6 +1206,7 @@ package Process is
                      procStack    : in System.Address;
                      stackSize    : in UserStackSize;
                      imageFrames  : in Natural;
+                     handleLimit  : in Process_Capabilities.Tables.Handle_Limit;
                      requestedPID : in ProcessID := NO_PROCESS) return ProcessID;
 
     ---------------------------------------------------------------------------

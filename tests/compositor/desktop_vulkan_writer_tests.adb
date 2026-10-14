@@ -1,3 +1,4 @@
+with CuBit.Handles.Fixture;
 with System.Storage_Elements;
 with Ada.Command_Line; with Ada.Text_IO; with Interfaces; with System;
 with Desktop_Vulkan_Startup; with Vulkan_Device_Mock; with Vulkan_Owned_Targets;
@@ -31,7 +32,7 @@ procedure Desktop_Vulkan_Writer_Tests is
 begin
    Reset; Context_Set (0, 0); M.Set (True, True, 0); Pipeline_Set (0, 0);
    Image_Set (4096, 1, 0, 0, 0); Upload_Set (4096, 1, 0, 0, 0, 0); Record_Set (0);
-   S.Initialize (25); S.Configure_Targets (32, 24, 1, 32768, OK); pragma Assert (OK);
+   S.Initialize (CuBit.Handles.Fixture.Endpoint_Of (25)); S.Configure_Targets (32, 24, 1, 32768, OK); pragma Assert (OK);
    S.Prepare_Pipeline (OK); pragma Assert (OK); S.Configure_Upload (128, OK); pragma Assert (OK);
    S.Allocate_Backing (0, 32, 3, False, Lease, Result); pragma Assert (Result = S.Source_Accepted);
    S.Allocate_Backing (1, 32, 3, True, Other_Lease, Result); pragma Assert (Result = S.Source_Accepted);

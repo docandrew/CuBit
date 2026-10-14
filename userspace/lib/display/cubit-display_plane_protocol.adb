@@ -1,6 +1,7 @@
 pragma Ada_2022;
 
 package body CuBit.Display_Plane_Protocol with SPARK_Mode is
+   use type D.DP.Protocol_Flags;
    use type DPL.Space_Coordinate, DPL.Request_Count;
    Field_Bits : constant := 16;
    Field_Limit : constant Unsigned_64 := 2 ** Field_Bits;

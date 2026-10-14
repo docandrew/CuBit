@@ -4,7 +4,8 @@ with CuBit.Metric_Raw_Observer;
 with CuBit.Metric_Protocol;
 with Compositor_Trace_Stream;
 with Compositor_Render_Trace;
-with CCL_Manifest_Bindings;
+with CuBit.Startup_State;
+with Startup;
 with CuBit.Filesystems;
 with CuBit.Memory_Grants;
 with CuBit.Monotonic;
@@ -16,7 +17,7 @@ procedure Main is
    package S renames Compositor_Trace_Stream;
    package W renames S.W;
    use type P.Status, W.Event_Kind, Compositor_Render_Trace.Phase;
-   Raw : O.Observer (CCL_Manifest_Bindings.Slot_metrics_observer);
+   Raw : O.Observer;
    Collector : S.State;
    Page : P.Raw_Page;
    N : P.Raw_Row_Count;
@@ -60,7 +61,7 @@ procedure Main is
    begin
       if Slots = 0 then return; end if;
       M := FS.Write_At_Request (Handle, Loan, Bytes, Offset);
-      M.tag := capCall (CCL_Manifest_Bindings.Slot_filesystem, M, Wait_Forever);
+      M.tag := capCall (Startup.Filesystem, M, Wait_Forever);
       if M.tag.label /= FS.REPLY_OK or else M.words (0) /= Bytes then
          debugPrint ("ARCHIVE: write status=" & M.tag.label'Image & " bytes=" & M.words (0)'Image & ASCII.LF);
          Fail ("archive short or failed write");
@@ -88,13 +89,13 @@ procedure Main is
       Now : constant Unsigned_64 := Clock;
       H : constant F.A.Chunk := F.Header ((Now + 1, Endpoint, Now, 256));
    begin
-      MG.Create_Via_Capability (CCL_Manifest_Bindings.Slot_filesystem,
+      MG.Create_Via_Capability (Startup.Filesystem,
         Output'Address, 1, False, Loan, OK);
       if not OK then Fail ("archive grant"); end if;
       Text (1 .. Path'Length) := Path;
       M := FS.Open_Request (Loan, Path'Length,
         FS.OPEN_READ_WRITE or FS.OPEN_CREATE or FS.OPEN_EXCLUSIVE);
-      M.tag := capCall (CCL_Manifest_Bindings.Slot_filesystem, M, Wait_Forever);
+      M.tag := capCall (Startup.Filesystem, M, Wait_Forever);
       Handle := FS.File_Handle (M.words (0));
       if M.tag.label /= FS.REPLY_OK or else Handle = FS.INVALID_FILE_HANDLE then
          debugPrint ("ARCHIVE: open status=" & M.tag.label'Image & ASCII.LF);
@@ -129,13 +130,13 @@ procedure Main is
       if F.Status (Archive) /= F.Footer_Seen then Fail ("archive footer"); end if;
       Append (Data); Write_Page;
       M := FS.Flush_Request (Handle);
-      M.tag := capCall (CCL_Manifest_Bindings.Slot_filesystem, M, Wait_Forever);
+      M.tag := capCall (Startup.Filesystem, M, Wait_Forever);
       if M.tag.label /= FS.REPLY_OK then
          debugPrint ("ARCHIVE: flush status=" & M.tag.label'Image & ASCII.LF);
          Fail ("archive flush not confirmed");
       end if;
       M := FS.Close_Request (Handle);
-      M.tag := capCall (CCL_Manifest_Bindings.Slot_filesystem, M, Wait_Forever);
+      M.tag := capCall (Startup.Filesystem, M, Wait_Forever);
       if M.tag.label /= FS.REPLY_OK then Fail ("archive close"); end if;
       MG.Revoke (Loan, Revoked);
       for Retry in 1 .. 100 loop
@@ -149,6 +150,11 @@ procedure Main is
         " events=" & F.Events (Archive)'Image & " flush=confirmed retirement=confirmed" & ASCII.LF);
    end Finish_Archive;
 begin
+   if not CuBit.Startup_State.Ready (Startup.Verify) then
+      debugPrint ("TEST: FAIL startup capabilities" & ASCII.LF);
+      return;
+   end if;
+   O.Bind (Raw, Startup.Metrics_Observer);
    -- Bounded collector workload. It may lag and lose history; identity and
    -- completeness checks never turn an incomplete fragment group into an event.
    for Tick in 1 .. 1000 loop

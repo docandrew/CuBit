@@ -1,5 +1,6 @@
 with Interfaces;
 with CCL.Objects;
+with CuBit.Handles;
 with CuBit.Messages;
 with Config_Authority;
 with Config_Collections;
@@ -22,7 +23,7 @@ package Config_Object_Service is
    function Status (Object : State) return Worker_Status;
    function Waiting (Object : State) return Boolean;
    procedure Attach
-     (Object : in out State; Endpoint : CuBit.Messages.CapabilitySlot;
+     (Object : in out State; Endpoint : CuBit.Handles.Endpoint;
       Session : Interfaces.Unsigned_64; Success : out Boolean);
    --  Once per instance. Endpoint authority comes from the trusted launcher;
    --  an arbitrary request cannot select a worker. Preserve this object's

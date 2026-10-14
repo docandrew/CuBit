@@ -677,12 +677,14 @@ static void run_wake(struct result *r)
 
 /* interactive: a paced request/response round trip to another process. */
 #ifdef CUBIT
-/* The ipc-test service (bench-ipc-server's echo): the manifest's fixed
- * binding slot and the server's protocol (userspace/apps/bench-ipc-*). */
+/* The ipc-test service (bench-ipc-server's echo): the manifest's "ipc-test"
+ * startup entry (CAP-002: by name, never a slot number) and the server's
+ * protocol (userspace/apps/bench-ipc-*). */
+#include "../../userspace/c/cubit_handles.h"
 /* With a deadline (docs/ipc-fastpath.md, "Call deadlines"): none here. */
 #define SYSCALL_CALL_VIA_ENDPOINT_CAPABILITY 128
 #define WAIT_FOREVER (~0ul)
-#define SLOT_IPC_TEST 18
+#define IPC_TEST_BINDING "ipc-test"
 #define OP_BENCH_ECHO 0x0910
 #define REPLY_OK 0xF000
 #define ECHO_WORDS 1
@@ -709,8 +711,13 @@ static int echo(uint64_t value)
 {
 	struct message m = { .label = OP_BENCH_ECHO, .length = ECHO_WORDS };
 	m.words[0] = value;
+	static cubit_endpoint ipc_test;
+	if (!cubit_endpoint_present(ipc_test))
+		ipc_test = cubit_startup_endpoint(IPC_TEST_BINDING);
+	if (!cubit_endpoint_present(ipc_test))
+		return 0;
 	unsigned long tag = cubit_call(SYSCALL_CALL_VIA_ENDPOINT_CAPABILITY,
-		SLOT_IPC_TEST, (unsigned long)&m, WAIT_FOREVER);
+		ipc_test.opaque, (unsigned long)&m, WAIT_FOREVER);
 	return tag != (unsigned long)-1 && (uint32_t)tag == REPLY_OK &&
 		m.words[0] == value && m.words[1] == (value ^ XOR_MAGIC);
 }

@@ -29,7 +29,7 @@ global_asm!(
 unsafe extern "C" {
     fn config_storage_hostinit();
     fn cubit_config_storage_path(buffer: *mut u8, capacity: u64, length: *mut u64) -> u32;
-    fn cubit_config_storage_run(database: *mut core::ffi::c_void, config_endpoint: u64) -> u32;
+    fn cubit_config_storage_run(database: *mut core::ffi::c_void) -> u32;
 }
 
 #[unsafe(no_mangle)]
@@ -66,7 +66,7 @@ extern "C" fn rust_main() -> ! {
         let wal = format!("{path}-wal");
         // Exact two-path narrowing on top of manifest-installed filesystem scopes.
         let io = Arc::new(NativeIO::new(
-            storage::Bridge::new(SLOT_FILESYSTEM),
+            storage::Bridge::new(),
             &[path, &wal],
         ));
         Store::open_with_io(io, path)
@@ -83,7 +83,7 @@ extern "C" fn rust_main() -> ! {
     // it. The Ada loop retains no pointer after return and supplies owned FFI
     // buffers only. All external messages pass its authenticated grant shell.
     let _status =
-        unsafe { cubit_config_storage_run((&mut database as *mut Database).cast(), SLOT_CONFIG) };
+        unsafe { cubit_config_storage_run((&mut database as *mut Database).cast()) };
     // Run returns only on terminal failure. Do not retry a write or checkpoint
     // an uncertain session while exiting. Process teardown reclaims resources.
     cubit::debug_write("CONFIG-STORAGE: retired; restart/recovery required\n");

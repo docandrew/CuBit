@@ -1,0 +1,12 @@
+# netmgr.svc's authority (CAP-002): its role registration, netstack's
+# endpoint badged as the network manager's authority (absent without
+# netstack), config.svc's endpoint, and its endpoint to devmgr.
+(Executable_Manifest
+  identity => "com.cubit.netmgr"
+  version => "0.1.0"
+  requests => [
+    (notification "netmgr" Notify_Access.Manage "registration")
+    (service "network-stack" "netstack")
+    (service "config" "config")
+    (service "device-manager" "ready")]
+  optional => ["netstack"])

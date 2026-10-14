@@ -2,6 +2,8 @@ with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Audio;
+with CuBit.Startup_State;
+with Startup;
 with CuBit.Benchmark_Clock;
 with CuBit.Timing_Histograms;
 
@@ -71,6 +73,11 @@ procedure Main is
       end if;
    end Refill;
 begin
+   if not CuBit.Startup_State.Ready (Startup.Verify) then
+      debugPrint ("BENCH: FAIL audio startup" & ASCII.LF);
+      return;
+   end if;
+   Audio.Bind (Startup.Mixer);
    Clock.Calibrate (Rate);
    if Rate = 0 then
       debugPrint ("BENCH: FAIL audio calibration" & ASCII.LF);

@@ -10,6 +10,7 @@ with System;
 with CuBit.Messages;
 with CuBit.Grant_References;
 
+with CuBit.Handles;
 package CuBit.Memory_Grants is
    PAGE_SIZE : constant Unsigned_64 := 4096;
    MAXIMUM_GLOBAL_SLOT : constant Unsigned_64 :=
@@ -34,7 +35,7 @@ package CuBit.Memory_Grants is
       notify    : Boolean := False);
 
    procedure Create_Via_Capability
-     (slot      : CuBit.Messages.CapabilitySlot;
+     (slot      : CuBit.Handles.Endpoint;
       localAddr : System.Address;
       numPages  : Natural;
       readWrite : Boolean;
@@ -57,7 +58,23 @@ package CuBit.Memory_Grants is
    --  notify: the kernel posts grant lifecycle events for it and the grants
    --  derived from it (CuBit.Control_Events).
    procedure Create_Forwardable_Via_Capability
-     (slot : CuBit.Messages.CapabilitySlot; localAddr : System.Address;
+     (slot : CuBit.Handles.Endpoint; localAddr : System.Address;
+      numPages : Natural; readWrite : Boolean;
+      reference : out Grant_Reference; success : out Boolean;
+      notify : Boolean := False);
+
+   --  The same, to the process a saved reply answers (the requester of a
+   --  request this process set aside): no endpoint to it is needed.
+   procedure Create_Via_Reply
+     (peer      : CuBit.Handles.Reply;
+      localAddr : System.Address;
+      numPages  : Natural;
+      readWrite : Boolean;
+      reference : out Grant_Reference;
+      success   : out Boolean;
+      notify    : Boolean := False);
+   procedure Create_Forwardable_Via_Reply
+     (peer : CuBit.Handles.Reply; localAddr : System.Address;
       numPages : Natural; readWrite : Boolean;
       reference : out Grant_Reference; success : out Boolean;
       notify : Boolean := False);
@@ -66,7 +83,7 @@ package CuBit.Memory_Grants is
    --  cannot be forwarded, widen the page range or add write permission.
    --  Recipient is authenticated through an endpoint capability, not a PID.
    procedure Derive_Via_Capability
-     (recipient : CuBit.Messages.CapabilitySlot; parent : Grant_Reference;
+     (recipient : CuBit.Handles.Endpoint; parent : Grant_Reference;
       pageOffset, numPages : Natural; readWrite : Boolean;
       reference : out Grant_Reference; success : out Boolean);
 
@@ -74,7 +91,7 @@ package CuBit.Memory_Grants is
    --  derives and generation-checks the expected grant owner from that
    --  authority, avoiding a caller-supplied PID at service boundaries.
    procedure Acquire_Via_Capability
-     (slot           : CuBit.Messages.CapabilitySlot;
+     (slot           : CuBit.Handles.Endpoint;
       reference      : Grant_Reference;
       byteOffset     : Unsigned_64;
       byteLength     : Unsigned_64;

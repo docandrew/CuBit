@@ -6,7 +6,15 @@ with CuBit.String;
 
 package body ISO9660 is
    use type System.Address;
-   Optical_Endpoint : constant CapabilitySlot := 12;
+   --  The USB optical drive's endpoint, once devmgr attached it.
+   Optical_Endpoint : CuBit.Handles.Endpoint := CuBit.Handles.No_Endpoint;
+   procedure Attach (Endpoint : CuBit.Handles.Endpoint; Attached : out Boolean) is
+   begin
+      Attached := not CuBit.Handles.Valid (Optical_Endpoint) and then CuBit.Handles.Valid (Endpoint);
+      if Attached then
+         Optical_Endpoint := Endpoint;
+      end if;
+   end Attach;
    Buffer : System.Address := System.Null_Address;
    Grant : CuBit.Memory_Grants.Grant_Reference;
    Granted, Mounted : Boolean := False;
@@ -17,7 +25,7 @@ package body ISO9660 is
 
    function Fetch (First, Blocks : Unsigned_64) return Boolean is
       Request : Message :=
-        (tag => (label => OP_READ_BLOCKS, length => 4, flags => 0, reserved => 0),
+        (tag => (label => OP_READ_BLOCKS, length => 4, protocol => 0, ipc => <>, reserved => 0),
          authorityTag => 0,
          words => [First, Unsigned_64 (Grant.slot), Blocks,
                    Unsigned_64 (Grant.generation)]);
@@ -79,7 +87,7 @@ package body ISO9660 is
 
    function Mount return Boolean is
       Request : Message :=
-        (tag => (label => OP_DESCRIBE_DEVICE, length => 0, flags => 0, reserved => 0),
+        (tag => (label => OP_DESCRIBE_DEVICE, length => 0, protocol => 0, ipc => <>, reserved => 0),
          authorityTag => 0, words => [others => 0]);
       Tag : MessageTag;
       Description : Device_Description;

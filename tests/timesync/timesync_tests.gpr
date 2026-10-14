@@ -1,10 +1,12 @@
 project Timesync_Tests is
    for Source_Dirs use (".", "fixture", "../../userspace/runtime/gnat",
-                        "../../userspace/services/timesync", "../../userspace/services/clock");
+                        "../../userspace/services/timesync", "../../userspace/services/clock",
+                        "../../shared/capabilities");
    for Source_Files use ("main.adb", "cubit.ads", "cubit-clocks.ads", "cubit-clocks.adb",
                         "cubit-clock_control.ads", "cubit-clock_control.adb",
                         "clock_discipline.ads", "clock_discipline.adb",
-                        "sntp.ads", "sntp.adb", "server_list.ads", "server_list.adb", "clock_floor.ads");
+                        "sntp.ads", "sntp.adb", "server_list.ads", "server_list.adb", "clock_floor.ads",
+                        "cubit-handles.ads", "capability_abi.ads", "capability_abi.adb");
    for Object_Dir use "build";
    for Exec_Dir use "build";
    for Main use ("main.adb");

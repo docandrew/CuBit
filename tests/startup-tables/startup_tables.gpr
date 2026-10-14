@@ -1,0 +1,33 @@
+--  Hosted tests and proofs for the startup-table record, the startup
+--  builder and the capability handles (CAP-002 step 2; run.sh).
+project Startup_Tables is
+   Runtime_Src := external ("STARTUP_SRC", "../../userspace/runtime/gnat");
+   for Source_Dirs use (".", "generated", Runtime_Src, "../../shared/capabilities");
+   for Source_Files use
+     ("cubit.ads", "cubit-startup_tables.ads", "cubit-startup_tables.adb",
+      "cubit-startup_state.ads", "cubit-startup_state.adb",
+      "capability_abi.ads", "capability_abi.adb",
+      "cubit-handles.ads", "cubit-handles-kernel.ads", "cubit-handles-kernel.adb",
+      "cubit-handles-startup.ads", "cubit-handles-startup.adb",
+      "cubit-handles-test_words.ads", "launch_block_stub.ads",
+      "cubit-launch_envelopes.ads", "cubit-launch_envelopes.adb",
+      "startup.ads",
+      "cubit-startup_builder.ads", "cubit-startup_builder.adb",
+      "builder_proof.ads", "builder_proof.adb",
+      "main.adb");
+   for Object_Dir use external ("STARTUP_OBJ", "build");
+   for Exec_Dir use external ("STARTUP_EXEC", "build");
+   for Main use ("main.adb");
+   --  The runtime's CuBit.Launch_Block reads this process's launch block;
+   --  the tests load startup tables themselves.
+   package Naming is
+      for Spec ("CuBit.Launch_Block") use "launch_block_stub.ads";
+   end Naming;
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-gnat2022", "-O1", "-gnata", "-gnato", "-gnatwa", "-I-");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=2", "--checks-as-errors=on");
+   end Prove;
+end Startup_Tables;

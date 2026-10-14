@@ -2,11 +2,16 @@
 #include "native_gpu_query.h"
 #include <assert.h>
 #include <string.h>
+#include "../../userspace/c/cubit_handles.h"
+/* A test endpoint handle (generation 1). */
+#define TEST_ENDPOINT(n) ((cubit_endpoint){(UINT64_C(1) << 32) | (uint64_t)(n)})
+/* The index a test endpoint was made from. */
+#define TEST_INDEX(e) ((unsigned)((e).opaque & 0xffffffffu))
 static unsigned calls;
 static uint32_t status;
-uint32_t cubit_intel_budget(uint64_t slot, uint64_t words[4])
+uint32_t cubit_intel_budget(cubit_endpoint endpoint, uint64_t words[4])
 {
-   assert(slot == 63);
+   assert(endpoint.opaque == TEST_ENDPOINT(63).opaque);
    calls++;
    words[0] = 0;
    words[1] = 33554432;
@@ -14,9 +19,9 @@ uint32_t cubit_intel_budget(uint64_t slot, uint64_t words[4])
    words[3] = 15;
    return status;
 }
-uint32_t cubit_intel_query(uint64_t slot, uint64_t selector, uint64_t words[4])
+uint32_t cubit_intel_query(cubit_endpoint endpoint, uint64_t selector, uint64_t words[4])
 {
-   assert(slot == 63 && selector <= 4);
+   assert(endpoint.opaque == TEST_ENDPOINT(63).opaque && selector <= 4);
    calls++;
    words[0] = 2; /* Well-formed UNAVAILABLE is not a transport failure. */
    words[1] = 1;
@@ -25,7 +30,7 @@ uint32_t cubit_intel_query(uint64_t slot, uint64_t selector, uint64_t words[4])
 }
 int main(void)
 {
-   struct cubit_gpu_native_endpoint endpoint = {63};
+   struct cubit_gpu_native_endpoint endpoint = {TEST_ENDPOINT(63)};
    struct cubit_gpu_query_message request = {
       .label = 0x0a20, .length = 4, .words = {1, 1, 0, 0},
    };
@@ -35,11 +40,12 @@ int main(void)
    assert(!cubit_gpu_native_query_call(NULL, &request, &reply));
    assert(!cubit_gpu_native_query_call(&endpoint, NULL, &reply));
    assert(!cubit_gpu_native_query_call(&endpoint, &request, NULL));
-   endpoint.slot = 64;
+   /* No handle (generation zero) is refused before any call. */
+   endpoint.endpoint = CUBIT_NO_ENDPOINT;
    assert(!cubit_gpu_native_query_call(&endpoint, &request, &reply));
-   endpoint.slot = UINT64_MAX;
+   endpoint.endpoint = (cubit_endpoint){UINT64_C(0xffffffff)};
    assert(!cubit_gpu_native_query_call(&endpoint, &request, &reply));
-   endpoint.slot = 63;
+   endpoint.endpoint = TEST_ENDPOINT(63);
    assert(calls == 0 && memcmp(&reply, &before, sizeof(reply)) == 0);
    status = 1;
    assert(!cubit_gpu_native_query_call(&endpoint, &request, &reply));

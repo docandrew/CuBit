@@ -41,9 +41,10 @@ package body Fs_Server.Replies is
       ignore : Unsigned_64;
    begin
       ignore := replyCap
-        (CapabilitySlot (WAKE_REPLY_SLOT_BASE + q),
-         (tag => (label => label, length => 0, flags => 0, reserved => 0),
+        (wakeReplies (q),
+         (tag => (label => label, length => 0, protocol => 0, ipc => <>, reserved => 0),
           authorityTag => 0, words => [others => 0]));
+      wakeReplies (q) := CuBit.Handles.No_Reply;
    end answerWake;
 
    --  Answer the entry being handled on its queue, and answer the client's
@@ -149,7 +150,7 @@ package body Fs_Server.Replies is
       end if;
       replyMsg.tag := (label  => label,
                        length => 1,
-                       flags  => 0,
+                       protocol  => 0, ipc => <>,
                        reserved  => 0);
       replyMsg.words := [0 => word0, others => 0];
       ignore := reply (dest, replyMsg);

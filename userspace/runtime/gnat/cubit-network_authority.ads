@@ -46,7 +46,6 @@ package CuBit.Network_Authority with SPARK_Mode is
    First_Grant_Tag : constant Unsigned_64 := 2 ** 32;
    Last_Grant_Tag : constant Unsigned_64 := Driver_Authority_Tag - 1;
    Manifest_Request : constant Unsigned_8 := 10;
-   Policy_Capability_Slot : constant Unsigned_64 := 19;
    OP_INSTALL_SCOPE : constant Unsigned_32 := 16#0440#;
    OP_RELEASE_SCOPE : constant Unsigned_32 := 16#0441#;
    --  words: process ID. From the policy endpoint when that process has

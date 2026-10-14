@@ -1,3 +1,4 @@
+with CuBit.Handles.Fixture;
 with Ada.Text_IO;
 with Interfaces; use Interfaces;
 with CCL.Types;
@@ -43,7 +44,7 @@ begin
             Done : Completion_Result;
             Poisoned : constant Boolean := Fault /= 0;
          begin
-            Initialize (Object, 12, Ok); Check (Ok);
+            Initialize (Object, CuBit.Handles.Fixture.Endpoint_Of (12), Ok); Check (Ok);
             P.Make_Request (Action, 100, 1, "org.cubit.settings", "machine", Contract, Input, Ok);
             Check (Ok);
             Submit_Type (Object, Input, Sent);
@@ -109,7 +110,7 @@ begin
       Sent : Submission;
       Ok : Boolean;
    begin
-      Initialize (Object, 12, Ok); Check (Ok);
+      Initialize (Object, CuBit.Handles.Fixture.Endpoint_Of (12), Ok); Check (Ok);
       P.Make_Request (P.Create, 1, 1, "org.cubit", "machine", Contract, Input, Ok);
       Check (Ok);
       Accept_Submission := False;

@@ -1,3 +1,4 @@
+with CuBit.Handles.Fixture;
 with Ada.Command_Line; with Ada.Text_IO; with Interfaces;
 with Desktop_GPU_Scene; with Desktop_Glyph_Residency; with Desktop_Vulkan_Startup; with Vulkan_Device_Mock;
 with Vulkan_Glyph_Sources; with Vulkan_Submission; with Vulkan_Scene;
@@ -36,7 +37,7 @@ begin
    Reset; Context_Set (0, 0); Vulkan_Device_Mock.Set (True, True, 0); Pipeline_Set (0, 0);
    Image_Set (4096, 1, 0, 0, 0); Metadata_Set (0); Font_Set (0);
    Upload_Set (4096, 1, 0, 0, 0, 0);
-   D.Initialize (25); D.Configure_Targets (32, 24, 1, 140 * 4096, OK); pragma Assert (OK);
+   D.Initialize (CuBit.Handles.Fixture.Endpoint_Of (25)); D.Configure_Targets (32, 24, 1, 140 * 4096, OK); pragma Assert (OK);
    D.Prepare_Pipeline (OK); pragma Assert (OK); D.Configure_Upload (2048, OK); pragma Assert (OK);
    pragma Assert (D.Admit_Capture (Screen) = D.Capture_Allowed);
    G.Begin_Frame (S, (64, 24, Vulkan_Scene.A.G.Unrotated, (5, 4), 0, 0), 0, OK);

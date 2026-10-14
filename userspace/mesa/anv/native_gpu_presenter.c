@@ -45,7 +45,7 @@ cubit_presenter_release(struct cubit_presenter *r)
       r->child = 0;
    }
    if (r->mapping) {
-      uint32_t status = cubit_intel_retire_mapping(r->render_slot, r->mapping);
+      uint32_t status = cubit_intel_retire_mapping(r->render, r->mapping);
       if (status == 4)
          return 4;
       if (status != 0)
@@ -59,14 +59,14 @@ cubit_presenter_release(struct cubit_presenter *r)
 
 uint32_t
 cubit_presenter_attach_completed_linear(struct cubit_presenter *r,
-   uint64_t render_slot, uint64_t desktop_slot, uint32_t handle,
+   cubit_endpoint render, cubit_endpoint desktop, uint32_t handle,
    uint64_t surface, uint64_t offset, uint32_t width, uint32_t height,
    uint32_t pitch)
 {
    const uint64_t limit = 16 * 1024 * 1024;
    if (!r || r->state != CUBIT_PRESENTER_EMPTY)
       return 5;
-   if (render_slot > 63 || desktop_slot > 63 || !handle || !surface ||
+   if (!cubit_endpoint_present(render) || !cubit_endpoint_present(desktop) || !handle || !surface ||
        !width || width > 65535 || !height || height > 65535 ||
        pitch < (uint64_t)width * 4 || (uint64_t)pitch * height > limit ||
        offset % 4096)
@@ -74,19 +74,19 @@ cubit_presenter_attach_completed_linear(struct cubit_presenter *r,
    uint64_t bytes = ((uint64_t)pitch * height + 4095) & ~UINT64_C(4095);
    if (offset > limit - bytes)
       return reject_before_mapping(r);
-   r->render_slot = render_slot;
-   r->desktop_slot = desktop_slot;
+   r->render = render;
+   r->desktop = desktop;
    r->state = CUBIT_PRESENTER_RETIRING;
-   if (cubit_intel_map_presentation(render_slot, handle, offset, bytes,
+   if (cubit_intel_map_presentation(render, handle, offset, bytes,
                                     &r->mapping, &r->root) != 0)
       return fail(r); /* An uncertain reply can hide a server-side grant. */
    uint64_t address = 0;
-   if (cubit_intel_acquire_view(render_slot, r->root, 0, bytes, 0, &address) != 0) {
+   if (cubit_intel_acquire_view(render, r->root, 0, bytes, 0, &address) != 0) {
       (void)cubit_presenter_release(r);
       return 5;
    }
    r->borrowed = true;
-   if (cubit_intel_forward_presentation(desktop_slot, r->root, 0, bytes,
+   if (cubit_intel_forward_presentation(desktop, r->root, 0, bytes,
                                         &r->child) != 0) {
       (void)cubit_presenter_release(r);
       return 5;
@@ -96,7 +96,7 @@ cubit_presenter_attach_completed_linear(struct cubit_presenter *r,
    if (cubit_intel_return_view(r->root) != 0)
       return fail(r);
    r->borrowed = false;
-   if (cubit_intel_attach_linear(desktop_slot, surface, r->child,
+   if (cubit_intel_attach_linear(desktop, surface, r->child,
                                  width, height, pitch) != 0) {
       (void)cubit_presenter_release(r);
       return 5;

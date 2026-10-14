@@ -1,3 +1,4 @@
+with CuBit.Messages;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Filesystems;
 with CuBit.Memory_Grants;
@@ -13,7 +14,7 @@ package body Intel_GPU_Firmware_File is
      with Alignment => 4096;
    Loan : CuBit.Memory_Grants.Grant_Reference;
    procedure Load
-     (Slot : CapabilitySlot; Address : out System.Address;
+     (Filesystem : CuBit.Handles.Endpoint; Address : out System.Address;
       Bytes : out Unsigned_64; Plan : out Intel_GPU_Firmware.Layout;
       Status : out Load_Status)
    is
@@ -40,7 +41,7 @@ package body Intel_GPU_Firmware_File is
             Failed := True; return False;
          end if;
          Token := Token + 1;
-         if not capSubmit (Slot, Msg, Token) then
+         if not capSubmit (Filesystem, Msg, Token) then
             Failed := True; return False;
          end if;
          Pending := True;
@@ -58,7 +59,8 @@ package body Intel_GPU_Firmware_File is
                      Failed := True; return False;
                   end if;
                   Msg := Receipt.msg;
-                  return Msg.tag = (CuBit.Filesystems.REPLY_OK, Length, 0, 0);
+                  return Msg.tag = (label => CuBit.Filesystems.REPLY_OK, length => Length,
+                                    protocol => 0, ipc => <>, reserved => 0);
                end if;
             end if;
             Activity := Wait_For_Activity_Until
@@ -95,7 +97,7 @@ package body Intel_GPU_Firmware_File is
         Raw > Unsigned_64'Last - Intel_GPU_Firmware_Reader.Maximum_Blob_Bytes
       then Status := Allocation_Failed; return; end if;
       CuBit.Memory_Grants.Create_Via_Capability
-        (Slot, Scratch'Address, 1, True, Loan, Granted);
+        (Filesystem, Scratch'Address, 1, True, Loan, Granted);
       if not Granted then Status := Grant_Failed; return; end if;
       Scratch := [others => 0];
       for Index in Path'Range loop
@@ -141,7 +143,8 @@ package body Intel_GPU_Firmware_File is
       end if;
       if Failed then Status := Transport_Failed; end if;
       if not Failed and then
-        Request.tag = (CuBit.Filesystems.REPLY_ACCESS_DENIED, 1, 0, 0) and then
+        Request.tag = (label => CuBit.Filesystems.REPLY_ACCESS_DENIED, length => 1,
+                       protocol => 0, ipc => <>, reserved => 0) and then
         Request.words (1 .. 3) = [0, 0, 0] and then
         (Request.words (0) = 0 or else Request.words (0) = Unsigned_64'Last)
       then Status := Access_Denied; end if;

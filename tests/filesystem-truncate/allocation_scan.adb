@@ -1,3 +1,4 @@
+with CuBit.Handles.Fixture;
 with Ada.Text_IO; use Ada.Text_IO;
 with Interfaces; use Interfaces;
 with Ext2; use Ext2;
@@ -34,7 +35,7 @@ procedure Allocation_Scan is
       table (Target).numFreeBlocks := 1;
       Disk (4096) := 254; -- First block in the selected group is free.
       fs := (sb => sb, blkSize => 1024,
-        device => (endpointSlot => 1, grant => (slot => 1, generation => 1),
+        device => (endpoint => CuBit.Handles.Fixture.Endpoint_Of (1), volumeKey => 1, grant => (slot => 1, generation => 1),
           grantBuffer => Grant_Buffer'Address, grantBytes => Grant_Buffer'Length,
           description => (blockCount => 128, maxTransferBlocks => 8,
             features => FEATURE_FLUSH or FEATURE_VOLATILE_CACHE, others => <>)),
@@ -46,7 +47,7 @@ procedure Allocation_Scan is
       begin
          --  End endpoint 1's previous block-cache lifetime. This synthetic
          --  geometry is deliberately not itself an admissible volume.
-         initBlockDevice (Discarded, 1, (slot => 1, generation => 1),
+         initBlockDevice (Discarded, CuBit.Handles.Fixture.Endpoint_Of (1), 1, (slot => 1, generation => 1),
                           Grant_Buffer'Address, Grant_Buffer'Length, Ignored);
       end;
       Calls := 0;

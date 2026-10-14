@@ -11,27 +11,23 @@ package body Intel_GPU_Broker_Launches with SPARK_Mode is
      (ID /= 0 and then ID <= Object.Used and then Object.Items (ID).Must_Abort);
    function Count (Object : Ledger) return Ticket is (Object.Used);
    function Can_Reserve
-     (Object : Ledger; Request : Intel_GPU_Broker_Request.Decoded;
-      Captured : Unsigned_64) return Boolean is
+     (Object : Ledger; Request : Intel_GPU_Broker_Request.Decoded) return Boolean is
      (Request.Valid and then Request.Nonce /= 0 and then
-      Captured /= 0 and then
+      Request.Identity /= 0 and then
       Object.Used < Capacity and then
       (for all I in 1 .. Object.Used =>
         Object.Items (I).Request_Nonce /= Request.Nonce and
-        (Object.Items (I).Source /= Request.Source or
-         Object.Items (I).Captured = Captured) and
-        (Object.Items (I).Captured /= Captured or
-         Object.Items (I).Destination /= Request.Destination)));
+        Object.Items (I).Captured /= Request.Identity));
    procedure Reserve
      (Object : in out Ledger; Request : Intel_GPU_Broker_Request.Decoded;
-      Captured : Unsigned_64; ID : out Ticket) is
+      ID : out Ticket) is
    begin
       ID := 0;
-      if not Can_Reserve (Object, Request, Captured) then return; end if;
+      if not Can_Reserve (Object, Request) then return; end if;
       Object.Used := Object.Used + 1;
       ID := Object.Used;
-      Object.Items (ID) := (Pending, Captured, Request.Nonce, Request.Source,
-                           Request.Destination, Uncertain, False);
+      Object.Items (ID) := (Pending, Request.Identity, Request.Nonce,
+                           Uncertain, False);
    end Reserve;
    procedure Finish (Object : in out Ledger; ID : Ticket; Value : Outcome) is
    begin

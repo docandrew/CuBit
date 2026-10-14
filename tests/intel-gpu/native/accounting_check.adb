@@ -3,6 +3,13 @@ with System;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Launch_Configurations;
+with CuBit.Process_IDs;
+with CuBit.Startup_Tables;
+with CuBit.Handles;
+with CuBit.Handles.Boot_Roots;
+with CuBit.Handles.C_ABI;
+with CuBit.Handles.Control;
+with CuBit.Handles.IPC;
 with Launch_Configuration;
 with Cpio;
 with Native_GPU_Buffers;
@@ -20,8 +27,20 @@ procedure Accounting_Check is
       CuBit.Launch_Configurations.Get (Configuration, Configured);
       return (if Configured then Configuration.Boot_Image else 0);
    end Boot_Image_Bytes;
+   package IPC renames CuBit.Handles.IPC;
    PID : constant Unsigned_64 := syscall (SYSCALL_GETPID);
-   Child : constant Unsigned_64 := 42;
+   --  The supervisor runs in devmgr's place (boot roots); the child it
+   --  spawns from the same ELF has none.
+   Roots : constant CuBit.Handles.Boot_Roots.Roots := CuBit.Handles.Boot_Roots.Get;
+   Is_Child : constant Boolean := not Roots.Valid;
+   Child : Unsigned_64 := 0;
+   --  Three session endpoints to the supervisor, offered to the child one
+   --  per call: two admitted accounts and one the supervisor denies.
+   Offer_Label : constant Unsigned_32 := 16#F031#;
+   type Session is range 1 .. 3;
+   Session_Badge : constant array (Session) of Unsigned_64 :=
+     [16#4947#, 16#4948#, 16#4949#];
+   Saved_Reply : CuBit.Handles.Reply;
    Ignore : Unsigned_64;
    function Owner return Boolean is (True);
    function Session_Of (Sender, Stamp : Unsigned_64) return Unsigned_64 is
@@ -41,7 +60,8 @@ procedure Accounting_Check is
    function Allocate (CPU : Unsigned_64) return Unsigned_64 is
    begin
       Calls := Calls + 1;
-      return syscall (SYSCALL_ALLOC_DMA, PID, 9, CPU, 3, 2 ** 32);
+      return CuBit.Handles.Control.Allocate_DMA
+        (CuBit.Process_IDs.From_Word (PID), Roots.Process_Root, 9, CPU, 3, 2 ** 32);
    end Allocate;
    package A is new Intel_GPU_Extent_Allocator (Owner, Allocate);
    Pool : A.Pool;
@@ -56,37 +76,55 @@ procedure Accounting_Check is
    View : R.Extent_View;
    Deadline : Unsigned_64;
 begin
-   if PID = Child then
+   if Is_Child then
       declare
          Limit, Charged : aliased Unsigned_64 := 999;
          Handle, Other : aliased Unsigned_32 := 0;
-         procedure Query (Slot : Unsigned_64; Code : Unsigned_32;
+         Sessions : array (Session) of CuBit.Handles.Endpoint;
+         function S (Item : Session) return CuBit.Handles.C_ABI.C_Endpoint is
+           (CuBit.Handles.C_ABI.To_C (Sessions (Item)));
+         procedure Query (Item : Session; Code : Unsigned_32;
                           Expected : Unsigned_64 := 0) is
          begin
             Limit := 999; Charged := 999;
-            Check (Client.Query_Accounting (Slot, Limit'Access, Charged'Access) = Code,
+            Check (Client.Query_Accounting (S (Item), Limit'Access, Charged'Access) = Code,
               "query status");
             Check (Charged = Expected and then Limit = (if Code = 0 then 12288 else 0),
               "query values");
          end Query;
       begin
-         Query (15, 3);
-         Check (Client.Create (15, 8192, Handle'Access) = 0, "create");
-         Query (15, 0, 8192);
-         Query (16, 3);
-         Query (17, 1);
-         Check (Client.Create (15, 8192, Other'Access) = 3 and Other = 0, "quota denial");
-         Query (15, 0, 8192);
-         Check (Client.Create (15, 4096, Other'Access) = 0 and Other /= Handle,
+         for Item in Session loop
+            receive (From, Msg);
+            Check (Msg.tag.label = Offer_Label and then IPC.Offers (Msg), "session offer");
+            declare
+               Taken : constant IPC.Accepted_Endpoint :=
+                 IPC.Accept_Endpoint (IPC.Accept_Offered (From));
+            begin
+               Check (Taken.OK, "session accepted");
+               Sessions (Item) := Taken.Value;
+            end;
+            Msg := NULL_MESSAGE;
+            Msg.tag := (label => Offer_Label, length => 0, protocol => 0, ipc => <>, reserved => 0);
+            Check (reply (From, Msg) = 1, "offer answer");
+         end loop;
+         Query (1, 3);
+         Check (Client.Create (S (1), 8192, Handle'Access) = 0, "create");
+         Query (1, 0, 8192);
+         Query (2, 3);
+         Query (3, 1);
+         Check (Client.Create (S (1), 8192, Other'Access) = 3 and Other = 0, "quota denial");
+         Query (1, 0, 8192);
+         Check (Client.Create (S (1), 4096, Other'Access) = 0 and Other /= Handle,
            "smaller recovery");
-         Check (Client.Close (15, Handle) = 0, "close");
-         Query (15, 0, 12288);
-         Check (Client.Create (16, 4096, Other'Access) = 0, "second account");
-         Query (16, 0, 4096);
-         Query (15, 0, 12288);
-         Msg.tag := (16#F030#, 0, 0, 0);
-         Msg.tag := capCall (15, Msg, Wait_Forever);
-         Check (Msg.tag = (16#F030#, 0, 0, 0), "done reply");
+         Check (Client.Close (S (1), Handle) = 0, "close");
+         Query (1, 0, 12288);
+         Check (Client.Create (S (2), 4096, Other'Access) = 0, "second account");
+         Query (2, 0, 4096);
+         Query (1, 0, 12288);
+         Msg.tag := (label => 16#F030#, length => 0, protocol => 0, ipc => <>, reserved => 0);
+         Msg.tag := capCall (Sessions (1), Msg, Wait_Forever);
+         Check (Msg.tag = (label => 16#F030#, length => 0,
+                           protocol => 0, ipc => <>, reserved => 0), "done reply");
          debugPrint ("TEST: PASS native accounting adapter child transport completed (NO GPU)" & ASCII.LF);
       end;
       Ignore := syscall (SYSCALL_EXIT); loop null; end loop;
@@ -97,20 +135,33 @@ begin
      Boot_Image_Bytes, OK); Check (OK, "initrd");
    Cpio.fileView (Archive, Cpio.findFile (Archive, "devmgr.svc"), ELF, ELF_Size, OK);
    Check (OK, "ELF");
-   Check (syscall (SYSCALL_SPAWN, Unsigned_64 (To_Integer (ELF)), ELF_Size,
-     5, 0, Child, PID) = Child, "spawn");
-   for Slot in Unsigned_64 range 15 .. 17 loop
-      Check (syscall (SYSCALL_POLICY_MINT_CAPABILITY, Child, 1, PID,
-        16#4947# + Slot - 15, 3, Slot) /= Unsigned_64'Last, "endpoint");
-   end loop;
-   Check (syscall (SYSCALL_RESUME, Child) = 0, "resume");
+   declare
+      Result : constant CuBit.Handles.Control.Spawn_Result :=
+        CuBit.Handles.Control.Spawn
+          (Roots.Process_Root, ELF, ELF_Size, 5, "accounting-child",
+           CuBit.Process_IDs.No_Process, (Kind => CuBit.Startup_Tables.Standard_Limit));
+   begin
+      Check (Result.Spawned, "spawn");
+      Child := CuBit.Process_IDs.To_Word (Result.Value.Child);
+      Check (CuBit.Handles.Control.Resume
+               (Result.Value.Child, Result.Value.Control, 0, 0), "resume");
+      for Item in Session loop
+         Msg := NULL_MESSAGE;
+         Msg.tag := (label => Offer_Label, length => 0, protocol => 0, ipc => <>, reserved => 0);
+         Msg.tag := IPC.Call_Offering
+           (Result.Value.Mailbox, Msg, Wait_Forever,
+            CuBit.Handles.Badged (Roots.Self_Grantable, CuBit.Handles.Read_Write,
+                                  Session_Badge (Item)));
+         Check (Msg.tag.label = Offer_Label, "endpoint offered");
+      end loop;
+   end;
    Deadline := syscall (SYSCALL_GETTIME) + 60_000;
    loop
       Poll_Service_Request (From, Msg, Found);
       if not Found then
          Check (syscall (SYSCALL_GETTIME) < Deadline, "deadline");
       else
-         Check (Unsigned_64 (From) = Child, "kernel sender");
+         Check (CuBit.Process_IDs.To_Word (From) = Child, "kernel sender");
          if Msg.tag.label = 16#F030# then
             Check (Requests = 13 and Calls = 1, "request/backing counts");
             Check (B.Client_Usage (Object, 16#4947#).Charged = 12288 and
@@ -123,17 +174,22 @@ begin
          Requests := Requests + 1;
          Ticket := 0;
          if Msg.tag.label = B.Accounting_Label then
-            B.Query_Accounting (Object, Unsigned_64 (From), Msg.authorityTag,
-              Msg.tag.label, Msg.tag.length, Msg.tag.flags, Msg.tag.reserved,
+            B.Query_Accounting (Object, CuBit.Process_IDs.To_Word (From), Msg.authorityTag,
+              Msg.tag.label, Msg.tag.length, Msg.tag.protocol, Msg.tag.reserved,
               B.Words (Msg.words), Words);
          else
             Check (Msg.tag.label = B.Label, "label");
-            B.Handle (Object, Unsigned_64 (From), Msg.authorityTag,
-              Msg.tag.label, Msg.tag.length, Msg.tag.flags, Msg.tag.reserved,
+            B.Handle (Object, CuBit.Process_IDs.To_Word (From), Msg.authorityTag,
+              Msg.tag.label, Msg.tag.length, Msg.tag.protocol, Msg.tag.reserved,
               B.Words (Msg.words), Words, Ticket);
          end if;
          if Ticket /= 0 then
-            Check (saveReplyCap (58) = 1, "saved reply");
+            declare
+               Saved : constant IPC.Saved_Reply := IPC.Save_Reply;
+            begin
+               Check (Saved.Saved, "saved reply");
+               Saved_Reply := Saved.Handle;
+            end;
             A.Acquire_Buffer (Pool, PID, B.Ticket_Slot (Ticket),
               Intel_GPU_Buffer_Backing.Page_Count (Msg.words (2) / 4096),
               B.Ticket_Generation (Ticket), View, OK);
@@ -144,7 +200,7 @@ begin
          Response.tag := Msg.tag;
          Response.words := MessageWords (Words);
          if Ticket /= 0 then
-            Check (replyCap (58, Response) = 1, "deferred delivery");
+            Check (IPC.Answer (Saved_Reply, Response), "deferred delivery");
          else
             Check (reply (From, Response) = 1, "delivery");
          end if;

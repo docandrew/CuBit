@@ -1,3 +1,4 @@
+with CuBit.Handles.Fixture;
 with Ada.Text_IO;
 with Interfaces; use Interfaces;
 with CBOR;
@@ -99,7 +100,7 @@ procedure Receiver_Tests is
          when others => null;
       end case;
    end Invoke_Type;
-   package Receiver is new Config_Worker_Receiver (12, Authorized, Invoke, Invoke_Type);
+   package Receiver is new Config_Worker_Receiver (CuBit.Handles.Fixture.Endpoint_Of (12), Authorized, Invoke, Invoke_Type);
 
    procedure Run_Type (Scenario : Fault; Action : Config_Schema_Protocol.Operation) is
       package T renames Config_Schema_Protocol;
@@ -122,7 +123,7 @@ procedure Receiver_Tests is
       Grants.Deny_Acquisition := 0; Grants.Fail_Return := 0;
       Grants.Expected_Pages := Loan_Bytes_Count / 4096;
       Grants.Expected_Transfer_Bytes := T.Frame_Bytes;
-      Initialize (Client, 4, Ok); pragma Assert (Ok);
+      Initialize (Client, CuBit.Handles.Fixture.Endpoint_Of (4), Ok); pragma Assert (Ok);
       T.Make_Request (Action, 10, 1, "org.cubit.settings", "test", Contract, Input, Ok);
       pragma Assert (Ok);
       Submit_Type (Client, Input, Sent); pragma Assert (Sent = Submitted);
@@ -132,7 +133,7 @@ procedure Receiver_Tests is
          when Wrong_Tag => Envelope.authorityTag := 78;
          when Wrong_Operation => Envelope.tag.label := 0;
          when Short_Envelope => Envelope.tag.length := 3;
-         when Flagged_Envelope => Envelope.tag.flags := 1;
+         when Flagged_Envelope => Envelope.tag.protocol := 1;
          when Reserved_Envelope => Envelope.tag.reserved := 1;
          when Invalid_Slot => Envelope.words (0) := Unsigned_64'Last;
          when Invalid_Generation => Envelope.words (1) := 0;
@@ -201,7 +202,7 @@ procedure Receiver_Tests is
       end if;
       Grants.Acquisitions := 0; Grants.Returns := 0;
       Grants.Expected_Pages := Loan_Bytes_Count / 4096;
-      Initialize (Client, 4, Ok); pragma Assert (Ok);
+      Initialize (Client, CuBit.Handles.Fixture.Endpoint_Of (4), Ok); pragma Assert (Ok);
       Grants.Expected_Transfer_Bytes := P.Frame_Bytes;
       P.Make_Request (P.Commit, 10, 1, 0, "org.cubit.settings", "test", Contract, Value, Input, Ok);
       pragma Assert (Ok);
@@ -213,7 +214,7 @@ procedure Receiver_Tests is
          when Wrong_Tag => Envelope.authorityTag := 78;
          when Wrong_Operation => Envelope.tag.label := 0;
          when Short_Envelope => Envelope.tag.length := 3;
-         when Flagged_Envelope => Envelope.tag.flags := 1;
+         when Flagged_Envelope => Envelope.tag.protocol := 1;
          when Reserved_Envelope => Envelope.tag.reserved := 1;
          when Invalid_Slot => Envelope.words (0) := Unsigned_64'Last;
          when Invalid_Generation => Envelope.words (1) := 0;
@@ -296,9 +297,9 @@ procedure Receiver_Tests is
       Envelope.authorityTag := 78;
       Send (PID (42), Wire.Denied); pragma Assert (Grants.Acquisitions = 0);
       Envelope.authorityTag := 77;
-      Envelope.tag.flags := 1;
+      Envelope.tag.protocol := 1;
       Send (PID (42), Wire.Invalid_Request); pragma Assert (Grants.Acquisitions = 0);
-      Envelope.tag.flags := 0;
+      Envelope.tag.protocol := 0;
       Envelope.words (2) := P.Frame_Bytes;
       Send (PID (42), Wire.Invalid_Request); pragma Assert (Grants.Acquisitions = 0);
       Envelope.words (2) := CCL.Objects.Schemas.Native_Schema_Bytes;

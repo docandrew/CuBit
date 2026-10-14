@@ -1,22 +1,23 @@
 #pragma once
 #include "anv_private.h"
+#include "cubit_handles.h"
 #include "vk_sync.h"
 /* Callback implementations only. The native physical-device factory must
  * supply persistent tracker state and a complete backend before installing. */
 /* Called after vk_device initialization and before any BO creation. The
- * trusted factory supplies a stable, authorized endpoint slot. Tracker access
+ * trusted factory supplies a stable, authorized endpoint endpoint. Tracker access
  * is internally serialized; callers still obey Vulkan object lifetime rules.
  * No capability is acquired here. */
-VkResult anv_cubit_memory_init(struct anv_device *device, uint64_t slot);
+VkResult anv_cubit_memory_init(struct anv_device *device, cubit_endpoint endpoint);
 /* Device-open transaction for a fresh session supplied by trusted bootstrap.
  * Does NOT acquire/delegate authority. On successful tracker attachment,
  * owns cleanup even if live health/memory-contract verification fails; caller must retain
- * the slot while memory_slot_retained is true. Attach failure must not close
- * a slot that may belong to another live device. Coherent BOs require policy2
+ * the endpoint while memory_slot_retained is true. Attach failure must not close
+ * a endpoint that may belong to another live device. Coherent BOs require policy2
  * from this same endpoint; policy1 requires physical memory.need_flush.
  * Use attach_owned_session for provider-managed pins; this entry point is
  * for externally process-pinned endpoints. Native broker still unwired. */
-VkResult anv_cubit_attach_session(struct anv_device *device, uint64_t slot);
+VkResult anv_cubit_attach_session(struct anv_device *device, cubit_endpoint endpoint);
 /* Provider-owned endpoint pin. On transfer, this descriptor is cleared even
  * if subsequent health verification fails. Otherwise it is unchanged and
  * remains caller-owned. The copied context must outlive deferred cleanup.
@@ -29,7 +30,7 @@ struct anv_cubit_endpoint_pin {
    void *context;
    void (*retired)(void *context);
 };
-VkResult anv_cubit_attach_owned_session(struct anv_device *device, uint64_t slot,
+VkResult anv_cubit_attach_owned_session(struct anv_device *device, cubit_endpoint endpoint,
                                       struct anv_cubit_endpoint_pin *pin);
 /* Logical one-render-queue context claim after transport attachment. Native
  * prepare/register stays deferred until the first internal batch, after BO
@@ -69,7 +70,7 @@ VkResult anv_cubit_queue_exec_async(struct anv_async_submit *submit,
    uint32_t signal_count, const struct vk_sync_signal *signals);
 /* After BO teardown and caller quiescence. Transfers pending CPU/session
  * cleanup into process-owned storage before clearing the device pointer.
- * No Vulkan allocator callbacks survive this call. Endpoint capability slots
+ * No Vulkan allocator callbacks survive this call. Endpoint handles
  * must remain stable until process cleanup completes. No backing reclamation. */
 VkResult anv_cubit_memory_finish(struct anv_device *device);
 /* Poll detached lifetimes without any anv_device pointer. First drain CPU
@@ -79,11 +80,11 @@ VkResult anv_cubit_memory_finish(struct anv_device *device);
  * still pending/quarantined. A service loop must drive this before enabling
  * the backend. Only detached, confirmed-complete tracker slots are reused. */
 uint32_t anv_cubit_memory_poll(void);
-/* CPU/session-cleanup retention. True forbids slot replacement/reuse; false
+/* CPU/session-cleanup retention. True forbids endpoint replacement/reuse; false
  * is NOT an atomic permission to mutate caps or reclaim GPU backing.
  * The trusted endpoint owner must serialize capability changes with attach.
- * Invalid slot values conservatively return true. */
-bool anv_cubit_memory_slot_retained(uint64_t slot);
+ * Invalid endpoint values conservatively return true. */
+bool anv_cubit_memory_endpoint_retained(cubit_endpoint endpoint);
 /* After all offline BO binds: one-shot prepare/register. This is NOT the full
  * ANV setup_context callback: live VM changes/queue sync still need integration.
  * Failure poisons the retained session; no automatic retry or resource release. */

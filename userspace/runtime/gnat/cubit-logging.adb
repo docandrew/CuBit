@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with CuBit.Messages;
 with CuBit.Channel_Protocol;
 with CuBit.Published_Clock;
 with CuBit.Log_Publish_Rings;
@@ -27,16 +28,34 @@ package body CuBit.Logging is
       Result : Channels.Open_Result;
       Ignore_Refusal : CuBit.Channel_Protocol.Open_Refusal;
    begin
+      if not CuBit.Handles.Valid (Item.Slot) then
+         Item.State := Disabled;
+         return;
+      end if;
       Channels.Open (Item.Slot, Publish_Rings.CONTRACT, Channels.Producing, Item.Link, Result,
-                     Ignore_Refusal);
+                     Ignore_Refusal, Deadline => CuBit.Messages.Wait_Forever);
       Item.State := (if Result = Channels.Opened then Ready else Disabled);
    end Attach;
 
+   procedure Bind (Item : in out Publisher; Target : CuBit.Handles.Endpoint) is
+   begin
+      Item.Slot := Target;
+   end Bind;
+
+   procedure Bind (Item : in out Reader; Target : CuBit.Handles.Endpoint) is
+   begin
+      Item.Slot := Target;
+   end Bind;
+
    procedure Publish_Now
-     (Value : Logs.Log_Record; Result : out Status; Kept_From : out Logs.Severity)
+     (Value : Logs.Log_Record; Result : out Status; Kept_From : out Logs.Severity;
+      Target : CuBit.Handles.Endpoint)
    is
       Submitted, Drained : Boolean;
    begin
+      if not CuBit.Handles.Valid (Announcer.Slot) then
+         Bind (Announcer, Target);
+      end if;
       Result := Unavailable;
       Kept_From := Logs.Trace;
       Emit (Announcer, Value, Submitted);
@@ -51,7 +70,7 @@ package body CuBit.Logging is
    end Publish_Now;
 
    procedure Announce
-     (Text : String; Published : out Boolean;
+     (Text : String; Published : out Boolean; Target : CuBit.Handles.Endpoint;
       Level : CuBit.Log_Records.Severity := CuBit.Log_Records.Information)
    is
       Value : constant Logs.Decoded := Logs.Make (Text, Level);
@@ -60,7 +79,7 @@ package body CuBit.Logging is
    begin
       Published := False;
       if Value.Success then
-         Publish_Now (Value.Value, Result, Kept_From);
+         Publish_Now (Value.Value, Result, Kept_From, Target);
          Published := Result = OK;
       end if;
    end Announce;
@@ -69,12 +88,12 @@ package body CuBit.Logging is
       Value : Message := NULL_MESSAGE;
    begin
       Value.tag := (label => Operation'Enum_Rep (Op), length => 4,
-                    flags => 0, reserved => 0);
+                    protocol => 0, ipc => <>, reserved => 0);
       return Value;
    end Request;
    function Reply_Status (Value : Message) return Status is
    begin
-      if Value.tag.length = 4 and Value.tag.flags = 0 and
+      if Value.tag.length = 4 and Value.tag.protocol = 0 and
         Value.tag.reserved = 0
       then
          for Candidate in Status loop
@@ -107,13 +126,13 @@ package body CuBit.Logging is
 
    procedure Set_Minimum
      (Level : Logs.Severity; Previous : out Logs.Severity; Result : out Status;
-      Slot : CuBit.Messages.CapabilitySlot := Control_Slot)
+      Target : CuBit.Handles.Endpoint)
    is
       Msg : Message := Request (CuBit.Log_Protocol.Set_Minimum);
       Tag : MessageTag;
    begin
       Msg.words (0) := Logs.Severity'Pos (Level);
-      Tag := capCall (Slot, Msg, CuBit.Messages.Wait_Forever);
+      Tag := capCall (Target, Msg, CuBit.Messages.Wait_Forever);
       Result := (if Tag.label = 0 then Unavailable else Reply_Status (Msg));
       Previous := Level;
       if Result = OK then
@@ -127,12 +146,12 @@ package body CuBit.Logging is
 
    procedure Get_Minimum
      (Level : out Logs.Severity; Result : out Status;
-      Slot : CuBit.Messages.CapabilitySlot := Observer_Slot)
+      Target : CuBit.Handles.Endpoint)
    is
       Msg : Message := Request (CuBit.Log_Protocol.Get_Minimum);
       Tag : MessageTag;
    begin
-      Tag := capCall (Slot, Msg, CuBit.Messages.Wait_Forever);
+      Tag := capCall (Target, Msg, CuBit.Messages.Wait_Forever);
       Result := (if Tag.label = 0 then Unavailable else Reply_Status (Msg));
       Level := Logs.Trace;
       if Result = OK then

@@ -6,6 +6,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include "../../userspace/c/cubit_handles.h"
+/* A test endpoint handle (generation 1). */
+#define TEST_ENDPOINT(n) ((cubit_endpoint){(UINT64_C(1) << 32) | (uint64_t)(n)})
+/* The index a test endpoint was made from. */
+#define TEST_INDEX(e) ((unsigned)((e).opaque & 0xffffffffu))
 
 struct gpu_queue_mock_slot gpu_queue_mock[GPU_QUEUE_MOCK_SLOTS];
 unsigned gpu_queue_mock_opens, gpu_queue_mock_closes, gpu_queue_mock_submits,
@@ -37,14 +42,14 @@ void gpu_queue_mock_reset(void)
    pthread_mutex_unlock(&mock_mutex);
 }
 
-enum cubit_gpu_queue_status cubit_gpu_queue_open(uint64_t slot)
+enum cubit_gpu_queue_status cubit_gpu_queue_open(cubit_endpoint endpoint)
 {
-   assert(slot < GPU_QUEUE_MOCK_SLOTS);
+   assert(TEST_INDEX(endpoint) < GPU_QUEUE_MOCK_SLOTS);
    pthread_mutex_lock(&mock_mutex);
    gpu_queue_mock_opens++;
    enum cubit_gpu_queue_status status = CUBIT_GPU_QUEUE_CLOSED;
-   if (slot != gpu_queue_mock_refuse_open && !gpu_queue_mock[slot].open) {
-      struct gpu_queue_mock_slot *s = &gpu_queue_mock[slot];
+   if (endpoint.opaque != TEST_ENDPOINT(gpu_queue_mock_refuse_open).opaque && !gpu_queue_mock[TEST_INDEX(endpoint)].open) {
+      struct gpu_queue_mock_slot *s = &gpu_queue_mock[TEST_INDEX(endpoint)];
       memset(s, 0, sizeof(*s));
       s->open = true;
       /* The context's setup segment: registration observed value 1. */
@@ -55,23 +60,23 @@ enum cubit_gpu_queue_status cubit_gpu_queue_open(uint64_t slot)
    return status;
 }
 
-void cubit_gpu_queue_close(uint64_t slot)
+void cubit_gpu_queue_close(cubit_endpoint endpoint)
 {
-   assert(slot < GPU_QUEUE_MOCK_SLOTS);
+   assert(TEST_INDEX(endpoint) < GPU_QUEUE_MOCK_SLOTS);
    pthread_mutex_lock(&mock_mutex);
-   assert(gpu_queue_mock[slot].open);
-   gpu_queue_mock[slot].open = false;
+   assert(gpu_queue_mock[TEST_INDEX(endpoint)].open);
+   gpu_queue_mock[TEST_INDEX(endpoint)].open = false;
    gpu_queue_mock_closes++;
    pthread_cond_broadcast(&mock_changed);
    pthread_mutex_unlock(&mock_mutex);
 }
 
-enum cubit_gpu_queue_status cubit_gpu_queue_submit(uint64_t slot,
+enum cubit_gpu_queue_status cubit_gpu_queue_submit(cubit_endpoint endpoint,
    const struct cubit_gpu_job *job, uint64_t *signal)
 {
-   assert(slot < GPU_QUEUE_MOCK_SLOTS && job && signal);
+   assert(TEST_INDEX(endpoint) < GPU_QUEUE_MOCK_SLOTS && job && signal);
    pthread_mutex_lock(&mock_mutex);
-   struct gpu_queue_mock_slot *s = &gpu_queue_mock[slot];
+   struct gpu_queue_mock_slot *s = &gpu_queue_mock[TEST_INDEX(endpoint)];
    gpu_queue_mock_submits++;
    *signal = 0;
    enum cubit_gpu_queue_status status = CUBIT_GPU_QUEUE_OK;
@@ -109,12 +114,12 @@ enum cubit_gpu_queue_status cubit_gpu_queue_submit(uint64_t slot,
    return status;
 }
 
-enum cubit_gpu_queue_status cubit_gpu_queue_observe(uint64_t slot,
+enum cubit_gpu_queue_status cubit_gpu_queue_observe(cubit_endpoint endpoint,
    struct native_gpu_values *completed, struct native_gpu_values *submitted)
 {
-   assert(slot < GPU_QUEUE_MOCK_SLOTS && completed && submitted);
+   assert(TEST_INDEX(endpoint) < GPU_QUEUE_MOCK_SLOTS && completed && submitted);
    pthread_mutex_lock(&mock_mutex);
-   struct gpu_queue_mock_slot *s = &gpu_queue_mock[slot];
+   struct gpu_queue_mock_slot *s = &gpu_queue_mock[TEST_INDEX(endpoint)];
    gpu_queue_mock_observes++;
    *completed = s->completed;
    *submitted = s->submitted;
@@ -124,14 +129,14 @@ enum cubit_gpu_queue_status cubit_gpu_queue_observe(uint64_t slot,
    return status;
 }
 
-enum cubit_gpu_queue_status cubit_gpu_queue_wait(uint64_t slot, uint32_t context,
+enum cubit_gpu_queue_status cubit_gpu_queue_wait(cubit_endpoint endpoint, uint32_t context,
    uint64_t target, uint64_t remaining_ns)
 {
    if (gpu_queue_mock_forbid_waits) {
       fprintf(stderr, "FAIL: a wait on the submit path\n");
       abort();
    }
-   assert(slot < GPU_QUEUE_MOCK_SLOTS && context < NATIVE_GPU_CONTEXTS);
+   assert(TEST_INDEX(endpoint) < GPU_QUEUE_MOCK_SLOTS && context < NATIVE_GPU_CONTEXTS);
    struct timespec until;
    clock_gettime(CLOCK_MONOTONIC, &until);
    uint64_t ns = (uint64_t)until.tv_sec * 1000000000u + until.tv_nsec + remaining_ns;
@@ -139,7 +144,7 @@ enum cubit_gpu_queue_status cubit_gpu_queue_wait(uint64_t slot, uint32_t context
    until.tv_sec = ns / 1000000000u; until.tv_nsec = ns % 1000000000u;
    pthread_mutex_lock(&mock_mutex);
    gpu_queue_mock_waits++;
-   struct gpu_queue_mock_slot *s = &gpu_queue_mock[slot];
+   struct gpu_queue_mock_slot *s = &gpu_queue_mock[TEST_INDEX(endpoint)];
    enum cubit_gpu_queue_status status = CUBIT_GPU_QUEUE_OK;
    while (s->open && !s->failed && s->completed.value[context] < target) {
       /* The condition uses CLOCK_REALTIME by default: wait in short slices
@@ -160,20 +165,20 @@ enum cubit_gpu_queue_status cubit_gpu_queue_wait(uint64_t slot, uint32_t context
    return status;
 }
 
-void gpu_queue_mock_complete(uint64_t slot, uint32_t context, uint64_t value)
+void gpu_queue_mock_complete(cubit_endpoint endpoint, uint32_t context, uint64_t value)
 {
    pthread_mutex_lock(&mock_mutex);
-   struct gpu_queue_mock_slot *s = &gpu_queue_mock[slot];
+   struct gpu_queue_mock_slot *s = &gpu_queue_mock[TEST_INDEX(endpoint)];
    assert(value <= s->submitted.value[context] && value >= s->completed.value[context]);
    s->completed.value[context] = value;
    pthread_cond_broadcast(&mock_changed);
    pthread_mutex_unlock(&mock_mutex);
 }
 
-void gpu_queue_mock_fail(uint64_t slot)
+void gpu_queue_mock_fail(cubit_endpoint endpoint)
 {
    pthread_mutex_lock(&mock_mutex);
-   gpu_queue_mock[slot].failed = true;
+   gpu_queue_mock[TEST_INDEX(endpoint)].failed = true;
    pthread_cond_broadcast(&mock_changed);
    pthread_mutex_unlock(&mock_mutex);
 }

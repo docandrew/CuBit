@@ -1,3 +1,4 @@
+with CuBit.Handles.Fixture;
 with Ada.Text_IO;
 with GNAT.Source_Info;
 with Interfaces; use Interfaces;
@@ -137,7 +138,7 @@ procedure Resource_Call_Tests is
       N.Continue_Execution_For (Program, Machine, 128, Step);
       Check (Step.Status = V.Waiting_For_Host and Step.Requested_Binding = 1);
       G.Expected_Pages := W.Creation_Bytes / 4096;
-      H.Create (Object, Owner, Session, Kind, 5, "org.cubit.settings", Contract, W.Read_Write, 0, 1, Sent);
+      H.Create (Object, Owner, Session, Kind, CuBit.Handles.Fixture.Endpoint_Of (5), "org.cubit.settings", Contract, W.Read_Write, 0, 1, Sent);
       Check (Sent = C.Submitted);
       H.Complete (Object, Owner, Reply (1, W.Success, 55), Done); Check (Done = C.Completed);
       H.Take_Result (Object, Owner, Answer, Taken); Check (Taken and Answer.Valid);

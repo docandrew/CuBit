@@ -1,7 +1,5 @@
 with System.Storage_Elements;
 with CuBit.Memory_Grants;
-with CuBit.Capability_Grants;
-with CuBit.Process_IDs;
 with Intel_GPU_Buffer_Reply;
 package body Intel_GPU_Buffer_Views is
    package Grants renames CuBit.Memory_Grants;
@@ -12,7 +10,7 @@ package body Intel_GPU_Buffer_Views is
 
    procedure Share_Backing
      (Object : in out View; Backing : Intel_GPU_Buffer_Reply.Backing;
-      Recipient : CuBit.Messages.CapabilitySlot;
+      Recipient : CuBit.Handles.Reply;
       Identity : Unsigned_64;
       Offset, Bytes : Unsigned_64; Writable : Boolean;
       Attempted : out Boolean;
@@ -29,19 +27,17 @@ package body Intel_GPU_Buffer_Views is
       then
          return;
       end if;
-      if not CuBit.Capability_Grants.Endpoint_Matches
-        (Recipient, CuBit.Process_IDs.From_Word (Identity))
-      then
+      if Identity = 0 or else not CuBit.Handles.Valid (Recipient) then
          return;
       end if;
       Attempted := True;
       if Presentation then
-         Grants.Create_Forwardable_Via_Capability
+         Grants.Create_Forwardable_Via_Reply
            (Recipient, System.Storage_Elements.To_Address
               (System.Storage_Elements.Integer_Address (Backing.CPU_Address + Offset)),
             Natural (Bytes / 4096), False, Object.Reference, Success);
       else
-         Grants.Create_Via_Capability
+         Grants.Create_Via_Reply
         (Recipient, System.Storage_Elements.To_Address
            (System.Storage_Elements.Integer_Address (Backing.CPU_Address + Offset)),
          Natural (Bytes / 4096), Writable, Object.Reference, Success);
@@ -51,7 +47,7 @@ package body Intel_GPU_Buffer_Views is
 
    procedure Share_Pinned
      (Object : in out View; Buffers : in out Intel_GPU_Buffer_Handles.Registry;
-      Recipient : CuBit.Messages.CapabilitySlot; Identity : Unsigned_64;
+      Recipient : CuBit.Handles.Reply; Identity : Unsigned_64;
       Offset, Bytes : Unsigned_64; Writable, Presentation : Boolean) is
       Attempted, Returned : Boolean;
    begin
@@ -73,7 +69,7 @@ package body Intel_GPU_Buffer_Views is
      (Object : in out View; Buffers : in out Intel_GPU_Buffer_Handles.Registry;
       Session : Intel_GPU_Buffer_Handles.Session_ID;
       ID : Intel_GPU_Buffer_Handles.Handle;
-      Recipient : CuBit.Messages.CapabilitySlot; Identity : Unsigned_64;
+      Recipient : CuBit.Handles.Reply; Identity : Unsigned_64;
       Offset, Bytes : Unsigned_64; Writable : Boolean;
       Presentation : Boolean := False) is
    begin
@@ -95,7 +91,7 @@ package body Intel_GPU_Buffer_Views is
    procedure Share_Retained
      (Object : in out View; Buffers : in out Intel_GPU_Buffer_Handles.Registry;
       Source : Intel_GPU_Buffer_Handles.Retained_Reference;
-      Recipient : CuBit.Messages.CapabilitySlot; Identity : Unsigned_64;
+      Recipient : CuBit.Handles.Reply; Identity : Unsigned_64;
       Offset, Bytes : Unsigned_64) is
    begin
       if Object.Current /= Empty then return; end if;
@@ -107,7 +103,7 @@ package body Intel_GPU_Buffer_Views is
    end Share_Retained;
 
    procedure Share_Completed
-     (Object : in out View; Recipient : CuBit.Messages.CapabilitySlot;
+     (Object : in out View; Recipient : CuBit.Handles.Reply;
       Identity : Unsigned_64) is
       Before, After : Intel_GPU_Buffer_Reply.Backing;
       Attempted : Boolean;

@@ -1,7 +1,7 @@
-# virtio-gpu.drv's authority (docs/ccl-driver-manifests.md). devmgr reads
-# the interrupt request from the linked ELF and installs the vector's CAP_IRQ
-# in its slot (docs/msi-interrupts.md); it still mints the others itself, at
-# the slots these bindings name. The registers live in the BAR the virtio
+# virtio-gpu.drv's startup capabilities (docs/ccl-driver-manifests.md,
+# docs/capability-handles.md): devmgr fills its startup table from these
+# requests before it first runs; the driver reads them by binding name
+# (Startup.Registers, ...). The registers live in the BAR the virtio
 # common-configuration capability names (virtio-gpu-pci 4, virtio-vga 2);
 # devmgr follows the capability, the index here is the usual one.
 (Executable_Manifest
@@ -16,4 +16,8 @@
     (interrupt "device" Interrupt_Mode.MSI_X 2)
     (dma "frames" 16777216)
     (device-memory "notify" 4 1048576 Access.Read_Write)
-    (service "device-manager" "ready")])
+    (service "device-manager" "ready")
+    # The GPU service registration (DRIVER_GPU); absent when another GPU
+    # driver is the GPU service.
+    (notification "gpu" Notify_Access.Manage "registration")]
+  optional => ["registration"])

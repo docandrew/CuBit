@@ -4,38 +4,27 @@
 --
 --  Message-signaled device interrupts - implementation
 ------------------------------------------------------------------------------
-with System.Storage_Elements;
+pragma Ada_2022;
+with CuBit.Handles.Control;
+with CuBit.Handles.IPC;
 
 package body CuBit.Device_Interrupts is
 
-   --  INSPECT_CAPABILITY's six words: kind, rights, tag, object, parameter,
-   --  generation. CAP_IRQ is kind 5.
-   type Inspection is array (0 .. 5) of Unsigned_64;
-   KIND_WORD   : constant := 0;
-   OBJECT_WORD : constant := 3;
-   PARAM_WORD  : constant := 4;
-   CAP_IRQ     : constant Unsigned_64 := 5;
-   INSPECTED   : constant Unsigned_64 := 1;
-   REFUSED     : constant Unsigned_64 := Unsigned_64'Last;
+   use type CuBit.Handles.ABI.Kind;
 
-   function Block_Of (Slot : CapabilitySlot) return Interrupt_Block is
-      Data : aliased Inspection := (others => 0);
-      Self : constant Unsigned_64 := syscall (SYSCALL_GETPID);
-      Result : Unsigned_64;
+   function Block_Of (Item : CuBit.Handles.Interrupt) return Interrupt_Block is
+      D : constant CuBit.Handles.IPC.Description := CuBit.Handles.IPC.Describe (Item);
    begin
-      Result := syscall
-        (SYSCALL_INSPECT_CAPABILITY, Self, Slot,
-         Unsigned_64 (System.Storage_Elements.To_Integer (Data'Address)));
-      if Result /= INSPECTED or else Data (KIND_WORD) /= CAP_IRQ
-        or else Data (OBJECT_WORD) not in First_Vector .. Last_Vector
-        or else Data (PARAM_WORD) not in 1 .. Max_Block_Vectors
-        or else Data (PARAM_WORD) - 1 > Last_Vector - Data (OBJECT_WORD)
+      if not D.Current or else D.Kind /= CuBit.Handles.ABI.Interrupt
+        or else D.Object not in First_Vector .. Last_Vector
+        or else D.Parameter not in 1 .. Max_Block_Vectors
+        or else D.Parameter - 1 > Last_Vector - D.Object
       then
          return (others => <>);
       end if;
       return (Valid => True,
-              Head  => Device_Vector (Data (OBJECT_WORD)),
-              Count => Block_Size (Data (PARAM_WORD)));
+              Head  => Device_Vector (D.Object),
+              Count => Block_Size (D.Parameter));
    end Block_Of;
 
    function Fired (Event : Message; Block : Interrupt_Block; Index : Vector_Index)
@@ -48,27 +37,34 @@ package body CuBit.Device_Interrupts is
    end Fired;
 
    function Allocate
-     (Owner : Process_ID; Count : Block_Size; Slot : CapabilitySlot;
-      CPU : Natural) return Allocation
+     (Owner : Process_ID; Space : CuBit.Handles.Cspace; Count : Block_Size;
+      CPU : Natural; Authority : CuBit.Handles.Interrupt) return Allocation
    is
-      Word : constant Unsigned_64 := syscall
-        (SYSCALL_ALLOCATE_DEVICE_VECTORS, To_Word (Owner),
-         Unsigned_64 (Count), Slot, Unsigned_64 (CPU));
+      Block : constant CuBit.Handles.Control.Vector_Block :=
+        CuBit.Handles.Control.Allocate_Vectors
+          (Owner, Space, Unsigned_64 (Count), Unsigned_64 (CPU), Authority);
    begin
-      if Word = REFUSED or else not Valid_Allocation (Word) then
+      if not Block.Allocated then
+         return (Why => Block.Why, others => <>);
+      elsif not Valid_Allocation (Block.Allocation) then
          return (others => <>);
       end if;
-      return (Valid       => True,
-              Head        => Head_Of (Word),
-              Count       => Count_Of (Word),
-              Destination => Destination_Of (Word));
+      return (Valid        => True,
+              Head         => Head_Of (Block.Allocation),
+              Count        => Count_Of (Block.Allocation),
+              Destination  => Destination_Of (Block.Allocation),
+              Owner_Handle => Block.Owner,
+              Why          => CuBit.Handles.ABI.Invalid_Argument);
    end Allocate;
 
-   function Release (Head : Device_Vector) return Boolean is
-     (syscall (SYSCALL_RELEASE_DEVICE_VECTORS, Unsigned_64 (Head)) = 0);
+   function Release
+     (Head : Device_Vector; Authority : CuBit.Handles.Interrupt) return Boolean is
+     (CuBit.Handles.Control.Release_Vectors (Unsigned_64 (Head), Authority));
 
-   function Read (Vector : Device_Vector; Field : Read_Field) return Unsigned_64 is
-     (syscall (SYSCALL_READ_DEVICE_VECTOR, Unsigned_64 (Vector),
-               Unsigned_64 (Read_Field'Enum_Rep (Field))));
+   function Read
+     (Vector : Device_Vector; Field : Read_Field; Authority : CuBit.Handles.Interrupt)
+      return Unsigned_64 is
+     (CuBit.Handles.Control.Read_Vector
+        (Unsigned_64 (Vector), Unsigned_64 (Read_Field'Enum_Rep (Field)), Authority));
 
 end CuBit.Device_Interrupts;

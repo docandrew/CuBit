@@ -27,6 +27,8 @@ with Files_Filter;
 with Files_Limits;
 with Files_Queue;
 with Files_View;
+with CuBit.Startup_State;
+with Startup;
 
 procedure Main is
    use Files_View;
@@ -498,7 +500,11 @@ procedure Main is
       On_Deadline => Tick, Activity_Wait => True, On_Completion => Completed);
 begin
    debugPrint ("files: starting" & ASCII.LF);
-   CuBit.Logging.Announce ("files: started", Opened);
+   if not CuBit.Startup_State.Ready (Startup.Verify) then
+      debugPrint ("files: startup capabilities missing" & ASCII.LF);
+      return;
+   end if;
+   CuBit.Logging.Announce ("files: started", Opened, Startup.Logstore);
    --  The first listings start here: time them from now.
    Set_Clock (View, Now_Us);
    Initialize (View, PANE_ENTRIES, PANE_NAME_BYTES, VOLUME_PLACE, WORKSPACE_PLACE);

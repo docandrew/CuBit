@@ -1,6 +1,7 @@
+with CuBit.Handles;
 with Control;
 package body CuBit.Memory_Grants is
- procedure Create_Via_Capability (Slot : CuBit.Messages.CapabilitySlot;
+ procedure Create_Via_Capability (Slot : CuBit.Handles.Endpoint;
   Address : System.Address; Pages : Natural; Writable : Boolean;
   Ref : out Grant_Reference; Created : out Boolean) is
  begin

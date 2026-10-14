@@ -1,6 +1,8 @@
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Logging;
+with CuBit.Startup_State;
+with Startup;
 with CuBit.Log_Protocol;
 with CuBit.Log_Records;
 with CuBit.Desktop_Protocol;
@@ -195,6 +197,11 @@ procedure Main is
      (UI, Controls, Render => Render, Handle_Event => Handle_Event,
       Next_Deadline => Deadline, On_Deadline => Tick);
 begin
+   if not CuBit.Startup_State.Ready (Startup.Verify) then
+      debugPrint ("boot-logs: startup capabilities missing" & ASCII.LF);
+      return;
+   end if;
+   CuBit.Logging.Bind (Reader, Startup.Log_Observer);
    CuBit.UI.App.Open (Win, 950, 610,
      CuBit.Desktop_Protocol.Feature_Bits
        ([CuBit.Desktop_Protocol.Decorated | CuBit.Desktop_Protocol.Resizable |

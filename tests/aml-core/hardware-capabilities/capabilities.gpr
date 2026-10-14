@@ -1,6 +1,11 @@
 project Capabilities is
-   for Source_Dirs use (".", "../../../kernel/src");
-   for Source_Files use ("capability_tests.adb", "config.ads", "capabilities.ads");
+   for Source_Dirs use (".", "../../../kernel/src", "../../../shared/capabilities",
+                        "../../../shared/interrupts");
+   for Source_Files use ("capability_tests.adb", "config.ads", "capabilities.ads",
+      "capability_abi.ads", "capability_abi.adb",
+      "capability_install.ads", "capability_install.adb",
+      "realtime_admission.ads", "realtime_admission.adb",
+      "device_vector_abi.ads", "device_vector_abi.adb");
    for Object_Dir use "../build/hardware-capabilities/obj";
    for Exec_Dir use "../build/hardware-capabilities";
    for Main use ("capability_tests.adb");

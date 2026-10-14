@@ -429,7 +429,7 @@ package body Ext2.Directories is
             found : Unsigned_32;
          begin
             Dentry_Cache.Find
-              (Names, Dentry_Cache.Make_Key (fs.device.endpointSlot, dirInodeNum, name),
+              (Names, Dentry_Cache.Make_Key (fs.device.volumeKey, dirInodeNum, name),
                cached, found);
             knownAbsent := (cached and then found = Dentry_Cache.No_Inode) or else
               (not cached and then completeDirectory (fs, dirInodeNum));

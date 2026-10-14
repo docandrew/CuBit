@@ -1,8 +1,11 @@
 project Composed extends "sharing.gpr" is
    for Source_Dirs use (".", "../../../userspace/services/intel-gpu",
-     "../../../userspace/runtime/gnat", "../../../userspace/mesa/anv");
+     "../../../userspace/runtime/gnat", "../../../userspace/mesa/anv",
+     "../../../shared/capabilities");
    for Source_Files use ("composed_tests.adb", "messages_composed.ads", "messages_composed.adb",
-     "memory_mock.ads", "memory_mock.adb", "cubit.ads", "cubit-grant_references.ads",
+     "memory_mock.ads", "memory_mock.adb", "cubit.ads",
+     "cubit-handles.ads", "cubit-handles-c_abi.ads", "capability_abi.ads", "capability_abi.adb",
+     "broker_handles_fixture.ads", "broker_handles_fixture.adb", "cubit-grant_references.ads",
      "cubit-process_ids.ads", "cubit-process_ids.adb",
      "cubit-capability_grants.ads", "cubit-capability_grants.adb",
      "intel_gpu_buffer_views.ads", "intel_gpu_buffer_views.adb",
@@ -26,5 +29,7 @@ project Composed extends "sharing.gpr" is
       for Body ("CuBit.Messages") use "messages_composed.adb";
       for Spec ("CuBit.Memory_Grants") use "memory_mock.ads";
       for Body ("CuBit.Memory_Grants") use "memory_mock.adb";
+      for Spec ("CuBit.Handles.Fixture") use "broker_handles_fixture.ads";
+      for Body ("CuBit.Handles.Fixture") use "broker_handles_fixture.adb";
    end Naming;
 end Composed;

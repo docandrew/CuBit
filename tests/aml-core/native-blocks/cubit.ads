@@ -1,1 +1,1 @@
-package CuBit is end CuBit;
+package CuBit with Pure is end CuBit;

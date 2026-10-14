@@ -22,6 +22,8 @@ with CuBit.Memory_Grants;
 with CuBit.Grant_References;
 with CuBit.Process_Observer;
 with CuBit.Boot_Milestone_Codes;
+with CuBit.Startup_State;
+with Startup;
 with Boot_Timeline_Layout; use Boot_Timeline_Layout;
 with Boot_Timeline_Report; use Boot_Timeline_Report;
 
@@ -161,7 +163,7 @@ procedure Main is
       Result : Read_Result := Read_OK;
    begin
       CuBit.Memory_Grants.Create_Via_Capability
-        (CuBit.Messages.CapabilitySlot (PO.Observer_Slot), Page'Address, 1, True, Loan, Lent);
+        (Startup.Process_Observer, Page'Address, 1, True, Loan, Lent);
       if not Lent then
          return Not_Granted;
       end if;
@@ -170,10 +172,10 @@ procedure Main is
             Request : Message := NULL_MESSAGE;
             Reply : MessageTag;
          begin
-            Request.tag := (label => BMC.Timeline_Label, length => 2, flags => 0, reserved => 0);
+            Request.tag := (label => BMC.Timeline_Label, length => 2, protocol => 0, ipc => <>, reserved => 0);
             Request.words (0) := CuBit.Grant_References.Encode (Loan);
             Request.words (1) := Unsigned_64 (Index);
-            Reply := capCall (CuBit.Messages.CapabilitySlot (PO.Observer_Slot), Request,
+            Reply := capCall (Startup.Process_Observer, Request,
                               CuBit.Messages.Wait_Forever);
             if Reply.label = Unsigned_32 (PO.Status'Enum_Rep (PO.Denied)) then
                Result := Not_Granted;
@@ -366,6 +368,10 @@ procedure Main is
    Result : Read_Result;
    Ignore : Unsigned_64;
 begin
+   if not CuBit.Startup_State.Ready (Startup.Verify) then
+      Put ("BOOT-TIMELINE: FAIL startup capabilities" & LF);
+      return;
+   end if;
    Put ("BOOT-TIMELINE: waiting for the first desktop frame" & LF);
    loop
       Result := Read_Pages (0);

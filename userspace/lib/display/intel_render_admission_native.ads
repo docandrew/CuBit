@@ -1,25 +1,23 @@
 with Interfaces; use Interfaces;
+with CuBit.Handles;
 with CuBit.Messages;
-with CuBit.Capability_Grants;
 with Intel_Render_Admission;
 
 -- Startup-owned adapter. Single dispatcher owner; no waits or private polling
--- loop. The dispatcher must keep both source slots unchanged and destination
--- slots reserved (including driver slots40..55)
--- until this object's pending receipt and remote cleanup have been resolved.
+-- loop. Every request to the driver is an asynchronous submission through
+-- Driver (devmgr's intel-gpu endpoint); completions are matched on the
+-- driver's kernel-stamped identity Driver_PID. No capability is delegated:
+-- the reservation's session tag is the application's authority (CAP-002).
 package Intel_Render_Admission_Native is
    type Broker_Request is limited private;
    function State (Item : Broker_Request) return Intel_Render_Admission.Phase;
+   function Session (Item : Broker_Request) return Unsigned_64;
+   -- Identity is the application's process identity (nonzero).
    procedure Start
-     (Item : in out Broker_Request; Target : CuBit.Capability_Grants.Recipient;
-      Source, Application_Source, Destination : CuBit.Messages.CapabilitySlot);
-   -- Application_Source is a grantable endpoint naming Target's captured
-   -- incarnation, not a process cap or a raw PID. The broker also needs CSPACE
-   -- authority over both Target and the driver captured from Source.
-   -- At most one mutation: submit a control message or delegate an endpoint.
-   -- The first delegation also inspects Application_Source read-only.
+     (Item : in out Broker_Request; Identity : Unsigned_64;
+      Driver : CuBit.Handles.Endpoint; Driver_PID : Unsigned_64);
+   -- At most one mutation: submit one control message.
    -- Caller supplies a globally unique token for an asynchronous submission.
-   -- No GRANT bit is installed in the client; only READ|WRITE (3).
    procedure Advance (Item : in out Broker_Request; Token : Unsigned_64);
    -- Receipt must come directly from the kernel completion queue. Never
    -- accept an ordinary incoming IPC message as a completion. Unrelated
@@ -30,10 +28,7 @@ package Intel_Render_Admission_Native is
 private
    type Broker_Request is limited record
       Transaction : Intel_Render_Admission.Transaction;
-      Recipient : CuBit.Capability_Grants.Recipient;
-      Driver : CuBit.Capability_Grants.Recipient;
-      Source, Application_Source, Destination : CuBit.Messages.CapabilitySlot := 0;
-      Recipient_Installed : Boolean := False;
+      Driver : CuBit.Handles.Endpoint;
       Driver_PID : Unsigned_64 := 0;
    end record;
 end Intel_Render_Admission_Native;

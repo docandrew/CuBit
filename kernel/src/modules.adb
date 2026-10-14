@@ -12,7 +12,9 @@
 -------------------------------------------------------------------------------
 with BuddyAllocator;
 with Capabilities;
-with Capabilities.Operations;
+with Capability_ABI;
+with InterruptNumbers;
+with Process_Capabilities;
 with Device_Vector_ABI;
 with Cpio;
 with ELF;
@@ -37,13 +39,9 @@ with Virtmem;
 
 package body Modules with SPARK_Mode => Off is
 
-    -- devmgr's device-memory roots (CAP-001): one slot per device run,
-    -- Physical_Ranges.Max_Roots of them, clear of devmgr's other slots.
-    DEVICE_ROOT_FIRST_SLOT : constant Capabilities.CapabilitySlot := 48;
     pragma Compile_Time_Error
-      (DEVICE_ROOT_FIRST_SLOT + Physical_Ranges.Max_Roots - 1 >=
-         Capabilities.REPLY_CAP_SLOT,
-       "device-memory root slots overlap the reply slot");
+      (Physical_Ranges.Max_Roots /= Launch_Configuration.Maximum_Device_Roots,
+       "devmgr's configuration carries one handle per device-memory root");
 
     initrdAddr  : Virtmem.PhysAddress := 0;
     initrdSize  : Storage_Count := 0;
@@ -203,7 +201,8 @@ package body Modules with SPARK_Mode => Off is
     -- block, exactly as SYSCALL_INSTALL_LAUNCH_ARGUMENTS would, before its
     -- first instruction.
     ---------------------------------------------------------------------------
-    procedure installDevmgrConfiguration (pid : Process.ProcessID) is
+    procedure installDevmgrConfiguration
+      (pid : Process.ProcessID; handles : Launch_Configuration.Device_Manager_Handles) is
         use type Process.Page_Allocation_Result;
         package LC renames Launch_Configuration;
         Framebuffer : LC.Physical_Span;
@@ -220,7 +219,8 @@ package body Modules with SPARK_Mode => Off is
         end if;
         Block := LC.Encode (LC.Device_Manager_Configuration'
           (Boot_Image  => Unsigned_64 (initrdSize),
-           Framebuffer => Framebuffer));
+           Framebuffer => Framebuffer,
+           Handles     => handles));
         Process.lockAddressSpace (pid);
         Process.proctab (pid).frames.capacity :=
           Process.proctab (pid).frames.capacity + 1;
@@ -330,102 +330,120 @@ package body Modules with SPARK_Mode => Off is
 
         -- Map initrd into devmgr's address space (read-only)
         mapInitrd (devmgrPID, initrdAddr, initrdSize);
-        installDevmgrConfiguration (devmgrPID);
 
-        -- Slot 4: process-management policy (not capability construction).
-        Capabilities.Operations.insertCapAt (
-            table => Process.proctab(devmgrPID).caps,
-            slot  => 4,
-            cap   => (capType  => Capabilities.CAP_PROCESS,
-                      rights   => (Capabilities.RIGHT_READ    => True,
-                                   Capabilities.RIGHT_EXECUTE => True,
-                                   Capabilities.RIGHT_GRANT   => True,
-                                   Capabilities.RIGHT_WRITE   => True,
-                                   others => False),
-                      authorityTag => Capabilities.NO_AUTHORITY_TAG,
-                      object   => (ref => 0, param => 0),
-                      gen      => Capabilities.INITIAL_GENERATION));
-
-        -- Slot 8: explicit capability-space policy root. This is the only
-        -- authority that permits SYSCALL_POLICY_MINT_CAPABILITY; CAP_PROCESS/GRANT does not.
-        Capabilities.Operations.insertCapAt (
-            table => Process.proctab(devmgrPID).caps,
-            slot  => 8,
-            cap   => (capType  => Capabilities.CAP_CSPACE,
-                      rights   => (Capabilities.RIGHT_GRANT => True,
-                                   others => False),
-                      authorityTag => Capabilities.NO_AUTHORITY_TAG,
-                      object   => (ref => 0, param => 0),
-                      gen      => Capabilities.INITIAL_GENERATION));
-
-        -- Slot 5: CAP_IOPORT for PCI config space (0xCF8, 8 ports)
-        Capabilities.Operations.insertCapAt (
-            table => Process.proctab(devmgrPID).caps,
-            slot  => 5,
-            cap   => (capType  => Capabilities.CAP_IOPORT,
-                      rights   => Capabilities.READ_WRITE,
-                      authorityTag => Capabilities.NO_AUTHORITY_TAG,
-                      object   => (ref => 16#CF8#, param => 8),
-                      gen      => Capabilities.INITIAL_GENERATION));
-
-        -- Slot 6: CAP_NOTIFICATION for DRIVER_DEVMGR registration
-        Capabilities.Operations.insertCapAt (
-            table => Process.proctab(devmgrPID).caps,
-            slot  => 6,
-            cap   => (capType  => Capabilities.CAP_NOTIFICATION,
-                      rights   => (Capabilities.RIGHT_WRITE => True,
-                                   others => False),
-                      authorityTag => Capabilities.NO_AUTHORITY_TAG,
-                      object   => (ref   => Unsigned_64 (Service_Registry.DRIVER_DEVMGR),
-                                   param => 0),
-                      gen      => Capabilities.INITIAL_GENERATION));
-
-        -- Slots 48..55: device-memory roots (CAP-001). One CAP_DEVICE_MEM
-        -- per maximal run of device-mappable pages in the boot
-        -- classification (PCI holes, firmware-reserved MMIO such as ECAM,
-        -- and everything above the top of described memory, so BARs above
-        -- 4 GiB are covered), largest first. Never RAM, kernel memory, boot
-        -- modules, ACPI memory or kernel MMIO. devmgr maps BARs (its own
-        -- MSI-X tables, drivers' registers via MAP_INTO) under these; the
-        -- initrd it shares is a boot module, not device memory.
+        -- devmgr's roots (CAP-002), placed where its table chooses and
+        -- reported to it by handle in its typed configuration. Everything
+        -- devmgr hands out later is a narrowed copy of one of these (or a
+        -- kernel object SPAWN gives it); no system call makes authority from
+        -- nothing.
         declare
-            Runs  : Physical_Ranges.Run_Array;
-            Count : Physical_Ranges.Root_Count;
-        begin
-            Physical_Ranges.Largest_Device_Runs
-              (Physical_Range_Map.Kernel_Map, Runs, Count);
-            for Index in 1 .. Count loop
-                Capabilities.Operations.insertCapAt (
-                    table => Process.proctab(devmgrPID).caps,
-                    slot  => DEVICE_ROOT_FIRST_SLOT + (Index - 1),
-                    cap   => (capType  => Capabilities.CAP_DEVICE_MEM,
-                              rights   => Capabilities.READ_WRITE,
-                              authorityTag => Capabilities.NO_AUTHORITY_TAG,
-                              object   => (ref   => Runs (Index).First,
-                                           param => Runs (Index).Last -
-                                                    Runs (Index).First + 1),
-                              gen      => Capabilities.INITIAL_GENERATION));
-                print ("Modules: devmgr device root ");
-                print (Runs (Index).First);
-                print (" .. ");
-                println (Runs (Index).Last);
-            end loop;
-        end;
+            package LC renames Launch_Configuration;
+            handles : LC.Device_Manager_Handles;
+            GRANT_ONLY : constant Capabilities.CapabilityRights :=
+              (Capabilities.RIGHT_GRANT => True, others => False);
+            READ_GRANT : constant Capabilities.CapabilityRights :=
+              (Capabilities.RIGHT_READ | Capabilities.RIGHT_GRANT => True, others => False);
+            RW_GRANT : constant Capabilities.CapabilityRights :=
+              (Capabilities.RIGHT_READ | Capabilities.RIGHT_WRITE |
+               Capabilities.RIGHT_GRANT => True, others => False);
+            -- The largest single real-time share a root may hand out: half
+            -- a CPU (Process.reserveRealtime's own bound on a budget).
+            SCHEDULING_ROOT_BUDGET_US : constant := 500_000;
+            SCHEDULING_ROOT_PERIOD_US : constant := 1_000_000;
+            FIRST_LEGACY_LINE : constant := InterruptNumbers.PS2KEYBOARD;
+            LAST_LEGACY_LINE  : constant := InterruptNumbers.IDE2;
+            PORT_SPACE        : constant := 16#1_0000#;
+            PCI_CONFIG_PORT   : constant := 16#CF8#;
+            PCI_CONFIG_PORTS  : constant := 8;
+            FIRST_ROLE        : constant := 1;
 
-        -- Device vector authority (docs/msi-interrupts.md): a CAP_IRQ naming
-        -- the whole device range. GRANT allocates and releases blocks for
-        -- drivers; READ reads per-vector counts and owners.
-        Capabilities.Operations.insertCapAt (
-            table => Process.proctab(devmgrPID).caps,
-            slot  => Device_Vector_ABI.Vector_Authority_Slot,
-            cap   => (capType  => Capabilities.CAP_IRQ,
-                      rights   => (Capabilities.RIGHT_READ  => True,
-                                   Capabilities.RIGHT_GRANT => True,
-                                   others => False),
-                      authorityTag => Capabilities.NO_AUTHORITY_TAG,
-                      object   => (ref   => Device_Vector_ABI.First_Vector,
-                                   param => Device_Vector_ABI.Vector_Count),
-                      gen      => Capabilities.INITIAL_GENERATION));
+            procedure place (cap : Capabilities.Capability; word : out Unsigned_64) is
+            begin
+                Process_Capabilities.Insert (Process.proctab(devmgrPID).caps, cap, word);
+                if not Capability_ABI.Is_Handle_Word (word) then
+                    raise ModuleException with "No room for the device manager's roots";
+                end if;
+            end place;
+
+            function root (kind : Capabilities.CapabilityType;
+                           rights : Capabilities.CapabilityRights;
+                           ref, param : Unsigned_64) return Capabilities.Capability is
+              ((capType      => kind,
+                rights       => rights,
+                authorityTag => Capabilities.NO_AUTHORITY_TAG,
+                object       => (ref => ref, param => param),
+                gen          => Capabilities.INITIAL_GENERATION));
+        begin
+            handles.Self := Process.proctab(devmgrPID).selfHandle;
+            handles.Self_Process := Process.proctab(devmgrPID).selfProcessHandle;
+            -- An untagged endpoint to itself: the children's "ready" and
+            -- broker endpoints are badged copies of it.
+            place ((capType      => Capabilities.CAP_ENDPOINT,
+                    rights       => RW_GRANT,
+                    authorityTag => Capabilities.NO_AUTHORITY_TAG,
+                    object       => (ref => Unsigned_64 (devmgrPID), param => 0),
+                    gen          => Process.generationOf (devmgrPID)),
+                   handles.Self_Grantable);
+            -- Spawn and process control over every process (not capability
+            -- construction): the next CSPACE-style narrowing candidate.
+            place (root (Capabilities.CAP_PROCESS,
+                         (Capabilities.RIGHT_READ | Capabilities.RIGHT_EXECUTE |
+                          Capabilities.RIGHT_GRANT | Capabilities.RIGHT_WRITE => True,
+                          others => False), 0, 0),
+                   handles.Process_Root);
+            place (root (Capabilities.CAP_IOPORT, Capabilities.READ_WRITE,
+                         PCI_CONFIG_PORT, PCI_CONFIG_PORTS), handles.PCI_Ports);
+            place (root (Capabilities.CAP_NOTIFICATION,
+                         (Capabilities.RIGHT_WRITE => True, others => False),
+                         Unsigned_64 (Service_Registry.DRIVER_DEVMGR), 1),
+                   handles.Registration);
+            -- Device vector authority (docs/msi-interrupts.md): a CAP_IRQ
+            -- naming the whole device range. GRANT allocates and releases
+            -- blocks for drivers; READ reads per-vector counts and owners.
+            -- Never copied (Capability_Install.Copyable).
+            place (root (Capabilities.CAP_IRQ, READ_GRANT,
+                         Device_Vector_ABI.First_Vector, Device_Vector_ABI.Vector_Count),
+                   handles.Vector_Authority);
+            place (root (Capabilities.CAP_IOPORT, RW_GRANT, 0, PORT_SPACE),
+                   handles.IO_Ports);
+            place (root (Capabilities.CAP_IRQ, READ_GRANT, FIRST_LEGACY_LINE,
+                         LAST_LEGACY_LINE - FIRST_LEGACY_LINE + 1),
+                   handles.Legacy_Interrupts);
+            place (root (Capabilities.CAP_NOTIFICATION, RW_GRANT, FIRST_ROLE,
+                         Unsigned_64 (Service_Registry.DriverID'Last) - FIRST_ROLE + 1),
+                   handles.Notifications);
+            place (root (Capabilities.CAP_SCHEDULING, GRANT_ONLY,
+                         SCHEDULING_ROOT_BUDGET_US, SCHEDULING_ROOT_PERIOD_US),
+                   handles.Scheduling);
+
+            -- Device-memory roots (CAP-001): one CAP_DEVICE_MEM per maximal
+            -- run of device-mappable pages in the boot classification (PCI
+            -- holes, firmware-reserved MMIO such as ECAM, and everything
+            -- above the top of described memory, so BARs above 4 GiB are
+            -- covered), largest first. Never RAM, kernel memory, boot
+            -- modules, ACPI memory or kernel MMIO. devmgr maps BARs and
+            -- hands drivers subranges of these; the initrd it shares is a
+            -- boot module, not device memory.
+            declare
+                Runs  : Physical_Ranges.Run_Array;
+                Count : Physical_Ranges.Root_Count;
+            begin
+                Physical_Ranges.Largest_Device_Runs
+                  (Physical_Range_Map.Kernel_Map, Runs, Count);
+                handles.Root_Count := Count;
+                for Index in 1 .. Count loop
+                    place (root (Capabilities.CAP_DEVICE_MEM, RW_GRANT,
+                                 Runs (Index).First,
+                                 Runs (Index).Last - Runs (Index).First + 1),
+                           handles.Device_Roots (Index));
+                    print ("Modules: devmgr device root ");
+                    print (Runs (Index).First);
+                    print (" .. ");
+                    println (Runs (Index).Last);
+                end loop;
+            end;
+            installDevmgrConfiguration (devmgrPID, handles);
+        end;
 
         println ("Modules: Starting device manager.");
         Process.resume (devmgrPID);

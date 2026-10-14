@@ -9,6 +9,8 @@
 #define CUBIT_TEST_TRIANGLE 1
 #define CUBIT_TEST_TRIANGLE_CYCLES 256
 #define DRAW_LOG "MESA-TRIANGLE"
+#define TEST_ENDPOINT(n) ((cubit_endpoint){(UINT64_C(1) << 32) | (uint64_t)(n)})
+#define TEST_INDEX(e) ((unsigned)((e).opaque & 0xffffffffu))
 struct cubit_mesa_service { unsigned placeholder; };
 static struct cubit_mesa_service service;
 static void *log_context;
@@ -16,7 +18,7 @@ static unsigned records, health_calls, draws, closes, fail_health, fail_draw;
 static unsigned summary_completed, summary_requested;
 static int summary_result;
 static bool failure_seen;
-static uint64_t cubit_test_render_slot(void) { return 24; }
+static cubit_endpoint cubit_test_render_endpoint(void) { return TEST_ENDPOINT(24); }
 static void report(const char *format, ...)
 {
    char text[256];
@@ -29,8 +31,8 @@ static void report(const char *format, ...)
    (void)sscanf(text, "MESA-TRIANGLE service sustained completed=%u requested=%u result=%d",
                 &summary_completed, &summary_requested, &summary_result);
 }
-VkResult cubit_mesa_service_start(uint64_t slot, struct cubit_mesa_service **out)
-{ assert(slot==24 && !*out); *out=&service; return VK_SUCCESS; }
+VkResult cubit_mesa_service_start(cubit_endpoint endpoint, struct cubit_mesa_service **out)
+{ assert(TEST_INDEX(endpoint)==24 && !*out); *out=&service; return VK_SUCCESS; }
 VkBool32 cubit_mesa_service_device(struct cubit_mesa_service *owner,
                                   struct cubit_mesa_service_device *out)
 { assert(owner==&service); memset(out,0,sizeof(*out)); return VK_TRUE; }
@@ -46,6 +48,11 @@ static VkResult mesa_triangle_probe(VkInstance a, VkPhysicalDevice b, VkDevice c
    return ++draws==fail_draw ? VK_ERROR_DEVICE_LOST : VK_SUCCESS;
 }
 #include "native-service-probe.h"
+#include "../../userspace/c/cubit_handles.h"
+/* A test endpoint handle (generation 1). */
+#define TEST_ENDPOINT(n) ((cubit_endpoint){(UINT64_C(1) << 32) | (uint64_t)(n)})
+/* The index a test endpoint was made from. */
+#define TEST_INDEX(e) ((unsigned)((e).opaque & 0xffffffffu))
 int main(void)
 {
    for (unsigned scenario=0;scenario<5;scenario++) {

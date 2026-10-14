@@ -13,6 +13,7 @@ with CuBit.Libc_ABI; use CuBit.Libc_ABI;
 with CuBit.Libc_Descriptors;
 with CuBit.Libc_Start_Layout;
 
+with CuBit.Libc_Startup;
 package body CuBit.Libc_Start is
 
    --  The main thread's stack size without a PT_GNU_STACK header.
@@ -123,6 +124,10 @@ package body CuBit.Libc_Start is
       return Default_Stack_Bytes;
    end Program_Stack_Size;
 
+   --  The whole launch block's length, kept by the start code (crt1.S).
+   Block_Length : Unsigned_64
+   with Import, Convention => C, External_Name => "__cubit_launch_block_length";
+
    procedure Start (Initial_Stack, Launch_Length : Unsigned_64) is
       Mapped : constant Block (1 .. Maximum_Block_Bytes)
       with Import, Address => To_Address (Block_Address);
@@ -137,6 +142,8 @@ package body CuBit.Libc_Start is
       Found : String_Count := 0;
       Arguments, Environment, Directories : Natural := 0;
    begin
+      --  The startup table's handles, before anything uses them (CAP-002).
+      CuBit.Libc_Startup.Load (Block_Length);
       Stack_Top := Initial_Stack;
       Stack_Size := Program_Stack_Size;
       Fill_Random;

@@ -14,6 +14,8 @@ with CuBit.Channel_Protocol;
 with CuBit.Grant_References;
 with CuBit.Kernel_ABI;
 with CuBit.Log_Publish_Rings;
+with CuBit.Handles;
+with Startup;
 
 procedure Main is
    package P renames CuBit.Log_Protocol;
@@ -27,6 +29,12 @@ procedure Main is
    Burst_Records : constant := 3_000;
    Reader : CuBit.Logging.Reader;
    Writer : CuBit.Logging.Publisher;
+   --  Logstore as publisher, and as observer (absent for the ordinary
+   --  child: only trusted startup is granted it).
+   Logstore : constant CuBit.Handles.Endpoint := Startup.Logstore;
+   Observer : constant CuBit.Handles.Endpoint :=
+     (if Startup.Log_Observer.Present then Startup.Log_Observer.Value
+      else CuBit.Handles.No_Endpoint);
    Value : P.Event;
    Result : P.Status;
    Lost, Ignore : Unsigned_64;
@@ -54,7 +62,8 @@ procedure Main is
    function Request (Op : P.Operation) return Message is
       Item : Message := NULL_MESSAGE;
    begin
-      Item.tag := (P.Operation'Enum_Rep (Op), 4, 0, 0);
+      Item.tag := (label => P.Operation'Enum_Rep (Op), length => 4,
+                   protocol => 0, ipc => <>, reserved => 0);
       return Item;
    end Request;
 
@@ -67,7 +76,8 @@ procedure Main is
         CuBit.Channel_Contracts.Encode (CuBit.Log_Publish_Rings.CONTRACT);
       Item : Message := NULL_MESSAGE;
    begin
-      Item.tag := (CP.OP_OPEN_PRODUCING, CP.Open_Words, 0, 0);
+      Item.tag := (label => CP.OP_OPEN_PRODUCING, length => CP.Open_Words,
+                   protocol => 0, ipc => <>, reserved => 0);
       Item.words := [Words (0), Words (1), Words (2), Grant];
       return Item;
    end Open_Publishing;
@@ -113,6 +123,8 @@ procedure Main is
       Done : Boolean;
       Deadline : constant Unsigned_64 := syscall (SYSCALL_GETTIME) + 2000;
    begin
+      CuBit.Logging.Bind (Logger, Logstore);
+      CuBit.Logging.Bind (Fresh, Logstore);
       CuBit.Logging.Disconnect (Fresh, Done);
       Check (Done, "unused publisher disconnects immediately");
       CuBit.Logging.Emit (Fresh, Record_Value.Value, Submitted);
@@ -134,15 +146,17 @@ procedure Main is
       debugPrint ("TEST: PASS log-disconnect" & ASCII.LF);
    end Check_Disconnect;
 
-   --  Slot 18 is log-retire (the fault fixture): it maps the ring region
-   --  and exits without answering Attach.
+   --  The ipc-test entry is log-retire (the fault fixture): it maps the
+   --  ring region and exits without answering Attach.
    procedure Check_Collector_Death is
-      Logger : CuBit.Logging.Publisher (Slot => 18);
-      Stale : CuBit.Logging.Publisher (Slot => 18);
+      Logger : CuBit.Logging.Publisher;
+      Stale : CuBit.Logging.Publisher;
       Record_Value : constant L.Decoded := L.Make ("collector death check");
       Done : Boolean;
       Deadline : constant Unsigned_64 := syscall (SYSCALL_GETTIME) + 2000;
    begin
+      CuBit.Logging.Bind (Logger, Startup.Ipc_Test);
+      CuBit.Logging.Bind (Stale, Startup.Ipc_Test);
       CuBit.Logging.Emit (Logger, Record_Value.Value, Submitted);
       Check (not Submitted and then CuBit.Logging.Dropped (Logger) = 1,
              "a collector dying in Attach costs one counted record, no wait");
@@ -160,6 +174,8 @@ procedure Main is
       debugPrint ("TEST: PASS log-collector-death" & ASCII.LF);
    end Check_Collector_Death;
 begin
+   CuBit.Logging.Bind (Reader, Observer);
+   CuBit.Logging.Bind (Writer, Logstore);
    --  The ordinary child requests exactly the same ELF manifest, but cannot
    --  opt into trusted-startup approval. Its observer endpoint stays absent.
    CuBit.Logging.Subscribe (Reader, Result);
@@ -167,7 +183,7 @@ begin
       Check (Result = P.Unavailable, "ordinary launch has no observer");
       Msg := Request (P.Subscribe);
       Msg.authorityTag := P.Observer_Authority_Tag;
-      Tag := capCall (P.Publisher_Slot, Msg, CuBit.Messages.Wait_Forever);
+      Tag := capCall (Logstore, Msg, CuBit.Messages.Wait_Forever);
       Check (Tag.label = P.Status'Enum_Rep (P.Denied) and then
              Msg.words = [0, 0, 0, 0], "forged observer tag denied");
       Publish_Record;
@@ -192,11 +208,11 @@ begin
 
    Msg := Request (P.Subscribe);
    Msg.authorityTag := P.Observer_Authority_Tag;
-   Tag := capCall (P.Publisher_Slot, Msg, CuBit.Messages.Wait_Forever);
+   Tag := capCall (Logstore, Msg, CuBit.Messages.Wait_Forever);
    Check (Tag.label = P.Status'Enum_Rep (P.Denied) and then
           Msg.words = [0, 0, 0, 0], "publisher cannot observe with forged tag");
    Msg := Open_Publishing (0);
-   Tag := capCall (P.Observer_Slot, Msg, CuBit.Messages.Wait_Forever);
+   Tag := capCall (Observer, Msg, CuBit.Messages.Wait_Forever);
    Check (Tag.label = CuBit.Kernel_ABI.Reply_Error, "observer cannot publish");
    --  Subscribing again renews the lease and keeps the stream.
    CuBit.Logging.Subscribe (Reader, Result);
@@ -204,16 +220,16 @@ begin
 
    --  A region that is not the channel's: refused before it is used.
    G.Create_Via_Capability
-     (P.Publisher_Slot, Buffer'Address, 1, False, Grant, Created);
+     (Logstore, Buffer'Address, 1, False, Grant, Created);
    Check (Created, "malformed-input grant created");
    Msg := Open_Publishing (CuBit.Grant_References.Encode (Grant));
-   Tag := capCall (P.Publisher_Slot, Msg, CuBit.Messages.Wait_Forever);
+   Tag := capCall (Logstore, Msg, CuBit.Messages.Wait_Forever);
    Check (Tag.label = CuBit.Kernel_ABI.Reply_Error
           and then Msg.words (0) = CP.Open_Refusal'Enum_Rep (CP.Bad_Grant),
           "a one-page region is not the channel's ring");
    Msg := Open_Publishing
      (CuBit.Grant_References.Encode ((Grant.slot, Grant.generation + 1)));
-   Tag := capCall (P.Publisher_Slot, Msg, CuBit.Messages.Wait_Forever);
+   Tag := capCall (Logstore, Msg, CuBit.Messages.Wait_Forever);
    Check (Tag.label = CuBit.Kernel_ABI.Reply_Error
           and then Msg.words (0) = CP.Open_Refusal'Enum_Rep (CP.Bad_Grant),
           "wrong grant generation rejected");
@@ -222,12 +238,12 @@ begin
 
    Msg := Request (P.Subscribe);
    Msg.tag.length := 3;
-   Tag := capCall (P.Observer_Slot, Msg, CuBit.Messages.Wait_Forever);
+   Tag := capCall (Observer, Msg, CuBit.Messages.Wait_Forever);
    Check (Tag.label = P.Status'Enum_Rep (P.Invalid_Request),
           "malformed IPC header rejected");
    Msg := Request (P.Subscribe);
    Msg.tag.label := 16#0800#;
-   Tag := capCall (P.Observer_Slot, Msg, CuBit.Messages.Wait_Forever);
+   Tag := capCall (Observer, Msg, CuBit.Messages.Wait_Forever);
    Check (Tag.label = P.Status'Enum_Rep (P.Denied), "retired query rejected");
 
    --  Every record arrives, in order, from this publisher, with no gap.
@@ -251,7 +267,7 @@ begin
    --  A handle logstore never issued (or no longer holds) names nothing.
    Msg := Request (P.Close);
    Msg.words (0) := Never_Issued_Handle;
-   Tag := capCall (P.Observer_Slot, Msg, CuBit.Messages.Wait_Forever);
+   Tag := capCall (Observer, Msg, CuBit.Messages.Wait_Forever);
    Check (Tag.label = P.Status'Enum_Rep (P.Denied), "stale handle rejected");
 
    --  Launch the same executable through ordinary OP_SPAWN, not startup.
@@ -263,12 +279,13 @@ begin
          Buffer (I) := Character'Pos (Filename (I));
       end loop;
       G.Create_Via_Capability
-        (12, Buffer'Address, 1, False, Grant, Created);
+        (Startup.Process_Manager, Buffer'Address, 1, False, Grant, Created);
       Check (Created, "spawn name grant created");
       Msg := NULL_MESSAGE;
-      Msg.tag := (16#0100#, Filename'Length, 0, 0);
+      Msg.tag := (label => 16#0100#, length => Filename'Length,
+                  protocol => 0, ipc => <>, reserved => 0);
       Msg.words := [CuBit.Grant_References.Encode (Grant), 5, 0, 0];
-      Tag := capCall (12, Msg, CuBit.Messages.Wait_Forever);
+      Tag := capCall (Startup.Process_Manager, Msg, CuBit.Messages.Wait_Forever);
       Check (Tag.label = 16#F000#, "ordinary child launched");
    end;
    debugPrint ("TEST: PASS log-authority" & ASCII.LF);

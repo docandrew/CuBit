@@ -1,3 +1,4 @@
+with CuBit.Handles;
 package body Config_Object_Client.Resources.Runs is
    package R renames CCL.Resources;
    package V renames CCL.VM;
@@ -29,13 +30,13 @@ package body Config_Object_Client.Resources.Runs is
      (Host : in out Runner; Types : CCL.Types.Registry;
       Kind : CCL.Types.Type_Reference; Contract : CCL.Objects.Binding;
       Reads : Config_Read_Outcomes.Description; Bindings : Binding_Table;
-      Endpoint : CuBit.Messages.CapabilitySlot; Name : String;
+      Endpoint : CuBit.Handles.Endpoint; Name : String;
       Accepted : out Boolean)
    is
       Description : constant CCL.Types.Description := CCL.Types.Describe (Types, Kind);
    begin
       Accepted := False;
-      if Host.Loaded or not Can_Replace (Host) or Endpoint = 0 or
+      if Host.Loaded or not Can_Replace (Host) or not CuBit.Handles.Valid (Endpoint) or
         Name'Length not in 1 .. Host.Name'Length or
         Description.Form /= CCL.Types.Resource or Description.Count /= 1
       then return; end if;

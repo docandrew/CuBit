@@ -4,7 +4,7 @@ with CuBit.Messages; use CuBit.Messages;
 with CuBit.Log_Protocol;
 with CuBit.Log_Records;
 with CuBit.Logging;
-with CCL_Manifest_Bindings;
+with Startup;
 
 --  Native acceptance check for logstore structured fields (LogRecord v2) and
 --  severity-filtered subscriptions: a Warning-level observer receives this
@@ -17,10 +17,8 @@ procedure Main is
    use type L.Severity;
    use type L.Field_Kind;
 
-   Writer : CuBit.Logging.Publisher
-     (CapabilitySlot (CCL_Manifest_Bindings.Slot_Logstore));
-   Reader : CuBit.Logging.Reader
-     (CapabilitySlot (CCL_Manifest_Bindings.Slot_Log_Observer));
+   Writer : CuBit.Logging.Publisher;
+   Reader : CuBit.Logging.Reader;
 
    Wait_Ms : constant Unsigned_64 := 2_000;
    Frame_Latency_Us : constant := 4_167;
@@ -78,6 +76,8 @@ procedure Main is
    Information : constant L.Decoded := L.Make (Filtered_Text, L.Information);
    Own_Pid : constant Unsigned_64 := syscall (SYSCALL_GETPID);
 begin
+   CuBit.Logging.Bind (Writer, Startup.Logstore);
+   CuBit.Logging.Bind (Reader, Startup.Log_Observer);
    CuBit.Logging.Subscribe (Reader, Result, Minimum => L.Warning);
    Check (Result = P.OK, "startup observer subscribes with filter");
    loop

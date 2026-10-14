@@ -1,3 +1,4 @@
+with Native_GPU_Calls;
 with System;
 with System.Storage_Elements;
 with CuBit.Messages;
@@ -9,7 +10,7 @@ package body Native_GPU_Memory is
    package Grants renames CuBit.Memory_Grants;
 
    function Acquire
-     (Slot, Reference, Offset, Bytes, Writable : Unsigned_64;
+     (Endpoint : Native_GPU_Calls.C_Endpoint; Reference, Offset, Bytes, Writable : Unsigned_64;
       Output : access Unsigned_64) return Unsigned_32
    is
       Address : System.Address;
@@ -17,14 +18,14 @@ package body Native_GPU_Memory is
    begin
       if Output = null then return 1; end if;
       Output.all := 0;
-      if Slot > Unsigned_64 (CuBit.Messages.CapabilitySlot'Last) or else
+      if not Native_GPU_Calls.Present (Endpoint) or else
          not References.Valid_Wire (Reference) or else Writable > 1 or else
          Bytes = 0 or else Bytes - 1 > Unsigned_64'Last - Offset
       then
          return 1;
       end if;
       Grants.Acquire_Via_Capability
-        (CuBit.Messages.CapabilitySlot (Slot), References.Decode (Reference),
+        (Native_GPU_Calls.Target_Of (Endpoint), References.Decode (Reference),
          Offset, Bytes,
          (if Writable = 1 then Grants.Write_Access else Grants.Read_Access),
          Address, Success);

@@ -1,0 +1,8 @@
+# ramdisk.drv's authority (CAP-002): its endpoint to devmgr for the ready
+# signal. devmgr maps the boot image into it and hands it the image's size
+# in its launch configuration; it needs no other capability.
+(Executable_Manifest
+  identity => "com.cubit.ramdisk"
+  version => "0.1.0"
+  requests => [
+    (service "device-manager" "ready")])

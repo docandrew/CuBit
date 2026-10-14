@@ -2,14 +2,13 @@ pragma Ada_2022;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Logging;
 with CuBit.Log_Records;
+with CuBit.Handles.Control;
 
 package body Deferred_Warnings is
    package Logs renames CuBit.Log_Records;
 
    --  The driver budget xhci and intel-gpu publish under too.
    Driver_Budget : constant CuBit.Log_Protocol.Budget_Id := 15;
-   CAP_ENDPOINT  : constant Unsigned_64 := 1;
-   RIGHT_READ_WRITE : constant Unsigned_64 := 3;
 
    Capacity   : constant := 32;
    Line_Bytes : constant := 240;
@@ -90,24 +89,26 @@ package body Deferred_Warnings is
    end Pump;
 
    procedure Pump_Now is
-      Collector : Process_ID;
+      package H renames CuBit.Handles;
+      Service : H.Endpoint;
+      Target  : H.Endpoint;
    begin
       if State /= Unbound then
          return;
       end if;
-      Collector := Registered_Driver (DRIVER_LOGSTORE);
-      if Collector = No_Process then
+      Service := Collector;
+      if not H.Valid (Service) then
          return;
       end if;
-      if syscall (SYSCALL_POLICY_MINT_CAPABILITY, syscall (SYSCALL_GETPID),
-                  CAP_ENDPOINT, To_Word (Collector),
-                  CuBit.Log_Protocol.Publisher_Tag (Driver_Budget, Issuance),
-                  RIGHT_READ_WRITE, CuBit.Log_Protocol.Publisher_Slot) = Unsigned_64'Last
-      then
+      Target := CuBit.Handles.Control.Derive
+        (H.Badged (Service, H.Read_Write,
+                   CuBit.Log_Protocol.Publisher_Tag (Driver_Budget, Issuance)));
+      if not H.Valid (Target) then
          State := Failed;
          debugPrint ("deferred warnings: no logstore binding" & ASCII.LF);
          return;
       end if;
+      CuBit.Logging.Bind (Writer, Target);
       State := Bound;
       for I in 1 .. Count loop
          Emit (Kept (I).Text (1 .. Kept (I).Length), Kept (I).Level);

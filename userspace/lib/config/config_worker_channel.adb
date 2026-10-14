@@ -1,4 +1,5 @@
 with Config_Worker_Messages;
+with CuBit.Handles;
 
 package body Config_Worker_Channel is
    use CuBit.Messages;
@@ -12,7 +13,7 @@ package body Config_Worker_Channel is
      (Object.Active_Token);
 
    procedure Initialize
-     (Object : in out Channel; Endpoint : CapabilitySlot; Success : out Boolean) is
+     (Object : in out Channel; Endpoint : CuBit.Handles.Endpoint; Success : out Boolean) is
    begin
       Success := False;
       if Object.Current /= Fresh then return; end if;

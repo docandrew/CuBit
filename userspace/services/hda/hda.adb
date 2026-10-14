@@ -12,9 +12,11 @@ with CuBit.Launch_Configurations;
 with Launch_Configuration;
 with HDA_Amplifiers;
 
+with CuBit.Handles.Devices;
+with Startup;
 package body HDA is
 
-   --  MMIO base (mapped via SYSCALL_MAP_DEVICE at BAR_VIRT_BASE)
+   --  MMIO base (mapped through its register handle at BAR_VIRT_BASE)
    barBase : Unsigned_64 := BAR_VIRT_BASE;
 
    procedure printHex64 (val : Unsigned_64);
@@ -165,9 +167,9 @@ package body HDA is
          debugPrint ("hda: missing controller/DMA allocation" & ASCII.LF);
          return;
       end if;
-      ret := syscall (SYSCALL_MAP_DEVICE, bar0Phys,
-                       BAR_VIRT_BASE, BAR_MAP_PAGES);
-      if ret = Unsigned_64'Last then
+      if not CuBit.Handles.Devices.Map_Device
+        (Startup.Registers, bar0Phys, BAR_VIRT_BASE, BAR_MAP_PAGES, Read_Only => False)
+      then
          debugPrint ("hda: controller mapping failed" & ASCII.LF);
          return;
       end if;

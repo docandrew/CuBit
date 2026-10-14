@@ -1,3 +1,4 @@
+with CuBit.Handles.Fixture;
 with CCL.Evaluation;
 with Ada.Text_IO;
 with Interfaces; use Interfaces;

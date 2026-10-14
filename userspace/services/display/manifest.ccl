@@ -2,9 +2,11 @@
 (executable-manifest v1
   (identity "com.cubit.display")
   (version "0.1.0")
-  (request-framebuffer read-write framebuffer)
+  (request-framebuffer-optional read-write framebuffer)
   # Runtime falls back to the linear framebuffer if GPU service is absent.
-  (request-service gpu read-write gpu)
+  (request-service-optional gpu read-write gpu)
   # Warnings (a refused framebuffer mapping) reach logstore and the Desktop
-  # bootstrap screen.
-  (request-service logstore read-write logstore))
+  # bootstrap screen when logstore runs; minimal profiles start display
+  # without it (records are then only echoed).
+  (request-service-optional logstore read-write logstore)
+  (request-notification display manage registration))

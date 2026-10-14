@@ -2,6 +2,7 @@ with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Desktop_Messages;
+with UI_Desktop_Service;
 package body Client_Frame_Buffer is
    package P renames Client_Frame_State;
    package MG renames CuBit.Memory_Grants;
@@ -13,7 +14,7 @@ package body Client_Frame_Buffer is
       Message_Value : Message := CuBit.Desktop_Messages.From_Wire (Request);
    begin
       -- capCall authenticates the reply through the endpoint invocation.
-      Message_Value.tag := capCall (CAP_SLOT_DESKTOP, Message_Value, CuBit.Messages.Wait_Forever);
+      Message_Value.tag := capCall (UI_Desktop_Service.Endpoint, Message_Value, CuBit.Messages.Wait_Forever);
       return CuBit.Desktop_Messages.To_Wire (Message_Value);
    end Call;
    procedure Receipt
@@ -41,7 +42,7 @@ package body Client_Frame_Buffer is
       B.Bytes := ((Bytes - 1) / 4096 + 1) * 4096;
       P.Allocate (B.Policy);
       MG.Create_Via_Capability
-        (CAP_SLOT_DESKTOP, To_Address (Integer_Address (B.Base)), B.Bytes / 4096,
+        (UI_Desktop_Service.Endpoint, To_Address (Integer_Address (B.Base)), B.Bytes / 4096,
          False, B.Grant, B.Has_Grant);
       if not B.Has_Grant then
          Release (B, Cleaned);

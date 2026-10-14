@@ -4,7 +4,7 @@ with CuBit.Metric_Protocol;
 with CuBit.Metric_Records;
 with Observatory_Metric_Observer;
 with Observatory_Metric_Queries;
-with CCL_Manifest_Bindings;
+with Startup;
 with Observatory_CCL;
 with CCL.Catalog;
 with CCL.Host_Values;
@@ -14,7 +14,7 @@ procedure Main is
    package P renames CuBit.Metric_Protocol;
    package R renames CuBit.Metric_Records;
    package O is new Observatory_Metric_Observer
-     (CCL_Manifest_Bindings.Slot_metrics_observer);
+     (Startup.Metrics_Observer);
    package View renames Observatory_CCL;
    use type CCL.Catalog.Catalog_Error;
    use type CCL.Catalog.Grant_Result;

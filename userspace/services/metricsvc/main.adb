@@ -12,6 +12,8 @@ with Metric_Raw_Query;
 --  Metric_Store core: authenticates the immediate peer (kernel-stamped PID
 --  and tag), gates each operation, copies producer pages privately, and
 --  returns every grant acquisition before replying.
+with CuBit.Startup_State;
+with Startup;
 procedure Main is
    package Grants renames CuBit.Memory_Grants;
    package Records renames CuBit.Metric_Records;
@@ -46,7 +48,11 @@ procedure Main is
       Bytes in Records.Batch_Bytes (Records.Batch_Record_Count'First) ..
                Records.Batch_Bytes (Records.Batch_Record_Count'Last));
 begin
-   Ignore := registerDriver (Publisher_Service_Role);
+   if not CuBit.Startup_State.Ready (Startup.Verify) then
+      debugPrint ("metricsvc: startup capabilities missing" & ASCII.LF);
+      return;
+   end if;
+   Ignore := registerDriver (Publisher_Service_Role, Startup.Registration);
    if Ignore = Unsigned_64'Last then
       debugPrint ("metricsvc: registration failed" & ASCII.LF);
       return;
@@ -74,7 +80,7 @@ begin
          then
             Result := Invalid_Request;
             if Request.tag.length = Message_Words and then
-              Request.tag.flags = 0 and then Request.tag.reserved = 0
+              Request.tag.protocol = 0 and then Request.tag.reserved = 0
             then
                case Op is
                   when Publish_Batch =>
@@ -178,7 +184,7 @@ begin
             end if;
          end if;
          Response.tag := (label => Status'Enum_Rep (Result),
-                          length => Message_Words, flags => 0,
+                          length => Message_Words, protocol => 0, ipc => <>,
                           reserved => 0);
          Ignore := reply (From, Response);
       end if;

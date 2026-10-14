@@ -41,7 +41,7 @@ package Launch_Configuration with Pure, SPARK_Mode is
    Magic : constant Unsigned_64 := 16#4746_4354_4942_5543#;  --  "CUBITCFG"
    Word_Bytes   : constant := 8;
    Header_Words : constant := 3;
-   Maximum_Fields : constant := 12;
+   Maximum_Fields : constant := 24;
    Maximum_Words  : constant := Header_Words + Maximum_Fields;
 
    subtype Word_Count is Natural range 0 .. Maximum_Words;
@@ -80,16 +80,107 @@ package Launch_Configuration with Pure, SPARK_Mode is
       Virtio_Input      => 7,
       Virtio_GPU        => 8);
 
-   --  Kernel to devmgr: the boot image's size and the boot framebuffer's
-   --  physical pages (procmgr mints framebuffer authority over them).
+   --  devmgr's capability handles, placed by the kernel before it runs
+   --  (CAP-002): handle words in its own table, never names or slot
+   --  numbers. Self/Self_Process: its own endpoint and process.
+   --  Self_Grantable: an untagged endpoint to itself it may badge and pass
+   --  on (children's "ready" endpoints). The rest are the firmware/bus/
+   --  object roots everything devmgr hands out is narrowed from: spawn and
+   --  process control (CAP_PROCESS, all processes), PCI configuration
+   --  ports, its own registration, the device-vector authority, the I/O
+   --  port space, the legacy interrupt lines, every service role's
+   --  notification, real-time scheduling, and one device-memory root per
+   --  maximal run of device-mappable pages (largest first).
+   Maximum_Device_Roots : constant := 8;
+   subtype Device_Root_Count is Natural range 0 .. Maximum_Device_Roots;
+   subtype Device_Root_Index is Positive range 1 .. Maximum_Device_Roots;
+   type Root_Handles is array (Device_Root_Index) of Unsigned_64;
+
+   type Device_Manager_Handles is record
+      Self              : Unsigned_64 := 0;
+      Self_Process      : Unsigned_64 := 0;
+      Self_Grantable    : Unsigned_64 := 0;
+      Process_Root      : Unsigned_64 := 0;
+      PCI_Ports         : Unsigned_64 := 0;
+      Registration      : Unsigned_64 := 0;
+      Vector_Authority  : Unsigned_64 := 0;
+      IO_Ports          : Unsigned_64 := 0;
+      Legacy_Interrupts : Unsigned_64 := 0;
+      Notifications     : Unsigned_64 := 0;
+      Scheduling        : Unsigned_64 := 0;
+      Root_Count        : Device_Root_Count := 0;
+      Device_Roots      : Root_Handles := [others => 0];
+   end record;
+   Device_Manager_Handle_Fields : constant := 11;
+
+   --  A handle word: its generation (high half) is never zero.
+   function Is_Handle (Word : Unsigned_64) return Boolean is
+     (Shift_Right (Word, 32) /= 0);
+
+   --  Every named handle is one, and exactly the roots in use are.
+   function Handles_Well_Formed (H : Device_Manager_Handles) return Boolean is
+     (Is_Handle (H.Self) and then Is_Handle (H.Self_Process)
+      and then Is_Handle (H.Self_Grantable) and then Is_Handle (H.Process_Root)
+      and then Is_Handle (H.PCI_Ports) and then Is_Handle (H.Registration)
+      and then Is_Handle (H.Vector_Authority) and then Is_Handle (H.IO_Ports)
+      and then Is_Handle (H.Legacy_Interrupts) and then Is_Handle (H.Notifications)
+      and then Is_Handle (H.Scheduling)
+      and then (for all R in Device_Root_Index =>
+                  (if R <= H.Root_Count then Is_Handle (H.Device_Roots (R))
+                   else H.Device_Roots (R) = 0)));
+
+   --  Kernel to devmgr: the boot image's size, the boot framebuffer's
+   --  physical pages, and its handles.
    type Device_Manager_Configuration is record
       Boot_Image  : Byte_Count := 0;
       Framebuffer : Physical_Span;
+      Handles     : Device_Manager_Handles;
    end record;
+
+   --  procmgr's handles, installed by devmgr (its launcher) before it runs
+   --  (CAP-002): handle words in procmgr's table. procmgr launches every
+   --  other program and hands them narrowed copies of these: endpoints it
+   --  may badge (untagged, Grant) to the services devmgr started, its own
+   --  endpoint, the service-role notifications, process authority, the
+   --  boot framebuffer (zero when there is none).
+   type Process_Manager_Handles is record
+      Self             : Unsigned_64 := 0;
+      Self_Process     : Unsigned_64 := 0;
+      Self_Grantable   : Unsigned_64 := 0;
+      Process_Root     : Unsigned_64 := 0;
+      Registration     : Unsigned_64 := 0;
+      Notifications    : Unsigned_64 := 0;
+      Filesystem       : Unsigned_64 := 0;
+      Config           : Unsigned_64 := 0;
+      Netstack         : Unsigned_64 := 0;
+      Network_Policy   : Unsigned_64 := 0;
+      Mixer            : Unsigned_64 := 0;
+      Device_Manager   : Unsigned_64 := 0;
+      Ready            : Unsigned_64 := 0;
+      Framebuffer      : Unsigned_64 := 0;
+      --  devmgr's untagged endpoint with Grant: procmgr copies it, without
+      --  Grant, to programs that ask for "device-manager" (inspection).
+      Device_Inspection : Unsigned_64 := 0;
+   end record;
+   Process_Manager_Handle_Fields : constant := 15;
+
+   --  The handles every procmgr needs are handles; the others (mixer, the
+   --  framebuffer) are a handle or zero.
+   function Process_Handles_Well_Formed (H : Process_Manager_Handles) return Boolean is
+     (Is_Handle (H.Self) and then Is_Handle (H.Self_Process)
+      and then Is_Handle (H.Self_Grantable) and then Is_Handle (H.Process_Root)
+      and then Is_Handle (H.Registration) and then Is_Handle (H.Notifications)
+      and then Is_Handle (H.Filesystem) and then Is_Handle (H.Config)
+      and then Is_Handle (H.Netstack) and then Is_Handle (H.Network_Policy)
+      and then (H.Mixer = 0 or else Is_Handle (H.Mixer))
+      and then Is_Handle (H.Device_Manager) and then Is_Handle (H.Ready)
+      and then (H.Framebuffer = 0 or else Is_Handle (H.Framebuffer))
+      and then Is_Handle (H.Device_Inspection));
 
    --  devmgr to procmgr.
    type Process_Manager_Configuration is record
       Framebuffer : Physical_Span;
+      Handles     : Process_Manager_Handles;
    end record;
 
    --  devmgr to the filesystem and the RAM block driver: the size of the
@@ -128,8 +219,8 @@ package Launch_Configuration with Pure, SPARK_Mode is
 
    function Field_Count (Kind : Configuration_Kind) return Natural is
      (case Kind is
-         when Device_Manager    => 3,
-         when Process_Manager   => 2,
+         when Device_Manager    => 3 + Device_Manager_Handle_Fields + 1 + Maximum_Device_Roots,
+         when Process_Manager   => 2 + Process_Manager_Handle_Fields,
          when Boot_Image_Reader => 1,
          when NVMe_Controller | HDA_Controller => 2,
          when Virtio_Net | Virtio_Input => 1,
@@ -146,19 +237,57 @@ package Launch_Configuration with Pure, SPARK_Mode is
        and then Words (3) = Unsigned_64 (Field_Count (Kind)));
 
    --  Encoders: the header for the kind, then the fields in order.
+   --  The handles' words, in field order (Words (7 .. 26)).
+   function Handle_Words (H : Device_Manager_Handles) return Word_Array is
+     [H.Self, H.Self_Process, H.Self_Grantable, H.Process_Root, H.PCI_Ports,
+      H.Registration, H.Vector_Authority, H.IO_Ports, H.Legacy_Interrupts,
+      H.Notifications, H.Scheduling, Unsigned_64 (H.Root_Count),
+      H.Device_Roots (1), H.Device_Roots (2), H.Device_Roots (3),
+      H.Device_Roots (4), H.Device_Roots (5), H.Device_Roots (6),
+      H.Device_Roots (7), H.Device_Roots (8)]
+   with Post => Handle_Words'Result'First = 1
+                and then Handle_Words'Result'Length =
+                         Device_Manager_Handle_Fields + 1 + Maximum_Device_Roots;
+
+   --  Every named handle is one, the root count is in range, the roots in
+   --  use are handles and the rest are zero.
+   function Handles_Valid (W : Word_Array) return Boolean is
+     ((for all I in W'First .. W'First + (Device_Manager_Handle_Fields - 1) =>
+         Is_Handle (W (I)))
+      and then W (W'First + Device_Manager_Handle_Fields) <= Maximum_Device_Roots
+      and then (for all R in Device_Root_Index =>
+                  (if Unsigned_64 (R) <= W (W'First + Device_Manager_Handle_Fields)
+                   then Is_Handle (W (W'First + Device_Manager_Handle_Fields + R))
+                   else W (W'First + Device_Manager_Handle_Fields + R) = 0)))
+   with Pre => W'Length = Device_Manager_Handle_Fields + 1 + Maximum_Device_Roots
+               and then W'First = 7;
+
    function Encode (Value : Device_Manager_Configuration) return Encoded
    with Post => Encode'Result.Length = Header_Words + Field_Count (Device_Manager)
                 and then Header_Valid (Encode'Result.Words (1 .. Encode'Result.Length),
                                        Device_Manager)
                 and then Encode'Result.Words (4) = Value.Boot_Image
                 and then Encode'Result.Words (5) = Value.Framebuffer.First
-                and then Encode'Result.Words (6) = Value.Framebuffer.Bytes;
+                and then Encode'Result.Words (6) = Value.Framebuffer.Bytes
+                and then (for all I in 1 .. Device_Manager_Handle_Fields + 1 + Maximum_Device_Roots =>
+                            Encode'Result.Words (6 + I) = Handle_Words (Value.Handles) (I));
+   --  The handles' words, in field order (Words (6 .. 20)).
+   function Process_Handle_Words (H : Process_Manager_Handles) return Word_Array is
+     [H.Self, H.Self_Process, H.Self_Grantable, H.Process_Root, H.Registration,
+      H.Notifications, H.Filesystem, H.Config, H.Netstack, H.Network_Policy,
+      H.Mixer, H.Device_Manager, H.Ready, H.Framebuffer, H.Device_Inspection]
+   with Post => Process_Handle_Words'Result'First = 1
+                and then Process_Handle_Words'Result'Length = Process_Manager_Handle_Fields;
+
    function Encode (Value : Process_Manager_Configuration) return Encoded
    with Post => Encode'Result.Length = Header_Words + Field_Count (Process_Manager)
                 and then Header_Valid (Encode'Result.Words (1 .. Encode'Result.Length),
                                        Process_Manager)
                 and then Encode'Result.Words (4) = Value.Framebuffer.First
-                and then Encode'Result.Words (5) = Value.Framebuffer.Bytes;
+                and then Encode'Result.Words (5) = Value.Framebuffer.Bytes
+                and then (for all I in 1 .. Process_Manager_Handle_Fields =>
+                            Encode'Result.Words (5 + I) =
+                              Process_Handle_Words (Value.Handles) (I));
    function Encode (Value : Boot_Image_Configuration) return Encoded
    with Post => Encode'Result.Length = Header_Words + Field_Count (Boot_Image_Reader)
                 and then Header_Valid (Encode'Result.Words (1 .. Encode'Result.Length),
@@ -199,19 +328,33 @@ package Launch_Configuration with Pure, SPARK_Mode is
    with Post => Valid = (Header_Valid (Words, Device_Manager)
                          and then Words (4) in Byte_Count
                          and then Words (5) in Physical_Address
-                         and then Words (6) in Byte_Count)
+                         and then Words (6) in Byte_Count
+                         and then Handles_Valid (Words (7 .. 26)))
                 and then (if Valid then
                             Value.Boot_Image = Words (4)
                             and then Value.Framebuffer.First = Words (5)
-                            and then Value.Framebuffer.Bytes = Words (6));
+                            and then Value.Framebuffer.Bytes = Words (6)
+                            and then (for all I in 1 .. 20 =>
+                                        Handle_Words (Value.Handles) (I) = Words (6 + I)));
    procedure Decode
      (Words : Word_Array; Value : out Process_Manager_Configuration; Valid : out Boolean)
    with Post => Valid = (Header_Valid (Words, Process_Manager)
                          and then Words (4) in Physical_Address
-                         and then Words (5) in Byte_Count)
+                         and then Words (5) in Byte_Count
+                         and then Process_Handles_Well_Formed
+                           ((Self => Words (6), Self_Process => Words (7),
+                             Self_Grantable => Words (8), Process_Root => Words (9),
+                             Registration => Words (10), Notifications => Words (11),
+                             Filesystem => Words (12), Config => Words (13),
+                             Netstack => Words (14), Network_Policy => Words (15),
+                             Mixer => Words (16), Device_Manager => Words (17),
+                             Ready => Words (18), Framebuffer => Words (19),
+                             Device_Inspection => Words (20))))
                 and then (if Valid then
                             Value.Framebuffer.First = Words (4)
-                            and then Value.Framebuffer.Bytes = Words (5));
+                            and then Value.Framebuffer.Bytes = Words (5)
+                            and then (for all I in 1 .. Process_Manager_Handle_Fields =>
+                                        Process_Handle_Words (Value.Handles) (I) = Words (5 + I)));
    procedure Decode
      (Words : Word_Array; Value : out Boot_Image_Configuration; Valid : out Boolean)
    with Post => Valid = (Header_Valid (Words, Boot_Image_Reader)

@@ -1,4 +1,5 @@
 with Interfaces; use Interfaces;
+with UI_Desktop_Service;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Desktop_Protocol;
 with CuBit.Desktop_Messages;
@@ -23,7 +24,7 @@ procedure Desktop_Input_Batch (Passed : out Boolean) is
    function Send (Wire : DP.Wire_Message) return DP.Wire_Message is
       M : Message := CuBit.Desktop_Messages.From_Wire (Wire);
    begin
-      M.tag := capCall (CAP_SLOT_DESKTOP, M, CuBit.Messages.Wait_Forever);
+      M.tag := capCall (UI_Desktop_Service.Endpoint, M, CuBit.Messages.Wait_Forever);
       return CuBit.Desktop_Messages.To_Wire (M);
    end Send;
    procedure Check (Condition : Boolean; Name : String) is

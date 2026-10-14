@@ -1,7 +1,7 @@
 with Ada.Text_IO;
 with Interfaces; use Interfaces;
 with CuBit.Memory_Grants;
-with CuBit.Capability_Grants;
+with CuBit.Handles;
 with Intel_GPU_Buffer_Views;
 with Intel_GPU_Buffer_Handles;
 with Intel_GPU_Buffer_Reply;
@@ -16,6 +16,8 @@ procedure View_Retention_Tests is
        (16#2000000#, Intel_GPU_Buffer_Backing.CPU_Base, 4096, 16#2000000#));
    procedure Probe_Share is new V.Share_Completed (Backing);
    OK : Boolean;
+   --  The saved reply of the client's request (identity 42).
+   Client : constant CuBit.Handles.Reply := CuBit.Handles.Test_Reply (7);
 begin
    for Invalid in 1 .. 6 loop
       declare
@@ -29,8 +31,8 @@ begin
            (case Invalid is when 3 => 0, when 4 => 8192, when others => 4096);
       begin
          H.Register (Pool, 42, Backing, ID);
-         CuBit.Capability_Grants.Endpoint_Ready := Invalid /= 5;
-         V.Share (View, Pool, 42, ID, 7, 42, Offset, Bytes,
+         CuBit.Handles.Reply_Ready := Invalid /= 5;
+         V.Share (View, Pool, 42, ID, Client, 42, Offset, Bytes,
            Writable => Invalid = 6, Presentation => True);
          pragma Assert (G.Creates = Before and V.State (View) = V.Retired);
          pragma Assert (V.Wire_Reference (View) = 0);
@@ -40,7 +42,7 @@ begin
          V.Recycle (View, OK); pragma Assert (OK);
       end;
    end loop;
-   CuBit.Capability_Grants.Endpoint_Ready := True;
+   CuBit.Handles.Reply_Ready := True;
    for Scenario in 1 .. 6 loop
       declare
          Pool, Other : H.Registry;
@@ -52,10 +54,10 @@ begin
          H.Register (Other, 42, Backing, Other_ID);
          pragma Assert (ID = Other_ID);
          if Scenario = 3 then G.Create_OK := False; end if;
-         V.Share (A, Pool, 42, ID, 7, 42, 0, 4096, False, True);
+         V.Share (A, Pool, 42, ID, Client, 42, 0, 4096, False, True);
          pragma Assert (V.State (A) = (if Scenario = 3 then V.Failed else V.Shared));
          if Scenario = 1 then
-            V.Share (B, Pool, 42, ID, 7, 42, 0, 4096, False);
+            V.Share (B, Pool, 42, ID, Client, 42, 0, 4096, False);
             pragma Assert (V.State (B) = V.Shared);
          end if;
          H.Close_Session (Pool, 42);
@@ -98,7 +100,7 @@ begin
             V.Recycle (A, OK); pragma Assert (OK);
             H.Replace_Retired (Pool, 42, 43, ID, Backing, True, Replacement);
             pragma Assert (Replacement /= H.No_Handle);
-            V.Share (A, Pool, 43, Replacement, 7, 42, 0, 4096, True);
+            V.Share (A, Pool, 43, Replacement, Client, 42, 0, 4096, True);
             pragma Assert (V.State (A) = V.Shared);
             V.Retire (A, Pool); pragma Assert (V.State (A) = V.Retired);
          end if;
@@ -116,17 +118,17 @@ begin
          G.Create_OK := Scenario /= 6;
          G.Revoke_OK := Scenario /= 7;
          G.Gone := False;
-         CuBit.Capability_Grants.Endpoint_Ready := Scenario /= 5;
+         CuBit.Handles.Reply_Ready := Scenario /= 5;
          H.Register (Pool, 42, Backing, ID);
          H.Retain_Backing (Pool, 42, ID, Source, OK); pragma Assert (OK);
          H.Close_Session (Pool, 42);
          pragma Assert (not H.Resolve (Pool, 42, ID).Ready);
          if Scenario = 2 then
-            V.Share_Retained (Reader, Other, Source, 7, 42, 0, 4096);
+            V.Share_Retained (Reader, Other, Source, Client, 42, 0, 4096);
          elsif Scenario = 3 then
-            V.Share_Retained (Reader, Pool, Empty, 7, 42, 0, 4096);
+            V.Share_Retained (Reader, Pool, Empty, Client, 42, 0, 4096);
          else
-            V.Share_Retained (Reader, Pool, Source, 7, 42,
+            V.Share_Retained (Reader, Pool, Source, Client, 42,
               (if Scenario = 4 then 1 else 0), 4096);
          end if;
          pragma Assert (G.Forwardable_Creates = Forwards);
@@ -148,11 +150,11 @@ begin
             pragma Assert (OK = (Scenario = 1));
             pragma Assert (V.State (Reader) = (if Scenario = 1 then V.Retired else V.Failed));
          end if;
-         V.Share_Retained (Reader, Pool, Source, 7, 42, 0, 4096);
+         V.Share_Retained (Reader, Pool, Source, Client, 42, 0, 4096);
          pragma Assert (G.Creates = Before + (if Scenario in 1 | 6 .. 8 then 1 else 0));
       end;
    end loop;
-   CuBit.Capability_Grants.Endpoint_Ready := True;
+   CuBit.Handles.Reply_Ready := True;
    Ada.Text_IO.Put_Line ("Retained reader handoff PASS: closed producer, independent pin, read-only nonforwardable, rejection and uncertainty retention");
    -- Three independent consumers may drain in any order. A completion for
    -- one grant must not release another reader or permit backing reuse.
@@ -175,7 +177,7 @@ begin
                pragma Assert (OK);
                H.Close_Session (Pool, 42);
                for I in Readers'Range loop
-                  V.Share_Retained (Readers (I), Pool, Source, 7, 42, 0, 4096);
+                  V.Share_Retained (Readers (I), Pool, Source, Client, 42, 0, 4096);
                   Wires (I) := V.Wire_Reference (Readers (I));
                   pragma Assert (Wires (I) /= 0);
                end loop;
@@ -206,7 +208,7 @@ begin
    Ada.Text_IO.Put_Line ("Retained fanout PASS: all six drain orders, exact grant completion, no early backing release");
    declare Probe : V.View; begin
       G.Create_OK := True; G.Revoke_OK := True; G.Gone := True;
-      Probe_Share (Probe, 7, 42);
+      Probe_Share (Probe, Client, 42);
       pragma Assert (V.State (Probe) = V.Shared);
       V.Retire (Probe);
       pragma Assert (V.State (Probe) = V.Retired);

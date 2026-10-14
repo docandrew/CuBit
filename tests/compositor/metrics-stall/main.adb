@@ -1,6 +1,8 @@
 with Interfaces; use Interfaces;
 with System;
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Startup_State;
+with Startup;
 with CuBit.Memory_Grants;
 with CuBit.Metric_Records;
 with CuBit.Metric_Protocol;
@@ -23,7 +25,11 @@ procedure Main is
       Ignore := syscall (SYSCALL_EXIT, 1);
    end Fail;
 begin
-   Ignore := registerDriver (P.Publisher_Service_Role);
+   if not CuBit.Startup_State.Ready (Startup.Verify) then
+      debugPrint ("TEST: FAIL metrics-stall startup capabilities" & ASCII.LF);
+      return;
+   end if;
+   Ignore := registerDriver (P.Publisher_Service_Role, Startup.Registration);
    if Ignore = Unsigned_64'Last then Fail ("registration"); return; end if;
    loop
       receive (From, Request);
@@ -60,7 +66,8 @@ begin
       G.Return_Acquisition (Ref, Returned);
       if not Returned then Fail ("return"); return; end if;
       Response := NULL_MESSAGE;
-      Response.tag := (P.Status'Enum_Rep (P.OK), P.Message_Words, 0, 0);
+      Response.tag := (label => P.Status'Enum_Rep (P.OK), length => P.Message_Words,
+                       protocol => 0, ipc => <>, reserved => 0);
       Response.words := [Unsigned_64 (Header.Value.Records), 0, 0, 0];
       Ignore := reply (From, Response);
       if Batches > 2 and Header.Value.Producer_Dropped > 0 then

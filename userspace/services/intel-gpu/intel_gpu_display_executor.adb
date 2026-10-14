@@ -1,6 +1,9 @@
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.System_Facts;
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Handles.Startup;
+with Intel_GPU_Replies;
+with Startup;
 with CuBit.Desktop_Messages;
 with CuBit.Display_Protocol;
 with CuBit.Display_Planes;
@@ -156,16 +159,13 @@ package body Intel_GPU_Display_Executor is
    GPU_Status_Superseded : constant Unsigned_64 := 6;
    GPU_Status_OK : constant Unsigned_64 := 0;
    GPU_Error_Bad_State : constant Unsigned_64 := 3;
-   Present_Reply_Slot : CapabilitySlot := 0;
-   Present_Reply_Slot_Set : Boolean := False;
+   --  The owed Present's saved reply, answered when its flip latches
+   --  (CAP-002: a Reply handle, no slot to choose or collide; the NUC
+   --  freeze 2026-10-12 had slot 13 already holding the GT frequency page).
+   Present_Reply : Intel_GPU_Replies.Owed;
    Present_Reply_Owed : Boolean := False;
-   --  Presents answered before their flip latched (no reply slot held).
+   --  Presents answered before their flip latched (no reply could be kept).
    Unpaced_Presents : Natural := 0;
-   procedure Set_Present_Reply_Slot (Slot : CuBit.Messages.CapabilitySlot) is
-   begin
-      Present_Reply_Slot := Slot;
-      Present_Reply_Slot_Set := True;
-   end Set_Present_Reply_Slot;
    Scanout_Status : Flip.Takeover_Result := Flip.Not_Configured;
    Scanout_Arena_Pages : constant := 4_096;
 
@@ -264,10 +264,15 @@ package body Intel_GPU_Display_Executor is
 
    ---------------------------------------------------------------------------
    procedure Register_Service is
-      Result : constant Unsigned_64 := registerDriver (DRIVER_GPU);
+      Authority : constant CuBit.Handles.Startup.Optional_Notification :=
+        Startup.Registration;
+      Result : constant Unsigned_64 :=
+        (if Authority.Present then registerDriver (DRIVER_GPU, Authority.Value)
+         else Unsigned_64'Last);
    begin
       Log ("intel-gpu: GPU service registration " &
-           (if Result = Unsigned_64'Last then "REFUSED" else "accepted") &
+           (if not Authority.Present then "not granted (another GPU service)"
+            elsif Result = Unsigned_64'Last then "REFUSED" else "accepted") &
            " (display executor answers display.svc only)");
    end Register_Service;
 
@@ -460,16 +465,18 @@ package body Intel_GPU_Display_Executor is
       H : constant Unsigned_64 := Unsigned_64 (Flip.Height);
       procedure Answer (Code : Unsigned_64) is
       begin
-         Reply_Message.tag := (Request.tag.label, 1, 0, 0);
+         Reply_Message.tag := (label => Request.tag.label, length => 1,
+                               protocol => 0, ipc => <>, reserved => 0);
          Reply_Message.words := [Code, 0, 0, 0];
-         Delivered := reply (Sender, Reply_Message);
+         Delivered := Intel_GPU_Replies.Respond (Sender, Reply_Message);
       end Answer;
    begin
       if Request.tag.label = OP_GPU_Get_Status then
-         Reply_Message.tag := (OP_GPU_Get_Status, 4, 0, 0);
+         Reply_Message.tag := (label => OP_GPU_Get_Status, length => 4,
+                               protocol => 0, ipc => <>, reserved => 0);
          Reply_Message.words :=
            [GPU_Status_OK, (if Flip.Ready then 1 else 0), W, H];
-         Delivered := reply (Sender, Reply_Message);
+         Delivered := Intel_GPU_Replies.Respond (Sender, Reply_Message);
       elsif not Flip.Ready then
          Answer (GPU_Error_Unsupported);
       elsif Request.tag.label = OP_GPU_Map_Framebuffer then
@@ -488,11 +495,12 @@ package body Intel_GPU_Display_Executor is
                   readWrite => True, reference => Reference, success => Granted);
             end if;
             if Granted then
-               Reply_Message.tag := (OP_GPU_Map_Framebuffer, 4, 0, 0);
+               Reply_Message.tag := (label => OP_GPU_Map_Framebuffer, length => 4,
+                                     protocol => 0, ipc => <>, reserved => 0);
                Reply_Message.words :=
                  [Reference.slot, Reference.generation, W + H * Half_Word,
                   Unsigned_64 (Flip.Pitch)];
-               Delivered := reply (Sender, Reply_Message);
+               Delivered := Intel_GPU_Replies.Respond (Sender, Reply_Message);
             else
                Answer (GPU_Error_Bad_State);
             end if;
@@ -538,22 +546,20 @@ package body Intel_GPU_Display_Executor is
             end if;
             if Superseded and then Present_Reply_Owed then
                --  Mailbox: the replaced frame is answered now, never lost.
-               Reply_Message.tag := (OP_GPU_Present_Buffer, 1, 0, 0);
+               Reply_Message.tag := (label => OP_GPU_Present_Buffer, length => 1,
+                                     protocol => 0, ipc => <>, reserved => 0);
                Reply_Message.words := [GPU_Status_Superseded, 0, 0, 0];
-               Replied := replyCap (Present_Reply_Slot, Reply_Message);
+               Replied := Intel_GPU_Replies.Answer (Present_Reply, Reply_Message);
                Present_Reply_Owed := False;
             end if;
             --  Answered when the flip has latched (Service).
-            Present_Reply_Owed := Present_Reply_Slot_Set and then
-              saveReplyCap (Unsigned_64 (Present_Reply_Slot)) = 1;
+            Present_Reply_Owed := Intel_GPU_Replies.Keep (Present_Reply);
             if not Present_Reply_Owed then
                --  Unpaced: the reply precedes the latch. Logged on the first
                --  and every 1024th, never silent.
                if Unpaced_Presents mod 1024 = 0 then
-                  Log ("intel-gpu: present answered before latch (reply slot" &
-                       (if Present_Reply_Slot_Set then Unsigned_64'Image (Unsigned_64 (Present_Reply_Slot)) &
-                          " not free" else " unset") &
-                       ") count=" & Natural'Image (Unpaced_Presents + 1));
+                  Log ("intel-gpu: present answered before latch (reply not saved)" &
+                       " count=" & Natural'Image (Unpaced_Presents + 1));
                end if;
                if Unpaced_Presents < Natural'Last then Unpaced_Presents := Unpaced_Presents + 1; end if;
                Answer (GPU_Status_OK);
@@ -577,9 +583,10 @@ package body Intel_GPU_Display_Executor is
       Replied : Unsigned_64;
       pragma Unreferenced (Replied);
    begin
-      Reply_Message.tag := (OP_GPU_Present_Buffer, 1, 0, 0);
+      Reply_Message.tag := (label => OP_GPU_Present_Buffer, length => 1,
+                            protocol => 0, ipc => <>, reserved => 0);
       Reply_Message.words := [Code, 0, 0, 0];
-      Replied := replyCap (Present_Reply_Slot, Reply_Message);
+      Replied := Intel_GPU_Replies.Answer (Present_Reply, Reply_Message);
       Present_Reply_Owed := False;
    end Answer_Present;
 
@@ -666,7 +673,7 @@ package body Intel_GPU_Display_Executor is
             Result := Status (GP.Query, GP.Unsupported);
             Result.Label := Request.tag.label;
          end if;
-         Delivered := reply (Sender, CuBit.Desktop_Messages.From_Wire (Result));
+         Delivered := Intel_GPU_Replies.Respond (Sender, CuBit.Desktop_Messages.From_Wire (Result));
          return;
       end if;
       if Request.tag.label in Scanout_First .. Scanout_Last then
@@ -761,7 +768,7 @@ package body Intel_GPU_Display_Executor is
          Result := Status (GP.Query, GP.Unsupported);
          Result.Label := Request.tag.label;
       end if;
-      Delivered := reply (Sender, CuBit.Desktop_Messages.From_Wire (Result));
+      Delivered := Intel_GPU_Replies.Respond (Sender, CuBit.Desktop_Messages.From_Wire (Result));
    end Handle;
 
    Report_Interval_Ms : constant := 1_000;

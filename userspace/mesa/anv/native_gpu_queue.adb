@@ -7,6 +7,7 @@ with CuBit.Messages;
 with CuBit.Monotonic;
 with CuBit.Channel_Protocol;
 with Native_GPU_Calls;
+with CuBit.Handles;
 with Native_GPU_Job_Rules;
 
 package body Native_GPU_Queue is
@@ -22,7 +23,7 @@ package body Native_GPU_Queue is
    type Flag is new Boolean with Atomic;
    type Value_Array is array (GQ.Context_Index) of GQ.Timeline_Value with Atomic_Components;
 
-   type Slot_State is limited record
+   type Queue_State is limited record
       Session : Sessions.Session;
       --  A completion record or status line said the session failed (sticky).
       Failed  : Flag := False;
@@ -35,12 +36,42 @@ package body Native_GPU_Queue is
       Waiter  : Unsigned_8 := 0 with Volatile;
    end record;
 
-   --  No binder elaborates Mesa's Ada units (C imports them by name), so
-   --  this table must need no elaboration code: it starts zeroed, which is
-   --  every slot closed, and Open sets each field it uses before use.
-   type Slot_Table is array (CuBit.Messages.CapabilitySlot) of Slot_State;
-   pragma Suppress_Initialization (Slot_Table);
-   Slots : Slot_Table;
+   --  One queue per render endpoint this process opened (CAP-002: keyed by
+   --  the endpoint handle, not a slot number). No binder elaborates Mesa's
+   --  Ada units (C imports them by name), so this table must need no
+   --  elaboration code: it starts zeroed, which is every entry free (Key 0
+   --  names no handle) and closed, and Open sets each field it uses before
+   --  use. Key is written once per entry, by Open, which callers serialize;
+   --  it is atomic so concurrent observers read it whole.
+   Queue_Capacity : constant := 8;
+   subtype Queue_Index is Positive range 1 .. Queue_Capacity;
+   type Key_Word is new Unsigned_64 with Atomic;
+   type Queue_Keys is array (Queue_Index) of Key_Word;
+   type Queue_Table is array (Queue_Index) of Queue_State;
+   pragma Suppress_Initialization (Queue_Table);
+   pragma Suppress_Initialization (Queue_Keys);
+   Queues : Queue_Table;
+   Keys  : Queue_Keys;
+
+   function Present (Endpoint : C_Endpoint) return Boolean is
+     (CuBit.Handles.Valid (CuBit.Handles.C_ABI.To_Endpoint (Endpoint)));
+
+   function Key_Of (Endpoint : C_Endpoint) return Key_Word is
+     (Key_Word (Endpoint.Opaque));
+
+   --  The entry Endpoint's queue was opened in, or 0.
+   function Find (Endpoint : C_Endpoint) return Natural is
+   begin
+      if not Present (Endpoint) then
+         return 0;
+      end if;
+      for I in Queue_Index loop
+         if Keys (I) = Key_Of (Endpoint) then
+            return I;
+         end if;
+      end loop;
+      return 0;
+   end Find;
 
    function Exchange (Where : System.Address; Value : Unsigned_8; Order : Integer)
      return Unsigned_8
@@ -53,15 +84,13 @@ package body Native_GPU_Queue is
    Execute_Code : constant Unsigned_32 := GQ.Opcode'Enum_Rep (GQ.Execute);
    Signal_Code  : constant Unsigned_32 := GQ.Opcode'Enum_Rep (GQ.Signal);
 
-   function Valid_Slot (Slot : Unsigned_64) return Boolean is
-     (Slot <= Unsigned_64 (CuBit.Messages.CapabilitySlot'Last));
 
    function Valid_Context (C : Unsigned_32) return Boolean is
      (C <= Unsigned_32 (GQ.Context_Index'Last));
 
    --  Take every completion record waiting (at most a ring of them).
-   procedure Reap_All (State : in out Slot_State);
-   procedure Reap_All (State : in out Slot_State) is
+   procedure Reap_All (State : in out Queue_State);
+   procedure Reap_All (State : in out Queue_State) is
       Item : Clients.Q.Completion;
       Got : Boolean;
    begin
@@ -81,15 +110,28 @@ package body Native_GPU_Queue is
       end loop;
    end Reap_All;
 
-   function Open (Slot : Unsigned_64) return Queue_Status is
+   function Open (Endpoint : C_Endpoint) return Queue_Status is
       Opened : Boolean;
       Open_Deadline : Unsigned_64;
+      Index : Natural := Find (Endpoint);
    begin
-      if not Valid_Slot (Slot) then
+      if not Present (Endpoint) then
          return Invalid;
       end if;
+      if Index = 0 then
+         --  A free entry: never used, or its queue closed.
+         for I in Queue_Index loop
+            if Keys (I) = 0 or else not Sessions.Is_Open (Queues (I).Session) then
+               Index := I;
+               exit;
+            end if;
+         end loop;
+         if Index = 0 then
+            return Invalid;
+         end if;
+      end if;
       declare
-         State : Slot_State renames Slots (CuBit.Messages.CapabilitySlot (Slot));
+         State : Queue_State renames Queues (Index);
       begin
          if Sessions.Is_Open (State.Session) then
             return Invalid;
@@ -98,7 +140,8 @@ package body Native_GPU_Queue is
          --  GPU calls (Desktop): a driver that never answers costs the GPU
          --  path, never the process.
          Open_Deadline := Native_GPU_Calls.Call_Deadline;
-         Sessions.Open (State.Session, CuBit.Messages.CapabilitySlot (Slot), Open_Deadline, Opened);
+         Keys (Index) := Key_Of (Endpoint);
+         Sessions.Open (State.Session, CuBit.Handles.C_ABI.To_Endpoint (Endpoint), Open_Deadline, Opened);
          if not Opened then
             if Open_Deadline /= CuBit.Messages.Wait_Forever and then
               CuBit.Monotonic.Milliseconds >= Open_Deadline
@@ -119,10 +162,11 @@ package body Native_GPU_Queue is
       end;
    end Open;
 
-   procedure Close (Slot : Unsigned_64) is
+   procedure Close (Endpoint : C_Endpoint) is
+      Index : constant Natural := Find (Endpoint);
    begin
-      if Valid_Slot (Slot) then
-         Sessions.Close (Slots (CuBit.Messages.CapabilitySlot (Slot)).Session);
+      if Index /= 0 then
+         Sessions.Close (Queues (Index).Session);
       end if;
    end Close;
 
@@ -160,7 +204,7 @@ package body Native_GPU_Queue is
    end Decode;
 
    function Submit
-     (Slot : Unsigned_64; Item : access constant Job; Signal : access Unsigned_64)
+     (Endpoint : C_Endpoint; Item : access constant Job; Signal : access Unsigned_64)
       return Queue_Status
    is
       Decoded : Clients.Job;
@@ -172,11 +216,11 @@ package body Native_GPU_Queue is
       if Signal /= null then
          Signal.all := 0;
       end if;
-      if Item = null or else Signal = null or else not Valid_Slot (Slot) then
+      if Item = null or else Signal = null or else Find (Endpoint) = 0 then
          return Invalid;
       end if;
       declare
-         State : Slot_State renames Slots (CuBit.Messages.CapabilitySlot (Slot));
+         State : Queue_State renames Queues (Find (Endpoint));
       begin
          if not Sessions.Is_Open (State.Session) then
             return Closed;
@@ -205,20 +249,20 @@ package body Native_GPU_Queue is
    end Submit;
 
    function Observe
-     (Slot : Unsigned_64; Completed, Submitted : access Native_GPU_Timeline.Completed_Values)
+     (Endpoint : C_Endpoint; Completed, Submitted : access Native_GPU_Timeline.Completed_Values)
       return Queue_Status
    is
       Line : GQ.Status_Line;
       Read : Boolean;
       Healthy : Boolean := True;
    begin
-      if Completed = null or else Submitted = null or else not Valid_Slot (Slot) then
+      if Completed = null or else Submitted = null or else Find (Endpoint) = 0 then
          return Invalid;
       end if;
       Completed.all := [others => GQ.No_Wait];
       Submitted.all := [others => GQ.No_Wait];
       declare
-         State : Slot_State renames Slots (CuBit.Messages.CapabilitySlot (Slot));
+         State : Queue_State renames Queues (Find (Endpoint));
       begin
          if not Sessions.Is_Open (State.Session) then
             return Closed;
@@ -240,17 +284,17 @@ package body Native_GPU_Queue is
    end Observe;
 
    function Wait
-     (Slot : Unsigned_64; Context : Unsigned_32; Target, Remaining_Ns : Unsigned_64)
+     (Endpoint : C_Endpoint; Context : Unsigned_32; Target, Remaining_Ns : Unsigned_64)
       return Queue_Status
    is
       Result : Sessions.Wait_Result;
       Deadline : Unsigned_64;
    begin
-      if not Valid_Slot (Slot) or else not Valid_Context (Context) then
+      if Find (Endpoint) = 0 or else not Valid_Context (Context) then
          return Invalid;
       end if;
       declare
-         State : Slot_State renames Slots (CuBit.Messages.CapabilitySlot (Slot));
+         State : Queue_State renames Queues (Find (Endpoint));
       begin
          if not Sessions.Is_Open (State.Session) then
             return Closed;
@@ -282,32 +326,32 @@ package body Native_GPU_Queue is
       end;
    end Wait;
 
-   --  The slot whose session holds the armed wake (one per process).
-   No_Armed_Slot : constant Unsigned_64 := Unsigned_64'Last;
-   Armed_Slot : Unsigned_64 := No_Armed_Slot;
+   --  The entry whose session holds the armed wake (one per process).
+   No_Armed_Entry : constant Natural := 0;
+   Armed_Entry : Natural := No_Armed_Entry;
 
    function Arm_Idle_Wake (Token : Unsigned_64) return Wake_Arm is
       Open_Count : Natural := 0;
-      Found : CuBit.Messages.CapabilitySlot := 0;
+      Found : Queue_Index := Queue_Index'First;
       Line : GQ.Status_Line;
       Read, Accepted : Boolean;
       Completed : GQ.Timeline_Value;
       Render : constant GQ.Context_Index := 0;
    begin
-      if Armed_Slot /= No_Armed_Slot then
+      if Armed_Entry /= No_Armed_Entry then
          return Unavailable;
       end if;
-      for Slot in Slots'Range loop
-         if Sessions.Is_Open (Slots (Slot).Session) then
+      for Item in Queues'Range loop
+         if Sessions.Is_Open (Queues (Item).Session) then
             Open_Count := Open_Count + 1;
-            Found := Slot;
+            Found := Item;
          end if;
       end loop;
       if Open_Count /= 1 then
          return Unavailable;
       end if;
       declare
-         State : Slot_State renames Slots (Found);
+         State : Queue_State renames Queues (Found);
       begin
          if Boolean (State.Failed) then
             return Unavailable;
@@ -329,7 +373,7 @@ package body Native_GPU_Queue is
             Store (State.Waiter'Address, 0, Sequentially_Consistent);
             return Unavailable;
          end if;
-         Armed_Slot := Unsigned_64 (Found);
+         Armed_Entry := Found;
          return Armed;
       end;
    end Arm_Idle_Wake;
@@ -339,41 +383,41 @@ package body Native_GPU_Queue is
    function Boost_Hint return Unsigned_32 is
       Now : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
       Open_Count : Natural := 0;
-      Found : CuBit.Messages.CapabilitySlot := 0;
+      Found : Queue_Index := Queue_Index'First;
       Sent : Boolean;
    begin
       if Hinted and then Now >= Last_Hint_Ms and then Now - Last_Hint_Ms < Boost_Hint_Interval_Ms then
          return 0;
       end if;
-      for Slot in Slots'Range loop
-         if Sessions.Is_Open (Slots (Slot).Session) then
+      for Item in Queues'Range loop
+         if Sessions.Is_Open (Queues (Item).Session) then
             Open_Count := Open_Count + 1;
-            Found := Slot;
+            Found := Item;
          end if;
       end loop;
-      if Open_Count /= 1 or else Boolean (Slots (Found).Failed) then
+      if Open_Count /= 1 or else Boolean (Queues (Found).Failed) then
          return 0;
       end if;
-      Sessions.Hint_Boost (Slots (Found).Session, Sent);
+      Sessions.Hint_Boost (Queues (Found).Session, Sent);
       Last_Hint_Ms := Now; Hinted := True;
       return (if Sent then 1 else 0);
    end Boost_Hint;
 
    function Boost_Policy (On : Unsigned_32) return Unsigned_32 is
       Open_Count : Natural := 0;
-      Found : CuBit.Messages.CapabilitySlot := 0;
+      Found : Queue_Index := Queue_Index'First;
       Sent : Boolean;
    begin
-      for Slot in Slots'Range loop
-         if Sessions.Is_Open (Slots (Slot).Session) then
+      for Item in Queues'Range loop
+         if Sessions.Is_Open (Queues (Item).Session) then
             Open_Count := Open_Count + 1;
-            Found := Slot;
+            Found := Item;
          end if;
       end loop;
-      if Open_Count /= 1 or else Boolean (Slots (Found).Failed) then
+      if Open_Count /= 1 or else Boolean (Queues (Found).Failed) then
          return 0;
       end if;
-      Sessions.Set_Boost_Policy (Slots (Found).Session, On /= 0, Sent);
+      Sessions.Set_Boost_Policy (Queues (Found).Session, On /= 0, Sent);
       return (if Sent then 1 else 0);
    end Boost_Policy;
 
@@ -382,17 +426,17 @@ package body Native_GPU_Queue is
       Consumed : Boolean;
       Result : GQ.Wake_Result;
    begin
-      if Armed_Slot = No_Armed_Slot or else System."=" (Receipt, System.Null_Address) then
+      if Armed_Entry = No_Armed_Entry or else System."=" (Receipt, System.Null_Address) then
          return 0;
       end if;
       declare
-         State : Slot_State renames Slots (CuBit.Messages.CapabilitySlot (Armed_Slot));
+         State : Queue_State renames Queues (Armed_Entry);
       begin
          Sessions.Complete_Wake (State.Session, Item, Consumed, Result);
          if not Consumed then
             return 0;
          end if;
-         Armed_Slot := No_Armed_Slot;
+         Armed_Entry := No_Armed_Entry;
          Store (State.Waiter'Address, 0, Sequentially_Consistent);
          return 1;
       end;

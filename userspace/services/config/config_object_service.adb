@@ -25,7 +25,7 @@ package body Config_Object_Service is
    function Waiting (Object : State) return Boolean is (Receiver.Waiting (Object.Requests));
 
    procedure Attach
-     (Object : in out State; Endpoint : CuBit.Messages.CapabilitySlot;
+     (Object : in out State; Endpoint : CuBit.Handles.Endpoint;
       Session : Interfaces.Unsigned_64; Success : out Boolean) is
    begin
       Success := False;

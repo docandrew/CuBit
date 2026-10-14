@@ -1,12 +1,13 @@
 #pragma once
 #include <stdbool.h>
+#include "cubit_handles.h"
 #include <stdint.h>
 
 /* Mesa-side FFI bookkeeping only; no device policy or kernel authority.
  * Zero-initialize once, serialize access, never copy/reset a used standalone
  * record. The tracker may relocate its exclusively owned records under lock;
  * callers must not retain pointers into the tracker across operations.
- * Keep the endpoint slot stable for the entire lifetime. Retain failed records
+ * Keep the endpoint stable for the entire lifetime. Retain failed records
  * until session teardown: an uncertain transport outcome is not reclamation.
  */
 enum cubit_cpu_map_state {
@@ -15,7 +16,8 @@ enum cubit_cpu_map_state {
 };
 struct cubit_cpu_mapping {
    enum cubit_cpu_map_state state;
-   uint64_t slot, reference, address, bytes;
+   cubit_endpoint endpoint;
+   uint64_t reference, address, bytes;
    /* Stable lookup metadata, NOT permission to access retired memory. Retain
     * outside the ANV BO: internal teardown may discard the BO after unmap. */
    uint64_t lookup_address, bo_offset;
@@ -26,7 +28,7 @@ struct cubit_cpu_mapping {
  * call release while RETIRING, never retry open. No GPU/coherence promise.
  */
 uint32_t cubit_cpu_mapping_open(struct cubit_cpu_mapping *record,
-   uint64_t slot, uint32_t handle, uint64_t offset, uint64_t grant_bytes,
+   cubit_endpoint endpoint, uint32_t handle, uint64_t offset, uint64_t grant_bytes,
    uint32_t writable);
 /* Success0 only after grant retirement; 4=pending, 5=failure. A successful
  * borrow return occurs once even across multiple polls. Unsupported placed
@@ -34,7 +36,7 @@ uint32_t cubit_cpu_mapping_open(struct cubit_cpu_mapping *record,
 uint32_t cubit_cpu_mapping_release(struct cubit_cpu_mapping *record, bool replace);
 
 /* Initial retained-entry tracker: device-owned, never a pointer into an ANV BO.
- * Zero-initialize once and serialize externally. Caller keeps slot immutable.
+ * Zero-initialize once and serialize externally. Caller keeps endpoint immutable.
  * lost is sticky: the ANV adapter must report device loss and stop allocation/
  * submission when it becomes true, including on pending internal unmap. Poll
  * can finish cleanup but does not make that device usable again.
@@ -48,7 +50,7 @@ uint32_t cubit_cpu_mapping_release(struct cubit_cpu_mapping *record, bool replac
 #define CUBIT_CPU_MAPPING_CAPACITY 64
 #define CUBIT_CPU_DRAIN_QUANTUM 64
 struct cubit_cpu_mapping_tracker {
-   uint64_t slot;
+   cubit_endpoint endpoint;
    uint32_t used;
    bool lost;
    struct cubit_cpu_mapping records[CUBIT_CPU_MAPPING_CAPACITY];

@@ -6,6 +6,7 @@ with CuBit.Messages; use CuBit.Messages;
 with CuBit.Filesystems; use CuBit.Filesystems;
 with CuBit.Directory_Pages;
 with CuBit.Memory_Grants;
+with CCL_Native_Bindings;
 
 package body CCL_Workspace is
    use CCL_Workspace_Names;
@@ -45,7 +46,7 @@ package body CCL_Workspace is
 
    function Call (Request : in out Message) return Storage_Result is
    begin
-      Request.tag := capCall (CAP_SLOT_FS, Request, CuBit.Messages.Wait_Forever);
+      Request.tag := capCall (CCL_Native_Bindings.Filesystem, Request, CuBit.Messages.Wait_Forever);
       return Outcome (Request.tag.label);
    end Call;
 
@@ -75,7 +76,7 @@ package body CCL_Workspace is
            not Unsigned_64 (DIRECTORY_PAGE_BYTES - 1);
       end if;
       CuBit.Memory_Grants.Create_Via_Capability
-        (CAP_SLOT_FS, To_Address (Integer_Address (Buffer_Address)), 1,
+        (CCL_Native_Bindings.Filesystem, To_Address (Integer_Address (Buffer_Address)), 1,
          True, Loan, Ready);
       return Ready;
    end Initialize;

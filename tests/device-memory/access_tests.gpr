@@ -1,7 +1,7 @@
 project Access_Tests is
    for Source_Dirs use (".", "fixture", "../../kernel/src",
      "../../shared/publications", "../../shared/time");
-   for Source_Files use ("access_checks.adb", "config.ads", "capabilities.ads",
+   for Source_Files use ("access_checks.adb", "capabilities.ads",
      "device_memory_admission.ads", "device_memory_publication.ads",
      "clock_publication.ads", "clock_publication.adb", "physical_ranges.ads", "physical_ranges.adb",
      "device_memory_authority.ads", "device_memory_authority.adb");

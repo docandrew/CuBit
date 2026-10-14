@@ -114,16 +114,51 @@ fn futex_wake_raw(word: *const AtomicU32, count: u64) -> u64 {
 // Both symbols are weak defaults: a Rust library linked into a program with
 // its own entry (the Ada-hosted Turso probe and Config storage worker) keeps
 // that entry, and has no Rust `main` for motor_start to name.
+//
+// The kernel passes the launch block's length in RDI (its startup table,
+// CAP-002). Like the C start code (userspace/c/crt0.S), keep the whole
+// length in __cubit_launch_block_length and the payload's (the block less
+// a CuBit.Launch_Envelopes trailer and table) in
+// __cubit_launch_arguments_length, for Ada units linked into the program
+// and for cubit::startup. Weak: a program with its own entry defines them.
 global_asm!(
     ".weak _start",
     "_start:",
     "    and rsp, -16",
     "    xor ebp, ebp",
+    "    mov [rip + __cubit_launch_block_length], rdi",
+    "    mov rax, rdi",
+    "    cmp rdi, 16",
+    "    jb 2f",
+    "    movabs rcx, 0x00005A0000000000",
+    "    add rcx, rdi",
+    "    movabs rdx, 0x31424C5449425543",
+    "    cmp rdx, [rcx - 8]",
+    "    jne 2f",
+    "    mov rdx, [rcx - 16]",
+    "    cmp rdx, 3216",
+    "    ja 2f",
+    "    add rdx, 7",
+    "    and rdx, -8",
+    "    add rdx, 16",
+    "    cmp rdx, rdi",
+    "    ja 2f",
+    "    mov rax, rdi",
+    "    sub rax, rdx",
+    "2:",
+    "    mov [rip + __cubit_launch_arguments_length], rax",
     "    call motor_start",
     "    ud2",
     ".weak main",
     "main:",
     "    ud2",
+    ".pushsection .bss.cubit_launch,\"aw\",@nobits",
+    ".balign 8",
+    ".weak __cubit_launch_block_length",
+    "__cubit_launch_block_length: .quad 0",
+    ".weak __cubit_launch_arguments_length",
+    "__cubit_launch_arguments_length: .quad 0",
+    ".popsection",
 );
 
 // --- a futex mutex for the runtime's own state ------------------------------

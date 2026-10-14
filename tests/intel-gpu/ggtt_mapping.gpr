@@ -1,7 +1,15 @@
 project GGTT_Mapping is
-   for Source_Dirs use (".", "ggtt-fixture", "../../userspace/services/intel-gpu");
-   for Source_Files use ("ggtt_mapping_tests.adb", "cubit.ads", "cubit-messages.ads",
-     "cubit-messages.adb", "intel_gpu_ggtt_mapping.ads", "intel_gpu_ggtt_mapping.adb",
+   for Source_Dirs use (".", "ggtt-fixture", "../../userspace/services/intel-gpu",
+     "../../userspace/runtime/gnat", "../support/handles", "../../shared/capabilities");
+   for Source_Files use ("ggtt_mapping_tests.adb", "cubit.ads",
+     "fixture_messages.ads", "fixture_messages.adb",
+     "fixture_supervisor.ads", "fixture_supervisor.adb",
+     "fixture_devices.ads", "fixture_devices.adb",
+     "cubit-handles.ads", "cubit-handles-fixture.ads", "cubit-handles-fixture.adb",
+     "capability_abi.ads", "capability_abi.adb",
+     "cubit-log_records.ads", "cubit-log_records.adb", "cubit-protocols.ads",
+     "intel_gpu_map_report.ads", "intel_gpu_map_report.adb",
+     "intel_gpu_ggtt_mapping.ads", "intel_gpu_ggtt_mapping.adb",
      "intel_gpu_ggtt_access.ads", "intel_gpu_ggtt_access.adb",
      "intel_gpu_pci_power.ads", "intel_gpu_pci_power.adb",
      "intel_gpu_ggtt.ads", "intel_gpu_ggtt.adb",
@@ -10,6 +18,14 @@ project GGTT_Mapping is
      "intel_gpu_resources.ads", "intel_gpu_resources.adb");
    for Object_Dir use "build-ggtt-mapping";
    for Main use ("ggtt_mapping_tests.adb");
+   package Naming is
+      for Spec ("CuBit.Messages") use "fixture_messages.ads";
+      for Body ("CuBit.Messages") use "fixture_messages.adb";
+      for Spec ("Intel_GPU_Supervisor") use "fixture_supervisor.ads";
+      for Body ("Intel_GPU_Supervisor") use "fixture_supervisor.adb";
+      for Spec ("CuBit.Handles.Devices") use "fixture_devices.ads";
+      for Body ("CuBit.Handles.Devices") use "fixture_devices.adb";
+   end Naming;
    package Compiler is
       for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
    end Compiler;

@@ -5,6 +5,7 @@ with CuBit.Filesystem_Queues;
 with CuBit.Directory_Pages;
 with CuBit.Channel_Protocol;
 with CuBit.Channels;
+with CCL_Native_Bindings;
 
 --  Places through the filesystem's request queue (docs/filesystem-data-
 --  plane.md): one queue and arena lent once, then a listing is a handful of
@@ -55,12 +56,12 @@ package body CCL_Places is
       if Refused then return False; end if;
       Refused := True;
       CuBit.Channels.Open
-        (CAP_SLOT_FS, (FQ.TRANSFER_CONTRACT with delta Buffers => ARENA_PAGES),
+        (CCL_Native_Bindings.Filesystem, (FQ.TRANSFER_CONTRACT with delta Buffers => ARENA_PAGES),
          CuBit.Channels.Producing, Transfer_Link, Result, Ignore_Refusal,
          Connector => FQ.Transfer_Connector);
       if Result /= CuBit.Channels.Opened then return False; end if;
       CuBit.Channels.Open
-        (CAP_SLOT_FS, FQ.QUEUE_CONTRACT, CuBit.Channels.Producing, Queue_Link, Result,
+        (CCL_Native_Bindings.Filesystem, FQ.QUEUE_CONTRACT, CuBit.Channels.Producing, Queue_Link, Result,
          Ignore_Refusal, Connector => FQ.Queue_Connector);
       if Result /= CuBit.Channels.Opened then
          CuBit.Channels.Close (Transfer_Link);
@@ -114,8 +115,8 @@ package body CCL_Places is
          exit when Client.Answers.Available > 0;
          if Look > ANSWER_SPINS then
             --  Block until an answer waits (the wake is answered then).
-            Waiting.tag := (label => FQ.OP_FS_WAKE, length => 0, flags => 0, reserved => 0);
-            Tag := capCall (CAP_SLOT_FS, Waiting, CuBit.Messages.Wait_Forever);
+            Waiting.tag := (label => FQ.OP_FS_WAKE, length => 0, protocol => 0, ipc => <>, reserved => 0);
+            Tag := capCall (CCL_Native_Bindings.Filesystem, Waiting, CuBit.Messages.Wait_Forever);
          end if;
       end loop;
       Q.Reap (Client, Answers, Result, Accepted);

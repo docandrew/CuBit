@@ -7,6 +7,7 @@
  */
 #pragma once
 #include "anv_cubit_physical.h"
+#include "anv/cubit_handles.h"
 #include "anv_cubit_memory.h"
 #include "native_gpu_buffers.h"
 #include <limits.h>
@@ -25,12 +26,12 @@ struct cubit_mesa_launch_session {
  * share its persistent accounting record, not reset it for each new device.
  */
 static inline bool
-cubit_mesa_launch_start(struct cubit_mesa_launch_session *p, uint64_t slot)
+cubit_mesa_launch_start(struct cubit_mesa_launch_session *p, cubit_endpoint endpoint)
 {
-   if (!p || slot > 63 || p->started)
+   if (!p || !cubit_endpoint_present(endpoint) || p->started)
       return false;
    p->started = true;
-   p->endpoint.slot = slot;
+   p->endpoint.endpoint = endpoint;
    return true;
 }
 
@@ -90,7 +91,7 @@ cubit_mesa_launch_open(void *context, struct anv_device *device)
    /* Consume the attempt before calling Mesa, even if attachment fails. */
    p->session_claimed = true;
    struct anv_cubit_endpoint_pin pin = {p, cubit_mesa_launch_retired};
-   VkResult result = anv_cubit_attach_owned_session(device, p->endpoint.slot, &pin);
+   VkResult result = anv_cubit_attach_owned_session(device, p->endpoint.endpoint, &pin);
    p->session_transferred = pin.retired == NULL;
    return result;
 }
@@ -116,7 +117,7 @@ enum cubit_mesa_retirement {
  * this is not an asynchronous IPC or hard-latency guarantee. Call after device
  * and instance destruction, with all external image consumers retired.
  * Pending/unsafe require retaining owner storage and the endpoint capability.
- * Retired does not grant authority to recycle a slot or reclaim GPU backing.
+ * Retired does not grant authority to recycle a endpoint or reclaim GPU backing.
  */
 static inline enum cubit_mesa_retirement
 cubit_mesa_launch_finish(struct cubit_mesa_launch_session *p)
@@ -144,12 +145,12 @@ cubit_mesa_launch_finish(struct cubit_mesa_launch_session *p)
    if (!p->close_attempted) {
       p->close_attempted = true;
       uint64_t tag = 0;
-      if (cubit_intel_close_session(p->endpoint.slot, &tag) != 0 || !tag) {
+      if (cubit_intel_close_session(p->endpoint.endpoint, &tag) != 0 || !tag) {
          p->finish_unsafe = true;
          return CUBIT_MESA_RETIRE_UNSAFE;
       }
    }
-   const uint32_t result = cubit_intel_poll_session_retirement(p->endpoint.slot);
+   const uint32_t result = cubit_intel_poll_session_retirement(p->endpoint.endpoint);
    if (result == 4)
       return CUBIT_MESA_RETIRE_PENDING;
    if (result == 0) {

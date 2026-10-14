@@ -8,7 +8,7 @@ with Config_Worker_Storage;
 with Config_Worker_Receiver;
 
 procedure Native_Receiver_Check
-  (Database : System.Address; Owner_Endpoint : CuBit.Messages.CapabilitySlot;
+  (Database : System.Address; Owner_Endpoint : CuBit.Handles.Endpoint;
    Expected_Source, Sender : CuBit.Messages.Process_ID;
    Request : CuBit.Messages.Message;
    Reply : out CuBit.Messages.Message)

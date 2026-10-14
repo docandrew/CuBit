@@ -34,7 +34,7 @@ begin
    pragma Assert (Submissions = 1);
    Reply.token := 77; Reply.msg.words := [1, 2, 3, 4]; Inject (Reply);
    pragma Assert (D.Poll_Driver (R'Address) = 1 and R = Reply);
-   Reply := (16#49470001#, COMPLETION_OK, ((16#F000#, 0, 0, 0), [0, 0, 0, 0]));
+   Reply := (16#49470001#, COMPLETION_OK, ((label => 16#F000#, length => 0, protocol => 0, ipc => <>, reserved => 0), [0, 0, 0, 0]));
    Inject (Reply);
    Reply.token := 88; Inject (Reply);
    pragma Assert (D.Poll_Driver (R'Address) = 1 and R = Reply);
@@ -55,7 +55,7 @@ begin
    pragma Assert (CuBit.Logging.Last_Value.Text (1 .. 37) = "intel-gpu: diagnostic capture overflo");
    --  Publications never complete on the queue: a reply with the old publish
    --  token is just another completion, returned to the caller.
-   Reply := (16#49470002#, COMPLETION_OK, ((16#F000#, 4, 0, 0), [0, 0, 0, 0]));
+   Reply := (16#49470002#, COMPLETION_OK, ((label => 16#F000#, length => 4, protocol => 0, ipc => <>, reserved => 0), [0, 0, 0, 0]));
    Inject (Reply);
    pragma Assert (D.Poll_Driver (R'Address) = 1 and R = Reply);
    Ada.Text_IO.Put_Line ("diagnostics PASS: nonblocking capture, interleaved routing, batched ring publication, overflow summary (fixture)");

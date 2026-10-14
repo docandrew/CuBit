@@ -2,7 +2,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 mkdir -p tests/observatory-metrics/build/source
-for unit in cubit.ads cubit-metric_records.ads cubit-metric_records.adb cubit-metric_protocol.ads; do
+for unit in cubit.ads cubit-handles.ads cubit-metric_records.ads cubit-metric_records.adb cubit-metric_protocol.ads; do
  cp "userspace/runtime/gnat/$unit" tests/observatory-metrics/build/source/
 done
 cd kernel

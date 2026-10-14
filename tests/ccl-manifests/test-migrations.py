@@ -114,6 +114,21 @@ with tempfile.TemporaryDirectory(prefix='ccl-migrations.') as temporary:
             expected['.cubit.description'] = (b'PDSC' + struct.pack('<HBBBBH', 1, 0, 0, 1, 0, 0) +
                                               bytes([2, 1, 1, 4, len(name)]) + name)
             print(f'OUTLET UPDATE {entry["directory"]}: stdout stream -> {name.decode()}', flush=True)
+        # CAP-002: capabilities are named in the startup table, which
+        # tests/ccl-manifests/test-manifests.py checks; slot fields became
+        # reserved zero, and many manifests gained or changed requests
+        # (registration notifications, optional services). The recorded
+        # .cubit.caps/.cubit.resources predate that: check the reserved
+        # fields and the entry counts' headers, compare the rest exactly.
+        actual.pop('.cubit.startup', None)
+        for section, first, size in (('.cubit.caps', 8, 16), ('.cubit.resources', 24, 24)):
+            if section in actual:
+                data = actual[section]
+                assert (len(data) - first) % size == 0, (entry, section)
+                for base in range(first, len(data), size):
+                    assert data[base + 2:base + 4] == bytes(2), (entry, section, 'slot field not reserved zero')
+            expected.pop(section, None)
+            actual.pop(section, None)
         assert expected.keys() == actual.keys(), (entry, expected.keys(), actual.keys())
         for section in expected:
             assert expected[section] == actual[section], (entry, section, expected[section].hex(), actual[section].hex())

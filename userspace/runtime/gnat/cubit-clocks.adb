@@ -1,12 +1,12 @@
 with CuBit.Messages; use CuBit.Messages;
 package body CuBit.Clocks is
-   procedure Read (Value : out Snapshot; Success : out Boolean) is
+   procedure Read (Service : CuBit.Handles.Endpoint; Value : out Snapshot; Success : out Boolean) is
       Msg : Message := NULL_MESSAGE;
       Y, M, D, H, N, S : Unsigned_64;
    begin
       Value := (others => <>);
       Msg.tag.label := Snapshot_Operation;
-      Msg.tag := capCall (Endpoint_Slot, Msg, CuBit.Messages.Wait_Forever);
+      Msg.tag := capCall (Service, Msg, CuBit.Messages.Wait_Forever);
       Y := Shift_Right (Msg.words (1), 40);
       M := Shift_Right (Msg.words (1), 32) and 255;
       D := Shift_Right (Msg.words (1), 24) and 255;
@@ -14,7 +14,7 @@ package body CuBit.Clocks is
       N := Shift_Right (Msg.words (1), 8) and 255;
       S := Msg.words (1) and 255;
       Success := Msg.tag.label = 16#F000# and then Msg.tag.length = 4
-        and then Msg.tag.flags = 0 and then Msg.tag.reserved = 0
+        and then Msg.tag.protocol = 0 and then Msg.tag.reserved = 0
         and then Msg.words (2) <= 172_800
         and then Msg.words (3) <= Time_Quality'Enum_Rep (Time_Quality'Last)
         and then Y in 1970 .. 2399 and then M in 1 .. 12

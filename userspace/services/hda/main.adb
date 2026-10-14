@@ -18,7 +18,8 @@ with CuBit.Messages; use CuBit.Messages;
 with CuBit.Memory_Grants; use CuBit.Memory_Grants;
 with HDA;
 with CuBit.Audio_Periods;
-with CCL_Manifest_Bindings;
+with CuBit.Startup_State;
+with Startup;
 
 procedure main is
    use ASCII;
@@ -35,7 +36,6 @@ procedure main is
    REPLY_ERR          : constant Unsigned_32 := 16#F001#;
 
    --  Capability slots (assigned by devmgr)
-   CAP_SLOT_MIXER : constant Unsigned_64 := 7;
 
    msg  : Message;
    from : Process_ID;
@@ -53,10 +53,11 @@ procedure main is
                         w3    : Unsigned_64 := 0) is
       ignore : Unsigned_64;
    begin
-      ignore := replyCap (CapabilitySlot'Last,
+      --  The request just received from from (its current reply).
+      ignore := reply (from,
          (tag => (label  => label,
                   length => 4,
-                  flags  => 0,
+                  protocol  => 0, ipc => <>,
                   reserved  => 0),
           authorityTag => 0,
           words => (0 => w0, 1 => w1, 2 => w2, 3 => w3)));
@@ -64,6 +65,10 @@ procedure main is
 
 begin
    debugPrint ("hda: starting" & ASCII.LF);
+   if not CuBit.Startup_State.Ready (Startup.Verify) then
+      debugPrint ("hda: startup capabilities missing" & ASCII.LF);
+      return;
+   end if;
 
    --  Initialize HDA controller
    HDA.initController;
@@ -77,13 +82,12 @@ begin
       debugPrint ("hda: no usable output, exiting" & ASCII.LF);
       --  Failed setup must not be advertised to the mixer as usable audio.
       declare
-         CAP_SLOT_READY  : constant Unsigned_64 := CCL_Manifest_Bindings.Slot_ready;
          OP_NOT_PRESENT  : constant Unsigned_32 := 16#FF01#;
          rdyIgnore : MessageTag;
       begin
-         rdyIgnore := capSend (CAP_SLOT_READY,
+         rdyIgnore := capSend (Startup.Ready,
             (tag      => (label => OP_NOT_PRESENT, length => 0,
-                          flags => 0, reserved => 0),
+                          protocol => 0, ipc => <>, reserved => 0),
              authorityTag => 0,
              words    => (others => 0)), CuBit.Messages.Wait_Forever);
       end;
@@ -92,17 +96,16 @@ begin
    end if;
 
    --  Register as HDA driver
-   ret := registerDriver (DRIVER_HDA);
+   ret := registerDriver (DRIVER_HDA, Startup.Registration);
 
    --  Signal devmgr that we are ready
    declare
-      CAP_SLOT_READY  : constant Unsigned_64 := CCL_Manifest_Bindings.Slot_ready;
       OP_READY       : constant Unsigned_32 := 16#FF00#;
       ignore : MessageTag;
    begin
-      ignore := capSend (CAP_SLOT_READY,
+      ignore := capSend (Startup.Ready,
          (tag      => (label => OP_READY, length => 0,
-                       flags => 0, reserved => 0),
+                       protocol => 0, ipc => <>, reserved => 0),
           authorityTag => 0,
           words    => (others => 0)), CuBit.Messages.Wait_Forever);
    end;
@@ -134,7 +137,7 @@ begin
                   periodMsg :=
                     (tag => (label  => OP_AUDIO_HW_PERIOD,
                              length => 4,
-                             flags  => 0,
+                             protocol  => 0, ipc => <>,
                              reserved  => 0),
                      authorityTag => 0,
                      words =>
@@ -143,7 +146,7 @@ begin
                         2 => Unsigned_64 (position),
                         3 => CuBit.Benchmark_Clock.Read_Counter));
                   submitted := capSubmit
-                    (CAP_SLOT_MIXER, periodMsg, NO_COMPLETION_TOKEN);
+                    (Startup.Mixer, periodMsg, NO_COMPLETION_TOKEN);
                   if not submitted then
                      debugPrint ("hda: mixer period notification dropped" & LF);
                   end if;
@@ -156,7 +159,7 @@ begin
          when OP_AUDIO_HW_INIT =>
             if not buffersGranted then
                Create_Via_Capability
-                 (slot      => CAP_SLOT_MIXER,
+                 (slot      => Startup.Mixer,
                   localAddr => To_Address
                     (Integer_Address
                        (HDA.DMA_VIRT_BASE + HDA.DMA_PCMBUF_OFF)),

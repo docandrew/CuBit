@@ -77,11 +77,15 @@ for unit in "$here/../runtime/gnat/cubit-channel_rings.adb" "$here/../runtime/gn
     "$here/../allocator/src/heap_classes.adb" "$here/../allocator/src/heap_bitmap.adb" \
     "$here/../allocator/src/heap_extents.adb" "$here/../allocator/src/heap_slab_instance.ads" \
     "$here/../allocator/process/cualloc_native.adb" "$here/ada/cubit-libc_memory.adb" \
-    "$here/ada/cubit-libc_child_outlets.adb"; do
+    "$here/ada/cubit-libc_child_outlets.adb" \
+    "$here/../runtime/gnat/cubit-startup_tables.adb" "$here/../runtime/gnat/cubit-launch_envelopes.adb" \
+    "$here/../../shared/capabilities/capability_abi.adb" \
+    "$here/ada/cubit-libc_startup.adb"; do
     (cd "$ada_obj" && "$gnat_gcc" -c -O2 -g -gnatp -gnatn -fno-pic -ffunction-sections \
         -gnat2022 -gnatwa -gnatys -gnatec="$here/libc-ada.adc" \
         -I"$here/ada" -I"$here/../runtime/gnat" -I"$here/../../shared/time" \
         -I"$here/../../shared/publications" -I"$here/../../shared/launch" \
+        -I"$here/../../shared/capabilities" \
         -I"$here/../allocator/src" -I"$here/../allocator/process" "$unit")
 done
 ar rcs "$sysroot/lib/libc.a" "$ada_obj"/*.o

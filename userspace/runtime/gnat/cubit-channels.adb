@@ -247,11 +247,11 @@ package body CuBit.Channels is
    --  The opener's side, before the request goes out: its own region and
    --  grant, and the request.
    procedure Prepare_Open
-     (Endpoint : CuBit.Messages.CapabilitySlot; Item : CC.Contract; This_Side : Side;
+     (Endpoint : CuBit.Handles.Endpoint; Item : CC.Contract; This_Side : Side;
       Connector : Unsigned_16; C : out Channel; M : out CuBit.Messages.Message;
       Prepared : out Boolean);
    procedure Prepare_Open
-     (Endpoint : CuBit.Messages.CapabilitySlot; Item : CC.Contract; This_Side : Side;
+     (Endpoint : CuBit.Handles.Endpoint; Item : CC.Contract; This_Side : Side;
       Connector : Unsigned_16; C : out Channel; M : out CuBit.Messages.Message;
       Prepared : out Boolean)
    is
@@ -278,7 +278,7 @@ package body CuBit.Channels is
          return;
       end if;
       --  The connector rides in the tag's unauthenticated field.
-      M.tag := (label => Label_For (This_Side), length => CP.Open_Words, flags => 0,
+      M.tag := (label => Label_For (This_Side), length => CP.Open_Words, protocol => 0, ipc => <>,
                 reserved => Connector);
       M.words := [Words (0), Words (1), Words (2),
                   (if C.Has_Own then GR.Encode (C.Own_Grant) else 0)];
@@ -340,7 +340,7 @@ package body CuBit.Channels is
    end Finish_Open;
 
    procedure Open
-     (Endpoint : CuBit.Messages.CapabilitySlot; Item : CC.Contract; This_Side : Side;
+     (Endpoint : CuBit.Handles.Endpoint; Item : CC.Contract; This_Side : Side;
       C : out Channel; Result : out Open_Result; Refusal : out CP.Open_Refusal;
       Connector : Unsigned_16 := 0;
       Deadline : Unsigned_64 := CuBit.Messages.Wait_Forever)
@@ -361,7 +361,7 @@ package body CuBit.Channels is
    end Open;
 
    procedure Begin_Open
-     (Endpoint : CuBit.Messages.CapabilitySlot; Item : CC.Contract; This_Side : Side;
+     (Endpoint : CuBit.Handles.Endpoint; Item : CC.Contract; This_Side : Side;
       Token : Unsigned_64; C : out Channel; Submitted : out Boolean;
       Connector : Unsigned_16 := 0)
    is
@@ -397,7 +397,7 @@ package body CuBit.Channels is
    function Refusal_Reply (Why : CP.Open_Refusal) return CuBit.Messages.Message is
       M : CuBit.Messages.Message := CuBit.Messages.NULL_MESSAGE;
    begin
-      M.tag := (label => KA.Reply_Error, length => 1, flags => 0, reserved => 0);
+      M.tag := (label => KA.Reply_Error, length => 1, protocol => 0, ipc => <>, reserved => 0);
       M.words (0) := CP.Open_Refusal'Enum_Rep (Why);
       return M;
    end Refusal_Reply;
@@ -460,7 +460,7 @@ package body CuBit.Channels is
       Start_Reading (C);
       Reply := CuBit.Messages.NULL_MESSAGE;
       Reply.tag := (label => KA.Reply_OK, length => CP.Reply_Words,
-                    flags => 0, reserved => 0);
+                    protocol => 0, ipc => <>, reserved => 0);
       Reply.words (0) := Number;
       Reply.words (1) := (if C.Has_Own then GR.Encode (C.Own_Grant) else 0);
       Reply.words (2) := Unsigned_64 (Item.Pages);
@@ -500,7 +500,7 @@ package body CuBit.Channels is
       end if;
       C.Has_Own := True;
       Reply := CuBit.Messages.NULL_MESSAGE;
-      Reply.tag := (label => KA.Reply_OK, length => CP.Reply_Words, flags => 0, reserved => 0);
+      Reply.tag := (label => KA.Reply_OK, length => CP.Reply_Words, protocol => 0, ipc => <>, reserved => 0);
       Reply.words (0) := Number;
       Reply.words (1) := GR.Encode (C.Own_Grant);
       Reply.words (2) := Unsigned_64 (Pages);
@@ -515,7 +515,7 @@ package body CuBit.Channels is
       Ignore : Boolean;
    begin
       if C.Opener then
-         M.tag := (label => CP.OP_KICK, length => 1, flags => 0, reserved => 0);
+         M.tag := (label => CP.OP_KICK, length => 1, protocol => 0, ipc => <>, reserved => 0);
          M.words (0) := C.Peer_Number;
          Ignore := CuBit.Messages.capSubmit (C.Endpoint, M, CuBit.Messages.NO_COMPLETION_TOKEN);
       end if;
@@ -746,7 +746,7 @@ package body CuBit.Channels is
       M : CuBit.Messages.Message := CuBit.Messages.NULL_MESSAGE;
    begin
       if C.Opener and then C.Active then
-         M.tag := (label => CP.OP_CLOSE, length => CP.Close_Words, flags => 0, reserved => 0);
+         M.tag := (label => CP.OP_CLOSE, length => CP.Close_Words, protocol => 0, ipc => <>, reserved => 0);
          M.words (0) := C.Peer_Number;
          M.words (1) := (if C.Has_Peer then GR.Encode (C.Peer_Grant)
                          elsif C.Has_Own then GR.Encode (C.Own_Grant)

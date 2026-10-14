@@ -1,10 +1,11 @@
 #pragma once
 #include <stdbool.h>
+#include "cubit_handles.h"
 #include <stdint.h>
 
 /* Mesa-side lifecycle bookkeeping, not GPU synchronization or authority.
  * Zero-initialize once, serialize, never copy/reset a used record. Keep both
- * endpoint slots and BO backing alive until cleanup completes. This record
+ * endpoint handles and BO backing alive until cleanup completes. This record
  * must outlive the surface/ANV BO wrapper if cleanup is pending or uncertain.
  */
 enum cubit_presenter_state {
@@ -13,7 +14,8 @@ enum cubit_presenter_state {
 };
 struct cubit_presenter {
    enum cubit_presenter_state state;
-   uint64_t render_slot, desktop_slot, root, child;
+   cubit_endpoint render, desktop;
+   uint64_t root, child;
    uint32_t mapping;
    bool borrowed;
 };
@@ -26,7 +28,7 @@ struct cubit_presenter {
  * returns 0 because no IPC or borrowing occurred. Still do not reuse it.
  */
 uint32_t cubit_presenter_attach_completed_linear(struct cubit_presenter *record,
-   uint64_t render_slot, uint64_t desktop_slot, uint32_t handle,
+   cubit_endpoint render, cubit_endpoint desktop, uint32_t handle,
    uint64_t surface, uint64_t offset, uint32_t width, uint32_t height,
    uint32_t pitch);
 /* Call after requesting surface replacement/destruction, then poll if needed.

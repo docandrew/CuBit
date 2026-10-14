@@ -1,6 +1,9 @@
 with Interfaces; use Interfaces;
 with Intel_GPU_Map_Report;
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Handles;
+with CuBit.Handles.Devices;
+with Intel_GPU_Supervisor;
 with Intel_GPU_GGTT_Access;
 package body Intel_GPU_GGTT_Mapping is
    Attempted, Mapped : Boolean := False;
@@ -18,6 +21,7 @@ package body Intel_GPU_GGTT_Mapping is
       Msg : Message := NULL_MESSAGE;
       Receipt : aliased CompletionEntry;
       Granted : Boolean := False;
+      Region : CuBit.Handles.Device_Memory := CuBit.Handles.No_Device_Memory;
       Activity : Activity_Result;
       pragma Unreferenced (Activity);
    begin
@@ -32,8 +36,9 @@ package body Intel_GPU_GGTT_Mapping is
       Started := syscall (SYSCALL_GETTIME);
       if Started = Unsigned_64'Last then return "clock-unavailable"; end if;
       Previous := Started;
-      Msg.tag := (Intel_GPU_GGTT_Access.Write_Request_Label, 0, 0, 0);
-      if not capSubmit (15, Msg, Token) then return "submit-failed"; end if;
+      Msg.tag := (label => Intel_GPU_GGTT_Access.Write_Request_Label, length => 0,
+                  protocol => 0, ipc => <>, reserved => 0);
+      if not Intel_GPU_Supervisor.Submit_Accepting (Msg, Token) then return "submit-failed"; end if;
       for Poll in 1 .. 30_000 loop
          Now := syscall (SYSCALL_GETTIME);
          if Now = Unsigned_64'Last or else Now < Previous or else
@@ -42,16 +47,18 @@ package body Intel_GPU_GGTT_Mapping is
          Previous := Now;
          if Poll_Completion (Receipt'Address) /= 0 and then Receipt.token = Token then
             if Receipt.status = COMPLETION_OK and then
-              Receipt.msg.tag = (16#F002#, 0, 0, 0) and then
+              Intel_GPU_Supervisor.Reply_Tag (Receipt) = (label => 16#F002#, length => 0, protocol => 0, ipc => <>, reserved => 0) and then
               Receipt.msg.words = [0, 0, 0, 0]
             then
                -- Only explicit startup-busy is retryable. Denial, malformed
                -- replies, timeout or lost replies never retry a consumed grant.
-               if not capSubmit (15, Msg, Token) then return "retry-failed"; end if;
+               if not Intel_GPU_Supervisor.Submit_Accepting (Msg, Token) then return "retry-failed"; end if;
             else
                Granted := Receipt.status = COMPLETION_OK and then
-                 Receipt.msg.tag = (16#F000#, 2, 0, 0) and then
+                 Intel_GPU_Supervisor.Reply_Tag (Receipt) = (label => 16#F000#, length => 2, protocol => 0, ipc => <>, reserved => 0) and then
                  Receipt.msg.words = [Physical, Table_Bytes, 0, 0];
+               Region := Intel_GPU_Supervisor.Granted_Region (Receipt);
+               Granted := Granted and then CuBit.Handles.Valid (Region);
                exit;
             end if;
          end if;
@@ -62,8 +69,9 @@ package body Intel_GPU_GGTT_Mapping is
       -- Every supported size is a multiple of 2MiB. Keep calls below the
       -- kernel's 1024-page limit and retain partial maps if a later call fails.
       for Chunk in Unsigned_64 range 0 .. Table_Bytes / Chunk_Bytes - 1 loop
-         if syscall (SYSCALL_MAP_DEVICE, Physical + Chunk * Chunk_Bytes,
-           Virtual_Base + Chunk * Chunk_Bytes, 512, 0) /= 0
+         if not CuBit.Handles.Devices.Map_Device
+           (Region, Physical + Chunk * Chunk_Bytes,
+            Virtual_Base + Chunk * Chunk_Bytes, 512, Read_Only => False)
          then return Intel_GPU_Map_Report.Denied (Physical + Chunk * Chunk_Bytes, Chunk_Bytes) &
               " (partial mappings retained)"; end if;
       end loop;

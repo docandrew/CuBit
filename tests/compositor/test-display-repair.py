@@ -34,7 +34,6 @@ procedure Check is
  type Message is record tag:Check.Tag;authorityTag:Unsigned_64;words:Check.Words;end record;
  NULL_MESSAGE:constant Message:=((0,0,0,0),0,(others=>0));
  OP_GPU_PRESENT_BUFFER:constant Unsigned_32:=77;
- CAP_SLOT_GPU:constant:=9;
  subtype MessageTag is Tag;
  subtype Gpu_Buffer_Index is Natural range 0..1;
  subtype Output_Index is Natural range 0..1;

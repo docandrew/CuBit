@@ -1,3 +1,5 @@
+with CuBit.Startup_State;
+with Startup;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CCL.Types;
@@ -76,6 +78,7 @@ procedure Reopen is
       Check (Taken and Item.Valid and Item.Code = Code, Step & " reply");
    end Finish;
 begin
+   Check (CuBit.Startup_State.Ready (Startup.Verify), "startup capabilities");
    VM_Fixture.Run ("(+ 21 21)", Types, Expected_Value, Good); Check (Good, "compile expected value");
    CCL.Objects.Bind (Types, CCL.Types.Integer_Type, [1, 2, 3, 4], Contract, Good);
    Check (Good, "binding");
@@ -84,7 +87,7 @@ begin
    Expected := CCL.Objects.Empty (Contract);
    CCL.Objects.Append (Expected, CCL.Objects.Integer_Cell (42), Built);
    Check (Built = CCL.Objects.Added, "native value");
-   Client.Initialize (Reader, CAP_SLOT_CONFIG, Good); Check (Good, "grant");
+   Client.Initialize (Reader, Startup.Config, Good); Check (Good, "grant");
    Client.Create (Reader, Name, Contract, Wire.Read_Only, 0, Next_Token, Sent);
    Finish (Wire.Denied, "read authority cannot create");
    Client.Open (Reader, Name, Contract, Wire.Read_Write, 0, Next_Token, Sent);

@@ -22,7 +22,8 @@ package body CuBit.Messages is
    end syscall;
    function capSubmit (Slot : Unsigned_64; Msg : Message; Token : Unsigned_64) return Boolean is
    begin
-      pragma Assert (Slot = 15 and Msg.tag = (16#0234#, 1, 0, 0));
+      pragma Assert (Slot = 15 and Msg.tag = (label => 16#0234#, length => 1,
+                                              protocol => 0, ipc => <>, reserved => 0));
       pragma Assert (Msg.words = [Unsigned_64 (Maps), 0, 0, 0]);
       pragma Assert (Token = 16#49470050# + Unsigned_64 (Maps));
       Submissions := Submissions + 1; Saved_Token := Token;
@@ -33,14 +34,14 @@ package body CuBit.Messages is
    begin
       Polls := Polls + 1;
       if Mode in 9 | 10 then return 0; end if;
-      Item.all := (Saved_Token, ((16#F000#, 0, 0, 0), [others => 0]), 0);
+      Item.all := (Saved_Token, ((label => 16#F000#, length => 0, protocol => 0, ipc => <>, reserved => 0), [others => 0]), 0);
       case Mode is
          when 1 => Item.msg.words (0) := 1;
          when 2 => Item.msg.tag.length := 1;
          when 3 => Item.msg.tag.label := 16#F001#;
          when 4 => if Polls = 1 then Item.msg.tag.label := 16#F002#; end if;
          when 11 => Item.status := 1;
-         when 12 => Item.msg.tag.flags := 1;
+         when 12 => Item.msg.tag.protocol := 1;
          when 13 => Item.token := Saved_Token + 1;
          when others => null;
       end case;

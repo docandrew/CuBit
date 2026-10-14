@@ -7,6 +7,8 @@ with CuBit.Config_Inspection;
 with CuBit.Memory_Grants;
 with CuBit.Config_Protocol;
 with Config_Worker_Startup;
+with CuBit.Startup_State;
+with Startup;
 with System;
 with CCL.Catalog;
 with CCL.Language;
@@ -58,10 +60,11 @@ procedure Main is
       Key : constant String := Prefix & String'(1 .. 128 - Prefix'Length => 'k');
    begin
       Msg := NULL_MESSAGE;
-      Msg.tag := (Config_Worker_Startup.Operation'Enum_Rep
-        (Config_Worker_Startup.Attach_Worker), 1, 0, 0);
+      Msg.tag := (label => Config_Worker_Startup.Operation'Enum_Rep
+        (Config_Worker_Startup.Attach_Worker), length => 1,
+                  protocol => 0, ipc => <>, reserved => 0);
       Msg.words (0) := syscall (SYSCALL_GETPID);
-      Msg.tag := capCall (CAP_SLOT_CONFIG, Msg, CuBit.Messages.Wait_Forever);
+      Msg.tag := capCall (Startup.Config, Msg, CuBit.Messages.Wait_Forever);
       Check (Msg.tag.label = 16#F007#, "client cannot nominate storage backend");
       debugPrint ("TEST: PASS config-backend-nomination-denied" & ASCII.LF);
       CuBit.Config_Reader.Query (Read_Value, "config.store", Value, Result);
@@ -70,8 +73,8 @@ procedure Main is
       Check (Result = OK and then Value.Data (1 .. Value.Length) = "UTC", "CCL seed wins over old disk overlay");
       for Label in Unsigned_32 range 16#0604# .. 16#0605# loop
          Msg := NULL_MESSAGE;
-         Msg.tag := (Label, 0, 0, 0);
-         Msg.tag := capCall (CAP_SLOT_CONFIG, Msg, CuBit.Messages.Wait_Forever);
+         Msg.tag := (label => Label, length => 0, protocol => 0, ipc => <>, reserved => 0);
+         Msg.tag := capCall (Startup.Config, Msg, CuBit.Messages.Wait_Forever);
          Check (Msg.tag.label = 16#F001#, "retired persistence opcode");
       end loop;
       CuBit.Config.set (Key, Full_Value'Address, Full_Value'Length, Write_Status);
@@ -118,46 +121,52 @@ procedure Main is
          end;
       end loop;
       CuBit.Memory_Grants.Create_Via_Capability
-        (CAP_SLOT_CONFIG, Buffer'Address, 1, True, Grant, Created);
+        (Startup.Config, Buffer'Address, 1, True, Grant, Created);
       Check (Created, "data malformed fixture");
       Buffer (1 .. 17) := "test.config.value";
       for Op in CuBit.Config_Protocol.Operation loop
          Msg := NULL_MESSAGE;
-         Msg.tag := (CuBit.Config_Protocol.Operation'Enum_Rep (Op), 4, 0, 0);
+         Msg.tag := (label => CuBit.Config_Protocol.Operation'Enum_Rep (Op), length => 4,
+                     protocol => 0, ipc => <>, reserved => 0);
          Msg.words := [Grant.slot, Grant.generation, Unsigned_64'Last, 0];
-         Msg.tag := capCall (CAP_SLOT_CONFIG, Msg, CuBit.Messages.Wait_Forever);
+         Msg.tag := capCall (Startup.Config, Msg, CuBit.Messages.Wait_Forever);
          Check (Msg.tag.label = 16#F001#, "oversized wire key");
-         Msg.tag := (CuBit.Config_Protocol.Operation'Enum_Rep (Op), 4, 0, 0);
+         Msg.tag := (label => CuBit.Config_Protocol.Operation'Enum_Rep (Op), length => 4,
+                     protocol => 0, ipc => <>, reserved => 0);
          Msg.words := [Unsigned_64'Last, Grant.generation, 17, 0];
-         Msg.tag := capCall (CAP_SLOT_CONFIG, Msg, CuBit.Messages.Wait_Forever);
+         Msg.tag := capCall (Startup.Config, Msg, CuBit.Messages.Wait_Forever);
          Check (Msg.tag.label = 16#F001#, "invalid data slot");
-         Msg.tag := (CuBit.Config_Protocol.Operation'Enum_Rep (Op), 2, 0, 0);
+         Msg.tag := (label => CuBit.Config_Protocol.Operation'Enum_Rep (Op), length => 2,
+                     protocol => 0, ipc => <>, reserved => 0);
          Msg.words := [Grant.slot, 17, 0, 0];
-         Msg.tag := capCall (CAP_SLOT_CONFIG, Msg, CuBit.Messages.Wait_Forever);
+         Msg.tag := capCall (Startup.Config, Msg, CuBit.Messages.Wait_Forever);
          Check (Msg.tag.label = 16#F001#, "legacy raw-slot frame rejected");
       end loop;
-      Msg.tag := (CuBit.Config_Protocol.Operation'Enum_Rep (Set_Value), 4, 0, 0);
+      Msg.tag := (label => CuBit.Config_Protocol.Operation'Enum_Rep (Set_Value), length => 4,
+                  protocol => 0, ipc => <>, reserved => 0);
       Msg.words := [Grant.slot, Grant.generation, 17, 4096];
-      Msg.tag := capCall (CAP_SLOT_CONFIG, Msg, CuBit.Messages.Wait_Forever);
+      Msg.tag := capCall (Startup.Config, Msg, CuBit.Messages.Wait_Forever);
       Check (Msg.tag.label = 16#F001#, "short mapping rejected");
       CuBit.Memory_Grants.Revoke (Grant, Created);
       Check (Created, "data fixture revoked");
       for Op in CuBit.Config_Protocol.Operation loop
-         Msg.tag := (CuBit.Config_Protocol.Operation'Enum_Rep (Op), 4, 0, 0);
+         Msg.tag := (label => CuBit.Config_Protocol.Operation'Enum_Rep (Op), length => 4,
+                     protocol => 0, ipc => <>, reserved => 0);
          Msg.words := [Grant.slot, Grant.generation, 17, 0];
-         Msg.tag := capCall (CAP_SLOT_CONFIG, Msg, CuBit.Messages.Wait_Forever);
+         Msg.tag := capCall (Startup.Config, Msg, CuBit.Messages.Wait_Forever);
          Check (Msg.tag.label = 16#F001#, "stale data grant rejected");
       end loop;
       Check (CuBit.Memory_Grants.Retirement_Confirmed (Grant),
              "data service returned every acquisition");
       CuBit.Memory_Grants.Create_Via_Capability
-        (CAP_SLOT_CONFIG, Buffer'Address, 1, False, Grant, Created);
+        (Startup.Config, Buffer'Address, 1, False, Grant, Created);
       Check (Created, "read-only data fixture");
       for Op in CuBit.Config_Protocol.Operation loop
          Buffer (1 .. 17) := "test.config.value";
-         Msg.tag := (CuBit.Config_Protocol.Operation'Enum_Rep (Op), 4, 0, 0);
+         Msg.tag := (label => CuBit.Config_Protocol.Operation'Enum_Rep (Op), length => 4,
+                     protocol => 0, ipc => <>, reserved => 0);
          Msg.words := [Grant.slot, Grant.generation, 17, 0];
-         Msg.tag := capCall (CAP_SLOT_CONFIG, Msg, CuBit.Messages.Wait_Forever);
+         Msg.tag := capCall (Startup.Config, Msg, CuBit.Messages.Wait_Forever);
          Check (Msg.tag.label =
                   (if Op in Set_Value | Delete_Value then 16#F000# else 16#F001#),
                 "read-only grant permits input but forbids output");
@@ -167,18 +176,19 @@ procedure Main is
              "read-only fixture retired without outstanding acquisitions");
    end Check_Data_Protocol;
 begin
+   Check (CuBit.Startup_State.Ready (Startup.Verify), "startup capabilities");
    Check_Data_Protocol;
    CuBit.Config_Reader.Query (Probe, "", Value, Result);
    Check (Result = OK, "explicit wildcard read grant");
    -- A data reader cannot install or revoke policy. Huge untrusted counts
    -- must be denied before narrowing to Natural or inspecting grant memory.
-   Msg.tag := (16#0080#, 4, 0, 0);
+   Msg.tag := (label => 16#0080#, length => 4, protocol => 0, ipc => <>, reserved => 0);
    Msg.words := [others => Unsigned_64'Last];
-   Msg.tag := capCall (CAP_SLOT_CONFIG, Msg, CuBit.Messages.Wait_Forever);
+   Msg.tag := capCall (Startup.Config, Msg, CuBit.Messages.Wait_Forever);
    Check (Msg.tag.label = Status'Enum_Rep (Denied), "reader cannot install ACL");
-   Msg.tag := (16#0081#, 1, 0, 0);
+   Msg.tag := (label => 16#0081#, length => 1, protocol => 0, ipc => <>, reserved => 0);
    Msg.words := [others => Unsigned_64'Last];
-   Msg.tag := capCall (CAP_SLOT_CONFIG, Msg, CuBit.Messages.Wait_Forever);
+   Msg.tag := capCall (Startup.Config, Msg, CuBit.Messages.Wait_Forever);
    Check (Msg.tag.label = Status'Enum_Rep (Denied), "reader cannot revoke ACL");
    CuBit.Config.set ("test.config.value", Fixture'Address, Fixture'Length, Write_Status);
    Check (Write_Status = CuBit.Config.OK, "fixture write");
@@ -199,29 +209,33 @@ begin
    CuBit.Config_Reader.Query (Read_Value, "test.config.large", Value, Result);
    Check (Result = Too_Large and Value.Length = 0, "no truncated value");
    -- Invalid lengths and stale grant generations must be rejected before reads.
-   Msg.tag := (Operation'Enum_Rep (Read_Value), 4, 0, 0);
+   Msg.tag := (label => Operation'Enum_Rep (Read_Value), length => 4,
+               protocol => 0, ipc => <>, reserved => 0);
    Msg.words := [0 => Unsigned_64'Last, 1 => 1, 2 => 1, 3 => 0];
-   Msg.tag := capCall (CAP_SLOT_CONFIG, Msg, CuBit.Messages.Wait_Forever);
+   Msg.tag := capCall (Startup.Config, Msg, CuBit.Messages.Wait_Forever);
    Check (Msg.tag.label = Status'Enum_Rep (Invalid_Request), "invalid grant");
    CuBit.Memory_Grants.Create_Via_Capability
-     (CAP_SLOT_CONFIG, Buffer'Address, 1, True, Grant, Created);
+     (Startup.Config, Buffer'Address, 1, True, Grant, Created);
    Check (Created, "stale grant fixture");
    CuBit.Memory_Grants.Revoke (Grant, Created);
    Check (Created, "retire fixture");
-   Msg.tag := (Operation'Enum_Rep (Read_Value), 4, 0, 0);
+   Msg.tag := (label => Operation'Enum_Rep (Read_Value), length => 4,
+               protocol => 0, ipc => <>, reserved => 0);
    Msg.words := [0 => Grant.slot, 1 => Grant.generation, 2 => 1, 3 => 0];
-   Msg.tag := capCall (CAP_SLOT_CONFIG, Msg, CuBit.Messages.Wait_Forever);
+   Msg.tag := capCall (Startup.Config, Msg, CuBit.Messages.Wait_Forever);
    Check (Msg.tag.label = Status'Enum_Rep (Invalid_Request), "stale grant");
    CuBit.Memory_Grants.Create_Via_Capability
-     (CAP_SLOT_CONFIG, Buffer'Address, 1, False, Grant, Created);
+     (Startup.Config, Buffer'Address, 1, False, Grant, Created);
    Check (Created, "readonly grant fixture");
-   Msg.tag := (Operation'Enum_Rep (Read_Value), 4, 0, 0);
+   Msg.tag := (label => Operation'Enum_Rep (Read_Value), length => 4,
+               protocol => 0, ipc => <>, reserved => 0);
    Msg.words := [0 => Grant.slot, 1 => Grant.generation, 2 => 1, 3 => 0];
-   Msg.tag := capCall (CAP_SLOT_CONFIG, Msg, CuBit.Messages.Wait_Forever);
+   Msg.tag := capCall (Startup.Config, Msg, CuBit.Messages.Wait_Forever);
    Check (Msg.tag.label = Status'Enum_Rep (Invalid_Request), "readonly grant rejected");
-   Msg.tag := (Operation'Enum_Rep (Read_Value), 4, 0, 0);
+   Msg.tag := (label => Operation'Enum_Rep (Read_Value), length => 4,
+               protocol => 0, ipc => <>, reserved => 0);
    Msg.words (2) := Unsigned_64'Last;
-   Msg.tag := capCall (CAP_SLOT_CONFIG, Msg, CuBit.Messages.Wait_Forever);
+   Msg.tag := capCall (Startup.Config, Msg, CuBit.Messages.Wait_Forever);
    Check (Msg.tag.label = Status'Enum_Rep (Invalid_Request), "oversized request length");
    CuBit.Memory_Grants.Revoke (Grant, Created);
    Check (Created, "readonly fixture retired");

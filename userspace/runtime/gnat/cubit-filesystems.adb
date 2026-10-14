@@ -26,7 +26,7 @@ is
    is
    begin
       return
-        (tag      => (label => label, length => 4, flags => 0, reserved => 0),
+        (tag      => (label => label, length => 4, protocol => 0, ipc => <>, reserved => 0),
          authorityTag => 0,
          words    => (0 => word0,
                       1 => loan.slot,
@@ -68,7 +68,7 @@ is
    begin
       return
         (tag      => (label => OP_OPEN, length => 4,
-                      flags => 0, reserved => 0),
+                      protocol => 0, ipc => <>, reserved => 0),
          authorityTag => 0,
          words    => (0 => loan.slot,
                       1 => Unsigned_64 (pathLength),
@@ -82,7 +82,7 @@ is
    begin
       return
         (tag      => (label => OP_CLOSE, length => 1,
-                      flags => 0, reserved => 0),
+                      protocol => 0, ipc => <>, reserved => 0),
          authorityTag => 0,
          words    => (0 => Unsigned_64 (handle), others => 0));
    end Close_Request;
@@ -93,7 +93,7 @@ is
    begin
       return
         (tag => (label => OP_FLUSH_FILE, length => 1,
-                 flags => 0, reserved => 0),
+                 protocol => 0, ipc => <>, reserved => 0),
          authorityTag => 0,
          words => (0 => Unsigned_64 (handle), others => 0));
    end Flush_Request;
@@ -104,7 +104,7 @@ is
    begin
       return
         (tag => (label => OP_RESIZE_FILE, length => 2,
-                 flags => 0, reserved => 0),
+                 protocol => 0, ipc => <>, reserved => 0),
          authorityTag => 0,
          words => (0 => Unsigned_64 (handle), 1 => length, others => 0));
    end Resize_Request;
@@ -135,7 +135,7 @@ is
    is
    begin
       return
-        (tag => (label => OP_READ_AT, length => 4, flags => 0, reserved => 0),
+        (tag => (label => OP_READ_AT, length => 4, protocol => 0, ipc => <>, reserved => 0),
          authorityTag => 0,
          words => (0 => Unsigned_64 (handle),
                    1 => CuBit.Grant_References.Encode (loan),
@@ -163,7 +163,7 @@ is
    begin
       return
         (tag      => (label => OP_SEEK, length => 3,
-                      flags => 0, reserved => 0),
+                      protocol => 0, ipc => <>, reserved => 0),
          authorityTag => 0,
          words    => (0 => Unsigned_64 (handle),
                       1 => offset,
@@ -178,7 +178,7 @@ is
    begin
       return
         (tag      => (label => OP_OPEN_DIRECTORY, length => 3,
-                       flags => 0, reserved => 0),
+                       protocol => 0, ipc => <>, reserved => 0),
          authorityTag => 0,
          words    => (0 => loan.slot,
                       1 => Unsigned_64 (pathLength),
@@ -194,7 +194,7 @@ is
    begin
       return
         (tag      => (label => OP_READ_DIRECTORY_PAGE, length => 4,
-                       flags => 0, reserved => 0),
+                       protocol => 0, ipc => <>, reserved => 0),
          authorityTag => 0,
          words    => (0 => Unsigned_64 (handle),
                       1 => loan.slot,
@@ -208,7 +208,7 @@ is
    begin
       return
         (tag      => (label => OP_CLOSE_DIRECTORY, length => 1,
-                       flags => 0, reserved => 0),
+                       protocol => 0, ipc => <>, reserved => 0),
          authorityTag => 0,
          words    => (0 => Unsigned_64 (handle), others => 0));
    end Close_Directory_Request;
@@ -221,7 +221,7 @@ is
    begin
       return
         (tag => (label => OP_OPEN_CHILD_DIRECTORY, length => 4,
-                 flags => 0, reserved => 0),
+                 protocol => 0, ipc => <>, reserved => 0),
          authorityTag => 0,
          words => (0 => Unsigned_64 (parent),
                    1 => Unsigned_64 (nameLength),
@@ -234,7 +234,7 @@ is
    begin
       return
         (tag => (label => OP_REWIND_DIRECTORY, length => 1,
-                 flags => 0, reserved => 0),
+                 protocol => 0, ipc => <>, reserved => 0),
          authorityTag => 0,
          words => (0 => Unsigned_64 (handle), others => 0));
    end Rewind_Directory_Request;
@@ -248,7 +248,7 @@ is
    begin
       return
         (tag      => (label => OP_RENAME, length => 4,
-                       flags => 0, reserved => 0),
+                       protocol => 0, ipc => <>, reserved => 0),
          authorityTag => 0,
          words    => (0 => loan.slot,
                       1 => Unsigned_64 (oldPathLength),

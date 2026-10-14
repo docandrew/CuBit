@@ -1,3 +1,4 @@
+with CuBit.Handles.Fixture;
 with Ada.Text_IO;
 with Interfaces; use Interfaces;
 with CCL.Types;
@@ -102,7 +103,7 @@ begin
    R.Start (Owner, Types, Session, Result); Check (Result = R.Succeeded, "resource run");
    R.Reserve (Owner, Session, Kind, Factory, Result); Check (Result = R.Succeeded, "reserve before create");
    G.Expected_Pages := W.Creation_Bytes / 4096;
-   C.Initialize (Client, 5, Good); Check (Good, "client initialization");
+   C.Initialize (Client, CuBit.Handles.Fixture.Endpoint_Of (5), Good); Check (Good, "client initialization");
    C.Create (Client, "org.cubit.settings", Contract, W.Read_Write, 0, 1, Sent);
    Check (Sent = C.Submitted and W.Valid_Request (IPC.Last_Request, W.Create_Collection), "async typed create");
    C.Complete (Client, Reply (1, W.Success, 55), Completed); Check (Completed = C.Completed, "authenticated acquisition");

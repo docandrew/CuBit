@@ -10,11 +10,11 @@ package body ACPI_Backend_Endpoint is
       Core.Dispatch
         (Region, Hardware, Request.authorityTag,
          (Label => Request.tag.label, Length => Request.tag.length,
-          Flags => Request.tag.flags, Reserved => Request.tag.reserved,
+          Flags => Request.tag.protocol, Reserved => Request.tag.reserved,
           Data => ACPI_Region_Protocol.Words (Request.words)), Result, Pending_Ticket);
       Reply := CuBit.Messages.NULL_MESSAGE;
       Reply.tag := (label => Result.Label, length => Result.Length,
-                    flags => Result.Flags, reserved => Result.Reserved);
+                    protocol => Result.Flags, ipc => <>, reserved => Result.Reserved);
       Reply.words := CuBit.Messages.MessageWords (Result.Data);
    end Dispatch;
 end ACPI_Backend_Endpoint;

@@ -8,6 +8,7 @@ with CuBit.Grant_References;
 package CuBit.Display_Protocol with SPARK_Mode, Pure is
    package DP renames CuBit.Desktop_Protocol;
    use type DP.Wire_Message;
+   use type DP.Protocol_Flags;
    type Operation is
      (Get_Information, Attach_Buffer, Present_Rectangle, Clear,
       Get_Status, Acquire_Display, Release_Display, Map_Backbuffer,

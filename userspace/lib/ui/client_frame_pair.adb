@@ -2,6 +2,7 @@ with Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Desktop_Messages;
 with Client_Canvas_Geometry;
+with UI_Desktop_Service;
 package body Client_Frame_Pair is
    package Frames renames Client_Frame_Buffer;
    use type DP.Status_Code, DP.Wire_Message, Pub.Configuration_Result;
@@ -35,7 +36,7 @@ package body Client_Frame_Pair is
       if O.Closing or else O.Painting or else
         (O.Config.Status = DP.Success and O.Surface /= Surface)
       then return; end if;
-      Request.tag := capCall (CAP_SLOT_DESKTOP, Request, CuBit.Messages.Wait_Forever);
+      Request.tag := capCall (UI_Desktop_Service.Endpoint, Request, CuBit.Messages.Wait_Forever);
       Wire := CuBit.Desktop_Messages.To_Wire (Request);
       Result := Pub.Decode_Configuration (Wire);
       if Result.Status /= DP.Success or else Wire /= Pub.Encode_Configuration (Result) then return; end if;

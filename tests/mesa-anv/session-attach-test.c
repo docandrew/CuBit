@@ -4,6 +4,11 @@
 #include "../../userspace/mesa/anv/native_gpu_mapping.h"
 #include <assert.h>
 #include <stdio.h>
+#include "../../userspace/c/cubit_handles.h"
+/* A test endpoint handle (generation 1). */
+#define TEST_ENDPOINT(n) ((cubit_endpoint){(UINT64_C(1) << 32) | (uint64_t)(n)})
+/* The index a test endpoint was made from. */
+#define TEST_INDEX(e) ((unsigned)((e).opaque & 0xffffffffu))
 static unsigned queries, drains, closes, polls;
 static bool fail_directory, fail_record;
 void *__real_realloc(void *, size_t);
@@ -19,18 +24,18 @@ static uint32_t policy=1;
 static unsigned memory_queries, creates;
 static void retired(void *context)
 { p_atomic_inc((unsigned *)context); }
-uint32_t cubit_intel_memory_contract(uint64_t slot)
-{ assert(slot <= 63); memory_queries++; return policy; }
-uint32_t cubit_intel_create_buffer(uint64_t slot, uint64_t bytes, uint32_t *handle)
-{ assert(slot <= 63 && bytes==4096); creates++; *handle=17; return 0; }
-uint32_t cubit_intel_session_status(uint64_t slot)
-{ assert(slot <= 63); queries++; return health; }
+uint32_t cubit_intel_memory_contract(cubit_endpoint endpoint)
+{ assert(cubit_endpoint_present(endpoint)); memory_queries++; return policy; }
+uint32_t cubit_intel_create_buffer(cubit_endpoint endpoint, uint64_t bytes, uint32_t *handle)
+{ assert(cubit_endpoint_present(endpoint) && bytes==4096); creates++; *handle=17; return 0; }
+uint32_t cubit_intel_session_status(cubit_endpoint endpoint)
+{ assert(cubit_endpoint_present(endpoint)); queries++; return health; }
 bool cubit_cpu_tracker_drain(struct cubit_cpu_mapping_tracker *tracker)
-{ assert(tracker->slot <= 63); drains++; return true; }
-uint32_t cubit_intel_close_session(uint64_t slot, uint64_t *tag)
-{ assert(slot <= 63); closes++; *tag = close_result ? 0 : 1; return close_result; }
-uint32_t cubit_intel_poll_session_retirement(uint64_t slot)
-{ assert(slot <= 63); polls++; return retirement; }
+{ assert(cubit_endpoint_present(tracker->endpoint)); drains++; return true; }
+uint32_t cubit_intel_close_session(cubit_endpoint endpoint, uint64_t *tag)
+{ assert(cubit_endpoint_present(endpoint)); closes++; *tag = close_result ? 0 : 1; return close_result; }
+uint32_t cubit_intel_poll_session_retirement(cubit_endpoint endpoint)
+{ assert(cubit_endpoint_present(endpoint)); polls++; return retirement; }
 VkResult _vk_device_set_lost(struct vk_device *device, const char *file,
                              int line, const char *message, ...)
 { (void)file; (void)line; (void)message;
@@ -58,53 +63,53 @@ int main(void)
    for(unsigned failure=0;failure<2;failure++) {
       fail_directory=failure==0;
       fail_record=failure==1;
-      assert(anv_cubit_attach_owned_session(&d[0],63,&failed_pin)==
+      assert(anv_cubit_attach_owned_session(&d[0],TEST_ENDPOINT(63),&failed_pin)==
              VK_ERROR_OUT_OF_HOST_MEMORY);
       assert(failed_pin.context==&failed_notifications && failed_pin.retired==retired);
       assert(!failed_notifications && !d[0].cubit_cpu_mappings);
-      assert(!anv_cubit_memory_slot_retained(63));
+      assert(!anv_cubit_memory_endpoint_retained(TEST_ENDPOINT(63)));
       assert(!queries && !memory_queries && !drains && !closes && !polls);
    }
    fail_directory=false; fail_record=false;
-   assert(anv_cubit_attach_session(NULL,63)==VK_ERROR_INITIALIZATION_FAILED);
-   assert(anv_cubit_attach_session(&d[0],64)==VK_ERROR_INITIALIZATION_FAILED);
+   assert(anv_cubit_attach_session(NULL,TEST_ENDPOINT(63))==VK_ERROR_INITIALIZATION_FAILED);
+   assert(anv_cubit_attach_session(&d[0],CUBIT_NO_ENDPOINT)==VK_ERROR_INITIALIZATION_FAILED);
    assert(!queries && !closes);
-   assert(anv_cubit_attach_session(&d[0],63)==VK_SUCCESS);
+   assert(anv_cubit_attach_session(&d[0],TEST_ENDPOINT(63))==VK_SUCCESS);
    assert(queries==1 && d[0].cubit_cpu_mappings && !closes);
    /* Duplicate or aliased attachment never closes the original device. */
-   assert(anv_cubit_attach_session(&d[0],63)==VK_ERROR_INITIALIZATION_FAILED);
-   assert(anv_cubit_attach_session(&d[1],63)==VK_ERROR_INITIALIZATION_FAILED);
+   assert(anv_cubit_attach_session(&d[0],TEST_ENDPOINT(63))==VK_ERROR_INITIALIZATION_FAILED);
+   assert(anv_cubit_attach_session(&d[1],TEST_ENDPOINT(63))==VK_ERROR_INITIALIZATION_FAILED);
    assert(queries==1 && !closes);
    health=3;
-   assert(anv_cubit_attach_session(&d[1],62)==VK_ERROR_DEVICE_LOST);
+   assert(anv_cubit_attach_session(&d[1],TEST_ENDPOINT(62))==VK_ERROR_DEVICE_LOST);
    assert(!d[1].cubit_cpu_mappings && queries==2 && drains==1 && closes==1 && polls==1);
-   assert(anv_cubit_memory_slot_retained(62));
+   assert(anv_cubit_memory_endpoint_retained(TEST_ENDPOINT(62)));
    health=0;
-   assert(anv_cubit_attach_session(&d[2],62)==VK_ERROR_INITIALIZATION_FAILED);
+   assert(anv_cubit_attach_session(&d[2],TEST_ENDPOINT(62))==VK_ERROR_INITIALIZATION_FAILED);
    assert(closes==1 && queries==2);
    retirement=0;
    assert(anv_cubit_memory_poll()==0);
-   assert(!anv_cubit_memory_slot_retained(62));
+   assert(!anv_cubit_memory_endpoint_retained(TEST_ENDPOINT(62)));
    /* Uncertain close remains quarantined and is never replayed. */
    health=4; close_result=4;
-   assert(anv_cubit_attach_session(&d[3],61)==VK_ERROR_DEVICE_LOST);
+   assert(anv_cubit_attach_session(&d[3],TEST_ENDPOINT(61))==VK_ERROR_DEVICE_LOST);
    assert(!d[3].cubit_cpu_mappings && closes==2);
    assert(anv_cubit_memory_poll()==1);
    assert(anv_cubit_memory_poll()==1 && closes==2);
-   assert(anv_cubit_memory_slot_retained(61));
-   assert(anv_cubit_attach_session(&d[4],61)==VK_ERROR_INITIALIZATION_FAILED);
+   assert(anv_cubit_memory_endpoint_retained(TEST_ENDPOINT(61)));
+   assert(anv_cubit_attach_session(&d[4],TEST_ENDPOINT(61))==VK_ERROR_INITIALIZATION_FAILED);
    assert(closes==2 && queries==3);
    assert(memory_queries==1); /* No memory query after failed health. */
    health=0; close_result=0;
    policy=0;
-   assert(anv_cubit_attach_session(&d[5],60)==VK_ERROR_INITIALIZATION_FAILED);
-   assert(!d[5].cubit_cpu_mappings && !anv_cubit_memory_slot_retained(60));
+   assert(anv_cubit_attach_session(&d[5],TEST_ENDPOINT(60))==VK_ERROR_INITIALIZATION_FAILED);
+   assert(!d[5].cubit_cpu_mappings && !anv_cubit_memory_endpoint_retained(TEST_ENDPOINT(60)));
    policy=3;
-   assert(anv_cubit_attach_session(&d[6],59)==VK_ERROR_INITIALIZATION_FAILED);
+   assert(anv_cubit_attach_session(&d[6],TEST_ENDPOINT(59))==VK_ERROR_INITIALIZATION_FAILED);
    physical.memory.need_flush=false; policy=1;
-   assert(anv_cubit_attach_session(&d[7],58)==VK_ERROR_INITIALIZATION_FAILED);
+   assert(anv_cubit_attach_session(&d[7],TEST_ENDPOINT(58))==VK_ERROR_INITIALIZATION_FAILED);
    policy=2;
-   assert(anv_cubit_attach_session(&d[8],57)==VK_SUCCESS);
+   assert(anv_cubit_attach_session(&d[8],TEST_ENDPOINT(57))==VK_SUCCESS);
    const struct intel_memory_class_instance region={0};
    const struct intel_memory_class_instance *regions[]={&region};
    physical.sys.region=&region;
@@ -204,13 +209,13 @@ int main(void)
    unsigned notifications=0;
    struct anv_cubit_endpoint_pin pin={&notifications,retired};
    struct anv_device owned={.physical=&physical};
-   assert(anv_cubit_attach_owned_session(&owned,56,NULL)==VK_ERROR_INITIALIZATION_FAILED);
-   assert(anv_cubit_attach_owned_session(NULL,56,&pin)==VK_ERROR_INITIALIZATION_FAILED);
+   assert(anv_cubit_attach_owned_session(&owned,TEST_ENDPOINT(56),NULL)==VK_ERROR_INITIALIZATION_FAILED);
+   assert(anv_cubit_attach_owned_session(NULL,TEST_ENDPOINT(56),&pin)==VK_ERROR_INITIALIZATION_FAILED);
    assert(pin.context==&notifications && pin.retired==retired);
-   assert(anv_cubit_attach_owned_session(&owned,63,&pin)==VK_ERROR_INITIALIZATION_FAILED);
+   assert(anv_cubit_attach_owned_session(&owned,TEST_ENDPOINT(63),&pin)==VK_ERROR_INITIALIZATION_FAILED);
    assert(pin.context==&notifications && pin.retired==retired && !notifications);
    retirement=4;
-   assert(anv_cubit_attach_owned_session(&owned,56,&pin)==VK_SUCCESS);
+   assert(anv_cubit_attach_owned_session(&owned,TEST_ENDPOINT(56),&pin)==VK_SUCCESS);
    assert(!pin.context && !pin.retired && !notifications);
    assert(anv_cubit_memory_finish(&owned)==VK_ERROR_DEVICE_LOST);
    assert(!notifications && !owned.cubit_cpu_mappings);
@@ -225,7 +230,7 @@ int main(void)
    owned=(struct anv_device){.physical=&physical};
    pin=(struct anv_cubit_endpoint_pin){&notifications,retired};
    health=3;
-   assert(anv_cubit_attach_owned_session(&owned,56,&pin)==VK_ERROR_DEVICE_LOST);
+   assert(anv_cubit_attach_owned_session(&owned,TEST_ENDPOINT(56),&pin)==VK_ERROR_DEVICE_LOST);
    assert(!pin.retired && !pin.context && notifications==2);
    assert(anv_cubit_memory_poll()==1 && notifications==2);
    /* Reuse a completed bookkeeping record; each pin gets one notification. */
@@ -233,7 +238,7 @@ int main(void)
    for(unsigned n=0;n<128;n++) {
       owned=(struct anv_device){.physical=&physical};
       pin=(struct anv_cubit_endpoint_pin){&notifications,retired};
-      assert(anv_cubit_attach_owned_session(&owned,56,&pin)==VK_SUCCESS);
+      assert(anv_cubit_attach_owned_session(&owned,TEST_ENDPOINT(56),&pin)==VK_SUCCESS);
       assert(!pin.retired);
       assert(anv_cubit_memory_finish(&owned)==VK_SUCCESS);
       assert(notifications==n+3);
@@ -242,7 +247,7 @@ int main(void)
    owned=(struct anv_device){.physical=&physical};
    pin=(struct anv_cubit_endpoint_pin){&notifications,retired};
    close_result=4; health=3;
-   assert(anv_cubit_attach_owned_session(&owned,56,&pin)==VK_ERROR_DEVICE_LOST);
+   assert(anv_cubit_attach_owned_session(&owned,TEST_ENDPOINT(56),&pin)==VK_ERROR_DEVICE_LOST);
    assert(!pin.retired && notifications==130);
    assert(anv_cubit_memory_poll()==2 && notifications==130);
    assert(anv_cubit_memory_poll()==2 && notifications==130);

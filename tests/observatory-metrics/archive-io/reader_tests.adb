@@ -1,3 +1,4 @@
+with CuBit.Handles.Fixture;
 with Ada.Text_IO; use Ada.Text_IO;
 with Ada.Streams; use Ada.Streams;
 with Ada.Streams.Stream_IO;
@@ -19,7 +20,7 @@ procedure Reader_Tests is
    procedure Check (Value : Boolean) is
    begin Checks := Checks + 1; if not Value then raise Program_Error with Checks'Image; end if; end Check;
    procedure Scenario (Fault : Natural) is
-      package R is new Observatory_Archive_Reader (17);
+      package R is new Observatory_Archive_Reader (CuBit.Handles.Fixture.Endpoint_Of (17));
       use type R.Result_Kind;
       Sequence, Now, Token : Unsigned_64 := 0;
       Accepted, Success : Boolean;
@@ -43,7 +44,8 @@ procedure Reader_Tests is
             Counter := Counter + 1; Check (Counter < 512);
             Token := Sent_Token; In_Read := Sent.tag.label = 2; In_Close := Sent.tag.label = 3;
             C := (token => Token, status => 0, valid => True,
-                  msg => (tag => (16#F000#, 1, 0, 0), words => [others => 0]));
+                  msg => (tag => (label => 16#F000#, length => 1,
+                                  protocol => 0, ipc => <>, reserved => 0), words => [others => 0]));
             if Sent.tag.label = 1 then C.msg.words (0) := 77; C.msg.words (1) := 20480; C.msg.tag.length := 2;
             elsif In_Read then
                Check (Sent.words (0) = 77 and Sent.words (3) = Unsigned_64 (Offset));

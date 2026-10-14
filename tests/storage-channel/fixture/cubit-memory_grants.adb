@@ -1,11 +1,11 @@
 with System.Storage_Elements;
 package body CuBit.Memory_Grants is
    procedure Acquire_Via_Capability
-     (slot : CuBit.Messages.CapabilitySlot; reference : Grant_Reference;
+     (slot : CuBit.Handles.Endpoint; reference : Grant_Reference;
       byteOffset, byteLength : Unsigned_64; requiredAccess : Required_Access;
       mappedAddress : out System.Address; success : out Boolean) is
    begin
-      pragma Assert (slot = Expected_Owner_Endpoint and reference.slot = 7 and reference.generation = 9);
+      pragma Assert (CuBit.Handles.Fixture.Word_Of (slot) = CuBit.Handles.Fixture.Word_Of (Expected_Owner_Endpoint) and reference.slot = 7 and reference.generation = 9);
       pragma Assert (byteOffset = 0 and byteLength =
         (if Expected_Transfer_Bytes = 0 then Unsigned_64 (Expected_Pages * 4096) else Expected_Transfer_Bytes));
       pragma Assert (Active_Acquisitions = 0);
@@ -24,7 +24,7 @@ package body CuBit.Memory_Grants is
       if success then Active_Acquisitions := Active_Acquisitions - 1; end if;
    end Return_Acquisition;
    procedure Create_Via_Capability
-     (slot : CuBit.Messages.CapabilitySlot; localAddr : System.Address;
+     (slot : CuBit.Handles.Endpoint; localAddr : System.Address;
       numPages : Natural; readWrite : Boolean;
       reference : out Grant_Reference; success : out Boolean)
    is

@@ -4,9 +4,12 @@ with Ada.Streams;
 with Ada.Streams.Stream_IO;
 with Ada.Text_IO;
 with Ada.Characters.Handling;
+with Ada.Strings;
+with Ada.Strings.Fixed;
 with Interfaces;
 with CCL.Manifests;
 with CuBit.Failures;
+with CuBit.Startup_Tables;
 with CCL.Language;
 
 --  Linux-hosted file boundary only. No process execution or network access.
@@ -27,8 +30,8 @@ procedure Main is
    --  manifests are checked against, found beside the catalogs directory.
    Schema_Source : String (1 .. CCL.Language.MAX_SOURCE_LENGTH);
    Schema_Length : Natural := 0;
-   --  CATALOG MANIFEST, then options as pairs: --ada-output FILE,
-   --  --rust-output FILE, --schema FILE.
+   --  CATALOG MANIFEST, then options as pairs: --startup-output FILE (the
+   --  Ada Startup package), --rust-output FILE (binding names), --schema FILE.
    function Option (Name : String) return String is
    begin
       for Index in 3 .. Argument_Count - 1 loop
@@ -42,7 +45,9 @@ procedure Main is
      (Argument_Count >= 2 and then Argument_Count mod 2 = 0 and then
       (for all Index in 3 .. Argument_Count =>
          (Index - 3) mod 2 = 1 or else
-         Argument (Index) in "--ada-output" | "--rust-output" | "--schema"));
+         Argument (Index) in "--rust-output" | "--startup-output" | "--schema"));
+   --  Where the startup binding goes (none without --startup-output).
+   function Startup_Path return String is (Option ("--startup-output"));
    --  The schema's default home: interfaces/ beside the catalogs directory.
    function Schema_Path return String is
      (if Option ("--schema")'Length > 0 then Option ("--schema")
@@ -50,7 +55,6 @@ procedure Main is
              (Ada.Directories.Containing_Directory (Ada.Directories.Full_Name (Argument (1)))) &
            "/interfaces/executable-manifest.ccl");
    Result : CCL.Manifests.Compilation_Result;
-   Ada_Output : Ada.Text_IO.File_Type;
    Hex : constant String := "0123456789abcdef";
 
    procedure Read_Source (Path : String; Text : out String; Length : out Natural) is
@@ -80,28 +84,6 @@ procedure Main is
       end loop;
    end Emit;
 
-   procedure Emit_Ada is
-   begin
-      Create (Ada_Output, Out_File, Option ("--ada-output"));
-      Put_Line (Ada_Output, "-- Generated with the ELF manifest; do not edit.");
-      if Result.Binding_Count > 0 then
-         Put_Line (Ada_Output, "with Interfaces;");
-      end if;
-      Put_Line (Ada_Output, "package CCL_Manifest_Bindings with SPARK_Mode => On is");
-      for Binding of Result.Bindings (1 .. Result.Binding_Count) loop
-         declare
-            Name : String := Binding.Name.Data (1 .. Binding.Name.Length);
-         begin
-            for C of Name loop
-               if C = '-' then C := '_'; end if;
-            end loop;
-            Put_Line (Ada_Output, "   Slot_" & Name &
-              " : constant Interfaces.Unsigned_64 :=" & Natural'Image (Binding.Slot) & ";");
-         end;
-      end loop;
-      Put_Line (Ada_Output, "end CCL_Manifest_Bindings;");
-      Close (Ada_Output);
-   end Emit_Ada;
 
    procedure Emit_Rust is
       Output : Ada.Text_IO.File_Type;
@@ -117,17 +99,186 @@ procedure Main is
                else C := Ada.Characters.Handling.To_Upper (C);
                end if;
             end loop;
-            Put_Line (Output, "pub const SLOT_" & Name & " : u64 =" &
-                      Natural'Image (Binding.Slot) & ";");
+            --  The startup entry's name (cubit::startup looks it up).
+            Put_Line (Output, "pub const BINDING_" & Name & " : &str = """ &
+                      Binding.Name.Data (1 .. Binding.Name.Length) & """;");
          end;
       end loop;
       Close (Output);
    end Emit_Rust;
+   ---------------------------------------------------------------------------
+   --  The startup binding (CAP-002): package Startup, one function per
+   --  startup capability, named after its binding, returning that kind's
+   --  private handle (Required) or an Optional_Handle the caller must
+   --  examine (Optional); Verify checks the loaded table against the
+   --  declaration. No numbers: handles come from the startup table only.
+   ---------------------------------------------------------------------------
+   package ST renames CuBit.Startup_Tables;
+
+   --  "pointer-events" -> "Pointer_Events".
+   function Ada_Name (Binding : String) return String is
+      Result : String := Binding;
+      Start : Boolean := True;
+   begin
+      for C of Result loop
+         if C = '-' then
+            C := '_';
+            Start := True;
+         elsif Start then
+            C := Ada.Characters.Handling.To_Upper (C);
+            Start := False;
+         end if;
+      end loop;
+      return Result;
+   end Ada_Name;
+
+   --  Names the generated package cannot use as function names: Ada's
+   --  reserved words, Standard (the generated code's anchor) and Verify.
+   Unusable : constant String :=
+     " abort abs abstract accept access aliased all and array at begin body case constant" &
+     " declare delay delta digits do else elsif end entry exception exit for function generic" &
+     " goto if in interface is limited loop mod new not null of or others out overriding" &
+     " package pragma private procedure protected raise range record rem renames requeue" &
+     " return reverse select separate some subtype synchronized tagged task terminate then" &
+     " type until use when while with xor standard verify ";
+
+   --  The CuBit.Handles type each kind's handle is (DMA and Resource
+   --  entries are not capabilities and get no accessor).
+   function Handle_Type (Kind : ST.Capability_Kind) return String is
+     (case Kind is
+         when ST.Endpoint | ST.Render | ST.Network => "Endpoint",
+         when ST.Device_Memory | ST.Framebuffer    => "Device_Memory",
+         when ST.IO_Ports     => "IO_Ports",
+         when ST.Interrupt    => "Interrupt",
+         when ST.Notification => "Notification",
+         when ST.Scheduling   => "Scheduling",
+         when ST.Process      => "Process",
+         when ST.DMA | ST.Resource => "");
+
+   --  An enumeration literal's image in Ada's mixed case (IO and DMA stay
+   --  upper case, as declared).
+   function Mixed (Image : String) return String is
+      Result : String := Ada.Characters.Handling.To_Lower (Image);
+      Start : Boolean := True;
+   begin
+      for I in Result'Range loop
+         if Start then
+            Result (I) := Ada.Characters.Handling.To_Upper (Result (I));
+         end if;
+         Start := Result (I) = '_';
+      end loop;
+      if Result'Length >= 2 and then Result (Result'First .. Result'First + 1) = "Io" then
+         Result (Result'First + 1) := 'O';
+      elsif Result = "Dma" then
+         Result := "DMA";
+      end if;
+      return Result;
+   end Mixed;
+
+   function Kind_Image (Kind : ST.Capability_Kind) return String is
+     (Mixed (ST.Capability_Kind'Image (Kind)));
+
+   --  False (with a message) if a binding cannot be a function name.
+   function Startup_Names_Usable return Boolean is
+   begin
+      for Binding of Result.Bindings (1 .. Result.Binding_Count) loop
+         declare
+            Name : constant String := Binding.Name.Data (1 .. Binding.Name.Length);
+         begin
+            if Ada.Strings.Fixed.Index (Unusable, " " & Name & " ") > 0 then
+               Put_Line (Standard_Error, Argument (2) & ": binding """ & Name &
+                         """ cannot name a startup function (an Ada reserved word, Standard or Verify). " &
+                         "Fix: rename the binding.");
+               return False;
+            end if;
+         end;
+      end loop;
+      return True;
+   end Startup_Names_Usable;
+
+   procedure Emit_Startup is
+      Output : Ada.Text_IO.File_Type;
+      --  .cubit.id: magic (4), version (2), count (2), then the "id" pair:
+      --  key length (1), value length (2), the key "id", the value.
+      Value_Length_At : constant := 10;
+      Value_At : constant := 14;
+      Identity_Length : constant Natural :=
+        Natural (Result.Identity.Data (Value_Length_At)) +
+        256 * Natural (Result.Identity.Data (Value_Length_At + 1));
+      Identity : String (1 .. Identity_Length);
+   begin
+      for I in Identity'Range loop
+         Identity (I) := Character'Val (Result.Identity.Data (Value_At + I - 1));
+      end loop;
+      Create (Output, Out_File, Startup_Path);
+      Put_Line (Output, "--  Generated with the ELF manifest; do not edit.");
+      Put_Line (Output, "--  Startup capabilities of " & Identity & ", by name (CAP-002).");
+      Put_Line (Output, "--  Handle limit: " &
+                (case Result.Handles.Kind is
+                    when ST.Standard_Limit => "standard (" &
+                      Ada.Strings.Fixed.Trim (Natural'Image (ST.Standard_Handle_Limit), Ada.Strings.Left) & ")",
+                    when ST.At_Most => "at most" & ST.Handle_Count'Image (Result.Handles.Count),
+                    when ST.Kernel_Limit => "the kernel limit") & ".");
+      Put_Line (Output, "pragma Ada_2022;");
+      Put_Line (Output, "with CuBit.Handles.Startup;");
+      Put_Line (Output, "with CuBit.Startup_State;");
+      Put_Line (Output, "with CuBit.Startup_Tables;");
+      Put_Line (Output, "package Startup with SPARK_Mode is");
+      for Binding of Result.Bindings (1 .. Result.Binding_Count) loop
+         declare
+            Name : constant String := Binding.Name.Data (1 .. Binding.Name.Length);
+            use type ST.Need;
+            Optional : constant Boolean := Binding.Requirement = ST.Optional;
+            Kind_Name : constant String := "Standard.CuBit.Startup_Tables." & Kind_Image (Binding.Kind);
+            T : constant String := Handle_Type (Binding.Kind);
+         begin
+            Put_Line (Output, "");
+            Put_Line (Output, "   --  " & Kind_Image (Binding.Kind) & " """ & Name & """, " &
+                      (if Optional then "optional" else "required") & ".");
+            if T = "" then
+               Put_Line (Output, "   --  (not a capability: no handle)");
+            elsif Optional then
+               Put_Line (Output, "   function " & Ada_Name (Name) &
+                         " return Standard.CuBit.Handles.Startup.Optional_" & T & " is");
+               Put_Line (Output, "     (Standard.CuBit.Handles.Startup.Optional_" & T &
+                         "_Named (""" & Name & """, " & Kind_Name & "));");
+            else
+               Put_Line (Output, "   function " & Ada_Name (Name) &
+                         " return Standard.CuBit.Handles." & T & " is");
+               Put_Line (Output, "     (Standard.CuBit.Handles.Startup." & T &
+                         "_Named (""" & Name & """, " & Kind_Name & "));");
+            end if;
+         end;
+      end loop;
+      Put_Line (Output, "");
+      Put_Line (Output, "   --  Whether the loaded startup table holds every capability above,");
+      Put_Line (Output, "   --  with its kind; call once at startup and stop if it is not Ready.");
+      Put_Line (Output, "   function Verify return Standard.CuBit.Startup_State.Verification is");
+      if Result.Binding_Count = 0 then
+         Put_Line (Output, "     (Standard.CuBit.Startup_State.Verify ([]));");
+      else
+         Put_Line (Output, "     (Standard.CuBit.Startup_State.Verify");
+         for Index in 1 .. Result.Binding_Count loop
+            declare
+               Binding : CCL.Manifests.Named_Binding renames Result.Bindings (Index);
+               Name : constant String := Binding.Name.Data (1 .. Binding.Name.Length);
+            begin
+               Put_Line (Output, (if Index = 1 then "        ([" else "          ") &
+                         "(Standard.CuBit.Startup_Tables.To_Name (""" & Name & """), " &
+                         "Standard.CuBit.Startup_Tables." & Kind_Image (Binding.Kind) & ", " &
+                         "Standard.CuBit.Startup_Tables." & Mixed (ST.Need'Image (Binding.Requirement)) & ")" &
+                         (if Index = Result.Binding_Count then "]));" else ","));
+            end;
+         end loop;
+      end if;
+      Put_Line (Output, "end Startup;");
+      Close (Output);
+   end Emit_Startup;
 begin
    if not Options_Valid then
       Put_Line (Standard_Error,
-        "usage: ccl-manifest CATALOG.ccl MANIFEST.ccl [--ada-output bindings.ads | --rust-output bindings.rs] " &
-        "[--schema executable-manifest.ccl] > manifest.S");
+        "usage: ccl-manifest CATALOG.ccl MANIFEST.ccl [--startup-output startup.ads] " &
+        "[--rust-output bindings.rs] [--schema executable-manifest.ccl] > manifest.S");
       Set_Exit_Status (Failure);
       return;
    end if;
@@ -171,10 +322,15 @@ begin
       Set_Exit_Status (Failure);
       return;
    end if;
-   if Option ("--ada-output")'Length > 0 or else Option ("--rust-output")'Length > 0 then
-      if Option ("--rust-output")'Length > 0 then Emit_Rust;
-      else Emit_Ada;
+   if Startup_Path'Length > 0 then
+      if not Startup_Names_Usable then
+         Set_Exit_Status (Failure);
+         return;
       end if;
+      Emit_Startup;
+   end if;
+   if Option ("--rust-output")'Length > 0 then
+      Emit_Rust;
    end if;
    Emit (".cubit.id", Result.Identity);
    Emit (".cubit.caps", Result.Capabilities);
@@ -182,6 +338,7 @@ begin
    Emit (".cubit.resources", Result.Resources);
    Emit (".cubit.launch", Result.Launch);
    Emit (".cubit.description", Result.Description);
+   Emit (".cubit.startup", Result.Startup);
    Put_Line (".section .note.GNU-stack,"""",@progbits");
 exception
    when Ada.Streams.Stream_IO.Name_Error | Ada.Streams.Stream_IO.Use_Error =>

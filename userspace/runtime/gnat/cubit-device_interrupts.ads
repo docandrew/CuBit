@@ -21,6 +21,8 @@ with Interfaces; use Interfaces;
 with Device_Vector_ABI; use Device_Vector_ABI;
 with CuBit.Messages; use CuBit.Messages;
 
+with CuBit.Handles;
+
 package CuBit.Device_Interrupts is
 
    --  The IRQ doorbell's label (kernel IPC_Labels.EVENT_IRQ).
@@ -34,8 +36,9 @@ package CuBit.Device_Interrupts is
       Count : Block_Size := 1;
    end record;
 
-   --  The block the CAP_IRQ in Slot names; Valid False if Slot holds none.
-   function Block_Of (Slot : CapabilitySlot) return Interrupt_Block;
+   --  The block a driver's interrupt handle names (its startup "device"
+   --  or similar entry); Valid False if it names no vector block.
+   function Block_Of (Item : CuBit.Handles.Interrupt) return Interrupt_Block;
 
    function Is_Doorbell (Event : Message) return Boolean is
      (Event.tag.label = EVENT_IRQ);
@@ -47,26 +50,33 @@ package CuBit.Device_Interrupts is
      and then Index <= Last_Vector - Block.Head;
 
    ---------------------------------------------------------------------------
-   --  devmgr: the vector authority (Device_Vector_ABI.Vector_Authority_Slot)
+   --  devmgr: the vector authority (its boot root, a CuBit.Handles.Interrupt)
    ---------------------------------------------------------------------------
    type Allocation is record
       Valid       : Boolean := False;
       Head        : Device_Vector := Device_Vector'First;
       Count       : Block_Size := 1;
       Destination : Destination_ID := 0;
+      --  The owner's CAP_IRQ handle in its own table (for its startup
+      --  table); Why when not Valid.
+      Owner_Handle : CuBit.Handles.Foreign_Handle;
+      Why          : CuBit.Handles.Refusal := CuBit.Handles.ABI.Invalid_Argument;
    end record;
 
-   --  Bind Count vectors to Owner, delivered to CPU, and install Owner's
-   --  CAP_IRQ in its empty Slot.
+   --  Bind Count vectors to Owner, delivered to CPU, and place Owner's
+   --  CAP_IRQ in its table through Space (before Owner first runs).
    function Allocate
-     (Owner : Process_ID; Count : Block_Size; Slot : CapabilitySlot;
-      CPU : Natural) return Allocation;
+     (Owner : Process_ID; Space : CuBit.Handles.Cspace; Count : Block_Size;
+      CPU : Natural; Authority : CuBit.Handles.Interrupt) return Allocation;
 
    --  Free a block after masking it at the device.
-   function Release (Head : Device_Vector) return Boolean;
+   function Release
+     (Head : Device_Vector; Authority : CuBit.Handles.Interrupt) return Boolean;
 
    --  A vector's interrupt count, owner identity or binding; all ones when
    --  refused.
-   function Read (Vector : Device_Vector; Field : Read_Field) return Unsigned_64;
+   function Read
+     (Vector : Device_Vector; Field : Read_Field; Authority : CuBit.Handles.Interrupt)
+      return Unsigned_64;
 
 end CuBit.Device_Interrupts;

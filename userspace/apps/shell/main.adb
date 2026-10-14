@@ -35,13 +35,26 @@ with CuBit.Log_Records;
 with CuBit.Streams;
 with CuBit.Protocols;
 with Font8x16;
+with CuBit.Handles.Control;
+with CuBit.Handles.Devices;
+with CuBit.Handles.Startup;
+with CuBit.Startup_Tables;
+with Startup;
 
 procedure main is
+   --  The shell holds no process authority over what procmgr starts for it
+   --  (the kernel refused its kill before CAP-002 too): kill reports it.
+   function noKill return Unsigned_64 is (Unsigned_64'Last);
    function Image (Process : Process_ID) return String
      renames CuBit.Process_IDs.Text.Image;
    package DSP renames CuBit.Display_Protocol;
    package MG renames CuBit.Memory_Grants;
    use ASCII;
+
+   --  The approved network scope, or the null handle (calls through it fail).
+   Network_Service : constant CuBit.Handles.Endpoint :=
+     (if Startup.Network.Present then Startup.Network.Value
+      else CuBit.Handles.No_Endpoint);
 
    --  IPC label constants
    OP_OPEN    : constant Unsigned_32 := 16#0001#;
@@ -338,7 +351,7 @@ procedure main is
    begin
       msg := CuBit.Desktop_Messages.From_Wire
         (DSP.Encode_Lease_Request (DSP.Release_Display));
-      tag := capCall (CAP_SLOT_DISPLAY, msg, CuBit.Messages.Wait_Forever);
+      tag := capCall (Startup.Display, msg, CuBit.Messages.Wait_Forever);
       msg.tag := tag;
       displayAttached := False;
       if displayGranted then
@@ -366,14 +379,14 @@ procedure main is
          msg := NULL_MESSAGE;
          msg.tag := (label  => OP_DISPLAY_PRESENT_RECT,
                      length => 4,
-                     flags  => 0,
+                     protocol  => 0, ipc => <>,
                      reserved  => 0);
          msg.words (0) := Unsigned_64 (x);
          msg.words (1) := Unsigned_64 (y);
          msg.words (2) := Unsigned_64 (w);
          msg.words (3) := Unsigned_64 (h);
 
-         tag := capCall (CAP_SLOT_DISPLAY, msg, CuBit.Messages.Wait_Forever);
+         tag := capCall (Startup.Display, msg, CuBit.Messages.Wait_Forever);
          msg.tag := tag;
          exit when tag.length >= 1 and then msg.words (0) = DISPLAY_OK;
 
@@ -440,9 +453,9 @@ procedure main is
 
       status.tag := (label  => OP_DISPLAY_GET_STATUS,
                      length => 0,
-                     flags  => 0,
+                     protocol  => 0, ipc => <>,
                      reserved  => 0);
-      tag := capCall (CAP_SLOT_DISPLAY, status, CuBit.Messages.Wait_Forever);
+      tag := capCall (Startup.Display, status, CuBit.Messages.Wait_Forever);
       status.tag := tag;
 
       if tag.length < 2 or else
@@ -460,7 +473,7 @@ procedure main is
 
       acquire := CuBit.Desktop_Messages.From_Wire
         (DSP.Encode_Lease_Request (DSP.Acquire_Display));
-      tag := capCall (CAP_SLOT_DISPLAY, acquire, CuBit.Messages.Wait_Forever);
+      tag := capCall (Startup.Display, acquire, CuBit.Messages.Wait_Forever);
       acquire.tag := tag;
       if tag.length < 1 or else acquire.words (0) /= DISPLAY_OK then
          debugPrint ("shell: display acquire denied" & LF);
@@ -486,7 +499,7 @@ procedure main is
 
       --  Scanout only reads the client's pixels; it has no write authority.
       MG.Create_Via_Capability
-        (slot      => CAP_SLOT_DISPLAY,
+        (slot      => Startup.Display,
          localAddr => displayPixels,
          numPages  => Natural (pages),
          readWrite => False,
@@ -502,7 +515,7 @@ procedure main is
       attach := CuBit.Desktop_Messages.From_Wire
         (DSP.Encode_Attachment ((displayGrant, layout)));
 
-      tag := capCall (CAP_SLOT_DISPLAY, attach, CuBit.Messages.Wait_Forever);
+      tag := capCall (Startup.Display, attach, CuBit.Messages.Wait_Forever);
       attach.tag := tag;
       if tag.label = OP_DISPLAY_ATTACH_BUFFER and then tag.length = 1 and then
         attach.words (0) = DISPLAY_OK
@@ -827,13 +840,13 @@ procedure main is
          msg := NULL_MESSAGE;
          msg.tag := (label  => OP_SPAWN,
                      length => Unsigned_8 (totalLen),
-                     flags  => 0,
+                     protocol  => 0, ipc => <>,
                      reserved  => 0);
          msg.words (0) := CuBit.Grant_References.Encode (spawnGrant);
          msg.words (1) := 5;  -- default priority
          msg.words (2) := 0;  -- no sandbox override from shell
          msg.words (3) := Unsigned_64 (cwdLen);
-         tag := capCall (CAP_SLOT_PROCMGR, msg, CuBit.Messages.Wait_Forever);
+         tag := capCall (Startup.Process_Manager, msg, CuBit.Messages.Wait_Forever);
       end;
 
       if tag.label = REPLY_OK then
@@ -857,18 +870,12 @@ procedure main is
          debugPrint ("" & LF);
 
          --  Open a channel on the child's first outlet, without waiting.
+         --  The shell holds no endpoint to a child procmgr starts for it
+         --  (CAP-002: nothing is found by scanning a table), so its output
+         --  is not subscribed to.
          declare
-            ok : Boolean := False;
-            endpointSlot : CapabilitySlot;
-            hasEndpoint : Boolean;
+            ok : constant Boolean := False;
          begin
-            Find_Endpoint_Capability
-              (foregroundPID, endpointSlot, hasEndpoint);
-            if hasEndpoint then
-               CuBit.Streams.Subscribe_Begin
-                 (endpointSlot, FIRST_PORT_RING, CuBit.Protocols.TEXT_LINE_CONTRACT,
-                  STREAM_SUB_TOKEN, childStream, ok);
-            end if;
             if ok then
                streamSubPending := True;
                streamDrainPolls := 0;
@@ -928,13 +935,13 @@ procedure main is
          msg := NULL_MESSAGE;
          msg.tag := (label  => OP_SPAWN,
                      length => Unsigned_8 (totalLen),
-                     flags  => 0,
+                     protocol  => 0, ipc => <>,
                      reserved  => 0);
          msg.words (0) := CuBit.Grant_References.Encode (spawnGrant);
          msg.words (1) := 5;
          msg.words (2) := 0;  -- no sandbox override from shell
          msg.words (3) := Unsigned_64 (cwdLen);
-         tag := capCall (CAP_SLOT_PROCMGR, msg, CuBit.Messages.Wait_Forever);
+         tag := capCall (Startup.Process_Manager, msg, CuBit.Messages.Wait_Forever);
       end;
 
       if tag.label = REPLY_OK then
@@ -969,7 +976,7 @@ procedure main is
          return;
       end if;
 
-      ret := killProcess (pid);
+      ret := noKill;
       if ret = 0 then
          putStr ("killed PID ");
          putStr (Image (pid));
@@ -1046,13 +1053,13 @@ procedure main is
          msg := NULL_MESSAGE;
          msg.tag := (label  => OP_OPEN,
                      length => 4,
-                     flags  => 0,
+                     protocol  => 0, ipc => <>,
                      reserved  => 0);
          msg.words (0) := fsGrant.slot;
          msg.words (1) := Unsigned_64 (resolvedLen);
          msg.words (2) := 0;
          msg.words (3) := fsGrant.generation;
-         tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+         tag := capCall (Startup.Filesystem, msg, CuBit.Messages.Wait_Forever);
       end;
 
       if tag.label /= REPLY_OK then
@@ -1067,13 +1074,13 @@ procedure main is
          msg := NULL_MESSAGE;
          msg.tag := (label  => OP_READ,
                      length => 4,
-                     flags  => 0,
+                     protocol  => 0, ipc => <>,
                      reserved  => 0);
          msg.words (0) := handle;
          msg.words (1) := fsGrant.slot;
          msg.words (2) := Unsigned_64 (FS_BUF_PAGES * 4096);
          msg.words (3) := fsGrant.generation;
-         tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+         tag := capCall (Startup.Filesystem, msg, CuBit.Messages.Wait_Forever);
 
          if tag.label /= REPLY_OK then
             exit;
@@ -1107,10 +1114,10 @@ procedure main is
       msg := NULL_MESSAGE;
       msg.tag := (label  => OP_CLOSE,
                   length => 1,
-                  flags  => 0,
+                  protocol  => 0, ipc => <>,
                   reserved  => 0);
       msg.words (0) := handle;
-      tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+      tag := capCall (Startup.Filesystem, msg, CuBit.Messages.Wait_Forever);
 
       putChar (LF);
       renderDirty;
@@ -1132,7 +1139,7 @@ procedure main is
 
       msg := CuBit.Filesystems.Open_Directory_Request
         (fsGrant, CuBit.Filesystems.Path_Byte_Count (resolvedLen));
-      tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+      tag := capCall (Startup.Filesystem, msg, CuBit.Messages.Wait_Forever);
 
       if tag.label /= CuBit.Filesystems.REPLY_OK then
          putStr ("ls: cannot list directory" & LF);
@@ -1143,7 +1150,7 @@ procedure main is
       loop
          msg := CuBit.Filesystems.Read_Directory_Page_Request
            (directory, fsGrant);
-         tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+         tag := capCall (Startup.Filesystem, msg, CuBit.Messages.Wait_Forever);
          if tag.label /= CuBit.Filesystems.REPLY_OK then
             putStr ("ls: directory read failed" & LF);
             exit;
@@ -1182,7 +1189,7 @@ procedure main is
       end loop;
 
       msg := CuBit.Filesystems.Close_Directory_Request (directory);
-      tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+      tag := capCall (Startup.Filesystem, msg, CuBit.Messages.Wait_Forever);
       if tag.label /= CuBit.Filesystems.REPLY_OK then
          putStr ("ls: directory close failed" & LF);
       end if;
@@ -1245,13 +1252,13 @@ procedure main is
          msg := NULL_MESSAGE;
          msg.tag := (label  => OP_OPEN,
                      length => 4,
-                     flags  => 0,
+                     protocol  => 0, ipc => <>,
                      reserved  => 0);
          msg.words (0) := fsGrant.slot;
          msg.words (1) := Unsigned_64 (resolvedLen);
          msg.words (2) := O_CREAT or O_TRUNC or O_WRONLY;
          msg.words (3) := fsGrant.generation;
-         tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+         tag := capCall (Startup.Filesystem, msg, CuBit.Messages.Wait_Forever);
 
          if tag.label /= REPLY_OK then
             putStr ("write: cannot open file" & LF);
@@ -1274,13 +1281,13 @@ procedure main is
          msg := NULL_MESSAGE;
          msg.tag := (label  => OP_WRITE,
                      length => 4,
-                     flags  => 0,
+                     protocol  => 0, ipc => <>,
                      reserved  => 0);
          msg.words (0) := handle;
          msg.words (1) := fsGrant.slot;
          msg.words (2) := Unsigned_64 (text'Length);
          msg.words (3) := fsGrant.generation;
-         tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+         tag := capCall (Startup.Filesystem, msg, CuBit.Messages.Wait_Forever);
 
          if tag.label /= REPLY_OK then
             putStr ("write: write failed" & LF);
@@ -1294,10 +1301,10 @@ procedure main is
          msg := NULL_MESSAGE;
          msg.tag := (label  => OP_CLOSE,
                      length => 1,
-                     flags  => 0,
+                     protocol  => 0, ipc => <>,
                      reserved  => 0);
          msg.words (0) := handle;
-         tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+         tag := capCall (Startup.Filesystem, msg, CuBit.Messages.Wait_Forever);
       end;
    end cmdWrite;
 
@@ -1605,7 +1612,6 @@ procedure main is
    ---------------------------------------------------------------------------
    --  cmdPs
    ---------------------------------------------------------------------------
-   SYSCALL_PROCLIST : constant Unsigned_64 := 71;
    PS_BUF_SIZE : constant := 8192;  -- 256 entries x 32 bytes
 
    procedure cmdPs is
@@ -1638,10 +1644,10 @@ procedure main is
       end if;
       psBuf := To_Address (Integer_Address (ret));
 
-      --  Call SYSCALL_PROCLIST
-      count := syscall (SYSCALL_PROCLIST,
-                        Unsigned_64 (To_Integer (psBuf)),
-                        PS_BUF_SIZE);
+      --  The process list: any process handle with Read (the shell's own).
+      count := CuBit.Handles.Control.Process_List
+        (CuBit.Handles.Startup.Process_Named (CuBit.Startup_Tables.Self_Process_Text),
+         psBuf, PS_BUF_SIZE);
 
       --  Print header
       putStr ((1 .. PID_COLUMN - 3 => ' ') & "PID  NAME              STATE      CPU  PRI   MEM" & LF);
@@ -1746,12 +1752,12 @@ procedure main is
          --  OP_OPEN
          msg := NULL_MESSAGE;
          msg.tag := (label  => OP_OPEN,
-                     length => 4, flags => 0, reserved => 0);
+                     length => 4, protocol => 0, ipc => <>, reserved => 0);
          msg.words (0) := fsGrant.slot;
          msg.words (1) := Unsigned_64 (resolvedLen);
          msg.words (2) := 0;
          msg.words (3) := fsGrant.generation;
-         tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+         tag := capCall (Startup.Filesystem, msg, CuBit.Messages.Wait_Forever);
       end;
 
       if tag.label /= REPLY_OK then
@@ -1765,12 +1771,12 @@ procedure main is
       loop
          msg := NULL_MESSAGE;
          msg.tag := (label  => OP_READ,
-                     length => 4, flags => 0, reserved => 0);
+                     length => 4, protocol => 0, ipc => <>, reserved => 0);
          msg.words (0) := handle;
          msg.words (1) := fsGrant.slot;
          msg.words (2) := Unsigned_64 (FS_BUF_PAGES * 4096);
          msg.words (3) := fsGrant.generation;
-         tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+         tag := capCall (Startup.Filesystem, msg, CuBit.Messages.Wait_Forever);
 
          exit when tag.label /= REPLY_OK;
 
@@ -1836,9 +1842,9 @@ procedure main is
       --  OP_CLOSE
       msg := NULL_MESSAGE;
       msg.tag := (label  => OP_CLOSE,
-                  length => 1, flags => 0, reserved => 0);
+                  length => 1, protocol => 0, ipc => <>, reserved => 0);
       msg.words (0) := handle;
-      tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+      tag := capCall (Startup.Filesystem, msg, CuBit.Messages.Wait_Forever);
 
       renderDirty;
    end cmdHexdump;
@@ -1920,12 +1926,12 @@ procedure main is
             --  OP_OPEN
             msg := NULL_MESSAGE;
             msg.tag := (label  => OP_OPEN,
-                        length => 4, flags => 0, reserved => 0);
+                        length => 4, protocol => 0, ipc => <>, reserved => 0);
             msg.words (0) := fsGrant.slot;
             msg.words (1) := Unsigned_64 (resolvedLen);
             msg.words (2) := 0;
             msg.words (3) := fsGrant.generation;
-            tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+            tag := capCall (Startup.Filesystem, msg, CuBit.Messages.Wait_Forever);
          end;
 
          if tag.label /= REPLY_OK then
@@ -1939,12 +1945,12 @@ procedure main is
          loop
             msg := NULL_MESSAGE;
             msg.tag := (label  => OP_READ,
-                        length => 4, flags => 0, reserved => 0);
+                        length => 4, protocol => 0, ipc => <>, reserved => 0);
             msg.words (0) := handle;
             msg.words (1) := fsGrant.slot;
             msg.words (2) := Unsigned_64 (FS_BUF_PAGES * 4096);
             msg.words (3) := fsGrant.generation;
-            tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+            tag := capCall (Startup.Filesystem, msg, CuBit.Messages.Wait_Forever);
 
             exit when tag.label /= REPLY_OK;
 
@@ -1973,9 +1979,9 @@ procedure main is
          --  OP_CLOSE
          msg := NULL_MESSAGE;
          msg.tag := (label  => OP_CLOSE,
-                     length => 1, flags => 0, reserved => 0);
+                     length => 1, protocol => 0, ipc => <>, reserved => 0);
          msg.words (0) := handle;
-         tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+         tag := capCall (Startup.Filesystem, msg, CuBit.Messages.Wait_Forever);
 
          renderDirty;
       end;
@@ -2010,12 +2016,12 @@ procedure main is
          --  OP_OPEN
          msg := NULL_MESSAGE;
          msg.tag := (label  => OP_OPEN,
-                     length => 4, flags => 0, reserved => 0);
+                     length => 4, protocol => 0, ipc => <>, reserved => 0);
          msg.words (0) := fsGrant.slot;
          msg.words (1) := Unsigned_64 (resolvedLen);
          msg.words (2) := 0;
          msg.words (3) := fsGrant.generation;
-         tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+         tag := capCall (Startup.Filesystem, msg, CuBit.Messages.Wait_Forever);
       end;
 
       if tag.label /= REPLY_OK then
@@ -2029,12 +2035,12 @@ procedure main is
       loop
          msg := NULL_MESSAGE;
          msg.tag := (label  => OP_READ,
-                     length => 4, flags => 0, reserved => 0);
+                     length => 4, protocol => 0, ipc => <>, reserved => 0);
          msg.words (0) := handle;
          msg.words (1) := fsGrant.slot;
          msg.words (2) := Unsigned_64 (FS_BUF_PAGES * 4096);
          msg.words (3) := fsGrant.generation;
-         tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+         tag := capCall (Startup.Filesystem, msg, CuBit.Messages.Wait_Forever);
 
          exit when tag.label /= REPLY_OK;
 
@@ -2072,9 +2078,9 @@ procedure main is
       --  OP_CLOSE
       msg := NULL_MESSAGE;
       msg.tag := (label  => OP_CLOSE,
-                  length => 1, flags => 0, reserved => 0);
+                  length => 1, protocol => 0, ipc => <>, reserved => 0);
       msg.words (0) := handle;
-      tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+      tag := capCall (Startup.Filesystem, msg, CuBit.Messages.Wait_Forever);
 
       --  Print results
       putStr ("  ");
@@ -2129,11 +2135,11 @@ procedure main is
       tag : MessageTag;
    begin
       msg.tag := (label  => OP_SEEK,
-                  length => 3, flags => 0, reserved => 0);
+                  length => 3, protocol => 0, ipc => <>, reserved => 0);
       msg.words (0) := handle;
       msg.words (1) := offset;
       msg.words (2) := 0;  -- SEEK_SET
-      tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+      tag := capCall (Startup.Filesystem, msg, CuBit.Messages.Wait_Forever);
    end seekTo;
 
    --  Read up to count bytes into fsBuf; returns actual bytes read
@@ -2145,12 +2151,12 @@ procedure main is
       tag : MessageTag;
    begin
       msg.tag := (label  => OP_READ,
-                  length => 4, flags => 0, reserved => 0);
+                  length => 4, protocol => 0, ipc => <>, reserved => 0);
       msg.words (0) := handle;
       msg.words (1) := fsGrant.slot;
       msg.words (2) := count;
       msg.words (3) := fsGrant.generation;
-      tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+      tag := capCall (Startup.Filesystem, msg, CuBit.Messages.Wait_Forever);
       if tag.label /= REPLY_OK then
          return 0;
       end if;
@@ -2193,12 +2199,12 @@ procedure main is
          --  OP_OPEN
          msg := NULL_MESSAGE;
          msg.tag := (label  => OP_OPEN,
-                     length => 4, flags => 0, reserved => 0);
+                     length => 4, protocol => 0, ipc => <>, reserved => 0);
          msg.words (0) := fsGrant.slot;
          msg.words (1) := Unsigned_64 (resolvedLen);
          msg.words (2) := 0;
          msg.words (3) := fsGrant.generation;
-         tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+         tag := capCall (Startup.Filesystem, msg, CuBit.Messages.Wait_Forever);
       end;
 
       if tag.label /= REPLY_OK then
@@ -2718,9 +2724,9 @@ procedure main is
    <<Close_File>>
       msg := NULL_MESSAGE;
       msg.tag := (label  => OP_CLOSE,
-                  length => 1, flags => 0, reserved => 0);
+                  length => 1, protocol => 0, ipc => <>, reserved => 0);
       msg.words (0) := handle;
-      tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+      tag := capCall (Startup.Filesystem, msg, CuBit.Messages.Wait_Forever);
 
       renderDirty;
    end cmdInspect;
@@ -2883,28 +2889,6 @@ procedure main is
             end if;
          end;
 
-      elsif startsWith (arg, "resolve ") and arg'Length > 8 then
-         declare
-            schemeName : String renames
-              arg (arg'First + 8 .. arg'Last);
-            info : CuBit.Config.SchemeInfo;
-         begin
-            info := CuBit.Config.resolveScheme (schemeName);
-            if info.found then
-               putStr ("  driver=");
-               putDec (Unsigned_32 (info.driverID));
-               putChar (LF);
-               putStr ("  slot=");
-               putDec (Unsigned_32 (info.capSlot));
-               putChar (LF);
-               putStr ("  pid=");
-               putStr (Image (info.pid));
-               putChar (LF);
-            else
-               putStr ("scheme not found: " & schemeName & LF);
-            end if;
-         end;
-
       elsif startsWith (arg, "list") then
          declare
             prefix : String (1 .. 0);
@@ -2973,9 +2957,9 @@ procedure main is
 
       msg := NULL_MESSAGE;
       msg.tag := (label  => OP_NET_IF_DETAIL,
-                  length => 1, flags => 0, reserved => 0);
+                  length => 1, protocol => 0, ipc => <>, reserved => 0);
       msg.words (0) := 0;  -- interface 0
-      tag := capCall (CAP_SLOT_NET, msg, CuBit.Messages.Wait_Forever);
+      tag := capCall (Network_Service, msg, CuBit.Messages.Wait_Forever);
 
       if tag.label /= REPLY_OK then
          putStr ("error: no interfaces" & LF);
@@ -3055,9 +3039,9 @@ procedure main is
       loop
          msg := NULL_MESSAGE;
          msg.tag := (label  => OP_NET_ROUTE_LIST,
-                     length => 1, flags => 0, reserved => 0);
+                     length => 1, protocol => 0, ipc => <>, reserved => 0);
          msg.words (0) := startIdx;
-         tag := capCall (CAP_SLOT_NET, msg, CuBit.Messages.Wait_Forever);
+         tag := capCall (Network_Service, msg, CuBit.Messages.Wait_Forever);
 
          if tag.label /= REPLY_OK then
             exit;
@@ -3105,8 +3089,8 @@ procedure main is
             end if;
          end loop;
 
-         --  Next page (flags = next startIndex)
-         startIdx := Unsigned_64 (tag.flags);
+         --  Next page (reserved = next startIndex)
+         startIdx := Unsigned_64 (tag.reserved);
          exit when printed >= total;
       end loop;
 
@@ -3147,11 +3131,11 @@ procedure main is
          begin
             msg := NULL_MESSAGE;
             msg.tag := (label  => OP_NET_PING,
-                        length => 3, flags => 0, reserved => 0);
+                        length => 3, protocol => 0, ipc => <>, reserved => 0);
             msg.words (0) := dstPacked;
             msg.words (1) := Unsigned_64 (seq);
             msg.words (2) := sendTs;
-            tag := capCall (CAP_SLOT_NET, msg, CuBit.Messages.Wait_Forever);
+            tag := capCall (Network_Service, msg, CuBit.Messages.Wait_Forever);
 
             if tag.label = REPLY_OK then
                putStr ("reply from ");
@@ -3198,7 +3182,7 @@ procedure main is
       msg := NULL_MESSAGE;
       msg.tag := (label  => OP_NET_RESOLVE,
                   length => Unsigned_8 (nameLen),
-                  flags  => 0, reserved => 0);
+                  protocol  => 0, ipc => <>, reserved => 0);
 
       --  Pack hostname bytes into message words
       declare
@@ -3213,7 +3197,7 @@ procedure main is
          end loop;
       end;
 
-      tag := capCall (CAP_SLOT_NET, msg, CuBit.Messages.Wait_Forever);
+      tag := capCall (Network_Service, msg, CuBit.Messages.Wait_Forever);
 
       if tag.label = REPLY_OK then
          putStr ("Address: ");
@@ -3256,16 +3240,10 @@ procedure main is
       --  Build and send OP_STREAM_LIST
       msg := NULL_MESSAGE;
       msg.tag := (label  => OP_STREAM_LIST,
-                  length => 0, flags => 0, reserved => 0);
+                  length => 0, protocol => 0, ipc => <>, reserved => 0);
 
-      declare
-         endpointSlot : CapabilitySlot;
-         hasEndpoint : Boolean;
-      begin
-         Find_Endpoint_Capability (pid, endpointSlot, hasEndpoint);
-         ok := hasEndpoint and then
-           capSubmit (endpointSlot, msg, STREAM_LIST_TOKEN);
-      end;
+      --  No endpoint to another process is held (CAP-002).
+      ok := False;
       if not ok then
          putStr ("streams: send failed" & LF);
          return;
@@ -3327,6 +3305,7 @@ procedure main is
       Lost : Unsigned_64;
       Result : Status;
    begin
+      CuBit.Logging.Bind (Log_Reader, Startup.Log_Observer);
       CuBit.Logging.Subscribe (Log_Reader, Result);
       if Result /= OK then
          putStr ("logs: observer unavailable or not authorized: " &
@@ -3487,7 +3466,7 @@ procedure main is
             declare
                ret : Unsigned_64;
             begin
-               ret := killProcess (foregroundPID);
+               ret := noKill;
                debugPrint ("shell: Ctrl+C kill pid=");
                debugPrint (Image (foregroundPID));
                debugPrint (" ret=");
@@ -3564,8 +3543,8 @@ procedure main is
          return;
       end if;
 
-      ignore := registerDriver (DRIVER_KEYBOARD);
-      ignore := registerDriver (DRIVER_MOUSE);
+      ignore := registerDriver (DRIVER_KEYBOARD, Startup.Keyboard);
+      ignore := registerDriver (DRIVER_MOUSE, Startup.Mouse);
    end claimLegacyInput;
 
    ---------------------------------------------------------------------------
@@ -3584,7 +3563,7 @@ begin
    declare
       ret : Unsigned_64;
    begin
-      ret := syscall (SYSCALL_MAPFB);
+      ret := CuBit.Handles.Devices.Map_Framebuffer (Startup.Framebuffer);
       if ret = Unsigned_64'Last then
          debugPrint ("shell: MAPFB failed" & LF);
          declare
@@ -3659,8 +3638,8 @@ begin
          ret := syscall (SYSCALL_SBRK, Unsigned_64 (GRANT_BUF_PAGES * 4096));
          if ret /= Unsigned_64'Last then
             grantBuf := To_Address (Integer_Address (ret));
-            CuBit.Memory_Grants.Create_For_Process (
-               grantee   => procmgrPID,
+            CuBit.Memory_Grants.Create_Via_Capability (
+               slot      => Startup.Process_Manager,
                localAddr => grantBuf,
                numPages  => GRANT_BUF_PAGES,
                readWrite => True,
@@ -3685,7 +3664,7 @@ begin
       if ret /= Unsigned_64'Last then
          fsBuf := To_Address (Integer_Address (ret));
          CuBit.Memory_Grants.Create_Via_Capability (
-            slot      => CAP_SLOT_FS,
+            slot      => Startup.Filesystem,
             localAddr => fsBuf,
             numPages  => FS_BUF_PAGES,
             readWrite => True,
@@ -3831,7 +3810,7 @@ begin
                         declare
                            ret : Unsigned_64;
                         begin
-                           ret := killProcess (foregroundPID);
+                           ret := noKill;
                            debugPrint ("shell: Ctrl+C kill pid=");
                            debugPrint (Image (foregroundPID));
                            debugPrint (" ret=");

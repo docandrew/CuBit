@@ -9,7 +9,7 @@ package body Storage_Channel is
      (if Object.Current = Retired then 0 else Requests.Pending_Token (Object.Request_Lifetime));
 
    procedure Initialize
-     (Object : in out Channel; Endpoint : CapabilitySlot;
+     (Object : in out Channel; Endpoint : CuBit.Handles.Endpoint;
       Success : out Boolean)
    is
    begin
@@ -119,7 +119,7 @@ package body Storage_Channel is
       if Completion.requestId = 0 or else Completion.status /= COMPLETION_OK or else
         Reply.tag.length /=
           (if Op in Open_Existing | Open_Create and Reply.tag.label = REPLY_OK then 2 else 1)
-        or else Reply.tag.flags /= 0 or else Reply.tag.reserved /= 0
+        or else Reply.tag.protocol /= 0 or else Reply.tag.reserved /= 0
       then
          Object.Poisoned := True;
          return;

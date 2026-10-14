@@ -1,3 +1,4 @@
+with CuBit.Handles.Fixture;
 with Ada.Command_Line;
 with Ada.Text_IO;
 with Interfaces;
@@ -45,7 +46,7 @@ begin
    pragma Assert (not OK and Binds = 0 and S.Target_Phase = O.Fresh);
    S.Configure_Targets (32, 24, 1, 16384, OK);
    pragma Assert (not OK and Metadata_Calls = 0);
-   S.Initialize (if Scenario = 4 then 0 else 25);
+   S.Initialize (if Scenario = 4 then CuBit.Handles.No_Endpoint else CuBit.Handles.Fixture.Endpoint_Of (25));
    if Scenario >= 6 then
       S.Configure_Targets (32, (if Scenario = 7 then 0 else 24), 1, 16384, OK);
       pragma Assert (Metadata_Calls = 1);

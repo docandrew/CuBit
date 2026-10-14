@@ -5,7 +5,7 @@ package body Vulkan_Device_FFI with SPARK_Mode => Off is
      with Import, Convention => C,
        External_Name => "cubit_vulkan_device_context_request";
    procedure Start
-     (Slot : Interfaces.Unsigned_64; Owned : out Boolean;
+     (Render : CuBit.Handles.Endpoint; Owned : out Boolean;
       Description : out System.Address)
    is
       Status : Mesa_Service.Result;
@@ -14,7 +14,7 @@ package body Vulkan_Device_FFI with SPARK_Mode => Off is
       use type Mesa_Service.Result;
    begin
       Description := System.Null_Address;
-      Mesa_Service.Start (Device, Slot, Status);
+      Mesa_Service.Start (Device, Render, Status);
       Owned := Mesa_Service.Accepted (Device);
       if Status = Mesa_Service.Success and then Owned then
          Mesa_Service.Borrow (Device, View, Ready);

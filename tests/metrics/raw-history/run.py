@@ -66,6 +66,12 @@ for name in ('raw_check.adb', 'query_check.adb', 'history_check.adb', 'trace_gro
     copy(fixtures / name, core / 'source' / name)
 for name in ('cubit-metric_raw_observer.ads', 'cubit-metric_raw_observer.adb'):
     copy(runtime / name, observer / 'source' / name)
+for name in ('cubit-handles.ads', 'cubit-process_ids.ads', 'cubit-process_ids.adb'):
+    copy(runtime / name, observer / 'source' / name)
+for name in ('capability_abi.ads', 'capability_abi.adb'):
+    copy(root / 'shared/capabilities' / name, observer / 'source' / name)
+for name in ('cubit-handles-fixture.ads', 'cubit-handles-fixture.adb'):
+    copy(root / 'tests/support/handles' / name, observer / 'source' / name)
 for path in sorted((fixtures / 'observer-mocks').glob('*.ad?')):
     copy(path, observer / 'source' / path.name)
 copy(fixtures / 'observer_check.adb', observer / 'source/check.adb')

@@ -18,7 +18,14 @@ with CuBit.Process_IDs;
 with CuBit.Libc_Child_Outlets;
 with CuBit.Outlet_Rings;
 
+with CuBit.Libc_Startup;
+with CuBit.Startup_Tables;
 package body CuBit.Libc_Process is
+
+   --  The process manager endpoint its launcher granted (startup name
+   --  "process-manager"), or 0: then spawning fails.
+   function Process_Manager_Handle return Unsigned_64 is
+     (CuBit.Libc_Startup.Granted ("process-manager", CuBit.Startup_Tables.Endpoint));
    package PIDs renames CuBit.Process_IDs;
 
    use type Interfaces.C.int;
@@ -119,7 +126,7 @@ package body CuBit.Libc_Process is
          return ENOMEM;
       end if;
       Slot := CuBit.Kernel_Calls.Call
-        (Create_Shared_Memory_Grant_Via_Capability, Process_Manager_Slot,
+        (Create_Shared_Memory_Grant_Via_Capability, Process_Manager_Handle,
          Unsigned_64 (To_Integer (Area)), Request_Pages, Grant_Read_Only);
       if Slot = Failed then
          Ignore := munmap (Area, Request_Pages * Page_Bytes);
@@ -154,7 +161,7 @@ package body CuBit.Libc_Process is
          return ENOMEM;
       end if;
       Slot := CuBit.Kernel_Calls.Call
-        (Create_Shared_Memory_Grant_Via_Capability, Process_Manager_Slot,
+        (Create_Shared_Memory_Grant_Via_Capability, Process_Manager_Handle,
          Unsigned_64 (To_Integer (Area)), Places_Pages, Grant_Read_Write);
       if Slot = Failed then
          Ignore := munmap (Area, Places_Pages * Page_Bytes);
@@ -171,7 +178,7 @@ package body CuBit.Libc_Process is
             Words => [Shift_Left (Generation, Generation_Shift) or Slot, 0, 0, 0],
             others => <>);
          Label : constant Unsigned_32 := Unsigned_32 (CuBit.Kernel_Calls.Call
-           (Call_Via_Endpoint_Capability, Process_Manager_Slot,
+           (Call_Via_Endpoint_Capability, Process_Manager_Handle,
             Unsigned_64 (To_Integer (M'Address)), CuBit.Kernel_ABI.Forever) and 16#FFFF_FFFF#);
          Answer : constant LG.Bytes (1 .. LG.Maximum_Bytes)
          with Import, Address => Area;
@@ -330,7 +337,7 @@ package body CuBit.Libc_Process is
          --  Registered under the lock waiting drains exit events under, so
          --  an early exit event cannot be missed.
          Label := Unsigned_32 (CuBit.Kernel_Calls.Call
-           (Call_Via_Endpoint_Capability, Process_Manager_Slot,
+           (Call_Via_Endpoint_Capability, Process_Manager_Handle,
             Unsigned_64 (To_Integer (M'Address)), CuBit.Kernel_ABI.Forever) and 16#FFFF_FFFF#);
          --  The reply names the child by identity (KERN-003); POSIX sees
          --  it folded to a pid_t.

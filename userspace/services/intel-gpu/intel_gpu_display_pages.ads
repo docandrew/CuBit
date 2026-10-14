@@ -8,9 +8,4 @@ package Intel_GPU_Display_Pages with SPARK_Mode, Pure is
    function Offset (Index : Page_Index) return Unsigned_64 is
      (case Index is when 0 => 16#45000#, when 1 => 16#46000#, when 2 => 16#44000#)
      with Post => Offset'Result mod 4096 = 0 and Offset'Result < 16#200000#;
-   function Slot (Index : Page_Index) return Unsigned_64 is
-     -- Slot23 belongs to the shared log publisher protocol. Do not replace
-     -- its endpoint when granting the second display-power page.
-     -- Slot26 is GGTT, slot27 is the log observer.
-     (if Index = 2 then 28 else 24 + Unsigned_64 (Index));
 end Intel_GPU_Display_Pages;

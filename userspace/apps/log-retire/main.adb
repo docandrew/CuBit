@@ -6,6 +6,7 @@ with CuBit.Channel_Protocol;
 with CuBit.Grant_References;
 with CuBit.Log_Publish_Rings;
 with CuBit.Memory_Grants;
+with Startup;
 
 --  Fault-injection fixture only; never included in normal startup profiles.
 --  Uses the test endpoint role, not the production logstore role. Deliberately
@@ -20,7 +21,7 @@ procedure Main is
    Acquired : Boolean;
    Ignore : Unsigned_64;
 begin
-   Ignore := registerDriver (DRIVER_IPCTEST);
+   Ignore := registerDriver (DRIVER_IPCTEST, Startup.Registration);
    if Ignore = Unsigned_64'Last then
       debugPrint ("TEST: FAIL log-retire registration" & ASCII.LF);
       return;

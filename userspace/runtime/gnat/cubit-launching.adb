@@ -12,6 +12,13 @@ with CuBit.Messages; use CuBit.Messages;
 
 package body CuBit.Launching is
 
+   Service : CuBit.Handles.Endpoint := CuBit.Handles.No_Endpoint;
+
+   procedure Bind (Service : CuBit.Handles.Endpoint) is
+   begin
+      Launching.Service := Service;
+   end Bind;
+
    package LA renames CuBit.Launch_Arguments;
    package LG renames CuBit.Launch_Grants;
 
@@ -56,7 +63,7 @@ package body CuBit.Launching is
       Failure := LA.Malformed_Request;
       if not Lent then
          CuBit.Memory_Grants.Create_Via_Capability
-           (CAP_SLOT_PROCMGR, Request'Address, Request_Pages, False,
+           (Service, Request'Address, Request_Pages, False,
             Lent_Reference, Success);
          if not Success then
             Result := No_Process_Manager;
@@ -82,12 +89,12 @@ package body CuBit.Launching is
          Request (Next) := B;
       end loop;
       Msg.tag := (label => LA.Launch_Operation, length => LA.Launch_Request_Words,
-                  flags => 0, reserved => 0);
+                  protocol => 0, ipc => <>, reserved => 0);
       Msg.words :=
         [CuBit.Grant_References.Encode (Lent_Reference),
          Unsigned_64 (Program'Length), Unsigned_64 (Arguments'Length),
          LG.Request_Word (0, Grants'Length, Ring_Bytes)];
-      Reply := capCall (CAP_SLOT_PROCMGR, Msg, CuBit.Messages.Wait_Forever);
+      Reply := capCall (Service, Msg, CuBit.Messages.Wait_Forever);
       if Reply.label = CuBit.Kernel_ABI.Reply_OK then
          Started := (Process => CuBit.Process_IDs.From_Word (Msg.words (0)));
          Result := Launched;
@@ -126,7 +133,7 @@ package body CuBit.Launching is
       end if;
       CuBit.Stream_Regions.Initialize (Base, Unsigned_16 (Entry_Type));
       CuBit.Memory_Grants.Create_Forwardable_Via_Capability
-        (CAP_SLOT_PROCMGR, System.Storage_Elements.To_Address
+        (Service, System.Storage_Elements.To_Address
            (System.Storage_Elements.Integer_Address (Base)),
          Region, True, Reference, Success, notify => True);
       if Success then
@@ -194,7 +201,7 @@ package body CuBit.Launching is
       Length := 0;
       if not Table_Lent then
          CuBit.Memory_Grants.Create_Via_Capability
-           (CAP_SLOT_PROCMGR, Table_Answer'Address, Table_Pages, True,
+           (Service, Table_Answer'Address, Table_Pages, True,
             Table_Reference, Success);
          if not Success then
             Result := No_Process_Manager;
@@ -203,9 +210,9 @@ package body CuBit.Launching is
          Table_Lent := True;
       end if;
       Msg.tag := (label => CuBit.Launch_Authority.Table_Operation,
-                  length => CuBit.Launch_Authority.Table_Request_Words, flags => 0, reserved => 0);
+                  length => CuBit.Launch_Authority.Table_Request_Words, protocol => 0, ipc => <>, reserved => 0);
       Msg.words (0) := CuBit.Grant_References.Encode (Table_Reference);
-      Reply := capCall (CAP_SLOT_PROCMGR, Msg, CuBit.Messages.Wait_Forever);
+      Reply := capCall (Service, Msg, CuBit.Messages.Wait_Forever);
       if Reply.label = CuBit.Kernel_ABI.Reply_OK
         and then Msg.words (0) <= CuBit.Launch_Authority.Maximum_Table_Bytes
       then
@@ -239,7 +246,7 @@ package body CuBit.Launching is
       Length := 0;
       if not Places_Lent then
          CuBit.Memory_Grants.Create_Via_Capability
-           (CAP_SLOT_PROCMGR, Places_Answer'Address, Places_Pages, True,
+           (Service, Places_Answer'Address, Places_Pages, True,
             Places_Reference, Success);
          if not Success then
             Result := No_Process_Manager;
@@ -248,9 +255,9 @@ package body CuBit.Launching is
          Places_Lent := True;
       end if;
       Msg.tag := (label => CuBit.Launch_Grants.Places_Operation,
-                  length => CuBit.Launch_Grants.Places_Request_Words, flags => 0, reserved => 0);
+                  length => CuBit.Launch_Grants.Places_Request_Words, protocol => 0, ipc => <>, reserved => 0);
       Msg.words (0) := CuBit.Grant_References.Encode (Places_Reference);
-      Reply := capCall (CAP_SLOT_PROCMGR, Msg, CuBit.Messages.Wait_Forever);
+      Reply := capCall (Service, Msg, CuBit.Messages.Wait_Forever);
       if Reply.label = CuBit.Kernel_ABI.Reply_OK
         and then Msg.words (0) <= CuBit.Launch_Grants.Maximum_Bytes
       then
@@ -280,7 +287,7 @@ package body CuBit.Launching is
       Failure := LA.Malformed_Request;
       if not Answer_Lent then
          CuBit.Memory_Grants.Create_Via_Capability
-           (CAP_SLOT_PROCMGR, Answer'Address, Describe_Pages, True,
+           (Service, Answer'Address, Describe_Pages, True,
             Answer_Reference, Success);
          if not Success then
             Result := No_Process_Manager;
@@ -292,10 +299,10 @@ package body CuBit.Launching is
          Answer (I - Program'First + 1) := Character'Pos (Program (I));
       end loop;
       Msg.tag := (label => PP.Description_Operation, length => PP.Description_Request_Words,
-                  flags => 0, reserved => 0);
+                  protocol => 0, ipc => <>, reserved => 0);
       Msg.words (0) := CuBit.Grant_References.Encode (Answer_Reference);
       Msg.words (1) := Unsigned_64 (Program'Length);
-      Reply := capCall (CAP_SLOT_PROCMGR, Msg, CuBit.Messages.Wait_Forever);
+      Reply := capCall (Service, Msg, CuBit.Messages.Wait_Forever);
       if Reply.label = CuBit.Kernel_ABI.Reply_OK
         and then Msg.words (0) <= PP.Maximum_Descriptor_Bytes
       then

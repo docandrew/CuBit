@@ -1,7 +1,7 @@
 project Buffer_Memory is
    for Source_Dirs use (".", "buffer-memory-fixture", "../../userspace/services/intel-gpu");
    for Source_Files use ("buffer_memory_tests.adb", "cubit.ads",
-     "cubit-messages.ads", "cubit-messages.adb", "intel_gpu_diagnostics.ads",
+     "cubit-messages.ads", "cubit-messages.adb", "intel_gpu_supervisor.ads", "intel_gpu_diagnostics.ads",
      "intel_gpu_diagnostics.adb", "intel_gpu_buffer_memory.ads",
      "intel_gpu_buffer_memory.adb", "intel_gpu_buffer_reply.ads",
      "intel_gpu_metadata_arena.ads", "intel_gpu_metadata_arena.adb",

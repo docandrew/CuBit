@@ -3,7 +3,6 @@ with Interfaces; use Interfaces;
 with CuBit.Log_Records;
 package CuBit.Log_Protocol with Pure, SPARK_Mode is
    Observer_Service_Role : constant Unsigned_64 := 21;
-   Publisher_Slot : constant Unsigned_64 := 23;
    --  Records an observer's queue in logstore holds (including boot replay),
    --  beyond what its stream ring holds. A reader that falls further behind
    --  loses the oldest and is told how many in an explicit Gap entry; part
@@ -13,10 +12,8 @@ package CuBit.Log_Protocol with Pure, SPARK_Mode is
    --  to keep (Every_Source: all of them). Its reply: (0) the handle, (1) the
    --  source filter applied.
    Every_Source : constant Unsigned_64 := 0;
-   Observer_Slot : constant Unsigned_64 := 27;
    --  The log-control role: changes what logstore keeps (Set_Minimum).
    Control_Service_Role : constant Unsigned_64 := 27;
-   Control_Slot : constant Unsigned_64 := 32;
    Control_Tag_Base : constant Unsigned_64 := 16#4C4F_4300_0000_0000#;
    Publisher_Tag_Base : constant Unsigned_64 := 16#4C4F_5000_0000_0000#;
    Observer_Tag_Base : constant Unsigned_64 := 16#4C4F_4700_0000_0000#;

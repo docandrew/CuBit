@@ -33,7 +33,8 @@ with CuBit.Memory_Grants;
 with Virtqueue_Index;
 with CuBit.Virtio_Net_Control;
 with CuBit.Device_Interrupts;
-with CCL_Manifest_Bindings;
+with CuBit.Startup_State;
+with Startup;
 with CuBit.Busy_Poll;
 
 procedure main is
@@ -80,7 +81,6 @@ procedure main is
    --  Grant region constants (must match kernel process.ads)
 
    --  Cap slot for netstack endpoint (granted by kernel modules.adb)
-   CAP_SLOT_NETSTACK : constant CapabilitySlot := 7;
 
    --  IPC label constants (must match kernel ipc_labels.ads)
    OP_NET_ATTACH : constant Unsigned_32 := 16#0400#;
@@ -532,7 +532,7 @@ procedure main is
       rxMsg : constant Message :=
         (tag      => (label  => OP_NET_RX,
                       length => 0,
-                      flags  => 1,      --  a doorbell: no reply
+                      protocol  => 1, ipc => <>,      --  a doorbell: no reply
                       reserved  => 0),
          authorityTag => 0,
          words    => (others => 0));
@@ -546,7 +546,7 @@ procedure main is
       epoch := doorbell;
       if epoch /= 0 and then epoch /= rxRungEpoch then
          rxRungEpoch := epoch;
-         ignore := capSubmit (CAP_SLOT_NETSTACK, rxMsg, NO_COMPLETION_TOKEN);
+         ignore := capSubmit (Startup.Netstack, rxMsg, NO_COMPLETION_TOKEN);
       end if;
    end publishRX;
 
@@ -664,14 +664,14 @@ procedure main is
          attachMsg : Message :=
            (tag      => (label  => OP_NET_ATTACH,
                          length => 1,
-                         flags  => 0,
+                         protocol  => 0, ipc => <>,
                          reserved  => 0),
             authorityTag => 0,
             words    => (0 => macPacked,
                          others => 0));
          replyTag : MessageTag;
       begin
-         replyTag := capCall (CAP_SLOT_NETSTACK, attachMsg, CuBit.Messages.Wait_Forever);
+         replyTag := capCall (Startup.Netstack, attachMsg, CuBit.Messages.Wait_Forever);
 
          if replyTag.label = REPLY_OK then
             grantBufSize := attachMsg.words (1);
@@ -683,7 +683,7 @@ procedure main is
             if attached then
                packetGrant := CuBit.Grant_References.Decode (attachMsg.words (0));
                CuBit.Memory_Grants.Acquire_Via_Capability
-                 (CAP_SLOT_NETSTACK, packetGrant, 0, grantBufSize,
+                 (Startup.Netstack, packetGrant, 0, grantBufSize,
                   CuBit.Memory_Grants.Write_Access, grantBase, attached);
             end if;
             if not attached then
@@ -723,12 +723,21 @@ procedure main is
          Virtio.resetDevice (ioBase);
       end if;
       ignore := reply (configSender,
-        (tag => (label => 16#F001#, length => 0, flags => 0, reserved => 0),
+        (tag => (label => 16#F001#, length => 0, protocol => 0, ipc => <>, reserved => 0),
          authorityTag => 0, words => (others => 0)));
    end Reject_Configuration;
    --  devQSz is used in queue setup debug output
 begin
    debugPrint ("virtio-net: starting..." & LF);
+   if not CuBit.Startup_State.Ready (Startup.Verify) then
+      debugPrint ("virtio-net: startup capabilities missing" & LF);
+      return;
+   end if;
+   --  The legacy transport's register ports (absent for a modern device,
+   --  whose BAR devmgr maps).
+   if Startup.Registers.Present then
+      Virtio.Bind_Ports (Startup.Registers.Value);
+   end if;
    CuBit.Busy_Poll.Calibrate;
 
    --  Bind startup to the registered device manager's kernel-supplied sender
@@ -764,11 +773,11 @@ begin
       --  devmgr programmed MSI-X entry MSIX_Entry for the vector in the
       --  manifest's device slot; without it there is no interrupt path.
       if not valid or else
-        not CuBit.Device_Interrupts.Block_Of (CCL_Manifest_Bindings.Slot_device).Valid
+        not CuBit.Device_Interrupts.Block_Of (Startup.Device).Valid
       then
          modern := False;
          ignore := reply (configSender,
-           (tag => (label => 16#F001#, length => 0, flags => 0, reserved => 0),
+           (tag => (label => 16#F001#, length => 0, protocol => 0, ipc => <>, reserved => 0),
             authorityTag => 0, words => (others => 0)));
          return;
       end if;
@@ -824,7 +833,7 @@ begin
       Virtio.initDevice (ioBase);
       --  MSI-X-enabled legacy MAC address (BAR0+0x18).
       for i in mac'Range loop
-         mac (i) := Unsigned_8 (portInp8 (ioBase + Virtio.REG_NET_MAC +
+         mac (i) := Unsigned_8 (portInp8 (Virtio.Bound_Ports, ioBase + Virtio.REG_NET_MAC +
                                            Unsigned_16 (i)) and 16#FF#);
       end loop;
    end if;
@@ -899,9 +908,9 @@ begin
          Reject_Configuration;
          return;
       end if;
-      ignore := portOutp16 (ioBase + Virtio.REG_CONFIG_MSIX_VECTOR,
+      ignore := portOutp16 (Virtio.Bound_Ports, ioBase + Virtio.REG_CONFIG_MSIX_VECTOR,
                             CuBit.Virtio_Net_Control.MSIX_Entry);
-      if portInp16 (ioBase + Virtio.REG_CONFIG_MSIX_VECTOR) /=
+      if portInp16 (Virtio.Bound_Ports, ioBase + Virtio.REG_CONFIG_MSIX_VECTOR) /=
         Unsigned_64 (CuBit.Virtio_Net_Control.MSIX_Entry)
       then
          Reject_Configuration;
@@ -912,7 +921,7 @@ begin
    --  Devmgr may now unmask the function. Any IRQ before our wait is retained
    --  by the kernel notification latch.
    ignore := reply (configSender,
-     (tag => (label => REPLY_OK, length => 0, flags => 0, reserved => 0),
+     (tag => (label => REPLY_OK, length => 0, protocol => 0, ipc => <>, reserved => 0),
       authorityTag => 0, words => (others => 0)));
    debugPrint ("virtio-net: MSI-X RX/TX/config vectors ready" & LF);
 
@@ -926,13 +935,12 @@ begin
 
    --  Signal devmgr that we are ready
    declare
-      CAP_SLOT_READY  : constant Unsigned_64 := CCL_Manifest_Bindings.Slot_ready;
       OP_READY       : constant Unsigned_32 := 16#FF00#;
       rdyIgnore : MessageTag;
    begin
-      rdyIgnore := capSend (CAP_SLOT_READY,
+      rdyIgnore := capSend (Startup.Ready,
          (tag      => (label => OP_READY, length => 0,
-                       flags => 0, reserved => 0),
+                       protocol => 0, ipc => <>, reserved => 0),
           authorityTag => 0,
           words    => (others => 0)), CuBit.Messages.Wait_Forever);
    end;
@@ -950,12 +958,12 @@ begin
       --  handled through Poll_Event below, so this must stay request-only.
       --  OP_NET_TX is only a doorbell: the frames are in the TX ring.
       Poll_Service_Request (ipcSender, ipcMsg, ipcFound);
-      if ipcFound and then ipcMsg.tag.label = OP_NET_TX and then ipcMsg.tag.flags = 0 then
+      if ipcFound and then ipcMsg.tag.label = OP_NET_TX and then ipcMsg.tag.protocol = 0 then
          declare
             replyMsg : constant Message :=
               (tag      => (label  => REPLY_OK,
                             length => 0,
-                            flags  => 0,
+                            protocol  => 0, ipc => <>,
                             reserved  => 0),
                authorityTag => 0,
                words    => (others => 0));

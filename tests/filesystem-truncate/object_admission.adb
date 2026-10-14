@@ -1,3 +1,4 @@
+with CuBit.Handles.Fixture;
 with Ada.Text_IO;
 with Interfaces; use Interfaces;
 with Ext2; use Ext2;
@@ -60,7 +61,7 @@ procedure Object_Admission is
         [Character'Pos ('D'), Character'Pos ('A'), Character'Pos ('T'), Character'Pos ('A')];
       dent := (inode => 3, length => 1024, nameLength => 4, fileType => FILETYPE_REGULAR);
       name := "item";
-      initBlockDevice (fs, 1, (slot => 1, generation => 1),
+      initBlockDevice (fs, CuBit.Handles.Fixture.Endpoint_Of (1), 1, (slot => 1, generation => 1),
                        Grant_Buffer'Address, Grant_Buffer'Length, admission);
       pragma Assert (admission = Admitted);
       Calls := 0;

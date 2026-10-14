@@ -28,7 +28,7 @@ package body CuBit.Messages is
       Ada.Text_IO.Put (value);
    end debugPrint;
 
-   function capCall (slot : Unsigned_64; msg : in out Message; Deadline : Unsigned_64)
+   function capCall (slot : CuBit.Handles.Endpoint; msg : in out Message; Deadline : Unsigned_64)
      return MessageTag
    is
       pragma Unreferenced (Deadline);
@@ -38,14 +38,14 @@ package body CuBit.Messages is
       Count : constant Unsigned_64 := msg.words (2) * 512;
    begin
       if Op = OP_DESCRIBE_DEVICE then
-         msg := ((REPLY_OK, 4, 0, 0), 0,
+         msg := ((label => REPLY_OK, length => 4, protocol => 0, ipc => <>, reserved => 0), 0,
                  [Image_Size / 512, Pack_Sizes (512, 512), 8,
                   Pack_Properties (FEATURE_FLUSH or FEATURE_VOLATILE_CACHE, Fixed_Media)]);
       elsif Op = OP_FLUSH_DEVICE then
          --  Flush host buffering; no power-loss durability claim is made.
          IO.Close (Image);
          IO.Open (Image, IO.Inout_File, Ada.Strings.Unbounded.To_String (Image_Path));
-         msg := ((REPLY_OK, 1, 0, 0), 0, [others => 0]);
+         msg := ((label => REPLY_OK, length => 1, protocol => 0, ipc => <>, reserved => 0), 0, [others => 0]);
       else
          pragma Assert (Op in OP_READ_BLOCKS | OP_WRITE_BLOCKS);
          pragma Assert (Count in 1 .. Grant_Buffer'Length);
@@ -64,7 +64,7 @@ package body CuBit.Messages is
                end if;
             end;
          end loop;
-         msg := ((REPLY_OK, 1, 0, 0), 0, [0 => Count, others => 0]);
+         msg := ((label => REPLY_OK, length => 1, protocol => 0, ipc => <>, reserved => 0), 0, [0 => Count, others => 0]);
       end if;
       return msg.tag;
    end capCall;

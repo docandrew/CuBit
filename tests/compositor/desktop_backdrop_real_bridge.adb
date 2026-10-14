@@ -1,3 +1,4 @@
+with CuBit.Handles.Fixture;
 with Desktop_GPU_Scene.Backdrop; with Desktop_Vulkan_Startup;
 with Desktop_Backdrop_Owner; with Desktop_Wallpaper;
 with CuBit.Appearance; with Vulkan_Submission; with System;
@@ -19,7 +20,7 @@ package body Desktop_Backdrop_Real_Bridge is
    function Open return Interfaces.C.int is
       OK : Boolean;
    begin
-      D.Initialize (25); if D.Current /= Vulkan_Device_Owner.Ready then return 1; end if;
+      D.Initialize (CuBit.Handles.Fixture.Endpoint_Of (25)); if D.Current /= Vulkan_Device_Owner.Ready then return 1; end if;
       D.Configure_Targets (96, 64, 1, 32 * 1024 * 1024, OK); if not OK then return 2; end if;
       D.Prepare_Pipeline (OK); if not OK then return 3; end if;
       D.Configure_Upload (65536, OK); return (if OK then 0 else 4);

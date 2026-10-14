@@ -1,3 +1,4 @@
+with CuBit.Handles.Fixture;
 with Ada.Text_IO;
 with Interfaces; use Interfaces;
 with CCL.Host_Values;
@@ -50,7 +51,7 @@ begin
    H.Take_Get_Result (Object, Item); Check (Item.State = H.No_Result);
    H.Set_Value (Object, CCL.Host_Values.Object_Constant (Value), 0, 1, Sent);
    Check (Sent = C.Unavailable);
-   C.Initialize (Object, 5, Good); Check (Good);
+   C.Initialize (Object, CuBit.Handles.Fixture.Endpoint_Of (5), Good); Check (Good);
    C.Create (Object, "org.cubit.test", Contract, W.Read_Write, 0, 1, Sent);
    Check (Sent = C.Submitted);
    H.Set_Value (Object, CCL.Host_Values.Object_Constant (Value), 0, 2, Sent);

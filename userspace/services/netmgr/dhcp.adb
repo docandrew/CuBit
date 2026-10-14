@@ -14,6 +14,7 @@ with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Grant_References;
 with CuBit.Messages; use CuBit.Messages;
 
+with CuBit.Handles;
 package body DHCP is
 
    --  DHCP packet offsets (from start of UDP payload)
@@ -123,10 +124,10 @@ package body DHCP is
    ---------------------------------------------------------------------------
    --  ensureBuf - lazily allocate the grant buffer
    ---------------------------------------------------------------------------
-   procedure ensureBuf (state : in out DHCPState) is
+   procedure ensureBuf (state : in out DHCPState;
+                        netstack : CuBit.Handles.Endpoint) is
       rawAddr   : Unsigned_64;
       aligned   : Unsigned_64;
-      netstackPID : Process_ID;
       gid       : CuBit.Memory_Grants.Grant_Reference;
       ok        : Boolean;
    begin
@@ -152,14 +153,9 @@ package body DHCP is
          end loop;
       end;
 
-      --  Discover netstack PID and create grant
-      netstackPID := Registered_Driver (DRIVER_NETSTACK);
-      if netstackPID = No_Process then
-         return;
-      end if;
-
-      CuBit.Memory_Grants.Create_For_Process
-        (grantee   => netstackPID,
+      --  Share the buffer with netstack, named by its endpoint.
+      CuBit.Memory_Grants.Create_Via_Capability
+        (slot      => netstack,
          localAddr => state.grantBuf,
          numPages  => 1,
          readWrite => True,
@@ -252,20 +248,20 @@ package body DHCP is
    ---------------------------------------------------------------------------
    procedure sendViaRaw (state   : DHCPState;
                          pktLen  : Natural;
-                         netSlot : CapabilitySlot)
+                         netstack : CuBit.Handles.Endpoint)
    is
       msg : Message;
    begin
       msg := (tag      => (label  => OP_NET_WRITE,
                            length => 3,
-                           flags  => 0,
+                           protocol  => 0, ipc => <>,
                            reserved  => 0),
               authorityTag => 0,
               words    => (0 => CuBit.Grant_References.Encode (state.grant),
                            1 => 0,                      -- offset in grant
                            2 => Unsigned_64 (pktLen),
                            others => 0));
-      msg.tag := capCall (netSlot, msg, CuBit.Messages.Wait_Forever);
+      msg.tag := capCall (netstack, msg, CuBit.Messages.Wait_Forever);
    end sendViaRaw;
 
    ---------------------------------------------------------------------------
@@ -292,17 +288,17 @@ package body DHCP is
    --  sendDiscover
    ---------------------------------------------------------------------------
    procedure sendDiscover (state   : in out DHCPState;
-                           netSlot : CapabilitySlot)
+                           netstack : CuBit.Handles.Endpoint)
    is
       pktLen : Natural;
    begin
-      ensureBuf (state);
+      ensureBuf (state, netstack);
       if not state.bufReady then
          return;
       end if;
 
       pktLen := buildDHCPPacket (state, DHCPDISCOVER);
-      sendViaRaw (state, pktLen, netSlot);
+      sendViaRaw (state, pktLen, netstack);
       state.phase := DHCP_SELECTING;
    end sendDiscover;
 
@@ -310,17 +306,17 @@ package body DHCP is
    --  sendRequest
    ---------------------------------------------------------------------------
    procedure sendRequest (state   : in out DHCPState;
-                          netSlot : CapabilitySlot)
+                          netstack : CuBit.Handles.Endpoint)
    is
       pktLen : Natural;
    begin
-      ensureBuf (state);
+      ensureBuf (state, netstack);
       if not state.bufReady then
          return;
       end if;
 
       pktLen := buildDHCPPacket (state, DHCPREQUEST);
-      sendViaRaw (state, pktLen, netSlot);
+      sendViaRaw (state, pktLen, netstack);
       state.phase := DHCP_REQUESTING;
    end sendRequest;
 

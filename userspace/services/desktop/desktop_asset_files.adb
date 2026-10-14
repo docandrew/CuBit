@@ -1,6 +1,6 @@
 with System; use System;
 with System.Storage_Elements; use System.Storage_Elements;
-with CCL_Manifest_Bindings;
+with Desktop_Endpoints;
 with CuBit.Config;
 with CuBit.Filesystem_Queues;
 with CuBit.Filesystem_Sessions;
@@ -186,7 +186,7 @@ package body Desktop_Asset_Files is
          Handle, Ignore : Unsigned_64 := 0;
          Ignore_Close : Unsigned_32;
       begin
-         FS.Open (Session, CCL_Manifest_Bindings.Slot_filesystem, Arena_Pages, Opened);
+         FS.Open (Session, Desktop_Endpoints.Files, Arena_Pages, Opened);
          if not Opened then
             Finish (No_Filesystem);
             return;

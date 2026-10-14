@@ -15,6 +15,7 @@ with CuBit.UI.Clipboard;
 with CCL_Workspace;
 with CCL_Application;
 with CCL_Native_Execution;
+with CCL_Native_Bindings;
 
 package body CCL_Desktop_Platform is
    function Code_Of (Event : Window_Event) return Integer_32 is
@@ -573,9 +574,9 @@ package body CCL_Desktop_Platform is
       Success.all := 0;
       Request.tag :=
         (label => CuBit.Protocols.CLOCK_OP_MONOTONIC_MS,
-         length => 1, flags => 0, reserved => 0);
+         length => 1, protocol => 0, ipc => <>, reserved => 0);
       Request.words (0) := 0;
-      Tag := capCall (CAP_SLOT_CLOCK, Request, CuBit.Messages.Wait_Forever);
+      Tag := capCall (CCL_Native_Bindings.Clock, Request, CuBit.Messages.Wait_Forever);
       if Tag.label = REPLY_OK and then Tag.length = 1 and then
         Request.words (0) <= Unsigned_64 (Integer_64'Last)
       then

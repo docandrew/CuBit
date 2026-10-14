@@ -13,4 +13,5 @@
     (ports 1 65535) (dns allow)
     (connections 8) tcp)
   (filesystem-scope (rights read) "@nvme:0/tls/")
-  (config-scope (rights read) "tls."))
+  (config-scope (rights read) "tls.")
+  (request-notification tls manage registration))

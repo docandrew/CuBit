@@ -1,3 +1,4 @@
+with CuBit.Handles;
 with Ada.Text_IO;
 with Interfaces; use Interfaces;
 with CuBit.Messages;
@@ -15,10 +16,10 @@ procedure Presentation_Exclusion_Tests is
    function Session_Of (Sender, Stamp : Unsigned_64) return Unsigned_64 is
      (if Sender = 42 and Stamp = 99 then Admission else 0);
    procedure Recipient_Of
-     (Sender, Stamp : Unsigned_64; Slot : out CuBit.Messages.CapabilitySlot;
+     (Sender, Stamp : Unsigned_64; Grantee : out CuBit.Handles.Reply;
       Identity : out Unsigned_64) is
    begin
-      Slot := 7;
+      Grantee := CuBit.Handles.Test_Reply (7);
       Identity := (if Session_Of (Sender, Stamp) /= 0 then 42 else 0);
       case Revoke_In_Lookup is
          when 1 => Ready := False;

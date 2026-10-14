@@ -2,6 +2,8 @@ with Interfaces; use Interfaces;
 with System; use System;
 with System.Storage_Elements; use System.Storage_Elements;
 with Mesa_Service; use Mesa_Service;
+with CuBit.Handles;
+with CuBit.Handles.C_ABI;
 with Ada.Text_IO;
 procedure Service_Ada_Tests is
    procedure Reset (Mode : Unsigned_32)
@@ -12,6 +14,9 @@ procedure Service_Ada_Tests is
      with Import, Convention => C, External_Name => "fixture_borrows";
    function Closes return Unsigned_32
      with Import, Convention => C, External_Name => "fixture_closes";
+   --  The admitted render endpoint the fixture expects (generation 1, 7).
+   Render : constant CuBit.Handles.Endpoint :=
+     CuBit.Handles.C_ABI.To_Endpoint ((Opaque => 2 ** 32 + 7));
    procedure Check (Value : Boolean) is
    begin
       if not Value then raise Program_Error with "Mesa Ada boundary oracle"; end if;
@@ -30,11 +35,11 @@ begin
          Check (Close (Object, True) = Unsafe);
          Borrow (Object, View, Ready);
          Check (not Ready and View.Device = Null_Address and Borrows = 0);
-         Start (Object, 7, Code);
+         Start (Object, Render, Code);
          Check (Starts = 1);
          Check (Code = (if Mode = 0 then 0 elsif Mode = 1 then -3 else -2));
          Check (Accepted (Object) = (Mode /= 1));
-         Start (Object, 7, Code);
+         Start (Object, Render, Code);
          Check (Starts = 1 and Code = Initialization_Failed);
          Borrow (Object, View, Ready);
          if Mode = 0 then
@@ -56,7 +61,7 @@ begin
             Check (Health (Object) = Initialization_Failed);
             Check (Close (Object, True) = (if Mode = 0 then Retired else Unsafe));
             Check (Closes = 2 and Accepted (Object));
-            Start (Object, 7, Code);
+            Start (Object, Render, Code);
             Check (Starts = 1 and Code = Initialization_Failed);
          end if;
       end;

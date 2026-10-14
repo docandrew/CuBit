@@ -15,6 +15,13 @@ with CuBit.String;
 
 package body CuBit.Audio is
 
+   Service : CuBit.Handles.Endpoint := CuBit.Handles.No_Endpoint;
+
+   procedure Bind (Service : CuBit.Handles.Endpoint) is
+   begin
+      Audio.Service := Service;
+   end Bind;
+
    --  IPC labels (must match kernel/src/ipc_labels.ads)
    OP_AUDIO_OPEN    : constant Unsigned_32 := 16#0500#;
    OP_AUDIO_CLOSE   : constant Unsigned_32 := 16#0501#;
@@ -97,7 +104,7 @@ package body CuBit.Audio is
       --  words(1) = channels(16) | format(16) | direction(32 high)
       msg := (tag => (label  => OP_AUDIO_OPEN,
                       length => 2,
-                      flags  => 0,
+                      protocol  => 0, ipc => <>,
                       reserved  => 0),
               authorityTag => 0,
               words => (0 => Unsigned_64 (sampleRate),
@@ -106,7 +113,7 @@ package body CuBit.Audio is
                              Shift_Left (direction, 32),
                         others => 0));
 
-      msg.tag := capCall (CAP_SLOT_MIXER, msg, CuBit.Messages.Wait_Forever);
+      msg.tag := capCall (Service, msg, CuBit.Messages.Wait_Forever);
 
       if msg.tag.label /= REPLY_OK then
          return NULL_STREAM;
@@ -130,17 +137,17 @@ package body CuBit.Audio is
          ok     : Boolean;
       begin
          CuBit.Memory_Grants.Acquire_Via_Capability
-           (CAP_SLOT_MIXER, ring, 0, msg.words (2) + msg.words (3),
+           (Service, ring, 0, msg.words (2) + msg.words (3),
             CuBit.Memory_Grants.Write_Access, mapped, ok);
          if not ok then
             --  Unusable: let the mixer close the stream it opened.
             msg := (tag => (label  => OP_AUDIO_CLOSE,
                             length => 1,
-                            flags  => 0,
+                            protocol  => 0, ipc => <>,
                             reserved  => 0),
                     authorityTag => 0,
                     words => (0 => msg.words (0), others => 0));
-            msg.tag := capCall (CAP_SLOT_MIXER, msg, CuBit.Messages.Wait_Forever);
+            msg.tag := capCall (Service, msg, CuBit.Messages.Wait_Forever);
             return NULL_STREAM;
          end if;
          streamTable (localIdx) :=
@@ -455,14 +462,14 @@ package body CuBit.Audio is
 
       msg := (tag => (label  => OP_AUDIO_SET_VOL,
                       length => 2,
-                      flags  => 0,
+                      protocol  => 0, ipc => <>,
                       reserved  => 0),
               authorityTag => 0,
               words => (0 => s.streamId,
                         1 => Unsigned_64 (volToU32 (vol)),
                         others => 0));
 
-      ignore := capCall (CAP_SLOT_MIXER, msg, CuBit.Messages.Wait_Forever);
+      ignore := capCall (Service, msg, CuBit.Messages.Wait_Forever);
    end setVolume;
 
    ---------------------------------------------------------------------------
@@ -482,14 +489,14 @@ package body CuBit.Audio is
 
       msg := (tag => (label  => OP_AUDIO_CLOSE,
                       length => 1,
-                      flags  => 0,
+                      protocol  => 0, ipc => <>,
                       reserved  => 0),
               authorityTag => 0,
               words => (0 => s.streamId, others => 0));
 
       --  Give the ring back first, so the mixer's revocation completes.
       CuBit.Memory_Grants.Return_Acquisition (s.ring, returned);
-      ignore := capCall (CAP_SLOT_MIXER, msg, CuBit.Messages.Wait_Forever);
+      ignore := capCall (Service, msg, CuBit.Messages.Wait_Forever);
 
       s.active := False;
       stream.valid := False;
@@ -535,12 +542,12 @@ package body CuBit.Audio is
       if not Stream.valid or else not S.active or else Frame_Bytes = 0 then
          return (others => <>);
       end if;
-      Msg := (tag => (label => OP_AUDIO_PLAYBACK, length => 1, flags => 0, reserved => 0),
+      Msg := (tag => (label => OP_AUDIO_PLAYBACK, length => 1, protocol => 0, ipc => <>, reserved => 0),
               authorityTag => 0,
               words => (0 => streamTable (Stream.idx).streamId, others => 0));
-      Msg.tag := capCall (CAP_SLOT_MIXER, Msg, CuBit.Messages.Wait_Forever);
+      Msg.tag := capCall (Service, Msg, CuBit.Messages.Wait_Forever);
       if Msg.tag.label /= REPLY_OK or else Msg.tag.length /= 4 or else
-        Msg.tag.flags /= 0 or else Msg.tag.reserved /= 0 or else
+        Msg.tag.protocol /= 0 or else Msg.tag.reserved /= 0 or else
         not CuBit.Audio_Playback.Valid
           (Msg.words (0), Msg.words (1), Msg.words (2),
            Unsigned_64 (S.bufferSize / Frame_Bytes), Msg.words (3))
@@ -554,13 +561,13 @@ package body CuBit.Audio is
    procedure notify is
       msg : constant Message :=
         (tag => (label => OP_AUDIO_WAKE, length => 0,
-                 flags => 0, reserved => 0),
+                 protocol => 0, ipc => <>, reserved => 0),
          authorityTag => 0,
          words => (others => 0));
       submitted : Boolean;
    begin
       submitted := capSubmit
-        (CAP_SLOT_MIXER, msg, NO_COMPLETION_TOKEN);
+        (Service, msg, NO_COMPLETION_TOKEN);
       if not submitted then
          return;
       end if;

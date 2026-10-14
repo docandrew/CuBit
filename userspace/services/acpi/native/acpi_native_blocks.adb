@@ -19,7 +19,7 @@ package body ACPI_Native_Blocks is
    procedure Import_Grant
      (Adapter : in out State; Server : in out ACPI_Requests.State;
       Config : ACPI_Endpoint.Configuration; Stamp : Interfaces.Unsigned_64;
-      Provider_Slot : CuBit.Messages.CapabilitySlot;
+      Provider : CuBit.Handles.Endpoint;
       Reference : CuBit.Memory_Grants.Grant_Reference;
       Token : Interfaces.Unsigned_64; ID : Positive;
       Kind : ACPI_Service.Table_Kind; Length : Natural;
@@ -62,7 +62,7 @@ package body ACPI_Native_Blocks is
       Result.Status := ACPI_Requests.Malformed;
       Reply := ACPI_Endpoint.Encode (Result);
       CuBit.Memory_Grants.Acquire_Via_Capability
-        (Provider_Slot, Reference, 0, Interfaces.Unsigned_64 (Length),
+        (Provider, Reference, 0, Interfaces.Unsigned_64 (Length),
          CuBit.Memory_Grants.Read_Access, Address, Acquired);
       if not Acquired then Status := Acquisition_Failed; return; end if;
       Adapter.Reference := Reference;
@@ -84,7 +84,7 @@ package body ACPI_Native_Blocks is
    procedure Dispatch
      (Adapter : in out State; Server : in out ACPI_Requests.State;
       Config : ACPI_Endpoint.Configuration; Stamp : Interfaces.Unsigned_64;
-      Provider_Slot : CuBit.Messages.CapabilitySlot;
+      Provider : CuBit.Handles.Endpoint;
       Request : ACPI_Requests.Packet; Reply : out ACPI_Requests.Packet) is
       Base : constant Interfaces.Unsigned_64 := 2 ** 32;
       Origin : constant ACPI_Requests.Authority := ACPI_Endpoint.Classify (Config, Stamp);
@@ -109,7 +109,7 @@ package body ACPI_Native_Blocks is
         or else Request.Data (3) mod Base < Firmware_Tables.Table_Header_Size
         or else Request.Data (3) mod Base > Interfaces.Unsigned_64 (Server.Table_Byte_Limit)
       then return; end if;
-      Import_Grant (Adapter, Server, Config, Stamp, Provider_Slot,
+      Import_Grant (Adapter, Server, Config, Stamp, Provider,
         (slot => Request.Data (1) mod Base, generation => Request.Data (1) / Base),
         Request.Data (0), Positive (Request.Data (2)),
         ACPI_Service.Table_Kind'Val (Request.Data (3) / Base),

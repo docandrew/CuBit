@@ -83,6 +83,9 @@ static bool defer_present(struct st_context *st, struct pipe_frontend_drawable *
     name##_fn name = (name##_fn)_mesa_glapi_get_proc_address(#name); \
     if (!name) return report(8, "MESA-WINDOW: FAIL dispatch " #name "\n")
 
+/* Desktop's endpoint: the startup "desktop" binding (window-manifest.ccl). */
+static cubit_endpoint desktop;
+
 static int call(unsigned label, uint64_t a, uint64_t b, uint64_t c, uint64_t d,
                 cubit_async_message_t *message)
 {
@@ -90,15 +93,18 @@ static int call(unsigned label, uint64_t a, uint64_t b, uint64_t c, uint64_t d,
     message->tag.label = label; message->tag.length = 4;
     message->words[0] = a; message->words[1] = b;
     message->words[2] = c; message->words[3] = d;
-    return syscall3(SYSCALL_CALL_VIA_ENDPOINT_CAPABILITY, CAP_SLOT_DESKTOP,
+    return syscall3(SYSCALL_CALL_VIA_ENDPOINT_CAPABILITY, desktop.opaque,
                     message, CUBIT_WAIT_FOREVER) != -1 &&
            message->tag.label == label && !message->tag.reserved &&
-           (!message->tag.flags || (label == 0x0821 && message->tag.flags == 1));
+           (!message->tag.protocol || (label == 0x0821 && message->tag.protocol == 1));
 }
 
 int main(void)
 {
     enum { width = 512, height = 384, pitch = width * 4, bytes = pitch * height };
+    desktop = cubit_startup_endpoint("desktop");
+    if (!cubit_endpoint_present(desktop))
+        return report(3, "MESA-WINDOW: FAIL no desktop endpoint\n");
     void *pixels[2] = {NULL, NULL};
     struct cubit_pixel_buffer buffers[2];
     report(0, "MESA-WINDOW: starting\n");
@@ -167,7 +173,7 @@ int main(void)
     long grants[2];
     for (unsigned i = 0; i < 2; ++i) {
         grants[i] = syscall4(SYSCALL_CREATE_SHARED_MEMORY_GRANT_VIA_CAPABILITY,
-                            CAP_SLOT_DESKTOP, pixels[i], bytes / 4096, 0);
+                            desktop.opaque, pixels[i], bytes / 4096, 0);
         if (grants[i] < 0) return report(6, "MESA-WINDOW: FAIL grant\n");
     }
     int attached = -1;
@@ -212,7 +218,7 @@ int main(void)
 #endif
         /* Only successful replacement retires the previous CPU attachment.
          * On failure/ambiguous response, exit without reusing either buffer. */
-        if (cubit_desktop_attach_buffer(id, grants[target], width, height, pitch))
+        if (cubit_desktop_attach_buffer(desktop, id, grants[target], width, height, pitch))
             return report(6, "MESA-WINDOW: FAIL attach\n");
         attached = target;
         if (!call(0x0812, id, 0, 0, 0, &reply) || reply.tag.length != 1 || reply.words[0])
@@ -237,7 +243,7 @@ int main(void)
          * replacement; exit cleanup must not free an acquired Desktop buffer. */
         if (!call(0x0821, id, serial, 0, 0, &reply) ||
             !cubit_desktop_input_reply_valid(0x0821, reply.tag.label,
-                reply.tag.length, reply.tag.flags, reply.tag.reserved, reply.words))
+                reply.tag.length, reply.tag.protocol, reply.tag.reserved, reply.words))
             return report(0, "MESA-WINDOW: surface unavailable; exiting\n");
         if (reply.words[0]) serial = reply.words[1];
         if (reply.words[2] == 0x39) {

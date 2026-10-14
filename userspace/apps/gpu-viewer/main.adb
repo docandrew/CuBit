@@ -7,11 +7,16 @@ with CuBit.Desktop_Protocol;
 with CuBit.Desktop_Messages;
 with Native_GPU_Presentation;
 with Native_GPU_Probe_Protocol;
+with CuBit.Handles;
+with CuBit.Handles.IPC;
+with CuBit.Handles.C_ABI;
+with Startup;
 
 -- Bootstrap diagnostic consumer, NOT an ANV device or a render client.
--- Supervisor must install stable endpoints: driver4 and Desktop21. Neither
--- slot may be replaced during grant lifetime. devmgr binds Desktop through
--- the preinstalled supervisor endpoint before any pixel grant is acquired.
+-- devmgr launches it with two startup endpoints, both badged
+-- Native_GPU_Probe_Protocol.Viewer_Tag: "gpu-probe" (intel-gpu) and
+-- "device-manager" (devmgr). It asks devmgr for Desktop's endpoint (the reply
+-- carries it, CAP-002) before any pixel grant is acquired.
 procedure Main is
    package D renames CuBit.Desktop_Protocol;
    package G renames CuBit.Memory_Grants;
@@ -21,7 +26,8 @@ procedure Main is
    use type D.Status_Code;
    use type D.Input_Event_Kind;
    use type D.Surface_Name;
-   Driver : constant CapabilitySlot := Q.Viewer_Driver_Slot;
+   Driver : constant CuBit.Handles.Endpoint := Startup.Gpu_Probe;
+   Desktop : CuBit.Handles.Endpoint := CuBit.Handles.No_Endpoint;
    Label : constant Unsigned_32 := Q.Label;
    Root : Unsigned_64 := 0;
    Child : aliased Unsigned_64 := 0;
@@ -37,7 +43,7 @@ procedure Main is
       Msg : Message := CuBit.Desktop_Messages.From_Wire (Request);
       Returned : MessageTag;
    begin
-      Returned := capCall (CAP_SLOT_DESKTOP, Msg, CuBit.Messages.Wait_Forever);
+      Returned := capCall (Desktop, Msg, CuBit.Messages.Wait_Forever);
       if Returned /= Msg.tag then return (others => <>); end if;
       return CuBit.Desktop_Messages.To_Wire (Msg);
    end Send;
@@ -48,10 +54,10 @@ procedure Main is
       Action : constant Q.Operation :=
         (if Retire then Q.Retire_Target else Q.Read_Target);
    begin
-      Msg.tag := (Label, 4, 0, 0);
+      Msg.tag := (label => Label, length => 4, protocol => 0, ipc => <>, reserved => 0);
       Msg.words := MessageWords (Q.Request (Action, (if Retire then Root else 0)));
       Returned := capCall (Driver, Msg, CuBit.Messages.Wait_Forever);
-      if Returned /= (Label, 4, 0, 0) or else Msg.tag /= Returned or else
+      if Returned /= (label => Label, length => 4, protocol => 0, ipc => <>, reserved => 0) or else Msg.tag /= Returned or else
         not Q.Valid_Reply (Action, Q.Words (Msg.words))
       then return [5, 1, 0, 0]; end if;
       return Msg.words;
@@ -102,16 +108,32 @@ procedure Main is
       declare
          Msg : Message;
          Returned : MessageTag;
+         Carried : CuBit.Handles.IPC.Carried;
          Bound : Boolean := False;
       begin
          for Attempt in 1 .. 600 loop
             Msg := NULL_MESSAGE;
-            Msg.tag := (Q.Desktop_Binding_Label, 4, 0, 0);
+            Msg.tag := (label => Q.Desktop_Binding_Label, length => 4,
+                        protocol => 0, ipc => <>, reserved => 0);
             Msg.words := [1, 0, 0, 0];
-            Returned := capCall (Q.Viewer_Supervisor_Slot, Msg, CuBit.Messages.Wait_Forever);
-            exit when Returned /= (Q.Desktop_Binding_Label, 4, 0, 0) or else
-              Msg.tag /= Returned or else not Q.Valid_Desktop_Reply (Q.Words (Msg.words));
-            if Msg.words (0) = 0 then Bound := True; exit; end if;
+            --  A bound reply carries Desktop's endpoint (Read+Write).
+            Returned := CuBit.Handles.IPC.Call_Accepting
+              (Startup.Device_Manager, Msg, CuBit.Messages.Wait_Forever, Carried);
+            exit when Returned.label /= Q.Desktop_Binding_Label or else
+              Returned.length /= 4 or else Returned.reserved /= 0 or else
+              not Q.Valid_Desktop_Reply (Q.Words (Msg.words));
+            if Msg.words (0) = 0 then
+               declare
+                  Accepted : constant CuBit.Handles.IPC.Accepted_Endpoint :=
+                    CuBit.Handles.IPC.Accept_Endpoint (Carried);
+               begin
+                  if Accepted.OK then
+                     Desktop := Accepted.Value;
+                     Bound := True;
+                  end if;
+               end;
+               exit;
+            end if;
             exit when Msg.words (0) /= 2;
             Ignored := syscall (SYSCALL_SLEEP, 100);
          end loop;
@@ -135,12 +157,13 @@ procedure Main is
         (Send (D.Encode_Create ((64, 64, D.Window_Surface))));
       if Created.Status /= D.Success then return; end if;
       Surface := Created.Surface;
-      Status := P.Forward (CAP_SLOT_DESKTOP, Root, 0, 16384, Child'Access);
+      Status := P.Forward (CuBit.Handles.C_ABI.To_C (Desktop), Root, 0, 16384, Child'Access);
       if Status /= 0 then return; end if;
       G.Return_Acquisition (R.Decode (Root), OK);
       if not OK then return; end if;
       Borrowed := False;
-      Status := P.Attach_Linear (CAP_SLOT_DESKTOP, Unsigned_64 (Surface), Child, 64, 64, 256);
+      Status := P.Attach_Linear
+        (CuBit.Handles.C_ABI.To_C (Desktop), Unsigned_64 (Surface), Child, 64, 64, 256);
       if Status /= 0 then return; end if;
       if D.Decode_Status (Send (D.Encode_Present ((Surface, (0, 0, 64, 64)))),
         D.Present_Surface) /= D.Success then return; end if;

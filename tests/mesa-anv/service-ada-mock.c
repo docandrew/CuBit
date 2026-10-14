@@ -2,6 +2,11 @@
 #include <stddef.h>
 #include <assert.h>
 #include <string.h>
+#include "../../userspace/c/cubit_handles.h"
+/* A test endpoint handle (generation 1). */
+#define TEST_ENDPOINT(n) ((cubit_endpoint){(UINT64_C(1) << 32) | (uint64_t)(n)})
+/* The index a test endpoint was made from. */
+#define TEST_INDEX(e) ((unsigned)((e).opaque & 0xffffffffu))
 
 _Static_assert(sizeof(struct cubit_mesa_service_device) == 48, "Ada view size");
 _Static_assert(_Alignof(struct cubit_mesa_service_device) == 8, "Ada alignment");
@@ -22,9 +27,9 @@ unsigned fixture_borrows(void) { return borrows; }
 unsigned fixture_closes(void) { return closes; }
 static PFN_vkVoidFunction proc(VkInstance instance, const char *name)
 { (void)instance; (void)name; return NULL; }
-VkResult cubit_mesa_service_start(uint64_t slot, struct cubit_mesa_service **out)
+VkResult cubit_mesa_service_start(cubit_endpoint endpoint, struct cubit_mesa_service **out)
 {
-    assert(slot == 7 && *out == NULL); starts++;
+    assert(endpoint.opaque == TEST_ENDPOINT(7).opaque && *out == NULL); starts++;
     if (mode == 1) return VK_ERROR_INITIALIZATION_FAILED;
     *out = owner;
     return mode == 2 ? VK_ERROR_OUT_OF_DEVICE_MEMORY : VK_SUCCESS;

@@ -14,6 +14,8 @@ with BuddyAllocator;
 with Call_Sequences;
 with Process_Identities;
 with Capabilities.Operations;
+with Capability_Install;
+with Process_Capabilities;
 with Config;
 with Grant_Page_Installation;
 with IPC_Labels;
@@ -47,6 +49,8 @@ use type Memory_Grants.Hold_Release_Result;
 -- Ada implementation: custom storage, address overlays or live context state.
 -- Only separately annotated SPARK policy/state routines carry proof obligations.
 package body Process.IPC is
+    use type Process_Capabilities.Tables.Slot_Base;
+    use type Process_Capabilities.Placement.Place_Status;
 
     -- Multi-owner IPC operations use ascending PID order. A completing reply
     -- releases its caller lock before the target-locked scheduling handoff.
@@ -267,12 +271,11 @@ package body Process.IPC is
 
     ---------------------------------------------------------------------------
     -- consumeReplyAuthority
-    -- Validate and consume one of the caller's one-use reply caps for
-    -- replyTo: first the calling thread's own (from its latest receive),
-    -- then deferred reply caps in the process table. Returns the request ID
-    -- and, for a synchronous reply, the waiting thread. Deferred caps that
-    -- answer different threads of replyTo are ambiguous by PID alone; such a
-    -- reply fails and the server must use replyCap with an explicit slot.
+    -- Validate and consume the calling thread's current reply authority for
+    -- replyTo (from its latest request-bearing receive). Returns the request
+    -- ID and, for a synchronous reply, the waiting thread. A reply set aside
+    -- with MOVE_REPLY_CAPABILITY is answered by its handle (replyCap), never
+    -- found by searching the process's table.
     ---------------------------------------------------------------------------
     procedure consumeReplyAuthority
         (caller       : in  ProcessID;
@@ -284,11 +287,10 @@ package body Process.IPC is
          ok           : out Boolean)
 
     is
+        pragma Unreferenced (caller);
         cap        : Capabilities.Capability;
         targetPID  : ProcessID;
         targetTID  : ThreadID;
-        foundSlot  : Capabilities.CapabilitySlot := 0;
-        matches    : Natural := 0;
     begin
         requestId   := NO_REQUEST_ID;
         replyThread := NO_THREAD;
@@ -302,7 +304,6 @@ package body Process.IPC is
             return;
         end if;
 
-        -- Fast path: the calling thread's own reply authority.
         replyTargetOf (threadtab (callerThread).replyCap, targetPID, targetTID);
         if targetPID = replyTo then
             Capabilities.Operations.takeReplyCapFrom
@@ -314,39 +315,6 @@ package body Process.IPC is
                 callSeq := cap.authorityTag;
                 replyThread := targetTID;
             end if;
-            return;
-        end if;
-
-        -- Slow path: deferred reply cap slots, via the bitmap.
-        bitmapScan : declare
-            remaining : Unsigned_64 := proctab(caller).deferredReplyCaps;
-            s : Natural;
-        begin
-            while remaining /= 0 loop
-                s := Util.getFirstSetBit (remaining);
-                replyTargetOf (proctab(caller).caps(s), targetPID, targetTID);
-                if targetPID = replyTo then
-                    matches := matches + 1;
-                    foundSlot := s;
-                end if;
-                remaining := remaining and (remaining - 1);
-            end loop;
-        end bitmapScan;
-
-        if matches /= 1 then
-            return;
-        end if;
-
-        Capabilities.Operations.retireReplyCap
-          (table => proctab(caller).caps,
-           deferredSlots => proctab(caller).deferredReplyCaps,
-           slot  => foundSlot,
-           cap   => cap,
-           taken => ok);
-        if ok then
-            replyTargetOf (cap, targetPID, replyThread);
-            requestId := cap.object.param;
-            callSeq := cap.authorityTag;
         end if;
     end consumeReplyAuthority;
 
@@ -377,7 +345,7 @@ package body Process.IPC is
           (msg       =>
              (tag      => (label => IPC_Labels.EVENT_IRQ,
                            length => Device_Vector_ABI.Pending_Words,
-                           flags => 0, reserved => 0),
+                           protocol => 0, ipc => <>, reserved => 0),
               authorityTag => 0,
               words    => (others => 0)),
            sender    => NO_PROCESS,
@@ -699,6 +667,17 @@ package body Process.IPC is
     -- One-way messages, events and empty polls never inherit an older reply.
     -- The authority goes to the receiving thread. A synchronous request's
     -- authority names the blocked sender thread (see replyTargetOf).
+    -- A reply authority holds RIGHT_GRANT only when its request said it
+    -- accepts a capability in the reply (Capability_ABI.Accepts_Capability):
+    -- REPLY_WITH_CAPABILITY needs it, so nothing is placed in a table that
+    -- did not ask.
+    function replyRights (msg : Message) return Capabilities.CapabilityRights is
+      ((Capabilities.RIGHT_READ  => True,
+        Capabilities.RIGHT_WRITE => True,
+        Capabilities.RIGHT_GRANT =>
+          msg.tag.ipc.Accepts_Capability,
+        others => False));
+
     procedure installReceivedWork
       (me : ThreadID; item : RingEntry; found : Boolean;
        from : out ProcessID; msg : out Message)
@@ -713,7 +692,7 @@ package body Process.IPC is
             -- authorityTag (unused for replies): its sender's call sequence.
             threadtab (me).replyCap :=
                 (capType => Capabilities.CAP_REPLY,
-                 rights => Capabilities.ALL_RIGHTS,
+                 rights => replyRights (item.msg),
                  authorityTag => item.callSequence,
                  object => (ref => Unsigned_64 (item.senderThread),
                             param => NO_REQUEST_ID),
@@ -723,7 +702,7 @@ package body Process.IPC is
         then
             threadtab (me).replyCap :=
                 (capType => Capabilities.CAP_REPLY,
-                 rights => Capabilities.ALL_RIGHTS,
+                 rights => replyRights (item.msg),
                  authorityTag => Capabilities.NO_AUTHORITY_TAG,
                  object => (ref => Unsigned_64 (from), param => item.requestId),
                  gen => generationOf (from));
@@ -980,7 +959,7 @@ package body Process.IPC is
         procedure timeOut is
         begin
             threadtab (tid).replyMsg :=
-              (tag => (label => IPC_Labels.REPLY_TIMEOUT, length => 0, flags => 0, reserved => 0),
+              (tag => (label => IPC_Labels.REPLY_TIMEOUT, length => 0, protocol => 0, ipc => <>, reserved => 0),
                authorityTag => 0, words => (others => 0));
             threadtab (tid).callDeadlineActive := False;
             ready (tid);
@@ -1331,14 +1310,17 @@ package body Process.IPC is
     -- receiveEventNB
     -- Non-blocking receive from the unified ring buffer.
     ---------------------------------------------------------------------------
-    procedure receiveEventNB (msg : out Message; found : out Boolean)
+    procedure receiveEventNB (msg : out Message; found : out Boolean;
+                              publisher : out ProcessID)
     is
         mypid    : constant ProcessID := PerCPUData.getCurrentPID;
         receiver : constant ProcessID := getReceiver (mypid);
         re       : RingEntry;
+        published : Boolean := False;
     begin
         msg   := NULL_MESSAGE;
         found := False;
+        publisher := NO_PROCESS;
 
         if mypid = NO_PROCESS then
             return;
@@ -1352,9 +1334,13 @@ package body Process.IPC is
         end if;
         if not found then
             dequeueRingKind (receiver, RING_EVENT, re, found);
+            published := found;
         end if;
         if found then
             msg := re.msg;
+        end if;
+        if published then
+            publisher := re.publisher;
         end if;
 
         Spinlocks.exitCriticalSection (mailtab(receiver).lock);
@@ -1368,9 +1354,23 @@ package body Process.IPC is
     -- round-trip with zero context switches.
     ---------------------------------------------------------------------------
     -- Defined with reply, below.
+    -- A reply as delivered: the server's protocol flags, and as IPC flags
+    -- only the ones the kernel sets for this reply (a reply claiming the
+    -- kernel's was refused before anything was consumed).
+    function sanitizedReply (msg : Message; kernelFlags : Capability_ABI.IPC_Flags)
+      return Message is
+      ((tag => (label    => msg.tag.label,
+                length   => msg.tag.length,
+                protocol => msg.tag.protocol,
+                ipc      => kernelFlags,
+                reserved => msg.tag.reserved),
+        authorityTag => msg.authorityTag,
+        words => msg.words));
+
     function completeReplyLocked
       (replyTo : ProcessID; replyThread : ThreadID;
-       requestId : Unsigned_64; callSeq : Unsigned_64; msg : Message)
+       requestId : Unsigned_64; callSeq : Unsigned_64; given : Message;
+       kernelFlags : Capability_ABI.IPC_Flags := Capability_ABI.No_IPC_Flags)
       return Unsigned_64;
 
     procedure replyWait (replyTo : in ProcessID; replyMsg : in Message;
@@ -1389,7 +1389,9 @@ package body Process.IPC is
     begin
         -- Labels only the kernel gives are refused before anything is
         -- consumed: the server keeps its authority and can reply properly.
-        if IPC_Labels.Is_Kernel_Reply (replyMsg.tag.label) then
+        if IPC_Labels.Is_Kernel_Reply (replyMsg.tag.label)
+          or else Capability_ABI.Claims_Kernel_Flags (replyMsg.tag.ipc)
+        then
             receive (from, msg);
             return;
         end if;
@@ -1439,7 +1441,7 @@ package body Process.IPC is
             threadtab (me).state := RECEIVING;
 
             Spinlocks.enterCriticalSection (lock);
-            threadtab (replyThread).replyMsg := replyMsg;
+            threadtab (replyThread).replyMsg := sanitizedReply (replyMsg, Capability_ABI.No_IPC_Flags);
             unlockMailboxes (mypid, replyTo);
             directSwitch (me, replyThread);
             Spinlocks.exitCriticalSection (lock);
@@ -1789,7 +1791,7 @@ package body Process.IPC is
 
         faultMsg.tag := (label  => faultLabel,
                          length => 4,
-                         flags  => 0,
+                         protocol  => 0, ipc => <>,
                          reserved  => 0);
         faultMsg.words (0) := Process_Identities.To_Word (identityOf (pid));
         faultMsg.words (1) := detail0;
@@ -1816,9 +1818,13 @@ package body Process.IPC is
     -- publication. Synchronous handoff transfers only Process.lock.
     function completeReplyLocked
       (replyTo : ProcessID; replyThread : ThreadID;
-       requestId : Unsigned_64; callSeq : Unsigned_64; msg : Message)
+       requestId : Unsigned_64; callSeq : Unsigned_64; given : Message;
+       kernelFlags : Capability_ABI.IPC_Flags := Capability_ABI.No_IPC_Flags)
       return Unsigned_64
     is
+        -- The flags only the kernel sets never come from the server: a reply
+        -- cannot claim a transfer it did not make.
+        msg : constant Message := sanitizedReply (given, kernelFlags);
         me : constant ThreadID := PerCPUData.getCurrentThread;
         mypid : constant ProcessID := processOf (me);
         token : Unsigned_64;
@@ -1881,7 +1887,9 @@ package body Process.IPC is
         replyThread : ThreadID;
         ok : Boolean;
     begin
-        if replyTo = NO_PROCESS or else IPC_Labels.Is_Kernel_Reply (msg.tag.label) then
+        if replyTo = NO_PROCESS or else IPC_Labels.Is_Kernel_Reply (msg.tag.label)
+          or else Capability_ABI.Claims_Kernel_Flags (msg.tag.ipc)
+        then
             return 0;
         end if;
         lockMailboxes (mypid, replyTo);
@@ -1901,36 +1909,35 @@ package body Process.IPC is
     end reply;
 
     function replyCap
-      (capSlot : Capabilities.CapabilitySlot; msg : Message)
+      (handle : Unsigned_64; msg : Message)
       return Unsigned_64
     is
+        use type Capabilities.CapabilityType;
         mypid : constant ProcessID := PerCPUData.getCurrentPID;
-        cap : Capabilities.Capability;
+        cap : Capabilities.Capability := Capabilities.NULL_CAPABILITY;
         replyTo : ProcessID;
         lockedPID : ProcessID;
         replyThread : ThreadID;
-        ok : Boolean;
+        found : Process_Capabilities.Found;
+        closed : Unsigned_64;
     begin
-        if mypid = NO_PROCESS or else IPC_Labels.Is_Kernel_Reply (msg.tag.label) then
+        if mypid = NO_PROCESS or else IPC_Labels.Is_Kernel_Reply (msg.tag.label)
+          or else Capability_ABI.Claims_Kernel_Flags (msg.tag.ipc)
+        then
             return 0;
         end if;
         -- A label only the kernel gives is refused above, before the reply
-        -- is consumed. Otherwise consume the one-use reply even when delivery
-        -- will fail, or a departed caller would strand the server's slot.
-        -- Non-reply authority is preserved. Serialize with policy-authorized
-        -- edits of this cspace, not just other executions of this process.
-        -- REPLY_CAP_SLOT names the calling thread's current reply authority.
+        -- is consumed. Otherwise consume the saved reply even when delivery
+        -- will fail, or a departed caller would strand the server's handle.
+        -- A handle naming anything but a reply is left alone. The owner's
+        -- mailbox lock serializes every edit of its table.
         Spinlocks.enterCriticalSection (mailtab(mypid).lock);
-        if capSlot = Capabilities.REPLY_CAP_SLOT then
-            Capabilities.Operations.takeReplyCapFrom
-              (threadtab (PerCPUData.getCurrentThread).replyCap, cap, ok);
-        else
-            Capabilities.Operations.retireReplyCap
-              (proctab(mypid).caps, proctab(mypid).deferredReplyCaps,
-               capSlot, cap, ok);
+        found := Process_Capabilities.Find_Any (proctab(mypid).caps, handle);
+        if found.OK and then found.Cap.capType = Capabilities.CAP_REPLY then
+            Process_Capabilities.Close (proctab(mypid).caps, handle, cap, closed);
         end if;
         Spinlocks.exitCriticalSection (mailtab(mypid).lock);
-        if not ok then return 0; end if;
+        if cap.capType /= Capabilities.CAP_REPLY then return 0; end if;
         replyTargetOf (cap, lockedPID, replyThread);
         if lockedPID = NO_PROCESS then return 0; end if;
         Spinlocks.enterCriticalSection (mailtab(lockedPID).lock);
@@ -1944,6 +1951,199 @@ package body Process.IPC is
         return completeReplyLocked
           (replyTo, replyThread, cap.object.param, cap.authorityTag, msg);
     end replyCap;
+
+    function replyWithCapability
+        (replyTo    : ProcessID;
+         msg        : Message;
+         derivation : Capability_ABI.Derivation) return Unsigned_64
+    is
+        use type Capability_ABI.Refusal;
+        mypid : constant ProcessID := PerCPUData.getCurrentPID;
+        me    : constant ThreadID := PerCPUData.getCurrentThread;
+        targetPID   : ProcessID;
+        targetTID   : ThreadID;
+        source      : Process_Capabilities.Found;
+        placed      : Process_Capabilities.Placement.Place_Result;
+        requestId   : Unsigned_64;
+        callSeq     : Unsigned_64;
+        replyThread : ThreadID;
+        ok          : Boolean;
+        word        : Unsigned_64;
+        delivered   : Unsigned_64;
+        flags       : Capability_ABI.IPC_Flags;
+        stamped     : Message := msg;
+        ignoreCap   : Capabilities.Capability;
+        ignoreWord  : Unsigned_64;
+        replyToGeneration : Capabilities.Generation;
+    begin
+        if replyTo = NO_PROCESS or else mypid = NO_PROCESS or else replyTo = mypid
+          or else IPC_Labels.Is_Kernel_Reply (msg.tag.label)
+          or else Capability_ABI.Claims_Kernel_Flags (msg.tag.ipc)
+          or else not Capability_Install.Well_Formed (derivation)
+        then
+            return Capability_ABI.Refusal_Word (Capability_ABI.Invalid_Argument);
+        end if;
+        lockMailboxes (mypid, replyTo);
+        if mailtab(replyTo).closed then
+            unlockMailboxes (mypid, replyTo);
+            return Capability_ABI.Refusal_Word (Capability_ABI.Target_Gone);
+        end if;
+        -- The current reply authority must answer replyTo and must have been
+        -- asked for a capability; otherwise nothing is consumed and the
+        -- server can still reply without one.
+        replyTargetOf (threadtab (me).replyCap, targetPID, targetTID);
+        if targetPID /= replyTo then
+            unlockMailboxes (mypid, replyTo);
+            return Capability_ABI.Refusal_Word (Capability_ABI.Not_Permitted);
+        end if;
+        source := Process_Capabilities.Find_Any
+          (proctab(mypid).caps, derivation (Capability_ABI.Source));
+        if not source.OK then
+            unlockMailboxes (mypid, replyTo);
+            return Capability_ABI.Refusal_Word (source.Why);
+        end if;
+        Process_Capabilities.Placement.Place
+          (Target   => proctab(replyTo).caps,
+           Admitted => Capability_Install.Reply_Admits (threadtab (me).replyCap),
+           Source   => source.Cap,
+           Item     => Capability_Install.Decode (derivation),
+           Result   => placed);
+        if placed.Status = Process_Capabilities.Placement.Refused
+          and then placed.Why not in Capability_ABI.Limit_Reached |
+                                     Capability_ABI.Table_Full |
+                                     Capability_ABI.Out_Of_Memory
+        then
+            -- Not accepted, or the source may not be copied so: the server
+            -- keeps its reply authority and its capability.
+            unlockMailboxes (mypid, replyTo);
+            return Capability_ABI.Refusal_Word (placed.Why);
+        end if;
+        word := Process_Capabilities.Result_Word (placed);
+        replyToGeneration := generationOf (replyTo);
+        consumeReplyAuthority (mypid, me, replyTo, replyThread, requestId, callSeq, ok);
+        if not ok then
+            -- Unreachable: the authority was checked under these locks.
+            if placed.Status = Process_Capabilities.Placement.Placed then
+                Process_Capabilities.Close (proctab(replyTo).caps, word, ignoreCap, ignoreWord);
+            end if;
+            unlockMailboxes (mypid, replyTo);
+            return Capability_ABI.Refusal_Word (Capability_ABI.Not_Permitted);
+        end if;
+        -- Placed: the requester learns the handle; its table refused: the
+        -- reply still arrives, saying why.
+        flags := (if placed.Status = Process_Capabilities.Placement.Placed
+                  then (Capability_Transferred => True, others => False)
+                  else (Capability_Refused => True, others => False));
+        stamped.authorityTag := word;
+        if mypid /= replyTo then
+            Spinlocks.exitCriticalSection (mailtab(mypid).lock);
+        end if;
+        delivered := completeReplyLocked
+          (replyTo, replyThread, requestId, callSeq, stamped, flags);
+        if delivered = 0 and then placed.Status = Process_Capabilities.Placement.Placed then
+            -- Not delivered (the caller timed out or went away): withdraw the
+            -- copy nobody will learn about.
+            -- Only in the same incarnation: a closed mailbox is being torn
+            -- down (its table goes with it), and a new process in the slot
+            -- has its own table.
+            Spinlocks.enterCriticalSection (mailtab(replyTo).lock);
+            if not mailtab(replyTo).closed
+              and then generationOf (replyTo) = replyToGeneration
+            then
+                Process_Capabilities.Close
+                  (proctab(replyTo).caps, word, ignoreCap, ignoreWord);
+            end if;
+            Spinlocks.exitCriticalSection (mailtab(replyTo).lock);
+            return Capability_ABI.Refusal_Word (Capability_ABI.Target_Gone);
+        end if;
+        return word;
+    end replyWithCapability;
+
+    function replySavedWithCapability
+        (handle     : Unsigned_64;
+         msg        : Message;
+         derivation : Capability_ABI.Derivation) return Unsigned_64
+    is
+        use type Capabilities.CapabilityType;
+        mypid : constant ProcessID := PerCPUData.getCurrentPID;
+        found       : Process_Capabilities.Found;
+        source      : Process_Capabilities.Found;
+        offer       : Capability_Install.Outcome;
+        admitted    : Capability_Install.Admission;
+        reply       : Capabilities.Capability;
+        closed      : Unsigned_64;
+        replyTo     : ProcessID;
+        lockedPID   : ProcessID;
+        replyThread : ThreadID;
+        word        : Unsigned_64;
+        delivered   : Unsigned_64;
+        flags       : Capability_ABI.IPC_Flags;
+        stamped     : Message := msg;
+        ignoreCap   : Capabilities.Capability;
+        ignoreWord  : Unsigned_64;
+        replyToGeneration : Capabilities.Generation;
+    begin
+        if mypid = NO_PROCESS or else IPC_Labels.Is_Kernel_Reply (msg.tag.label)
+          or else Capability_ABI.Claims_Kernel_Flags (msg.tag.ipc)
+          or else not Capability_Install.Well_Formed (derivation)
+        then
+            return Capability_ABI.Refusal_Word (Capability_ABI.Invalid_Argument);
+        end if;
+        -- The saved reply must accept a capability and the copy must be
+        -- allowed; otherwise nothing is consumed (answer it normally).
+        Spinlocks.enterCriticalSection (mailtab(mypid).lock);
+        found := Process_Capabilities.Find_Any (proctab(mypid).caps, handle);
+        if not found.OK or else found.Cap.capType /= Capabilities.CAP_REPLY then
+            Spinlocks.exitCriticalSection (mailtab(mypid).lock);
+            return Capability_ABI.Refusal_Word
+              (if found.OK then Capability_ABI.Wrong_Kind else found.Why);
+        end if;
+        admitted := Capability_Install.Reply_Admits (found.Cap);
+        source := Process_Capabilities.Find_Any
+          (proctab(mypid).caps, derivation (Capability_ABI.Source));
+        if not admitted.Admitted or else not source.OK then
+            Spinlocks.exitCriticalSection (mailtab(mypid).lock);
+            return Capability_ABI.Refusal_Word
+              (if not admitted.Admitted then admitted.Why else source.Why);
+        end if;
+        offer := Capability_Install.Derive (source.Cap, Capability_Install.Decode (derivation));
+        if not offer.Accepted then
+            Spinlocks.exitCriticalSection (mailtab(mypid).lock);
+            return Capability_ABI.Refusal_Word (offer.Why);
+        end if;
+        Process_Capabilities.Close (proctab(mypid).caps, handle, reply, closed);
+        Spinlocks.exitCriticalSection (mailtab(mypid).lock);
+        replyTargetOf (reply, lockedPID, replyThread);
+        if lockedPID = NO_PROCESS then
+            return Capability_ABI.Refusal_Word (Capability_ABI.Target_Gone);
+        end if;
+        Spinlocks.enterCriticalSection (mailtab(lockedPID).lock);
+        replyTargetOf (reply, replyTo, replyThread);
+        if replyTo /= lockedPID or else mailtab(lockedPID).closed then
+            Spinlocks.exitCriticalSection (mailtab(lockedPID).lock);
+            return Capability_ABI.Refusal_Word (Capability_ABI.Target_Gone);
+        end if;
+        replyToGeneration := generationOf (replyTo);
+        Process_Capabilities.Insert (proctab(replyTo).caps, offer.Copy, word);
+        flags := (if Capability_ABI.Is_Handle_Word (word)
+                  then (Capability_Transferred => True, others => False)
+                  else (Capability_Refused => True, others => False));
+        stamped.authorityTag := word;
+        delivered := completeReplyLocked
+          (replyTo, replyThread, reply.object.param, reply.authorityTag, stamped, flags);
+        if delivered = 0 and then Capability_ABI.Is_Handle_Word (word) then
+            Spinlocks.enterCriticalSection (mailtab(replyTo).lock);
+            if not mailtab(replyTo).closed
+              and then generationOf (replyTo) = replyToGeneration
+            then
+                Process_Capabilities.Close
+                  (proctab(replyTo).caps, word, ignoreCap, ignoreWord);
+            end if;
+            Spinlocks.exitCriticalSection (mailtab(replyTo).lock);
+            return Capability_ABI.Refusal_Word (Capability_ABI.Target_Gone);
+        end if;
+        return word;
+    end replySavedWithCapability;
 
     ---------------------------------------------------------------------------
     -- submit
@@ -2559,7 +2759,7 @@ package body Process.IPC is
                 value := grantFor (slot);
                 if value.ownerNotice then
                     msg.tag := (label => IPC_Labels.EVENT_GRANT_RETURNED,
-                                length => Grant_Event_Words, flags => 0, reserved => 0);
+                                length => Grant_Event_Words, protocol => 0, ipc => <>, reserved => 0);
                     msg.words (0) := Unsigned_64 (slot);
                     msg.words (1) := Unsigned_64 (value.noticeGeneration);
                     msg.words (2) := Process_Identities.To_Word (value.noticePeer);
@@ -2580,7 +2780,7 @@ package body Process.IPC is
                 value := grantFor (slot);
                 if value.granteeNotice then
                     msg.tag := (label => IPC_Labels.EVENT_GRANT_REVOKED,
-                                length => Grant_Event_Words, flags => 0, reserved => 0);
+                                length => Grant_Event_Words, protocol => 0, ipc => <>, reserved => 0);
                     msg.words (0) := Unsigned_64 (slot);
                     msg.words (1) := Unsigned_64 (value.generation);
                     msg.words (2) := Process_Identities.To_Word (value.granterIdentity);
@@ -2607,7 +2807,7 @@ package body Process.IPC is
 
     function toMessage (value : Kernel_Reports.Report) return Message is
       (tag => (label => value.Label, length => Unsigned_8 (value.Length),
-               flags => 0, reserved => value.Further),
+               protocol => 0, ipc => <>, reserved => value.Further),
        authorityTag => 0,
        words => (value.Words (0), value.Words (1), value.Words (2), value.Words (3)));
 
@@ -2736,7 +2936,7 @@ package body Process.IPC is
                     -- Words: the kind, the sender's identity (its life when
                     -- it sent, kept with the message).
                     msg.tag := (label => IPC_Labels.EVENT_CONTROL,
-                                length => Control_Words, flags => 0, reserved => 0);
+                                length => Control_Words, protocol => 0, ipc => <>, reserved => 0);
                     msg.words (0) := IPC_Labels.Control_Kind'Enum_Rep (kind);
                     msg.words (1) := Process_Identities.To_Word (Process_Identities.Encode
                       (Process_Identities.Slot (sender),
@@ -3859,13 +4059,13 @@ package body Process.IPC is
     ---------------------------------------------------------------------------
     -- capSend
     ---------------------------------------------------------------------------
-    -- Resolve an endpoint slot of the calling process under its mailbox
+    -- Resolve an endpoint handle of the calling process under its mailbox
     -- lock, which serializes every edit of the capability table: a sibling
-    -- thread cannot change the slot between the checks and the generation
-    -- the send then pins.
-    procedure resolveEndpointSlot
+    -- thread cannot close the entry between the checks and the generation
+    -- the send then pins. A stale or revoked handle resolves to nothing.
+    procedure resolveEndpointHandle
       (pid          : ProcessID;
-       capSlot      : Capabilities.CapabilitySlot;
+       handle       : Unsigned_64;
        candidatePID : out ProcessID;
        authorityTag : out Capabilities.Authority_Tag;
        generation   : out Capabilities.Generation;
@@ -3873,68 +4073,162 @@ package body Process.IPC is
     is
         destPID : Unsigned_64;
         status  : Capabilities.Operations.OperationStatus;
+        found   : Process_Capabilities.Found;
     begin
         candidatePID := NO_PROCESS;
         authorityTag := Capabilities.NO_AUTHORITY_TAG;
         generation := 0;
         ok := False;
         Spinlocks.enterCriticalSection (mailtab(pid).lock);
+        found := Process_Capabilities.Find_Any (proctab(pid).caps, handle);
         -- Validate the generic object reference before narrowing it to an
         -- index into proctab, whose first valid process entry is 1.
-        destPID := proctab(pid).caps(capSlot).object.ref;
-        if destPID >= Unsigned_64(ProctabRange'First) and then
-           destPID <= Unsigned_64(ProctabRange'Last)
-        then
-            candidatePID := ProcessID(destPID);
-            Capabilities.Operations.resolveCurrentEndpoint
-              (table             => proctab(pid).caps,
-               slot              => capSlot,
-               rights            => Capabilities.READ_WRITE,
-               currentGeneration => generationOf (candidatePID),
-               destPID           => destPID,
-               authorityTag      => authorityTag,
-               status            => status);
-            ok := status = Capabilities.Operations.OP_OK;
-            generation := proctab(pid).caps(capSlot).gen;
+        if found.OK then
+            destPID := found.Cap.object.ref;
+            if destPID >= Unsigned_64(ProctabRange'First) and then
+               destPID <= Unsigned_64(ProctabRange'Last)
+            then
+                candidatePID := ProcessID(destPID);
+                Capabilities.Operations.resolveCurrentEndpoint
+                  (cap               => found.Cap,
+                   rights            => Capabilities.READ_WRITE,
+                   currentGeneration => generationOf (candidatePID),
+                   destPID           => destPID,
+                   authorityTag      => authorityTag,
+                   status            => status);
+                ok := status = Capabilities.Operations.OP_OK;
+                generation := found.Cap.gen;
+            end if;
         end if;
         Spinlocks.exitCriticalSection (mailtab(pid).lock);
-    end resolveEndpointSlot;
+    end resolveEndpointHandle;
 
-    function capSend (capSlot : Capabilities.CapabilitySlot;
+    -- A request as it enters the kernel: the requester's protocol flags and
+    -- Accepts_Capability, the kernel's own IPC flags for it, the authority
+    -- tag stamped. (A request claiming the kernel's flags was refused.)
+    function stampedRequest
+      (msg : Message; authorityTag : Capabilities.Authority_Tag;
+       kernelFlags : Capability_ABI.IPC_Flags := Capability_ABI.No_IPC_Flags)
+      return Message is
+      ((tag => (label    => msg.tag.label,
+                length   => msg.tag.length,
+                protocol => msg.tag.protocol,
+                ipc      => (Accepts_Capability     => msg.tag.ipc.Accepts_Capability,
+                             Capability_Transferred => kernelFlags.Capability_Transferred,
+                             Capability_Refused     => kernelFlags.Capability_Refused,
+                             Capability_Offered     => kernelFlags.Capability_Offered),
+                reserved => msg.tag.reserved),
+        authorityTag => authorityTag,
+        words => msg.words));
+
+    function capSend (handle  : Unsigned_64;
                       msg     : Message;
-                      deadlineMs : Unsigned_64) return MessageTag
+                      deadlineMs : Unsigned_64;
+                      kernelFlags : Capability_ABI.IPC_Flags := Capability_ABI.No_IPC_Flags)
+      return MessageTag
     is
         candidatePID : ProcessID;
         authorityTag : Capabilities.Authority_Tag;
         generation   : Capabilities.Generation;
         ok           : Boolean;
-        stamped      : Message := msg;
     begin
-        resolveEndpointSlot (PerCPUData.getCurrentPID, capSlot, candidatePID,
-                             authorityTag, generation, ok);
+        -- A request claiming the kernel's flags is refused, not corrected.
+        if Capability_ABI.Claims_Kernel_Flags (msg.tag.ipc) then
+            return NULL_TAG;
+        end if;
+        resolveEndpointHandle (PerCPUData.getCurrentPID, handle, candidatePID,
+                               authorityTag, generation, ok);
         if not ok then
             return NULL_TAG;
         end if;
-        stamped.authorityTag := authorityTag;
-        return send (dest => candidatePID, msg => stamped,
+        return send (dest => candidatePID,
+                     msg => stampedRequest (msg, authorityTag, kernelFlags),
                      expectedGeneration => generation, deadlineMs => deadlineMs);
     end capSend;
 
     ---------------------------------------------------------------------------
     -- capCall
     ---------------------------------------------------------------------------
-    function capCall (capSlot : Capabilities.CapabilitySlot;
+    function capCall (handle  : Unsigned_64;
                       msg     : Message;
                       deadlineMs : Unsigned_64) return MessageTag
     is
     begin
-        return capSend (capSlot, msg, deadlineMs);
+        return capSend (handle, msg, deadlineMs);
     end capCall;
+
+    ---------------------------------------------------------------------------
+    -- capCallOffering (CALL_OFFERING_CAPABILITY)
+    ---------------------------------------------------------------------------
+    function capCallOffering (handle  : Unsigned_64;
+                              msg     : Message;
+                              deadlineMs : Unsigned_64;
+                              offer   : Capabilities.Capability) return MessageTag
+    is
+        mypid : constant ProcessID := PerCPUData.getCurrentPID;
+        me    : constant ThreadID := PerCPUData.getCurrentThread;
+        tag   : MessageTag;
+    begin
+        Spinlocks.enterCriticalSection (mailtab(mypid).lock);
+        threadtab (me).offeredCap := offer;
+        Spinlocks.exitCriticalSection (mailtab(mypid).lock);
+        tag := capSend (handle, msg, deadlineMs, (Capability_Offered => True, others => False));
+        -- Whatever the server did not take is dropped with the call.
+        Spinlocks.enterCriticalSection (mailtab(mypid).lock);
+        threadtab (me).offeredCap := Capabilities.NULL_CAPABILITY;
+        Spinlocks.exitCriticalSection (mailtab(mypid).lock);
+        return tag;
+    end capCallOffering;
+
+    ---------------------------------------------------------------------------
+    -- acceptOffered (ACCEPT_OFFERED_CAPABILITY)
+    ---------------------------------------------------------------------------
+    function acceptOffered (requester : ProcessID) return Unsigned_64 is
+        use type Capabilities.CapabilityType;
+        mypid : constant ProcessID := PerCPUData.getCurrentPID;
+        me    : constant ThreadID := PerCPUData.getCurrentThread;
+        reply : Capabilities.Capability;
+        targetPID : ProcessID;
+        targetTID : ThreadID;
+        offer : Capabilities.Capability;
+        word  : Unsigned_64;
+    begin
+        if requester = NO_PROCESS or else mypid = NO_PROCESS or else requester = mypid then
+            return Capability_ABI.Refusal_Word (Capability_ABI.Invalid_Argument);
+        end if;
+        lockMailboxes (mypid, requester);
+        -- Only while answering that synchronous call: the current reply
+        -- authority names the calling thread, still waiting for this call.
+        reply := threadtab (me).replyCap;
+        replyTargetOf (reply, targetPID, targetTID);
+        if reply.capType /= Capabilities.CAP_REPLY
+          or else reply.object.param /= NO_REQUEST_ID
+          or else targetPID /= requester or else targetTID = NO_THREAD
+          or else not Call_Sequences.Accepts
+                        (threadtab (targetTID).state = WAITINGFORREPLY,
+                         threadtab (targetTID).callSequence, reply.authorityTag)
+        then
+            unlockMailboxes (mypid, requester);
+            return Capability_ABI.Refusal_Word (Capability_ABI.Not_Permitted);
+        end if;
+        offer := threadtab (targetTID).offeredCap;
+        if offer.capType = Capabilities.CAP_NULL then
+            unlockMailboxes (mypid, requester);
+            return Capability_ABI.Refusal_Word (Capability_ABI.Not_Accepted);
+        end if;
+        Process_Capabilities.Insert (proctab(mypid).caps, offer, word);
+        if Capability_ABI.Is_Handle_Word (word) then
+            -- Taken once: a second accept finds nothing.
+            threadtab (targetTID).offeredCap := Capabilities.NULL_CAPABILITY;
+        end if;
+        unlockMailboxes (mypid, requester);
+        return word;
+    end acceptOffered;
 
     ---------------------------------------------------------------------------
     -- capSubmit
     ---------------------------------------------------------------------------
-    function capSubmit (capSlot : Capabilities.CapabilitySlot;
+    function capSubmit (handle  : Unsigned_64;
                         msg     : Message;
                         token   : Unsigned_64) return Boolean
     is
@@ -3942,16 +4236,17 @@ package body Process.IPC is
         authorityTag : Capabilities.Authority_Tag;
         generation   : Capabilities.Generation;
         ok           : Boolean;
-        stamped      : Message := msg;
     begin
-        resolveEndpointSlot (PerCPUData.getCurrentPID, capSlot, candidatePID,
-                             authorityTag, generation, ok);
+        if Capability_ABI.Claims_Kernel_Flags (msg.tag.ipc) then
+            return False;
+        end if;
+        resolveEndpointHandle (PerCPUData.getCurrentPID, handle, candidatePID,
+                               authorityTag, generation, ok);
         if not ok then
             return False;
         end if;
-        stamped.authorityTag := authorityTag;
         return submitResolvedEndpoint (dest  => candidatePID,
-                       msg   => stamped,
+                       msg   => stampedRequest (msg, authorityTag),
                        token => token,
                        expectedGeneration => generation);
     end capSubmit;
@@ -4001,6 +4296,13 @@ package body Process.IPC is
             end if;
         end if;
     end failReplyWaiter;
+
+    procedure failReply (cap : Capabilities.Capability) is
+    begin
+        Spinlocks.enterCriticalSection (lock);
+        failReplyWaiter (cap);
+        Spinlocks.exitCriticalSection (lock);
+    end failReply;
 
     procedure retireThread (tid : ThreadID) is
         pid : constant ProcessID := processOf (tid);
@@ -4125,8 +4427,13 @@ package body Process.IPC is
                 wakeWaiters : declare
                     w : ThreadID := mainThreadOf (pid);
                 begin
-                    for slot in Capabilities.CapabilitySlot loop
-                        failReplyWaiter (proctab(pid).caps(slot));
+                    for slot in 0 .. Process_Capabilities.Tables.High_Water
+                                       (proctab(pid).caps) - 1
+                    loop
+                        if Process_Capabilities.Tables.Is_Live_At (proctab(pid).caps, slot) then
+                            failReplyWaiter (Process_Capabilities.Tables.Item_At
+                                               (proctab(pid).caps, slot));
+                        end if;
                     end loop;
                     while w /= NO_THREAD loop
                         failReplyWaiter (threadtab (w).replyCap);

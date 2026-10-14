@@ -11,12 +11,20 @@ with Config_Worker_Storage;
 with Config_Worker_Messages;
 with Config_Worker_Receiver;
 with Config_Worker_Startup;
+with CuBit.Handles;
+with CuBit.Handles.IPC;
+with CuBit.Handles.Startup;
 
 package body Worker_Host is
+   --  The Config endpoint: the program's "config" startup entry.
+   function Config_Service return CuBit.Handles.Endpoint is
+      Found : constant CuBit.Handles.Startup.Optional_Endpoint :=
+        CuBit.Handles.Startup.Optional_Endpoint_Named (Config_Binding);
+   begin
+      return (if Found.Present then Found.Value else CuBit.Handles.No_Endpoint);
+   end Config_Service;
    use type System.Address;
    use type CuBit.Config_Inspection.Status;
-   Saved_Reply : constant CapabilitySlot := 62;
-   Current_Reply : constant CapabilitySlot := 63;
 
    function Database_Path
      (Buffer : System.Address; Capacity : Unsigned_64;
@@ -33,7 +41,7 @@ package body Worker_Host is
       --  Read once from bootstrap Config, BEFORE opening the database. There
       --  is deliberately no path default and no lookup in our own database.
       CuBit.Config_Reader.Query
-        (CuBit.Config_Inspection.Read_Value, "cubit.config.storage.database", Value, Result);
+        (Config_Service, CuBit.Config_Inspection.Read_Value, "cubit.config.storage.database", Value, Result);
       if Result /= CuBit.Config_Inspection.OK then
          return CuBit.Config_Inspection.Status'Enum_Rep (Result);
       end if;
@@ -47,11 +55,9 @@ package body Worker_Host is
       return 16#F000#;
    end Database_Path;
 
-   function Run
-     (Database : System.Address; Config_Endpoint : Unsigned_64) return Unsigned_32
-   is
+   function Run (Database : System.Address) return Unsigned_32 is
    begin
-      if Database = System.Null_Address or Config_Endpoint /= Unsigned_64 (CAP_SLOT_CONFIG) then
+      if Database = System.Null_Address or else not CuBit.Handles.Valid (Config_Service) then
          return 16#F001#;
       end if;
       declare
@@ -78,7 +84,7 @@ package body Worker_Host is
          begin
             Config_Database.Schemas.Invoke (Database, Action, Name, Context, Contract, Recovered, Result);
          end Invoke_Type;
-         package Receiver is new Config_Worker_Receiver (CAP_SLOT_CONFIG, Authorized, Invoke, Invoke_Type);
+         package Receiver is new Config_Worker_Receiver (Config_Service, Authorized, Invoke, Invoke_Type);
          Worker : Receiver.State;
          Sender : Process_ID;
          Request, Response : Message;
@@ -88,17 +94,24 @@ package body Worker_Host is
          loop
             receive (Sender, Request);
             if not Authorized (Sender, Request.authorityTag) then
-               Ignore := replyCap (Current_Reply, Config_Worker_Messages.Error (Config_Worker_Messages.Denied));
-            elsif saveReplyCap (Unsigned_64 (Saved_Reply)) /= 1 then
-               --  The move syscall returns 1 on success, not POSIX-style 0.
-               --  No usable reply capability: do not borrow, stage, or write.
-               Ignore := replyCap (Current_Reply, Config_Worker_Messages.Error (Config_Worker_Messages.Unavailable));
+               Ignore := reply (Sender, Config_Worker_Messages.Error (Config_Worker_Messages.Denied));
             else
-               --  FS/clock IPC may occur during database work. Never depend
-               --  on the implicit reply slot surviving those operations.
-               Receiver.Handle (Worker, Sender, Request, Response);
-               Ignore := replyCap (Saved_Reply, Response);
-               if Receiver.Needs_Recovery (Worker) then return 16#F004#; end if;
+               declare
+                  --  FS/clock IPC may occur during database work: answer
+                  --  through the request's own saved reply, never the
+                  --  thread's current one.
+                  Saved : constant CuBit.Handles.IPC.Saved_Reply := CuBit.Handles.IPC.Save_Reply;
+               begin
+                  if not Saved.Saved then
+                     --  No usable reply: do not borrow, stage, or write.
+                     Ignore := reply
+                       (Sender, Config_Worker_Messages.Error (Config_Worker_Messages.Unavailable));
+                  else
+                     Receiver.Handle (Worker, Sender, Request, Response);
+                     Ignore := replyCap (Saved.Handle, Response);
+                     if Receiver.Needs_Recovery (Worker) then return 16#F004#; end if;
+                  end if;
+               end;
             end if;
          end loop;
       end;

@@ -3,12 +3,14 @@ with System; use type System.Address;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Memory_Grants;
 with CuBit.Grant_References;
+with CuBit.Handles.Boot_Roots;
 
 procedure Capacity is
    package G renames CuBit.Memory_Grants;
    package R renames CuBit.Grant_References;
    use type R.Reference;
-   PID : constant Unsigned_64 := syscall (SYSCALL_GETPID);
+   --  Started in devmgr's place: the kernel's boot roots (CAP-002).
+   Roots : constant CuBit.Handles.Boot_Roots.Roots := CuBit.Handles.Boot_Roots.Get;
    Ignore : Unsigned_64;
    -- Spread aliases over 128 pages: the independent per-frame pin ceiling
    -- is 127, so one page cannot exercise a 4096-record namespace.
@@ -28,10 +30,9 @@ procedure Capacity is
    end Check;
 begin
    debugPrint ("grant capacity: lazy native records 4096 slots (NO GPU)" & ASCII.LF);
-   Check (syscall (SYSCALL_POLICY_MINT_CAPABILITY, PID, 1, PID, 0, 3, 15)
-     /= Unsigned_64'Last, "self endpoint");
+   Check (Roots.Valid, "self endpoint (devmgr's roots)");
    for I in References'Range loop
-      G.Create_Via_Capability (15, Buffer ((I mod 128) * 4096)'Address,
+      G.Create_Via_Capability (Roots.Self_Grantable, Buffer ((I mod 128) * 4096)'Address,
         1, False, References (I), OK);
       if not OK then debugPrint ("grant capacity: failed index=" & Natural'Image (I) & ASCII.LF); end if;
       Check (OK, "create through metadata growth");
@@ -40,11 +41,11 @@ begin
              (for all J in References'First .. I - 1 =>
                 References (J).slot /= References (I).slot), "distinct slots");
       Check (R.Decode (R.Encode (References (I))) = References (I), "wire roundtrip");
-      G.Acquire_Via_Capability (15, References (I), 0, 4096,
+      G.Acquire_Via_Capability (Roots.Self_Grantable, References (I), 0, 4096,
         G.Read_Access, Addresses (I), OK);
       Check (OK, "acquire through metadata growth");
    end loop;
-   G.Create_Via_Capability (15, Buffer'Address, 1, False, Fresh, OK);
+   G.Create_Via_Capability (Roots.Self_Grantable, Buffer'Address, 1, False, Fresh, OK);
    Check (not OK, "the owner's grant quota fails closed");
    for I in References'Range loop
       declare Alias : Unsigned_8 with Import, Address => Addresses (I), Volatile; begin
@@ -55,13 +56,13 @@ begin
    -- Retire a slot exactly at a record-block boundary while all others live.
    Old := References (64);
    G.Revoke (Old, OK); Check (OK, "revoke boundary");
-   G.Create_Via_Capability (15, Buffer'Address, 1, False, Fresh, OK);
+   G.Create_Via_Capability (Roots.Self_Grantable, Buffer'Address, 1, False, Fresh, OK);
    Check (not OK, "held retiring slot is not free capacity");
    G.Return_Acquisition (Old, OK); Check (OK, "return boundary");
-   G.Create_Via_Capability (15, Buffer'Address, 1, False, Fresh, OK);
+   G.Create_Via_Capability (Roots.Self_Grantable, Buffer'Address, 1, False, Fresh, OK);
    Check (OK and then Fresh.slot = Old.slot and then Fresh.generation /= Old.generation,
      "retired boundary capacity reused with new identity");
-   G.Acquire_Via_Capability (15, Fresh, 0, 4096, G.Read_Access, Addresses (64), OK);
+   G.Acquire_Via_Capability (Roots.Self_Grantable, Fresh, 0, 4096, G.Read_Access, Addresses (64), OK);
    Check (OK, "replacement acquisition");
    G.Return_Acquisition (Old, OK); Check (not OK, "old return denied");
    References (64) := Fresh;

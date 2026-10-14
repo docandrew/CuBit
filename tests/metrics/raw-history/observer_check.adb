@@ -3,6 +3,8 @@ with Ada.Text_IO;
 with Control; use type Control.Mode;
 with CuBit.Metric_Raw_Observer;
 with CuBit.Metric_Protocol;
+with CuBit.Handles.Fixture;
+with CuBit.Process_IDs;
 procedure Check is
  package O renames CuBit.Metric_Raw_Observer;
  package P renames CuBit.Metric_Protocol;
@@ -17,8 +19,9 @@ procedure Check is
  begin Checks := Checks + 1; if not V then raise Program_Error; end if; end;
 begin
  for Kind in Control.Mode loop
-  declare Item : O.Observer (1); Before : Natural;
+  declare Item : O.Observer; Before : Natural;
   begin
+   O.Bind (Item, CuBit.Handles.Fixture.Endpoint_Of (1));
    Control.Current := Kind; Control.Identity := 2 ** 32 + 77;
    Control.Retired := False; Control.Create_OK := True; Control.Revoke_OK := False;
    O.Query (Item, 1, Page, Written, Next, Gap, Dropped, Result);
@@ -33,8 +36,9 @@ begin
    Control.Retired := True; O.Disconnect (Item, Done); Require (Done);
   end;
  end loop;
- declare Item : O.Observer (1); Before : constant Natural := Control.Calls;
+ declare Item : O.Observer; Before : constant Natural := Control.Calls;
  begin
+  O.Bind (Item, CuBit.Handles.Fixture.Endpoint_Of (1));
   Control.Current := Control.Success; Control.Identity := 2 ** 32 + 77;
   O.Query (Item, 0, Page, Written, Next, Gap, Dropped, Result);
   Require (Result = P.Invalid_Request and not O.Disabled (Item) and Control.Calls = Before);
@@ -43,11 +47,12 @@ begin
   Require (Result = P.Unavailable and not O.Disabled (Item) and Control.Calls = Before);
   Control.Create_OK := True;
   O.Query (Item, 1, Page, Written, Next, Gap, Dropped, Result);
-  Require (Result = P.OK and O.Incarnation (Item) = Control.Identity);
+  Require (Result = P.OK and CuBit.Process_IDs.To_Word (O.Incarnation (Item)) = Control.Identity);
   O.Disconnect (Item, Done); Require (Done);
  end;
- declare Item : O.Observer (1); Before : constant Natural := Control.Calls;
+ declare Item : O.Observer; Before : constant Natural := Control.Calls;
  begin
+  O.Bind (Item, CuBit.Handles.Fixture.Endpoint_Of (1));
   Control.Identity := 0;
   O.Query (Item, 1, Page, Written, Next, Gap, Dropped, Result);
   Require (Result = P.Unavailable and O.Disabled (Item) and Control.Calls = Before);

@@ -25,6 +25,10 @@ with CuBit.Audio_Periods;
 with CuBit.Benchmark_Clock;
 with CuBit.Timing_Histograms;
 
+with CuBit.Handles.Devices;
+with CuBit.Startup_State;
+with Startup;
+
 procedure main is
    use ASCII;
    package Clock renames CuBit.Benchmark_Clock;
@@ -49,10 +53,14 @@ procedure main is
    REPLY_ERR          : constant Unsigned_32 := 16#F001#;
 
    --  Capability slots (assigned by devmgr)
-   CAP_SLOT_HDA     : constant Unsigned_64 := 4;
 
    msg         : Message;
    from        : Process_ID;
+
+   --  The HDA driver's endpoint, or the null handle without audio hardware
+   --  (its manifest's optional "hda" binding): calls through it fail.
+   function HDA_Endpoint return CuBit.Handles.Endpoint is
+     (if Startup.Hda.Present then Startup.Hda.Value else CuBit.Handles.No_Endpoint);
    ret         : Unsigned_64;
    mixBuf      : Mixer.MixBuffer;
    mixFrames   : Natural;
@@ -78,9 +86,9 @@ procedure main is
          Owners (I) := (if Mixer.streams (I).active then Mixer.streams (I).pid else 0);
       end loop;
       return Mixer_Control.Allowed
-        (msg.tag.label, msg.tag.length, msg.tag.flags, msg.tag.reserved,
+        (msg.tag.label, msg.tag.length, CuBit.Messages.Flag_Byte (msg.tag), msg.tag.reserved,
          [msg.words (0), msg.words (1), msg.words (2), msg.words (3)],
-         msg.authorityTag, Owners) and then
+         To_Word (from), Owners) and then
         (msg.tag.label /= OP_AUDIO_OPEN or else hdaReady);
    end clientRequestAllowed;
 
@@ -176,10 +184,11 @@ procedure main is
    is
       ignore : Unsigned_64;
    begin
-      ignore := replyCap (CapabilitySlot'Last,
+      --  The request just received from from (its current reply).
+      ignore := reply (from,
          (tag => (label  => label,
                   length => 4,
-                  flags  => 0,
+                  protocol  => 0, ipc => <>,
                   reserved  => 0),
           authorityTag => 0,
           words => [0 => w0, 1 => w1, 2 => w2, 3 => w3]));
@@ -227,10 +236,10 @@ procedure main is
 
       ctlMsg :=
         (tag => (label => OP_AUDIO_HW_START, length => 0,
-                 flags => 0, reserved => 0),
+                 protocol => 0, ipc => <>, reserved => 0),
          authorityTag => 0,
          words => [others => 0]);
-      ctlMsg.tag := capCall (CAP_SLOT_HDA, ctlMsg, CuBit.Messages.Wait_Forever);
+      ctlMsg.tag := capCall (HDA_Endpoint, ctlMsg, CuBit.Messages.Wait_Forever);
       if ctlMsg.tag.label = REPLY_OK then
          hdaRunning := True;
          --  HDA returns its pre-start completion baseline. Old queued events
@@ -250,10 +259,10 @@ procedure main is
 
       ctlMsg :=
         (tag => (label => OP_AUDIO_HW_STOP, length => 0,
-                 flags => 0, reserved => 0),
+                 protocol => 0, ipc => <>, reserved => 0),
          authorityTag => 0,
          words => [others => 0]);
-      ctlMsg.tag := capCall (CAP_SLOT_HDA, ctlMsg, CuBit.Messages.Wait_Forever);
+      ctlMsg.tag := capCall (HDA_Endpoint, ctlMsg, CuBit.Messages.Wait_Forever);
       if ctlMsg.tag.label = REPLY_OK then
          hdaRunning := False;
          -- The measured stream has stopped; no per-sample serial output.
@@ -264,11 +273,17 @@ procedure main is
 
 begin
    debugPrint ("mixer: starting" & ASCII.LF);
+   if not CuBit.Startup_State.Ready (Startup.Verify) then
+      debugPrint ("mixer: startup capabilities missing" & ASCII.LF);
+      return;
+   end if;
 
-   ret := setLatencyContract
-      (LATENCY_REALTIME,
-       5_000,   --  One 256-frame period is about 5.3 ms at 48 kHz.
-       1_500);  --  Budget hint: mix and submit one short audio period.
+   --  The real-time reservation its manifest's scheduling binding covers.
+   ret := CuBit.Handles.Devices.Reserve_Realtime
+      (Period_Us => 5_000,   --  One 256-frame period is about 5.3 ms at 48 kHz.
+       Budget_Us => 1_500,   --  Mix and submit one short audio period.
+       Flags     => 0,
+       Authority => Startup.Scheduling);
    if ret = Unsigned_64'Last then
       debugPrint ("mixer: latency contract rejected" & ASCII.LF);
    end if;
@@ -311,10 +326,10 @@ begin
    begin
       initMsg :=
         (tag => (label => OP_AUDIO_HW_INIT, length => 0,
-                 flags => 0, reserved => 0),
+                 protocol => 0, ipc => <>, reserved => 0),
          authorityTag => 0,
          words => [others => 0]);
-      initMsg.tag := capCall (CAP_SLOT_HDA, initMsg, CuBit.Messages.Wait_Forever);
+      initMsg.tag := capCall (HDA_Endpoint, initMsg, CuBit.Messages.Wait_Forever);
 
       gid := initMsg.words (0);
       bytes := initMsg.words (1);
@@ -331,7 +346,7 @@ begin
            (slot       => Global_Grant_Slot (gid),
             generation => Grant_Generation (generation));
          Acquire_Via_Capability
-           (slot           => CAP_SLOT_HDA,
+           (slot           => HDA_Endpoint,
             reference      => grantReference,
             byteOffset     => 0,
             byteLength     => bytes * count,
@@ -354,17 +369,16 @@ begin
 
    --  Register as mixer driver
    hdaPID := Registered_Driver (DRIVER_HDA);
-   ret := registerDriver (DRIVER_MIXER);
+   ret := registerDriver (DRIVER_MIXER, Startup.Registration);
 
    --  Signal devmgr that we are ready
    declare
-      CAP_SLOT_READY : constant Unsigned_64 := 15;
       OP_READY       : constant Unsigned_32 := 16#FF00#;
       ignore : MessageTag;
    begin
-      ignore := capSend (CAP_SLOT_READY,
+      ignore := capSend (Startup.Ready,
          (tag      => (label => OP_READY, length => 0,
-                       flags => 0, reserved => 0),
+                       protocol => 0, ipc => <>, reserved => 0),
           authorityTag => 0,
           words    => [others => 0]), CuBit.Messages.Wait_Forever);
    end;
@@ -379,9 +393,8 @@ begin
 
       if msg.tag.label = OP_AUDIO_HW_PERIOD then
          if hdaReady and then hdaRunning and then hdaPID /= No_Process and then
-           hdaPID /= No_Process and then from = hdaPID and then
-           msg.authorityTag = To_Word (hdaPID) and then msg.tag.length = 4 and then
-           msg.tag.flags = 0 and then msg.tag.reserved = 0 and then
+           from = hdaPID and then msg.tag.length = 4 and then
+           msg.tag.protocol = 0 and then msg.tag.reserved = 0 and then
            msg.words (0) < Unsigned_64 (periodCount)
          then
             if not periodIRQObserved then
@@ -423,7 +436,7 @@ begin
 
       elsif msg.tag.label in CuBit.Audio_Control.Get_State | CuBit.Audio_Control.Set_State then
          if not Mixer_Control.Master_Allowed
-           (msg.tag.label, msg.tag.length, msg.tag.flags, msg.tag.reserved,
+           (msg.tag.label, msg.tag.length, CuBit.Messages.Flag_Byte (msg.tag), msg.tag.reserved,
             Mixer_Control.Words (msg.words), msg.authorityTag,
             CuBit.Audio_Control.Authority_Tag)
          then
@@ -439,7 +452,7 @@ begin
       elsif not clientRequestAllowed then
          sendReply (REPLY_ERR);
       else
-         from := From_Word (msg.authorityTag);
+         --  from is the kernel's sender identity: streams belong to it.
          case msg.tag.label is
             when OP_AUDIO_OPEN =>
                --  words(0) = sampleRate

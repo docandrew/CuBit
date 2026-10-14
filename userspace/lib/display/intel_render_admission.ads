@@ -5,7 +5,10 @@ with CuBit.Async_Requests;
 -- retains the captured Recipient and selected GPU source capability.
 -- This core neither grants capabilities nor authenticates IPC receipts.
 package Intel_Render_Admission with SPARK_Mode is
-   type Phase is (Idle, Reserve_Ready, Reserve_Pending, Delegate_Ready,
+   --  CAP-002: no delegation step. The reservation's session tag is the
+   --  application's authority (devmgr badges its intel-gpu endpoint with it);
+   --  intel-gpu holds no capability to the application.
+   type Phase is (Idle, Reserve_Ready, Reserve_Pending,
      Activate_Ready, Activate_Pending, Abort_Ready, Abort_Pending,
      Active, Failed, Quarantined);
    type Words is array (Natural range 0 .. 3) of Unsigned_64;
@@ -13,11 +16,6 @@ package Intel_Render_Admission with SPARK_Mode is
    function State (Item : Transaction) return Phase;
    function Identity (Item : Transaction) return Unsigned_64;
    function Session (Item : Transaction) return Unsigned_64;
-   subtype Recipient_Slot is Natural range 0 .. 55
-     with Static_Predicate => Recipient_Slot = 0 or Recipient_Slot in 40 .. 55;
-   function Driver_Recipient_Slot (Item : Transaction) return Recipient_Slot
-     with Post => Driver_Recipient_Slot'Result = 0 or else
-       Driver_Recipient_Slot'Result in 40 .. 55;
    function Cancelled (Item : Transaction) return Boolean;
    procedure Start (Item : in out Transaction; Captured : Unsigned_64);
    -- Ready request payload for label0A21, length4, flags/reserved0.
@@ -35,15 +33,6 @@ package Intel_Render_Admission with SPARK_Mode is
    -- receipts are consumed but never treated as successful remote cleanup.
    procedure Complete (Item : in out Transaction; ID : Unsigned_64;
      Envelope_OK : Boolean; Reply : Words; Consumed : out Boolean);
-   -- Report success only after both endpoint delegations, using the originally
-   -- captured identities. A rejected installation still needs
-   -- the reserved GPU session aborted; installed caps are not revoked here.
-   procedure Delegated (Item : in out Transaction; Installed : Boolean)
-     with Pre => State (Item) = Delegate_Ready,
-       Post => Identity (Item) = Identity (Item)'Old and
-         Session (Item) = Session (Item)'Old and
-         State (Item) = (if Installed and not Cancelled (Item) then
-                          Activate_Ready else Abort_Ready);
    -- Cancellation is irreversible. Pending replies must still be drained;
    -- late success can request Abort, never activation. No timeout frees state.
    procedure Cancel (Item : in out Transaction)
@@ -54,14 +43,11 @@ private
    type Transaction is limited record
       Current : Phase := Idle;
       Target, Tag : Unsigned_64 := 0;
-      Driver_Slot : Recipient_Slot := 0;
       Stopped : Boolean := False;
       Pending : CuBit.Async_Requests.Tracker;
    end record;
    function State (Item : Transaction) return Phase is (Item.Current);
    function Identity (Item : Transaction) return Unsigned_64 is (Item.Target);
    function Session (Item : Transaction) return Unsigned_64 is (Item.Tag);
-   function Driver_Recipient_Slot (Item : Transaction) return Recipient_Slot is
-     (Item.Driver_Slot);
    function Cancelled (Item : Transaction) return Boolean is (Item.Stopped);
 end Intel_Render_Admission;

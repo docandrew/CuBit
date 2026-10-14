@@ -1,6 +1,9 @@
 with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Process_IDs;
+with CuBit.Handles.Boot_Roots;
+with CuBit.Handles.Control;
 with Intel_GPU_Extent_Allocator;
 with Intel_GPU_Buffer_Reply;
 with Intel_GPU_Metadata_Platform;
@@ -12,13 +15,18 @@ with Intel_GPU_Record_Growth;
 procedure Demand_Backing_Check is
    package V renames Intel_GPU_Buffer_Reply;
    PID : constant Unsigned_64 := syscall (SYSCALL_GETPID);
+   -- Runs in devmgr's place: the boot roots' process authority allocates.
+   Roots : constant CuBit.Handles.Boot_Roots.Roots := CuBit.Handles.Boot_Roots.Get;
+   function Allocate_DMA (Order, Virtual, Mode, Ceiling : Unsigned_64) return Unsigned_64 is
+     (CuBit.Handles.Control.Allocate_DMA
+        (CuBit.Process_IDs.From_Word (PID), Roots.Process_Root, Order, Virtual, Mode, Ceiling));
    Calls : Natural := 0;
    Ready : Boolean := True;
    function Owner return Boolean is (Ready);
    function Allocate (CPU : Unsigned_64) return Unsigned_64 is
    begin
       Calls := Calls + 1;
-      return syscall (SYSCALL_ALLOC_DMA, PID, 9, CPU, 3, 2 ** 32);
+      return Allocate_DMA (9, CPU, 3, 2 ** 32);
    end Allocate;
    package A is new Intel_GPU_Extent_Allocator (Owner, Allocate);
    Pool : A.Pool;
@@ -60,7 +68,7 @@ procedure Demand_Backing_Check is
    end Check_Pixels;
 begin
    debugPrint ("native demand backing: privileged disposable fixture (NO GPU/IPC)" & ASCII.LF);
-   Check (PID /= 0 and PID /= Unsigned_64'Last, "PID");
+   Check (PID /= 0 and PID /= Unsigned_64'Last and Roots.Valid, "PID and boot roots");
    G.Configure (Growth, 65536, 1000, OK);
    Check (OK, "metadata configure");
    for Index in Views'Range loop

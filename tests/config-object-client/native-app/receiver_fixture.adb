@@ -1,3 +1,4 @@
+with Startup;
 with CuBit.Messages; use CuBit.Messages;
 with CCL.Types;
 with CCL.Resources;
@@ -175,7 +176,7 @@ package body Receiver_Fixture is
          else
             Token := Token + 1;
             if Op = Acquire then
-               H.Create (Client, Owner, Session, Kind, CAP_SLOT_CONFIG,
+               H.Create (Client, Owner, Session, Kind, Startup.Config,
                  Nested_Fixture.Name, Contract, W.Read_Write, 0, Token, Sent);
             else
                -- The shared resource client owns and checks this pairing.

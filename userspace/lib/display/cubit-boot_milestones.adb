@@ -1,19 +1,18 @@
 pragma Ada_2022;
 with Interfaces; use Interfaces;
-with CuBit.Messages;
+with CuBit.Handles.Devices;
 
 package body CuBit.Boot_Milestones is
-   package Codes renames CuBit.Boot_Milestone_Codes;
    Marked : array (Milestone) of Boolean := [others => False];
 
-   procedure Mark (Item : Milestone) is
-      Ignore : Unsigned_64;
+   procedure Mark (Item : Milestone; Authority : CuBit.Handles.Notification) is
+      Ignore : Boolean;
    begin
       if Marked (Item) then
          return;
       end if;
       Marked (Item) := True;
-      Ignore := CuBit.Messages.syscall
-        (Codes.System_Call, Codes.Mark_Operation, Milestone'Enum_Rep (Item));
+      Ignore := CuBit.Handles.Devices.Mark_Milestone
+        (Milestone'Enum_Rep (Item), Authority);
    end Mark;
 end CuBit.Boot_Milestones;

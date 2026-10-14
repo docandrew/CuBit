@@ -9,8 +9,6 @@ with Interfaces; use Interfaces;
 --  when it started.
 package CuBit.Process_Observer with Pure, SPARK_Mode is
    Observer_Service_Role : constant Unsigned_64 := 26;
-   --  The fixed capability slot a client's manifest binds the role to.
-   Observer_Slot : constant Unsigned_64 := 29;
    --  "PROC" in the high half; the low half is a never-reused issuance.
    Observer_Tag_Base : constant Unsigned_64 := 16#5052_4F43_0000_0000#;
    function Observer_Tag (Issuance : Unsigned_32) return Unsigned_64 is

@@ -186,7 +186,7 @@ if args.no_provider or args.authorized_discovery:
                         str(root / 'tests/mesa-anv' / ('native-triangle-present.ccl'
                             if args.present_triangle else 'native-authorized-discovery.ccl'
                             if args.authorized_discovery else 'native-instance-no-provider.ccl')),
-                        *(['--ada-output', str(out / 'ccl_manifest_bindings.ads')]
+                        *(['--startup-output', str(out / 'startup.ads')]
                           if args.authorized_discovery else [])],
                        stdout=destination, check=True)
     manifest = out / 'manifest.o'
@@ -243,7 +243,7 @@ for unit in ('native_build_id', 'native_build_id_link'):
                     '-o', str(native_object)], check=True)
     native_objects.append(str(native_object))
 if args.authorized_discovery:
-    for unit in ('mesa_discovery_slot', 'mesa_probe_log',
+    for unit in ('mesa_discovery_endpoint', 'mesa_probe_log',
                  *(['mesa_triangle_surface'] if args.present_triangle else []),
                  *(['mesa_gallery_surface'] if args.teapot_gallery else [])):
         subprocess.run(['gnatmake', '-q', '-c', '-gnatA', '-gnat2022', '-O2',

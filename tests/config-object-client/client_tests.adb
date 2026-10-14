@@ -5,6 +5,7 @@ with CCL.Objects;
 with CCL.Objects.Schemas;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Memory_Grants;
+with CuBit.Handles.Fixture;
 with Config_Object_Messages;
 with Config_Object_Client; use Config_Object_Client;
 
@@ -44,7 +45,7 @@ procedure Client_Tests is
       Valid : constant Boolean := Scenario in None | Stale_Value | Missing_Value | Denied_Value;
       Has_Value : constant Boolean := Scenario in None | Stale_Value;
    begin
-      Initialize (Object, 5, OK); Check (OK and Status (Object) = Ready);
+      Initialize (Object, CuBit.Handles.Fixture.Endpoint_Of (5), OK); Check (OK and Status (Object) = Ready);
       Get (Object, 1, Sent); Check (Sent = Invalid_Request);
       Open (Object, "org.cubit.settings", Unbound, W.Read_Write, 0, 1, Sent); Check (Sent = Invalid_Request);
       if Create_First then
@@ -84,7 +85,7 @@ procedure Client_Tests is
             when Zero_Revision => Completion.msg.words (0) := 0;
             when Large_Revision => Completion.msg.words (0) := Number'Last;
             when Bad_Length => Completion.msg.tag.length := 4;
-            when Bad_Flags => Completion.msg.tag.flags := 1;
+            when Bad_Flags => Completion.msg.tag.protocol := 1;
             when Bad_Reserved => Completion.msg.tag.reserved := 1;
             when Bad_Tail => Completion.msg.words (3) := 1;
             when Unknown_Status => Completion.msg.tag.label := 0;
@@ -167,7 +168,7 @@ begin
       OK, Taken : Boolean;
       Count : Natural;
    begin
-      Initialize (Object, 5, OK); Check (OK);
+      Initialize (Object, CuBit.Handles.Fixture.Endpoint_Of (5), OK); Check (OK);
       Open (Object, "org.cubit.settings", Contract, W.Read_Write, 0, 1, Sent); Check (Sent = Submitted);
       Complete (Object, Answer (1, W.Success, 55), Done); Check (Done = Completed);
       Take_Result (Object, Item, Taken); Check (Taken and Item.Valid);
@@ -190,7 +191,7 @@ begin
       OK, Taken : Boolean;
       Count : Natural;
    begin
-      Initialize (Object, 5, OK); Check (OK);
+      Initialize (Object, CuBit.Handles.Fixture.Endpoint_Of (5), OK); Check (OK);
       Create (Object, "org.cubit.settings", Contract, W.Read_Write, 0, 1, Sent);
       Check (Sent = Submitted);
       Complete (Object, Answer (1, W.Uncertain), Done); Check (Done = Completed);
@@ -204,7 +205,7 @@ begin
       Complete (Object, Answer (1, W.Success, 55), Done);
       Check (Done = Ignored and Status (Object) = Failed);
       Retire (Object, OK); Check (OK);
-      Initialize (Recovered, 5, OK); Check (OK);
+      Initialize (Recovered, CuBit.Handles.Fixture.Endpoint_Of (5), OK); Check (OK);
       Open (Recovered, "org.cubit.settings", Contract, W.Read_Write, 0, 3, Sent);
       Check (Sent = Submitted and W.Valid_Request (Last_Request, W.Open_Collection));
       Complete (Recovered, Answer (1, W.Success, 55), Done); Check (Done = Ignored);
@@ -225,7 +226,7 @@ begin
       Done : Completion_Result;
       OK : Boolean;
    begin
-      Initialize (Object, 5, OK); Check (OK);
+      Initialize (Object, CuBit.Handles.Fixture.Endpoint_Of (5), OK); Check (OK);
       Accept_Submission := False;
       Open (Object, "org.cubit.settings", Contract, W.Read_Write, 0, 1, Sent); Check (Sent = Not_Submitted);
       Accept_Submission := True;
@@ -239,7 +240,7 @@ begin
       Retire (Object, OK); Check (not OK);
       G.Is_Retired := True;
       Retire (Object, OK); Check (OK);
-      Initialize (Object, 5, OK); Check (not OK);
+      Initialize (Object, CuBit.Handles.Fixture.Endpoint_Of (5), OK); Check (not OK);
    end;
    for Bad_Stage in W.Operation loop
       declare
@@ -250,7 +251,7 @@ begin
          OK, Taken : Boolean;
          Completion : CompletionEntry;
       begin
-         Initialize (Object, 5, OK); Check (OK);
+         Initialize (Object, CuBit.Handles.Fixture.Endpoint_Of (5), OK); Check (OK);
          if Bad_Stage = W.Create_Collection then
             Create (Object, "org.cubit.settings", Contract, W.Read_Write, 0, 1, Sent);
          else
@@ -283,9 +284,9 @@ begin
       OK : Boolean;
    begin
       G.Allow_Grant := False;
-      Initialize (Object, 5, OK); Check (not OK and Status (Object) = Failed);
+      Initialize (Object, CuBit.Handles.Fixture.Endpoint_Of (5), OK); Check (not OK and Status (Object) = Failed);
       G.Allow_Grant := True;
-      Initialize (Object, 5, OK); Check (not OK);
+      Initialize (Object, CuBit.Handles.Fixture.Endpoint_Of (5), OK); Check (not OK);
       Retire (Object, OK); Check (OK);
    end;
    Ada.Text_IO.Put_Line ("Native Config object client/protocol: PASS" & Checks'Image & " checks");

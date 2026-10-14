@@ -1,3 +1,4 @@
+with CuBit.Handles.Startup;
 with Interfaces; use Interfaces;
 with System;
 with System.Storage_Elements;
@@ -35,20 +36,23 @@ begin
    for Y in 16 .. 47 loop
       for X in 16 .. 47 loop Image (Y * 64 + X) := 16#FFFF_00FF#; end loop;
    end loop;
-   Check (registerDriver (DRIVER_IPCTEST) /= Unsigned_64'Last);
+   Check (registerDriver (DRIVER_IPCTEST,
+            CuBit.Handles.Startup.Notification_Named ("registration")) /= Unsigned_64'Last);
    debugPrint ("gpu-viewer fixture: synthetic RAM producer ready" & ASCII.LF);
    loop
       receive (From, Msg);
       Answer := NULL_MESSAGE;
-      Answer.tag := (Msg.tag.label, 4, 0, 0);
+      Answer.tag := (label => Msg.tag.label, length => 4, protocol => 0, ipc => <>, reserved => 0);
       Answer.words := [1, 1, 0, 0];
-      if Msg.tag = (Q.Desktop_Binding_Label, 4, 0, 0) and then
+      if Msg.tag = (label => Q.Desktop_Binding_Label, length => 4,
+                    protocol => 0, ipc => <>, reserved => 0) and then
         Msg.words = [1, 0, 0, 0] and then (Viewer = 0 or else Viewer = From)
       then
          Viewer := From;
          -- Desktop was granted by procmgr from the TEST manifest.
          Answer.words := [0, 1, 0, 0];
-      elsif Msg.tag = (Q.Label, 4, 0, 0) and then Viewer /= 0 and then
+      elsif Msg.tag = (label => Q.Label, length => 4,
+                       protocol => 0, ipc => <>, reserved => 0) and then Viewer /= 0 and then
         From = Viewer and then Q.Valid_Request (Q.Words (Msg.words))
       then
          if Msg.words (1) = 0 and then not Retiring then

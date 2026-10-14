@@ -9,11 +9,11 @@
 --  sends OP_NET_CONFIGURE / OP_NET_SET_DNS to netstack, and runs DHCP
 --  for interfaces configured with method=dhcp.
 --
---  Capability slots (assigned by devmgr):
---    4  = CAP_ENDPOINT -> netstack (config + raw UDP IPC)
---    6  = CAP_ENDPOINT -> config.svc (read net.* keys)
---    8  = CAP_NOTIFICATION (DRIVER_NETMGR registration)
---    15 = CAP_ENDPOINT -> devmgr (OP_READY signal)
+--  Startup capabilities (its manifest; devmgr answers them at launch):
+--    netstack     -> netstack, badged as the network manager (config + raw UDP)
+--    config       -> config.svc (read net.* keys)
+--    registration -> DRIVER_NETMGR registration
+--    ready        -> devmgr (OP_READY signal)
 ------------------------------------------------------------------------------
 with Interfaces; use Interfaces;
 with System; use System;
@@ -21,7 +21,10 @@ with System.Storage_Elements; use System.Storage_Elements;
 
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Config;
+with CuBit.Handles;
+with CuBit.Startup_State;
 with DHCP;
+with Startup;
 
 procedure main is
    use ASCII;
@@ -39,10 +42,11 @@ procedure main is
    REPLY_OK         : constant Unsigned_32 := 16#F000#;
    REPLY_ERR        : constant Unsigned_32 := 16#F001#;
 
-   --  Capability slots (granted by devmgr)
-   CAP_SLOT_NETSTACK : constant CapabilitySlot := 4;
-   CAP_SLOT_CONFIG   : constant CapabilitySlot := 6;
-   CAP_SLOT_READY    : constant Unsigned_64 := 15;
+   --  netstack's endpoint, or the null handle without netstack (calls
+   --  through it fail).
+   function Netstack return CuBit.Handles.Endpoint is
+     (if Startup.Netstack.Present then Startup.Netstack.Value
+      else CuBit.Handles.No_Endpoint);
 
    --  Interface method
    type IfMethod is (METHOD_NONE, METHOD_STATIC, METHOD_DHCP);
@@ -168,14 +172,14 @@ procedure main is
    begin
       msg := (tag      => (label  => OP_NET_CONFIGURE,
                            length => 4,
-                           flags  => 0,
+                           protocol  => 0, ipc => <>,
                            reserved  => 0),
               authorityTag => 0,
               words    => (0 => ifIdx,
                            1 => addr,
                            2 => mask,
                            3 => gw));
-      msg.tag := capCall (CAP_SLOT_NETSTACK, msg, CuBit.Messages.Wait_Forever);
+      msg.tag := capCall (Netstack, msg, CuBit.Messages.Wait_Forever);
 
       if msg.tag.label = REPLY_OK then
          debugPrint ("netmgr: configured interface ");
@@ -194,13 +198,13 @@ procedure main is
    begin
       msg := (tag      => (label  => OP_NET_SET_DNS,
                            length => 2,
-                           flags  => 0,
+                           protocol  => 0, ipc => <>,
                            reserved  => 0),
               authorityTag => 0,
               words    => (0 => primary,
                            1 => secondary,
                            others => 0));
-      msg.tag := capCall (CAP_SLOT_NETSTACK, msg, CuBit.Messages.Wait_Forever);
+      msg.tag := capCall (Netstack, msg, CuBit.Messages.Wait_Forever);
    end sendSetDNS;
 
    ---------------------------------------------------------------------------
@@ -212,11 +216,11 @@ procedure main is
    begin
       msg := (tag      => (label  => OP_READY,
                            length => 0,
-                           flags  => 0,
+                           protocol  => 0, ipc => <>,
                            reserved  => 0),
               authorityTag => 0,
               words    => (others => 0));
-      ignore := capCall (CAP_SLOT_READY, msg, CuBit.Messages.Wait_Forever);
+      ignore := capCall (Startup.Ready, msg, CuBit.Messages.Wait_Forever);
    end signalReady;
 
    ---------------------------------------------------------------------------
@@ -227,11 +231,11 @@ procedure main is
    begin
       msg := (tag      => (label  => OP_NET_LIST_IF,
                            length => 0,
-                           flags  => 0,
+                           protocol  => 0, ipc => <>,
                            reserved  => 0),
               authorityTag => 0,
               words    => (others => 0));
-      msg.tag := capCall (CAP_SLOT_NETSTACK, msg, CuBit.Messages.Wait_Forever);
+      msg.tag := capCall (Netstack, msg, CuBit.Messages.Wait_Forever);
       if msg.tag.label = REPLY_OK then
          return Natural (msg.words (0));
       end if;
@@ -248,14 +252,14 @@ procedure main is
    begin
       msg := (tag      => (label  => OP_NET_OPEN_RAW,
                            length => 3,
-                           flags  => 0,
+                           protocol  => 0, ipc => <>,
                            reserved  => 0),
               authorityTag => 0,
               words    => (0 => ifIdx,
                            1 => Unsigned_64 (PROTO_UDP),
                            2 => Unsigned_64 (port),
                            others => 0));
-      msg.tag := capCall (CAP_SLOT_NETSTACK, msg, CuBit.Messages.Wait_Forever);
+      msg.tag := capCall (Netstack, msg, CuBit.Messages.Wait_Forever);
       return msg.tag.label = REPLY_OK;
    end openRawChannel;
 
@@ -270,9 +274,14 @@ procedure main is
 
 begin
    debugPrint ("netmgr: starting" & LF);
+   if not CuBit.Startup_State.Ready (Startup.Verify) then
+      debugPrint ("netmgr: startup capabilities missing" & LF);
+      return;
+   end if;
+   CuBit.Config.Bind (Startup.Config);
 
    --  Register as DRIVER_NETMGR
-   ret := registerDriver (DRIVER_NETMGR);
+   ret := registerDriver (DRIVER_NETMGR, Startup.Registration);
    debugPrint ("netmgr: registered" & LF);
 
    --  Read net.if0.method from config
@@ -334,7 +343,7 @@ begin
          debugPrint ("netmgr: raw channel open for DHCP" & LF);
 
          --  Send DHCP DISCOVER
-         DHCP.sendDiscover (dhcpState, CAP_SLOT_NETSTACK);
+         DHCP.sendDiscover (dhcpState, Netstack);
          debugPrint ("netmgr: DHCP DISCOVER sent" & LF);
       else
          debugPrint ("netmgr: failed to open raw channel" & LF);
@@ -378,7 +387,7 @@ begin
                      debugPrint ("netmgr: DHCP configured" & LF);
 
                   when DHCP.ACTION_SEND_REQUEST =>
-                     DHCP.sendRequest (dhcpState, CAP_SLOT_NETSTACK);
+                     DHCP.sendRequest (dhcpState, Netstack);
                end case;
 
                ignore := reply (sender, NULL_MESSAGE);
@@ -397,7 +406,7 @@ begin
             replyMsg : constant Message :=
               (tag      => (label  => REPLY_ERR,
                             length => 0,
-                            flags  => 0,
+                            protocol  => 0, ipc => <>,
                             reserved  => 0),
                authorityTag => 0,
                words    => (others => 0));

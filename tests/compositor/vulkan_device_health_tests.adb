@@ -1,3 +1,4 @@
+with CuBit.Handles.Fixture;
 with Ada.Text_IO;
 with Interfaces;
 with System;
@@ -29,7 +30,7 @@ begin
          M.Set (True, True, 0); Context_Set (0, 0);
          D.Check_Health (Device, OK);
          pragma Assert (not OK and Checks = 0);
-         D.Start (Device, Context, Submission, 25);
+         D.Start (Device, Context, Submission, CuBit.Handles.Fixture.Endpoint_Of (25));
          C.Register_Child (Context, Child);
          if Failure = 2 then
             -- Isolate pending GPU work from the separate child-retention case.
@@ -57,7 +58,7 @@ begin
             D.Close (Device, Context, Submission);
             pragma Assert (M.Closes = 0 and C.Current (Context) = C.Live);
             if Failure = 2 then pragma Assert (V.Current (Submission) = V.Pending); end if;
-            D.Start (Device, Context, Submission, 25);
+            D.Start (Device, Context, Submission, CuBit.Handles.Fixture.Endpoint_Of (25));
             pragma Assert (M.Starts = 1 and D.Current (Device) = D.Quarantined);
          else
             pragma Assert (OK);
@@ -77,7 +78,7 @@ begin
       OK : Boolean;
    begin
       M.Set (True, True, 0);
-      D.Start (Device, Context, Submission, 0);
+      D.Start (Device, Context, Submission, CuBit.Handles.No_Endpoint);
       D.Check_Health (Device, OK);
       pragma Assert (not OK and Checks = 0 and M.Starts = 0);
    end;

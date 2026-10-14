@@ -12,7 +12,7 @@ struct Part {
 }
 unsafe extern "C" {
     fn cubit_storage_transfer_capacity() -> u64;
-    fn cubit_storage_initialize(endpoint: u64) -> u32;
+    fn cubit_storage_initialize() -> u32;
     fn cubit_storage_execute(
         op: u32,
         handle: u64,
@@ -34,13 +34,14 @@ unsafe extern "C" {
 // Non-cloneable singleton. NativeIO owns it behind one mutex shared by all files.
 pub struct Bridge(NonZeroUsize);
 impl Bridge {
-    pub fn new(endpoint: u64) -> Self {
+    /// A channel to the program's "filesystem" startup entry.
+    pub fn new() -> Self {
         assert!(
             !CLAIMED.swap(true, Ordering::AcqRel),
             "native storage bridge already claimed"
         );
-        // SAFETY: one-time initialization with scalar endpoint reference.
-        assert_eq!(unsafe { cubit_storage_initialize(endpoint) }, OK);
+        // SAFETY: one-time initialization; the Ada side finds the endpoint.
+        assert_eq!(unsafe { cubit_storage_initialize() }, OK);
         // SAFETY: scalar constant from the same Ada implementation that owns
         // and bounds the loan. Do not duplicate its capacity in Rust.
         let bytes = usize::try_from(unsafe { cubit_storage_transfer_capacity() })

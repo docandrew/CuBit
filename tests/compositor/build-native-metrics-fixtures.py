@@ -87,7 +87,7 @@ for folder, project, binary in fixtures:
     (build / 'generated').mkdir(parents=True)
     with (build / 'manifest.S').open('w') as out:
         run([compiler, catalog, directory / 'manifest.ccl', '--schema', schema,
-             '--ada-output', build / 'generated/ccl_manifest_bindings.ads'], directory, out)
+             '--startup-output', build / 'generated/startup.ads'], directory, out)
     run(['alr', 'exec', '--', 'gcc', '-c', build / 'manifest.S', '-o', build / 'manifest.o'],
         toolchain / 'kernel')
     run(['alr', 'exec', '--', 'gprbuild', '-p', '-P', directory / project], toolchain / 'kernel')

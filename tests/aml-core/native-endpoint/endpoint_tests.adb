@@ -23,12 +23,13 @@ procedure Endpoint_Tests is
       Before : constant Natural := Hardware.Calls;
    begin
       -- Poison all output fields to detect stale metadata/value leakage.
-      Reply := (tag => (Unsigned_32'Last, 255, 255, 65535),
+      Reply := (tag => (label => Unsigned_32'Last, length => 255,
+                        protocol => 255, ipc => <>, reserved => 65535),
                 authorityTag => Unsigned_64'Last,
                 words => (others => Unsigned_64'Last));
       Ticket := Unsigned_64'Last;
       Endpoint.Dispatch (Region, Hardware, Request, Reply, Ticket);
-      Check (Reply.tag = (16#F002#, 4, 0, 0));
+      Check (Reply.tag = (label => 16#F002#, length => 4, protocol => 0, ipc => <>, reserved => 0));
       Check (Reply.authorityTag = 0 and Reply.words (0) = Status
              and Reply.words (3) = 0);
       Check (Hardware.Calls = Before + Boolean'Pos (Executes));
@@ -46,7 +47,8 @@ begin
      Register_Width => ACPI_FADT.Transactions.Qword_Access,
      others => <>), Accepted);
    Check (Accepted);
-   Request := (tag => (0, 4, 0, 0), authorityTag => 16#1234#,
+   Request := (tag => (label => 0, length => 4,
+                       protocol => 0, ipc => <>, reserved => 0), authorityTag => 16#1234#,
                words => (Epoch (Region), 71, 0, 0));
    Hardware.Next_Value := 16#FEDC_BA98_7654_3210#;
    Call (2, True);
@@ -57,7 +59,8 @@ begin
    Request.tag.reserved := 16#1234#;
    Request.words := (others => 16#1234#);
    Call (0);
-   Request := (tag => (0, 4, 0, 0), authorityTag => 16#1235#,
+   Request := (tag => (label => 0, length => 4,
+                       protocol => 0, ipc => <>, reserved => 0), authorityTag => 16#1235#,
                words => (Epoch (Region), 71, 0, 0));
    Call (0);
    Request.authorityTag := 16#1234#;
@@ -67,10 +70,10 @@ begin
    end loop;
    Request.tag.reserved := 0;
    for Flags in Unsigned_8 range 1 .. Unsigned_8'Last loop
-      Request.tag.flags := Flags;
+      Request.tag.protocol := Flags;
       Call (1);
    end loop;
-   Request.tag.flags := 0;
+   Request.tag.protocol := 0;
    for Length in Unsigned_8 loop
       if Length /= 4 then Request.tag.length := Length; Call (1); end if;
    end loop;

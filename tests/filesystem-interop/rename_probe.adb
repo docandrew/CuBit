@@ -1,3 +1,4 @@
+with CuBit.Handles.Fixture;
 with Ada.Command_Line;
 with Ada.Text_IO; use Ada.Text_IO;
 with Interfaces; use Interfaces;
@@ -30,7 +31,7 @@ procedure Rename_Probe is
    M : Message;
 begin
    Open_Image (Ada.Command_Line.Argument (1));
-   initBlockDevice (Fs, 1, (slot => 1, generation => 1),
+   initBlockDevice (Fs, CuBit.Handles.Fixture.Endpoint_Of (1), 1, (slot => 1, generation => 1),
                     Grant_Buffer'Address, Grant_Buffer'Length, Admission);
    pragma Assert (Admission = Admitted);
    createFile (Fs, ROOT_INODE, Before, Created, W);
@@ -39,10 +40,10 @@ begin
    pragma Assert (R = Read_Complete);
    Put_Line ("Root bytes:" & Root.sizeLo'Image & " flags:" & Root.flags'Image);
    for I in 0 .. Natural (Root.sizeLo / Fs.blkSize) - 1 loop
-      M := ((CuBit.Block_Devices.OP_READ_BLOCKS, 4, 0, 0), 0,
+      M := ((label => CuBit.Block_Devices.OP_READ_BLOCKS, length => 4, protocol => 0, ipc => <>, reserved => 0), 0,
             [Unsigned_64 (Root.directBlocks (I)) * Unsigned_64 (Fs.blkSize / 512),
              1, Unsigned_64 (Fs.blkSize / 512), 1]);
-      M.tag := capCall (1, M, Wait_Forever);
+      M.tag := capCall (CuBit.Handles.Fixture.Endpoint_Of (1), M, Wait_Forever);
       pragma Assert (M.tag.label = CuBit.Block_Devices.REPLY_OK);
       Original := [others => 0];
       for J in 1 .. Natural (Fs.blkSize) loop Original (J) := Grant_Buffer (J - 1); end loop;

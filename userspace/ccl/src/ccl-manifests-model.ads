@@ -4,6 +4,7 @@ with CuBit.Network_Authority;
 with CuBit.Render_Authority;
 with CuBit.Launch_Authority;
 with CuBit.Program_Descriptions;
+with CuBit.Startup_Tables;
 
 --  The checked content of an executable manifest and of a service catalog,
 --  whatever notation it was read from. CCL.Manifests.Encoding writes the
@@ -13,8 +14,6 @@ package CCL.Manifests.Model with SPARK_Mode => On is
    use Interfaces;
 
    MAX_REQUESTS : constant := MAX_BINDINGS;
-   --  Current procmgr ABI: slot 0 is bootstrap, slot 63 is the reply slot.
-   subtype Slot_Number is Natural range 1 .. 62;
    type Rights_Kind is (Read_Only, Write_Only, Read_Write);
    for Rights_Kind use (Read_Only => 1, Write_Only => 2, Read_Write => 3);
    --  Device and scheduling requests travel in .cubit.resources, never in
@@ -61,13 +60,14 @@ package CCL.Manifests.Model with SPARK_Mode => On is
       Service : Unsigned_32 := 0;
       Network : CuBit.Network_Authority.Scope;
       Rights : Rights_Kind := Read_Only;
-      Slot : Slot_Number := Slot_Number'First;
       Name : Binding_Name;
       --  Resource requests: BAR or platform resource index (or interrupt
       --  mode), size/count/budget, and the scheduling period.
       Index : Unsigned_32 := 0;
       Amount : Unsigned_64 := 0;
       Extra : Unsigned_64 := 0;
+      --  Whether the launch fails without it (the manifest's `optional`).
+      Requirement : CuBit.Startup_Tables.Need := CuBit.Startup_Tables.Required;
    end record;
    type Request_Array is array (Positive range 1 .. MAX_REQUESTS) of Request;
    subtype Metadata_Text is Binding_Name;
@@ -105,6 +105,23 @@ package CCL.Manifests.Model with SPARK_Mode => On is
    subtype Launch_Count_Type is Natural range 0 .. MAX_LAUNCHES;
    type Launch_Array is array (Positive range 1 .. MAX_LAUNCHES) of Metadata_Text;
 
+   --  A server's limits on one contract's channels (Channel_Servers): opens
+   --  past Per_Client from one client, or past Total, are refused. Total is
+   --  the server's declared capacity, at most MAX_CHANNEL_TOTAL.
+   MAX_CHANNEL_OFFERS : constant := 8;
+   MAX_CHANNEL_TOTAL : constant := 65_536;
+   subtype Channel_Limit is Positive range 1 .. MAX_CHANNEL_TOTAL;
+   --  A channel's service class: Urgent channels are served first.
+   type Channel_Class is (Normal, Urgent);
+   type Channel_Offer is record
+      Contract : Metadata_Text;
+      Per_Client : Channel_Limit := 1;
+      Total : Channel_Limit := 1;
+      Class : Channel_Class := Normal;
+   end record;
+   subtype Channel_Offer_Count is Natural range 0 .. MAX_CHANNEL_OFFERS;
+   type Channel_Offer_Array is array (Positive range 1 .. MAX_CHANNEL_OFFERS) of Channel_Offer;
+
    --  One executable's requests, in declaration order: capability slots are
    --  assigned in this order across kinds.
    type Declaration is record
@@ -124,16 +141,16 @@ package CCL.Manifests.Model with SPARK_Mode => On is
       --  into argv, its ports and its descriptor map; no section when it
       --  declares none of these.
       Description : CuBit.Program_Descriptions.Signature;
+      --  The process's handle limit, and the channels it serves.
+      Handles : CuBit.Startup_Tables.Handle_Limit;
+      Channels : Channel_Offer_Array := [others => (others => <>)];
+      Channel_Count : Channel_Offer_Count := 0;
    end record;
 
-   --  The build's service catalog: names, IDs and offered rights, the
-   --  application slot range, and the fixed bindings.
+   --  The build's service catalog: names, service roles and offered rights.
    type Catalog_Model is record
       Services : Service_Array := [others => (others => <>)];
       Service_Count : Request_Count := 0;
-      First_Slot, Last_Slot : Slot_Number := Slot_Number'First;
-      Fixed : Binding_Array := [others => (others => <>)];
-      Fixed_Count : Natural range 0 .. MAX_BINDINGS := 0;
    end record;
 
    --  Rules every frontend applies, so they accept exactly the same values.
@@ -141,8 +158,9 @@ package CCL.Manifests.Model with SPARK_Mode => On is
    function Valid_Metadata_Text (Item : String) return Boolean is
      (Item'Length in 1 .. Binding_Name_Length'Last and then
       (for all C of Item => C in 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9' | '.' | '-' | '_'));
-   --  Lowercase kebab names map injectively to Ada Slot_<name> identifiers:
-   --  a leading letter, no trailing or doubled hyphens.
+   --  Lowercase kebab names map injectively to the generated Startup
+   --  package's function names: a leading letter, no trailing or doubled
+   --  hyphens.
    function Valid_Binding_Name (Item : String) return Boolean;
    --  An authority scope's exact bytes: 1 .. 64 printable ASCII, no
    --  wildcards or backslash, no "." or ".." components, no "//".

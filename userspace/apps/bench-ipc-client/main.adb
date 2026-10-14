@@ -1,4 +1,3 @@
-with CCL_Manifest_Bindings;
 ------------------------------------------------------------------------------
 --  CuBit IPC benchmark client
 --
@@ -10,6 +9,9 @@ with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Benchmark_Clock;
 with CuBit.Timing_Histograms;
+with CuBit.Handles;
+with CuBit.Startup_State;
+with Startup;
 
 procedure main is
    use ASCII;
@@ -17,7 +19,7 @@ procedure main is
    package Timing renames CuBit.Timing_Histograms;
    Rate : Unsigned_64;
 
-   CAP_SLOT_BENCH : constant CapabilitySlot := CCL_Manifest_Bindings.Slot_IPC_Test;
+   Bench : constant CuBit.Handles.Endpoint := Startup.Ipc_Test;
    OP_BENCH_ECHO  : constant Unsigned_32 := 16#0910#;
    OP_BENCH_DIE   : constant Unsigned_32 := 16#0911#;
    OP_BENCH_HOLD  : constant Unsigned_32 := 16#0912#;
@@ -69,7 +71,7 @@ procedure main is
    begin
       msg.tag := (label  => OP_BENCH_ECHO,
                   length => 1,
-                  flags  => 0,
+                  protocol  => 0, ipc => <>,
                   reserved  => 0);
       msg.words (0) := value;
       return msg;
@@ -95,7 +97,7 @@ procedure main is
    begin
       for i in 1 .. WARMUP_COUNT loop
          msg := echoMsg (Unsigned_64 (i));
-         msg.tag := capCall (CAP_SLOT_BENCH, msg, CuBit.Messages.Wait_Forever);
+         msg.tag := capCall (Bench, msg, CuBit.Messages.Wait_Forever);
          verifyReply (msg, Unsigned_64 (i));
          exit when not ok;
       end loop;
@@ -108,7 +110,7 @@ procedure main is
       for i in 1 .. SYNC_COUNT loop
          msg := echoMsg (Unsigned_64 (i));
          Started := Clock.Read_Counter;
-         msg.tag := capCall (CAP_SLOT_BENCH, msg, CuBit.Messages.Wait_Forever);
+         msg.tag := capCall (Bench, msg, CuBit.Messages.Wait_Forever);
          Finished := Clock.Read_Counter;
          if Finished < Started then
             fail ("counter-went-backwards");
@@ -149,7 +151,7 @@ procedure main is
       completions := (others => NULL_COMPLETION);
       for I in 1 .. WARMUP_COUNT loop
          submitOk := capSubmit
-           (CAP_SLOT_BENCH, echoMsg (Unsigned_64 (I)), Unsigned_64 (I));
+           (Bench, echoMsg (Unsigned_64 (I)), Unsigned_64 (I));
          if not submitOk then fail ("async-warmup-submit"); return; end if;
          ret := waitCompletion (completions'Address, 1, 1);
          if ret /= 1 or else completions (0).status /= COMPLETION_OK then
@@ -167,7 +169,7 @@ procedure main is
          while submitted < ASYNC_COUNT and then inFlight < 16 loop
             Started (submitted + 1) := Clock.Read_Counter;
             submitOk := capSubmit
-              (CAP_SLOT_BENCH,
+              (Bench,
                echoMsg (Unsigned_64 (submitted + 1)),
                TOKEN_BASE + Unsigned_64 (submitted + 1));
 
@@ -255,7 +257,7 @@ procedure main is
       for i in 1 .. 63 loop
          msg := echoMsg (Unsigned_64(i));
          deadline := nowMs + 2_000;
-         while not capSubmit (CAP_SLOT_BENCH, msg, Unsigned_64(i)) loop
+         while not capSubmit (Bench, msg, Unsigned_64(i)) loop
             if nowMs >= deadline then fail ("saturation-submit"); return; end if;
             ignored := syscall (SYSCALL_SLEEP, 1);
          end loop;
@@ -263,18 +265,18 @@ procedure main is
       end loop;
       msg := NULL_MESSAGE;
       msg.tag.label := OP_BENCH_HOLD;
-      if not capSubmit (CAP_SLOT_BENCH, msg, 64) then
+      if not capSubmit (Bench, msg, 64) then
          fail ("last-completion-reservation"); return;
       end if;
       msg := echoMsg (65);
-      if capSubmit (CAP_SLOT_BENCH, msg, 65) then
+      if capSubmit (Bench, msg, 65) then
          fail ("completion-overcommit"); return;
       end if;
       -- Exit with both a blocked synchronous caller and an outstanding async
       -- request. Both must complete; the death result occupies the last slot.
       msg := NULL_MESSAGE;
       msg.tag.label := OP_BENCH_DIE;
-      tag := capCall (CAP_SLOT_BENCH, msg, CuBit.Messages.Wait_Forever);
+      tag := capCall (Bench, msg, CuBit.Messages.Wait_Forever);
       if tag.label /= 0 then fail ("sync-target-exit"); return; end if;
       deadline := nowMs + 2_000;
       for i in 1 .. 64 loop
@@ -299,7 +301,7 @@ procedure main is
             fail ("lost-completed-reply"); return;
          end if;
       end loop;
-      if died /= 1 or else capSubmit (CAP_SLOT_BENCH, msg, 65) then
+      if died /= 1 or else capSubmit (Bench, msg, 65) then
          fail ("retired-endpoint-admission"); return;
       end if;
       debugPrint ("IPC-RETIREMENT-CHECK: PASS" & LF);
@@ -307,6 +309,10 @@ procedure main is
 
 begin
    debugPrint ("bench-ipc-client: starting" & LF);
+   if not CuBit.Startup_State.Ready (Startup.Verify) then
+      fail ("startup-capabilities");
+      return;
+   end if;
    Clock.Calibrate (Rate);
    if Rate = 0 then
       fail ("unstable-counter-calibration");

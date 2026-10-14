@@ -1,8 +1,9 @@
 with Interfaces;
 with CuBit.Messages;
 with Observatory_Trace_View;
+with CuBit.Handles;
 generic
-   Capability : CuBit.Messages.CapabilitySlot;
+   Capability : CuBit.Handles.Endpoint;
 package Observatory_Archive_Reader with SPARK_Mode is
    -- Archive reads have their own budget; live metrics retain 250 ms.
    Timeout_Us : constant Interfaces.Unsigned_64 := 2_000_000;

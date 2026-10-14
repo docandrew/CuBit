@@ -1,3 +1,4 @@
+with CuBit.Handles.Fixture;
 with Ada.Text_IO;
 with Interfaces; use Interfaces;
 with Ext2; use Ext2;
@@ -37,7 +38,7 @@ procedure Inode_Slots is
       Disk (4 * 4096) := 3;
       Disk (Table .. Table + 8 * Stride - 1) := [others => 16#A5#];
       Original := Disk;
-      initBlockDevice (Fs, 1, (slot => 1, generation => 1),
+      initBlockDevice (Fs, CuBit.Handles.Fixture.Endpoint_Of (1), 1, (slot => 1, generation => 1),
                        Grant_Buffer'Address, Grant_Buffer'Length, Admission);
       pragma Assert (Admission = Admitted);
       Calls := 0;

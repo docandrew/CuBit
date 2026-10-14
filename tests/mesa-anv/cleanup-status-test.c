@@ -4,6 +4,11 @@
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
+#include "../../userspace/c/cubit_handles.h"
+/* A test endpoint handle (generation 1). */
+#define TEST_ENDPOINT(n) ((cubit_endpoint){(UINT64_C(1) << 32) | (uint64_t)(n)})
+/* The index a test endpoint was made from. */
+#define TEST_INDEX(e) ((unsigned)((e).opaque & 0xffffffffu))
 static unsigned queries;
 static unsigned captures;
 static uint32_t response;
@@ -24,10 +29,10 @@ void cubit_test_mesa_transport_failure(const char *operation, uint32_t status,
    operations[captures] = operation;
    captures++;
 }
-uint32_t cubit_intel_session_status(uint64_t slot)
-{ assert(slot==60 || slot==59); queries++; return response; }
-uint32_t cubit_intel_close_buffer(uint64_t slot, uint32_t handle)
-{ assert((slot==58 || slot==57 || slot==56) && handle==42); closes++; return close_response; }
+uint32_t cubit_intel_session_status(cubit_endpoint endpoint)
+{ assert(TEST_INDEX(endpoint)==60 || TEST_INDEX(endpoint)==59); queries++; return response; }
+uint32_t cubit_intel_close_buffer(cubit_endpoint endpoint, uint32_t handle)
+{ assert((TEST_INDEX(endpoint)==58 || TEST_INDEX(endpoint)==57 || TEST_INDEX(endpoint)==56) && handle==42); closes++; return close_response; }
 uint32_t cubit_cpu_mapping_release(struct cubit_cpu_mapping *record, bool replace)
 {
    assert(record->bo_handle==42 && !replace);
@@ -46,7 +51,7 @@ VkResult _vk_device_set_lost(struct vk_device *device, const char *file,
 int main(void)
 {
    static struct anv_device device;
-   assert(anv_cubit_memory_init(&device,60)==VK_SUCCESS);
+   assert(anv_cubit_memory_init(&device,TEST_ENDPOINT(60))==VK_SUCCESS);
    assert(anv_cubit_check_status(&device.vk)==VK_SUCCESS && queries==1);
    /* Inject the sticky state set by unsuccessful mapping/BO cleanup.
     * No GPU/transport failure is required to produce the next health=-4. */
@@ -55,7 +60,7 @@ int main(void)
    assert(queries==1);
    assert(captures==0); /* Local sticky loss is not a native health failure. */
    static struct anv_device remote;
-   assert(anv_cubit_memory_init(&remote,59)==VK_SUCCESS);
+   assert(anv_cubit_memory_init(&remote,TEST_ENDPOINT(59))==VK_SUCCESS);
    response=3;
    assert(anv_cubit_check_status(&remote.vk)==VK_ERROR_DEVICE_LOST);
    assert(queries==2 && captures==1);
@@ -67,7 +72,7 @@ int main(void)
    puts("Cleanup status PASS: local loss becomes device loss without a native health query; no retry (mock state)");
    static struct anv_device closing;
    struct anv_bo bo={.gem_handle=42};
-   assert(anv_cubit_memory_init(&closing,58)==VK_SUCCESS);
+   assert(anv_cubit_memory_init(&closing,TEST_ENDPOINT(58))==VK_SUCCESS);
    anv_cubit_gem_close(&closing,&bo);
    assert(captures==2 && queries==2);
    assert(vk_device_is_lost_no_report(&closing.vk));
@@ -77,7 +82,7 @@ int main(void)
    /* CPU retirement failure must poison the device even if retiring the BO
     * name succeeds. The retained mapping is not reclaimed by name close. */
    static struct anv_device mapped;
-   assert(anv_cubit_memory_init(&mapped,57)==VK_SUCCESS);
+   assert(anv_cubit_memory_init(&mapped,TEST_ENDPOINT(57))==VK_SUCCESS);
    struct cubit_cpu_mapping_tracker *tracker=mapped.cubit_cpu_mappings;
    tracker->used=1;
    struct cubit_cpu_mapping *record=cubit_cpu_tracker_records(tracker);
@@ -92,7 +97,7 @@ int main(void)
    /* Both callbacks fire in causal order; the bounded first-failure recorder
     * (tested separately) must retain CPU release, not the later name failure. */
    static struct anv_device both;
-   assert(anv_cubit_memory_init(&both,56)==VK_SUCCESS);
+   assert(anv_cubit_memory_init(&both,TEST_ENDPOINT(56))==VK_SUCCESS);
    tracker=both.cubit_cpu_mappings;
    tracker->used=1;
    record=cubit_cpu_tracker_records(tracker);

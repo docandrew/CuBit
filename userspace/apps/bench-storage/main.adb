@@ -6,6 +6,8 @@ with CuBit.Filesystems; use CuBit.Filesystems;
 with CuBit.Memory_Grants;
 with CuBit.Benchmark_Clock;
 with CuBit.Timing_Histograms;
+with CuBit.Startup_State;
+with Startup;
 
 procedure Main is
    package Clock renames CuBit.Benchmark_Clock;
@@ -33,7 +35,7 @@ procedure Main is
       function Call (Request : Message) return Boolean is
       begin
          Msg := Request;
-         Msg.tag := capCall (CAP_SLOT_FS, Msg, CuBit.Messages.Wait_Forever);
+         Msg.tag := capCall (Startup.Filesystem, Msg, CuBit.Messages.Wait_Forever);
          return Msg.tag.label = REPLY_OK;
       end Call;
 
@@ -66,7 +68,7 @@ procedure Main is
          -- Message setup and checks are outside the interval.
          Msg := Request;
          Before := Clock.Read_Counter;
-         Msg.tag := capCall (CAP_SLOT_FS, Msg, CuBit.Messages.Wait_Forever);
+         Msg.tag := capCall (Startup.Filesystem, Msg, CuBit.Messages.Wait_Forever);
          After := Clock.Read_Counter;
          Success := Msg.tag.label = REPLY_OK and After >= Before;
          if Success then Timing.Add (H, After - Before); end if;
@@ -205,6 +207,9 @@ procedure Main is
       return True;
    end Run;
 begin
+   if not CuBit.Startup_State.Ready (Startup.Verify) then
+      debugPrint ("BENCH: FAIL storage startup" & ASCII.LF); return;
+   end if;
    Clock.Calibrate (Rate);
    if Rate = 0 then
       debugPrint ("BENCH: FAIL storage calibration" & ASCII.LF); return;
@@ -215,7 +220,7 @@ begin
    end if;
    Aligned := (Raw + Block_Bytes - 1) and not (Unsigned_64 (Block_Bytes) - 1);
    Grants.Create_Via_Capability
-     (CAP_SLOT_FS, To_Address (Integer_Address (Aligned)), 1, True, Loan, Granted);
+     (Startup.Filesystem, To_Address (Integer_Address (Aligned)), 1, True, Loan, Granted);
    if not Granted then
       debugPrint ("BENCH: FAIL storage grant" & ASCII.LF); return;
    end if;

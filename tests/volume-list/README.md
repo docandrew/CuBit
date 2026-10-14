@@ -4,7 +4,7 @@ All builds, tests and proofs use Nix:
 
 ```sh
 nix develop -c bash -c 'cd kernel && alr exec -- gprbuild -p -P ../tests/volume-list/volumes.gpr && ../tests/volume-list/build/main'
-nix develop -c bash -c 'cd kernel && alr exec -- gnatprove -P ../tests/volume-list/volumes.gpr -u volume_list.adb --level=1 --timeout=5 --checks-as-errors=on -j2'
+nix develop -c bash -c 'cd kernel && alr exec -- gnatprove -P ../tests/volume-list/volumes.gpr -u volume_list.ads --level=1 --timeout=5 --checks-as-errors=on -j2'
 ```
 
 The production `Volume_List` implementation holds up to 16 append-only bindings,

@@ -1,3 +1,4 @@
+with CuBit.Handles.Fixture;
 with System;
 with Ada.Command_Line;
 with Ada.Text_IO;
@@ -59,7 +60,7 @@ begin
    Pipeline_Set (0, 0); Reset; Context_Set (0, 0); M.Set (True, True, 0);
    Image_Set (4096, 1, 0, 0, 0); Bind_Fault (0);
    Vulkan_Scene.Seal (Scene, OK); pragma Assert (OK);
-   S.Initialize (25); S.Configure_Targets (32, 24, 7, 16384, OK); pragma Assert (OK);
+   S.Initialize (CuBit.Handles.Fixture.Endpoint_Of (25)); S.Configure_Targets (32, 24, 7, 16384, OK); pragma Assert (OK);
    Check_Admission (S.Capture_Unavailable);
    S.Prepare_Pipeline (OK); pragma Assert (OK);
    Check_Admission (S.Capture_Allowed);

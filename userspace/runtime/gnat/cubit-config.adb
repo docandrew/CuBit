@@ -10,6 +10,7 @@ with System.Storage_Elements; use System.Storage_Elements;
 
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Memory_Grants;
+with CuBit.Handles.Startup;
 with CuBit.Config_Protocol;
 
 package body CuBit.Config is
@@ -30,10 +31,15 @@ package body CuBit.Config is
    Grant : CuBit.Memory_Grants.Grant_Reference;
    initialized : Boolean := False;
 
+   Service : CuBit.Handles.Endpoint := CuBit.Handles.No_Endpoint;
+
+   procedure Bind (Service : CuBit.Handles.Endpoint) is
+   begin
+      Config.Service := Service;
+   end Bind;
+
    procedure ensureInit;
    function mapStatus (label : Unsigned_32) return ConfigStatus;
-   function parseDecimal
-     (buf : System.Address; len : Natural) return Unsigned_64;
 
    ---------------------------------------------------------------------------
    --  ensureInit
@@ -47,6 +53,17 @@ package body CuBit.Config is
       if initialized then
          return;
       end if;
+      --  Unbound: the program's "config" startup entry, if it has one.
+      if not CuBit.Handles.Valid (Service) then
+         declare
+            Found : constant CuBit.Handles.Startup.Optional_Endpoint :=
+              CuBit.Handles.Startup.Optional_Endpoint_Named (Config_Binding);
+         begin
+            if Found.Present then
+               Service := Found.Value;
+            end if;
+         end;
+      end if;
 
       --  Allocate 3 pages to obtain 2 page-aligned payload pages.
       rawAddr := syscall (SYSCALL_SBRK, 3 * PAGE_SIZE);
@@ -59,7 +76,7 @@ package body CuBit.Config is
       grantBuf := To_Address (Integer_Address (aligned));
 
       CuBit.Memory_Grants.Create_Via_Capability
-        (CAP_SLOT_CONFIG, grantBuf, 2, True, Grant, ok);
+        (Service, grantBuf, 2, True, Grant, ok);
       if not ok then
          return;
       end if;
@@ -117,7 +134,7 @@ package body CuBit.Config is
 
       msg := (tag => (label  => OP_CONFIG_GET,
                       length => 4,
-                      flags  => 0,
+                      protocol  => 0, ipc => <>,
                       reserved  => 0),
               authorityTag => 0,
               words => (0 => Grant.slot,
@@ -125,7 +142,7 @@ package body CuBit.Config is
                         2 => Unsigned_64 (key'Length),
                         others => 0));
 
-      msg.tag := capCall (CAP_SLOT_CONFIG, msg, CuBit.Messages.Wait_Forever);
+      msg.tag := capCall (Service, msg, CuBit.Messages.Wait_Forever);
 
       status := mapStatus (msg.tag.label);
       if status = OK and then
@@ -185,7 +202,7 @@ package body CuBit.Config is
 
       msg := (tag => (label  => OP_CONFIG_SET,
                       length => 4,
-                      flags  => 0,
+                      protocol  => 0, ipc => <>,
                       reserved  => 0),
               authorityTag => 0,
               words => (0 => Grant.slot,
@@ -193,7 +210,7 @@ package body CuBit.Config is
                         2 => Unsigned_64 (keyLen),
                         3 => Unsigned_64 (valueLen)));
 
-      msg.tag := capCall (CAP_SLOT_CONFIG, msg, CuBit.Messages.Wait_Forever);
+      msg.tag := capCall (Service, msg, CuBit.Messages.Wait_Forever);
 
       status := mapStatus (msg.tag.label);
    end set;
@@ -228,7 +245,7 @@ package body CuBit.Config is
 
       msg := (tag => (label  => OP_CONFIG_DELETE,
                       length => 4,
-                      flags  => 0,
+                      protocol  => 0, ipc => <>,
                       reserved  => 0),
               authorityTag => 0,
               words => (0 => Grant.slot,
@@ -236,7 +253,7 @@ package body CuBit.Config is
                         2 => Unsigned_64 (key'Length),
                         others => 0));
 
-      msg.tag := capCall (CAP_SLOT_CONFIG, msg, CuBit.Messages.Wait_Forever);
+      msg.tag := capCall (Service, msg, CuBit.Messages.Wait_Forever);
 
       status := mapStatus (msg.tag.label);
    end delete;
@@ -278,7 +295,7 @@ package body CuBit.Config is
 
       msg := (tag => (label  => OP_CONFIG_LIST,
                       length => 4,
-                      flags  => 0,
+                      protocol  => 0, ipc => <>,
                       reserved  => 0),
               authorityTag => 0,
               words => (0 => Grant.slot,
@@ -286,7 +303,7 @@ package body CuBit.Config is
                         2 => Unsigned_64 (prefix'Length),
                         others => 0));
 
-      msg.tag := capCall (CAP_SLOT_CONFIG, msg, CuBit.Messages.Wait_Forever);
+      msg.tag := capCall (Service, msg, CuBit.Messages.Wait_Forever);
 
       status := mapStatus (msg.tag.label);
       if status = OK and then
@@ -299,105 +316,5 @@ package body CuBit.Config is
          count := Natural (msg.words (0));
       end if;
    end list;
-
-   ---------------------------------------------------------------------------
-   --  parseDecimal
-   --  Parse a decimal integer from a byte buffer. Returns 0 on failure.
-   ---------------------------------------------------------------------------
-   function parseDecimal
-     (buf : System.Address; len : Natural) return Unsigned_64
-   is
-      data : array (0 .. len - 1) of Unsigned_8
-        with Import, Address => buf;
-      result : Unsigned_64 := 0;
-      ch     : Unsigned_8;
-   begin
-      for i in 0 .. len - 1 loop
-         ch := data (i);
-         if ch >= 16#30# and ch <= 16#39# then  --  '0'..'9'
-            if result > (Unsigned_64'Last - Unsigned_64 (ch - 16#30#)) / 10
-            then
-               return 0;
-            end if;
-            result := result * 10 + Unsigned_64 (ch - 16#30#);
-         else
-            return 0;
-         end if;
-      end loop;
-      return result;
-   end parseDecimal;
-
-   ---------------------------------------------------------------------------
-   --  resolveScheme
-   ---------------------------------------------------------------------------
-   function resolveScheme (name : String) return SchemeInfo is
-      --  Build key: "scheme." + name + ".driver" = max 7+name+7 = 128 max
-      MAX_SCHEME_KEY : constant := 128;
-      keyBuf : String (1 .. MAX_SCHEME_KEY);
-      keyLen : Natural;
-
-      val    : System.Address;
-      valLen : Natural;
-      st     : ConfigStatus;
-
-      info   : SchemeInfo := (driverID => 0, capSlot => 0,
-                               pid => No_Process, found => False);
-      prefix : constant String := "scheme.";
-      drvSuffix  : constant String := ".driver";
-      slotSuffix : constant String := ".slot";
-   begin
-      if name'Length = 0 or
-         name'Length > MAX_SCHEME_KEY - prefix'Length - drvSuffix'Length
-      then
-         return info;
-      end if;
-
-      --  Build "scheme.<name>.driver"
-      keyLen := 0;
-      for c in prefix'Range loop
-         keyLen := keyLen + 1;
-         keyBuf (keyLen) := prefix (c);
-      end loop;
-      for c in name'Range loop
-         keyLen := keyLen + 1;
-         keyBuf (keyLen) := name (c);
-      end loop;
-
-      declare
-         drvKeyLen : constant Natural := keyLen;
-      begin
-         for c in drvSuffix'Range loop
-            keyLen := keyLen + 1;
-            keyBuf (keyLen) := drvSuffix (c);
-         end loop;
-
-         get (keyBuf (1 .. keyLen), val, valLen, st);
-         if st /= OK or valLen = 0 then
-            return info;
-         end if;
-
-         info.driverID := parseDecimal (val, valLen);
-
-         --  Build "scheme.<name>.slot" (reuse prefix+name, just swap suffix)
-         keyLen := drvKeyLen;
-         for c in slotSuffix'Range loop
-            keyLen := keyLen + 1;
-            keyBuf (keyLen) := slotSuffix (c);
-         end loop;
-      end;
-
-      get (keyBuf (1 .. keyLen), val, valLen, st);
-      if st /= OK or valLen = 0 then
-         return info;
-      end if;
-
-      info.capSlot := parseDecimal (val, valLen);
-
-      --  Resolve driver PID via sysinfo
-      info.pid := Registered_Driver (info.driverID);
-      info.found := info.pid /= No_Process;
-
-      return info;
-   end resolveScheme;
 
 end CuBit.Config;

@@ -164,7 +164,7 @@ package Intel_GPU_Queue_Service is
    -- OP_GPU_WAKE from S for context C and target. Answer_Held: answer the
    -- held one first (Woken). Answer_Now: answer this one now with Result;
    -- otherwise the caller saves its reply capability (Hold_Failed if it
-   -- cannot). One saved-reply slot serves wakes driver-wide.
+   -- cannot). One saved reply serves wakes driver-wide.
    procedure Wake_Request
      (T : in out Table; S : Session_Id; C : Q.Context_Index; Target : Value;
       Answer_Held, Answer_Now : out Boolean; Result : out Q.Wake_Result);

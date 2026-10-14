@@ -1,3 +1,4 @@
+with CuBit.Handles.Fixture;
 with Ada.Text_IO;
 with Interfaces; with System; with System.Storage_Elements;
 with Compositor_Upload; with Desktop_Vulkan_Startup; with Vulkan_Device_Mock;
@@ -33,7 +34,7 @@ begin
    Reset; Context_Set (0, 0); Vulkan_Device_Mock.Set (True, True, 0);
    Pipeline_Set (0, 0); Image_Set (4096, 1, 0, 0, 0); Metadata_Set (0);
    Upload_Set (4096, 1, 0, 0, 0, 0);
-   D.Initialize (25); D.Configure_Targets (32, 24, 1, Budget, OK); pragma Assert (OK);
+   D.Initialize (CuBit.Handles.Fixture.Endpoint_Of (25)); D.Configure_Targets (32, 24, 1, Budget, OK); pragma Assert (OK);
    D.Prepare_Pipeline (OK); pragma Assert (OK);
    D.Configure_Upload (4096, OK); pragma Assert (OK);
    -- External descriptors and Desktop allocations cannot overlap in either direction.

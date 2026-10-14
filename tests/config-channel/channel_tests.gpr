@@ -3,7 +3,8 @@ project Channel_Tests is
    for Source_Dirs use
      (".", "../storage-channel/fixture", "../../userspace/lib/config",
       "../../userspace/ccl/src", "../../userspace/ccl/persistence",
-      CBOR_Source & "/src", "../../userspace/runtime/gnat");
+      CBOR_Source & "/src", "../../userspace/runtime/gnat",
+      "../../shared/capabilities");
    for Source_Files use
      ("ccl-types-correspondence.ads", "ccl-types-correspondence.adb") &
      ("config_channel_tests.adb", "receiver_tests.adb",
@@ -21,7 +22,9 @@ project Channel_Tests is
       "ccl.ads", "ccl-types.ads", "ccl-types.adb", "ccl-objects.ads", "ccl-objects.adb",
       "ccl-bounded_stacks.ads", "ccl-bounded_stacks.adb",
       "cubit.ads", "cubit-messages.ads", "cubit-messages.adb", "cubit-process_ids.ads", "cubit-process_ids.adb",
-      "cubit-memory_grants.ads", "cubit-memory_grants.adb", "cubit-grant_references.ads");
+      "cubit-memory_grants.ads", "cubit-memory_grants.adb", "cubit-grant_references.ads",
+      "cubit-handles.ads", "capability_abi.ads", "capability_abi.adb",
+      "cubit-handles-fixture.ads", "cubit-handles-fixture.adb");
    for Object_Dir use "build";
    for Exec_Dir use "build";
    for Main use ("config_channel_tests.adb", "receiver_tests.adb", "type_channel_tests.adb");

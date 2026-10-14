@@ -5,10 +5,10 @@ with Compositor_Stage_Metrics;
 with Compositor_Work_Metrics;
 with Compositor_Trace_Wire;
 with Desktop_Metric_Publisher;
-with CCL_Manifest_Bindings;
+with Startup;
 package Desktop_Metrics with SPARK_Mode => Off is
    Enabled : constant Boolean := True;
-   package Publisher is new Desktop_Metric_Publisher (CCL_Manifest_Bindings.Slot_metrics);
+   package Publisher is new Desktop_Metric_Publisher (Startup.Metrics);
    procedure Record_Work
      (Kind : Compositor_Work_Metrics.Work_Kind; Pixels, Now : Interfaces.Unsigned_64) renames Publisher.Record_Work;
    procedure Record_Stage

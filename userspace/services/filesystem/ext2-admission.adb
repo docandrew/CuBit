@@ -229,7 +229,7 @@ package body Ext2.Admission is
          end;
          --  Replay may have rewritten the superblock itself: re-read and
          --  re-validate it.
-         Block_Cache_Index.Discard_Volume (Cache_Index, fs.device.endpointSlot);
+         Block_Cache_Index.Discard_Volume (Cache_Index, fs.device.volumeKey);
          invalidateBlockCache;
          deviceRead (fs, SUPERBLOCK_OFFSET, fs.sb'Address, Superblock'Size / 8, readStatus);
          if readStatus /= Read_Complete then
@@ -345,7 +345,8 @@ package body Ext2.Admission is
 
    procedure initBlockDevice
      (fs         : out Filesystem;
-      capSlot    : Unsigned_64;
+      endpoint   : CuBit.Handles.Endpoint;
+      volume     : Unsigned_64;
       grant      : CuBit.Memory_Grants.Grant_Reference;
       grantBuf   : System.Address;
       grantBytes : Unsigned_32;
@@ -368,25 +369,25 @@ package body Ext2.Admission is
              blkSize => 0, device => <>,
              writeQuarantined => False, journal => <>, others => <>);
       result := Invalid_Session;
-      if capSlot not in 1 .. 62 or else
+      if volume = 0 or else not CuBit.Handles.Valid (endpoint) or else
          grantBuf = System.Null_Address or else grantBytes = 0
       then
          return;
       end if;
       --  Any admission attempt ends the endpoint's previous volume lifetime.
-      Block_Cache_Index.Discard_Volume (Cache_Index, capSlot);
-      Dentry_Cache.Discard_Volume (Names, capSlot);
+      Block_Cache_Index.Discard_Volume (Cache_Index, volume);
+      Dentry_Cache.Discard_Volume (Names, volume);
 
       describeMsg :=
         (tag      => (label => OP_DESCRIBE_DEVICE, length => 0,
-                      flags => 0, reserved => 0),
+                      protocol => 0, ipc => <>, reserved => 0),
          authorityTag => 0,
          words    => [others => 0]);
-      describeMsg.tag := capCall (capSlot, describeMsg, CuBit.Messages.Wait_Forever);
+      describeMsg.tag := capCall (endpoint, describeMsg, CuBit.Messages.Wait_Forever);
       if describeMsg.tag.label = REPLY_NO_DEVICE then
          result :=
            (if describeMsg.tag.length = 1 and then
-               describeMsg.tag.flags = 0 and then describeMsg.tag.reserved = 0 and then
+               describeMsg.tag.protocol = 0 and then describeMsg.tag.reserved = 0 and then
                describeMsg.words (0) = 0
             then No_Device else Invalid_Description);
          return;
@@ -396,7 +397,7 @@ package body Ext2.Admission is
       end if;
       result := Invalid_Description;
       if describeMsg.tag.length /= 4 or else
-         describeMsg.tag.flags /= 0 or else describeMsg.tag.reserved /= 0 or else
+         describeMsg.tag.protocol /= 0 or else describeMsg.tag.reserved /= 0 or else
          not Decode_Description
            (describeMsg.words (0), describeMsg.words (1),
             describeMsg.words (2), describeMsg.words (3), description)
@@ -411,7 +412,8 @@ package body Ext2.Admission is
 
       tmpFs.blkSize   := 0;
       tmpFs.device :=
-        (endpointSlot => capSlot,
+        (endpoint     => endpoint,
+         volumeKey    => volume,
          grant        => grant,
          grantBuffer  => grantBuf,
          grantBytes   => grantBytes,

@@ -3,7 +3,9 @@ with CuBit.Log;
 with Interfaces; use Interfaces;
 with System;
 with System.Storage_Elements; use System.Storage_Elements;
-with CCL_Manifest_Bindings;
+with CuBit.Handles;
+with CuBit.Startup_State;
+with Startup;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Net_Channels;
 with CuBit.Config;
@@ -22,7 +24,7 @@ with Nonces;
 procedure Main is
    use ASCII;
 
-   Network_Slot : constant CapabilitySlot := CCL_Manifest_Bindings.Slot_Ntp;
+   Network : constant CuBit.Handles.Endpoint := Startup.Ntp;
    OK_Label : constant Unsigned_32 := 16#F000#;
    Open_Label : constant Unsigned_32 := 16#0420#;
    package Channels renames CuBit.Net_Channels;
@@ -105,7 +107,7 @@ procedure Main is
       Reply.tag.label := Label;
       Reply.tag.length := Length;
       Reply.words := [W0, W1, W2, W3];
-      Reply.tag := capCall (Network_Slot, Reply, CuBit.Messages.Wait_Forever);
+      Reply.tag := capCall (Network, Reply, CuBit.Messages.Wait_Forever);
    end Channel_Call;
 
    procedure Query
@@ -145,7 +147,7 @@ procedure Main is
          --  Read more than a bare packet so extension fields are detected
          --  (and rejected) rather than silently truncated.
          Wait_Token := Wait_Token + 1;
-         Channels.Await (Stream, Network_Slot, Channels.Layout.Want_Readable,
+         Channels.Await (Stream, Network, Channels.Layout.Want_Readable,
                          Sent + Reply_Timeout_MS, Wait_Token, Ready);
          Channels.Receive_Datagram (Stream, Buffer_Address, 512, Got, Truncated, Found);
          Received := syscall (SYSCALL_GETTIME);
@@ -154,7 +156,7 @@ procedure Main is
             SNTP.Evaluate (Buffer (1 .. Got), Nonce, Sent, Received, Result, Status);
          end if;
       end if;
-      Channels.Close (Stream, Network_Slot);
+      Channels.Close (Stream, Network);
       if not Reached then
          CuBit.Log.Warning ("timesync: no reply from " & Scheme (1 .. Scheme_Length));
       end if;
@@ -221,9 +223,10 @@ procedure Main is
                      " usable replies");
          return False;
       end if;
-      CuBit.Clocks.Read (Before, Before_OK);
+      CuBit.Clocks.Read (Startup.Clock, Before, Before_OK);
       CuBit.Clock_Control.Client.Submit
-        ((UTC_MS => Combined.UTC_MS,
+        (Startup.Clock_Control,
+         (UTC_MS => Combined.UTC_MS,
           Observed_Monotonic_MS => Combined.Observed_MS,
           Uncertainty_MS => Combined.Uncertainty_MS,
           Sources => Agreeing,
@@ -237,7 +240,7 @@ procedure Main is
                   " servers agree, uncertainty" & Combined.Uncertainty_MS'Image &
                   " ms; clock: " & Name (Result));
       if Result = Stepped then
-         CuBit.Clocks.Read (After, After_OK);
+         CuBit.Clocks.Read (Startup.Clock, After, After_OK);
          if Before_OK and then After_OK then
             CuBit.Log.Info ("timesync: clock stepped from UTC" & Before.UTC_Seconds'Image &
                         " to" & After.UTC_Seconds'Image & " quality " &
@@ -250,6 +253,10 @@ procedure Main is
    Ignore : Unsigned_64;
    Wait_Seconds : Unsigned_64;
 begin
+   if not CuBit.Startup_State.Ready (Startup.Verify) then
+      CuBit.Log.Warning ("timesync: startup capabilities missing");
+      return;
+   end if;
    CuBit.Log.Info ("timesync: started");
    if Allocation = Unsigned_64'Last then
       CuBit.Log.Warning ("timesync: buffer allocation failed");
@@ -260,13 +267,13 @@ begin
       return;
    end if;
    Channels.Create_Arena
-     (Arena, Network_Slot, To_Address (Integer_Address (Stream_Allocation)),
+     (Arena, Network, To_Address (Integer_Address (Stream_Allocation)),
       Ring_Size, Ring_Size, 1, Granted);
    if not Granted then
       CuBit.Log.Warning ("timesync: no network authority; exiting");
       return;
    end if;
-   Channels.Prepare (Stream, Arena, 0, 0, Network_Slot);
+   Channels.Prepare (Stream, Arena, 0, 0, Network);
    Nonces.Initialize (Hardware_Nonces);
    if not Hardware_Nonces then
       CuBit.Log.Warning ("timesync: RDRAND unavailable; using weaker TSC-derived nonces");

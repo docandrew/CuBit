@@ -1,10 +1,11 @@
-with CuBit.Messages;
+with CuBit.Handles;
 with Intel_GPU_Buffer_Views;
 generic
-   -- Trusted admission lookup, never request words. Must hold the selected
-   -- endpoint slot stable through Share (including supervisor edits).
+   -- Trusted admission lookup, never request words: the saved reply of the
+   -- request being handled (memory is granted to the process it answers)
+   -- and the session's admitted identity, zero when not admitted.
    with procedure Recipient_Of
-     (Sender, Stamp : Unsigned_64; Slot : out CuBit.Messages.CapabilitySlot;
+     (Sender, Stamp : Unsigned_64; Grantee : out CuBit.Handles.Reply;
       Identity : out Unsigned_64);
 package Intel_GPU_Buffer_Requests.Sharing is
    Initial_Capacity : constant := 64;

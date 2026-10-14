@@ -1,5 +1,7 @@
 with Interfaces; use Interfaces;
 with CuBit.Messages;
+with CuBit.Handles;
+with CuBit.Handles.C_ABI;
 --  How long this process's calls to the GPU service wait for a reply.
 --  Unbounded (the named Wait_Forever) unless the process sets a bound:
 --  Desktop does before its renderer starts, so a stalled or deadlocked driver
@@ -17,8 +19,17 @@ package Native_GPU_Calls is
    --  once, without calling, so a stalled driver costs at most one bound in
    --  total rather than one per call (NUC startup hang, 2026-10-11).
    function Call
-     (Slot : CuBit.Messages.CapabilitySlot; Msg : in out CuBit.Messages.Message)
+     (Target : CuBit.Handles.Endpoint; Msg : in out CuBit.Messages.Message)
       return CuBit.Messages.MessageTag;
+
+   --  An endpoint as C holds it (struct cubit_endpoint, CAP-002): opaque,
+   --  never an integer slot. Present: it names a handle at all (the kernel
+   --  still checks that it is current).
+   subtype C_Endpoint is CuBit.Handles.C_ABI.C_Endpoint;
+   function Present (Item : C_Endpoint) return Boolean is
+     (CuBit.Handles.Valid (CuBit.Handles.C_ABI.To_Endpoint (Item)));
+   function Target_Of (Item : C_Endpoint) return CuBit.Handles.Endpoint
+     renames CuBit.Handles.C_ABI.To_Endpoint;
 
    --  The bound in milliseconds, or 0 while unbounded. It bounds these
    --  calls only: GPU completion waits (Native_GPU_Queue.Wait) carry their

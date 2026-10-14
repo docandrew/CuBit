@@ -1,13 +1,19 @@
-# intel-gpu.drv's device requests (docs/ccl-driver-manifests.md). devmgr
-# reads the interrupt request from the linked ELF and installs the vector's
-# CAP_IRQ in its slot (docs/msi-interrupts.md); it still mints the register
-# pages itself, at the slots these bindings name. One MSI vector carries GT,
+# intel-gpu.drv's startup capabilities (docs/ccl-driver-manifests.md,
+# docs/capability-handles.md). devmgr launches the driver and fills its
+# startup table from these requests before it first runs; the driver reads
+# them by binding name (Startup.Registers, ...). One MSI vector carries GT,
 # GuC and display interrupts alike, as in i915 (no MSI-X on Gen12).
+# Pages whose place inside BAR0 a manifest cannot name (forcewake, GGTT,
+# reset, display, PHY and pipe pages) and the log publisher are runtime
+# grants: the driver asks devmgr and the reply carries the capability.
 (Executable_Manifest
   identity => "com.cubit.driver.intel-gpu"
   version => "0.1.0"
   device => (Device_Match.PCI_Class (PCI_Class 3 0 0))
   requests => [
     (device-memory "registers" 0 16777216 Access.Read)
-    (device-memory "forcewake" 0 4096 Access.Read_Write)
-    (interrupt "device" Interrupt_Mode.MSI 1)])
+    (interrupt "device" Interrupt_Mode.MSI 1)
+    (service "device-manager" "device-manager")
+    (service "filesystem" "firmware")
+    (notification "gpu" Notify_Access.Manage "registration")]
+  optional => ["registration" "firmware"])

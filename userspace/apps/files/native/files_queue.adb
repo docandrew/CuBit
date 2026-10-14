@@ -3,7 +3,7 @@ with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Async_Requests;
 with CuBit.Filesystem_Sessions;
 with CuBit.UI.App;
-with CCL_Manifest_Bindings;
+with Startup;
 
 --  On CuBit: Files' queue is a CuBit.Filesystem_Sessions session on the
 --  filesystem endpoint its manifest grants. Submit and Reap never block;
@@ -20,7 +20,7 @@ package body Files_Queue is
    procedure Open (Arena_Pages : Positive; Success : out Boolean) is
    begin
       if not FS.Is_Open (Session) then
-         FS.Open (Session, CCL_Manifest_Bindings.Slot_Files_Filesystem,
+         FS.Open (Session, Startup.Files_Filesystem,
                   Positive'Min (Arena_Pages, FQ.Transfer_Pages), Success);
       end if;
       Success := FS.Is_Open (Session);

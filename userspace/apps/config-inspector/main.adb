@@ -15,6 +15,8 @@ with CuBit.UI.State;
 with CuBit.UI.Trees;
 with CuBit.UI.Widgets;
 with Config_Tree;
+with CuBit.Startup_State;
+with Startup;
 
 procedure Main is
    package T renames Config_Tree;
@@ -316,7 +318,11 @@ procedure Main is
    Opened : Boolean;
    Announced : Boolean;
 begin
-   CuBit.Logging.Announce ("config-inspector: started (read-only)", Announced);
+   if not CuBit.Startup_State.Ready (Startup.Verify) then
+      debugPrint ("config-inspector: startup capabilities missing" & ASCII.LF);
+      return;
+   end if;
+   CuBit.Logging.Announce ("config-inspector: started (read-only)", Announced, Startup.Logstore);
    Refresh;
    CuBit.UI.App.Open (Win, 860, 560,
      CuBit.UI.App.WINDOW_FLAG_DECORATED or CuBit.UI.App.WINDOW_FLAG_RESIZABLE or

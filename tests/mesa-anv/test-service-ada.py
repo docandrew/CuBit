@@ -23,7 +23,16 @@ def run(command, cwd=out):
     subprocess.run(list(map(str, command)), cwd=cwd, check=True)
 run(['cc', '-std=c11', '-UNDEBUG', '-I' + str(args.mesa_source.resolve() / 'include'),
      '-c', root / 'tests/mesa-anv/service-ada-mock.c', '-o', out / 'mock.o'])
+# The handle types only (Pure specs), not the user runtime's System units.
+handles = out / 'handles'
+handles.mkdir()
+for name in ('userspace/runtime/gnat/cubit.ads', 'userspace/runtime/gnat/cubit-handles.ads',
+             'userspace/runtime/gnat/cubit-handles-c_abi.ads',
+             'shared/capabilities/capability_abi.ads',
+             'shared/capabilities/capability_abi.adb'):
+    (handles / Path(name).name).write_bytes((root / name).read_bytes())
 run(['gnatmake', '-q', '-gnat2022', '-gnatp', '-O2', '-I' + str(root / 'userspace/mesa'),
+     '-I' + str(handles),
      root / 'tests/mesa-anv/service_ada_tests.adb', '-o', out / 'test', '-largs', out / 'mock.o'])
 run([out / 'test'])
 native = out / 'native'

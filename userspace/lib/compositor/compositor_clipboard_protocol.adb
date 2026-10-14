@@ -1,4 +1,5 @@
 package body Compositor_Clipboard_Protocol with SPARK_Mode is
+   use type CuBit.Desktop_Protocol.Protocol_Flags;
    use type Interfaces.Unsigned_8;
    use type Interfaces.Unsigned_16;
 

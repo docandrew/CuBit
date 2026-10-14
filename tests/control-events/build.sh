@@ -13,7 +13,7 @@ for part in check child producer; do
     "$repo/userspace/ccl/build/manifest/ccl-manifest" \
         "$repo/userspace/ccl/catalogs/native-runtime-services.ccl" "$here/$part/manifest.ccl" \
         --schema "$repo/userspace/ccl/interfaces/executable-manifest.ccl" \
-        --ada-output "$here/$part/build/generated/ccl_manifest_bindings.ads" > "$here/$part/build/manifest.S"
+        --startup-output "$here/$part/build/generated/startup.ads" > "$here/$part/build/manifest.S"
     as --64 "$here/$part/build/manifest.S" -o "$here/$part/build/manifest.o"
     rm -f "$here/$part/build/control-$part.app"
     (cd "$repo/kernel" && alr exec -- gprbuild -q -P "$here/$part/control_$part.gpr")

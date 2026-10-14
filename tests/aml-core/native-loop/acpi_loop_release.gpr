@@ -1,5 +1,5 @@
 project ACPI_Loop_release is
- for Source_Dirs use (".", "../build/native-loop/abi", "../../../userspace/services/acpi", "../../../userspace/services/acpi/native", "../../../userspace/lib/acpi", "../../../shared/firmware");
+ for Source_Dirs use (".", "../build/native-loop/abi", "../../../userspace/services/acpi", "../../../userspace/services/acpi/native", "../../../userspace/lib/acpi", "../../../shared/firmware", "../../../shared/capabilities");
  for Object_Dir use "../build/native-loop-release/obj";
  for Exec_Dir use "../build/native-loop-release";
  for Main use ("loop_tests.adb");

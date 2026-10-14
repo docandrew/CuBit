@@ -2,10 +2,12 @@ pragma Ada_2022;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Memory_Grants;
+with CuBit.Handles.Startup;
 
 package body CuBit.Config_Reader is
    procedure Query
-     (Op : CuBit.Config_Inspection.Operation; Key : String;
+     (Service : CuBit.Handles.Endpoint;
+      Op : CuBit.Config_Inspection.Operation; Key : String;
       Value : out CuBit.Config_Inspection.Text;
       Result : out CuBit.Config_Inspection.Status;
       Context : CuBit.Config_Inspection.Context_ID :=
@@ -25,11 +27,11 @@ package body CuBit.Config_Reader is
          return;
       end if;
       Msg.tag := (label => Operation'Enum_Rep (Op), length => 4,
-                  flags => 0, reserved => 0);
+                  protocol => 0, ipc => <>, reserved => 0);
       Msg.words (3) := Unsigned_64 (Context);
       if Op /= Probe then
          CuBit.Memory_Grants.Create_Via_Capability
-           (CAP_SLOT_CONFIG, Buffer'Address, 1, True, Reference, Created);
+           (Service, Buffer'Address, 1, True, Reference, Created);
          if not Created then
             Result := Unavailable;
             return;
@@ -39,7 +41,7 @@ package body CuBit.Config_Reader is
          Msg.words (1) := Reference.generation;
          Msg.words (2) := Unsigned_64 (Key'Length);
       end if;
-      Msg.tag := capCall (CAP_SLOT_CONFIG, Msg, CuBit.Messages.Wait_Forever);
+      Msg.tag := capCall (Service, Msg, CuBit.Messages.Wait_Forever);
       Result := Unavailable;
       for Candidate in Status loop
          if Msg.tag.label = Status'Enum_Rep (Candidate) then
@@ -68,5 +70,23 @@ package body CuBit.Config_Reader is
             Value := (others => <>);
          end if;
       end if;
+   end Query;
+
+   procedure Query
+     (Op : CuBit.Config_Inspection.Operation; Key : String;
+      Value : out CuBit.Config_Inspection.Text;
+      Result : out CuBit.Config_Inspection.Status;
+      Context : CuBit.Config_Inspection.Context_ID :=
+        CuBit.Config_Inspection.Machine_Context)
+   is
+      Found : constant CuBit.Handles.Startup.Optional_Endpoint :=
+        CuBit.Handles.Startup.Optional_Endpoint_Named ("config");
+   begin
+      if not Found.Present then
+         Value := (others => <>);
+         Result := CuBit.Config_Inspection.Unavailable;
+         return;
+      end if;
+      Query (Found.Value, Op, Key, Value, Result, Context);
    end Query;
 end CuBit.Config_Reader;

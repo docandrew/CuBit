@@ -7,7 +7,6 @@ with System.Machine_Code; use System.Machine_Code;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Kernel_ABI;
 with CuBit.Kernel_Calls;
-with CuBit.System_Facts;
 with CuBit.Libc_ABI; use CuBit.Libc_ABI;
 with CuBit.Libc_Imports;
 with CuBit.Channel_Rings;
@@ -18,7 +17,12 @@ with CuBit.Libc_Net_Addresses; use CuBit.Libc_Net_Addresses;
 with CuBit.Libc_Net_Names;
 with CuBit.Libc_Net_Targets;
 
+with CuBit.Libc_Startup;
+with CuBit.Startup_Tables;
 package body CuBit.Libc_Net is
+
+   --  No endpoint (a handle word is never zero).
+   No_Endpoint : constant Unsigned_64 := 0;
 
    package K renames CuBit.Kernel_ABI;
    package Rings renames CuBit.Channel_Rings;
@@ -120,33 +124,33 @@ package body CuBit.Libc_Net is
    --  A message to netstack through the endpoint in Slot: its reply label
    --  (0 if the call failed) and words.
    type Words is array (0 .. 3) of Unsigned_64;
-   function Call (Slot : Natural; Label : Unsigned_32; Length : Unsigned_8;
+   function Call (Slot : Unsigned_64; Label : Unsigned_32; Length : Unsigned_8;
                   W0, W1, W2, W3 : Unsigned_64; Reply : out Words) return Unsigned_32;
-   function Call (Slot : Natural; Label : Unsigned_32; Length : Unsigned_8;
+   function Call (Slot : Unsigned_64; Label : Unsigned_32; Length : Unsigned_8;
                   W0, W1, W2, W3 : Unsigned_64; Reply : out Words) return Unsigned_32
    is
       M : aliased K.Message :=
         (Label => Label, Length => Length, Words => [W0, W1, W2, W3], others => <>);
       Tag : constant Unsigned_64 :=
-        Kernel (K.Call_Via_Endpoint_Capability, Unsigned_64 (Slot), Value_Of (M'Address), CuBit.Kernel_ABI.Forever);
+        Kernel (K.Call_Via_Endpoint_Capability, Slot, Value_Of (M'Address), CuBit.Kernel_ABI.Forever);
    begin
       Reply := Words (M.Words);
       return (if Tag = K.Failed then 0 else Unsigned_32 (Tag and 16#FFFF_FFFF#));
    end Call;
 
-   function Submit (Slot : Natural; Label : Unsigned_32; Length : Unsigned_8;
+   function Submit (Slot : Unsigned_64; Label : Unsigned_32; Length : Unsigned_8;
                     W0, W1, W2, W3 : Unsigned_64; Token : Unsigned_64) return Boolean is
-     (CuBit.Kernel_Calls.Submit (Unsigned_64 (Slot), Label, Length, W0, W1, W2, W3, Token) = 1);
+     (CuBit.Kernel_Calls.Submit (Slot, Label, Length, W0, W1, W2, W3, Token) = 1);
 
-   function Lend (Endpoint : Natural; Area : Unsigned_64; Pages : Unsigned_64;
+   function Lend (Endpoint : Unsigned_64; Area : Unsigned_64; Pages : Unsigned_64;
                   Slot, Generation : out Unsigned_64) return Boolean;
-   function Lend (Endpoint : Natural; Area : Unsigned_64; Pages : Unsigned_64;
+   function Lend (Endpoint : Unsigned_64; Area : Unsigned_64; Pages : Unsigned_64;
                   Slot, Generation : out Unsigned_64) return Boolean
    is
       Ignore : Unsigned_64;
    begin
       Generation := 0;
-      Slot := Kernel (K.Create_Shared_Memory_Grant_Via_Capability, Unsigned_64 (Endpoint),
+      Slot := Kernel (K.Create_Shared_Memory_Grant_Via_Capability, Endpoint,
                       Area, Pages, Grant_Read_Write);
       if Slot = K.Failed then
          return False;
@@ -171,24 +175,22 @@ package body CuBit.Libc_Net is
 
    procedure Discover_Scopes;
    procedure Discover_Scopes is
-      Self, Netstack : Unsigned_64;
-      Info : array (1 .. K.Capability_Words) of Unsigned_64;
+      Scope_Handle : Unsigned_64;
       Reply : Words;
       Found : Scope;
       Valid : Boolean;
    begin
       Lock (Scopes_Lock'Access);
       if not Scopes_Known then
-         Self := Kernel (K.Get_Process_Id);
-         Netstack := CuBit.System_Facts.Registered (K.Driver_Netstack);
-         for Slot in 0 .. K.Capability_Slots - 1 loop
+         --  Every network scope its launcher granted (startup kind
+         --  Network): one endpoint to netstack per scope.
+         for I in 1 .. CuBit.Libc_Startup.Entry_Count loop
             exit when Scope_Count = Maximum_Scopes;
-            Info := [others => 0];
-            if Kernel (K.Inspect_Capability, Self, Unsigned_64 (Slot), Value_Of (Info'Address)) = 1
-              and then Info (1) = K.Capability_Endpoint and then Info (4) = Netstack
-              and then Call (Slot, Layout.OP_NET_SCOPE, 0, 0, 0, 0, 0, Reply) = K.Reply_OK
+            Scope_Handle := CuBit.Libc_Startup.Handle_At (I, CuBit.Startup_Tables.Network);
+            if Scope_Handle /= 0
+              and then Call (Scope_Handle, Layout.OP_NET_SCOPE, 0, 0, 0, 0, 0, Reply) = K.Reply_OK
             then
-               Decode (Slot, Reply (0), Reply (1), Reply (2), Found, Valid);
+               Decode (Scope_Handle, Reply (0), Reply (1), Reply (2), Found, Valid);
                if Valid then
                   Scope_Count := Scope_Count + 1;
                   Scopes (Scope_Count) := Found;
@@ -203,9 +205,9 @@ package body CuBit.Libc_Net is
    --  The endpoint of a scope allowing Action on Target (or a name) and
    --  Port, or -1.
    function Scope_Slot (Action : Unsigned_8; Named : Boolean; Target : Address;
-                        Port : Unsigned_16) return Integer;
+                        Port : Unsigned_16) return Unsigned_64;
    function Scope_Slot (Action : Unsigned_8; Named : Boolean; Target : Address;
-                        Port : Unsigned_16) return Integer is
+                        Port : Unsigned_16) return Unsigned_64 is
    begin
       Discover_Scopes;
       for I in 1 .. Scope_Count loop
@@ -213,15 +215,15 @@ package body CuBit.Libc_Net is
             return Scopes (I).Slot;
          end if;
       end loop;
-      return -1;
+      return No_Endpoint;
    end Scope_Slot;
 
    --  An endpoint for the process's own requests (arenas, WAIT, KICK).
-   function Any_Slot return Integer;
-   function Any_Slot return Integer is
+   function Any_Slot return Unsigned_64;
+   function Any_Slot return Unsigned_64 is
    begin
       Discover_Scopes;
-      return (if Scope_Count > 0 then Scopes (1).Slot else -1);
+      return (if Scope_Count > 0 then Scopes (1).Slot else No_Endpoint);
    end Any_Slot;
 
    ---------------------------------------------------------------------------
@@ -309,7 +311,7 @@ package body CuBit.Libc_Net is
       Write_Shut  : Boolean := False;
       Refs        : Natural := 0;             --  the descriptor, and an OPEN or SHUT in flight
       Bit         : Integer range -1 .. Wait_Bit'Last := -1;
-      Slot        : Integer range -1 .. 63 := -1;
+      Slot        : Unsigned_64 := No_Endpoint;
       Channel, Open_Token, Shut_Token : Unsigned_64 := 0;
       Buffer      : Unsigned_64 := 0;         --  its arena buffer
       Arena       : Integer range -1 .. Maximum_Arenas - 1 := -1;
@@ -396,12 +398,12 @@ package body CuBit.Libc_Net is
    --  make the refusal a distinct, retryable Busy.
    procedure End_Wait;
    procedure End_Wait is
-      Slot : constant Integer := Any_Slot;
+      Slot : constant Unsigned_64 := Any_Slot;
       Retry_Microseconds : constant := 1_000;
       Retries : constant := 1_000;
       Ignore : Unsigned_64;
    begin
-      if Slot < 0 then
+      if Slot = No_Endpoint then
          return;
       end if;
       for Attempt in 1 .. Retries loop
@@ -417,7 +419,7 @@ package body CuBit.Libc_Net is
    procedure Kick (S : Socket_Object; Flags : Unsigned_64) is
       Ignore : Boolean;
    begin
-      if S.Slot >= 0 and then S.Bit >= 0 then
+      if S.Slot /= No_Endpoint and then S.Bit >= 0 then
          Ignore := Submit (S.Slot, Layout.OP_NET_KICK, 2, Bit_Of (S.Bit), Flags, 0, 0,
                            CuBit.Kernel_Calls.No_Completion_Token);
       end if;
@@ -450,14 +452,14 @@ package body CuBit.Libc_Net is
    --  Lend netstack a new arena (a call: once per Arena_Buffers sockets).
    function Lend_Arena return long;
    function Lend_Arena return long is
-      Endpoint : constant Integer := Any_Slot;
+      Endpoint : constant Unsigned_64 := Any_Slot;
       Bytes : constant size_t := Arena_Buffers * Buffer_Bytes;
       Area : Unsigned_64;
       Slot, Generation : Unsigned_64;
       Reply : Words;
       Ignore : Unsigned_64;
    begin
-      if Endpoint < 0 then
+      if Endpoint = No_Endpoint then
          return Error (EACCES);
       end if;
       Area := Map_Pages (Bytes);
@@ -558,7 +560,7 @@ package body CuBit.Libc_Net is
    --  no queue, OPEN is refused as backpressure and SHUT goes by message.
    ---------------------------------------------------------------------------
    type Control_Queue is record
-      Slot    : Integer := -1;           --  the endpoint
+      Slot    : Unsigned_64 := No_Endpoint;   --  the endpoint
       Refused : Boolean := True;         --  netstack gave none
       Base    : Unsigned_64 := 0;
       Client  : NCQ.Queues.Client;
@@ -587,8 +589,8 @@ package body CuBit.Libc_Net is
 
    --  The queue for endpoint Slot, lent now if it has none; 0: use
    --  messages. Queue_Lock is held.
-   function Queue_For (Slot : Natural) return Natural;
-   function Queue_For (Slot : Natural) return Natural is
+   function Queue_For (Slot : Unsigned_64) return Natural;
+   function Queue_For (Slot : Unsigned_64) return Natural is
       Area, Grant, Generation : Unsigned_64;
       Reply : Words;
       Ignore : Unsigned_64;
@@ -625,10 +627,10 @@ package body CuBit.Libc_Net is
    end Queue_For;
 
    --  Queue a request on endpoint Slot; False if it must go another way.
-   function Queue_Submit (Slot : Natural; Token : Unsigned_64; Operation : Unsigned_32;
+   function Queue_Submit (Slot : Unsigned_64; Token : Unsigned_64; Operation : Unsigned_32;
                           Length : Unsigned_32; Object : Unsigned_64; Buffer : Unsigned_32)
      return Boolean;
-   function Queue_Submit (Slot : Natural; Token : Unsigned_64; Operation : Unsigned_32;
+   function Queue_Submit (Slot : Unsigned_64; Token : Unsigned_64; Operation : Unsigned_32;
                           Length : Unsigned_32; Object : Unsigned_64; Buffer : Unsigned_32)
      return Boolean
    is
@@ -695,7 +697,7 @@ package body CuBit.Libc_Net is
       Reply : Words;
       Ignore : Unsigned_32;
    begin
-      if S.Slot >= 0 then
+      if S.Slot /= No_Endpoint then
          Ignore := Call (S.Slot, OP_NET_SHUT, 1, S.Channel, 0, 0, 0, Reply);
       end if;
    end Send_Shut_Now;
@@ -715,7 +717,7 @@ package body CuBit.Libc_Net is
       S.Shut_Token := Token;
       S.Refs := S.Refs + 1;
       Unlock (S.Lock'Access);
-      if S.Slot >= 0 and then Queue_Submit (S.Slot, Token, Layout.Queue_Shut, 0, S.Channel, 0) then
+      if S.Slot /= No_Endpoint and then Queue_Submit (S.Slot, Token, Layout.Queue_Shut, 0, S.Channel, 0) then
          return;
       end if;
       Lock (S.Lock'Access);
@@ -916,7 +918,7 @@ package body CuBit.Libc_Net is
    procedure Net_Wait (Sequence : int; Deadline : unsigned_long; Mask : Unsigned_64) is
       Fresh, Stale, Pending : Boolean;
       Wanted : Unsigned_64;
-      Endpoint : Integer := -1;
+      Endpoint : Unsigned_64 := No_Endpoint;
    begin
       Lock (Net_Lock'Access);
       Add_Interest (Mask);
@@ -948,7 +950,7 @@ package body CuBit.Libc_Net is
       if Fresh then
          Endpoint := Any_Slot;
       end if;
-      if Fresh and then (Endpoint < 0 or else
+      if Fresh and then (Endpoint = No_Endpoint or else
                          not Submit (Endpoint, Layout.OP_NET_WAIT, 3, 0, Unsigned_64 (Deadline),
                                      Wanted, 0, Wait_Token))
       then
@@ -989,7 +991,7 @@ package body CuBit.Libc_Net is
          begin
             S.Refs := 1;
             S.Bit := -1;
-            S.Slot := -1;
+            S.Slot := No_Endpoint;
             S.Arena := -1;
             S.Tx := Rings.New_Producer (Ring_Bytes);
             S.Rx := Rings.New_Consumer (Ring_Bytes);
@@ -1155,7 +1157,7 @@ package body CuBit.Libc_Net is
          end if;
          S.Peer := Peer;
          S.Slot := Scope_Slot (Connect_TCP, Index /= 0, Mapped (Peer.IPv4), Port_Of (Peer));
-         if S.Slot < 0 then
+         if S.Slot = No_Endpoint then
             return Error (EACCES);      --  no scope allows it
          end if;
       end;
@@ -1616,7 +1618,7 @@ package body CuBit.Libc_Net is
          end loop;
       end if;
       S.Slot := Scope_Slot (Listen_TCP, False, Mapped (IPv4), Port);
-      if S.Slot < 0 then
+      if S.Slot = No_Endpoint then
          return Error (EACCES);         --  no scope allows it
       end if;
       Targets.Dotted (IPv4, Host, Host_Length);

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Compile every manifest.ccl in the tree with two manifest tools and require
 identical results: the assembled sections, the exit status and the generated
-Ada bindings, for each service catalog (docs/ccl-typed-manifests.md).
+startup bindings, for each service catalog (docs/ccl-typed-manifests.md).
 
     compare-tree.py BASELINE_TOOL CANDIDATE_TOOL [--convert CONVERTER]
 
@@ -27,9 +27,9 @@ def manifests():
 
 
 def compile_with(tool, catalog, manifest, scratch):
-    bindings = scratch / "bindings.ads"
+    bindings = scratch / "startup.ads"
     bindings.unlink(missing_ok=True)
-    run = subprocess.run([str(tool), str(catalog), str(manifest), "--ada-output", str(bindings)],
+    run = subprocess.run([str(tool), str(catalog), str(manifest), "--startup-output", str(bindings)],
                          capture_output=True, text=True)
     generated = bindings.read_text() if bindings.exists() else ""
     return run.returncode, run.stdout, generated

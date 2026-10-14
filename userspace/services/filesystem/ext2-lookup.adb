@@ -254,10 +254,10 @@ package body Ext2.Lookup is
                         else
                            Dentry_Cache.Insert
                              (Names,
-                              Dentry_Cache.Make_Key (fs.device.endpointSlot, number, name),
+                              Dentry_Cache.Make_Key (fs.device.volumeKey, number, name),
                               entryInode, displaced, from);
                            if displaced and then from.Parent = number and then
-                             from.Volume = fs.device.endpointSlot
+                             from.Volume = fs.device.volumeKey
                            then
                               clean := False;
                            end if;
@@ -270,7 +270,7 @@ package body Ext2.Lookup is
          end;
       end loop;
       if clean then
-         Dentry_Cache.Mark_Complete (Names, fs.device.endpointSlot, number);
+         Dentry_Cache.Mark_Complete (Names, fs.device.volumeKey, number);
       end if;
    end indexDirectory;
 
@@ -311,7 +311,7 @@ package body Ext2.Lookup is
             begin
                if Dentry_Cache.Cacheable (name) then
                   Dentry_Cache.Find
-                    (Names, Dentry_Cache.Make_Key (fs.device.endpointSlot, parent, name),
+                    (Names, Dentry_Cache.Make_Key (fs.device.volumeKey, parent, name),
                      cached, found);
                end if;
                if cached and then found = Dentry_Cache.No_Inode then
@@ -342,7 +342,7 @@ package body Ext2.Lookup is
                   end if;
                   if Dentry_Cache.Cacheable (name) and then completeDirectory (fs, parent) then
                      Dentry_Cache.Find
-                       (Names, Dentry_Cache.Make_Key (fs.device.endpointSlot, parent, name),
+                       (Names, Dentry_Cache.Make_Key (fs.device.volumeKey, parent, name),
                         cached, found);
                      if cached and then found /= Dentry_Cache.No_Inode then
                         current := found;

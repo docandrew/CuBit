@@ -4,7 +4,7 @@ import hashlib,json,subprocess,tempfile
 ROOT=Path(__file__).resolve().parents[2]
 source=(ROOT/'userspace/lib/ui/cubit-ui-app.adb').read_text()
 a=source.index('   procedure Take_Cached_Input\n');b=source.index('   end Receive_Input;',a)+len('   end Receive_Input;')
-original=source[a:b];routine=original.replace('CuBit.Desktop_Messages.','Desktop_Messages.')
+original=source[a:b];routine=original.replace('CuBit.Desktop_Messages.','Desktop_Messages.').replace('CuBit.Messages.Wait_Forever','Wait_Forever')
 helper=source[source.index('   procedure Add_Input_Count '):source.index('   function Input_Statistics ')]
 spec=(ROOT/'userspace/lib/ui/cubit-ui-app.ads').read_text()
 diag=spec[spec.index('   type Input_Diagnostics is record'):spec.index('   end record;',spec.index('   type Input_Diagnostics is record'))+len('   end record;')]
@@ -43,7 +43,11 @@ inputCache:C.State; inputStats:Input_Diagnostics; width,height:Natural:=100;
 end record;
 Fetch_Count,Call_Count,Theme_Calls,Buffer_Calls:Natural:=0; Event_Kind:Unsigned_64:=6; Fetch_OK:Boolean:=True; Batch_Length:C.W.B.Count:=3;
 Error_Logs:Natural:=0; Reply_Status:DP.Status_Code:=DP.Success;
-CAP_SLOT_DESKTOP:constant:=15;
+-- CAP-002: the desktop endpoint is a handle (UI_Desktop_Service.Endpoint);
+-- one value of a local type stands in for it.
+type Desktop_Endpoint is (Desktop_Service);
+package UI_Desktop_Service is function Endpoint return Desktop_Endpoint is (Desktop_Service); end;
+Wait_Forever:constant Unsigned_64:=Unsigned_64'Last;
 function Input_Wait_Pending(win:Window) return Boolean is (win.waiting);
 procedure Apply_Input_Result(win:in out Window; decoded:DP.Input_Result; event:out Input_Event; found:out Boolean) is
 begin
@@ -64,10 +68,10 @@ Fetch_Count:=Fetch_Count+1;Loaded:=False;if not Fetch_OK then return;end if;
 for I in 1..Batch_Length loop Batch.Items(I):=(True,After+Unsigned_64(I),Event_Kind,Surface,(if Event_Kind=8 then 640 else 65+Unsigned_64(I)),(if Event_Kind=8 then 480 else 0));end loop;
 C.Load(S,C.W.Encode(Batch,Surface,123,After),C.P.Encode(C.P.Receipt'(DP.Success,123,Batch_Length,Batch.Through,False)),Surface,123,After,Loaded);
 end;end;
-function capCall(Slot:Unsigned_64; M:in out Message) return Tag is
+function capCall(Target:Desktop_Endpoint; M:in out Message; Deadline:Unsigned_64) return Tag is
 D:constant DP.Input_Request_Decoding:=DP.Decode_Input_Request(Desktop_Messages.To_Wire(M));
 begin
-pragma Assert(Slot=CAP_SLOT_DESKTOP and D.Valid);Call_Count:=Call_Count+1;
+pragma Assert(Target=Desktop_Service and Deadline=Wait_Forever and D.Valid);Call_Count:=Call_Count+1;
 if Reply_Status/=DP.Success then M:=Desktop_Messages.From_Wire(DP.Encode_Status(D.Value.Kind,Reply_Status));return M.Tag;end if;
 M:=Desktop_Messages.From_Wire(DP.Encode_Input_Reply(D.Value.Kind,(DP.Text_Entered,D.Value.After_Serial+1,90,0,False)));
 return M.Tag;

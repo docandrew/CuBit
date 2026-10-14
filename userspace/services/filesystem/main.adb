@@ -21,6 +21,9 @@ with CuBit.Channel_Protocol;
 with CuBit.Control_Events;
 with CuBit.Busy_Poll;
 with Fs_Server;
+with Fs_Attachments;
+with CuBit.Startup_State;
+with Startup;
 
 procedure main is
    use ASCII;
@@ -34,6 +37,10 @@ procedure main is
    volumesOk  : Boolean;
 begin
    debugPrint ("FS Server: Starting..." & LF);
+   if not CuBit.Startup_State.Ready (Startup.Verify) then
+      debugPrint ("FS Server: startup capabilities missing" & LF);
+      return;
+   end if;
 
    --  The boot image devmgr mapped for us, from its launch configuration.
    declare
@@ -56,18 +63,17 @@ begin
    declare
       ignore : Unsigned_64;
    begin
-      ignore := registerDriver (DRIVER_FS);
+      ignore := registerDriver (DRIVER_FS, Startup.Registration);
    end;
 
    --  Signal devmgr that we are ready
    declare
-      CAP_SLOT_READY : constant Unsigned_64 := 15;
       OP_READY       : constant Unsigned_32 := 16#FF00#;
       ignore : MessageTag;
    begin
-      ignore := capSend (CAP_SLOT_READY,
+      ignore := capSend (Startup.Ready,
          (tag      => (label => OP_READY, length => 0,
-                       flags => 0, reserved => 0),
+                       protocol => 0, ipc => <>, reserved => 0),
           authorityTag => 0,
           words    => [others => 0]), CuBit.Messages.Wait_Forever);
    end;
@@ -137,6 +143,8 @@ begin
             Fs_Server.Set_Access_Profile (sender, msg);
          when OP_REVOKE_ACL =>
             Fs_Server.Revoke_Access_Profile (sender, msg);
+         when Fs_Attachments.Attach_Label =>
+            Fs_Server.Attach_Storage (sender, msg);
          when OP_RELEASE_OWNER =>
             Fs_Server.Release_Owner (sender, msg);
          when OP_RENAME =>

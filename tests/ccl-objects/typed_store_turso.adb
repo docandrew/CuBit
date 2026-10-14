@@ -1,3 +1,4 @@
+with CuBit.Handles.Fixture;
 with Ada.Command_Line;
 with Ada.Text_IO;
 with GNAT.Source_Info;
@@ -100,20 +101,35 @@ procedure Typed_Store_Turso is
       Check (App_Borrowed and Reference = Grants.Grant_Reference'(7, 9));
       App_Borrowed := False; Success := True;
    end App_Return;
-   function App_Save (Slot : Unsigned_64) return Unsigned_64 is
+   --  Reply handles are numbers here (natively CuBit.Handles.Reply): the
+   --  saved request's is Saved_Reply_Handle.
+   Saved_Reply_Handle : constant Unsigned_64 := 62;
+   procedure App_Save (Handle : out Unsigned_64; Saved : out Boolean) is
    begin
-      Check (Slot = 62 and App_Current and not App_Saved and not App_Borrowed);
-      App_Current := False; App_Saved := True; return 1;
+      Check (App_Current and not App_Saved and not App_Borrowed);
+      App_Current := False; App_Saved := True;
+      Handle := Saved_Reply_Handle; Saved := True;
    end App_Save;
-   function App_Send (Slot : IPC.CapabilitySlot; Message : IPC.Message) return Unsigned_64 is
+   function App_Record (Message : IPC.Message) return Unsigned_64 is
    begin
-      Check (not App_Borrowed);
-      if Slot = 62 then Check (App_Saved); App_Saved := False;
-      else Check (Slot = 63 and App_Current); App_Current := False; end if;
       App_Reply := Message; App_Replies := App_Replies + 1;
       return (if Allow_Delivery then 1 else 0);
-   end App_Send;
-   package App is new Config_Object_Receiver (62, App_Acquire, App_Return, App_Save, App_Send);
+   end App_Record;
+   function App_Send_Saved (Handle : Unsigned_64; Message : IPC.Message) return Unsigned_64 is
+   begin
+      Check (not App_Borrowed and Handle = Saved_Reply_Handle and App_Saved);
+      App_Saved := False;
+      return App_Record (Message);
+   end App_Send_Saved;
+   function App_Send_Current (Sender : IPC.Process_ID; Message : IPC.Message) return Unsigned_64 is
+      use type IPC.Process_ID;
+   begin
+      Check (not App_Borrowed and App_Current and Sender = App_Sender);
+      App_Current := False;
+      return App_Record (Message);
+   end App_Send_Current;
+   package App is new Config_Object_Receiver
+     (Unsigned_64, App_Acquire, App_Return, App_Save, App_Send_Saved, App_Send_Current);
    package Service is new Config_Object_Service (App);
    use type Service.Worker_Status;
    -- Four complete service lifetimes coexist only in this hosted fixture.
@@ -191,7 +207,7 @@ procedure Typed_Store_Turso is
       Check (Grants.Active_Acquisitions = 0 and not App_Borrowed);
       Config_Database.Schemas.Invoke (Database, Action, Name, Context, Contract, Recovered, Result);
    end Invoke_Type;
-   package Receiver is new Config_Worker_Receiver (12, Trusted, Invoke, Invoke_Type);
+   package Receiver is new Config_Worker_Receiver (CuBit.Handles.Fixture.Endpoint_Of (12), Trusted, Invoke, Invoke_Type);
    First_Server, Replacement_Server, Interrupted_Server, Recovered_Server : Receiver.State;
    procedure Exchange
      (Server : in out Receiver.State; Lose_Response : Boolean := False)
@@ -239,9 +255,9 @@ begin
    A.Install (Authority, 42, Rules, Installed); Check (Installed = A.Installed);
    Open;
    Grants.Expected_Pages := Config_Worker_Channel.Loan_Bytes_Count / 4096;
-   Service.Attach (Object.all, 4, 0, Good); Check (not Good and Service.Status (Object.all) = Service.Unattached);
-   Service.Attach (Object.all, 4, 10, Good); Check (Good);
-   Service.Attach (Object.all, 4, 11, Good); Check (not Good and Service.Status (Object.all) = Service.Online);
+   Service.Attach (Object.all, CuBit.Handles.Fixture.Endpoint_Of (4), 0, Good); Check (not Good and Service.Status (Object.all) = Service.Unattached);
+   Service.Attach (Object.all, CuBit.Handles.Fixture.Endpoint_Of (4), 10, Good); Check (Good);
+   Service.Attach (Object.all, CuBit.Handles.Fixture.Endpoint_Of (4), 11, Good); Check (not Good and Service.Status (Object.all) = Service.Online);
    Begin_Create;
    Exchange (First_Server); Finish (Response, False);
    Check (Config_Worker_Messages.Valid_Schema_Request (IPC.Last_Request));
@@ -290,7 +306,7 @@ begin
    Check (not Staged and App_Reply.tag.label = W.Status'Enum_Rep (W.Unavailable) and Calls = 3);
    Open;
    Object := Replacement_Service;
-   Service.Attach (Object.all, 4, 11, Good); Check (Good);
+   Service.Attach (Object.all, CuBit.Handles.Fixture.Endpoint_Of (4), 11, Good); Check (Good);
    -- Fresh Config has no catalogue. Read authority alone must recover it.
    A.Install (Authority, 42, Read_Rules, Installed); Check (Installed = A.Installed);
    Begin_Read_Open ("org.cubit.publication.absent");
@@ -372,7 +388,7 @@ begin
    IPC.Accept_Submission := True;
    Read_Check (V.Stale, 2, Second);
    Service.Retire (Object.all, Good); Check (not Good);
-   Service.Attach (Object.all, 4, 12, Good); Check (not Good);
+   Service.Attach (Object.all, CuBit.Handles.Fixture.Endpoint_Of (4), 12, Good); Check (not Good);
    Grants.Allow_Revoke := True; Grants.Is_Retired := True;
    Close;
    Service.Retire (Object.all, Good); Check (Good);
@@ -380,7 +396,7 @@ begin
    -- poison this transport, and never retry or convert uncertainty to Missing.
    Open;
    Object := Interrupted_Service;
-   Service.Attach (Object.all, 4, 12, Good); Check (Good);
+   Service.Attach (Object.all, CuBit.Handles.Fixture.Endpoint_Of (4), 12, Good); Check (Good);
    A.Install (Authority, 42, Read_Rules, Installed); Check (Installed = A.Installed);
    Begin_Read_Open;
    Exchange (Interrupted_Server, Lose_Response => True);
@@ -398,7 +414,7 @@ begin
    -- can recover unchanged data; a late old completion cannot finish its Open.
    Open;
    Object := Recovered_Service;
-   Service.Attach (Object.all, 4, 13, Good); Check (Good);
+   Service.Attach (Object.all, CuBit.Handles.Fixture.Endpoint_Of (4), 13, Good); Check (Good);
    Begin_Read_Open;
    Finish (Old_Response, False);
    Exchange (Recovered_Server); Finish (Response, False);
@@ -451,7 +467,7 @@ begin
             Object := new Service.State;
             Database := Open_Database (Managed_Path'Address, Managed_Path'Length);
             Check (Database /= System.Null_Address);
-            Service.Attach (Object.all, 4, Unsigned_64 (20 + Phase), Good); Check (Good);
+            Service.Attach (Object.all, CuBit.Handles.Fixture.Endpoint_Of (4), Unsigned_64 (20 + Phase), Good); Check (Good);
             W.Describe ("org.cubit.managed", W.Read_Write, 0, Schema, App_Input.Control, Good); Check (Good);
             CCL.Objects.Schemas.Write (Contract, App_Metadata, Good); Check (Good);
             App_Call (42, W.Create_Collection); Check (Staged);

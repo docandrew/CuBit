@@ -1,3 +1,4 @@
+with CuBit.Handles.Fixture;
 with Ada.Text_IO;
 with Interfaces; use Interfaces;
 with Ext2; use Ext2;
@@ -55,7 +56,7 @@ procedure Overwrites is
       Disk (dataStart .. dataStart + payload'Length - 1) :=
         [others => Character'Pos ('A')];
       initBlockDevice
-        (fs, 1, (slot => 1, generation => 1), Grant_Buffer'Address,
+        (fs, CuBit.Handles.Fixture.Endpoint_Of (1), 1, (slot => 1, generation => 1), Grant_Buffer'Address,
          Grant_Buffer'Length, admission);
       pragma Assert (admission = Admitted);
       Calls := 0;

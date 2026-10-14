@@ -1,3 +1,4 @@
+with CuBit.Handles.Fixture;
 with Ada.Command_Line;
 with Ada.Text_IO;
 with Interfaces;
@@ -21,7 +22,7 @@ begin
    Set ((if Scenario = 1 then 1 elsif Scenario = 2 then 2 else 0),
         (if Scenario = 3 then 2 else 0));
    S.Prepare_Pipeline (OK); pragma Assert (not OK and Creates = 0);
-   S.Initialize (if Scenario = 4 then 0 else 25);
+   S.Initialize (if Scenario = 4 then CuBit.Handles.No_Endpoint else CuBit.Handles.Fixture.Endpoint_Of (25));
    S.Prepare_Pipeline (OK);
    pragma Assert (OK = (Scenario in 0 | 3));
    pragma Assert (Creates = (if Scenario = 4 then 0 else 1));

@@ -1,4 +1,5 @@
-with CCL_Manifest_Bindings;
+with CuBit.Handles;
+with Startup;
 ------------------------------------------------------------------------------
 --  CuBit headless IPC regression client
 --
@@ -13,8 +14,9 @@ with CuBit.Messages; use CuBit.Messages;
 procedure main is
    use ASCII;
 
-   CAP_SLOT_IPCTEST : constant CapabilitySlot := CCL_Manifest_Bindings.Slot_IPC_Test;
-   CAP_SLOT_EMPTY   : constant CapabilitySlot := 19;
+   IPC_Test : constant CuBit.Handles.Endpoint := Startup.Ipc_Test;
+   --  No capability at all: the kernel must refuse it.
+   No_Capability   : constant CuBit.Handles.Endpoint := CuBit.Handles.No_Endpoint;
 
    OP_ASYNC_ECHO     : constant Unsigned_32 := 16#0901#;
    OP_REVERSE_ECHO   : constant Unsigned_32 := 16#0902#;
@@ -110,21 +112,18 @@ begin
 
    debugPrint ("ipctest-client: starting" & LF);
 
-   ret := replyCap (CAP_SLOT_IPCTEST, NULL_MESSAGE);
-   if ret /= 0 then
-      fail ("endpoint-is-not-reply-authority");
-   end if;
-   -- Subsequent service calls also verify this failure preserved the endpoint.
+   --  An endpoint cannot be used as reply authority: the handle types keep
+   --  it from being passed as one (and the kernel checks the kind).
 
    declare
       msg : Message := NULL_MESSAGE;
    begin
       msg.tag := (label  => OP_ASYNC_ECHO,
                   length => 1,
-                  flags  => 0,
+                  protocol  => 0, ipc => <>,
                   reserved  => 0);
       msg.words (0) := 99;
-      submitOk := capSubmit (CAP_SLOT_EMPTY, msg, TOKEN_BASE + 99);
+      submitOk := capSubmit (No_Capability, msg, TOKEN_BASE + 99);
       if submitOk then
          fail ("cap-denial");
       end if;
@@ -136,10 +135,10 @@ begin
       begin
          msg.tag := (label  => OP_ONEWAY_PROBE,
                      length => 1,
-                     flags  => 0,
+                     protocol  => 0, ipc => <>,
                      reserved  => 0);
          msg.words (0) := 77;
-         submitOk := capSubmit (CAP_SLOT_IPCTEST, msg, NO_COMPLETION_TOKEN);
+         submitOk := capSubmit (IPC_Test, msg, NO_COMPLETION_TOKEN);
          if not submitOk then
             fail ("oneway-submit");
          end if;
@@ -161,10 +160,10 @@ begin
       begin
          msg.tag := (label  => OP_DOUBLE_REPLY,
                      length => 1,
-                     flags  => 0,
+                     protocol  => 0, ipc => <>,
                      reserved  => 0);
          msg.words (0) := 42;
-         submitOk := capSubmit (CAP_SLOT_IPCTEST, msg, DOUBLE_TOKEN);
+         submitOk := capSubmit (IPC_Test, msg, DOUBLE_TOKEN);
          if not submitOk then
             fail ("double-submit");
          end if;
@@ -203,11 +202,11 @@ begin
       begin
          msg.tag := (label  => OP_OCCUPIED_HOLD,
                      length => 1,
-                     flags  => 0,
+                     protocol  => 0, ipc => <>,
                      reserved  => 0);
          msg.words (0) := 501;
          submitOk := capSubmit
-           (CAP_SLOT_IPCTEST, msg, OCCUPIED_HOLD_TOKEN);
+           (IPC_Test, msg, OCCUPIED_HOLD_TOKEN);
          if not submitOk then
             fail ("occupied-hold-submit");
          end if;
@@ -215,7 +214,7 @@ begin
          msg.tag.label := OP_OCCUPIED_PROBE;
          msg.words (0) := 502;
          submitOk := capSubmit
-           (CAP_SLOT_IPCTEST, msg, OCCUPIED_PROBE_TOKEN);
+           (IPC_Test, msg, OCCUPIED_PROBE_TOKEN);
          if not submitOk then
             fail ("occupied-probe-submit");
          end if;
@@ -265,12 +264,12 @@ begin
          begin
             msg.tag := (label  => OP_PRESSURE_HOLD,
                         length => 1,
-                        flags  => 0,
+                        protocol  => 0, ipc => <>,
                         reserved  => 0);
             msg.words (0) := Unsigned_64 (i);
 
             submitOk := capSubmit (
-               CAP_SLOT_IPCTEST,
+               IPC_Test,
                msg,
                PRESSURE_TOKEN_BASE + Unsigned_64 (i));
 
@@ -287,12 +286,12 @@ begin
       begin
          msg.tag := (label  => OP_PRESSURE_HOLD,
                      length => 1,
-                     flags  => 0,
+                     protocol  => 0, ipc => <>,
                      reserved  => 0);
          msg.words (0) := Unsigned_64 (PRESSURE_COUNT + 1);
 
          submitOk := capSubmit (
-            CAP_SLOT_IPCTEST,
+            IPC_Test,
             msg,
             PRESSURE_TOKEN_BASE + Unsigned_64 (PRESSURE_COUNT + 1));
 
@@ -308,14 +307,14 @@ begin
       begin
          msg.tag := (label  => OP_PRESSURE_RELEASE,
                      length => 0,
-                     flags  => 0,
+                     protocol  => 0, ipc => <>,
                      reserved  => 0);
          --  The held requests may still fill this client's credit at the
          --  server (docs/ipc-delivery.md, step 3): then the release is
          --  refused as busy, kept, and sent again once the server drains.
          for attempt in 1 .. 500 loop
             submitOk := capSubmit (
-               CAP_SLOT_IPCTEST,
+               IPC_Test,
                msg,
                NO_COMPLETION_TOKEN);
             exit when submitOk;
@@ -379,10 +378,10 @@ begin
       begin
          msg.tag := (label  => OP_ASYNC_ECHO,
                      length => 1,
-                     flags  => 0,
+                     protocol  => 0, ipc => <>,
                      reserved  => 0);
          msg.words (0) := 123;
-         submitOk := capSubmit (CAP_SLOT_IPCTEST, msg, RECOVERY_TOKEN);
+         submitOk := capSubmit (IPC_Test, msg, RECOVERY_TOKEN);
          if not submitOk then
             fail ("pressure-recovery-submit");
          end if;
@@ -422,7 +421,7 @@ begin
          begin
             msg.tag := (label  => OP_REVERSE_ECHO,
                         length => 1,
-                        flags  => 0,
+                        protocol  => 0, ipc => <>,
                         reserved  => 0);
             msg.words (0) := Unsigned_64 (i);
             msg.words (1) := 16#1122_3344_5566_7788#;
@@ -430,7 +429,7 @@ begin
             msg.words (3) := 16#FEDC_BA98_7654_3210#;
 
             submitOk := capSubmit (
-               CAP_SLOT_IPCTEST,
+               IPC_Test,
                msg,
                TOKEN_BASE + Unsigned_64 (i));
 
@@ -500,10 +499,10 @@ begin
       begin
          msg.tag := (label  => OP_STATUS,
                      length => 0,
-                     flags  => 0,
+                     protocol  => 0, ipc => <>,
                      reserved  => 0);
          loadFPUProbe;
-         tag := capCall (CAP_SLOT_IPCTEST, msg, CuBit.Messages.Wait_Forever);
+         tag := capCall (IPC_Test, msg, CuBit.Messages.Wait_Forever);
          if readFPUProbe /= FPU_SENTINEL then
             fail ("fpu-direct-switch");
          elsif tag.label /= REPLY_OK then
@@ -523,9 +522,10 @@ begin
          msg : Message := NULL_MESSAGE;
          seenRetirement : Boolean := False;
       begin
-         msg.tag := (OP_RETIRE_DEPARTED, 1, 0, 0);
+         msg.tag := (label => OP_RETIRE_DEPARTED, length => 1,
+                     protocol => 0, ipc => <>, reserved => 0);
          msg.words (0) := 77;
-         if not capSubmit (CAP_SLOT_IPCTEST, msg, RETIRE_TOKEN) then
+         if not capSubmit (IPC_Test, msg, RETIRE_TOKEN) then
             fail ("retire-submit");
          else
             for attempt in 1 .. 300 loop
@@ -558,9 +558,10 @@ begin
          started, elapsed : Unsigned_64;
       begin
          -- A server that never answers: the call ends at its deadline.
-         msg.tag := (OP_DEADLINE_SILENT, 0, 0, 0);
+         msg.tag := (label => OP_DEADLINE_SILENT, length => 0,
+                     protocol => 0, ipc => <>, reserved => 0);
          started := syscall (SYSCALL_GETTIME);
-         tag := capCall (CAP_SLOT_IPCTEST, msg, Deadline_After (DEADLINE_MS));
+         tag := capCall (IPC_Test, msg, Deadline_After (DEADLINE_MS));
          elapsed := syscall (SYSCALL_GETTIME) - started;
          if tag.label /= REPLY_TIMEOUT then
             fail ("deadline-silent-not-timed-out");
@@ -571,9 +572,10 @@ begin
          -- The server now answers the timed-out call while this thread
          -- waits in its next call: only this call's own reply arrives.
          msg := NULL_MESSAGE;
-         msg.tag := (OP_DEADLINE_LATE, 1, 0, 0);
+         msg.tag := (label => OP_DEADLINE_LATE, length => 1,
+                     protocol => 0, ipc => <>, reserved => 0);
          msg.words (0) := LATE_TOKEN;
-         tag := capCall (CAP_SLOT_IPCTEST, msg, Wait_Forever);
+         tag := capCall (IPC_Test, msg, Wait_Forever);
          if tag.label /= REPLY_OK or else msg.words (0) /= LATE_TOKEN then
             fail ("deadline-late-reply-delivered");
          elsif msg.words (1) /= 1 then
@@ -585,16 +587,18 @@ begin
          -- Timed out while queued (the server was busy, not receiving):
          -- the server never sees the request.
          msg := NULL_MESSAGE;
-         msg.tag := (OP_DEADLINE_BUSY, 0, 0, 0);
-         if not capSubmit (CAP_SLOT_IPCTEST, msg, NO_COMPLETION_TOKEN) then
+         msg.tag := (label => OP_DEADLINE_BUSY, length => 0,
+                     protocol => 0, ipc => <>, reserved => 0);
+         if not capSubmit (IPC_Test, msg, NO_COMPLETION_TOKEN) then
             fail ("deadline-busy-submit");
          end if;
          -- Let the server take the busy request first.
          ret := syscall (SYSCALL_SLEEP, 10);
          msg := NULL_MESSAGE;
-         msg.tag := (OP_DEADLINE_QUEUED, 0, 0, 0);
+         msg.tag := (label => OP_DEADLINE_QUEUED, length => 0,
+                     protocol => 0, ipc => <>, reserved => 0);
          started := syscall (SYSCALL_GETTIME);
-         tag := capCall (CAP_SLOT_IPCTEST, msg, Deadline_After (DEADLINE_MS));
+         tag := capCall (IPC_Test, msg, Deadline_After (DEADLINE_MS));
          elapsed := syscall (SYSCALL_GETTIME) - started;
          if tag.label /= REPLY_TIMEOUT then
             fail ("deadline-queued-not-timed-out");
@@ -602,8 +606,9 @@ begin
             fail ("deadline-queued-timing");
          end if;
          msg := NULL_MESSAGE;
-         msg.tag := (OP_DEADLINE_STATUS, 0, 0, 0);
-         tag := capCall (CAP_SLOT_IPCTEST, msg, Wait_Forever);
+         msg.tag := (label => OP_DEADLINE_STATUS, length => 0,
+                     protocol => 0, ipc => <>, reserved => 0);
+         tag := capCall (IPC_Test, msg, Wait_Forever);
          if tag.label /= REPLY_OK then
             fail ("deadline-status");
          elsif msg.words (0) /= 0 then
@@ -622,9 +627,10 @@ begin
          msg : Message := NULL_MESSAGE;
          tag : MessageTag;
       begin
-         msg.tag := (OP_RESTORE_ECHO, 1, 0, 0);
+         msg.tag := (label => OP_RESTORE_ECHO, length => 1,
+                     protocol => 0, ipc => <>, reserved => 0);
          msg.words (0) := RESTORE_WORD;
-         tag := capCall (CAP_SLOT_IPCTEST, msg, Deadline_After (RESTORE_DEADLINE_MS));
+         tag := capCall (IPC_Test, msg, Deadline_After (RESTORE_DEADLINE_MS));
          if tag.label /= REPLY_OK or else msg.words (0) /= (RESTORE_WORD xor XOR_MAGIC) then
             fail ("restore-reply-answer");
          else
@@ -645,9 +651,10 @@ begin
                served : Boolean := False;
             begin
                msg := NULL_MESSAGE;
-               msg.tag := (OP_FAIR_BEGIN, 1, 0, 0);
+               msg.tag := (label => OP_FAIR_BEGIN, length => 1,
+                           protocol => 0, ipc => <>, reserved => 0);
                msg.words (0) := mode;
-               tag := capCall (CAP_SLOT_IPCTEST, msg, CuBit.Messages.Wait_Forever);
+               tag := capCall (IPC_Test, msg, CuBit.Messages.Wait_Forever);
                if tag.label /= REPLY_OK then fail ("fairness-begin"); end if;
                if mode = 4 then
                   -- Server has entered an infinite activity wait before the
@@ -655,15 +662,17 @@ begin
                   ret := syscall (SYSCALL_SLEEP, 50);
                end if;
                msg := NULL_MESSAGE;
-               msg.tag := (OP_FAIR_QUEUED, 0, 0, 0);
-               if not capSubmit (CAP_SLOT_IPCTEST, msg, NO_COMPLETION_TOKEN) then
+               msg.tag := (label => OP_FAIR_QUEUED, length => 0,
+                           protocol => 0, ipc => <>, reserved => 0);
+               if not capSubmit (IPC_Test, msg, NO_COMPLETION_TOKEN) then
                   fail ("fairness-submit");
                end if;
                if mode = 4 then ret := syscall (SYSCALL_SLEEP, 50); end if;
                for poll in 1 .. 2 loop
                   msg := NULL_MESSAGE;
-                  msg.tag := (OP_FAIR_POLL, 0, 0, 0);
-                  tag := capCall (CAP_SLOT_IPCTEST, msg, CuBit.Messages.Wait_Forever);
+                  msg.tag := (label => OP_FAIR_POLL, length => 0,
+                              protocol => 0, ipc => <>, reserved => 0);
+                  tag := capCall (IPC_Test, msg, CuBit.Messages.Wait_Forever);
                   if tag.label /= REPLY_OK then fail ("fairness-poll"); end if;
                   served := served or else msg.words (0) = 1;
                end loop;
@@ -674,8 +683,8 @@ begin
             tag : MessageTag;
          begin
             msg := NULL_MESSAGE;
-            msg.tag := (OP_FAIR_END, 0, 0, 0);
-            tag := capCall (CAP_SLOT_IPCTEST, msg, CuBit.Messages.Wait_Forever);
+            msg.tag := (label => OP_FAIR_END, length => 0, protocol => 0, ipc => <>, reserved => 0);
+            tag := capCall (IPC_Test, msg, CuBit.Messages.Wait_Forever);
             if tag.label /= REPLY_OK then fail ("fairness-end"); end if;
          end;
          if ok then
@@ -698,10 +707,11 @@ begin
               Deadline_Reached
             then fail ("activity-empty-deadline"); end if;
             msg := NULL_MESSAGE;
-            msg.tag := (OP_ASYNC_ECHO, 1, 0, 0);
+            msg.tag := (label => OP_ASYNC_ECHO, length => 1,
+                        protocol => 0, ipc => <>, reserved => 0);
             msg.words (0) := 123;
             started := syscall (SYSCALL_GETTIME);
-            if not capSubmit (CAP_SLOT_IPCTEST, msg, 16#AC71#) then
+            if not capSubmit (IPC_Test, msg, 16#AC71#) then
                fail ("activity-submit");
             end if;
             if Wait_For_Activity_Until (started + 5000) /=
@@ -724,9 +734,9 @@ begin
          end;
          msg.tag := (label  => OP_DIE,
                      length => 0,
-                     flags  => 0,
+                     protocol  => 0, ipc => <>,
                      reserved  => 0);
-         submitOk := capSubmit (CAP_SLOT_IPCTEST, msg, DEATH_TOKEN);
+         submitOk := capSubmit (IPC_Test, msg, DEATH_TOKEN);
          if not submitOk then
             fail ("death-submit");
          end if;

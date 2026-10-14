@@ -2,7 +2,8 @@ with Ada.Text_IO;
 with Intel_GPU_Buffer_Reply;
 with Interfaces; use Interfaces;
 with System.Storage_Elements;
-with CuBit.Messages;
+with CuBit.Handles;
+with CuBit.Handles.Fixture;
 with CuBit.Memory_Grants;
 with Intel_GPU_Buffer_Backing;
 with Intel_GPU_Buffer_Requests;
@@ -16,12 +17,14 @@ procedure Sharing_Tests is
    function Owner_Ready return Boolean is (Ready);
    function Session_Of (Sender, Stamp : Unsigned_64) return Unsigned_64 is
      (if Active and Sender = 42 and Stamp = 99 then 99 else 0);
+   --  The saved reply of the client's map request: grants go to it.
+   Client : constant CuBit.Handles.Reply := CuBit.Handles.Fixture.Reply_Of (7);
    procedure Recipient_Of
-     (Sender, Stamp : Unsigned_64; Slot : out CuBit.Messages.CapabilitySlot;
+     (Sender, Stamp : Unsigned_64; Grantee : out CuBit.Handles.Reply;
       Target : out Unsigned_64) is
    begin
       pragma Assert (Sender = 42 and Stamp = 99);
-      Slot := 7;
+      Grantee := Client;
       Target := Identity;
    end Recipient_Of;
    package B is new Intel_GPU_Buffer_Requests (Session_Of, Owner_Ready);
@@ -52,7 +55,7 @@ begin
                Response, Consumed);
    pragma Assert (Consumed and Response (0) = B.OK);
    ID := Response (2);
-   G.Expected_Slot := 7;
+   G.Expected_Slot := CuBit.Handles.Fixture.Word_Of (Client);
    G.Expected_Offset := Base + 4096;
    G.Expected_Bytes := 4096;
    G.Expected_Access := G.Write_Access;
@@ -103,7 +106,9 @@ begin
       begin
          Ready := Case_ID /= 3;
          Active := Case_ID /= 4;
-         Identity := (if Case_ID = 5 then 8 * 2 ** 32 + 42 else 7 * 2 ** 32 + 42);
+         -- Case 5: session no longer admitted. The grant answers the saved
+         -- reply, so there is no separate recipient identity to mismatch.
+         Identity := (if Case_ID = 5 then 0 else 7 * 2 ** 32 + 42);
          Sharing.Map (Object, Table, (if Case_ID = 1 then 43 else 42),
            (if Case_ID = 2 then 100 else 99),
            (if Case_ID = 6 then 0 elsif Case_ID = 7 then 2 ** 32 else ID),

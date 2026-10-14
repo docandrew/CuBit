@@ -1,6 +1,8 @@
 with Ada.Command_Line;
 with Ada.Text_IO;
 with CuBit.Input;
+with CuBit.Handles.Fixture;
+with Startup;
 package body CuBit.Messages is
    Mode : constant String := Ada.Command_Line.Argument (1);
    Packets : constant Positive := (if Mode = "overflow" then 40 else 6);
@@ -8,6 +10,8 @@ package body CuBit.Messages is
    Byte_Limit : Natural := 0;
    IRQ_Waits, Timer_Waits, Refusals, Delivered : Natural := 0;
    Consumer : Unsigned_64 := 1;
+   --  The driver under test, as the kernel would name it.
+   Publisher : constant Process_ID := 16#100_0042#;
    Overflow_Seen : Boolean := False;
    function Empty return Message is ((others => <>));
    procedure debugPrint (Text : String) is
@@ -26,14 +30,17 @@ package body CuBit.Messages is
       pragma Assert (Number = SYSINFO_REGISTERED_DRIVER);
       return (if Arg = DRIVER_MOUSE then Consumer else 0);
    end getInfo;
-   function portOutp8 (Port : Unsigned_16; Value : Unsigned_8) return Unsigned_64 is
+   function portOutp8 (Ports : CuBit.Handles.IO_Ports; Port : Unsigned_16; Value : Unsigned_8) return Unsigned_64 is
+      pragma Unreferenced (Ports);
    begin
       return 0;
    end portOutp8;
-   function portInp8 (Port : Unsigned_16) return Unsigned_64 is
+   function portInp8 (Ports : CuBit.Handles.IO_Ports; Port : Unsigned_16) return Unsigned_64 is
       Packet : Natural;
       Part : Natural;
    begin
+      --  The driver uses the handle its manifest names for each port.
+      pragma Assert ((Port = 16#60#) = (CuBit.Handles.Fixture.Word_Of (Ports) = Startup.Data_Word));
       if Port = 16#64# then
          return (if Byte_Index < Byte_Limit then 16#21# else 0);
       end if;
@@ -56,11 +63,12 @@ package body CuBit.Messages is
    end portInp8;
    function Registered_Driver (Driver : Unsigned_64) return Process_ID is
      (getInfo (SYSINFO_REGISTERED_DRIVER, Driver));
-   function capSend (Slot : Unsigned_64; Msg : Message; Deadline : Unsigned_64) return MessageTag is
+   function capSend (Target : CuBit.Handles.Endpoint; Msg : Message; Deadline : Unsigned_64) return MessageTag is
    begin
-      return (others => 0);
+      return (others => <>);
    end capSend;
-   function trySendEvent (Dest : Process_ID; Msg : Message) return Boolean is
+   function trySendEvent
+     (Dest : Process_ID; Msg : Message; Authority : CuBit.Handles.Notification) return Boolean is
       Report : CuBit.Input.Source_Report;
       Valid : Boolean;
       Authenticated : Message := Msg;
@@ -68,8 +76,12 @@ package body CuBit.Messages is
       Payload : Unsigned_64;
    begin
       pragma Assert (Dest = Consumer);
-      Authenticated.authorityTag := 1;
-      CuBit.Input.Decode (Authenticated, Report, Valid);
+      --  Mouse reports go through the mouse publication handle.
+      pragma Assert (CuBit.Handles.Fixture.Word_Of (Authority) = Startup.Mouse_Events_Word);
+      --  As the kernel delivers it: the publication handle's input badge,
+      --  and the publisher (this driver) named by the kernel.
+      Authenticated.authorityTag := CuBit.Input.Publisher_Tag;
+      CuBit.Input.Decode (Authenticated, Publisher, Report, Valid);
       pragma Assert (Valid);
       if Timer_Waits = 0 then
          Refusals := Refusals + 1;

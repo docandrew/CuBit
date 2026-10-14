@@ -1,5 +1,15 @@
 pragma Ada_2022;
 package body CuBit.Metrics is
+
+   procedure Bind (Item : in out Publisher; Target : CuBit.Handles.Endpoint) is
+   begin
+      Item.Slot := Target;
+   end Bind;
+
+   procedure Bind (Item : in out Observer; Target : CuBit.Handles.Endpoint) is
+   begin
+      Item.Slot := Target;
+   end Bind;
    use CuBit.Messages;
    use type Protocol.Status;
    package Batches renames CuBit.Metric_Batches;
@@ -15,7 +25,7 @@ package body CuBit.Metrics is
       Value : Message := NULL_MESSAGE;
    begin
       Value.tag := (label => Protocol.Operation'Enum_Rep (Op),
-                    length => Protocol.Message_Words, flags => 0,
+                    length => Protocol.Message_Words, protocol => 0, ipc => <>,
                     reserved => 0);
       return Value;
    end Request;
@@ -23,7 +33,7 @@ package body CuBit.Metrics is
    function Reply_Status (Value : Message) return Protocol.Status is
    begin
       if Value.tag.length = Protocol.Message_Words and
-        Value.tag.flags = 0 and Value.tag.reserved = 0
+        Value.tag.protocol = 0 and Value.tag.reserved = 0
       then
          for Candidate in Protocol.Status loop
             if Value.tag.label = Protocol.Status'Enum_Rep (Candidate) then

@@ -15,9 +15,9 @@ struct cubit_mesa_service {
  * General multi-GPU bootstrap requires an authenticated per-device inventory. */
 static struct cubit_mesa_service service;
 
-VkResult cubit_mesa_service_start(uint64_t slot, struct cubit_mesa_service **out)
+VkResult cubit_mesa_service_start(cubit_endpoint endpoint, struct cubit_mesa_service **out)
 {
-   if (!out || *out || !cubit_mesa_launch_start(&service.launch, slot))
+   if (!out || *out || !cubit_mesa_launch_start(&service.launch, endpoint))
       return VK_ERROR_INITIALIZATION_FAILED;
    *out = &service; /* Caller observes retained ownership on every later failure. */
    enum cubit_gpu_memory_contract policy;

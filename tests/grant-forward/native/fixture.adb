@@ -4,7 +4,10 @@ with Ada.Unchecked_Conversion;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Memory_Grants;
 with CuBit.Grant_References;
-with CCL_Manifest_Bindings;
+with CuBit.Handles;
+with CuBit.Handles.C_ABI;
+with CuBit.Handles.Grants;
+with CuBit.Handles.Startup;
 with Native_GPU_Presentation;
 with Native_GPU_Buffers;
 with Native_GPU_Memory;
@@ -14,8 +17,16 @@ with CuBit.Desktop_Messages;
 package body Fixture is
    package MG renames CuBit.Memory_Grants;
    package GR renames CuBit.Grant_References;
-   Owner_Cap : constant CapabilitySlot := CCL_Manifest_Bindings.Slot_ipc_test;
-   Reader_Cap : constant CapabilitySlot := CCL_Manifest_Bindings.Slot_ccl_test_host;
+   --  The roles that call the owner or the reader name these (the owner
+   --  names neither, the reader only "ipc-test"); the desktop role also
+   --  has "desktop" (startup entries, CAP-002). A missing one is null.
+   function Named (Label : String) return CuBit.Handles.Endpoint is
+     (if CuBit.Handles.Startup.Optional_Endpoint_Named (Label).Present
+      then CuBit.Handles.Startup.Optional_Endpoint_Named (Label).Value
+      else CuBit.Handles.No_Endpoint);
+   Owner_Cap : constant CuBit.Handles.Endpoint := Named ("ipc-test");
+   Reader_Cap : constant CuBit.Handles.Endpoint := Named ("ccl-test-host");
+   Desktop_Cap : constant CuBit.Handles.Endpoint := Named ("desktop");
    New_Root : constant Unsigned_32 := 16#B101#;
    Revoke_Root : constant Unsigned_32 := 16#B102#;
    Root_Status : constant Unsigned_32 := 16#B103#;
@@ -41,12 +52,12 @@ package body Fixture is
       end if;
    end Check;
 
-   function Call (Slot : CapabilitySlot; Op : Unsigned_32; Word : Unsigned_64 := 0)
+   function Call (Slot : CuBit.Handles.Endpoint; Op : Unsigned_32; Word : Unsigned_64 := 0)
      return Unsigned_64
    is
       Msg : Message := NULL_MESSAGE;
    begin
-      Msg.tag := (Op, 4, 0, 0);
+      Msg.tag := (label => Op, length => 4, protocol => 0, ipc => <>, reserved => 0);
       Msg.words (0) := Word;
       Msg.tag := capCall (Slot, Msg, Wait_Forever);
       Check (Msg.tag.label = Reply_OK, "reply");
@@ -89,7 +100,8 @@ package body Fixture is
          use type D.Status_Code;
          Created : D.Creation_Result;
          Wire_Child : aliased Unsigned_64 := 0;
-         function Presenter_Open (Render_Slot, Desktop_Slot, Surface : Unsigned_64)
+         function Presenter_Open
+           (Render, Desktop : CuBit.Handles.C_ABI.C_Endpoint; Surface : Unsigned_64)
            return Unsigned_32
            with Import, Convention => C, External_Name => "presenter_probe_open";
          function Presenter_Release return Unsigned_32
@@ -97,7 +109,7 @@ package body Fixture is
          function Send (Request : D.Wire_Message) return D.Wire_Message is
             Message : CuBit.Messages.Message := CuBit.Desktop_Messages.From_Wire (Request);
          begin
-            Message.tag := capCall (CAP_SLOT_DESKTOP, Message, Wait_Forever);
+            Message.tag := capCall (Desktop_Cap, Message, Wait_Forever);
             return CuBit.Desktop_Messages.To_Wire (Message);
          end Send;
       begin
@@ -107,17 +119,17 @@ package body Fixture is
          Check (Created.Status = D.Success, "desktop surface");
          Raw := Call (Owner_Cap, New_Root, 2);
          Check (GR.Valid_Wire (Raw), "desktop root wire"); Parent := GR.Decode (Raw);
-         Check (P.Forward (CAP_SLOT_DESKTOP, Raw, 4096, 4096, Wire_Child'Access) = 1
+         Check (P.Forward (CuBit.Handles.C_ABI.To_C (Desktop_Cap), Raw, 4096, 4096, Wire_Child'Access) = 1
                 and Wire_Child = 0, "forward requires root acquisition");
          MG.Acquire_Via_Capability (Owner_Cap, Parent, 0, 8192, MG.Read_Access, Mapped, OK);
          Check (OK, "desktop root acquisition");
-         Check (P.Attach_Linear (CAP_SLOT_DESKTOP, Unsigned_64 (Created.Surface),
+         Check (P.Attach_Linear (CuBit.Handles.C_ABI.To_C (Desktop_Cap), Unsigned_64 (Created.Surface),
                  Raw, 32, 32, 128) /= 0, "desktop rejects foreign-owner root");
-         Check (P.Forward (CAP_SLOT_DESKTOP, Raw, 4096, 4096, Wire_Child'Access) = 0,
+         Check (P.Forward (CuBit.Handles.C_ABI.To_C (Desktop_Cap), Raw, 4096, 4096, Wire_Child'Access) = 0,
                 "desktop child derivation");
-         Check (P.Attach_Linear (CAP_SLOT_DESKTOP, Unsigned_64 (Created.Surface),
+         Check (P.Attach_Linear (CuBit.Handles.C_ABI.To_C (Desktop_Cap), Unsigned_64 (Created.Surface),
                  Wire_Child, 32, 32, 127) = 7, "linear pitch validated");
-         Check (P.Attach_Linear (CAP_SLOT_DESKTOP, Unsigned_64 (Created.Surface),
+         Check (P.Attach_Linear (CuBit.Handles.C_ABI.To_C (Desktop_Cap), Unsigned_64 (Created.Surface),
                  Wire_Child, 32, 32, 128) = 0, "desktop acquired child");
          MG.Return_Acquisition (Parent, OK); Check (OK, "desktop root return");
          Check (Call (Owner_Cap, Revoke_Root) = Parent.generation, "desktop retains root");
@@ -131,7 +143,7 @@ package body Fixture is
          Check (Call (Owner_Cap, Root_Status) = 0, "desktop root hold released");
          Created := D.Decode_Creation_Result (Send (D.Encode_Create ((32, 32, D.Plain_Surface))));
          Check (Created.Status = D.Success, "C presenter surface");
-         Check (Presenter_Open (Owner_Cap, CAP_SLOT_DESKTOP, Unsigned_64 (Created.Surface)) = 0,
+         Check (Presenter_Open (CuBit.Handles.C_ABI.To_C (Owner_Cap), CuBit.Handles.C_ABI.To_C (Desktop_Cap), Unsigned_64 (Created.Surface)) = 0,
                 "C presenter attached");
          Check (Presenter_Release = 4, "C presenter retained by Desktop");
          Check (D.Decode_Status (Send (D.Encode_Destroy ((Surface => Created.Surface))),
@@ -153,7 +165,8 @@ package body Fixture is
                Buffer (Index) := 16#A3#;
             end loop;
          end if;
-         Check (registerDriver (if Role = 0 then DRIVER_IPCTEST else DRIVER_CCL_TEST)
+         Check (registerDriver ((if Role = 0 then DRIVER_IPCTEST else DRIVER_CCL_TEST),
+                                CuBit.Handles.Startup.Notification_Named ("registration"))
                   /= Unsigned_64'Last, "register service");
          loop
             receive (From, Msg);
@@ -164,7 +177,7 @@ package body Fixture is
                      -- Synthetic RAM-only owner implementing the production
                      -- map wire shape. No Intel admission or GPU is exercised.
                      Map_Reply := [2, 1, 0, 0];
-                     if Msg.tag.length = 4 and Msg.tag.flags = 0 and Msg.tag.reserved = 0 then
+                     if Msg.tag.length = 4 and Msg.tag.protocol = 0 and Msg.tag.reserved = 0 then
                         if Msg.words = [1 + 3 * 2 ** 32, 1, 4096, 4096] then
                            Raw := syscall (SYSCALL_CREATE_SHARED_MEMORY_GRANT_FOR_PROCESS_ID,
                              To_Word (From), Number (Buffer'Address) + 4096, 1, 2);
@@ -237,13 +250,15 @@ package body Fixture is
                Wait_Intermediary : constant Boolean := Msg.tag.label = Hold_Intermediary_Exit;
             begin
                if Msg.tag.label = 16#0A23# then
-                  Msg.tag := (16#0A23#, 4, 0, 0);
+                  Msg.tag := (label => 16#0A23#, length => 4,
+                              protocol => 0, ipc => <>, reserved => 0);
                   Msg.words := Map_Reply;
                else
-                  Msg.tag := (Reply_OK, 1, 0, 0);
+                  Msg.tag := (label => Reply_OK, length => 1,
+                              protocol => 0, ipc => <>, reserved => 0);
                   Msg.words (0) := Reply_Word;
                end if;
-               Ignore := replyCap (CapabilitySlot'Last, Msg);
+               Ignore := reply (From, Msg);
                if Wait_Intermediary then
                   -- Reply first so the intermediary can exit. Keep the original
                   -- child acquisition throughout its teardown, not a copy.
@@ -336,14 +351,14 @@ package body Fixture is
          Rejected := Parent; Rejected.generation := Parent.generation + 1;
          MG.Derive_Via_Capability (Reader_Cap, Rejected, 0, 1, False, Child, OK);
          Check (not OK, "stale parent denied");
-         Check (syscall (SYSCALL_DERIVE_SHARED_MEMORY_GRANT_VIA_CAPABILITY,
-           Reader_Cap, Parent.slot, Parent.generation, 0, 1, 2) = Unsigned_64'Last,
+         Check (CuBit.Handles.Grants.Derive
+           (Reader_Cap, Parent.slot, Parent.generation, 0, 1, 2) = Unsigned_64'Last,
            "unknown derivation flags denied");
-         Check (syscall (SYSCALL_DERIVE_SHARED_MEMORY_GRANT_VIA_CAPABILITY,
-           CapabilitySlot'Last, Parent.slot, Parent.generation, 0, 1, 0) = Unsigned_64'Last,
+         Check (CuBit.Handles.Grants.Derive
+           (CuBit.Handles.No_Endpoint, Parent.slot, Parent.generation, 0, 1, 0) = Unsigned_64'Last,
            "missing recipient authority denied");
-         Check (syscall (SYSCALL_DERIVE_SHARED_MEMORY_GRANT_VIA_CAPABILITY,
-           Reader_Cap, Parent.slot, Parent.generation, Unsigned_64'Last, 1, 0) = Unsigned_64'Last,
+         Check (CuBit.Handles.Grants.Derive
+           (Reader_Cap, Parent.slot, Parent.generation, Unsigned_64'Last, 1, 0) = Unsigned_64'Last,
            "wide offset rejected before narrowing");
          MG.Derive_Via_Capability (Reader_Cap, Parent, 1, 1, False, Child, OK);
          Check (OK, "derive readonly subrange");

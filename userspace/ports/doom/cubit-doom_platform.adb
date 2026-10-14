@@ -3,9 +3,15 @@ with CuBit.Desktop_Messages;
 with CuBit.Desktop_Protocol;
 with CuBit.Doom_Keys;
 with CuBit.Memory_Grants;
+with CuBit.Handles;
+with CuBit.Libc_Startup;
 with CuBit.Messages; use CuBit.Messages;
 
 package body CuBit.Doom_Platform is
+
+   --  Desktop's endpoint: the startup "desktop" binding (manifest.ccl).
+   function Desktop return CuBit.Handles.Endpoint is
+     (CuBit.Libc_Startup.Endpoint_Named ("desktop"));
 
    package D renames CuBit.Desktop_Protocol;
    package K renames CuBit.Doom_Keys;
@@ -113,7 +119,7 @@ package body CuBit.Doom_Platform is
       Msg : Message := CuBit.Desktop_Messages.From_Wire (Request);
       Returned : MessageTag;
    begin
-      Returned := capCall (CAP_SLOT_DESKTOP, Msg, Wait_Forever);
+      Returned := capCall (Desktop, Msg, Wait_Forever);
       if Returned /= Msg.tag then
          return (others => <>);
       end if;
@@ -166,7 +172,7 @@ package body CuBit.Doom_Platform is
                        D.Fixed_Size => True, others => False]))));
 
       CuBit.Memory_Grants.Create_Via_Capability
-        (CAP_SLOT_DESKTOP, Frame'Address, Frame_Pages, False, Grant, Lent);
+        (Desktop, Frame'Address, Frame_Pages, False, Grant, Lent);
       if not Lent then
          return False;
       end if;
@@ -262,7 +268,7 @@ package body CuBit.Doom_Platform is
             begin
                Frame := Screen;
             end;
-            Ignored := capSubmit (CAP_SLOT_DESKTOP,
+            Ignored := capSubmit (Desktop,
               CuBit.Desktop_Messages.From_Wire
                 (D.Encode_Present
                    ((Surface => Surface, Area => (X | Y => 0, Width | Height => 0)))),

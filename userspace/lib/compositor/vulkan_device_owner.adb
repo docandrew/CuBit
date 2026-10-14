@@ -4,15 +4,15 @@ package body Vulkan_Device_Owner with SPARK_Mode is
    use type Interfaces.Unsigned_64;
    procedure Start
      (S : in out State; Context : in out C.State;
-      Submission : in out V.State; Slot : Interfaces.Unsigned_64)
+      Submission : in out V.State; Render : CuBit.Handles.Endpoint)
    is
       Description : System.Address;
       Accepted : Boolean;
    begin
       if S.Mode /= Fresh then return; end if;
       S.Mode := Software;
-      if Slot = 0 then return; end if;
-      F.Start (Slot, S.Held, Description);
+      if not CuBit.Handles.Valid (Render) then return; end if;
+      F.Start (Render, S.Held, Description);
       if not S.Held then
          if Description /= System.Null_Address then S.Mode := Quarantined; end if;
          return;

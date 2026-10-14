@@ -13,6 +13,8 @@ with System.Address_To_Access_Conversions;
 with System.Storage_Elements; use System.Storage_Elements;
 
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Handles.Devices;
+with Startup;
 with USB_Configurations;
 with XHCI_Completions;
 with XHCI_Capabilities;
@@ -1643,9 +1645,10 @@ package body XHCI is
          return;
       end if;
 
-      ignore := syscall
-        (SYSCALL_MAP_DEVICE, barPhys, BAR_VIRT_BASE, barPages);
-      if ignore = Unsigned_64'Last then
+      --  Through its register handle (its manifest's "registers" binding).
+      if not CuBit.Handles.Devices.Map_Device
+        (Startup.Registers, barPhys, BAR_VIRT_BASE, barPages, Read_Only => False)
+      then
          result := INIT_MAP_FAILED;
          return;
       end if;

@@ -1,3 +1,4 @@
+with CuBit.Handles;
 with Interfaces; use Interfaces;
 with System;
 with CuBit.Messages;
@@ -9,7 +10,7 @@ package CuBit.Memory_Grants is
    Allow_Create, Allow_Revoke, Allow_Retirement : Boolean := True;
    Creates, Revokes, Checks : Natural := 0;
    procedure Create_Via_Capability
-     (slot : CuBit.Messages.CapabilitySlot; localAddr : System.Address;
+     (slot : CuBit.Handles.Endpoint; localAddr : System.Address;
       numPages : Natural; readWrite : Boolean; reference : out Grant_Reference; success : out Boolean);
    procedure Revoke (reference : Grant_Reference; success : out Boolean);
    function Retirement_Confirmed (reference : Grant_Reference) return Boolean;

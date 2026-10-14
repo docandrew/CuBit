@@ -44,6 +44,7 @@ is
    --        registers the milestone's owning driver role (the kernel's
    --        table in boot_timeline.adb). The first mark wins; returns 0,
    --        or Unsigned_64'Last if denied or not a milestone.
+   --  arg4: the handle of the capability the operation relies on (CAP-002).
    type Operation is (Read, Mark);
    for Operation use (Read => 0, Mark => 1);
 

@@ -1,3 +1,5 @@
+with CuBit.Startup_State;
+with Startup;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CCL.Types;
@@ -90,6 +92,7 @@ procedure Main is
       Client.Retire (Object, Good); Check (Good, "grant retirement");
    end Close;
 begin
+   Check (CuBit.Startup_State.Ready (Startup.Verify), "startup capabilities");
    debugPrint ("CONFIG-OBJECTS: starting" & ASCII.LF);
    VM_Fixture.Run ("(+ 20 21)", Types, First_Value, Good); Check (Good, "compile and execute 41");
    VM_Fixture.Run ("(+ 20 22)", Types, Second_Value, Good); Check (Good, "compile and execute 42");
@@ -100,9 +103,9 @@ begin
    Check (Built = CCL.Objects.Added, "first value");
    CCL.Objects.Append (Second, CCL.Objects.Integer_Cell (42), Built);
    Check (Built = CCL.Objects.Added, "second value");
-   Client.Initialize (Writer, CAP_SLOT_CONFIG, Good); Check (Good, "writer grant");
-   Client.Initialize (Reader, CAP_SLOT_CONFIG, Good); Check (Good, "reader grant");
-   Client.Initialize (Denied, CAP_SLOT_CONFIG, Good); Check (Good, "denied grant");
+   Client.Initialize (Writer, Startup.Config, Good); Check (Good, "writer grant");
+   Client.Initialize (Reader, Startup.Config, Good); Check (Good, "reader grant");
+   Client.Initialize (Denied, Startup.Config, Good); Check (Good, "denied grant");
    Client.Create (Denied, "org.other.private", Contract, Wire.Read_Write, 0, Next_Token, Sent);
    Finish (Denied, Wire.Denied, "out of scope create");
    Client.Open (Denied, "org.other.private", Contract, Wire.Read_Only, 0, Next_Token, Sent);

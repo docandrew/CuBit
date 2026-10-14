@@ -1,3 +1,4 @@
+with CuBit.Handles.Fixture;
 with Ada.Text_IO;
 with Interfaces; use Interfaces;
 with CCL.Objects.Values;
@@ -62,7 +63,7 @@ procedure VM_Tests is
       CCL.Objects.Values.From_VM (Contract, Types, Value, Image, Good); Check (Good);
       Adapter.Take_Get_Result (Object, Types, Item); Check (Item.State = Adapter.No_Result);
       Adapter.Set_Value (Object, Types, Value, 0, 1, Sent); Check (Sent = Client.Unavailable);
-      Client.Initialize (Object, 5, Good); Check (Good);
+      Client.Initialize (Object, CuBit.Handles.Fixture.Endpoint_Of (5), Good); Check (Good);
       Client.Create (Object, "org.cubit.test", Contract, W.Read_Write, 0, 1, Sent);
       Check (Sent = Client.Submitted);
       Adapter.Set_Value (Object, Types, Value, 0, 2, Sent); Check (Sent = Client.Busy);
@@ -165,7 +166,7 @@ begin
       Image := CCL.Objects.Empty (Contract);
       CCL.Objects.Append_Text (Image, "supported native object, unsupported VM value", Built);
       Check (Built = CCL.Objects.Added);
-      Client.Initialize (Object, 5, Good); Check (Good);
+      Client.Initialize (Object, CuBit.Handles.Fixture.Endpoint_Of (5), Good); Check (Good);
       Client.Open (Object, "org.cubit.test", Contract, W.Read_Only, 0, 1, Sent); Check (Sent = Client.Submitted);
       Client.Complete (Object, Answer (1, W.Success, 55), Done); Check (Done = Client.Completed);
       Client.Take_Result (Object, Native, Taken); Check (Taken and Native.Valid);
@@ -195,7 +196,7 @@ begin
       Count : Natural;
    begin
       CCL.Objects.Bind (Types, CCL.Types.Integer_Type, [1, 2, 3, 4], Contract, Good); Check (Good);
-      Client.Initialize (Object, 5, Good); Check (Good);
+      Client.Initialize (Object, CuBit.Handles.Fixture.Endpoint_Of (5), Good); Check (Good);
       Client.Open (Object, "org.cubit.test", Contract, W.Read_Write, 0, 1, Sent); Check (Sent = Client.Submitted);
       Client.Complete (Object, Answer (1, W.Success, 55), Done); Check (Done = Client.Completed);
       Client.Take_Result (Object, Native, Taken); Check (Taken and Native.Valid);

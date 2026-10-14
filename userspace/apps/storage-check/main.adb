@@ -19,8 +19,16 @@ with CuBit.Filesystem_Events;
 with CuBit.File_Access;
 with CuBit.Volume_Descriptions;
 with CuBit.Channels;
+with CuBit.Handles;
+with CuBit.Handles.Startup;
+with CuBit.Startup_Tables;
+with Startup;
 
 procedure main is
+   FS_Service : constant CuBit.Handles.Endpoint := Startup.Filesystem;
+   --  This process's own endpoint ("self", from SPAWN).
+   Self_Endpoint : constant CuBit.Handles.Endpoint :=
+     CuBit.Handles.Startup.Endpoint_Named (CuBit.Startup_Tables.Self_Text);
    use ASCII;
 
    PAGE_SIZE : constant Unsigned_64 := 4096;
@@ -101,8 +109,9 @@ procedure main is
          Base := syscall (SYSCALL_ALLOCATE_OWNED_MEMORY, 4096);
          if Base = 0 then return False; end if;
          Fill (To_Address (Integer_Address (Base)), 16#A7#);
-         Create_For_Process (PID, To_Address (Integer_Address (Base)), 1,
-                             False, Reference, OK);
+         --  A grant to itself, named by its own endpoint.
+         Create_Via_Capability (Self_Endpoint, To_Address (Integer_Address (Base)), 1,
+                                False, Reference, OK);
          if not OK then return False; end if;
          Acquire (Reference, PID, 0, 4096, Read_Access, Alias_Address, OK);
          if not OK or else Alias_Address = System.Null_Address then return False; end if;
@@ -140,7 +149,7 @@ procedure main is
          for Flags of Options loop
             Buffer (1 .. Name'Length) := Name;
             M := Open_Request (grantRef, Name'Length, Flags);
-            M.tag := capCall (CAP_SLOT_FS, M, CuBit.Messages.Wait_Forever);
+            M.tag := capCall (FS_Service, M, CuBit.Messages.Wait_Forever);
             if M.tag.label /= Expected or else M.words (0) /= 0 then
                debugPrint ("LINK-POLICY-CHECK: unexpected open result " & Name & LF);
                return False;
@@ -167,7 +176,7 @@ procedure main is
       begin
          Buffer (1 .. Name'Length) := Name;
          M := Open_Request (grantRef, Name'Length, Options);
-         M.tag := capCall (CAP_SLOT_FS, M, CuBit.Messages.Wait_Forever);
+         M.tag := capCall (FS_Service, M, CuBit.Messages.Wait_Forever);
          Handle := File_Handle (M.words (0));
          return M.tag.label = REPLY_OK;
       end Open_File;
@@ -178,23 +187,23 @@ procedure main is
       --  Cross a device-sector boundary and grow through a sparse prefix.
       Buffer (1 .. PAYLOAD'Length) := PAYLOAD;
       M := Write_At_Request (Handle, grantRef, PAYLOAD'Length, 509);
-      M.tag := capCall (CAP_SLOT_FS, M, CuBit.Messages.Wait_Forever);
+      M.tag := capCall (FS_Service, M, CuBit.Messages.Wait_Forever);
       if M.tag.label /= REPLY_OK or else M.words (0) /= PAYLOAD'Length then
          return False;
       end if;
       M := Flush_Request (Handle);
-      M.tag := capCall (CAP_SLOT_FS, M, CuBit.Messages.Wait_Forever);
+      M.tag := capCall (FS_Service, M, CuBit.Messages.Wait_Forever);
       if M.tag.label /= REPLY_DURABILITY_UNSUPPORTED then
          return False;
       end if;
       M := Close_Request (Handle);
-      M.tag := capCall (CAP_SLOT_FS, M, CuBit.Messages.Wait_Forever);
+      M.tag := capCall (FS_Service, M, CuBit.Messages.Wait_Forever);
       if M.tag.label /= REPLY_OK or else not Open_File (OPEN_READ_ONLY) then
          return False;
       end if;
       Buffer := [others => '?'];
       M := Read_At_Request (Handle, grantRef, 509 + PAYLOAD'Length, 0);
-      M.tag := capCall (CAP_SLOT_FS, M, CuBit.Messages.Wait_Forever);
+      M.tag := capCall (FS_Service, M, CuBit.Messages.Wait_Forever);
       if M.tag.label /= REPLY_OK or else
         M.words (0) /= 509 + PAYLOAD'Length or else
         Buffer (1 .. 509) /= [1 .. 509 => Character'Val (0)] or else
@@ -203,19 +212,19 @@ procedure main is
          return False;
       end if;
       M := Close_Request (Handle);
-      M.tag := capCall (CAP_SLOT_FS, M, CuBit.Messages.Wait_Forever);
+      M.tag := capCall (FS_Service, M, CuBit.Messages.Wait_Forever);
       if M.tag.label /= REPLY_OK or else
         not Open_File (OPEN_READ_WRITE or OPEN_TRUNCATE)
       then
          return False;
       end if;
       M := Read_Request (Handle, grantRef, 1);
-      M.tag := capCall (CAP_SLOT_FS, M, CuBit.Messages.Wait_Forever);
+      M.tag := capCall (FS_Service, M, CuBit.Messages.Wait_Forever);
       if M.tag.label /= REPLY_OK or else M.words (0) /= 0 then
          return False;
       end if;
       M := Close_Request (Handle);
-      M.tag := capCall (CAP_SLOT_FS, M, CuBit.Messages.Wait_Forever);
+      M.tag := capCall (FS_Service, M, CuBit.Messages.Wait_Forever);
       return M.tag.label = REPLY_OK;
    end exerciseRAMVolume;
 
@@ -234,7 +243,7 @@ procedure main is
       begin
          Buffer (1 .. Name'Length) := Name;
          M := Open_Request (grantRef, Name'Length, Options);
-         M.tag := capCall (CAP_SLOT_FS, M, CuBit.Messages.Wait_Forever);
+         M.tag := capCall (FS_Service, M, CuBit.Messages.Wait_Forever);
          Handle := File_Handle (M.words (0));
          return M.tag.label = REPLY_OK;
       end Open_File;
@@ -243,7 +252,7 @@ procedure main is
       begin
          Buffer (1 .. Value'Length) := Value;
          M := Write_At_Request (Handle, grantRef, Value'Length, 0);
-         M.tag := capCall (CAP_SLOT_FS, M, CuBit.Messages.Wait_Forever);
+         M.tag := capCall (FS_Service, M, CuBit.Messages.Wait_Forever);
          return M.tag.label = REPLY_OK and then M.words (0) = Value'Length;
       end Write_File;
 
@@ -251,7 +260,7 @@ procedure main is
       begin
          Buffer := [others => '?'];
          M := Read_At_Request (Handle, grantRef, 16, 0);
-         M.tag := capCall (CAP_SLOT_FS, M, CuBit.Messages.Wait_Forever);
+         M.tag := capCall (FS_Service, M, CuBit.Messages.Wait_Forever);
          return M.tag.label = REPLY_OK and then M.words (0) >= Value'Length
            and then Buffer (1 .. Value'Length) = Value;
       end Read_File;
@@ -268,7 +277,7 @@ procedure main is
       end if;
       --  Truncating a RAM alias must update RAM's other handle, not disk state.
       M := Read_At_Request (RAM, grantRef, 1, 0);
-      M.tag := capCall (CAP_SLOT_FS, M, CuBit.Messages.Wait_Forever);
+      M.tag := capCall (FS_Service, M, CuBit.Messages.Wait_Forever);
       if M.tag.label /= REPLY_OK or else M.words (0) /= 0 or else
         not Read_File (Disk, "DISK")
       then
@@ -276,7 +285,7 @@ procedure main is
       end if;
       for Handle of File_Handle_Array'[RAM, Disk, Alias] loop
          M := Close_Request (Handle);
-         M.tag := capCall (CAP_SLOT_FS, M, CuBit.Messages.Wait_Forever);
+         M.tag := capCall (FS_Service, M, CuBit.Messages.Wait_Forever);
          if M.tag.label /= REPLY_OK then
             return False;
          end if;
@@ -295,8 +304,8 @@ procedure main is
       mapped      : System.Address;
       ok          : Boolean;
    begin
-      Create_For_Process
-        (grantee   => pid,
+      Create_Via_Capability
+        (slot      => Self_Endpoint,
          localAddr => To_Address (Integer_Address (aligned)),
          numPages  => 1,
          readWrite => False,
@@ -383,8 +392,8 @@ procedure main is
          return False;
       end if;
 
-      Create_For_Process
-        (grantee   => pid,
+      Create_Via_Capability
+        (slot      => Self_Endpoint,
          localAddr => To_Address (Integer_Address (aligned)),
          numPages  => 1,
          readWrite => False,
@@ -420,7 +429,7 @@ procedure main is
       end if;
 
       Acquire_Via_Capability
-        (CAP_SLOT_SELF, secondRef, 0, 16, Read_Access, mapped, ok);
+        (Self_Endpoint, secondRef, 0, 16, Read_Access, mapped, ok);
       if not ok then
          return False;
       end if;
@@ -445,13 +454,13 @@ procedure main is
       function Check (Request : Message; Count : Unsigned_64) return Boolean is
       begin
          M := Request;
-         M.tag := capCall (CAP_SLOT_FS, M, CuBit.Messages.Wait_Forever);
+         M.tag := capCall (FS_Service, M, CuBit.Messages.Wait_Forever);
          return M.tag.label = REPLY_OK and then M.words (0) = Count;
       end Check;
    begin
       Buffer (Name'Range) := Name;
       M := Open_Request (grantRef, Name'Length, OPEN_READ_WRITE);
-      M.tag := capCall (CAP_SLOT_FS, M, CuBit.Messages.Wait_Forever);
+      M.tag := capCall (FS_Service, M, CuBit.Messages.Wait_Forever);
       if M.tag.label /= REPLY_OK then
          return False;
       end if;
@@ -486,7 +495,7 @@ procedure main is
                       Count : Unsigned_64 := Unsigned_64'Last) return Boolean is
       begin
          Response := Request;
-         Response.tag := capCall (CAP_SLOT_FS, Response, CuBit.Messages.Wait_Forever);
+         Response.tag := capCall (FS_Service, Response, CuBit.Messages.Wait_Forever);
          if Response.tag.label /= Label or else
            (Count /= Unsigned_64'Last and then Response.words (0) /= Count)
          then
@@ -559,7 +568,7 @@ procedure main is
          Label : Unsigned_32 := REPLY_OK) return Boolean is
       begin
          Response := Request;
-         Response.tag := capCall (CAP_SLOT_FS, Response, CuBit.Messages.Wait_Forever);
+         Response.tag := capCall (FS_Service, Response, CuBit.Messages.Wait_Forever);
          if Response.tag.label /= Label or else
            (Count /= Unsigned_64'Last and then Response.words (0) /= Count)
          then
@@ -746,7 +755,7 @@ procedure main is
       is
       begin
          Response := Request;
-         Response.tag := capCall (CAP_SLOT_FS, Response, CuBit.Messages.Wait_Forever);
+         Response.tag := capCall (FS_Service, Response, CuBit.Messages.Wait_Forever);
          if Response.tag.label /= Label or else
            (Count /= Unsigned_64'Last and then Response.words (0) /= Count)
          then
@@ -840,9 +849,9 @@ procedure main is
       Bad.tag.length := 3;
       if not Check (Bad, REPLY_ERR, 0) then return False; end if;
       Bad.tag.length := 4;
-      Bad.tag.flags := 1;
+      Bad.tag.protocol := 1;
       if not Check (Bad, REPLY_ERR, 0) then return False; end if;
-      Bad.tag.flags := 0;
+      Bad.tag.protocol := 0;
       Bad.tag.reserved := 1;
       if not Check (Bad, REPLY_ERR, 0) or else not Cursor_Unchanged
       then return False; end if;
@@ -853,7 +862,7 @@ procedure main is
          Correct : Boolean;
       begin
          CuBit.Memory_Grants.Create_Via_Capability
-           (CAP_SLOT_FS, To_Address (Integer_Address (aligned)), 1, False,
+           (FS_Service, To_Address (Integer_Address (aligned)), 1, False,
             Read_Only_Loan, Granted);
          if not Granted then return False; end if;
          Buffer (PAYLOAD'Range) := PAYLOAD;
@@ -873,7 +882,7 @@ procedure main is
       begin
          Buffer := [others => '?'];
          if not capSubmit
-           (CAP_SLOT_FS,
+           (FS_Service,
             Read_At_Request (Handle, grantRef, Second'Length, 64), Token)
          then return False; end if;
          --  Do not touch the accepted request's buffer until completion.
@@ -960,7 +969,7 @@ procedure main is
          end;
 
          msg := Open_Request (grantRef, directoryPath'Length);
-         msg.tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+         msg.tag := capCall (FS_Service, msg, CuBit.Messages.Wait_Forever);
          if msg.tag.label /= REPLY_WRONG_OBJECT_TYPE then
             debugPrint
               ("STORAGE-CHECK: directory accepted as file handle" & LF);
@@ -968,7 +977,7 @@ procedure main is
          end if;
 
          msg := Open_Directory_Request (grantRef, directoryPath'Length);
-         msg.tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+         msg.tag := capCall (FS_Service, msg, CuBit.Messages.Wait_Forever);
          if msg.tag.label /= REPLY_OK then
             debugPrint ("STORAGE-CHECK: directory open failed" & LF);
             return False;
@@ -977,7 +986,7 @@ procedure main is
 
          loop
             msg := Read_Directory_Page_Request (directory, grantRef);
-            msg.tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+            msg.tag := capCall (FS_Service, msg, CuBit.Messages.Wait_Forever);
             if msg.tag.label /= REPLY_OK then
                debugPrint ("STORAGE-CHECK: directory page failed" & LF);
                return False;
@@ -1022,7 +1031,7 @@ procedure main is
          end loop;
 
          msg := Close_Directory_Request (directory);
-         msg.tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+         msg.tag := capCall (FS_Service, msg, CuBit.Messages.Wait_Forever);
          return msg.tag.label = REPLY_OK and foundConfig and foundCreated;
       end directoryContainsExpectedFiles;
 
@@ -1054,30 +1063,30 @@ procedure main is
          function Reject_Name (name : String) return Boolean is
          begin
             msg := Child_Request (root, name);
-            msg.tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+            msg.tag := capCall (FS_Service, msg, CuBit.Messages.Wait_Forever);
             return msg.tag.label /= REPLY_OK;
          end Reject_Name;
       begin
          Put_Name ("@nvme:0/");
          msg := Open_Directory_Request (grantRef, 8);
-         msg.tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+         msg.tag := capCall (FS_Service, msg, CuBit.Messages.Wait_Forever);
          if msg.tag.label /= REPLY_OK then
             return False;
          end if;
          root := Directory_Handle (msg.words (0));
          msg := Read_Directory_Page_Request (root, grantRef);
-         msg.tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+         msg.tag := capCall (FS_Service, msg, CuBit.Messages.Wait_Forever);
          if msg.tag.label /= REPLY_OK then
             return False;
          end if;
          firstResume := resumeToken;
          msg := Rewind_Directory_Request (root);
-         msg.tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+         msg.tag := capCall (FS_Service, msg, CuBit.Messages.Wait_Forever);
          if msg.tag.label /= REPLY_OK then
             return False;
          end if;
          msg := Read_Directory_Page_Request (root, grantRef);
-         msg.tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+         msg.tag := capCall (FS_Service, msg, CuBit.Messages.Wait_Forever);
          if msg.tag.label /= REPLY_OK or else resumeToken /= firstResume then
             return False;
          end if;
@@ -1095,24 +1104,24 @@ procedure main is
          end if;
          msg := Child_Request (root, "lost+found");
          msg.words (1) := 0;
-         msg.tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+         msg.tag := capCall (FS_Service, msg, CuBit.Messages.Wait_Forever);
          if msg.tag.label /= REPLY_ERR then
             return False;
          end if;
          msg := Child_Request (root, "lost+found");
          msg.words (1) := 256;
-         msg.tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+         msg.tag := capCall (FS_Service, msg, CuBit.Messages.Wait_Forever);
          if msg.tag.label /= REPLY_ERR then
             return False;
          end if;
          msg := Child_Request (root, "lost+found");
          msg.words (3) := staleGeneration;
-         msg.tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+         msg.tag := capCall (FS_Service, msg, CuBit.Messages.Wait_Forever);
          if msg.tag.label /= REPLY_ACCESS_DENIED then
             return False;
          end if;
          msg := Read_Request (File_Handle (root), grantRef, 1);
-         msg.tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+         msg.tag := capCall (FS_Service, msg, CuBit.Messages.Wait_Forever);
          if msg.tag.label = REPLY_OK then
             return False;
          end if;
@@ -1120,23 +1129,23 @@ procedure main is
          --  Repeated visits must release slots and reject stale generations.
          for visit in 1 .. 64 loop
             msg := Child_Request (root, "lost+found");
-            msg.tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+            msg.tag := capCall (FS_Service, msg, CuBit.Messages.Wait_Forever);
             if msg.tag.label /= REPLY_OK then
                return False;
             end if;
             child := Directory_Handle (msg.words (0));
             msg := Read_Directory_Page_Request (child, grantRef);
-            msg.tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+            msg.tag := capCall (FS_Service, msg, CuBit.Messages.Wait_Forever);
             if msg.tag.label /= REPLY_OK then
                return False;
             end if;
             msg := Close_Directory_Request (child);
-            msg.tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+            msg.tag := capCall (FS_Service, msg, CuBit.Messages.Wait_Forever);
             if msg.tag.label /= REPLY_OK then
                return False;
             end if;
             msg := Child_Request (root, "lost+found");
-            msg.tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+            msg.tag := capCall (FS_Service, msg, CuBit.Messages.Wait_Forever);
             if msg.tag.label /= REPLY_OK then
                return False;
             end if;
@@ -1145,23 +1154,23 @@ procedure main is
                return False;
             end if;
             msg := Rewind_Directory_Request (child);
-            msg.tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+            msg.tag := capCall (FS_Service, msg, CuBit.Messages.Wait_Forever);
             if msg.tag.label /= REPLY_WRONG_OBJECT_TYPE then
                return False;
             end if;
             msg := Child_Request (child, "lost+found");
-            msg.tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+            msg.tag := capCall (FS_Service, msg, CuBit.Messages.Wait_Forever);
             if msg.tag.label /= REPLY_WRONG_OBJECT_TYPE then
                return False;
             end if;
             msg := Close_Directory_Request (reopened);
-            msg.tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+            msg.tag := capCall (FS_Service, msg, CuBit.Messages.Wait_Forever);
             if msg.tag.label /= REPLY_OK then
                return False;
             end if;
          end loop;
          msg := Close_Directory_Request (root);
-         msg.tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+         msg.tag := capCall (FS_Service, msg, CuBit.Messages.Wait_Forever);
          if msg.tag.label /= REPLY_OK then
             return False;
          end if;
@@ -1182,7 +1191,7 @@ procedure main is
          end;
 
          msg := Open_Directory_Request (grantRef, corruptPath'Length);
-         msg.tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+         msg.tag := capCall (FS_Service, msg, CuBit.Messages.Wait_Forever);
          if msg.tag.label /= REPLY_OK then
             --  The adversarial fixture is installed only by the focused
             --  headless test. Its absence is not a storage failure.
@@ -1197,16 +1206,16 @@ procedure main is
             nameBuffer := "child";
          end;
          msg := Open_Child_Directory_Request (directory, grantRef, 5);
-         msg.tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+         msg.tag := capCall (FS_Service, msg, CuBit.Messages.Wait_Forever);
          if msg.tag.label /= REPLY_MALFORMED_FILESYSTEM then
             debugPrint ("STORAGE-CHECK: malformed child lookup misreported" & LF);
             return False;
          end if;
 
          msg := Read_Directory_Page_Request (directory, grantRef);
-         msg.tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+         msg.tag := capCall (FS_Service, msg, CuBit.Messages.Wait_Forever);
          closeMessage := Close_Directory_Request (directory);
-         closeMessage.tag := capCall (CAP_SLOT_FS, closeMessage, CuBit.Messages.Wait_Forever);
+         closeMessage.tag := capCall (FS_Service, closeMessage, CuBit.Messages.Wait_Forever);
          if msg.tag.label /= REPLY_MALFORMED_FILESYSTEM or else
            closeMessage.tag.label /= REPLY_OK
          then
@@ -1224,7 +1233,7 @@ procedure main is
             begin
                view := oldPath & newPath;
                msg := Rename_Request (grantRef, oldPath'Length, newPath'Length);
-               msg.tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+               msg.tag := capCall (FS_Service, msg, CuBit.Messages.Wait_Forever);
                if msg.tag.label /= expected then
                   debugPrint ("STORAGE-CHECK: metadata rename " & parent &
                     " expected" & expected'Image & " got" & msg.tag.label'Image & LF);
@@ -1272,7 +1281,7 @@ procedure main is
          begin
             Put (before & after);
             msg := Rename_Request (grantRef, before'Length, after'Length);
-            msg.tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+            msg.tag := capCall (FS_Service, msg, CuBit.Messages.Wait_Forever);
             if msg.tag.label /= expected then
                debugPrint ("RENAME-CHECK: unexpected reply for " & before &
                  " -> " & after & ":" & Unsigned_32'Image (msg.tag.label) & LF);
@@ -1289,24 +1298,24 @@ procedure main is
          begin
             Put (name);
             msg := Open_Request (grantRef, name'Length);
-            msg.tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+            msg.tag := capCall (FS_Service, msg, CuBit.Messages.Wait_Forever);
             if msg.tag.label /= REPLY_OK then
                return False;
             end if;
             file := File_Handle (msg.words (0));
             msg := Read_Request (file, grantRef, PAYLOAD'Length);
-            msg.tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+            msg.tag := capCall (FS_Service, msg, CuBit.Messages.Wait_Forever);
             good := msg.tag.label = REPLY_OK and then
               msg.words (0) = PAYLOAD'Length and then bytes = PAYLOAD;
             msg := Close_Request (file);
-            msg.tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+            msg.tag := capCall (FS_Service, msg, CuBit.Messages.Wait_Forever);
             return good and then msg.tag.label = REPLY_OK;
          end Has_Payload;
       begin
          Put (CREATE_PATH);
          msg := Open_Request
            (grantRef, CREATE_PATH'Length, OPEN_READ_WRITE or OPEN_CREATE or OPEN_EXCLUSIVE);
-         msg.tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+         msg.tag := capCall (FS_Service, msg, CuBit.Messages.Wait_Forever);
          if msg.tag.label /= REPLY_ALREADY_EXISTS or else not Has_Payload (CREATE_PATH) then
             debugPrint ("STORAGE-CHECK: exclusive create reused existing file" & LF);
             return False;
@@ -1338,26 +1347,26 @@ procedure main is
          Put (nested);
          msg := Open_Request
            (grantRef, nested'Length, OPEN_READ_WRITE or OPEN_CREATE or OPEN_EXCLUSIVE);
-         msg.tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+         msg.tag := capCall (FS_Service, msg, CuBit.Messages.Wait_Forever);
          if msg.tag.label /= REPLY_OK then
             return False;
          end if;
          handle := File_Handle (msg.words (0));
          Put (PAYLOAD);
          msg := Write_Request (handle, grantRef, PAYLOAD'Length);
-         msg.tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+         msg.tag := capCall (FS_Service, msg, CuBit.Messages.Wait_Forever);
          if msg.tag.label /= REPLY_OK or else
            not Rename_Is (nested, nestedAfter, REPLY_OK)
          then
             return False;
          end if;
          msg := Seek_Request (handle, 0, From_Start);
-         msg.tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+         msg.tag := capCall (FS_Service, msg, CuBit.Messages.Wait_Forever);
          if msg.tag.label /= REPLY_OK then
             return False;
          end if;
          msg := Read_Request (handle, grantRef, PAYLOAD'Length);
-         msg.tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+         msg.tag := capCall (FS_Service, msg, CuBit.Messages.Wait_Forever);
          declare
             bytes : String (PAYLOAD'Range)
               with Import, Address => To_Address (Integer_Address (aligned));
@@ -1367,7 +1376,7 @@ procedure main is
             end if;
          end;
          msg := Close_Request (handle);
-         msg.tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+         msg.tag := capCall (FS_Service, msg, CuBit.Messages.Wait_Forever);
          if msg.tag.label /= REPLY_OK or else not Has_Payload (nestedAfter) then
             return False;
          end if;
@@ -1380,10 +1389,10 @@ procedure main is
       --  a wildcard profile by calling the management operation directly.
       msg := NULL_MESSAGE;
       msg.tag := (label => OP_SET_ACL, length => 4,
-                  flags => 0, reserved => 0);
+                  protocol => 0, ipc => <>, reserved => 0);
       msg.words :=
         (0 => syscall (SYSCALL_GETPID), 1 => 0, 2 => 0, 3 => 0);
-      staleTag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+      staleTag := capCall (FS_Service, msg, CuBit.Messages.Wait_Forever);
       if staleTag.label /= REPLY_ACCESS_DENIED then
          debugPrint ("STORAGE-CHECK: ordinary endpoint changed FS policy" & LF);
          return False;
@@ -1399,7 +1408,7 @@ procedure main is
       --  The filesystem must independently reject a stale, nonzero
       --  generation even when the slot and path bytes are otherwise valid.
       msg := Open_Request (staleRef, PATH'Length);
-      staleTag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+      staleTag := capCall (FS_Service, msg, CuBit.Messages.Wait_Forever);
       if staleTag.label = REPLY_OK then
          debugPrint ("STORAGE-CHECK: stale grant accepted by FS" & LF);
          return False;
@@ -1408,7 +1417,7 @@ procedure main is
       --  Unknown flags must not silently alter the authority installed on a
       --  returned handle.
       msg := Open_Request (grantRef, PATH'Length, Open_Options (4));
-      staleTag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+      staleTag := capCall (FS_Service, msg, CuBit.Messages.Wait_Forever);
       if staleTag.label = REPLY_OK then
          debugPrint ("STORAGE-CHECK: invalid open options accepted" & LF);
          return False;
@@ -1419,7 +1428,7 @@ procedure main is
       --  headless fixture.
       msg := Open_Request
         (grantRef, PATH'Length, OPEN_READ_WRITE);
-      msg.tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+      msg.tag := capCall (FS_Service, msg, CuBit.Messages.Wait_Forever);
       if msg.tag.label /= REPLY_OK then
          debugPrint ("STORAGE-CHECK: read-write open failed" & LF);
          return False;
@@ -1434,7 +1443,7 @@ procedure main is
       end;
 
       msg := Write_Request (handle, grantRef, PAYLOAD'Length);
-      msg.tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+      msg.tag := capCall (FS_Service, msg, CuBit.Messages.Wait_Forever);
       if msg.tag.label /= REPLY_OK or else msg.words (0) /= PAYLOAD'Length then
          debugPrint
            ("STORAGE-CHECK: write failed label=" &
@@ -1445,7 +1454,7 @@ procedure main is
 
       --  A flush must acknowledge the real NVMe barrier, not close() or RAM.
       msg := Flush_Request (handle);
-      msg.tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+      msg.tag := capCall (FS_Service, msg, CuBit.Messages.Wait_Forever);
       if msg.tag.label /= REPLY_OK or else msg.tag.length /= 1 or else
         msg.words (0) /= 0
       then
@@ -1454,7 +1463,7 @@ procedure main is
       end if;
       msg := Flush_Request (handle);
       msg.tag.length := 0;
-      msg.tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+      msg.tag := capCall (FS_Service, msg, CuBit.Messages.Wait_Forever);
       if msg.tag.label /= REPLY_ERR then
          debugPrint ("STORAGE-FLUSH-CHECK: malformed request accepted" & LF);
          return False;
@@ -1464,14 +1473,14 @@ procedure main is
       --  A range the writer cannot represent must be reported as such,
       --  never as a successful zero-byte write.
       msg := Seek_Request (handle, 16#1_0000_0000_0000#, From_Start);
-      msg.tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+      msg.tag := capCall (FS_Service, msg, CuBit.Messages.Wait_Forever);
       if msg.tag.label /= REPLY_OK then
          debugPrint ("STORAGE-CHECK: large seek failed" & LF);
          return False;
       end if;
 
       msg := Write_Request (handle, grantRef, 1);
-      msg.tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+      msg.tag := capCall (FS_Service, msg, CuBit.Messages.Wait_Forever);
       if msg.tag.label /= REPLY_FILE_RANGE_UNSUPPORTED or else
          msg.words (0) /= 0
       then
@@ -1481,14 +1490,14 @@ procedure main is
       end if;
 
       msg := Seek_Request (handle, 0, From_Start);
-      msg.tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+      msg.tag := capCall (FS_Service, msg, CuBit.Messages.Wait_Forever);
       if msg.tag.label /= REPLY_OK then
          debugPrint ("STORAGE-CHECK: read-write seek failed" & LF);
          return False;
       end if;
 
       msg := Read_Request (handle, grantRef, PAYLOAD'Length);
-      msg.tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+      msg.tag := capCall (FS_Service, msg, CuBit.Messages.Wait_Forever);
       if msg.tag.label /= REPLY_OK or else msg.words (0) /= PAYLOAD'Length then
          debugPrint ("STORAGE-CHECK: read-write handle lost read access" & LF);
          return False;
@@ -1505,14 +1514,14 @@ procedure main is
       end;
 
       msg := Close_Request (handle);
-      msg.tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+      msg.tag := capCall (FS_Service, msg, CuBit.Messages.Wait_Forever);
       if msg.tag.label /= REPLY_OK then
          debugPrint ("STORAGE-CHECK: close failed" & LF);
          return False;
       end if;
 
       msg := Flush_Request (handle);
-      msg.tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+      msg.tag := capCall (FS_Service, msg, CuBit.Messages.Wait_Forever);
       if msg.tag.label /= REPLY_ERR then
          debugPrint ("STORAGE-FLUSH-CHECK: stale handle accepted" & LF);
          return False;
@@ -1521,7 +1530,7 @@ procedure main is
       --  The just-closed handle must remain invalid even though the next open
       --  is likely to reuse the same table slot.
       msg := Read_Request (handle, grantRef, 1);
-      staleTag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+      staleTag := capCall (FS_Service, msg, CuBit.Messages.Wait_Forever);
       if staleTag.label = REPLY_OK then
          debugPrint ("STORAGE-CHECK: stale handle accepted" & LF);
          return False;
@@ -1535,7 +1544,7 @@ procedure main is
       end;
 
       msg := Open_Request (grantRef, PATH'Length);
-      msg.tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+      msg.tag := capCall (FS_Service, msg, CuBit.Messages.Wait_Forever);
       if msg.tag.label /= REPLY_OK then
          debugPrint ("STORAGE-CHECK: reopen failed" & LF);
          return False;
@@ -1545,7 +1554,7 @@ procedure main is
       --  A read-only handle may flush (fsync of an O_RDONLY descriptor, as
       --  Linux): a flush writes back and commits, it changes no data.
       msg := Flush_Request (handle);
-      msg.tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+      msg.tag := capCall (FS_Service, msg, CuBit.Messages.Wait_Forever);
       if msg.tag.label /= REPLY_OK then
          debugPrint ("STORAGE-FLUSH-CHECK: read-only handle refused" & LF);
          return False;
@@ -1555,14 +1564,14 @@ procedure main is
       --  One page was granted.  The service must not trust the protocol's
       --  requested count as if the entire 16 MiB aperture slot were mapped.
       msg := Read_Request (handle, grantRef, PAGE_SIZE + 1);
-      staleTag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+      staleTag := capCall (FS_Service, msg, CuBit.Messages.Wait_Forever);
       if staleTag.label = REPLY_OK then
          debugPrint ("STORAGE-CHECK: oversized grant range accepted" & LF);
          return False;
       end if;
 
       msg := Read_Request (handle, grantRef, PAYLOAD'Length);
-      msg.tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+      msg.tag := capCall (FS_Service, msg, CuBit.Messages.Wait_Forever);
       if msg.tag.label /= REPLY_OK or else msg.words (0) /= PAYLOAD'Length then
          debugPrint ("STORAGE-CHECK: read failed" & LF);
          return False;
@@ -1579,7 +1588,7 @@ procedure main is
       end;
 
       msg := Close_Request (handle);
-      msg.tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+      msg.tag := capCall (FS_Service, msg, CuBit.Messages.Wait_Forever);
       if msg.tag.label /= REPLY_OK then
          return False;
       end if;
@@ -1596,7 +1605,7 @@ procedure main is
       msg := Open_Request
         (grantRef, CREATE_PATH'Length,
          OPEN_READ_WRITE or OPEN_CREATE);
-      msg.tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+      msg.tag := capCall (FS_Service, msg, CuBit.Messages.Wait_Forever);
       if msg.tag.label /= REPLY_OK then
          debugPrint ("STORAGE-CHECK: create failed" & LF);
          return False;
@@ -1611,20 +1620,20 @@ procedure main is
       end;
 
       msg := Write_Request (handle, grantRef, PAYLOAD'Length);
-      msg.tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+      msg.tag := capCall (FS_Service, msg, CuBit.Messages.Wait_Forever);
       if msg.tag.label /= REPLY_OK or else msg.words (0) /= PAYLOAD'Length then
          debugPrint ("STORAGE-CHECK: created-file write failed" & LF);
          return False;
       end if;
 
       msg := Seek_Request (handle, 0, From_Start);
-      msg.tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+      msg.tag := capCall (FS_Service, msg, CuBit.Messages.Wait_Forever);
       if msg.tag.label /= REPLY_OK then
          return False;
       end if;
 
       msg := Read_Request (handle, grantRef, PAYLOAD'Length);
-      msg.tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+      msg.tag := capCall (FS_Service, msg, CuBit.Messages.Wait_Forever);
       if msg.tag.label /= REPLY_OK or else msg.words (0) /= PAYLOAD'Length then
          debugPrint ("STORAGE-CHECK: created-file read failed" & LF);
          return False;
@@ -1641,7 +1650,7 @@ procedure main is
       end;
 
       msg := Close_Request (handle);
-      msg.tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
+      msg.tag := capCall (FS_Service, msg, CuBit.Messages.Wait_Forever);
       if msg.tag.label /= REPLY_OK then
          return False;
       end if;
@@ -2747,7 +2756,7 @@ procedure main is
 
       Good : Boolean;
    begin
-      FS.Open (Session, CAP_SLOT_FS, 2, Opened);
+      FS.Open (Session, FS_Service, 2, Opened);
       if not Opened then
          debugPrint ("QUEUE-WAKE-CHECK: queue refused" & LF);
          return False;
@@ -2823,7 +2832,7 @@ begin
    debugPrint ("GRANT-RECLAMATION-CHECK: PASS" & LF);
 
    CuBit.Memory_Grants.Create_Via_Capability
-     (slot      => CAP_SLOT_FS,
+     (slot      => FS_Service,
       localAddr => To_Address (Integer_Address (aligned)),
       numPages  => 1,
       readWrite => True,

@@ -1,3 +1,4 @@
+with CuBit.Handles.Fixture;
 with Ada.Text_IO;
 with Interfaces; use Interfaces;
 with CCL.Types;
@@ -47,14 +48,14 @@ procedure Config_Channel_Tests is
       Done : Completion_Result;
       Calls : constant Natural := Submissions;
    begin
-      Initialize (Object, 12, Ok);
+      Initialize (Object, CuBit.Handles.Fixture.Endpoint_Of (12), Ok);
       pragma Assert (Ok and Status (Object) = Ready);
       declare
          Loan : P.Frame with Import, Address => Grants.Mapping;
       begin
          Submit (Object, Input, Contract, Sent);
          pragma Assert (Sent = Submitted and Status (Object) = Waiting);
-         pragma Assert (Submissions = Calls + 1 and Last_Token = 1 and Last_Endpoint = 12);
+         pragma Assert (Submissions = Calls + 1 and Last_Token = 1 and CuBit.Handles.Fixture.Word_Of (Last_Endpoint) = CuBit.Handles.Fixture.Word_Of (CuBit.Handles.Fixture.Endpoint_Of (12)));
          pragma Assert (Last_Request.tag.label = Config_Worker_Messages.Operation'Enum_Rep
                           (Config_Worker_Messages.Exchange_Frame));
          pragma Assert (Last_Request.words = [7, 9, P.Frame_Bytes, Unsigned_64 (P.Version)]);
@@ -78,7 +79,7 @@ procedure Config_Channel_Tests is
             when 3 => Completion.status := COMPLETION_QUEUE_OVERFLOW;
             when 4 => Completion.requestId := 0;
             when 5 => Completion.msg.tag.length := 4;
-            when 6 => Completion.msg.tag.flags := 1;
+            when 6 => Completion.msg.tag.protocol := 1;
             when 7 => Completion.msg.tag.reserved := 1;
             when 8 => Completion.msg.words (0) := P.Frame_Bytes - 1;
             when 9 => Loan.Revision := 0;
@@ -132,7 +133,7 @@ procedure Config_Channel_Tests is
       Sent : Submission;
       Done : Completion_Result;
    begin
-      Initialize (Object, 5, Ok); pragma Assert (Ok);
+      Initialize (Object, CuBit.Handles.Fixture.Endpoint_Of (5), Ok); pragma Assert (Ok);
       Submit (Object, Input, Contract, Sent); pragma Assert (Sent = Submitted);
       declare
          Loan : P.Frame with Import, Address => Grants.Mapping;
@@ -160,7 +161,7 @@ procedure Config_Channel_Tests is
       Completion : CompletionEntry := Answer;
       Output : P.Frame;
    begin
-      Initialize (Object, 12, Ok); pragma Assert (Ok);
+      Initialize (Object, CuBit.Handles.Fixture.Endpoint_Of (12), Ok); pragma Assert (Ok);
       Provision (Object, Empty, 1, Sent); pragma Assert (Sent = Invalid_Request);
       Provision (Object, Contract, 0, Sent); pragma Assert (Sent = Invalid_Request);
       Provision (Object, Contract, NO_COMPLETION_TOKEN, Sent); pragma Assert (Sent = Invalid_Request);
@@ -182,7 +183,7 @@ procedure Config_Channel_Tests is
          when 4 => Completion.msg := Config_Worker_Messages.Error (Config_Worker_Messages.Denied);
          when 5 => Completion.status := COMPLETION_TARGET_DIED;
          when 6 => Completion.requestId := 0;
-         when 7 => Completion.msg.tag.flags := 1;
+         when 7 => Completion.msg.tag.protocol := 1;
          when 8 => Completion.msg.tag.reserved := 1;
          when 9 => Completion.msg.words (0) := P.Frame_Bytes;
          when others => null;
@@ -223,7 +224,7 @@ begin
       Done : Completion_Result;
       Output : P.Frame;
    begin
-      Initialize (Object, 4, Ok); pragma Assert (Ok);
+      Initialize (Object, CuBit.Handles.Fixture.Endpoint_Of (4), Ok); pragma Assert (Ok);
       Submit (Object, (others => <>), Contract, Sent);
       pragma Assert (Sent = Invalid_Request and Status (Object) = Ready);
       Accept_Submission := False;
@@ -240,7 +241,7 @@ begin
       Retire (Object, Ok); pragma Assert (not Ok); -- revoke accepted, still loaned
       Grants.Is_Retired := True;
       Retire (Object, Ok); pragma Assert (Ok);
-      Initialize (Object, 4, Ok); pragma Assert (not Ok);
+      Initialize (Object, CuBit.Handles.Fixture.Endpoint_Of (4), Ok); pragma Assert (not Ok);
       Submit (Object, Request (3), Contract, Sent); pragma Assert (Sent = Unavailable);
       Cases := Cases + 1;
    end;
@@ -249,9 +250,9 @@ begin
       Ok : Boolean;
    begin
       Grants.Allow_Grant := False;
-      Initialize (Object, 4, Ok); pragma Assert (not Ok and Status (Object) = Failed);
+      Initialize (Object, CuBit.Handles.Fixture.Endpoint_Of (4), Ok); pragma Assert (not Ok and Status (Object) = Failed);
       Grants.Allow_Grant := True;
-      Initialize (Object, 4, Ok); pragma Assert (not Ok);
+      Initialize (Object, CuBit.Handles.Fixture.Endpoint_Of (4), Ok); pragma Assert (not Ok);
       Retire (Object, Ok); pragma Assert (Ok);
       Cases := Cases + 1;
    end;

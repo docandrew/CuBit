@@ -1,3 +1,4 @@
+with CuBit.Handles.Fixture;
 with Ada.Text_IO;
 with Interfaces; use Interfaces;
 with System;
@@ -31,14 +32,14 @@ procedure Admission is
    procedure Check (Expected : Admission_Result; Expected_Calls : Natural) is
    begin
       initBlockDevice
-        (fs, 1, (slot => 1, generation => 1), Grant_Buffer'Address,
+        (fs, CuBit.Handles.Fixture.Endpoint_Of (1), 1, (slot => 1, generation => 1), Grant_Buffer'Address,
          Grant_Buffer'Length, result);
       pragma Assert (result = Expected);
       pragma Assert (Calls = Expected_Calls);
       pragma Assert (Writes = 0 and Barriers = 0);
       if result /= Admitted then
          pragma Assert (fs.blkSize = 0 and fs.sb.signature = 0);
-         pragma Assert (fs.device.endpointSlot = 0);
+         pragma Assert (fs.device.volumeKey = 0);
          pragma Assert (fs.device.grantBuffer = System.Null_Address);
       end if;
       cases := cases + 1;
@@ -48,14 +49,14 @@ procedure Admission is
    begin
       Override_Description := True;
       Description_Reply :=
-        ((REPLY_OK, 4, 0, 0), 0,
+        ((label => REPLY_OK, length => 4, protocol => 0, ipc => <>, reserved => 0), 0,
          [0 => Disk'Length / 512, 1 => Pack_Sizes (512, 512),
           2 => 8, 3 => Pack_Properties (FEATURE_FLUSH or FEATURE_VOLATILE_CACHE, Fixed_Media)]);
    end Describe;
 begin
    Setup;
    Check (Admitted, 2);
-   pragma Assert (fs.blkSize = 1024 and fs.device.endpointSlot = 1);
+   pragma Assert (fs.blkSize = 1024 and fs.device.volumeKey = 1);
 
    --  Failure must clear a previously successful output as well.
    Setup;
@@ -81,15 +82,15 @@ begin
 
    Setup;
    Describe;
-   Description_Reply := ((REPLY_NO_DEVICE, 1, 0, 0), 0, [others => 0]);
+   Description_Reply := ((label => REPLY_NO_DEVICE, length => 1, protocol => 0, ipc => <>, reserved => 0), 0, [others => 0]);
    Check (No_Device, 1);
    for malformed in 1 .. 4 loop
       Setup;
       Describe;
-      Description_Reply := ((REPLY_NO_DEVICE, 1, 0, 0), 0, [others => 0]);
+      Description_Reply := ((label => REPLY_NO_DEVICE, length => 1, protocol => 0, ipc => <>, reserved => 0), 0, [others => 0]);
       case malformed is
          when 1 => Description_Reply.tag.length := 0;
-         when 2 => Description_Reply.tag.flags := 1;
+         when 2 => Description_Reply.tag.protocol := 1;
          when 3 => Description_Reply.tag.reserved := 1;
          when 4 => Description_Reply.words (0) := 1;
       end case;
@@ -105,7 +106,7 @@ begin
          when 3 => Description_Reply.words (2) := 0;
          when 4 => Description_Reply.words (3) := 0; -- wrong protocol version
          when 5 => Description_Reply.tag.length := 3;
-         when 6 => Description_Reply.tag.flags := 1;
+         when 6 => Description_Reply.tag.protocol := 1;
          when 7 => Description_Reply.tag.reserved := 1;
       end case;
       Check (Invalid_Description, 1);
@@ -200,13 +201,17 @@ begin
    Check (Invalid_Filesystem, 2);
 
    Setup;
-   initBlockDevice (fs, 1, (slot => 1, generation => 1),
+   initBlockDevice (fs, CuBit.Handles.Fixture.Endpoint_Of (1), 1, (slot => 1, generation => 1),
                     System.Null_Address, 4096, result);
    pragma Assert (result = Invalid_Session and Calls = 0);
-   initBlockDevice (fs, 0, (slot => 1, generation => 1),
+   --  A null endpoint, or no volume key, is no session.
+   initBlockDevice (fs, CuBit.Handles.No_Endpoint, 1, (slot => 1, generation => 1),
                     Grant_Buffer'Address, 4096, result);
    pragma Assert (result = Invalid_Session and Calls = 0);
-   initBlockDevice (fs, 1, (slot => 1, generation => 1),
+   initBlockDevice (fs, CuBit.Handles.Fixture.Endpoint_Of (1), 0, (slot => 1, generation => 1),
+                    Grant_Buffer'Address, 4096, result);
+   pragma Assert (result = Invalid_Session and Calls = 0);
+   initBlockDevice (fs, CuBit.Handles.Fixture.Endpoint_Of (1), 1, (slot => 1, generation => 1),
                     Grant_Buffer'Address, 0, result);
    pragma Assert (result = Invalid_Session and Calls = 0);
 

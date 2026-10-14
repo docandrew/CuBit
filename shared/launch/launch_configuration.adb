@@ -38,6 +38,7 @@ package body Launch_Configuration with SPARK_Mode is
       Result.Words (4) := Value.Boot_Image;
       Result.Words (5) := Value.Framebuffer.First;
       Result.Words (6) := Value.Framebuffer.Bytes;
+      Result.Words (7 .. 26) := Handle_Words (Value.Handles);
       return Result;
    end Encode;
 
@@ -46,6 +47,7 @@ package body Launch_Configuration with SPARK_Mode is
    begin
       Result.Words (4) := Value.Framebuffer.First;
       Result.Words (5) := Value.Framebuffer.Bytes;
+      Result.Words (6 .. 20) := Process_Handle_Words (Value.Handles);
       return Result;
    end Encode;
 
@@ -107,10 +109,25 @@ package body Launch_Configuration with SPARK_Mode is
       Value := (others => <>);
       Valid := Header_Valid (Words, Device_Manager)
         and then Is_Bytes (Words (4)) and then Is_Address (Words (5))
-        and then Is_Bytes (Words (6));
+        and then Is_Bytes (Words (6))
+        and then Handles_Valid (Words (7 .. 26));
       if Valid then
          Value := (Boot_Image  => Words (4),
-                   Framebuffer => (First => Words (5), Bytes => Words (6)));
+                   Framebuffer => (First => Words (5), Bytes => Words (6)),
+                   Handles     =>
+                     (Self              => Words (7),
+                      Self_Process      => Words (8),
+                      Self_Grantable    => Words (9),
+                      Process_Root      => Words (10),
+                      PCI_Ports         => Words (11),
+                      Registration      => Words (12),
+                      Vector_Authority  => Words (13),
+                      IO_Ports          => Words (14),
+                      Legacy_Interrupts => Words (15),
+                      Notifications     => Words (16),
+                      Scheduling        => Words (17),
+                      Root_Count        => Device_Root_Count (Words (18)),
+                      Device_Roots      => [for R in Device_Root_Index => Words (18 + R)]));
       end if;
    end Decode;
 
@@ -121,8 +138,23 @@ package body Launch_Configuration with SPARK_Mode is
       Value := (others => <>);
       Valid := Header_Valid (Words, Process_Manager)
         and then Is_Address (Words (4)) and then Is_Bytes (Words (5));
+      if not Valid then
+         return;
+      end if;
+      Value.Handles :=
+        (Self => Words (6), Self_Process => Words (7),
+         Self_Grantable => Words (8), Process_Root => Words (9),
+         Registration => Words (10), Notifications => Words (11),
+         Filesystem => Words (12), Config => Words (13),
+         Netstack => Words (14), Network_Policy => Words (15),
+         Mixer => Words (16), Device_Manager => Words (17),
+         Ready => Words (18), Framebuffer => Words (19),
+         Device_Inspection => Words (20));
+      Valid := Process_Handles_Well_Formed (Value.Handles);
       if Valid then
-         Value := (Framebuffer => (First => Words (4), Bytes => Words (5)));
+         Value.Framebuffer := (First => Words (4), Bytes => Words (5));
+      else
+         Value := (others => <>);
       end if;
    end Decode;
 

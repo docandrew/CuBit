@@ -45,7 +45,6 @@ package CuBit.Kernel_ABI with Pure, SPARK_Mode is
    Thread_Exit                  : constant System_Call := 91;
    Futex_Wait                   : constant System_Call := 92;
    Futex_Wake                   : constant System_Call := 93;
-   Inspect_Capability           : constant System_Call := 84;
    Read_Monotonic_Microseconds  : constant System_Call := 114;
    Allocate_Owned_Memory        : constant System_Call := 115;
    Release_Owned_Memory         : constant System_Call := 116;
@@ -88,10 +87,6 @@ package CuBit.Kernel_ABI with Pure, SPARK_Mode is
 
    --  The service role netstack registers (CuBit.Messages.DRIVER_NETSTACK).
    Driver_Netstack   : constant := 3;
-   --  SYSCALL_INSPECT_CAPABILITY: six words; an endpoint's kind is 1.
-   Capability_Words    : constant := 6;
-   Capability_Endpoint : constant := 1;
-   Capability_Slots    : constant := 64;
 
    Reply_OK    : constant Unsigned_32 := 16#F000#;
    Reply_Error : constant Unsigned_32 := 16#F001#;
@@ -133,8 +128,5 @@ package CuBit.Kernel_ABI with Pure, SPARK_Mode is
 
    --  SYSCALL_WRITE's console device.
    Console : constant := 1;
-
-   --  Fixed capability slots (userspace/ccl/catalogs/native-runtime-services.ccl).
-   Process_Manager_Slot : constant := 12;
 
 end CuBit.Kernel_ABI;

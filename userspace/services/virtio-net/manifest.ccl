@@ -1,7 +1,8 @@
-# virtio-net.drv's authority (docs/ccl-driver-manifests.md). devmgr reads the
-# interrupt request from the linked ELF and installs the vector's CAP_IRQ in
-# its slot (docs/msi-interrupts.md); it still mints the others (and the
-# netstack driver endpoint) itself, at the slots these bindings name.
+# virtio-net.drv's authority (docs/ccl-driver-manifests.md, CAP-002).
+# devmgr answers every binding when it launches the driver: the legacy
+# register ports (or it maps the modern BAR itself), the interrupt (an
+# allocated vector), netstack's endpoint and its endpoint to devmgr. The DMA
+# region is devmgr's (its address is in the launch configuration).
 (Executable_Manifest
   identity => "com.cubit.virtio-net"
   version => "0.1.0"
@@ -12,4 +13,8 @@
     # RX, TX and configuration changes share MSI-X entry 0.
     (interrupt "device" Interrupt_Mode.MSI_X 1)
     (dma "rings" 131072)
-    (service "device-manager" "ready")])
+    # netstack's endpoint, badged as the network driver's authority.
+    (service "network-stack" "netstack")
+    (service "device-manager" "ready")]
+  # A modern device's BAR is mapped by devmgr: no legacy ports then.
+  optional => ["registers"])

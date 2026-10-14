@@ -3300,6 +3300,8 @@ netstack: IPv4 echo reply from
 netstack: released the scopes of exited process
 capability-test: retired PID submit rejected PASS
 capability-test: authorityless capability submit rejected PASS
+capability-test: kernel-only message flags refused PASS
+capability-test: protocol flags delivered unchanged PASS
 capability-test: authorityless capability call rejected PASS
 capability-test: receive into a kernel address refused PASS
 capability-test: the refused message was kept (kernel) PASS
@@ -3734,7 +3736,7 @@ TEST: PASS thread-cpu-state
     timesync)
         required_markers="
 timesync-check: ordinary clock endpoint cannot adjust time PASS
-timesync-check: undeclared clock-control slot is unusable PASS
+timesync-check: undeclared clock-control is unusable PASS
 clock: wall time set from sample
 timesync-check: clock reports network-synchronized time PASS
 TEST: PASS timesync
@@ -3995,45 +3997,83 @@ procmgr: init spawn failed: bad-phdr.app
 procmgr: init spawn failed: bad-segment.app
 procmgr: init spawn failed: bad-stack.app
 procmgr: init spawn failed: overlap.app
+
 capability-test: heap query PASS
-capability-test: stack demand pages writable and retained PASS
 capability-test: heap wrapping request rejected without growth PASS
 capability-test: heap oversized request rejected without growth PASS
 capability-test: heap usable after rejected requests PASS
 capability-test: heap admitted pages zeroed and writable PASS
+capability-test: stack demand pages writable and retained PASS
 capability-test: syscall registers normal return PASS
 capability-test: syscall registers unknown call PASS
 capability-test: syscall registers denied call PASS
 capability-test: syscall registers blocking return PASS
-capability-test: endpoint scan completes PASS
 capability-test: getpid PASS
-capability-test: no ambient filesystem PASS
+capability-test: startup table loaded PASS
+capability-test: startup table holds only the self entries, with the declared limit PASS
+capability-test: self entries are current handles PASS
+capability-test: no ambient capability at any old slot number PASS
+capability-test: forged future generation refused PASS
+capability-test: forged slot past the table refused PASS
+capability-test: all-ones word refused PASS
+capability-test: call through a forged endpoint word refused PASS
 capability-test: self process rights attenuated PASS
 capability-test: self endpoint names this identity PASS
-capability-test: another life of this slot names no process PASS
-capability-test: no ambient keyboard PASS
-capability-test: no ambient mouse PASS
-capability-test: no ambient process management PASS
+capability-test: self endpoint cannot be passed on PASS
+capability-test: no derivation from a capability without grant PASS
+capability-test: refused derivations leave the source unchanged PASS
 capability-test: ambient event publication denied PASS
+capability-test: raw event publication without a handle denied PASS
+capability-test: an endpoint to itself does not authorize events to another process PASS
 capability-test: retired PID submit rejected PASS
+capability-test: retired INFO rejected PASS
+capability-test: retired VIRT_TO_PHYS rejected PASS
+capability-test: retired SET_SYSINFO rejected PASS
+capability-test: retired SET_WELL_KNOWN rejected PASS
+capability-test: system facts published PASS
+capability-test: the service registry names procmgr PASS
+capability-test: own statistics read PASS
+capability-test: only the clock service publishes the wall clock PASS
+capability-test: only devmgr publishes the boot display handoff PASS
 capability-test: authorityless capability submit rejected PASS
+capability-test: kernel-only message flags refused PASS
+capability-test: protocol flags delivered unchanged PASS
 capability-test: authorityless capability call rejected PASS
+capability-test: write from a kernel address prints nothing PASS
+capability-test: retired mint, delegate and restore calls rejected PASS
+capability-test: mint denial leaves the old slot number empty PASS
+capability-test: no offer taken without a call to answer PASS
+capability-test: no offer taken from itself PASS
+capability-test: no capability given without a request PASS
+capability-test: ambient spawn denied PASS
+capability-test: spawn through the self process denied PASS
+capability-test: raw spawn without a handle denied PASS
+capability-test: the self entries survive the limit PASS
+capability-test: close a saved reply PASS
+capability-test: a closed handle is refused (Stale) PASS
+capability-test: a closed reply cannot answer PASS
+capability-test: closing frees a place under the limit PASS
+capability-test: a stale handle is refused after its slot is reused PASS
+capability-test: the new entry was untouched by the stale handle PASS
+capability-test: close the remaining saved replies PASS
+capability-test: close the self process entry PASS
+capability-test: a closed process handle is refused (Stale) PASS
+capability-test: probe queued to itself (kernel) PASS
 capability-test: receive into a kernel address refused PASS
-capability-test: the refused message was kept (kernel) PASS
 capability-test: call from a kernel address refused PASS
 capability-test: completions into a kernel address refused PASS
+capability-test: probe queued to itself (read-only) PASS
 capability-test: receive into a read-only address refused PASS
-capability-test: the refused message was kept (read-only) PASS
 capability-test: call from a read-only address refused PASS
 capability-test: completions into a read-only address refused PASS
+capability-test: probe queued to itself (unmapped) PASS
 capability-test: receive into a unmapped address refused PASS
-capability-test: the refused message was kept (unmapped) PASS
 capability-test: call from a unmapped address refused PASS
 capability-test: completions into a unmapped address refused PASS
-capability-test: write from a kernel address prints nothing PASS
-capability-test: self mint denied PASS
-capability-test: mint denial leaves slot empty PASS
-capability-test: ambient spawn denied PASS
+capability-test: handle limit reached (Limit_Reached) PASS
+capability-test: the refused message was kept (kernel) PASS
+capability-test: the refused message was kept (read-only) PASS
+capability-test: the refused message was kept (unmapped) PASS
 capability-test: all tests passed
 "
         ;;

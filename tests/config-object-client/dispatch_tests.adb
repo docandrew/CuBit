@@ -171,7 +171,7 @@ begin
    end loop;
    W.Describe ("org.cubit.settings", W.Read_Only, 1, Schema, Input.Control, Good); Check (Good);
    Call (PID (43), W.Open_Collection); Is_Reply (W.Invalid_Request);
-   Request := W.Request (W.Get_Object, (7, 9), Reader); Request.tag.flags := 1;
+   Request := W.Request (W.Get_Object, (7, 9), Reader); Request.tag.protocol := 1;
    D.Handle (Object, Data, Authority, PID (43), W.Get_Object, Request, Input, 0, False, Reply, Value, Next);
    Is_Reply (W.Invalid_Request); Check (Value = CCL.Objects.Image'(others => <>));
    -- A broad namespace write grant is not permission to mutate declarations.

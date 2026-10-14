@@ -21,7 +21,7 @@ package body CuBit.Net_Channels is
    procedure Compiler_Fence with Inline;
    function Word (S : Stream; Offset : Natural) return Unsigned_32;
    procedure Set_Word (S : Stream; Offset : Natural; Value : Unsigned_32);
-   procedure Kick (S : Stream; Slot : CapabilitySlot);
+   procedure Kick (S : Stream; Slot : CuBit.Handles.Endpoint);
    function Accept_Receive (S : in out Stream) return Boolean;
    function Accept_Send (S : in out Stream) return Boolean;
 
@@ -56,18 +56,19 @@ package body CuBit.Net_Channels is
    function Receive_Ring (S : Stream) return System.Address is
      (Send_Ring (S) + Storage_Offset (S.Tx.Size));
 
-   procedure Kick (S : Stream; Slot : CapabilitySlot) is
+   procedure Kick (S : Stream; Slot : CuBit.Handles.Endpoint) is
       Msg : Message := NULL_MESSAGE;
       Ignore : Boolean;
    begin
-      Msg.tag := (label => Layout.OP_NET_KICK, length => 2, flags => 0,
+      Msg.tag := (label => Layout.OP_NET_KICK, length => 2, protocol => 0, ipc => <>,
                   reserved => 0);
       Msg.words (0) := Shift_Left (Unsigned_64'(1), S.Bit);
       Ignore := capSubmit (Slot, Msg, NO_COMPLETION_TOKEN);
    end Kick;
 
    --  Kicks go to the endpoint the channel was opened through.
-   Kick_Slot : array (Wait_Bit) of CapabilitySlot := [others => 0];
+   Kick_Slot : array (Wait_Bit) of CuBit.Handles.Endpoint :=
+     [others => CuBit.Handles.No_Endpoint];
 
    procedure Reset (S : in out Stream) is
       Header : array (0 .. Layout.Header_Bytes / 4 - 1) of Unsigned_32
@@ -87,7 +88,7 @@ package body CuBit.Net_Channels is
 
    procedure Create_Arena
      (A       : out Arena;
-      Slot    : CapabilitySlot;
+      Slot    : CuBit.Handles.Endpoint;
       Memory  : System.Address;
       Tx_Size : Rings.Ring_Size;
       Rx_Size : Rings.Ring_Size;
@@ -105,7 +106,7 @@ package body CuBit.Net_Channels is
       if not OK then
          return;
       end if;
-      Msg.tag := (label => Layout.OP_NET_ARENA, length => 4, flags => 0,
+      Msg.tag := (label => Layout.OP_NET_ARENA, length => 4, protocol => 0, ipc => <>,
                   reserved => 0);
       Msg.words :=
         [A.Grant.slot, A.Grant.generation,
@@ -121,12 +122,12 @@ package body CuBit.Net_Channels is
    end Create_Arena;
 
    procedure Release_Arena
-     (A : in out Arena; Slot : CapabilitySlot; OK : out Boolean)
+     (A : in out Arena; Slot : CuBit.Handles.Endpoint; OK : out Boolean)
    is
       Msg : Message := NULL_MESSAGE;
    begin
       Msg.tag := (label => Layout.OP_NET_ARENA_RELEASE, length => 1,
-                  flags => 0, reserved => 0);
+                  protocol => 0, ipc => <>, reserved => 0);
       Msg.words (0) := A.Handle;
       OK := capCall (Slot, Msg, CuBit.Messages.Wait_Forever).label = REPLY_OK;
       if OK then
@@ -141,7 +142,7 @@ package body CuBit.Net_Channels is
       A      : Arena;
       Buffer : Natural;
       Bit    : Wait_Bit;
-      Slot   : CapabilitySlot)
+      Slot   : CuBit.Handles.Endpoint)
    is
    begin
       S.Base := A.Base +
@@ -156,7 +157,7 @@ package body CuBit.Net_Channels is
    end Prepare;
 
    procedure Submit_Open
-     (S : in out Stream; Slot : CapabilitySlot; Target : String;
+     (S : in out Stream; Slot : CuBit.Handles.Endpoint; Target : String;
       Token : Unsigned_64; Submitted : out Boolean)
    is
       Text : String (1 .. Target'Length) with Import,
@@ -165,7 +166,7 @@ package body CuBit.Net_Channels is
    begin
       Text := Target;
       Msg.tag := (label => OP_NET_OPEN, length => Unsigned_8 (Target'Length),
-                  flags => 0, reserved => 0);
+                  protocol => 0, ipc => <>, reserved => 0);
       Msg.words := [S.Arena, Unsigned_64 (S.Buffer), 0, 0];
       Kick_Slot (S.Bit) := Slot;
       Submitted := capSubmit (Slot, Msg, Token);
@@ -450,19 +451,19 @@ package body CuBit.Net_Channels is
       Full_Fence;
    end Want;
 
-   procedure Shut_Write (S : in out Stream; Slot : CapabilitySlot) is
+   procedure Shut_Write (S : in out Stream; Slot : CuBit.Handles.Endpoint) is
    begin
       Set_Word (S, Layout.Shut_Write_At, 1);
       Full_Fence;
       Kick (S, Slot);
    end Shut_Write;
 
-   procedure Close (S : in out Stream; Slot : CapabilitySlot) is
+   procedure Close (S : in out Stream; Slot : CuBit.Handles.Endpoint) is
       Msg : Message := NULL_MESSAGE;
       Ignore : MessageTag;
    begin
       if S.Handle /= 0 then
-         Msg.tag := (label => OP_NET_SHUT, length => 1, flags => 0,
+         Msg.tag := (label => OP_NET_SHUT, length => 1, protocol => 0, ipc => <>,
                      reserved => 0);
          Msg.words (0) := S.Handle;
          Ignore := capCall (Slot, Msg, CuBit.Messages.Wait_Forever);
@@ -471,12 +472,12 @@ package body CuBit.Net_Channels is
    end Close;
 
    procedure Submit_Wait
-     (Slot : CapabilitySlot; Kicks, Interest : Unsigned_64;
+     (Slot : CuBit.Handles.Endpoint; Kicks, Interest : Unsigned_64;
       Deadline : Unsigned_64; Token : Unsigned_64; Submitted : out Boolean)
    is
       Msg : Message := NULL_MESSAGE;
    begin
-      Msg.tag := (label => Layout.OP_NET_WAIT, length => 3, flags => 0,
+      Msg.tag := (label => Layout.OP_NET_WAIT, length => 3, protocol => 0, ipc => <>,
                   reserved => 0);
       Msg.words := [Kicks, Deadline, Interest, 0];
       Submitted := capSubmit (Slot, Msg, Token);
@@ -491,7 +492,7 @@ package body CuBit.Net_Channels is
       (Accept_Send (S) and then Rings.Space (S.Tx) > 0));
 
    procedure Await
-     (S : in out Stream; Slot : CapabilitySlot; Flags : Unsigned_32;
+     (S : in out Stream; Slot : CuBit.Handles.Endpoint; Flags : Unsigned_32;
       Deadline : Unsigned_64; Token : Unsigned_64; Ready : out Boolean)
    is
       function Now_Ready return Boolean is

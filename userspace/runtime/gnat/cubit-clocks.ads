@@ -1,7 +1,7 @@
 with Interfaces; use Interfaces;
+with CuBit.Handles;
 package CuBit.Clocks is
    Snapshot_Operation : constant Unsigned_32 := 16#0B01#;
-   Endpoint_Slot : constant Unsigned_64 := 25;
    --  Network_Unauthenticated: agreeing SNTP samples; an on-path attacker
    --  can shift it within the clock's step bound. Network_Authenticated:
    --  NTS-authenticated samples. Valid wall time is any of RTC_Only or the
@@ -34,5 +34,6 @@ package CuBit.Clocks is
       UTC_Offset_Seconds : Integer range -86_400 .. 86_400 := 0;
       Quality : Time_Quality := Unknown_Time;
    end record;
-   procedure Read (Value : out Snapshot; Success : out Boolean);
+   --  Service: the clock service's endpoint (the startup "clock" handle).
+   procedure Read (Service : CuBit.Handles.Endpoint; Value : out Snapshot; Success : out Boolean);
 end CuBit.Clocks;

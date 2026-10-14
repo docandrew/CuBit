@@ -42,6 +42,7 @@ with Queue_Wakes;
 with Watch_Reserve;
 with Fs_Handle_Codes;
 
+with CuBit.Handles;
 package Fs_Server is
 
    --  What main.adb, the IPC adapter, calls: startup, the service loop's
@@ -50,6 +51,8 @@ package Fs_Server is
    --  Startup: the boot image devmgr mapped (0: none) and the volumes.
    procedure Mount_Boot_Image (Address, Size : Unsigned_64);
    procedure Register_Volumes (OK : out Boolean);
+   --  devmgr attaches a block driver's endpoint (Fs_Attachments).
+   procedure Attach_Storage (Sender : Process_ID; Msg : Message);
 
    --  The loop's steps: queued requests first, then watches and copies;
    --  block only when nothing waits (Arm_Client_Queues False), without
@@ -197,9 +200,9 @@ private
    subtype Client_Queue_Count is Natural range 0 .. MAX_CLIENT_QUEUES;
    subtype Client_Queue_Index is Client_Queue_Count range 1 .. MAX_CLIENT_QUEUES;
    No_Client_Queue : constant Client_Queue_Count := 0;
-   --  Saved reply capabilities for held wake requests (FQ.OP_FS_WAKE), one
-   --  per queue.
-   WAKE_REPLY_SLOT_BASE : constant := 40;
+   --  Saved replies for held wake requests (FQ.OP_FS_WAKE), one per queue.
+   wakeReplies : array (Client_Queue_Index) of CuBit.Handles.Reply :=
+     [others => CuBit.Handles.No_Reply];
 
    --  A client's queue: three channels it opened (FQ: the queue pair, the
    --  transfer arena, the dirty arena), docs/data-plane.md.

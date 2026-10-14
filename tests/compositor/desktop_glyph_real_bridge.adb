@@ -1,3 +1,4 @@
+with CuBit.Handles.Fixture;
 with Desktop_Glyph_Upload; with Desktop_Vulkan_Startup;
 with Vulkan_Glyph_Sources; with Vulkan_Owned_Targets; with Vulkan_Submission;
 with Vulkan_Device_Owner; with Vulkan_Scene; with Compositor_Glyph_Layout;
@@ -12,7 +13,7 @@ package body Desktop_Glyph_Real_Bridge is
    function Open return Interfaces.C.int is
       OK : Boolean;
    begin
-      D.Initialize (25); if D.Current /= Vulkan_Device_Owner.Ready then return 1; end if;
+      D.Initialize (CuBit.Handles.Fixture.Endpoint_Of (25)); if D.Current /= Vulkan_Device_Owner.Ready then return 1; end if;
       D.Configure_Targets (96, 64, 1, 1024 * 1024, OK); if not OK then return 2; end if;
       D.Prepare_Pipeline (OK); if not OK then return 3; end if;
       D.Configure_Upload (4096, OK); return (if OK then 0 else 4);

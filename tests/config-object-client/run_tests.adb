@@ -1,3 +1,4 @@
+with CuBit.Handles.Fixture;
 with Ada.Text_IO;
 with GNAT.Source_Info;
 with Interfaces; use Interfaces;
@@ -69,10 +70,10 @@ procedure Run_Tests is
       Iterations : Natural := 0;
       Receipt : IPC.CompletionEntry;
    begin
-      H.Configure (Host, Visible_Types (Catalog), Kind, Contract, Reads, Bindings, 5,
+      H.Configure (Host, Visible_Types (Catalog), Kind, Contract, Reads, Bindings, CuBit.Handles.Fixture.Endpoint_Of (5),
         "org.cubit.run-test", Good); Check (Good);
       H.Load (Host, Program, 128, Good); Check (Good);
-      H.Configure (Host, Visible_Types (Catalog), Kind, Contract, Reads, Bindings, 5,
+      H.Configure (Host, Visible_Types (Catalog), Kind, Contract, Reads, Bindings, CuBit.Handles.Fixture.Endpoint_Of (5),
         "org.other", Good); Check (not Good);
       G.Expected_Pages := W.Creation_Bytes / 4096;
       IPC.Accept_Submission := not Reject_Submit;
@@ -147,7 +148,7 @@ procedure Run_Tests is
       Consumed : Boolean;
       Receipt : IPC.CompletionEntry;
    begin
-      H.Configure (Host, Visible_Types (Catalog), Kind, Contract, Reads, Bindings, 5,
+      H.Configure (Host, Visible_Types (Catalog), Kind, Contract, Reads, Bindings, CuBit.Handles.Fixture.Endpoint_Of (5),
         "org.cubit.run-test", Good); Check (Good);
       H.Load (Host, Program, 128, Good); Check (Good);
       H.Advance (Host, 128, Tokens, Outcome); Check (H.Waiting_For_IO (Host));
@@ -166,7 +167,7 @@ procedure Run_Tests is
       Tokens : Unsigned_64 := Unsigned_64'Last - 1;
       Outcome : V.Execution_Result;
    begin
-      H.Configure (Host, Visible_Types (Catalog), Kind, Contract, Reads, Bindings, 5,
+      H.Configure (Host, Visible_Types (Catalog), Kind, Contract, Reads, Bindings, CuBit.Handles.Fixture.Endpoint_Of (5),
         "org.cubit.run-test", Good); Check (Good);
       H.Load (Host, Program, 128, Good); Check (Good);
       H.Advance (Host, 128, Tokens, Outcome);

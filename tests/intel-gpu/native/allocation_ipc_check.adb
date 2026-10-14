@@ -1,6 +1,11 @@
 with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Process_IDs;
+with CuBit.Handles.Boot_Roots;
+with CuBit.Handles.Control;
+with CuBit.Handles.IPC;
+with Startup;
 with Intel_GPU_Buffer_Backing;
 with Intel_GPU_Buffer_Reply;
 with Intel_GPU_Buffer_Memory;
@@ -20,6 +25,10 @@ procedure Allocation_IPC_Check is
    package V renames Intel_GPU_Buffer_Reply;
    package E renames Intel_GPU_Physical_Extents;
    PID : constant Unsigned_64 := syscall (SYSCALL_GETPID);
+   -- Runs in devmgr's place: the boot roots' process authority allocates,
+   -- and the driver side submits to this process (Startup.Device_Manager).
+   Roots : constant CuBit.Handles.Boot_Roots.Roots := CuBit.Handles.Boot_Roots.Get;
+   Pending_Reply : CuBit.Handles.Reply;
    Calls, Saves, Responses, Extents, Pings : Natural := 0;
    Ping_Sent : Boolean := False;
    Local_Ping_Sent : Boolean := False;
@@ -39,7 +48,8 @@ procedure Allocation_IPC_Check is
    function Allocate (CPU : Unsigned_64) return Unsigned_64 is
    begin
       Calls := Calls + 1;
-      return syscall (SYSCALL_ALLOC_DMA, PID, 9, CPU, 3, 2 ** 32);
+      return CuBit.Handles.Control.Allocate_DMA
+        (CuBit.Process_IDs.From_Word (PID), Roots.Process_Root, 9, CPU, 3, 2 ** 32);
    end Allocate;
    package A is new Intel_GPU_Extent_Allocator (Owner, Allocate);
    Pool : A.Pool;
@@ -51,7 +61,12 @@ procedure Allocation_IPC_Check is
    package G is new Intel_GPU_Record_Growth
      (Intel_GPU_Metadata_Platform.Storage, Capacity, Publish);
    function Save return Boolean is
-   begin Saves := Saves + 1; return saveReplyCap (58) = 1; end Save;
+      Saved : constant CuBit.Handles.IPC.Saved_Reply := CuBit.Handles.IPC.Save_Reply;
+   begin
+      Saves := Saves + 1;
+      if Saved.Saved then Pending_Reply := Saved.Handle; end if;
+      return Saved.Saved;
+   end Save;
    procedure Acquire
      (Index : Positive; Pages : L.Page_Count; Generation : Unsigned_32;
       Buffer : out V.Extent_View; Success, Pending : out Boolean) is
@@ -62,11 +77,11 @@ procedure Allocation_IPC_Check is
       Msg : Message := NULL_MESSAGE;
    begin
       Check (Success, "supervisor allocation");
-      Msg.tag := (16#F004#, 4, 0, 0);
+      Msg.tag := (label => 16#F004#, length => 4, protocol => 0, ipc => <>, reserved => 0);
       Msg.words := [V.CPU_Address (Buffer), V.Byte_Count (Buffer), PID,
         L.Allocation_Key (Index, Generation)];
-      Check (replyCap (58, Msg) = 1, "saved reply delivery");
-      Check (replyCap (58, Msg) /= 1, "saved reply consumed twice");
+      Check (CuBit.Handles.IPC.Answer (Pending_Reply, Msg), "saved reply delivery");
+      Check (not CuBit.Handles.IPC.Answer (Pending_Reply, Msg), "saved reply consumed twice");
       Responses := Responses + 1;
    end Respond;
    package D is new Intel_GPU_Allocation_Growth (G, Owner, Save, Acquire, Respond);
@@ -90,8 +105,7 @@ procedure Allocation_IPC_Check is
    Deadline : Unsigned_64;
 begin
    debugPrint ("native allocation IPC: real loopback transport (NO GPU/ISOLATION)" & ASCII.LF);
-   Check (syscall (SYSCALL_POLICY_MINT_CAPABILITY, PID, 1, PID,
-     16#4947#, 3, 15) /= Unsigned_64'Last, "self endpoint");
+   Check (Roots.Valid and CuBit.Handles.Valid (Startup.Device_Manager), "self endpoint");
    D.Configure (Dispatcher, 65536, 1000, OK); Check (OK, "supervisor configure");
    CG.Configure (Client_Growth, 65536, 1000, OK); Check (OK, "driver configure");
    A.Configure_Heap (Pool, 64 * 1024 * 1024, 2 ** 32, OK); Check (OK, "supervisor heap policy");
@@ -118,40 +132,45 @@ begin
            A.Last_Gap_Probes (Pool) = 64 and then not Gap_Ping_Sent
          then
             Answer := NULL_MESSAGE;
-            Answer.tag := (16#7779#, 0, 0, 0);
-            Check (capSubmit (15, Answer, 16#7779#), "gap search interleave submit");
+            Answer.tag := (label => 16#7779#, length => 0, protocol => 0, ipc => <>, reserved => 0);
+            Check (capSubmit (Startup.Device_Manager, Answer, 16#7779#), "gap search interleave submit");
             Gap_Ping_Sent := True;
          end if;
          Poll_Service_Request (From, Msg, Found);
          if Found then
-            Check (Unsigned_64 (From) = PID and Msg.authorityTag = 16#4947#,
+            Check (CuBit.Process_IDs.To_Word (From) = PID and Msg.authorityTag = Startup.Driver_Badge,
               "kernel endpoint attribution");
             if L.Valid_Allocation_Request (Msg.tag.label, Msg.tag.length,
-              Msg.tag.flags, Msg.tag.reserved, Msg.words (0), Msg.words (1),
+              Msg.tag.protocol, Msg.tag.reserved, Msg.words (0), Msg.words (1),
               Msg.words (2), Msg.words (3)) then
                D.Begin_Request (Dispatcher, Positive (Msg.words (0)),
                  L.Page_Count (Msg.words (1)), Unsigned_32 (Msg.words (2)), OK);
                Check (OK, "save allocation request");
                if not Ping_Sent then
                   Answer := NULL_MESSAGE;
-                  Answer.tag := (16#7777#, 0, 0, 0);
-                  Check (capSubmit (15, Answer, 16#7777#), "interleaved submit");
+                  Answer.tag := (label => 16#7777#, length => 0,
+                                 protocol => 0, ipc => <>, reserved => 0);
+                  Check (capSubmit (Startup.Device_Manager, Answer, 16#7777#), "interleaved submit");
                   Ping_Sent := True;
                end if;
-            elsif Msg.tag = (16#7777#, 0, 0, 0) then
+            elsif Msg.tag = (label => 16#7777#, length => 0,
+                             protocol => 0, ipc => <>, reserved => 0) then
                Check (D.Pending (Dispatcher), "ping must interleave pending allocation");
                Check (reply (From, Msg) = 1, "interleaved reply");
-            elsif Msg.tag = (16#7779#, 0, 0, 0) then
+            elsif Msg.tag = (label => 16#7779#, length => 0,
+                             protocol => 0, ipc => <>, reserved => 0) then
                Check (D.Pending (Dispatcher), "gap request not serviced while search pending");
                Check (reply (From, Msg) = 1, "gap interleave reply");
-            elsif Msg.tag = (16#7778#, 0, 0, 0) then
+            elsif Msg.tag = (label => 16#7778#, length => 0,
+                             protocol => 0, ipc => <>, reserved => 0) then
                Check (Client.Local_Work_Pending (Driver), "ping must interleave local work");
                Check (not Client.Result (Driver).Ready, "local work published early");
                Check (reply (From, Msg) = 1, "local work reply");
-            elsif Msg.tag = (L.Extent_Request_Label, 2, 0, 0) then
+            elsif Msg.tag = (label => L.Extent_Request_Label, length => 2,
+                             protocol => 0, ipc => <>, reserved => 0) then
                Check (L.Extent_Request_Authorized
-                 (Msg.tag.label, Msg.tag.length, Msg.tag.flags, Msg.tag.reserved,
-                  L.Budget_Words (Msg.words), Unsigned_64 (From), Msg.authorityTag, PID,
+                 (Msg.tag.label, Msg.tag.length, Msg.tag.protocol, Msg.tag.reserved,
+                  L.Budget_Words (Msg.words), CuBit.Process_IDs.To_Word (From), Msg.authorityTag, PID,
                   Intel_GPU_Extent_Directory.Byte_Count (A.Snapshot (Pool)), True),
                  "shared extent admission");
                declare
@@ -161,7 +180,8 @@ begin
                begin
                   Check (Msg.words (1) = PID and Part.Valid, "extent request");
                   Answer := NULL_MESSAGE;
-                  Answer.tag := (16#F003#, 4, 0, 0);
+                  Answer.tag := (label => 16#F003#, length => 4,
+                                 protocol => 0, ipc => <>, reserved => 0);
                   Answer.words := [Msg.words (0), Part.Address, L.CPU_Base + Offset, PID];
                   Check (reply (From, Answer) = 1, "extent reply");
                   Extents := Extents + 1;
@@ -174,12 +194,14 @@ begin
                  "interleaved completion");
                Pings := Pings + 1;
             elsif Receipt.token = 16#7779# then
-               Check (Receipt.status = COMPLETION_OK and Receipt.msg.tag = (16#7779#, 0, 0, 0),
+               Check (Receipt.status = COMPLETION_OK and Receipt.msg.tag = (label => 16#7779#, length => 0,
+                                                                            protocol => 0, ipc => <>, reserved => 0),
                  "gap interleave completion");
                Check (D.Pending (Dispatcher), "gap completion after allocation reply");
                Gap_Pings := Gap_Pings + 1;
             elsif Receipt.token = 16#7778# then
-               Check (Receipt.status = COMPLETION_OK and Receipt.msg.tag = (16#7778#, 0, 0, 0),
+               Check (Receipt.status = COMPLETION_OK and Receipt.msg.tag = (label => 16#7778#, length => 0,
+                                                                            protocol => 0, ipc => <>, reserved => 0),
                  "local work completion");
                Check (Client.Local_Work_Pending (Driver), "local completion after publication");
                Local_Pings := Local_Pings + 1;
@@ -195,8 +217,9 @@ begin
             Local_Turns := Local_Turns + 1;
             if not Local_Ping_Sent then
                Answer := NULL_MESSAGE;
-               Answer.tag := (16#7778#, 0, 0, 0);
-               Check (capSubmit (15, Answer, 16#7778#), "local work submit");
+               Answer.tag := (label => 16#7778#, length => 0,
+                              protocol => 0, ipc => <>, reserved => 0);
+               Check (capSubmit (Startup.Device_Manager, Answer, 16#7778#), "local work submit");
                Local_Ping_Sent := True;
             end if;
          end if;

@@ -1,7 +1,7 @@
-# virtio-input.drv's authority (docs/ccl-driver-manifests.md). devmgr reads
-# the interrupt request from the linked ELF and installs the vector's CAP_IRQ
-# in its slot (docs/msi-interrupts.md); it maps the register BAR and mints
-# the others itself, at the slots these bindings name.
+# virtio-input.drv's authority (docs/ccl-driver-manifests.md, CAP-002).
+# devmgr maps the register BAR and answers every binding when it launches
+# the driver: the register window, the interrupt (an allocated vector), the
+# pointer publication and its endpoint to devmgr.
 (Executable_Manifest
   identity => "com.cubit.virtio-input"
   version => "0.1.0"

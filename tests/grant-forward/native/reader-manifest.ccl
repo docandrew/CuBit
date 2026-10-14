@@ -3,4 +3,5 @@
   (identity "com.cubit.ccl-test-host")
   (version "1.0.0")
   (request-service ipc-test read-write ipc-test)
-  (request-service ccl-test-host read-write ccl-test-host))
+  # The reader provides ccl-test-host itself and calls only the owner.
+  (request-notification ccl-test-host manage registration))

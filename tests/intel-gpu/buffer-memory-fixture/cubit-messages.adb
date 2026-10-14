@@ -12,15 +12,16 @@ package body CuBit.Messages is
       pragma Assert (Slot = 15);
       pragma Assert (Shift_Right (Token, 32) = 16#4947_5000#);
       pragma Assert ((Token and 16#FFFF_FFFF#) /= 0);
-      if Msg.tag = (16#0237#, 2, 0, 0) then
+      if Msg.tag = (label => 16#0237#, length => 2, protocol => 0, ipc => <>, reserved => 0) then
          pragma Assert (Msg.words (2 .. 3) = [0, 0]);
          pragma Assert (Msg.words (0) <= 600 and Msg.words (1) /= 0);
-      elsif Msg.tag = (16#0239#, 4, 0, 0) then
+      elsif Msg.tag = (label => 16#0239#, length => 4, protocol => 0, ipc => <>, reserved => 0) then
          pragma Assert (Msg.words (0) in 1 .. Unsigned_64 (Intel_GPU_Buffer_Backing.Slot'Last)
            and Msg.words (1) in 1 .. 2 ** 32 - 2);
          pragma Assert (Msg.words (2) = 7 and Msg.words (3) = 1);
       else
-         pragma Assert (Msg.tag = (16#0236#, 3, 0, 0));
+         pragma Assert (Msg.tag = (label => 16#0236#, length => 3,
+                                   protocol => 0, ipc => <>, reserved => 0));
          pragma Assert (Msg.words (2) in 1 .. 2 ** 32 - 1 and Msg.words (3) = 0);
          pragma Assert (Msg.words (0) in 1 .. Unsigned_64 (Intel_GPU_Buffer_Backing.Slot'Last)
            and Msg.words (1) in 1 .. 4096);
@@ -42,14 +43,15 @@ package body CuBit.Messages is
       Receipt := (Last_Token + (if Bad_Token then 1 else 0),
                   (if Bad_Status then 1 else 0), Response);
       if Last_Request.tag.label = 16#0237# then
-         Receipt.msg := ((16#F003#, 4, 0, 0),
+         Receipt.msg := ((label => 16#F003#, length => 4, protocol => 0, ipc => <>, reserved => 0),
            [Last_Request.words (0),
             16#0200_0000# + Last_Request.words (0) * 4 * 1024 * 1024,
             16#7000_0000_0000# + Last_Request.words (0) * 2 * 1024 * 1024,
             Last_Request.words (1)]);
       end if;
       if Retry_First and Polls = 1 then
-         Receipt.msg := (tag => (16#F002#, 0, 0, 0), words => [others => 0]);
+         Receipt.msg := (tag => (label => 16#F002#, length => 0,
+                                 protocol => 0, ipc => <>, reserved => 0), words => [others => 0]);
       end if;
       return 1;
    end Poll;

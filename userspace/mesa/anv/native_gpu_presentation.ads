@@ -1,12 +1,13 @@
 with Interfaces; use Interfaces;
+with Native_GPU_Calls;
 package Native_GPU_Presentation is
-   -- Caller serializes these operations and pins recipient endpoint slots.
+   -- Caller serializes these operations and keeps the endpoints open.
    -- Parent must be acquired and owner-forwardable. This creates a terminal
    -- read-only child, not an attachment. Offset/Bytes are whole pages.
    -- 0 success, 1 invalid/denied; Output cleared on failure. Caller owns the
    -- child until confirmed retired; returning the parent does not retire it.
    function Forward
-     (Desktop_Slot, Parent, Offset, Bytes : Unsigned_64;
+     (Desktop : Native_GPU_Calls.C_Endpoint; Parent, Offset, Bytes : Unsigned_64;
       Output : access Unsigned_64) return Unsigned_32
      with Export, Convention => C, External_Name => "cubit_intel_forward_presentation";
    -- Completed LINEAR BGRA8888 pixels only, never tiled/compressed images or
@@ -15,7 +16,7 @@ package Native_GPU_Presentation is
    -- Success is NOT a reader-release fence. On uncertainty revoke the child
    -- and retain backing until retirement; never infer rejection or retry.
    function Attach_Linear
-     (Desktop_Slot, Surface, Child, Width, Height, Pitch : Unsigned_64)
+     (Desktop : Native_GPU_Calls.C_Endpoint; Surface, Child, Width, Height, Pitch : Unsigned_64)
       return Unsigned_32
      with Export, Convention => C, External_Name => "cubit_intel_attach_linear";
    -- 0 retired, 1 still retained (or retirement query uncertain), 2 rejected.

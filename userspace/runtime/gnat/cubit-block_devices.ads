@@ -1,3 +1,4 @@
+with CuBit.Handles;
 ------------------------------------------------------------------------------
 --  CuBit
 --  Copyright (C) 2026 Jon Andrew
@@ -8,6 +9,7 @@
 with Interfaces; use Interfaces;
 with System;
 with CuBit.Memory_Grants;
+with CuBit.Messages;
 
 package CuBit.Block_Devices is
    PROTOCOL_VERSION : constant Unsigned_16 := 1;
@@ -69,8 +71,8 @@ package CuBit.Block_Devices is
    FEATURE_VOLATILE_CACHE : constant Device_Features := 2#10_0000#;
    FEATURE_FUA            : constant Device_Features := 2#100_0000#;
 
-   --  OP_WRITE_BLOCKS tag flags.
-   WRITE_FLAG_FUA : constant Unsigned_8 := 2#0000_0001#;
+   --  OP_WRITE_BLOCKS protocol flags (the tag's protocol nibble).
+   WRITE_FLAG_FUA : constant CuBit.Messages.Protocol_Flags := 2#0001#;
 
    subtype Logical_Block_Size is Unsigned_32 range 512 .. 65_536;
 
@@ -128,7 +130,9 @@ package CuBit.Block_Devices is
    --  is transport identity, not device identity.  The buffer is transitional
    --  until kernel-tracked derived loans can carry client pages end to end.
    type Device_Session is record
-      endpointSlot : Unsigned_64 := 0;
+      endpoint     : CuBit.Handles.Endpoint := CuBit.Handles.No_Endpoint;
+      --  The volume the session's endpoint serves (0: the device's own).
+      volumeKey    : Unsigned_64 := 0;
       grant        : CuBit.Memory_Grants.Grant_Reference;
       grantBuffer  : System.Address := System.Null_Address;
       grantBytes   : Unsigned_32 := 0;

@@ -16,9 +16,6 @@ package Intel_GPU_Pipe_Pages with SPARK_Mode, Pure is
    function Offset (Item : Page_Index) return Unsigned_64 is
      (Pipe_A_Offset + Pipe_Stride * Unsigned_64 (Item))
      with Post => Offset'Result mod Page_Bytes = 0 and Offset'Result < 16#200000#;
-   --  Slot 8 holds the DRIVER_GPU registration; 9 .. 12 are these pages.
-   --  Fixed by policy, never chosen by the requester.
-   function Slot (Item : Page_Index) return Unsigned_64 is (9 + Unsigned_64 (Item));
    function Address (Item : Page_Index) return Unsigned_64 is
      (Virtual_Base + Page_Bytes * Unsigned_64 (Item));
 end Intel_GPU_Pipe_Pages;

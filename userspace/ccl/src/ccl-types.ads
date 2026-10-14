@@ -5,7 +5,11 @@ with Interfaces;
 --  (Complete_Self_List): no recursive layouts or other forward references.
 package CCL.Types with SPARK_Mode is
    Maximum_Name_Length : constant := 32;
-   Maximum_Declarations : constant := 48;
+   --  64: the executable-manifest schema declares 49 types (CAP-002 added
+   --  the startup ones). Each declaration slot costs about 0.8 KiB in a
+   --  registry (name and 16 components); a precompiled manifest schema
+   --  would remove this pressure (follow-up).
+   Maximum_Declarations : constant := 64;
    Maximum_Components : constant := 16;
    Maximum_Value_Cells : constant := 256;
 

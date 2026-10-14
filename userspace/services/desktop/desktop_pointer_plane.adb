@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with Desktop_Endpoints;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Memory_Grants;
@@ -44,7 +45,7 @@ package body Desktop_Pointer_Plane is
    function Call (Request : DSP.Wire_Message) return DSP.Wire_Message is
       Msg : Message := CuBit.Desktop_Messages.From_Wire (Request);
    begin
-      Msg.tag := capCall (CapabilitySlot (CAP_SLOT_DISPLAY), Msg,
+      Msg.tag := capCall (Desktop_Endpoints.Display_Service, Msg,
                           Deadline_After (Call_Deadline_Ms));
       return CuBit.Desktop_Messages.To_Wire (Msg);
    end Call;
@@ -125,7 +126,7 @@ package body Desktop_Pointer_Plane is
       Max_Height := Natural (Capability.Value.Max_Height);
       if not Granted then
          --  One staging grant for the life of the desktop.
-         MG.Create_Via_Capability (CAP_SLOT_DISPLAY, Staging'Address,
+         MG.Create_Via_Capability (Desktop_Endpoints.Display_Service, Staging'Address,
                                    Staging_Pages, False, Grant, Ok);
          if not Ok then return; end if;
          Granted := True;
@@ -205,7 +206,7 @@ package body Desktop_Pointer_Plane is
    begin
       Compositor_Requests.Allocate (Sequence, Token);
       Sent := Token /= 0 and then
-        capSubmit (CAP_SLOT_DISPLAY, CuBit.Desktop_Messages.From_Wire (Request), Token);
+        capSubmit (Desktop_Endpoints.Display_Service, CuBit.Desktop_Messages.From_Wire (Request), Token);
       if Sent then
          Shape_Flight := Token;
          Flight_Step := Step;
@@ -275,7 +276,7 @@ package body Desktop_Pointer_Plane is
          return;
       end if;
       Compositor_Requests.Allocate (Sequence, Token);
-      if Token /= 0 and then capSubmit (CAP_SLOT_DISPLAY,
+      if Token /= 0 and then capSubmit (Desktop_Endpoints.Display_Service,
            CuBit.Desktop_Messages.From_Wire (PP.Encode (PP.Move'
              (Pointer, DPL.Space_Coordinate (NW.Wanted (Moves).X),
               DPL.Space_Coordinate (NW.Wanted (Moves).Y)))),

@@ -130,7 +130,7 @@ package body Wall_Clock is
             end if;
          end if;
       end if;
-      Result.tag := (16#F000#, 4, 0, 0);
+      Result.tag := (label => 16#F000#, length => 4, protocol => 0, ipc => <>, reserved => 0);
       Result.words :=
         [UTC, Shift_Left (Unsigned_64 (Date.Year), 40) or
          Shift_Left (Unsigned_64 (Date.Month), 32) or

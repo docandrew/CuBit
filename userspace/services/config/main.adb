@@ -18,6 +18,9 @@ with System; use System;
 
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Memory_Grants;
+with CuBit.Handles.IPC;
+with CuBit.Startup_State;
+with Startup;
 with CuBit.Config_Inspection;
 with Config_Authority;
 with Config_Authority_Wire;
@@ -99,7 +102,7 @@ procedure main is
    begin
       replyMsg.tag := (label  => label,
                        length => 1,
-                       flags  => 0,
+                       protocol  => 0, ipc => <>,
                        reserved  => 0);
       replyMsg.words := [0 => word0, others => 0];
       ignore := reply (dest, replyMsg);
@@ -377,23 +380,26 @@ procedure main is
    msg    : Message;
 begin
    debugPrint ("Config: starting..." & LF);
+   if not CuBit.Startup_State.Ready (Startup.Verify) then
+      debugPrint ("Config: startup capabilities missing" & LF);
+      return;
+   end if;
 
    --  Register as DRIVER_CONFIG so other services can discover us
    declare
       ignore : Unsigned_64;
    begin
-      ignore := registerDriver (DRIVER_CONFIG);
+      ignore := registerDriver (DRIVER_CONFIG, Startup.Registration);
    end;
 
    --  Signal devmgr that we are ready
    declare
-      CAP_SLOT_READY : constant Unsigned_64 := 15;
       OP_READY       : constant Unsigned_32 := 16#FF00#;
       ignore : MessageTag;
    begin
-      ignore := capSend (CAP_SLOT_READY,
+      ignore := capSend (Startup.Ready,
          (tag      => (label => OP_READY, length => 0,
-                       flags => 0, reserved => 0),
+                       protocol => 0, ipc => <>, reserved => 0),
           authorityTag => 0,
           words    => [others => 0]), CuBit.Messages.Wait_Forever);
    end;
@@ -429,11 +435,22 @@ begin
                   begin
                      if Manager = No_Process or sender /= Manager then
                         sendReply (sender, REPLY_ACCESS_DENIED, 0);
-                     elsif not Config_Worker_Startup.Valid_Attachment (msg) then
+                     elsif not Config_Worker_Startup.Valid_Attachment (msg)
+                       or else not CuBit.Handles.IPC.Offers (msg)
+                     then
                         sendReply (sender, REPLY_ERR, 0);
                      else
-                        Config_Typed_Service.Attach (Typed_Objects,
-                          Config_Worker_Startup.Worker_Endpoint, msg.words (0), Attached);
+                        --  The worker's endpoint, offered with the call.
+                        declare
+                           Offered : constant CuBit.Handles.IPC.Accepted_Endpoint :=
+                             CuBit.Handles.IPC.Accept_Endpoint
+                               (CuBit.Handles.IPC.Accept_Offered (sender));
+                        begin
+                           if Offered.OK then
+                              Config_Typed_Service.Attach (Typed_Objects,
+                                Offered.Value, msg.words (0), Attached);
+                           end if;
+                        end;
                         sendReply (sender, (if Attached then REPLY_OK else REPLY_ERR), 0);
                         if Attached then debugPrint ("Config: storage worker attached" & LF); end if;
                      end if;

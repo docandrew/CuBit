@@ -106,7 +106,7 @@ begin
 
    for I in Volume_List.Count (List) + 1 .. Maximum_Volumes loop
       Register (List, "data:" & Character'Val (Character'Pos ('a') + I),
-                (Endpoint_Slot (I + 20), 5, 8), Volume, Result);
+                (Unsigned_64 (I + 20), 5, 8), Volume, Result);
       pragma Assert (Result = Registered and Volume = I);
    end loop;
    Before := List;
@@ -114,5 +114,29 @@ begin
    pragma Assert (Result = List_Full and Volume = 0 and List = Before);
    pragma Assert (Name (List, Second) = "nvme:0" and Binding (List, Second).Endpoint = 11);
    Resolve ("@nvme:1/still-here", Known_Volume, Third, "still-here");
+   --  CAP-002: drivers that start later are registered without an endpoint
+   --  and attached once; a null or reused endpoint is refused.
+   declare
+      Late : Volume_List.State;
+      Ata, Nvme : Volume_Reference;
+      Done : Boolean;
+   begin
+      Register (Late, "ata:0", (0, 2, 8), Ata, Result);
+      pragma Assert (Result = Registered);
+      Register (Late, "nvme:0", (0, 5, 128), Nvme, Result);
+      pragma Assert (Result = Registered and Nvme /= Ata);
+      pragma Assert (Find (Late, "ata:0") = Ata and Find (Late, "nvme:0") = Nvme);
+      pragma Assert (Find (Late, "cd:0") = No_Volume);
+      Attach (Late, Ata, 0, Done);
+      pragma Assert (not Done and Binding (Late, Ata).Endpoint = 0);
+      Attach (Late, Ata, 40, Done);
+      pragma Assert (Done and Binding (Late, Ata).Endpoint = 40);
+      Attach (Late, Ata, 41, Done);
+      pragma Assert (not Done and Binding (Late, Ata).Endpoint = 40);
+      Attach (Late, Nvme, 40, Done);
+      pragma Assert (not Done and Binding (Late, Nvme).Endpoint = 0);
+      Attach (Late, Nvme, 41, Done);
+      pragma Assert (Done and Binding (Late, Nvme).Endpoint = 41);
+   end;
    Put_Line ("VOLUME-LIST-CHECK: PASS");
 end Main;

@@ -5,7 +5,7 @@ extern crate alloc;
 
 use alloc::{boxed::Box, string::String, vec::Vec};
 use core::{arch::global_asm, panic::PanicInfo};
-use cubit::{CallError, EndpointSlot, Message};
+use cubit::{CallError, Endpoint, Message, startup::Table};
 
 #[global_allocator]
 static ALLOCATOR: cubit_allocator::BoundedAllocator = cubit_allocator::BoundedAllocator;
@@ -14,6 +14,7 @@ include!(concat!(env!("CUBIT_BINDINGS_DIR"), "/bindings.rs"));
 
 // The ELF loader supplies initialized data/BSS and the requested stack.
 // No argv, environment, TLS, GNAT runtime, C startup, or Linux entry ABI.
+// RDI holds the launch block's length (its startup table) into rust_main.
 global_asm!(
     r#"
     .section .text._start,"ax",@progbits
@@ -44,8 +45,16 @@ const HELLO: [u64; 4] = [
 // Force a real BSS segment; the volatile read tests loader initialization.
 static mut ZEROED: [u64; 8] = [0; 8];
 
+/// The launch block's length, kept for the panic handler's report.
+static BLOCK_LENGTH: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(0);
+
+fn startup() -> Option<Table> {
+    // SAFETY: BLOCK_LENGTH holds the length the kernel passed at entry.
+    unsafe { Table::load(BLOCK_LENGTH.load(core::sync::atomic::Ordering::Relaxed)) }
+}
+
 fn report(outcome: u64, sample: u64) {
-    if let Some(host) = EndpointSlot::new(SLOT_TEST_HOST) {
+    if let Some(host) = startup().and_then(|t| t.endpoint(BINDING_TEST_HOST)) {
         let _ = host.call(Message::new(REPORT, 2, [outcome, sample, 0, 0]));
     }
 }
@@ -149,7 +158,7 @@ fn thread_probe() {
     cubit::debug_write("RUST-THREADS: PASS\n");
 }
 
-fn heap_failure_probe(host: &EndpointSlot) {
+fn heap_failure_probe(host: &Endpoint) {
     // The dedicated headless VM has 128 MiB. This runs only after both
     // executables have loaded and completed their allocator/authority checks.
     // No production fault-injection syscall or global host pressure is used.
@@ -176,14 +185,22 @@ fn heap_failure_probe(host: &EndpointSlot) {
 }
 
 #[unsafe(no_mangle)]
-extern "C" fn rust_main() -> ! {
+extern "C" fn rust_main(block_length: u64) -> ! {
+    BLOCK_LENGTH.store(block_length, core::sync::atomic::Ordering::Relaxed);
     // SAFETY: read before any thread starts; ZEROED is never mutated.
     let zeroed = unsafe { core::ptr::read_volatile(&raw const ZEROED) };
     if zeroed != [0; 8] {
         report(0, 1);
         cubit::exit(1);
     }
-    let host = EndpointSlot::new(SLOT_TEST_HOST).unwrap();
+    let Some(table) = startup() else {
+        cubit::debug_write("rust-probe: no startup table\n");
+        cubit::exit(7);
+    };
+    let Some(host) = table.endpoint(BINDING_TEST_HOST) else {
+        cubit::debug_write("rust-probe: no test-host endpoint\n");
+        cubit::exit(7);
+    };
     let response = host.call(Message::new(ECHO, 4, HELLO));
     match response {
         Ok(reply)
@@ -202,10 +219,12 @@ extern "C" fn rust_main() -> ! {
             cubit::exit(6);
         }
     }
-    let clock = EndpointSlot::new(SLOT_CLOCK).unwrap();
-    match clock.call(Message::new(CLOCK_MONOTONIC_MS, 1, [0; 4])) {
+    // The denied variant's manifest has no clock: its table has no entry.
+    let clock = table.endpoint(BINDING_CLOCK);
+    match clock.as_ref().ok_or(CallError::Unavailable)
+        .and_then(|c| c.call(Message::new(CLOCK_MONOTONIC_MS, 1, [0; 4]))) {
         Ok(first) if first.tag.label == REPLY_OK && first.tag.length == 1 => {
-            match clock.call(Message::new(CLOCK_MONOTONIC_MS, 1, [0; 4])) {
+            match clock.as_ref().unwrap().call(Message::new(CLOCK_MONOTONIC_MS, 1, [0; 4])) {
                 Ok(next)
                     if next.tag.label == REPLY_OK
                         && next.tag.length == 1

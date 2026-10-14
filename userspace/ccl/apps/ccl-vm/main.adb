@@ -2,7 +2,8 @@ with CCL.Evaluation;
 with Interfaces; use Interfaces;
 
 with CCL.Catalog;
-with CCL_Manifest_Bindings;
+with CuBit.Handles;
+with Startup;
 with CCL.Compiler;
 with CCL.Interfaces.Clock;
 with CCL.Language;
@@ -164,7 +165,7 @@ begin
    end;
 
    declare
-      IMPORT_SLOT : constant CapabilitySlot := CCL_Manifest_Bindings.Slot_Test_Host;
+      Import_Service : constant CuBit.Handles.Endpoint := Startup.Test_Host;
       OP_INCREMENT : constant Unsigned_32 :=
         CuBit.Protocols.CCL_TEST_OP_INCREMENT;
       REPLY_OK : constant Unsigned_32 := 16#F000#;
@@ -203,9 +204,9 @@ begin
          All_Passed := False;
       else
          Request.tag :=
-           (label => OP_INCREMENT, length => 1, flags => 0, reserved => 0);
+           (label => OP_INCREMENT, length => 1, protocol => 0, ipc => <>, reserved => 0);
          Request.words (0) := Unsigned_64 (VM_Result.Request_Argument.Integer);
-         Submit_OK := capSubmit (IMPORT_SLOT, Request, IMPORT_TOKEN);
+         Submit_OK := capSubmit (Import_Service, Request, IMPORT_TOKEN);
          if Submit_OK then
             Completion_Count :=
               waitCompletion (Completions'Address, max => 1, min => 1);
@@ -234,7 +235,7 @@ begin
    end;
 
    declare
-      CLOCK_SLOT : constant CapabilitySlot := CCL_Manifest_Bindings.Slot_Clock;
+      Clock_Service : constant CuBit.Handles.Endpoint := Startup.Clock;
       --  Opaque index in this host adapter's binding table. It is deliberately
       --  unrelated to Clock's temporary system-wide driver registration ID.
       CLOCK_HOST_BINDING : constant Unsigned_32 := 1;
@@ -259,7 +260,7 @@ begin
    begin
       --  Native CuBit path: make an explicitly visible descriptor catalog,
       --  compile an unresolved source import, and only then link it to the
-      --  endpoint authority supplied in CLOCK_SLOT.  No Clock driver number
+      --  endpoint authority supplied in Clock_Service.  No Clock driver number
       --  or capability slot enters the language, compiler, or bytecode ABI.
       CCL.Catalog.Initialize (Catalog);
       CCL.Catalog.Initialize (Grants);
@@ -313,9 +314,9 @@ begin
          debugPrint ("ccl-vm: clock source/link PASS" & LF);
          Request.tag :=
            (label => CuBit.Protocols.CLOCK_OP_MONOTONIC_MS, length => 1,
-            flags => 0, reserved => 0);
+            protocol => 0, ipc => <>, reserved => 0);
          Request.words (0) := 0;
-         Submit_OK := capSubmit (CLOCK_SLOT, Request, IMPORT_TOKEN);
+         Submit_OK := capSubmit (Clock_Service, Request, IMPORT_TOKEN);
          if Submit_OK then
             Completion_Count :=
               waitCompletion (Completions'Address, max => 1, min => 1);
@@ -351,7 +352,7 @@ begin
    end;
 
    declare
-      IMPORT_SLOT : constant CapabilitySlot := CCL_Manifest_Bindings.Slot_Test_Host;
+      Import_Service : constant CuBit.Handles.Endpoint := Startup.Test_Host;
       OP_INCREMENT : constant Unsigned_32 :=
         CuBit.Protocols.CCL_TEST_OP_INCREMENT;
       REPLY_OK : constant Unsigned_32 := 16#F000#;
@@ -405,9 +406,9 @@ begin
          All_Passed := False;
       else
          Request.tag :=
-           (label => OP_INCREMENT, length => 1, flags => 0, reserved => 0);
+           (label => OP_INCREMENT, length => 1, protocol => 0, ipc => <>, reserved => 0);
          Request.words (0) := Unsigned_64 (Event.Argument.Integer);
-         Submitted := capSubmit (IMPORT_SLOT, Request, Event.Token);
+         Submitted := capSubmit (Import_Service, Request, Event.Token);
 
          --  Prove useful work can run before harvesting this completion.
          CCL.Scheduler.Dispatch_One (Scheduler, Event);

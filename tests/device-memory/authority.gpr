@@ -4,8 +4,7 @@
 project Authority is
    for Source_Dirs use (".", "fixture", "../../kernel/src",
      "../../shared/publications", "../../shared/time");
-   for Source_Files use ("authority_tests.adb", "config.ads",
-     "capabilities.ads", "device_memory_admission.ads",
+   for Source_Files use ("authority_tests.adb", "capabilities.ads", "device_memory_admission.ads",
      "device_memory_publication.ads", "clock_publication.ads", "clock_publication.adb",
      "physical_ranges.ads", "physical_ranges.adb",
      "device_memory_authority.ads", "device_memory_authority.adb");

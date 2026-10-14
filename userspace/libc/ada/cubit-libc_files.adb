@@ -18,6 +18,8 @@ with CuBit.Libc_Park_Table;
 with CuBit.Path_Names;
 with CuBit.Path_Names_C;
 
+with CuBit.Libc_Startup;
+with CuBit.Startup_Tables;
 package body CuBit.Libc_Files is
 
    package K renames CuBit.Kernel_ABI;
@@ -35,7 +37,10 @@ package body CuBit.Libc_Files is
    ---------------------------------------------------------------------------
    --  The protocol (CuBit.Filesystems; tests/libc-ada checks these).
    ---------------------------------------------------------------------------
-   Filesystem_Slot : constant := 1;
+   --  The filesystem endpoint its launcher granted (startup name
+   --  "filesystem"), or 0: then every file call fails.
+   function Filesystem_Handle return Unsigned_64 is
+     (CuBit.Libc_Startup.Granted ("filesystem", CuBit.Startup_Tables.Endpoint));
    OP_OPEN                : constant := 16#0001#;
    OP_CLOSE               : constant := 16#0002#;
    OP_OPEN_DIRECTORY      : constant := 16#0005#;
@@ -188,7 +193,7 @@ package body CuBit.Libc_Files is
    function Lend (Area : Unsigned_64; Pages : Unsigned_64) return Unsigned_64;
    function Lend (Area : Unsigned_64; Pages : Unsigned_64) return Unsigned_64 is
       Slot : constant Unsigned_64 := Kernel
-        (K.Create_Shared_Memory_Grant_Via_Capability, Filesystem_Slot, Area, Pages,
+        (K.Create_Shared_Memory_Grant_Via_Capability, Filesystem_Handle, Area, Pages,
          Grant_Read_Write);
       Generation : Unsigned_64;
       Ignore : Unsigned_64;
@@ -222,7 +227,7 @@ package body CuBit.Libc_Files is
       M : aliased K.Message :=
         (Label => Label, Length => Length, Words => [W0, W1, W2, W3], others => <>);
       Tag : constant Unsigned_64 := Kernel
-        (K.Call_Via_Endpoint_Capability, Filesystem_Slot, Value_Of (M'Address), CuBit.Kernel_ABI.Forever);
+        (K.Call_Via_Endpoint_Capability, Filesystem_Handle, Value_Of (M'Address), CuBit.Kernel_ABI.Forever);
    begin
       Reply := M.Words (0);
       return Unsigned_32 (Tag and 16#FFFF_FFFF#);
@@ -331,7 +336,7 @@ package body CuBit.Libc_Files is
    procedure Kick;
    procedure Kick is
       Ignore : constant Unsigned_64 := CuBit.Kernel_Calls.Submit
-        (Filesystem_Slot, CuBit.Channel_Protocol.OP_KICK, 1, Queue_Number, 0, 0, 0,
+        (Filesystem_Handle, CuBit.Channel_Protocol.OP_KICK, 1, Queue_Number, 0, 0, 0,
          CuBit.Kernel_Calls.No_Completion_Token);
    begin
       null;
@@ -359,7 +364,7 @@ package body CuBit.Libc_Files is
       Number := 0;
       Peer := 0;
       Own_Grant := 0;
-      Slot := Kernel (K.Create_Shared_Memory_Grant_Via_Capability, Filesystem_Slot, Area, Pages, Flags);
+      Slot := Kernel (K.Create_Shared_Memory_Grant_Via_Capability, Filesystem_Handle, Area, Pages, Flags);
       if Slot = K.Failed then
          return False;
       end if;
@@ -372,7 +377,7 @@ package body CuBit.Libc_Files is
       M := (Label => CuBit.Channel_Protocol.OP_OPEN_PRODUCING,
             Length => CuBit.Channel_Protocol.Open_Words, Reserved => Connector,
             Words => [Words (0), Words (1), Words (2), Own_Grant], others => <>);
-      Tag := Kernel (K.Call_Via_Endpoint_Capability, Filesystem_Slot, Value_Of (M'Address), CuBit.Kernel_ABI.Forever);
+      Tag := Kernel (K.Call_Via_Endpoint_Capability, Filesystem_Handle, Value_Of (M'Address), CuBit.Kernel_ABI.Forever);
       if Unsigned_32 (Tag and 16#FFFF_FFFF#) /= K.Reply_OK then
          Revoke (Own_Grant);
          Own_Grant := 0;
@@ -381,7 +386,7 @@ package body CuBit.Libc_Files is
       Number := M.Words (0);
       if Peer_Bytes > 0 then
          Mapped := Kernel
-           (K.Acquire_Shared_Memory_Grant_Via_Capability, Filesystem_Slot,
+           (K.Acquire_Shared_Memory_Grant_Via_Capability, Filesystem_Handle,
             M.Words (1) and 16#FFFF_FFFF#, Shift_Right (M.Words (1), K.Generation_Shift),
             0, Peer_Bytes, 0);
          if Mapped = K.Failed or else Mapped = 0 then

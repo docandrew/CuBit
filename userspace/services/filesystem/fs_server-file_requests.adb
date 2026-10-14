@@ -456,7 +456,7 @@ package body Fs_Server.File_Requests is
 
          replyMsg.tag := (label  => REPLY_OK,
                           length => 2,
-                          flags  => 0,
+                          protocol  => 0, ipc => <>,
                           reserved  => 0);
          replyMsg.words := [0 => handleId,
                             1 => fsize,
@@ -722,7 +722,7 @@ package body Fs_Server.File_Requests is
       request : Message := msg;
       loan : CuBit.Grant_References.Reference;
    begin
-      if msg.tag.length /= 4 or else msg.tag.flags /= 0 or else
+      if msg.tag.length /= 4 or else msg.tag.protocol /= 0 or else
         msg.tag.reserved /= 0 or else
         not CuBit.Grant_References.Valid_Wire (msg.words (1))
       then
@@ -845,7 +845,7 @@ package body Fs_Server.File_Requests is
         resolveHandle (msg.words (0), sender, FILE_OBJECT);
       status : Ext2.Flush_Status;
    begin
-      if msg.tag.length /= 1 or else msg.tag.flags /= 0 or else
+      if msg.tag.length /= 1 or else msg.tag.protocol /= 0 or else
         msg.tag.reserved /= 0 or else handle < 0
       then
          sendReply (sender, REPLY_ERR, 0);
@@ -884,7 +884,7 @@ package body Fs_Server.File_Requests is
       updated : Ext2.Inode;
       status : Ext2.Truncate_Status;
    begin
-      if msg.tag.length /= 2 or else msg.tag.flags /= 0 or else
+      if msg.tag.length /= 2 or else msg.tag.protocol /= 0 or else
         msg.tag.reserved /= 0 or else handle < 0
       then
          sendReply (sender, REPLY_ERR, 0);

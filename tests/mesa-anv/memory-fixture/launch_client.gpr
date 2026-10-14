@@ -1,17 +1,28 @@
 project Launch_Client is
+   --  CAP-002: procmgr's render admission client over mocked IPC.
    for Source_Dirs use (".", "../../../userspace/lib/display",
-     "../../../userspace/runtime/gnat", "../../../userspace/services/intel-gpu");
+     "../../../userspace/runtime/gnat", "../../../userspace/services/intel-gpu",
+     "../../../shared/capabilities");
    for Source_Files use ("launch_client_tests.adb", "cubit.ads",
      "cubit-process_ids.ads", "cubit-process_ids.adb",
-     "messages_mock.ads", "messages_mock.adb",
-     "cubit-capability_grants.ads", "cubit-capability_grants.adb",
+     "cubit-handles.ads", "capability_abi.ads", "capability_abi.adb",
+     "broker_messages_mock.ads", "broker_messages_mock.adb",
+     "launch_ipc_mock.ads", "launch_ipc_mock.adb",
+     "launch_grants_mock.ads", "launch_grants_mock.adb",
+     "broker_handles_fixture.ads", "broker_handles_fixture.adb",
      "intel_gpu_broker_request.ads", "intel_gpu_broker_request.adb",
      "intel_render_launch_client.ads", "intel_render_launch_client.adb");
    for Object_Dir use "build-launch-client";
    for Main use ("launch_client_tests.adb");
    package Naming is
-      for Spec ("CuBit.Messages") use "messages_mock.ads";
-      for Body ("CuBit.Messages") use "messages_mock.adb";
+      for Spec ("CuBit.Messages") use "broker_messages_mock.ads";
+      for Body ("CuBit.Messages") use "broker_messages_mock.adb";
+      for Spec ("CuBit.Handles.IPC") use "launch_ipc_mock.ads";
+      for Body ("CuBit.Handles.IPC") use "launch_ipc_mock.adb";
+      for Spec ("CuBit.Capability_Grants") use "launch_grants_mock.ads";
+      for Body ("CuBit.Capability_Grants") use "launch_grants_mock.adb";
+      for Spec ("CuBit.Handles.Fixture") use "broker_handles_fixture.ads";
+      for Body ("CuBit.Handles.Fixture") use "broker_handles_fixture.adb";
    end Naming;
    package Compiler is
       for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato");

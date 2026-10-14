@@ -1,3 +1,4 @@
+with CuBit.Handles.Fixture;
 with Ada.Command_Line; with Ada.Text_IO; with Interfaces;
 with System; with System.Storage_Elements;
 with Desktop_Vulkan_Startup; with Vulkan_Device_Mock;
@@ -30,7 +31,7 @@ begin
    Reset; Context_Set (0, 0); M.Set (True, True, 0); Pipeline_Set (0, 0); Image_Set (4096, 1, 0, 0, 0);
    S.Import_Owned_Source (5, Addr (55), Ticket, Result);
    pragma Assert (Result = S.Source_Rejected and Calls (9) = 0);
-   S.Initialize (25); S.Configure_Targets (32, 24, 1, 16384, OK); pragma Assert (OK);
+   S.Initialize (CuBit.Handles.Fixture.Endpoint_Of (25)); S.Configure_Targets (32, 24, 1, 16384, OK); pragma Assert (OK);
    S.Prepare_Pipeline (OK); pragma Assert (OK);
    if Scenario in 1 | 2 then Set (9, U32 (Scenario)); end if;
    S.Import_Owned_Source (5, Addr (55), Ticket, Result);

@@ -9,7 +9,8 @@ procedure Startup_Tests is
    Valid : Message;
 begin
    pragma Assert (not Valid_Attachment (Request));
-   Request.tag := (Operation'Enum_Rep (Attach_Worker), 1, 0, 0);
+   Request.tag := (label => Operation'Enum_Rep (Attach_Worker), length => 1,
+                   protocol => 0, ipc => <>, reserved => 0);
    Request.words (0) := 123;
    pragma Assert (Valid_Attachment (Request));
    Valid := Request;
@@ -19,7 +20,7 @@ begin
          when 1 => Request.tag.label := Request.tag.label + 1;
          when 2 => Request.tag.length := 0;
          when 3 => Request.tag.length := 2;
-         when 4 => Request.tag.flags := 1;
+         when 4 => Request.tag.protocol := 1;
          when 5 => Request.tag.reserved := 1;
          when 6 => Request.words (0) := 0;
          when 7 => Request.words (1) := 1;

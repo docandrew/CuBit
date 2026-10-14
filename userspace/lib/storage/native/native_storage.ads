@@ -6,7 +6,10 @@ with System;
 package Native_Storage is
    function Transfer_Capacity return Unsigned_64
      with Export, Convention => C, External_Name => "cubit_storage_transfer_capacity";
-   function Initialize (Endpoint : Unsigned_64) return Unsigned_32
+   --  The filesystem service is the program's "filesystem" startup entry
+   --  (CAP-002): no endpoint crosses the C boundary.
+   Filesystem_Binding : constant String := "filesystem";
+   function Initialize return Unsigned_32
      with Export, Convention => C, External_Name => "cubit_storage_initialize";
    function Execute
      (Operation : Unsigned_32; Handle, Position : Unsigned_64;

@@ -1,7 +1,7 @@
-# nvme.drv's authority (docs/ccl-driver-manifests.md). devmgr reads the
-# interrupt request from the linked ELF and installs the vectors' CAP_IRQ in
-# its slot (docs/msi-interrupts.md); it still mints the others itself, at
-# the slots these bindings name.
+# nvme.drv's authority (docs/ccl-driver-manifests.md, CAP-002). devmgr
+# answers every binding when it launches the driver: the register window,
+# the completion interrupt (an allocated vector block), its registration and
+# its endpoint to devmgr. The DMA region is devmgr's (launch configuration).
 (Executable_Manifest
   identity => "com.cubit.nvme"
   version => "0.1.0"

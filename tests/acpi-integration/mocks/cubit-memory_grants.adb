@@ -1,11 +1,11 @@
 package body CuBit.Memory_Grants is
    procedure Acquire_Via_Capability
-     (slot : CuBit.Messages.CapabilitySlot; reference : Grant_Reference;
+     (slot : CuBit.Handles.Endpoint; reference : Grant_Reference;
       byteOffset, byteLength : Unsigned_64; requiredAccess : Required_Access;
       mappedAddress : out System.Address; success : out Boolean) is
    begin
       Acquisitions := Acquisitions + 1;
-      Last_Slot := slot; Last_Reference := reference;
+      Last_Provider := slot; Last_Reference := reference;
       Last_Length := byteLength; Last_Offset := byteOffset;
       Last_Access := requiredAccess;
       mappedAddress := Source; success := Acquire_OK;

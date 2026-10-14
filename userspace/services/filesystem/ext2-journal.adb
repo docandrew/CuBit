@@ -34,11 +34,11 @@ package body Ext2.Journal is
    Commit_Was_Barrier : Boolean := False;
 
    function dirtyBlocks (fs : Filesystem) return Boolean is
-     (Block_Cache_Index.Has_Dirty (Cache_Index, fs.device.endpointSlot) or else
+     (Block_Cache_Index.Has_Dirty (Cache_Index, fs.device.volumeKey) or else
       fs.pendingCount > 0);
 
    procedure commitTransaction (fs : in out Filesystem; status : out Write_Status) is
-      volume : constant Unsigned_64 := fs.device.endpointSlot;
+      volume : constant Unsigned_64 := fs.device.volumeKey;
       blockBytes : constant Unsigned_64 := Unsigned_64 (fs.blkSize);
       size : constant Jbd2_Format.Block_Bytes := Jbd2_Format.Block_Bytes (fs.blkSize);
       incompat : constant Unsigned_32 := fs.journal.Incompat;

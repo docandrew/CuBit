@@ -1,4 +1,5 @@
-# DRAFT, not yet attached to ata.drv: devmgr still mints these grants itself.
+# ata.drv's authority (CAP-002): devmgr answers these bindings from its
+# platform catalog (the primary channel, line 14) when it launches it.
 (executable-manifest v1
   (identity "com.cubit.ata")
   (version "0.1.0")

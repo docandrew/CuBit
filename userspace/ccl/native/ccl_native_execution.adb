@@ -5,6 +5,7 @@ with CCL.Objects;
 with Config_Object_Client.Resources.Runs;
 with Config_Object_Interfaces;
 with Config_Read_Outcomes;
+with CCL_Native_Bindings;
 
 package body CCL_Native_Execution is
    package H renames Config_Object_Client.Resources.Runs;
@@ -14,7 +15,7 @@ package body CCL_Native_Execution is
    use type CCL.VM.Execution_Status;
    -- SHA-256 of the checked-in workbench-config-*.schema definitions. These
    -- pin metadata, not publisher trust or authority. This is a trusted bootstrap
-   -- specialization through CAP_SLOT_CONFIG, not network service discovery.
+   -- specialization through the config startup entry, not network service discovery.
    Value_Key : constant CCL.Objects.Schema_Key :=
      [16#8ed97f14e39b4c54#, 16#3c314b37313b16bd#, 16#0d37fd15c3d4574f#, 16#88b942859045912b#];
    Read_Key : constant CCL.Objects.Schema_Key :=
@@ -58,7 +59,7 @@ package body CCL_Native_Execution is
          if Granted /= CCL.Catalog.Grant_Added then Success := False; return; end if;
       end loop;
       H.Configure (Host, CCL.Catalog.Visible_Types (Candidate), Kind, Contract, Reads,
-        Bindings, CuBit.Messages.CAP_SLOT_CONFIG, "com.cubit.ccl-workbench.demo.counter", Success);
+        Bindings, CCL_Native_Bindings.Config, "com.cubit.ccl-workbench.demo.counter", Success);
       if Success then Catalog := Candidate; Grants := Proposed; end if;
       -- The service still enforces the manifest's narrow name scope on every
       -- open/read/write. Catalog installation cannot bypass that enforcement.

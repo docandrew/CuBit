@@ -1,13 +1,15 @@
+with CuBit.Handles;
+with CuBit.Handles.Fixture;
 with Ada.Unchecked_Conversion;
 package body CuBit.Memory_Grants is
    type Page_Access is access all CuBit.Metric_Protocol.Summary_Page;
    function Pointer is new Ada.Unchecked_Conversion (System.Address, Page_Access);
    Address : System.Address := System.Null_Address;
    procedure Create_Via_Capability
-     (slot : CuBit.Messages.CapabilitySlot; localAddr : System.Address;
+     (slot : CuBit.Handles.Endpoint; localAddr : System.Address;
       numPages : Natural; readWrite : Boolean; reference : out Grant_Reference; success : out Boolean) is
    begin
-      pragma Assert (slot = 17 and numPages = 1 and readWrite);
+      pragma Assert (CuBit.Handles."=" (slot, CuBit.Handles.Fixture.Endpoint_Of (17)) and numPages = 1 and readWrite);
       Creates := Creates + 1; Address := localAddr;
       reference := (7, Unsigned_64 (Creates)); success := Allow_Create;
    end Create_Via_Capability;

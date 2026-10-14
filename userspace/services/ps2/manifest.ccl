@@ -1,4 +1,5 @@
-# DRAFT, not yet attached to ps2.drv: devmgr still mints these grants itself.
+# ps2.drv's authority (CAP-002): devmgr answers these bindings from its
+# platform catalog (ports 0x60/0x64, lines 1 and 12) when it launches it.
 (executable-manifest v1
   (identity "com.cubit.ps2")
   (version "0.1.0")

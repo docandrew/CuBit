@@ -1,5 +1,6 @@
 with CCL.Resources;
 with CCL.Types;
+with CuBit.Handles;
 
 -- Stable, single-owner Config backing for a CCL resource. A Collection owns
 -- both the private IPC client and its exact registry lease. Neither callers
@@ -17,7 +18,7 @@ package Config_Object_Client.Resources is
    procedure Create
      (Object : in out Collection; Owner : in out CCL.Resources.Registry;
       Session : CCL.Resources.Run; Kind : CCL.Types.Type_Reference;
-      Endpoint : CuBit.Messages.CapabilitySlot; Name : String;
+      Endpoint : CuBit.Handles.Endpoint; Name : String;
       Contract : CCL.Objects.Binding; Access_Rights : Config_Object_Messages.Access_Mode;
       Context, Token : Number; Result : out Submission);
    -- Reserve a fresh resource lease before allocating a grant or submitting

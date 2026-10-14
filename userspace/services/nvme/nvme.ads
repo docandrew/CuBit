@@ -9,6 +9,7 @@
 ------------------------------------------------------------------------------
 with Interfaces; use Interfaces;
 with System;
+with CuBit.Handles;
 
 package NVMe is
 
@@ -177,9 +178,11 @@ package NVMe is
    ---------------------------------------------------------------------------
 
    --  Initialize the NVMe controller.
-   --  barPhys = BAR0 physical address (for SYSCALL_MAP_DEVICE)
+   --  registers = the device-memory handle covering BAR0 (its manifest's
+   --  "registers" binding); barPhys = BAR0's physical address;
    --  dmaPhys = DMA region physical address (for queue base addresses)
-   procedure initController (barPhys : Unsigned_64; dmaPhys : Unsigned_64);
+   procedure initController
+     (registers : CuBit.Handles.Device_Memory; barPhys : Unsigned_64; dmaPhys : Unsigned_64);
 
    --  Identify Controller (admin opcode 0x06, CNS=1)
    procedure identifyController;

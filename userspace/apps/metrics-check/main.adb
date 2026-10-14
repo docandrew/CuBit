@@ -5,7 +5,8 @@ with CuBit.Metric_Records;
 with CuBit.Metric_Protocol;
 with CuBit.Metrics;
 with CuBit.Metric_Raw_Observer;
-with CCL_Manifest_Bindings;
+with CuBit.Handles;
+with Startup;
 with Compositor_Trace_Metrics;
 with Compositor_Trace_Wire;
 with Compositor_Trace_Stream;
@@ -20,12 +21,10 @@ procedure Main is
    use type P.Status;
    use type R.Slot_Words;
 
-   Publisher_Slot : constant CapabilitySlot :=
-     CapabilitySlot (CCL_Manifest_Bindings.Slot_metrics);
-   Observer_Slot : constant CapabilitySlot :=
-     CapabilitySlot (CCL_Manifest_Bindings.Slot_metrics_observer);
-   Writer : CuBit.Metrics.Publisher (Publisher_Slot);
-   Watcher : CuBit.Metrics.Observer (Observer_Slot);
+   Publisher_Slot : constant CuBit.Handles.Endpoint := Startup.Metrics;
+   Observer_Slot : constant CuBit.Handles.Endpoint := Startup.Metrics_Observer;
+   Writer : CuBit.Metrics.Publisher;
+   Watcher : CuBit.Metrics.Observer;
 
    Latency_Key : constant R.Metric_Key := 1;
    Frames_Key : constant R.Metric_Key := 2;
@@ -123,6 +122,8 @@ procedure Main is
    Msg : Message;
    Tag : MessageTag;
 begin
+   CuBit.Metrics.Bind (Writer, Publisher_Slot);
+   CuBit.Metrics.Bind (Watcher, Observer_Slot);
    Put ((Kind => R.Describe, Key => Latency_Key, Declared => R.Latency,
          Measure => R.Microseconds,
          Name => R.To_Name ("check.frame.latency")));
@@ -169,8 +170,8 @@ begin
 
    --  Publisher authority cannot observe (tags are kernel-stamped).
    Msg := NULL_MESSAGE;
-   Msg.tag := (P.Operation'Enum_Rep (P.Query_Summaries), P.Message_Words,
-               0, 0);
+   Msg.tag := (label => P.Operation'Enum_Rep (P.Query_Summaries), length => P.Message_Words,
+               protocol => 0, ipc => <>, reserved => 0);
    Msg.authorityTag := P.Observer_Tag (1);
    Tag := capCall (Publisher_Slot, Msg, CuBit.Messages.Wait_Forever);
    Check (Tag.label /= 0 and then
@@ -178,16 +179,16 @@ begin
           "publisher cannot query");
    --  Malformed batch length is refused before any grant acquisition.
    Msg := NULL_MESSAGE;
-   Msg.tag := (P.Operation'Enum_Rep (P.Publish_Batch), P.Message_Words,
-               0, 0);
+   Msg.tag := (label => P.Operation'Enum_Rep (P.Publish_Batch), length => P.Message_Words,
+               protocol => 0, ipc => <>, reserved => 0);
    Msg.words := [0, 1, R.Slot_Bytes + 1, 0];
    Tag := capCall (Publisher_Slot, Msg, CuBit.Messages.Wait_Forever);
    Check (Tag.label /= 0 and then
           Msg.tag.label = P.Status'Enum_Rep (P.Invalid_Request),
           "malformed batch refused");
    --  Observer authority cannot publish.
-   Msg.tag := (P.Operation'Enum_Rep (P.Publish_Batch), P.Message_Words,
-               0, 0);
+   Msg.tag := (label => P.Operation'Enum_Rep (P.Publish_Batch), length => P.Message_Words,
+               protocol => 0, ipc => <>, reserved => 0);
    Msg.words := [0, 1, 2 * R.Slot_Bytes, 0];
    Tag := capCall (Observer_Slot, Msg, CuBit.Messages.Wait_Forever);
    Check (Tag.label /= 0 and then
@@ -195,7 +196,7 @@ begin
           "observer cannot publish");
 
    declare
-      Raw : CuBit.Metric_Raw_Observer.Observer (Observer_Slot);
+      Raw : CuBit.Metric_Raw_Observer.Observer;
       Page : P.Raw_Page;
       N : P.Raw_Row_Count;
       Cursor : Unsigned_64 := 1;
@@ -205,6 +206,7 @@ begin
       Done : Boolean;
       Deadline : Unsigned_64;
    begin
+      CuBit.Metric_Raw_Observer.Bind (Raw, Observer_Slot);
       loop
          CuBit.Metric_Raw_Observer.Query (Raw, Cursor, Page, N, Resume, Gap, Lost, Result);
          Check (Result = P.OK and N = 32, "raw page");
@@ -244,7 +246,8 @@ begin
          Ignore := syscall (SYSCALL_SLEEP, 1);
       end loop;
       Msg := NULL_MESSAGE;
-      Msg.tag := (P.Operation'Enum_Rep (P.Query_Raw), P.Message_Words, 0, 0);
+      Msg.tag := (label => P.Operation'Enum_Rep (P.Query_Raw), length => P.Message_Words,
+                  protocol => 0, ipc => <>, reserved => 0);
       Msg.authorityTag := P.Observer_Tag (1);
       Tag := capCall (Publisher_Slot, Msg, CuBit.Messages.Wait_Forever);
       Check (Tag.label = P.Status'Enum_Rep (P.Denied), "publisher cannot query raw");
@@ -256,7 +259,7 @@ begin
       package TW renames Compositor_Trace_Wire;
       use type TW.Event;
       use type R.Record_Kind;
-      Raw : CuBit.Metric_Raw_Observer.Observer (Observer_Slot);
+      Raw : CuBit.Metric_Raw_Observer.Observer;
       Raw_Page : P.Raw_Page;
       N : P.Raw_Row_Count;
       Cursor : Unsigned_64 := 1006;
@@ -275,6 +278,7 @@ begin
          V : constant Unsigned_64 := Unsigned_64 (Index);
          ID : constant Unsigned_64 := Unsigned_64'Last - V;
       begin
+         CuBit.Metric_Raw_Observer.Bind (Raw, Observer_Slot);
          case Index mod 5 is
             when 0 => return (TW.Input_Event, ID, (Unsigned_64'Last, V, 1, V));
             when 1 => return (TW.Source_Event, ID,

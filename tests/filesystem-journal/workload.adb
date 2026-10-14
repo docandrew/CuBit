@@ -1,3 +1,4 @@
+with CuBit.Handles.Fixture;
 with Ada.Command_Line;
 with Ada.Text_IO; use Ada.Text_IO;
 with Interfaces; use Interfaces;
@@ -62,7 +63,7 @@ procedure Workload is
    Kib : constant := 1024;
 begin
    Open_Image (Ada.Command_Line.Argument (1));
-   initBlockDevice (Fs, 1, (slot => 1, generation => 1), Grant_Buffer'Address,
+   initBlockDevice (Fs, CuBit.Handles.Fixture.Endpoint_Of (1), 1, (slot => 1, generation => 1), Grant_Buffer'Address,
                     Grant_Buffer'Length, Admission);
    pragma Assert (Admission = Admitted);
    Create ("alpha");

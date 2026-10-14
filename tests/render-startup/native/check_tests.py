@@ -9,10 +9,10 @@ from pathlib import Path
 spec = importlib.util.spec_from_file_location('native_check', Path(__file__).with_name('check.py'))
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
-ids = [2**32+1, 2**32+2, 2**32+3, 2**32+4, 2**33+4, 2**32+5]
+ids = [2**32+1, 2**32+2, 2**32+3, 2**32+4, 2**33+4]
 lines = []
 for n, identity in enumerate(ids):
-    software = n in (2,4,5)
+    software = n in (2,4)
     lines.append(f'procmgr: render attempt incarnation= {identity} software={str(software).upper()}')
     if n in (1,3):
         lines.append('procmgr: render admission submitted; child suspended')
@@ -39,8 +39,9 @@ with contextlib.redirect_stdout(io.StringIO()):
            base.replace(str(ids[4]), str(ids[3])),
            base.replace(str(ids[4]), '4'),
            base.replace(f'software child incarnation= {ids[4]}', f'software child incarnation= {ids[3]}'),
-           base.replace(f'software child incarnation= {ids[4]}', f'software child incarnation= {ids[5]}')]
-    # The last case exposes a rejected software child's accidental execution.
+           base + '\nprocmgr: render attempt incarnation= 4294967302 software=TRUE']
+    # The last case: render-occupied (a slot request, refused at load) must
+    # never reach a render attempt.
     for index, text in enumerate(bad):
         try:
             module.check(text)

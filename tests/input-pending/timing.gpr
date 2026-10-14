@@ -1,8 +1,10 @@
 project Timing is
-   for Source_Dirs use (".", "driver-fixture", "../../userspace/lib/input", "../../userspace/runtime/gnat");
+   for Source_Dirs use (".", "driver-fixture", "../../userspace/lib/input", "../../userspace/runtime/gnat",
+                        "../../shared/capabilities");
    for Source_Files use ("timing_tests.adb", "input_pending.ads", "input_pending.adb", "cubit.ads",
      "cubit-input.ads", "cubit-input.adb", "cubit-click_sequences.ads", "cubit-click_sequences.adb",
-     "cubit-messages.ads", "cubit-messages.adb");
+     "cubit-messages.ads", "cubit-messages.adb", "cubit-handles.ads",
+     "capability_abi.ads", "capability_abi.adb");
    for Object_Dir use "build/timing/obj";
    for Exec_Dir use "build/timing";
    for Main use ("timing_tests.adb");

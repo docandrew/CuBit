@@ -21,30 +21,29 @@ package body Intel_GPU_Probe_Export is
      (Object : in out Export_State; Sender, Stamp : Unsigned_64;
       Label : Unsigned_32; Length, Flags : Unsigned_8; Reserved : Unsigned_16;
       Request : Q.Words; Response : out Q.Words) is
-      Slot : CuBit.Messages.CapabilitySlot;
+      Grantee : CuBit.Handles.Reply;
       Identity : Unsigned_64;
    begin
       Response := Q.Reply (Q.Invalid_Request);
       if Label /= Q.Label or else Length /= 4 or else Flags /= 0 or else
         Reserved /= 0 or else not Q.Valid_Request (Request) then return; end if;
       Response := Q.Reply (Q.Denied);
-      Recipient (Sender, Stamp, Slot, Identity);
+      Recipient (Sender, Stamp, Grantee, Identity);
       if Identity = 0 then return; end if;
       if V.State (Object.View) /= V.Empty and then
         (Object.Sender /= Sender or else Object.Stamp /= Stamp or else
-         Object.Identity /= Identity or else Object.Slot /= Slot)
+         Object.Identity /= Identity)
       then return; end if;
       Response := Q.Reply (Q.Unavailable);
       if Request (1) = 0 then
          if V.State (Object.View) = V.Empty then
             Object.Sender := Sender; Object.Stamp := Stamp;
-            Object.Identity := Identity; Object.Slot := Slot;
-            Share (Object.View, Slot, Identity);
+            Object.Identity := Identity;
+            Share (Object.View, Grantee, Identity);
             Object.Reference := V.Wire_Reference (Object.View);
             -- Revalidate admission after sharing; callbacks may pump events.
-            Recipient (Sender, Stamp, Slot, Identity);
-            if Identity = 0 or else Identity /= Object.Identity or else
-              Slot /= Object.Slot then
+            Recipient (Sender, Stamp, Grantee, Identity);
+            if Identity = 0 or else Identity /= Object.Identity then
                Reject_Delivery (Object); return;
             end if;
          end if;

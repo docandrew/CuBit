@@ -1,12 +1,22 @@
 pragma Ada_2022;
+with Interfaces; use Interfaces;
 package body Round_Trips with SPARK_Mode is
 
    procedure Device_Manager (Value : Device_Manager_Configuration;
                              Decoded : out Device_Manager_Configuration;
                              Valid : out Boolean) is
       E : constant Encoded := Encode (Value);
+      H : constant Word_Array := Handle_Words (Value.Handles) with Ghost;
    begin
+      pragma Assert (for all I in 1 .. 20 => E.Words (6 + I) = H (I));
+      pragma Assert (Handles_Valid (E.Words (7 .. 26)));
       Decode (E.Words (1 .. E.Length), Decoded, Valid);
+      pragma Assert (Valid);
+      pragma Assert
+        (for all I in 1 .. 20 => Handle_Words (Decoded.Handles) (I) = H (I));
+      pragma Assert (Decoded.Handles.Root_Count = Value.Handles.Root_Count);
+      pragma Assert (Decoded.Handles.Device_Roots = Value.Handles.Device_Roots);
+      pragma Assert (Decoded.Handles = Value.Handles);
    end Device_Manager;
 
    procedure Process_Manager (Value : Process_Manager_Configuration;

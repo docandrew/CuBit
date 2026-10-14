@@ -1,7 +1,8 @@
+with CuBit.Handles;
 with Control; with CuBit.Memory_Grants;
 with CuBit.Metric_Records; with CuBit.Metric_Protocol;
 package body CuBit.Messages is
- function capCall (Slot : CapabilitySlot; Msg : in out Message; Deadline : Unsigned_64) return MessageTag is
+ function capCall (Slot : CuBit.Handles.Endpoint; Msg : in out Message; Deadline : Unsigned_64) return MessageTag is
   package P renames CuBit.Metric_Protocol;
   package R renames CuBit.Metric_Records;
   Cursor : constant Unsigned_64 := Msg.words (0);
@@ -14,7 +15,8 @@ package body CuBit.Messages is
   Page (0) (0) := Cursor; Page (0) (1) := 7;
   Page (0) (2) := P.Publisher_Tag (1); Page (0) (3) := 1;
   for I in R.Slot_Word_Index loop Page (0) (8 + I) := Encoded (I); end loop;
-  Msg.tag := (P.Status'Enum_Rep (P.OK), 4, 0, 0);
+  Msg.tag := (label => P.Status'Enum_Rep (P.OK), length => 4,
+              protocol => 0, ipc => <>, reserved => 0);
   Msg.words := [1, Cursor + 1, 0, 0];
   case Control.Current is
    when Control.Success => null;
@@ -23,7 +25,7 @@ package body CuBit.Messages is
    when Control.Replaced_Endpoint => Control.Identity := Control.Identity + 2 ** 32;
    when Control.Denied => Msg.tag.label := P.Status'Enum_Rep (P.Denied);
    when Control.Bad_Length => Msg.tag.length := 3;
-   when Control.Bad_Flags => Msg.tag.flags := 1;
+   when Control.Bad_Flags => Msg.tag.protocol := 1;
    when Control.Bad_Reserved => Msg.tag.reserved := 1;
    when Control.Mismatched_Tag => Msg.tag.label := P.Status'Enum_Rep (P.Denied); return (P.Status'Enum_Rep (P.OK), 4, 0, 0);
    when Control.Too_Many_Rows => Msg.words (0) := 33;

@@ -1,3 +1,4 @@
+with CuBit.Handles.Fixture;
 with Intel_GPU_Buffer_Requests;
 with Intel_GPU_Buffer_Requests.Binding;
 with Intel_GPU_VM_Image;
@@ -25,12 +26,14 @@ package body CuBit.Messages is
    package Binding is new Server.Binding (VM);
    Image : VM.Image;
    VM_Ready : Boolean := False;
-   function capCall (Slot : CapabilitySlot; Msg : in out Message;
+   function capCall (Target : CuBit.Handles.Endpoint; Msg : in out Message;
                      Deadline : Unsigned_64) return MessageTag is
+      Admitted : constant Boolean := CuBit.Handles.Fixture.Word_Of (Target) = Admitted_Word;
       -- This synchronous transport fixture does not model kernel deadlines.
       pragma Unreferenced (Deadline);
       Response : Server.Words;
-      Expected : constant MessageTag := (Msg.tag.label, 4, 0, 0);
+      Expected : constant MessageTag := (label => Msg.tag.label, length => 4,
+                                         protocol => 0, ipc => <>, reserved => 0);
       Deferred : Server.Ticket;
       Consumed : Boolean;
    begin
@@ -38,7 +41,7 @@ package body CuBit.Messages is
       pragma Assert (Msg.authorityTag = 0);
       if Msg.tag.label = 16#0A30# then
          pragma Assert (Msg.tag = Expected and Msg.words = [1, 0, 0, 0]);
-         Response := (if Slot = 63 then Server.Words (Accounting_Response)
+         Response := (if Admitted then Server.Words (Accounting_Response)
                       else [1, 1, 0, 0]);
       elsif Msg.tag.label = 16#0A20# then
          pragma Assert (Msg.tag = Expected and Msg.words = [1, 3, 0, 0]);
@@ -48,37 +51,38 @@ package body CuBit.Messages is
             VM.Initialize (Image, [16#2000000#, 16#2001000#, 16#2002000#, 16#2003000#], VM_Ready);
             pragma Assert (VM_Ready);
          end if;
-         Binding.Handle (Object, Image, 99, 42, (if Slot = 63 then 99 else 0),
-           Msg.tag.label, Msg.tag.length, Msg.tag.flags, Msg.tag.reserved,
+         Binding.Handle (Object, Image, 99, 42, (if Admitted then 99 else 0),
+           Msg.tag.label, Msg.tag.length, Flag_Byte (Msg.tag), Msg.tag.reserved,
            Server.Words (Msg.words), Response);
          Bound_DMA := VM.Lookup (Image, Msg.words (2)) and 16#FFFF_F000#;
       elsif Msg.tag.label in 16#0A25# .. 16#0A26# then
          -- Wire fixture only: no native publication or GuC queueing.
-         pragma Assert (Msg.tag = (Msg.tag.label, 4, 0, 0));
+         pragma Assert (Msg.tag = (label => Msg.tag.label, length => 4,
+                                   protocol => 0, ipc => <>, reserved => 0));
          pragma Assert (Msg.words = [1, 0, 0, 0]);
-         Response := (if Slot = 63 then Server.Words
+         Response := (if Admitted then Server.Words
                         (if Msg.tag.label = 16#0A25# then Prepare_Response
                          else Register_Response)
                       else [1, 1, 0, 0]);
       elsif Msg.tag.label = 16#0A2D# then
          pragma Assert (Msg.tag = Expected and Msg.words = [1, 0, 0, 0]);
-         Response := (if Slot = 63 then Server.Words (Retirement_Response)
+         Response := (if Admitted then Server.Words (Retirement_Response)
                       else [1, 1, 0, 0]);
       elsif Msg.tag.label = 16#0A2C# then
          pragma Assert (Msg.tag = Expected and Msg.words = [1, 0, 0, 0]);
-         Response := (if Slot = 63 then Server.Words (Close_Response)
+         Response := (if Admitted then Server.Words (Close_Response)
                       else [1, 1, 0, 0]);
       elsif Msg.tag.label = 16#0A28# then
          Update_Request := Msg.words;
-         Response := (if Slot = 63 then Server.Words (Update_Response)
+         Response := (if Admitted then Server.Words (Update_Response)
                       else [1, 1, 0, 0]);
       elsif Msg.tag.label = 16#0A23# then
          Map_Request := Msg.words;
-         Response := (if Slot = 63 then Server.Words (Map_Response)
+         Response := (if Admitted then Server.Words (Map_Response)
                       else [1, 1, 0, 0]);
       else
-      Server.Handle (Object, 42, (if Slot = 63 then 99 else 0),
-                     Msg.tag.label, Msg.tag.length, Msg.tag.flags, Msg.tag.reserved,
+      Server.Handle (Object, 42, (if Admitted then 99 else 0),
+                     Msg.tag.label, Msg.tag.length, Flag_Byte (Msg.tag), Msg.tag.reserved,
                      Server.Words (Msg.words), Response, Deferred);
       if Deferred /= 0 then
          Server.Complete (Object, Deferred,
@@ -91,8 +95,8 @@ package body CuBit.Messages is
       Msg.tag := Expected;
       Msg.words := MessageWords (Response);
       case Fault is
-         when 1 => return (0, 0, 0, 0);
-         when 2 => Msg.tag.flags := 1;
+         when 1 => return (label => 0, length => 0, protocol => 0, ipc => <>, reserved => 0);
+         when 2 => Msg.tag.protocol := 1;
          when 3 => Msg.words (1) := 2;
          when 4 => Msg.words (2) := 2 ** 32;
          when 5 => Msg.words (3) := 0;

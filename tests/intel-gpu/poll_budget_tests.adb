@@ -1,3 +1,4 @@
+with CuBit.Handles;
 with Ada.Text_IO;
 with System.Storage_Elements;
 with Interfaces; use Interfaces;
@@ -12,8 +13,8 @@ procedure Poll_Budget_Tests is
    function Ready return Boolean is (True);
    function Session (Sender, Stamp : Unsigned_64) return Unsigned_64 is (7);
    procedure Recipient (Sender, Stamp : Unsigned_64;
-     Slot : out CuBit.Messages.CapabilitySlot; Identity : out Unsigned_64) is
-   begin Slot := 7; Identity := 42; end Recipient;
+     Grantee : out CuBit.Handles.Reply; Identity : out Unsigned_64) is
+   begin Grantee := CuBit.Handles.Test_Reply (7); Identity := 42; end Recipient;
    package B is new Intel_GPU_Buffer_Requests (Session, Ready);
    package M is new B.Sharing (Recipient);
    package G renames CuBit.Memory_Grants;

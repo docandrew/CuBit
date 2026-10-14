@@ -1,15 +1,17 @@
 with Interfaces; use Interfaces;
-with CuBit.Messages;
+with CuBit.Handles;
 with Intel_GPU_Buffer_Reply;
 with Intel_GPU_Buffer_Views;
 with Native_GPU_Probe_Protocol;
 
 generic
    with function Completed_Backing return Intel_GPU_Buffer_Reply.Backing;
-   -- Trusted startup binding, checked against kernel-authenticated caller
-   -- metadata. Never derive this slot or identity from request words.
+   -- Checked against kernel-authenticated caller metadata (sender and the
+   -- stamp of the viewer's badged endpoint), never request words. Grantee
+   -- is the saved reply of the request being handled; Identity is zero
+   -- when the caller is not the viewer.
    with procedure Recipient
-     (Sender, Stamp : Unsigned_64; Slot : out CuBit.Messages.CapabilitySlot;
+     (Sender, Stamp : Unsigned_64; Grantee : out CuBit.Handles.Reply;
       Identity : out Unsigned_64);
 package Intel_GPU_Probe_Export is
    type Export_State is limited private;
@@ -26,6 +28,5 @@ private
       Busy : Boolean := False;
       View : Intel_GPU_Buffer_Views.View;
       Sender, Stamp, Identity, Reference : Unsigned_64 := 0;
-      Slot : CuBit.Messages.CapabilitySlot := 0;
    end record;
 end Intel_GPU_Probe_Export;

@@ -20,6 +20,7 @@
 --  cursor. Producers answer those requests opportunistically inside
 --  streamWrite (or streamHandleSubscription).
 ------------------------------------------------------------------------------
+with CuBit.Handles;
 with Interfaces; use Interfaces;
 with System;
 with CuBit.Protocols;
@@ -128,7 +129,7 @@ package CuBit.Streams is
    --  Stream, of Element records, without waiting: the completion that
    --  carries Token goes to Subscribe_Finish.
    procedure Subscribe_Begin
-     (Endpoint : CuBit.Messages.CapabilitySlot; Stream : StreamId;
+     (Endpoint : CuBit.Handles.Endpoint; Stream : StreamId;
       Element : CuBit.Protocols.Schema_Contract; Token : Unsigned_64;
       Sub : out SubInfo; Submitted : out Boolean);
    procedure Subscribe_Finish

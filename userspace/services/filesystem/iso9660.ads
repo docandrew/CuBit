@@ -1,7 +1,10 @@
 with Interfaces; use Interfaces;
 with System;
 with ISO_Records;
+with CuBit.Handles;
 package ISO9660 is
+   --  devmgr attaches the optical drive's endpoint once (Fs_Attachments).
+   procedure Attach (Endpoint : CuBit.Handles.Endpoint; Attached : out Boolean);
    function Media_Failed return Boolean;
    --  Immutable /apps payload of the native USB optical volume. Authority
    --  checks belong to filesystem.svc and precede these operations.

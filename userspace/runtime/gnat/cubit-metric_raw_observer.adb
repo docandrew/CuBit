@@ -1,12 +1,17 @@
 pragma Ada_2022;
 with CuBit.Capability_Grants;
+with CuBit.Messages;
 with CuBit.Metric_Raw_Validation;
 package body CuBit.Metric_Raw_Observer with SPARK_Mode => Off is
    use CuBit.Messages;
    package G renames CuBit.Memory_Grants;
    package C renames CuBit.Capability_Grants;
+   procedure Bind (Item : in out Observer; Target : CuBit.Handles.Endpoint) is
+   begin
+      Item.Slot := Target;
+   end Bind;
    function Disabled (Item : Observer) return Boolean is (Item.Off);
-   function Incarnation (Item : Observer) return Process_ID is (Item.Identity);
+   function Incarnation (Item : Observer) return CuBit.Process_IDs.Process_ID is (Item.Identity);
    procedure Query (Item : in out Observer; Cursor : Unsigned_64;
       Page : out P.Raw_Page; Written : out P.Raw_Row_Count;
       Next, Gap, Dropped : out Unsigned_64; Result : out P.Status) is
@@ -41,12 +46,12 @@ package body CuBit.Metric_Raw_Observer with SPARK_Mode => Off is
          end if;
       end if;
       Msg.tag := (label => P.Operation'Enum_Rep (P.Query_Raw),
-                  length => P.Message_Words, flags => 0, reserved => 0);
+                  length => P.Message_Words, protocol => 0, ipc => <>, reserved => 0);
       Msg.words := [Cursor, Item.Grant.slot, Item.Grant.generation, 4096];
       Tag := capCall (Item.Slot, Msg, Wait_Forever);
       if not C.Endpoint_Matches (Item.Slot, Item.Identity) or else
         Tag.label /= P.Status'Enum_Rep (P.OK) or else
-        Tag.length /= P.Message_Words or else Tag.flags /= 0 or else
+        Tag.length /= P.Message_Words or else Tag.protocol /= 0 or else
         Tag.reserved /= 0 or else Msg.tag /= Tag
       then
          Item.Off := True;

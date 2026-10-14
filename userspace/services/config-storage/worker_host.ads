@@ -9,8 +9,8 @@ package Worker_Host is
       Length : access Interfaces.Unsigned_64) return Interfaces.Unsigned_32
      with Export, Convention => C, External_Name => "cubit_config_storage_path";
 
-   function Run
-     (Database : System.Address; Config_Endpoint : Interfaces.Unsigned_64)
-      return Interfaces.Unsigned_32
+   --  Serve Config through the program's "config" startup entry.
+   Config_Binding : constant String := "config";
+   function Run (Database : System.Address) return Interfaces.Unsigned_32
      with Export, Convention => C, External_Name => "cubit_config_storage_run";
 end Worker_Host;

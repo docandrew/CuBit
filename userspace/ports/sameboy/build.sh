@@ -45,12 +45,17 @@ for pid in "${pids[@]}"; do wait "$pid"; done
 compile_ada() {
     (cd "$build/ada" && "$gnat_gcc" -c -O2 -g -gnatp -gnatn -fno-pic \
         -ffunction-sections -gnat2022 -gnatec="$root/userspace/libc/libc-ada.adc" \
-        -I"$here" -I"$runtime" "$@")
+        -I"$here" -I"$runtime" -I"$root/userspace/libc/ada" \
+        -I"$root/shared/capabilities" -I"$root/shared/boot" -I"$root/shared/time" \
+        -I"$root/shared/publications" -I"$root/shared/launch" -I"$root/shared/interrupts" "$@")
 }
 for unit in "$here"/cubit-sameboy_*.adb; do
     compile_ada -gnatwa -gnatys "$unit"
 done
-for unit in audio messages process_ids memory_grants desktop_protocol desktop_messages; do
+# The runtime units the platform layer needs that libc.a does not hold
+# (it holds the startup table, clock and system facts units).
+for unit in audio messages process_ids memory_grants desktop_protocol desktop_messages \
+    handles-kernel handles-ipc handles-grants handles-control handles-devices; do
     compile_ada "$runtime/cubit-$unit.adb"
 done
 

@@ -1,8 +1,8 @@
-# xhci.drv's authority (docs/ccl-driver-manifests.md). devmgr reads the
-# interrupt request from the linked ELF and installs the vector's CAP_IRQ in
-# its slot (docs/msi-interrupts.md); it still mints the others itself, at
-# the slots these bindings name. Sizes are upper bounds; devmgr grants what
-# the device reports.
+# xhci.drv's authority (docs/ccl-driver-manifests.md, CAP-002). devmgr
+# answers every binding when it launches the driver: the register window,
+# the interrupter's vector (MSI-X, else MSI), the keyboard and mouse
+# publications and its endpoint to devmgr. Sizes are upper bounds; devmgr
+# grants what the device reports.
 (Executable_Manifest
   identity => "com.cubit.xhci"
   version => "0.1.0"

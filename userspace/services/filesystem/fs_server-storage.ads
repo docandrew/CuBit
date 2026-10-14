@@ -19,6 +19,10 @@ private package Fs_Server.Storage is
    --  test these driver roles. False if the list could not be made.
    procedure registerVolumes (ok : out Boolean);
 
+   --  devmgr attaches a block driver that started after the filesystem:
+   --  its endpoint, offered with the call (Fs_Attachments).
+   procedure handleAttach (sender : Process_ID; msg : Message);
+
    --  Queue_Describe_Volume (step 7): the volume of a path the caller may
    --  read, from the service's in-memory superblock (with the blocks freed
    --  by the running transaction, which are free once it commits).

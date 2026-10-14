@@ -48,7 +48,6 @@ is
         SYSCALL_SPAWN,
         SYSCALL_MAP_DEVICE,
         SYSCALL_PROCLIST,
-        SYSCALL_POLICY_MINT_CAPABILITY,
         SYSCALL_RESUME,
         SYSCALL_ALLOC_DMA,
         SYSCALL_ENABLE_IRQ,
@@ -78,8 +77,6 @@ is
         SYSCALL_PROTECT_OWNED_MEMORY,
         SYSCALL_YIELD,
         SYSCALL_SLEEP_UNTIL_MONOTONIC_MICROSECOND,
-        SYSCALL_POLICY_MINT_CAPABILITY_FOR_INCARNATION,
-        SYSCALL_POLICY_DELEGATE_ENDPOINT,
         SYSCALL_DERIVE_SHARED_MEMORY_GRANT_VIA_CAPABILITY,
         SYSCALL_RESERVE_OWNED_MEMORY,
         SYSCALL_COMMIT_OWNED_MEMORY_PREFIX,
@@ -94,7 +91,13 @@ is
         SYSCALL_BOOT_TIMELINE,
         SYSCALL_READ_STATISTICS,
         SYSCALL_PUBLISH,
-        SYSCALL_RESTORE_REPLY_CAPABILITY,
+        SYSCALL_CLOSE_HANDLE,
+        SYSCALL_INSTALL_CAPABILITY,
+        SYSCALL_REPLY_WITH_CAPABILITY,
+        SYSCALL_CALL_OFFERING_CAPABILITY,
+        SYSCALL_ACCEPT_OFFERED_CAPABILITY,
+        SYSCALL_REPLY_SAVED_WITH_CAPABILITY,
+        SYSCALL_DERIVE_CAPABILITY,
         SYSCALL_REGISTER_DRIVER)
     with Size => Unsigned_64'Size;
 
@@ -115,8 +118,6 @@ is
         SYSCALL_SEND_CONTROL         => 127,
         SYSCALL_YIELD                => 118,
         SYSCALL_SLEEP_UNTIL_MONOTONIC_MICROSECOND => 119,
-        SYSCALL_POLICY_MINT_CAPABILITY_FOR_INCARNATION => 120,
-        SYSCALL_POLICY_DELEGATE_ENDPOINT => 121,
         SYSCALL_DERIVE_SHARED_MEMORY_GRANT_VIA_CAPABILITY => 122,
         SYSCALL_WRITE                => 12,
         SYSCALL_RECEIVE              => 17,
@@ -153,9 +154,21 @@ is
         -- (SET_WELL_KNOWN).
         SYSCALL_READ_STATISTICS => 134,
         SYSCALL_PUBLISH         => 135,
-        -- A reply capability saved in a slot back to the calling thread's
-        -- current reply authority (the reverse of 51).
-        SYSCALL_RESTORE_REPLY_CAPABILITY => 136,
+        -- CAP-002 (docs/capability-handles.md): give up a handle; place a
+        -- narrowed copy in a child through its CSPACE; answer a request
+        -- that accepts one with a capability; offer one with a call (the
+        -- server takes it explicitly or not at all). Retired: 72 and 120 (policy
+        -- mint), 121 (delegate endpoint), 136 (restore reply).
+        SYSCALL_CLOSE_HANDLE          => 137,
+        SYSCALL_INSTALL_CAPABILITY    => 138,
+        SYSCALL_REPLY_WITH_CAPABILITY => 139,
+        -- A call that offers one capability, and the server taking it.
+        SYSCALL_CALL_OFFERING_CAPABILITY  => 140,
+        SYSCALL_ACCEPT_OFFERED_CAPABILITY => 141,
+        -- REPLY_WITH_CAPABILITY for a saved reply.
+        SYSCALL_REPLY_SAVED_WITH_CAPABILITY => 142,
+        -- A derivation of one of the caller's capabilities in its own table.
+        SYSCALL_DERIVE_CAPABILITY => 143,
         SYSCALL_SUBMIT_VIA_ENDPOINT_CAPABILITY => 42,
         SYSCALL_REPLY_WAIT           => 48,
         SYSCALL_MOVE_REPLY_CAPABILITY              => 51,
@@ -163,7 +176,6 @@ is
         SYSCALL_SPAWN                => 60,
         SYSCALL_MAP_DEVICE           => 70,
         SYSCALL_PROCLIST             => 71,
-        SYSCALL_POLICY_MINT_CAPABILITY  => 72,
         SYSCALL_RESUME               => 73,
         SYSCALL_ALLOC_DMA            => 74,
         SYSCALL_ENABLE_IRQ           => 75,
