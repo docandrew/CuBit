@@ -387,6 +387,8 @@ procedure main is
    --  the legacy backend retains its logical-canvas copy path. Native-density
    --  client allocations, Settings toolkit drawing and rotation remain work.
    subtype Output_Index is DSP.Output_Number range 0 .. 1;
+   --  DESKTOP-FIRST-SCENE was printed for the output.
+   firstSceneReported : array (Output_Index) of Boolean := [others => False];
    type Target_Storage is record
       Allocation : PS.Ticket := PS.No_Ticket;
       Address : System.Address := System.Null_Address;
@@ -3163,6 +3165,16 @@ procedure main is
       end if;
       r := damageRectangle (Compositor_Damage.Bounds (P.Frame_Damage));
       if isEmpty (r) then exitCompositor (1); end if;
+      --  Display copies only a frame's damage: the first scene frame after
+      --  the bootstrap screen must cover the whole output (headless check).
+      if not Bootstrap_CPU and then not firstSceneReported (Output) then
+         firstSceneReported (Output) := True;
+         debugPrint ("DESKTOP-FIRST-SCENE: output=" & Output'Image &
+           " damage=" & Natural'Image (r.x) & Natural'Image (r.y) &
+           Natural'Image (r.w) & Natural'Image (r.h) &
+           " size=" & Natural'Image (Natural (P.Geometry.Width)) &
+           Natural'Image (Natural (P.Geometry.Height)) & LF);
+      end if;
       envelopeBytes := Unsigned_64 (r.w) * Unsigned_64 (r.h) * 4;
       BP.Finish_Render (P.Pool, BP.Writer (P.Pool), BP.Completed);
       BP.Present (P.Pool, Held);
@@ -6854,7 +6866,11 @@ procedure main is
                idx : constant Integer := findSurface (focusSurface);
             begin
                if idx >= 0 then
-                  debugPrint ("desktop: keys to " & surfaces (SurfaceIndex (idx)).title.Text & LF);
+                  --  A window without a title is named by its surface.
+                  debugPrint ("desktop: keys to " &
+                    (if surfaces (SurfaceIndex (idx)).title.Text'Length > 0
+                     then surfaces (SurfaceIndex (idx)).title.Text
+                     else "untitled surface " & Decimal (focusSurface)) & LF);
                end if;
             end;
          end if;
@@ -9719,6 +9735,10 @@ procedure main is
             KR.Reset (keyRepeat);
             --  No chord survives a gap in the report stream.
             Desktop_Clipboard.Revoke_Gestures;
+            --  Resynchronize clients before this report: it begins the new
+            --  stream, so its transition follows the RESYNC (a recovery
+            --  after delivery would discard it, e.g. a source's first key).
+            forceInputResynchronization;
          end if;
 
          --  Set-1 extended keys arrive as E0 followed by a normal press or
@@ -9753,20 +9773,17 @@ procedure main is
                end if;
             end;
          end if;
-
-         if sourceAccepted and then sourceDiscontinuity then
-            forceInputResynchronization;
-            -- Recovery discards old stream state, but this accepted byte
-            -- already begins the new stream. Preserve its extended prefix
-            -- so the following suffix cannot become an ordinary key.
-            desktopExtendedPrefix := raw = KEY_EXTENDED_PREFIX;
-         end if;
       elsif eventMsg.tag.label = EVENT_MOUSE or else
          (sourceAccepted and then
           sourceReport.device in CuBit.Input.RELATIVE_POINTER | CuBit.Input.ABSOLUTE_POINTER)
       then
          statsMouseEvents := statsMouseEvents + 1;
          if Diagnostic_Mouse < Unsigned_64'Last then Diagnostic_Mouse := Diagnostic_Mouse + 1; end if;
+         if sourceAccepted and then sourceDiscontinuity then
+            --  As for keys: recover first, then apply this report's motion
+            --  and button transitions, which begin the new stream.
+            forceInputResynchronization;
+         end if;
          packed :=
            (if sourceAccepted then sourceReport.payload
             else eventMsg.words (0));
@@ -9842,10 +9859,6 @@ procedure main is
                dz      => signed8 (Shift_Right (packed, 32)),
                Observed_Ms => (if sourceAccepted then CuBit.Input.Pointer_Time (sourceReport.snapshot)
                                else Unsigned_64'Last));
-         end if;
-
-         if sourceAccepted and then sourceDiscontinuity then
-            forceInputResynchronization;
          end if;
       elsif eventMsg.tag.label = OP_STREAM_AVAILABLE then
          rememberStreams

@@ -10,6 +10,18 @@ package Intel_GPU_Resources with SPARK_Mode is
      (Admitted, Unknown_Platform, Memory_Decode_Disabled, Invalid_BAR,
       Wrong_Cache_Class, Unknown_Extent, Invalid_Alignment,
       Address_Overflow, Outside_Resource);
+   --  For the log ('Image of an enumeration is its position in this runtime).
+   function Name (Status : Admission_Status) return String is
+     (case Status is
+         when Admitted               => "admitted",
+         when Unknown_Platform       => "unknown platform",
+         when Memory_Decode_Disabled => "memory decode disabled",
+         when Invalid_BAR            => "invalid BAR",
+         when Wrong_Cache_Class      => "wrong cache class",
+         when Unknown_Extent         => "unknown extent",
+         when Invalid_Alignment      => "invalid alignment",
+         when Address_Overflow       => "address overflow",
+         when Outside_Resource       => "outside the resource");
    type Mapping_Plan is record
       Status : Admission_Status := Invalid_BAR;
       Physical_Base : Unsigned_64 := 0;

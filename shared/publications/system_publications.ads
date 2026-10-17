@@ -86,6 +86,11 @@ package System_Publications with Pure, SPARK_Mode is
       --  User processes the kernel killed for a fault so far (count only;
       --  the records are in Device_Memory_Publication, for logstore).
       Process_Kills : Unsigned_64 := 0;
+      --  Times the kernel's screen diagnostics that outlive the boot
+      --  framebuffer's handover (Boot_Diagnostics.Stuck_Calls) erased a
+      --  region of it. Its owner (display.svc) copies a whole frame on the
+      --  next present after this changes; the kernel cannot repaint it.
+      Scanout_Overwrites : Unsigned_64 := 0;
    end record;
    for Facts_Page use record
       Version             at 0 range 0 .. 63;
@@ -96,6 +101,7 @@ package System_Publications with Pure, SPARK_Mode is
       Clock               at 64 range 0 .. 383;
       Device_Memory_Denials at 112 range 0 .. 63;
       Process_Kills         at 120 range 0 .. 63;
+      Scanout_Overwrites    at 128 range 0 .. 63;
    end record;
    for Framebuffer_Geometry use record
       Width          at 0 range 0 .. 63;

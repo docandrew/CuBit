@@ -1222,6 +1222,13 @@ devmem-check: user_runtime ccl-manifest
 
 # Process-kill diagnostics check: faults on purpose (tests/headless:
 # process-kill).
+.PHONY : stall-check
+stall-check: user_runtime ccl-manifest
+	mkdir -p ../userspace/apps/stall-check/build
+	$(call compile_ccl_manifest,../userspace/apps/stall-check)
+	$(ALR) gprbuild -P ../userspace/apps/stall-check/stall_check.gpr
+	cp ../userspace/apps/stall-check/build/stall-check.app isodir/boot/stall-check.app
+
 .PHONY : fault-check
 fault-check: user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/fault-check/build
@@ -2037,7 +2044,7 @@ check-capability-numbers:
 	python3 ../tools/check_capability_numbers.py --self-test
 	python3 ../tools/check_capability_numbers.py --root ..
 
-world: check-capability-numbers trace-viewer test-programs $(IMAGE_ONLY_BINARIES) cubit_kernel doom sameboy sleep thread-check futex-check clock-check avx-check devmem-check fault-check bench-spread capability-test storage-check ipctest-server ipctest-client bench-ipc-server bench-ipc-client ccl-test-host clock timesync tls ccl-vm ccl-workbench filesystem ata nvme virtio-net virtio-gpu netstack wget devices files config-inspector desktop-shell procmgr shell hda mixer ps2 xhci virtio-input config config-storage netmgr logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso
+world: check-capability-numbers trace-viewer test-programs $(IMAGE_ONLY_BINARIES) cubit_kernel doom sameboy sleep thread-check futex-check clock-check avx-check devmem-check fault-check stall-check bench-spread capability-test storage-check ipctest-server ipctest-client bench-ipc-server bench-ipc-client ccl-test-host clock timesync tls ccl-vm ccl-workbench filesystem ata nvme virtio-net virtio-gpu netstack wget devices files config-inspector desktop-shell procmgr shell hda mixer ps2 xhci virtio-input config config-storage netmgr logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso
 
 .PHONY : headless-test
 headless-test: world

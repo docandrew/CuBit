@@ -5,6 +5,7 @@ with Boot_QR;
 with Boot_QR_Capsule;
 with Boot_Output;
 with Interfaces; use Interfaces;
+with Publication_Pages;
 with Spinlocks;
 with System.Machine_Code;
 with System.Storage_Elements; use System.Storage_Elements;
@@ -334,9 +335,12 @@ package body Boot_Diagnostics with SPARK_Mode => Off is
 
    --  Bottom-left panel through the retained mapping; title row plus lines.
    Stuck_Shown : Natural := 0;
+   --  Panels erased so far (System_Publications.Scanout_Overwrites).
+   Stuck_Erasures : Unsigned_64 := 0;
    Stuck_Title : constant String := "STUCK CALLS (caller -> server, seconds)  * = watch";
    Stuck_Color : constant Unsigned_32 := 16#00FFD040#;
    Stuck_Background : constant Unsigned_32 := 16#00202020#;
+   Stuck_Erased : constant Unsigned_32 := 16#00000000#;
 
    procedure Stuck_Calls (Lines : Stuck_Lines; Count : Natural) is
       Target : constant System.Address := Retained_Base;
@@ -394,12 +398,17 @@ package body Boot_Diagnostics with SPARK_Mode => Off is
       if Shown = 0 and then Stuck_Shown = 0 then return; end if;
       Top := Retained_Layout.Height - 24 - Rows * Row_Height;
       if Shown = 0 then
-         --  Clear the panel left by the previous report.
+         --  Clear the panel left by the previous report. Once the boot
+         --  framebuffer is handed over, these pixels were its owner's: the
+         --  publication tells it to present a whole frame again.
          for Y in Top .. Top + Rows * Row_Height - 1 loop
             for X in 0 .. Natural'Min (Width, Retained_Layout.Width) - 1 loop
-               Put (X, Y, 16#00000000#);
+               Put (X, Y, Stuck_Erased);
             end loop;
          end loop;
+         System.Machine_Code.Asm ("sfence", Clobber => "memory", Volatile => True);
+         Stuck_Erasures := Stuck_Erasures + 1;
+         Publication_Pages.Set_Scanout_Overwrites (Stuck_Erasures);
       else
          Line (Stuck_Title, 0, Error_Color);
          for I in 1 .. Stuck_Rows loop

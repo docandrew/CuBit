@@ -753,13 +753,29 @@ procedure main is
       end case;
    end clearOutput;
 
-   procedure presentFirmwareRect (Address : System.Address; x, y, w, h : Natural) is
+   --  The kernel's screen diagnostics (its stuck-call panel) write the boot
+   --  framebuffer too, and erase their panel to black when it ends. Every
+   --  source frame is complete, so the next present after an erasure copies
+   --  all of it, not only its damage (CuBit.System_Facts.Scanout_Overwrites).
+   firmwareOverwritesSeen : Unsigned_64 := 0;
+
+   procedure presentFirmwareRect (Address : System.Address; damageX, damageY, damageW, damageH : Natural) is
+      Overwrites : constant Unsigned_64 := CuBit.System_Facts.Scanout_Overwrites;
+      Repair : constant Boolean := Overwrites /= firmwareOverwritesSeen;
+      x : constant Natural := (if Repair then 0 else damageX);
+      y : constant Natural := (if Repair then 0 else damageY);
+      w : constant Natural := (if Repair then outputStates (selectedOutput).srcWidth else damageW);
+      h : constant Natural := (if Repair then outputStates (selectedOutput).srcHeight else damageH);
       maxX : Natural := x + w;
       maxY : Natural := y + h;
       ignore : System.Address;
    begin
       if outputStates (selectedOutput).srcAddr = System.Null_Address then
          return;
+      end if;
+      if Repair then
+         firmwareOverwritesSeen := Overwrites;
+         debugPrint ("display: kernel diagnostics erased the scanout; copying a whole frame" & LF);
       end if;
       if w = 0 or else h = 0 or else x >= outputStates (selectedOutput).fbWidth or else y >= outputStates (selectedOutput).fbHeight then
          return;

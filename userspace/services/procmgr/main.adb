@@ -456,6 +456,10 @@ procedure main is
       --  session's recipient). Closed when it retires.
       Control : CuBit.Handles.Process := CuBit.Handles.No_Process;
       Mailbox : CuBit.Handles.Endpoint := H.No_Endpoint;
+      --  procmgr resumed it. A launch withdrawn before that (refused, or a
+      --  GPU attempt that a software start replaces) never ran: its exit
+      --  is not a stop, a kill or a fault.
+      Resumed : Boolean := False;
    end record;
    Empty_Process_Record : constant Process_Record := (others => <>);
    package Records is new CuBit.Identity_Tables
@@ -486,7 +490,7 @@ procedure main is
       if I = 0 then return; end if;
       Records.Values (I) := (Valid => True, Identity => [others => ' '], Identity_Length => Length,
                              Launcher => launcher, Started => syscall (SYSCALL_GETTIME),
-                             Control => Control, Mailbox => Mailbox);
+                             Control => Control, Mailbox => Mailbox, Resumed => False);
       Records.Values (I).Identity (1 .. Length) := identity (identity'First .. identity'First + Length - 1);
    end noteProcess;
 
@@ -1311,10 +1315,33 @@ procedure main is
    end record;
    Providers : array (Service_Role) of Provider;
 
-   --  How long a request waits for its service to register (a service
-   --  starting just before its client is not yet registered).
-   Registration_Retries   : constant := 20;
-   Registration_Retry_Ms  : constant := 50;
+   --  How long a launch waits for its service to register, and how often
+   --  it looks: the startup plan resumes a service and goes on to its
+   --  clients at once, so one started just before them may not have
+   --  registered yet. Bounded by an explicit deadline, never forever.
+   Registration_Wait_Ms : constant := 1_000;
+   Registration_Poll_Ms : constant := 50;
+
+   --  The roles only procmgr lets a program register (registrationAllowed's
+   --  identity-gated roles, granted from a manifest's registration
+   --  notification). Every process that may provide one is a Registrant.
+   --  Other roles' providers may be devmgr's (gpu, input), whose start
+   --  procmgr does not see.
+   function Launched_Service_Role (Role : Service_Role) return Boolean is
+     (Role = DRIVER_LOGSTORE or else Role = DRIVER_DESKTOP or else
+      Role = DRIVER_DISPLAY or else Role = DRIVER_CCL_TEST or else
+      Role = DRIVER_CLOCK or else Role = CuBit.TLS_Protocol.Service_Role or else
+      Role = CuBit.Metric_Protocol.Publisher_Service_Role);
+
+   --  For each launched-service role: the live process procmgr started with
+   --  its registration, until that process exits.
+   Registrants : array (Service_Role) of Process_ID := [others => No_Process];
+
+   --  Whether a provider for Role may still register: a launched-service
+   --  role only while its registrant lives; any other role may be devmgr's.
+   function registrationPending (Role : Service_Role) return Boolean is
+     (if Launched_Service_Role (Role) then Registrants (Role) /= No_Process
+      else True);
 
    procedure setFixedProviders is
    begin
@@ -1329,19 +1356,29 @@ procedure main is
       end if;
    end setFixedProviders;
 
-   function providerFor (Role : Service_Role) return CuBit.Handles.Endpoint is
+   --  Required: the launch needs the service, so it waits the bounded
+   --  registration time for it; an optional one is waited for only while a
+   --  provider may still register (registrationPending).
+   function providerFor
+     (Role : Service_Role; Required : Boolean) return CuBit.Handles.Endpoint
+   is
       P : Provider renames Providers (Role);
       Registered : Process_ID := No_Process;
+      Deadline : Unsigned_64;
       Ignore : Unsigned_64;
    begin
       if Valid (P.Service) and then P.Holder = No_Process then
          return P.Service;
       end if;
-      for Attempt in 1 .. Registration_Retries loop
-         Registered := Registered_Driver (Role);
-         exit when Registered /= No_Process;
-         Ignore := syscall (SYSCALL_SLEEP, Registration_Retry_Ms);
-      end loop;
+      Registered := Registered_Driver (Role);
+      if Registered = No_Process and then (Required or else registrationPending (Role)) then
+         Deadline := syscall (SYSCALL_GETTIME) + Registration_Wait_Ms;
+         loop
+            Ignore := syscall (SYSCALL_SLEEP, Registration_Poll_Ms);
+            Registered := Registered_Driver (Role);
+            exit when Registered /= No_Process or else syscall (SYSCALL_GETTIME) >= Deadline;
+         end loop;
+      end if;
       if Registered = No_Process then
          return H.No_Endpoint;
       elsif Valid (P.Service) and then P.Holder = Registered then
@@ -2532,7 +2569,10 @@ procedure main is
       --  entry is obtained by procmgr's policy and installed through the
       --  child's CSPACE, never wider than procmgr's own handle.
       ------------------------------------------------------------------------
-      type Build_Context is null record;
+      --  Logged: Mint already said why the current entry was not granted.
+      type Build_Context is record
+         Logged : Boolean := False;
+      end record;
       Context : Build_Context;
 
       procedure Install
@@ -2557,9 +2597,10 @@ procedure main is
       --  A service endpoint: the role's provider, badged with the tag the
       --  role's protocol issues (none: an untagged copy without Grant).
       procedure Mint_Service
-        (R : Caps_Request; Index : ST.Entry_Index;
-         Handle : out Unsigned_64; Outcome : out SB.Mint_Outcome)
+        (R : Caps_Request; Index : ST.Entry_Index; Item : ST.Startup_Entry;
+         Handle : out Unsigned_64; Outcome : out SB.Mint_Outcome; Logged : out Boolean)
       is
+         use type ST.Need;
          Role : constant Unsigned_64 := Unsigned_64 (R.Param0);
          isAudioControl : constant Boolean := Role = CuBit.Audio_Control.Service_Role;
          isLogObserver : constant Boolean := Role = CuBit.Log_Protocol.Observer_Service_Role;
@@ -2604,6 +2645,7 @@ procedure main is
       begin
          Handle := ST.No_Handle;
          Outcome := SB.Refused_By_Policy;
+         Logged := False;
          -- Startup approval or the trusted Desktop's narrowly selected
          -- system log viewer. This exception grants observation only, not
          -- the other startup-only authorities.
@@ -2621,7 +2663,7 @@ procedure main is
             Outcome := SB.Not_Available;
             return;
          end if;
-         Service := providerFor (Provider_Role);
+         Service := providerFor (Provider_Role, Item.Requirement = ST.Required);
 
          if isAudioControl then
             Issued_Tag := CuBit.Audio_Control.Authority_Tag;
@@ -2675,8 +2717,16 @@ procedure main is
             recordAuthority
               (newPID, Index, AUTH_SOURCE_MANIFEST, AUTH_REASON_SERVICE_MISSING,
                CAP_TYPE_ENDPOINT, True, False, Mask (Kept), Role, 0);
-            debugPrint ("procmgr: service not found, role" & Unsigned_64'Image (Role) & LF);
             Outcome := SB.Not_Available;
+            if Item.Requirement = ST.Required then
+               debugPrint ("procmgr: service not found, role" & Unsigned_64'Image (Role) & LF);
+            else
+               Warnings.Inform
+                 ("procmgr: " & name & ": optional service """ &
+                  String (Item.Label.Text (1 .. Item.Label.Length)) &
+                  """ not running; started without it");
+               Logged := True;
+            end if;
             return;
          end if;
          Install ((if Issued_Tag /= 0 then Badged (Service, Kept, Issued_Tag)
@@ -2723,6 +2773,10 @@ procedure main is
          if Outcome = SB.Granted then
             Offer_Logstore := Offer_Logstore or else Role = DRIVER_LOGSTORE;
             Offer_Desktop := Offer_Desktop or else Role = DRIVER_DESKTOP;
+            --  Write is registration: this process may provide the role.
+            if Kept.Write and then Launched_Service_Role (Role) then
+               Registrants (Role) := newPID;
+            end if;
          end if;
       end Mint_Notification;
 
@@ -2805,10 +2859,10 @@ procedure main is
         (Into : in out Build_Context; Item : ST.Startup_Entry; Index : ST.Entry_Index;
          Handle : out Unsigned_64; Outcome : out SB.Mint_Outcome)
       is
-         pragma Unreferenced (Into);
          R : Caps_Request;
       begin
          Handle := ST.No_Handle;
+         Into.Logged := False;
          --  procmgr hands out no device, port, interrupt or scheduling
          --  authority; a DMA region is devmgr's to allocate.
          if View.Request_Of (Index) = 0 then
@@ -2817,7 +2871,7 @@ procedure main is
          end if;
          R := View.Caps (View.Request_Of (Index));
          case Item.Kind is
-            when ST.Endpoint     => Mint_Service (R, Index, Handle, Outcome);
+            when ST.Endpoint     => Mint_Service (R, Index, Item, Handle, Outcome, Into.Logged);
             when ST.Notification => Mint_Notification (R, Index, Handle, Outcome);
             when ST.Framebuffer  => Mint_Framebuffer (R, Index, Handle, Outcome);
             when ST.Network      => Mint_Network (R, Index, Handle, Outcome);
@@ -2840,10 +2894,10 @@ procedure main is
         (Into : in out Build_Context; Item : ST.Startup_Entry; Index : ST.Entry_Index;
          Outcome : SB.Mint_Outcome)
       is
-         pragma Unreferenced (Into, Index);
+         pragma Unreferenced (Index);
          use type ST.Need;
       begin
-         if Outcome /= SB.Granted then
+         if Outcome /= SB.Granted and then not Into.Logged then
             debugPrint ("procmgr: " & name & ": " &
                         (if Item.Requirement = ST.Required then "required" else "optional") &
                         " capability """ & String (Item.Label.Text (1 .. Item.Label.Length)) &
@@ -3239,8 +3293,24 @@ procedure main is
                -- Timeout is NOT remote cancellation or retirement; this
                -- child is discarded and a late success can never resume it.
                debugPrint ("procmgr: render admission denied; child not resumed" & LF);
-               Discard_Authorized_Child;
-               Retry := CuBit.Render_Startup.Retry_Software (Next, Stop_Accepted);
+               declare
+                  --  Discarding forgets the ticket: name its outcome first.
+                  --  Named here: the runtime discards enumeration names.
+                  Outcome : constant String :=
+                    (case Render_Launch.State (Render_Launcher, Render_Ticket) is
+                       when Render_Launch.Absent => "not requested",
+                       when Render_Launch.Rejected => "rejected",
+                       when Render_Launch.Pending => "unanswered",
+                       when Render_Launch.Admitted => "admitted",
+                       when Render_Launch.Uncertain => "uncertain");
+               begin
+                  Discard_Authorized_Child;
+                  Retry := CuBit.Render_Startup.Retry_Software (Next, Stop_Accepted);
+                  Warnings.Inform
+                    ("procmgr: " & name & " render admission " & Outcome &
+                     "; launch attempt pid" & Image (newPID) & " withdrawn" &
+                     (if Retry then ", retrying with software rendering" else ""));
+               end;
                return No_Process;
             end if;
             if Next = CuBit.Render_Startup.Resume_Render then
@@ -3327,6 +3397,13 @@ procedure main is
             debugPrint ("procmgr: child resume rejected" & LF);
             Discard_Authorized_Child;
             return No_Process;
+         end if;
+      end;
+      declare
+         Known : constant Records.Index := Records.Find (newPID);
+      begin
+         if Known /= 0 then
+            Records.Values (Known).Resumed := True;
          end if;
       end;
 
@@ -4084,7 +4161,16 @@ begin
                   --  Processes procmgr launched, by manifest identity; the
                   --  kernel's "kernel: process killed" record says why when
                   --  one faulted. Others (devmgr's) are devmgr's to log.
-                  if Known /= 0 and then Records.Values (Known).Valid then
+                  --  A launch procmgr withdrew before resuming it never ran;
+                  --  the withdrawal was reported where procmgr decided it.
+                  if Known /= 0 and then Records.Values (Known).Valid
+                    and then not Records.Values (Known).Resumed
+                  then
+                     Warnings.Inform
+                       ("procmgr: launch attempt " &
+                        Records.Values (Known).Identity (1 .. Records.Values (Known).Identity_Length) &
+                        " pid" & Image (Exited) & " withdrawn before it ran");
+                  elsif Known /= 0 and then Records.Values (Known).Valid then
                      declare
                         Line : constant String :=
                           "procmgr: process " &
@@ -4101,6 +4187,11 @@ begin
                         end if;
                      end;
                   end if;
+                  for Registrant of Registrants loop
+                     if Registrant = Exited then
+                        Registrant := No_Process;
+                     end if;
+                  end loop;
                   releaseRings (Exited);
                   forgetLaunchState (Exited);
                   if Known /= 0 and then Records.Values (Known).Valid then

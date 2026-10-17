@@ -10,4 +10,7 @@ package Intel_GPU_Diagnostics is
    -- the first other completion unchanged to the caller. (Publications
    -- complete in the publisher's ring, not on the completion queue.)
    function Poll_Driver (Result : System.Address) return Interfaces.Unsigned_64;
+   -- Captured records still wait for publication and could still go out
+   -- (the log grant is not refused).
+   function Pending return Boolean;
 end Intel_GPU_Diagnostics;

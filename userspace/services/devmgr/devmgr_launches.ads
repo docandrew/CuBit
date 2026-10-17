@@ -41,6 +41,16 @@ package Devmgr_Launches is
    --  devmgr's spawning authority and its notification root.
    procedure Configure (Process_Root : H.Process; Notifications : H.Notification);
 
+   --  A refused launch step is printed on the serial console and kept
+   --  (bounded) until devmgr forwards it to its warnings, which reach
+   --  logstore (the Desktop bootstrap panel and the Logs app) once it
+   --  runs. Each names the child and, for a startup entry, the entry.
+   --  Forward_Refusals hands every kept one to Warn, oldest first, then
+   --  one line counting any that did not fit.
+   generic
+      with procedure Warn (Text : String);
+   procedure Forward_Refusals;
+
    --  The endpoint a (service ...) request for Role resolves to: untagged,
    --  with Grant (a child gets a copy with the rights it asked for).
    procedure Provide (Role : Unsigned_32; Service : H.Endpoint);
@@ -79,7 +89,8 @@ package Devmgr_Launches is
    with Pre => Item /= No_Child;
 
    --  Answer the binding Name with a copy of one of devmgr's capabilities,
-   --  or with a handle already placed in the child.
+   --  or with a handle already placed in the child. A name the child's
+   --  manifest does not declare answers nothing and is reported.
    procedure Give (Item : Child; Name : String; Copy : H.Derivation)
    with Pre => Item /= No_Child;
    procedure Give_Placed (Item : Child; Name : String; Placed : H.Foreign_Handle)

@@ -8,7 +8,13 @@ QEMU_CPU_MODEL="${QEMU_CPU_MODEL:-Broadwell}"
 TIMEOUT_BIN="${TIMEOUT_BIN:-timeout}"
 
 TEST_NAME="boot-shell-nvme"
-TIMEOUT_SECONDS=25
+# Per-test QEMU runtime when --timeout is not given. Desktop tests drive a
+# full desktop with injected input; the others finish well inside the default.
+DEFAULT_TIMEOUT_SECONDS=25
+DESKTOP_TIMEOUT_SECONDS=180
+NETWORK_AUTHORITY_TIMEOUT_SECONDS=100
+BENCH_LATENCY_TIMEOUT_SECONDS=300
+TIMEOUT_SECONDS=""
 BUILD_WORLD=0
 KEEP_LOGS=0
 CHECK_EXT2=0
@@ -47,6 +53,7 @@ Options:
   --build              Run make world before booting QEMU
   --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-console, logs, ccl-remote, capability-security, network-authority, bench-net, bench-fs, threads, futex, clock, avx, rust-std, libc, processes, control-events, binutils, gcc, servo, bench-spread, timesync, tls-probe, tls-service, wget-https, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, clipboard, key-repeat, desktop-doom, desktop-virtio-vga, desktop-vm, virtio-gpu, virtio-vga-primary, or boot-timeline (--accel kvm --timeout 60)
   --timeout SECONDS    QEMU runtime before timeout is treated as success
+                       (default 25; 180 for desktop tests, see DESKTOP_TIMEOUT_SECONDS)
   --accel NAME         QEMU accelerator (for example: tcg,thread=multi)
   --cpus COUNT         Virtual CPUs, 1..4 (default: 4)
   --display MODE       QEMU frontend (default: none; gtk,zoom-to-fit=on for UI regression)
@@ -69,7 +76,7 @@ stable pass markers.
 Performance fixtures: bench-ipc, bench-audio, bench-storage, bench-input, bench-scheduler.
 bench-fs: tests/fs-bench (build tests/fs-bench/build-cubit.sh first).
 bench-latency: tests/sched-latency (build tests/sched-latency/build-cubit.sh
-  and bench-ipc-server first); use --timeout 300. QEMU quits at its done marker.
+  and bench-ipc-server first); defaults to 300 s. QEMU quits at its done marker.
 Logging fixture: log-authority (build logstore procmgr clock log-check first).
 Observability: log-fields (build logstore log-fields-check first); metrics
   (build metricsvc metrics-check; needs procmgr metrics tag issuance).
@@ -90,7 +97,7 @@ Native extended Desktop: desktop-dual-output (build desktop, display, devmgr,
 virtio-gpu and ccl-workbench first). Checks drag, maximize, taskbar and cleanup on both heads.
 The threads test defaults to one vCPU (both instances must share a CPU).
 bench-spread: four CPU-bound instances; compare WORK_STEALING=0/1 kernels.
-Use --timeout 100 for network-authority: it includes an intentional 30-second
+network-authority defaults to 100 s: it includes an intentional 30-second
 accept deadline and a seven-second backlog expiry wait, plus traffic checks.
 EOF
 }
@@ -240,6 +247,19 @@ while [ "$#" -gt 0 ]; do
     esac
 done
 
+if [ -z "$TIMEOUT_SECONDS" ]; then
+    case "$TEST_NAME" in
+        desktop-display|desktop-protocol|files|clipboard|key-repeat|input-stream)
+            TIMEOUT_SECONDS=$DESKTOP_TIMEOUT_SECONDS ;;
+        network-authority)
+            TIMEOUT_SECONDS=$NETWORK_AUTHORITY_TIMEOUT_SECONDS ;;
+        bench-latency)
+            TIMEOUT_SECONDS=$BENCH_LATENCY_TIMEOUT_SECONDS ;;
+        *)
+            TIMEOUT_SECONDS=$DEFAULT_TIMEOUT_SECONDS ;;
+    esac
+fi
+
 case "$TIMEOUT_SECONDS" in
     ''|*[!0-9]*)
         echo "headless: --timeout must be an integer number of seconds" >&2
@@ -274,7 +294,7 @@ case "$TEST_NAME" in
         ;;
     grant-forward|grant-forward-intermediary-exit|grant-forward-owner-exit|grant-forward-desktop|config-tree|config-inspection|log-authority|log-fields|metrics|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
         ;;
-    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill)
+    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|scanout-repair)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -516,6 +536,11 @@ case "$TEST_NAME" in
         # A process the kernel kills for a fault is recorded, logged and
         # shown on the Desktop bootstrap screen.
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-process-kill.ccl"
+        ;;
+    scanout-repair)
+        # The kernel's stuck-call panel is drawn on the boot framebuffer and
+        # erased; the desktop must cover the erased rows again.
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-scanout-repair.ccl"
         ;;
     devmem-denials)
         # CAP-001 diagnostics: refused device memory is recorded, logged
@@ -974,6 +999,7 @@ if [ -n "$INIT_PROFILE" ]; then
        [ "$TEST_NAME" = "logs" ] ||
        [ "$TEST_NAME" = "devmem-denials" ] ||
        [ "$TEST_NAME" = "process-kill" ] ||
+       [ "$TEST_NAME" = "scanout-repair" ] ||
        [ "$TEST_NAME" = "input-stream" ] ||
        [ "$TEST_NAME" = "managed-ui" ] ||
        [ "$TEST_NAME" = "devices" ] ||
@@ -1189,7 +1215,7 @@ if [ -n "$INIT_PROFILE" ]; then
             DEVICE_TEST_IMAGES="$DEVICE_TEST_IMAGES config-inspector.app boot-logs.app logstore.svc"
         fi
         if [ "$TEST_NAME" = "render-launch-policy" ]; then
-            DEVICE_TEST_IMAGES="$DEVICE_TEST_IMAGES render-denied.app render-unavailable.app"
+            DEVICE_TEST_IMAGES="$DEVICE_TEST_IMAGES logstore.svc render-denied.app render-unavailable.app"
             if [ "${CUBIT_RENDER_OPTIONAL_TEST:-0}" = 1 ]; then
                 DEVICE_TEST_IMAGES="$DEVICE_TEST_IMAGES render-software.app render-fallback.app render-occupied.app render-invalid.app"
             fi
@@ -1371,6 +1397,16 @@ if [ -n "$INIT_PROFILE" ]; then
             if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/$CLOCK_IMAGE $CLOCK_IMAGE" \
               "$TEMP_DISK" >/dev/null 2>&1; then
                 echo "headless: failed to install $CLOCK_IMAGE" >&2
+                exit 1
+            fi
+        done
+    fi
+    if [ "$TEST_NAME" = "scanout-repair" ]; then
+        for STALL_IMAGE in logstore.svc stall-check.app; do
+            debugfs -w -R "rm $STALL_IMAGE" "$TEMP_DISK" >/dev/null 2>&1
+            if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/$STALL_IMAGE $STALL_IMAGE" \
+              "$TEMP_DISK" >/dev/null 2>&1; then
+                echo "headless: failed to install $STALL_IMAGE" >&2
                 exit 1
             fi
         done
@@ -2006,7 +2042,7 @@ fi
 if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TEST_NAME" = "clipboard" ] || [ "$TEST_NAME" = "mesa-window" ] || [ "$TEST_NAME" = "gpu-viewer" ] ||
    [ "$TEST_NAME" = "desktop-protocol" ] ||
    [ "$TEST_NAME" = "ccl-workspace" ] || [ "$TEST_NAME" = "ccl-console" ] ||
-   [ "$TEST_NAME" = "logs" ] ||
+   [ "$TEST_NAME" = "logs" ] || [ "$TEST_NAME" = "scanout-repair" ] ||
    [ "$TEST_NAME" = "desktop-doom" ] || [ "$TEST_NAME" = "boot-timeline" ] ||
    { [ "$TEST_NAME" = "servo" ] && [ -n "${SERVO_DESKTOP:-}" ]; }; then
     if ! command -v nc >/dev/null 2>&1; then
@@ -2049,6 +2085,27 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
             # One key as soon as the PS/2 driver serves its consumer: the
             # timeline's First_Input_Accepted is when Desktop takes it.
             printf 'sendkey shift\n' | nc -N -U "$MONITOR_SOCKET" >/dev/null 2>&1
+            exit 0
+        fi
+        if [ "$TEST_NAME" = "scanout-repair" ]; then
+            # The kernel erases its stuck-call panel one report after
+            # stall-check's call ends; then one pointer move makes Desktop
+            # present, and Display must copy the whole frame.
+            for ((attempt = 0; attempt < 400; attempt++)); do
+                grep -aF "stall-check: done" "$SERIAL_LOG" >/dev/null 2>&1 && break
+                sleep 0.1
+            done
+            if ! grep -aF "stall-check: done" "$SERIAL_LOG" >/dev/null 2>&1; then
+                echo "headless: stall-check did not finish" >&2
+                exit 1
+            fi
+            printf 'mouse_move 8 8\n' | nc -N -U "$MONITOR_SOCKET" >/dev/null 2>&1
+            sleep 1
+            printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-repaired.ppm" |
+                nc -N -U "$MONITOR_SOCKET" >/dev/null 2>&1
+            sleep 0.5
+            python3 "$ROOT_DIR/tests/scanout-repair/check_band.py" \
+                "${SERIAL_LOG%.log}-repaired.ppm" || exit 1
             exit 0
         fi
         if [ "$TEST_NAME" = "gpu-viewer" ]; then
@@ -3896,6 +3953,15 @@ ccl-workbench: first frame presented
 ui-app: protected frame published
 "
         ;;
+    scanout-repair)
+        required_markers="
+stall-check: holding a call for
+STUCK-CALL: stall-check.app
+stall-check: call ended
+stall-check: done
+display: kernel diagnostics erased the scanout; copying a whole frame
+"
+        ;;
     process-kill)
         required_markers="
 fault-check: writing an unmapped address
@@ -4562,6 +4628,14 @@ if [ "$TEST_NAME" = "input-stream" ]; then
 fi
 
 if [ "$TEST_NAME" = "desktop-display" ]; then
+    # Display copies only a frame's damage: the first scene frame after the
+    # bootstrap screen must cover the whole output, or bootstrap pixels stay.
+    FIRST_SCENE="$(grep -a 'DESKTOP-FIRST-SCENE: output= 0 ' "$SERIAL_LOG" | head -n 1)"
+    if ! printf '%s\n' "$FIRST_SCENE" |
+         grep -Eq 'damage= 0 0 ([0-9]+) ([0-9]+) size= \1 \2$'; then
+        echo "headless: first desktop scene frame does not cover the output: ${FIRST_SCENE:-missing}" >&2
+        exit 1
+    fi
     TITLE_DOUBLE_EVENTS="$(grep -F 'desktop: ptr title-double ' "$SERIAL_LOG")"
     if [ "$(printf '%s\n' "$TITLE_DOUBLE_EVENTS" | grep -c ' 1 0$')" -ne 1 ] ||
        [ "$(printf '%s\n' "$TITLE_DOUBLE_EVENTS" | grep -c ' 0 0$')" -ne 1 ]; then
@@ -4669,7 +4743,9 @@ if [ "$TEST_NAME" = "render-launch-policy" ]; then
        [ "$(grep -Fc 'procmgr: render admission submitted; child suspended' "$SERIAL_LOG")" -ne 1 ] ||
        [ "$(grep -Fc 'procmgr: failed launch child stop requested' "$SERIAL_LOG")" -ne 2 ] ||
        grep -F 'KILL: denied' "$SERIAL_LOG" >/dev/null ||
-       grep -F 'procmgr: render admission complete' "$SERIAL_LOG" >/dev/null; then
+       grep -F 'procmgr: render admission complete' "$SERIAL_LOG" >/dev/null ||
+       [ "$(grep -Ec 'procmgr: launch attempt com.cubit.test.render-launch-policy pid[0-9]+ withdrawn before it ran' "$SERIAL_LOG")" -ne 2 ] ||
+       grep -E 'procmgr: process .* stopped \(killed or faulted\)' "$SERIAL_LOG" >/dev/null; then
         echo "headless: render launch denial count or outcome incorrect" >&2
         exit 1
     fi

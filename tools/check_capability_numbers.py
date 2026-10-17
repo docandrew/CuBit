@@ -14,6 +14,7 @@ Exit status 0 when clean; 1 with one line per finding otherwise.
 import argparse
 import pathlib
 import re
+import subprocess
 import sys
 
 # Retired slot vocabulary: any use is a finding.
@@ -145,13 +146,26 @@ def check_text(rel, text, suffix):
     return [f for f in findings if f[1] not in exempt]
 
 
+def candidates(root):
+    """Tracked and unignored files in a checkout; every file elsewhere.
+    Walking a checkout would also read ignored build and port trees."""
+    try:
+        out = subprocess.run(
+            ['git', '-C', str(root), 'ls-files', '-z', '--cached', '--others',
+             '--exclude-standard'],
+            check=True, capture_output=True).stdout
+    except (OSError, subprocess.CalledProcessError):
+        return sorted(root.rglob('*'))
+    return sorted(root / name for name in out.decode(errors='replace').split('\0') if name)
+
+
 def scan(root):
     findings = []
     # An exemption names a file that exists: none outlives its evidence.
     for rel in sorted(RECORDED_EVIDENCE):
         if not (root / rel).is_file():
             findings.append((rel, 0, 'recorded-evidence exemption names no file'))
-    for path in sorted(root.rglob('*')):
+    for path in candidates(root):
         if not path.is_file():
             continue
         rel = relevant(path, root)

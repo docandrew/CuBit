@@ -950,5 +950,41 @@ class Manifests(unittest.TestCase):
         result, _ = self.generate(SOURCE.replace('read-write clock)', 'read-write range-limit)'), CATALOG)
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    LINK_SCRIPTS = ('userspace/libc/link.ld', 'userspace/c/link.ld')
+
+    def test_link_scripts_keep_every_manifest_section(self):
+        """A program linked with --gc-sections (Mesa, Rust) keeps every
+        section ccl-manifest emits, byte for byte: nothing references them,
+        and a lost .cubit.startup gets the program refused at launch."""
+        result = self.compile(self.FIXTURE, self.DRIVER)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        manifest_source = self.directory / 'manifest.S'
+        manifest = self.directory / 'manifest.o'
+        manifest_source.write_text(result.stdout)
+        subprocess.run(['gcc', '-c', manifest_source, '-o', manifest], check=True,
+                       capture_output=True)
+        emitted = self.extract(manifest)
+        self.assertIn('.cubit.startup', emitted)
+        self.assertIn('.cubit.resources', emitted)
+        start_source = self.directory / 'start.S'
+        start = self.directory / 'start.o'
+        start_source.write_text('.text\n.globl _start\n_start:\n  hlt\n')
+        subprocess.run(['gcc', '-c', start_source, '-o', start], check=True, capture_output=True)
+        for script in self.LINK_SCRIPTS:
+            with self.subTest(script=script):
+                linked = self.directory / ('linked-' + pathlib.Path(script).parent.name)
+                subprocess.run(['ld', '-static', '--gc-sections', '-e', '_start',
+                                '-T', ROOT / script, start, manifest, '-o', linked],
+                               check=True, capture_output=True)
+                self.assertEqual(self.extract(linked), emitted)
+
+    def test_mesa_window_manifest_declares_its_desktop(self):
+        catalog = (ROOT / 'userspace/ccl/catalogs/native-runtime-services.ccl').read_text()
+        source = (ROOT / 'tests/mesa-software/window-manifest.ccl').read_text()
+        result = self.compile(source, catalog)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        _, entries = self.startup(self.sections(result.stdout)['.cubit.startup'])
+        self.assertEqual([name for name, *_ in entries], ['desktop'])
+
 if __name__ == '__main__':
     unittest.main()

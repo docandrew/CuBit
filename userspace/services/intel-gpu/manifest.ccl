@@ -2,7 +2,8 @@
 # docs/capability-handles.md). devmgr launches the driver and fills its
 # startup table from these requests before it first runs; the driver reads
 # them by binding name (Startup.Registers, ...). One MSI vector carries GT,
-# GuC and display interrupts alike, as in i915 (no MSI-X on Gen12).
+# GuC and display interrupts alike, as in i915 (no MSI-X on Gen12); it is
+# optional while MSI stays disabled (no handler yet).
 # Pages whose place inside BAR0 a manifest cannot name (forcewake, GGTT,
 # reset, display, PHY and pipe pages) and the log publisher are runtime
 # grants: the driver asks devmgr and the reply carries the capability.
@@ -16,4 +17,4 @@
     (service "device-manager" "device-manager")
     (service "filesystem" "firmware")
     (notification "gpu" Notify_Access.Manage "registration")]
-  optional => ["registration" "firmware"])
+  optional => ["registration" "firmware" "device"])

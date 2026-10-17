@@ -73,6 +73,28 @@ SECTIONS
         KEEP(*(.cubit.streams))
     }
 
+    /* The rest of the ELF manifest (ccl-manifest), kept under
+     * --gc-sections like the sections above. */
+    .cubit.startup (INFO) : ALIGN(4)
+    {
+        KEEP(*(.cubit.startup))
+    }
+
+    .cubit.resources (INFO) : ALIGN(4)
+    {
+        KEEP(*(.cubit.resources))
+    }
+
+    .cubit.launch (INFO) : ALIGN(4)
+    {
+        KEEP(*(.cubit.launch))
+    }
+
+    .cubit.description (INFO) : ALIGN(4)
+    {
+        KEEP(*(.cubit.description))
+    }
+
     /DISCARD/ :
     {
         *(.eh_frame)

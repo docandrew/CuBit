@@ -16,6 +16,8 @@ for d in hda mixer ata netstack; do
 done
 alr exec -- gprbuild -q -p -P "$here/driver_manifests_tests.gpr"
 (cd "$here/build" && ./main)
+#  The names devmgr answers are the names its children's manifests declare.
+python3 "$here/check-devmgr-bindings.py"
 if [[ ${1:-} == --prove ]]; then
     alr exec -- gnatprove -P "$here/driver_manifests_tests.gpr" -u driver_manifests.adb -j2
 fi

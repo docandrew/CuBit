@@ -131,6 +131,17 @@ is
         end if;
     end Set_Process_Kills;
 
+    procedure Set_Scanout_Overwrites (Count : Unsigned_64) is
+        Facts : SP.Facts_Page with
+            Import, Volatile, Address => Virtmem.P2Va (Facts_Frame);
+        Count_Word : Unsigned_64 with
+            Import, Atomic, Address => Facts.Scanout_Overwrites'Address;
+    begin
+        if Facts_Frame /= 0 then
+            Count_Word := Count;
+        end if;
+    end Set_Scanout_Overwrites;
+
     procedure Set_Boot_Display_Native (Native : Boolean) is
         Facts : SP.Facts_Page with
             Import, Volatile, Address => Virtmem.P2Va (Facts_Frame);

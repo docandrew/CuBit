@@ -94,4 +94,6 @@ package body Intel_GPU_Diagnostics is
       end loop;
       return 0;
    end Poll_Driver;
+   function Pending return Boolean is
+     (Phase /= Stopped and then (Buffering.Count (Buffer) > 0 or else Summary_Due));
 end Intel_GPU_Diagnostics;

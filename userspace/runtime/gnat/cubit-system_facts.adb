@@ -73,6 +73,9 @@ package body CuBit.System_Facts is
    function Process_Kills return Unsigned_64 is
      (if Facts_Published then Facts.Process_Kills else 0);
 
+   function Scanout_Overwrites return Unsigned_64 is
+     (if Facts_Published then Facts.Scanout_Overwrites else 0);
+
    function Wall_Clock_Offset return Unsigned_64 is
      (if Wall.Version = Pages.Layout_Version then Wall.Offset_Ms else 0);
 

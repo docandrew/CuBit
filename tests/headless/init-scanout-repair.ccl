@@ -1,0 +1,9 @@
+# Headless scanout-repair test: stall-check holds a call past the kernel's
+# stuck-call threshold, so the kernel draws its panel on the boot
+# framebuffer and then erases it; the desktop must cover the erased rows.
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "display.svc" (priority 5))
+  (start "desktop.svc" (priority 4))
+  (start "stall-check.app" (priority 3))
+)

@@ -1,0 +1,5 @@
+# Kernel stuck-call panel check: holds one call past the kernel's stuck-call
+# threshold, so the panel is drawn and then erased. No authority.
+(executable-manifest v1
+  (identity "com.cubit.stall-check")
+  (version "0.1.0"))

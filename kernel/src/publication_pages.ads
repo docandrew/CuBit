@@ -45,6 +45,10 @@ is
     -- User processes killed for a fault so far (Device_Memory_Diagnostics).
     procedure Set_Process_Kills (Count : Unsigned_64);
 
+    -- The kernel's screen diagnostics erased part of the handed-over boot
+    -- framebuffer (Count times so far). One store; safe in interrupts.
+    procedure Set_Scanout_Overwrites (Count : Unsigned_64);
+
     -- The boot display adapter is driven natively (1) or not (0).
     procedure Set_Boot_Display_Native (Native : Boolean);
 end Publication_Pages;

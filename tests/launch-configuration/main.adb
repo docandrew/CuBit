@@ -185,7 +185,7 @@ begin
    Check ((Magic and 16#FFFF#) > 16, "magic is not an argument block version");
 
    --  Layout facts the kernel and runtimes rely on.
-   Check (System_Publications.Facts_Page'Size = 112 * 8, "facts page size");
+   Check (System_Publications.Facts_Page'Size = 136 * 8, "facts page size");
    Check (System_Publications.Registry_Page'Size = (1 + 128) * 64, "registry size");
    Check (System_Publications.Statistics'Size = 24 * 8, "statistics size");
    Check (System_Publications.Wall_Clock_Address =

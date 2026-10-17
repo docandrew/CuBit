@@ -80,6 +80,11 @@ package CuBit.System_Facts is
    --  where reach logstore as "kernel: process killed #N" records.
    function Process_Kills return Unsigned_64;
 
+   --  Times the kernel's screen diagnostics erased part of the boot
+   --  framebuffer after its handover: when this changes, the framebuffer's
+   --  owner copies a whole frame again.
+   function Scanout_Overwrites return Unsigned_64;
+
    --  The platform clock's startup diagnostic (snapshot at boot).
    function Clock return SP.Clock_Diagnostic;
 

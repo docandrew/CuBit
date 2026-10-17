@@ -229,8 +229,8 @@ procedure main is
    --  (Grant: admitted applications get copies badged with their session),
    --  and devmgr's own copy badged Intel_GPU_Boot.Broker_Tag, through which
    --  it submits configuration and admission requests.
-   --  The badge on intel-gpu's endpoint to devmgr ("ready"): its runtime
-   --  requests are recognized by it.
+   --  The badge on intel-gpu's endpoint to devmgr ("device-manager"): its
+   --  runtime requests are recognized by it.
    Intel_Ready_Tag : constant Unsigned_64 := 16#4947#;
    Intel_Child   : DL.Child := DL.No_Child;
    Intel_Control : H.Process;
@@ -962,6 +962,8 @@ procedure main is
    function Logstore return H.Endpoint is (Logstore_Endpoint);
    package Warnings is new Deferred_Warnings (Issuance => 3, Collector => Logstore);
    function Hex (Value : Unsigned_64) return String renames Warnings.Hex;
+   --  Refused launches (a child's startup entry, spawn, install) as warnings.
+   procedure Forward_Launch_Refusals is new DL.Forward_Refusals (Warnings.Warn);
 
    --  "devmgr: child <name> (<identity>) stopped (killed or faulted)" or
    --  "... exited code N": a driver or service devmgr started has ended.
@@ -3073,7 +3075,11 @@ begin
    -----------------------------------------------------------------------
    -- Phase 2d: Spawn VirtIO-GPU driver when QEMU/hardware exposes it
    -----------------------------------------------------------------------
-   virtioGpuChild := spawnFromBootStorage ("virtio-gpu.drv", 5);
+   --  Only for a device PCI discovery found: with nothing to give its
+   --  required "registers", a launch would only be refused.
+   if gpuDev.found then
+      virtioGpuChild := spawnFromBootStorage ("virtio-gpu.drv", 5);
+   end if;
    virtioGpuPID := PID_Of (virtioGpuChild);
    if virtioGpuPID /= No_Process then
       --  Placed first: its vector goes to the CPU it runs on.
@@ -3278,13 +3284,18 @@ begin
                Grant_Intel_Firmware (Intel_Child);
                --  The display executor registers as the GPU service so
                --  display.svc's (request-service gpu) reaches it, unless
-               --  virtio-gpu already is. Never two GPU services.
+               --  virtio-gpu already is. Never two GPU services. procmgr
+               --  asks devmgr for the role's provider (Service_Exchange):
+               --  intel-gpu's untagged endpoint, as virtio-gpu's.
                if virtioGpuPID /= No_Process then
                   DL.Withhold (Intel_Child, "registration");
+               else
+                  DL.Provide (Unsigned_32 (DRIVER_GPU), Intel_Mailbox);
                end if;
-               --  Its endpoint to devmgr, badged so its runtime requests
+               --  Its endpoint to devmgr ("device-manager", read by
+               --  Intel_GPU_Supervisor), badged so its runtime requests
                --  are recognized, and its register window (read only).
-               DL.Give (Intel_Child, "ready",
+               DL.Give (Intel_Child, "device-manager",
                  H.Badged (Root.Self_Grantable, H.Read_Write, Intel_Ready_Tag));
                Give_Registers (Intel_Child, "intel-gpu.drv", Plan.Physical_Base, Plan.Bytes,
                                H.Read_Only, Name => "registers");
@@ -3338,9 +3349,21 @@ begin
                   DL.Abandon (GPU_Viewer_Child);
                end if;
                GPU_Viewer_Ready := GPU_Viewer_Ready and then Submitted;
-               if not Submitted then debugPrint ("devmgr: Intel bootstrap submission failed" & LF); end if;
-               debugPrint ("devmgr: Intel inspection launched; firmware display retained" & LF);
+               if Submitted then
+                  debugPrint ("devmgr: Intel inspection launched; firmware display retained" & LF);
+               elsif Intel_Inspection_PID = No_Process then
+                  Warnings.Warn ("devmgr: intel-gpu.drv not started; software rendering");
+               else
+                  Warnings.Warn ("devmgr: intel-gpu.drv bootstrap submission failed");
+               end if;
+            else
+               Warnings.Warn ("devmgr: intel-gpu.drv not spawned; software rendering");
             end if;
+         else
+            Warnings.Warn ("devmgr: Intel GPU " & Hex (Unsigned_64 (pciReadConfig32
+              (intelDev.bus, intelDev.slot, intelDev.func, 0))) & " not launched: registers " &
+              Intel_GPU_Resources.Name (Plan.Status) & ", power " &
+              Intel_GPU_PCI_Power.Name (Power));
          end if;
       end;
    end if;
@@ -3490,6 +3513,7 @@ begin
       -- One completion, one admission step and one request per iteration:
       -- incoming device traffic cannot starve pending GPU launch completion.
       Launch_Now := syscall (SYSCALL_GETTIME);
+      Forward_Launch_Refusals;
       Warnings.Pump;
       Log_Child_Exits (Launch_Now);
       if Poll_Completion (Launch_Receipt'Address) = 1 then

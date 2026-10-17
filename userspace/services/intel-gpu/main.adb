@@ -124,6 +124,7 @@ with System;
 with System.Storage_Elements;
 with System.Machine_Code;
 with CuBit.Monotonic;
+with Ada.Command_Line;
 with Intel_GPU_Reset_Pages;
 with Intel_GPU_Display_Mapping;
 with Intel_GPU_Native_Parent;
@@ -7854,15 +7855,68 @@ procedure Main is
       if Stalls_Reported < Unsigned_64'Last then Stalls_Reported := Stalls_Reported + 1; end if;
       Publish_Snapshot ("intel-gpu: stalled" & Line (1 .. Last), CuBit.Log_Records.Warning);
    end Watch_Stalls;
+
+   -- Why intel-gpu stopped before serving: its exit code. devmgr reports a
+   -- child's nonzero exit as a warning (Desktop's bootstrap panel, Logs),
+   -- so the reason is visible even when this driver's own log never binds.
+   type Early_Stop is
+     (Startup_Incomplete, Bootstrap_Rejected, Resource_Rejected,
+      Register_Mapping_Denied, Firmware_Descriptor_Inconsistent);
+   for Early_Stop use
+     (Startup_Incomplete => 1, Bootstrap_Rejected => 2, Resource_Rejected => 3,
+      Register_Mapping_Denied => 4, Firmware_Descriptor_Inconsistent => 5);
+   function Name (Why : Early_Stop) return String is
+     (case Why is
+         when Startup_Incomplete               => "startup incomplete",
+         when Bootstrap_Rejected               => "bootstrap rejected",
+         when Resource_Rejected                => "resource rejected",
+         when Register_Mapping_Denied          => "register mapping denied",
+         when Firmware_Descriptor_Inconsistent => "firmware descriptor inconsistent");
+   function Name (Status : CuBit.Startup_State.Verification_Status) return String is
+     (case Status is
+         when CuBit.Startup_State.Ready       => "ready",
+         when CuBit.Startup_State.Not_Loaded  => "no startup table",
+         when CuBit.Startup_State.Missing     => "missing",
+         when CuBit.Startup_State.Wrong_Kind  => "wrong kind",
+         when CuBit.Startup_State.Wrong_Need  => "wrong requirement",
+         when CuBit.Startup_State.Not_Granted => "not granted");
+   -- How long a stopping driver waits for logstore to take its last records
+   -- (it may stop before logstore runs).
+   Early_Stop_Flush_Ms : constant := 10_000;
+   Early_Stop_Poll_Ms : constant := 10;
+
+   -- Report Text as a warning, give the diagnostics publisher a bounded
+   -- chance to deliver it, and set the exit code. The caller returns.
+   procedure Stop_Early (Why : Early_Stop; Text : String) is
+      Started : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+      Now : Unsigned_64 := Started;
+      Receipt : aliased CompletionEntry;
+      Ignore : Unsigned_64;
+      Activity : Activity_Result;
+      pragma Unreferenced (Ignore, Activity);
+   begin
+      Publish_Snapshot ("intel-gpu: stopped, exit code" & Integer'Image (Early_Stop'Enum_Rep (Why)) &
+                        " (" & Name (Why) & "): " & Text,
+                        CuBit.Log_Records.Warning);
+      while Intel_GPU_Diagnostics.Pending
+        and then Now >= Started and then Now - Started < Early_Stop_Flush_Ms
+      loop
+         Intel_GPU_Diagnostics.Tick;
+         Ignore := Intel_GPU_Diagnostics.Poll_Driver (Receipt'Address);
+         Activity := Wait_For_Activity_Until
+           (if Now <= Unsigned_64'Last - Early_Stop_Poll_Ms then Now + Early_Stop_Poll_Ms else Now);
+         Now := syscall (SYSCALL_GETTIME);
+      end loop;
+      Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Exit_Status (Early_Stop'Enum_Rep (Why)));
+   end Stop_Early;
 begin
    declare
       use type CuBit.Startup_State.Verification_Status;
       Check : constant CuBit.Startup_State.Verification := Startup.Verify;
    begin
       if Check.Status /= CuBit.Startup_State.Ready then
-         debugPrint ("intel-gpu: startup capabilities incomplete (" &
-           CuBit.Startup_State.Verification_Status'Image (Check.Status) &
-           " at" & Natural'Image (Check.Index) & ")" & ASCII.LF);
+         Stop_Early (Startup_Incomplete, "startup capability" & Natural'Image (Check.Index) &
+           " of its manifest " & Name (Check.Status));
          return;
       end if;
    end;
@@ -7891,7 +7945,9 @@ begin
      Request.tag.length /= 4 or else Request.tag.protocol /= 0 or else
      Request.tag.reserved /= 0
    then
-      debugPrint ("intel-gpu: bootstrap rejected" & ASCII.LF);
+      Stop_Early (Bootstrap_Rejected, "bootstrap rejected (label" &
+        Unsigned_32'Image (Request.tag.label) & " tag" & Unsigned_64'Image (Request.authorityTag) &
+        (if Sender = No_Process then ", no sender" else "") & ")");
       return;
    end if;
    Plan := Intel_GPU_Boot.Decode
@@ -7899,7 +7955,7 @@ begin
    GGC := Unsigned_16 (Shift_Right (Request.words (3), 16) and 16#FFFF#);
    Table_Bytes := Intel_GPU_GGTT.Table_Size (GGC);
    if Plan.Status /= Admitted then
-      debugPrint ("intel-gpu: resource rejected " & Admission_Status'Image (Plan.Status) & ASCII.LF);
+      Stop_Early (Resource_Rejected, "register window " & Name (Plan.Status));
       return;
    end if;
    Intel_GPU_Render_Control.Bind
@@ -7915,9 +7971,8 @@ begin
         (Startup.Registers, Plan.Physical_Base, Register_Virtual_Base,
          Plan.Bytes / 4096, Read_Only => True)
    then
-      Publish_Snapshot ("intel-gpu: read-only register mapping " &
-        Intel_GPU_Map_Report.Denied (Plan.Physical_Base, Plan.Bytes),
-        CuBit.Log_Records.Warning);
+      Stop_Early (Register_Mapping_Denied, "read-only register mapping " &
+        Intel_GPU_Map_Report.Denied (Plan.Physical_Base, Plan.Bytes));
       return;
    end if;
    debugPrint ("intel-gpu: read-only register mapping ready; firmware scanout retained" & ASCII.LF);
@@ -7942,8 +7997,13 @@ begin
          Publish_Snapshot ("intel-gpu: PCI MSI-X present=" & Flag (IRQ.MSIX_Present) &
            " enabled=" & Flag (IRQ.MSIX_Enabled) & " masked=" & Flag (IRQ.MSIX_Masked));
       end if;
+      --  Optional, as before handles: MSI stays disabled until GT and
+      --  display sources are set up, so a vector devmgr could not
+      --  allocate must not keep the driver from starting.
       Device_Interrupt :=
-        CuBit.Device_Interrupts.Block_Of (Startup.Device);
+        (if Startup.Device.Present
+         then CuBit.Device_Interrupts.Block_Of (Startup.Device.Value)
+         else (others => <>));
       Publish_Snapshot
         (if Device_Interrupt.Valid then
            "intel-gpu: MSI vector" & Natural'Image (Device_Interrupt.Head) &
@@ -8072,7 +8132,7 @@ begin
               Buffer_View.Content_Bytes /= Firmware_Bytes or else
               Firmware_Status /= Intel_GPU_Firmware_File.Loaded
             then
-               debugPrint ("intel-gpu: firmware descriptor inconsistent" & ASCII.LF);
+               Stop_Early (Firmware_Descriptor_Inconsistent, "firmware descriptor inconsistent");
                return;
             end if;
             Publish_Snapshot ("intel-gpu: firmware descriptor ready; bytes=" &
