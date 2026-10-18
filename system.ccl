@@ -40,6 +40,8 @@
     (Launch_Entry label => "Penny" action => (Launch_Action.Program "cubitshell.app") icon => Launch_Icon.Penny category => App_Category.Web))
   (setting "desktop.launch.50-files"
     (Launch_Entry label => "Files" action => (Launch_Action.Program "files.app") icon => Launch_Icon.Files category => App_Category.Tools))
+  (setting "desktop.launch.52-text"
+    (Launch_Entry label => "Text" action => (Launch_Action.Program "text.app") icon => Launch_Icon.Workbench category => App_Category.Tools))
   (setting "desktop.launch.60-sameboy"
     (Launch_Entry label => "SameBoy" action => (Launch_Action.Program "sameboy.app") icon => Launch_Icon.Gameboy category => App_Category.Games))
   (setting "desktop.launch.70-settings"

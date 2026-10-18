@@ -51,7 +51,7 @@ Mesa native tests: --test softpipe, opengl, buffer, mesa-window, mesa-sync, mesa
 
 Options:
   --build              Run make world before booting QEMU
-  --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-console, logs, ccl-remote, capability-security, network-authority, bench-net, bench-fs, threads, futex, clock, avx, rust-std, libc, processes, control-events, binutils, gcc, servo, bench-spread, timesync, tls-probe, tls-service, wget-https, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, clipboard, key-repeat, desktop-doom, desktop-virtio-vga, desktop-vm, virtio-gpu, virtio-vga-primary, or boot-timeline (--accel kvm --timeout 60)
+  --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-console, logs, ccl-remote, capability-security, network-authority, bench-net, bench-fs, threads, futex, clock, avx, rust-std, libc, processes, control-events, binutils, gcc, servo, bench-spread, timesync, tls-probe, tls-service, wget-https, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, text, clipboard, key-repeat, desktop-doom, desktop-virtio-vga, desktop-vm, virtio-gpu, virtio-vga-primary, or boot-timeline (--accel kvm --timeout 60)
   --timeout SECONDS    QEMU runtime before timeout is treated as success
                        (default 25; 180 for desktop tests, see DESKTOP_TIMEOUT_SECONDS)
   --accel NAME         QEMU accelerator (for example: tcg,thread=multi)
@@ -249,7 +249,7 @@ done
 
 if [ -z "$TIMEOUT_SECONDS" ]; then
     case "$TEST_NAME" in
-        desktop-display|desktop-protocol|files|clipboard|key-repeat|input-stream)
+        desktop-display|desktop-protocol|files|text|clipboard|key-repeat|input-stream)
             TIMEOUT_SECONDS=$DESKTOP_TIMEOUT_SECONDS ;;
         network-authority)
             TIMEOUT_SECONDS=$NETWORK_AUTHORITY_TIMEOUT_SECONDS ;;
@@ -294,7 +294,7 @@ case "$TEST_NAME" in
         ;;
     grant-forward|grant-forward-intermediary-exit|grant-forward-owner-exit|grant-forward-desktop|config-tree|config-inspection|log-authority|log-fields|metrics|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
         ;;
-    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|scanout-repair)
+    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|scanout-repair)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -720,6 +720,9 @@ case "$TEST_NAME" in
     files)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-files.ccl"
         ;;
+    text)
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-text.ccl"
+        ;;
     clipboard)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-clipboard.ccl"
         ;;
@@ -1006,6 +1009,7 @@ if [ -n "$INIT_PROFILE" ]; then
        [ "$TEST_NAME" = "render-launch-policy" ] ||
        [ "$TEST_NAME" = "config-tree" ] ||
        [ "$TEST_NAME" = "files" ] ||
+       [ "$TEST_NAME" = "text" ] ||
        [ "$TEST_NAME" = "clipboard" ] ||
        [ "$TEST_NAME" = "key-repeat" ] ||
        [ "$TEST_NAME" = "desktop-virtio-vga" ] ||
@@ -1285,6 +1289,22 @@ if [ -n "$INIT_PROFILE" ]; then
                 exit 1
             fi
         done
+    fi
+    if [ "$TEST_NAME" = "text" ]; then
+        TEXT_TEST_IMAGE="$KERNEL_DIR/isodir/boot/text.app"
+        if [ ! -f "$TEXT_TEST_IMAGE" ]; then
+            echo "headless: missing current Text test image: $TEXT_TEST_IMAGE" >&2
+            exit 1
+        fi
+        debugfs -w -R "rm text.app" "$TEMP_DISK" >/dev/null 2>&1
+        debugfs -w -R "mkdir Documents" "$TEMP_DISK" >/dev/null 2>&1
+        debugfs -w -R "rm Documents/notes.txt" "$TEMP_DISK" >/dev/null 2>&1
+        if ! debugfs -w -R "write $TEXT_TEST_IMAGE text.app" "$TEMP_DISK" >/dev/null 2>&1 ||
+           ! debugfs -w -R "write $ROOT_DIR/tests/headless/text-notes.txt Documents/notes.txt" \
+             "$TEMP_DISK" >/dev/null 2>&1; then
+            echo "headless: failed to install Text and its document" >&2
+            exit 1
+        fi
     fi
     if [ "$TEST_NAME" = "bench-ipc" ]; then
         for BENCH_IMAGE_NAME in bench-ipc-client.app bench-ipc-server.app; do
@@ -2039,7 +2059,7 @@ if [ "$TEST_NAME" = "managed-ui" ]; then
     rm -f "$MONITOR_SOCKET"
     MONITOR_ARGS=(-monitor "unix:$MONITOR_SOCKET,server,nowait")
 fi
-if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TEST_NAME" = "clipboard" ] || [ "$TEST_NAME" = "mesa-window" ] || [ "$TEST_NAME" = "gpu-viewer" ] ||
+if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TEST_NAME" = "text" ] || [ "$TEST_NAME" = "clipboard" ] || [ "$TEST_NAME" = "mesa-window" ] || [ "$TEST_NAME" = "gpu-viewer" ] ||
    [ "$TEST_NAME" = "desktop-protocol" ] ||
    [ "$TEST_NAME" = "ccl-workspace" ] || [ "$TEST_NAME" = "ccl-console" ] ||
    [ "$TEST_NAME" = "logs" ] || [ "$TEST_NAME" = "scanout-repair" ] ||
@@ -2979,6 +2999,38 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
             # F10 quits through the view; the window closes cleanly.
             files_keys f10
             files_wait "files: closed"
+        elif [ "$TEST_NAME" = "text" ]; then
+            # CuBit Text (docs/text-editor.md) by keyboard only: open the
+            # granted document, type a line at its end, save (sibling, flush,
+            # rename), quit. The saved bytes are checked on the disk after.
+            text_wait() {
+                local attempt
+                for ((attempt = 0; attempt < 300; attempt++)); do
+                    grep -aF "$1" "$SERIAL_LOG" >/dev/null 2>&1 && return 0
+                    sleep 0.1
+                done
+                echo "headless: Text did not report: $1" >&2
+                exit 1
+            }
+            text_keys() {
+                local key
+                for key in "$@"; do
+                    printf 'sendkey %s\n' "$key"
+                    sleep 0.15
+                done | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
+            }
+            text_wait "text: first frame presented"
+            text_wait "text: opened @nvme:0/Documents/notes.txt lines="
+            sleep 0.5
+            printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-text.ppm" | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
+            text_keys ctrl-end ret h e l l o spc c u b i t
+            sleep 0.5
+            text_keys ctrl-s
+            text_wait "text: saved @nvme:0/Documents/notes.txt"
+            sleep 0.5
+            printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-text-saved.ppm" | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
+            text_keys ctrl-q
+            text_wait "text: closed"
         else
             {
                 printf 'sendkey a\n'
@@ -4395,6 +4447,17 @@ clipboard-check: copy field=name outcome=
 clipboard-check: closed
 "
         ;;
+    text)
+        required_markers="
+text: starting
+text: filesystem queue ready
+text: native window ready
+text: first frame presented
+text: opened @nvme:0/Documents/notes.txt lines=1 bytes=27
+text: saved @nvme:0/Documents/notes.txt bytes=39
+text: closed
+"
+        ;;
     files)
         required_markers="
 files: starting
@@ -4799,6 +4862,19 @@ if [ "$TEST_NAME" = "ccl-workspace" ]; then
 fi
 if [ "$TEST_NAME" = "capability-security" ]; then
     python3 "$ROOT_DIR/tests/process-construction/check-log.py" "$SERIAL_LOG"
+fi
+if [ "$TEST_NAME" = "text" ]; then
+    saved_text="$(debugfs -R 'cat Documents/notes.txt' "$TEMP_DISK" 2>/dev/null)"
+    expected_text="$(cat "$ROOT_DIR/tests/headless/text-notes.txt")
+hello cubit"
+    if [ "$saved_text" != "$expected_text" ]; then
+        echo "headless: Text saved the wrong bytes: \"$saved_text\"" >&2
+        exit 1
+    fi
+    if debugfs -R 'ls Documents' "$TEMP_DISK" 2>/dev/null | grep -F '.notes.txt.text-save' >/dev/null; then
+        echo "headless: Text left its save sibling behind" >&2
+        exit 1
+    fi
 fi
 if [ "$CHECK_EXT2" -eq 1 ]; then
     if ! python3 "$ROOT_DIR/tests/filesystem-interop/check-native.py" after \

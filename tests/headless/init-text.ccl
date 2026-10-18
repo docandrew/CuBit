@@ -1,0 +1,8 @@
+# CuBit Text smoke test (docs/text-editor.md): the desktop and the editor,
+# which opens @nvme:0/Documents/notes.txt.
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "display.svc" (priority 5))
+  (start "desktop.svc" (priority 4))
+  (start "text.app" (priority 3))
+)

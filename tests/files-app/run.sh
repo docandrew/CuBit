@@ -22,9 +22,18 @@ for unit in cubit.ads cubit-filesystems.ads cubit-filesystems.adb cubit-director
             cubit-filesystem_events.ads cubit-filesystem_events.adb cubit-volume_descriptions.ads \
             cubit-volume_descriptions.adb cubit-file_access.ads cubit-file_access.adb \
             cubit-published_clock.ads cubit-published_clock.adb cubit-kernel_calls.ads \
-            cubit-kernel_calls.adb; do
+            cubit-kernel_calls.adb cubit-handles.ads cubit-handles-grants.ads cubit-handles-grants.adb \
+            cubit-handles-control.ads cubit-handles-control.adb cubit-handles-devices.ads \
+            cubit-handles-devices.adb cubit-handles-ipc.ads cubit-handles-ipc.adb \
+            cubit-handles-kernel.ads cubit-handles-kernel.adb cubit-system_facts.ads \
+            cubit-system_facts.adb cubit-startup_tables.ads cubit-startup_tables.adb; do
   cmp -s "$root/userspace/runtime/gnat/$unit" "$here/build/source/$unit" ||
     cp "$root/userspace/runtime/gnat/$unit" "$here/build/source/"
+done
+# Shared layouts the capability handles (CAP-002) and system facts name.
+for unit in capabilities/capability_abi.ads capabilities/capability_abi.adb boot/boot_timeline_layout.ads \
+            launch/process_layout.ads publications/system_publications.ads; do
+  cmp -s "$root/shared/$unit" "$here/build/source/$(basename "$unit")" || cp "$root/shared/$unit" "$here/build/source/"
 done
 # The published clock's pure parts (CuBit.Messages reads the fast clock).
 for unit in clock_publication.ads clock_publication.adb clock_publication-sample.ads clock_publication-sample.adb; do
@@ -41,7 +50,7 @@ fi
 cd "$root/kernel"
 case "${1:-}" in
   --prove)
-    alr exec -- gnatprove -P "$here/files_proof.gpr" -j0 --level=2 --report=fail --checks-as-errors=on \
+    alr exec -- gnatprove -P "$here/files_proof.gpr" -j2 --level=2 --report=fail --checks-as-errors=on \
       -u files_listing.adb files_order.adb files_filter.adb files_viewport.adb files_marks.adb files_pages.adb files_plan.adb
     ;;
   --bench)

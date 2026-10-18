@@ -573,8 +573,6 @@ package body CuBit.UI is
       Ch : Character := ' ';
       Scale : Positive := 1;
       Ink, Under : Color := 0;
-      --  A density-1 cell (Draw_Opaque_Glyph), never a density path's.
-      Direct : Boolean := False;
    end record;
    type Composite_Entry is record
       Key : Composite_Key;
@@ -591,8 +589,7 @@ package body CuBit.UI is
       H : Unsigned_32 := Unsigned_32 (Character'Pos (Key.Ch)) * 16#9E37_79B1#;
    begin
       H := H xor (Unsigned_32 (CuBit.Fonts.Face'Pos (Key.Face)) * 16#85EB_CA6B#);
-      H := H xor (Key.Ink * 16#C2B2_AE35#) xor (Key.Under * 16#27D4_EB2F#) xor Unsigned_32 (Key.Scale)
-        xor Boolean'Pos (Key.Direct);
+      H := H xor (Key.Ink * 16#C2B2_AE35#) xor (Key.Under * 16#27D4_EB2F#) xor Unsigned_32 (Key.Scale);
       H := H xor Shift_Right (H, 15);
       return Composite_Index (H mod COMPOSITE_ENTRIES);
    end Composite_Slot;
@@ -610,7 +607,7 @@ package body CuBit.UI is
       Scale : constant Natural :=
         (if c.densityDenominator /= 0 and then c.densityNumerator mod c.densityDenominator = 0
          then Natural (c.densityNumerator / c.densityDenominator) else 0);
-      Key : constant Composite_Key := (face, ch, Positive'Max (1, Scale), fg, bg, Direct => False);
+      Key : constant Composite_Key := (face, ch, Positive'Max (1, Scale), fg, bg);
       Slot : constant Composite_Index := Composite_Slot (Key);
       E : Composite_Entry renames Composites (Slot);
 
@@ -688,8 +685,42 @@ package body CuBit.UI is
       end;
    end Draw_Density_Cell;
 
+   --  Opaque glyph cells at density 1 (code and UI text over a known
+   --  background) have their own cache of small cells: an editor's palette
+   --  (token inks over line, selection, match and occurrence backgrounds)
+   --  needs far more entries than the density cache's large blocks allow.
+   --  Only the keys are static (about 48 KiB); a slot's pixels come from
+   --  the process heap the first time it is filled, so an app pays for the
+   --  cells it draws (at most DIRECT_ENTRIES of 1 KiB).
+   DIRECT_ENTRIES : constant := 2_048;
+   DIRECT_WIDTH : constant := 16;
+   DIRECT_HEIGHT : constant := CuBit.Fonts.Line_Height;
+   subtype Direct_Index is Natural range 0 .. DIRECT_ENTRIES - 1;
+   subtype Direct_Cell is Client_Raster.Pixels (0 .. DIRECT_WIDTH * DIRECT_HEIGHT - 1);
+   type Direct_Cell_Access is access Direct_Cell;
+   type Direct_Entry is record
+      Ch : Character := ' ';
+      Face : CuBit.Fonts.Face := CuBit.Fonts.Sans;
+      Ink, Under : Color := 0;
+      Width : Natural := 0;   --  0: empty
+      Cell : Direct_Cell_Access := null;
+   end record;
+   type Direct_Table is array (Direct_Index) of Direct_Entry;
+   Directs : Direct_Table;
+
+   function Direct_Slot (ch : Character; face : CuBit.Fonts.Face; fg, bg : Color) return Direct_Index is
+      H : Unsigned_32 := Unsigned_32 (Character'Pos (ch)) * 16#9E37_79B1#;
+   begin
+      H := H xor (Unsigned_32 (CuBit.Fonts.Face'Pos (face)) * 16#85EB_CA6B#);
+      H := H xor (fg * 16#C2B2_AE35#) xor (bg * 16#27D4_EB2F#);
+      H := H xor Shift_Right (H, 16);
+      H := H * 16#7FEB_352D#;
+      H := H xor Shift_Right (H, 15);
+      return Direct_Index (H mod DIRECT_ENTRIES);
+   end Direct_Slot;
+
    --  An opaque glyph cell (Width logical pixels by a line) at density 1:
-   --  blended over bg once into the composite cache, then row copies. The
+   --  blended over bg once into the direct cache, then row copies. The
    --  cached cell is exactly what Blit_Glyph paints, so the pixels are the
    --  same either way; a cell the cache cannot hold is blended directly.
    procedure Draw_Opaque_Glyph
@@ -698,12 +729,9 @@ package body CuBit.UI is
    is
       package R renames Client_Raster;
       clipped : constant Rect := Clamp_Rect (c, (x => x, y => y, w => Width, h => CuBit.Fonts.Line_Height));
-      Key : constant Composite_Key := (face, ch, 1, fg, bg, Direct => True);
-      Slot : constant Composite_Index := Composite_Slot (Key);
-      E : Composite_Entry renames Composites (Slot);
    begin
-      if Width = 0 or else Width > COMPOSITE_WIDTH or else Width > R.MASK_COLUMNS
-        or else CuBit.Fonts.Line_Height > COMPOSITE_HEIGHT or else CuBit.Fonts.Line_Height > R.MASK_ROWS
+      if Width = 0 or else Width > DIRECT_WIDTH or else Width > R.MASK_COLUMNS
+        or else CuBit.Fonts.Line_Height > R.MASK_ROWS
       then
          Blit_Glyph (c, clipped, glyph, x, y, fg, True, bg);
          return;
@@ -714,26 +742,35 @@ package body CuBit.UI is
       then
          return;
       end if;
-      if not E.Filled or else E.Key /= Key or else E.Cell_Width /= Width then
-         declare
-            Source : R.Mask with Import, Address => glyph.Alpha'Address;
-         begin
-            E.Key := Key;
-            E.Filled := True;
-            E.Usable := True;
-            E.Cell_Width := Width;
-            E.Pixels := [others => bg];
-            R.Blit_Mask (E.Pixels, COMPOSITE_WIDTH, (0, 0, Width, CuBit.Fonts.Line_Height), Source, 0, 0, fg,
-                         True, bg);
-         end;
-      end if;
       declare
-         Pitch : constant Positive := c.pitch / 4;
-         Target : R.Pixels (0 .. (clipped.h - 1) * Pitch + clipped.x + clipped.w - 1)
-           with Import, Address => c.addr + Storage_Offset (clipped.y * c.pitch);
+         E : Direct_Entry renames Directs (Direct_Slot (ch, face, fg, bg));
       begin
-         R.Copy_Block (Target, Pitch, (clipped.x, 0, clipped.w, clipped.h), E.Pixels, COMPOSITE_WIDTH,
-                       clipped.x - x, clipped.y - y);
+         if E.Width /= Width or else E.Ch /= ch or else CuBit.Fonts."/=" (E.Face, face) or else E.Ink /= fg or else E.Under /= bg
+         then
+            declare
+               Source : R.Mask with Import, Address => glyph.Alpha'Address;
+            begin
+               E.Ch := ch;
+               E.Face := face;
+               E.Ink := fg;
+               E.Under := bg;
+               E.Width := Width;
+               if E.Cell = null then
+                  E.Cell := new Direct_Cell;
+               end if;
+               E.Cell.all := [others => bg];
+               R.Blit_Mask (E.Cell.all, DIRECT_WIDTH, (0, 0, Width, CuBit.Fonts.Line_Height), Source, 0, 0, fg,
+                            True, bg);
+            end;
+         end if;
+         declare
+            Pitch : constant Positive := c.pitch / 4;
+            Target : R.Pixels (0 .. (clipped.h - 1) * Pitch + clipped.x + clipped.w - 1)
+              with Import, Address => c.addr + Storage_Offset (clipped.y * c.pitch);
+         begin
+            R.Copy_Block (Target, Pitch, (clipped.x, 0, clipped.w, clipped.h), E.Cell.all, DIRECT_WIDTH,
+                          clipped.x - x, clipped.y - y);
+         end;
       end;
    end Draw_Opaque_Glyph;
 

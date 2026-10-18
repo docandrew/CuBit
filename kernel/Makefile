@@ -1489,6 +1489,14 @@ files: user_runtime ccl-manifest ui-fonts-native
 	$(ALR) gprbuild -P ../userspace/apps/files/files.gpr
 	cp ../userspace/apps/files/build/files.app isodir/boot/files.app
 
+# The text editor (docs/text-editor.md): the editor core in userspace/lib/text.
+.PHONY : text
+text: user_runtime ccl-manifest ui-fonts-native
+	mkdir -p ../userspace/apps/text/build
+	$(call compile_ccl_manifest,../userspace/apps/text)
+	$(ALR) gprbuild -P ../userspace/apps/text/text.gpr
+	cp ../userspace/apps/text/build/text.app isodir/boot/text.app
+
 # Build the live writable-storage diagnostic app.
 .PHONY : storage-check
 storage-check: user_runtime filesystem-scope-check ccl-manifest
@@ -1742,8 +1750,8 @@ SERVO_DISK_CONTENTS := $(wildcard isodir/boot/cubitshell.app)
 DISK_CONTENTS := isodir/boot/shell.app isodir/boot/doom.elf isodir/boot/sleep.app \
 	isodir/boot/sameboy.app ../userspace/ports/sameboy/build/test.gb \
 	isodir/boot/capability-test.app \
-	isodir/boot/wget.app isodir/boot/devices.app isodir/boot/files.app isodir/boot/config-inspector.app \
-	isodir/boot/ccl-vm.app isodir/boot/ccl-workbench.app isodir/boot/trace-viewer.app \
+	isodir/boot/wget.app isodir/boot/devices.app isodir/boot/files.app isodir/boot/text.app \
+	isodir/boot/config-inspector.app isodir/boot/ccl-vm.app isodir/boot/ccl-workbench.app isodir/boot/trace-viewer.app \
 	isodir/boot/ccl-test-host.svc \
 	isodir/boot/clock.svc isodir/boot/timesync.svc isodir/boot/tls.svc isodir/boot/config-storage.svc \
 	isodir/boot/desktop-shell.app \
@@ -1774,7 +1782,7 @@ DESKTOP_CONFIG_SAMPLES := ../userspace/ccl/samples/config-counter.ccl \
 	../userspace/ccl/samples/config-counter-read.ccl
 DESKTOP_OVERLAY := isodir/boot/desktop.svc isodir/boot/display.svc isodir/boot/metrics.svc \
 	isodir/boot/netstack.svc isodir/boot/tls.svc isodir/boot/desktop-shell.app \
-	isodir/boot/devices.app isodir/boot/config-inspector.app isodir/boot/files.app \
+	isodir/boot/devices.app isodir/boot/config-inspector.app isodir/boot/files.app isodir/boot/text.app \
 	isodir/boot/doom.elf isodir/boot/ccl-workbench.app \
 	isodir/boot/ccl-console.app isodir/boot/logs.app isodir/boot/trace-viewer.app isodir/boot/config-storage.svc \
 	$(SERVO_DISK_CONTENTS)
@@ -1803,7 +1811,7 @@ INITRD_SERVICES := filesystem ramdisk ata nvme netstack virtio-net virtio-gpu hd
 # rebuild the ext2 disk image from those freshly staged files.
 .PHONY : desktop-session-content
 desktop-session-content: $(INITRD_SERVICES) desktop-metrics display logstore \
-	desktop-shell devices files config-inspector ccl-workbench ccl-console logs trace-viewer config-storage clock timesync tls doom sameboy
+	desktop-shell devices files text config-inspector ccl-workbench ccl-console logs trace-viewer config-storage clock timesync tls doom sameboy
 
 # Create ext2 ATA disk image containing doom1.wad, doom.elf, init.ccl, shell.app
 # Requires: mke2fs, debugfs (from e2fsprogs)
@@ -1816,6 +1824,7 @@ ata_disk.img nvme_disk.img: $(DISK_CONTENTS) $(DESKTOP_CONFIG_SAMPLES) ../tools/
 		--file "sameboy/00.gb=../userspace/ports/sameboy/build/test.gb" \
 		--file "tls/roots.der=build/tls-roots.der" \
 		--file "init.ccl=../init.ccl" \
+		--file "Documents/notes.txt=../userspace/apps/text/notes.txt" \
 		$(DESKTOP_SAMPLE_ARGS) \
 		$(SERVO_DISK_FILES) \
 		$(DESKTOP_ASSET_DISK_FILES)
@@ -2044,7 +2053,7 @@ check-capability-numbers:
 	python3 ../tools/check_capability_numbers.py --self-test
 	python3 ../tools/check_capability_numbers.py --root ..
 
-world: check-capability-numbers trace-viewer test-programs $(IMAGE_ONLY_BINARIES) cubit_kernel doom sameboy sleep thread-check futex-check clock-check avx-check devmem-check fault-check stall-check bench-spread capability-test storage-check ipctest-server ipctest-client bench-ipc-server bench-ipc-client ccl-test-host clock timesync tls ccl-vm ccl-workbench filesystem ata nvme virtio-net virtio-gpu netstack wget devices files config-inspector desktop-shell procmgr shell hda mixer ps2 xhci virtio-input config config-storage netmgr logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso
+world: check-capability-numbers trace-viewer test-programs $(IMAGE_ONLY_BINARIES) cubit_kernel doom sameboy sleep thread-check futex-check clock-check avx-check devmem-check fault-check stall-check bench-spread capability-test storage-check ipctest-server ipctest-client bench-ipc-server bench-ipc-client ccl-test-host clock timesync tls ccl-vm ccl-workbench filesystem ata nvme virtio-net virtio-gpu netstack wget devices files text config-inspector desktop-shell procmgr shell hda mixer ps2 xhci virtio-input config config-storage netmgr logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso
 
 .PHONY : headless-test
 headless-test: world

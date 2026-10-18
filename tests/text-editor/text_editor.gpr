@@ -1,0 +1,81 @@
+--  Hosted CuBit Text (docs/text-editor.md): the editor core
+--  (userspace/lib/text) and the app's shell (userspace/apps/text) on Linux,
+--  with host stand-ins (host/) for file access and the clipboard.
+--  TEXT_MODE: checked (assertions and contracts on: the tests), release
+--  (-O3 -gnatp, as native apps build: the benchmarks), mutant (checked,
+--  sources from build/mutant first: run.sh --mutate).
+with "../../userspace/lib/ui/fonts_host.gpr";
+with "sdl/text_sdl.gpr";
+project Text_Editor is
+   type Build_Mode is ("checked", "release", "mutant", "profile");
+   Mode : Build_Mode := external ("TEXT_MODE", "checked");
+   for Languages use ("Ada");
+   Common_Sources := (".", "host", "build/source", "../../userspace/apps/text", "../../userspace/lib/ui", "../../userspace/lib/theme",
+                      "../../userspace/lib/compositor", "../../userspace/lib/display", "../../userspace/allocator/src",
+                      "../../userspace/ccl/src");
+   case Mode is
+      when "mutant" =>
+         for Source_Dirs use Common_Sources & ("build/mutant");
+      when "profile" =>
+         for Source_Dirs use Common_Sources & ("../../userspace/lib/text");
+      when others =>
+         for Source_Dirs use Common_Sources & ("../../userspace/lib/text");
+   end case;
+   --  The native entry point is not hosted.
+   for Excluded_Source_Files use ("main.adb");
+   case Mode is
+      when "checked" =>
+         for Object_Dir use "build/checked";
+      when "release" =>
+         for Object_Dir use "build/release";
+      when "mutant" =>
+         for Object_Dir use "build/mutant-obj";
+      when "profile" =>
+         for Object_Dir use "build/profile";
+   end case;
+   for Exec_Dir use "build";
+   for Main use ("text_core_tests.adb", "text_view_tests.adb", "text_bench.adb", "text_window.adb");
+   Checked := ("-O1", "-g", "-gnat2022", "-gnata", "-gnatwa", "-gnatwJ", "-gnatVa");
+   Release := ("-O3", "-g", "-fno-omit-frame-pointer", "-gnat2022", "-gnatp", "-gnatwa", "-gnatwJ", "-fno-tree-vrp");
+   package Builder is
+      case Mode is
+         when "release" =>
+            for Executable ("text_bench.adb") use "text_bench";
+            for Executable ("text_window.adb") use "text_window_release";
+            for Executable ("text_core_tests.adb") use "text_core_tests_release";
+            for Executable ("text_view_tests.adb") use "text_view_tests_release";
+         when "profile" =>
+            for Executable ("text_bench.adb") use "text_bench_profile";
+         when "mutant" =>
+            for Executable ("text_core_tests.adb") use "text_core_tests_mutant";
+            for Executable ("text_view_tests.adb") use "text_view_tests_mutant";
+            for Executable ("text_bench.adb") use "text_bench_mutant";
+            for Executable ("text_window.adb") use "text_window_mutant";
+         when "checked" =>
+            null;
+      end case;
+   end Builder;
+   package Compiler is
+      case Mode is
+         when "release" =>
+            for Default_Switches ("Ada") use Release;
+         when "profile" =>
+            for Default_Switches ("Ada") use Release & ("-pg");
+         when others =>
+            for Default_Switches ("Ada") use Checked;
+      end case;
+      --  The toolkit's proved pixel loops as native apps build them.
+      for Switches ("client_glyph_blend.adb") use ("-O3", "-gnat2022", "-gnatwa", "-fno-tree-vrp");
+      for Switches ("client_raster.adb") use ("-O3", "-gnat2022", "-gnatwa", "-fno-tree-vrp");
+   end Compiler;
+   package Binder is
+      for Default_Switches ("Ada") use ("-Es");
+   end Binder;
+   package Linker is
+      case Mode is
+         when "profile" => for Default_Switches ("Ada") use ("-pg");
+         when others => null;
+      end case;
+      for Switches ("text_window.adb") use ("-lSDL2");
+   end Linker;
+end Text_Editor;

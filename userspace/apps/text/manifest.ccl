@@ -1,0 +1,12 @@
+# CuBit Text (docs/text-editor.md). Requested authority only: it reads the
+# volume and writes only under Documents/ (a save writes a sibling there and
+# renames it over the file, so it needs create as well as write).
+(executable-manifest v1
+  (identity "com.cubit.text")
+  (version "0.1.0")
+  # One "started" record (CuBit.Logging.Announce).
+  (request-service logstore read-write logstore)
+  (request-service desktop read-write desktop)
+  (request-service filesystem read-write text-filesystem)
+  (filesystem-scope (rights read write create) "@nvme:0/Documents/")
+  (filesystem-scope (rights read) "@nvme:0/"))
