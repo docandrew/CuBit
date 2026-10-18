@@ -1,6 +1,7 @@
 with CuBit.Child_Exits;
 with CuBit.Handles.Startup;
 with CuBit.Launch_Arguments;
+with CuBit.Launch_Failure_Text;
 with CuBit.Launch_Authority;
 with CuBit.Launch_Grants;
 with CuBit.Launching;
@@ -215,9 +216,8 @@ package body CCL_Launcher is
               (case Failure is
                   when LA.Not_Granted => "it needs authority this console does not hold " &
                     "(a file outside its places, or a request the console lacks)",
-                  when LA.Spawn_Failed => "it could not be read or started",
                   when LA.Arguments_Rejected => "procmgr refused its arguments or rings",
-                  when others => "procmgr refused the launch: " & Failure'Image));
+                  when others => CuBit.Launch_Failure_Text.Explanation (Failure)));
          return;
       end if;
       State.Active := True;

@@ -169,7 +169,17 @@ package CuBit.Channels is
    procedure Disarm (C : Channel);
 
    --  Ask the peer to look now (an opener only; the acceptor is told).
+   --  Replaced by Signal; deleted when its last user moves (CAP-002 step 3).
    procedure Kick (C : Channel);
+
+   --  Wake the peer (a coalesced channel wake, CuBit.Doorbells) through the
+   --  grant of this side's own region (the peer is its grantee). Either side may signal;
+   --  callers signal only when the peer armed its waiting word, so bulk
+   --  traffic rings once per batch. No_Region: this side owns no region
+   --  (a drop-oldest reader); Ended: the channel's grant has ended.
+   type Signal_Result is (Signalled, No_Region, Ended);
+   --  Sync: this thread is about to block (CuBit.Doorbells.Ring).
+   procedure Signal (C : Channel; Sync : Boolean; Result : out Signal_Result);
 
    --  Producers of a channel with a consumer index: whether the consumer
    --  has taken everything put so far.

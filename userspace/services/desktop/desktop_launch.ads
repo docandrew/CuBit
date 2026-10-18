@@ -12,7 +12,8 @@
 --
 --    (Launch_Entry label => "Penny" action => (Launch_Action.Program
 --      "cubitshell.app") icon => Launch_Icon.Penny category => App_Category.Web
---      single_instance => false)
+--      single_instance => false color => (App_Color.RGB (RGB_Color red => 184
+--      green => 106 blue => 58)))
 --
 --  Decode reads it back through the same typed path (CCL.Typed_Settings);
 --  anything but the canonical, schema-valid form is refused. Labels and
@@ -31,6 +32,17 @@ package Desktop_Launch is
    type Entry_Kind is (Launch_Program, Internal_Settings);
    subtype Category is CCL.Interfaces.Desktop_Launch.App_Category;
 
+   --  The app's identity colour (window title stripe and tile): 16#RRGGBB#,
+   --  or undeclared, when the desktop uses the theme accent.
+   subtype RGB is Natural range 0 .. 16#FF_FFFF#;
+   type App_Color (Declared : Boolean := False) is record
+      case Declared is
+         when True => Value : RGB := 0;
+         when False => null;
+      end case;
+   end record;
+   Theme_Accent : constant App_Color := (Declared => False);
+
    type Entry_Info is record
       Kind            : Entry_Kind := Launch_Program;
       Label           : String (1 .. Maximum_Label) := [others => ' '];
@@ -40,6 +52,7 @@ package Desktop_Launch is
       Icon            : Desktop_Icons.Icon_ID := Desktop_Icons.Files;
       Single_Instance : Boolean := False;
       Group           : Category := CCL.Interfaces.Desktop_Launch.Tools;
+      Color           : App_Color := Theme_Accent;
    end record;
 
    subtype Entry_Index is Positive range 1 .. Maximum_Entries;

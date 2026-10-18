@@ -5,6 +5,7 @@ with CuBit.Render_Authority;
 with CuBit.Launch_Authority;
 with CuBit.Program_Descriptions;
 with CuBit.Startup_Tables;
+with CuBit.Channel_Limits;
 
 --  The checked content of an executable manifest and of a service catalog,
 --  whatever notation it was read from. CCL.Manifests.Encoding writes the
@@ -106,18 +107,18 @@ package CCL.Manifests.Model with SPARK_Mode => On is
    type Launch_Array is array (Positive range 1 .. MAX_LAUNCHES) of Metadata_Text;
 
    --  A server's limits on one contract's channels (Channel_Servers): opens
-   --  past Per_Client from one client, or past Total, are refused. Total is
-   --  the server's declared capacity, at most MAX_CHANNEL_TOTAL.
+   --  past an At_Most Per_Client from one client, or past an At_Most Total,
+   --  are refused; Server_Limit is the server's own live capacity, spelled
+   --  out (CuBit.Channel_Limits).
    MAX_CHANNEL_OFFERS : constant := 8;
-   MAX_CHANNEL_TOTAL : constant := 65_536;
-   subtype Channel_Limit is Positive range 1 .. MAX_CHANNEL_TOTAL;
-   --  A channel's service class: Urgent channels are served first.
-   type Channel_Class is (Normal, Urgent);
+   MAX_CHANNEL_TOTAL : constant := CuBit.Channel_Limits.Maximum_Total;
+   subtype Channel_Limit is CuBit.Channel_Limits.Channel_Limit;
+   subtype Channel_Class is CuBit.Channel_Limits.Channel_Class;
    type Channel_Offer is record
       Contract : Metadata_Text;
-      Per_Client : Channel_Limit := 1;
-      Total : Channel_Limit := 1;
-      Class : Channel_Class := Normal;
+      Per_Client : Channel_Limit := (Kind => CuBit.Channel_Limits.At_Most, Count => 1);
+      Total : Channel_Limit := (Kind => CuBit.Channel_Limits.At_Most, Count => 1);
+      Class : Channel_Class := CuBit.Channel_Limits.Normal;
    end record;
    subtype Channel_Offer_Count is Natural range 0 .. MAX_CHANNEL_OFFERS;
    type Channel_Offer_Array is array (Positive range 1 .. MAX_CHANNEL_OFFERS) of Channel_Offer;

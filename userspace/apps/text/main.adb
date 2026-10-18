@@ -23,6 +23,7 @@ with Startup;
 with Text_Commands; use Text_Commands;
 with Text_Documents;
 with Text_Host_Native;
+with Text_Input;
 with Text_Limits;
 with Text_Shell;
 
@@ -70,11 +71,6 @@ procedure Main is
    DIGIT_ROW_FIRST : constant Unsigned_64 := 16#02#;   --  1 .. 9, 0
    DIGIT_ROW : constant Letter_Row := [Key_1, Key_2, Key_3, Key_4, Key_5, Key_6, Key_7, Key_8, Key_9, Key_0];
 
-   --  Pointer events carry the held buttons in payload1; modifiers come from
-   --  key events (payload1's low word) and INPUT_RESYNC (its high word).
-   KEY_MODIFIERS_MASK : constant Unsigned_64 := 16#FFFF_FFFF#;
-   RESYNC_MODIFIERS_SHIFT : constant := 32;
-   PRIMARY_BUTTON : constant Unsigned_64 := 1;
    CODE_POINT_MASK : constant Unsigned_64 := 16#FFFF_FFFF#;
    FIRST_PRINTABLE : constant := 16#20#;
    DELETE_CODE : constant := 16#7F#;
@@ -99,12 +95,11 @@ procedure Main is
    App : Text_Shell.Shell;
    Opened : Boolean;
    Busy : Boolean := True;
-   Modifiers : Unsigned_64 := 0;
-   Buttons : Unsigned_64 := 0;
    First_Frame : Boolean := True;
    Last_Pump_Us : Unsigned_64 := 0;
    --  What the markers last reported.
    Was_Loading, Was_Saving : Boolean := False;
+   Last_Cursors : Natural := 1;
    Last_Message : String (1 .. 240) := [others => ' '];
    Last_Message_Length : Natural := 0;
 
@@ -204,6 +199,10 @@ procedure Main is
                      & " reply=" & Decimal (Unsigned_64 (Text_Host_Native.Last_Reply (Host))) & ASCII.LF);
       end if;
       Was_Saving := Text_Shell.Saving (App);
+      if D /= null and then Text_Documents.Selection_Count (D.all) /= Last_Cursors then
+         Last_Cursors := Text_Documents.Selection_Count (D.all);
+         debugPrint ("text: cursors " & Decimal (Unsigned_64 (Last_Cursors)) & ASCII.LF);
+      end if;
       if Message'Length /= Last_Message_Length
         or else Message /= Last_Message (1 .. Natural'Min (Last_Message_Length, Last_Message'Length))
       then
@@ -253,18 +252,13 @@ procedure Main is
      (Win : in out CuBit.UI.App.Window; Event : CuBit.UI.App.Input_Event; Dirty : in out Rect;
       Running : in out Boolean)
    is
-      function Current_Modifiers return Unsigned_64 is
-        (if Event.kind in CuBit.UI.Input.INPUT_KEY_DOWN | CuBit.UI.Input.INPUT_KEY_UP
-         then Event.payload1 and KEY_MODIFIERS_MASK
-         elsif Event.kind = CuBit.UI.Input.INPUT_RESYNC
-         then Shift_Right (Event.payload1, RESYNC_MODIFIERS_SHIFT)
-         else Modifiers);
+      --  This event's own modifiers; none are remembered (Text_Input).
+      function Current_Modifiers return Unsigned_64 is (Text_Input.Modifiers_Of (Event));
       Shift : constant Boolean := (Current_Modifiers and CuBit.UI.App.KEYMOD_SHIFT) /= 0;
       Control : constant Boolean := (Current_Modifiers and CuBit.UI.App.KEYMOD_CTRL) /= 0;
       Alt : constant Boolean := (Current_Modifiers and CuBit.UI.App.KEYMOD_ALT) /= 0;
       Time_Ms : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
    begin
-      Modifiers := Current_Modifiers;
       Text_Shell.Set_Clock (App, Now_Us);
       if Event.kind = CuBit.UI.Input.INPUT_CLOSE_REQUEST then
          Running := False;
@@ -299,7 +293,13 @@ procedure Main is
                              else Text_Shell.Move),
                   X => CuBit.UI.Input.Pointer_X (Event), Y => CuBit.UI.Input.Pointer_Y (Event), Time_Ms => Time_Ms,
                   Control => Control, Shift => Shift, Alt => Alt, others => <>));
-         Buttons := Event.payload1 and PRIMARY_BUTTON;
+         if Event.kind = CuBit.UI.Input.INPUT_POINTER_DOWN and then Text_Shell.Active_Document (App) /= null then
+            --  Visibility: each press, its modifiers and the cursors after it.
+            debugPrint ("text: press ctrl=" & (if Control then "1" else "0") & " alt=" & (if Alt then "1" else "0")
+                        & " cursors="
+                        & Decimal (Unsigned_64 (Text_Documents.Selection_Count (Text_Shell.Active_Document (App).all)))
+                        & ASCII.LF);
+         end if;
       elsif Event.kind = CuBit.UI.Input.INPUT_POINTER_WHEEL then
          Text_Shell.Handle (App, (Kind => Text_Shell.Wheel_Event, Steps => CuBit.UI.Input.Pointer_Wheel_Delta (Event),
                                   X => CuBit.UI.Input.Pointer_X (Event), Y => CuBit.UI.Input.Pointer_Y (Event),

@@ -15,6 +15,8 @@ with Text_Syntax;
 with Text_Shell; use Text_Shell;
 with Text_Host_Files; use Text_Host_Files;
 with Text_Host_Support; use Text_Host_Support;
+with Text_Input;
+with CuBit.UI.Input;
 with Text_Test_Support; use Text_Test_Support;
 
 --  The Text app through its shell (docs/text-editor.md): real files through
@@ -191,6 +193,137 @@ begin
          Check (Picture = Damage_Only, "damage-only frames equal a full repaint");
       end;
       Check (Content (D.all) = Before, "the file is unchanged");
+   end;
+
+   Section ("frames into rotating buffers (as CuBit's protected frames)");
+   declare
+      --  Two buffers presented in turn. Each frame draws into the buffer
+      --  that is two frames old, clipped to this frame's damage and the
+      --  damage it missed (the repair a buffer-age host hands over). The
+      --  newest buffer must always equal a full repaint.
+      Buffers : constant array (0 .. 1) of Surface := [New_Surface (WIDTH, HEIGHT), New_Surface (WIDTH, HEIGHT)];
+      Reference : constant Surface := New_Surface (WIDTH, HEIGHT);
+      Next : Natural := 0;
+      Missed : array (0 .. 1) of CuBit.UI.Rect := [others => Bounds (Target)];
+      Wrong_Frames : Natural := 0;
+      Frames_Drawn : Natural := 0;
+      Before : constant String := Content (D.all);
+
+      procedure Rotating_Frame is
+         Damage : CuBit.UI.Rect;
+         Repair : CuBit.UI.Rect;
+      begin
+         Text_Shell.Set_Clock (App, Now_Us);
+         Text_Shell.Take_Damage (App, Damage);
+         Repair := CuBit.UI.Union_Rect (Damage, Missed (Next));
+         if not CuBit.UI.Is_Empty (Repair) then
+            Text_Shell.Render (App, Canvas (Buffers (Next), Repair), Bounds (Target));
+         end if;
+         Missed (Next) := (others => 0);
+         Missed (1 - Next) := CuBit.UI.Union_Rect (Missed (1 - Next), Damage);
+         --  The same state painted whole, into a buffer of its own (its
+         --  record is new, so everything is drawn).
+         Text_Shell.Render (App, Canvas (Reference), Bounds (Target));
+         Frames_Drawn := Frames_Drawn + 1;
+         for Y in 0 .. HEIGHT - 1 loop
+            declare
+               Bad : Boolean := False;
+            begin
+               for X in 0 .. WIDTH - 1 loop
+                  if Pixel (Buffers (Next), X, Y) /= Pixel (Reference, X, Y) then
+                     Bad := True;
+                     exit;
+                  end if;
+               end loop;
+               if Bad then
+                  Wrong_Frames := Wrong_Frames + 1;
+                  exit;
+               end if;
+            end;
+         end loop;
+         Next := 1 - Next;
+      end Rotating_Frame;
+   begin
+      Text_Editors.Invalidate (Active_Editor (App).all);
+      Rotating_Frame;
+      Rotating_Frame;
+      for Step in 1 .. 12 loop
+         case Step mod 4 is
+            when 0 => Hit (Down);
+            when 1 => Type_Text ("ab");
+            when 2 => Hit (Page_Down);
+            when others => Hit (Up);
+         end case;
+         Rotating_Frame;
+      end loop;
+      for Step in 1 .. 100 loop
+         exit when not Modified (D.all);
+         Hit (Key_Z, Control => True);
+      end loop;
+      Rotating_Frame;
+      Rotating_Frame;
+      Check (Wrong_Frames = 0, "every frame equals a full repaint (" & Natural'Image (Wrong_Frames) & " of"
+             & Natural'Image (Frames_Drawn) & " differ)");
+      Check (Content (D.all) = Before, "the file is unchanged after the rotation");
+      Text_Editors.Invalidate (Active_Editor (App).all);
+      Frame (App, Target);
+   end;
+
+   Section ("a click takes its own modifiers (no stuck Ctrl)");
+   declare
+      use CuBit.UI.Input;
+      --  Ctrl+S: Ctrl's press reaches Text, its release goes elsewhere (a
+      --  dialog, the Apps menu). Then two plain clicks: one cursor.
+      --  The desktop's KEYMOD_* bits (CuBit.UI.App) and Ctrl's scan code.
+      SHIFT_BIT : constant Unsigned_64 := 1;
+      CTRL_BIT : constant Unsigned_64 := 2;
+      ALT_BIT : constant Unsigned_64 := 4;
+      CTRL_SCAN_CODE : constant Unsigned_64 := 16#1D#;
+      PRIMARY_BUTTON : constant Unsigned_64 := 1;
+      Ctrl_Down : constant Input_Event := (kind => INPUT_KEY_DOWN, serial => 0, payload0 => CTRL_SCAN_CODE,
+                                           payload1 => CTRL_BIT);
+      Plain_Click : constant Input_Event :=
+        (kind => INPUT_POINTER_DOWN, serial => 0, payload0 => 0, payload1 => PRIMARY_BUTTON);
+      Ctrl_Click : constant Input_Event :=
+        (kind => INPUT_POINTER_DOWN, serial => 0, payload0 => 0,
+         payload1 => PRIMARY_BUTTON or Shift_Left (CTRL_BIT, POINTER_MODIFIERS_SHIFT));
+      X, Y0 : Natural := 0;
+      Shown : Boolean;
+
+      procedure Click_With (Event : Input_Event; Row : Natural; Time_Ms : Unsigned_64) is
+         M : constant Unsigned_64 := Text_Input.Modifiers_Of (Event);
+      begin
+         for Action in Text_Shell.Press .. Text_Shell.Release loop
+            Handle (App, (Kind => Pointer_Event, Action => Action, X => X, Y => Y0 + Row * Text_Editors.ROW_HEIGHT,
+                          Time_Ms => Time_Ms, Control => (M and CTRL_BIT) /= 0,
+                          Shift => (M and SHIFT_BIT) /= 0, Alt => (M and ALT_BIT) /= 0, others => <>));
+         end loop;
+         Frame (App, Target);
+      end Click_With;
+   begin
+      Hit (Escape);
+      Execute_Call (App, "goto-line 20", Ok);
+      Frame (App, Target);
+      Text_Editors.Caret_Position (Active_Editor (App).all, Line_Start (D.all, 20), X, Y0, Shown);
+      X := X + 2 * Text_Editors.CELL_WIDTH;
+      Y0 := Y0 + 5;
+      Check (Text_Input.Modifiers_Of (Ctrl_Down) = CTRL_BIT, "a key event carries Ctrl");
+      Check (Text_Input.Modifiers_Of (Plain_Click) = 0, "a plain click carries no modifiers");
+      Hit (Key_S, Control => True);
+      Click_With (Plain_Click, 2, 10_000);
+      Click_With (Plain_Click, 4, 11_000);
+      Check (Selection_Count (D.all) = 1, "Ctrl+S, then two plain clicks: one cursor ("
+             & Natural'Image (Selection_Count (D.all)) & ")");
+      Click_With (Ctrl_Click, 6, 12_000);
+      Check (Selection_Count (D.all) = 2, "a Ctrl+click adds a cursor");
+      Click_With (Plain_Click, 3, 13_000);
+      Check (Selection_Count (D.all) = 1, "a plain click after it leaves one");
+      --  Two quick clicks far apart are two single clicks, not a double
+      --  click (which would select a word).
+      Click_With (Plain_Click, 2, 14_000);
+      Click_With (Plain_Click, 5, 14_100);
+      Check (Selection_Count (D.all) = 1 and then Text_Cursors.Is_Empty (Primary (D.all)),
+             "quick clicks on different lines: one empty cursor");
    end;
 
    Section ("cached glyph cells equal blended glyphs");

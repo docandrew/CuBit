@@ -24,6 +24,8 @@ package CuBit.Kernel_ABI with Pure, SPARK_Mode is
    Write                        : constant System_Call := 12;
    Receive                      : constant System_Call := 17;
    Reply                        : constant System_Call := 18;
+   --  SEND_EVENT: also the channel wake (Channel_Wake_ABI).
+   Send_Event                   : constant System_Call := 19;
    Poll_Any_IPC                 : constant System_Call := 22;
    Wait_Completion              : constant System_Call := 24;
    Receive_Event_Nonblocking    : constant System_Call := 26;

@@ -2,6 +2,7 @@ with Interfaces;
 with CCL.Language;
 with CuBit.Failures;
 with CuBit.Startup_Tables;
+with CuBit.Channel_Declarations;
 
 --  Pure executable-declaration frontend. This emits requests, never grants.
 --  Field expressions use the existing CCL evaluator without a host adapter.
@@ -61,6 +62,11 @@ package CCL.Manifests with SPARK_Mode => On is
       --  .cubit.startup: the declared startup table (every entry Unassigned)
       --  and the handle limit (CuBit.Startup_Tables).
       Startup : Section;
+      --  .cubit.channels: the channel offers the program serves
+      --  (CuBit.Channel_Declarations), and the same as a table for the
+      --  generated Startup package; empty when it declares none.
+      Channels : Section;
+      Channel_Offers : CuBit.Channel_Declarations.Table;
       Handles : CuBit.Startup_Tables.Handle_Limit;
       Binding_Count : Natural range 0 .. MAX_BINDINGS := 0;
       Bindings : Binding_Array := [others => (others => <>)];

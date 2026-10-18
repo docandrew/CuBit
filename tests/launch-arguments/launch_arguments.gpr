@@ -5,6 +5,9 @@ project Launch_Arguments is
    for Source_Dirs use (".", Runtime_Src, Kernel_Src);
    for Source_Files use ("cubit.ads", "cubit-launch_arguments.ads",
                          "cubit-launch_arguments.adb",
+                         "cubit-launch_failure_text.ads",
+                         "cubit-launch_envelopes.ads", "cubit-launch_envelopes.adb",
+                         "cubit-startup_tables.ads", "cubit-startup_tables.adb",
                          "cubit-launch_arguments_c.ads",
                          "cubit-launch_arguments_c.adb",
                          "cubit-child_exits.ads", "cubit-process_ids.ads", "cubit-process_ids.adb", "process_launch.ads",

@@ -1217,6 +1217,52 @@ package body Process is
     end ready;
 
 
+    procedure readySync (tid : ThreadID)
+    is
+        here : constant Natural := PerCPUData.getCPUNumber;
+    begin
+        if threadtab (tid).state = INVALID or else
+           Process_Lifetime.Closing (threadtab (tid).lifetime)
+        then
+            return;
+        end if;
+        if threadtab (tid).pinned or else threadtab (tid).priority < 0 or else
+           Process_Lifetime.Executing (threadtab (tid).lifetime) or else
+           not cpuOnline (here)
+        then
+            ready (tid);
+            return;
+        end if;
+        accountRealtime (tid, Running => False);
+        threadtab (tid).readyTSC := x86.rdtsc;
+        threadtab (tid).queuedTSC := threadtab (tid).readyTSC;
+        threadtab (tid).readiness := Awakened;
+        Trace.Emit (Trace.EVENT_READY, Unsigned_64(tid), Unsigned_64(here));
+        threadtab (tid).state := READY;
+        placeOn (tid, here);
+        threadtab (PerCPUData.getCurrentThread).syncWakee := tid;
+    end readySync;
+
+    procedure yieldToSyncWakee is
+        me : constant ThreadID := PerCPUData.getCurrentThread;
+        here : constant Natural := PerCPUData.getCPUNumber;
+        wakee : constant ThreadID := threadtab (me).syncWakee;
+    begin
+        threadtab (me).syncWakee := NO_THREAD;
+        Spinlocks.enterCriticalSection (lock);
+        if wakee /= NO_THREAD and then wakee /= me and then
+           threadtab (wakee).state = READY and then threadtab (wakee).cpu = here and then
+           not Process_Lifetime.Closing (threadtab (wakee).lifetime) and then
+           threadtab (me).state /= RUNNING
+        then
+            Queues.detach (cpuReadyLists (here), wakee);
+            directSwitch (me, wakee);
+        else
+            Scheduler.enter;
+        end if;
+        Spinlocks.exitCriticalSection (lock);
+    end yieldToSyncWakee;
+
     function generationOf (pid : ProcessID) return Capabilities.Generation is
       (if pid = NO_PROCESS then 0
        else Capabilities.Generation (Process_Table.Generation_Of (pid)) +

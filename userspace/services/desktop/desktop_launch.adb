@@ -31,6 +31,16 @@ package body Desktop_Launch is
          when DL.Inspector => Desktop_Icons.Inspector, when DL.Mesa => Desktop_Icons.Mesa,
          when DL.Boot => Desktop_Icons.Boot);
 
+   --  The built-in list's app colours (CCL App_Color.RGB in system.ccl).
+   Workbench_Color : constant RGB := 16#2F4F9E#;
+   Doom_Color      : constant RGB := 16#B3261A#;
+   Devices_Color   : constant RGB := 16#5FB848#;
+   Penny_Color     : constant RGB := 16#B86A3A#;
+   Files_Color     : constant RGB := 16#E0A21F#;
+   SameBoy_Color   : constant RGB := 16#74749A#;
+   Settings_Color  : constant RGB := 16#3D7CC9#;
+   Inspector_Color : constant RGB := 16#7B3FD6#;
+
    procedure Append (Items : in out Menu; Item : Entry_Info) is
    begin
       if Items.Count < Maximum_Entries then
@@ -44,6 +54,7 @@ package body Desktop_Launch is
       Program : String;
       Icon    : Desktop_Icons.Icon_ID;
       Group   : Category;
+      Color   : RGB;
       Kind    : Entry_Kind := Launch_Program;
       Single  : Boolean := False) return Entry_Info
    is
@@ -57,6 +68,7 @@ package body Desktop_Launch is
       Item.Icon := Icon;
       Item.Single_Instance := Single;
       Item.Group := Group;
+      Item.Color := (Declared => True, Value => Color);
       return Item;
    end Make;
 
@@ -64,14 +76,15 @@ package body Desktop_Launch is
       use Desktop_Icons;
       Items : Menu;
    begin
-      Append (Items, Make ("CCL Workbench", "ccl-workbench.app", Workbench, DL.Development));
-      Append (Items, Make ("DOOM", "doom.elf", Doom, DL.Games, Single => True));
-      Append (Items, Make ("Devices", "devices.app", Devices, DL.System));
-      Append (Items, Make ("Penny", "cubitshell.app", Penny, DL.Web));
-      Append (Items, Make ("Files", "files.app", Files, DL.Tools));
-      Append (Items, Make ("SameBoy", "sameboy.app", Gameboy, DL.Games));
-      Append (Items, Make ("Settings", "", Settings, DL.System, Kind => Internal_Settings));
-      Append (Items, Make ("Config Inspector", "config-inspector.app", Inspector, DL.System));
+      --  The same colours as system.ccl's entries.
+      Append (Items, Make ("CCL Workbench", "ccl-workbench.app", Workbench, DL.Development, Workbench_Color));
+      Append (Items, Make ("DOOM", "doom.elf", Doom, DL.Games, Doom_Color, Single => True));
+      Append (Items, Make ("Devices", "devices.app", Devices, DL.System, Devices_Color));
+      Append (Items, Make ("Penny", "cubitshell.app", Penny, DL.Web, Penny_Color));
+      Append (Items, Make ("Files", "files.app", Files, DL.Tools, Files_Color));
+      Append (Items, Make ("SameBoy", "sameboy.app", Gameboy, DL.Games, SameBoy_Color));
+      Append (Items, Make ("Settings", "", Settings, DL.System, Settings_Color, Kind => Internal_Settings));
+      Append (Items, Make ("Config Inspector", "config-inspector.app", Inspector, DL.System, Inspector_Color));
       return Items;
    end Defaults;
 
@@ -98,6 +111,10 @@ package body Desktop_Launch is
          Action : constant Views.Cursor := TS.Named (Work.all, Root, "action");
          Icon : constant String := TS.Alternative_Name (Work.all, TS.Named (Work.all, Root, "icon"));
          Group : constant String := TS.Alternative_Name (Work.all, TS.Named (Work.all, Root, "category"));
+         Color : constant Views.Cursor := TS.Named (Work.all, Root, "color");
+         --  A Color_Channel: 0 .. 255 by its CCL range type, checked again.
+         function Channel (Name : String) return Interfaces.Unsigned_64 is
+           (Views.Scalar (Work.all, TS.Named (Work.all, Views.Payload (Work.all, Color), Name)).First);
       begin
          if Label'Length not in 1 .. Maximum_Label then
             return;
@@ -133,6 +150,19 @@ package body Desktop_Launch is
             end if;
          end loop;
          Item.Single_Instance := Interfaces."=" (Views.Scalar (Work.all, TS.Named (Work.all, Root, "single_instance")).First, 1);
+         if TS.Alternative_Name (Work.all, Color) = "RGB" then
+            declare
+               use type Interfaces.Unsigned_64;
+               Red : constant Interfaces.Unsigned_64 := Channel ("red");
+               Green : constant Interfaces.Unsigned_64 := Channel ("green");
+               Blue : constant Interfaces.Unsigned_64 := Channel ("blue");
+            begin
+               if Red > 255 or else Green > 255 or else Blue > 255 then
+                  return;
+               end if;
+               Item.Color := (Declared => True, Value => RGB (Red * 16#1_0000# + Green * 16#100# + Blue));
+            end;
+         end if;
          Success := True;
       end;
    end Decode;

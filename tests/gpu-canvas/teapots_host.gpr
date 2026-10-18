@@ -1,0 +1,21 @@
+--  Linux-hosted GPU canvas + teapot gallery (tests/gpu-canvas/run.sh).
+with "../../userspace/lib/ui/fonts_host.gpr";
+project Teapots_Host is
+   for Languages use ("Ada");
+   for Source_Dirs use (".", "host", "build/source", "../../userspace/apps/teapots",
+                        "../../userspace/lib/ui", "../../userspace/lib/theme",
+                        "../../userspace/lib/compositor", "../../userspace/lib/display",
+                        "../../userspace/allocator/src");
+   for Excluded_Source_Files use ("main.adb");
+   for Object_Dir use "build/obj";
+   for Exec_Dir use "build";
+   for Main use ("teapots_host.adb", "slots_tests.adb", "mesh_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-O2", "-gnat2022", "-gnatwa", "-gnatwJ", "-gnata", "-g");
+   end Compiler;
+   package Linker is
+      for Default_Switches ("Ada") use
+        ("build/gpu_canvas_vk.o", "build/teapot_vk.o", "build/gpu_canvas_host.o", "-lvulkan", "-lm");
+   end Linker;
+end Teapots_Host;

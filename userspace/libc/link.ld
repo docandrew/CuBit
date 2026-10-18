@@ -91,6 +91,7 @@ SECTIONS
      * these, so --gc-sections (Mesa, Rust links) would drop them, and a
      * program whose requests lost their startup table is refused at launch. */
     .cubit.startup (INFO) : ALIGN(4) { KEEP(*(.cubit.startup)) }
+    .cubit.channels (INFO) : ALIGN(4) { KEEP(*(.cubit.channels)) }
     .cubit.resources (INFO) : ALIGN(4) { KEEP(*(.cubit.resources)) }
     .cubit.launch (INFO) : ALIGN(4) { KEEP(*(.cubit.launch)) }
     .cubit.description (INFO) : ALIGN(4) { KEEP(*(.cubit.description)) }

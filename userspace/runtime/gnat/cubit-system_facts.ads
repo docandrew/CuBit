@@ -39,16 +39,19 @@ package CuBit.System_Facts is
       end record;
 
       --  READ_STATISTICS: this process's frames in bytes, its mailbox
-      --  drops, and the system's free memory in bytes.
+      --  drops, the system's free memory in bytes, and the system calls
+      --  the calling thread has made.
       type Statistics is record
-         Owned_Bytes       : Unsigned_64 := 0;
-         Event_Drops       : Unsigned_64 := 0;
-         Free_Memory_Bytes : Unsigned_64 := 0;
+         Owned_Bytes         : Unsigned_64 := 0;
+         Event_Drops         : Unsigned_64 := 0;
+         Free_Memory_Bytes   : Unsigned_64 := 0;
+         Thread_System_Calls : Unsigned_64 := 0;
       end record;
       for Statistics use record
-         Owned_Bytes       at 0 range 0 .. 63;
-         Event_Drops       at 8 range 0 .. 63;
-         Free_Memory_Bytes at 16 range 0 .. 63;
+         Owned_Bytes         at 0 range 0 .. 63;
+         Event_Drops         at 8 range 0 .. 63;
+         Free_Memory_Bytes   at 16 range 0 .. 63;
+         Thread_System_Calls at 24 range 0 .. 63;
       end record;
 
       --  What a service publishes through the kernel (PUBLISH).

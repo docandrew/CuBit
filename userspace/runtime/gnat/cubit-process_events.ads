@@ -22,12 +22,21 @@ pragma Ada_2022;
 with CuBit.Child_Exits;
 with CuBit.Process_IDs;
 with CuBit.Control_Events;
+with CuBit.Messages;
 
 package CuBit.Process_Events is
 
    Kept_Events : constant := 32;
 
    procedure Poll;
+
+   --  Whether File may be given one more event (both stores have room).
+   function Has_Room return Boolean;
+
+   --  One event the caller already took from the kernel (the activity wait
+   --  returns a kernel notice directly), filed exactly as Poll files one.
+   procedure File (Event : CuBit.Messages.Message)
+   with Pre => Has_Room;
 
    --  The exit of Process (an identity: one life), if it has arrived: polls.
    procedure Take_Exit

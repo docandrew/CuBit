@@ -61,10 +61,13 @@
 # Standard_Limit is CuBit.Startup_Tables.Standard_Handle_Limit (4096).
 (type Handle_Limit (variant (Standard_Limit) (At_Most Integer) (Kernel_Limit)))
 # A server's channel limits per contract (docs/capability-handles.md section 4)
-# and its service class: Urgent channels are served before Normal ones
+# and its service class: Urgent before Interactive (the compositor) before Normal
 # (Display's to intel-gpu).
-(type Channel_Class (enum Normal Urgent))
-(type Channel_Offer (record (contract String) (per_client Integer) (total Integer)
+# Each limit is spelled out: (Channel_Limit.At_Most N), or Server_Limit for
+# as many as the server can serve right now (like Kernel_Limit for handles).
+(type Channel_Class (enum Normal Interactive Urgent))
+(type Channel_Limit (variant (Server_Limit) (At_Most Integer)))
+(type Channel_Offer (record (contract String) (per_client Channel_Limit) (total Channel_Limit)
   (class Channel_Class Channel_Class.Normal)))
 # Catalog and Connect (step 4): interfaces offered and used, aliases.
 # Refused while non-empty; their payloads become typed records then.

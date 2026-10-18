@@ -97,14 +97,17 @@ with Compositor_Cursor;
 with Desktop_Icons;
 with Desktop_Icon_Pixels;
 with CuBit.Fonts;
-with Desktop_Window_Icons;
+with CuBit.UI.Window_Chrome;
 with Desktop_Wallpaper;
 with Desktop_Wallpaper_Assets;
 with Desktop_Icon_Assets;
 with Desktop_Wallpaper_Layers;
 with Desktop_Settings;
 with Desktop_Launch;
+with Desktop_Launch_Notice;
 with Desktop_Launch_Refresh;
+with CuBit.Child_Exits;
+with CuBit.Launch_Arguments;
 with Desktop_Status_Refresh;
 with Desktop_GPU_Wake;
 with Desktop_Launch_Menus;
@@ -199,6 +202,7 @@ procedure main is
    UI_ERR_BAD_STATE   : constant Unsigned_64 := 3;
    UI_ERR_UNSUPPORTED : constant Unsigned_64 := 5;
    REPLY_OK           : constant Unsigned_32 := 16#F000#;
+   REPLY_ERR          : constant Unsigned_32 := 16#F001#;
 
    SURFACE_FLAG_SHELL  : constant Unsigned_64 := 1;
    SURFACE_FLAG_WINDOW : constant Unsigned_64 := 2;
@@ -296,6 +300,15 @@ procedure main is
    launchRequest : CR.State;
    launchName : String (1 .. 255) := (others => ' ');
    launchNameLength : Natural range 0 .. 255 := 0;
+   --  The menu label of the pending launch: what a launch notice names.
+   launchLabel : Desktop_Launch_Notice.Name_Text := (others => ' ');
+   launchLabelLength : Desktop_Launch_Notice.Name_Length := 0;
+   --  Why a launch failed (Desktop_Launch_Notice), until dismissed, and the
+   --  launched children not yet showing a window.
+   launchNotice : Desktop_Launch_Notice.Notice;
+   launchWatch : Desktop_Launch_Notice.Watch_Table;
+   --  A press on the notice: its release belongs to the desktop too.
+   noticePointerCapture : Boolean := False;
    launchInputAnnounced : Boolean := False;
    doomPid : Process_ID := No_Process;
    psBufAddr : System.Address := System.Null_Address;
@@ -563,6 +576,8 @@ procedure main is
    end record;
    type Publication_Buffers is array (Surface_Policy.Slot) of Publication_Buffer;
 
+   package Window_Chrome renames CuBit.UI.Window_Chrome;
+
    type Surface is record
       used      : Boolean := False;
       owner     : Process_ID := No_Process;
@@ -610,6 +625,10 @@ procedure main is
       contentVersion : Compositor_Source_Content.Content_Version :=
         Compositor_Source_Content.No_Version;
       pointerCursor  : Pointer_Cursor_Style := POINTER_DEFAULT;
+      -- The app's identity colour (its launcher entry's, else the theme
+      -- accent) and the stripe colours precomputed from it (refreshStripe).
+      appColor : Desktop_Launch.App_Color := Desktop_Launch.Theme_Accent;
+      stripe   : Window_Chrome.Window_Colors;
    end record;
 
    package Focus_Policy is new Compositor_Focus (MAX_SURFACES);
@@ -879,11 +898,13 @@ procedure main is
    dragPresentedValid : Boolean := False;
    dragPresentedRect  : Rect;
 
-   TITLE_HEIGHT : constant Natural := 24;
+   --  The caption (border, app stripe, title bar) grabs moves; the client
+   --  starts below the title/menu rule (CuBit.UI.Window_Chrome).
+   TITLE_HEIGHT : constant Natural := Window_Chrome.Client_Top - Window_Chrome.Rule_Height;
    BORDER_SIZE  : constant Natural := 6;
-   CLIENT_INSET_X : constant Natural := 4;
-   CLIENT_INSET_TOP : constant Natural := 30;
-   CLIENT_INSET_BOTTOM : constant Natural := 4;
+   CLIENT_INSET_X : constant Natural := Window_Chrome.Border_Width;
+   CLIENT_INSET_TOP : constant Natural := Window_Chrome.Client_Top;
+   CLIENT_INSET_BOTTOM : constant Natural := Window_Chrome.Border_Width;
    DROP_SHADOW_DEPTH : constant Positive := 3;
    --  Compositor decorations extend beyond the client-visible window
    --  geometry. Damage retains one extra pixel beyond the shadow so every
@@ -919,6 +940,32 @@ procedure main is
    appearance : CuBit.Appearance.Preferences := CuBit.Appearance.Default;
    settingsView : Desktop_Settings.State;
    themeRevision : Unsigned_64 := 1;
+   chromePalette : Window_Chrome.Palette := Window_Chrome.Alloy_Light;
+   --  The window button under the pointer (hover feedback), if any.
+   chromeHoverId     : Unsigned_64 := 0;
+   chromeHoverButton : Pointer_Action := DRAG_NONE;
+
+   --  A window's app colour: the launcher entry that started its owner (or
+   --  the Settings entry for the built-in Settings window).
+   function launchColor (Owner : Process_ID; Kind : App_Kind) return Desktop_Launch.App_Color is
+      use type Desktop_Launch.Entry_Kind;
+   begin
+      for I in 1 .. launchMenu.Count loop
+         if (Kind = APP_SETTINGS and then launchMenu.Entries (I).Kind = Desktop_Launch.Internal_Settings)
+           or else (Owner /= No_Process and then launchPids (I) = Owner)
+         then
+            return launchMenu.Entries (I).Color;
+         end if;
+      end loop;
+      return Desktop_Launch.Theme_Accent;
+   end launchColor;
+
+   procedure refreshStripe (S : in out Surface) is
+   begin
+      S.stripe := Window_Chrome.For_App
+        ((if S.appColor.Declared then CuBit.UI.Theme_Color (S.appColor.Value)
+          else CuBit.UI.Current_Theme.accent), chromePalette);
+   end refreshStripe;
 
    procedure Load_Theme is
       Value : System.Address;
@@ -957,6 +1004,10 @@ procedure main is
       end;
       end loop;
       CuBit.UI.Set_Theme (CuBit.UI.Palette (appearance.Scheme));
+      chromePalette := Window_Chrome.Colors (appearance.Scheme);
+      for S of surfaces loop
+         if S.used then refreshStripe (S); end if;
+      end loop;
    end Load_Theme;
 
    procedure Read_Appearance is
@@ -2412,43 +2463,43 @@ procedure main is
       end if;
    end clampSurfaceSize;
 
+   --  Window buttons sit in fixed slots, right to left: close, maximize,
+   --  minimize (Window_Chrome geometry), vertically centred in the title bar.
+   type Chrome_Button is (Close_Button, Maximize_Button, Minimize_Button);
+
+   function chromeButtonRect (s : Surface; b : Chrome_Button) return Rect is
+      Slot : constant Natural := Chrome_Button'Pos (b);
+      Right : constant Natural :=
+        Window_Chrome.Border_Width + Window_Chrome.Button_Right_Inset +
+        (Slot + 1) * Window_Chrome.Button_Width + Slot * Window_Chrome.Button_Gap;
+   begin
+      if s.w < Right + Window_Chrome.Title_Left then
+         return (others => 0);
+      end if;
+      return clampRect
+        ((x => s.x + s.w - Right,
+          y => s.y + Window_Chrome.Bar_Top +
+                 (Window_Chrome.Bar_Height - Window_Chrome.Button_Height) / 2,
+          w => Window_Chrome.Button_Width,
+          h => Window_Chrome.Button_Height));
+   end chromeButtonRect;
+
    function minimizeButtonRect (s : Surface) return Rect is
-   begin
-      if not hasWindowFlag (s, WINDOW_FLAG_MINIMIZABLE) or else s.w < 66 then
-         return (others => 0);
-      end if;
+     (if hasWindowFlag (s, WINDOW_FLAG_MINIMIZABLE)
+      then chromeButtonRect (s, Minimize_Button) else (others => 0));
 
-      return clampRect ((x => s.x + s.w - 59,
-                         y => s.y + 6,
-                         w => 14,
-                         h => 14));
-   end minimizeButtonRect;
-
+   --  Always drawn (greyed when unavailable) so the buttons never shift;
+   --  only a window that may maximize hit-tests it (maximizeAvailable).
    function maximizeButtonRect (s : Surface) return Rect is
-   begin
-      if not hasWindowFlag (s, WINDOW_FLAG_MAXIMIZABLE) or else
-         hasWindowFlag (s, WINDOW_FLAG_FIXED_SIZE) or else s.w < 48
-      then
-         return (others => 0);
-      end if;
+     (chromeButtonRect (s, Maximize_Button));
 
-      return clampRect ((x => s.x + s.w - 41,
-                         y => s.y + 6,
-                         w => 14,
-                         h => 14));
-   end maximizeButtonRect;
+   function maximizeAvailable (s : Surface) return Boolean is
+     (hasWindowFlag (s, WINDOW_FLAG_MAXIMIZABLE) and then
+      not hasWindowFlag (s, WINDOW_FLAG_FIXED_SIZE));
 
    function closeButtonRect (s : Surface) return Rect is
-   begin
-      if not hasWindowFlag (s, WINDOW_FLAG_CLOSEABLE) or else s.w < 30 then
-         return (others => 0);
-      end if;
-
-      return clampRect ((x => s.x + s.w - 23,
-                         y => s.y + 6,
-                         w => 14,
-                         h => 14));
-   end closeButtonRect;
+     (if hasWindowFlag (s, WINDOW_FLAG_CLOSEABLE)
+      then chromeButtonRect (s, Close_Button) else (others => 0));
 
    function signed12 (x : Unsigned_64) return Integer is
       v : constant Unsigned_64 := x and 16#FFF#;
@@ -2513,7 +2564,7 @@ procedure main is
    begin
       if pointInRect (x, y, closeButtonRect (s)) then
          return HIT_CLOSE;
-      elsif pointInRect (x, y, maximizeButtonRect (s)) then
+      elsif maximizeAvailable (s) and then pointInRect (x, y, maximizeButtonRect (s)) then
          return HIT_MAXIMIZE;
       elsif pointInRect (x, y, minimizeButtonRect (s)) then
          return HIT_MINIMIZE;
@@ -2651,6 +2702,9 @@ procedure main is
       exitCompositor (1);
    end quarantinePresentations;
 
+   --  Publish launchNotice: log it and draw it (defined with the drawing).
+   procedure showLaunchNotice;
+
    procedure collectLaunch (C : CompletionEntry) is
       M : Message renames C.msg;
       Envelope_OK : constant Boolean := C.valid and C.status = COMPLETION_OK and
@@ -2659,7 +2713,9 @@ procedure main is
       --  The reply names the new process by its full identity (KERN-003).
       Success : constant Boolean := Envelope_OK and M.tag.label = REPLY_OK and
         Is_Process (From_Word (M.words (0)));
-      Rejected : constant Boolean := Envelope_OK and M.tag.label = 16#F001# and M.words (0) = 0;
+      --  The error reply names why (CuBit.Launch_Arguments.Launch_Failure).
+      Rejected : constant Boolean := Envelope_OK and M.tag.label = REPLY_ERR and
+        CuBit.Launch_Arguments.Is_Failure (M.words (0));
    begin
       CR.Complete (launchRequest, C.token, Success or Rejected);
       if not CR.Available (launchRequest) then
@@ -2675,10 +2731,18 @@ procedure main is
             end if;
          end loop;
          if launchName (1 .. launchNameLength) = "doom.elf" then doomPid := From_Word (M.words (0)); end if;
+         Desktop_Launch_Notice.Watch
+           (launchWatch, From_Word (M.words (0)), launchLabel (1 .. launchLabelLength));
          debugPrint ("desktop: launch complete token=" & Decimal (C.token) &
            " pid=" & Decimal (M.words (0)) & LF);
-      else
+      elsif Rejected then
          debugPrint ("desktop: launch rejected token=" & Decimal (C.token) & LF);
+         Desktop_Launch_Notice.Show_Refusal
+           (launchNotice, launchLabel (1 .. launchLabelLength),
+            CuBit.Launch_Arguments.Failure_Of (M.words (0)));
+         showLaunchNotice;
+      else
+         debugPrint ("desktop: launch reply malformed token=" & Decimal (C.token) & LF);
       end if;
    end collectLaunch;
 
@@ -3636,43 +3700,6 @@ procedure main is
       end loop;
    end drawIcon;
 
-   procedure drawWindowIcon
-      (id : Desktop_Window_Icons.Icon_ID;
-       x, y : Natural;
-       bg   : Unsigned_32)
-   is
-      pixel : Unsigned_32;
-   begin
-      if drawNativeIcon ((Desktop_Icon_Pixels.Window_Control, id), x, y) then return; end if;
-      for yy in 0 .. Desktop_Window_Icons.ICON_SIZE - 1 loop
-         for xx in 0 .. Desktop_Window_Icons.ICON_SIZE - 1 loop
-            pixel := Desktop_Window_Icons.Pixels (id)
-              (yy * Desktop_Window_Icons.ICON_SIZE + xx);
-            if Shift_Right (pixel, 24) /= 0 then
-               putPixel (x + xx, y + yy, iconPixelOver (pixel, bg));
-            end if;
-         end loop;
-      end loop;
-   end drawWindowIcon;
-
-   procedure drawWindowButtonIcon
-      (button : Rect;
-       id     : Desktop_Window_Icons.Icon_ID;
-       bg     : Unsigned_32)
-   is
-      iconX : Natural := button.x;
-      iconY : Natural := button.y;
-   begin
-      if button.w > Desktop_Window_Icons.ICON_SIZE then
-         iconX := button.x + (button.w - Desktop_Window_Icons.ICON_SIZE) / 2;
-      end if;
-      if button.h > Desktop_Window_Icons.ICON_SIZE then
-         iconY := button.y + (button.h - Desktop_Window_Icons.ICON_SIZE) / 2;
-      end if;
-
-      drawWindowIcon (id, iconX, iconY, bg);
-   end drawWindowButtonIcon;
-
    function uiTextWidth (s : String) return Natural is
       width : Natural := 0;
    begin
@@ -3991,6 +4018,7 @@ procedure main is
       mask : constant Unsigned_64 := streamMaskForPID (s.owner);
       closeBtn : constant Rect := closeButtonRect (s);
       maxBtn : constant Rect := maximizeButtonRect (s);
+      minBtn : constant Rect := minimizeButtonRect (s);
       rightLimit : Natural := s.x + s.w - 8;
       badgeW : constant Natural := 38;
       badgeH : constant Natural := 14;
@@ -4002,10 +4030,12 @@ procedure main is
          return;
       end if;
 
-      if not isEmpty (closeBtn) then
-         rightLimit := closeBtn.x - 6;
+      if not isEmpty (minBtn) then
+         rightLimit := minBtn.x - 6;
       elsif not isEmpty (maxBtn) then
          rightLimit := maxBtn.x - 6;
+      elsif not isEmpty (closeBtn) then
+         rightLimit := closeBtn.x - 6;
       end if;
 
       if rightLimit < s.x + 120 then
@@ -4486,7 +4516,7 @@ procedure main is
       occluded : Boolean;
    begin
       if isEmpty (r) or else launchMenuOpen or else audioPopupOpen or else
-         clipboardMenuOpen or else
+         clipboardMenuOpen or else launchNotice.Open or else
          not backBufferReady or else backBufferAddr = System.Null_Address
       then
          return False;
@@ -4646,25 +4676,67 @@ procedure main is
      (settingsFill, settingsStroke, settingsGradient, settingsText,
       Settings_Controls.Draw_Button, Settings_Controls.Draw_Tab, settingsWallpaper);
 
+   --  One window button: a square, bordered tile with a 10-pixel stroke
+   --  glyph, all solid fills (Window_Chrome geometry and palette).
+   type Button_Glyph is (Minimize_Glyph, Maximize_Glyph, Restore_Glyph, Close_Glyph);
+
+   procedure drawChromeButton
+      (r     : Rect;
+       look  : Window_Chrome.Button_Colors;
+       glyph : Button_Glyph)
+   is
+      G  : constant Natural := Window_Chrome.Glyph_Size;
+      gx : constant Natural := r.x + (r.w - G) / 2;
+      gy : constant Natural := r.y + (r.h - G) / 2;
+   begin
+      if isEmpty (r) then
+         return;
+      end if;
+      fillRect (r.x, r.y, r.w, r.h, look.Fill);
+      strokeRect (r.x, r.y, r.w, r.h, look.Edge, look.Edge);
+      case glyph is
+         when Minimize_Glyph =>
+            fillRect (gx + 1, gy + 7, G - 2, 1, look.Glyph);
+         when Maximize_Glyph =>
+            strokeRect (gx + 1, gy + 1, G - 2, G - 2, look.Glyph, look.Glyph);
+         when Restore_Glyph =>
+            --  A back square behind a filled front square.
+            strokeRect (gx + 3, gy + 1, G - 4, G - 4, look.Glyph, look.Glyph);
+            fillRect (gx + 1, gy + 3, G - 4, G - 4, look.Fill);
+            strokeRect (gx + 1, gy + 3, G - 4, G - 4, look.Glyph, look.Glyph);
+         when Close_Glyph =>
+            for I in 0 .. G - 4 loop
+               fillRect (gx + 2 + I, gy + 2 + I, 1, 1, look.Glyph);
+               fillRect (gx + G - 2 - I, gy + 2 + I, 1, 1, look.Glyph);
+            end loop;
+      end case;
+   end drawChromeButton;
+
    procedure drawWindow (s : Surface) is
-      titleH : constant Natural := 24;
       minW   : constant Natural := 80;
       minH   : constant Natural := 60;
       active  : constant Boolean := s.id = focusSurface;
       frame   : Surface := s;
-      minBtn  : Rect;
-      maxBtn  : Rect;
-      closeBtn : Rect;
-      theme : constant CuBit.UI.Theme := CuBit.UI.Current_Theme;
-      titleTop : constant Unsigned_32 :=
-        (if active then theme.activeTitleTop else theme.inactiveTitleTop);
-      titleBottom : constant Unsigned_32 :=
-        (if active then theme.activeTitleBottom else theme.inactiveTitleBottom);
-      titleText  : Unsigned_32 := C_TEXT;
-      x      : Natural := s.x;
-      y      : Natural := s.y;
+      chrome  : Window_Chrome.Palette renames chromePalette;
+      bar     : constant Unsigned_32 :=
+        (if active then CuBit.UI.Current_Theme.titleBar else chrome.Inactive_Bar);
+      stripe  : constant Unsigned_32 :=
+        (if active then s.stripe.Stripe else s.stripe.Muted_Stripe);
+      titleText : constant Unsigned_32 :=
+        (if active then chrome.Active_Title else chrome.Inactive_Title);
+      idle    : constant Window_Chrome.Button_Colors :=
+        (chrome.Button.Fill, chrome.Button.Edge,
+         (if active then chrome.Button.Glyph else chrome.Inactive_Glyph));
+      x      : constant Natural := s.x;
+      y      : constant Natural := s.y;
       w      : Natural := s.w;
       h      : Natural := s.h;
+      inner  : Natural;
+
+      function look (b : Pointer_Action) return Window_Chrome.Button_Colors is
+        (if s.id /= chromeHoverId or else b /= chromeHoverButton then idle
+         elsif b = HIT_CLOSE then chrome.Close_Hover
+         else chrome.Button_Hover);
    begin
       if s.minimized then
          return;
@@ -4681,58 +4753,53 @@ procedure main is
          return;
       end if;
 
-      if active then
-         titleText := C_WHITE;
-      end if;
-
-      frame.x := x;
-      frame.y := y;
       frame.w := w;
       frame.h := h;
+      inner := w - 2 * Window_Chrome.Border_Width;
 
       drawDappledShadow (x, y, w, h);
-      fillRect (x, y, w, h, C_WIN);
-      strokeRect (x, y, w, h, C_EDGE, C_SHADOW);
-      for row in 0 .. titleH - 1 loop
-         fillRect (x + 3, y + 3 + row, w - 6, 1,
-                   blendPixel (titleBottom, titleTop, row * 255 / (titleH - 1)));
-      end loop;
-      drawSurfaceTitle (s, x + 10, y + 7, titleText, titleTop, True);
-      drawStreamBadges (s, y + 3);
+      strokeRect (x, y, w, h,
+                  (if active then chrome.Active_Border else chrome.Inactive_Border),
+                  (if active then chrome.Active_Border else chrome.Inactive_Border));
+      fillRect (x + Window_Chrome.Border_Width, y + Window_Chrome.Border_Width,
+                inner, Window_Chrome.Stripe_Height, stripe);
+      fillRect (x + Window_Chrome.Border_Width, y + Window_Chrome.Bar_Top,
+                inner, Window_Chrome.Bar_Height, bar);
+      fillRect (x + Window_Chrome.Border_Width,
+                y + Window_Chrome.Bar_Top + Window_Chrome.Bar_Height,
+                inner, Window_Chrome.Rule_Height, chrome.Rule);
+      fillRect (x + Window_Chrome.Tile_Left,
+                y + Window_Chrome.Bar_Top + (Window_Chrome.Bar_Height - Window_Chrome.Tile_Size) / 2,
+                Window_Chrome.Tile_Size, Window_Chrome.Tile_Size, stripe);
+      declare
+         textY : constant Natural :=
+           y + Window_Chrome.Bar_Top + (Window_Chrome.Bar_Height - CuBit.Fonts.Line_Height) / 2;
+      begin
+         drawSurfaceTitle (s, x + Window_Chrome.Title_Left, textY, titleText, bar, True);
+         if active then
+            --  Semibold: the one bundled Sans face, struck twice.
+            drawSurfaceTitle (s, x + Window_Chrome.Title_Left + 1, textY, titleText, bar, True);
+         end if;
+      end;
+      drawStreamBadges (s, y + Window_Chrome.Bar_Top + 2);
 
       --  Window controls are compositor-owned because they mutate focus,
       --  visibility, and eventually client lifecycle authority.
-      minBtn := minimizeButtonRect (frame);
-      maxBtn := maximizeButtonRect (frame);
-      closeBtn := closeButtonRect (frame);
+      drawChromeButton (minimizeButtonRect (frame), look (HIT_MINIMIZE), Minimize_Glyph);
+      drawChromeButton
+        (maximizeButtonRect (frame),
+         (if maximizeAvailable (frame) then look (HIT_MAXIMIZE) else chrome.Unavailable),
+         (if s.maximized then Restore_Glyph else Maximize_Glyph));
+      drawChromeButton (closeButtonRect (frame), look (HIT_CLOSE), Close_Glyph);
 
-      if not isEmpty (minBtn) then
-         fillRect (minBtn.x, minBtn.y, minBtn.w, minBtn.h, C_BAR);
-         strokeRect (minBtn.x, minBtn.y, minBtn.w, minBtn.h,
-                     C_EDGE, C_SHADOW);
-         drawWindowButtonIcon
-           (minBtn, Desktop_Window_Icons.Minimize, C_BAR);
-      end if;
-
-      if not isEmpty (maxBtn) then
-         fillRect (maxBtn.x, maxBtn.y, maxBtn.w, maxBtn.h, C_BAR);
-         strokeRect (maxBtn.x, maxBtn.y, maxBtn.w, maxBtn.h,
-                     C_EDGE, C_SHADOW);
-         if s.maximized then
-            drawWindowButtonIcon
-              (maxBtn, Desktop_Window_Icons.Restore, C_BAR);
-         else
-            drawWindowButtonIcon
-              (maxBtn, Desktop_Window_Icons.Maximize, C_BAR);
-         end if;
-      end if;
-
-      if not isEmpty (closeBtn) then
-         fillRect (closeBtn.x, closeBtn.y, closeBtn.w, closeBtn.h, C_BAR);
-         strokeRect (closeBtn.x, closeBtn.y, closeBtn.w, closeBtn.h,
-                     C_EDGE, C_SHADOW);
-         drawWindowButtonIcon
-           (closeBtn, Desktop_Window_Icons.Close, C_BAR);
+      --  Before the first client buffer, the client area keeps the neutral
+      --  window fill; afterwards the buffer covers it (see below).
+      if s.appKind /= APP_SETTINGS and then not s.bufferAttached then
+         declare
+            c : constant Rect := clientRect (frame);
+         begin
+            fillRect (c.x, c.y, c.w, c.h, C_WIN);
+         end;
       end if;
 
       case s.appKind is
@@ -4768,7 +4835,6 @@ procedure main is
                      drawClientBuffer (s, c.x, c.y, c.w, c.h);
                   end if;
                end;
-            -- Before the first client buffer, retain the neutral window fill.
             end if;
       end case;
    end drawWindow;
@@ -5142,6 +5208,57 @@ procedure main is
                   C_MUTED, C_PANEL);
    end drawClipboardMenu;
 
+   --  The launch notice (Desktop_Launch_Notice): a panel above the taskbar
+   --  naming the app and why it did not start. It never takes the pointer
+   --  or keyboard beyond its own dismissal: Escape or Enter (when no menu
+   --  is open) or a click on it.
+   NOTICE_W : constant := 520;
+   NOTICE_H : constant := 78;
+   NOTICE_MARGIN : constant := 12;
+   NOTICE_TEXT_X : constant := 18;
+   NOTICE_TITLE_Y : constant := 10;
+   NOTICE_DETAIL_Y : constant := 32;
+   NOTICE_HINT_Y : constant := 54;
+   NOTICE_BAR_W : constant := 4;
+
+   function launchNoticeRect return Rect is
+   begin
+      return clampRect
+        ((x => primaryBounds.x +
+                (if primaryBounds.w > NOTICE_W
+                 then (primaryBounds.w - NOTICE_W) / 2 else 0),
+          y => (if taskbarY > NOTICE_H + NOTICE_MARGIN
+                then taskbarY - NOTICE_H - NOTICE_MARGIN else 0),
+          w => NOTICE_W, h => NOTICE_H));
+   end launchNoticeRect;
+
+   procedure drawLaunchNotice is
+      r : constant Rect := launchNoticeRect;
+   begin
+      if not launchNotice.Open or else isEmpty (r) then
+         return;
+      end if;
+      drawDappledShadow (r.x, r.y, r.w, r.h);
+      fillRect (r.x, r.y, r.w, r.h, C_PANEL);
+      strokeRect (r.x, r.y, r.w, r.h, C_EDGE, C_SHADOW);
+      fillRect (r.x, r.y, NOTICE_BAR_W, r.h, CuBit.UI.Current_Theme.danger);
+      drawUIText (r.x + NOTICE_TEXT_X, r.y + NOTICE_TITLE_Y,
+                  Desktop_Launch_Notice.Title (launchNotice), C_TEXT, C_PANEL);
+      drawUIText (r.x + NOTICE_TEXT_X, r.y + NOTICE_DETAIL_Y,
+                  Desktop_Launch_Notice.Detail (launchNotice), C_TEXT, C_PANEL);
+      drawUIText (r.x + NOTICE_TEXT_X, r.y + NOTICE_HINT_Y,
+                  "Esc, Enter or click to dismiss", C_MUTED, C_PANEL);
+   end drawLaunchNotice;
+
+   procedure dismissLaunchNotice (damage : in out Rect) is
+   begin
+      if launchNotice.Open then
+         Desktop_Launch_Notice.Dismiss (launchNotice);
+         damage := unionRect (damage, inflateRect (launchNoticeRect, NOTICE_BAR_W));
+         debugPrint ("desktop: launch notice dismissed" & LF);
+      end if;
+   end dismissLaunchNotice;
+
    procedure drawDesktopShell is
       barY     : constant Natural := taskbarY;
       launch   : constant Rect := launchButtonRect;
@@ -5189,6 +5306,7 @@ procedure main is
       drawStatus;
       drawAudioPopup;
       drawClipboardMenu;
+      drawLaunchNotice;
    end drawDesktopShell;
 
    procedure drawCurrentScene is
@@ -5537,6 +5655,7 @@ procedure main is
       drawStatus;
       drawAudioPopup;
       drawClipboardMenu;
+      drawLaunchNotice;
       if textSceneRetry then drawCurrentScene; end if;
       clipEnabled := False;
       drawCursorOverlay;
@@ -5685,6 +5804,15 @@ procedure main is
          framePending := True;
       end if;
    end scheduleRedrawRect;
+
+   procedure showLaunchNotice is
+   begin
+      Desktop_Logs.Warn ("desktop: launch failed: " &
+                         Desktop_Launch_Notice.Title (launchNotice) & ". " &
+                         Desktop_Launch_Notice.Detail (launchNotice));
+      scheduleRedrawRect (inflateRect (launchNoticeRect, NOTICE_BAR_W));
+   end showLaunchNotice;
+
 
    --  Every way a move or resize ends (release, cancel, resynchronization,
    --  surface destruction) goes through here. The outline or window that the
@@ -6403,7 +6531,9 @@ procedure main is
          pointerCursor => POINTER_DEFAULT,
          publicationPolicy => <>, publicationConfiguration => <>,
          publicationMode => False, publicationBuffers => <>,
-         publicationInputAfter => 0);
+         publicationInputAfter => 0,
+         appColor => launchColor (No_Process, appKind), stripe => <>);
+      refreshStripe (surfaces (SurfaceIndex (slot)));
       id := nextSurfaceId;
       nextSurfaceId := nextSurfaceId + 1;
    end createInternalSurface;
@@ -6537,6 +6667,7 @@ procedure main is
          then
             snapshot.pointerPosition := payload0;
             snapshot.buttons := payload1 and 16#FFFF_FFFF#;
+            snapshot.modifiers := Shift_Right (payload1, 32);
          elsif kind = INPUT_POINTER_WHEEL then
             snapshot.pointerPosition := payload0;
             snapshot.buttons := Shift_Right (payload1, 32);
@@ -6919,10 +7050,13 @@ procedure main is
          localY := screenY - c.y;
       end if;
 
+      --  The buttons, and in the high word the modifiers held now: a click's
+      --  modifiers never depend on key events the app may have missed.
       enqueueInput (kind,
                     target,
                     packU32Pair (localX, localY),
-                    buttons);
+                    (buttons and 16#FFFF_FFFF#) or
+                      Shift_Left (modifierState and 16#FFFF_FFFF#, 32));
       if kind = INPUT_POINTER_DOWN or else kind = INPUT_POINTER_UP then
          --  A press or release is the user's own gesture: it may authorize
          --  a copy from a menu or button, never a paste (docs/clipboard.md).
@@ -7740,7 +7874,9 @@ procedure main is
                      pointerCursor => POINTER_DEFAULT,
          publicationPolicy => <>, publicationConfiguration => <>,
          publicationMode => False, publicationBuffers => <>,
-         publicationInputAfter => 0);
+         publicationInputAfter => 0,
+         appColor => launchColor (from, APP_CLIENT), stripe => <>);
+                  refreshStripe (surfaces (SurfaceIndex (slot)));
                   focusSurface := nextSurfaceId;
                   --  Window geometry, for tests that drive the pointer
                   --  onto a title bar (desktop-vm drag check).
@@ -7757,6 +7893,8 @@ procedure main is
                                   Unsigned_64 (reqW),
                                   Unsigned_64 (reqH));
                   nextSurfaceId := nextSurfaceId + 1;
+                  --  A launched app with a window has started.
+                  Desktop_Launch_Notice.Window_Opened (launchWatch, from);
                   claimInput;
                   scheduleRedraw;
                end if;
@@ -8391,7 +8529,7 @@ procedure main is
       end if;
    end ensureSpawnGrant;
 
-   procedure trySpawnApplication (name : String) is
+   procedure trySpawnApplication (name : String; label : String) is
       msg : Message := NULL_MESSAGE;
       New_Token : Unsigned_64;
       Accepted : Boolean;
@@ -8439,6 +8577,9 @@ procedure main is
       end if;
       launchName (1 .. len) := name;
       launchNameLength := len;
+      launchLabelLength := Natural'Min (label'Length, Desktop_Launch_Notice.Maximum_Name);
+      launchLabel (1 .. launchLabelLength) :=
+        label (label'First .. label'First + launchLabelLength - 1);
       launchInputAnnounced := False;
       if capSubmit (Desktop_Endpoints.Process_Manager, msg, New_Token) then
          debugPrint ("desktop: launch submitted token=" & Decimal (New_Token) & LF);
@@ -8712,7 +8853,7 @@ procedure main is
                   debugPrint ("desktop: " & Desktop_Launch.Label_Of (item) &
                               " is already running" & LF);
                else
-                  trySpawnApplication (name);
+                  trySpawnApplication (name, Desktop_Launch.Label_Of (item));
                end if;
          end case;
       end;
@@ -8878,6 +9019,50 @@ procedure main is
       Desktop_Status_Refresh.Set_Audio (level, muted, requestSequence);
    end setMasterAudio;
 
+   procedure damageChromeButton
+      (id : Unsigned_64; button : Pointer_Action; damage : in out Rect)
+   is
+      idx : constant Integer := (if id = 0 then -1 else findSurface (id));
+   begin
+      if idx < 0 then
+         return;
+      end if;
+      declare
+         S : Surface renames surfaces (SurfaceIndex (idx));
+      begin
+         case button is
+            when HIT_CLOSE => damage := unionRect (damage, closeButtonRect (S));
+            when HIT_MAXIMIZE => damage := unionRect (damage, maximizeButtonRect (S));
+            when HIT_MINIMIZE => damage := unionRect (damage, minimizeButtonRect (S));
+            when others => null;
+         end case;
+      end;
+   end damageChromeButton;
+
+   --  Hover feedback for the topmost window's buttons; an unavailable
+   --  maximize never hit-tests, so it never lights up.
+   procedure updateChromeHover (damage : in out Rect) is
+      idx : constant Integer :=
+        (if dragMode = DRAG_NONE then hitSurface (cursorX, cursorY) else -1);
+      nextId : Unsigned_64 := 0;
+      nextButton : Pointer_Action := DRAG_NONE;
+   begin
+      if idx >= 0 then
+         nextButton := hitMode (surfaces (SurfaceIndex (idx)), cursorX, cursorY);
+         if nextButton in HIT_MINIMIZE | HIT_CLOSE | HIT_MAXIMIZE then
+            nextId := surfaces (SurfaceIndex (idx)).id;
+         else
+            nextButton := DRAG_NONE;
+         end if;
+      end if;
+      if nextId /= chromeHoverId or else nextButton /= chromeHoverButton then
+         damageChromeButton (chromeHoverId, chromeHoverButton, damage);
+         chromeHoverId := nextId;
+         chromeHoverButton := nextButton;
+         damageChromeButton (nextId, nextButton, damage);
+      end if;
+   end updateChromeHover;
+
    procedure handleMouseMotion
       (buttons : Unsigned_64;
        Motion  : Pointer_Motion;
@@ -8980,6 +9165,26 @@ procedure main is
                end if;
                scheduleRedrawRect (damage);
             end;
+         end if;
+         lastButtons := buttons;
+         cursorStyle := POINTER_DEFAULT;
+         scheduleCursorPresent;
+         return;
+      end if;
+
+      --  A press on the launch notice dismisses it; the desktop keeps that
+      --  gesture through its release. Elsewhere the pointer works as usual.
+      if pointerSurfaceId = 0 and then dragMode = DRAG_NONE and then
+        (noticePointerCapture or else
+         (launchNotice.Open and then leftDown and then not leftWasDown and then
+          pointInRect (cursorX, cursorY, launchNoticeRect)))
+      then
+         if leftDown and then not leftWasDown then
+            noticePointerCapture := True;
+            dismissLaunchNotice (damage);
+            scheduleRedrawRect (damage);
+         elsif not leftDown then
+            noticePointerCapture := False;
          end if;
          lastButtons := buttons;
          cursorStyle := POINTER_DEFAULT;
@@ -9347,6 +9552,7 @@ procedure main is
          end if;
       end if;
 
+      updateChromeHover (damage);
       cursorStyle := cursorStyleAtPointer;
       lastButtons := buttons;
       --  The hardware pointer follows every motion, including drags, menus
@@ -9487,6 +9693,10 @@ procedure main is
          return KR.Clipboard_Manager;
       elsif launchMenuOpen then
          return KR.Apps_Menu;
+      elsif launchNotice.Open and then not extended and then
+        code in KEY_ESCAPE | KEY_ENTER
+      then
+         return KR.Launch_Notice;
       --  Once a shell/client surface has focus, keyboard events belong to
       --  that surface. The service-level Q/Esc escape remains available
       --  only before a client has connected.
@@ -9616,6 +9826,12 @@ procedure main is
                     (unionRect (launchButtonRect, launchMenuArea), 4));
                scheduleRedrawRect (inflateRect (damage, 2));
             end if;
+         when KR.Launch_Notice =>
+            --  Both edges, so the focused app never sees half of the key.
+            if not release then
+               dismissLaunchNotice (damage);
+               scheduleRedrawRect (inflateRect (damage, 2));
+            end if;
          when KR.Focus_Cycle =>
             cycleFocus (damage);
             scheduleRedrawRect (inflateRect (damage, 2));
@@ -9685,6 +9901,28 @@ procedure main is
       seatButtons : Unsigned_64 := lastButtons;
    begin
       statsEvents := statsEvents + 1;
+      --  The kernel's notice that a child Desktop launched has ended
+      --  (Desktop is its parent): asynchronous, never a call back.
+      if publisher = No_Process and then
+        eventMsg.tag.label = CuBit.Child_Exits.Event_Label
+      then
+         if CuBit.Child_Exits.Valid
+              (eventMsg.tag.length, eventMsg.words (0), eventMsg.words (1), eventMsg.words (2))
+         then
+            declare
+               Shown : Boolean;
+            begin
+               Desktop_Launch_Notice.Ended
+                 (launchWatch, launchNotice,
+                  CuBit.Child_Exits.Decode (eventMsg.words (0), eventMsg.words (1), eventMsg.words (2)),
+                  Shown);
+               if Shown then
+                  showLaunchNotice;
+               end if;
+            end;
+         end if;
+         return;
+      end if;
       DI.Observe_Raw (Input_Diagnostic, eventMsg.tag.label = CuBit.Input.OP_SOURCE_REPORT, eventMsg.tag.label,
         eventMsg.words (1), eventMsg.words (2), eventMsg.words (3), Diagnostic_Last_Us);
 

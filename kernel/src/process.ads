@@ -51,6 +51,7 @@ with IPC_Request_Ids;
 with LinkedLists;
 with Memory_Grants;
 with Grant_Windows;
+with Grant_Doorbells;
 with Object_Table;
 with Retained_Record_Blocks;
 with Quiescent_Reclamation;
@@ -543,6 +544,13 @@ package Process is
         ownerNotice      : Boolean := False;
         noticeGeneration : Memory_Grants.Grant_Generation := 0;
         noticePeer       : Process_Identities.Identity := Process_Identities.No_Identity;
+        -- The grantee's channel wake (CAP-002 step 3, Grant_Doorbells): sent
+        -- by the owner (SEND_EVENT with Channel_Wake_ABI's label), taken by
+        -- the grantee's receive as an EVENT_CHANNEL_WAKE. Coalesced: one
+        -- pending wake per grant (per sender and channel). While pending,
+        -- the grant is on the grantee's bell list through bellPrev/bellNext.
+        bell             : Grant_Doorbells.Bell := Grant_Doorbells.Silent;
+        bellPrev, bellNext : Memory_Grants.Global_Slot := Memory_Grants.No_Slot;
     end record;
 
 
@@ -743,6 +751,13 @@ package Process is
         -- for the work-stealing age check.
         queuedTSC           : Unsigned_64 := 0;
         readiness           : Readiness_Origin := Rescheduled;
+        -- System calls this thread has made (READ_STATISTICS reports the
+        -- caller's): visibility for "how many calls does this path take".
+        systemCalls         : Unsigned_64 := 0;
+        -- The thread this one last readied with readySync (it is about to
+        -- block): when it blocks in a receive, it runs that thread next,
+        -- directly, if it still waits on this CPU (yieldToSyncWakee).
+        syncWakee           : ThreadID := NO_THREAD;
         -- Virtual deadline (docs/scheduler.md): set when the thread gets a
         -- fresh slice, kept while it sleeps with slice left.
         runDeadline         : Virtual_Deadlines.Deadline := 0;
@@ -901,6 +916,12 @@ package Process is
         -- mailbox lock: the notices themselves are kept on their objects
         -- until read, so this may be stale but never misses one.
         kernelNoticePending : Boolean := False;
+
+        -- A channel wake is pending for it (CAP-002 step 3): its bell list
+        -- is not empty. A persistent, coalescing doorbell under the mailbox
+        -- lock, like the device-work doorbell above, kept apart from the
+        -- notice doorbell so taking the last wake clears it exactly.
+        bellPending : Boolean := False;
 
         -- Control messages kept for this process until it reads them, a
         -- slot per sender (Kernel_Controls; Process.IPC.controlLock). All
@@ -1081,6 +1102,10 @@ package Process is
         granteeNotices            : Natural := 0;
         wakeQueued                : Boolean := False;
         wakeNext                  : ProcessID := NO_PROCESS;
+        -- Its received grants with a pending channel wake, oldest first
+        -- (Grant_Bell_Lists over bellPrev/bellNext).
+        bellHead, bellTail        : Memory_Grants.Global_Slot := Memory_Grants.No_Slot;
+        bellCount                 : Natural := 0;
     end record;
 
     type Process_State is record
@@ -1215,6 +1240,7 @@ package Process is
     -- Called by the running process itself after an interrupt.
     ---------------------------------------------------------------------------
     procedure yield;
+
     -- Call only without grantLock/Process.lock. Pairs with the worker's
     -- pending-work check under Process.lock to prevent a lost wakeup.
     procedure notifyDMAWork;
@@ -1230,6 +1256,20 @@ package Process is
     -- The thread versions are the real ones; the process versions act on a
     -- process's main thread (starting a process, the reaper).
     procedure ready (tid : ThreadID);
+
+    -- ready, placed on this CPU (unless the thread must stay where it is):
+    -- for a waker that is about to block (Linux's WF_SYNC), so the woken
+    -- thread runs here when the waker sleeps, with no inter-processor wake.
+    -- The scheduler still orders it by its virtual deadline.
+    procedure readySync (tid : ThreadID);
+
+    -- The calling thread blocks (already in its blocked state and queued
+    -- as a waiter): run the thread it last readied with readySync next, by
+    -- a direct switch (accounted as an IPC handoff), if that thread is
+    -- still READY on this CPU; otherwise the scheduler picks. The scheduler's
+    -- shortest path for "wake, then sleep" (the end of a server's turn).
+    -- Call without Process.lock.
+    procedure yieldToSyncWakee;
 
     ---------------------------------------------------------------------------
     -- setLatencyContract

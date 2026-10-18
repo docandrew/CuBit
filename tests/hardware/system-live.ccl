@@ -21,29 +21,41 @@
   # Explicitly volatile Turso; no writes to the machine's internal disks.
   (setting "cubit.config.storage.database" ":memory:")
   (setting "desktop.launch.10-workbench"
-    (Launch_Entry label => "CCL Workbench" action => (Launch_Action.Program "ccl-workbench.app") icon => Launch_Icon.Workbench category => App_Category.Development))
+    (Launch_Entry label => "CCL Workbench" action => (Launch_Action.Program "ccl-workbench.app") icon => Launch_Icon.Workbench category => App_Category.Development
+      color => (App_Color.RGB (RGB_Color red => 47 green => 79 blue => 158))))
   (setting "desktop.launch.12-console"
-    (Launch_Entry label => "CCL Console" action => (Launch_Action.Program "ccl-console.app") icon => Launch_Icon.Console category => App_Category.Development))
+    (Launch_Entry label => "CCL Console" action => (Launch_Action.Program "ccl-console.app") icon => Launch_Icon.Console category => App_Category.Development
+      color => (App_Color.RGB (RGB_Color red => 43 green => 122 blue => 70))))
   (setting "desktop.launch.20-doom"
-    (Launch_Entry label => "DOOM" action => (Launch_Action.Program "doom.elf") icon => Launch_Icon.Doom category => App_Category.Games single_instance => true))
+    (Launch_Entry label => "DOOM" action => (Launch_Action.Program "doom.elf") icon => Launch_Icon.Doom category => App_Category.Games single_instance => true
+      color => (App_Color.RGB (RGB_Color red => 179 green => 38 blue => 26))))
   (setting "desktop.launch.30-devices"
-    (Launch_Entry label => "Devices" action => (Launch_Action.Program "devices.app") icon => Launch_Icon.Devices category => App_Category.System))
+    (Launch_Entry label => "Devices" action => (Launch_Action.Program "devices.app") icon => Launch_Icon.Devices category => App_Category.System
+      color => (App_Color.RGB (RGB_Color red => 95 green => 184 blue => 72))))
   (setting "desktop.launch.40-servo"
-    (Launch_Entry label => "Penny" action => (Launch_Action.Program "cubitshell.app") icon => Launch_Icon.Penny category => App_Category.Web))
+    (Launch_Entry label => "Penny" action => (Launch_Action.Program "cubitshell.app") icon => Launch_Icon.Penny category => App_Category.Web
+      color => (App_Color.RGB (RGB_Color red => 184 green => 106 blue => 58))))
   (setting "desktop.launch.50-files"
-    (Launch_Entry label => "Files" action => (Launch_Action.Program "files.app") icon => Launch_Icon.Files category => App_Category.Tools))
+    (Launch_Entry label => "Files" action => (Launch_Action.Program "files.app") icon => Launch_Icon.Files category => App_Category.Tools
+      color => (App_Color.RGB (RGB_Color red => 224 green => 162 blue => 31))))
   (setting "desktop.launch.60-sameboy"
-    (Launch_Entry label => "SameBoy" action => (Launch_Action.Program "sameboy.app") icon => Launch_Icon.Gameboy category => App_Category.Games))
+    (Launch_Entry label => "SameBoy" action => (Launch_Action.Program "sameboy.app") icon => Launch_Icon.Gameboy category => App_Category.Games
+      color => (App_Color.RGB (RGB_Color red => 116 green => 116 blue => 154))))
   (setting "desktop.launch.70-config-inspector"
-    (Launch_Entry label => "Config Inspector" action => (Launch_Action.Program "config-inspector.app") icon => Launch_Icon.Inspector category => App_Category.System))
+    (Launch_Entry label => "Config Inspector" action => (Launch_Action.Program "config-inspector.app") icon => Launch_Icon.Inspector category => App_Category.System
+      color => (App_Color.RGB (RGB_Color red => 123 green => 63 blue => 214))))
   (setting "desktop.launch.80-settings"
-    (Launch_Entry label => "Settings" action => Launch_Action.Settings icon => Launch_Icon.Settings category => App_Category.System))
-  (setting "desktop.launch.90-mesa"
-    (Launch_Entry label => "Mesa Cube (software)" action => (Launch_Action.Program "mesa-cube.app") icon => Launch_Icon.Mesa category => App_Category.Media))
+    (Launch_Entry label => "Settings" action => Launch_Action.Settings icon => Launch_Icon.Settings category => App_Category.System
+      color => (App_Color.RGB (RGB_Color red => 61 green => 124 blue => 201))))
+  (setting "desktop.launch.90-teapots"
+    (Launch_Entry label => "Teapots" action => (Launch_Action.Program "teapots.app") icon => Launch_Icon.Mesa category => App_Category.Media
+      color => (App_Color.RGB (RGB_Color red => 207 green => 76 blue => 156))))
   (setting "desktop.launch.95-boot-logs"
-    (Launch_Entry label => "Boot Diagnostics" action => (Launch_Action.Program "boot-logs.app") icon => Launch_Icon.Boot category => App_Category.System))
+    (Launch_Entry label => "Boot Diagnostics" action => (Launch_Action.Program "boot-logs.app") icon => Launch_Icon.Boot category => App_Category.System
+      color => (App_Color.RGB (RGB_Color red => 122 green => 74 blue => 34))))
   (setting "desktop.launch.96-logs"
-    (Launch_Entry label => "Logs" action => (Launch_Action.Program "logs.app") icon => Launch_Icon.Logs category => App_Category.System))
+    (Launch_Entry label => "Logs" action => (Launch_Action.Program "logs.app") icon => Launch_Icon.Logs category => App_Category.System
+      color => (App_Color.RGB (RGB_Color red => 133 green => 147 blue => 170))))
   (setting "scheme.fs.driver" 6)
   (setting "scheme.ata.driver" 6)
   (setting "scheme.nvme.driver" 6)

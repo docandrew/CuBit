@@ -5,6 +5,7 @@ with Compositor_Stage_Metrics;
 with Compositor_Work_Metrics;
 with Compositor_Metric_Batch_Policy;
 with Compositor_Metric_Completion;
+with Capability_ABI;
 with Compositor_Trace_Publication;
 with Compositor_Trace_Metrics;
 package body Desktop_Metric_Publisher with SPARK_Mode => Off is
@@ -21,7 +22,7 @@ package body Desktop_Metric_Publisher with SPARK_Mode => Off is
    package TW renames Compositor_Trace_Wire;
    Trace : TP.State;
    use type BP.Append_Kind;
-   Item : SDK.Publisher (Capability);
+   Item : SDK.Publisher;
    Batch : BP.State;
    Flights : array (1 .. 2) of CR.State;
    Sent : array (Flights'Range) of SDK.Records.Record_Count := [others => 0];
@@ -205,7 +206,9 @@ package body Desktop_Metric_Publisher with SPARK_Mode => Off is
       Handled : Boolean;
       Reply : constant MC.Reply :=
         (Completion.valid, Completion.status, Completion.msg.tag.label,
-         Completion.msg.tag.length, Completion.msg.tag.protocol, Completion.msg.tag.reserved,
+         Completion.msg.tag.length,
+         Capability_ABI.Protocol_Flags (Completion.msg.tag.protocol),
+         Capability_ABI.IPC_Flags (Completion.msg.tag.ipc), Completion.msg.tag.reserved,
          [for I in MC.Payload'Range => Completion.msg.words (I)]);
    begin
       for I in Flights'Range loop
@@ -223,4 +226,6 @@ package body Desktop_Metric_Publisher with SPARK_Mode => Off is
          end if;
       end loop;
    end Collect;
+begin
+   SDK.Bind (Item, Capability);
 end Desktop_Metric_Publisher;

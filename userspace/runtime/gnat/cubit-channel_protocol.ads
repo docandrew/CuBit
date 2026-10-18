@@ -37,6 +37,7 @@
 --  word. Every word written by a peer is checked before use.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with Interfaces; use Interfaces;
 with CuBit.Channel_Contracts; use CuBit.Channel_Contracts;
 with CuBit.Stream_Rings;
 
@@ -54,8 +55,13 @@ package CuBit.Channel_Protocol with Pure, SPARK_Mode is
      (Unknown_Type,      --  the peer has no such channel to offer
       Unsupported,       --  the kind, policy or size is not one it takes
       No_Room,           --  it has no free channel slot
-      Bad_Grant);        --  the opener's grant could not be acquired
-   for Open_Refusal use (Unknown_Type => 1, Unsupported => 2, No_Room => 3, Bad_Grant => 4);
+      Bad_Grant,         --  the opener's grant could not be acquired
+      Limit_Reached,     --  the server's declared per-client or total limit
+      Not_Admitted);     --  the server does not admit this client to it
+   for Open_Refusal use (Unknown_Type => 1, Unsupported => 2, No_Room => 3, Bad_Grant => 4,
+                         Limit_Reached => 5, Not_Admitted => 6);
+   function Is_Refusal_Code (Word : Unsigned_64) return Boolean is
+     (Word in 1 .. 6);
 
    --  The producer's control page (Stream_Rings' words, then these).
    PRODUCED_OFFSET  : constant := CuBit.Stream_Rings.PRODUCED_OFFSET;

@@ -2343,19 +2343,19 @@ package body CCL_Workbench is
         (Canvas, (x => 0, y => CLIENT_TITLE_HEIGHT,
                   w => Canvas.width, h => 22), Colors);
       CuBit.UI.Draw_Menu_Title
-        (Canvas, (x => 3, y => CLIENT_TITLE_HEIGHT, w => 34, h => 21), Colors,
+        (Canvas, (x => 3, y => CLIENT_TITLE_HEIGHT, w => 34, h => 22), Colors,
          False, False, "File");
       CuBit.UI.Draw_Menu_Title
-        (Canvas, (x => 38, y => CLIENT_TITLE_HEIGHT, w => 34, h => 21), Colors,
+        (Canvas, (x => 38, y => CLIENT_TITLE_HEIGHT, w => 34, h => 22), Colors,
          False, False, "Edit");
       CuBit.UI.Draw_Menu_Title
-        (Canvas, (x => 73, y => CLIENT_TITLE_HEIGHT, w => 38, h => 21), Colors,
+        (Canvas, (x => 73, y => CLIENT_TITLE_HEIGHT, w => 38, h => 22), Colors,
          False, False, "View");
       CuBit.UI.Draw_Menu_Title
-        (Canvas, (x => 112, y => CLIENT_TITLE_HEIGHT, w => 34, h => 21), Colors,
+        (Canvas, (x => 112, y => CLIENT_TITLE_HEIGHT, w => 34, h => 22), Colors,
          False, False, "Run");
       CuBit.UI.Draw_Menu_Title
-        (Canvas, (x => 147, y => CLIENT_TITLE_HEIGHT, w => 38, h => 21), Colors,
+        (Canvas, (x => 147, y => CLIENT_TITLE_HEIGHT, w => 38, h => 22), Colors,
          False, False, "Help");
 
       CuBit.UI.Widgets.Toolbar

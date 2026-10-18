@@ -45,6 +45,18 @@ package CuBit.UI.Input is
    function Key_Modifiers (event : Input_Event) return Unsigned_64 is
      (event.payload1 and KEY_MODIFIERS_MASK);
 
+   --  Pointer move, down and up events: payload1's low word holds the
+   --  held buttons and its high word the KEYMOD_* modifiers held when the
+   --  pointer event happened (the layout INPUT_RESYNC uses). Apps take a
+   --  click's modifiers from here, never from the last key event: a key
+   --  release can go to another window.
+   POINTER_BUTTONS_MASK : constant Unsigned_64 := 16#FFFF_FFFF#;
+   POINTER_MODIFIERS_SHIFT : constant := 32;
+   function Pointer_Buttons (event : Input_Event) return Unsigned_64 is
+     (event.payload1 and POINTER_BUTTONS_MASK);
+   function Pointer_Modifiers (event : Input_Event) return Unsigned_64 is
+     (Shift_Right (event.payload1, POINTER_MODIFIERS_SHIFT) and KEY_MODIFIERS_MASK);
+
    --  Pointer events: payload0 = x (bits 0..31) and y (bits 32..63).
    function Pointer_X (event : Input_Event) return Natural is
      (Natural (event.payload0 and 16#7FFF_FFFF#));

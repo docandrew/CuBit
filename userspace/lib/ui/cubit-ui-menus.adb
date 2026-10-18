@@ -239,8 +239,6 @@ package body CuBit.UI.Menus is
                               Input_Rect (PC, R), Rect'(0, 0, C.width, C.height));
          X := X + W;
       end loop;
-      -- Titles repaint their backgrounds; restore the single outer strip rim.
-      Stroke_Rect (With_Clip (C, Bar), Bar, Colors.highlight, Colors.shadow);
       if State.Opened not in 1 .. Definition.Menu_Count then return; end if;
       for I in 1 .. Definition.Item_Count loop
          if Definition.Items (I).Parent = State.Opened then

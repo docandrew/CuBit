@@ -79,6 +79,10 @@ SECTIONS
     {
         KEEP(*(.cubit.startup))
     }
+    .cubit.channels (INFO) : ALIGN(4)
+    {
+        KEEP(*(.cubit.channels))
+    }
 
     .cubit.resources (INFO) : ALIGN(4)
     {

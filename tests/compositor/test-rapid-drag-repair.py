@@ -45,7 +45,7 @@ a = p.parse_args()
 
 SCREEN = (1920, 1080)
 WINDOW = (98, 82, 960, 646)          # boot viewer x, y, w, h
-MINIMIZE, TASK_BUTTON, TITLE = (1004, 94), (180, 1062), (500, 94)
+MINIMIZE, TASK_BUTTON, TITLE = (988, 100), (180, 1062), (500, 94)
 SHADOW_MARGIN = 8                    # window visual margin plus slack
 TASKBAR_HEIGHT = 44
 CURSOR_BOX = 64                      # excluded around the final pointer

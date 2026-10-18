@@ -1,5 +1,6 @@
 with System.Storage_Elements; use System.Storage_Elements;
 with Desktop_Wallpaper;
+with CuBit.UI.Window_Chrome;
 with CuBit.Display_Arrangement;
 
 package body Desktop_Settings is
@@ -212,15 +213,25 @@ package body Desktop_Settings is
       Paint_Wallpaper (C, Preview, View.Pending);
       Stroke_Rect (C, Preview, Colors.shadow, Colors.highlight);
       declare
+         package WC renames CuBit.UI.Window_Chrome;
          Window : constant Rect := (Preview.x + 38, Preview.y + 32, 160, 94);
+         Chrome : constant WC.Palette := WC.Colors (View.Pending.Scheme);
+         Inner : constant Natural := Window.w - 2 * WC.Border_Width;
       begin
+         --  The active window chrome in miniature, the accent as app colour.
          Fill_Rect (C, Window, Preview_Colors.face);
-         Stroke_Rect (C, Window, Preview_Colors.highlight, Preview_Colors.shadow);
-         Fill_Vertical_Gradient (C, (Window.x + 3, Window.y + 3, 154, 20),
-           Preview_Colors.activeTitleTop, Preview_Colors.activeTitleBottom);
-         Draw_UI_Text (C, Window.x + 8, Window.y + 5, "Alloy", 16#FFFFFF#,
-           Preview_Colors.activeTitleTop);
-         Draw_Button (C, (Window.x + 24, Window.y + 42, 110, 28),
+         Stroke_Rect (C, Window, Chrome.Active_Border, Chrome.Active_Border);
+         Fill_Rect (C, (Window.x + WC.Border_Width, Window.y + WC.Border_Width, Inner, WC.Stripe_Height),
+           Preview_Colors.accent);
+         Fill_Rect (C, (Window.x + WC.Border_Width, Window.y + WC.Bar_Top, Inner, WC.Bar_Height),
+           Preview_Colors.titleBar);
+         Fill_Rect (C, (Window.x + WC.Border_Width, Window.y + WC.Bar_Top + WC.Bar_Height, Inner,
+           WC.Rule_Height), Chrome.Rule);
+         Fill_Rect (C, (Window.x + WC.Tile_Left, Window.y + WC.Bar_Top + (WC.Bar_Height - WC.Tile_Size) / 2,
+           WC.Tile_Size, WC.Tile_Size), Preview_Colors.accent);
+         Draw_UI_Text (C, Window.x + WC.Title_Left, Window.y + WC.Bar_Top + 5, "Alloy",
+           Chrome.Active_Title, Preview_Colors.titleBar);
+         Draw_Button (C, (Window.x + 24, Window.y + WC.Client_Top + 12, 110, 28),
            Preview_Colors, Button_Normal, "Preview");
       end;
       Text (20, 218, "Preview");

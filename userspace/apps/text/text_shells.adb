@@ -1667,6 +1667,13 @@ package body Text_Shells is
       if Item.Kind in Key_Event | Text_Event | Pointer_Event then
          St.Occurrence_Due := St.Now + OCCURRENCE_REST_US;
       end if;
+      --  Occurrences of the word under the cursor show only once it rests:
+      --  a key or a press takes them away at once, so none are ever left
+      --  around a word that is no longer there (or in another tab).
+      if Item.Kind in Key_Event | Text_Event or else (Item.Kind = Pointer_Event and then Item.Action = Press) then
+         Text_Editors.Clear_Occurrence (St.Editors (1).all);
+         Text_Editors.Clear_Occurrence (St.Editors (2).all);
+      end if;
       case Item.Kind is
          when Key_Event => Handle_Key (St, Item.Pressed);
          when Text_Event => Handle_Text (St, Item.Text (1 .. Item.Text_Length));

@@ -13,6 +13,7 @@ project Fixture is
      "cubit-handles-ipc.ads", "cubit-handles-ipc.adb",
      "cubit-handles-control.ads", "cubit-handles-control.adb",
      "cubit-startup_tables.ads", "cubit-startup_tables.adb",
+      "cubit-channel_limits.ads", "cubit-channel_declarations.ads", "cubit-channel_declarations.adb",
      "cubit-capability_grants.ads", "cubit-capability_grants.adb");
    for Object_Dir use "build";
    for Main use ("test.adb");

@@ -12,6 +12,8 @@ with CuBit.Handles;
 with CuBit.Handles.IPC;
 with CuBit.Startup_State;
 with Startup;
+with Channel_Session;
+with IPCtest_Channel;
 
 procedure main is
    use ASCII;
@@ -470,6 +472,10 @@ begin
          sendReply (from, REPLY_OK);
       elsif msg.tag.label = OP_DEADLINE_STATUS then
          sendReply (from, REPLY_OK, boolWord (queuedSeen));
+      elsif msg.tag.label = IPCtest_Channel.OP_CHANNEL_SESSION then
+         -- Serve channels (CAP-002 step 3) until the client ends the session.
+         sendReply (from, REPLY_OK);
+         Channel_Session;
       elsif msg.tag.label = OP_DIE then
          -- Give the submitter time to enter its combined readiness wait.
          ret := syscall (SYSCALL_SLEEP, 25);

@@ -1,8 +1,8 @@
 project Metric_Completion is
- for Source_Dirs use (".", "../../userspace/lib/compositor", "../../userspace/runtime/gnat");
+ for Source_Dirs use (".", "../../userspace/lib/compositor", "../../userspace/runtime/gnat", "../../shared/capabilities");
  for Source_Files use
   ("metric_completion_tests.adb", "compositor_metric_completion.ads", "cubit.ads",
-   "cubit-metric_records.ads", "cubit-metric_records.adb", "cubit-metric_protocol.ads");
+   "cubit-metric_records.ads", "cubit-metric_records.adb", "cubit-metric_protocol.ads", "capability_abi.ads", "capability_abi.adb");
  for Object_Dir use "build/metric-completion/obj";
  for Exec_Dir use "build/metric-completion";
  for Main use ("metric_completion_tests.adb");

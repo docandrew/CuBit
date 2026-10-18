@@ -82,25 +82,10 @@ on a present acknowledgement. The final frame is retained for the screenshot
 oracle. This relies on the current synchronous CPU compositor; it is not a
 GPU fence or a general multi-GPU swapchain.
 
-The build also produces `native-mesa-cube.app`: the same native window and
-two-buffer transport with a24-bit depth/stencil attachment, orthographic camera,
-model rotations and six colored cube faces. Explicit GLSL120 vertex and
-fragment shaders are compiled and linked inside CuBit, using compatibility
-matrix input and explicit position/color attributes. Geometry uses one
-interleaved vertex buffer (24 vertices) and one index buffer (36 indices),
-uploaded once and rendered with indexed triangles. Upload errors or unexpected
-buffer sizes are fatal. Compile/link failures are fatal and report an info log.
-The fragment shader samples a4x4 RGBA8 texture using explicit UV attributes,
-nearest filtering and clamp-to-edge. Distinct asymmetric texel levels allow
-the independent geometric oracle to detect flips, swaps and constant samples.
-The program belongs to this demo's single retained context, not a reusable
-multi-context renderer. To test it, set
-`MESA_WINDOW_IMAGE` to that executable's absolute path and
-`MESA_WINDOW_SCENE=cube`, then run the same `--test mesa-window` command.
-`check-cube-window.py` computes independent camera-ray/box intersections for
-the final frame;194673 non-edge composed pixels pass, including all16 texels
-on each of three visible faces. This is native CPU-rendered OpenGL3D, not Intel
-GPU acceleration. This does not yet cover alpha blending or filtered font atlases.
+The software-GL cube demo (`native-mesa-cube.app`, `cube-scene.c`,
+`check-cube-window.py`) was removed on 2026-10-18: the Vulkan teapot gallery
+(`userspace/apps/teapots`, `tests/gpu-canvas`) replaced it as the 3D demo,
+rendering on the Intel GPU through `CuBit.UI.GPU_Canvas`.
 
 ## Native context-lifecycle diagnostic (known failure)
 

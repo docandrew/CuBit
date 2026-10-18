@@ -79,14 +79,14 @@ expected_apps = {'config.svc', 'netmgr.svc', 'netstack.svc', 'virtio-net.drv',
                  'virtio-gpu.drv', 'intel-gpu.drv', 'hda.drv', 'mixer.svc', 'procmgr.svc',
                  'logstore.svc', 'clock.svc', 'display.svc', 'desktop.svc', 'boot-logs.app',
                  'ccl-workbench.app', 'devices.app', 'files.app', 'doom.elf', 'doom1.wad',
-                 'sameboy.app', 'config-inspector.app', 'config-storage.svc', 'cubitshell.app', 'mesa-cube.app'}
+                 'sameboy.app', 'config-inspector.app', 'config-storage.svc', 'cubitshell.app', 'teapots.app'}
 assert expected_apps <= apps.keys(), expected_apps - apps.keys()
 mesa_notices = entries(*licenses['mesa'])
 assert {'MESA-SOURCE.tar.gz', 'UPSTREAM-LICENSE.rst', 'SOURCE.nix',
         'CUBIT-PLATFORM.patch', 'ELF-SHA256.txt', 'LINKED-SOURCES.json',
         'LINK-MAP.txt', 'licenses'} <= mesa_notices.keys()
 mesa_hash = contents(mesa_notices['ELF-SHA256.txt']).decode().split()[0]
-assert built_hash('apps/mesa-cube.app', contents(apps['mesa-cube.app'])) == mesa_hash
+assert built_hash('apps/teapots.app', contents(apps['teapots.app'])) == mesa_hash
 assert contents(mesa_notices['MESA-SOURCE.tar.gz'])[:2] == b'\x1f\x8b'
 print('MESA IMAGE AUDIT PASS: app matches recorded hash; source and notice bundle present')
 cartridges = entries(*apps['sameboy'])

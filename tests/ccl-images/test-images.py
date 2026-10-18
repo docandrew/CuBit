@@ -94,7 +94,7 @@ class Images(unittest.TestCase):
                                                 "xhci.drv", "system.ccl", "init.ccl", "live-rw.ext2"})
                     apps = {row[5].removeprefix("apps/") for row in rows if row[5].startswith("apps/")}
                     self.assertEqual(apps, (stage1 | stage2 | {"sameboy.app", "sameboy/00.gb", "doom1.wad", "config-storage.svc", "cubitshell.app",
-                                                            "intel-gpu.drv", "firmware/intel/tgl_guc_70.bin", "mesa-cube.app",
+                                                            "intel-gpu.drv", "firmware/intel/tgl_guc_70.bin", "teapots.app",
                                                             "boot-logs.app", "logs.app", "ccl-console.app", "gpu-viewer.app",
                                                             "Assets/cubit-wallpapers/1/cubes.qoi",
                                                             "Assets/cubit-wallpapers/1/cubie.qoi",
@@ -108,8 +108,8 @@ class Images(unittest.TestCase):
                                      {"apps/firmware/intel/tgl_guc_70.bin", "licenses/Intel-GPU.txt"})
                     self.assertEqual(len(firmware), 2)
                     self.assertTrue(all(row[0] == "OPTICAL" for row in firmware))
-                    mesa = [row for row in rows if row[2] in {"mesa-cube", "mesa-notices"}]
-                    self.assertEqual({row[5] for row in mesa}, {"apps/mesa-cube.app", "licenses/mesa"})
+                    mesa = [row for row in rows if row[2] in {"teapots", "mesa-notices"}]
+                    self.assertEqual({row[5] for row in mesa}, {"apps/teapots.app", "licenses/mesa"})
                     self.assertEqual(len(mesa), 2)
                     self.assertTrue(all(row[0] == "OPTICAL" for row in mesa))
 

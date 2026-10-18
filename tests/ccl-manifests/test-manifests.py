@@ -871,23 +871,45 @@ class Manifests(unittest.TestCase):
     def test_startup_channel_limits(self):
         def channels(text):
             return self.TLS_TYPED.replace('  scopes =>', f'  channels => [{text}]\n  scopes =>')
-        for text in ['(Channel_Offer "gpu.urgent" 1 1 Channel_Class.Urgent)', '(Channel_Offer "fs" 4 4096)',
-                     '(Channel_Offer contract => "a" total => 65536 per_client => 65536)',
-                     '(Channel_Offer "a" 1 2) (Channel_Offer "b" 1 2)']:
+        at = lambda n: f'(Channel_Limit.At_Most {n})'
+        server = 'Channel_Limit.Server_Limit'
+        for text in [f'(Channel_Offer "gpu.display" {at(1)} {at(1)} Channel_Class.Urgent)',
+                     f'(Channel_Offer "gpu.command" {at(1)} {at(1)} Channel_Class.Interactive)',
+                     f'(Channel_Offer "gpu.render" {server} {server})',
+                     f'(Channel_Offer "fs" {at(4)} {server})',
+                     f'(Channel_Offer contract => "a" total => {at(65536)} per_client => {at(65536)})',
+                     f'(Channel_Offer "a" {at(1)} {at(2)}) (Channel_Offer "b" {server} {at(2)})']:
             with self.subTest(text=text):
                 result = self.compile(channels(text), self.NATIVE)
                 self.assertEqual(result.returncode, 0, result.stderr)
-        many = ' '.join(f'(Channel_Offer "c{i}" 1 1)' for i in range(9))
+                self.assertIn('.cubit.channels', self.sections(result.stdout))
+        # The section's bytes: magic, version, count, then one offer.
+        result = self.compile(channels(f'(Channel_Offer "gpu.render" {at(2)} {server} Channel_Class.Normal)'),
+                              self.NATIVE)
+        raw = self.sections(result.stdout)['.cubit.channels']
+        self.assertEqual(raw[0:4], b'CBCH')
+        self.assertEqual(int.from_bytes(raw[4:6], 'little'), 1)
+        self.assertEqual(int.from_bytes(raw[6:8], 'little'), 1)
+        offer = raw[8:8 + 80]
+        self.assertEqual(offer[0], len('gpu.render'))
+        self.assertEqual(offer[1], 3)                    # Normal
+        self.assertEqual((offer[2], offer[3]), (1, 2))   # At_Most, Server_Limit
+        self.assertEqual(int.from_bytes(offer[4:8], 'little'), 2)
+        self.assertEqual(int.from_bytes(offer[8:12], 'little'), 0)
+        self.assertEqual(offer[16:16 + 10], b'gpu.render')
+        many = ' '.join(f'(Channel_Offer "c{i}" {at(1)} {at(1)})' for i in range(9))
         for text, message in [
-                ('(Channel_Offer "a" 0 1)', 'channels entry 1: per_client 0 is not 1 to the total 1'),
-                ('(Channel_Offer "a" 3 2)', 'channels entry 1: per_client 3 is not 1 to the total 2'),
-                ('(Channel_Offer "a" 1 0)', 'channels entry 1: total 0 is not 1 to 65536'),
-                ('(Channel_Offer "a" 1 65537)', 'channels entry 1: total 65537 is not 1 to 65536'),
-                ('(Channel_Offer "a b" 1 1)', 'channels entry 1: contract "a b" is not 1 to 64'),
-                ('(Channel_Offer "" 1 1)', 'channels entry 1: contract "" is not 1 to 64'),
-                ('(Channel_Offer "a" 1 1) (Channel_Offer "a" 1 1)', 'channels entry 2: contract "a" is listed twice'),
+                (f'(Channel_Offer "a" {at(0)} {at(1)})', 'per_client At_Most 0 is not 1 to 65536'),
+                (f'(Channel_Offer "a" {at(3)} {at(2)})', 'per_client 3 is more than the total 2'),
+                (f'(Channel_Offer "a" {at(1)} {at(0)})', 'total At_Most 0 is not 1 to 65536'),
+                (f'(Channel_Offer "a" {at(1)} {at(65537)})', 'total At_Most 65537 is not 1 to 65536'),
+                (f'(Channel_Offer "a b" {at(1)} {at(1)})', 'channels entry 1: contract "a b" is not 1 to 64'),
+                (f'(Channel_Offer "" {at(1)} {at(1)})', 'channels entry 1: contract "" is not 1 to 64'),
+                (f'(Channel_Offer "a" {at(1)} {at(1)}) (Channel_Offer "a" {at(1)} {at(1)})',
+                 'channels entry 2: contract "a" is listed twice'),
                 (many, 'channels entry 9: at most 8 contracts may be served'),
-                ('(Channel_Offer "a" 1)', 'field total')]:
+                ('(Channel_Offer "a" 1 1)', 'field per_client'),
+                (f'(Channel_Offer "a" {at(1)})', 'field total')]:
             with self.subTest(text=text):
                 result = self.compile(channels(text), self.NATIVE)
                 self.assertEqual(result.returncode, 1, result.stderr)
@@ -919,10 +941,18 @@ class Manifests(unittest.TestCase):
         text = output.read_text()
         self.assertEqual(text, self.GOLDEN.read_text())
         # Names, never numbers: no slot constants and no integer literals
-        # outside comments.
-        code = '\n'.join(line.split('--')[0] for line in text.splitlines())
+        # outside comments. The Channels package carries the manifest's
+        # declared channel limits (At_Most N), which are counts, not slots.
+        capabilities = text.split('   package Channels is')[0]
+        code = '\n'.join(line.split('--')[0] for line in capabilities.splitlines())
         self.assertNotIn('Slot', code)
         self.assertNotRegex(code, r'(?<![A-Za-z0-9_])[0-9]')
+        self.assertIn('Gpu_Display_Per_Client : constant Standard.CuBit.Channel_Limits.Channel_Limit :=\n'
+                      '        (Kind => Standard.CuBit.Channel_Limits.At_Most, Count => 1);', text)
+        self.assertIn('Gpu_Render_Total : constant Standard.CuBit.Channel_Limits.Channel_Limit :=\n'
+                      '        (Kind => Standard.CuBit.Channel_Limits.Server_Limit);', text)
+        self.assertIn('Gpu_Command_Class : constant Standard.CuBit.Channel_Limits.Channel_Class :=\n'
+                      '        Standard.CuBit.Channel_Limits.Interactive;', text)
         # The sections are the same with or without the binding.
         self.assertEqual(self.sections(result.stdout),
                          self.sections(self.compile(self.FIXTURE, self.DRIVER).stdout))

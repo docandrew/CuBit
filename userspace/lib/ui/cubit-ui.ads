@@ -60,6 +60,10 @@ package CuBit.UI is
       activeTitleBottom : Theme_Color := 16#343B4D#;
       inactiveTitleTop : Theme_Color := 16#596172#;
       inactiveTitleBottom : Theme_Color := 16#343B4D#;
+      --  The window title bar and the client menu bar continuing it
+      --  (CuBit.UI.Window_Chrome), and the menu bar's bottom edge.
+      titleBar : Theme_Color := 16#343B4D#;
+      menuRule : Theme_Color := 16#596172#;
    end record;
 
    Mirage : constant Theme :=
@@ -81,7 +85,9 @@ package CuBit.UI is
       activeTitleTop => 16#4D668F#,
       activeTitleBottom => 16#343B4D#,
       inactiveTitleTop => 16#596172#,
-      inactiveTitleBottom => 16#343B4D#);
+      inactiveTitleBottom => 16#343B4D#,
+      titleBar => 16#343B4D#,
+      menuRule => 16#596172#);
 
    Classic : constant Theme :=
      (desktop => CuBit.Theme.Desktop,
@@ -102,7 +108,9 @@ package CuBit.UI is
       activeTitleTop => CuBit.Theme.Accent,
       activeTitleBottom => CuBit.Theme.Accent,
       inactiveTitleTop => CuBit.Theme.Panel,
-      inactiveTitleBottom => CuBit.Theme.Panel);
+      inactiveTitleBottom => CuBit.Theme.Panel,
+      titleBar => CuBit.Theme.Face,
+      menuRule => CuBit.Theme.Edge);
 
    CuBit_Classic : constant Theme :=
      (desktop => 16#808080#,
@@ -123,7 +131,9 @@ package CuBit.UI is
       activeTitleTop => 16#000080#,
       activeTitleBottom => 16#000080#,
       inactiveTitleTop => 16#808080#,
-      inactiveTitleBottom => 16#808080#);
+      inactiveTitleBottom => 16#808080#,
+      titleBar => 16#C0C0C0#,
+      menuRule => 16#808080#);
 
    CuBit_Alloy : constant Theme :=
      (desktop => 16#545D63#,
@@ -144,7 +154,9 @@ package CuBit.UI is
       activeTitleTop => 16#47768E#,
       activeTitleBottom => 16#294E68#,
       inactiveTitleTop => 16#AAB1B5#,
-      inactiveTitleBottom => 16#8D969C#);
+      inactiveTitleBottom => 16#8D969C#,
+      titleBar => 16#F4F6F8#,
+      menuRule => 16#D3D8DE#);
 
    CuBit_Alloy_Dark : constant Theme :=
      (desktop => 16#20282E#, panel => 16#303A42#, face => 16#303A42#,
@@ -154,7 +166,8 @@ package CuBit.UI is
       selectionText => 16#FFFFFF#, highlight => 16#63727D#,
       darkShadow => 16#151C21#, activeTitleTop => 16#416A80#,
       activeTitleBottom => 16#233E53#, inactiveTitleTop => 16#414D57#,
-      inactiveTitleBottom => 16#2E3942#);
+      inactiveTitleBottom => 16#2E3942#, titleBar => 16#2B343B#,
+      menuRule => 16#3A454E#);
 
    function Default_Palette (Scheme : CuBit.Appearance.Color_Scheme) return Theme is
      (if Scheme = CuBit.Appearance.Alloy_Light then CuBit_Alloy

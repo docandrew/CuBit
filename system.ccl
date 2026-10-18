@@ -25,29 +25,41 @@
   # desktop_launch.ads). Entries name programs; what they may do is decided
   # by their manifests and procmgr's launch policy.
   (setting "desktop.launch.10-workbench"
-    (Launch_Entry label => "CCL Workbench" action => (Launch_Action.Program "ccl-workbench.app") icon => Launch_Icon.Workbench category => App_Category.Development))
+    (Launch_Entry label => "CCL Workbench" action => (Launch_Action.Program "ccl-workbench.app") icon => Launch_Icon.Workbench category => App_Category.Development
+      color => (App_Color.RGB (RGB_Color red => 47 green => 79 blue => 158))))
   (setting "desktop.launch.12-console"
-    (Launch_Entry label => "CCL Console" action => (Launch_Action.Program "ccl-console.app") icon => Launch_Icon.Console category => App_Category.Development))
+    (Launch_Entry label => "CCL Console" action => (Launch_Action.Program "ccl-console.app") icon => Launch_Icon.Console category => App_Category.Development
+      color => (App_Color.RGB (RGB_Color red => 43 green => 122 blue => 70))))
   (setting "desktop.launch.14-logs"
-    (Launch_Entry label => "Logs" action => (Launch_Action.Program "logs.app") icon => Launch_Icon.Logs category => App_Category.System))
+    (Launch_Entry label => "Logs" action => (Launch_Action.Program "logs.app") icon => Launch_Icon.Logs category => App_Category.System
+      color => (App_Color.RGB (RGB_Color red => 133 green => 147 blue => 170))))
   (setting "desktop.launch.16-trace"
-    (Launch_Entry label => "Desktop trace" action => (Launch_Action.Program "trace-viewer.app") icon => Launch_Icon.Trace category => App_Category.System))
+    (Launch_Entry label => "Desktop trace" action => (Launch_Action.Program "trace-viewer.app") icon => Launch_Icon.Trace category => App_Category.System
+      color => (App_Color.RGB (RGB_Color red => 30 green => 157 blue => 181))))
   (setting "desktop.launch.20-doom"
-    (Launch_Entry label => "DOOM" action => (Launch_Action.Program "doom.elf") icon => Launch_Icon.Doom category => App_Category.Games single_instance => true))
+    (Launch_Entry label => "DOOM" action => (Launch_Action.Program "doom.elf") icon => Launch_Icon.Doom category => App_Category.Games single_instance => true
+      color => (App_Color.RGB (RGB_Color red => 179 green => 38 blue => 26))))
   (setting "desktop.launch.30-devices"
-    (Launch_Entry label => "Devices" action => (Launch_Action.Program "devices.app") icon => Launch_Icon.Devices category => App_Category.System))
+    (Launch_Entry label => "Devices" action => (Launch_Action.Program "devices.app") icon => Launch_Icon.Devices category => App_Category.System
+      color => (App_Color.RGB (RGB_Color red => 95 green => 184 blue => 72))))
   (setting "desktop.launch.45-servo"
-    (Launch_Entry label => "Penny" action => (Launch_Action.Program "cubitshell.app") icon => Launch_Icon.Penny category => App_Category.Web))
+    (Launch_Entry label => "Penny" action => (Launch_Action.Program "cubitshell.app") icon => Launch_Icon.Penny category => App_Category.Web
+      color => (App_Color.RGB (RGB_Color red => 184 green => 106 blue => 58))))
   (setting "desktop.launch.50-files"
-    (Launch_Entry label => "Files" action => (Launch_Action.Program "files.app") icon => Launch_Icon.Files category => App_Category.Tools))
+    (Launch_Entry label => "Files" action => (Launch_Action.Program "files.app") icon => Launch_Icon.Files category => App_Category.Tools
+      color => (App_Color.RGB (RGB_Color red => 224 green => 162 blue => 31))))
   (setting "desktop.launch.52-text"
-    (Launch_Entry label => "Text" action => (Launch_Action.Program "text.app") icon => Launch_Icon.Workbench category => App_Category.Tools))
+    (Launch_Entry label => "Text" action => (Launch_Action.Program "text.app") icon => Launch_Icon.Workbench category => App_Category.Tools
+      color => (App_Color.RGB (RGB_Color red => 217 green => 130 blue => 43))))
   (setting "desktop.launch.60-sameboy"
-    (Launch_Entry label => "SameBoy" action => (Launch_Action.Program "sameboy.app") icon => Launch_Icon.Gameboy category => App_Category.Games))
+    (Launch_Entry label => "SameBoy" action => (Launch_Action.Program "sameboy.app") icon => Launch_Icon.Gameboy category => App_Category.Games
+      color => (App_Color.RGB (RGB_Color red => 116 green => 116 blue => 154))))
   (setting "desktop.launch.70-settings"
-    (Launch_Entry label => "Settings" action => Launch_Action.Settings icon => Launch_Icon.Settings category => App_Category.System))
+    (Launch_Entry label => "Settings" action => Launch_Action.Settings icon => Launch_Icon.Settings category => App_Category.System
+      color => (App_Color.RGB (RGB_Color red => 61 green => 124 blue => 201))))
   (setting "desktop.launch.80-config-inspector"
-    (Launch_Entry label => "Config Inspector" action => (Launch_Action.Program "config-inspector.app") icon => Launch_Icon.Inspector category => App_Category.System))
+    (Launch_Entry label => "Config Inspector" action => (Launch_Action.Program "config-inspector.app") icon => Launch_Icon.Inspector category => App_Category.System
+      color => (App_Color.RGB (RGB_Color red => 123 green => 63 blue => 214))))
   # Keyboard auto-repeat (Desktop, docs/development-backlog.md UI-022): the
   # delay before a held key's first repeat and the repeats per second. The
   # CCL type Key_Repeat (CCL.Interfaces.Desktop_Input) bounds both.

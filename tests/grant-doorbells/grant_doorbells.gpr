@@ -1,0 +1,15 @@
+--  Hosted tests and proof for Grant_Doorbells and Grant_Bell_Lists
+--  (CAP-002 step 3, the coalesced channel wake).
+project Grant_Doorbells is
+   for Source_Dirs use (".", "../../kernel/src");
+   for Source_Files use ("grant_doorbells.ads", "grant_doorbells.adb",
+                         "grant_bell_lists.ads", "grant_bell_lists.adb",
+                         "main.adb");
+   for Object_Dir use "build/obj";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-O2", "-gnat2022", "-gnata", "-gnato", "-gnatwa", "-gnatwJ");
+   end Compiler;
+end Grant_Doorbells;

@@ -40,17 +40,20 @@ package body CuBit.UI.Theme_Data with SPARK_Mode is
       when Active_Title_Top => "active-title-top",
       when Active_Title_Bottom => "active-title-bottom",
       when Inactive_Title_Top => "inactive-title-top",
-      when Inactive_Title_Bottom => "inactive-title-bottom");
+      when Inactive_Title_Bottom => "inactive-title-bottom",
+      when Title_Bar => "title-bar", when Menu_Rule => "menu-rule");
    function Colors (Value : Theme) return Palette_Colors is
      ([Value.desktop, Value.panel, Value.face, Value.edge, Value.shadow,
        Value.text, Value.muted, Value.accent, Value.good, Value.danger,
        Value.field, Value.selection, Value.selectionText, Value.highlight,
        Value.darkShadow, Value.activeTitleTop, Value.activeTitleBottom,
-       Value.inactiveTitleTop, Value.inactiveTitleBottom]);
+       Value.inactiveTitleTop, Value.inactiveTitleBottom, Value.titleBar,
+       Value.menuRule]);
    function To_Theme (Value : Palette_Colors) return Theme is
      ((Value (Desktop), Value (Panel), Value (Face), Value (Edge), Value (Shadow),
        Value (Text), Value (Muted), Value (Accent), Value (Good), Value (Danger),
        Value (Input_Field), Value (Selection), Value (Selection_Text),
        Value (Highlight), Value (Dark_Shadow), Value (Active_Title_Top),
-       Value (Active_Title_Bottom), Value (Inactive_Title_Top), Value (Inactive_Title_Bottom)));
+       Value (Active_Title_Bottom), Value (Inactive_Title_Top), Value (Inactive_Title_Bottom),
+       Value (Title_Bar), Value (Menu_Rule)));
 end CuBit.UI.Theme_Data;

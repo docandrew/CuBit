@@ -24,6 +24,7 @@ package CuBit.Libc_ABI with Pure, SPARK_Mode is
    ENOENT          : constant int := 2;
    EIO             : constant int := 5;
    E2BIG           : constant int := 7;
+   ENOEXEC         : constant int := 8;
    EBADF           : constant int := 9;
    ENOTDIR         : constant int := 20;
    EISDIR          : constant int := 21;

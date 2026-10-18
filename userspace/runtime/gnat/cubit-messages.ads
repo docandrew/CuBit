@@ -191,6 +191,14 @@ package CuBit.Messages is
    NULL_MESSAGE : constant Message :=
      (tag => NULL_TAG, authorityTag => 0, words => (others => 0));
 
+   --  The same wait, but a pending kernel notice (a channel wake, grant
+   --  lifecycle, child exit) comes back in Event (Taken) in the same call,
+   --  so a woken thread pays one system call. Only kernel notices are
+   --  taken; other work is still Work_Available.
+   type Wake_Result is (Event_Taken, Work_Available, Deadline_Reached, Unavailable);
+   procedure Wait_For_Activity_Or_Event
+     (Deadline : Unsigned_64; Event : aliased out Message; Result : out Wake_Result);
+
    --  A process (CuBit.Process_IDs, KERN-003), with what clients of this
    --  package use with it.
    subtype Process_ID is CuBit.Process_IDs.Process_ID;

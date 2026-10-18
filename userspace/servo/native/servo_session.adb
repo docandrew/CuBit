@@ -947,8 +947,8 @@ package body Servo_Session is
             return 1;
          end if;
          if Input.kind = App.INPUT_POINTER_DOWN then
-            Focused := False; Chrome_Dirty := True; Held_Buttons := Input.payload1;
-         elsif Input.kind = App.INPUT_POINTER_UP then Held_Buttons := Input.payload1;
+            Focused := False; Chrome_Dirty := True; Held_Buttons := Input.payload1 and 16#FFFF_FFFF#;
+         elsif Input.kind = App.INPUT_POINTER_UP then Held_Buttons := Input.payload1 and 16#FFFF_FFFF#;
          end if;
          C := App.Canvas (Win);
          -- Servo input positions are device pixels. Preserve the same phase

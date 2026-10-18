@@ -94,6 +94,13 @@ is
                                        arg0, arg1, arg2 : Unsigned_64;
                                        retval : out Unsigned_64);
 
+    -- WAIT_FOR_IPC_OR_COMPLETION_UNTIL_MONOTONIC_MILLISECOND: arg0 is the
+    -- deadline; arg1, when nonzero, a message buffer that receives a pending
+    -- kernel notice (result Process.IPC.Activity_Event), so a thread woken
+    -- by a channel wake reads it in the same call.
+    procedure handleWaitForActivity (arg0, arg1 : Unsigned_64;
+                                     retval : out Unsigned_64);
+
     procedure handleReceiveEventNB (arg0, arg1 : Unsigned_64;
                                     retval : out Unsigned_64);
 

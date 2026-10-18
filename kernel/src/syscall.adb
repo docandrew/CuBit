@@ -238,6 +238,8 @@ package body Syscall is
         -- CPU, where percpu no longer describes it.
         waitPID    : Process.ProcessID := Process.NO_PROCESS;
     begin
+        Process.threadtab (percpu.currentThread).systemCalls :=
+          Process.threadtab (percpu.currentThread).systemCalls + 1;
         if traceActive then
             startTSC := x86.rdtsc;
             -- Tight compute controls issue GETTIME repeatedly. Keep their
@@ -440,7 +442,7 @@ package body Syscall is
                 IPC.handleReceive (arg0, retval);
 
             when SYSCALL_WAIT_FOR_IPC_OR_COMPLETION_UNTIL_MONOTONIC_MILLISECOND =>
-                retval := Process.IPC.waitForActivityUntil (arg0);
+                IPC.handleWaitForActivity (arg0, arg1, retval);
 
             when SYSCALL_RECEIVE_UNTIL_MONOTONIC_MILLISECOND =>
                 IPC.handleReceiveUntil (arg0, arg1, retval);

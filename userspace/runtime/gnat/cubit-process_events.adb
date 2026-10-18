@@ -9,6 +9,7 @@ with CuBit.Kernel_ABI;
 with CuBit.Kernel_Calls;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Streams;
+with CuBit.Channel_Bells;
 
 package body CuBit.Process_Events is
 
@@ -43,42 +44,59 @@ package body CuBit.Process_Events is
       Events (Event_Count) := Item;
    end Keep_Event;
 
+   function Has_Room return Boolean is
+     (Exit_Count < Kept_Events and then Event_Count < Kept_Events);
+
+   procedure File (Event : Message) is
+      Bell_Notice : Boolean;
+   begin
+      --  Rung channel grants (CAP-002 step 3) go to CuBit.Channel_Bells.
+      CuBit.Channel_Bells.Note_Notice
+        (Event.tag.label, Event.tag.length,
+         [Event.words (0), Event.words (1), Event.words (2), Event.words (3)], Bell_Notice);
+      if Bell_Notice then
+         return;
+      end if;
+      if Event.tag.label = CE.Event_Label then
+         if CE.Valid (Event.tag.length, Event.words (0), Event.words (1), Event.words (2)) then
+            Keep_Exit (CE.Decode (Event.words (0), Event.words (1), Event.words (2)));
+         end if;
+      else
+         declare
+            Item : constant CV.Event :=
+              CV.Decode (Event.tag.label, Event.tag.length, Event.words (0), Event.words (1),
+                         Event.words (2));
+         begin
+            case Item.Kind is
+               when CV.Grant_Revoked =>
+                  --  The default: a ring this process adopted goes back.
+                  if not CuBit.Streams.Return_Revoked (Item.Slot, Item.Generation) then
+                     Keep_Event (Item);
+                  end if;
+               when CV.Grant_Returned =>
+                  --  The default: a reader of an outlet let go.
+                  if not CuBit.Streams.Forget_Returned (Item) then
+                     Keep_Event (Item);
+                  end if;
+               when CV.Control =>
+                  Keep_Event (Item);
+               when CV.Not_Ours =>
+                  null;
+            end case;
+         end;
+      end if;
+   end File;
+
    procedure Poll is
       M : aliased Message;
    begin
-      while Exit_Count < Kept_Events and then Event_Count < Kept_Events
+      while Has_Room
         and then CuBit.Kernel_Calls.Call
               (KA.Receive_Event_Nonblocking,
                Unsigned_64 (System.Storage_Elements.To_Integer (M'Address)))
             = KA.Event_Received
       loop
-         if M.tag.label = CE.Event_Label then
-            if CE.Valid (M.tag.length, M.words (0), M.words (1), M.words (2)) then
-               Keep_Exit (CE.Decode (M.words (0), M.words (1), M.words (2)));
-            end if;
-         else
-            declare
-               Item : constant CV.Event :=
-                 CV.Decode (M.tag.label, M.tag.length, M.words (0), M.words (1), M.words (2));
-            begin
-               case Item.Kind is
-                  when CV.Grant_Revoked =>
-                     --  The default: a ring this process adopted goes back.
-                     if not CuBit.Streams.Return_Revoked (Item.Slot, Item.Generation) then
-                        Keep_Event (Item);
-                     end if;
-                  when CV.Grant_Returned =>
-                     --  The default: a reader of an outlet let go.
-                     if not CuBit.Streams.Forget_Returned (Item) then
-                        Keep_Event (Item);
-                     end if;
-                  when CV.Control =>
-                     Keep_Event (Item);
-                  when CV.Not_Ours =>
-                     null;
-               end case;
-            end;
-         end if;
+         File (M);
       end loop;
    end Poll;
 

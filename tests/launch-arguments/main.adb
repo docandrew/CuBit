@@ -8,9 +8,11 @@ with Interfaces; use Interfaces;
 with Interfaces.C;
 with CuBit.Launch_Arguments; use CuBit.Launch_Arguments;
 with CuBit.Launch_Arguments_C;
+with CuBit.Launch_Failure_Text;
 with CuBit.Child_Exits;
 with CuBit.Process_IDs;
 with Process_Launch;
+with CuBit.Launch_Envelopes;
 with CuBit.Launch_Authority;
 
 procedure Main is
@@ -376,7 +378,8 @@ begin
              and then Stopped_Wire = Termination_Kind'Enum_Rep (Stopped)
              and then Process_Launch.Child_Exit_Words = Event_Words
              and then Process_Launch.Arguments_Base = Block_Address
-             and then Process_Launch.Maximum_Bytes = Maximum_Block_Bytes,
+             and then Process_Launch.Maximum_Bytes =
+                        CuBit.Launch_Envelopes.Maximum_Block_Bytes,
              "kernel and runtime agree on the wire values");
       Check (Process_Launch.To_Exit_Code (300) = 44
              and then Process_Launch.To_Exit_Code (255) = 255,
@@ -472,6 +475,23 @@ begin
                                             "example.org:4433"),
              "child scopes must be covered by the launcher's");
    end;
+
+   --  Launch failure codes: every reason round-trips through its reply
+   --  word, words outside the codes are refused, and each has words for
+   --  a person.
+   for Reason in Launch_Failure loop
+      Check (Is_Failure (Launch_Failure'Enum_Rep (Reason))
+             and then Failure_Of (Launch_Failure'Enum_Rep (Reason)) = Reason,
+             "launch failure round trip " & Reason'Image);
+      Check (CuBit.Launch_Failure_Text.Explanation (Reason)'Length > 0, "explanation of " & Reason'Image);
+   end loop;
+   Check (not Is_Failure (0), "zero is not a launch failure");
+   Check (not Is_Failure (Launch_Failure'Enum_Rep (Launch_Failure'Last) + 1),
+          "past the last code is not a launch failure");
+   Check (not Is_Failure (Unsigned_64'Last), "all ones is not a launch failure");
+   Check (Launch_Failure'Enum_Rep (Spawn_Failed) = 4
+          and then Launch_Failure'Enum_Rep (Not_Granted) = 5,
+          "existing launch failure codes are unchanged");
 
    if Failures = 0 then
       Put_Line ("launch-arguments:" & Checks'Image & " checks PASS");

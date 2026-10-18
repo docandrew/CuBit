@@ -47,15 +47,18 @@ procedure Desktop_Launch_Test is
    Items : Menu;
    Penny : constant String :=
      Stored ("(Launch_Entry label => ""Penny"" action => (Launch_Action.Program ""cubitshell.app"") " &
-             "icon => Launch_Icon.Penny category => App_Category.Web)");
+             "icon => Launch_Icon.Penny category => App_Category.Web " &
+             "color => (App_Color.RGB (RGB_Color red => 184 green => 106 blue => 58)))");
 begin
    Check (Penny = "(Launch_Entry label => ""Penny"" action => (Launch_Action.Program ""cubitshell.app"") "
-                  & "icon => Launch_Icon.Penny category => App_Category.Web single_instance => false)",
+                  & "icon => Launch_Icon.Penny category => App_Category.Web single_instance => false "
+                  & "color => (App_Color.RGB (RGB_Color red => 184 green => 106 blue => 58)))",
           "a typed entry compiles to its canonical form: " & Penny);
    Check (Decodes (Penny, Item) and then Label_Of (Item) = "Penny" and then Program_Of (Item) = "cubitshell.app"
           and then Item.Kind = Launch_Program and then Item.Icon = Desktop_Icons.Penny
-          and then Item.Group = CCL.Interfaces.Desktop_Launch.Web and then not Item.Single_Instance,
-          "the desktop reads it back");
+          and then Item.Group = CCL.Interfaces.Desktop_Launch.Web and then not Item.Single_Instance
+          and then Item.Color = (Declared => True, Value => 16#B86A3A#),
+          "the desktop reads it back, colour included");
    declare
       Doom : constant String :=
         Stored ("(Launch_Entry ""DOOM"" (Launch_Action.Program ""doom.elf"") Launch_Icon.Doom App_Category.Games true)");
@@ -67,15 +70,21 @@ begin
       Settings : constant String := Stored ("(Launch_Entry label => ""Settings"" action => Launch_Action.Settings)");
    begin
       Check (Decodes (Settings, Item) and then Item.Kind = Internal_Settings
-             and then Item.Group = CCL.Interfaces.Desktop_Launch.Tools and then Item.Icon = Desktop_Icons.Files,
-             "defaults: Tools, the Files icon; internal settings");
+             and then Item.Group = CCL.Interfaces.Desktop_Launch.Tools and then Item.Icon = Desktop_Icons.Files
+             and then not Item.Color.Declared,
+             "defaults: Tools, the Files icon, the theme accent; internal settings");
    end;
    --  Refused when compiling.
    Check (Stored ("(Launch_Entry label => ""X"" action => Launch_Action.Settings category => App_Category.Toys)") = "",
           "an undeclared category is refused");
    Check (Stored ("(Launch_Entry label => ""X"")") = "", "a missing action is refused");
-   Check (Stored ("(Launch_Entry label => ""X"" action => Launch_Action.Settings color => 3)") = "",
+   Check (Stored ("(Launch_Entry label => ""X"" action => Launch_Action.Settings colour => 3)") = "",
           "an unknown field is refused");
+   Check (Stored ("(Launch_Entry label => ""X"" action => Launch_Action.Settings color => 3)") = "",
+          "a colour that is not an App_Color is refused");
+   Check (Stored ("(Launch_Entry label => ""X"" action => Launch_Action.Settings " &
+                  "color => (App_Color.RGB (RGB_Color red => 256 green => 0 blue => 0)))") = "",
+          "a colour channel above 255 is refused");
    Check (Stored ("""(launch v1 (label \""X\"") (internal settings))""") = "",
           "the old string form is refused");
    Check (Stored ("42") = "", "a number is refused");
@@ -96,6 +105,7 @@ begin
    Check (Items.Count = 8 and then Label_Of (Items.Entries (1)) = "CCL Workbench"
           and then Items.Entries (7).Kind = Internal_Settings, "built-in list");
    Check (Items.Entries (4).Group = CCL.Interfaces.Desktop_Launch.Web, "built-in entries have categories");
+   Check ((for all I in 1 .. Items.Count => Items.Entries (I).Color.Declared), "built-in entries have colours");
    --  The two-level menu over the built-in list: System (Devices, Settings,
    --  Config Inspector), Development (Workbench), Web (Penny), Games (DOOM,
    --  SameBoy), Tools (Files).

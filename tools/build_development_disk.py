@@ -31,6 +31,7 @@ def build(output, files, debug_dir=None):
         if not source.is_file():
             raise ValueError(f'missing payload: {source}')
         payloads[destination] = source
+    image_debug.refuse_stale_programs(payloads)
     # Metadata, future app overlays, and a useful writable workspace. This is
     # image capacity, not guest RAM consumption (the image stays disk-backed).
     quantum = 64 * 1024 * 1024

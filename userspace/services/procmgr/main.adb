@@ -51,6 +51,7 @@ with CuBit.Boot_Milestone_Codes;
 with CuBit.Boot_Milestones;
 with CuBit.Grant_References;
 with CuBit.Launch_Arguments;
+with CuBit.Launch_Failure_Text;
 with CuBit.Launch_Grants;
 with CuBit.Program_Descriptions;
 with CuBit.Outlet_Rings;
@@ -2293,7 +2294,7 @@ procedure main is
    ---------------------------------------------------------------------------
    --  spawnByName
    --  Read ELF from filesystem, spawn suspended, grant manifest caps, resume.
-   --  Returns PID on success, 0 on failure.
+   --  Returns PID on success; No_Process on failure, with Failure saying why.
    ---------------------------------------------------------------------------
    ---------------------------------------------------------------------------
    --  loadLaunchTable
@@ -2445,6 +2446,7 @@ procedure main is
       Prior_Incarnation : Process_ID;
       Retry : out Boolean;
       Identity : out Process_ID;
+      Failure : out CuBit.Launch_Arguments.Launch_Failure;
       name        : String;
       priority    : Unsigned_64;
       requester   : Process_ID := No_Process;
@@ -2909,10 +2911,13 @@ procedure main is
    begin
       Retry := False;
       Identity := No_Process;
+      --  Refined below where a failure has a more specific reason.
+      Failure := LA.Spawn_Failed;
       if startupRole = CCL.Configurations.Config_Storage and then
         (not systemStartup or Config_Storage_Selected)
       then
          debugPrint ("procmgr: Config storage role not available" & LF);
+         Failure := LA.Manifest_Refused;
          return No_Process;
       end if;
       debugPrint ("procmgr: spawn: ");
@@ -2925,6 +2930,7 @@ procedure main is
 
       if elfSize = 0 then
          debugPrint ("procmgr: file read failed" & LF);
+         Failure := LA.Executable_Not_Found;
          return No_Process;
       end if;
 
@@ -2943,6 +2949,11 @@ procedure main is
       if Reading in Manifest_Malformed then
          Warnings.Warn ("procmgr: launch of " & name & " refused: unreadable capability manifest (" &
                         Manifest_Reading'Image (Reading) & ")");
+         Failure :=
+           (case Reading is
+              when Startup_Table_Missing => LA.Startup_Table_Missing,
+              when Startup_Table_Invalid | Requests_Disagree => LA.Startup_Table_Invalid,
+              when others => LA.Manifest_Refused);
          return No_Process;
       end if;
 
@@ -2956,6 +2967,9 @@ procedure main is
       begin
          if not Spawned.Spawned then
             debugPrint ("procmgr: spawn refused: " & H.ABI.Refusal'Image (Spawned.Why) & LF);
+            if Spawned.Why in H.ABI.Out_Of_Memory then
+               Failure := LA.Out_Of_Memory;
+            end if;
             return No_Process;
          end if;
          Child := Spawned.Value;
@@ -2994,6 +3008,7 @@ procedure main is
          if Description_Length > 0 and then not Description_Valid then
             debugPrint ("procmgr: invalid program description" & LF);
             Stop_Suspended_Child;
+            Failure := LA.Manifest_Refused;
             return No_Process;
          end if;
          if Description_Length > 0 then
@@ -3039,6 +3054,7 @@ procedure main is
             if not Accepted then
                debugPrint ("procmgr: program description does not fit its launch block" & LF);
                Stop_Suspended_Child;
+               Failure := LA.Manifest_Refused;
                return No_Process;
             end if;
          end if;
@@ -3104,6 +3120,7 @@ procedure main is
           (Force_Software and then Render.Demand /= CuBit.Render_Startup.Optional)))
       then
          Stop_Suspended_Child;
+         Failure := LA.Render_Denied;
          return No_Process;
       end if;
 
@@ -3179,6 +3196,9 @@ procedure main is
             -- Child has never run. Remove partial service-side installation
             -- BEFORE killing it, while its PID is still occupied; cleanup
             -- must not accidentally address a later occupant of that PID.
+            Failure :=
+              (if attenuationRefused or else directoryRefused then LA.Not_Granted
+               else LA.Capability_Denied);
             Discard_Authorized_Child;
             return No_Process;
          end if;
@@ -3193,6 +3213,7 @@ procedure main is
             --  config.svc takes the worker's endpoint from this call's offer.
             Config_Storage_Selected := True;
             if Registered_Driver (DRIVER_CONFIG) = No_Process then
+               Failure := LA.Service_Unavailable;
                Discard_Authorized_Child;
                return No_Process;
             end if;
@@ -3224,7 +3245,7 @@ procedure main is
             Mode : constant CuBit.Render_Startup.Attempt :=
               (if Force_Software then CuBit.Render_Startup.Software_Only else
                CuBit.Render_Startup.Initial_Attempt
-                 (Render.Demand, systemStartup and approveRender));
+                 (Render.Demand, approveRender));
             Next : CuBit.Render_Startup.Decision;
             Entry_State : CuBit.Render_Startup.Capability := CuBit.Render_Startup.Unknown;
          begin
@@ -3237,10 +3258,11 @@ procedure main is
             end if;
             debugPrint ("procmgr: render attempt incarnation=" & Image (Identity) &
               " software=" & Boolean'Image (Mode = CuBit.Render_Startup.Software_Only) & LF);
-            -- Only a trusted startup plan may supply this approval today.
-            -- Public spawn requests never propagate it.
+            -- Only a trusted startup plan or Desktop's named GPU-app rule
+            -- (CuBit.Launch_Policy.Desktop_Render_Approval) supplies this
+            -- approval. Other spawn requests never propagate it.
             if Mode = CuBit.Render_Startup.With_Render and then
-              systemStartup and then approveRender and then Render.Valid and then
+              approveRender and then Render.Valid and then
               Now <= Unsigned_64'Last - 6_000
             then
                Deadline := Now + 6_000;
@@ -3281,7 +3303,7 @@ procedure main is
             end if;
             Next := CuBit.Render_Startup.Decide
               (Render.Demand, Mode,
-               systemStartup and approveRender and Render.Valid,
+               approveRender and Render.Valid,
                (case Render_Launch.State (Render_Launcher, Render_Ticket) is
                   when Render_Launch.Absent => CuBit.Render_Startup.Not_Requested,
                   when Render_Launch.Pending => CuBit.Render_Startup.Pending,
@@ -3311,6 +3333,7 @@ procedure main is
                      "; launch attempt pid" & Image (newPID) & " withdrawn" &
                      (if Retry then ", retrying with software rendering" else ""));
                end;
+               Failure := LA.Render_Denied;
                return No_Process;
             end if;
             if Next = CuBit.Render_Startup.Resume_Render then
@@ -3347,6 +3370,13 @@ procedure main is
                          (1 .. View.Declared.Entries (Result.Index).Label.Length)) &
                      """ (" & SB.Mint_Outcome'Image (Result.Why) & ")"
                 else ""));
+            Failure :=
+              (if Result.Status /= SB.Required_Refused then LA.Startup_Table_Invalid
+               else
+                 (case Result.Why is
+                    when SB.Not_Available | SB.Timed_Out => LA.Service_Unavailable,
+                    when SB.Out_Of_Memory => LA.Out_Of_Memory,
+                    when others => LA.Capability_Denied));
             Discard_Authorized_Child;
             return No_Process;
          end if;
@@ -3449,7 +3479,8 @@ procedure main is
       approveNetwork : Network_Approval := No_Network;
       approveRender : Boolean := False;
       systemStartup : Boolean := False;
-      startupRole : CCL.Configurations.Startup_Role := CCL.Configurations.Application)
+      startupRole : CCL.Configurations.Startup_Role := CCL.Configurations.Application;
+      Failure : out CuBit.Launch_Arguments.Launch_Failure)
       return Process_ID
    is
       Retry : Boolean;
@@ -3457,14 +3488,14 @@ procedure main is
       Result : Process_ID;
    begin
       Result := Spawn_Attempt
-        (False, No_Process, Retry, Identity, name, priority, requester, sandboxMode,
+        (False, No_Process, Retry, Identity, Failure, name, priority, requester, sandboxMode,
          cwd, approveNetwork, approveRender, systemStartup, startupRole);
       if Result = No_Process and then Retry then
          -- Exactly one fresh attempt, with no broker request. The failed
          -- attempt's launcher resources stay retained independently.
          debugPrint ("procmgr: render retry software with fresh child" & LF);
          Result := Spawn_Attempt
-           (True, Identity, Retry, Retry_Identity, name, priority, requester,
+           (True, Identity, Retry, Retry_Identity, Failure, name, priority, requester,
             sandboxMode, cwd, approveNetwork, approveRender, systemStartup, startupRole);
       end if;
       return Result;
@@ -3492,6 +3523,7 @@ procedure main is
       Mapped    : System.Address;
       Ok, Returned : Boolean;
       newPID    : Process_ID;
+      Failure   : LA.Launch_Failure := LA.Spawn_Failed;
 
       procedure Fail (Reason : LA.Launch_Failure) is
       begin
@@ -3619,7 +3651,7 @@ procedure main is
          attenuateFor := sender;
          attenuationRefused := False;
          directoryRefused := False;
-         newPID := spawnByName (Name, Priority, sender);
+         newPID := spawnByName (Name, Priority, sender, Failure => Failure);
          pendingArgumentBytes := 0;
          pendingGrantBytes := 0;
          pendingRings := (others => <>);
@@ -3647,7 +3679,7 @@ procedure main is
          attenuationRefused := False;
          Fail (LA.Not_Granted);
       elsif newPID = No_Process then
-         Fail (LA.Spawn_Failed);
+         Fail (Failure);
       else
          declare
             Reply_Message : Message := NULL_MESSAGE;
@@ -3853,6 +3885,9 @@ procedure main is
    --           tag.length=filename length, words(1)=priority,
    --           words(2)=spawnFlags (low 2 bits = sandbox override),
    --           words(3)=cwdLen (cwd bytes follow filename in grant buf)
+   --  Reply OK: words(0)=child identity; the requester is its parent and
+   --  receives its EVENT_CHILD_EXIT. Reply REPLY_ERR: words(0)=
+   --  CuBit.Launch_Arguments.Launch_Failure.
    ---------------------------------------------------------------------------
    procedure handleSpawn (sender : Process_ID; msg : Message) is
       MAX_NAME    : constant := 255;
@@ -3870,11 +3905,17 @@ procedure main is
       name        : String (1 .. MAX_NAME);
       cwd         : String (1 .. MAX_CWD);
       newPID      : Process_ID;
+      Failure     : CuBit.Launch_Arguments.Launch_Failure;
+
+      procedure Fail (Reason : CuBit.Launch_Arguments.Launch_Failure) is
+      begin
+         sendReply (sender, REPLY_ERR, CuBit.Launch_Arguments.Launch_Failure'Enum_Rep (Reason));
+      end Fail;
    begin
       if nameLen = 0 or else nameLen > MAX_NAME or else
         not CuBit.Grant_References.Valid_Wire (msg.words (0))
       then
-         sendReply (sender, REPLY_ERR, 0);
+         Fail (CuBit.Launch_Arguments.Malformed_Request);
          return;
       end if;
 
@@ -3891,7 +3932,7 @@ procedure main is
         (buffer, sender, 0, Unsigned_64 (nameLen + cwdLen),
          CuBit.Memory_Grants.Read_Access, grantAddr, acquired);
       if not acquired then
-         sendReply (sender, REPLY_ERR, 0);
+         Fail (CuBit.Launch_Arguments.Grant_Unavailable);
          return;
       end if;
       declare
@@ -3903,7 +3944,7 @@ procedure main is
       end;
       CuBit.Memory_Grants.Return_Acquisition (buffer, returned);
       if not returned then
-         sendReply (sender, REPLY_ERR, 0);
+         Fail (CuBit.Launch_Arguments.Grant_Unavailable);
          return;
       end if;
 
@@ -3911,6 +3952,8 @@ procedure main is
          approval : constant Network_Approval := Desktop_Approval
            (name (1 .. nameLen), sender,
             Registered_Driver (DRIVER_DESKTOP));
+         render : constant Boolean := CuBit.Launch_Policy.Desktop_Render_Approval
+           (name (1 .. nameLen), sender, Registered_Driver (DRIVER_DESKTOP));
       begin
          if approval = Browser_Outbound then
             debugPrint ("procmgr: desktop browser outbound approval: " &
@@ -3919,16 +3962,18 @@ procedure main is
          if cwdLen > 0 then
             newPID := spawnByName (name (1 .. nameLen), priority,
                                    sender,
-                                   sandboxMode, cwd (1 .. cwdLen), approval);
+                                   sandboxMode, cwd (1 .. cwdLen), approval,
+                                   approveRender => render, Failure => Failure);
          else
             newPID := spawnByName (name (1 .. nameLen), priority,
                                    sender,
-                                   sandboxMode, approveNetwork => approval);
+                                   sandboxMode, approveNetwork => approval,
+                                   approveRender => render, Failure => Failure);
          end if;
       end;
 
       if newPID = No_Process then
-         sendReply (sender, REPLY_ERR, 0);
+         Fail (Failure);
       else
          sendReply (sender, REPLY_OK, To_Word (newPID));
       end if;
@@ -3986,6 +4031,7 @@ procedure main is
             Name : String renames
               Item.Executable.Data (1 .. Item.Executable.Length);
             PID : Process_ID;
+            Failure : CuBit.Launch_Arguments.Launch_Failure;
          begin
             Entry_Number := Entry_Number + 1;
             --  These bounded milestones are also retained by the firmware
@@ -4000,9 +4046,11 @@ procedure main is
                approveRender => Item.Approve_Render,
                approveNetwork =>
                  (if Item.Approval = Approve_Declared then Declared_Network
-                  else No_Network));
+                  else No_Network),
+               Failure => Failure);
             if PID = No_Process then
-               debugPrint ("procmgr: init spawn failed: " & Name & LF);
+               debugPrint ("procmgr: init spawn failed: " & Name & ": " &
+                           CuBit.Launch_Failure_Text.Explanation (Failure) & LF);
             else
                debugPrint ("procmgr: init launched: " & Name & LF);
             end if;

@@ -3,7 +3,8 @@ package CuBit.UI.Theme_Data with SPARK_Mode is
    type Field is
      (Desktop, Panel, Face, Edge, Shadow, Text, Muted, Accent, Good, Danger,
       Input_Field, Selection, Selection_Text, Highlight, Dark_Shadow,
-      Active_Title_Top, Active_Title_Bottom, Inactive_Title_Top, Inactive_Title_Bottom);
+      Active_Title_Top, Active_Title_Bottom, Inactive_Title_Top, Inactive_Title_Bottom,
+      Title_Bar, Menu_Rule);
    subtype RGB_Color is Color range 0 .. 16#FFFFFF#;
    type Palette_Colors is array (Field) of RGB_Color;
    function Name (Item : Field) return String;

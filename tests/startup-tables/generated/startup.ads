@@ -5,6 +5,7 @@ pragma Ada_2022;
 with CuBit.Handles.Startup;
 with CuBit.Startup_State;
 with CuBit.Startup_Tables;
+with CuBit.Channel_Limits;
 package Startup with SPARK_Mode is
 
    --  Device_Memory "registers", required.
@@ -36,4 +37,28 @@ package Startup with SPARK_Mode is
           (Standard.CuBit.Startup_Tables.To_Name ("devmgr"), Standard.CuBit.Startup_Tables.Endpoint, Standard.CuBit.Startup_Tables.Required),
           (Standard.CuBit.Startup_Tables.To_Name ("pointer-events"), Standard.CuBit.Startup_Tables.Notification, Standard.CuBit.Startup_Tables.Optional),
           (Standard.CuBit.Startup_Tables.To_Name ("real-time"), Standard.CuBit.Startup_Tables.Scheduling, Standard.CuBit.Startup_Tables.Required)]));
+
+   package Channels is
+      --  "gpu.display"
+      Gpu_Display_Per_Client : constant Standard.CuBit.Channel_Limits.Channel_Limit :=
+        (Kind => Standard.CuBit.Channel_Limits.At_Most, Count => 1);
+      Gpu_Display_Total : constant Standard.CuBit.Channel_Limits.Channel_Limit :=
+        (Kind => Standard.CuBit.Channel_Limits.At_Most, Count => 1);
+      Gpu_Display_Class : constant Standard.CuBit.Channel_Limits.Channel_Class :=
+        Standard.CuBit.Channel_Limits.Urgent;
+      --  "gpu.command"
+      Gpu_Command_Per_Client : constant Standard.CuBit.Channel_Limits.Channel_Limit :=
+        (Kind => Standard.CuBit.Channel_Limits.At_Most, Count => 1);
+      Gpu_Command_Total : constant Standard.CuBit.Channel_Limits.Channel_Limit :=
+        (Kind => Standard.CuBit.Channel_Limits.At_Most, Count => 1);
+      Gpu_Command_Class : constant Standard.CuBit.Channel_Limits.Channel_Class :=
+        Standard.CuBit.Channel_Limits.Interactive;
+      --  "gpu.render"
+      Gpu_Render_Per_Client : constant Standard.CuBit.Channel_Limits.Channel_Limit :=
+        (Kind => Standard.CuBit.Channel_Limits.Server_Limit);
+      Gpu_Render_Total : constant Standard.CuBit.Channel_Limits.Channel_Limit :=
+        (Kind => Standard.CuBit.Channel_Limits.Server_Limit);
+      Gpu_Render_Class : constant Standard.CuBit.Channel_Limits.Channel_Class :=
+        Standard.CuBit.Channel_Limits.Normal;
+   end Channels;
 end Startup;

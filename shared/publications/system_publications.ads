@@ -179,13 +179,16 @@ package System_Publications with Pure, SPARK_Mode is
       Event_Drops       : Unsigned_64 := 0;
       --  Free physical memory in the whole system, in bytes (a snapshot).
       Free_Memory_Bytes : Unsigned_64 := 0;
+      --  System calls the calling thread has made, this one included.
+      Thread_System_Calls : Unsigned_64 := 0;
    end record;
    for Statistics use record
-      Owned_Bytes       at 0 range 0 .. 63;
-      Event_Drops       at 8 range 0 .. 63;
-      Free_Memory_Bytes at 16 range 0 .. 63;
+      Owned_Bytes         at 0 range 0 .. 63;
+      Event_Drops         at 8 range 0 .. 63;
+      Free_Memory_Bytes   at 16 range 0 .. 63;
+      Thread_System_Calls at 24 range 0 .. 63;
    end record;
-   Statistics_Bytes : constant := 24;
+   Statistics_Bytes : constant := 32;
    pragma Compile_Time_Error (Statistics'Size /= Statistics_Bytes * 8,
-                              "the statistics ABI is 24 bytes");
+                              "the statistics ABI is 32 bytes");
 end System_Publications;

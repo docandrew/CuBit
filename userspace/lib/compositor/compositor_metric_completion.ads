@@ -1,6 +1,7 @@
 with Interfaces;
 with CuBit.Metric_Records;
 with CuBit.Metric_Protocol;
+with Capability_ABI;
 package Compositor_Metric_Completion with SPARK_Mode, Pure is
    use Interfaces;
    package Protocol renames CuBit.Metric_Protocol;
@@ -9,16 +10,21 @@ package Compositor_Metric_Completion with SPARK_Mode, Pure is
       Kernel_Valid : Boolean := False;
       Kernel_Status : Unsigned_64 := 0;
       Label : Unsigned_32 := 0;
-      Length, Flags : Unsigned_8 := 0;
+      Length : Unsigned_8 := 0;
+      Protocol_Flags : Capability_ABI.Protocol_Flags := 0;
+      IPC_Flags : Capability_ABI.IPC_Flags := Capability_ABI.No_IPC_Flags;
       Reserved : Unsigned_16 := 0;
       Words : Payload := [others => 0];
    end record;
    -- Caller first selects an outstanding request by its non-reused kernel
    -- token. This checks the terminal reply, not token routing/authentication.
+   use type Capability_ABI.Protocol_Flags;
+   use type Capability_ABI.IPC_Flags;
    function Definitive
      (Value : Reply; Sent : CuBit.Metric_Records.Record_Count) return Boolean is
      (Sent > 0 and then Value.Kernel_Valid and then Value.Kernel_Status = 0 and then
-      Value.Length = Protocol.Message_Words and then Value.Flags = 0 and then
+      Value.Length = Protocol.Message_Words and then Value.Protocol_Flags = 0 and then
+      Value.IPC_Flags = Capability_ABI.No_IPC_Flags and then
       Value.Reserved = 0 and then Value.Words (2) = 0 and then Value.Words (3) = 0 and then
       (if Value.Label = Protocol.Status'Enum_Rep (Protocol.OK) then
           Value.Words (0) <= Unsigned_64 (Sent) and then
@@ -30,7 +36,8 @@ package Compositor_Metric_Completion with SPARK_Mode, Pure is
        else False))
      with Post => (if Definitive'Result then
        Sent > 0 and Value.Kernel_Valid and Value.Kernel_Status = 0 and
-       Value.Length = Protocol.Message_Words and Value.Flags = 0 and
+       Value.Length = Protocol.Message_Words and Value.Protocol_Flags = 0 and
+       Value.IPC_Flags = Capability_ABI.No_IPC_Flags and
        Value.Reserved = 0 and Value.Words (2) = 0 and Value.Words (3) = 0 and
        (if Value.Label = Protocol.Status'Enum_Rep (Protocol.OK) then
           Value.Words (0) <= Unsigned_64 (Sent) and

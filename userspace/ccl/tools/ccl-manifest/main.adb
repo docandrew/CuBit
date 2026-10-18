@@ -1,3 +1,5 @@
+with CuBit.Channel_Limits;
+with CuBit.Channel_Declarations;
 with Ada.Command_Line;
 with Ada.Directories;
 with Ada.Streams;
@@ -223,6 +225,9 @@ procedure Main is
       Put_Line (Output, "with CuBit.Handles.Startup;");
       Put_Line (Output, "with CuBit.Startup_State;");
       Put_Line (Output, "with CuBit.Startup_Tables;");
+      if Result.Channel_Offers.Count > 0 then
+         Put_Line (Output, "with CuBit.Channel_Limits;");
+      end if;
       Put_Line (Output, "package Startup with SPARK_Mode is");
       for Binding of Result.Bindings (1 .. Result.Binding_Count) loop
          declare
@@ -270,6 +275,44 @@ procedure Main is
                          (if Index = Result.Binding_Count then "]));" else ","));
             end;
          end loop;
+      end if;
+      if Result.Channel_Offers.Count > 0 then
+         --  The channel offers this program serves (CAP-002 step 3), for
+         --  Channel_Servers.Configure: constants per contract, named after
+         --  it (dots and hyphens become underscores).
+         Put_Line (Output, "");
+         Put_Line (Output, "   package Channels is");
+         for Index in 1 .. Result.Channel_Offers.Count loop
+            declare
+               package CL renames CuBit.Channel_Limits;
+               O : CuBit.Channel_Declarations.Offer renames Result.Channel_Offers.Offers (Index);
+               Contract : constant String := String (O.Contract.Text (1 .. O.Contract.Length));
+               Ident : String := Contract;
+               function Limit_Image (L : CL.Channel_Limit) return String is
+                 (case L.Kind is
+                     when CL.At_Most => "(Kind => Standard.CuBit.Channel_Limits.At_Most, Count =>" &
+                                        Natural'Image (L.Count) & ")",
+                     when CL.Server_Limit => "(Kind => Standard.CuBit.Channel_Limits.Server_Limit)");
+            begin
+               for C of Ident loop
+                  if C in '.' | '_' then
+                     C := '-';
+                  end if;
+               end loop;
+               Put_Line (Output, "      --  """ & Contract & """");
+               Put_Line (Output, "      " & Ada_Name (Ident) & "_Per_Client : constant " &
+                         "Standard.CuBit.Channel_Limits.Channel_Limit :=");
+               Put_Line (Output, "        " & Limit_Image (O.Per_Client) & ";");
+               Put_Line (Output, "      " & Ada_Name (Ident) & "_Total : constant " &
+                         "Standard.CuBit.Channel_Limits.Channel_Limit :=");
+               Put_Line (Output, "        " & Limit_Image (O.Total) & ";");
+               Put_Line (Output, "      " & Ada_Name (Ident) & "_Class : constant " &
+                         "Standard.CuBit.Channel_Limits.Channel_Class :=");
+               Put_Line (Output, "        Standard.CuBit.Channel_Limits." &
+                         Mixed (CL.Channel_Class'Image (O.Class)) & ";");
+            end;
+         end loop;
+         Put_Line (Output, "   end Channels;");
       end if;
       Put_Line (Output, "end Startup;");
       Close (Output);
@@ -339,6 +382,7 @@ begin
    Emit (".cubit.launch", Result.Launch);
    Emit (".cubit.description", Result.Description);
    Emit (".cubit.startup", Result.Startup);
+   Emit (".cubit.channels", Result.Channels);
    Put_Line (".section .note.GNU-stack,"""",@progbits");
 exception
    when Ada.Streams.Stream_IO.Name_Error | Ada.Streams.Stream_IO.Use_Error =>

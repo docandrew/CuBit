@@ -1,4 +1,5 @@
 with Interfaces;
+with System;
 with CuBit.UI;
 with Text_Limits; use Text_Limits;
 with Text_Documents;
@@ -58,6 +59,8 @@ package Text_Editors is
    --  occurrences are shown (the host calls this once the cursor rests, so
    --  typing never repaints rows just for the highlight).
    procedure Refresh_Occurrence (E : in out Editor);
+   --  No occurrences shown (an edit or a move: they return after a rest).
+   procedure Clear_Occurrence (E : in out Editor);
    function Settings (E : Editor) return Text_Documents.Layout_Settings;
    function Page_Rows (E : Editor) return Positive;
    function Text_Columns (E : Editor) return Positive;
@@ -142,6 +145,25 @@ private
    subtype Content_Width is Natural range 0 .. (MAXIMUM_CELLS + 1) * CELL_WIDTH;
    type Width_Array is array (Row_Slot) of Content_Width;
    type Lit_Array is array (Row_Slot) of Boolean;
+   --  What one target buffer holds, row by row. A host may present from
+   --  several buffers in turn (CuBit's protected frames do): each holds
+   --  the rows as they were when it was last drawn, so a row is repainted
+   --  wherever it differs from what that buffer shows, not from what the
+   --  previous frame showed. The host's repair area covers every such row
+   --  (it accumulates each buffer's missed damage).
+   MAXIMUM_BUFFERS : constant := 4;
+   type Buffer_Index is range 1 .. MAXIMUM_BUFFERS;
+   type Buffer_Record is record
+      Target : System.Address := System.Null_Address;
+      Pitch : Natural := 0;
+      Bounds : CuBit.UI.Rect := (others => 0);
+      Valid : Boolean := False;       --  False: nothing in it is known
+      Stamp : Unsigned_64 := 0;       --  last drawn (least recent is reused)
+      Hashes : Hash_Array := [others => 0];   --  0: unknown
+      Widths : Width_Array := [others => 0];
+      Lits : Lit_Array := [others => False];
+   end record;
+   type Buffer_Array is array (Buffer_Index) of Buffer_Record;
    type Row_Array_Access is access Row_Array;
    --  The last segment wrapped (rows of one segment are drawn in a run).
    type Wrap_Cache;
@@ -171,12 +193,12 @@ private
       Previous : Hash_Array := [others => 0];
       Previous_Shown : Natural := 0;
       Dirty : Hash_Array := [others => 0];   --  nonzero: repaint the slot
-      --  A dirty slot whose background stays the same repaints only up to
-      --  the wider of its old and new content (Paint); the rest of the row
-      --  is background already. Full: the slot repaints its whole width.
-      Paint, Previous_Width : Width_Array := [others => 0];
-      Full : Lit_Array := [others => True];
+      --  The damage of a slot whose background stays the same reaches
+      --  only to the wider of its old and new content.
+      Previous_Width : Width_Array := [others => 0];
       Previous_Lit : Lit_Array := [others => False];   --  drawn as the current line
+      Buffers : Buffer_Array;
+      Draws : Unsigned_64 := 0;
       Everything : Boolean := True;
       Chrome_Hash, Previous_Chrome : Unsigned_64 := 0;
       Colors : Palette;

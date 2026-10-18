@@ -247,17 +247,23 @@ package body CuBit.Libc_Process is
 
    function Launch_Error (Failure : Unsigned_64) return int is
    begin
-      for Reason in LA.Launch_Failure loop
-         if Failure = LA.Launch_Failure'Enum_Rep (Reason) then
-            return (case Reason is
-                      when LA.Malformed_Request  => EINVAL,
-                      when LA.Grant_Unavailable  => ENOMEM,
-                      when LA.Arguments_Rejected => E2BIG,
-                      when LA.Spawn_Failed       => ENOENT,
-                      when LA.Not_Granted        => EACCES);
-         end if;
-      end loop;
-      return EIO;
+      if not LA.Is_Failure (Failure) then
+         return EIO;
+      end if;
+      return (case LA.Failure_Of (Failure) is
+                when LA.Malformed_Request     => EINVAL,
+                when LA.Grant_Unavailable     => ENOMEM,
+                when LA.Arguments_Rejected    => E2BIG,
+                when LA.Spawn_Failed          => EIO,
+                when LA.Not_Granted           => EACCES,
+                when LA.Executable_Not_Found  => ENOENT,
+                when LA.Startup_Table_Missing |
+                     LA.Startup_Table_Invalid |
+                     LA.Manifest_Refused      => ENOEXEC,
+                when LA.Capability_Denied |
+                     LA.Render_Denied         => EACCES,
+                when LA.Service_Unavailable   => EAGAIN,
+                when LA.Out_Of_Memory         => ENOMEM);
    end Launch_Error;
 
    --  Start the program named at Path with the vectors; 0 or an errno

@@ -36,6 +36,7 @@ with Modules;
 with Owned_Memory_Layout;
 with PerCpuData;
 with PerCPUData;
+with Channel_Wake_ABI;
 with Process;
 with Process_Identities;
 with Process.DMA;
@@ -1280,6 +1281,31 @@ package body Syscall.IPC is
     end handleReplySavedWithCap;
 
     ---------------------------------------------------------------------------
+    -- handleWaitForActivity
+    ---------------------------------------------------------------------------
+    procedure handleWaitForActivity (arg0, arg1 : Unsigned_64;
+                                     retval : out Unsigned_64) with
+        SPARK_Mode => Off
+    is
+        caller : constant Process.ProcessID := PerCPUData.getCurrentPID;
+        event  : Process.Message;
+        ok     : Boolean;
+    begin
+        if arg1 /= 0 and then not Process.User_Memory.Message_Writable (caller, arg1) then
+            retval := Process.IPC.Activity_Closed;
+            return;
+        end if;
+        Process.IPC.waitForActivityUntil (arg0, arg1 /= 0, event, retval);
+        if retval = Process.IPC.Activity_Event then
+            -- Checked writable above; the buffer is the caller's own.
+            Process.User_Memory.Write_Message (caller, arg1, event, ok);
+            if not ok then
+                retval := Process.IPC.Activity_Closed;
+            end if;
+        end if;
+    end handleWaitForActivity;
+
+    ---------------------------------------------------------------------------
     -- handleReceiveEventNB
     ---------------------------------------------------------------------------
     procedure handleReceiveEventNB (arg0, arg1 : Unsigned_64;
@@ -1344,6 +1370,15 @@ package body Syscall.IPC is
           (Capabilities.RIGHT_WRITE => True, others => False);
         eventMsg : Process.Message;
     begin
+        -- A channel wake (CAP-002 step 3, Channel_Wake_ABI): coalesced on
+        -- the grant it names, whose ownership is the authority; it never
+        -- takes a request credit. dest and arg6 are not used.
+        if u64ToTag (arg1).label = Channel_Wake_ABI.Wake_Label then
+            retval := Process.IPC.sendChannelWake
+              (arg2, sync => u64ToTag (arg1).length = Channel_Wake_ABI.Sync_Length
+                             and then arg3 = Channel_Wake_ABI.Sync_Hint);
+            return;
+        end if;
         Process.resolveIdentity (Process_Identities.From_Word (arg0), destPID, generation);
         if destPID = Process.NO_PROCESS then
             retval := reterr;
@@ -1844,7 +1879,9 @@ package body Syscall.IPC is
           (Owned_Bytes       => Unsigned_64 (Process.proctab(callerPID).frames.length) *
                                   Unsigned_64 (Virtmem.PAGE_SIZE),
            Event_Drops       => Process.proctab(callerPID).eventDrops,
-           Free_Memory_Bytes => Unsigned_64 (BuddyAllocator.getFreeBytes));
+           Free_Memory_Bytes => Unsigned_64 (BuddyAllocator.getFreeBytes),
+           Thread_System_Calls =>
+             Process.threadtab (PerCPUData.getCurrentThread).systemCalls);
         copied : Boolean;
     begin
         retval := reterr;

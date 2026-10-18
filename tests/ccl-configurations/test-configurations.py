@@ -92,10 +92,12 @@ class Configurations(unittest.TestCase):
         # Typed Launch_Entry values, stored in their canonical spelling.
         self.assertEqual(settings['desktop.launch.96-logs'],
                          '(Launch_Entry label => "Logs" action => (Launch_Action.Program "logs.app") '
-                         'icon => Launch_Icon.Logs category => App_Category.System single_instance => false)')
+                         'icon => Launch_Icon.Logs category => App_Category.System single_instance => false '
+                         'color => (App_Color.RGB (RGB_Color red => 133 green => 147 blue => 170)))')
         self.assertEqual(settings['desktop.launch.12-console'],
                          '(Launch_Entry label => "CCL Console" action => (Launch_Action.Program "ccl-console.app") '
-                         'icon => Launch_Icon.Console category => App_Category.Development single_instance => false)')
+                         'icon => Launch_Icon.Console category => App_Category.Development single_instance => false '
+                         'color => (App_Color.RGB (RGB_Color red => 43 green => 122 blue => 70)))')
         self.assertIn('desktop.launch.95-boot-logs', settings)
 
     def test_typed_launch_entries(self):
@@ -108,7 +110,8 @@ class Configurations(unittest.TestCase):
                               '(Launch_Entry "X" Launch_Action.Settings)))')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('desktop.launch.10-x=(Launch_Entry label => "X" action => Launch_Action.Settings '
-                      'icon => Launch_Icon.Files category => App_Category.Tools single_instance => false)',
+                      'icon => Launch_Icon.Files category => App_Category.Tools single_instance => false '
+                      'color => App_Color.Theme_Accent)',
                       result.stdout)
 
     def test_real_ccl_field_expressions(self):

@@ -347,15 +347,21 @@ package body CCL_Desktop_Platform is
               (Event.payload0 and 16#FFFF_FFFF#);
          when CuBit.UI.App.INPUT_POINTER_DOWN =>
             Decode_Pointer (Event.payload0, X, Y);
+            --  A click's modifiers are its own (the desktop sends them with
+            --  it): a Ctrl release that went to another window never sticks.
+            Current_Modifiers := CuBit.UI.Input.Pointer_Modifiers (Event);
             Modifiers.all := Unsigned_32 (Current_Modifiers and 7);
             Clicks := Count_Click (X.all, Y.all);
             Kind.all := Code_Of ((if Clicks = 3 then Triple_Click
                          elsif Clicks = 2 then Double_Click else Pointer_Down));
          when CuBit.UI.App.INPUT_POINTER_MOVE =>
             Decode_Pointer (Event.payload0, X, Y);
+            --  Wheel events carry no modifiers: they use the last pointer's.
+            Current_Modifiers := CuBit.UI.Input.Pointer_Modifiers (Event);
             Kind.all := Code_Of ((if (Event.payload1 and 1) /= 0 then Pointer_Drag else Pointer_Hover));
          when CuBit.UI.App.INPUT_POINTER_UP =>
             Decode_Pointer (Event.payload0, X, Y);
+            Current_Modifiers := CuBit.UI.Input.Pointer_Modifiers (Event);
             Kind.all := Code_Of (Pointer_Up);
          when CuBit.UI.App.INPUT_POINTER_WHEEL =>
             Decode_Pointer (Event.payload0, X, Y);

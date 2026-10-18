@@ -262,15 +262,62 @@ package CuBit.Launch_Arguments with Pure, SPARK_Mode is
    Launch_Operation     : constant := 16#0106#;
    Launch_Request_Words : constant := 4;
 
+   --  Why procmgr did not start a program; the error reply of OP_LAUNCH and
+   --  of OP_SPAWN (words (0)). Codes are fixed; a new reason takes a new
+   --  code. A child that ends before it is useful is reported to its
+   --  launcher separately and asynchronously (CuBit.Child_Exits).
    --  Not_Granted: the requester's launch table (CuBit.Launch_Authority)
    --  does not name the program, or the program asks for authority the
    --  requester does not hold.
+   --  Spawn_Failed: procmgr, the kernel or a policy service could not finish
+   --  setting the child up, for a reason none of the others names.
+   --  Executable_Not_Found: no readable program file by that name.
+   --  Startup_Table_Missing: the program has no typed startup table
+   --  (.cubit.startup), e.g. it was linked before CAP-002.
+   --  Startup_Table_Invalid: its startup table is malformed or disagrees
+   --  with its capability requests.
+   --  Manifest_Refused: its manifest or program description is unreadable,
+   --  or asks for a role this launch may not have.
+   --  Capability_Denied: policy refused a capability it requires.
+   --  Service_Unavailable: a service it requires is not running.
+   --  Render_Denied: GPU render admission refused it.
+   --  Out_Of_Memory: no memory for the child or its capabilities.
    type Launch_Failure is
      (Malformed_Request, Grant_Unavailable, Arguments_Rejected, Spawn_Failed,
-      Not_Granted);
+      Not_Granted, Executable_Not_Found, Startup_Table_Missing,
+      Startup_Table_Invalid, Manifest_Refused, Capability_Denied,
+      Service_Unavailable, Render_Denied, Out_Of_Memory);
    for Launch_Failure use
      (Malformed_Request => 1, Grant_Unavailable => 2,
-      Arguments_Rejected => 3, Spawn_Failed => 4, Not_Granted => 5);
+      Arguments_Rejected => 3, Spawn_Failed => 4, Not_Granted => 5,
+      Executable_Not_Found => 6, Startup_Table_Missing => 7,
+      Startup_Table_Invalid => 8, Manifest_Refused => 9,
+      Capability_Denied => 10, Service_Unavailable => 11,
+      Render_Denied => 12, Out_Of_Memory => 13);
+
+   --  A reply word that names a Launch_Failure (the codes are contiguous),
+   --  and which one.
+   function Is_Failure (Word : Unsigned_64) return Boolean is
+     (Word in Launch_Failure'Enum_Rep (Launch_Failure'First) ..
+              Launch_Failure'Enum_Rep (Launch_Failure'Last));
+   function Failure_Of (Word : Unsigned_64) return Launch_Failure is
+     (case Word is
+        when Launch_Failure'Enum_Rep (Malformed_Request)     => Malformed_Request,
+        when Launch_Failure'Enum_Rep (Grant_Unavailable)     => Grant_Unavailable,
+        when Launch_Failure'Enum_Rep (Arguments_Rejected)    => Arguments_Rejected,
+        when Launch_Failure'Enum_Rep (Spawn_Failed)          => Spawn_Failed,
+        when Launch_Failure'Enum_Rep (Not_Granted)           => Not_Granted,
+        when Launch_Failure'Enum_Rep (Executable_Not_Found)  => Executable_Not_Found,
+        when Launch_Failure'Enum_Rep (Startup_Table_Missing) => Startup_Table_Missing,
+        when Launch_Failure'Enum_Rep (Startup_Table_Invalid) => Startup_Table_Invalid,
+        when Launch_Failure'Enum_Rep (Manifest_Refused)      => Manifest_Refused,
+        when Launch_Failure'Enum_Rep (Capability_Denied)     => Capability_Denied,
+        when Launch_Failure'Enum_Rep (Service_Unavailable)   => Service_Unavailable,
+        when Launch_Failure'Enum_Rep (Render_Denied)         => Render_Denied,
+        when Launch_Failure'Enum_Rep (Out_Of_Memory)         => Out_Of_Memory,
+        when others                                          => Spawn_Failed)
+     with Pre  => Is_Failure (Word),
+          Post => Launch_Failure'Enum_Rep (Failure_Of'Result) = Word;
 
    Maximum_Name_Bytes : constant := 255;
    subtype Name_Length is Natural range 1 .. Maximum_Name_Bytes;

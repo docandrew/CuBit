@@ -56,12 +56,3 @@ as --64 "$build_tree/window-manifest.S" -o "$build_tree/window-manifest.o"
   "$build_tree/native-mesa-window.o" "$build_tree/buffer-winsys.o" \
   -Wl,--start-group "${objects[@]}" -Wl,--end-group \
   --manifest "$build_tree/window-manifest.o" -o "$build_tree/native-mesa-window.app"
-python3 "$root/tests/mesa-software/compile-native-probe.py" "$build_tree" \
-  "$root/tests/mesa-software/native-mesa-window.c" "$build_tree/native-mesa-cube.o" -DMESA_WINDOW_CUBE=1
-python3 "$root/tests/mesa-software/compile-native-probe.py" "$build_tree" \
-  "$root/tests/mesa-software/cube-scene.c" "$build_tree/cube-scene.o"
-"$root/userspace/libc/cubit-c++" -Wl,--gc-sections \
-  "$build_tree/native-mesa-cube.o" "$build_tree/cube-scene.o" "$build_tree/buffer-winsys.o" \
-  -Wl,-Map,"$build_tree/native-mesa-cube.map",--cref \
-  -Wl,--start-group "${objects[@]}" -Wl,--end-group \
-  --manifest "$build_tree/window-manifest.o" -o "$build_tree/native-mesa-cube.app"

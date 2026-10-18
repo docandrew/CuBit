@@ -44,7 +44,9 @@ def inventory(map_text, commands, source_root, build_root):
     records = []
     for member in extracted_members(map_text):
         record = {"member": member}
-        source = outputs.get(member)
+        # The linker prints archive paths as given (a whole-archive input
+        # may read .../src/intel/vulkan/../../vulkan/...): compare resolved.
+        source = outputs.get(str(Path(member).resolve()))
         if source is None:
             if Path(member).is_relative_to(build_root):
                 raise ValueError(f"Mesa archive member has no compilation record: {member}")
@@ -67,11 +69,12 @@ def inventory(map_text, commands, source_root, build_root):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("build", type=Path)
+    parser.add_argument("map", type=Path, help="GNU ld map of the linked program (-Wl,-Map,...,--cref)")
+    parser.add_argument("build", type=Path, help="Mesa Meson build directory")
     parser.add_argument("source", type=Path)
     args = parser.parse_args()
     build = args.build.resolve()
-    result = inventory((build / "native-mesa-cube.map").read_text(),
+    result = inventory(args.map.read_text(),
                        json.loads((build / "compile_commands.json").read_text()),
                        args.source.resolve(), build)
     print(json.dumps(result, indent=2, sort_keys=True))

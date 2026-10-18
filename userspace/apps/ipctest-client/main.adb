@@ -1,5 +1,6 @@
 with CuBit.Handles;
 with Startup;
+with Channel_Tests;
 ------------------------------------------------------------------------------
 --  CuBit headless IPC regression client
 --
@@ -732,6 +733,8 @@ begin
             then fail ("activity-completion-identity"); end if;
             if ok then debugPrint ("ipctest-client: activity wait PASS" & LF); end if;
          end;
+         --  Channels (CAP-002 step 3), before the server is told to die.
+         Channel_Tests (IPC_Test, ok);
          msg.tag := (label  => OP_DIE,
                      length => 0,
                      protocol  => 0, ipc => <>,

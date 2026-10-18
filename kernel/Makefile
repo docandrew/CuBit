@@ -1174,10 +1174,14 @@ bench-spread: user_runtime ccl-manifest
 	$(ALR) gprbuild -P ../userspace/apps/bench-spread/bench_spread.gpr
 	cp ../userspace/apps/bench-spread/build/bench-spread.app isodir/boot/bench-spread.app
 
-# CuBit libc (userspace/libc): musl over CuBit system calls, and its checks.
-.PHONY: mesa-cube
-mesa-cube: libc ccl-manifest
+# CuBit Teapots (userspace/apps/teapots): the Vulkan teapot gallery on a GPU
+# canvas (CuBit.UI.GPU_Canvas), linked against the Desktop's combined Mesa
+# (ANV) bundle. Also stages the Mesa notice bundle the live images carry.
+.PHONY: teapots
+teapots: libc user_runtime ccl-manifest ui-fonts-native
 	bash ../userspace/mesa/build.sh
+
+# CuBit libc (userspace/libc): musl over CuBit system calls, and its checks.
 
 .PHONY : libc libc-check cxx-check
 libc:
@@ -1881,7 +1885,7 @@ CCL_WORKSPACE_SAMPLES := $(sort $(wildcard ../userspace/ccl/samples/*.ccl))
 # Native USB optical edition. Keep the original initrd-only laptop image as
 # an independent fallback; no ATA/NVMe driver is admitted in this profile.
 .PHONY: usb-live-iso run-usb-live run-usb-live-fast
-usb-live-iso: ccl-image ../images/laptop-usb.ccl $(CCL_IMAGE_CATALOG) cubit_kernel $(LAPTOP_LIVE_STAGE1) $(LAPTOP_LIVE_STAGE2) intel-gpu gpu-viewer config-storage mesa-cube $(LAPTOP_LIVE_RW_DISK) $(DESKTOP_ASSETS)
+usb-live-iso: ccl-image ../images/laptop-usb.ccl $(CCL_IMAGE_CATALOG) cubit_kernel $(LAPTOP_LIVE_STAGE1) $(LAPTOP_LIVE_STAGE2) intel-gpu gpu-viewer config-storage teapots $(LAPTOP_LIVE_RW_DISK) $(DESKTOP_ASSETS)
 	@test -s isodir/boot/cubitshell.app || (echo "missing Servo payload; run make -C kernel servo first" && false)
 	bash ../tests/usb-optical/build-live.sh "$(DOOM_WAD)"
 
@@ -2044,7 +2048,7 @@ test-programs: $(TEST_PROGRAMS)
 # pack. world builds them too, so a world pass means every image binary
 # compiled and links; the image targets name the same phony targets, so one
 # make invocation builds each once.
-IMAGE_ONLY_BINARIES := ramdisk intel-gpu gpu-viewer mesa-cube
+IMAGE_ONLY_BINARIES := ramdisk intel-gpu gpu-viewer teapots
 
 # CAP-002: capabilities are named by handles, never numbers. Runs first in
 # world; --self-test shows it rejecting each forbidden form.

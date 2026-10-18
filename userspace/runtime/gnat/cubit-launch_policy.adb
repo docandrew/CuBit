@@ -18,4 +18,12 @@ package body CuBit.Launch_Policy with SPARK_Mode => On is
          when Declared_Network => Network_Authority.Valid (Requested),
          when Browser_Outbound => Network_Authority.Includes
            (Network_Authority.Broad_Outbound_TCP, Requested));
+
+   function Desktop_Render_Approval
+     (Name : String; Sender, Desktop_PID : CuBit.Process_IDs.Process_ID)
+      return Boolean
+   is
+     (CuBit.Process_IDs.Is_Process (Sender)
+      and then CuBit.Process_IDs."=" (Sender, Desktop_PID)
+      and then Name = "teapots.app");
 end CuBit.Launch_Policy;

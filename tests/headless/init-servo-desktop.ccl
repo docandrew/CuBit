@@ -5,5 +5,8 @@
   (start "logstore.svc" (priority 5))
   (start "clock.svc" (priority 5))
   (start "display.svc" (priority 5))
+  # As in the real session (init-desktop-session.ccl); a metrics-enabled
+  # Desktop requires it.
+  (start "metrics.svc" (priority 2))
   (start "desktop.svc" (priority 4))
 )

@@ -19,7 +19,6 @@ static int report(int code, const char *text)
     cubit_debug_write(text, strlen(text));
     return code;
 }
-#ifndef MESA_WINDOW_CUBE
 static bool check_pixels(const void *storage, unsigned frame)
 {
     static const uint8_t bgra[4][4] = {
@@ -32,17 +31,6 @@ static bool check_pixels(const void *storage, unsigned frame)
                        bgra[((y / 192) * 2 + x / 256 + frame) % 4], 4)) return false;
     return true;
 }
-#else
-#include "cube-scene.h"
-static uint64_t pixel_hash(const void *storage)
-{
-    const uint8_t *p = storage;
-    uint64_t hash = UINT64_C(14695981039346656037);
-    for (unsigned i = 0; i < 512 * 384 * 4; ++i)
-        hash = (hash ^ p[i]) * UINT64_C(1099511628211);
-    return hash;
-}
-#endif
 
 struct window_drawable {
     struct pipe_frontend_drawable base;
@@ -133,15 +121,6 @@ int main(void)
                  .validate = validate, .flush_front = defer_present},
         .image = images[0],
     };
-#ifdef MESA_WINDOW_CUBE
-    desc.bind = PIPE_BIND_DEPTH_STENCIL;
-    desc.format = PIPE_FORMAT_Z24_UNORM_S8_UINT;
-    drawable.depth = screen->resource_create(screen, &desc);
-    if (!drawable.depth) return report(13, "MESA-WINDOW: FAIL depth target\n");
-    visual.buffer_mask |= ST_ATTACHMENT_DEPTH_STENCIL_MASK;
-    visual.depth_stencil_format = desc.format;
-    uint64_t hashes[2] = {0, 0};
-#endif
     struct st_context_attribs attributes = {0};
     attributes.profile = API_OPENGL_COMPAT;
     attributes.major = 2; attributes.minor = 1; attributes.visual = visual;
@@ -156,12 +135,10 @@ int main(void)
     LOAD(void, glEnd, (void));
     LOAD(void, glFinish, (void));
     LOAD(GLenum, glGetError, (void));
-#ifndef MESA_WINDOW_CUBE
     const union pipe_color_union colors[4] = {
         {.f = {1, 0, 0, 1}}, {.f = {0, 1, 0, 1}},
         {.f = {0, 0, 1, 1}}, {.f = {1, 1, 1, 1}},
     };
-#endif
     cubit_async_message_t reply;
     if (!call(0x0800, UINT64_C(1) << 32, 0, 0, 0, &reply) ||
         reply.tag.length != 4 || !reply.words[0])
@@ -189,9 +166,6 @@ int main(void)
         if (!st_api_make_current(context, &drawable.base, &drawable.base))
             return report(9, "MESA-WINDOW: FAIL drawable replacement\n");
         glViewport(0, 0, width, height);
-#ifdef MESA_WINDOW_CUBE
-        if (!cubit_draw_cube(frame, width, height)) return report(14, "MESA-WINDOW: FAIL cube dispatch\n");
-#else
         for (unsigned i = 0; i < 4; ++i) {
             const float left = (i % 2) ? 0 : -1;
             const float top = (i / 2) ? 0 : 1;
@@ -202,20 +176,11 @@ int main(void)
             glVertex2f(left + 1, top); glVertex2f(left, top);
             glEnd();
         }
-#endif
         glFinish();
         if (glGetError() != GL_NO_ERROR) return report(10, "MESA-WINDOW: FAIL GL draw\n");
-#ifdef MESA_WINDOW_CUBE
-        uint64_t hash = pixel_hash(pixels[target]);
-        if (hash == hashes[target] ||
-            (attached >= 0 && pixel_hash(pixels[attached]) != hashes[attached]))
-            return report(12, "MESA-WINDOW: FAIL buffer isolation\n");
-        hashes[target] = hash;
-#else
         if (!check_pixels(pixels[target], frame) ||
             (attached >= 0 && !check_pixels(pixels[attached], frame - 1)))
             return report(12, "MESA-WINDOW: FAIL buffer isolation\n");
-#endif
         /* Only successful replacement retires the previous CPU attachment.
          * On failure/ambiguous response, exit without reusing either buffer. */
         if (cubit_desktop_attach_buffer(desktop, id, grants[target], width, height, pitch))
@@ -229,9 +194,6 @@ int main(void)
             initial_complete = true;
     report(0, "MESA-WINDOW: GL drawable rendered\n");
     report(0, "MESA-WINDOW: PASS 9 frames with retired-buffer reuse\n");
-#ifdef MESA_WINDOW_CUBE
-    report(0, "MESA-WINDOW: depth-tested cube ready\n");
-#endif
     report(0, "MESA-WINDOW: attached immutable Mesa buffer\n");
             report(0, "MESA-WINDOW: Space toggles animation; Escape closes\n");
         }

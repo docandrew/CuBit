@@ -1,3 +1,4 @@
+with CuBit.Channel_Limits;
 with CCL.Evaluation;
 with CCL.Catalog;
 with CCL.Host_Values;
@@ -538,24 +539,56 @@ package body CCL.Manifests.Typed with SPARK_Mode => On is
             declare
                Offer : constant Views.Cursor := Views.Element (Object, Channels, Index);
                Contract : constant String := Text (Named (Offer, "contract"));
-               Per_Client : constant Integer_64 := Number (Named (Offer, "per_client"));
-               Total : constant Integer_64 := Number (Named (Offer, "total"));
                Item : Channel_Offer;
+               Valid_Limits : Boolean := True;
+
+               --  A Channel_Limit value: Server_Limit, or (At_Most N) with N
+               --  1 to MAX_CHANNEL_TOTAL.
+               procedure Limit_Of (Field : String; Limit : out Channel_Limit) is
+                  Value : constant Views.Cursor := Named (Offer, Field);
+               begin
+                  Limit := (Kind => CuBit.Channel_Limits.Server_Limit);
+                  if Alt (Value) = "Server_Limit" then
+                     return;
+                  elsif Alt (Value) = "At_Most" then
+                     declare
+                        Count : constant Integer_64 := Number (Views.Payload (Object, Value));
+                     begin
+                        if In_Range (Count, 1, MAX_CHANNEL_TOTAL) then
+                           Limit := (Kind => CuBit.Channel_Limits.At_Most,
+                                     Count => CuBit.Channel_Limits.Limit_Count (Count));
+                           return;
+                        end if;
+                        Fail (Invalid_Channel_Limit, Field & " At_Most" & Integer_64'Image (Count) &
+                              " is not 1 to" & Natural'Image (MAX_CHANNEL_TOTAL),
+                              "write Channel_Limit.Server_Limit for the server's own capacity");
+                     end;
+                  else
+                     Fail (Invalid_Channel_Limit, Field & " is not a Channel_Limit",
+                           "write Channel_Limit.Server_Limit or (Channel_Limit.At_Most N)");
+                  end if;
+                  Valid_Limits := False;
+               end Limit_Of;
             begin
                if not Valid_Metadata_Text (Contract) then
                   Fail (Invalid_Channel_Limit, "contract """ & Contract &
                         """ is not 1 to 64 letters, digits, '.', '-' or '_'");
                   return;
                end if;
-               if not In_Range (Total, 1, MAX_CHANNEL_TOTAL) then
-                  Fail (Invalid_Channel_Limit, "total" & Integer_64'Image (Total) & " is not 1 to" &
-                        Natural'Image (MAX_CHANNEL_TOTAL),
-                        "declare the server's real capacity for this contract");
+               Limit_Of ("total", Item.Total);
+               if not Valid_Limits then
                   return;
                end if;
-               if not In_Range (Per_Client, 1, Total) then
-                  Fail (Invalid_Channel_Limit, "per_client" & Integer_64'Image (Per_Client) &
-                        " is not 1 to the total" & Integer_64'Image (Total));
+               Limit_Of ("per_client", Item.Per_Client);
+               if not Valid_Limits then
+                  return;
+               end if;
+               if not CuBit.Channel_Limits."=" (Item.Per_Client.Kind, CuBit.Channel_Limits.Server_Limit)
+                 and then not CuBit.Channel_Limits."=" (Item.Total.Kind, CuBit.Channel_Limits.Server_Limit)
+                 and then Item.Per_Client.Count > Item.Total.Count
+               then
+                  Fail (Invalid_Channel_Limit, "per_client" & Natural'Image (Item.Per_Client.Count) &
+                        " is more than the total" & Natural'Image (Item.Total.Count));
                   return;
                end if;
                for Existing of Decl.Channels (1 .. Decl.Channel_Count) loop
@@ -570,9 +603,10 @@ package body CCL.Manifests.Typed with SPARK_Mode => On is
                   return;
                end if;
                Set_Text (Item.Contract, Contract);
-               Item.Per_Client := Channel_Limit (Per_Client);
-               Item.Total := Channel_Limit (Total);
-               Item.Class := (if Alt (Named (Offer, "class")) = "Urgent" then Urgent else Normal);
+               Item.Class :=
+                 (if Alt (Named (Offer, "class")) = "Urgent" then CuBit.Channel_Limits.Urgent
+                  elsif Alt (Named (Offer, "class")) = "Interactive" then CuBit.Channel_Limits.Interactive
+                  else CuBit.Channel_Limits.Normal);
                Decl.Channel_Count := Decl.Channel_Count + 1;
                Decl.Channels (Decl.Channel_Count) := Item;
             end;

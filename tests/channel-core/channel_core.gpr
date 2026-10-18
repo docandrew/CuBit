@@ -1,0 +1,24 @@
+--  Hosted tests and proof for the channel core (CAP-002 step 3).
+project Channel_Core is
+   for Source_Dirs use (".", "../../userspace/runtime/gnat");
+   for Source_Files use ("core_instances.ads", "main.adb", "wake_handshake_model.ads", "wake_handshake_model.adb",
+                         "cubit.ads", "cubit-grant_references.ads",
+                         "cubit-bell_sets.ads", "cubit-bell_sets.adb",
+                         "cubit-channel_limits.ads", "cubit-channel_declarations.ads", "cubit-channel_declarations.adb", "cubit-channel_admission.ads", "cubit-channel_admission.adb",
+                         "cubit-channel_schedule.ads", "cubit-channel_schedule.adb",
+                         "cubit-request_tags.ads", "cubit-request_tags.adb",
+                         "rc_instance.ads", "cubit-request_channels.ads", "cubit-request_channels.adb",
+                         "cubit-submission_queues.ads", "cubit-submission_queues.adb",
+                         "cubit-slot_rings.ads", "cubit-slot_rings.adb",
+                         "cubit-channel_rings.ads", "cubit-channel_rings.adb");
+   for Object_Dir use "build/obj";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-O2", "-gnat2022", "-gnata", "-gnato", "-gnatwa", "-gnatwJ");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=2", "-j2", "--checks-as-errors=on");
+   end Prove;
+end Channel_Core;

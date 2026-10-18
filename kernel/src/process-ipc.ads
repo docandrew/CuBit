@@ -124,10 +124,21 @@ package Process.IPC is
     ---------------------------------------------------------------------------
     procedure receive (from : out ProcessID; msg : out Message);
 
+    -- What waitForActivityUntil returns.
+    Activity_Deadline : constant Unsigned_64 := 0;
+    Activity_Work     : constant Unsigned_64 := 1;
+    -- A kernel notice (grant lifecycle, child exit, channel wakes) was
+    -- taken into event: the woken thread needs no second call to read it.
+    Activity_Event    : constant Unsigned_64 := 2;
+    Activity_Closed   : constant Unsigned_64 := Unsigned_64'Last;
+
     -- Wait without consuming messages or completions (or reply authority).
-    -- 1 = work available, 0 = deadline, Last = closed mailbox.
-    function waitForActivityUntil (deadlineMs : Unsigned_64)
-      return Unsigned_64;
+    -- With takeEvent, a pending kernel notice is taken into event and the
+    -- result is Activity_Event (nothing else is consumed); the caller must
+    -- have checked that it can store event before asking.
+    procedure waitForActivityUntil
+      (deadlineMs : Unsigned_64; takeEvent : Boolean;
+       event : out Message; result : out Unsigned_64);
 
     --  Block until any IPC arrives or the absolute monotonic millisecond
     --  deadline is reached. Unlike a userspace sleep/poll loop, publication
@@ -418,6 +429,13 @@ package Process.IPC is
     procedure revokeGrantReference
       (reference : Memory_Grants.Reference;
        success   : out Boolean);
+
+    -- A channel wake (CAP-002 step 3): SEND_EVENT with Channel_Wake_ABI's
+    -- label. The caller owns the live, notified grant named by reference;
+    -- its grantee gets one coalesced wake (Channel_Wake_ABI). Returns
+    -- Accepted_Word or Refused_Word. sync: the sender is about to block
+    -- (Channel_Wake_ABI.Sync_Hint); a woken thread is placed on this CPU.
+    function sendChannelWake (reference : Unsigned_64; sync : Boolean) return Unsigned_64;
 
     -- Called once after reserving a PID, before resetting/publishing its
     -- process record: True when no grant of an earlier life of this slot is

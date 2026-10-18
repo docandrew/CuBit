@@ -65,7 +65,7 @@ package body Text_Editors is
          return (Background => Colors.field, Text => Colors.text, Gutter_Background => 16#1C242A#,
                  Gutter_Text => 16#6E7C86#, Gutter_Current => Colors.text, Current_Line => 16#28323A#,
                  Selection => 16#2F5A78#, Selection_Unfocused => 16#34444F#, Caret => 16#8CC8FF#,
-                 Match => 16#5C4E1C#, Occurrence => 16#38464F#, Ruler_Background => 16#1C242A#, Ruler_View => 16#34424C#,
+                 Match => 16#5C4E1C#, Occurrence => 16#7A8C99#, Ruler_Background => 16#1C242A#, Ruler_View => 16#34424C#,
                  Ruler_Caret => 16#8CC8FF#, Error => 16#F07A6E#, Warning => 16#E8C15A#, Information => 16#7FB2FF#,
                  Invalid => 16#F07A6E#,
                  Tokens => [Plain => Colors.text, Keyword => 16#7FB2FF#, Type_Name => 16#5FD3C8#,
@@ -78,7 +78,7 @@ package body Text_Editors is
          return (Background => Colors.field, Text => Colors.text, Gutter_Background => 16#F1F3F4#,
                  Gutter_Text => 16#98A2A8#, Gutter_Current => Colors.text, Current_Line => 16#FFF9E0#,
                  Selection => 16#C3DDF7#, Selection_Unfocused => 16#DDE3E8#, Caret => 16#1060C0#,
-                 Match => 16#FFE680#, Occurrence => 16#E3EAF1#, Ruler_Background => 16#EEF1F3#, Ruler_View => 16#D5DCE1#,
+                 Match => 16#FFE680#, Occurrence => 16#8E9AA4#, Ruler_Background => 16#EEF1F3#, Ruler_View => 16#D5DCE1#,
                  Ruler_Caret => 16#1060C0#, Error => 16#D0302A#, Warning => 16#C98A00#, Information => 16#1A6FD0#,
                  Invalid => 16#D0302A#,
                  Tokens => [Plain => Colors.text, Keyword => 16#1D4FB8#, Type_Name => 16#0F7A72#,
@@ -418,6 +418,29 @@ package body Text_Editors is
 
    function Mix (H : Unsigned_64; V : Unsigned_64) return Unsigned_64 is ((H xor V) * FNV_PRIME);
 
+   --  A row's hash: everything its pixels depend on.
+   procedure Rehash (E : Editor; R : in out Row_View) is
+      H : Unsigned_64 := FNV_OFFSET;
+   begin
+      H := Mix (H, Unsigned_64 (R.Line) * Boolean'Pos (R.Lead));
+      H := Mix (H, Boolean'Pos (R.Lead) + 2 * Boolean'Pos (R.Current) + 4 * Boolean'Pos (R.Caret_After)
+                   + 8 * Boolean'Pos (R.Selected_End) + 16 * Boolean'Pos (E.Focused));
+      H := Mix (H, Unsigned_64 (R.Cells));
+      for K in 1 .. R.Cells loop
+         declare
+            F : constant Cell_Flags := R.Flags (K);
+         begin
+            H := Mix (H, Unsigned_64 (Character'Pos (R.Chars (K)))
+                         + 256 * Unsigned_64 (Text_Syntax.Token_Kind'Pos (R.Kinds (K)))
+                         + 65_536 * Unsigned_64 (Boolean'Pos (F.Selected) + 2 * Boolean'Pos (F.Match)
+                                                 + 4 * Boolean'Pos (F.Caret) + 8 * Boolean'Pos (F.Boxed)
+                                                 + 16 * F.Squiggle + 64 * Boolean'Pos (F.Occurrence)));
+         end;
+      end loop;
+      --  Never 0 or BLANK_ROW (the buffer records' markers).
+      R.Hash := (if H = 0 or else H = Unsigned_64'Last then 1 else H);
+   end Rehash;
+
    procedure Build_Row
      (E : in out Editor; Slot : Row_Slot; Id : Row_Id; Rows : Segment_Rows; Primary_Line : Line_Number;
       Selection_Start : Positive)
@@ -658,27 +681,7 @@ package body Text_Editors is
             end if;
          end;
       end loop;
-      --  The row's hash.
-      declare
-         H : Unsigned_64 := FNV_OFFSET;
-      begin
-         H := Mix (H, Unsigned_64 (R.Line) * Boolean'Pos (R.Lead));
-         H := Mix (H, Boolean'Pos (R.Lead) + 2 * Boolean'Pos (R.Current) + 4 * Boolean'Pos (R.Caret_After)
-                      + 8 * Boolean'Pos (R.Selected_End) + 16 * Boolean'Pos (E.Focused));
-         H := Mix (H, Unsigned_64 (R.Cells));
-         for K in 1 .. R.Cells loop
-            declare
-               F : constant Cell_Flags := R.Flags (K);
-            begin
-               H := Mix (H, Unsigned_64 (Character'Pos (R.Chars (K)))
-                            + 256 * Unsigned_64 (Text_Syntax.Token_Kind'Pos (R.Kinds (K)))
-                            + 65_536 * Unsigned_64 (Boolean'Pos (F.Selected) + 2 * Boolean'Pos (F.Match)
-                                                    + 4 * Boolean'Pos (F.Caret) + 8 * Boolean'Pos (F.Boxed)
-                                                    + 16 * F.Squiggle + 64 * Boolean'Pos (F.Occurrence)));
-            end;
-         end loop;
-         R.Hash := (if H = 0 then 1 else H);
-      end;
+      Rehash (E, R);
    end Build_Row;
 
    --  The first selection that ends at or after Offset (they are sorted).
@@ -699,6 +702,11 @@ package body Text_Editors is
       end loop;
       return Low;
    end First_Selection_From;
+
+   procedure Clear_Occurrence (E : in out Editor) is
+   begin
+      E.Word_Length := 0;
+   end Clear_Occurrence;
 
    procedure Refresh_Occurrence (E : in out Editor) is
       D : Document renames E.Document.all;
@@ -781,6 +789,37 @@ package body Text_Editors is
             end loop;
          end;
       end if;
+      --  Occurrences show only when the word is there at least twice in
+      --  view: an outline around the lone word under the caret is noise.
+      declare
+         Runs : Natural := 0;
+      begin
+         for Slot in 1 .. E.Shown loop
+            for K in 1 .. E.Rows (Slot).Cells loop
+               if E.Rows (Slot).Flags (K).Occurrence and then (K = 1 or else not E.Rows (Slot).Flags (K - 1).Occurrence)
+               then
+                  Runs := Runs + 1;
+               end if;
+            end loop;
+            exit when Runs >= 2;
+         end loop;
+         if Runs = 1 then
+            for Slot in 1 .. E.Shown loop
+               declare
+                  R : Row_View renames E.Rows (Slot);
+                  Had : Boolean := False;
+               begin
+                  for K in 1 .. R.Cells loop
+                     Had := Had or else R.Flags (K).Occurrence;
+                     R.Flags (K).Occurrence := False;
+                  end loop;
+                  if Had then
+                     Rehash (E, R);
+                  end if;
+               end;
+            end loop;
+         end if;
+      end;
       --  The gutter's width, the ruler and the minimap follow the document
       --  and the view: any change repaints them (and the rows, when the
       --  gutter's width moves the text).
@@ -801,12 +840,15 @@ package body Text_Editors is
          begin
             if E.Everything or else Slot > E.Previous_Shown or else Hash /= E.Previous (Slot) then
                E.Dirty (Slot) := 1;
-               E.Full (Slot) := E.Everything or else Slot > E.Previous_Shown or else Slot > E.Shown
-                 or else Lit or else E.Previous_Lit (Slot);
-               E.Paint (Slot) := Content_Width'Max (Width, E.Previous_Width (Slot));
-               Damage := Union_Rect (Damage, (E.Bounds.x, E.Bounds.y + (Slot - 1) * ROW_HEIGHT,
-                                              (if E.Full (Slot) then Whole
-                                               else Natural'Min (Whole, Row_Left + E.Paint (Slot))), ROW_HEIGHT));
+               declare
+                  Full : constant Boolean := E.Everything or else Slot > E.Previous_Shown or else Slot > E.Shown
+                    or else Lit or else E.Previous_Lit (Slot);
+                  Paint : constant Content_Width := Content_Width'Max (Width, E.Previous_Width (Slot));
+               begin
+                  Damage := Union_Rect (Damage, (E.Bounds.x, E.Bounds.y + (Slot - 1) * ROW_HEIGHT,
+                                                 (if Full then Whole else Natural'Min (Whole, Row_Left + Paint)),
+                                                 ROW_HEIGHT));
+               end;
             else
                E.Dirty (Slot) := 0;
             end if;
@@ -832,7 +874,9 @@ package body Text_Editors is
       Draw_Code_Text (C, Right - Text'Length * CELL_WIDTH, Y + GLYPH_TOP, Text, Ink, Under);
    end Draw_Number;
 
-   procedure Draw_Row (E : Editor; C : Canvas; Slot : Row_Slot) is
+   --  Full: the whole row; otherwise up to Paint past the text's left edge
+   --  (the rest of the row is background in the target already).
+   procedure Draw_Row (E : Editor; C : Canvas; Slot : Row_Slot; Full : Boolean; Paint : Content_Width) is
       R : Row_View renames E.Rows (Slot);
       P : Palette renames E.Colors;
       D : Document renames E.Document.all;
@@ -866,18 +910,15 @@ package body Text_Editors is
             end;
          end loop;
       end if;
-      if E.Everything or else E.Full (Slot) then
+      if Full then
          Fill_Rect (C, Text_Box, Background);
       else
          --  Right of the old and new content the row is background already.
-         Fill_Rect (C, (Text_Box.x, Y, Natural'Min (Text_Box.w, X0 - Text_Box.x + E.Paint (Slot)), ROW_HEIGHT),
+         Fill_Rect (C, (Text_Box.x, Y, Natural'Min (Text_Box.w, X0 - Text_Box.x + Paint), ROW_HEIGHT),
                     Background);
       end if;
       --  Backgrounds: matches, then selections over them.
       for K in 1 .. R.Cells loop
-         if R.Flags (K).Occurrence and then not R.Flags (K).Selected and then not R.Flags (K).Match then
-            Fill_Rect (Inner, (X0 + (K - 1) * CELL_WIDTH, Y + 1, CELL_WIDTH, ROW_HEIGHT - 2), P.Occurrence);
-         end if;
          if R.Flags (K).Match and then not R.Flags (K).Selected then
             Fill_Rect (Inner, (X0 + (K - 1) * CELL_WIDTH, Y + 1, CELL_WIDTH, ROW_HEIGHT - 2), P.Match);
          elsif R.Flags (K).Selected then
@@ -897,7 +938,6 @@ package body Text_Editors is
          function Under (K : Positive) return Color is
            (if R.Flags (K).Selected then (if E.Focused then P.Selection else P.Selection_Unfocused)
             elsif R.Flags (K).Match then P.Match
-            elsif R.Flags (K).Occurrence then P.Occurrence
             else Background);
          K : Natural := 1;
       begin
@@ -926,6 +966,30 @@ package body Text_Editors is
                end;
                K := Stop + 1;
             end;
+         end loop;
+      end;
+      --  Occurrences of the word under the cursor: an outline around each
+      --  run, never a fill (fills are selections and search matches).
+      declare
+         function Outlined (K : Positive) return Boolean is
+           (R.Flags (K).Occurrence and then not R.Flags (K).Selected and then not R.Flags (K).Match);
+         K : Natural := 1;
+      begin
+         while K <= R.Cells loop
+            if Outlined (K) then
+               declare
+                  Stop : Natural := K;
+               begin
+                  while Stop < R.Cells and then Outlined (Stop + 1) loop
+                     Stop := Stop + 1;
+                  end loop;
+                  Stroke_Rect (Inner, (X0 + (K - 1) * CELL_WIDTH, Y, (Stop - K + 1) * CELL_WIDTH, ROW_HEIGHT),
+                               P.Occurrence, P.Occurrence);
+                  K := Stop + 1;
+               end;
+            else
+               K := K + 1;
+            end if;
          end loop;
       end;
       --  Boxes, squiggles and carets.
@@ -1048,29 +1112,106 @@ package body Text_Editors is
       end if;
    end Draw_Side;
 
-   procedure Draw (E : in out Editor; C : CuBit.UI.Canvas) is
-      Clip : constant Rect := (if C.clipEnabled then C.clip else E.Bounds);
-      Gutter : constant Natural := Gutter_Width (E);
+   --  A row slot's hash in a buffer record when it shows no line.
+   BLANK_ROW : constant Unsigned_64 := Unsigned_64'Last;
+
+   --  The record of the buffer C draws into: found by its address, or the
+   --  least recently drawn one, emptied.
+   function Buffer_For (E : in out Editor; C : CuBit.UI.Canvas) return Buffer_Index is
+      use type System.Address;
+      Oldest : Buffer_Index := Buffer_Index'First;
    begin
-      E.Painted := 0;
-      for Slot in 1 .. Visible_Slots (E) loop
+      E.Draws := E.Draws + 1;
+      for B in Buffer_Index loop
          declare
-            Row_Box : constant Rect := (E.Bounds.x, E.Bounds.y + (Slot - 1) * ROW_HEIGHT, E.Bounds.w, ROW_HEIGHT);
+            R : Buffer_Record renames E.Buffers (B);
          begin
-            --  Only rows that changed: the target keeps every other pixel
-            --  (a host whose buffers do not persist calls Invalidate).
-            if Intersects (Row_Box, Clip) and then (E.Everything or else E.Dirty (Slot) /= 0) then
-               if Slot <= E.Shown then
-                  Draw_Row (E, C, Slot);
-                  E.Painted := E.Painted + 1;
-               else
-                  Fill_Rect (C, (E.Bounds.x, Row_Box.y, Gutter, ROW_HEIGHT), E.Colors.Gutter_Background);
-                  Fill_Rect (C, (E.Bounds.x + Gutter, Row_Box.y, Natural'Max (0, E.Bounds.w - Gutter - Side_Width (E)),
-                                 ROW_HEIGHT), E.Colors.Background);
+            if R.Target = C.addr and then R.Pitch = C.pitch then
+               if R.Bounds /= E.Bounds then
+                  R.Valid := False;
+                  R.Bounds := E.Bounds;
                end if;
+               R.Stamp := E.Draws;
+               return B;
+            end if;
+            if R.Stamp < E.Buffers (Oldest).Stamp then
+               Oldest := B;
             end if;
          end;
       end loop;
+      E.Buffers (Oldest) := (Target => C.addr, Pitch => C.pitch, Bounds => E.Bounds, Valid => False,
+                             Stamp => E.Draws, others => <>);
+      return Oldest;
+   end Buffer_For;
+
+   procedure Draw (E : in out Editor; C : CuBit.UI.Canvas) is
+      Clip : constant Rect := (if C.clipEnabled then C.clip else E.Bounds);
+      Gutter : constant Natural := Gutter_Width (E);
+      Row_Left : constant Natural := Text_X (E) - E.Bounds.x;
+      Whole : constant Natural := Natural'Max (0, E.Bounds.w - Side_Width (E));
+      B : Buffer_Index;
+   begin
+      E.Painted := 0;
+      if E.Everything then
+         --  Colors, focus or the gutter changed: no buffer shows these rows.
+         for K in Buffer_Index loop
+            E.Buffers (K).Valid := False;
+         end loop;
+      end if;
+      B := Buffer_For (E, C);
+      declare
+         R : Buffer_Record renames E.Buffers (B);
+      begin
+         for Slot in 1 .. Visible_Slots (E) loop
+            declare
+               Row_Box : constant Rect := (E.Bounds.x, E.Bounds.y + (Slot - 1) * ROW_HEIGHT, E.Bounds.w, ROW_HEIGHT);
+               Shown : constant Boolean := Slot <= E.Shown;
+               Hash : constant Unsigned_64 := (if Shown then E.Rows (Slot).Hash else BLANK_ROW);
+               Width : constant Content_Width := (if Shown then Row_Width (E.Rows (Slot)) else 0);
+               Lit : constant Boolean := Shown and then Is_Lit (E, E.Rows (Slot));
+            begin
+               --  Only rows this buffer shows differently: it keeps every
+               --  other pixel.
+               if Intersects (Row_Box, Clip) and then (not R.Valid or else R.Hashes (Slot) /= Hash) then
+                  declare
+                     Full : constant Boolean := not R.Valid or else R.Hashes (Slot) = 0 or else not Shown
+                       or else Lit or else R.Lits (Slot);
+                     Paint : constant Content_Width := Content_Width'Max (Width, R.Widths (Slot));
+                     Reach : constant Natural := (if Full then Whole else Natural'Min (Whole, Row_Left + Paint));
+                     Covered : constant Boolean :=
+                       Clip.x <= Row_Box.x and then Clip.x + Clip.w >= Row_Box.x + Reach
+                       and then Clip.y <= Row_Box.y and then Clip.y + Clip.h >= Row_Box.y + ROW_HEIGHT;
+                  begin
+                     if Shown then
+                        Draw_Row (E, C, Slot, Full, Paint);
+                        E.Painted := E.Painted + 1;
+                     else
+                        Fill_Rect (C, (E.Bounds.x, Row_Box.y, Gutter, ROW_HEIGHT), E.Colors.Gutter_Background);
+                        Fill_Rect (C, (E.Bounds.x + Gutter, Row_Box.y, Whole - Natural'Min (Whole, Gutter), ROW_HEIGHT),
+                                   E.Colors.Background);
+                     end if;
+                     --  A row the clip cut is only partly in this buffer.
+                     R.Hashes (Slot) := (if Covered then Hash else 0);
+                     R.Widths (Slot) := Width;
+                     R.Lits (Slot) := Lit;
+                  end;
+               end if;
+            end;
+         end loop;
+         if not R.Valid then
+            --  Rows outside the clip were not drawn: unknown in this buffer.
+            for Slot in 1 .. Visible_Slots (E) loop
+               declare
+                  Row_Box : constant Rect := (E.Bounds.x, E.Bounds.y + (Slot - 1) * ROW_HEIGHT, E.Bounds.w, ROW_HEIGHT);
+               begin
+                  if not Intersects (Row_Box, Clip) then
+                     R.Hashes (Slot) := 0;
+                  end if;
+               end;
+            end loop;
+            R.Valid := True;
+         end if;
+      end;
       Draw_Side (E, C);
       for Slot in 1 .. E.Shown loop
          E.Previous (Slot) := E.Rows (Slot).Hash;

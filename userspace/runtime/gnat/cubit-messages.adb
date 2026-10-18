@@ -10,6 +10,7 @@
 pragma Ada_2022;
 with Ada.Unchecked_Conversion;
 with System;
+with System.Storage_Elements;
 with System.Machine_Code; use System.Machine_Code;
 with CuBit.Published_Clock;
 with CuBit.System_Facts;
@@ -64,6 +65,11 @@ package body CuBit.Messages is
       return ret;
    end syscall;
 
+   --  The kernel's results (Process.IPC.Activity_*).
+   Activity_Deadline : constant Unsigned_64 := 0;
+   Activity_Work     : constant Unsigned_64 := 1;
+   Activity_Event    : constant Unsigned_64 := 2;
+
    function Wait_For_Activity_Until (Deadline : Unsigned_64)
       return Activity_Result
    is
@@ -72,11 +78,27 @@ package body CuBit.Messages is
          Deadline);
    begin
       case Result is
-         when 1 => return Work_Available;
-         when 0 => return Deadline_Reached;
+         when Activity_Work => return Work_Available;
+         when Activity_Deadline => return Deadline_Reached;
          when others => return Unavailable;
       end case;
    end Wait_For_Activity_Until;
+
+   procedure Wait_For_Activity_Or_Event
+     (Deadline : Unsigned_64; Event : aliased out Message; Result : out Wake_Result)
+   is
+      Word : Unsigned_64;
+   begin
+      Event := NULL_MESSAGE;
+      Word := syscall
+        (SYSCALL_WAIT_FOR_IPC_OR_COMPLETION_UNTIL_MONOTONIC_MILLISECOND,
+         Deadline, Unsigned_64 (System.Storage_Elements.To_Integer (Event'Address)));
+      Result := (case Word is
+                   when Activity_Event    => Event_Taken,
+                   when Activity_Work     => Work_Available,
+                   when Activity_Deadline => Deadline_Reached,
+                   when others            => Unavailable);
+   end Wait_For_Activity_Or_Event;
 
    --  Conversion helpers
 

@@ -262,3 +262,5 @@ boot-timeline           | boot     | kernel | make prove-boot-timeline
 gpu-cursor-plane        | gpu      | kernel | alr exec -- gnatprove -P ../tests/intel-gpu/cursor_plane.gpr -u intel_gpu_cursor_surfaces.adb intel_gpu_cursor_ddb.adb intel_gpu_cursor_plane.adb intel_gpu_cursor_program.adb --level=2 --report=fail -j2
 driver-manifests        | ccl      | . | bash tests/driver-manifests/run.sh --prove
 render-admission        | gpu      | kernel | alr exec -- gnatprove -P ../tests/intel-gpu/render_admission.gpr -u intel_render_admission.adb --level=2 --checks-as-errors=on -j2
+grant-doorbells         | kernel   | . | bash tests/grant-doorbells/run.sh --prove
+channel-core            | runtime  | . | bash tests/channel-core/run.sh --prove

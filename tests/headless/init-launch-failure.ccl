@@ -1,0 +1,8 @@
+# Desktop launch-failure notice (launch-failure headless test): the desktop
+# session only; the test launches a deliberately broken files.app (no
+# startup table) from the Apps menu and checks Desktop names the reason.
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "display.svc" (priority 5))
+  (start "desktop.svc" (priority 4))
+)

@@ -1,5 +1,6 @@
 with Interfaces;
 with CCL.Resource_Sections;
+with CuBit.Channel_Declarations;
 with CuBit.Network_Authority;
 with CuBit.Launch_Authority;
 with CuBit.Program_Descriptions;
@@ -244,6 +245,50 @@ package body CCL.Manifests.Encoding with SPARK_Mode => On is
          end loop;
          Result.Startup.Length := Length;
          Result.Handles := Decl.Handles;
+         --  .cubit.channels: the declared offers, when there are any.
+         declare
+            package CD renames CuBit.Channel_Declarations;
+            Offers : CD.Table := (Count => 0, Offers => [others => (others => <>)]);
+            Raw : CD.Bytes (1 .. CD.Maximum_Table_Bytes);
+            Raw_Length : CD.Table_Length;
+            Check_Table : CD.Table;
+            Check_Outcome : CD.Decode_Result;
+            use type CD.Decode_Result;
+         begin
+            for I in 1 .. Decl.Channel_Count loop
+               declare
+                  Name : constant String :=
+                    Decl.Channels (I).Contract.Data (1 .. Decl.Channels (I).Contract.Length);
+               begin
+                  Offers.Offers (I).Contract.Length := Name'Length;
+                  for K in Name'Range loop
+                     Offers.Offers (I).Contract.Text (K - Name'First + 1) := Name (K);
+                  end loop;
+                  Offers.Offers (I).Per_Client := Decl.Channels (I).Per_Client;
+                  Offers.Offers (I).Total := Decl.Channels (I).Total;
+                  Offers.Offers (I).Class := Decl.Channels (I).Class;
+                  Offers.Count := I;
+               end;
+            end loop;
+            Result.Channel_Offers := Offers;
+            Result.Channels.Length := 0;
+            if Offers.Count > 0 then
+               if not CD.Valid_Table (Offers) then
+                  Fail (Invalid_Channel_Limit, Cursor);
+                  return;
+               end if;
+               CD.Encode (Offers, Raw, Raw_Length);
+               CD.Decode (Raw (1 .. Raw_Length), Check_Table, Check_Outcome);
+               if Check_Outcome /= CD.Decoded then
+                  Fail (Invalid_Channel_Limit, Cursor);
+                  return;
+               end if;
+               for I in 1 .. Raw_Length loop
+                  Result.Channels.Data (I) := Raw (I);
+               end loop;
+               Result.Channels.Length := Raw_Length;
+            end if;
+         end;
       end;
       Result.Binding_Count := Count;
       for Index in 1 .. Count loop

@@ -1137,18 +1137,19 @@ package body CuBit.UI is
       Canvas_Controls.Draw_Button (c, r, colors, style, label);
    end Draw_Button;
 
+   --  The menu bar continues the compositor's title bar (one flat band, the
+   --  title/menu rule between them drawn by the compositor) and ends in a
+   --  one-pixel rule (CuBit.UI.Window_Chrome).
    procedure Draw_Menu_Surface (c : Canvas; r : Rect; colors : Theme) is
    begin
-      Fill_Vertical_Gradient (c, r,
-        Blend (colors.highlight, colors.panel, 70),
-        Blend (colors.shadow, colors.panel, 28));
+      Fill_Rect (c, (r.x, r.y, r.w, r.h - 1), colors.titleBar);
+      Fill_Rect (c, (r.x, r.y + r.h - 1, r.w, 1), colors.menuRule);
    end Draw_Menu_Surface;
 
    procedure Draw_Menu_Bar (c : Canvas; r : Rect; colors : Theme) is
    begin
       if Is_Empty (r) then return; end if;
       Draw_Menu_Surface (c, r, colors);
-      Stroke_Rect (c, r, colors.highlight, colors.shadow);
    end Draw_Menu_Bar;
 
    procedure Draw_Menu_Title
@@ -1162,8 +1163,6 @@ package body CuBit.UI is
       if Is_Empty (r) then return; end if;
       -- Use the same row colors as the strip, including during partial repair.
       Draw_Menu_Surface (c, r, colors);
-      Fill_Rect (c, (r.x, r.y, r.w, 1), colors.highlight);
-      Fill_Rect (c, (r.x, r.y + r.h - 1, r.w, 1), colors.shadow);
       if active or hot then
          Fill_Rect (c, inner, bg);
          Stroke_Rect (c, inner, colors.shadow, colors.shadow);

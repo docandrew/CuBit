@@ -51,7 +51,7 @@ Mesa native tests: --test softpipe, opengl, buffer, mesa-window, mesa-sync, mesa
 
 Options:
   --build              Run make world before booting QEMU
-  --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-console, logs, ccl-remote, capability-security, network-authority, bench-net, bench-fs, threads, futex, clock, avx, rust-std, libc, processes, control-events, binutils, gcc, servo, bench-spread, timesync, tls-probe, tls-service, wget-https, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, text, clipboard, key-repeat, desktop-doom, desktop-virtio-vga, desktop-vm, virtio-gpu, virtio-vga-primary, or boot-timeline (--accel kvm --timeout 60)
+  --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-console, logs, ccl-remote, capability-security, network-authority, bench-net, bench-fs, threads, futex, clock, avx, rust-std, libc, processes, control-events, binutils, gcc, servo, bench-spread, timesync, tls-probe, tls-service, wget-https, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, text, clipboard, key-repeat, desktop-doom, desktop-virtio-vga, desktop-vm, virtio-gpu, virtio-vga-primary, launch-failure, or boot-timeline (--accel kvm --timeout 60)
   --timeout SECONDS    QEMU runtime before timeout is treated as success
                        (default 25; 180 for desktop tests, see DESKTOP_TIMEOUT_SECONDS)
   --accel NAME         QEMU accelerator (for example: tcg,thread=multi)
@@ -249,7 +249,7 @@ done
 
 if [ -z "$TIMEOUT_SECONDS" ]; then
     case "$TEST_NAME" in
-        desktop-display|desktop-protocol|files|text|clipboard|key-repeat|input-stream)
+        desktop-display|desktop-protocol|files|text|clipboard|key-repeat|input-stream|launch-failure)
             TIMEOUT_SECONDS=$DESKTOP_TIMEOUT_SECONDS ;;
         network-authority)
             TIMEOUT_SECONDS=$NETWORK_AUTHORITY_TIMEOUT_SECONDS ;;
@@ -294,7 +294,7 @@ case "$TEST_NAME" in
         ;;
     grant-forward|grant-forward-intermediary-exit|grant-forward-owner-exit|grant-forward-desktop|config-tree|config-inspection|log-authority|log-fields|metrics|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
         ;;
-    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|scanout-repair)
+    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|scanout-repair|launch-failure)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -720,6 +720,10 @@ case "$TEST_NAME" in
     files)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-files.ccl"
         ;;
+    launch-failure)
+        # Desktop names why an Apps-menu launch failed (docs/process-arguments.md).
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-launch-failure.ccl"
+        ;;
     text)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-text.ccl"
         ;;
@@ -1009,6 +1013,7 @@ if [ -n "$INIT_PROFILE" ]; then
        [ "$TEST_NAME" = "render-launch-policy" ] ||
        [ "$TEST_NAME" = "config-tree" ] ||
        [ "$TEST_NAME" = "files" ] ||
+       [ "$TEST_NAME" = "launch-failure" ] ||
        [ "$TEST_NAME" = "text" ] ||
        [ "$TEST_NAME" = "clipboard" ] ||
        [ "$TEST_NAME" = "key-repeat" ] ||
@@ -1289,6 +1294,26 @@ if [ -n "$INIT_PROFILE" ]; then
                 exit 1
             fi
         done
+    fi
+    if [ "$TEST_NAME" = "launch-failure" ]; then
+        # A deliberately broken program: Files without its startup table,
+        # as a binary linked before CAP-002 is. procmgr must refuse it and
+        # Desktop must say why.
+        BROKEN_IMAGE="$(mktemp "${TMPDIR:-/tmp}/cubit-launch-failure.XXXXXX")"
+        if ! objcopy --remove-section .cubit.startup \
+          "$KERNEL_DIR/isodir/boot/files.app" "$BROKEN_IMAGE"; then
+            rm -f "$BROKEN_IMAGE"
+            echo "headless: failed to make the broken Files image" >&2
+            exit 1
+        fi
+        debugfs -w -R "rm files.app" "$TEMP_DISK" >/dev/null 2>&1
+        if ! debugfs -w -R "write $BROKEN_IMAGE files.app" \
+          "$TEMP_DISK" >/dev/null 2>&1; then
+            rm -f "$BROKEN_IMAGE"
+            echo "headless: failed to install the broken files.app" >&2
+            exit 1
+        fi
+        rm -f "$BROKEN_IMAGE"
     fi
     if [ "$TEST_NAME" = "text" ]; then
         TEXT_TEST_IMAGE="$KERNEL_DIR/isodir/boot/text.app"
@@ -1617,7 +1642,7 @@ if [ -n "$INIT_PROFILE" ]; then
             exit 1
         fi
         rm -rf "$SERVO_STAGE"
-        for SERVO_IMAGE in logstore.svc clock.svc display.svc desktop.svc cubitshell.app; do
+        for SERVO_IMAGE in logstore.svc clock.svc display.svc metrics.svc desktop.svc cubitshell.app; do
             debugfs -w -R "rm $SERVO_IMAGE" "$TEMP_DISK" >/dev/null 2>&1
             if ! servo_install "$KERNEL_DIR/isodir/boot/$SERVO_IMAGE" "$SERVO_IMAGE"; then
                 echo "headless: failed to install $SERVO_IMAGE" >&2
@@ -2059,7 +2084,7 @@ if [ "$TEST_NAME" = "managed-ui" ]; then
     rm -f "$MONITOR_SOCKET"
     MONITOR_ARGS=(-monitor "unix:$MONITOR_SOCKET,server,nowait")
 fi
-if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TEST_NAME" = "text" ] || [ "$TEST_NAME" = "clipboard" ] || [ "$TEST_NAME" = "mesa-window" ] || [ "$TEST_NAME" = "gpu-viewer" ] ||
+if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TEST_NAME" = "launch-failure" ] || [ "$TEST_NAME" = "text" ] || [ "$TEST_NAME" = "clipboard" ] || [ "$TEST_NAME" = "mesa-window" ] || [ "$TEST_NAME" = "gpu-viewer" ] ||
    [ "$TEST_NAME" = "desktop-protocol" ] ||
    [ "$TEST_NAME" = "ccl-workspace" ] || [ "$TEST_NAME" = "ccl-console" ] ||
    [ "$TEST_NAME" = "logs" ] || [ "$TEST_NAME" = "scanout-repair" ] ||
@@ -2159,7 +2184,6 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
             # This is a bounded correctness wait, never a latency measurement.
             case "${MESA_WINDOW_SCENE:-quads}" in
                 quads) pixel_checker="$ROOT_DIR/tests/mesa-software/check-window.py" ;;
-                cube) pixel_checker="$ROOT_DIR/tests/mesa-software/check-cube-window.py" ;;
                 *) exit 2 ;;
             esac
             pixel_deadline=$((SECONDS + 20))
@@ -2196,6 +2220,34 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
                 # and exercises its real imported-target retirement boundary.
                 printf 'sendkey q\n' | nc -N -U "$MONITOR_SOCKET" >/dev/null 2>&1
             fi
+            exit 0
+        fi
+        if [ "$TEST_NAME" = "launch-failure" ]; then
+            # Launch Files from Apps: Tools is the fifth category row
+            # (System, Development, Web, Games, Tools), Files its first
+            # entry. Photograph the notice, then dismiss it with Escape.
+            for ((attempt = 0; attempt < 300; attempt++)); do
+                grep -F "desktop: active outputs=" "$SERIAL_LOG" >/dev/null 2>&1 && break
+                sleep 0.1
+            done
+            sleep 2
+            {
+                printf 'sendkey meta_l\n'
+                sleep 0.5
+                for key in down down down down right ret; do
+                    printf 'sendkey %s\n' "$key"
+                    sleep 0.3
+                done
+            } | nc -N -U "$MONITOR_SOCKET" >/dev/null 2>&1
+            for ((attempt = 0; attempt < 300; attempt++)); do
+                grep -aF "desktop: launch failed:" "$SERIAL_LOG" >/dev/null 2>&1 && break
+                sleep 0.1
+            done
+            sleep 1
+            printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-notice.ppm" |
+                nc -N -U "$MONITOR_SOCKET" >/dev/null 2>&1
+            sleep 1
+            printf 'sendkey esc\n' | nc -N -U "$MONITOR_SOCKET" >/dev/null 2>&1
             exit 0
         fi
         if [ "$TEST_NAME" = "servo" ] && [ -n "${SERVO_DESKTOP:-}" ]; then
@@ -3029,6 +3081,30 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
             text_wait "text: saved @nvme:0/Documents/notes.txt"
             sleep 0.5
             printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-text-saved.ppm" | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
+            # Frames into rotating buffers: after these moves exactly one
+            # current-line band may show (text-frame-check.py).
+            text_keys up down up down
+            sleep 0.8
+            printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-text-moves.ppm" | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
+            # Ctrl+S was the last chord: two plain clicks on different lines
+            # must leave one cursor (a click carries its own modifiers).
+            {
+                printf 'mouse_move 150 120\n'
+                sleep 0.3
+                printf 'mouse_button 1\n'
+                sleep 0.1
+                printf 'mouse_button 0\n'
+                sleep 0.7
+                printf 'mouse_move 40 30\n'
+                sleep 0.3
+                printf 'mouse_button 1\n'
+                sleep 0.1
+                printf 'mouse_button 0\n'
+                sleep 0.5
+            } | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
+            text_wait "text: press ctrl=0 alt=0 cursors=1"
+            sleep 0.5
+            printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-text-clicks.ppm" | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
             text_keys ctrl-q
             text_wait "text: closed"
         else
@@ -3552,13 +3628,6 @@ desktop: pixel teardown charged= 0
         fi
         case "${MESA_WINDOW_SCENE:-quads}" in
             quads) python3 "$ROOT_DIR/tests/mesa-software/check-window.py" "${SERIAL_LOG%.log}-mesa.ppm" || exit 1 ;;
-            cube)
-                grep -qF 'MESA-WINDOW: RGBA texture uploaded PASS' "$SERIAL_LOG" || exit 1
-                grep -qF 'MESA-WINDOW: vertex/index buffers uploaded PASS' "$SERIAL_LOG" || exit 1
-                grep -qF 'MESA-WINDOW: GLSL vertex/fragment compile and link PASS' "$SERIAL_LOG" || exit 1
-                grep -qF 'MESA-WINDOW: depth-tested cube ready' "$SERIAL_LOG" || exit 1
-                python3 "$ROOT_DIR/tests/mesa-software/check-cube-window.py" "${SERIAL_LOG%.log}-mesa.ppm" || exit 1
-                ;;
             *) echo 'headless: unsupported MESA_WINDOW_SCENE' >&2; exit 2 ;;
         esac
         ;;
@@ -4458,6 +4527,14 @@ text: saved @nvme:0/Documents/notes.txt bytes=39
 text: closed
 "
         ;;
+    launch-failure)
+        required_markers="
+procmgr: launch of files.app refused: unreadable capability manifest
+desktop: launch rejected token=
+desktop: launch failed: Files could not start. Reason: it has no startup table (rebuild it).
+desktop: launch notice dismissed
+"
+        ;;
     files)
         required_markers="
 files: starting
@@ -4873,6 +4950,15 @@ hello cubit"
     fi
     if debugfs -R 'ls Documents' "$TEMP_DISK" 2>/dev/null | grep -F '.notes.txt.text-save' >/dev/null; then
         echo "headless: Text left its save sibling behind" >&2
+        exit 1
+    fi
+    if ! python3 "$ROOT_DIR/tests/headless/text-frame-check.py" "${SERIAL_LOG%.log}-text-moves.ppm"; then
+        echo "headless: Text showed a stale row after cursor moves" >&2
+        exit 1
+    fi
+    if [ "$(grep -acF 'text: press ctrl=0 alt=0 cursors=1' "$SERIAL_LOG")" -lt 2 ] ||
+       grep -aE 'text: (press .*cursors=[2-9]|cursors [2-9])' "$SERIAL_LOG" >/dev/null; then
+        echo "headless: two plain clicks after Ctrl+S did not leave one cursor" >&2
         exit 1
     fi
 fi

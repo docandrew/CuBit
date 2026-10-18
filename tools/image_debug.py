@@ -46,6 +46,8 @@ NT_GNU_BUILD_ID = 3
 GNU_OWNER = b"GNU\x00"
 DEBUG_PREFIX = ".debug_"
 STRIPPED_SECTIONS = (".symtab", ".strtab")
+# The typed startup table (CAP-002) procmgr requires before it launches a program.
+STARTUP_TABLE_SECTION = ".cubit.startup"
 
 
 def digest(data):
@@ -75,6 +77,22 @@ def sections(data):
 def is_executable(data):
     return (data[:4] == ELF_MAGIC and len(data) >= 64 and data[4] == ELFCLASS64
             and data[5] == ELFDATA2LSB and struct.unpack_from("<H", data, 16)[0] == ET_EXEC)
+
+
+def lacks_startup_table(data):
+    """True for an executable procmgr refuses (Startup_Table_Missing): one
+    built before CAP-002 or outside `make world` and never relinked."""
+    return is_executable(data) and all(name != STARTUP_TABLE_SECTION for name, *_ in sections(data))
+
+
+def refuse_stale_programs(payloads):
+    """Raise naming every staged executable that procmgr would refuse to launch."""
+    stale = sorted(f"{destination} ({source})" for destination, source in payloads.items()
+                   if lacks_startup_table(source.read_bytes()))
+    if stale:
+        raise ValueError(f"no {STARTUP_TABLE_SECTION} startup table, procmgr would refuse to launch: "
+                         + ", ".join(stale)
+                         + "; rebuild them (Penny: make -C kernel servo) or leave them out")
 
 
 def build_id(data):

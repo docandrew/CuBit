@@ -13,5 +13,7 @@
     (scheduling "real-time" 1500 5000)]
   optional => ["pointer-events"]
   handles => (Handle_Limit.At_Most 512)
-  channels => [(Channel_Offer contract => "gpu.urgent" per_client => 1 total => 1 class => Channel_Class.Urgent)
-               (Channel_Offer "gpu.render" 4 64)])
+  channels => [(Channel_Offer contract => "gpu.display" per_client => (Channel_Limit.At_Most 1)
+                 total => (Channel_Limit.At_Most 1) class => Channel_Class.Urgent)
+               (Channel_Offer "gpu.command" (Channel_Limit.At_Most 1) (Channel_Limit.At_Most 1) Channel_Class.Interactive)
+               (Channel_Offer "gpu.render" Channel_Limit.Server_Limit Channel_Limit.Server_Limit)])

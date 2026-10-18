@@ -6,6 +6,7 @@ pragma Ada_2022;
 with System.Machine_Code;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Datagram_Rings;
+with CuBit.Doorbells;
 with CuBit.Grant_References;
 with CuBit.Kernel_ABI;
 with CuBit.Kernel_Calls;
@@ -298,7 +299,7 @@ package body CuBit.Channels is
       if Reply.tag.label /= KA.Reply_OK then
          if Reply.tag.label = KA.Reply_Error then
             Result := Refused;
-            Refusal := (if Reply.words (0) in 1 .. 4
+            Refusal := (if CP.Is_Refusal_Code (Reply.words (0))
                         then CP.Open_Refusal'Enum_Val (Reply.words (0)) else CP.Unsupported);
          end if;
          Close (C);
@@ -520,6 +521,15 @@ package body CuBit.Channels is
          Ignore := CuBit.Messages.capSubmit (C.Endpoint, M, CuBit.Messages.NO_COMPLETION_TOKEN);
       end if;
    end Kick;
+
+   procedure Signal (C : Channel; Sync : Boolean; Result : out Signal_Result) is
+   begin
+      if not C.Active or else not C.Has_Own then
+         Result := No_Region;
+         return;
+      end if;
+      Result := (if CuBit.Doorbells.Ring (C.Own_Grant, Sync) then Signalled else Ended);
+   end Signal;
 
    --  The consumer's index, as far as the producer can trust it.
    procedure Learn_Consumed (C : in out Channel);

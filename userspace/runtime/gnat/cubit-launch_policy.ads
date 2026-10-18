@@ -15,4 +15,13 @@ package CuBit.Launch_Policy with SPARK_Mode => On is
    function Allows
      (Approval : Network_Approval; Requested : Network_Authority.Scope)
       return Boolean;
+
+   --  A render session for an installed GPU application Desktop starts
+   --  (its Apps menu). Same transitional rule as Desktop_Approval: the exact
+   --  root executable name, from the registered Desktop only. procmgr still
+   --  asks devmgr to admit the session; a refusal (no Intel GPU) starts the
+   --  program without one when it declared render optional.
+   function Desktop_Render_Approval
+     (Name : String; Sender, Desktop_PID : CuBit.Process_IDs.Process_ID)
+      return Boolean;
 end CuBit.Launch_Policy;

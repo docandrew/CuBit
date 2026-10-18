@@ -16,6 +16,8 @@ import shutil
 import subprocess
 import tempfile
 
+import image_debug
+
 
 def digest(path):
     with path.open("rb") as stream:
@@ -53,6 +55,7 @@ def prepare(base, output, files, *, replace=False):
     for destination in payloads:
         if any(str(parent) in payloads for parent in PurePosixPath(destination).parents):
             raise ValueError("payload file also used as a directory: " + destination)
+    image_debug.refuse_stale_programs(payloads)
     checked(["e2fsck", "-fn", str(base)])
     with tempfile.TemporaryDirectory(prefix=".cubit-desktop-", dir=output.parent) as directory:
         root = Path(directory)

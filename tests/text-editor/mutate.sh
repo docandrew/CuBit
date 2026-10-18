@@ -28,8 +28,9 @@ mutations=(
   "text_marks.adb|               if M.First < First and then First < M.Last then|               if M.First < First and then First <= M.Last then|inserting after a region is refused"
   "text_documents.adb|                     if Rest > 0 and then (After < Rest|                     if Rest > 0 and then (After <= Rest|a line start found past the piece's last feed"
   "text_documents.adb|(if Feed > Start and then Byte_At (D, Feed - 1) = ASCII.CR then Feed - 1 else Feed)|(if Feed > Start and then Byte_At (D, Feed - 1) = ASCII.CR then Feed else Feed)|a CR LF line ends after its CR"
-  "text_editors.adb|               E.Paint (Slot) := Content_Width'Max (Width, E.Previous_Width (Slot));|               E.Paint (Slot) := Width;|a shrinking row leaves its old text"
-  "text_editors.adb|                 or else Lit or else E.Previous_Lit (Slot);|                 or else Lit;|the old current line keeps its highlight"
+  "text_editors.adb|                     Paint : constant Content_Width := Content_Width'Max (Width, R.Widths (Slot));|                     Paint : constant Content_Width := Width;|a shrinking row leaves its old text"
+  "text_editors.adb|                       or else Lit or else R.Lits (Slot);|                       or else Lit;|the old current line keeps its highlight"
+  "text_editors.adb|if Intersects (Row_Box, Clip) and then (not R.Valid or else R.Hashes (Slot) /= Hash) then|if Intersects (Row_Box, Clip) and then (E.Everything or else E.Dirty (Slot) /= 0) then|rows repaint against the last frame, not the buffer (rotating buffers flash)"
 )
 mkdir -p "$here/build"
 survived=0

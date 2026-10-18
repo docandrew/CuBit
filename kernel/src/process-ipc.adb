@@ -18,6 +18,9 @@ with Capability_Install;
 with Process_Capabilities;
 with Config;
 with Grant_Page_Installation;
+with Grant_Bell_Lists;
+with Channel_Wake_ABI;
+with Grant_Doorbells;
 with IPC_Labels;
 with IPI;
 with Kernel_Reports;
@@ -45,6 +48,7 @@ use type Memory_Grants.Revocation_Result;
 use type Memory_Grants.Reference;
 use type Memory_Grants.Grant_Generation;
 use type Memory_Grants.Hold_Release_Result;
+use type Process_Identities.Identity;
 
 -- Ada implementation: custom storage, address overlays or live context state.
 -- Only separately annotated SPARK policy/state routines carry proof obligations.
@@ -454,6 +458,7 @@ package body Process.IPC is
     function mailboxIdle (owner : ProcessID) return Boolean is
       (not queued (owner) and then
        not proctab(owner).kernelNoticePending and then
+       not proctab(owner).bellPending and then
        not proctab(owner).irqNotificationPending and then
        Queues.isEmpty (mailtab(owner).sendQueue));
 
@@ -713,7 +718,7 @@ package body Process.IPC is
 
     -- Caller holds mailtab(owner).lock AND Process.lock. Queue membership is
     -- stable under these locks; detach before making a waiter runnable.
-    procedure wakeActivityWaitersLocked (owner : ProcessID) is
+    procedure wakeActivityWaitersLocked (owner : ProcessID; sync : Boolean := False) is
         waiter : ThreadID := mailtab(owner).recvQueue.head;
         following : ThreadID;
     begin
@@ -724,7 +729,11 @@ package body Process.IPC is
             if threadtab (waiter).waitsForIPCActivity then
                 Queues.detach (mailtab(owner).recvQueue, waiter);
                 threadtab (waiter).receiveDeadlineActive := False;
-                ready (waiter);
+                if sync then
+                    readySync (waiter);
+                else
+                    ready (waiter);
+                end if;
             end if;
             waiter := following;
         end loop;
@@ -769,7 +778,7 @@ package body Process.IPC is
     -- Caller holds mailtab(owner).lock. Unsolicited work (an event, IRQ
     -- doorbell or one-way message) wakes one blocked receiver, which may
     -- consume it, and every event waiter.
-    procedure wakeForUnsolicitedWork (owner : ProcessID) is
+    procedure wakeForUnsolicitedWork (owner : ProcessID; sync : Boolean := False) is
         receiver : ThreadID;
     begin
         Spinlocks.enterCriticalSection (lock);
@@ -781,40 +790,61 @@ package body Process.IPC is
             if threadtab (receiver).state = RECEIVING and then
                not Process_Lifetime.Closing (threadtab (receiver).lifetime)
             then
-                ready (receiver);
+                if sync then
+                    readySync (receiver);
+                else
+                    ready (receiver);
+                end if;
             end if;
         end if;
         wakeNotifyWaitersLocked (owner);
-        wakeActivityWaitersLocked (owner);
+        wakeActivityWaitersLocked (owner, sync);
         Spinlocks.exitCriticalSection (lock);
     end wakeForUnsolicitedWork;
 
-    function waitForActivityUntil (deadlineMs : Unsigned_64)
-      return Unsigned_64
+    procedure waitForActivityUntil
+      (deadlineMs : Unsigned_64; takeEvent : Boolean;
+       event : out Message; result : out Unsigned_64)
     is
         mypid : constant ProcessID := PerCPUData.getCurrentPID;
         me    : constant ThreadID := PerCPUData.getCurrentThread;
         receiver : constant ProcessID := getReceiver (mypid);
         ignored : ThreadID;
+        notice  : RingEntry;
+        taken   : Boolean;
     begin
+        event := NULL_MESSAGE;
         loop
             Spinlocks.enterCriticalSection (mailtab(receiver).lock);
             if mailtab(receiver).closed then
                 Spinlocks.exitCriticalSection (mailtab(receiver).lock);
-                return Unsigned_64'Last;
+                result := Activity_Closed;
+                return;
+            end if;
+            if takeEvent then
+                takeKernelNotice (receiver, notice, taken);
+                if taken then
+                    Spinlocks.exitCriticalSection (mailtab(receiver).lock);
+                    event := notice.msg;
+                    result := Activity_Event;
+                    return;
+                end if;
             end if;
             if queued (receiver) or else
                not Queues.isEmpty (mailtab(receiver).sendQueue) or else
                proctab(receiver).irqNotificationPending or else
                proctab(receiver).kernelNoticePending or else
+               proctab(receiver).bellPending or else
                completionsFor (receiver, me) /= 0
             then
                 Spinlocks.exitCriticalSection (mailtab(receiver).lock);
-                return 1;
+                result := Activity_Work;
+                return;
             end if;
             if Time.msTicks >= deadlineMs then
                 Spinlocks.exitCriticalSection (mailtab(receiver).lock);
-                return 0;
+                result := Activity_Deadline;
+                return;
             end if;
             threadtab (me).queueKey := receiver;
             threadtab (me).waitsForIPCActivity := True;
@@ -825,7 +855,7 @@ package body Process.IPC is
             Queues.enqueue (mailtab(receiver).recvQueue, me, ignored);
             threadtab (me).state := RECEIVING;
             Spinlocks.exitCriticalSection (mailtab(receiver).lock);
-            yield;
+            yieldToSyncWakee;
             Spinlocks.enterCriticalSection (mailtab(receiver).lock);
             threadtab (me).waitsForIPCActivity := False;
             threadtab (me).receiveDeadlineActive := False;
@@ -895,7 +925,7 @@ package body Process.IPC is
         Queues.enqueue (mailtab(receiver).recvQueue, me, ignore);
         threadtab (me).state := RECEIVING;
         Spinlocks.exitCriticalSection (mailtab(receiver).lock);
-        yield;
+        yieldToSyncWakee;
 
         Spinlocks.enterCriticalSection (mailtab(receiver).lock);
         threadtab (me).receiveDeadlineActive := False;
@@ -2795,6 +2825,144 @@ package body Process.IPC is
     end takeGrantNoticeLocked;
 
     ---------------------------------------------------------------------------
+    -- Channel wakes (CAP-002 step 3, Channel_Wake_ABI). Callers hold grantLock
+    -- unless they say otherwise. A grant is on its grantee's bell list
+    -- exactly while its wake is pending (Grant_Doorbells says when to link
+    -- and unlink); proctab(pid).bellPending, under the mailbox lock, is set
+    -- while the list may be non-empty and cleared when the last is taken.
+    ---------------------------------------------------------------------------
+    function bellPrevOf (slot : Memory_Grants.Global_Slot) return Memory_Grants.Global_Slot is
+      (grantFor (slot).bellPrev);
+    function bellNextOf (slot : Memory_Grants.Global_Slot) return Memory_Grants.Global_Slot is
+      (grantFor (slot).bellNext);
+    procedure setBellPrev (slot, value : Memory_Grants.Global_Slot) is
+    begin
+        grantFor (slot).bellPrev := value;
+    end setBellPrev;
+    procedure setBellNext (slot, value : Memory_Grants.Global_Slot) is
+    begin
+        grantFor (slot).bellNext := value;
+    end setBellNext;
+
+    package Bell_Lists is new Grant_Bell_Lists
+      (Slot => Memory_Grants.Global_Slot, No_Slot => Memory_Grants.No_Slot,
+       Previous => bellPrevOf, Next => bellNextOf,
+       Set_Previous => setBellPrev, Set_Next => setBellNext);
+
+    function bellListOf (pid : ProcessID) return Bell_Lists.List is
+      ((Head => grantsOf (pid).bellHead, Tail => grantsOf (pid).bellTail,
+        Count => grantsOf (pid).bellCount));
+
+    procedure storeBellList (pid : ProcessID; l : Bell_Lists.List) is
+    begin
+        grantsOf (pid).bellHead := l.Head;
+        grantsOf (pid).bellTail := l.Tail;
+        grantsOf (pid).bellCount := l.Count;
+    end storeBellList;
+
+    -- The grant on slot ends (revoked, given back, retired, or a party
+    -- died): a pending wake is unlinked and every later one refused. The
+    -- grantee hears of the end through the grant-end notices. Idempotent.
+    procedure endBellLocked (slot : Memory_Grants.Global_Slot) is
+        value : constant Grant_Pointer := grantFor (slot);
+        grantee : ProcessID;
+        wasPending : Boolean;
+        l : Bell_Lists.List;
+    begin
+        if value = null or else value.bell.Ended then
+            return;
+        end if;
+        grantee := value.granteePID;
+        Grant_Doorbells.Finish (value.bell, wasPending);
+        if wasPending and then grantee /= NO_PROCESS then
+            l := bellListOf (grantee);
+            Bell_Lists.Remove (l, slot);
+            storeBellList (grantee, l);
+        end if;
+    end endBellLocked;
+
+    -- Pop one of receiver's pending wakes (found False when none) as its
+    -- grant reference word.
+    procedure popBellLocked
+      (receiver : ProcessID; word : out Unsigned_64; found : out Boolean)
+    is
+        l : Bell_Lists.List := bellListOf (receiver);
+        slot : Memory_Grants.Global_Slot;
+        value : Grant_Pointer;
+        taken : Boolean;
+    begin
+        word := 0;
+        found := False;
+        Bell_Lists.Pop (l, slot);
+        storeBellList (receiver, l);
+        if slot = Memory_Grants.No_Slot then
+            return;
+        end if;
+        value := grantFor (slot);
+        Grant_Doorbells.Take (value.bell, taken);
+        if not taken then
+            raise ProcessException with "Bell list held a grant without a pending wake";
+        end if;
+        word := Shift_Left (Unsigned_64 (value.generation), 32) or Unsigned_64 (slot);
+        found := True;
+    end popBellLocked;
+
+    function sendChannelWake (reference : Unsigned_64; sync : Boolean) return Unsigned_64 is
+        pid : constant ProcessID := PerCPUData.getCurrentPID;
+        slotPart : constant Unsigned_64 := reference and 16#FFFF_FFFF#;
+        generationPart : constant Unsigned_64 := Shift_Right (reference, 32);
+        ref : Memory_Grants.Reference;
+        value : Grant_Pointer;
+        outcome : Grant_Doorbells.Ring_Outcome;
+        newly : Boolean := False;
+        grantee : ProcessID := NO_PROCESS;
+        l : Bell_Lists.List;
+        use type Grant_Doorbells.Ring_Outcome;
+    begin
+        if pid = NO_PROCESS or else slotPart = 0
+          or else slotPart > Unsigned_64 (Memory_Grants.Global_Slot'Last) or else generationPart = 0
+        then
+            return Channel_Wake_ABI.Refused_Word;
+        end if;
+        ref := (slot => Memory_Grants.Global_Slot (slotPart),
+                generation => Memory_Grants.Grant_Generation (generationPart));
+        Spinlocks.enterCriticalSection (grantLock);
+        value := grantFor (ref.slot);
+        -- Owning this life of a live, notified grant is the authority.
+        if value = null or else value.granterPID /= pid
+          or else value.granterIdentity /= identityOf (pid)
+          or else not Memory_Grants.Is_Current (ref, value.generation)
+          or else not value.notify or else not Memory_Grants.Is_Active (value.lifecycle)
+          or else Memory_Grants.Is_Revocation_Pending (value.lifecycle)
+        then
+            Spinlocks.exitCriticalSection (grantLock);
+            return Channel_Wake_ABI.Refused_Word;
+        end if;
+        Grant_Doorbells.Ring (value.bell, outcome, newly);
+        if outcome = Grant_Doorbells.Rung and then newly then
+            grantee := value.granteePID;
+            l := bellListOf (grantee);
+            Bell_Lists.Append (l, ref.slot);
+            storeBellList (grantee, l);
+        end if;
+        Spinlocks.exitCriticalSection (grantLock);
+        if outcome /= Grant_Doorbells.Rung then
+            return Channel_Wake_ABI.Refused_Word;
+        end if;
+        -- Newly pending: the persistent doorbell, and the grantee's waiting
+        -- thread made runnable (the existing wake path). A repeat is absorbed.
+        if newly and then grantee /= NO_PROCESS then
+            Spinlocks.enterCriticalSection (mailtab(grantee).lock);
+            if not mailtab(grantee).closed then
+                proctab(grantee).bellPending := True;
+                wakeForUnsolicitedWork (grantee, sync);
+            end if;
+            Spinlocks.exitCriticalSection (mailtab(grantee).lock);
+        end if;
+        return Channel_Wake_ABI.Accepted_Word;
+    end sendChannelWake;
+
+    ---------------------------------------------------------------------------
     -- Exit and fault reports, and taking notices (docs/ipc-delivery.md)
     ---------------------------------------------------------------------------
 
@@ -2906,13 +3074,17 @@ package body Process.IPC is
     begin
         item := NULL_RING_ENTRY;
         found := False;
-        if not proctab(receiver).kernelNoticePending then
+        if not proctab(receiver).kernelNoticePending and then
+           not proctab(receiver).bellPending
+        then
             return;
         end if;
-        Spinlocks.enterCriticalSection (grantLock);
-        takeGrantNoticeLocked (receiver, msg, found);
-        Spinlocks.exitCriticalSection (grantLock);
-        if not found then
+        if proctab(receiver).kernelNoticePending then
+            Spinlocks.enterCriticalSection (grantLock);
+            takeGrantNoticeLocked (receiver, msg, found);
+            Spinlocks.exitCriticalSection (grantLock);
+        end if;
+        if not found and then proctab(receiver).kernelNoticePending then
             Spinlocks.enterCriticalSection (reportLock);
             Kernel_Reports.Take
               (reports, Kernel_Reports.Process (receiver), value, found, released);
@@ -2922,7 +3094,7 @@ package body Process.IPC is
                 msg := toMessage (value);
             end if;
         end if;
-        if not found then
+        if not found and then proctab(receiver).kernelNoticePending then
             declare
                 sender : Kernel_Controls.Sender_Id;
                 senderGeneration : Unsigned_64;
@@ -2944,12 +3116,38 @@ package body Process.IPC is
                 end if;
             end;
         end if;
+        if not found and then proctab(receiver).kernelNoticePending then
+            -- The doorbell outlived its notices; a new one rings it again.
+            proctab(receiver).kernelNoticePending := False;
+        end if;
+        if not found and then proctab(receiver).bellPending then
+            -- Channel wakes (CAP-002 step 3): up to Wakes_Per_Event of them.
+            declare
+                count : Natural := 0;
+                word : Unsigned_64;
+                got : Boolean;
+            begin
+                Spinlocks.enterCriticalSection (grantLock);
+                while count < Channel_Wake_ABI.Wakes_Per_Event loop
+                    popBellLocked (receiver, word, got);
+                    exit when not got;
+                    msg.words (count) := word;
+                    count := count + 1;
+                end loop;
+                if grantsOf (receiver).bellCount = 0 then
+                    proctab(receiver).bellPending := False;
+                end if;
+                Spinlocks.exitCriticalSection (grantLock);
+                if count > 0 then
+                    msg.tag := (label => Channel_Wake_ABI.Wake_Label,
+                                length => Unsigned_8 (count), protocol => 0, ipc => <>, reserved => 0);
+                    found := True;
+                end if;
+            end;
+        end if;
         if found then
             item := (msg => msg, sender => NO_PROCESS, kind => RING_EVENT,
                      requestId => NO_REQUEST_ID, senderThread => NO_THREAD, publisher => NO_PROCESS, callSequence => 0);
-        else
-            -- The doorbell outlived its notices; a new one rings it again.
-            proctab(receiver).kernelNoticePending := False;
         end if;
     end takeKernelNotice;
 
@@ -2959,6 +3157,11 @@ package body Process.IPC is
         grantsOf (pid).noticesOpen := True;
         grantsOf (pid).ownerNotices := 0;
         grantsOf (pid).granteeNotices := 0;
+        if grantsOf (pid).bellCount /= 0 then
+            raise ProcessException with "A new life found channel wakes of an earlier one";
+        end if;
+        grantsOf (pid).bellHead := Memory_Grants.No_Slot;
+        grantsOf (pid).bellTail := Memory_Grants.No_Slot;
         Spinlocks.exitCriticalSection (grantLock);
         Spinlocks.enterCriticalSection (reportLock);
         Kernel_Reports.Open
@@ -3542,6 +3745,7 @@ package body Process.IPC is
         grantee := value.granteeIdentity;
         ended := value.generation;
         clearGranteeNoticeLocked (value);
+        endBellLocked (slot);
         unlinkReceived (value.granteePID, slot);
         ownerPrev := value.ownerPrev;
         ownerNext := value.ownerNext;
@@ -3643,6 +3847,7 @@ package body Process.IPC is
         if g.notify then
             setGranteeNoticeLocked (g);
         end if;
+        endBellLocked (slot);
 
         if link.active and then Grant_Loans.Phase_Of
           (scopeFor (link.parent.slot).all, link.loan) = Grant_Loans.Available
@@ -3974,6 +4179,7 @@ package body Process.IPC is
                 -- request a flooded mailbox refused cannot leave the owner
                 -- holding a reader that is gone (docs/data-plane.md,
                 -- "Security review").
+                endBellLocked (reference.slot);
                 Memory_Grants.Request_Revocation (value.lifecycle, revoked);
                 if revoked = Memory_Grants.Revocation_Completed then
                     retireGrantLocked (reference.slot);

@@ -38,7 +38,7 @@ parser.add_argument('--usb-flash', action='store_true',
                     help='boot the ISO image on a 512-byte USB disk, as with dd to a flash drive')
 parser.add_argument('--mouse-first', action='store_true')
 parser.add_argument('--usb-hub', action='store_true',
-                    help='exercise USB keyboard and mouse behind a hub; may combine with --mesa')
+                    help='exercise USB keyboard and mouse behind a hub; may combine with --teapots')
 parser.add_argument('--usb-hub-ports', type=int, default=4, choices=range(2, 16),
                     help='hub port count; the keyboard takes the last port. QEMU sizes the '
                          'obsolete PortPwrCtrlMask ceil(ports/8) bytes, so 8 ports send a '
@@ -53,7 +53,7 @@ parser.add_argument('--ccl-ui-hooks', action='store_true', help='exercise native
 parser.add_argument('--ccl-samples', action='store_true', help='open an ISO-seeded workspace sample and invoke its button')
 parser.add_argument('--config', action='store_true', help='write/read typed Config through native Workbench bytecode')
 parser.add_argument('--servo', action='store_true', help='launch the bundled Servo shell and require a rendered page')
-parser.add_argument('--mesa', action='store_true', help='launch native Mesa software cube from optical media and verify pixels and input')
+parser.add_argument('--teapots', action='store_true', help='launch the Vulkan teapot gallery from optical media (QEMU: placeholder, no Intel GPU)')
 parser.add_argument('--boot-logs', action='store_true', help='verify on-screen boot viewer and typed USB startup log replay')
 parser.add_argument('--boot-log-delivery', action='store_true',
                     help='require real logstore and clock replay through the boot viewer, including quiet USB images')
@@ -720,24 +720,19 @@ with (run / 'qemu.log').open('w') as log:
             time.sleep(2)
             hmp(f'screendump {run}/servo.ppm')
             print('SERVO LIVE PASS: native optical load and rendered built-in page; inspect screenshot.', flush=True)
-        if args.mesa:
-            launch('Mesa Cube (software)')
-            wait_for('MESA-WINDOW: attached immutable Mesa buffer')
+        if args.teapots:
+            launch('Teapots')
+            wait_for('teapots: canvas ')
             time.sleep(2)
-            hmp(f'screendump {run}/mesa.ppm')
-            subprocess.run([sys.executable, str(pathlib.Path(__file__).resolve().parents[2] /
-                            'tests/mesa-software/check-cube-window.py'),
-                            str(run / 'mesa.ppm')], check=True)
-            key('spc')
-            wait_for('MESA-WINDOW: animation resumed')
-            wait_for('MESA-WINDOW: PASS animated cycle with retired-buffer reuse')
-            key('spc')
-            wait_for('MESA-WINDOW: animation paused')
+            hmp(f'screendump {run}/teapots.ppm')
+            text = serial.read_text(errors='replace')
+            # QEMU has no Intel GPU: the canvas must report Unavailable and
+            # draw its placeholder, never fail.
+            if 'teapots: canvas failed' in text:
+                raise RuntimeError('teapot gallery canvas failed')
             key('esc')
-            wait_for('MESA-WINDOW: Escape; exiting')
-            if 'MESA-WINDOW: FAIL' in serial.read_text(errors='replace'):
-                raise RuntimeError('native Mesa application reported a failure')
-            print('MESA LIVE PASS: optical Apps launch, software-rendered pixels, animation and close.', flush=True)
+            wait_for('teapots: closed')
+            print('TEAPOTS LIVE PASS: optical Apps launch, canvas state logged, close; inspect screenshot.', flush=True)
         if args.settings:
             launch('Settings')
             time.sleep(1)
