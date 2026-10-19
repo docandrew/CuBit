@@ -12,7 +12,7 @@ begin
    pragma Assert (not Flush (0, 4096));
    pragma Assert (not Flush (Address, 0));
    pragma Assert (not Flush (Unsigned_64'Last - 4095, 4096));
-   pragma Assert (not Flush (Address, 16 * 1024 * 1024 + 1));
+   pragma Assert (not Flush (Address, 32 * 1024 * 1024 + 1));
    pragma Assert (not Flush (Address + 1, 4096));
    pragma Assert (not Flush (Address, 4095));
    pragma Assert (Flush (Address, 4096));

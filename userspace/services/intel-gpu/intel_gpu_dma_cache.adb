@@ -1,3 +1,4 @@
+with Intel_GPU_Physical_Extents;
 with Interfaces; use Interfaces;
 with System.Machine_Code; use System.Machine_Code;
 package body Intel_GPU_DMA_Cache is
@@ -5,7 +6,7 @@ package body Intel_GPU_DMA_Cache is
       A, B, C, D : Unsigned_32;
       Line_Bytes, Offset : Unsigned_64;
    begin
-      if Address = 0 or else Bytes = 0 or else Bytes > 16 * 1024 * 1024 or else
+      if Address = 0 or else Bytes = 0 or else Bytes > Intel_GPU_Physical_Extents.Capacity or else
         Address > Unsigned_64'Last - Bytes
       then return False; end if;
       Asm ("cpuid",

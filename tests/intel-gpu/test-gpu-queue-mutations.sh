@@ -85,10 +85,10 @@ mutate "admission ignores deadlines" intel_gpu_queue_admission.adb \
 mutate "refusal does not fault the context" intel_gpu_session_queue.adb \
     "if Fault_It and then S.Opened (C) then" "if False then"
 mutate "service ignores the completion gate" intel_gpu_queue_service.adb \
-    "Gate := T.Kicks (S) (C) = No_Kick and then Scheduling_Resident;" "Gate := True;"
+    "Gate := T.Items (S).Kicks (C) = No_Kick and then Scheduling_Resident;" "Gate := True;"
 mutate "service drops backpressured kicks" intel_gpu_queue_service.adb \
     "T.Counters.Kick_Retries := T.Counters.Kick_Retries + 1;" \
-    "T.Kicks (S) (C) := No_Kick;"
+    "T.Items (S).Kicks (C) := No_Kick;"
 mutate "service reports failed calls as OK" intel_gpu_queue_service.adb \
     "Call_Finished (S, Unsigned_64 (V), Status = Ledgers.Done);" \
     "Call_Finished (S, Unsigned_64 (V), True);"
@@ -108,7 +108,7 @@ mutate "wake held without a slot" intel_gpu_queue_wakes.adb \
     "elsif Slot_Free or else Was_Held then" "elsif True then"
 
 mutate "status lines published after the wake answer" intel_gpu_queue_service.adb \
-    "      if Sessions.Live (T.Items (S)) then
+    "      if Sessions.Live (T.Items (S).Item) then
          Publish (T, S);
       end if;
       Answer_Held_Wake (T, S);" "      Answer_Held_Wake (T, S);"

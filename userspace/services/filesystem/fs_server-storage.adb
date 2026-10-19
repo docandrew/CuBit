@@ -7,12 +7,17 @@ with CuBit.Volume_Descriptions;
 with Ext2_Support;
 with ISO9660;
 with Fs_Path_Checks;
+with Fs_Reply_Labels;
+with CuBit.File_Access;
+with CuBit.Filesystem_Places;
 with Fs_Server.Access_Control; use Fs_Server.Access_Control;
 with Fs_Server.Delegations; use Fs_Server.Delegations;
 with Fs_Server.Replies; use Fs_Server.Replies;
 with Fs_Server.Watches; use Fs_Server.Watches;
 
 package body Fs_Server.Storage is
+
+   package Labels renames Fs_Reply_Labels;
 
    use type Ext2.Flush_Status;
    use ASCII;
@@ -228,7 +233,7 @@ package body Fs_Server.Storage is
             begin
                ensureVolume (volume, admission);
                if admission /= Admitted then
-                  sendReply (owner, REPLY_IO_ERROR, 0);
+                  sendReply (owner, Labels.Admission_Label (admission), 0);
                   return;
                end if;
                declare
@@ -295,6 +300,65 @@ package body Fs_Server.Storage is
       end;
       sendReply (owner, REPLY_OK, VD.Record_Bytes);
    end handleDescribeVolume;
+
+   procedure handleListPlaces (owner : Process_ID; rangeBytes : Unsigned_64) is
+      package FA renames CuBit.File_Access;
+      package FP renames CuBit.Filesystem_Places;
+      wire : FA.Wire_Bytes (1 .. FA.Maximum_Entries * FA.Wire_Entry_Bytes);
+      scopeCount : Natural;
+      --  Every registered volume, the boot archive and the optical disc.
+      FIXED_STORES : constant := 2;
+      present : FP.Root_Table (1 .. Natural (Count (Volumes)) + FIXED_STORES);
+      used : Natural := 0;
+      needed : Natural;
+
+      procedure add (name : String) is
+      begin
+         if name'Length in FP.Volume_Name_Length and then used < present'Last then
+            used := used + 1;
+            present (used) := FP.Make_Root (name);
+         end if;
+      end add;
+   begin
+      scopesOf (owner, wire, scopeCount);
+      for v in 1 .. Count (Volumes) loop
+         if CuBit.Handles.Valid (Binding (Volumes, v).Endpoint) then
+            declare
+               admission : Admission_Result;
+            begin
+               ensureVolume (v, admission);
+               if admission = Admitted then
+                  add (Volume_List.Name (Volumes, v));
+               end if;
+            end;
+         end if;
+      end loop;
+      if cpioOk then
+         add (Volume_List.Boot_Archive_Name);
+      end if;
+      declare
+         blocks : Unsigned_64;
+         mounted : Boolean;
+      begin
+         ISO9660.Describe (blocks, mounted);
+         if mounted then
+            add (Volume_List.Optical_Name);
+         end if;
+      end;
+      needed := FP.Count_Places (wire, scopeCount, present (1 .. used));
+      if Unsigned_64 (needed) * FA.Wire_Entry_Bytes > rangeBytes then
+         sendReply (owner, REPLY_NO_SPACE, Unsigned_64 (needed));
+         return;
+      end if;
+      declare
+         target : FP.Place_Bytes (1 .. needed * FA.Wire_Entry_Bytes)
+           with Import, Address => curArena;
+         written : Natural;
+      begin
+         FP.Select_Places (wire, scopeCount, present (1 .. used), target, written);
+         sendReply (owner, REPLY_OK, Unsigned_64 (written));
+      end;
+   end handleListPlaces;
 
    procedure commitTick is
       status : Ext2.Flush_Status;

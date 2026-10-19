@@ -1,0 +1,20 @@
+--  Hosted tests and proof for devmgr's boot RTC seed (run.sh): RTC_Decode
+--  (pure, proved) and RTC_Sampling against a simulated CMOS.
+project Boot_RTC_Tests is
+   Devmgr_Src := "../../userspace/services/devmgr";
+   for Source_Dirs use (".", Devmgr_Src, "../../userspace/lib/time");
+   for Source_Files use ("rtc_decode.ads", "rtc_decode.adb",
+                         "rtc_sampling.ads", "rtc_sampling.adb",
+                         "civil_time.ads", "civil_time.adb",
+                         "main.adb");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-gnat2022", "-O1", "-gnata", "-gnato", "-gnatwa", "-I-");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=2", "--checks-as-errors=on", "--report=fail");
+   end Prove;
+end Boot_RTC_Tests;

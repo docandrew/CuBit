@@ -4,7 +4,7 @@ with Vulkan_Submission;
 -- only; never reset a live association or use it with another submission owner.
 package Vulkan_Glyph_Sources with SPARK_Mode is
    package V renames Vulkan_Submission;
-   package Keys is new Compositor_Glyph_Cache;
+   package Keys is new Compositor_Glyph_Cache (Slot_Count => Vulkan_Submission.Glyph_Slots);
    package L renames Keys.L;
    subtype Slot is Keys.Slot;
    subtype Key is Keys.Key;

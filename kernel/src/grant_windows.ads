@@ -14,10 +14,15 @@
 -- grant is mapped no longer depends on its table index, so userspace
 -- never computes it and the table can grow independently of the region.
 --
--- Proved: an allocation takes a window that was free and changes no other,
--- and a release frees exactly the one window. Not proved: that Allocate
--- finds a window whenever one is free (callers refuse the grant if not;
--- regression-tested).
+-- A grant larger than one window takes a run of consecutive windows
+-- (Allocate_Run), so a grant's size is bounded by its owner's memory (the
+-- pages it shares are already its own) and the grantee's free windows, not
+-- by a per-grant constant.
+--
+-- Proved: an allocation takes windows that were free and changes no other,
+-- and a release frees exactly its windows. Not proved: that Allocate or
+-- Allocate_Run finds windows whenever enough are free (callers refuse the
+-- grant if not; regression-tested).
 -------------------------------------------------------------------------------
 pragma Ada_2022;
 with Interfaces; use Interfaces;
@@ -50,6 +55,30 @@ is
       with Pre  => Contains (S, W),
            Post => not Contains (S, W) and then
                    (for all V in Window => (if V /= W then Contains (S, V) = Contains (S'Old, V)));
+
+    -- Runs of Count consecutive windows starting at First.
+    subtype Run_Length is Positive range 1 .. Window_Count;
+    function Fits (First : Window; Count : Run_Length) return Boolean is
+      (Count <= Window_Count - First);
+    function In_Run (V, First : Window; Count : Run_Length) return Boolean is
+      (V >= First and then V - First < Count);
+
+    procedure Allocate_Run
+      (S : in out Window_Set; Count : Run_Length; First : out Window; Found : out Boolean)
+      with Post =>
+        (if Found then
+           Fits (First, Count) and then
+           (for all V in Window =>
+              (if In_Run (V, First, Count) then not Contains (S'Old, V) and then Contains (S, V)
+               else Contains (S, V) = Contains (S'Old, V)))
+         else S = S'Old);
+
+    procedure Release_Run (S : in out Window_Set; First : Window; Count : Run_Length)
+      with Pre  => Fits (First, Count) and then
+                   (for all V in Window => (if In_Run (V, First, Count) then Contains (S, V))),
+           Post => (for all V in Window =>
+                      (if In_Run (V, First, Count) then not Contains (S, V)
+                       else Contains (S, V) = Contains (S'Old, V)));
 
 private
     Word_Bits : constant := 64;

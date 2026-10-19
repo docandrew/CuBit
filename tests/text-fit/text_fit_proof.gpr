@@ -1,0 +1,14 @@
+--  gnatprove for Text_Fit (the toolkit's fit-with-ellipsis), through the
+--  model instance: run.sh prove.
+project Text_Fit_Proof is
+   for Source_Dirs use (".", "../../userspace/lib/ui");
+   for Source_Files use ("text_fit.ads", "text_fit.adb", "model_width.ads",
+                         "model_width.adb", "text_fit_model.ads");
+   for Object_Dir use "build/proof";
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=2", "--checks-as-errors=on", "--report=fail");
+   end Prove;
+end Text_Fit_Proof;

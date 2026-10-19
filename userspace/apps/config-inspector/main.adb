@@ -240,6 +240,11 @@ procedure Main is
       if Event.kind = CuBit.UI.Input.INPUT_CLOSE_REQUEST then
          Running := False;
          return;
+      elsif Event.kind = CuBit.UI.App.INPUT_CONFIGURE then
+         --  A resize or an appearance change (the runner has refreshed
+         --  the theme): repaint everything in the new size and colours.
+         Dirty := CuBit.UI.App.Full_Rect (Win);
+         return;
       elsif Event.kind = CuBit.UI.App.INPUT_KEY_DOWN and then
         CuBit.UI.Clipboard.Command_Of (Event.payload0, Event.payload1) = Clipboard_Chords.Copy_Command
       then
@@ -313,8 +318,11 @@ procedure Main is
       if Selected /= Old_Selection then Read_Selected; end if;
       if Changed then Dirty := CuBit.UI.App.Full_Rect (Win); end if;
    end Handle_Event;
+   --  Run never blocks in a call to Desktop (Activity_Wait): its input
+   --  wait is submitted, and completes when input arrives.
    procedure Run_UI is new CuBit.UI.App.Run
-     (ui => UI, controls => Controls, Render => Render, Handle_Event => Handle_Event);
+     (ui => UI, controls => Controls, Render => Render, Handle_Event => Handle_Event,
+      Activity_Wait => True);
    Opened : Boolean;
    Announced : Boolean;
 begin

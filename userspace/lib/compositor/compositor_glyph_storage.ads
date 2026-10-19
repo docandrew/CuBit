@@ -22,7 +22,7 @@ package Compositor_Glyph_Storage with SPARK_Mode is
        Post => Has (S, I) = Success and
          (if Success then Capacity (S, I) >= Layout.Bytes) and
          Same_Others (Occupied (S)'Old, Occupied (S), I);
-   procedure Rasterize (S : in out State; I : Slot; Face, Code : Natural;
+   procedure Rasterize (S : in out State; I : Slot; Face : L.Face_Index; Code : Natural;
                         Layout : L.Layout; Advance : out Natural; Success : out Boolean)
      with Pre => Has (S, I) and L.Valid (Layout) and Layout.Bytes <= Capacity (S, I),
        Post => Occupied (S) = Occupied (S)'Old;
@@ -31,13 +31,13 @@ package Compositor_Glyph_Storage with SPARK_Mode is
    -- a distinct caller-owned mapping; the bridge additionally rejects virtual
    -- overlap and stale backing tokens before exposing the A8 array.
    procedure Paint (S : in out State; I : Slot; Screen : L.G.Output;
-                    Origin : L.G.Logical_Point; Damage : L.G.Physical_Rectangle;
+                    Origin : L.G.Logical_Point; Offset : L.Subpixel; Damage : L.G.Physical_Rectangle;
                     Target : in out Software.Pixels; Pitch : Positive; Tint : Software.Word;
                     Success : out Boolean)
      with Pre => Software.Fits_Target (Screen, Target, Pitch),
        Post => Occupied (S) = Occupied (S)'Old and
          (for all J in Target'Range =>
-           (if not Success or else not Software.Inside (J, Pitch, Software.Bounds (Screen, Origin, Damage)) then
+           (if not Success or else not Software.Inside (J, Pitch, Software.Bounds (Screen, Origin, Offset, Damage)) then
               Target (J) = Target'Old (J)));
    -- Caller has already retired every Mesa view and read lease for this slot.
    procedure Release (S : in out State; I : Slot; Success : out Boolean)
@@ -48,14 +48,12 @@ private
    pragma SPARK_Mode (Off);
    package M renames Compositor_Glyph_Memory;
    type Item is record
-      Token : M.Arena.Token := M.Arena.No_Token;
       Address : System.Address := System.Null_Address;
       Size : Natural := 0;
       Raster : L.Layout := L.Plan ((1, 1));
    end record;
    type Items is array (Slot) of Item;
    type State is limited record
-      Memory : M.State;
       Backing : Items;
    end record;
 end Compositor_Glyph_Storage;

@@ -40,7 +40,7 @@ package body Native_GPU_Presentation is
    begin
       if not Native_GPU_Calls.Present (Desktop) or else Surface = 0
         or else not R.Valid_Wire (Child) or else Width not in 1 .. 65535
-        or else Height not in 1 .. 65535 or else Pitch > D.Maximum_Buffer_Bytes
+        or else Height not in 1 .. 65535 or else Pitch > Unsigned_64 (D.Buffer_Pitch'Last)
       then return 7; end if;
       Layout := (D.Positive_Extent (Width), D.Positive_Extent (Height), Natural (Pitch));
       if not D.Valid_Layout (Layout) then return 7; end if;

@@ -43,7 +43,10 @@ procedure Refresh_Tests is
       publicationPolicy : Surface_Policy.State;
       publicationConfiguration : Publication.Configuration_Result;
    end record;
-   surfaces : array (1 .. 3) of Surface;
+   type Surface_Table is array (1 .. 3) of Surface;
+   type Surface_Store is record Surfaces : Surface_Table; end record;
+   store : Surface_Store;
+   surfaces : Surface_Table renames store.Surfaces;
    type Output_Record is record
       Enabled : Boolean := True;
       Geometry : DG.Output;

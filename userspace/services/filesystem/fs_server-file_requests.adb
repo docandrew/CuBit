@@ -127,7 +127,7 @@ package body Fs_Server.File_Requests is
             begin
                ensureVolume (useVolume, admission);
                if admission /= Admitted then
-                  sendReply (sender, REPLY_IO_ERROR, 0);
+                  sendReply (sender, Labels.Admission_Label (admission), 0);
                   return;
                end if;
             end;

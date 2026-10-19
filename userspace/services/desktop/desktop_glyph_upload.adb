@@ -21,9 +21,9 @@ package body Desktop_Glyph_Upload with SPARK_Mode is
          Row_Pixels => G.Edge (Layout.Pitch));
       if Result /= D.Source_Accepted then return; end if;
       if not G.Valid (Plan) or else G.Format (Plan) /= G.R8 or else
-         G.Image_Width (Plan) /= Layout.Width or else G.Image_Height (Plan) /= Layout.Height or else
+         G.Image_Width (Plan) /= Layout.Width or else G.Image_Height (Plan) /= L.Strip_Height (Layout) or else
          G.Area (Plan).X /= 0 or else G.Area (Plan).Y /= 0 or else
-         G.Area (Plan).Height /= Layout.Height or else G.Buffer_Offset (Plan) /= 0 or else
+         G.Area (Plan).Height /= L.Strip_Height (Layout) or else G.Buffer_Offset (Plan) /= 0 or else
          G.Row_Length (Plan) /= Layout.Pitch or else
          G.Capacity (Plan) < Layout.Bytes
       then

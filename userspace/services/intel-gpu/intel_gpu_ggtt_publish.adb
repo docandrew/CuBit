@@ -1,3 +1,4 @@
+with Intel_GPU_Physical_Extents;
 package body Intel_GPU_GGTT_Publish is
    use Interfaces;
    function Current (Object : Attempt) return Phase is (Object.Value);
@@ -5,7 +6,7 @@ package body Intel_GPU_GGTT_Publish is
    function Valid_Backing (Base, Bytes : Unsigned_64) return Boolean is
    begin
       if Bytes = 0 or else Bytes > Maximum_Bytes or else
-        Bytes > 16 * 1024 * 1024 or else Bytes mod 4096 /= 0
+        Bytes > Intel_GPU_Physical_Extents.Capacity or else Bytes mod 4096 /= 0
       then return False; end if;
       for Page in Unsigned_64 range 0 .. Bytes / 4096 - 1 loop
          if Intel_GPU_GGTT.Encode_System_Page (Resolve_Page (Base, Page * 4096)) = 0 then

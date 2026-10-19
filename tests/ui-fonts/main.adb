@@ -8,6 +8,8 @@ with CuBit.UI.Trees;
 with CuBit.UI.Surfaces;
 with Font8x16;
 with Compositor_Glyph_FFI;
+with Compositor_Glyph_Placement;
+with Glyph_Gamma;
 with Compositor_Glyph_Layout;
 
 procedure Main is
@@ -24,7 +26,7 @@ procedure Main is
    Clip : constant Rect := (7, 5, 51, 11);
    Gray : Boolean := False;
 begin
-   pragma Assert (CuBit.Fonts.Glyph'Size = (8 + 32 * 36) * 8);
+   pragma Assert (CuBit.Fonts.Glyph'Size = (32 + 32 * 36) * 8);
    for Font in CuBit.Fonts.Face loop
       for Size in CuBit.Fonts.Raster_Size loop
          for Code in 32 .. 126 loop
@@ -32,8 +34,12 @@ begin
                G : constant CuBit.Fonts.Glyph_Access :=
                  CuBit.Fonts.Get (Font, Character'Val (Code), Size);
             begin
-               pragma Assert (G.Advance in 1 .. 32 and G.Height in 17 | 34);
+               --  Advances in 1/64 pixel; every phase is its own published cell.
+               pragma Assert (G.Advance in 1 .. 32 * 64 and G.Height in 17 | 34 and G.Origin = CuBit.Fonts.Origin);
                pragma Assert (G = CuBit.Fonts.Get (Font, Character'Val (Code), Size));
+               for P in CuBit.Fonts.Phase loop
+                  pragma Assert (CuBit.Fonts.Get (Font, Character'Val (Code), Size, P).Advance = G.Advance);
+               end loop;
                for A of G.Alpha loop
                   Gray := Gray or else A in 1 .. 254;
                end loop;
@@ -47,6 +53,65 @@ begin
    pragma Assert (UI_Text_Height = 17 and Code_Text_Height = 17);
    pragma Assert (Code_Text_Width ("iiWW") = 32);
    pragma Assert (UI_Text_Width ("ii") < UI_Text_Width ("WW"));
+   --  One measure: kerning pulls AV together; widths are the rounded pen
+   --  after unrounded advances, so a long run is not the sum of rounded
+   --  single-character widths; monospace keeps its 8-pixel grid.
+   pragma Assert (UI_Text_Width ("") = 0 and Code_Text_Width ("AV") = 16);
+   pragma Assert (UI_Text_Width ("AVAVAVAVAVAV") < 6 * (UI_Text_Width ("A") + UI_Text_Width ("V")));
+   declare
+      Second : Natural := 0;
+      procedure Note (Index : Positive; Ch : Character; Pen : Natural) is
+         pragma Unreferenced (Ch);
+      begin
+         if Index = 2 then Second := Pen; end if;
+      end Note;
+      procedure Pens is new CuBit.Fonts.Lay_Out (Note);
+   begin
+      Pens (CuBit.Fonts.Sans, "AV", 0);
+      pragma Assert (Second < Natural (CuBit.Fonts.Get (CuBit.Fonts.Sans, 'A').Advance));
+      Pens (CuBit.Fonts.Sans, "nn", 0);
+      pragma Assert (Second = Natural (CuBit.Fonts.Get (CuBit.Fonts.Sans, 'n').Advance));
+      Pens (CuBit.Fonts.Monospace, "AV", 3);
+      pragma Assert (Second = (3 + CuBit.Fonts.Mono_Width) * 64);
+   end;
+   --  Caret boundaries come from the same layout: ends, monotone, the
+   --  nearest-boundary hit test inverts them, and they sit at the glyph pens.
+   declare
+      T : constant String := "Find and Replace To AVATAR. Wave";
+      B, Prev : Natural := 0;
+   begin
+      pragma Assert (CuBit.Fonts.Boundary (CuBit.Fonts.Sans, T, 0) = 0);
+      pragma Assert (CuBit.Fonts.Boundary (CuBit.Fonts.Sans, T, T'Length) = UI_Text_Width (T));
+      pragma Assert (CuBit.Fonts.Boundary (CuBit.Fonts.Sans, T, T'Length + 5) = UI_Text_Width (T));
+      for K in 0 .. T'Length loop
+         B := CuBit.Fonts.Boundary (CuBit.Fonts.Sans, T, K);
+         pragma Assert (B >= Prev);
+         pragma Assert (CuBit.Fonts.Boundary_At (CuBit.Fonts.Sans, T, B) = K);
+         Prev := B;
+      end loop;
+      pragma Assert (CuBit.Fonts.Boundary_At (CuBit.Fonts.Sans, T, 0) = 0);
+      pragma Assert (CuBit.Fonts.Boundary_At (CuBit.Fonts.Sans, T, 100_000) = T'Length);
+      pragma Assert (CuBit.Fonts.Boundary_At (CuBit.Fonts.Sans, "", 7) = 0);
+      pragma Assert (CuBit.Fonts.Boundary (CuBit.Fonts.Monospace, "abcd", 3) = 3 * CuBit.Fonts.Mono_Width);
+      --  SemiBold is a face of its own: wider than Regular, and kerned.
+      pragma Assert (CuBit.Fonts.Width (CuBit.Fonts.Sans_Semibold, "CCL Workbench") >
+                     CuBit.Fonts.Width (CuBit.Fonts.Sans, "CCL Workbench"));
+      pragma Assert (CuBit.Fonts.Width (CuBit.Fonts.Sans_Semibold, "AV") <
+                     CuBit.Fonts.Width (CuBit.Fonts.Sans_Semibold, "A") +
+                     CuBit.Fonts.Width (CuBit.Fonts.Sans_Semibold, "V"));
+   end;
+   declare
+      Last : Natural := 0;
+      procedure Note (Index : Positive; Ch : Character; Pen : Natural) is
+         pragma Unreferenced (Index);
+      begin
+         Last := Pen + Natural (CuBit.Fonts.Get (CuBit.Fonts.Sans, Ch).Advance);
+      end Note;
+      procedure Measure is new CuBit.Fonts.Lay_Out (Note);
+   begin
+      Measure (CuBit.Fonts.Sans, "Find and Replace To AVATAR", 0);
+      pragma Assert (UI_Text_Width ("Find and Replace To AVATAR") = (Last + 32) / 64);
+   end;
 
    Draw_UI_Text (C, 0, 0, "AgjQ ./() IBM Plex", 16#FFFFFF#, 0);
    Reference := Buffer;
@@ -241,7 +306,12 @@ begin
       Target : Canvas;
       Plan : L.Layout;
       OK, Different : Boolean := False;
-      Advance, N, D, Left, Top, Clip_Left, Clip_Top, Clip_Right, Clip_Bottom : Natural;
+      Advance, N, D, Top, Clip_Left, Clip_Top, Clip_Right, Clip_Bottom : Natural;
+      --  The mask's left edge: its pen origin (logical x = 1) sits
+      --  CuBit.Fonts.Origin logical pixels in, so the edge may be left of 0.
+      Left : Integer;
+      Place : Compositor_Glyph_Placement.Subpixel_Origin;
+      White_Row : constant Glyph_Gamma.Bucket := Glyph_Gamma.Bucket_Of (16#FFFFFF#);
       Width, A, R, G, B : Unsigned_32;
       Expected : Color;
       Alpha : Unsigned_8;
@@ -250,10 +320,17 @@ begin
       for Scale of Values loop
          N := Natural (Scale.Numerator); D := Natural (Scale.Denominator);
          Plan := L.Plan (Scale);
-         Left := (N + D - 1) / D; Top := Left;
+         Top := (N + D - 1) / D;
+         --  The toolkit places the mask at the quarter pixel of its pen
+         --  less the origin margin (Compositor_Glyph_Placement.Snap_Phase);
+         --  the canvas starts at physical column 0.
+         Place := Compositor_Glyph_Placement.Snap_Phase
+           (Compositor_Glyph_Placement.G.Logical_Coordinate (1 - CuBit.Fonts.Origin), 0, 0, Scale);
+         Left := Integer (Place.Pixel);
          Clip_Left := (3 * N + D - 1) / D; Clip_Right := (20 * N + D - 1) / D;
          Clip_Top := (2 * N + D - 1) / D; Clip_Bottom := (16 * N + D - 1) / D;
-         for Face in CuBit.Fonts.Face loop
+         --  The toolkit's faces (Sans_Semibold is Desktop's emphasis face).
+         for Face in CuBit.Fonts.Sans .. CuBit.Fonts.Monospace loop
             Old := CuBit.Fonts.Get (Face, 'A');
             Compositor_Glyph_FFI.Rasterize
               (CuBit.Fonts.Face'Pos (Face), Character'Pos ('A'), Plan,
@@ -275,8 +352,9 @@ begin
                   if X >= Clip_Left and X < Clip_Right and Y >= Clip_Top and Y < Clip_Bottom then
                      if Face = CuBit.Fonts.Monospace and X < Natural (Width) then Expected := 16#204060#; end if;
                      if X >= Left and Y >= Top and X - Left < Plan.Width and Y - Top < Plan.Height then
-                        Alpha := Mask ((Y - Top) * Plan.Pitch + X - Left);
-                        A := Unsigned_32 (Alpha);
+                        Alpha := Mask (Place.Phase * L.Phase_Bytes (Plan) + (Y - Top) * Plan.Pitch + X - Left);
+                        --  Coverage through white ink's Glyph_Gamma row (UI-026).
+                        A := Unsigned_32 (Glyph_Gamma.Correction (White_Row) (Alpha));
                         R := (255 * A + (Shift_Right (Expected, 16) and 255) * (255 - A) + 127) / 255;
                         G := (255 * A + (Shift_Right (Expected, 8) and 255) * (255 - A) + 127) / 255;
                         B := (255 * A + (Expected and 255) * (255 - A) + 127) / 255;

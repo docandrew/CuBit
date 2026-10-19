@@ -82,7 +82,7 @@ package Desktop_Mesa_Software_Renderer with SPARK_Mode, Abstract_State => State,
      (Target : Compositor_Formats.Image; Target_Bytes : Compositor_Formats.Byte_Count;
       Screen : CuBit.Display_Geometry.Output; Items : Compositor_Text.Glyphs;
       Length : Compositor_Text.Count; Damage : CuBit.Display_Geometry.Physical_Rectangle;
-      Tint : Compositor_Formats.Word; Secondary : Boolean;
+      Tint : Compositor_Formats.Word; Face : Compositor_Text.L.Face_Index; Secondary : Boolean;
       Drawn, Repaint, Must_Restart : out Boolean)
      with Global => (In_Out => State);
    procedure Draw_Client

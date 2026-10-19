@@ -227,6 +227,15 @@ package CuBit.Filesystem_Queues with Pure, SPARK_Mode is
    --  Handle = a running copy's request token: it ends REPLY_CANCELLED at
    --  its next slice (this request: REPLY_OK; REPLY_NOT_FOUND if none).
    Queue_Cancel : constant := 24;
+   --  The caller's places (CuBit.Filesystem_Places): the scopes of its
+   --  access profile whose volume is present (attached and admitted, the
+   --  boot archive, a mounted optical disc), in profile order, as
+   --  CuBit.File_Access wire entries into the arena range; a bootstrap
+   --  wildcard lists every present volume's root. Volume-qualified scopes
+   --  only ("@nvme:0/..."). The answer's value is the place count:
+   --  REPLY_OK, written; REPLY_NO_SPACE, the range holds fewer (what it
+   --  holds is incomplete).
+   Queue_List_Places : constant := 25;
 
    --  Byte offsets within a request and an answer (the token first).
    Token_At        : constant := 0;

@@ -8,10 +8,14 @@ with CCL.Objects.Views;
 --  (the desktop) reads that source back through the same typed path and
 --  accepts it only if it is that canonical spelling, so a stored value is
 --  never parsed by hand and never in any other form.
---  Users: desktop.launch.* (CCL.Interfaces.Desktop_Launch) and
---  desktop.input.key-repeat (CCL.Interfaces.Desktop_Input).
+--  Users: desktop.launch.* (CCL.Interfaces.Desktop_Launch),
+--  desktop.input.key-repeat (CCL.Interfaces.Desktop_Input),
+--  gpu.power.waitboost (CCL.Interfaces.GPU_Power), desktop.display.scale
+--  and desktop.display.modeset (CCL.Interfaces.Desktop_Display).
 package CCL.Typed_Settings is
-   type Setting_Kind is (Untyped, Launch_Entry_Setting, Key_Repeat_Setting, GPU_Waitboost_Setting);
+   type Setting_Kind is
+     (Untyped, Launch_Entry_Setting, Key_Repeat_Setting, GPU_Waitboost_Setting, Display_Scale_Setting,
+      Display_Modeset_Setting);
    function Kind_Of (Key : String) return Setting_Kind;
 
    MAXIMUM_CANONICAL : constant := 1_024;

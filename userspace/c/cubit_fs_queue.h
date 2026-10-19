@@ -96,6 +96,9 @@ enum {
 	FS_QUEUE_COPY = 23,
 	/* handle = the copy's token. */
 	FS_QUEUE_CANCEL = 24,
+	/* The caller's scopes whose volume is present, as FS_QUEUE_LIST_SCOPES
+	 * entries; value = place count (NO_SPACE: did not fit). */
+	FS_QUEUE_LIST_PLACES = 25,
 	/* Progress: token (u64) then bytes done (u64) per running copy. */
 	FS_SERVER_COPIES_AT = 256,
 	FS_COPY_ENTRY_BYTES = 16,

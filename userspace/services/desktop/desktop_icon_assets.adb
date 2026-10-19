@@ -48,6 +48,12 @@ package body Desktop_Icon_Assets is
          return;
       end if;
       Store.Begin_Load;
+      if Store.Current /= Store.Loading then
+         Store.End_Load (True, Decoded);
+         Desktop_Logs.Warn ("desktop: icons " & Package_Path & File_Name &
+           " unavailable: no memory for the atlas" & Fallback);
+         return;
+      end if;
       Read (Package_Path & File_Name, Maximum_Bytes, Load_Budget_Ms, Result, Path, Length);
       Store.End_Load (not Files.Read_Whole (Result), Decoded);
       declare

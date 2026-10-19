@@ -7,9 +7,12 @@
 --  Control_ID) or a region (a truncated cell) tooltip text and an optional
 --  shortcut hint while it renders; the toolkit decides when the tip shows
 --  (Client_Tooltip_Policy, proved), places it near the pointer on screen
---  (Client_Popup_Layout, proved) and draws it last. It never takes focus or
---  input: the application feeds pointer motion, dismissing events and its
---  clock, and includes Next_Deadline in its loop's wait. Damage is the
+--  (Client_Popup_Layout, proved) and draws it last: a flat, square box with
+--  a 1-pixel theme border, the shortcut hint right-aligned ("Copy    F5").
+--  Keyboard users get the focused control's tip after the same delay,
+--  below the control. It never takes focus or input: the application feeds
+--  pointer motion, focus changes, dismissing events and its clock, and
+--  includes Next_Deadline in its loop's wait (never a sleep). Damage is the
 --  tip's own rectangle (shown, moved or hidden).
 ------------------------------------------------------------------------------
 with Interfaces;
@@ -34,6 +37,11 @@ package CuBit.UI.Tooltips is
    procedure Pointer_At
      (Tip : in out Tooltip; Table : Tip_Table; Map : Controls.Control_Map; X, Y : Natural; Now_Ms : Unsigned_64;
       Damage : out Rect);
+   --  The keyboard focus is on control Id (Controls.NO_CONTROL: on none
+   --  with a tip). Call after Dismiss for the key that moved it.
+   procedure Focus_On
+     (Tip : in out Tooltip; Table : Tip_Table; Map : Controls.Control_Map; Id : Controls.Control_ID;
+      Now_Ms : Unsigned_64; Damage : out Rect);
    --  A click, key, scroll or deactivation.
    procedure Dismiss (Tip : in out Tooltip; Damage : out Rect);
    procedure Tick (Tip : in out Tooltip; Table : Tip_Table; Now_Ms : Unsigned_64; Damage : out Rect);
@@ -66,5 +74,8 @@ private
       --  Where the tip is, and the bounds it was last placed within (Draw).
       Box : Rect := (others => 0);
       Area : Rect := (others => 0);
+      --  The focused control a keyboard tip hangs below (empty: the tip
+      --  follows the pointer).
+      Below : Rect := (others => 0);
    end record;
 end CuBit.UI.Tooltips;

@@ -259,7 +259,7 @@ package body Vulkan_Submission_Test_Bridge is
             end if;
             Vulkan_Scene.Append_Glyph (Captured, Session, Glyph_Sources, Key,
               (G.Logical_Coordinate (V.L), G.Logical_Coordinate (V.T), G.Logical_Coordinate (V.R), G.Logical_Coordinate (V.B)),
-              V.Tint, OK);
+              GS.L.Subpixel (V.Offset), V.Tint, OK);
             return (if OK then 0 else 2);
          end;
       end if;
@@ -324,7 +324,7 @@ package body Vulkan_Submission_Test_Bridge is
          (G.Scale_Component (V.N), G.Scale_Component (V.D)), G.Output_Origin (V.X), G.Output_Origin (V.Y));
       Result : B.Outcome;
    begin
-      pragma Assert (Input'Size = 72 * 8);
+      pragma Assert (Input'Size = 76 * 8);
       if Active then
          pragma Assert (Borrowed = Source_Context and Vulkan_Submission.Source_Valid (Session, Source));
          Vulkan_Submission.Draw_Output

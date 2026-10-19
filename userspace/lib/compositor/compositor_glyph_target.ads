@@ -13,7 +13,7 @@ package Compositor_Glyph_Target with SPARK_Mode is
       Target.Width = F.Word (Screen.Width) and then Target.Height = F.Word (Screen.Height));
    procedure Paint (S : in out R.State; Views : in out Mesa_Cache.State;
                     Target : F.Image; Capacity : F.Byte_Count; Key : R.C.Key;
-                    Screen : R.P.G.Output; Origin : R.P.G.Logical_Point;
+                    Screen : R.P.G.Output; Origin : R.P.G.Logical_Point; Offset : R.P.L.Subpixel;
                     Damage : R.P.G.Physical_Rectangle; Tint : F.Word; Success : out Boolean)
      with Pre => R.Valid (S), Post => R.Valid (S);
 end Compositor_Glyph_Target;

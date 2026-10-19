@@ -40,7 +40,18 @@ package CuBit.UI.Menus is
    function Is_Open (State : Menu_State) return Boolean;
    function Open_Menu (State : Menu_State) return Natural;
    function Selected_Item (State : Menu_State) return Natural;
+   --  The title under the pointer (0: none), shown hot.
+   function Hot_Title (State : Menu_State) return Natural;
    procedure Dismiss (State : in out Menu_State);
+
+   --  Keyboard cues (as on Windows and KDE): the mnemonic underlines show
+   --  only while Alt is held or while a menu opened from the keyboard (F10,
+   --  Alt+letter) or driven by it is open; a menu opened by the pointer
+   --  shows none. Feed Alt's state from every key event (press and release
+   --  of Alt itself included) and pointer event that carries modifiers;
+   --  repaint the bar (and an open popup) when Cues_Shown changes.
+   procedure Set_Alt_Held (State : in out Menu_State; Held : Boolean);
+   function Cues_Shown (State : Menu_State) return Boolean;
 
    --  Draw AFTER content and its registrations, so popup hits win. Call again
    --  after any model/layout/state change before accepting the next pointer
@@ -51,6 +62,14 @@ package CuBit.UI.Menus is
      (C : Canvas; Map : in out Controls.Control_Map; State : Menu_State;
       Definition : Model; Base : ID_Base; Bounds : Rect; Colors : Theme;
       Popup_Width : Positive := 260; Row_Height : Positive := 28);
+   --  Where Draw puts the open menu's popup (empty while none is open),
+   --  for damage before drawing: Bounds is the bar, Available the canvas.
+   function Popup_Bounds
+     (State : Menu_State; Definition : Model; Bounds, Available : Rect;
+      Popup_Width : Positive := 260; Row_Height : Positive := 28) return Rect;
+   --  The narrowest Popup_Width that shows every item's caption and
+   --  shortcut whole.
+   function Required_Width (Definition : Model) return Positive;
 
    type Key is (Activate, Left, Right, Up, Down, Home, End_Key,
                 Enter, Space, Escape, Tab_Key, Mnemonic);
@@ -78,6 +97,10 @@ package CuBit.UI.Menus is
       Command : out Natural; Handled : out Boolean);
 private
    type Menu_State is record
+      --  The physical Alt key, kept across Dismiss.
+      Alt_Held : Boolean := False;
+      --  The open menu was opened or driven from the keyboard.
+      Keyboard : Boolean := False;
       Opened : Natural range 0 .. Max_Menus := 0;
       Hot_Title : Natural range 0 .. Max_Menus := 0;
       Title_Drag : Boolean := False;

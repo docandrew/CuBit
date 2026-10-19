@@ -1,30 +1,21 @@
+with Interfaces; use Interfaces;
+with System.Storage_Elements; use System.Storage_Elements;
 package body Compositor_Glyph_Memory with SPARK_Mode => Off is
-   use type Arena.Token;
-   procedure Reserve
-     (S : in out State; Size : Arena.Request_Bytes; T : out Arena.Token;
-      Pixels : out System.Address; Capacity : out Natural) is
+   use type System.Address;
+   function CuAlloc_Allocate (Bytes, Align : Unsigned_64) return Unsigned_64
+     with Import, Convention => C, External_Name => "cualloc_allocate";
+   procedure CuAlloc_Free (Item : Unsigned_64)
+     with Import, Convention => C, External_Name => "cualloc_free";
+   procedure Reserve (Size : Positive; Pixels : out System.Address; Capacity : out Natural) is
    begin
-      Pixels := System.Null_Address;
-      Capacity := 0;
-      if not S.Started then
-         Arena.Initialize (S.Policy);
-         S.Started := True;
-      end if;
-      Arena.Reserve (S.Policy, Size, T);
-      if T /= Arena.No_Token then
-         Pixels := S.Data (Arena.Offset (T))'Address;
-         Capacity := Arena.Capacity (T);
-      end if;
+      Pixels := To_Address (Integer_Address (CuAlloc_Allocate (Unsigned_64 (Size), Alignment)));
+      Capacity := (if Pixels = System.Null_Address then 0 else Size);
    end Reserve;
-   function Address_Of (S : in out State; T : Arena.Token) return System.Address is
+   procedure Release (Pixels : in out System.Address) is
    begin
-      if not S.Started or else not Arena.Current (S.Policy, T) then return System.Null_Address; end if;
-      return S.Data (Arena.Offset (T))'Address;
-   end Address_Of;
-   procedure Release
-     (S : in out State; T : Arena.Token; Readers_Retired : Boolean; Released : out Boolean) is
-   begin
-      Released := False;
-      if S.Started then Arena.Release (S.Policy, T, Readers_Retired, Released); end if;
+      if Pixels /= System.Null_Address then
+         CuAlloc_Free (Unsigned_64 (To_Integer (Pixels)));
+         Pixels := System.Null_Address;
+      end if;
    end Release;
 end Compositor_Glyph_Memory;

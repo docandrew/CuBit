@@ -1,0 +1,17 @@
+project Prove is
+   -- SPARK proof of the session table (slots, tags, holdings, recycling),
+   -- the admission controller over it, and the G2H reply-credit pool.
+   for Source_Dirs use ("../../userspace/services/intel-gpu");
+   for Source_Files use
+     ("intel_gpu_session_limits.ads",
+      "intel_gpu_render_sessions.ads", "intel_gpu_render_sessions.adb",
+      "intel_gpu_render_control.ads", "intel_gpu_render_control.adb",
+      "intel_gpu_g2h_credits.ads", "intel_gpu_g2h_credits.adb");
+   for Object_Dir use external ("PROOF_OBJ", "build-proof");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=2", "--report=fail", "--checks-as-errors=on");
+   end Prove;
+end Prove;

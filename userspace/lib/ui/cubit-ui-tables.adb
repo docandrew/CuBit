@@ -197,11 +197,36 @@ package body CuBit.UI.Tables is
         (c, bounds, colors, selectedIndex = rowIndex, result.hot, c1, c2, c3);
    end Row;
 
+   --  The width every column but the flexible one asks for.
+   function Fixed_Total (Layout : Column_Layout) return Natural is
+      Total : Natural := 0;
+   begin
+      for I in 1 .. Layout.Count loop
+         if I /= Flexible_Column (Layout) then
+            Total := Total + Layout.Width (I);
+         end if;
+      end loop;
+      return Total;
+   end Fixed_Total;
+
+   --  How wide column I is before clipping at the table's right.
+   function Wanted_Width (Layout : Column_Layout; I : Column_Index; Width : Natural) return Natural is
+   begin
+      if I /= Flexible_Column (Layout) then
+         return Layout.Width (I);
+      end if;
+      declare
+         Fixed : constant Natural := Fixed_Total (Layout);
+      begin
+         return Natural'Max (Layout.Minimum (I), (if Width > Fixed then Width - Fixed else 0));
+      end;
+   end Wanted_Width;
+
    function Column_Left (Layout : Column_Layout; Column : Column_Index; Width : Natural) return Natural is
       Left : Natural := 0;
    begin
       for I in 1 .. Column - 1 loop
-         Left := Natural'Min (Left + Layout.Width (I), Width);
+         Left := Natural'Min (Left + Wanted_Width (Layout, I, Width), Width);
       end loop;
       return Left;
    end Column_Left;
@@ -209,7 +234,7 @@ package body CuBit.UI.Tables is
    function Column_Width (Layout : Column_Layout; Column : Column_Index; Width : Natural) return Natural is
       Left : constant Natural := Column_Left (Layout, Column, Width);
    begin
-      return (if Column = Layout.Count then Width - Left else Natural'Min (Layout.Width (Column), Width - Left));
+      return Natural'Min (Wanted_Width (Layout, Column, Width), Width - Left);
    end Column_Width;
 
    procedure Toggle_Sort (Layout : in out Column_Layout; Column : Column_Index) is
@@ -272,8 +297,12 @@ package body CuBit.UI.Tables is
        bounds : CuBit.UI.Rect;
        damage : CuBit.UI.Rect;
        colors : CuBit.UI.Theme;
-       Layout : in out Column_Layout)
+       Layout : in out Column_Layout;
+       Scrollbar_Room : Natural := 0)
    is
+      --  The columns' part of the header; the rest is plain.
+      Area : constant CuBit.UI.Rect :=
+        (bounds.x, bounds.y, (if bounds.w > Scrollbar_Room then bounds.w - Scrollbar_Room else 0), bounds.h);
       HEADER_FRAME_WIDTH : constant Natural := 2;
       Edge : constant CuBit.UI.Color := CuBit.UI.Control_Edge (colors);
       Value : Natural;
@@ -281,16 +310,18 @@ package body CuBit.UI.Tables is
 
       function Pointer_In (Area : CuBit.UI.Rect) return Boolean is
         (st.pointer.enabled and then CuBit.UI.Point_In_Rect (st.pointer.x, st.pointer.y, Area));
-      --  The widest Column may be with every later column kept and the last at its minimum.
+      Flexible : constant Column_Count := Flexible_Column (Layout);
+      --  Left of the flexible column: the widest Column may be with the
+      --  others kept and the flexible one at its minimum.
       function Widest (Column : Column_Index) return Natural is
-         Others_Width : Natural := Layout.Minimum (Layout.Count);
+         Others_Width : Natural := Layout.Minimum (Flexible);
       begin
-         for I in 1 .. Layout.Count - 1 loop
-            if I /= Column then
+         for I in 1 .. Layout.Count loop
+            if I /= Column and then I /= Flexible then
                Others_Width := Others_Width + Layout.Width (I);
             end if;
          end loop;
-         return (if bounds.w > Others_Width then bounds.w - Others_Width else 0);
+         return (if Area.w > Others_Width then Area.w - Others_Width else 0);
       end Widest;
    begin
       if CuBit.UI.Is_Empty (bounds) or else Layout.Count = 0 then
@@ -298,57 +329,101 @@ package body CuBit.UI.Tables is
       end if;
       --  Edges first: a drag this frame moves everything to its right.
       for Column in 1 .. Layout.Count - 1 loop
-         declare
-            Maximum : constant Natural := Natural'Max (Layout.Minimum (Column), Widest (Column));
-            Left : constant Natural := Column_Left (Layout, Column, bounds.w);
-         begin
-            Layout.Width (Column) := Clamp (Layout.Width (Column), Layout.Minimum (Column), Maximum);
-            CuBit.UI.Controls.Add_Horizontal_Drag
-              (controls, Edge_ID (Base, Column),
-               Divider_Bounds (bounds, Left + Layout.Width (Column)), damage,
-               Layout.Width (Column), Layout.Minimum (Column), Maximum, bounds.x + Left);
-            CuBit.UI.Controls.Take_Value (controls, Edge_ID (Base, Column), Value, Available);
-            if Available then
-               Layout.Width (Column) := Clamp (Value, Layout.Minimum (Column), Maximum);
-            end if;
-         end;
+         if Column < Flexible then
+            --  The flexible column, further right, gives or takes the width.
+            declare
+               Maximum : constant Natural := Natural'Max (Layout.Minimum (Column), Widest (Column));
+               Left : constant Natural := Column_Left (Layout, Column, Area.w);
+            begin
+               Layout.Width (Column) := Clamp (Layout.Width (Column), Layout.Minimum (Column), Maximum);
+               CuBit.UI.Controls.Add_Horizontal_Drag
+                 (controls, Edge_ID (Base, Column),
+                  Divider_Bounds (Area, Left + Layout.Width (Column)), damage,
+                  Layout.Width (Column), Layout.Minimum (Column), Maximum, Area.x + Left);
+               CuBit.UI.Controls.Take_Value (controls, Edge_ID (Base, Column), Value, Available);
+               if Available then
+                  Layout.Width (Column) := Clamp (Value, Layout.Minimum (Column), Maximum);
+               end if;
+            end;
+         else
+            --  The column after the edge trades width with this one.
+            declare
+               Left : constant Natural := Column_Left (Layout, Column, Area.w);
+               Current : constant Natural := Column_Width (Layout, Column, Area.w);
+               Next : constant Column_Index := Column + 1;
+               Pair : constant Natural := Current + Layout.Width (Next);
+               Maximum : constant Natural :=
+                 Natural'Max (Layout.Minimum (Column),
+                              (if Pair > Layout.Minimum (Next) then Pair - Layout.Minimum (Next) else 0));
+            begin
+               CuBit.UI.Controls.Add_Horizontal_Drag
+                 (controls, Edge_ID (Base, Column),
+                  Divider_Bounds (Area, Left + Current), damage,
+                  Current, Layout.Minimum (Column), Maximum, Area.x + Left);
+               CuBit.UI.Controls.Take_Value (controls, Edge_ID (Base, Column), Value, Available);
+               if Available then
+                  declare
+                     Wanted : constant Natural := Clamp (Value, Layout.Minimum (Column), Maximum);
+                  begin
+                     Layout.Width (Next) := (if Pair > Wanted then Pair - Wanted else 0);
+                     if Column /= Flexible then
+                        Layout.Width (Column) := Wanted;
+                     end if;
+                  end;
+               end if;
+            end;
+         end if;
       end loop;
 
       CuBit.UI.Fill_Rect (c, bounds, colors.panel);
       CuBit.UI.Fill_Rect (c, (bounds.x, bounds.y + bounds.h - 1, bounds.w, 1), Edge);
       for Column in 1 .. Layout.Count loop
          declare
-            Left : constant Natural := Column_Left (Layout, Column, bounds.w);
-            Width : constant Natural := Column_Width (Layout, Column, bounds.w);
-            Cell : constant CuBit.UI.Rect := (x => bounds.x + Left, y => bounds.y, w => Width, h => bounds.h);
+            Left : constant Natural := Column_Left (Layout, Column, Area.w);
+            Width : constant Natural := Column_Width (Layout, Column, Area.w);
+            Cell : constant CuBit.UI.Rect := (x => Area.x + Left, y => Area.y, w => Width, h => Area.h);
             Label_Area : constant CuBit.UI.Rect :=
-              (if bounds.h > HEADER_FRAME_WIDTH * 2
+              (if Area.h > HEADER_FRAME_WIDTH * 2
                then (Cell.x, Cell.y + HEADER_FRAME_WIDTH, Cell.w, Cell.h - HEADER_FRAME_WIDTH * 2) else Cell);
             Sorted : constant Boolean := Layout.Sortable and then Layout.Sort_Column = Column;
-            Mark_Room : constant Natural := (if Sorted then 14 else 0);
+            Mark_Room : constant Natural := (if Sorted then SORT_MARK_ROOM else 0);
          begin
             if Layout.Sortable and then Width > 0 then
-               CuBit.UI.Controls.Add_Button (controls, Header_ID (Base, Column), Cell, damage);
+               --  The click target leaves the edges' grab areas to the edges.
+               declare
+                  Left_Edge : constant CuBit.UI.Rect :=
+                    (if Column > 1 then Divider_Bounds (Area, Left) else (others => 0));
+                  Right_Edge : constant CuBit.UI.Rect :=
+                    (if Column < Layout.Count then Divider_Bounds (Area, Left + Width) else (others => 0));
+                  Start : constant Natural :=
+                    (if CuBit.UI.Is_Empty (Left_Edge) then Cell.x else Natural'Max (Cell.x, Left_Edge.x + Left_Edge.w));
+                  Stop : constant Natural :=
+                    (if CuBit.UI.Is_Empty (Right_Edge) then Cell.x + Cell.w
+                     else Natural'Min (Cell.x + Cell.w, Right_Edge.x));
+               begin
+                  CuBit.UI.Controls.Add_Button
+                    (controls, Header_ID (Base, Column),
+                     (Start, Cell.y, (if Stop > Start then Stop - Start else 0), Cell.h), damage);
+               end;
                if Pointer_In (Cell) or else CuBit.UI.Controls.Is_Active (controls, Header_ID (Base, Column)) then
                   CuBit.UI.Fill_Rect
                     (c, (Cell.x, Cell.y, Cell.w, (if Cell.h > 0 then Cell.h - 1 else 0)), colors.face);
                end if;
             end if;
-            if Column < Layout.Count and then Width > 0 and then Left + Width < bounds.w then
-               CuBit.UI.Fill_Rect (c, (bounds.x + Left + Width - 1, bounds.y, 1, bounds.h), Edge);
+            if Column < Layout.Count and then Width > 0 and then Left + Width < Area.w then
+               CuBit.UI.Fill_Rect (c, (Area.x + Left + Width - 1, Area.y, 1, Area.h), Edge);
                if Pointer_In (CuBit.UI.Controls.Bounds (controls, Edge_ID (Base, Column))) or else
                  CuBit.UI.Controls.Is_Active (controls, Edge_ID (Base, Column))
                then
                   CuBit.UI.Fill_Rect
-                    (c, (bounds.x + Left + Width - 1, bounds.y + 2, 1,
-                         (if bounds.h > 4 then bounds.h - 4 else 0)), colors.accent);
+                    (c, (Area.x + Left + Width - 1, Area.y + 2, 1,
+                         (if Area.h > 4 then Area.h - 4 else 0)), colors.accent);
                end if;
             end if;
-            CuBit.UI.Draw_UI_Text
-              (CuBit.UI.With_Clip
-                 (c, CuBit.UI.Content_Rect
-                    ((Cell.x, Cell.y, (if Cell.w > Mark_Room then Cell.w - Mark_Room else 0), Cell.h),
-                     Layout.Cell_Padding, HEADER_FRAME_WIDTH)),
+            CuBit.UI.Draw_UI_Text_Fitted
+              (c, CuBit.UI.Content_Rect
+                 ((Cell.x, Cell.y, (if Cell.w > Mark_Room then Cell.w - Mark_Room else 0), Cell.h),
+                  Layout.Cell_Padding, HEADER_FRAME_WIDTH),
                Cell.x + Layout.Cell_Padding, CuBit.UI.Center_Text_Y (Label_Area), Title (Column),
                colors.text, colors.panel);
             if Sorted and then Width > Mark_Room then
@@ -384,15 +459,15 @@ package body CuBit.UI.Tables is
             Left : constant Natural := Column_Left (Layout, Column, bounds.w);
             Width : constant Natural := Column_Width (Layout, Column, bounds.w);
             Cell_Area : constant CuBit.UI.Rect := (bounds.x + Left, bounds.y, Width, bounds.h);
-            Clipped : constant CuBit.UI.Canvas :=
-              CuBit.UI.With_Clip (c, CuBit.UI.Content_Rect (Cell_Area, Layout.Cell_Padding, 1));
+            Text_Box : constant CuBit.UI.Rect := CuBit.UI.Content_Rect (Cell_Area, Layout.Cell_Padding, 1);
             Text_Ink : constant CuBit.UI.Color := Ink (Column, Foreground);
             Text : constant String := Cell (Column);
             Text_Width : constant Natural :=
               (if textStyle = CuBit.UI.Table_Code_Text then CuBit.UI.Code_Text_Width (Text)
                else CuBit.UI.UI_Text_Width (Text));
             --  Left at the padding, or ending at the right padding when the
-            --  column is right-aligned and the text fits.
+            --  column is right-aligned and the text fits. Text that does not
+            --  fit is elided to end at the right padding.
             Text_X : constant Natural :=
               (if Right_Aligned (Column) and then Width > 2 * Layout.Cell_Padding + Text_Width
                then Cell_Area.x + Width - Layout.Cell_Padding - Text_Width
@@ -403,14 +478,14 @@ package body CuBit.UI.Tables is
             end if;
             if textStyle = CuBit.UI.Table_Code_Text then
                --  Text cells over the row's own colour: cached blended glyphs.
-               CuBit.UI.Draw_Code_Text
-                 (Clipped, Text_X,
+               CuBit.UI.Draw_Code_Text_Fitted
+                 (c, Text_Box, Text_X,
                   (if Cell_Area.h > CuBit.UI.Code_Text_Height
                    then Cell_Area.y + (Cell_Area.h - CuBit.UI.Code_Text_Height) / 2 else Cell_Area.y),
                   Text, Text_Ink, Background);
             else
-               CuBit.UI.Draw_UI_Text
-                 (Clipped, Text_X, CuBit.UI.Center_Text_Y (Cell_Area), Text, Text_Ink, Background);
+               CuBit.UI.Draw_UI_Text_Fitted
+                 (c, Text_Box, Text_X, CuBit.UI.Center_Text_Y (Cell_Area), Text, Text_Ink, Background);
             end if;
          end;
       end loop;

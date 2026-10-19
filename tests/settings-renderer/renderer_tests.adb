@@ -4,6 +4,7 @@ with CuBit.UI; use CuBit.UI;
 with CuBit.Appearance;
 with CuBit.Display_Layouts;
 with Desktop_Settings;
+with Time_Zones;
 procedure Renderer_Tests is
    use type System.Address;
    package A renames CuBit.Appearance;
@@ -51,10 +52,12 @@ begin
       for Scheme in A.Color_Scheme loop
          for Backdrop in A.Background loop
             for Placement in A.Placement loop
-               for Clip in 1 .. 3 loop
+               for Clip in 1 .. 4 loop
                   C.clip := (case Clip is when 1 => (100, 100, 744, 400),
-                    when 2 => (300, 180, 80, 40), when others => (0, 0, 1, 1));
-                  Desktop_Settings.Open (View, (Scheme, Backdrop, Placement), Layout, 1);
+                    when 2 => (300, 180, 80, 40), when 3 => (0, 0, 1, 1), when others => (100, 100, 744, 400));
+                  --  The fourth pass: a user-chosen (not automatic) scale.
+                  Desktop_Settings.Open (View, (Scheme, Backdrop, Placement), Layout, 1, Auto_Scale => Clip /= 4,
+                    Zone => Time_Zones.Zone_America_Denver);
                   View.Current_Page := Page;
                   Before := Calls;
                   Render (View, C, (100, 100, 744, 400));
@@ -87,6 +90,53 @@ begin
       end loop;
    end loop;
    for Op in Operation loop pragma Assert (Seen (Op) > 0); end loop;
+
+   --  Date & Time: the zone list by keyboard and pointer, Apply and Revert.
+   declare
+      use type Time_Zones.Time_Zone;
+      use type Desktop_Settings.Page;
+      use type Desktop_Settings.Control;
+      package S renames Desktop_Settings;
+      Window : constant Rect := (100, 100, 744, 400);
+      Apply : Boolean;
+      Scan_Enter : constant := 16#1C#;
+      Scan_Down : constant := 16#50#;
+      Scan_Page_Down : constant := 16#51#;
+      Scan_Home : constant := 16#47#;
+      Scan_End : constant := 16#4F#;
+      Scan_E : constant := 16#12#;
+      --  The list's first row in this window: page left 132, list at +20, +56.
+      List_X : constant := 100 + 132 + 20 + 10;
+      List_Row_Y : constant := 100 + 56 + 5;
+      Row_Height : constant := 22;
+   begin
+      S.Open (View, A.Default, Layout, 1, Auto_Scale => True, Zone => Time_Zones.Zone_UTC);
+      View.Focused := S.Date_Time_Tab;
+      S.Key (View, Scan_Enter, False, Apply);
+      pragma Assert (View.Current_Page = S.Date_Time and not Apply);
+      S.Key (View, Scan_E, False, Apply);
+      pragma Assert (Time_Zones.Name (View.Pending_Zone) (1) = 'E' and View.Focused = S.Zone_List);
+      S.Key (View, Scan_Home, False, Apply);
+      pragma Assert (View.Pending_Zone = Time_Zones.Time_Zone'First and View.Zone_Top = View.Pending_Zone);
+      S.Key (View, Scan_Down, False, Apply);
+      pragma Assert (View.Pending_Zone = Time_Zones.Time_Zone'Val (1));
+      S.Key (View, Scan_Page_Down, False, Apply);
+      pragma Assert (View.Pending_Zone = Time_Zones.Time_Zone'Val (10));
+      pragma Assert (Time_Zones.Time_Zone'Pos (View.Zone_Top) = 2, "the list follows the choice");
+      S.Key (View, Scan_End, False, Apply);
+      pragma Assert (View.Pending_Zone = Time_Zones.Time_Zone'Last);
+      S.Key (View, Scan_Home, False, Apply);
+      S.Pointer (View, Window, (List_X, List_Row_Y + 3 * Row_Height, True, True, False, True), Apply);
+      pragma Assert (View.Pending_Zone = Time_Zones.Time_Zone'Val (3) and not Apply);
+      Render (View, C, Window);
+      View.Focused := S.Apply;
+      S.Key (View, Scan_Enter, False, Apply);
+      pragma Assert (Apply, "Apply requests the page's apply");
+      View.Focused := S.Revert;
+      S.Key (View, Scan_Enter, False, Apply);
+      pragma Assert (View.Pending_Zone = Time_Zones.Zone_UTC, "Revert returns to the zone in Config");
+      Cases := Cases + 1;
+   end;
    Ada.Text_IO.Put_Line ("PASS Settings callback-only rendering:" & Cases'Image &
      " pages/styles/clips, all seven operations plus toolkit control decomposition, null pixel target");
 end Renderer_Tests;

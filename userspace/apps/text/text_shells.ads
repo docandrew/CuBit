@@ -1,5 +1,6 @@
 with Interfaces;
 with CuBit.UI;
+with CuBit.UI.Menus;
 with Text_Limits; use Text_Limits;
 with Text_Commands;
 with Text_Documents;
@@ -7,15 +8,16 @@ with Text_Editors;
 with Text_Hosts;
 
 --  CuBit Text's window (docs/text-editor.md, "Layout"): one host of the
---  editor core. Tabs of documents, one or two editors (a split), the
---  toolbar, the find bar, the palette and the status line, drawn with the
---  shared toolkit. Platform-free: the native main and the hosted harness
+--  editor core. The menu bar, the toolbar (with tooltips), tabs of
+--  documents, one or two editors (a split), the find bar, the palette and
+--  the status line, drawn with the shared toolkit. Platform-free: the native main and the hosted harness
 --  translate input into Events, call Pump between frames and Render into
 --  their canvas. Nothing here blocks: files load and save through the
 --  host a chunk at a time.
 --
---  Every command, from a key, the palette, a toolbar button or a CCL call,
---  goes through Execute.
+--  Every command, from a key, a menu, the palette, a toolbar button or a
+--  CCL call, goes through Execute; the menu bar and the palette are both
+--  made from the command table (Text_Commands), so they cannot drift.
 generic
    type Host_Type (<>) is limited private;
    with function Chunk_Limit (H : Host_Type) return Positive is <>;
@@ -38,7 +40,9 @@ package Text_Shells is
    use Interfaces;
 
    type Pointer_Action is (Press, Release, Move);
-   type Event_Kind is (Key_Event, Text_Event, Pointer_Event, Wheel_Event, Resize_Event);
+   --  Modifier_Event: the Alt key went down or up (Alt: held now), for the
+   --  menu bar's keyboard cues; key and pointer events update them too.
+   type Event_Kind is (Key_Event, Text_Event, Pointer_Event, Wheel_Event, Resize_Event, Modifier_Event);
    MAXIMUM_EVENT_TEXT : constant := 32;
    type Event is record
       Kind : Event_Kind := Key_Event;
@@ -71,6 +75,11 @@ package Text_Shells is
    procedure Initialize
      (S : in out Shell; Host : not null access Host_Type; Dark : Boolean; Edit_Bytes : Byte_Count);
    procedure Set_Dark (S : in out Shell; Dark : Boolean);
+   --  Follow the desktop's colour scheme: when the toolkit theme changed
+   --  (a scheme switch in Settings), the editor takes the matching palette,
+   --  dark when the theme draws light text on a dark field. Call before
+   --  each paint; it costs one comparison when nothing changed.
+   procedure Follow_Theme (S : in out Shell);
 
    --  A new tab loading Name, or an empty one.
    procedure Open (S : in out Shell; Name : String);
@@ -112,6 +121,11 @@ package Text_Shells is
    function Palette_Rows (S : Shell) return Natural;
    function Palette_Row (S : Shell; Row : Positive) return String;
    function Find_Open (S : Shell) return Boolean;
+   --  The open menu (its place on the bar, 1 for File), 0 for none; the
+   --  menu bar's current model; the tooltip showing ("" for none).
+   function Open_Menu (S : Shell) return Natural;
+   function Menu_Bar (S : Shell) return CuBit.UI.Menus.Model;
+   function Tooltip_Text (S : Shell) return String;
    function Split (S : Shell) return Boolean;
    function Modal_On (S : Shell) return Boolean;
    function Loading (S : Shell) return Boolean;

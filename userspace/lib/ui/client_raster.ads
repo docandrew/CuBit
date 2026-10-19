@@ -4,6 +4,7 @@ pragma Assertion_Policy (Post => Ignore, Loop_Invariant => Ignore, Assert => Ign
 --  surface on every call. Preconditions stay checked where assertions are on.
 with Interfaces;
 with Client_Glyph_Blend;
+with Glyph_Gamma;
 
 --  The toolkit's pixel loops, over plain arrays: rectangle fills and
 --  bitmap-glyph blits. Pure and proved (tests/ui-raster): every access stays
@@ -51,7 +52,8 @@ package Client_Raster with Pure, SPARK_Mode is
    subtype Mask_Column is Natural range 0 .. MASK_COLUMNS - 1;
    type Mask is array (Mask_Row, Mask_Column) of Byte;
 
-   --  Ink the glyph's coverage into R, starting at mask cell (Row, Column).
+   --  Ink the glyph's coverage into R, starting at mask cell (Row, Column);
+   --  coverage goes through Ink's Glyph_Gamma row first.
    --  Opaque: covered pixels mix Ink over Background, uncovered ones become
    --  Background (the glyph cell is fully painted). Otherwise covered pixels
    --  mix Ink over what is already there and uncovered ones are untouched.
@@ -59,6 +61,26 @@ package Client_Raster with Pure, SPARK_Mode is
      (Target : in out Pixels; Pitch : Positive; R : Area; Source : Mask;
       Row : Mask_Row; Column : Mask_Column; Ink : Word;
       Opaque : Boolean; Background : Word)
+     with Pre => Target'First = 0 and then Target'Last < Natural'Last and then
+                 Fits (Target'Length, Pitch, R) and then
+                 R.Height <= MASK_ROWS - Row and then R.Width <= MASK_COLUMNS - Column,
+          Post => (for all I in Target'Range =>
+                     (if not Inside (I, Pitch, R) then Target (I) = Target'Old (I)));
+
+   --  The colours of Ink over Under at every raw coverage (each through
+   --  Ink's Glyph_Gamma row): what Blit_Mask blends a coverage to over Under.
+   type Ramp is array (Byte) of Word;
+   function Shades (Ink, Under : Word) return Ramp
+     with Post => (for all A in Byte => Shades'Result (A) =
+                     Client_Glyph_Blend.Ink (Ink, Under, Glyph_Gamma.Bucket_Of (Ink), A));
+
+   --  Blit_Mask's blend (not opaque) for text over a run already filled
+   --  with Under: a pixel still equal to Under takes Over (coverage), the
+   --  same colour the blend would compute, without the arithmetic; any other
+   --  pixel (a neighbour's overlapping ink) is blended as Blit_Mask does.
+   procedure Blit_Mask_Over
+     (Target : in out Pixels; Pitch : Positive; R : Area; Source : Mask;
+      Row : Mask_Row; Column : Mask_Column; Ink, Under : Word; Over : Ramp)
      with Pre => Target'First = 0 and then Target'Last < Natural'Last and then
                  Fits (Target'Length, Pitch, R) and then
                  R.Height <= MASK_ROWS - Row and then R.Width <= MASK_COLUMNS - Column,

@@ -13,7 +13,7 @@ package body CuBit.Display_Protocol with SPARK_Mode is
         Wire.Words (1) not in 1 .. Grant_References.Maximum_Generation or else
         Width not in 1 .. Unsigned_64 (DP.Positive_Extent'Last) or else
         Height not in 1 .. Unsigned_64 (DP.Positive_Extent'Last) or else
-        Wire.Words (3) > DP.Maximum_Buffer_Bytes
+        Wire.Words (3) > Unsigned_64 (DP.Buffer_Pitch'Last)
       then
          return (Valid => False);
       end if;

@@ -15,8 +15,8 @@ Always set TMPDIR outside /tmp first:
 ```sh
 export TMPDIR=/home/doc/cubit-build-tmp
 cd /home/doc/git/cubit
-nix develop --command tests/files-app/run.sh            # scripted tests (188 checks)
-nix develop --command tests/files-app/run.sh --prove    # SPARK proof, policy units, level 2
+nix develop --command tests/files-app/run.sh            # scripted tests (510 checks)
+nix develop --command tests/files-app/run.sh --prove    # SPARK proof, policy, status and place units, level 2
 nix develop --command tests/files-app/run.sh --bench    # benchmarks (quiet host; optional size, default 1000000)
 nix develop --command tests/files-app/run.sh --window   # interactive SDL2 window
 nix develop --command tests/files-app/run.sh --window @host:0/home/doc/git/cubit @synthetic:1000000/
@@ -29,6 +29,13 @@ nix develop --command tests/files-app/run.sh --window @host:0/home/doc/git/cubit
 | `@host:0/...` | The host's `/`, read-only. |
 | `@scratch:0/...` | `$FILES_SCRATCH`, or `/home/doc/cubit-build-tmp/files-scratch` by default. Read-write. |
 | `@synthetic:N/` | N generated entries: one in ten is a folder, and folders hold 100 entries. No disk access. |
+
+These are also its places (`Queue_List_Places`). A test can instead grant
+named volumes, each present or absent (`Files_Mock_Service.Grant_Volumes`,
+as a manifest grants `@nvme:0/` and `@mem:0/` on every machine): a present
+one is served from `$FILES_SCRATCH/volumes/<name>` (read-only), a request
+on an absent one is answered `REPLY_VOLUME_UNAVAILABLE`, and the places
+are selected by `CuBit.Filesystem_Places`, the unit the service uses.
 
 Paths are checked as the real service checks them: at most 4096 bytes, no
 `.` or `..` components, and a known place. Anything else gets
@@ -56,13 +63,19 @@ person.
   - filter results against a reference filter, including live first slices, refinement and widening;
   - viewport, marks;
   - the page decoder on good pages and hostile ones (bad version, `/` in a name, a cursor that does not advance, 2,000 random pages).
+- **Place and status tests** (`files_places_tests.adb`): the place
+  selection (absent volumes left out, the manifest's order, the wildcard,
+  short ranges), the drawer's captions, and every `Files_Status` kind's
+  words (none with a number) and severity.
 - **View tests** drive the view through the mock and the real queue. The
   fixture tree is created in the scratch place. They cover listing, natural
   order with folders first, Enter, Backspace landing on the folder you left,
   Alt+Left/Right history, type-ahead filter (refine, widen, Esc), marks
   (Insert, Shift+Down, Ctrl+A, Ctrl+I, Space), sorting (with the cursor
-  following its entry), Tab, End and PgUp, click and double-click, and
-  refused places. They write `build/files-*.ppm` screenshots.
+  following its entry), Tab, End and PgUp, click and double-click,
+  refused places, and the places a machine has: the live image (only
+  `@mem:0`), an installed system (only `@nvme:0`), both, folders from
+  before restored only while they exist, and no volume. They write `build/files-*.ppm` screenshots.
 
 ## Benchmarks
 

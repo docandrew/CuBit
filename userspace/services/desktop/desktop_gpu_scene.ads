@@ -60,7 +60,8 @@ package Desktop_GPU_Scene with SPARK_Mode is
        Reader_Count (S) = Reader_Count (S)'Old and
        Image_Reader_Count (S) = Image_Reader_Count (S)'Old;
    procedure Add_Glyph (S : in out State; Key : Vulkan_Glyph_Sources.Key;
-      Cell : V.A.G.Logical_Rectangle; Tint : V.A.Word; Accepted : out Boolean)
+      Cell : V.A.G.Logical_Rectangle; Offset : Vulkan_Glyph_Sources.L.Subpixel;
+      Tint : V.A.Word; Accepted : out Boolean)
      with Global => (In_Out => D.Engine), Pre => Valid (S) and D.Valid,
        Post => Valid (S) and D.Valid;
    -- Exactly one submission attempt. A cold glyph discards this snapshot;
@@ -95,8 +96,9 @@ package Desktop_GPU_Scene with SPARK_Mode is
      with Global => (In_Out => D.Engine), Pre => Valid (S) and D.Valid,
        Post => Valid (S) and D.Valid;
 private
-   subtype Count is Natural range 0 .. 128;
-   subtype Index is Positive range 1 .. 128;
+   -- One pin per distinct glyph of the frame: its density's repertoire.
+   subtype Count is Natural range 0 .. R.C.Slot'Last;
+   subtype Index is Positive range 1 .. R.C.Slot'Last;
    type Pin is record
       Key : Vulkan_Glyph_Sources.Key;
       Reader : R.C.Lease := R.C.No_Lease;

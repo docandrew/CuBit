@@ -50,11 +50,13 @@ procedure Icon_Store_Tests is
       return Data;
    end Load;
 
-   --  The oracle's pixel of Icon at (X, Y) as 16#AARRGGBB#.
-   function Expected (RGBA : Q.Byte_Array; Icon : Desktop_Icons.Icon_ID;
+   --  The oracle's pixel of Icon at (X, Y) of its Edge square, as
+   --  16#AARRGGBB#: the edge's column, the icon's row in it.
+   function Expected (RGBA : Q.Byte_Array; Icon : Desktop_Icons.Icon_ID; Edge : Store.Edge_Index;
                       X, Y : Store.Coordinate) return Unsigned_32 is
       At_Byte : constant Positive := RGBA'First + 4 *
-        ((Desktop_Icons.Icon_ID'Pos (Icon) * Store.Icon_Size + Y) * Store.Atlas_Width + X);
+        ((Desktop_Icons.Icon_ID'Pos (Icon) * Desktop_Icons.Edges (Edge) + Y) * Store.Atlas_Width +
+         Desktop_Icons.Columns (Edge) + X);
    begin
       return Shift_Left (Unsigned_32 (RGBA (At_Byte + 3)), 24) or
         Shift_Left (Unsigned_32 (RGBA (At_Byte)), 16) or
@@ -63,8 +65,10 @@ procedure Icon_Store_Tests is
 
    function All_Fallback return Boolean is
      (for all Icon in Desktop_Icons.Icon_ID =>
-        (for all Y in Store.Coordinate =>
-           (for all X in Store.Coordinate => Store.Pixel (Icon, X, Y) = Store.Fallback (X, Y))));
+        (for all Edge in Store.Edge_Index =>
+           (for all Y in 0 .. Desktop_Icons.Edges (Edge) - 1 =>
+              (for all X in 0 .. Desktop_Icons.Edges (Edge) - 1 =>
+                 Store.Pixel (Icon, Edge, X, Y) = Store.Fallback (Desktop_Icons.Edges (Edge), X, Y)))));
 
    procedure Feed_All (Data : Q.Byte_Array; Chunk : Natural) is
       At_Byte : Positive := Data'First;
@@ -88,11 +92,14 @@ procedure Icon_Store_Tests is
    Result : Store.Load_Result;
 begin
    --  The glyph is visible: transparent margin, frame, cross and fill.
-   Check (Store.Fallback (0, 0) = Store.Glyph_Clear and then
-          Store.Fallback (Store.Glyph_Margin, 10) = Store.Glyph_Frame and then
-          Store.Fallback (5, 5) = Store.Glyph_Cross and then
-          Store.Fallback (5, 18) = Store.Glyph_Cross and then
-          Store.Fallback (10, 8) = Store.Glyph_Fill, "fallback glyph shape");
+   Check (Store.Fallback (24, 0, 0) = Store.Glyph_Clear and then
+          Store.Fallback (24, Store.Glyph_Margin, 10) = Store.Glyph_Frame and then
+          Store.Fallback (24, 5, 5) = Store.Glyph_Cross and then
+          Store.Fallback (24, 5, 18) = Store.Glyph_Cross and then
+          Store.Fallback (24, 10, 8) = Store.Glyph_Fill, "fallback glyph shape");
+   Check (Store.Fallback (16, 13, 13) = Store.Glyph_Frame and then
+          Store.Fallback (16, 14, 3) = Store.Glyph_Clear and then
+          Store.Fallback (64, 40, 23) = Store.Glyph_Cross, "fallback glyph at other edges");
    Check (RGBA'Length = 4 * Store.Atlas_Pixels, "oracle is one atlas");
    Check (Store.Current = Store.Not_Loaded and then All_Fallback, "fallback before loading");
    Store.Begin_Load;
@@ -101,10 +108,11 @@ begin
       Store.End_Load (False, Result);
       Check (Result.Loaded and then Store.Current = Store.Loaded, "atlas loads");
       Check ((for all Icon in Desktop_Icons.Icon_ID =>
-                (for all Y in Store.Coordinate =>
-                   (for all X in Store.Coordinate =>
-                      Store.Pixel (Icon, X, Y) = Expected (RGBA.all, Icon, X, Y)))),
-             "every icon equals its source PNG");
+                (for all Edge in Store.Edge_Index =>
+                   (for all Y in 0 .. Desktop_Icons.Edges (Edge) - 1 =>
+                      (for all X in 0 .. Desktop_Icons.Edges (Edge) - 1 =>
+                         Store.Pixel (Icon, Edge, X, Y) = Expected (RGBA.all, Icon, Edge, X, Y))))),
+             "every icon at every edge equals its source PNG");
    elsif Mode = "truncated" then
       Feed_All (Data (Data'First .. Data'Last - 1), 4096);
       Store.End_Load (False, Result);

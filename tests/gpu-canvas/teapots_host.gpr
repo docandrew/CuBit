@@ -1,11 +1,11 @@
+with "../../userspace/allocator/allocator_runtime_host.gpr";
 --  Linux-hosted GPU canvas + teapot gallery (tests/gpu-canvas/run.sh).
 with "../../userspace/lib/ui/fonts_host.gpr";
 project Teapots_Host is
    for Languages use ("Ada");
    for Source_Dirs use (".", "host", "build/source", "../../userspace/apps/teapots",
                         "../../userspace/lib/ui", "../../userspace/lib/theme",
-                        "../../userspace/lib/compositor", "../../userspace/lib/display",
-                        "../../userspace/allocator/src");
+                        "../../userspace/lib/compositor", "../../userspace/lib/display");
    for Excluded_Source_Files use ("main.adb");
    for Object_Dir use "build/obj";
    for Exec_Dir use "build";

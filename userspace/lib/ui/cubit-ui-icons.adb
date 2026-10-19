@@ -1,18 +1,24 @@
 with CuBit.UI.Icons.Atlas;
+with Icon_Edge_Choice;
 
 package body CuBit.UI.Icons is
-   --  At 1.5x and above the 32-pixel artwork is the nearer.
-   function Dense (c : Canvas) return Boolean is
-     (Natural (c.densityNumerator) * 2 >= Natural (c.densityDenominator) * 3);
+   --  The two exports, in Edges order.
+   SMALL_EDGE : constant := 16;
+   LARGE_EDGE : constant := 32;
+   Edges : constant Icon_Edge_Choice.Edge_List := [SMALL_EDGE, LARGE_EDGE];
 
+   --  Drawn 1:1 from the export nearest the canvas's density, never
+   --  resampled (Icon_Edge_Choice): crisp at 100%, 125% or 200%.
    procedure Draw (c : Canvas; x, y : Natural; Item : Icon; Enabled : Boolean := True) is
    begin
       if c.densityNumerator = c.densityDenominator then
          Draw_Bitmap (c, x, y, Atlas.Pixels_16 (Item), Enabled);
-      elsif Dense (c) then
-         Draw_Bitmap_Fitted (c, (x, y, ICON_SIZE, ICON_SIZE), Atlas.Pixels_32 (Item), Enabled);
+      elsif Edges (Icon_Edge_Choice.Nearest (Edges, ICON_SIZE, c.densityNumerator, c.densityDenominator)) =
+            LARGE_EDGE
+      then
+         Draw_Bitmap_Native (c, (x, y, ICON_SIZE, ICON_SIZE), Atlas.Pixels_32 (Item), Enabled);
       else
-         Draw_Bitmap_Fitted (c, (x, y, ICON_SIZE, ICON_SIZE), Atlas.Pixels_16 (Item), Enabled);
+         Draw_Bitmap_Native (c, (x, y, ICON_SIZE, ICON_SIZE), Atlas.Pixels_16 (Item), Enabled);
       end if;
    end Draw;
 

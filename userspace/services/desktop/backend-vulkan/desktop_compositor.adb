@@ -79,7 +79,7 @@ procedure Draw_Text
      (Target : Compositor_Formats.Image; Target_Bytes : Compositor_Formats.Byte_Count;
       Screen : CuBit.Display_Geometry.Output; Items : Compositor_Text.Glyphs;
       Length : Compositor_Text.Count; Damage : CuBit.Display_Geometry.Physical_Rectangle;
-      Tint : Compositor_Formats.Word; Secondary : Boolean;
+      Tint : Compositor_Formats.Word; Face : Compositor_Text.L.Face_Index; Secondary : Boolean;
       Drawn, Repaint, Must_Restart : out Boolean)
   with Pre => Valid and Desktop_Vulkan_Startup.Valid,
     Post => Valid and Desktop_Vulkan_Startup.Valid;
@@ -117,6 +117,14 @@ procedure Draw_Atlas
       Surface : CuBit.Display_Geometry.Logical_Rectangle;
       Damage : CuBit.Display_Geometry.Physical_Rectangle;
       Straight_Alpha, Secondary : Boolean; Drawn, Must_Restart : out Boolean)
+  with Pre => Valid and Desktop_Vulkan_Startup.Valid,
+    Post => Valid and Desktop_Vulkan_Startup.Valid;
+procedure Draw_Atlas_Physical
+     (Target : Compositor_Formats.Image; Target_Bytes : Compositor_Formats.Byte_Count;
+      Screen : CuBit.Display_Geometry.Output; Family : Desktop_Icon_Pixels.Family;
+      Region : Compositor_Source_Region.Rectangle;
+      Area, Damage : CuBit.Display_Geometry.Physical_Rectangle;
+      Secondary : Boolean; Drawn, Must_Restart : out Boolean)
   with Pre => Valid and Desktop_Vulkan_Startup.Valid,
     Post => Valid and Desktop_Vulkan_Startup.Valid;
 procedure Complete_Output
@@ -297,7 +305,7 @@ package body GPU with Refined_State => (State => (Scene, Sources, Backdrops, Atl
      (Target : Compositor_Formats.Image; Target_Bytes : Compositor_Formats.Byte_Count;
       Screen : CuBit.Display_Geometry.Output; Items : Compositor_Text.Glyphs;
       Length : Compositor_Text.Count; Damage : CuBit.Display_Geometry.Physical_Rectangle;
-      Tint : Compositor_Formats.Word; Secondary : Boolean;
+      Tint : Compositor_Formats.Word; Face : Compositor_Text.L.Face_Index; Secondary : Boolean;
       Drawn, Repaint, Must_Restart : out Boolean) is
       OK : Boolean;
       use type CuBit.Display_Geometry.Output;
@@ -305,7 +313,7 @@ package body GPU with Refined_State => (State => (Scene, Sources, Backdrops, Atl
       Must_Restart := not Matches (Target, Target_Bytes, Secondary) or Screen /= Geometry;
       Drawn := True; Repaint := False;
       if Must_Restart or not Captured then return; end if;
-      G.Drawing.Text (Scene, Items, Length, Damage, Tint, OK); Captured := OK;
+      G.Drawing.Text (Scene, Items, Length, Damage, Tint, Face, OK); Captured := OK;
    end Draw_Text;
    procedure Draw_Client
      (Target, Source : Compositor_Formats.Image;
@@ -370,6 +378,28 @@ package body GPU with Refined_State => (State => (Scene, Sources, Backdrops, Atl
         Over => True, Straight_Alpha => Straight_Alpha);
       Captured := OK;
    end Draw_Atlas;
+   procedure Draw_Atlas_Physical
+     (Target : Compositor_Formats.Image; Target_Bytes : Compositor_Formats.Byte_Count;
+      Screen : CuBit.Display_Geometry.Output; Family : Desktop_Icon_Pixels.Family;
+      Region : Compositor_Source_Region.Rectangle;
+      Area, Damage : CuBit.Display_Geometry.Physical_Rectangle;
+      Secondary : Boolean; Drawn, Must_Restart : out Boolean) is
+      Source : Vulkan_Submission.Source_Ticket;
+      Status : IA.Outcome;
+      OK : Boolean;
+      use type CuBit.Display_Geometry.Output;
+   begin
+      Must_Restart := not Matches (Target, Target_Bytes, Secondary) or Screen /= Geometry;
+      Drawn := True;
+      if Must_Restart or not Captured then return; end if;
+      IA.Acquire (Atlases (Family), Atlas_Slot (Family), Family, Source, Status);
+      if Status /= IA.Available then
+         -- Cold atlas: discard this capture; Complete_Output drives the upload.
+         Captured := False; Asset_Cold := True; Must_Restart := Status = IA.Unsafe; return;
+      end if;
+      G.Drawing.Physical_Region (Scene, Source, Area, Damage, Region, OK);
+      Captured := OK;
+   end Draw_Atlas_Physical;
    procedure Complete_Output
      (Target : System.Address; Writer : Compositor_Pool.Ticket;
       Secondary, Poll : Boolean; Result : out Render_Completion) is
@@ -611,10 +641,10 @@ procedure Draw_Text
      (Target : Compositor_Formats.Image; Target_Bytes : Compositor_Formats.Byte_Count;
       Screen : CuBit.Display_Geometry.Output; Items : Compositor_Text.Glyphs;
       Length : Compositor_Text.Count; Damage : CuBit.Display_Geometry.Physical_Rectangle;
-      Tint : Compositor_Formats.Word; Secondary : Boolean;
+      Tint : Compositor_Formats.Word; Face : Compositor_Text.L.Face_Index; Secondary : Boolean;
       Drawn, Repaint, Must_Restart : out Boolean) is
 begin
-if Use_GPU then GPU.Draw_Text (Target, Target_Bytes, Screen, Items, Length, Damage, Tint, Secondary, Drawn, Repaint, Must_Restart); else CPU.Draw_Text (Target, Target_Bytes, Screen, Items, Length, Damage, Tint, Secondary, Drawn, Repaint, Must_Restart); end if;
+if Use_GPU then GPU.Draw_Text (Target, Target_Bytes, Screen, Items, Length, Damage, Tint, Face, Secondary, Drawn, Repaint, Must_Restart); else CPU.Draw_Text (Target, Target_Bytes, Screen, Items, Length, Damage, Tint, Face, Secondary, Drawn, Repaint, Must_Restart); end if;
 end Draw_Text;
 procedure Draw_Client
      (Target, Source : Compositor_Formats.Image;
@@ -650,14 +680,23 @@ end Retire_Source;
 procedure Draw_Icon
      (Target : Compositor_Formats.Image; Target_Bytes : Compositor_Formats.Byte_Count;
       Screen : CuBit.Display_Geometry.Output; Item : Desktop_Icon_Pixels.Asset;
-      Surface : CuBit.Display_Geometry.Logical_Rectangle;
+      Area : CuBit.Display_Geometry.Physical_Rectangle; Skip_X, Skip_Y : Natural;
       Damage : CuBit.Display_Geometry.Physical_Rectangle;
       Secondary : Boolean; Drawn, Must_Restart : out Boolean) is
+   use type CuBit.Display_Geometry.Pixel_Edge, Compositor_Source_Region.Word;
+   Whole : constant Compositor_Source_Region.Rectangle := Desktop_Icon_Pixels.Atlases.Region (Item);
 begin
-if Use_GPU then
-   GPU.Draw_Atlas (Target, Target_Bytes, Screen, Item.Kind, Desktop_Icon_Pixels.Atlases.Region (Item),
-     Surface, Damage, True, Secondary, Drawn, Must_Restart);
-else Drawn := False; Must_Restart := False; end if;
+if not Use_GPU then Drawn := False; Must_Restart := False; return; end if;
+--  The square less what hangs over the output's left/top edge.
+if Area.Left >= Area.Right or else Area.Top >= Area.Bottom or else
+  Natural (Area.Right - Area.Left) + Skip_X > Natural (Whole.Width) or else
+  Natural (Area.Bottom - Area.Top) + Skip_Y > Natural (Whole.Height)
+then Drawn := True; Must_Restart := False; return; end if;
+GPU.Draw_Atlas_Physical (Target, Target_Bytes, Screen, Item.Kind,
+  (Whole.X + Compositor_Source_Region.Word (Skip_X), Whole.Y + Compositor_Source_Region.Word (Skip_Y),
+   Compositor_Source_Region.Word (Area.Right - Area.Left), Compositor_Source_Region.Word (Area.Bottom - Area.Top),
+   Whole.Image_Width, Whole.Image_Height),
+  Area, Damage, Secondary, Drawn, Must_Restart);
 end Draw_Icon;
 procedure Draw_Cursor
      (Target : Compositor_Formats.Image; Target_Bytes : Compositor_Formats.Byte_Count;

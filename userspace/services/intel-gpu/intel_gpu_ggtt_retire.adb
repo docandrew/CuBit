@@ -1,3 +1,4 @@
+with Intel_GPU_Physical_Extents;
 package body Intel_GPU_GGTT_Retire is
    procedure Execute
      (Object : in out Attempt; Ledger : Intel_GPU_GGTT_Reservations.Ledger;
@@ -11,7 +12,7 @@ package body Intel_GPU_GGTT_Retire is
       Status := Rejected;
       if Object.Used then return; end if;
       Object.Used := True;
-      if Bytes = 0 or else Bytes > 16 * 1024 * 1024 or else Bytes mod 4096 /= 0 or else
+      if Bytes = 0 or else Bytes > Intel_GPU_Physical_Extents.Capacity or else Bytes mod 4096 /= 0 or else
         not Plan.Valid or else Scratch = 0 or else
         not Intel_GPU_GGTT_Reservations.Has_Claim (Ledger, First, Bytes) or else
         not Gate (First, Bytes)

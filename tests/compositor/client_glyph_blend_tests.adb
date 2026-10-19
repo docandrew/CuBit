@@ -1,4 +1,4 @@
-with Ada.Text_IO; with Interfaces; with Client_Glyph_Blend;
+with Ada.Text_IO; with Interfaces; with Client_Glyph_Blend; with Glyph_Gamma;
 procedure Client_Glyph_Blend_Tests is
    package B renames Client_Glyph_Blend;
    use type B.Word, B.Byte;
@@ -50,7 +50,7 @@ begin
                                  declare
                                     T : constant Natural := (Y + DY) * Pitch + X + DX;
                                     S : constant Natural := (1 + DY) * 16 + 1 + DX;
-                                 begin Expected (T) := Oracle (Tint, Expected (T), Mask (S)); end;
+                                 begin Expected (T) := Oracle (Tint, Expected (T), Glyph_Gamma.Correction (Glyph_Gamma.Bucket_Of (Tint)) (Mask (S))); end;
                               end loop;
                            end loop;
                            B.Paint (Mask, Target, 16, Pitch, Src, Dest, Tint);
@@ -69,6 +69,18 @@ begin
    pragma Assert (not B.Fits (0, 1, (0, 0, 1, 1)));
    for A in B.Byte loop
       pragma Assert (B.Mix (16#FE8095FF#, 16#BE126534#, A) = Oracle (16#FE8095FF#, 16#BE126534#, A));
+      pragma Assert (B.Ink (16#FE8095FF#, 16#BE126534#, Glyph_Gamma.Bucket_Of (16#FE8095FF#), A) =
+                     Oracle (16#FE8095FF#, 16#BE126534#, Glyph_Gamma.Correction (Glyph_Gamma.Bucket_Of (16#FE8095FF#)) (A)));
    end loop;
+   --  The correction rows: ends fixed, monotone, and dark ink's row thins
+   --  mid coverage less than linear-light alone would (contrast boost).
+   for Row in Glyph_Gamma.Bucket loop
+      pragma Assert (Glyph_Gamma.Correction (Row) (0) = 0 and Glyph_Gamma.Correction (Row) (255) = 255);
+      for A in B.Byte range 1 .. 255 loop
+         pragma Assert (Glyph_Gamma.Correction (Row) (A) >= Glyph_Gamma.Correction (Row) (A - 1));
+      end loop;
+   end loop;
+   pragma Assert (Glyph_Gamma.Bucket_Of (16#000000#) = 0 and Glyph_Gamma.Bucket_Of (16#FFFFFF#) = 15);
+   pragma Assert (Glyph_Gamma.Bucket_Of (16#FF000000#) = 0);
    Ada.Text_IO.Put_Line ("PASS exhaustive 16777216 channel combinations and" & Count'Image & " clipped/padded/partial-row rectangles");
 end Client_Glyph_Blend_Tests;

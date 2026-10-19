@@ -4,12 +4,20 @@ import hashlib,json,os,subprocess,tempfile
 root=Path(__file__).resolve().parents[2]
 assert os.environ.get('IN_NIX_SHELL')
 w=Path(tempfile.mkdtemp(prefix='icon-atlas-owner-',dir=root/'tests/compositor/build'));print(w,flush=True)
-paths=list((root/'userspace/services/desktop').glob('desktop_icon*.ad?'))
+paths=list((root/'userspace/services/desktop').glob('desktop_icon*.ad?'))+list((root/'userspace/services/desktop').glob('desktop_heap_objects.ad?'))
 paths+=[root/'userspace/services/desktop/desktop_cursors.ads',root/'userspace/services/desktop/desktop_window_icons.ads',root/'tests/compositor/icon_atlas_owner_tests.adb']
 hashes={}
 for p in paths:
  data=p.read_bytes();(w/p.name).write_bytes(data);hashes[str(p.relative_to(root))]=hashlib.sha256(data).hexdigest()
-files=', '.join('"'+p.name+'"' for p in paths)
+# The icon atlas's memory comes from CuAlloc; here, C's heap.
+(w/'cualloc_mock.c').write_text('''#define _POSIX_C_SOURCE 200112L
+#include <stdint.h>
+#include <stdlib.h>
+uint64_t cualloc_allocate(uint64_t bytes,uint64_t alignment)
+{void *p=0;if(posix_memalign(&p,alignment,bytes))return 0;return (uint64_t)(uintptr_t)p;}
+void cualloc_free(uint64_t item){free((void*)(uintptr_t)item);}
+''')
+files=', '.join('"'+p.name+'"' for p in paths+[w/'cualloc_mock.c'])
 (w/'owner.gpr').write_text(f'''project Owner extends "{root/'tests/compositor/backdrop_owner_tests.gpr'}" is
  for Source_Dirs use ("."); for Source_Files use ({files});
  for Main use ("icon_atlas_owner_tests.adb"); for Object_Dir use "obj"; for Exec_Dir use ".";

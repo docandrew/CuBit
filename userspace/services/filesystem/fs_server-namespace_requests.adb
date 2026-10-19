@@ -110,7 +110,7 @@ package body Fs_Server.Namespace_Requests is
          begin
             ensureVolume (Volume_Index (oldVolume), admission);
             if admission /= Admitted then
-               sendReply (sender, REPLY_IO_ERROR, 0);
+               sendReply (sender, Labels.Admission_Label (admission), 0);
                return;
             end if;
             --  Do not rename an exclusively held inode. Check identity after
@@ -272,7 +272,7 @@ package body Fs_Server.Namespace_Requests is
       volume := Volume_Index (reference);
       ensureVolume (volume, admission);
       if admission /= Admitted then
-         sendReply (sender, REPLY_IO_ERROR, 0);
+         sendReply (sender, Labels.Admission_Label (admission), 0);
          return;
       end if;
       --  unlink, mkdir, rmdir: names change from here on.

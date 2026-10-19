@@ -11,7 +11,7 @@ procedure Desktop_Text_Tests is
    function Stat (Index : Unsigned_32) return Unsigned_32 with Import, Convention => C, External_Name => "glyph_mock_stat";
    type Pixels is array (Natural range <>) of Unsigned_32;
    Target : aliased Pixels (0 .. 80 * 72 - 1) := (others => 16#0012_3456#);
-   Items : T.Glyphs := (others => (65, (0, 0, 12, 17)));
+   Items : T.Glyphs := (others => (65, (0, 0, 12, 17), 0));
    Mode : constant Natural := Natural'Value (Ada.Command_Line.Argument (1));
    Drawn, Repaint, Restart : Boolean;
    Target_Result : Desktop_Compositor.Target_Release;
@@ -32,7 +32,7 @@ procedure Desktop_Text_Tests is
    begin
       Desktop_Compositor.Draw_Text ((Target'Address, 80, 72, 320, 1), Target'Length * 4,
         (80, 72, T.G.Unrotated, (1, 1), 0, 0), Items, 32, (0, 0, 80, 72), 16#FFED_CBA9#,
-        False, Drawn, Repaint, Restart);
+        T.L.Sans_Face, False, Drawn, Repaint, Restart);
    end Draw;
 begin
    Reset;

@@ -9,6 +9,8 @@ with CuBit.Directory_Pages;
 with CuBit.Directory_Paths;
 with CuBit.Filesystem_Events;
 with CuBit.Volume_Descriptions;
+with CuBit.File_Access;
+with CuBit.Filesystem_Places;
 with GNAT.OS_Lib;
 
 package body Files_Mock_Service is
@@ -311,8 +313,8 @@ package body Files_Mock_Service is
       Used := Item.Used;
    end Take_Record;
 
-   --  Its granted scopes (Queue_List_Scopes), as the manifest would list
-   --  them: rights, then prefix.
+   --  Its default scopes (Queue_List_Scopes, Queue_List_Places), as a
+   --  manifest would list them: prefix and rights; all present.
    SCOPE_READ : constant := 1;
    SCOPE_READ_WRITE_CREATE : constant := 1 + 2 + 8;
    type Scope is record
@@ -359,7 +361,52 @@ package body Files_Mock_Service is
    end Stop;
 
    --  Where a path leads: a place and the rest (no leading slash).
-   type Place is (No_Place, Host_Place, Scratch_Place, Synthetic_Place);
+   --  Granted volumes (Grant_Volumes): none means the default places.
+   MAXIMUM_VOLUME_GRANTS : constant := CuBit.File_Access.Maximum_Entries;
+   Granted : Volume_Grants (1 .. MAXIMUM_VOLUME_GRANTS);
+   Granted_Count : Natural range 0 .. MAXIMUM_VOLUME_GRANTS := 0;
+
+   function Volume (Name : String; Present : Boolean) return Volume_Grant is
+      Result : Volume_Grant := (Length => Name'Length, Present => Present, others => <>);
+   begin
+      Result.Name (1 .. Name'Length) := Name;
+      return Result;
+   end Volume;
+
+   function Root_Of (V : Volume_Grant) return String is ("@" & V.Name (1 .. V.Length) & "/");
+
+   function Volume_Folder (Name : String) return String is
+      Flat : String := Name;
+   begin
+      for C of Flat loop
+         if C = ':' then
+            C := '_';
+         end if;
+      end loop;
+      return To_String (Scratch_Root) & "/volumes/" & Flat;
+   end Volume_Folder;
+
+   procedure Grant_Volumes (Volumes : Volume_Grants) is
+   begin
+      Granted_Count := Volumes'Length;
+      Granted (1 .. Granted_Count) := Volumes;
+      for V of Volumes loop
+         if V.Present and then not Ada.Directories.Exists (Volume_Folder (V.Name (1 .. V.Length))) then
+            Ada.Directories.Create_Path (Volume_Folder (V.Name (1 .. V.Length)));
+         end if;
+      end loop;
+   end Grant_Volumes;
+
+   procedure Grant_Defaults is
+   begin
+      Granted_Count := 0;
+   end Grant_Defaults;
+
+   --  Absent_Place: a granted volume that is not present.
+   type Place is (No_Place, Host_Place, Scratch_Place, Synthetic_Place, Absent_Place);
+   --  What a request on a path that leads nowhere is answered.
+   function Refusal (Where : Place) return Unsigned_32 is
+     (if Where = Absent_Place then REPLY_VOLUME_UNAVAILABLE else REPLY_ACCESS_DENIED);
    type Resolved is record
       Where : Place := No_Place;
       Host_Path : Unbounded_String;
@@ -370,13 +417,31 @@ package body Files_Mock_Service is
    function Resolve (Path : String) return Resolved is
       Result : Resolved;
       Rest_First : Positive;
+      --  A granted volume's folder (Grant_Volumes), else the host root.
+      Volume_Base : Unbounded_String;
       function Starts (Prefix : String) return Boolean is
         (Path'Length >= Prefix'Length and then Path (Path'First .. Path'First + Prefix'Length - 1) = Prefix);
    begin
       if Path'Length = 0 or else Path'Length > CuBit.Directory_Paths.Maximum_Bytes then
          return Result;
       end if;
-      if Starts (HOST_PREFIX) then
+      if Granted_Count > 0 then
+         --  Only the granted volumes: present ones from their folders.
+         for V of Granted (1 .. Granted_Count) loop
+            if Starts (Root_Of (V)) then
+               if not V.Present then
+                  return (Where => Absent_Place, others => <>);
+               end if;
+               Result.Where := Host_Place;
+               Volume_Base := To_Unbounded_String (Volume_Folder (V.Name (1 .. V.Length)));
+               Rest_First := Path'First + Root_Of (V)'Length;
+               exit;
+            end if;
+         end loop;
+         if Result.Where = No_Place then
+            return Result;
+         end if;
+      elsif Starts (HOST_PREFIX) then
          Result.Where := Host_Place;
          Rest_First := Path'First + HOST_PREFIX'Length;
       elsif Starts (SCRATCH_PREFIX) then
@@ -422,10 +487,11 @@ package body Files_Mock_Service is
          Rest : constant String := Path (Rest_First .. Path'Last);
       begin
          case Result.Where is
-            when Host_Place => Result.Host_Path := Host_Root & "/" & Rest;
+            when Host_Place =>
+               Result.Host_Path := (if Length (Volume_Base) > 0 then Volume_Base else Host_Root) & "/" & Rest;
             when Scratch_Place => Result.Host_Path := Scratch_Root & "/" & Rest;
             when Synthetic_Place => Result.Synthetic_Child := Rest'Length > 0;
-            when No_Place => null;
+            when No_Place | Absent_Place => null;
          end case;
       end;
       return Result;
@@ -511,8 +577,10 @@ package body Files_Mock_Service is
       Old_Place : constant Resolved := Resolve (Old_Path);
       New_Place : constant Resolved := Resolve (New_Path);
    begin
-      if Old_Place.Where = No_Place or else New_Place.Where = No_Place then
-         Status := REPLY_ACCESS_DENIED;
+      if Old_Place.Where in No_Place | Absent_Place then
+         Status := Refusal (Old_Place.Where);
+      elsif New_Place.Where in No_Place | Absent_Place then
+         Status := Refusal (New_Place.Where);
       elsif Old_Place.Where /= Scratch_Place or else New_Place.Where /= Scratch_Place then
          Status := (if Old_Place.Where /= New_Place.Where then REPLY_CROSS_VOLUME else REPLY_READ_ONLY);
       elsif not Exists (To_String (Old_Place.Host_Path)) then
@@ -581,8 +649,8 @@ package body Files_Mock_Service is
          Slot : Natural := 0;
       begin
          Handle := 0;
-         if Where.Where = No_Place then
-            Status := REPLY_ACCESS_DENIED;
+         if Where.Where in No_Place | Absent_Place then
+            Status := Refusal (Where.Where);
             return;
          end if;
          for S in Directories'Range loop
@@ -713,8 +781,8 @@ package body Files_Mock_Service is
          if Where.Where in Host_Place | Synthetic_Place then
             Status := REPLY_READ_ONLY;
             return;
-         elsif Where.Where = No_Place then
-            Status := REPLY_ACCESS_DENIED;
+         elsif Where.Where in No_Place | Absent_Place then
+            Status := Refusal (Where.Where);
             return;
          end if;
          --  Names resolve anew: before the change, as the service does.
@@ -795,8 +863,8 @@ package body Files_Mock_Service is
          Target : constant String := To_String (Where.Host_Path);
       begin
          Handle := 0;
-         if Where.Where = No_Place or else not Valid_Open_Options (Mode) then
-            Status := REPLY_ACCESS_DENIED;
+         if Where.Where in No_Place | Absent_Place or else not Valid_Open_Options (Mode) then
+            Status := Refusal (Where.Where);
             return;
          elsif Write and then Where.Where /= Scratch_Place then
             Status := REPLY_READ_ONLY;
@@ -926,39 +994,106 @@ package body Files_Mock_Service is
          end;
       end Transfer;
 
-      procedure List_Scopes (Offset, Length : Unsigned_64; Status : out Unsigned_32; Value : out Unsigned_64) is
-         ENTRY_BYTES : constant := 264;   --  CuBit.File_Access.Wire_Entry_Bytes
-         Needed : constant Unsigned_64 := Scopes'Length * ENTRY_BYTES;
+      --  The granted scopes as CuBit.File_Access wire entries (rights,
+      --  prefix length, zeroes, prefix), the volumes' roots present now.
+      package FA renames CuBit.File_Access;
+      package FP renames CuBit.Filesystem_Places;
+      procedure Scope_Wire (Wire : out FA.Wire_Bytes; Count : out Natural) is
+         procedure Put (Prefix : String; Rights : Unsigned_8) is
+            Base : constant Positive := Count * FA.Wire_Entry_Bytes + 1;
+         begin
+            Wire (Base + FP.Rights_At) := Rights;
+            Wire (Base + FP.Prefix_Length_At) := Unsigned_8 (Prefix'Length mod FP.Byte_Radix);
+            Wire (Base + FP.Prefix_Length_At + 1) := Unsigned_8 (Prefix'Length / FP.Byte_Radix);
+            for K in Prefix'Range loop
+               Wire (Base + FP.Prefix_At + K - Prefix'First) := Character'Pos (Prefix (K));
+            end loop;
+            Count := Count + 1;
+         end Put;
       begin
-         Value := Scopes'Length;
-         if Length < Needed then
+         Wire := [others => 0];
+         Count := 0;
+         if Granted_Count > 0 then
+            for V of Granted (1 .. Granted_Count) loop
+               Put (Root_Of (V), SCOPE_READ);
+            end loop;
+         else
+            for N in Scopes'Range loop
+               Put (To_String (Scopes (N).Prefix), Scopes (N).Rights);
+            end loop;
+         end if;
+      end Scope_Wire;
+
+      function Present_Roots return FP.Root_Table is
+         Result : FP.Root_Table (1 .. Natural'Max (Granted_Count, Scopes'Length));
+         Count : Natural := 0;
+         function Name_Of (Prefix : String) return String is (Prefix (Prefix'First + 1 .. Prefix'Last - 1));
+      begin
+         if Granted_Count > 0 then
+            for V of Granted (1 .. Granted_Count) loop
+               if V.Present then
+                  Count := Count + 1;
+                  Result (Count) := FP.Make_Root (V.Name (1 .. V.Length));
+               end if;
+            end loop;
+         else
+            for N in Scopes'Range loop
+               Count := Count + 1;
+               Result (Count) := FP.Make_Root (Name_Of (To_String (Scopes (N).Prefix)));
+            end loop;
+         end if;
+         return Result (1 .. Count);
+      end Present_Roots;
+
+      procedure List_Scopes (Offset, Length : Unsigned_64; Status : out Unsigned_32; Value : out Unsigned_64) is
+         Wire : FA.Wire_Bytes (1 .. FA.Maximum_Entries * FA.Wire_Entry_Bytes);
+         Count : Natural;
+      begin
+         Scope_Wire (Wire, Count);
+         Value := Unsigned_64 (Count);
+         if Length < Unsigned_64 (Count * FA.Wire_Entry_Bytes) then
             Status := REPLY_NO_SPACE;
             return;
-         elsif not FQ.In_Arena (Offset, Needed, Arena_Size) then
+         elsif not FQ.In_Arena (Offset, Unsigned_64 (Count * FA.Wire_Entry_Bytes), Arena_Size) then
             Status := REPLY_OUT_OF_RANGE;
             return;
          end if;
          declare
-            Bytes : array (1 .. Natural (Needed)) of Unsigned_8
+            Bytes : FA.Wire_Bytes (1 .. Count * FA.Wire_Entry_Bytes)
               with Import, Address => Arena_Base + Storage_Offset (Offset);
          begin
-            Bytes := [others => 0];
-            for N in Scopes'Range loop
-               declare
-                  Base : constant Positive := (N - 1) * ENTRY_BYTES + 1;
-                  Prefix : constant String := To_String (Scopes (N).Prefix);
-               begin
-                  Bytes (Base) := Scopes (N).Rights;
-                  Bytes (Base + 1) := Unsigned_8 (Prefix'Length mod 256);
-                  Bytes (Base + 2) := Unsigned_8 (Prefix'Length / 256);
-                  for K in Prefix'Range loop
-                     Bytes (Base + 8 + K - Prefix'First) := Character'Pos (Prefix (K));
-                  end loop;
-               end;
-            end loop;
+            Bytes := Wire (1 .. Count * FA.Wire_Entry_Bytes);
          end;
          Status := REPLY_OK;
       end List_Scopes;
+
+      --  Queue_List_Places, selected as the service selects them.
+      procedure List_Places (Offset, Length : Unsigned_64; Status : out Unsigned_32; Value : out Unsigned_64) is
+         Wire : FA.Wire_Bytes (1 .. FA.Maximum_Entries * FA.Wire_Entry_Bytes);
+         Count : Natural;
+         Present : constant FP.Root_Table := Present_Roots;
+         Needed : Natural;
+      begin
+         Scope_Wire (Wire, Count);
+         Needed := FP.Count_Places (Wire, Count, Present);
+         Value := Unsigned_64 (Needed);
+         if Length < Unsigned_64 (Needed * FA.Wire_Entry_Bytes) then
+            Status := REPLY_NO_SPACE;
+            return;
+         elsif not FQ.In_Arena (Offset, Unsigned_64 (Needed * FA.Wire_Entry_Bytes), Arena_Size) then
+            Status := REPLY_OUT_OF_RANGE;
+            return;
+         end if;
+         declare
+            Bytes : FP.Place_Bytes (1 .. Needed * FA.Wire_Entry_Bytes)
+              with Import, Address => Arena_Base + Storage_Offset (Offset);
+            Written : Natural;
+         begin
+            FP.Select_Places (Wire, Count, Present, Bytes, Written);
+            Value := Unsigned_64 (Written);
+         end;
+         Status := REPLY_OK;
+      end List_Places;
 
       --  A made-up volume per place: 4 KiB blocks, a 256 GiB scratch volume
       --  a quarter used, the host place read-only.
@@ -970,11 +1105,11 @@ package body Files_Mock_Service is
          Item : VD.Description;
          Name : constant String :=
            (case Where.Where is when Host_Place => "host", when Scratch_Place => "scratch",
-                                when Synthetic_Place => "synthetic", when No_Place => "none");
+                                when Synthetic_Place => "synthetic", when No_Place | Absent_Place => "none");
       begin
          Value := 0;
-         if Where.Where = No_Place then
-            Status := REPLY_ACCESS_DENIED;
+         if Where.Where in No_Place | Absent_Place then
+            Status := Refusal (Where.Where);
             return;
          elsif R.Length < VD.Record_Bytes or else not FQ.In_Arena (R.Arena_Offset, VD.Record_Bytes, Arena_Size) then
             Status := REPLY_OUT_OF_RANGE;
@@ -1105,6 +1240,8 @@ package body Files_Mock_Service is
                end;
             when FQ.Queue_List_Scopes =>
                List_Scopes (R.Arena_Offset, R.Length, Status, Value);
+            when FQ.Queue_List_Places =>
+               List_Places (R.Arena_Offset, R.Length, Status, Value);
             when FQ.Queue_Describe_Volume =>
                Describe_Volume (R, Status, Value);
             when FQ.Queue_Copy =>

@@ -9,11 +9,24 @@
 with Interfaces; use Interfaces;
 with CuBit.Filesystems; use CuBit.Filesystems;
 with Ext2;
+with Volume_Admission; use Volume_Admission;
 
 package Fs_Reply_Labels with SPARK_Mode is
    use type Ext2.Directory_Lookup_Status, Ext2.Write_Status, Ext2.Read_Status,
             Ext2.Remove_Status, Ext2.Truncate_Status, Ext2.Flush_Status,
             Ext2.Rename_Status, Ext2.Directory_Read_Status;
+
+   --  A volume a request names that is not admitted (ensureVolume): one
+   --  whose device is not there (no driver attached it, or it offered
+   --  none) is unavailable; any other failure is the device's or its
+   --  filesystem's.
+   function Admission_Label (Result : Admission_Result) return Unsigned_32 is
+     (case Result is
+        when Admitted => REPLY_OK,
+        when Provider_Not_Ready | No_Device => REPLY_VOLUME_UNAVAILABLE,
+        when Insufficient_Resources | Grant_Rejected | Invalid_Session | Device_Error | Invalid_Description
+           | Unsupported_Filesystem | Invalid_Filesystem => REPLY_IO_ERROR)
+     with Post => (Admission_Label'Result = REPLY_OK) = (Result = Admitted);
 
    --  A path lookup (open, rename, unlink, mkdir, rmdir, open directory).
    function Lookup_Label (Status : Ext2.Directory_Lookup_Status) return Unsigned_32 is

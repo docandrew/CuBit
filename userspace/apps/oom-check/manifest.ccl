@@ -1,0 +1,7 @@
+# Out-of-memory reclaim check (headless oom-reclaim): lends pages to procmgr
+# (the process-observer role takes grants), then exhausts memory so the
+# kernel kills it, and must reclaim it with no page free.
+(executable-manifest v1
+  (identity "com.cubit.oom-check")
+  (version "0.1.0")
+  (request-service process-observer read-write process-observer))

@@ -1,6 +1,8 @@
 with Ada.Text_IO;
 with Interfaces; use Interfaces;
 with Intel_GPU_Context_Table;
+with Context_Table_Access;
+with Test_Storage;
 with Intel_GPU_GuC_Context_Event;
 with Intel_GPU_GuC_Context_Lifecycle;
 with Intel_GPU_GuC_Context_Session;
@@ -21,7 +23,9 @@ procedure Context_Update_Hold_Tests is
       pragma Unreferenced (Payload, Fence);
    begin Success := True; end Retain;
    package Driver is new Intel_GPU_GuC_Context_Session (Ready, Queue, Retain);
-   package Pool is new Intel_GPU_Context_Table (2, Driver, Ready, Retain);
+   package Pool is new Intel_GPU_Context_Table
+     (2, Driver, Ready, Retain, Reply_Words => Test_Storage.Reply_Words);
+   package Tables is new Context_Table_Access (Pool);
    Object : Pool.Table;
    A, B, ID : Unsigned_32;
    Accepted : Boolean;
@@ -42,7 +46,7 @@ procedure Context_Update_Hold_Tests is
    end Ack;
    procedure Start (Session : Unsigned_64; Target : out Unsigned_32) is
    begin
-      Pool.Open (Object, 16#200000# + Session * 16#10000#, 4096,
+      Tables.Open (Object, 16#200000# + Session * 16#10000#, 4096,
                  1000, 500000, False, Target, Accepted, Session);
       pragma Assert (Accepted and not Pool.Work_Allowed (Object, Target));
       Pool.Hold_Work (Object, Target, Accepted); pragma Assert (not Accepted);
@@ -99,7 +103,7 @@ begin
    end loop;
    Submit (A, Life.Disable); Ack (A, 0);
    Pool.Hold_Work (Object, A, Accepted); pragma Assert (Accepted);
-   Pool.Retire_Session (Object, 1, ID); pragma Assert (ID = A);
+   Tables.Retire_Session (Object, 1, ID); pragma Assert (ID = A);
    Pool.Release_Work (Object, A, Accepted); pragma Assert (not Accepted);
    Pool.Release_Work (Object, A, Accepted, Keep_Disabled => True);
    pragma Assert (not Accepted);

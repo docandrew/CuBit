@@ -473,9 +473,119 @@ def clip_pin():
     return i
 
 
+# Integrated Deskbar (docs/development-backlog.md UI-027): the Text editor,
+# Teapots, agents and archives as apps, then the status button's items.
+def text():
+    """Text: a sheet with ruled lines and an orange pencil writing on it."""
+    i = Icon("text")
+    i.poly([(10, 5), (30, 5), (38, 13), (38, 43), (10, 43)], i.gradient("#ffffff", "#dfe6ee", x2=1),
+           ink="#2b3440")
+    i.poly([(30, 5), (30, 13), (38, 13)], i.gradient("#f3f6f9", "#b9c4d0", x2=1), ink="#2b3440")
+    for y, x1 in ((18, 31), (24, 33), (30, 27)):
+        i.line([(15, y), (x1, y)], "#6c86a8", 2.0)
+    i.poly([(26, 41), (40, 21), (45, 25), (31, 45), (25, 46)], i.gradient("#ffb35c", "#d9641b", y2=0, x2=1),
+           ink="#3c1d00")
+    i.poly([(25, 46), (26, 41), (31, 45)], "#3c1d00", ink=None)
+    i.line([(38, 24), (42, 27)], "#ffe2b8", 1.3)
+    return i
+
+
+def teapots():
+    """Teapots: a glossy magenta teapot (the 3D demo's model), lid and knob."""
+    i = Icon("teapots")
+    ink = "#3a0626"
+    # Handle behind the body, then the spout, then the body over both.
+    i.path("M 34 19 C 44 17 46 31 35 35 L 35 31 C 41 29 40 22 34 23 Z",
+           i.gradient("#ff8fcf", "#a3196f", x2=1, y2=1), ink=ink, width=1.8)
+    i.path("M 13 27 C 9 26 6 21 3 15 L 6 14 C 9 18 11 21 15 22 Z",
+           i.gradient("#ff9ad6", "#b8237f"), ink=ink, width=1.8)
+    i.ellipse(24, 40, 13, 3.4, "#7a0f52", ink=ink, width=1.6)
+    i.path("M 11 26 C 11 16 37 16 37 26 C 37 35 31 40 24 40 C 17 40 11 35 11 26 Z",
+           i.radial("#ffc4e8", "#b8237f", cx=0.35, cy=0.3, r=0.8), ink=ink)
+    i.ellipse(24, 19, 9, 3, i.gradient("#ffb3df", "#c42d88"), ink=ink, width=1.6)
+    i.circle(24, 14.5, 2.6, i.radial("#ffe0f2", "#d0399a"), ink=ink, width=1.4)
+    i.path("M 15 25 A 9 7 0 0 1 21 20", "none", ink="#ffffff", width=1.6)
+    return i
+
+
+def agent():
+    """An agent: a violet cube with two teal eyes, lit from the upper left."""
+    i = Icon("agent")
+    ink = "#1d1150"
+    i.poly([(24, 4), (42, 15), (24, 26), (6, 15)], i.gradient("#e9e3ff", "#9c87f2", x2=1), ink=ink)
+    i.poly([(6, 15), (24, 26), (24, 44), (6, 33)], i.gradient("#b9a6ff", "#5b3fc4"), ink=ink)
+    i.poly([(42, 15), (24, 26), (24, 44), (42, 33)], i.gradient("#7d62e8", "#3b2690", y2=0, x2=1), ink=ink)
+    i.circle(15, 28, 2.6, "#7ff0e0", ink=ink, width=1.2)
+    i.circle(33, 28, 2.6, "#7ff0e0", ink=ink, width=1.2)
+    i.line([(10, 12), (24, 6), (38, 12)], "#ffffff", 1.3)
+    return i
+
+
+def archive():
+    """An archive: a cardboard box taped along its seam."""
+    i = Icon("archive")
+    ink = "#2e1a05"
+    i.poly([(24, 6), (42, 15), (24, 24), (6, 15)], i.gradient("#e8d2a6", "#c49a5a", x2=1), ink=ink)
+    i.poly([(6, 15), (24, 24), (24, 43), (6, 34)], i.gradient("#c8945a", "#8d5f2c"), ink=ink)
+    i.poly([(42, 15), (24, 24), (24, 43), (42, 34)], i.gradient("#a87640", "#6c4519"), ink=ink)
+    i.line([(15, 10.5), (33, 19.5), (33, 38.5)], "#f2e6c8", 3.0)
+    i.body.append('<polyline points="15,10.5 33,19.5 33,38.5" fill="none" stroke="#2e1a05" '
+                  'stroke-width="1" stroke-dasharray="2 2"/>')
+    return i
+
+
+# The status items were drafted on a 24-unit grid; their coordinates here
+# are doubled into the 48-unit view, so outlines stay one pixel at 24.
+def wifi():
+    """Wi-Fi: two blue signal arcs over a dot."""
+    i = Icon("wifi")
+    ink, fill = "#06324a", i.gradient("#7fe0ff", "#1e8fc4")
+    i.path("M 5 19 A 27 27 0 0 1 43 19 L 37.8 24.2 A 19.6 19.6 0 0 0 10.2 24.2 Z", fill, ink=ink, width=2.4)
+    i.path("M 14 28 A 14.2 14.2 0 0 1 34 28 L 28.8 33.2 A 6.8 6.8 0 0 0 19.2 33.2 Z", fill, ink=ink, width=2.4)
+    i.circle(24, 38.6, 4.2, fill, ink=ink, width=2.4)
+    return i
+
+
+def battery():
+    """Battery: a light cell, mostly charged in green."""
+    i = Icon("battery")
+    ink = "#1d252e"
+    i.path("M 3 13 H 39 V 35 H 3 Z", i.gradient("#f4f7fa", "#b6c0cb"), ink=ink, width=2.6)
+    i.path("M 39 19 H 45 V 29 H 39 Z", "#6b7682", ink=ink, width=2.2)
+    i.path("M 6.4 16.4 H 30.4 V 31.6 H 6.4 Z", i.gradient("#a6f08a", "#2f9e3a"), ink=None)
+    i.line([(8, 18.6), (29, 18.6)], "#e6ffd8", 2.0, cap="butt")
+    return i
+
+
+def speaker(name, muted):
+    i = Icon(name)
+    ink = "#1d252e"
+    i.poly([(5, 18), (14, 18), (25, 9), (25, 39), (14, 30), (5, 30)], i.gradient("#e6ebf1", "#7d8996", x2=1),
+           ink=ink, width=2.6)
+    if muted:
+        # Muted: a red cross where the sound waves were.
+        i.line([(31, 18), (43, 30)], "#d4141e", 3.6)
+        i.line([(43, 18), (31, 30)], "#d4141e", 3.6)
+    else:
+        i.path("M 31 17 A 10 10 0 0 1 31 31", "none", ink="#2f7fd0", width=4.0)
+        i.path("M 37 11 A 18 18 0 0 1 37 37", "none", ink="#2f7fd0", width=4.0)
+    return i
+
+
+def volume():
+    """Volume: a steel speaker with two blue sound waves."""
+    return speaker("volume", muted=False)
+
+
+def volume_muted():
+    """Volume muted: the speaker with a red cross."""
+    return speaker("volume-muted", muted=True)
+
+
 ICONS = (cubit_logo, workbench, console, logs, trace, doom, devices, files, gameboy, settings,
          inspector, mesa, boot, power, system, development, web, games, media, tools,
-         clipboard, clip_text, clip_value, clip_mask, clip_pin)
+         clipboard, clip_text, clip_value, clip_mask, clip_pin,
+         text, teapots, agent, archive, wifi, battery, volume, volume_muted)
 
 
 def main():

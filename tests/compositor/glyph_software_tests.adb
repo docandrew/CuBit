@@ -1,6 +1,7 @@
 with Ada.Text_IO;
 with Interfaces; use Interfaces;
 with Compositor_Glyph_Software;
+with Glyph_Gamma;
 procedure Glyph_Software_Tests is
    package S renames Compositor_Glyph_Software;
    package G renames S.G;
@@ -11,8 +12,11 @@ procedure Glyph_Software_Tests is
    Points : constant array (1 .. 4) of G.Logical_Point := ((-4, 6), (0, 8), (3, 11), (2 ** 30, -2 ** 30));
    Sentinel : constant Unsigned_32 := 16#FF12_3456#;
    Tints : constant array (1 .. 4) of Unsigned_32 := (16#FFFF_FFFF#, 16#8020_4060#, 16#00FF_FFFF#, 16#FF31_AF07#);
+   Offsets : constant array (0 .. 2) of S.L.Subpixel := (0, 24, 47);
    Count : Natural := 0;
-   function Reference_Over (Coverage : Unsigned_8; Tint, Back : Unsigned_32) return Unsigned_32 is
+   --  Raw coverage goes through the tint's Glyph_Gamma row (UI-026) first.
+   function Reference_Over (Raw : Unsigned_8; Tint, Back : Unsigned_32) return Unsigned_32 is
+      Coverage : constant Unsigned_8 := Glyph_Gamma.Correction (Glyph_Gamma.Bucket_Of (Tint)) (Raw);
       Alpha : constant Natural := Natural (Coverage) * Natural (Shift_Right (Tint, 24));
       Value : Unsigned_32 := 0;
    begin
@@ -55,9 +59,13 @@ begin
                         Area : constant G.Physical_Rectangle := (case Damage is
                           when 0 => (0, 0, 24, 20), when 1 => (3, 5, 21, 16), when others => (22, 19, 2, 1));
                         Tint : constant Unsigned_32 := Tints (Damage + 1);
+                        Offset : constant S.L.Subpixel := Offsets (Damage);
+                        Phase : constant S.L.Phase := S.Phase (S.Prepare (Screen, Point, Offset));
+                        Where : constant S.P.Subpixel_Origin :=
+                          (if Point.X = 2 ** 30 then (0, 0) else S.P.Snap_Phase (Point.X, Offset, Screen.X, Screen.Scale));
                      begin
                         Target := (others => Sentinel);
-                        S.Paint (Screen, Point, Area, Mask, Target, 28, Tint);
+                        S.Paint (Screen, Point, Offset, Area, Mask, Target, 28, Tint);
                         for I in Target'Range loop
                            declare
                               X : constant Integer := I mod 28;
@@ -75,10 +83,12 @@ begin
                                     when G.Clockwise_180 => U := 23 - X; V := 19 - Y;
                                     when G.Clockwise_270 => U := 19 - Y; V := X;
                                  end case;
-                                 U := U - Round_Origin (Integer (Point.X) + 3, Screen.Scale);
+                                 pragma Assert (Phase = Where.Phase);
+                                 U := U - Integer (Where.Pixel);
                                  V := V - Round_Origin (Integer (Point.Y) - 7, Screen.Scale);
                                  if U >= 0 and U < Layout.Width and V >= 0 and V < Layout.Height then
-                                    Expected := Reference_Over (Mask (V * Layout.Pitch + U), Tint, Sentinel);
+                                    Expected := Reference_Over
+                                      (Mask (Phase * S.L.Phase_Bytes (Layout) + V * Layout.Pitch + U), Tint, Sentinel);
                                  end if;
                               end if;
                               pragma Assert (Target (I) = Expected);

@@ -88,9 +88,28 @@ package body Desktop_GPU_Scene.Drawing with SPARK_Mode is
       V.Append_Region (S.Scene, Source, Surface, Region, Over, Straight_Alpha, Accepted);
       if not Accepted then S.Invalid := True; end if;
    end Image_Region;
+   procedure Physical_Region (S : in out State; Source : Vulkan_Submission.Source_Ticket;
+      Area, Damage : V.A.G.Physical_Rectangle; Region : V.R.Rectangle; Accepted : out Boolean) is
+      Screen : constant V.A.G.Output := V.Output (S.Scene);
+      --  Area in native storage: the output's own rotation at scale 1.
+      Unit : constant V.A.G.Output := (Width => Screen.Width, Height => Screen.Height,
+        Rotation => Screen.Rotation, Scale => (1, 1), X => 0, Y => 0);
+      Clipped : constant V.A.G.Physical_Rectangle := Intersect (V.A.G.Damage (Unit,
+        (V.A.G.Logical_Coordinate (Area.Left), V.A.G.Logical_Coordinate (Area.Top),
+         V.A.G.Logical_Coordinate (Area.Right), V.A.G.Logical_Coordinate (Area.Bottom))), Damage);
+   begin
+      Accepted := False;
+      if not Capturable (S) then return; end if;
+      if not V.R.Valid (Region) then S.Invalid := True; return; end if;
+      if Empty (Clipped) then Accepted := True; return; end if;
+      Set_Clip (S, Clipped, Accepted); if not Accepted then return; end if;
+      Pin_Image (S, Source, Accepted); if not Accepted then return; end if;
+      V.Append_Physical_Region (S.Scene, Source, Area, Region, Accepted);
+      if not Accepted then S.Invalid := True; end if;
+   end Physical_Region;
    procedure Text (S : in out State; Items : Compositor_Text.Glyphs;
       Length : Compositor_Text.Count; Damage : V.A.G.Physical_Rectangle;
-      Tint : V.A.Word; Accepted : out Boolean; Face : Face_ID := 0) is
+      Tint : V.A.Word; Face : Face_ID; Accepted : out Boolean) is
       Screen : constant V.A.G.Output := V.Output (S.Scene);
       Bounds : constant V.A.G.Physical_Rectangle := (0, 0, Screen.Width, Screen.Height);
       Clipped : constant V.A.G.Physical_Rectangle := Intersect (Damage, Bounds);
@@ -106,7 +125,7 @@ package body Desktop_GPU_Scene.Drawing with SPARK_Mode is
                Set_Clip (S, Clipped, Accepted); if not Accepted then return; end if;
                Clip_Started := True;
             end if;
-            Add_Glyph (S, (Face, Items (I).Code, Screen.Scale), Items (I).Cell, Tint, Accepted);
+            Add_Glyph (S, (Face, Items (I).Code, Screen.Scale), Items (I).Cell, Items (I).Offset, Tint, Accepted);
             if not Accepted then return; end if;
          end if;
          pragma Loop_Invariant (Valid (S));

@@ -49,13 +49,14 @@ package body Client_Raster with SPARK_Mode is
    is
       At_Pixel : Natural;
       Alpha : Byte;
+      Ink_Row : constant Glyph_Gamma.Bucket := Glyph_Gamma.Bucket_Of (Ink);
    begin
       if R.Width = 0 or else R.Height = 0 then
          return;
       end if;
       for Line in 0 .. R.Height - 1 loop
          for X in 0 .. R.Width - 1 loop
-            Alpha := Source (Row + Line, Column + X);
+            Alpha := Glyph_Gamma.Adjust (Ink_Row, Source (Row + Line, Column + X));
             At_Pixel := Offset (Target'Length, Pitch, R, Line, X);
             if Opaque then
                Target (At_Pixel) := Mix (Ink, Background, Alpha);
@@ -71,6 +72,48 @@ package body Client_Raster with SPARK_Mode is
               (if not Inside (I, Pitch, R) then Target (I) = Target'Loop_Entry (I)));
       end loop;
    end Blit_Mask;
+
+   function Shades (Ink, Under : Word) return Ramp is
+      Ink_Row : constant Glyph_Gamma.Bucket := Glyph_Gamma.Bucket_Of (Ink);
+      Result : Ramp := [others => Under];
+   begin
+      for A in Byte loop
+         Result (A) := Client_Glyph_Blend.Ink (Ink, Under, Ink_Row, A);
+         pragma Loop_Invariant
+           (for all B in Byte'First .. A => Result (B) = Client_Glyph_Blend.Ink (Ink, Under, Ink_Row, B));
+      end loop;
+      return Result;
+   end Shades;
+
+   procedure Blit_Mask_Over
+     (Target : in out Pixels; Pitch : Positive; R : Area; Source : Mask;
+      Row : Mask_Row; Column : Mask_Column; Ink, Under : Word; Over : Ramp)
+   is
+      At_Pixel : Natural;
+      Coverage : Byte;
+      Ink_Row : constant Glyph_Gamma.Bucket := Glyph_Gamma.Bucket_Of (Ink);
+   begin
+      if R.Width = 0 or else R.Height = 0 then
+         return;
+      end if;
+      for Line in 0 .. R.Height - 1 loop
+         for X in 0 .. R.Width - 1 loop
+            Coverage := Source (Row + Line, Column + X);
+            if Coverage /= 0 then
+               At_Pixel := Offset (Target'Length, Pitch, R, Line, X);
+               Target (At_Pixel) :=
+                 (if Target (At_Pixel) = Under then Over (Coverage)
+                  else Client_Glyph_Blend.Ink (Ink, Target (At_Pixel), Ink_Row, Coverage));
+            end if;
+            pragma Loop_Invariant
+              (for all I in Target'Range =>
+                 (if not Inside (I, Pitch, R) then Target (I) = Target'Loop_Entry (I)));
+         end loop;
+         pragma Loop_Invariant
+           (for all I in Target'Range =>
+              (if not Inside (I, Pitch, R) then Target (I) = Target'Loop_Entry (I)));
+      end loop;
+   end Blit_Mask_Over;
 
    procedure Copy_Block
      (Target : in out Pixels; Pitch : Positive; R : Area;

@@ -68,7 +68,7 @@ function Native_Glyph_Owner_Test return Boolean is
                   if not OK then return False; end if;
                   R.Flush (S, Views, OK);
                end if;
-               if not OK or R.Queued (S) /= 0 or R.Charged (S) > 524_288 then return False; end if;
+               if not OK or R.Queued (S) /= 0 or R.Charged (S) > R.Budget then return False; end if;
                for I in Target'Range loop
                   declare
                      X : constant Natural := I mod 84;

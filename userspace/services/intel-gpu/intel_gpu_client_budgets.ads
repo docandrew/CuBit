@@ -28,6 +28,14 @@ package Intel_GPU_Client_Budgets is
      (Object : in out Ledger; Session, Bytes : Unsigned_64;
       Confirmed : Boolean; Accepted : out Boolean);
    procedure Close (Object : in out Ledger; Session : Unsigned_64);
+   -- Remove a closed account that is charged nothing, so a finished
+   -- session's account stops taking a record (accounts are per session and
+   -- sessions are recycled). Accepted = False: still charged, open, unknown
+   -- or quarantined; nothing changes.
+   procedure Forget (Object : in out Ledger; Session : Unsigned_64; Accepted : out Boolean);
+   function Count (Object : Ledger) return Natural;
+   -- Storage one account takes beyond the inline ones (Extend).
+   function Record_Bytes return Unsigned_64;
    procedure Quarantine (Object : in out Ledger);
    function Last_Probes (Object : Ledger) return Natural;
 private

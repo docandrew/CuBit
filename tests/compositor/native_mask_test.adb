@@ -11,6 +11,7 @@ with Compositor_Policy;
 with Compositor_Glyph_Layout;
 with Compositor_Glyph_FFI;
 with Compositor_Glyph_Cache;
+with Compositor_Glyph_Storage;
 with Compositor_Glyph_Memory;
 with Compositor_Affine;
 with Compositor_Sampling;
@@ -19,7 +20,7 @@ function Native_Mask_Test (Shared : Boolean := False) return Boolean is
    package A renames Compositor_Affine;
    package S renames Compositor_Sampling;
    package G renames S.G;
-   package Cache is new Compositor_Glyph_Cache;
+   package Cache is new Compositor_Glyph_Cache (Slot_Count => Compositor_Glyph_Storage.Slot'Last);
    package Memory renames Compositor_Glyph_Memory;
    package Views renames Mesa_Cache;
    View_State : Views.State;

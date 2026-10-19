@@ -31,6 +31,8 @@ procedure Main is
    use type Text_Documents.Document_Access;
    --  Set-1 scan codes the desktop delivers (payload0 of a key event).
    KEY_ESCAPE : constant Unsigned_64 := CuBit.UI.App.KEY_ESC;
+   --  Either Alt key (the right one arrives with the extended flag).
+   KEY_ALT : constant Unsigned_64 := 16#38#;
    KEY_MINUS : constant Unsigned_64 := 16#0C#;
    KEY_EQUALS : constant Unsigned_64 := 16#0D#;
    KEY_BACKSPACE : constant Unsigned_64 := 16#0E#;
@@ -239,6 +241,7 @@ procedure Main is
    procedure Render (Win : in out CuBit.UI.App.Window; Damage : Rect) is
       Start : constant Unsigned_64 := Now_Us;
    begin
+      Text_Shell.Follow_Theme (App);
       Text_Shell.Render (App, CuBit.UI.App.Canvas (Win, Damage), CuBit.UI.App.Full_Rect (Win));
       Text_Shell.Note_Frame (App, Now_Us - Start, Last_Pump_Us);
       if First_Frame then
@@ -266,6 +269,11 @@ procedure Main is
          Text_Shell.Set_Bounds (App, CuBit.UI.App.Full_Rect (Win));
          Text_Shell.Handle (App, (Kind => Text_Shell.Resize_Event, others => <>));
          Dirty := CuBit.UI.App.Full_Rect (Win);
+      elsif Event.kind in CuBit.UI.Input.INPUT_KEY_DOWN | CuBit.UI.Input.INPUT_KEY_UP
+        and then Event.payload0 = KEY_ALT
+      then
+         --  Alt alone: the menu bar's keyboard cues show while it is held.
+         Text_Shell.Handle (App, (Kind => Text_Shell.Modifier_Event, Alt => Alt, others => <>));
       elsif Event.kind = CuBit.UI.Input.INPUT_KEY_DOWN then
          declare
             K : constant Text_Commands.Key := Key_Of (Event.payload0);

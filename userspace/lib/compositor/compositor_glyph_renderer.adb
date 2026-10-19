@@ -99,9 +99,13 @@ package body Compositor_Glyph_Renderer with SPARK_Mode is
    end Flush;
    procedure Queue
      (S : in out State; Views : in out Mesa_Cache.State; Target : Mesa_Cache.Target_Slot;
-      Key : C.Key; Screen : P.G.Output; Origin : P.G.Logical_Point;
+      Key : C.Key; Screen : P.G.Output; Origin : P.G.Logical_Point; Offset : P.L.Subpixel;
       Damage : P.G.Physical_Rectangle; Tint : B.A.Word; Success : out Boolean) is
-      Full : constant B.A.Result := P.Plan (Screen, Origin);
+      use type P.G.Logical_Coordinate;
+      Nearest : constant P.G.Logical_Point :=
+        (if Offset >= P.L.Pen_Unit / 2 and then Origin.X < P.G.Logical_Coordinate'Last
+         then (Origin.X + 1, Origin.Y) else Origin);
+      Full : constant B.A.Result := P.Plan (Screen, Nearest, 0);
       Draw : constant B.A.Result := (if Full.Visible then B.A.Clip (Full.Value, Screen.Width, Screen.Height, Damage)
                                     else (Visible => False));
       T : C.Token;
@@ -148,12 +152,12 @@ package body Compositor_Glyph_Renderer with SPARK_Mode is
       S.CPU := True; Safe := True;
    end Use_Software;
    procedure Paint (S : in out State; Views : in out Mesa_Cache.State;
-                    Key : C.Key; Screen : P.G.Output; Origin : P.G.Logical_Point;
+                    Key : C.Key; Screen : P.G.Output; Origin : P.G.Logical_Point; Offset : P.L.Subpixel;
                     Damage : P.G.Physical_Rectangle; Target : in out Software.Pixels;
                     Pitch : Positive; Tint : Software.Word; Success : out Boolean) is
       T : C.Token;
       R : C.Lease;
-      Area : constant P.G.Physical_Rectangle := Software.Bounds (Screen, Origin, Damage);
+      Area : constant P.G.Physical_Rectangle := Software.Bounds (Screen, Origin, Offset, Damage);
    begin
       Success := False;
       if not S.Running or else not S.CPU or else not Mesa_Cache.Can_Retire (Views) or else
@@ -164,7 +168,7 @@ package body Compositor_Glyph_Renderer with SPARK_Mode is
       C.Acquire (S.Registry, T, R);
       if R = C.No_Lease then return; end if;
       pragma Assert (C.Pinned (S.Registry, T.Position));
-      Storage.Paint (S.Backing, T.Position, Screen, Origin, Damage, Target, Pitch, Tint, Success);
+      Storage.Paint (S.Backing, T.Position, Screen, Origin, Offset, Damage, Target, Pitch, Tint, Success);
       C.Complete (S.Registry, R, True);
    end Paint;
    procedure Shutdown (S : in out State; Views : in out Mesa_Cache.State; Safe : out Boolean) is

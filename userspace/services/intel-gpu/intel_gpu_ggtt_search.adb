@@ -1,3 +1,4 @@
+with Intel_GPU_Physical_Extents;
 package body Intel_GPU_GGTT_Search is
    use Interfaces;
    Last : Evidence;
@@ -18,7 +19,7 @@ package body Intel_GPU_GGTT_Search is
         First = 0 or else First mod 4096 /= 0 or else Length = 0 or else
         Length mod 4096 /= 0 or else First >= Table_Bytes / 8 * 4096 or else
         Length > Table_Bytes / 8 * 4096 - First or else
-        Bytes = 0 or else Bytes mod 4096 /= 0 or else Bytes > 16 * 1024 * 1024 or else
+        Bytes = 0 or else Bytes mod 4096 /= 0 or else Bytes > Intel_GPU_Physical_Extents.Capacity or else
         Alignment < 4096 or else Alignment > 16 * 1024 * 1024 or else
         (Alignment and (Alignment - 1)) /= 0
       then return; end if;

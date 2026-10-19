@@ -3,6 +3,7 @@ with Ada.Command_Line;
 with Ada.Environment_Variables;
 with CuBit.Appearance;
 with Files_Host_Support;
+with Files_Places_Tests;
 with Files_Policy_Tests;
 with Files_View_Tests;
 
@@ -18,14 +19,15 @@ begin
         and then Ada.Environment_Variables.Value ("FILES_THEME") = "dark"
       then CuBit.Appearance.Alloy_Dark else CuBit.Appearance.Alloy_Light);
    Files_Policy_Tests.Run;
+   Files_Places_Tests.Run;
    Files_View_Tests.Run;
-   if Files_Policy_Tests.Failures + Files_View_Tests.Failures > 0 then
+   if Files_Policy_Tests.Failures + Files_Places_Tests.Failures + Files_View_Tests.Failures > 0 then
       Ada.Text_IO.Put_Line
-        ("FAIL:" & Natural'Image (Files_Policy_Tests.Failures + Files_View_Tests.Failures) & " of" &
-         Natural'Image (Files_Policy_Tests.Checks + Files_View_Tests.Checks) & " checks");
+        ("FAIL:" & Natural'Image (Files_Policy_Tests.Failures + Files_Places_Tests.Failures + Files_View_Tests.Failures) & " of" &
+         Natural'Image (Files_Policy_Tests.Checks + Files_Places_Tests.Checks + Files_View_Tests.Checks) & " checks");
       Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
    else
       Ada.Text_IO.Put_Line
-        ("PASS:" & Natural'Image (Files_Policy_Tests.Checks + Files_View_Tests.Checks) & " checks");
+        ("PASS:" & Natural'Image (Files_Policy_Tests.Checks + Files_Places_Tests.Checks + Files_View_Tests.Checks) & " checks");
    end if;
 end Files_Tests;

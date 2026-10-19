@@ -7,6 +7,10 @@ package body Client_Popup_Layout with SPARK_Mode is
                  and then Preferred in -MAXIMUM_COORDINATE .. 2 * MAXIMUM_COORDINATE
                  and then Flipped in -MAXIMUM_COORDINATE .. 2 * MAXIMUM_COORDINATE,
           Post => Fit'Result >= First and then Fit'Result - First + Length <= Span
+                  and then (if Preferred >= First and then Preferred <= First + (Span - Length)
+                            then Fit'Result = Preferred
+                            elsif Flipped >= First and then Flipped <= First + (Span - Length)
+                            then Fit'Result = Flipped)
    is
       Last_Start : constant Coordinate := First + (Span - Length);
    begin
@@ -31,6 +35,17 @@ package body Client_Popup_Layout with SPARK_Mode is
       return (Fit (Anchor_X, Anchor_X - Width, Width, Area.X, Area.W),
               Fit (Anchor_Y, Anchor_Y - Height, Height, Area.Y, Area.H), Width, Height);
    end Place;
+
+   function Place_Tip (Left_X, Below_Y, Above_Y : Coordinate; W, H : Coordinate; Area : Box) return Box is
+      Width : constant Coordinate := Natural'Min (W, Area.W);
+      Height : constant Coordinate := Natural'Min (H, Area.H);
+   begin
+      if Area.X > MAXIMUM_COORDINATE - Area.W or else Area.Y > MAXIMUM_COORDINATE - Area.H then
+         return (Area.X, Area.Y, Width, Height);
+      end if;
+      return (Fit (Left_X, Left_X - Width, Width, Area.X, Area.W),
+              Fit (Below_Y, Above_Y - Height, Height, Area.Y, Area.H), Width, Height);
+   end Place_Tip;
 
    function Place_Beside (Parent : Box; Row_Y : Coordinate; W, H : Coordinate; Area : Box) return Box is
       Width : constant Coordinate := Natural'Min (W, Area.W);

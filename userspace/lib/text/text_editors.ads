@@ -81,6 +81,9 @@ package Text_Editors is
    procedure Draw (E : in out Editor; C : CuBit.UI.Canvas);
    --  Everything repaints next frame (theme, resize).
    procedure Invalidate (E : in out Editor);
+   --  Something the host drew over Area (a menu, a tooltip) went away or
+   --  moved: the rows under it repaint, in every buffer.
+   procedure Invalidate_Area (E : in out Editor; Area : CuBit.UI.Rect);
    --  Rows painted by the last Draw (tests and the overlay).
    function Rows_Painted (E : Editor) return Natural;
    function Rows_Shown (E : Editor) return Natural;

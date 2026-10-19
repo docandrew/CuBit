@@ -318,12 +318,14 @@ package body Files_View_Tests is
       Check (Viewer_Open (View.all) and then Viewer_Line (View.all, 1)'Length = 300, "the viewer works after a timeout");
       Key (Escape);
 
-      --  Toolbar, context menu and drawer.
+      --  Toolbar, context menu and drawer: the service's places (the mock's
+      --  three), then the platform's own shortcuts.
       Add_Place (View.all, "Fixture", "@scratch:0/fixture", CuBit.UI.Icons.Folder);
       Add_Place (View.all, "Synthetic", "@synthetic:500/", CuBit.UI.Icons.Network);
       Frame;
       Check (Drawer_Open (View.all) and then Drawer_Row (View.all, 1) = "Places"
-             and then Drawer_Row (View.all, 2) = "Fixture", "the drawer lists places: " & Drawer_Row (View.all, 2));
+             and then Drawer_Row (View.all, 2) = "@host:0/" and then Drawer_Row (View.all, 5) = "Fixture",
+             "the drawer lists places, then shortcuts: " & Drawer_Row (View.all, 2) & " " & Drawer_Row (View.all, 5));
       declare
          function Center (Id : CuBit.UI.Controls.Control_ID; DX, DY : Natural := 0) return CuBit.UI.Rect is
            (CuBit.UI.Controls.Bounds (Map.all, Id));
@@ -344,10 +346,10 @@ package body Files_View_Tests is
          Check (Path (View.all, Left_Pane) = "@scratch:0/", "the Up tool goes up: " & Path (View.all, Left_Pane));
          Save_PPM (Screen, "build/files-toolbar.ppm");
          --  The drawer: a click on the Synthetic place navigates the active pane.
-         Click (Drawer_Box.x + 40, Drawer_Box.y + 26 + 24 + 12);
+         Click (Drawer_Box.x + 40, Drawer_Box.y + 26 + 4 * 24 + 12);
          Wait ("drawer place");
          Check (Path (View.all, Left_Pane) = "@synthetic:500/", "a drawer place opens: " & Path (View.all, Left_Pane));
-         Click (Drawer_Box.x + 40, Drawer_Box.y + 26 + 12);
+         Click (Drawer_Box.x + 40, Drawer_Box.y + 26 + 3 * 24 + 12);
          Wait ("back to the fixture");
          Check (Path (View.all, Left_Pane) = "@scratch:0/fixture", "back to the fixture: " & Path (View.all, Left_Pane));
          --  Bookmarks.
@@ -459,6 +461,44 @@ package body Files_View_Tests is
          Name_Cell : constant CuBit.UI.Rect := CuBit.UI.Controls.Bounds (Map.all, Base);
       begin
          Check (Column_Titles (View.all, Left_Pane) = "Name|Size|Modified|", "default columns");
+         --  Name takes the width Size and Modified (sized to their text) leave.
+         declare
+            Size_Cell : constant CuBit.UI.Rect := CuBit.UI.Controls.Bounds (Map.all, Base + 1);
+            Modified_Cell : constant CuBit.UI.Rect := CuBit.UI.Controls.Bounds (Map.all, Base + 2);
+            Padding : constant Natural := 2 * 5;
+         begin
+            --  Header cells' click targets leave the 7-pixel edge grab areas out.
+            Check (Size_Cell.x = Name_Cell.x + Name_Cell.w + 7 and then Modified_Cell.x = Size_Cell.x + Size_Cell.w + 7,
+                   "columns are adjacent");
+            Check (Name_Cell.w > Size_Cell.w + Modified_Cell.w,
+                   "Name is the flexible column:" & Name_Cell.w'Image & Size_Cell.w'Image & Modified_Cell.w'Image);
+            Check (Size_Cell.w + 7 >= CuBit.UI.UI_Text_Width ("1023 MiB") + Padding
+                   and then Modified_Cell.w + 3 >= CuBit.UI.UI_Text_Width ("0000-00-00 00:00") + Padding,
+                   "Size and Modified fit their text");
+            Check (Size_Cell.w < 100 and then Modified_Cell.w < 150, "Size and Modified are not padded out");
+            --  The Name|Size edge trades width with Size; Modified stays.
+            declare
+               Edge : constant CuBit.UI.Rect := CuBit.UI.Controls.Bounds (Map.all, COLUMNS_BASE (Left_Pane));
+               Name_Before : constant Natural := Name_Cell.w;
+            begin
+               Pointer (View.all, UI.all, Map.all, CuBit.UI.Controls.Pointer_Press, Edge.x + Edge.w / 2,
+                        Edge.y + 5, 6_900);
+               Frame;
+               Pointer (View.all, UI.all, Map.all, CuBit.UI.Controls.Pointer_Move, Edge.x + Edge.w / 2 - 30,
+                        Edge.y + 5);
+               Frame;
+               Pointer (View.all, UI.all, Map.all, CuBit.UI.Controls.Pointer_Release, Edge.x + Edge.w / 2 - 30,
+                        Edge.y + 5, 6_950);
+               Frame;
+               Check (CuBit.UI.Controls.Bounds (Map.all, Base).w = Name_Before - 30
+                      and then CuBit.UI.Controls.Bounds (Map.all, Base + 1).w = Size_Cell.w + 30
+                      and then CuBit.UI."=" (CuBit.UI.Controls.Bounds (Map.all, Base + 2), Modified_Cell),
+                      "the Name edge follows the pointer: Size gives way, Modified stays:"
+                      & Name_Before'Image & CuBit.UI.Controls.Bounds (Map.all, Base).w'Image
+                      & Size_Cell.w'Image & CuBit.UI.Controls.Bounds (Map.all, Base + 1).w'Image
+                      & Modified_Cell.x'Image & CuBit.UI.Controls.Bounds (Map.all, Base + 2).x'Image);
+            end;
+         end;
          Pointer (View.all, UI.all, Map.all, CuBit.UI.Controls.Pointer_Press, Name_Cell.x + 20, Name_Cell.y + 5,
                   7_000, Secondary => True);
          Frame;
@@ -760,23 +800,106 @@ package body Files_View_Tests is
                 "the status line shows free space: " & Volume_Space (View.all));
       end;
 
-      --  No folders named: the panes start at the granted scopes, which are
-      --  also places.
+      --  No folders named: both panes start at the first place (the
+      --  granted scopes whose volume is present), and each is in the drawer.
       Close (View.all);
       Initialize (View.all, CAPACITY, NAME_BYTES, "", "");
-      Wait ("scopes");
-      Check (Path (View.all, Left_Pane) = "@host:0/" and then Path (View.all, Right_Pane) = "@scratch:0/",
-             "panes start at the granted scopes: " & Path (View.all, Left_Pane) & " " & Path (View.all, Right_Pane));
+      Wait ("places");
+      Check (Path (View.all, Left_Pane) = "@host:0/" and then Path (View.all, Right_Pane) = "@host:0/",
+             "panes start at the first place: " & Path (View.all, Left_Pane) & " " & Path (View.all, Right_Pane));
       Check (Drawer_Row (View.all, 2) = "@host:0/" and then Drawer_Row (View.all, 3) = "@scratch:0/",
-             "each scope is a place: " & Drawer_Row (View.all, 2));
+             "each place is in the drawer: " & Drawer_Row (View.all, 2));
 
-      --  Authority and hostility.
+      --  Authority and hostility: a folder from before that is refused (an
+      --  unknown place, '..') is not shown; the pane goes to the first place.
       Key (Tab);
+      Close (View.all);
       Initialize (View.all, CAPACITY, NAME_BYTES, "@nowhere:0/", "@host:0/../../etc");
       Wait ("denied");
-      Check (Load (View.all, Left_Pane) = Failed and then Load (View.all, Right_Pane) = Failed,
-             "unknown places and '..' are refused");
+      Check (Load (View.all, Left_Pane) = Loaded and then Path (View.all, Left_Pane) = "@host:0/"
+             and then Load (View.all, Right_Pane) = Loaded and then Path (View.all, Right_Pane) = "@host:0/",
+             "unknown places and '..' are refused: the first place instead: " & Path (View.all, Left_Pane) & " "
+             & Path (View.all, Right_Pane));
       Save_PPM (Screen, "build/files-denied.ppm");
       Close (View.all);
+
+      --  The volumes this machine has (docs/files-app.md, "Places"): the
+      --  manifest grants @nvme:0/ and @mem:0/ (in that order) everywhere.
+      declare
+         use Files_Mock_Service;
+         function Drawer_Places return String is
+            Result : String (1 .. 512);
+            Length : Natural := 0;
+         begin
+            for Row in 2 .. 8 loop
+               declare
+                  Caption : constant String := Drawer_Row (View.all, Row);
+               begin
+                  exit when Caption'Length = 0 or else Caption (Caption'First .. Caption'First) = "B";
+                  Result (Length + 1 .. Length + Caption'Length + 1) := Caption & "|";
+                  Length := Length + Caption'Length + 1;
+               end;
+            end loop;
+            return Result (1 .. Length);
+         end Drawer_Places;
+         procedure Start (Volumes : Volume_Grants; Left, Right : String; Label : String) is
+         begin
+            Grant_Volumes (Volumes);
+            Initialize (View.all, CAPACITY, NAME_BYTES, Left, Right);
+            Wait (Label);
+            Frame;
+         end Start;
+      begin
+         Ada.Directories.Create_Path (Volume_Folder ("mem:0") & "/kept");
+         Ada.Directories.Create_Path (Volume_Folder ("nvme:0") & "/lost+found");
+
+         --  The live image: no NVMe driver, so no NVMe place.
+         Start ([Volume ("nvme:0", Present => False), Volume ("mem:0", Present => True)], "", "", "live image");
+         Check (Drawer_Places = "Live workspace|", "absent volume not listed: " & Drawer_Places);
+         Check (Path (View.all, Left_Pane) = "@mem:0/" and then Path (View.all, Right_Pane) = "@mem:0/"
+                and then Load (View.all, Left_Pane) = Loaded and then Load (View.all, Right_Pane) = Loaded,
+                "only @mem:0: both panes at the live workspace: " & Path (View.all, Left_Pane));
+         Check (Status_Message (View.all) = "", "no message at start: " & Status_Message (View.all));
+         Save_PPM (Screen, "build/files-live-image.ppm");
+         Close (View.all);
+
+         --  An installed system without a live workspace.
+         Start ([Volume ("nvme:0", Present => True), Volume ("mem:0", Present => False)], "", "", "installed");
+         Check (Drawer_Places = "NVMe volume 0|", "only @nvme:0 listed: " & Drawer_Places);
+         Check (Path (View.all, Left_Pane) = "@nvme:0/" and then Path (View.all, Right_Pane) = "@nvme:0/"
+                and then Names (Left_Pane) = "lost+found|",
+                "only @nvme:0: both panes at the NVMe volume: " & Path (View.all, Left_Pane) & " " & Names (Left_Pane));
+         Close (View.all);
+
+         --  Both: the first in the manifest's order.
+         Start ([Volume ("nvme:0", Present => True), Volume ("mem:0", Present => True)], "", "", "both");
+         Check (Drawer_Places = "NVMe volume 0|Live workspace|", "both listed, in order: " & Drawer_Places);
+         Check (Path (View.all, Left_Pane) = "@nvme:0/" and then Path (View.all, Right_Pane) = "@nvme:0/",
+                "both: the panes start at the first place");
+         Close (View.all);
+
+         --  The folders shown last come back only while they exist.
+         Start ([Volume ("nvme:0", Present => True), Volume ("mem:0", Present => True)],
+                "@mem:0/kept", "@mem:0/gone", "restore");
+         Check (Path (View.all, Left_Pane) = "@mem:0/kept" and then Load (View.all, Left_Pane) = Loaded,
+                "a folder that still exists is restored: " & Path (View.all, Left_Pane));
+         Check (Path (View.all, Right_Pane) = "@nvme:0/" and then Load (View.all, Right_Pane) = Loaded,
+                "a folder that is gone is not: the first place: " & Path (View.all, Right_Pane));
+         Close (View.all);
+         Start ([Volume ("nvme:0", Present => False), Volume ("mem:0", Present => True)],
+                "@nvme:0/lost+found", "@mem:0/kept", "restore on the live image");
+         Check (Path (View.all, Left_Pane) = "@mem:0/" and then Load (View.all, Left_Pane) = Loaded,
+                "a folder on a volume that is absent now: the first place: " & Path (View.all, Left_Pane));
+         Check (Path (View.all, Right_Pane) = "@mem:0/kept", "the other pane's folder is restored");
+         Close (View.all);
+
+         --  Nothing granted is present: the panes say so, muted, in words.
+         Start ([Volume ("nvme:0", Present => False)], "", "", "no volume");
+         Check (Load (View.all, Left_Pane) = Failed and then Path (View.all, Left_Pane) = "",
+                "no volume: the pane says so");
+         Save_PPM (Screen, "build/files-no-volume.ppm");
+         Close (View.all);
+         Grant_Defaults;
+      end;
    end Run;
 end Files_View_Tests;

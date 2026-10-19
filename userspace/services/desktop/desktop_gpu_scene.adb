@@ -97,7 +97,8 @@ package body Desktop_GPU_Scene with SPARK_Mode is
       if not Accepted then S.Invalid := True; end if;
    end Set_Clip;
    procedure Add_Glyph (S : in out State; Key : Vulkan_Glyph_Sources.Key;
-      Cell : V.A.G.Logical_Rectangle; Tint : V.A.Word; Accepted : out Boolean) is
+      Cell : V.A.G.Logical_Rectangle; Offset : Vulkan_Glyph_Sources.L.Subpixel;
+      Tint : V.A.Word; Accepted : out Boolean) is
       Found : Boolean := False;
       Source : Vulkan_Submission.Source_Ticket;
       Reader : R.C.Lease;
@@ -119,7 +120,7 @@ package body Desktop_GPU_Scene with SPARK_Mode is
             when R.Unsafe => S.Status := Quarantined; return;
          end case;
       end if;
-      D.Capture_Glyph (S.Scene, Key, Cell, Tint, Accepted);
+      D.Capture_Glyph (S.Scene, Key, Cell, Offset, Tint, Accepted);
       if not Accepted then S.Invalid := True; end if;
    end Add_Glyph;
    -- Record why a capture ends without a frame, before its snapshot drops.

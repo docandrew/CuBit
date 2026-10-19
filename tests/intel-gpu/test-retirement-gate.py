@@ -79,6 +79,8 @@ procedure Retirement_Gate_Tests is
          return Observed;
       end Observe;
    end Context_Drain;
+   function Context_Retirement (Session : Unsigned_64) return Context_Drain.Retirement_State is
+     (Context_Drain.Observe (Contexts, Session));
    Application_Map_State : Boolean := True;
    package Application_Maps is
       type Retirement_State is (Clear, Pending, Uncertain);

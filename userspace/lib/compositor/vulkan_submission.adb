@@ -96,7 +96,8 @@ package body Vulkan_Submission with SPARK_Mode is
       Damage : Compositor_Affine.G.Physical_Rectangle;
       Over, Mask : Boolean; Tint : Compositor_Affine.Word;
       Result : out Vulkan_Affine_Binding.Outcome;
-      Raster_Glyph : Boolean := False; Straight_Alpha : Boolean := False) is
+      Raster_Glyph : Boolean := False; Straight_Alpha : Boolean := False;
+      Glyph_Offset : Compositor_Glyph_Layout.Subpixel := 0) is
       use type Vulkan_Affine_Binding.Outcome;
       OK : Boolean;
       Match : F.Code;
@@ -111,7 +112,8 @@ package body Vulkan_Submission with SPARK_Mode is
       F.Matches (S.Context, S.Sources (Source.Index).Context, Match);
       if Match = 0 then
          Vulkan_Affine_Binding.Draw_Output
-           (S.Sources (Source.Index).Context, Screen, Surface, Damage, Over, Mask, Tint, Result, Raster_Glyph, Straight_Alpha);
+           (S.Sources (Source.Index).Context, Screen, Surface, Damage, Over, Mask, Tint, Result, Raster_Glyph, Straight_Alpha,
+            Glyph_Offset);
       end if;
       if Result = Vulkan_Affine_Binding.Rejected then Reject_Frame (S); end if;
    end Draw_Output;

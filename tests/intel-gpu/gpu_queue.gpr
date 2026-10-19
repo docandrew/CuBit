@@ -21,7 +21,9 @@ project GPU_Queue is
       "intel_gpu_guc_context_lifecycle.ads", "intel_gpu_guc_context_lifecycle.adb",
       "intel_gpu_guc_submission_policy.ads",
       "intel_gpu_queue_service.ads", "intel_gpu_queue_service.adb",
-      "gpu_queue_model.ads", "gpu_queue_model.adb", "gpu_queue_tests.adb");
+      "gpu_queue_model.ads", "gpu_queue_model.adb", "gpu_queue_tests.adb",
+      "queue_service_prepare.ads", "queue_service_prepare.adb",
+      "test_storage.ads", "test_storage.adb");
    for Object_Dir use external ("QUEUE_OBJ", "build-gpu-queue");
    for Main use ("gpu_queue_tests.adb");
    package Compiler is

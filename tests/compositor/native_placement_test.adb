@@ -76,14 +76,14 @@ begin
             Screen.Rotation := Rotation;
             for Point of Points loop
                declare
-                  Plan : constant A.Result := P.Plan (Screen, Point);
+                  Plan : constant A.Result := P.Plan (Screen, Point, 0);
                   Left : constant A.Signed := P.Snap (Point.X, Screen.X, Scale);
                   Top : constant A.Signed := P.Snap (Point.Y, Screen.Y, Scale);
                begin
                   for Damage in 0 .. 1 loop
                      Target := (others => Sentinel);
                      Software_Target := (others => Sentinel);
-                     Software.Paint (Screen, Point,
+                     Software.Paint (Screen, Point, 0,
                        (if Damage = 0 then (0, 0, 80, 72) else (7, 9, 73, 64)),
                        Mask, Software_Target, 84, Tint);
                      if Plan.Visible then

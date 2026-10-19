@@ -20,7 +20,7 @@ begin
    Vulkan_Device_Mock.Set (True, True, 0); Image_Set (4096, 1, 0, 0, 0);
    D.Initialize (CuBit.Handles.Fixture.Endpoint_Of (25)); D.Configure_Targets (32, 24, 1, 16384, OK); pragma Assert (OK);
    D.Prepare_Pipeline (OK); pragma Assert (OK);
-   D.Import_Owned_Source (128, Address, Source, Imported); pragma Assert (Imported = D.Source_Accepted);
+   D.Import_Owned_Source (Vulkan_Submission.Backdrop_Slot'First, Address, Source, Imported); pragma Assert (Imported = D.Source_Accepted);
    for Scheme in Color_Scheme loop
       for Background in CuBit.Appearance.Background loop
          for Position in Placement loop

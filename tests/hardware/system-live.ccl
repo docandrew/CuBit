@@ -14,9 +14,14 @@
   # GPU waitboost (docs/gpu-async-submission.md "SLPC waitboost"): RP0
   # while clients wait on the GPU or Desktop takes input. Set false to A/B.
   (setting "gpu.power.waitboost" (GPU_Waitboost enabled => true))
+  # Native mode on Intel outputs (docs/display-modesetting.md, DISP-006):
+  # switch to the monitor's best admitted mode from EDID instead of the
+  # firmware's. Off until the modeset passes its hardware soak (DISP-013).
+  (setting "desktop.display.modeset" (Display_Modeset enabled => false))
   (setting "desktop.input.key-repeat"
     (Key_Repeat enabled => true delay_ms => 500 rate_hz => 30))
-  (setting "clock.time-zone" "UTC")
+  # The NUC live disc: the user's zone (Settings > Date & Time changes it).
+  (setting "clock.time-zone" "America/Denver")
   (setting "logs.minimum-level" "Severity.Information")
   # Explicitly volatile Turso; no writes to the machine's internal disks.
   (setting "cubit.config.storage.database" ":memory:")
@@ -48,7 +53,7 @@
     (Launch_Entry label => "Settings" action => Launch_Action.Settings icon => Launch_Icon.Settings category => App_Category.System
       color => (App_Color.RGB (RGB_Color red => 61 green => 124 blue => 201))))
   (setting "desktop.launch.90-teapots"
-    (Launch_Entry label => "Teapots" action => (Launch_Action.Program "teapots.app") icon => Launch_Icon.Mesa category => App_Category.Media
+    (Launch_Entry label => "Teapots" action => (Launch_Action.Program "teapots.app") icon => Launch_Icon.Teapots category => App_Category.Media
       color => (App_Color.RGB (RGB_Color red => 207 green => 76 blue => 156))))
   (setting "desktop.launch.95-boot-logs"
     (Launch_Entry label => "Boot Diagnostics" action => (Launch_Action.Program "boot-logs.app") icon => Launch_Icon.Boot category => App_Category.System

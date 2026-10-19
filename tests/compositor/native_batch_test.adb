@@ -6,6 +6,7 @@ with Compositor_Mask_Batch;
 with Compositor_Glyph_Layout;
 with Compositor_Glyph_FFI;
 with Compositor_Glyph_Cache;
+with Compositor_Glyph_Storage;
 with Compositor_Glyph_Memory;
 with Compositor_Transform;
 function Native_Batch_Test return Boolean is
@@ -13,7 +14,7 @@ function Native_Batch_Test return Boolean is
    package V renames Mesa_Cache;
    package L renames Compositor_Glyph_Layout;
    package M renames Compositor_Glyph_Memory;
-   package C is new Compositor_Glyph_Cache;
+   package C is new Compositor_Glyph_Cache (Slot_Count => Compositor_Glyph_Storage.Slot'Last);
    use type C.Token, C.Lease, M.Arena.Token;
    use type System.Address;
    use type V.Slot;

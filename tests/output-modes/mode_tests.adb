@@ -142,9 +142,48 @@ procedure Mode_Tests is
       Result := R.Carry_Settings (Saved, Fresh, Minimum);
       Check (Result.Items (2).Geometry.Scale = (1, 1), "different display not carried");
    end Layouts;
+   --  List_Mode (DISP-005): round trips, every verdict, hostile bits.
+   procedure Listings is
+      use type OM.Listing_Decoding, OM.Index_Decoding, OM.Admission;
+      Item : OM.Listing;
+      W, Bad : DP.Wire_Message;
+   begin
+      for Service in OD.Provider loop
+         Check (OM.Decode_List_Request (Service, OM.Encode_List_Request (Service, 7)) = (True, 7),
+                "list request round trip");
+         Bad := OM.Encode_List_Request (Service, 7);
+         Bad.Words (0) := 0;
+         Check (not OM.Decode_List_Request (Service, Bad).Valid, "list index zero refused");
+         for V in OM.Admission loop
+            Item := (Index => 3, Count => 9,
+                     Item => (Size => (3840, 2160), Refresh_Millihertz => 60_000, Pixel_kHz => 594_000,
+                              Verdict => V, Preferred => V = OM.Admitted, Current => True));
+            W := OM.Encode_Listing (Service, Item);
+            Check (OM.Decode_Listing (Service, W) = (True, Item), "listing round trip");
+            for Word in W.Words'Range loop
+               for Bit in 0 .. 63 loop
+                  Bad := W;
+                  Bad.Words (Word) := Bad.Words (Word) xor Shift_Left (1, Bit);
+                  declare
+                     D : constant OM.Listing_Decoding := OM.Decode_Listing (Service, Bad);
+                  begin
+                     Check (not D.Valid or else OM.Encode_Listing (Service, D.Value) = Bad,
+                            "listing canonical");
+                  end;
+               end loop;
+            end loop;
+         end loop;
+         Item.Index := 9;
+         Item.Count := 8;
+         Bad := W;
+         Bad.Words (0) := (Bad.Words (0) and not 16#FFFF_FFFF#) or (9 + 8 * 2 ** 16);
+         Check (not OM.Decode_Listing (Service, Bad).Valid, "index above count refused");
+      end loop;
+   end Listings;
 begin
    Codecs;
    Fitting;
+   Listings;
    Layouts;
    Put_Line ("output modes:" & Checks'Image & " checks," & Failures'Image & " failures");
    Put_Line (if Failures = 0 then "OUTPUT-MODES: PASS" else "OUTPUT-MODES: FAIL");

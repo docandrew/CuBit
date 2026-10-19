@@ -1,3 +1,4 @@
+with "../../userspace/allocator/allocator_runtime_host.gpr";
 --  Hosted CuBit Text (docs/text-editor.md): the editor core
 --  (userspace/lib/text) and the app's shell (userspace/apps/text) on Linux,
 --  with host stand-ins (host/) for file access and the clipboard.
@@ -11,7 +12,7 @@ project Text_Editor is
    Mode : Build_Mode := external ("TEXT_MODE", "checked");
    for Languages use ("Ada");
    Common_Sources := (".", "host", "build/source", "../../userspace/apps/text", "../../userspace/lib/ui", "../../userspace/lib/theme",
-                      "../../userspace/lib/compositor", "../../userspace/lib/display", "../../userspace/allocator/src",
+                      "../../userspace/lib/compositor", "../../userspace/lib/display",
                       "../../userspace/ccl/src");
    case Mode is
       when "mutant" =>

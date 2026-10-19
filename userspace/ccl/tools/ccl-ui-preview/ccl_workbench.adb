@@ -40,7 +40,9 @@ with CuBit.UI.Editor.Search;
 with CuBit.UI.Editor.Transactions;
 with CuBit.UI.Editor.Viewports;
 with CuBit.UI.Layout;
+with CuBit.UI.Menus;
 with CuBit.UI.State;
+with CuBit.UI.Tooltips;
 with CuBit.UI.Widgets;
 
 --  Shared CCL Workbench. Rendering uses the CuBit UI canvas; the selected
@@ -252,6 +254,93 @@ package body CCL_Workbench is
    Handler_Button_Bounds : constant CuBit.UI.Rect :=
      (x => 366, y => CLIENT_TITLE_HEIGHT + 25, w => 118, h => 27);
    Handler_Button_Pressed : Boolean := False;
+
+   --  Tooltips on the icon-only toolbar buttons (CuBit.UI.Tooltips): set
+   --  as regions each paint; the toolbar has no control map of its own.
+   package Tooltips renames CuBit.UI.Tooltips;
+   Tips : Tooltips.Tip_Table;
+   Tip : Tooltips.Tooltip;
+   No_Controls : CuBit.UI.Controls.Control_Map;
+
+   --  The menu bar (CuBit.UI.Menus, as in CuBit Text): every Workbench
+   --  action, with the shortcut that also runs it. A chosen command runs
+   --  as the event its shortcut sends (Menu_Event), or as its toolbar
+   --  button does.
+   package Menus renames CuBit.UI.Menus;
+   type Menu_Name is (File_Menu, Edit_Menu, View_Menu, Run_Menu, Help_Menu);
+   type Menu_Command is
+     (No_Menu_Command,
+      Open_File, Save_File, Close_Window,
+      Undo_Edit, Redo_Edit, Select_All_Text, Add_Next_Match, Find_Text, Find_Next_Match, Matching_Paren,
+      Show_REPL, Basic_Syntax, Format_Source,
+      Run_Source_Command, Watch_Live, Compile_Program, Compile_And_Run, Run_Bytecode, Pause_Program,
+      Stop_Program, Step_Into, Step_Over,
+      Show_Shortcuts, About_Workbench);
+   subtype Real_Menu_Command is Menu_Command range Menu_Command'Succ (No_Menu_Command) .. Menu_Command'Last;
+   type Menu_Entry is record
+      Parent    : Menu_Name;
+      Caption   : Menus.Text;
+      Shortcut  : Menus.Text;
+      Mnemonic  : Character;
+      Separated : Boolean;          --  a rule above it
+   end record;
+
+   function T (Item : String) return Menus.Text is (new String'(Item));
+   MENU_TITLES : constant array (Menu_Name) of Menus.Text :=
+     [File_Menu => T ("File"), Edit_Menu => T ("Edit"), View_Menu => T ("View"),
+      Run_Menu => T ("Run"), Help_Menu => T ("Help")];
+   MENU_MNEMONICS : constant array (Menu_Name) of Character :=
+     [File_Menu => 'f', Edit_Menu => 'e', View_Menu => 'v', Run_Menu => 'r', Help_Menu => 'h'];
+   NO_SHORTCUT : constant Menus.Text := T ("");
+   MENU_ENTRIES : constant array (Real_Menu_Command) of Menu_Entry :=
+     [Open_File          => (File_Menu, T ("Open..."), T ("Ctrl+O"), 'o', False),
+      Save_File          => (File_Menu, T ("Save As..."), T ("Ctrl+S"), 'a', False),
+      Close_Window       => (File_Menu, T ("Close Window"), NO_SHORTCUT, 'c', True),
+      Undo_Edit          => (Edit_Menu, T ("Undo"), T ("Ctrl+Z"), 'u', False),
+      Redo_Edit          => (Edit_Menu, T ("Redo"), T ("Ctrl+Y"), 'r', False),
+      Select_All_Text    => (Edit_Menu, T ("Select All"), T ("Ctrl+A"), 'a', True),
+      Add_Next_Match     => (Edit_Menu, T ("Add Next Occurrence"), T ("Ctrl+D"), 'o', False),
+      Find_Text          => (Edit_Menu, T ("Find..."), T ("Ctrl+F"), 'f', True),
+      Find_Next_Match    => (Edit_Menu, T ("Find Next"), T ("F3"), 'n', False),
+      Matching_Paren     => (Edit_Menu, T ("Go to Matching Parenthesis"), T ("Ctrl+]"), 'm', False),
+      Show_REPL          => (View_Menu, T ("REPL"), T ("F6"), 'r', False),
+      Basic_Syntax       => (View_Menu, T ("BASIC Syntax"), T ("F8"), 'b', True),
+      Format_Source      => (View_Menu, T ("Format Source"), T ("Shift+F8"), 'f', False),
+      Run_Source_Command => (Run_Menu, T ("Run Source"), T ("F5"), 'r', False),
+      Watch_Live         => (Run_Menu, T ("Watch Every Second"), T ("F7"), 'w', False),
+      Compile_Program    => (Run_Menu, T ("Compile and Verify"), NO_SHORTCUT, 'c', True),
+      Compile_And_Run    => (Run_Menu, T ("Compile and Run Bytecode"), T ("Ctrl+F5"), 'b', False),
+      Run_Bytecode       => (Run_Menu, T ("Run Verified Bytecode"), NO_SHORTCUT, 'v', False),
+      Pause_Program      => (Run_Menu, T ("Pause"), NO_SHORTCUT, 'p', True),
+      Stop_Program       => (Run_Menu, T ("Stop"), NO_SHORTCUT, 's', False),
+      Step_Into          => (Run_Menu, T ("Step Into"), NO_SHORTCUT, 'i', True),
+      Step_Over          => (Run_Menu, T ("Step Over"), NO_SHORTCUT, 'o', False),
+      Show_Shortcuts     => (Help_Menu, T ("Keyboard Shortcuts"), NO_SHORTCUT, 'k', False),
+      About_Workbench    => (Help_Menu, T ("About CCL Workbench"), NO_SHORTCUT, 'a', True)];
+   MENU_BASE : constant Menus.ID_Base := 1;
+   MENU_BAR_HEIGHT : constant := 22;
+   MENU_ROW_HEIGHT : constant := 24;
+   MENU_MINIMUM_WIDTH : constant := 220;
+   Menu : Menus.Menu_State;
+   Menu_Controls : CuBit.UI.Controls.Control_Map;
+   --  A press that closed the open menu: its release is the menu's too.
+   Menu_Block_Release : Boolean := False;
+   function Menu_Bar return CuBit.UI.Rect is
+     (x => 0, y => CLIENT_TITLE_HEIGHT, w => Canvas.width, h => MENU_BAR_HEIGHT);
+
+   procedure Set_Tooltips is
+   begin
+      Tooltips.Clear (Tips);
+      Tooltips.Set_Region (Tips, Open_Button_Bounds, "Open a CCL file", "Ctrl+O");
+      Tooltips.Set_Region (Tips, Save_Button_Bounds, "Save as a new file", "Ctrl+S");
+      Tooltips.Set_Region (Tips, Compile_Button_Bounds, "Compile and verify");
+      Tooltips.Set_Region (Tips, Run_Button_Bounds, "Run source", "F5");
+      Tooltips.Set_Region (Tips, VM_Run_Button_Bounds, "Run verified bytecode");
+      Tooltips.Set_Region (Tips, Pause_Button_Bounds, "Pause");
+      Tooltips.Set_Region (Tips, Stop_Button_Bounds, "Stop");
+      Tooltips.Set_Region (Tips, Step_Into_Button_Bounds, "Step into");
+      Tooltips.Set_Region (Tips, Step_Over_Button_Bounds, "Step over");
+   end Set_Tooltips;
 
    function Watching return Boolean is
      (CCL.Periodic_Programs.State (Live_Program) in
@@ -2268,6 +2357,115 @@ package body CCL_Workbench is
       end case;
    end Ownership_Mode_Text;
 
+   --  Whether each command can run now (as its toolbar button shows) and
+   --  whether its setting is on.
+   function Menu_Enabled (Item : Real_Menu_Command) return Boolean is
+     (case Item is
+         when Open_File | Save_File => CCL_Workspace.Supported,
+         when Run_Bytecode => Has_Verified,
+         when Pause_Program => VM_Has_State and then VM_Continuous and then not VM_Snapshot.Terminal,
+         when Stop_Program =>
+           (VM_Has_State and then not VM_Snapshot.Terminal) or else CCL.UI_Buttons.Visible (Live_Button),
+         when Step_Into | Step_Over =>
+           Has_Verified and then not VM_Continuous and then (not VM_Has_State or else not VM_Snapshot.Terminal),
+         when others => True);
+   function Menu_Checked (Item : Real_Menu_Command) return Boolean is
+     (case Item is
+         when Show_REPL => REPL_Visible,
+         when Basic_Syntax => Source_Syntax = CCL.Language.Views.Basic,
+         when Watch_Live => Watching,
+         when others => False);
+
+   function Build_Menus return Menus.Model is
+      Result : Menus.Model;
+   begin
+      for M in Menu_Name loop
+         Result.Menu_Count := Result.Menu_Count + 1;
+         Result.Menus (Result.Menu_Count) := (Caption => MENU_TITLES (M), Mnemonic => MENU_MNEMONICS (M));
+      end loop;
+      for Item in Real_Menu_Command loop
+         declare
+            E : Menu_Entry renames MENU_ENTRIES (Item);
+            Parent : constant Positive := Menu_Name'Pos (E.Parent) + 1;
+         begin
+            if E.Separated then
+               Result.Item_Count := Result.Item_Count + 1;
+               Result.Items (Result.Item_Count) := (Parent => Parent, Separator => True, others => <>);
+            end if;
+            Result.Item_Count := Result.Item_Count + 1;
+            Result.Items (Result.Item_Count) :=
+              (Parent => Parent, Caption => E.Caption, Shortcut => E.Shortcut, Mnemonic => E.Mnemonic,
+               Command => Menu_Command'Pos (Item), Enabled => Menu_Enabled (Item),
+               Checked => Menu_Checked (Item), Separator => False);
+         end;
+      end loop;
+      return Result;
+   end Build_Menus;
+
+   function Menu_Popup_Width return Positive is
+     (Positive'Max (MENU_MINIMUM_WIDTH, Menus.Required_Width (Build_Menus)));
+
+   --  Where the open menu's popup is (empty while none is open).
+   function Menu_Popup return CuBit.UI.Rect is
+     (Menus.Popup_Bounds (Menu, Build_Menus, Menu_Bar, (0, 0, Canvas.width, Canvas.height),
+                          Menu_Popup_Width, MENU_ROW_HEIGHT));
+
+   --  The bar and its popup over everything; its controls cover the whole
+   --  window whatever this paint's clip.
+   procedure Draw_Menus is
+      Whole : CuBit.UI.Canvas := Canvas;
+   begin
+      CuBit.UI.Controls.Clear (Menu_Controls);
+      Whole.inputClipEnabled := True;
+      Whole.inputClip := (0, 0, Canvas.width, Canvas.height);
+      Menus.Draw (Whole, Menu_Controls, Menu, Build_Menus, MENU_BASE, Menu_Bar, Colors,
+                  Menu_Popup_Width, MENU_ROW_HEIGHT);
+   end Draw_Menus;
+
+   SHORTCUTS_TEXT : constant String :=
+     "F5 run, F6 REPL, F7 watch, F8 Lisp/BASIC, Ctrl+O open, Ctrl+S save, Ctrl+C/X/V clipboard, F10 menus";
+   ABOUT_TEXT : constant String :=
+     "CCL Workbench: write, run, compile, verify and step CuBit Control Language";
+
+   --  A chosen command: the event its shortcut sends (Inject, with Shift
+   --  for Shift+F8), or No_Event when it ran here as its toolbar button.
+   procedure Run_Menu_Command
+     (Item : Real_Menu_Command; Inject : out Platform.Window_Event; Shift : out Boolean) is
+   begin
+      Shift := False;
+      Inject := Platform.No_Event;
+      case Item is
+         when Open_File => Inject := Platform.Open_Source;
+         when Save_File => Inject := Platform.Save_Source;
+         when Close_Window => Inject := Platform.Close_Request;
+         when Undo_Edit => Inject := Platform.Undo;
+         when Redo_Edit => Inject := Platform.Redo;
+         when Select_All_Text => Inject := Platform.Select_All;
+         when Add_Next_Match => Inject := Platform.Add_Next_Occurrence;
+         when Find_Text => Inject := Platform.Open_Find;
+         when Find_Next_Match => Inject := Platform.Find_Next;
+         when Matching_Paren => Inject := Platform.Match_Parenthesis;
+         when Show_REPL => Inject := Platform.Toggle_REPL;
+         when Basic_Syntax => Inject := Platform.Toggle_Syntax;
+         when Format_Source =>
+            Inject := Platform.Toggle_Syntax;
+            Shift := True;
+         when Run_Source_Command => Inject := Platform.Run_Source;
+         when Watch_Live => Inject := Platform.Toggle_Watch;
+         when Compile_Program => Compile_Source;
+         when Compile_And_Run =>
+            Compile_Source;
+            if Has_Verified and VM_Has_State and CCL_Execution.Can_Replace then Start_Bytecode; end if;
+         when Run_Bytecode => Start_Bytecode;
+         when Pause_Program => Pause_Bytecode;
+         when Stop_Program => Stop_Bytecode;
+         when Step_Into => Step_Bytecode;
+         when Step_Over => Step_Over_Bytecode;
+         when Show_Shortcuts => Set_Result (SHORTCUTS_TEXT);
+         when About_Workbench => Set_Result (ABOUT_TEXT);
+      end case;
+   end Run_Menu_Command;
+
    procedure Render is
       Execution_Content : CuBit.UI.Rect;
       Editor_Content : CuBit.UI.Rect;
@@ -2339,24 +2537,7 @@ package body CCL_Workbench is
          Draw_Title_Controls;
       end if;
 
-      CuBit.UI.Draw_Menu_Bar
-        (Canvas, (x => 0, y => CLIENT_TITLE_HEIGHT,
-                  w => Canvas.width, h => 22), Colors);
-      CuBit.UI.Draw_Menu_Title
-        (Canvas, (x => 3, y => CLIENT_TITLE_HEIGHT, w => 34, h => 22), Colors,
-         False, False, "File");
-      CuBit.UI.Draw_Menu_Title
-        (Canvas, (x => 38, y => CLIENT_TITLE_HEIGHT, w => 34, h => 22), Colors,
-         False, False, "Edit");
-      CuBit.UI.Draw_Menu_Title
-        (Canvas, (x => 73, y => CLIENT_TITLE_HEIGHT, w => 38, h => 22), Colors,
-         False, False, "View");
-      CuBit.UI.Draw_Menu_Title
-        (Canvas, (x => 112, y => CLIENT_TITLE_HEIGHT, w => 34, h => 22), Colors,
-         False, False, "Run");
-      CuBit.UI.Draw_Menu_Title
-        (Canvas, (x => 147, y => CLIENT_TITLE_HEIGHT, w => 38, h => 22), Colors,
-         False, False, "Help");
+      --  The menu bar is drawn over the content by Paint (Draw_Menus).
 
       CuBit.UI.Widgets.Toolbar
         (Canvas, (x => 0, y => CLIENT_TITLE_HEIGHT + 22,
@@ -2666,9 +2847,8 @@ package body CCL_Workbench is
            "CCL session - Lisp or BASIC");
          CCL_REPL_View.Draw (REPL, Canvas, REPL_Bounds, Colors);
       else
-      CuBit.UI.Draw_UI_Text
-        (CuBit.UI.With_Clip (Canvas,
-           (Editor_Content.x, Editor_Content.y, Editor_Content.w - 184, 22)),
+      CuBit.UI.Draw_UI_Text_Fitted
+        (Canvas, (Editor_Content.x, Editor_Content.y, Editor_Content.w - 184, 22),
          Editor_Content.x, Editor_Content.y,
          (if Current_Filename.Length = 0 then "untitled.ccl"
           else CuBit.File_Selection.Value (Current_Filename)) &
@@ -2896,12 +3076,11 @@ package body CCL_Workbench is
                      textStyle => CuBit.UI.Table_Code_Text);
                end loop;
             end if;
-            CuBit.UI.Draw_UI_Text
-              (CuBit.UI.With_Clip
-                 (Canvas,
-                  (x => Bytecode_Content.x,
-                   y => Bytecode_Content.y + Bytecode_Content.h - 20,
-                   w => Bytecode_Content.w, h => 18)),
+            CuBit.UI.Draw_UI_Text_Fitted
+              (Canvas,
+               (x => Bytecode_Content.x,
+                y => Bytecode_Content.y + Bytecode_Content.h - 20,
+                w => Bytecode_Content.w, h => 18),
                Bytecode_Content.x,
                Bytecode_Content.y + Bytecode_Content.h - 20,
                (if Has_Verified then "VM verifier: VALID"
@@ -2910,18 +3089,16 @@ package body CCL_Workbench is
                Colors.face);
          end;
       else
-         CuBit.UI.Draw_UI_Text
-           (CuBit.UI.With_Clip
-              (Canvas,
-               (x => Bytecode_Content.x, y => Bytecode_Content.y + 34,
-                w => Bytecode_Content.w, h => 44)),
+         CuBit.UI.Draw_UI_Text_Fitted
+           (Canvas,
+            (x => Bytecode_Content.x, y => Bytecode_Content.y + 34,
+             w => Bytecode_Content.w, h => 44),
             Bytecode_Content.x + 7, Bytecode_Content.y + 34,
             "No CCLB artifact", Colors.text, Colors.field);
-         CuBit.UI.Draw_UI_Text
-           (CuBit.UI.With_Clip
-              (Canvas,
-               (x => Bytecode_Content.x, y => Bytecode_Content.y + 54,
-                w => Bytecode_Content.w, h => 44)),
+         CuBit.UI.Draw_UI_Text_Fitted
+           (Canvas,
+            (x => Bytecode_Content.x, y => Bytecode_Content.y + 54,
+             w => Bytecode_Content.w, h => 44),
             Bytecode_Content.x + 7, Bytecode_Content.y + 54,
             "Compile to show the bytecode a run uses",
             Colors.muted, Colors.field);
@@ -2944,7 +3121,7 @@ package body CCL_Workbench is
         (Canvas,
          (x => 0, y => Canvas.height - 26, w => Canvas.width, h => 26), Colors,
          Toolbar_Hint,
-         "bounded document • proved viewport");
+         "bounded document, proved viewport");
       Render_Output;
       CuBit.UI.State.Finish_Frame (Workbench_UI);
       CuBit.UI.File_Dialogs.Draw (Canvas, File_Dialog, Colors);
@@ -2972,7 +3149,7 @@ package body CCL_Workbench is
         (Canvas,
          (x => 0, y => Canvas.height - 26, w => Canvas.width, h => 26), Colors,
          Toolbar_Hint,
-         "bounded document • proved viewport");
+         "bounded document, proved viewport");
    end Render_Pointer_Feedback;
 
    type Paint_Kind is (All_Content, Output_Only, Label_Only, Button_And_Label,
@@ -2986,6 +3163,7 @@ package body CCL_Workbench is
       CCL_Desktop_Platform.Begin_Frame (Canvas, Changed, Repair, Ready);
       if not Ready then return True; end if; -- debt remains for a timed retry
       Canvas := CuBit.UI.With_Clip (Canvas, Repair);
+      Set_Tooltips;
       if Kind = All_Content or else Repair /= Changed then
          Render; -- repair older candidate content from current application state
       else
@@ -3001,6 +3179,13 @@ package body CCL_Workbench is
             when Dialog_Only => CuBit.UI.File_Dialogs.Draw (Canvas, File_Dialog, Colors);
             when Pointer_Only => Render_Pointer_Feedback;
          end case;
+      end if;
+      Draw_Menus;
+      --  The tooltip over whatever this paint repaired.
+      if not REPL_Visible and then not CuBit.UI.File_Dialogs.Is_Open (File_Dialog)
+        and then not Menus.Is_Open (Menu)
+      then
+         Tooltips.Draw (Canvas, Tip, Tips, (0, 0, Canvas.width, Canvas.height), Colors);
       end if;
       return CCL_Desktop_Platform.Submit_Frame (Handle, Canvas, Repair);
    end Paint;
@@ -3084,8 +3269,20 @@ begin
       Needs_Render : Boolean := True;
       Needs_Pointer_Feedback : Boolean := False;
       Previous_Hover : Hover_Target := Hover_None;
+      --  What tooltips showed, moved or hid since the last paint.
+      Tip_Repair : CuBit.UI.Rect := (others => 0);
+      procedure Note_Tip (Damage : CuBit.UI.Rect) is
+      begin
+         if CuBit.UI.Is_Empty (Tip_Repair) then
+            Tip_Repair := Damage;
+         elsif not CuBit.UI.Is_Empty (Damage) then
+            Tip_Repair := CuBit.UI.Union_Rect (Tip_Repair, Damage);
+         end if;
+      end Note_Tip;
       REPL_Only_Render : Boolean := False;
       REPL_Full_Render : Boolean := False;
+      --  This event was the menu bar's alone (Menu_Input).
+      Menu_Consumed : Boolean := False;
       REPL_Pointer_Down : Boolean := False;
       Changed : Boolean;
       Extend : Boolean;
@@ -3352,6 +3549,131 @@ begin
          Next_Scrollbar_Repeat := 0;
          CuBit.UI.State.Resynchronize_Pointer (Workbench_UI, Pointer_X, Pointer_Y, False);
       end Toggle_REPL;
+
+      --  What the menu bar showed or shows since the last paint.
+      Menu_Repair : CuBit.UI.Rect := (others => 0);
+
+      --  The menu bar's share of this event (the CuBit.UI.Menus protocol,
+      --  as in CuBit Text): F10 and Alt+letter are its own; while a menu is
+      --  open, the menu keys, typed letters (mnemonics) and every press are
+      --  its own, and an outside press only closes it; pointer motion and
+      --  presses on its titles are its own. A chosen command comes back as
+      --  the event its shortcut sends (Inject), or ran here.
+      procedure Menu_Input
+        (Consumed : out Boolean; Inject : out Platform.Window_Event; Shift : out Boolean)
+      is
+         use type CuBit.UI.Controls.Pointer_Action;
+         Was_Open : constant Boolean := Menus.Is_Open (Menu);
+         Old_Menu : constant Natural := Menus.Open_Menu (Menu);
+         Old_Item : constant Natural := Menus.Selected_Item (Menu);
+         Old_Hot  : constant Natural := Menus.Hot_Title (Menu);
+         Old_Cues : constant Boolean := Menus.Cues_Shown (Menu);
+         Old_Popup : constant CuBit.UI.Rect := Menu_Popup;
+         Model : constant Menus.Model := Build_Menus;
+         Chosen : Natural := 0;
+         Handled : Boolean := False;
+         Pointer : constant Boolean :=
+           Polled in Platform.Pointer_Down | Platform.Double_Click | Platform.Triple_Click |
+                     Platform.Pointer_Up | Platform.Pointer_Drag | Platform.Pointer_Hover
+           and then Mouse_X >= 0 and then Mouse_Y >= 0;
+         Letter : constant Character :=
+           (if Code in Character'Pos ('a') .. Character'Pos ('z') then Character'Val (Code)
+            elsif Code in Character'Pos ('A') .. Character'Pos ('Z') then Character'Val (Code + 32)
+            else ' ');
+
+         procedure Key (Event : Menus.Key) is
+         begin
+            Menus.Handle_Key (Menu, Model, Event, Chosen, Handled, Letter);
+            Consumed := True;
+         end Key;
+      begin
+         Consumed := False;
+         Inject := Platform.No_Event;
+         Shift := False;
+         --  Keyboard cues follow Alt: its own press and release, and the
+         --  modifiers of every event that carries them (an Alt released
+         --  over another window does not leave them showing).
+         if Polled = Platform.Alt_Changed then
+            Menus.Set_Alt_Held (Menu, Code /= 0);
+            Consumed := True;
+         elsif Polled not in Platform.No_Event | Platform.Close_Request | Platform.Pointer_Up |
+                             Platform.Pointer_Drag | Platform.Pointer_Hover
+         then
+            Menus.Set_Alt_Held (Menu, (Modifiers and Platform.ALT_MODIFIER) /= 0);
+         end if;
+         if CuBit.UI.File_Dialogs.Is_Open (File_Dialog) then
+            null;
+         elsif Polled = Platform.Alt_Changed then
+            null;
+         elsif Polled = Platform.Open_Menu then
+            Key (if Code = 0 then Menus.Activate else Menus.Mnemonic);
+         elsif Was_Open and then not Pointer then
+            case Polled is
+               when Platform.Left => Key (Menus.Left);
+               when Platform.Right => Key (Menus.Right);
+               when Platform.Up => Key (Menus.Up);
+               when Platform.Down => Key (Menus.Down);
+               when Platform.Home => Key (Menus.Home);
+               when Platform.End_Key => Key (Menus.End_Key);
+               when Platform.Enter => Key (Menus.Enter);
+               when Platform.Escape => Key (Menus.Escape);
+               when Platform.Tab => Key (Menus.Tab_Key);
+               when Platform.Text_Input =>
+                  Key (if Code = Character'Pos (' ') then Menus.Space else Menus.Mnemonic);
+               when Platform.Close_Request | Platform.No_Event => null;
+               when others =>
+                  --  Any other command closes the menu and runs as usual.
+                  Menus.Dismiss (Menu);
+            end case;
+         elsif Pointer then
+            declare
+               Target : constant CuBit.UI.Controls.Control_ID :=
+                 CuBit.UI.Controls.Hit (Menu_Controls, Natural (Mouse_X), Natural (Mouse_Y));
+               Ours : constant Boolean := Menus.Is_Menu_Control (MENU_BASE, Target);
+               Action : constant CuBit.UI.Controls.Pointer_Action :=
+                 (case Polled is
+                     when Platform.Pointer_Down | Platform.Double_Click | Platform.Triple_Click =>
+                       CuBit.UI.Controls.Pointer_Press,
+                     when Platform.Pointer_Up => CuBit.UI.Controls.Pointer_Release,
+                     when others => CuBit.UI.Controls.Pointer_Move);
+               Changed, Dispatched : Boolean;
+            begin
+               if not Was_Open and then not Ours and then not Menu_Block_Release
+                 and then (Action /= CuBit.UI.Controls.Pointer_Move or else Old_Hot = 0)
+               then
+                  return;
+               end if;
+               if Action = CuBit.UI.Controls.Pointer_Release and then Menu_Block_Release then
+                  Menu_Block_Release := False;
+                  Consumed := True;
+                  return;
+               end if;
+               if Action = CuBit.UI.Controls.Pointer_Press and then Was_Open and then not Ours then
+                  Menu_Block_Release := True;
+               else
+                  CuBit.UI.Controls.Dispatch_Pointer
+                    (Menu_Controls, Target, Action, Natural (Mouse_X), Natural (Mouse_Y), Changed, Dispatched);
+               end if;
+               Menus.Handle_Pointer (Menu, Model, Menu_Controls, MENU_BASE, Target, Action, Chosen, Handled);
+               Consumed := Handled or else Was_Open or else (Ours and then Action /= CuBit.UI.Controls.Pointer_Move);
+            end;
+         end if;
+         if Menus.Is_Open (Menu) /= Was_Open or else Menus.Open_Menu (Menu) /= Old_Menu or else
+           Menus.Selected_Item (Menu) /= Old_Item or else Menus.Hot_Title (Menu) /= Old_Hot or else
+           Menus.Cues_Shown (Menu) /= Old_Cues
+         then
+            Menu_Repair := CuBit.UI.Union_Rect
+              ((if CuBit.UI.Is_Empty (Menu_Repair) then Menu_Bar else CuBit.UI.Union_Rect (Menu_Repair, Menu_Bar)),
+               CuBit.UI.Union_Rect (Old_Popup, Menu_Popup));
+         end if;
+         if Chosen in Menu_Command'Pos (Real_Menu_Command'First) .. Menu_Command'Pos (Real_Menu_Command'Last) then
+            Run_Menu_Command (Menu_Command'Val (Chosen), Inject, Shift);
+            if Inject = Platform.No_Event then
+               --  It ran here: its results show everywhere.
+               Needs_Render := True;
+            end if;
+         end if;
+      end Menu_Input;
    begin
       if not Running then raise Program_Error; end if;
       Prepare_Surface;
@@ -3371,11 +3693,26 @@ begin
                exit;
             end if;
             Polled := Platform.Event_Of (Kind);
+            declare
+               Consumed, Shift : Boolean;
+               Inject : Platform.Window_Event;
+            begin
+               Menu_Input (Consumed, Inject, Shift);
+               Menu_Consumed := Consumed and then Inject = Platform.No_Event;
+               if Consumed then
+                  --  The menu's own input reaches nothing below it; a chosen
+                  --  command continues as its shortcut's event.
+                  Polled := Inject;
+                  Modifiers := (if Shift then Platform.SHIFT_MODIFIER else 0);
+                  Mouse_X := -1;
+                  Mouse_Y := -1;
+               end if;
+            end;
             Previous_Hover := Current_Hover_Target;
             --  All semantic input other than free pointer motion may update
             --  application state. Plain motion is handled below by comparing
             --  semantic hover regions.
-            if Polled /= Platform.Pointer_Hover then
+            if Polled /= Platform.Pointer_Hover and then not Menu_Consumed then
                Needs_Render := True;
                REPL_Only_Render := False;
             end if;
@@ -3414,6 +3751,20 @@ begin
                     (Workbench_UI, Pointer_X, Pointer_Y, False);
                end if;
             end if;
+            --  Tooltips follow the resting pointer; any other input hides
+            --  them (the delay is a deadline of this loop's wait, below).
+            declare
+               Tip_Damage : CuBit.UI.Rect;
+            begin
+               if Polled = Platform.Pointer_Hover and then Pointer_Known and then not REPL_Visible
+                 and then not CuBit.UI.File_Dialogs.Is_Open (File_Dialog)
+               then
+                  Tooltips.Pointer_At (Tip, Tips, No_Controls, Pointer_X, Pointer_Y, CCL_Window.Ticks, Tip_Damage);
+               else
+                  Tooltips.Dismiss (Tip, Tip_Damage);
+               end if;
+               Note_Tip (Tip_Damage);
+            end;
             if CuBit.UI.File_Dialogs.Is_Open (File_Dialog) and then Polled /= Platform.Close_Request then
                Handle_File_Dialog;
             elsif (Polled in Platform.Pointer_Down | Platform.Double_Click | Platform.Triple_Click | Platform.Wheel_Up | Platform.Wheel_Down and then
@@ -4259,8 +4610,23 @@ begin
             Next_Scrollbar_Repeat :=
               CCL_Window.Ticks + SCROLL_REPEAT_DELAY;
          end if;
+         if not CuBit.UI.Is_Empty (Menu_Repair) then
+            exit when not Paint (Handle, Menu_Repair, All_Content);
+            Menu_Repair := (others => 0);
+         end if;
          declare
-            Wakeup : Unsigned_64 := CCL.Periodic_Programs.Next_Deadline (Live_Program);
+            Tip_Damage : CuBit.UI.Rect;
+         begin
+            Tooltips.Tick (Tip, Tips, CCL_Window.Ticks, Tip_Damage);
+            Note_Tip (Tip_Damage);
+            if not CuBit.UI.Is_Empty (Tip_Repair) then
+               exit when not Paint (Handle, Tip_Repair, All_Content);
+               Tip_Repair := (others => 0);
+            end if;
+         end;
+         declare
+            Wakeup : Unsigned_64 :=
+              Unsigned_64'Min (CCL.Periodic_Programs.Next_Deadline (Live_Program), Tooltips.Next_Deadline (Tip));
          begin
             if Active_Source_Scrollbar /= No_Scrollbar and then
               Next_Scrollbar_Repeat /= 0 and then

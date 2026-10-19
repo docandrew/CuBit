@@ -50,6 +50,7 @@ begin
          end Exchange;
       begin
          GPU.Bind (Driver, 10, 99);
+         GPU.Grow (Driver, 4);
          Start (Item, Target);
          Exchange (Cancel_At = 1);
          pragma Assert (Identity (Item) = Target and Session (Item) /= 0);

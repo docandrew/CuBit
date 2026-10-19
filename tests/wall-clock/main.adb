@@ -2,6 +2,7 @@ with Ada.Text_IO; use Ada.Text_IO;
 with Interfaces; use Interfaces;
 with Civil_Time; use Civil_Time;
 with Time_Zones; use Time_Zones;
+with Time_Zone_Rules; use Time_Zone_Rules;
 procedure Main is
    Date : Date_Time;
    Zone : Time_Zone;

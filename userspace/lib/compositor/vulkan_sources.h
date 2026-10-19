@@ -1,8 +1,17 @@
 #ifndef CUBIT_VULKAN_SOURCES_H
 #define CUBIT_VULKAN_SOURCES_H
 #include "vulkan_affine.h"
-/* Mirrors Vulkan_Submission.Source_Capacity. */
-#define CUBIT_VULKAN_SOURCE_CAPACITY 148u
+/* Mirror Vulkan_Submission: Glyph_Slots is Compositor_Glyph_Layout.Repertoire
+ * (Face_Count faces x Code_Count printable codes); then backdrops, icon
+ * atlases and client images. */
+#define CUBIT_VULKAN_GLYPH_FACES 3u
+#define CUBIT_VULKAN_GLYPH_CODES 95u
+#define CUBIT_VULKAN_GLYPH_SLOTS (CUBIT_VULKAN_GLYPH_FACES*CUBIT_VULKAN_GLYPH_CODES)
+#define CUBIT_VULKAN_BACKDROP_SLOTS 2u
+#define CUBIT_VULKAN_ICON_ATLAS_SLOTS 2u
+#define CUBIT_VULKAN_CLIENT_SLOTS 16u
+#define CUBIT_VULKAN_SOURCE_CAPACITY (CUBIT_VULKAN_GLYPH_SLOTS+CUBIT_VULKAN_BACKDROP_SLOTS+\
+    CUBIT_VULKAN_ICON_ATLAS_SLOTS+CUBIT_VULKAN_CLIENT_SLOTS)
 struct cubit_vulkan_sources;
 struct cubit_vulkan_source {
     /* Must be first: the stable draw address is the provider's release key. */

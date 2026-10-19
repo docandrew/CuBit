@@ -29,16 +29,16 @@ procedure Desktop_GPU_Scene.Drawing.Tests is
       G.Begin_Frame (S, Screen, 16#FF000000#, OK); pragma Assert (OK);
    end Start;
    procedure Glyph is
-      Items : Compositor_Text.Glyphs := (others => (65, (0, 0, 32, 17)));
+      Items : Compositor_Text.Glyphs := (others => (65, (0, 0, 32, 17), 0));
    begin
-      Text (S, Items, 1, (0, 0, 32, 24), 16#FFFFFFFF#, OK);
+      Text (S, Items, 1, (0, 0, 32, 24), 16#FFFFFFFF#, Compositor_Text.L.Sans_Face, OK);
    end Glyph;
 begin
    Reset; Context_Set (0, 0); Vulkan_Device_Mock.Set (True, True, 0); Pipeline_Set (0, 0);
    Image_Set (4096, 1, 0, 0, 0); Metadata_Set (0); Font_Set (0);
-   Upload_Set (4096, 1, 0, 0, 0, 0);
+   Upload_Set (8192, 1, 0, 0, 0, 0);
    D.Initialize (CuBit.Handles.Fixture.Endpoint_Of (25)); D.Configure_Targets (32, 24, 1, 140 * 4096, OK); pragma Assert (OK);
-   D.Prepare_Pipeline (OK); pragma Assert (OK); D.Configure_Upload (2048, OK); pragma Assert (OK);
+   D.Prepare_Pipeline (OK); pragma Assert (OK); D.Configure_Upload (8192, OK); pragma Assert (OK);
    Start; Glyph; pragma Assert (not OK and G.Reader_Count (S) = 0);
    G.Finish (S, Result); pragma Assert (Result = G.Pending and G.Current (S) = G.Uploading);
    G.Begin_Frame (S, Screen, 0, OK); pragma Assert (not OK);
@@ -75,7 +75,7 @@ begin
    G.Append (S, (Kind => Vulkan_Scene.Glyph_Mask, others => <>), OK); pragma Assert (not OK);
    G.Finish (S, Result); pragma Assert (Result = G.Rejected and G.Reader_Count (S) = 0);
    Start; Glyph; pragma Assert (OK); G.Discard (S, Result); pragma Assert (Result = G.Retry and G.Reader_Count (S) = 0);
-   G.Close (S, OK); pragma Assert (OK and G.Current (S) = G.Closed and D.Charged_Bytes = 4 * 4096);
+   G.Close (S, OK); pragma Assert (OK and G.Current (S) = G.Closed and D.Charged_Bytes = 5 * 4096);  --  the 8 KiB staging (a stacked 5/4 mask is 4224 bytes) is two pages
    D.Stop; pragma Assert (D.Charged_Bytes = 0);
    Ada.Text_IO.Put_Line ("PASS whole scene: cold upload, 100 repeated text requests/one lease, mixed layers, pending retention, overflow rejection and shutdown");
 end Desktop_GPU_Scene.Drawing.Tests;

@@ -24,8 +24,12 @@ package CuBit.Output_Discovery with SPARK_Mode, Pure is
    subtype Output_Index is Output_Count range 1 .. Output_Count'Last;
    subtype Native_Output_Number is Natural range 0 .. 15;
    subtype Extent is Natural range 1 .. 65_535;
-   type Output_Source is (Boot_Framebuffer, Virtio_GPU);
-   for Output_Source use (Boot_Framebuffer => 1, Virtio_GPU => 2);
+   --  Intel_Display: an Intel display-engine output (intel-gpu's display
+   --  executor), today the firmware pipe it took over.
+   type Output_Source is (Boot_Framebuffer, Virtio_GPU, Intel_Display);
+   for Output_Source use (Boot_Framebuffer => 1, Virtio_GPU => 2, Intel_Display => 3);
+   --  The monitor's image size from its EDID, millimetres; zero: unknown.
+   subtype Millimetres is Natural range 0 .. 65_535;
    type Output_Role is
      (Detected_Only, Backend_Ready, Selected_For_Desktop);
    for Output_Role use
@@ -36,6 +40,7 @@ package CuBit.Output_Discovery with SPARK_Mode, Pure is
       Source : Output_Source := Boot_Framebuffer;
       Native_Number : Native_Output_Number := 0;
       Advertised_Width, Advertised_Height : Extent := 1;
+      Width_MM, Height_MM : Millimetres := 0;
       case Role is
          when Detected_Only => null;
          when Backend_Ready | Selected_For_Desktop =>

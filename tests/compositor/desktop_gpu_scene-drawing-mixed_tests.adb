@@ -12,7 +12,7 @@ procedure Desktop_GPU_Scene.Drawing.Mixed_Tests is
    Source : Vulkan_Submission.Source_Ticket; Imported : D.Source_Result; Released : System.Address;
    Address : constant System.Address := System.Storage_Elements.To_Address (55);
    Screen : constant V.A.G.Output := (32, 24, V.A.G.Unrotated, (5, 4), -20, 10);
-   Items : Compositor_Text.Glyphs := (others => (65, (100, 100, 132, 117)));
+   Items : Compositor_Text.Glyphs := (others => (65, (100, 100, 132, 117), 0));
    procedure Start is
    begin Begin_Frame (S, Screen, 0, OK); pragma Assert (OK); end Start;
    procedure Drop is
@@ -22,15 +22,15 @@ begin
    Vulkan_Device_Mock.Set (True, True, 0); Image_Set (4096, 1, 0, 0, 0);
    D.Initialize (CuBit.Handles.Fixture.Endpoint_Of (25)); D.Configure_Targets (32, 24, 1, 16384, OK); pragma Assert (OK);
    D.Prepare_Pipeline (OK); pragma Assert (OK);
-   D.Import_Owned_Source (128, Address, Source, Imported); pragma Assert (Imported = D.Source_Accepted);
+   D.Import_Owned_Source (Vulkan_Submission.Backdrop_Slot'First, Address, Source, Imported); pragma Assert (Imported = D.Source_Accepted);
    Start;
    Fill (S, (30, 20, 65535, 65535), 16#123456#, OK); pragma Assert (OK);
    pragma Assert (Layer_Count (S) = 2 and V.Item (S.Scene, 2).Kind = V.Physical_Solid and
      V.Item (S.Scene, 2).Surface = (30, 20, 32, 24));
    Fill (S, (8, 8, 2, 2), 0, OK); pragma Assert (OK and Layer_Count (S) = 2);
-   Text (S, Items, 32, (0, 0, 32, 24), 16#FFFFFFFF#, OK);
+   Text (S, Items, 32, (0, 0, 32, 24), 16#FFFFFFFF#, Compositor_Text.L.Sans_Face, OK);
    pragma Assert (OK and Layer_Count (S) = 2 and Reader_Count (S) = 0);
-   Text (S, Items, 0, (0, 0, 32, 24), 16#FFFFFFFF#, OK); pragma Assert (OK and Layer_Count (S) = 2);
+   Text (S, Items, 0, (0, 0, 32, 24), 16#FFFFFFFF#, Compositor_Text.L.Sans_Face, OK); pragma Assert (OK and Layer_Count (S) = 2);
    Image (S, Vulkan_Submission.No_Source, (100, 100, 120, 120), (0, 0, 32, 24), OK);
    pragma Assert (OK and Image_Reader_Count (S) = 0 and Layer_Count (S) = 2);
    Image (S, Source, (-20, 10, 12, 34), (3, 5, 27, 21), OK, Over => True, Straight_Alpha => True);

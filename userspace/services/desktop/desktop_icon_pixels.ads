@@ -3,7 +3,8 @@ with Desktop_Icons;
 with Desktop_Window_Icons;
 with Compositor_Upload;
 -- Icons retain straight alpha: application icons from the atlas loaded at
--- startup (Desktop_Icon_Store), window controls embedded. Copy only on initial
+-- startup (Desktop_Icon_Store), at any exported edge, window controls
+-- embedded. Copy only on initial
 -- upload; never preblend against a background or create a second
 -- premultiplied atlas.
 package Desktop_Icon_Pixels with SPARK_Mode is
@@ -11,12 +12,15 @@ package Desktop_Icon_Pixels with SPARK_Mode is
    type Family is (Application, Window_Control);
    type Asset (Kind : Family := Application) is record
       case Kind is
-         when Application => Icon : Desktop_Icons.Icon_ID := Desktop_Icons.Start;
+         when Application =>
+            Icon : Desktop_Icons.Icon_ID := Desktop_Icons.Start;
+            Edge : Desktop_Icons.Edge_Index := Desktop_Icons.Design_Edge;
          when Window_Control => Control : Desktop_Window_Icons.Icon_ID := Desktop_Window_Icons.Close;
       end case;
    end record;
    function Size (Item : Asset) return Positive is
-     (if Item.Kind = Application then Desktop_Icons.ICON_SIZE else Desktop_Window_Icons.ICON_SIZE);
+     (if Item.Kind = Application then Desktop_Icons.Edges (Item.Edge) else Desktop_Window_Icons.ICON_SIZE)
+     with Post => Size'Result <= Desktop_Icons.MAX_EDGE;
    function Pixel (Item : Asset; X, Y : Natural) return Interfaces.Unsigned_32
      with Pre => X < Size (Item) and Y < Size (Item);
    type Pixels is array (Natural range <>) of Interfaces.Unsigned_32;

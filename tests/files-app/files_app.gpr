@@ -1,3 +1,4 @@
+with "../../userspace/allocator/allocator_runtime_host.gpr";
 --  Hosted Files (docs/files-app.md): the app's shared units on Linux, with
 --  a mock filesystem service (host/) in place of CuBit's.
 with "../../userspace/lib/ui/fonts_host.gpr";
@@ -10,7 +11,6 @@ project Files_App is
    for Source_Dirs use (".", "host", "build/source", "../../userspace/apps/files",
                         "../../userspace/lib/ui", "../../userspace/lib/theme",
                         "../../userspace/lib/compositor", "../../userspace/lib/display",
-                        "../../userspace/allocator/src",
                         --  CCL.Declarations, for the themes (CuBit.UI.Theme_CCL).
                         "../../userspace/ccl/src");
    --  The native entry point is not hosted; native platform glue lives in

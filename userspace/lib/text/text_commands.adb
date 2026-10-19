@@ -205,4 +205,71 @@ package body Text_Commands with SPARK_Mode is
      (if Pressed.Item = No_Key then ""
       else (if Pressed.Control then "Ctrl+" else "") & (if Pressed.Alt then "Alt+" else "")
            & (if Pressed.Shift then "Shift+" else "") & Key_Text (Pressed.Item));
+
+   function Visibility_Of (Item : Real_Command) return Visibility is
+     (case Item is
+         when Move_Left .. Scroll_Down | New_Line | Delete_Backward | Delete_Forward | Delete_Word_Backward
+            | Delete_Word_Forward | Insert_Text => Binding_Only,
+         when Single_Selection | Next_Tab | Previous_Tab | Other_View | Command_Palette => Menu_Only,
+         when others => Palette_And_Menu);
+
+   function Menu_Title (Item : Menu_Name) return String is
+     (case Item is
+         when File_Menu => "File", when Edit_Menu => "Edit", when Selection_Menu => "Selection",
+         when View_Menu => "View", when Go_Menu => "Go", when Help_Menu => "Help");
+
+   function Menu_Mnemonic (Item : Menu_Name) return Character is
+     (case Item is
+         when File_Menu => 'f', when Edit_Menu => 'e', when Selection_Menu => 's', when View_Menu => 'v',
+         when Go_Menu => 'g', when Help_Menu => 'h');
+
+   function Menu_Of (Item : Command) return Menu_Name is
+     (case Item is
+         when New_Document | Open | Save | Save_As | Close_Document | Quit => File_Menu,
+         when Undo | Redo | Copy | Cut | Paste | Find | Find_Next | Find_Previous | Replace | Replace_All
+            | Delete_Line | Duplicate_Line | Toggle_Comment | Indent | Outdent => Edit_Menu,
+         when Select_All .. Collapse_Selection | Select_All_Matches => Selection_Menu,
+         when Command_Palette | Split_View | Toggle_Wrap | Toggle_Minimap | Toggle_Theme | Toggle_Modal
+            | Set_Tab_Width | Toggle_Overlay => View_Menu,
+         when Go_To_Line | Go_To_Anything | Next_Tab | Previous_Tab | Other_View => Go_Menu,
+         when others => Help_Menu);
+
+   function Group_Of (Item : Command) return Menu_Group is
+     (case Item is
+         --  File: New, Open | Save, Save As | Close | Quit.
+         when Save | Save_As => 2, when Close_Document => 3, when Quit => 4,
+         --  Edit: Undo, Redo | clipboard | find | lines | indent.
+         when Copy | Cut | Paste => 2, when Find .. Replace_All => 3,
+         when Delete_Line | Duplicate_Line | Toggle_Comment => 4, when Indent | Outdent => 5,
+         --  Selection: selecting | more cursors | fewer.
+         when Split_Into_Lines | Add_Cursor_Above | Add_Cursor_Below => 2,
+         when Single_Selection | Collapse_Selection => 3,
+         --  View: the palette | what shows | keys and tabs | diagnostics.
+         when Split_View | Toggle_Wrap | Toggle_Minimap | Toggle_Theme => 2,
+         when Toggle_Modal | Set_Tab_Width => 3, when Toggle_Overlay => 4,
+         --  Go: places | tabs | views.
+         when Next_Tab | Previous_Tab => 2, when Other_View => 3,
+         when others => 1);
+
+   function Caption (Item : Command) return String is
+     (case Item is
+         when New_Document => "New", when Open => "Open...", when Save => "Save", when Save_As => "Save As...",
+         when Close_Document => "Close", when Quit => "Quit",
+         when Undo => "Undo", when Redo => "Redo", when Copy => "Copy", when Cut => "Cut", when Paste => "Paste",
+         when Find => "Find...", when Find_Next => "Find Next", when Find_Previous => "Find Previous",
+         when Replace => "Replace...", when Replace_All => "Replace All", when Delete_Line => "Delete Line",
+         when Duplicate_Line => "Duplicate Line", when Toggle_Comment => "Toggle Comment", when Indent => "Indent",
+         when Outdent => "Outdent",
+         when Select_All => "Select All", when Select_Line => "Select Line",
+         when Select_Word_Or_Next => "Add Next Occurrence", when Select_All_Matches => "Select All Matches",
+         when Split_Into_Lines => "Split into Lines", when Add_Cursor_Above => "Add Cursor Above",
+         when Add_Cursor_Below => "Add Cursor Below", when Single_Selection => "Single Cursor",
+         when Collapse_Selection => "Collapse Selections",
+         when Command_Palette => "Command Palette...", when Split_View => "Split View", when Toggle_Wrap => "Soft Wrap",
+         when Toggle_Minimap => "Minimap", when Toggle_Theme => "Dark Theme", when Toggle_Modal => "Modal Keys",
+         when Set_Tab_Width => "Tab Width...", when Toggle_Overlay => "Timing Overlay",
+         when Go_To_Line => "Go to Line...", when Go_To_Anything => "Go to Anything...", when Next_Tab => "Next Tab",
+         when Previous_Tab => "Previous Tab", when Other_View => "Other View",
+         when Describe_Key => "Describe Key...",
+         when others => Description (Item));
 end Text_Commands;

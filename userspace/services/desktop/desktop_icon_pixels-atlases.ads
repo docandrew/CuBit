@@ -1,13 +1,16 @@
 with Compositor_Source_Region;
 with Desktop_Cursors;
--- Vertical packing of the existing immutable icon tables. No CPU atlas is
--- allocated: rows are written straight into the admitted staging mapping.
+-- The GPU atlases. Application: the store's layout (one column per exported
+-- edge, Desktop_Icons.Columns; each icon's square stacked in Icon_ID order).
+-- Window controls and cursors: vertical packing of the immutable tables. No
+-- second CPU atlas is allocated: rows are written straight into the
+-- admitted staging mapping.
 package Desktop_Icon_Pixels.Atlases with SPARK_Mode is
    package R renames Compositor_Source_Region;
    function Width (Kind : Family) return Positive is
-     (if Kind = Application then Desktop_Icons.ICON_SIZE else Desktop_Cursors.MAX_WIDTH);
+     (if Kind = Application then Desktop_Icons.ATLAS_WIDTH else Desktop_Cursors.MAX_WIDTH);
    function Height (Kind : Family) return Positive is
-     (if Kind = Application then Desktop_Icons.Icon_ID'Range_Length * Desktop_Icons.ICON_SIZE else 161);
+     (if Kind = Application then Desktop_Icons.ATLAS_HEIGHT else 161);
    -- The second atlas holds straight-alpha controls and premultiplied cursors.
    -- Blend mode belongs to each draw, not the texture. Cursor metadata/hotspots
    -- remain in Desktop_Cursors; this only selects immutable source pixels.

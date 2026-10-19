@@ -109,6 +109,12 @@ with socket.socket(socket.AF_UNIX) as connection:
             pointer[1] += dy
             time.sleep(0.06)
 
+    def launch_workbench():
+        # Apps menu: Development (second category row), its first entry.
+        for key in ("meta_l", "down", "right", "ret"):
+            hmp(f"sendkey {key}")
+            time.sleep(0.3 if key == "meta_l" else 0.15)
+
     def click():
         hmp("mouse_button 1")
         time.sleep(0.07)
@@ -147,10 +153,8 @@ with socket.socket(socket.AF_UNIX) as connection:
         move(20, 700)
         restored = capture("restored")
         require(restored[1] == baseline[1], "confined cursor left artifacts")
-    hmp("sendkey meta_l")
-    time.sleep(0.3)
-    # CCL Workbench is the first Apps entry; exercise an actual native client.
-    hmp("sendkey ret")
+    # CCL Workbench: exercise an actual native client.
+    launch_workbench()
     # Window creation precedes client pixels; do not capture the placeholder.
     while "ccl-workbench: first frame presented" not in log.read_text(errors="replace"):
         require(time.monotonic() < deadline, "Workbench launch deadline")
@@ -192,8 +196,10 @@ with socket.socket(socket.AF_UNIX) as connection:
     secondary_deadline = min(deadline, time.monotonic() + 15)
     while True:
         secondary = capture("secondary")
-        restored_ok = (region(secondary[0], 80, 60, main_width - 80, main_height - 98) ==
-                       region(baseline[0], 80, 60, main_width - 80, main_height - 98))
+        # Above the taskbar (Desktop_Deskbar_Style.Bar_Height, at most 50), which
+        # rightly shows Workbench's task button now.
+        restored_ok = (region(secondary[0], 80, 60, main_width - 80, main_height - 110) ==
+                       region(baseline[0], 80, 60, main_width - 80, main_height - 110))
         moved_ok = (region(original[0], 110, 130, 500, 200) ==
                     region(secondary[1], 86, 130, 500, 200))
         if restored_ok and moved_ok:
@@ -219,32 +225,30 @@ with socket.socket(socket.AF_UNIX) as connection:
     # Settings is compositor-owned but must display the same actual layout.
     hmp("sendkey meta_l")
     time.sleep(0.3)
-    # Both Defaults and the system.ccl fixture put Settings immediately before
-    # Config Inspector. Wrap backward so additional program entries (Servo,
-    # for example) do not silently launch a different application here.
-    for _ in range(2):
-        hmp("sendkey up")
+    # System is the first category row. Both Defaults and the system.ccl
+    # fixture put Settings immediately before Config Inspector, last in
+    # System: wrap backward so other System entries do not matter here.
+    for key in ("right", "up", "up"):
+        hmp(f"sendkey {key}")
         time.sleep(0.12)
     hmp("sendkey ret")
     # The open-menu pixels also differ from wallpaper. Require the actual
-    # default Alloy Settings preview, not merely any changed rectangle.
+    # default Alloy Settings preview, not merely any changed rectangle: its
+    # miniature window's accent stripe and flat light title bar
+    # (CuBit.UI.Window_Chrome, App-colour stripe design).
+    preview_stripe = bytes.fromhex("2e7180")
+    preview_bar = bytes.fromhex("f4f6f8")
     settings_deadline = min(deadline, time.monotonic() + 15)
     while True:
         appearance = capture("settings-appearance")
-        preview_ready = True
-        for row in range(20):
-            alpha = row * 255 // 19
-            expected = bytes((a * 255 + (b - a) * alpha + 127) // 255
-                             for a, b in zip((0x47, 0x76, 0x8E), (0x29, 0x4E, 0x68)))
-            if region(appearance[0], 400, 193 + row, 47, 1) != expected * 47:
-                preview_ready = False
-                break
+        preview_ready = (region(appearance[0], 400, 196, 40, 1) == preview_stripe * 40 and
+                         region(appearance[0], 400, 200, 40, 18) == preview_bar * 40 * 18)
         if preview_ready:
             break
         require(time.monotonic() < settings_deadline, "Settings preview not visible")
     require(region(appearance[0], 120, 180, 550, 170) !=
             region(baseline[0], 120, 180, 550, 170), "Settings did not open")
-    move(154, 180)
+    move(151, 184)
     click()
     displays = capture("settings-displays")
     require(region(displays[0], 120, 180, 550, 170) !=
@@ -266,7 +270,7 @@ with socket.socket(socket.AF_UNIX) as connection:
         import math
         import re
 
-        move(154, 180)
+        move(151, 184)
         click()
         origins = [(0, 0), (main_width, 0)]
         sizes = [(main_width, main_height), (side_width, side_height)]
@@ -276,9 +280,10 @@ with socket.socket(socket.AF_UNIX) as connection:
             right = max(origins[i][0] + sizes[i][0] for i in range(2))
             bottom = max(origins[i][1] + sizes[i][1] for i in range(2))
             divisor = max(1, math.ceil(right / 530), math.ceil(bottom / 152))
-            # Settings stays at (96,72) on its monitor; client inset is (4,30).
-            tx = 252 + (550 - right // divisor) // 2
-            ty = 178 + (172 - bottom // divisor) // 2
+            # Settings stays at (96,72) on its monitor; client inset is (1,34)
+            # (CuBit.UI.Window_Chrome: border, stripe, title bar, rule).
+            tx = 249 + (550 - right // divisor) // 2
+            ty = 182 + (172 - bottom // divisor) // 2
             sx = old_primary[0] + tx + origins[1][0] // divisor + side_width // divisor // 2
             sy = old_primary[1] + ty + origins[1][1] // divisor + side_height // divisor // 2
             move(sx, sy)
@@ -289,7 +294,7 @@ with socket.socket(socket.AF_UNIX) as connection:
             hmp("mouse_button 0")
             capture(f"settings-{phase}-preview")
             before = len(log.read_text(errors="replace"))
-            move(old_primary[0] + 648, old_primary[1] + 451)
+            move(old_primary[0] + 645, old_primary[1] + 455)
             click()
             expected = [(-min(0, dx), -min(0, dy)), (max(0, dx), max(0, dy))]
             until = time.monotonic() + 5
@@ -336,9 +341,7 @@ with socket.socket(socket.AF_UNIX) as connection:
         # Settings is intentionally fixed-size. Launch a real resizable client
         # on the relocated primary and exercise its work-area calculation.
         ready_before = log.read_text(errors="replace").count("ccl-workbench: first frame presented")
-        hmp("sendkey meta_l")
-        time.sleep(0.3)
-        hmp("sendkey ret")
+        launch_workbench()
         until = time.monotonic() + 10
         while log.read_text(errors="replace").count("ccl-workbench: first frame presented") <= ready_before:
             require(time.monotonic() < until, "Workbench launch on rearranged primary failed")
@@ -368,8 +371,8 @@ with socket.socket(socket.AF_UNIX) as connection:
         if os.environ.get("CUBIT_TEST_PRIMARY") == "1":
             divisor = max(1, math.ceil((main_width + side_width) / 530),
                           math.ceil(max(main_height, side_height) / 152))
-            tx = 252 + (550 - (main_width + side_width) // divisor) // 2
-            ty = 178 + (172 - max(main_height, side_height) // divisor) // 2
+            tx = 249 + (550 - (main_width + side_width) // divisor) // 2
+            ty = 182 + (172 - max(main_height, side_height) // divisor) // 2
 
             def select_screen(index):
                 x = 0 if index == 0 else main_width
@@ -379,12 +382,12 @@ with socket.socket(socket.AF_UNIX) as connection:
                 click()
 
             def make_primary():
-                move(330, 420)
+                move(327, 424)
                 click()
 
             def apply_primary(number, x_offset=0):
                 before = len(log.read_text(errors="replace"))
-                move(648 + x_offset, 451)
+                move(645 + x_offset, 455)
                 click()
                 until = time.monotonic() + 5
                 while f"desktop: primary display {number}" not in log.read_text(errors="replace")[before:]:
@@ -400,15 +403,15 @@ with socket.socket(socket.AF_UNIX) as connection:
             before = log.read_text(errors="replace").count("desktop: arrangement applied")
             make_primary()
             pending = capture("settings-primary-pending")
-            require(region(pending[0], 252, 178, 550, 172) !=
-                    region(selected[0], 252, 178, 550, 172), "primary preview bar did not move")
+            require(region(pending[0], 249, 182, 550, 172) !=
+                    region(selected[0], 249, 182, 550, 172), "primary preview bar did not move")
             require(log.read_text(errors="replace").count("desktop: arrangement applied") == before,
                     "preview changed live primary before Apply")
-            move(758, 451)
+            move(755, 455)
             click()
             reverted = capture("settings-primary-reverted")
-            require(region(reverted[0], 252, 178, 550, 172) ==
-                    region(selected[0], 252, 178, 550, 172), "Revert did not restore primary preview")
+            require(region(reverted[0], 249, 182, 550, 172) ==
+                    region(selected[0], 249, 182, 550, 172), "Revert did not restore primary preview")
             make_primary()
             apply_primary(2)
             changed = capture("settings-primary-applied")
@@ -417,9 +420,7 @@ with socket.socket(socket.AF_UNIX) as connection:
             require(region(changed[1], 0, side_height - 36, 100, 36) ==
                     region(displays[0], 0, main_height - 36, 100, 36), "new primary lacks Apps button")
             ready_before = log.read_text(errors="replace").count("ccl-workbench: first frame presented")
-            hmp("sendkey meta_l")
-            time.sleep(0.3)
-            hmp("sendkey ret")
+            launch_workbench()
             until = time.monotonic() + 10
             while log.read_text(errors="replace").count("ccl-workbench: first frame presented") <= ready_before:
                 require(time.monotonic() < until, "launch on new primary failed")
@@ -487,8 +488,8 @@ with socket.socket(socket.AF_UNIX) as connection:
                 require(clean[1] == scaled[1], "scaled cursor left stale pixels")
                 scale_button(True)  # 175% would leave less than 800x480.
                 rejected = capture("settings-scale-rejected")
-                require(region(rejected[0], 252, 178, 550, 172) ==
-                        region(scaled[0], 252, 178, 550, 172), "unsafe scale changed pending layout")
+                require(region(rejected[0], 249, 182, 550, 172) ==
+                        region(scaled[0], 249, 182, 550, 172), "unsafe scale changed pending layout")
                 scale_button(False)
                 scale_button(False)
                 apply_primary(1)

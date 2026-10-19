@@ -62,13 +62,13 @@ package body Compositor_Software_Text with SPARK_Mode is
    end Obtain;
    procedure Paint
      (S : in out State; Key : C.Key; Screen : G.Output;
-      Origin : G.Logical_Point; Damage : G.Physical_Rectangle;
+      Origin : G.Logical_Point; Offset : Storage.L.Subpixel; Damage : G.Physical_Rectangle;
       Target : in out Software.Pixels; Pitch : Positive;
       Tint : Software.Word; Success : out Boolean)
    is
       T : C.Token;
       R : C.Lease;
-      Area : constant G.Physical_Rectangle := Software.Bounds (Screen, Origin, Damage);
+      Area : constant G.Physical_Rectangle := Software.Bounds (Screen, Origin, Offset, Damage);
    begin
       Success := False;
       if not S.Running or else not C.Same (Key, (Key.Face, Key.Code, Screen.Scale)) then return; end if;
@@ -77,7 +77,7 @@ package body Compositor_Software_Text with SPARK_Mode is
       if T = C.No_Token or else not Storage.Can_Paint (S.Backing, T.Position, Screen) then return; end if;
       C.Acquire (S.Registry, T, R);
       if R = C.No_Lease then return; end if;
-      Storage.Paint (S.Backing, T.Position, Screen, Origin, Damage, Target, Pitch, Tint, Success);
+      Storage.Paint (S.Backing, T.Position, Screen, Origin, Offset, Damage, Target, Pitch, Tint, Success);
       C.Complete (S.Registry, R, True);
    end Paint;
    procedure Shutdown (S : in out State; Success : out Boolean) is

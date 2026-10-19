@@ -4,6 +4,10 @@ TARGET := x86_64-unknown-none
 MANIFEST := ../ccl/build/manifest/ccl-manifest
 CATALOG := ../ccl/catalogs/native-runtime-services.ccl
 LIB := build/cargo/$(TARGET)/release/libcubit_rust_probe.a
+# The emphasis face, from the same pinned ibm-plex package as Regular (also
+# exported by flake.nix; derived here for shells entered before it was).
+IBM_PLEX_SANS_SEMIBOLD_FONT ?= $(dir $(IBM_PLEX_SANS_FONT))IBMPlexSans-SemiBold.ttf
+export IBM_PLEX_SANS_SEMIBOLD_FONT
 CARGO := cargo --config 'source.crates-io.replace-with="cubit-vendor"' --config 'source.cubit-vendor.directory="$(CUBIT_RUST_VENDOR)"'
 
 .PHONY: all

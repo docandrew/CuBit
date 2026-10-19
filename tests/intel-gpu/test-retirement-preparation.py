@@ -33,6 +33,7 @@ begin
             Parent : B.Backing;
          end record;
          Private_Contexts : array (1 .. 2) of Context;
+         function Grown_Sessions return Natural is (Private_Contexts'Last);
          package Application_State is
             type Update_Record is limited record
                Tables : B.Backing;

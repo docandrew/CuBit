@@ -36,6 +36,13 @@ package body CuBit.Output_Discovery with SPARK_Mode is
    function Valid_Dimensions (Word : Unsigned_64) return Boolean is
      (Word <= 16#FFFF_FFFF# and then
       (Word and 16#FFFF#) /= 0 and then Shift_Right (Word, 16) /= 0);
+   --  Word 2: advertised pixels (low half), physical millimetres (high
+   --  half: width 47:32, height 63:48).
+   Size_Shift : constant := 32;
+   Half_Mask : constant Unsigned_64 := 16#FFFF_FFFF#;
+   function Advertised (D : Description) return Unsigned_64 is
+     (Dimensions (D.Advertised_Width, D.Advertised_Height) or
+      Shift_Left (Unsigned_64 (D.Width_MM) or Shift_Left (Unsigned_64 (D.Height_MM), 16), Size_Shift));
 
    function Encode_Description (Service : Provider; Item : Description_Result)
       return DP.Wire_Message
@@ -50,8 +57,7 @@ package body CuBit.Output_Discovery with SPARK_Mode is
          else Dimensions (D.Current_Width, D.Current_Height));
    begin
       return (Code (Service, Get_Description), 4, 0, 0,
-        [Item.Requested.Revision, Metadata,
-         Dimensions (D.Advertised_Width, D.Advertised_Height), Active]);
+        [Item.Requested.Revision, Metadata, Advertised (D), Active]);
    end Encode_Description;
 
    function Decode_Description (Service : Provider; Wire : DP.Wire_Message)
@@ -66,8 +72,8 @@ package body CuBit.Output_Discovery with SPARK_Mode is
    begin
       if not Header (Service, Get_Description, Wire) or else
         Wire.Words (0) = 0 or else Index not in 1 .. 17 or else
-        Source not in 1 .. 2 or else Native > 15 or else Role > 2 or else
-        not Valid_Dimensions (Wire.Words (2))
+        Source not in 1 .. 3 or else Native > 15 or else Role > 2 or else
+        not Valid_Dimensions (Wire.Words (2) and Half_Mask)
       then
          return (Valid => False);
       end if;
@@ -86,10 +92,13 @@ package body CuBit.Output_Discovery with SPARK_Mode is
                Current_Height => Extent (Shift_Right (Wire.Words (3), 16)),
                others => <>);
       end if;
-      D.Source := (if Source = 1 then Boot_Framebuffer else Virtio_GPU);
+      D.Source := (case Source is when 1 => Boot_Framebuffer, when 2 => Virtio_GPU,
+                   when others => Intel_Display);
+      D.Width_MM := Millimetres (Shift_Right (Wire.Words (2), Size_Shift) and 16#FFFF#);
+      D.Height_MM := Millimetres (Shift_Right (Wire.Words (2), Size_Shift + 16));
       D.Native_Number := Native_Output_Number (Native);
       D.Advertised_Width := Extent (Wire.Words (2) and 16#FFFF#);
-      D.Advertised_Height := Extent (Shift_Right (Wire.Words (2), 16));
+      D.Advertised_Height := Extent (Shift_Right (Wire.Words (2), 16) and 16#FFFF#);
       return (True, ((Wire.Words (0), Output_Index (Index)), D));
    end Decode_Description;
 

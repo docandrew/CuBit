@@ -5,6 +5,7 @@ with Ada.Text_IO; use Ada.Text_IO;
 with Interfaces; use Interfaces;
 with CuBit.Appearance;
 with CuBit.UI;
+with CuBit.UI.Menus;
 with Text_Commands; use Text_Commands;
 with Text_Cursors;
 with Text_Documents; use Text_Documents;
@@ -262,6 +263,16 @@ begin
       end loop;
       Rotating_Frame;
       Rotating_Frame;
+      --  A menu opening, moving along the bar and closing over the text.
+      for Step in 1 .. 9 loop
+         case Step mod 3 is
+            when 1 => Hit (F10);
+            when 2 => Hit (Right);
+            when others => Hit (Escape);
+         end case;
+         Rotating_Frame;
+      end loop;
+      Rotating_Frame;
       Check (Wrong_Frames = 0, "every frame equals a full repaint (" & Natural'Image (Wrong_Frames) & " of"
              & Natural'Image (Frames_Drawn) & " differ)");
       Check (Content (D.all) = Before, "the file is unchanged after the rotation");
@@ -384,8 +395,45 @@ begin
 
    Section ("palette");
    Hit (Key_P, Control => True, Shift => True);
-   Check (Palette_Open (App) and then Palette_Rows (App) > 60, "palette lists every command:"
-          & Natural'Image (Palette_Rows (App)));
+   declare
+      Wanted : Natural := 0;
+      Hidden_Listed : Boolean := False;
+   begin
+      for C in Real_Command loop
+         if In_Palette (C) then
+            Wanted := Wanted + 1;
+         end if;
+      end loop;
+      for Row in 1 .. Palette_Rows (App) loop
+         for C in Real_Command loop
+            declare
+               Text : constant String := Palette_Row (App, Row);
+               Code : constant String := "|" & Qualified_Name (C) & "|";
+            begin
+               for K in Text'First .. Text'Last - Code'Length + 1 loop
+                  if Text (K .. K + Code'Length - 1) = Code and then not In_Palette (C) then
+                     Hidden_Listed := True;
+                  end if;
+               end loop;
+            end;
+         end loop;
+      end loop;
+      Check (Palette_Open (App) and then Palette_Rows (App) = Wanted,
+             "palette lists the commands a person looks for:" & Natural'Image (Palette_Rows (App)) & " of"
+             & Natural'Image (Real_Command'Range_Length));
+      Check (not Hidden_Listed, "no cursor motion, selection extension or scrolling in the palette");
+   end;
+   Shot ("palette-all");
+   Hit (Escape);
+   Hit (Key_P, Control => True, Shift => True);
+   Type_Text ("left");
+   Check (Palette_Rows (App) = 0 or else Palette_Row (App, 1) /= "Move left one character|text.left|Left",
+          "text.left is a key, not a palette row");
+   Hit (Escape);
+   Execute_Call (App, "(text.palette)", Ok);
+   Check (Palette_Open (App), "the palette opens by CCL");
+   Hit (Escape);
+   Hit (Key_P, Control => True, Shift => True);
    Type_Text ("goto");
    Check (Palette_Rows (App) in 1 .. 4 and then Palette_Row (App, 1) = "Go to a line number|text.goto-line|Ctrl+G",
           "filtered to a few rows, goto-line first:" & Natural'Image (Palette_Rows (App)));
@@ -401,6 +449,124 @@ begin
    Hit (Enter);
    Check (Slice (D.all, Line_Start (D.all, Line_Of_Primary), Line_End (D.all, Line_Of_Primary))'Length > 0,
           "go to symbol jumps to line" & Line_Of_Primary'Image);
+
+   Section ("menu bar (from the command table)");
+   declare
+      use CuBit.UI.Menus;
+      Bar : constant Model := Menu_Bar (App);
+      Seen : array (Command) of Natural := [others => 0];
+      Wrong_Menu, Wrong_Keys : Boolean := False;
+   begin
+      Check (Valid (Bar) and then Bar.Menu_Count = Menu_Name'Range_Length,
+             "six menus:" & Natural'Image (Bar.Menu_Count));
+      for K in 1 .. Bar.Item_Count loop
+         if not Bar.Items (K).Separator then
+            declare
+               C : constant Command := Command'Val (Bar.Items (K).Command);
+               Keys : constant String := Chord_Text (Binding (C));
+            begin
+               Seen (C) := Seen (C) + 1;
+               Wrong_Menu := Wrong_Menu or else not In_Menu (C)
+                 or else Bar.Items (K).Parent /= Menu_Name'Pos (Menu_Of (C)) + 1;
+               Wrong_Keys := Wrong_Keys or else
+                 (if Keys'Length = 0 then Bar.Items (K).Shortcut /= null
+                  else Bar.Items (K).Shortcut = null or else Bar.Items (K).Shortcut.all /= Keys);
+            end;
+         end if;
+      end loop;
+      Check ((for all C in Real_Command => Seen (C) = (if In_Menu (C) then 1 else 0)),
+             "every menu command once, no key-only command (" & Natural'Image (Bar.Item_Count) & " rows)");
+      Check (not Wrong_Menu, "each item in its command's menu");
+      Check (not Wrong_Keys, "each item shows its command's keys");
+      for K in 1 .. Bar.Item_Count loop
+         if not Bar.Items (K).Separator and then Command'Val (Bar.Items (K).Command) = Toggle_Wrap then
+            Check (Bar.Items (K).Checked = Text_Editors.Wrap_On (Active_Editor (App).all), "Soft Wrap's checkmark");
+         elsif not Bar.Items (K).Separator and then Command'Val (Bar.Items (K).Command) = Undo then
+            Check (Bar.Items (K).Enabled = Can_Undo (D.all), "Undo disabled with nothing to undo");
+         elsif not Bar.Items (K).Separator and then Command'Val (Bar.Items (K).Command) = Other_View then
+            Check (not Bar.Items (K).Enabled, "Other View disabled without a split");
+         end if;
+      end loop;
+   end;
+   Hit (F10);
+   Check (Open_Menu (App) = 1, "F10 opens File");
+   Shot ("menu-file");
+   Hit (Right);
+   Hit (Right);
+   Check (Open_Menu (App) = 3, "Right moves to Selection");
+   Hit (Escape);
+   Check (Open_Menu (App) = 0, "Esc closes the menu");
+   declare
+      Wrap_Before : constant Boolean := Text_Editors.Wrap_On (Active_Editor (App).all);
+   begin
+      Hit (Key_V, Alt => True);
+      Check (Open_Menu (App) = 4, "Alt+V opens View");
+      Frame (App, Target);
+      Shot ("menu-view");
+      Type_Text ("o");
+      Check (Open_Menu (App) = 0 and then Text_Editors.Wrap_On (Active_Editor (App).all) /= Wrap_Before,
+             "its mnemonic runs Soft Wrap and closes the menu");
+      Execute_Call (App, "toggle-wrap", Ok);
+   end;
+   declare
+      Line_Before : constant Line_Number := Line_Of_Primary;
+      Edit_X : constant Natural := CuBit.UI.Menu_Title_Width ("File") + 4;
+   begin
+      Click (Edit_X, 10, 50_000);
+      Check (Open_Menu (App) = 2, "a click on Edit opens it");
+      Frame (App, Target);
+      Click (700, 500, 51_000);
+      Check (Open_Menu (App) = 0 and then Line_Of_Primary = Line_Before, "a click outside closes it, nothing else");
+      Frame (App, Target);
+      declare
+         Damage_Only : constant Unsigned_64 := Picture;
+      begin
+         Text_Editors.Invalidate (Active_Editor (App).all);
+         Frame (App, Target);
+         Check (Picture = Damage_Only, "after the popup closes, damage-only frames equal a full repaint");
+      end;
+   end;
+
+   Section ("toolbar tooltips");
+   declare
+      --  The first tool (New): below the menu bar, inside the toolbar.
+      Tool_X : constant Natural := 10;
+      Tool_Y : constant Natural := 24 + 12;
+   begin
+      Frame (App, Target);
+      declare
+         --  The pointer comes to rest at T0; once the occurrence pass
+         --  (250 ms) is done, the next deadline is the tooltip's.
+         T0 : constant Unsigned_64 := Now_Us;
+         Delay_Us : constant Unsigned_64 := 500 * 1_000;
+         Rest_Us : constant Unsigned_64 := 300 * 1_000;
+         Budget : constant := 100_000;
+         Busy, Changed : Boolean;
+      begin
+         Set_Clock (App, T0);
+         Handle (App, (Kind => Pointer_Event, Action => Text_Shell.Move, X => Tool_X, Y => Tool_Y, others => <>));
+         Set_Clock (App, T0 + Rest_Us);
+         Pump (App, Budget, Busy, Changed);
+         Check (Tooltip_Text (App) = "", "no tooltip before the delay");
+         Check (Next_Deadline_Us (App) = (T0 / 1_000) * 1_000 + Delay_Us,
+                "the delay is the deadline of the loop's wait:" & Next_Deadline_Us (App)'Image & " vs"
+                & Unsigned_64'Image ((T0 / 1_000) * 1_000 + Delay_Us));
+      end;
+      delay 0.6;
+      Check (Settle (App, Target), "settles");
+      Check (Tooltip_Text (App) = "New", "after resting, the tool's tooltip: " & Tooltip_Text (App));
+      Shot ("tooltip");
+      Hit (Escape);
+      Check (Tooltip_Text (App) = "", "a key hides it");
+      Frame (App, Target);
+      declare
+         Damage_Only : constant Unsigned_64 := Picture;
+      begin
+         Text_Editors.Invalidate (Active_Editor (App).all);
+         Frame (App, Target);
+         Check (Picture = Damage_Only, "after the tooltip hides, damage-only frames equal a full repaint");
+      end;
+   end;
 
    Section ("multiple cursors");
    Execute_Call (App, "goto-line 10", Ok);

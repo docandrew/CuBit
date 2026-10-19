@@ -19,13 +19,15 @@ package CuBit.Output_Modes with SPARK_Mode, Pure is
    package OD renames CuBit.Output_Discovery;
    use type DP.Wire_Message, DP.Status_Code;
 
-   type Operation is (Watch, Set_Mode);
+   type Operation is (Watch, Set_Mode, List_Mode);
    function Code (Service : OD.Provider; Action : Operation) return Unsigned_32 is
      (case Service is
         when OD.Display_Broker =>
-          (case Action is when Watch => 16#0914#, when Set_Mode => 16#0915#),
+          (case Action is
+             when Watch => 16#0914#, when Set_Mode => 16#0915#, when List_Mode => 16#092B#),
         when OD.GPU_Backend =>
-          (case Action is when Watch => 16#0A0A#, when Set_Mode => 16#0A0B#));
+          (case Action is
+             when Watch => 16#0A0A#, when Set_Mode => 16#0A0B#, when List_Mode => 16#0A0C#));
 
    subtype Revision is OD.Catalog_Revision;
 
@@ -125,4 +127,82 @@ package CuBit.Output_Modes with SPARK_Mode, Pure is
        (if Decode_Result'Result.Valid then
           Encode_Result (Service, Decode_Result'Result.Value) = Wire);
 
+
+   ---------------------------------------------------------------------------
+   --  List_Mode (DISP-005): the output's modes as its monitor states them,
+   --  each with the driver's admission verdict, one per call (Index is
+   --  1-based; the answer carries the count). Read-only.
+   ---------------------------------------------------------------------------
+   --  Why a mode can or cannot be driven (a driver's typed reason, shared
+   --  so Settings can name it).
+   type Admission is
+     (Admitted, Sync_Unsupported, Port_Unsupported, Link_Unsupported,
+      Above_Source_Clock, Above_Sink_Clock, Clock_Hole, Needs_Scrambling,
+      Needs_Higher_CD_Clock);
+   for Admission use
+     (Admitted => 0, Sync_Unsupported => 1, Port_Unsupported => 2, Link_Unsupported => 3,
+      Above_Source_Clock => 4, Above_Sink_Clock => 5, Clock_Hole => 6, Needs_Scrambling => 7,
+      Needs_Higher_CD_Clock => 8);
+   function Name (Item : Admission) return String is
+     (case Item is
+        when Admitted => "available",
+        when Sync_Unsupported => "sync type not supported",
+        when Port_Unsupported => "port not supported yet",
+        when Link_Unsupported => "link type not supported yet",
+        when Above_Source_Clock => "above the GPU's pixel clock",
+        when Above_Sink_Clock => "above the monitor's link clock",
+        when Clock_Hole => "pixel clock in the PHY's gap",
+        when Needs_Scrambling => "monitor lacks HDMI 2.0 scrambling",
+        when Needs_Higher_CD_Clock => "needs a faster display clock");
+
+   type Mode_Count is new Unsigned_16;
+   subtype Mode_Index is Mode_Count range 1 .. Mode_Count'Last;
+   --  Millihertz and kHz fit 32 bits for any EDID mode.
+   type Listed_Mode is record
+      Size : Mode;
+      Refresh_Millihertz : Unsigned_32 := 0;
+      Pixel_kHz : Unsigned_32 := 0;
+      Verdict : Admission := Admitted;
+      Preferred, Current : Boolean := False;
+   end record;
+   type Listing is record
+      Index : Mode_Index := 1;
+      Count : Mode_Count := 1;
+      Item : Listed_Mode;
+   end record;
+   type Index_Decoding (Valid : Boolean := False) is record
+      case Valid is
+         when True => Value : Mode_Index;
+         when False => null;
+      end case;
+   end record;
+   type Listing_Decoding (Valid : Boolean := False) is record
+      case Valid is
+         when True => Value : Listing;
+         when False => null;
+      end case;
+   end record;
+
+   function Encode_List_Request (Service : OD.Provider; Index : Mode_Index)
+      return DP.Wire_Message is
+     ((Label => Code (Service, List_Mode), Length => 4, Flags => 0, Reserved => 0,
+       Words => [Unsigned_64 (Index), 0, 0, 0]));
+   --  Routing already removed by the receiver.
+   function Decode_List_Request (Service : OD.Provider; Wire : DP.Wire_Message)
+      return Index_Decoding
+     with Post =>
+       (if Decode_List_Request'Result.Valid then
+          Encode_List_Request (Service, Decode_List_Request'Result.Value) = Wire);
+
+   --  Words: [index | count << 16 | verdict << 32 | preferred << 40 |
+   --  current << 41], [width | height << 16], [refresh mHz], [pixel kHz].
+   function Encode_Listing (Service : OD.Provider; Item : Listing) return DP.Wire_Message
+     with Pre => Item.Index <= Item.Count;
+   function Decode_Listing (Service : OD.Provider; Wire : DP.Wire_Message)
+      return Listing_Decoding
+     with Post =>
+       (if Decode_Listing'Result.Valid then
+          Decode_Listing'Result.Value.Index <= Decode_Listing'Result.Value.Count);
+   --  Canonical (Encode_Listing (Decode_Listing (W)) = W for every accepted
+   --  W): tested against every single-bit change of every word.
 end CuBit.Output_Modes;

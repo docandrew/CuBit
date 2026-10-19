@@ -18,7 +18,7 @@ procedure Software_Facade_Tests is
  Before : Pixels (Target'Range);
  Image : F.Image := (Target'Address, 80, 72, 320, 1);
  Screen : T.G.Output := (80, 72, T.G.Unrotated, (5, 4), 0, 0);
- Items : T.Glyphs := (1 => (65, (0, 0, 8, 17)), 2 => (66, (8, 0, 16, 17)), others => <>);
+ Items : T.Glyphs := (1 => (65, (0, 0, 8, 17), 0), 2 => (66, (8, 0, 16, 17), 21), others => <>);
  Drawn, Repaint, Restart : Boolean;
  Damage, Writer_Damage : Compositor_Damage.State;
  Start : D.Output_Start;
@@ -28,7 +28,7 @@ procedure Software_Facade_Tests is
  Ticket : constant Compositor_Pool.Ticket := (others => <>);
  procedure Draw (Length : T.Count := 2; Capacity : F.Byte_Count := 80 * 72 * 4) is
  begin
- D.Draw_Text (Image, Capacity, Screen, Items, Length, (0, 0, 80, 72), 16#FFFFFFFF#, False,
+ D.Draw_Text (Image, Capacity, Screen, Items, Length, (0, 0, 80, 72), 16#FFFFFFFF#, T.L.Sans_Face, False,
               Drawn, Repaint, Restart);
  end Draw;
 begin

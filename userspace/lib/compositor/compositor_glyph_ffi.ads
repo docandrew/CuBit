@@ -1,7 +1,8 @@
 with Interfaces;
 with System;
 with Compositor_Glyph_Layout;
--- Trusted font parsing/rasterization boundary. The caller owns exclusive pixel
+-- Trusted font parsing/rasterization boundary. Writes every phase of the
+-- stacked mask (Compositor_Glyph_Layout.Phases rows of Height). The caller owns exclusive pixel
 -- storage until return and must not publish it unless Completed is true.
 -- The audited body is outside proof: the foreign call is synchronous, retains
 -- no mapping, and writes only the validated caller-owned capacity. Global null

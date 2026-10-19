@@ -34,10 +34,10 @@ begin
          when 4 => Image.Width := 25;
          when 5 => Image.Pixels := System.Null_Address;
          when 6 => Image.Pitch := 113;
-         when others => SW.Paint (Screen, (0, 0), (3, 5, 21, 16), Mask, Expected, 28, 16#8031_AF07#);
+         when others => SW.Paint (Screen, (0, 0), 0, (3, 5, 21, 16), Mask, Expected, 28, 16#8031_AF07#);
       end case;
       B.Paint (S, Views, Image, Capacity, (0, 65, Screen.Scale), Screen,
-               (0, 0), (3, 5, 21, 16), 16#8031_AF07#, OK);
+               (0, 0), 0, (3, 5, 21, 16), 16#8031_AF07#, OK);
       pragma Assert (OK = (Case_Number = 0) and Target = Expected and Stat (0) = 1 and Stat (4) = 0);
    end loop;
    R.Shutdown (S, Views, OK); pragma Assert (OK and R.Charged (S) = 0);
@@ -53,7 +53,7 @@ begin
          Alias : SW.Pixels (0 .. 15) with Import, Address => R.Storage.Pixels (Store, 1) + Storage_Offset'(4);
          Before : constant SW.Pixels := Alias;
       begin
-         R.Storage.Paint (Store, 1, Small, (0, 0), (0, 0, 4, 4), Alias, 4, 16#FFFF_FFFF#, OK);
+         R.Storage.Paint (Store, 1, Small, (0, 0), 0, (0, 0, 4, 4), Alias, 4, 16#FFFF_FFFF#, OK);
          pragma Assert (not OK and Alias = Before);
       end;
       Small.Scale := (5, 4); pragma Assert (not R.Storage.Can_Paint (Store, 1, Small));

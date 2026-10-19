@@ -1968,8 +1968,10 @@ procedure main is
                      Name (C) := Character'Val (Bytes (C));
                   end loop;
                   Index := Index_Of (Name);
+                  --  Times are optional: files written without a wall clock
+                  --  are never stamped, and the service then omits them.
                   if Index = 0 or else Seen (Index) or else Item.Kind /= V2.Kind_File or else
-                    (Item.Valid and V2.Valid_Size) = 0 or else (Item.Valid and V2.Valid_Times) = 0
+                    (Item.Valid and V2.Valid_Size) = 0
                   then
                      debugPrint ("QUEUE-DIRECTORY-CHECK: bad entry " & Name & LF);
                      return False;

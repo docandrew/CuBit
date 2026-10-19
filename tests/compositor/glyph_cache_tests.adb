@@ -1,12 +1,13 @@
 with Ada.Text_IO; use Ada.Text_IO;
 with Glyph_Cache_Model;
 with Compositor_Glyph_Cache;
+--  One unit-density stacked phase mask is 32 x 17 x 4 = 2_176 bytes.
 procedure Glyph_Cache_Tests is
    package C renames Glyph_Cache_Model;
    use type C.Token, C.Lease, C.Phase, C.State, C.Serial_Number;
-   package Small is new Compositor_Glyph_Cache (7);
+   package Small is new Compositor_Glyph_Cache (7, Slot_Count => C.Slot'Last);
    use type Small.Token, Small.Lease;
-   S : C.State := C.Open (2_000);
+   S : C.State := C.Open (8_000);
    K : C.Key := (0, 65, (1, 1));
    T, Neighbor, Rejected, Old : C.Token;
    R, Late, New_Read : C.Lease;
@@ -17,7 +18,7 @@ begin
    C.Publish (S, Neighbor, True);
    for Cycle in 1 .. 4_096 loop
       C.Reserve (S, K, T);
-      pragma Assert (T /= C.No_Token and C.Status (S, T) = C.Building and C.Charged (S) = 1_088);
+      pragma Assert (T /= C.No_Token and C.Status (S, T) = C.Building and C.Charged (S) = 4_352);
       if Cycle > 1 then
          declare Before : constant C.State := S;
          begin
@@ -60,10 +61,10 @@ begin
       C.Begin_Retirement (S, T, Accepted); pragma Assert (Accepted);
       C.Acquire (S, T, R); pragma Assert (R = C.No_Lease);
       C.Retired (S, T, False);
-      pragma Assert (C.Current (S, T) and C.Charged (S) = 1_088);
+      pragma Assert (C.Current (S, T) and C.Charged (S) = 4_352);
       C.Reserve (S, K, Rejected); pragma Assert (Rejected = C.No_Token);
       C.Retired (S, T, True);
-      pragma Assert (not C.Current (S, T) and C.Charged (S) = 544 and C.Current (S, Neighbor));
+      pragma Assert (not C.Current (S, T) and C.Charged (S) = 2_176 and C.Current (S, Neighbor));
       if Cycle > 1 then
          declare Before : constant C.State := S;
          begin
@@ -74,7 +75,7 @@ begin
       Old := T;
    end loop;
    -- Outstanding reads saturate at 32, without evicting a pinned mask.
-   S := C.Open (544); C.Reserve (S, K, T); C.Publish (S, T, True);
+   S := C.Open (2_176); C.Reserve (S, K, T); C.Publish (S, T, True);
    for I in Held'Range loop C.Acquire (S, T, Held (I)); pragma Assert (Held (I) /= C.No_Lease); end loop;
    C.Acquire (S, T, R);
    pragma Assert (R = C.No_Lease and C.Reader_Count (S) = 32 and C.Victim (S) = 0);
@@ -94,7 +95,7 @@ begin
       pragma Assert (T.Position = I); C.Publish (S, T, True);
    end loop;
    C.Reserve (S, (0, 65, (5, 4)), Rejected);
-   pragma Assert (Rejected = C.No_Token and C.Charged (S) = 128 * 544);
+   pragma Assert (Rejected = C.No_Token and C.Charged (S) = C.Slot'Last * 2_176);
    for I in C.Slot loop
       pragma Assert (C.Victim (S) = I);
       C.Begin_Retirement (S, C.At_Slot (S, I), Accepted); pragma Assert (Accepted);
@@ -119,7 +120,7 @@ begin
    end loop;
    -- Force both non-wrapping identity counters to their last values.
    declare
-      X : Small.State := Small.Open (544);
+      X : Small.State := Small.Open (2_176);
       XT : Small.Token;
       XR, Saved : Small.Lease;
       Good : Boolean;
@@ -139,5 +140,5 @@ begin
       Small.Reserve (X, (0, 65, (1, 1)), XT);
       pragma Assert (XT = Small.No_Token and Small.Charged (X) = 0);
    end;
-   Put_Line ("GLYPH-CACHE: PASS 4096 reuse cycles, 32 retained readers, 128 slots, 256 density budgets, stale completions and identity exhaustion");
+   Put_Line ("GLYPH-CACHE: PASS 4096 reuse cycles, 32 retained readers," & C.Slot'Last'Image & " slots (the whole repertoire), 256 density budgets, stale completions and identity exhaustion");
 end Glyph_Cache_Tests;

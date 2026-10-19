@@ -2,13 +2,14 @@ with System;
 with Compositor_Glyph_Cache;
 with Compositor_Glyph_Storage;
 -- Serialized CPU glyph-cache owner. Reuses the compositor's proved cache and
--- 512 KiB arena. A view belongs to this SAME owner until Finish; consumers must
+-- its CuAlloc mask storage. A view belongs to this SAME owner until Finish; consumers must
 -- stop reading its address before Finish. No GPU/foreign reader is permitted.
 package Client_Glyphs with SPARK_Mode is
-   package C is new Compositor_Glyph_Cache;
+   package C is new Compositor_Glyph_Cache (Slot_Count => Compositor_Glyph_Storage.Slot'Last);
    package L renames C.L;
    package Storage renames Compositor_Glyph_Storage;
-   Budget : constant := 524_288;
+   -- Every slot resident up to density 2 (L.Dense_Bytes each).
+   Budget : constant := C.Slot'Last * L.Dense_Bytes;
    type State is limited private with Default_Initial_Condition => Valid (State);
    type View is limited private;
    function Valid (S : State) return Boolean with Ghost;

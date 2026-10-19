@@ -20,7 +20,7 @@ SKIP = shutil.ignore_patterns('build*', 'obj', 'gnatprove', '*.o', '*.ali', 'pro
 CHURN = ('desktop_source_churn.gpr', 'build/desktop-source-churn/desktop_source_churn_tests', [],
          'PASS desktop source churn')
 GLYPH = ('desktop_glyph_residency.gpr', 'build/desktop-glyph-residency/desktop_glyph_residency_tests', ['0'],
-         'PASS 128 resident/pinned glyphs')
+         'resident/pinned glyphs (every face')
 STALL = ('stall_watch.gpr', 'build/stall-watch/stall_watch_tests', [], 'PASS stall watch')
 SCENE = ('desktop_scene_sources.gpr', 'build/desktop-scene-sources/desktop_scene_sources_tests', [],
          'PASS desktop scene sources')

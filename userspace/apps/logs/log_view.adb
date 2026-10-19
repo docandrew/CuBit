@@ -433,7 +433,8 @@ package body Log_View is
         (Count => Column_Name'Pos (Column_Name'Last) + 1,
          Width => [1 => 118, 2 => 76, 3 => 60, 4 => 190, others => 96],
          Minimum => [1 => 100, 2 => 48, 3 => 48, 4 => 72, 5 => 120, others => 32],
-         Sortable => True, Sort_Column => Column_Of (Time_Column), Order => Tables.Ascending,
+         Flexible => Column_Of (Message_Column), Sortable => True, Sort_Column => Column_Of (Time_Column),
+         Order => Tables.Ascending,
          Cell_Padding => 5);
       State.Focus := List_Focus;
       State.Position := (others => <>);
@@ -1124,7 +1125,9 @@ package body Log_View is
          Draw_UI_Text_Transparent
            (With_Clip (C, Search_Box), Search_Box.x + PLACEHOLDER_INSET,
             Search_Box.y + (if CONTROL_HEIGHT > UI_Text_Height then (CONTROL_HEIGHT - UI_Text_Height) / 2 else 0),
-            "Search messages and sources", Colors.muted);
+            Fit_UI_Text ("Search messages and sources",
+              (if Search_Box.w > 2 * PLACEHOLDER_INSET then Search_Box.w - 2 * PLACEHOLDER_INSET else 0)),
+            Colors.muted);
       end if;
       if Filtered (State) then
          CuBit.UI.Widgets.Button (C, UI, Map, CLEAR_ID, Clear_Box, Toolbar, Colors, "Clear", Widget,
@@ -1208,8 +1211,11 @@ package body Log_View is
                      Clipped : constant Canvas :=
                        With_Clip (C, (Cell_Area.x + Pad, Cell_Area.y + 1, Cell_Area.w - 2 * Pad, ROW_HEIGHT - 2));
                      Back : constant Color := Match_Color (Colors.field);
+                     --  Characters the table shows before its ellipsis; a
+                     --  match past them is not on screen.
+                     Kept : constant Natural := Kept_Code_Text (Text, Cell_Area.w - 2 * Pad);
                   begin
-                     if Found > 0 then
+                     if Found > 0 and then Found - Text'First + Query (State)'Length <= Kept then
                         declare
                            Matched : constant String := Text (Found .. Found + Query (State)'Length - 1);
                            X : constant Natural :=
@@ -1266,11 +1272,11 @@ package body Log_View is
                E : constant Log_Entry := Shown_Entry (State, State.Position.Selected);
             begin
                if E.Kind = Gap_Entry then
-                  Draw_UI_Text (Text_C, Inner.x, Inner.y,
+                  Draw_UI_Text_Fitted (C, Inner, Inner.x, Inner.y,
                     Image64 (E.Lost) & " records were lost: this viewer fell behind logstore's queue for it.",
                     Level_Color (LR.Error, Colors.panel), Colors.panel);
                else
-                  Draw_UI_Text (Text_C, Inner.x, Inner.y,
+                  Draw_UI_Text_Fitted (C, Inner, Inner.x, Inner.y,
                     Uptime (E.Time_Ms) & "   " & Level_Label (LR.Level (E.Item)) & "   " &
                     Name_Of (State, E.Source, E.Time_Ms) & "   (pid " & Image64 (E.Source) & ", node " &
                     Node_Text (E.Node, Short => False) & ")",

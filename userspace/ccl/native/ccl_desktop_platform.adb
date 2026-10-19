@@ -24,7 +24,7 @@ package body CCL_Desktop_Platform is
    --  auto-repeats): running, files, panes, completion, copy/cut, Escape.
    Once_Per_Press : constant array (Positive range <>) of Window_Event :=
      [Run_Source, Open_Source, Save_Source, Open_Find, Toggle_REPL, Toggle_Watch,
-      Toggle_Syntax, Complete_Operation, Copy_Selection, Cut_Selection, Escape];
+      Toggle_Syntax, Complete_Operation, Copy_Selection, Cut_Selection, Escape, Open_Menu, Alt_Changed];
 
    --  This application's window title, from Activate.
    MAXIMUM_TITLE : constant := 64;
@@ -72,6 +72,25 @@ package body CCL_Desktop_Platform is
    KEY_F6        : constant Unsigned_64 := 16#40#;
    KEY_F7        : constant Unsigned_64 := 16#41#;
    KEY_F8        : constant Unsigned_64 := 16#42#;
+   KEY_F10       : constant Unsigned_64 := 16#44#;
+   --  Either Alt key (the right one arrives with the extended flag).
+   KEY_ALT       : constant Unsigned_64 := 16#38#;
+   --  The letter keys, row by row from these codes (set 1), for Alt+letter.
+   TOP_LETTERS    : constant String := "qwertyuiop";
+   TOP_FIRST      : constant Unsigned_64 := 16#10#;
+   MIDDLE_LETTERS : constant String := "asdfghjkl";
+   MIDDLE_FIRST   : constant Unsigned_64 := 16#1E#;
+   BOTTOM_LETTERS : constant String := "zxcvbnm";
+   BOTTOM_FIRST   : constant Unsigned_64 := 16#2C#;
+   --  The letter a key types (lower case), ' ' for none.
+   function Letter_Of (Key : Unsigned_64) return Character is
+     (if Key in TOP_FIRST .. TOP_FIRST + TOP_LETTERS'Length - 1 then
+        TOP_LETTERS (TOP_LETTERS'First + Natural (Key - TOP_FIRST))
+      elsif Key in MIDDLE_FIRST .. MIDDLE_FIRST + MIDDLE_LETTERS'Length - 1 then
+        MIDDLE_LETTERS (MIDDLE_LETTERS'First + Natural (Key - MIDDLE_FIRST))
+      elsif Key in BOTTOM_FIRST .. BOTTOM_FIRST + BOTTOM_LETTERS'Length - 1 then
+        BOTTOM_LETTERS (BOTTOM_LETTERS'First + Natural (Key - BOTTOM_FIRST))
+      else ' ');
    KEY_HOME      : constant Unsigned_64 := 16#47#;
    KEY_UP        : constant Unsigned_64 := 16#48#;
    KEY_PAGE_UP   : constant Unsigned_64 := 16#49#;
@@ -378,13 +397,20 @@ package body CCL_Desktop_Platform is
             Kind.all := Code_Of (No_Event);
          when CuBit.UI.App.INPUT_KEY_UP =>
             Current_Modifiers := Event.payload1;
-            return 0;
+            if Event.payload0 /= KEY_ALT then
+               return 0;
+            end if;
+            Kind.all := Code_Of (Alt_Changed);
+            Code.all := 0;
          when CuBit.UI.App.INPUT_KEY_DOWN =>
             Key := Event.payload0;
             Mods := CuBit.UI.Input.Key_Modifiers (Event);
             Current_Modifiers := Mods;
             Modifiers.all := Unsigned_32 (Mods and 7);
-            if Clipboard_Event (Key, Mods) /= No_Event then
+            if Key = KEY_ALT then
+               Kind.all := Code_Of (Alt_Changed);
+               Code.all := 1;
+            elsif Clipboard_Event (Key, Mods) /= No_Event then
                Kind.all := Code_Of (Clipboard_Event (Key, Mods));
             elsif Key = KEY_O and then (Mods and 2) /= 0 then
                Kind.all := Code_Of (Open_Source);
@@ -406,6 +432,12 @@ package body CCL_Desktop_Platform is
                Kind.all := Code_Of (Toggle_Watch);
             elsif Key = KEY_F8 then
                Kind.all := Code_Of (Toggle_Syntax);
+            elsif Key = KEY_F10 and then (Mods and 7) = 0 then
+               Kind.all := Code_Of (Open_Menu);
+               Code.all := 0;
+            elsif (Mods and 7) = Unsigned_64 (ALT_MODIFIER) and then Letter_Of (Key) /= ' ' then
+               Kind.all := Code_Of (Open_Menu);
+               Code.all := Character'Pos (Letter_Of (Key));
             elsif Key = KEY_SPACE and then (Mods and 2) /= 0 then
                Kind.all := Code_Of (Complete_Operation);
             elsif Key = KEY_F5 or else

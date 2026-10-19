@@ -4,8 +4,10 @@ package body CuBit.UI.Tooltips is
    package TP renames Client_Tooltip_Policy;
    package PL renames Client_Popup_Layout;
 
-   --  Below and right of the pointer, clear of the cursor.
+   --  Below and right of the pointer, clear of the cursor; a keyboard tip
+   --  FOCUS_GAP below its control.
    POINTER_GAP : constant := 18;
+   FOCUS_GAP : constant := 4;
    PADDING : constant := 6;
    HINT_GAP : constant := 12;
 
@@ -109,9 +111,15 @@ package body CuBit.UI.Tooltips is
            2 * PADDING + UI_Text_Width (Item.Text (1 .. Item.Text_Length))
            + (if Item.Hint_Length > 0 then HINT_GAP + UI_Text_Width (Item.Hint (1 .. Item.Hint_Length)) else 0);
          Height : constant Natural := 2 * PADDING + UI_Text_Height;
+         --  Below the pointer (or the focused control), else above it.
+         Left_X : constant Natural := (if Is_Empty (Tip.Below) then Tip.Policy.X + POINTER_GAP else Tip.Below.x);
+         Below_Y : constant Natural :=
+           (if Is_Empty (Tip.Below) then Tip.Policy.Y + POINTER_GAP else Tip.Below.y + Tip.Below.h + FOCUS_GAP);
+         Above_Y : constant Natural :=
+           (if Is_Empty (Tip.Below) then Tip.Policy.Y else Tip.Below.y - Natural'Min (FOCUS_GAP, Tip.Below.y));
          Placed : constant PL.Box :=
-           PL.Place (Natural'Min (Tip.Policy.X + POINTER_GAP, PL.MAXIMUM_COORDINATE),
-                     Natural'Min (Tip.Policy.Y + POINTER_GAP, PL.MAXIMUM_COORDINATE),
+           PL.Place_Tip (Natural'Min (Left_X, PL.MAXIMUM_COORDINATE),
+                     Natural'Min (Below_Y, PL.MAXIMUM_COORDINATE), Natural'Min (Above_Y, PL.MAXIMUM_COORDINATE),
                      Natural'Min (Width, PL.MAXIMUM_COORDINATE), Natural'Min (Height, PL.MAXIMUM_COORDINATE),
                      (Natural'Min (Area.x, PL.MAXIMUM_COORDINATE), Natural'Min (Area.y, PL.MAXIMUM_COORDINATE),
                       Natural'Min (Area.w, PL.MAXIMUM_COORDINATE), Natural'Min (Area.h, PL.MAXIMUM_COORDINATE)));
@@ -137,6 +145,7 @@ package body CuBit.UI.Tooltips is
       Was_On : constant Natural := Tip.Policy.On;
       Before : constant Rect := Area_Of (Tip);
    begin
+      Tip.Below := (others => 0);
       TP.Pointer_At (Tip.Policy, Find (Table, Map, X, Y), X, Y, Now_Ms);
       Damage := (others => 0);
       if Was_Shown and then (not Visible (Tip) or else Tip.Policy.On /= Was_On) then
@@ -144,6 +153,30 @@ package body CuBit.UI.Tooltips is
          Relayout (Tip, Table, Before, Damage);
       end if;
    end Pointer_At;
+
+   procedure Focus_On
+     (Tip : in out Tooltip; Table : Tip_Table; Map : Controls.Control_Map; Id : Controls.Control_ID;
+      Now_Ms : Unsigned_64; Damage : out Rect)
+   is
+      Was_Shown : constant Boolean := Visible (Tip);
+      Was_On : constant Natural := Tip.Policy.On;
+      Before : constant Rect := Area_Of (Tip);
+      Known : Boolean := False;
+      Place : constant Rect := Controls.Bounds (Map, Id);
+   begin
+      for K in 1 .. Table.Count loop
+         Known := Known or else (Table.Entries (K).Kind = Control_Tip and then Table.Entries (K).Id = Id);
+      end loop;
+      Known := Known and then Id /= Controls.NO_CONTROL and then Id < REGION_TARGET and then not Is_Empty (Place);
+      Tip.Below := (if Known then Place else (others => 0));
+      --  The policy's place is the control's corner: it never moves while
+      --  the focus stays, so the delay runs once.
+      TP.Pointer_At (Tip.Policy, (if Known then Id else TP.NO_TARGET), Place.x, Place.y, Now_Ms);
+      Damage := (others => 0);
+      if Was_Shown and then (not Visible (Tip) or else Tip.Policy.On /= Was_On) then
+         Relayout (Tip, Table, Before, Damage);
+      end if;
+   end Focus_On;
 
    procedure Dismiss (Tip : in out Tooltip; Damage : out Rect) is
    begin
@@ -181,8 +214,9 @@ package body CuBit.UI.Tooltips is
          Box : constant Rect := Tip.Box;
          Inner : constant Canvas := With_Clip (C, Box);
       begin
+         --  Flat and square, like the window chrome: one border colour.
          Fill_Rect (C, Box, Colors.panel);
-         Stroke_Rect (C, Box, Colors.edge, Colors.shadow);
+         Stroke_Rect (C, Box, Colors.edge, Colors.edge);
          Draw_UI_Text_Transparent (Inner, Box.x + PADDING, Box.y + PADDING, Item.Text (1 .. Item.Text_Length),
                                    Colors.text);
          if Item.Hint_Length > 0 then

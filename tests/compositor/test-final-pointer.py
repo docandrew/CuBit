@@ -15,9 +15,14 @@ procedure Final_Pointer is
  type Surface is record x,y,w,h,minW,minH,maxW,maxH: Natural; end record;
  type Pointer_Action is (DRAG_NONE,DRAG_MOVE,DRAG_RESIZE_E,DRAG_RESIZE_S,DRAG_RESIZE_SE,HIT_CLOSE);
  subtype SurfaceIndex is Natural range 0..0;
- surfaces: array(SurfaceIndex) of Surface := (0 => (98,82,808,636,120,80,0,0));
+ type Surface_Table is array(SurfaceIndex) of Surface;
+ type Surface_Store is record Surfaces: Surface_Table := (0 => (98,82,808,636,120,80,0,0)); end record;
+ store: Surface_Store;
  idx: Integer := 0;
  fbWidth: Natural := 1024; fbHeight: Natural := 768;
+ -- The work area above a 50-pixel Deskbar; the client below a 34-pixel title.
+ CLIENT_INSET_TOP: constant Natural := 34;
+ function windowWorkArea(R: Rect) return Rect is ((0,0,fbWidth,fbHeight-50));
  cursorX,cursorY,dragOffsetX,dragOffsetY: Natural := 0;
  dragMode: Pointer_Action := DRAG_NONE;
  dragPreviewRect: Rect := (98,82,808,636);
@@ -39,7 +44,7 @@ begin
  -- Existing minimum/maximum and screen clamps remain authoritative.
  dragMode:=DRAG_RESIZE_SE;cursorX:=0;cursorY:=0;Release;
  pragma Assert(newBounds=(98,82,120,80));
- surfaces(0).maxW:=900;surfaces(0).maxH:=700;
+ store.Surfaces(0).maxW:=900;store.Surfaces(0).maxH:=700;
  cursorX:=2000;cursorY:=2000;Release;pragma Assert(newBounds=(98,68,900,700));
  Ada.Text_IO.Put_Line("FINAL-POINTER: PASS six release geometry cases");
 end Final_Pointer;
@@ -51,7 +56,7 @@ with tempfile.TemporaryDirectory(prefix='final-pointer-') as td:
  package Compiler is for Default_Switches("Ada") use ("-gnat2022","-gnata","-gnato","-O2"); end Compiler;
  end Test;''')
  for negative in (False,True):
-  node='newBounds := clampWindowRect (surfaces (SurfaceIndex (idx)), dragPreviewRect);' if negative else release
+  node='newBounds := clampWindowRect (store.Surfaces (SurfaceIndex (idx)), dragPreviewRect);' if negative else release
   (d/'final_pointer.adb').write_text(prefix+geometry+suffix.replace('RELEASENODE',node))
   subprocess.run(['gprbuild','-q','-p','-P',str(d/'test.gpr')],check=True)
   r=subprocess.run([str(d/'final_pointer')],capture_output=True,text=True)

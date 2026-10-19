@@ -1,8 +1,9 @@
+with Glyph_Gamma;
 package body Compositor_Glyph_Software with SPARK_Mode is
    --  Proved free of run-time errors; tests/ui-raster/run.sh re-proves every
    --  unit carrying this pragma and fails on any unproved check.
    pragma Suppress (All_Checks);
-   use type P.A.Signed;
+   use type P.A.Signed, Byte, G.Orientation;
    function At_Pixel (Where : Placement; Pixel : G.Physical_Point) return Sample is
       X, Y : P.A.Signed;
    begin
@@ -40,20 +41,31 @@ package body Compositor_Glyph_Software with SPARK_Mode is
    end Mix;
    function Component (Value : Word; Shift : Natural) return Channel is
      (Natural (Interfaces.Shift_Right (Value, Shift) and 255));
-   function Over (Coverage : Byte; Tint, Background : Word) return Word is
+   --  Over for coverage already through the tint's Glyph_Gamma row. Its own
+   --  contract keeps it out of proof inlining: the bound below needs the
+   --  parameter's Byte range, not the caller's expression.
+   function Corrected_Over (Coverage : Byte; Tint, Background : Word) return Word
+     with Global => null, Post => True;
+   function Corrected_Over (Coverage : Byte; Tint, Background : Word) return Word is
       Alpha : constant Opacity := Natural (Coverage) * Component (Tint, 24);
    begin
+      --  Full coverage of opaque ink: every Mix returns its foreground.
+      if Alpha = Opacity'Last then
+         return 16#FF00_0000# or (Tint and 16#00FF_FFFF#);
+      end if;
       return Interfaces.Shift_Left (Word (Mix (255, Component (Background, 24), Alpha)), 24) or
         Interfaces.Shift_Left (Word (Mix (Component (Tint, 16), Component (Background, 16), Alpha)), 16) or
         Interfaces.Shift_Left (Word (Mix (Component (Tint, 8), Component (Background, 8), Alpha)), 8) or
         Word (Mix (Component (Tint, 0), Component (Background, 0), Alpha));
-   end Over;
+   end Corrected_Over;
+   function Over (Coverage : Byte; Tint, Background : Word) return Word is
+     (Corrected_Over (Glyph_Gamma.Adjust (Glyph_Gamma.Bucket_Of (Tint), Coverage), Tint, Background));
    function Edge (Value : P.A.Signed; Limit : G.Physical_Extent) return G.Pixel_Edge is (G.Pixel_Edge (Value))
      with Pre => Value in 0 .. P.A.Signed (Limit),
        Post => Edge'Result <= Limit and P.A.Signed (Edge'Result) = Value;
-   function Bounds (Screen : G.Output; Origin : G.Logical_Point;
+   function Bounds (Screen : G.Output; Origin : G.Logical_Point; Offset : L.Subpixel;
                     Damage : G.Physical_Rectangle) return G.Physical_Rectangle is
-      Full : constant P.A.Result := P.Plan (Screen, Origin);
+      Full : constant P.A.Result := P.Plan (Screen, Origin, Offset);
    begin
       if not Full.Visible then return G.Empty; end if;
       declare Clipped : constant P.A.Result := P.A.Clip (Full.Value, Screen.Width, Screen.Height, Damage); begin
@@ -66,10 +78,10 @@ package body Compositor_Glyph_Software with SPARK_Mode is
    function Inside (Index, Pitch : Natural; Area : G.Physical_Rectangle) return Boolean is
      (Index mod Pitch >= Natural (Area.Left) and Index mod Pitch < Natural (Area.Right) and
       Index / Pitch >= Natural (Area.Top) and Index / Pitch < Natural (Area.Bottom));
-   function Offset (X, Y : Natural; Pitch : Positive) return Natural is (Y * Pitch + X)
+   function Index_Of (X, Y : Natural; Pitch : Positive) return Natural is (Y * Pitch + X)
      with Pre => X < Pitch and Y < Natural'Last / Pitch,
-       Post => Offset'Result = Y * Pitch + X and
-         Offset'Result / Pitch = Y and Offset'Result mod Pitch = X;
+       Post => Index_Of'Result = Y * Pitch + X and
+         Index_Of'Result / Pitch = Y and Index_Of'Result mod Pitch = X;
    procedure Set (Target : in out Pixels; I : Natural; Color : Word)
      with Pre => I in Target'Range,
        Post => Target (I) = Color and
@@ -78,12 +90,47 @@ package body Compositor_Glyph_Software with SPARK_Mode is
    begin
       Target (I) := Color;
    end Set;
-   procedure Paint (Screen : G.Output; Origin : G.Logical_Point;
+   procedure Paint (Screen : G.Output; Origin : G.Logical_Point; Offset : L.Subpixel;
                     Damage : G.Physical_Rectangle; Mask : Bytes;
                     Target : in out Pixels; Pitch : Positive; Tint : Word) is
-      Area : constant G.Physical_Rectangle := Bounds (Screen, Origin, Damage);
-      Where : constant Placement := Prepare (Screen, Origin);
+      Area : constant G.Physical_Rectangle := Bounds (Screen, Origin, Offset, Damage);
+      Where : constant Placement := Prepare (Screen, Origin, Offset);
+      Ink_Row : constant Glyph_Gamma.Bucket := Glyph_Gamma.Bucket_Of (Tint);
+      First : constant Natural := Where.Phase * L.Phase_Bytes (Where.Raster);
    begin
+      if Where.Rotation = G.Unrotated then
+         --  Unrotated: the raster's column and row are the pixel's less the
+         --  placement's origin (At_Pixel's mapping), without the per-pixel
+         --  rotation dispatch.
+         for Y in Natural (Area.Top) .. Natural (Area.Bottom) - 1 loop
+            pragma Loop_Invariant (for all I in Target'Range =>
+              (if not Inside (I, Pitch, Area) then Target (I) = Target'Loop_Entry (I)));
+            declare
+               SY : constant P.A.Signed := P.A.Signed (Y) - Where.Top;
+            begin
+               if SY >= 0 and then SY < P.A.Signed (Where.Raster.Height) then
+                  for X in Natural (Area.Left) .. Natural (Area.Right) - 1 loop
+                     pragma Loop_Invariant (for all I in Target'Range =>
+                       (if not Inside (I, Pitch, Area) then Target (I) = Target'Loop_Entry (I)));
+                     declare
+                        SX : constant P.A.Signed := P.A.Signed (X) - Where.Left;
+                        I : constant Natural := Index_Of (X, Y, Pitch);
+                     begin
+                        pragma Assert (Inside (I, Pitch, Area));
+                        if SX >= 0 and then SX < P.A.Signed (Where.Raster.Width) and then
+                          Mask (First + Natural (SY) * Where.Raster.Pitch + Natural (SX)) /= 0
+                        then
+                           Set (Target, I, Corrected_Over
+                             (Glyph_Gamma.Adjust (Ink_Row, Mask (First + Natural (SY) * Where.Raster.Pitch + Natural (SX))),
+                              Tint, Target (I)));
+                        end if;
+                     end;
+                  end loop;
+               end if;
+            end;
+         end loop;
+         return;
+      end if;
       for Y in Natural (Area.Top) .. Natural (Area.Bottom) - 1 loop
          pragma Loop_Invariant (for all I in Target'Range =>
            (if not Inside (I, Pitch, Area) then Target (I) = Target'Loop_Entry (I)));
@@ -92,11 +139,14 @@ package body Compositor_Glyph_Software with SPARK_Mode is
               (if not Inside (I, Pitch, Area) then Target (I) = Target'Loop_Entry (I)));
             declare
                S : constant Sample := At_Pixel (Where, (G.Pixel_Index (X), G.Pixel_Index (Y)));
-               I : constant Natural := Offset (X, Y, Pitch);
+               I : constant Natural := Index_Of (X, Y, Pitch);
             begin
                pragma Assert (Inside (I, Pitch, Area));
-               if S.Valid then
-                  Set (Target, I, Over (Mask (S.Y * Where.Raster.Pitch + S.X), Tint, Target (I)));
+               --  No coverage blends to the very same pixel (Over with alpha 0
+               --  returns the background): skip it. Most of a cell is empty.
+               if S.Valid and then Mask (First + S.Y * Where.Raster.Pitch + S.X) /= 0 then
+                  Set (Target, I, Corrected_Over
+                    (Glyph_Gamma.Adjust (Ink_Row, Mask (First + S.Y * Where.Raster.Pitch + S.X)), Tint, Target (I)));
                end if;
             end;
          end loop;

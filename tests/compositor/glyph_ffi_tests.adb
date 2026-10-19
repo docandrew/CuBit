@@ -16,7 +16,7 @@ begin
                Compositor_Glyph_FFI.Rasterize
                  (Face, Character'Pos ('W'), L, Pixels'Address, Pixels'Length, Advance, OK);
                pragma Assert (OK and Advance in 1 .. L.Width);
-               for Y in 0 .. L.Height - 1 loop
+               for Y in 0 .. Strip_Height (L) - 1 loop
                   for X in L.Width .. L.Pitch - 1 loop
                      pragma Assert (Pixels (Y * L.Pitch + X) = 16#A5#);
                   end loop;

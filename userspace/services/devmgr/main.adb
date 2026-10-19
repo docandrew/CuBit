@@ -54,6 +54,7 @@ with XHCI_Capabilities;
 with Intel_GPU_Probe;
 with Intel_GPU_Display_Pages;
 with Intel_GPU_Pipe_Pages;
+with Intel_GPU_Modeset_Pages;
 with Intel_GPU_PHY_Pages;
 with Intel_GPU_Resources;
 with Intel_GPU_Reset_Pages;
@@ -264,6 +265,7 @@ procedure main is
    Intel_Display_Granted : array (Intel_GPU_Display_Pages.Page_Index) of Boolean := [others => False];
    Intel_PHY_Granted : array (Intel_GPU_PHY_Pages.Page_Index) of Boolean := [others => False];
    Intel_Pipe_Granted : array (Intel_GPU_Pipe_Pages.Page_Index) of Boolean := [others => False];
+   Intel_Modeset_Granted : array (Intel_GPU_Modeset_Pages.Page) of Boolean := [others => False];
    Intel_GGTT_Granted : Boolean := False;
    Intel_GGTT_BAR, Intel_GGTT_Bytes : Unsigned_64 := 0;
    Intel_GGTT_Write_Attempted : Boolean := False;
@@ -3827,7 +3829,9 @@ begin
              (msg.tag = (label => Intel_GPU_PHY_Pages.Request_Label, length => 1, protocol => 0, ipc => Accepting, reserved => 0) and then
               msg.words (0) <= Unsigned_64 (Intel_GPU_PHY_Pages.Page_Index'Last)) or else
              (msg.tag = (label => Intel_GPU_Pipe_Pages.Request_Label, length => 1, protocol => 0, ipc => Accepting, reserved => 0) and then
-              msg.words (0) <= Unsigned_64 (Intel_GPU_Pipe_Pages.Page_Index'Last))) and then
+              msg.words (0) <= Unsigned_64 (Intel_GPU_Pipe_Pages.Page_Index'Last)) or else
+             (msg.tag = (label => Intel_GPU_Modeset_Pages.Request_Label, length => 1, protocol => 0, ipc => Accepting, reserved => 0) and then
+              msg.words (0) <= Intel_GPU_Modeset_Pages.Index (Intel_GPU_Modeset_Pages.Page'Last))) and then
         Intel_Inspection_PID /= No_Process and then from = Intel_Inspection_PID and then
         msg.authorityTag = Intel_Ready_Tag and then
         msg.words (1 .. 3) = [0, 0, 0]
@@ -3838,11 +3842,18 @@ begin
             --  One pipe's register page (cursor and primary plane), for the
             --  display executor (DISP-003, Intel_GPU_Pipe_Pages).
             Pipe_Page : constant Boolean := msg.tag.label = Intel_GPU_Pipe_Pages.Request_Label;
+            --  GMBUS, transcoder and combo PLL pages for DDC/EDID reads and
+            --  modesetting (DISP-004/006, Intel_GPU_Modeset_Pages).
+            Modeset_Page : constant Boolean := msg.tag.label = Intel_GPU_Modeset_Pages.Request_Label;
             Index : constant Intel_GPU_Reset_Pages.Page_Index := Natural (msg.words (0));
+            Modeset_Item : constant Intel_GPU_Modeset_Pages.Page :=
+              (if Modeset_Page then Intel_GPU_Modeset_Pages.Page'Val (Index)
+               else Intel_GPU_Modeset_Pages.Page'First);
             Offset : constant Unsigned_64 :=
               (if Display_Page then Intel_GPU_Display_Pages.Offset (Index)
                elsif PHY_Page then Intel_GPU_PHY_Pages.Offset (Index)
                elsif Pipe_Page then Intel_GPU_Pipe_Pages.Offset (Index)
+               elsif Modeset_Page then Intel_GPU_Modeset_Pages.Offset (Modeset_Item)
                else Intel_GPU_Reset_Pages.Offset (Index));
             Config : Intel_GPU_PCI_Power.Configuration;
             Plan : Intel_GPU_Resources.Mapping_Plan;
@@ -3863,6 +3874,9 @@ begin
                elsif Pipe_Page then
                  Intel_GPU_Display_Claim.Owner (Intel_Display_Ownership) = To_Word (from) and then
                  not Intel_Pipe_Granted (Index)
+               elsif Modeset_Page then
+                 Intel_GPU_Display_Claim.Owner (Intel_Display_Ownership) = To_Word (from) and then
+                 not Intel_Modeset_Granted (Modeset_Item)
                else not Intel_Reset_Granted (Index))
             then
                for Byte in Config'Range loop
@@ -3891,6 +3905,7 @@ begin
                      if Display_Page then Intel_Display_Granted (Index) := True;
                      elsif PHY_Page then Intel_PHY_Granted (Index) := True;
                      elsif Pipe_Page then Intel_Pipe_Granted (Index) := True;
+                     elsif Modeset_Page then Intel_Modeset_Granted (Modeset_Item) := True;
                      else Intel_Reset_Granted (Index) := True;
                      end if;
                   end if;

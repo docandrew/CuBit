@@ -3,17 +3,20 @@ with Compositor_Glyph_Layout;
 generic
    Last_Identity : Compositor_Identity.Positive_Value := Compositor_Identity.Positive_Value'Last;
    Maximum_Readers : Positive := 32;
+   -- Resident masks. Owners that pin every glyph of a frame size this to
+   -- Compositor_Glyph_Layout.Repertoire so a frame can always be held.
+   Slot_Count : Positive;
 package Compositor_Glyph_Cache with SPARK_Mode, Pure is
    subtype Serial_Number is Compositor_Identity.Value;
    use type Serial_Number;
    package L renames Compositor_Glyph_Layout;
-   subtype Slot is Positive range 1 .. 128;
+   subtype Slot is Positive range 1 .. Slot_Count;
    subtype Search_Result is Natural range 0 .. Slot'Last;
    subtype Reader_Slot is Positive range 1 .. Maximum_Readers;
    subtype Byte_Count is Natural range 0 .. Slot'Last * L.Maximum_Bytes;
    type Key is record
-      Face : Natural range 0 .. 1 := 0;
-      Code : Natural range 32 .. 126 := 63;
+      Face : L.Face_Index := L.Sans_Face;
+      Code : L.Code_Point := Character'Pos ('?');
       Scale : L.G.UI_Scale := (1, 1);
    end record;
    function Same (A, B : Key) return Boolean is

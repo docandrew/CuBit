@@ -3,8 +3,9 @@ with Desktop_Vulkan_Startup;
 with Vulkan_Glyph_Sources;
 with Vulkan_Owned_Targets;
 with Vulkan_Submission;
--- One cache per Desktop device lifetime, exclusively owning backing slots
--- 0..127. No reset/copy, heap storage or internal waiting. CPU scene builders
+-- One cache per Desktop device lifetime, exclusively owning the glyph backing
+-- slots (Vulkan_Submission.Glyph_Slot: one per glyph of the repertoire, so a
+-- frame's distinct glyphs always fit). No reset/copy, heap storage or internal waiting. CPU scene builders
 -- retain returned reader leases until their captured scene is retired; the
 -- frame owner additionally prevents release while a GPU frame is pending.
 -- Each slot's R8 cell allocation outlives the glyphs it holds: eviction
@@ -15,7 +16,9 @@ package Desktop_Glyph_Residency with SPARK_Mode is
    package D renames Desktop_Vulkan_Startup;
    package V renames Vulkan_Submission;
    package A renames Vulkan_Owned_Targets.A;
-   package C is new Compositor_Glyph_Cache (Maximum_Readers => 128);
+   -- A captured frame holds one reader per distinct glyph, at most one per slot.
+   package C is new Compositor_Glyph_Cache
+     (Maximum_Readers => V.Glyph_Slots, Slot_Count => V.Glyph_Slots);
    use type C.Token, C.Lease, C.Phase, A.Ticket, V.Source_Ticket;
    type State is limited private with Default_Initial_Condition => Valid (State);
    function Valid (S : State) return Boolean;

@@ -1157,16 +1157,22 @@ package body Process is
            Margin  => marginTicks));
     end placementFor;
 
-    procedure placeOn (tid : ThreadID; cpu : Natural) is
+    -- Join cpu's ready list in deadline order; no preemption decision.
+    procedure enqueueOn (tid : ThreadID; cpu : Natural) is
         ret : ThreadID;
+    begin
+        threadtab (tid).cpu := cpu;
+        Queues.insertByKey (cpuReadyLists (cpu), tid, runKeyOf (tid), ret);
+        if ret /= tid then
+            raise ProcessException with "Process.enqueueOn: Error adding pid to ready list.";
+        end if;
+    end enqueueOn;
+
+    procedure placeOn (tid : ThreadID; cpu : Natural) is
         key : constant Unsigned_64 := runKeyOf (tid);
         here : constant Natural := PerCPUData.getCPUNumber;
     begin
-        threadtab (tid).cpu := cpu;
-        Queues.insertByKey (cpuReadyLists (cpu), tid, key, ret);
-        if ret /= tid then
-            raise ProcessException with "Process.placeOn: Error adding pid to ready list.";
-        end if;
+        enqueueOn (tid, cpu);
         if Virtual_Deadlines.Preempts (key, cpuRunningKey (cpu), marginTicks) then
             if cpu /= here then
                 -- Claimed: later placements before cpu schedules look elsewhere.
@@ -1239,7 +1245,11 @@ package body Process is
         threadtab (tid).readiness := Awakened;
         Trace.Emit (Trace.EVENT_READY, Unsigned_64(tid), Unsigned_64(here));
         threadtab (tid).state := READY;
-        placeOn (tid, here);
+        -- Queued only: no preemption, no reschedule interrupt and no slice
+        -- alarm. The waker blocks next and hands this CPU over
+        -- (yieldToSyncWakee). A waker that runs on instead gives way when a
+        -- timer interrupt finds the wakee due, as for any thread queued here.
+        enqueueOn (tid, here);
         threadtab (PerCPUData.getCurrentThread).syncWakee := tid;
     end readySync;
 

@@ -1,0 +1,16 @@
+--  Hosted tests and proofs for EDID catalogs, mode admission and the Intel
+--  display readout/modeset units (docs/display-modesetting.md, DISP-002..006).
+--  run.sh stages the production sources in build/source first.
+project Display_Modeset is
+   for Source_Dirs use (".", "build/source");
+   for Object_Dir use "build/obj";
+   for Exec_Dir use "build";
+   for Main use ("edid_tests.adb", "intel_tests.adb", "modeset_tests.adb", "aux_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-O2", "-gnat2022", "-gnata", "-gnato", "-gnatwa", "-gnatwe");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=2", "--checks-as-errors=on");
+   end Prove;
+end Display_Modeset;

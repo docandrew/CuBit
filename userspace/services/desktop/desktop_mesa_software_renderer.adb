@@ -133,7 +133,7 @@ package body Desktop_Mesa_Software_Renderer with SPARK_Mode,
      (Target : Compositor_Formats.Image; Target_Bytes : Compositor_Formats.Byte_Count;
       Screen : CuBit.Display_Geometry.Output; Items : Compositor_Text.Glyphs;
       Length : Compositor_Text.Count; Damage : CuBit.Display_Geometry.Physical_Rectangle;
-      Tint : Compositor_Formats.Word; Secondary : Boolean;
+      Tint : Compositor_Formats.Word; Face : Compositor_Text.L.Face_Index; Secondary : Boolean;
       Drawn, Repaint, Must_Restart : out Boolean)
      with Refined_Global => (In_Out => (Cache, Text)) is
       Target_Index : constant Mesa_Cache.Target_Slot := (if Secondary then 1 else 0);
@@ -146,8 +146,9 @@ package body Desktop_Mesa_Software_Renderer with SPARK_Mode,
       if Glyphs.Software_Active (Text) then
          for I in 1 .. Length loop
             Compositor_Glyph_Target.Paint
-              (Text, Cache, Target, Target_Bytes, (0, Items (I).Code, Screen.Scale), Screen,
-               (Items (I).Cell.Left, Items (I).Cell.Top), Compositor_Text.Clip (Screen, Items (I).Cell, Damage), Tint, OK);
+              (Text, Cache, Target, Target_Bytes, (Face, Items (I).Code, Screen.Scale), Screen,
+               (Items (I).Cell.Left, Items (I).Cell.Top), Items (I).Offset,
+               Compositor_Text.Clip (Screen, Items (I).Cell, Damage), Tint, OK);
             if not OK then
                -- Earlier glyphs may already be visible in this target. Disable
                -- failed font/cache preparation before the bounded scene replay.
@@ -163,8 +164,9 @@ package body Desktop_Mesa_Software_Renderer with SPARK_Mode,
       Mesa_Cache.Ensure (Cache, Target_Index, Target, Target_Bytes, OK);
       if OK then
          for I in 1 .. Length loop
-            Glyphs.Queue (Text, Cache, Target_Index, (0, Items (I).Code, Screen.Scale), Screen,
-              (Items (I).Cell.Left, Items (I).Cell.Top), Compositor_Text.Clip (Screen, Items (I).Cell, Damage), Tint, OK);
+            Glyphs.Queue (Text, Cache, Target_Index, (Face, Items (I).Code, Screen.Scale), Screen,
+              (Items (I).Cell.Left, Items (I).Cell.Top), Items (I).Offset,
+              Compositor_Text.Clip (Screen, Items (I).Cell, Damage), Tint, OK);
             exit when not OK;
             pragma Loop_Invariant (Glyphs.Valid (Text));
          end loop;

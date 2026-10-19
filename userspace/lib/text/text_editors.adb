@@ -1228,6 +1228,20 @@ package body Text_Editors is
       E.Everything := False;
    end Draw;
 
+   procedure Invalidate_Area (E : in out Editor; Area : CuBit.UI.Rect) is
+   begin
+      if Is_Empty (Area) then
+         return;
+      end if;
+      for Slot in 1 .. Visible_Slots (E) loop
+         if Intersects ((E.Bounds.x, E.Bounds.y + (Slot - 1) * ROW_HEIGHT, E.Bounds.w, ROW_HEIGHT), Area) then
+            for B in Buffer_Index loop
+               E.Buffers (B).Hashes (Slot) := 0;
+            end loop;
+         end if;
+      end loop;
+   end Invalidate_Area;
+
    ---------------------------------------------------------------------------
    --  Pointer.
 

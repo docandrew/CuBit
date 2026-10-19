@@ -1,9 +1,12 @@
+with CuBit.Fonts;
 with CCL.Host_Values;
 with CCL.Types;
 with CCL.Call_Context;
 with CuBit.UI.Widgets;
 
 package body CCL_REPL_View is
+   --  Pixels the REPL input keeps clear right of the caret it follows.
+   FOLLOW_MARGIN : constant := 20;
    --  A count without Ada's leading blank.
    function Image (Value : Natural) return String is
      (Natural'Image (Value) (2 .. Natural'Image (Value)'Last));
@@ -72,14 +75,15 @@ package body CCL_REPL_View is
       end Recall;
       procedure Place_Cursor (Extend : Boolean) is
          Text : constant String := CuBit.UI.Editor.Content (State.Input);
-         X : Natural := G.Input.x + 8;
+         X : constant Natural := G.Input.x + 8;
          Position : CuBit.UI.Editor.Text_Position := State.First_Character;
       begin
-         for I in State.First_Character .. Text'Last loop
-            exit when Event.X < X + UI_Text_Width (Text (I .. I)) / 2;
-            X := X + UI_Text_Width (Text (I .. I));
-            Position := Position + 1;
-         end loop;
+         --  The caret boundary nearest the pointer, in the layout the input
+         --  is drawn with (kerning, unrounded advances).
+         if Event.X > X and then State.First_Character <= Text'Last then
+            Position := Position + CuBit.UI.Editor.Text_Position
+              (CuBit.Fonts.Boundary_At (CuBit.Fonts.Sans, Text (State.First_Character .. Text'Last), Event.X - X));
+         end if;
          CuBit.UI.Editor.Place_Cursor (State.Input, Position, Extend);
       end Place_Cursor;
       procedure Refresh_Completion (Explain : Boolean := False) is
@@ -292,7 +296,9 @@ package body CCL_REPL_View is
       Found : Boolean;
       Text : constant String := CuBit.UI.Editor.Content (State.Input);
       Cursor : constant Positive := CuBit.UI.Editor.Cursor (State.Input);
-      Used : Natural := 0;
+      --  The input's text width left of the caret, keeping FOLLOW_MARGIN.
+      Room : constant Natural := (if G.Input.w > FOLLOW_MARGIN then G.Input.w - FOLLOW_MARGIN else 0);
+      Before : constant String := Text (1 .. Cursor - 1);
    begin
       if Is_Empty (G.Input) then return; end if;
       Fill_Rect (C, Bounds, Colors.face);
@@ -324,26 +330,41 @@ package body CCL_REPL_View is
             if Found then
                declare
                   Y : constant Natural := G.Transcript.y + Row * Entry_Height + 4;
-                  TC : constant CuBit.UI.Canvas := With_Clip (C,
-                    (G.Transcript.x + 3, Y, G.Transcript.w - 6, Entry_Height - 4));
+                  Box : constant Rect := (G.Transcript.x + 3, Y, G.Transcript.w - 6, Entry_Height - 4);
+                  TC : constant CuBit.UI.Canvas := With_Clip (C, Box);
+                  Text_X : constant Natural := G.Transcript.x + 6;
                begin
-                  Draw_Code_Text (TC, G.Transcript.x + 6, Y,
+                  Draw_Code_Text_Fitted (C, Box, Text_X, Y,
                     "> " & One_Line (Entry_Value.Source (1 .. Entry_Value.Source_Length)),
                     Colors.muted, Colors.field);
-                  Draw_UI_Text_Transparent (TC, G.Transcript.x + 6, Y + 21,
-                    One_Line (CCL.Sessions.Result_Image (Entry_Value.Outcome)), Colors.text);
+                  Draw_UI_Text_Transparent (TC, Text_X, Y + 21,
+                    Fit_UI_Text (One_Line (CCL.Sessions.Result_Image (Entry_Value.Outcome)),
+                                 (if Box.x + Box.w > Text_X then Box.x + Box.w - Text_X else 0)),
+                    Colors.text);
                end;
             end if;
          end loop;
       end if;
-      --  Follow the caret horizontally using a bounded linear scan, not a
-      --  repeated measure of longer and longer prefixes.
-      State.First_Character := Cursor;
-      for I in reverse 1 .. Cursor - 1 loop
-         Used := Used + UI_Text_Width (Text (I .. I));
-         exit when Used > G.Input.w - 20;
-         State.First_Character := I;
-      end loop;
+      --  Follow the caret horizontally: the view starts at the earliest
+      --  character whose run to the caret fits Room, measured as a run
+      --  (kerned, 1/64-pixel advances), never as summed single characters.
+      --  Boundary_At guesses the start; a step or two settles it.
+      if UI_Text_Width (Before) <= Room then
+         State.First_Character := 1;
+      else
+         State.First_Character :=
+           1 + CuBit.Fonts.Boundary_At (CuBit.Fonts.Sans, Before, UI_Text_Width (Before) - Room);
+         while State.First_Character < Cursor and then
+           UI_Text_Width (Text (State.First_Character .. Cursor - 1)) > Room
+         loop
+            State.First_Character := State.First_Character + 1;
+         end loop;
+         while State.First_Character > 1 and then
+           UI_Text_Width (Text (State.First_Character - 1 .. Cursor - 1)) <= Room
+         loop
+            State.First_Character := State.First_Character - 1;
+         end loop;
+      end if;
       Draw_Text_Edit_Field (C, G.Input, Colors, Text (State.First_Character .. Text'Last),
         Cursor - State.First_Character,
         Natural'Max (State.First_Character, CuBit.UI.Editor.Selection_First (State.Input)) - State.First_Character,

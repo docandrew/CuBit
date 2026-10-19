@@ -9,7 +9,8 @@ package Vulkan_Region_FFI with SPARK_Mode is
    procedure Record_Draw (Borrowed : System.Address; D : Compositor_Affine.Draw;
       C : Compositor_Transform.Coefficients;
       Width, Height : Compositor_Affine.G.Physical_Extent;
-      Region : Compositor_Source_Region.Rectangle; Accepted : out Boolean)
+      Region : Compositor_Source_Region.Rectangle; Mask : Boolean;
+      Tint : Compositor_Affine.Word; Accepted : out Boolean)
      with Global => null, Pre => Compositor_Source_Region.Valid (Region) and then
        Compositor_Affine.Valid (D, Width, Height) and then
        C = Compositor_Transform.Build (D, Width, Height);

@@ -82,7 +82,7 @@ package Desktop_Compositor with SPARK_Mode, Abstract_State => Engine is
      (Target : Compositor_Formats.Image; Target_Bytes : Compositor_Formats.Byte_Count;
       Screen : CuBit.Display_Geometry.Output; Items : Compositor_Text.Glyphs;
       Length : Compositor_Text.Count; Damage : CuBit.Display_Geometry.Physical_Rectangle;
-      Tint : Compositor_Formats.Word; Secondary : Boolean;
+      Tint : Compositor_Formats.Word; Face : Compositor_Text.L.Face_Index; Secondary : Boolean;
       Drawn, Repaint, Must_Restart : out Boolean)
      with Global => (In_Out => Engine);
    procedure Draw_Client
@@ -112,7 +112,7 @@ package Desktop_Compositor with SPARK_Mode, Abstract_State => Engine is
    procedure Draw_Icon
      (Target : Compositor_Formats.Image; Target_Bytes : Compositor_Formats.Byte_Count;
       Screen : CuBit.Display_Geometry.Output; Item : Desktop_Icon_Pixels.Asset;
-      Surface : CuBit.Display_Geometry.Logical_Rectangle;
+      Area : CuBit.Display_Geometry.Physical_Rectangle; Skip_X, Skip_Y : Natural;
       Damage : CuBit.Display_Geometry.Physical_Rectangle;
       Secondary : Boolean; Drawn, Must_Restart : out Boolean)
      with Global => null;

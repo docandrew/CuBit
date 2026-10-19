@@ -36,7 +36,7 @@ begin
    Vulkan_Device_Mock.Set (True, True, 0); Image_Set (4096, 1, 0, 0, 0);
    D.Initialize (CuBit.Handles.Fixture.Endpoint_Of (25)); D.Configure_Targets (32, 24, 1, 16384, OK); pragma Assert (OK);
    D.Prepare_Pipeline (OK); pragma Assert (OK);
-   D.Import_Owned_Source (128, Address, Source, Imported); pragma Assert (Imported = D.Source_Accepted);
+   D.Import_Owned_Source (Vulkan_Submission.Backdrop_Slot'First, Address, Source, Imported); pragma Assert (Imported = D.Source_Accepted);
    if Scenario = 3 then
       for I in Readers'Range loop
          D.Pin_Source (Source, Readers (I)); pragma Assert (D.Reader_Held (Readers (I)));
@@ -76,7 +76,7 @@ begin
    end if;
    D.Release_Source (Source, Released); pragma Assert (Released = Address);
    if Scenario /= 2 then
-      D.Import_Owned_Source (128, Address, Other, Imported); pragma Assert (Imported = D.Source_Accepted and Other /= Source);
+      D.Import_Owned_Source (Vulkan_Submission.Backdrop_Slot'First, Address, Other, Imported); pragma Assert (Imported = D.Source_Accepted and Other /= Source);
       G.Begin_Frame (S, Screen, 0, OK); pragma Assert (OK);
       G.Append (S, (Source, (0, 0, 32, 24), False, False, 0, Vulkan_Scene.Textured), OK); pragma Assert (not OK);
       G.Finish (S, Result); pragma Assert (Result = G.Rejected and G.Image_Reader_Count (S) = 0);

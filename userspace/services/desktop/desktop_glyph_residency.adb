@@ -79,7 +79,7 @@ package body Desktop_Glyph_Residency with SPARK_Mode is
       end if;
       if S.Backings (T.Position) /= A.No_Ticket and then
         (S.Extents (T.Position).Width /= Natural (Layout.Width) or else
-         S.Extents (T.Position).Height /= Natural (Layout.Height))
+         S.Extents (T.Position).Height /= C.L.Strip_Height (Layout))
       then
          -- Another density: this cell extent cannot hold the new glyph.
          Free_Cell (S, T.Position, OK);
@@ -94,9 +94,9 @@ package body Desktop_Glyph_Residency with SPARK_Mode is
          end if;
       else
          D.Allocate_Backing (Index (T.Position), Interfaces.Unsigned_32 (Layout.Width),
-            Interfaces.Unsigned_32 (Layout.Height), True, S.Backings (T.Position), Native);
+            Interfaces.Unsigned_32 (C.L.Strip_Height (Layout)), True, S.Backings (T.Position), Native);
          if Native = D.Source_Accepted then
-            S.Extents (T.Position) := (Natural (Layout.Width), Natural (Layout.Height));
+            S.Extents (T.Position) := (Natural (Layout.Width), C.L.Strip_Height (Layout));
          end if;
       end if;
       if Native /= D.Source_Accepted then
@@ -154,7 +154,7 @@ package body Desktop_Glyph_Residency with SPARK_Mode is
            S.Backings (Position) = A.No_Ticket
          then
             D.Allocate_Backing (Index (Position), Interfaces.Unsigned_32 (Layout.Width),
-              Interfaces.Unsigned_32 (Layout.Height), True, Lease, Native);
+              Interfaces.Unsigned_32 (C.L.Strip_Height (Layout)), True, Lease, Native);
             if Native /= D.Source_Accepted or else Lease = A.No_Ticket then
                if Native = D.Source_Unsafe or else Lease /= A.No_Ticket then
                   -- An unaccepted lease is still a live native object.
@@ -163,7 +163,7 @@ package body Desktop_Glyph_Residency with SPARK_Mode is
                return;
             end if;
             S.Backings (Position) := Lease;
-            S.Extents (Position) := (Natural (Layout.Width), Natural (Layout.Height));
+            S.Extents (Position) := (Natural (Layout.Width), C.L.Strip_Height (Layout));
             Prepared := Prepared + 1;
          end if;
       end loop;

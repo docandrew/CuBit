@@ -157,8 +157,8 @@ package body CuBit.UI.Combo_Boxes is
       if Is_Empty (R) then return; end if;
       Draw_Text_Field (PC, R, Colors, "", False, Usable and (Focused or State.Hot));
       if Selectable (Definition, State.Selected) then
-         Draw_UI_Text (With_Clip (PC, (R.x + Natural'Min (8, R.w), R.y + Natural'Min (2, R.h),
-           Caption_W, R.h - Natural'Min (4, R.h))), R.x + 8, TY,
+         Draw_UI_Text_Fitted (PC, (R.x + Natural'Min (8, R.w), R.y + Natural'Min (2, R.h),
+           Caption_W, R.h - Natural'Min (4, R.h)), R.x + 8, TY,
            Value (Definition.Choices (State.Selected).Caption), Ink, Colors.field);
       end if;
       Draw_Arrow_Button (PC, Arrow, Colors,
@@ -188,8 +188,8 @@ package body CuBit.UI.Combo_Boxes is
          FG := (if not Definition.Choices (I).Enabled then Colors.muted
                 elsif I = State.Highlighted then Colors.selectionText else Colors.text);
          Fill_Rect (With_Clip (RC, Row), Row, BG);
-         Draw_UI_Text (With_Clip (RC, (Row.x + Natural'Min (8, Row.w), Row.y + 2,
-           Row.w - Natural'Min (16, Row.w), Row.h - Natural'Min (4, Row.h))),
+         Draw_UI_Text_Fitted (RC, (Row.x + Natural'Min (8, Row.w), Row.y + 2,
+           Row.w - Natural'Min (16, Row.w), Row.h - Natural'Min (4, Row.h)),
            Row.x + 8, Row.y + (if Row.h > UI_Text_Height then (Row.h - UI_Text_Height) / 2 else 0),
            Value (Definition.Choices (I).Caption), FG, BG);
          if Definition.Choices (I).Enabled then

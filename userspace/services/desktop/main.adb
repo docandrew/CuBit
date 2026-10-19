@@ -40,6 +40,9 @@ with Desktop_Logs;
 with Compositor_Metric_Batch_Policy;
 with Desktop_Storage_Policy;
 with Compositor_Text;
+with Client_Glyph_Blend;
+with Glyph_Gamma;
+with Glyph_Pen;
 with Compositor_Sampling;
 with Compositor_Row_Copy;
 with Compositor_Elapsed;
@@ -97,14 +100,26 @@ with Compositor_Cursor;
 with Desktop_Icons;
 with Desktop_Icon_Pixels;
 with CuBit.Fonts;
+with Text_Fit;
 with CuBit.UI.Window_Chrome;
 with Desktop_Wallpaper;
 with Desktop_Wallpaper_Assets;
 with Desktop_Icon_Assets;
+with Icon_Edge_Choice;
 with Desktop_Wallpaper_Layers;
+with Desktop_Window_Placement;
 with Desktop_Settings;
+with Desktop_Time_Zone_Setting;
+with Time_Zones;
 with Desktop_Launch;
 with Desktop_Launch_Notice;
+with Desktop_Notifications;
+with Desktop_Task_Groups;
+with Desktop_Surface_Limits;
+with Desktop_Heap_Objects;
+with Desktop_Deskbar_Layout;
+with Desktop_Deskbar_Style;
+with Desktop_Status_Items;
 with Desktop_Launch_Refresh;
 with CuBit.Child_Exits;
 with CuBit.Launch_Arguments;
@@ -116,8 +131,13 @@ with Clipboard_Store;
 with Clipboard_Menu;
 with Key_Repeat;
 with Desktop_Key_Repeat_Settings;
+with Desktop_Display_Scale_Settings;
+with Desktop_Display_Modeset_Settings;
+with Desktop_Auto_Scale;
 with Desktop_GPU_Power_Settings;
 with Client_Popup_Layout;
+with Client_Tooltip_Policy;
+with Desktop_Tooltips;
 with CCL.Interfaces.Desktop_Launch;
 with CuBit.Appearance;
 with CuBit.Config;
@@ -240,6 +260,15 @@ procedure main is
    KEY_ENTER          : constant Unsigned_8 := 16#1C#;
    KEY_UP             : constant Unsigned_8 := 16#48#;
    KEY_DOWN           : constant Unsigned_8 := 16#50#;
+   KEY_LEFT           : constant Unsigned_8 := 16#4B#;
+   KEY_RIGHT          : constant Unsigned_8 := 16#4D#;
+   KEY_TAB            : constant Unsigned_8 := 16#0F#;
+   KEY_SPACE          : constant Unsigned_8 := 16#39#;
+   KEY_DELETE         : constant Unsigned_8 := 16#53#;
+   --  Super+N opens the Deskbar panel; Super+T puts keyboard focus on the
+   --  taskbar.
+   KEY_DESKBAR_N      : constant Unsigned_8 := 16#31#;
+   KEY_TASKBAR_T      : constant Unsigned_8 := 16#14#;
    KEY_LEFT_SUPER     : constant Unsigned_8 := 16#5B#;
    KEY_RIGHT_SUPER    : constant Unsigned_8 := 16#5C#;
    --  Super+V opens the clipboard manager.
@@ -274,8 +303,8 @@ procedure main is
    use type PS.Ticket, PS.Phase;
    -- Two outputs with three targets each, one scene reserve and one drag layer.
    pixelStorage : PS.State := PS.Open
-     (Positive'Min (Desktop_Storage_Policy.Maximum_Bytes,
-       8 * Positive (DP.Maximum_Buffer_Bytes)));
+     (Positive (Unsigned_64'Min (Unsigned_64 (Desktop_Storage_Policy.Maximum_Bytes),
+       8 * DP.Maximum_Buffer_Bytes)));
    type Pixel_Allocation is record
       Ticket : PS.Ticket := PS.No_Ticket;
       Address : Unsigned_64 := 0;
@@ -303,12 +332,9 @@ procedure main is
    --  The menu label of the pending launch: what a launch notice names.
    launchLabel : Desktop_Launch_Notice.Name_Text := (others => ' ');
    launchLabelLength : Desktop_Launch_Notice.Name_Length := 0;
-   --  Why a launch failed (Desktop_Launch_Notice), until dismissed, and the
-   --  launched children not yet showing a window.
-   launchNotice : Desktop_Launch_Notice.Notice;
+   --  The launched children not yet showing a window (Desktop_Launch_Notice);
+   --  a failure to start is posted to the Deskbar's notification centre.
    launchWatch : Desktop_Launch_Notice.Watch_Table;
-   --  A press on the notice: its release belongs to the desktop too.
-   noticePointerCapture : Boolean := False;
    launchInputAnnounced : Boolean := False;
    doomPid : Process_ID := No_Process;
    psBufAddr : System.Address := System.Null_Address;
@@ -552,18 +578,30 @@ procedure main is
       POINTER_RESIZE_DIAGONAL => 4);
    for Pointer_Cursor_Style'Size use 8;
 
-   MAX_SURFACES : constant Natural := 8;
-   package Source_Loans is new Compositor_Source_Loans
-     (MAX_SURFACES * (Surface_Policy.Slot'Last + 1));
+   --  The surface table starts at INITIAL_SURFACES and doubles whenever a
+   --  new surface finds it full (growSurfaceTables), with memory from
+   --  CuAlloc; the protocol's surface capacity type is the only bound.
+   MAX_SURFACES : constant := Desktop_Surface_Limits.Maximum_Surfaces;
+   pragma Compile_Time_Error
+     (MAX_SURFACES /= Natural (DP.Surface_Capacity'Last), "the surface table's bound is the protocol's");
+   INITIAL_SURFACES : constant := 8;
+   --  Source loans per surface: its publication slots and one replacement
+   --  acquisition. The loan table grows with the surface table.
+   LOANS_PER_SURFACE : constant := Surface_Policy.Slot'Last + 1;
+   package Source_Loans renames Compositor_Source_Loans;
    use type Source_Loans.Phase;
    use type Source_Loans.Ticket;
    type Source_Loan is record
       Grant : MG.Grant_Reference;
       Address : System.Address := System.Null_Address;
    end record;
-   type Source_Loan_Table is array (Source_Loans.Slot) of Source_Loan;
-   sourceLoanPolicy : Source_Loans.State;
-   sourceLoans : Source_Loan_Table;
+   type Source_Loan_Table is array (Source_Loans.Slot range <>) of Source_Loan;
+   type Loan_Store (Capacity : Source_Loans.Slot) is record
+      Policy : Source_Loans.State (Capacity);
+      Loans  : Source_Loan_Table (1 .. Capacity);
+   end record;
+   package Loan_Heap is new Desktop_Heap_Objects (Loan_Store);
+   loans : Loan_Heap.Reference;
    use type Surface_Policy.Phase;
    use type MG.Grant_Reference;
    type Publication_Buffer is record
@@ -629,13 +667,24 @@ procedure main is
       -- accent) and the stripe colours precomputed from it (refreshStripe).
       appColor : Desktop_Launch.App_Color := Desktop_Launch.Theme_Accent;
       stripe   : Window_Chrome.Window_Colors;
+      --  The Deskbar (Desktop_Task_Groups): the app this window belongs to
+      --  (its launcher entry, else its own process), the entry's icon and
+      --  label, and when the window opened (buttons stand in that order).
+      appKey   : Desktop_Task_Groups.Group_Key := 0;
+      appIcon  : Desktop_Icons.Icon_ID := Desktop_Icons.Start;
+      appLabel : String (1 .. Desktop_Launch.Maximum_Label) := [others => ' '];
+      appLabelLength : Natural range 0 .. Desktop_Launch.Maximum_Label := 0;
+      taskOrder : Unsigned_64 := 0;
+      --  The task button's label widths in the taskbar's font, measured
+      --  once whenever the title or the app changes (not per frame): the
+      --  title (one window) and the app's label (a group).
+      labelsMeasured : Boolean := False;
+      titleWidth, appLabelWidth : Natural := 0;
    end record;
 
-   package Focus_Policy is new Compositor_Focus (MAX_SURFACES);
+   package Focus_Policy renames Compositor_Focus;
    subtype SurfaceIndex is Natural range 0 .. MAX_SURFACES - 1;
-   type SurfaceTable is array (SurfaceIndex) of Surface;
-
-   surfaces : SurfaceTable;
+   type SurfaceTable is array (SurfaceIndex range <>) of Surface;
 
    MAX_STREAM_ANNOUNCEMENTS : constant Natural := 16;
    subtype StreamAnnouncementIndex is Natural
@@ -692,13 +741,115 @@ procedure main is
       waiter   : InputWaiter;
    end record;
    type SurfaceInputChannelTable is
-     array (SurfaceIndex) of SurfaceInputChannel;
-   inputChannels : SurfaceInputChannelTable;
+     array (SurfaceIndex range <>) of SurfaceInputChannel;
+
+   --  What the task buttons look like (Desktop_Task_Groups), by place
+   --  (from 0): a frame repaints only the buttons that changed since the
+   --  last one (opened, closed, regrouped, focused, minimized, moved).
+   type Task_Look is record
+      Box       : Rect := (others => 0);
+      Key       : Desktop_Task_Groups.Group_Key := 0;
+      First     : Unsigned_64 := 0;
+      Members   : Desktop_Task_Groups.Window_Count := 0;
+      Active    : Boolean := False;
+      Minimized : Boolean := False;
+   end record;
+   type Task_Looks is array (Natural range <>) of Task_Look;
+
+   --  The surface table (back to front), each surface's input channel and
+   --  the task buttons drawn last, all one size (Last + 1 entries).
+   type Surface_Store (Last : SurfaceIndex) is record
+      Surfaces : SurfaceTable (0 .. Last);
+      Channels : SurfaceInputChannelTable (0 .. Last);
+      Tasks    : Task_Looks (0 .. Last);
+   end record;
+   package Store_Heap is new Desktop_Heap_Objects (Surface_Store);
+   use type Store_Heap.Reference;
+   store : Store_Heap.Reference;
+   function surfaceLast return SurfaceIndex is (store.Last);
+
    -- These states survive channel clearing and surface destruction. Each
    -- maintenance turn retries one exact retained acquisition at most once.
    package Input_Transfers is new Compositor_Input_Delivery_Pool
-     (MAX_SURFACES, Desktop_Input_Transfer.Engine);
-   inputTransfers : Input_Transfers.State;
+     (Desktop_Input_Transfer.Engine);
+   package Transfer_Heap is new Desktop_Heap_Objects (Input_Transfers.State);
+   inputTransfers : Transfer_Heap.Reference;
+
+   --  Make the surface table Count surfaces large, with the tables sized by
+   --  it (input channels, task buttons, source loans, input transfers),
+   --  keeping every entry where it is. All or nothing: Grown is False when
+   --  the heap cannot hold the larger tables, and nothing changes.
+   procedure resizeSurfaceTables (Count : Positive; Grown : out Boolean)
+     with Pre => Count <= MAX_SURFACES and then (store = null or else Count > store.Last + 1);
+   procedure resizeSurfaceTables (Count : Positive; Grown : out Boolean) is
+      subtype New_Store is Surface_Store (Count - 1);
+      subtype New_Loans is Loan_Store (Count * LOANS_PER_SURFACE);
+      subtype New_Transfers is Input_Transfers.State (Count);
+      storeAt : constant System.Address :=
+        Store_Heap.Allocate (New_Store'Max_Size_In_Storage_Elements);
+      loansAt : constant System.Address :=
+        (if storeAt = System.Null_Address then System.Null_Address
+         else Loan_Heap.Allocate (New_Loans'Max_Size_In_Storage_Elements));
+      transfersAt : constant System.Address :=
+        (if loansAt = System.Null_Address then System.Null_Address
+         else Transfer_Heap.Allocate (New_Transfers'Max_Size_In_Storage_Elements));
+   begin
+      Grown := False;
+      if transfersAt = System.Null_Address then
+         Loan_Heap.Free (loansAt);
+         Store_Heap.Free (storeAt);
+         return;
+      end if;
+      declare
+         --  Declared without Import: every entry starts empty.
+         pragma Warnings (Off, "*may modify overlaid storage*");
+         pragma Warnings (Off, "*to suppress initialization*");
+         newStore : New_Store with Address => storeAt;
+         newLoans : New_Loans with Address => loansAt;
+         newTransfers : New_Transfers with Address => transfersAt;
+         pragma Warnings (On, "*to suppress initialization*");
+         pragma Warnings (On, "*may modify overlaid storage*");
+      begin
+         if store /= null then
+            newStore.Surfaces (store.Surfaces'Range) := store.Surfaces;
+            newStore.Channels (store.Channels'Range) := store.Channels;
+            newStore.Tasks (store.Tasks'Range) := store.Tasks;
+            Source_Loans.Grow (loans.Policy, newLoans.Policy);
+            newLoans.Loans (loans.Loans'Range) := loans.Loans;
+            Input_Transfers.Grow (inputTransfers.all, newTransfers);
+         end if;
+      end;
+      Store_Heap.Free (store);
+      Loan_Heap.Free (loans);
+      Transfer_Heap.Free (inputTransfers);
+      store := Store_Heap.To_Reference (storeAt);
+      loans := Loan_Heap.To_Reference (loansAt);
+      inputTransfers := Transfer_Heap.To_Reference (transfersAt);
+      Grown := True;
+   end resizeSurfaceTables;
+
+   --  A free slot for a new surface, growing the table (doubling) when every
+   --  slot is used. Slot is -1 when the table cannot grow: it is at the
+   --  protocol's bound, or the heap is out of memory.
+   procedure freeSurfaceSlot (Slot : out Integer) is
+      Grown : Boolean;
+      Used : constant Positive := store.Last + 1;
+   begin
+      for I in store.Surfaces'Range loop
+         if not store.Surfaces (I).used then
+            Slot := I;
+            return;
+         end if;
+      end loop;
+      Slot := -1;
+      if Used < MAX_SURFACES then
+         resizeSurfaceTables (Natural'Min (2 * Used, MAX_SURFACES), Grown);
+         if Grown then
+            Slot := Used;
+            debugPrint ("desktop: surface table grown to" & Natural'Image (store.Last + 1) & LF);
+         end if;
+      end if;
+   end freeSurfaceSlot;
    inputQueueOverflows : Unsigned_64 := 0;
 
    cursorX : Natural := 80;
@@ -722,9 +873,47 @@ procedure main is
    pointerSurfaceId : Unsigned_64 := 0;
    launchMenuOpen : Boolean := False;
    masterAudio : CuBit.Audio_Control.State;
-   audioPopupOpen : Boolean := False;
-   audioPointerCapture : Boolean := False;
-   audioSliderDragging : Boolean := False;
+   --  The integrated Deskbar (docs/development-backlog.md UI-027): the
+   --  panel above the status button, the notification centre, one app's
+   --  window list, and keyboard focus on the taskbar.
+   package DN renames Desktop_Notifications;
+   package TG renames Desktop_Task_Groups;
+   package DBL renames Desktop_Deskbar_Layout;
+   package DBS renames Desktop_Deskbar_Style;
+   package DSI renames Desktop_Status_Items;
+   package DT renames Desktop_Tooltips;
+   package TTP renames Client_Tooltip_Policy;
+   use type DT.Target_Kind;
+   use type DN.Serial, DN.Count, DN.Urgency, TG.Group_Count, TG.Window_Count, TG.Group_Key;
+   notifications : DN.History;
+   deskbarPanelOpen : Boolean := False;
+   --  A press on the status button, panel, window list or toast keeps its
+   --  release; a press on the volume slider drags it.
+   deskbarPointerCapture : Boolean := False;
+   deskbarSliderDragging : Boolean := False;
+   --  The app whose window list is open (by app, so restacking keeps it)
+   --  and its selected row.
+   groupListOpen : Boolean := False;
+   groupListKey : TG.Group_Key := 0;
+   groupListRow : TG.Window_Count := 0;
+   --  Keyboard focus on the taskbar (Super+T): Apps, a task button (by
+   --  place) or the status button.
+   type Deskbar_Focus is (No_Focus, Apps_Focus, Task_Focus, Status_Focus);
+   deskbarFocus : Deskbar_Focus := No_Focus;
+   deskbarFocusTask : TG.Group_Count := 0;
+   --  The panel's keyboard row.
+   type Panel_Row is (Volume_Row, Quiet_Row, Note_Row, Clear_Row);
+   panelFocus : Panel_Row := Volume_Row;
+   panelFocusNote : DN.Count := 0;
+   --  The panel drawn last (its height follows the history), for damage.
+   panelShown : Rect := (others => 0);
+   --  Every window gets the next opening order.
+   nextTaskOrder : Unsigned_64 := 1;
+   --  The date and minute under the panel's clock, from the clock service.
+   clockDateKnown : Boolean := False;
+   clockDate : CuBit.Clocks.Snapshot;
+   --  The volume keys and panel slider move in these steps.
+   Volume_Step : constant := 5;
    --  Clipboard manager popup (docs/clipboard.md), toggled by Super+V.
    clipboardMenuOpen : Boolean := False;
    --  The surface the last routed key press went to (queueKey).
@@ -735,6 +924,10 @@ procedure main is
    desktopSuperDown : Boolean := False;
    desktopSuperChord : Boolean := False;
    clockText : String (1 .. 5) := "--:--";
+   --  The clock service's last reported quality, logged when it changes
+   --  (why the Deskbar shows "--:--" is then in the boot log).
+   clockQualityLogged : Boolean := False;
+   clockQuality : CuBit.Clocks.Time_Quality := CuBit.Clocks.Unknown_Time;
    statusDueMs : Unsigned_64 := 0;
    --  Status area clock and volume refresh period (and the latest next read).
    Status_Interval_Ms : constant := 10_000;
@@ -749,6 +942,9 @@ procedure main is
    use type KR.Destination, KR.Press_Outcome;
    keyRepeat : KR.State;
    keyRepeatSettings : KR.Settings := KR.DEFAULT_SETTINGS;
+   --  desktop.display.scale (Load_Display_Scale): Auto until the user picks
+   --  a scale in Settings > Displays.
+   displayScale : Desktop_Display_Scale_Settings.Preference := Desktop_Display_Scale_Settings.Default;
 
    type ScanTable is array (Unsigned_8 range 0 .. 16#39#) of Unsigned_8;
    scancodeNormal : constant ScanTable :=
@@ -910,9 +1106,7 @@ procedure main is
    --  geometry. Damage retains one extra pixel beyond the shadow so every
    --  pixel painted by the old geometry is restored during movement.
    WINDOW_VISUAL_MARGIN : constant Natural := DROP_SHADOW_DEPTH + 1;
-   TASKBAR_H    : constant Natural := 36;
-   LAUNCH_W     : constant Natural := 88;
-   LAUNCH_H     : constant Natural := 24;
+   TASKBAR_H    : constant Natural := DBS.Bar_Height;
    MENU_W       : constant Natural := 250;
    --  Menu layout: category rows every 34 pixels from 42, a separator,
    --  then Power; a submenu beside the open category, rows every 34.
@@ -922,9 +1116,12 @@ procedure main is
 
    function MENU_H return Natural is
      (LAUNCH_FIRST_Y + launchRows * LAUNCH_STEP - 2 + 8 + LAUNCH_STEP);
-   TASK_BUTTON_W : constant Natural := 156;
-   TASK_BUTTON_H : constant Natural := 24;
-   TASK_BUTTON_GAP : constant Natural := 6;
+   pragma Compile_Time_Error
+     (MAX_SURFACES /= TG.Max_Windows, "Desktop_Task_Groups covers the surface table");
+   pragma Compile_Time_Error
+     (MAX_SURFACES /= DBL.Max_Buttons, "Desktop_Deskbar_Layout covers the surface table");
+   pragma Compile_Time_Error
+     (MAX_SURFACES /= DT.MAXIMUM_WINDOWS, "Desktop_Tooltips covers the surface table");
    CURSOR_SAVE_STRIDE : constant Positive := Desktop_Cursors.MAX_WIDTH;
    CURSOR_PIXELS : constant Positive :=
       Desktop_Cursors.MAX_WIDTH * Desktop_Cursors.MAX_HEIGHT;
@@ -944,21 +1141,49 @@ procedure main is
    --  The window button under the pointer (hover feedback), if any.
    chromeHoverId     : Unsigned_64 := 0;
    chromeHoverButton : Pointer_Action := DRAG_NONE;
+   --  Tooltips on the window buttons and the Deskbar's status icons
+   --  (Desktop_Tooltips): when (the policy), where it is drawn, and the
+   --  focused control a keyboard tip hangs off (empty: it follows the
+   --  pointer).
+   tipState   : TTP.Tooltip_State;
+   --  The client window the pointer last hovered inside (0: none). When the
+   --  pointer leaves it, the window gets one last move just past its
+   --  client area's right edge, so its own hover state and tooltips end.
+   hoverInsideId : Unsigned_64 := 0;
+   tipBox     : Rect := (others => 0);
+   tipControl : Rect := (others => 0);
 
-   --  A window's app colour: the launcher entry that started its owner (or
-   --  the Settings entry for the built-in Settings window).
-   function launchColor (Owner : Process_ID; Kind : App_Kind) return Desktop_Launch.App_Color is
+   --  A window's launcher entry: the one that started its owner (or the
+   --  Settings entry for the built-in Settings window); 0 for none.
+   function launchEntryOf (Owner : Process_ID; Kind : App_Kind) return Natural is
       use type Desktop_Launch.Entry_Kind;
    begin
       for I in 1 .. launchMenu.Count loop
          if (Kind = APP_SETTINGS and then launchMenu.Entries (I).Kind = Desktop_Launch.Internal_Settings)
            or else (Owner /= No_Process and then launchPids (I) = Owner)
          then
-            return launchMenu.Entries (I).Color;
+            return I;
          end if;
       end loop;
-      return Desktop_Launch.Theme_Accent;
-   end launchColor;
+      return 0;
+   end launchEntryOf;
+
+   --  An app's Deskbar group: FNV-1a over its program (its label for a
+   --  built-in entry), so every window of one app shares a button whatever
+   --  process opened it, and a menu refresh never changes it.
+   function appKeyOf (Item : Desktop_Launch.Entry_Info) return TG.Group_Key is
+      FNV_Offset : constant Unsigned_64 := 16#CBF2_9CE4_8422_2325#;
+      FNV_Prime  : constant Unsigned_64 := 16#0000_0100_0000_01B3#;
+      Hash : Unsigned_64 := FNV_Offset;
+      Name : constant String :=
+        (if Item.Program_Length > 0 then Desktop_Launch.Program_Of (Item)
+         else Desktop_Launch.Label_Of (Item));
+   begin
+      for C of Name loop
+         Hash := (Hash xor Unsigned_64 (Character'Pos (C))) * FNV_Prime;
+      end loop;
+      return TG.Group_Key (Hash);
+   end appKeyOf;
 
    procedure refreshStripe (S : in out Surface) is
    begin
@@ -966,6 +1191,38 @@ procedure main is
         ((if S.appColor.Declared then CuBit.UI.Theme_Color (S.appColor.Value)
           else CuBit.UI.Current_Theme.accent), chromePalette);
    end refreshStripe;
+
+   --  The launcher entry whose program Owner runs, however it was started
+   --  (by init, another app or the launcher); 0 for none.
+   function launchEntryByProgram (Owner : Process_ID) return Natural;
+
+   --  A new window's app: its entry's colour (window stripe and task
+   --  button), icon, label and group, and its opening order. The entry is
+   --  the one that started the owner, else the one for the program it runs.
+   --  A window of a program with no entry is its own process's app, drawn
+   --  with the CuBit logo.
+   procedure assignApp (S : in out Surface; Owner : Process_ID) is
+      Started_By : constant Natural := launchEntryOf (Owner, S.appKind);
+      Index : constant Natural :=
+        (if Started_By > 0 then Started_By else launchEntryByProgram (Owner));
+   begin
+      if Index in 1 .. launchMenu.Count then
+         S.appColor := launchMenu.Entries (Index).Color;
+         S.appIcon := launchMenu.Entries (Index).Icon;
+         S.appLabel := launchMenu.Entries (Index).Label;
+         S.appLabelLength := launchMenu.Entries (Index).Label_Length;
+         S.appKey := appKeyOf (launchMenu.Entries (Index));
+      else
+         S.appColor := Desktop_Launch.Theme_Accent;
+         S.appIcon := Desktop_Icons.Start;
+         S.appLabelLength := 0;
+         S.appKey := TG.Group_Key (To_Word (Owner));
+      end if;
+      S.taskOrder := nextTaskOrder;
+      nextTaskOrder := nextTaskOrder + 1;
+      S.labelsMeasured := False;
+      refreshStripe (S);
+   end assignApp;
 
    procedure Load_Theme is
       Value : System.Address;
@@ -1005,7 +1262,7 @@ procedure main is
       end loop;
       CuBit.UI.Set_Theme (CuBit.UI.Palette (appearance.Scheme));
       chromePalette := Window_Chrome.Colors (appearance.Scheme);
-      for S of surfaces loop
+      for S of store.Surfaces loop
          if S.used then refreshStripe (S); end if;
       end loop;
    end Load_Theme;
@@ -1128,6 +1385,7 @@ procedure main is
    function C_WIN return Unsigned_32 is (CuBit.UI.Current_Theme.face);
    function C_EDGE return Unsigned_32 is (CuBit.UI.Current_Theme.edge);
    function C_SHADOW return Unsigned_32 is (CuBit.UI.Current_Theme.shadow);
+   function deskbarColors return DBS.Palette is (DBS.Colors (appearance.Scheme));
 
    statsStartMs      : Unsigned_64 := 0;
    statsEvents       : Unsigned_64 := 0;
@@ -1244,6 +1502,34 @@ procedure main is
       debugPrint ("desktop: gpu waitboost " & (if On then "on" else "off") &
                   (if OK then " (configured)" else " (default)") & LF);
    end Load_GPU_Power;
+   --  desktop.display.modeset (Desktop_Display_Modeset_Settings): whether
+   --  to ask for an Intel output's best admitted mode; logged either way.
+   displayModeset : Boolean := Desktop_Display_Modeset_Settings.Default_Enabled;
+   procedure Load_Display_Modeset is
+      use type CuBit.Config.ConfigStatus;
+      Value  : System.Address;
+      Length : Natural;
+      Status : CuBit.Config.ConfigStatus;
+      OK     : Boolean := False;
+   begin
+      CuBit.Config.get (Desktop_Display_Modeset_Settings.Config_Key, Value, Length, Status);
+      if Status = CuBit.Config.OK and then Value /= System.Null_Address and then
+        Length in 1 .. Desktop_Display_Modeset_Settings.Maximum_Source
+      then
+         declare
+            Source : String (1 .. Length) with Import, Address => Value;
+         begin
+            Desktop_Display_Modeset_Settings.Decode (Source, displayModeset, OK);
+         end;
+         if not OK then
+            displayModeset := Desktop_Display_Modeset_Settings.Default_Enabled;
+            debugPrint ("desktop: invalid " & Desktop_Display_Modeset_Settings.Config_Key &
+                        "; using the default" & LF);
+         end if;
+      end if;
+      debugPrint ("desktop: display modeset " & (if displayModeset then "on" else "off") &
+                  (if OK then " (configured)" else " (default)") & LF);
+   end Load_Display_Modeset;
    procedure Load_Key_Repeat is
       use type CuBit.Config.ConfigStatus;
       Value  : System.Address;
@@ -1274,6 +1560,56 @@ procedure main is
                   " rate_hz=" & Decimal (keyRepeatSettings.Rate) &
                   (if OK then " (configured)" else " (default)") & LF);
    end Load_Key_Repeat;
+
+   --  desktop.display.scale (Desktop_Display_Scale_Settings). Absent means
+   --  Auto; an invalid value is reported and keeps Auto. Logged either way.
+   procedure Load_Display_Scale is
+      use type CuBit.Config.ConfigStatus;
+      Value  : System.Address;
+      Length : Natural;
+      Status : CuBit.Config.ConfigStatus;
+      Loaded : Desktop_Display_Scale_Settings.Preference;
+      OK     : Boolean := False;
+   begin
+      CuBit.Config.get (Desktop_Display_Scale_Settings.Config_Key, Value, Length, Status);
+      if Status = CuBit.Config.OK and then Value /= System.Null_Address and then
+        Length in 1 .. Desktop_Display_Scale_Settings.Maximum_Source
+      then
+         declare
+            Source : String (1 .. Length) with Import, Address => Value;
+         begin
+            Desktop_Display_Scale_Settings.Decode (Source, Loaded, OK);
+         end;
+      end if;
+      if OK then
+         displayScale := Loaded;
+      elsif Status /= CuBit.Config.NotFound then
+         debugPrint ("desktop: invalid " & Desktop_Display_Scale_Settings.Config_Key &
+                     "; using the automatic scale" & LF);
+      end if;
+      debugPrint ("desktop: display scale " & Desktop_Display_Scale_Settings.Encode (displayScale) &
+                  (if OK then " (configured)" else " (default)") & LF);
+   end Load_Display_Scale;
+
+   --  The scale an output starts at: the configured one, or (Auto, or a
+   --  configured scale that would leave it less than the arrangement
+   --  minimum) the one its size asks for (Desktop_Auto_Scale).
+   function startupScale (Screen : DG.Output) return DG.UI_Scale is
+      package LR renames Compositor_Layout_Resize;
+      Width : constant DG.Physical_Extent := LR.Upright_Width (Screen);
+      Height : constant DG.Physical_Extent := LR.Upright_Height (Screen);
+   begin
+      if not displayScale.Auto and then
+        LR.Logical_Extent (Width, displayScale.Scale) >= CuBit.Display_Arrangement.Minimum_Width and then
+        LR.Logical_Extent (Height, displayScale.Scale) >= CuBit.Display_Arrangement.Minimum_Height
+      then
+         return displayScale.Scale;
+      end if;
+      return CuBit.Display_Arrangement.Factor (Desktop_Auto_Scale.Choose (Width, Height));
+   end startupScale;
+
+   --  The Settings Monitor page's contents (body after callDisplay).
+   function monitorInfo return Desktop_Settings.Monitor_Info;
 
    procedure recordFrameTrace (Value : FT.Record_Value) is
    begin
@@ -2074,8 +2410,8 @@ procedure main is
 
    function launchButtonRect return Rect is
    begin
-      return clampRect ((x => primaryBounds.x + 6, y => taskbarY + 6,
-                         w => LAUNCH_W, h => LAUNCH_H));
+      return clampRect ((x => primaryBounds.x + DBS.Bar_Inset, y => taskbarY + DBS.Button_Top,
+                         w => DBS.Apps_Width, h => DBS.Button_Height));
    end launchButtonRect;
 
    function launchMenuRect return Rect is
@@ -2175,62 +2511,277 @@ procedure main is
                          w => menu.w - 24, h => 1));
    end launchSeparatorRect;
 
-   function taskButtonOrdinal (slot : SurfaceIndex) return Natural is
-      ordinal : Natural := 0;
+   function uiTextWidth (s : String; face : CuBit.Fonts.Face := CuBit.Fonts.Sans) return Natural;
+   function surfaceTitle (s : Surface) return String;
+   --  Whether the notification toast shows (defined with the drawing).
+   function toastShown return Boolean;
+   --  The tooltip, drawn over everything (defined with its targets).
+   procedure drawTooltip;
+
+   --  The Deskbar's task buttons (Desktop_Task_Groups): one per app, in
+   --  the order its first window opened, whatever the stacking.
+   function taskWindows return TG.Windows is
+      W : TG.Windows (0 .. TG.Window_Slot (surfaceLast));
    begin
-      for i in surfaces'Range loop
-         exit when i = slot;
-         if surfaces (i).used and then
-            (surfaces (i).flags and SURFACE_FLAG_WINDOW) /= 0
-         then
-            ordinal := ordinal + 1;
+      for I in store.Surfaces'Range loop
+         W (TG.Window_Slot (I)) :=
+           (Present   => store.Surfaces (I).used and then
+                         (store.Surfaces (I).flags and SURFACE_FLAG_WINDOW) /= 0,
+            Key       => store.Surfaces (I).appKey,
+            Order     => store.Surfaces (I).taskOrder,
+            Minimized => store.Surfaces (I).minimized,
+            Focused   => store.Surfaces (I).id = focusSurface);
+      end loop;
+      return W;
+   end taskWindows;
+
+   function taskModel (W : TG.Windows) return TG.Model is
+      M : TG.Model (W'Last, TG.Group_Index (W'Length));
+   begin
+      TG.Build (W, M);
+      return M;
+   end taskModel;
+
+   --  The group of app Key (0 if it has no window).
+   function groupOfKey (M : TG.Model; Key : TG.Group_Key) return TG.Group_Count is
+   begin
+      for G in 1 .. M.Count loop
+         if M.Groups (G).Key = Key then
+            return G;
          end if;
       end loop;
+      return 0;
+   end groupOfKey;
 
-      return ordinal;
-   end taskButtonOrdinal;
+   --  What the status button shows (Desktop_Status_Items): an item only
+   --  while Desktop holds the granted service behind it. Volume: the mixer
+   --  (Desktop's "mixer" startup handle) answered. Network, Bluetooth,
+   --  Battery, Power_Profile and Brightness have no service yet.
+   function statusShown return DSI.Presence is
+     ([DSI.Volume => masterAudio.Available, others => False]);
 
-   function taskButtonRect (slot : SurfaceIndex) return Rect is
-      ordinal : constant Natural := taskButtonOrdinal (slot);
-      x       : Natural := primaryBounds.x + 104 +
-        ordinal * (TASK_BUTTON_W + TASK_BUTTON_GAP);
-      right   : constant Natural := primaryBounds.x + primaryBounds.w;
-      maxW    : Natural := TASK_BUTTON_W;
-   begin
-      if primaryBounds.w < 160 or else x >= right - 160 then
-         return (others => 0);
-      end if;
-
-      if x + maxW + 6 > right - 160 then
-         maxW := right - 160 - x;
-      end if;
-
-      return clampRect ((x => x, y => taskbarY + 6,
-                         w => maxW, h => TASK_BUTTON_H));
-   end taskButtonRect;
+   --  The status button: notification count (when unread), the shown
+   --  items, then the clock.
+   function statusWidth return Natural is
+     (2 * DBS.Status_Padding +
+      (if DN.Unread (notifications) > 0 then DBS.Badge_Size + DBS.Status_Item_Gap else 0) +
+      DSI.Count (statusShown) * (Desktop_Icons.ICON_SIZE + DBS.Status_Item_Gap) +
+      uiTextWidth ("00:00"));
 
    function statusRect return Rect is
-     (clampRect ((x => primaryBounds.x +
-                    (if primaryBounds.w >= 160 then primaryBounds.w - 160 else 0),
-                  y => taskbarY + 4, w => 154, h => 28)));
+      width : constant Natural := statusWidth;
+   begin
+      if primaryBounds.w < width + 2 * DBS.Bar_Inset then
+         return (others => 0);
+      end if;
+      return clampRect
+        ((x => primaryBounds.x + primaryBounds.w - DBS.Bar_Inset - width,
+          y => taskbarY + DBS.Status_Top, w => width, h => DBS.Status_Height));
+   end statusRect;
 
-   function speakerRect return Rect is
-     (clampRect ((x => statusRect.x + 4, y => taskbarY + 6,
-                  w => 56, h => 24)));
+   --  Task buttons share the bar between Apps (and its separator) and the
+   --  status button.
+   function taskAreaLeft return Natural is
+     (primaryBounds.x + DBS.Bar_Inset + DBS.Apps_Width + 2 * DBS.Separator_Margin + 1);
+   function taskAreaRight return Natural is
+     (if statusRect.x > taskAreaLeft + DBS.Button_Gap then statusRect.x - DBS.Button_Gap
+      else taskAreaLeft);
 
-   function audioPopupRect return Rect is
-     (clampRect ((x => primaryBounds.x +
-                    (if primaryBounds.w >= 250 then primaryBounds.w - 250 else 0),
-                  y => (if taskbarY >= 124 then taskbarY - 124 else 0),
-                  w => 244, h => 118)));
+   --  Each window's label widths, measured where they changed.
+   procedure measureTaskLabels is
+   begin
+      for I in store.Surfaces'Range loop
+         if store.Surfaces (I).used and then not store.Surfaces (I).labelsMeasured then
+            --  In the emphasis face, the wider one a label is drawn in
+            --  (the focused window's button), so focus never resizes it.
+            store.Surfaces (I).titleWidth :=
+              uiTextWidth (surfaceTitle (store.Surfaces (I)), CuBit.Fonts.Sans_Semibold);
+            store.Surfaces (I).appLabelWidth :=
+              uiTextWidth (store.Surfaces (I).appLabel (1 .. store.Surfaces (I).appLabelLength),
+                           CuBit.Fonts.Sans_Semibold);
+            store.Surfaces (I).labelsMeasured := True;
+         end if;
+      end loop;
+   end measureTaskLabels;
 
+   --  A group's button as wide as its content (as drawTaskButtons lays it
+   --  out): icon, label (the app's for a group, else the title), the count
+   --  badge, padding; between Task_Minimum and Task_Maximum.
+   function taskContentWidth (G : TG.Group) return DBL.Button_Width_Range is
+      S : Surface renames store.Surfaces (SurfaceIndex (G.First));
+      label : constant Natural :=
+        (if G.Members > 1 and then S.appLabelLength > 0 then S.appLabelWidth else S.titleWidth);
+   begin
+      return Natural'Max
+        (DBS.Task_Minimum,
+         Natural'Min
+           (DBS.Task_Maximum,
+            DBS.Icon_Left + Desktop_Icons.ICON_SIZE + DBS.Icon_Label_Gap + label +
+            (if G.Members > 1 then DBS.Count_Gap + DBS.Count_Width else 0) + DBS.Label_Right));
+   end taskContentWidth;
+
+   --  A task button that shows only its app's icon: the last step before
+   --  buttons no longer fit.
+   TASK_ICON_ONLY : constant := DBS.Icon_Left + Desktop_Icons.ICON_SIZE + DBS.Icon_Left;
+
+   --  Every task button's place on the bar (Desktop_Deskbar_Layout.Spans):
+   --  content-wide, shrinking to Task_Minimum with their labels cut when
+   --  crowded, then to icons only when even that does not fit.
+   --  W and M: the table's windows and their model, computed once by the
+   --  caller, which then places every button from these spans (placeRect).
+   function spansOf (W : TG.Windows; M : TG.Model) return DBL.Span_List is
+      left  : constant Natural := taskAreaLeft;
+      right : constant Natural := taskAreaRight;
+      wanted : DBL.Width_List (1 .. Natural (M.Count)) := [others => DBS.Task_Minimum];
+      active : DBL.Button_Count := 0;
+   begin
+      if right <= left or else right > DBL.Max_Coordinate then
+         return [1 .. Natural (M.Count) => (X => 0, W => 0)];
+      end if;
+      measureTaskLabels;
+      for G in 1 .. M.Count loop
+         declare
+            P : constant TG.Group_Index := TG.Position (W, M, G);
+         begin
+            wanted (Natural (P)) := taskContentWidth (M.Groups (G));
+            if M.Groups (G).Active then
+               active := Natural (P);
+            end if;
+         end;
+      end loop;
+      declare
+         readable : constant DBL.Span_List :=
+           DBL.Spans (left, right, wanted, DBS.Task_Minimum, DBS.Button_Gap, active);
+      begin
+         if (for all P in readable'Range => readable (P).W /= 0) then
+            return readable;
+         end if;
+         return DBL.Spans (left, right, wanted, TASK_ICON_ONLY, DBS.Button_Gap, active);
+      end;
+   end spansOf;
+
+   --  The button at place P, of these spans.
+   function placeRect (spans : DBL.Span_List; P : TG.Group_Index) return Rect is
+      span : DBL.Span;
+   begin
+      if Natural (P) > spans'Last then
+         return (others => 0);
+      end if;
+      span := spans (Natural (P));
+      if span.W = 0 then
+         return (others => 0);
+      end if;
+      return clampRect ((x => span.X, y => taskbarY + DBS.Button_Top,
+                         w => span.W, h => DBS.Button_Height));
+   end placeRect;
+
+
+   --  A window's task button: its app's.
+   function taskButtonRect (slot : SurfaceIndex) return Rect is
+      W : constant TG.Windows := taskWindows;
+      M : constant TG.Model := taskModel (W);
+      G : constant TG.Group_Count := M.Of_Window (TG.Window_Slot (slot));
+   begin
+      if G = 0 then
+         return (others => 0);
+      end if;
+      return placeRect (spansOf (W, M), TG.Position (W, M, G));
+   end taskButtonRect;
+
+   --  The Deskbar panel, right-aligned above the status button: a header
+   --  (clock, date), quick settings (volume, do not disturb), then the
+   --  newest notifications and a hint line.
+   function panelNoteRows return Natural is
+     (Natural'Min (Natural (DN.Length (notifications)), DBS.Panel_Visible_Notes));
+
+   function panelHeight return Natural is
+     (DBS.Panel_Stripe + DBS.Panel_Header + 2 * DBS.Panel_Section + 2 * DBS.Panel_Row +
+      (if panelNoteRows = 0 then DBS.Panel_Row else panelNoteRows * DBS.Panel_Note_Row) +
+      DBS.Panel_Footer);
+
+   --  Panel and toast share the right edge and width.
+   function deskbarPopupRect (height : Natural) return Rect is
+      right : constant Natural := primaryBounds.x + primaryBounds.w;
+   begin
+      if right < DBS.Panel_Width + DBS.Bar_Inset or else
+        taskbarY < height + DBS.Panel_Margin
+      then
+         return (others => 0);
+      end if;
+      return clampRect ((x => right - DBS.Bar_Inset - DBS.Panel_Width,
+                         y => taskbarY - DBS.Panel_Margin - height,
+                         w => DBS.Panel_Width, h => height));
+   end deskbarPopupRect;
+
+   function panelRect return Rect is (deskbarPopupRect (panelHeight));
+   function toastRect return Rect is (deskbarPopupRect (DBS.Toast_Height));
+
+   function panelVolumeRowRect return Rect is
+     ((x => panelRect.x, y => panelRect.y + DBS.Panel_Stripe + DBS.Panel_Header + DBS.Panel_Section,
+       w => panelRect.w, h => DBS.Panel_Row));
+   function panelQuietRowRect return Rect is
+     ((x => panelRect.x, y => panelVolumeRowRect.y + DBS.Panel_Row, w => panelRect.w, h => DBS.Panel_Row));
+   function panelNotesHeaderRect return Rect is
+     ((x => panelRect.x, y => panelQuietRowRect.y + DBS.Panel_Row, w => panelRect.w, h => DBS.Panel_Section));
+   function panelNoteRect (row : Positive) return Rect is
+     ((x => panelRect.x, y => panelNotesHeaderRect.y + DBS.Panel_Section + (row - 1) * DBS.Panel_Note_Row,
+       w => panelRect.w, h => DBS.Panel_Note_Row));
+   function panelNoteCloseRect (row : Positive) return Rect is
+     ((x => panelNoteRect (row).x + panelNoteRect (row).w - DBS.Panel_Padding - DBS.Close_Box,
+       y => panelNoteRect (row).y + (DBS.Panel_Note_Row - DBS.Close_Box) / 2,
+       w => DBS.Close_Box, h => DBS.Close_Box));
+   Clear_All_Text : constant String := "Clear all";
+   function panelClearRect return Rect is
+     ((x => panelNotesHeaderRect.x + panelNotesHeaderRect.w - DBS.Panel_Padding - uiTextWidth (Clear_All_Text),
+       y => panelNotesHeaderRect.y, w => uiTextWidth (Clear_All_Text), h => DBS.Panel_Section));
+   function muteIconRect return Rect is
+     ((x => panelVolumeRowRect.x + DBS.Panel_Padding,
+       y => panelVolumeRowRect.y + (DBS.Panel_Row - Desktop_Icons.ICON_SIZE) / 2,
+       w => Desktop_Icons.ICON_SIZE, h => Desktop_Icons.ICON_SIZE));
+   --  The slider's hit area: its track, as tall as the thumb.
    function volumeTrackRect return Rect is
-     (clampRect ((x => audioPopupRect.x + 18,
-                  y => audioPopupRect.y + 46, w => 208, h => 24)));
+     ((x => muteIconRect.x + Desktop_Icons.ICON_SIZE + 2 * DBS.Status_Item_Gap,
+       y => panelVolumeRowRect.y + (DBS.Panel_Row - DBS.Thumb_Height) / 2,
+       w => DBS.Slider_Width, h => DBS.Thumb_Height));
+   function quietToggleRect return Rect is
+     ((x => panelQuietRowRect.x + panelQuietRowRect.w - DBS.Panel_Padding - DBS.Toggle_Width,
+       y => panelQuietRowRect.y + (DBS.Panel_Row - DBS.Toggle_Height) / 2,
+       w => DBS.Toggle_Width, h => DBS.Toggle_Height));
 
-   function muteButtonRect return Rect is
-     (clampRect ((x => audioPopupRect.x + 18,
-                  y => audioPopupRect.y + 80, w => 92, h => 26)));
+   --  How many windows the open list shows (its app's).
+   function groupListMembers return TG.Window_Count is
+      M : constant TG.Model := taskModel (taskWindows);
+      G : constant TG.Group_Count := groupOfKey (M, groupListKey);
+   begin
+      return (if G = 0 then 0 else M.Groups (G).Members);
+   end groupListMembers;
+
+   --  One app's window list, above its button.
+   function groupListRect return Rect is
+      W : constant TG.Windows := taskWindows;
+      M : constant TG.Model := taskModel (W);
+      G : constant TG.Group_Count := groupOfKey (M, groupListKey);
+      button : Rect;
+      height, x : Natural;
+   begin
+      if not groupListOpen or else G = 0 then
+         return (others => 0);
+      end if;
+      button := placeRect (spansOf (W, M), TG.Position (W, M, G));
+      height := 2 * DBS.List_Padding + Natural (M.Groups (G).Members) * DBS.List_Row;
+      if isEmpty (button) or else taskbarY < height + DBS.Panel_Margin then
+         return (others => 0);
+      end if;
+      x := Natural'Min (button.x, primaryBounds.x + primaryBounds.w - DBS.Bar_Inset - DBS.List_Width);
+      return clampRect ((x => x, y => taskbarY - DBS.Panel_Margin - height,
+                         w => DBS.List_Width, h => height));
+   end groupListRect;
+
+   function groupListRowRect (row : TG.Window_Rank) return Rect is
+     ((x => groupListRect.x + DBS.List_Padding,
+       y => groupListRect.y + DBS.List_Padding + (Natural (row) - 1) * DBS.List_Row,
+       w => (if groupListRect.w > 2 * DBS.List_Padding then groupListRect.w - 2 * DBS.List_Padding else 0),
+       h => DBS.List_Row));
 
    function pointInRect (x, y : Natural; r : Rect) return Boolean is
    begin
@@ -2261,19 +2812,36 @@ procedure main is
       return 0;
    end hitLaunchSubItem;
 
+   --  The task button under (x, y): its app's first window, -1 for none.
    function hitTaskButton (x, y : Natural) return Integer is
+      W : constant TG.Windows := taskWindows;
+      M : constant TG.Model := taskModel (W);
+      spans : constant DBL.Span_List := spansOf (W, M);
    begin
-      for i in surfaces'Range loop
-         if surfaces (i).used and then
-            (surfaces (i).flags and SURFACE_FLAG_WINDOW) /= 0 and then
-            pointInRect (x, y, taskButtonRect (i))
-         then
-            return Integer (i);
+      if not pointInRect (x, y, taskbarRect) then
+         return -1;
+      end if;
+      for G in 1 .. M.Count loop
+         if pointInRect (x, y, placeRect (spans, TG.Position (W, M, G))) then
+            return Integer (M.Groups (G).First);
          end if;
       end loop;
-
       return -1;
    end hitTaskButton;
+
+   --  The window list row under (x, y), 0 for none.
+   function hitGroupListRow (x, y : Natural) return TG.Window_Count is
+   begin
+      if not pointInRect (x, y, groupListRect) then
+         return 0;
+      end if;
+      for R in 1 .. groupListMembers loop
+         if pointInRect (x, y, groupListRowRect (R)) then
+            return R;
+         end if;
+      end loop;
+      return 0;
+   end hitGroupListRow;
 
    function unionRect (a, b : Rect) return Rect is
       ax2 : constant Natural := a.x + a.w;
@@ -2437,6 +3005,47 @@ procedure main is
       return False;
    end processAlive;
 
+   function launchEntryByProgram (Owner : Process_ID) return Natural is
+      count : Unsigned_64;
+   begin
+      if Owner = No_Process or else not ensureProcessListBuffer then
+         return 0;
+      end if;
+      count := CuBit.Handles.Control.Process_List
+        (CuBit.Handles.Startup.Process_Named (CuBit.Startup_Tables.Self_Process_Text),
+         psBufAddr, PS_BUF_SIZE);
+      if count = 0 or else count = Unsigned_64'Last then
+         return 0;
+      end if;
+      for i in 0 .. count - 1 loop
+         declare
+            Item : constant CuBit.Process_List.Process_Entry := CuBit.Process_List.Get (psBufAddr, Natural (i));
+         begin
+            if Item.Identity = Owner then
+               declare
+                  --  The kernel keeps the first Name_Bytes of the program name.
+                  Name : constant String := CuBit.Process_List.Name_Of (Item);
+               begin
+                  for E in 1 .. launchMenu.Count loop
+                     declare
+                        Program : constant String := Desktop_Launch.Program_Of (launchMenu.Entries (E));
+                        Kept : constant Natural := Natural'Min (Program'Length, CuBit.Process_List.Name_Bytes);
+                     begin
+                        if Name'Length > 0 and then Kept = Name'Length
+                          and then Program (Program'First .. Program'First + Kept - 1) = Name
+                        then
+                           return E;
+                        end if;
+                     end;
+                  end loop;
+               end;
+               return 0;
+            end if;
+         end;
+      end loop;
+      return 0;
+   end launchEntryByProgram;
+
    function hasWindowFlag (s : Surface; flag : Unsigned_64) return Boolean is
    begin
       return (s.windowFlags and flag) /= 0;
@@ -2537,15 +3146,22 @@ procedure main is
              Shift_Left (buttons and 16#FFFF_FFFF#, 32);
    end packI32Buttons;
 
+   function shellSurfaceVisible return Boolean;
+
+   --  The topmost shown window at (x, y), -1 for none. The Deskbar is above
+   --  every window, so a point on it is never a window's.
    function hitSurface (x, y : Natural) return Integer is
    begin
-      for i in reverse surfaces'Range loop
-         if surfaces (i).used and then
-            not surfaces (i).minimized and then
-            (surfaces (i).flags and SURFACE_FLAG_WINDOW) /= 0 and then
-            x >= surfaces (i).x and then y >= surfaces (i).y and then
-            x < surfaces (i).x + surfaces (i).w and then
-            y < surfaces (i).y + surfaces (i).h
+      if shellSurfaceVisible and then pointInRect (x, y, taskbarRect) then
+         return -1;
+      end if;
+      for i in reverse store.Surfaces'Range loop
+         if store.Surfaces (i).used and then
+            not store.Surfaces (i).minimized and then
+            (store.Surfaces (i).flags and SURFACE_FLAG_WINDOW) /= 0 and then
+            x >= store.Surfaces (i).x and then y >= store.Surfaces (i).y and then
+            x < store.Surfaces (i).x + store.Surfaces (i).w and then
+            y < store.Surfaces (i).y + store.Surfaces (i).h
          then
             return Integer (i);
          end if;
@@ -2599,7 +3215,7 @@ procedure main is
          action := dragMode;
       elsif idx >= 0 then
          action := hitMode
-           (surfaces (SurfaceIndex (idx)), cursorX, cursorY);
+           (store.Surfaces (SurfaceIndex (idx)), cursorX, cursorY);
       end if;
 
       case action is
@@ -2611,9 +3227,9 @@ procedure main is
 
       if idx >= 0 and then
         pointInRect
-          (cursorX, cursorY, clientRect (surfaces (SurfaceIndex (idx))))
+          (cursorX, cursorY, clientRect (store.Surfaces (SurfaceIndex (idx))))
       then
-         return surfaces (SurfaceIndex (idx)).pointerCursor;
+         return store.Surfaces (SurfaceIndex (idx)).pointerCursor;
       end if;
       return POINTER_DEFAULT;
    end cursorStyleAtPointer;
@@ -2702,8 +3318,10 @@ procedure main is
       exitCompositor (1);
    end quarantinePresentations;
 
-   --  Publish launchNotice: log it and draw it (defined with the drawing).
-   procedure showLaunchNotice;
+   --  Log a launch failure and post it to the notification centre
+   --  (defined with the drawing). Process: the child, if one started.
+   procedure postLaunchNotice
+     (Notice : Desktop_Launch_Notice.Notice; Process : Process_ID);
 
    procedure collectLaunch (C : CompletionEntry) is
       M : Message renames C.msg;
@@ -2737,10 +3355,14 @@ procedure main is
            " pid=" & Decimal (M.words (0)) & LF);
       elsif Rejected then
          debugPrint ("desktop: launch rejected token=" & Decimal (C.token) & LF);
-         Desktop_Launch_Notice.Show_Refusal
-           (launchNotice, launchLabel (1 .. launchLabelLength),
-            CuBit.Launch_Arguments.Failure_Of (M.words (0)));
-         showLaunchNotice;
+         declare
+            Refusal : Desktop_Launch_Notice.Notice;
+         begin
+            Desktop_Launch_Notice.Show_Refusal
+              (Refusal, launchLabel (1 .. launchLabelLength),
+               CuBit.Launch_Arguments.Failure_Of (M.words (0)));
+            postLaunchNotice (Refusal, No_Process);
+         end;
       else
          debugPrint ("desktop: launch reply malformed token=" & Decimal (C.token) & LF);
       end if;
@@ -3464,14 +4086,14 @@ procedure main is
          -- or assumption about client opacity. Match fillRect's logical clamp
          -- and its proved physical clip, including fractional DPI/rotation.
          if Cull_Windows and then not clipEnabled then
-            for I in surfaces'Range loop
-               if surfaces (I).used and then not surfaces (I).minimized and then
-                 surfaces (I).id /= compositionExcludedSurface and then
-                 (surfaces (I).flags and SURFACE_FLAG_WINDOW) /= 0
+            for I in store.Surfaces'Range loop
+               if store.Surfaces (I).used and then not store.Surfaces (I).minimized and then
+                 store.Surfaces (I).id /= compositionExcludedSurface and then
+                 (store.Surfaces (I).flags and SURFACE_FLAG_WINDOW) /= 0
                then
                   declare
                      Body_Area : constant Rect := clampRect
-                       ((surfaces (I).x, surfaces (I).y, surfaces (I).w, surfaces (I).h));
+                       ((store.Surfaces (I).x, store.Surfaces (I).y, store.Surfaces (I).w, store.Surfaces (I).h));
                   begin
                      if not isEmpty (Body_Area) and then physicalClip (Body_Area) = outputDamage then
                         if not wallpaperCullAnnounced then
@@ -3657,83 +4279,185 @@ procedure main is
       end if;
    end premultipliedPixelOver;
 
-   function drawNativeIcon
-     (Item : Desktop_Icon_Pixels.Asset; X, Y : Natural) return Boolean
-   is
-      Drawn, Must_Restart : Boolean;
-      Size : constant Positive := Desktop_Icon_Pixels.Size (Item);
-   begin
-      if not nativeOutputPass then return False; end if;
-      declare
-         O : Output_Presentation renames presentations (activeOutput);
-         Damage : constant DG.Physical_Rectangle := physicalClip ((X, Y, Size, Size));
-      begin
-         if Damage.Left >= Damage.Right or else Damage.Top >= Damage.Bottom then return True; end if;
-         -- Embedded icons use straight alpha from the shared immutable icon
-         -- atlas; no per-icon GPU image or premultiplied shadow copy.
-         Desktop_Compositor.Draw_Icon
-           ((O.Buffer, Unsigned_32 (O.Geometry.Width), Unsigned_32 (O.Geometry.Height), Unsigned_32 (O.Pitch), 1),
-            Unsigned_64 (O.Pitch) * Unsigned_64 (O.Geometry.Height),
-            O.Geometry, Item, (DG.Logical_Coordinate (X), DG.Logical_Coordinate (Y),
-              DG.Logical_Coordinate (X + Size), DG.Logical_Coordinate (Y + Size)),
-            Damage, activeOutput = 1, Drawn, Must_Restart);
-         if Must_Restart then exitCompositor (1); end if;
-         return Drawn;
-      end;
-   end drawNativeIcon;
+   --  Application icons are drawn 1:1 from the exported edge nearest the
+   --  output's density (Icon_Edge_Choice), centred in the physical span of
+   --  their logical box, never resampled: crisp at 100%, 125% or 200%.
+   Exported_Edges : constant Icon_Edge_Choice.Edge_List :=
+     [for I in 1 .. Desktop_Icons.Edges'Length => Desktop_Icons.Edges (Desktop_Icons.Edge_Index (I))];
 
+   --  A logical coordinate's physical pixel edge on Screen, before rotation,
+   --  rounded as Compositor_Affine rounds surface edges (half down).
+   function unrotatedEdge (Logical : Integer; Origin : DG.Output_Origin; Scale : DG.UI_Scale)
+     return Integer
+   is
+      Numerator : constant Long_Long_Integer :=
+        2 * Long_Long_Integer (Scale.Numerator) * (Long_Long_Integer (Logical) - Long_Long_Integer (Origin)) -
+        Long_Long_Integer (Scale.Denominator);
+      Denominator : constant Long_Long_Integer := 2 * Long_Long_Integer (Scale.Denominator);
+   begin
+      --  Ceiling division; Ada's "/" truncates toward zero.
+      return Integer (if Numerator <= 0 then Numerator / Denominator
+                      else (Numerator + Denominator - 1) / Denominator);
+   end unrotatedEdge;
+
+   --  One native-storage pixel of the active output, through the selected
+   --  renderer when it captures the output (putPixel's rule), else written.
+   procedure putNativePixel (px, py : DG.Pixel_Index; color : Unsigned_32) is
+      O : Output_Presentation renames presentations (activeOutput);
+      Drawn, Must_Restart : Boolean;
+   begin
+      if Desktop_Compositor.Full_Output and then not Bootstrap_CPU then
+         Desktop_Compositor.Draw_Fill
+           ((O.Buffer, Unsigned_32 (O.Geometry.Width), Unsigned_32 (O.Geometry.Height), Unsigned_32 (O.Pitch), 1),
+            Unsigned_64 (O.Pitch) * Unsigned_64 (O.Geometry.Height), (px, py, px + 1, py + 1), color,
+            activeOutput = 1, Drawn, Must_Restart);
+         if Must_Restart then exitCompositor (1); end if;
+         if Drawn then return; end if;
+      end if;
+      if O.Buffer = System.Null_Address then return; end if;
+      declare
+         pixel : Unsigned_32 with
+           Import, Address => O.Buffer + Storage_Offset (Natural (py) * O.Pitch + Natural (px) * 4);
+      begin
+         pixel := color;
+      end;
+   end putNativePixel;
+
+   --  Icon id, designed design logical pixels square at (x, y), over bg.
    procedure drawIcon
       (id : Desktop_Icons.Icon_ID;
        x, y : Natural;
-       bg   : Unsigned_32)
+       bg   : Unsigned_32;
+       design : Icon_Edge_Choice.Edge := Desktop_Icons.ICON_SIZE)
    is
       pixel : Unsigned_32;
    begin
-      if drawNativeIcon ((Desktop_Icon_Pixels.Application, id), x, y) then return; end if;
-      for yy in 0 .. Desktop_Icons.ICON_SIZE - 1 loop
-         for xx in 0 .. Desktop_Icons.ICON_SIZE - 1 loop
-            pixel := Desktop_Icon_Pixels.Pixel ((Desktop_Icon_Pixels.Application, id), xx, yy);
-            if Shift_Right (pixel, 24) /= 0 then
-               putPixel (x + xx, y + yy, iconPixelOver (pixel, bg));
-            end if;
+      if not nativeOutputPass then
+         --  The legacy direct framebuffer is 1x: the design edge's export
+         --  if there is one, else the nearest.
+         declare
+            Edge : constant Desktop_Icons.Edge_Index :=
+              Desktop_Icons.Edge_Index (Icon_Edge_Choice.Nearest (Exported_Edges, design, 1, 1));
+            Item : constant Desktop_Icon_Pixels.Asset := (Desktop_Icon_Pixels.Application, id, Edge);
+            Size : constant Positive := Desktop_Icons.Edges (Edge);
+            Left : constant Integer := Icon_Edge_Choice.Centered (x, x + design, Size);
+            Top : constant Integer := Icon_Edge_Choice.Centered (y, y + design, Size);
+         begin
+            for yy in 0 .. Size - 1 loop
+               for xx in 0 .. Size - 1 loop
+                  pixel := Desktop_Icon_Pixels.Pixel (Item, xx, yy);
+                  if Shift_Right (pixel, 24) /= 0 and then Left + xx >= 0 and then Top + yy >= 0 then
+                     putPixel (Left + xx, Top + yy, iconPixelOver (pixel, bg));
+                  end if;
+               end loop;
+            end loop;
+         end;
+         return;
+      end if;
+      declare
+         O : Output_Presentation renames presentations (activeOutput);
+         Screen : constant DG.Output := O.Geometry;
+         Rotated : constant Boolean := Screen.Rotation in DG.Clockwise_90 | DG.Clockwise_270;
+         --  The output's extent before rotation.
+         Wide : constant Natural := Natural (if Rotated then Screen.Height else Screen.Width);
+         High : constant Natural := Natural (if Rotated then Screen.Width else Screen.Height);
+         Edge : constant Desktop_Icons.Edge_Index := Desktop_Icons.Edge_Index
+           (Icon_Edge_Choice.Nearest (Exported_Edges, design,
+              Icon_Edge_Choice.Scale_Part (Screen.Scale.Numerator),
+              Icon_Edge_Choice.Scale_Part (Screen.Scale.Denominator)));
+         Item : constant Desktop_Icon_Pixels.Asset := (Desktop_Icon_Pixels.Application, id, Edge);
+         Size : constant Positive := Desktop_Icons.Edges (Edge);
+         Box_Left : constant Integer := unrotatedEdge (x, Screen.X, Screen.Scale);
+         Box_Top : constant Integer := unrotatedEdge (y, Screen.Y, Screen.Scale);
+         Box_Right : constant Integer := unrotatedEdge (x + design, Screen.X, Screen.Scale);
+         Box_Bottom : constant Integer := unrotatedEdge (y + design, Screen.Y, Screen.Scale);
+         Left : constant Integer := Icon_Edge_Choice.Centered (Box_Left, Box_Right, Size);
+         Top : constant Integer := Icon_Edge_Choice.Centered (Box_Top, Box_Bottom, Size);
+         --  The square's part on the output (it may hang over an edge).
+         First_X : constant Natural := Natural (Integer'Max (0, -Left));
+         First_Y : constant Natural := Natural (Integer'Max (0, -Top));
+         Last_X : constant Integer := Integer'Min (Size, Wide - Left) - 1;
+         Last_Y : constant Integer := Integer'Min (Size, High - Top) - 1;
+         --  Logical clip and damage, as native-storage pixels.
+         Clip : constant DG.Physical_Rectangle :=
+           (if clipEnabled then physicalClip (clipRect) else outputDamage);
+         Drawn, Must_Restart : Boolean;
+         px, py : Natural;
+      begin
+         if Last_X < Integer (First_X) or else Last_Y < Integer (First_Y) then return; end if;
+         Desktop_Compositor.Draw_Icon
+           ((O.Buffer, Unsigned_32 (Screen.Width), Unsigned_32 (Screen.Height), Unsigned_32 (O.Pitch), 1),
+            Unsigned_64 (O.Pitch) * Unsigned_64 (Screen.Height), Screen, Item,
+            (DG.Pixel_Edge (Left + Integer (First_X)), DG.Pixel_Edge (Top + Integer (First_Y)),
+             DG.Pixel_Edge (Left + Last_X + 1), DG.Pixel_Edge (Top + Last_Y + 1)),
+            First_X, First_Y, Clip, activeOutput = 1, Drawn, Must_Restart);
+         if Must_Restart then exitCompositor (1); end if;
+         if Drawn then return; end if;
+         --  Software renderers: the same square, pixel for pixel, rotated
+         --  into native storage as Compositor_Affine rotates surfaces.
+         for yy in First_Y .. Last_Y loop
+            for xx in First_X .. Last_X loop
+               pixel := Desktop_Icon_Pixels.Pixel (Item, xx, yy);
+               if Shift_Right (pixel, 24) /= 0 then
+                  case Screen.Rotation is
+                     when DG.Unrotated => px := Left + xx; py := Top + yy;
+                     when DG.Clockwise_90 => px := Natural (Screen.Width) - 1 - (Top + yy); py := Left + xx;
+                     when DG.Clockwise_180 =>
+                        px := Natural (Screen.Width) - 1 - (Left + xx);
+                        py := Natural (Screen.Height) - 1 - (Top + yy);
+                     when DG.Clockwise_270 => px := Top + yy; py := Natural (Screen.Height) - 1 - (Left + xx);
+                  end case;
+                  if px >= Natural (Clip.Left) and then px < Natural (Clip.Right) and then
+                    py >= Natural (Clip.Top) and then py < Natural (Clip.Bottom)
+                  then
+                     putNativePixel (DG.Pixel_Index (px), DG.Pixel_Index (py), iconPixelOver (pixel, bg));
+                  end if;
+               end if;
+            end loop;
          end loop;
-      end loop;
+      end;
    end drawIcon;
 
-   function uiTextWidth (s : String) return Natural is
-      width : Natural := 0;
-   begin
-      for i in s'Range loop
-         width := width + CuBit.Fonts.Width (CuBit.Fonts.Sans, s (i));
-      end loop;
-      return width;
-   end uiTextWidth;
+   --  The toolkit's one measure (CuBit.Fonts.Width): kerned, unrounded
+   --  advances, the pen positions drawUIText places glyphs at.
+   function uiTextWidth (s : String; face : CuBit.Fonts.Face := CuBit.Fonts.Sans) return Natural is
+     (CuBit.Fonts.Width (face, s));
 
+   --  CPU text (bootstrap and fallback): blend ch's ink with its pen at Pen
+   --  (quarter-pixel phase), coverage through the ink's Glyph_Gamma row like
+   --  every other glyph path. The run's background is already drawn.
    procedure drawUIGlyph
-      (x, y : Natural;
+      (Pen  : Glyph_Pen.Position;
+       y    : Natural;
        ch   : Character;
        fg   : Unsigned_32;
-       bg   : Unsigned_32;
-       transparent : Boolean := False)
+       face : CuBit.Fonts.Face)
    is
-      glyph : constant CuBit.Fonts.Glyph_Access := CuBit.Fonts.Get (CuBit.Fonts.Sans, ch);
-      width : Natural;
-      alpha : Natural;
+      glyph : constant CuBit.Fonts.Glyph_Access :=
+        CuBit.Fonts.Get (face, ch, CuBit.Fonts.Normal, Glyph_Pen.Phase_Of (Pen));
+      Ink_Row : constant Glyph_Gamma.Bucket := Glyph_Gamma.Bucket_Of (fg);
+      --  The ink box in logical coordinates; it may start left of 0.
+      Left : constant Integer := Glyph_Pen.Pixel_Of (Pen) - CuBit.Fonts.Origin + Natural (glyph.Ink_Left);
+      Top : constant Natural := y + Natural (glyph.Ink_Top);
+      Width : constant Natural := Natural (glyph.Ink_Width);
+      Height : constant Natural := Natural (glyph.Ink_Height);
+      Column0 : constant Natural := Natural (glyph.Ink_Left);
+      Row0 : constant Natural := Natural (glyph.Ink_Top);
    begin
-      width := Natural (glyph.Advance);
-      if not transparent then
-         fillRect (x, y, width, CuBit.Fonts.Line_Height, bg);
-      end if;
+      if Width = 0 or else Height = 0 or else Column0 + Width > CuBit.Fonts.Max_Width or else
+        Row0 + Height > CuBit.Fonts.Coverage'Length (1)
+      then return; end if;
 
       if nativeOutputPass then
          declare
             O : Output_Presentation renames presentations (activeOutput);
-            Damage : constant DG.Physical_Rectangle := physicalClip
-              ((x, y, width, CuBit.Fonts.Line_Height));
+            Visible_Left : constant Natural := Natural (Integer'Max (0, Left));
+            Damage : constant DG.Physical_Rectangle :=
+              (if Left + Width <= 0 then DG.Empty
+               else physicalClip ((Visible_Left, Top, Left + Width - Visible_Left, Height)));
             Cell : constant DG.Logical_Rectangle :=
-              (DG.Logical_Coordinate (x), DG.Logical_Coordinate (y),
-               DG.Logical_Coordinate (x + width),
-               DG.Logical_Coordinate (y + CuBit.Fonts.Line_Height));
+              (DG.Logical_Coordinate (Left), DG.Logical_Coordinate (Top),
+               DG.Logical_Coordinate (Left + Width), DG.Logical_Coordinate (Top + Height));
          begin
             if Damage.Left >= Damage.Right or else Damage.Top >= Damage.Bottom then return; end if;
             for Y in Natural (Damage.Top) .. Natural (Damage.Bottom) - 1 loop
@@ -3741,15 +4465,16 @@ procedure main is
                   declare
                      M : constant Compositor_Sampling.Sample := Compositor_Sampling.Map
                        (O.Geometry, (DG.Pixel_Index (X), DG.Pixel_Index (Y)), Cell,
-                        DG.Physical_Extent (width), DG.Physical_Extent (CuBit.Fonts.Line_Height));
+                        DG.Physical_Extent (Width), DG.Physical_Extent (Height));
                   begin
                      if M.Valid then
                         declare
                            Target : Unsigned_32 with Import, Address => O.Buffer + Storage_Offset (Y * O.Pitch + X * 4);
-                           Coverage : constant Natural := Natural (glyph.Alpha (Natural (M.Y), Natural (M.X)));
+                           Coverage : constant Unsigned_8 :=
+                             glyph.Alpha (Row0 + Natural (M.Y), Column0 + Natural (M.X));
                         begin
                            if Coverage /= 0 then
-                              Target := blendPixel (fg, (if transparent then Target else bg), Coverage);
+                              Target := Client_Glyph_Blend.Ink (fg, Target, Ink_Row, Coverage);
                            end if;
                         end;
                      end if;
@@ -3759,16 +4484,16 @@ procedure main is
          end;
          return;
       end if;
-      for yy in 0 .. CuBit.Fonts.Line_Height - 1 loop
-         for xx in 0 .. width - 1 loop
-            alpha := Natural (glyph.Alpha (yy, xx));
-            if alpha = 255 then
-               putPixel (x + xx, y + yy, fg);
-            elsif alpha /= 0 then
-               putPixel (x + xx, y + yy, blendPixel
-                 (fg, (if transparent then readBackPixel (x + xx, y + yy)
-                       else bg), alpha));
-            end if;
+      for yy in 0 .. Height - 1 loop
+         for xx in 0 .. Width - 1 loop
+            declare
+               Coverage : constant Unsigned_8 := glyph.Alpha (Row0 + yy, Column0 + xx);
+            begin
+               if Coverage /= 0 and then Left + xx >= 0 then
+                  putPixel (Left + xx, Top + yy, Client_Glyph_Blend.Ink
+                    (fg, readBackPixel (Left + xx, Top + yy), Ink_Row, Coverage));
+               end if;
+            end;
          end loop;
       end loop;
    end drawUIGlyph;
@@ -3785,23 +4510,22 @@ procedure main is
          begin Target := Color; end;
       end Pixel;
       procedure Line (Y : Natural; Text : String) is
-         X : Natural := 8;
+         procedure Place (Index : Positive; C : Character; Pen : Glyph_Pen.Position) is
+            pragma Unreferenced (Index);
+            Glyph : constant CuBit.Fonts.Glyph_Access := CuBit.Fonts.Get (CuBit.Fonts.Sans, C);
+            Left : constant Integer := Glyph_Pen.Nearest (Pen) - CuBit.Fonts.Origin;
+         begin
+            for YY in 0 .. CuBit.Fonts.Line_Height - 1 loop
+               for XX in 0 .. CuBit.Fonts.Max_Width - 1 loop
+                  if Glyph.Alpha (YY, XX) >= 128 and then Left + XX >= 0 then
+                     Pixel (Left + XX, Y + YY, 16#00FFFFFF#);
+                  end if;
+               end loop;
+            end loop;
+         end Place;
+         procedure Each is new CuBit.Fonts.Lay_Out (Place);
       begin
-         for C of Text loop
-            declare Glyph : constant CuBit.Fonts.Glyph_Access := CuBit.Fonts.Get (CuBit.Fonts.Sans, C);
-               Advance : constant Natural := Natural (Glyph.Advance);
-            begin
-               exit when X >= W;
-               if Advance > 0 then
-                  for YY in 0 .. CuBit.Fonts.Line_Height - 1 loop
-                     for XX in 0 .. Advance - 1 loop
-                        if Glyph.Alpha (YY, XX) >= 128 then Pixel (X + XX, Y + YY, 16#00FFFFFF#); end if;
-                     end loop;
-                  end loop;
-               end if;
-               X := X + Advance;
-            end;
-         end loop;
+         Each (CuBit.Fonts.Sans, Text, 8);
       end Line;
    begin
       if not BP.Rendering (O.Pool) or else not CP.Writable (O.Transfer) or else
@@ -3835,17 +4559,18 @@ procedure main is
        s    : String;
        fg   : Unsigned_32;
        bg   : Unsigned_32;
-       transparent : Boolean := False)
+       transparent : Boolean := False;
+       face : CuBit.Fonts.Face := CuBit.Fonts.Sans)
    is
       package T renames Compositor_Text;
-      cx : Natural := x;
-      Cursor : Integer := s'First;
+      pragma Compile_Time_Error
+        (CuBit.Fonts.Face'Pos (CuBit.Fonts.Face'Last) /= T.L.Face_Index'Last,
+         "the compositor's face numbers must be CuBit.Fonts.Face'Pos");
       Batch : T.Glyphs;
-      Count : T.Count;
-      Chunk_First, Chunk_Last : Integer;
-      Chunk_X, Width : Natural;
-      Drawn, Repaint, Must_Restart : Boolean;
-      Area : Rect;
+      Pens : array (T.Index) of Glyph_Pen.Position := [others => 0];
+      Chars : String (T.Index) := [others => ' '];
+      Count : T.Count := 0;
+      Stopped : Boolean := False;
       Target : System.Address := backBufferAddr;
       Target_W : Natural := fbWidth;
       Target_H : Natural := fbHeight;
@@ -3853,16 +4578,85 @@ procedure main is
       Screen : DG.Output := (DG.Physical_Extent (fbWidth),
         DG.Physical_Extent (fbHeight), DG.Unrotated, (1, 1), 0, 0);
       Damage : DG.Physical_Rectangle;
+      Area : Rect;
+
+      --  One compositor batch: each glyph's cell is the whole raster (its
+      --  pen origin CuBit.Fonts.Origin in), never clipped to the advance, at
+      --  the pen's whole pixel; the pen's fraction picks the mask's phase.
+      procedure Flush is
+         Drawn, Repaint, Must_Restart : Boolean;
+      begin
+         if Count = 0 or else Stopped then Count := 0; return; end if;
+         Desktop_Compositor.Draw_Text
+           ((Target, Unsigned_32 (Target_W), Unsigned_32 (Target_H), Unsigned_32 (Target_Pitch), 1),
+            Unsigned_64 (Target_Pitch) * Unsigned_64 (Target_H), Screen,
+            Batch, Count, Damage, fg or 16#FF00_0000#, CuBit.Fonts.Face'Pos (face),
+            (if nativeOutputPass then activeOutput = 1
+             else backBufferAddr = dragBaseBufferAddr),
+            Drawn, Repaint, Must_Restart);
+         if Must_Restart then
+            debugPrint ("desktop: text completion uncertain; restarting" & LF);
+            exitCompositor (1);
+         end if;
+         if Repaint then
+            textSceneRetry := True;
+            debugPrint ("desktop: text batch failed; repainting scene in software" & LF);
+            Stopped := True;
+         elsif not Drawn then
+            if not mesaTextFallbackAnnounced then
+               debugPrint ("desktop: CPU text fallback active" & LF); mesaTextFallbackAnnounced := True;
+            end if;
+            for I in 1 .. Count loop
+               drawUIGlyph (Pens (I), y, Chars (I), fg, face);
+            end loop;
+         elsif Desktop_Compositor.Software_Text then
+            if not retainedTextAnnounced then
+               debugPrint ("desktop: retained software text active" & LF); retainedTextAnnounced := True;
+            end if;
+         elsif not mesaTextAnnounced then
+            debugPrint ("desktop: Mesa retained-mask text active" & LF); mesaTextAnnounced := True;
+         end if;
+         Count := 0;
+      end Flush;
+
+      pragma Compile_Time_Error (Glyph_Pen.Unit /= T.L.Pen_Unit or else Glyph_Pen.Phases /= T.L.Phases,
+                                 "toolkit pens and compositor masks must share pen units and phases");
+      procedure Add (Index : Positive; Ch : Character; Pen : Glyph_Pen.Position) is
+         pragma Unreferenced (Index);
+         Whole : constant Natural := Pen / Glyph_Pen.Unit;
+         Left : constant Integer := Whole - CuBit.Fonts.Origin;
+      begin
+         if Stopped or else Whole >= fbWidth then return; end if;
+         Count := Count + 1;
+         Pens (Count) := Pen; Chars (Count) := Ch;
+         Batch (Count) :=
+           (Code => (if Character'Pos (Ch) in 32 .. 126 then Character'Pos (Ch) else 63),
+            Cell => (T.G.Logical_Coordinate (Left), T.G.Logical_Coordinate (y),
+                     T.G.Logical_Coordinate (Left + CuBit.Fonts.Max_Width),
+                     T.G.Logical_Coordinate (y + CuBit.Fonts.Line_Height)),
+            Offset => Pen mod Glyph_Pen.Unit);
+         if Count = T.Count'Last then Flush; end if;
+      end Add;
+
+      procedure CPU_Glyph (Index : Positive; Ch : Character; Pen : Glyph_Pen.Position) is
+         pragma Unreferenced (Index);
+      begin
+         if Glyph_Pen.Pixel_Of (Pen) < fbWidth then drawUIGlyph (Pen, y, Ch, fg, face); end if;
+      end CPU_Glyph;
+      procedure Each_CPU is new CuBit.Fonts.Lay_Out (CPU_Glyph);
+      procedure Each_Batched is new CuBit.Fonts.Lay_Out (Add);
    begin
-      if x >= fbWidth or else y >= fbHeight then return; end if;
+      if x >= fbWidth or else y >= fbHeight or else s'Length = 0 then return; end if;
+      --  One background for the run; glyphs overlap their neighbours' cells
+      --  (kerning, ink past the advance), so none paints its own.
+      if not transparent then
+         fillRect (x, y, uiTextWidth (s, face), CuBit.Fonts.Line_Height, bg);
+      end if;
       -- Bootstrap must not create a Mesa owner before renderer selection.
       if Bootstrap_CPU or else not Desktop_Compositor.Selected or else textSceneRetry or else
         (not nativeOutputPass and then backBufferAddr = System.Null_Address) or else fbBpp /= 32
       then
-         for I in s'Range loop
-            drawUIGlyph (cx, y, s (I), fg, bg, transparent);
-            cx := cx + uiTextWidth (s (I .. I));
-         end loop;
+         Each_CPU (face, s, x);
          return;
       end if;
       Area := (if clipEnabled then clampRect (clipRect) else (0, 0, fbWidth, fbHeight));
@@ -3877,89 +4671,27 @@ procedure main is
          Damage := (DG.Pixel_Edge (Area.x), DG.Pixel_Edge (Area.y),
                     DG.Pixel_Edge (Area.x + Area.w), DG.Pixel_Edge (Area.y + Area.h));
       end if;
-      while Cursor <= s'Last and cx < fbWidth loop
-         Count := 0; Chunk_First := Cursor; Chunk_X := cx;
-         while Cursor <= s'Last and Count < T.Count'Last and cx < fbWidth loop
-            Width := uiTextWidth (s (Cursor .. Cursor));
-            Count := Count + 1;
-            Batch (Count) :=
-              (Code => (if Character'Pos (s (Cursor)) in 32 .. 126 then Character'Pos (s (Cursor)) else 63),
-               Cell => (T.G.Logical_Coordinate (cx), T.G.Logical_Coordinate (y),
-                        T.G.Logical_Coordinate (cx + Width), T.G.Logical_Coordinate (y + CuBit.Fonts.Line_Height)));
-            cx := cx + Width; Cursor := Cursor + 1;
-         end loop;
-         Chunk_Last := Cursor - 1;
-         if not transparent then
-            if T.Can_Join (Batch, Count) then
-               declare R : constant T.G.Logical_Rectangle := T.Background (Batch, Count); begin
-                  fillRect (Natural (R.Left), Natural (R.Top),
-                    Natural (R.Right) - Natural (R.Left),
-                    Natural (R.Bottom) - Natural (R.Top), bg);
-               end;
-            else
-               for I in 1 .. Count loop
-                  declare R : constant T.G.Logical_Rectangle := Batch (I).Cell; begin
-                     fillRect (Natural (R.Left), Natural (R.Top),
-                       Natural (R.Right) - Natural (R.Left),
-                       Natural (R.Bottom) - Natural (R.Top), bg);
-                  end;
-               end loop;
-            end if;
-         end if;
-         Desktop_Compositor.Draw_Text
-           ((Target, Unsigned_32 (Target_W), Unsigned_32 (Target_H), Unsigned_32 (Target_Pitch), 1),
-            Unsigned_64 (Target_Pitch) * Unsigned_64 (Target_H), Screen,
-            Batch, Count, Damage, fg or 16#FF00_0000#,
-            (if nativeOutputPass then activeOutput = 1
-             else backBufferAddr = dragBaseBufferAddr),
-            Drawn, Repaint, Must_Restart);
-         if Must_Restart then
-            debugPrint ("desktop: text completion uncertain; restarting" & LF);
-            exitCompositor (1);
-         end if;
-         if Repaint then
-            textSceneRetry := True;
-            debugPrint ("desktop: text batch failed; repainting scene in software" & LF);
-            return;
-         elsif not Drawn then
-            if not mesaTextFallbackAnnounced then
-               debugPrint ("desktop: CPU text fallback active" & LF); mesaTextFallbackAnnounced := True;
-            end if;
-            declare Fallback_X : Natural := Chunk_X; begin
-               for I in Chunk_First .. Chunk_Last loop
-                  drawUIGlyph (Fallback_X, y, s (I), fg, bg, transparent);
-                  Fallback_X := Fallback_X + uiTextWidth (s (I .. I));
-               end loop;
-            end;
-         elsif Desktop_Compositor.Software_Text then
-            if not retainedTextAnnounced then
-               debugPrint ("desktop: retained software text active" & LF); retainedTextAnnounced := True;
-            end if;
-         elsif not mesaTextAnnounced then
-            debugPrint ("desktop: Mesa retained-mask text active" & LF); mesaTextAnnounced := True;
-         end if;
-      end loop;
+      Each_Batched (face, s, x);
+      Flush;
    end drawUIText;
+
+   --  What a window is called (title bar and task button).
+   function surfaceTitle (s : Surface) return String is
+     (case s.appKind is
+         when APP_DOOM     => "DOOM",
+         when APP_SETTINGS => "Settings",
+         when others       =>
+           (if s.title.Length > 0 then s.title.Text else "Application"));
 
    procedure drawSurfaceTitle
       (s       : Surface;
        x, y    : Natural;
        fg, bg  : Unsigned_32;
-       transparent : Boolean := False)
+       transparent : Boolean := False;
+       face    : CuBit.Fonts.Face := CuBit.Fonts.Sans)
    is
    begin
-      case s.appKind is
-         when APP_DOOM =>
-            drawUIText (x, y, "DOOM", fg, bg, transparent);
-         when APP_SETTINGS =>
-            drawUIText (x, y, "Settings", fg, bg, transparent);
-         when others =>
-            if s.title.Length > 0 then
-               drawUIText (x, y, s.title.Text, fg, bg, transparent);
-            else
-               drawUIText (x, y, "Application", fg, bg, transparent);
-            end if;
-      end case;
+      drawUIText (x, y, surfaceTitle (s), fg, bg, transparent, face);
    end drawSurfaceTitle;
 
    function streamName (id : Natural) return String is
@@ -4515,43 +5247,48 @@ procedure main is
       c : Rect;
       occluded : Boolean;
    begin
-      if isEmpty (r) or else launchMenuOpen or else audioPopupOpen or else
-         clipboardMenuOpen or else launchNotice.Open or else
+      if isEmpty (r) or else launchMenuOpen or else deskbarPanelOpen or else
+         groupListOpen or else clipboardMenuOpen or else toastShown or else TTP.Showing (tipState) or else
          not backBufferReady or else backBufferAddr = System.Null_Address
       then
          return False;
       end if;
 
-      for i in surfaces'Range loop
-         if surfaces (i).used and then
-            not surfaces (i).minimized and then
-            surfaces (i).bufferAttached and then
-            surfaces (i).bufferAddr /= System.Null_Address and then
-            surfaces (i).bufferFormat = PIXEL_FORMAT_BGRA8888 and then
-            surfaces (i).bufferW > 0 and then surfaces (i).bufferH > 0 and then
-            surfaces (i).bufferW <= surfaces (i).bufferPitch / 4 and then
-            (surfaces (i).flags and SURFACE_FLAG_WINDOW) /= 0
+      for i in store.Surfaces'Range loop
+         if store.Surfaces (i).used and then
+            not store.Surfaces (i).minimized and then
+            store.Surfaces (i).bufferAttached and then
+            store.Surfaces (i).bufferAddr /= System.Null_Address and then
+            store.Surfaces (i).bufferFormat = PIXEL_FORMAT_BGRA8888 and then
+            store.Surfaces (i).bufferW > 0 and then store.Surfaces (i).bufferH > 0 and then
+            store.Surfaces (i).bufferW <= store.Surfaces (i).bufferPitch / 4 and then
+            (store.Surfaces (i).flags and SURFACE_FLAG_WINDOW) /= 0
          then
-            c := clientRect (surfaces (i));
+            c := clientRect (store.Surfaces (i));
             -- A partial/smaller source cannot replace all client pixels;
             -- route it through drawWindow's complete background fill instead.
             if rectContains (c, r) and then
-              (if surfaces (i).publicationMode then surfaces (i).bufferLogicalW else surfaces (i).bufferW) >= c.w and then
-              (if surfaces (i).publicationMode then surfaces (i).bufferLogicalH else surfaces (i).bufferH) >= c.h
+              (if store.Surfaces (i).publicationMode then store.Surfaces (i).bufferLogicalW else store.Surfaces (i).bufferW) >= c.w and then
+              (if store.Surfaces (i).publicationMode then store.Surfaces (i).bufferLogicalH else store.Surfaces (i).bufferH) >= c.h
             then
                occluded := False;
 
-               if i < SurfaceIndex'Last then
-                  for j in SurfaceIndex'Succ (i) .. SurfaceIndex'Last loop
-                     if surfaces (j).used and then
-                        not surfaces (j).minimized and then
-                        (surfaces (j).flags and SURFACE_FLAG_WINDOW) /= 0
-                        and then rectIntersects (r, surfaceRect (surfaces (j)))
+               if i < surfaceLast then
+                  for j in i + 1 .. surfaceLast loop
+                     if store.Surfaces (j).used and then
+                        not store.Surfaces (j).minimized and then
+                        (store.Surfaces (j).flags and SURFACE_FLAG_WINDOW) /= 0
+                        and then rectIntersects (r, surfaceRect (store.Surfaces (j)))
                      then
                         occluded := True;
                         exit;
                      end if;
                   end loop;
+               end if;
+
+               --  The Deskbar is above every window.
+               if shellSurfaceVisible and then rectIntersects (r, taskbarRect) then
+                  occluded := True;
                end if;
 
                if not occluded then
@@ -4567,7 +5304,7 @@ procedure main is
                      --  a partial present, including saved cursor backgrounds.
                      clipRect := r;
                      clipEnabled := True;
-                     drawClientBuffer (surfaces (i), c.x, c.y, c.w, c.h);
+                     drawClientBuffer (store.Surfaces (i), c.x, c.y, c.w, c.h);
                      clipRect := savedClip;
                      clipEnabled := savedEnabled;
                   end;
@@ -4686,10 +5423,13 @@ procedure main is
        glyph : Button_Glyph)
    is
       G  : constant Natural := Window_Chrome.Glyph_Size;
-      gx : constant Natural := r.x + (r.w - G) / 2;
-      gy : constant Natural := r.y + (r.h - G) / 2;
+      --  A window too narrow for its buttons has empty button rects
+      --  (minimizeButtonRect and the others): nothing to draw, and no
+      --  glyph offset to compute.
+      gx : constant Natural := r.x + (if r.w > G then (r.w - G) / 2 else 0);
+      gy : constant Natural := r.y + (if r.h > G then (r.h - G) / 2 else 0);
    begin
-      if isEmpty (r) then
+      if isEmpty (r) or else r.w < G or else r.h < G then
          return;
       end if;
       fillRect (r.x, r.y, r.w, r.h, look.Fill);
@@ -4768,18 +5508,17 @@ procedure main is
       fillRect (x + Window_Chrome.Border_Width,
                 y + Window_Chrome.Bar_Top + Window_Chrome.Bar_Height,
                 inner, Window_Chrome.Rule_Height, chrome.Rule);
-      fillRect (x + Window_Chrome.Tile_Left,
+      --  The title tile: the app's icon (its launcher entry's).
+      drawIcon (s.appIcon, x + Window_Chrome.Tile_Left,
                 y + Window_Chrome.Bar_Top + (Window_Chrome.Bar_Height - Window_Chrome.Tile_Size) / 2,
-                Window_Chrome.Tile_Size, Window_Chrome.Tile_Size, stripe);
+                bar, Window_Chrome.Tile_Size);
       declare
          textY : constant Natural :=
            y + Window_Chrome.Bar_Top + (Window_Chrome.Bar_Height - CuBit.Fonts.Line_Height) / 2;
       begin
-         drawSurfaceTitle (s, x + Window_Chrome.Title_Left, textY, titleText, bar, True);
-         if active then
-            --  Semibold: the one bundled Sans face, struck twice.
-            drawSurfaceTitle (s, x + Window_Chrome.Title_Left + 1, textY, titleText, bar, True);
-         end if;
+         --  The active window's title in the emphasis face.
+         drawSurfaceTitle (s, x + Window_Chrome.Title_Left, textY, titleText, bar, True,
+                           (if active then CuBit.Fonts.Sans_Semibold else CuBit.Fonts.Sans));
       end;
       drawStreamBadges (s, y + Window_Chrome.Bar_Top + 2);
 
@@ -4845,36 +5584,126 @@ procedure main is
    function taskbarTextY (r : Rect) return Natural is
      (r.y + (if r.h > CuBit.Fonts.Line_Height then (r.h - CuBit.Fonts.Line_Height) / 2 else 0));
 
-   procedure drawTaskButtons is
-      r : Rect;
-      face : Unsigned_32;
-      light : Unsigned_32;
-      dark : Unsigned_32;
+   --  Square, flat and bordered (the window chrome's look): one fill, one edge.
+   procedure drawBox (r : Rect; fill, edge : Unsigned_32) is
    begin
-      for i in surfaces'Range loop
-         if surfaces (i).used and then
-            (surfaces (i).flags and SURFACE_FLAG_WINDOW) /= 0
-         then
-            r := taskButtonRect (i);
+      if isEmpty (r) then
+         return;
+      end if;
+      fillRect (r.x, r.y, r.w, r.h, fill);
+      strokeRect (r.x, r.y, r.w, r.h, edge, edge);
+   end drawBox;
+
+   --  The emphasis face, IBM Plex Sans SemiBold.
+   procedure drawBoldText (x, y : Natural; s : String; fg, bg : Unsigned_32) is
+   begin
+      drawUIText (x, y, s, fg, bg, face => CuBit.Fonts.Sans_Semibold);
+   end drawBoldText;
+
+   --  s cut to fit width pixels, ending in "..." when cut.
+   --  The toolkit's proved fit (Text_Fit), one instance per face: s, its
+   --  longest prefix that fits followed by "...", or "" when not even the
+   --  ellipsis fits.
+   function uiSansWidth (s : String) return Natural is (uiTextWidth (s, CuBit.Fonts.Sans));
+   function uiSansBoundaryAt (s : String; x : Natural) return Natural is
+     (CuBit.Fonts.Boundary_At (CuBit.Fonts.Sans, s, x));
+   function uiSemiboldWidth (s : String) return Natural is (uiTextWidth (s, CuBit.Fonts.Sans_Semibold));
+   function uiSemiboldBoundaryAt (s : String; x : Natural) return Natural is
+     (CuBit.Fonts.Boundary_At (CuBit.Fonts.Sans_Semibold, s, x));
+   package Sans_Fit is new Text_Fit (uiSansWidth, uiSansBoundaryAt);
+   package Semibold_Fit is new Text_Fit (uiSemiboldWidth, uiSemiboldBoundaryAt);
+   function fitText (s : String; width : Natural;
+                     face : CuBit.Fonts.Face := CuBit.Fonts.Sans) return String is
+     (if s'Last > Sans_Fit.Last_Index then s
+      elsif CuBit.Fonts."=" (face, CuBit.Fonts.Sans_Semibold) then Semibold_Fit.Fitted (s, width)
+      else Sans_Fit.Fitted (s, width));
+
+   --  A count without Natural'Image's leading space.
+   function countText (n : Natural) return String is
+      image : constant String := Natural'Image (n);
+   begin
+      return image (image'First + 1 .. image'Last);
+   end countText;
+
+   --  The keyboard focus ring, inside a button or row.
+   procedure drawFocusRing (r : Rect) is
+   begin
+      if r.w > 2 * DBS.Focus_Inset and then r.h > 2 * DBS.Focus_Inset then
+         strokeRect (r.x + DBS.Focus_Inset, r.y + DBS.Focus_Inset,
+                     r.w - 2 * DBS.Focus_Inset, r.h - 2 * DBS.Focus_Inset,
+                     deskbarColors.Focus, deskbarColors.Focus);
+      end if;
+   end drawFocusRing;
+
+   --  An icon centred vertically in r, Left in from its left edge.
+   procedure drawIconIn (id : Desktop_Icons.Icon_ID; r : Rect; left : Natural; bg : Unsigned_32) is
+   begin
+      drawIcon (id, r.x + left,
+                r.y + (if r.h > Desktop_Icons.ICON_SIZE then (r.h - Desktop_Icons.ICON_SIZE) / 2 else 0),
+                bg);
+   end drawIconIn;
+
+   --  One task button per app: its app-colour stripe (muted when every
+   --  window is minimized), icon and label; the active window's button is
+   --  white and semibold; a group shows its window count.
+   procedure drawTaskButtons is
+      W : constant TG.Windows := taskWindows;
+      M : constant TG.Model := taskModel (W);
+      spans : constant DBL.Span_List := spansOf (W, M);
+      C : constant DBS.Palette := deskbarColors;
+   begin
+      for G in 1 .. M.Count loop
+         declare
+            Group : constant TG.Group := M.Groups (G);
+            Place : constant TG.Group_Index := TG.Position (W, M, G);
+            r     : constant Rect := placeRect (spans, Place);
+            S     : Surface renames store.Surfaces (SurfaceIndex (Group.First));
+            fill  : constant Unsigned_32 := (if Group.Active then C.Active else C.Button);
+            edge  : constant Unsigned_32 := (if Group.Active then C.Active_Edge else C.Button_Edge);
+            ink   : constant Unsigned_32 :=
+              (if Group.Active then C.Active_Text
+               elsif Group.Minimized then C.Dimmed_Text else C.Button_Text);
+            textX : constant Natural := r.x + DBS.Icon_Left + Desktop_Icons.ICON_SIZE + DBS.Icon_Label_Gap;
+            --  An icon-only button (crowded bar) has no room for the count.
+            counted : constant Boolean := Group.Members > 1 and then r.w >= DBS.Task_Minimum;
+            countW : constant Natural :=
+              (if counted then DBS.Count_Width + DBS.Count_Gap else 0);
+            room  : constant Natural :=
+              (if r.x + r.w > textX + DBS.Label_Right + countW
+               then r.x + r.w - textX - DBS.Label_Right - countW else 0);
+            label : constant String := fitText
+              ((if Group.Members > 1 and then S.appLabelLength > 0
+                then S.appLabel (1 .. S.appLabelLength) else surfaceTitle (S)), room,
+               (if Group.Active then CuBit.Fonts.Sans_Semibold else CuBit.Fonts.Sans));
+         begin
             if not isEmpty (r) then
-               face := C_BAR;
-               light := C_EDGE;
-               dark := C_SHADOW;
-
-               if surfaces (i).id = focusSurface and then
-                  not surfaces (i).minimized
-               then
-                  face := C_WIN;
-                  light := C_SHADOW;
-                  dark := C_EDGE;
+               drawBox (r, fill, edge);
+               fillRect (r.x, r.y, r.w, DBS.Stripe_Height,
+                         (if Group.Minimized then S.stripe.Muted_Stripe else S.stripe.Stripe));
+               drawIconIn (S.appIcon, r, DBS.Icon_Left, fill);
+               if Group.Active then
+                  drawBoldText (textX, taskbarTextY (r), label, ink, fill);
+               else
+                  drawUIText (textX, taskbarTextY (r), label, ink, fill);
                end if;
-
-               fillRect (r.x, r.y, r.w, r.h, face);
-               strokeRect (r.x, r.y, r.w, r.h, light, dark);
-               drawSurfaceTitle (surfaces (i), r.x + 10, taskbarTextY (r),
-                                 C_TEXT, face);
+               if counted then
+                  declare
+                     box : constant Rect :=
+                       (x => r.x + r.w - DBS.Label_Right - DBS.Count_Width,
+                        y => r.y + (r.h - DBS.Count_Height) / 2, w => DBS.Count_Width,
+                        h => DBS.Count_Height);
+                     text : constant String := countText (Natural (Group.Members));
+                  begin
+                     drawBox (box, fill, edge);
+                     drawUIText (box.x + (if box.w > uiTextWidth (text) then (box.w - uiTextWidth (text)) / 2 else 0),
+                                 taskbarTextY (r), text, ink, fill);
+                  end;
+               end if;
+               if deskbarFocus = Task_Focus and then deskbarFocusTask = Place then
+                  drawFocusRing (r);
+               end if;
             end if;
-         end if;
+         end;
       end loop;
    end drawTaskButtons;
 
@@ -4914,17 +5743,21 @@ procedure main is
           icon     : Desktop_Icons.Icon_ID;
           label    : String;
           fg       : Unsigned_32;
-          arrow    : Boolean)
+          arrow    : Boolean;
+          open     : Boolean := False)
       is
+         --  A category whose submenu is open while the keyboard is in that
+         --  submenu: the Deskbar's active look (as the Apps button).
+         D : constant DBS.Palette := deskbarColors;
          bg : constant Unsigned_32 :=
-           (if selected then C_ACCENT else C_PANEL);
+           (if selected then C_ACCENT elsif open then D.Active else C_PANEL);
          textColor : constant Unsigned_32 :=
-           (if selected then C_WHITE else fg);
+           (if selected then C_WHITE elsif open then D.Active_Text else fg);
       begin
          if isEmpty (item) then
             return;
          end if;
-         if selected then
+         if selected or else open then
             fillRect (item.x, item.y, item.w, item.h, bg);
          end if;
          drawIcon (icon, item.x + 8, item.y + 3, bg);
@@ -4951,7 +5784,7 @@ procedure main is
             launchMenuState.Row = row and then not launchMenuState.In_Submenu,
             categoryIcon (LM.Category_Of (launchMenu, row)),
             LM.Category_Name (LM.Category_Of (launchMenu, row)),
-            (if launchMenuState.Open = row then C_ACCENT else C_TEXT), True);
+            C_TEXT, True, open => launchMenuState.Open = row);
       end loop;
       declare
          sep : constant Rect := launchSeparatorRect;
@@ -4985,62 +5818,295 @@ procedure main is
       end;
    end drawLaunchMenu;
 
-   procedure drawStatus is
-      r : constant Rect := statusRect;
-      speaker : constant Rect := speakerRect;
-      ink : constant Unsigned_32 :=
-        (if masterAudio.Available then C_TEXT else C_MUTED);
-      iconX : constant Natural := speaker.x + 4;
-      iconY : constant Natural := speaker.y + 5;
+   --  Apps: the CuBit logo and "Apps", then the separator before the tasks.
+   procedure drawAppsButton is
+      r : constant Rect := launchButtonRect;
+      C : constant DBS.Palette := deskbarColors;
+      fill : constant Unsigned_32 := (if launchMenuOpen then C.Active else C.Button);
    begin
-      fillRect (r.x, r.y, r.w, r.h, C_BAR);
-      strokeRect (r.x, r.y, r.w, r.h, C_SHADOW, C_EDGE);
-      if audioPopupOpen then
-         strokeRect (speaker.x, speaker.y, speaker.w, speaker.h,
-                     C_SHADOW, C_EDGE);
+      if isEmpty (r) then
+         return;
       end if;
-      --  Original compact speaker geometry; no borrowed platform artwork.
-      fillRect (iconX, iconY + 4, 4, 6, ink);
-      for column in 0 .. 4 loop
-         fillRect (iconX + 4 + column, iconY + 4 - column,
-                   1, 6 + column * 2, ink);
-      end loop;
-      if masterAudio.Muted then
-         for step in 0 .. 4 loop
-            putPixel (iconX + 11 + step, iconY + 4 + step, C_ACCENT);
-            putPixel (iconX + 11 + step, iconY + 8 - step, C_ACCENT);
-         end loop;
-      else
-         fillRect (iconX + 11, iconY + 4, 1, 6, ink);
-         fillRect (iconX + 14, iconY + 2, 1, 10, ink);
+      drawBox (r, fill, (if launchMenuOpen then C.Active_Edge else C.Button_Edge));
+      drawIconIn (Desktop_Icons.Start, r, DBS.Icon_Left, fill);
+      drawBoldText (r.x + DBS.Icon_Left + Desktop_Icons.ICON_SIZE + DBS.Icon_Label_Gap,
+                    taskbarTextY (r), "Apps", C.Active_Text, fill);
+      if deskbarFocus = Apps_Focus then
+         drawFocusRing (r);
       end if;
-      drawUIText (speaker.x + 24, speaker.y + 3,
-                  masterAudio.Level'Image, ink, C_BAR);
-      drawUIText (r.x + 84, r.y + 5, clockText, C_TEXT, C_BAR);
-   end drawStatus;
+      fillRect (r.x + r.w + DBS.Separator_Margin,
+                taskbarY + (TASKBAR_H - DBS.Separator_Height) / 2,
+                1, DBS.Separator_Height, C.Separator);
+   end drawAppsButton;
 
-   procedure drawAudioPopup is
-      r : constant Rect := audioPopupRect;
-      track : constant Rect := volumeTrackRect;
-      mute : constant Rect := muteButtonRect;
-      thumbX : constant Natural := track.x + masterAudio.Level * 196 / 100;
+   --  The status button: unread notifications, the shown status items and
+   --  the clock. It opens the Deskbar panel.
+   procedure drawStatusButton is
+      r : constant Rect := statusRect;
+      C : constant DBS.Palette := deskbarColors;
+      shown : constant DSI.Presence := statusShown;
+      unread : constant Natural := Natural (DN.Unread (notifications));
+      x : Natural := r.x + DBS.Status_Padding;
+      Badge_Limit : constant := 9;
    begin
-      if not audioPopupOpen then return; end if;
-      fillRect (r.x, r.y, r.w, r.h, C_PANEL);
-      strokeRect (r.x, r.y, r.w, r.h, C_EDGE, C_SHADOW);
-      drawUIText (r.x + 18, r.y + 12,
-                  "Master volume" & masterAudio.Level'Image & "%", C_TEXT, C_PANEL);
-      fillRect (track.x + 6, track.y + 10, 196, 4, C_SHADOW);
-      fillRect (track.x + 6, track.y + 10, masterAudio.Level * 196 / 100, 4, C_ACCENT);
-      fillRect (thumbX, track.y + 2, 12, 20, C_BAR);
-      strokeRect (thumbX, track.y + 2, 12, 20, C_EDGE, C_SHADOW);
-      fillRect (mute.x, mute.y, mute.w, mute.h, C_BAR);
-      strokeRect (mute.x, mute.y, mute.w, mute.h,
-                  (if masterAudio.Muted then C_SHADOW else C_EDGE),
-                  (if masterAudio.Muted then C_EDGE else C_SHADOW));
-      drawUIText (mute.x + 12, mute.y + 4,
-                  (if masterAudio.Muted then "Unmute" else "Mute"), C_TEXT, C_BAR);
-   end drawAudioPopup;
+      if isEmpty (r) then
+         return;
+      end if;
+      drawBox (r, C.Status, (if deskbarPanelOpen then C.Status_Open else C.Status_Edge));
+      if unread > 0 then
+         declare
+            badge : constant Rect :=
+              (x => x, y => r.y + (r.h - DBS.Badge_Size) / 2, w => DBS.Badge_Size, h => DBS.Badge_Size);
+            text : constant String := (if unread > Badge_Limit then "9+" else countText (unread));
+         begin
+            fillRect (badge.x, badge.y, badge.w, badge.h, C.Badge);
+            drawUIText (badge.x + (if badge.w > uiTextWidth (text) then (badge.w - uiTextWidth (text)) / 2 else 0),
+                        taskbarTextY (r), text, C.Badge_Text, C.Badge);
+            x := x + DBS.Badge_Size + DBS.Status_Item_Gap;
+         end;
+      end if;
+      for I in DSI.Item loop
+         if shown (I) then
+            drawIconIn (DSI.Icon (I, masterAudio.Muted), r, x - r.x, C.Status);
+            x := x + Desktop_Icons.ICON_SIZE + DBS.Status_Item_Gap;
+         end if;
+      end loop;
+      drawUIText (x, taskbarTextY (r), clockText, C.Active_Text, C.Status);
+      if deskbarFocus = Status_Focus then
+         drawFocusRing (r);
+      end if;
+   end drawStatusButton;
+
+   --  "16:42" for a minute of the day.
+   function minuteText (m : DN.Minute_Of_Day) return String is
+      hours : constant Natural := Natural (m) / 60;
+      minutes : constant Natural := Natural (m) mod 60;
+      function digit (v : Natural) return Character is (Character'Val (Character'Pos ('0') + v));
+   begin
+      return [digit (hours / 10), digit (hours mod 10), ':', digit (minutes / 10), digit (minutes mod 10)];
+   end minuteText;
+
+   function noteAccent (N : DN.Notification) return Unsigned_32 is
+     (if N.Accent.Declared then Unsigned_32 (N.Accent.Value) else CuBit.UI.Current_Theme.accent);
+
+   --  A section heading inside the panel.
+   procedure drawPanelSection (r : Rect; label : String) is
+      C : constant DBS.Palette := deskbarColors;
+   begin
+      fillRect (r.x + 1, r.y, (if r.w > 2 then r.w - 2 else 0), r.h, C.Section);
+      fillRect (r.x + 1, r.y, (if r.w > 2 then r.w - 2 else 0), 1, C.Row_Rule);
+      drawBoldText (r.x + DBS.Panel_Padding, r.y + (r.h - CuBit.Fonts.Line_Height) / 2,
+                    label, C.Section_Text, C.Section);
+   end drawPanelSection;
+
+   procedure drawDeskbarPanel is
+      r : constant Rect := panelRect;
+      C : constant DBS.Palette := deskbarColors;
+      lineY : constant Natural := (DBS.Panel_Row - CuBit.Fonts.Line_Height) / 2;
+      inner : constant Natural := (if r.w > 2 then r.w - 2 else 0);
+   begin
+      if not deskbarPanelOpen or else isEmpty (r) then
+         return;
+      end if;
+      drawDappledShadow (r.x, r.y, r.w, r.h);
+      drawBox (r, C.Panel, C.Panel_Edge);
+      fillRect (r.x, r.y, r.w, DBS.Panel_Stripe, C.Panel_Stripe);
+
+      --  The clock and the date.
+      declare
+         y : constant Natural := r.y + DBS.Panel_Stripe + (DBS.Panel_Header - CuBit.Fonts.Line_Height) / 2;
+      begin
+         drawBoldText (r.x + DBS.Panel_Padding, y, clockText, C.Active_Text, C.Panel);
+         if clockDateKnown then
+            declare
+               date : constant String :=
+                 DBL.Weekday_Name (DBL.Day_Of_Week (clockDate.Year, clockDate.Month, clockDate.Day)) &
+                 Natural'Image (clockDate.Day) & " " & DBL.Month_Name (clockDate.Month);
+            begin
+               drawUIText (r.x + r.w - DBS.Panel_Padding - uiTextWidth (date), y, date, C.Muted, C.Panel);
+            end;
+         end if;
+      end;
+
+      --  Quick settings: what has a granted service behind it.
+      drawPanelSection ((r.x, r.y + DBS.Panel_Stripe + DBS.Panel_Header, r.w, DBS.Panel_Section),
+                        "Quick settings");
+      declare
+         row : constant Rect := panelVolumeRowRect;
+         track : constant Rect := volumeTrackRect;
+         barY : constant Natural := track.y + (track.h - DBS.Slider_Height) / 2;
+         filled : constant Natural := DBL.Offset_Of (track.w, masterAudio.Level);
+      begin
+         fillRect (row.x + 1, row.y, inner, row.h, C.Row);
+         if masterAudio.Available then
+            drawIconIn (DSI.Icon (DSI.Volume, masterAudio.Muted), row, muteIconRect.x - row.x, C.Row);
+            fillRect (track.x, barY, track.w, DBS.Slider_Height, C.Track);
+            fillRect (track.x, barY, filled, DBS.Slider_Height,
+                      (if masterAudio.Muted then C.Muted else C.Focus));
+            drawBox ((x => track.x + filled - (if filled >= DBS.Thumb_Width / 2 then DBS.Thumb_Width / 2 else filled),
+                      y => track.y, w => DBS.Thumb_Width, h => DBS.Thumb_Height), C.Thumb, C.Thumb_Edge);
+            drawUIText (track.x + track.w + 2 * DBS.Status_Item_Gap, row.y + lineY,
+                        (if masterAudio.Muted then "Muted" else countText (masterAudio.Level) & "%"),
+                        C.Active_Text, C.Row);
+         else
+            drawUIText (row.x + DBS.Panel_Padding, row.y + lineY, "Sound: no mixer", C.Muted, C.Row);
+         end if;
+         if panelFocus = Volume_Row then
+            drawFocusRing (row);
+         end if;
+      end;
+      declare
+         row : constant Rect := panelQuietRowRect;
+         toggle : constant Rect := quietToggleRect;
+         on : constant Boolean := DN.Quiet (notifications);
+         state : constant String := (if on then "On" else "Off");
+      begin
+         fillRect (row.x + 1, row.y, inner, row.h, C.Row);
+         fillRect (row.x + 1, row.y, inner, 1, C.Row_Rule);
+         drawUIText (row.x + DBS.Panel_Padding, row.y + lineY, "Do not disturb", C.Active_Text, C.Row);
+         drawBox (toggle, (if on then C.Focus else C.Row), (if on then C.Focus else C.Track));
+         drawUIText (toggle.x + (toggle.w - uiTextWidth (state)) / 2,
+                     toggle.y + (toggle.h - CuBit.Fonts.Line_Height) / 2, state,
+                     (if on then C.Focus_Text else C.Muted), (if on then C.Focus else C.Row));
+         if panelFocus = Quiet_Row then
+            drawFocusRing (row);
+         end if;
+      end;
+
+      --  The notification history, newest first.
+      declare
+         header : constant Rect := panelNotesHeaderRect;
+         total : constant Natural := Natural (DN.Length (notifications));
+      begin
+         drawPanelSection (header, (if total = 0 then "Notifications"
+                                    else "Notifications (" & countText (total) & ")"));
+         if total > 0 then
+            drawUIText (panelClearRect.x, header.y + (header.h - CuBit.Fonts.Line_Height) / 2,
+                        Clear_All_Text, C.Focus, C.Section);
+            if panelFocus = Clear_Row then
+               drawFocusRing (panelClearRect);
+            end if;
+         end if;
+         if total = 0 then
+            declare
+               row : constant Rect := (header.x, header.y + DBS.Panel_Section, header.w, DBS.Panel_Row);
+            begin
+               fillRect (row.x + 1, row.y, inner, row.h, C.Row);
+               drawUIText (row.x + DBS.Panel_Padding, row.y + lineY, "No notifications", C.Muted, C.Row);
+            end;
+         end if;
+         for K in 1 .. panelNoteRows loop
+            declare
+               N : constant DN.Notification := DN.Item (notifications, DN.Position (K));
+               row : constant Rect := panelNoteRect (K);
+               close : constant Rect := panelNoteCloseRect (K);
+               textX : constant Natural := row.x + DBS.Panel_Padding + Desktop_Icons.ICON_SIZE + DBS.Icon_Label_Gap;
+               stamp : constant String :=
+                 (if N.Posted_At.Known then minuteText (N.Posted_At.Minute) else "");
+               room : constant Natural :=
+                 (if close.x > textX + DBS.Status_Item_Gap then close.x - textX - DBS.Status_Item_Gap else 0);
+               titleRoom : constant Natural :=
+                 (if room > uiTextWidth (stamp) + DBS.Status_Item_Gap
+                  then room - uiTextWidth (stamp) - DBS.Status_Item_Gap else 0);
+               titleInk : constant Unsigned_32 :=
+                 (if N.Level = DN.Critical then C.Badge else C.Active_Text);
+            begin
+               fillRect (row.x + 1, row.y, inner, row.h, C.Row);
+               fillRect (row.x + 1, row.y, inner, 1, C.Row_Rule);
+               --  The source app's colour, as on its task button.
+               fillRect (row.x + 1, row.y + 1, DBS.Stripe_Height, row.h - 1, noteAccent (N));
+               drawIcon (N.Icon, row.x + DBS.Panel_Padding, row.y + DBS.Panel_Padding, C.Row);
+               drawBoldText (textX, row.y + DBS.Panel_Padding - 2, fitText (DN.Title_Of (N), titleRoom, CuBit.Fonts.Sans_Semibold),
+                             titleInk, C.Row);
+               if stamp'Length > 0 then
+                  drawUIText (close.x - DBS.Status_Item_Gap - uiTextWidth (stamp), row.y + DBS.Panel_Padding - 2,
+                              stamp, C.Muted, C.Row);
+               end if;
+               drawUIText (textX, row.y + DBS.Panel_Padding - 2 + CuBit.Fonts.Line_Height + 1,
+                           fitText (DN.Detail_Of (N), room), C.Muted, C.Row);
+               drawBox (close, C.Row, C.Row_Rule);
+               drawUIText (close.x + (close.w - uiTextWidth ("x")) / 2,
+                           close.y + (close.h - CuBit.Fonts.Line_Height) / 2, "x", C.Muted, C.Row);
+               if panelFocus = Note_Row and then Natural (panelFocusNote) = K then
+                  drawFocusRing (row);
+               end if;
+            end;
+         end loop;
+      end;
+      drawUIText (r.x + DBS.Panel_Padding, r.y + r.h - DBS.Panel_Footer + (DBS.Panel_Footer - CuBit.Fonts.Line_Height) / 2,
+                  "Esc closes   Arrows move   Del dismisses", C.Muted, C.Panel);
+   end drawDeskbarPanel;
+
+   --  The toasted notification: shown briefly above the status button.
+   function toastPosition return DN.Count is
+     (if deskbarPanelOpen or else DN.Toast (notifications) = DN.No_Notification then 0
+      else DN.Find (notifications, DN.Toast (notifications)));
+   function toastShown return Boolean is (toastPosition /= 0);
+
+   procedure drawToast is
+      r : constant Rect := toastRect;
+      C : constant DBS.Palette := deskbarColors;
+      P : constant DN.Count := toastPosition;
+   begin
+      if P = 0 or else isEmpty (r) then
+         return;
+      end if;
+      declare
+         N : constant DN.Notification := DN.Item (notifications, P);
+         textX : constant Natural := r.x + DBS.Panel_Padding + Desktop_Icons.ICON_SIZE + DBS.Icon_Label_Gap;
+         room : constant Natural := (if r.x + r.w > textX + DBS.Panel_Padding then r.x + r.w - textX - DBS.Panel_Padding else 0);
+         top : constant Natural := r.y + DBS.Panel_Stripe + DBS.Panel_Padding - 2;
+      begin
+         drawDappledShadow (r.x, r.y, r.w, r.h);
+         drawBox (r, C.Row, C.Panel_Edge);
+         fillRect (r.x, r.y, r.w, DBS.Panel_Stripe, noteAccent (N));
+         drawIcon (N.Icon, r.x + DBS.Panel_Padding, top, C.Row);
+         drawBoldText (textX, top, fitText (DN.Title_Of (N), room, CuBit.Fonts.Sans_Semibold),
+                       (if N.Level = DN.Critical then C.Badge else C.Active_Text), C.Row);
+         drawUIText (textX, top + CuBit.Fonts.Line_Height + 2, fitText (DN.Detail_Of (N), room), C.Muted, C.Row);
+      end;
+   end drawToast;
+
+   --  One app's windows, in the order they opened.
+   procedure drawGroupList is
+      r : constant Rect := groupListRect;
+      C : constant DBS.Palette := deskbarColors;
+      W : constant TG.Windows := taskWindows;
+      found : Boolean;
+      slot : TG.Window_Slot;
+   begin
+      if isEmpty (r) then
+         return;
+      end if;
+      drawDappledShadow (r.x, r.y, r.w, r.h);
+      drawBox (r, C.Row, C.Panel_Edge);
+      for R in TG.Window_Rank loop
+         TG.Member_At (W, groupListKey, R, found, slot);
+         exit when not found;
+         declare
+            S : Surface renames store.Surfaces (SurfaceIndex (slot));
+            row : constant Rect := groupListRowRect (R);
+            selected : constant Boolean := groupListRow = R;
+            fill : constant Unsigned_32 := (if selected then C.Section else C.Row);
+            textX : constant Natural := row.x + DBS.Icon_Left + Desktop_Icons.ICON_SIZE + DBS.Icon_Label_Gap;
+            label : constant String := fitText
+              (surfaceTitle (S), (if row.x + row.w > textX + DBS.Label_Right then row.x + row.w - textX - DBS.Label_Right else 0),
+               (if S.id = focusSurface and then not S.minimized then CuBit.Fonts.Sans_Semibold else CuBit.Fonts.Sans));
+            textY : constant Natural := row.y + (row.h - CuBit.Fonts.Line_Height) / 2;
+         begin
+            fillRect (row.x, row.y, row.w, row.h, fill);
+            drawIconIn (S.appIcon, row, DBS.Icon_Left, fill);
+            if S.id = focusSurface and then not S.minimized then
+               drawBoldText (textX, textY, label, C.Active_Text, fill);
+            else
+               drawUIText (textX, textY, label, (if S.minimized then C.Dimmed_Text else C.Button_Text), fill);
+            end if;
+            if selected then
+               drawFocusRing (row);
+            end if;
+         end;
+      end loop;
+   end drawGroupList;
 
    --  Clipboard manager geometry: a fixed-size panel centred above the
    --  taskbar, Clipboard_Menu.Visible_Rows rows of two text lines each.
@@ -5074,12 +6140,12 @@ procedure main is
    function clipboardSourceName (source : Clipboard_Store.Source_Identity)
      return String is
    begin
-      for i in surfaces'Range loop
-         if surfaces (i).used and then
-           To_Word (surfaces (i).owner) = Unsigned_64 (source) and then
-           surfaces (i).title.Length > 0
+      for i in store.Surfaces'Range loop
+         if store.Surfaces (i).used and then
+           To_Word (store.Surfaces (i).owner) = Unsigned_64 (source) and then
+           store.Surfaces (i).title.Length > 0
          then
-            return surfaces (i).title.Text;
+            return store.Surfaces (i).title.Text;
          end if;
       end loop;
       return "closed app";
@@ -5208,66 +6274,95 @@ procedure main is
                   C_MUTED, C_PANEL);
    end drawClipboardMenu;
 
-   --  The launch notice (Desktop_Launch_Notice): a panel above the taskbar
-   --  naming the app and why it did not start. It never takes the pointer
-   --  or keyboard beyond its own dismissal: Escape or Enter (when no menu
-   --  is open) or a click on it.
-   NOTICE_W : constant := 520;
-   NOTICE_H : constant := 78;
-   NOTICE_MARGIN : constant := 12;
-   NOTICE_TEXT_X : constant := 18;
-   NOTICE_TITLE_Y : constant := 10;
-   NOTICE_DETAIL_Y : constant := 32;
-   NOTICE_HINT_Y : constant := 54;
-   NOTICE_BAR_W : constant := 4;
-
-   function launchNoticeRect return Rect is
+   --  Deskbar state changes. Each adds what it changes to damage.
+   procedure damagePanel (damage : in out Rect) is
    begin
-      return clampRect
-        ((x => primaryBounds.x +
-                (if primaryBounds.w > NOTICE_W
-                 then (primaryBounds.w - NOTICE_W) / 2 else 0),
-          y => (if taskbarY > NOTICE_H + NOTICE_MARGIN
-                then taskbarY - NOTICE_H - NOTICE_MARGIN else 0),
-          w => NOTICE_W, h => NOTICE_H));
-   end launchNoticeRect;
+      damage := unionRect (damage, unionRect (panelShown, panelRect));
+   end damagePanel;
 
-   procedure drawLaunchNotice is
-      r : constant Rect := launchNoticeRect;
+   procedure closeDeskbarPanel (damage : in out Rect) is
    begin
-      if not launchNotice.Open or else isEmpty (r) then
+      if deskbarPanelOpen then
+         damagePanel (damage);
+         damage := unionRect (damage, statusRect);
+         deskbarPanelOpen := False;
+         deskbarSliderDragging := False;
+         --  A toast still due shows again.
+         damage := unionRect (damage, toastRect);
+      end if;
+   end closeDeskbarPanel;
+
+   procedure closeGroupList (damage : in out Rect) is
+   begin
+      if groupListOpen then
+         damage := unionRect (damage, groupListRect);
+         groupListOpen := False;
+         groupListRow := 0;
+      end if;
+   end closeGroupList;
+
+   procedure openDeskbarPanel (damage : in out Rect) is
+      oldStatus : constant Rect := statusRect;
+   begin
+      closeGroupList (damage);
+      if launchMenuOpen then
+         damage := unionRect (damage, inflateRect (unionRect (launchButtonRect, launchMenuArea), 4));
+         launchMenuOpen := False;
+      end if;
+      --  The panel shows the toasted notice too: the toast is done.
+      damage := unionRect (damage, toastRect);
+      DN.Hide_Toast (notifications);
+      deskbarPanelOpen := True;
+      panelFocus := Volume_Row;
+      panelFocusNote := 0;
+      --  Opening the panel shows every notification: none is unread now.
+      DN.Mark_Read (notifications);
+      damage := unionRect (damage, unionRect (oldStatus, statusRect));
+      damagePanel (damage);
+   end openDeskbarPanel;
+
+   procedure toggleDeskbarPanel (damage : in out Rect) is
+   begin
+      if deskbarPanelOpen then
+         closeDeskbarPanel (damage);
+      else
+         openDeskbarPanel (damage);
+      end if;
+   end toggleDeskbarPanel;
+
+   procedure toggleGroupList (Key : TG.Group_Key; damage : in out Rect) is
+   begin
+      if groupListOpen and then groupListKey = Key then
+         closeGroupList (damage);
          return;
       end if;
-      drawDappledShadow (r.x, r.y, r.w, r.h);
-      fillRect (r.x, r.y, r.w, r.h, C_PANEL);
-      strokeRect (r.x, r.y, r.w, r.h, C_EDGE, C_SHADOW);
-      fillRect (r.x, r.y, NOTICE_BAR_W, r.h, CuBit.UI.Current_Theme.danger);
-      drawUIText (r.x + NOTICE_TEXT_X, r.y + NOTICE_TITLE_Y,
-                  Desktop_Launch_Notice.Title (launchNotice), C_TEXT, C_PANEL);
-      drawUIText (r.x + NOTICE_TEXT_X, r.y + NOTICE_DETAIL_Y,
-                  Desktop_Launch_Notice.Detail (launchNotice), C_TEXT, C_PANEL);
-      drawUIText (r.x + NOTICE_TEXT_X, r.y + NOTICE_HINT_Y,
-                  "Esc, Enter or click to dismiss", C_MUTED, C_PANEL);
-   end drawLaunchNotice;
+      closeGroupList (damage);
+      closeDeskbarPanel (damage);
+      groupListOpen := True;
+      groupListKey := Key;
+      groupListRow := 1;
+      damage := unionRect (damage, groupListRect);
+   end toggleGroupList;
 
-   procedure dismissLaunchNotice (damage : in out Rect) is
+   --  The Deskbar (Desktop_Deskbar_Style): flat bar, its top rule, Apps,
+   --  the task buttons and the status button.
+   procedure drawDeskbar is
+      barY : constant Natural := taskbarY;
+      C    : constant DBS.Palette := deskbarColors;
    begin
-      if launchNotice.Open then
-         Desktop_Launch_Notice.Dismiss (launchNotice);
-         damage := unionRect (damage, inflateRect (launchNoticeRect, NOTICE_BAR_W));
-         debugPrint ("desktop: launch notice dismissed" & LF);
+      --  Only damage is repainted: skip the task-button layout when the
+      --  clip misses the bar.
+      if clipEnabled and then not rectIntersects (clipRect, taskbarRect) then
+         return;
       end if;
-   end dismissLaunchNotice;
+      fillRect (primaryBounds.x, barY, primaryBounds.w, TASKBAR_H, C.Bar);
+      fillRect (primaryBounds.x, barY, primaryBounds.w, DBS.Bar_Edge, C.Bar_Edge);
+      drawAppsButton;
+      drawTaskButtons;
+      drawStatusButton;
+   end drawDeskbar;
 
    procedure drawDesktopShell is
-      barY     : constant Natural := taskbarY;
-      launch   : constant Rect := launchButtonRect;
-      launchIconY : constant Natural :=
-         launch.y +
-         (if launch.h > Desktop_Icons.ICON_SIZE
-          then (launch.h - Desktop_Icons.ICON_SIZE) / 2
-          else 0);
-      launchTextY : constant Natural := taskbarTextY (launch);
    begin
       if fbWidth = 0 or else fbHeight = 0 then
          return;
@@ -5278,43 +6373,34 @@ procedure main is
       --  Shared client buffers can replace this drawing path later without
       --  changing the surface/session shape.
       drawWallpaper (Cull_Windows => True);
-      fillRect (primaryBounds.x, barY, primaryBounds.w, TASKBAR_H, C_BAR);
-      strokeRect (primaryBounds.x, barY, primaryBounds.w, TASKBAR_H, C_EDGE, C_SHADOW);
-      fillRect (primaryBounds.x, barY, primaryBounds.w, 2, C_ACCENT);
 
-      fillRect (launch.x, launch.y, launch.w, launch.h, C_BAR);
-      if launchMenuOpen then
-         strokeRect (launch.x, launch.y, launch.w, launch.h, C_SHADOW, C_EDGE);
-      else
-         strokeRect (launch.x, launch.y, launch.w, launch.h, C_EDGE, C_SHADOW);
-      end if;
-      drawIcon (Desktop_Icons.Start, launch.x + 5, launchIconY, C_BAR);
-      drawUIText (launch.x + 34, launchTextY, "Apps", C_TEXT, C_BAR);
-      drawTaskButtons;
-
-      for i in surfaces'Range loop
-         if surfaces (i).used and then
-            not surfaces (i).minimized and then
-            surfaces (i).id /= compositionExcludedSurface and then
-            (surfaces (i).flags and SURFACE_FLAG_WINDOW) /= 0
+      for i in store.Surfaces'Range loop
+         if store.Surfaces (i).used and then
+            not store.Surfaces (i).minimized and then
+            store.Surfaces (i).id /= compositionExcludedSurface and then
+            (store.Surfaces (i).flags and SURFACE_FLAG_WINDOW) /= 0
          then
-            drawWindow (surfaces (i));
+            drawWindow (store.Surfaces (i));
          end if;
       end loop;
 
+      --  The Deskbar is the top layer under popups, menus and tooltips.
+      drawDeskbar;
       drawLaunchMenu;
-      drawStatus;
-      drawAudioPopup;
+      drawGroupList;
+      drawDeskbarPanel;
+      panelShown := (if deskbarPanelOpen then panelRect else (others => 0));
       drawClipboardMenu;
-      drawLaunchNotice;
+      drawToast;
+      drawTooltip;
    end drawDesktopShell;
 
    procedure drawCurrentScene is
       shellVisible : Boolean := False;
    begin
-      for i in surfaces'Range loop
-         if surfaces (i).used and then
-            (surfaces (i).flags and SURFACE_FLAG_SHELL) /= 0
+      for i in store.Surfaces'Range loop
+         if store.Surfaces (i).used and then
+            (store.Surfaces (i).flags and SURFACE_FLAG_SHELL) /= 0
          then
             shellVisible := True;
          end if;
@@ -5649,13 +6735,16 @@ procedure main is
       clipEnabled := True;
       drawingBackBuffer := backBufferReady;
       textSceneRetry := False;
-      drawWindow (surfaces (SurfaceIndex (idx)));
-      --  The retained layer can outlive a minute boundary or media-key press.
-      --  Composite current taskbar state over it, within this damage clip.
-      drawStatus;
-      drawAudioPopup;
+      drawWindow (store.Surfaces (SurfaceIndex (idx)));
+      --  The Deskbar stays above the moving window; the retained layer can
+      --  also outlive a minute boundary or media-key press. Composite the
+      --  current Deskbar over it, within this damage clip.
+      drawDeskbar;
+      drawGroupList;
+      drawDeskbarPanel;
       drawClipboardMenu;
-      drawLaunchNotice;
+      drawToast;
+      drawTooltip;
       if textSceneRetry then drawCurrentScene; end if;
       clipEnabled := False;
       drawCursorOverlay;
@@ -5805,13 +6894,120 @@ procedure main is
       end if;
    end scheduleRedrawRect;
 
-   procedure showLaunchNotice is
+   --  Post N to the notification centre: the status button's count, the
+   --  toast, and the open panel change.
+   procedure postNotification (N : DN.Notification) is
+      oldStatus : constant Rect := statusRect;
+      id : DN.Serial;
    begin
-      Desktop_Logs.Warn ("desktop: launch failed: " &
-                         Desktop_Launch_Notice.Title (launchNotice) & ". " &
-                         Desktop_Launch_Notice.Detail (launchNotice));
-      scheduleRedrawRect (inflateRect (launchNoticeRect, NOTICE_BAR_W));
-   end showLaunchNotice;
+      DN.Post (notifications, N, nowMs, id);
+      if id = DN.No_Notification then
+         return;
+      end if;
+      if deskbarPanelOpen then
+         DN.Mark_Read (notifications);
+         scheduleRedrawRect (unionRect (panelShown, panelRect));
+      end if;
+      debugPrint ("desktop: notification posted id=" & Decimal (Unsigned_64 (id)) &
+                  " source=" & DN.Name_Of (N) & " urgency=" &
+                  (case N.Level is
+                     when DN.Low => "low", when DN.Normal => "normal", when DN.Critical => "critical") & LF);
+      scheduleRedrawRect (unionRect (oldStatus, statusRect));
+      scheduleRedrawRect (toastRect);
+   end postNotification;
+
+   --  The wall-clock minute, when the clock service has given one.
+   function wallNow return DN.Wall_Time is
+     (if clockDateKnown
+      then (Known => True, Minute => DN.Minute_Of_Day (clockDate.Hour * 60 + clockDate.Minute))
+      else (Known => False));
+
+   procedure postLaunchNotice
+     (Notice : Desktop_Launch_Notice.Notice; Process : Process_ID)
+   is
+      package LN renames Desktop_Launch_Notice;
+      Icon : Desktop_Icons.Icon_ID := Desktop_Icons.Start;
+      Accent : DN.Accent_Color := (Declared => False);
+   begin
+      Desktop_Logs.Warn ("desktop: launch failed: " & LN.Title (Notice) & ". " & LN.Detail (Notice));
+      --  The notice names the app by its menu label: its icon and colour.
+      for I in 1 .. launchMenu.Count loop
+         if Desktop_Launch.Label_Of (launchMenu.Entries (I)) = LN.Name_Of (Notice) then
+            Icon := launchMenu.Entries (I).Icon;
+            if launchMenu.Entries (I).Color.Declared then
+               Accent := (Declared => True, Value => launchMenu.Entries (I).Color.Value);
+            end if;
+            exit;
+         end if;
+      end loop;
+      postNotification
+        (DN.Make (Kind => DN.Application, Process => To_Word (Process), Name => LN.Name_Of (Notice),
+                  Level => DN.Normal, Icon => Icon, Accent => Accent, Now_Ms => nowMs,
+                  At_Wall => wallNow, Title => LN.Title (Notice), Detail => LN.Detail (Notice)));
+   end postLaunchNotice;
+
+   --  Why Desktop could not give a window: the surface table is at the
+   --  protocol's bound, the heap cannot grow it, the surface names ran out,
+   --  or there is no display to show it on.
+   type Window_Refusal is (Table_Full, Out_Of_Memory, Names_Exhausted, Display_Not_Ready);
+
+   --  The process whose last window request was refused: told once, not on
+   --  every retry, until it gets a window.
+   windowRefusedOwner : Process_ID := No_Process;
+
+   --  A refused window never fails silently: "Files could not open a
+   --  window", with the reason, in the notification centre (the app's
+   --  launcher icon and colour when it has an entry).
+   procedure noteWindowRefused (Owner : Process_ID; Kind : App_Kind; Why : Window_Refusal) is
+      Index : constant Natural := launchEntryOf (Owner, Kind);
+      Accent : DN.Accent_Color := (Declared => False);
+      Icon : Desktop_Icons.Icon_ID := Desktop_Icons.Start;
+      Name : constant String :=
+        (if Index in 1 .. launchMenu.Count then Desktop_Launch.Label_Of (launchMenu.Entries (Index))
+         elsif Owner = No_Process then "Desktop"
+         else "Process" & Decimal (To_Word (Owner)));
+      Detail : constant String :=
+        (case Why is
+            when Table_Full =>
+              "Desktop already shows the most windows it can (" & Decimal (MAX_SURFACES) & ").",
+            when Out_Of_Memory => "Desktop has no memory for another window. Close some windows and try again.",
+            when Names_Exhausted => "Desktop has run out of window names. Restart the session.",
+            when Display_Not_Ready => "There is no display ready to show it on.");
+   begin
+      if Owner /= No_Process and then Owner = windowRefusedOwner then
+         return;
+      end if;
+      windowRefusedOwner := Owner;
+      Desktop_Logs.Warn ("desktop: window refused: " & Name & ". " & Detail);
+      if Index in 1 .. launchMenu.Count then
+         Icon := launchMenu.Entries (Index).Icon;
+         if launchMenu.Entries (Index).Color.Declared then
+            Accent := (Declared => True, Value => launchMenu.Entries (Index).Color.Value);
+         end if;
+      end if;
+      postNotification
+        (DN.Make (Kind => (if Owner = No_Process then DN.Service else DN.Application),
+                  Process => To_Word (Owner), Name => Name,
+                  Level => DN.Normal, Icon => Icon, Accent => Accent, Now_Ms => nowMs,
+                  At_Wall => wallNow, Title => Name & " could not open a window", Detail => Detail));
+   end noteWindowRefused;
+
+   --  A new client window's size and place (Desktop_Window_Placement): a
+   --  share of the primary work area or the request, cascaded by slot.
+   procedure cascadePlace (Slot : Natural; W, H : in out Natural; X, Y : out Natural) is
+      Work : constant Rect := windowWorkArea (primaryBounds);
+      Bound : constant := Desktop_Window_Placement.Maximum_Extent;
+      Spot : constant Desktop_Window_Placement.Placement :=
+        Desktop_Window_Placement.Place
+          (Work_Width => Natural'Min (Work.w, Bound), Work_Height => Natural'Min (Work.h, Bound),
+           Requested_Width => Natural'Min (W, Bound), Requested_Height => Natural'Min (H, Bound),
+           Minimum_Width => MIN_WIN_W, Minimum_Height => MIN_WIN_H, Slot => Slot);
+   begin
+      X := Spot.X;
+      Y := Spot.Y;
+      W := Spot.Width;
+      H := Spot.Height;
+   end cascadePlace;
 
 
    --  Every way a move or resize ends (release, cancel, resynchronization,
@@ -5837,6 +7033,33 @@ procedure main is
 
    procedure reapDeadClientSurfaces (damage : in out Rect);
 
+
+   function taskbarChanges return Rect is
+      W : constant TG.Windows := taskWindows;
+      M : constant TG.Model := taskModel (W);
+      spans : constant DBL.Span_List := spansOf (W, M);
+      now : Task_Looks (store.Tasks'Range);
+      changed : Rect := (others => 0);
+   begin
+      for G in 1 .. M.Count loop
+         declare
+            P : constant TG.Group_Index := TG.Position (W, M, G);
+         begin
+            now (Natural (P) - 1) := (Box => placeRect (spans, P), Key => M.Groups (G).Key,
+                        First => store.Surfaces (SurfaceIndex (M.Groups (G).First)).id,
+                        Members => M.Groups (G).Members, Active => M.Groups (G).Active,
+                        Minimized => M.Groups (G).Minimized);
+         end;
+      end loop;
+      for P in now'Range loop
+         if now (P) /= store.Tasks (P) then
+            changed := unionRect (changed, unionRect (now (P).Box, store.Tasks (P).Box));
+         end if;
+      end loop;
+      store.Tasks := now;
+      return changed;
+   end taskbarChanges;
+
    procedure flushFrame is
       damage : Rect := frameDamage;
       t0 : Unsigned_64;
@@ -5852,6 +7075,7 @@ procedure main is
       frameDamage := (others => 0);
 
       reapDeadClientSurfaces (damage);
+      damage := unionRect (damage, taskbarChanges);
       full :=
          damage.x = 0 and then damage.y = 0 and then
          damage.w = fbWidth and then damage.h = fbHeight;
@@ -5891,8 +7115,8 @@ procedure main is
 
    function findSurface (id : Unsigned_64) return Integer is
    begin
-      for i in surfaces'Range loop
-         if surfaces (i).used and then surfaces (i).id = id then
+      for i in store.Surfaces'Range loop
+         if store.Surfaces (i).used and then store.Surfaces (i).id = id then
             return Integer (i);
          end if;
       end loop;
@@ -5902,8 +7126,8 @@ procedure main is
 
    function anySurfaceUsed return Boolean is
    begin
-      for i in surfaces'Range loop
-         if surfaces (i).used then
+      for i in store.Surfaces'Range loop
+         if store.Surfaces (i).used then
             return True;
          end if;
       end loop;
@@ -5917,9 +7141,9 @@ procedure main is
          return True;
       end if;
 
-      for i in surfaces'Range loop
-         if surfaces (i).used and then
-            (surfaces (i).flags and SURFACE_FLAG_SHELL) /= 0
+      for i in store.Surfaces'Range loop
+         if store.Surfaces (i).used and then
+            (store.Surfaces (i).flags and SURFACE_FLAG_SHELL) /= 0
          then
             return True;
          end if;
@@ -5932,17 +7156,17 @@ procedure main is
    procedure restoreSurface (idx : SurfaceIndex; damage : in out Rect);
 
    procedure focusTopmostVisibleWindow (damage : in out Rect) is
-      Eligible : Focus_Policy.Candidates;
+      Eligible : Focus_Policy.Candidates (store.Surfaces'Range);
       Chosen : Focus_Policy.Selection;
    begin
-      for I in surfaces'Range loop
-         Eligible (I) := surfaces (I).used and then not surfaces (I).minimized and then
-           (surfaces (I).flags and SURFACE_FLAG_WINDOW) /= 0;
+      for I in store.Surfaces'Range loop
+         Eligible (I) := store.Surfaces (I).used and then not store.Surfaces (I).minimized and then
+           (store.Surfaces (I).flags and SURFACE_FLAG_WINDOW) /= 0;
       end loop;
       Chosen := Focus_Policy.Topmost (Eligible);
       if Chosen.Found then
-         focusSurface := surfaces (Chosen.Slot).id;
-         damage := unionRect (damage, inflateRect (surfaceRect (surfaces (Chosen.Slot)), 4));
+         focusSurface := store.Surfaces (Chosen.Slot).id;
+         damage := unionRect (damage, inflateRect (surfaceRect (store.Surfaces (Chosen.Slot)), 4));
          damage := unionRect (damage, inflateRect (taskButtonRect (Chosen.Slot), 4));
       else
          focusSurface := 0;
@@ -5950,26 +7174,26 @@ procedure main is
    end focusTopmostVisibleWindow;
 
    procedure raiseSurface (idx : SurfaceIndex) is
-      moved : Surface := surfaces (idx);
+      moved : Surface := store.Surfaces (idx);
       last  : SurfaceIndex := idx;
    begin
-      if (surfaces (idx).flags and SURFACE_FLAG_WINDOW) = 0 then
+      if (store.Surfaces (idx).flags and SURFACE_FLAG_WINDOW) = 0 then
          return;
       end if;
-      if idx = surfaces'Last then
+      if idx = store.Surfaces'Last then
          return;
       end if;
 
-      for i in idx + 1 .. surfaces'Last loop
-         if surfaces (i).used and then
-            (surfaces (i).flags and SURFACE_FLAG_WINDOW) /= 0
+      for i in idx + 1 .. store.Surfaces'Last loop
+         if store.Surfaces (i).used and then
+            (store.Surfaces (i).flags and SURFACE_FLAG_WINDOW) /= 0
          then
-            surfaces (last) := surfaces (i);
+            store.Surfaces (last) := store.Surfaces (i);
             last := i;
          end if;
       end loop;
 
-      surfaces (last) := moved;
+      store.Surfaces (last) := moved;
    end raiseSurface;
 
    procedure damagePreviousFocus (New_Focus : Unsigned_64; Damage : in out Rect) is
@@ -5977,7 +7201,7 @@ procedure main is
    begin
       if focusSurface = New_Focus or else Previous < 0 then return; end if;
       declare
-         S : Surface renames surfaces (SurfaceIndex (Previous));
+         S : Surface renames store.Surfaces (SurfaceIndex (Previous));
       begin
          if S.minimized then return; end if;
          -- Focus changes both titlebars, even when the windows do not overlap.
@@ -5993,16 +7217,16 @@ procedure main is
       (idx    : SurfaceIndex;
        damage : in out Rect)
    is
-      oldBounds : constant Rect := surfaceRect (surfaces (idx));
+      oldBounds : constant Rect := surfaceRect (store.Surfaces (idx));
       oldTask   : constant Rect := taskButtonRect (idx);
-      id        : constant Unsigned_64 := surfaces (idx).id;
+      id        : constant Unsigned_64 := store.Surfaces (idx).id;
       raisedIdx : Integer;
       Already_Top : Boolean := True;
    begin
-      if idx < surfaces'Last then
-         for I in idx + 1 .. surfaces'Last loop
-            if surfaces (I).used and then
-              (surfaces (I).flags and SURFACE_FLAG_WINDOW) /= 0
+      if idx < store.Surfaces'Last then
+         for I in idx + 1 .. store.Surfaces'Last loop
+            if store.Surfaces (I).used and then
+              (store.Surfaces (I).flags and SURFACE_FLAG_WINDOW) /= 0
             then Already_Top := False; exit; end if;
          end loop;
       end if;
@@ -6020,7 +7244,7 @@ procedure main is
       if raisedIdx >= 0 then
          damage := unionRect
            (damage,
-            inflateRect (surfaceRect (surfaces (SurfaceIndex (raisedIdx))), 4));
+            inflateRect (surfaceRect (store.Surfaces (SurfaceIndex (raisedIdx))), 4));
          damage := unionRect
            (damage,
             inflateRect (taskButtonRect (SurfaceIndex (raisedIdx)), 4));
@@ -6037,10 +7261,10 @@ procedure main is
          base := Natural (current) + 1;
       end if;
 
-      for step in 0 .. MAX_SURFACES - 1 loop
-         probe := (base + step) mod MAX_SURFACES;
-         if surfaces (SurfaceIndex (probe)).used and then
-            (surfaces (SurfaceIndex (probe)).flags and
+      for step in store.Surfaces'Range loop
+         probe := (base + step) mod store.Surfaces'Length;
+         if store.Surfaces (SurfaceIndex (probe)).used and then
+            (store.Surfaces (SurfaceIndex (probe)).flags and
              SURFACE_FLAG_WINDOW) /= 0
          then
             chosen := Integer (probe);
@@ -6049,7 +7273,7 @@ procedure main is
       end loop;
 
       if chosen >= 0 then
-         if surfaces (SurfaceIndex (chosen)).minimized then
+         if store.Surfaces (SurfaceIndex (chosen)).minimized then
             restoreSurface (SurfaceIndex (chosen), damage);
          end if;
          focusAndRaiseSurface (SurfaceIndex (chosen), damage);
@@ -6057,13 +7281,13 @@ procedure main is
    end cycleFocus;
 
    procedure minimizeSurface (idx : SurfaceIndex; damage : in out Rect) is
-      oldBounds : constant Rect := surfaceRect (surfaces (idx));
+      oldBounds : constant Rect := surfaceRect (store.Surfaces (idx));
       button    : constant Rect := taskButtonRect (idx);
    begin
-      surfaces (idx).minimized := True;
-      surfaces (idx).dirty := True;
+      store.Surfaces (idx).minimized := True;
+      store.Surfaces (idx).dirty := True;
 
-      if focusSurface = surfaces (idx).id then
+      if focusSurface = store.Surfaces (idx).id then
          focusSurface := 0;
       end if;
 
@@ -6079,11 +7303,11 @@ procedure main is
       bounds : Rect;
       button : constant Rect := taskButtonRect (idx);
    begin
-      surfaces (idx).minimized := False;
-      surfaces (idx).dirty := True;
-      damagePreviousFocus (surfaces (idx).id, damage);
-      focusSurface := surfaces (idx).id;
-      bounds := surfaceRect (surfaces (idx));
+      store.Surfaces (idx).minimized := False;
+      store.Surfaces (idx).dirty := True;
+      damagePreviousFocus (store.Surfaces (idx).id, damage);
+      focusSurface := store.Surfaces (idx).id;
+      bounds := surfaceRect (store.Surfaces (idx));
 
       damage := unionRect (damage, inflateRect (bounds, 4));
       damage := unionRect (damage, inflateRect (button, 4));
@@ -6093,48 +7317,48 @@ procedure main is
       (idx    : SurfaceIndex;
        damage : in out Rect)
    is
-      oldBounds : constant Rect := surfaceRect (surfaces (idx));
+      oldBounds : constant Rect := surfaceRect (store.Surfaces (idx));
       newBounds : Rect;
       workArea  : constant Rect := windowWorkArea (oldBounds);
       nextW     : Natural;
       nextH     : Natural;
    begin
-      if not hasWindowFlag (surfaces (idx), WINDOW_FLAG_MAXIMIZABLE) or else
-         hasWindowFlag (surfaces (idx), WINDOW_FLAG_FIXED_SIZE)
+      if not hasWindowFlag (store.Surfaces (idx), WINDOW_FLAG_MAXIMIZABLE) or else
+         hasWindowFlag (store.Surfaces (idx), WINDOW_FLAG_FIXED_SIZE)
       then
          return;
       end if;
 
-      if surfaces (idx).maximized then
-         surfaces (idx).x := surfaces (idx).restoreX;
-         surfaces (idx).y := surfaces (idx).restoreY;
-         surfaces (idx).w := surfaces (idx).restoreW;
-         surfaces (idx).h := surfaces (idx).restoreH;
-         surfaces (idx).maximized := False;
+      if store.Surfaces (idx).maximized then
+         store.Surfaces (idx).x := store.Surfaces (idx).restoreX;
+         store.Surfaces (idx).y := store.Surfaces (idx).restoreY;
+         store.Surfaces (idx).w := store.Surfaces (idx).restoreW;
+         store.Surfaces (idx).h := store.Surfaces (idx).restoreH;
+         store.Surfaces (idx).maximized := False;
       else
-         surfaces (idx).restoreX := surfaces (idx).x;
-         surfaces (idx).restoreY := surfaces (idx).y;
-         surfaces (idx).restoreW := surfaces (idx).w;
-         surfaces (idx).restoreH := surfaces (idx).h;
+         store.Surfaces (idx).restoreX := store.Surfaces (idx).x;
+         store.Surfaces (idx).restoreY := store.Surfaces (idx).y;
+         store.Surfaces (idx).restoreW := store.Surfaces (idx).w;
+         store.Surfaces (idx).restoreH := store.Surfaces (idx).h;
          nextW := workArea.w;
          nextH := workArea.h;
-         clampSurfaceSize (surfaces (idx), nextW, nextH);
-         surfaces (idx).x := workArea.x;
-         surfaces (idx).y := workArea.y;
-         surfaces (idx).w := nextW;
-         surfaces (idx).h := nextH;
-         surfaces (idx).maximized := True;
+         clampSurfaceSize (store.Surfaces (idx), nextW, nextH);
+         store.Surfaces (idx).x := workArea.x;
+         store.Surfaces (idx).y := workArea.y;
+         store.Surfaces (idx).w := nextW;
+         store.Surfaces (idx).h := nextH;
+         store.Surfaces (idx).maximized := True;
       end if;
 
-      surfaces (idx).minimized := False;
-      surfaces (idx).dirty := True;
-      surfaces (idx).serial := surfaces (idx).serial + 1;
-      damagePreviousFocus (surfaces (idx).id, damage);
-      focusSurface := surfaces (idx).id;
-      newBounds := surfaceRect (surfaces (idx));
+      store.Surfaces (idx).minimized := False;
+      store.Surfaces (idx).dirty := True;
+      store.Surfaces (idx).serial := store.Surfaces (idx).serial + 1;
+      damagePreviousFocus (store.Surfaces (idx).id, damage);
+      focusSurface := store.Surfaces (idx).id;
+      newBounds := surfaceRect (store.Surfaces (idx));
 
-      if surfaces (idx).owner /= No_Process then
-         queueConfigure (surfaces (idx).id,
+      if store.Surfaces (idx).owner /= No_Process then
+         queueConfigure (store.Surfaces (idx).id,
                          Unsigned_64 (newBounds.w),
                          Unsigned_64 (newBounds.h));
       end if;
@@ -6155,20 +7379,20 @@ procedure main is
       Acquired : Boolean;
    begin
       Address := System.Null_Address;
-      Source_Loans.Reserve (sourceLoanPolicy, Loan);
+      Source_Loans.Reserve (loans.Policy, Loan);
       if Loan = Source_Loans.No_Ticket then
          Result := DP.Resources_Exhausted;
          return;
       end if;
       MG.Acquire (Grant, Owner, 0, Bytes, MG.Read_Access, Address, Acquired);
       if not Acquired then
-         Source_Loans.Cancel (sourceLoanPolicy, Loan);
+         Source_Loans.Cancel (loans.Policy, Loan);
          Loan := Source_Loans.No_Ticket;
          Result := DP.Denied;
          return;
       end if;
-      sourceLoans (Source_Loans.Index (Loan)) := (Grant, Address);
-      Source_Loans.Activate (sourceLoanPolicy, Loan);
+      loans.Loans (Source_Loans.Index (Loan)) := (Grant, Address);
+      Source_Loans.Activate (loans.Policy, Loan);
       Result := DP.Success;
    end acquireSourceLoan;
 
@@ -6176,24 +7400,24 @@ procedure main is
       Renderer : Desktop_Compositor.Source_Release;
       Confirmed : Boolean;
    begin
-      if Source_Loans.Current (sourceLoanPolicy, Loan) = Source_Loans.Renderer_Pending then
+      if Source_Loans.Current (loans.Policy, Loan) = Source_Loans.Renderer_Pending then
          Desktop_Compositor.Forget_Source
-           (sourceLoans (Source_Loans.Index (Loan)).Address, Renderer);
+           (loans.Loans (Source_Loans.Index (Loan)).Address, Renderer);
          Source_Loans.Observe_Renderer
-           (sourceLoanPolicy, Loan,
+           (loans.Policy, Loan,
             (case Renderer is
                when Desktop_Compositor.Source_Retired => Source_Loans.Retired,
                when Desktop_Compositor.Source_Busy => Source_Loans.Busy,
                when Desktop_Compositor.Source_Unsafe => Source_Loans.Uncertain));
       end if;
-      if Source_Loans.Current (sourceLoanPolicy, Loan) = Source_Loans.Grant_Pending then
-         MG.Return_Acquisition (sourceLoans (Source_Loans.Index (Loan)).Grant, Confirmed);
-         Source_Loans.Observe_Grant (sourceLoanPolicy, Loan, Confirmed);
+      if Source_Loans.Current (loans.Policy, Loan) = Source_Loans.Grant_Pending then
+         MG.Return_Acquisition (loans.Loans (Source_Loans.Index (Loan)).Grant, Confirmed);
+         Source_Loans.Observe_Grant (loans.Policy, Loan, Confirmed);
          if Confirmed then
-            sourceLoans (Source_Loans.Index (Loan)) := (others => <>);
+            loans.Loans (Source_Loans.Index (Loan)) := (others => <>);
          end if;
       end if;
-      if Source_Loans.Current (sourceLoanPolicy, Loan) = Source_Loans.Quarantined then
+      if Source_Loans.Current (loans.Policy, Loan) = Source_Loans.Quarantined then
          debugPrint ("desktop: source retirement uncertain; restart required" & LF);
          exitCompositor (1);
       end if;
@@ -6201,25 +7425,25 @@ procedure main is
 
    procedure retireSourceLoan (Loan : Source_Loans.Ticket) is
    begin
-      if Source_Loans.Current (sourceLoanPolicy, Loan) in
+      if Source_Loans.Current (loans.Policy, Loan) in
         Source_Loans.Attached | Source_Loans.Renderer_Pending | Source_Loans.Grant_Pending
       then
-         Source_Loans.Retire (sourceLoanPolicy, Loan);
+         Source_Loans.Retire (loans.Policy, Loan);
          pumpSourceLoan (Loan);
       end if;
    end retireSourceLoan;
 
    procedure pumpSourceRetirements is
    begin
-      for I in Source_Loans.Slot loop
-         pumpSourceLoan (Source_Loans.At_Slot (sourceLoanPolicy, I));
+      for I in 1 .. loans.Capacity loop
+         pumpSourceLoan (Source_Loans.At_Slot (loans.Policy, I));
       end loop;
    end pumpSourceRetirements;
 
    function sourceRetirementPending return Boolean is
    begin
-      for I in Source_Loans.Slot loop
-         if Source_Loans.Current (sourceLoanPolicy, Source_Loans.At_Slot (sourceLoanPolicy, I)) in
+      for I in 1 .. loans.Capacity loop
+         if Source_Loans.Current (loans.Policy, Source_Loans.At_Slot (loans.Policy, I)) in
            Source_Loans.Renderer_Pending | Source_Loans.Grant_Pending
          then return True; end if;
       end loop;
@@ -6237,7 +7461,7 @@ procedure main is
       end if;
       if S.publicationBuffers (I).Acquired then
          retireSourceLoan (S.publicationBuffers (I).Loan);
-         if Source_Loans.Current (sourceLoanPolicy, S.publicationBuffers (I).Loan) /=
+         if Source_Loans.Current (loans.Policy, S.publicationBuffers (I).Loan) /=
            Source_Loans.Released
          then return; end if;
       end if;
@@ -6301,14 +7525,14 @@ procedure main is
    procedure requestClose (target : Unsigned_64);
 
    procedure closeSurface (idx : SurfaceIndex; damage : in out Rect) is
-      oldBounds : constant Rect := surfaceRect (surfaces (idx));
-      oldId     : constant Unsigned_64 := surfaces (idx).id;
-      oldOwner  : constant Process_ID := surfaces (idx).owner;
+      oldBounds : constant Rect := surfaceRect (store.Surfaces (idx));
+      oldId     : constant Unsigned_64 := store.Surfaces (idx).id;
+      oldOwner  : constant Process_ID := store.Surfaces (idx).owner;
       button    : constant Rect := taskButtonRect (idx);
       ignore    : Unsigned_64;
    begin
       if oldOwner /= No_Process and then
-        (surfaces (idx).windowFlags and DP.Window_Feature'Enum_Rep (DP.Graceful_Close)) /= 0
+        (store.Surfaces (idx).windowFlags and DP.Window_Feature'Enum_Rep (DP.Graceful_Close)) /= 0
       then
          -- The client owns the decision and closes only this surface through
          -- Destroy_Surface. Keep its buffer and siblings alive until then.
@@ -6325,9 +7549,9 @@ procedure main is
       end if;
       clearInputForTarget (oldId);
 
-      releaseSurfaceBuffer (surfaces (idx));
-      retireSurfaceSource (surfaces (idx));
-      surfaces (idx) := (others => <>);
+      releaseSurfaceBuffer (store.Surfaces (idx));
+      retireSurfaceSource (store.Surfaces (idx));
+      store.Surfaces (idx) := (others => <>);
 
       if focusSurface = oldId then
          focusSurface := 0;
@@ -6351,31 +7575,31 @@ procedure main is
       oldTask   : Rect;
       changed   : Boolean := False;
    begin
-      for i in surfaces'Range loop
-         if surfaces (i).used and then
-            surfaces (i).owner /= No_Process and then
-            not processAlive (surfaces (i).owner)
+      for i in store.Surfaces'Range loop
+         if store.Surfaces (i).used and then
+            store.Surfaces (i).owner /= No_Process and then
+            not processAlive (store.Surfaces (i).owner)
          then
             -- The acquisition keeps mappings alive across owner exit. Reaping
             -- releases it; processAlive is no longer the memory-safety fence.
-            oldBounds := surfaceRect (surfaces (i));
+            oldBounds := surfaceRect (store.Surfaces (i));
             oldTask := taskButtonRect (i);
-            if pointerSurfaceId = surfaces (i).id then
+            if pointerSurfaceId = store.Surfaces (i).id then
                pointerSurfaceId := 0;
             end if;
-            if dragSurfaceId = surfaces (i).id then
+            if dragSurfaceId = store.Surfaces (i).id then
                endDrag;
             end if;
-            clearInputForTarget (surfaces (i).id);
-            if focusSurface = surfaces (i).id then
+            clearInputForTarget (store.Surfaces (i).id);
+            if focusSurface = store.Surfaces (i).id then
                focusSurface := 0;
             end if;
-            if surfaces (i).bufferAttached or else surfaces (i).publicationMode then
-               releaseSurfaceBuffer (surfaces (i));
+            if store.Surfaces (i).bufferAttached or else store.Surfaces (i).publicationMode then
+               releaseSurfaceBuffer (store.Surfaces (i));
                debugPrint ("desktop: dead client buffer retirement requested" & LF);
             end if;
-            retireSurfaceSource (surfaces (i));
-            surfaces (i) := (others => <>);
+            retireSurfaceSource (store.Surfaces (i));
+            store.Surfaces (i) := (others => <>);
             damage := unionRect (damage, inflateRect (oldBounds, 4));
             damage := unionRect (damage, inflateRect (oldTask, 4));
             changed := True;
@@ -6407,10 +7631,10 @@ procedure main is
       winH     : Natural := 240;
       Work_Area : constant Rect := windowWorkArea (primaryBounds);
    begin
-      for i in surfaces'Range loop
-         if surfaces (i).used and then
-            surfaces (i).owner = No_Process and then
-            surfaces (i).appKind = appKind
+      for i in store.Surfaces'Range loop
+         if store.Surfaces (i).used and then
+            store.Surfaces (i).owner = No_Process and then
+            store.Surfaces (i).appKind = appKind
          then
             existing := Integer (i);
             exit;
@@ -6419,7 +7643,7 @@ procedure main is
 
       if existing >= 0 then
          restoreSurface (SurfaceIndex (existing), damage);
-         existing := findSurface (surfaces (SurfaceIndex (existing)).id);
+         existing := findSurface (store.Surfaces (SurfaceIndex (existing)).id);
          if existing >= 0 then
             focusAndRaiseSurface (SurfaceIndex (existing), damage);
          end if;
@@ -6430,8 +7654,18 @@ procedure main is
          when APP_SETTINGS =>
             winW := 742;
             winH := 420;
-            Desktop_Settings.Open (settingsView, appearance, desktopLayout,
-              desktopLayout.Items (Natural (primaryOutput) + 1).Display);
+            declare
+               Zone : Time_Zones.Time_Zone;
+               Known : Boolean;
+            begin
+               Desktop_Time_Zone_Setting.Load (Zone, Known);
+               if not Known then
+                  debugPrint ("desktop: clock.time-zone is not in the bundled database; Settings shows UTC" & LF);
+               end if;
+               Desktop_Settings.Open (settingsView, appearance, desktopLayout,
+                 desktopLayout.Items (Natural (primaryOutput) + 1).Display, displayScale.Auto, Zone);
+               Desktop_Settings.Set_Monitor (settingsView, monitorInfo);
+            end;
          when others =>
             null;
       end case;
@@ -6451,6 +7685,11 @@ procedure main is
 
       createInternalSurface
         (SURFACE_FLAG_WINDOW, winX, winY, winW, winH, appKind, id);
+      if id = 0 then
+         noteWindowRefused
+           (No_Process, appKind,
+            (if store.Last + 1 >= MAX_SURFACES then Table_Full else Out_Of_Memory));
+      end if;
 
       if id /= 0 then
          declare
@@ -6478,21 +7717,15 @@ procedure main is
        appKind : App_Kind;
        id    : out Unsigned_64)
    is
-      slot : Integer := -1;
+      slot : Integer;
    begin
       id := 0;
-      for i in surfaces'Range loop
-         if not surfaces (i).used then
-            slot := Integer (i);
-            exit;
-         end if;
-      end loop;
-
+      freeSurfaceSlot (slot);
       if slot < 0 then
          return;
       end if;
 
-      surfaces (SurfaceIndex (slot)) :=
+      store.Surfaces (SurfaceIndex (slot)) :=
         (used   => True,
          owner  => No_Process,
          id     => nextSurfaceId,
@@ -6532,8 +7765,8 @@ procedure main is
          publicationPolicy => <>, publicationConfiguration => <>,
          publicationMode => False, publicationBuffers => <>,
          publicationInputAfter => 0,
-         appColor => launchColor (No_Process, appKind), stripe => <>);
-      refreshStripe (surfaces (SurfaceIndex (slot)));
+         others => <>);
+      assignApp (store.Surfaces (SurfaceIndex (slot)), No_Process);
       id := nextSurfaceId;
       nextSurfaceId := nextSurfaceId + 1;
    end createInternalSurface;
@@ -6556,8 +7789,8 @@ procedure main is
 
    function findInputChannel (target : Unsigned_64) return Integer is
    begin
-      for i in inputChannels'Range loop
-         if inputChannels (i).target = target and then target /= 0 then
+      for i in store.Channels'Range loop
+         if store.Channels (i).target = target and then target /= 0 then
             return Integer (i);
          end if;
       end loop;
@@ -6580,7 +7813,7 @@ procedure main is
          return;
       end if;
 
-      c := clientRect (surfaces (SurfaceIndex (surfaceSlot)));
+      c := clientRect (store.Surfaces (SurfaceIndex (surfaceSlot)));
       if cursorX >= c.x then
          localX := cursorX - c.x;
       end if;
@@ -6600,9 +7833,9 @@ procedure main is
          mods := mods or KEYMOD_CAPS;
       end if;
 
-      for i in inputChannels'Range loop
-         if inputChannels (i).target = 0 then
-            inputChannels (i) :=
+      for i in store.Channels'Range loop
+         if store.Channels (i).target = 0 then
+            store.Channels (i) :=
               (target => target,
                snapshot =>
                  (pointerPosition => packU32Pair (localX, localY),
@@ -6622,7 +7855,7 @@ procedure main is
       ensureInputChannel (target, Slot);
       if Slot < 0 then return; end if;
       declare
-         Channel : SurfaceInputChannel renames inputChannels (SurfaceIndex (Slot));
+         Channel : SurfaceInputChannel renames store.Channels (SurfaceIndex (Slot));
       begin
          Close_Policy.Request (Channel.pendingClose, Channel.nextSerial);
          if Channel.pendingClose = 0 then
@@ -6655,8 +7888,8 @@ procedure main is
 
       declare
          idx : constant SurfaceIndex := SurfaceIndex (channelSlot);
-         queue : PendingInputQueue renames inputChannels (idx).events;
-         snapshot : InputSnapshot renames inputChannels (idx).snapshot;
+         queue : PendingInputQueue renames store.Channels (idx).events;
+         snapshot : InputSnapshot renames store.Channels (idx).snapshot;
       begin
          --  Maintain recoverable state before attempting bounded delivery.
          --  INPUT_RESYNC can therefore describe the state after the report
@@ -6676,17 +7909,17 @@ procedure main is
          end if;
 
          IQ.Push
-           (queue, inputChannels (idx).nextSerial,
+           (queue, store.Channels (idx).nextSerial,
             (True, 0, kind, target, payload0, payload1),
             (True, 0, INPUT_RESYNC, target, snapshot.pointerPosition,
              (snapshot.buttons and 16#FFFF_FFFF#) or
                Shift_Left (snapshot.modifiers and 16#FFFF_FFFF#, 32)),
             (if Close_Policy.May_Coalesce
-               (inputChannels (idx).pendingClose,
+               (store.Channels (idx).pendingClose,
                 (if IQ.Newest (queue) = -1 then 0
                  else queue (IQ.Newest (queue)).Serial)) and then
                (IQ.Newest (queue) = -1 or else
-                queue (IQ.Newest (queue)).Serial > inputChannels (idx).exposedThrough)
+                queue (IQ.Newest (queue)).Serial > store.Channels (idx).exposedThrough)
              then INPUT_POINTER_MOVE else INPUT_NONE), Result);
          case Result is
             when IQ.Resynchronized =>
@@ -6722,7 +7955,7 @@ procedure main is
       event := (others => <>);
       if channelSlot < 0 then return; end if;
       declare
-         Channel : SurfaceInputChannel renames inputChannels (SurfaceIndex (channelSlot));
+         Channel : SurfaceInputChannel renames store.Channels (SurfaceIndex (channelSlot));
          Queued_Serial : Unsigned_64 := 0;
       begin
          Close_Policy.Acknowledge (Channel.pendingClose, afterSerial);
@@ -6752,8 +7985,8 @@ procedure main is
    begin
       return channelSlot >= 0 and then
         (Close_Policy.Has_After
-           (inputChannels (SurfaceIndex (channelSlot)).pendingClose, afterSerial) or else
-         IQ.Has_After (inputChannels (SurfaceIndex (channelSlot)).events, afterSerial));
+           (store.Channels (SurfaceIndex (channelSlot)).pendingClose, afterSerial) or else
+         IQ.Has_After (store.Channels (SurfaceIndex (channelSlot)).events, afterSerial));
    end hasInputAfter;
 
    procedure completeInputWaiter (target : Unsigned_64) is
@@ -6764,14 +7997,14 @@ procedure main is
       ignore : Unsigned_64;
    begin
       if channelSlot < 0 or else
-         not inputChannels (SurfaceIndex (channelSlot)).waiter.active
+         not store.Channels (SurfaceIndex (channelSlot)).waiter.active
       then
          return;
       end if;
 
       declare
          waiter : InputWaiter renames
-           inputChannels (SurfaceIndex (channelSlot)).waiter;
+           store.Channels (SurfaceIndex (channelSlot)).waiter;
       begin
          dequeueInput (target, waiter.afterSerial, found, event);
          if not found then
@@ -6803,7 +8036,7 @@ procedure main is
    function nextInputDeadline return Unsigned_64 is
       deadline : Unsigned_64 := 0;
    begin
-      for channel of inputChannels loop
+      for channel of store.Channels loop
          if channel.waiter.active and then channel.waiter.deadline /= 0 and then
            (deadline = 0 or else channel.waiter.deadline < deadline)
          then
@@ -6818,8 +8051,8 @@ procedure main is
       response : Message;
       ignore : Unsigned_64;
    begin
-      Input_Transfers.Poll (inputTransfers);
-      for channel of inputChannels loop
+      Input_Transfers.Poll (inputTransfers.all);
+      for channel of store.Channels loop
          if channel.waiter.active and then channel.waiter.deadline /= 0 and then
            now >= channel.waiter.deadline
          then
@@ -6867,11 +8100,11 @@ procedure main is
          mods := mods or KEYMOD_CAPS;
       end if;
 
-      for i in inputChannels'Range loop
-         if inputChannels (i).target /= 0 then
+      for i in store.Channels'Range loop
+         if store.Channels (i).target /= 0 then
             declare
                surfaceSlot : constant Integer :=
-                 findSurface (inputChannels (i).target);
+                 findSurface (store.Channels (i).target);
                localX : Natural := 0;
                localY : Natural := 0;
                Accepted : Boolean;
@@ -6879,7 +8112,7 @@ procedure main is
                if surfaceSlot >= 0 then
                   declare
                      c : constant Rect :=
-                       clientRect (surfaces (SurfaceIndex (surfaceSlot)));
+                       clientRect (store.Surfaces (SurfaceIndex (surfaceSlot)));
                   begin
                      if cursorX >= c.x then
                         localX := cursorX - c.x;
@@ -6890,25 +8123,25 @@ procedure main is
                   end;
                end if;
 
-               inputChannels (i).snapshot.pointerPosition :=
+               store.Channels (i).snapshot.pointerPosition :=
                  packU32Pair (localX, localY);
-               inputChannels (i).snapshot.buttons := lastButtons;
-               inputChannels (i).snapshot.modifiers := mods;
-               if inputChannels (i).snapshot.generation < Unsigned_64'Last then
-                  inputChannels (i).snapshot.generation :=
-                    inputChannels (i).snapshot.generation + 1;
+               store.Channels (i).snapshot.buttons := lastButtons;
+               store.Channels (i).snapshot.modifiers := mods;
+               if store.Channels (i).snapshot.generation < Unsigned_64'Last then
+                  store.Channels (i).snapshot.generation :=
+                    store.Channels (i).snapshot.generation + 1;
                end if;
                IQ.Recover
-                 (inputChannels (i).events, inputChannels (i).nextSerial,
-                  (True, 0, INPUT_RESYNC, inputChannels (i).target,
-                   inputChannels (i).snapshot.pointerPosition,
+                 (store.Channels (i).events, store.Channels (i).nextSerial,
+                  (True, 0, INPUT_RESYNC, store.Channels (i).target,
+                   store.Channels (i).snapshot.pointerPosition,
                    (lastButtons and 16#FFFF_FFFF#) or
                      Shift_Left (mods and 16#FFFF_FFFF#, 32)), Accepted);
                if not Accepted then
                   debugPrint ("desktop: input serials exhausted" & LF);
                   exitCompositor (1);
                end if;
-               completeInputWaiter (inputChannels (i).target);
+               completeInputWaiter (store.Channels (i).target);
             end;
          end if;
       end loop;
@@ -6916,7 +8149,7 @@ procedure main is
 
    procedure clearInputQueue is
    begin
-      inputChannels := [others => (others => <>)];
+      store.Channels := [others => (others => <>)];
    end clearInputQueue;
 
    procedure clearInputForTarget (target : Unsigned_64) is
@@ -6928,11 +8161,11 @@ procedure main is
          return;
       end if;
 
-      if inputChannels (SurfaceIndex (channelSlot)).waiter.active then
+      if store.Channels (SurfaceIndex (channelSlot)).waiter.active then
          response.tag :=
            (label => OP_INPUT_WAIT, length => 4, protocol => 0, ipc => <>, reserved => 0);
          response.words (0) := INPUT_RESYNC;
-         IQ.Reserve (inputChannels (SurfaceIndex (channelSlot)).nextSerial,
+         IQ.Reserve (store.Channels (SurfaceIndex (channelSlot)).nextSerial,
            response.words (1));
          if response.words (1) = 0 then
             debugPrint ("desktop: input serials exhausted" & LF);
@@ -6940,14 +8173,14 @@ procedure main is
          end if;
          declare
             saved : constant CuBit.Handles.Reply :=
-              inputChannels (SurfaceIndex (channelSlot)).waiter.saved;
+              store.Channels (SurfaceIndex (channelSlot)).waiter.saved;
          begin
-            inputChannels (SurfaceIndex (channelSlot)).waiter := (others => <>);
+            store.Channels (SurfaceIndex (channelSlot)).waiter := (others => <>);
             ignore := replyCap (saved, response);
          end;
       end if;
 
-      inputChannels (SurfaceIndex (channelSlot)) := (others => <>);
+      store.Channels (SurfaceIndex (channelSlot)) := (others => <>);
    end clearInputForTarget;
 
    function keyChar (code : Unsigned_8) return Character;
@@ -6999,8 +8232,8 @@ procedure main is
                if idx >= 0 then
                   --  A window without a title is named by its surface.
                   debugPrint ("desktop: keys to " &
-                    (if surfaces (SurfaceIndex (idx)).title.Text'Length > 0
-                     then surfaces (SurfaceIndex (idx)).title.Text
+                    (if store.Surfaces (SurfaceIndex (idx)).title.Text'Length > 0
+                     then store.Surfaces (SurfaceIndex (idx)).title.Text
                      else "untitled surface " & Decimal (focusSurface)) & LF);
                end if;
             end;
@@ -7038,11 +8271,11 @@ procedure main is
       localX : Natural := 0;
       localY : Natural := 0;
    begin
-      if idx < 0 or else surfaces (SurfaceIndex (idx)).owner = No_Process then
+      if idx < 0 or else store.Surfaces (SurfaceIndex (idx)).owner = No_Process then
          return;
       end if;
 
-      c := clientRect (surfaces (SurfaceIndex (idx)));
+      c := clientRect (store.Surfaces (SurfaceIndex (idx)));
       if screenX >= c.x then
          localX := screenX - c.x;
       end if;
@@ -7078,9 +8311,9 @@ procedure main is
       idx : constant Integer := findSurface (target);
    begin
       if idx >= 0 and then
-         surfaces (SurfaceIndex (idx)).owner /= No_Process and then
+         store.Surfaces (SurfaceIndex (idx)).owner /= No_Process and then
          pointInRect (screenX, screenY,
-                      clientRect (surfaces (SurfaceIndex (idx))))
+                      clientRect (store.Surfaces (SurfaceIndex (idx))))
       then
          queuePointer (kind, target, screenX, screenY, buttons);
       end if;
@@ -7097,11 +8330,11 @@ procedure main is
       localX : Natural := 0;
       localY : Natural := 0;
    begin
-      if idx < 0 or else surfaces (SurfaceIndex (idx)).owner = No_Process then
+      if idx < 0 or else store.Surfaces (SurfaceIndex (idx)).owner = No_Process then
          return;
       end if;
 
-      c := clientRect (surfaces (SurfaceIndex (idx)));
+      c := clientRect (store.Surfaces (SurfaceIndex (idx)));
       if not pointInRect (screenX, screenY, c) then
          return;
       end if;
@@ -7207,7 +8440,8 @@ procedure main is
       declare
          Layout : constant Density.Layout := Density.Plan
            (W, H, (Positive (Scale.Numerator), Positive (Scale.Denominator)),
-            DP.Maximum_Buffer_Bytes);
+            --  The client allocates its buffer from its own memory quota.
+            Natural'Last);
       begin
          if Layout.Status /= Density.Accepted then
             return (Status => DP.Resources_Exhausted);
@@ -7249,7 +8483,7 @@ procedure main is
       --  This also covers moves and output arrangements that do not resize a
       --  window. Unchanged configurations neither advance epochs nor enqueue
       --  input. The bounded surface table adds no allocation or idle timer.
-      for S of surfaces loop
+      for S of store.Surfaces loop
          if S.used and then S.publicationMode and then S.owner /= No_Process then
             declare
                Configuration : constant Publication.Configuration_Result :=
@@ -7286,7 +8520,7 @@ procedure main is
             statsRequests := statsRequests + 1;
             replyMsg := Desktop_Clipboard.Handle
               (from, request, focusSurface,
-               (if focusIdx >= 0 then surfaces (SurfaceIndex (focusIdx)).owner
+               (if focusIdx >= 0 then store.Surfaces (SurfaceIndex (focusIdx)).owner
                 else No_Process),
                nowMs);
             ignore := reply (from, replyMsg);
@@ -7314,16 +8548,16 @@ procedure main is
             if Decoded.Accepted then
                Index := findSurface (Decoded.Value.Surface);
                if Index < 0 then Result := (Status => DP.Bad_Object);
-               elsif from = No_Process or else surfaces (SurfaceIndex (Index)).owner /= from then
+               elsif from = No_Process or else store.Surfaces (SurfaceIndex (Index)).owner /= from then
                   Result := (Status => DP.Denied);
                else
                   ensureInputChannel (Decoded.Value.Surface, Channel_Slot);
                   if Channel_Slot < 0 then Result := (Status => DP.Resources_Exhausted);
-                  elsif inputChannels (SurfaceIndex (Channel_Slot)).waiter.active then
+                  elsif store.Channels (SurfaceIndex (Channel_Slot)).waiter.active then
                      Result := (Status => DP.Bad_State);
                   else
                      declare
-                        Channel : SurfaceInputChannel renames inputChannels (SurfaceIndex (Channel_Slot));
+                        Channel : SurfaceInputChannel renames store.Channels (SurfaceIndex (Channel_Slot));
                         Close : constant IQ.Event :=
                           (Channel.pendingClose /= 0, Channel.pendingClose,
                            DP.Input_Event_Kind'Enum_Rep (DP.Close_Requested),
@@ -7345,7 +8579,7 @@ procedure main is
                                 (Channel.exposedThrough, Value.Through);
                            end if;
                            Input_Transfers.Publish
-                             (inputTransfers, To_Word (from), Decoded.Value.Surface,
+                             (inputTransfers.all, To_Word (from), Decoded.Value.Surface,
                               Decoded.Value.Grant,
                               Batch_Wire.Encode (Value, Decoded.Value.Surface,
                                 Decoded.Value.Identity, Decoded.Value.After), Delivered);
@@ -7382,11 +8616,11 @@ procedure main is
                Index := findSurface (Unsigned_64 (Decoded.Value.Surface));
                if Index < 0 then
                   Result := (Status => DP.Bad_Object);
-               elsif surfaces (SurfaceIndex (Index)).owner /= from then
+               elsif store.Surfaces (SurfaceIndex (Index)).owner /= from then
                   Result := (Status => DP.Denied);
                else
                   declare
-                     S : Surface renames surfaces (SurfaceIndex (Index));
+                     S : Surface renames store.Surfaces (SurfaceIndex (Index));
                      Config : constant Publication.Configuration_Result :=
                        currentPublicationConfiguration (S);
                      Accepted : Boolean;
@@ -7491,11 +8725,11 @@ procedure main is
                  (Unsigned_64 (if Is_Stage then Staged.Value.Surface else Query.Value.Surface));
                if Index < 0 then
                   Result := (Status => DP.Bad_Object);
-               elsif surfaces (SurfaceIndex (Index)).owner /= from then
+               elsif store.Surfaces (SurfaceIndex (Index)).owner /= from then
                   Result := (Status => DP.Denied);
                else
                   declare
-                     S : Surface renames surfaces (SurfaceIndex (Index));
+                     S : Surface renames store.Surfaces (SurfaceIndex (Index));
                   begin
                      Result := (Status => DP.Bad_State);
                      if Is_Stage then
@@ -7583,11 +8817,11 @@ procedure main is
                Index := findSurface (Unsigned_64 (Decoded.Value.Surface));
                if Index < 0 then
                   Result := (Status => DP.Bad_Object);
-               elsif surfaces (SurfaceIndex (Index)).owner /= from then
+               elsif store.Surfaces (SurfaceIndex (Index)).owner /= from then
                   Result := (Status => DP.Denied);
                else
                   Result := currentPublicationConfiguration
-                    (surfaces (SurfaceIndex (Index)));
+                    (store.Surfaces (SurfaceIndex (Index)));
                end if;
             end if;
             replyMsg := CuBit.Desktop_Messages.From_Wire
@@ -7730,7 +8964,7 @@ procedure main is
             idx : constant Integer := findSurface (Unsigned_64 (inputRequest.Value.Surface));
             accessStatus : constant DP.Status_Code := DP.Surface_Access
               (idx >= 0,
-               (if idx >= 0 then To_Word (surfaces (SurfaceIndex (idx)).owner) else 0),
+               (if idx >= 0 then To_Word (store.Surfaces (SurfaceIndex (idx)).owner) else 0),
                To_Word (from));
          begin
             if accessStatus /= DP.Success then
@@ -7765,7 +8999,7 @@ procedure main is
          when OP_DESKTOP_HELLO =>
             replyMsg := CuBit.Desktop_Messages.From_Wire
               (DP.Encode_Hello_Result ((DP.Success, 1,
-                                        DP.Surface_Capacity (MAX_SURFACES))));
+                                        DP.Surface_Capacity'Last)));
 
          when OP_DESKTOP_GET_INFO =>
             if primaryBounds.w not in 1 .. Natural (DP.Positive_Extent'Last) or else
@@ -7793,48 +9027,38 @@ procedure main is
                   setupDisplayBuffer (displayReady);
                end if;
 
-               for i in surfaces'Range loop
-                  if not surfaces (i).used then
-                     slot := Integer (i);
-                     exit;
-                  end if;
-               end loop;
+               if displayReady then
+                  freeSurfaceSlot (slot);
+               end if;
 
                if not displayReady then
                   replyMsg := CuBit.Desktop_Messages.From_Wire
                     (DP.Encode_Creation_Result ((Status => DP.Bad_State)));
+                  noteWindowRefused (from, APP_CLIENT, Display_Not_Ready);
                elsif slot < 0 or else nextSurfaceId = Unsigned_64'Last then
                   -- Never wrap the name allocator and alias a live object.
                   replyMsg := CuBit.Desktop_Messages.From_Wire
                     (DP.Encode_Creation_Result ((Status => DP.Resources_Exhausted)));
+                  noteWindowRefused
+                    (from, APP_CLIENT,
+                     (if slot >= 0 then Names_Exhausted
+                      elsif store.Last + 1 >= MAX_SURFACES then Table_Full else Out_Of_Memory));
                else
-                  if reqW = 0 or else reqW > primaryBounds.w then
-                     reqW := primaryBounds.w;
-                  end if;
-                  if reqH = 0 or else reqH > primaryBounds.h then
-                     reqH := primaryBounds.h;
-                  end if;
-
                   if (request.words (2) and SURFACE_FLAG_WINDOW) /= 0 then
-                     surfX := 80 + Natural (slot) * 18;
-                     surfY := 64 + Natural (slot) * 18;
-                     if reqW = primaryBounds.w or else reqW < 220 then
-                        reqW := 360;
+                     --  The request is a preference; Desktop policy sizes it.
+                     cascadePlace (Natural (slot), reqW, reqH, surfX, surfY);
+                  else
+                     if reqW = 0 or else reqW > primaryBounds.w then
+                        reqW := primaryBounds.w;
                      end if;
-                     if reqH = primaryBounds.h or else reqH < 140 then
-                        reqH := 220;
-                     end if;
-                     if surfX + reqW > primaryBounds.w then
-                        reqW := primaryBounds.w - surfX;
-                     end if;
-                     if surfY + reqH > primaryBounds.h then
-                        reqH := primaryBounds.h - surfY;
+                     if reqH = 0 or else reqH > primaryBounds.h then
+                        reqH := primaryBounds.h;
                      end if;
                   end if;
 
                   surfX := surfX + primaryBounds.x;
                   surfY := surfY + primaryBounds.y;
-                  surfaces (SurfaceIndex (slot)) :=
+                  store.Surfaces (SurfaceIndex (slot)) :=
                     (used   => True,
                      owner  => from,
                      id     => nextSurfaceId,
@@ -7875,9 +9099,15 @@ procedure main is
          publicationPolicy => <>, publicationConfiguration => <>,
          publicationMode => False, publicationBuffers => <>,
          publicationInputAfter => 0,
-         appColor => launchColor (from, APP_CLIENT), stripe => <>);
-                  refreshStripe (surfaces (SurfaceIndex (slot)));
+         others => <>);
+                  assignApp (store.Surfaces (SurfaceIndex (slot)), from);
+                  --  A reused slot can be below other windows: the new
+                  --  window opens on top, focused.
+                  raiseSurface (SurfaceIndex (slot));
                   focusSurface := nextSurfaceId;
+                  if windowRefusedOwner = from then
+                     windowRefusedOwner := No_Process;
+                  end if;
                   --  Window geometry, for tests that drive the pointer
                   --  onto a title bar (desktop-vm drag check).
                   debugPrint ("desktop: surface" & Natural'Image (Natural (nextSurfaceId mod 2 ** 31)) &
@@ -7912,37 +9142,37 @@ procedure main is
                if idx < 0 then
                   replyMsg := CuBit.Desktop_Messages.From_Wire
                     (DP.Encode_Resize_Result ((Status => DP.Bad_Object)));
-               elsif surfaces (SurfaceIndex (idx)).owner /= from then
+               elsif store.Surfaces (SurfaceIndex (idx)).owner /= from then
                   replyMsg := CuBit.Desktop_Messages.From_Wire
                     (DP.Encode_Resize_Result ((Status => DP.Denied)));
                else
-                  clampSurfaceSize (surfaces (SurfaceIndex (idx)), newW, newH);
+                  clampSurfaceSize (store.Surfaces (SurfaceIndex (idx)), newW, newH);
                   if newW = 0 or else newW > fbWidth then
                      newW := fbWidth;
                   end if;
                   if newH = 0 or else newH > fbHeight then
                      newH := fbHeight;
                   end if;
-                  if surfaces (SurfaceIndex (idx)).x + newW > fbWidth then
-                     newW := fbWidth - surfaces (SurfaceIndex (idx)).x;
+                  if store.Surfaces (SurfaceIndex (idx)).x + newW > fbWidth then
+                     newW := fbWidth - store.Surfaces (SurfaceIndex (idx)).x;
                   end if;
-                  if surfaces (SurfaceIndex (idx)).y + newH > fbHeight then
-                     newH := fbHeight - surfaces (SurfaceIndex (idx)).y;
+                  if store.Surfaces (SurfaceIndex (idx)).y + newH > fbHeight then
+                     newH := fbHeight - store.Surfaces (SurfaceIndex (idx)).y;
                   end if;
 
-                  oldBounds := surfaceRect (surfaces (SurfaceIndex (idx)));
-                  surfaces (SurfaceIndex (idx)).w := newW;
-                  surfaces (SurfaceIndex (idx)).h := newH;
-                  surfaces (SurfaceIndex (idx)).serial :=
-                     surfaces (SurfaceIndex (idx)).serial + 1;
-                  surfaces (SurfaceIndex (idx)).dirty := True;
-                  newBounds := surfaceRect (surfaces (SurfaceIndex (idx)));
+                  oldBounds := surfaceRect (store.Surfaces (SurfaceIndex (idx)));
+                  store.Surfaces (SurfaceIndex (idx)).w := newW;
+                  store.Surfaces (SurfaceIndex (idx)).h := newH;
+                  store.Surfaces (SurfaceIndex (idx)).serial :=
+                     store.Surfaces (SurfaceIndex (idx)).serial + 1;
+                  store.Surfaces (SurfaceIndex (idx)).dirty := True;
+                  newBounds := surfaceRect (store.Surfaces (SurfaceIndex (idx)));
 
                   replyMsg := CuBit.Desktop_Messages.From_Wire
                     (DP.Encode_Resize_Result
                        ((DP.Success, DP.Pixel_Extent (newW),
                          DP.Pixel_Extent (newH),
-                         surfaces (SurfaceIndex (idx)).serial)));
+                         store.Surfaces (SurfaceIndex (idx)).serial)));
 
                   queueConfigure (request.words (0),
                                   Unsigned_64 (newW),
@@ -7961,10 +9191,10 @@ procedure main is
             begin
                if idx < 0 then
                   result := DP.Bad_Object;
-               elsif surfaces (SurfaceIndex (idx)).owner /= from then
+               elsif store.Surfaces (SurfaceIndex (idx)).owner /= from then
                   result := DP.Denied;
                else
-                  surfaces (SurfaceIndex (idx)).pointerCursor :=
+                  store.Surfaces (SurfaceIndex (idx)).pointerCursor :=
                     (case cursorRequest.Value.Style is
                        when DP.Default_Cursor => Pointer_Default,
                        when DP.Text_Cursor => Pointer_Text,
@@ -8000,7 +9230,7 @@ procedure main is
                if idx < 0 then
                   replyMsg := CuBit.Desktop_Messages.From_Wire
                     (DP.Encode_Limits_Result ((Status => DP.Bad_Object)));
-               elsif surfaces (SurfaceIndex (idx)).owner /= from then
+               elsif store.Surfaces (SurfaceIndex (idx)).owner /= from then
                   replyMsg := CuBit.Desktop_Messages.From_Wire
                     (DP.Encode_Limits_Result ((Status => DP.Denied)));
                else
@@ -8022,24 +9252,24 @@ procedure main is
                      maxH := minH;
                   end if;
 
-                  oldBounds := surfaceRect (surfaces (SurfaceIndex (idx)));
-                  surfaces (SurfaceIndex (idx)).minW := minW;
-                  surfaces (SurfaceIndex (idx)).minH := minH;
-                  surfaces (SurfaceIndex (idx)).maxW := maxW;
-                  surfaces (SurfaceIndex (idx)).maxH := maxH;
-                  surfaces (SurfaceIndex (idx)).windowFlags := winFlags;
-                  nextW := surfaces (SurfaceIndex (idx)).w;
-                  nextH := surfaces (SurfaceIndex (idx)).h;
-                  clampSurfaceSize (surfaces (SurfaceIndex (idx)),
+                  oldBounds := surfaceRect (store.Surfaces (SurfaceIndex (idx)));
+                  store.Surfaces (SurfaceIndex (idx)).minW := minW;
+                  store.Surfaces (SurfaceIndex (idx)).minH := minH;
+                  store.Surfaces (SurfaceIndex (idx)).maxW := maxW;
+                  store.Surfaces (SurfaceIndex (idx)).maxH := maxH;
+                  store.Surfaces (SurfaceIndex (idx)).windowFlags := winFlags;
+                  nextW := store.Surfaces (SurfaceIndex (idx)).w;
+                  nextH := store.Surfaces (SurfaceIndex (idx)).h;
+                  clampSurfaceSize (store.Surfaces (SurfaceIndex (idx)),
                                     nextW, nextH);
-                  surfaces (SurfaceIndex (idx)).w := nextW;
-                  surfaces (SurfaceIndex (idx)).h := nextH;
-                  surfaces (SurfaceIndex (idx)).serial :=
-                     surfaces (SurfaceIndex (idx)).serial + 1;
-                  surfaces (SurfaceIndex (idx)).dirty := True;
-                  newBounds := surfaceRect (surfaces (SurfaceIndex (idx)));
+                  store.Surfaces (SurfaceIndex (idx)).w := nextW;
+                  store.Surfaces (SurfaceIndex (idx)).h := nextH;
+                  store.Surfaces (SurfaceIndex (idx)).serial :=
+                     store.Surfaces (SurfaceIndex (idx)).serial + 1;
+                  store.Surfaces (SurfaceIndex (idx)).dirty := True;
+                  newBounds := surfaceRect (store.Surfaces (SurfaceIndex (idx)));
 
-                  queueConfigure (surfaces (SurfaceIndex (idx)).id,
+                  queueConfigure (store.Surfaces (SurfaceIndex (idx)).id,
                                   Unsigned_64 (newBounds.w),
                                   Unsigned_64 (newBounds.h));
 
@@ -8048,7 +9278,7 @@ procedure main is
                        ((DP.Success,
                          (DP.Pixel_Extent (minW), DP.Pixel_Extent (minH),
                           DP.Pixel_Extent (maxW), DP.Pixel_Extent (maxH)),
-                         surfaces (SurfaceIndex (idx)).serial)));
+                         store.Surfaces (SurfaceIndex (idx)).serial)));
 
                   scheduleRedrawRect
                     (inflateRect (unionRect (oldBounds, newBounds), 4));
@@ -8063,15 +9293,16 @@ procedure main is
             begin
                if idx < 0 then
                   result := DP.Bad_Object;
-               elsif surfaces (SurfaceIndex (idx)).owner /= from then
+               elsif store.Surfaces (SurfaceIndex (idx)).owner /= from then
                   result := DP.Denied;
                else
-                  surfaces (SurfaceIndex (idx)).title := titleRequest.Value.Title;
-                  surfaces (SurfaceIndex (idx)).dirty := True;
+                  store.Surfaces (SurfaceIndex (idx)).title := titleRequest.Value.Title;
+                  store.Surfaces (SurfaceIndex (idx)).labelsMeasured := False;
+                  store.Surfaces (SurfaceIndex (idx)).dirty := True;
                   result := DP.Success;
                   scheduleRedrawRect
                     (inflateRect
-                       (surfaceRect (surfaces (SurfaceIndex (idx))), 2));
+                       (surfaceRect (store.Surfaces (SurfaceIndex (idx))), 2));
                   --  The taskbar button shows the same title.
                   scheduleRedrawRect (taskButtonRect (SurfaceIndex (idx)));
                end if;
@@ -8094,11 +9325,11 @@ procedure main is
                   replyMsg.words (0) := DP.Status_Code'Enum_Rep (DP.Invalid_Request);
                elsif idx < 0 then
                   replyMsg.words (0) := UI_ERR_BAD_OBJECT;
-               elsif surfaces (SurfaceIndex (idx)).owner /= from then
+               elsif store.Surfaces (SurfaceIndex (idx)).owner /= from then
                   replyMsg.words (0) := UI_ERR_DENIED;
-               elsif surfaces (SurfaceIndex (idx)).publicationMode then
+               elsif store.Surfaces (SurfaceIndex (idx)).publicationMode then
                   replyMsg.words (0) := UI_ERR_BAD_STATE;
-               elsif surfaces (SurfaceIndex (idx)).serial = Unsigned_64'Last then
+               elsif store.Surfaces (SurfaceIndex (idx)).serial = Unsigned_64'Last then
                   replyMsg.words (0) := UI_ERR_BAD_STATE;
                else
                   -- Acquire the new buffer BEFORE releasing the old one.
@@ -8109,26 +9340,26 @@ procedure main is
                   if Acquisition /= DP.Success then
                      replyMsg.words (0) := DP.Status_Code'Enum_Rep (Acquisition);
                   else
-                     releaseSurfaceBuffer (surfaces (SurfaceIndex (idx)));
-                     surfaces (SurfaceIndex (idx)).bufferLoan := Loan;
-                     surfaces (SurfaceIndex (idx)).bufferGrant := decoded.Value.Grant;
-                     surfaces (SurfaceIndex (idx)).bufferAddr := mapped;
-                     surfaces (SurfaceIndex (idx)).bufferW :=
+                     releaseSurfaceBuffer (store.Surfaces (SurfaceIndex (idx)));
+                     store.Surfaces (SurfaceIndex (idx)).bufferLoan := Loan;
+                     store.Surfaces (SurfaceIndex (idx)).bufferGrant := decoded.Value.Grant;
+                     store.Surfaces (SurfaceIndex (idx)).bufferAddr := mapped;
+                     store.Surfaces (SurfaceIndex (idx)).bufferW :=
                        Natural (decoded.Value.Layout.Width);
-                     surfaces (SurfaceIndex (idx)).bufferH :=
+                     store.Surfaces (SurfaceIndex (idx)).bufferH :=
                        Natural (decoded.Value.Layout.Height);
-                     surfaces (SurfaceIndex (idx)).bufferPitch := decoded.Value.Layout.Pitch;
-                     surfaces (SurfaceIndex (idx)).bufferFormat := PIXEL_FORMAT_BGRA8888;
-                     surfaces (SurfaceIndex (idx)).bufferAttached := True;
-                     surfaces (SurfaceIndex (idx)).dirty := True;
-                     surfaces (SurfaceIndex (idx)).serial :=
-                       surfaces (SurfaceIndex (idx)).serial + 1;
-                     noteContentChange (surfaces (SurfaceIndex (idx)),
-                       bufferRows (surfaces (SurfaceIndex (idx)).bufferH));
+                     store.Surfaces (SurfaceIndex (idx)).bufferPitch := decoded.Value.Layout.Pitch;
+                     store.Surfaces (SurfaceIndex (idx)).bufferFormat := PIXEL_FORMAT_BGRA8888;
+                     store.Surfaces (SurfaceIndex (idx)).bufferAttached := True;
+                     store.Surfaces (SurfaceIndex (idx)).dirty := True;
+                     store.Surfaces (SurfaceIndex (idx)).serial :=
+                       store.Surfaces (SurfaceIndex (idx)).serial + 1;
+                     noteContentChange (store.Surfaces (SurfaceIndex (idx)),
+                       bufferRows (store.Surfaces (SurfaceIndex (idx)).bufferH));
                      replyMsg.words (0) := UI_OK;
                      scheduleRedrawRect
                        (inflateRect
-                          (surfaceRect (surfaces (SurfaceIndex (idx))), 4));
+                          (surfaceRect (store.Surfaces (SurfaceIndex (idx))), 4));
                   end if;
                end if;
             end;
@@ -8143,15 +9374,15 @@ procedure main is
                idx : constant Integer := findSurface (request.words (0));
                accessStatus : constant DP.Status_Code := DP.Surface_Access
                  (idx >= 0,
-                  (if idx >= 0 then To_Word (surfaces (SurfaceIndex (idx)).owner) else 0),
+                  (if idx >= 0 then To_Word (store.Surfaces (SurfaceIndex (idx)).owner) else 0),
                   To_Word (from));
             begin
                if accessStatus /= DP.Success then
                   replyMsg.words (0) := DP.Status_Code'Enum_Rep (accessStatus);
-               elsif surfaces (SurfaceIndex (idx)).publicationMode then
+               elsif store.Surfaces (SurfaceIndex (idx)).publicationMode then
                   replyMsg.words (0) := UI_ERR_BAD_STATE;
                elsif
-                  (surfaces (SurfaceIndex (idx)).flags and
+                  (store.Surfaces (SurfaceIndex (idx)).flags and
                    SURFACE_FLAG_SHELL) = 0
                then
                   --  A client present changes the client buffer contents, not
@@ -8163,13 +9394,13 @@ procedure main is
                   --  still mean "the whole client area changed."
                   declare
                      client : constant Rect :=
-                        clientRect (surfaces (SurfaceIndex (idx)));
+                        clientRect (store.Surfaces (SurfaceIndex (idx)));
                      damage : constant DP.Rectangle :=
                        DP.Clip (present.Value.Area, client.w, client.h);
-                     bufferH : constant Natural := surfaces (SurfaceIndex (idx)).bufferH;
+                     bufferH : constant Natural := store.Surfaces (SurfaceIndex (idx)).bufferH;
                   begin
                      -- Client-local damage rows are buffer rows only at 1:1.
-                     noteContentChange (surfaces (SurfaceIndex (idx)),
+                     noteContentChange (store.Surfaces (SurfaceIndex (idx)),
                        (if DP.Mode (present.Value) = DP.Whole_Surface or else bufferH /= client.h
                         then bufferRows (bufferH)
                         else Compositor_Source_Content.Clip
@@ -8188,8 +9419,8 @@ procedure main is
                      end if;
                   end;
                else
-                  noteContentChange (surfaces (SurfaceIndex (idx)),
-                    bufferRows (surfaces (SurfaceIndex (idx)).bufferH));
+                  noteContentChange (store.Surfaces (SurfaceIndex (idx)),
+                    bufferRows (store.Surfaces (SurfaceIndex (idx)).bufferH));
                   scheduleRedraw;
                end if;
             end;
@@ -8203,7 +9434,7 @@ procedure main is
             begin
                if idx < 0 then
                   result := DP.Bad_Object;
-               elsif surfaces (SurfaceIndex (idx)).owner /= from then
+               elsif store.Surfaces (SurfaceIndex (idx)).owner /= from then
                   result := DP.Denied;
                else
                   if pointerSurfaceId = target then
@@ -8213,9 +9444,9 @@ procedure main is
                      endDrag;
                   end if;
                   clearInputForTarget (target);
-                  releaseSurfaceBuffer (surfaces (SurfaceIndex (idx)));
-                  retireSurfaceSource (surfaces (SurfaceIndex (idx)));
-                  surfaces (SurfaceIndex (idx)) := (others => <>);
+                  releaseSurfaceBuffer (store.Surfaces (SurfaceIndex (idx)));
+                  retireSurfaceSource (store.Surfaces (SurfaceIndex (idx)));
+                  store.Surfaces (SurfaceIndex (idx)) := (others => <>);
                   if focusSurface = target then
                      -- Select after removal, before accepting more input.
                      -- The full redraw below includes old/new titlebar state.
@@ -8262,7 +9493,7 @@ procedure main is
                elsif request.tag.label = OP_INPUT_WAIT and then
                  (deadline = 0 or else deadline > nowMs) and then
                  channelSlot >= 0 and then
-                 not inputChannels
+                 not store.Channels
                    (SurfaceIndex (channelSlot)).waiter.active
                then
                   declare
@@ -8270,7 +9501,7 @@ procedure main is
                        CuBit.Handles.IPC.Save_Reply;
                   begin
                      if saved.Saved then
-                        inputChannels (SurfaceIndex (channelSlot)).waiter :=
+                        store.Channels (SurfaceIndex (channelSlot)).waiter :=
                           (active      => True,
                            owner       => from,
                            target      => target,
@@ -8290,18 +9521,18 @@ procedure main is
             end;
 
          when OP_DESKTOP_BYE =>
-            for i in surfaces'Range loop
-               if surfaces (i).used and then surfaces (i).owner = from then
-                  if pointerSurfaceId = surfaces (i).id then
+            for i in store.Surfaces'Range loop
+               if store.Surfaces (i).used and then store.Surfaces (i).owner = from then
+                  if pointerSurfaceId = store.Surfaces (i).id then
                      pointerSurfaceId := 0;
                   end if;
-                  if dragSurfaceId = surfaces (i).id then
+                  if dragSurfaceId = store.Surfaces (i).id then
                      endDrag;
                   end if;
-                  clearInputForTarget (surfaces (i).id);
-                  releaseSurfaceBuffer (surfaces (i));
-                  retireSurfaceSource (surfaces (i));
-                  surfaces (i) := (others => <>);
+                  clearInputForTarget (store.Surfaces (i).id);
+                  releaseSurfaceBuffer (store.Surfaces (i));
+                  retireSurfaceSource (store.Surfaces (i));
+                  store.Surfaces (i) := (others => <>);
                end if;
             end loop;
             if focusSurface /= 0 and then findSurface (focusSurface) < 0 then
@@ -8349,10 +9580,8 @@ procedure main is
          launchMenuOpen := False;
          damage := unionRect (damage, inflateRect (unionRect (launchButtonRect, launchMenuArea), 4));
       end if;
-      if audioPopupOpen then
-         audioPopupOpen := False;
-         damage := unionRect (damage, unionRect (audioPopupRect, statusRect));
-      end if;
+      closeDeskbarPanel (damage);
+      closeGroupList (damage);
       ignore := Desktop_Clipboard.Expire (nowMs);
       clipboardMenu := (others => <>);
       reloadClipboardMenu;
@@ -8654,7 +9883,7 @@ procedure main is
       -- Keep each title bar (and minimized/maximized restore position) on its
       -- existing monitor. Scale changes may shrink their logical work area;
       -- use the usual configure path when an existing client needs resizing.
-      for S of surfaces loop
+      for S of store.Surfaces loop
          if S.used and then (S.flags and SURFACE_FLAG_WINDOW) /= 0 then
             declare
                Owner : constant DL.Pointer_Position := DL.Confine (desktopLayout,
@@ -8709,7 +9938,7 @@ procedure main is
       end loop;
       -- A primary change changes work areas, not client ownership or restore
       -- placement. Resize maximized windows in place without unmaximizing them.
-      for S of surfaces loop
+      for S of store.Surfaces loop
          if S.used and then (S.flags and SURFACE_FLAG_WINDOW) /= 0 and then S.maximized then
             declare
                Area : constant Rect := windowWorkArea (surfaceRect (S));
@@ -8743,12 +9972,31 @@ procedure main is
       cursorSaveValid := False;
       cursorPresentPending := False;
       launchMenuOpen := False;
-      audioPopupOpen := False;
+      deskbarPanelOpen := False;
+      groupListOpen := False;
       clipboardMenuOpen := False;
       settingsView.Applied_Layout := Candidate;
       settingsView.Applied_Primary := Choice.Display;
       settingsView.Dragging := False;
       settingsView.Layout_Status := Desktop_Settings.Session_Only;
+      --  desktop.display.scale: Auto, or the user's choice (the primary
+      --  output's scale), for the next session too.
+      declare
+         use type CuBit.Config.ConfigStatus;
+         Wanted : constant Desktop_Display_Scale_Settings.Preference :=
+           (if settingsView.Pending_Auto then Desktop_Display_Scale_Settings.Default
+            else (Auto => False, Scale => Candidate.Items (Choice.Index).Geometry.Scale));
+         Text : constant String := Desktop_Display_Scale_Settings.Encode (Wanted);
+         Status : CuBit.Config.ConfigStatus;
+      begin
+         CuBit.Config.set (Desktop_Display_Scale_Settings.Config_Key, Text'Address, Text'Length, Status);
+         displayScale := Wanted;
+         settingsView.Applied_Auto := settingsView.Pending_Auto;
+         if Status = CuBit.Config.OK then
+            settingsView.Layout_Status := Desktop_Settings.Saved_In_Config;
+         end if;
+         debugPrint ("desktop: display scale " & Text & LF);
+      end;
       damage := (0, 0, fbWidth, fbHeight);
       scheduleRedraw;
       debugPrint ("desktop: arrangement applied" & LF);
@@ -8777,7 +10025,7 @@ procedure main is
                               else Desktop_Settings.Session_Only);
       dragBaseReady := False;
       damage := (0, 0, fbWidth, fbHeight);
-      for S of surfaces loop
+      for S of store.Surfaces loop
          if S.used and then S.owner /= No_Process then
             queueConfigure (S.id, Unsigned_64 (S.w), Unsigned_64 (S.h));
          end if;
@@ -8785,9 +10033,38 @@ procedure main is
       debugPrint ("desktop: appearance applied" & LF);
    end Apply_Appearance;
 
+   --  Settings > Date & Time: clock.time-zone, which the clock service reads
+   --  for every snapshot (the Deskbar clock follows on its next update).
+   procedure Apply_Time_Zone is
+      Saved : Boolean;
+   begin
+      Desktop_Time_Zone_Setting.Store (settingsView.Pending_Zone, Saved);
+      if Saved then
+         settingsView.Applied_Zone := settingsView.Pending_Zone;
+      end if;
+      settingsView.Zone_Status := (if Saved then Desktop_Settings.Saved_In_Config else Desktop_Settings.Rejected);
+      debugPrint ("desktop: time zone " & Time_Zones.Name (settingsView.Pending_Zone) &
+                  (if Saved then " saved in Config" else " refused by Config") & LF);
+   end Apply_Time_Zone;
+
+   --  Apply the Settings page on show (Index: the Settings window).
+   procedure Apply_Settings_Page (Index : SurfaceIndex; damage : in out Rect) is
+   begin
+      case settingsView.Current_Page is
+         when Desktop_Settings.Appearance => Apply_Appearance (damage);
+         when Desktop_Settings.Displays => Apply_Arrangement (damage);
+         when Desktop_Settings.Date_Time =>
+            Apply_Time_Zone;
+            damage := unionRect (damage, surfaceRect (store.Surfaces (Index)));
+         when Desktop_Settings.Monitor =>
+            --  Read-only: nothing to apply.
+            null;
+      end case;
+   end Apply_Settings_Page;
+
    procedure Settings_Pointer (Index : SurfaceIndex; Down, Pressed, Released : Boolean;
                                damage : in out Rect) is
-      Bounds : constant Rect := clientRect (surfaces (Index));
+      Bounds : constant Rect := clientRect (store.Surfaces (Index));
       Before : constant Desktop_Settings.State := settingsView;
       Apply : Boolean;
       use type Desktop_Settings.State;
@@ -8795,8 +10072,7 @@ procedure main is
       Desktop_Settings.Pointer (settingsView, (Bounds.x, Bounds.y, Bounds.w, Bounds.h),
         (cursorX, cursorY, Down, Pressed, Released, True), Apply);
       if Apply then
-         if settingsView.Current_Page = Desktop_Settings.Displays then Apply_Arrangement (damage);
-         else Apply_Appearance (damage); end if;
+         Apply_Settings_Page (Index, damage);
       elsif Before /= settingsView then damage := unionRect (damage, Bounds);
       end if;
    end Settings_Pointer;
@@ -8810,19 +10086,18 @@ procedure main is
          return False;
       end if;
 
-      if surfaces (SurfaceIndex (idx)).owner /= No_Process then
+      if store.Surfaces (SurfaceIndex (idx)).owner /= No_Process then
          return False;
       end if;
 
-      case surfaces (SurfaceIndex (idx)).appKind is
+      case store.Surfaces (SurfaceIndex (idx)).appKind is
          when APP_SETTINGS =>
             if raw < 128 then
                declare Apply : Boolean; begin
                   Desktop_Settings.Key (settingsView, Natural (raw), desktopShiftDown, Apply);
                   if Apply then
-                     if settingsView.Current_Page = Desktop_Settings.Displays then Apply_Arrangement (damage);
-                     else Apply_Appearance (damage); end if;
-                  else damage := unionRect (damage, surfaceRect (surfaces (SurfaceIndex (idx)))); end if;
+                     Apply_Settings_Page (SurfaceIndex (idx), damage);
+                  else damage := unionRect (damage, surfaceRect (store.Surfaces (SurfaceIndex (idx)))); end if;
                end;
             end if;
             return True;
@@ -8924,6 +10199,15 @@ procedure main is
       if ret.y + ret.h > fbHeight then
          ret.y := fbHeight - ret.h;
       end if;
+      --  The title bar stays in its work area, above the Deskbar, where it
+      --  can be grabbed (as Apply_Arrangement keeps it when outputs change).
+      declare
+         work : constant Rect := windowWorkArea (ret);
+      begin
+         if work.h >= CLIENT_INSET_TOP and then ret.y + CLIENT_INSET_TOP > work.y + work.h then
+            ret.y := work.y + work.h - CLIENT_INSET_TOP;
+         end if;
+      end;
 
       return ret;
    end clampWindowRect;
@@ -8980,10 +10264,22 @@ procedure main is
         (Character'Val (Character'Pos ('0') + v));
    begin
       Desktop_Status_Refresh.Take_Clock (stamp, fresh);
+      if fresh and then (not clockQualityLogged or else stamp.Quality /= clockQuality) then
+         clockQuality := stamp.Quality;
+         clockQualityLogged := True;
+         debugPrint ("desktop: clock quality " & CuBit.Clocks.Name (stamp.Quality) &
+                     (if CuBit.Clocks.Is_Valid_Wall_Time (stamp.Quality) then ""
+                      else " (Deskbar shows no time; see the ""clock:"" boot lines)") & LF);
+      end if;
       if fresh then
          if CuBit.Clocks.Is_Valid_Wall_Time (stamp.Quality) then
             nextText := [digit (stamp.Hour / 10), digit (stamp.Hour mod 10), ':',
                          digit (stamp.Minute / 10), digit (stamp.Minute mod 10)];
+            if not clockDateKnown or else clockDate.Day /= stamp.Day then
+               if deskbarPanelOpen then scheduleRedrawRect (panelRect); end if;
+            end if;
+            clockDate := stamp;
+            clockDateKnown := True;
             --  Next read at the next minute, within the regular interval.
             if now < Unsigned_64'Last - Status_Interval_Ms then
                statusDueMs := Unsigned_64'Min
@@ -8995,14 +10291,26 @@ procedure main is
          if clockText /= nextText then
             clockText := nextText;
             scheduleRedrawRect (statusRect);
+            if deskbarPanelOpen then scheduleRedrawRect (panelRect); end if;
          end if;
       end if;
       Desktop_Status_Refresh.Take_Audio (audio, fresh);
       if fresh and then audio /= masterAudio then
-         masterAudio := audio;
-         scheduleRedrawRect (statusRect);
-         if audioPopupOpen then scheduleRedrawRect (audioPopupRect); end if;
+         declare
+            oldStatus : constant Rect := statusRect;
+         begin
+            masterAudio := audio;
+            --  The volume item appears or goes with the mixer.
+            scheduleRedrawRect (unionRect (oldStatus, statusRect));
+         end;
+         if deskbarPanelOpen then scheduleRedrawRect (panelVolumeRowRect); end if;
       end if;
+      declare
+         ended : Boolean;
+      begin
+         DN.Expire_Toast (notifications, now, ended);
+         if ended then scheduleRedrawRect (toastRect); end if;
+      end;
       if now = Unsigned_64'Last or else now < statusDueMs then return; end if;
       statusDueMs := (if now < Unsigned_64'Last - Status_Interval_Ms
                       then now + Status_Interval_Ms else Unsigned_64'Last - 1);
@@ -9019,6 +10327,502 @@ procedure main is
       Desktop_Status_Refresh.Set_Audio (level, muted, requestSequence);
    end setMasterAudio;
 
+   --  The volume slider's level at pointer x.
+   function sliderLevel (x : Natural) return CuBit.Audio_Control.Percent is
+      track : constant Rect := volumeTrackRect;
+   begin
+      if track.w = 0 or else track.x > DBL.Max_Coordinate or else track.w > DBL.Max_Coordinate then
+         return masterAudio.Level;
+      end if;
+      return DBL.Level_At (track.x, track.w, Natural'Min (x, DBL.Max_Coordinate));
+   end sliderLevel;
+
+   procedure stepVolume (up : Boolean) is
+   begin
+      setMasterAudio
+        (Natural (Integer'Max (0, Integer'Min (100, Integer (masterAudio.Level) +
+           (if up then Volume_Step else -Volume_Step)))), masterAudio.Muted);
+   end stepVolume;
+
+   --  Raise one window (restoring it if minimized); a press on the active
+   --  window's own button minimizes it instead.
+   procedure activateWindow (slot : SurfaceIndex; minimizeIfActive : Boolean; damage : in out Rect) is
+      id : constant Unsigned_64 := store.Surfaces (slot).id;
+      idx : Integer;
+   begin
+      if minimizeIfActive and then id = focusSurface and then not store.Surfaces (slot).minimized then
+         minimizeSurface (slot, damage);
+         return;
+      end if;
+      if store.Surfaces (slot).minimized then
+         restoreSurface (slot, damage);
+      end if;
+      idx := findSurface (id);
+      if idx >= 0 then
+         focusAndRaiseSurface (SurfaceIndex (idx), damage);
+      end if;
+   end activateWindow;
+
+   --  A task button: one window toggles; a group opens its window list.
+   procedure activateTask (slot : SurfaceIndex; damage : in out Rect) is
+      W : constant TG.Windows := taskWindows;
+      M : constant TG.Model := taskModel (W);
+      G : constant TG.Group_Count := M.Of_Window (TG.Window_Slot (slot));
+   begin
+      if G = 0 then
+         return;
+      elsif M.Groups (G).Members > 1 then
+         toggleGroupList (M.Groups (G).Key, damage);
+      else
+         closeGroupList (damage);
+         activateWindow (slot, True, damage);
+      end if;
+   end activateTask;
+
+   --  The window list's row R: raise that window and close the list.
+   procedure activateListRow (R : TG.Window_Rank; damage : in out Rect) is
+      found : Boolean;
+      slot : TG.Window_Slot;
+   begin
+      TG.Member_At (taskWindows, groupListKey, R, found, slot);
+      closeGroupList (damage);
+      if found then
+         activateWindow (SurfaceIndex (slot), False, damage);
+      end if;
+   end activateListRow;
+
+   --  A press inside the open panel.
+   procedure panelPress (x, y : Natural; damage : in out Rect) is
+   begin
+      if masterAudio.Available and then pointInRect (x, y, muteIconRect) then
+         setMasterAudio (masterAudio.Level, not masterAudio.Muted);
+      elsif masterAudio.Available and then pointInRect (x, y, volumeTrackRect) then
+         deskbarSliderDragging := True;
+         setMasterAudio (sliderLevel (x), masterAudio.Muted);
+      elsif pointInRect (x, y, quietToggleRect) then
+         DN.Set_Quiet (notifications, not DN.Quiet (notifications));
+         damagePanel (damage);
+      elsif DN.Length (notifications) > 0 and then pointInRect (x, y, panelClearRect) then
+         DN.Clear (notifications);
+         panelFocus := Volume_Row;
+         damagePanel (damage);
+      else
+         for K in 1 .. panelNoteRows loop
+            if pointInRect (x, y, panelNoteCloseRect (K)) then
+               damagePanel (damage);
+               DN.Dismiss (notifications, DN.Item (notifications, DN.Position (K)).Id);
+               panelFocus := Volume_Row;
+               exit;
+            end if;
+         end loop;
+      end if;
+   end panelPress;
+
+   --  A press the Deskbar owns: the status button, the open panel or
+   --  window list (a press outside closes it), or the toast (opens the
+   --  panel).
+   procedure deskbarPress (x, y : Natural; damage : in out Rect) is
+   begin
+      if pointInRect (x, y, statusRect) then
+         toggleDeskbarPanel (damage);
+      elsif deskbarPanelOpen then
+         if pointInRect (x, y, panelRect) then
+            panelPress (x, y, damage);
+         else
+            closeDeskbarPanel (damage);
+         end if;
+      elsif groupListOpen then
+         if hitGroupListRow (x, y) /= 0 then
+            activateListRow (hitGroupListRow (x, y), damage);
+         else
+            closeGroupList (damage);
+         end if;
+      elsif toastShown and then pointInRect (x, y, toastRect) then
+         DN.Hide_Toast (notifications);
+         openDeskbarPanel (damage);
+      end if;
+   end deskbarPress;
+
+   --  Keyboard focus moves over Apps, the task buttons and the status button.
+   procedure moveTaskbarFocus (forward : Boolean; damage : in out Rect) is
+      count : constant TG.Group_Count := taskModel (taskWindows).Count;
+   begin
+      case deskbarFocus is
+         when No_Focus | Apps_Focus =>
+            if forward then
+               if count > 0 then
+                  deskbarFocus := Task_Focus;
+                  deskbarFocusTask := 1;
+               else
+                  deskbarFocus := Status_Focus;
+               end if;
+            else
+               deskbarFocus := Status_Focus;
+            end if;
+         when Task_Focus =>
+            if forward then
+               if deskbarFocusTask < count then
+                  deskbarFocusTask := deskbarFocusTask + 1;
+               else
+                  deskbarFocus := Status_Focus;
+               end if;
+            elsif deskbarFocusTask > 1 then
+               deskbarFocusTask := deskbarFocusTask - 1;
+            else
+               deskbarFocus := Apps_Focus;
+            end if;
+         when Status_Focus =>
+            if forward then
+               deskbarFocus := Apps_Focus;
+            elsif count > 0 then
+               deskbarFocus := Task_Focus;
+               deskbarFocusTask := count;
+            else
+               deskbarFocus := Apps_Focus;
+            end if;
+      end case;
+      damage := unionRect (damage, taskbarRect);
+   end moveTaskbarFocus;
+
+   procedure enterTaskbarFocus (damage : in out Rect) is
+   begin
+      closeDeskbarPanel (damage);
+      closeGroupList (damage);
+      deskbarFocus := Apps_Focus;
+      damage := unionRect (damage, taskbarRect);
+   end enterTaskbarFocus;
+
+   procedure leaveTaskbarFocus (damage : in out Rect) is
+   begin
+      if deskbarFocus /= No_Focus then
+         deskbarFocus := No_Focus;
+         damage := unionRect (damage, taskbarRect);
+      end if;
+   end leaveTaskbarFocus;
+
+   --  The panel's rows for the keyboard: volume, do not disturb, each shown
+   --  notification, then Clear all.
+   procedure movePanelFocus (forward : Boolean) is
+      notes : constant DN.Count := DN.Count (panelNoteRows);
+   begin
+      case panelFocus is
+         when Volume_Row =>
+            if forward then panelFocus := Quiet_Row; end if;
+         when Quiet_Row =>
+            if forward and then notes > 0 then
+               panelFocus := Note_Row;
+               panelFocusNote := 1;
+            elsif not forward then
+               panelFocus := Volume_Row;
+            end if;
+         when Note_Row =>
+            if forward then
+               if panelFocusNote < notes then
+                  panelFocusNote := panelFocusNote + 1;
+               else
+                  panelFocus := Clear_Row;
+               end if;
+            elsif panelFocusNote > 1 then
+               panelFocusNote := panelFocusNote - 1;
+            else
+               panelFocus := Quiet_Row;
+            end if;
+         when Clear_Row =>
+            if not forward then
+               panelFocus := (if notes > 0 then Note_Row else Quiet_Row);
+               panelFocusNote := notes;
+            end if;
+      end case;
+   end movePanelFocus;
+
+   procedure panelKey (code : Unsigned_8; damage : in out Rect) is
+   begin
+      damagePanel (damage);
+      if code = KEY_ESCAPE then
+         closeDeskbarPanel (damage);
+      elsif code = KEY_UP or else (code = KEY_TAB and then desktopShiftDown) then
+         movePanelFocus (False);
+      elsif code = KEY_DOWN or else code = KEY_TAB then
+         movePanelFocus (True);
+      elsif panelFocus = Volume_Row and then code in KEY_LEFT | KEY_RIGHT then
+         stepVolume (code = KEY_RIGHT);
+      elsif code in KEY_ENTER | KEY_SPACE then
+         case panelFocus is
+            when Volume_Row => setMasterAudio (masterAudio.Level, not masterAudio.Muted);
+            when Quiet_Row => DN.Set_Quiet (notifications, not DN.Quiet (notifications));
+            when Clear_Row =>
+               DN.Clear (notifications);
+               panelFocus := Volume_Row;
+            when Note_Row => null;
+         end case;
+      elsif code = KEY_DELETE and then panelFocus = Note_Row and then
+        panelFocusNote in 1 .. DN.Length (notifications)
+      then
+         DN.Dismiss (notifications, DN.Item (notifications, panelFocusNote).Id);
+         if panelFocusNote > DN.Count (panelNoteRows) then
+            panelFocusNote := DN.Count (panelNoteRows);
+         end if;
+         if panelFocusNote = 0 then
+            panelFocus := Quiet_Row;
+         end if;
+      end if;
+   end panelKey;
+
+   procedure listKey (code : Unsigned_8; damage : in out Rect) is
+      members : constant TG.Window_Count := groupListMembers;
+   begin
+      damage := unionRect (damage, groupListRect);
+      if code = KEY_ESCAPE or else members = 0 then
+         closeGroupList (damage);
+      elsif code = KEY_UP and then groupListRow > 1 then
+         groupListRow := groupListRow - 1;
+      elsif code = KEY_DOWN and then groupListRow < members then
+         groupListRow := groupListRow + 1;
+      elsif code in KEY_ENTER | KEY_SPACE and then groupListRow in 1 .. members then
+         activateListRow (groupListRow, damage);
+      end if;
+   end listKey;
+
+   procedure taskbarKey (code : Unsigned_8; damage : in out Rect) is
+   begin
+      if code = KEY_ESCAPE then
+         leaveTaskbarFocus (damage);
+      elsif code = KEY_LEFT or else (code = KEY_TAB and then desktopShiftDown) then
+         moveTaskbarFocus (False, damage);
+      elsif code in KEY_RIGHT | KEY_TAB then
+         moveTaskbarFocus (True, damage);
+      elsif code in KEY_ENTER | KEY_SPACE | KEY_UP then
+         case deskbarFocus is
+            when Apps_Focus =>
+               leaveTaskbarFocus (damage);
+               launchMenuOpen := True;
+               Desktop_Launch_Refresh.Request;
+               LM.Reset (launchMenuState);
+               damage := unionRect (damage, inflateRect (unionRect (launchButtonRect, launchMenuArea), 4));
+            when Task_Focus =>
+               declare
+                  W : constant TG.Windows := taskWindows;
+                  M : constant TG.Model := taskModel (W);
+                  G : constant TG.Group_Count :=
+                    (if deskbarFocusTask = 0 then 0 else TG.At_Position (W, M, deskbarFocusTask));
+               begin
+                  if G /= 0 then
+                     activateTask (SurfaceIndex (M.Groups (G).First), damage);
+                     if not groupListOpen then
+                        leaveTaskbarFocus (damage);
+                     end if;
+                  end if;
+               end;
+            when Status_Focus =>
+               openDeskbarPanel (damage);
+            when No_Focus =>
+               null;
+         end case;
+      end if;
+   end taskbarKey;
+
+   --  The Deskbar owns the keyboard while its panel or a window list is
+   --  open, or the taskbar has keyboard focus.
+   procedure deskbarKey (code : Unsigned_8; damage : in out Rect) is
+   begin
+      if deskbarPanelOpen then
+         panelKey (code, damage);
+      elsif groupListOpen then
+         listKey (code, damage);
+      else
+         taskbarKey (code, damage);
+      end if;
+   end deskbarKey;
+
+   ---------------------------------------------------------------------------
+   --  Tooltips: window buttons and the status button's parts.
+
+   --  The status button's part at (x, y): the unread badge, a shown item's
+   --  icon (as drawStatusButton lays them out), else the button itself.
+   function statusTargetAt (x, y : Natural) return DT.Target is
+      r : constant Rect := statusRect;
+      shown : constant DSI.Presence := statusShown;
+      left : Natural := r.x + DBS.Status_Padding;
+   begin
+      if not pointInRect (x, y, r) then
+         return DT.NO_TARGET;
+      end if;
+      if DN.Unread (notifications) > 0 then
+         if x >= left and then x < left + DBS.Badge_Size then
+            return (Kind => DT.Unread_Count);
+         end if;
+         left := left + DBS.Badge_Size + DBS.Status_Item_Gap;
+      end if;
+      for I in DSI.Item loop
+         if shown (I) then
+            if x >= left and then x < left + Desktop_Icons.ICON_SIZE then
+               return (Kind => DT.Status_Icon, Item => I);
+            end if;
+            left := left + Desktop_Icons.ICON_SIZE + DBS.Status_Item_Gap;
+         end if;
+      end loop;
+      return (Kind => DT.Status_Button);
+   end statusTargetAt;
+
+   --  What has a tip under (x, y): a window button of the topmost window
+   --  there (a greyed maximize too), or a part of the status button.
+   function tipTargetAt (x, y : Natural) return DT.Target is
+      idx : Integer;
+   begin
+      if dragMode /= DRAG_NONE or else launchMenuOpen or else clipboardMenuOpen or else groupListOpen then
+         return DT.NO_TARGET;
+      end if;
+      if shellSurfaceVisible and then not deskbarPanelOpen and then pointInRect (x, y, statusRect) then
+         return statusTargetAt (x, y);
+      end if;
+      idx := hitSurface (x, y);
+      if idx in 0 .. surfaceLast then
+         declare
+            s : Surface renames store.Surfaces (SurfaceIndex (idx));
+         begin
+            if pointInRect (x, y, minimizeButtonRect (s)) then
+               return (Kind => DT.Button_Of_Window, Slot => idx, Button => DT.Minimize_Button);
+            elsif pointInRect (x, y, maximizeButtonRect (s)) then
+               return (Kind => DT.Button_Of_Window, Slot => idx, Button => DT.Maximize_Button);
+            elsif pointInRect (x, y, closeButtonRect (s)) then
+               return (Kind => DT.Button_Of_Window, Slot => idx, Button => DT.Close_Button);
+            end if;
+         end;
+      end if;
+      return DT.NO_TARGET;
+   end tipTargetAt;
+
+   function tipText (T : DT.Target) return String is
+      unread : constant Natural := Natural (DN.Unread (notifications));
+   begin
+      case T.Kind is
+         when DT.Nothing => return "";
+         when DT.Button_Of_Window =>
+            if T.Slot <= surfaceLast and then store.Surfaces (T.Slot).used and then not store.Surfaces (T.Slot).minimized then
+               return DT.Button_Text (T.Button, store.Surfaces (T.Slot).maximized, maximizeAvailable (store.Surfaces (T.Slot)));
+            end if;
+            return "";
+         when DT.Status_Icon => return DSI.Name (T.Item, masterAudio.Muted);
+         when DT.Unread_Count =>
+            return countText (unread) & (if unread = 1 then " unread notification" else " unread notifications");
+         when DT.Status_Button => return "Notifications and status";
+      end case;
+   end tipText;
+
+   --  The shortcut a tip shows: the status button opens with Super+N.
+   function tipHint (T : DT.Target) return String is
+     (if T.Kind = DT.Status_Button then "Super+N" else "");
+
+   --  Where the showing tip goes: below the pointer (or the focused
+   --  control), else above it, on screen (Client_Popup_Layout.Place_Tip).
+   function tipLayout return Rect is
+      package PL renames Client_Popup_Layout;
+      T : constant DT.Target := DT.Decode (tipState.On);
+      text : constant String := tipText (T);
+      hint : constant String := tipHint (T);
+      focused : constant Boolean := not isEmpty (tipControl);
+   begin
+      if not TTP.Showing (tipState) or else text'Length = 0 or else fbWidth = 0 or else fbHeight = 0 then
+         return (others => 0);
+      end if;
+      declare
+         M : constant := PL.MAXIMUM_COORDINATE;
+         W : constant Natural :=
+           2 * DT.PADDING + uiTextWidth (text) + (if hint'Length > 0 then DT.HINT_GAP + uiTextWidth (hint) else 0);
+         H : constant Natural := 2 * DT.PADDING + CuBit.Fonts.Line_Height;
+         leftX : constant Natural := (if focused then tipControl.x else tipState.X + DT.POINTER_GAP);
+         belowY : constant Natural :=
+           (if focused then tipControl.y + tipControl.h + DT.FOCUS_GAP else tipState.Y + DT.POINTER_GAP);
+         aboveY : constant Natural :=
+           (if focused then tipControl.y - Natural'Min (DT.FOCUS_GAP, tipControl.y) else tipState.Y);
+         P : constant PL.Box :=
+           PL.Place_Tip (Natural'Min (leftX, M), Natural'Min (belowY, M), Natural'Min (aboveY, M),
+                         Natural'Min (W, M), Natural'Min (H, M),
+                         (0, 0, Natural'Min (fbWidth, M), Natural'Min (fbHeight, M)));
+      begin
+         return (P.X, P.Y, P.W, P.H);
+      end;
+   end tipLayout;
+
+   --  After the policy changed: the old box and the new one repaint.
+   procedure relayoutTip (before : Rect) is
+   begin
+      tipBox := tipLayout;
+      if not isEmpty (before) then
+         scheduleRedrawRect (before);
+      end if;
+      if not isEmpty (tipBox) then
+         scheduleRedrawRect (tipBox);
+      end if;
+   end relayoutTip;
+
+   --  The pointer rests or moves at (x, y): the target's tip after the
+   --  delay, at once when sliding from one shown tip to the next.
+   procedure pointTip (x, y : Natural) is
+      before : constant Rect := tipBox;
+      wasShown : constant Boolean := TTP.Showing (tipState);
+      wasOn : constant TTP.Target := tipState.On;
+   begin
+      tipControl := (others => 0);
+      TTP.Pointer_At (tipState, DT.Encode (tipTargetAt (x, y)), x, y, nowMs);
+      if wasShown and then (not TTP.Showing (tipState) or else tipState.On /= wasOn) then
+         relayoutTip (before);
+      end if;
+   end pointTip;
+
+   --  A press, release, wheel or key: hidden until another target.
+   procedure dismissTip is
+   begin
+      if TTP.Showing (tipState) and then not isEmpty (tipBox) then
+         scheduleRedrawRect (tipBox);
+      end if;
+      TTP.Dismiss (tipState);
+      tipBox := (others => 0);
+   end dismissTip;
+
+   --  Keyboard users: the focused status button's tip, below or above it,
+   --  after the same delay (call after the key's dismissTip).
+   procedure focusTip is
+   begin
+      if deskbarFocus = Status_Focus and then shellSurfaceVisible and then not deskbarPanelOpen then
+         tipControl := statusRect;
+         TTP.Pointer_At (tipState, DT.Encode ((Kind => DT.Status_Button)), tipControl.x, tipControl.y, nowMs);
+      end if;
+   end focusTip;
+
+   --  The delay ran out: the tip shows (the loop's wait includes the
+   --  policy's deadline; nothing polls).
+   procedure tickTip (now : Unsigned_64) is
+      changed : Boolean;
+   begin
+      TTP.Tick (tipState, now, changed);
+      if changed then
+         relayoutTip ((others => 0));
+      end if;
+   end tickTip;
+
+   --  Flat and square like the window chrome: the theme's panel, a 1-pixel
+   --  edge, the text, the shortcut right-aligned and quiet.
+   procedure drawTooltip is
+      r : constant Rect := tipBox;
+      colors : constant CuBit.UI.Theme := CuBit.UI.Current_Theme;
+      T : constant DT.Target := DT.Decode (tipState.On);
+   begin
+      if not TTP.Showing (tipState) or else isEmpty (r) then
+         return;
+      end if;
+      declare
+         text : constant String := tipText (T);
+         hint : constant String := tipHint (T);
+      begin
+         drawBox (r, colors.panel, colors.edge);
+         drawUIText (r.x + DT.PADDING, r.y + DT.PADDING, text, colors.text, colors.panel);
+         if hint'Length > 0 and then r.w > DT.PADDING + uiTextWidth (hint) then
+            drawUIText (r.x + r.w - DT.PADDING - uiTextWidth (hint), r.y + DT.PADDING, hint, colors.muted, colors.panel);
+         end if;
+      end;
+   end drawTooltip;
+
    procedure damageChromeButton
       (id : Unsigned_64; button : Pointer_Action; damage : in out Rect)
    is
@@ -9028,7 +10832,7 @@ procedure main is
          return;
       end if;
       declare
-         S : Surface renames surfaces (SurfaceIndex (idx));
+         S : Surface renames store.Surfaces (SurfaceIndex (idx));
       begin
          case button is
             when HIT_CLOSE => damage := unionRect (damage, closeButtonRect (S));
@@ -9048,9 +10852,9 @@ procedure main is
       nextButton : Pointer_Action := DRAG_NONE;
    begin
       if idx >= 0 then
-         nextButton := hitMode (surfaces (SurfaceIndex (idx)), cursorX, cursorY);
+         nextButton := hitMode (store.Surfaces (SurfaceIndex (idx)), cursorX, cursorY);
          if nextButton in HIT_MINIMIZE | HIT_CLOSE | HIT_MAXIMIZE then
-            nextId := surfaces (SurfaceIndex (idx)).id;
+            nextId := store.Surfaces (SurfaceIndex (idx)).id;
          else
             nextButton := DRAG_NONE;
          end if;
@@ -9141,6 +10945,14 @@ procedure main is
          end;
       end if;
 
+      --  Tooltips follow the resting pointer; a press, release or wheel
+      --  hides them.
+      if leftTransition or else dz /= 0 or else buttons /= lastButtons then
+         dismissTip;
+      elsif pointerMoved then
+         pointTip (cursorX, cursorY);
+      end if;
+
       --  The clipboard manager takes the pointer while open: a click on a
       --  row pastes it, a click elsewhere closes the manager.
       if clipboardMenuOpen and then pointerSurfaceId = 0 and then
@@ -9172,66 +10984,29 @@ procedure main is
          return;
       end if;
 
-      --  A press on the launch notice dismisses it; the desktop keeps that
-      --  gesture through its release. Elsewhere the pointer works as usual.
-      if pointerSurfaceId = 0 and then dragMode = DRAG_NONE and then
-        (noticePointerCapture or else
-         (launchNotice.Open and then leftDown and then not leftWasDown and then
-          pointInRect (cursorX, cursorY, launchNoticeRect)))
-      then
-         if leftDown and then not leftWasDown then
-            noticePointerCapture := True;
-            dismissLaunchNotice (damage);
-            scheduleRedrawRect (damage);
-         elsif not leftDown then
-            noticePointerCapture := False;
-         end if;
-         lastButtons := buttons;
-         cursorStyle := POINTER_DEFAULT;
-         scheduleCursorPresent;
-         return;
-      end if;
-
-      --  Popup input belongs to the desktop, including the release outside
-      --  its bounds. Never deliver half a gesture to the focused application.
+      --  The Deskbar (UI-027) owns presses on its status button, its open
+      --  panel or window list and the toast, and keeps each gesture through
+      --  its release: never half a gesture to the focused application. A
+      --  press outside an open panel or list closes it.
       if shellSurfaceVisible and then pointerSurfaceId = 0 and then
         dragMode = DRAG_NONE and then
-        (audioPointerCapture or else audioPopupOpen or else
-         pointInRect (cursorX, cursorY, speakerRect))
+        (deskbarPointerCapture or else
+         (leftDown and then not leftWasDown and then
+          (pointInRect (cursorX, cursorY, statusRect) or else deskbarPanelOpen or else
+           groupListOpen or else (toastShown and then pointInRect (cursorX, cursorY, toastRect)))))
       then
          if leftDown and then not leftWasDown then
-            audioPointerCapture := True;
-            if pointInRect (cursorX, cursorY, speakerRect) then
-               audioPopupOpen := not audioPopupOpen and then masterAudio.Available;
-               if launchMenuOpen then
-                  scheduleRedrawRect (inflateRect (launchMenuArea, 4));
-                  launchMenuOpen := False;
-               end if;
-            elsif audioPopupOpen and then
-              pointInRect (cursorX, cursorY, muteButtonRect)
-            then
-               setMasterAudio (masterAudio.Level, not masterAudio.Muted);
-            elsif audioPopupOpen and then
-              pointInRect (cursorX, cursorY, volumeTrackRect)
-            then audioSliderDragging := True;
-            elsif not pointInRect (cursorX, cursorY, audioPopupRect) then
-               audioPopupOpen := False;
-            end if;
-            scheduleRedrawRect (audioPopupRect);
-            scheduleRedrawRect (statusRect);
-         end if;
-         if audioSliderDragging and then leftDown then
-            declare
-               relative : constant Integer :=
-                 Integer (cursorX) - Integer (volumeTrackRect.x) - 6;
-               level : constant Natural :=
-                 Natural (Integer'Max (0, Integer'Min (196, relative))) * 100 / 196;
-            begin setMasterAudio (level, masterAudio.Muted); end;
+            deskbarPointerCapture := True;
+            leaveTaskbarFocus (damage);
+            deskbarPress (cursorX, cursorY, damage);
+         elsif deskbarSliderDragging and then leftDown then
+            setMasterAudio (sliderLevel (cursorX), masterAudio.Muted);
          end if;
          if not leftDown then
-            audioSliderDragging := False;
-            audioPointerCapture := False;
+            deskbarSliderDragging := False;
+            deskbarPointerCapture := False;
          end if;
+         scheduleRedrawRect (damage);
          lastButtons := buttons;
          cursorStyle := POINTER_DEFAULT;
          scheduleCursorPresent;
@@ -9247,7 +11022,7 @@ procedure main is
 
       if pointerSurfaceId /= 0 then
          idx := findSurface (pointerSurfaceId);
-         if idx >= 0 and then surfaces (SurfaceIndex (idx)).appKind = APP_SETTINGS then
+         if idx >= 0 and then store.Surfaces (SurfaceIndex (idx)).appKind = APP_SETTINGS then
             declare Before : constant Rect := damage; begin
                Settings_Pointer (SurfaceIndex (idx), leftDown, False, not leftDown and leftWasDown, damage);
                sceneDamage := sceneDamage or damage /= Before;
@@ -9266,6 +11041,21 @@ procedure main is
          end if;
       elsif focusSurface /= 0 then
          if deliverMove then
+            declare
+               fidx : constant Integer := findSurface (focusSurface);
+               inside : constant Boolean :=
+                 fidx >= 0 and then pointInRect (cursorX, cursorY, clientRect (store.Surfaces (SurfaceIndex (fidx))));
+               oldIdx : constant Integer := (if hoverInsideId = 0 then -1 else findSurface (hoverInsideId));
+            begin
+               if oldIdx >= 0 and then (hoverInsideId /= focusSurface or else not inside) then
+                  declare
+                     c : constant Rect := clientRect (store.Surfaces (SurfaceIndex (oldIdx)));
+                  begin
+                     queuePointer (INPUT_POINTER_MOVE, hoverInsideId, c.x + c.w, c.y, buttons);
+                  end;
+               end if;
+               hoverInsideId := (if inside then focusSurface else 0);
+            end;
             queuePointerIfClient (INPUT_POINTER_MOVE,
                                   focusSurface,
                                   cursorX,
@@ -9276,7 +11066,7 @@ procedure main is
             wheelIdx := hitSurface (cursorX, cursorY);
             if wheelIdx >= 0 then
                queuePointerWheel
-                 (surfaces (SurfaceIndex (wheelIdx)).id,
+                 (store.Surfaces (SurfaceIndex (wheelIdx)).id,
                   cursorX,
                   cursorY,
                   buttons,
@@ -9307,6 +11097,7 @@ procedure main is
       end if;
 
       if leftDown and then not leftWasDown then
+         leaveTaskbarFocus (damage);
          if shellSurfaceVisible and then
             pointInRect (cursorX, cursorY, launchButtonRect)
          then
@@ -9357,23 +11148,16 @@ procedure main is
 
          taskIdx := hitTaskButton (cursorX, cursorY);
          if not handledChromeClick and then taskIdx >= 0 then
-            clickedId := surfaces (SurfaceIndex (taskIdx)).id;
-            if surfaces (SurfaceIndex (taskIdx)).minimized then
-               restoreSurface (SurfaceIndex (taskIdx), damage);
-            end if;
-            taskIdx := findSurface (clickedId);
-            if taskIdx >= 0 then
-               focusAndRaiseSurface (SurfaceIndex (taskIdx), damage);
-            end if;
+            activateTask (SurfaceIndex (taskIdx), damage);
             handledChromeClick := True;
          end if;
 
          idx := hitSurface (cursorX, cursorY);
          if not handledChromeClick and then idx >= 0 then
-            clickedId := surfaces (SurfaceIndex (idx)).id;
-            dragMode := hitMode (surfaces (SurfaceIndex (idx)), cursorX, cursorY);
+            clickedId := store.Surfaces (SurfaceIndex (idx)).id;
+            dragMode := hitMode (store.Surfaces (SurfaceIndex (idx)), cursorX, cursorY);
             titlePress :=
-              cursorY < surfaces (SurfaceIndex (idx)).y + TITLE_HEIGHT and then
+              cursorY < store.Surfaces (SurfaceIndex (idx)).y + TITLE_HEIGHT and then
               dragMode in DRAG_NONE | DRAG_MOVE;
             if titlePress and then buttons = 1 then
                CuBit.Click_Sequences.Press
@@ -9419,17 +11203,17 @@ procedure main is
                      if titlePress then
                         tracePointer
                           ("title-double", clickedId,
-                           Boolean'Pos (surfaces (SurfaceIndex (idx)).maximized),
+                           Boolean'Pos (store.Surfaces (SurfaceIndex (idx)).maximized),
                            0);
                      end if;
                      dragMode := DRAG_NONE;
-                  elsif titlePress and then surfaces (SurfaceIndex (idx)).maximized then
+                  elsif titlePress and then store.Surfaces (SurfaceIndex (idx)).maximized then
                      --  Maximized captions are still chrome, not client area.
                      --  Single presses do not start a move; a pair restores.
                      null;
                   elsif dragMode = DRAG_NONE then
                      pointerSurfaceId := clickedId;
-                     if surfaces (SurfaceIndex (idx)).appKind = APP_SETTINGS then
+                     if store.Surfaces (SurfaceIndex (idx)).appKind = APP_SETTINGS then
                         Settings_Pointer (SurfaceIndex (idx), True, True, False, damage);
                      end if;
                      queuePointerIfClient (INPUT_POINTER_DOWN,
@@ -9439,9 +11223,9 @@ procedure main is
                                            buttons);
                   else
                      dragSurfaceId := clickedId;
-                     dragOffsetX := cursorX - surfaces (SurfaceIndex (idx)).x;
-                     dragOffsetY := cursorY - surfaces (SurfaceIndex (idx)).y;
-                     dragPreviewRect := surfaceRect (surfaces (SurfaceIndex (idx)));
+                     dragOffsetX := cursorX - store.Surfaces (SurfaceIndex (idx)).x;
+                     dragOffsetY := cursorY - store.Surfaces (SurfaceIndex (idx)).y;
+                     dragPreviewRect := surfaceRect (store.Surfaces (SurfaceIndex (idx)));
                      if dragMode = DRAG_MOVE then
                         --  The existing surface is already the first
                         --  presented position. Moves can reuse its attached
@@ -9486,22 +11270,22 @@ procedure main is
             if idx >= 0 and then
               (dragPreviewValid or else dragMode = DRAG_MOVE)
             then
-               oldBounds := surfaceRect (surfaces (SurfaceIndex (idx)));
+               oldBounds := surfaceRect (store.Surfaces (SurfaceIndex (idx)));
                -- The release packet may carry the final pointer movement.
                -- Commit that position even when no held-button motion packet
                -- updated the preview before release.
-               newBounds := previewRectFromPointer (surfaces (SurfaceIndex (idx)));
+               newBounds := previewRectFromPointer (store.Surfaces (SurfaceIndex (idx)));
 
-               surfaces (SurfaceIndex (idx)).x := newBounds.x;
-               surfaces (SurfaceIndex (idx)).y := newBounds.y;
-               surfaces (SurfaceIndex (idx)).w := newBounds.w;
-               surfaces (SurfaceIndex (idx)).h := newBounds.h;
-               surfaces (SurfaceIndex (idx)).serial :=
-                  surfaces (SurfaceIndex (idx)).serial + 1;
+               store.Surfaces (SurfaceIndex (idx)).x := newBounds.x;
+               store.Surfaces (SurfaceIndex (idx)).y := newBounds.y;
+               store.Surfaces (SurfaceIndex (idx)).w := newBounds.w;
+               store.Surfaces (SurfaceIndex (idx)).h := newBounds.h;
+               store.Surfaces (SurfaceIndex (idx)).serial :=
+                  store.Surfaces (SurfaceIndex (idx)).serial + 1;
                if dragMode /= DRAG_MOVE and then
-                 surfaces (SurfaceIndex (idx)).owner /= No_Process
+                 store.Surfaces (SurfaceIndex (idx)).owner /= No_Process
                then
-                  queueConfigure (surfaces (SurfaceIndex (idx)).id,
+                  queueConfigure (store.Surfaces (SurfaceIndex (idx)).id,
                                   Unsigned_64 (newBounds.w),
                                   Unsigned_64 (newBounds.h));
                end if;
@@ -9539,12 +11323,12 @@ procedure main is
             declare
                Previous : constant Rect := dragPreviewRect;
             begin
-               dragPreviewRect := previewRectFromPointer (surfaces (SurfaceIndex (idx)));
+               dragPreviewRect := previewRectFromPointer (store.Surfaces (SurfaceIndex (idx)));
                if dragPreviewRect /= Previous then sceneDamage := True; end if;
             end;
             if dragMode = DRAG_MOVE then
-               surfaces (SurfaceIndex (idx)).x := dragPreviewRect.x;
-               surfaces (SurfaceIndex (idx)).y := dragPreviewRect.y;
+               store.Surfaces (SurfaceIndex (idx)).x := dragPreviewRect.x;
+               store.Surfaces (SurfaceIndex (idx)).y := dragPreviewRect.y;
             end if;
             --  The compositor frame compares the last drag geometry actually
             --  presented with this latest position. Intermediate mouse
@@ -9683,20 +11467,18 @@ procedure main is
    begin
       if extended and then code in KEY_MUTE | KEY_VOLUME_DOWN | KEY_VOLUME_UP then
          return KR.Volume_Control;
-      elsif audioPopupOpen then
-         return KR.Audio_Popup;
       elsif extended and then (code = KEY_LEFT_SUPER or else code = KEY_RIGHT_SUPER) then
          return KR.Super_Key;
       elsif desktopSuperDown then
          return KR.Super_Chord;
+      elsif deskbarPanelOpen or else groupListOpen or else deskbarFocus /= No_Focus then
+         return KR.Deskbar;
       elsif clipboardMenuOpen then
          return KR.Clipboard_Manager;
       elsif launchMenuOpen then
          return KR.Apps_Menu;
-      elsif launchNotice.Open and then not extended and then
-        code in KEY_ESCAPE | KEY_ENTER
-      then
-         return KR.Launch_Notice;
+      elsif toastShown and then not extended and then code = KEY_ESCAPE then
+         return KR.Notice_Toast;
       --  Once a shell/client surface has focus, keyboard events belong to
       --  that surface. The service-level Q/Esc escape remains available
       --  only before a client has connected.
@@ -9724,23 +11506,23 @@ procedure main is
       code     : constant Unsigned_8 := raw and 16#7F#;
       damage   : Rect := cursorRect;
    begin
+      if not release then
+         dismissTip;
+      end if;
       case where is
          when KR.Volume_Control =>
             if not release then
                if code = KEY_MUTE then
                   setMasterAudio (masterAudio.Level, not masterAudio.Muted);
                else
-                  setMasterAudio
-                    (Natural (Integer'Max (0, Integer'Min (100,
-                       Integer (masterAudio.Level) +
-                       (if code = KEY_VOLUME_UP then 5 else -5)))), masterAudio.Muted);
+                  stepVolume (code = KEY_VOLUME_UP);
                end if;
             end if;
-         when KR.Audio_Popup =>
-            if not release and then code = KEY_ESCAPE then
-               audioPopupOpen := False;
-               scheduleRedrawRect (audioPopupRect);
-               scheduleRedrawRect (statusRect);
+         when KR.Deskbar =>
+            --  Both edges, so the focused app never sees half of a key.
+            if not release then
+               deskbarKey (code, damage);
+               scheduleRedrawRect (inflateRect (damage, 2));
             end if;
          when KR.Super_Key =>
             --  Super is a modifier. Its press arms the Apps menu; the
@@ -9776,6 +11558,15 @@ procedure main is
                desktopSuperChord := True;
                if code = KEY_CLIPBOARD_V and then shellSurfaceVisible then
                   toggleClipboardMenu (damage);
+                  scheduleRedrawRect (inflateRect (damage, 2));
+               elsif code = KEY_DESKBAR_N and then shellSurfaceVisible then
+                  closeClipboardMenu (damage);
+                  leaveTaskbarFocus (damage);
+                  toggleDeskbarPanel (damage);
+                  scheduleRedrawRect (inflateRect (damage, 2));
+               elsif code = KEY_TASKBAR_T and then shellSurfaceVisible then
+                  closeClipboardMenu (damage);
+                  enterTaskbarFocus (damage);
                   scheduleRedrawRect (inflateRect (damage, 2));
                end if;
             end if;
@@ -9826,10 +11617,12 @@ procedure main is
                     (unionRect (launchButtonRect, launchMenuArea), 4));
                scheduleRedrawRect (inflateRect (damage, 2));
             end if;
-         when KR.Launch_Notice =>
-            --  Both edges, so the focused app never sees half of the key.
+         when KR.Notice_Toast =>
+            --  Escape hides the toast; the notice stays in the history.
             if not release then
-               dismissLaunchNotice (damage);
+               damage := unionRect (damage, toastRect);
+               DN.Hide_Toast (notifications);
+               debugPrint ("desktop: notification toast dismissed" & LF);
                scheduleRedrawRect (inflateRect (damage, 2));
             end if;
          when KR.Focus_Cycle =>
@@ -9847,6 +11640,9 @@ procedure main is
          when KR.Nowhere =>
             null;
       end case;
+      if not release then
+         focusTip;
+      end if;
    end deliverKey;
 
    --  The focused client has not yet taken the last repeat: skip this one
@@ -9856,7 +11652,7 @@ procedure main is
       channelSlot : constant Integer := findInputChannel (target);
    begin
       return channelSlot >= 0 and then
-        (for some E of inputChannels (SurfaceIndex (channelSlot)).events =>
+        (for some E of store.Channels (SurfaceIndex (channelSlot)).events =>
            E.Valid and then E.Kind = INPUT_KEY_DOWN and then
            (E.Payload1 and DP.Key_Repeat_Flag) /= 0);
    end repeatPending;
@@ -9910,14 +11706,14 @@ procedure main is
               (eventMsg.tag.length, eventMsg.words (0), eventMsg.words (1), eventMsg.words (2))
          then
             declare
+               Ending : constant CuBit.Child_Exits.Report :=
+                 CuBit.Child_Exits.Decode (eventMsg.words (0), eventMsg.words (1), eventMsg.words (2));
+               Ended_Early : Desktop_Launch_Notice.Notice;
                Shown : Boolean;
             begin
-               Desktop_Launch_Notice.Ended
-                 (launchWatch, launchNotice,
-                  CuBit.Child_Exits.Decode (eventMsg.words (0), eventMsg.words (1), eventMsg.words (2)),
-                  Shown);
+               Desktop_Launch_Notice.Ended (launchWatch, Ended_Early, Ending, Shown);
                if Shown then
-                  showLaunchNotice;
+                  postLaunchNotice (Ended_Early, Ending.Process);
                end if;
             end;
          end if;
@@ -10137,7 +11933,7 @@ procedure main is
    begin
       Raw := Unsigned_64'Last;
       Allocation := PS.No_Ticket;
-      if Pages not in 1 .. DP.Maximum_Buffer_Bytes / 4096 then return; end if;
+      if Pages not in 1 .. Unsigned_64 (Positive'Last) / 4096 then return; end if;
       declare Bytes : constant Positive := Positive (Pages * 4096);
       begin
          PS.Reserve (pixelStorage, Bytes, Ticket);
@@ -10346,7 +12142,7 @@ procedure main is
         Info.tag.protocol /= 0 or else Info.tag.reserved /= 0 or else
         Info.words (0) not in 1 .. Unsigned_64 (DP.Positive_Extent'Last) or else
         Info.words (1) not in 1 .. Unsigned_64 (DP.Positive_Extent'Last) or else
-        Info.words (2) > DP.Maximum_Buffer_Bytes or else Info.words (3) /= 32
+        Info.words (2) > Unsigned_64 (DP.Buffer_Pitch'Last) or else Info.words (3) /= 32
       then
          return False;
       end if;
@@ -10455,7 +12251,7 @@ procedure main is
       Pointer : DL.Pointer_Position;
    begin
       if Old.Count = 0 or else desktopLayout.Count = 0 then return; end if;
-      for S of surfaces loop
+      for S of store.Surfaces loop
          if S.used and then (S.flags and SURFACE_FLAG_WINDOW) /= 0 then
             declare
                Owner : constant DL.Pointer_Position := DL.Confine (Old,
@@ -10515,7 +12311,8 @@ procedure main is
       cursorX := Natural (Pointer.Point.X);
       cursorY := Natural (Pointer.Point.Y);
       launchMenuOpen := False;
-      audioPopupOpen := False;
+      deskbarPanelOpen := False;
+      groupListOpen := False;
       settingsView.Applied_Layout := desktopLayout;
       settingsView.Pending_Layout := desktopLayout;
       for I in 1 .. desktopLayout.Count loop
@@ -10583,30 +12380,57 @@ procedure main is
          --  New modes (a resized VM window): carry the scale over and pack
          --  the outputs again; otherwise restore the arrangement exactly.
          Modes_Changed := not Compositor_Layout_Restore.Compatible (desktopLayout, Candidate);
-         if Modes_Changed then
+         if Modes_Changed and then displayScale.Auto then
+            --  Auto scale follows the new mode (a 4K monitor switched from
+            --  the firmware's 1080p gets 200%), packed as at startup.
+            declare
+               Wanted : DL.Layout := Candidate;
+            begin
+               for I in 1 .. Wanted.Count loop
+                  Wanted.Items (I).Geometry.Scale := startupScale (Wanted.Items (I).Geometry);
+               end loop;
+               Candidate := Compositor_Layout_Resize.Carry_Settings
+                 (Wanted, Candidate,
+                  (CuBit.Display_Arrangement.Minimum_Width, CuBit.Display_Arrangement.Minimum_Height));
+            end;
+         elsif Modes_Changed then
             Candidate := Compositor_Layout_Resize.Carry_Settings
               (desktopLayout, Candidate,
                (CuBit.Display_Arrangement.Minimum_Width, CuBit.Display_Arrangement.Minimum_Height));
          end if;
          Candidate := Compositor_Layout_Restore.Choose (desktopLayout, Candidate);
-         Total_Width := 0; Total_Height := 0;
-         for I in 1 .. Candidate.Count loop
-            declare B : constant DG.Logical_Rectangle := DG.Bounds (Candidate.Items (I).Geometry);
-            begin
-               if B.Right <= 0 or B.Bottom <= 0 then
-                  for Output in Output_Index loop closeOutput (Output); end loop;
-                  return;
-               end if;
-               Total_Width := Natural'Max (Total_Width, Natural (B.Right));
-               Total_Height := Natural'Max (Total_Height, Natural (B.Bottom));
-            end;
-         end loop;
-         for Output in Output_Index loop
-            if presentations (Output).Enabled then
-               presentations (Output).Geometry := Candidate.Items (Natural (Output) + 1).Geometry;
-            end if;
-         end loop;
+      else
+         --  A fresh session: each output at its startup scale
+         --  (desktop.display.scale), packed left to right; a packing the
+         --  layout rules reject keeps every output at 100%.
+         declare
+            Wanted : DL.Layout := Candidate;
+         begin
+            for I in 1 .. Wanted.Count loop
+               Wanted.Items (I).Geometry.Scale := startupScale (Wanted.Items (I).Geometry);
+            end loop;
+            Candidate := Compositor_Layout_Resize.Carry_Settings
+              (Wanted, Candidate,
+               (CuBit.Display_Arrangement.Minimum_Width, CuBit.Display_Arrangement.Minimum_Height));
+         end;
       end if;
+      Total_Width := 0; Total_Height := 0;
+      for I in 1 .. Candidate.Count loop
+         declare B : constant DG.Logical_Rectangle := DG.Bounds (Candidate.Items (I).Geometry);
+         begin
+            if B.Right <= 0 or B.Bottom <= 0 then
+               for Output in Output_Index loop closeOutput (Output); end loop;
+               return;
+            end if;
+            Total_Width := Natural'Max (Total_Width, Natural (B.Right));
+            Total_Height := Natural'Max (Total_Height, Natural (B.Bottom));
+         end;
+      end loop;
+      for Output in Output_Index loop
+         if presentations (Output).Enabled then
+            presentations (Output).Geometry := Candidate.Items (Natural (Output) + 1).Geometry;
+         end if;
+      end loop;
       if DL.Validate (Candidate).Status /= DL.Accepted then
          for Output in Output_Index loop closeOutput (Output); end loop;
          debugPrint ("desktop: disconnected layout rejected" & LF);
@@ -10729,7 +12553,10 @@ procedure main is
          declare
             D : constant OD.Description := Item.Value.Item;
          begin
-            if D.Source = OD.Virtio_GPU and then D.Role /= OD.Detected_Only and then
+            --  Intel outputs advertise their best admitted mode; switch to it
+            --  only when desktop.display.modeset is on.
+            if (D.Source = OD.Virtio_GPU or else (D.Source = OD.Intel_Display and then displayModeset))
+              and then D.Role /= OD.Detected_Only and then
               D.Native_Number <= Natural (Output_Index'Last) and then
               presentations (Output_Index (D.Native_Number)).Enabled
             then
@@ -10755,6 +12582,101 @@ procedure main is
          releaseDisplayBuffer;
       end if;
    end handleOutputChange;
+
+   --  DISP-005: the primary output's monitor (display.svc catalog: EDID
+   --  size, best admitted mode) and its modes with the GPU's verdicts
+   --  (List_Mode), for Settings > Monitor. Read-only.
+   function monitorInfo return Desktop_Settings.Monitor_Info is
+      package OD renames CuBit.Output_Discovery;
+      use type OD.Output_Role;
+      Info : Desktop_Settings.Monitor_Info;
+      Summary : OD.Summary_Decoding;
+      Item : OD.Description_Decoding;
+      function Img (Value : Natural) return String is
+         T : constant String := Value'Image;
+      begin
+         return T (T'First + 1 .. T'Last);
+      end Img;
+      --  Integer square root (the diagonal in millimetres).
+      function Root (Value : Natural) return Natural is
+         R : Natural := 0;
+      begin
+         while (R + 1) * (R + 1) <= Value loop
+            R := R + 1;
+         end loop;
+         return R;
+      end Root;
+      function Thousandths (Value : Natural) return String is
+         F : constant String := Natural'Image (1000 + Value mod 1000);
+      begin
+         return Img (Value / 1000) & "." & F (F'First + 2 .. F'Last);
+      end Thousandths;
+   begin
+      Info.Summary := Desktop_Settings.Line_Of ("No monitor information (firmware output without EDID)");
+      Summary := OD.Decode_Summary (OD.Display_Broker, CuBit.Desktop_Messages.To_Wire
+        (callDisplay (OD.Code (OD.Display_Broker, OD.Get_Catalog))));
+      if Summary.Valid then
+         for Index in 1 .. Summary.Value.Count loop
+            Item := OD.Decode_Description (OD.Display_Broker, CuBit.Desktop_Messages.To_Wire
+              (callDisplay (OD.Code (OD.Display_Broker, OD.Get_Description),
+                            Summary.Value.Revision, Unsigned_64 (Index))));
+            exit when not Item.Valid;
+            declare
+               D : constant OD.Description := Item.Value.Item;
+            begin
+               if D.Native_Number = Natural (primaryOutput) and then D.Role /= OD.Detected_Only then
+                  if D.Width_MM /= 0 and then D.Height_MM /= 0 then
+                     declare
+                        Diagonal_MM : constant Natural := Root (D.Width_MM * D.Width_MM + D.Height_MM * D.Height_MM);
+                        Diagonal_Tenths : constant Natural := (Diagonal_MM * 100 + 127) / 254;
+                        DPI : constant Natural :=
+                          (Natural (D.Advertised_Width) * 254 + D.Width_MM * 5) / (D.Width_MM * 10);
+                     begin
+                        Info.Summary := Desktop_Settings.Line_Of
+                          ("Monitor: " & Img (D.Width_MM) & " x " & Img (D.Height_MM) & " mm (" &
+                           Img (Diagonal_Tenths / 10) & "." & Img (Diagonal_Tenths mod 10) & " in), " &
+                           Img (DPI) & " dpi at " & Img (D.Advertised_Width) & " x " & Img (D.Advertised_Height));
+                     end;
+                  else
+                     Info.Summary := Desktop_Settings.Line_Of ("Monitor: size not stated by its EDID");
+                  end if;
+                  Info.Detail := Desktop_Settings.Line_Of
+                    ("Now " & Img (D.Current_Width) & " x " & Img (D.Current_Height) & ", best mode " &
+                     Img (D.Advertised_Width) & " x " & Img (D.Advertised_Height) &
+                     (if displayModeset then " (desktop.display.modeset on)"
+                      else " (desktop.display.modeset off)"));
+               end if;
+            end;
+         end loop;
+      end if;
+      for Index in 1 .. Desktop_Settings.Monitor_Rows + 1 loop
+         declare
+            Wire : constant CuBit.Desktop_Protocol.Wire_Message := CuBit.Desktop_Messages.To_Wire
+              (callDisplay (OM.Code (OD.Display_Broker, OM.List_Mode), Unsigned_64 (Index),
+                            Output => DSP.Output_Number (primaryOutput)));
+            Listed : constant OM.Listing_Decoding := OM.Decode_Listing (OD.Display_Broker, Wire);
+            use type OM.Admission;
+         begin
+            exit when not Listed.Valid;
+            Info.Total := Natural (Listed.Value.Count);
+            if Index <= Desktop_Settings.Monitor_Rows then
+               declare
+                  M : OM.Listed_Mode renames Listed.Value.Item;
+               begin
+                  Info.Lines (Index) := Desktop_Settings.Line_Of
+                    (Img (Natural (M.Size.Width)) & " x " & Img (Natural (M.Size.Height)) & "  " &
+                     Thousandths (Natural (M.Refresh_Millihertz)) & " Hz  " &
+                     Thousandths (Natural (M.Pixel_kHz)) & " MHz  " & OM.Name (M.Verdict) &
+                     (if M.Preferred then ", preferred" else "") & (if M.Current then ", current" else ""),
+                     M.Verdict = OM.Admitted);
+                  Info.Shown := Index;
+               end;
+            end if;
+            exit when Index >= Natural (Listed.Value.Count);
+         end;
+      end loop;
+      return Info;
+   end monitorInfo;
 
    --  Before reopening: switch each output that wants a new mode. A refusal
    --  (or a fitted mode) is fine: the reopen uses whatever the output has.
@@ -11040,6 +12962,15 @@ procedure main is
    displayInfoOk : Boolean := False;
 begin
    debugPrint ("desktop: starting" & LF);
+   declare
+      Allocated : Boolean;
+   begin
+      resizeSurfaceTables (INITIAL_SURFACES, Allocated);
+      if not Allocated then
+         debugPrint ("desktop: no memory for the surface table" & LF);
+         return;
+      end if;
+   end;
    --  Announce the session before anything slow (configuration, wallpaper
    --  reads): a framebuffer shell started next to the desktop checks this
    --  and leaves the display to it (shell setupDisplayPresent).
@@ -11058,6 +12989,8 @@ begin
    Load_Launch_Menu;
    Load_Key_Repeat;
    Load_GPU_Power;
+   Load_Display_Scale;
+   Load_Display_Modeset;
    Desktop_Launch_Refresh.Initialize;
 
    ret := setLatencyContract
@@ -11222,7 +13155,7 @@ begin
          if not running and then not shutdownRequested then
             shutdownRequested := True;
             outputReopenPending := False;
-            for S of surfaces loop
+            for S of store.Surfaces loop
                if S.used then releaseSurfaceBuffer (S); end if;
             end loop;
             releaseDisplayBuffer;
@@ -11265,6 +13198,7 @@ begin
               " invalid=" & Decimal (DM.Invalid) & " rejected=" & Decimal (DM.Rejected) & LF);
          end if;
          expireInputWaiters;
+         tickTip (nowMs);
          --  Secrets are wiped at their deadline, not only on the next paste.
          if Desktop_Clipboard.Next_Deadline (Unsigned_64'Last) /= Unsigned_64'Last
            and then Desktop_Clipboard.Expire (nowMs) and then clipboardMenuOpen
@@ -11299,6 +13233,8 @@ begin
             elsif not framePending and then not cursorPresentPending and then
               nextInputDeadline = 0 and then statusDueMs = 0 and then
               Desktop_Clipboard.Next_Deadline (Unsigned_64'Last) = Unsigned_64'Last and then
+              DN.Toast_Due (notifications) = DN.Never and then
+              TTP.Next_Deadline (tipState) = TTP.NEVER and then
               not KR.Armed (keyRepeat) and then
               metricsDelayUs = Unsigned_64'Last and then not renderingPending and then
               not sourceRetirementPending and then not outputDrainRequested and then not outputReopenPending
@@ -11326,6 +13262,14 @@ begin
                        (nextDueMs = 0 or else secretDue < nextDueMs)
                      then nextDueMs := secretDue; end if;
                   end;
+                  --  The toast's end (Desktop_Notifications; refreshStatus).
+                  if DN.Toast_Due (notifications) /= DN.Never and then
+                    (nextDueMs = 0 or else DN.Toast_Due (notifications) < nextDueMs)
+                  then nextDueMs := DN.Toast_Due (notifications); end if;
+                  --  A tooltip's delay (Client_Tooltip_Policy; GETTIME ms).
+                  if TTP.Next_Deadline (tipState) /= TTP.NEVER and then
+                    (nextDueMs = 0 or else TTP.Next_Deadline (tipState) < nextDueMs)
+                  then nextDueMs := TTP.Next_Deadline (tipState); end if;
                   --  The next auto-repeat (Key_Repeat; same clock as GETTIME).
                   if KR.Armed (keyRepeat) and then
                     (nextDueMs = 0 or else KR.Next_Due (keyRepeat) < nextDueMs)

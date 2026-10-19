@@ -6,6 +6,13 @@ package CuBit.Grant_References with Pure, SPARK_Mode is
    Maximum_Generation : constant Unsigned_64 :=
      Unsigned_64 (Unsigned_32'Last);
    subtype Global_Slot is Unsigned_64 range 0 .. Maximum_Slot;
+   --  The most pages one grant can carry: the grantee's whole received-window
+   --  space (kernel Memory_Grants.Maximum_Page_Count). An address-space
+   --  structure, not a size policy: a grant shares pages its owner already
+   --  holds, so the owner's memory quota bounds real grants.
+   Page_Bytes : constant := 4096;
+   Maximum_Pages : constant := 2 ** 26;
+   Maximum_Bytes : constant := Maximum_Pages * Page_Bytes;
    subtype Generation is Unsigned_64 range 1 .. Maximum_Generation;
    type Reference is record
       slot : Global_Slot := 0;

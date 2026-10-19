@@ -97,7 +97,7 @@ package Desktop_Compositor with SPARK_Mode, Abstract_State => Engine, Initialize
      (Target : Compositor_Formats.Image; Target_Bytes : Compositor_Formats.Byte_Count;
       Screen : CuBit.Display_Geometry.Output; Items : Compositor_Text.Glyphs;
       Length : Compositor_Text.Count; Damage : CuBit.Display_Geometry.Physical_Rectangle;
-      Tint : Compositor_Formats.Word; Secondary : Boolean;
+      Tint : Compositor_Formats.Word; Face : Compositor_Text.L.Face_Index; Secondary : Boolean;
       Drawn, Repaint, Must_Restart : out Boolean)
      with Global => (In_Out => (Engine, Desktop_Vulkan_Startup.Engine)),
        Pre => Valid and Desktop_Vulkan_Startup.Valid,
@@ -134,13 +134,16 @@ package Desktop_Compositor with SPARK_Mode, Abstract_State => Engine, Initialize
    procedure Retire_Source (Key : Compositor_Source_Content.Source_Key)
      with Global => (In_Out => Engine), Pre => Valid, Post => Valid;
    -- Immutable embedded assets from the shared icon/cursor atlases: icons
-   -- and window controls blend straight alpha, cursors premultiplied.
-   -- Surface is the asset's own logical rectangle. Drawn = False asks
-   -- Desktop for its CPU loop (software renderers).
+   -- blend straight alpha, cursors premultiplied. An icon is drawn 1:1 at
+   -- Area, in the output's unrotated physical pixels (Vulkan_Scene's
+   -- Physical_Region), from its atlas square less Skip_X/Skip_Y pixels cut
+   -- off where it hangs over the output's left/top. A cursor's Surface is
+   -- its logical rectangle. Drawn = False asks Desktop for its CPU loop
+   -- (software renderers).
    procedure Draw_Icon
      (Target : Compositor_Formats.Image; Target_Bytes : Compositor_Formats.Byte_Count;
       Screen : CuBit.Display_Geometry.Output; Item : Desktop_Icon_Pixels.Asset;
-      Surface : CuBit.Display_Geometry.Logical_Rectangle;
+      Area : CuBit.Display_Geometry.Physical_Rectangle; Skip_X, Skip_Y : Natural;
       Damage : CuBit.Display_Geometry.Physical_Rectangle;
       Secondary : Boolean; Drawn, Must_Restart : out Boolean)
      with Global => (In_Out => (Engine, Desktop_Vulkan_Startup.Engine)),

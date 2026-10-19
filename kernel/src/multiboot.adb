@@ -45,12 +45,11 @@ package body Multiboot with SPARK_Mode => On is
     bootMapCount : Natural := 0;
     bootTagged : Multiboot2_Info.Snapshot;
     bootFramebuffer : Boot_Framebuffer.Result;
-    -- Match the current userspace linear-buffer transport budget. This is an
-    -- explicit boot backend limit, not a universal GPU/output size limit.
-    Framebuffer_Budget : constant Boot_Framebuffer.Byte_Count := 16 * 1024 * 1024;
-    pragma Compile_Time_Error
-      (Framebuffer_Budget > Virtmem.FRAME_SIZE * 2 ** Config.MAX_BUDDY_ORDER,
-       "Boot console budget exceeds the contiguous allocator block limit");
+    -- The firmware framebuffer is used in place (direct map, never copied
+    -- or allocated), so its size is bounded only by what Boot_Framebuffer
+    -- describes and the physical limit Decode checks: a 3840x2160 GOP mode
+    -- is 33 MB. (Userspace grants carry it since the grant window runs.)
+    Framebuffer_Budget : constant Boot_Framebuffer.Byte_Count := Boot_Framebuffer.Byte_Count'Last;
 
     function Has_Graphics return Boolean is
       (bootSnapshotReady and then bootFramebuffer.State = Boot_Framebuffer.Success)

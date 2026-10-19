@@ -1,4 +1,5 @@
 with Interfaces;
+with Glyph_Gamma;
 -- Pure pixel operation; the caller validates backing and non-aliasing before
 -- binding byte/pixel arrays. Rectangles may end in a partially stored last row.
 package Client_Glyph_Blend with SPARK_Mode, Pure is
@@ -8,14 +9,27 @@ package Client_Glyph_Blend with SPARK_Mode, Pure is
    type Bytes is array (Natural range <>) of Byte;
    type Pixels is array (Natural range <>) of Word;
    subtype Channel_Value is Natural range 0 .. 255;
-   function Channel (Foreground, Background, Alpha : Channel_Value) return Channel_Value
-     with Post => Channel'Result =
-       (Foreground * Alpha + Background * (255 - Alpha) + 127) / 255;
-   function RGB (Foreground, Background : Word; Alpha : Byte) return Word
+   --  Expression functions, so every pixel loop inlines them (no -gnatn).
+   function Channel (Foreground, Background, Alpha : Channel_Value) return Channel_Value is
+     ((Foreground * Alpha + Background * (255 - Alpha) + 127) / 255);
+   function Red (Value : Word) return Channel_Value is
+     (Channel_Value (Interfaces.Shift_Right (Value, 16) and 255));
+   function Green (Value : Word) return Channel_Value is
+     (Channel_Value (Interfaces.Shift_Right (Value, 8) and 255));
+   function Blue (Value : Word) return Channel_Value is (Channel_Value (Value and 255));
+   function RGB (Foreground, Background : Word; Alpha : Byte) return Word is
+     (Word (Channel (Red (Foreground), Red (Background), Channel_Value (Alpha))) * 65_536 +
+      Word (Channel (Green (Foreground), Green (Background), Channel_Value (Alpha))) * 256 +
+      Word (Channel (Blue (Foreground), Blue (Background), Channel_Value (Alpha))))
      with Post => RGB'Result <= 16#FFFFFF#;
+   --  Alpha is already corrected coverage (Glyph_Gamma); this is the plain
+   --  sRGB-value blend the correction tables are solved against.
    function Mix (Foreground, Background : Word; Alpha : Byte) return Word is
      (if Alpha = 0 then Background elsif Alpha = 255 then Foreground
       else RGB (Foreground, Background, Alpha));
+   --  Raw glyph coverage over Background: corrected through the ink's row.
+   function Ink (Foreground, Background : Word; Ink_Row : Glyph_Gamma.Bucket; Coverage : Byte) return Word is
+     (Mix (Foreground, Background, Glyph_Gamma.Adjust (Ink_Row, Coverage)));
    type Rectangle is record
       X, Y : Natural := 0;
       Width, Height : Positive := 1;

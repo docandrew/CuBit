@@ -1,7 +1,7 @@
 package body Compositor_Glyph_Target with SPARK_Mode => Off is
    procedure Paint (S : in out R.State; Views : in out Mesa_Cache.State;
                     Target : F.Image; Capacity : F.Byte_Count; Key : R.C.Key;
-                    Screen : R.P.G.Output; Origin : R.P.G.Logical_Point;
+                    Screen : R.P.G.Output; Origin : R.P.G.Logical_Point; Offset : R.P.L.Subpixel;
                     Damage : R.P.G.Physical_Rectangle; Tint : F.Word; Success : out Boolean) is
    begin
       Success := False;
@@ -11,7 +11,7 @@ package body Compositor_Glyph_Target with SPARK_Mode => Off is
          Pixels : R.Software.Pixels (0 .. Pitch * Natural (Target.Height) - 1)
            with Import, Address => Target.Pixels, Alignment => 1;
       begin
-         R.Paint (S, Views, Key, Screen, Origin, Damage, Pixels, Pitch, Tint, Success);
+         R.Paint (S, Views, Key, Screen, Origin, Offset, Damage, Pixels, Pitch, Tint, Success);
       end;
    end Paint;
 end Compositor_Glyph_Target;

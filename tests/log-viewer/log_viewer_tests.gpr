@@ -1,10 +1,10 @@
+with "../../userspace/allocator/allocator_runtime_host.gpr";
 --  Hosted tests of the Logs app's view: records and keys in, state and frames out.
 with "../../userspace/lib/ui/fonts_host.gpr";
 project Log_Viewer_Tests is
    for Source_Dirs use (".", "build/source", "../../userspace/apps/logs",
                         "../../userspace/lib/ui", "../../userspace/lib/theme",
-                        "../../userspace/lib/compositor", "../../userspace/lib/display",
-                        "../../userspace/allocator/src");
+                        "../../userspace/lib/compositor", "../../userspace/lib/display");
    --  The native app's entry point is not part of the hosted test.
    for Excluded_Source_Files use ("main.adb");
    for Object_Dir use "build";

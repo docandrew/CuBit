@@ -39,6 +39,19 @@ package body Intel_GPU_Buffer_Requests is
    function Client_Usage (Object : Service; Session : Unsigned_64)
      return Intel_GPU_Client_Budgets.Usage is
      (Intel_GPU_Client_Budgets.Snapshot (Object.Client_Accounts, Session));
+   function Client_Accounts_Used (Object : Service) return Natural is
+     (Intel_GPU_Client_Budgets.Count (Object.Client_Accounts));
+   function Client_Account_Capacity (Object : Service) return Positive is
+     (Intel_GPU_Client_Budgets.Capacity (Object.Client_Accounts));
+   function Client_Account_Bytes return Unsigned_64 is
+     (Intel_GPU_Client_Budgets.Record_Bytes);
+   procedure Forget_Client_Account
+     (Object : in out Service; Session : Unsigned_64; Accepted : out Boolean) is
+   begin
+      Accepted := not Client_Usage (Object, Session).Known;
+      if Accepted or else Object.Failed then return; end if;
+      Intel_GPU_Client_Budgets.Forget (Object.Client_Accounts, Session, Accepted);
+   end Forget_Client_Account;
    function Charge_Client
      (Object : in out Service; Session, Bytes : Unsigned_64) return Boolean is
       Accepted : Boolean;

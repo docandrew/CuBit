@@ -102,7 +102,10 @@ monitor = run / 'monitor.sock'
 mouse_port, cd_port = (1, 2) if args.mouse_first else (2, 1)
 lun = 1 if args.disk_first else 0
 command = ['qemu-system-x86_64', '-enable-kvm', '-machine', 'q35', '-cpu', 'host',
-           '-smp', str(args.cpus), '-m', '4G', '-nodefaults', '-device', 'VGA',
+           # 8 MiB of VGA memory: the fixtures below assume the 1920x1080
+           # firmware mode, and the live GRUB entry asks for 3840x2160 and
+           # 2560x1440 first (they do not fit, so 1920x1080 is chosen).
+           '-smp', str(args.cpus), '-m', '4G', '-nodefaults', '-device', 'VGA,vgamem_mb=8',
            '-device', 'qemu-xhci,id=xhci',
            '-drive', f'file={image},if=none,id=cd,media=cdrom,format=raw,readonly=on',
            '-device', f'usb-bot,id=usbcd,bus=xhci.0,port={cd_port}',

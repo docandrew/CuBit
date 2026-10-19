@@ -482,7 +482,7 @@ package body CuBit.Desktop_Protocol with SPARK_Mode is
       if not Header (Wire, Attach_Buffer) or else Wire.Words (0) = 0 or else
         Wire.Words (1) > Grant_References.Maximum_Slot or else
         Wire.Words (2) not in 1 .. Grant_References.Maximum_Generation or else
-        Width = 0 or else Height = 0 or else Pitch > Maximum_Buffer_Bytes
+        Width = 0 or else Height = 0 or else Pitch > Unsigned_64 (Buffer_Pitch'Last)
       then
          return (Valid => False);
       end if;

@@ -87,6 +87,17 @@ package Intel_GPU_Queue_Service is
 
    type Table is limited private;
 
+   -- Per-session state lives in caller storage, the first Grown sessions
+   -- backed (Intel_GPU_Slot_Storage in the driver): Storage_Bytes (N) bytes
+   -- hold sessions Session_Id'First .. Session_Id'First + N - 1.
+   function Storage_Bytes (Count : Natural) return Unsigned_64;
+   -- Once, before any session is used.
+   procedure Attach (T : in out Table; Storage : System.Address);
+   function Grown (T : Table) return Session_Id'Base;
+   -- Fresh state for sessions up to To; the caller backed Storage_Bytes for
+   -- them first. Every operation below takes only a grown session.
+   procedure Grow (T : in out Table; To : Session_Id'Base; Accepted : out Boolean);
+
    type Statistics is record
       Completed, Lost, Refused, Taken : Policy.Event_Count := 0;
       Enables, Notifies, Kick_Retries : Policy.Event_Count := 0;
@@ -178,8 +189,6 @@ package Intel_GPU_Queue_Service is
 private
    type Kick_Need is (No_Kick, Notify_Kick, Enable_Kick);
    type Kick_Row is array (Q.Context_Index) of Kick_Need;
-   type Kick_Array is array (Session_Id) of Kick_Row;
-   type Session_Array is array (Session_Id) of Sessions.Session;
    -- What each published job is, by its slot (value mod the in-flight
    -- limit, as the ledger): its kinds, and whether its segment stamps time.
    type Job_Info is record
@@ -187,16 +196,25 @@ private
       Timed : Boolean := False;
    end record;
    subtype Job_Slot is Natural range 0 .. Q.Max_In_Flight_Per_Context - 1;
-   type Job_Info_Array is array (Session_Id, Q.Context_Index, Job_Slot) of Job_Info;
+   type Job_Info_Array is array (Q.Context_Index, Job_Slot) of Job_Info;
+   -- Everything the service keeps for one session.
+   type Session_Entry is record
+      Item : Sessions.Session := Sessions.Empty;
+      Kicks : Kick_Row := [others => No_Kick];
+      Jobs : Job_Info_Array := [others => [others => (others => <>)]];
+   end record;
+   type Entry_Array is array (Session_Id) of Session_Entry;
+   type Entry_Access is access all Entry_Array;
+   pragma No_Strict_Aliasing (Entry_Access);
    type Table is limited record
-      Items : Session_Array := [others => Sessions.Empty];
-      Kicks : Kick_Array := [others => [others => No_Kick]];
+      Items : Entry_Access := null;
+      Count : Session_Id'Base := Session_Id'First - 1;
       Counters : Statistics;
-      Jobs : Job_Info_Array := [others => [others => [others => (others => <>)]]];
       Kind_Counters : Kind_Table := [others => (others => <>)];
       Quiesce : Boolean := False;
       Wake_Owned : Boolean := False;
       Wake_Owner : Session_Id := Session_Id'First;
       Wake_Epoch : Unsigned_32 := 0;
    end record;
+   function Grown (T : Table) return Session_Id'Base is (T.Count);
 end Intel_GPU_Queue_Service;

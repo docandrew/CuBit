@@ -467,8 +467,42 @@ procedure main is
          Candidate.Count := 1;
          Candidate.Items (1) :=
            (OD.Selected_For_Desktop, OD.Boot_Framebuffer, 0,
-            outputStates (selectedOutput).fbWidth, outputStates (selectedOutput).fbHeight, outputStates (selectedOutput).fbWidth, outputStates (selectedOutput).fbHeight);
+            outputStates (selectedOutput).fbWidth, outputStates (selectedOutput).fbHeight, 0, 0,
+            outputStates (selectedOutput).fbWidth, outputStates (selectedOutput).fbHeight);
          Selected := True;
+      end if;
+      --  The Intel takeover drives the boot output: intel-gpu's catalog says
+      --  which monitor it is (EDID physical size) and its best admitted
+      --  mode (Advertised), which Desktop may ask for (Set_Mode).
+      if intelTakeover then
+         Response := callGpu (OD.Code (OD.GPU_Backend, OD.Get_Catalog));
+         Summary := OD.Decode_Summary (OD.GPU_Backend, CuBit.Desktop_Messages.To_Wire (Response));
+         if Summary.Valid and then Summary.Value.Count >= 1 then
+            Response := callGpu (OD.Code (OD.GPU_Backend, OD.Get_Description),
+                                 Summary.Value.Revision, 1);
+            Item := OD.Decode_Description (OD.GPU_Backend, CuBit.Desktop_Messages.To_Wire (Response));
+            if Item.Valid and then Item.Value.Item.Source = OD.Intel_Display and then
+              Item.Value.Item.Role = OD.Backend_Ready and then
+              Item.Value.Item.Current_Width = outputStates (selectedOutput).fbWidth and then
+              Item.Value.Item.Current_Height = outputStates (selectedOutput).fbHeight
+            then
+               Candidate.Items (1) :=
+                 (OD.Selected_For_Desktop, OD.Intel_Display, 0,
+                  Item.Value.Item.Advertised_Width, Item.Value.Item.Advertised_Height,
+                  Item.Value.Item.Width_MM, Item.Value.Item.Height_MM,
+                  outputStates (selectedOutput).fbWidth, outputStates (selectedOutput).fbHeight);
+               debugPrint ("display: intel output monitor" &
+                 Item.Value.Item.Width_MM'Image & " x" & Item.Value.Item.Height_MM'Image & " mm, best mode" &
+                 Item.Value.Item.Advertised_Width'Image & " x" & Item.Value.Item.Advertised_Height'Image & LF);
+               --  A better mode than the firmware's: start at revision 2 so
+               --  Desktop's first watch (Known 1) sees it at once.
+               if Item.Value.Item.Advertised_Width /= outputStates (selectedOutput).fbWidth or else
+                 Item.Value.Item.Advertised_Height /= outputStates (selectedOutput).fbHeight
+               then
+                  catalogRevision := 2;
+               end if;
+            end if;
+         end if;
       end if;
       --  The Intel takeover drives the boot output itself (same mode); it
       --  is listed as that output, with no GPU catalog of its own yet.
@@ -505,7 +539,8 @@ procedure main is
                Item.Value.Item :=
                  (OD.Selected_For_Desktop, OD.Virtio_GPU, 0,
                   Item.Value.Item.Advertised_Width,
-                  Item.Value.Item.Advertised_Height, outputStates (selectedOutput).fbWidth, outputStates (selectedOutput).fbHeight);
+                  Item.Value.Item.Advertised_Height, Item.Value.Item.Width_MM, Item.Value.Item.Height_MM,
+                  outputStates (selectedOutput).fbWidth, outputStates (selectedOutput).fbHeight);
                Selected := True;
             end if;
             Candidate.Count := Candidate.Count + 1;
@@ -839,6 +874,12 @@ procedure main is
                if not decoded.Valid then
                   debugPrint ("display: invalid GPU mapping" & LF);
                   return False;
+               end if;
+               --  After a mode change the stride is the backend's (fbPitch 0).
+               if outputStates (selectedOutput).fbPitch = 0 and then index = 0 and then
+                 decoded.Value.Layout.Pitch >= Natural (decoded.Value.Layout.Width) * 4
+               then
+                  outputStates (selectedOutput).fbPitch := decoded.Value.Layout.Pitch;
                end if;
                if Natural (decoded.Value.Layout.Width) /= outputStates (selectedOutput).fbWidth or else
                  Natural (decoded.Value.Layout.Height) /= outputStates (selectedOutput).fbHeight or else
@@ -2325,7 +2366,9 @@ procedure main is
       end loop;
       State.fbWidth := Natural (Mode.Width);
       State.fbHeight := Natural (Mode.Height);
-      State.fbPitch := Natural (Mode.Width) * 4;
+      --  Zero: take the stride the backend's mapping reports (Intel aligns
+      --  rows to 64 bytes); ensureGpuScanout fills it in.
+      State.fbPitch := 0;
       BT.Set_Count (Fresh_Targets, BT.Count (State.Targets));
       State.Targets := Fresh_Targets;
       State.gpuStale := [others => (others => 0)];
@@ -2350,15 +2393,17 @@ procedure main is
          declare
             K : OD.Description renames outputCatalog.Items (Index);
          begin
-            if K.Source = OD.Virtio_GPU and then K.Role /= OD.Detected_Only and then
+            if K.Source in OD.Virtio_GPU | OD.Intel_Display and then K.Role /= OD.Detected_Only and then
               K.Native_Number = Natural (selectedOutput)
             then
                if K.Role = OD.Selected_For_Desktop then
                   K := (OD.Selected_For_Desktop, K.Source, K.Native_Number,
-                        K.Advertised_Width, K.Advertised_Height, Mode.Width, Mode.Height);
+                        K.Advertised_Width, K.Advertised_Height, K.Width_MM, K.Height_MM,
+                        Mode.Width, Mode.Height);
                else
                   K := (OD.Backend_Ready, K.Source, K.Native_Number,
-                        K.Advertised_Width, K.Advertised_Height, Mode.Width, Mode.Height);
+                        K.Advertised_Width, K.Advertised_Height, K.Width_MM, K.Height_MM,
+                        Mode.Width, Mode.Height);
                end if;
             end if;
          end;
@@ -2438,6 +2483,38 @@ procedure main is
                              protocol => 0, ipc => <>, reserved => 0);
             replyMsg.words (0) := DISPLAY_ERR_BAD_STATE;
          end if;
+         return;
+      end if;
+
+      --  DISP-005: the output's monitor modes and the GPU's verdicts, read
+      --  through from the backend (Intel outputs; others answer Unsupported).
+      if request.tag.label = OM.Code (OD.Display_Broker, OM.List_Mode) then
+         declare
+            Wanted : constant OM.Index_Decoding := OM.Decode_List_Request
+              (OD.Display_Broker, DSP.Without_Output (CuBit.Desktop_Messages.To_Wire (request)));
+            Output : constant DSP.Output_Number := DSP.Output_Of (CuBit.Desktop_Messages.To_Wire (request));
+            Call : Message;
+            Answer : OM.Listing_Decoding;
+         begin
+            replyMsg.tag := (label => request.tag.label, length => 1,
+                             protocol => 0, ipc => <>, reserved => 0);
+            replyMsg.words (0) := DISPLAY_ERR_UNSUPPORTED;
+            if Wanted.Valid and then Output in Output_Index and then intelTakeover and then
+              Output = 0 and then outputStates (Output).backend.Kind = Native_GPU
+            then
+               Call := CuBit.Desktop_Messages.From_Wire (DSP.With_Output
+                 (OM.Encode_List_Request (OD.GPU_Backend, Wanted.Value), Output));
+               Call.tag := capCall (GPU_Service, Call,
+                                    CuBit.Messages.Deadline_After (GPU_Call_Deadline_Ms));
+               Answer := OM.Decode_Listing (OD.GPU_Backend, CuBit.Desktop_Messages.To_Wire (Call));
+               if Answer.Valid then
+                  replyMsg := CuBit.Desktop_Messages.From_Wire
+                    (OM.Encode_Listing (OD.Display_Broker, Answer.Value));
+               else
+                  replyMsg.words (0) := DISPLAY_ERR_BAD_STATE;
+               end if;
+            end if;
+         end;
          return;
       end if;
 

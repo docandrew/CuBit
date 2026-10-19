@@ -1,9 +1,11 @@
 --  The command table (docs/text-editor.md, "Commands and CCL"). Every
 --  editor command is one row: its CCL name (text.goto-line), what it does,
---  the argument it takes and its keys in the default keymap. The palette,
---  the key help (F1) and the `text` CCL interface descriptor all read this
---  table, and keys, palette choices and CCL calls all end in one Execute.
---  A host adds its own commands beside these (Text_Hosts).
+--  the argument it takes, its keys in the default keymap, where it shows
+--  (menu bar, palette, or keys only) and its menu caption. The menu bar,
+--  the palette, the key help (F1) and the `text` CCL interface descriptor
+--  all read this table, and keys, menu and palette choices and CCL calls
+--  all end in one Execute. A host adds its own commands beside these
+--  (Text_Hosts).
 package Text_Commands with SPARK_Mode is
    type Command is
      (No_Command,
@@ -69,4 +71,43 @@ package Text_Commands with SPARK_Mode is
    --  The movement command and whether it extends, for the shared motion
    --  table.
    function Extends (Item : Command) return Boolean is (Item in Select_Left .. Select_Document_End);
+
+   --  Where a command shows. Every command stays reachable by its keys
+   --  and by CCL (text.left); Binding_Only ones (cursor motion, selection
+   --  extension, scrolling, the editing keys) are too fine-grained to list.
+   type Visibility is (Palette_And_Menu, Menu_Only, Binding_Only);
+   function Visibility_Of (Item : Real_Command) return Visibility
+     with Post =>
+       --  Motions and the plain editing keys are keys, not choices.
+       (if Category_Of (Item) = Movement then Visibility_Of'Result = Binding_Only)
+       --  Nothing hidden is unreachable: a hidden command has a key, or is
+       --  typing itself.
+       and then (if Visibility_Of'Result = Binding_Only then Binding (Item) /= NO_CHORD or else Item = Insert_Text);
+   function In_Palette (Item : Command) return Boolean is
+     (Item in Real_Command and then Visibility_Of (Item) = Palette_And_Menu);
+   function In_Menu (Item : Command) return Boolean is
+     (Item in Real_Command and then Visibility_Of (Item) /= Binding_Only);
+
+   --  The menu bar (docs/text-editor.md, "Layout"), left to right.
+   type Menu_Name is (File_Menu, Edit_Menu, Selection_Menu, View_Menu, Go_Menu, Help_Menu);
+   function Menu_Title (Item : Menu_Name) return String;
+   --  The Alt+letter that opens it (its title's first letter, lower case).
+   function Menu_Mnemonic (Item : Menu_Name) return Character;
+   --  A menu's items come in groups, separated by a rule; within a group
+   --  they keep the table's order.
+   MAXIMUM_MENU_GROUPS : constant := 5;
+   subtype Menu_Group is Positive range 1 .. MAXIMUM_MENU_GROUPS;
+   function Menu_Of (Item : Command) return Menu_Name with Pre => In_Menu (Item);
+   function Group_Of (Item : Command) return Menu_Group with Pre => In_Menu (Item);
+   --  The menu caption ("Go to Line..."; "..." asks for more).
+   function Caption (Item : Command) return String with Pre => In_Menu (Item);
+
+   --  On/off settings: their menu items carry a checkmark.
+   function Is_Toggle (Item : Command) return Boolean is
+     (Item in Split_View | Toggle_Wrap | Toggle_Minimap | Toggle_Modal | Toggle_Overlay | Toggle_Theme);
+   --  Commands that act on the shown document (refused, and their menu
+   --  items disabled, without one).
+   function Needs_Document (Item : Command) return Boolean is
+     (Item not in New_Document | Open | Command_Palette | Toggle_Modal | Toggle_Overlay | Toggle_Theme
+                | Describe_Key | Quit | No_Command | Go_To_Anything);
 end Text_Commands;

@@ -159,7 +159,10 @@ procedure Main is
       end if;
    end Handle;
 
-   procedure Run is new App.Run (UI, Map, Render => Render, Handle_Event => Handle);
+   --  Run never blocks in a call to Desktop (Activity_Wait): its input
+   --  wait is submitted, and completes when input arrives.
+   procedure Run is new App.Run
+     (UI, Map, Render => Render, Handle_Event => Handle, Activity_Wait => True);
    OK, Accepted : Boolean;
 begin
    if not CuBit.Startup_State.Ready (Startup.Verify) then

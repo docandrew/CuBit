@@ -21,6 +21,7 @@ for unit in cubit.ads cubit-filesystems.ads cubit-filesystems.adb cubit-director
             cubit-directory_pages.ads cubit-directory_pages.adb cubit-failures.ads cubit-failures.adb \
             cubit-filesystem_events.ads cubit-filesystem_events.adb cubit-volume_descriptions.ads \
             cubit-volume_descriptions.adb cubit-file_access.ads cubit-file_access.adb \
+            cubit-filesystem_places.ads cubit-filesystem_places.adb \
             cubit-published_clock.ads cubit-published_clock.adb cubit-kernel_calls.ads \
             cubit-kernel_calls.adb cubit-handles.ads cubit-handles-grants.ads cubit-handles-grants.adb \
             cubit-handles-control.ads cubit-handles-control.adb cubit-handles-devices.ads \
@@ -51,7 +52,8 @@ cd "$root/kernel"
 case "${1:-}" in
   --prove)
     alr exec -- gnatprove -P "$here/files_proof.gpr" -j2 --level=2 --report=fail --checks-as-errors=on \
-      -u files_listing.adb files_order.adb files_filter.adb files_viewport.adb files_marks.adb files_pages.adb files_plan.adb
+      -u files_listing.adb files_order.adb files_filter.adb files_viewport.adb files_marks.adb files_pages.adb files_plan.adb \
+      files_status.adb files_places.adb cubit-filesystem_places.adb
     ;;
   --bench)
     alr exec -- gprbuild -p -q -P "$here/files_app.gpr" files_bench.adb

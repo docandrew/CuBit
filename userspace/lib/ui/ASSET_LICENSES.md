@@ -4,8 +4,10 @@ This directory contains generated UI assets used by CuBit userspace apps.
 
 ## IBM Plex TrueType Fonts
 
-The shared toolkit and native desktop use unmodified IBM Plex Sans Regular
-and IBM Plex Mono Regular TrueType files from Nix's pinned `ibm-plex` package.
+The shared toolkit and native desktop use unmodified IBM Plex Sans Regular,
+IBM Plex Sans SemiBold (Desktop's emphasis face: window titles, the focused
+Deskbar button, notification and panel headers) and IBM Plex Mono Regular
+TrueType files from Nix's pinned `ibm-plex` package.
 The files are embedded into `userspace/rust/fonts` and rasterized at runtime
 by pure-Rust `ttf-parser` and `ab_glyph_rasterizer`. The default remains a 13-pixel em in a
 17-pixel line; the editor uses an 8-pixel monospace cell. Grayscale coverage

@@ -3,7 +3,7 @@ package body Compositor_Source_Loans with SPARK_Mode is
    begin
       T := No_Ticket;
       if S.Last = Serial'Last then return; end if;
-      for I in Slot loop
+      for I in 1 .. S.Capacity loop
          if S.Items (I).Status = Released then
             S.Last := S.Last + 1;
             S.Items (I) := (S.Last, Reserved);
@@ -38,4 +38,10 @@ package body Compositor_Source_Loans with SPARK_Mode is
    begin
       S.Items (T.Position).Status := (if Confirmed then Released else Quarantined);
    end Observe_Grant;
+   procedure Grow (From : State; Into : out State) is
+   begin
+      Into.Items := [others => (Identity => 0, Status => Released)];
+      Into.Items (1 .. From.Capacity) := From.Items;
+      Into.Last := From.Last;
+   end Grow;
 end Compositor_Source_Loans;

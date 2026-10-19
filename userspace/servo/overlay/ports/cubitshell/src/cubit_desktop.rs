@@ -151,6 +151,7 @@ impl Window {
         // while using Servo's one allocator/runtime for their implementation.
         std::hint::black_box(cubit_fonts::cubit_font_glyph as *const ());
         std::hint::black_box(cubit_fonts::cubit_font_raster_mask as *const ());
+        std::hint::black_box(cubit_fonts::cubit_font_layout as *const ());
         INIT.call_once(|| native(|| unsafe { servo_shell_hostinit() }));
         if native(|| unsafe { cubit_servo_stack_check() }) != 1 { return None; }
         let id = native(|| unsafe { cubit_servo_open() });

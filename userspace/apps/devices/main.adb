@@ -933,9 +933,11 @@ procedure main is
       end if;
    end Handle_Event;
 
+   --  Run never blocks in a call to Desktop (Activity_Wait): its input
+   --  wait is submitted, and completes when input arrives.
    procedure Run_UI is new CuBit.UI.App.Run
      (ui => ui, controls => controls,
-      Render => Render, Handle_Event => Handle_Event);
+      Render => Render, Handle_Event => Handle_Event, Activity_Wait => True);
 
    Announced : Boolean;
 begin

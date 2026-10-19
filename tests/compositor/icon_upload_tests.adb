@@ -27,14 +27,14 @@ begin
    for Chunk in 1 .. 24 loop
       D.Import_Backing (128, Lease, Source, Result);
       pragma Assert (Result /= D.Source_Accepted and Source = Vulkan_Submission.No_Source);
-      Desktop_Icon_Upload.Start (128, Lease, (Desktop_Icon_Pixels.Application, Desktop_Icons.Start), Result);
+      Desktop_Icon_Upload.Start (128, Lease, (Desktop_Icon_Pixels.Application, Desktop_Icons.Start, Desktop_Icons.Design_Edge), Result);
       if Scenario = 1 then
          pragma Assert (Result = D.Source_Rejected and Calls (2) = 0);
          D.Release_Backing (128, Lease, OK); pragma Assert (OK); D.Stop;
          Ada.Text_IO.Put_Line ("PASS mismatched icon shape cancels without submission"); return;
       end if;
       pragma Assert (Result = D.Source_Accepted);
-      Desktop_Icon_Upload.Start (128, Lease, (Desktop_Icon_Pixels.Application, Desktop_Icons.Start), Result);
+      Desktop_Icon_Upload.Start (128, Lease, (Desktop_Icon_Pixels.Application, Desktop_Icons.Start, Desktop_Icons.Design_Edge), Result);
       pragma Assert (Result = D.Source_Busy);
       if Scenario = 2 then
          Set (3, 2); D.Poll_Upload (Poll); pragma Assert (Poll = D.GPU_Failed);

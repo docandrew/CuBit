@@ -1,5 +1,6 @@
 //! Audited caller-storage ABI for the SPARK glyph layout policy.
 use super::*;
+use crate::outline::{self, Outline};
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -12,6 +13,10 @@ pub struct Request {
     pub height: u32,
     pub pitch: u32,
     pub capacity: u32,
+    /// Horizontal subpixel phases, 1..=PHASES: the mask holds one raster per
+    /// phase, stacked (phase i in rows i*height..), phase i shifted right by
+    /// i/phases of a pixel of this density.
+    pub phases: u32,
 }
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -20,10 +25,11 @@ pub struct Metrics {
     pub height: u32,
 }
 fn layout(r: &Request) -> Option<usize> {
-    if r.face > 1
+    if r.face as usize >= FACES
         || !(13..=208).contains(&r.em_numerator)
         || r.em_numerator % 13 != 0
         || !(1..=16).contains(&r.em_denominator)
+        || !(1..=PHASES).contains(&r.phases)
     {
         return None;
     }
@@ -32,62 +38,57 @@ fn layout(r: &Request) -> Option<usize> {
     let w = (32 * n + d - 1) / d;
     let h = (17 * n + d - 1) / d;
     let pitch = ((w + 15) / 16) * 16;
-    let bytes = pitch * h;
+    let bytes = pitch * h * r.phases;
     if r.width != w || r.height != h || r.pitch != pitch || r.capacity < bytes {
         return None;
     }
     Some(bytes as usize)
 }
 fn render(r: &Request, pixels: &mut [u8]) -> Option<Metrics> {
+    render_with(r, pixels, STYLE)
+}
+/// The pen origin sits ORIGIN logical pixels from the left edge (at the
+/// request's density), plus the phase's fraction of a pixel, so ink left of
+/// the origin is kept; ink is clipped only to the raster, never to the advance.
+fn render_with(r: &Request, pixels: &mut [u8], style: Style) -> Option<Metrics> {
     let bytes = layout(r)?;
     if pixels.len() < bytes {
         return None;
     }
-    let font = Face::parse(if r.face == 0 { SANS } else { MONO }, 0).ok()?;
+    let font = Face::parse(face_bytes(r.face as usize), 0).ok()?;
+    let density = r.em_numerator as f32 / BASE_EM / r.em_denominator as f32;
     let ratio = (r.em_numerator as f32 / r.em_denominator as f32) / f32::from(font.units_per_em());
-    let code = if (32..=126).contains(&r.code) {
-        r.code
-    } else {
-        63
-    };
+    let code = printable(r.code);
     let id = font.glyph_index(char::from_u32(code)?)?;
     let advance = round_positive_metric(f32::from(font.glyph_hor_advance(id)?) * ratio).max(1);
     if advance > r.width {
         return None;
     }
     let baseline = round_positive_metric(f32::from(font.ascender()) * ratio) as i32;
-    // Prepare the outline before changing caller pixels. This temporary coverage
-    // grid is bounded; no glyph pointer or destination is retained by this API.
-    let prepared = if let Some(bounds) = font.glyph_bounding_box(id) {
-        let left = libm::floorf(f32::from(bounds.x_min) * ratio);
-        let top = libm::floorf(-f32::from(bounds.y_max) * ratio);
-        let w = libm::ceilf(f32::from(bounds.x_max) * ratio) - left;
-        let h = libm::ceilf(-f32::from(bounds.y_min) * ratio) - top;
-        if w < 0.0 || h < 0.0 || w > (r.width + 2) as f32 || h > (r.height + 2) as f32 {
-            return None;
-        }
-        let mut contours = Contours {
-            raster: Rasterizer::new(w as usize, h as usize),
-            ratio,
-            origin: point(-left, -top),
-            first: point(0.0, 0.0),
-            current: point(0.0, 0.0),
+    let zones = zones(&font, ratio, style.hinted);
+    let darken = darken(&font, ratio, style);
+    let raster = (r.pitch * r.height) as usize;
+    // Prepare every phase's outline before changing caller pixels. These
+    // temporary coverage grids are bounded; no glyph pointer or destination
+    // is retained by this API.
+    let mut prepared: [Option<outline::Prepared>; PHASES as usize] = [const { None }; PHASES as usize];
+    for (phase, slot) in prepared.iter_mut().enumerate().take(r.phases as usize) {
+        let shift = ORIGIN as f32 * density + phase as f32 / r.phases as f32;
+        *slot = match outline::prepare(&font, id, ratio, shift, zones, darken, r.width + 2, r.height + 2)? {
+            Outline::Ready(p) => Some(p),
+            Outline::Empty => None,
         };
-        font.outline_glyph(id, &mut contours)?;
-        Some((contours, left as i32, top as i32 + baseline))
-    } else {
-        None
-    };
+    }
     for row in pixels[..bytes].chunks_mut(r.pitch as usize) {
         row[..r.width as usize].fill(0);
     }
-    if let Some((contours, left, top)) = prepared {
-        contours.raster.for_each_pixel_2d(|x, y, coverage| {
-            let x = x as i32 + left;
-            let y = y as i32 + top;
-            if x >= 0 && y >= 0 && x < advance as i32 && y < r.height as i32 {
-                pixels[y as usize * r.pitch as usize + x as usize] =
-                    (coverage.clamp(0.0, 1.0) * 255.0 + 0.5) as u8;
+    for (phase, slot) in prepared.into_iter().enumerate() {
+        let Some(p) = slot else { continue };
+        let first = phase * raster;
+        p.each(|x, y, coverage| {
+            let y = y + baseline;
+            if x >= 0 && y >= 0 && x < r.width as i32 && y < r.height as i32 {
+                pixels[first + y as usize * r.pitch as usize + x as usize] = coverage;
             }
         });
     }
@@ -171,49 +172,54 @@ mod tests {
             width: w,
             height: h,
             pitch,
-            capacity: pitch * h,
+            capacity: pitch * h * PHASES,
+            phases: PHASES,
         }
     }
     #[test]
     fn density_masks_match_reference_and_preserve_padding() {
         use ab_glyph::{Font, FontRef, Glyph, PxScale};
         let mut cases = 0;
-        for face in 0..2 {
-            let font = FontRef::try_from_slice(if face == 0 { SANS } else { MONO }).unwrap();
+        for face in 0..FACES as u32 {
+            let font = FontRef::try_from_slice(face_bytes(face as usize)).unwrap();
             for n in 1..=16 {
                 for d in 1..=16 {
                     for code in 32..=126 {
                         let r = request(face, code, n, d);
                         let mut actual = vec![0xA5; r.capacity as usize + 16];
-                        let m = render(&r, &mut actual).unwrap();
+                        let m = render_with(&r, &mut actual, PLAIN).unwrap();
+                        assert!(m.advance >= 1);
                         let ratio = (13.0 * n as f32 / d as f32) / font.units_per_em().unwrap();
                         let mut expected = vec![0u8; r.capacity as usize];
-                        let glyph = Glyph {
-                            id: font.glyph_id(char::from_u32(code).unwrap()),
-                            scale: PxScale::from(font.height_unscaled() * ratio),
-                            position: ab_glyph::point(
-                                0.0,
-                                round_positive_metric(font.ascent_unscaled() * ratio) as f32,
-                            ),
-                        };
-                        if let Some(outline) = font.outline_glyph(glyph) {
-                            let bounds = outline.px_bounds();
-                            outline.draw(|x, y, c| {
-                                let x = x as i32 + bounds.min.x as i32;
-                                let y = y as i32 + bounds.min.y as i32;
-                                if x >= 0 && y >= 0 && x < m.advance as i32 && y < r.height as i32 {
-                                    expected[y as usize * r.pitch as usize + x as usize] =
-                                        (c.clamp(0.0, 1.0) * 255.0 + 0.5) as u8;
-                                }
-                            });
+                        let raster = (r.pitch * r.height) as usize;
+                        for phase in 0..PHASES {
+                            let glyph = Glyph {
+                                id: font.glyph_id(char::from_u32(code).unwrap()),
+                                scale: PxScale::from(font.height_unscaled() * ratio),
+                                position: ab_glyph::point(
+                                    ORIGIN as f32 * n as f32 / d as f32 + phase as f32 / PHASES as f32,
+                                    round_positive_metric(font.ascent_unscaled() * ratio) as f32,
+                                ),
+                            };
+                            if let Some(outline) = font.outline_glyph(glyph) {
+                                let bounds = outline.px_bounds();
+                                outline.draw(|x, y, c| {
+                                    let x = x as i32 + bounds.min.x as i32;
+                                    let y = y as i32 + bounds.min.y as i32;
+                                    if x >= 0 && y >= 0 && x < r.width as i32 && y < r.height as i32 {
+                                        expected[phase as usize * raster + y as usize * r.pitch as usize + x as usize] =
+                                            (c.clamp(0.0, 1.0) * 255.0 + 0.5) as u8;
+                                    }
+                                });
+                            }
                         }
-                        for y in 0..r.height as usize {
+                        for y in 0..(r.height * PHASES) as usize {
                             for x in 0..r.pitch as usize {
                                 let i = y * r.pitch as usize + x;
                                 if x < r.width as usize {
                                     assert!(
                                         actual[i].abs_diff(expected[i]) <= 1,
-                                        "{face}/{n}/{d}/{code} pixel{x},{y}"
+                                        "{face}/{n}/{d}/{code} pixel{x},{y}: {} vs {}", actual[i], expected[i]
                                     );
                                 } else {
                                     assert_eq!(actual[i], 0xA5);
@@ -226,13 +232,13 @@ mod tests {
                 }
             }
         }
-        assert_eq!(cases, 48640);
+        assert_eq!(cases, 256 * 95 * FACES);
     }
     #[test]
     fn ffi_rejections_do_not_write_and_unknown_code_maps_to_question() {
-        assert_eq!(core::mem::size_of::<Request>(), 32);
+        assert_eq!(core::mem::size_of::<Request>(), 36);
         assert_eq!(core::mem::size_of::<Metrics>(), 8);
-        for fault in 0..11 {
+        for fault in 0..13 {
             let mut r = request(0, 65, 5, 4);
             let mut pixels = vec![0xA5; r.capacity as usize];
             let mut m = Metrics {
@@ -240,7 +246,7 @@ mod tests {
                 height: 456,
             };
             match fault {
-                0 => r.face = 2,
+                0 => r.face = FACES as u32,
                 1 => r.em_numerator = 0,
                 2 => r.em_numerator = 209,
                 3 => r.em_numerator = 14,
@@ -250,6 +256,8 @@ mod tests {
                 7 => r.height += 1,
                 8 => r.pitch += 1,
                 9 => r.capacity -= 1,
+                10 => r.phases = 0,
+                11 => r.phases = PHASES + 1,
                 _ => r.width = u32::MAX,
             }
             assert_eq!(

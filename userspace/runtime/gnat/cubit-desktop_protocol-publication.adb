@@ -67,7 +67,7 @@ package body CuBit.Desktop_Protocol.Publication with SPARK_Mode is
         in 1 .. 16 and then
       ((Wire.Words (3) and (Word - 1)) and (Half - 1)) /= 0 and then
       Shift_Right (Wire.Words (3) and (Word - 1), 16) /= 0 and then
-      Shift_Right (Wire.Words (3), 32) <= Maximum_Buffer_Bytes);
+      Shift_Right (Wire.Words (3), 32) <= Unsigned_64 (Buffer_Pitch'Last));
    function Configuration_Values (Wire : Wire_Message)
       return Configuration is
      (Wire.Words (1),

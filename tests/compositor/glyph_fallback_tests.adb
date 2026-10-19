@@ -24,12 +24,12 @@ procedure Glyph_Fallback_Tests is
    end Start;
    procedure Queue (S : in out R.State; Views : in out Mesa_Cache.State) is
    begin
-      R.Queue (S, Views, 0, (0, 65, Screen.Scale), Screen, (2, 3),
+      R.Queue (S, Views, 0, (0, 65, Screen.Scale), Screen, (2, 3), 0,
                (0, 0, 80, 72), 16#8031_AF07#, OK);
    end Queue;
    procedure Paint (S : in out R.State; Views : in out Mesa_Cache.State; Code : Natural := 65) is
    begin
-      R.Paint (S, Views, (0, Code, Screen.Scale), Screen, (2, 3),
+      R.Paint (S, Views, (0, Code, Screen.Scale), Screen, (2, 3), 0,
                (7, 9, 73, 64), Target, 84, 16#8031_AF07#, OK);
    end Paint;
 begin
@@ -51,7 +51,7 @@ begin
             pragma Assert (OK and R.Software_Active (S) and R.Queued (S) = 0 and
               R.Charged (S) = Charge and Stat (0) = Before and Stat (4) = 1);
             Fault (0); Mesa_Cache.Shutdown (Views); pragma Assert (Mesa_Cache.Views_Clear (Views) and Stat (4) = 0);
-            SW.Paint (Screen, (2, 3), (7, 9, 73, 64), Mask, Expected, 84, 16#8031_AF07#);
+            SW.Paint (Screen, (2, 3), 0, (7, 9, 73, 64), Mask, Expected, 84, 16#8031_AF07#);
             Paint (S, Views); pragma Assert (OK and Target = Expected and Stat (0) = Before and Stat (4) = 0);
             Screen.Scale := (10, 8); Target := (others => 16#8012_3456#);
             Paint (S, Views); pragma Assert (OK and Target = Expected and Stat (0) = Before);
@@ -59,7 +59,7 @@ begin
             Queue (S, Views); pragma Assert (not OK and R.Queued (S) = 0);
             if Failure = 1 then
                Fault (1); Expected := Target;
-               R.Paint (S, Views, (0, 66, Screen.Scale), Screen, (4000, 4000),
+               R.Paint (S, Views, (0, 66, Screen.Scale), Screen, (4000, 4000), 0,
                         (0, 0, 80, 72), Target, 84, 16#FFFF_FFFF#, OK);
                pragma Assert (OK and Target = Expected and Stat (0) = Before);
                Paint (S, Views, 66);
@@ -68,7 +68,7 @@ begin
             end if;
             for I in 0 .. 249 loop
                Screen.Scale := (G.Scale_Component (1 + I / 95), 1);
-               Paint (S, Views, 32 + I mod 95); pragma Assert (OK and R.Charged (S) <= 524_288 and Stat (4) = 0);
+               Paint (S, Views, 32 + I mod 95); pragma Assert (OK and R.Charged (S) <= R.Budget and Stat (4) = 0);
             end loop;
             R.Shutdown (S, Views, OK); pragma Assert (OK and R.Charged (S) = 0);
          end if;
@@ -79,7 +79,7 @@ begin
    declare S : R.State; Views : Mesa_Cache.State; Before : Natural; begin
       Start (Views);
       for Code in 32 .. 63 loop
-         R.Queue (S, Views, 0, (0, Code, Screen.Scale), Screen, (2, 3), (0, 0, 80, 72), 16#FFFF_FFFF#, OK);
+         R.Queue (S, Views, 0, (0, Code, Screen.Scale), Screen, (2, 3), 0, (0, 0, 80, 72), 16#FFFF_FFFF#, OK);
          pragma Assert (OK);
       end loop;
       Before := R.Charged (S); pragma Assert (Stat (0) = 32 and Stat (4) = 33);

@@ -1,7 +1,7 @@
 project GGTT_Reuse is
    for Languages use ("Ada");
    for Source_Dirs use (".", "../../userspace/services/intel-gpu");
-   for Source_Files use ("ggtt_reuse_tests.adb",
+   for Source_Files use ("intel_gpu_physical_extents.ads", "intel_gpu_physical_extents.adb", "ggtt_reuse_tests.adb",
      "intel_gpu_ggtt_publish.ads", "intel_gpu_ggtt_publish.adb",
      "intel_gpu_ggtt_reservations.ads", "intel_gpu_ggtt_reservations.adb",
      "intel_gpu_ggtt_reservations-reclamation.ads",

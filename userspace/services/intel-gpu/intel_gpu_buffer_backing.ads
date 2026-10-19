@@ -12,7 +12,9 @@ package Intel_GPU_Buffer_Backing with SPARK_Mode is
    -- Low32 is a one-based slot; high32 is generation minus one.
    Ticket_Stride : constant Unsigned_64 := 2 ** 32;
    Ticket_Limit : constant Unsigned_64 := Unsigned_64'Last - Ticket_Stride;
-   subtype Page_Count is Positive range 1 .. 4096;
+   -- One allocation is at most one extent map (16 blocks of 2 MiB, 32 MiB):
+   -- room for a 3840x2160 scanout buffer plus its guard page.
+   subtype Page_Count is Positive range 1 .. Natural (Intel_GPU_Physical_Extents.Capacity / 4096);
    type Allocation_Reason is
      (Not_Attempted, Request_Check, Generation_Check, Quota_Check, Gap_Check,
       Backing_Check, Owner_Check, Geometry_Check, Directory_Check,
@@ -154,8 +156,9 @@ package Intel_GPU_Buffer_Backing with SPARK_Mode is
    -- are an admission upper bound, not a promise of available metadata RAM.
    -- Available bytes = capacity minus
    -- retained, but new allocations also need a record. These independent
-   -- quantities never infer allocated bytes from record count. Version2 keeps
-   -- the current16MiB per-allocation ceiling; it does not grant a larger arena.
+   -- quantities never infer allocated bytes from record count. The per-
+   -- allocation ceiling is Page_Count (one extent map); it does not grant a
+   -- larger arena.
    -- This is a point
    -- observation, never a reservation, physical address or reclaim promise.
    -- Capacity/free bytes describe the arena admission quota; backing is now

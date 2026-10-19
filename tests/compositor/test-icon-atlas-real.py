@@ -109,6 +109,7 @@ host=host.replace('CHECK(desktop_backdrop_real_import()==0);', 'int imported=des
 (w/'desktop_backdrop_real_host.c').write_text(host)
 extra=['desktop_gpu_scene-drawing.ads','desktop_gpu_scene-drawing.adb','desktop_window_icons.ads','desktop_cursors.ads']
 extra += [p.name for p in (root/'userspace/services/desktop').glob('desktop_icon*.ad?')]
+extra += [p.name for p in (root/'userspace/services/desktop').glob('desktop_heap_objects.ad?')]
 for n in extra:(w/n).write_bytes((root/'userspace/services/desktop'/n).read_bytes())
 for n in ['compositor_shadow.ads','compositor_shadow.adb','compositor_cursor.ads','compositor_cursor.adb']:(w/n).write_bytes((root/'userspace/lib/compositor'/n).read_bytes());extra.append(n)
 files=', '.join('"'+n+'"' for n in ['desktop_backdrop_real_bridge.adb','desktop_backdrop_real_host.c']+extra)

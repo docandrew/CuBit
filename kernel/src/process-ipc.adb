@@ -19,6 +19,7 @@ with Process_Capabilities;
 with Config;
 with Grant_Page_Installation;
 with Grant_Bell_Lists;
+with Grant_Sweeps;
 with Channel_Wake_ABI;
 with Grant_Doorbells;
 with IPC_Labels;
@@ -721,6 +722,8 @@ package body Process.IPC is
     procedure wakeActivityWaitersLocked (owner : ProcessID; sync : Boolean := False) is
         waiter : ThreadID := mailtab(owner).recvQueue.head;
         following : ThreadID;
+        -- Only the first waiter woken takes the waker's CPU (readySync).
+        handOver : Boolean := sync;
     begin
         -- Walk waiting threads (not processes): every thread waiting for
         -- activity on this mailbox is woken.
@@ -729,8 +732,9 @@ package body Process.IPC is
             if threadtab (waiter).waitsForIPCActivity then
                 Queues.detach (mailtab(owner).recvQueue, waiter);
                 threadtab (waiter).receiveDeadlineActive := False;
-                if sync then
+                if handOver then
                     readySync (waiter);
+                    handOver := False;
                 else
                     ready (waiter);
                 end if;
@@ -780,6 +784,9 @@ package body Process.IPC is
     -- consume it, and every event waiter.
     procedure wakeForUnsolicitedWork (owner : ProcessID; sync : Boolean := False) is
         receiver : ThreadID;
+        -- A sync wake hands the waker's CPU to one thread; any others are
+        -- readied as usual.
+        handed : Boolean := False;
     begin
         Spinlocks.enterCriticalSection (lock);
         if not Queues.isEmpty (mailtab(owner).recvQueue) then
@@ -792,13 +799,14 @@ package body Process.IPC is
             then
                 if sync then
                     readySync (receiver);
+                    handed := True;
                 else
                     ready (receiver);
                 end if;
             end if;
         end if;
         wakeNotifyWaitersLocked (owner);
-        wakeActivityWaitersLocked (owner, sync);
+        wakeActivityWaitersLocked (owner, sync and then not handed);
         Spinlocks.exitCriticalSection (lock);
     end wakeForUnsolicitedWork;
 
@@ -2536,29 +2544,43 @@ package body Process.IPC is
     Next_Fresh : Memory_Grants.Global_Slot := Memory_Grants.Grant_Slot'First;
     -- Each process's owned grants (live, or retired with an unread notice)
     -- and received grants (live), and how many.
-    -- Take a window of grantee's for a grant about to be mapped there.
-    procedure takeWindow (grantee : ProcessID; g : in out Grant; taken : out Boolean) is
+    -- Take the windows of grantee's for a grant of pages pages about to be
+    -- mapped there: one window, or a run of consecutive windows.
+    procedure takeWindow (grantee : ProcessID; g : in out Grant;
+                          pages : Memory_Grants.Page_Count; taken : out Boolean) is
         window : Grant_Windows.Window;
+        count : constant Grant_Windows.Run_Length := Memory_Grants.Windows_For (pages);
     begin
-        Grant_Windows.Allocate (grantsOf (grantee).windows, window, taken);
+        if count = 1 then
+            Grant_Windows.Allocate (grantsOf (grantee).windows, window, taken);
+        else
+            Grant_Windows.Allocate_Run (grantsOf (grantee).windows, count, window, taken);
+        end if;
         if taken then
             g.granteeWindow := window;
+            g.windowCount := count;
             g.windowHeld := True;
             g.granteeAddr := To_Address (Integer_Address
               (Memory_Grants.Window_Address (window)));
         end if;
     end takeWindow;
 
-    -- Give back g's window. Only once its pages are unmapped and every CPU
+    -- Give back g's windows. Only once its pages are unmapped and every CPU
     -- has flushed them (unmapGrantPages): the next grant mapped there must
     -- not be reachable through a stale translation.
     procedure releaseWindow (g : in out Grant) is
     begin
         if g.windowHeld then
-            if not Grant_Windows.Contains (grantsOf (g.granteePID).windows, g.granteeWindow) then
-                raise ProcessException with "Grant window lost";
+            if not Grant_Windows.Fits (g.granteeWindow, g.windowCount) then
+                raise ProcessException with "Grant window run out of range";
             end if;
-            Grant_Windows.Release (grantsOf (g.granteePID).windows, g.granteeWindow);
+            for window in g.granteeWindow .. g.granteeWindow + (g.windowCount - 1) loop
+                if not Grant_Windows.Contains (grantsOf (g.granteePID).windows, window) then
+                    raise ProcessException with "Grant window lost";
+                end if;
+            end loop;
+            Grant_Windows.Release_Run
+              (grantsOf (g.granteePID).windows, g.granteeWindow, g.windowCount);
             g.windowHeld := False;
         end if;
     end releaseWindow;
@@ -2608,6 +2630,15 @@ package body Process.IPC is
         end if;
     end takeReservedSlot;
 
+    -- One of a process's grant lists. A walk over it (Sweep_Grants) keeps
+    -- its place in Sweeps: each unlink below passes the walks first.
+    type Grant_List is record
+        pid   : ProcessID;
+        owned : Boolean;
+    end record;
+    package Sweeps is new Grant_Sweeps
+      (Memory_Grants.Global_Slot, Memory_Grants.No_Slot, Grant_List);
+
     -- Link a just-written live grant into its owner's and grantee's lists.
     procedure linkGrant (slot : Memory_Grants.Global_Slot) is
         value : constant Grant_Pointer := grantFor (slot);
@@ -2627,7 +2658,6 @@ package body Process.IPC is
             grantFor (grantsOf (grantee).receivedHead).granteePrev := slot;
         end if;
         grantsOf (grantee).receivedHead := slot;
-        grantsOf (grantee).receivedCount := grantsOf (grantee).receivedCount + 1;
     end linkGrant;
 
     -- Nothing to do for a grant already off the list (its grantee died
@@ -2640,6 +2670,7 @@ package body Process.IPC is
         then
             return;
         end if;
+        Sweeps.Pass ((grantee, False), slot, value.granteeNext);
         if value.granteePrev /= Memory_Grants.No_Slot then
             grantFor (value.granteePrev).granteeNext := value.granteeNext;
         else
@@ -2650,7 +2681,6 @@ package body Process.IPC is
         end if;
         value.granteePrev := Memory_Grants.No_Slot;
         value.granteeNext := Memory_Grants.No_Slot;
-        grantsOf (grantee).receivedCount := grantsOf (grantee).receivedCount - 1;
     end unlinkReceived;
 
     -- A retired grant leaves its owner's list: its slot is free again, or
@@ -2658,6 +2688,7 @@ package body Process.IPC is
     procedure releaseOwnedSlot (owner : ProcessID; slot : Memory_Grants.Global_Slot) is
         value : constant Grant_Pointer := grantFor (slot);
     begin
+        Sweeps.Pass ((owner, True), slot, value.ownerNext);
         if value.ownerPrev /= Memory_Grants.No_Slot then
             grantFor (value.ownerPrev).ownerNext := value.ownerNext;
         else
@@ -2675,47 +2706,27 @@ package body Process.IPC is
         end if;
     end releaseOwnedSlot;
 
-    -- Visit every grant on one of pid's lists. Visit may retire grants,
-    -- including others on the same list, so the walk is over a snapshot
-    -- taken first; Visit checks each slot is still what it expects.
+    -- Visit every grant on one of pid's lists. Process teardown walks
+    -- them, when memory may be exhausted (an out-of-memory kill), so the
+    -- walk allocates nothing. Visit may unlink grants, others on the same
+    -- list included, and walk again: Grant_Sweeps keeps each walk on its
+    -- list. Visit checks each slot is still what it expects.
     generic
         with procedure Visit (slot : Memory_Grants.Global_Slot);
     procedure Sweep_Grants (pid : ProcessID; owned : Boolean);
 
     procedure Sweep_Grants (pid : ProcessID; owned : Boolean) is
-        count : constant Natural :=
-          (if owned then grantsOf (pid).ownedCount else grantsOf (pid).receivedCount);
-        Slot_Bytes : constant := 4;
-        order : BuddyAllocator.Order := 0;
-        buffer : System.Address;
-        slot : Memory_Grants.Global_Slot;
+        function first (list : Grant_List) return Memory_Grants.Global_Slot is
+          (if list.owned then grantsOf (list.pid).ownedHead
+           else grantsOf (list.pid).receivedHead);
+        function next
+          (list : Grant_List; slot : Memory_Grants.Global_Slot)
+           return Memory_Grants.Global_Slot is
+          (if list.owned then grantFor (slot).ownerNext
+           else grantFor (slot).granteeNext);
+        procedure walk is new Sweeps.Walk (first, next, Visit);
     begin
-        if count = 0 then
-            return;
-        end if;
-        while Natural (2 ** Natural (order)) * Natural (Virtmem.PAGE_SIZE) < count * Slot_Bytes loop
-            order := order + 1;
-        end loop;
-        BuddyAllocator.alloc (order, buffer);
-        if buffer = System.Null_Address then
-            raise ProcessException with "No memory to walk a grant list";
-        end if;
-        declare
-            type Slots is array (1 .. count) of Unsigned_32;
-            snapshot : Slots with Import, Address => buffer;
-            taken : Natural := 0;
-        begin
-            slot := (if owned then grantsOf (pid).ownedHead else grantsOf (pid).receivedHead);
-            while slot /= Memory_Grants.No_Slot and then taken < count loop
-                taken := taken + 1;
-                snapshot (taken) := Unsigned_32 (slot);
-                slot := (if owned then grantFor (slot).ownerNext else grantFor (slot).granteeNext);
-            end loop;
-            for k in 1 .. taken loop
-                Visit (Memory_Grants.Global_Slot (snapshot (k)));
-            end loop;
-        end;
-        BuddyAllocator.free (order, buffer);
+        walk ((pid => pid, owned => owned));
     end Sweep_Grants;
 
     ---------------------------------------------------------------------------
@@ -3353,9 +3364,11 @@ package body Process.IPC is
     -- Map pages from caller's address space into grantee's address space.
     ---------------------------------------------------------------------------
     -- Serialized by grantLock. Keep the retirement snapshot off the 4 KiB
-    -- kernel stack; a grant may contain 4096 pages. These addresses survive
-    -- removal of the mappings and are used only after shootdown completion.
-    Retiring_Frames : array (Memory_Grants.Page_Offset) of Virtmem.PhysAddress;
+    -- kernel stack. Retirement removes one window's pages at a time, flushes
+    -- every CPU, then unpins them: these addresses survive removal of the
+    -- mappings and are used only after shootdown completion.
+    Retire_Batch_Pages : constant := Memory_Grants.Window_Pages;
+    Retiring_Frames : array (0 .. Retire_Batch_Pages - 1) of Virtmem.PhysAddress;
 
     procedure unmapGrantPages (g : Grant);
 
@@ -3473,7 +3486,7 @@ package body Process.IPC is
                     granterAddr => localAddr,
                     permission => perm, forwardable => forwardable, notify => notify,
                     others => <>);
-        takeWindow (receiver, staging, ok);
+        takeWindow (receiver, staging, Memory_Grants.Page_Count (numPages), ok);
         if not ok then
             Spinlocks.exitCriticalSection (grantLock);
             return;
@@ -3522,6 +3535,7 @@ package body Process.IPC is
         childLink : Link_Storage.Element_Access;
         installed : Natural;
         window : Grant_Windows.Window;
+        windows : Grant_Windows.Run_Length;
         flags : constant Unsigned_64 := (if perm = GRANT_READWRITE then
           Virtmem.PG_USERDATA else Virtmem.PG_USERDATARO);
         procedure mapPageInst is new Virtmem.mapPage (BuddyAllocator.allocFrame);
@@ -3631,12 +3645,13 @@ package body Process.IPC is
             end if;
         end if;
         staging := (granteePID => grantee, others => <>);
-        takeWindow (grantee, staging, mapped);
+        takeWindow (grantee, staging, numPages, mapped);
         if not mapped then
             Spinlocks.exitCriticalSection (grantLock);
             return;
         end if;
         window := staging.granteeWindow;
+        windows := staging.windowCount;
         Grant_Loans.Reserve (scope.all, requested, loan, reservation);
         if reservation /= Grant_Loans.Reserved then
             releaseWindow (staging);
@@ -3651,7 +3666,8 @@ package body Process.IPC is
           granterAddr => To_Address (To_Integer (source.granteeAddr) +
             Integer_Address (pageOffset) * Virtmem.PAGE_SIZE),
           granteeAddr => To_Address (Integer_Address (Memory_Grants.Window_Address (window))),
-          granteeWindow => window, windowHeld => True, others => <>);
+          granteeWindow => window, windowCount => windows, windowHeld => True,
+          others => <>);
         installPages (numPages, installed, mapped);
         if not mapped then
             -- Transaction has already removed its partial mappings and waited
@@ -3689,6 +3705,8 @@ package body Process.IPC is
         physical : Virtmem.PhysAddress;
         virtual : Integer_Address;
         ok : Boolean;
+        first : Natural := 0;
+        count : Natural;
     begin
         if g.numPages = 0 then
             return;
@@ -3699,30 +3717,34 @@ package body Process.IPC is
         if proctab(g.granteePID).pgTable = NO_PROCESS then
             raise ProcessException with "Grant page tables destroyed before retirement";
         end if;
-        lockAddressSpace (g.granteePID);
-        for page in 0 .. g.numPages - 1 loop
-            virtual := To_Integer (g.granteeAddr) +
-                Integer_Address (page) * Virtmem.PAGE_SIZE;
-            physical := Virtmem.tableWalk
-              (virtual, addrtab(proctab(g.granteePID).pgTable));
-            if physical = 0 then
-                raise ProcessException with "Grant mapping lost before retirement";
-            end if;
-            Retiring_Frames (page) := physical;
-            Virtmem.unmapPage
-              (virtual, addrtab(proctab(g.granteePID).pgTable), ok);
-            if not ok then
-                raise ProcessException with "Grant mapping could not be removed";
-            end if;
-        end loop;
-        unlockAddressSpace (g.granteePID);
-        TLB_Shootdown.Invalidate_All;
-        -- No pin release (and hence no allocator reuse) before completion.
-        for page in 0 .. g.numPages - 1 loop
-            BuddyAllocator.unpinFrame (Retiring_Frames (page), ok);
-            if not ok then
-                raise ProcessException with "Retired grant lost its lifetime pin";
-            end if;
+        while first < g.numPages loop
+            count := Natural'Min (Retire_Batch_Pages, g.numPages - first);
+            lockAddressSpace (g.granteePID);
+            for page in 0 .. count - 1 loop
+                virtual := To_Integer (g.granteeAddr) +
+                    Integer_Address (first + page) * Virtmem.PAGE_SIZE;
+                physical := Virtmem.tableWalk
+                  (virtual, addrtab(proctab(g.granteePID).pgTable));
+                if physical = 0 then
+                    raise ProcessException with "Grant mapping lost before retirement";
+                end if;
+                Retiring_Frames (page) := physical;
+                Virtmem.unmapPage
+                  (virtual, addrtab(proctab(g.granteePID).pgTable), ok);
+                if not ok then
+                    raise ProcessException with "Grant mapping could not be removed";
+                end if;
+            end loop;
+            unlockAddressSpace (g.granteePID);
+            TLB_Shootdown.Invalidate_All;
+            -- No pin release (and hence no allocator reuse) before completion.
+            for page in 0 .. count - 1 loop
+                BuddyAllocator.unpinFrame (Retiring_Frames (page), ok);
+                if not ok then
+                    raise ProcessException with "Retired grant lost its lifetime pin";
+                end if;
+            end loop;
+            first := first + count;
         end loop;
     end unmapGrantPages;
 

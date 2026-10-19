@@ -1,3 +1,4 @@
+with CuBit.Fonts;
 with CuBit.UI.Widgets;
 
 package body CuBit.UI.File_Dialogs is
@@ -160,13 +161,13 @@ package body CuBit.UI.File_Dialogs is
 
       procedure Place_Name_Cursor (Extend : Boolean) is
          Text : constant String := Filename (State);
-         X : Natural := G.Name.x + 8;
+         X : constant Natural := G.Name.x + 8;
       begin
-         for I in Text'Range loop
-            exit when Event.X < X + UI_Text_Width (Text (I .. I)) / 2;
-            X := X + UI_Text_Width (Text (I .. I));
-            Position := Position + 1;
-         end loop;
+         --  The caret boundary nearest the pointer, in the layout the field
+         --  is drawn with (kerning, unrounded advances).
+         if Event.X > X then
+            Position := Position + CuBit.Fonts.Boundary_At (CuBit.Fonts.Sans, Text, Event.X - X);
+         end if;
          Editor.Place_Cursor (State.Name, Position, Extend);
       end Place_Name_Cursor;
    begin

@@ -1,9 +1,10 @@
+with "../../userspace/allocator/allocator_runtime_host.gpr";
 with "../../userspace/ccl/cubit_shared.gpr";
 with "../../userspace/lib/ui/fonts_host.gpr";
 project Appearance is
    for Source_Dirs use (".", "../../userspace/lib/ui",
      "../../userspace/lib/theme", "../../userspace/ccl/src",
-     "../../userspace/ccl/tools/ccl-ui-preview/host", "../../userspace/lib/compositor", "../../userspace/lib/display", "../../userspace/allocator/src");
+     "../../userspace/ccl/tools/ccl-ui-preview/host", "../../userspace/lib/compositor", "../../userspace/lib/display");
    --  The root package CuBit comes with cubit_shared.gpr (the runtime's).
    for Excluded_Source_Files use ("cubit.ads");
    for Object_Dir use "build";

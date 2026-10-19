@@ -5,13 +5,14 @@ package body Desktop_Icon_Pixels with SPARK_Mode is
    --  is unavailable). The window-control table is a small constant: only
    --  Control_Pixel names it, so the provers see it only for the index check.
    function Application_Pixel
-     (Icon : Desktop_Icons.Icon_ID; Index : Natural) return Interfaces.Unsigned_32
-     with Pre => Index < Desktop_Icons.ICON_SIZE * Desktop_Icons.ICON_SIZE;
+     (Icon : Desktop_Icons.Icon_ID; Edge : Desktop_Icons.Edge_Index; X, Y : Natural)
+     return Interfaces.Unsigned_32
+     with Pre => X < Desktop_Icons.Edges (Edge) and Y < Desktop_Icons.Edges (Edge);
    function Application_Pixel
-     (Icon : Desktop_Icons.Icon_ID; Index : Natural) return Interfaces.Unsigned_32 is
+     (Icon : Desktop_Icons.Icon_ID; Edge : Desktop_Icons.Edge_Index; X, Y : Natural)
+     return Interfaces.Unsigned_32 is
    begin
-      return Desktop_Icon_Store.Pixel
-        (Icon, Index mod Desktop_Icons.ICON_SIZE, Index / Desktop_Icons.ICON_SIZE);
+      return Desktop_Icon_Store.Pixel (Icon, Edge, X, Y);
    end Application_Pixel;
 
    function Control_Pixel
@@ -27,7 +28,7 @@ package body Desktop_Icon_Pixels with SPARK_Mode is
    begin
       case Item.Kind is
          when Application =>
-            return Application_Pixel (Item.Icon, Y * Desktop_Icons.ICON_SIZE + X);
+            return Application_Pixel (Item.Icon, Item.Edge, X, Y);
          when Window_Control =>
             return Control_Pixel (Item.Control, Y * Desktop_Window_Icons.ICON_SIZE + X);
       end case;

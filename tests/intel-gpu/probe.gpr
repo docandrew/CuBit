@@ -1,6 +1,6 @@
 project Probe is
    for Source_Dirs use (".", "../../userspace/services/intel-gpu");
-   for Source_Files use ("main.adb", "resource_tests.adb", "boot_tests.adb",
+   for Source_Files use ("intel_gpu_physical_extents.ads", "intel_gpu_physical_extents.adb", "main.adb", "resource_tests.adb", "boot_tests.adb",
      "observation_tests.adb", "intel_gpu_observation.ads", "intel_gpu_observation.adb",
      "observation_proof.ads",
      "intel_gpu_display_topology.ads", "intel_gpu_display_topology.adb",

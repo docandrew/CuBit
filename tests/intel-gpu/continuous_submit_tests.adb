@@ -4,8 +4,11 @@ with Interfaces; use Interfaces;
 with System;
 with CuBit.GPU_Queues;
 with Intel_GPU_Queue_Service;
+with Queue_Service_Prepare;
 with Intel_GPU_Ring_Reservation;
 with Intel_GPU_Context_Table;
+with Context_Table_Access;
+with Test_Storage;
 with Intel_GPU_Context_Table.Waiting;
 with Intel_GPU_Context_Table.Draining;
 with Intel_GPU_GuC_CT_Receive;
@@ -120,7 +123,9 @@ procedure Continuous_Submit_Tests is
    begin Success := False; end Retain;
 
    package Driver is new Intel_GPU_GuC_Context_Session (Ready, Queue, Retain);
-   package Pool is new Intel_GPU_Context_Table (2, Driver, Ready, Retain);
+   package Pool is new Intel_GPU_Context_Table
+     (2, Driver, Ready, Retain, Reply_Words => Test_Storage.Reply_Words);
+   package Tables is new Context_Table_Access (Pool);
 
    procedure Descriptor (Head, Tail, Status : out Unsigned_32; Success : out Boolean) is
    begin Head := 0; Tail := 0; Status := 0; Success := False; end Descriptor;
@@ -154,7 +159,6 @@ procedure Continuous_Submit_Tests is
 
    Table : Pool.Table;
    Context : Unsigned_32;
-   Drain : Draining.Drain_State;
 
    procedure Read_Marker (Value : out Unsigned_64; OK : out Boolean) is
    begin Value := Marker; OK := True; end Read_Marker;
@@ -238,6 +242,7 @@ procedure Continuous_Submit_Tests is
       Segment_Bytes, Kick, Read_Marker, Read_Job_Time, Job_Started, Now_Us, Quarantine, Call_Finished, Answer_Wake,
       No_Region, No_Region, Deadline_Us, Deadline_Us);
    use type Service.Call_Result, Policy.Event_Count;
+   procedure Prepare is new Queue_Service_Prepare (Service);
    T : Service.Table;
    function Work_Drained (Session : Unsigned_64) return Boolean is
      (Session = Session_Tag and then Service.Session_Idle (T, 1));
@@ -322,7 +327,7 @@ procedure Continuous_Submit_Tests is
    begin
       -- As Handle_Context_Registration: register, policy, enable for the
       -- setup marker, disable. Lifecycle requests only.
-      Pool.Open (Table, 16#200000# + Unsigned_64 (Pool.Count (Table)) * 16#10000#,
+      Tables.Open (Table, 16#200000# + Unsigned_64 (Tables.Count (Table)) * 16#10000#,
                  4096, 1000, 500000, False, Context, Accepted, Session => Tag);
       pragma Assert (Accepted);
       Pool.Submit (Table, Context, Life.Register_Context, Control);
@@ -336,6 +341,7 @@ procedure Continuous_Submit_Tests is
       Marker := 1;
    end Setup;
 begin
+   Prepare (T);
    Setup (Session_Tag);
    Open_Service_Context;
    Mode_Sets := 0; G2H_Events := 0;
@@ -398,16 +404,16 @@ begin
 
    -- Clean retirement of the resident context: the drain disables, then
    -- deregisters. No reserved fence interval is needed for either.
-   Pool.Retire_Session (Table, Session_Tag, Context);
+   Tables.Retire_Session (Table, Session_Tag, Context);
    for Tick in 1 .. 100 loop
       declare Fault : Boolean; begin
-         Draining.Tick (Table, Drain, Fault);
+         Draining.Tick (Table, Fault);
          Check (not Fault, "drain tick without fault");
       end;
-      exit when Draining.Observe (Table, Session_Tag) = Draining.Deregistered;
+      exit when Draining.Observe (Table, Tables.Context_Of (Table, Session_Tag), Session_Tag) = Draining.Deregistered;
       if not Service_Events then Check (False, "drain event dispatch"); exit; end if;
    end loop;
-   Check (Draining.Observe (Table, Session_Tag) = Draining.Deregistered,
+   Check (Draining.Observe (Table, Tables.Context_Of (Table, Session_Tag), Session_Tag) = Draining.Deregistered,
           "deregistration completes after continuous rendering");
    Check (Deregisters = 1 and not Fast.Failed (Stream), "one deregistration, stream intact");
 

@@ -67,6 +67,7 @@ package body CuBit.Libc_Files is
    REPLY_IS_DIRECTORY      : constant := 16#F011#;
    REPLY_INVALID_MOVE      : constant := 16#F012#;
    REPLY_CROSS_VOLUME      : constant := 16#F013#;
+   REPLY_VOLUME_UNAVAILABLE : constant := 16#F017#;
    PROTOCOL_VERSION : constant := 2;   --  CuBit.Filesystems: Directory.Page.V2
    Seek_From_End : constant := 2;
    Open_Read_Only : constant Unsigned_64 := 0;
@@ -257,6 +258,9 @@ package body CuBit.Libc_Files is
         when REPLY_IS_DIRECTORY      => Error (EISDIR),
         when REPLY_INVALID_MOVE      => Error (EINVAL),
         when REPLY_CROSS_VOLUME      => Error (EXDEV),
+        --  A path on a volume this machine does not have (Linux: the
+        --  mount point is empty), not a device failure.
+        when REPLY_VOLUME_UNAVAILABLE => Error (ENOENT),
         when others                  => Error (EIO));
 
    ---------------------------------------------------------------------------

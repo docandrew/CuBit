@@ -46,10 +46,10 @@ begin
                for Size of Sizes loop
                   D := (case Role is
                     when Detected_Only =>
-                      (Detected_Only, Source, Native, Size, Size),
+                      (Detected_Only, Source, Native, Size, Size, 597, 336),
                     when Backend_Ready | Selected_For_Desktop =>
                       (Active_Role'(Role), Source, Native,
-                       Size, Size, 1024, 768));
+                       Size, Size, 0, Millimetres'Last, 1024, 768));
                   for Revision of Revisions loop
                      for Index in Output_Index loop
                         W := Encode_Description
@@ -79,9 +79,9 @@ begin
       -- otherwise decoding/re-encoding must preserve the message exactly.
       for Role in Output_Role loop
          D := (case Role is
-           when Detected_Only => (Detected_Only, Virtio_GPU, 15, 1920, 1080),
+           when Detected_Only => (Detected_Only, Intel_Display, 15, 3840, 2160, 597, 336),
            when Backend_Ready | Selected_For_Desktop =>
-             (Active_Role'(Role), Virtio_GPU, 15, 1920, 1080, 1024, 768));
+             (Active_Role'(Role), Virtio_GPU, 15, 1920, 1080, 0, 0, 1024, 768));
          W := Encode_Description (Service, ((7, 17), D));
          for Word in W.Words'Range loop
             for Bit in 0 .. 63 loop

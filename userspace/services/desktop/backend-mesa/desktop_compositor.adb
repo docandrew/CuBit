@@ -45,7 +45,7 @@ package body Desktop_Compositor with SPARK_Mode,
      (Target : Compositor_Formats.Image; Target_Bytes : Compositor_Formats.Byte_Count;
       Screen : CuBit.Display_Geometry.Output; Items : Compositor_Text.Glyphs;
       Length : Compositor_Text.Count; Damage : CuBit.Display_Geometry.Physical_Rectangle;
-      Tint : Compositor_Formats.Word; Secondary : Boolean;
+      Tint : Compositor_Formats.Word; Face : Compositor_Text.L.Face_Index; Secondary : Boolean;
       Drawn, Repaint, Must_Restart : out Boolean) renames Renderer.Draw_Text;
    procedure Draw_Client
      (Target, Source : Compositor_Formats.Image;
@@ -72,10 +72,10 @@ package body Desktop_Compositor with SPARK_Mode,
    procedure Draw_Icon
      (Target : Compositor_Formats.Image; Target_Bytes : Compositor_Formats.Byte_Count;
       Screen : CuBit.Display_Geometry.Output; Item : Desktop_Icon_Pixels.Asset;
-      Surface : CuBit.Display_Geometry.Logical_Rectangle;
+      Area : CuBit.Display_Geometry.Physical_Rectangle; Skip_X, Skip_Y : Natural;
       Damage : CuBit.Display_Geometry.Physical_Rectangle;
       Secondary : Boolean; Drawn, Must_Restart : out Boolean) is
-      pragma Unreferenced (Target, Target_Bytes, Screen, Item, Surface, Damage, Secondary);
+      pragma Unreferenced (Target, Target_Bytes, Screen, Item, Area, Skip_X, Skip_Y, Damage, Secondary);
    begin
       Drawn := False; Must_Restart := False;
    end Draw_Icon;

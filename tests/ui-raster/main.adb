@@ -1,6 +1,7 @@
 with Ada.Text_IO;
 with Interfaces; use Interfaces;
 with Client_Raster; use Client_Raster;
+with Glyph_Gamma;
 
 --  Client_Raster against a naive per-pixel reference: random rectangles in
 --  random surfaces, every pixel compared, inside and outside the rectangle.
@@ -24,7 +25,18 @@ procedure Main is
       end if;
    end Check;
    Glyph : Mask;
+   Ink : constant Word := 16#123456#;
+   Ink_Row : constant Glyph_Gamma.Bucket := Glyph_Gamma.Bucket_Of (Ink);
 begin
+   --  Every ramp entry is the corrected blend of its coverage.
+   declare
+      Under : constant Word := 16#ABCDEF#;
+      Over : constant Ramp := Shades (Ink, Under);
+   begin
+      for A in Byte loop
+         Check (Over (A) = Mix (Ink, Under, Glyph_Gamma.Adjust (Ink_Row, A)), "ramp matches the blend");
+      end loop;
+   end;
    for Row in Mask_Row loop
       for Column in Mask_Column loop
          Glyph (Row, Column) := Byte (Below (4) * 85);
@@ -57,16 +69,31 @@ begin
             end if;
          end loop;
          Check (Surface = Expected, "fill matches the reference");
-         Blit_Mask (Surface, Pitch, R, Glyph, Row0, Col0, 16#123456#, Opaque, 16#ABCDEF#);
+         --  Blit_Mask_Over is Blit_Mask's blend, faster where the pixel is
+         --  still the run's background: same pixels on a partly filled surface.
+         declare
+            Under : constant Word := Surface (Surface'First);
+            Plain, Ramped : Pixels := Surface;
+         begin
+            for I in Plain'Range loop
+               if Next mod 2 = 0 then Plain (I) := Under; end if;
+            end loop;
+            Ramped := Plain;
+            Blit_Mask (Plain, Pitch, R, Glyph, Row0, Col0, Ink, False, 0);
+            Blit_Mask_Over (Ramped, Pitch, R, Glyph, Row0, Col0, Ink, Under, Shades (Ink, Under));
+            Check (Plain = Ramped, "ramped blit matches the blend");
+         end;
+         Blit_Mask (Surface, Pitch, R, Glyph, Row0, Col0, Ink, Opaque, 16#ABCDEF#);
          for I in Expected'Range loop
             if I / Pitch in Y .. Y + H - 1 and then I mod Pitch in X .. X + W - 1 then
                declare
                   A : constant Byte := Glyph (Row0 + I / Pitch - Y, Col0 + I mod Pitch - X);
                begin
+                  --  Coverage goes through the ink's Glyph_Gamma row first.
                   if Opaque then
-                     Expected (I) := Mix (16#123456#, 16#ABCDEF#, A);
+                     Expected (I) := Mix (Ink, 16#ABCDEF#, Glyph_Gamma.Adjust (Ink_Row, A));
                   elsif A /= 0 then
-                     Expected (I) := Mix (16#123456#, Expected (I), A);
+                     Expected (I) := Mix (Ink, Expected (I), Glyph_Gamma.Adjust (Ink_Row, A));
                   end if;
                end;
             end if;

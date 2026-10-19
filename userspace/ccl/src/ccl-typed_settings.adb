@@ -1,6 +1,7 @@
 with Interfaces;
 with CCL.Catalog;
 with CCL.Evaluation;
+with CCL.Interfaces.Desktop_Display;
 with CCL.Interfaces.Desktop_Input;
 with CCL.Interfaces.Desktop_Launch;
 with CCL.Interfaces.GPU_Power;
@@ -27,6 +28,8 @@ package body CCL.Typed_Settings is
       then Launch_Entry_Setting
       elsif Key = CCL.Interfaces.Desktop_Input.KEY_REPEAT_KEY then Key_Repeat_Setting
       elsif Key = CCL.Interfaces.GPU_Power.WAITBOOST_KEY then GPU_Waitboost_Setting
+      elsif Key = CCL.Interfaces.Desktop_Display.DISPLAY_SCALE_KEY then Display_Scale_Setting
+      elsif Key = CCL.Interfaces.Desktop_Display.MODESET_KEY then Display_Modeset_Setting
       else Untyped);
 
    function Schema (Kind : Setting_Kind) return String is
@@ -34,12 +37,16 @@ package body CCL.Typed_Settings is
          when Launch_Entry_Setting => CCL.Interfaces.Desktop_Launch.TYPE_SOURCE,
          when Key_Repeat_Setting => CCL.Interfaces.Desktop_Input.TYPE_SOURCE,
          when GPU_Waitboost_Setting => CCL.Interfaces.GPU_Power.TYPE_SOURCE,
+         when Display_Scale_Setting => CCL.Interfaces.Desktop_Display.TYPE_SOURCE,
+         when Display_Modeset_Setting => CCL.Interfaces.Desktop_Display.MODESET_TYPE_SOURCE,
          when Untyped => "");
    function Root_Name (Kind : Setting_Kind) return String is
      (case Kind is
          when Launch_Entry_Setting => CCL.Interfaces.Desktop_Launch.ROOT_TYPE_NAME,
          when Key_Repeat_Setting => CCL.Interfaces.Desktop_Input.ROOT_TYPE_NAME,
          when GPU_Waitboost_Setting => CCL.Interfaces.GPU_Power.ROOT_TYPE_NAME,
+         when Display_Scale_Setting => CCL.Interfaces.Desktop_Display.ROOT_TYPE_NAME,
+         when Display_Modeset_Setting => CCL.Interfaces.Desktop_Display.MODESET_ROOT_TYPE_NAME,
          when Untyped => "");
 
    function Named (Object : Views.Snapshot; At_Cursor : Views.Cursor; Name : String) return Views.Cursor is

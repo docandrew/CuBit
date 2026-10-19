@@ -1,0 +1,17 @@
+--  SPARK proof of the automatic display scale (level 2).
+project Prove is
+   for Source_Dirs use ("../../userspace/services/desktop", "../../userspace/lib/display",
+     "../../userspace/ccl/runtime-shared");
+   for Source_Files use
+     ("desktop_auto_scale.ads", "desktop_auto_scale.adb",
+      "cubit.ads", "cubit-display_geometry.ads", "cubit-display_geometry.adb",
+      "cubit-display_layouts.ads", "cubit-display_layouts.adb",
+      "cubit-display_arrangement.ads", "cubit-display_arrangement.adb");
+   for Object_Dir use "build/prove";
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=2", "--checks-as-errors=on", "--report=fail", "-j2");
+   end Prove;
+end Prove;

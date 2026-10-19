@@ -38,8 +38,8 @@ static PFN_vkVoidFunction VKAPI_CALL device_proc(VkDevice device,const char *nam
 }
 static PFN_vkVoidFunction VKAPI_CALL instance_proc(VkInstance instance,const char *name)
 {return !strcmp(name,"vkGetDeviceProcAddr")?(PFN_vkVoidFunction)device_proc:vkGetInstanceProcAddr(instance,name);}
-VkResult cubit_mesa_service_start(uint64_t slot,struct cubit_mesa_service **owner)
-{if(slot!=25||!borrowed.device)return -3;*owner=&service;return 0;}
+VkResult cubit_mesa_service_start(cubit_endpoint render,struct cubit_mesa_service **owner)
+{if((uint32_t)render.opaque!=25||!borrowed.device)return -3;*owner=&service;return 0;}
 VkBool32 cubit_mesa_service_device(struct cubit_mesa_service *owner,struct cubit_mesa_service_device *view)
 {if(owner!=&service||closes)return 0;*view=borrowed;return 1;}
 VkResult cubit_mesa_service_status(struct cubit_mesa_service *owner){return owner==&service&&!closes?0:-3;}
@@ -51,7 +51,9 @@ void *__wrap_cubit_vulkan_device_context_request(const struct cubit_mesa_service
 uint32_t __real_cubit_vulkan_device_targets_prepare(uint32_t,uint32_t,struct cubit_vulkan_device_targets *);
 uint32_t __wrap_cubit_vulkan_device_targets_prepare(uint32_t w,uint32_t h,struct cubit_vulkan_device_targets *out)
 {uint32_t result=__real_cubit_vulkan_device_targets_prepare(w,h,out);if(!result)targets=*out;return result;}
-struct font_request {uint32_t face,code,n,d,width,height,pitch,capacity;};
+struct font_request {uint32_t face,code,n,d,width,height,pitch,capacity,phases;};
+/* Compositor_Glyph_Layout.Phases: masks stack one raster per quarter-pixel phase. */
+#define GLYPH_PHASES 4u
 struct font_metrics {uint32_t advance,height;};
 extern int desktop_glyph_real_start(int);
 extern uint32_t __real_cubit_font_raster_mask(const struct font_request *,void *,struct font_metrics *);
@@ -62,7 +64,7 @@ void *__wrap_cubit_vulkan_device_upload_prepare(void)
 {void *p=__real_cubit_vulkan_device_upload_prepare();if(p)upload=p;return p;}
 uint32_t __wrap_cubit_font_raster_mask(const struct font_request *r,void *pixels,struct font_metrics *m)
 {
-    if(!upload||pixels!=upload->mapped||r->capacity>4096){fprintf(stderr,"font did not target owned Vulkan staging\n");return 1;}
+    if(!upload||pixels!=upload->mapped||r->capacity>16384){fprintf(stderr,"font did not target owned Vulkan staging\n");return 1;}
     ++raster_calls;return __real_cubit_font_raster_mask(r,pixels,m);
 }
 int run_desktop_real(VkInstance instance,VkPhysicalDevice physical,VkDevice device,VkQueue queue,uint32_t family)
@@ -87,9 +89,10 @@ int run_desktop_real(VkInstance instance,VkPhysicalDevice physical,VkDevice devi
         const unsigned ns[]={1,5,3,2},ds[]={1,4,2,1};
         const char *codes="AgW?jQm@";
         unsigned n=ns[version/2],d=ds[version/2],w=(32*n+d-1)/d,h=(17*n+d-1)/d,pitch=(w+15)/16*16;
-        unsigned origin_x=(4*n+d)/(2*d),origin_y=(6*n+d)/(2*d);
-        unsigned char reference[4096];memset(reference,0xa5,sizeof reference);
-        const struct font_request request={version%2,(unsigned char)codes[version],13*n,d,w,h,pitch,pitch*h};
+        /* Cell (2, 3), pen offset 0: x to the nearest quarter pixel (its phase), y to the nearest pixel. */
+        unsigned quarters=(16*n+d)/(2*d),origin_x=quarters/GLYPH_PHASES,phase=quarters%GLYPH_PHASES,origin_y=(6*n+d)/(2*d);
+        unsigned char reference[16384];memset(reference,0xa5,sizeof reference);
+        const struct font_request request={version%2,(unsigned char)codes[version],13*n,d,w,h,pitch,pitch*h*GLYPH_PHASES,GLYPH_PHASES};
         struct font_metrics metrics={0};
         CHECK(__real_cubit_font_raster_mask(&request,reference,&metrics)==0&&metrics.advance>0&&metrics.height==h);
         int advance=desktop_glyph_real_start((int)version);
@@ -125,7 +128,7 @@ int run_desktop_real(VkInstance instance,VkPhysicalDevice physical,VkDevice devi
         for(unsigned y=0;y<64;y++)for(unsigned x=0;x<96;x++){
             unsigned alpha=0;
             if(x>=origin_x&&y>=origin_y&&x-origin_x<w&&y-origin_y<h)
-                alpha=reference[(y-origin_y)*pitch+x-origin_x];
+                alpha=reference[phase*pitch*h+(y-origin_y)*pitch+x-origin_x];
             if(alpha)++lit;
             uint32_t expected=0xff000000u|alpha*0x010101u;
             if(((uint32_t *)pixels)[y*96+x]!=expected)

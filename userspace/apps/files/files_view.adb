@@ -3,6 +3,7 @@ with CuBit.Directory_Paths;
 with CuBit.Filesystems;
 with CuBit.File_Access;
 with CuBit.Filesystem_Events;
+with CuBit.Filesystem_Places;
 with CuBit.Volume_Descriptions;
 with CuBit.UI.Drawers;
 with CuBit.UI.Popup_Menus;
@@ -15,8 +16,10 @@ with Files_Marks;
 with Files_Operations;
 with Files_Plan;
 with Files_Pages;
+with Files_Places;
 with Files_Queue;
 with Files_Reader;
+with Files_Status;
 with Files_Viewport;
 
 package body Files_View is
@@ -49,8 +52,6 @@ package body Files_View is
    SCROLLBAR_WIDTH : constant := 14;
    TEXT_INSET : constant := 8;
    MARK_BAR_WIDTH : constant := 3;
-   SIZE_COLUMN_WIDTH : constant := 92;
-   TIME_COLUMN_WIDTH : constant := 140;
    NAME_COLUMN_MINIMUM : constant := 80;
    OVERLAY_WIDTH : constant := 380;
    OVERLAY_LINE : constant := 18;
@@ -69,11 +70,12 @@ package body Files_View is
    --  After the panes' areas: the quick viewer's reader.
    READER_BASE : constant := MAXIMUM_PANES * PANE_ARENA_BYTES;
    OPERATIONS_BASE : constant := READER_BASE + Files_Reader.AREA_BYTES;
-   --  Then the granted scopes (Queue_List_Scopes) and a volume description
-   --  (Queue_Describe_Volume: the path in, the record out).
-   SCOPES_BASE : constant := OPERATIONS_BASE + Files_Operations.AREA_BYTES;
-   SCOPES_BYTES : constant := CuBit.File_Access.Maximum_Entries * CuBit.File_Access.Wire_Entry_Bytes;
-   VOLUME_BASE : constant := SCOPES_BASE + SCOPES_BYTES;
+   --  Then the places (Queue_List_Places: granted scopes on volumes that
+   --  are present) and a volume description (Queue_Describe_Volume: the
+   --  path in, the record out).
+   PLACES_BASE : constant := OPERATIONS_BASE + Files_Operations.AREA_BYTES;
+   PLACES_BYTES : constant := CuBit.File_Access.Maximum_Entries * CuBit.File_Access.Wire_Entry_Bytes;
+   VOLUME_BASE : constant := PLACES_BASE + PLACES_BYTES;
    VOLUME_BYTES : constant := DP.Maximum_Bytes;
    ARENA_PAGES : constant := (VOLUME_BASE + VOLUME_BYTES + FQ.Page_Bytes - 1) / FQ.Page_Bytes;
    --  Change records taken per pump, at most (the rest wait for the next).
@@ -161,7 +163,12 @@ package body Files_View is
    COLUMN_CAPTIONS : constant array (Column_Kind) of access constant String :=
      [new String'("Name"), new String'("Ext"), new String'("Size"), new String'("Modified"),
       new String'("Changed"), new String'("Type"), new String'("Permissions"), new String'("Owner")];
-   COLUMN_WIDTHS : constant array (Column_Kind) of Natural := [240, 64, 92, 140, 140, 72, 104, 96];
+   --  The widest text each column shows (Name takes the width the others
+   --  leave): columns are sized to fit it and their title.
+   COLUMN_SAMPLES : constant array (Column_Kind) of access constant String :=
+     [new String'(""), new String'(".jpeg"), new String'("1023 MiB"), new String'("0000-00-00 00:00"),
+      new String'("0000-00-00 00:00"), new String'("Folder"), new String'("drwxr-xr-x"),
+      new String'("65535:65535")];
    COLUMN_KEYS : constant array (Column_Kind) of Boolean :=
      [Name_Column | Extension_Column | Size_Column | Modified_Column => True, others => False];
 
@@ -200,7 +207,6 @@ package body Files_View is
       --  A tab's close button pressed (released on it: that tab closes).
       Close_Press : Natural := 0;
       Tabs_Area : Rect := (others => 0);
-      Table_Width : Natural := 0;
       Seen_Order, Seen_Filter : Unsigned_64 := 0;
       --  From the last Render, for hits and damage.
       Rows_Area, Path_Area, Header_Area : Rect := (others => 0);
@@ -211,6 +217,9 @@ package body Files_View is
       Watched, Watch_Asked : DP.Path;
       Watch_Slot : Slot_State;
       Stale : Boolean := False;
+      --  The folder is the one the pane showed last (Initialize), not yet
+      --  listed: if it cannot be opened, the pane goes to the first place.
+      Restoring : Boolean := False;
    end record;
 
    --  Per-view state the private part does not declare (one view per
@@ -221,8 +230,12 @@ package body Files_View is
    Status_Area : Rect := (others => 0);
 
    Message_Until_Us : Unsigned_64 := 0;
-   --  The granted scopes, asked for when the platform names no folders.
-   Scopes_Slot : Slot_State;
+   --  The places (Queue_List_Places), asked for once at Initialize; the
+   --  first is where a pane starts that has no folder of its own.
+   Places_Slot : Slot_State;
+   Places_Known : Boolean := False;
+   Has_First_Place : Boolean := False;
+   First_Place : DP.Path;
    --  Free space of the active pane's volume (Queue_Describe_Volume).
    Volume_Slot : Slot_State;
    Volume_Asked, Volume_Of : DP.Path;
@@ -676,6 +689,7 @@ package body Files_View is
          Close_Handle (P.Handle);
          P.Handle := 0;
          P.Load := (if P.Malformed then Failed else Loaded);
+         P.Restoring := False;
          if P.Malformed then
             P.Error := FS.REPLY_MALFORMED_FILESYSTEM;
          end if;
@@ -683,6 +697,10 @@ package body Files_View is
          P.Finished_Us := Now_Us;
       end if;
    end Finish_If_Done;
+
+   --  Why a failed pane failed, as Files_Status words.
+   function Pane_Failure (P : Pane_State) return Files_Status.Status_Kind is
+     (Files_Status.Listing_Kind (P.Error, At_Root (P)));
 
    --  The place a pane is in ("@scratch:0/").
    function Root_Of (P : Pane_State) return String is
@@ -697,23 +715,53 @@ package body Files_View is
    procedure Remember_Recent (Where : DP.Path);
    function Root_Length_Of (Text : String) return Natural;
 
-   --  The granted scopes arrived: each becomes a place, and panes not yet
-   --  given a folder start at the first two.
-   procedure Take_Scopes (State : in out View_State; Answer : Files_Queue.Answer) is
+   procedure Insert_Place (State : in out View_State; At_Index : Positive; Caption, Path : String;
+                           Picture : CuBit.UI.Icons.Icon);
+
+   function Picture_Of (Kind : Files_Places.Place_Kind) return CuBit.UI.Icons.Icon is
+     (case Kind is
+         when Files_Places.Live_Workspace => CuBit.UI.Icons.Folder,
+         when Files_Places.Boot_Image => CuBit.UI.Icons.Archive_File,
+         when Files_Places.NVMe_Volume | Files_Places.ATA_Volume | Files_Places.Optical_Disc
+            | Files_Places.Other_Volume => CuBit.UI.Icons.Drive);
+
+   --  Pane Which starts at the first place (it had no folder, or the one it
+   --  showed last cannot be opened); with no place at all it says so.
+   procedure Start_At_First_Place (State : in out View_State; Which : Side) is
+      P : Pane_State renames State.Panes (Which).all;
+   begin
+      P.Restoring := False;
+      if Has_First_Place then
+         P.Where := First_Place;
+         P.Root_Length := Root_Length_Of (DP.Value (P.Where));
+         Start_Listing (Which, P);
+         Remember_Recent (P.Where);
+      else
+         P.Where := Empty_Path;
+         P.Root_Length := 0;
+         P.Load := Failed;
+         P.Error := FS.REPLY_VOLUME_UNAVAILABLE;
+      end if;
+      Dirty_All (State);
+   end Start_At_First_Place;
+
+   --  The places arrived (granted scopes whose volume is present): each
+   --  goes into the drawer ahead of the platform's own shortcuts, and panes
+   --  without a folder start at the first.
+   procedure Take_Places (State : in out View_State; Answer : Files_Queue.Answer) is
       Count : constant Natural :=
         (if Answer.Status = FS.REPLY_OK then Natural (Unsigned_64'Min (Answer.Value, FA.Maximum_Entries)) else 0);
       Bytes : Files_Listing.Name_Bytes (1 .. Natural'Max (1, Count * FA.Wire_Entry_Bytes));
       Wire : FA.Wire_Bytes (1 .. Natural'Max (1, Count * FA.Wire_Entry_Bytes));
       Policy : FA.Policy;
       Decoded : Boolean := False;
-      PREFIX_LENGTH_AT : constant := 1;   --  after the rights byte
-      PREFIX_AT : constant := FA.Wire_Header_Bytes;
-      Firsts : array (1 .. 2) of DP.Path;
       Found : Natural := 0;
    begin
+      Places_Known := True;
+      Has_First_Place := False;
       if Count > 0 then
          --  Copied, then checked: the service is not trusted.
-         Files_Queue.Read_Arena (SCOPES_BASE, Bytes);
+         Files_Queue.Read_Arena (PLACES_BASE, Bytes);
          for K in Wire'Range loop
             Wire (K) := Bytes (K);
          end loop;
@@ -724,52 +772,39 @@ package body Files_View is
             declare
                Base : constant Positive := (N - 1) * FA.Wire_Entry_Bytes + 1;
                Length : constant Natural :=
-                 Natural'Min (Natural (Wire (Base + PREFIX_LENGTH_AT)) + 256 * Natural (Wire (Base + PREFIX_LENGTH_AT + 1)),
+                 Natural'Min (Natural (Wire (Base + CuBit.Filesystem_Places.Prefix_Length_At))
+                              + CuBit.Filesystem_Places.Byte_Radix
+                                * Natural (Wire (Base + CuBit.Filesystem_Places.Prefix_Length_At + 1)),
                               FA.Maximum_Prefix_Bytes);
                Prefix : String (1 .. Length);
                Where : DP.Path;
                Done : Boolean;
             begin
                for K in Prefix'Range loop
-                  Prefix (K) := Character'Val (Wire (Base + PREFIX_AT + K - 1));
+                  Prefix (K) := Character'Val (Wire (Base + CuBit.Filesystem_Places.Prefix_At + K - 1));
                end loop;
                if Length > 0 then
                   DP.Set_Root (Prefix, Where, Done);
                   if Done then
-                     Add_Place (State, Prefix, Prefix, CuBit.UI.Icons.Drive);
-                     if Found < Firsts'Last then
-                        Found := Found + 1;
-                        Firsts (Found) := Where;
+                     Found := Found + 1;
+                     Insert_Place (State, Found, Files_Places.Caption (Prefix), Prefix,
+                                   Picture_Of (Files_Places.Kind_Of (Prefix)));
+                     if not Has_First_Place then
+                        Has_First_Place := True;
+                        First_Place := Where;
                      end if;
                   end if;
                end if;
             end;
          end loop;
       end if;
-      if Found = 0 then
-         Say ("No folders are granted to Files (its manifest lists none).");
-         for W in Side range 1 .. State.Count loop
-            if State.Panes (W).Load = Not_Started then
-               State.Panes (W).Load := Failed;
-               State.Panes (W).Error := FS.REPLY_ACCESS_DENIED;
-            end if;
-         end loop;
-      else
-         for W in Side range 1 .. State.Count loop
-            declare
-               P : Pane_State renames State.Panes (W).all;
-            begin
-               if P.Load = Not_Started then
-                  P.Where := Firsts (Natural'Min (Natural (W), Found));
-                  P.Root_Length := Root_Length_Of (DP.Value (P.Where));
-                  Start_Listing (W, P);
-                  Remember_Recent (P.Where);
-               end if;
-            end;
-         end loop;
-      end if;
+      for W in Side range 1 .. State.Count loop
+         if State.Panes (W).Load = Not_Started then
+            Start_At_First_Place (State, W);
+         end if;
+      end loop;
       Dirty_All (State);
-   end Take_Scopes;
+   end Take_Places;
 
    --  The active pane's volume: free and total space, for the status line.
    procedure Take_Volume (Answer : Files_Queue.Answer) is
@@ -805,9 +840,9 @@ package body Files_View is
       if Owned then
          return;
       end if;
-      if Scopes_Slot.Busy and then Scopes_Slot.Tag = Answer.Tag then
-         Scopes_Slot.Busy := False;
-         Take_Scopes (State, Answer);
+      if Places_Slot.Busy and then Places_Slot.Tag = Answer.Tag then
+         Places_Slot.Busy := False;
+         Take_Places (State, Answer);
          return;
       end if;
       if Volume_Slot.Busy and then Volume_Slot.Tag = Answer.Tag then
@@ -854,6 +889,15 @@ package body Files_View is
                               DP.Set_Root (Full_Path (P), P.Watch_Asked, Done);
                            end if;
                         end;
+                     end if;
+                  elsif P.Restoring then
+                     --  The folder it showed last is gone (or its volume):
+                     --  the first place instead, once the places are known.
+                     P.Restoring := False;
+                     if Places_Known then
+                        Start_At_First_Place (State, Which);
+                     else
+                        P.Load := Not_Started;
                      end if;
                   else
                      P.Load := Failed;
@@ -1024,6 +1068,7 @@ package body Files_View is
       end if;
       P.Where := Where;
       P.Root_Length := Root_Length_Of (DP.Value (Where));
+      P.Restoring := False;
       Start_Listing (Which, P, Land_On);
       Remember_Recent (Where);
       Dirty_All (State);
@@ -1243,6 +1288,18 @@ package body Files_View is
    Pane_Capacity : Entry_Capacity := 1;
    Pane_Name_Bytes : Arena_Capacity := 1;
 
+   --  Column Column sized to its widest text and title (Name flexes).
+   procedure Fit_Column (P : in out Pane_State; Column : Tables.Column_Index) is
+      Kind : constant Column_Kind := P.Kinds (Column);
+      Fitted : constant Natural :=
+        Tables.Fitted_Width
+          (P.Columns, Natural'Max (UI_Text_Width (COLUMN_CAPTIONS (Kind).all),
+                                   UI_Text_Width (COLUMN_SAMPLES (Kind).all)));
+   begin
+      P.Columns.Width (Column) := Fitted;
+      P.Columns.Minimum (Column) := (if Kind = Name_Column then NAME_COLUMN_MINIMUM else Fitted / 2);
+   end Fit_Column;
+
    --  A new pane at Which, listing Path, with the default columns.
    procedure New_Pane (State : in out View_State; Which : Side; Path : String) is
       Done : Boolean;
@@ -1257,10 +1314,11 @@ package body Files_View is
          Files_Filter.Reset (P.Filter);
          P.Kinds := [Name_Column, Size_Column, Modified_Column, others => Name_Column];
          P.Columns :=
-           (Count => 3, Width => [NAME_COLUMN_MINIMUM * 3, SIZE_COLUMN_WIDTH, TIME_COLUMN_WIDTH, others => 96],
-            Minimum => [NAME_COLUMN_MINIMUM, SIZE_COLUMN_WIDTH / 2, TIME_COLUMN_WIDTH / 2, others => 32],
-            Sortable => True, Sort_Column => 1, Order => Tables.Ascending, Cell_Padding => 5);
-         P.Table_Width := 0;
+           (Count => 3, Flexible => 1, Sortable => True, Sort_Column => 1, Order => Tables.Ascending,
+            Cell_Padding => 5, others => <>);
+         for Column in 1 .. P.Columns.Count loop
+            Fit_Column (P, Column);
+         end loop;
          P.Back_Count := 0;
          P.Forward_Count := 0;
          DP.Set_Root (Path, P.Where, Done);
@@ -1270,10 +1328,11 @@ package body Files_View is
          P.Watch := 0;
          P.Watch_Slot := (others => <>);
          P.Stale := False;
+         P.Restoring := False;
          if Path'Length > 0 then
             Start_Listing (Which, P);
          else
-            --  Its folder comes with the granted scopes.
+            --  Its folder comes with the places.
             P.Load := Not_Started;
          end if;
       end;
@@ -1314,25 +1373,36 @@ package body Files_View is
       Volume_Known := False;
       Volume_Stale := False;
       Volume_Of := Empty_Path;
-      Scopes_Slot := (others => <>);
+      Places_Slot := (others => <>);
+      Places_Known := False;
+      Has_First_Place := False;
       Volume_Slot := (others => <>);
+      Place_Count := 0;
+      Recent_Count := 0;
+      Rebuild_Shortcuts;
       for Which in Side range 1 .. State.Count loop
          New_Pane (State, Which, (if Which = Left_Pane then Left_Path else Right_Path));
+         --  A folder from before is shown only if it can still be opened.
+         State.Panes (Which).Restoring := State.Panes (Which).Load /= Not_Started;
       end loop;
-      --  No folders named: start at the granted scopes.
-      if Left_Path'Length = 0 or else Right_Path'Length = 0 then
-         declare
-            Sent : Boolean;
-         begin
-            Submit ((Operation => FQ.Queue_List_Scopes, Length => SCOPES_BYTES, Arena_Offset => SCOPES_BASE,
-                     others => <>), Scopes_Slot, 0, Sent);
-         end;
-      end if;
+      declare
+         Sent : Boolean;
+      begin
+         Submit ((Operation => FQ.Queue_List_Places, Length => PLACES_BYTES, Arena_Offset => PLACES_BASE,
+                  others => <>), Places_Slot, 0, Sent);
+         if not Sent then
+            --  No queue: no places either; every pane says so.
+            Places_Known := True;
+            for Which in Side range 1 .. State.Count loop
+               if State.Panes (Which).Load in Not_Started | Failed then
+                  Start_At_First_Place (State, Which);
+               end if;
+            end loop;
+         end if;
+      end;
       Files_Queue.Flush;
       Message_Length := 0;
       Viewing := False;
-      Place_Count := 0;
-      Recent_Count := 0;
       CuBit.UI.Popup_Menus.Close (Popup);
       for Which in Side range 1 .. State.Count loop
          if State.Panes (Which).Load /= Not_Started then
@@ -1341,18 +1411,28 @@ package body Files_View is
       end loop;
    end Initialize;
 
-   procedure Add_Place
-     (State : in out View_State; Caption, Path : String; Picture : CuBit.UI.Icons.Icon := CuBit.UI.Icons.Drive)
+   procedure Insert_Place (State : in out View_State; At_Index : Positive; Caption, Path : String;
+                           Picture : CuBit.UI.Icons.Icon)
    is
       Where : DP.Path;
       Done : Boolean;
    begin
       DP.Set_Root (Path, Where, Done);
-      if Done and then Place_Count < MAXIMUM_PLACES then
+      if Done and then Place_Count < MAXIMUM_PLACES and then At_Index <= Place_Count + 1 then
+         Places (At_Index + 1 .. Place_Count + 1) := Places (At_Index .. Place_Count);
          Place_Count := Place_Count + 1;
-         Places (Place_Count) := Make_Place (Caption, Where, Picture);
+         Places (At_Index) := Make_Place (Caption, Where, Picture);
          Rebuild_Shortcuts;
          Dirty_All (State);
+      end if;
+   end Insert_Place;
+
+   procedure Add_Place
+     (State : in out View_State; Caption, Path : String; Picture : CuBit.UI.Icons.Icon := CuBit.UI.Icons.Drive)
+   is
+   begin
+      if Place_Count < MAXIMUM_PLACES then
+         Insert_Place (State, Place_Count + 1, Caption, Path, Picture);
       end if;
    end Add_Place;
 
@@ -1416,9 +1496,7 @@ package body Files_View is
                Index_Lines;
             when Files_Reader.Failed =>
                Say ("Could not read " & Viewer_Name (1 .. Viewer_Name_Length) & ": "
-                    & (if Files_Reader.Status = FS.REPLY_ACCESS_DENIED then "not granted"
-                       elsif Files_Reader.Status = FS.REPLY_NOT_FOUND then "not found"
-                       else "status" & Unsigned_32'Image (Files_Reader.Status)) & ".");
+                    & Files_Status.Reason (Files_Status.Kind_Of (Files_Reader.Status)) & ".");
                Viewing := False;
             when Files_Reader.Timed_Out =>
                Say ("Reading " & Viewer_Name (1 .. Viewer_Name_Length) & " took longer than"
@@ -1659,17 +1737,14 @@ package body Files_View is
             end loop;
             P.Columns.Count := P.Columns.Count - 1;
             P.Columns.Sort_Column := Column_Of_Key (P, Files_Order.Rule (P.Order).Key);
-            P.Table_Width := 0;
             return;
          end if;
       end loop;
       if P.Columns.Count < Tables.MAX_COLUMNS then
          P.Columns.Count := P.Columns.Count + 1;
          P.Kinds (P.Columns.Count) := Kind;
-         P.Columns.Width (P.Columns.Count) := COLUMN_WIDTHS (Kind);
-         P.Columns.Minimum (P.Columns.Count) := COLUMN_WIDTHS (Kind) / 2;
+         Fit_Column (P, P.Columns.Count);
          P.Columns.Sort_Column := Column_Of_Key (P, Files_Order.Rule (P.Order).Key);
-         P.Table_Width := 0;
       end if;
    end Toggle_Column;
 
@@ -1699,7 +1774,6 @@ package body Files_View is
       P.Columns.Width (To) := Width;
       P.Columns.Minimum (To) := Minimum;
       P.Columns.Sort_Column := Column_Of_Key (P, Files_Order.Rule (P.Order).Key);
-      P.Table_Width := 0;
    end Move_Column;
 
    procedure Set_Rule (State : in out View_State; Which : Side; Key : Files_Order.Sort_Key) is
@@ -1843,16 +1917,7 @@ package body Files_View is
          when Files_Operations.Ask => "ask", when Files_Operations.Skip_Existing => "skip",
          when Files_Operations.Overwrite_Existing => "overwrite", when Files_Operations.Keep_Both => "keep both");
 
-   function Reason (Status : Unsigned_32) return String is
-     (if Status = FS.REPLY_READ_ONLY then "the place is read-only"
-      elsif Status = FS.REPLY_ACCESS_DENIED then "not granted"
-      elsif Status = FS.REPLY_NOT_FOUND then "not found"
-      elsif Status = FS.REPLY_ALREADY_EXISTS then "the name exists"
-      elsif Status = FS.REPLY_NOT_EMPTY then "the folder is not empty"
-      elsif Status = FS.REPLY_NO_SPACE then "no space"
-      elsif Status = FS.REPLY_INVALID_MOVE then "a folder cannot go inside itself"
-      elsif Status = FS.REPLY_ERR then "refused (an invalid name?)"
-      else "status" & Unsigned_32'Image (Status));
+   function Reason (Status : Unsigned_32) return String is (Files_Status.Reason (Files_Status.Kind_Of (Status)));
 
    --  An operation changed: report its end; it repaints the status line.
    procedure Watch_Operation (State : in out View_State) is
@@ -3096,20 +3161,6 @@ package body Files_View is
       if Rows /= P.View.Rows then
          VP.Fit (P.View, Rows);
       end if;
-      --  The name column follows the table's width; the others keep theirs.
-      if Table.w /= P.Table_Width then
-         declare
-            Others_Width : Natural := SCROLLBAR_WIDTH;
-         begin
-            for Column in 2 .. P.Columns.Count loop
-               Others_Width := Others_Width + P.Columns.Width (Column);
-            end loop;
-            P.Columns.Width (1) :=
-              Natural'Max (NAME_COLUMN_MINIMUM, (if Table.w > Others_Width then Table.w - Others_Width else 0));
-            P.Table_Width := Table.w;
-         end;
-      end if;
-
       --  The path bar: the active pane in the active title's colors.
       Controls.Add_Surface (Map, PATH_ID (Which), Path_Bar);
       if Intersects (Path_Bar, Damage) then
@@ -3132,15 +3183,12 @@ package body Files_View is
               (if Path_Bar.w > Counts_Width + 3 * TEXT_INSET then Path_Bar.w - Counts_Width - 3 * TEXT_INSET else 0);
             Text : constant String := Full_Path (P);
             Ink : constant Color := (if Is_Active then Colors.selectionText else Colors.text);
-            First : Natural := Text'First;
          begin
-            --  The path's tail when it is too long: the folder you are in.
-            while First < Text'Last and then UI_Text_Width (Text (First .. Text'Last)) > Room loop
-               First := First + 1;
-            end loop;
+            --  The path's tail after "..." when it is too long: the folder
+            --  you are in.
             Draw_UI_Text_Transparent
               (With_Clip (C, (Path_Bar.x, Path_Bar.y, Room + TEXT_INSET, PATH_HEIGHT)), Path_Bar.x + TEXT_INSET,
-               Text_Y, Text (First .. Text'Last), Ink);
+               Text_Y, Fit_UI_Text_Tail (Text, Room), Ink);
             Draw_UI_Text_Transparent
               (With_Clip (C, Path_Bar), Path_Bar.x + Path_Bar.w - Counts_Width - TEXT_INSET, Text_Y, Counts, Ink);
          end;
@@ -3150,7 +3198,9 @@ package body Files_View is
       if Intersects (Table, Damage) then
          Draw_Table_Viewport_Frame (C, Table, Colors);
       end if;
-      Header (C, UI, Map, COLUMNS_BASE (Which), Regions.Header, Table, Colors, P.Columns);
+      --  The header's columns line up with the rows' (left of the scrollbar).
+      Header (C, UI, Map, COLUMNS_BASE (Which), Regions.Header, Table, Colors, P.Columns,
+              Scrollbar_Room => Regions.Rows.w - Row_Width);
       if Scrolls then
          declare
             Value : Natural := P.View.Top;
@@ -3241,14 +3291,22 @@ package body Files_View is
          if Intersects (Rest, Damage) then
             Fill_Rect (C, Rest, Colors.field);
             if P.Load = Failed then
-               Draw_UI_Text
-                 (With_Clip (C, Rest), Rest.x + TEXT_INSET, Rest.y + TEXT_INSET,
-                  (if P.Error = FS.REPLY_ACCESS_DENIED then "Not granted to Files."
-                   elsif P.Error = FS.REPLY_NOT_FOUND then "Not found."
-                   elsif P.Error = FS.REPLY_MALFORMED_FILESYSTEM then
-                     "The filesystem sent a malformed listing; showing what was valid."
-                   else "Could not list this folder (status" & Unsigned_32'Image (P.Error) & ")."),
-                  Colors.danger, Colors.field);
+               --  Why, in words (Files_Status): muted when it is expected
+               --  (a volume this machine lacks, a folder that is gone), the
+               --  danger ink only for a genuine error.
+               declare
+                  use type Files_Status.Severity;
+                  Kind : constant Files_Status.Status_Kind := Pane_Failure (P);
+               begin
+                  Draw_UI_Text_Fitted
+                    (C, (Rest.x, Rest.y, (if Rest.w > TEXT_INSET then Rest.w - TEXT_INSET else 0), Rest.h),
+                     Rest.x + TEXT_INSET, Rest.y + TEXT_INSET,
+                     (if Full_Path (P)'Length = 0 then "No volume granted to Files is available."
+                      else Files_Status.Listing_Text (Kind)),
+                     (if Files_Status.Severity_Of (Kind) = Files_Status.Expected then Colors.muted
+                      else Colors.danger),
+                     Colors.field);
+               end;
             elsif P.Load in Opening | Reading and then Row_Total (P) = 0 then
                Draw_UI_Text (With_Clip (C, Rest), Rest.x + TEXT_INSET, Rest.y + TEXT_INSET, "Listing...",
                              Colors.muted, Colors.field);
@@ -3276,8 +3334,12 @@ package body Files_View is
       Viewer_Rows := Positive'Max (1, Body_Area.h / Line_Height);
       if Intersects (Header, Damage) then
          Fill_Vertical_Gradient (C, Header, Colors.activeTitleTop, Colors.activeTitleBottom);
+         --  The file name elided to stop TEXT_INSET short of the state.
          Draw_UI_Text_Transparent (With_Clip (C, Header), Header.x + TEXT_INSET, Header.y + 4,
-                                   Viewer_Name (1 .. Viewer_Name_Length), Colors.selectionText);
+                                   Fit_UI_Text (Viewer_Name (1 .. Viewer_Name_Length),
+                                     (if Header.w > UI_Text_Width (State_Text) + 3 * TEXT_INSET
+                                      then Header.w - UI_Text_Width (State_Text) - 3 * TEXT_INSET else 0)),
+                                   Colors.selectionText);
          Draw_UI_Text_Transparent
            (With_Clip (C, Header), Header.x + Header.w - UI_Text_Width (State_Text) - TEXT_INSET, Header.y + 4,
             State_Text, Colors.selectionText);

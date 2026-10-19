@@ -1,6 +1,8 @@
 with Ada.Text_IO;
 with Interfaces; use Interfaces;
 with Intel_GPU_Context_Table;
+with Context_Table_Access;
+with Test_Storage;
 with Intel_GPU_Context_Table.Waiting;
 with Intel_GPU_Context_Table.Draining;
 with Intel_GPU_GuC_CT_Receive;
@@ -44,7 +46,9 @@ procedure Context_Table_Tests is
       pragma Unreferenced (Payload, Fence);
    begin Kept := Kept + 1; Success := Keep; end Retain;
    package Driver is new Intel_GPU_GuC_Context_Session (Ready, Queue, Retain);
-   package Pool is new Intel_GPU_Context_Table (2, Driver, Ready, Retain);
+   package Pool is new Intel_GPU_Context_Table
+     (2, Driver, Ready, Retain, Reply_Words => Test_Storage.Reply_Words);
+   package Tables is new Context_Table_Access (Pool);
    procedure Descriptor (Head, Tail, Status : out Unsigned_32; Success : out Boolean) is
    begin Head := 0; Tail := 0; Status := 0; Success := False; end Descriptor;
    procedure Read_Word (Index : Unsigned_32; Value : out Unsigned_32; Success : out Boolean) is
@@ -91,7 +95,7 @@ procedure Context_Table_Tests is
    Delivery : Pool.Dispatch_Result;
    procedure Open (T : in out Pool.Table; Result : out Unsigned_32) is
    begin
-      Pool.Open (T, 16#200000# + Unsigned_64 (Pool.Count (T)) * 16#10000#,
+      Tables.Open (T, 16#200000# + Unsigned_64 (Tables.Count (T)) * 16#10000#,
                  4096, 1000, 500000, False, Result, OK);
       pragma Assert (OK);
    end Open;
@@ -109,12 +113,11 @@ begin
    -- runnable work. Losing its reply retires it without enabling to drain.
    declare
       T : Pool.Table;
-      Drain : Draining.Drain_State;
       Registered, Retired : Unsigned_32;
       Fault : Boolean;
    begin
       Owner := True; Lose_On_Queue := False; Queue_Calls := 0;
-      Pool.Open (T, 16#200000#, 4096, 1000, 500000, True,
+      Tables.Open (T, 16#200000#, 4096, 1000, 500000, True,
                  Registered, OK, Session => 42);
       pragma Assert (OK);
       for Action in Life.Register_Context .. Life.Set_Policy loop
@@ -125,9 +128,9 @@ begin
       pragma Assert (not Pool.Work_Allowed (T, Registered));
       Pool.Notify_Work (T, Registered, True, Status);
       pragma Assert (Status = Driver.Rejected and Queue_Calls = 2);
-      Pool.Retire_Session (T, 42, Retired);
-      pragma Assert (Retired = Registered and Pool.Session_Context (T, 42) = Pool.No_Context);
-      Draining.Tick (T, Drain, Fault);
+      Tables.Retire_Session (T, 42, Retired);
+      pragma Assert (Retired = Registered and Tables.Session_Context (T, 42) = Pool.No_Context);
+      Draining.Tick (T, Fault);
       pragma Assert (Fault and Pool.State (T, Registered) = Life.Quarantined);
       pragma Assert (Queue_Calls = 2);
       Pool.Submit (T, Registered, Life.Enable, Status);
@@ -142,9 +145,9 @@ begin
       begin
          Owner := True; Keep := True; Lose_On_Queue := False;
          Queue_Result := Life.Queued;
-         Pool.Open (T, 16#200000#, 4096, 1000, 500000, False, A, OK, Session => 42);
+         Tables.Open (T, 16#200000#, 4096, 1000, 500000, False, A, OK, Session => 42);
          pragma Assert (OK);
-         Pool.Open (T, 16#210000#, 4096, 1000, 500000, False, B, OK, Session => 43);
+         Tables.Open (T, 16#210000#, 4096, 1000, 500000, False, B, OK, Session => 43);
          pragma Assert (OK);
          Enable (T, A); Enable (T, B);
          Pool.Dispatch (T, [16#90001002#, A, 1], 0, ID, Delivery);
@@ -154,7 +157,7 @@ begin
          Pool.Dispatch (T, [16#90001002#, A, 0], 0, ID, Delivery);
          pragma Assert (Delivery = Pool.Delivered and Pool.State (T, A) = Life.Disabled);
          if Scenario = 2 then
-            Pool.Retire_Session (T, 42, ID);
+            Tables.Retire_Session (T, 42, ID);
             Before := Queue_Calls;
             Pool.Submit (T, A, Life.Enable, Status);
             pragma Assert (Queue_Calls = Before and Status /= Driver.Queued);
@@ -172,7 +175,7 @@ begin
                Pool.Submit (T, A, Life.Disable, Status);
                pragma Assert (Status = Driver.Queued);
                Pool.Dispatch (T, [16#90001002#, A, 0], 0, ID, Delivery);
-               Pool.Retire_Session (T, 42, ID);
+               Tables.Retire_Session (T, 42, ID);
                Before := Queue_Calls;
                Pool.Submit (T, A, Life.Enable, Status);
                pragma Assert (Queue_Calls = Before and Status /= Driver.Queued);
@@ -186,20 +189,19 @@ begin
    for Scenario in 0 .. 4 loop
       declare
          T : Pool.Table;
-         D : Draining.Drain_State;
          Fault : Boolean;
          Before : Natural;
       begin
          Owner := True; Keep := True; Lose_On_Queue := False; Clock := 0;
          Queue_Result := Life.Queued;
-         Pool.Open (T, 16#200000#, 4096, 1000, 500000, False, A, OK, Session => 42);
+         Tables.Open (T, 16#200000#, 4096, 1000, 500000, False, A, OK, Session => 42);
          pragma Assert (OK);
-         Pool.Open (T, 16#210000#, 4096, 1000, 500000, False, B, OK, Session => 43);
+         Tables.Open (T, 16#210000#, 4096, 1000, 500000, False, B, OK, Session => 43);
          pragma Assert (OK);
          Enable (T, A); Enable (T, B);
          Pool.Dispatch (T, [16#90001002#, A, 1], 102, ID, Delivery);
          Pool.Dispatch (T, [16#90001002#, B, 1], 110, ID, Delivery);
-         Pool.Retire_Session (T, 42, ID);
+         Tables.Retire_Session (T, 42, ID);
          Before := Queue_Calls;
          case Scenario is
             when 0 | 3 => Queue_Result := Life.Backpressure;
@@ -207,34 +209,34 @@ begin
             when 2 => Lose_On_Queue := True;
             when others => null;
          end case;
-         Draining.Tick (T, D, Fault);
+         Draining.Tick (T, Fault);
          pragma Assert (Queue_Calls = Before + 1);
          if Scenario in 1 .. 2 then
             pragma Assert (Fault and Pool.State (T, A) = Life.Quarantined);
          elsif Scenario = 0 then
             pragma Assert (not Fault and Pool.State (T, A) = Life.Enabled);
             Queue_Result := Life.Queued;
-            Draining.Tick (T, D, Fault);
+            Draining.Tick (T, Fault);
             pragma Assert (not Fault and Queue_Calls = Before + 2);
             pragma Assert (Pool.State (T, A) = Life.Disable_Pending);
          else
             -- Clock stays frozen. Exhaust the finite tick budget in both
             -- no-publication backpressure and already-published cases.
             for Tick in 2 .. 100_000 loop
-               Draining.Tick (T, D, Fault);
+               Draining.Tick (T, Fault);
                pragma Assert (not Fault);
             end loop;
             Before := Queue_Calls;
-            Draining.Tick (T, D, Fault);
+            Draining.Tick (T, Fault);
             pragma Assert (Fault and Queue_Calls = Before);
             pragma Assert (Pool.State (T, A) = Life.Quarantined);
          end if;
          Before := Queue_Calls;
-         Draining.Tick (T, D, Fault);
+         Draining.Tick (T, Fault);
          pragma Assert (not Fault and Queue_Calls = Before);
          if Scenario /= 2 then
             pragma Assert (Pool.State (T, B) = Life.Enabled);
-            pragma Assert (Pool.Session_Context (T, 43) = B);
+            pragma Assert (Tables.Session_Context (T, 43) = B);
          end if;
          Queue_Result := Life.Queued; Lose_On_Queue := False; Owner := True;
       end;
@@ -242,56 +244,55 @@ begin
    for Scenario in 0 .. 3 loop
       declare
          T : Pool.Table;
-         D : Draining.Drain_State;
          Fault : Boolean;
          Before : Natural;
       begin
          Owner := True; Keep := True; Lose_On_Queue := False; Clock := 10;
-         pragma Assert (Draining.Observe (T, 0) = Draining.Uncertain);
-         pragma Assert (Draining.Observe (T, 42) = Draining.No_Context);
-         Pool.Open (T, 16#200000#, 4096, 1000, 500000, False, A, OK, Session => 42);
+         pragma Assert (Draining.Observe (T, Tables.Context_Of (T, 0), 0) = Draining.Uncertain);
+         pragma Assert (Draining.Observe (T, Tables.Context_Of (T, 42), 42) = Draining.No_Context);
+         Tables.Open (T, 16#200000#, 4096, 1000, 500000, False, A, OK, Session => 42);
          pragma Assert (OK);
-         pragma Assert (Draining.Observe (T, 42) = Draining.Admission_Open);
+         pragma Assert (Draining.Observe (T, Tables.Context_Of (T, 42), 42) = Draining.Admission_Open);
          Enable (T, A);
-         Pool.Retire_Session (T, 42, ID);
-         pragma Assert (Draining.Observe (T, 42) = Draining.Pending);
+         Tables.Retire_Session (T, 42, ID);
+         pragma Assert (Draining.Observe (T, Tables.Context_Of (T, 42), 42) = Draining.Pending);
          Before := Queue_Calls;
-         Draining.Tick (T, D, Fault);
+         Draining.Tick (T, Fault);
          pragma Assert (not Fault and Queue_Calls = Before);
          if Scenario = 0 then
             Pool.Dispatch (T, [16#90001002#, A, 1], 102, ID, Delivery);
-            Draining.Tick (T, D, Fault);
+            Draining.Tick (T, Fault);
             pragma Assert (not Fault and Pool.State (T, A) = Life.Disable_Pending);
-            pragma Assert (Draining.Observe (T, 42) = Draining.Pending);
+            pragma Assert (Draining.Observe (T, Tables.Context_Of (T, 42), 42) = Draining.Pending);
             Before := Queue_Calls;
-            Draining.Tick (T, D, Fault);
+            Draining.Tick (T, Fault);
             pragma Assert (not Fault and Queue_Calls = Before);
             Pool.Dispatch (T, [16#90001002#, A, 0], 103, ID, Delivery);
-            pragma Assert (Draining.Observe (T, 42) = Draining.Disabled);
-            Draining.Tick (T, D, Fault);
+            pragma Assert (Draining.Observe (T, Tables.Context_Of (T, 42), 42) = Draining.Disabled);
+            Draining.Tick (T, Fault);
             pragma Assert (not Fault and Pool.State (T, A) = Life.Deregister_Pending);
-            pragma Assert (Draining.Observe (T, 42) = Draining.Pending);
+            pragma Assert (Draining.Observe (T, Tables.Context_Of (T, 42), 42) = Draining.Pending);
             Before := Queue_Calls;
-            Draining.Tick (T, D, Fault);
+            Draining.Tick (T, Fault);
             pragma Assert (not Fault and Queue_Calls = Before);
             Pool.Dispatch (T, [16#90004600#, A], 0, ID, Delivery);
             pragma Assert (Delivery = Pool.Delivered);
-            Draining.Tick (T, D, Fault);
+            Draining.Tick (T, Fault);
             pragma Assert (not Fault and Pool.State (T, A) = Life.Deregistered);
-            pragma Assert (Draining.Observe (T, 42) = Draining.Deregistered);
+            pragma Assert (Draining.Observe (T, Tables.Context_Of (T, 42), 42) = Draining.Deregistered);
             Owner := False;
-            pragma Assert (Draining.Observe (T, 42) = Draining.Uncertain);
+            pragma Assert (Draining.Observe (T, Tables.Context_Of (T, 42), 42) = Draining.Uncertain);
             Owner := True;
          else
             Clock := (case Scenario is when 1 => 1_000_010,
                       when 2 => 9, when others => Unsigned_64'Last);
-            Draining.Tick (T, D, Fault);
+            Draining.Tick (T, Fault);
             pragma Assert (Fault and Pool.State (T, A) = Life.Quarantined);
-            pragma Assert (Draining.Observe (T, 42) = Draining.Uncertain);
-            Draining.Tick (T, D, Fault);
+            pragma Assert (Draining.Observe (T, Tables.Context_Of (T, 42), 42) = Draining.Uncertain);
+            Draining.Tick (T, Fault);
             pragma Assert (not Fault);
          end if;
-         pragma Assert (Pool.Session_Context (T, 42) = Pool.No_Context);
+         pragma Assert (Tables.Session_Context (T, 42) = Pool.No_Context);
       end;
    end loop;
    -- Deregistration shares the bounded drain, but requires independent work
@@ -299,13 +300,12 @@ begin
    for Scenario in 0 .. 5 loop
       declare
          T : Pool.Table;
-         D : Draining.Drain_State;
          Fault : Boolean;
          Before : Natural;
       begin
          Owner := True; Keep := True; Lose_On_Queue := False;
          Queue_Result := Life.Queued; Clock := 10; Drained := True;
-         Pool.Open (T, 16#200000#, 4096, 1000, 500000, False, A, OK, 42);
+         Tables.Open (T, 16#200000#, 4096, 1000, 500000, False, A, OK, 42);
          pragma Assert (OK);
          Enable (T, A);
          Pool.Dispatch (T, [16#90001002#, A, 1], 102, ID, Delivery);
@@ -319,7 +319,7 @@ begin
             Pool.Hold_Work (T, A, OK); pragma Assert (OK);
             pragma Assert (not Pool.Can_Run_And_Retire (T, A));
          end if;
-         Pool.Retire_Session (T, 42, ID);
+         Tables.Retire_Session (T, 42, ID);
          pragma Assert (not Pool.Can_Run_And_Retire (T, A));
          Before := Queue_Calls;
          case Scenario is
@@ -329,18 +329,18 @@ begin
             when 4 => Lose_On_Queue := True;
             when others => null;
          end case;
-         Draining.Tick (T, D, Fault);
+         Draining.Tick (T, Fault);
          if Scenario in 0 .. 1 then
             pragma Assert (not Fault and Queue_Calls = Before);
             pragma Assert (Pool.State (T, A) = Life.Disabled);
-            pragma Assert (Draining.Observe (T, 42) = Draining.Disabled);
+            pragma Assert (Draining.Observe (T, Tables.Context_Of (T, 42), 42) = Draining.Disabled);
          elsif Scenario in 3 .. 4 then
             pragma Assert (Fault and Pool.State (T, A) = Life.Quarantined);
          elsif Scenario = 2 then
             pragma Assert (not Fault and Pool.State (T, A) = Life.Disabled);
             pragma Assert (Queue_Calls = Before + 1);
             Queue_Result := Life.Queued;
-            Draining.Tick (T, D, Fault);
+            Draining.Tick (T, Fault);
             pragma Assert (not Fault and Queue_Calls = Before + 2);
             pragma Assert (Pool.State (T, A) = Life.Deregister_Pending);
          else
@@ -348,10 +348,10 @@ begin
          end if;
          Before := Queue_Calls;
          Clock := 1_000_010;
-         Draining.Tick (T, D, Fault);
+         Draining.Tick (T, Fault);
          pragma Assert (Fault = (Scenario not in 3 .. 4));
          pragma Assert (Queue_Calls = Before and Pool.State (T, A) = Life.Quarantined);
-         Draining.Tick (T, D, Fault);
+         Draining.Tick (T, Fault);
          pragma Assert (not Fault and Queue_Calls = Before);
       end;
    end loop;
@@ -363,16 +363,16 @@ begin
       Before : Natural;
    begin
       Owner := True; Keep := True; Lose_On_Queue := False;
-      Pool.Open (T, 16#200000#, 4096, 1000, 500000, False, A, OK, Session => 42);
+      Tables.Open (T, 16#200000#, 4096, 1000, 500000, False, A, OK, Session => 42);
       pragma Assert (OK);
-      Pool.Open (T, 16#210000#, 4096, 1000, 500000, False, B, OK, Session => 43);
+      Tables.Open (T, 16#210000#, 4096, 1000, 500000, False, B, OK, Session => 43);
       pragma Assert (OK);
       Enable (T, A); Enable (T, B);
-      Pool.Retire_Session (T, 0, ID); pragma Assert (ID = Pool.No_Context);
-      Pool.Retire_Session (T, 999, ID); pragma Assert (ID = Pool.No_Context);
-      Pool.Retire_Session (T, 42, ID); pragma Assert (ID = A);
-      pragma Assert (Pool.Session_Context (T, 42) = Pool.No_Context);
-      pragma Assert (Pool.Session_Context (T, 43) = B);
+      Tables.Retire_Session (T, 0, ID); pragma Assert (ID = Pool.No_Context);
+      Tables.Retire_Session (T, 999, ID); pragma Assert (ID = Pool.No_Context);
+      Tables.Retire_Session (T, 42, ID); pragma Assert (ID = A);
+      pragma Assert (Tables.Session_Context (T, 42) = Pool.No_Context);
+      pragma Assert (Tables.Session_Context (T, 43) = B);
       pragma Assert (Pool.State (T, A) = Life.Enable_Pending);
       Before := Queue_Calls;
       Pool.Notify_Work (T, A, True, Status);
@@ -387,50 +387,51 @@ begin
       pragma Assert (Status = Driver.Queued);
       Pool.Dispatch (T, [16#90001002#, A, 0], 103, ID, Delivery);
       pragma Assert (Delivery = Pool.Delivered and Pool.State (T, A) = Life.Disabled);
-      pragma Assert (Pool.Session_Context (T, 42) = Pool.No_Context);
+      pragma Assert (Tables.Session_Context (T, 42) = Pool.No_Context);
       Owner := False;
-      Pool.Retire_Session (T, 43, ID); pragma Assert (ID = B);
+      Tables.Retire_Session (T, 43, ID); pragma Assert (ID = B);
       Owner := True;
-      pragma Assert (Pool.Session_Context (T, 43) = Pool.No_Context);
-      Pool.Retire_Session (T, 42, ID); pragma Assert (ID = A);
-      pragma Assert (Pool.Count (T) = 2);
+      pragma Assert (Tables.Session_Context (T, 43) = Pool.No_Context);
+      Tables.Retire_Session (T, 42, ID); pragma Assert (ID = A);
+      pragma Assert (Tables.Count (T) = 2);
    end;
    declare
       T : Pool.Table;
       Before : Natural;
    begin
       Owner := True; Keep := True; Lose_On_Queue := False;
-      Pool.Open (T, 16#200000#, 4096, 1000, 500000, False, A, OK, Session => 42);
-      pragma Assert (OK and Pool.Session_Context (T, 42) = A);
-      pragma Assert (Pool.Session_Context (T, 0) = Pool.No_Context);
-      pragma Assert (Pool.Session_Context (T, 43) = Pool.No_Context);
-      Before := Pool.Count (T);
-      Pool.Open (T, 16#210000#, 4096, 1000, 500000, False, ID, OK, Session => 42);
-      pragma Assert (not OK and ID = Pool.No_Context and Pool.Count (T) = Before);
-      Pool.Open (T, 16#210000#, 4096, 1000, 500000, False, B, OK, Session => 43);
-      pragma Assert (OK and A /= B and Pool.Session_Context (T, 43) = B);
+      Tables.Open (T, 16#200000#, 4096, 1000, 500000, False, A, OK, Session => 42);
+      pragma Assert (OK and Tables.Session_Context (T, 42) = A);
+      pragma Assert (Tables.Session_Context (T, 0) = Pool.No_Context);
+      pragma Assert (Tables.Session_Context (T, 43) = Pool.No_Context);
+      Before := Tables.Count (T);
+      Tables.Open (T, 16#210000#, 4096, 1000, 500000, False, ID, OK, Session => 42);
+      pragma Assert (not OK and ID = Pool.No_Context and Tables.Count (T) = Before);
+      Tables.Open (T, 16#210000#, 4096, 1000, 500000, False, B, OK, Session => 43);
+      pragma Assert (OK and A /= B and Tables.Session_Context (T, 43) = B);
       Enable (T, A); Enable (T, B);
       Pool.Dispatch (T, [16#90001002#, A, 0], 0, ID, Delivery);
       pragma Assert (Delivery = Pool.Context_Fault);
-      pragma Assert (Pool.Session_Context (T, 42) = Pool.No_Context);
-      pragma Assert (Pool.Session_Context (T, 43) = B);
+      pragma Assert (Tables.Session_Context (T, 42) = Pool.No_Context);
+      pragma Assert (Tables.Session_Context (T, 43) = B);
       Owner := False;
-      pragma Assert (Pool.Session_Context (T, 43) = Pool.No_Context);
+      pragma Assert (Tables.Session_Context (T, 43) = Pool.No_Context);
       Owner := True;
       Pool.Fail (T);
-      pragma Assert (Pool.Session_Context (T, 43) = Pool.No_Context);
+      pragma Assert (Tables.Session_Context (T, 43) = Pool.No_Context);
    end;
    declare
       package Shifted is new Intel_GPU_Context_Table
-        (2, Driver, Ready, Retain, First_ID => 7);
+        (2, Driver, Ready, Retain, First_ID => 7, Reply_Words => Test_Storage.Reply_Words);
+      package Shifted_Tables is new Context_Table_Access (Shifted);
       T : Shifted.Table;
       Delivery : Shifted.Dispatch_Result;
       use type Shifted.Dispatch_Result;
    begin
       Owner := True; Keep := True; Lose_On_Queue := False;
-      Shifted.Open (T, 16#200000#, 4096, 1000, 500000, False, A, OK);
+      Shifted_Tables.Open (T, 16#200000#, 4096, 1000, 500000, False, A, OK);
       pragma Assert (OK and A = 7);
-      pragma Assert (Shifted.Session_Context (T, 0) = Shifted.No_Context);
+      pragma Assert (Shifted.Session_Context (T, A, 0) = Shifted.No_Context);
       for Action in Life.Register_Context .. Life.Enable loop
          Shifted.Submit (T, A, Action, Status);
          pragma Assert (Status = Driver.Queued);
@@ -439,7 +440,7 @@ begin
       pragma Assert (ID = 7 and Delivery = Shifted.Delivered);
       pragma Assert (Shifted.State (T, 7) = Life.Enabled);
       pragma Assert (Shifted.State (T, 1) = Life.Fresh);
-      Shifted.Open (T, 16#210000#, 4096, 1000, 500000, False, B, OK);
+      Shifted_Tables.Open (T, 16#210000#, 4096, 1000, 500000, False, B, OK);
       pragma Assert (OK and B = 8);
       Shifted.Fail (T);
       pragma Assert (Shifted.Failed (T) and
@@ -450,13 +451,13 @@ begin
       T : Pool.Table;
    begin
       Owner := True;
-      Pool.Open (T, 0, 4096, 1000, 500000, False, A, OK, Session => 42);
-      pragma Assert (not OK and A /= Pool.No_Context and Pool.Count (T) = 1);
-      pragma Assert (Pool.Session_Context (T, 42) = Pool.No_Context);
-      Pool.Open (T, 16#200000#, 4096, 1000, 500000, False, ID, OK, Session => 42);
-      pragma Assert (not OK and ID = Pool.No_Context and Pool.Count (T) = 1);
-      Pool.Open (T, 16#210000#, 4096, 1000, 500000, False, B, OK, Session => 43);
-      pragma Assert (OK and B /= A and Pool.Session_Context (T, 43) = B);
+      Tables.Open (T, 0, 4096, 1000, 500000, False, A, OK, Session => 42);
+      pragma Assert (not OK and A /= Pool.No_Context and Tables.Count (T) = 1);
+      pragma Assert (Tables.Session_Context (T, 42) = Pool.No_Context);
+      Tables.Open (T, 16#200000#, 4096, 1000, 500000, False, ID, OK, Session => 42);
+      pragma Assert (not OK and ID = Pool.No_Context and Tables.Count (T) = 1);
+      Tables.Open (T, 16#210000#, 4096, 1000, 500000, False, B, OK, Session => 43);
+      pragma Assert (OK and B /= A and Tables.Session_Context (T, 43) = B);
    end;
    for Scenario in 0 .. 2 loop
       declare T : Pool.Table; Wait_Status : Waiter.Result; begin
@@ -499,8 +500,8 @@ begin
    -- Late context events keep their payload identity after quarantine.
    Pool.Dispatch (Object, [16#90001002#, A, 1], 0, ID, Delivery);
    pragma Assert (ID = A and Delivery = Pool.Context_Fault);
-   Pool.Open (Object, 16#300000#, 4096, 1000, 500000, False, ID, OK);
-   pragma Assert (not OK and Pool.Count (Object) = 2 and ID = Pool.No_Context);
+   Tables.Open (Object, 16#300000#, 4096, 1000, 500000, False, ID, OK);
+   pragma Assert (not OK and Tables.Count (Object) = 2 and ID = Pool.No_Context);
    Pool.Dispatch (Object, [16#90001002#, 3, 1], 110, ID, Delivery);
    pragma Assert (Delivery = Pool.Retained and Kept = 1);
    Pool.Dispatch (Object, [16#E0000001#], 99, ID, Delivery);
@@ -539,8 +540,8 @@ begin
    end loop;
    declare T : Pool.Table; begin
       Owner := True; Keep := True; Lose_On_Queue := False;
-      Pool.Open (T, 0, 4096, 1000, 500000, False, A, OK);
-      pragma Assert (not OK and A = 1 and Pool.Count (T) = 1);
+      Tables.Open (T, 0, 4096, 1000, 500000, False, A, OK);
+      pragma Assert (not OK and A = 1 and Tables.Count (T) = 1);
       pragma Assert (Pool.State (T, A) = Life.Quarantined);
       Open (T, B);
       pragma Assert (B = 2);

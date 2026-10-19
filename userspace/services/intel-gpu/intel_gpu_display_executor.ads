@@ -61,7 +61,7 @@ package Intel_GPU_Display_Executor is
 
    --  Pages per scanout buffer (frame plus a guard page), zero when the
    --  firmware mode cannot be flipped (no output, or a frame above one
-   --  16 MiB buffer arena allocation).
+   --  driver allocation, Intel_GPU_Buffer_Backing.Page_Count).
    function Scanout_Pages return Natural;
    type Scanout_Backings is array (0 .. 2) of Intel_GPU_Buffer_Reply.Backing;
    --  Boot, after Setup_Cursor (the cursor's DDB sequence goes first):

@@ -29,17 +29,12 @@ package body Desktop_Launch_Notice with SPARK_Mode is
       Failure : CuBit.Launch_Arguments.Launch_Failure)
    is
    begin
-      N := (Open => True, Why => Refused, Failure => Failure, others => <>);
+      N := (Why => Refused, Failure => Failure, others => <>);
       Copy_Name (Name, N.Name, N.Length);
    end Show_Refusal;
 
-   procedure Dismiss (N : in out Notice) is
-   begin
-      N.Open := False;
-   end Dismiss;
-
    function Title (N : Notice) return String is
-     (N.Name (1 .. N.Length) &
+     (Name_Of (N) &
       (case N.Why is
          when Refused     => " could not start",
          when Ended_Early => " stopped while starting"));
@@ -93,7 +88,7 @@ package body Desktop_Launch_Notice with SPARK_Mode is
       for Item of T.Slots loop
          if Item.Used and then Item.Process = Ending.Process then
             if Failed (Ending) then
-               N := (Open => True, Name => Item.Name, Length => Item.Length,
+               N := (Name => Item.Name, Length => Item.Length,
                      Why => Ended_Early, Ending => Ending, others => <>);
                Shown := True;
             end if;

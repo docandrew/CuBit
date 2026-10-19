@@ -92,7 +92,7 @@ begin
             when 4 => Request.words (0) := 0;
             when 5 => Request.words (0) := Unsigned_64 (Layout.Slot'Last) + 1;
             when 6 => Request.words (1) := 0;
-            when 7 => Request.words (1) := 4097;
+            when 7 => Request.words (1) := Unsigned_64 (Layout.Page_Count'Last) + 1;
             when 8 => Request.words (2) := 0;
             when 9 => Request.words (2) := 2 ** 32;
             when 10 => Request.words (3) := 1;

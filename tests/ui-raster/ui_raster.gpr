@@ -1,8 +1,8 @@
 --  Proof and hosted equivalence tests of Client_Raster (userspace/lib/ui).
 project UI_Raster is
-   for Source_Dirs use (".", "../../userspace/lib/ui");
+   for Source_Dirs use (".", "../../userspace/lib/ui", "../../userspace/lib/compositor");
    for Source_Files use ("main.adb", "client_raster.ads", "client_raster.adb",
-                         "client_glyph_blend.ads", "client_glyph_blend.adb");
+                         "client_glyph_blend.ads", "glyph_gamma.ads", "glyph_pen.ads", "client_glyph_blend.adb");
    for Object_Dir use "build";
    for Exec_Dir use "build";
    for Main use ("main.adb");

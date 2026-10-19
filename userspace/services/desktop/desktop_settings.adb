@@ -2,6 +2,7 @@ with System.Storage_Elements; use System.Storage_Elements;
 with Desktop_Wallpaper;
 with CuBit.UI.Window_Chrome;
 with CuBit.Display_Arrangement;
+with Desktop_Auto_Scale;
 
 package body Desktop_Settings is
    use CuBit.UI;
@@ -19,6 +20,68 @@ package body Desktop_Settings is
    Sidebar_Width : constant := 132;
    function Page_Bounds (B : Rect) return Rect is
      (B.x + Sidebar_Width, B.y, B.w - Sidebar_Width, B.h);
+
+   --  Keyboard set-1 make codes the pages act on.
+   Scan_Escape : constant := 16#01#;
+   Scan_Tab : constant := 16#0F#;
+   Scan_Enter : constant := 16#1C#;
+   Scan_Space : constant := 16#39#;
+   Scan_Home : constant := 16#47#;
+   Scan_Up : constant := 16#48#;
+   Scan_Page_Up : constant := 16#49#;
+   Scan_End : constant := 16#4F#;
+   Scan_Down : constant := 16#50#;
+   Scan_Page_Down : constant := 16#51#;
+   --  Letter keys by make code (set 1), for type-to-jump in the zone list.
+   subtype Letter_Scan is Natural range 16#10# .. 16#32#;
+   Letter_Of : constant array (Letter_Scan) of Character :=
+     [16#10# => 'q', 16#11# => 'w', 16#12# => 'e', 16#13# => 'r', 16#14# => 't',
+      16#15# => 'y', 16#16# => 'u', 16#17# => 'i', 16#18# => 'o', 16#19# => 'p',
+      16#1E# => 'a', 16#1F# => 's', 16#20# => 'd', 16#21# => 'f', 16#22# => 'g',
+      16#23# => 'h', 16#24# => 'j', 16#25# => 'k', 16#26# => 'l',
+      16#2C# => 'z', 16#2D# => 'x', 16#2E# => 'c', 16#2F# => 'v', 16#30# => 'b',
+      16#31# => 'n', 16#32# => 'm', others => ' '];
+
+   --  The time-zone list: Zone_Rows rows of Zone_Row_Height pixels.
+   package TZ renames Time_Zones;
+   use type TZ.Time_Zone;
+   Zone_Rows : constant := 9;
+   Zone_Row_Height : constant := 22;
+   Zone_List_Width : constant := 380;
+   Zone_Text_Inset : constant := 8;
+   function Zone_List_Box (C : Rect) return Rect is
+     (C.x + 20, C.y + 56, Zone_List_Width, Zone_Rows * Zone_Row_Height);
+   --  Zone_Top such that Zone is visible, moving the list as little as possible.
+   function Scrolled_To (Top, Zone : TZ.Time_Zone) return TZ.Time_Zone is
+     (if Zone < Top then Zone
+      elsif TZ.Time_Zone'Pos (Zone) >= TZ.Time_Zone'Pos (Top) + Zone_Rows
+      then TZ.Time_Zone'Val (TZ.Time_Zone'Pos (Zone) - (Zone_Rows - 1))
+      else Top);
+   --  Zone moved by Rows (negative: up), stopping at the ends.
+   function Moved (Zone : TZ.Time_Zone; Rows : Integer) return TZ.Time_Zone is
+     (TZ.Time_Zone'Val
+        (Integer'Max (TZ.Time_Zone'Pos (TZ.Time_Zone'First),
+                      Integer'Min (TZ.Time_Zone'Pos (TZ.Time_Zone'Last), TZ.Time_Zone'Pos (Zone) + Rows))));
+   procedure Choose_Zone (View : in out State; Zone : TZ.Time_Zone) is
+   begin
+      View.Pending_Zone := Zone;
+      View.Zone_Top := Scrolled_To (View.Zone_Top, Zone);
+      View.Zone_Status := Unchanged;
+   end Choose_Zone;
+   --  The next zone after From (wrapping) whose name starts with Letter.
+   function Next_Starting (From : TZ.Time_Zone; Letter : Character) return TZ.Time_Zone is
+      Candidate : TZ.Time_Zone := From;
+      Case_Offset : constant := Character'Pos ('a') - Character'Pos ('A');
+      Upper : constant Character := Character'Val (Character'Pos (Letter) - Case_Offset);
+   begin
+      for Step in TZ.Time_Zone loop
+         Candidate := (if Candidate = TZ.Time_Zone'Last then TZ.Time_Zone'First else TZ.Time_Zone'Succ (Candidate));
+         declare Name : constant String := TZ.Name (Candidate); begin
+            if Name'Length > 0 and then Name (Name'First) in Letter | Upper then return Candidate; end if;
+         end;
+      end loop;
+      return From;
+   end Next_Starting;
 
    function Diagram (B : Rect) return Rect is
      (B.x + 20, B.y + 76, 550, 172);
@@ -72,6 +135,11 @@ package body Desktop_Settings is
       case Item is
          when Appearance_Tab => return (B.x + 8, B.y + 34, Sidebar_Width - 12, 30);
          when Displays_Tab => return (B.x + 8, B.y + 64, Sidebar_Width - 12, 30);
+         when Date_Time_Tab => return (B.x + 8, B.y + 94, Sidebar_Width - 12, 30);
+         when Monitor_Tab => return (B.x + 8, B.y + 124, Sidebar_Width - 12, 30);
+         when Zone_List => return Zone_List_Box (C);
+         when Zone_Previous => return (C.x + 412, C.y + 56, 84, 28);
+         when Zone_Next => return (C.x + 412, C.y + 92, 84, 28);
          when Light => return (C.x + 280, C.y + 56, 140, 30);
          when Dark => return (C.x + 430, C.y + 56, 140, 30);
          when Image => return (C.x + 280, C.y + 128, 68, 30);
@@ -86,23 +154,44 @@ package body Desktop_Settings is
          when Make_Primary => return (C.x + 20, C.y + 304, 156, 28);
          when Scale_Down => return (C.x + 430, C.y + 304, 34, 28);
          when Scale_Up => return (C.x + 472, C.y + 304, 34, 28);
+         when Scale_Auto => return (C.x + 514, C.y + 304, 60, 28);
          when None => return (others => 0);
       end case;
    end Box;
 
    procedure Open (View : out State; Current : A.Preferences; Layout : L.Layout;
-                   Primary : L.Named_Display_ID) is
+                   Primary : L.Named_Display_ID; Auto_Scale : Boolean;
+                   Zone : Time_Zones.Time_Zone) is
    begin
       View := (Pending => Current, Applied => Current,
                Pending_Layout => Layout, Applied_Layout => Layout,
                Pending_Primary => Primary, Applied_Primary => Primary,
+               Pending_Auto => Auto_Scale, Applied_Auto => Auto_Scale,
+               Pending_Zone => Zone, Applied_Zone => Zone,
+               Zone_Top => Scrolled_To (TZ.Time_Zone'First, Zone),
                Selected => (if Layout.Count > 0 then 1 else 0), others => <>);
    end Open;
 
+   function Line_Of (Text : String; Available : Boolean := False) return Monitor_Line is
+      Result : Monitor_Line;
+      Count : constant Natural := Natural'Min (Text'Length, Monitor_Text_Length);
+   begin
+      Result.Text (1 .. Count) := Text (Text'First .. Text'First + Count - 1);
+      Result.Length := Count;
+      Result.Available := Available;
+      return Result;
+   end Line_Of;
+
+   procedure Set_Monitor (View : in out State; Info : Monitor_Info) is
+   begin
+      View.Monitor_View := Info;
+   end Set_Monitor;
+
    function Visible (View : State; Item : Control) return Boolean is
-     (Item in Appearance_Tab .. Displays_Tab or else
+     (Item in Tab_Control or else
        Item in Apply .. Revert or else
-       (View.Current_Page = Displays and then Item in Make_Primary .. Scale_Up) or else
+       (View.Current_Page = Date_Time and then Item in Zone_List .. Zone_Next) or else
+       (View.Current_Page = Displays and then Item in Make_Primary .. Scale_Auto) or else
        (View.Current_Page = Appearance and then Item in Light .. Revert));
 
    procedure Render (View : State; C : Canvas; Window_Bounds : Rect) is
@@ -112,17 +201,20 @@ package body Desktop_Settings is
       Preview : constant Rect := (Bounds.x + 20, Bounds.y + 56, 236, 150);
       function Label (Item : Control) return String is
         (case Item is when Appearance_Tab => "Appearance", when Displays_Tab => "Displays",
+         when Date_Time_Tab => "Date & Time", when Monitor_Tab => "Monitor", when Zone_Previous => "Up", when Zone_Next => "Down",
          when Light => "Alloy Light", when Dark => "Alloy Dark",
          when Image => "Cubes", when Cubie => "Cubie", when Slate => "Slate",
          when Ocean => "Ocean", when Fill => "Fill", when Fit => "Fit",
          when Center => "Center", when Apply => "Apply", when Revert => "Revert",
          when Make_Primary => "Make primary",
-         when Scale_Down => "-", when Scale_Up => "+",
-         when None => "");
+         when Scale_Down => "-", when Scale_Up => "+", when Scale_Auto => "Auto",
+         when None | Zone_List => "");
       function Selected (Item : Control) return Boolean is
         (case Item is
          when Appearance_Tab => View.Current_Page = Appearance,
          when Displays_Tab => View.Current_Page = Displays,
+         when Date_Time_Tab => View.Current_Page = Date_Time,
+         when Monitor_Tab => View.Current_Page = Monitor,
          when Light => View.Pending.Scheme = A.Alloy_Light,
          when Dark => View.Pending.Scheme = A.Alloy_Dark,
          when Image => View.Pending.Backdrop = A.Wallpaper,
@@ -132,6 +224,7 @@ package body Desktop_Settings is
          when Fill => View.Pending.Position = A.Fill,
          when Fit => View.Pending.Position = A.Fit,
          when Center => View.Pending.Position = A.Center,
+         when Scale_Auto => View.Pending_Auto,
          when others => False);
       procedure Text (X, Y : Natural; Value : String) is
       begin
@@ -148,8 +241,10 @@ package body Desktop_Settings is
                     1, Window_Bounds.h - 16), Colors.shadow);
       Draw_UI_Text (C, Window_Bounds.x + 12, Window_Bounds.y + 12,
                     "Settings", Colors.text, Colors.panel);
-      Text (20, 12, (if View.Current_Page = Appearance then "Appearance" else "Displays"));
-      for Item in Control range Appearance_Tab .. Displays_Tab loop
+      Text (20, 12, (case View.Current_Page is
+                     when Appearance => "Appearance", when Displays => "Displays",
+                     when Date_Time => "Date & Time", when Monitor => "Monitor"));
+      for Item in Tab_Control loop
          Draw_Tab (C, Box (Item, Window_Bounds), Colors,
                    Selected (Item), Item = View.Hovered,
                    Item = View.Pressed and then Item = View.Hovered,
@@ -160,6 +255,77 @@ package body Desktop_Settings is
             end;
          end if;
       end loop;
+      if View.Current_Page = Monitor then
+         declare
+            M : Monitor_Info renames View.Monitor_View;
+            Row_Height : constant := 20;
+         begin
+            Text (20, 40, M.Summary.Text (1 .. M.Summary.Length));
+            Text (20, 62, M.Detail.Text (1 .. M.Detail.Length));
+            for Row in 1 .. M.Shown loop
+               Draw_UI_Text (C, Bounds.x + 20, Bounds.y + 92 + (Row - 1) * Row_Height,
+                             M.Lines (Row).Text (1 .. M.Lines (Row).Length),
+                             (if M.Lines (Row).Available then Colors.text else Colors.muted),
+                             Colors.face);
+            end loop;
+            if M.Total > M.Shown then
+               Text (20, 92 + M.Shown * Row_Height,
+                     "+" & Natural'Image (M.Total - M.Shown) & " more (Boot Logs: intel-gpu: mode ...)");
+            end if;
+         end;
+         return;
+      end if;
+      if View.Current_Page = Date_Time then
+         declare
+            List : constant Rect := Zone_List_Box (Bounds);
+            Rows : constant Canvas := With_Clip (C, List);
+         begin
+            Text (20, 34, "Time zone (IANA time zone database)");
+            Fill_Rect (C, List, Colors.field);
+            for Row in 0 .. Zone_Rows - 1 loop
+               exit when TZ.Time_Zone'Pos (View.Zone_Top) + Row > TZ.Time_Zone'Pos (TZ.Time_Zone'Last);
+               declare
+                  Zone : constant TZ.Time_Zone := TZ.Time_Zone'Val (TZ.Time_Zone'Pos (View.Zone_Top) + Row);
+                  Line : constant Rect := (List.x, List.y + Row * Zone_Row_Height, List.w, Zone_Row_Height);
+                  Chosen : constant Boolean := Zone = View.Pending_Zone;
+                  Back : constant Color := (if Chosen then Colors.selection else Colors.field);
+               begin
+                  if Chosen then Fill_Rect (Rows, Line, Back); end if;
+                  Draw_UI_Text (Rows, Line.x + Zone_Text_Inset,
+                                Line.y + (Zone_Row_Height - Natural'Min (Zone_Row_Height, UI_Text_Height)) / 2,
+                                TZ.Name (Zone),
+                                (if Chosen then Colors.selectionText else Colors.text), Back);
+               end;
+            end loop;
+            Stroke_Rect (C, List, Colors.shadow, Colors.highlight);
+            if View.Focused = Zone_List then
+               Stroke_Rect (C, (List.x + 2, List.y + 2, List.w - 4, List.h - 4), Colors.shadow, Colors.shadow);
+            end if;
+         end;
+         Text (20, 264, "In Config: " & TZ.Name (View.Applied_Zone));
+         Text (20, 286, "Type a letter to jump; arrows, Page Up/Down, Home, End move.");
+         for Item in Control range Zone_Previous .. Zone_Next loop
+            Draw_Button (C, Box (Item, Window_Bounds), Colors,
+              (if Item = View.Pressed and Item = View.Hovered then Button_Pressed
+               elsif Item = View.Hovered then Button_Hot else Button_Normal), Label (Item));
+         end loop;
+         for Item in Control range Apply .. Revert loop
+            Draw_Button (C, Box (Item, Window_Bounds), Colors,
+              (if Item = View.Pressed and Item = View.Hovered then Button_Pressed
+               elsif Item = View.Hovered then Button_Hot else Button_Normal), Label (Item));
+         end loop;
+         if View.Focused in Zone_Previous | Zone_Next | Apply | Revert then
+            declare B : constant Rect := Box (View.Focused, Window_Bounds); begin
+               Stroke_Rect (C, (B.x + 3, B.y + 3, B.w - 6, B.h - 6), Colors.shadow, Colors.shadow);
+            end;
+         end if;
+         Text (20, 340,
+           (if View.Pending_Zone /= View.Applied_Zone then "Unapplied time zone"
+            elsif View.Zone_Status = Saved_In_Config then "Applied / the clock follows Config"
+            elsif View.Zone_Status = Rejected then "Config refused the time zone"
+            else "Tab to navigate; Enter to choose"));
+         return;
+      end if;
       if View.Current_Page = Displays then
          Text (20, 52, "Arrange displays / drag a screen to match your desk");
          Fill_Rect (C, Diagram (Bounds), Colors.shadow);
@@ -184,13 +350,15 @@ package body Desktop_Settings is
                Text (20, 264, "Display" & View.Selected'Image & ":" & Screen.Width'Image & " x" &
                      Screen.Height'Image & " pixels / position" & Screen.X'Image & "," & Screen.Y'Image);
                Text (300, 310, "Scale:" &
-                 Natural'Image (100 * Natural (Screen.Scale.Numerator) / Natural (Screen.Scale.Denominator)) & "%");
+                 Natural'Image (100 * Natural (Screen.Scale.Numerator) / Natural (Screen.Scale.Denominator)) & "%" &
+                 (if View.Pending_Auto then " auto" else ""));
             end;
          end if;
          Text (20, 284, "Edges snap together. The white bar marks the primary display.");
-         for Item in Control range Apply .. Scale_Up loop
+         for Item in Control range Apply .. Scale_Auto loop
             Draw_Button (C, Box (Item, Window_Bounds), Colors,
               (if Item = View.Pressed and Item = View.Hovered then Button_Pressed
+               elsif Selected (Item) then Button_Active
                elsif Item = View.Hovered then Button_Hot else Button_Normal), Label (Item));
             if Item = View.Focused then
                declare B : constant Rect := Box (Item, Window_Bounds); begin
@@ -202,7 +370,9 @@ package body Desktop_Settings is
            (if View.Layout_Status = Scale_Rejected then "Scale needs 800 x 480 logical pixels"
             elsif View.Layout_Status = Rejected then "Could not apply arrangement"
             elsif View.Pending_Layout /= View.Applied_Layout or
-              View.Pending_Primary /= View.Applied_Primary then "Unapplied arrangement"
+              View.Pending_Primary /= View.Applied_Primary or
+              View.Pending_Auto /= View.Applied_Auto then "Unapplied arrangement"
+            elsif View.Layout_Status = Saved_In_Config then "Applied / scale saved in Config"
             elsif View.Layout_Status = Session_Only then "Applied / this session"
             else "Resolutions stay unchanged"));
          return;
@@ -294,6 +464,11 @@ package body Desktop_Settings is
       case Item is
          when Appearance_Tab => View.Current_Page := Appearance;
          when Displays_Tab => View.Current_Page := Displays;
+         when Date_Time_Tab => View.Current_Page := Date_Time;
+         when Monitor_Tab => View.Current_Page := Monitor;
+         when Zone_Previous => Choose_Zone (View, Moved (View.Pending_Zone, -1));
+         when Zone_Next => Choose_Zone (View, Moved (View.Pending_Zone, 1));
+         when Zone_List => null;
          when Light => View.Pending.Scheme := A.Alloy_Light;
          when Dark => View.Pending.Scheme := A.Alloy_Dark;
          when Image => View.Pending.Backdrop := A.Wallpaper;
@@ -332,14 +507,41 @@ package body Desktop_Settings is
                   D.Rescale (View.Pending_Layout, View.Selected, Preset, Candidate, Accepted);
                   if Accepted then
                      View.Pending_Layout := Candidate;
+                     View.Pending_Auto := False;
                      View.Layout_Status := Unchanged;
                   else View.Layout_Status := Scale_Rejected; end if;
                end;
             end if;
+         when Scale_Auto =>
+            --  Every output back to the scale its size asks for.
+            declare
+               package D renames CuBit.Display_Arrangement;
+               package R renames Desktop_Auto_Scale;
+               Candidate : L.Layout;
+               Accepted : Boolean;
+            begin
+               for I in 1 .. View.Pending_Layout.Count loop
+                  declare
+                     Screen : constant G.Output := View.Pending_Layout.Items (I).Geometry;
+                     Rotated : constant Boolean := Screen.Rotation in G.Clockwise_90 | G.Clockwise_270;
+                  begin
+                     D.Rescale (View.Pending_Layout, I,
+                       R.Choose ((if Rotated then Screen.Height else Screen.Width),
+                                 (if Rotated then Screen.Width else Screen.Height)),
+                       Candidate, Accepted);
+                     if Accepted then View.Pending_Layout := Candidate; end if;
+                  end;
+               end loop;
+               View.Pending_Auto := True;
+               View.Layout_Status := Unchanged;
+            end;
          when Revert =>
-            if View.Current_Page = Displays then
+            if View.Current_Page = Date_Time then
+               Choose_Zone (View, View.Applied_Zone);
+            elsif View.Current_Page = Displays then
                View.Pending_Layout := View.Applied_Layout;
                View.Pending_Primary := View.Applied_Primary;
+               View.Pending_Auto := View.Applied_Auto;
                View.Layout_Status := Unchanged;
             else View.Pending := View.Applied; end if;
          when None => null;
@@ -353,6 +555,21 @@ package body Desktop_Settings is
       Hit : Control := None;
    begin
       Apply_Requested := False;
+      if View.Current_Page = Date_Time and then Pointer.pressed and then
+        Point_In_Rect (Pointer.x, Pointer.y, Zone_List_Box (Page_Bounds (Bounds)))
+      then
+         declare
+            Row : constant Natural := (Pointer.y - Zone_List_Box (Page_Bounds (Bounds)).y) / Zone_Row_Height;
+            Index : constant Natural := TZ.Time_Zone'Pos (View.Zone_Top) + Row;
+         begin
+            if Index <= TZ.Time_Zone'Pos (TZ.Time_Zone'Last) then
+               Choose_Zone (View, TZ.Time_Zone'Val (Index));
+            end if;
+            View.Focused := Zone_List;
+            View.Pressed := None;
+            return;
+         end;
+      end if;
       if View.Current_Page = Displays then
          if Pointer.pressed and Point_In_Rect (Pointer.x, Pointer.y, Diagram (Page_Bounds (Bounds))) then
             for I in 1 .. View.Pending_Layout.Count loop
@@ -386,8 +603,8 @@ package body Desktop_Settings is
             return;
          end if;
       end if;
-      for Item in Control range Appearance_Tab .. Scale_Up loop
-         if Visible (View, Item) and then
+      for Item in Control range Appearance_Tab .. Control'Last loop
+         if Visible (View, Item) and then Item /= Zone_List and then
            Point_In_Rect (Pointer.x, Pointer.y, Box (Item, Bounds)) and then
            Point_In_Rect (Pointer.x, Pointer.y, Bounds)
          then Hit := Item; end if;
@@ -407,21 +624,39 @@ package body Desktop_Settings is
       Apply_Requested : out Boolean) is
    begin
       Apply_Requested := False;
-      if Scan_Code = 16#01# and then View.Dragging then
+      if Scan_Code = Scan_Escape and then View.Dragging then
          View.Pending_Layout := View.Drag_Original;
          View.Dragging := False;
-      elsif View.Focused in Appearance_Tab .. Displays_Tab and then
-        Scan_Code in 16#48# | 16#50# then
-         View.Focused := (if Scan_Code = 16#48# then Appearance_Tab else Displays_Tab);
+      elsif View.Focused in Tab_Control and then Scan_Code in Scan_Up | Scan_Down then
+         View.Focused :=
+           (if Scan_Code = Scan_Up
+            then (if View.Focused = Tab_Control'First then View.Focused else Control'Pred (View.Focused))
+            else (if View.Focused = Tab_Control'Last then View.Focused else Control'Succ (View.Focused)));
          Activate (View, View.Focused, Apply_Requested);
-      elsif Scan_Code = 16#0F# then
-         for Attempt in Control range Appearance_Tab .. Scale_Up loop
+      elsif View.Focused = Zone_List and then
+        Scan_Code in Scan_Up | Scan_Down | Scan_Page_Up | Scan_Page_Down | Scan_Home | Scan_End
+      then
+         Choose_Zone (View,
+           (case Scan_Code is
+              when Scan_Up => Moved (View.Pending_Zone, -1),
+              when Scan_Down => Moved (View.Pending_Zone, 1),
+              when Scan_Page_Up => Moved (View.Pending_Zone, -Zone_Rows),
+              when Scan_Page_Down => Moved (View.Pending_Zone, Zone_Rows),
+              when Scan_Home => TZ.Time_Zone'First,
+              when others => TZ.Time_Zone'Last));
+      elsif View.Current_Page = Date_Time and then Scan_Code in Letter_Scan and then
+        Letter_Of (Scan_Code) /= ' '
+      then
+         Choose_Zone (View, Next_Starting (View.Pending_Zone, Letter_Of (Scan_Code)));
+         View.Focused := Zone_List;
+      elsif Scan_Code = Scan_Tab then
+         for Attempt in Control range Appearance_Tab .. Control'Last loop
             View.Focused :=
-              (if Backwards then (if View.Focused = Appearance_Tab then Scale_Up else Control'Pred (View.Focused))
-               else (if View.Focused = Scale_Up then Appearance_Tab else Control'Succ (View.Focused)));
+              (if Backwards then (if View.Focused = Appearance_Tab then Control'Last else Control'Pred (View.Focused))
+               else (if View.Focused = Control'Last then Appearance_Tab else Control'Succ (View.Focused)));
             exit when Visible (View, View.Focused);
          end loop;
-      elsif Scan_Code in 16#1C# | 16#39# then
+      elsif Scan_Code in Scan_Enter | Scan_Space then
          Activate (View, View.Focused, Apply_Requested);
       end if;
    end Key;

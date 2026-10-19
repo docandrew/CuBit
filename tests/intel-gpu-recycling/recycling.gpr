@@ -1,0 +1,13 @@
+project Recycling is
+   -- intel-gpu session and GuC context recycling (hosted). RECYCLING_SRC
+   -- points at a mutated copy of the driver sources (mutations.sh).
+   Driver_Src := external ("RECYCLING_SRC", "../../userspace/services/intel-gpu");
+   for Source_Dirs use (".", Driver_Src, "../intel-gpu", "../../shared/capabilities");
+   for Object_Dir use external ("RECYCLING_OBJ", "build");
+   for Main use ("session_lifecycle_tests.adb", "context_recycling_tests.adb",
+                 "slot_storage_tests.adb", "client_account_tests.adb",
+                 "render_sessions_tests.adb", "render_control_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Recycling;

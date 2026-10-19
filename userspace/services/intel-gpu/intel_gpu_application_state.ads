@@ -1,6 +1,5 @@
 with Interfaces;
 with Intel_GPU_Buffer_Reply;
-with Intel_GPU_Render_Sessions;
 with Intel_GPU_VM_Image;
 with Intel_GPU_Record_Store;
 with Intel_GPU_Application_Lifetime;
@@ -8,9 +7,10 @@ with Intel_GPU_Table_Provenance;
 with Intel_GPU_Table_References;
 with Intel_GPU_Metadata_Ranges;
 package Intel_GPU_Application_State is
-   -- Native service-owned storage. Keep the multi-megabyte offline VM images
-   -- at library scope, not on the service thread's stack. Serialized access;
-   -- no client may choose an index without authenticated session resolution.
+   -- Native service-owned storage types. The driver keeps one Context_Record
+   -- per render-session slot in growable storage (Intel_GPU_Session_Store),
+   -- never on the service thread's stack. Serialized access; no client may
+   -- choose an index without authenticated session resolution.
    Table_Pages : constant := 64;
    Bootstrap_Table_Mirrors : constant := 4;
    package VM is new Intel_GPU_VM_Image
@@ -34,9 +34,6 @@ package Intel_GPU_Application_State is
       Table_IDs : Table_References.Map;
       Life : Intel_GPU_Application_Lifetime.Phase := Intel_GPU_Application_Lifetime.Empty;
    end record;
-   type Context_Array is array
-     (1 .. Intel_GPU_Render_Sessions.Capacity) of Context_Record;
-   Items : Context_Array;
    -- Retain each image across publication/failure until explicit retirement.
    -- Image storage is independent of the allocation-ticket namespace.
    type Update_Record is limited record

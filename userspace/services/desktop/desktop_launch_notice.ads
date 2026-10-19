@@ -16,8 +16,9 @@
 --    Window_Opened) and, if it ends first by being stopped or with a
 --    nonzero code, shows that (Ended). Ending with code 0 is a normal end
 --    for a program without a window, not a failure.
---  One notice at a time; a newer failure replaces it. It is dismissed by
---  the person (Dismiss), never by a timer, so it cannot go unseen.
+--  Desktop posts each notice into the Deskbar's notification centre
+--  (Desktop_Notifications): toasted briefly, then kept in the history until
+--  the person dismisses it, so it cannot go unseen.
 --  The watch is bounded: past Watch_Capacity children still without a
 --  window, the oldest watch is replaced (that child's early end then goes
 --  unreported here; procmgr still logs it).
@@ -41,7 +42,6 @@ package Desktop_Launch_Notice with SPARK_Mode is
    type Cause is (Refused, Ended_Early);
 
    type Notice is record
-      Open    : Boolean := False;
       Name    : Name_Text := [others => ' '];
       Length  : Name_Length := 0;
       Why     : Cause := Refused;
@@ -54,18 +54,16 @@ package Desktop_Launch_Notice with SPARK_Mode is
    procedure Show_Refusal
      (N : out Notice; Name : String;
       Failure : CuBit.Launch_Arguments.Launch_Failure)
-     with Post => N.Open and then N.Why = Refused;
+     with Post => N.Why = Refused;
 
-   procedure Dismiss (N : in out Notice)
-     with Post => not N.Open;
+   --  The app's name (its menu label).
+   function Name_Of (N : Notice) return String is (N.Name (1 .. N.Length));
 
    --  "Penny could not start" / "Penny stopped while starting".
-   function Title (N : Notice) return String
-     with Pre => N.Open;
+   function Title (N : Notice) return String;
 
    --  The reason in plain words.
-   function Detail (N : Notice) return String
-     with Pre => N.Open;
+   function Detail (N : Notice) return String;
 
    Watch_Capacity : constant := 8;
    type Watch_Count is range 0 .. Watch_Capacity;
@@ -99,7 +97,7 @@ package Desktop_Launch_Notice with SPARK_Mode is
    procedure Ended
      (T : in out Watch_Table; N : in out Notice;
       Ending : CuBit.Child_Exits.Report; Shown : out Boolean)
-     with Post => (if Shown then N.Open and then N.Why = Ended_Early);
+     with Post => (if Shown then N.Why = Ended_Early);
 
    --  Whether Ending is a failure to start (not a clean exit with code 0).
    function Failed (Ending : CuBit.Child_Exits.Report) return Boolean is

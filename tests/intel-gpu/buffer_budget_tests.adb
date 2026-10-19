@@ -19,7 +19,7 @@ begin
             pragma Assert (Data = [B.Budget_Version, B.Capacity, Unsigned_64 (Pages) * 4096, Unsigned_64 (Slots)]);
             pragma Assert (Snapshot.Free_Bytes = B.Capacity - Unsigned_64 (Pages) * 4096);
             pragma Assert (Snapshot.Maximum_Allocation =
-              (if Slots = 0 then 0 else Unsigned_64'Min (Snapshot.Free_Bytes, 16 * 1024 * 1024)));
+              (if Slots = 0 then 0 else Unsigned_64'Min (Snapshot.Free_Bytes, Unsigned_64 (B.Page_Count'Last) * 4096)));
          else
             pragma Assert (Data = Empty and Snapshot.Maximum_Allocation = 0);
          end if;

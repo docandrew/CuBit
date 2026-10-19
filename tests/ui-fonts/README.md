@@ -25,6 +25,27 @@ exit and unchanged file size, checking that the old image remains untouched.
 The separate [reader suite](../procmgr-reads/README.md) tests 150 transfer
 sequences and has a focused SPARK arithmetic/termination harness.
 
+## Text quality (UI-026)
+
+`quality/run.sh` renders a fixed set of UI strings (menu titles, menu items,
+a Files row, kerning pairs, window titles, code) through the real toolkit
+text path into memory at 1:1, renders the same strings with FreeType (light
+auto-hinting with stem darkening, HarfBuzz GPOS kerning, true 1/64-pixel
+placement, blended in linear light), and writes interleaved 1:1 rows, a 4x
+nearest-neighbour zoom and two distances: mean sRGB error on ink pixels, and
+the per-row ink profile error (vertical placement only). `--bench` times 4K
+UI text (opaque, transparent, measure); `--kerning` compares the layout
+tables with HarfBuzz for every printable-ASCII pair. All Linux-hosted;
+FreeType and HarfBuzz come from the pinned nixpkgs and are never part of
+CuBit.
+
+Measured 2026-10-18 (this workstation, `-O3 -gnatp`, quiet host not
+guaranteed): ink error 70 (before UI-026) to 23/20 (dark/light Sans) and
+22/33 to 21/19 (Mono); row-profile error 17.6% to 6.7% (Sans), 20% to 7.2%
+(Mono); kerning 0 mismatches in 18,050 pairs. The remaining difference is
+FreeType's stem snapping (the toolkit hints blue zones only) and its
+outline-level stem darkening (the toolkit boosts coverage contrast instead).
+
 ## Native CuBit
 
 Build before running headless tests. Run native tests **sequentially**: they

@@ -23,9 +23,13 @@ package Vulkan_Scene with SPARK_Mode is
    -- existing snapped, output-density glyph placement; Over and Mask are true.
    -- Physical_Solid uses output pixel coordinates in Surface, validated at
    -- admission. It shares existing storage and ordering with logical layers.
+   -- Physical_Region draws a straight-alpha source window 1:1, unscaled:
+   -- Surface is in the output's unrotated physical pixels (its origin at the
+   -- output's top-left), each source texel one output pixel; rotation still
+   -- applies. Desktop's icons use it to stay crisp at fractional densities.
    type Layer_Kind is (Textured, Straight_Textured, Solid, Set_Clip, Reset_Clip, Glyph_Mask, Physical_Solid,
       Backdrop_Fill, Backdrop_Fit, Backdrop_Center, Set_Physical_Clip, Checker_Grid, Region_Textured, Straight_Region,
-      Preview);
+      Preview, Physical_Region);
    -- Backdrop kinds retain a source ticket and store its physical dimensions
    -- in Surface.Right/Bottom; Left/Top, tint and blend flags must be zero.
    -- Use Append_Backdrop to capture this representation without extra storage.
@@ -47,6 +51,8 @@ package Vulkan_Scene with SPARK_Mode is
    function Output (S : State) return A.G.Output;
    function Item (S : State; I : Index) return Layer with Pre => I <= Count (S);
    function Region_At (S : State; I : Index) return R.Rectangle with Pre => I <= Count (S);
+   -- A Glyph_Mask layer's pen fraction (quarter-pixel phase placement).
+   function Offset_At (S : State; I : Index) return Vulkan_Glyph_Sources.L.Subpixel with Pre => I <= Count (S);
    function Preview_At (S : State; I : Index) return Preview_Description with Pre => I <= Count (S);
    -- Only typed capture initializes preview metadata. Surface retains logical
    -- bounds; source dimensions are separate, never encoded in coordinates.
@@ -77,6 +83,17 @@ package Vulkan_Scene with SPARK_Mode is
        (if Accepted then Current (S) = Collecting and Count (S) = Count (S'Old) + 1 and
           Item (S, Count (S)).Source = Source and Region_At (S, Count (S)) = Region and
           Item (S, Count (S)).Kind in Region_Textured | Straight_Region
+        else Current (S) = Rejected and Count (S) = Count (S'Old)) and
+       (for all I in 1 .. Count (S'Old) => Item (S, I) = Item (S'Old, I) and
+          Region_At (S, I) = Region_At (S'Old, I));
+   -- Capture a source window drawn 1:1 at Area (unrotated physical output
+   -- pixels; see Physical_Region), straight alpha over the scene.
+   procedure Append_Physical_Region (S : in out State; Source : V.Source_Ticket;
+      Area : A.G.Physical_Rectangle; Region : R.Rectangle; Accepted : out Boolean)
+     with Post => Output (S) = Output (S'Old) and
+       (if Accepted then Current (S) = Collecting and Count (S) = Count (S'Old) + 1 and
+          Item (S, Count (S)).Source = Source and Region_At (S, Count (S)) = Region and
+          Item (S, Count (S)).Kind = Physical_Region
         else Current (S) = Rejected and Count (S) = Count (S'Old)) and
        (for all I in 1 .. Count (S'Old) => Item (S, I) = Item (S'Old, I) and
           Region_At (S, I) = Region_At (S'Old, I));
@@ -113,10 +130,10 @@ package Vulkan_Scene with SPARK_Mode is
    procedure Append_Glyph
      (S : in out State; Submission : V.State; Sources : Vulkan_Glyph_Sources.State;
       Key : Vulkan_Glyph_Sources.Key; Cell : A.G.Logical_Rectangle;
-      Tint : A.Word; Accepted : out Boolean)
+      Offset : Vulkan_Glyph_Sources.L.Subpixel; Tint : A.Word; Accepted : out Boolean)
      with Post => Output (S) = Output (S'Old) and
        (if Accepted then Current (S) = Collecting and Count (S) = Count (S'Old) + 1 and
-          Item (S, Count (S)).Kind = Glyph_Mask and
+          Item (S, Count (S)).Kind = Glyph_Mask and Offset_At (S, Count (S)) = Offset and
           V.Source_Valid (Submission, Item (S, Count (S)).Source)
         else Current (S) = Rejected and Count (S) = Count (S'Old)) and
        (for all I in 1 .. Count (S'Old) => Item (S, I) = Item (S'Old, I) and Region_At (S, I) = Region_At (S'Old, I));
@@ -150,6 +167,7 @@ private
    type Layers is array (Index) of Layer;
    type Region_Table is array (Index) of R.Rectangle;
    type Preview_Table is array (Index) of Preview_Description;
+   type Offset_Table is array (Index) of Vulkan_Glyph_Sources.L.Subpixel;
    type State is record
       Status : Phase := Collecting;
       Used : Length := 0;
@@ -158,6 +176,7 @@ private
       Entries : Layers;
       Regions : Region_Table;
       Previews : Preview_Table;
+      Offsets : Offset_Table := [others => 0];
    end record;
    function Current (S : State) return Phase is (S.Status);
    function Count (S : State) return Length is (S.Used);
@@ -165,7 +184,8 @@ private
    function Item (S : State; I : Index) return Layer is (S.Entries (I));
    function Region_At (S : State; I : Index) return R.Rectangle is (S.Regions (I));
    function Preview_At (S : State; I : Index) return Preview_Description is (S.Previews (I));
+   function Offset_At (S : State; I : Index) return Vulkan_Glyph_Sources.L.Subpixel is (S.Offsets (I));
    function Sources_Ready (S : State; Submission : V.State) return Boolean is
      (for all I in 1 .. S.Used =>
-        (if S.Entries (I).Kind in Textured | Straight_Textured | Glyph_Mask | Backdrop_Fill | Backdrop_Fit | Backdrop_Center | Region_Textured | Straight_Region | Preview then V.Source_Valid (Submission, S.Entries (I).Source)));
+        (if S.Entries (I).Kind in Textured | Straight_Textured | Glyph_Mask | Backdrop_Fill | Backdrop_Fit | Backdrop_Center | Region_Textured | Straight_Region | Preview | Physical_Region then V.Source_Valid (Submission, S.Entries (I).Source)));
 end Vulkan_Scene;

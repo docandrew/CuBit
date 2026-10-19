@@ -5,12 +5,17 @@ project Files_Proof is
      ("files_limits.ads", "files_listing.ads", "files_listing.adb", "files_order.ads", "files_order.adb",
       "files_filter.ads", "files_filter.adb", "files_viewport.ads", "files_viewport.adb",
       "files_marks.ads", "files_marks.adb", "files_pages.ads", "files_pages.adb", "files_plan.ads", "files_plan.adb",
+      "files_status.ads", "files_status.adb", "files_places.ads", "files_places.adb",
+      "cubit-filesystem_places.ads", "cubit-filesystem_places.adb", "cubit-file_access.ads",
+      "cubit-file_access.adb", "cubit-volume_descriptions.ads", "cubit-volume_descriptions.adb",
       --  The protocol's specs, with their bodies for representation
-      --  information only: run.sh proves the files_* units alone.
+      --  information only: run.sh proves the files_* units and the place
+      --  selection the service and the mock share (CuBit.Filesystem_Places).
       "cubit.ads", "cubit-filesystems.ads", "cubit-filesystems.adb", "cubit-directory_paths.ads",
       "cubit-directory_paths.adb", "cubit-memory_grants.ads", "cubit-memory_grants.adb",
       "cubit-messages.ads", "cubit-messages.adb", "cubit-process_ids.ads", "cubit-process_ids.adb",
       "cubit-grant_references.ads", "cubit-kernel_abi.ads", "cubit-directory_pages.ads",
+      "cubit-handles.ads", "capability_abi.ads", "capability_abi.adb",
       "cubit-directory_pages.adb");
    for Object_Dir use "build/proof";
    package Compiler is

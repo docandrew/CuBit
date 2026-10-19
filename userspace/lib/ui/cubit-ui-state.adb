@@ -1,3 +1,4 @@
+with CuBit.Fonts;
 ------------------------------------------------------------------------------
 --  CuBit
 --  Copyright (C) 2026 Jon Andrew
@@ -46,23 +47,14 @@ package body CuBit.UI.State is
       return (if a > b then a - b else b - a);
    end Abs_Diff;
 
+   --  The caret boundary nearest x, from the layout the field is drawn with.
    function Text_Index_At_X
       (bounds : CuBit.UI.Rect; text : String; x : Natural) return Natural
    is
-      textX : Natural := bounds.x + 6;
-      charW : Natural;
-      idx : Natural := 0;
+      textX : constant Natural := bounds.x + 6;
    begin
-      for i in text'Range loop
-         charW := CuBit.UI.UI_Text_Width (text (i .. i));
-         if x <= textX + charW / 2 then
-            return idx;
-         end if;
-         textX := textX + charW;
-         idx := idx + 1;
-      end loop;
-
-      return text'Length;
+      return (if x <= textX then 0
+              else CuBit.Fonts.Boundary_At (CuBit.Fonts.Sans, text, x - textX));
    end Text_Index_At_X;
 
    procedure Clamp_Text_State (st : in out UI_State; len : Natural) is

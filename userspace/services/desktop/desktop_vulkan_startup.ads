@@ -198,7 +198,7 @@ package Desktop_Vulkan_Startup with SPARK_Mode,
    -- table. Missing/stale/wrong-density keys reject the whole scene snapshot.
    procedure Capture_Glyph (Scene : in out Vulkan_Scene.State;
       Key : Vulkan_Glyph_Sources.Key; Cell : Vulkan_Scene.A.G.Logical_Rectangle;
-      Tint : Vulkan_Scene.A.Word; Accepted : out Boolean)
+      Offset : Vulkan_Glyph_Sources.L.Subpixel; Tint : Vulkan_Scene.A.Word; Accepted : out Boolean)
      with Global => (Input => Engine), Pre => Valid,
        Post => (if Accepted then Vulkan_Scene.Current (Scene) = Vulkan_Scene.Collecting
          else Vulkan_Scene.Current (Scene) = Vulkan_Scene.Rejected);

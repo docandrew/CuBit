@@ -28,7 +28,8 @@ generic
      (Index, Value : Interfaces.Unsigned_64; Success : out Boolean);
    with procedure Invalidate (Success : out Boolean);
    -- Upload staging normally needs 1 MiB; ADS uses a 16 MiB allocation.
-   -- Larger callers must opt in. Publication retains an absolute 16 MiB bound.
+   -- Larger callers must opt in. Publication retains an absolute bound of one
+   -- driver allocation (Intel_GPU_Physical_Extents.Capacity).
    Maximum_Bytes : Interfaces.Unsigned_64 := 1_048_576;
    -- Immutable retained backing resolver. Offset is page-aligned. Return zero
    -- on failure; every page is checked before reservation or MMIO writes.

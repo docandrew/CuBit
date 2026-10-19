@@ -1,7 +1,10 @@
 with CuBit.Appearance;
 with CuBit.UI; use CuBit.UI;
+with CuBit.UI.Controls;
 with CuBit.UI.Editor;
 with CuBit.UI.Icons;
+with CuBit.UI.Menus;
+with CuBit.UI.Tooltips;
 with CuBit.UI.Widgets;
 with Text_Cursors;
 with Text_Layout;
@@ -18,7 +21,15 @@ package body Text_Shells is
    use type Text_Syntax.Language;
    use type Text_Search.Options;
 
+   package Controls renames CuBit.UI.Controls;
+   package Menus renames CuBit.UI.Menus;
+   package Tooltips renames CuBit.UI.Tooltips;
+   use type Menus.Text;
+
    --  Layout, in logical pixels.
+   MENU_BAR_HEIGHT : constant := 24;
+   MENU_ROW_HEIGHT : constant := 24;
+   MENU_MINIMUM_WIDTH : constant := 220;
    TOOLBAR_HEIGHT : constant := 34;
    TOOL_SIZE : constant := 26;
    TOOL_GAP : constant := 2;
@@ -57,6 +68,9 @@ package body Text_Shells is
    MAXIMUM_SYMBOL_NAME : constant := 80;
    FNV_OFFSET : constant Unsigned_64 := 16#CBF2_9CE4_8422_2325#;
    FNV_PRIME : constant Unsigned_64 := 16#0000_0100_0000_01B3#;
+   --  Control IDs (the menu bar reserves MENU_BASE .. MENU_BASE + 72).
+   MENU_BASE : constant := 1;
+   TOOL_BASE : constant := 100;
 
    type Tool is
      (Tool_New, Tool_Open, Tool_Save, Tool_Undo, Tool_Redo, Tool_Find, Tool_Palette, Tool_Split, Tool_Wrap,
@@ -71,6 +85,18 @@ package body Text_Shells is
       Tool_Redo => CuBit.UI.Icons.Go_Forward, Tool_Find => CuBit.UI.Icons.Search,
       Tool_Palette => CuBit.UI.Icons.Properties, Tool_Split => CuBit.UI.Icons.Add_Pane,
       Tool_Wrap => CuBit.UI.Icons.Columns, Tool_Minimap => CuBit.UI.Icons.Drawer];
+   function Tool_ID (T : Tool) return Controls.Control_ID is (TOOL_BASE + Tool'Pos (T));
+
+   --  The menu bar's text, made once from the command table (Text_Commands):
+   --  captions, shortcuts from the default keymap, and a mnemonic per item
+   --  (its caption's first letter not taken earlier in the same menu).
+   type Command_Texts is array (Command) of Menus.Text;
+   type Title_Texts is array (Menu_Name) of Menus.Text;
+   type Command_Letters is array (Command) of Character;
+   Captions, Shortcuts : Command_Texts := [others => null];
+   Titles : Title_Texts := [others => null];
+   Mnemonics : Command_Letters := [others => ' '];
+   Menu_Popup_Width : Positive := MENU_MINIMUM_WIDTH;
 
    type Tab is record
       Doc : Document_Access;
@@ -111,17 +137,27 @@ package body Text_Shells is
       Active : Positive range 1 .. 2 := 1;
       Dark : Boolean := False;
       Colors : Text_Editors.Palette;
+      --  The toolkit theme Colors was made from (Follow_Theme).
+      Theme_Seen : Theme;
       Edit_Bytes : Byte_Count := 0;
       Now : Unsigned_64 := 0;
       Bounds : Rect := (others => 0);
       Dirty : Rect := (others => 0);
       Everything : Boolean := True;
-      Toolbar_Area, Tabs_Area, Find_Area, Status_Area, Palette_Area : Rect := (others => 0);
+      Menu_Area, Popup_Area, Toolbar_Area, Tabs_Area, Find_Area, Status_Area, Palette_Area : Rect := (others => 0);
       Find_Box, Replace_Box : Rect := (others => 0);
       Editor_Areas : Area_Pair := [others => (others => 0)];
       Header_Areas : Area_Pair := [others => (others => 0)];
-      Toolbar_Hash, Tabs_Hash, Status_Hash, Find_Hash, Palette_Hash : Unsigned_64 := 0;
-      Drawn_Toolbar, Drawn_Tabs, Drawn_Status, Drawn_Find, Drawn_Palette : Unsigned_64 := 1;
+      Menu_Hash, Toolbar_Hash, Tabs_Hash, Status_Hash, Find_Hash, Palette_Hash : Unsigned_64 := 0;
+      Drawn_Menu, Drawn_Toolbar, Drawn_Tabs, Drawn_Status, Drawn_Find, Drawn_Palette : Unsigned_64 := 1;
+      --  The menu bar (from the command table), its state, and the frame's
+      --  controls: menu titles and items, toolbar buttons (hits, tooltips).
+      Menu_Model : Menus.Model;
+      Menu : Menus.Menu_State;
+      Menu_Block_Release : Boolean := False;
+      Map : Controls.Control_Map;
+      Tips : Tooltips.Tip_Table;
+      Tip : Tooltips.Tooltip;
       Prepared : Boolean := False;
       Message : String (1 .. MAXIMUM_MESSAGE) := [others => ' '];
       Message_Length : Natural := 0;
@@ -213,7 +249,68 @@ package body Text_Shells is
    function Editor (S : Shell_State) return Text_Editors.Editor_Access is (S.Editors (S.Active));
 
    ---------------------------------------------------------------------------
+   --  The menu bar: built from the command table, so the menus, the palette
+   --  and the keys cannot disagree.
+
+   --  Each item of menu M in order: by group, then in table order.
+   generic
+      with procedure Visit (Item : Command; Starts_Group : Boolean);
+   procedure Each_Menu_Item (M : Menu_Name);
+   procedure Each_Menu_Item (M : Menu_Name) is
+      Any : Boolean := False;
+   begin
+      for G in Menu_Group loop
+         declare
+            First_In_Group : Boolean := True;
+         begin
+            for C in Real_Command loop
+               if In_Menu (C) and then Menu_Of (C) = M and then Group_Of (C) = G then
+                  Visit (C, Any and then First_In_Group);
+                  Any := True;
+                  First_In_Group := False;
+               end if;
+            end loop;
+         end;
+      end loop;
+   end Each_Menu_Item;
+
+   procedure Prepare_Menu_Texts is
+      function Lower (C : Character) return Character is
+        (if C in 'A' .. 'Z' then Character'Val (Character'Pos (C) + Character'Pos ('a') - Character'Pos ('A'))
+         else C);
+      type Letter_Set is array (Character range 'a' .. 'z') of Boolean;
+      Taken : Letter_Set;
+      procedure Take (Item : Command; Starts_Group : Boolean) is
+         pragma Unreferenced (Starts_Group);
+         Text : constant String := Caption (Item);
+         Keys : constant String := Chord_Text (Binding (Item));
+      begin
+         Captions (Item) := new String'(Text);
+         Shortcuts (Item) := (if Keys'Length = 0 then null else new String'(Keys));
+         for Ch of Text loop
+            if Lower (Ch) in Letter_Set'Range and then not Taken (Lower (Ch)) then
+               Taken (Lower (Ch)) := True;
+               Mnemonics (Item) := Lower (Ch);
+               exit;
+            end if;
+         end loop;
+      end Take;
+      procedure Take_All is new Each_Menu_Item (Take);
+   begin
+      if Titles (Menu_Name'First) /= null then
+         return;
+      end if;
+      for M in Menu_Name loop
+         Titles (M) := new String'(Menu_Title (M));
+         Taken := [others => False];
+         Take_All (M);
+      end loop;
+   end Prepare_Menu_Texts;
+
+   ---------------------------------------------------------------------------
    --  Setup and tabs.
+
+   function Build_Menus (S : Shell_State) return Menus.Model;
 
    procedure Initialize
      (S : in out Shell; Host : not null access Host_Type; Dark : Boolean; Edit_Bytes : Byte_Count)
@@ -226,15 +323,32 @@ package body Text_Shells is
       S.State.Editors (2) := Text_Editors.Create;
       S.State.Paste_Buffer := new String (1 .. PASTE_CAPACITY);
       S.State.Chunk := new String (1 .. CHUNK_BYTES);
+      Prepare_Menu_Texts;
       Set_Dark (S, Dark);
+      Menu_Popup_Width :=
+        Positive'Max (MENU_MINIMUM_WIDTH, Menus.Required_Width (Build_Menus (S.State.all)));
    end Initialize;
 
    procedure Set_Dark (S : in out Shell; Dark : Boolean) is
    begin
       S.State.Dark := Dark;
       S.State.Colors := Text_Editors.Palette_For (Current_Theme, Dark);
+      S.State.Theme_Seen := Current_Theme;
       S.State.Everything := True;
    end Set_Dark;
+
+   procedure Follow_Theme (S : in out Shell) is
+      Now : constant Theme := Current_Theme;
+      --  Relative luminance weights (Rec. 709), per ten thousand.
+      function Luma (C : Color) return Natural is
+        (2126 * Natural (Interfaces.Shift_Right (C, 16) and 16#FF#) +
+         7152 * Natural (Interfaces.Shift_Right (C, 8) and 16#FF#) +
+         722 * Natural (C and 16#FF#));
+   begin
+      if Now /= S.State.Theme_Seen then
+         Set_Dark (S, Luma (Now.field) < Luma (Now.text));
+      end if;
+   end Follow_Theme;
 
    procedure Show_Tab (S : in out Shell_State; T : Tab_Index) is
    begin
@@ -597,7 +711,10 @@ package body Text_Shells is
             if Is_Call then
                Add ((Kind => Call_Row, others => <>));
             end if;
+            --  Commands a person looks for (Text_Commands.In_Palette): the
+            --  fine-grained ones stay on their keys and CCL calls.
             for C in Real_Command loop
+               if In_Palette (C) then
                declare
                   --  The name, or the description when the query is mostly runs
                   --  and word starts there (not letters scattered across it).
@@ -613,6 +730,7 @@ package body Text_Shells is
                      Add ((Kind => Command_Row, Item => C, Index => 0, Score => Value));
                   end if;
                end;
+               end if;
             end loop;
          when Line_Mode | Argument_Mode =>
             null;
@@ -672,6 +790,7 @@ package body Text_Shells is
    procedure Open_Palette (S : in out Shell_State; Mode : Palette_Mode; Initial : String := "") is
       Accepted : Boolean;
    begin
+      Menus.Dismiss (S.Menu);
       S.Palette_On := True;
       S.Mode := Mode;
       CuBit.UI.Editor.Initialize (S.Palette_Field, Initial, Accepted);
@@ -701,6 +820,98 @@ package body Text_Shells is
          when Call_Row => return "Run " & Field_Text (S.Palette_Field) & "|CCL call|";
       end case;
    end Row_Text;
+
+   ---------------------------------------------------------------------------
+   --  Menu state: what applies now, and the toggles' checkmarks.
+
+   function Command_Enabled (S : Shell_State; Item : Command) return Boolean is
+      D : constant Document_Access := Doc (S);
+   begin
+      if Needs_Document (Item) and then D = null then
+         return False;
+      end if;
+      return (case Item is
+                 when Undo => Can_Undo (D.all),
+                 when Redo => Can_Redo (D.all),
+                 when Save | Save_As => S.Phase = Idle and then not Loading (D.all),
+                 when Next_Tab | Previous_Tab => S.Count > 1,
+                 when Other_View => S.Split_On,
+                 when others => True);
+   end Command_Enabled;
+
+   function Command_Checked (S : Shell_State; Item : Command) return Boolean is
+     (case Item is
+         when Split_View => S.Split_On,
+         when Toggle_Wrap => Text_Editors.Wrap_On (Editor (S).all),
+         when Toggle_Minimap => Text_Editors.Minimap_On (S.Editors (1).all),
+         when Toggle_Modal => S.Modal,
+         when Toggle_Overlay => S.Overlay,
+         when Toggle_Theme => S.Dark,
+         when others => False);
+
+   function Build_Menus (S : Shell_State) return Menus.Model is
+      Result : Menus.Model;
+      procedure Add (Item : Command; Starts_Group : Boolean) is
+         Parent : constant Positive := Menu_Name'Pos (Menu_Of (Item)) + 1;
+      begin
+         if Starts_Group and then Result.Item_Count < Menus.Max_Items then
+            Result.Item_Count := Result.Item_Count + 1;
+            Result.Items (Result.Item_Count) := (Parent => Parent, Separator => True, others => <>);
+         end if;
+         if Result.Item_Count < Menus.Max_Items then
+            Result.Item_Count := Result.Item_Count + 1;
+            Result.Items (Result.Item_Count) :=
+              (Parent => Parent, Caption => Captions (Item), Shortcut => Shortcuts (Item),
+               Mnemonic => Mnemonics (Item), Command => Command'Pos (Item),
+               Enabled => Command_Enabled (S, Item),
+               Checked => Is_Toggle (Item) and then Command_Checked (S, Item), Separator => False);
+         end if;
+      end Add;
+      procedure Add_All is new Each_Menu_Item (Add);
+   begin
+      for M in Menu_Name loop
+         Result.Menu_Count := Result.Menu_Count + 1;
+         Result.Menus (Result.Menu_Count) := (Caption => Titles (M), Mnemonic => Menu_Mnemonic (M));
+         Add_All (M);
+      end loop;
+      return Result;
+   end Build_Menus;
+
+   --  The menus' look: which is open, the selected item, the hot title and
+   --  every item's state.
+   function Menu_Text (S : Shell_State) return String is
+      Bits : String (1 .. S.Menu_Model.Item_Count) := [others => '-'];
+   begin
+      for K in Bits'Range loop
+         Bits (K) := (if not S.Menu_Model.Items (K).Enabled then 'd'
+                      elsif S.Menu_Model.Items (K).Checked then 'c' else 'e');
+      end loop;
+      return Natural'Image (Menus.Open_Menu (S.Menu)) & Natural'Image (Menus.Selected_Item (S.Menu))
+        & Natural'Image (Menus.Hot_Title (S.Menu)) & Bits;
+   end Menu_Text;
+
+   function Popup_Of (S : Shell_State) return Rect is
+     (Menus.Popup_Bounds (S.Menu, S.Menu_Model, S.Menu_Area, S.Bounds, Menu_Popup_Width, MENU_ROW_HEIGHT));
+
+   --  Something drawn over the editors (the popup, a tooltip) changed:
+   --  what was under Area repaints.
+   procedure Uncover (S : in out Shell_State; Area : Rect) is
+   begin
+      if not Is_Empty (Area) then
+         S.Dirty := Union_Rect (S.Dirty, Area);
+         Text_Editors.Invalidate_Area (S.Editors (1).all, Area);
+         Text_Editors.Invalidate_Area (S.Editors (2).all, Area);
+      end if;
+   end Uncover;
+
+   procedure Close_Menu (S : in out Shell_State) is
+   begin
+      if Menus.Is_Open (S.Menu) then
+         Uncover (S, S.Popup_Area);
+         S.Dirty := Union_Rect (S.Dirty, S.Menu_Area);
+      end if;
+      Menus.Dismiss (S.Menu);
+   end Close_Menu;
 
    ---------------------------------------------------------------------------
    --  Copy and paste.
@@ -894,12 +1105,9 @@ package body Text_Shells is
       Settings : constant Layout_Settings :=
         (if D = null then (others => <>) else Text_Editors.Settings (E.all));
       Reveal : Boolean := True;
-      Needs_Document : constant Boolean :=
-        Item not in New_Document | Open | Command_Palette | Toggle_Modal | Toggle_Overlay | Toggle_Theme
-                  | Describe_Key | Quit | No_Command | Go_To_Anything;
    begin
       Ok := True;
-      if Needs_Document and then D = null then
+      if Needs_Document (Item) and then D = null then
          Ok := False;
          Say (S, "No document: Ctrl+N for a new one, Ctrl+O to open");
          return;
@@ -1147,6 +1355,7 @@ package body Text_Shells is
               ((if S.Dark then CuBit.Appearance.Alloy_Light else CuBit.Appearance.Alloy_Dark));
             S.Dark := not S.Dark;
             S.Colors := Text_Editors.Palette_For (Current_Theme, S.Dark);
+            S.Theme_Seen := Current_Theme;
             S.Everything := True;
             Reveal := False;
          when Set_Tab_Width =>
@@ -1396,10 +1605,82 @@ package body Text_Shells is
       end loop;
    end Run_Modal_Actions;
 
+   --  A menu item chosen (by key or pointer): its command, as from a key.
+   procedure Run_Menu_Command (S : in out Shell_State; Chosen : Natural) is
+      Ok : Boolean;
+   begin
+      if Chosen in Command'Pos (Real_Command'First) .. Command'Pos (Real_Command'Last) then
+         S.Focus := Editor_Focus;
+         Do_Execute (S, Command'Val (Chosen), 0, "", Ok);
+      end if;
+   end Run_Menu_Command;
+
+   --  The menu bar's keys: F10 opens and closes it, Alt+letter opens a
+   --  menu; while one is open, arrows, Enter, Esc, Tab and letters move in
+   --  it. Handled: the key was the menu's. Other keys close it and go on.
+   procedure Menu_Key (S : in out Shell_State; Pressed : Chord; Handled : out Boolean) is
+      Was_Open : constant Boolean := Menus.Is_Open (S.Menu);
+      Plain : constant Boolean := not Pressed.Control and then not Pressed.Alt and then not Pressed.Shift;
+      Letter : constant Character :=
+        (if Pressed.Item in Key_A .. Key_Z
+         then Character'Val (Character'Pos ('a') + Text_Commands.Key'Pos (Pressed.Item) - Text_Commands.Key'Pos (Key_A))
+         else ' ');
+      Event : Menus.Key := Menus.Mnemonic;
+      Known : Boolean := True;
+      Chosen : Natural;
+   begin
+      Handled := False;
+      if Was_Open then
+         case Pressed.Item is
+            when F10 => Event := Menus.Activate;
+            when Text_Commands.Left => Event := Menus.Left;
+            when Text_Commands.Right => Event := Menus.Right;
+            when Text_Commands.Up => Event := Menus.Up;
+            when Text_Commands.Down => Event := Menus.Down;
+            when Home => Event := Menus.Home;
+            when End_Key => Event := Menus.End_Key;
+            when Enter => Event := Menus.Enter;
+            when Space => Event := Menus.Space;
+            when Escape => Event := Menus.Escape;
+            when Text_Commands.Tab => Event := Menus.Tab_Key;
+            when Key_A .. Key_Z => Known := not Pressed.Control;
+            when others => Known := False;
+         end case;
+         if not Known then
+            Close_Menu (S);
+            return;
+         end if;
+      elsif Pressed.Item = F10 and then Plain then
+         Event := Menus.Activate;
+      elsif Pressed.Alt and then not Pressed.Control and then not Pressed.Shift
+        and then (for some M in Menu_Name => Menu_Mnemonic (M) = Letter)
+      then
+         Event := Menus.Mnemonic;
+      else
+         return;
+      end if;
+      S.Menu_Model := Build_Menus (S);
+      Menus.Handle_Key (S.Menu, S.Menu_Model, Event, Chosen, Handled, Letter);
+      if not Menus.Is_Open (S.Menu) and then Was_Open then
+         Uncover (S, S.Popup_Area);
+      end if;
+      Handled := Handled or else Was_Open;
+      if Chosen /= 0 then
+         Run_Menu_Command (S, Chosen);
+      end if;
+   end Menu_Key;
+
    procedure Handle_Key (S : in out Shell_State; Pressed : Chord) is
       Item : Command;
       Ok : Boolean;
+      Menu_Handled : Boolean;
    begin
+      if not S.Describe and then not S.Palette_On then
+         Menu_Key (S, Pressed, Menu_Handled);
+         if Menu_Handled then
+            return;
+         end if;
+      end if;
       if S.Describe then
          S.Describe := False;
          Item := Lookup (Pressed);
@@ -1479,6 +1760,27 @@ package body Text_Shells is
    procedure Handle_Text (S : in out Shell_State; Text : String) is
       Changed : Boolean;
    begin
+      if Menus.Is_Open (S.Menu) then
+         --  An open menu takes typed letters as its mnemonics, a space as
+         --  Space; anything else closes it and types.
+         if Text'Length = 1 and then Text (Text'First) in 'a' .. 'z' | 'A' .. 'Z' | ' ' then
+            declare
+               Chosen : Natural;
+               Handled : Boolean;
+               Ch : constant Character := Text (Text'First);
+            begin
+               S.Menu_Model := Build_Menus (S);
+               Menus.Handle_Key (S.Menu, S.Menu_Model, (if Ch = ' ' then Menus.Space else Menus.Mnemonic),
+                                 Chosen, Handled, (if Ch in 'A' .. 'Z' then Character'Val (Character'Pos (Ch) + 32) else Ch));
+               if not Menus.Is_Open (S.Menu) then
+                  Uncover (S, S.Popup_Area);
+               end if;
+               Run_Menu_Command (S, Chosen);
+            end;
+            return;
+         end if;
+         Close_Menu (S);
+      end if;
       if S.Describe then
          S.Describe := False;
          Say (S, "'" & Text & "' types itself");
@@ -1551,9 +1853,59 @@ package body Text_Shells is
    function Option_Box (S : Shell_State; K : Positive) return Rect is
      (S.Find_Box.x + S.Find_Box.w + MARGIN + (K - 1) * (OPTION_WIDTH + 2), S.Find_Box.y, OPTION_WIDTH, FIELD_HEIGHT);
 
+   --  The menu bar's share of a pointer event (CuBit.UI.Menus protocol):
+   --  moves always (hot titles), presses and releases on menu controls or
+   --  while a menu is open; an outside press only closes it (no
+   --  click-through), its release is swallowed too.
+   procedure Menu_Pointer (S : in out Shell_State; Item : Event; Handled : out Boolean) is
+      Target : constant Controls.Control_ID := Controls.Hit (S.Map, Item.X, Item.Y);
+      Was_Open : constant Boolean := Menus.Is_Open (S.Menu);
+      Ours : constant Boolean := Menus.Is_Menu_Control (MENU_BASE, Target);
+      Action : constant Controls.Pointer_Action :=
+        (case Item.Action is
+            when Press => Controls.Pointer_Press,
+            when Release => Controls.Pointer_Release,
+            when Move => Controls.Pointer_Move);
+      Chosen : Natural := 0;
+      Changed, Dispatched : Boolean;
+   begin
+      Handled := False;
+      if not Was_Open and then not Ours and then not S.Menu_Block_Release
+        and then (Item.Action /= Move or else Menus.Hot_Title (S.Menu) = 0)
+      then
+         return;
+      end if;
+      if Item.Action = Release and then S.Menu_Block_Release then
+         S.Menu_Block_Release := False;
+         Handled := True;
+         return;
+      end if;
+      S.Menu_Model := Build_Menus (S);
+      if Item.Action = Press and then Was_Open and then not Ours then
+         S.Menu_Block_Release := True;
+      else
+         Controls.Dispatch_Pointer (S.Map, Target, Action, Item.X, Item.Y, Changed, Dispatched);
+      end if;
+      Menus.Handle_Pointer (S.Menu, S.Menu_Model, S.Map, MENU_BASE, Target, Action, Chosen, Handled);
+      Handled := Handled or else Was_Open or else (Ours and then Item.Action /= Move);
+      if Was_Open and then not Menus.Is_Open (S.Menu) then
+         Uncover (S, S.Popup_Area);
+      end if;
+      if Chosen /= 0 then
+         Run_Menu_Command (S, Chosen);
+      end if;
+   end Menu_Pointer;
+
    procedure Handle_Pointer (S : in out Shell_State; Item : Event) is
       Ok : Boolean;
+      Menu_Handled : Boolean;
    begin
+      if not S.Palette_On then
+         Menu_Pointer (S, Item, Menu_Handled);
+         if Menu_Handled then
+            return;
+         end if;
+      end if;
       case Item.Action is
          when Press =>
             if S.Palette_On then
@@ -1664,6 +2016,20 @@ package body Text_Shells is
       St : Shell_State renames S.State.all;
    begin
       St.Prepared := False;
+      --  The menu bar's keyboard cues follow Alt (CuBit.UI.Menus).
+      if Item.Kind in Key_Event | Pointer_Event | Modifier_Event then
+         declare
+            Old_Cues : constant Boolean := Menus.Cues_Shown (St.Menu);
+         begin
+            Menus.Set_Alt_Held (St.Menu, (if Item.Kind = Key_Event then Item.Pressed.Alt else Item.Alt));
+            if Menus.Cues_Shown (St.Menu) /= Old_Cues then
+               St.Dirty := Union_Rect (St.Dirty, St.Menu_Area);
+               if Menus.Is_Open (St.Menu) then
+                  Uncover (St, Popup_Of (St));
+               end if;
+            end if;
+         end;
+      end if;
       if Item.Kind in Key_Event | Text_Event | Pointer_Event then
          St.Occurrence_Due := St.Now + OCCURRENCE_REST_US;
       end if;
@@ -1673,6 +2039,23 @@ package body Text_Shells is
       if Item.Kind in Key_Event | Text_Event or else (Item.Kind = Pointer_Event and then Item.Action = Press) then
          Text_Editors.Clear_Occurrence (St.Editors (1).all);
          Text_Editors.Clear_Occurrence (St.Editors (2).all);
+      end if;
+      --  Tooltips follow the resting pointer; any other input hides them.
+      declare
+         Tip_Damage : Rect;
+      begin
+         if Item.Kind = Pointer_Event and then Item.Action = Move and then not Menus.Is_Open (St.Menu)
+           and then not St.Palette_On
+         then
+            Tooltips.Pointer_At (St.Tip, St.Tips, St.Map, Item.X, Item.Y, St.Now / MICROSECONDS_PER_MILLISECOND,
+                                 Tip_Damage);
+         else
+            Tooltips.Dismiss (St.Tip, Tip_Damage);
+         end if;
+         Uncover (St, Tip_Damage);
+      end;
+      if Item.Kind = Wheel_Event then
+         Close_Menu (St);
       end if;
       case Item.Kind is
          when Key_Event => Handle_Key (St, Item.Pressed);
@@ -1690,6 +2073,8 @@ package body Text_Shells is
             end if;
          when Resize_Event =>
             St.Everything := True;
+         when Modifier_Event =>
+            null;
       end case;
    end Handle;
 
@@ -1804,6 +2189,15 @@ package body Text_Shells is
          St.Message_Length := 0;
          Changed := True;
       end if;
+      declare
+         Tip_Damage : Rect;
+      begin
+         Tooltips.Tick (St.Tip, St.Tips, St.Now / MICROSECONDS_PER_MILLISECOND, Tip_Damage);
+         if not Is_Empty (Tip_Damage) then
+            Uncover (St, Tip_Damage);
+            Changed := True;
+         end if;
+      end;
       if Changed then
          St.Prepared := False;
       end if;
@@ -1886,7 +2280,7 @@ package body Text_Shells is
    procedure Layout (S : in out Shell_State; Bounds : Rect) is
       Changed_Bounds : constant Boolean := Bounds /= S.Bounds;
       Find_H : constant Natural := (if S.Find_Visible then FIND_HEIGHT else 0);
-      Top : constant Natural := Bounds.y + TOOLBAR_HEIGHT + TAB_HEIGHT;
+      Top : constant Natural := Bounds.y + MENU_BAR_HEIGHT + TOOLBAR_HEIGHT + TAB_HEIGHT;
       Bottom : constant Natural := Natural'Max (Top, Integer (Bounds.y + Bounds.h) - STATUS_HEIGHT - Find_H);
       Middle : constant Rect := (Bounds.x, Top, Bounds.w, Bottom - Top);
    begin
@@ -1894,8 +2288,9 @@ package body Text_Shells is
          S.Everything := True;
       end if;
       S.Bounds := Bounds;
-      S.Toolbar_Area := (Bounds.x, Bounds.y, Bounds.w, TOOLBAR_HEIGHT);
-      S.Tabs_Area := (Bounds.x, Bounds.y + TOOLBAR_HEIGHT, Bounds.w, TAB_HEIGHT);
+      S.Menu_Area := (Bounds.x, Bounds.y, Bounds.w, MENU_BAR_HEIGHT);
+      S.Toolbar_Area := (Bounds.x, Bounds.y + MENU_BAR_HEIGHT, Bounds.w, TOOLBAR_HEIGHT);
+      S.Tabs_Area := (Bounds.x, S.Toolbar_Area.y + TOOLBAR_HEIGHT, Bounds.w, TAB_HEIGHT);
       S.Find_Area := (Bounds.x, Bottom, Bounds.w, Find_H);
       S.Status_Area := (Bounds.x, Natural'Max (Bounds.y, Integer (Bounds.y + Bounds.h) - STATUS_HEIGHT), Bounds.w,
                         STATUS_HEIGHT);
@@ -1920,7 +2315,8 @@ package body Text_Shells is
          S.Header_Areas := [others => (others => 0)];
       end if;
       S.Palette_Area :=
-        (Bounds.x + (if Bounds.w > PALETTE_WIDTH then (Bounds.w - PALETTE_WIDTH) / 2 else 0), Bounds.y + PALETTE_TOP,
+        (Bounds.x + (if Bounds.w > PALETTE_WIDTH then (Bounds.w - PALETTE_WIDTH) / 2 else 0),
+         S.Toolbar_Area.y + PALETTE_TOP,
          Natural'Min (PALETTE_WIDTH, Bounds.w),
          FIELD_HEIGHT + 3 * MARGIN + Natural'Min (PALETTE_SHOWN, Natural'Max (S.Row_Count, 1)) * PALETTE_ROW_HEIGHT);
       for K in 1 .. 2 loop
@@ -1955,6 +2351,8 @@ package body Text_Shells is
             end;
          end loop;
       end if;
+      St.Menu_Model := Build_Menus (St);
+      St.Menu_Hash := Mix (FNV_OFFSET, Menu_Text (St));
       St.Toolbar_Hash := Mix (FNV_OFFSET, Natural'Image (St.Hot_Tool) & Boolean'Image (St.Split_On)
                                           & Boolean'Image (Doc (St) /= null and then Can_Undo (Doc (St).all))
                                           & Boolean'Image (Doc (St) /= null and then Can_Redo (Doc (St).all))
@@ -1973,6 +2371,18 @@ package body Text_Shells is
       St.Status_Hash := Mix (FNV_OFFSET, Status_Text (St));
       St.Find_Hash := Mix (FNV_OFFSET, (if St.Find_Visible then Find_Text (St) else "closed"));
       St.Palette_Hash := Mix (FNV_OFFSET, Palette_Text (St));
+      declare
+         Popup : constant Rect := Popup_Of (St);
+      begin
+         if St.Menu_Hash /= St.Drawn_Menu or else Popup /= St.Popup_Area then
+            Result := Union_Rect (Union_Rect (Result, St.Menu_Area), Popup);
+            if Popup /= St.Popup_Area then
+               Uncover (St, St.Popup_Area);
+               Result := Union_Rect (Result, St.Dirty);
+            end if;
+            St.Popup_Area := Popup;
+         end if;
+      end;
       if St.Everything then
          Result := St.Bounds;
       else
@@ -2215,6 +2625,23 @@ package body Text_Shells is
          Text_Editors.Invalidate (St.Editors (1).all);
          Text_Editors.Invalidate (St.Editors (2).all);
       end if;
+      --  The frame's controls (whatever the clip paints): toolbar buttons
+      --  with their tooltips, then the menu bar's (Draw, below).
+      Controls.Clear (St.Map);
+      Tooltips.Clear (St.Tips);
+      for T in Tool loop
+         declare
+            Box : constant Rect := Tool_Box (St, T);
+            Full : constant String := Caption (Tool_Command (T));
+            --  "Open..." asks for more in a menu; a tooltip just names it.
+            Name : constant String :=
+              (if Full'Length > 3 and then Full (Full'Last - 2 .. Full'Last) = "..." then Full (Full'First .. Full'Last - 3)
+               else Full);
+         begin
+            Controls.Add_Button (St.Map, Tool_ID (T), Box, Box);
+            Tooltips.Set (St.Tips, Tool_ID (T), Name, Chord_Text (Binding (Tool_Command (T))));
+         end;
+      end loop;
       if Intersects (Clip, St.Toolbar_Area) then
          Draw_Toolbar (St, C);
       end if;
@@ -2281,6 +2708,20 @@ package body Text_Shells is
       if St.Palette_On and then Intersects (Clip, St.Palette_Area) then
          Draw_Palette (St, C);
       end if;
+      --  The menu bar and its popup, over everything; its controls cover
+      --  the whole window whatever this frame's clip.
+      declare
+         Whole : Canvas := C;
+      begin
+         Whole.inputClipEnabled := True;
+         Whole.inputClip := Bounds;
+         Menus.Draw (Whole, St.Map, St.Menu, St.Menu_Model, MENU_BASE, St.Menu_Area, Colors, Menu_Popup_Width,
+                     MENU_ROW_HEIGHT);
+      end;
+      if not Menus.Is_Open (St.Menu) and then not St.Palette_On then
+         Tooltips.Draw (C, St.Tip, St.Tips, Bounds, Colors);
+      end if;
+      St.Drawn_Menu := St.Menu_Hash;
       St.Drawn_Toolbar := St.Toolbar_Hash;
       St.Drawn_Tabs := St.Tabs_Hash;
       St.Drawn_Status := St.Status_Hash;
@@ -2298,9 +2739,14 @@ package body Text_Shells is
    end Note_Frame;
 
    function Quit_Requested (S : Shell) return Boolean is (S.State.Quit);
+   --  The tooltip's delay is a deadline too: the host's wait wakes for it.
    function Next_Deadline_Us (S : Shell) return Unsigned_64 is
-     (Unsigned_64'Min (S.State.Occurrence_Due,
-                       (if S.State.Message_Length > 0 then S.State.Message_Until else Unsigned_64'Last)));
+     (Unsigned_64'Min
+        (Unsigned_64'Min (S.State.Occurrence_Due,
+                          (if S.State.Message_Length > 0 then S.State.Message_Until else Unsigned_64'Last)),
+         (if Tooltips.Next_Deadline (S.State.Tip) >= Unsigned_64'Last / MICROSECONDS_PER_MILLISECOND
+          then Unsigned_64'Last
+          else Tooltips.Next_Deadline (S.State.Tip) * MICROSECONDS_PER_MILLISECOND)));
 
    function Tabs (S : Shell) return Tab_Count is (S.State.Count);
    function Current_Tab (S : Shell) return Tab_Count is (S.State.Current);
@@ -2315,6 +2761,9 @@ package body Text_Shells is
    function Palette_Rows (S : Shell) return Natural is (S.State.Row_Count);
    function Palette_Row (S : Shell; Row : Positive) return String is (Row_Text (S.State.all, Row));
    function Find_Open (S : Shell) return Boolean is (S.State.Find_Visible);
+   function Open_Menu (S : Shell) return Natural is (Menus.Open_Menu (S.State.Menu));
+   function Menu_Bar (S : Shell) return CuBit.UI.Menus.Model is (Build_Menus (S.State.all));
+   function Tooltip_Text (S : Shell) return String is (Tooltips.Text (S.State.Tip, S.State.Tips));
    function Split (S : Shell) return Boolean is (S.State.Split_On);
    function Modal_On (S : Shell) return Boolean is (S.State.Modal);
    function Loading (S : Shell) return Boolean is (S.State.Load_Tab /= 0);

@@ -98,6 +98,43 @@ begin
    Check (Text (Tip, Table) = "a-very-long-file-name-that-was-cut.txt", "a region (a cut cell) has its tip");
    Check (Inside (Area_Of (Tip), Screen), "placed on screen near the edge");
 
+   --  Near the bottom edge (a taskbar): above the pointer, never over it.
+   Controls.Add_Button (Map, PLAIN_ID + 1, (10, 225, 40, 14), (10, 225, 40, 14));
+   Set (Table, PLAIN_ID + 1, "Volume");
+   Pointer_At (Tip, Table, Map, 20, 232, 20_000_000, Damage);
+   Tick (Tip, Table, 20_000_000 + DELAY_MS, Damage);
+   Draw (C, Tip, Table, Screen, Classic);
+   Check (Text (Tip, Table) = "Volume" and then Area_Of (Tip).y + Area_Of (Tip).h <= 232,
+          "at the bottom edge the tip goes above the pointer");
+   --  One flat border colour (square, like the window chrome).
+   declare
+      B : constant Rect := Area_Of (Tip);
+   begin
+      Check (Pixels (B.y * WIDTH + B.x) = Classic.edge
+             and then Pixels ((B.y + B.h - 1) * WIDTH + B.x + B.w - 1) = Classic.edge
+             and then Pixels ((B.y + 1) * WIDTH + B.x + 1) = Classic.panel,
+             "a 1-pixel border in one theme colour around the panel fill");
+   end;
+   Dismiss (Tip, Damage);
+
+   --  Keyboard focus: the focused control's tip after the same delay,
+   --  below the control; a key that moves the focus dismisses first.
+   Frame;
+   Focus_On (Tip, Table, Map, SAVE_ID, 30_000_000, Damage);
+   Check (not Visible (Tip) and then Next_Deadline (Tip) = 30_000_000 + DELAY_MS, "focus: the same delay");
+   Focus_On (Tip, Table, Map, SAVE_ID, 30_000_100, Damage);
+   Check (Next_Deadline (Tip) = 30_000_000 + DELAY_MS, "focus staying put does not restart it");
+   Tick (Tip, Table, 30_000_000 + DELAY_MS, Damage);
+   Frame;
+   Check (Visible (Tip) and then Text (Tip, Table) = "Save" and then Area_Of (Tip).y >= 10 + 24,
+          "the focused control's tip shows below it");
+   Dismiss (Tip, Damage);
+   Focus_On (Tip, Table, Map, OPEN_ID, 31_000_000, Damage);
+   Tick (Tip, Table, 31_000_000 + DELAY_MS, Damage);
+   Check (Visible (Tip) and then Text (Tip, Table) = "Open", "Tab to the next control: its tip");
+   Focus_On (Tip, Table, Map, PLAIN_ID, 32_000_000, Damage);
+   Check (not Visible (Tip) and then not Is_Empty (Damage), "a control without a tip hides it");
+
    --  Cost: Pointer_At over a full table, and drawing the tip.
    declare
       ROUNDS : constant := 100_000;

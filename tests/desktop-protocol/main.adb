@@ -3,6 +3,7 @@ with Interfaces; use Interfaces;
 with Interfaces.C;
 with CuBit.Desktop_Protocol; use CuBit.Desktop_Protocol;
 with CuBit.Display_Protocol;
+with CuBit.Grant_References;
 procedure Main is
    use type Interfaces.C.int;
    function C_Input_Valid (Expected, Label : Unsigned_32;
@@ -12,7 +13,7 @@ procedure Main is
    procedure Compare_Input_Decoders (Wire : Wire_Message; Expected : Input_Operation) is
    begin
       pragma Assert ((Decode_Input_Result (Wire, Expected).Status = Success) =
-        (C_Input_Valid (Code (Expected), Wire.Label, Wire.Length, Wire.Flags,
+        (C_Input_Valid (Code (Expected), Wire.Label, Wire.Length, Unsigned_8 (Wire.Flags),
                        Wire.Reserved, Wire.Words (0), Wire.Words (1),
                        Wire.Words (2), Wire.Words (3)) = 1));
    end Compare_Input_Decoders;
@@ -53,8 +54,8 @@ begin
       for Length in Unsigned_8 loop
          Wire := DSP.Encode_Open_Session; Wire.Length := Length;
          pragma Assert (DSP.Valid_Open_Session (Wire) = (Length = 4));
-         Wire := DSP.Encode_Open_Session; Wire.Flags := Length;
-         pragma Assert (DSP.Valid_Open_Session (Wire) = (Length = 0));
+         Wire := DSP.Encode_Open_Session; Wire.Flags := Protocol_Flags (Length mod 16);
+         pragma Assert (DSP.Valid_Open_Session (Wire) = (Length mod 16 = 0));
       end loop;
       Wire := DSP.Encode_Open_Session; Wire.Reserved := 1;
       pragma Assert (not DSP.Valid_Open_Session (Wire));
@@ -82,8 +83,8 @@ begin
       for Length in Unsigned_8 loop
          Wire := Canonical; Wire.Length := Length;
          pragma Assert (DSP.Decode_Attachment (Wire).Valid = (Length = 4));
-         Wire := Canonical; Wire.Flags := Length;
-         pragma Assert (DSP.Decode_Attachment (Wire).Valid = (Length = 0));
+         Wire := Canonical; Wire.Flags := Protocol_Flags (Length mod 16);
+         pragma Assert (DSP.Decode_Attachment (Wire).Valid = (Length mod 16 = 0));
       end loop;
       Wire := Canonical; Wire.Reserved := 1;
       pragma Assert (not DSP.Decode_Attachment (Wire).Valid);
@@ -92,7 +93,7 @@ begin
          pragma Assert (DSP.Decode_Attachment (Wire).Valid =
            (Wire.Label = DSP.Code (DSP.Attach_Buffer)));
       end loop;
-      Wire := Canonical; Wire.Words (0) := 4096;
+      Wire := Canonical; Wire.Words (0) := CuBit.Grant_References.Maximum_Slot + 1;
       pragma Assert (not DSP.Decode_Attachment (Wire).Valid);
       Wire := Canonical; Wire.Words (1) := 0;
       pragma Assert (not DSP.Decode_Attachment (Wire).Valid);
@@ -108,10 +109,12 @@ begin
       pragma Assert (not DSP.Decode_Attachment (Wire).Valid);
       Wire.Words (3) := Unsigned_64'Last;
       pragma Assert (not DSP.Decode_Attachment (Wire).Valid);
-      Item := ((4095, 2 ** 32 - 1), (4096, 1024, 16_384));
+      --  Exactly the largest grant (CuBit.Grant_References.Maximum_Bytes);
+      --  one more byte per row is refused.
+      Item := ((4095, 2 ** 32 - 1), (4096, 16_384, 2 ** 24));
       Canonical := DSP.Encode_Attachment (Item);
       pragma Assert (DSP.Decode_Attachment (Canonical) = (True, Item));
-      Wire := Canonical; Wire.Words (3) := 16_385;
+      Wire := Canonical; Wire.Words (3) := 2 ** 24 + 1;
       pragma Assert (not DSP.Decode_Attachment (Wire).Valid);
       -- Every bit of every field is hostile input; accepted forms must be
       -- canonical and retain the complete bounded layout on round trip.
@@ -155,8 +158,8 @@ begin
       for Length in Unsigned_8 loop
          Wire := Canonical; Wire.Length := Length;
          pragma Assert (DSP.Decode_Frame (Wire).Valid = (Length = 4));
-         Wire := Canonical; Wire.Flags := Length;
-         pragma Assert (DSP.Decode_Frame (Wire).Valid = (Length = 0));
+         Wire := Canonical; Wire.Flags := Protocol_Flags (Length mod 16);
+         pragma Assert (DSP.Decode_Frame (Wire).Valid = (Length mod 16 = 0));
       end loop;
       Wire := Canonical; Wire.Reserved := 1;
       pragma Assert (not DSP.Decode_Frame (Wire).Valid);
@@ -215,8 +218,10 @@ begin
       for Length in Unsigned_8 loop
          Wire := Canonical; Wire.Length := Length;
          pragma Assert (DSP.Decode_Frame_Result (Wire).Valid = (Length = 4));
-         Wire := Canonical; Wire.Flags := Length;
-         pragma Assert (DSP.Decode_Frame_Result (Wire).Valid = (Length = 0));
+      end loop;
+      for Flags in Protocol_Flags loop
+         Wire := Canonical; Wire.Flags := Flags;
+         pragma Assert (DSP.Decode_Frame_Result (Wire).Valid = (Flags = 0));
       end loop;
       Wire := Canonical; Wire.Reserved := 1;
       pragma Assert (not DSP.Decode_Frame_Result (Wire).Valid);
@@ -303,9 +308,16 @@ begin
    pragma Assert (Surface_Access (True, 7, 8) = Denied);
    pragma Assert (Surface_Access (False, 7, 7) = Bad_Object);
    pragma Assert (Surface_Access (True, 0, 0) = Denied);
-   Attachment := (1, (4095, Unsigned_64 (Unsigned_32'Last)), (1024, 4096, 4096));
+   --  A 4K BGRA buffer (33 MB) is an ordinary layout; the largest is the
+   --  grant ABI's, and one byte more is refused.
+   Attachment := (1, (4095, Unsigned_64 (Unsigned_32'Last)), (3840, 2160, 3840 * 4));
    pragma Assert (Valid_Layout (Attachment.Layout));
-   pragma Assert (Byte_Length (Attachment.Layout) = Maximum_Buffer_Bytes);
+   pragma Assert
+     (Decode_Attachment (Encode_Attachment (Attachment)) = (True, Attachment));
+   Attachment := (1, (4095, Unsigned_64 (Unsigned_32'Last)), (16_384, 16_384, 1_048_576));
+   pragma Assert (Valid_Layout (Attachment.Layout));
+   pragma Assert (Byte_Length (Attachment.Layout) = Maximum_Buffer_Bytes / 16);
+   pragma Assert (not Valid_Layout ((1, 65_535, Natural'Last)));
    pragma Assert
      (Decode_Attachment (Encode_Attachment (Attachment)) = (True, Attachment));
    for Width of Extents loop
@@ -318,7 +330,7 @@ begin
       Wire.Length := Length;
       pragma Assert (Decode_Attachment (Wire).Valid = (Length = 4));
    end loop;
-   Wire := Encode_Attachment (Attachment); Wire.Words (1) := 4096;
+   Wire := Encode_Attachment (Attachment); Wire.Words (1) := CuBit.Grant_References.Maximum_Slot + 1;
    pragma Assert (not Decode_Attachment (Wire).Valid);
    Wire := Encode_Attachment (Attachment); Wire.Words (2) := 0;
    pragma Assert (not Decode_Attachment (Wire).Valid);
@@ -330,7 +342,7 @@ begin
    Wire := Encode_Attachment (Attachment);
    Wire.Words (3) := 4 + 2 * 2 ** 16 + 15 * 2 ** 32;
    pragma Assert (not Decode_Attachment (Wire).Valid);
-   Wire.Words (3) := 1024 + 4097 * 2 ** 16 + 4096 * 2 ** 32;
+   Wire.Words (3) := 1024 + 65_535 * 2 ** 16 + 4_194_432 * 2 ** 32;
    pragma Assert (not Decode_Attachment (Wire).Valid);
    Wire := Encode_Attachment (Attachment); Wire.Flags := 1;
    pragma Assert (not Decode_Attachment (Wire).Valid);
@@ -734,7 +746,9 @@ begin
                Wire := Canonical; Wire.Length := Length;
                pragma Assert ((Decode_Input_Result (Wire, Op).Status = Success) = (Length = 4));
                Compare_Input_Decoders (Wire, Op);
-               Wire := Canonical; Wire.Flags := Length;
+            end loop;
+            for Flags in Protocol_Flags loop
+               Wire := Canonical; Wire.Flags := Flags;
                Compare_Input_Decoders (Wire, Op);
             end loop;
             Wire := Canonical; Wire.Reserved := 1;

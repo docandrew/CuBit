@@ -53,13 +53,70 @@ begin
    Paint;
    declare
       UY : constant Natural := (28 - UI_Text_Height) / 2 + UI_Text_Height - 2;
+      --  Whether the title's mnemonic underline (under "F") is drawn.
+      function Title_Cue return Boolean is
+      begin
+         for X in 10 .. 10 + UI_Text_Width ("F") - 1 loop
+            --  Against the title's own fill just right of its text.
+            if Pixels (UY * 400 + X) = Pixels (UY * 400 + 12 + UI_Text_Width ("File")) then
+               return False;
+            end if;
+         end loop;
+         return True;
+      end Title_Cue;
+      --  Whether the open File menu's first item ("Open") shows its cue.
+      function Item_Cue return Boolean is
+      begin
+         for X in 28 .. 28 + UI_Text_Width ("O") - 1 loop
+            if Pixels ((32 + UY) * 400 + X) /= Pixels ((32 + UY) * 400 + 27) then
+               return True;
+            end if;
+         end loop;
+         return False;
+      end Item_Cue;
    begin
+      --  Keyboard cues: none at rest; Alt held shows them, its release
+      --  hides them again.
+      pragma Assert (not Cues_Shown (S) and not Title_Cue);
+      Set_Alt_Held (S, True); Paint;
+      pragma Assert (Cues_Shown (S) and Title_Cue);
       for X in 10 .. 10 + UI_Text_Width ("F") - 1 loop
          pragma Assert (Pixels (UY * 400 + X) = Classic.text);
       end loop;
-      -- Idle title repair must preserve the gradient underneath its padding.
+      Set_Alt_Held (S, False); Paint;
+      pragma Assert (not Cues_Shown (S) and not Title_Cue);
+      --  A menu opened by the pointer shows none, in its title or items.
+      Pointer (Title_ID (1, 1), Controls.Pointer_Press, 10, 10); Paint;
+      pragma Assert (Is_Open (S) and not Cues_Shown (S) and not Title_Cue and not Item_Cue);
+      --  Holding Alt over it shows them; letting go hides them.
+      Set_Alt_Held (S, True); Paint;
+      pragma Assert (Title_Cue and Item_Cue);
+      Set_Alt_Held (S, False); Paint;
+      pragma Assert (not Title_Cue and not Item_Cue);
+      --  A key in it brings them up (it is now driven from the keyboard).
+      Press (Down); Paint;
+      pragma Assert (Cues_Shown (S) and Item_Cue);
+      Dismiss (S); Paint;
+      pragma Assert (not Cues_Shown (S) and not Title_Cue);
+      --  F10 opens it with its cues; closing it hides them.
+      Press (Activate); Paint;
+      pragma Assert (Is_Open (S) and Cues_Shown (S) and Title_Cue and Item_Cue);
+      Press (Activate); Paint;
+      pragma Assert (not Is_Open (S) and not Title_Cue);
+      --  Alt survives a dismissal: still held, still shown.
+      Set_Alt_Held (S, True); Dismiss (S); pragma Assert (Cues_Shown (S));
+      Set_Alt_Held (S, False);
+      Paint;
+      -- Idle title repair must keep the bar's own colour under its padding;
+      -- the bar is flat (like the title bar) with a rule as its last row.
       pragma Assert (Pixels (10 * 400 + 5) = Pixels (10 * 400 + 350));
-      pragma Assert (Pixels (2 * 400 + 350) /= Pixels (25 * 400 + 350));
+      pragma Assert (Pixels (2 * 400 + 350) = Pixels (25 * 400 + 350));
+      pragma Assert (Pixels (27 * 400 + 350) /= Pixels (25 * 400 + 350));
+      -- Titles are as wide as their labels plus padding: none is cut.
+      for X in 10 .. 10 + UI_Text_Width ("File") - 1 loop
+         pragma Assert (Controls.Hit (Map, X, 14) = Title_ID (1, 1));
+      end loop;
+      pragma Assert (Controls.Hit (Map, Menu_Title_Width ("File") + 2, 14) = Title_ID (1, 2));
       Press (Mnemonic, 'f'); Paint;
       for X in 10 .. 10 + UI_Text_Width ("F") - 1 loop
          pragma Assert (Pixels (UY * 400 + X) = Classic.selectionText);

@@ -11,6 +11,7 @@ package body Intel_GPU_GuC_Context_Session is
    function State (Object : Session) return Life.Phase is (Life.State (Object.Life));
    function Can_Run_And_Retire (Object : Session) return Boolean is (Life.Can_Run_And_Retire (Object.Life));
    function Can_Submit (Object : Session) return Boolean is (Life.Can_Submit (Object.Life));
+   function Credits_Held (Object : Session) return Natural is (Life.Credits_Held (Object.Life));
    procedure Fail (Object : in out Session) is
    begin Life.Fail (Object.Life); end Fail;
    procedure Initialize

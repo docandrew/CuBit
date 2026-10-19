@@ -62,7 +62,9 @@ class Configurations(unittest.TestCase):
                     # Intentional post-migration default added with RTC time.
                     # Preserve the legacy oracle and account for the exact key.
                     self.assertNotIn('clock.time-zone=', expected)
-                    expected = 'clock.time-zone=UTC\n' + expected
+                    # The live disc carries the NUC owner's zone.
+                    zone = 'UTC' if relative.as_posix() == 'system.conf' else 'America/Denver'
+                    expected = f'clock.time-zone={zone}\n' + expected
                     expected = ('desktop.appearance.theme.light=(theme v1 (base alloy-light))\n'
                                 'desktop.appearance.theme.dark=(theme v1 (base alloy-dark))\n' + expected)
                     if relative.as_posix() == 'system.conf':

@@ -44,7 +44,7 @@ begin
    pragma Assert (Result = D.Source_Rejected and Extra = A.No_Ticket);
    D.Release_Source (Foreign, Retired); pragma Assert (Retired = Addr (10000));
    for Index in D.Backing_Slot loop
-      D.Allocate_Backing (Index, 41, 17, Natural (Index) < 128, Leases (Index), Result);
+      D.Allocate_Backing (Index, 41, 17, Index in V.Glyph_Slot, Leases (Index), Result);
       pragma Assert (Result = D.Source_Accepted);
       D.Import_Source (Index, Addr (20000 + Natural (Index)), Rejected, Result);
       pragma Assert (Result = D.Source_Rejected and Rejected = V.No_Source);
@@ -78,5 +78,7 @@ begin
    pragma Assert (Result = D.Source_Rejected and Rejected = V.No_Source);
    D.Release_Source (Foreign, Retired); pragma Assert (Retired = Addr (30000));
    D.Stop; pragma Assert (D.Charged_Bytes = 0 and Vulkan_Device_Mock.Closes = 1);
-   Ada.Text_IO.Put_Line ("PASS Desktop strided 41-pixel images in 48-pixel rows: 128 masks + 2 backdrops + 2 icon atlases + 16 client images, upload/import/retirement, exact 152-allocation budget, external ownership exclusion and slot role reuse");
+   Ada.Text_IO.Put_Line ("PASS Desktop strided 41-pixel images in 48-pixel rows:" & Natural'Image (V.Glyph_Slots) &
+      " masks + 2 backdrops + 2 icon atlases + 16 client images, upload/import/retirement, exact" &
+      Natural'Image (4 + V.Source_Capacity) & "-allocation budget, external ownership exclusion and slot role reuse");
 end Desktop_Strided_Tests;

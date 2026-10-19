@@ -423,8 +423,7 @@ procedure main is
       rawBuffer : Unsigned_64;
    begin
       if fbWidth not in 1 .. Natural (DSP.DP.Positive_Extent'Last) or else
-        fbHeight not in 1 .. Natural (DSP.DP.Positive_Extent'Last) or else
-        fbPitch > DSP.DP.Maximum_Buffer_Bytes
+        fbHeight not in 1 .. Natural (DSP.DP.Positive_Extent'Last)
       then
          return;
       end if;

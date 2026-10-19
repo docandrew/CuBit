@@ -1,3 +1,4 @@
+with "../allocator/allocator_runtime_host.gpr";
 --  HOSTED/LINUX Workbench adapter.  SDL is not part of the CuBit runtime.
 with "../lib/ui/fonts_host.gpr";
 with "ccl_window_host.gpr";
@@ -6,7 +7,7 @@ with "cubit_shared.gpr";
 project CCL_UI_Preview is
    for Languages use ("Ada");
    for Source_Dirs use ("src", "tools/ccl-ui-preview", "tools/ccl-ui-preview/host",
-      "../lib/ui", "../lib/theme", "../lib/compositor", "../lib/display", "../allocator/src");
+      "../lib/ui", "../lib/theme", "../lib/compositor", "../lib/display");
    --  The root package CuBit comes with cubit_shared.gpr (the runtime's).
    for Excluded_Source_Files use ("cubit.ads");
    for Object_Dir use "build/ccl-ui-preview";

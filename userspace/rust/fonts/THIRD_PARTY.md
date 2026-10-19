@@ -23,7 +23,8 @@ Unmodified upstream license texts are in `licenses/`. Preserve these notices
 when distributing the linked components. `libm`'s complete license text also
 contains its inherited third-party notices.
 
-Unmodified IBM Plex Sans Regular and IBM Plex Mono Regular are embedded from
+Unmodified IBM Plex Sans Regular, IBM Plex Sans SemiBold and IBM Plex Mono
+Regular are embedded from
 the pinned Nix `ibm-plex` package. Their SIL OFL 1.1 notice is retained at
 `../../lib/ui/licenses/IBM_PLEX_OFL.txt`; see the UI asset provenance document.
 No externally supplied font file is accepted by this first runtime boundary.

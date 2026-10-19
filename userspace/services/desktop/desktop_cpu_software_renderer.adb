@@ -95,7 +95,7 @@ package body Desktop_CPU_Software_Renderer with SPARK_Mode,
      (Target : Compositor_Formats.Image; Target_Bytes : Compositor_Formats.Byte_Count;
       Screen : CuBit.Display_Geometry.Output; Items : Compositor_Text.Glyphs;
       Length : Compositor_Text.Count; Damage : CuBit.Display_Geometry.Physical_Rectangle;
-      Tint : Compositor_Formats.Word; Secondary : Boolean;
+      Tint : Compositor_Formats.Word; Face : Compositor_Text.L.Face_Index; Secondary : Boolean;
       Drawn, Repaint, Must_Restart : out Boolean)
      with Refined_Global => (In_Out => Text) is
       pragma Unreferenced (Secondary);
@@ -108,8 +108,8 @@ package body Desktop_CPU_Software_Renderer with SPARK_Mode,
         (Target, Target_Bytes, Screen) then return; end if;
       for I in 1 .. Length loop
          Compositor_Software_Text_Target.Paint
-           (Text, Target, Target_Bytes, (0, Items (I).Code, Screen.Scale),
-            Screen, (Items (I).Cell.Left, Items (I).Cell.Top),
+           (Text, Target, Target_Bytes, (Face, Items (I).Code, Screen.Scale),
+            Screen, (Items (I).Cell.Left, Items (I).Cell.Top), Items (I).Offset,
             Compositor_Text.Clip (Screen, Items (I).Cell, Damage), Tint, OK);
          if not OK then
             -- Earlier glyphs may have blended into the target. Replay before

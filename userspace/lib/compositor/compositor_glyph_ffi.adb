@@ -2,7 +2,7 @@ package body Compositor_Glyph_FFI with SPARK_Mode => Off is
    subtype Word is Interfaces.Unsigned_32;
    use type Word, Interfaces.Unsigned_64, System.Address;
    type Request is record
-      Font, Code, Em_Numerator, Em_Denominator, Width, Height, Pitch, Capacity : Word;
+      Font, Code, Em_Numerator, Em_Denominator, Width, Height, Pitch, Capacity, Phases : Word;
    end record with Convention => C;
    type Metrics is record
       Advance, Height : Word;
@@ -17,7 +17,8 @@ package body Compositor_Glyph_FFI with SPARK_Mode => Off is
       Advance : out Natural; Completed : out Boolean) is
       Value : aliased Request :=
         (Font, Code, Word (Layout.Em_Numerator), Word (Layout.Em_Denominator),
-         Word (Layout.Width), Word (Layout.Height), Word (Layout.Pitch), Word (Layout.Bytes));
+         Word (Layout.Width), Word (Layout.Height), Word (Layout.Pitch), Word (Layout.Bytes),
+         Compositor_Glyph_Layout.Phases);
       Result : aliased Metrics := (0, 0);
       Status : Word;
    begin
@@ -25,7 +26,7 @@ package body Compositor_Glyph_FFI with SPARK_Mode => Off is
       if not Compositor_Glyph_Layout.Valid (Layout) or else
         Pixels = System.Null_Address or else Capacity < Interfaces.Unsigned_64 (Layout.Bytes)
       then return; end if;
-      pragma Assert (Request'Size = 32 * 8 and Metrics'Size = 8 * 8);
+      pragma Assert (Request'Size = 36 * 8 and Metrics'Size = 8 * 8);
       Status := Native (Value'Access, Pixels, Result'Access);
       if Status /= 0 or else Result.Advance not in 1 .. Word (Layout.Width) or else
         Result.Height /= Word (Layout.Height)

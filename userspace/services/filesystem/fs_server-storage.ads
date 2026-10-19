@@ -28,6 +28,11 @@ private package Fs_Server.Storage is
    --  by the running transaction, which are free once it commits).
    procedure handleDescribeVolume (owner : Process_ID; pathLength, rangeBytes : Unsigned_64);
 
+   --  Queue_List_Places: the caller's scopes whose volume is present now
+   --  (attached and admitted, the boot archive, a mounted optical disc),
+   --  selected by CuBit.Filesystem_Places into the arena range.
+   procedure handleListPlaces (owner : Process_ID; rangeBytes : Unsigned_64);
+
    --  The periodic commit (Linux's commit=5): clients' buffered writes are
    --  harvested, and each volume's journal commits its dirty blocks.
    procedure commitTick;

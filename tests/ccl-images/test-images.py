@@ -98,7 +98,7 @@ class Images(unittest.TestCase):
                                                             "boot-logs.app", "logs.app", "ccl-console.app", "gpu-viewer.app",
                                                             "Assets/cubit-wallpapers/1/cubes.qoi",
                                                             "Assets/cubit-wallpapers/1/cubie.qoi",
-                                                            "Assets/cubit-icons/1/applications.qoi"})
+                                                            "Assets/cubit-icons/3/applications.qoi"})
                                      - {"devmgr.svc", "filesystem.svc", "ramdisk.drv", "ps2.drv", "xhci.drv",
                                         "ata.drv", "nvme.drv", "storage-check.app"})
                     self.assertFalse(any("network-check" in row[2] or "ccl-control" in row[2] for row in rows))

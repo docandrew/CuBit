@@ -23,6 +23,10 @@ procedure Desktop_GPU_Scene_Tests is
    Key : constant Vulkan_Glyph_Sources.Key := (0, 65, (5, 4));
    Screen : constant Vulkan_Scene.A.G.Output := (32, 24, Vulkan_Scene.A.G.Unrotated, (5, 4), 0, 0);
    Result : G.Outcome; OK : Boolean;
+   package L renames Vulkan_Glyph_Sources.L;
+   Page : constant := 4096;
+   Fixed_Pages : constant := 5;            --  targets and the 8 KiB staging
+   use type G.Capture_Failure;
    function Calls return U32 with Import, Convention => C, External_Name => "residency_font_calls";
    procedure Start is
    begin
@@ -30,15 +34,38 @@ procedure Desktop_GPU_Scene_Tests is
    end Start;
    procedure Glyph is
    begin
-      G.Add_Glyph (S, Key, (0, 0, 32, 17), 16#FFFFFFFF#, OK);
+      G.Add_Glyph (S, Key, (0, 0, 32, 17), 0, 16#FFFFFFFF#, OK);
    end Glyph;
+   --  One frame drawing every glyph of every face at the screen's density:
+   --  cold glyphs upload one capture at a time, then the whole frame fits.
+   procedure Whole_Repertoire is
+      Rounds : Natural := 0;
+   begin
+      loop
+         Start;
+         for I in 0 .. L.Repertoire - 1 loop
+            G.Add_Glyph (S, (I / L.Code_Count, L.First_Code + I mod L.Code_Count, Screen.Scale),
+                         (0, 0, 32, 17), 0, 16#FFFFFFFF#, OK);
+            exit when not OK;
+         end loop;
+         exit when OK;
+         G.Finish (S, Result); pragma Assert (Result = G.Pending and G.Current (S) = G.Uploading);
+         G.Poll (S, Result); pragma Assert (Result = G.Retry and G.Current (S) = G.Idle);
+         pragma Assert (G.Last_Failure (S) = G.Cold_Source);
+         Rounds := Rounds + 1; pragma Assert (Rounds <= L.Repertoire);
+      end loop;
+      pragma Assert (G.Reader_Count (S) = L.Repertoire and G.Layer_Count (S) = L.Repertoire);
+      G.Finish (S, Result); pragma Assert (Result = G.Pending and G.Current (S) = G.Submitted);
+      G.Poll (S, Result); pragma Assert (Result = G.Complete and G.Current (S) = G.Idle);
+      pragma Assert (G.Last_Failure (S) = G.No_Failure and G.Reader_Count (S) = 0);
+   end Whole_Repertoire;
 begin
    pragma Assert (D.Admit_Capture (Screen) = D.Capture_Unavailable);
    Reset; Context_Set (0, 0); Vulkan_Device_Mock.Set (True, True, 0); Pipeline_Set (0, 0);
    Image_Set (4096, 1, 0, 0, 0); Metadata_Set (0); Font_Set (0);
-   Upload_Set (4096, 1, 0, 0, 0, 0);
-   D.Initialize (CuBit.Handles.Fixture.Endpoint_Of (25)); D.Configure_Targets (32, 24, 1, 140 * 4096, OK); pragma Assert (OK);
-   D.Prepare_Pipeline (OK); pragma Assert (OK); D.Configure_Upload (2048, OK); pragma Assert (OK);
+   Upload_Set (8192, 1, 0, 0, 0, 0);
+   D.Initialize (CuBit.Handles.Fixture.Endpoint_Of (25)); D.Configure_Targets (32, 24, 1, (R.C.Slot'Last + Fixed_Pages) * Page, OK); pragma Assert (OK);
+   D.Prepare_Pipeline (OK); pragma Assert (OK); D.Configure_Upload (8192, OK); pragma Assert (OK);
    pragma Assert (D.Admit_Capture (Screen) = D.Capture_Allowed);
    G.Begin_Frame (S, (64, 24, Vulkan_Scene.A.G.Unrotated, (5, 4), 0, 0), 0, OK);
    pragma Assert (not OK and G.Current (S) = G.Idle and Calls = 0 and G.Reader_Count (S) = 0);
@@ -82,8 +109,9 @@ begin
    G.Append (S, (Kind => Vulkan_Scene.Glyph_Mask, others => <>), OK); pragma Assert (not OK);
    G.Finish (S, Result); pragma Assert (Result = G.Rejected and G.Reader_Count (S) = 0);
    Start; Glyph; pragma Assert (OK); G.Discard (S, Result); pragma Assert (Result = G.Retry and G.Reader_Count (S) = 0);
-   G.Close (S, OK); pragma Assert (OK and G.Current (S) = G.Closed and D.Charged_Bytes = 4 * 4096);
+   Whole_Repertoire;
+   G.Close (S, OK); pragma Assert (OK and G.Current (S) = G.Closed and D.Charged_Bytes = 5 * 4096);  --  the 8 KiB staging (a stacked 5/4 mask is 4224 bytes) is two pages
    D.Stop; pragma Assert (D.Charged_Bytes = 0);
    pragma Assert (D.Admit_Capture (Screen) = D.Capture_Unavailable);
-   Ada.Text_IO.Put_Line ("PASS whole scene: cold upload, 200 repeated glyphs/one lease, mixed layers, pending retention, overflow rejection and shutdown");
+   Ada.Text_IO.Put_Line ("PASS whole scene: cold upload, 200 repeated glyphs/one lease, mixed layers, pending retention, overflow rejection, a" & Natural'Image (L.Repertoire) & "-glyph frame (every face's printable set) and shutdown");
 end Desktop_GPU_Scene_Tests;

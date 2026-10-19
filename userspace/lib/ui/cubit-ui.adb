@@ -9,8 +9,12 @@ with Client_Raster;
 with System.Storage_Elements; use System.Storage_Elements;
 with Font8x16;
 with CuBit.Fonts;
+with Icon_Edge_Choice;
+with Glyph_Pen;
 with Client_Glyphs;
 with Client_Glyph_Blend;
+with Compositor_Glyph_Placement;
+with Text_Fit;
 
 package body CuBit.UI is
    Selected_Theme : Theme := CuBit_Alloy;
@@ -318,6 +322,26 @@ package body CuBit.UI is
       return Shift_Left (r, 16) or Shift_Left (g, 8) or b;
    end Blend;
 
+   --  Disabled artwork: desaturated (Rec. 601 luma), pulled halfway to the
+   --  theme's muted text colour so it stays visible on dark faces as well
+   --  as light ones, and faded.
+   LUMA_RED : constant := 77;
+   LUMA_GREEN : constant := 150;
+   LUMA_BLUE : constant := 29;
+   LUMA_SCALE : constant := 256;
+   MUTED_PULL : constant := 128;
+   DISABLED_ALPHA : constant := 112;
+   OPAQUE : constant := 255;
+   procedure Shade_Disabled (source : in out Color; alpha : in out Unsigned_8) is
+      gray : constant Unsigned_32 :=
+        (LUMA_RED * (Shift_Right (source, 16) and 16#FF#) +
+         LUMA_GREEN * (Shift_Right (source, 8) and 16#FF#) +
+         LUMA_BLUE * (source and 16#FF#) + LUMA_SCALE / 2) / LUMA_SCALE;
+   begin
+      source := Blend (Shift_Left (gray, 16) or Shift_Left (gray, 8) or gray, Selected_Theme.muted, MUTED_PULL);
+      alpha := Unsigned_8 (Unsigned_32 (alpha) * DISABLED_ALPHA / OPAQUE);
+   end Shade_Disabled;
+
    procedure Draw_Bitmap
      (c : Canvas; x, y : Natural; pixels : ARGB_Bitmap;
       enabled : Boolean := True)
@@ -326,7 +350,6 @@ package body CuBit.UI is
         (c, (x => x, y => y, w => pixels'Length (2), h => pixels'Length (1)));
       source : Color;
       alpha : Unsigned_8;
-      gray : Unsigned_32;
    begin
       if c.addr = System.Null_Address or else Is_Empty (clipped) then
          return;
@@ -339,12 +362,7 @@ package body CuBit.UI is
             alpha := Unsigned_8 (Shift_Right (source, 24));
             if alpha /= 0 then
                if not enabled then
-                  gray :=
-                    (77 * (Shift_Right (source, 16) and 16#FF#) +
-                     150 * (Shift_Right (source, 8) and 16#FF#) +
-                     29 * (source and 16#FF#) + 128) / 256;
-                  source := Shift_Left (gray, 16) or Shift_Left (gray, 8) or gray;
-                  alpha := Unsigned_8 (Unsigned_32 (alpha) * 112 / 255);
+                  Shade_Disabled (source, alpha);
                end if;
                declare
                   offset : constant Storage_Offset :=
@@ -360,49 +378,51 @@ package body CuBit.UI is
       end loop;
    end Draw_Bitmap;
 
-   procedure Draw_Bitmap_Fitted
+   procedure Draw_Bitmap_Native
      (c : Canvas; r : Rect; pixels : ARGB_Bitmap; enabled : Boolean := True)
    is
       package G renames Client_Canvas_Geometry;
-      clipped : constant Rect := Raster_Rect (c, r);
-      left, top, right, bottom : Natural;
+      --  The canvas's clip in physical pixels.
+      clip : constant Rect := Raster_Rect (c, (0, 0, c.width, c.height));
+      boxLeft, boxTop, boxRight, boxBottom : Natural;
+      left, top : Integer;
       source : Color;
       alpha : Unsigned_8;
-      gray : Unsigned_32;
    begin
-      if c.addr = System.Null_Address or else Is_Empty (clipped) or else pixels'Length (1) = 0
-        or else pixels'Length (2) = 0
+      if c.addr = System.Null_Address or else Is_Empty (clip) or else Is_Empty (r)
+        or else pixels'Length (1) = 0 or else pixels'Length (2) = 0
+        or else pixels'Length (1) > Icon_Edge_Choice.Largest_Edge
+        or else pixels'Length (2) > Icon_Edge_Choice.Largest_Edge
         or else c.width > G.Logical_Edge'Last - c.originX or else c.height > G.Logical_Edge'Last - c.originY
         or else r.x > G.Logical_Edge'Last - r.w or else r.y > G.Logical_Edge'Last - r.h
       then
          return;
       end if;
       if c.densityNumerator = c.densityDenominator then
-         left := r.x; top := r.y; right := r.x + r.w; bottom := r.y + r.h;
+         boxLeft := r.x; boxTop := r.y; boxRight := r.x + r.w; boxBottom := r.y + r.h;
       else
-         left := G.Relative (c.originX, r.x, c.densityNumerator, c.densityDenominator);
-         right := G.Relative (c.originX, r.x + r.w, c.densityNumerator, c.densityDenominator);
-         top := G.Relative (c.originY, r.y, c.densityNumerator, c.densityDenominator);
-         bottom := G.Relative (c.originY, r.y + r.h, c.densityNumerator, c.densityDenominator);
+         boxLeft := G.Relative (c.originX, r.x, c.densityNumerator, c.densityDenominator);
+         boxRight := G.Relative (c.originX, r.x + r.w, c.densityNumerator, c.densityDenominator);
+         boxTop := G.Relative (c.originY, r.y, c.densityNumerator, c.densityDenominator);
+         boxBottom := G.Relative (c.originY, r.y + r.h, c.densityNumerator, c.densityDenominator);
       end if;
-      if right <= left or else bottom <= top then
+      if boxRight < boxLeft or else boxBottom < boxTop or else
+        boxRight > Icon_Edge_Choice.Pixel_Bound or else boxBottom > Icon_Edge_Choice.Pixel_Bound
+      then
          return;
       end if;
-      for row in clipped.y .. clipped.y + clipped.h - 1 loop
-         for col in clipped.x .. clipped.x + clipped.w - 1 loop
-            if row >= top and then row < bottom and then col >= left and then col < right then
-               source := pixels
-                 (pixels'First (1) + (row - top) * pixels'Length (1) / (bottom - top),
-                  pixels'First (2) + (col - left) * pixels'Length (2) / (right - left));
+      left := Icon_Edge_Choice.Centered (boxLeft, boxRight, pixels'Length (2));
+      top := Icon_Edge_Choice.Centered (boxTop, boxBottom, pixels'Length (1));
+      for row in clip.y .. clip.y + clip.h - 1 loop
+         for col in clip.x .. clip.x + clip.w - 1 loop
+            if row >= top and then row < top + pixels'Length (1) and then
+              col >= left and then col < left + pixels'Length (2)
+            then
+               source := pixels (pixels'First (1) + (row - top), pixels'First (2) + (col - left));
                alpha := Unsigned_8 (Shift_Right (source, 24));
                if alpha /= 0 then
                   if not enabled then
-                     gray :=
-                       (77 * (Shift_Right (source, 16) and 16#FF#) +
-                        150 * (Shift_Right (source, 8) and 16#FF#) +
-                        29 * (source and 16#FF#) + 128) / 256;
-                     source := Shift_Left (gray, 16) or Shift_Left (gray, 8) or gray;
-                     alpha := Unsigned_8 (Unsigned_32 (alpha) * 112 / 255);
+                     Shade_Disabled (source, alpha);
                   end if;
                   declare
                      offset : constant Storage_Offset := Storage_Offset (row * c.pitch + col * 4);
@@ -415,7 +435,7 @@ package body CuBit.UI is
             end if;
          end loop;
       end loop;
-   end Draw_Bitmap_Fitted;
+   end Draw_Bitmap_Native;
 
    procedure Fill_Vertical_Gradient
       (c : Canvas; r : Rect; topColor, bottomColor : Color)
@@ -437,46 +457,72 @@ package body CuBit.UI is
       end loop;
    end Fill_Vertical_Gradient;
 
+   --  The one measure (CuBit.Fonts.Width): unrounded advances and kerning,
+   --  the same pen positions the drawing below places glyphs at.
    function UI_Text_Width (text : String) return Natural is
-      width : Natural := 0;
-   begin
-      for i in text'Range loop
-         width := width + CuBit.Fonts.Width (CuBit.Fonts.Sans, text (i));
-      end loop;
-      return width;
-   end UI_Text_Width;
+     (CuBit.Fonts.Width (CuBit.Fonts.Sans, text));
 
    function UI_Text_Height return Natural is
    begin
       return CuBit.Fonts.Line_Height;
    end UI_Text_Height;
 
+   --  A text run's logical box, for its background.
+   function Run_Box (x, y : Natural; width : Natural) return Rect is
+     ((x, y, width, CuBit.Fonts.Line_Height));
+
+   --  Pen positions are logical pixels and quarters; Pixel_Of may round up to
+   --  the next pixel, which still fits Natural for any on-canvas text.
+   function Pen_Pixel (Pen : Glyph_Pen.Position) return Natural is (Glyph_Pen.Pixel_Of (Pen));
+
    Density_Fonts : Client_Glyphs.State;
    -- Pointer access is the narrow bridge: Read pins the immutable A8 mask,
    -- this synchronous blend finishes all reads before returning its lease.
+   -- The mask's pen origin sits CuBit.Fonts.Origin logical pixels from its
+   -- left edge, so its left edge is that far left of the pen (possibly left
+   -- of the canvas); nothing is clipped at the advance. The pen's fraction
+   -- picks the mask's phase: the compositor's quarter-pixel placement
+   -- (Compositor_Glyph_Placement.Snap_Phase), at the canvas density.
+   pragma Compile_Time_Error
+     (Glyph_Pen.Unit /= Client_Glyphs.L.Pen_Unit or else Glyph_Pen.Phases /= Client_Glyphs.L.Phases,
+      "toolkit pens and density masks must share pen units and phases");
    procedure Draw_Density_Glyph
-     (c : Canvas; x, y : Natural; ch : Character; face : CuBit.Fonts.Face; fg : Color)
+     (c : Canvas; Pen : Glyph_Pen.Position; y : Natural; ch : Character; face : CuBit.Fonts.Face; fg : Color)
    is
       package G renames Client_Canvas_Geometry;
       package F renames Client_Glyphs;
+      package P renames Compositor_Glyph_Placement;
       Key : F.C.Key;
       View : F.View;
       Layout : F.L.Layout;
+      Pen_X : constant Natural := Pen / Glyph_Pen.Unit;
+      Box_X : constant Natural := (if Pen_X > CuBit.Fonts.Origin then Pen_X - CuBit.Fonts.Origin else 0);
+      Place : P.Subpixel_Origin;
       Clipped : constant Rect := Raster_Rect
-        (c, (x, y, CuBit.Fonts.Max_Width, CuBit.Fonts.Line_Height));
-      Left, Top, Right, Bottom : Natural;
+        (c, (Box_X, y, CuBit.Fonts.Max_Width, CuBit.Fonts.Line_Height));
+      Left, Top, Right, Bottom, X0, Y0 : Integer;
    begin
-      if c.addr = System.Null_Address or else Is_Empty (Clipped) then return; end if;
+      if c.addr = System.Null_Address or else Is_Empty (Clipped) or else
+        Pen_X > G.Logical_Edge'Last - c.originX or else y > G.Logical_Edge'Last - c.originY
+      then return; end if;
       Key := (CuBit.Fonts.Face'Pos (face),
         (if Character'Pos (ch) in 32 .. 126 then Character'Pos (ch) else 63),
         (F.L.G.Scale_Component (c.densityNumerator), F.L.G.Scale_Component (c.densityDenominator)));
       F.Read (Density_Fonts, Key, View);
       if not F.Ready (View) then return; end if;
       Layout := F.Raster (View);
-      Left := G.Relative (c.originX, x, c.densityNumerator, c.densityDenominator);
-      Top := G.Relative (c.originY, y, c.densityNumerator, c.densityDenominator);
-      Right := Natural'Min (Left + Layout.Width, Clipped.x + Clipped.w);
-      Bottom := Natural'Min (Top + Layout.Height, Clipped.y + Clipped.h);
+      --  The raster's left column in the surface, less the canvas's own
+      --  first column (Edge of its origin): canvas-relative.
+      Place := P.Snap_Phase
+        (P.G.Logical_Coordinate (c.originX + Pen_X - CuBit.Fonts.Origin), Pen mod Glyph_Pen.Unit, 0,
+         (P.G.Scale_Component (c.densityNumerator), P.G.Scale_Component (c.densityDenominator)));
+      Left := Integer (Place.Pixel) - Integer (G.Edge (c.originX, c.densityNumerator, c.densityDenominator));
+      Top := Integer (G.Relative (c.originY, y, c.densityNumerator, c.densityDenominator));
+      Right := Integer'Min (Left + Layout.Width, Clipped.x + Clipped.w);
+      Bottom := Integer'Min (Top + Layout.Height, Clipped.y + Clipped.h);
+      --  The visible part: the clip and the raster's own box.
+      X0 := Integer'Max (Clipped.x, Left);
+      Y0 := Integer'Max (Clipped.y, Top);
       declare
          package B renames Client_Glyph_Blend;
          -- Imported arrays cover only the accessed prefix, including a partial
@@ -489,8 +535,8 @@ package body CuBit.UI is
             Target_Address : constant Integer_Address := To_Integer (c.addr);
             Target_Bytes, Row_Address : Integer_Address;
          begin
-            if Clipped.x >= Right or else Clipped.y >= Bottom or else
-              Clipped.x < Left or else Clipped.y < Top or else
+            if X0 >= Right or else Y0 >= Bottom or else
+              X0 < Left or else Y0 < Top or else
               c.pitch = 0 or else c.pitch mod 4 /= 0 or else
               Target_Address mod 4 /= 0
             then return; end if;
@@ -500,15 +546,15 @@ package body CuBit.UI is
             then return; end if;
             --  Only the rows the glyph touches: the imported target starts at
             --  its first row, so its contracts never span the whole surface.
-            Length := (Bottom - 1 - Clipped.y) * Pitch + Right;
-            Source := (Clipped.x - Left, Clipped.y - Top,
-                       Right - Clipped.x, Bottom - Clipped.y);
-            Destination := (Clipped.x, 0, Source.Width, Source.Height);
+            Length := (Bottom - 1 - Y0) * Pitch + Right;
+            Source := (X0 - Left, Y0 - Top + Place.Phase * Layout.Height,
+                       Right - X0, Bottom - Y0);
+            Destination := (X0, 0, Source.Width, Source.Height);
             if not B.Fits (Layout.Bytes, Layout.Pitch, Source) or else
               not B.Fits (Length, Pitch, Destination)
             then return; end if;
             Target_Bytes := Integer_Address (Length) * 4;
-            Row_Address := Target_Address + Integer_Address (Clipped.y) * Integer_Address (c.pitch);
+            Row_Address := Target_Address + Integer_Address (Y0) * Integer_Address (c.pitch);
             if Mask_Address = 0 or else
               Mask_Address > Integer_Address'Last - Integer_Address (Layout.Bytes) or else
               Row_Address > Integer_Address'Last - Target_Bytes
@@ -531,39 +577,73 @@ package body CuBit.UI is
       F.Finish (Density_Fonts, View);
    end Draw_Density_Glyph;
 
-   --  Paint Glyph, drawn with its top-left at (x, y), into clipped: the
-   --  part of the glyph cell inside the 1:1 surface. The pixel loop is
+   --  Paint mask columns of Glyph into clipped, the mask's pen origin column
+   --  (CuBit.Fonts.Origin) at Pen_X and its top row at y. The pixel loop is
    --  Client_Raster's, proved; this checks everything it relies on.
+   type Ramp_Access is access constant Client_Raster.Ramp;
    procedure Blit_Glyph
-     (c : Canvas; clipped : Rect; Glyph : CuBit.Fonts.Glyph_Access; x, y : Natural;
-      fg : Color; Opaque : Boolean; bg : Color)
+     (c : Canvas; clipped : Rect; Glyph : CuBit.Fonts.Glyph_Access; Pen_X, y : Natural;
+      fg : Color; Opaque : Boolean; bg : Color; Over : Ramp_Access := null)
    is
       package R renames Client_Raster;
    begin
       if c.addr = System.Null_Address or else Is_Empty (clipped) or else c.pitch mod 4 /= 0 or else
-        clipped.x + clipped.w > c.pitch / 4 or else clipped.x < x or else clipped.y < y or else
-        clipped.y - y > R.Mask_Row'Last or else clipped.x - x > R.Mask_Column'Last or else
-        clipped.h > R.MASK_ROWS - (clipped.y - y) or else clipped.w > R.MASK_COLUMNS - (clipped.x - x)
+        clipped.x + clipped.w > c.pitch / 4 or else clipped.x + CuBit.Fonts.Origin < Pen_X or else clipped.y < y or else
+        clipped.y - y > R.Mask_Row'Last or else clipped.x + CuBit.Fonts.Origin - Pen_X > R.Mask_Column'Last or else
+        clipped.h > R.MASK_ROWS - (clipped.y - y) or else
+        clipped.w > R.MASK_COLUMNS - (clipped.x + CuBit.Fonts.Origin - Pen_X)
       then
          return;
       end if;
       declare
          Row : constant R.Mask_Row := clipped.y - y;
-         Column : constant R.Mask_Column := clipped.x - x;
+         Column : constant R.Mask_Column := clipped.x + CuBit.Fonts.Origin - Pen_X;
          Pitch : constant Positive := c.pitch / 4;
          Target : R.Pixels (0 .. (clipped.h - 1) * Pitch + clipped.x + clipped.w - 1)
            with Import, Address => c.addr + Storage_Offset (clipped.y * c.pitch);
          Source : R.Mask with Import, Address => Glyph.Alpha'Address;
       begin
-         R.Blit_Mask (Target, Pitch, (clipped.x, 0, clipped.w, clipped.h), Source, Row, Column, fg, Opaque, bg);
+         if Over /= null then
+            R.Blit_Mask_Over (Target, Pitch, (clipped.x, 0, clipped.w, clipped.h), Source, Row, Column, fg, bg, Over.all);
+         else
+            R.Blit_Mask (Target, Pitch, (clipped.x, 0, clipped.w, clipped.h), Source, Row, Column, fg, Opaque, bg);
+         end if;
       end;
    end Blit_Glyph;
+
+   --  Blend only Glyph's ink box over what is drawn (density 1): its pen
+   --  origin at (Pen_X, y). Ink left of the canvas is clipped.
+   procedure Blit_Ink
+     (c : Canvas; Glyph : CuBit.Fonts.Glyph_Access; Pen_X, y : Natural; fg : Color;
+      Under : Color := 0; Over : Ramp_Access := null)
+   is
+      Ink_Left : constant Natural := Natural (Glyph.Ink_Left);
+      Width : constant Natural := Natural (Glyph.Ink_Width);
+      Left : Natural;
+      Lost : Natural := 0;
+   begin
+      if Width = 0 or else Glyph.Ink_Height = 0 or else Ink_Left > CuBit.Fonts.Max_Width or else
+        Width > CuBit.Fonts.Max_Width or else Glyph.Ink_Top > Unsigned_32 (CuBit.Fonts.Max_Width) or else
+        Glyph.Ink_Height > Unsigned_32 (CuBit.Fonts.Max_Width) or else Pen_X > Natural'Last / 2 or else
+        y > Natural'Last / 2
+      then return; end if;
+      if Pen_X + Ink_Left >= CuBit.Fonts.Origin then
+         Left := Pen_X + Ink_Left - CuBit.Fonts.Origin;
+      else
+         Left := 0;
+         Lost := CuBit.Fonts.Origin - Pen_X - Ink_Left;
+      end if;
+      if Lost >= Width then return; end if;
+      Blit_Glyph (c, Clamp_Rect (c, (Left, y + Natural (Glyph.Ink_Top), Width - Lost, Natural (Glyph.Ink_Height))),
+                  Glyph, Pen_X, y, fg, False, Under, Over);
+   end Blit_Ink;
 
    --  Glyphs already blended over a solid background, for text whose
    --  background is known: drawing one is then row copies of its cell
    --  instead of blending every pixel. Whole-number densities up to 2 only
    --  (a cell's physical width is then the same everywhere); a glyph whose
    --  ink leaves its cell, or that does not fit a block, is never cached.
+   --  Monospace cells only: proportional text overlaps (kerning, phases).
    COMPOSITE_ENTRIES : constant := 256;
    COMPOSITE_WIDTH : constant := 64;
    COMPOSITE_HEIGHT : constant := 34;
@@ -610,6 +690,8 @@ package body CuBit.UI is
       Key : constant Composite_Key := (face, ch, Positive'Max (1, Scale), fg, bg);
       Slot : constant Composite_Index := Composite_Slot (Key);
       E : Composite_Entry renames Composites (Slot);
+      --  Physical columns of the mask left of its pen origin.
+      Margin : constant Natural := CuBit.Fonts.Origin * Positive'Max (1, Scale);
 
       procedure Fill_Entry is
          Glyph_Key : F.C.Key;
@@ -631,22 +713,25 @@ package body CuBit.UI is
             return;
          end if;
          Layout := F.Raster (View);
-         if Layout.Width <= COMPOSITE_WIDTH and then Layout.Height <= COMPOSITE_HEIGHT and then
-           Layout.Height >= CuBit.Fonts.Line_Height * Scale
+         if Layout.Width <= COMPOSITE_WIDTH and then Layout.Width > Margin and then
+           Layout.Height <= COMPOSITE_HEIGHT and then Layout.Height >= CuBit.Fonts.Line_Height * Scale
          then
             declare
                Mask : B.Bytes (0 .. Layout.Bytes - 1) with Import, Address => F.Pixels (View);
                Ink_Outside : Boolean := False;
             begin
                for Row in 0 .. Layout.Height - 1 loop
-                  for Column in E.Cell_Width .. Layout.Width - 1 loop
-                     Ink_Outside := Ink_Outside or else Mask (Row * Layout.Pitch + Column) /= 0;
+                  for Column in 0 .. Layout.Width - 1 loop
+                     if Column < Margin or else Column >= Margin + E.Cell_Width then
+                        Ink_Outside := Ink_Outside or else Mask (Row * Layout.Pitch + Column) /= 0;
+                     end if;
                   end loop;
                end loop;
                if not Ink_Outside then
                   E.Pixels := [others => bg];
                   B.Paint (Mask, B.Pixels (E.Pixels), Layout.Pitch, COMPOSITE_WIDTH,
-                           (0, 0, Layout.Width, Layout.Height), (0, 0, Layout.Width, Layout.Height), fg);
+                           (Margin, 0, Layout.Width - Margin, Layout.Height),
+                           (0, 0, Layout.Width - Margin, Layout.Height), fg);
                   E.Usable := True;
                end if;
             end;
@@ -662,7 +747,7 @@ package body CuBit.UI is
       end if;
       if not E.Usable then
          Fill_Rect (c, (x, y, Advance, CuBit.Fonts.Line_Height), bg);
-         Draw_Density_Glyph (c, x, y, ch, face, fg);
+         Draw_Density_Glyph (c, Glyph_Pen.Start (x), y, ch, face, fg);
          return;
       end if;
       declare
@@ -685,13 +770,13 @@ package body CuBit.UI is
       end;
    end Draw_Density_Cell;
 
-   --  Opaque glyph cells at density 1 (code and UI text over a known
-   --  background) have their own cache of small cells: an editor's palette
-   --  (token inks over line, selection, match and occurrence backgrounds)
-   --  needs far more entries than the density cache's large blocks allow.
-   --  Only the keys are static (about 48 KiB); a slot's pixels come from
-   --  the process heap the first time it is filled, so an app pays for the
-   --  cells it draws (at most DIRECT_ENTRIES of 1 KiB).
+   --  Opaque monospace cells at density 1 (code over a known background)
+   --  have their own cache of small cells: an editor's palette (token inks
+   --  over line, selection, match and occurrence backgrounds) needs far more
+   --  entries than the density cache's large blocks allow. Only the keys are
+   --  static (about 48 KiB); a slot's pixels come from the process heap the
+   --  first time it is filled, so an app pays for the cells it draws (at
+   --  most DIRECT_ENTRIES of 1 KiB).
    DIRECT_ENTRIES : constant := 2_048;
    DIRECT_WIDTH : constant := 16;
    DIRECT_HEIGHT : constant := CuBit.Fonts.Line_Height;
@@ -730,7 +815,7 @@ package body CuBit.UI is
       package R renames Client_Raster;
       clipped : constant Rect := Clamp_Rect (c, (x => x, y => y, w => Width, h => CuBit.Fonts.Line_Height));
    begin
-      if Width = 0 or else Width > DIRECT_WIDTH or else Width > R.MASK_COLUMNS
+      if Width = 0 or else Width > DIRECT_WIDTH or else Width > R.MASK_COLUMNS - CuBit.Fonts.Origin
         or else CuBit.Fonts.Line_Height > R.MASK_ROWS
       then
          Blit_Glyph (c, clipped, glyph, x, y, fg, True, bg);
@@ -759,8 +844,8 @@ package body CuBit.UI is
                   E.Cell := new Direct_Cell;
                end if;
                E.Cell.all := [others => bg];
-               R.Blit_Mask (E.Cell.all, DIRECT_WIDTH, (0, 0, Width, CuBit.Fonts.Line_Height), Source, 0, 0, fg,
-                            True, bg);
+               R.Blit_Mask (E.Cell.all, DIRECT_WIDTH, (0, 0, Width, CuBit.Fonts.Line_Height), Source, 0,
+                            CuBit.Fonts.Origin, fg, True, bg);
             end;
          end if;
          declare
@@ -774,90 +859,96 @@ package body CuBit.UI is
       end;
    end Draw_Opaque_Glyph;
 
-   procedure Draw_UI_Glyph
-      (c : Canvas; x, y : Natural; ch : Character; fg, bg : Color)
-   is
-      glyph : constant CuBit.Fonts.Glyph_Access := CuBit.Fonts.Get (CuBit.Fonts.Sans, ch);
+   --  Ink-over-background colour ramps for opaque text (Draw_UI_Text), one
+   --  per recent (ink, background) pair. Only the keys are static (3 KiB); a
+   --  slot's ramp (1 KiB) comes from the process heap the first time it is
+   --  filled, so an app pays for the colour pairs it draws. A miss costs one
+   --  ramp (256 blends); an app's palette (Files: rows, selection, header,
+   --  muted text) must fit without thrashing.
+   RAMP_ENTRIES : constant := 256;
+   subtype Ramp_Index is Natural range 0 .. RAMP_ENTRIES - 1;
+   type Ramp_Cell is access all Client_Raster.Ramp;
+   type Ramp_Entry is record
+      Ink, Under : Color := 0;
+      Shades : Ramp_Cell := null;
+   end record;
+   type Ramp_Table is array (Ramp_Index) of Ramp_Entry;
+   Ramps : Ramp_Table;
+
+   function Ramp_For (fg, bg : Color) return Ramp_Access is
+      H : Unsigned_32 := (fg * 16#9E37_79B1#) xor (bg * 16#85EB_CA6B#);
    begin
-      --  Opaque: the glyph cell is painted whole, background where uncovered.
-      Draw_Opaque_Glyph (c, x, y, ch, CuBit.Fonts.Sans, glyph, Natural (glyph.Advance), fg, bg);
-   end Draw_UI_Glyph;
+      H := H xor Shift_Right (H, 16);
+      H := H * 16#7FEB_352D#;
+      H := H xor Shift_Right (H, 15);
+      declare
+         E : Ramp_Entry renames Ramps (Ramp_Index (H mod RAMP_ENTRIES));
+      begin
+         if E.Shades = null then
+            E.Shades := new Client_Raster.Ramp;
+         elsif E.Ink = fg and then E.Under = bg then
+            return Ramp_Access (E.Shades);
+         end if;
+         E.Ink := fg;
+         E.Under := bg;
+         E.Shades.all := Client_Raster.Shades (fg, bg);
+         return Ramp_Access (E.Shades);
+      end;
+   end Ramp_For;
+
+   --  Proportional text: one pass of CuBit.Fonts.Lay_Out, each glyph's ink
+   --  blended at its pen position (quarter-pixel phase at density 1, the
+   --  nearest pixel through the density cache otherwise). Opaque: the run
+   --  is already filled with bg.
+   procedure Draw_Sans_Glyphs
+     (c : Canvas; x, y : Natural; text : String; fg : Color; Opaque : Boolean := False; bg : Color := 0)
+   is
+      Over : constant Ramp_Access :=
+        (if Opaque and then c.densityNumerator = c.densityDenominator then Ramp_For (fg, bg) else null);
+      procedure Place (Index : Positive; Ch : Character; Pen : Glyph_Pen.Position) is
+         pragma Unreferenced (Index);
+      begin
+         if c.densityNumerator /= c.densityDenominator then
+            Draw_Density_Glyph (c, Pen, y, Ch, CuBit.Fonts.Sans, fg);
+         else
+            Blit_Ink (c, CuBit.Fonts.Get (CuBit.Fonts.Sans, Ch, CuBit.Fonts.Normal, Glyph_Pen.Phase_Of (Pen)),
+                      Pen_Pixel (Pen), y, fg, bg, Over);
+         end if;
+      end Place;
+      procedure Each is new CuBit.Fonts.Lay_Out (Place);
+   begin
+      if x > Glyph_Pen.Last_Pixel then return; end if;
+      Each (CuBit.Fonts.Sans, text, x);
+   end Draw_Sans_Glyphs;
+
+   --  The run is visible at all (before measuring or rasterizing anything).
+   function Run_Visible (c : Canvas; x, y : Natural; text : String) return Boolean is
+     (text'Length > 0 and then x < c.width and then y < c.height and then
+      (not c.clipEnabled or else
+         (x < c.clip.x + c.clip.w and then y < c.clip.y + c.clip.h and then
+          y + CuBit.Fonts.Line_Height > c.clip.y)));
 
    procedure Draw_UI_Text
       (c : Canvas; x, y : Natural; text : String; fg, bg : Color)
    is
-      cx : Natural := x;
-      width : constant Natural := UI_Text_Width (text);
    begin
-      if c.densityNumerator /= c.densityDenominator then
-         --  Each glyph paints its own cell over bg; the cells tile the text.
-         for i in text'Range loop
-            exit when cx >= c.width or else (c.clipEnabled and then cx >= c.clip.x + c.clip.w);
-            Draw_Density_Cell (c, cx, y, text (i), CuBit.Fonts.Sans, fg, bg, CuBit.Fonts.Width (CuBit.Fonts.Sans, text (i)));
-            cx := cx + CuBit.Fonts.Width (CuBit.Fonts.Sans, text (i));
-         end loop;
+      if not Run_Visible (c, x, y, text) then
          return;
       end if;
-      if c.clipEnabled and then
-         (text'Length = 0 or else
-          x >= c.clip.x + c.clip.w or else
-          x + width <= c.clip.x or else
-          y >= c.clip.y + c.clip.h or else
-          y + CuBit.Fonts.Line_Height <= c.clip.y)
-      then
-         return;
-      end if;
-
-      for i in text'Range loop
-         exit when cx >= c.width;
-         if not c.clipEnabled or else
-            (cx < c.clip.x + c.clip.w and then
-             cx + CuBit.Fonts.Max_Width > c.clip.x)
-         then
-            Draw_UI_Glyph (c, cx, y, text (i), fg, bg);
-         end if;
-
-         cx := cx + CuBit.Fonts.Width (CuBit.Fonts.Sans, text (i));
-      end loop;
+      --  One background for the run, then every glyph over it: kerned and
+      --  phased glyphs overlap their neighbours' cells.
+      Fill_Rect (c, Run_Box (x, y, UI_Text_Width (text)), bg);
+      Draw_Sans_Glyphs (c, x, y, text, fg, Opaque => True, bg => bg);
    end Draw_UI_Text;
 
    procedure Draw_UI_Text_Transparent
       (c : Canvas; x, y : Natural; text : String; fg : Color)
    is
-      cx : Natural := x;
-      width : constant Natural := UI_Text_Width (text);
-      glyph : CuBit.Fonts.Glyph_Access;
-      glyphWidth : Natural;
-      clipped : Rect;
    begin
-      if c.densityNumerator /= c.densityDenominator then
-         for i in text'Range loop
-            exit when cx >= c.width;
-            Draw_Density_Glyph (c, cx, y, text (i), CuBit.Fonts.Sans, fg);
-            cx := cx + CuBit.Fonts.Width (CuBit.Fonts.Sans, text (i));
-         end loop;
+      if not Run_Visible (c, x, y, text) then
          return;
       end if;
-      if c.clipEnabled and then
-        (text'Length = 0 or else
-         x >= c.clip.x + c.clip.w or else
-         x + width <= c.clip.x or else
-         y >= c.clip.y + c.clip.h or else
-         y + CuBit.Fonts.Line_Height <= c.clip.y)
-      then
-         return;
-      end if;
-
-      for i in text'Range loop
-         exit when cx >= c.width;
-         glyph := CuBit.Fonts.Get (CuBit.Fonts.Sans, text (i));
-         glyphWidth := Natural (glyph.Advance);
-         clipped := Clamp_Rect
-           (c, (x => cx, y => y, w => glyphWidth,
-                h => CuBit.Fonts.Line_Height));
-         Blit_Glyph (c, clipped, glyph, cx, y, fg, False, 0);
-         cx := cx + glyphWidth;
-      end loop;
+      Draw_Sans_Glyphs (c, x, y, text, fg);
    end Draw_UI_Text_Transparent;
 
    procedure Draw_Code_Text_Transparent
@@ -871,7 +962,7 @@ package body CuBit.UI is
       if c.densityNumerator /= c.densityDenominator then
          for i in text'Range loop
             exit when cx >= c.width or else (c.clipEnabled and then cx >= c.clip.x + c.clip.w);
-            Draw_Density_Glyph (c, cx, y, text (i), CuBit.Fonts.Monospace, fg);
+            Draw_Density_Glyph (c, Glyph_Pen.Start (cx), y, text (i), CuBit.Fonts.Monospace, fg);
             cx := cx + CuBit.Fonts.Mono_Width;
          end loop;
          return;
@@ -895,10 +986,46 @@ package body CuBit.UI is
    end Draw_Code_Text_Transparent;
 
    function Code_Text_Width (text : String) return Natural is
-     (text'Length * CuBit.Fonts.Mono_Width);
+     (CuBit.Fonts.Width (CuBit.Fonts.Monospace, text));
 
    function Code_Text_Height return Natural is
      (CuBit.Fonts.Line_Height);
+
+   function UI_Text_Boundary_At (text : String; x : Natural) return Natural is
+     (CuBit.Fonts.Boundary_At (CuBit.Fonts.Sans, text, x));
+   function Code_Text_Boundary_At (text : String; x : Natural) return Natural is
+     (CuBit.Fonts.Boundary_At (CuBit.Fonts.Monospace, text, x));
+   package UI_Fit is new Text_Fit (UI_Text_Width, UI_Text_Boundary_At);
+   package Code_Fit is new Text_Fit (Code_Text_Width, Code_Text_Boundary_At);
+
+   --  Text past Last_Index (no room to append the ellipsis) is left whole
+   --  for the clip; no label comes near it.
+   function Fit_UI_Text (text : String; width : Natural) return String is
+     (if text'Last > UI_Fit.Last_Index then text else UI_Fit.Fitted (text, width));
+   function Fit_Code_Text (text : String; width : Natural) return String is
+     (if text'Last > Code_Fit.Last_Index then text else Code_Fit.Fitted (text, width));
+   function Kept_Code_Text (text : String; width : Natural) return Natural is
+     (if text'Last > Code_Fit.Last_Index then text'Length
+      elsif text'Length = 0 or else Code_Text_Width (text) <= width then text'Length
+      elsif Code_Fit.Prefix_Fits (text, Code_Fit.Kept (text, width), width) then Code_Fit.Kept (text, width)
+      else 0);
+   function Fit_UI_Text_Tail (text : String; width : Natural) return String is
+     (if text'Last > UI_Fit.Last_Index then text else UI_Fit.Fitted_Tail (text, width));
+
+   function Room_Right_Of (box : Rect; x : Natural) return Natural is
+     (if box.x + box.w > x then box.x + box.w - x else 0);
+
+   procedure Draw_UI_Text_Fitted
+      (c : Canvas; box : Rect; x, y : Natural; text : String; fg, bg : Color) is
+   begin
+      Draw_UI_Text (With_Clip (c, box), x, y, Fit_UI_Text (text, Room_Right_Of (box, x)), fg, bg);
+   end Draw_UI_Text_Fitted;
+
+   procedure Draw_Code_Text_Fitted
+      (c : Canvas; box : Rect; x, y : Natural; text : String; fg, bg : Color) is
+   begin
+      Draw_Code_Text (With_Clip (c, box), x, y, Fit_Code_Text (text, Room_Right_Of (box, x)), fg, bg);
+   end Draw_Code_Text_Fitted;
 
    procedure Draw_Code_Glyph
       (c : Canvas; x, y : Natural; ch : Character; fg, bg : Color)
@@ -951,6 +1078,13 @@ package body CuBit.UI is
    function Control_Edge (Colors : Theme) return Color is
      (Blend (Colors.text, Colors.panel, 70));
 
+   --  Label insets: a button's text keeps BUTTON_TEXT_INSET from both
+   --  sides; a tab's starts TAB_TEXT_LEFT in and ends TAB_TEXT_INSET short.
+   BUTTON_TEXT_INSET : constant := 6;
+   TAB_TEXT_LEFT : constant := 10;
+   TAB_TEXT_INSET : constant := 8;
+   PANE_TITLE_INSET : constant := 12;
+
    package body Control_Renderer is
       procedure Stroke_Sunken (c : Canvas; r : Rect; colors : Theme) is
       begin
@@ -976,7 +1110,10 @@ package body CuBit.UI is
            when Button_Hot => Blend (colors.accent, colors.face, 18),
            when Button_Pressed => Blend (colors.accent, colors.face, 45),
            when Button_Disabled => colors.face,
-           when Button_Active => colors.accent,
+           --  A chosen option: the selection colours, as a selected menu
+           --  item or list row (4.5:1 in both schemes; the accent is text-
+           --  coloured in the dark one).
+           when Button_Active => colors.selection,
            when Button_Normal => Blend (colors.highlight, colors.face, 35));
 
       procedure Draw_Button_Frame
@@ -985,7 +1122,8 @@ package body CuBit.UI is
          border : constant Color :=
            (case style is
               when Button_Hot => Blend (colors.accent, colors.face, 130),
-              when Button_Pressed | Button_Active => colors.accent,
+              when Button_Pressed => colors.accent,
+              when Button_Active => colors.selection,
               when Button_Disabled => Blend (colors.text, colors.face, 35),
               when Button_Normal => Control_Edge (colors));
       begin
@@ -1022,8 +1160,11 @@ package body CuBit.UI is
          (c : Canvas; r : Rect; colors : Theme; style : Button_Style;
           label : String)
       is
-         textW : constant Natural := UI_Text_Width (label);
-         tx : Natural := r.x + 6;
+         --  The label elided to the frame's padded inside.
+         shown : constant String :=
+           Fit_UI_Text (label, (if r.w > 2 * BUTTON_TEXT_INSET then r.w - 2 * BUTTON_TEXT_INSET else 0));
+         textW : constant Natural := UI_Text_Width (shown);
+         tx : Natural := r.x + BUTTON_TEXT_INSET;
          ty : Natural := r.y;
          fg : Color := colors.text;
       begin
@@ -1036,10 +1177,10 @@ package body CuBit.UI is
          if style = Button_Disabled then
             fg := colors.muted;
          elsif style = Button_Active then
-            fg := colors.face;
+            fg := colors.selectionText;
          end if;
 
-         Draw_UI_Text (With_Clip (c, Content_Rect (r, 6, 2)), tx, ty, label, fg,
+         Draw_UI_Text (With_Clip (c, Content_Rect (r, BUTTON_TEXT_INSET, 2)), tx, ty, shown, fg,
            Button_Face (colors, style));
       end Draw_Button;
 
@@ -1052,7 +1193,10 @@ package body CuBit.UI is
          bg : Color := colors.panel;
          fg : constant Color := colors.text;
          ty : Natural := r.y;
-         clipped : constant Canvas := With_Clip (c, Content_Rect (r, 8, 2));
+         clipped : constant Canvas := With_Clip (c, Content_Rect (r, TAB_TEXT_INSET, 2));
+         --  The label elided to end at the right inset.
+         shown : constant String :=
+           Fit_UI_Text (label, (if r.w > TAB_TEXT_LEFT + TAB_TEXT_INSET then r.w - TAB_TEXT_LEFT - TAB_TEXT_INSET else 0));
       begin
          if Is_Empty (r) then return; end if;
          if selected then
@@ -1080,7 +1224,7 @@ package body CuBit.UI is
          end if;
          Fill_Rect (c, (r.x, r.y + r.h - 1, r.w, 1), Control_Edge (colors));
          ty := Center_Text_Y (r);
-         Draw_UI_Text (clipped, r.x + 10, ty, label, fg, bg);
+         Draw_UI_Text (clipped, r.x + TAB_TEXT_LEFT, ty, shown, fg, bg);
          if selected then
             case orientation is
                when Horizontal =>
@@ -1167,9 +1311,12 @@ package body CuBit.UI is
          Fill_Rect (c, inner, bg);
          Stroke_Rect (c, inner, colors.shadow, colors.shadow);
       end if;
-      Draw_UI_Text_Transparent (With_Clip (c, Content_Rect (r, 8, 2)),
-        r.x + 10, Center_Text_Y (r), label, fg);
+      Draw_UI_Text_Transparent (With_Clip (c, inner),
+        r.x + MENU_TITLE_PADDING, Center_Text_Y (r), label, fg);
    end Draw_Menu_Title;
+
+   function Menu_Title_Width (label : String) return Natural is
+     (UI_Text_Width (label) + 2 * MENU_TITLE_PADDING);
 
    procedure Draw_Status_Bar
       (c : Canvas; r : Rect; colors : Theme; left, right : String)
@@ -1190,10 +1337,10 @@ package body CuBit.UI is
       Stroke_Rect (c, Content_Rect (r, 1, 1), colors.shadow, colors.highlight);
       Stroke_Rect (c, Content_Rect (r, 2, 2),
         Blend (colors.darkShadow, colors.panel, 150), colors.panel);
-      Draw_UI_Text (With_Clip (c, leftBounds), leftBounds.x, Center_Text_Y (r),
+      Draw_UI_Text_Fitted (c, leftBounds, leftBounds.x, Center_Text_Y (r),
         left, colors.text, colors.panel);
       if rightWidth > 0 then
-         Draw_UI_Text (With_Clip (c, rightBounds), rightBounds.x, Center_Text_Y (r),
+         Draw_UI_Text_Fitted (c, rightBounds, rightBounds.x, Center_Text_Y (r),
            right, colors.muted, colors.panel);
       end if;
    end Draw_Status_Bar;
@@ -1201,7 +1348,10 @@ package body CuBit.UI is
    procedure Draw_Pane
       (c : Canvas; r : Rect; colors : Theme; title : String)
    is
-      titleW : constant Natural := UI_Text_Width (title);
+      --  The title starts PANE_TITLE_INSET in and ends as far from the right.
+      shown : constant String :=
+        Fit_UI_Text (title, (if r.w > 2 * PANE_TITLE_INSET then r.w - 2 * PANE_TITLE_INSET else 0));
+      titleW : constant Natural := UI_Text_Width (shown);
       frameY : constant Natural := r.y + UI_Text_Height / 2;
       frame : constant Rect :=
         (x => r.x + 2, y => frameY,
@@ -1215,10 +1365,10 @@ package body CuBit.UI is
       if Is_Empty (r) then return; end if;
       Fill_Rect (c, r, colors.panel);
       Stroke_Rect (With_Clip (c, r), frame, Control_Edge (colors), Control_Edge (colors));
-      if title'Length > 0 then
+      if shown'Length > 0 then
          Fill_Rect (With_Clip (c, Content_Rect (r, 8, 0)), titleRect, colors.panel);
-         Draw_UI_Text (With_Clip (c, Content_Rect (r, 12, 0)), titleRect.x + 4, titleRect.y,
-                       title, colors.muted, colors.panel);
+         Draw_UI_Text (With_Clip (c, Content_Rect (r, PANE_TITLE_INSET, 0)), titleRect.x + 4, titleRect.y,
+                       shown, colors.muted, colors.panel);
       end if;
    end Draw_Pane;
 
@@ -1300,14 +1450,14 @@ package body CuBit.UI is
       if secondWidth > 0 and firstWidth + secondWidth < r.w then
          Fill_Rect (c, (r.x + firstWidth + secondWidth - 1, r.y, 1, r.h), Control_Edge (colors));
       end if;
-      Draw_UI_Text
-        (With_Clip (c, Content_Rect (first, layout.Cell_Padding, 2)), first.x + layout.Cell_Padding,
+      Draw_UI_Text_Fitted
+        (c, Content_Rect (first, layout.Cell_Padding, 2), first.x + layout.Cell_Padding,
          labelY, c1, colors.text, colors.panel);
-      Draw_UI_Text
-        (With_Clip (c, Content_Rect (second, layout.Cell_Padding, 2)), second.x + layout.Cell_Padding,
+      Draw_UI_Text_Fitted
+        (c, Content_Rect (second, layout.Cell_Padding, 2), second.x + layout.Cell_Padding,
          labelY, c2, colors.text, colors.panel);
-      Draw_UI_Text
-        (With_Clip (c, Content_Rect (third, layout.Cell_Padding, 2)), third.x + layout.Cell_Padding,
+      Draw_UI_Text_Fitted
+        (c, Content_Rect (third, layout.Cell_Padding, 2), third.x + layout.Cell_Padding,
          labelY, c3, colors.text, colors.panel);
    end Draw_Table_Header;
 
@@ -1336,7 +1486,7 @@ package body CuBit.UI is
       procedure Draw_Cell
         (cell : Rect; value : String; detail : String := "")
       is
-         tc : constant Canvas := With_Clip (c, Content_Rect (cell, layout.Cell_Padding, 1));
+         box : constant Rect := Content_Rect (cell, layout.Cell_Padding, 1);
          primaryY : constant Natural :=
            (if detail'Length > 0 then cell.y + 1
             elsif textStyle = Table_Code_Text and then
@@ -1347,21 +1497,21 @@ package body CuBit.UI is
            (if selected then colors.selectionText else colors.muted);
       begin
          if textStyle = Table_Code_Text then
-            Draw_Code_Text
-              (tc, cell.x + layout.Cell_Padding, primaryY, value, fg, bg);
+            Draw_Code_Text_Fitted
+              (c, box, cell.x + layout.Cell_Padding, primaryY, value, fg, bg);
             if detail'Length > 0 then
-               Draw_Code_Text
-                 (tc, cell.x + layout.Cell_Padding,
+               Draw_Code_Text_Fitted
+                 (c, box, cell.x + layout.Cell_Padding,
                   primaryY + Code_Text_Height, detail,
                   detailForeground, bg);
             end if;
          else
-            Draw_UI_Text
-              (tc, cell.x + layout.Cell_Padding, primaryY,
+            Draw_UI_Text_Fitted
+              (c, box, cell.x + layout.Cell_Padding, primaryY,
                value, fg, bg);
             if detail'Length > 0 then
-               Draw_UI_Text
-                 (tc, cell.x + layout.Cell_Padding,
+               Draw_UI_Text_Fitted
+                 (c, box, cell.x + layout.Cell_Padding,
                   primaryY + UI_Text_Height, detail,
                   detailForeground, bg);
             end if;
@@ -1511,7 +1661,7 @@ package body CuBit.UI is
    begin
       Fill_Rect (c, swatch, fill);
       Stroke_Rect (c, swatch, colors.edge, colors.shadow);
-      Draw_UI_Text (With_Clip (c, r), r.x + 36, Center_Text_Y (r), label, colors.text, colors.panel);
+      Draw_UI_Text_Fitted (c, r, r.x + 36, Center_Text_Y (r), label, colors.text, colors.panel);
    end Draw_Swatch;
 
    procedure Draw_Text_Field
@@ -1563,9 +1713,6 @@ package body CuBit.UI is
       textX : Natural := r.x + 8;
       textY : Natural := r.y;
       cursorX : Natural := textX;
-      charW : Natural;
-      fg : Color;
-      bg : Color;
       caret : Rect;
       textCanvas : constant Canvas := With_Clip
         (c, Content_Rect (r, 8, 2));
@@ -1599,30 +1746,32 @@ package body CuBit.UI is
       textY := Center_Text_Y (r) +
         (if r.h >= UI_Text_Height + 8 then 2 else 0);
 
-      for i in text'Range loop
-         if focused and then
-            Natural (i - text'First) >= selectionStart and then
-            Natural (i - text'First) < selectionEnd
-         then
-            fg := colors.selectionText;
-            bg := colors.selection;
+      --  The text as one run (kerning, subpixel pens); the selection is a
+      --  rectangle between two caret boundaries of that same layout, its
+      --  glyphs inked in the selection colour through a clip.
+      declare
+         Last : constant Natural := text'Length;
+         From : constant Natural := textX + CuBit.Fonts.Boundary
+           (CuBit.Fonts.Sans, text, Natural'Min (selectionStart, Last));
+         To : constant Natural := textX + CuBit.Fonts.Boundary
+           (CuBit.Fonts.Sans, text, Natural'Min (selectionEnd, Last));
+         Selected : constant Boolean := focused and then selectionStart < selectionEnd and then From < To;
+         Line : constant Natural := UI_Text_Height;
+      begin
+         if Selected then
+            Fill_Rect (textCanvas, (From, textY, To - From, Line), colors.selection);
+            Draw_UI_Text_Transparent (With_Clip (textCanvas, (0, textY, From, Line)), textX, textY, text, colors.text);
+            Draw_UI_Text_Transparent (With_Clip (textCanvas, (From, textY, To - From, Line)), textX, textY, text,
+                                      colors.selectionText);
+            Draw_UI_Text_Transparent
+              (With_Clip (textCanvas, (To, textY, Natural'Max (r.x + r.w, To) - To, Line)), textX, textY, text,
+               colors.text);
          else
-            fg := colors.text;
-            bg := face;
+            Draw_UI_Text_Transparent (textCanvas, textX, textY, text, colors.text);
          end if;
-
-         if cursor = Natural (i - text'First) then
-            cursorX := textX;
-         end if;
-
-         Draw_UI_Text (textCanvas, textX, textY, text (i .. i), fg, bg);
-         charW := UI_Text_Width (text (i .. i));
-         textX := textX + charW;
-      end loop;
-
-      if cursor >= text'Length then
-         cursorX := textX;
-      end if;
+         cursorX := textX + CuBit.Fonts.Boundary (CuBit.Fonts.Sans, text, Natural'Min (cursor, Last));
+         textX := textX + UI_Text_Width (text);
+      end;
 
       if focused and then cursor = text'Length and then
         selectionStart = selectionEnd
@@ -1940,7 +2089,7 @@ package body CuBit.UI is
       end if;
 
       Fill_Rect (c, r, bg);
-      Draw_UI_Text (With_Clip (c, Content_Rect (r, 8, 2)), r.x + 8, Center_Text_Y (r), label, fg, bg);
+      Draw_UI_Text_Fitted (c, Content_Rect (r, 8, 2), r.x + 8, Center_Text_Y (r), label, fg, bg);
    end Draw_List_Item;
 
    procedure Draw_Menu_Item
@@ -1969,7 +2118,7 @@ package body CuBit.UI is
       else
          Stroke_Rect (With_Clip (c, r), icon, Control_Edge (colors), Control_Edge (colors));
       end if;
-      Draw_UI_Text (With_Clip (c, Content_Rect (r, 6, 2)), r.x + 30, Center_Text_Y (r), label, fg, bg);
+      Draw_UI_Text_Fitted (c, Content_Rect (r, 6, 2), r.x + 30, Center_Text_Y (r), label, fg, bg);
    end Draw_Menu_Item;
 
    function Layout_Horizontal_Slider

@@ -1,6 +1,8 @@
 with Ada.Text_IO;
 with Interfaces; use Interfaces;
 with Intel_GPU_Context_Table;
+with Context_Table_Access;
+with Test_Storage;
 with Intel_GPU_GuC_Context_Event;
 with Intel_GPU_GuC_Context_Lifecycle;
 with Intel_GPU_GuC_Context_Session;
@@ -28,7 +30,9 @@ procedure Context_Deregister_Table_Tests is
       pragma Unreferenced (Payload, Fence);
    begin Success := True; end Retain;
    package Driver is new Intel_GPU_GuC_Context_Session (Ready, Queue, Retain);
-   package Pool is new Intel_GPU_Context_Table (2, Driver, Ready, Retain);
+   package Pool is new Intel_GPU_Context_Table
+     (2, Driver, Ready, Retain, Reply_Words => Test_Storage.Reply_Words);
+   package Tables is new Context_Table_Access (Pool);
    use type Driver.Result;
    use type Pool.Dispatch_Result;
 begin
@@ -48,9 +52,9 @@ begin
          end Reject;
       begin
          Owner := True; Lose_On_Queue := False; Outcome := Life.Queued;
-         Pool.Open (T, 16#200000#, 4096, 1000, 500000, False, A, OK, 42);
+         Tables.Open (T, 16#200000#, 4096, 1000, 500000, False, A, OK, 42);
          pragma Assert (OK and A = 1);
-         Pool.Open (T, 16#210000#, 4096, 1000, 500000, False, B, OK, 43);
+         Tables.Open (T, 16#210000#, 4096, 1000, 500000, False, B, OK, 43);
          pragma Assert (OK);
          Reject (Pool.No_Context); Reject (A);
          for Action in Life.Register_Context .. Life.Enable loop
@@ -69,7 +73,7 @@ begin
          if Scenario = 1 then
             Pool.Hold_Work (T, A, OK); pragma Assert (OK);
          end if;
-         Pool.Retire_Session (T, 42, ID); pragma Assert (ID = A);
+         Tables.Retire_Session (T, 42, ID); pragma Assert (ID = A);
          Reject (A, False); Reject (B);
          Before := Calls;
          case Scenario is
@@ -126,7 +130,7 @@ begin
                           (Life.Scheduling_Stopped (Pool.State (T, A)) and
                            Life.Scheduling_Stopped (Pool.State (T, B)));
                         Reject (A);
-                        pragma Assert (Pool.Count (T) = 2 and
+                        pragma Assert (Tables.Count (T) = 2 and
                           Pool.State (T, A) = Life.Deregistered);
                         Pool.Dispatch (T, [16#90004600#, A], 0, ID, Delivery);
                         pragma Assert (Delivery = Pool.Context_Fault);
@@ -134,9 +138,9 @@ begin
                   end if;
                end if;
          end case;
-         pragma Assert (Pool.Session_Context (T, 42) = Pool.No_Context);
+         pragma Assert (Tables.Session_Context (T, 42) = Pool.No_Context);
          if Scenario not in 4 .. 6 then
-            pragma Assert (Pool.Session_Context (T, 43) = B and not Pool.Failed (T));
+            pragma Assert (Tables.Session_Context (T, 43) = B and not Pool.Failed (T));
          end if;
       end;
    end loop;

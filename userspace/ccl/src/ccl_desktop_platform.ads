@@ -31,7 +31,7 @@ package CCL_Desktop_Platform is
       Wheel_Left, Wheel_Right, Match_Parenthesis, Select_To_Parenthesis,
       Add_Next_Occurrence, Open_Find, Find_Next, Open_Source, Save_Source,
       Tab, Toggle_REPL, Toggle_Watch, Complete_Operation, Toggle_Syntax,
-      Copy_Selection, Cut_Selection, Paste_Clipboard);
+      Copy_Selection, Cut_Selection, Paste_Clipboard, Open_Menu, Alt_Changed);
    for Window_Event use
      (No_Event => 0, Close_Request => 1, Text_Input => 2, Backspace => 3,
       Enter => 4, Left => 5, Right => 6, Home => 7, End_Key => 8, Delete => 9,
@@ -45,7 +45,12 @@ package CCL_Desktop_Platform is
       Open_Find => 32, Find_Next => 33, Open_Source => 34, Save_Source => 35,
       Tab => 36, Toggle_REPL => 37, Toggle_Watch => 38,
       Complete_Operation => 39, Toggle_Syntax => 40,
-      Copy_Selection => 41, Cut_Selection => 42, Paste_Clipboard => 43);
+      Copy_Selection => 41, Cut_Selection => 42, Paste_Clipboard => 43,
+      Open_Menu => 44, Alt_Changed => 45);
+   --  Open_Menu: F10 (code 0) or Alt+letter (code: the lower-case letter),
+   --  for the application's menu bar (CuBit.UI.Menus). Alt_Changed: the
+   --  Alt key went down (code 1) or up (code 0), for the menu bar's
+   --  keyboard cues (CuBit.UI.Menus.Set_Alt_Held).
    --  The event a wire code names; unknown codes are No_Event.
    function Event_Of (Code : Interfaces.Integer_32) return Window_Event is
      (if Code in Window_Event'Enum_Rep (Window_Event'First) ..

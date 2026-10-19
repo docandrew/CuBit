@@ -1,6 +1,6 @@
 project DMA_Cache is
    for Source_Dirs use (".", "../../userspace/services/intel-gpu");
-   for Source_Files use ("dma_cache_tests.adb", "intel_gpu_dma_cache.ads",
+   for Source_Files use ("intel_gpu_physical_extents.ads", "intel_gpu_physical_extents.adb", "dma_cache_tests.adb", "intel_gpu_dma_cache.ads",
                          "intel_gpu_dma_cache.adb");
    for Object_Dir use "build-dma-cache";
    for Main use ("dma_cache_tests.adb");

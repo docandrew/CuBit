@@ -26,14 +26,14 @@ procedure Desktop_Glyph_Uncertain_Tests is
 begin
    Reset; Context_Set (0, 0); Vulkan_Device_Mock.Set (True, True, 0); Pipeline_Set (0, 0);
    Image_Set (4096, 1, 0, 0, 0); Metadata_Set (0); Font_Set (0);
-   Upload_Set (4096, 1, 0, 0, 0, 0);
+   Upload_Set (8192, 1, 0, 0, 0, 0);
    D.Initialize (CuBit.Handles.Fixture.Endpoint_Of (25)); D.Configure_Targets (32, 24, 1, 140 * 4096, OK); pragma Assert (OK);
-   D.Prepare_Pipeline (OK); pragma Assert (OK); D.Configure_Upload (2048, OK); pragma Assert (OK);
+   D.Prepare_Pipeline (OK); pragma Assert (OK); D.Configure_Upload (8192, OK); pragma Assert (OK);
 
    R.Acquire (S, New_Key, Source, Extra, Result); pragma Assert (Result = R.Uploading);
    R.Poll (S, Result); pragma Assert (Result = R.Available);
    R.Acquire (S, New_Key, Source, Extra, Result); pragma Assert (Result = R.Available);
-   D.Capture_Glyph (Scene, New_Key, (0, 0, 32, 17), 16#FFFFFFFF#, OK); pragma Assert (OK);
+   D.Capture_Glyph (Scene, New_Key, (0, 0, 32, 17), 0, 16#FFFFFFFF#, OK); pragma Assert (OK);
    Vulkan_Scene.Seal (Scene, OK); pragma Assert (OK);
    D.Render (Scene, Frame); pragma Assert (Frame = D.Submitted);
    Set (3, 2); D.Poll_Frame (Poll); pragma Assert (Poll = D.GPU_Failed);

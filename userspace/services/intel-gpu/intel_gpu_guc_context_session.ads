@@ -19,6 +19,8 @@ package Intel_GPU_GuC_Context_Session is
    function Can_Run_And_Retire (Object : Session) return Boolean;
    -- Resting Enabled (GuC-resident) or Disabled with nothing in flight.
    function Can_Submit (Object : Session) return Boolean;
+   -- G2H answer words its request in flight reserved (zero when none).
+   function Credits_Held (Object : Session) return Natural;
    procedure Initialize
      (Object : in out Session; ID : Interfaces.Unsigned_32;
       GPU_Start, Pin_Bias : Interfaces.Unsigned_64;

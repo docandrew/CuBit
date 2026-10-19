@@ -110,15 +110,19 @@ package Intel_GPU_Render_Control with SPARK_Mode is
    -- active, unknown and quarantined sessions cannot satisfy this observation.
    function Retired_Admission (Object : Controller; Tag : Unsigned_64) return Boolean;
    -- Application endpoint: [version,0,0,0], no caller-selected target.
-   -- Authenticated ACTIVE sender/stamp only; closes admission before returning
+   -- Authenticated ACTIVE sender/stamp: closes admission before returning
    -- [OK,version,retired-tag,0]. Dispatcher must then retire its resources.
    -- Success is NOT GPU disable completion, grant drain or backing release.
-   -- A repeated request is denied (no active session); never replay on an
-   -- uncertain reply or infer that the session's render endpoint is reusable.
+   -- Idempotent for the session's own client: an already retired session
+   -- (closed by its queue's end, say) and a recycled one answer the same
+   -- [OK,version,tag,0] and change nothing. Anyone else is denied.
    procedure Close_Own
      (Object : in out Controller; Sender, Stamped_Tag : Unsigned_64;
       Request_Label : Unsigned_32; Length, Flags : Unsigned_8;
       Reserved : Unsigned_16; Request : Words; Response : out Words);
+   -- A request stamped with Stamped_Tag comes from a finished session whose
+   -- slot was recycled: everything it held was given back.
+   function Recycled (Object : Controller; Stamped_Tag : Unsigned_64) return Boolean;
    -- Captured process incarnation for an authenticated ACTIVE session only.
    -- This identity is not grant authority; never reconstruct a capability
    -- from it or accept it from app words.
@@ -133,13 +137,40 @@ package Intel_GPU_Render_Control with SPARK_Mode is
    -- completion, capability revocation or backing release is implied.
    procedure Reject_Delivery
      (Object : in out Controller; Identity, Tag : Unsigned_64);
+   -- Dispatcher-only: the session's client ended its session through the
+   -- transport (its queue channel closed, or it died: the kernel's grant-end
+   -- notice). Closes admission like Reject_Delivery, by the recorded
+   -- identity. Idempotent; no hardware completion or release is implied.
+   procedure End_Session (Object : in out Controller; Tag : Unsigned_64);
+   -- The session table (Intel_GPU_Render_Sessions), for the dispatcher's
+   -- growth, resource holdings and recycling.
+   function Grown (Object : Controller) return Intel_GPU_Render_Sessions.Slot_Count;
+   function Free_Slot (Object : Controller) return Boolean;
+   procedure Grow (Object : in out Controller; To : Intel_GPU_Render_Sessions.Slot_Count)
+     with Pre => To >= Grown (Object),
+          Post => Grown (Object) = To;
+   function Retired (Object : Controller; Index : Intel_GPU_Render_Sessions.Slot_Index)
+     return Boolean;
+   function Holds
+     (Object : Controller; Index : Intel_GPU_Render_Sessions.Slot_Index;
+      What : Intel_GPU_Render_Sessions.Holding) return Boolean;
+   procedure Hold
+     (Object : in out Controller; Index : Intel_GPU_Render_Sessions.Slot_Index;
+      What : Intel_GPU_Render_Sessions.Holding);
+   procedure Release_Image
+     (Object : in out Controller; Index : Intel_GPU_Render_Sessions.Slot_Index);
+   procedure Acknowledge_Deregistration
+     (Object : in out Controller; Index : Intel_GPU_Render_Sessions.Slot_Index);
+   procedure Recycle
+     (Object : in out Controller; Index : Intel_GPU_Render_Sessions.Slot_Index;
+      Facts : Intel_GPU_Render_Sessions.Release_Facts; Accepted : out Boolean);
    procedure Quarantine (Object : in out Controller);
 private
-   type Identities is array (1 .. Intel_GPU_Render_Sessions.Capacity) of Unsigned_64;
+   -- All defaults are zero bits (see Intel_GPU_Render_Sessions); the
+   -- session table is last, so the driver commits a prefix of the object.
    type Controller is limited record
       Bound : Boolean := False;
       Broker, Broker_Tag : Unsigned_64 := 0;
       Sessions : Intel_GPU_Render_Sessions.Registry;
-      Recipients : Identities := [others => 0];
    end record;
 end Intel_GPU_Render_Control;

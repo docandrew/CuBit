@@ -21,7 +21,11 @@ procedure Check is
   used, minimized, dirty : Boolean := False;
   x,y,w,h : Natural := 0;
  end record;
- surfaces : array(SurfaceIndex) of Surface;
+ type Surface_Table is array(SurfaceIndex) of Surface;
+ type Surface_Store is record Surfaces : Surface_Table; end record;
+ store : Surface_Store;
+ surfaces : Surface_Table renames store.Surfaces;
+ function surfaceLast return SurfaceIndex is (SurfaceIndex'Last);
  focusSurface : Unsigned_64 := 0;
  SURFACE_FLAG_WINDOW : constant Unsigned_64 := 1;
  CLIENT_INSET_TOP : constant := 30;

@@ -49,7 +49,7 @@
   # Asset packages (docs/assets.md); @cd:0 is rooted at apps/.
   (file optical "wallpaper-cubes" "apps/Assets/cubit-wallpapers/1/cubes.qoi")
   (file optical "wallpaper-cubie" "apps/Assets/cubit-wallpapers/1/cubie.qoi")
-  (file optical "icons-applications" "apps/Assets/cubit-icons/1/applications.qoi")
+  (file optical "icons-applications" "apps/Assets/cubit-icons/3/applications.qoi")
   # Read-only originals; editable copies also seed live-rw.ext2's /work.
   (file optical "ccl-button-clock" "samples/ccl/button-clock.ccl")
   (file optical "ccl-button-output" "samples/ccl/button-output.ccl")

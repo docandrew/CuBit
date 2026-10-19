@@ -41,7 +41,7 @@ begin
          Add (S, Views, I); pragma Assert (OK);
          R.Flush (S, Views, OK); pragma Assert (OK);
       end loop;
-      pragma Assert (Stat (0) = 250 and Stat (2) >= 122 and R.Charged (S) <= 524_288);
+      pragma Assert (Stat (0) = 250 and Stat (2) >= 122 and R.Charged (S) <= R.Budget);
       R.Shutdown (S, Views, OK); pragma Assert (OK and Stat (4) = 1);
       Mesa_Cache.Shutdown (Views);
    end;

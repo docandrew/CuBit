@@ -1,0 +1,17 @@
+--  Hosted tests for Text_Fit over the model measure and the real bundled
+--  font layouts (run.sh). Proofs: text_fit_proof.gpr.
+with "../../userspace/allocator/allocator_runtime_host.gpr";
+with "../../userspace/lib/ui/fonts_host.gpr";
+project Text_Fit_Tests is
+   for Source_Dirs use (".", "../../userspace/lib/ui", "../../userspace/ccl/tools/ccl-ui-preview/host");
+   for Source_Files use ("main.adb", "model_width.ads", "model_width.adb", "text_fit_model.ads",
+                         "text_fit.ads", "text_fit.adb", "cubit.ads", "cubit-fonts.ads",
+                         "cubit-fonts.adb", "glyph_pen.ads");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-gnat2022", "-O1", "-gnata", "-gnato", "-gnatwa", "-gnatwe");
+   end Compiler;
+end Text_Fit_Tests;

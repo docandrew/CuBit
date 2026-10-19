@@ -23,7 +23,7 @@ project Devmgr is
        "devmgr_authority.ads", "devmgr_authority.adb",
        "fs_attachments.ads",
        "ccl-resource_sections.ads", "ccl-resource_sections.adb",
-       "boot_rtc.ads", "boot_rtc.adb", "civil_time.ads", "civil_time.adb",
+       "boot_rtc.ads", "boot_rtc.adb", "rtc_decode.ads", "rtc_decode.adb", "rtc_sampling.ads", "rtc_sampling.adb", "civil_time.ads", "civil_time.adb",
        "intel_gpu_probe.ads", "intel_gpu_probe.adb",
        "intel_gpu_broker_request.ads", "intel_gpu_broker_request.adb",
        "intel_gpu_broker_launches.ads", "intel_gpu_broker_launches.adb",
@@ -36,7 +36,7 @@ project Devmgr is
        "intel_gpu_resources.ads", "intel_gpu_resources.adb",
        "intel_gpu_reset_pages.ads",
        "intel_gpu_display_pages.ads",
-       "intel_gpu_pipe_pages.ads",
+       "intel_gpu_pipe_pages.ads", "intel_gpu_modeset_pages.ads",
        "intel_gpu_phy_pages.ads", "intel_gpu_phy_pages.adb",
        "intel_gpu_phy_registers.ads",
        "intel_gpu_combo_phy.ads", "intel_gpu_combo_phy.adb",
@@ -100,7 +100,7 @@ project Devmgr is
        "ccl-vm-resource_values.ads", "ccl-vm-resource_values.adb",
        "ccl-scheduling_limits.ads",
        "ccl-configurations.ads", "ccl-configurations.adb",
-       "ccl-typed_settings.ads", "ccl-typed_settings.adb", "ccl-interfaces-desktop_input.ads", "ccl-interfaces-gpu_power.ads", "ccl-interfaces.ads",
+       "ccl-typed_settings.ads", "ccl-typed_settings.adb", "ccl-interfaces-desktop_input.ads", "ccl-interfaces-gpu_power.ads", "ccl-interfaces-desktop_display.ads", "ccl-interfaces.ads",
        "ccl-interfaces-desktop_launch.ads");
 
     for Runtime ("Ada") use "../../runtime";

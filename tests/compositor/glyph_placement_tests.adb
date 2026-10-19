@@ -5,14 +5,37 @@ procedure Glyph_Placement_Tests is
    package P renames Compositor_Glyph_Placement;
    package G renames P.G;
    package A renames P.A;
-   use type A.Signed, A.Word, G.Logical_Coordinate;
+   use type A.Signed, A.Word, G.Logical_Coordinate, G.Scale_Component;
    Screen : G.Output := (80, 72, G.Unrotated, (1, 1), -3, 7);
    Points : constant array (1 .. 8) of G.Logical_Point :=
      ((-4, 4), (-10, -8), (0, 0), (3, 11), (40, 30), (76, 71),
       (G.Logical_Coordinate'First, G.Logical_Coordinate'Last),
       (G.Logical_Coordinate'Last, G.Logical_Coordinate'First));
+   Offsets : constant array (1 .. 4) of P.L.Subpixel := (0, 15, 32, 63);
    Cases : Natural := 0;
+   --  Nearest quarter pixel of X + Offset / 64 logical, at N/D, ties up.
+   function Quarters (X : Integer; Offset : Natural; N, D : Positive) return Long_Float is
+     (Long_Float'Floor ((Long_Float (X) + Long_Float (Offset) / 64.0) * Long_Float (N) / Long_Float (D) * 4.0 + 0.5));
 begin
+   for N in G.Scale_Component loop
+      for D in G.Scale_Component loop
+         for X in -300 .. 300 loop
+            for Offset in P.L.Subpixel loop
+               declare
+                  Q : constant Long_Float := Quarters (X + 3, Offset, Positive (N), Positive (D));
+                  R : constant P.Subpixel_Origin := P.Snap_Phase (G.Logical_Coordinate (X), Offset, -3, (N, D));
+               begin
+                  pragma Assert (R.Pixel = A.Signed (Long_Float'Floor (Q / 4.0)));
+                  pragma Assert (A.Signed (R.Phase) = A.Signed (Q) - 4 * R.Pixel);
+                  --  A whole-pixel pen is Snap's nearest pixel, phase 0, at unit density.
+                  if N = D and Offset = 0 then
+                     pragma Assert (R.Phase = 0 and R.Pixel = P.Snap (G.Logical_Coordinate (X), -3, (N, D)));
+                  end if;
+               end;
+            end loop;
+         end loop;
+      end loop;
+   end loop;
    for N in G.Scale_Component loop
       for D in G.Scale_Component loop
          Screen.Scale := (N, D);
@@ -23,10 +46,11 @@ begin
          for Rotation in G.Orientation loop
             Screen.Rotation := Rotation;
             for Point of Points loop
+             for Offset of Offsets loop
                declare
-                  Plan : constant A.Result := P.Plan (Screen, Point);
+                  Plan : constant A.Result := P.Plan (Screen, Point, Offset);
                   L : constant P.L.Layout := P.L.Plan (Screen.Scale);
-                  Left : constant A.Signed := P.Snap (Point.X, Screen.X, Screen.Scale);
+                  Left : constant A.Signed := P.Snap_Phase (Point.X, Offset, Screen.X, Screen.Scale).Pixel;
                   Top : constant A.Signed := P.Snap (Point.Y, Screen.Y, Screen.Scale);
                begin
                   for Y in 0 .. 71 loop
@@ -66,9 +90,10 @@ begin
                   end loop;
                   Cases := Cases + 1;
                end;
+             end loop;
             end loop;
          end loop;
       end loop;
    end loop;
-   Ada.Text_IO.Put_Line ("GLYPH-PLACEMENT: PASS" & Cases'Image & " layouts, all256 densities, 4 rotations, clipping, signed/extreme origins and exact texel centres");
+   Ada.Text_IO.Put_Line ("GLYPH-PLACEMENT: PASS" & Cases'Image & " layouts, all 256 densities, 4 rotations, pen offsets, clipping, signed/extreme origins, exact texel centres; quarter-pixel phases vs float oracle");
 end Glyph_Placement_Tests;

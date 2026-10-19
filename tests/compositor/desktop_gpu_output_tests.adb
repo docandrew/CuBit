@@ -30,15 +30,15 @@ procedure Desktop_GPU_Output_Tests is
    end Start;
    procedure Glyph is
    begin
-      G.Add_Glyph (S, Key, (0, 0, 32, 17), 16#FFFFFFFF#, OK);
+      G.Add_Glyph (S, Key, (0, 0, 32, 17), 0, 16#FFFFFFFF#, OK);
    end Glyph;
 begin
    pragma Assert (D.Admit_Capture (Screen) = D.Capture_Unavailable);
    Reset; Context_Set (0, 0); Vulkan_Device_Mock.Set (True, True, 0); Pipeline_Set (0, 0);
    Image_Set (4096, 1, 0, 0, 0); Metadata_Set (0); Font_Set (0);
-   Upload_Set (4096, 1, 0, 0, 0, 0);
+   Upload_Set (8192, 1, 0, 0, 0, 0);
    D.Initialize (CuBit.Handles.Fixture.Endpoint_Of (25)); D.Configure_Targets (32, 24, 1, 140 * 4096, OK); pragma Assert (OK);
-   D.Prepare_Pipeline (OK); pragma Assert (OK); D.Configure_Upload (2048, OK); pragma Assert (OK);
+   D.Prepare_Pipeline (OK); pragma Assert (OK); D.Configure_Upload (8192, OK); pragma Assert (OK);
    pragma Assert (D.Admit_Capture (Screen) = D.Capture_Allowed);
    G.Begin_Frame (S, (64, 24, Vulkan_Scene.A.G.Unrotated, (5, 4), 0, 0), 0, OK);
    pragma Assert (not OK and G.Current (S) = G.Idle and Calls = 0 and G.Reader_Count (S) = 0);
@@ -77,7 +77,7 @@ begin
    if Scenario = 1 then
       Set (3, 2); G.Complete_Output (S, True, True, Result); pragma Assert (Result = G.Output_Unsafe and G.Reader_Count (S) = 1);
       pragma Assert (D.Admit_Capture (Screen) = D.Capture_Uncertain);
-      G.Close (S, OK); pragma Assert (not OK and D.Charged_Bytes = 5 * 4096);
+      G.Close (S, OK); pragma Assert (not OK and D.Charged_Bytes = 6 * 4096);
       G.Begin_Frame (S, Screen, 0, OK); pragma Assert (not OK);
       Ada.Text_IO.Put_Line ("PASS uncertain scene retains glyph and rejects reuse"); return;
    end if;
@@ -92,7 +92,7 @@ begin
    G.Append (S, (Kind => Vulkan_Scene.Glyph_Mask, others => <>), OK); pragma Assert (not OK);
    G.Complete_Output (S, False, True, Result); pragma Assert (Result = G.Output_Repaint and G.Reader_Count (S) = 0);
    Start; Glyph; pragma Assert (OK); G.Complete_Output (S, False, False, Result); pragma Assert (Result = G.Output_Repaint and G.Reader_Count (S) = 0);
-   G.Close (S, OK); pragma Assert (OK and G.Current (S) = G.Closed and D.Charged_Bytes = 4 * 4096);
+   G.Close (S, OK); pragma Assert (OK and G.Current (S) = G.Closed and D.Charged_Bytes = 5 * 4096);
    D.Stop; pragma Assert (D.Charged_Bytes = 0);
    pragma Assert (D.Admit_Capture (Screen) = D.Capture_Unavailable);
    Ada.Text_IO.Put_Line ("PASS whole-output fallback gate: cold upload, 200 repeated glyphs/one lease, mixed layers, pending retention, overflow rejection and shutdown");

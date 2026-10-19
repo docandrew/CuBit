@@ -9,6 +9,8 @@ with Intel_GPU_VM_Materialize;
 with Intel_GPU_VM_Update;
 with Intel_GPU_ADLN_TLB_Invalidate;
 with Intel_GPU_Context_Table;
+with Context_Table_Access;
+with Test_Storage;
 with Intel_GPU_GuC_Context_Session;
 with Intel_GPU_GuC_Context_Event;
 with Intel_GPU_GuC_Context_Lifecycle;
@@ -52,7 +54,8 @@ procedure VM_Update_Pipeline_Tests is
       package Driver is new Intel_GPU_GuC_Context_Session
         (Device_Ready, Queue, Retain);
       package Pool is new Intel_GPU_Context_Table
-        (1, Driver, Device_Ready, Retain);
+        (1, Driver, Device_Ready, Retain, Reply_Words => Test_Storage.Reply_Words);
+      package Tables is new Context_Table_Access (Pool);
       Contexts : Pool.Table;
       Context_ID : Unsigned_32;
       use type Driver.Result;
@@ -221,7 +224,7 @@ procedure VM_Update_Pipeline_Tests is
          if Revoke_On_Resume and Step = 2 then Session_Live := False; end if;
       end Resume;
    begin
-      Pool.Open (Contexts, 16#200000#, 4096, 1000, 500000,
+      Tables.Open (Contexts, 16#200000#, 4096, 1000, 500000,
                  False, Context_ID, OK, Session => 99);
       pragma Assert (OK);
       Submit (Life.Register_Context); Submit (Life.Set_Policy);

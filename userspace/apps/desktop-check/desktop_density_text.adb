@@ -3,6 +3,8 @@ with CuBit.UI; use CuBit.UI;
 with CuBit.Fonts;
 with Compositor_Glyph_Layout;
 with Compositor_Glyph_FFI;
+with Compositor_Glyph_Placement;
+with Glyph_Gamma;
 -- Native execution of the actual toolkit and Rust font bridge. This checks
 -- offscreen pixels, not output configuration negotiation or scanout.
 procedure Desktop_Density_Text (Result : out Boolean) is
@@ -21,7 +23,12 @@ begin
       Target : Canvas;
       Plan : L.Layout;
       OK, Different : Boolean := False;
-      Advance, N, D, Left, Top, Clip_Left, Clip_Top, Clip_Right, Clip_Bottom : Natural;
+      Advance, N, D, Top, Clip_Left, Clip_Top, Clip_Right, Clip_Bottom : Natural;
+      --  The mask's left edge: its pen origin (logical x = 1) sits
+      --  CuBit.Fonts.Origin logical pixels in, so the edge may be left of 0.
+      Left : Integer;
+      Place : Compositor_Glyph_Placement.Subpixel_Origin;
+      White_Row : constant Glyph_Gamma.Bucket := Glyph_Gamma.Bucket_Of (16#FFFFFF#);
       Width, A, R, G, B : Unsigned_32;
       Expected : Color;
       Alpha : Unsigned_8;
@@ -30,10 +37,17 @@ begin
       for Scale of Values loop
          N := Natural (Scale.Numerator); D := Natural (Scale.Denominator);
          Plan := L.Plan (Scale);
-         Left := (N + D - 1) / D; Top := Left;
+         Top := (N + D - 1) / D;
+         --  The toolkit places the mask at the quarter pixel of its pen
+         --  less the origin margin (Compositor_Glyph_Placement.Snap_Phase);
+         --  the canvas starts at physical column 0.
+         Place := Compositor_Glyph_Placement.Snap_Phase
+           (Compositor_Glyph_Placement.G.Logical_Coordinate (1 - CuBit.Fonts.Origin), 0, 0, Scale);
+         Left := Integer (Place.Pixel);
          Clip_Left := (3 * N + D - 1) / D; Clip_Right := (20 * N + D - 1) / D;
          Clip_Top := (2 * N + D - 1) / D; Clip_Bottom := (16 * N + D - 1) / D;
-         for Face in CuBit.Fonts.Face loop
+         --  The toolkit's faces (Sans_Semibold is Desktop's emphasis face).
+         for Face in CuBit.Fonts.Sans .. CuBit.Fonts.Monospace loop
             Old := CuBit.Fonts.Get (Face, 'A');
             Compositor_Glyph_FFI.Rasterize
               (CuBit.Fonts.Face'Pos (Face), Character'Pos ('A'), Plan,
@@ -55,8 +69,9 @@ begin
                   if X >= Clip_Left and X < Clip_Right and Y >= Clip_Top and Y < Clip_Bottom then
                      if Face = CuBit.Fonts.Monospace and X < Natural (Width) then Expected := 16#204060#; end if;
                      if X >= Left and Y >= Top and X - Left < Plan.Width and Y - Top < Plan.Height then
-                        Alpha := Mask ((Y - Top) * Plan.Pitch + X - Left);
-                        A := Unsigned_32 (Alpha);
+                        Alpha := Mask (Place.Phase * L.Phase_Bytes (Plan) + (Y - Top) * Plan.Pitch + X - Left);
+                        --  Coverage through white ink's Glyph_Gamma row (UI-026).
+                        A := Unsigned_32 (Glyph_Gamma.Correction (White_Row) (Alpha));
                         R := (255 * A + (Shift_Right (Expected, 16) and 255) * (255 - A) + 127) / 255;
                         G := (255 * A + (Shift_Right (Expected, 8) and 255) * (255 - A) + 127) / 255;
                         B := (255 * A + (Expected and 255) * (255 - A) + 127) / 255;

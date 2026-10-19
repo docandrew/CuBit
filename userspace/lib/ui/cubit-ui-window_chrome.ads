@@ -29,8 +29,9 @@ package CuBit.UI.Window_Chrome with SPARK_Mode is
    Bar_Top            : constant := Border_Width + Stripe_Height;
    --  The client starts below the rule.
    Client_Top         : constant := Bar_Top + Bar_Height + Rule_Height;
-   Tile_Size          : constant := 14;
-   Tile_Left          : constant := 10;
+   --  The title tile: the app's icon, drawn this size (Desktop_Icons).
+   Tile_Size          : constant := 16;
+   Tile_Left          : constant := 8;
    Tile_Title_Gap     : constant := 6;
    Title_Left         : constant := Tile_Left + Tile_Size + Tile_Title_Gap;
    Button_Width       : constant := 22;
@@ -62,6 +63,8 @@ package CuBit.UI.Window_Chrome with SPARK_Mode is
    Light_Active_Border   : constant Theme_Color := 16#4A535C#;
    Light_Inactive_Border : constant Theme_Color := 16#6E7782#;
    Light_Inactive_Bar    : constant Theme_Color := 16#E9ECEF#;
+   --  4.5:1 on the inactive bar.
+   Light_Inactive_Title  : constant Theme_Color := 16#5F6973#;
    Light_Glyph           : constant Theme_Color := 16#3B444D#;
    Light_Hover_Fill      : constant Theme_Color := 16#E4E8EC#;
    Light_Hover_Edge      : constant Theme_Color := 16#AEB6BF#;
@@ -75,7 +78,7 @@ package CuBit.UI.Window_Chrome with SPARK_Mode is
       Inactive_Border => Light_Inactive_Border,
       Inactive_Bar    => Light_Inactive_Bar,
       Active_Title    => CuBit.Theme.Text,
-      Inactive_Title  => CuBit.Theme.Muted,
+      Inactive_Title  => Light_Inactive_Title,
       Rule            => CuBit.Theme.Edge,
       Button          => (CuBit.Theme.White, CuBit.Theme.Edge, Light_Glyph),
       Button_Hover    => (Light_Hover_Fill, Light_Hover_Edge, CuBit.Theme.Text),

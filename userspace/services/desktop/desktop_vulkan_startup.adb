@@ -287,7 +287,7 @@ package body Desktop_Vulkan_Startup with SPARK_Mode,
          V.Current (Submission) /= V.Idle or else Natural (Index) >= GS.Slot'Last or else
          Lease = O.A.No_Ticket or else Lease /= Backing_Lease (Index) or else
          Backing_Phase (Index) /= O.I.Live or else Extents (Index).Kind /= G.R8 or else
-         Extents (Index).Width /= Layout.Width or else Extents (Index).Height /= Layout.Height or else
+         Extents (Index).Width /= Layout.Width or else Extents (Index).Height /= GS.L.Strip_Height (Layout) or else
          not CP.Publishable (Coverage (Index), O.A.Identity (Lease)) or else
          not V.Source_Valid (Submission, Source) or else V.Source_At (Submission, Index) /= Source
       then return; end if;
@@ -295,9 +295,9 @@ package body Desktop_Vulkan_Startup with SPARK_Mode,
    end Bind_Glyph;
    procedure Capture_Glyph (Scene : in out Vulkan_Scene.State;
       Key : GS.Key; Cell : Vulkan_Scene.A.G.Logical_Rectangle;
-      Tint : Vulkan_Scene.A.Word; Accepted : out Boolean) is
+      Offset : GS.L.Subpixel; Tint : Vulkan_Scene.A.Word; Accepted : out Boolean) is
    begin
-      Vulkan_Scene.Append_Glyph (Scene, Submission, Glyph_Sources, Key, Cell, Tint, Accepted);
+      Vulkan_Scene.Append_Glyph (Scene, Submission, Glyph_Sources, Key, Cell, Offset, Tint, Accepted);
    end Capture_Glyph;
    function Can_Retire_Readers return Boolean is
      (D.Current (Device) = D.Ready and Pipeline = Live and Writer_Idle and

@@ -1,3 +1,4 @@
+with Compositor_Glyph_Layout;
 with System;
 with Compositor_Target_Damage;
 with Vulkan_Submission;
@@ -24,7 +25,8 @@ package Vulkan_Frame with SPARK_Mode is
       Over, Mask : Boolean; Tint : Compositor_Affine.Word; Accepted : out Boolean;
       Clip : Compositor_Affine.G.Physical_Rectangle :=
         (0, 0, Compositor_Affine.G.Pixel_Edge'Last, Compositor_Affine.G.Pixel_Edge'Last);
-      Raster_Glyph : Boolean := False; Straight_Alpha : Boolean := False)
+      Raster_Glyph : Boolean := False; Straight_Alpha : Boolean := False;
+      Glyph_Offset : Compositor_Glyph_Layout.Subpixel := 0)
      with Pre => V.Current (Submission) = V.Recording and V.Pass_Active (Submission) and
        D.Valid (Damage) and not D.Faulted (Damage) and D.Active (Damage) /= 0,
        Post => V.Current (Submission) = V.Recording and V.Pass_Active (Submission) and

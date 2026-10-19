@@ -1,6 +1,6 @@
 project Source_Loans is
  for Source_Dirs use (".", "../../userspace/lib/compositor");
- for Source_Files use ("compositor_source_loans.ads", "compositor_source_loans.adb", "source_loans_check.ads", "source_loans_tests.adb");
+ for Source_Files use ("compositor_source_loans.ads", "compositor_source_loans.adb", "source_loans_tests.adb");
  for Object_Dir use "build/source-loans/obj";
  for Exec_Dir use "build/source-loans";
  for Main use ("source_loans_tests.adb");

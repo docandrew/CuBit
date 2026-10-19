@@ -38,6 +38,16 @@ package body Intel_GPU_Primary_Flip is
    function Ready return Boolean is (Is_Ready and then not S.Faulted);
    function Owed return Boolean is (S.Owed);
 
+   procedure Resize (Width, Height, Pitch : Positive; Success : out Boolean) is
+   begin
+      Success := Is_Ready and then not S.Faulted and then not S.Owed;
+      if Success then
+         Frame_Width := Width;
+         Frame_Height := Height;
+         Frame_Pitch := Pitch;
+      end if;
+   end Resize;
+
    Problem : Configure_Problem := Not_Called;
    function Last_Problem return Configure_Problem is (Problem);
 

@@ -110,6 +110,10 @@ is
    REPLY_CANCELLED : constant Unsigned_32 := 16#F014#;
    REPLY_DEADLINE  : constant Unsigned_32 := 16#F015#;
    REPLY_BUSY      : constant Unsigned_32 := 16#F016#;
+   --  The path names a volume this system registers whose device is not
+   --  present (no driver attached it, or it offered none), as on a live
+   --  image without an NVMe driver. Not an I/O error: nothing was tried.
+   REPLY_VOLUME_UNAVAILABLE : constant Unsigned_32 := 16#F017#;
 
    MAXIMUM_PATH_BYTES : constant := CuBit.Directory_Paths.Maximum_Bytes;
    subtype Path_Byte_Count is Natural range 0 .. MAXIMUM_PATH_BYTES;

@@ -40,6 +40,15 @@ package Intel_GPU_Buffer_Requests is
      (Object : in out Service; Base, Bytes : Unsigned_64; Accepted : out Boolean);
    function Client_Usage (Object : Service; Session : Unsigned_64)
      return Intel_GPU_Client_Budgets.Usage;
+   -- Account records: in use and available (Extend_Client_Accounts adds).
+   function Client_Accounts_Used (Object : Service) return Natural;
+   function Client_Account_Capacity (Object : Service) return Positive;
+   -- Storage one more account takes (Extend_Client_Accounts).
+   function Client_Account_Bytes return Unsigned_64;
+   -- Trusted coordinator, when a retired session's slot is recycled: drop
+   -- its closed account once nothing is charged to it (no account: OK).
+   procedure Forget_Client_Account
+     (Object : in out Service; Session : Unsigned_64; Accepted : out Boolean);
    function Image_Writes_Held (Object : Service; Session : Unsigned_64) return Boolean;
    function Close_Diagnostic
      (Object : Service; Sender, Stamp, ID : Unsigned_64)

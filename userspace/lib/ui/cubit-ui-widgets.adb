@@ -5,6 +5,7 @@
 --  @summary
 --  Stateful widgets that draw themselves and register hit/damage metadata
 ------------------------------------------------------------------------------
+with Interfaces;
 with CuBit.UI.Widgets.Bluecurve;
 
 package body CuBit.UI.Widgets is
@@ -87,7 +88,6 @@ package body CuBit.UI.Widgets is
       fg : constant CuBit.UI.Color :=
          (if muted then colors.muted else colors.text);
       bg : constant CuBit.UI.Color := colors.face;
-      tc : constant CuBit.UI.Canvas := CuBit.UI.With_Clip (c, bounds);
       y : Natural := bounds.y;
    begin
       if CuBit.UI.Is_Empty (bounds) then
@@ -97,7 +97,7 @@ package body CuBit.UI.Widgets is
       if bounds.h > CuBit.UI.UI_Text_Height then
          y := bounds.y + (bounds.h - CuBit.UI.UI_Text_Height) / 2;
       end if;
-      CuBit.UI.Draw_UI_Text (tc, bounds.x, y, text, fg, bg);
+      CuBit.UI.Draw_UI_Text_Fitted (c, bounds, bounds.x, y, text, fg, bg);
    end Label;
 
    function Inner_Rect
@@ -163,8 +163,28 @@ package body CuBit.UI.Widgets is
        label : String;
        style : Badge_Style := Badge_Neutral)
    is
+      --  A status badge in either scheme: its fill the status colour this
+      --  far from the face, its edge the status colour, its text the
+      --  theme's text colour (4.5:1 and more on the tint, light or dark).
+      TINT_PERCENT : constant := 15;
+      function Tint (Base, Toward : CuBit.UI.Color) return CuBit.UI.Color is
+         Result : CuBit.UI.Color := 0;
+      begin
+         for Shift in 0 .. 2 loop
+            declare
+               Bits : constant Natural := 8 * Shift;
+               B : constant Natural := Natural (Interfaces.Shift_Right (Base, Bits) and 16#FF#);
+               T : constant Natural := Natural (Interfaces.Shift_Right (Toward, Bits) and 16#FF#);
+            begin
+               Result := Result or Interfaces.Shift_Left
+                 (CuBit.UI.Color ((B * (100 - TINT_PERCENT) + T * TINT_PERCENT) / 100), Bits);
+            end;
+         end loop;
+         return Result;
+      end Tint;
       fill : CuBit.UI.Color := colors.face;
-      fg   : CuBit.UI.Color := colors.text;
+      edge : CuBit.UI.Color := colors.edge;
+      fg   : constant CuBit.UI.Color := colors.text;
       tc : constant CuBit.UI.Canvas := CuBit.UI.With_Clip (c, bounds);
       textY : Natural := bounds.y;
    begin
@@ -175,13 +195,12 @@ package body CuBit.UI.Widgets is
       case style is
          when Badge_Neutral =>
             fill := colors.panel;
-            fg := colors.text;
          when Badge_Good =>
-            fill := 16#DDEFE6#;
-            fg := colors.good;
+            fill := Tint (colors.face, colors.good);
+            edge := colors.good;
          when Badge_Danger =>
-            fill := 16#F8E2DF#;
-            fg := colors.danger;
+            fill := Tint (colors.face, colors.danger);
+            edge := colors.danger;
       end case;
 
       if bounds.h > CuBit.UI.UI_Text_Height then
@@ -189,10 +208,12 @@ package body CuBit.UI.Widgets is
       end if;
 
       CuBit.UI.Fill_Rect (c, bounds, fill);
-      CuBit.UI.Stroke_Rect (c, bounds, colors.edge, colors.edge);
+      CuBit.UI.Stroke_Rect (c, bounds, edge, edge);
       CuBit.UI.Draw_UI_Text (tc, bounds.x + 6, textY, label, fg, fill);
    end Badge;
 
+   --  Room for keys like "Inventory source" before the value column.
+   KEY_COLUMN_WIDTH : constant := 128;
    procedure Key_Value
       (c : CuBit.UI.Canvas;
        bounds : CuBit.UI.Rect;
@@ -201,11 +222,10 @@ package body CuBit.UI.Widgets is
        value : String;
        mutedValue : Boolean := False)
    is
-      keyW : constant Natural := Natural'Min (96, bounds.w / 2);
+      keyW : constant Natural := Natural'Min (KEY_COLUMN_WIDTH, bounds.w / 2);
       valueX : constant Natural := bounds.x + keyW + 8;
       fgValue : constant CuBit.UI.Color :=
          (if mutedValue then colors.muted else colors.text);
-      tc : constant CuBit.UI.Canvas := CuBit.UI.With_Clip (c, bounds);
       y : Natural := bounds.y;
    begin
       if CuBit.UI.Is_Empty (bounds) then
@@ -216,11 +236,11 @@ package body CuBit.UI.Widgets is
          y := bounds.y + (bounds.h - CuBit.UI.UI_Text_Height) / 2;
       end if;
 
-      CuBit.UI.Draw_UI_Text (CuBit.UI.With_Clip (tc, (bounds.x, bounds.y, keyW, bounds.h)),
+      CuBit.UI.Draw_UI_Text_Fitted (c, (bounds.x, bounds.y, keyW, bounds.h),
         bounds.x, y, key, colors.muted, colors.face);
       if valueX < bounds.x + bounds.w then
-         CuBit.UI.Draw_UI_Text
-           (tc, valueX, y, value, fgValue, colors.face);
+         CuBit.UI.Draw_UI_Text_Fitted
+           (c, bounds, valueX, y, value, fgValue, colors.face);
       end if;
    end Key_Value;
 
@@ -616,7 +636,7 @@ package body CuBit.UI.Widgets is
             bounds.x + 22 + offset,
             bounds.y + (bounds.h - Natural'Min
               (bounds.h, CuBit.UI.UI_Text_Height)) / 2 + offset,
-            caption, fg);
+            CuBit.UI.Fit_UI_Text (caption, bounds.w - 25), fg);
       end if;
    end Navigation_Button;
 

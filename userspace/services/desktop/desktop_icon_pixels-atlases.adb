@@ -2,9 +2,10 @@ package body Desktop_Icon_Pixels.Atlases with SPARK_Mode is
    function Region (Item : Asset) return R.Rectangle is
       Row : constant Natural := (if Item.Kind = Application then Desktop_Icons.Icon_ID'Pos (Item.Icon)
         else Desktop_Window_Icons.Icon_ID'Pos (Item.Control));
+      Column : constant Natural := (if Item.Kind = Application then Desktop_Icons.Columns (Item.Edge) else 0);
       Edge : constant Positive := Size (Item);
    begin
-      return (0, R.Word (Row * Edge), R.Word (Edge), R.Word (Edge),
+      return (R.Word (Column), R.Word (Row * Edge), R.Word (Edge), R.Word (Edge),
         R.Word (Width (Item.Kind)), R.Word (Height (Item.Kind)));
    end Region;
    function Cursor_Region (Item : Desktop_Cursors.Cursor_ID) return R.Rectangle is
@@ -22,8 +23,20 @@ package body Desktop_Icon_Pixels.Atlases with SPARK_Mode is
    function Pixel (Kind : Family; X, Y : Natural) return Interfaces.Unsigned_32 is
    begin
       if Kind = Application then
-         return Desktop_Icon_Pixels.Pixel
-           ((Application, Desktop_Icons.Icon_ID'Val (Y / 24)), X, Y mod 24);
+         --  The edge whose column holds X; below its last icon, transparent.
+         for E in Desktop_Icons.Edge_Index loop
+            declare
+               Edge : constant Positive := Desktop_Icons.Edges (E);
+               Left : constant Natural := Desktop_Icons.Columns (E);
+            begin
+               if X >= Left and then X - Left < Edge then
+                  if Y / Edge >= Desktop_Icons.Icon_ID'Range_Length then return 0; end if;
+                  return Desktop_Icon_Pixels.Pixel
+                    ((Application, Desktop_Icons.Icon_ID'Val (Y / Edge), E), X - Left, Y mod Edge);
+               end if;
+            end;
+         end loop;
+         return 0;
       elsif Y < 45 then
          if X >= 9 then return 0; end if;
          return Desktop_Icon_Pixels.Pixel

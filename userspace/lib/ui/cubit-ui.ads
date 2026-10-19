@@ -142,7 +142,7 @@ package CuBit.UI is
       edge => 16#E6E9EA#,
       shadow => 16#899298#,
       text => 16#172026#,
-      muted => 16#536069#,
+      muted => 16#4F5B64#,
       accent => 16#2E7180#,
       good => 16#39795A#,
       danger => 16#A74949#,
@@ -227,10 +227,11 @@ package CuBit.UI is
    procedure Draw_Bitmap
      (c : Canvas; x, y : Natural; pixels : ARGB_Bitmap;
       enabled : Boolean := True);
-   --  The bitmap stretched over the logical rectangle r, sampled at the
-   --  canvas's physical pixels (nearest): a bitmap made at twice the logical
-   --  size stays sharp on a density-2 canvas.
-   procedure Draw_Bitmap_Fitted
+   --  The bitmap 1:1 in the canvas's physical pixels, never resampled,
+   --  centred on the physical span of the logical rectangle r (a larger
+   --  bitmap overhangs r, clipped only by the canvas's clip): icons drawn
+   --  from the export nearest the density (Icon_Edge_Choice) stay crisp.
+   procedure Draw_Bitmap_Native
      (c : Canvas; r : Rect; pixels : ARGB_Bitmap; enabled : Boolean := True);
    procedure Fill_Rect (c : Canvas; r : Rect; fill : Color);
    procedure Fill_Vertical_Gradient
@@ -255,6 +256,21 @@ package CuBit.UI is
    --  the pixels beneath (for text on an already filled row or panel).
    procedure Draw_Code_Text_Transparent
       (c : Canvas; x, y : Natural; text : String; fg : Color);
+   --  One-line labels that may not fit: the whole text, else its longest
+   --  prefix that still fits followed by "...", else "" (Text_Fit, proved;
+   --  measured with UI_Text_Width / Code_Text_Width, ellipsis in context).
+   function Fit_UI_Text (text : String; width : Natural) return String;
+   function Fit_Code_Text (text : String; width : Natural) return String;
+   --  How many characters of text Fit_Code_Text shows (before its "...").
+   function Kept_Code_Text (text : String; width : Natural) return Natural;
+   --  The same keeping the end instead ("..." first): paths.
+   function Fit_UI_Text_Tail (text : String; width : Natural) return String;
+   --  Draw_UI_Text / Draw_Code_Text clipped to box and elided so the text
+   --  ends at box's right edge instead of being cut mid-glyph.
+   procedure Draw_UI_Text_Fitted
+      (c : Canvas; box : Rect; x, y : Natural; text : String; fg, bg : Color);
+   procedure Draw_Code_Text_Fitted
+      (c : Canvas; box : Rect; x, y : Natural; text : String; fg, bg : Color);
    procedure Draw_Button_Frame
       (c : Canvas; r : Rect; colors : Theme; style : Button_Style);
    type Arrow_Direction is (Arrow_Up, Arrow_Down, Arrow_Left, Arrow_Right);
@@ -269,6 +285,10 @@ package CuBit.UI is
    procedure Draw_Menu_Title
       (c : Canvas; r : Rect; colors : Theme;
        hot : Boolean; active : Boolean; label : String);
+   --  A menu bar title is its label between MENU_TITLE_PADDING on each
+   --  side: lay titles out at Menu_Title_Width so none is cut.
+   MENU_TITLE_PADDING : constant := 10;
+   function Menu_Title_Width (label : String) return Natural;
    procedure Draw_Status_Bar
       (c : Canvas; r : Rect; colors : Theme; left, right : String);
    procedure Draw_Pane

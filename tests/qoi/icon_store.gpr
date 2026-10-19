@@ -1,10 +1,13 @@
 --  Hosted tests and proof scope for Desktop_Icon_Store (make -C kernel
 --  test-qoi / prove-qoi).
+with "../../userspace/allocator/allocator_runtime_host.gpr";
 project Icon_Store is
    for Source_Dirs use (".", "../../userspace/lib/image", "../../userspace/services/desktop",
      "../../userspace/runtime/gnat");
    for Source_Files use ("icon_store_tests.adb", "cubit.ads", "cubit-qoi.ads", "cubit-qoi.adb",
-     "desktop_icons.ads", "desktop_icon_store.ads", "desktop_icon_store.adb");
+     "desktop_icons.ads", "desktop_icon_store.ads", "desktop_icon_store.adb",
+     "desktop_icon_store-atlas_memory.ads", "desktop_icon_store-atlas_memory.adb",
+     "desktop_heap_objects.ads", "desktop_heap_objects.adb");
    for Object_Dir use "build/icon-store";
    for Exec_Dir use "build";
    for Main use ("icon_store_tests.adb");

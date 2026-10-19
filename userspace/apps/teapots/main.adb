@@ -168,9 +168,11 @@ procedure Main is
       end if;
    end Tick;
 
+   --  Run never blocks in a call to Desktop (Activity_Wait): its input
+   --  wait is submitted, and completes when input, or the deadline, arrives.
    procedure Run is new CuBit.UI.App.Run
      (UI, Controls, Render => Render, Handle_Event => Handle_Event, Next_Deadline => Deadline,
-      On_Deadline => Tick);
+      On_Deadline => Tick, Activity_Wait => True);
 begin
    debugPrint ("teapots: starting" & ASCII.LF);
    if not CuBit.Startup_State.Ready (Startup.Verify) then

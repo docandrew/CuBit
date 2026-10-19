@@ -3,6 +3,10 @@ set -u
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 KERNEL_DIR="$ROOT_DIR/kernel"
+# Files this script writes into test disks (debugfs) carry the build's
+# timestamp, like the images kernel/Makefile builds, not the Nix shell's 1980.
+SOURCE_DATE_EPOCH="$(make -s --no-print-directory -C "$KERNEL_DIR" print-build-epoch)" || exit 1
+export SOURCE_DATE_EPOCH
 QEMU_BIN="${QEMU_BIN:-qemu-system-x86_64}"
 QEMU_CPU_MODEL="${QEMU_CPU_MODEL:-Broadwell}"
 TIMEOUT_BIN="${TIMEOUT_BIN:-timeout}"
@@ -294,7 +298,7 @@ case "$TEST_NAME" in
         ;;
     grant-forward|grant-forward-intermediary-exit|grant-forward-owner-exit|grant-forward-desktop|config-tree|config-inspection|log-authority|log-fields|metrics|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
         ;;
-    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|scanout-repair|launch-failure)
+    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -537,6 +541,11 @@ case "$TEST_NAME" in
         # shown on the Desktop bootstrap screen.
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-process-kill.ccl"
         ;;
+    oom-reclaim)
+        # A process killed for want of memory is reclaimed while memory is
+        # still exhausted: process teardown must not allocate.
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-oom-reclaim.ccl"
+        ;;
     scanout-repair)
         # The kernel's stuck-call panel is drawn on the boot framebuffer and
         # erased; the desktop must cover the erased rows again.
@@ -676,6 +685,12 @@ case "$TEST_NAME" in
         ;;
     desktop-display|desktop-virtio-vga|desktop-vm)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-desktop-display.ccl"
+        # CUBIT_TEST_INIT_PROFILE (desktop-display only): another startup
+        # profile, e.g. one that also starts apps without launchers on
+        # this image, for photographs (tests/headless/desktop-polish-shots.py).
+        if [ "$TEST_NAME" = desktop-display ] && [ -n "${CUBIT_TEST_INIT_PROFILE:-}" ]; then
+            INIT_PROFILE="$CUBIT_TEST_INIT_PROFILE"
+        fi
         ;;
     boot-timeline)
         # docs/boot-timeline.md: the desktop-display boot plus the reader.
@@ -791,6 +806,17 @@ fi
 # desktop-vm mirrors run-desktop (2 GiB): large GPU banks (modes up to
 # 1920x1080) need at least 1 GiB (devmgr LARGE_BANK_MINIMUM_MEMORY).
 if [ "$TEST_NAME" = desktop-vm ]; then
+    QEMU_MEMORY="${QEMU_MEMORY:-2G}"
+fi
+# CUBIT_TEST_VIDEO_SIZE=WxH (desktop-display only): the firmware mode, as
+# WIDTHxHEIGHT; larger modes need room for Desktop's output buffers.
+if [ "$TEST_NAME" = desktop-display ] && [ -n "${CUBIT_TEST_VIDEO_SIZE:-}" ]; then
+    if ! [[ "$CUBIT_TEST_VIDEO_SIZE" =~ ^([0-9]+)x([0-9]+)$ ]]; then
+        echo "headless: CUBIT_TEST_VIDEO_SIZE must be WIDTHxHEIGHT" >&2
+        exit 1
+    fi
+    VIDEO_WIDTH=${BASH_REMATCH[1]}
+    VIDEO_HEIGHT=${BASH_REMATCH[2]}
     QEMU_MEMORY="${QEMU_MEMORY:-2G}"
 fi
 # A desktop session (desktop.svc, its GPU buffers, fonts and workbench) needs
@@ -983,6 +1009,19 @@ if [ -n "$INIT_PROFILE" ]; then
             done
         fi
     fi
+    # CUBIT_TEST_EXTRA_APPS="a.app b.app" (desktop-display only): more
+    # staged apps on the disk, for photographs of apps not on this image.
+    if [ "$TEST_NAME" = "desktop-display" ] && [ -n "${CUBIT_TEST_EXTRA_APPS:-}" ]; then
+        for app in $CUBIT_TEST_EXTRA_APPS; do
+            if [ ! -f "$KERNEL_DIR/isodir/boot/$app" ]; then
+                echo "headless: build $app first (CUBIT_TEST_EXTRA_APPS)" >&2
+                exit 1
+            fi
+            debugfs -w -R "rm $app" "$TEMP_DISK" >/dev/null 2>&1
+            debugfs -w -R "write $KERNEL_DIR/isodir/boot/$app $app" \
+                "$TEMP_DISK" >/dev/null 2>&1 || exit 1
+        done
+    fi
     # desktop-vm drags the workbench window (hardware pointer follows drags).
     if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "desktop-dual-output" ] ||
        [ "$TEST_NAME" = "desktop-vm" ]; then
@@ -1045,7 +1084,7 @@ if [ -n "$INIT_PROFILE" ]; then
         # the wallpapers and the application icon atlas.
         debugfs -w -R "mkdir Assets" "$TEMP_DISK" >/dev/null 2>&1
         for ASSET_ITEM in cubit-wallpapers/1/cubes.qoi cubit-wallpapers/1/cubie.qoi \
-          cubit-icons/1/applications.qoi; do
+          cubit-icons/3/applications.qoi; do
             ASSET_PACKAGE="Assets/${ASSET_ITEM%/*}"
             debugfs -w -R "mkdir ${ASSET_PACKAGE%/*}" "$TEMP_DISK" >/dev/null 2>&1
             debugfs -w -R "mkdir $ASSET_PACKAGE" "$TEMP_DISK" >/dev/null 2>&1
@@ -1465,6 +1504,14 @@ if [ -n "$INIT_PROFILE" ]; then
                 exit 1
             fi
         done
+    fi
+    if [ "$TEST_NAME" = "oom-reclaim" ]; then
+        debugfs -w -R "rm oom-check.app" "$TEMP_DISK" >/dev/null 2>&1
+        if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/oom-check.app oom-check.app" \
+          "$TEMP_DISK" >/dev/null 2>&1; then
+            echo "headless: failed to install oom-check.app" >&2
+            exit 1
+        fi
     fi
     if [ "$TEST_NAME" = "devmem-denials" ]; then
         for DEVMEM_IMAGE in logstore.svc clock.svc devmem-check.app; do
@@ -1958,6 +2005,10 @@ fi
 rm -f "$SERIAL_LOG" "$NET_PCAP"
 
 sed -i 's/^set default=.*/set default=4/' "$GRUB_CFG"
+if [ "$TEST_NAME" = desktop-display ] && [ -n "${CUBIT_TEST_VIDEO_SIZE:-}" ]; then
+    # The firmware mode Desktop starts at (VIDEO_ARGS below sizes the VGA).
+    sed -i "s/set gfxpayload=1024x768x32/set gfxpayload=${VIDEO_WIDTH}x${VIDEO_HEIGHT}x32/" "$GRUB_CFG"
+fi
 # Focused runs must not silently exercise a kernel predating source edits.
 # Compile/check the kernel, stage it, and regenerate the stage-1 archive
 # from the currently staged services before rebuilding the test ISO. Without
@@ -2014,6 +2065,19 @@ fi
 cp "$GRUB_BAK" "$GRUB_CFG"
 
 VIDEO_ARGS=(-device virtio-gpu-pci)
+# CUBIT_TEST_VIDEO_SIZE=WxH: desktop-display at another firmware mode, the
+# way a machine without modesetting runs (GOP / VBE linear framebuffer).
+# The secondary virtio-gpu-pci never drives the desktop (display: "gpu not
+# primary, using linear-fb"), so the size goes to GRUB's gfxpayload (set
+# above) on the primary std VGA, with video memory for the mode. SeaBIOS
+# VBE lists 1920x1080, 2560x1440, 2560x1600 and 3840x2160 among others.
+if [ "$TEST_NAME" = desktop-display ] && [ -n "${CUBIT_TEST_VIDEO_SIZE:-}" ]; then
+    VGA_MEMORY_MB=16
+    while [ $((VGA_MEMORY_MB * 1024 * 1024)) -lt $((VIDEO_WIDTH * VIDEO_HEIGHT * 4)) ]; do
+        VGA_MEMORY_MB=$((VGA_MEMORY_MB * 2))
+    done
+    VIDEO_ARGS=(-vga none -device "VGA,vgamem_mb=$VGA_MEMORY_MB" -device virtio-gpu-pci)
+fi
 if [ "$TEST_NAME" = bench-input ] && [ "$INPUT_BACKEND" = virtio ]; then
     VIDEO_ARGS=(-vga none -device virtio-vga,xres=1024,yres=768)
 fi
@@ -2225,7 +2289,9 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
         if [ "$TEST_NAME" = "launch-failure" ]; then
             # Launch Files from Apps: Tools is the fifth category row
             # (System, Development, Web, Games, Tools), Files its first
-            # entry. Photograph the notice, then dismiss it with Escape.
+            # entry. Photograph the notice (the Deskbar's toast), dismiss it
+            # with Escape, then photograph it in the Deskbar panel's history
+            # (Super+N) and close the panel.
             for ((attempt = 0; attempt < 300; attempt++)); do
                 grep -F "desktop: active outputs=" "$SERIAL_LOG" >/dev/null 2>&1 && break
                 sleep 0.1
@@ -2245,6 +2311,13 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
             done
             sleep 1
             printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-notice.ppm" |
+                nc -N -U "$MONITOR_SOCKET" >/dev/null 2>&1
+            sleep 1
+            printf 'sendkey esc\n' | nc -N -U "$MONITOR_SOCKET" >/dev/null 2>&1
+            sleep 0.5
+            printf 'sendkey meta_l-n\n' | nc -N -U "$MONITOR_SOCKET" >/dev/null 2>&1
+            sleep 1
+            printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-history.ppm" |
                 nc -N -U "$MONITOR_SOCKET" >/dev/null 2>&1
             sleep 1
             printf 'sendkey esc\n' | nc -N -U "$MONITOR_SOCKET" >/dev/null 2>&1
@@ -4093,6 +4166,15 @@ procmgr: process com.cubit.fault-check
 DESKTOP-BOOTSTRAP-NOTE: kernel: process killed #
 "
         ;;
+    oom-reclaim)
+        required_markers="
+oom-check: holding
+oom-check: memory exhausted after
+process killed: oom-check.app out-of-memory
+Process.reclaimProcess: stopped PID
+procmgr: process com.cubit.oom-check
+"
+        ;;
     devmem-denials)
         required_markers="
 devmem-check: kernel-image and bus mappings refused
@@ -4325,7 +4407,7 @@ mixer: HDA period IRQ active
         required_markers="
 display: gpu not primary, using linear-fb
 desktop: wallpaper loaded @nvme:0/Assets/cubit-wallpapers/1/cubes.qoi
-desktop: icons loaded @nvme:0/Assets/cubit-icons/1/applications.qoi
+desktop: icons loaded @nvme:0/Assets/cubit-icons/3/applications.qoi
 desktop: active outputs= 1 primary= 0
 desktop: internal shell active
 shell: cwd=@nvme:0/
@@ -4532,7 +4614,8 @@ text: closed
 procmgr: launch of files.app refused: unreadable capability manifest
 desktop: launch rejected token=
 desktop: launch failed: Files could not start. Reason: it has no startup table (rebuild it).
-desktop: launch notice dismissed
+desktop: notification posted id=1 source=Files urgency=normal
+desktop: notification toast dismissed
 "
         ;;
     files)
@@ -4543,7 +4626,7 @@ files: native window ready
 files: first frame presented
 ui-app: protected frame published
 files: pane 1 listed @nvme:0/ entries=
-files: pane 2 entered @mem:0/
+files: pane 2 listed @nvme:0/ entries=
 files: pane 1 listed @nvme:0/lost+found entries=
 files: pane 1 listed @nvme:0/lost+found/nested entries=
 files: active pane 2
@@ -4841,6 +4924,12 @@ if [ "$TEST_NAME" = "files" ]; then
     if ! grep -aE 'files: status Stopped at x: (not granted|the place is read-only)' \
         "$SERIAL_LOG" >/dev/null; then
         echo "headless: Files did not report the refused folder" >&2
+        exit 1
+    fi
+    # Places are the volumes present (Queue_List_Places), and no status
+    # reaches the person as a number (Files_Status).
+    if grep -aE 'files: status .*status [0-9]' "$SERIAL_LOG" >/dev/null; then
+        echo "headless: Files showed a raw filesystem status" >&2
         exit 1
     fi
 fi

@@ -385,8 +385,13 @@ package CuBit.Desktop_Protocol with SPARK_Mode, Pure is
      with Pre => Valid_Damage (Item.Area);
 
    --  Fixed BGRA8888 attachment. Other formats need explicit schema support.
-   Maximum_Buffer_Bytes : constant := 16 * 1024 * 1024;
-   subtype Buffer_Pitch is Natural range 0 .. Maximum_Buffer_Bytes;
+   --  The largest buffer one grant can carry (CuBit.Grant_References): an
+   --  ABI structure, not a size policy. A buffer's owner pays for it from
+   --  its own memory quota when it allocates; attaching needs a grant that
+   --  covers it.
+   Maximum_Buffer_Bytes : constant := CuBit.Grant_References.Maximum_Bytes;
+   --  Bytes per row; Valid_Layout bounds the whole buffer.
+   subtype Buffer_Pitch is Natural;
    type Buffer_Layout is record
       Width, Height : Positive_Extent := 1;
       Pitch : Buffer_Pitch := 4;
@@ -395,7 +400,8 @@ package CuBit.Desktop_Protocol with SPARK_Mode, Pure is
      (Unsigned_64 (Layout.Pitch) * Unsigned_64 (Layout.Height));
    function Valid_Layout (Layout : Buffer_Layout) return Boolean is
      (Layout.Pitch >= Natural (Layout.Width) * 4 and then
-      Layout.Pitch <= Maximum_Buffer_Bytes / Natural (Layout.Height));
+      Long_Long_Integer (Layout.Pitch) <=
+        Maximum_Buffer_Bytes / Long_Long_Integer (Layout.Height));
    type Attachment_Request is record
       Surface : Live_Surface_Name := 1;
       Grant : CuBit.Grant_References.Reference;

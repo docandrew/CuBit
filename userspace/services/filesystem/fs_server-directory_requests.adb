@@ -104,7 +104,7 @@ package body Fs_Server.Directory_Requests is
             begin
                ensureVolume (selectedVolume, admission);
                if admission /= Admitted then
-                  sendReply (sender, REPLY_IO_ERROR, 0);
+                  sendReply (sender, Labels.Admission_Label (admission), 0);
                   return;
                end if;
             end;
@@ -333,17 +333,22 @@ package body Fs_Server.Directory_Requests is
    end handleRewindDirectory;
 
    --  What an ext2 inode records, as Directory.Inspection.V1. Ext2 keeps
-   --  seconds since the epoch; i_ctime is the change time.
+   --  seconds since the epoch; i_ctime is the change time. An inode made
+   --  while wall time was unknown keeps a zero mtime (Ext2.Metadata.Stamp):
+   --  its times are reported as unknown, not as 1970-01-01.
    function inspectionOf
      (ino : Ext2.Inode; volume : Volume_Index; inodeNum : Unsigned_32)
       return Entry_Inspection
    is
       MS_PER_SECOND : constant := 1_000;
+      NEVER_STAMPED : constant Unsigned_32 := 0;
       function Ms (seconds : Unsigned_32) return Unsigned_64 is
         (Unsigned_64 (seconds) * MS_PER_SECOND);
+      Times : constant Unsigned_32 :=
+        (if ino.modifiedTime = NEVER_STAMPED then 0 else INSPECTED_TIMES);
    begin
       return
-        (valid => INSPECTED_SIZE or INSPECTED_TIMES or INSPECTED_MODE or
+        (valid => INSPECTED_SIZE or Times or INSPECTED_MODE or
                   INSPECTED_LINKS or INSPECTED_OWNER or INSPECTED_OBJECT,
          mode => Unsigned_32 (ino.typeAndPermissions),
          sizeBytes => Ext2.fileSize (ino),

@@ -1,3 +1,4 @@
+with "../../userspace/allocator/allocator_runtime_host.gpr";
 --  The toolkit as the editor-keys test sees it; editor_keys.gpr extends it
 --  with a host body of CuBit.UI.Clipboard (no Desktop, no IPC).
 with "../../userspace/lib/ui/fonts_host.gpr";
@@ -5,7 +6,7 @@ project Editor_Keys_Base is
    for Languages use ("Ada");
    for Source_Dirs use
      ("../../userspace/lib/ui", "../../userspace/lib/theme", "../../userspace/lib/compositor",
-      "../../userspace/lib/display", "../../userspace/allocator/src", "build/source");
+      "../../userspace/lib/display", "build/source");
    for Object_Dir use "build/keys-base";
    package Compiler is
       for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O1");

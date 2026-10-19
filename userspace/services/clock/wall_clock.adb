@@ -4,7 +4,9 @@ with CuBit.Config;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.System_Facts;
 with Civil_Time;
+with Clock_Settings;
 with Time_Zones;
+with Time_Zone_Rules;
 with Clock_Discipline;
 with Clock_Floor;
 package body Wall_Clock is
@@ -49,20 +51,60 @@ package body Wall_Clock is
          end loop;
          if Position = Start then OK := False; end if;
       end Number;
+      function Image (Value : Unsigned_64) return String is
+         Text : constant String := Unsigned_64'Image (Value);
+      begin
+         return Text (Text'First + 1 .. Text'Last);
+      end Image;
+      --  "2026-10-19 06:12:00 UTC" for a supported instant.
+      function Date_Text (UTC : Unsigned_64) return String is
+         Date : constant Civil_Time.Date_Time := Civil_Time.Split (Integer_64 (UTC));
+         --  Adding 100 keeps a leading zero in the last two digits.
+         Two_Digit_Pad : constant := 100;
+         function Two (Value : Natural) return String is
+            Text : constant String := Natural'Image (Value + Two_Digit_Pad);
+         begin
+            return Text (Text'Last - 1 .. Text'Last);
+         end Two;
+         Year : constant String := Natural'Image (Date.Year);
+      begin
+         return Year (Year'First + 1 .. Year'Last) & "-" & Two (Date.Month) & "-" & Two (Date.Day) & " " &
+           Two (Date.Hour) & ":" & Two (Date.Minute) & ":" & Two (Date.Second) & " UTC";
+      end Date_Text;
+      Floor_Seconds : constant Unsigned_64 := Clock_Floor.UTC_Seconds;
+      Unavailable : constant String := "unavailable";
+      Supported, Read_OK : Boolean;
    begin
       Text ("clock.boot-sample", Data, Length, OK);
+      Read_OK := OK;
       Position := 1;
       if OK then Number (Base_UTC); Number (Base_Mono); end if;
-      Seed_Valid := OK and then Position = Length + 1 and then
-        Base_UTC in 946_684_800 .. 4_102_444_799;
+      Seed_Valid := OK and then Position = Length + 1;
+      Supported := Seed_Valid and then Base_UTC <= Unsigned_64 (Civil_Time.Timestamp'Last) and then
+        Time_Zone_Rules.Supported (Integer_64 (Base_UTC));
       Clock_Discipline.Initialize
-        (Discipline, Seed_Valid, Base_UTC, Base_Mono, Floor_MS);
+        (Discipline, Supported, Base_UTC, Base_Mono, Floor_MS);
+      --  Every outcome names the check, so one boot log says why the
+      --  Deskbar shows no time (devmgr logs the RTC side: "devmgr: RTC ...").
       if Clock_Discipline.Available (Discipline) then
-         debugPrint ("clock: RTC-derived UTC ready" & ASCII.LF);
+         debugPrint ("clock: RTC-derived UTC ready: " & Date_Text (Base_UTC) & ASCII.LF);
+      elsif Supported then
+         debugPrint ("clock: wall time unavailable: RTC " & Date_Text (Base_UTC) &
+                     " is below the build time floor " & Date_Text (Floor_Seconds) &
+                     " (RTC battery lost, or RTC holds local time west of UTC?)" & ASCII.LF);
       elsif Seed_Valid then
-         debugPrint ("clock: RTC below build time floor, wall time unavailable" & ASCII.LF);
+         debugPrint ("clock: wall time unavailable: RTC UTC seconds " & Image (Base_UTC) &
+                     " outside the supported 2000..2099" & ASCII.LF);
+      elsif not Read_OK then
+         debugPrint ("clock: wall time unavailable: reading clock.boot-sample from Config failed" & ASCII.LF);
+      elsif Length = Unavailable'Length and then Data (1 .. Length) = Unavailable then
+         debugPrint ("clock: wall time unavailable: devmgr had no RTC seed " &
+                     "(see ""devmgr: RTC seed unavailable"")" & ASCII.LF);
+      elsif Length = 0 then
+         debugPrint ("clock: wall time unavailable: no clock.boot-sample in Config" & ASCII.LF);
       else
-         debugPrint ("clock: wall time unavailable" & ASCII.LF);
+         debugPrint ("clock: wall time unavailable: malformed clock.boot-sample """ &
+                     Data (1 .. Length) & """" & ASCII.LF);
       end if;
    end Initialize;
 
@@ -117,14 +159,14 @@ package body Wall_Clock is
          UTC := UTC_MS / 1_000;
          Quality := CuBit.Clocks.Unsupported_Date;
          if UTC < 4_102_444_800 then
-            Text ("clock.time-zone", Name, Length, OK);
+            Text (Clock_Settings.Time_Zone_Key, Name, Length, OK);
             if OK then
                Time_Zones.Find
                  ((if Length = 0 then "UTC" else Name (1 .. Length)), Zone, OK);
             end if;
             Quality := CuBit.Clocks.Invalid_Zone;
             if OK then
-               Offset := Time_Zones.Offset (Zone, Integer_64 (UTC));
+               Offset := Time_Zone_Rules.Offset (Zone, Integer_64 (UTC));
                Date := Civil_Time.Split (Integer_64 (UTC) + Integer_64 (Offset));
                Quality := Clock_Discipline.Quality (Discipline);
             end if;

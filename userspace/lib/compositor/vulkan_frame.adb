@@ -9,7 +9,8 @@ package body Vulkan_Frame with SPARK_Mode is
       Over, Mask : Boolean; Tint : Compositor_Affine.Word; Accepted : out Boolean;
       Clip : Compositor_Affine.G.Physical_Rectangle :=
         (0, 0, Compositor_Affine.G.Pixel_Edge'Last, Compositor_Affine.G.Pixel_Edge'Last);
-      Raster_Glyph : Boolean := False; Straight_Alpha : Boolean := False) is
+      Raster_Glyph : Boolean := False; Straight_Alpha : Boolean := False;
+      Glyph_Offset : Compositor_Glyph_Layout.Subpixel := 0) is
       package R renames Compositor_Damage;
       package G renames Compositor_Affine.G;
       use type Vulkan_Affine_Binding.Outcome, R.Box;
@@ -33,7 +34,7 @@ package body Vulkan_Frame with SPARK_Mode is
             G.Pixel_Edge'Max (G.Pixel_Edge (Area.Top), Clip.Top),
             G.Pixel_Edge'Min (G.Pixel_Edge (Area.Right), Clip.Right),
             G.Pixel_Edge'Min (G.Pixel_Edge (Area.Bottom), Clip.Bottom)),
-           Over, Mask, Tint, Result, Raster_Glyph, Straight_Alpha);
+           Over, Mask, Tint, Result, Raster_Glyph, Straight_Alpha, Glyph_Offset);
          if Result = Vulkan_Affine_Binding.Rejected then return; end if;
          pragma Loop_Invariant (V.Current (Submission) = V.Recording and V.Pass_Active (Submission));
          pragma Loop_Invariant (V.Complete_Frame (Submission));

@@ -17,7 +17,7 @@ package body Vulkan_Affine_Binding.Regions with SPARK_Mode is
       else
          Vulkan_Region_FFI.Record_Draw (Borrowed, P.Value,
            Compositor_Transform.Build (P.Value, Screen.Width, Screen.Height),
-           Screen.Width, Screen.Height, Region, Accepted);
+           Screen.Width, Screen.Height, Region, False, 0, Accepted);
          Result := (if Accepted then Recorded else Rejected);
       end if;
    end Draw_Output;

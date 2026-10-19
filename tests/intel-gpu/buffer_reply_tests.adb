@@ -106,8 +106,10 @@ begin
       pragma Assert (Page_Address (Frame, Frame_4K - 4096) =
         DMA + ((Frame_4K - 4096) / Block) * 2 * Block +
         (Frame_4K - 4096) mod Block);
+      --  One allocation is one extent map (32 MiB): a 4K frame fits the
+      --  linear view too; a frame larger than the map does not.
       pragma Assert (not From_Linear (16#2000000#, Layout.CPU_Base,
-        Frame_4K, 16#2000000#).Ready);
+        Layout.Capacity + 4096, 16#2000000#).Ready);
       D.Extend_Metadata (Owner, Unsigned_64 (To_Integer (Storage'Address)),
         16384, OK);
       pragma Assert (OK);

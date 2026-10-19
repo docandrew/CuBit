@@ -8,9 +8,9 @@ package body Desktop_GPU_Scene_Real_Bridge is
    Key : Vulkan_Glyph_Sources.Key;
    use type G.Outcome, G.Phase, Vulkan_Device_Owner.Phase;
    procedure Capture (OK : out Boolean) is
-      Items : Compositor_Text.Glyphs := (others => (65, (1000, 1000, 1032, 1017)));
+      Items : Compositor_Text.Glyphs := (others => (65, (1000, 1000, 1032, 1017), 0));
    begin
-      Items (16) := (Key.Code, (2, 3, 34, 20));
+      Items (16) := (Key.Code, (2, 3, 34, 20), 0);
       G.Drawing.Fill (Scene, (0, 0, 65535, 65535), 0, OK); if not OK then return; end if;
       G.Drawing.Text (Scene, Items, 32, (0, 0, 96, 64), 16#FFFFFFFF#, OK, Key.Face);
    end Capture;

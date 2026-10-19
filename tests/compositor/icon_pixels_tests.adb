@@ -11,13 +11,16 @@ procedure Icon_Pixels_Tests is
    use type Interfaces.Unsigned_32, P.Pixels, P.Family;
    Sentinel : constant Interfaces.Unsigned_32 := 16#DEADBEEF#;
    Checks : Natural := 0;
+   --  Room for the largest icon edge with padded rows and an offset.
+   Capacity : constant := 2 * Desktop_Icons.MAX_EDGE * (Desktop_Icons.MAX_EDGE + 2);
+   subtype Target_Pixels is P.Pixels (0 .. Capacity - 1);
    procedure Check (Item : P.Asset) is
       N : constant Positive := P.Size (Item);
-      Target : P.Pixels (0 .. 1023) := (others => Sentinel);
+      Target : Target_Pixels := (others => Sentinel);
       Plan : U.Plan;
       OK, Done : Boolean;
       function Reference (X, Y : Natural) return Interfaces.Unsigned_32 is
-        (if Item.Kind = P.Application then Desktop_Icon_Store.Pixel (Item.Icon, X, Y)
+        (if Item.Kind = P.Application then Desktop_Icon_Store.Pixel (Item.Icon, Item.Edge, X, Y)
          else Desktop_Window_Icons.Pixels (Item.Control) (Y * N + X));
    begin
       for First in 0 .. N - 1 loop
@@ -40,7 +43,7 @@ procedure Icon_Pixels_Tests is
          end loop;
       end loop;
       -- Full image/tight rows includes the otherwise omitted first column.
-      U.Row_Chunk (N, N, 0, N * N * 4, U.BGRA8, Plan, OK); pragma Assert (OK);
+      U.Row_Chunk (N, N, 0, N, N * N * 4, U.BGRA8, Plan, OK); pragma Assert (OK);
       P.Copy_Chunk (Item, Target, Plan, Done); pragma Assert (Done);
       for Y in 0 .. N - 1 loop
          for X in 0 .. N - 1 loop pragma Assert (Target (Y * N + X) = Reference (X, Y)); end loop;
@@ -48,19 +51,24 @@ procedure Icon_Pixels_Tests is
       Target := (others => Sentinel);
       U.Make (N, N, Target'Length * 4, (0, 0, N, N), 0, 0, U.R8, Plan, OK);
       pragma Assert (OK); P.Copy_Chunk (Item, Target, Plan, Done);
-      pragma Assert (not Done and Target = P.Pixels'(0 .. 1023 => Sentinel));
+      pragma Assert (not Done and Target = Target_Pixels'(others => Sentinel));
       U.Make (N + 1, N, Target'Length * 4, (0, 0, N, N), 0, 0, U.BGRA8, Plan, OK);
       pragma Assert (OK); P.Copy_Chunk (Item, Target, Plan, Done);
-      pragma Assert (not Done and Target = P.Pixels'(0 .. 1023 => Sentinel));
+      pragma Assert (not Done and Target = Target_Pixels'(others => Sentinel));
       U.Make (N, N, Target'Length * 4 + 4, (0, 0, N, N), 0, 0, U.BGRA8, Plan, OK);
       pragma Assert (OK); P.Copy_Chunk (Item, Target, Plan, Done);
-      pragma Assert (not Done and Target = P.Pixels'(0 .. 1023 => Sentinel));
+      pragma Assert (not Done and Target = Target_Pixels'(others => Sentinel));
       U.Make (N, N, 0, (0, 0, N, N), 0, 0, U.BGRA8, Plan, OK);
       pragma Assert (not OK); P.Copy_Chunk (Item, Target, Plan, Done);
-      pragma Assert (not Done and Target = P.Pixels'(0 .. 1023 => Sentinel));
+      pragma Assert (not Done and Target = Target_Pixels'(others => Sentinel));
    end Check;
 begin
-   for I in Desktop_Icons.Icon_ID loop Check ((P.Application, I)); end loop;
+   --  Every icon at the design edge; the first and last at every edge.
+   for I in Desktop_Icons.Icon_ID loop Check ((P.Application, I, Desktop_Icons.Design_Edge)); end loop;
+   for E in Desktop_Icons.Edge_Index loop
+      Check ((P.Application, Desktop_Icons.Icon_ID'First, E));
+      Check ((P.Application, Desktop_Icons.Icon_ID'Last, E));
+   end loop;
    for I in Desktop_Window_Icons.Icon_ID loop Check ((P.Window_Control, I)); end loop;
-   Ada.Text_IO.Put_Line ("PASS icon staging: all 13 assets, straight-alpha bytes, row slices, offsets, padding guards, invalid plans; checks" & Checks'Image);
+   Ada.Text_IO.Put_Line ("PASS icon staging: application icons at every exported edge, window controls, straight-alpha bytes, row slices, offsets, padding guards, invalid plans; checks" & Checks'Image);
 end Icon_Pixels_Tests;

@@ -5,7 +5,7 @@ root=Path(__file__).resolve().parents[2]
 a=argparse.ArgumentParser();a.add_argument('--source-root',dest='source',type=Path,default=root);a.add_argument('--toolchain-root',dest='toolchain',type=Path,default=root);args=a.parse_args()
 r=args.source.resolve(); fixture=Path(__file__).resolve().parent/'software-facade'
 w=Path(tempfile.mkdtemp(prefix='cubit-software-facade-',dir=os.environ.get('TMPDIR', '/tmp'))); print(w,flush=True)
-names='compositor_software_text compositor_software_text_target desktop_composition compositor_text compositor_glyph_cache compositor_glyph_storage compositor_glyph_software compositor_glyph_placement compositor_glyph_layout compositor_glyph_memory compositor_glyph_arena compositor_glyph_ffi compositor_identity compositor_affine compositor_transform compositor_formats heap_extents cubit-display_geometry cubit compositor_damage compositor_pool compositor_backend_selection cubit-appearance'.split()
+names='compositor_software_text compositor_software_text_target desktop_composition compositor_text compositor_glyph_cache compositor_glyph_storage compositor_glyph_software glyph_gamma compositor_glyph_placement compositor_glyph_layout compositor_glyph_memory compositor_glyph_ffi compositor_identity compositor_affine compositor_transform compositor_formats cubit-display_geometry cubit compositor_damage compositor_pool compositor_backend_selection cubit-appearance'.split()
 inputs={}
 def copy(p):
  data=p.read_bytes();(w/p.name).write_bytes(data);inputs[str(p)]=hashlib.sha256(data).hexdigest()

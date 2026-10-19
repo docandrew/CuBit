@@ -9,6 +9,7 @@ with Intel_GPU_ADLN_Context_Init;
 with Intel_GPU_GuC_Submission_Policy;
 with Intel_GPU_Native_Queue_Ring;
 with Intel_GPU_Queue_Service;
+with Queue_Service_Prepare;
 with Intel_GPU_Ring_Reservation;
 -- The production native ring writer (Intel_GPU_Native_Queue_Ring) under the
 -- queue service, on real memory laid out as a context backing (saved tail at
@@ -165,6 +166,7 @@ procedure Ring_Exhaustion_Submit_Tests is
       Segment_Bytes, Kick, Read_Timeline, Read_Job_Time, Job_Started, Now_Us, Quarantine, Call_Finished, Answer_Wake,
       Client_Region, Driver_Region, 1_000_000, 1_000_000);
    use type Service.Call_Result;
+   procedure Prepare is new Queue_Service_Prepare (Service);
    T : access Service.Table := new Service.Table;
    Client : access Clients.Client := new Clients.Client;
    Result : Service.Call_Result;
@@ -186,6 +188,7 @@ procedure Ring_Exhaustion_Submit_Tests is
    Wraps : Natural := 0;
    Previous_Tail : Unsigned_32;
 begin
+   Prepare (T.all);
    -- Registration left the setup segment (value 1) and the saved tail at 384.
    declare
       W : Unsigned_32 with Import, Volatile, Address => To_Address (Integer_Address (Base + Tail_At));

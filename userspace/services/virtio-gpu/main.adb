@@ -24,6 +24,7 @@ with CuBit.Memory_Grants;
 with CuBit.Output_Discovery;
 with CuBit.Output_Modes;
 with CuBit.Monitor_EDID;
+with CuBit.Monitor_EDID.Catalog;
 with CuBit.Desktop_Messages;
 with CuBit.Graphics_Metrics;
 with CuBit.Graphics_Metrics_IO;
@@ -266,6 +267,9 @@ procedure main is
       Height : EDID.Extent := FALLBACK_HEIGHT;
    end record;
    geometry : array (Head_Index) of Head_Geometry;
+   --  Each head's monitor size from its EDID (zero: unknown), for the
+   --  output catalog (display.svc and Desktop compute DPI from it).
+   headSize : array (Head_Index) of CuBit.Monitor_EDID.Catalog.Physical_Size;
    function Frame_Width (Head : Head_Index) return Unsigned_32 is
      (Unsigned_32 (geometry (Head).Width));
    function Frame_Height (Head : Head_Index) return Unsigned_32 is
@@ -795,6 +799,7 @@ procedure main is
       end if;
       for I in Snapshot'Range loop Snapshot (I) := Raw (I); end loop;
       Parsed := EDID.Decode (Snapshot);
+      headSize (Head) := CuBit.Monitor_EDID.Catalog.Size_Of (Snapshot);
       if Parsed.Status /= EDID.Accepted then
          debugPrint ("virtio-gpu: EDID " & Parsed.Status'Image & "; using fallback" & LF);
          return;
@@ -1061,6 +1066,7 @@ procedure main is
                  (OD.Backend_Ready, OD.Virtio_GPU,
                   OD.Native_Output_Number (Head),
                   Detected.Advertised_Width, Detected.Advertised_Height,
+                  OD.Millimetres (headSize (Head).Width_MM), OD.Millimetres (headSize (Head).Height_MM),
                   OD.Extent (Frame_Width (Head)), OD.Extent (Frame_Height (Head)));
             end;
          end if;
@@ -1107,7 +1113,7 @@ procedure main is
                scanouts.Items (scanouts.Count) :=
                  (OD.Detected_Only, OD.Virtio_GPU,
                   OD.Native_Output_Number (Index),
-                  OD.Extent (Width), OD.Extent (Height));
+                  OD.Extent (Width), OD.Extent (Height), 0, 0);
             end if;
          end;
       end loop;

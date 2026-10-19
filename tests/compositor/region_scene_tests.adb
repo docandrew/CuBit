@@ -7,7 +7,7 @@ procedure Region_Scene_Tests is
    package S renames Vulkan_Scene;
    package V renames Vulkan_Submission;
    use type Interfaces.Unsigned_32, S.Phase, S.Layer_Kind, S.R.Rectangle, System.Address;
-   use type S.A.G.Logical_Coordinate;
+   use type S.A.G.Logical_Coordinate, S.A.G.Logical_Rectangle;
    procedure Reset with Import, Convention => C, External_Name => "submission_mock_reset";
    procedure Region_Set (Status : Interfaces.Unsigned_32) with Import, Convention => C, External_Name => "region_mock_reset";
    function Calls return Interfaces.Unsigned_32 with Import, Convention => C, External_Name => "region_mock_calls";
@@ -52,6 +52,17 @@ begin
    pragma Assert (not OK and S.Current (Scene) = S.Rejected and S.Count (Scene) = 0);
    Fresh; S.Append_Region (Scene, Ticket, Surface, (0, 0, 0, 9, 32, 24), True, True, OK);
    pragma Assert (not OK and S.Count (Scene) = 0);
+   --  1:1 physical windows (Desktop's icons): retained, replayed once,
+   --  rejected through plain Append and with an invalid window.
+   Fresh; S.Append_Physical_Region (Scene, Ticket, (3, 4, 10, 13), Region, OK);
+   pragma Assert (OK and S.Count (Scene) = 1 and S.Region_At (Scene, 1) = Region and
+     S.Item (Scene, 1).Kind = S.Physical_Region and S.Item (Scene, 1).Surface = (3, 4, 10, 13));
+   S.Seal (Scene, OK); pragma Assert (OK); Replay;
+   pragma Assert (OK and Calls = 1); V.Cancel (Submission, OK); pragma Assert (OK);
+   Fresh; S.Append (Scene, (Ticket, (3, 4, 10, 13), True, False, 0, S.Physical_Region), OK);
+   pragma Assert (not OK and S.Current (Scene) = S.Rejected and S.Count (Scene) = 0);
+   Fresh; S.Append_Physical_Region (Scene, Ticket, (3, 4, 10, 13), (0, 0, 0, 9, 32, 24), OK);
+   pragma Assert (not OK and S.Count (Scene) = 0);
    Fresh;
    for I in 1 .. S.Maximum_Layers loop
       S.Append_Region (Scene, Ticket, Surface, Region, True, True, OK); pragma Assert (OK);
@@ -59,5 +70,5 @@ begin
    S.Append_Region (Scene, Ticket, Surface, Region, True, True, OK);
    pragma Assert (not OK and S.Current (Scene) = S.Rejected and S.Count (Scene) = S.Maximum_Layers);
    for I in 1 .. S.Maximum_Layers loop pragma Assert (S.Region_At (Scene, I) = Region); end loop;
-   Ada.Text_IO.Put_Line ("PASS region scene: retained geometry, replay, stale-source preflight, direct-kind/invalid-window rejection, bounded overflow");
+   Ada.Text_IO.Put_Line ("PASS region scene: retained geometry, replay, stale-source preflight, direct-kind/invalid-window rejection, 1:1 physical windows, bounded overflow");
 end Region_Scene_Tests;

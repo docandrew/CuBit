@@ -1,7 +1,7 @@
 # Clock arithmetic regression (Linux hosted)
 
 ```sh
-nix develop -c make -C kernel clock
+nix develop -c make -C kernel time-zones
 nix develop -c bash -lc 'cd kernel && alr exec -- gprbuild -p -P ../tests/wall-clock/clock.gpr && ../tests/wall-clock/build/main'
 ```
 

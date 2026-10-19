@@ -2,7 +2,7 @@ with CuBit.Handles.Fixture;
 with Ada.Text_IO;
 with Interfaces; with System; with System.Storage_Elements;
 with Compositor_Upload; with Desktop_Vulkan_Startup; with Vulkan_Device_Mock;
-with Vulkan_Submission; with Vulkan_Owned_Targets;
+with Vulkan_Submission; with Vulkan_Owned_Targets; with Compositor_Glyph_Layout;
 procedure Desktop_Source_Capacity_Tests is
    package D renames Desktop_Vulkan_Startup;
    package V renames Vulkan_Submission;
@@ -31,7 +31,7 @@ procedure Desktop_Source_Capacity_Tests is
    function Addr (N : Natural) return System.Address is
      (System.Storage_Elements.To_Address (System.Storage_Elements.Integer_Address (N)));
 begin
-   pragma Assert (V.Glyph_Slot'First = 0 and V.Glyph_Slot'Last = 127);
+   pragma Assert (V.Glyph_Slot'First = 0 and V.Glyph_Slots = Compositor_Glyph_Layout.Repertoire);
    pragma Assert (V.Backdrop_Slot'First = V.Glyph_Slot'Last + 1);
    pragma Assert (V.Icon_Atlas_Slot'First = V.Backdrop_Slot'Last + 1);
    pragma Assert (V.Client_Slot'First = V.Icon_Atlas_Slot'Last + 1);
@@ -50,7 +50,7 @@ begin
    pragma Assert (Result = D.Source_Rejected and Extra = A.No_Ticket);
    D.Release_Source (Foreign, Retired); pragma Assert (Retired = Addr (10000));
    for Index in D.Backing_Slot loop
-      D.Allocate_Backing (Index, 32, 24, Natural (Index) < 128, Leases (Index), Result);
+      D.Allocate_Backing (Index, 32, 24, Index in V.Glyph_Slot, Leases (Index), Result);
       pragma Assert (Result = D.Source_Accepted);
       D.Import_Source (Index, Addr (20000 + Natural (Index)), Rejected, Result);
       pragma Assert (Result = D.Source_Rejected and Rejected = V.No_Source);
@@ -81,5 +81,7 @@ begin
    pragma Assert (Result = D.Source_Rejected and Rejected = V.No_Source);
    D.Release_Source (Foreign, Retired); pragma Assert (Retired = Addr (30000));
    D.Stop; pragma Assert (D.Charged_Bytes = 0 and Vulkan_Device_Mock.Closes = 1);
-   Ada.Text_IO.Put_Line ("PASS Desktop 148 owned sources: 128 masks + 2 backdrops + 2 icon atlases + 16 client images, upload/import/retirement, exact 152-allocation budget, external ownership exclusion and slot role reuse");
+   Ada.Text_IO.Put_Line ("PASS Desktop" & Natural'Image (V.Source_Capacity) & " owned sources:" & Natural'Image (V.Glyph_Slots) &
+      " masks + 2 backdrops + 2 icon atlases + 16 client images, upload/import/retirement, exact" &
+      Natural'Image (4 + V.Source_Capacity) & "-allocation budget, external ownership exclusion and slot role reuse");
 end Desktop_Source_Capacity_Tests;

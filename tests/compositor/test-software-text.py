@@ -2,7 +2,7 @@ from pathlib import Path
 import tempfile,subprocess,os,json,hashlib
 assert os.environ.get('IN_NIX_SHELL')
 r=Path(__file__).resolve().parents[2];w=Path(tempfile.mkdtemp(prefix='software-text-',dir=r/'tests/compositor/build'));print(w,flush=True)
-names=['compositor_software_text','compositor_glyph_cache','compositor_glyph_storage','compositor_glyph_software','compositor_glyph_placement','compositor_glyph_layout','compositor_glyph_memory','compositor_glyph_arena','compositor_glyph_ffi','compositor_identity','compositor_affine','compositor_transform','compositor_formats','heap_extents','cubit-display_geometry','cubit']
+names=['compositor_software_text','compositor_glyph_cache','compositor_glyph_storage','compositor_glyph_software','glyph_gamma','compositor_glyph_placement','compositor_glyph_layout','compositor_glyph_memory','compositor_glyph_ffi','compositor_identity','compositor_affine','compositor_transform','compositor_formats','cubit-display_geometry','cubit']
 inputs={}
 for name in names:
  for ext in ['ads','adb']:
@@ -12,14 +12,19 @@ for name in names:
 (w/'raster.c').write_text('''#include <stdint.h>
 #include <string.h>
 #include <assert.h>
+#include <stdlib.h>
+/* CuAlloc's entry points for this hosted fixture (glyph mask storage). */
+uint64_t cualloc_allocate(uint64_t bytes,uint64_t alignment){
+ void *p=0; if(posix_memalign(&p,alignment,bytes))return 0; return (uint64_t)(uintptr_t)p;}
+void cualloc_free(uint64_t item){free((void*)(uintptr_t)item);}
 static unsigned calls, fail;
 void set_fault(unsigned f){fail=f;}
 unsigned raster_calls(void){return calls;}
-struct request {uint32_t font,code,n,d,w,h,pitch,capacity;};
+struct request {uint32_t font,code,n,d,w,h,pitch,capacity,phases;};
 struct metrics {uint32_t advance,height;};
 uint32_t cubit_font_raster_mask(const struct request *r,void *pixels,struct metrics *m){
- calls++; if(fail)return 1; assert(r->capacity>=r->pitch*r->h);
- for(unsigned y=0;y<r->h;y++)memset((uint8_t*)pixels+y*r->pitch,127,r->w);
+ calls++; if(fail)return 1; assert(r->capacity>=r->pitch*r->h*r->phases);
+ for(unsigned y=0;y<r->h*r->phases;y++)memset((uint8_t*)pixels+y*r->pitch,127,r->w);
  *m=(struct metrics){r->w,r->h}; return 0;}
 ''')
 (w/'software_text_tests.adb').write_text('''with Ada.Text_IO;
@@ -41,7 +46,7 @@ procedure Software_Text_Tests is
  procedure Draw (Code : Natural; Scale : G.UI_Scale) is
  begin
  Screen.Scale := Scale;
- R.Paint (S, (0, Code, Scale), Screen, (-2, -3), (3, 4, 45, 50), Pixels, 80, 16#FFFFFFFF#, OK);
+ R.Paint (S, (0, Code, Scale), Screen, (-2, -3), 37, (3, 4, 45, 50), Pixels, 80, 16#FFFFFFFF#, OK);
  end Draw;
 begin
  Draw (65, (5, 4)); pragma Assert (OK and Calls = 1);
@@ -58,7 +63,7 @@ begin
  Screen.Rotation := G.Unrotated;
  for I in 0 .. 299 loop
  Draw (32 + I mod 95, (G.Scale_Component (1 + I / 95), 1));
- pragma Assert (OK and R.Valid (S) and R.Charged (S) <= 524_288);
+ pragma Assert (OK and R.Valid (S) and R.Charged (S) <= R.Budget);
  end loop;
  Before := Pixels; Fault (1); Draw (90, (7, 4));
  pragma Assert (not OK and Pixels = Before and R.Valid (S));

@@ -168,6 +168,7 @@
               export CUBIT_CA_BUNDLE="${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
               export IBM_PLEX_SANS_FONT="${pkgs.ibm-plex}/share/fonts/truetype/IBMPlexSans-Regular.ttf"
               export IBM_PLEX_MONO_FONT="${pkgs.ibm-plex}/share/fonts/truetype/IBMPlexMono-Regular.ttf"
+              export IBM_PLEX_SANS_SEMIBOLD_FONT="${pkgs.ibm-plex}/share/fonts/truetype/IBMPlexSans-SemiBold.ttf"
               # Hosted developer tools built through Alire/GPRBuild do not
               # automatically consume Nix's compiler and linker flags.
               export C_INCLUDE_PATH="${pkgs.SDL2.dev}/include''${C_INCLUDE_PATH:+:$C_INCLUDE_PATH}"

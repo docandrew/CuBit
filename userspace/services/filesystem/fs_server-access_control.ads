@@ -5,6 +5,8 @@
 --  @summary
 --  Per-process file access policies of the filesystem service, and their administration.
 ------------------------------------------------------------------------------
+with CuBit.File_Access;
+
 private package Fs_Server.Access_Control is
 
    --  Administrative identity comes only from the kernel's authenticated
@@ -39,5 +41,15 @@ private package Fs_Server.Access_Control is
    --  caller's own access profile, as CuBit.File_Access wire entries. A
    --  process learns only its own grants. Without a profile: no entries.
    procedure handleListScopes (owner : Process_ID; rangeBytes : Unsigned_64);
+
+   --  The caller's own access profile as those wire entries (Count of
+   --  them from Wire'First; none without a profile), for Queue_List_Places.
+   procedure scopesOf
+     (owner : Process_ID;
+      wire  : out CuBit.File_Access.Wire_Bytes;
+      count : out Natural)
+     with Pre => wire'First = 1 and then
+                 wire'Length = CuBit.File_Access.Maximum_Entries *
+                               CuBit.File_Access.Wire_Entry_Bytes;
 
 end Fs_Server.Access_Control;

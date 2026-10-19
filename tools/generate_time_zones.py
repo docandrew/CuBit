@@ -74,29 +74,20 @@ for name in names:
         ranges.append((first, len(transitions)))
         cache[key] = ranges[-1]
 args.output.mkdir(parents=True, exist_ok=True)
-spec = '''with Interfaces; use Interfaces;
-package Time_Zones with SPARK_Mode, Pure is
+# Two units: Time_Zones (the zone identities and IANA names, small: Settings
+# lists them) and Time_Zone_Rules (the offset tables, the clock service only).
+spec = '''package Time_Zones with SPARK_Mode, Pure is
    type Time_Zone is (\n'''
 spec += ',\n'.join('      ' + i for i in ids) + ''');
    procedure Find (Name : String; Zone : out Time_Zone; Found : out Boolean);
    function Name (Zone : Time_Zone) return String;
-   function Supported (UTC : Integer_64) return Boolean is
-     (UTC >= 946_684_800 and then UTC < 4_102_444_800);
-   function Offset (Zone : Time_Zone; UTC : Integer_64) return Integer_32
-     with Pre => Supported (UTC);
 end Time_Zones;
 '''
 body = '''package body Time_Zones with SPARK_Mode is
-   type Transition is record
-      At_UTC : Integer_64;
-      Offset_Seconds : Integer_32;
-   end record;
-   Table : constant array (Positive range <>) of Transition := [\n'''
-body += ',\n'.join(f'      ({t}, {o})' for t, o in transitions) + '];\n'
-body += '   type Span is record First, Last : Positive; end record;\n'
-body += '   Spans : constant array (Time_Zone) of Span := [\n'
-body += ',\n'.join(f'      {i} => ({a}, {b})' for i, (a,b) in zip(ids, ranges)) + '];\n'
-body += '   function Name (Zone : Time_Zone) return String is\n   begin\n      case Zone is\n'
+   function Name (Zone : Time_Zone) return String is
+   begin
+      case Zone is
+'''
 body += ''.join(f'         when {i} => return "{n}";\n' for i,n in zip(ids,names))
 body += '''      end case;
    end Name;
@@ -109,7 +100,28 @@ body += '''      end case;
          end if;
       end loop;
    end Find;
-   function Offset (Zone : Time_Zone; UTC : Integer_64) return Integer_32 is
+end Time_Zones;
+'''
+rules_spec = '''with Interfaces; use Interfaces;
+with Time_Zones; use Time_Zones;
+package Time_Zone_Rules with SPARK_Mode, Pure is
+   function Supported (UTC : Integer_64) return Boolean is
+     (UTC >= 946_684_800 and then UTC < 4_102_444_800);
+   function Offset (Zone : Time_Zone; UTC : Integer_64) return Integer_32
+     with Pre => Supported (UTC);
+end Time_Zone_Rules;
+'''
+rules_body = '''package body Time_Zone_Rules with SPARK_Mode is
+   type Transition is record
+      At_UTC : Integer_64;
+      Offset_Seconds : Integer_32;
+   end record;
+   Table : constant array (Positive range <>) of Transition := [\n'''
+rules_body += ',\n'.join(f'      ({t}, {o})' for t, o in transitions) + '];\n'
+rules_body += '   type Span is record First, Last : Positive; end record;\n'
+rules_body += '   Spans : constant array (Time_Zone) of Span := [\n'
+rules_body += ',\n'.join(f'      {i} => ({a}, {b})' for i, (a,b) in zip(ids, ranges)) + '];\n'
+rules_body += '''   function Offset (Zone : Time_Zone; UTC : Integer_64) return Integer_32 is
       Low : Positive := Spans (Zone).First;
       High : Positive := Spans (Zone).Last;
       Middle : Positive;
@@ -121,8 +133,9 @@ body += '''      end case;
       end loop;
       return Table (Low).Offset_Seconds;
    end Offset;
-end Time_Zones;
+end Time_Zone_Rules;
 '''
-(args.output / 'time_zones.ads').write_text(spec)
-(args.output / 'time_zones.adb').write_text(body)
+for name, text in (('time_zones.ads', spec), ('time_zones.adb', body),
+                   ('time_zone_rules.ads', rules_spec), ('time_zone_rules.adb', rules_body)):
+    (args.output / name).write_text(text)
 print(f'Timezones: {len(names)} enum values, {len(transitions)} transitions, 2000..2099', flush=True)

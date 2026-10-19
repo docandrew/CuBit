@@ -5,6 +5,7 @@ package Vulkan_Submission_Test_Bridge is
    type Input is record
       W, H, N, D, Rotation, X, Y, L, T, R, B, DL, DT, DR, DB, Over, Mask : Interfaces.C.int;
       Tint : Interfaces.Unsigned_32;
+      Offset : Interfaces.C.int;
    end record with Convention => C;
    procedure Open (Context : System.Address) with Export, Convention => C, External_Name => "test_submission_open";
    function Import_Source (Description, Expected_Context : System.Address) return Interfaces.C.int

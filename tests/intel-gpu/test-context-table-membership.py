@@ -12,6 +12,14 @@ source = (root / "userspace/services/intel-gpu/main.adb").read_text()
 start = source.index("   type Table_Census_Record is record")
 end = source.index("   end Advance_Context_Table_Census;", start) + len("   end Advance_Context_Table_Census;")
 body = source[start:end]
+# The driver keeps per-session records in growable session storage
+# (Intel_GPU_Session_Store); plain slots stand in for it here.
+store = '''   package Census_Records is new Intel_GPU_Session_Store
+     (Slots, Session_Slot, Table_Census_Record);
+   Parent_Table_Census : Census_Records.Element_Array renames Census_Records.Items;
+'''
+assert body.count(store) == 1
+body = body.replace(store, "   Parent_Table_Census : array (1 .. 2) of Table_Census_Record;\n")
 prefix = '''with Ada.Text_IO;
 with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;

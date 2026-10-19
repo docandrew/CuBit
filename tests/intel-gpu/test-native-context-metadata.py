@@ -8,6 +8,15 @@ root = Path(__file__).resolve().parents[2]
 source = (root / "userspace/services/intel-gpu/main.adb").read_text()
 start = source.index("   type Context_Metadata_Table is")
 body = source[start:source.index("   package Context_Metadata_Growth is", start)]
+# The driver keeps per-session values in growable session storage
+# (Intel_GPU_Session_Values); here one plain slot stands in for it.
+store = '''   package Metadata_Target_Values is new Intel_GPU_Session_Values
+     (Slots, Session_Slot, Context_Metadata_Needs, [others => 0]);
+   Context_Metadata_Targets : Metadata_Target_Values.Element_Array
+     renames Metadata_Target_Values.Items;
+'''
+assert body.count(store) == 1
+body = body.replace(store, "   Context_Metadata_Targets : array (1 .. 1) of Context_Metadata_Needs :=\n     [others => [others => 0]];\n")
 prefix = """
 with Interfaces; use Interfaces;
 procedure Context_Metadata_Test is

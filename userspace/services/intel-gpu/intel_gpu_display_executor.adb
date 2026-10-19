@@ -1,3 +1,5 @@
+with Intel_GPU_Physical_Extents;
+with Intel_GPU_Buffer_Backing;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.System_Facts;
 with CuBit.Messages; use CuBit.Messages;
@@ -24,6 +26,24 @@ with Intel_GPU_Native_Cursor_Program;
 with Intel_GPU_Native_GGTT;
 with Intel_GPU_Pipe_Mapping;
 with Intel_GPU_Pipe_Pages;
+with CuBit.Monitor_EDID;
+with CuBit.Monitor_EDID.Catalog;
+with CuBit.Output_Discovery;
+with CuBit.Output_Modes;
+with Intel_GPU_Display_Registers;
+with Intel_GPU_Display_Decode;
+with Intel_GPU_Display_Readout;
+with Intel_GPU_Display_Mapping;
+with Intel_GPU_GMBUS;
+with Intel_GPU_DP_AUX;
+with Intel_GPU_HDMI_Modeset;
+with Intel_GPU_Mode_Admission;
+with Intel_GPU_Modeset_Mapping;
+with Intel_GPU_Modeset_Pages;
+with Intel_GPU_Modeset_Plan;
+with Intel_GPU_PHY_Mapping;
+with Intel_GPU_PHY_Pages;
+with Intel_GPU_Transcoder_Timing;
 package body Intel_GPU_Display_Executor is
    package FO renames Intel_GPU_Firmware_Output;
    package PP renames Intel_GPU_Pipe_Pages;
@@ -167,7 +187,7 @@ package body Intel_GPU_Display_Executor is
    --  Presents answered before their flip latched (no reply could be kept).
    Unpaced_Presents : Natural := 0;
    Scanout_Status : Flip.Takeover_Result := Flip.Not_Configured;
-   Scanout_Arena_Pages : constant := 4_096;
+   Scanout_Arena_Pages : constant := Intel_GPU_Buffer_Backing.Page_Count'Last;
 
    --  DBUF_CTL_S0..S3 (i915 skl_watermark_regs.h), logged only.
    type DBUF_Slice is range 0 .. 3;
@@ -213,7 +233,7 @@ package body Intel_GPU_Display_Executor is
       Bound := True;
       Success := True;
    end Prepare_Surface;
-   Surface_Limit_Bytes : constant := 16 * 1024 * 1024;
+   Surface_Limit_Bytes : constant := Intel_GPU_Physical_Extents.Capacity;
    package Surface_Publication is new Intel_GPU_GGTT_Publish
      (Surface_Range_Allowed, Prepare_Surface, Surface_IO.Read_PTE,
       Surface_IO.Write_PTE, Invalidate, Surface_Limit_Bytes,
@@ -276,6 +296,337 @@ package body Intel_GPU_Display_Executor is
            " (display executor answers display.svc only)");
    end Register_Service;
 
+   ---------------------------------------------------------------------------
+   --  DISP-002/004/005: what the firmware lit, the monitor on it (EDID over
+   --  GMBUS), and which of its modes this engine can drive. Boot only,
+   --  before the request loop (the page grants poll the broker).
+   ---------------------------------------------------------------------------
+   package R renames Intel_GPU_Display_Registers;
+   package DD renames Intel_GPU_Display_Decode;
+   package C renames CuBit.Monitor_EDID.Catalog;
+   package MA renames Intel_GPU_Mode_Admission;
+   package MP renames Intel_GPU_Modeset_Plan;
+   package MPages renames Intel_GPU_Modeset_Pages;
+   package OD renames CuBit.Output_Discovery;
+   package OM renames CuBit.Output_Modes;
+   package TT renames Intel_GPU_Transcoder_Timing;
+   use type DD.Signal_Mode, DD.Crystal, MA.Verdict, R.DDI_Port;
+   package Readout is new Intel_GPU_Display_Readout (Read_MMIO, Log);
+   Display_State : Readout.Snapshot;
+   Lit : Readout.Lit_Output;
+
+   function Transcoder_Of (Item : Topology.Pipe) return R.Transcoder is
+     (R.Transcoder'Val (Topology.Pipe'Pos (Item)));
+   function Modeset_Page_Of (Item : R.Transcoder) return MPages.Transcoder_Page is
+     (MPages.Page'Val (MPages.Page'Pos (MPages.Transcoder_A) + R.Transcoder'Pos (Item)));
+
+   --  A register through one of the modeset pages, when it is mapped.
+   function Modeset_Address (Item : MPages.Page; Offset : Unsigned_32) return Unsigned_64 is
+     (if Display_Owner and then Intel_GPU_Modeset_Mapping.Ready (Item) and then
+         Unsigned_64 (Offset) >= MPages.Offset (Item) and then
+         Unsigned_64 (Offset) < MPages.Offset (Item) + MPages.Page_Bytes and then Offset mod 4 = 0
+      then MPages.Address (Item) + (Unsigned_64 (Offset) - MPages.Offset (Item)) else 0);
+
+   procedure Store (Address : Unsigned_64; Value : Unsigned_32; Written : out Boolean) is
+   begin
+      Written := False;
+      if Address = 0 then return; end if;
+      declare
+         Register : Unsigned_32 with Import, Volatile_Full_Access,
+           Address => To_Address (Integer_Address (Address));
+      begin
+         Register := Value;
+         Written := True;
+      end;
+   end Store;
+
+   procedure GMBUS_Read (Offset : R.Register_Offset; Value : out Unsigned_32) is
+      Address : constant Unsigned_64 := Modeset_Address (MPages.GMBUS, Offset);
+   begin
+      if Address = 0 then
+         Value := Unsigned_32'Last;
+         return;
+      end if;
+      declare
+         Register : Unsigned_32 with Import, Volatile_Full_Access,
+           Address => To_Address (Integer_Address (Address));
+      begin
+         Value := Register;
+      end;
+   end GMBUS_Read;
+   procedure GMBUS_Write (Offset : R.Register_Offset; Value : Unsigned_32; Written : out Boolean) is
+   begin
+      Store (Modeset_Address (MPages.GMBUS, Offset), Value, Written);
+   end GMBUS_Write;
+   procedure GMBUS_Clock (Value : out Unsigned_64) is
+      Reading : constant CuBit.Monotonic.Reading := CuBit.Monotonic.Read;
+   begin
+      Value := (if Reading.Available then Reading.Microseconds else Unsigned_64'Last);
+   end GMBUS_Clock;
+   package DDC is new Intel_GPU_GMBUS (GMBUS_Read, GMBUS_Write, GMBUS_Clock);
+   use type DDC.Status;
+
+   --  DP/eDP: the AUX channel of the lit port, through PHY page 0 (0x64000,
+   --  Intel_GPU_PHY_Pages), only that channel's control and data words.
+   AUX_First : constant := 16#6_4010#;
+   AUX_Stride : constant := 16#100#;
+   AUX_Words : constant := 6;
+   function AUX_Address (Offset : Unsigned_32) return Unsigned_64 is
+     (if Display_Owner and then Intel_GPU_PHY_Mapping.Ready and then Lit.Found and then
+         Offset >= AUX_First + AUX_Stride * R.DDI_Port'Pos (Lit.Port) and then
+         Offset < AUX_First + AUX_Stride * R.DDI_Port'Pos (Lit.Port) + 4 * AUX_Words and then
+         Offset mod 4 = 0
+      then Intel_GPU_PHY_Pages.Virtual_Base + Unsigned_64 (Offset - R.DDI_BUF_CTL_A) else 0);
+   procedure AUX_Read (Offset : R.Register_Offset; Value : out Unsigned_32) is
+      Address : constant Unsigned_64 := AUX_Address (Offset);
+   begin
+      if Address = 0 then
+         Value := Unsigned_32'Last;
+         return;
+      end if;
+      declare
+         Register : Unsigned_32 with Import, Volatile_Full_Access,
+           Address => To_Address (Integer_Address (Address));
+      begin
+         Value := Register;
+      end;
+   end AUX_Read;
+   procedure AUX_Write (Offset : R.Register_Offset; Value : Unsigned_32; Written : out Boolean) is
+   begin
+      Store (AUX_Address (Offset), Value, Written);
+   end AUX_Write;
+   package AUX is new Intel_GPU_DP_AUX (AUX_Read, AUX_Write, GMBUS_Clock);
+   use type AUX.Status;
+   function Channel_Of (Port : R.DDI_Port) return AUX.Channel is
+     (AUX.Channel'Val (R.DDI_Port'Pos (Port)));
+
+   function Pin_Of (Port : R.DDI_Port) return DDC.Pin is
+     (case Port is
+        when R.Port_A | R.Port_C => DDC.Pin_DDI_A, when R.Port_B => DDC.Pin_DDI_B,
+        when R.Port_TC1 => DDC.Pin_TC1, when R.Port_TC2 => DDC.Pin_TC2,
+        when R.Port_TC3 => DDC.Pin_TC3, when R.Port_TC4 => DDC.Pin_TC4);
+
+   --  The monitor's EDID: the base block and every extension it declares.
+   EDID_Attempts : constant := 3;
+   EDID_Base : C.Block := [others => 0];
+   EDID_Extensions : C.Block_Array (1 .. C.Extension_Count'Last) := [others => [others => 0]];
+   Extensions_Read : C.Extension_Count := 0;
+   Monitor_Known : Boolean := False;
+   Monitor : C.Identity;
+   Monitor_Size : C.Physical_Size;
+   Sink : C.Sink_Limits;
+   type Mode_List_Access is access C.Mode_List;
+   type Verdict_Array_Access is access MA.Verdict_Array;
+   Modes : Mode_List_Access;
+   Verdicts : Verdict_Array_Access;
+   --  The mode to offer (Intel_GPU_Mode_Admission.Best); zero when none.
+   Best_Mode : Natural := 0;
+   Facts : MA.Facts;
+   --  Catalog revision: bumped by every applied mode change.
+   Output_Revision : OD.Catalog_Revision := 1;
+
+   function Image (Value : Natural) return String is
+      Text : constant String := Natural'Image (Value);
+   begin
+      return Text (Text'First + 1 .. Text'Last);
+   end Image;
+   function Millihertz_Text (Value : Unsigned_64) return String is
+      Whole : constant String := Unsigned_64'Image (Value / 1000);
+      Fraction : constant String := Unsigned_64'Image (1000 + Value mod 1000);
+   begin
+      return Whole (Whole'First + 1 .. Whole'Last) & "." & Fraction (Fraction'First + 2 .. Fraction'Last);
+   end Millihertz_Text;
+   function Mode_Text (Mode : CuBit.Monitor_EDID.Timing) return String is
+     (Image (Mode.Width) & "x" & Image (Mode.Height) & "@" &
+      Millihertz_Text (CuBit.Monitor_EDID.Refresh_Millihertz (Mode)) & " " &
+      Image (Natural (Mode.Clock) * 10) & " kHz");
+   function Source_Name (Item : C.Mode_Source) return String is
+     (case Item is
+        when C.Base_Detailed => "base-dtd", when C.Extension_Detailed => "cta-dtd",
+        when C.Video_Code => "cta-vic");
+
+   procedure Log_Block (Index : Natural; Data : C.Block) is
+      Digits_Text : constant String := "0123456789abcdef";
+      Line : String (1 .. 64);
+   begin
+      for Row in 0 .. 3 loop
+         for Col in 0 .. 31 loop
+            Line (2 * Col + 1) := Digits_Text (Natural (Data (Row * 32 + Col) / 16) + 1);
+            Line (2 * Col + 2) := Digits_Text (Natural (Data (Row * 32 + Col) mod 16) + 1);
+         end loop;
+         Log ("intel-gpu: EDID block " & Image (Index) & " row " & Image (Row) & " " & Line);
+      end loop;
+   end Log_Block;
+
+   --  One EDID block over GMBUS (HDMI/DVI) or AUX (DP/eDP), with retries.
+   procedure Read_Block (Over_AUX : Boolean; Index : DDC.EDID_Block_Index; Data : out C.Block;
+                         Good : out Boolean) is
+      Buffer : DDC.Bytes (1 .. DDC.EDID_Block_Bytes);
+      Wire : AUX.Bytes (1 .. AUX.EDID_Block_Bytes);
+      Status : DDC.Status := DDC.NAK;
+      AUX_Status : AUX.Status := AUX.NAK;
+      Fatal : Boolean;
+   begin
+      Data := [others => 0];
+      Good := False;
+      for Attempt in 1 .. EDID_Attempts loop
+         if Over_AUX then
+            AUX.Read_EDID_Block (Channel_Of (Lit.Port), Index, Wire, AUX_Status);
+            if AUX_Status = AUX.OK then
+               for I in Data'Range loop
+                  Data (I) := Wire (I + 1);
+               end loop;
+               Good := C.Valid_Checksum (Data);
+            end if;
+            Fatal := AUX_Status = AUX.Not_Writable;
+            Log ("intel-gpu: EDID block " & Image (Index) & " attempt " & Image (Attempt) & " aux " &
+                 AUX.Name (AUX_Status) & (if AUX_Status = AUX.OK then " checksum " &
+                   (if Good then "ok" else "BAD") else ""));
+         else
+            DDC.Read_EDID_Block (Pin_Of (Lit.Port), Index, Buffer, Status);
+            if Status = DDC.OK then
+               for I in Data'Range loop
+                  Data (I) := Buffer (I + 1);
+               end loop;
+               Good := C.Valid_Checksum (Data);
+            end if;
+            Fatal := Status = DDC.Not_Writable;
+            Log ("intel-gpu: EDID block " & Image (Index) & " attempt " & Image (Attempt) & " gmbus " &
+                 DDC.Name (Status) & (if Status = DDC.OK then " checksum " &
+                   (if Good then "ok" else "BAD") else ""));
+         end if;
+         exit when Good or else Fatal;
+      end loop;
+   end Read_Block;
+
+   function To_Admission (Item : MA.Verdict) return OM.Admission is
+     (case Item is
+        when MA.Admitted => OM.Admitted,
+        when MA.Not_Digital_Separate_Sync => OM.Sync_Unsupported,
+        when MA.Type_C_Port => OM.Port_Unsupported,
+        when MA.DisplayPort_Link_Unsupported => OM.Link_Unsupported,
+        when MA.Above_Source_TMDS => OM.Above_Source_Clock,
+        when MA.Above_Sink_TMDS => OM.Above_Sink_Clock,
+        when MA.In_Combo_Clock_Hole => OM.Clock_Hole,
+        when MA.Needs_Scrambling_Without_SCDC => OM.Needs_Scrambling,
+        when MA.Needs_Higher_CDCLK => OM.Needs_Higher_CD_Clock);
+
+   --  The scanout row bytes for a width (64-byte aligned, PLANE_STRIDE).
+   function Pitch_For (Width : Positive) return Positive is
+     ((Width * 4 + MP.Stride_Unit - 1) / MP.Stride_Unit * MP.Stride_Unit);
+
+   procedure Identify (Register_Base : Unsigned_64) is
+      Pixel : DD.Clock_kHz := 0;
+   begin
+      Readout.Capture (Display_State);
+      Readout.Describe (Display_State);
+      Lit := Readout.Lit (Display_State, Transcoder_Of (Selection.Pipe));
+      if not Lit.Found then
+         Log ("intel-gpu: lit output: transcoder " & FO.Pipe_Name (Selection.Pipe) &
+              " has no enabled DDI function; no EDID read");
+         return;
+      end if;
+      Pixel := Lit.Pixel_kHz;
+      Log ("intel-gpu: lit output pipe " & FO.Pipe_Name (Selection.Pipe) & " port " &
+           Readout.Port_Name (Lit.Port) & " " & Readout.Mode_Name (Lit.Mode) & " " &
+           Image (Lit.Timing.Horizontal.Active) & "x" & Image (Lit.Timing.Vertical.Active) &
+           " pixel_khz=" & Image (Pixel) &
+           (if Pixel /= 0 then " refresh=" & Millihertz_Text (TT.Refresh_Millihertz (Lit.Timing, Pixel))
+            else "") &
+           " " & R.Combo_PLL'Image (Lit.PLL) & " cdclk_khz=" & Image (Display_State.CDCLK_kHz));
+      --  Pages for DDC now and a mode change later: GMBUS, the lit
+      --  transcoder, the combo PLL configuration.
+      Log ("intel-gpu: modeset page GMBUS " &
+           Intel_GPU_Modeset_Mapping.Prepare (Display_Owner, Register_Base, MPages.GMBUS));
+      if R.Is_Combo (Lit.Port) then
+         Log ("intel-gpu: modeset page transcoder " & R.Transcoder'Image (Transcoder_Of (Selection.Pipe)) &
+              " " & Intel_GPU_Modeset_Mapping.Prepare
+                (Display_Owner, Register_Base, Modeset_Page_Of (Transcoder_Of (Selection.Pipe))));
+         Log ("intel-gpu: modeset page PLL configuration " &
+              Intel_GPU_Modeset_Mapping.Prepare (Display_Owner, Register_Base, MPages.PLL_Configuration));
+      end if;
+      declare
+         Good : Boolean;
+         Over_AUX : constant Boolean := Lit.Mode in DD.DP_SST | DD.DP_MST;
+      begin
+         if Over_AUX then
+            declare
+               Caps : AUX.Bytes (1 .. 3);
+               Status : AUX.Status;
+            begin
+               AUX.Read_DPCD (Channel_Of (Lit.Port), 0, Caps, Status);
+               Log ("intel-gpu: DPCD port " & Readout.Port_Name (Lit.Port) & " aux " & AUX.Name (Status) &
+                    " rev=" & Readout.Hex (Unsigned_32 (Caps (1))) &
+                    " max_link_rate=" & Readout.Hex (Unsigned_32 (Caps (2))) &
+                    " max_lanes=" & Readout.Hex (Unsigned_32 (Caps (3))));
+            end;
+            Log ("intel-gpu: EDID port " & Readout.Port_Name (Lit.Port) & " over AUX (I2C-over-AUX)");
+         else
+            Log ("intel-gpu: EDID port " & Readout.Port_Name (Lit.Port) & " GMBUS pin " &
+                 Image (Natural (DDC.Pin_Code (Pin_Of (Lit.Port)))) & " (i915 default DDC pin; no VBT)");
+         end if;
+         Read_Block (Over_AUX, 0, EDID_Base, Good);
+         if not Good then
+            Log ("intel-gpu: EDID unavailable; the firmware mode stays");
+            return;
+         end if;
+         Log_Block (0, EDID_Base);
+         for E in 1 .. C.Extensions_Declared (EDID_Base) loop
+            Read_Block (Over_AUX, E, EDID_Extensions (E), Good);
+            exit when not Good;
+            Log_Block (E, EDID_Extensions (E));
+            Extensions_Read := E;
+         end loop;
+      end;
+      Monitor_Known := True;
+      Monitor := C.Identify (EDID_Base);
+      Monitor_Size := C.Size_Of (EDID_Base);
+      Sink := C.Limits (EDID_Base, EDID_Extensions (1 .. Extensions_Read));
+      Modes := new C.Mode_List (C.Capacity (Extensions_Read));
+      C.Collect (EDID_Base, EDID_Extensions (1 .. Extensions_Read), Modes.all);
+      Log ("intel-gpu: monitor name=" & Monitor.Name.Text (1 .. Monitor.Name.Length) & " vendor=" &
+           Monitor.Vendor & " product=" & Readout.Hex (Unsigned_32 (Monitor.Product)) &
+           " serial=" & Readout.Hex (Monitor.Serial) & " year=" & Image (Monitor.Year) &
+           " size=" & Image (Monitor_Size.Width_MM) & "x" & Image (Monitor_Size.Height_MM) & "mm" &
+           " extensions=" & Image (Extensions_Read) & "/" & Image (C.Extensions_Declared (EDID_Base)));
+      Log ("intel-gpu: monitor sink hdmi=" & Boolean'Image (Sink.HDMI) & " max_tmds_khz=" &
+           Image (Sink.Max_TMDS) & " scdc=" & Boolean'Image (Sink.SCDC) & " max_pixel_khz=" &
+           Image (Sink.Max_Pixel_Clock));
+      Facts := (Port => Lit.Port,
+                Link => (case Lit.Mode is
+                           when DD.DVI => MA.DVI_Link,
+                           when DD.DP_SST | DD.DP_MST => MA.DisplayPort_Link,
+                           when others => MA.HDMI_Link),
+                Sink => Sink,
+                CDCLK => Natural'Min (Display_State.CDCLK_kHz, MA.CD_Clock_kHz'Last));
+      Verdicts := new MA.Verdict_Array'(MA.Judge_All (Modes.all, Facts));
+      for I in 1 .. Modes.Count loop
+         Log ("intel-gpu: mode " & Image (I) & " " & Mode_Text (Modes.Items (I).Timing) & " " &
+              Source_Name (Modes.Items (I).Source) &
+              (if Modes.Items (I).Code /= 0 then " vic " & Image (Modes.Items (I).Code) else "") &
+              (if Modes.Items (I).Preferred then " preferred" else "") &
+              (if Modes.Items (I).Native then " native" else "") &
+              " -> " & MA.Name (Verdicts (I)));
+      end loop;
+      Best_Mode := MA.Best (Modes.all, Verdicts.all);
+      if Best_Mode = 0 then
+         Log ("intel-gpu: no admitted mode; the firmware mode stays");
+      else
+         declare
+            M : CuBit.Monitor_EDID.Timing renames Modes.Items (Best_Mode).Timing;
+            DPI : constant Natural :=
+              (if Monitor_Size.Width_MM = 0 then 0
+               else (M.Width * 254 + Monitor_Size.Width_MM * 5) / (Monitor_Size.Width_MM * 10));
+         begin
+            Log ("intel-gpu: best mode " & Mode_Text (M) & " firmware=" &
+                 Image (Selection.Shape.Width) & "x" & Image (Selection.Shape.Height) &
+                 (if DPI /= 0 then " dpi=" & Image (DPI) else "") &
+                 (if M.Width = Selection.Shape.Width and then M.Height = Selection.Shape.Height
+                  then " (the firmware size)" else " (a mode change can switch to it)"));
+         end;
+      end if;
+   end Identify;
+
    procedure Select_Output
      (Planes : FO.Primaries; Table_Bytes, Register_Base : Unsigned_64)
    is
@@ -311,6 +662,7 @@ package body Intel_GPU_Display_Executor is
            Hex (Unsigned_64 (Selection.Control)));
       Log ("intel-gpu: pipe " & FO.Pipe_Name (Selection.Pipe) & " register page " &
            Intel_GPU_Pipe_Mapping.Prepare (Display_Owner, Register_Base, Page));
+      Identify (Register_Base);
    end Select_Output;
 
    function Output_Selected return Boolean is (Selection.State = FO.Selected);
@@ -397,13 +749,291 @@ package body Intel_GPU_Display_Executor is
       end if;
    end Setup_Cursor;
 
+   --  The largest frame the buffers must hold: the firmware mode's, or the
+   --  best admitted mode's when it is larger (a mode change reuses them).
+   function Frame_Bytes_Needed return Unsigned_64 is
+      Firmware : constant Unsigned_64 :=
+        Unsigned_64 (Selection.Shape.Pitch) * Unsigned_64 (Selection.Shape.Height);
+   begin
+      if Best_Mode = 0 then
+         return Firmware;
+      end if;
+      return Unsigned_64'Max
+        (Firmware, Unsigned_64 (Pitch_For (Modes.Items (Best_Mode).Timing.Width)) *
+                   Unsigned_64 (Modes.Items (Best_Mode).Timing.Height));
+   end Frame_Bytes_Needed;
    function Scanout_Pages return Natural is
      (if not Output_Selected then 0
-      else (if (Unsigned_64 (Selection.Shape.Pitch) * Unsigned_64 (Selection.Shape.Height) +
-                  Page_Bytes - 1) / Page_Bytes + 1 > Scanout_Arena_Pages
-            then 0
-            else Natural ((Unsigned_64 (Selection.Shape.Pitch) * Unsigned_64 (Selection.Shape.Height) +
-                  Page_Bytes - 1) / Page_Bytes + 1)));
+      elsif (Frame_Bytes_Needed + Page_Bytes - 1) / Page_Bytes + 1 > Scanout_Arena_Pages then 0
+      else Natural ((Frame_Bytes_Needed + Page_Bytes - 1) / Page_Bytes + 1));
+
+   ---------------------------------------------------------------------------
+   --  The output catalog, mode list and mode changes for display.svc
+   --  (CuBit.Output_Discovery / CuBit.Output_Modes on the GPU endpoint).
+   ---------------------------------------------------------------------------
+   OP_Catalog : constant Unsigned_32 := OD.Code (OD.GPU_Backend, OD.Get_Catalog);
+   OP_Description : constant Unsigned_32 := OD.Code (OD.GPU_Backend, OD.Get_Description);
+   OP_Watch : constant Unsigned_32 := OM.Code (OD.GPU_Backend, OM.Watch);
+   OP_Set_Mode : constant Unsigned_32 := OM.Code (OD.GPU_Backend, OM.Set_Mode);
+   OP_List_Mode : constant Unsigned_32 := OM.Code (OD.GPU_Backend, OM.List_Mode);
+   function Mode_Label (Label : Unsigned_32) return Boolean is
+     (Label in OP_Catalog | OP_Description | OP_Watch | OP_Set_Mode | OP_List_Mode);
+
+   --  Bytes each scanout buffer holds (frame plus guard), fixed at boot.
+   Scanout_Buffer_Bytes : Unsigned_64 := 0;
+
+   function Catalog_Now return OD.Catalog is
+      Result : OD.Catalog;
+      Advertised_W : OD.Extent := OD.Extent (Flip.Width);
+      Advertised_H : OD.Extent := OD.Extent (Flip.Height);
+   begin
+      if not Output_Selected then
+         return Result;
+      end if;
+      if Best_Mode /= 0 then
+         Advertised_W := OD.Extent (Modes.Items (Best_Mode).Timing.Width);
+         Advertised_H := OD.Extent (Modes.Items (Best_Mode).Timing.Height);
+      end if;
+      Result.Count := 1;
+      Result.Items (1) :=
+        (if Flip.Ready
+         then (OD.Backend_Ready, OD.Intel_Display, 0, Advertised_W, Advertised_H,
+               OD.Millimetres (Monitor_Size.Width_MM), OD.Millimetres (Monitor_Size.Height_MM),
+               OD.Extent (Flip.Width), OD.Extent (Flip.Height))
+         else (OD.Detected_Only, OD.Intel_Display, 0, Advertised_W, Advertised_H,
+               OD.Millimetres (Monitor_Size.Width_MM), OD.Millimetres (Monitor_Size.Height_MM)));
+      return Result;
+   end Catalog_Now;
+
+   --  The admitted mode for a size: the preferred one, else the highest
+   --  pixel clock of that size. Zero when none.
+   function Admitted_Mode (Width, Height : Natural) return Natural is
+      Chosen : Natural := 0;
+   begin
+      if Modes = null or else Verdicts = null then
+         return 0;
+      end if;
+      for I in 1 .. Modes.Count loop
+         if Verdicts (I) = MA.Admitted and then Modes.Items (I).Timing.Width = Width and then
+           Modes.Items (I).Timing.Height = Height
+         then
+            if Modes.Items (I).Preferred then
+               return I;
+            elsif Chosen = 0 or else Modes.Items (I).Timing.Clock > Modes.Items (Chosen).Timing.Clock then
+               Chosen := I;
+            end if;
+         end if;
+      end loop;
+      return Chosen;
+   end Admitted_Mode;
+
+   --  Writes a mode change may make: this output's registers only.
+   function Modeset_Target (Offset : Unsigned_32) return Unsigned_64 is
+      X : constant R.Transcoder := Transcoder_Of (Selection.Pipe);
+      Pipe_First : constant Unsigned_32 := 16#7_0000# + R.Pipe_Stride * R.Transcoder'Pos (X);
+      DE_Pipe_IIR : constant Unsigned_32 := 16#4_4408# + 16#10# * R.Transcoder'Pos (X);
+      DE_Page : constant Unsigned_32 := 16#4_4000#;
+      Clock_Page : constant Unsigned_32 := 16#4_6000#;
+      DE_Page_Slot : constant := 2;
+      Clock_Page_Slot : constant := 1;
+   begin
+      if not Display_Owner or else not Lit.Found or else Offset mod 4 /= 0 then
+         return 0;
+      elsif Offset >= Pipe_First and then Offset < Pipe_First + Page_Bytes then
+         return (if Page_Ready then PP.Address (Page) + Unsigned_64 (Offset - Pipe_First) else 0);
+      elsif Offset in R.DPLL_CFGCR0 (Lit.PLL) | R.DPLL_CFGCR1 (Lit.PLL) | R.ICL_DPCLKA_CFGCR0 then
+         return Modeset_Address (MPages.PLL_Configuration, Offset);
+      elsif Unsigned_64 (Offset) >= MPages.Offset (Modeset_Page_Of (X)) and then
+        Unsigned_64 (Offset) < MPages.Offset (Modeset_Page_Of (X)) + Page_Bytes
+      then
+         return Modeset_Address (Modeset_Page_Of (X), Offset);
+      elsif Offset = R.DPLL_Enable (Lit.PLL) or else
+        Offset = R.TRANS_CLK_SEL_A + R.Clock_Select_Stride * R.Transcoder'Pos (X)
+      then
+         return (if Intel_GPU_Display_Mapping.Ready
+                 then Intel_GPU_Display_Mapping.Virtual_Base + Clock_Page_Slot * Page_Bytes +
+                      Unsigned_64 (Offset - Clock_Page)
+                 else 0);
+      elsif Offset = DE_Pipe_IIR then
+         return (if Intel_GPU_Display_Mapping.Ready
+                 then Intel_GPU_Display_Mapping.Virtual_Base + DE_Page_Slot * Page_Bytes +
+                      Unsigned_64 (Offset - DE_Page)
+                 else 0);
+      elsif Offset = R.DDI_Buffer_Control (Lit.Port) and then R.Is_Combo (Lit.Port) then
+         --  PHY page 0 is 0x64000 (Intel_GPU_PHY_Pages).
+         return (if Intel_GPU_PHY_Mapping.Ready
+                 then Intel_GPU_PHY_Pages.Virtual_Base + Unsigned_64 (Offset - R.DDI_BUF_CTL_A)
+                 else 0);
+      end if;
+      return 0;
+   end Modeset_Target;
+
+   procedure Modeset_Write (Offset, Value : Unsigned_32; Written : out Boolean) is
+   begin
+      Store (Modeset_Target (Offset), Value, Written);
+   end Modeset_Write;
+   procedure Modeset_Pause renames Pause_One_Ms;
+   procedure Write_TMDS_Config (Value : Unsigned_8; Done : out Boolean) is
+      Status : DDC.Status;
+   begin
+      DDC.Write_Bytes (Pin_Of (Lit.Port), DDC.SCDC, [Unsigned_8 (MP.SCDC_TMDS_Config), Value], Status);
+      Done := Status = DDC.OK;
+      if not Done then
+         Log ("intel-gpu: SCDC write " & DDC.Name (Status));
+      end if;
+   end Write_TMDS_Config;
+   package Modeset is new Intel_GPU_HDMI_Modeset
+     (Read_MMIO, Modeset_Write, Monotonic_Us, Modeset_Pause, Write_TMDS_Config, Log);
+   use type Modeset.Outcome;
+
+   --  The firmware's configuration (captured at the first change) and what
+   --  is live now.
+   Firmware_Known : Boolean := False;
+   Firmware_Config, Live_Config : MP.Configuration;
+   Firmware_Width, Firmware_Height, Firmware_Pitch : Positive := 1;
+
+   procedure Change_Mode (Width, Height : Natural; Status : out CuBit.Display_Protocol.DP.Status_Code) is
+      package DP renames CuBit.Display_Protocol.DP;
+      Output : MP.Output;
+      Index : Natural;
+   begin
+      Status := DP.Bad_State;
+      if Width = Flip.Width and then Height = Flip.Height then
+         Status := DP.Success;
+         return;
+      end if;
+      if not Lit.Found or else not Flip.Ready or else Flip.Owed or else
+        not R.Is_Combo (Lit.Port) or else Lit.Mode not in DD.HDMI | DD.DVI or else
+        Display_State.Crystal = DD.Unknown
+      then
+         Log ("intel-gpu: mode change refused (no flip-ready combo HDMI output, or a flip is owed)");
+         return;
+      end if;
+      Output := (Transcoder_Of (Selection.Pipe), Lit.Port, Lit.PLL);
+      if not Firmware_Known then
+         Firmware_Config := Modeset.Capture (Output);
+         Live_Config := Firmware_Config;
+         Firmware_Width := Flip.Width;
+         Firmware_Height := Flip.Height;
+         Firmware_Pitch := Flip.Pitch;
+         Firmware_Known := True;
+      end if;
+      declare
+         Back_To_Firmware : constant Boolean :=
+           Width = Firmware_Width and then Height = Firmware_Height;
+         Wanted : MP.Configuration;
+         Pitch : Positive;
+         Result : Modeset.Outcome;
+         Failed : Modeset.Step;
+         Resized : Boolean;
+      begin
+         if Back_To_Firmware then
+            Wanted := Firmware_Config;
+            Pitch := Firmware_Pitch;
+         else
+            Index := Admitted_Mode (Width, Height);
+            if Index = 0 then
+               Log ("intel-gpu: mode change refused:" & Natural'Image (Width) & " x" &
+                    Natural'Image (Height) & " is not an admitted mode");
+               Status := DP.Invalid_Request;
+               return;
+            end if;
+            Pitch := Pitch_For (Width);
+            if Unsigned_64 (Pitch) * Unsigned_64 (Height) + Guard_Bytes > Scanout_Buffer_Bytes then
+               Log ("intel-gpu: mode change refused: scanout buffers hold" &
+                    Unsigned_64'Image (Scanout_Buffer_Bytes) & " bytes");
+               Status := DP.Resources_Exhausted;
+               return;
+            end if;
+            declare
+               Planned : constant MP.Target_Result :=
+                 MP.Target (Firmware_Config, Modes.Items (Index).Timing, Pitch,
+                            DD.PLL_Reference (Display_State.Crystal),
+                            DD.Fraction_Halved (Display_State.Crystal), Sink.SCDC);
+            begin
+               if not Planned.Ready then
+                  Log ("intel-gpu: mode change refused: no PLL plan for " &
+                       Mode_Text (Modes.Items (Index).Timing));
+                  return;
+               end if;
+               Wanted := Planned.Value;
+            end;
+            --  The plane keeps scanning the live flip buffer.
+            Wanted.Plane_Surface := Live_Config.Plane_Surface;
+            Log ("intel-gpu: mode change to " & Mode_Text (Modes.Items (Index).Timing));
+         end if;
+         Modeset.Change (Output, Live_Config, Wanted, Result, Failed);
+         case Result is
+            when Modeset.Applied =>
+               Live_Config := Wanted;
+               Flip.Resize (Width, Height, Pitch, Resized);
+               if Output_Revision < OD.Catalog_Revision'Last then
+                  Output_Revision := Output_Revision + 1;
+               end if;
+               Status := (if Resized then DP.Success else DP.Bad_State);
+            when Modeset.Rolled_Back =>
+               Log ("intel-gpu: mode change failed at " & Modeset.Name (Failed) &
+                    "; firmware-mode configuration restored");
+            when Modeset.Rollback_Failed =>
+               Log ("intel-gpu: mode change failed at " & Modeset.Name (Failed) &
+                    " and the restore failed too");
+         end case;
+      end;
+   end Change_Mode;
+
+   procedure Handle_Modes (Sender : Process_ID; Request : Message) is
+      package DP renames CuBit.Display_Protocol.DP;
+      Wire : constant CuBit.Display_Protocol.Wire_Message := CuBit.Desktop_Messages.To_Wire (Request);
+      Result : CuBit.Display_Protocol.Wire_Message;
+      Delivered : Unsigned_64;
+      pragma Unreferenced (Delivered);
+   begin
+      if Request.tag.label in OP_Catalog | OP_Description then
+         Result := OD.Respond (OD.GPU_Backend, Catalog_Now, Output_Revision, Wire);
+      elsif Request.tag.label = OP_List_Mode then
+         declare
+            Wanted : constant OM.Index_Decoding := OM.Decode_List_Request (OD.GPU_Backend, Wire);
+         begin
+            if Wanted.Valid and then Modes /= null and then Verdicts /= null and then
+              Natural (Wanted.Value) <= Modes.Count and then Modes.Count <= Natural (OM.Mode_Count'Last)
+            then
+               declare
+                  M : CuBit.Monitor_EDID.Timing renames Modes.Items (Natural (Wanted.Value)).Timing;
+               begin
+                  Result := OM.Encode_Listing
+                    (OD.GPU_Backend,
+                     (Index => Wanted.Value, Count => OM.Mode_Count (Modes.Count),
+                      Item => ((OD.Extent (M.Width), OD.Extent (M.Height)),
+                               Unsigned_32 (Unsigned_64'Min (CuBit.Monitor_EDID.Refresh_Millihertz (M),
+                                                             Unsigned_64 (Unsigned_32'Last))),
+                               Unsigned_32 (M.Clock) * 10,
+                               To_Admission (Verdicts (Natural (Wanted.Value))),
+                               Modes.Items (Natural (Wanted.Value)).Preferred,
+                               M.Width = Flip.Width and then M.Height = Flip.Height)));
+               end;
+            else
+               Result := (Label => Request.tag.label, Length => 1,
+                          Words => [DP.Status_Code'Enum_Rep (DP.Bad_Object), 0, 0, 0], others => <>);
+            end if;
+         end;
+      elsif Request.tag.label = OP_Set_Mode then
+         declare
+            Wanted : constant OM.Mode_Decoding := OM.Decode_Set_Mode (OD.GPU_Backend, Wire);
+            Status : DP.Status_Code := DP.Invalid_Request;
+         begin
+            if Wanted.Valid then
+               Change_Mode (Natural (Wanted.Value.Width), Natural (Wanted.Value.Height), Status);
+            end if;
+            Result := OM.Encode_Result
+              (OD.GPU_Backend, (Status, (OD.Extent (Flip.Width), OD.Extent (Flip.Height))));
+         end;
+      else
+         --  No watch: this output's mode changes only when display.svc asks.
+         Result := (Label => Request.tag.label, Length => 1,
+                    Words => [DP.Status_Code'Enum_Rep (DP.Unsupported), 0, 0, 0], others => <>);
+      end if;
+      Delivered := Intel_GPU_Replies.Respond (Sender, CuBit.Desktop_Messages.From_Wire (Result));
+   end Handle_Modes;
 
    Scanout_Attempts : array (Flip.Index) of Surface_Publication.Attempt;
    Scanout_Memory : Scanout_Backings;
@@ -444,6 +1074,7 @@ package body Intel_GPU_Display_Executor is
          CPU (I) := Backings (Integer (I)).CPU_Address;
       end loop;
       Scanout_Memory := Backings;
+      Scanout_Buffer_Bytes := Unsigned_64 (Pages) * Page_Bytes;
       Flip.Configure (Bases, CPU, Selection.Shape.Width, Selection.Shape.Height,
                       Selection.Shape.Pitch, Selection.Surface);
       Log ("intel-gpu: scanout configure " & Flip.Problem_Text);
@@ -645,7 +1276,7 @@ package body Intel_GPU_Display_Executor is
    end Wake_Ms;
 
    function Owns_Label (Label : Unsigned_32) return Boolean is
-     (Label in Scanout_First .. Scanout_Last or else
+     (Label in Scanout_First .. Scanout_Last or else Mode_Label (Label) or else
       Label in GP.Code (GP.Query) .. GP.Code (GP.Describe_Scanout));
 
    procedure Handle (Sender : Process_ID; Request : Message) is
@@ -674,6 +1305,10 @@ package body Intel_GPU_Display_Executor is
             Result.Label := Request.tag.label;
          end if;
          Delivered := Intel_GPU_Replies.Respond (Sender, CuBit.Desktop_Messages.From_Wire (Result));
+         return;
+      end if;
+      if Mode_Label (Request.tag.label) then
+         Handle_Modes (Sender, Request);
          return;
       end if;
       if Request.tag.label in Scanout_First .. Scanout_Last then

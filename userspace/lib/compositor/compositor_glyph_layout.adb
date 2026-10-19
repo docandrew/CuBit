@@ -9,6 +9,6 @@ package body Compositor_Glyph_Layout with SPARK_Mode is
       H : constant Raster_Height := (Base_Line * N + D - 1) / D;
       Pitch : constant Raster_Width := ((W + Row_Alignment - 1) / Row_Alignment) * Row_Alignment;
    begin
-      return (Base_Em * N, Scale.Denominator, W, H, Pitch, Pitch * H);
+      return (Base_Em * N, Scale.Denominator, W, H, Pitch, Pitch * H * Phases);
    end Plan;
 end Compositor_Glyph_Layout;

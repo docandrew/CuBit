@@ -79,15 +79,19 @@ package Files_View is
 
    type View_State is limited private;
 
-   --  A place the drawer offers (a granted root, a home folder): its
-   --  caption, path and icon. The platform declares them after Initialize.
+   --  A shortcut the drawer offers after the places (a home folder): its
+   --  caption, path and icon, declared by the platform after Initialize.
+   --  The places themselves come from the service (Queue_List_Places).
    procedure Add_Place
      (State : in out View_State; Caption, Path : String; Picture : CuBit.UI.Icons.Icon := CuBit.UI.Icons.Drive);
 
    --  Capacity: entries one pane can list; Name_Bytes: their names' bytes.
    --  Both explicit (docs/files-app.md: no hidden limits).
-   --  Left_Path and Right_Path empty: the panes start at the folders the
-   --  service lists as granted (Queue_List_Scopes), each also a place.
+   --  The places are the granted scopes whose volume is present
+   --  (Queue_List_Places), in the manifest's order. Left_Path and
+   --  Right_Path: the folders the panes showed last ("" for none), shown
+   --  again only if they can still be opened; otherwise, and without one,
+   --  a pane starts at the first place.
    procedure Initialize
      (State : out View_State; Capacity : Files_Limits.Entry_Capacity;
       Name_Bytes : Files_Limits.Arena_Capacity; Left_Path, Right_Path : String);

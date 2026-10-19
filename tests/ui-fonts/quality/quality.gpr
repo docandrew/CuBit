@@ -1,0 +1,15 @@
+--  Hosted text-quality sample and benchmark (UI-026): the real toolkit text
+--  path rendering into memory at 1:1, built -O3 -gnatp as native apps are.
+with "../../../userspace/lib/ui/fonts_host.gpr";
+with "../../../userspace/allocator/allocator_runtime_host.gpr";
+project Quality is
+   for Source_Dirs use (".", "../../../userspace/lib/ui", "../../../userspace/lib/theme",
+                        "../../../userspace/ccl/tools/ccl-ui-preview/host",
+                        "../../../userspace/lib/compositor", "../../../userspace/lib/display");
+   for Object_Dir use "build/obj";
+   for Exec_Dir use "build";
+   for Main use ("quality_sample.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-O3", "-gnatp", "-gnat2022", "-fno-tree-vrp");
+   end Compiler;
+end Quality;

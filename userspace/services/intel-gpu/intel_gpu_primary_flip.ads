@@ -90,6 +90,12 @@ package Intel_GPU_Primary_Flip is
    --  filled buffer first. Synchronous, bounded by the latch deadline.
    procedure Clear (Color : Unsigned_32; Success : out Boolean);
 
+   --  After a mode change (Intel_GPU_HDMI_Modeset) the same three buffers
+   --  scan out a new size and stride; the caller checked that they hold the
+   --  new frame. Refused (Success False) while a flip is owed or flips are
+   --  off. The live buffer keeps scanning; its contents are redrawn next.
+   procedure Resize (Width, Height, Pitch : Positive; Success : out Boolean);
+
    --  Read-only views for the executor.
    function Width return Positive;
    function Height return Positive;

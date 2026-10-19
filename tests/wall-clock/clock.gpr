@@ -1,6 +1,6 @@
 project Clock is
    for Source_Dirs use (".", "../../userspace/lib/time",
-                        "../../userspace/services/clock/build/generated");
+                        "../../userspace/lib/time/build/generated");
    for Object_Dir use "build";
    for Exec_Dir use "build";
    for Main use ("main.adb");

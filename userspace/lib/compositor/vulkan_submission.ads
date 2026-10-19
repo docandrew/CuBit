@@ -1,6 +1,7 @@
 with System;
 with Interfaces;
 with Compositor_Affine;
+with Compositor_Glyph_Layout;
 with Vulkan_Affine_Binding;
 package Vulkan_Submission with SPARK_Mode is
    use type Vulkan_Affine_Binding.Outcome, System.Address, Interfaces.Unsigned_64;
@@ -13,8 +14,11 @@ package Vulkan_Submission with SPARK_Mode is
    Maximum_Draws : constant := 16384;
    subtype Draw_Count is Natural range 0 .. Maximum_Draws;
    -- Fixed descriptor metadata, independent of the configured pixel-byte budget.
-   -- Native mirrors: CUBIT_VULKAN_SOURCE_CAPACITY/OWNED_SOURCE_CAPACITY.
-   Glyph_Slots : constant := 128;
+   -- Native mirrors: CUBIT_VULKAN_GLYPH_SLOTS/SOURCE_CAPACITY/OWNED_SOURCE_CAPACITY.
+   -- One cell per glyph of the repertoire (every face's printable set): a
+   -- frame draws at one density, so its distinct glyphs always fit and no
+   -- frame fails for want of a cell, whatever text it shows.
+   Glyph_Slots : constant := Compositor_Glyph_Layout.Repertoire;
    Backdrop_Slots : constant := 2;
    -- Application icons; window controls with cursor styles.
    Icon_Atlas_Slots : constant := 2;
@@ -148,7 +152,8 @@ package Vulkan_Submission with SPARK_Mode is
       Damage : Compositor_Affine.G.Physical_Rectangle;
       Over, Mask : Boolean; Tint : Compositor_Affine.Word;
       Result : out Vulkan_Affine_Binding.Outcome;
-      Raster_Glyph : Boolean := False; Straight_Alpha : Boolean := False)
+      Raster_Glyph : Boolean := False; Straight_Alpha : Boolean := False;
+      Glyph_Offset : Compositor_Glyph_Layout.Subpixel := 0)
      with Pre => Current (S) = Recording and Pass_Active (S),
        Post => Same_Sources (S, S'Old) and Current (S) = Recording and Pass_Active (S) and
          Draws (S) = Draws (S'Old) +

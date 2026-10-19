@@ -1,4 +1,3 @@
-with CuBit.File_Access;
 with CuBit.Filesystems; use CuBit.Filesystems;
 with Fs_Server.Client_Queues; use Fs_Server.Client_Queues;
 with Fs_Server.Delegations; use Fs_Server.Delegations;
@@ -219,17 +218,28 @@ package body Fs_Server.Access_Control is
       sendReply (sender, REPLY_OK, 0);
    end handleReleaseOwner;
 
-   procedure handleListScopes (owner : Process_ID; rangeBytes : Unsigned_64) is
-      package FA renames CuBit.File_Access;
-      wire : FA.Wire_Bytes (1 .. FA.Maximum_Entries * FA.Wire_Entry_Bytes);
-      count : Natural := 0;
+   procedure scopesOf
+     (owner : Process_ID;
+      wire  : out CuBit.File_Access.Wire_Bytes;
+      count : out Natural)
+   is
    begin
+      wire := [others => 0];
+      count := 0;
       for profile of aclProfiles loop
          if profile.active and then profile.pid = owner then
-            FA.Encode (profile.policy, wire, count);
+            CuBit.File_Access.Encode (profile.policy, wire, count);
             exit;
          end if;
       end loop;
+   end scopesOf;
+
+   procedure handleListScopes (owner : Process_ID; rangeBytes : Unsigned_64) is
+      package FA renames CuBit.File_Access;
+      wire : FA.Wire_Bytes (1 .. FA.Maximum_Entries * FA.Wire_Entry_Bytes);
+      count : Natural;
+   begin
+      scopesOf (owner, wire, count);
       if Unsigned_64 (count) * FA.Wire_Entry_Bytes > rangeBytes then
          sendReply (owner, REPLY_NO_SPACE, Unsigned_64 (count));
          return;

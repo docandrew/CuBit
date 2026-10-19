@@ -1,5 +1,5 @@
 //! Linux-hosted cache lookup measurement, not end-to-end native UI latency.
-use cubit_fonts::cubit_font_glyph;
+use cubit_fonts::{PHASES, cubit_font_glyph, cubit_font_layout};
 use std::{
     alloc::{GlobalAlloc, Layout, System},
     hint::black_box,
@@ -42,12 +42,14 @@ fn main() {
         let cold = Instant::now();
         MEASURE.store(true, Ordering::Relaxed);
         for face in 0..2 {
-            for code in 32..=126 {
-                assert!(!cubit_font_glyph(face, size, code).is_null());
+            for phase in 0..PHASES {
+                for code in 32..=126 {
+                    assert!(!cubit_font_glyph(face, size, code, phase).is_null());
+                }
             }
         }
         MEASURE.store(false, Ordering::Relaxed);
-        println!("Cold 190 glyphs at size {size}: {:?}", cold.elapsed());
+        println!("Cold {} glyphs (2 faces x {PHASES} phases) at size {size}: {:?}", 190 * PHASES, cold.elapsed());
         println!(
             "Cold scratch: largest request={} bytes, peak={} bytes, retained={} bytes",
             MAX_REQUEST.load(Ordering::Relaxed),
@@ -56,8 +58,17 @@ fn main() {
         );
         // A font update must not silently wake the native large-object arena.
         assert!(MAX_REQUEST.load(Ordering::Relaxed) <= 4096);
-        assert_eq!(LIVE.load(Ordering::Relaxed), 0);
+        // Published cells stay allocated (one per face/phase/character).
+        assert_eq!(LIVE.load(Ordering::Relaxed), 190 * PHASES as usize * size_of::<cubit_fonts::Cell>());
+        LIVE.store(0, Ordering::Relaxed);
     }
+    let layout = Instant::now();
+    MEASURE.store(true, Ordering::Relaxed);
+    assert!(!cubit_font_layout(0).is_null() && !cubit_font_layout(1).is_null());
+    MEASURE.store(false, Ordering::Relaxed);
+    println!("Layout tables (advances + GPOS kerning, both faces): {:?}, largest request={} bytes",
+             layout.elapsed(), MAX_REQUEST.load(Ordering::Relaxed));
+    assert!(MAX_REQUEST.load(Ordering::Relaxed) <= 4096);
     let start = Instant::now();
     let iterations = 2_000_000;
     for index in 0..iterations {
@@ -65,6 +76,7 @@ fn main() {
             black_box(index % 2),
             0,
             black_box(32 + index % 95),
+            black_box(index as u32 % PHASES),
         ));
     }
     println!(

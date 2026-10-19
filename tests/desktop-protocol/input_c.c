@@ -1,3 +1,4 @@
+#include <stdint.h>
 #include "../../userspace/c/cubit_desktop.h"
 
 /* Exercise the actual C port adapter against the Ada codec's test corpus. */

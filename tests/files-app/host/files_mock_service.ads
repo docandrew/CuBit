@@ -9,13 +9,33 @@ with Interfaces; use Interfaces;
 --    @host:0/       a host directory, read-only
 --    @scratch:0/    the scratch directory, read-write
 --    @synthetic:N/  N generated entries (no disk), for benchmarks
---  It also serves change watches (with an event ring), the granted scopes,
+--  It also serves change watches (with an event ring), the granted scopes
+--  and places (CuBit.Filesystem_Places, as the service selects them),
 --  made-up volume descriptions and server-side copies (512 KiB slices, up
 --  to four at once, progress in the service region).
 --  Paths are checked as the real service does: at most 4096 bytes, no "."
 --  or ".." components, a known place.
 package Files_Mock_Service is
    procedure Configure (Host_Root, Scratch_Root : String);
+   --  The volumes the client is granted (its scopes, in this order), each
+   --  present or not, as a manifest grants "@nvme:0/" whether or not the
+   --  machine has the disk. A present volume is served from a folder of
+   --  its own under the scratch root (read-only); a request on an absent
+   --  one is answered REPLY_VOLUME_UNAVAILABLE, as the service answers it.
+   --  No volumes (the default, and after Grant_Defaults): the scopes are
+   --  @host:0/, @scratch:0/ and @synthetic:100000/, all present.
+   type Volume_Grant is record
+      Name : String (1 .. 16) := [others => ' '];
+      Length : Natural range 0 .. 16 := 0;
+      Present : Boolean := True;
+   end record;
+   type Volume_Grants is array (Positive range <>) of Volume_Grant;
+   function Volume (Name : String; Present : Boolean) return Volume_Grant
+     with Pre => Name'Length in 1 .. 16;
+   procedure Grant_Volumes (Volumes : Volume_Grants);
+   procedure Grant_Defaults;
+   --  The folder a present granted volume's root is served from.
+   function Volume_Folder (Name : String) return String;
    procedure Start (Client, Server, Arena : System.Address; Arena_Bytes : Unsigned_64);
    procedure Kick;
    --  OP_FS_WAKE: call the wake hook once answers wait in the client's

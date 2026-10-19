@@ -1,75 +1,66 @@
 with CuBit.Messages; use CuBit.Messages;
 with Interfaces; use Interfaces;
-with Civil_Time;
+with RTC_Decode;
+with RTC_Sampling;
 package body Boot_RTC is
    CMOS_Index : constant Unsigned_16 := 16#70#;
    CMOS_Data  : constant Unsigned_16 := 16#71#;
+   --  Longer than one RTC update cycle (under 2 ms).
+   Update_Pause_Ms : constant Unsigned_64 := 2;
+   Largest_Byte : constant Unsigned_64 := Unsigned_64 (Unsigned_8'Last);
+   Port_Refused : constant Unsigned_64 := Unsigned_64'Last;
+   LF : Character renames ASCII.LF;
+   function Image (Value : Natural) return String is
+      Text : constant String := Natural'Image (Value);
+   begin
+      return Text (Text'First + 1 .. Text'Last);
+   end Image;
 
    procedure Read (Ports : CuBit.Handles.IO_Ports;
                    UTC_Seconds, Monotonic_Ms : out Unsigned_64;
                    Valid : out Boolean) is
-      type Registers is array (Positive range 1 .. 7) of Unsigned_8;
-      Selectors : constant Registers := [0, 2, 4, 7, 8, 9, 16#0B#];
-      A, B : Registers;
-      OK : Boolean := True;
-      function Get (Index : Unsigned_8) return Unsigned_8 is
+      procedure Read_Register
+        (Register : RTC_Decode.CMOS_Register; Value : out Unsigned_8;
+         OK : out Boolean; Index_Refused : out Boolean)
+      is
          Result : Unsigned_64;
       begin
+         Value := 0;
          --  Kernel boot CMOS users have finished. Match its NMI-enabled
          --  selector convention; no competing runtime CMOS owner is admitted.
-         Result := portOutp8 (Ports, CMOS_Index, Index);
-         if Result = Unsigned_64'Last then OK := False; return 0; end if;
+         Result := portOutp8 (Ports, CMOS_Index, Register);
+         Index_Refused := Result = Port_Refused;
+         if Index_Refused then OK := False; return; end if;
          Result := portInp8 (Ports, CMOS_Data);
-         if Result > 255 then OK := False; return 0; end if;
-         return Unsigned_8 (Result);
-      end Get;
-      function Number (Raw : Unsigned_8; Binary : Boolean) return Natural is
-      begin
-         if Binary then return Natural (Raw); end if;
-         if (Raw and 15) > 9 or else Shift_Right (Raw, 4) > 9 then
-            OK := False; return 0;
-         end if;
-         return Natural (Raw and 15) + 10 * Natural (Shift_Right (Raw, 4));
-      end Number;
-      Y, M, D, H, N, S : Natural;
-      Binary, PM : Boolean;
-      Date : Civil_Time.Date_Time;
+         OK := Result <= Largest_Byte;
+         if OK then Value := Unsigned_8 (Result); end if;
+      end Read_Register;
+      procedure Pause is
+         Ignore : constant Unsigned_64 := syscall (SYSCALL_SLEEP, Update_Pause_Ms);
+      begin null; end Pause;
+      function Monotonic return Unsigned_64 is (syscall (SYSCALL_GETTIME));
+      package Sampling is new RTC_Sampling
+        (Index_Port => CMOS_Index, Data_Port => CMOS_Data, Read_Register => Read_Register,
+         Pause => Pause, Monotonic_Milliseconds => Monotonic);
+      use type Sampling.Failure;
+      Result : Sampling.Diagnosis;
    begin
-      UTC_Seconds := 0; Monotonic_Ms := 0; Valid := False;
-      --  Bounded retries with two identical snapshots outside the RTC update
-      --  window. Failed/invalid hardware never blocks boot indefinitely.
-      for Attempt in 1 .. 20 loop
-         if (Get (16#0A#) and 16#80#) = 0 then
-            for I in A'Range loop A (I) := Get (Selectors (I)); end loop;
-            for I in B'Range loop B (I) := Get (Selectors (I)); end loop;
-            Monotonic_Ms := syscall (SYSCALL_GETTIME);
-            if OK and then A = B and then (Get (16#0A#) and 16#80#) = 0
-              and then (Get (16#0D#) and 16#80#) /= 0
-            then
-               Binary := (A (7) and 4) /= 0; PM := (A (3) and 16#80#) /= 0;
-               S := Number (A (1), Binary); N := Number (A (2), Binary);
-               H := Number (A (3) and 16#7F#, Binary);
-               D := Number (A (4), Binary); M := Number (A (5), Binary);
-               Y := Number (A (6), Binary);
-               if (A (7) and 2) = 0 then
-                  if H not in 1 .. 12 then return; end if;
-                  H := H mod 12 + (if PM then 12 else 0);
-               end if;
-               --  This initial RTC seed supports 2000..2099. The hardware
-               --  must contain UTC; do not guess local-zone/DST interpretation.
-               if not OK or else Y > 99 or else M not in 1 .. 12 or else
-                 D not in 1 .. 31 or else H > 23 or else N > 59 or else S > 59
-               then return; end if;
-               Date := (2000 + Y, M, D, H, N, S);
-               if not Civil_Time.Valid (Date) then return; end if;
-               UTC_Seconds := Unsigned_64 (Civil_Time.Seconds (Date));
-               Valid := Monotonic_Ms /= Unsigned_64'Last;
-               return;
-            end if;
-         end if;
-         declare
-            Ignore : constant Unsigned_64 := syscall (SYSCALL_SLEEP, 2);
-         begin null; end;
-      end loop;
+      Sampling.Sample (RTC_Decode.Default_Century, UTC_Seconds, Monotonic_Ms, Result);
+      Valid := Result.Reason = Sampling.None;
+      debugPrint ("devmgr: RTC registers " & Sampling.Registers_Text (Result) & LF);
+      --  devmgr has no FADT, whose century field names the CMOS century
+      --  register; the clock service's build-time floor rejects a wrong century.
+      debugPrint ("devmgr: RTC century register not read (no FADT century index in devmgr); assuming " &
+                  Image (RTC_Decode.Default_Century) & ".." &
+                  Image (RTC_Decode.Default_Century + RTC_Decode.Years_Per_Century - 1) & LF);
+      if Sampling.VRT_Clear (Result) then
+         debugPrint ("devmgr: RTC status D VRT clear (RTC power or battery lost?); " &
+                     "reading anyway, the clock floor decides" & LF);
+      end if;
+      if Valid then
+         debugPrint ("devmgr: RTC reads " & Sampling.Date_Text (Result.Decoding.Date) & " (taken as UTC)" & LF);
+      else
+         debugPrint ("devmgr: RTC seed unavailable: " & Sampling.Failure_Text (Result) & LF);
+      end if;
    end Read;
 end Boot_RTC;

@@ -44,13 +44,13 @@ uint32_t cubit_mesa_draw_mask_batch(void *ctx,void *target,const struct cubit_me
 uint32_t cubit_mesa_draw(void *a,void *b,void *c,const struct cubit_mesa_draw *d) {(void)a;(void)b;(void)c;(void)d;return 0;}
 uint32_t cubit_mesa_draw_mask(void *a,void *b,void *c,const struct cubit_mesa_affine *d,const struct cubit_mesa_quad *q,uint32_t tint)
 {(void)a;(void)b;(void)c;(void)d;(void)q;(void)tint;return 0;}
-struct request {uint32_t font,code,n,d,w,h,pitch,capacity;};
+struct request {uint32_t font,code,n,d,w,h,pitch,capacity,phases;};
 struct metrics {uint32_t advance,height;};
 uint32_t cubit_font_raster_mask(const struct request *r,void *pixels,struct metrics *m)
 {
     counts[0]++;if(fault==1) return 1;
-    assert(r->capacity >= r->pitch*r->h);
-    for(unsigned y=0;y<r->h;y++) memset((uint8_t*)pixels+y*r->pitch,0x7f,r->w);
+    assert(r->capacity >= r->pitch*r->h*r->phases);
+    for(unsigned y=0;y<r->h*r->phases;y++) memset((uint8_t*)pixels+y*r->pitch,0x7f,r->w);
     *m=(struct metrics){r->w,r->h};return 0;
 }
 

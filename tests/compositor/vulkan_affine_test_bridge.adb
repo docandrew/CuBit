@@ -10,7 +10,7 @@ package body Vulkan_Affine_Test_Bridge is
          (G.Scale_Component (V.N), G.Scale_Component (V.D)), G.Output_Origin (V.X), G.Output_Origin (V.Y));
       Result : B.Outcome;
    begin
-      pragma Assert (Input'Size = 72 * 8);
+      pragma Assert (Input'Size = 76 * 8);
       B.Draw_Output
         (Borrowed, Screen,
          (G.Logical_Coordinate (V.L), G.Logical_Coordinate (V.T), G.Logical_Coordinate (V.R), G.Logical_Coordinate (V.B)),

@@ -104,6 +104,68 @@ package body Intel_GPU_Client_Budgets is
       Item := Entries.Get (Object.Items, Index); Item.Closed := True;
       Entries.Put (Object.Items, Index, Item);
    end Close;
+   function Count (Object : Ledger) return Natural is (Object.Count);
+   function Record_Bytes return Unsigned_64 is (Unsigned_64 (Entry_State'Object_Size / 8));
+   -- Point Parent's link that leads to Child (or the root) at Target.
+   procedure Relink (Object : in out Ledger; Parent, Child, Target : Natural) is
+      Item : Entry_State;
+   begin
+      if Parent = 0 then
+         Object.Root := Target;
+      else
+         Item := Entries.Get (Object.Items, Parent);
+         if Item.Left = Child then Item.Left := Target; else Item.Right := Target; end if;
+         Entries.Put (Object.Items, Parent, Item);
+      end if;
+   end Relink;
+   -- A digital search tree: every node's session matches the path bits to
+   -- it, so a leaf from Node's subtree may take Node's place. The record
+   -- freed is then filled from the last record, keeping storage dense.
+   procedure Forget (Object : in out Ledger; Session : Unsigned_64; Accepted : out Boolean) is
+      Index, Parent, Probes : Natural;
+      Right : Boolean;
+      Node, Leaf_Item, Moved : Entry_State;
+      Leaf, Leaf_Parent, Freed : Natural;
+   begin
+      Accepted := False; Object.Probes := 0;
+      if Object.Failed then return; end if;
+      Locate (Object, Session, Index, Parent, Probes, Right);
+      if Index = 0 then return; end if;
+      Node := Entries.Get (Object.Items, Index);
+      if not Node.Closed or else Node.Charged /= 0 then return; end if;
+      -- Find a leaf under Node (Node itself when it has no children).
+      Leaf := Index; Leaf_Parent := Parent;
+      for Depth in 0 .. 64 loop
+         Leaf_Item := Entries.Get (Object.Items, Leaf);
+         exit when Leaf_Item.Left = 0 and then Leaf_Item.Right = 0;
+         Leaf_Parent := Leaf;
+         Leaf := (if Leaf_Item.Left /= 0 then Leaf_Item.Left else Leaf_Item.Right);
+         if Leaf = 0 or else Leaf > Object.Count or else Depth = 64 then
+            Quarantine (Object); return;
+         end if;
+      end loop;
+      -- The leaf's account moves into Node's place; the leaf goes.
+      Relink (Object, Leaf_Parent, Leaf, 0);
+      if Leaf /= Index then
+         Leaf_Item := Entries.Get (Object.Items, Leaf);
+         Node := Entries.Get (Object.Items, Index);
+         Node.Session := Leaf_Item.Session; Node.Limit := Leaf_Item.Limit;
+         Node.Charged := Leaf_Item.Charged; Node.Closed := Leaf_Item.Closed;
+         Entries.Put (Object.Items, Index, Node);
+      end if;
+      Freed := Leaf;
+      -- Keep records dense: the last record fills the freed one.
+      if Freed /= Object.Count then
+         Moved := Entries.Get (Object.Items, Object.Count);
+         Locate (Object, Moved.Session, Index, Parent, Probes, Right);
+         if Index /= Object.Count then Quarantine (Object); return; end if;
+         Entries.Put (Object.Items, Freed, Moved);
+         Relink (Object, Parent, Object.Count, Freed);
+      end if;
+      Entries.Put (Object.Items, Object.Count, (others => <>));
+      Object.Count := Object.Count - 1;
+      Accepted := True;
+   end Forget;
    procedure Quarantine (Object : in out Ledger) is
    begin Object.Failed := True; end Quarantine;
 end Intel_GPU_Client_Budgets;

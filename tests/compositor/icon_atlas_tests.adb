@@ -14,6 +14,10 @@ procedure Icon_Atlas_Tests is
    use type Interfaces.Unsigned_32, P.Pixels, P.Family;
    Sentinel : constant Interfaces.Unsigned_32 := 16#DEADBEEF#;
    Checks : Natural := 0;
+   --  Room for 21 rows of the widest atlas with padding and an offset.
+   Chunk_Rows : constant := 21;
+   Room : constant := Chunk_Rows * (Desktop_Icons.ATLAS_WIDTH + 2) + 8;
+   subtype Target_Pixels is P.Pixels (0 .. Room + 1);
    procedure Check_Region (Item : P.Asset) is
       R : constant A.R.Rectangle := A.Region (Item);
    begin
@@ -27,7 +31,7 @@ procedure Icon_Atlas_Tests is
       end loop;
    end Check_Region;
    procedure Check (Kind : P.Family) is
-      Target : P.Pixels (0 .. 8193) := (others => Sentinel);
+      Target : Target_Pixels := (others => Sentinel);
       W : constant Positive := A.Width (Kind);
       H : constant Positive := A.Height (Kind);
       Plan : U.Plan;
@@ -36,7 +40,16 @@ procedure Icon_Atlas_Tests is
          Rows : constant array (Desktop_Cursors.Cursor_ID) of Natural := (45, 73, 97, 115, 140);
       begin
          if Kind = P.Application then
-            return Desktop_Icon_Store.Pixel (Desktop_Icons.Icon_ID'Val (Y / 24), X, Y mod 24);
+            --  The edge column holding X, its icon row holding Y.
+            for E in Desktop_Icons.Edge_Index loop
+               if X >= Desktop_Icons.Columns (E) and then X < Desktop_Icons.Columns (E) + Desktop_Icons.Edges (E) then
+                  return (if Y / Desktop_Icons.Edges (E) >= Desktop_Icons.Icon_ID'Range_Length then 0
+                          else Desktop_Icon_Store.Pixel
+                            (Desktop_Icons.Icon_ID'Val (Y / Desktop_Icons.Edges (E)), E,
+                             X - Desktop_Icons.Columns (E), Y mod Desktop_Icons.Edges (E)));
+               end if;
+            end loop;
+            return 0;
          elsif Y < 45 then
             return (if X < 9 then Desktop_Window_Icons.Pixels (Desktop_Window_Icons.Icon_ID'Val (Y / 9)) ((Y mod 9) * 9 + X) else 0);
          else
@@ -54,11 +67,11 @@ procedure Icon_Atlas_Tests is
       for First in 0 .. H - 1 loop
          for Padding in 0 .. 2 loop
             declare
-               Rows : constant Positive := Positive'Min (21, H - First);
+               Rows : constant Positive := Positive'Min (Chunk_Rows, H - First);
                Stride : constant Positive := W + Padding;
             begin
                Target := (others => Sentinel);
-               U.Make (W, H, 8192 * 4, (0, First, W, Rows), 12, Stride, U.BGRA8, Plan, OK);
+               U.Make (W, H, Room * 4, (0, First, W, Rows), 12, Stride, U.BGRA8, Plan, OK);
                pragma Assert (OK);
                P.Atlases.Copy_Chunk (Kind, Target, Plan, Done); pragma Assert (Done);
                -- Typed target begins at word zero; only region data changes.
@@ -69,7 +82,7 @@ procedure Icon_Atlas_Tests is
                   Checks := Checks + 1;
                end loop;
                Target := (others => Sentinel);
-               Desktop_Icon_Mapping.Copy_Atlas (Kind, Target (1)'Address, 8192 * 4, Plan, Done);
+               Desktop_Icon_Mapping.Copy_Atlas (Kind, Target (1)'Address, Room * 4, Plan, Done);
                pragma Assert (Done);
                for I in Target'Range loop
                   if I >= 4 and then (I - 4) / Stride < Rows and then (I - 4) mod Stride < W then
@@ -81,12 +94,14 @@ procedure Icon_Atlas_Tests is
          end loop;
       end loop;
       Target := (others => Sentinel);
-      U.Make (W, W, 8192 * 4, (0, 0, W, W), 0, 0, U.BGRA8, Plan, OK);
+      --  A valid plan for an image of another height: refused untouched.
+      U.Make (W, W, Room * 4, (0, 0, W, 1), 0, 0, U.BGRA8, Plan, OK);
       pragma Assert (OK); A.Copy_Chunk (Kind, Target, Plan, Done);
-      pragma Assert (not Done and Target = P.Pixels'(0 .. 8193 => Sentinel));
+      pragma Assert (not Done and Target = Target_Pixels'(others => Sentinel));
    end Check;
 begin
-   pragma Assert (A.Width (P.Application) = 24 and A.Height (P.Application) = Desktop_Icons.Icon_ID'Range_Length * 24);
+   pragma Assert (A.Width (P.Application) = Desktop_Icons.ATLAS_WIDTH and
+     A.Height (P.Application) = Desktop_Icons.Icon_ID'Range_Length * Desktop_Icons.MAX_EDGE);
    pragma Assert (A.Width (P.Window_Control) = 25 and A.Height (P.Window_Control) = 161);
    for C in Desktop_Cursors.Cursor_ID loop
       declare
@@ -101,8 +116,10 @@ begin
          end loop;
       end;
    end loop;
-   for I in Desktop_Icons.Icon_ID loop Check_Region ((P.Application, I)); end loop;
+   for I in Desktop_Icons.Icon_ID loop
+      for E in Desktop_Icons.Edge_Index loop Check_Region ((P.Application, I, E)); end loop;
+   end loop;
    for I in Desktop_Window_Icons.Icon_ID loop Check_Region ((P.Window_Control, I)); end loop;
    for Kind in P.Family loop Check (Kind); end loop;
-   Ada.Text_IO.Put_Line ("PASS two packed icon atlases: all 13 source windows, cross-icon row chunks, direct mappings, offsets/padding/guards; pixel checks" & Checks'Image);
+   Ada.Text_IO.Put_Line ("PASS two packed icon atlases: every application icon at every exported edge, all window controls, cross-icon row chunks, direct mappings, offsets/padding/guards; pixel checks" & Checks'Image);
 end Icon_Atlas_Tests;

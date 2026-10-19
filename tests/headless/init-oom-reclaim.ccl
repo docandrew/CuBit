@@ -1,0 +1,6 @@
+# Headless oom-reclaim test: oom-check lends pages to procmgr, exhausts
+# memory and is killed for it; the kernel must reclaim it (revoking every
+# grant) with no page free, and procmgr must report the exit.
+(startup v1
+  (start "oom-check.app" (priority 5))
+)

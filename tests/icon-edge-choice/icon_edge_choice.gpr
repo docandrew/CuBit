@@ -1,0 +1,16 @@
+--  Hosted tests and proof of Icon_Edge_Choice (the icon edge drawn 1:1 at
+--  each density): run.sh.
+project Icon_Edge_Choice is
+   for Source_Dirs use (".", "../../userspace/lib/ui");
+   for Source_Files use ("icon_edge_choice_tests.adb", "icon_edge_choice.ads", "icon_edge_choice.adb",
+     "client_canvas_geometry.ads", "client_canvas_geometry.adb");
+   for Object_Dir use "build/obj";
+   for Exec_Dir use "build";
+   for Main use ("icon_edge_choice_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-gnatwa", "-O2");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=2", "--timeout=30", "-j2");
+   end Prove;
+end Icon_Edge_Choice;

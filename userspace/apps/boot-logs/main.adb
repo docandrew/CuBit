@@ -32,6 +32,8 @@ procedure Main is
    --  Records that explain a boot, pinned above the rotating pages so one
    --  photograph of any page shows them: every Warning or worse, and the
    --  key startup lines (the renderer's result and why it stopped).
+   --  Left (and right) text margin of every line.
+   MARGIN : constant := 12;
    Summary_Capacity : constant := 6;
    Summary : array (1 .. Summary_Capacity) of CuBit.Log_Records.Log_Record;
    Summary_Count : Natural range 0 .. Summary_Capacity := 0;
@@ -75,31 +77,37 @@ procedure Main is
       --  Rows below the pinned summary (and its divider line).
       Top : constant Natural := 40 + (if Summary_Count = 0 then 0
                                       else (Summary_Count + 1) * Line_Height);
+      --  Every line elided to keep MARGIN clear of the right edge too.
+      Lines : constant Rect := (MARGIN, 0, Natural'Max (CuBit.UI.App.Width (Win), 2 * MARGIN) - 2 * MARGIN,
+                                CuBit.UI.App.Height (Win));
+      procedure Line (Y : Natural; Text : String; Ink : Color) is
+      begin
+         Draw_UI_Text_Fitted (C, Lines, MARGIN, Y, Text, Ink, Colors.panel);
+      end Line;
    begin
       Fill_Rect (C, CuBit.UI.App.Full_Rect (Win), Colors.panel);
-      Draw_UI_Text (C, 12, 10, "Boot diagnostics - key records first; pages rotate every 8 seconds", Colors.text, Colors.panel);
-      Draw_UI_Text (C, 12, CuBit.UI.App.Height (Win) - 30, "Page" & Natural'Image (Page + 1) &
+      Line (10, "Boot diagnostics - key records first; pages rotate every 8 seconds", Colors.text);
+      Line (CuBit.UI.App.Height (Win) - 30, "Page" & Natural'Image (Page + 1) &
         "  Records" & Natural'Image (Count) & "  Service lost" & Unsigned_64'Image (Lost_Records) &
-        "  Viewer dropped" & Unsigned_64'Image (Viewer_Dropped),
-        Colors.text, Colors.panel);
+        "  Viewer dropped" & Unsigned_64'Image (Viewer_Dropped), Colors.text);
       if Status = P.Denied then
-         Draw_UI_Text (C, 12, 36, "Log read authority denied", Colors.danger, Colors.panel);
+         Line (36, "Log read authority denied", Colors.danger);
       elsif Status not in P.OK | P.Empty | P.Gap then
-         Draw_UI_Text (C, 12, 36, "Logstore read failed: " & P.Status'Image (Status) &
-           " (retrying)", Colors.danger, Colors.panel);
+         Line (36, "Logstore read failed: " & P.Status'Image (Status) &
+           " (retrying)", Colors.danger);
       elsif Count = 0 then
-         Draw_UI_Text (C, 12, 36, "Waiting for driver startup records via logstore...", Colors.text, Colors.panel);
+         Line (36, "Waiting for driver startup records via logstore...", Colors.text);
       else
          for I in 1 .. Summary_Count loop
-            Draw_UI_Text (C, 12, 40 + (I - 1) * Line_Height,
+            Line (40 + (I - 1) * Line_Height,
               CuBit.Log_Records.Text (Summary (I)),
               (if CuBit.Log_Records.Level (Summary (I)) >= CuBit.Log_Records.Warning
-               then Colors.danger else Colors.text), Colors.panel);
+               then Colors.danger else Colors.text));
          end loop;
          for I in 0 .. Rows - 1 loop
             if First + I <= Count then
-               Draw_UI_Text (C, 12, Top + I * Line_Height,
-                 CuBit.Log_Records.Text (Records (First + I)), Colors.text, Colors.panel);
+               Line (Top + I * Line_Height,
+                 CuBit.Log_Records.Text (Records (First + I)), Colors.text);
             end if;
          end loop;
       end if;
@@ -193,9 +201,11 @@ procedure Main is
          Dirty := CuBit.UI.App.Full_Rect (Win);
       end if;
    end Tick;
+   --  Run never blocks in a call to Desktop (Activity_Wait): its input
+   --  wait is submitted, and completes when input, or the deadline, arrives.
    procedure Run is new CuBit.UI.App.Run
      (UI, Controls, Render => Render, Handle_Event => Handle_Event,
-      Next_Deadline => Deadline, On_Deadline => Tick);
+      Next_Deadline => Deadline, On_Deadline => Tick, Activity_Wait => True);
 begin
    if not CuBit.Startup_State.Ready (Startup.Verify) then
       debugPrint ("boot-logs: startup capabilities missing" & ASCII.LF);

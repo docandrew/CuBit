@@ -12,7 +12,15 @@ package Memory_Grants with
     SPARK_Mode => On
 is
     Page_Size              : constant Unsigned_64 := 4096;
-    Maximum_Page_Count     : constant Positive := 4096;
+    -- Pages per received-grant window (16 MiB). A larger grant takes a run
+    -- of consecutive windows (Grant_Windows.Allocate_Run).
+    Window_Pages           : constant := 4096;
+    -- The largest grant is the grantee's whole received-window space: an
+    -- address-space structure, not a size policy. What bounds a real grant
+    -- is its owner's memory (a grant shares pages the owner already holds,
+    -- charged to its frame quota) and the grantee's free windows.
+    Maximum_Page_Count     : constant Positive :=
+        Grant_Windows.Window_Count * Window_Pages;
     -- One table of grants for the whole system (KERN-003 step 2,
     -- docs/process-objects.md), indexed by a global slot. Namespace
     -- capacity, not eagerly allocated records or physical memory. It does
@@ -21,9 +29,8 @@ is
     Maximum_Grants         : constant Positive := 2 ** 20;
     -- What one process may own at once: a quota, not a namespace.
     Owner_Grant_Quota      : constant Positive := 4096;
-    -- One window holds the largest grant.
     Window_Bytes           : constant Unsigned_64 :=
-        Unsigned_64 (Maximum_Page_Count) * Page_Size;
+        Unsigned_64 (Window_Pages) * Page_Size;
 
     -- Every process's received region: [64 TiB, 80 TiB), ending exactly
     -- before the fixed bootstrap initrd aperture. Owned pages here are
@@ -39,6 +46,11 @@ is
 
     subtype Page_Count is Positive range 1 .. Maximum_Page_Count;
     subtype Page_Offset is Natural range 0 .. Maximum_Page_Count - 1;
+
+    -- The windows a grant of Pages pages occupies.
+    function Windows_For (Pages : Page_Count) return Grant_Windows.Run_Length is
+      ((Pages + Window_Pages - 1) / Window_Pages)
+      with Post => Windows_For'Result * Window_Pages >= Pages;
 
     -- Slot 0 names no grant.
     subtype Global_Slot is Natural range 0 .. Maximum_Grants - 1;

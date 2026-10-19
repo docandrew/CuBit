@@ -178,13 +178,17 @@ def main():
             record(header)
         for directory in ('userspace/services/desktop', 'userspace/lib/compositor',
                           'userspace/lib/display', 'userspace/lib/image', 'userspace/lib/theme', 'userspace/lib/ui',
-                          'userspace/lib/input',
+                          'userspace/lib/input', 'userspace/lib/time',
                           'userspace/ccl/src', 'userspace/allocator/src',
                           'userspace/services/display/production'):
             for path in sorted((source / directory).rglob('*')):
                 if (path.is_file() and path.suffix in ('.ads', '.adb', '.gpr', '.c', '.h', '.vert', '.frag')
                         and not any(p.startswith('build') for p in path.relative_to(source / directory).parts)):
                     copy(path, path.relative_to(source))
+        # Generated time-zone tables (kernel/Makefile time-zones; desktop.gpr).
+        for path in sorted((source / 'userspace/lib/time/build/generated').rglob('*')):
+            if path.is_file():
+                copy(path, path.relative_to(source))
         for directory in ('userspace/runtime/gnat', 'userspace/runtime/adalib',
                           # The runtime's ada_source_path names these.
                           'shared/time', 'shared/interrupts', 'shared/launch',

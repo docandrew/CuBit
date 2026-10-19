@@ -34,12 +34,13 @@ specification. The tests cover that against two encoders.
 ## Icon atlas store
 
 `Desktop_Icon_Store` holds Desktop's application icon atlas
-(`Assets/cubit-icons/1/applications.qoi`, docs/assets.md). `make test-qoi`
+(`Assets/cubit-icons/3/applications.qoi`: every icon at every exported
+edge, docs/assets.md). `make test-qoi`
 also builds the atlas with its RGBA oracle (`tools/build_icon_assets.py
 --reference`) and runs `icon_store_tests` once per case
 (`run-icon-store.sh`; the store loads once per process):
 - the real atlas, fed at once and in 1, 7 and 4096-byte chunks, equals the
-  source PNGs pixel for pixel, for every icon;
+  source PNGs pixel for pixel, for every icon at every edge;
 - a truncated, corrupt (bad magic) or wrong-size atlas (`make_icon_fixtures.py`),
   or a failed read, never loads, and then every icon is the fallback glyph;
 - before any load every icon is the fallback glyph, and the glyph has its

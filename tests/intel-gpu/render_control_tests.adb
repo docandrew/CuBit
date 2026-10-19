@@ -6,7 +6,15 @@ with Intel_GPU_Broker_Request;
 with Intel_GPU_Broker_Launches;
 with Intel_GPU_Boot;
 procedure Render_Control_Tests is
-   Object : Controller;
+   package RS renames Intel_GPU_Render_Sessions;
+   -- Controllers hold a slot for every GuC context ID: keep them off the stack.
+   type Controller_Access is access Controller;
+   Object_Storage : constant Controller_Access := new Controller;
+   Object : Controller renames Object_Storage.all;
+   -- The first tag of a fresh registry's slot I.
+   function First_Tag (I : RS.Slot) return Unsigned_64 is
+     (RS.Tag_Base + RS.Slot_Span + Unsigned_64 (I));
+   All_Released : constant RS.Release_Facts := (others => True);
    Reply : Words;
    Identity : constant Unsigned_64 := 16#0700_002A#;
    Tag : Unsigned_64;
@@ -19,7 +27,8 @@ procedure Render_Control_Tests is
    end Call;
 begin
    declare
-      Bootstrap : Controller;
+      Bootstrap_Storage : constant Controller_Access := new Controller;
+      Bootstrap : Controller renames Bootstrap_Storage.all;
       Actual_Tag : constant Unsigned_64 := Intel_GPU_Boot.Broker_Tag;
       Answer : Words;
    begin
@@ -31,6 +40,7 @@ begin
         Intel_GPU_Render_Sessions.Tag_Last);
       Bind (Bootstrap, 42, Actual_Tag);
       pragma Assert (Is_Broker (Bootstrap, 42, Actual_Tag));
+      Grow (Bootstrap, 1);
       Handle (Bootstrap, 42, Actual_Tag, True, Label, 4, 0, 0,
         [Version, Identity, 0, Reserve], Answer);
       pragma Assert (Answer (0) = OK);
@@ -41,9 +51,10 @@ begin
       pragma Assert (not Is_Broker (Bootstrap, 43, Actual_Tag));
    end;
    declare
-      Fresh : Controller;
+      Fresh_Storage : constant Controller_Access := new Controller;
+      Fresh : Controller renames Fresh_Storage.all;
       Base : constant Unsigned_64 := Intel_GPU_Render_Sessions.Tag_Base;
-      Tags : array (1 .. Intel_GPU_Render_Sessions.Capacity) of Unsigned_64;
+      Tags : array (1 .. 40) of Unsigned_64;
       procedure Check (Condition : Boolean) is
       begin
          if not Condition then
@@ -57,8 +68,9 @@ begin
       Check (Issued_Tag (Fresh, 0) = 0);
       Check (Storage_Index (Fresh, Unsigned_64'Last) = 0);
       Bind (Fresh, 42, 99);
+      Grow (Fresh, Tags'Length);
       for I in Tags'Range loop
-         Check (Storage_Index (Fresh, Base + Unsigned_64 (I)) = 0);
+         Check (Storage_Index (Fresh, First_Tag (I)) = 0);
          Check (Issued_Tag (Fresh, I) = 0);
          Handle (Fresh, 42, 99, True, Label, 4, 0, 0,
            [Version, Identity, 0, Reserve], Reply);
@@ -212,6 +224,7 @@ begin
    pragma Assert (not Is_Broker (Object, 43, 99));
    pragma Assert (not Is_Broker (Object, 42, 100));
    pragma Assert (not Is_Broker (Object, 43, 100));
+   Grow (Object, 4);
    Call (Reserve, 0, Who => 43); pragma Assert (Reply (0) = Denied);
    Call (Reserve, 0, Stamp => 100); pragma Assert (Reply (0) = Denied);
    Call (Reserve, 0, Ready => False); pragma Assert (Reply (0) = Unavailable);
@@ -228,7 +241,7 @@ begin
       pragma Assert (Reply = [Bad_Request, Version, 0, 0]);
    end loop;
    Call (Reserve, 0); pragma Assert (Reply (0) = OK); Tag := Reply (2);
-   pragma Assert (Tag = Intel_GPU_Render_Sessions.Tag_Base + 1);
+   pragma Assert (Tag = First_Tag (1));
    pragma Assert (Resolve (Object, Identity, Tag) = 0);
    pragma Assert (Recipient_Identity (Object, Identity, Tag) = 0);
    Call (Activate, Tag, Target => Identity + 2 ** 32);
@@ -247,8 +260,7 @@ begin
          (if Fault = 8 then Reserve else Activate)]) = 0);
    end loop;
    for Invalid_Tag of Words'(0, Intel_GPU_Render_Sessions.Tag_Base,
-       Intel_GPU_Render_Sessions.Tag_Base + Intel_GPU_Render_Sessions.Capacity + 1,
-       Unsigned_64'Last) loop
+       RS.Tag_Base + RS.Slot_Span * 99 + 1, Unsigned_64'Last) loop
       pragma Assert (Activation_Identity (Object, 42, 99, Label, 4, 0, 0,
         [Version, Identity, Invalid_Tag, Activate]) = 0);
    end loop;
@@ -289,16 +301,36 @@ begin
    Tag := Reply (2);
    Call (Abort_Session, Tag); pragma Assert (Reply (0) = OK);
    Call (Activate, Tag); pragma Assert (Reply (0) = Bad_State);
-   -- Retired tags are never recycled, even when capacity is exhausted.
-   for Index in 3 .. Intel_GPU_Render_Sessions.Capacity loop
+   -- Retired sessions keep their slots until recycled: the grown slots run
+   -- out, and only Recycle (everything released) frees one, under a new tag.
+   for Index in 3 .. 4 loop
       Call (Reserve, 0);
       pragma Assert (Reply (0) = OK);
-      pragma Assert
-        (Reply (2) = Intel_GPU_Render_Sessions.Tag_Base + Unsigned_64 (Index));
+      pragma Assert (Storage_Index (Object, Reply (2)) = Index);
       Call (Abort_Session, Reply (2));
       pragma Assert (Reply (0) = OK);
    end loop;
+   pragma Assert (not Free_Slot (Object));
    Call (Reserve, 0); pragma Assert (Reply = [Unavailable, Version, 0, 0]);
+   declare
+      Old : constant Unsigned_64 := Issued_Tag (Object, 2);
+      Accepted : Boolean;
+   begin
+      pragma Assert (Retired (Object, 2) and not Recycled (Object, Old));
+      Hold (Object, 2, RS.GuC_Context);
+      Recycle (Object, 2, All_Released, Accepted);
+      pragma Assert (not Accepted); -- the GuC context is not deregistered yet
+      Acknowledge_Deregistration (Object, 2);
+      Recycle (Object, 2, (All_Released with delta Grants_Returned => False), Accepted);
+      pragma Assert (not Accepted);
+      Recycle (Object, 2, All_Released, Accepted);
+      pragma Assert (Accepted and Issued_Tag (Object, 2) = 0 and Recycled (Object, Old));
+      pragma Assert (Storage_Index (Object, Old) = 0);
+      Call (Reserve, 0);
+      pragma Assert (Reply (0) = OK and Storage_Index (Object, Reply (2)) = 2);
+      pragma Assert (Reply (2) > Old and Reply (2) /= Old);
+      Call (Abort_Session, Old); pragma Assert (Reply (0) = Bad_State);
+   end;
    Quarantine (Object);
    Call (Reserve, 0); pragma Assert (Reply (0) = Unavailable);
    for Reserved_Tag of Words'
@@ -307,7 +339,10 @@ begin
       Intel_GPU_Render_Sessions.Tag_Last - 1,
       Intel_GPU_Render_Sessions.Tag_Last)
    loop
-      declare Collision : Controller; begin
+      declare
+         Collision_Storage : constant Controller_Access := new Controller;
+         Collision : Controller renames Collision_Storage.all;
+      begin
          Bind (Collision, 42, Reserved_Tag);
          pragma Assert (not Is_Broker (Collision, 42, Reserved_Tag));
          Bind (Collision, 42, 99);
@@ -315,9 +350,13 @@ begin
       end;
    end loop;
    declare
-      Fresh, Invalid_Binding : Controller;
+      Fresh_Storage : constant Controller_Access := new Controller;
+      Invalid_Storage : constant Controller_Access := new Controller;
+      Fresh : Controller renames Fresh_Storage.all;
+      Invalid_Binding : Controller renames Invalid_Storage.all;
       Fresh_Tag : Unsigned_64;
    begin
+      Grow (Fresh, 1); Grow (Invalid_Binding, 1);
       -- Invalid bootstrap authority cannot be repaired by a later caller.
       Bind (Invalid_Binding, 42, Intel_GPU_Render_Sessions.Tag_Base + 1);
       Bind (Invalid_Binding, 42, 99);
@@ -345,11 +384,13 @@ begin
       pragma Assert (Reply = [Bad_State, Version, 0, 0]);
    end;
    declare
-      Reused_PID : Controller;
+      Reused_Storage : constant Controller_Access := new Controller;
+      Reused_PID : Controller renames Reused_Storage.all;
       Old_Tag, New_Tag : Unsigned_64;
       New_Identity : constant Unsigned_64 := Identity + 2 ** 32;
    begin
       Bind (Reused_PID, 42, 99);
+      Grow (Reused_PID, 2);
       Handle (Reused_PID, 42, 99, True, Label, 4, 0, 0,
               [Version, Identity, 0, Reserve], Reply);
       Old_Tag := Reply (2);
@@ -369,10 +410,12 @@ begin
    end;
    for Activated in Boolean loop
       declare
-         Lost : Controller;
+         Lost_Storage : constant Controller_Access := new Controller;
+         Lost : Controller renames Lost_Storage.all;
          Lost_Tag : Unsigned_64;
       begin
          Bind (Lost, 42, 99);
+         Grow (Lost, 1);
          Handle (Lost, 42, 99, True, Label, 4, 0, 0,
                  [Version, Identity, 0, Reserve], Reply);
          Lost_Tag := Reply (2);
@@ -392,10 +435,13 @@ begin
       end;
    end loop;
    declare
-      Own : Controller;
+      Own_Storage : constant Controller_Access := new Controller;
+      Own : Controller renames Own_Storage.all;
       First, Other : Unsigned_64 := 0;
+      Accepted : Boolean;
    begin
       Bind (Own, 42, 99);
+      Grow (Own, 2);
       for I in 1 .. 2 loop
          Handle (Own, 42, 99, True, Label, 4, 0, 0,
            [Version, Identity, 0, Reserve], Reply);
@@ -424,9 +470,23 @@ begin
       pragma Assert (Reply = [OK, Version, First, 0]);
       pragma Assert (Resolve (Own, Identity, First) = 0);
       pragma Assert (Resolve (Own, Identity, Other) = Other);
+      -- Idempotent for its own client (Mesa closes its queue first, which
+      -- already retired the session), denied to anyone else.
       Close_Own (Own, Identity, First, Close_Own_Label, 4, 0, 0,
         [Version, 0, 0, 0], Reply);
+      pragma Assert (Reply = [OK, Version, First, 0]);
+      Close_Own (Own, 43, First, Close_Own_Label, 4, 0, 0,
+        [Version, 0, 0, 0], Reply);
       pragma Assert (Reply = [Denied, Version, 0, 0]);
+      -- A client's end through its transport closes the same way.
+      End_Session (Own, Other);
+      pragma Assert (Resolve (Own, Identity, Other) = 0 and Retired (Own, 2));
+      -- Recycled: the stale tag still closes as finished.
+      Recycle (Own, 1, All_Released, Accepted); pragma Assert (Accepted);
+      Close_Own (Own, Identity, First, Close_Own_Label, 4, 0, 0,
+        [Version, 0, 0, 0], Reply);
+      pragma Assert (Reply = [OK, Version, First, 0]);
+      pragma Assert (Recycled (Own, First) and not Recycled (Own, Other));
    end;
-   Ada.Text_IO.Put_Line ("GPU render control PASS: authority, incarnation, activation, late reply, own-session retirement");
+   Ada.Text_IO.Put_Line ("GPU render control PASS: authority, incarnation, activation, late reply, own-session retirement, transport end, recycling");
 end Render_Control_Tests;

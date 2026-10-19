@@ -61,15 +61,12 @@ package body Intel_GPU_Render_Control with SPARK_Mode is
          if not Ready then return; end if;
          Sessions.Reserve (Object.Sessions, PID, Tag);
          if Tag = 0 then return; end if;
-         Index := Sessions.Storage_Index (Object.Sessions, Tag);
-         if Index = 0 then return; end if;
-         Object.Recipients (Index) := Recipient;
       else
          if Tag <= Sessions.Tag_Base or Tag > Sessions.Tag_Last
          then return; end if;
          Response (0) := Bad_State;
          Index := Sessions.Storage_Index (Object.Sessions, Tag);
-         if Index = 0 or else Object.Recipients (Index) /= Recipient
+         if Index = 0 or else Sessions.Sender_Of (Object.Sessions, Index) /= Recipient
          then return; end if;
          if Request (3) = Activate then
             Response (0) := Unavailable;
@@ -96,7 +93,7 @@ package body Intel_GPU_Render_Control with SPARK_Mode is
         Request (0) /= Version or else Request (3) /= Activate or else
         Index = 0
       then return 0; end if;
-      if Request (1) = Object.Recipients (Index)
+      if Request (1) = Sessions.Sender_Of (Object.Sessions, Index)
       then return Request (1); end if;
       return 0;
    end Activation_Identity;
@@ -111,39 +108,90 @@ package body Intel_GPU_Render_Control with SPARK_Mode is
    begin
       return Index /= 0 and then
         Sessions.Resolve_Retired
-          (Object.Sessions, Object.Recipients (Index), Tag) = Tag;
+          (Object.Sessions, Sessions.Sender_Of (Object.Sessions, Index), Tag) = Tag;
    end Retired_Admission;
    procedure Close_Own
      (Object : in out Controller; Sender, Stamped_Tag : Unsigned_64;
       Request_Label : Unsigned_32; Length, Flags : Unsigned_8;
       Reserved : Unsigned_16; Request : Words; Response : out Words) is
       Tag : constant Unsigned_64 := Resolve (Object, Sender, Stamped_Tag);
+      Ended : constant Boolean :=
+        Tag = 0 and then
+        (Resolve_Retired (Object, Sender, Stamped_Tag) /= 0 or else
+         Recycled (Object, Stamped_Tag));
    begin
       Response := [Denied, Version, 0, 0];
-      if Tag = 0 then return; end if;
+      if Tag = 0 and then not Ended then return; end if;
       Response (0) := Bad_Request;
       if Request_Label /= Close_Own_Label or Length /= 4 or Flags /= 0 or
         Reserved /= 0 or Request /= [Version, 0, 0, 0] then return; end if;
-      Sessions.Close (Object.Sessions, Sender, Tag);
-      Response := [OK, Version, Tag, 0];
+      if Tag /= 0 then
+         Sessions.Close (Object.Sessions, Sender, Tag);
+      end if;
+      Response := [OK, Version, Stamped_Tag, 0];
    end Close_Own;
+   function Recycled (Object : Controller; Stamped_Tag : Unsigned_64) return Boolean is
+     (Sessions.Was_Issued (Object.Sessions, Stamped_Tag) and then
+      Sessions.Storage_Index (Object.Sessions, Stamped_Tag) = 0);
    function Recipient_Identity
      (Object : Controller; Sender, Stamped_Tag : Unsigned_64) return Unsigned_64 is
       Tag : constant Unsigned_64 := Resolve (Object, Sender, Stamped_Tag);
       Index : constant Sessions.Slot_Index := Sessions.Storage_Index (Object.Sessions, Tag);
    begin
       if Tag = 0 or else Index = 0 then return 0; end if;
-      return Object.Recipients (Index);
+      return Sessions.Sender_Of (Object.Sessions, Index);
    end Recipient_Identity;
    procedure Reject_Delivery
      (Object : in out Controller; Identity, Tag : Unsigned_64) is
       Index : constant Sessions.Slot_Index := Sessions.Storage_Index (Object.Sessions, Tag);
    begin
       if Index = 0 or else Identity = 0 then return; end if;
-      if Object.Recipients (Index) = Identity then
+      if Sessions.Sender_Of (Object.Sessions, Index) = Identity then
          Sessions.Close (Object.Sessions, Identity, Tag);
       end if;
    end Reject_Delivery;
+   procedure End_Session (Object : in out Controller; Tag : Unsigned_64) is
+      Index : constant Sessions.Slot_Index := Sessions.Storage_Index (Object.Sessions, Tag);
+   begin
+      if Index /= 0 then
+         Sessions.Close (Object.Sessions, Sessions.Sender_Of (Object.Sessions, Index), Tag);
+      end if;
+   end End_Session;
+   function Grown (Object : Controller) return Sessions.Slot_Count is
+     (Sessions.Grown (Object.Sessions));
+   function Free_Slot (Object : Controller) return Boolean is
+     (for some I in 1 .. Sessions.Grown (Object.Sessions) =>
+        Sessions.Issued_Tag (Object.Sessions, I) = 0);
+   procedure Grow (Object : in out Controller; To : Sessions.Slot_Count) is
+   begin
+      Sessions.Grow (Object.Sessions, To);
+   end Grow;
+   function Retired (Object : Controller; Index : Sessions.Slot_Index) return Boolean is
+     (Sessions.Retired (Object.Sessions, Index));
+   function Holds
+     (Object : Controller; Index : Sessions.Slot_Index;
+      What : Sessions.Holding) return Boolean is
+     (Sessions.Holds (Object.Sessions, Index, What));
+   procedure Hold
+     (Object : in out Controller; Index : Sessions.Slot_Index; What : Sessions.Holding) is
+   begin
+      Sessions.Hold (Object.Sessions, Index, What);
+   end Hold;
+   procedure Release_Image (Object : in out Controller; Index : Sessions.Slot_Index) is
+   begin
+      Sessions.Release_Image (Object.Sessions, Index);
+   end Release_Image;
+   procedure Acknowledge_Deregistration
+     (Object : in out Controller; Index : Sessions.Slot_Index) is
+   begin
+      Sessions.Acknowledge_Deregistration (Object.Sessions, Index);
+   end Acknowledge_Deregistration;
+   procedure Recycle
+     (Object : in out Controller; Index : Sessions.Slot_Index;
+      Facts : Sessions.Release_Facts; Accepted : out Boolean) is
+   begin
+      Sessions.Recycle (Object.Sessions, Index, Facts, Accepted);
+   end Recycle;
    procedure Quarantine (Object : in out Controller) is
    begin
       Sessions.Quarantine (Object.Sessions);

@@ -486,8 +486,8 @@ package Process is
     --  Grants one process may own at once (KERN-003 step 2: a quota, not a
     --  namespace; the table is global, Memory_Grants.Maximum_Grants).
     OWNER_GRANT_QUOTA : constant := Memory_Grants.Owner_Grant_Quota;
-    --  16 MiB per grant. Modern display buffers, media paths, and batched I/O
-    --  need grants larger than the original 1 MiB filesystem-buffer ceiling.
+    --  The grantee's whole received-window space (Memory_Grants): a 4K
+    --  scanout buffer is 33 MB. Owner memory quotas bound real grants.
     --  Grant records and page tables are backed only as needed.
     MAX_GRANT_PAGES        : constant := Memory_Grants.Maximum_Page_Count;
 
@@ -522,6 +522,7 @@ package Process is
         -- and every CPU has flushed them.
         granteeAddr  : System.Address  := System.Null_Address;
         granteeWindow : Grant_Windows.Window := Grant_Windows.Window'First;
+        windowCount   : Grant_Windows.Run_Length := 1;
         windowHeld    : Boolean := False;
         -- Installed receiver pages. Zero after receiver death even if a
         -- kernel forwarding hold retains the grant identity/resources.
@@ -1095,7 +1096,7 @@ package Process is
     -- ring once grantLock is free.
     type Grant_State is record
         ownedHead, receivedHead   : Memory_Grants.Global_Slot := Memory_Grants.No_Slot;
-        ownedCount, receivedCount : Natural := 0;
+        ownedCount                : Natural := 0;
         windows                   : Grant_Windows.Window_Set := Grant_Windows.Empty;
         noticesOpen               : Boolean := False;
         ownerNotices              : Natural := 0;
@@ -1260,7 +1261,10 @@ package Process is
     -- ready, placed on this CPU (unless the thread must stay where it is):
     -- for a waker that is about to block (Linux's WF_SYNC), so the woken
     -- thread runs here when the waker sleeps, with no inter-processor wake.
-    -- The scheduler still orders it by its virtual deadline.
+    -- It never preempts the waker (no reschedule, no slice alarm): it waits
+    -- in deadline order until the waker blocks (yieldToSyncWakee) or, if
+    -- the waker runs on, until a timer interrupt here finds it due (an
+    -- earlier deadline, or the waker's slice used up), as any queued thread.
     procedure readySync (tid : ThreadID);
 
     -- The calling thread blocks (already in its blocked state and queued

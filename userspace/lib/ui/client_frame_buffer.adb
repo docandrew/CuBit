@@ -34,7 +34,8 @@ package body Client_Frame_Buffer is
       Cleaned : Boolean;
    begin
       OK := False;
-      if B.Policy.Mode /= P.Empty or else Bytes = 0 or else Bytes > DP.Maximum_Buffer_Bytes then
+      --  The kernel refuses an allocation beyond this process's memory quota.
+      if B.Policy.Mode /= P.Empty or else Bytes = 0 then
          return;
       end if;
       B.Base := syscall (SYSCALL_ALLOCATE_OWNED_MEMORY, Unsigned_64 (Bytes));

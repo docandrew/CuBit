@@ -11,7 +11,7 @@ package Compositor_Glyph_Software with SPARK_Mode, Pure is
    type Bytes is array (Natural range <>) of Byte;
    type Pixels is array (Natural range <>) of Word;
    type Placement is private;
-   function Prepare (Screen : G.Output; Origin : G.Logical_Point) return Placement;
+   function Prepare (Screen : G.Output; Origin : G.Logical_Point; Offset : L.Subpixel) return Placement;
    type Sample (Valid : Boolean := False) is record
       case Valid is
          when True => X : Natural range 0 .. 511; Y : Natural range 0 .. 271;
@@ -19,13 +19,16 @@ package Compositor_Glyph_Software with SPARK_Mode, Pure is
       end case;
    end record;
    function Raster (Where : Placement) return L.Layout;
+   -- The mask phase this placement reads (its first byte: Phase * Phase_Bytes).
+   function Phase (Where : Placement) return L.Phase;
    function At_Pixel (Where : Placement; Pixel : G.Physical_Point) return Sample
      with Post => (if At_Pixel'Result.Valid then
        At_Pixel'Result.X < Raster (Where).Width and At_Pixel'Result.Y < Raster (Where).Height);
    -- Straight ARGB tint, A8 coverage and premultiplied ARGB destination.
-   -- One final integer rounding, including destination alpha.
+   -- One final integer rounding, including destination alpha. Coverage is
+   -- raw: it goes through the tint's Glyph_Gamma row first.
    function Over (Coverage : Byte; Tint, Background : Word) return Word;
-   function Bounds (Screen : G.Output; Origin : G.Logical_Point;
+   function Bounds (Screen : G.Output; Origin : G.Logical_Point; Offset : L.Subpixel;
                     Damage : G.Physical_Rectangle) return G.Physical_Rectangle
      with Post => Bounds'Result.Left <= Bounds'Result.Right and then
        Bounds'Result.Top <= Bounds'Result.Bottom and then
@@ -39,23 +42,27 @@ package Compositor_Glyph_Software with SPARK_Mode, Pure is
      (Target'First = 0 and then Pitch >= Natural (Screen.Width) and then
       Pitch <= Natural'Last / Natural (Screen.Height) and then
       Target'Last >= Pitch * Natural (Screen.Height) - 1);
-   procedure Paint (Screen : G.Output; Origin : G.Logical_Point;
+   -- Mask is the whole stacked mask; the placement's phase selects its rows.
+   procedure Paint (Screen : G.Output; Origin : G.Logical_Point; Offset : L.Subpixel;
                     Damage : G.Physical_Rectangle; Mask : Bytes;
                     Target : in out Pixels; Pitch : Positive; Tint : Word)
      with Pre => Mask'First = 0 and then Mask'Last >= L.Plan (Screen.Scale).Bytes - 1 and then
        Fits_Target (Screen, Target, Pitch),
        Post => (for all I in Target'Range =>
-         (if not Inside (I, Pitch, Bounds (Screen, Origin, Damage)) then Target (I) = Target'Old (I)));
+         (if not Inside (I, Pitch, Bounds (Screen, Origin, Offset, Damage)) then Target (I) = Target'Old (I)));
 private
    type Placement is record
       Width, Height : G.Physical_Extent;
       Rotation : G.Orientation;
       Left, Top : P.Position;
+      Phase : L.Phase;
       Raster : L.Layout;
    end record;
    function Raster (Where : Placement) return L.Layout is (Where.Raster);
-   function Prepare (Screen : G.Output; Origin : G.Logical_Point) return Placement is
+   function Phase (Where : Placement) return L.Phase is (Where.Phase);
+   function Prepare (Screen : G.Output; Origin : G.Logical_Point; Offset : L.Subpixel) return Placement is
      (Screen.Width, Screen.Height, Screen.Rotation,
-      P.Snap (Origin.X, Screen.X, Screen.Scale),
-      P.Snap (Origin.Y, Screen.Y, Screen.Scale), L.Plan (Screen.Scale));
+      P.Snap_Phase (Origin.X, Offset, Screen.X, Screen.Scale).Pixel,
+      P.Snap (Origin.Y, Screen.Y, Screen.Scale),
+      P.Snap_Phase (Origin.X, Offset, Screen.X, Screen.Scale).Phase, L.Plan (Screen.Scale));
 end Compositor_Glyph_Software;

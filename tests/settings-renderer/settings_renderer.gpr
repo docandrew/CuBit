@@ -1,14 +1,17 @@
+with "../../userspace/allocator/allocator_runtime_host.gpr";
 with "../../userspace/lib/ui/fonts_host.gpr";
 project Settings_Renderer is
    for Source_Dirs use (".", "../../userspace/services/desktop",
      "../../userspace/lib/ui", "../../userspace/lib/theme", "../../userspace/lib/display",
-     "../../userspace/ccl/tools/ccl-ui-preview/host", "../../userspace/lib/compositor", "../../userspace/allocator/src");
+     "../../userspace/ccl/tools/ccl-ui-preview/host", "../../userspace/lib/compositor",
+     "../../userspace/lib/time/build/generated");
    for Source_Files use ("renderer_tests.adb", "wallpaper_trap.adb", "compositor_image_sampling.ads", "compositor_image_sampling.adb", "desktop_backdrop_style.ads", "desktop_wallpaper.ads",
-     "desktop_settings.ads", "desktop_settings.adb", "cubit.ads", "cubit-ui.ads", "cubit-ui.adb",
-     "font8x16.ads", "cubit-fonts.ads", "cubit-fonts.adb", "cubit-theme.ads",
+     "desktop_settings.ads", "desktop_settings.adb", "time_zones.ads", "time_zones.adb", "desktop_auto_scale.ads", "desktop_auto_scale.adb", "cubit.ads", "cubit-ui.ads", "cubit-ui.adb",
+     "cubit-ui-window_chrome.ads", "cubit-ui-window_chrome.adb", "icon_edge_choice.ads", "icon_edge_choice.adb", "text_fit.ads", "text_fit.adb",
+     "font8x16.ads", "cubit-fonts.ads", "glyph_pen.ads", "cubit-fonts.adb", "cubit-theme.ads",
      "cubit-appearance.ads", "cubit-appearance.adb", "cubit-display_geometry.ads",
      "cubit-display_geometry.adb", "cubit-display_layouts.ads", "cubit-display_layouts.adb",
-     "cubit-display_arrangement.ads", "cubit-display_arrangement.adb", "client_raster.ads", "client_raster.adb", "client_glyph_blend.ads", "client_glyph_blend.adb", "client_glyphs.ads", "client_glyphs.adb", "client_canvas_geometry.ads", "client_canvas_geometry.adb", "compositor_glyph_cache.ads", "compositor_glyph_cache.adb", "compositor_glyph_storage.ads", "compositor_glyph_storage.adb", "compositor_glyph_memory.ads", "compositor_glyph_memory.adb", "compositor_glyph_arena.ads", "compositor_glyph_arena.adb", "compositor_glyph_layout.ads", "compositor_glyph_layout.adb", "compositor_glyph_ffi.ads", "compositor_glyph_ffi.adb", "compositor_glyph_software.ads", "compositor_glyph_software.adb", "compositor_glyph_placement.ads", "compositor_glyph_placement.adb", "compositor_affine.ads", "compositor_affine.adb", "heap_extents.ads", "heap_extents.adb", "compositor_identity.ads");
+     "cubit-display_arrangement.ads", "cubit-display_arrangement.adb", "client_raster.ads", "client_raster.adb", "client_glyph_blend.ads", "client_glyph_blend.adb", "client_glyphs.ads", "client_glyphs.adb", "client_canvas_geometry.ads", "client_canvas_geometry.adb", "compositor_glyph_cache.ads", "compositor_glyph_cache.adb", "compositor_glyph_storage.ads", "compositor_glyph_storage.adb", "compositor_glyph_memory.ads", "compositor_glyph_memory.adb", "compositor_glyph_layout.ads", "compositor_glyph_layout.adb", "compositor_glyph_ffi.ads", "compositor_glyph_ffi.adb", "compositor_glyph_software.ads", "glyph_gamma.ads", "compositor_glyph_software.adb", "compositor_glyph_placement.ads", "compositor_glyph_placement.adb", "compositor_affine.ads", "compositor_affine.adb", "compositor_identity.ads");
    for Object_Dir use "build/obj";
    for Exec_Dir use "build";
    for Main use ("renderer_tests.adb");

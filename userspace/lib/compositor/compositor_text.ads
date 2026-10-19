@@ -1,6 +1,8 @@
 with Compositor_Affine;
+with Compositor_Glyph_Layout;
 package Compositor_Text with SPARK_Mode, Pure is
    package A renames Compositor_Affine;
+   package L renames Compositor_Glyph_Layout;
    package G renames A.G;
    use type G.Pixel_Edge, G.Logical_Coordinate;
    subtype Count is Natural range 0 .. 32;
@@ -12,9 +14,13 @@ package Compositor_Text with SPARK_Mode, Pure is
      with Post => (Finish'Result = Complete) = not Damaged and
        (Finish'Result = Replay) = (Damaged and Pass = 1) and
        (Finish'Result = Restart) = (Damaged and Pass = 2);
+   -- Cell is the whole raster box in logical pixels, its left edge the pen's
+   -- whole pixel less the raster's origin margin; Offset is the pen's
+   -- remaining fraction (1/L.Pen_Unit pixel), placed by the mask's phases.
    type Glyph is record
       Code : Natural range 32 .. 126 := 63;
       Cell : G.Logical_Rectangle := (others => 0);
+      Offset : L.Subpixel := 0;
    end record;
    type Glyphs is array (Index) of Glyph;
    --  Adjacent positive cells sharing one vertical interval have no gaps.

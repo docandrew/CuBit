@@ -1,0 +1,27 @@
+--  Hosted tests and proofs for the Deskbar's pure units (run.sh):
+--  Desktop_Notifications, Desktop_Task_Groups, Desktop_Deskbar_Layout,
+--  Desktop_Status_Items, Desktop_Window_Placement, Desktop_Tooltips (with the toolkit's
+--  Client_Tooltip_Policy it encodes targets for).
+project Deskbar_Tests is
+   Desktop_Src := "../../userspace/services/desktop";
+   for Source_Dirs use (".", Desktop_Src, "../../userspace/lib/ui");
+   for Source_Files use ("desktop_icons.ads", "desktop_surface_limits.ads",
+                         "desktop_notifications.ads", "desktop_notifications.adb",
+                         "desktop_task_groups.ads", "desktop_task_groups.adb",
+                         "desktop_deskbar_layout.ads", "desktop_deskbar_layout.adb",
+                         "desktop_status_items.ads", "desktop_status_items.adb",
+                         "desktop_tooltips.ads",
+                         "desktop_window_placement.ads", "desktop_window_placement.adb",
+                         "client_tooltip_policy.ads", "client_tooltip_policy.adb",
+                         "main.adb");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-gnat2022", "-O1", "-gnata", "-gnato", "-gnatwa", "-I-");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=2", "--checks-as-errors=on", "--report=fail");
+   end Prove;
+end Deskbar_Tests;

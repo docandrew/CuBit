@@ -12,6 +12,9 @@ struct ccl_window {
     int frames_left;
     const char *screenshot_path;
     int debug_input;
+    /* The letter of an Alt+letter menu key just sent: SDL may follow it with
+       that letter as text, which is not typing. */
+    int menu_key_letter;
     Uint64 last_click_ms;
     int click_origin_x;
     int click_origin_y;
@@ -67,7 +70,9 @@ enum ccl_event {
     CCL_EVENT_TOGGLE_SYNTAX = 40,
     CCL_EVENT_COPY_SELECTION = 41,
     CCL_EVENT_CUT_SELECTION = 42,
-    CCL_EVENT_PASTE_CLIPBOARD = 43
+    CCL_EVENT_PASTE_CLIPBOARD = 43,
+    CCL_EVENT_OPEN_MENU = 44,
+    CCL_EVENT_ALT_CHANGED = 45
 };
 
 enum {
@@ -268,6 +273,12 @@ int ccl_window_poll(void *handle, int *kind, unsigned int *character,
                 fprintf(stderr, "close event type=%u\n", event.type);
             *kind = CCL_EVENT_CLOSE_REQUEST; return 1;
         }
+        if (event.type == SDL_TEXTINPUT && state->menu_key_letter != 0) {
+            int letter = state->menu_key_letter;
+            state->menu_key_letter = 0;
+            if (SDL_tolower((unsigned char)event.text.text[0]) == letter) continue;
+        }
+        if (event.type == SDL_KEYDOWN) state->menu_key_letter = 0;
         if (event.type == SDL_TEXTINPUT && (unsigned char)event.text.text[0] < 128) {
             if (state->debug_input)
                 fprintf(stderr, "text input byte=%u ('%c')\n",
@@ -327,6 +338,13 @@ int ccl_window_poll(void *handle, int *kind, unsigned int *character,
             }
             return 1;
         }
+        if ((event.type == SDL_KEYDOWN || event.type == SDL_KEYUP) &&
+            (event.key.keysym.sym == SDLK_LALT || event.key.keysym.sym == SDLK_RALT)) {
+            if (event.key.repeat != 0) continue;
+            *kind = CCL_EVENT_ALT_CHANGED;
+            *character = event.type == SDL_KEYDOWN ? 1u : 0u;
+            *modifiers = 0; return 1;
+        }
         if (event.type != SDL_KEYDOWN) continue;
         mods = event.key.keysym.mod;
         if (state->debug_input)
@@ -356,6 +374,13 @@ int ccl_window_poll(void *handle, int *kind, unsigned int *character,
         if (event.key.keysym.sym == SDLK_F6) { *kind = CCL_EVENT_TOGGLE_REPL; return 1; }
         if (event.key.keysym.sym == SDLK_F7) { *kind = CCL_EVENT_TOGGLE_WATCH; return 1; }
         if (event.key.keysym.sym == SDLK_F8) { *kind = CCL_EVENT_TOGGLE_SYNTAX; return 1; }
+        if (event.key.keysym.sym == SDLK_F10 && *modifiers == 0) {
+            *kind = CCL_EVENT_OPEN_MENU; *character = 0; return 1;
+        }
+        if (*modifiers == 4u && event.key.keysym.sym >= SDLK_a && event.key.keysym.sym <= SDLK_z) {
+            *kind = CCL_EVENT_OPEN_MENU; *character = (unsigned int)event.key.keysym.sym;
+            state->menu_key_letter = (int)event.key.keysym.sym; return 1;
+        }
         if (event.key.keysym.sym == SDLK_o && (*modifiers & 2u) != 0) {
             *kind = CCL_EVENT_OPEN_SOURCE; return 1;
         }

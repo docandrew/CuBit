@@ -26,7 +26,7 @@ package body Vulkan_Scene with SPARK_Mode is
    begin
       Accepted := False;
       if S.Status /= Collecting or S.Used = Maximum_Layers or
-        Value.Kind in Region_Textured | Straight_Region | Preview or
+        Value.Kind in Region_Textured | Straight_Region | Preview | Physical_Region or
         (Value.Kind in Physical_Solid | Set_Physical_Clip and then not Physical_Coordinates (Value.Surface)) or
         (if Value.Kind in Textured | Straight_Textured | Glyph_Mask | Backdrop_Fill | Backdrop_Fit | Backdrop_Center then
            Value.Source = V.No_Source or
@@ -65,6 +65,22 @@ package body Vulkan_Scene with SPARK_Mode is
          S.Entries (S.Used).Kind := (if Straight_Alpha then Straight_Region else Region_Textured);
       end if;
    end Append_Region;
+   procedure Append_Physical_Region (S : in out State; Source : V.Source_Ticket;
+      Area : A.G.Physical_Rectangle; Region : R.Rectangle; Accepted : out Boolean) is
+   begin
+      Accepted := False;
+      if not R.Valid (Region) then
+         S.Status := Rejected; return;
+      end if;
+      Append (S, (Source,
+        (A.G.Logical_Coordinate (Area.Left), A.G.Logical_Coordinate (Area.Top),
+         A.G.Logical_Coordinate (Area.Right), A.G.Logical_Coordinate (Area.Bottom)),
+        True, False, 0, Straight_Textured), Accepted);
+      if Accepted then
+         S.Regions (S.Used) := Region;
+         S.Entries (S.Used).Kind := Physical_Region;
+      end if;
+   end Append_Physical_Region;
    procedure Append_Physical_Fill
      (S : in out State; Area : A.G.Physical_Rectangle; RGB : A.Word; Accepted : out Boolean) is
    begin
@@ -96,7 +112,7 @@ package body Vulkan_Scene with SPARK_Mode is
    procedure Append_Glyph
      (S : in out State; Submission : V.State; Sources : Vulkan_Glyph_Sources.State;
       Key : Vulkan_Glyph_Sources.Key; Cell : A.G.Logical_Rectangle;
-      Tint : A.Word; Accepted : out Boolean) is
+      Offset : Vulkan_Glyph_Sources.L.Subpixel; Tint : A.Word; Accepted : out Boolean) is
       package R renames Vulkan_Glyph_Sources;
       Source : constant V.Source_Ticket := R.Resolve (Sources, Submission, Key);
    begin
@@ -104,6 +120,7 @@ package body Vulkan_Scene with SPARK_Mode is
          S.Status := Rejected; Accepted := False; return;
       end if;
       Append (S, (Source, Cell, True, True, Tint, Glyph_Mask), Accepted);
+      if Accepted then S.Offsets (S.Used) := Offset; end if;
    end Append_Glyph;
    procedure Append_Gradient
      (S : in out State; Surface : A.G.Logical_Rectangle;
@@ -234,6 +251,19 @@ package body Vulkan_Scene with SPARK_Mode is
               (Submission, Damage, S.Entries (I).Source, S.Screen,
                S.Entries (I).Surface, Clip, S.Regions (I), S.Entries (I).Over,
                S.Entries (I).Kind = Straight_Region, Accepted);
+         elsif S.Entries (I).Kind = Physical_Region then
+            -- One texel per pixel: the output's own extent and rotation at
+            -- scale 1 from its top-left, so the region binding's logical
+            -- space is the unrotated physical one.
+            Physical := S.Entries (I).Surface;
+            if not Physical_Coordinates (Physical) then
+               V.Reject_Frame (Submission); Accepted := False; return;
+            end if;
+            Vulkan_Submission.Regions.Replay
+              (Submission, Damage, S.Entries (I).Source,
+               (Width => S.Screen.Width, Height => S.Screen.Height, Rotation => S.Screen.Rotation,
+                Scale => (1, 1), X => 0, Y => 0),
+               Physical, Clip, S.Regions (I), True, True, Accepted);
          elsif S.Entries (I).Kind = Checker_Grid then
             Vulkan_Submission.Checkers.Replay
               (Submission, Damage, S.Screen, S.Entries (I).Surface, Clip,
@@ -245,7 +275,8 @@ package body Vulkan_Scene with SPARK_Mode is
             Vulkan_Frame.Replay_Layer
               (Submission, Damage, S.Entries (I).Source, S.Screen, S.Entries (I).Surface,
                S.Entries (I).Over, S.Entries (I).Mask, S.Entries (I).Tint, Accepted, Clip,
-               S.Entries (I).Kind = Glyph_Mask, S.Entries (I).Kind = Straight_Textured);
+               S.Entries (I).Kind = Glyph_Mask, S.Entries (I).Kind = Straight_Textured,
+               (if S.Entries (I).Kind = Glyph_Mask then S.Offsets (I) else 0));
          end if;
          if not Accepted then return; end if;
          pragma Loop_Invariant (V.Current (Submission) = V.Recording and V.Pass_Active (Submission));

@@ -66,7 +66,8 @@ procedure Main is
    function Source_Name (Source : OD.Output_Source) return String is
      (case Source is
         when OD.Boot_Framebuffer => "BOOT_FRAMEBUFFER",
-        when OD.Virtio_GPU => "VIRTIO_GPU");
+        when OD.Virtio_GPU => "VIRTIO_GPU",
+        when OD.Intel_Display => "INTEL_DISPLAY");
    function Role_Name (Role : OD.Output_Role) return String is
      (case Role is
         when OD.Detected_Only => "DETECTED_ONLY",

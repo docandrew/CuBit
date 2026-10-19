@@ -150,4 +150,72 @@ is
         S.Words (W / Word_Bits) := S.Words (W / Word_Bits) and not Bit (W mod Word_Bits);
         Lemma_Others_Unchanged (Old, S, W);
     end Release;
+
+    -- Mark W taken; no other window changes.
+    procedure Take (S : in out Window_Set; W : Window)
+      with Post => Contains (S, W) and then
+        (for all V in Window => (if V /= W then Contains (S, V) = Contains (S'Old, V)));
+    procedure Take (S : in out Window_Set; W : Window) is
+        Old : constant Window_Set := S with Ghost;
+    begin
+        Lemma_Bit_Is_Power (W mod Word_Bits);
+        Lemma_Or_Others (S.Words (W / Word_Bits), W mod Word_Bits);
+        S.Words (W / Word_Bits) := S.Words (W / Word_Bits) or Bit (W mod Word_Bits);
+        Lemma_Others_Unchanged (Old, S, W);
+    end Take;
+
+    procedure Allocate_Run
+      (S : in out Window_Set; Count : Run_Length; First : out Window; Found : out Boolean)
+    is
+        Old : constant Window_Set := S with Ghost;
+        Run_Start : Window := Window'First;
+        -- Free windows in a row ending at the window just examined.
+        Run : Natural range 0 .. Count - 1 := 0;
+    begin
+        First := Window'First;
+        Found := False;
+        for V in Window loop
+            if Contains (S, V) then
+                Run := 0;
+            elsif Run = Count - 1 then
+                -- Run_Start .. V are free (Run_Start = V when Count = 1).
+                First := (if Run = 0 then V else Run_Start);
+                pragma Assert (V - First = Count - 1);
+                pragma Assert (for all U in First .. V => not Contains (Old, U));
+                for W in First .. V loop
+                    Take (S, W);
+                    pragma Loop_Invariant
+                      (for all U in Window =>
+                         (if U >= First and then U <= W then Contains (S, U)
+                          else Contains (S, U) = Contains (Old, U)));
+                end loop;
+                Found := True;
+                return;
+            else
+                if Run = 0 then
+                    Run_Start := V;
+                end if;
+                Run := Run + 1;
+            end if;
+            pragma Loop_Invariant (S = Old);
+            pragma Loop_Invariant
+              (if Run > 0 then
+                 Run_Start <= V and then V - Run_Start = Run - 1 and then
+                 (for all U in Run_Start .. V => not Contains (S, U)));
+        end loop;
+    end Allocate_Run;
+
+    procedure Release_Run (S : in out Window_Set; First : Window; Count : Run_Length) is
+        Old : constant Window_Set := S with Ghost;
+        Last : constant Window := First + (Count - 1);
+    begin
+        for W in First .. Last loop
+            Release (S, W);
+            pragma Loop_Invariant
+              (for all U in Window =>
+                 (if U >= First and then U <= W then not Contains (S, U)
+                  elsif U > W and then U <= Last then Contains (S, U)
+                  else Contains (S, U) = Contains (Old, U)));
+        end loop;
+    end Release_Run;
 end Grant_Windows;

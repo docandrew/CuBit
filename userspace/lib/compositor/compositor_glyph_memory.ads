@@ -1,24 +1,15 @@
 with System;
-with Interfaces;
-with Compositor_Glyph_Arena;
--- Audited pointer bridge for caller-owned, fixed backing. This limited object
--- must stay at a stable address and outlive every returned pointer/import.
--- All calls are serialized by its owner. No allocation, growth or compaction.
+-- Audited pointer bridge: glyph mask storage from CuAlloc, the process's one
+-- allocator (userspace/allocator). No fixed arena: an owner's cache budget
+-- is its policy limit; the heap answers null when it is out and the glyph is
+-- simply not cached. Every returned block stays at its address until
+-- Release; the owner serializes all calls and retires every reader (Mesa
+-- views included) before releasing.
 package Compositor_Glyph_Memory with SPARK_Mode => Off is
-   package Arena is new Compositor_Glyph_Arena;
-   type State is limited private;
-   procedure Reserve
-     (S : in out State; Size : Arena.Request_Bytes; T : out Arena.Token;
-      Pixels : out System.Address; Capacity : out Natural);
-   function Address_Of (S : in out State; T : Arena.Token) return System.Address;
-   procedure Release
-     (S : in out State; T : Arena.Token; Readers_Retired : Boolean; Released : out Boolean);
-private
-   type Bytes is array (Natural range 0 .. Arena.Backing_Bytes - 1) of aliased Interfaces.Unsigned_8
-     with Alignment => Arena.Cell_Bytes;
-   type State is limited record
-      Data : Bytes := (others => 0);
-      Policy : Arena.State;
-      Started : Boolean := False;
-   end record with Alignment => Arena.Cell_Bytes;
+   use type System.Address;
+   -- Mesa imports masks as user pointers; keep them on a cache-line pair.
+   Alignment : constant := 128;
+   procedure Reserve (Size : Positive; Pixels : out System.Address; Capacity : out Natural);
+   procedure Release (Pixels : in out System.Address)
+     with Post => Pixels = System.Null_Address;
 end Compositor_Glyph_Memory;

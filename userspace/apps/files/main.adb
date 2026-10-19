@@ -20,7 +20,6 @@ with CuBit.UI.Editor_Clipboard;
 with Clipboard_Chords;
 with Clipboard_Text;
 with CuBit.UI.Controls;
-with CuBit.UI.Icons;
 with CuBit.UI.Input;
 with CuBit.UI.State;
 with Files_Filter;
@@ -87,9 +86,6 @@ procedure Main is
    --  Sorting and filtering work per pump, between input checks.
    PUMP_BUDGET : constant Files_Limits.Work_Budget := 20_000;
    MICROSECONDS_PER_MILLISECOND : constant := 1_000;
-   --  The places the manifest grants (filesystem-scope).
-   VOLUME_PLACE : constant String := "@nvme:0/";
-   WORKSPACE_PLACE : constant String := "@mem:0/";
 
    Win : CuBit.UI.App.Window;
    UI : CuBit.UI.State.UI_State;
@@ -507,9 +503,10 @@ begin
    CuBit.Logging.Announce ("files: started", Opened, Startup.Logstore);
    --  The first listings start here: time them from now.
    Set_Clock (View, Now_Us);
-   Initialize (View, PANE_ENTRIES, PANE_NAME_BYTES, VOLUME_PLACE, WORKSPACE_PLACE);
-   Add_Place (View, "NVMe volume 0", VOLUME_PLACE, CuBit.UI.Icons.Drive);
-   Add_Place (View, "Live workspace", WORKSPACE_PLACE, CuBit.UI.Icons.Folder);
+   --  The places come from the service: the granted scopes (manifest)
+   --  whose volume this machine has. No folder is remembered across runs
+   --  yet, so both panes start at the first place.
+   Initialize (View, PANE_ENTRIES, PANE_NAME_BYTES, "", "");
    debugPrint ((if Files_Queue.Ready then "files: filesystem queue ready" else "files: no filesystem queue")
                & ASCII.LF);
    CuBit.UI.App.Open

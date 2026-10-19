@@ -12,7 +12,7 @@ package Compositor_Software_Text_Target with SPARK_Mode is
       Target.Width = F.Word (Screen.Width) and then Target.Height = F.Word (Screen.Height));
    procedure Paint (S : in out R.State;
                     Target : F.Image; Capacity : F.Byte_Count; Key : R.C.Key;
-                    Screen : R.G.Output; Origin : R.G.Logical_Point;
+                    Screen : R.G.Output; Origin : R.G.Logical_Point; Offset : R.Storage.L.Subpixel;
                     Damage : R.G.Physical_Rectangle; Tint : F.Word; Success : out Boolean)
      with Pre => R.Valid (S), Post => R.Valid (S);
 end Compositor_Software_Text_Target;

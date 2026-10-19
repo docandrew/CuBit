@@ -23,6 +23,20 @@ package Client_Popup_Layout with SPARK_Mode, Pure is
    function Place (Anchor_X, Anchor_Y : Coordinate; W, H : Coordinate; Area : Box) return Box
      with Post => Inside (Place'Result, Area)
                   and then Place'Result.W = Natural'Min (W, Area.W) and then Place'Result.H = Natural'Min (H, Area.H);
+   --  A tooltip W by H: at (Left_X, Below_Y) when it fits there, else its
+   --  bottom at Above_Y (above the pointer or the focused control, never
+   --  over it while there is room), else pushed inside; left of Left_X
+   --  when it does not fit to the right.
+   function Place_Tip (Left_X, Below_Y, Above_Y : Coordinate; W, H : Coordinate; Area : Box) return Box
+     with Post => Inside (Place_Tip'Result, Area)
+                  and then Place_Tip'Result.W = Natural'Min (W, Area.W)
+                  and then Place_Tip'Result.H = Natural'Min (H, Area.H)
+                  and then (if Area.Y <= MAXIMUM_COORDINATE - Area.H and then Area.X <= MAXIMUM_COORDINATE - Area.W
+                              and then H <= Area.H
+                            then (if Below_Y >= Area.Y and then Below_Y - Area.Y <= Area.H - H
+                                  then Place_Tip'Result.Y = Below_Y
+                                  elsif Above_Y >= Area.Y + H and then Above_Y - Area.Y <= Area.H
+                                  then Place_Tip'Result.Y + Place_Tip'Result.H = Above_Y));
    --  A submenu beside its parent's row: to the parent's right, else its
    --  left, its top at Row_Y where it fits.
    function Place_Beside (Parent : Box; Row_Y : Coordinate; W, H : Coordinate; Area : Box) return Box

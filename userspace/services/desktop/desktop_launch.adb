@@ -15,7 +15,7 @@ package body Desktop_Launch is
          when DL.Trace => "Trace", when DL.Doom => "Doom", when DL.Devices => "Devices",
          when DL.Penny => "Penny", when DL.Files => "Files", when DL.Gameboy => "Gameboy",
          when DL.Settings => "Settings", when DL.Inspector => "Inspector", when DL.Mesa => "Mesa",
-         when DL.Boot => "Boot");
+         when DL.Boot => "Boot", when DL.Text => "Text", when DL.Teapots => "Teapots");
    function Name_Of (Member : DL.App_Category) return String is
      (case Member is
          when DL.System => "System", when DL.Development => "Development", when DL.Web => "Web",
@@ -29,7 +29,8 @@ package body Desktop_Launch is
          when DL.Penny => Desktop_Icons.Penny, when DL.Files => Desktop_Icons.Files,
          when DL.Gameboy => Desktop_Icons.Gameboy, when DL.Settings => Desktop_Icons.Settings,
          when DL.Inspector => Desktop_Icons.Inspector, when DL.Mesa => Desktop_Icons.Mesa,
-         when DL.Boot => Desktop_Icons.Boot);
+         when DL.Boot => Desktop_Icons.Boot, when DL.Text => Desktop_Icons.Text,
+         when DL.Teapots => Desktop_Icons.Teapots);
 
    --  The built-in list's app colours (CCL App_Color.RGB in system.ccl).
    Workbench_Color : constant RGB := 16#2F4F9E#;

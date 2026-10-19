@@ -7,7 +7,7 @@ raised latitude/longitude lines, with no currency text or national symbols.
 - `penny.svg`: editable vector interpretation, using only paths, circles,
   strokes, clipping and gradients. No embedded raster, external resources,
   fonts, blur or shadow filters.
-- `penny-{16,24,32,64,256}.png`: transparent icon exports from the SVG.
+- `penny-{16,24,32,48,64,256}.png`: transparent icon exports from the SVG.
 
 Regenerate exports and `userspace/servo/native/penny_artwork.ads` with
 `nix develop -c python3 assets/penny/render.py` from the repository root.

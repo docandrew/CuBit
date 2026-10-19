@@ -414,6 +414,12 @@ package body Fs_Server.Client_Queues is
             else
                sendReply (owner, REPLY_ERR, 0);
             end if;
+         when FQ.Queue_List_Places =>
+            if inArena then
+               handleListPlaces (owner, r.Length);
+            else
+               sendReply (owner, REPLY_ERR, 0);
+            end if;
          when FQ.Queue_Describe_Volume =>
             if inArena then
                handleDescribeVolume (owner, r.Position, r.Length);

@@ -31,18 +31,18 @@ procedure Desktop_Glyph_Upload_Tests is
    procedure Capture (Expected : Boolean; Scale : Vulkan_Scene.A.G.UI_Scale; Value : Vulkan_Glyph_Sources.Key) is
    begin
       Scene := Vulkan_Scene.Open ((32, 24, Vulkan_Scene.A.G.Unrotated, Scale, 0, 0));
-      D.Capture_Glyph (Scene, Value, (0, 0, 32, 17), 16#FFFFFFFF#, OK);
+      D.Capture_Glyph (Scene, Value, (0, 0, 32, 17), 0, 16#FFFFFFFF#, OK);
       pragma Assert (OK = Expected);
       pragma Assert (Vulkan_Scene.Current (Scene) = (if Expected then Vulkan_Scene.Collecting else Vulkan_Scene.Rejected));
    end Capture;
 begin
    Reset; Context_Set (0, 0); Vulkan_Device_Mock.Set (True, True, 0);
    Pipeline_Set (0, 0); Image_Set (4096, 1, 0, 0, 0); Metadata_Set (0); Font_Set (U32 (Case_No));
-   Upload_Set (4096, 1, 0, 0, 0, 0);
+   Upload_Set (8192, 1, 0, 0, 0, 0);
    D.Initialize (CuBit.Handles.Fixture.Endpoint_Of (25)); D.Configure_Targets (32, 24, 1, 32768, OK); pragma Assert (OK);
    D.Prepare_Pipeline (OK); pragma Assert (OK);
-   D.Configure_Upload ((if Case_No = 4 then 128 else 2048), OK); pragma Assert (OK);
-   D.Allocate_Backing (127, (if Case_No = 6 then 41 else 40), 22, Case_No /= 5, Lease, Result);
+   D.Configure_Upload ((if Case_No = 4 then 128 else 8192), OK); pragma Assert (OK);
+   D.Allocate_Backing (127, (if Case_No = 6 then 41 else 40), 22 * 4, Case_No /= 5, Lease, Result);
    pragma Assert (Result = D.Source_Accepted);
    Desktop_Glyph_Upload.Start (127, Lease, Key, Advance, Result);
    if Case_No in 1 .. 7 then

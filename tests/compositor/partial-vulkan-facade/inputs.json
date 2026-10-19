@@ -140,14 +140,6 @@
     "source": "userspace/lib/compositor/compositor_frame_trace.ads"
   },
   {
-    "name": "compositor_glyph_arena.adb",
-    "source": "userspace/lib/compositor/compositor_glyph_arena.adb"
-  },
-  {
-    "name": "compositor_glyph_arena.ads",
-    "source": "userspace/lib/compositor/compositor_glyph_arena.ads"
-  },
-  {
     "name": "compositor_glyph_cache.adb",
     "source": "userspace/lib/compositor/compositor_glyph_cache.adb"
   },

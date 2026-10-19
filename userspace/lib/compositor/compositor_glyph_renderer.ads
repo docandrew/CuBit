@@ -4,12 +4,14 @@ with Compositor_Glyph_Placement;
 with Compositor_Mask_Batch;
 with Mesa_Cache;
 package Compositor_Glyph_Renderer with SPARK_Mode is
-   package C is new Compositor_Glyph_Cache;
+   package C is new Compositor_Glyph_Cache (Slot_Count => Compositor_Glyph_Storage.Slot'Last);
    package P renames Compositor_Glyph_Placement;
    package B renames Compositor_Mask_Batch;
    package Storage renames Compositor_Glyph_Storage;
    package Software renames Storage.Software;
    use type Software.Word;
+   -- Masks come from CuAlloc; every slot resident up to density 2.
+   Budget : constant := C.Slot'Last * Storage.L.Dense_Bytes;
    type State is limited private with Default_Initial_Condition => Valid (State);
    function Valid (S : State) return Boolean;
    function Charged (S : State) return C.Byte_Count;
@@ -24,20 +26,21 @@ package Compositor_Glyph_Renderer with SPARK_Mode is
        (if Safe then Software_Active (S) and Queued (S) = 0 and Mesa_Cache.Can_Retire (Views) and
           (for all I in Mesa_Cache.Mask_Slot => Mesa_Cache.Empty (Views, I)));
    procedure Paint (S : in out State; Views : in out Mesa_Cache.State;
-                    Key : C.Key; Screen : P.G.Output; Origin : P.G.Logical_Point;
+                    Key : C.Key; Screen : P.G.Output; Origin : P.G.Logical_Point; Offset : P.L.Subpixel;
                     Damage : P.G.Physical_Rectangle; Target : in out Software.Pixels;
                     Pitch : Positive; Tint : Software.Word; Success : out Boolean)
      with Pre => Valid (S) and Software.Fits_Target (Screen, Target, Pitch),
        Post => Valid (S) and
          (for all I in Target'Range =>
-           (if not Success or else not Software.Inside (I, Pitch, Software.Bounds (Screen, Origin, Damage)) then
+           (if not Success or else not Software.Inside (I, Pitch, Software.Bounds (Screen, Origin, Offset, Damage)) then
               Target (I) = Target'Old (I)));
    -- Views must be the SAME context throughout this owner's lifetime. Its mask
    -- slots are exclusively owned here. Flush before any intervening non-text
    -- draw. On quiescent draw failure, repaint the affected target in fallback.
+   -- Mesa mask views hold phase 0 only: the glyph goes to its nearest pixel.
    procedure Queue
      (S : in out State; Views : in out Mesa_Cache.State; Target : Mesa_Cache.Target_Slot;
-      Key : C.Key; Screen : P.G.Output; Origin : P.G.Logical_Point;
+      Key : C.Key; Screen : P.G.Output; Origin : P.G.Logical_Point; Offset : P.L.Subpixel;
       Damage : P.G.Physical_Rectangle; Tint : B.A.Word; Success : out Boolean)
      with Pre => Valid (S), Post => Valid (S);
    procedure Flush (S : in out State; Views : in out Mesa_Cache.State; Success : out Boolean)
@@ -48,7 +51,7 @@ package Compositor_Glyph_Renderer with SPARK_Mode is
 private
    type Leases is array (B.Index) of C.Lease;
    type State is limited record
-      Registry : C.State := C.Open (524_288);
+      Registry : C.State := C.Open (Budget);
       Backing : Storage.State;
       Packet : B.Packet;
       Reading : Leases := (others => C.No_Lease);

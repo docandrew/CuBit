@@ -95,14 +95,15 @@ package Key_Repeat with SPARK_Mode, Pure is
 
    --  Where the desktop delivered a press: the Super key, a Super chord,
    --  Alt+Tab focus cycling, the exit key (before any client), the volume
-   --  keys, the volume popup, the clipboard manager, the Apps menu, the
-   --  launch notice's dismissal or the focused surface. Desktop commands and
-   --  undelivered keys never repeat.
+   --  keys, the Deskbar (its panel, a window list or taskbar focus), the
+   --  clipboard manager, the Apps menu, the notification toast's dismissal
+   --  or the focused surface. Desktop commands and undelivered keys never
+   --  repeat.
    type Destination is
      (Nowhere, Super_Key, Super_Chord, Focus_Cycle, Exit_Key, Volume_Control,
-      Audio_Popup, Clipboard_Manager, Apps_Menu, Launch_Notice, Focused_Surface);
+      Deskbar, Clipboard_Manager, Apps_Menu, Notice_Toast, Focused_Surface);
    function Repeatable (Where : Destination) return Boolean is
-     (Where in Volume_Control | Audio_Popup | Clipboard_Manager | Apps_Menu | Focused_Surface);
+     (Where in Volume_Control | Deskbar | Clipboard_Manager | Apps_Menu | Focused_Surface);
 
    --  A destination plus the focused surface it applies to (zero unless
    --  Focused_Surface). A repeat is delivered only along the press's route.

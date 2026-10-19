@@ -14,6 +14,8 @@
   (config-scope (rights read) "desktop.metrics.")
   # Keyboard settings (desktop.input.key-repeat: Desktop_Key_Repeat_Settings).
   (config-scope (rights read) "desktop.input.")
+  # Settings > Date & Time (Desktop_Time_Zone_Setting).
+  (config-scope (rights read write) "clock.time-zone")
   (request-service-optional mixer-control read-write mixer-control)
   # The status bar's time; minimal profiles start Desktop without clock.
   (request-service-optional clock read-write clock)

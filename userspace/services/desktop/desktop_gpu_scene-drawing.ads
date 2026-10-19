@@ -6,7 +6,7 @@ with Compositor_Shadow;
 -- No per-draw CPU fallback is safe once this capture has begun. Failure is
 -- resolved by Finish/Discard on the complete scene, including cold uploads.
 package Desktop_GPU_Scene.Drawing with SPARK_Mode is
-   subtype Face_ID is Natural range 0 .. 1;
+   subtype Face_ID is Compositor_Text.L.Face_Index;
    pragma Unevaluated_Use_Of_Old (Allow);
    procedure Shadow (S : in out State; Window : V.A.G.Logical_Rectangle;
       Damage : V.A.G.Physical_Rectangle; Color : V.A.Word;
@@ -36,9 +36,16 @@ package Desktop_GPU_Scene.Drawing with SPARK_Mode is
       Over : Boolean := False; Straight_Alpha : Boolean := False)
      with Global => (In_Out => D.Engine), Pre => Valid (S) and D.Valid,
        Post => Valid (S) and D.Valid and Layer_Count (S) <= Layer_Count (S)'Old + 2;
+   -- A straight-alpha source window drawn 1:1 at Area: the output's
+   -- unrotated physical pixels (Vulkan_Scene.Physical_Region). Damage is
+   -- native storage pixels, as everywhere here.
+   procedure Physical_Region (S : in out State; Source : Vulkan_Submission.Source_Ticket;
+      Area, Damage : V.A.G.Physical_Rectangle; Region : V.R.Rectangle; Accepted : out Boolean)
+     with Global => (In_Out => D.Engine), Pre => Valid (S) and D.Valid,
+       Post => Valid (S) and D.Valid and Layer_Count (S) <= Layer_Count (S)'Old + 2;
    procedure Text (S : in out State; Items : Compositor_Text.Glyphs;
       Length : Compositor_Text.Count; Damage : V.A.G.Physical_Rectangle;
-      Tint : V.A.Word; Accepted : out Boolean; Face : Face_ID := 0)
+      Tint : V.A.Word; Face : Face_ID; Accepted : out Boolean)
      with Global => (In_Out => D.Engine), Pre => Valid (S) and D.Valid,
        Post => Valid (S) and D.Valid;
 end Desktop_GPU_Scene.Drawing;

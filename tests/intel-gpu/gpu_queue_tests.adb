@@ -8,6 +8,7 @@ with GPU_Queue_Model;
 with Intel_GPU_Context_Ledger;
 with Intel_GPU_Queue_Admission;
 with Intel_GPU_Queue_Service;
+with Queue_Service_Prepare;
 with Intel_GPU_Session_Queue;
 -- GPU-001 step 2, Linux-hosted: the production queue service, session
 -- queue, ledgers, ring windows, admission and wakes against a modelled GPU
@@ -31,6 +32,7 @@ procedure GPU_Queue_Tests is
       M.Now_Us, M.Quarantine, M.Call_Finished, M.Answer_Wake, M.Client_Region, M.Server_Region,
       Hang_Budget, Patience);
    use type Service.Call_Result, Service.Policy.Event_Count;
+   procedure Prepare is new Queue_Service_Prepare (Service);
 
    T : access Service.Table;
    Client : array (M.Session_Id) of access Clients.Client :=
@@ -62,6 +64,7 @@ procedure GPU_Queue_Tests is
    begin
       M.Reset;
       T := new Service.Table;
+      Prepare (T.all);
       for S in M.Session_Id loop
          for C in 0 .. Contexts - 1 loop
             Service.Open_Context (T.all, S, Q.Context_Index (C), 1, M.Setup_Bytes, Opened);
