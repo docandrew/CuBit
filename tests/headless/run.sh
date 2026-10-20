@@ -1196,7 +1196,7 @@ if [ -n "$INIT_PROFILE" ]; then
         elif [ "$TEST_NAME" = "lexicon" ]; then
             CCL_IMAGES="ccl-console.app lexicon.svc clock.svc desktop.svc display.svc logstore.svc"
         elif [ "$TEST_NAME" = "dictionary" ]; then
-            CCL_IMAGES="dictionary.app thesaurus.app lexicon.svc clock.svc desktop.svc display.svc logstore.svc"
+            CCL_IMAGES="dictionary.app lexicon.svc clock.svc desktop.svc display.svc logstore.svc"
         else
             CCL_IMAGES="ccl-workbench.app clock.svc desktop.svc display.svc"
             if [ "${CUBIT_DESKTOP_METRICS_TEST:-0}" = 1 ]; then

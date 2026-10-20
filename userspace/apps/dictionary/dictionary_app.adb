@@ -55,9 +55,6 @@ package body Dictionary_App is
    UI : CuBit.UI.State.UI_State;
    Map : CuBit.UI.Controls.Control_Map;
    View : Views.View_State;
-   --  The mode the window's title names: the title follows the mode, so a
-   --  window switched to the Thesaurus is titled "Thesaurus".
-   Titled : Views.Mode := Views.Dictionary_Mode;
 
    procedure Render (Win : in out CuBit.UI.App.Window; Damage : Rect) is
    begin
@@ -88,13 +85,8 @@ package body Dictionary_App is
          elsif Code = KEY_END then Views.End_Key
          else Views.No_Key);
       procedure Send (Item : Views.Event) is
-         use type Views.Mode;
       begin
          Views.Handle (View, Item, Map, Redraw);
-         if Views.Current_Mode (View) /= Titled then
-            Titled := Views.Current_Mode (View);
-            CuBit.UI.App.Set_Title (Win, Views.Title (Titled));
-         end if;
       end Send;
    begin
       if Event.kind = CuBit.UI.Input.INPUT_CLOSE_REQUEST then
@@ -128,10 +120,9 @@ package body Dictionary_App is
    procedure Run_UI is new CuBit.UI.App.Run
      (UI, Map, Render => Render, Handle_Event => Handle_Event, Activity_Wait => True);
 
-   procedure Run (Start : Views.Mode) is
+   procedure Run is
       Opened, Announced : Boolean;
-      Name : constant String := (case Start is when Views.Dictionary_Mode => "dictionary",
-                                               when Views.Thesaurus_Mode => "thesaurus");
+      Name : constant String := "dictionary";
    begin
       debugPrint (Name & ": starting" & ASCII.LF);
       if not CuBit.Startup_State.Ready (Startup.Verify) then
@@ -139,15 +130,14 @@ package body Dictionary_App is
          return;
       end if;
       CuBit.Logging.Announce (Name & ": started", Announced, Startup.Logstore);
-      Views.Initialize (View, Start);
-      Titled := Start;
+      Views.Initialize (View, Views.Dictionary_Mode);
       CuBit.UI.App.Open (Win, WINDOW_WIDTH, WINDOW_HEIGHT,
         CuBit.Desktop_Protocol.Feature_Bits
           ([CuBit.Desktop_Protocol.Decorated | CuBit.Desktop_Protocol.Resizable |
             CuBit.Desktop_Protocol.Minimizable | CuBit.Desktop_Protocol.Maximizable |
             CuBit.Desktop_Protocol.Closeable | CuBit.Desktop_Protocol.Graceful_Close => True,
             others => False]),
-        Opened, title => Views.Title (Start), protected_frames => True,
+        Opened, title => "Dictionary", protected_frames => True,
         minimum_width => MINIMUM_WIDTH, minimum_height => MINIMUM_HEIGHT);
       if Opened then
          Views.Handle (View, (Kind => Views.Resize, X => CuBit.UI.App.Width (Win),

@@ -1,7 +1,7 @@
 ------------------------------------------------------------------------------
---  The native Dictionary and Thesaurus apps (docs/lexicon.md): one program
---  image per Apps-menu entry, both this view (Dictionary_Views) over the
---  lexicon service (Lexicon_Client, the manifest's "lexicon" endpoint).
+--  The native Dictionary app (docs/lexicon.md), with Dictionary and
+--  Thesaurus modes: this view (Dictionary_Views) over the lexicon service
+--  (Lexicon_Client, the manifest's "lexicon" endpoint).
 ------------------------------------------------------------------------------
 with Dictionary_Views;
 with Interfaces;
@@ -16,6 +16,6 @@ package Dictionary_App is
       Used : out Natural; Available : out Boolean);
    package Views is new Dictionary_Views (Ask, Lexicon_Channel.PAGE_BYTES);
 
-   --  Open the window in Start mode and run until it closes.
-   procedure Run (Start : Views.Mode);
+   --  Open the window in Dictionary mode and run until it closes.
+   procedure Run;
 end Dictionary_App;

@@ -1544,16 +1544,15 @@ lexicon: user_runtime ccl-manifest
 	$(ALR) gprbuild -P ../userspace/services/lexicon/lexicon.gpr
 	cp ../userspace/services/lexicon/build/lexicon.svc isodir/boot/lexicon.svc
 
-# Dictionary and Thesaurus (docs/lexicon.md): one app, one program image per
-# Apps-menu entry, both asking lexicon.svc.
+# Dictionary (docs/lexicon.md), with Dictionary and Thesaurus modes, asking
+# lexicon.svc.
 .PHONY : dictionary
 dictionary: user_runtime ccl-manifest ui-fonts-native
 	mkdir -p ../userspace/apps/dictionary/build
 	$(call compile_ccl_manifest,../userspace/apps/dictionary)
-	rm -f ../userspace/apps/dictionary/build/dictionary.app ../userspace/apps/dictionary/build/thesaurus.app
+	rm -f ../userspace/apps/dictionary/build/dictionary.app
 	$(ALR) gprbuild -P ../userspace/apps/dictionary/dictionary.gpr
 	cp ../userspace/apps/dictionary/build/dictionary.app isodir/boot/dictionary.app
-	cp ../userspace/apps/dictionary/build/thesaurus.app isodir/boot/thesaurus.app
 
 # Build the live writable-storage diagnostic app.
 .PHONY : storage-check
@@ -1827,7 +1826,7 @@ DISK_CONTENTS := isodir/boot/shell.app isodir/boot/doom.elf isodir/boot/sleep.ap
 	isodir/boot/config-inspector.app isodir/boot/ccl-vm.app isodir/boot/ccl-workbench.app isodir/boot/trace-viewer.app \
 	isodir/boot/ccl-test-host.svc \
 	isodir/boot/clock.svc isodir/boot/timesync.svc isodir/boot/tls.svc isodir/boot/config-storage.svc \
-	isodir/boot/lexicon.svc isodir/boot/dictionary.app isodir/boot/thesaurus.app \
+	isodir/boot/lexicon.svc isodir/boot/dictionary.app \
 	isodir/boot/desktop-shell.app \
 	isodir/boot/ipctest-server.app isodir/boot/ipctest-client.app \
 	isodir/boot/bench-ipc-server.app isodir/boot/bench-ipc-client.app \
@@ -1859,7 +1858,7 @@ DESKTOP_OVERLAY := isodir/boot/desktop.svc isodir/boot/display.svc isodir/boot/m
 	isodir/boot/devices.app isodir/boot/config-inspector.app isodir/boot/files.app isodir/boot/text.app \
 	isodir/boot/calculator.app isodir/boot/doom.elf isodir/boot/ccl-workbench.app \
 	isodir/boot/ccl-console.app isodir/boot/logs.app isodir/boot/trace-viewer.app isodir/boot/config-storage.svc \
-	isodir/boot/lexicon.svc isodir/boot/dictionary.app isodir/boot/thesaurus.app \
+	isodir/boot/lexicon.svc isodir/boot/dictionary.app \
 	$(SERVO_DISK_CONTENTS)
 DESKTOP_SAMPLE_ARGS = $(foreach sample,$(DESKTOP_CONFIG_SAMPLES),--file "work/$(notdir $(sample))=$(sample)")
 

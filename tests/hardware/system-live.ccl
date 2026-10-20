@@ -49,9 +49,6 @@
   (setting "desktop.launch.56-dictionary"
     (Launch_Entry label => "Dictionary" action => (Launch_Action.Program "dictionary.app") icon => (Launch_Icon "Dictionary") category => App_Category.Tools
       color => (App_Color.RGB (RGB_Color red => 196 green => 40 blue => 62))))
-  (setting "desktop.launch.58-thesaurus"
-    (Launch_Entry label => "Thesaurus" action => (Launch_Action.Program "thesaurus.app") icon => (Launch_Icon "Thesaurus") category => App_Category.Tools
-      color => (App_Color.RGB (RGB_Color red => 23 green => 150 blue => 102))))
   (setting "desktop.launch.60-sameboy"
     (Launch_Entry label => "SameBoy" action => (Launch_Action.Program "sameboy.app") icon => (Launch_Icon "Gameboy") category => App_Category.Games
       color => (App_Color.RGB (RGB_Color red => 116 green => 116 blue => 154))))

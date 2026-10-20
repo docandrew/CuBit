@@ -96,7 +96,7 @@ class Images(unittest.TestCase):
                     self.assertEqual(apps, (stage1 | stage2 | {"sameboy.app", "sameboy/00.gb", "doom1.wad", "config-storage.svc", "cubitshell.app",
                                                             "intel-gpu.drv", "firmware/intel/tgl_guc_70.bin", "teapots.app",
                                                             "boot-logs.app", "logs.app", "ccl-console.app", "gpu-viewer.app",
-                                                            "calculator.app", "lexicon.svc", "dictionary.app", "thesaurus.app",
+                                                            "calculator.app", "lexicon.svc", "dictionary.app",
                                                             "Assets/cubit-wallpapers/1/cubes.qoi",
                                                             "Assets/cubit-wallpapers/1/cubie.qoi",
                                                             "Assets/cubit-icons/4/applications.qoi",

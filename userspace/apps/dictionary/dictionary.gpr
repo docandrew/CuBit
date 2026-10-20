@@ -1,17 +1,16 @@
 with "../../lib/ui/fonts_native.gpr";
 with "../../lib/ui/toolkit_flags.gpr";
---  Dictionary and Thesaurus (docs/lexicon.md): one view, two program images.
+--  Dictionary (docs/lexicon.md), with Dictionary and Thesaurus modes.
 project Dictionary is
    for Languages use ("Ada");
    for Object_Dir use "build";
    for Source_Dirs use (".", "build/generated", "../../lib/lexicon", "../../lib/lexicon/channel",
                         "../../lib/ui", "../../lib/theme", "../../lib/compositor", "../../lib/display",
                         "../../allocator/src");
-   for Main use ("dictionary_main.adb", "thesaurus_main.adb");
+   for Main use ("dictionary_main.adb");
    for Runtime ("Ada") use "../../runtime";
    package Builder is
       for Executable ("dictionary_main.adb") use "dictionary.app";
-      for Executable ("thesaurus_main.adb") use "thesaurus.app";
       for Default_Switches ("Ada") use ("-nostdlib");
    end Builder;
    package Compiler extends Toolkit_Flags.Compiler is

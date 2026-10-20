@@ -45,10 +45,9 @@
   (file optical "sameboy" "apps/sameboy.app")
   (file optical "teapots" "apps/teapots.app")
   (file optical "calculator" "apps/calculator.app")
-  # Dictionary and Thesaurus ask lexicon.svc (docs/lexicon.md).
+  # Dictionary asks lexicon.svc (docs/lexicon.md).
   (file optical "lexicon" "apps/lexicon.svc")
   (file optical "dictionary" "apps/dictionary.app")
-  (file optical "thesaurus" "apps/thesaurus.app")
   (file optical "doom-wad" "apps/doom1.wad")
   (file optical "sameboy-test" "apps/sameboy/00.gb")
   # Asset packages (docs/assets.md); @cd:0 is rooted at apps/.

@@ -54,7 +54,7 @@ parser.add_argument('--ccl-samples', action='store_true', help='open an ISO-seed
 parser.add_argument('--config', action='store_true', help='write/read typed Config through native Workbench bytecode')
 parser.add_argument('--servo', action='store_true', help='launch the bundled Servo shell and require a rendered page')
 parser.add_argument('--apps', action='store_true',
-                    help='screenshot Apps > Tools, then launch Calculator, Dictionary and Thesaurus from optical media')
+                    help='screenshot Apps > Tools, then launch Calculator and Dictionary from optical media')
 parser.add_argument('--teapots', action='store_true', help='launch the Vulkan teapot gallery from optical media (QEMU: placeholder, no Intel GPU)')
 parser.add_argument('--boot-logs', action='store_true', help='verify on-screen boot viewer and typed USB startup log replay')
 parser.add_argument('--boot-log-delivery', action='store_true',
@@ -731,9 +731,8 @@ with (run / 'qemu.log').open('w') as log:
             key('left')
             key('esc')
             typed = {'Calculator': ['1', 'slash', '7', 'ret'],
-                     'Dictionary': ['w', 'h', 'a', 'r', 'f', 'ret'],
-                     'Thesaurus': ['q', 'u', 'a', 'y', 'ret']}
-            for label in ('Calculator', 'Dictionary', 'Thesaurus'):
+                     'Dictionary': ['w', 'h', 'a', 'r', 'f', 'ret']}
+            for label in ('Calculator', 'Dictionary'):
                 launch(label)
                 wait_for(f'{label.lower()}: window ready')
                 time.sleep(1)
@@ -743,7 +742,7 @@ with (run / 'qemu.log').open('w') as log:
                 hmp(f'screendump {run}/{label.lower()}.ppm')
             if 'calculator: evaluated 1/7' not in serial.read_text(errors='replace'):
                 raise RuntimeError('Calculator did not evaluate typed input')
-            print('APPS LIVE PASS: Calculator, Dictionary and Thesaurus launched from the disc; inspect screenshots.',
+            print('APPS LIVE PASS: Calculator and Dictionary launched from the disc; inspect screenshots.',
                   flush=True)
         if args.servo:
             launch('Penny')

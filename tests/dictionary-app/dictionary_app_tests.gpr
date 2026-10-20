@@ -8,7 +8,7 @@ project Dictionary_App_Tests is
                         "../lexicon", "../../userspace/lib/ui", "../../userspace/lib/theme",
                         "../../userspace/lib/compositor", "../../userspace/lib/display");
    --  The native entry points are not hosted; the core tests' mains neither.
-   for Excluded_Source_Files use ("thesaurus_main.adb", "dictionary_main.adb", "dictionary_app.ads", "dictionary_app.adb",
+   for Excluded_Source_Files use ("dictionary_main.adb", "dictionary_app.ads", "dictionary_app.adb",
                                   "lexicon_tests.adb", "lexicon_bench.adb");
    for Object_Dir use "build";
    for Exec_Dir use "build";
