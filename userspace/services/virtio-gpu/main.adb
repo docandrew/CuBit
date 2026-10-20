@@ -37,12 +37,13 @@ with Startup;
 with CuBit.Handles;
 with CuBit.Handles.IPC;
 with CuBit.Handles.Devices;
+with Ada.Unchecked_Deallocation;
 
 procedure main is
    use ASCII;
    package OD renames CuBit.Output_Discovery;
    package OM renames CuBit.Output_Modes;
-   use type OM.Mode;
+   use type OM.Mode, OM.Admission, OM.Rate_Choice, OM.DP.Wire_Message;
    package DPL renames CuBit.Display_Planes;
    package GP renames CuBit.GPU_Plane_Protocol;
    use type DPL.Plane_Number;
@@ -270,6 +271,21 @@ procedure main is
    --  Each head's monitor size from its EDID (zero: unknown), for the
    --  output catalog (display.svc and Desktop compute DPI from it).
    headSize : array (Head_Index) of CuBit.Monitor_EDID.Catalog.Physical_Size;
+   --  Each head's monitor as its EDID states it (DISP-016): who it is and
+   --  every mode it lists (CuBit.Monitor_EDID.Catalog), each judged against
+   --  the scanout buffers (Verdict_Of), for List_Mode and Identify. QEMU
+   --  regenerates the EDID when its window changes size (readDisplayEvent).
+   type Listed_Modes is access CuBit.Monitor_EDID.Catalog.Mode_List;
+   type Head_Monitor is record
+      Known : Boolean := False;
+      Identity : CuBit.Monitor_EDID.Catalog.Identity;
+      Modes : Listed_Modes;
+      --  The listed mode last applied by an Exact_Rate Set_Mode (zero:
+      --  none); Current_Mode prefers it among modes of the head's size.
+      Chosen : Natural := 0;
+   end record;
+   monitors : array (Head_Index) of Head_Monitor;
+   procedure Free is new Ada.Unchecked_Deallocation (CuBit.Monitor_EDID.Catalog.Mode_List, Listed_Modes);
    function Frame_Width (Head : Head_Index) return Unsigned_32 is
      (Unsigned_32 (geometry (Head).Width));
    function Frame_Height (Head : Head_Index) return Unsigned_32 is
@@ -776,30 +792,65 @@ procedure main is
       end loop;
    end paintFramebuffer;
 
-   procedure selectPreferredMode (Head : Head_Index) is
-      Raw : EDID.Base_Block with Import, Volatile,
-        Address => DMA_BASE + RESP_OFF + 32;
-      Snapshot : EDID.Base_Block;
-      Parsed : EDID.Result;
+   --  GET_EDID returns the base block and its extensions, up to 1024 bytes.
+   EDID_Response_Bytes : constant := 1024;
+   EDID_Blocks : constant := EDID_Response_Bytes / CuBit.Monitor_EDID.Catalog.Block_Bytes;
+   subtype EDID_Extension_Count is Natural range 0 .. EDID_Blocks - 1;
+
+   --  Read Head's EDID into monitors (Head): identity, physical size and its
+   --  listed modes. False (and the monitor unknown) when the host gives none.
+   function readEDID (Head : Head_Index; Base : out EDID.Base_Block) return Boolean is
+      package C renames CuBit.Monitor_EDID.Catalog;
+      type Raw_Blocks is array (0 .. EDID_Blocks - 1) of EDID.Base_Block;
+      Raw : Raw_Blocks with Import, Volatile, Address => DMA_BASE + RESP_OFF + 32;
       Size : Unsigned_32;
+      Extensions : EDID_Extension_Count;
+      M : Head_Monitor renames monitors (Head);
    begin
-      if not edidSupported then return; end if;
+      Base := [others => 0];
+      if not edidSupported then return False; end if;
       beginCmd (CMD_GET_EDID);
       put32 (CMD_OFF, 24, Unsigned_32 (Head));
       if not submitCmd (32, 1056, RESP_OK_EDID) then
          --  A transport timeout is uncertain ownership, not permission to
          --  reuse its command/response storage for another request.
          fail ("GET_EDID transport failure");
-         return;
+         return False;
       end if;
       Size := get32 (RESP_OFF, 24);
-      if Size < 128 or else Size > 1024 or else Size mod 128 /= 0 then
+      if Size < C.Block_Bytes or else Size > EDID_Response_Bytes or else Size mod C.Block_Bytes /= 0 then
          debugPrint ("virtio-gpu: invalid EDID length; using fallback" & LF);
-         return;
+         return False;
       end if;
-      for I in Snapshot'Range loop Snapshot (I) := Raw (I); end loop;
+      for I in Base'Range loop Base (I) := Raw (0) (I); end loop;
+      Extensions := Natural'Min (C.Extensions_Declared (Base), Natural (Size) / C.Block_Bytes - 1);
+      declare
+         Blocks : C.Block_Array (1 .. Extensions);
+      begin
+         for B in Blocks'Range loop
+            for I in EDID.Base_Block'Range loop Blocks (B) (I) := Raw (B) (I); end loop;
+         end loop;
+         --  A fresh list each read: a host may add extensions (QEMU adds
+         --  a DisplayID block for large windows).
+         Free (M.Modes);
+         M.Modes := new C.Mode_List (C.Capacity (Extensions));
+         C.Collect (Base, Blocks, M.Modes.all);
+      end;
+      M.Identity := C.Identify (Base);
+      M.Known := True;
+      M.Chosen := 0;
+      headSize (Head) := C.Size_Of (Base);
+      debugPrint ("virtio-gpu: EDID head" & Head'Image & " modes" & M.Modes.Count'Image &
+        " extensions" & Extensions'Image & LF);
+      return True;
+   end readEDID;
+
+   procedure selectPreferredMode (Head : Head_Index) is
+      Snapshot : EDID.Base_Block;
+      Parsed : EDID.Result;
+   begin
+      if not readEDID (Head, Snapshot) then return; end if;
       Parsed := EDID.Decode (Snapshot);
-      headSize (Head) := CuBit.Monitor_EDID.Catalog.Size_Of (Snapshot);
       if Parsed.Status /= EDID.Accepted then
          debugPrint ("virtio-gpu: EDID " & Parsed.Status'Image & "; using fallback" & LF);
          return;
@@ -824,6 +875,41 @@ procedure main is
            " nominal_millihz" & EDID.Refresh_Millihertz (Mode)'Image & LF);
       end;
    end selectPreferredMode;
+
+   --  A virtual output drives any size its buffers hold, from the
+   --  desktop's minimum: the monitor's timing details do not matter.
+   function Verdict_Of (Mode : EDID.Timing) return OM.Admission is
+     (if Mode.Width < MINIMUM_MODE.Width or else Mode.Height < MINIMUM_MODE.Height
+      then OM.Below_Minimum_Size
+      elsif Storage_Offset (EDID.Buffer_Bytes (Mode.Width, Mode.Height)) > bufferCapacity
+      then OM.Above_Scanout_Buffers
+      else OM.Admitted);
+   function Listed_Refresh (Mode : EDID.Timing) return Unsigned_32 is
+     (Unsigned_32 (Unsigned_64'Min (EDID.Refresh_Millihertz (Mode), Unsigned_64 (Unsigned_32'Last))));
+   function Sized (Item : CuBit.Monitor_EDID.Catalog.Mode; Width, Height : Unsigned_32) return Boolean is
+     (Unsigned_32 (Item.Timing.Width) = Width and then Unsigned_32 (Item.Timing.Height) = Height);
+
+   --  The one listed mode Head runs: the mode last chosen while the head
+   --  keeps its size, else the first listed mode of the head's size
+   --  (the monitor's preferred one first). Zero when none has its size.
+   function Current_Mode (Head : Head_Index) return Natural is
+      M : Head_Monitor renames monitors (Head);
+      First : Natural := 0;
+   begin
+      if not M.Known or else M.Modes = null then return 0; end if;
+      if M.Chosen in 1 .. M.Modes.Count and then
+        Sized (M.Modes.Items (M.Chosen), Frame_Width (Head), Frame_Height (Head))
+      then
+         return M.Chosen;
+      end if;
+      for I in 1 .. M.Modes.Count loop
+         if Sized (M.Modes.Items (I), Frame_Width (Head), Frame_Height (Head)) then
+            if M.Modes.Items (I).Preferred then return I; end if;
+            if First = 0 then First := I; end if;
+         end if;
+      end loop;
+      return First;
+   end Current_Mode;
 
    ---------------------------------------------------------------------------
    --  Hardware cursor plane (CuBit.GPU_Plane_Protocol): one plane per head.
@@ -1221,6 +1307,7 @@ procedure main is
    procedure readDisplayEvent is
       Events : Unsigned_32;
       Changed : Boolean := False;
+      Reread : array (Head_Index) of Boolean := [others => False];
    begin
       displayEventPending := False;
       if not deviceConfigReady then return; end if;
@@ -1255,10 +1342,26 @@ procedure main is
                Item.Advertised_Width := OD.Extent (Width);
                Item.Advertised_Height := OD.Extent (Height);
                Changed := True;
+               if Item.Native_Number <= Head_Index'Last then
+                  Reread (Head_Index (Item.Native_Number)) := True;
+               end if;
                debugPrint ("virtio-gpu: display change head" & Item.Native_Number'Image &
                  " preferred " & Dimensions (Natural (Width), Natural (Height)) & LF);
             end if;
          end;
+      end loop;
+      --  QEMU's EDID follows the window: re-read the mode lists (after the
+      --  loop: GET_EDID reuses the response buffer the loop reads).
+      for Head in Head_Index loop
+         if Reread (Head) then
+            declare
+               Ignored_Base : EDID.Base_Block;
+            begin
+               if not readEDID (Head, Ignored_Base) then
+                  monitors (Head).Known := False;
+               end if;
+            end;
+         end if;
       end loop;
       if Changed then
          bumpRevision;
@@ -1268,16 +1371,45 @@ procedure main is
    --  Switch Head to Wanted, fitted to its scanout buffers. Old resources go
    --  (UNREF also ends their scanout); new ones are built on the same fixed
    --  buffers, cleared to black. Only on an idle device (commandsIdle).
-   procedure applyMode (Head : Head_Index; Wanted : OM.Mode; Result : out OM.Mode_Result) is
+   --  The listed, admitted mode of Head an Exact_Rate request names; zero
+   --  when none.
+   function Named_Mode (Head : Head_Index; Wanted : OM.Mode_Request) return Natural is
+      M : Head_Monitor renames monitors (Head);
+   begin
+      if Wanted.Rate /= OM.Exact_Rate or else not M.Known or else M.Modes = null then
+         return 0;
+      end if;
+      for I in 1 .. M.Modes.Count loop
+         if Sized (M.Modes.Items (I), Unsigned_32 (Wanted.Size.Width), Unsigned_32 (Wanted.Size.Height))
+           and then Listed_Refresh (M.Modes.Items (I).Timing) = Wanted.Refresh
+           and then Verdict_Of (M.Modes.Items (I).Timing) = OM.Admitted
+         then
+            return I;
+         end if;
+      end loop;
+      return 0;
+   end Named_Mode;
+
+   --  Switch Head to Wanted: a Best_Rate size fitted to the scanout buffers
+   --  (OM.Fit; a host window), an Exact_Rate one only when it names an
+   --  admitted listed mode, at its size.
+   procedure applyMode (Head : Head_Index; Wanted : OM.Mode_Request; Result : out OM.Mode_Result) is
+      Named : constant Natural := Named_Mode (Head, Wanted);
       Fitted : constant OM.Mode :=
-        OM.Fit (Wanted, MINIMUM_MODE, OM.Byte_Count (bufferCapacity));
+        (if Wanted.Rate = OM.Exact_Rate then Wanted.Size
+         else OM.Fit (Wanted.Size, MINIMUM_MODE, OM.Byte_Count (bufferCapacity)));
       Black : constant Unsigned_32 := 0;
    begin
       Result := (OM.DP.Bad_State,
                  (OD.Extent (Frame_Width (Head)), OD.Extent (Frame_Height (Head))));
+      if Wanted.Rate = OM.Exact_Rate and then Named = 0 then
+         Result.Status := OM.DP.Invalid_Request;
+         return;
+      end if;
       if not readyHeads (Head) or else not commandsIdle then
          return;
       end if;
+      monitors (Head).Chosen := Named;
       if Fitted = Result.Current then
          Result.Status := OM.DP.Success;
          return;
@@ -1620,7 +1752,7 @@ procedure main is
       request.tag.reserved := 0;
       if request.tag.label = OM.Code (OD.GPU_Backend, OM.Set_Mode) then
          declare
-            D : constant OM.Mode_Decoding :=
+            D : constant OM.Request_Decoding :=
               OM.Decode_Set_Mode (OD.GPU_Backend, CuBit.Desktop_Messages.To_Wire (request));
             Result : OM.Mode_Result :=
               (OM.DP.Invalid_Request,
@@ -1633,6 +1765,63 @@ procedure main is
             selectedHead := Head;
             ignore := reply (from, CuBit.Desktop_Messages.From_Wire
               (OM.Encode_Result (OD.GPU_Backend, Result)));
+            return;
+         end;
+      end if;
+      --  DISP-016: the head's listed modes and its monitor's identity.
+      if request.tag.label = OM.Code (OD.GPU_Backend, OM.List_Mode) then
+         declare
+            Wanted : constant OM.Index_Decoding :=
+              OM.Decode_List_Request (OD.GPU_Backend, CuBit.Desktop_Messages.To_Wire (request));
+            M : Head_Monitor renames monitors (selectedHead);
+         begin
+            replyMsg.tag := (label => request.tag.label, length => 1,
+                             protocol => 0, ipc => <>, reserved => 0);
+            replyMsg.words (0) := GPU_ERR_UNSUPPORTED;
+            if Wanted.Valid and then M.Known and then M.Modes /= null and then
+              M.Modes.Count <= Natural (OM.Mode_Count'Last) and then
+              Natural (Wanted.Value) <= M.Modes.Count
+            then
+               declare
+                  Item : CuBit.Monitor_EDID.Catalog.Mode renames M.Modes.Items (Natural (Wanted.Value));
+               begin
+                  replyMsg := CuBit.Desktop_Messages.From_Wire (OM.Encode_Listing
+                    (OD.GPU_Backend,
+                     (Index => Wanted.Value, Count => OM.Mode_Count (M.Modes.Count),
+                      Item => ((OD.Extent (Item.Timing.Width), OD.Extent (Item.Timing.Height)),
+                               Listed_Refresh (Item.Timing), Unsigned_32 (Item.Timing.Clock) * 10,
+                               Verdict_Of (Item.Timing), Item.Preferred,
+                               Natural (Wanted.Value) = Current_Mode (selectedHead)))));
+               end;
+            end if;
+            ignore := reply (from, replyMsg);
+            return;
+         end;
+      end if;
+      if request.tag.label = OM.Code (OD.GPU_Backend, OM.Identify) then
+         declare
+            M : Head_Monitor renames monitors (selectedHead);
+            Item : OM.Monitor_Identity;
+         begin
+            replyMsg.tag := (label => request.tag.label, length => 1,
+                             protocol => 0, ipc => <>, reserved => 0);
+            replyMsg.words (0) := GPU_ERR_UNSUPPORTED;
+            if M.Known and then CuBit.Desktop_Messages.To_Wire (request) = OM.Identify_Request (OD.GPU_Backend) then
+               for I in 1 .. 3 loop
+                  if M.Identity.Vendor (I) in 'A' .. 'Z' then
+                     Item.Vendor (I) := M.Identity.Vendor (I);
+                  end if;
+               end loop;
+               Item.Product := M.Identity.Product;
+               Item.Serial := M.Identity.Serial;
+               Item.Name_Last := M.Identity.Name.Length;
+               for I in 1 .. M.Identity.Name.Length loop
+                  Item.Name (I) := (if M.Identity.Name.Text (I) in OM.Name_Character
+                                    then M.Identity.Name.Text (I) else '?');
+               end loop;
+               replyMsg := CuBit.Desktop_Messages.From_Wire (OM.Encode_Identity (OD.GPU_Backend, Item));
+            end if;
+            ignore := reply (from, replyMsg);
             return;
          end;
       end if;

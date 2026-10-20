@@ -501,6 +501,8 @@ begin
       return;
    end if;
    CuBit.Logging.Announce ("files: started", Opened, Startup.Logstore);
+   --  The timing records' publisher: unbound, it would drop every record.
+   CuBit.Logging.Bind (Logger, Startup.Logstore);
    --  The first listings start here: time them from now.
    Set_Clock (View, Now_Us);
    --  The places come from the service: the granted scopes (manifest)

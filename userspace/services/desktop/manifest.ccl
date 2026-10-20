@@ -16,6 +16,12 @@
   (config-scope (rights read) "desktop.input.")
   # Settings > Date & Time (Desktop_Time_Zone_Setting).
   (config-scope (rights read write) "clock.time-zone")
+  # Settings > Displays and Monitor: the display scale and each monitor's
+  # chosen mode (Desktop_Display_Scale_Settings, Desktop_Display_Mode_Settings);
+  # the modeset soak gate is the operator's (read only).
+  (config-scope (rights read write) "desktop.display.scale")
+  (config-scope (rights read write) "desktop.display.mode.")
+  (config-scope (rights read) "desktop.display.modeset")
   (request-service-optional mixer-control read-write mixer-control)
   # The status bar's time; minimal profiles start Desktop without clock.
   (request-service-optional clock read-write clock)

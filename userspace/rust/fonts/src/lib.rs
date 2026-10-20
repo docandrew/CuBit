@@ -42,16 +42,28 @@ pub const ORIGIN: u32 = 2;
 pub const PHASES: u32 = 4;
 /// Fixed-point layout unit: 1/64 pixel.
 pub const PEN_UNIT: f32 = 64.0;
-/// How glyphs are shaped before rasterizing: light (vertical-only) hinting
-/// and stem darkening. Tests turn both off to compare with ab_glyph.
+/// How glyphs are shaped before rasterizing: light (vertical-only) hinting,
+/// stem darkening, and grid fitting of the rasters placed on whole pixels
+/// (see `grid_fitted`). Tests turn them off to compare with ab_glyph.
 #[derive(Clone, Copy)]
 pub(crate) struct Style {
     pub(crate) hinted: bool,
     pub(crate) darkened: bool,
+    pub(crate) grid: bool,
 }
-pub(crate) const STYLE: Style = Style { hinted: true, darkened: true };
+pub(crate) const STYLE: Style = Style { hinted: true, darkened: true, grid: true };
 #[cfg(test)]
-pub(crate) const PLAIN: Style = Style { hinted: false, darkened: false };
+pub(crate) const PLAIN: Style = Style { hinted: false, darkened: false, grid: false };
+
+/// Grid fitting (UI-026, low density): each phase's vertical stems on whole
+/// pixels of its raster (`outline::Columns`). The rule is the compositor's
+/// (`Compositor_Glyph_Layout.Grid_Fitted`: below 3/2 device pixels per
+/// logical pixel); it reaches this engine as a density mask request's `grid`,
+/// and the normal (density 1) cell size is below it.
+pub const GRID_ON: u32 = 1;
+pub(crate) fn grid_fitted_cell(size: usize) -> bool {
+    size == 0
+}
 /// Stem darkening relative to FreeType's default curve. 1.0 measured best
 /// against the FreeType reference (tests/ui-fonts/quality; 1.5 and 2.0 are
 /// heavier than FreeType at every density).
@@ -136,8 +148,10 @@ fn rasterize(face: usize, size: usize, code: u32, phase: u32, style: Style) -> O
     let baseline = round_positive_metric(f32::from(font.ascender()) * ratio) as i32;
     let shift = ORIGIN as f32 + phase as f32 / PHASES as f32;
     let zones = zones(&font, ratio, style.hinted);
-    if let Outline::Ready(prepared) =
-        outline::prepare(&font, id, ratio, shift, zones, darken(&font, ratio, style), WIDTH as u32, HEIGHT as u32)?
+    let grid = style.grid && grid_fitted_cell(size);
+    if let Outline::Ready(prepared) = outline::prepare(
+        &font, id, ratio, shift, zones, darken(&font, ratio, style), grid, WIDTH as u32, HEIGHT as u32,
+    )?
     {
         let (mut x0, mut y0, mut x1, mut y1) = (WIDTH as i32, HEIGHT as i32, -1, -1);
         prepared.each(|x, y, coverage| {
@@ -441,7 +455,7 @@ mod tests {
     fn phases_shift_ink_right_without_changing_its_amount() {
         // Darkening off: a stem it widens past a full pixel saturates, which
         // moves the clamped coverage's centroid by more than the phase does.
-        let style = Style { hinted: true, darkened: false };
+        let style = Style { hinted: true, darkened: false, grid: false };
         for code in [b'l', b'o', b'H', b'm'] {
             let total = |phase| -> u32 {
                 let cell = &rasterize(0, 0, code as u32, phase, style).unwrap();
@@ -475,7 +489,7 @@ mod tests {
         // rows are solid after hinting (edges on the pixel grid), and the
         // hinting never moves ink sideways.
         for face in 0..FACES {
-            let hinted = Style { hinted: true, darkened: false };
+            let hinted = Style { hinted: true, darkened: false, grid: false };
             let x = rasterize(face, 0, b'x' as u32, 0, hinted).unwrap();
             let plain = rasterize(face, 0, b'z' as u32, 0, PLAIN).unwrap();
             let z = rasterize(face, 0, b'z' as u32, 0, hinted).unwrap();
@@ -500,6 +514,75 @@ mod tests {
             let first = |s: &[u32; WIDTH]| s.iter().position(|&v| v > 0).unwrap();
             let last = |s: &[u32; WIDTH]| WIDTH - 1 - s.iter().rev().position(|&v| v > 0).unwrap();
             assert_eq!((first(&a), last(&a)), (first(&b), last(&b)), "no horizontal change");
+        }
+    }
+
+    /// Partial coverage relative to ink: 0 when every inked pixel is solid.
+    fn softness(cell: &Cell) -> f32 {
+        let mut soft = 0u32;
+        let mut ink = 0u32;
+        for &a in cell.alpha.iter().flatten() {
+            soft += u32::from(a.min(255 - a));
+            ink += u32::from(a);
+        }
+        soft as f32 / ink.max(1) as f32
+    }
+
+    #[test]
+    fn grid_fitting_puts_stems_on_whole_pixels() {
+        let grid = STYLE;
+        let light = Style { grid: false, ..STYLE };
+        for face in 0..FACES {
+            for code in "lIiHnmhuEFLT|".chars() {
+                let g = rasterize(face, 0, code as u32, 0, grid).unwrap();
+                let p = rasterize(face, 0, code as u32, 0, light).unwrap();
+                // A stem fills whole columns: some column is solid along the
+                // middle row of the ink ...
+                // ... at every phase: each phase's stems are fitted to its own raster.
+                for phase in 0..PHASES {
+                    let q = rasterize(face, 0, code as u32, phase, grid).unwrap();
+                    let row = (q.ink_top + q.ink_height / 2) as usize;
+                    assert!(q.alpha[row].iter().any(|&a| a >= 250),
+                            "face {face} {code} phase {phase}: no solid stem column");
+                }
+                // Crisper everywhere; a glyph that is all stem ('l', 'I', '|')
+                // nearly solid (bars, bowls and terminals keep their shading).
+                let bound = if "lI|".contains(code) { 0.5 } else { 1.0 };
+                assert!(softness(&g) < bound * softness(&p),
+                        "face {face} {code}: {} vs {}", softness(&g), softness(&p));
+                // Under a pixel of movement per side; the advance is the layout's.
+                assert_eq!(g.advance, p.advance);
+                assert!(g.ink_left.abs_diff(p.ink_left) <= 1 && g.ink_width.abs_diff(p.ink_width) <= 2,
+                        "face {face} {code}: box {}+{} vs {}+{}", g.ink_left, g.ink_width, p.ink_left, p.ink_width);
+            }
+            // Every printable glyph still renders inside its cell.
+            for code in FIRST_CODE..=LAST_CODE {
+                let g = rasterize(face, 0, code, 0, grid).unwrap();
+                assert!(code == b' ' as u32 || g.ink_width > 0, "face {face} code {code} lost its ink");
+            }
+        }
+        // Density 2 (the double cell) keeps subpixel shapes: no grid fitting.
+        let double = rasterize(0, 1, b'n' as u32, 0, grid).unwrap();
+        let double_light = rasterize(0, 1, b'n' as u32, 0, light).unwrap();
+        assert!(double.alpha == double_light.alpha);
+    }
+
+    /// A picture of grid fitting at 13 px (cargo test show_grid -- --ignored
+    /// --nocapture).
+    #[test]
+    #[ignore]
+    fn show_grid_fitting() {
+        for (name, style) in [("light", Style { grid: false, ..STYLE }), ("grid", STYLE)] {
+            for code in "nmlHoe".chars() {
+                let c = rasterize(0, 0, code as u32, 0, style).unwrap();
+                std::println!("{name} {code} softness {:.3}", softness(&c));
+                for row in &c.alpha[..c.height as usize] {
+                    let line: std::string::String = row[..16].iter().map(|&a| match a {
+                        0 => ' ', 1..=63 => '.', 64..=127 => ':', 128..=191 => 'o', 192..=249 => 'O', _ => '#',
+                    }).collect();
+                    std::println!("|{line}|");
+                }
+            }
         }
     }
 

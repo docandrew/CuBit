@@ -1,6 +1,6 @@
 #include <assert.h>
 #include <stdint.h>
-struct request {uint32_t face,code,n,d,w,h,pitch,capacity,phases;};
+struct request {uint32_t face,code,n,d,w,h,pitch,capacity,phases,grid;};
 struct metrics {uint32_t advance,height;};
 /* Compositor_Glyph_Layout.Face_Count: Sans, Monospace, Sans_Semibold. */
 #define FACE_COUNT 3u

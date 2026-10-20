@@ -133,6 +133,8 @@ with Key_Repeat;
 with Desktop_Key_Repeat_Settings;
 with Desktop_Display_Scale_Settings;
 with Desktop_Display_Modeset_Settings;
+with Desktop_Display_Mode_Settings;
+with Desktop_Mode_Trial;
 with Desktop_Auto_Scale;
 with Desktop_GPU_Power_Settings;
 with Client_Popup_Layout;
@@ -464,7 +466,8 @@ procedure main is
    --  last acted on is remembered, so a mode the backend could only
    --  approximate (OM.Fit) is not requested again and again.
    package OM renames CuBit.Output_Modes;
-   use type OM.Mode;
+   use type OM.Mode, OM.Mode_Count, OM.Rate_Choice, Desktop_Mode_Trial.Phase, Desktop_Mode_Trial.Time,
+     Desktop_Settings.Monitor_Mode_List, Desktop_Settings.Mode_Status;
    MODE_CALL_DEADLINE_MS : constant := 15_000;
    outputRevisionSeen : OM.Revision := 1;
    outputWatchToken : Unsigned_64 := 0;
@@ -473,11 +476,29 @@ procedure main is
    --  no change would ever announce it.
    outputChangeNoticed : Boolean := True;
    firstOutputPass : Boolean := True;
-   type Mode_Request is record
+   type Wanted_Mode is record
       Pending : Boolean := False;
-      Mode : OM.Mode;
+      Mode : OM.Mode_Request;
    end record;
-   wantedModes : array (Output_Index) of Mode_Request;
+   wantedModes : array (Output_Index) of Wanted_Mode;
+   --  Settings > Monitor (DISP-016): a chosen mode on its way to the
+   --  primary output (Switching: asked for, the outputs reopening), then on
+   --  trial until the user keeps it or the question times out
+   --  (Desktop_Mode_Trial). Revert_Switch: going back, no question.
+   type Switch_Kind is (No_Switch, Trial_Switch, Revert_Switch);
+   type Mode_Switch is record
+      Kind : Switch_Kind := No_Switch;
+      Output : Output_Index := 0;
+      Previous, Trial : OM.Mode_Request;
+      Auto : Boolean := False;
+      Accepted : Boolean := False;
+   end record;
+   modeSwitch : Mode_Switch;
+   modeTrial : Desktop_Mode_Trial.State;
+   --  The countdown Settings shows (redrawn when it changes).
+   trialSecondsShown : Natural := 0;
+   --  The Monitor page needs re-reading once the outputs reopen.
+   monitorRefreshPending : Boolean := False;
    actedPreference : array (Output_Index) of OM.Mode;
    modeChangePending : Boolean := False;
    --  False once Display (or its GPU) answered that it has no mode watch.
@@ -1614,6 +1635,10 @@ procedure main is
 
    --  The Settings Monitor page's contents (body after callDisplay).
    function monitorInfo return Desktop_Settings.Monitor_Info;
+   --  Settings > Monitor: switch the primary output to the chosen row
+   --  (then ask "Keep this display mode?"), and take the answer.
+   procedure applyMonitorChoice;
+   procedure pumpModeTrial;
 
    procedure recordFrameTrace (Value : FT.Record_Value) is
    begin
@@ -10061,8 +10086,8 @@ procedure main is
             Apply_Time_Zone;
             damage := unionRect (damage, surfaceRect (store.Surfaces (Index)));
          when Desktop_Settings.Monitor =>
-            --  Read-only: nothing to apply.
-            null;
+            applyMonitorChoice;
+            damage := unionRect (damage, surfaceRect (store.Surfaces (Index)));
       end case;
    end Apply_Settings_Page;
 
@@ -12536,8 +12561,61 @@ procedure main is
       end if;
    end armOutputWatch;
 
+   --  The monitor on Output as its EDID names it (display.svc Identify);
+   --  invalid for an output without EDID.
+   function monitorIdentity (Output : Output_Index) return OM.Identity_Decoding is
+     (OM.Decode_Identity (CuBit.Output_Discovery.Display_Broker, CuBit.Desktop_Messages.To_Wire
+        (callDisplay (OM.Code (CuBit.Output_Discovery.Display_Broker, OM.Identify),
+                      Output => DSP.Output_Number (Output)))));
+
+   --  The mode saved for a monitor (desktop.display.mode.<monitor>): Auto
+   --  when none is saved or the stored value is not a canonical Display_Mode.
+   function savedMode (Monitor : OM.Monitor_Identity) return Desktop_Display_Mode_Settings.Preference is
+      package S renames Desktop_Display_Mode_Settings;
+      use type CuBit.Config.ConfigStatus;
+      Value  : System.Address;
+      Length : Natural;
+      Status : CuBit.Config.ConfigStatus;
+      Result : S.Preference := S.Default;
+      OK     : Boolean;
+   begin
+      CuBit.Config.get (S.Key_For (Monitor), Value, Length, Status);
+      if Status = CuBit.Config.OK and then Value /= System.Null_Address and then
+        Length in 1 .. S.Maximum_Source
+      then
+         declare
+            Source : String (1 .. Length) with Import, Address => Value;
+         begin
+            S.Decode (Source, Result, OK);
+         end;
+         if not OK then
+            debugPrint ("desktop: invalid " & S.Key_For (Monitor) & "; using Auto" & LF);
+         end if;
+      end if;
+      return Result;
+   end savedMode;
+
+   --  "WxH@60.000Hz" (or "@best") for logs.
+   function Request_Text (Item : OM.Mode_Request) return String is
+      function Rate (Millihertz : OM.Millihertz) return String is
+         Whole : constant String := Natural'Image (Natural (Millihertz / 1000));
+         Part : constant String := Natural'Image (1000 + Natural (Millihertz mod 1000));
+      begin
+         return Whole (Whole'First + 1 .. Whole'Last) & "." & Part (Part'First + 2 .. Part'Last) & "Hz";
+      end Rate;
+   begin
+      return Dimensions (Natural (Item.Size.Width), Natural (Item.Size.Height)) & "@" &
+        (case Item.Rate is
+           when OM.Exact_Rate => Rate (Item.Refresh),
+           when OM.Best_Rate => "best");
+   end Request_Text;
+
    --  Display's catalog changed: find outputs whose host preference changed
-   --  since we last acted on it, and re-lay them out.
+   --  since we last acted on it, and re-lay them out. The first pass (at
+   --  startup) also applies each monitor's saved mode (Settings > Monitor,
+   --  DISP-016): the user kept it on that monitor, so it is applied even
+   --  while desktop.display.modeset (Auto's switch to an Intel output's best
+   --  mode) stays off.
    procedure handleOutputChange is
       package OD renames CuBit.Output_Discovery;
       use type OD.Output_Source, OD.Output_Role;
@@ -12557,9 +12635,7 @@ procedure main is
          declare
             D : constant OD.Description := Item.Value.Item;
          begin
-            --  Intel outputs advertise their best admitted mode; switch to it
-            --  only when desktop.display.modeset is on.
-            if (D.Source = OD.Virtio_GPU or else (D.Source = OD.Intel_Display and then displayModeset))
+            if (D.Source = OD.Virtio_GPU or else D.Source = OD.Intel_Display)
               and then D.Role /= OD.Detected_Only and then
               D.Native_Number <= Natural (Output_Index'Last) and then
               presentations (Output_Index (D.Native_Number)).Enabled
@@ -12568,14 +12644,30 @@ procedure main is
                   Output : constant Output_Index := Output_Index (D.Native_Number);
                   Preferred : constant OM.Mode := (D.Advertised_Width, D.Advertised_Height);
                   Current : constant OM.Mode := (D.Current_Width, D.Current_Height);
+                  Monitor : constant OM.Identity_Decoding :=
+                    (if firstOutputPass then monitorIdentity (Output) else (Valid => False));
+                  Saved : constant Desktop_Display_Mode_Settings.Preference :=
+                    (if Monitor.Valid then savedMode (Monitor.Value) else Desktop_Display_Mode_Settings.Default);
                begin
-                  --  At startup a virtio-gpu host preference is only
-                  --  recorded; it is followed when the host changes it.
-                  if firstOutputPass and then D.Source = OD.Virtio_GPU then
+                  if not Saved.Auto then
+                     --  A refusal (a mode the monitor no longer lists) is
+                     --  fine: the reopen uses whatever the output has.
+                     actedPreference (Output) := Preferred;
+                     wantedModes (Output) := (True, Desktop_Display_Mode_Settings.Request_Of (Saved));
+                     modeChangePending := True;
+                     debugPrint ("desktop: output" & Output'Image & " saved mode " &
+                       Request_Text (wantedModes (Output).Mode) & LF);
+                  elsif (firstOutputPass and then D.Source = OD.Virtio_GPU) or else
+                    (D.Source = OD.Intel_Display and then not displayModeset)
+                  then
+                     --  At startup a virtio-gpu host preference is only
+                     --  recorded; it is followed when the host changes it.
+                     --  An Intel output's best mode (advertised) waits for
+                     --  desktop.display.modeset.
                      actedPreference (Output) := Preferred;
                   elsif Preferred /= actedPreference (Output) and then Preferred /= Current then
                      actedPreference (Output) := Preferred;
-                     wantedModes (Output) := (True, Preferred);
+                     wantedModes (Output) := (True, (OM.Best_Rate, Preferred));
                      modeChangePending := True;
                      debugPrint ("desktop: output" & Output'Image & " host mode" &
                        " " & Dimensions (Preferred.Width, Preferred.Height) & LF);
@@ -12592,15 +12684,19 @@ procedure main is
       end if;
    end handleOutputChange;
 
-   --  DISP-005: the primary output's monitor (display.svc catalog: EDID
-   --  size, best admitted mode) and its modes with the GPU's verdicts
-   --  (List_Mode), for Settings > Monitor. Read-only.
+   --  DISP-005/016: the primary output's monitor (display.svc catalog: EDID
+   --  size, best admitted mode; Identify: its name) and its modes with the
+   --  GPU's verdicts (List_Mode), sorted for Settings > Monitor, with the
+   --  choice saved for it.
    function monitorInfo return Desktop_Settings.Monitor_Info is
       package OD renames CuBit.Output_Discovery;
-      use type OD.Output_Role;
+      package S renames Desktop_Display_Mode_Settings;
+      use type OD.Output_Role, OD.Output_Source;
       Info : Desktop_Settings.Monitor_Info;
       Summary : OD.Summary_Decoding;
       Item : OD.Description_Decoding;
+      Monitor : constant OM.Identity_Decoding := monitorIdentity (primaryOutput);
+      Count : OM.Mode_Count := 0;
       function Img (Value : Natural) return String is
          T : constant String := Value'Image;
       begin
@@ -12615,11 +12711,18 @@ procedure main is
          end loop;
          return R;
       end Root;
-      function Thousandths (Value : Natural) return String is
-         F : constant String := Natural'Image (1000 + Value mod 1000);
+      function Name return String is
+         Text : String (1 .. (if Monitor.Valid then Monitor.Value.Name_Last else 0));
       begin
-         return Img (Value / 1000) & "." & F (F'First + 2 .. F'Last);
-      end Thousandths;
+         for I in Text'Range loop
+            Text (I) := Monitor.Value.Name (I);
+         end loop;
+         return (if Text'Length = 0 then "" else Text & ": ");
+      end Name;
+      function Listed (Index : OM.Mode_Index) return OM.Listing_Decoding is
+        (OM.Decode_Listing (OD.Display_Broker, CuBit.Desktop_Messages.To_Wire
+           (callDisplay (OM.Code (OD.Display_Broker, OM.List_Mode), Unsigned_64 (Index),
+                         Output => DSP.Output_Number (primaryOutput)))));
    begin
       Info.Summary := Desktop_Settings.Line_Of ("No monitor information (firmware output without EDID)");
       Summary := OD.Decode_Summary (OD.Display_Broker, CuBit.Desktop_Messages.To_Wire
@@ -12639,53 +12742,283 @@ procedure main is
                         Diagonal_MM : constant Natural := Root (D.Width_MM * D.Width_MM + D.Height_MM * D.Height_MM);
                         Diagonal_Tenths : constant Natural := (Diagonal_MM * 100 + 127) / 254;
                         DPI : constant Natural :=
-                          (Natural (D.Advertised_Width) * 254 + D.Width_MM * 5) / (D.Width_MM * 10);
+                          (Natural (D.Current_Width) * 254 + D.Width_MM * 5) / (D.Width_MM * 10);
                      begin
                         Info.Summary := Desktop_Settings.Line_Of
-                          ("Monitor: " & Img (D.Width_MM) & " x " & Img (D.Height_MM) & " mm (" &
+                          (Name & Img (D.Width_MM) & " x " & Img (D.Height_MM) & " mm (" &
                            Img (Diagonal_Tenths / 10) & "." & Img (Diagonal_Tenths mod 10) & " in), " &
-                           Img (DPI) & " dpi at " & Img (D.Advertised_Width) & " x " & Img (D.Advertised_Height));
+                           Img (DPI) & " dpi at " & Img (D.Current_Width) & " x " & Img (D.Current_Height));
                      end;
                   else
-                     Info.Summary := Desktop_Settings.Line_Of ("Monitor: size not stated by its EDID");
+                     Info.Summary := Desktop_Settings.Line_Of (Name & "size not stated by its EDID");
                   end if;
                   Info.Detail := Desktop_Settings.Line_Of
-                    ("Now " & Img (D.Current_Width) & " x " & Img (D.Current_Height) & ", best mode " &
-                     Img (D.Advertised_Width) & " x " & Img (D.Advertised_Height) &
-                     (if displayModeset then " (desktop.display.modeset on)"
-                      else " (desktop.display.modeset off)"));
+                    ("Best mode " & Img (D.Advertised_Width) & " x " & Img (D.Advertised_Height) &
+                     (if D.Source = OD.Intel_Display
+                      then (if displayModeset then "; Auto applies it at startup (desktop.display.modeset on)"
+                            else "; Auto keeps the firmware mode at startup (desktop.display.modeset off)")
+                      else ""));
                end if;
             end;
          end loop;
       end if;
-      for Index in 1 .. Desktop_Settings.Monitor_Rows + 1 loop
+      declare
+         First : constant OM.Listing_Decoding := Listed (1);
+      begin
+         if First.Valid then
+            Count := First.Value.Count;
+         end if;
+      end;
+      if Count > 0 then
+         Info.Modes := new Desktop_Settings.Monitor_Modes (1 .. Natural (Count));
          declare
-            Wire : constant CuBit.Desktop_Protocol.Wire_Message := CuBit.Desktop_Messages.To_Wire
-              (callDisplay (OM.Code (OD.Display_Broker, OM.List_Mode), Unsigned_64 (Index),
-                            Output => DSP.Output_Number (primaryOutput)));
-            Listed : constant OM.Listing_Decoding := OM.Decode_Listing (OD.Display_Broker, Wire);
-            use type OM.Admission;
+            Modes : Desktop_Settings.Monitor_Modes renames Info.Modes.all;
+            Filled : Natural := 0;
          begin
-            exit when not Listed.Valid;
-            Info.Total := Natural (Listed.Value.Count);
-            if Index <= Desktop_Settings.Monitor_Rows then
+            for Index in 1 .. Count loop
                declare
-                  M : OM.Listed_Mode renames Listed.Value.Item;
+                  L : constant OM.Listing_Decoding := Listed (Index);
+                  Position : Natural;
                begin
-                  Info.Lines (Index) := Desktop_Settings.Line_Of
-                    (Img (Natural (M.Size.Width)) & " x " & Img (Natural (M.Size.Height)) & "  " &
-                     Thousandths (Natural (M.Refresh_Millihertz)) & " Hz  " &
-                     Thousandths (Natural (M.Pixel_kHz)) & " MHz  " & OM.Name (M.Verdict) &
-                     (if M.Preferred then ", preferred" else "") & (if M.Current then ", current" else ""),
-                     M.Verdict = OM.Admitted);
-                  Info.Shown := Index;
+                  exit when not L.Valid or else L.Value.Count /= Count;
+                  --  Insertion keeps the monitor's order among equal modes.
+                  Position := Filled + 1;
+                  while Position > 1 and then OM.Before (L.Value.Item, Modes (Position - 1)) loop
+                     Modes (Position) := Modes (Position - 1);
+                     Position := Position - 1;
+                  end loop;
+                  Modes (Position) := L.Value.Item;
+                  Filled := Filled + 1;
                end;
+            end loop;
+            if Filled < Natural (Count) then
+               --  The list changed while it was read: show none rather than
+               --  a mix (Settings re-reads it after the next change).
+               debugPrint ("desktop: mode list changed while read" & LF);
+               Desktop_Settings.Free (Info.Modes);
             end if;
-            exit when Index >= Natural (Listed.Value.Count);
          end;
-      end loop;
+      end if;
+      Info.Identified := Monitor.Valid;
+      if Monitor.Valid then
+         declare
+            Saved : constant S.Preference := savedMode (Monitor.Value);
+         begin
+            Info.Saved_Auto := Saved.Auto;
+            if not Saved.Auto and then Info.Modes /= null then
+               for Row in Info.Modes'Range loop
+                  if OM.Names (S.Request_Of (Saved), Info.Modes (Row)) then
+                     Info.Saved_Row := Row;
+                     exit;
+                  end if;
+               end loop;
+            end if;
+         end;
+      end if;
       return Info;
    end monitorInfo;
+
+   function settingsOpen return Boolean is
+     (for some S of store.Surfaces => S.used and then S.appKind = APP_SETTINGS);
+   procedure damageSettings is
+   begin
+      for S of store.Surfaces loop
+         if S.used and then S.appKind = APP_SETTINGS then
+            scheduleRedrawRect (surfaceRect (S));
+         end if;
+      end loop;
+   end damageSettings;
+
+   --  The Monitor page's rows: the one the output runs, and Auto's (the
+   --  monitor's preferred admitted mode, else the first admitted one: the
+   --  largest, fastest). Auto_Row when none.
+   function currentRow (Info : Desktop_Settings.Monitor_Info) return Desktop_Settings.Mode_Row is
+   begin
+      if Info.Modes /= null then
+         for Row in Info.Modes'Range loop
+            if Info.Modes (Row).Current then return Row; end if;
+         end loop;
+      end if;
+      return Desktop_Settings.Auto_Row;
+   end currentRow;
+   function bestRow (Info : Desktop_Settings.Monitor_Info) return Desktop_Settings.Mode_Row is
+      use type OM.Admission;
+      First : Desktop_Settings.Mode_Row := Desktop_Settings.Auto_Row;
+   begin
+      if Info.Modes /= null then
+         for Row in Info.Modes'Range loop
+            if Info.Modes (Row).Verdict = OM.Admitted then
+               if Info.Modes (Row).Preferred then return Row; end if;
+               if First = Desktop_Settings.Auto_Row then First := Row; end if;
+            end if;
+         end loop;
+      end if;
+      return First;
+   end bestRow;
+
+   --  Save the kept choice for the primary output's monitor.
+   procedure storeModeChoice (Auto : Boolean; Trial : OM.Mode_Request) is
+      package S renames Desktop_Display_Mode_Settings;
+      use type CuBit.Config.ConfigStatus;
+      Monitor : constant OM.Identity_Decoding := monitorIdentity (modeSwitch.Output);
+      Status : CuBit.Config.ConfigStatus;
+   begin
+      settingsView.Monitor_Status := Desktop_Settings.Mode_Kept;
+      if not Monitor.Valid then
+         return;
+      end if;
+      if not Auto and then Trial.Rate /= OM.Exact_Rate then
+         settingsView.Monitor_Status := Desktop_Settings.Mode_Saved_Session_Only;
+         return;
+      end if;
+      declare
+         Choice : constant S.Preference :=
+           (if Auto then S.Default
+            else (Auto => False, Size => Trial.Size, Refresh => Trial.Refresh));
+         Text : constant String := S.Encode (Choice);
+         Key : constant String := S.Key_For (Monitor.Value);
+      begin
+         CuBit.Config.set (Key, Text'Address, Text'Length, Status);
+         if Status /= CuBit.Config.OK then
+            settingsView.Monitor_Status := Desktop_Settings.Mode_Saved_Session_Only;
+         end if;
+         debugPrint ("desktop: display mode " & Key & " " & Text &
+           (if Status = CuBit.Config.OK then " saved" else " refused by Config") & LF);
+      end;
+   end storeModeChoice;
+
+   --  Ask for Request on Output: the outputs drain, switch and reopen
+   --  (applyWantedModes, then setupDisplayBuffer in the main loop).
+   procedure switchMode (Output : Output_Index; Request : OM.Mode_Request) is
+   begin
+      wantedModes (Output) := (True, Request);
+      modeChangePending := True;
+      monitorRefreshPending := True;
+      releaseDisplayBuffer;
+   end switchMode;
+
+   procedure applyMonitorChoice is
+      Info : Desktop_Settings.Monitor_Info renames settingsView.Monitor_View;
+      Choice : constant Desktop_Settings.Mode_Row := settingsView.Mode_Choice;
+      Auto : constant Boolean := Choice = Desktop_Settings.Auto_Row;
+      Target : constant Desktop_Settings.Mode_Row := (if Auto then bestRow (Info) else Choice);
+      Running : constant Desktop_Settings.Mode_Row := currentRow (Info);
+      Previous : constant OM.Mode_Request :=
+        (if Running /= Desktop_Settings.Auto_Row then OM.Request_For (Info.Modes (Running))
+         else (OM.Best_Rate, (CuBit.Output_Discovery.Extent (presentations (primaryOutput).Geometry.Width),
+                              CuBit.Output_Discovery.Extent (presentations (primaryOutput).Geometry.Height))));
+   begin
+      if modeSwitch.Kind /= No_Switch or else modeTrial.Current = Desktop_Mode_Trial.Asking or else
+        Info.Modes = null or else Target = Desktop_Settings.Auto_Row or else Target > Info.Modes'Last
+      then
+         return;
+      end if;
+      modeSwitch := (Trial_Switch, primaryOutput, Previous, OM.Request_For (Info.Modes (Target)), Auto, False);
+      if Target = Running then
+         --  Already there: nothing to try, only the choice to keep.
+         storeModeChoice (Auto, modeSwitch.Trial);
+         modeSwitch.Kind := No_Switch;
+         Desktop_Settings.Set_Monitor (settingsView, monitorInfo);
+         damageSettings;
+         return;
+      end if;
+      debugPrint ("desktop: Settings mode " & Request_Text (modeSwitch.Trial) &
+        (if Auto then " (Auto)" else "") & " from " & Request_Text (Previous) & LF);
+      settingsView.Monitor_Status := Desktop_Settings.Mode_Switching;
+      damageSettings;
+      switchMode (primaryOutput, modeSwitch.Trial);
+   end applyMonitorChoice;
+
+   --  Go back to the mode before the trial (Revert, or no answer in time).
+   procedure revertTrial (Why : Desktop_Settings.Mode_Status) is
+      Back : constant OM.Mode_Request := modeTrial.Previous;
+   begin
+      debugPrint ("desktop: display mode trial " &
+        (if Why = Desktop_Settings.Mode_Timed_Out then "timed out" else "reverted") & "; back to " &
+        Request_Text (Back) & LF);
+      modeSwitch := (Revert_Switch, modeSwitch.Output, modeTrial.Trial, Back, False, False);
+      modeTrial := (Current => Desktop_Mode_Trial.Idle);
+      settingsView.Trial_Open := False;
+      settingsView.Focused := Desktop_Settings.Mode_List;
+      settingsView.Monitor_Status := Why;
+      damageSettings;
+      switchMode (modeSwitch.Output, Back);
+   end revertTrial;
+
+   --  Each turn: the user's answer, the deadline, the countdown; and, once
+   --  the outputs have reopened after a switch, the question or the outcome.
+   procedure pumpModeTrial is
+      Now : constant Desktop_Mode_Trial.Time := Desktop_Mode_Trial.Time_Of (nowMs);
+   begin
+      if modeSwitch.Kind /= No_Switch and then monitorRefreshPending and then backBufferReady and then
+        not outputDrainRequested and then not outputReopenPending
+      then
+         monitorRefreshPending := False;
+         if modeSwitch.Kind = Trial_Switch then
+            if modeSwitch.Accepted and then
+              Now <= Desktop_Mode_Trial.Time'Last - Desktop_Mode_Trial.Confirmation_Window
+            then
+               modeTrial := Desktop_Mode_Trial.Start (modeSwitch.Previous, modeSwitch.Trial, modeSwitch.Auto, Now);
+               settingsView.Trial_Open := True;
+               settingsView.Trial_Seconds := Desktop_Mode_Trial.Seconds_Left (modeTrial, Now);
+               trialSecondsShown := settingsView.Trial_Seconds;
+               settingsView.Focused := Desktop_Settings.Keep_Mode;
+               settingsView.Monitor_Status := Desktop_Settings.Mode_Ready;
+               debugPrint ("desktop: keep this display mode? (" & Request_Text (modeSwitch.Trial) & ")" & LF);
+            else
+               settingsView.Monitor_Status := Desktop_Settings.Mode_Refused;
+               debugPrint ("desktop: Settings mode refused" & LF);
+            end if;
+         end if;
+         modeSwitch.Kind := No_Switch;
+         if settingsOpen then
+            declare
+               Status : constant Desktop_Settings.Mode_Status := settingsView.Monitor_Status;
+            begin
+               Desktop_Settings.Set_Monitor (settingsView, monitorInfo);
+               settingsView.Monitor_Status := Status;
+               if modeTrial.Current = Desktop_Mode_Trial.Asking then
+                  --  The list shows the mode on trial chosen.
+                  Desktop_Settings.Choose_Mode (settingsView, currentRow (settingsView.Monitor_View));
+               end if;
+            end;
+            damageSettings;
+         end if;
+      end if;
+      if modeTrial.Current /= Desktop_Mode_Trial.Asking then
+         settingsView.Answer := Desktop_Settings.No_Response;
+         return;
+      end if;
+      case settingsView.Answer is
+         when Desktop_Settings.Keep_Response =>
+            settingsView.Answer := Desktop_Settings.No_Response;
+            debugPrint ("desktop: display mode kept " & Request_Text (modeTrial.Trial) & LF);
+            storeModeChoice (modeTrial.Auto, modeTrial.Trial);
+            modeTrial := (Current => Desktop_Mode_Trial.Idle);
+            settingsView.Trial_Open := False;
+            settingsView.Focused := Desktop_Settings.Mode_List;
+            declare
+               Status : constant Desktop_Settings.Mode_Status := settingsView.Monitor_Status;
+            begin
+               Desktop_Settings.Set_Monitor (settingsView, monitorInfo);
+               settingsView.Monitor_Status := Status;
+            end;
+            damageSettings;
+            return;
+         when Desktop_Settings.Revert_Response =>
+            settingsView.Answer := Desktop_Settings.No_Response;
+            revertTrial (Desktop_Settings.Mode_Reverted);
+            return;
+         when Desktop_Settings.No_Response => null;
+      end case;
+      if Desktop_Mode_Trial.Expired (modeTrial, Now) then
+         revertTrial (Desktop_Settings.Mode_Timed_Out);
+      elsif Desktop_Mode_Trial.Seconds_Left (modeTrial, Now) /= trialSecondsShown then
+         trialSecondsShown := Desktop_Mode_Trial.Seconds_Left (modeTrial, Now);
+         settingsView.Trial_Seconds := trialSecondsShown;
+         damageSettings;
+      end if;
+   end pumpModeTrial;
 
    --  Before reopening: switch each output that wants a new mode. A refusal
    --  (or a fitted mode) is fine: the reopen uses whatever the output has.
@@ -12705,11 +13038,15 @@ procedure main is
             Answer := OM.Decode_Result (CuBit.Output_Discovery.Display_Broker,
                                         CuBit.Desktop_Messages.To_Wire (Call));
             if Answer.Valid then
-               debugPrint ("desktop: output" & Output'Image & " mode" &
-                 " " & Dimensions (Answer.Value.Current.Width, Answer.Value.Current.Height) &
+               debugPrint ("desktop: output" & Output'Image & " mode " &
+                 Request_Text (wantedModes (Output).Mode) & " -> " &
+                 Dimensions (Answer.Value.Current.Width, Answer.Value.Current.Height) &
                  (if Answer.Value.Status = DP.Success then "" else " (refused)") & LF);
             else
                debugPrint ("desktop: output" & Output'Image & " mode change refused" & LF);
+            end if;
+            if modeSwitch.Kind /= No_Switch and then Output = modeSwitch.Output then
+               modeSwitch.Accepted := Answer.Valid and then Answer.Value.Status = DP.Success;
             end if;
          end if;
       end loop;
@@ -13182,6 +13519,7 @@ begin
             end;
          end if;
          refreshStatus;
+         pumpModeTrial;
          if framePending then refreshPublicationConfigurations; end if;
          if not outputDrainRequested and then directOutput and then RP.Preparation_Required
            (presentations (primaryOutput).Repaint,
@@ -13244,6 +13582,7 @@ begin
               Desktop_Clipboard.Next_Deadline (Unsigned_64'Last) = Unsigned_64'Last and then
               DN.Toast_Due (notifications) = DN.Never and then
               TTP.Next_Deadline (tipState) = TTP.NEVER and then
+              modeTrial.Current = Desktop_Mode_Trial.Idle and then
               not KR.Armed (keyRepeat) and then
               metricsDelayUs = Unsigned_64'Last and then not renderingPending and then
               not sourceRetirementPending and then not outputDrainRequested and then not outputReopenPending
@@ -13279,6 +13618,15 @@ begin
                   if TTP.Next_Deadline (tipState) /= TTP.NEVER and then
                     (nextDueMs = 0 or else TTP.Next_Deadline (tipState) < nextDueMs)
                   then nextDueMs := TTP.Next_Deadline (tipState); end if;
+                  --  "Keep this display mode?": its countdown and deadline.
+                  if modeTrial.Current = Desktop_Mode_Trial.Asking then
+                     declare
+                        trialDue : constant Unsigned_64 := Unsigned_64
+                          (Desktop_Mode_Trial.Next_Due (modeTrial, Desktop_Mode_Trial.Time_Of (now)));
+                     begin
+                        if nextDueMs = 0 or else trialDue < nextDueMs then nextDueMs := trialDue; end if;
+                     end;
+                  end if;
                   --  The next auto-repeat (Key_Repeat; same clock as GETTIME).
                   if KR.Armed (keyRepeat) and then
                     (nextDueMs = 0 or else KR.Next_Due (keyRepeat) < nextDueMs)

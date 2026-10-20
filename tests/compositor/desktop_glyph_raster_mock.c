@@ -1,6 +1,6 @@
 #include <assert.h>
 #include <stdint.h>
-struct request {uint32_t font,code,n,d,w,h,pitch,capacity,phases;};
+struct request {uint32_t font,code,n,d,w,h,pitch,capacity,phases,grid;};
 struct metrics {uint32_t advance,height;};
 static unsigned fault,calls;
 void glyph_upload_mock_set(unsigned value){fault=value;calls=0;}

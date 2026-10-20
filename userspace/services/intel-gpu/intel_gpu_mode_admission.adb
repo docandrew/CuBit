@@ -30,4 +30,27 @@ package body Intel_GPU_Mode_Admission with SPARK_Mode is
       end loop;
       return Chosen;
    end Best;
+
+   function Running (List : C.Mode_List; Item : Scan) return Natural is
+      Chosen : Natural := 0;
+   begin
+      for I in 1 .. List.Count loop
+         if Same_Extents (List.Items (I).Timing, Item) and then
+           (Chosen = 0 or else
+            Distance (List.Items (I).Timing, Item) < Distance (List.Items (Chosen).Timing, Item))
+         then
+            Chosen := I;
+         end if;
+         pragma Loop_Invariant
+           (Chosen <= I and then
+            (if Chosen /= 0 then
+               Same_Extents (List.Items (Chosen).Timing, Item) and then
+               (for all J in 1 .. I =>
+                  (if Same_Extents (List.Items (J).Timing, Item) then
+                     Distance (List.Items (Chosen).Timing, Item) <= Distance (List.Items (J).Timing, Item)))
+             else
+               (for all J in 1 .. I => not Same_Extents (List.Items (J).Timing, Item))));
+      end loop;
+      return Chosen;
+   end Running;
 end Intel_GPU_Mode_Admission;

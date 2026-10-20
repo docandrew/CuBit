@@ -62,6 +62,49 @@ procedure EDID_Tests is
                      Sink.Max_Pixel_Clock = 600_000);
    end Check_UHD;
 
+   --  Established and standard timings (QEMU's EDID lists these): the DMT
+   --  modes CuBit knows are added after the detailed timings and short
+   --  codes, duplicates dropped; unknown sizes and unused slots skipped.
+   procedure Check_Listed is
+      Base : C.Block := UHD_HDMI_Base;
+      Std : constant array (0 .. 15) of Unsigned_8 :=
+        [16#E1#, 16#C0#, 16#D1#, 16#C0#, 16#D1#, 16#00#, 16#A9#, 16#40#,
+         16#B3#, 16#00#, 16#95#, 16#00#, 16#81#, 16#80#, 16#01#, 16#01#];
+      List : C.Mode_List (C.Capacity (1));
+   begin
+      Base (35) := 16#21#;  --  640 x 480 @ 60, 800 x 600 @ 60
+      Base (36) := 16#08#;  --  1024 x 768 @ 60
+      for I in Std'Range loop
+         Base (38 + I) := Std (I);
+      end loop;
+      C.Collect (Base, UHD_HDMI_Extensions, List);
+      pragma Assert (List.Items (Find (List, 800, 600, 4_000)).Source = C.Established);
+      pragma Assert (List.Items (Find (List, 1024, 768, 6_500)).Source = C.Established);
+      --  640 x 480 @ 60 is VIC 1's timing: the short code came first.
+      pragma Assert (List.Items (Find (List, 640, 480, 2_518)).Source = C.Video_Code);
+      pragma Assert (List.Items (Find (List, 2048, 1152, 16_200)).Source = C.Standard);
+      pragma Assert (List.Items (Find (List, 1920, 1200, 15_400)).Source = C.Standard);
+      pragma Assert (List.Items (Find (List, 1600, 1200, 16_200)).Source = C.Standard);
+      pragma Assert (List.Items (Find (List, 1680, 1050, 14_625)).Source = C.Standard);
+      pragma Assert (List.Items (Find (List, 1440, 900, 10_650)).Source = C.Standard);
+      pragma Assert (List.Items (Find (List, 1280, 1024, 10_800)).Source = C.Standard);
+      --  1920 x 1080 @ 60 is the extension DTD's: not listed twice.
+      pragma Assert (List.Items (Find (List, 1920, 1080, 14_850)).Source = C.Extension_Detailed);
+      pragma Assert (List.Count = 8 + 2 + 6);
+      --  Every DMT timing is a well-formed progressive mode at its rate.
+      for M in C.DMT_Mode loop
+         declare
+            T : constant E.Timing := C.DMT_Timing (M);
+            Hz : constant Natural := Natural ((E.Refresh_Millihertz (T) + 500) / 1000);
+         begin
+            pragma Assert (T.Horizontal_Front_Porch + T.Horizontal_Sync_Width <= T.Horizontal_Blank);
+            pragma Assert (T.Vertical_Front_Porch + T.Vertical_Sync_Width <= T.Vertical_Blank);
+            pragma Assert (abs (Hz - C.DMT_Refresh (M)) <= 1, M'Image & Hz'Image);
+         end;
+      end loop;
+      Put_Line ("PASS: EDID established and standard timings (DMT)");
+   end Check_Listed;
+
    procedure Check_Others is
       Old : constant C.Sink_Limits := C.Limits (UHD_HDMI14_Base, UHD_HDMI14_Extensions);
       Panel : constant C.Mode_List := C.Modes (FHD_EDP_Base, FHD_EDP_Extensions);
@@ -130,6 +173,7 @@ procedure EDID_Tests is
    end Check_Overrun;
 begin
    Check_UHD;
+   Check_Listed;
    Check_Others;
    Check_Corruption;
    Check_Overrun;

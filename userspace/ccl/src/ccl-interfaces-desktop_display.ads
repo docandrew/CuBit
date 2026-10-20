@@ -28,4 +28,22 @@ package CCL.Interfaces.Desktop_Display with SPARK_Mode, Pure is
      "(type Display_Modeset (record (enabled Boolean false)))";
    MODESET_ROOT_TYPE_NAME : constant String := "Display_Modeset";
    MODESET_KEY : constant String := "desktop.display.modeset";
+
+   --  `desktop.display.mode.<monitor>` is one Display_Mode: the mode chosen
+   --  for that monitor in Settings > Monitor (DISP-016), keyed by its EDID
+   --  identity (Desktop_Display_Mode_Settings.Key_For: vendor, product and
+   --  serial). Auto (also what an absent setting means) is the best mode the
+   --  driver admits; Fixed is one of the monitor's listed modes, its size
+   --  and the refresh rate the driver lists for it. The bounds are the
+   --  output mode protocol's (CuBit.Output_Modes: extents, millihertz).
+   MODE_PREFIX : constant String := "desktop.display.mode.";
+   MAXIMUM_MODE_EXTENT : constant := 65_535;
+   MAXIMUM_REFRESH_MILLIHERTZ : constant := 4_294_967_295;
+   MODE_TYPE_SOURCE : constant String :=
+     "(type Mode_Extent (range 1 65535)) " &
+     "(type Refresh_Millihertz (range 1 4294967295)) " &
+     "(type Display_Mode_Choice (record (width Mode_Extent) (height Mode_Extent) " &
+     "(refresh_millihertz Refresh_Millihertz))) " &
+     "(type Display_Mode (variant (Auto) (Fixed Display_Mode_Choice)))";
+   MODE_ROOT_TYPE_NAME : constant String := "Display_Mode";
 end CCL.Interfaces.Desktop_Display;

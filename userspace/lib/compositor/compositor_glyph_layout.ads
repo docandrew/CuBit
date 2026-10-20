@@ -29,6 +29,20 @@ package Compositor_Glyph_Layout with SPARK_Mode, Pure is
    Phases : constant := 4;
    Pen_Unit : constant := 64;
    subtype Phase is Natural range 0 .. Phases - 1;
+   -- Grid fitting (UI-026, low density): below Grid_Fit_Numerator /
+   -- Grid_Fit_Denominator device pixels per logical pixel the font engine
+   -- fits each phase's vertical stems to whole pixels of that phase's raster
+   -- (glyphs still go on quarter-pixel phases, so a stem moves at most half
+   -- a pixel and spacing stays even); at and above it, stems keep their
+   -- outline positions. Why 3/2: the bundled faces' standard stem is 1.14
+   -- px at the 13 px em (IBM Plex Sans), and a quarter phase spreads a stem
+   -- over two columns: averaged over the four phases its darkest column
+   -- loses 18% of its contrast at 100% and 8% at 125%, but 1% at 150% (a
+   -- 1.71 px stem keeps a full column at every phase) and none at 200%.
+   Grid_Fit_Numerator : constant := 3;
+   Grid_Fit_Denominator : constant := 2;
+   function Grid_Fitted (Scale : G.UI_Scale) return Boolean is
+     (Natural (Scale.Numerator) * Grid_Fit_Denominator < Grid_Fit_Numerator * Natural (Scale.Denominator));
    -- A glyph origin's fraction of a logical pixel, in 1/Pen_Unit.
    subtype Subpixel is Natural range 0 .. Pen_Unit - 1;
    Last_Width : constant := 512;

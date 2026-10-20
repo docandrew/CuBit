@@ -1,3 +1,5 @@
+with Ada.Unchecked_Deallocation;
+with Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
 with Desktop_Wallpaper;
 with CuBit.UI.Window_Chrome;
@@ -83,6 +85,91 @@ package body Desktop_Settings is
       return From;
    end Next_Starting;
 
+   --  The Monitor page's mode list: an Auto row, then each listed mode.
+   package OM renames CuBit.Output_Modes;
+   use type OM.Admission, Interfaces.Unsigned_32;
+   Mode_Rows : constant := 11;
+   Mode_Row_Height : constant := 20;
+   Mode_List_Width : constant := 510;
+   Mode_Button_Width : constant := 60;
+   Mode_Button_Gap : constant := 10;
+   Mode_Text_Inset : constant := 8;
+   --  Column starts within a row: size, refresh rate, pixel clock, notes.
+   Rate_Column : constant := 100;
+   Clock_Column : constant := 190;
+   Notes_Column : constant := 280;
+   function Mode_List_Box (C : Rect) return Rect is
+     (C.x + 20, C.y + 76, Mode_List_Width, Mode_Rows * Mode_Row_Height);
+   function Mode_Count (View : State) return Natural is
+     (if View.Monitor_View.Modes = null then 0 else View.Monitor_View.Modes'Length);
+   function Last_Row (View : State) return Mode_Row is (Mode_Count (View));
+   --  Auto and admitted modes can be chosen; refused modes only shown.
+   function Selectable (View : State; Row : Mode_Row) return Boolean is
+     (Row = Auto_Row or else
+      (Row <= Mode_Count (View) and then View.Monitor_View.Modes (Row).Verdict = OM.Admitted));
+   function Mode_Scrolled_To (Top, Row : Mode_Row) return Mode_Row is
+     (if Row < Top then Row elsif Row >= Top + Mode_Rows then Row - (Mode_Rows - 1) else Top);
+   procedure Choose_Mode (View : in out State; Row : Mode_Row) is
+   begin
+      if Row <= Last_Row (View) and then Selectable (View, Row) then
+         View.Mode_Choice := Row;
+         View.Mode_Top := Mode_Scrolled_To (View.Mode_Top, Row);
+         if View.Monitor_Status /= Mode_Switching then
+            View.Monitor_Status := Mode_Ready;
+         end if;
+      end if;
+   end Choose_Mode;
+   --  The selectable row Rows away from the chosen one (negative: up),
+   --  stopping at the ends; refused rows are skipped.
+   function Moved_Mode (View : State; Rows : Integer) return Mode_Row is
+      Target : constant Integer :=
+        Integer'Max (0, Integer'Min (Integer (Last_Row (View)), Integer (View.Mode_Choice) + Rows));
+      Step : constant Integer := (if Rows < 0 then -1 else 1);
+      Row : Integer := Target;
+   begin
+      --  The nearest selectable row at or past the target, else before it.
+      while Row in 0 .. Integer (Last_Row (View)) loop
+         if Selectable (View, Mode_Row (Row)) then return Mode_Row (Row); end if;
+         Row := Row + Step;
+      end loop;
+      Row := Target;
+      while Row in 0 .. Integer (Last_Row (View)) loop
+         if Selectable (View, Mode_Row (Row)) then return Mode_Row (Row); end if;
+         Row := Row - Step;
+      end loop;
+      return View.Mode_Choice;
+   end Moved_Mode;
+   function Img (Value : Natural) return String is
+      T : constant String := Value'Image;
+   begin
+      return T (T'First + 1 .. T'Last);
+   end Img;
+   --  "59.940" from 59940 (millihertz, or kHz as MHz).
+   function Thousandths (Value : Natural) return String is
+      F : constant String := Natural'Image (1000 + Value mod 1000);
+   begin
+      return Img (Value / 1000) & "." & F (F'First + 2 .. F'Last);
+   end Thousandths;
+   function Size_Text (Item : OM.Listed_Mode) return String is
+     (Img (Natural (Item.Size.Width)) & " x " & Img (Natural (Item.Size.Height)));
+   function Rate_Text (Item : OM.Listed_Mode) return String is
+     (if Item.Refresh_Millihertz = 0 then "" else Thousandths (Natural (Item.Refresh_Millihertz)) & " Hz");
+   --  What the notes column says about a mode.
+   function Notes_Text (View : State; Row : Mode_Row) return String is
+      Item : OM.Listed_Mode renames View.Monitor_View.Modes (Row);
+      Saved : constant Boolean := not View.Monitor_View.Saved_Auto and then View.Monitor_View.Saved_Row = Row;
+      function Join (Left, Right : String) return String is
+        (if Left'Length = 0 then Right elsif Right'Length = 0 then Left else Left & ", " & Right);
+   begin
+      return Join (Join (Join ((if Item.Verdict = OM.Admitted then "" else OM.Name (Item.Verdict)),
+                               (if Item.Current then "current" else "")),
+                         (if Item.Preferred then "preferred" else "")),
+                   (if Saved then "saved" else ""));
+   end Notes_Text;
+
+   function Chosen_Mode (View : State) return OM.Listed_Mode is
+     (View.Monitor_View.Modes (View.Mode_Choice));
+
    function Diagram (B : Rect) return Rect is
      (B.x + 20, B.y + 76, 550, 172);
 
@@ -151,6 +238,13 @@ package body Desktop_Settings is
          when Center => return (C.x + 480, C.y + 200, 92, 30);
          when Apply => return (C.x + 366, C.y + 334, 100, 30);
          when Revert => return (C.x + 476, C.y + 334, 100, 30);
+         when Mode_List => return Mode_List_Box (C);
+         when Mode_Previous => return (C.x + 20 + Mode_List_Width + Mode_Button_Gap, C.y + 76, Mode_Button_Width, 28);
+         when Mode_Next =>
+            return (C.x + 20 + Mode_List_Width + Mode_Button_Gap, C.y + 76 + Mode_Rows * Mode_Row_Height - 28,
+                    Mode_Button_Width, 28);
+         when Keep_Mode => return (C.x + 366, C.y + 334, 100, 30);
+         when Revert_Mode => return (C.x + 476, C.y + 334, 100, 30);
          when Make_Primary => return (C.x + 20, C.y + 304, 156, 28);
          when Scale_Down => return (C.x + 430, C.y + 304, 34, 28);
          when Scale_Up => return (C.x + 472, C.y + 304, 34, 28);
@@ -162,8 +256,10 @@ package body Desktop_Settings is
    procedure Open (View : out State; Current : A.Preferences; Layout : L.Layout;
                    Primary : L.Named_Display_ID; Auto_Scale : Boolean;
                    Zone : Time_Zones.Time_Zone) is
+      --  The mode list lives on (Set_Monitor replaces and frees it).
+      Kept : constant Monitor_Info := View.Monitor_View;
    begin
-      View := (Pending => Current, Applied => Current,
+      View := (Monitor_View => Kept, Pending => Current, Applied => Current,
                Pending_Layout => Layout, Applied_Layout => Layout,
                Pending_Primary => Primary, Applied_Primary => Primary,
                Pending_Auto => Auto_Scale, Applied_Auto => Auto_Scale,
@@ -182,14 +278,31 @@ package body Desktop_Settings is
       return Result;
    end Line_Of;
 
-   procedure Set_Monitor (View : in out State; Info : Monitor_Info) is
+   procedure Release is new Ada.Unchecked_Deallocation (Monitor_Modes, Monitor_Mode_List);
+   procedure Free (Modes : in out Monitor_Mode_List) is
    begin
+      Release (Modes);
+   end Free;
+
+   procedure Set_Monitor (View : in out State; Info : Monitor_Info) is
+      Old : Monitor_Mode_List := View.Monitor_View.Modes;
+   begin
+      if Old /= Info.Modes then
+         Free (Old);
+      end if;
       View.Monitor_View := Info;
+      View.Mode_Choice := (if Info.Saved_Auto then Auto_Row else Info.Saved_Row);
+      if not Selectable (View, View.Mode_Choice) then
+         View.Mode_Choice := Auto_Row;
+      end if;
+      View.Mode_Top := Mode_Scrolled_To (Auto_Row, View.Mode_Choice);
    end Set_Monitor;
 
    function Visible (View : State; Item : Control) return Boolean is
      (Item in Tab_Control or else
-       Item in Apply .. Revert or else
+       (Item in Apply .. Revert and then not (View.Current_Page = Monitor and then View.Trial_Open)) or else
+       (View.Current_Page = Monitor and then
+          (if View.Trial_Open then Item in Keep_Mode .. Revert_Mode else Item in Mode_List .. Mode_Next)) or else
        (View.Current_Page = Date_Time and then Item in Zone_List .. Zone_Next) or else
        (View.Current_Page = Displays and then Item in Make_Primary .. Scale_Auto) or else
        (View.Current_Page = Appearance and then Item in Light .. Revert));
@@ -208,7 +321,9 @@ package body Desktop_Settings is
          when Center => "Center", when Apply => "Apply", when Revert => "Revert",
          when Make_Primary => "Make primary",
          when Scale_Down => "-", when Scale_Up => "+", when Scale_Auto => "Auto",
-         when None | Zone_List => "");
+         when Mode_Previous => "Up", when Mode_Next => "Down",
+         when Keep_Mode => "Keep", when Revert_Mode => "Revert",
+         when None | Zone_List | Mode_List => "");
       function Selected (Item : Control) return Boolean is
         (case Item is
          when Appearance_Tab => View.Current_Page = Appearance,
@@ -258,19 +373,79 @@ package body Desktop_Settings is
       if View.Current_Page = Monitor then
          declare
             M : Monitor_Info renames View.Monitor_View;
-            Row_Height : constant := 20;
+            List : constant Rect := Mode_List_Box (Bounds);
+            Rows : constant Canvas := With_Clip (C, List);
+            procedure Button (Item : Control) is
+            begin
+               Draw_Button (C, Box (Item, Window_Bounds), Colors,
+                 (if Item = View.Pressed and Item = View.Hovered then Button_Pressed
+                  elsif Item = View.Hovered then Button_Hot else Button_Normal), Label (Item));
+               if Item = View.Focused then
+                  declare B : constant Rect := Box (Item, Window_Bounds); begin
+                     Stroke_Rect (C, (B.x + 3, B.y + 3, B.w - 6, B.h - 6), Colors.shadow, Colors.shadow);
+                  end;
+               end if;
+            end Button;
          begin
-            Text (20, 40, M.Summary.Text (1 .. M.Summary.Length));
-            Text (20, 62, M.Detail.Text (1 .. M.Detail.Length));
-            for Row in 1 .. M.Shown loop
-               Draw_UI_Text (C, Bounds.x + 20, Bounds.y + 92 + (Row - 1) * Row_Height,
-                             M.Lines (Row).Text (1 .. M.Lines (Row).Length),
-                             (if M.Lines (Row).Available then Colors.text else Colors.muted),
-                             Colors.face);
+            Text (20, 34, M.Summary.Text (1 .. M.Summary.Length));
+            Text (20, 54, M.Detail.Text (1 .. M.Detail.Length));
+            Fill_Rect (C, List, Colors.field);
+            for Line in 0 .. Mode_Rows - 1 loop
+               exit when View.Mode_Top + Line > Last_Row (View);
+               declare
+                  Row : constant Mode_Row := View.Mode_Top + Line;
+                  Box_Of_Row : constant Rect := (List.x, List.y + Line * Mode_Row_Height, List.w, Mode_Row_Height);
+                  Chosen : constant Boolean := Row = View.Mode_Choice;
+                  Back : constant Color := (if Chosen then Colors.selection else Colors.field);
+                  Ink : constant Color :=
+                    (if Chosen then Colors.selectionText elsif Selectable (View, Row) then Colors.text
+                     else Colors.muted);
+                  Y : constant Natural :=
+                    Box_Of_Row.y + (Mode_Row_Height - Natural'Min (Mode_Row_Height, UI_Text_Height)) / 2;
+                  X : constant Natural := Box_Of_Row.x + Mode_Text_Inset;
+               begin
+                  if Chosen then Fill_Rect (Rows, Box_Of_Row, Back); end if;
+                  if Row = Auto_Row then
+                     Draw_UI_Text (Rows, X, Y, "Auto: the best mode the display driver admits", Ink, Back);
+                  else
+                     Draw_UI_Text (Rows, X, Y, Size_Text (M.Modes (Row)), Ink, Back);
+                     Draw_UI_Text (Rows, X + Rate_Column, Y, Rate_Text (M.Modes (Row)), Ink, Back);
+                     if M.Modes (Row).Pixel_kHz /= 0 then
+                        Draw_UI_Text (Rows, X + Clock_Column, Y,
+                          Thousandths (Natural (M.Modes (Row).Pixel_kHz)) & " MHz", Ink, Back);
+                     end if;
+                     Draw_UI_Text (Rows, X + Notes_Column, Y, Notes_Text (View, Row), Ink, Back);
+                  end if;
+               end;
             end loop;
-            if M.Total > M.Shown then
-               Text (20, 92 + M.Shown * Row_Height,
-                     "+" & Natural'Image (M.Total - M.Shown) & " more (Boot Logs: intel-gpu: mode ...)");
+            Stroke_Rect (C, List, Colors.shadow, Colors.highlight);
+            if View.Focused = Mode_List then
+               Stroke_Rect (C, (List.x + 2, List.y + 2, List.w - 4, List.h - 4), Colors.shadow, Colors.shadow);
+            end if;
+            if View.Trial_Open then
+               Text (20, 306, "Keep this display mode? It reverts in" & View.Trial_Seconds'Image &
+                     (if View.Trial_Seconds = 1 then " second." else " seconds."));
+               Button (Keep_Mode);
+               Button (Revert_Mode);
+            else
+               Button (Mode_Previous);
+               Button (Mode_Next);
+               Button (Apply);
+               Button (Revert);
+               Text (20, 306,
+                 (case View.Monitor_Status is
+                    when Mode_Ready =>
+                      (if M.Modes = null then "This output lists no modes"
+                       else "Choose a mode and Apply; refused modes show why"),
+                    when Mode_Switching => "Switching the display mode...",
+                    when Mode_Refused => "The display driver refused that mode",
+                    when Mode_Kept =>
+                      (if M.Identified then "Kept and saved for this monitor" else "Kept for this session"),
+                    when Mode_Saved_Session_Only => "Kept; Config refused to save it",
+                    when Mode_Reverted => "Reverted to the previous mode",
+                    when Mode_Timed_Out => "No answer: reverted to the previous mode"));
+               Text (20, 340, (if M.Identified then "Saved per monitor (EDID identity)"
+                               else "No EDID identity: choices last this session"));
             end if;
          end;
          return;
@@ -468,7 +643,14 @@ package body Desktop_Settings is
          when Monitor_Tab => View.Current_Page := Monitor;
          when Zone_Previous => Choose_Zone (View, Moved (View.Pending_Zone, -1));
          when Zone_Next => Choose_Zone (View, Moved (View.Pending_Zone, 1));
-         when Zone_List => null;
+         when Zone_List | Mode_List => null;
+         when Mode_Previous => View.Mode_Top := (if View.Mode_Top > Mode_Rows then View.Mode_Top - Mode_Rows else Auto_Row);
+         when Mode_Next =>
+            if Last_Row (View) >= Mode_Rows then
+               View.Mode_Top := Mode_Row'Min (View.Mode_Top + Mode_Rows, Last_Row (View) - (Mode_Rows - 1));
+            end if;
+         when Keep_Mode => View.Answer := Keep_Response;
+         when Revert_Mode => View.Answer := Revert_Response;
          when Light => View.Pending.Scheme := A.Alloy_Light;
          when Dark => View.Pending.Scheme := A.Alloy_Dark;
          when Image => View.Pending.Backdrop := A.Wallpaper;
@@ -538,6 +720,8 @@ package body Desktop_Settings is
          when Revert =>
             if View.Current_Page = Date_Time then
                Choose_Zone (View, View.Applied_Zone);
+            elsif View.Current_Page = Monitor then
+               Choose_Mode (View, (if View.Monitor_View.Saved_Auto then Auto_Row else View.Monitor_View.Saved_Row));
             elsif View.Current_Page = Displays then
                View.Pending_Layout := View.Applied_Layout;
                View.Pending_Primary := View.Applied_Primary;
@@ -569,6 +753,14 @@ package body Desktop_Settings is
             View.Pressed := None;
             return;
          end;
+      end if;
+      if View.Current_Page = Monitor and then not View.Trial_Open and then Pointer.pressed and then
+        Point_In_Rect (Pointer.x, Pointer.y, Mode_List_Box (Page_Bounds (Bounds)))
+      then
+         Choose_Mode (View, View.Mode_Top + (Pointer.y - Mode_List_Box (Page_Bounds (Bounds)).y) / Mode_Row_Height);
+         View.Focused := Mode_List;
+         View.Pressed := None;
+         return;
       end if;
       if View.Current_Page = Displays then
          if Pointer.pressed and Point_In_Rect (Pointer.x, Pointer.y, Diagram (Page_Bounds (Bounds))) then
@@ -604,7 +796,7 @@ package body Desktop_Settings is
          end if;
       end if;
       for Item in Control range Appearance_Tab .. Control'Last loop
-         if Visible (View, Item) and then Item /= Zone_List and then
+         if Visible (View, Item) and then Item not in Zone_List | Mode_List and then
            Point_In_Rect (Pointer.x, Pointer.y, Box (Item, Bounds)) and then
            Point_In_Rect (Pointer.x, Pointer.y, Bounds)
          then Hit := Item; end if;
@@ -644,6 +836,17 @@ package body Desktop_Settings is
               when Scan_Page_Down => Moved (View.Pending_Zone, Zone_Rows),
               when Scan_Home => TZ.Time_Zone'First,
               when others => TZ.Time_Zone'Last));
+      elsif View.Focused = Mode_List and then
+        Scan_Code in Scan_Up | Scan_Down | Scan_Page_Up | Scan_Page_Down | Scan_Home | Scan_End
+      then
+         Choose_Mode (View,
+           (case Scan_Code is
+              when Scan_Up => Moved_Mode (View, -1),
+              when Scan_Down => Moved_Mode (View, 1),
+              when Scan_Page_Up => Moved_Mode (View, -Mode_Rows),
+              when Scan_Page_Down => Moved_Mode (View, Mode_Rows),
+              when Scan_Home => Auto_Row,
+              when others => Moved_Mode (View, Integer (Last_Row (View)))));
       elsif View.Current_Page = Date_Time and then Scan_Code in Letter_Scan and then
         Letter_Of (Scan_Code) /= ' '
       then

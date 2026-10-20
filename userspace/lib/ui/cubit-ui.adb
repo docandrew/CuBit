@@ -488,6 +488,12 @@ package body CuBit.UI is
    pragma Compile_Time_Error
      (Glyph_Pen.Unit /= Client_Glyphs.L.Pen_Unit or else Glyph_Pen.Phases /= Client_Glyphs.L.Phases,
       "toolkit pens and density masks must share pen units and phases");
+   --  The normal cell size is density 1, its stems fitted to the pixel grid
+   --  by the font engine at every phase; the double size (density 2) is not.
+   pragma Compile_Time_Error
+     (not (Client_Glyphs.L.Grid_Fit_Denominator < Client_Glyphs.L.Grid_Fit_Numerator) or else
+      2 * Client_Glyphs.L.Grid_Fit_Denominator < Client_Glyphs.L.Grid_Fit_Numerator,
+      "normal cells (density 1) are grid fitted and double cells (density 2) are not");
    procedure Draw_Density_Glyph
      (c : Canvas; Pen : Glyph_Pen.Position; y : Natural; ch : Character; face : CuBit.Fonts.Face; fg : Color)
    is

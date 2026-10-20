@@ -59,7 +59,10 @@ package CuBit.Monitor_EDID.Catalog with SPARK_Mode, Pure is
    ---------------------------------------------------------------------------
    --  Modes.
    ---------------------------------------------------------------------------
-   type Mode_Source is (Base_Detailed, Extension_Detailed, Video_Code);
+   --  Established and Standard: the base block's established-timing bits
+   --  and standard-timing slots (VESA E-EDID 1.4 3.8, 3.9), whose timings
+   --  are the VESA DMT ones CuBit knows (DMT_Timing).
+   type Mode_Source is (Base_Detailed, Extension_Detailed, Video_Code, Established, Standard);
    --  CTA-861 Video Identification Code (zero: not from a short descriptor).
    subtype Video_Identification is Natural range 0 .. 255;
    type Mode is record
@@ -72,13 +75,29 @@ package CuBit.Monitor_EDID.Catalog with SPARK_Mode, Pure is
       Native : Boolean := False;
    end record;
 
+   --  The VESA DMT modes CuBit knows (VESA DMT 1.0 r13): those the
+   --  established-timing bits name, and those standard timings commonly
+   --  name. A standard timing of any other mode is skipped (no CVT/GTF).
+   type DMT_Mode is
+     (DMT_640x480_60, DMT_640x480_72, DMT_640x480_75, DMT_720x400_70,
+      DMT_800x600_56, DMT_800x600_60, DMT_800x600_72, DMT_800x600_75,
+      DMT_1024x768_60, DMT_1024x768_70, DMT_1024x768_75, DMT_1152x864_75,
+      DMT_1280x720_60, DMT_1280x800_60, DMT_1280x960_60, DMT_1280x1024_60, DMT_1280x1024_75,
+      DMT_1366x768_60, DMT_1440x900_60, DMT_1600x900_60, DMT_1600x1200_60,
+      DMT_1680x1050_60, DMT_1920x1080_60, DMT_1920x1200_60, DMT_2048x1152_60);
+   function DMT_Timing (Item : DMT_Mode) return Monitor_EDID.Timing;
+   --  Its nominal refresh rate in whole hertz (what a standard timing says).
+   function DMT_Refresh (Item : DMT_Mode) return Positive;
+
    --  Each mode costs at least one byte of an extension's 124 data bytes
-   --  (bytes 4 .. 127), and the base block has four descriptors: the most
-   --  modes the blocks can encode, not a policy.
+   --  (bytes 4 .. 127); the base block has four descriptors and names at
+   --  most every DMT mode CuBit knows: the most modes the blocks can encode,
+   --  not a policy.
    Base_Descriptors : constant := 4;
+   Base_Listed : constant := Base_Descriptors + DMT_Mode'Pos (DMT_Mode'Last) + 1;
    Extension_Mode_Bytes : constant := Block_Bytes - 4;
    function Capacity (Extensions : Extension_Count) return Positive is
-     (Base_Descriptors + Extension_Mode_Bytes * Extensions);
+     (Base_Listed + Extension_Mode_Bytes * Extensions);
 
    type Mode_Array is array (Positive range <>) of Mode;
    type Mode_List (Capacity : Positive) is record
@@ -89,7 +108,8 @@ package CuBit.Monitor_EDID.Catalog with SPARK_Mode, Pure is
 
    --  Every progressive detailed timing of the base block and of each valid
    --  CTA-861 extension, then the short video codes CuBit knows (CTA-861-G
-   --  table 1), duplicates removed (the first source wins). Extensions with
+   --  table 1), then the base block's established and standard timings of
+   --  the DMT modes CuBit knows, duplicates removed (the first source wins). Extensions with
    --  a bad checksum or another tag are skipped, never half-read.
    function Modes (Base : Block; Extensions : Block_Array) return Mode_List
      with Pre => Extensions'Length <= Extension_Count'Last and then

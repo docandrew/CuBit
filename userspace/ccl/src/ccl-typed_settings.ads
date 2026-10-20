@@ -10,12 +10,13 @@ with CCL.Objects.Views;
 --  never parsed by hand and never in any other form.
 --  Users: desktop.launch.* (CCL.Interfaces.Desktop_Launch),
 --  desktop.input.key-repeat (CCL.Interfaces.Desktop_Input),
---  gpu.power.waitboost (CCL.Interfaces.GPU_Power), desktop.display.scale
---  and desktop.display.modeset (CCL.Interfaces.Desktop_Display).
+--  gpu.power.waitboost (CCL.Interfaces.GPU_Power), desktop.display.scale,
+--  desktop.display.modeset and desktop.display.mode.*
+--  (CCL.Interfaces.Desktop_Display).
 package CCL.Typed_Settings is
    type Setting_Kind is
      (Untyped, Launch_Entry_Setting, Key_Repeat_Setting, GPU_Waitboost_Setting, Display_Scale_Setting,
-      Display_Modeset_Setting);
+      Display_Modeset_Setting, Display_Mode_Setting);
    function Kind_Of (Key : String) return Setting_Kind;
 
    MAXIMUM_CANONICAL : constant := 1_024;

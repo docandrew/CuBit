@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
-"""Rasterize the vendored Bluecurve toolbar SVGs into a compile-time Ada atlas.
+"""Rasterize the vendored Bluecurve toolbar SVGs into a compile-time Ada atlas,
+at 16 and 32 pixels (the toolkit draws the export nearest the canvas's
+density 1:1, never resampled: CuBit.UI.Widgets.Draw_Stock_Icon).
 
 Run inside nix develop (Pillow and rsvg-convert). No SVG/PNG decoder or
-external theme files are required on CuBit. Output goes to stdout.
+external theme files are required on CuBit. Output goes to stdout:
+  python3 tools/generate_toolbar_atlas.py > userspace/lib/ui/cubit-ui-widgets-bluecurve.ads
 """
 
 import io
@@ -25,7 +28,29 @@ ICONS = (
     ("Step_Over", "stock-redo"),
 )
 SOURCE = Path(__file__).resolve().parent.parent / "userspace/lib/ui/assets/bluecurve"
-SIZE = 16
+SIZES = (16, 32)
+
+
+def table(size):
+    lines = [f"   Pixels_{size} : constant Table_{size} := ["]
+    for index, (name, source) in enumerate(ICONS):
+        data = subprocess.check_output(
+            ["rsvg-convert", "-w", str(size), "-h", str(size), str(SOURCE / (source + ".svg"))])
+        bitmap = Image.open(io.BytesIO(data)).convert("RGBA")
+        if bitmap.size != (size, size):
+            raise ValueError(f"{source}: expected {size}x{size}, got {bitmap.size}")
+        lines.append(f"      --  {source}.svg at {size}x{size}; straight (not premultiplied) ARGB.")
+        lines.append(f"      {name} => [")
+        for y in range(size):
+            row = []
+            for x in range(size):
+                r, g, b, a = bitmap.getpixel((x, y))
+                row.append(f"16#{a:02X}{r:02X}_{g:02X}{b:02X}#")
+            chunks = [", ".join(row[i:i + 8]) for i in range(0, size, 8)]
+            lines.append("         [" + (",\n          ").join(chunks) + "]" + ("," if y + 1 < size else ""))
+        lines.append("      ]" + ("," if index + 1 < len(ICONS) else ""))
+    lines.append("   ];")
+    return lines
 
 
 def generate():
@@ -34,28 +59,15 @@ def generate():
         "--  Bluecurve @ 013ba225e78d9767b274ac6f16a67cb19f0673c6.",
         "--  See ASSET_LICENSES.md and assets/bluecurve for source artwork.",
         "private package CuBit.UI.Widgets.Bluecurve is",
-        f"   Icon_Size : constant := {SIZE};",
-        "   type Icon_Table is array (Toolbar_Icon) of",
-        "     CuBit.UI.ARGB_Bitmap (0 .. Icon_Size - 1, 0 .. Icon_Size - 1);",
-        "   Pixels : constant Icon_Table := [",
+        "   --  The icons' logical size; each is held at 16 and 32 pixels.",
+        f"   Icon_Size : constant := {SIZES[0]};",
     ]
-    for index, (name, source) in enumerate(ICONS):
-        data = subprocess.check_output(["rsvg-convert", str(SOURCE / (source + ".svg"))])
-        bitmap = Image.open(io.BytesIO(data)).convert("RGBA")
-        if bitmap.size != (SIZE, SIZE):
-            raise ValueError(f"{source}: expected {SIZE}x{SIZE}, got {bitmap.size}")
-        lines.append(f"      --  {source}.svg; straight (not premultiplied) ARGB.")
-        lines.append(f"      {name} => [")
-        for y in range(SIZE):
-            row = []
-            for x in range(SIZE):
-                r, g, b, a = bitmap.getpixel((x, y))
-                row.append(f"16#{a:02X}{r:02X}_{g:02X}{b:02X}#")
-            suffix = "," if y + 1 < SIZE else ""
-            lines.append("         [" + ", ".join(row[:8]) + ",")
-            lines.append("          " + ", ".join(row[8:]) + "]" + suffix)
-        lines.append("      ]" + ("," if index + 1 < len(ICONS) else ""))
-    lines += ["   ];", "end CuBit.UI.Widgets.Bluecurve;", ""]
+    for size in SIZES:
+        lines.append(f"   type Table_{size} is array (Toolbar_Icon) of")
+        lines.append(f"     CuBit.UI.ARGB_Bitmap (0 .. {size - 1}, 0 .. {size - 1});")
+    for size in SIZES:
+        lines += table(size)
+    lines += ["end CuBit.UI.Widgets.Bluecurve;", ""]
     return "\n".join(lines)
 
 

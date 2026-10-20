@@ -310,7 +310,7 @@ package body Intel_GPU_Display_Executor is
    package OD renames CuBit.Output_Discovery;
    package OM renames CuBit.Output_Modes;
    package TT renames Intel_GPU_Transcoder_Timing;
-   use type DD.Signal_Mode, DD.Crystal, MA.Verdict, R.DDI_Port;
+   use type DD.Signal_Mode, DD.Crystal, MA.Verdict, R.DDI_Port, OM.Rate_Choice;
    package Readout is new Intel_GPU_Display_Readout (Read_MMIO, Log);
    Display_State : Readout.Snapshot;
    Lit : Readout.Lit_Output;
@@ -421,6 +421,10 @@ package body Intel_GPU_Display_Executor is
    Verdicts : Verdict_Array_Access;
    --  The mode to offer (Intel_GPU_Mode_Admission.Best); zero when none.
    Best_Mode : Natural := 0;
+   --  The listed mode the pipe runs (Intel_GPU_Mode_Admission.Running on the
+   --  readout, then each applied change) and the one the firmware left;
+   --  zero when the timing is not one the monitor lists.
+   Live_Mode, Firmware_Mode : Natural := 0;
    Facts : MA.Facts;
    --  Catalog revision: bumped by every applied mode change.
    Output_Revision : OD.Catalog_Revision := 1;
@@ -443,7 +447,8 @@ package body Intel_GPU_Display_Executor is
    function Source_Name (Item : C.Mode_Source) return String is
      (case Item is
         when C.Base_Detailed => "base-dtd", when C.Extension_Detailed => "cta-dtd",
-        when C.Video_Code => "cta-vic");
+        when C.Video_Code => "cta-vic", when C.Established => "established",
+        when C.Standard => "standard");
 
    procedure Log_Block (Index : Natural; Data : C.Block) is
       Digits_Text : constant String := "0123456789abcdef";
@@ -607,6 +612,14 @@ package body Intel_GPU_Display_Executor is
               (if Modes.Items (I).Native then " native" else "") &
               " -> " & MA.Name (Verdicts (I)));
       end loop;
+      Live_Mode := MA.Running
+        (Modes.all, (Width => Lit.Timing.Horizontal.Active, Height => Lit.Timing.Vertical.Active,
+                     Total_Width => Lit.Timing.Horizontal.Total, Total_Height => Lit.Timing.Vertical.Total,
+                     Pixel => Natural'Min (Pixel, MA.Clock_kHz'Last)));
+      Firmware_Mode := Live_Mode;
+      Log ("intel-gpu: running mode " &
+           (if Live_Mode = 0 then "not listed by the monitor"
+            else Image (Live_Mode) & " " & Mode_Text (Modes.Items (Live_Mode).Timing)));
       Best_Mode := MA.Best (Modes.all, Verdicts.all);
       if Best_Mode = 0 then
          Log ("intel-gpu: no admitted mode; the firmware mode stays");
@@ -749,17 +762,27 @@ package body Intel_GPU_Display_Executor is
    end Setup_Cursor;
 
    --  The largest frame the buffers must hold: the firmware mode's, or the
-   --  best admitted mode's when it is larger (a mode change reuses them).
+   --  largest admitted mode's that one scanout buffer can hold, when that
+   --  is larger (a mode change, to any mode Settings offers, reuses them;
+   --  a larger one is refused when asked for).
    function Frame_Bytes_Needed return Unsigned_64 is
-      Firmware : constant Unsigned_64 :=
+      Largest : Unsigned_64 :=
         Unsigned_64 (Selection.Shape.Pitch) * Unsigned_64 (Selection.Shape.Height);
+      Candidate : Unsigned_64;
    begin
-      if Best_Mode = 0 then
-         return Firmware;
+      if Modes = null or else Verdicts = null then
+         return Largest;
       end if;
-      return Unsigned_64'Max
-        (Firmware, Unsigned_64 (Pitch_For (Modes.Items (Best_Mode).Timing.Width)) *
-                   Unsigned_64 (Modes.Items (Best_Mode).Timing.Height));
+      for I in 1 .. Modes.Count loop
+         Candidate := Unsigned_64 (Pitch_For (Modes.Items (I).Timing.Width)) *
+                      Unsigned_64 (Modes.Items (I).Timing.Height);
+         if Verdicts (I) = MA.Admitted and then
+           (Candidate + Page_Bytes - 1) / Page_Bytes + 1 <= Scanout_Arena_Pages
+         then
+            Largest := Unsigned_64'Max (Largest, Candidate);
+         end if;
+      end loop;
+      return Largest;
    end Frame_Bytes_Needed;
    function Scanout_Pages return Natural is
      (if not Output_Selected then 0
@@ -775,8 +798,32 @@ package body Intel_GPU_Display_Executor is
    OP_Watch : constant Unsigned_32 := OM.Code (OD.GPU_Backend, OM.Watch);
    OP_Set_Mode : constant Unsigned_32 := OM.Code (OD.GPU_Backend, OM.Set_Mode);
    OP_List_Mode : constant Unsigned_32 := OM.Code (OD.GPU_Backend, OM.List_Mode);
+   OP_Identify : constant Unsigned_32 := OM.Code (OD.GPU_Backend, OM.Identify);
    function Mode_Label (Label : Unsigned_32) return Boolean is
-     (Label in OP_Catalog | OP_Description | OP_Watch | OP_Set_Mode | OP_List_Mode);
+     (Label in OP_Catalog | OP_Description | OP_Watch | OP_Set_Mode | OP_List_Mode | OP_Identify);
+
+   --  The EDID identity as Identify carries it (the catalog already maps a
+   --  bad vendor letter or a non-printable name character to '?').
+   function Identity_Of (Item : C.Identity) return OM.Monitor_Identity is
+      Result : OM.Monitor_Identity;
+   begin
+      for I in 1 .. 3 loop
+         if Item.Vendor (I) in 'A' .. 'Z' then
+            Result.Vendor (I) := Item.Vendor (I);
+         end if;
+      end loop;
+      Result.Product := Item.Product;
+      Result.Serial := Item.Serial;
+      Result.Name_Last := Item.Name.Length;
+      for I in 1 .. Item.Name.Length loop
+         if Item.Name.Text (I) in OM.Name_Character then
+            Result.Name (I) := Item.Name.Text (I);
+         else
+            Result.Name (I) := '?';
+         end if;
+      end loop;
+      return Result;
+   end Identity_Of;
 
    --  Bytes each scanout buffer holds (frame plus guard), fixed at boot.
    Scanout_Buffer_Bytes : Unsigned_64 := 0;
@@ -804,24 +851,41 @@ package body Intel_GPU_Display_Executor is
       return Result;
    end Catalog_Now;
 
-   --  The admitted mode for a size: the preferred one, else the highest
-   --  pixel clock of that size. Zero when none.
-   function Admitted_Mode (Width, Height : Natural) return Natural is
+   --  The refresh rate List_Mode reports for a mode (and an Exact_Rate
+   --  Set_Mode names it by).
+   function Listed_Refresh (Mode : CuBit.Monitor_EDID.Timing) return Unsigned_32 is
+     (Unsigned_32 (Unsigned_64'Min (CuBit.Monitor_EDID.Refresh_Millihertz (Mode), Unsigned_64 (Unsigned_32'Last))));
+
+   --  The admitted mode a request names: for Exact_Rate the mode of that
+   --  size and listed rate; for Best_Rate the preferred mode of that size,
+   --  else its highest pixel clock. Zero when none.
+   function Admitted_Mode (Request : OM.Mode_Request) return Natural is
       Chosen : Natural := 0;
    begin
       if Modes = null or else Verdicts = null then
          return 0;
       end if;
       for I in 1 .. Modes.Count loop
-         if Verdicts (I) = MA.Admitted and then Modes.Items (I).Timing.Width = Width and then
-           Modes.Items (I).Timing.Height = Height
-         then
-            if Modes.Items (I).Preferred then
-               return I;
-            elsif Chosen = 0 or else Modes.Items (I).Timing.Clock > Modes.Items (Chosen).Timing.Clock then
-               Chosen := I;
+         declare
+            M : CuBit.Monitor_EDID.Timing renames Modes.Items (I).Timing;
+         begin
+            if Verdicts (I) = MA.Admitted and then M.Width = Natural (Request.Size.Width) and then
+              M.Height = Natural (Request.Size.Height)
+            then
+               case Request.Rate is
+                  when OM.Exact_Rate =>
+                     if Listed_Refresh (M) = Request.Refresh then
+                        return I;
+                     end if;
+                  when OM.Best_Rate =>
+                     if Modes.Items (I).Preferred then
+                        return I;
+                     elsif Chosen = 0 or else M.Clock > Modes.Items (Chosen).Timing.Clock then
+                        Chosen := I;
+                     end if;
+               end case;
             end if;
-         end if;
+         end;
       end loop;
       return Chosen;
    end Admitted_Mode;
@@ -891,13 +955,18 @@ package body Intel_GPU_Display_Executor is
    Firmware_Config, Live_Config : MP.Configuration;
    Firmware_Width, Firmware_Height, Firmware_Pitch : Positive := 1;
 
-   procedure Change_Mode (Width, Height : Natural; Status : out CuBit.Display_Protocol.DP.Status_Code) is
+   procedure Change_Mode (Request : OM.Mode_Request; Status : out CuBit.Display_Protocol.DP.Status_Code) is
       package DP renames CuBit.Display_Protocol.DP;
+      Width : constant Natural := Natural (Request.Size.Width);
+      Height : constant Natural := Natural (Request.Size.Height);
+      Index : constant Natural := Admitted_Mode (Request);
       Output : MP.Output;
-      Index : Natural;
    begin
       Status := DP.Bad_State;
-      if Width = Flip.Width and then Height = Flip.Height then
+      --  Already there: the listed mode it names, or (Best_Rate) its size.
+      if (Index /= 0 and then Index = Live_Mode) or else
+        (Request.Rate = OM.Best_Rate and then Width = Flip.Width and then Height = Flip.Height)
+      then
          Status := DP.Success;
          return;
       end if;
@@ -918,8 +987,12 @@ package body Intel_GPU_Display_Executor is
          Firmware_Known := True;
       end if;
       declare
+         --  The firmware's own configuration comes back exactly: its listed
+         --  mode, or (Best_Rate) its size when the monitor does not list it.
          Back_To_Firmware : constant Boolean :=
-           Width = Firmware_Width and then Height = Firmware_Height;
+           (if Index /= 0 then Index = Firmware_Mode
+            else Request.Rate = OM.Best_Rate and then Width = Firmware_Width and then
+                 Height = Firmware_Height);
          Wanted : MP.Configuration;
          Pitch : Positive;
          Result : Modeset.Outcome;
@@ -930,10 +1003,12 @@ package body Intel_GPU_Display_Executor is
             Wanted := Firmware_Config;
             Pitch := Firmware_Pitch;
          else
-            Index := Admitted_Mode (Width, Height);
             if Index = 0 then
                Log ("intel-gpu: mode change refused:" & Natural'Image (Width) & " x" &
-                    Natural'Image (Height) & " is not an admitted mode");
+                    Natural'Image (Height) &
+                    (case Request.Rate is
+                       when OM.Exact_Rate => " at " & Millihertz_Text (Unsigned_64 (Request.Refresh)) & " Hz",
+                       when OM.Best_Rate => "") & " is not an admitted mode");
                Status := DP.Invalid_Request;
                return;
             end if;
@@ -965,6 +1040,7 @@ package body Intel_GPU_Display_Executor is
          case Result is
             when Modeset.Applied =>
                Live_Config := Wanted;
+               Live_Mode := (if Back_To_Firmware then Firmware_Mode else Index);
                Flip.Resize (Width, Height, Pitch, Resized);
                if Output_Revision < OD.Catalog_Revision'Last then
                   Output_Revision := Output_Revision + 1;
@@ -972,7 +1048,7 @@ package body Intel_GPU_Display_Executor is
                Status := (if Resized then DP.Success else DP.Bad_State);
             when Modeset.Rolled_Back =>
                Log ("intel-gpu: mode change failed at " & Modeset.Name (Failed) &
-                    "; firmware-mode configuration restored");
+                    "; the previous configuration is restored");
             when Modeset.Rollback_Failed =>
                Log ("intel-gpu: mode change failed at " & Modeset.Name (Failed) &
                     " and the restore failed too");
@@ -1003,25 +1079,31 @@ package body Intel_GPU_Display_Executor is
                     (OD.GPU_Backend,
                      (Index => Wanted.Value, Count => OM.Mode_Count (Modes.Count),
                       Item => ((OD.Extent (M.Width), OD.Extent (M.Height)),
-                               Unsigned_32 (Unsigned_64'Min (CuBit.Monitor_EDID.Refresh_Millihertz (M),
-                                                             Unsigned_64 (Unsigned_32'Last))),
+                               Listed_Refresh (M),
                                Unsigned_32 (M.Clock) * 10,
                                To_Admission (Verdicts (Natural (Wanted.Value))),
                                Modes.Items (Natural (Wanted.Value)).Preferred,
-                               M.Width = Flip.Width and then M.Height = Flip.Height)));
+                               Natural (Wanted.Value) = Live_Mode)));
                end;
             else
                Result := (Label => Request.tag.label, Length => 1,
                           Words => [DP.Status_Code'Enum_Rep (DP.Bad_Object), 0, 0, 0], others => <>);
             end if;
          end;
+      elsif Request.tag.label = OP_Identify then
+         if Monitor_Known and then Wire = OM.Identify_Request (OD.GPU_Backend) then
+            Result := OM.Encode_Identity (OD.GPU_Backend, Identity_Of (Monitor));
+         else
+            Result := (Label => Request.tag.label, Length => 1,
+                       Words => [DP.Status_Code'Enum_Rep (DP.Unsupported), 0, 0, 0], others => <>);
+         end if;
       elsif Request.tag.label = OP_Set_Mode then
          declare
-            Wanted : constant OM.Mode_Decoding := OM.Decode_Set_Mode (OD.GPU_Backend, Wire);
+            Wanted : constant OM.Request_Decoding := OM.Decode_Set_Mode (OD.GPU_Backend, Wire);
             Status : DP.Status_Code := DP.Invalid_Request;
          begin
             if Wanted.Valid then
-               Change_Mode (Natural (Wanted.Value.Width), Natural (Wanted.Value.Height), Status);
+               Change_Mode (Wanted.Value, Status);
             end if;
             Result := OM.Encode_Result
               (OD.GPU_Backend, (Status, (OD.Extent (Flip.Width), OD.Extent (Flip.Height))));

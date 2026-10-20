@@ -1,0 +1,19 @@
+--  SPARK proof of "Keep this display mode?" (Desktop_Mode_Trial, DISP-016)
+--  at level 2. build/protocol holds hosted copies of the freestanding
+--  protocol units Output_Modes needs (run.sh --prove).
+project Prove_Trial is
+   for Source_Dirs use ("../../userspace/services/desktop", "../../userspace/lib/display",
+     "../../userspace/ccl/runtime-shared", "build/protocol");
+   for Source_Files use
+     ("desktop_mode_trial.ads", "desktop_mode_trial.adb",
+      "cubit.ads", "cubit-output_modes.ads", "cubit-output_modes.adb",
+      "cubit-output_discovery.ads", "cubit-output_discovery.adb",
+      "cubit-desktop_protocol.ads", "cubit-desktop_protocol.adb", "cubit-grant_references.ads");
+   for Object_Dir use "build/prove-trial";
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=2", "--checks-as-errors=on", "--report=fail", "-j2");
+   end Prove;
+end Prove_Trial;

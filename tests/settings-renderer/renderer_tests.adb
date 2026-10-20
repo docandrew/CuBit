@@ -5,6 +5,7 @@ with CuBit.Appearance;
 with CuBit.Display_Layouts;
 with Desktop_Settings;
 with Time_Zones;
+with CuBit.Output_Modes;
 procedure Renderer_Tests is
    use type System.Address;
    package A renames CuBit.Appearance;
@@ -135,6 +136,107 @@ begin
       View.Focused := S.Revert;
       S.Key (View, Scan_Enter, False, Apply);
       pragma Assert (View.Pending_Zone = Time_Zones.Zone_UTC, "Revert returns to the zone in Config");
+      Cases := Cases + 1;
+   end;
+   --  Monitor (DISP-016): the sorted mode list under its Auto row, chosen
+   --  by keyboard and pointer (refused rows skipped), scrolled, applied;
+   --  then the "Keep this display mode?" question and its answers.
+   declare
+      use type Desktop_Settings.Control;
+      use type Desktop_Settings.Trial_Response;
+      package S renames Desktop_Settings;
+      package OM renames CuBit.Output_Modes;
+      Window : constant Rect := (100, 100, 744, 400);
+      Apply : Boolean;
+      Scan_Enter : constant := 16#1C#;
+      Scan_Up : constant := 16#48#;
+      Scan_Down : constant := 16#50#;
+      Scan_Home : constant := 16#47#;
+      Scan_End : constant := 16#4F#;
+      --  The list's rows in this window: page left 132, list at +20, +76.
+      List_X : constant := 100 + 132 + 20 + 10;
+      List_Row_Y : constant := 100 + 76 + 5;
+      Row_Height : constant := 20;
+      Info : S.Monitor_Info;
+      Count : constant := 14;
+      function Mode (Width, Height : Positive; Rate : Natural; Verdict : OM.Admission := OM.Admitted)
+        return OM.Listed_Mode is
+        ((Size => (OM.OD.Extent (Width), OM.OD.Extent (Height)), Refresh_Millihertz => OM.Millihertz'Base (Rate),
+          Pixel_kHz => 148_500, Verdict => Verdict, Preferred => False, Current => False));
+   begin
+      Info.Modes := new S.Monitor_Modes (1 .. Count);
+      Info.Modes.all :=
+        [Mode (4096, 2160, 60_000, OM.Above_Sink_Clock), Mode (3840, 2160, 60_000), Mode (3840, 2160, 50_000),
+         Mode (3840, 2160, 30_000), Mode (2560, 1440, 59_951), Mode (1920, 1080, 120_000, OM.Needs_Higher_CD_Clock),
+         Mode (1920, 1080, 60_000), Mode (1920, 1080, 59_940), Mode (1920, 1080, 50_000), Mode (1280, 720, 60_000),
+         Mode (1024, 768, 60_000), Mode (800, 600, 60_317), Mode (720, 576, 50_000), Mode (640, 480, 59_940)];
+      Info.Modes (2).Preferred := True;
+      Info.Modes (7).Current := True;
+      Info.Identified := True;
+      Info.Saved_Auto := False;
+      Info.Saved_Row := 7;
+      S.Open (View, A.Default, Layout, 1, Auto_Scale => True, Zone => Time_Zones.Zone_UTC);
+      View.Current_Page := S.Monitor;
+      S.Set_Monitor (View, Info);
+      pragma Assert (View.Mode_Choice = 7, "the saved mode is chosen");
+      pragma Assert (View.Mode_Top <= 7 and then 7 < View.Mode_Top + 11, "and visible");
+      Render (View, C, Window);
+      Render_Controls (View, C, Window);
+      View.Focused := S.Mode_List;
+      S.Key (View, Scan_Up, False, Apply);
+      pragma Assert (View.Mode_Choice = 5, "up skips the refused 1080p120 row");
+      S.Key (View, Scan_Home, False, Apply);
+      pragma Assert (View.Mode_Choice = S.Auto_Row and View.Mode_Top = S.Auto_Row);
+      S.Key (View, Scan_Down, False, Apply);
+      pragma Assert (View.Mode_Choice = 2, "down skips the refused 4096 x 2160 row");
+      S.Key (View, Scan_End, False, Apply);
+      pragma Assert (View.Mode_Choice = Count and View.Mode_Top = Count - 10, "the list follows the choice");
+      --  A pointer on a refused row changes nothing; on an admitted row it chooses it.
+      View.Focused := S.Monitor_Tab;
+      S.Key (View, Scan_Home, False, Apply);
+      View.Mode_Top := S.Auto_Row;
+      View.Mode_Choice := 3;
+      S.Pointer (View, Window, (List_X, List_Row_Y + 1 * Row_Height, True, True, False, True), Apply);
+      pragma Assert (View.Mode_Choice = 3 and View.Focused = S.Mode_List, "a refused row is not chosen");
+      S.Pointer (View, Window, (List_X, List_Row_Y + 4 * Row_Height, True, True, False, True), Apply);
+      pragma Assert (View.Mode_Choice = 4 and not Apply);
+      --  The Down button pages the list; Up comes back.
+      View.Focused := S.Mode_Next;
+      S.Key (View, Scan_Enter, False, Apply);
+      pragma Assert (View.Mode_Top = Count - 10, "Down stops at the last page");
+      View.Focused := S.Mode_Previous;
+      S.Key (View, Scan_Enter, False, Apply);
+      pragma Assert (View.Mode_Top = S.Auto_Row);
+      View.Focused := S.Apply;
+      S.Key (View, Scan_Enter, False, Apply);
+      pragma Assert (Apply, "Apply asks Desktop to switch");
+      View.Focused := S.Revert;
+      S.Key (View, Scan_Enter, False, Apply);
+      pragma Assert (View.Mode_Choice = 7, "Revert returns to the saved mode");
+      --  The question: only Keep and Revert (and the tabs) take input.
+      View.Trial_Open := True;
+      View.Trial_Seconds := 15;
+      View.Focused := S.Keep_Mode;
+      Render (View, C, Window);
+      Render_Controls (View, C, Window);
+      S.Pointer (View, Window, (List_X, List_Row_Y + 2 * Row_Height, True, True, False, True), Apply);
+      pragma Assert (View.Mode_Choice = 7, "the list is frozen while asking");
+      View.Focused := S.Keep_Mode;
+      S.Key (View, Scan_Enter, False, Apply);
+      pragma Assert (View.Answer = S.Keep_Response and not Apply);
+      View.Answer := S.No_Response;
+      View.Focused := S.Revert_Mode;
+      S.Key (View, Scan_Enter, False, Apply);
+      pragma Assert (View.Answer = S.Revert_Response);
+      for Attempt in 1 .. 12 loop
+         S.Key (View, 16#0F#, False, Apply);
+         pragma Assert (View.Focused not in S.Apply | S.Revert | S.Mode_List | S.Mode_Previous | S.Mode_Next,
+                        "Tab never reaches a hidden control");
+      end loop;
+      --  An empty list (no EDID) still renders.
+      S.Set_Monitor (View, (others => <>));
+      View.Trial_Open := False;
+      Render (View, C, Window);
       Cases := Cases + 1;
    end;
    Ada.Text_IO.Put_Line ("PASS Settings callback-only rendering:" & Cases'Image &

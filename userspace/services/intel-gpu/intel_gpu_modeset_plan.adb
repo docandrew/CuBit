@@ -48,6 +48,10 @@ package body Intel_GPU_Modeset_Plan with SPARK_Mode is
       elsif Pitch < Mode.Width * 4 then Pitch_Too_Small
       else None);
 
+   --  A TMDS port's signal for the sink (HDMI or DVI); other modes kept.
+   function Link_Mode (Firmware : D.Signal_Mode; HDMI_Sink : Boolean) return D.Signal_Mode is
+     (if Firmware not in D.HDMI | D.DVI then Firmware elsif HDMI_Sink then D.HDMI else D.DVI);
+
    function Target
      (Firmware : Configuration; Mode : CuBit.Monitor_EDID.Timing; Pitch : Positive;
       Reference : D.Reference_kHz; Halved : Boolean; SCDC_Sink, HDMI_Sink : Boolean)
@@ -74,9 +78,7 @@ package body Intel_GPU_Modeset_Plan with SPARK_Mode is
       end;
       Result.Timing := T.Encode (T.From_EDID (Mode));
       F.Enabled := True;
-      if F.Mode in D.HDMI | D.DVI then
-         F.Mode := (if HDMI_Sink then D.HDMI else D.DVI);
-      end if;
+      F.Mode := Link_Mode (F.Mode, HDMI_Sink);
       if Mode.Sync.Kind = CuBit.Monitor_EDID.Digital_Separate then
          F.Hsync_High := Mode.Sync.Horizontal_Positive;
          F.Vsync_High := Mode.Sync.Vertical_Positive;

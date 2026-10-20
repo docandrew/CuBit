@@ -1,5 +1,6 @@
---  Hosted regression for output mode changes: the Watch/Set_Mode codecs,
---  the backend's mode fitting and Desktop's scale-preserving re-layout.
+--  Hosted regression for output mode changes: the Watch/Set_Mode/List_Mode/
+--  Identify codecs, the Settings mode order, the backend's mode fitting and
+--  Desktop's scale-preserving re-layout.
 --  Linux-hosted: no GPU, no IPC.
 pragma Ada_2022;
 with Ada.Text_IO; use Ada.Text_IO;
@@ -18,9 +19,11 @@ procedure Mode_Tests is
    package G renames L.G;
    package R renames Compositor_Layout_Resize;
    use type DP.Wire_Message, DP.Status_Code, OM.Mode, OM.Byte_Count, L.Layout, L.Admission_Status,
-     OM.Revision_Decoding, OM.Mode_Decoding, OM.Result_Decoding, G.UI_Scale,
+     OM.Revision_Decoding, OM.Request_Decoding, OM.Result_Decoding, OM.Mode_Request, G.UI_Scale,
      G.Scale_Component, G.Logical_Coordinate, G.Pixel_Edge;
    Checks, Failures : Natural := 0;
+   type Request_List is array (Positive range <>) of OM.Mode_Request;
+   type Identity_List is array (Positive range <>) of OM.Monitor_Identity;
 
    procedure Check (Condition : Boolean; What : String) is
    begin
@@ -48,13 +51,46 @@ procedure Mode_Tests is
          W := OM.Encode_Watch (Service, 7);
          W.Reserved := 1;
          Check (not OM.Decode_Watch (Service, W).Valid, "watch routing left in");
-         W := OM.Encode_Set_Mode (Service, (1920, 1080));
-         Check (OM.Decode_Set_Mode (Service, W) = (True, (1920, 1080)), "mode round trip");
-         W.Words (0) := 0;
-         Check (not OM.Decode_Set_Mode (Service, W).Valid, "zero width");
-         W := OM.Encode_Set_Mode (Service, (1920, 1080));
-         W.Words (1) := 65_536;
-         Check (not OM.Decode_Set_Mode (Service, W).Valid, "oversized height");
+         declare
+            Best : constant OM.Mode_Request := (OM.Best_Rate, (1920, 1080));
+            Exact : constant OM.Mode_Request := (OM.Exact_Rate, (3840, 2160), 59_940);
+         begin
+            W := OM.Encode_Set_Mode (Service, Best);
+            Check (OM.Decode_Set_Mode (Service, W) = (True, Best), "best-rate request round trip");
+            W.Words (0) := 0;
+            Check (not OM.Decode_Set_Mode (Service, W).Valid, "zero width");
+            W := OM.Encode_Set_Mode (Service, Best);
+            W.Words (1) := 65_536;
+            Check (not OM.Decode_Set_Mode (Service, W).Valid, "oversized height");
+            W := OM.Encode_Set_Mode (Service, Best);
+            W.Words (3) := 60_000;
+            Check (not OM.Decode_Set_Mode (Service, W).Valid, "best rate with a refresh");
+            W := OM.Encode_Set_Mode (Service, Exact);
+            Check (OM.Decode_Set_Mode (Service, W) = (True, Exact), "exact-rate request round trip");
+            W.Words (3) := 0;
+            Check (not OM.Decode_Set_Mode (Service, W).Valid, "exact rate of zero");
+            W := OM.Encode_Set_Mode (Service, Exact);
+            W.Words (3) := 2 ** 32;
+            Check (not OM.Decode_Set_Mode (Service, W).Valid, "refresh past 32 bits");
+            W := OM.Encode_Set_Mode (Service, Exact);
+            W.Words (2) := 2;
+            Check (not OM.Decode_Set_Mode (Service, W).Valid, "unknown rate choice");
+            --  Every single-bit change decodes to nothing or to its own encoding.
+            for Item of Request_List'(Best, Exact) loop
+               for Word in W.Words'Range loop
+                  for Bit in 0 .. 63 loop
+                     W := OM.Encode_Set_Mode (Service, Item);
+                     W.Words (Word) := W.Words (Word) xor Shift_Left (1, Bit);
+                     declare
+                        D : constant OM.Request_Decoding := OM.Decode_Set_Mode (Service, W);
+                     begin
+                        Check (not D.Valid or else OM.Encode_Set_Mode (Service, D.Value) = W,
+                               "request canonical");
+                     end;
+                  end loop;
+               end loop;
+            end loop;
+         end;
          for S in DP.Status_Code loop
             W := OM.Encode_Result (Service, (S, (1280, 800)));
             Check (OM.Decode_Result (Service, W) = (True, (S, (1280, 800))), "result round trip");
@@ -180,8 +216,88 @@ procedure Mode_Tests is
          Check (not OM.Decode_Listing (Service, Bad).Valid, "index above count refused");
       end loop;
    end Listings;
+   --  Identify (DISP-016): round trips, hostile bits, canonical names.
+   procedure Identities is
+      use type OM.Identity_Decoding;
+      LG : constant OM.Monitor_Identity :=
+        (Vendor => ['G', 'S', 'M'], Product => 16#5B9A#, Serial => 16#0001_E0E7#,
+         Name_Last => 13, Name => ['L', 'G', ' ', 'U', 'l', 't', 'r', 'a', 'G', 'e', 'a', 'r', '+']);
+      Unnamed : constant OM.Monitor_Identity :=
+        (Vendor => ['?', 'A', 'Z'], Product => 0, Serial => 16#FFFF_FFFF#, Name_Last => 0,
+         Name => [others => ' ']);
+      W, Bad : DP.Wire_Message;
+   begin
+      for Service in OD.Provider loop
+         for Item of Identity_List'(LG, Unnamed) loop
+            W := OM.Encode_Identity (Service, Item);
+            Check (OM.Decode_Identity (Service, W) = (True, Item), "identity round trip");
+            for Word in W.Words'Range loop
+               for Bit in 0 .. 63 loop
+                  Bad := W;
+                  Bad.Words (Word) := Bad.Words (Word) xor Shift_Left (1, Bit);
+                  declare
+                     D : constant OM.Identity_Decoding := OM.Decode_Identity (Service, Bad);
+                  begin
+                     Check (not D.Valid or else OM.Encode_Identity (Service, D.Value) = Bad,
+                            "identity canonical");
+                  end;
+               end loop;
+            end loop;
+         end loop;
+         --  A name character past the name's length is refused.
+         Bad := OM.Encode_Identity (Service, LG);
+         Bad.Words (0) := (Bad.Words (0) and not Shift_Left (16#FF#, 48)) or Shift_Left (12, 48);
+         Check (not OM.Decode_Identity (Service, Bad).Valid, "name past its length refused");
+         Bad := OM.Encode_Identity (Service, LG);
+         Bad.Words (1) := (Bad.Words (1) and not 16#FF#) or Character'Pos ('a');
+         Check (not OM.Decode_Identity (Service, Bad).Valid, "lower-case vendor refused");
+         Bad := OM.Encode_Identity (Service, LG);
+         Bad.Words (2) := (Bad.Words (2) and not 16#FF#) or 16#7F#;
+         Check (not OM.Decode_Identity (Service, Bad).Valid, "control character refused");
+         Check (OM.Identify_Request (Service).Label = OM.Code (Service, OM.Identify), "identify label");
+      end loop;
+   end Identities;
+
+   --  Settings order: larger sizes first, then higher refresh rates; a
+   --  strict weak order (irreflexive, asymmetric, transitive) over a grid.
+   procedure Ordering is
+      Sizes : constant array (1 .. 4) of OM.Mode := [(3840, 2160), (1920, 1200), (1920, 1080), (720, 576)];
+      Rates : constant array (1 .. 3) of Unsigned_32 := [0, 50_000, 60_000];
+      function Item (S, R : Positive) return OM.Listed_Mode is
+        ((Size => Sizes (S), Refresh_Millihertz => Rates (R), others => <>));
+   begin
+      Check (OM.Before (Item (1, 1), Item (2, 3)), "a larger size first");
+      Check (OM.Before (Item (2, 1), Item (3, 3)), "the taller of two widths first");
+      Check (OM.Before (Item (3, 3), Item (3, 2)), "the higher rate first");
+      Check (OM.Before (Item (3, 1), Item (4, 3)), "576p last");
+      for A in Sizes'Range loop
+         for RA in Rates'Range loop
+            Check (not OM.Before (Item (A, RA), Item (A, RA)), "irreflexive");
+            for B in Sizes'Range loop
+               for RB in Rates'Range loop
+                  Check (not (OM.Before (Item (A, RA), Item (B, RB)) and then
+                              OM.Before (Item (B, RB), Item (A, RA))), "asymmetric");
+                  for C in Sizes'Range loop
+                     for RC in Rates'Range loop
+                        Check (not (OM.Before (Item (A, RA), Item (B, RB)) and then
+                                    OM.Before (Item (B, RB), Item (C, RC))) or else
+                               OM.Before (Item (A, RA), Item (C, RC)), "transitive");
+                     end loop;
+                  end loop;
+               end loop;
+            end loop;
+         end loop;
+      end loop;
+      Check (OM.Request_For (Item (1, 3)) = (OM.Exact_Rate, (3840, 2160), 60_000), "exact request for a rate");
+      Check (OM.Request_For (Item (1, 1)) = (OM.Best_Rate, (3840, 2160)), "best request without a rate");
+      Check (OM.Names ((OM.Exact_Rate, (3840, 2160), 60_000), Item (1, 3)), "exact names its mode");
+      Check (not OM.Names ((OM.Exact_Rate, (3840, 2160), 60_000), Item (1, 2)), "exact names one rate");
+      Check (OM.Names ((OM.Best_Rate, (3840, 2160)), Item (1, 2)), "best names any rate of its size");
+   end Ordering;
 begin
    Codecs;
+   Identities;
+   Ordering;
    Fitting;
    Listings;
    Layouts;

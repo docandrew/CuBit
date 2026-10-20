@@ -236,6 +236,101 @@ package body CuBit.Monitor_EDID.Catalog with SPARK_Mode is
    end Code_Timing;
 
    ---------------------------------------------------------------------------
+   --  VESA DMT 1.0 r13: totals, porches, sync and polarity. Pixel clocks in
+   --  10 kHz.
+   ---------------------------------------------------------------------------
+   function DMT_Timing (Item : DMT_Mode) return Monitor_EDID.Timing is
+      function Make (W, H, HFront, HSync, HBlank, VFront, VSync, VBlank : Positive;
+                     Clock : Pixel_Clock_10kHz; H_Positive, V_Positive : Boolean)
+        return Monitor_EDID.Timing
+      is
+        ((Width => W, Height => H, Horizontal_Blank => HBlank,
+          Vertical_Blank => VBlank, Clock => Clock,
+          Width_MM => 0, Height_MM => 0,
+          Horizontal_Front_Porch => HFront, Horizontal_Sync_Width => HSync,
+          Vertical_Front_Porch => VFront, Vertical_Sync_Width => VSync,
+          Sync => (Digital_Separate, H_Positive, V_Positive)))
+        with Pre => W <= Extent'Last and then H <= Extent'Last and then
+                    HBlank <= Blanking'Last and then VBlank <= Blanking'Last and then
+                    HFront <= 1023 and then HSync <= 1023 and then
+                    VFront <= 63 and then VSync <= 63 and then
+                    HFront + HSync <= HBlank and then VFront + VSync <= VBlank;
+   begin
+      case Item is
+         when DMT_640x480_60 => return Make (640, 480, 16, 96, 160, 10, 2, 45, 2_518, False, False);
+         when DMT_640x480_72 => return Make (640, 480, 24, 40, 192, 9, 3, 40, 3_150, False, False);
+         when DMT_640x480_75 => return Make (640, 480, 16, 64, 200, 1, 3, 20, 3_150, False, False);
+         when DMT_720x400_70 => return Make (720, 400, 18, 108, 180, 12, 2, 49, 2_832, False, True);
+         when DMT_800x600_56 => return Make (800, 600, 24, 72, 224, 1, 2, 25, 3_600, True, True);
+         when DMT_800x600_60 => return Make (800, 600, 40, 128, 256, 1, 4, 28, 4_000, True, True);
+         when DMT_800x600_72 => return Make (800, 600, 56, 120, 240, 37, 6, 66, 5_000, True, True);
+         when DMT_800x600_75 => return Make (800, 600, 16, 80, 256, 1, 3, 25, 4_950, True, True);
+         when DMT_1024x768_60 => return Make (1024, 768, 24, 136, 320, 3, 6, 38, 6_500, False, False);
+         when DMT_1024x768_70 => return Make (1024, 768, 24, 136, 304, 3, 6, 38, 7_500, False, False);
+         when DMT_1024x768_75 => return Make (1024, 768, 16, 96, 288, 1, 3, 32, 7_875, True, True);
+         when DMT_1152x864_75 => return Make (1152, 864, 64, 128, 448, 1, 3, 36, 10_800, True, True);
+         when DMT_1280x720_60 => return Make (1280, 720, 110, 40, 370, 5, 5, 30, 7_425, True, True);
+         when DMT_1280x800_60 => return Make (1280, 800, 72, 128, 400, 3, 6, 31, 8_350, False, True);
+         when DMT_1280x960_60 => return Make (1280, 960, 96, 112, 520, 1, 3, 40, 10_800, True, True);
+         when DMT_1280x1024_60 => return Make (1280, 1024, 48, 112, 408, 1, 3, 42, 10_800, True, True);
+         when DMT_1280x1024_75 => return Make (1280, 1024, 16, 144, 408, 1, 3, 42, 13_500, True, True);
+         when DMT_1366x768_60 => return Make (1366, 768, 70, 143, 426, 3, 3, 30, 8_550, True, True);
+         when DMT_1440x900_60 => return Make (1440, 900, 80, 152, 464, 3, 6, 34, 10_650, False, True);
+         when DMT_1600x900_60 => return Make (1600, 900, 24, 80, 200, 1, 3, 100, 10_800, True, True);
+         when DMT_1600x1200_60 => return Make (1600, 1200, 64, 192, 560, 1, 3, 50, 16_200, True, True);
+         when DMT_1680x1050_60 => return Make (1680, 1050, 104, 176, 560, 3, 6, 39, 14_625, False, True);
+         when DMT_1920x1080_60 => return Make (1920, 1080, 88, 44, 280, 4, 5, 45, 14_850, True, True);
+         when DMT_1920x1200_60 => return Make (1920, 1200, 48, 32, 160, 3, 6, 35, 15_400, True, False);
+         when DMT_2048x1152_60 => return Make (2048, 1152, 26, 80, 202, 1, 3, 48, 16_200, True, True);
+      end case;
+   end DMT_Timing;
+
+   function DMT_Refresh (Item : DMT_Mode) return Positive is
+     (case Item is
+        when DMT_640x480_60 | DMT_800x600_60 | DMT_1024x768_60 | DMT_1280x720_60 | DMT_1280x800_60 |
+             DMT_1280x960_60 | DMT_1280x1024_60 | DMT_1366x768_60 | DMT_1440x900_60 | DMT_1600x900_60 |
+             DMT_1600x1200_60 | DMT_1680x1050_60 | DMT_1920x1080_60 | DMT_1920x1200_60 |
+             DMT_2048x1152_60 => 60,
+        when DMT_640x480_72 | DMT_800x600_72 => 72,
+        when DMT_640x480_75 | DMT_800x600_75 | DMT_1024x768_75 | DMT_1152x864_75 | DMT_1280x1024_75 => 75,
+        when DMT_720x400_70 | DMT_1024x768_70 => 70,
+        when DMT_800x600_56 => 56);
+
+   --  The established-timing bits (E-EDID 1.4 table 3.18) of the DMT modes
+   --  CuBit knows: byte 35 bits 7 .. 0, byte 36 bits 7 .. 0.
+   Established_First : constant := 35;
+   type Established_Bit is record
+      Byte : Natural range Established_First .. Established_First + 1;
+      Bit : Natural range 0 .. 7;
+      Mode : DMT_Mode;
+   end record;
+   Established_Bits : constant array (1 .. 12) of Established_Bit :=
+     [(35, 7, DMT_720x400_70), (35, 5, DMT_640x480_60), (35, 3, DMT_640x480_72),
+      (35, 2, DMT_640x480_75), (35, 1, DMT_800x600_56), (35, 0, DMT_800x600_60),
+      (36, 7, DMT_800x600_72), (36, 6, DMT_800x600_75), (36, 3, DMT_1024x768_60),
+      (36, 2, DMT_1024x768_70), (36, 1, DMT_1024x768_75), (36, 0, DMT_1280x1024_75)];
+
+   --  Standard timings (E-EDID 1.4 3.9): eight two-byte slots; 01 01 is an
+   --  unused slot. Width (first byte + 31) * 8; aspect in the second byte's
+   --  top two bits (16:10, 4:3, 5:4, 16:9); refresh its low six bits + 60.
+   Standard_First : constant := 38;
+   Standard_Slots : constant := 8;
+   Unused_Slot : constant := 1;
+   Standard_Width_Offset : constant := 31;
+   Standard_Width_Unit : constant := 8;
+   Standard_Refresh_Base : constant := 60;
+   Aspect_Shift : constant := 64;
+   Refresh_Field : constant := 64;
+   type Aspect is (Aspect_16_10, Aspect_4_3, Aspect_5_4, Aspect_16_9);
+   function Height_For (Width : Natural; Ratio : Aspect) return Natural is
+     (case Ratio is
+        when Aspect_16_10 => Width * 10 / 16,
+        when Aspect_4_3 => Width * 3 / 4,
+        when Aspect_5_4 => Width * 4 / 5,
+        when Aspect_16_9 => Width * 9 / 16)
+     with Pre => Width <= 2_288;
+
+   ---------------------------------------------------------------------------
    function Same_Mode (A, B : Monitor_EDID.Timing) return Boolean is
      (A.Width = B.Width and then A.Height = B.Height and then A.Clock = B.Clock and then
       A.Horizontal_Blank = B.Horizontal_Blank and then A.Vertical_Blank = B.Vertical_Blank);
@@ -345,6 +440,30 @@ package body CuBit.Monitor_EDID.Catalog with SPARK_Mode is
          if Valid_CTA (Extensions (E)) then
             Each_Video (Extensions (E));
          end if;
+      end loop;
+      for Item of Established_Bits loop
+         if (Base (Item.Byte) and Shift_Left (Unsigned_8'(1), Item.Bit)) /= 0 then
+            Add (List, (DMT_Timing (Item.Mode), Established, 0, False, False));
+         end if;
+      end loop;
+      for Slot in 0 .. Standard_Slots - 1 loop
+         declare
+            First : constant Unsigned_8 := Base (Standard_First + 2 * Slot);
+            Second : constant Unsigned_8 := Base (Standard_First + 2 * Slot + 1);
+            Width : constant Natural := (Natural (First) + Standard_Width_Offset) * Standard_Width_Unit;
+            Height : constant Natural := Height_For (Width, Aspect'Val (Natural (Second) / Aspect_Shift));
+            Refresh : constant Natural := Natural (Second) mod Refresh_Field + Standard_Refresh_Base;
+         begin
+            if not (First = Unused_Slot and then Second = Unused_Slot) and then First /= 0 then
+               for Known in DMT_Mode loop
+                  if DMT_Timing (Known).Width = Width and then DMT_Timing (Known).Height = Height and then
+                    DMT_Refresh (Known) = Refresh
+                  then
+                     Add (List, (DMT_Timing (Known), Standard, 0, False, False));
+                  end if;
+               end loop;
+            end if;
+         end;
       end loop;
    end Collect;
 

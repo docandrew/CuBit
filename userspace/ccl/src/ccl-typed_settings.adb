@@ -23,10 +23,15 @@ package body CCL.Typed_Settings is
    LOCAL_KEY : constant CCL.Objects.Schema_Key :=
      [16#4C41_554E_4348_454E#, 16#5452_595F_4C4F_4341#, 16#4C5F_4B45_5900_0000#, 16#0000_0000_0000_0001#];
 
+   MODE_PREFIX : String renames CCL.Interfaces.Desktop_Display.MODE_PREFIX;
+
    function Kind_Of (Key : String) return Setting_Kind is
      (if Key'Length > LAUNCH_PREFIX'Length
          and then Key (Key'First .. Key'First + LAUNCH_PREFIX'Length - 1) = LAUNCH_PREFIX
       then Launch_Entry_Setting
+      elsif Key'Length > MODE_PREFIX'Length
+         and then Key (Key'First .. Key'First + MODE_PREFIX'Length - 1) = MODE_PREFIX
+      then Display_Mode_Setting
       elsif Key = CCL.Interfaces.Desktop_Input.KEY_REPEAT_KEY then Key_Repeat_Setting
       elsif Key = CCL.Interfaces.GPU_Power.WAITBOOST_KEY then GPU_Waitboost_Setting
       elsif Key = CCL.Interfaces.Desktop_Display.DISPLAY_SCALE_KEY then Display_Scale_Setting
@@ -40,6 +45,7 @@ package body CCL.Typed_Settings is
          when GPU_Waitboost_Setting => CCL.Interfaces.GPU_Power.TYPE_SOURCE,
          when Display_Scale_Setting => CCL.Interfaces.Desktop_Display.TYPE_SOURCE,
          when Display_Modeset_Setting => CCL.Interfaces.Desktop_Display.MODESET_TYPE_SOURCE,
+         when Display_Mode_Setting => CCL.Interfaces.Desktop_Display.MODE_TYPE_SOURCE,
          when Untyped => "");
    function Root_Name (Kind : Setting_Kind) return String is
      (case Kind is
@@ -48,6 +54,7 @@ package body CCL.Typed_Settings is
          when GPU_Waitboost_Setting => CCL.Interfaces.GPU_Power.ROOT_TYPE_NAME,
          when Display_Scale_Setting => CCL.Interfaces.Desktop_Display.ROOT_TYPE_NAME,
          when Display_Modeset_Setting => CCL.Interfaces.Desktop_Display.MODESET_ROOT_TYPE_NAME,
+         when Display_Mode_Setting => CCL.Interfaces.Desktop_Display.MODE_ROOT_TYPE_NAME,
          when Untyped => "");
 
    function Named (Object : Views.Snapshot; At_Cursor : Views.Cursor; Name : String) return Views.Cursor is

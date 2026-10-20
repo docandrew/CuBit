@@ -1,5 +1,6 @@
 //! Shared outline rasterization for both glyph ABIs: light (vertical-only)
-//! hinting, subpixel x offsets, and the bounded coverage grid.
+//! hinting, subpixel x offsets or (low density) vertical stems fitted to the
+//! pixel grid, and the bounded coverage grid.
 use ab_glyph_rasterizer::{Point, Rasterizer, point};
 use alloc::vec::Vec;
 use ttf_parser::{Face, GlyphId, OutlineBuilder};
@@ -69,12 +70,16 @@ impl Darken {
 
     /// Darkening for this face at `ratio` pixels per font unit, scaled by
     /// `gain` (1.0: FreeType's amount).
+    /// The face's standard vertical stem in font units: the left stem of a
+    /// capital H (its two smallest distinct point x coordinates).
+    pub(crate) fn stem(font: &Face) -> Option<f32> {
+        let mut edges = LeftEdges(f32::MAX, f32::MAX);
+        font.outline_glyph(font.glyph_index(VERTICAL_STEM)?, &mut edges)?;
+        (edges.1 < f32::MAX).then(|| edges.1 - edges.0)
+    }
+
     pub(crate) fn measure(font: &Face, ratio: f32, gain: f32) -> Self {
-        let vertical = || -> Option<f32> {
-            let mut edges = LeftEdges(f32::MAX, f32::MAX);
-            font.outline_glyph(font.glyph_index(VERTICAL_STEM)?, &mut edges)?;
-            (edges.1 < f32::MAX).then(|| edges.1 - edges.0)
-        };
+        let vertical = || Self::stem(font);
         let horizontal = || -> Option<f32> {
             let b = font.glyph_bounding_box(font.glyph_index(HORIZONTAL_STEM)?)?;
             Some(f32::from(b.y_max - b.y_min))
@@ -106,7 +111,7 @@ enum Step {
     CubicEnd,
 }
 #[derive(Default)]
-struct Recorded {
+pub(crate) struct Recorded {
     points: Vec<(f32, f32)>,
     steps: Vec<Step>,
     /// One past each contour's last point.
@@ -117,7 +122,7 @@ impl Recorded {
         self.points.push((x, y));
         self.steps.push(step);
     }
-    fn close_contour(&mut self) {
+    pub(crate) fn close_contour(&mut self) {
         if self.ends.last().copied().unwrap_or(0) != self.points.len() {
             self.ends.push(self.points.len());
         }
@@ -364,11 +369,196 @@ impl Zones {
     }
 }
 
+/// Grid fitting (UI-026, low density): a piecewise-linear horizontal map
+/// from font units to pixels that puts both edges of every vertical stem on
+/// whole pixels of the raster, each stem a whole number of pixels wide (at
+/// least one). Between and outside the stems it is linear, so a glyph moves
+/// and stretches by under a pixel and its advance is untouched. At low
+/// density a stem is about one pixel wide (IBM Plex Sans at 13 px: 1.14 px):
+/// on a quarter-pixel phase or a fractional edge it spreads over two pixels
+/// at half contrast, the blur grid fitting removes. Used only for rasters
+/// placed on whole pixels (one phase).
+#[derive(Clone)]
+pub(crate) struct Columns {
+    from: Vec<f32>,
+    to: Vec<f32>,
+    ratio: f32,
+}
+
+/// One straight or round vertical edge of an outline, in font units.
+#[derive(Clone, Copy)]
+struct Side {
+    x: f32,
+    low: f32,
+    high: f32,
+    /// The outline runs upward along it (y up).
+    up: bool,
+}
+
+/// Points this close in x (font units) count as one vertical line.
+const VERTICAL_TOLERANCE: f32 = 1.0;
+/// An edge shorter than this many pixels is not a stem's side (a serif
+/// tip, a bar's end).
+const EDGE_MIN_PIXELS: f32 = 1.0;
+/// A pair wider than this many standard stems is a glyph's outline, not a
+/// stem (the face's standard stem: the left stem of a capital H).
+const STEM_MAX_STEMS: f32 = 2.5;
+
+impl Columns {
+    pub(crate) fn plain(ratio: f32) -> Self {
+        Self { from: Vec::new(), to: Vec::new(), ratio }
+    }
+
+    /// The vertical edges of an outline: its straight vertical segments and
+    /// the vertical tangents of its curves (a round glyph's extremes: an
+    /// on-curve point with a control point straight above or below it),
+    /// joined when they lie on one x and run the same way (the two halves
+    /// of an 'o''s side, the pieces of an 'e''s bowl on two contours).
+    fn edges(rec: &Recorded, min_length: f32) -> Vec<Side> {
+        let on_curve = |step: Step| matches!(step, Step::Move | Step::Line | Step::QuadEnd | Step::CubicEnd);
+        let control = |step: Step| matches!(step, Step::QuadControl | Step::CubicControl);
+        let mut pieces: Vec<Side> = Vec::new();
+        let mut piece = |a: (f32, f32), b: (f32, f32)| {
+            if libm::fabsf(b.0 - a.0) <= VERTICAL_TOLERANCE && b.1 != a.1 {
+                pieces.push(Side { x: (a.0 + b.0) / 2.0, low: a.1.min(b.1), high: a.1.max(b.1), up: b.1 > a.1 });
+            }
+        };
+        let mut first = 0;
+        for &end in &rec.ends {
+            let n = end - first;
+            for k in 0..n {
+                let at = |m: usize| first + (m % n);
+                let (i, next, prev) = (at(k), at(k + 1), at(k + n - 1));
+                if !on_curve(rec.steps[i]) {
+                    continue;
+                }
+                let (p, q, o) = (rec.points[i], rec.points[next], rec.points[prev]);
+                // A straight segment: into a Line point, or the contour's
+                // closing segment back to its Move.
+                if matches!(rec.steps[next], Step::Line | Step::Move) {
+                    piece(p, q);
+                }
+                if control(rec.steps[prev]) {
+                    piece(o, p);
+                }
+                if control(rec.steps[next]) {
+                    piece(p, q);
+                }
+            }
+            first = end;
+        }
+        pieces.sort_by(|a, b| a.x.total_cmp(&b.x));
+        let mut joined: Vec<Side> = Vec::new();
+        for item in pieces {
+            if let Some(same) = joined
+                .iter_mut()
+                .find(|j| j.up == item.up && libm::fabsf(j.x - item.x) <= VERTICAL_TOLERANCE)
+            {
+                same.low = same.low.min(item.low);
+                same.high = same.high.max(item.high);
+            } else {
+                joined.push(item);
+            }
+        }
+        joined.retain(|e| e.high - e.low >= min_length);
+        joined
+    }
+
+    /// Fit `rec` (glyph outline, font units) at `ratio` pixels per unit with
+    /// its pen `shift` pixels right of the raster's left edge. `stem` is the
+    /// face's standard stem in font units (`Darken::stem`).
+    pub(crate) fn fit(rec: &Recorded, ratio: f32, shift: f32, stem: f32) -> Self {
+        let mut result = Self::plain(ratio);
+        if ratio <= 0.0 {
+            return result;
+        }
+        // Signed area: TrueType outer contours run clockwise (y up, negative
+        // area); there a stem's left edge runs upward.
+        let mut area = 0.0;
+        let mut first = 0;
+        for &end in &rec.ends {
+            for i in first..end {
+                let (a, b) = (rec.points[i], rec.points[if i + 1 < end { i + 1 } else { first }]);
+                area += a.0 * b.1 - b.0 * a.1;
+            }
+            first = end;
+        }
+        if area == 0.0 {
+            return result;
+        }
+        let left_runs_up = area < 0.0;
+        let edges = Self::edges(rec, EDGE_MIN_PIXELS / ratio);
+        let widest = if stem > 0.0 { STEM_MAX_STEMS * stem } else { f32::MAX };
+        // Every (left, right) pair that could be a stem, narrowest first;
+        // each edge joins at most one stem.
+        let mut pairs: Vec<(f32, usize, usize)> = Vec::new();
+        for (l, a) in edges.iter().enumerate() {
+            if a.up != left_runs_up {
+                continue;
+            }
+            for (r, b) in edges.iter().enumerate() {
+                let overlap = a.high.min(b.high) - a.low.max(b.low);
+                if b.up == left_runs_up || b.x <= a.x || overlap <= 0.0 || b.x - a.x > widest {
+                    continue;
+                }
+                pairs.push((b.x - a.x, l, r));
+            }
+        }
+        pairs.sort_by(|x, y| x.0.total_cmp(&y.0));
+        let mut used = alloc::vec![false; edges.len()];
+        let mut points: Vec<(f32, f32)> = Vec::new();
+        for &(_, l, r) in &pairs {
+            if used[l] || used[r] {
+                continue;
+            }
+            used[l] = true;
+            used[r] = true;
+            let (left, right) = (edges[l].x * ratio + shift, edges[r].x * ratio + shift);
+            let width = libm::roundf(right - left).max(1.0);
+            let start = libm::floorf((left + right - width) / 2.0 + 0.5);
+            points.push((edges[l].x, start - shift));
+            points.push((edges[r].x, start + width - shift));
+        }
+        points.sort_by(|x, y| x.0.total_cmp(&y.0));
+        // Keep the map strictly increasing in font units and increasing in
+        // pixels; a point that would fold the glyph is dropped.
+        for (f, t) in points {
+            if let (Some(&lf), Some(&lt)) = (result.from.last(), result.to.last()) {
+                if f <= lf || t <= lt {
+                    continue;
+                }
+            }
+            result.from.push(f);
+            result.to.push(t);
+        }
+        result
+    }
+
+    /// Pixels right of the pen for an x coordinate in font units.
+    pub(crate) fn map(&self, x: f32) -> f32 {
+        let n = self.from.len();
+        if n == 0 {
+            return x * self.ratio;
+        }
+        if x <= self.from[0] {
+            return self.to[0] + (x - self.from[0]) * self.ratio;
+        }
+        if x >= self.from[n - 1] {
+            return self.to[n - 1] + (x - self.from[n - 1]) * self.ratio;
+        }
+        let mut i = 0;
+        while i + 2 < n && x >= self.from[i + 1] {
+            i += 1;
+        }
+        self.to[i] + (x - self.from[i]) * (self.to[i + 1] - self.to[i]) / (self.from[i + 1] - self.from[i])
+    }
+}
+
 // Stream contours into the coverage rasterizer instead of first allocating a
 // Vec containing every curve. Only the bounded coverage grid needs scratch.
 pub(crate) struct Contours {
     raster: Rasterizer,
-    ratio: f32,
+    columns: Columns,
     shift: f32,
     left: f32,
     zones: Zones,
@@ -383,7 +573,7 @@ impl Contours {
     // exactly on a pixel boundary a rounding error left of the grid, where
     // its coverage is lost.)
     fn transform(&self, x: f32, y: f32) -> Point {
-        point((x * self.ratio + self.shift) - self.left, -self.zones.map(y) - self.top)
+        point((self.columns.map(x) + self.shift) - self.left, -self.zones.map(y) - self.top)
     }
 }
 impl OutlineBuilder for Contours {
@@ -429,8 +619,11 @@ pub(crate) enum Outline {
 }
 
 /// Prepare glyph `id` with the pen at x offset `shift` pixels (subpixel phase
-/// and origin margin), hinted through `zones`. Rejects (None) grids larger
-/// than `max_width` x `max_height`, before allocating.
+/// and origin margin), hinted through `zones`, its stems fitted to the
+/// pixel grid when `grid` (then not emboldened: a stem fitted to whole
+/// pixels needs no darkening). Rejects (None) grids larger than
+/// `max_width` x `max_height`, before allocating.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn prepare(
     font: &Face,
     id: GlyphId,
@@ -438,17 +631,27 @@ pub(crate) fn prepare(
     shift: f32,
     zones: Zones,
     darken: Darken,
+    grid: bool,
     max_width: u32,
     max_height: u32,
 ) -> Option<Outline> {
     let Some(bounds) = font.glyph_bounding_box(id) else {
         return Some(Outline::Empty);
     };
+    let darken = if grid { Darken::NONE } else { darken };
+    let mut recorded = Recorded::default();
+    let columns = if grid {
+        font.outline_glyph(id, &mut recorded)?;
+        recorded.close_contour();
+        Columns::fit(&recorded, ratio, shift, Darken::stem(font).unwrap_or(0.0))
+    } else {
+        Columns::plain(ratio)
+    };
     // Emboldening moves a point at most EMBOLDEN_REACH times its per-side
     // strength along an axis (at the sharpest turn it still shifts).
     let (gx, gy) = (EMBOLDEN_REACH * darken.x / 2.0, EMBOLDEN_REACH * darken.y / 2.0);
-    let left = libm::floorf((f32::from(bounds.x_min) - gx) * ratio + shift);
-    let right = libm::ceilf((f32::from(bounds.x_max) + gx) * ratio + shift);
+    let left = libm::floorf(columns.map(f32::from(bounds.x_min) - gx) + shift);
+    let right = libm::ceilf(columns.map(f32::from(bounds.x_max) + gx) + shift);
     let top = libm::floorf(-zones.map(f32::from(bounds.y_max) + gy));
     let bottom = libm::ceilf(-zones.map(f32::from(bounds.y_min) - gy));
     let (width, height) = (right - left, bottom - top);
@@ -456,7 +659,7 @@ pub(crate) fn prepare(
     // judged on the outline's own box (the emboldening margin is bounded by
     // the darkening curve: a few pixels at most); retain the full bounds so
     // overhangs do not corrupt coverage.
-    let plain_width = (f32::from(bounds.x_max) - f32::from(bounds.x_min)) * ratio;
+    let plain_width = columns.map(f32::from(bounds.x_max)) - columns.map(f32::from(bounds.x_min));
     let plain_height = zones.map(f32::from(bounds.y_max)) - zones.map(f32::from(bounds.y_min));
     let margin = 2.0 * libm::ceilf(EMBOLDEN_REACH * DARKEN_CURVE[0].1 / 2.0) + 2.0;
     if !(0.0..=max_width as f32).contains(&plain_width)
@@ -468,7 +671,7 @@ pub(crate) fn prepare(
     }
     let mut contours = Contours {
         raster: Rasterizer::new(width as usize, height as usize),
-        ratio,
+        columns,
         shift,
         left,
         zones,
@@ -476,7 +679,9 @@ pub(crate) fn prepare(
         first: point(0.0, 0.0),
         current: point(0.0, 0.0),
     };
-    if darken.active() {
+    if grid {
+        recorded.replay(&mut contours);
+    } else if darken.active() {
         let mut recorded = Recorded::default();
         font.outline_glyph(id, &mut recorded)?;
         recorded.close_contour();

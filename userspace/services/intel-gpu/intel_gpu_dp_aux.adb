@@ -91,7 +91,13 @@ package body Intel_GPU_DP_AUX with SPARK_Mode is
    end Pause_Us;
 
    --  One AUX transaction (intel_dp_aux_xfer): send Length bytes of
-   --  Request, receive the reply (Reply (1) is its header byte).
+   --  Request, receive the reply (Reply (1) is its header byte). Transfer
+   --  and Exchange carry contracts so the prover checks each once instead of
+   --  inlining them into every caller (inlined, Read_EDID_Block's proof
+   --  needed over 12 GB).
+   procedure Transfer (Line : Channel; Request : Message; Length : Message_Length;
+                       Reply : out Message; Reply_Length : out Natural; Result : out Status)
+     with Post => Reply_Length <= Max_Message;
    procedure Transfer (Line : Channel; Request : Message; Length : Message_Length;
                        Reply : out Message; Reply_Length : out Natural; Result : out Status) is
       Value : Unsigned_32;
@@ -176,6 +182,9 @@ package body Intel_GPU_DP_AUX with SPARK_Mode is
      with Pre => Request <= 16#F# and then Length <= Max_Payload;
 
    --  A transaction with DEFER retries; I2C replies also checked.
+   procedure Exchange (Line : Channel; Request : Message; Length : Message_Length; I2C : Boolean;
+                       Reply : out Message; Reply_Length : out Natural; Result : out Status)
+     with Post => Reply_Length <= Max_Message;
    procedure Exchange (Line : Channel; Request : Message; Length : Message_Length; I2C : Boolean;
                        Reply : out Message; Reply_Length : out Natural; Result : out Status) is
    begin

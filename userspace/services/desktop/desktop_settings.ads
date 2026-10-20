@@ -1,37 +1,58 @@
 with CuBit.Appearance;
 with CuBit.UI;
 with CuBit.Display_Layouts;
+with CuBit.Output_Modes;
 with Time_Zones;
 
---  Desktop-owned appearance, display and date & time pages. No IPC handlers
---  or file authority. The time-zone list is the bundled IANA database
---  (Time_Zones), so Settings can only store a zone the clock service knows.
---  Uses shared toolkit drawing/hit semantics, separate from compositor state.
+--  Desktop-owned appearance, display, date & time and monitor pages. No IPC
+--  handlers or file authority. The time-zone list is the bundled IANA
+--  database (Time_Zones), so Settings can only store a zone the clock
+--  service knows. Uses shared toolkit drawing/hit semantics, separate from
+--  compositor state.
 package Desktop_Settings is
    type Control is (None, Appearance_Tab, Displays_Tab, Date_Time_Tab, Monitor_Tab, Light, Dark, Image, Cubie, Slate, Ocean,
                     Fill, Fit, Center, Apply, Revert, Make_Primary, Scale_Down, Scale_Up, Scale_Auto,
-                    Zone_List, Zone_Previous, Zone_Next);
+                    Zone_List, Zone_Previous, Zone_Next, Mode_List, Mode_Previous, Mode_Next,
+                    Keep_Mode, Revert_Mode);
    subtype Tab_Control is Control range Appearance_Tab .. Monitor_Tab;
    type Page is (Appearance, Displays, Date_Time, Monitor);
-   --  The Monitor page (read-only, DISP-005): what the primary output's
-   --  monitor says (EDID through display.svc's catalog) and each of its
-   --  modes with the GPU's verdict. Desktop fills it when Settings opens.
-   --  Rows is what the page can show; Total counts every mode.
+   --  The Monitor page (DISP-005/016): what the primary output's monitor
+   --  says (EDID through display.svc) and its modes with the GPU's verdict,
+   --  sorted (CuBit.Output_Modes.Before) under an Auto row (the driver's
+   --  best admitted mode). Admitted rows can be chosen and applied; refused
+   --  rows stay visible with their reason. Desktop fills it when Settings
+   --  opens and after every mode change, and runs the switch and its
+   --  "Keep this display mode?" question (Desktop_Mode_Trial).
    Monitor_Text_Length : constant := 96;
    type Monitor_Line is record
       Text : String (1 .. Monitor_Text_Length) := [others => ' '];
       Length : Natural range 0 .. Monitor_Text_Length := 0;
       Available : Boolean := False;
    end record;
-   Monitor_Rows : constant := 14;
-   type Monitor_Lines is array (1 .. Monitor_Rows) of Monitor_Line;
+   function Line_Of (Text : String; Available : Boolean := False) return Monitor_Line;
+   type Monitor_Modes is array (Positive range <>) of CuBit.Output_Modes.Listed_Mode;
+   type Monitor_Mode_List is access Monitor_Modes;
+   procedure Free (Modes : in out Monitor_Mode_List);
+   --  A row of the mode list: Auto_Row, then the modes from 1.
+   subtype Mode_Row is Natural;
+   Auto_Row : constant Mode_Row := 0;
    type Monitor_Info is record
       Summary, Detail : Monitor_Line;
-      Lines : Monitor_Lines;
-      Shown : Natural range 0 .. Monitor_Rows := 0;
-      Total : Natural := 0;
+      --  Sorted; null when the output lists no modes.
+      Modes : Monitor_Mode_List;
+      --  The monitor has an EDID identity, so a choice can be saved for it.
+      Identified : Boolean := False;
+      --  The saved choice: Auto, or the row of the saved mode (Auto_Row
+      --  also when the saved mode is no longer listed).
+      Saved_Auto : Boolean := True;
+      Saved_Row : Mode_Row := Auto_Row;
    end record;
-   function Line_Of (Text : String; Available : Boolean := False) return Monitor_Line;
+   --  The outcome of the last Apply on the Monitor page.
+   type Mode_Status is
+     (Mode_Ready, Mode_Switching, Mode_Refused, Mode_Kept, Mode_Saved_Session_Only,
+      Mode_Reverted, Mode_Timed_Out);
+   --  The answer to "Keep this display mode?", taken by Desktop.
+   type Trial_Response is (No_Response, Keep_Response, Revert_Response);
    type Save_Status is (Unchanged, Saved_In_Config, Session_Only, Rejected, Scale_Rejected);
    type Diagram_Transform is record
       X, Y : Integer := 0;
@@ -60,13 +81,28 @@ package Desktop_Settings is
       Pending_Zone, Applied_Zone, Zone_Top : Time_Zones.Time_Zone := Time_Zones.Zone_UTC;
       Zone_Status : Save_Status := Unchanged;
       Monitor_View : Monitor_Info;
+      --  The chosen row and the first row the mode list shows.
+      Mode_Choice, Mode_Top : Mode_Row := Auto_Row;
+      Monitor_Status : Mode_Status := Mode_Ready;
+      --  A switch on trial: the question and its countdown (Desktop sets
+      --  both), and the user's answer (Desktop takes it).
+      Trial_Open : Boolean := False;
+      Trial_Seconds : Natural := 0;
+      Answer : Trial_Response := No_Response;
    end record;
    procedure Open (View : out State; Current : CuBit.Appearance.Preferences;
                    Layout : CuBit.Display_Layouts.Layout;
                    Primary : CuBit.Display_Layouts.Named_Display_ID;
                    Auto_Scale : Boolean;
                    Zone : Time_Zones.Time_Zone);
+   --  Replace the Monitor page's contents (freeing the previous mode list)
+   --  and choose the saved row.
    procedure Set_Monitor (View : in out State; Info : Monitor_Info);
+   --  Choose a listed row (Auto or an admitted mode) and scroll it into view.
+   procedure Choose_Mode (View : in out State; Row : Mode_Row);
+   --  The chosen row's mode (Mode_Choice /= Auto_Row and listed).
+   function Chosen_Mode (View : State) return CuBit.Output_Modes.Listed_Mode
+     with Pre => View.Monitor_View.Modes /= null and then View.Mode_Choice in View.Monitor_View.Modes'Range;
    -- Layout emits synchronous drawing operations. Every primitive is required:
    -- a physical-output renderer must not silently inherit a canvas pixel writer.
    -- Canvas carries logical bounds/clip; Render never dereferences its address.

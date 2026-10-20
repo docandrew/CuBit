@@ -4,9 +4,9 @@ project Settings_Renderer is
    for Source_Dirs use (".", "../../userspace/services/desktop",
      "../../userspace/lib/ui", "../../userspace/lib/theme", "../../userspace/lib/display",
      "../../userspace/ccl/tools/ccl-ui-preview/host", "../../userspace/lib/compositor",
-     "../../userspace/lib/time/build/generated");
+     "../../userspace/lib/time/build/generated", "build/protocol");
    for Source_Files use ("renderer_tests.adb", "wallpaper_trap.adb", "compositor_image_sampling.ads", "compositor_image_sampling.adb", "desktop_backdrop_style.ads", "desktop_wallpaper.ads",
-     "desktop_settings.ads", "desktop_settings.adb", "time_zones.ads", "time_zones.adb", "desktop_auto_scale.ads", "desktop_auto_scale.adb", "cubit.ads", "cubit-ui.ads", "cubit-ui.adb",
+     "desktop_settings.ads", "desktop_settings.adb", "cubit-output_modes.ads", "cubit-output_modes.adb", "cubit-output_discovery.ads", "cubit-output_discovery.adb", "cubit-desktop_protocol.ads", "cubit-desktop_protocol.adb", "cubit-grant_references.ads", "time_zones.ads", "time_zones.adb", "desktop_auto_scale.ads", "desktop_auto_scale.adb", "cubit.ads", "cubit-ui.ads", "cubit-ui.adb",
      "cubit-ui-window_chrome.ads", "cubit-ui-window_chrome.adb", "icon_edge_choice.ads", "icon_edge_choice.adb", "text_fit.ads", "text_fit.adb",
      "font8x16.ads", "cubit-fonts.ads", "glyph_pen.ads", "cubit-fonts.adb", "cubit-theme.ads",
      "cubit-appearance.ads", "cubit-appearance.adb", "cubit-display_geometry.ads",

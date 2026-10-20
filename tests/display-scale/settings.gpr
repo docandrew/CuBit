@@ -1,13 +1,15 @@
---  Hosted tests of the typed desktop.display.scale setting (CCL schema,
---  canonical form, the desktop's decoder and encoder).
+--  Hosted tests of the typed desktop.display.scale and
+--  desktop.display.mode.<monitor> settings (CCL schema, canonical form, the
+--  desktop's decoders and encoders). build/protocol holds hosted copies of
+--  the freestanding protocol units Output_Modes needs (run.sh).
 with "../../userspace/ccl/cubit_shared.gpr";
 project Settings is
    for Source_Dirs use (".", "../../userspace/services/desktop/", "../../userspace/ccl/src",
-     "../../userspace/lib/display");
+     "../../userspace/lib/display", "build/protocol");
    for Excluded_Source_Files use ("main.adb", "auto_scale_tests.adb");
    for Object_Dir use "build/settings";
    for Exec_Dir use "build/settings";
-   for Main use ("settings_tests.adb");
+   for Main use ("settings_tests.adb", "mode_settings_tests.adb");
    package Compiler is
       for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnatwa", "-g", "-O1");
    end Compiler;

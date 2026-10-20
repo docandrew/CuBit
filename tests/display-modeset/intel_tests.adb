@@ -193,6 +193,35 @@ procedure Intel_Tests is
          pragma Assert (B /= 0 and then UHD.Items (B).Timing.Width = 3840 and then
                         UHD.Items (B).Timing.Clock = 29_700);
       end;
+      --  DISP-016: the mode the pipe runs, from the readout. Several listed
+      --  modes are 1920 x 1080; only the one with the scan's totals and the
+      --  nearest clock is current (1080p50 has other totals).
+      declare
+         Sixty : constant A.Scan := (1920, 1080, 2200, 1125, 148_500);
+         Found : constant Natural := A.Running (UHD, Sixty);
+         Sizes_1080 : Natural := 0;
+         Drifted : C.Mode_List := UHD;
+      begin
+         for I in 1 .. UHD.Count loop
+            if UHD.Items (I).Timing.Width = 1920 and then UHD.Items (I).Timing.Height = 1080 then
+               Sizes_1080 := Sizes_1080 + 1;
+            end if;
+         end loop;
+         pragma Assert (Sizes_1080 >= 2);
+         pragma Assert (Found /= 0 and then UHD.Items (Found).Timing.Clock = 14_850 and then
+                        UHD.Items (Found).Timing.Horizontal_Blank = 280);
+         --  A PLL read back a few kHz off still finds it.
+         pragma Assert (A.Running (UHD, (Sixty with delta Pixel => 148_498)) = Found);
+         --  Totals no listed mode has: nothing is current.
+         pragma Assert (A.Running (UHD, (Sixty with delta Total_Width => 2080)) = 0);
+         --  59.94 and 60 Hz share their totals: the nearer clock wins.
+         pragma Assert (Drifted.Count < Drifted.Capacity);
+         Drifted.Count := Drifted.Count + 1;
+         Drifted.Items (Drifted.Count) := UHD.Items (Found);
+         Drifted.Items (Drifted.Count).Timing.Clock := 14_835;
+         pragma Assert (A.Running (Drifted, (Sixty with delta Pixel => 148_352)) = Drifted.Count);
+         pragma Assert (A.Running (Drifted, Sixty) = Found);
+      end;
    end Check_Admission;
 
    procedure Check_GMBUS is

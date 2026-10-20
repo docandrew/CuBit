@@ -117,4 +117,35 @@ package Intel_GPU_Mode_Admission with SPARK_Mode, Pure is
      with Pre => Verdicts'First = 1 and then Verdicts'Last = List.Count,
           Post => Best'Result <= List.Count and then
             (if Best'Result /= 0 then Verdicts (Best'Result) = Admitted);
+
+   --  What the pipe scans now, read back from the hardware (transcoder
+   --  timing generator and the PLL's dividers; DISP-002).
+   type Scan is record
+      Width, Height, Total_Width, Total_Height : Positive := 1;
+      Pixel : Clock_kHz := 0;
+   end record;
+   function Same_Extents (Mode : E.Timing; Item : Scan) return Boolean is
+     (Mode.Width = Item.Width and then Mode.Height = Item.Height and then
+      Mode.Width + Mode.Horizontal_Blank = Item.Total_Width and then
+      Mode.Height + Mode.Vertical_Blank = Item.Total_Height);
+   --  kHz between a mode's clock and the scan's.
+   function Distance (Mode : E.Timing; Item : Scan) return Clock_kHz is
+     (if Pixel_kHz (Mode) >= Item.Pixel then Pixel_kHz (Mode) - Item.Pixel
+      else Item.Pixel - Pixel_kHz (Mode));
+
+   --  The listed mode the output runs (DISP-016: Settings marks exactly
+   --  one current): one with the scan's active and total extents whose
+   --  clock is nearest the read-back clock (59.94 and 60 Hz modes share
+   --  their extents), the first on a tie. Zero when no listed mode has those
+   --  extents: the firmware drives a timing the monitor does not list.
+   function Running (List : C.Mode_List; Item : Scan) return Natural
+     with Post => Running'Result <= List.Count and then
+       (if Running'Result /= 0 then
+          Same_Extents (List.Items (Running'Result).Timing, Item) and then
+          (for all I in 1 .. List.Count =>
+             (if Same_Extents (List.Items (I).Timing, Item) then
+                Distance (List.Items (Running'Result).Timing, Item) <=
+                Distance (List.Items (I).Timing, Item)))
+        else
+          (for all I in 1 .. List.Count => not Same_Extents (List.Items (I).Timing, Item)));
 end Intel_GPU_Mode_Admission;

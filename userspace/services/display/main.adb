@@ -15,6 +15,7 @@ with System.Storage_Elements; use System.Storage_Elements;
 
 with CuBit.System_Facts;
 with CuBit.Messages; use CuBit.Messages;
+with Display_Logs;
 with CuBit.Display_Protocol;
 with CuBit.Desktop_Messages;
 with CuBit.Memory_Grants;
@@ -44,6 +45,8 @@ with CuBit.Display_Plane_Protocol;
 with CuBit.GPU_Plane_Protocol;
 
 procedure main is
+   --  Every line also reaches logstore (Display_Logs), not only the console.
+   procedure debugPrint (Text : String) renames Display_Logs.Write;
    package DSP renames CuBit.Display_Protocol;
    use type DSP.Frame_Outcome;
    use type DSP.Buffer_Disposition;
@@ -55,7 +58,7 @@ procedure main is
    package Outputs renames CuBit.Display_Outputs.Registry;
    package OD renames CuBit.Output_Discovery;
    package OM renames CuBit.Output_Modes;
-   use type OM.Mode, OM.DP.Status_Code;
+   use type OM.Mode, OM.DP.Status_Code, OM.Rate_Choice, OM.DP.Wire_Message;
    package GM renames CuBit.Graphics_Metrics;
    package Repair renames Compositor_Repaint;
    package BT renames CuBit.Backend_Targets;
@@ -2421,7 +2424,7 @@ procedure main is
 
    procedure handleSetMode (from : Process_ID; request : Message; replyMsg : out Message) is
       State : Output_State renames outputStates (selectedOutput);
-      Wanted : constant OM.Mode_Decoding :=
+      Wanted : constant OM.Request_Decoding :=
         OM.Decode_Set_Mode (OD.Display_Broker, CuBit.Desktop_Messages.To_Wire (request));
       Current : constant OM.Mode := (OD.Extent (State.fbWidth), OD.Extent (State.fbHeight));
       Result : OM.Mode_Result := (DSP.DP.Bad_State, Current);
@@ -2432,15 +2435,31 @@ procedure main is
          Result.Status := DSP.DP.Invalid_Request;
       elsif State.backend.Kind /= Native_GPU then
          Result.Status := DSP.DP.Unsupported;
+         debugPrint ("display: mode change refused: the output has no native GPU backend" & LF);
       elsif State.displayOwner /= No_Process and then State.displayOwner /= from then
          Result.Status := DSP.DP.Denied;
+         debugPrint ("display: mode change refused: the caller does not own the output" & LF);
       elsif State.presentationFault or else State.srcAcquired or else
         Pool_Registry.Count (State.Pool) /= 0 or else State.activeSession /= 0 or else
         State.backendToken /= 0 or else PS.Current (State.frameState) /= PS.Idle or else
         BT.Current (State.Targets) not in BT.Unconfigured | BT.Idle
       then
          Result.Status := DSP.DP.Bad_State;
-      elsif Wanted.Value = Current then
+         --  Name what is still in use, so a refused mode change is
+         --  explainable from Boot Logs.
+         debugPrint ("display: mode change to " & Dimensions (Wanted.Value.Size.Width, Wanted.Value.Size.Height) &
+           " refused, output busy:" &
+           (if State.presentationFault then " presentation-fault" else "") &
+           (if State.srcAcquired then " source-acquired" else "") &
+           (if Pool_Registry.Count (State.Pool) /= 0 then " pools" &
+              Pool_Registry.Count (State.Pool)'Image else "") &
+           (if State.activeSession /= 0 then " session" else "") &
+           (if State.backendToken /= 0 then " backend-call" else "") &
+           (if PS.Current (State.frameState) /= PS.Idle then " frame-in-flight" else "") &
+           (if BT.Current (State.Targets) not in BT.Unconfigured | BT.Idle then " targets-busy" else "") &
+           LF);
+      elsif Wanted.Value.Rate = OM.Best_Rate and then Wanted.Value.Size = Current then
+         --  An exact rate goes through: the GPU knows the rate it runs.
          Result.Status := DSP.DP.Success;
       else
          Call := CuBit.Desktop_Messages.From_Wire (DSP.With_Output
@@ -2448,6 +2467,10 @@ procedure main is
          Call.tag := capCall (GPU_Service, Call,
                               CuBit.Messages.Deadline_After (GPU_Call_Deadline_Ms));
          Answer := OM.Decode_Result (OD.GPU_Backend, CuBit.Desktop_Messages.To_Wire (Call));
+         if not Answer.Valid then
+            debugPrint ("display: mode change to " & Dimensions (Wanted.Value.Size.Width, Wanted.Value.Size.Height) &
+              ": no valid answer from the GPU" & LF);
+         end if;
          if Answer.Valid then
             Result := Answer.Value;
             if Result.Status = DSP.DP.Success and then Result.Current /= Current then
@@ -2486,32 +2509,50 @@ procedure main is
          return;
       end if;
 
-      --  DISP-005: the output's monitor modes and the GPU's verdicts, read
-      --  through from the backend (Intel outputs; others answer Unsupported).
-      if request.tag.label = OM.Code (OD.Display_Broker, OM.List_Mode) then
+      --  DISP-005/016: the output's monitor modes with the GPU's verdicts
+      --  (List_Mode) and the monitor's EDID identity (Identify), read
+      --  through from the output's GPU backend; other outputs answer
+      --  Unsupported.
+      if request.tag.label = OM.Code (OD.Display_Broker, OM.List_Mode) or else
+        request.tag.label = OM.Code (OD.Display_Broker, OM.Identify)
+      then
          declare
-            Wanted : constant OM.Index_Decoding := OM.Decode_List_Request
-              (OD.Display_Broker, DSP.Without_Output (CuBit.Desktop_Messages.To_Wire (request)));
+            Wire : constant CuBit.Display_Protocol.Wire_Message :=
+              DSP.Without_Output (CuBit.Desktop_Messages.To_Wire (request));
             Output : constant DSP.Output_Number := DSP.Output_Of (CuBit.Desktop_Messages.To_Wire (request));
+            Listing : constant Boolean := request.tag.label = OM.Code (OD.Display_Broker, OM.List_Mode);
+            Wanted : constant OM.Index_Decoding :=
+              (if Listing then OM.Decode_List_Request (OD.Display_Broker, Wire) else (Valid => False));
             Call : Message;
-            Answer : OM.Listing_Decoding;
+            Listed : OM.Listing_Decoding;
+            Named : OM.Identity_Decoding;
          begin
             replyMsg.tag := (label => request.tag.label, length => 1,
                              protocol => 0, ipc => <>, reserved => 0);
             replyMsg.words (0) := DISPLAY_ERR_UNSUPPORTED;
-            if Wanted.Valid and then Output in Output_Index and then intelTakeover and then
-              Output = 0 and then outputStates (Output).backend.Kind = Native_GPU
+            if (Wanted.Valid or else (not Listing and then Wire = OM.Identify_Request (OD.Display_Broker)))
+              and then Output in Output_Index and then readyOutputs (Output) and then
+              outputStates (Output).backend.Kind = Native_GPU
             then
                Call := CuBit.Desktop_Messages.From_Wire (DSP.With_Output
-                 (OM.Encode_List_Request (OD.GPU_Backend, Wanted.Value), Output));
+                 ((if Listing then OM.Encode_List_Request (OD.GPU_Backend, Wanted.Value)
+                   else OM.Identify_Request (OD.GPU_Backend)), Output));
                Call.tag := capCall (GPU_Service, Call,
                                     CuBit.Messages.Deadline_After (GPU_Call_Deadline_Ms));
-               Answer := OM.Decode_Listing (OD.GPU_Backend, CuBit.Desktop_Messages.To_Wire (Call));
-               if Answer.Valid then
-                  replyMsg := CuBit.Desktop_Messages.From_Wire
-                    (OM.Encode_Listing (OD.Display_Broker, Answer.Value));
+               if Listing then
+                  Listed := OM.Decode_Listing (OD.GPU_Backend, CuBit.Desktop_Messages.To_Wire (Call));
+                  if Listed.Valid then
+                     replyMsg := CuBit.Desktop_Messages.From_Wire
+                       (OM.Encode_Listing (OD.Display_Broker, Listed.Value));
+                  else
+                     replyMsg.words (0) := DISPLAY_ERR_BAD_STATE;
+                  end if;
                else
-                  replyMsg.words (0) := DISPLAY_ERR_BAD_STATE;
+                  Named := OM.Decode_Identity (OD.GPU_Backend, CuBit.Desktop_Messages.To_Wire (Call));
+                  if Named.Valid then
+                     replyMsg := CuBit.Desktop_Messages.From_Wire
+                       (OM.Encode_Identity (OD.Display_Broker, Named.Value));
+                  end if;
                end if;
             end if;
          end;

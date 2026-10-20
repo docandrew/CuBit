@@ -51,7 +51,7 @@ void *__wrap_cubit_vulkan_device_context_request(const struct cubit_mesa_service
 uint32_t __real_cubit_vulkan_device_targets_prepare(uint32_t,uint32_t,struct cubit_vulkan_device_targets *);
 uint32_t __wrap_cubit_vulkan_device_targets_prepare(uint32_t w,uint32_t h,struct cubit_vulkan_device_targets *out)
 {uint32_t result=__real_cubit_vulkan_device_targets_prepare(w,h,out);if(!result)targets=*out;return result;}
-struct font_request {uint32_t face,code,n,d,width,height,pitch,capacity,phases;};
+struct font_request {uint32_t face,code,n,d,width,height,pitch,capacity,phases,grid;};
 /* Compositor_Glyph_Layout.Phases: masks stack one raster per quarter-pixel phase. */
 #define GLYPH_PHASES 4u
 struct font_metrics {uint32_t advance,height;};

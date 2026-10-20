@@ -7,6 +7,7 @@
 ------------------------------------------------------------------------------
 with Interfaces;
 with CuBit.UI.Widgets.Bluecurve;
+with Icon_Edge_Choice;
 
 package body CuBit.UI.Widgets is
    function Parent_Canvas
@@ -282,11 +283,33 @@ package body CuBit.UI.Widgets is
       Draw_Stock_Icon (Icon_Canvas, X, Y, icon, enabled);
    end Toolbar_Button;
 
+   --  Drawn 1:1 from the export nearest the canvas's density, never
+   --  resampled (Icon_Edge_Choice, as CuBit.UI.Icons): a 16-pixel icon at
+   --  125% stays the crisp 16-pixel artwork, not a stretched copy.
+   Stock_Small_Edge : constant := 16;
+   Stock_Large_Edge : constant := 32;
+   Stock_Edges : constant Icon_Edge_Choice.Edge_List := [Stock_Small_Edge, Stock_Large_Edge];
+   pragma Compile_Time_Error
+     (Bluecurve.Icon_Size /= STOCK_ICON_SIZE or else Bluecurve.Pixels_16 (Open_Document)'Length (1) /= Stock_Small_Edge
+      or else Bluecurve.Pixels_32 (Open_Document)'Length (1) /= Stock_Large_Edge,
+      "the stock atlas holds the 16- and 32-pixel exports");
+
    procedure Draw_Stock_Icon
      (c : CuBit.UI.Canvas; x, y : Natural; icon : Toolbar_Icon;
       enabled : Boolean := True) is
    begin
-      CuBit.UI.Draw_Bitmap (c, x, y, Bluecurve.Pixels (icon), enabled);
+      if c.densityNumerator = c.densityDenominator then
+         CuBit.UI.Draw_Bitmap (c, x, y, Bluecurve.Pixels_16 (icon), enabled);
+      elsif Stock_Edges (Icon_Edge_Choice.Nearest
+                           (Stock_Edges, STOCK_ICON_SIZE, c.densityNumerator, c.densityDenominator)) =
+            Stock_Large_Edge
+      then
+         CuBit.UI.Draw_Bitmap_Native
+           (c, (x, y, STOCK_ICON_SIZE, STOCK_ICON_SIZE), Bluecurve.Pixels_32 (icon), enabled);
+      else
+         CuBit.UI.Draw_Bitmap_Native
+           (c, (x, y, STOCK_ICON_SIZE, STOCK_ICON_SIZE), Bluecurve.Pixels_16 (icon), enabled);
+      end if;
    end Draw_Stock_Icon;
 
    procedure Toolbar_Separator
