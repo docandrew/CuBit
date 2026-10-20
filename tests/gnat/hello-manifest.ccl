@@ -1,0 +1,13 @@
+# The Ada program GNAT builds on CuBit (tests/gnat): it writes its
+# transcript to standard output (its unix.stdout outlet, which the test
+# reads) and to transcript.txt in the work place, which the test delegates
+# to it. ccl-manifest renders this as assembly (hello-manifest.s), which
+# the gcc driver assembles and links on CuBit with the program.
+(Executable_Manifest
+  identity => "com.cubit.gnat-hello"
+  version => "0.1.0"
+  requests => [(service "filesystem" "filesystem")]
+  outlets => [
+    (Outlet "unix.stdout" Element.Text pages => 4)
+    (Outlet "unix.stderr" Element.Text pages => 4)]
+  descriptors => [(Descriptor 1 "unix.stdout") (Descriptor 2 "unix.stderr")])
