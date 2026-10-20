@@ -32,7 +32,7 @@ def atlas():
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("output", type=Path, help="package directory, e.g. build/Assets/cubit-icons/3")
+    parser.add_argument("output", type=Path, help="package directory, e.g. build/Assets/cubit-icons/4")
     parser.add_argument("--reference", type=Path,
                         help="also write the atlas as applications.rgba here (test oracle)")
     args = parser.parse_args()

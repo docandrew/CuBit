@@ -25,7 +25,7 @@ procedure Main is
       Ada.Streams.Stream_IO.Open (File, Ada.Streams.Stream_IO.In_File, Path);
       if Ada.Streams.Stream_IO.Size (File) > Bytes'Length then
          Ada.Streams.Stream_IO.Close (File);
-         Put_Line (Standard_Error, Path & ": source exceeds 8192 bytes");
+         Put_Line (Standard_Error, Path & ": source exceeds" & Natural'Image (CCL.Declarations.MAX_SOURCE) & " bytes");
          return;
       end if;
       Ada.Streams.Stream_IO.Read (File, Bytes, Last);

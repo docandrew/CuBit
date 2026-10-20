@@ -8,7 +8,7 @@
 package Desktop_Icon_Assets is
    --  The icon package Desktop was built against (its exact version, like
    --  any other dependency): the atlas order is Desktop_Icons.Icon_ID's.
-   Package_Path : constant String := "cubit-icons/3/";
+   Package_Path : constant String := "cubit-icons/4/";
    File_Name    : constant String := "applications.qoi";
 
    --  Load the atlas if it has not been tried.

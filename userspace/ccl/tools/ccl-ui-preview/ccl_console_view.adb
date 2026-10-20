@@ -592,6 +592,176 @@ package body CCL_Console_View is
       return Result;
    end Statistics;
 
+   ---------------------------------------------------------------------------
+   --  Articles (CCL.Presentations.Article): a lexicon entry as a page.
+   --  One layout serves measuring and drawing (Lay_Out_Article), so a
+   --  card's height always matches what is drawn.
+   ---------------------------------------------------------------------------
+   package CP renames CCL.Presentations;
+   use type CP.Article_Command;
+   ARTICLE_INDENT : constant := 4;   --  columns before a sense's text
+   type Article_Style is (Head_Style, Part_Style, Number_Style, Body_Style, Example_Style,
+                          Label_Style, Note_Style);
+
+   function Part_Label (Part : CP.Part_Name) return String is
+     (case Part is
+         when CP.Noun => "noun", when CP.Verb => "verb",
+         when CP.Adjective => "adjective", when CP.Adverb => "adverb");
+   function Role_Label (Role : CP.Word_Role) return String is
+     (case Role is
+         when CP.Synonyms => "synonyms", when CP.Antonyms => "antonyms",
+         when CP.Related => "related", when CP.Broader => "broader",
+         when CP.Forms => "see also", when CP.Suggestions => "did you mean");
+   function Command_Name (Command : CP.Article_Command) return String is
+     (case Command is
+         when CP.Dict_Command => "dict", when CP.Thesaurus_Command => "thesaurus",
+         when CP.Synonym_Command => "synonym");
+   function Lexicon_Name (Command : CP.Article_Command) return String is
+     (case Command is
+         when CP.Dict_Command => "dictionary", when CP.Thesaurus_Command => "thesaurus",
+         when CP.Synonym_Command => "thesaurus");
+
+   --  The last index of Text's next row from From, at most Width columns,
+   --  broken after a space when one is in reach.
+   function Row_End (Text : String; From : Positive; Width : Positive) return Natural is
+   begin
+      if Text'Last - From + 1 <= Width then
+         return Text'Last;
+      end if;
+      for I in reverse From .. From + Width - 1 loop
+         if Text (I) = ' ' then return I; end if;
+      end loop;
+      return From + Width - 1;
+   end Row_End;
+
+   generic
+      with procedure Put (Row, Column : Natural; Text : String; Style : Article_Style);
+      --  A word linking to its entry (Span in the literal), or Next_Page.
+      with procedure Put_Link (Row, Column : Natural; Text : String; Span : CP.Literal_Span;
+                               Next_Page : Boolean);
+   procedure Lay_Out_Article
+     (Outcome : CCL.Language.Interpretation_Result; Page : CP.Article_View; Columns : Positive;
+      Rows : out Natural);
+
+   procedure Lay_Out_Article
+     (Outcome : CCL.Language.Interpretation_Result; Page : CP.Article_View; Columns : Positive;
+      Rows : out Natural)
+   is
+      Row : Natural := 0;
+      Width : constant Positive := Positive'Max (8, Columns - ARTICLE_INDENT);
+      --  Text wrapped from column Indent, each row at most Width columns.
+      procedure Wrapped (Text : String; Indent : Natural; Style : Article_Style) is
+         From : Positive := Text'First;
+         Last : Natural;
+      begin
+         if Text'Length = 0 then
+            Row := Row + 1;
+            return;
+         end if;
+         while From <= Text'Last loop
+            Last := Row_End (Text, From, Width);
+            Put (Row, Indent, Text (From .. Last), Style);
+            Row := Row + 1;
+            From := Last + 1;
+         end loop;
+      end Wrapped;
+   begin
+      for L in 1 .. Page.Line_Count loop
+         declare
+            Line : CP.Article_Line renames Page.Lines (L);
+            Text : constant String := CP.Span_Text (Outcome, Line.Text);
+         begin
+            case Line.Kind is
+               when CP.Headword =>
+                  Put (Row, 0, Text, Head_Style);
+                  Row := Row + 1;
+               when CP.Heading =>
+                  Put (Row, 0, Part_Label (Line.Part), Part_Style);
+                  Row := Row + 1;
+               when CP.Numbered =>
+                  declare
+                     Number : constant String := Image (Line.Number) & ".";
+                  begin
+                     Put (Row, Natural'Max (0, ARTICLE_INDENT - 1 - Number'Length), Number, Number_Style);
+                     Wrapped (Text, ARTICLE_INDENT, Body_Style);
+                  end;
+               when CP.Example =>
+                  Wrapped ("""" & Text & """", ARTICLE_INDENT + 2, Example_Style);
+               when CP.Missing =>
+                  Wrapped ("""" & Text & """ is not in the " & Lexicon_Name (Page.Command), 0, Body_Style);
+               when CP.Words =>
+                  declare
+                     Label : constant String := Role_Label (Line.Role) & ": ";
+                     Start : constant Natural := ARTICLE_INDENT + Label'Length;
+                     Column : Natural := Start;
+                  begin
+                     Put (Row, ARTICLE_INDENT, Label, Label_Style);
+                     for K in Line.First_Word .. Line.First_Word + Line.Word_Count - 1 loop
+                        declare
+                           Word : constant String := CP.Span_Text (Outcome, Page.Words (K));
+                           More : constant Boolean := K < Line.First_Word + Line.Word_Count - 1;
+                        begin
+                           if Column > Start and then Column + Word'Length + 1 > ARTICLE_INDENT + Width then
+                              Row := Row + 1;
+                              Column := Start;
+                           end if;
+                           Put_Link (Row, Column, Word, Page.Words (K), False);
+                           Column := Column + Word'Length;
+                           if More then
+                              Put (Row, Column, ",", Label_Style);
+                              Column := Column + 2;
+                           end if;
+                        end;
+                     end loop;
+                     Row := Row + 1;
+                  end;
+            end case;
+         end;
+      end loop;
+      --  A page of a longer entry: where it is, and a link to the next.
+      if Page.Shown > 0 and then Page.First_Shown + Page.Shown - 1 < Page.Total then
+         declare
+            Where : constant String :=
+              "senses" & Natural'Image (Page.First_Shown) & "-" &
+              Image (Page.First_Shown + Page.Shown - 1) & " of" & Natural'Image (Page.Total) & "  ";
+         begin
+            Put (Row, 0, Where, Note_Style);
+            Put_Link (Row, Where'Length, "next page", (1, 0), True);
+            Row := Row + 1;
+         end;
+      end if;
+      Rows := Row;
+   end Lay_Out_Article;
+
+   function Article_Rows
+     (Outcome : CCL.Language.Interpretation_Result; Page : CP.Article_View; Columns : Positive) return Positive
+   is
+      procedure Put (Row, Column : Natural; Text : String; Style : Article_Style) is null;
+      procedure Put_Link (Row, Column : Natural; Text : String; Span : CP.Literal_Span; Next_Page : Boolean) is null;
+      procedure Measure is new Lay_Out_Article (Put, Put_Link);
+      Rows : Natural;
+   begin
+      Measure (Outcome, Page, Columns, Rows);
+      return Positive'Max (1, Rows);
+   end Article_Rows;
+
+   --  The source a link runs: the article's own command on the word, or the
+   --  next page of the entry.
+   function Link_Source
+     (Outcome : CCL.Language.Interpretation_Result; Page : CP.Article_View; Span : CP.Literal_Span;
+      Next_Page : Boolean) return String
+   is
+      Head : constant String :=
+        (if Page.Line_Count > 0 then CP.Span_Text (Outcome, Page.Lines (1).Text) else "");
+   begin
+      if Next_Page then
+         return "(lexicon." & (if Page.Command = CP.Thesaurus_Command then "thesaurus" else "dict") &
+           "-page (Page_Query """ & Head & """" & Natural'Image (Page.First_Shown + Page.Shown) & "))";
+      end if;
+      --  A word in the literal is already a CCL string's contents.
+      return "(" & Command_Name (Page.Command) & " """ & CP.Span_Text (Outcome, Span) & """)";
+   end Link_Source;
+
    procedure Handle
      (State : in out View_State; Event : View_Event;
       Submitted, Redraw : out Boolean)
@@ -662,26 +832,15 @@ package body CCL_Console_View is
          return True;
       end Watch_Command;
 
-      procedure Submit is
+      --  Run Source as an entry (what Enter does with the input).
+      procedure Run_Source (Source : String) is
          Outcome : CCL.Language.Interpretation_Result;
          Before : constant CCL.Sessions.History_Count := Count;
          Started : constant Interfaces.Unsigned_64 := Now_Ms;
          Finished : Interfaces.Unsigned_64;
          After : CCL.Sessions.History_Count;
       begin
-         if Edit.Length (State.Input) = 0 then return; end if;
-         if Watch_Command then
-            Set_Input (State, "");
-            return;
-         end if;
-         --  :lisp and :basic switch the notation, like console.notation.
-         if Text = ":lisp" or else Text = ":basic" then
-            Set_Input (State, "");
-            Set_Notation (State, (if Text = ":basic" then CCL.Interfaces.Console.Basic
-                                  else CCL.Interfaces.Console.Lisp));
-            return;
-         end if;
-         Execute (State.Session, Program_For (State, Text), CCL.Sessions.Default_Fuel, Outcome);
+         Execute (State.Session, Program_For (State, Source), CCL.Sessions.Default_Fuel, Outcome);
          Finished := Now_Ms;
          After := CCL.Sessions.Length (State.Session);
          if After > 0 then
@@ -700,6 +859,23 @@ package body CCL_Console_View is
          State.Scroll := 0;
          State.Popup_Open := False;
          Submitted := True;
+      end Run_Source;
+
+      procedure Submit is
+      begin
+         if Edit.Length (State.Input) = 0 then return; end if;
+         if Watch_Command then
+            Set_Input (State, "");
+            return;
+         end if;
+         --  :lisp and :basic switch the notation, like console.notation.
+         if Text = ":lisp" or else Text = ":basic" then
+            Set_Input (State, "");
+            Set_Notation (State, (if Text = ":basic" then CCL.Interfaces.Console.Basic
+                                  else CCL.Interfaces.Console.Lisp));
+            return;
+         end if;
+         Run_Source (Text);
       end Submit;
 
       procedure Move_Row (Delta_Rows : Integer) is
@@ -899,6 +1075,20 @@ package body CCL_Console_View is
                            if Found then
                               Set_Input (State, Row_Query
                                 ("sort-by", Entry_Value, Field_Access (Entry_Value, H.Column)));
+                           end if;
+                        when Link_Hit | Page_Hit =>
+                           --  Follow the link: the article's command on the word.
+                           CCL.Sessions.Recall (State.Session, H.Item, Entry_Value, Found);
+                           if Found then
+                              declare
+                                 Shown : CCL.Presentations.Presentation;
+                              begin
+                                 CCL.Presentations.Describe (Entry_Value.Outcome, Shown);
+                                 if Shown.Kind = CCL.Presentations.Article then
+                                    Run_Source (Link_Source (Entry_Value.Outcome, Shown.Page,
+                                                             (H.First, H.Last), H.Kind = Page_Hit));
+                                 end if;
+                              end;
                            end if;
                         when Completion_Hit => Accept_Candidate (State, H.Item);
                         when Live_Hit =>
@@ -1153,7 +1343,9 @@ package body CCL_Console_View is
       Shown : CCL.Presentations.Presentation;
    begin
       CCL.Presentations.Describe (Outcome, Shown);
-      if Shown.Kind = CCL.Presentations.Picture then
+      if Shown.Kind = CCL.Presentations.Article then
+         return Article_Rows (Outcome, Shown.Page, Columns);
+      elsif Shown.Kind = CCL.Presentations.Picture then
          return Picture_Rows (Shown, Columns);
       elsif Shown.Kind = CCL.Presentations.Gallery then
          return Gallery_Rows (Shown, Columns);
@@ -1344,6 +1536,54 @@ package body CCL_Console_View is
             end if;
          end Draw_Table;
 
+         --  A lexicon entry as a page (Lay_Out_Article): its words are links
+         --  that run the same command on them, underlined under the pointer.
+         procedure Draw_Article
+           (C : CuBit.UI.Canvas; X : Natural; Y : Integer;
+            Outcome : CCL.Language.Interpretation_Result; Page : CCL.Presentations.Article_View;
+            Columns : Positive; Fill : Color; Entry_Index : Positive)
+         is
+            function Visible (Row_Y : Integer) return Boolean is
+              (Row_Y >= Top and then Row_Y + LH <= Bottom and then Row_Y >= 0);
+            procedure Put (Row, Column : Natural; Text : String; Style : Article_Style) is
+               Row_Y : constant Integer := Y + Row * LH;
+               Hue : constant Color :=
+                 (case Style is
+                     when Head_Style => ACCENT, when Part_Style => TYPE_COLOR,
+                     when Number_Style | Example_Style | Label_Style | Note_Style => MUTED,
+                     when Body_Style => INK);
+            begin
+               if Visible (Row_Y) then
+                  if Style = Head_Style then
+                     Draw_UI_Text (C, X + Column * CW, Natural (Row_Y) + 1, Text, Hue, Fill);
+                  else
+                     Draw_Code_Text (C, X + Column * CW, Natural (Row_Y), Text, Hue, Fill);
+                  end if;
+               end if;
+            end Put;
+            procedure Put_Link (Row, Column : Natural; Text : String; Span : CCL.Presentations.Literal_Span;
+                                Next_Page : Boolean) is
+               Row_Y : constant Integer := Y + Row * LH;
+               Area : constant Rect := (X + Column * CW, Natural (Integer'Max (0, Row_Y)), Text'Length * CW, LH);
+               Hovered : constant Boolean :=
+                 Previous_Hover.Kind in Link_Hit | Page_Hit and then Previous_Hover.Item = Entry_Index and then
+                 Previous_Hover.Area = Area;
+            begin
+               if Visible (Row_Y) then
+                  Draw_Code_Text (C, Area.x, Area.y, Text, HOST_COLOR, Fill);
+                  if Hovered then
+                     Fill_Rect (C, (Area.x, Area.y + LH - 3, Area.w, 1), HOST_COLOR);
+                  end if;
+                  Add_Hit (State, ((if Next_Page then Page_Hit else Link_Hit), Area, Entry_Index,
+                                   Span.First, Span.Last, 0));
+               end if;
+            end Put_Link;
+            procedure Draw is new Lay_Out_Article (Put, Put_Link);
+            Rows : Natural;
+         begin
+            Draw (Outcome, Page, Columns, Rows);
+         end Draw_Article;
+
          --  The image at (X, Y), framed, then a caption; expired pixels are
          --  said to be so, never shown as something else.
          procedure Draw_Picture
@@ -1531,7 +1771,10 @@ package body CCL_Console_View is
                      end if;
                      CCL.Presentations.Describe (Outcome, Shown);
                      Tabulate (Outcome, Positive'Max (1, G.Card_Columns - 2), Table, Tabular);
-                     if Shown.Kind = CCL.Presentations.Picture then
+                     if Shown.Kind = CCL.Presentations.Article then
+                        Draw_Article (TC, Text_X + 2 * CW, Result_Y, Outcome, Shown.Page,
+                          Positive'Max (1, G.Card_Columns - 2), Fill, I);
+                     elsif Shown.Kind = CCL.Presentations.Picture then
                         Draw_Picture (TC, Text_X + 2 * CW, Result_Y, Shown,
                           Positive'Max (1, G.Card_Columns - 2) * CW, I);
                      elsif Shown.Kind = CCL.Presentations.Gallery then
@@ -1548,7 +1791,8 @@ package body CCL_Console_View is
                           not Outcome.Has_List and then not Outcome.Has_Literal));
                      end if;
                      if Ok and then not Tabular and then
-                       Shown.Kind not in CCL.Presentations.Picture | CCL.Presentations.Gallery and then
+                       Shown.Kind not in CCL.Presentations.Picture | CCL.Presentations.Gallery |
+                                         CCL.Presentations.Article and then
                        Result_Y + LH > Top and then Result_Y < Bottom
                      then
                         Add_Hit (State, (Result_Hit,
@@ -2136,7 +2380,8 @@ package body CCL_Console_View is
             when Entry_Name => Name_Hit, when Result_Type => Badge_Hit,
             when Example => Example_Hit, when Input => Input_Hit,
             when Suggestion => Completion_Hit, when Table_Cell => Cell_Hit,
-            when Table_Header => Header_Hit, when Live_Mark => Live_Hit);
+            when Table_Header => Header_Hit, when Live_Mark => Live_Hit,
+            when Article_Link => Link_Hit, when Article_Page => Page_Hit);
       Seen : Natural := 0;
    begin
       for I in 1 .. State.Hit_Total loop

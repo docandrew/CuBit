@@ -20,7 +20,7 @@ package body CCL.Manifests.Keywords with SPARK_Mode => On is
    use type CCL.VM.Value_Kind;
 
    --  The highest service role (System_Publications.Maximum_Role).
-   Maximum_Notification_Role : constant := 127;
+   Maximum_Notification_Role : constant := MAXIMUM_ROLE;
 
 
    procedure Run
@@ -39,7 +39,7 @@ package body CCL.Manifests.Keywords with SPARK_Mode => On is
       Requests : Request_Array renames Decl.Requests;
       Count : Request_Count renames Decl.Count;
       Services : Service_Array renames Cat.Services;
-      Service_Count : Request_Count renames Cat.Service_Count;
+      Service_Count : Catalog_Count renames Cat.Service_Count;
       Scopes : Scope_Array renames Decl.Scopes;
       Scope_Count : Scope_Count_Type renames Decl.Scope_Count;
       Explicit_No_Requests : Boolean renames Decl.Explicit_No_Requests;
@@ -686,7 +686,7 @@ package body CCL.Manifests.Keywords with SPARK_Mode => On is
                   Fail (Duplicate_Service, Cursor);
                end if;
             end loop;
-            if Service_Count = MAX_REQUESTS then Fail (Too_Many_Services, Cursor);
+            if Service_Count = MAX_CATALOG_ENTRIES then Fail (Too_Many_Services, Cursor);
             elsif not Failed then
                Service_Count := Service_Count + 1;
                Services (Service_Count) := Item;

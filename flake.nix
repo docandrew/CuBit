@@ -166,6 +166,10 @@
               export CUBIT_SPARK_CRATES="${sparkCrates}/"
               # Mozilla root set for tls.svc's trust store (tools/pem_bundle_to_der.py).
               export CUBIT_CA_BUNDLE="${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
+              # Lexicon sources (tools/build_lexicon.py, docs/lexicon.md):
+              # WordNet 3.0 (Princeton licence) and SCOWL (permissive).
+              export CUBIT_WORDNET_DICT="${pkgs.wordnet}/dict"
+              export CUBIT_SCOWL_DICT="${pkgs.scowl}/share/dict"
               export IBM_PLEX_SANS_FONT="${pkgs.ibm-plex}/share/fonts/truetype/IBMPlexSans-Regular.ttf"
               export IBM_PLEX_MONO_FONT="${pkgs.ibm-plex}/share/fonts/truetype/IBMPlexMono-Regular.ttf"
               export IBM_PLEX_SANS_SEMIBOLD_FONT="${pkgs.ibm-plex}/share/fonts/truetype/IBMPlexSans-SemiBold.ttf"

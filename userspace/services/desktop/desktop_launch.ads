@@ -11,7 +11,8 @@
 --  configuration is compiled and stored as its canonical source, e.g.
 --
 --    (Launch_Entry label => "Penny" action => (Launch_Action.Program
---      "cubitshell.app") icon => Launch_Icon.Penny category => App_Category.Web
+--      "cubitshell.app") icon => (Launch_Icon name => "Penny")
+--      category => App_Category.Web
 --      single_instance => false color => (App_Color.RGB (RGB_Color red => 184
 --      green => 106 blue => 58)))
 --
@@ -25,7 +26,10 @@ with CCL.Interfaces.Desktop_Launch;
 with Desktop_Icons;
 
 package Desktop_Launch is
-   Maximum_Entries : constant := 14;
+   --  The Apps menu's capacity. Keys past it are dropped from the listing
+   --  before they are sorted, so it must cover every entry configured:
+   --  system.ccl declares 15. Each entry is about 128 bytes.
+   Maximum_Entries : constant := 32;
    Maximum_Label   : constant := 32;
    Maximum_Program : constant := 64;
 

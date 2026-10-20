@@ -27,7 +27,7 @@ begin
    Ada.Streams.Stream_IO.Open (Input, Ada.Streams.Stream_IO.In_File, Argument (1));
    if Ada.Streams.Stream_IO.Size (Input) > Bytes'Length then
       Ada.Streams.Stream_IO.Close (Input);
-      Put_Line (Standard_Error, "profile exceeds 8192-byte source bound");
+      Put_Line (Standard_Error, "profile exceeds the" & Natural'Image (CCL.Declarations.MAX_SOURCE) & "-byte source bound");
       Set_Exit_Status (Failure);
       return;
    end if;

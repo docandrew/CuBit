@@ -34,7 +34,7 @@ specification. The tests cover that against two encoders.
 ## Icon atlas store
 
 `Desktop_Icon_Store` holds Desktop's application icon atlas
-(`Assets/cubit-icons/3/applications.qoi`: every icon at every exported
+(`Assets/cubit-icons/4/applications.qoi`: every icon at every exported
 edge, docs/assets.md). `make test-qoi`
 also builds the atlas with its RGBA oracle (`tools/build_icon_assets.py
 --reference`) and runs `icon_store_tests` once per case

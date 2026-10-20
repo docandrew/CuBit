@@ -1,0 +1,8 @@
+# CuBit Calculator smoke test (docs/calculator.md): the desktop and the
+# Calculator, driven by keyboard (tests/headless/run.sh --test calculator).
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "display.svc" (priority 5))
+  (start "desktop.svc" (priority 4))
+  (start "calculator.app" (priority 3))
+)

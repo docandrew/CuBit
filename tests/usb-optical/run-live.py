@@ -53,6 +53,8 @@ parser.add_argument('--ccl-ui-hooks', action='store_true', help='exercise native
 parser.add_argument('--ccl-samples', action='store_true', help='open an ISO-seeded workspace sample and invoke its button')
 parser.add_argument('--config', action='store_true', help='write/read typed Config through native Workbench bytecode')
 parser.add_argument('--servo', action='store_true', help='launch the bundled Servo shell and require a rendered page')
+parser.add_argument('--apps', action='store_true',
+                    help='screenshot Apps > Tools, then launch Calculator, Dictionary and Thesaurus from optical media')
 parser.add_argument('--teapots', action='store_true', help='launch the Vulkan teapot gallery from optical media (QEMU: placeholder, no Intel GPU)')
 parser.add_argument('--boot-logs', action='store_true', help='verify on-screen boot viewer and typed USB startup log replay')
 parser.add_argument('--boot-log-delivery', action='store_true',
@@ -716,6 +718,33 @@ with (run / 'qemu.log').open('w') as log:
         wait_for('files: native window ready')
         time.sleep(2)
         hmp(f'screendump {run}/files.ppm')
+        if args.apps:
+            # The apps on the live disc (docs/calculator.md, docs/lexicon.md):
+            # lexicon.svc reads its image from the disc's asset package.
+            wait_for('lexicon: image loaded')
+            key('meta_l')
+            for _ in range(menu_rows.index('Tools')):
+                key('down')
+            key('right')
+            time.sleep(1)
+            hmp(f'screendump {run}/apps-menu-tools.ppm')
+            key('left')
+            key('esc')
+            typed = {'Calculator': ['1', 'slash', '7', 'ret'],
+                     'Dictionary': ['w', 'h', 'a', 'r', 'f', 'ret'],
+                     'Thesaurus': ['q', 'u', 'a', 'y', 'ret']}
+            for label in ('Calculator', 'Dictionary', 'Thesaurus'):
+                launch(label)
+                wait_for(f'{label.lower()}: window ready')
+                time.sleep(1)
+                for name in typed[label]:
+                    key(name)
+                time.sleep(2)
+                hmp(f'screendump {run}/{label.lower()}.ppm')
+            if 'calculator: evaluated 1/7' not in serial.read_text(errors='replace'):
+                raise RuntimeError('Calculator did not evaluate typed input')
+            print('APPS LIVE PASS: Calculator, Dictionary and Thesaurus launched from the disc; inspect screenshots.',
+                  flush=True)
         if args.servo:
             launch('Penny')
             wait_for('CUBITSHELL: desktop window')

@@ -550,7 +550,7 @@ test-qoi: wallpaper-assets icon-assets
 		--reference ../tests/qoi/build/reference >/dev/null
 	$(ALR) gprbuild -q -p -P ../tests/qoi/qoi.gpr
 	../tests/qoi/build/qoi_tests ../tests/qoi/build/fixtures ../tests/qoi/build/Assets ../tests/qoi/build/reference
-	python3 ../tools/build_icon_assets.py ../tests/qoi/build/Assets/cubit-icons/3 \
+	python3 ../tools/build_icon_assets.py ../tests/qoi/build/Assets/cubit-icons/4 \
 		--reference ../tests/qoi/build/reference >/dev/null
 	python3 ../tests/qoi/make_icon_fixtures.py ../tests/qoi/build/fixtures
 	$(ALR) gprbuild -q -p -P ../tests/qoi/icon_store.gpr
@@ -1526,6 +1526,35 @@ text: user_runtime ccl-manifest ui-fonts-native
 	$(ALR) gprbuild -P ../userspace/apps/text/text.gpr
 	cp ../userspace/apps/text/build/text.app isodir/boot/text.app
 
+# The calculator (docs/calculator.md): the calculator core in userspace/lib/calc.
+.PHONY : calculator
+calculator: user_runtime ccl-manifest ui-fonts-native
+	mkdir -p ../userspace/apps/calculator/build
+	$(call compile_ccl_manifest,../userspace/apps/calculator)
+	$(ALR) gprbuild -P ../userspace/apps/calculator/calculator.gpr
+	cp ../userspace/apps/calculator/build/calculator.app isodir/boot/calculator.app
+
+# The dictionary, thesaurus and spelling service (docs/lexicon.md): it reads
+# the lexicon asset package and answers Lexicon_Channel channels.
+.PHONY : lexicon
+lexicon: user_runtime ccl-manifest
+	mkdir -p ../userspace/services/lexicon/build
+	$(call compile_ccl_manifest,../userspace/services/lexicon)
+	rm -f ../userspace/services/lexicon/build/lexicon.svc
+	$(ALR) gprbuild -P ../userspace/services/lexicon/lexicon.gpr
+	cp ../userspace/services/lexicon/build/lexicon.svc isodir/boot/lexicon.svc
+
+# Dictionary and Thesaurus (docs/lexicon.md): one app, one program image per
+# Apps-menu entry, both asking lexicon.svc.
+.PHONY : dictionary
+dictionary: user_runtime ccl-manifest ui-fonts-native
+	mkdir -p ../userspace/apps/dictionary/build
+	$(call compile_ccl_manifest,../userspace/apps/dictionary)
+	rm -f ../userspace/apps/dictionary/build/dictionary.app ../userspace/apps/dictionary/build/thesaurus.app
+	$(ALR) gprbuild -P ../userspace/apps/dictionary/dictionary.gpr
+	cp ../userspace/apps/dictionary/build/dictionary.app isodir/boot/dictionary.app
+	cp ../userspace/apps/dictionary/build/thesaurus.app isodir/boot/thesaurus.app
+
 # Build the live writable-storage diagnostic app.
 .PHONY : storage-check
 storage-check: user_runtime filesystem-scope-check ccl-manifest
@@ -1703,7 +1732,7 @@ $(WALLPAPER_ASSETS) &: $(WALLPAPER_SOURCES) ../tools/build_wallpaper_assets.py .
 # Desktop's application icon atlas (Desktop_Icon_Assets): the CuBit icon
 # PNGs at every exported edge, in Desktop_Icons.Icon_ID order, packed by
 # tools/build_icon_assets.py.
-ICON_PACKAGE := $(ASSET_ROOT)/cubit-icons/3
+ICON_PACKAGE := $(ASSET_ROOT)/cubit-icons/4
 ICON_ASSETS := build/$(ICON_PACKAGE)/applications.qoi
 ICON_SOURCES := $(wildcard ../assets/desktop-icons/png/*.png) $(wildcard ../assets/penny/penny-*.png)
 ICON_DISK_FILES = --file "$(ICON_PACKAGE)/applications.qoi=$(ICON_ASSETS)"
@@ -1713,9 +1742,22 @@ icon-assets: $(ICON_ASSETS)
 $(ICON_ASSETS): $(ICON_SOURCES) ../tools/build_icon_assets.py ../tools/generate_desktop_icons.py ../tools/qoi.py
 	$(ALR) python3 ../tools/build_icon_assets.py build/$(ICON_PACKAGE)
 
-# Every asset package Desktop reads, and their disk placements.
-DESKTOP_ASSETS = $(WALLPAPER_ASSETS) $(ICON_ASSETS)
-DESKTOP_ASSET_DISK_FILES = $(WALLPAPER_DISK_FILES) $(ICON_DISK_FILES)
+# The lexicon (docs/lexicon.md): WordNet 3.0 and SCOWL from the pinned
+# nixpkgs, compiled into one read-only image; their notices ship beside it.
+LEXICON_PACKAGE := $(ASSET_ROOT)/cubit-lexicon/1
+LEXICON_ASSETS := build/$(LEXICON_PACKAGE)/english.lexicon build/$(LEXICON_PACKAGE)/LEXICON-NOTICE
+LEXICON_DISK_FILES = $(foreach f,$(LEXICON_ASSETS),--file "$(LEXICON_PACKAGE)/$(notdir $(f))=$(f)")
+
+.PHONY : lexicon-assets
+lexicon-assets: $(LEXICON_ASSETS)
+$(LEXICON_ASSETS) &: ../tools/build_lexicon.py ../flake.lock ../flake.nix
+	$(ALR) python3 -I ../tools/build_lexicon.py build/$(LEXICON_PACKAGE)/english.lexicon \
+		--notice build/$(LEXICON_PACKAGE)/LEXICON-NOTICE
+
+# Every asset package the desktop session reads (Desktop: wallpapers and
+# icons; lexicon.svc: the lexicon), and their disk placements.
+DESKTOP_ASSETS = $(WALLPAPER_ASSETS) $(ICON_ASSETS) $(LEXICON_ASSETS)
+DESKTOP_ASSET_DISK_FILES = $(WALLPAPER_DISK_FILES) $(ICON_DISK_FILES) $(LEXICON_DISK_FILES)
 
 # Build the userspace display scanout service prototype
 .PHONY : display
@@ -1781,9 +1823,11 @@ DISK_CONTENTS := isodir/boot/shell.app isodir/boot/doom.elf isodir/boot/sleep.ap
 	isodir/boot/sameboy.app ../userspace/ports/sameboy/build/test.gb \
 	isodir/boot/capability-test.app \
 	isodir/boot/wget.app isodir/boot/devices.app isodir/boot/files.app isodir/boot/text.app \
+	isodir/boot/calculator.app \
 	isodir/boot/config-inspector.app isodir/boot/ccl-vm.app isodir/boot/ccl-workbench.app isodir/boot/trace-viewer.app \
 	isodir/boot/ccl-test-host.svc \
 	isodir/boot/clock.svc isodir/boot/timesync.svc isodir/boot/tls.svc isodir/boot/config-storage.svc \
+	isodir/boot/lexicon.svc isodir/boot/dictionary.app isodir/boot/thesaurus.app \
 	isodir/boot/desktop-shell.app \
 	isodir/boot/ipctest-server.app isodir/boot/ipctest-client.app \
 	isodir/boot/bench-ipc-server.app isodir/boot/bench-ipc-client.app \
@@ -1813,8 +1857,9 @@ DESKTOP_CONFIG_SAMPLES := ../userspace/ccl/samples/config-counter.ccl \
 DESKTOP_OVERLAY := isodir/boot/desktop.svc isodir/boot/display.svc isodir/boot/metrics.svc \
 	isodir/boot/netstack.svc isodir/boot/tls.svc isodir/boot/desktop-shell.app \
 	isodir/boot/devices.app isodir/boot/config-inspector.app isodir/boot/files.app isodir/boot/text.app \
-	isodir/boot/doom.elf isodir/boot/ccl-workbench.app \
+	isodir/boot/calculator.app isodir/boot/doom.elf isodir/boot/ccl-workbench.app \
 	isodir/boot/ccl-console.app isodir/boot/logs.app isodir/boot/trace-viewer.app isodir/boot/config-storage.svc \
+	isodir/boot/lexicon.svc isodir/boot/dictionary.app isodir/boot/thesaurus.app \
 	$(SERVO_DISK_CONTENTS)
 DESKTOP_SAMPLE_ARGS = $(foreach sample,$(DESKTOP_CONFIG_SAMPLES),--file "work/$(notdir $(sample))=$(sample)")
 
@@ -1841,7 +1886,8 @@ INITRD_SERVICES := filesystem ramdisk ata nvme netstack virtio-net virtio-gpu hd
 # rebuild the ext2 disk image from those freshly staged files.
 .PHONY : desktop-session-content
 desktop-session-content: $(INITRD_SERVICES) desktop-metrics display logstore \
-	desktop-shell devices files text config-inspector ccl-workbench ccl-console logs trace-viewer config-storage clock timesync tls doom sameboy
+	desktop-shell devices files text calculator config-inspector ccl-workbench ccl-console logs trace-viewer config-storage clock timesync tls doom sameboy \
+	lexicon dictionary
 
 # Create ext2 ATA disk image containing doom1.wad, doom.elf, init.ccl, shell.app
 # Requires: mke2fs, debugfs (from e2fsprogs)
@@ -1911,7 +1957,7 @@ CCL_WORKSPACE_SAMPLES := $(sort $(wildcard ../userspace/ccl/samples/*.ccl))
 # Native USB optical edition. Keep the original initrd-only laptop image as
 # an independent fallback; no ATA/NVMe driver is admitted in this profile.
 .PHONY: usb-live-iso run-usb-live run-usb-live-fast
-usb-live-iso: ccl-image ../images/laptop-usb.ccl $(CCL_IMAGE_CATALOG) cubit_kernel $(LAPTOP_LIVE_STAGE1) $(LAPTOP_LIVE_STAGE2) intel-gpu gpu-viewer config-storage teapots $(LAPTOP_LIVE_RW_DISK) $(DESKTOP_ASSETS)
+usb-live-iso: ccl-image ../images/laptop-usb.ccl $(CCL_IMAGE_CATALOG) cubit_kernel $(LAPTOP_LIVE_STAGE1) $(LAPTOP_LIVE_STAGE2) intel-gpu gpu-viewer config-storage teapots calculator lexicon dictionary $(LAPTOP_LIVE_RW_DISK) $(DESKTOP_ASSETS)
 	@test -s isodir/boot/cubitshell.app || (echo "missing Servo payload; run make -C kernel servo first" && false)
 	bash ../tests/usb-optical/build-live.sh "$(DOOM_WAD)"
 
@@ -2083,7 +2129,7 @@ check-capability-numbers:
 	python3 ../tools/check_capability_numbers.py --self-test
 	python3 ../tools/check_capability_numbers.py --root ..
 
-world: check-capability-numbers trace-viewer test-programs $(IMAGE_ONLY_BINARIES) cubit_kernel doom sameboy sleep thread-check futex-check clock-check avx-check devmem-check fault-check oom-check stall-check bench-spread capability-test storage-check ipctest-server ipctest-client bench-ipc-server bench-ipc-client ccl-test-host clock timesync tls ccl-vm ccl-workbench filesystem ata nvme virtio-net virtio-gpu netstack wget devices files text config-inspector desktop-shell procmgr shell hda mixer ps2 xhci virtio-input config config-storage netmgr logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso
+world: check-capability-numbers trace-viewer test-programs $(IMAGE_ONLY_BINARIES) cubit_kernel doom sameboy sleep thread-check futex-check clock-check avx-check devmem-check fault-check oom-check stall-check bench-spread capability-test storage-check ipctest-server ipctest-client bench-ipc-server bench-ipc-client ccl-test-host clock timesync tls ccl-vm ccl-workbench filesystem ata nvme virtio-net virtio-gpu netstack wget devices files text calculator lexicon dictionary config-inspector desktop-shell procmgr shell hda mixer ps2 xhci virtio-input config config-storage netmgr logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso
 
 .PHONY : headless-test
 headless-test: world

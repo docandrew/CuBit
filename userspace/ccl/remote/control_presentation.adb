@@ -81,11 +81,14 @@ package body Control_Presentation is
          --  A table's value is its rows; do not send it twice.
          Text (if Shown.Kind in CCL.Presentations.Table | CCL.Presentations.Gallery then ""
                else CCL.Sessions.Result_Value_Image (Item));
-         Number (CCL.Presentations.Form'Pos (Shown.Kind));
+         --  The Observatory has no article view yet: an article goes as its
+         --  text (the entry's literal), a form it shows.
+         Number (CCL.Presentations.Form'Pos
+                   (if Shown.Kind = CCL.Presentations.Article then CCL.Presentations.Text else Shown.Kind));
          Number (Interfaces.Unsigned_64 (Item.Diagnostic_Position));
          Number (Interfaces.Unsigned_64 (Item.Fuel_Remaining));
          case Shown.Kind is
-            when CCL.Presentations.Failure | CCL.Presentations.Text =>
+            when CCL.Presentations.Failure | CCL.Presentations.Text | CCL.Presentations.Article =>
                Put (Encoding.Encode_Array (0));
             when CCL.Presentations.Gallery =>
                --  [total, [[width, height, imageId]...]]

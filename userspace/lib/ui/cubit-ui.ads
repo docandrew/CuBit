@@ -248,6 +248,11 @@ package CuBit.UI is
       (c : Canvas; x, y : Natural; text : String; fg, bg : Color);
    procedure Draw_UI_Text_Transparent
       (c : Canvas; x, y : Natural; text : String; fg : Color);
+   --  The emphasis face (CuBit.Fonts.Sans_Semibold) for headings in an
+   --  app's content, measured and placed as UI text is.
+   function Emphasis_Text_Width (text : String) return Natural;
+   procedure Draw_Emphasis_Text_Transparent
+      (c : Canvas; x, y : Natural; text : String; fg : Color);
    function Code_Text_Width (text : String) return Natural;
    function Code_Text_Height return Natural;
    procedure Draw_Code_Text

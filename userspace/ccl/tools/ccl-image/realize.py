@@ -26,6 +26,8 @@ CONFIG = ROOT / "userspace/ccl/build/config/ccl-config"
 MAX_FILE = 128 * 1024 * 1024
 MAX_TOTAL = 512 * 1024 * 1024
 MAX_FILES = 512
+# A catalog or profile document: CCL.Declarations.MAX_SOURCE.
+MAX_SOURCE = 16 * 1024
 
 
 @dataclass(frozen=True)
@@ -68,7 +70,7 @@ def conflict(left, right):
 def compile_plan(catalog, profile):
     # Compile exact snapshots, so a later source edit cannot change the
     # meaning of a realization recorded under an earlier source hash.
-    documents = [read_regular(p, 8192) for p in (catalog, profile)]
+    documents = [read_regular(p, MAX_SOURCE) for p in (catalog, profile)]
     with tempfile.TemporaryDirectory(prefix="ccl-image-source.") as directory:
         paths = [Path(directory) / name for name in ("catalog.ccl", "profile.ccl")]
         for path, data in zip(paths, documents):

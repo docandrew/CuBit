@@ -135,6 +135,9 @@ package CuBit.Messages is
    DRIVER_GPU      : constant Unsigned_64 := 17;
    DRIVER_CCL_TEST : constant Unsigned_64 := 18;
    DRIVER_CLOCK    : constant Unsigned_64 := 19;
+   --  lexicon.svc (docs/lexicon.md); 20..27 are taken by roles declared
+   --  with their protocols (mixer control, TLS, metrics, ...).
+   DRIVER_LEXICON  : constant Unsigned_64 := 28;
 
    --  Scheduler latency classes. Values match kernel Process.LatencyClass.
    LATENCY_BACKGROUND  : constant Unsigned_64 := 0;

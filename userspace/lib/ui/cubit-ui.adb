@@ -461,6 +461,8 @@ package body CuBit.UI is
    --  the same pen positions the drawing below places glyphs at.
    function UI_Text_Width (text : String) return Natural is
      (CuBit.Fonts.Width (CuBit.Fonts.Sans, text));
+   function Emphasis_Text_Width (text : String) return Natural is
+     (CuBit.Fonts.Width (CuBit.Fonts.Sans_Semibold, text));
 
    function UI_Text_Height return Natural is
    begin
@@ -901,7 +903,8 @@ package body CuBit.UI is
    --  nearest pixel through the density cache otherwise). Opaque: the run
    --  is already filled with bg.
    procedure Draw_Sans_Glyphs
-     (c : Canvas; x, y : Natural; text : String; fg : Color; Opaque : Boolean := False; bg : Color := 0)
+     (c : Canvas; x, y : Natural; text : String; fg : Color; Opaque : Boolean := False; bg : Color := 0;
+      Face : CuBit.Fonts.Face := CuBit.Fonts.Sans)
    is
       Over : constant Ramp_Access :=
         (if Opaque and then c.densityNumerator = c.densityDenominator then Ramp_For (fg, bg) else null);
@@ -909,16 +912,16 @@ package body CuBit.UI is
          pragma Unreferenced (Index);
       begin
          if c.densityNumerator /= c.densityDenominator then
-            Draw_Density_Glyph (c, Pen, y, Ch, CuBit.Fonts.Sans, fg);
+            Draw_Density_Glyph (c, Pen, y, Ch, Face, fg);
          else
-            Blit_Ink (c, CuBit.Fonts.Get (CuBit.Fonts.Sans, Ch, CuBit.Fonts.Normal, Glyph_Pen.Phase_Of (Pen)),
+            Blit_Ink (c, CuBit.Fonts.Get (Face, Ch, CuBit.Fonts.Normal, Glyph_Pen.Phase_Of (Pen)),
                       Pen_Pixel (Pen), y, fg, bg, Over);
          end if;
       end Place;
       procedure Each is new CuBit.Fonts.Lay_Out (Place);
    begin
       if x > Glyph_Pen.Last_Pixel then return; end if;
-      Each (CuBit.Fonts.Sans, text, x);
+      Each (Face, text, x);
    end Draw_Sans_Glyphs;
 
    --  The run is visible at all (before measuring or rasterizing anything).
@@ -950,6 +953,16 @@ package body CuBit.UI is
       end if;
       Draw_Sans_Glyphs (c, x, y, text, fg);
    end Draw_UI_Text_Transparent;
+
+   procedure Draw_Emphasis_Text_Transparent
+      (c : Canvas; x, y : Natural; text : String; fg : Color)
+   is
+   begin
+      if not Run_Visible (c, x, y, text) then
+         return;
+      end if;
+      Draw_Sans_Glyphs (c, x, y, text, fg, Face => CuBit.Fonts.Sans_Semibold);
+   end Draw_Emphasis_Text_Transparent;
 
    procedure Draw_Code_Text_Transparent
       (c : Canvas; x, y : Natural; text : String; fg : Color)

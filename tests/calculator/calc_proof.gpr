@@ -1,0 +1,12 @@
+--  SPARK proof of the calculator core (docs/calculator.md): run.sh --prove
+--  (memory-capped, -j2, level 2).
+project Calc_Proof is
+   for Source_Dirs use ("../../userspace/lib/calc");
+   for Object_Dir use "build/proof";
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--timeout=60");
+   end Prove;
+end Calc_Proof;

@@ -12,7 +12,12 @@ package CCL.Declarations with SPARK_Mode => On is
    end record;
    --  Header versions are symbolic tags, not evaluated CCL expressions.
    function Select_Format (Token : String) return Format_Selection;
-   MAX_SOURCE : constant := 8_192;
+   --  The largest declaration document (system.ccl, init.ccl, a manifest,
+   --  the image catalog). 16 KiB: system.ccl reached 7.2 KiB and the image
+   --  catalog passed 8 KiB with the Calculator and Dictionary; each app adds
+   --  about 330 bytes of launch entry. A Scanner holds a copy, on the stack
+   --  of a process that has 16 MiB (Process_Layout.Initial_Stack_Bytes).
+   MAX_SOURCE : constant := 16_384;
    type Diagnostic_Code is
      (No_Error, Source_Too_Long, Unexpected_End, Expected_Form,
       Invalid_Expression, Nesting_Too_Deep);

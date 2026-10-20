@@ -64,7 +64,7 @@ class Review(unittest.TestCase):
         invalid = ['', '(', '(system-config v2 (setting "x" 1))',
                    '(system-config v1 (setting "x" 1) (setting "x" 2))',
                    '(startup v1 (start "foo.app" (priority 5)))',
-                   valid + ' trailing', ' ' * 8193,
+                   valid + ' trailing', ' ' * (16 * 1024 + 1),
                    document({'a' * 129: 'x'}), document({'a': 'x' * 1025})]
         for bad in invalid:
             for before, after in [(bad, valid), (valid, bad)]:

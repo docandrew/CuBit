@@ -23,6 +23,8 @@
   (service metrics-observer 25 read-write)
   (service process-observer 26 read-write)
   (service log-control 27 read-write)
+  # The dictionary, thesaurus and spelling service (docs/lexicon.md).
+  (service lexicon 28 read-write)
   (notification keyboard 1 publish-and-manage)
   (notification mouse 10 publish-and-manage)
   (notification ipc-test-registration 14 publish-and-manage)
@@ -34,4 +36,5 @@
   (notification ccl-test-host 18 publish-and-manage)
   (notification clock 19 publish-and-manage)
   (notification tls 23 publish-and-manage)
-  (notification metrics 24 publish-and-manage))
+  (notification metrics 24 publish-and-manage)
+  (notification lexicon 28 publish-and-manage))

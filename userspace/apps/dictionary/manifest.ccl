@@ -1,0 +1,13 @@
+# Dictionary and Thesaurus (docs/lexicon.md): look words up through the
+# lexicon service. No files, no network: every answer comes from lexicon.svc
+# over its channel. Requested authority only; the launch path remains in
+# control.
+(Executable_Manifest
+  identity => "com.cubit.dictionary"
+  version => "1.0.0"
+  requests => [
+    # One "started" record (CuBit.Logging.Announce).
+    (service "logstore" "logstore")
+    (service "desktop" "desktop")
+    # Lookups, synonyms and near spellings (the com.cubit.lexicon channel).
+    (service "lexicon" "lexicon")])

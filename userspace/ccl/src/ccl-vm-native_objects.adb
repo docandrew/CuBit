@@ -59,7 +59,12 @@ package body CCL.VM.Native_Objects with SPARK_Mode is
             end loop;
          end if;
       end loop;
-      return Needs (Root);
+      --  However the type nests, one image holds at most Image_Bound of
+      --  each: sums of nested lists overstate it.
+      return (Nodes => Natural'Min (Needs (Root).Nodes, Image_Bound.Nodes),
+              Slots => Natural'Min (Needs (Root).Slots, Image_Bound.Slots),
+              Strings => Natural'Min (Needs (Root).Strings, Image_Bound.Strings),
+              Elements => Natural'Min (Needs (Root).Elements, Image_Bound.Elements));
    end Need_Of;
 
    --  Whether the arena and text region can hold any value of type Root.

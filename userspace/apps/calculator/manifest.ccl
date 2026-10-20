@@ -1,0 +1,9 @@
+# CuBit Calculator (docs/calculator.md). Pure computation: it asks for the
+# desktop (its window and the clipboard) and logstore, nothing else: no
+# files, no network, no other service.
+(executable-manifest v1
+  (identity "com.cubit.calculator")
+  (version "0.1.0")
+  # One "started" record (CuBit.Logging.Announce).
+  (request-service logstore read-write logstore)
+  (request-service desktop read-write desktop))

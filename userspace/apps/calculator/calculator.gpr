@@ -1,0 +1,46 @@
+--  CuBit Calculator (native): the calculator core (userspace/lib/calc,
+--  proved, built without run-time checks) and its window.
+with "../../lib/ui/fonts_native.gpr";
+with "../../lib/ui/toolkit_flags.gpr";
+with "../../lib/calc/calc_flags.gpr";
+project Calculator is
+   for Languages use ("Ada");
+   for Object_Dir use "build";
+   for Source_Dirs use (".", "native", "../../lib/calc", "../../lib/ui", "../../lib/theme", "build/generated",
+                        "../../lib/compositor", "../../lib/display", "../../allocator/src");
+   for Main use ("main.adb");
+   for Runtime ("Ada") use "../../runtime";
+   for Library_Dir use "";
+
+   package Builder is
+      for Executable ("main.adb") use "calculator.app";
+      for Default_Switches ("Ada") use
+        ("-g", "-gnatwa", "-gnatw.X", "-s", "-v", "-nostdlib");
+   end Builder;
+
+   package Compiler extends Toolkit_Flags.Compiler is
+      for Default_Switches ("Ada") use
+        ("-O2", "-gnat2022", "-fstack-usage", "-fomit-frame-pointer",
+         "-mno-red-zone", "-fno-pic");
+      --  The core's proved units (tests/calculator/run.sh --prove, level 2).
+      for Switches ("calc_limbs.adb") use Calc_Flags.Proved_Switches;
+      for Switches ("calc_naturals.adb") use Calc_Flags.Proved_Switches;
+      for Switches ("calc_numbers.adb") use Calc_Flags.Proved_Switches;
+      for Switches ("calc_syntax.adb") use Calc_Flags.Proved_Switches;
+      for Switches ("calc_engine.adb") use Calc_Flags.Proved_Switches;
+      for Switches ("calc_format.adb") use Calc_Flags.Proved_Switches;
+   end Compiler;
+
+   package Binder is
+      for Default_Switches ("Ada") use ("-d_C");
+   end Binder;
+
+   package Linker is
+      --  16 MiB of stack: big-number scratch is scoped to each operation.
+      for Default_Switches ("Ada") use
+        ("-nostdlib", "-static", "-no-pie",
+         "-Wl,-z,stack-size=16777216", "-lgnat-user",
+         "-T", "../../c/link.ld", "../../c/build/crt0.o",
+         "build/manifest.o");
+   end Linker;
+end Calculator;

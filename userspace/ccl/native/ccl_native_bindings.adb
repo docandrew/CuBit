@@ -20,6 +20,7 @@ package body CCL_Native_Bindings is
    Log_Control_Entry      : constant CuBit.Handles.Endpoint := Named ("log-control");
    Network_Entry          : constant CuBit.Handles.Endpoint :=
      Named ("network", CuBit.Startup_Tables.Network);
+   Lexicon_Entry          : constant CuBit.Handles.Endpoint := Named ("lexicon");
 
    function Clock            return CuBit.Handles.Endpoint is (Clock_Entry);
    function Logstore         return CuBit.Handles.Endpoint is (Logstore_Entry);
@@ -29,4 +30,5 @@ package body CCL_Native_Bindings is
    function Log_Observer     return CuBit.Handles.Endpoint is (Log_Observer_Entry);
    function Log_Control      return CuBit.Handles.Endpoint is (Log_Control_Entry);
    function Network          return CuBit.Handles.Endpoint is (Network_Entry);
+   function Lexicon          return CuBit.Handles.Endpoint is (Lexicon_Entry);
 end CCL_Native_Bindings;

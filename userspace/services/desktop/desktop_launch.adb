@@ -8,29 +8,11 @@ with CCL.Typed_Settings;
 
 package body Desktop_Launch is
    package DL renames CCL.Interfaces.Desktop_Launch;
-   --  The schema's member names (enumeration 'Image is numeric natively).
-   function Name_Of (Member : DL.Launch_Icon) return String is
-     (case Member is
-         when DL.Workbench => "Workbench", when DL.Console => "Console", when DL.Logs => "Logs",
-         when DL.Trace => "Trace", when DL.Doom => "Doom", when DL.Devices => "Devices",
-         when DL.Penny => "Penny", when DL.Files => "Files", when DL.Gameboy => "Gameboy",
-         when DL.Settings => "Settings", when DL.Inspector => "Inspector", when DL.Mesa => "Mesa",
-         when DL.Boot => "Boot", when DL.Text => "Text", when DL.Teapots => "Teapots");
+   --  The schema's category names (enumeration 'Image is numeric natively).
    function Name_Of (Member : DL.App_Category) return String is
      (case Member is
          when DL.System => "System", when DL.Development => "Development", when DL.Web => "Web",
          when DL.Games => "Games", when DL.Media => "Media", when DL.Tools => "Tools");
-
-   function Icon_Of (Member : CCL.Interfaces.Desktop_Launch.Launch_Icon) return Desktop_Icons.Icon_ID is
-     (case Member is
-         when DL.Workbench => Desktop_Icons.Workbench, when DL.Console => Desktop_Icons.Console,
-         when DL.Logs => Desktop_Icons.Logs, when DL.Trace => Desktop_Icons.Trace,
-         when DL.Doom => Desktop_Icons.Doom, when DL.Devices => Desktop_Icons.Devices,
-         when DL.Penny => Desktop_Icons.Penny, when DL.Files => Desktop_Icons.Files,
-         when DL.Gameboy => Desktop_Icons.Gameboy, when DL.Settings => Desktop_Icons.Settings,
-         when DL.Inspector => Desktop_Icons.Inspector, when DL.Mesa => Desktop_Icons.Mesa,
-         when DL.Boot => Desktop_Icons.Boot, when DL.Text => Desktop_Icons.Text,
-         when DL.Teapots => Desktop_Icons.Teapots);
 
    --  The built-in list's app colours (CCL App_Color.RGB in system.ccl).
    Workbench_Color : constant RGB := 16#2F4F9E#;
@@ -110,7 +92,9 @@ package body Desktop_Launch is
          Root : constant Views.Cursor := Views.Root (Work.all);
          Label : constant String := Views.Text (Work.all, TS.Named (Work.all, Root, "label"));
          Action : constant Views.Cursor := TS.Named (Work.all, Root, "action");
-         Icon : constant String := TS.Alternative_Name (Work.all, TS.Named (Work.all, Root, "icon"));
+         Icon : constant String :=
+           Views.Text (Work.all, TS.Named (Work.all, TS.Named (Work.all, Root, "icon"), "name"));
+         Icon_Found : Boolean := False;
          Group : constant String := TS.Alternative_Name (Work.all, TS.Named (Work.all, Root, "category"));
          Color : constant Views.Cursor := TS.Named (Work.all, Root, "color");
          --  A Color_Channel: 0 .. 255 by its CCL range type, checked again.
@@ -139,12 +123,17 @@ package body Desktop_Launch is
          else
             Item.Kind := Internal_Settings;
          end if;
-         --  The schema's members map one to one onto these enums.
-         for Member in DL.Launch_Icon loop
-            if Name_Of (Member) = Icon then
-               Item.Icon := Icon_Of (Member);
+         --  The icon is an atlas icon by its name (the checker refused any
+         --  other); the category's members map one to one onto App_Category.
+         for Member in Desktop_Icons.Icon_ID loop
+            if Desktop_Icons.Name_Of (Member) = Icon then
+               Item.Icon := Member;
+               Icon_Found := True;
             end if;
          end loop;
+         if not Icon_Found then
+            return;
+         end if;
          for Member in DL.App_Category loop
             if Name_Of (Member) = Group then
                Item.Group := Member;

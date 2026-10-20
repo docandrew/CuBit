@@ -1,0 +1,24 @@
+--  Hosted tests of the lexicon core (userspace/lib/lexicon, docs/lexicon.md).
+--  LEXICON_MODE: checked (assertions and contracts on: the tests), release
+--  (-O3 -gnatp, as lexicon.svc builds: the benchmark).
+project Lexicon_Tests is
+   type Build_Mode is ("checked", "release");
+   Mode : Build_Mode := external ("LEXICON_MODE", "checked");
+   for Languages use ("Ada");
+   for Source_Dirs use (".", "../../userspace/lib/lexicon");
+   for Object_Dir use "build/" & Mode;
+   for Exec_Dir use "build";
+   for Main use ("lexicon_tests.adb", "lexicon_bench.adb");
+   Checked := ("-O1", "-g", "-gnat2022", "-gnata", "-gnatwa", "-gnatwJ", "-gnatVa");
+   Release := ("-O3", "-g", "-gnat2022", "-gnatp", "-gnatwa", "-gnatwJ", "-fno-tree-vrp");
+   package Compiler is
+      case Mode is
+         when "checked" => for Default_Switches ("Ada") use Checked;
+         when "release" => for Default_Switches ("Ada") use Release;
+      end case;
+   end Compiler;
+   package Builder is
+      for Executable ("lexicon_tests.adb") use "lexicon_tests-" & Mode;
+      for Executable ("lexicon_bench.adb") use "lexicon_bench-" & Mode;
+   end Builder;
+end Lexicon_Tests;

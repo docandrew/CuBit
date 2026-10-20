@@ -47,11 +47,11 @@ procedure Desktop_Launch_Test is
    Items : Menu;
    Penny : constant String :=
      Stored ("(Launch_Entry label => ""Penny"" action => (Launch_Action.Program ""cubitshell.app"") " &
-             "icon => Launch_Icon.Penny category => App_Category.Web " &
+             "icon => (Launch_Icon ""Penny"") category => App_Category.Web " &
              "color => (App_Color.RGB (RGB_Color red => 184 green => 106 blue => 58)))");
 begin
    Check (Penny = "(Launch_Entry label => ""Penny"" action => (Launch_Action.Program ""cubitshell.app"") "
-                  & "icon => Launch_Icon.Penny category => App_Category.Web single_instance => false "
+                  & "icon => (Launch_Icon name => ""Penny"") category => App_Category.Web single_instance => false "
                   & "color => (App_Color.RGB (RGB_Color red => 184 green => 106 blue => 58)))",
           "a typed entry compiles to its canonical form: " & Penny);
    Check (Decodes (Penny, Item) and then Label_Of (Item) = "Penny" and then Program_Of (Item) = "cubitshell.app"
@@ -61,28 +61,52 @@ begin
           "the desktop reads it back, colour included");
    declare
       Doom : constant String :=
-        Stored ("(Launch_Entry ""DOOM"" (Launch_Action.Program ""doom.elf"") Launch_Icon.Doom App_Category.Games true)");
+        Stored ("(Launch_Entry ""DOOM"" (Launch_Action.Program ""doom.elf"") (Launch_Icon ""Doom"") App_Category.Games true)");
    begin
       Check (Decodes (Doom, Item) and then Item.Single_Instance and then Item.Icon = Desktop_Icons.Doom
              and then Item.Group = CCL.Interfaces.Desktop_Launch.Games, "positional fields, single instance");
    end;
    declare
-      Settings : constant String := Stored ("(Launch_Entry label => ""Settings"" action => Launch_Action.Settings)");
+      Settings : constant String :=
+        Stored ("(Launch_Entry label => ""Settings"" action => Launch_Action.Settings icon => (Launch_Icon ""Settings""))");
+      Calculator : constant String :=
+        Stored ("(Launch_Entry ""Calculator"" (Launch_Action.Program ""calculator.app"") (Launch_Icon ""Calculator""))");
    begin
       Check (Decodes (Settings, Item) and then Item.Kind = Internal_Settings
-             and then Item.Group = CCL.Interfaces.Desktop_Launch.Tools and then Item.Icon = Desktop_Icons.Files
+             and then Item.Group = CCL.Interfaces.Desktop_Launch.Tools and then Item.Icon = Desktop_Icons.Settings
              and then not Item.Color.Declared,
-             "defaults: Tools, the Files icon, the theme accent; internal settings");
+             "defaults: Tools, the theme accent; internal settings");
+      --  Any atlas icon, past the 16 an enumeration could hold.
+      Check (Decodes (Calculator, Item) and then Item.Icon = Desktop_Icons.Calculator,
+             "an icon named by the atlas: " & Calculator);
+      Check (Desktop_Icons.Icon_ID'Range_Length > 16
+             and then (for all Icon in Desktop_Icons.Icon_ID =>
+                         Decodes (Stored ("(Launch_Entry ""X"" Launch_Action.Settings (Launch_Icon """
+                                          & Desktop_Icons.Name_Of (Icon) & """))"), Item)
+                         and then Item.Icon = Icon),
+             "every atlas icon is a launch icon");
    end;
+   Check (Stored ("(Launch_Entry label => ""X"" action => Launch_Action.Settings icon => (Launch_Icon ""Calculatr""))") = "",
+          "an icon the atlas does not hold is refused");
+   Check (Stored ("(Launch_Entry label => ""X"" action => Launch_Action.Settings icon => (Launch_Icon ""calculator""))") = "",
+          "icon names are exact");
+   Check (Stored ("(Launch_Entry label => ""X"" action => Launch_Action.Settings icon => ""Files"")") = "",
+          "a bare string is not a Launch_Icon");
+   Check (Stored ("(Launch_Entry label => ""X"" action => Launch_Action.Settings)") = "",
+          "a missing icon is refused");
+   Check (not Decodes ("(Launch_Entry label => ""X"" action => Launch_Action.Settings icon => (Launch_Icon name => ""Nope"") "
+                       & "category => App_Category.Tools single_instance => false color => App_Color.Theme_Accent)", Item),
+          "a canonical entry naming no atlas icon is refused by the reader");
    --  Refused when compiling.
-   Check (Stored ("(Launch_Entry label => ""X"" action => Launch_Action.Settings category => App_Category.Toys)") = "",
+   Check (Stored ("(Launch_Entry label => ""X"" action => Launch_Action.Settings icon => (Launch_Icon ""Files"") "
+                  & "category => App_Category.Toys)") = "",
           "an undeclared category is refused");
    Check (Stored ("(Launch_Entry label => ""X"")") = "", "a missing action is refused");
-   Check (Stored ("(Launch_Entry label => ""X"" action => Launch_Action.Settings colour => 3)") = "",
+   Check (Stored ("(Launch_Entry label => ""X"" action => Launch_Action.Settings icon => (Launch_Icon ""Files"") colour => 3)") = "",
           "an unknown field is refused");
-   Check (Stored ("(Launch_Entry label => ""X"" action => Launch_Action.Settings color => 3)") = "",
+   Check (Stored ("(Launch_Entry label => ""X"" action => Launch_Action.Settings icon => (Launch_Icon ""Files"") color => 3)") = "",
           "a colour that is not an App_Color is refused");
-   Check (Stored ("(Launch_Entry label => ""X"" action => Launch_Action.Settings " &
+   Check (Stored ("(Launch_Entry label => ""X"" action => Launch_Action.Settings icon => (Launch_Icon ""Files"") " &
                   "color => (App_Color.RGB (RGB_Color red => 256 green => 0 blue => 0)))") = "",
           "a colour channel above 255 is refused");
    Check (Stored ("""(launch v1 (label \""X\"") (internal settings))""") = "",
@@ -93,9 +117,11 @@ begin
           "a non-canonical spelling is refused by the reader");
    Check (not Decodes ("(launch v1 (label ""Servo"") (program ""cubitshell.app"") (icon files))", Item),
           "the old format is refused by the reader");
-   Check (not Decodes (Stored ("(Launch_Entry label => ""X"" action => (Launch_Action.Program ""a/b.app""))"), Item),
+   Check (not Decodes (Stored ("(Launch_Entry label => ""X"" action => (Launch_Action.Program ""a/b.app"") "
+                                    & "icon => (Launch_Icon ""Files""))"), Item),
           "a path as program is refused");
-   Check (not Decodes (Stored ("(Launch_Entry label => """ & [1 .. 40 => 'x'] & """ action => Launch_Action.Settings)"),
+   Check (not Decodes (Stored ("(Launch_Entry label => """ & [1 .. 40 => 'x'] & """ action => Launch_Action.Settings "
+                               & "icon => (Launch_Icon ""Files""))"),
                        Item), "an overlong label is refused");
    Check (not Decodes ("", Item), "an empty value is refused");
    --  Untyped settings are unchanged.

@@ -138,7 +138,7 @@ package CCL_Console_View is
    --  what a person would see and click.
    type Region_Kind is
      (Entry_Source, Entry_Result, Entry_Name, Result_Type, Example, Input, Suggestion,
-      Table_Cell, Table_Header, Live_Mark);
+      Table_Cell, Table_Header, Live_Mark, Article_Link, Article_Page);
    --  The Index-th region of a kind in the last frame (empty if none):
    --  entries count from the oldest shown, suggestions from the top.
    function Region
@@ -166,7 +166,9 @@ private
    --  What a region of the last frame does under the pointer.
    type Hit_Kind is
      (No_Hit, Source_Hit, Result_Hit, Name_Hit, Badge_Hit, Example_Hit,
-      Input_Hit, Completion_Hit, Cell_Hit, Header_Hit, Live_Hit);
+      Input_Hit, Completion_Hit, Cell_Hit, Header_Hit, Live_Hit,
+      Link_Hit,      --  an article's word: First .. Last, the word in the literal
+      Page_Hit);     --  an article's next page
    type Hit is record
       Kind : Hit_Kind := No_Hit;
       Area : Rect := (others => 0);
@@ -175,7 +177,8 @@ private
                                     --  Cell_Hit: the cell within the literal
       Column : Natural := 0;        --  Cell_Hit, Header_Hit: the field
    end record;
-   Maximum_Hits : constant := 160;
+   --  An article's words are links: a thesaurus page holds a few hundred.
+   Maximum_Hits : constant := 512;
    subtype Hit_Count is Natural range 0 .. Maximum_Hits;
    type Hit_Array is array (1 .. Maximum_Hits) of Hit;
 

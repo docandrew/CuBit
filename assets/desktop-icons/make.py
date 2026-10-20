@@ -508,6 +508,42 @@ def teapots():
     return i
 
 
+def rounded(x0, y0, x1, y1, r):
+    """A rounded rectangle as an SVG path."""
+    return (f"M {x0 + r} {y0} L {x1 - r} {y0} Q {x1} {y0} {x1} {y0 + r} L {x1} {y1 - r} "
+            f"Q {x1} {y1} {x1 - r} {y1} L {x0 + r} {y1} Q {x0} {y1} {x0} {y1 - r} "
+            f"L {x0} {y0 + r} Q {x0} {y0} {x0 + r} {y0} Z")
+
+
+def calculator():
+    """Calculator: a bright teal calculator with a pale display, white keys
+    and an orange operator column, thick enough to stand on the desk."""
+    i = Icon("calculator")
+    ink = "#063a32"
+    # The body's depth (lower right), then its face.
+    i.path(rounded(12, 6, 40, 45, 4.5), "#0b6e60", ink=ink)
+    i.path(rounded(8, 3, 36, 42, 4.5), i.gradient("#8af8e4", "#13ad96", x2=1, y2=1), ink=ink)
+    i.line([(11.5, 6.4), (32.5, 6.4)], "#e2fff8", 1.3)
+    # The display: pale green glass with a result in dark segments.
+    i.path(rounded(11.5, 8, 32.5, 17.5, 1.8), i.gradient("#fbfffd", "#bdeedf"), ink=ink, width=1.6)
+    for x0, x1 in ((19.5, 22.5), (24.5, 27.5)):
+        i.line([(x0, 12.8), (x1, 12.8)], "#0b4a40", 2.0)
+    i.line([(29.6, 10.4), (29.6, 15.2)], "#0b4a40", 2.0)
+    # Keys: three columns of white keys and an orange operator column.
+    for row in range(3):
+        y = 20.5 + row * 6.8
+        for col in range(4):
+            x = 11.5 + col * 5.4
+            if col < 3:
+                fill = i.gradient("#ffffff", "#d3e0dc")
+            elif row < 2:
+                fill = i.gradient("#ffd796", "#f39a2a")
+            else:
+                fill = i.gradient("#ff9f6b", "#e0461a")
+            i.path(rounded(x, y, x + 4.4, y + 5.2, 1.2), fill, ink=ink, width=1.2)
+    return i
+
+
 def agent():
     """An agent: a violet cube with two teal eyes, lit from the upper left."""
     i = Icon("agent")
@@ -582,10 +618,60 @@ def volume_muted():
     return speaker("volume-muted", muted=True)
 
 
+def book(name, cover, cover_dark, emblem):
+    """A bound book stood a little open to the right: its cover, the page
+    block on its fore edge, a gold band across the spine and a ribbon."""
+    i = Icon(name)
+    ink = "#2a0d10" if name == "dictionary" else "#06261c"
+    # The page block behind the cover: cream, ruled with its leaves.
+    i.poly([(30, 5), (40, 10), (40, 42), (30, 38)], i.gradient("#fffaf0", "#e2d6bd", x2=1), ink=ink)
+    for y in (13, 18, 23, 28, 33):
+        i.line([(32, y - 4 + (y - 13) * 0.0), (38.5, y - 0.7)], "#c9b996", 0.9)
+    i.poly([(10, 42), (30, 38), (40, 42), (20, 46)], i.gradient("#f7efdc", "#cdbd98", x2=1), ink=ink)
+    # The spine's thickness, then the front cover over it.
+    i.poly([(6, 10), (10, 8), (10, 42), (6, 44)], i.gradient(cover_dark, "#1a0408" if name == "dictionary"
+                                                             else "#03190f", x2=1), ink=ink)
+    i.poly([(10, 8), (30, 4), (30, 38), (10, 42)], i.gradient(cover, cover_dark, x2=1, y2=1), ink=ink)
+    # Gold bands near the spine's top and foot.
+    for y in (12, 34):
+        i.poly([(10, y), (30, y - 4), (30, y - 2), (10, y + 2)], i.gradient("#ffe58a", "#c8901c", x2=1), ink=None)
+    # The emblem, in gold, in the cover's middle.
+    emblem(i)
+    # A ribbon bookmark hanging from the pages.
+    i.poly([(26, 39), (29, 38.4), (29, 46), (27.5, 44.5), (26, 46.6)], "#e3243b" if name != "dictionary"
+           else "#2f7fd0", ink=ink, width=1.2)
+    # Light from the upper left along the cover's top edge.
+    i.line([(11.5, 9.6), (28.5, 6.2)], "#ffffff", 1.1)
+    return i
+
+
+def dictionary():
+    """Dictionary: a crimson bound book with a gold A on its cover."""
+    def emblem(i):
+        gold = i.gradient("#fff1a8", "#d99a1e", x2=1, y2=1)
+        # A capital A: two legs and a bar, drawn as one path.
+        i.path("M 14.5 30.5 L 19.2 15.6 L 21.6 15.1 L 26.2 28.6 L 23.6 29.1 L 22.4 25.4 L 18.1 26.2 "
+               "L 17.0 30.0 Z M 18.8 23.8 L 21.7 23.2 L 20.3 18.8 Z", gold, ink="#5a2a00", width=1.0)
+    return book("dictionary", "#e0405a", "#8e1023", emblem)
+
+
+def thesaurus():
+    """Thesaurus: an emerald bound book with gold arrows both ways: words
+    that mean the same."""
+    def emblem(i):
+        gold = i.gradient("#fff1a8", "#d99a1e", x2=1, y2=1)
+        i.path("M 13.5 21.5 L 18 17.6 L 18 19.8 L 26.5 18.1 L 26.5 21.1 L 18 22.8 L 18 25 Z",
+               gold, ink="#5a2a00", width=1.0)
+        i.path("M 26.8 26.2 L 22.3 30.1 L 22.3 27.9 L 13.8 29.6 L 13.8 26.6 L 22.3 24.9 L 22.3 22.7 Z",
+               gold, ink="#5a2a00", width=1.0)
+    return book("thesaurus", "#2fc48a", "#0b6b45", emblem)
+
+
 ICONS = (cubit_logo, workbench, console, logs, trace, doom, devices, files, gameboy, settings,
          inspector, mesa, boot, power, system, development, web, games, media, tools,
          clipboard, clip_text, clip_value, clip_mask, clip_pin,
-         text, teapots, agent, archive, wifi, battery, volume, volume_muted)
+         text, teapots, calculator, dictionary, thesaurus, agent, archive, wifi, battery, volume,
+         volume_muted)
 
 
 def main():

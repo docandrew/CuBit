@@ -79,6 +79,12 @@ is
       Import : CCL.Host_Values.Import_Declaration;
       Item : out Operation_Descriptor; Error : out Catalog_Error);
 
+   --  The operation is also a command: callable by its bare name, as
+   --  (dict "word") for lexicon.dict. Publish refuses a second command of
+   --  the same name (Ambiguous_Name), so a bare name resolves to one
+   --  operation; qualified names are unaffected.
+   procedure Mark_Command (Item : in out Operation_Descriptor);
+
    type Resolved_Operation is record
       Interface_Digest : Descriptor_Digest := EMPTY_DIGEST;
       Interface_Major  : Unsigned_16 := 0;
@@ -162,6 +168,7 @@ is
    --  catalog view explicitly: an empty view reveals nothing, while a
    --  Workbench or compiler holding discovery authority may receive a richer
    --  snapshot from the future catalog service.
+   --  Qualified_Name is interface.operation, or a command's bare name.
    procedure Resolve
      (Item           : Interface_Catalog;
       Qualified_Name : String;
@@ -258,6 +265,7 @@ private
       Parameters : Parameter_Count := 0;
       Import     : CCL.Host_Values.Import_Declaration := (others => <>);
       Defined    : Boolean := False;
+      Command    : Boolean := False;
    end record;
 
    type Operation_Array is

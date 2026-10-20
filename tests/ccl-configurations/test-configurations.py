@@ -94,11 +94,11 @@ class Configurations(unittest.TestCase):
         # Typed Launch_Entry values, stored in their canonical spelling.
         self.assertEqual(settings['desktop.launch.96-logs'],
                          '(Launch_Entry label => "Logs" action => (Launch_Action.Program "logs.app") '
-                         'icon => Launch_Icon.Logs category => App_Category.System single_instance => false '
+                         'icon => (Launch_Icon name => "Logs") category => App_Category.System single_instance => false '
                          'color => (App_Color.RGB (RGB_Color red => 133 green => 147 blue => 170)))')
         self.assertEqual(settings['desktop.launch.12-console'],
                          '(Launch_Entry label => "CCL Console" action => (Launch_Action.Program "ccl-console.app") '
-                         'icon => Launch_Icon.Console category => App_Category.Development single_instance => false '
+                         'icon => (Launch_Icon name => "Console") category => App_Category.Development single_instance => false '
                          'color => (App_Color.RGB (RGB_Color red => 43 green => 122 blue => 70)))')
         self.assertIn('desktop.launch.95-boot-logs', settings)
 
@@ -108,11 +108,14 @@ class Configurations(unittest.TestCase):
         self.reject('(system-config v1 (setting "desktop.launch.10-x" '
                     '(Launch_Entry label => "X" action => Launch_Action.Settings category => App_Category.Toys)))',
                     'INVALID_TYPED_VALUE')
+        self.reject('(system-config v1 (setting "desktop.launch.10-x" '
+                    '(Launch_Entry "X" Launch_Action.Settings (Launch_Icon "Toaster"))))',
+                    'INVALID_TYPED_VALUE')
         result = self.compile('(system-config v1 (setting "desktop.launch.10-x" '
-                              '(Launch_Entry "X" Launch_Action.Settings)))')
+                              '(Launch_Entry "X" Launch_Action.Settings (Launch_Icon "Files"))))')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('desktop.launch.10-x=(Launch_Entry label => "X" action => Launch_Action.Settings '
-                      'icon => Launch_Icon.Files category => App_Category.Tools single_instance => false '
+                      'icon => (Launch_Icon name => "Files") category => App_Category.Tools single_instance => false '
                       'color => App_Color.Theme_Accent)',
                       result.stdout)
 
@@ -184,7 +187,7 @@ class Configurations(unittest.TestCase):
                     self.reject(f"({kind} {token} {fields})")
 
     def test_bounds(self):
-        self.reject('#' * 8193)
+        self.reject('#' * (16 * 1024 + 1))
         for length, good in ((128, True), (129, False)):
             source = f'(system-config v1 (setting "{"k" * length}" 1))'
             if good:
@@ -200,7 +203,7 @@ class Configurations(unittest.TestCase):
             value = f'(let ((x{i} (concat x{i-1} x{i-1}))) {value})'
         value = f'(let ((x0 "{"x" * 32}")) {value})'
         source = '(system-config v1 ' + ' '.join(f'(setting "k{i}" {value})' for i in range(33)) + ')'
-        self.assertLessEqual(len(source), 8192)
+        self.assertLessEqual(len(source), 16 * 1024)
         self.assertEqual(self.compile(source).returncode, 0)
 
     def test_preflight_is_silent(self):

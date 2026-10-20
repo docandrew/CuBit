@@ -328,6 +328,20 @@ is
                   Qualified_Character (A_Interface, A_Operation, K) =
                   Qualified_Character (B_Interface, B_Operation, K)));
 
+   procedure Mark_Command (Item : in out Operation_Descriptor) is
+   begin
+      Item.Command := True;
+   end Mark_Command;
+
+   --  Descriptor names a command that Other already names.
+   function Command_Clash (Descriptor, Other : Interface_Descriptor) return Boolean is
+     (Descriptor.Operations_Length > 0 and then Other.Operations_Length > 0 and then
+      (for some Mine in 0 .. Descriptor.Operations_Length - 1 =>
+         Descriptor.Operations (Mine).Command and then
+         (for some Theirs in 0 .. Other.Operations_Length - 1 =>
+            Other.Operations (Theirs).Command and then
+            Names_Equal (Descriptor.Operations (Mine).Name, Other.Operations (Theirs).Name))));
+
    procedure Publish
      (Item       : in out Interface_Catalog;
       Descriptor : Interface_Descriptor;
@@ -344,6 +358,10 @@ is
               (Item.Descriptors (Index).Name, Descriptor.Name)
             then
                Error := Duplicate_Interface;
+               return;
+            end if;
+            if Command_Clash (Descriptor, Item.Descriptors (Index)) then
+               Error := Ambiguous_Name;
                return;
             end if;
             for Mine in 0 .. Descriptor.Operations_Length - 1 loop
@@ -416,6 +434,11 @@ is
       return True;
    end Qualified_Name_Matches;
 
+   function Bare_Name_Matches (Operation_Name : Bounded_Name; Candidate : String) return Boolean is
+     (Candidate'Length = Operation_Name.Length and then
+      (for all K in Candidate'Range =>
+         Candidate (K) = Operation_Name.Data (K - Candidate'First + 1)));
+
    procedure Resolve
      (Item           : Interface_Catalog;
       Qualified_Name : String;
@@ -439,6 +462,11 @@ is
                   Item.Descriptors (Interface_Index).Operations
                     (Operation_Index).Name,
                   Qualified_Name)
+                 or else
+                   (Item.Descriptors (Interface_Index).Operations (Operation_Index).Command
+                    and then Bare_Name_Matches
+                      (Item.Descriptors (Interface_Index).Operations (Operation_Index).Name,
+                       Qualified_Name))
                then
                   Result :=
                     (Interface_Digest =>

@@ -1,0 +1,25 @@
+# lexicon.svc (docs/lexicon.md): the dictionary, thesaurus and spelling
+# service. It reads one read-only asset, the lexicon image, and answers
+# typed requests on channels (Lexicon_Channel): Define, Thesaurus, Check,
+# Suggest. Requested authority only; the launch path remains in control.
+(Executable_Manifest
+  identity => "com.cubit.lexicon"
+  version => "1.0.0"
+  requests => [
+    (service "logstore" "logstore")
+    # system.assets.root: where the lexicon package lives.
+    (service "config" "config")
+    (service "filesystem" "filesystem")
+    # Registers the "lexicon" role; clients request the service by name.
+    (notification "lexicon" Notify_Access.Manage "registration")]
+  scopes => [
+    (config [File_Right.Read] "system.assets.")
+    # Exactly the lexicon package on each image's system volume.
+    (filesystem [File_Right.Read] "@nvme:0/Assets/cubit-lexicon/")
+    (filesystem [File_Right.Read] "@cd:0/Assets/cubit-lexicon/")]
+  # The exported interface (APP-003): one duplex request channel per
+  # client conversation; a few per client (the app's views, a script).
+  channels => [
+    (Channel_Offer contract => "com.cubit.lexicon"
+      per_client => (Channel_Limit.At_Most 4) total => Channel_Limit.Server_Limit
+      class => Channel_Class.Interactive)])

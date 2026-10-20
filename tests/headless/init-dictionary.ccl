@@ -1,0 +1,9 @@
+# The Dictionary app (docs/lexicon.md): lexicon.svc and the app over it.
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "clock.svc" (priority 5))
+  (start "lexicon.svc" (priority 4))
+  (start "display.svc" (priority 5))
+  (start "desktop.svc" (priority 4))
+  (start "dictionary.app" (priority 3))
+)

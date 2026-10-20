@@ -79,7 +79,13 @@ package CCL.Manifests.Model with SPARK_Mode => On is
       ID : Unsigned_32 := 0;
       Rights : Rights_Kind := Read_Only;
    end record;
-   type Service_Array is array (Positive range 1 .. MAX_REQUESTS) of Service_Binding;
+   --  A service catalog names each kernel registry role (0 .. MAXIMUM_ROLE,
+   --  System_Publications.Maximum_Role) at most once as a service and once
+   --  as a notification: its bound is the registry's, not one manifest's.
+   MAXIMUM_ROLE : constant := 127;
+   MAX_CATALOG_ENTRIES : constant := 2 * (MAXIMUM_ROLE + 1);
+   subtype Catalog_Count is Natural range 0 .. MAX_CATALOG_ENTRIES;
+   type Service_Array is array (Positive range 1 .. MAX_CATALOG_ENTRIES) of Service_Binding;
    MAX_SCOPES : constant := 16;
    type Access_Right is (Read_File, Write_File, Execute_File, Create_File);
    for Access_Right use (Read_File => 1, Write_File => 2, Execute_File => 4, Create_File => 8);
@@ -151,7 +157,7 @@ package CCL.Manifests.Model with SPARK_Mode => On is
    --  The build's service catalog: names, service roles and offered rights.
    type Catalog_Model is record
       Services : Service_Array := [others => (others => <>)];
-      Service_Count : Request_Count := 0;
+      Service_Count : Catalog_Count := 0;
    end record;
 
    --  Rules every frontend applies, so they accept exactly the same values.

@@ -1,0 +1,21 @@
+with "../../userspace/allocator/allocator_runtime_host.gpr";
+with "../../userspace/ccl/cubit_shared.gpr";
+--  Hosted tests of the CCL lexicon bindings (docs/lexicon.md): the
+--  commands through the CCL session engine, answered from the image file
+--  (CCL_LEXICON_IMAGE) by the hosted CCL_Lexicon_Source; and the console
+--  view showing an entry.
+with "../../userspace/lib/ui/fonts_host.gpr";
+with "../../userspace/lib/tls/sparktls_host.gpr";
+project CCL_Lexicon_Tests is
+   for Source_Dirs use (".", "../../userspace/lib/lexicon", "../../userspace/ccl/src",
+                        "../../userspace/ccl/tools/ccl-ui-preview", "../../userspace/ccl/tools/ccl-ui-preview/host",
+                        "../../userspace/lib/ui", "../../userspace/lib/theme",
+                        "../../userspace/lib/compositor", "../../userspace/lib/display");
+   for Excluded_Source_Files use ("cubit.ads");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnata", "-gnatwa", "-gnatwJ");
+   end Compiler;
+end CCL_Lexicon_Tests;

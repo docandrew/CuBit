@@ -1,10 +1,11 @@
 with "../../../lib/ui/fonts_native.gpr";
 with "../../../lib/ui/toolkit_flags.gpr";
+with "../../../lib/calc/calc_flags.gpr";
 with "../../../lib/tls/sparktls_cubit.gpr";
 project CCL_Console is
    for Languages use ("Ada");
-   for Source_Dirs use (".", "../../src", "../../native", "../../tools/ccl-ui-preview",
-      "../../../lib/ui", "../../../lib/theme", "../../../lib/config", "../../../lib/compositor", "../../../lib/display", "../../../allocator/src");
+   for Source_Dirs use ("../../../lib/lexicon", "../../../lib/lexicon/channel", ".", "../../src", "../../native", "../../tools/ccl-ui-preview",
+      "../../../lib/ui", "../../../lib/calc", "../../../lib/theme", "../../../lib/config", "../../../lib/compositor", "../../../lib/display", "../../../allocator/src");
    for Object_Dir use "build";
    for Main use ("console_main.adb");
    for Runtime ("Ada") use "../../../runtime";
@@ -20,6 +21,12 @@ project CCL_Console is
       for Default_Switches ("Ada") use
         ("-O2", "-gnat2022", "-fstack-usage", "-fomit-frame-pointer",
          "-mno-red-zone", "-fno-pic");
+      for Switches ("calc_limbs.adb") use Calc_Flags.Proved_Switches;
+      for Switches ("calc_naturals.adb") use Calc_Flags.Proved_Switches;
+      for Switches ("calc_numbers.adb") use Calc_Flags.Proved_Switches;
+      for Switches ("calc_syntax.adb") use Calc_Flags.Proved_Switches;
+      for Switches ("calc_engine.adb") use Calc_Flags.Proved_Switches;
+      for Switches ("calc_format.adb") use Calc_Flags.Proved_Switches;
    end Compiler;
 
    package Binder is

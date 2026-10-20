@@ -1332,7 +1332,7 @@ procedure main is
      (Role = DRIVER_LOGSTORE or else Role = DRIVER_DESKTOP or else
       Role = DRIVER_DISPLAY or else Role = DRIVER_CCL_TEST or else
       Role = DRIVER_CLOCK or else Role = CuBit.TLS_Protocol.Service_Role or else
-      Role = CuBit.Metric_Protocol.Publisher_Service_Role);
+      Role = CuBit.Metric_Protocol.Publisher_Service_Role or else Role = DRIVER_LEXICON);
 
    --  For each launched-service role: the live process procmgr started with
    --  its registration, until that process exits.
@@ -1471,6 +1471,9 @@ procedure main is
          return systemStartup and then Identity = "com.cubit.tls";
       elsif Role = CuBit.Metric_Protocol.Publisher_Service_Role then
          return systemStartup and then Identity = "com.cubit.metrics";
+      elsif Role = DRIVER_LEXICON then
+         --  An impostor would read every text its clients spell-check.
+         return systemStartup and then Identity = "com.cubit.lexicon";
       end if;
       return False;
    end registrationAllowed;

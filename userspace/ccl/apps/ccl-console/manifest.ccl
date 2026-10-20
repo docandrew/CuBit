@@ -19,7 +19,11 @@
     (service "config" "config")
     (service "filesystem" "filesystem")
     # Programs it may start with typed parameters (docs/ccl-launch-parameters.md).
-    (service "process-manager" "process-manager")]
+    (service "process-manager" "process-manager")
+    # (dict ..), (synonym ..), (thesaurus ..), (spell-check ..): lexicon.svc.
+    (service "lexicon" "lexicon")]
+  # Without lexicon.svc the console still runs; lexicon.* says why not.
+  optional => ["lexicon"]
   scopes => [
     (config-all [File_Right.Read])
     # :files, :save and :load; and the files handed to programs it starts.

@@ -1,0 +1,32 @@
+--  Hosted calculator core (docs/calculator.md): the proved core in
+--  userspace/lib/calc and its tests, on Linux. CALC_MODE: checked
+--  (assertions and contracts on: the tests), release (-O3 -gnatp, as the
+--  native app builds: the benchmark).
+project Calculator is
+   type Build_Mode is ("checked", "release");
+   Mode : Build_Mode := external ("CALC_MODE", "checked");
+   for Languages use ("Ada");
+   for Source_Dirs use (".", "../../userspace/lib/calc");
+   for Main use ("calc_core_tests.adb");
+   for Exec_Dir use "build";
+   case Mode is
+      when "checked" => for Object_Dir use "build/checked";
+      when "release" => for Object_Dir use "build/release";
+   end case;
+   package Builder is
+      case Mode is
+         when "release" => for Executable ("calc_core_tests.adb") use "calc_core_tests_release";
+         when "checked" => null;
+      end case;
+   end Builder;
+   package Compiler is
+      case Mode is
+         when "checked" =>
+            for Default_Switches ("Ada") use
+              ("-O1", "-g", "-gnat2022", "-gnata", "-gnatwa", "-gnatwJ", "-gnatVa");
+         when "release" =>
+            for Default_Switches ("Ada") use
+              ("-O3", "-g", "-gnat2022", "-gnatp", "-gnatwa", "-gnatwJ", "-fno-tree-vrp");
+      end case;
+   end Compiler;
+end Calculator;

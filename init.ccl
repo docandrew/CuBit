@@ -8,5 +8,7 @@
   # need their own tls-scope names.
   (start "tls.svc" (priority 5) (network approve-declared))
   (start "display.svc" (priority 5))
+  # Dictionary, thesaurus and spelling for the apps and CCL (docs/lexicon.md).
+  (start "lexicon.svc" (priority 4))
   (start "shell.app" (priority 4))
 )

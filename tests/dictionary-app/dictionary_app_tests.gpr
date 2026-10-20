@@ -1,0 +1,20 @@
+with "../../userspace/allocator/allocator_runtime_host.gpr";
+--  Hosted tests of the Dictionary and Thesaurus apps' view (docs/lexicon.md):
+--  lookups answered from the image file by Lexicon_Answers in process (the
+--  native apps ask lexicon.svc), keys and clicks in, state and frames out.
+with "../../userspace/lib/ui/fonts_host.gpr";
+project Dictionary_App_Tests is
+   for Source_Dirs use (".", "build/source", "../../userspace/apps/dictionary", "../../userspace/lib/lexicon",
+                        "../lexicon", "../../userspace/lib/ui", "../../userspace/lib/theme",
+                        "../../userspace/lib/compositor", "../../userspace/lib/display");
+   --  The native entry points are not hosted; the core tests' mains neither.
+   for Excluded_Source_Files use ("thesaurus_main.adb", "dictionary_main.adb", "dictionary_app.ads", "dictionary_app.adb",
+                                  "lexicon_tests.adb", "lexicon_bench.adb");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("dictionary_app_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnata", "-gnatwa", "-gnatwJ");
+      for Switches ("client_glyph_blend.adb") use ("-O2", "-gnat2022", "-gnatwa");
+   end Compiler;
+end Dictionary_App_Tests;

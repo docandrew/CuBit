@@ -1,0 +1,10 @@
+# The lexicon from CCL (docs/lexicon.md): lexicon.svc and the CCL console,
+# whose (dict ..), (synonym ..), (thesaurus ..) and (spell-check ..) ask it.
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "clock.svc" (priority 5))
+  (start "lexicon.svc" (priority 4))
+  (start "display.svc" (priority 5))
+  (start "desktop.svc" (priority 4))
+  (start "ccl-console.app" (priority 3))
+)

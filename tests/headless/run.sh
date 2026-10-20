@@ -55,7 +55,7 @@ Mesa native tests: --test softpipe, opengl, buffer, mesa-window, mesa-sync, mesa
 
 Options:
   --build              Run make world before booting QEMU
-  --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-console, logs, ccl-remote, capability-security, network-authority, bench-net, bench-fs, threads, futex, clock, avx, rust-std, libc, processes, control-events, binutils, gcc, servo, bench-spread, timesync, tls-probe, tls-service, wget-https, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, text, clipboard, key-repeat, desktop-doom, desktop-virtio-vga, desktop-vm, virtio-gpu, virtio-vga-primary, launch-failure, or boot-timeline (--accel kvm --timeout 60)
+  --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-console, logs, ccl-remote, capability-security, network-authority, bench-net, bench-fs, threads, futex, clock, avx, rust-std, libc, processes, control-events, binutils, gcc, servo, bench-spread, timesync, tls-probe, tls-service, wget-https, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, text, calculator, lexicon, dictionary, clipboard, key-repeat, desktop-doom, desktop-virtio-vga, desktop-vm, virtio-gpu, virtio-vga-primary, launch-failure, or boot-timeline (--accel kvm --timeout 60)
   --timeout SECONDS    QEMU runtime before timeout is treated as success
                        (default 25; 180 for desktop tests, see DESKTOP_TIMEOUT_SECONDS)
   --accel NAME         QEMU accelerator (for example: tcg,thread=multi)
@@ -253,7 +253,7 @@ done
 
 if [ -z "$TIMEOUT_SECONDS" ]; then
     case "$TEST_NAME" in
-        desktop-display|desktop-protocol|files|text|clipboard|key-repeat|input-stream|launch-failure)
+        desktop-display|desktop-protocol|files|text|calculator|lexicon|dictionary|clipboard|key-repeat|input-stream|launch-failure)
             TIMEOUT_SECONDS=$DESKTOP_TIMEOUT_SECONDS ;;
         network-authority)
             TIMEOUT_SECONDS=$NETWORK_AUTHORITY_TIMEOUT_SECONDS ;;
@@ -298,7 +298,7 @@ case "$TEST_NAME" in
         ;;
     grant-forward|grant-forward-intermediary-exit|grant-forward-owner-exit|grant-forward-desktop|config-tree|config-inspection|log-authority|log-fields|metrics|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
         ;;
-    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure)
+    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -533,6 +533,16 @@ case "$TEST_NAME" in
         # The gcc demo runs cc1, a 45 MB image procmgr reads whole.
         if [ "${CCL_CONSOLE_DEMO:-}" = gcc ]; then QEMU_MEMORY="${QEMU_MEMORY:-1G}"; fi
         ;;
+    lexicon)
+        # The CCL console over lexicon.svc (docs/lexicon.md); the service
+        # holds the 22 MB lexicon image.
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-lexicon.ccl"
+        QEMU_MEMORY="${QEMU_MEMORY:-512M}"
+        ;;
+    dictionary)
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-dictionary.ccl"
+        QEMU_MEMORY="${QEMU_MEMORY:-512M}"
+        ;;
     logs)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-logs.ccl"
         ;;
@@ -741,6 +751,9 @@ case "$TEST_NAME" in
         ;;
     text)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-text.ccl"
+        ;;
+    calculator)
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-calculator.ccl"
         ;;
     clipboard)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-clipboard.ccl"
@@ -1042,6 +1055,8 @@ if [ -n "$INIT_PROFILE" ]; then
        [ "$TEST_NAME" = "ccl-workbench-virtio-vga" ] ||
        [ "$TEST_NAME" = "ccl-workspace" ] ||
        [ "$TEST_NAME" = "ccl-console" ] ||
+       [ "$TEST_NAME" = "lexicon" ] ||
+       [ "$TEST_NAME" = "dictionary" ] ||
        [ "$TEST_NAME" = "logs" ] ||
        [ "$TEST_NAME" = "devmem-denials" ] ||
        [ "$TEST_NAME" = "process-kill" ] ||
@@ -1054,6 +1069,7 @@ if [ -n "$INIT_PROFILE" ]; then
        [ "$TEST_NAME" = "files" ] ||
        [ "$TEST_NAME" = "launch-failure" ] ||
        [ "$TEST_NAME" = "text" ] ||
+       [ "$TEST_NAME" = "calculator" ] ||
        [ "$TEST_NAME" = "clipboard" ] ||
        [ "$TEST_NAME" = "key-repeat" ] ||
        [ "$TEST_NAME" = "desktop-virtio-vga" ] ||
@@ -1084,7 +1100,7 @@ if [ -n "$INIT_PROFILE" ]; then
         # the wallpapers and the application icon atlas.
         debugfs -w -R "mkdir Assets" "$TEMP_DISK" >/dev/null 2>&1
         for ASSET_ITEM in cubit-wallpapers/1/cubes.qoi cubit-wallpapers/1/cubie.qoi \
-          cubit-icons/3/applications.qoi; do
+          cubit-icons/4/applications.qoi cubit-lexicon/1/english.lexicon cubit-lexicon/1/LEXICON-NOTICE; do
             ASSET_PACKAGE="Assets/${ASSET_ITEM%/*}"
             debugfs -w -R "mkdir ${ASSET_PACKAGE%/*}" "$TEMP_DISK" >/dev/null 2>&1
             debugfs -w -R "mkdir $ASSET_PACKAGE" "$TEMP_DISK" >/dev/null 2>&1
@@ -1169,6 +1185,7 @@ if [ -n "$INIT_PROFILE" ]; then
     if [ "$TEST_NAME" = "ccl-vm" ] || [ "$TEST_NAME" = "ccl-workbench" ] ||
        [ "$TEST_NAME" = "ccl-workbench-virtio-vga" ] ||
        [ "$TEST_NAME" = "ccl-workspace" ] || [ "$TEST_NAME" = "ccl-console" ] ||
+       [ "$TEST_NAME" = "lexicon" ] || [ "$TEST_NAME" = "dictionary" ] ||
        [ "$TEST_NAME" = "logs" ]; then
         if [ "$TEST_NAME" = "ccl-vm" ]; then
             CCL_IMAGES="ccl-vm.app ccl-test-host.svc clock.svc"
@@ -1176,6 +1193,10 @@ if [ -n "$INIT_PROFILE" ]; then
             CCL_IMAGES="ccl-console.app clock.svc desktop.svc display.svc logstore.svc"
         elif [ "$TEST_NAME" = "logs" ]; then
             CCL_IMAGES="logs.app clock.svc desktop.svc display.svc"
+        elif [ "$TEST_NAME" = "lexicon" ]; then
+            CCL_IMAGES="ccl-console.app lexicon.svc clock.svc desktop.svc display.svc logstore.svc"
+        elif [ "$TEST_NAME" = "dictionary" ]; then
+            CCL_IMAGES="dictionary.app thesaurus.app lexicon.svc clock.svc desktop.svc display.svc logstore.svc"
         else
             CCL_IMAGES="ccl-workbench.app clock.svc desktop.svc display.svc"
             if [ "${CUBIT_DESKTOP_METRICS_TEST:-0}" = 1 ]; then
@@ -1367,6 +1388,18 @@ if [ -n "$INIT_PROFILE" ]; then
            ! debugfs -w -R "write $ROOT_DIR/tests/headless/text-notes.txt Documents/notes.txt" \
              "$TEMP_DISK" >/dev/null 2>&1; then
             echo "headless: failed to install Text and its document" >&2
+            exit 1
+        fi
+    fi
+    if [ "$TEST_NAME" = "calculator" ]; then
+        CALC_TEST_IMAGE="$KERNEL_DIR/isodir/boot/calculator.app"
+        if [ ! -f "$CALC_TEST_IMAGE" ]; then
+            echo "headless: missing current Calculator test image: $CALC_TEST_IMAGE" >&2
+            exit 1
+        fi
+        debugfs -w -R "rm calculator.app" "$TEMP_DISK" >/dev/null 2>&1
+        if ! debugfs -w -R "write $CALC_TEST_IMAGE calculator.app" "$TEMP_DISK" >/dev/null 2>&1; then
+            echo "headless: failed to install the Calculator" >&2
             exit 1
         fi
     fi
@@ -2148,9 +2181,10 @@ if [ "$TEST_NAME" = "managed-ui" ]; then
     rm -f "$MONITOR_SOCKET"
     MONITOR_ARGS=(-monitor "unix:$MONITOR_SOCKET,server,nowait")
 fi
-if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TEST_NAME" = "launch-failure" ] || [ "$TEST_NAME" = "text" ] || [ "$TEST_NAME" = "clipboard" ] || [ "$TEST_NAME" = "mesa-window" ] || [ "$TEST_NAME" = "gpu-viewer" ] ||
+if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TEST_NAME" = "launch-failure" ] || [ "$TEST_NAME" = "text" ] || [ "$TEST_NAME" = "calculator" ] || [ "$TEST_NAME" = "clipboard" ] || [ "$TEST_NAME" = "mesa-window" ] || [ "$TEST_NAME" = "gpu-viewer" ] ||
    [ "$TEST_NAME" = "desktop-protocol" ] ||
    [ "$TEST_NAME" = "ccl-workspace" ] || [ "$TEST_NAME" = "ccl-console" ] ||
+   [ "$TEST_NAME" = "lexicon" ] || [ "$TEST_NAME" = "dictionary" ] ||
    [ "$TEST_NAME" = "logs" ] || [ "$TEST_NAME" = "scanout-repair" ] ||
    [ "$TEST_NAME" = "desktop-doom" ] || [ "$TEST_NAME" = "boot-timeline" ] ||
    { [ "$TEST_NAME" = "servo" ] && [ -n "${SERVO_DESKTOP:-}" ]; }; then
@@ -2804,6 +2838,20 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
                 printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-demo-logs.ppm"
                 sleep 0.5
             } | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
+            elif [ "${CCL_CONSOLE_DEMO:-}" = calc ]; then
+            # The calculator core from CCL (CCL_CONSOLE_DEMO=calc,
+            # docs/calculator.md): calc.evaluate gives the app's exact answer
+            # as a typed Calc_Number; a failure is typed too. (calc ..) is
+            # the command form.
+            sleep 0.5
+            for entry in '(calc.evaluate "2/3 + 1/6")' '(field (calc.evaluate "2^64") numerator)' \
+                         '(field (calc.evaluate "sqrt(2)") exact)' '(calc.evaluate "1/0")' \
+                         '(field (calc "3/4+1/8") decimal)'; do
+                python3 "$ROOT_DIR/tests/ccl-console/send-text.py" "$MONITOR_SOCKET" "$entry" 0.08
+                sleep 1
+            done
+            printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-demo-calc.ppm" | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
+            sleep 0.5
             elif [ -n "${CCL_CONSOLE_DEMO:-}" ]; then
             # A short demo session (CCL_CONSOLE_DEMO=1): places, a live stream,
             # then the whole transcript in BASIC. Screendumps only; no markers.
@@ -3124,6 +3172,56 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
             # F10 quits through the view; the window closes cleanly.
             files_keys f10
             files_wait "files: closed"
+        elif [ "$TEST_NAME" = "lexicon" ] || [ "$TEST_NAME" = "dictionary" ]; then
+            # The lexicon (docs/lexicon.md): its CCL commands in the console
+            # (lexicon), or the Dictionary app by keyboard (dictionary).
+            lexicon_wait() {
+                local attempt
+                for ((attempt = 0; attempt < 300; attempt++)); do
+                    grep -aF "$1" "$SERIAL_LOG" >/dev/null 2>&1 && return 0
+                    sleep 0.1
+                done
+                echo "headless: did not see: $1" >&2
+                exit 1
+            }
+            lexicon_keys() {
+                local key
+                for key in "$@"; do
+                    printf 'sendkey %s\n' "$key"
+                    sleep 0.15
+                done | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
+            }
+            lexicon_shot() {
+                sleep 1
+                printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-$1.ppm" | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
+                sleep 0.5
+            }
+            lexicon_wait "lexicon: image loaded"
+            if [ "$TEST_NAME" = "lexicon" ]; then
+                lexicon_wait "ccl-console: first frame presented"
+                sleep 0.5
+                for entry in '(dict "cataract")' '(synonym "wharf")' '(thesaurus "accipitrine")' \
+                             '(spell-check "Teh quick brown fox jumpd over the dog")' \
+                             '(lexicon.known "receive")' '(dict "recieve")'; do
+                    python3 "$ROOT_DIR/tests/ccl-console/send-text.py" "$MONITOR_SOCKET" "$entry"
+                    sleep 1
+                done
+                lexicon_shot lexicon-console
+                python3 "$ROOT_DIR/tests/ccl-console/send-text.py" "$MONITOR_SOCKET" '(thesaurus "wharf")'
+                lexicon_shot lexicon-thesaurus
+            else
+                lexicon_wait "dictionary: window ready"
+                sleep 1
+                lexicon_shot dictionary-welcome
+                lexicon_keys c a t a r a c t ret
+                lexicon_shot dictionary-cataract
+                lexicon_keys esc w h a r f ret
+                lexicon_shot dictionary-wharf
+                lexicon_keys tab
+                lexicon_shot dictionary-thesaurus
+                lexicon_keys esc r e c i e v e
+                lexicon_shot dictionary-not-found
+            fi
         elif [ "$TEST_NAME" = "text" ]; then
             # CuBit Text (docs/text-editor.md) by keyboard only: open the
             # granted document, type a line at its end, save (sibling, flush,
@@ -3180,6 +3278,50 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
             printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-text-clicks.ppm" | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
             text_keys ctrl-q
             text_wait "text: closed"
+        elif [ "$TEST_NAME" = "calculator" ]; then
+            # CuBit Calculator (docs/calculator.md) by keyboard: exact
+            # results, ans, an approximation, a big integer, a failed Enter
+            # that keeps its entry; a live preview; Ctrl+Q.
+            calc_wait() {
+                local attempt
+                for ((attempt = 0; attempt < 300; attempt++)); do
+                    grep -aF "$1" "$SERIAL_LOG" >/dev/null 2>&1 && return 0
+                    sleep 0.1
+                done
+                echo "headless: the Calculator did not report: $1" >&2
+                exit 1
+            }
+            calc_enter() {
+                python3 "$ROOT_DIR/tests/ccl-console/send-text.py" "$MONITOR_SOCKET" "$1" 0.08
+            }
+            calc_wait "calculator: first frame presented"
+            sleep 0.5
+            calc_enter "2/3 + 1/6"
+            calc_wait "calculator: evaluated 2/3 + 1/6 = 5/6 entries=1"
+            calc_enter "2^100"
+            calc_wait "calculator: evaluated 2^100 = 1267650600228229401496703205376 entries=2"
+            calc_enter "ans / 2^99"
+            calc_wait "calculator: evaluated ans / 2^99 = 2 entries=3"
+            calc_enter "sqrt(2)"
+            calc_wait "entries=4"
+            calc_enter "100!"
+            calc_wait "entries=5"
+            calc_enter "1/7"
+            calc_wait "calculator: evaluated 1/7 = 1/7 entries=6"
+            calc_enter "1/(3-3)"
+            sleep 0.8
+            printf 'sendkey esc\n' | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
+            sleep 0.3
+            # A live preview, not entered: (1+sqrt(5))/2
+            for key in shift-9 1 shift-equal s q r t shift-9 5 shift-0 shift-0 slash 2; do
+                printf 'sendkey %s\n' "$key"
+                sleep 0.08
+            done | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
+            sleep 1
+            printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-calculator.ppm" | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
+            sleep 0.5
+            printf 'sendkey ctrl-q\n' | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
+            calc_wait "calculator: closed"
         else
             {
                 printf 'sendkey a\n'
@@ -4216,6 +4358,14 @@ ccl-console: REPL completed: Expression does not type-check: field output takes 
 ccl-console: REPL completed: Task<Run_Outcome>: Done (Run_Outcome.Finished (Unix_Exit 1))
 ccl-console: REPL completed: Task<Run_Outcome>: Done (Run_Outcome.Finished (Unix_Exit 0))
 "
+        elif [ "${CCL_CONSOLE_DEMO:-}" = calc ]; then
+            required_markers="$required_markers
+ccl-console: REPL completed: Calc_Number: (Calc_Number true \"5\" \"6\" \"0.8(3)\" Calc_Form.Repeating)
+ccl-console: REPL completed: String: 18446744073709551616
+ccl-console: REPL completed: Boolean: false
+ccl-console: REPL completed: calc.evaluate rejected its argument: division by zero (column 2)
+ccl-console: REPL completed: String: 0.875
+"
         elif [ "${CCL_CONSOLE_DEMO:-}" = clipboard ]; then
             required_markers="$required_markers
 ccl-console: REPL completed: Integer: 42
@@ -4235,6 +4385,29 @@ ccl-console: REPL completed: Image: (Image 160 100
 ccl-console: REPL completed: Image: (Image 320 120
 "
         fi
+        ;;
+    lexicon)
+        required_markers="
+lexicon: registered
+lexicon: image loaded
+ccl-console: first frame presented
+ccl-console: REPL completed: Definition: (Definition.Found (Word_Entry \"cataract\" [(Word_Sense Part_Of_Speech.Noun \"an eye disease
+ccl-console: REPL completed: Synonyms: (Synonyms.Found (Synonym_List \"wharf\" [\"pier\" \"wharfage\" \"dock\"
+ccl-console: REPL completed: Thesaurus_Result: (Thesaurus_Result.Found (Thesaurus_Entry \"accipitrine\" [(Synonym_Group Part_Of_Speech.Adjective
+ccl-console: REPL completed: List<Misspelling>: [(Misspelling \"Teh\" 0 [\"the\"
+ccl-console: REPL completed: Boolean: true
+ccl-console: REPL completed: Definition: (Definition.Not_Found (Near_Spellings \"recieve\" [\"receive\"
+ccl-console: REPL completed: Thesaurus_Result: (Thesaurus_Result.Found (Thesaurus_Entry \"wharf\"
+"
+        ;;
+    dictionary)
+        required_markers="
+lexicon: registered
+lexicon: image loaded
+dictionary: starting
+dictionary: window ready
+ui-app: protected frame published
+"
         ;;
     ccl-workspace)
         required_markers="
@@ -4407,7 +4580,7 @@ mixer: HDA period IRQ active
         required_markers="
 display: gpu not primary, using linear-fb
 desktop: wallpaper loaded @nvme:0/Assets/cubit-wallpapers/1/cubes.qoi
-desktop: icons loaded @nvme:0/Assets/cubit-icons/3/applications.qoi
+desktop: icons loaded @nvme:0/Assets/cubit-icons/4/applications.qoi
 desktop: active outputs= 1 primary= 0
 desktop: internal shell active
 shell: cwd=@nvme:0/
@@ -4607,6 +4780,19 @@ text: first frame presented
 text: opened @nvme:0/Documents/notes.txt lines=1 bytes=27
 text: saved @nvme:0/Documents/notes.txt bytes=39
 text: closed
+"
+        ;;
+    calculator)
+        required_markers="
+calculator: starting
+calculator: window ready
+calculator: first frame presented
+calculator: evaluated 2/3 + 1/6 = 5/6 entries=1
+calculator: evaluated 2^100 = 1267650600228229401496703205376 entries=2
+calculator: evaluated ans / 2^99 = 2 entries=3
+calculator: evaluated 100! = 93326215443944152681699238856266700490715968264381621468592963895217599993229915608941463976156518286253697920827223758251185210916864000000000000000000000000 entries=5
+calculator: evaluated 1/7 = 1/7 entries=6
+calculator: closed
 "
         ;;
     launch-failure)
@@ -5049,6 +5235,17 @@ hello cubit"
        grep -aE 'text: (press .*cursors=[2-9]|cursors [2-9])' "$SERIAL_LOG" >/dev/null; then
         echo "headless: two plain clicks after Ctrl+S did not leave one cursor" >&2
         exit 1
+    fi
+fi
+if [ "$TEST_NAME" = "calculator" ]; then
+    # A failed Enter (division by zero) adds nothing: six entries in all.
+    if grep -aF "entries=7" "$SERIAL_LOG" >/dev/null; then
+        echo "headless: the Calculator recorded a failed evaluation" >&2
+        exit 1
+    fi
+    if [ -n "${CALC_SCREENSHOT_DIR:-}" ]; then
+        mkdir -p "$CALC_SCREENSHOT_DIR"
+        python3 "$ROOT_DIR/tests/text-editor/ppm_to_png.py" "${SERIAL_LOG%.log}-calculator.ppm" --into "$CALC_SCREENSHOT_DIR"
     fi
 fi
 if [ "$CHECK_EXT2" -eq 1 ]; then

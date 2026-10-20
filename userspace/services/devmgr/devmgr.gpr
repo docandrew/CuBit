@@ -101,7 +101,7 @@ project Devmgr is
        "ccl-scheduling_limits.ads",
        "ccl-configurations.ads", "ccl-configurations.adb",
        "ccl-typed_settings.ads", "ccl-typed_settings.adb", "ccl-interfaces-desktop_input.ads", "ccl-interfaces-gpu_power.ads", "ccl-interfaces-desktop_display.ads", "ccl-interfaces.ads",
-       "ccl-interfaces-desktop_launch.ads");
+       "ccl-interfaces-desktop_launch.ads", "ccl-interfaces-desktop_launch-icons.ads");
 
     for Runtime ("Ada") use "../../runtime";
 

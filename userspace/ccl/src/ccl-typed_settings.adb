@@ -4,6 +4,7 @@ with CCL.Evaluation;
 with CCL.Interfaces.Desktop_Display;
 with CCL.Interfaces.Desktop_Input;
 with CCL.Interfaces.Desktop_Launch;
+with CCL.Interfaces.Desktop_Launch.Icons;
 with CCL.Interfaces.GPU_Power;
 with CCL.Language;
 with CCL.Objects;
@@ -178,6 +179,20 @@ package body CCL.Typed_Settings is
       if not Captured then
          Fail ("the value does not fit a " & Root_Name (Kind), 0);
          return;
+      end if;
+      --  What the type cannot say: a Launch_Icon names an icon the atlas
+      --  holds (CCL.Interfaces.Desktop_Launch.Icons, generated with it).
+      if Kind = Launch_Entry_Setting then
+         declare
+            package Icons renames CCL.Interfaces.Desktop_Launch.Icons;
+            Icon : constant String :=
+              Views.Text (Object, Named (Object, Named (Object, Views.Root (Object), "icon"), "name"));
+         begin
+            if not Icons.Known (Icon) then
+               Fail ("not a Launch_Entry: " & Icons.ICON_PACKAGE & " has no icon named """ & Icon & """", 0);
+               return;
+            end if;
+         end;
       end if;
       Result.Success := True;
    end Capture;

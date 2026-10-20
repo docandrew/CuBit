@@ -21,7 +21,13 @@ CHECKS = [
      {'DIGEST': None, 'IMAGE_KEY': 'Image', 'SIZE_KEY': 'Size', 'SERIES_KEY': 'List-Integer',
       'GRID_KEY': 'Grid', 'IMAGES_KEY': 'List-Image', 'SCALED_KEY': 'Scaled'}),
     (SRC / 'ccl-interfaces-logs.ads',
-     {'DIGEST': None, 'SCHEMA_KEY': 'List-LogEntry', 'SEVERITY_KEY': 'Severity'})]
+     {'DIGEST': None, 'SCHEMA_KEY': 'List-LogEntry', 'SEVERITY_KEY': 'Severity'}),
+    (SRC / 'ccl-interfaces-lexicon.ads',
+     {'DIGEST': None, 'DEFINITION_KEY': 'Definition', 'THESAURUS_KEY': 'Thesaurus_Result',
+      'SYNONYMS_KEY': 'Synonyms', 'SPELLINGS_KEY': 'Near_Spellings',
+      'MISSPELLINGS_KEY': 'List-Misspelling', 'PAGE_KEY': 'Page_Query'}),
+    (SRC / 'ccl-interfaces-calc.ads',
+     {'DIGEST': None, 'FORM_KEY': 'Calc_Form', 'NUMBER_KEY': 'Calc_Number'})]
 
 
 def constant(text, name):
