@@ -1,0 +1,7 @@
+# GNAT on CuBit (userspace/ports/gcc): gnat-check compiles an Ada program
+# with the gcc driver and gnat1, binds it with gnatbind, links it with the
+# driver and runs it, and compares every output with Linux's.
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "gnat-check.app" (priority 3))
+)

@@ -8,6 +8,7 @@
 pragma Ada_2022;
 with Interfaces; use Interfaces;
 with CuBit.Child_Exits;
+with CuBit.Handles.Startup;
 with CuBit.Launch_Arguments;
 with CuBit.Launch_Grants;
 with CuBit.Kernel_ABI;
@@ -271,6 +272,8 @@ procedure Main is
    Cc1    : constant String := "toolchain/libexec/gcc/x86_64-linux-musl/15.3.0/cc1";
    Driver : constant String := "toolchain/bin/gcc";
 begin
+   --  procmgr, the "process-manager" startup entry the manifest asks for.
+   CuBit.Launching.Bind (CuBit.Handles.Startup.Endpoint_Named ("process-manager"));
    --  The same options and names the Linux reference uses (tests/gcc/build.sh).
    --  Relative names, from the work place: GNU tools read an argument that
    --  starts with '@' as a response file, so a CuBit name in argv

@@ -55,7 +55,7 @@ Mesa native tests: --test softpipe, opengl, buffer, mesa-window, mesa-sync, mesa
 
 Options:
   --build              Run make world before booting QEMU
-  --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-console, logs, ccl-remote, capability-security, network-authority, bench-net, bench-fs, threads, futex, clock, avx, rust-std, libc, processes, control-events, binutils, gcc, servo, bench-spread, timesync, tls-probe, tls-service, wget-https, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, text, calculator, lexicon, dictionary, clipboard, key-repeat, desktop-doom, desktop-virtio-vga, desktop-vm, virtio-gpu, virtio-vga-primary, launch-failure, or boot-timeline (--accel kvm --timeout 60)
+  --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-console, logs, ccl-remote, capability-security, network-authority, bench-net, bench-fs, threads, futex, clock, avx, rust-std, libc, processes, control-events, binutils, gcc, gnat, servo, bench-spread, timesync, tls-probe, tls-service, wget-https, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, text, calculator, lexicon, dictionary, clipboard, key-repeat, desktop-doom, desktop-virtio-vga, desktop-vm, virtio-gpu, virtio-vga-primary, launch-failure, or boot-timeline (--accel kvm --timeout 60)
   --timeout SECONDS    QEMU runtime before timeout is treated as success
                        (default 25; 180 for desktop tests, see DESKTOP_TIMEOUT_SECONDS)
   --accel NAME         QEMU accelerator (for example: tcg,thread=multi)
@@ -298,7 +298,7 @@ case "$TEST_NAME" in
         ;;
     grant-forward|grant-forward-intermediary-exit|grant-forward-owner-exit|grant-forward-desktop|config-tree|config-inspection|log-authority|log-fields|metrics|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
         ;;
-    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure)
+    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -652,6 +652,13 @@ case "$TEST_NAME" in
         # CuBit, compared with Linux.
         # cc1 is a 45 MB image that procmgr reads whole before mapping it.
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-gcc.ccl"
+        QEMU_MEMORY="${QEMU_MEMORY:-1G}"
+        ;;
+    gnat)
+        # userspace/ports/gcc, stages 4 and 5: the gcc driver with gnat1,
+        # gnatbind and libgnat build and run an Ada program on CuBit,
+        # compared with Linux. gnat1 is a large image procmgr reads whole.
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-gnat.ccl"
         QEMU_MEMORY="${QEMU_MEMORY:-1G}"
         ;;
     control-events)
@@ -1669,6 +1676,50 @@ if [ -n "$INIT_PROFILE" ]; then
         for GCC_CHECK in work/expected-hello; do
             if ! debugfs -R "stat $GCC_CHECK" "$TEMP_DISK" 2>/dev/null | grep -q "Size:"; then
                 echo "headless: $GCC_CHECK was not installed" >&2
+                exit 1
+            fi
+        done
+    fi
+    if [ "$TEST_NAME" = "gnat" ]; then
+        # The launcher and the comparer (from the binutils test) at the
+        # root; the toolchain; the Ada sources, the program's manifest and
+        # Linux's outputs in @nvme:0/work.
+        if ! make -C "$KERNEL_DIR" libc user_runtime ccl-manifest >/dev/null ||
+           ! bash "$ROOT_DIR/tests/binutils/build.sh" "$KERNEL_DIR/isodir/boot" >/dev/null ||
+           ! bash "$ROOT_DIR/tests/gnat/build.sh" "$KERNEL_DIR/isodir/boot" >/dev/null; then
+            echo "headless: failed to build the gnat test" >&2
+            exit 1
+        fi
+        for GNAT_IMAGE in logstore.svc gnat-check.app binutils-compare.app; do
+            debugfs -w -R "rm $GNAT_IMAGE" "$TEMP_DISK" >/dev/null 2>&1
+            debugfs -w -R "write $KERNEL_DIR/isodir/boot/$GNAT_IMAGE $GNAT_IMAGE" \
+              "$TEMP_DISK" >/dev/null 2>&1 || exit 1
+        done
+        install_gcc_toolchain || exit 1
+        GNAT_COMMANDS="$TEMP_DISK.gnat-work"
+        {
+            echo "mkdir work"
+            for GNAT_OUTPUT in hello.o hello.ali "b~hello.adb" "b~hello.ads" "b~hello.o" \
+              "b~hello.ali" hello transcript.txt bad.ali bad.o; do
+                echo "rm \"work/$GNAT_OUTPUT\""
+            done
+            for GNAT_FILE in "$ROOT_DIR/tests/gnat/hello.adb" "$ROOT_DIR/tests/gnat/bad.adb" \
+              "$ROOT_DIR/tests/gnat/build/hello-manifest.s" \
+              "$ROOT_DIR/tests/gnat/build/expected-hello.o" \
+              "$ROOT_DIR/tests/gnat/build/expected-b~hello.o" \
+              "$ROOT_DIR/tests/gnat/build/expected-hello" \
+              "$ROOT_DIR/tests/gnat/build/expected-transcript.txt"; do
+                echo "rm \"work/$(basename "$GNAT_FILE")\""
+                echo "write \"$GNAT_FILE\" \"work/$(basename "$GNAT_FILE")\""
+            done
+        } > "$GNAT_COMMANDS"
+        debugfs -w -f "$GNAT_COMMANDS" "$TEMP_DISK" >/dev/null 2>&1 || exit 1
+        rm -f "$GNAT_COMMANDS"
+        for GNAT_CHECK in toolchain/libexec/gcc/x86_64-linux-musl/15.3.0/gnat1 \
+          toolchain/lib/gcc/x86_64-linux-musl/15.3.0/adalib/libgnat.a \
+          work/expected-transcript.txt "work/expected-b~hello.o"; do
+            if ! debugfs -R "stat \"$GNAT_CHECK\"" "$TEMP_DISK" 2>/dev/null | grep -q "Size:"; then
+                echo "headless: $GNAT_CHECK was not installed" >&2
                 exit 1
             fi
         done
@@ -3424,6 +3475,14 @@ if [ "$TEST_NAME" = "gcc" ]; then
         "$SERIAL_LOG" "$QMP_SOCKET" "$TIMEOUT_SECONDS" "GCC-CHECK: PASS" "GCC-CHECK: FAIL" &
     INPUT_INJECTOR_PID=$!
 fi
+if [ "$TEST_NAME" = "gnat" ]; then
+    # Quit QEMU once gnat-check reports (the timeout is only the bound).
+    QMP_SOCKET="${TMPDIR:-/tmp}/cubit-${TEST_NAME}-qmp-$$.sock"
+    QMP_ARGS=(-qmp "unix:$QMP_SOCKET,server=on,wait=off")
+    python3 "$ROOT_DIR/tests/headless/stop-on-markers.py" \
+        "$SERIAL_LOG" "$QMP_SOCKET" "$TIMEOUT_SECONDS" "GNAT-CHECK: PASS" "GNAT-CHECK: FAIL" &
+    INPUT_INJECTOR_PID=$!
+fi
 if [ "$TEST_NAME" = "control-events" ]; then
     QMP_SOCKET="${TMPDIR:-/tmp}/cubit-${TEST_NAME}-qmp-$$.sock"
     QMP_ARGS=(-qmp "unix:$QMP_SOCKET,server=on,wait=off")
@@ -3914,6 +3973,27 @@ GCC-CHECK: PASS
 "
         if grep -qF 'GCC-CHECK: FAIL' "$SERIAL_LOG"; then
             echo "headless: gcc test reported a failure" >&2
+            exit 1
+        fi
+        ;;
+    gnat)
+        required_markers="
+gnat-check: gcc -c compiles hello.adb (gnat1, as) PASS
+gnat-check: hello.o matches Linux PASS
+gnat-check: gnatbind binds hello.ali PASS
+gnat-check: gcc -c compiles the binder unit PASS
+gnat-check: b~hello.o matches Linux PASS
+gnat-check: gcc links hello (ld, libgnat) PASS
+gnat-check: hello matches Linux PASS
+gnat-check: hello runs and exits with 7 PASS
+gnat-check: hello's standard output arrives PASS
+gnat-check: hello's transcript matches Linux PASS
+gnat-check: gcc reports an Ada compile error and exits with 1 PASS
+gnat-check: gnat1's diagnostic arrives through the driver PASS
+GNAT-CHECK: PASS
+"
+        if grep -qF 'GNAT-CHECK: FAIL' "$SERIAL_LOG"; then
+            echo "headless: gnat test reported a failure" >&2
             exit 1
         fi
         ;;
