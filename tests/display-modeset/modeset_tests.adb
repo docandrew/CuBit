@@ -51,7 +51,7 @@ procedure Modeset_Tests is
       Firmware_1080p;
       Current := M.Capture (Output);
       pragma Assert (Current.Function_Word = 16#9003_0006# and then not Current.Write_SCDC);
-      Wanted := P.Target (Current, UHD.Items (1).Timing, 15_360, 19_200, True, True);
+      Wanted := P.Target (Current, UHD.Items (1).Timing, 15_360, 19_200, True, True, True);
       pragma Assert (Wanted.Ready);
       M.Change (Output, Current, Wanted.Value, Result, Failed);
       pragma Assert (Result = M.Applied and then Failed = M.None);
@@ -70,6 +70,25 @@ procedure Modeset_Tests is
       pragma Assert (Get (16#61400#) = 16#9003_0006# and then Get (16#71190#) = 16#0437_077F#);
    end Check_Applied;
 
+   --  Firmware in DVI mode on an HDMI sink: the target runs HDMI (scrambling
+   --  needs it); for a DVI sink it stays DVI.
+   procedure Check_Link_Mode is
+      DVI_Mode : constant Unsigned_32 := 16#0100_0000#;
+      Mode_Bits : constant Unsigned_32 := 16#0700_0000#;
+      Current : P.Configuration;
+      Wanted : P.Target_Result;
+      UHD_60 : constant CuBit.Monitor_EDID.Timing := UHD.Items (1).Timing;
+   begin
+      Firmware_1080p;
+      Current := M.Capture (Output);
+      Current.Function_Word := Current.Function_Word or DVI_Mode;
+      Wanted := P.Target (Current, UHD_60, 15_360, 19_200, True, True, True);
+      pragma Assert (Wanted.Ready and then (Wanted.Value.Function_Word and Mode_Bits) = 0);
+      Wanted := P.Target (Current, UHD_60, 15_360, 19_200, True, False, False);
+      pragma Assert (Wanted.Ready and then (Wanted.Value.Function_Word and Mode_Bits) = DVI_Mode);
+      Put_Line ("PASS: TMDS link mode follows the sink");
+   end Check_Link_Mode;
+
    procedure Check_Rollback is
       Current : P.Configuration;
       Wanted : P.Target_Result;
@@ -79,7 +98,7 @@ procedure Modeset_Tests is
       Firmware_1080p;
       Lock_Fault_Once := True;
       Current := M.Capture (Output);
-      Wanted := P.Target (Current, UHD.Items (1).Timing, 15_360, 19_200, True, True);
+      Wanted := P.Target (Current, UHD.Items (1).Timing, 15_360, 19_200, True, True, True);
       M.Change (Output, Current, Wanted.Value, Result, Failed);
       pragma Assert (Result = M.Rolled_Back and then Failed = M.PLL_Lock);
       pragma Assert (Violations = 0);
@@ -103,6 +122,7 @@ procedure Modeset_Tests is
    end Check_Rollback;
 begin
    Check_Applied;
+   Check_Link_Mode;
    Check_Rollback;
    Put_Line ("PASS: HDMI modeset 1080p60 -> 2160p60 -> 1080p60, ordering rules, rollback on failure");
 end Modeset_Tests;

@@ -468,7 +468,11 @@ procedure main is
    MODE_CALL_DEADLINE_MS : constant := 15_000;
    outputRevisionSeen : OM.Revision := 1;
    outputWatchToken : Unsigned_64 := 0;
-   outputChangeNoticed : Boolean := False;
+   --  The first pass runs at startup: an Intel output's best admitted mode
+   --  is in Display's catalog from discovery, before this watch exists, so
+   --  no change would ever announce it.
+   outputChangeNoticed : Boolean := True;
+   firstOutputPass : Boolean := True;
    type Mode_Request is record
       Pending : Boolean := False;
       Mode : OM.Mode;
@@ -12565,7 +12569,11 @@ procedure main is
                   Preferred : constant OM.Mode := (D.Advertised_Width, D.Advertised_Height);
                   Current : constant OM.Mode := (D.Current_Width, D.Current_Height);
                begin
-                  if Preferred /= actedPreference (Output) and then Preferred /= Current then
+                  --  At startup a virtio-gpu host preference is only
+                  --  recorded; it is followed when the host changes it.
+                  if firstOutputPass and then D.Source = OD.Virtio_GPU then
+                     actedPreference (Output) := Preferred;
+                  elsif Preferred /= actedPreference (Output) and then Preferred /= Current then
                      actedPreference (Output) := Preferred;
                      wantedModes (Output) := (True, Preferred);
                      modeChangePending := True;
@@ -12578,6 +12586,7 @@ procedure main is
             end if;
          end;
       end loop;
+      firstOutputPass := False;
       if modeChangePending then
          releaseDisplayBuffer;
       end if;

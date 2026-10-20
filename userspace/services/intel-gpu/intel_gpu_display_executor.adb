@@ -594,9 +594,8 @@ package body Intel_GPU_Display_Executor is
            Image (Sink.Max_Pixel_Clock));
       Facts := (Port => Lit.Port,
                 Link => (case Lit.Mode is
-                           when DD.DVI => MA.DVI_Link,
                            when DD.DP_SST | DD.DP_MST => MA.DisplayPort_Link,
-                           when others => MA.HDMI_Link),
+                           when others => MA.TMDS_Link (Sink)),
                 Sink => Sink,
                 CDCLK => Natural'Min (Display_State.CDCLK_kHz, MA.CD_Clock_kHz'Last));
       Verdicts := new MA.Verdict_Array'(MA.Judge_All (Modes.all, Facts));
@@ -949,7 +948,7 @@ package body Intel_GPU_Display_Executor is
                Planned : constant MP.Target_Result :=
                  MP.Target (Firmware_Config, Modes.Items (Index).Timing, Pitch,
                             DD.PLL_Reference (Display_State.Crystal),
-                            DD.Fraction_Halved (Display_State.Crystal), Sink.SCDC);
+                            DD.Fraction_Halved (Display_State.Crystal), Sink.SCDC, Sink.HDMI);
             begin
                if not Planned.Ready then
                   Log ("intel-gpu: mode change refused: no PLL plan for " &

@@ -50,7 +50,8 @@ package body Intel_GPU_Modeset_Plan with SPARK_Mode is
 
    function Target
      (Firmware : Configuration; Mode : CuBit.Monitor_EDID.Timing; Pitch : Positive;
-      Reference : D.Reference_kHz; Halved : Boolean; SCDC_Sink : Boolean) return Target_Result
+      Reference : D.Reference_kHz; Halved : Boolean; SCDC_Sink, HDMI_Sink : Boolean)
+      return Target_Result
    is
       Clock : constant Natural := Natural (Mode.Clock) * 10;
       Scrambled : constant Boolean := Clock > 340_000;
@@ -73,6 +74,9 @@ package body Intel_GPU_Modeset_Plan with SPARK_Mode is
       end;
       Result.Timing := T.Encode (T.From_EDID (Mode));
       F.Enabled := True;
+      if F.Mode in D.HDMI | D.DVI then
+         F.Mode := (if HDMI_Sink then D.HDMI else D.DVI);
+      end if;
       if Mode.Sync.Kind = CuBit.Monitor_EDID.Digital_Separate then
          F.Hsync_High := Mode.Sync.Horizontal_Positive;
          F.Vsync_High := Mode.Sync.Vertical_Positive;

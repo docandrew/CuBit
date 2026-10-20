@@ -71,6 +71,12 @@ package Intel_GPU_Mode_Admission with SPARK_Mode, Pure is
    --  kHz of an EDID timing (its clock is in 10 kHz).
    function Pixel_kHz (Mode : E.Timing) return Clock_kHz is (Natural (Mode.Clock) * 10);
 
+   --  The link a TMDS port will carry. Firmware without a VBT often leaves
+   --  an HDMI monitor in DVI mode (NUC, 2026-10-19); the modeset programs
+   --  HDMI whenever the EDID says the sink is HDMI, so admission judges that.
+   function TMDS_Link (Sink : CuBit.Monitor_EDID.Catalog.Sink_Limits) return Link_Kind is
+     (if Sink.HDMI then HDMI_Link else DVI_Link);
+
    function Sink_Max_TMDS (Item : Facts) return Clock_kHz is
      (if Item.Link = DVI_Link or else not Item.Sink.HDMI then DVI_Max_TMDS
       elsif Item.Sink.Max_TMDS = 0 then HDMI_Default_Max_TMDS

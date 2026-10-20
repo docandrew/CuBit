@@ -113,10 +113,13 @@ package Intel_GPU_Modeset_Plan with SPARK_Mode, Pure is
 
    --  The target for Mode from the firmware configuration. Pitch is the
    --  scanout buffer's row bytes (a multiple of 64). Scrambling above
-   --  340 MHz needs an SCDC sink (admission checked it).
+   --  340 MHz needs an SCDC sink (admission checked it). A TMDS port runs in
+   --  HDMI mode for an HDMI sink and in DVI mode otherwise, whatever the
+   --  firmware chose.
    function Target
      (Firmware : Configuration; Mode : CuBit.Monitor_EDID.Timing; Pitch : Positive;
-      Reference : D.Reference_kHz; Halved : Boolean; SCDC_Sink : Boolean) return Target_Result
+      Reference : D.Reference_kHz; Halved : Boolean; SCDC_Sink, HDMI_Sink : Boolean)
+      return Target_Result
      with Pre => Mode.Horizontal_Front_Porch + Mode.Horizontal_Sync_Width <= Mode.Horizontal_Blank
                  and then Mode.Vertical_Front_Porch + Mode.Vertical_Sync_Width <= Mode.Vertical_Blank
                  and then Pitch mod Stride_Unit = 0 and then Pitch <= 2 ** 20;

@@ -24,7 +24,7 @@ procedure Intel_Tests is
    package W renames Intel_GPU_Combo_WRPLL;
    package G is new Intel_GPU_GMBUS (GMBUS_Model.Read, GMBUS_Model.Write, GMBUS_Model.Now_Us);
    use type T.Timing, D.DDI_Function, D.Signal_Mode, D.Bits_Per_Component, D.P_Divider, D.K_Divider, D.Crystal;
-   use type R.DDI_Port, R.Combo_PLL, A.Verdict, G.Status;
+   use type R.DDI_Port, R.Combo_PLL, A.Verdict, A.Link_Kind, G.Status;
 
    procedure Check_Timing is
       UHD : constant C.Mode_List := C.Modes (EDID_Fixtures.UHD_HDMI_Base, EDID_Fixtures.UHD_HDMI_Extensions);
@@ -170,6 +170,12 @@ procedure Intel_Tests is
       pragma Assert (A.Judge (UHD.Items (1).Timing, (R.Port_B, A.HDMI_Link, Old, 307_200)) = A.Above_Sink_TMDS);
       pragma Assert (A.Judge (UHD.Items (1).Timing, (R.Port_TC1, A.HDMI_Link, Sink, 307_200)) = A.Type_C_Port);
       pragma Assert (A.Judge (UHD.Items (1).Timing, (R.Port_A, A.DVI_Link, Sink, 307_200)) = A.Above_Sink_TMDS);
+      --  Firmware left an HDMI monitor in DVI mode (NUC, 2026-10-19): the
+      --  link follows the sink, so 4K60 is admitted; a DVI sink stays DVI.
+      pragma Assert (A.TMDS_Link (Sink) = A.HDMI_Link);
+      pragma Assert (A.Judge (UHD.Items (1).Timing, (R.Port_B, A.TMDS_Link (Sink), Sink, 307_200)) = A.Admitted);
+      pragma Assert
+        (A.TMDS_Link (C.Limits (EDID_Fixtures.DVI_1080_Base, EDID_Fixtures.DVI_1080_Extensions)) = A.DVI_Link);
       --  The combo PHY hole: 510 MHz is refused, 533.25 MHz is not a hole.
       Modes_1080.Clock := 51_000;
       pragma Assert (A.Judge (Modes_1080, Fast) = A.In_Combo_Clock_Hole);
