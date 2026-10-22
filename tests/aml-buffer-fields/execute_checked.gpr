@@ -1,0 +1,9 @@
+project Execute_Checked is
+ for Source_Dirs use (".","../aml-core","../acpi-integration/mocks","../../userspace/services/acpi","../../userspace/services/acpi/native","../../userspace/lib/acpi","../../shared/firmware");
+ for Object_Dir use "build-checked/obj";
+ for Exec_Dir use "build-checked";
+ for Main use ("field_execute_tests.adb","field_status_tests.adb","field_runner.adb","copy_index_policy_tests.adb");
+ package Compiler is
+  for Default_Switches ("Ada") use ("-O1","-gnat2022","-gnatwa","-gnatwe","-gnata","-gnato");
+ end Compiler;
+end Execute_Checked;

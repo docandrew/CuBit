@@ -1,0 +1,8 @@
+project Release is
+ for Source_Dirs use (".", "../../userspace/lib/acpi", "../../shared/firmware");
+ for Main use ("name_reference_oracle_tests.adb");
+ for Object_Dir use "obj-release"; for Exec_Dir use "bin-release";
+ package Compiler is
+ for Default_Switches ("Ada") use ("-O1", "-gnat2022", "-gnatwa", "-gnatwe", "-gnatp");
+ end Compiler;
+end Release;

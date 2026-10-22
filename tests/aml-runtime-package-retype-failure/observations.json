@@ -1,0 +1,30 @@
+[
+  {
+    "label": "r1-success",
+    "table_sha256": "670f7acc7f64eff9463ec32bbbf116624bde3ebcdb5b06564dd75501ed980459",
+    "length": 222,
+    "revision": 1,
+    "read_after_retirement": "AE_TYPE observed but excluded from hosted parity mapping"
+  },
+  {
+    "label": "r1-failure",
+    "table_sha256": "eaaebfe29e69cd35a842ae2e2c26451f3df4155af635f2e3c4c8eaa1c7e767c2",
+    "length": 229,
+    "revision": 1,
+    "read_after_retirement": "AE_TYPE observed but excluded from hosted parity mapping"
+  },
+  {
+    "label": "r2-success",
+    "table_sha256": "95c703f4aca254abb729f2a6ff58894bdff8441efd06e03195f70ad0d36ca6df",
+    "length": 222,
+    "revision": 2,
+    "read_after_retirement": "AE_TYPE observed but excluded from hosted parity mapping"
+  },
+  {
+    "label": "r2-failure",
+    "table_sha256": "5acaccc94bdee8b9bf9fd4d5d5b2484d53a81ef603bddcb5a866059e027315c3",
+    "length": 229,
+    "revision": 2,
+    "read_after_retirement": "AE_TYPE observed but excluded from hosted parity mapping"
+  }
+]

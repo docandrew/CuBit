@@ -1,0 +1,32 @@
+[
+  {
+    "name": "GEN1",
+    "declarations": "Name(BUFF,Buffer(8){0x41,0x42,0x43,0x44,0x45,0x46,0x47,0x48})",
+    "body": "CreateField(BUFF,0,1,FLD0) Store(FLD0,Local0) Store(ToBuffer(Local0),Local1) Return(Add(Multiply(ObjectType(Local0),256),SizeOf(Local1)))",
+    "method_opcode": "CreateField"
+  },
+  {
+    "name": "QTYPE",
+    "declarations": "Name(BUFF,Buffer(8){0x41,0x42,0x43,0x44,0x45,0x46,0x47,0x48})",
+    "body": "CreateQWordField(BUFF,0,FLD0) Store(FLD0,Local0) Store(ToBuffer(Local0),Local1) Return(Add(Multiply(ObjectType(Local0),256),SizeOf(Local1)))",
+    "method_opcode": "CreateQWordField"
+  },
+  {
+    "name": "REPEAT",
+    "declarations": "Name(BUFF,Buffer(8){0x41,0x42,0x43,0x44,0x45,0x46,0x47,0x48}) Method(INDX,0){Increment(MARK) Return(Zero)}",
+    "body": "Store(Zero,Local0) While(LLess(Local0,2)){CreateByteField(BUFF,INDX(),FLD0) Increment(Local0)} Return(FLD0)",
+    "method_opcode": "CreateByteField"
+  },
+  {
+    "name": "LOCAL",
+    "declarations": "Name(BUFF,Buffer(8){0x41,0x42,0x43,0x44,0x45,0x46,0x47,0x48})Name(NEWB,Buffer(2){0x42,0x43}) Method(CHNG,1){Store(NEWB,Arg0) Store(1,MARK) Return(Zero)}",
+    "body": "CopyObject(BUFF,Local0) CopyObject(Index(Local0,0),Local2) CreateByteField(Local0,CHNG(RefOf(Local0)),FLD0) Return(Add(Multiply(DerefOf(Local2),256),FLD0))",
+    "method_opcode": "CreateByteField"
+  },
+  {
+    "name": "ARG",
+    "declarations": "Name(BUFF,Buffer(8){0x41,0x42,0x43,0x44,0x45,0x46,0x47,0x48})Name(NEWB,Buffer(2){0x42,0x43}) Method(CHNG,1){Store(NEWB,Arg0) Store(1,MARK) Return(Zero)} Method(HELP,1){CopyObject(Index(Arg0,0),Local2) CreateByteField(Arg0,CHNG(RefOf(Arg0)),FLD0) Return(Add(Multiply(DerefOf(Local2),256),FLD0))}",
+    "body": "Return(HELP(BUFF))",
+    "method_opcode": "HELP"
+  }
+]

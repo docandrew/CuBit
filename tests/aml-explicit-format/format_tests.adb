@@ -2,6 +2,7 @@ with Ada.Text_IO;
 with AML_Decode;
 with AML_Explicit_Formatting;
 procedure Format_Tests is
+   use type AML_Decode.Bytes;
    use AML_Decode;
    package F is new AML_Explicit_Formatting (65_536);
    package Zero is new AML_Explicit_Formatting (0);

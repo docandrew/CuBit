@@ -4,6 +4,7 @@ with AML_Decode; use AML_Decode;
 with AML_Objects; use AML_Objects;
 with Namespace_Instance;
 procedure Data_Tests is
+   use type AML_Decode.Bytes;
    use type Integer_Value;
    Store : State := Empty;
    Before : State;

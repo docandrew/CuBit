@@ -1,0 +1,29 @@
+{
+  "worker": 80224,
+  "terminal": 0,
+  "source": "/home/doc/git/.acpi-proof-work/arg-notify-provoke-ready-nd051lhe",
+  "runner": "/home/doc/git/.acpi-proof-work/arg-notify-marker-continuation-6rwi12nu",
+  "audit": "/home/doc/git/.acpi-proof-work/arg-notify-marker-continuation-6rwi12nu/results/audit.json",
+  "audit_sha256": "2294bedf25c749e353ffb47584b0a02967e0938e7b8a819ff595d7725014efed",
+  "source_inputs": 1252,
+  "runner_inputs": 16,
+  "artifacts": 22,
+  "fresh_stages": 20,
+  "fresh_focused_jobs": 9,
+  "carry": {
+    "receipt": "/home/doc/git/.acpi-proof-work/arg-notify-marker-failure-au9euhhh/receipt.json",
+    "sha256": "e6115440de38b5d4c065815fcbb23394cdb2c2f049b64247d04d5b97851b87e1",
+    "original_audit": "/home/doc/git/.acpi-proof-work/arg-notify-combined-validation-kwcazmlk/results/audit.json",
+    "audit_sha256": "def8aa73efe1db40ae0be23c51e4b204beb2fad48023af4f0e2f05efabe35dbd",
+    "jobs": [
+      "release-arg_update_tests",
+      "release-increment_tests",
+      "release-module_policy_tests"
+    ],
+    "scope": "three prior release runtime jobs, explicitly not new executions; all actual dependencies/source/tool/binary/artifacts rehashed"
+  },
+  "portable_audit": "/home/doc/git/.acpi-proof-work/arg-notify-provoke-ready-nd051lhe/tests/aml-aslts-provoke/results-release-provoke-n64/audit.json",
+  "portable_audit_sha256": "474a81211f4fc81e554a9b1bba640d6302f6595eef79859460ffe92d13fc03c9",
+  "portable_input_count": 175,
+  "claim": "Arg+Notify combined focused bothprofiles and full original provoke original expectations pass; NOT ACPICA differential compatibility; three prior release executions carried"
+}

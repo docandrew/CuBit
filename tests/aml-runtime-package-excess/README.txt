@@ -1,0 +1,1 @@
+Sixteen exact bxg15ztm normal-iasl tables and64 scalar observations. VarPackage0/1 excess nested package names good/missing/self and innerVarPackage0 discarded-name variants. All count effects occur once; diagnostics retained separately, not mapped to method errors. Both revisions repeated, public Core APIs. Source-only.

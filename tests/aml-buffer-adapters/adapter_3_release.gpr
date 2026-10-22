@@ -1,0 +1,7 @@
+project adapter_3_release is
+ for Source_Dirs use ("../aml-core", "../../userspace/lib/acpi", "../../shared/firmware");
+ for Object_Dir use "build-3-release";
+ package Compiler is
+  for Default_Switches ("Ada") use ("-O1", "-gnat2022", "-gnatwa", "-gnatwe", "-gnatp", "-gnatwF");
+ end Compiler;
+end adapter_3_release;

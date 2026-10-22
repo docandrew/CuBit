@@ -1,0 +1,24 @@
+[
+  {
+    "label": "roots-r1",
+    "source": "roots-r1.asl",
+    "revision": 1,
+    "batch": "execute RSET;execute NAM0;execute MARK;execute RSET;execute RET0;execute MARK;execute RSET;execute CAL0;execute MARK;execute RSET;execute CEL0;execute MARK;execute RSET;execute NAM0;execute MARK;execute RSET;execute RET0;execute MARK;execute RSET;execute CAL0;execute MARK;execute RSET;execute CEL0;execute MARK",
+    "compile_status": 0,
+    "compile_log": "/home/doc/git/.acpi-proof-work/runtime-package-root-oracle-x4j04dl3/results/roots-r1-iasl.log",
+    "runtime_status": 0,
+    "disassemble_status": 0,
+    "runtime_log": "/home/doc/git/.acpi-proof-work/runtime-package-root-oracle-x4j04dl3/results/roots-r1-acpiexec.log"
+  },
+  {
+    "label": "roots-r2",
+    "source": "roots-r2.asl",
+    "revision": 2,
+    "batch": "execute RSET;execute NAM0;execute MARK;execute RSET;execute RET0;execute MARK;execute RSET;execute CAL0;execute MARK;execute RSET;execute CEL0;execute MARK;execute RSET;execute NAM0;execute MARK;execute RSET;execute RET0;execute MARK;execute RSET;execute CAL0;execute MARK;execute RSET;execute CEL0;execute MARK",
+    "compile_status": 0,
+    "compile_log": "/home/doc/git/.acpi-proof-work/runtime-package-root-oracle-x4j04dl3/results/roots-r2-iasl.log",
+    "runtime_status": 0,
+    "disassemble_status": 0,
+    "runtime_log": "/home/doc/git/.acpi-proof-work/runtime-package-root-oracle-x4j04dl3/results/roots-r2-acpiexec.log"
+  }
+]

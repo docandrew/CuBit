@@ -1,0 +1,7 @@
+{
+  "attempts": 24,
+  "classes": {
+    "returned": 24
+  },
+  "scope": "metadata only; no runtime Alias phase"
+}

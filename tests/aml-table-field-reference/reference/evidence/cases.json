@@ -1,0 +1,44 @@
+[
+  {
+    "name": "aligned-1025",
+    "question": "Read immutable DSDT field, independently extract low-bit-first value from actual AML bytes",
+    "bit_offset": 512,
+    "bit_count": 8200,
+    "buffer_bytes": 1025
+  },
+  {
+    "name": "unaligned-1025",
+    "question": "Read immutable DSDT field, independently extract low-bit-first value from actual AML bytes",
+    "bit_offset": 515,
+    "bit_count": 8200,
+    "buffer_bytes": 1025
+  },
+  {
+    "name": "masked-tail-1025",
+    "question": "Read immutable DSDT field, independently extract low-bit-first value from actual AML bytes",
+    "bit_offset": 515,
+    "bit_count": 8193,
+    "buffer_bytes": 1025
+  },
+  {
+    "name": "aligned-8192",
+    "question": "Read immutable DSDT field, independently extract low-bit-first value from actual AML bytes",
+    "bit_offset": 512,
+    "bit_count": 65536,
+    "buffer_bytes": 8192
+  },
+  {
+    "name": "unaligned-8192",
+    "question": "Read immutable DSDT field, independently extract low-bit-first value from actual AML bytes",
+    "bit_offset": 515,
+    "bit_count": 65536,
+    "buffer_bytes": 8192
+  },
+  {
+    "name": "threshold-33",
+    "question": "Read immutable DSDT field, independently extract low-bit-first value from actual AML bytes",
+    "bit_offset": 515,
+    "bit_count": 33,
+    "buffer_bytes": 5
+  }
+]

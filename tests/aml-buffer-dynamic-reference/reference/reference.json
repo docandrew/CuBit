@@ -1,0 +1,582 @@
+{
+  "inputs": {
+    "evidence/warnings.json": "3ba04717f4de09bde87b3882235791e03798f3b1b2dfb51ff26d9b3180ac370f",
+    "evidence/disassembly-review.json": "a842888513200896d376baa108c6fb4ec631856c9dbacd212dd37596fc2f9bda",
+    "evidence/PLAN.txt": "a9ed9982fa4a89168dd95d787e21b2b53ceab6ca353372416b70c58d6f8cddb9",
+    "evidence/run-inputs.json": "b3936ff9a905c6daac76ede17b89d8310cfdd33fea8badbff05c2461c0346a5b",
+    "evidence/run.py": "470a901fcd217aa53ead58e12d0fe298ebc454f904e844d407aca117f430bb34",
+    "evidence/audit.json": "93d7eb5c6adb0e7914dd0f10df7f45d3e0dfbb410c084bb8b5fb171a811d48ac",
+    "evidence/tool-pins.json": "63b4e2eab8312270127d242e81e586cbfe17d297b10740a1798b0807f53beb08",
+    "evidence/cases.json": "278a6680b1139c6cd9c6ae2067070ef3f429233b3858ee7ccf0f39de800c0fbe",
+    "evidence/cases/2-method-actual.aml": "9149049a2418cbe8ace0f8c174e154ea5116429be118517e03466531d35061af",
+    "evidence/cases/1-count-failure.dsl": "b23a86ecb5e66f26b968134b0cd2f36717ebe38f1192499c6e6d46a7b7fcb338",
+    "evidence/cases/2-raw-initializer.dsl": "72473905c57a103a7a3f6cb2dc40d7300f8f0c7fe51e8066a6db48e68002ebaa",
+    "evidence/cases/1-raw-initializer.dsl": "957d332a7f0c746ea8e8cb882b14d8a59847c4bf3f5c2768b95efe50b292dcf5",
+    "evidence/cases/2-count-add.asl": "f19f48659f204aee3a9bd5d8c3c10c419b41f39857904ac5baeb91e135a85560",
+    "evidence/cases/2-raw-initializer.aml": "9168529ddd9925ca56a18f73fb38541ca288b9b0fcd0b27e842da8854751b4ce",
+    "evidence/cases/2-store-local.aml": "26a2f2dfc69568b84e98d2891818f162c562b0185b47a9a2085308764fb21295",
+    "evidence/cases/2-count-failure.asl": "e47b02cbaa698c16ecc9d2368d782711a2032f324312f9a1f09a3a011b8ec8e7",
+    "evidence/cases/2-count-add.aml": "ff7d34a7c2b52bd43bedd7a2c8b00a995fc9a657373888104aa27e9044e6d377",
+    "evidence/cases/1-target-failure.asl": "971085c631cc9236acbc72dc54cd3b72284ade705ce63fc81e9eebb26d855bc6",
+    "evidence/cases/2-nested-buffer.aml": "39b2238c86f88eedab7d4f2c6c0b41442aeb0001a5f8c5fb65efc568d6e1b391",
+    "evidence/cases/1-store-local.aml": "cb8e0476dd372f5bb54dc2b3498da84a33ee0adee20020e83ecbc655ae084619",
+    "evidence/cases/1-return-arg.asl": "d5895d16bd82148ba90f763b795aafdb90d7c4e92db34dd9637e2eb656eeb1fe",
+    "evidence/cases/1-store-local.asl": "aade0484f154787d5e97dc7d4b173fdded5865b5e0c01260c37c1587693d90f5",
+    "evidence/cases/1-numeric-prefix.aml": "cbd276b16543d2709b3002b8ffb858b375ca7ea31ceee406994c07d8e64b7567",
+    "evidence/cases/1-count-method.asl": "c1fe6a8f0a3032c2a5b705ff69a4b726633259ef97a8de6f01d52140a7931fa1",
+    "evidence/cases/2-count-method.aml": "21cb445082d8328db7be5f343d9b0b85e4dc52399f3e550bbd9842043e5cbfc1",
+    "evidence/cases/1-method-actual.dsl": "94d3f5db4f9886d3247d50822d5c7b241c99e48c63a5503d0d364cef6788252a",
+    "evidence/cases/1-method-actual.aml": "3c2222fa9e42ee93d91beb8b726e549f857564e2f3d8821d2a5b82da3fca9ab4",
+    "evidence/cases/1-target-failure.dsl": "150f9528f50021e5f84bbbbc312cec1e8025d305e048d28f014077a1362991e7",
+    "evidence/cases/2-count-method.asl": "dad0a6fb829f00e74d40ac70d41ea1fa99c314f7e200c256d1c82dcf47591f33",
+    "evidence/cases/2-return-arg.aml": "4f3802afbaac9892ba4adfeae6b1fff1785065340136140e43f2f46154ea1aa2",
+    "evidence/cases/2-nested-buffer.dsl": "eb8889de2b5d7e5bba3280463a32c4383bddb30f10389800a302938bf87e0ee1",
+    "evidence/cases/2-target-failure.aml": "31ddd1beb78b76d36b415106bc8958facff61e0e25378289215a497b645c1df5",
+    "evidence/cases/2-nested-buffer.asl": "20b2404aa5e5cc83b070dac906c79913ac2c97f1b23db75d7e54d609e347ef8f",
+    "evidence/cases/2-store-local.asl": "1dd1325f7ffe686d6c59fac679beccf48e7260b3e5bfc50bbc9c10fff6711a57",
+    "evidence/cases/2-return-arg.dsl": "282bc0f15ad7dee8c3729a91a207ec7bd4622ba5da29f7ff42aaac36629c49eb",
+    "evidence/cases/1-count-add.dsl": "fe89ee2f1a2f2337c122521bb2cd503c90d9fb02dac270ff810305400dc99776",
+    "evidence/cases/2-target-failure.dsl": "f2a529cceff3beecfaf3ddab0d27648855752d5de6ca83c3cd7ac13411d9f609",
+    "evidence/cases/2-count-failure.aml": "ce3934e99807f88b95ab04a3f4a4db4394c7ad96ab8a7de1d84e52b8d5bc997a",
+    "evidence/cases/2-return-arg.asl": "158e2eca0bc897333ad298d2deed4775fb4a1c0b6a821693bb37dd27c82a2a09",
+    "evidence/cases/1-raw-initializer.asl": "31d8ede53b20dfc1a20f858cd3c353cbe89f35b4d1a1b78ffd7470d4c8028ad7",
+    "evidence/cases/1-count-add.asl": "d6ad0e028dc84e6453a43f5cd4dc499ca57a62414ebd34e8b2e2e8dc3192d85c",
+    "evidence/cases/1-count-method.aml": "1b63ff98ea24381856462e85203fc17ad2dda0765bd2edbb996b901281673d42",
+    "evidence/cases/1-nested-buffer.aml": "3fa9734164b9e7e19a978cac70caf2062953fdca0bd8970ed6c0a8469ecf350a",
+    "evidence/cases/2-numeric-prefix.aml": "1ef925eed8e4a8f217cb36cf1e44d44865488b4aba06b336487986aae257e6b1",
+    "evidence/cases/2-method-actual.asl": "0afad499d86548be0a1c802e3fcabc1fed1575565a24416fc03d8c9aeb56e7b6",
+    "evidence/cases/1-numeric-prefix.asl": "a930ecef5d133819b8637df67980d38fa0b1a50a74d031d5dd0680de8402d5f4",
+    "evidence/cases/1-return-arg.aml": "9208fa67b8a7d8df8b75870b00a27f3039e14204de6b01ac5797e9fe8250f204",
+    "evidence/cases/2-count-failure.dsl": "aca787665091da27d8a7ade6e3f383d3a80d243f753e69b32aedcf48fdeb778e",
+    "evidence/cases/1-store-local.dsl": "67e61c9b3fd008f79db2f80c95b94aca96fda83513516788619cf120a25c7d6b",
+    "evidence/cases/1-count-failure.aml": "9abd3245c507776e68d6cda39a71cf1ab52029f53078b644afcd0ddc20b2e6bd",
+    "evidence/cases/1-count-failure.asl": "fa028aa08df8ac1b04ed39dd0596a30b47410cd96680f8f56ee0258503801c32",
+    "evidence/cases/2-store-local.dsl": "9fcadd1fe28045b01c5b647aa0687f92dbf64204df498f307822cf180a1c6a1a",
+    "evidence/cases/2-count-method.dsl": "4ae6856c4037d4fb514e7161825f11e8db67ba2c272cd85eaefc26d227349c65",
+    "evidence/cases/2-numeric-prefix.dsl": "eb112974285508b9c21737f38bba85b52e3ada56ad8ede97e80f18cd46237035",
+    "evidence/cases/1-count-method.dsl": "245d549f495c55bccc050109b50bcc31de4cac1493b629044f95c28d061ef810",
+    "evidence/cases/2-method-actual.dsl": "231e110c7869e9c1e8d44f8a628f2bff24ae167f85c7119a2a5457c77d83bfd6",
+    "evidence/cases/2-numeric-prefix.asl": "d8b6948e0fc83add30e8c26ed9ab80c776ddc7696f96884b144f4afef14317fb",
+    "evidence/cases/1-count-add.aml": "64c3d74f3ba9ca020aa76be22cfbafc0eb8710b4f22f004fa2e5903595a92867",
+    "evidence/cases/1-raw-initializer.aml": "11a9b720a2de6e6c37bcc1e4b97010b710441844de8d321912f9193f9c09aafc",
+    "evidence/cases/1-numeric-prefix.dsl": "fe37e6b7ece0cc6605083c9737818063679c6f47c831ef752cada4a9be3d2523",
+    "evidence/cases/2-count-add.dsl": "9d4d834d289381044f8b174ce980f4b3a2e23b41c3d42db517643edf757ec5aa",
+    "evidence/cases/1-target-failure.aml": "45aba2cbad7033474e5f92662b1c68e3ddf15a6f845393758acbd3b77510fac9",
+    "evidence/cases/1-return-arg.dsl": "f23a743e07a88427b38f3c8e8d0c0823fb195251c043aca4f5934c0b8c058371",
+    "evidence/cases/2-target-failure.asl": "c7c16c25d5746bdde3dac10509211c9b691261ea719f981b35b92cdb841df9b0",
+    "evidence/cases/1-nested-buffer.dsl": "4e8196a69546d7e9505a3f01acc1ed89e799e0a4a572b5fa305b6c966d32ce2b",
+    "evidence/cases/2-raw-initializer.asl": "28b277f7acfd1dbc1145daa9adde9fa5f24c557d9c443107c359b166c8e726ea",
+    "evidence/cases/1-method-actual.asl": "d037d7314aae9098d60bf64868c1f5b3752b1af2ed666fec881e285e6a773259",
+    "evidence/cases/1-nested-buffer.asl": "218e3fcf17527c410cbd8d48d301e776c450e812eb76996d2484421d847cc54a",
+    "evidence/results/1-count-method-compile.log": "1e13bb75200ca6587ef30c4fde348d41d9236f861692286757082985a4b1a064",
+    "evidence/results/2-count-failure-compile.log": "2a446395ae227883956067962eed210ef9747328297fac765029b5a298d815c6",
+    "evidence/results/2-target-failure-control.log": "31e30600f0685a3f7afae9c05b67b0fc202d35d28e43952d51d11df0b8aa4bd0",
+    "evidence/results/2-store-localexecute.log": "ffaaa378502bbe4bbd4bb3591f5e3f4282f47d1bc9ce9f3c62b6eed39520efb3",
+    "evidence/results/1-numeric-prefix-disassemble.log": "bd0a20135d1791b7e0afccc5d61eb79329200de9452c785a901f4db15109cdae",
+    "evidence/results/2-count-add-control.log": "1ab9f2dc9a212d1db24a625aa49ee3e21ddfd31c6c231cdd24e7a88fab420209",
+    "evidence/results/2-method-actualexecute.log": "aa85a3d25eb5cf8f9af3230b3bfeb03bf151f76ebfbb01763a6ed39f5e39ac18",
+    "evidence/results/observations.json": "62adec6dea17a80c20c0aa45feefd2120962b951704710f94d8512f4ba524e47",
+    "evidence/results/1-target-failureexecute.log": "244633faaa3fb015d2e014f81505b43015802620ea64e85e6aebb713ac706775",
+    "evidence/results/1-count-methodexecute.log": "e2f369c35716f61285e01343ec1f95e31e6ec20cf212c5351085fb6c9bab5723",
+    "evidence/results/2-numeric-prefix-compile.log": "84a263a029a8680350eec5e577fb3823026afb2f8e179d5bd1e83216b7a64067",
+    "evidence/results/1-count-add-control.log": "0c92bc06cda24e8059566da9fd81e03af2b3a548be0762ba03de01fdc0a258d1",
+    "evidence/results/2-return-arg-disassemble.log": "2726c690679142b7b91e73118a17d77b0cc632c82ee7eb241370116fc46bff4b",
+    "evidence/results/2-numeric-prefixexecute.log": "f9ea0f0545221099eec61433464da04a35987ba498139c9c4e255f387554593d",
+    "evidence/results/2-count-method-disassemble.log": "ce1bd55eb58e5eb9fd1f02532b27549ad3bf3524c1f987602df9bdff97c516cd",
+    "evidence/results/2-store-local-compile.log": "a372f292123c6dd1d9c208c0118ba3c9a085dafe3d1922bfa7d8b974b1db9bed",
+    "evidence/results/1-count-failure-compile.log": "2886ed863142fb923cd6da6938185db087617beeaa5341fa6eb66d399646b903",
+    "evidence/results/1-target-failure-control.log": "27c1dd6b54110961c9675173c2e6f6fcb10baf8fcaa587319ebff6987b5150ef",
+    "evidence/results/2-raw-initializer-disassemble.log": "2cba26d32d122481d6dc71b5278b9f9cbb82f42a3c07ebedf1f857778a993def",
+    "evidence/results/1-count-add-disassemble.log": "e0ac144569b31438e5fc60bd071b3dad3d8f70888794546e996f796c9950f392",
+    "evidence/results/2-count-add-compile.log": "15a92dfc9e4e0c074ad8b427e837144e7cd6530a6d09354a0a66995dca23d13d",
+    "evidence/results/1-method-actual-disassemble.log": "23e2e8bf76a4f95db37608640f61c6d5ee0a79c987be1e31511010b4c26e4a05",
+    "evidence/results/1-store-localexecute.log": "34f32bccfb6798ea29005f464faa5a68190c057c3bdfebb8940cdd8a1769e8db",
+    "evidence/results/2-numeric-prefix-disassemble.log": "ac213276674e31ad8e38b79855f83584f9997dc80c1267bd01eed978d6cb5c61",
+    "evidence/results/2-method-actual-compile.log": "9ddd9313f60dec653b36ec4a6d123eee0e365ed3b950b662079d7da26c175eb0",
+    "evidence/results/2-count-addexecute.log": "261bb94de565ecb692483a42c7e203ce019deb6ccbe3969ce2415a16b6321d5f",
+    "evidence/results/iasl-version.log": "4911816d4e6a4d863a7158965fb616fb5bcb1831acdf90f81b53c7f12b543968",
+    "evidence/results/2-method-actual-disassemble.log": "f2d85084fed86f9521a94780a7aa00100d97d25a2c3531a35953a5c579b2e849",
+    "evidence/results/1-count-method-disassemble.log": "0578311ad2837669391c11f84219e76e2fd1dcbc24fa9849808ce79bbc0d6e8c",
+    "evidence/results/2-nested-buffer-control.log": "78869f1ea8a9b6bdca8504a9818cd919c72045ad84ea7dddd13e4e5b8efc2d5a",
+    "evidence/results/1-raw-initializerexecute.log": "67249dfea6e3e979d134a336522f24fe269f94178df37813343fd19091908f53",
+    "evidence/results/2-raw-initializerexecute.log": "c44e99ef8d343adfd758db6df03e7708c9f96af7b90e30fc751e2c7668979a28",
+    "evidence/results/1-method-actual-control.log": "0bd0aa51dabbaa765c38d5b8105d3137afb2fec03e752942cff59901935a8208",
+    "evidence/results/2-count-failureexecute.log": "4edb8da06b378ad295758ec8d507fbc4f79314b71c41664b613a5b8d53c59d0e",
+    "evidence/results/2-count-method-compile.log": "b04f6f839fb60b52a536431edf274e73773f024894efecb0e54c5efad28a5e4e",
+    "evidence/results/2-count-methodexecute.log": "3be595e818b6289ab68fcae64de4abb6d6539169d4a32ff9e4382bd2c3ace995",
+    "evidence/results/1-raw-initializer-disassemble.log": "2b21648d4fad8e192b7fbf8d36d8da10fa39f3d84cde002848452b2cc67bbcd6",
+    "evidence/results/2-return-arg-compile.log": "6687584d50b9c1e220c832469e69b8a8914d654e5d4974c3c3569b9b7b5814b1",
+    "evidence/results/2-count-method-control.log": "1a41cda015feb196934b15caedbf5e6b4ebff9fbd7b30386da0ecd6a9cea5e07",
+    "evidence/results/acpiexec-version.log": "a67be5cf6cb60ee508792de0ca6bdd3bce6b85126fcebe0cf3d462e864374cad",
+    "evidence/results/1-count-add-compile.log": "0e33333d92d2b91a993e15098e885a748099ade64200f7519a3fb3193ab88308",
+    "evidence/results/2-target-failure-compile.log": "67a959ea70e78556f94ce60279e847a4ff5ce488dab6b1a206f76feefb4b3db3",
+    "evidence/results/summary.json": "006d2e1803f5ca3c379fd96b8a4d684f7cc33e017e0b06cca4870946e459a226",
+    "evidence/results/2-numeric-prefix-control.log": "eaad4f1d8a39fc490deb6e370fc9d3b71dd57a1820861b15f4701f9dea939472",
+    "evidence/results/2-count-failure-disassemble.log": "d7b5dfd3eb18ee36f8998a05f3539b173645fa1f390985bd7b5ed5ce7df31a6b",
+    "evidence/results/1-return-arg-disassemble.log": "94b415d1514b3b608a1b5dbe17c64bb7a132fd8a7581daad74d8384ec986c783",
+    "evidence/results/1-count-addexecute.log": "04f574d786a7ec254c4521995f5f5157f07cb47c7750a8b7d8a09e88157ca252",
+    "evidence/results/2-nested-buffer-disassemble.log": "0b41cd98f23deec6cd9a9cbe32b31bb92a2e7516bc5ec15f61a96f09e7ae3daa",
+    "evidence/results/1-count-failureexecute.log": "8de5e93d33194b428746e085c0ab5e2f4b6a2e95fbe7602f65c0e891ac9f0c1f",
+    "evidence/results/1-target-failure-compile.log": "8bbef0ad394aaef94d951a72e26b7fbc0fb7abf7d861ae43fcdea13d9bcef648",
+    "evidence/results/2-count-failure-control.log": "d9477be5913e3498e6d6dbd94b56132b13a3f5b93f63ac3bef634aeb7dd02ad1",
+    "evidence/results/2-return-arg-control.log": "019d8c1e3520528aec7678a13b4911927a5f3390dfaf11217a3348099747a95d",
+    "evidence/results/1-count-method-control.log": "312ba96c72508694e84931c9b0ada0354e005ab2759df98949ca3c8b893bc8af",
+    "evidence/results/2-target-failure-disassemble.log": "ed9a3e230d9f0dae00f9e4180c0549f5499d8511175f0ebcd206f46e5657a381",
+    "evidence/results/2-target-failureexecute.log": "7763e947449ba10b1c65fe23c05d08bba4c14e19780ea45938c1e26e0fe6d287",
+    "evidence/results/1-numeric-prefixexecute.log": "e5c7b1cc98c9389ad880ca709cfb04eca7d62f978a148acf584d736f8c37aec0",
+    "evidence/results/1-nested-buffer-disassemble.log": "17390f5ab4af9f578477d60acbca6d1fb9a496613b5eda0ccbef44ce1e808017",
+    "evidence/results/1-nested-buffer-control.log": "76c42a86fdf7b874882131cc8af0a7ff0aacd9de729c9ce95c131fc5611309ec",
+    "evidence/results/1-numeric-prefix-compile.log": "9c98d090e72e17819ef16a81edcdfb0abce3c3f400c1e291736ed3a8c531121e",
+    "evidence/results/2-raw-initializer-compile.log": "f3fad11dced50853c4dfba0f23adfc638d8425fbdffcdddcd05a19b6e6c9e8e5",
+    "evidence/results/1-nested-buffer-compile.log": "781cf62fba1cb4b9b2f6f1a0f651f30ca1942b4c8ee02ecd0ec94987ae7cd99c",
+    "evidence/results/1-return-argexecute.log": "1673aa4cd1e3a5e433c818a4d6bf34e510a12f3e80c8764c930813322a5ce345",
+    "evidence/results/1-target-failure-disassemble.log": "a4059be6adc2f3c95f3d08342306cb24e02c99f1d6c27f9fb64b70a9a406a2de",
+    "evidence/results/1-method-actual-compile.log": "882b19584545f852d7aeec442f530004f50cf0bdddb13a324b7a25bfbbc344cc",
+    "evidence/results/1-method-actualexecute.log": "57d46e226c066acca392aa91c3278c6214c1985b9cc55b7a3b0012506ad80837",
+    "evidence/results/2-store-local-control.log": "560608ad3f2d6492eab94e7f64f2c928f4cce1894b4eb14fe12dedbfc928f3a4",
+    "evidence/results/1-return-arg-control.log": "9af08b56fd607c448ea8caa72ec96aa96e4ee1ac0e37f3b6212b02413241a38f",
+    "evidence/results/1-count-failure-control.log": "525fd17d2055552605ac72649253a7305c79135bfc2d0188e040adc20a738022",
+    "evidence/results/1-store-local-control.log": "56169f109b067abcbbdfb72158a58bd1e218bba2fd7653ffd41f66413251b0f0",
+    "evidence/results/1-store-local-disassemble.log": "7810732bc4486c867531c1fbf91e2b4165391cf147de71b25d933f22e2483f47",
+    "evidence/results/2-nested-bufferexecute.log": "4a825da9006b40067735809bd49e24fa3aa8c20eea52e78a75c94ca78843427e",
+    "evidence/results/1-nested-bufferexecute.log": "97487edc44ac08f366acbbf028bf1103600c7d4e397d7e83705205212980c364",
+    "evidence/results/1-raw-initializer-control.log": "4988025dbc2880c10c6c17c2466aa05f7f4e260bc7f2f40730c286e3f6f76e70",
+    "evidence/results/1-return-arg-compile.log": "03c10ed91c7c9273372265297225a8ccd78d505c4dfa2c1b34ce5ae2b2911b50",
+    "evidence/results/2-count-add-disassemble.log": "78a02d531442049027a01c602f3d2b8eed8109c5441cd60e89b9e36a883bf05b",
+    "evidence/results/2-return-argexecute.log": "95e2301ae3b95c33f1a0ba662362f9548f5ec58bf6f9f45b6bf0f129cb0c2529",
+    "evidence/results/2-store-local-disassemble.log": "2886d47a34e60d3a994519993b6423a2e9ed22721402995cedc4c9912adf8c47",
+    "evidence/results/1-numeric-prefix-control.log": "c78a7c8f9af7cc823adbdb51e2d0ba0c106f254af70699d6c8fa6aec87af7a74",
+    "evidence/results/2-method-actual-control.log": "0c21a884ef3a9bbfcdeec0b0b4f0cb6726eb937cde61660e1b146770b20e246a",
+    "evidence/results/1-raw-initializer-compile.log": "b6ed18264174ef8bf4b0e24fa95895a40b26d88da477a5e8fab91121a848141d",
+    "evidence/results/2-raw-initializer-control.log": "a9dfda80ab15159eff623821f94eeaf4ac2202f42761fc48d010f604eda8c855",
+    "evidence/results/1-count-failure-disassemble.log": "2cc8bc5aceb07f3172564e8b535131bf80039349af4bbbfdc51c69e012c230dc",
+    "evidence/results/1-store-local-compile.log": "0f21459a290e913b57d1d1ab93349634cbf4b47b970dbdc48271310463e0f50e",
+    "evidence/results/2-nested-buffer-compile.log": "0b83fdce172a0bf1e9462fe3afbda99fa2b820f6388f4fdbcb4d9144f839679b"
+  },
+  "rows": [
+    {
+      "key": "1-return-arg",
+      "revision": 1,
+      "selection": "compare",
+      "aml": "evidence/cases/1-return-arg.aml",
+      "phases": {
+        "TEST": {
+          "status": "RETURNED",
+          "value": 8192
+        },
+        "MARK": {
+          "status": "RETURNED",
+          "value": 0
+        },
+        "POST": {
+          "status": "RETURNED",
+          "value": 0
+        }
+      },
+      "comparison_scope": "exact_integer_flow"
+    },
+    {
+      "key": "1-store-local",
+      "revision": 1,
+      "selection": "compare",
+      "aml": "evidence/cases/1-store-local.aml",
+      "phases": {
+        "TEST": {
+          "status": "RETURNED",
+          "value": 8282
+        },
+        "MARK": {
+          "status": "RETURNED",
+          "value": 0
+        },
+        "POST": {
+          "status": "RETURNED",
+          "value": 0
+        }
+      },
+      "comparison_scope": "exact_integer_flow"
+    },
+    {
+      "key": "1-count-method",
+      "revision": 1,
+      "selection": "compare",
+      "aml": "evidence/cases/1-count-method.aml",
+      "phases": {
+        "TEST": {
+          "status": "RETURNED",
+          "value": 8192
+        },
+        "MARK": {
+          "status": "RETURNED",
+          "value": 2
+        },
+        "POST": {
+          "status": "RETURNED",
+          "value": 18
+        }
+      },
+      "comparison_scope": "exact_integer_flow"
+    },
+    {
+      "key": "1-count-add",
+      "revision": 1,
+      "selection": "compare",
+      "aml": "evidence/cases/1-count-add.aml",
+      "phases": {
+        "TEST": {
+          "status": "RETURNED",
+          "value": 8192
+        },
+        "MARK": {
+          "status": "RETURNED",
+          "value": 8192
+        },
+        "POST": {
+          "status": "RETURNED",
+          "value": 8192
+        }
+      },
+      "comparison_scope": "exact_integer_flow"
+    },
+    {
+      "key": "1-nested-buffer",
+      "revision": 1,
+      "selection": "compare",
+      "aml": "evidence/cases/1-nested-buffer.aml",
+      "phases": {
+        "TEST": {
+          "status": "RETURNED",
+          "value": 3
+        },
+        "MARK": {
+          "status": "RETURNED",
+          "value": 0
+        },
+        "POST": {
+          "status": "RETURNED",
+          "value": 0
+        }
+      },
+      "comparison_scope": "exact_integer_flow"
+    },
+    {
+      "key": "1-method-actual",
+      "revision": 1,
+      "selection": "compare",
+      "aml": "evidence/cases/1-method-actual.aml",
+      "phases": {
+        "TEST": {
+          "status": "RETURNED",
+          "value": 8192
+        },
+        "MARK": {
+          "status": "RETURNED",
+          "value": 0
+        },
+        "POST": {
+          "status": "RETURNED",
+          "value": 0
+        }
+      },
+      "comparison_scope": "exact_integer_flow"
+    },
+    {
+      "key": "1-raw-initializer",
+      "revision": 1,
+      "selection": "compare",
+      "aml": "evidence/cases/1-raw-initializer.aml",
+      "phases": {
+        "TEST": {
+          "status": "RETURNED",
+          "value": 8
+        },
+        "MARK": {
+          "status": "RETURNED",
+          "value": 0
+        },
+        "POST": {
+          "status": "RETURNED",
+          "value": 0
+        }
+      },
+      "comparison_scope": "exact_integer_flow"
+    },
+    {
+      "key": "1-count-failure",
+      "revision": 1,
+      "selection": "compare",
+      "aml": "evidence/cases/1-count-failure.aml",
+      "phases": {
+        "TEST": {
+          "status": "DIVISION_BY_ZERO",
+          "value": null,
+          "acpica_error": "AE_AML_DIVIDE_BY_ZERO"
+        },
+        "MARK": {
+          "status": "RETURNED",
+          "value": 2
+        },
+        "POST": {
+          "status": "RETURNED",
+          "value": 18
+        }
+      },
+      "comparison_scope": "division_by_zero_status_mapping"
+    },
+    {
+      "key": "1-target-failure",
+      "revision": 1,
+      "selection": "compare",
+      "aml": "evidence/cases/1-target-failure.aml",
+      "phases": {
+        "TEST": {
+          "status": "UNSUPPORTED_VALUE",
+          "value": null,
+          "acpica_error": "AE_AML_BUFFER_LIMIT"
+        },
+        "MARK": {
+          "status": "RETURNED",
+          "value": 2
+        },
+        "POST": {
+          "status": "RETURNED",
+          "value": 18
+        }
+      },
+      "comparison_scope": "coarse_target_failure_status_projection"
+    },
+    {
+      "key": "1-numeric-prefix",
+      "revision": 1,
+      "selection": "compare",
+      "aml": "evidence/cases/1-numeric-prefix.aml",
+      "phases": {
+        "TEST": {
+          "status": "RETURNED",
+          "value": 7
+        },
+        "MARK": {
+          "status": "RETURNED",
+          "value": 0
+        },
+        "POST": {
+          "status": "RETURNED",
+          "value": 0
+        }
+      },
+      "comparison_scope": "exact_integer_flow"
+    },
+    {
+      "key": "2-return-arg",
+      "revision": 2,
+      "selection": "compare",
+      "aml": "evidence/cases/2-return-arg.aml",
+      "phases": {
+        "TEST": {
+          "status": "RETURNED",
+          "value": 8192
+        },
+        "MARK": {
+          "status": "RETURNED",
+          "value": 0
+        },
+        "POST": {
+          "status": "RETURNED",
+          "value": 0
+        }
+      },
+      "comparison_scope": "exact_integer_flow"
+    },
+    {
+      "key": "2-store-local",
+      "revision": 2,
+      "selection": "compare",
+      "aml": "evidence/cases/2-store-local.aml",
+      "phases": {
+        "TEST": {
+          "status": "RETURNED",
+          "value": 8282
+        },
+        "MARK": {
+          "status": "RETURNED",
+          "value": 0
+        },
+        "POST": {
+          "status": "RETURNED",
+          "value": 0
+        }
+      },
+      "comparison_scope": "exact_integer_flow"
+    },
+    {
+      "key": "2-count-method",
+      "revision": 2,
+      "selection": "compare",
+      "aml": "evidence/cases/2-count-method.aml",
+      "phases": {
+        "TEST": {
+          "status": "RETURNED",
+          "value": 8192
+        },
+        "MARK": {
+          "status": "RETURNED",
+          "value": 2
+        },
+        "POST": {
+          "status": "RETURNED",
+          "value": 18
+        }
+      },
+      "comparison_scope": "exact_integer_flow"
+    },
+    {
+      "key": "2-count-add",
+      "revision": 2,
+      "selection": "compare",
+      "aml": "evidence/cases/2-count-add.aml",
+      "phases": {
+        "TEST": {
+          "status": "RETURNED",
+          "value": 8192
+        },
+        "MARK": {
+          "status": "RETURNED",
+          "value": 8192
+        },
+        "POST": {
+          "status": "RETURNED",
+          "value": 8192
+        }
+      },
+      "comparison_scope": "exact_integer_flow"
+    },
+    {
+      "key": "2-nested-buffer",
+      "revision": 2,
+      "selection": "compare",
+      "aml": "evidence/cases/2-nested-buffer.aml",
+      "phases": {
+        "TEST": {
+          "status": "RETURNED",
+          "value": 3
+        },
+        "MARK": {
+          "status": "RETURNED",
+          "value": 0
+        },
+        "POST": {
+          "status": "RETURNED",
+          "value": 0
+        }
+      },
+      "comparison_scope": "exact_integer_flow"
+    },
+    {
+      "key": "2-method-actual",
+      "revision": 2,
+      "selection": "compare",
+      "aml": "evidence/cases/2-method-actual.aml",
+      "phases": {
+        "TEST": {
+          "status": "RETURNED",
+          "value": 8192
+        },
+        "MARK": {
+          "status": "RETURNED",
+          "value": 0
+        },
+        "POST": {
+          "status": "RETURNED",
+          "value": 0
+        }
+      },
+      "comparison_scope": "exact_integer_flow"
+    },
+    {
+      "key": "2-raw-initializer",
+      "revision": 2,
+      "selection": "compare",
+      "aml": "evidence/cases/2-raw-initializer.aml",
+      "phases": {
+        "TEST": {
+          "status": "RETURNED",
+          "value": 8
+        },
+        "MARK": {
+          "status": "RETURNED",
+          "value": 0
+        },
+        "POST": {
+          "status": "RETURNED",
+          "value": 0
+        }
+      },
+      "comparison_scope": "exact_integer_flow"
+    },
+    {
+      "key": "2-count-failure",
+      "revision": 2,
+      "selection": "compare",
+      "aml": "evidence/cases/2-count-failure.aml",
+      "phases": {
+        "TEST": {
+          "status": "DIVISION_BY_ZERO",
+          "value": null,
+          "acpica_error": "AE_AML_DIVIDE_BY_ZERO"
+        },
+        "MARK": {
+          "status": "RETURNED",
+          "value": 2
+        },
+        "POST": {
+          "status": "RETURNED",
+          "value": 18
+        }
+      },
+      "comparison_scope": "division_by_zero_status_mapping"
+    },
+    {
+      "key": "2-target-failure",
+      "revision": 2,
+      "selection": "compare",
+      "aml": "evidence/cases/2-target-failure.aml",
+      "phases": {
+        "TEST": {
+          "status": "UNSUPPORTED_VALUE",
+          "value": null,
+          "acpica_error": "AE_AML_BUFFER_LIMIT"
+        },
+        "MARK": {
+          "status": "RETURNED",
+          "value": 2
+        },
+        "POST": {
+          "status": "RETURNED",
+          "value": 18
+        }
+      },
+      "comparison_scope": "coarse_target_failure_status_projection"
+    },
+    {
+      "key": "2-numeric-prefix",
+      "revision": 2,
+      "selection": "compare",
+      "aml": "evidence/cases/2-numeric-prefix.aml",
+      "phases": {
+        "TEST": {
+          "status": "RETURNED",
+          "value": 7
+        },
+        "MARK": {
+          "status": "RETURNED",
+          "value": 0
+        },
+        "POST": {
+          "status": "RETURNED",
+          "value": 0
+        }
+      },
+      "comparison_scope": "exact_integer_flow"
+    }
+  ]
+}

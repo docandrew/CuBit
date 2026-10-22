@@ -1,12 +1,16 @@
 pragma Ada_2022;
 with AML_Names;
+with AML_Buffer_Layouts;
 package body AML_Data with SPARK_Mode is
    use AML_Decode;
    use AML_Objects;
    use type Byte;
    use type Integer_Value;
-   procedure Load_Bound
+   package String_Reader is new AML_Objects.String_Initializers
+     (AML_Byte_Sources.Storage, AML_Byte_Sources.Source_Length, AML_Byte_Sources.Source_Byte);
+   procedure Load_Bound_From_Source
      (Store : in out AML_Objects.State; Data : Bytes;
+      Source : aliased AML_Byte_Sources.Storage; Source_First : Natural;
       Width : Integer_Width; Environment : in out Context; ID : out Object_ID;
       Consumed : out Natural; Status : out AML_Decode.Status)
    is
@@ -29,11 +33,13 @@ package body AML_Data with SPARK_Mode is
       N : Integer_Result;
       Package_Count : Count_Result;
       Member : Member_Result;
-      S : String_Result;
-      B : Buffer_Result;
+      S : String_Span_Result;
+      B : AML_Buffer_Layouts.Layout_Result;
       Allocation : Allocation_Status;
    begin
-      ID := 0; Consumed := 0; Status := Truncated;
+      ID := 0; Consumed := 0; Status := Malformed;
+      if not AML_Byte_Sources.Corresponds (Source, Source_First, Data) then return; end if;
+      Status := Truncated;
       loop
          pragma Loop_Invariant (Valid (Candidate));
          pragma Loop_Invariant (Live_Count (Candidate) >= Live_Count (Store));
@@ -110,21 +116,25 @@ package body AML_Data with SPARK_Mode is
                Allocation := Allocated;
                Offset := Offset + Member.Consumed;
             elsif Op = 16#0D# then
-               S := Read_String (Data (Data'First + Offset .. Data'First + (Limit - 1)));
+               S := Read_String_Span (Data (Data'First + Offset .. Data'First + (Limit - 1)));
                if S.Kind /= Accepted then Status := S.Kind; return; end if;
+               String_Reader.Allocate (Candidate, Source,
+                 Source_First + Offset + S.Payload_Offset, S.Length, Item, Allocation);
                Offset := Offset + S.Consumed;
-               declare
-                  L : constant Natural := S.Length;
-                  Text : Bytes (1 .. L);
-               begin
-                  for J in Text'Range loop Text (J) := Character'Pos (S.Text (J)); end loop;
-                  New_Bytes (Candidate, String_Object, Text, Item, Allocation);
-               end;
             elsif Op = 16#11# then
-               B := Read_Buffer (Data (Data'First + Offset .. Data'First + (Limit - 1)), Width);
+               B := AML_Buffer_Layouts.Read
+                 (Data (Data'First + Offset .. Data'First + (Limit - 1)), Width);
                if B.Kind /= Accepted then Status := B.Kind; return; end if;
+               -- Preserve the operand offset until its initializer has been
+               -- sliced. An empty initializer needs no one-past-last index.
+               if B.Initializer_Length = 0 then
+                  New_Buffer (Candidate, B.Effective_Length, Bytes'(1 .. 0 => 0), Item, Allocation);
+               else
+                  New_Buffer (Candidate, B.Effective_Length,
+                    Data (Data'First + Offset + B.Initializer_Offset ..
+                          Data'First + Offset + (B.Consumed - 1)), Item, Allocation);
+               end if;
                Offset := Offset + B.Consumed;
-               New_Bytes (Candidate, Buffer_Object, B.Content (1 .. B.Length), Item, Allocation);
             else
                N := Read_Integer (Data (Data'First + Offset .. Data'First + (Limit - 1)), Width);
                if N.Kind /= Accepted then Status := N.Kind; return; end if;
@@ -145,6 +155,17 @@ package body AML_Data with SPARK_Mode is
             end if;
          end if;
       end loop;
+   end Load_Bound_From_Source;
+   procedure Load_Bound
+     (Store : in out AML_Objects.State; Data : Bytes;
+      Width : Integer_Width; Environment : in out Context; ID : out Object_ID;
+      Consumed : out Natural; Status : out AML_Decode.Status)
+   is
+      Source : aliased constant AML_Byte_Sources.Storage :=
+        (Length => Data'Length, Bytes => Data);
+      procedure Load_Source is new Load_Bound_From_Source (Context, Read_Count, Read_Member);
+   begin
+      Load_Source (Store, Data, Source, 0, Width, Environment, ID, Consumed, Status);
    end Load_Bound;
    type Empty_Context is null record;
    function Literal_Count

@@ -1,5 +1,6 @@
 package body Capacity_Fixture is
    use AML_Decode;
+   use type AML_Decode.Bytes;
    function Text (S : String) return Bytes is
       R : Bytes (1 .. S'Length);
    begin

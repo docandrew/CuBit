@@ -1,0 +1,1 @@
+DefinitionBlock("","DSDT",1,"CUBIT","MIXEDCMP",1){Name(LFT0,Buffer(0){}) Name(RGT0,0) Method(TEST,0){Store(0,Local0) If(LEqual(LFT0,RGT0)){Store(1,Local0)} If(LLess(LFT0,RGT0)){Store(2,Local0)} If(LGreater(LFT0,RGT0)){Store(4,Local0)} Return(Local0)}}

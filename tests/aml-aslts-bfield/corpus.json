@@ -1,0 +1,32 @@
+{
+  "cases": [
+    {
+      "case": "bfield-n64",
+      "aml": "tests/aml-aslts-bfield/reference/bfield-n64.aml",
+      "aml_sha256": "2bce268dfc36c0134e6ecf4299804d5eae887895b0fde5a8b96efa507929b93a",
+      "expected_MN00": 0,
+      "expected_ERRS": 0,
+      "repeats": 2
+    }
+  ],
+  "not_run": [
+    "all other configurations and entrypoints, including unfinished full control depth50"
+  ],
+  "oracle_receipt": "tests/aml-aslts-bfield/reference/evidence.json",
+  "configuration": {
+    "legacy_selector": "bfield-n64",
+    "actual": "original revision2, plain iasl default optimizations",
+    "upstream_n64": false,
+    "upstream_n64_flags": [
+      "-oa",
+      "-r",
+      "2"
+    ],
+    "upstream_common_flags": [
+      "-of",
+      "-cr",
+      "-vs"
+    ],
+    "note": "Historical names preserved; no new execution or exact upstream o64 equivalence claimed."
+  }
+}

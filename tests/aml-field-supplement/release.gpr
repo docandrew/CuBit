@@ -1,0 +1,9 @@
+project Supplement_release is
+ for Source_Dirs use ("../aml-buffer-fields","../aml-references","../aml-core","../acpi-integration/mocks","../../userspace/services/acpi","../../userspace/services/acpi/native","../../userspace/lib/acpi","../../shared/firmware");
+ for Object_Dir use "build-release/obj";
+ for Exec_Dir use "build-release";
+ for Main use ("copy_initializing_tests.adb","copy_boundary_extended_tests.adb");
+ package Compiler is
+  for Default_Switches ("Ada") use ("-O1", "-gnat2022", "-gnatwa", "-gnatwe", "-gnatp", "-gnatwF");
+ end Compiler;
+end Supplement_release;

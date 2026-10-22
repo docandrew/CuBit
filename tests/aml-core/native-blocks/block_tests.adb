@@ -309,5 +309,43 @@ begin
       Check (Reply.Label = Reply_OK and Reply.Data (1 .. 3) = [1, 16#A5#, 0]);
       Source := Raw'Address;
    end;
+   -- Execution occurs after admission from owned bytes, including while a grant
+   -- return is pending; no new acquisition or provider memory read at Finish.
+   declare
+      Owned_Server : ACPI_Requests.State (1, 128, 128, 0);
+      Loan : ACPI_Native_Blocks.State;
+      Code : aliased Firmware_Tables.Bytes (1 .. 42) := [others => 0];
+      Sum : Firmware_Tables.Byte := 0;
+      Acquired_Before, Returned_Before : Natural;
+   begin
+      Code (1 .. 4) := [68, 83, 68, 84]; Code (5) := 42; Code (9) := 2;
+      Code (37 .. 42) := [8, 86, 65, 76, 48, 1];
+      for B of Code loop Sum := Sum + B; end loop;
+      Code (10) := 0 - Sum;
+      Dispatch (Loan, Owned_Server, Config, 31, Provider,
+        (Label => Start_Snapshot, Data => [0, 1, 0, 0], others => <>), Reply);
+      Check (Reply.Label = Reply_OK);
+      Source := Code'Address; Acquire_OK := True; Return_OK := False;
+      Import_Grant (Loan, Owned_Server, Config, 31, Provider, Reference,
+        Revision (Owned_Server), 73, ACPI_Service.DSDT, Code'Length, Reply, Status);
+      Check (Reply.Label = Reply_OK and Pending (Loan) and Status = Cleanup_Pending);
+      Check (Observe (Owned_Server).Objects = 0);
+      for I in Code'Range loop Code (I) := 0; end loop;
+      Source := System.Null_Address;
+      Acquired_Before := Acquisitions; Returned_Before := Returns;
+      Dispatch (Loan, Owned_Server, Config, 31, Provider,
+        (Label => Finish_Snapshot, Data => [Revision (Owned_Server), 0, 0, 0], others => <>), Reply);
+      Check (Reply.Label = Reply_OK and Current (Owned_Server) = Complete
+        and Observe (Owned_Server).Objects = ACPI_Service.Values.Firmware_Seed_Count + 1 and Pending (Loan));
+      Check (Acquisitions = Acquired_Before and Returns = Returned_Before);
+      Dispatch (Loan, Owned_Server, Config, 31, Provider,
+        (Label => Finish_Snapshot, Data => [Revision (Owned_Server), 0, 0, 0], others => <>), Reply);
+      Check (Reply.Label = Reply_Error and Reply.Data (0) = Outcome'Pos (Wrong_Order));
+      Check (Acquisitions = Acquired_Before and Returns = Returned_Before);
+      Retry_Return (Loan); Check (Pending (Loan) and Returns = Returned_Before + 1);
+      Return_OK := True; Retry_Return (Loan);
+      Check (not Pending (Loan) and Returns = Returned_Before + 2);
+      Retry_Return (Loan); Check (Returns = Returned_Before + 2);
+   end;
    Ada.Text_IO.Put_Line ("ACPI-NATIVE-BLOCK-MOCK: PASS" & Checks'Image);
 end Block_Tests;

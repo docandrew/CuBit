@@ -1,0 +1,7 @@
+Constructed byte-boundary regression; NOT ACPICA or normal-iasl evidence.
+All module/table and Method package lengths/checksums are valid. Method bodies deliberately contain the malformed cases. No alternative error status accepted.
+fixed_zero: Name P000 fixed Package with NumElements=0 but trailing Increment(MARK). Expected Bad_Package BEFORE any initializer effect. An additional Increment after declaration also must not execute. This is the interpreter fixed-package boundary policy, not an oracle claim.
+truncated_count: Name P000 fixed Package1 contains Buffer bytes11 02 0A: extent2 ends immediately after BytePrefix0A, without its integer payload. The next75 Increment opcode is outside both Buffer and Package. Expected Truncated and MARK0, so child count cannot borrow the enclosing/next-statement byte.
+nesting_exhausted:65 nested fixed Package1 containers, innermost Zero. Current expression-depth limit64 implies Expression_Limit before completing declaration; no later Increment executes. Not an ACPI universal nesting limit.
+GOOD is valid: Name P000 Package1{Buffer(ByteConst1){}} then Return(SizeOf(P000))=1. It follows EACH failing invocation in the same arena, with exact marker and retained-result/name-count cleanup checks. Entire sequence repeated twice, both table revisions. This demonstrates observable cleanup/reuse; it does not prove all internal transport roots absent.
+These sources have NOT been compiled or run. The zero-count case may expose a current ordering defect; expectations are not adapted to current implementation.

@@ -1,0 +1,12 @@
+{
+  "original_checkpoint": "/home/doc/git/.acpi-proof-work/aml-tail-conditionals-nyflnvf8",
+  "witness_checkpoint": "/home/doc/git/.acpi-proof-work/aml-tail-name-witness-80efvc_a",
+  "archive_commit": "232ff3f8ae1a4da11c709f61d9154482cfe8e6df",
+  "archive_sha256": "91addf34cf6f00c310dcff1d456c2e04629c2b45efe409385068e9fc5e9fe43b",
+  "tool_path_recorded_by_original_driver": "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin",
+  "note": "Current immutable store binary hashes supplement the original path and raw version banners; source commit is separate provenance, not asserted identical binary source.",
+  "tool_hashes": {
+    "iasl": "1c6a21c90ff6f846e27a98dbb3106362c706f67db8ceca21ccd81ab76a7d9dcb",
+    "acpiexec": "a161f8b3a0b94b4301c1d0f2ccca6c0f808d2998cd4c9e037a9d7b218c88dcfe"
+  }
+}

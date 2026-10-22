@@ -1,0 +1,1 @@
+DefinitionBlock("","DSDT",1,"CUBIT","BUFIELDS",1){Name(MARK,Zero) Name(BUFF,Buffer(10){0x55,0x55,0x55,0x55,0x55,0x55,0x55,0x55,0x55,0x55}) Method(CTRL,0){Return(One)} Method(WIDT,0){Return(ShiftRight(Ones,32))} Method(TEST,0){CreateWordField(BUFF,1,FLD0) Store(Ones,FLD0) Return(BUFF)}}

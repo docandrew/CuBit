@@ -6,6 +6,7 @@ with AML_Namespace;
 with AML_Table_Backing;
 with AML_References;
 procedure Condref_Tests is
+   use type AML_Decode.Bytes;
    package NS is new AML_Namespace (32, AML_Delays.Unavailable_Provider);
    use NS; use NS.Owned;
    use type Integer_Value;

@@ -1,0 +1,14 @@
+{
+  "tests/acpi-provider-native/fixtures/api/cualloc_native.ads": "userspace/allocator/process/cualloc_native.ads",
+  "tests/acpi-provider-native/fixtures/api/cubit-handles-ipc.ads": "userspace/runtime/gnat/cubit-handles-ipc.ads",
+  "tests/acpi-provider-native/fixtures/api/cubit.ads": "userspace/runtime/gnat/cubit.ads",
+  "tests/acpi-provider-native/fixtures/api/cubit-monotonic.ads": "userspace/runtime/gnat/cubit-monotonic.ads",
+  "tests/acpi-provider-native/fixtures/api/cubit-messages.ads": "userspace/runtime/gnat/cubit-messages.ads",
+  "tests/acpi-provider-native/fixtures/api/cubit-memory_grants.ads": "userspace/runtime/gnat/cubit-memory_grants.ads",
+  "tests/acpi-provider-native/fixtures/api/cubit-grant_references.ads": "userspace/runtime/gnat/cubit-grant_references.ads",
+  "tests/acpi-provider-native/fixtures/api/cubit-process_ids.ads": "userspace/runtime/gnat/cubit-process_ids.ads",
+  "tests/acpi-provider-native/fixtures/api/cubit-handles.ads": "userspace/runtime/gnat/cubit-handles.ads",
+  "tests/acpi-provider-native/fixtures/api/capability_abi.ads": "shared/capabilities/capability_abi.ads",
+  "tests/acpi-provider-native/fixtures/composition/server-adapter/acpi_native_blocks.ads": "userspace/services/acpi/native/acpi_native_blocks.ads",
+  "tests/acpi-provider-native/fixtures/composition/server-adapter/acpi_native_blocks.adb": "userspace/services/acpi/native/acpi_native_blocks.adb"
+}

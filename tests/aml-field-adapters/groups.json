@@ -1,0 +1,40 @@
+{
+  "core": {
+    "dirs": [
+      "aml-core",
+      "aml-debug",
+      "aml-retention",
+      "acpi-integration/mocks"
+    ],
+    "sources": [
+      "tests/aml-core/timer_verification.adb",
+      "tests/aml-core/readonly_input_tests.adb",
+      "tests/aml-core/timer_executor_tests.adb",
+      "tests/aml-core/region_executor_tests.adb",
+      "tests/aml-debug/debug_target_tests.adb",
+      "tests/aml-retention/frame_root_tests.adb",
+      "tests/aml-retention/result_handoff_tests.adb",
+      "tests/aml-retention/held_publication_tests.adb"
+    ]
+  },
+  "acpi_integration": {
+    "dirs": [
+      "acpi-integration",
+      "aml-core",
+      "acpi-integration/mocks"
+    ],
+    "sources": [
+      "tests/acpi-integration/timer_verification.adb"
+    ]
+  },
+  "aml_references": {
+    "dirs": [
+      "aml-references",
+      "aml-core",
+      "acpi-integration/mocks"
+    ],
+    "sources": [
+      "tests/aml-references/timer_verification.adb"
+    ]
+  }
+}

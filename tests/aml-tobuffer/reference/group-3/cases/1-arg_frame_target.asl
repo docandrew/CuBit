@@ -1,0 +1,1 @@
+DefinitionBlock ("", "DSDT", 1, "CUBIT", "TOBREF", 1) { Method (HELP,1) {ToBuffer ("AB",Arg0) Return (Zero)} Method (CTRL,0) {Return (One)} Method (TEST,0) {Store (9,Local0) HELP (RefOf(Local0)) Return (Local0)} }

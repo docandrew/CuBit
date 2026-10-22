@@ -1,0 +1,344 @@
+[
+  {
+    "source": "oracle/argref1.aml",
+    "returncode": 0,
+    "TEST_has_Mid": false,
+    "HELP_has_Mid": true
+  },
+  {
+    "source": "oracle/argref2.aml",
+    "returncode": 0,
+    "TEST_has_Mid": false,
+    "HELP_has_Mid": true
+  },
+  {
+    "source": "oracle/badindex1.aml",
+    "returncode": 0,
+    "TEST_has_Mid": true
+  },
+  {
+    "source": "oracle/badindex2.aml",
+    "returncode": 0,
+    "TEST_has_Mid": true
+  },
+  {
+    "source": "oracle/badsource1.aml",
+    "returncode": 0,
+    "TEST_has_Mid": true
+  },
+  {
+    "source": "oracle/badsource2.aml",
+    "returncode": 0,
+    "TEST_has_Mid": true
+  },
+  {
+    "source": "oracle/buffer1.aml",
+    "returncode": 0,
+    "TEST_has_Mid": true
+  },
+  {
+    "source": "oracle/buffer2.aml",
+    "returncode": 0,
+    "TEST_has_Mid": true
+  },
+  {
+    "source": "oracle/coerce1.aml",
+    "returncode": 0,
+    "TEST_has_Mid": true
+  },
+  {
+    "source": "oracle/coerce2.aml",
+    "returncode": 0,
+    "TEST_has_Mid": true
+  },
+  {
+    "source": "oracle/deref1.aml",
+    "returncode": 0,
+    "TEST_has_Mid": true
+  },
+  {
+    "source": "oracle/deref2.aml",
+    "returncode": 0,
+    "TEST_has_Mid": true
+  },
+  {
+    "source": "oracle/emptybuffer1.aml",
+    "returncode": 0,
+    "TEST_has_Mid": true
+  },
+  {
+    "source": "oracle/emptybuffer2.aml",
+    "returncode": 0,
+    "TEST_has_Mid": true
+  },
+  {
+    "source": "oracle/emptystring1.aml",
+    "returncode": 0,
+    "TEST_has_Mid": false
+  },
+  {
+    "source": "oracle/emptystring2.aml",
+    "returncode": 0,
+    "TEST_has_Mid": false
+  },
+  {
+    "source": "oracle/heldindex1.aml",
+    "returncode": 0,
+    "TEST_has_Mid": true
+  },
+  {
+    "source": "oracle/heldindex2.aml",
+    "returncode": 0,
+    "TEST_has_Mid": true
+  },
+  {
+    "source": "oracle/heldref1.aml",
+    "returncode": 0,
+    "TEST_has_Mid": true
+  },
+  {
+    "source": "oracle/heldref2.aml",
+    "returncode": 0,
+    "TEST_has_Mid": true
+  },
+  {
+    "source": "oracle/hugecount1.aml",
+    "returncode": 0,
+    "TEST_has_Mid": false
+  },
+  {
+    "source": "oracle/hugecount2.aml",
+    "returncode": 0,
+    "TEST_has_Mid": false
+  },
+  {
+    "source": "oracle/hugeindex1.aml",
+    "returncode": 0,
+    "TEST_has_Mid": false
+  },
+  {
+    "source": "oracle/hugeindex2.aml",
+    "returncode": 0,
+    "TEST_has_Mid": false
+  },
+  {
+    "source": "oracle/integer1.aml",
+    "returncode": 0,
+    "TEST_has_Mid": false
+  },
+  {
+    "source": "oracle/integer2.aml",
+    "returncode": 0,
+    "TEST_has_Mid": false
+  },
+  {
+    "source": "oracle/methodindex1.aml",
+    "returncode": 0,
+    "TEST_has_Mid": true
+  },
+  {
+    "source": "oracle/methodindex2.aml",
+    "returncode": 0,
+    "TEST_has_Mid": true
+  },
+  {
+    "source": "oracle/once1.aml",
+    "returncode": 0,
+    "TEST_has_Mid": true
+  },
+  {
+    "source": "oracle/once2.aml",
+    "returncode": 0,
+    "TEST_has_Mid": true
+  },
+  {
+    "source": "oracle/outside1.aml",
+    "returncode": 0,
+    "TEST_has_Mid": false
+  },
+  {
+    "source": "oracle/outside2.aml",
+    "returncode": 0,
+    "TEST_has_Mid": false
+  },
+  {
+    "source": "oracle/same1.aml",
+    "returncode": 0,
+    "TEST_has_Mid": true
+  },
+  {
+    "source": "oracle/same2.aml",
+    "returncode": 0,
+    "TEST_has_Mid": true
+  },
+  {
+    "source": "oracle/string1.aml",
+    "returncode": 0,
+    "TEST_has_Mid": false
+  },
+  {
+    "source": "oracle/string2.aml",
+    "returncode": 0,
+    "TEST_has_Mid": false
+  },
+  {
+    "source": "oracle/zero1.aml",
+    "returncode": 0,
+    "TEST_has_Mid": false
+  },
+  {
+    "source": "oracle/zero2.aml",
+    "returncode": 0,
+    "TEST_has_Mid": false
+  },
+  {
+    "source": "unoptimized/buffer1.aml",
+    "returncode": 0,
+    "TEST_has_Mid": true
+  },
+  {
+    "source": "unoptimized/buffer2.aml",
+    "returncode": 0,
+    "TEST_has_Mid": true
+  },
+  {
+    "source": "unoptimized/byte1.aml",
+    "returncode": 0,
+    "TEST_has_Mid": true
+  },
+  {
+    "source": "unoptimized/byte2.aml",
+    "returncode": 0,
+    "TEST_has_Mid": true
+  },
+  {
+    "source": "unoptimized/coerce1.aml",
+    "returncode": 0,
+    "TEST_has_Mid": true
+  },
+  {
+    "source": "unoptimized/coerce2.aml",
+    "returncode": 0,
+    "TEST_has_Mid": true
+  },
+  {
+    "source": "unoptimized/emptybuffer1.aml",
+    "returncode": 0,
+    "TEST_has_Mid": true
+  },
+  {
+    "source": "unoptimized/emptybuffer2.aml",
+    "returncode": 0,
+    "TEST_has_Mid": true
+  },
+  {
+    "source": "unoptimized/emptystring1.aml",
+    "returncode": 0,
+    "TEST_has_Mid": true
+  },
+  {
+    "source": "unoptimized/emptystring2.aml",
+    "returncode": 0,
+    "TEST_has_Mid": true
+  },
+  {
+    "source": "unoptimized/hugecount1.aml",
+    "returncode": 0,
+    "TEST_has_Mid": true
+  },
+  {
+    "source": "unoptimized/hugecount2.aml",
+    "returncode": 0,
+    "TEST_has_Mid": true
+  },
+  {
+    "source": "unoptimized/hugeindex1.aml",
+    "returncode": 0,
+    "TEST_has_Mid": true
+  },
+  {
+    "source": "unoptimized/hugeindex2.aml",
+    "returncode": 0,
+    "TEST_has_Mid": true
+  },
+  {
+    "source": "unoptimized/integer1.aml",
+    "returncode": 0,
+    "TEST_has_Mid": true
+  },
+  {
+    "source": "unoptimized/integer2.aml",
+    "returncode": 0,
+    "TEST_has_Mid": true
+  },
+  {
+    "source": "unoptimized/member1.aml",
+    "returncode": 0,
+    "TEST_has_Mid": true
+  },
+  {
+    "source": "unoptimized/member2.aml",
+    "returncode": 0,
+    "TEST_has_Mid": true
+  },
+  {
+    "source": "unoptimized/namedbuf1.aml",
+    "returncode": 0,
+    "TEST_has_Mid": true
+  },
+  {
+    "source": "unoptimized/namedbuf2.aml",
+    "returncode": 0,
+    "TEST_has_Mid": true
+  },
+  {
+    "source": "unoptimized/namedint1.aml",
+    "returncode": 0,
+    "TEST_has_Mid": true
+  },
+  {
+    "source": "unoptimized/namedint2.aml",
+    "returncode": 0,
+    "TEST_has_Mid": true
+  },
+  {
+    "source": "unoptimized/namedstr1.aml",
+    "returncode": 0,
+    "TEST_has_Mid": true
+  },
+  {
+    "source": "unoptimized/namedstr2.aml",
+    "returncode": 0,
+    "TEST_has_Mid": true
+  },
+  {
+    "source": "unoptimized/outside1.aml",
+    "returncode": 0,
+    "TEST_has_Mid": true
+  },
+  {
+    "source": "unoptimized/outside2.aml",
+    "returncode": 0,
+    "TEST_has_Mid": true
+  },
+  {
+    "source": "unoptimized/string1.aml",
+    "returncode": 0,
+    "TEST_has_Mid": true
+  },
+  {
+    "source": "unoptimized/string2.aml",
+    "returncode": 0,
+    "TEST_has_Mid": true
+  },
+  {
+    "source": "unoptimized/zero1.aml",
+    "returncode": 0,
+    "TEST_has_Mid": true
+  },
+  {
+    "source": "unoptimized/zero2.aml",
+    "returncode": 0,
+    "TEST_has_Mid": true
+  }
+]

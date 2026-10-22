@@ -1,0 +1,21 @@
+Authoritative worker10503 terminal0. 38 normal-ASL cases, both revisions; two invocations each. All76 compiles/executions succeeded, no AE statuses. Exact returned byte lengths checked; repeat results identical; all mutation markers and final values checked; computed target destination equals result. All38 logs retain ACPICA cache teardown warnings. No forced compilation. These observations do not establish invalid-input conversion/failure order, only the stated successful paths.
+
+r1-mid-start-later-reference-store {'method': 'TEST', 'type': 'String', 'bytes': '444546'}
+r1-mid-start-later-reference-copy {'method': 'TEST', 'type': 'String', 'bytes': '424344'}
+r1-mid-start-later-name-store {'method': 'TEST', 'type': 'String', 'bytes': '424344'}
+r1-mid-start-later-name-copy {'method': 'TEST', 'type': 'String', 'bytes': '424344'}
+r1-mid-start-target-reference-store {'method': 'TEST', 'type': 'Buffer', 'bytes': '444546'}
+r1-mid-start-target-reference-copy {'method': 'TEST', 'type': 'Buffer', 'bytes': '424344'}
+r1-mid-start-target-name-store {'method': 'TEST', 'type': 'Buffer', 'bytes': '424344'}
+r1-mid-start-target-name-copy {'method': 'TEST', 'type': 'Buffer', 'bytes': '424344'}
+r1-mid-count-target-reference-store {'method': 'TEST', 'type': 'String', 'bytes': '424344'}
+r1-mid-count-target-reference-copy {'method': 'TEST', 'type': 'String', 'bytes': '42'}
+r1-mid-count-target-name-store {'method': 'TEST', 'type': 'String', 'bytes': '42'}
+r1-mid-count-target-name-copy {'method': 'TEST', 'type': 'String', 'bytes': '42'}
+r1-tostring-length-target-reference-store {'method': 'TEST', 'type': 'String', 'bytes': '414243'}
+r1-tostring-length-target-reference-copy {'method': 'TEST', 'type': 'String', 'bytes': '41'}
+r1-tostring-length-target-name-store {'method': 'TEST', 'type': 'String', 'bytes': '41'}
+r1-tostring-length-target-name-copy {'method': 'TEST', 'type': 'String', 'bytes': '41'}
+r1-mid-string-immediate {'method': 'TEST', 'type': 'String', 'bytes': '424344'}
+r1-mid-buffer-immediate {'method': 'TEST', 'type': 'Buffer', 'bytes': '424344'}
+r1-tostring-immediate {'method': 'TEST', 'type': 'String', 'bytes': '414243'}

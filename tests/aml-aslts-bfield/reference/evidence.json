@@ -1,0 +1,94 @@
+{
+  "upstream_commit": "232ff3f8ae1a4da11c709f61d9154482cfe8e6df",
+  "upstream_archive_sha256": "91addf34cf6f00c310dcff1d456c2e04629c2b45efe409385068e9fc5e9fe43b",
+  "aml_sha256": "2bce268dfc36c0134e6ecf4299804d5eae887895b0fde5a8b96efa507929b93a",
+  "historical_receipts": {
+    "aslts-bfield-hosted-final-9upbyzfd/receipt.json": "a3ee228c92fd1baec2c367388b2606acd27010149e394cd3931dab85ce3ae981",
+    "aslts-bfield-normal-final-zy7jmyud/receipt.json": "c5b04a26de2960ab4790505a861be57c46a0625f4d7d478324aed1cf49b38b49",
+    "aslts-bfield-hosted-budget-g6w77_t1/receipt.json": "e865c738bd0d5cf8668e954457bb96f8661fe638811e21c191df01d4fc438851",
+    "aslts-bfield-progress-final-ix4cexea/receipt.json": "d0804afe69ab8c2841962377dbf1c84f22034daa17e7ed6db952c913eea4d817"
+  },
+  "oracle": {
+    "normal_compile": 0,
+    "disassembly": 0,
+    "warning_count": 3,
+    "remark_count": 103,
+    "runtime_seconds_exception": 30,
+    "ordered_values": [
+      [
+        "MN00",
+        0
+      ],
+      [
+        "ERRS",
+        0
+      ],
+      [
+        "MN00",
+        0
+      ],
+      [
+        "ERRS",
+        0
+      ]
+    ],
+    "cache_allocations": 4,
+    "prior_five_second_timeouts": 2
+  },
+  "hosted_tested_predecessor": {
+    "profile": "release",
+    "method_fuel": 2000000,
+    "whole_runtime_cap_seconds": 180,
+    "mn00_charges": [
+      1088769,
+      1088859
+    ],
+    "mn00_values": [
+      0,
+      0
+    ],
+    "errs_values": [
+      0,
+      0
+    ],
+    "whole_runtime_seconds": 97.26788971,
+    "earlier_one_million_exhaustion_preserved": true
+  },
+  "portable_execution": {
+    "profile": "release",
+    "worker": 83262,
+    "mn00_results": [
+      0,
+      0
+    ],
+    "errs_results": [
+      0,
+      0
+    ],
+    "mn00_charges": [
+      1088769,
+      1088859
+    ],
+    "runtime_seconds": 94.371550555,
+    "guard_negatives_passed": 2,
+    "receipt": "aslts-bfield-portable-final-e20a96_b/receipt.json",
+    "receipt_sha256": "2e0445d4ee9967219f921ed2b54fa0be93fb5775ba368c52fd7faeb558d8dd29",
+    "scope": "Executed predecessor; final successor changes README/evidence/manifest only; runner/main/production/AML exact."
+  },
+  "configuration_correction": {
+    "legacy_selector": "bfield-n64",
+    "actual": "original revision2, plain iasl default optimizations",
+    "upstream_n64": false,
+    "upstream_n64_flags": [
+      "-oa",
+      "-r",
+      "2"
+    ],
+    "upstream_common_flags": [
+      "-of",
+      "-cr",
+      "-vs"
+    ],
+    "note": "Historical names preserved; no new execution or exact upstream o64 equivalence claimed."
+  }
+}

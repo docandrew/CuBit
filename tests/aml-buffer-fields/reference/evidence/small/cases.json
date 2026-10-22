@@ -1,0 +1,116 @@
+[
+  {
+    "name": "INT",
+    "declarations": "",
+    "body": "CreateByteField(0x41,0,FLD0) Return(FLD0)",
+    "method_opcode": "CreateByteField"
+  },
+  {
+    "name": "STR",
+    "declarations": "",
+    "body": "CreateByteField(\"AB\",1,FLD0) Return(FLD0)",
+    "method_opcode": "CreateByteField"
+  },
+  {
+    "name": "EMPTY",
+    "declarations": "Name(BUFF,Buffer(0){})",
+    "body": "CreateByteField(BUFF,0,FLD0) Return(FLD0)",
+    "method_opcode": "CreateByteField"
+  },
+  {
+    "name": "GEN1",
+    "declarations": "Name(BUFF,Buffer(8){0x41,0x42,0x43,0x44,0x45,0x46,0x47,0x48})",
+    "body": "CreateField(BUFF,0,1,FLD0) Return(Add(Multiply(ObjectType(FLD0),256),SizeOf(ToBuffer(FLD0))))",
+    "method_opcode": "CreateField"
+  },
+  {
+    "name": "GENBYTE",
+    "declarations": "Name(BUFF,Buffer(8){0x41,0x42,0x43,0x44,0x45,0x46,0x47,0x48})",
+    "body": "CreateField(BUFF,0,1,FLD0) Return(ToBuffer(FLD0))",
+    "method_opcode": "CreateField"
+  },
+  {
+    "name": "QTYPE",
+    "declarations": "Name(BUFF,Buffer(8){0x41,0x42,0x43,0x44,0x45,0x46,0x47,0x48})",
+    "body": "CreateQWordField(BUFF,0,FLD0) Store(FLD0,Local0) Return(Add(Multiply(ObjectType(Local0),256),SizeOf(ToBuffer(Local0))))",
+    "method_opcode": "CreateQWordField"
+  },
+  {
+    "name": "QBYTES",
+    "declarations": "Name(BUFF,Buffer(8){0x41,0x42,0x43,0x44,0x45,0x46,0x47,0x48})",
+    "body": "CreateQWordField(BUFF,0,FLD0) Return(ToBuffer(FLD0))",
+    "method_opcode": "CreateQWordField"
+  },
+  {
+    "name": "LOCAL",
+    "declarations": "Name(BUFF,Buffer(8){0x41,0x42,0x43,0x44,0x45,0x46,0x47,0x48})Name(NEWB,Buffer(2){0x42,0x43}) Method(CHNG,1){Store(NEWB,Arg0) Store(1,MARK) Return(Zero)}",
+    "body": "CopyObject(BUFF,Local0) CreateByteField(Local0,CHNG(RefOf(Local0)),FLD0) Return(FLD0)",
+    "method_opcode": "CreateByteField"
+  },
+  {
+    "name": "ARG",
+    "declarations": "Name(BUFF,Buffer(8){0x41,0x42,0x43,0x44,0x45,0x46,0x47,0x48})Name(NEWB,Buffer(2){0x42,0x43}) Method(CHNG,1){Store(NEWB,Arg0) Store(1,MARK) Return(Zero)} Method(HELP,1){CreateByteField(Arg0,CHNG(RefOf(Arg0)),FLD0) Return(FLD0)}",
+    "body": "Return(HELP(BUFF))",
+    "method_opcode": "HELP"
+  },
+  {
+    "name": "NAMED",
+    "declarations": "Name(BUFF,Buffer(8){0x41,0x42,0x43,0x44,0x45,0x46,0x47,0x48}) Name(NEWB,Buffer(2){0x42,0x43}) Method(CHNG,0){CopyObject(NEWB,BUFF) Store(1,MARK) Return(Zero)}",
+    "body": "CreateByteField(BUFF,CHNG(),FLD0) Return(FLD0)",
+    "method_opcode": "CreateByteField"
+  },
+  {
+    "name": "COUNTLOCAL",
+    "declarations": "Name(BUFF,Buffer(8){0x41,0x42,0x43,0x44,0x45,0x46,0x47,0x48})Name(NEWB,Buffer(2){0x42,0x43}) Method(CHNG,1){Store(NEWB,Arg0) Store(1,MARK) Return(Zero)}",
+    "body": "CopyObject(BUFF,Local0) CreateField(Local0,0,Add(CHNG(RefOf(Local0)),8),FLD0) Return(ToBuffer(FLD0))",
+    "method_opcode": "CreateField"
+  },
+  {
+    "name": "IDX",
+    "declarations": "Name(PKG0,Package(){Buffer(2){0x41,0x42}}) Method(GETR,0){Return(Index(PKG0,0))}",
+    "body": "CreateByteField(GETR(),0,FLD0) Return(FLD0)",
+    "method_opcode": "CreateByteField"
+  },
+  {
+    "name": "REF",
+    "declarations": "Name(BUFF,Buffer(8){0x41,0x42,0x43,0x44,0x45,0x46,0x47,0x48})",
+    "body": "CopyObject(RefOf(BUFF),Local0) CreateByteField(Local0,0,FLD0) Return(FLD0)",
+    "method_opcode": "CreateByteField"
+  },
+  {
+    "name": "ERRORS",
+    "declarations": "Method(SRC0,0){Store(Add(Multiply(MARK,10),1),MARK) Return(Package(){One})} Method(INDX,0){Store(Add(Multiply(MARK,10),2),MARK) Return(Package(){One})} Method(CNT0,0){Store(Add(Multiply(MARK,10),3),MARK) Return(Buffer(0){})}",
+    "body": "CreateField(SRC0(),INDX(),CNT0(),FLD0) Return(Zero)",
+    "method_opcode": "CreateField"
+  },
+  {
+    "name": "INDEXERR",
+    "declarations": "Method(SRC0,0){Store(Add(Multiply(MARK,10),1),MARK) Return(Package(){One})} Method(INDX,0){Store(Add(Multiply(MARK,10),2),MARK) Return(Package(){One})} Method(CNT0,0){Store(Add(Multiply(MARK,10),3),MARK) Return(Buffer(0){})}",
+    "body": "CreateField(SRC0(),INDX(),8,FLD0) Return(Zero)",
+    "method_opcode": "CreateField"
+  },
+  {
+    "name": "DUP",
+    "declarations": "Name(BUFF,Buffer(8){0x41,0x42,0x43,0x44,0x45,0x46,0x47,0x48}) Name(FLD0,Zero) Method(INDX,0){Store(1,MARK) Return(Zero)}",
+    "body": "CreateByteField(BUFF,INDX(),FLD0) Return(FLD0)",
+    "method_opcode": "CreateByteField"
+  },
+  {
+    "name": "COPYI",
+    "declarations": "Name(BUFF,Buffer(8){0x41,0x42,0x43,0x44,0x45,0x46,0x47,0x48})",
+    "body": "CreateByteField(BUFF,0,FLD0) CopyObject(0x59,FLD0) Return(BUFF)",
+    "method_opcode": "CreateByteField"
+  },
+  {
+    "name": "COPYB",
+    "declarations": "Name(BUFF,Buffer(8){0x41,0x42,0x43,0x44,0x45,0x46,0x47,0x48})",
+    "body": "CreateByteField(BUFF,0,FLD0) CopyObject(Buffer(2){0x59,0x5A},FLD0) Return(BUFF)",
+    "method_opcode": "CreateByteField"
+  },
+  {
+    "name": "COPYTYPE",
+    "declarations": "Name(BUFF,Buffer(8){0x41,0x42,0x43,0x44,0x45,0x46,0x47,0x48})",
+    "body": "CreateByteField(BUFF,0,FLD0) CopyObject(0x59,FLD0) Return(ObjectType(FLD0))",
+    "method_opcode": "CreateByteField"
+  }
+]

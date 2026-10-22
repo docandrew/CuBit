@@ -1,0 +1,106 @@
+[
+  {
+    "group": "ordering",
+    "case": "sourcebad",
+    "revision": 1,
+    "compile": {
+      "returncode": 0,
+      "seconds": 0.0036439020186662674
+    },
+    "execution": {
+      "returncode": 0,
+      "seconds": 1.065870312973857
+    }
+  },
+  {
+    "group": "ordering",
+    "case": "indexbad",
+    "revision": 1,
+    "compile": {
+      "returncode": 0,
+      "seconds": 0.004606044967658818
+    },
+    "execution": {
+      "returncode": 0,
+      "seconds": 1.0700034119654447
+    }
+  },
+  {
+    "group": "ordering",
+    "case": "countempty",
+    "revision": 1,
+    "compile": {
+      "returncode": 0,
+      "seconds": 0.003774162963964045
+    },
+    "execution": {
+      "returncode": 0,
+      "seconds": 1.0668071480467916
+    }
+  },
+  {
+    "group": "ordering",
+    "case": "countpackage",
+    "revision": 1,
+    "compile": {
+      "returncode": 0,
+      "seconds": 0.0036914519732818007
+    },
+    "execution": {
+      "returncode": 0,
+      "seconds": 1.0668613370507956
+    }
+  },
+  {
+    "group": "ordering",
+    "case": "sourcebad",
+    "revision": 2,
+    "compile": {
+      "returncode": 0,
+      "seconds": 0.00495023000985384
+    },
+    "execution": {
+      "returncode": 0,
+      "seconds": 1.0686607530806214
+    }
+  },
+  {
+    "group": "ordering",
+    "case": "indexbad",
+    "revision": 2,
+    "compile": {
+      "returncode": 0,
+      "seconds": 0.0036523520248010755
+    },
+    "execution": {
+      "returncode": 0,
+      "seconds": 1.0657974820351228
+    }
+  },
+  {
+    "group": "ordering",
+    "case": "countempty",
+    "revision": 2,
+    "compile": {
+      "returncode": 0,
+      "seconds": 0.003683981951326132
+    },
+    "execution": {
+      "returncode": 0,
+      "seconds": 1.0657473109895363
+    }
+  },
+  {
+    "group": "ordering",
+    "case": "countpackage",
+    "revision": 2,
+    "compile": {
+      "returncode": 0,
+      "seconds": 0.003737113089300692
+    },
+    "execution": {
+      "returncode": 0,
+      "seconds": 1.0658288629492745
+    }
+  }
+]

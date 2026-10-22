@@ -1,0 +1,1 @@
+25 cases x2 DSDT widths. Normal iasl -oa and exact opcode disassembly, WIDT.128MiB/5sec/64MiB per ACPICA subprocess. No production changes. Source plan aml-restemplate-plan-f2y2d16t. Bad descriptors are Buffer payloads, not forced-invalid ASL. Review compiler failures separately.

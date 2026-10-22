@@ -1,0 +1,7 @@
+project adapter_10_release is
+ for Source_Dirs use ("../aml-retention", "../../userspace/lib/acpi", "../../shared/firmware");
+ for Object_Dir use "build-10-release";
+ package Compiler is
+  for Default_Switches ("Ada") use ("-O1", "-gnat2022", "-gnatwa", "-gnatwe", "-gnatp", "-gnatwF");
+ end Compiler;
+end adapter_10_release;

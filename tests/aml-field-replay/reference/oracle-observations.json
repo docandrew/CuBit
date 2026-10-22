@@ -1,0 +1,428 @@
+[
+  {
+    "label": "whole8-r1",
+    "aml_sha256": "cab54fdf313d9430694b62aff50599beff373d386cc9708b27a50346b24b3e76",
+    "length": 235,
+    "revision": 1,
+    "checksum_mod256": 0,
+    "retained_width": 8,
+    "access": "ByteAcc",
+    "ordered": [
+      {
+        "method": "TEST",
+        "integer": 240,
+        "hex": "00000000000000F0",
+        "raw_block": "\\TEST\nEvaluation of \\TEST returned object 0x555555601dd0, external buffer length 18\n  [Integer] = 00000000000000F0\n\n"
+      },
+      {
+        "method": "OBS0",
+        "integer": 12,
+        "hex": "000000000000000C",
+        "raw_block": "\\OBS0\nEvaluation of \\OBS0 returned object 0x555555601dd0, external buffer length 18\n  [Integer] = 000000000000000C\n\n"
+      },
+      {
+        "method": "FAIL",
+        "error": "AE_AML_DIVIDE_BY_ZERO",
+        "raw_block": "\\FAIL\nACPI Error: Divide by zero (20260408/utmath-705)\nFailed at AML Offset 00019, Opcode 0078: Divide (One, Local0, Local1, Local2)\n\nInitialized Local Variables for Method [BAD0]:\n    Local0: 0x55555560b7f0 <Obj>             Integer 0000000000000000\n\nNo Arguments are initialized for method [BAD0]\n\nACPI Error: Aborting method \\BAD0 due to previous error (AE_AML_DIVIDE_BY_ZERO) (20260408/psparse-688)\nACPI Error: Aborting method \\FAIL due to previous error (AE_AML_DIVIDE_BY_ZERO) (20260408/psparse-688)\nACPI Error: AE_AML_DIVIDE_BY_ZERO, while executing \\FAIL from AML Debugger (20260408/dbexec-334)\nEvaluation of \\FAIL failed with status AE_AML_DIVIDE_BY_ZERO\n"
+      },
+      {
+        "method": "OBS0",
+        "integer": 123,
+        "hex": "000000000000007B",
+        "raw_block": "\\OBS0\nEvaluation of \\OBS0 returned object 0x555555601dd0, external buffer length 18\n  [Integer] = 000000000000007B\n\n"
+      },
+      {
+        "method": "PROB",
+        "integer": 240,
+        "hex": "00000000000000F0",
+        "raw_block": "\\PROB\nEvaluation of \\PROB returned object 0x555555601dd0, external buffer length 18\n  [Integer] = 00000000000000F0\n\n"
+      },
+      {
+        "method": "TEST",
+        "integer": 240,
+        "hex": "00000000000000F0",
+        "raw_block": "\\TEST\nEvaluation of \\TEST returned object 0x555555601dd0, external buffer length 18\n  [Integer] = 00000000000000F0\n\n"
+      },
+      {
+        "method": "OBS0",
+        "integer": 12,
+        "hex": "000000000000000C",
+        "raw_block": "\\OBS0\nEvaluation of \\OBS0 returned object 0x555555601dd0, external buffer length 18\n  [Integer] = 000000000000000C\n\n"
+      },
+      {
+        "method": "FAIL",
+        "error": "AE_AML_DIVIDE_BY_ZERO",
+        "raw_block": "\\FAIL\nACPI Error: Divide by zero (20260408/utmath-705)\nFailed at AML Offset 00019, Opcode 0078: Divide (One, Local0, Local1, Local2)\n\nInitialized Local Variables for Method [BAD0]:\n    Local0: 0x55555560b6a0 <Obj>             Integer 0000000000000000\n\nNo Arguments are initialized for method [BAD0]\n\nACPI Error: Aborting method \\BAD0 due to previous error (AE_AML_DIVIDE_BY_ZERO) (20260408/psparse-688)\nACPI Error: Aborting method \\FAIL due to previous error (AE_AML_DIVIDE_BY_ZERO) (20260408/psparse-688)\nACPI Error: AE_AML_DIVIDE_BY_ZERO, while executing \\FAIL from AML Debugger (20260408/dbexec-334)\nEvaluation of \\FAIL failed with status AE_AML_DIVIDE_BY_ZERO\n"
+      },
+      {
+        "method": "OBS0",
+        "integer": 123,
+        "hex": "000000000000007B",
+        "raw_block": "\\OBS0\nEvaluation of \\OBS0 returned object 0x555555601dd0, external buffer length 18\n  [Integer] = 000000000000007B\n\n"
+      },
+      {
+        "method": "PROB",
+        "integer": 240,
+        "hex": "00000000000000F0",
+        "raw_block": "\\PROB\nEvaluation of \\PROB returned object 0x555555601dd0, external buffer length 18\n  [Integer] = 00000000000000F0\n\n0x555555608960 Length 0x0048   utcache-0453 [Operand Object]       Method  RefCount 0x0001\n0x555555607ce0 Length 0x0023  nsxfname-0723 [Not a Descriptor] \n0x555555607ba0 Length 0x0023  nsxfname-0723 [Not a Descriptor] \n0x5555556079f0 Length 0x0048   utcache-0453 [Operand Object]       Method  RefCount 0x0001\nACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)\n"
+      }
+    ],
+    "compiler_log": "/home/doc/git/.acpi-proof-work/field-core-normal-oracle-proposal-mhs6804e/results/whole8-r1-iasl.log",
+    "literal_note": "revision1 compiler truncates high literal to0x9ABCDEF0; revision2 retains0x123456789ABCDEF0"
+  },
+  {
+    "label": "whole8-r2",
+    "aml_sha256": "9a423958a1f5a599206471709169633e6602071036e0e5bf1e328cb3fdffd1cf",
+    "length": 239,
+    "revision": 2,
+    "checksum_mod256": 0,
+    "retained_width": 8,
+    "access": "ByteAcc",
+    "ordered": [
+      {
+        "method": "TEST",
+        "integer": 240,
+        "hex": "00000000000000F0",
+        "raw_block": "\\TEST\nEvaluation of \\TEST returned object 0x555555601dd0, external buffer length 18\n  [Integer] = 00000000000000F0\n\n"
+      },
+      {
+        "method": "OBS0",
+        "integer": 12,
+        "hex": "000000000000000C",
+        "raw_block": "\\OBS0\nEvaluation of \\OBS0 returned object 0x555555601dd0, external buffer length 18\n  [Integer] = 000000000000000C\n\n"
+      },
+      {
+        "method": "FAIL",
+        "error": "AE_AML_DIVIDE_BY_ZERO",
+        "raw_block": "\\FAIL\nACPI Error: Divide by zero (20260408/utmath-705)\nFailed at AML Offset 00019, Opcode 0078: Divide (One, Local0, Local1, Local2)\n\nInitialized Local Variables for Method [BAD0]:\n    Local0: 0x55555560b7f0 <Obj>             Integer 0000000000000000\n\nNo Arguments are initialized for method [BAD0]\n\nACPI Error: Aborting method \\BAD0 due to previous error (AE_AML_DIVIDE_BY_ZERO) (20260408/psparse-688)\nACPI Error: Aborting method \\FAIL due to previous error (AE_AML_DIVIDE_BY_ZERO) (20260408/psparse-688)\nACPI Error: AE_AML_DIVIDE_BY_ZERO, while executing \\FAIL from AML Debugger (20260408/dbexec-334)\nEvaluation of \\FAIL failed with status AE_AML_DIVIDE_BY_ZERO\n"
+      },
+      {
+        "method": "OBS0",
+        "integer": 123,
+        "hex": "000000000000007B",
+        "raw_block": "\\OBS0\nEvaluation of \\OBS0 returned object 0x555555601dd0, external buffer length 18\n  [Integer] = 000000000000007B\n\n"
+      },
+      {
+        "method": "PROB",
+        "integer": 240,
+        "hex": "00000000000000F0",
+        "raw_block": "\\PROB\nEvaluation of \\PROB returned object 0x555555601dd0, external buffer length 18\n  [Integer] = 00000000000000F0\n\n"
+      },
+      {
+        "method": "TEST",
+        "integer": 240,
+        "hex": "00000000000000F0",
+        "raw_block": "\\TEST\nEvaluation of \\TEST returned object 0x555555601dd0, external buffer length 18\n  [Integer] = 00000000000000F0\n\n"
+      },
+      {
+        "method": "OBS0",
+        "integer": 12,
+        "hex": "000000000000000C",
+        "raw_block": "\\OBS0\nEvaluation of \\OBS0 returned object 0x555555601dd0, external buffer length 18\n  [Integer] = 000000000000000C\n\n"
+      },
+      {
+        "method": "FAIL",
+        "error": "AE_AML_DIVIDE_BY_ZERO",
+        "raw_block": "\\FAIL\nACPI Error: Divide by zero (20260408/utmath-705)\nFailed at AML Offset 00019, Opcode 0078: Divide (One, Local0, Local1, Local2)\n\nInitialized Local Variables for Method [BAD0]:\n    Local0: 0x55555560b6a0 <Obj>             Integer 0000000000000000\n\nNo Arguments are initialized for method [BAD0]\n\nACPI Error: Aborting method \\BAD0 due to previous error (AE_AML_DIVIDE_BY_ZERO) (20260408/psparse-688)\nACPI Error: Aborting method \\FAIL due to previous error (AE_AML_DIVIDE_BY_ZERO) (20260408/psparse-688)\nACPI Error: AE_AML_DIVIDE_BY_ZERO, while executing \\FAIL from AML Debugger (20260408/dbexec-334)\nEvaluation of \\FAIL failed with status AE_AML_DIVIDE_BY_ZERO\n"
+      },
+      {
+        "method": "OBS0",
+        "integer": 123,
+        "hex": "000000000000007B",
+        "raw_block": "\\OBS0\nEvaluation of \\OBS0 returned object 0x555555601dd0, external buffer length 18\n  [Integer] = 000000000000007B\n\n"
+      },
+      {
+        "method": "PROB",
+        "integer": 240,
+        "hex": "00000000000000F0",
+        "raw_block": "\\PROB\nEvaluation of \\PROB returned object 0x555555601dd0, external buffer length 18\n  [Integer] = 00000000000000F0\n\n0x555555608960 Length 0x0048   utcache-0453 [Operand Object]       Method  RefCount 0x0001\n0x555555607ce0 Length 0x0023  nsxfname-0723 [Not a Descriptor] \n0x555555607ba0 Length 0x0023  nsxfname-0723 [Not a Descriptor] \n0x5555556079f0 Length 0x0048   utcache-0453 [Operand Object]       Method  RefCount 0x0001\nACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)\n"
+      }
+    ],
+    "compiler_log": "/home/doc/git/.acpi-proof-work/field-core-normal-oracle-proposal-mhs6804e/results/whole8-r2-iasl.log",
+    "literal_note": "revision1 compiler truncates high literal to0x9ABCDEF0; revision2 retains0x123456789ABCDEF0"
+  },
+  {
+    "label": "whole16-r1",
+    "aml_sha256": "e73c3f6d828c1460cbc5878409a076a2a5d494bffdf5df96f96ee6f12dd0daf7",
+    "length": 236,
+    "revision": 1,
+    "checksum_mod256": 0,
+    "retained_width": 16,
+    "access": "WordAcc",
+    "ordered": [
+      {
+        "method": "TEST",
+        "integer": 57072,
+        "hex": "000000000000DEF0",
+        "raw_block": "\\TEST\nEvaluation of \\TEST returned object 0x555555601dd0, external buffer length 18\n  [Integer] = 000000000000DEF0\n\n"
+      },
+      {
+        "method": "OBS0",
+        "integer": 12,
+        "hex": "000000000000000C",
+        "raw_block": "\\OBS0\nEvaluation of \\OBS0 returned object 0x555555601dd0, external buffer length 18\n  [Integer] = 000000000000000C\n\n"
+      },
+      {
+        "method": "FAIL",
+        "error": "AE_AML_DIVIDE_BY_ZERO",
+        "raw_block": "\\FAIL\nACPI Error: Divide by zero (20260408/utmath-705)\nFailed at AML Offset 00019, Opcode 0078: Divide (One, Local0, Local1, Local2)\n\nInitialized Local Variables for Method [BAD0]:\n    Local0: 0x55555560b7f0 <Obj>             Integer 0000000000000000\n\nNo Arguments are initialized for method [BAD0]\n\nACPI Error: Aborting method \\BAD0 due to previous error (AE_AML_DIVIDE_BY_ZERO) (20260408/psparse-688)\nACPI Error: Aborting method \\FAIL due to previous error (AE_AML_DIVIDE_BY_ZERO) (20260408/psparse-688)\nACPI Error: AE_AML_DIVIDE_BY_ZERO, while executing \\FAIL from AML Debugger (20260408/dbexec-334)\nEvaluation of \\FAIL failed with status AE_AML_DIVIDE_BY_ZERO\n"
+      },
+      {
+        "method": "OBS0",
+        "integer": 123,
+        "hex": "000000000000007B",
+        "raw_block": "\\OBS0\nEvaluation of \\OBS0 returned object 0x555555601dd0, external buffer length 18\n  [Integer] = 000000000000007B\n\n"
+      },
+      {
+        "method": "PROB",
+        "integer": 57072,
+        "hex": "000000000000DEF0",
+        "raw_block": "\\PROB\nEvaluation of \\PROB returned object 0x555555601dd0, external buffer length 18\n  [Integer] = 000000000000DEF0\n\n"
+      },
+      {
+        "method": "TEST",
+        "integer": 57072,
+        "hex": "000000000000DEF0",
+        "raw_block": "\\TEST\nEvaluation of \\TEST returned object 0x555555601dd0, external buffer length 18\n  [Integer] = 000000000000DEF0\n\n"
+      },
+      {
+        "method": "OBS0",
+        "integer": 12,
+        "hex": "000000000000000C",
+        "raw_block": "\\OBS0\nEvaluation of \\OBS0 returned object 0x555555601dd0, external buffer length 18\n  [Integer] = 000000000000000C\n\n"
+      },
+      {
+        "method": "FAIL",
+        "error": "AE_AML_DIVIDE_BY_ZERO",
+        "raw_block": "\\FAIL\nACPI Error: Divide by zero (20260408/utmath-705)\nFailed at AML Offset 00019, Opcode 0078: Divide (One, Local0, Local1, Local2)\n\nInitialized Local Variables for Method [BAD0]:\n    Local0: 0x55555560b6a0 <Obj>             Integer 0000000000000000\n\nNo Arguments are initialized for method [BAD0]\n\nACPI Error: Aborting method \\BAD0 due to previous error (AE_AML_DIVIDE_BY_ZERO) (20260408/psparse-688)\nACPI Error: Aborting method \\FAIL due to previous error (AE_AML_DIVIDE_BY_ZERO) (20260408/psparse-688)\nACPI Error: AE_AML_DIVIDE_BY_ZERO, while executing \\FAIL from AML Debugger (20260408/dbexec-334)\nEvaluation of \\FAIL failed with status AE_AML_DIVIDE_BY_ZERO\n"
+      },
+      {
+        "method": "OBS0",
+        "integer": 123,
+        "hex": "000000000000007B",
+        "raw_block": "\\OBS0\nEvaluation of \\OBS0 returned object 0x555555601dd0, external buffer length 18\n  [Integer] = 000000000000007B\n\n"
+      },
+      {
+        "method": "PROB",
+        "integer": 57072,
+        "hex": "000000000000DEF0",
+        "raw_block": "\\PROB\nEvaluation of \\PROB returned object 0x555555601dd0, external buffer length 18\n  [Integer] = 000000000000DEF0\n\n0x555555608960 Length 0x0048   utcache-0453 [Operand Object]       Method  RefCount 0x0001\n0x555555607ce0 Length 0x0023  nsxfname-0723 [Not a Descriptor] \n0x555555607ba0 Length 0x0023  nsxfname-0723 [Not a Descriptor] \n0x5555556079f0 Length 0x0048   utcache-0453 [Operand Object]       Method  RefCount 0x0001\nACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)\n"
+      }
+    ],
+    "compiler_log": "/home/doc/git/.acpi-proof-work/field-core-normal-oracle-proposal-mhs6804e/results/whole16-r1-iasl.log",
+    "literal_note": "revision1 compiler truncates high literal to0x9ABCDEF0; revision2 retains0x123456789ABCDEF0"
+  },
+  {
+    "label": "whole16-r2",
+    "aml_sha256": "e3c2416ab8f4f084b3ab4f1d7dd61824c06c5a6618ca7e73759c37b13119fe7d",
+    "length": 240,
+    "revision": 2,
+    "checksum_mod256": 0,
+    "retained_width": 16,
+    "access": "WordAcc",
+    "ordered": [
+      {
+        "method": "TEST",
+        "integer": 57072,
+        "hex": "000000000000DEF0",
+        "raw_block": "\\TEST\nEvaluation of \\TEST returned object 0x555555601dd0, external buffer length 18\n  [Integer] = 000000000000DEF0\n\n"
+      },
+      {
+        "method": "OBS0",
+        "integer": 12,
+        "hex": "000000000000000C",
+        "raw_block": "\\OBS0\nEvaluation of \\OBS0 returned object 0x555555601dd0, external buffer length 18\n  [Integer] = 000000000000000C\n\n"
+      },
+      {
+        "method": "FAIL",
+        "error": "AE_AML_DIVIDE_BY_ZERO",
+        "raw_block": "\\FAIL\nACPI Error: Divide by zero (20260408/utmath-705)\nFailed at AML Offset 00019, Opcode 0078: Divide (One, Local0, Local1, Local2)\n\nInitialized Local Variables for Method [BAD0]:\n    Local0: 0x55555560b7f0 <Obj>             Integer 0000000000000000\n\nNo Arguments are initialized for method [BAD0]\n\nACPI Error: Aborting method \\BAD0 due to previous error (AE_AML_DIVIDE_BY_ZERO) (20260408/psparse-688)\nACPI Error: Aborting method \\FAIL due to previous error (AE_AML_DIVIDE_BY_ZERO) (20260408/psparse-688)\nACPI Error: AE_AML_DIVIDE_BY_ZERO, while executing \\FAIL from AML Debugger (20260408/dbexec-334)\nEvaluation of \\FAIL failed with status AE_AML_DIVIDE_BY_ZERO\n"
+      },
+      {
+        "method": "OBS0",
+        "integer": 123,
+        "hex": "000000000000007B",
+        "raw_block": "\\OBS0\nEvaluation of \\OBS0 returned object 0x555555601dd0, external buffer length 18\n  [Integer] = 000000000000007B\n\n"
+      },
+      {
+        "method": "PROB",
+        "integer": 57072,
+        "hex": "000000000000DEF0",
+        "raw_block": "\\PROB\nEvaluation of \\PROB returned object 0x555555601dd0, external buffer length 18\n  [Integer] = 000000000000DEF0\n\n"
+      },
+      {
+        "method": "TEST",
+        "integer": 57072,
+        "hex": "000000000000DEF0",
+        "raw_block": "\\TEST\nEvaluation of \\TEST returned object 0x555555601dd0, external buffer length 18\n  [Integer] = 000000000000DEF0\n\n"
+      },
+      {
+        "method": "OBS0",
+        "integer": 12,
+        "hex": "000000000000000C",
+        "raw_block": "\\OBS0\nEvaluation of \\OBS0 returned object 0x555555601dd0, external buffer length 18\n  [Integer] = 000000000000000C\n\n"
+      },
+      {
+        "method": "FAIL",
+        "error": "AE_AML_DIVIDE_BY_ZERO",
+        "raw_block": "\\FAIL\nACPI Error: Divide by zero (20260408/utmath-705)\nFailed at AML Offset 00019, Opcode 0078: Divide (One, Local0, Local1, Local2)\n\nInitialized Local Variables for Method [BAD0]:\n    Local0: 0x55555560b6a0 <Obj>             Integer 0000000000000000\n\nNo Arguments are initialized for method [BAD0]\n\nACPI Error: Aborting method \\BAD0 due to previous error (AE_AML_DIVIDE_BY_ZERO) (20260408/psparse-688)\nACPI Error: Aborting method \\FAIL due to previous error (AE_AML_DIVIDE_BY_ZERO) (20260408/psparse-688)\nACPI Error: AE_AML_DIVIDE_BY_ZERO, while executing \\FAIL from AML Debugger (20260408/dbexec-334)\nEvaluation of \\FAIL failed with status AE_AML_DIVIDE_BY_ZERO\n"
+      },
+      {
+        "method": "OBS0",
+        "integer": 123,
+        "hex": "000000000000007B",
+        "raw_block": "\\OBS0\nEvaluation of \\OBS0 returned object 0x555555601dd0, external buffer length 18\n  [Integer] = 000000000000007B\n\n"
+      },
+      {
+        "method": "PROB",
+        "integer": 57072,
+        "hex": "000000000000DEF0",
+        "raw_block": "\\PROB\nEvaluation of \\PROB returned object 0x555555601dd0, external buffer length 18\n  [Integer] = 000000000000DEF0\n\n0x555555608960 Length 0x0048   utcache-0453 [Operand Object]       Method  RefCount 0x0001\n0x555555607ce0 Length 0x0023  nsxfname-0723 [Not a Descriptor] \n0x555555607ba0 Length 0x0023  nsxfname-0723 [Not a Descriptor] \n0x5555556079f0 Length 0x0048   utcache-0453 [Operand Object]       Method  RefCount 0x0001\nACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)\n"
+      }
+    ],
+    "compiler_log": "/home/doc/git/.acpi-proof-work/field-core-normal-oracle-proposal-mhs6804e/results/whole16-r2-iasl.log",
+    "literal_note": "revision1 compiler truncates high literal to0x9ABCDEF0; revision2 retains0x123456789ABCDEF0"
+  },
+  {
+    "label": "whole32-r1",
+    "aml_sha256": "29f5a6fded7a06175a6b5db0f5c331f911461c7b27e3d1c70fc1dc0f91dfc5a3",
+    "length": 236,
+    "revision": 1,
+    "checksum_mod256": 0,
+    "retained_width": 32,
+    "access": "DWordAcc",
+    "ordered": [
+      {
+        "method": "TEST",
+        "integer": 2596069104,
+        "hex": "000000009ABCDEF0",
+        "raw_block": "\\TEST\nEvaluation of \\TEST returned object 0x555555601dd0, external buffer length 18\n  [Integer] = 000000009ABCDEF0\n\n"
+      },
+      {
+        "method": "OBS0",
+        "integer": 12,
+        "hex": "000000000000000C",
+        "raw_block": "\\OBS0\nEvaluation of \\OBS0 returned object 0x555555601dd0, external buffer length 18\n  [Integer] = 000000000000000C\n\n"
+      },
+      {
+        "method": "FAIL",
+        "error": "AE_AML_DIVIDE_BY_ZERO",
+        "raw_block": "\\FAIL\nACPI Error: Divide by zero (20260408/utmath-705)\nFailed at AML Offset 00019, Opcode 0078: Divide (One, Local0, Local1, Local2)\n\nInitialized Local Variables for Method [BAD0]:\n    Local0: 0x55555560b7f0 <Obj>             Integer 0000000000000000\n\nNo Arguments are initialized for method [BAD0]\n\nACPI Error: Aborting method \\BAD0 due to previous error (AE_AML_DIVIDE_BY_ZERO) (20260408/psparse-688)\nACPI Error: Aborting method \\FAIL due to previous error (AE_AML_DIVIDE_BY_ZERO) (20260408/psparse-688)\nACPI Error: AE_AML_DIVIDE_BY_ZERO, while executing \\FAIL from AML Debugger (20260408/dbexec-334)\nEvaluation of \\FAIL failed with status AE_AML_DIVIDE_BY_ZERO\n"
+      },
+      {
+        "method": "OBS0",
+        "integer": 123,
+        "hex": "000000000000007B",
+        "raw_block": "\\OBS0\nEvaluation of \\OBS0 returned object 0x555555601dd0, external buffer length 18\n  [Integer] = 000000000000007B\n\n"
+      },
+      {
+        "method": "PROB",
+        "integer": 2596069104,
+        "hex": "000000009ABCDEF0",
+        "raw_block": "\\PROB\nEvaluation of \\PROB returned object 0x555555601dd0, external buffer length 18\n  [Integer] = 000000009ABCDEF0\n\n"
+      },
+      {
+        "method": "TEST",
+        "integer": 2596069104,
+        "hex": "000000009ABCDEF0",
+        "raw_block": "\\TEST\nEvaluation of \\TEST returned object 0x555555601dd0, external buffer length 18\n  [Integer] = 000000009ABCDEF0\n\n"
+      },
+      {
+        "method": "OBS0",
+        "integer": 12,
+        "hex": "000000000000000C",
+        "raw_block": "\\OBS0\nEvaluation of \\OBS0 returned object 0x555555601dd0, external buffer length 18\n  [Integer] = 000000000000000C\n\n"
+      },
+      {
+        "method": "FAIL",
+        "error": "AE_AML_DIVIDE_BY_ZERO",
+        "raw_block": "\\FAIL\nACPI Error: Divide by zero (20260408/utmath-705)\nFailed at AML Offset 00019, Opcode 0078: Divide (One, Local0, Local1, Local2)\n\nInitialized Local Variables for Method [BAD0]:\n    Local0: 0x55555560b6a0 <Obj>             Integer 0000000000000000\n\nNo Arguments are initialized for method [BAD0]\n\nACPI Error: Aborting method \\BAD0 due to previous error (AE_AML_DIVIDE_BY_ZERO) (20260408/psparse-688)\nACPI Error: Aborting method \\FAIL due to previous error (AE_AML_DIVIDE_BY_ZERO) (20260408/psparse-688)\nACPI Error: AE_AML_DIVIDE_BY_ZERO, while executing \\FAIL from AML Debugger (20260408/dbexec-334)\nEvaluation of \\FAIL failed with status AE_AML_DIVIDE_BY_ZERO\n"
+      },
+      {
+        "method": "OBS0",
+        "integer": 123,
+        "hex": "000000000000007B",
+        "raw_block": "\\OBS0\nEvaluation of \\OBS0 returned object 0x555555601dd0, external buffer length 18\n  [Integer] = 000000000000007B\n\n"
+      },
+      {
+        "method": "PROB",
+        "integer": 2596069104,
+        "hex": "000000009ABCDEF0",
+        "raw_block": "\\PROB\nEvaluation of \\PROB returned object 0x555555601dd0, external buffer length 18\n  [Integer] = 000000009ABCDEF0\n\n0x555555608960 Length 0x0048   utcache-0453 [Operand Object]       Method  RefCount 0x0001\n0x555555607ce0 Length 0x0023  nsxfname-0723 [Not a Descriptor] \n0x555555607ba0 Length 0x0023  nsxfname-0723 [Not a Descriptor] \n0x5555556079f0 Length 0x0048   utcache-0453 [Operand Object]       Method  RefCount 0x0001\nACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)\n"
+      }
+    ],
+    "compiler_log": "/home/doc/git/.acpi-proof-work/field-core-normal-oracle-proposal-mhs6804e/results/whole32-r1-iasl.log",
+    "literal_note": "revision1 compiler truncates high literal to0x9ABCDEF0; revision2 retains0x123456789ABCDEF0"
+  },
+  {
+    "label": "whole32-r2",
+    "aml_sha256": "1e1d76e2616f5366aa1aee0e34ac25675fc165e5559ee607bb9743438a7fbdb0",
+    "length": 240,
+    "revision": 2,
+    "checksum_mod256": 0,
+    "retained_width": 32,
+    "access": "DWordAcc",
+    "ordered": [
+      {
+        "method": "TEST",
+        "integer": 2596069104,
+        "hex": "000000009ABCDEF0",
+        "raw_block": "\\TEST\nEvaluation of \\TEST returned object 0x555555601dd0, external buffer length 18\n  [Integer] = 000000009ABCDEF0\n\n"
+      },
+      {
+        "method": "OBS0",
+        "integer": 12,
+        "hex": "000000000000000C",
+        "raw_block": "\\OBS0\nEvaluation of \\OBS0 returned object 0x555555601dd0, external buffer length 18\n  [Integer] = 000000000000000C\n\n"
+      },
+      {
+        "method": "FAIL",
+        "error": "AE_AML_DIVIDE_BY_ZERO",
+        "raw_block": "\\FAIL\nACPI Error: Divide by zero (20260408/utmath-705)\nFailed at AML Offset 00019, Opcode 0078: Divide (One, Local0, Local1, Local2)\n\nInitialized Local Variables for Method [BAD0]:\n    Local0: 0x55555560b7f0 <Obj>             Integer 0000000000000000\n\nNo Arguments are initialized for method [BAD0]\n\nACPI Error: Aborting method \\BAD0 due to previous error (AE_AML_DIVIDE_BY_ZERO) (20260408/psparse-688)\nACPI Error: Aborting method \\FAIL due to previous error (AE_AML_DIVIDE_BY_ZERO) (20260408/psparse-688)\nACPI Error: AE_AML_DIVIDE_BY_ZERO, while executing \\FAIL from AML Debugger (20260408/dbexec-334)\nEvaluation of \\FAIL failed with status AE_AML_DIVIDE_BY_ZERO\n"
+      },
+      {
+        "method": "OBS0",
+        "integer": 123,
+        "hex": "000000000000007B",
+        "raw_block": "\\OBS0\nEvaluation of \\OBS0 returned object 0x555555601dd0, external buffer length 18\n  [Integer] = 000000000000007B\n\n"
+      },
+      {
+        "method": "PROB",
+        "integer": 2596069104,
+        "hex": "000000009ABCDEF0",
+        "raw_block": "\\PROB\nEvaluation of \\PROB returned object 0x555555601dd0, external buffer length 18\n  [Integer] = 000000009ABCDEF0\n\n"
+      },
+      {
+        "method": "TEST",
+        "integer": 2596069104,
+        "hex": "000000009ABCDEF0",
+        "raw_block": "\\TEST\nEvaluation of \\TEST returned object 0x555555601dd0, external buffer length 18\n  [Integer] = 000000009ABCDEF0\n\n"
+      },
+      {
+        "method": "OBS0",
+        "integer": 12,
+        "hex": "000000000000000C",
+        "raw_block": "\\OBS0\nEvaluation of \\OBS0 returned object 0x555555601dd0, external buffer length 18\n  [Integer] = 000000000000000C\n\n"
+      },
+      {
+        "method": "FAIL",
+        "error": "AE_AML_DIVIDE_BY_ZERO",
+        "raw_block": "\\FAIL\nACPI Error: Divide by zero (20260408/utmath-705)\nFailed at AML Offset 00019, Opcode 0078: Divide (One, Local0, Local1, Local2)\n\nInitialized Local Variables for Method [BAD0]:\n    Local0: 0x55555560b6a0 <Obj>             Integer 0000000000000000\n\nNo Arguments are initialized for method [BAD0]\n\nACPI Error: Aborting method \\BAD0 due to previous error (AE_AML_DIVIDE_BY_ZERO) (20260408/psparse-688)\nACPI Error: Aborting method \\FAIL due to previous error (AE_AML_DIVIDE_BY_ZERO) (20260408/psparse-688)\nACPI Error: AE_AML_DIVIDE_BY_ZERO, while executing \\FAIL from AML Debugger (20260408/dbexec-334)\nEvaluation of \\FAIL failed with status AE_AML_DIVIDE_BY_ZERO\n"
+      },
+      {
+        "method": "OBS0",
+        "integer": 123,
+        "hex": "000000000000007B",
+        "raw_block": "\\OBS0\nEvaluation of \\OBS0 returned object 0x555555601dd0, external buffer length 18\n  [Integer] = 000000000000007B\n\n"
+      },
+      {
+        "method": "PROB",
+        "integer": 2596069104,
+        "hex": "000000009ABCDEF0",
+        "raw_block": "\\PROB\nEvaluation of \\PROB returned object 0x555555601dd0, external buffer length 18\n  [Integer] = 000000009ABCDEF0\n\n0x555555608960 Length 0x0048   utcache-0453 [Operand Object]       Method  RefCount 0x0001\n0x555555607ce0 Length 0x0023  nsxfname-0723 [Not a Descriptor] \n0x555555607ba0 Length 0x0023  nsxfname-0723 [Not a Descriptor] \n0x5555556079f0 Length 0x0048   utcache-0453 [Operand Object]       Method  RefCount 0x0001\nACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)\n"
+      }
+    ],
+    "compiler_log": "/home/doc/git/.acpi-proof-work/field-core-normal-oracle-proposal-mhs6804e/results/whole32-r2-iasl.log",
+    "literal_note": "revision1 compiler truncates high literal to0x9ABCDEF0; revision2 retains0x123456789ABCDEF0"
+  }
+]

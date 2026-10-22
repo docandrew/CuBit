@@ -1,0 +1,140 @@
+[
+  {
+    "label": "whole8-r1",
+    "source": "whole8-r1.asl",
+    "revision": 1,
+    "batch": "execute TEST; execute OBS0; execute FAIL; execute OBS0; execute PROB; execute TEST; execute OBS0; execute FAIL; execute OBS0; execute PROB",
+    "classification": "unobserved normal reference proposal; no golden yet",
+    "compile_status": 0,
+    "compile_log": "/home/doc/git/.acpi-proof-work/field-core-normal-oracle-proposal-mhs6804e/results/whole8-r1-iasl.log",
+    "runtime_status": 0,
+    "aml_sha256": "cab54fdf313d9430694b62aff50599beff373d386cc9708b27a50346b24b3e76",
+    "disassembly_status": 0,
+    "disassembly_log": "/home/doc/git/.acpi-proof-work/field-core-normal-oracle-proposal-mhs6804e/results/whole8-r1-disassembly.log",
+    "runtime_log": "/home/doc/git/.acpi-proof-work/field-core-normal-oracle-proposal-mhs6804e/results/whole8-r1-acpiexec.log",
+    "disassembly_dsl": "/home/doc/git/.acpi-proof-work/field-core-normal-oracle-proposal-mhs6804e/results/whole8-r1.dsl",
+    "disassembly_sha256": "ed0855e9a15b465dd351c1c748c9e30262755039e07f0bfb9ef837d7fb75fb5e",
+    "retained_terms": {
+      "OperationRegion": 1,
+      "Field": 1,
+      "Offset": 0,
+      "Store": 0
+    },
+    "opcode_classification": "region_and_field_in_disassembly"
+  },
+  {
+    "label": "whole8-r2",
+    "source": "whole8-r2.asl",
+    "revision": 2,
+    "batch": "execute TEST; execute OBS0; execute FAIL; execute OBS0; execute PROB; execute TEST; execute OBS0; execute FAIL; execute OBS0; execute PROB",
+    "classification": "unobserved normal reference proposal; no golden yet",
+    "compile_status": 0,
+    "compile_log": "/home/doc/git/.acpi-proof-work/field-core-normal-oracle-proposal-mhs6804e/results/whole8-r2-iasl.log",
+    "runtime_status": 0,
+    "aml_sha256": "9a423958a1f5a599206471709169633e6602071036e0e5bf1e328cb3fdffd1cf",
+    "disassembly_status": 0,
+    "disassembly_log": "/home/doc/git/.acpi-proof-work/field-core-normal-oracle-proposal-mhs6804e/results/whole8-r2-disassembly.log",
+    "runtime_log": "/home/doc/git/.acpi-proof-work/field-core-normal-oracle-proposal-mhs6804e/results/whole8-r2-acpiexec.log",
+    "disassembly_dsl": "/home/doc/git/.acpi-proof-work/field-core-normal-oracle-proposal-mhs6804e/results/whole8-r2.dsl",
+    "disassembly_sha256": "537df1e49067a4dc031f7c70805845499f76f4433b465d63fc5478b807fc7478",
+    "retained_terms": {
+      "OperationRegion": 1,
+      "Field": 1,
+      "Offset": 0,
+      "Store": 0
+    },
+    "opcode_classification": "region_and_field_in_disassembly"
+  },
+  {
+    "label": "whole16-r1",
+    "source": "whole16-r1.asl",
+    "revision": 1,
+    "batch": "execute TEST; execute OBS0; execute FAIL; execute OBS0; execute PROB; execute TEST; execute OBS0; execute FAIL; execute OBS0; execute PROB",
+    "classification": "unobserved normal reference proposal; no golden yet",
+    "compile_status": 0,
+    "compile_log": "/home/doc/git/.acpi-proof-work/field-core-normal-oracle-proposal-mhs6804e/results/whole16-r1-iasl.log",
+    "runtime_status": 0,
+    "aml_sha256": "e73c3f6d828c1460cbc5878409a076a2a5d494bffdf5df96f96ee6f12dd0daf7",
+    "disassembly_status": 0,
+    "disassembly_log": "/home/doc/git/.acpi-proof-work/field-core-normal-oracle-proposal-mhs6804e/results/whole16-r1-disassembly.log",
+    "runtime_log": "/home/doc/git/.acpi-proof-work/field-core-normal-oracle-proposal-mhs6804e/results/whole16-r1-acpiexec.log",
+    "disassembly_dsl": "/home/doc/git/.acpi-proof-work/field-core-normal-oracle-proposal-mhs6804e/results/whole16-r1.dsl",
+    "disassembly_sha256": "76ed560ed9b62311e070f3ae1c16987ceff17a284b3194576ddf11a08eb6206c",
+    "retained_terms": {
+      "OperationRegion": 1,
+      "Field": 1,
+      "Offset": 0,
+      "Store": 0
+    },
+    "opcode_classification": "region_and_field_in_disassembly"
+  },
+  {
+    "label": "whole16-r2",
+    "source": "whole16-r2.asl",
+    "revision": 2,
+    "batch": "execute TEST; execute OBS0; execute FAIL; execute OBS0; execute PROB; execute TEST; execute OBS0; execute FAIL; execute OBS0; execute PROB",
+    "classification": "unobserved normal reference proposal; no golden yet",
+    "compile_status": 0,
+    "compile_log": "/home/doc/git/.acpi-proof-work/field-core-normal-oracle-proposal-mhs6804e/results/whole16-r2-iasl.log",
+    "runtime_status": 0,
+    "aml_sha256": "e3c2416ab8f4f084b3ab4f1d7dd61824c06c5a6618ca7e73759c37b13119fe7d",
+    "disassembly_status": 0,
+    "disassembly_log": "/home/doc/git/.acpi-proof-work/field-core-normal-oracle-proposal-mhs6804e/results/whole16-r2-disassembly.log",
+    "runtime_log": "/home/doc/git/.acpi-proof-work/field-core-normal-oracle-proposal-mhs6804e/results/whole16-r2-acpiexec.log",
+    "disassembly_dsl": "/home/doc/git/.acpi-proof-work/field-core-normal-oracle-proposal-mhs6804e/results/whole16-r2.dsl",
+    "disassembly_sha256": "87757d8874b6241f5d0b3d0f2a609383731079083d52b97e8147db3775031525",
+    "retained_terms": {
+      "OperationRegion": 1,
+      "Field": 1,
+      "Offset": 0,
+      "Store": 0
+    },
+    "opcode_classification": "region_and_field_in_disassembly"
+  },
+  {
+    "label": "whole32-r1",
+    "source": "whole32-r1.asl",
+    "revision": 1,
+    "batch": "execute TEST; execute OBS0; execute FAIL; execute OBS0; execute PROB; execute TEST; execute OBS0; execute FAIL; execute OBS0; execute PROB",
+    "classification": "unobserved normal reference proposal; no golden yet",
+    "compile_status": 0,
+    "compile_log": "/home/doc/git/.acpi-proof-work/field-core-normal-oracle-proposal-mhs6804e/results/whole32-r1-iasl.log",
+    "runtime_status": 0,
+    "aml_sha256": "29f5a6fded7a06175a6b5db0f5c331f911461c7b27e3d1c70fc1dc0f91dfc5a3",
+    "disassembly_status": 0,
+    "disassembly_log": "/home/doc/git/.acpi-proof-work/field-core-normal-oracle-proposal-mhs6804e/results/whole32-r1-disassembly.log",
+    "runtime_log": "/home/doc/git/.acpi-proof-work/field-core-normal-oracle-proposal-mhs6804e/results/whole32-r1-acpiexec.log",
+    "disassembly_dsl": "/home/doc/git/.acpi-proof-work/field-core-normal-oracle-proposal-mhs6804e/results/whole32-r1.dsl",
+    "disassembly_sha256": "5d62c6188ec160eda5d82462c3673cf0be705474c117a80a7ad460ac8f443036",
+    "retained_terms": {
+      "OperationRegion": 1,
+      "Field": 1,
+      "Offset": 0,
+      "Store": 0
+    },
+    "opcode_classification": "region_and_field_in_disassembly"
+  },
+  {
+    "label": "whole32-r2",
+    "source": "whole32-r2.asl",
+    "revision": 2,
+    "batch": "execute TEST; execute OBS0; execute FAIL; execute OBS0; execute PROB; execute TEST; execute OBS0; execute FAIL; execute OBS0; execute PROB",
+    "classification": "unobserved normal reference proposal; no golden yet",
+    "compile_status": 0,
+    "compile_log": "/home/doc/git/.acpi-proof-work/field-core-normal-oracle-proposal-mhs6804e/results/whole32-r2-iasl.log",
+    "runtime_status": 0,
+    "aml_sha256": "1e1d76e2616f5366aa1aee0e34ac25675fc165e5559ee607bb9743438a7fbdb0",
+    "disassembly_status": 0,
+    "disassembly_log": "/home/doc/git/.acpi-proof-work/field-core-normal-oracle-proposal-mhs6804e/results/whole32-r2-disassembly.log",
+    "runtime_log": "/home/doc/git/.acpi-proof-work/field-core-normal-oracle-proposal-mhs6804e/results/whole32-r2-acpiexec.log",
+    "disassembly_dsl": "/home/doc/git/.acpi-proof-work/field-core-normal-oracle-proposal-mhs6804e/results/whole32-r2.dsl",
+    "disassembly_sha256": "67b8e541124ef2a39c449c43535e6a9a1bf25a969bcae92ba9c58b7bd300b779",
+    "retained_terms": {
+      "OperationRegion": 1,
+      "Field": 1,
+      "Offset": 0,
+      "Store": 0
+    },
+    "opcode_classification": "region_and_field_in_disassembly"
+  }
+]

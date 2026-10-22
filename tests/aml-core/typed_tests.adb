@@ -2,18 +2,22 @@ with Ada.Text_IO;
 with AML_Decode; use AML_Decode;
 with AML_Execute; use AML_Execute;
 with AML_Objects;
+with AML_Metadata_Kinds;
 with AML_References;
 with AML_Table_Backing;
 with Namespace_Instance;
 procedure Typed_Tests is
+   use type AML_Decode.Bytes;
    package NS renames Namespace_Instance;
    use type NS.Load_Status;
    use type NS.State;
    use type NS.Object_Kind;
-   use type Byte;
    use type Integer_Value;
    use type AML_Objects.Object_Kind;
+   use type AML_Metadata_Kinds.Snapshot_Description;
    use type AML_References.Reference;
+   use type AML_References.Reference_Kind;
+   use type AML_Execute.Named_Metadata_Type;
    Checks : Natural := 0;
    function Enc (Text : String) return Bytes is
       Result : Bytes (1 .. Text'Length);
@@ -87,6 +91,11 @@ procedure Typed_Tests is
                     and then Origin_Of (Current, Copied) = Origin_Of (Prior, Original);
                when Reference_Object =>
                   return Reference_Data (Current, Copied) = Reference_Data (Prior, Original);
+               when Metadata_Object =>
+                  return Metadata_Data (Current, Copied) = Metadata_Data (Prior, Original);
+               when Metadata_Snapshot_Object =>
+                  return Metadata_Snapshot_Data (Current, Copied) =
+                    Metadata_Snapshot_Data (Prior, Original);
                when Package_Object =>
                   for E in 0 .. Length (Prior, Original) - 1 loop
                      if not Same_Contents (Element (Prior, Original, E),
@@ -130,6 +139,11 @@ procedure Typed_Tests is
                     or else Origin_Of (Current, O) /= Origin_Of (Prior, O) then return False; end if;
                when Reference_Object =>
                   if Reference_Data (Current, O) /= Reference_Data (Prior, O) then return False; end if;
+               when Metadata_Object =>
+                  if Metadata_Data (Current, O) /= Metadata_Data (Prior, O) then return False; end if;
+               when Metadata_Snapshot_Object =>
+                  if Metadata_Snapshot_Data (Current, O) /= Metadata_Snapshot_Data (Prior, O)
+                  then return False; end if;
                when Package_Object =>
                   for E in 0 .. Length (Prior, O) - 1 loop
                      if Element (Current, O, E) /= Element (Prior, O, E) then return False; end if;
@@ -162,6 +176,27 @@ procedure Typed_Tests is
             Check (R.Object.Type_Code = (case AML_Objects.Kind (NS.Value_Store (Tree), ID) is
               when AML_Objects.String_Object => 2, when AML_Objects.Buffer_Object => 3,
               when AML_Objects.Package_Object => 4, when others => 1));
+         elsif R.Status = Metadata_Returned then
+            -- Root metadata is a generation-bound namespace identity, not
+            -- ordinary data-cell authority or a fabricated integer/object.
+            declare
+               Root_Identity : AML_References.Reference;
+               Minted : Boolean;
+               Description : Reference_Metadata;
+            begin
+               Check (R.Metadata.Mode = Live_Namespace);
+               NS.Owned.Make_Named_Identity (A, NS.Root, Root_Identity, Minted);
+               Check (Minted and then
+                 R.Metadata.Namespace_Identity = Root_Identity and then
+                 AML_References.Kind (Root_Identity) = AML_References.Root_Namespace);
+               Check (NS.Owned.Metadata_Matches (A, R.Metadata) and then
+                 NS.Owned.Named_Identity_Matches (A, Root_Identity) and then
+                 not NS.Owned.Matches (A, Root_Identity));
+               NS.Owned.Describe_Metadata_Value (A, R.Metadata, Description);
+               Check (Description.Kind = Metadata_Only and then
+                 Description.Object_Type = Device_Metadata);
+               Check (Tree = Before);
+            end;
          elsif R.Status = Returned then
             Check (R.Value = Number);
          end if;
@@ -227,6 +262,6 @@ begin
    Test ("EMP0", [16#A4#] & Enc ("MATHEMP0"), Empty_Buffer);
    Test ("PKG0", [16#A4#] & Enc ("MATHPKG0"), Unsupported_Value);
    Test ("PKG0", [16#70#] & Enc ("PKG0") & [16#60#] & Enc ("CALLBUF0") & [16#A4#,16#60#], Copies_Compound => True);
-   Test ("PKG0", [16#A4#,16#5C#,0], Unsupported_Value);
+   Test ("PKG0", [16#A4#,16#5C#,0], Metadata_Returned);
    Ada.Text_IO.Put_Line ("AML-TYPED-CHECK: PASS" & Checks'Image);
 end Typed_Tests;

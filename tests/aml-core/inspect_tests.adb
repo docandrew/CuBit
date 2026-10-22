@@ -3,6 +3,7 @@ with AML_Decode; use AML_Decode;
 with AML_Execute; use AML_Execute;
 with Namespace_Instance;
 procedure Inspect_Tests is
+   use type AML_Decode.Bytes;
    package NS renames Namespace_Instance;
    use type NS.Load_Status;
    use type NS.State;
@@ -40,12 +41,12 @@ procedure Inspect_Tests is
          Check (Loaded = NS.Loaded);
          Node := NS.Child (Tree, 0, "READ");
          Before := Tree;
-         R := NS.Invoke (Tree, Node, [others => 0], 0, 100);
+         NS.Invoke_Read_Only (Tree, Node, [others => 0], 0, 100, R);
          Check (R.Status = Expected and then (if Expected = Returned then
            R.Value = (if W = Bits_32 then Value_32 else Value_64)));
          Check (Tree = Before);
          if R.Status = Returned then
-            R := NS.Invoke (Tree, Node, [others => 0], 0, R.Charged - 1);
+            NS.Invoke_Read_Only (Tree, Node, [others => 0], 0, R.Charged - 1, R);
             Check (R.Status = Budget_Exceeded);
          end if;
       end loop;

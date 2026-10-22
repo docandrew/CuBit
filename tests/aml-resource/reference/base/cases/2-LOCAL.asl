@@ -1,0 +1,1 @@
+DefinitionBlock("","DSDT",2,"CUBIT","RESTEST",1){Name(MARK,Zero) Name(LBUF,Buffer(){0x79,0}) Method(CTRL,0){Return(One)} Method(WIDT,0){Return(ShiftRight(Ones,32))} Method(TEST,0){Store(9,Index(ConcatenateResTemplate(LBUF,LBUF,Local0),Zero)) Return(Local0)}}

@@ -1,0 +1,1 @@
+DefinitionBlock("","DSDT",1,"CUBIT","TOBFINAL",1){Name(DEST,Buffer(2){9,8}) Method(CTRL,0){Return(One)} Method(TEST,0){ToBuffer("AB",Index(DEST,Zero)) Return(DEST)}}

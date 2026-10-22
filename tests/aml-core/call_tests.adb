@@ -5,6 +5,7 @@ with Namespace_Instance;
 with AML_Integers;
 with AML_References;
 procedure Call_Tests is
+   use type AML_Decode.Bytes;
    package NS renames Namespace_Instance;
    use type NS.Load_Status;
    use type NS.State;
@@ -72,10 +73,10 @@ procedure Call_Tests is
    procedure Expect (Name : String; Count : Natural; Args : Arguments;
                      Status : Execution_Status; Value : Integer_Value := 0) is
    begin
-      R := NS.Invoke (Tree, NS.Child (Tree, NS.Root, Name), Args, Count, 10_000);
+      NS.Invoke_Read_Only (Tree, NS.Child (Tree, NS.Root, Name), Args, Count, 10_000, R);
       Check (R.Status = Status and then (if Status = Returned then R.Value = Value));
       if R.Status = Returned then
-         Fuel_Result := NS.Invoke (Tree, NS.Child (Tree, NS.Root, Name), Args, Count, R.Charged - 1);
+         NS.Invoke_Read_Only (Tree, NS.Child (Tree, NS.Root, Name), Args, Count, R.Charged - 1, Fuel_Result);
          Check (Fuel_Result.Status = Budget_Exceeded);
       end if;
    end Expect;
@@ -118,7 +119,7 @@ begin
          Check (R.Status = Division_By_Zero and NS.Integer_Data (Tree, Number) = 1);
          NS.Invoke_Mutable (Tree, NS.Child (Tree, NS.Root, "MISS"), [others => 0], 0, 1000, R);
          Check (R.Status = Unknown_Name and NS.Integer_Data (Tree, Number) = 1);
-         R := NS.Invoke (Tree, Writer, [0 => 9, others => 0], 1, 1000);
+         NS.Invoke_Read_Only (Tree, Writer, [0 => 9, others => 0], 1, 1000, R);
          Check (R.Status = Unsupported and NS.Integer_Data (Tree, Number) = 1);
       end;
       -- Dynamic methods: creation, recursion lifetime, errors and reclamation.

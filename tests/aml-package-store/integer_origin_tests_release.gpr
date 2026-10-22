@@ -1,0 +1,10 @@
+project integer_origin_tests_release is
+ for Source_Dirs use ("../../tests/aml-references", "../../userspace/lib/acpi", "../../userspace/services/acpi", "../../shared/firmware");
+ Build_Root := external ("PACKAGE_STORE_BUILD", "build-integer_origin_tests-release");
+ for Object_Dir use Build_Root & "/obj";
+ for Exec_Dir use Build_Root & "/bin";
+ for Main use ("integer_origin_tests.adb");
+ package Compiler is
+ for Default_Switches ("Ada") use ("-O1", "-gnat2022", "-gnatwa", "-gnatwe", "-gnatp");
+ end Compiler;
+end integer_origin_tests_release;

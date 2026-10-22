@@ -1,0 +1,1350 @@
+{
+  "oracle": "/home/doc/git/.acpi-proof-work/numeric-source-timing-oracle-scok9jqu",
+  "cases": [
+    {
+      "case": 1,
+      "key": "r1-add-left-store",
+      "revision": 1,
+      "payload_sha256": "3dd1604279c8bfeb4dc8829346cb3ff4523dbffaa12a459f2e0c09fb61c949d6",
+      "observations": [
+        {
+          "method": "CTRL",
+          "value": 165,
+          "hex": "00000000000000A5"
+        },
+        {
+          "method": "WIDT",
+          "value": 4294967295,
+          "hex": "00000000FFFFFFFF"
+        },
+        {
+          "method": "TEST",
+          "value": 35,
+          "hex": "0000000000000023"
+        },
+        {
+          "method": "SRCV",
+          "value": 34,
+          "hex": "0000000000000022"
+        },
+        {
+          "method": "BUFV",
+          "value": 0,
+          "hex": "0000000000000000"
+        },
+        {
+          "method": "TEST",
+          "value": 35,
+          "hex": "0000000000000023"
+        },
+        {
+          "method": "SRCV",
+          "value": 34,
+          "hex": "0000000000000022"
+        },
+        {
+          "method": "BUFV",
+          "value": 0,
+          "hex": "0000000000000000"
+        }
+      ],
+      "files": {
+        "r1-add-left-store.asl": "abc35763ee4d937fe66447b9abb185d3bc64e7328a10f3f390802262505897e2",
+        "r1-add-left-store.aml": "18ff62b5120d7314188bf45fddb41eec635fb43c8c6ff499fd02deafd5e36460",
+        "r1-add-left-store.dsl": "ec5483f443e5a0a09b57931bc2a2282d3e653c14c06ef485fa7e629d287b298c",
+        "r1-add-left-store-compile.log": "861a1ad8fea938e9708cf384b4f321e20fdcd56df536ba1b11f472d5e14b25a4",
+        "r1-add-left-store-disassemble.log": "788801d1eed738a59c6d7b9922b5fcd2f71470cb61fe8bfd0866134125981e36",
+        "r1-add-left-store-execute.log": "2fa8835993c0383f5e78428460e6b5adeb4c0fc9448292a338179d5c865af6a2"
+      }
+    },
+    {
+      "case": 2,
+      "key": "r1-add-left-copyobject",
+      "revision": 1,
+      "payload_sha256": "665656f07097c58beb62bac7a4588a4d33e35bf647dd018e42e10a1c8ba63d17",
+      "observations": [
+        {
+          "method": "CTRL",
+          "value": 165,
+          "hex": "00000000000000A5"
+        },
+        {
+          "method": "WIDT",
+          "value": 4294967295,
+          "hex": "00000000FFFFFFFF"
+        },
+        {
+          "method": "TEST",
+          "value": 18,
+          "hex": "0000000000000012"
+        },
+        {
+          "method": "SRCV",
+          "value": 34,
+          "hex": "0000000000000022"
+        },
+        {
+          "method": "BUFV",
+          "value": 0,
+          "hex": "0000000000000000"
+        },
+        {
+          "method": "TEST",
+          "value": 18,
+          "hex": "0000000000000012"
+        },
+        {
+          "method": "SRCV",
+          "value": 34,
+          "hex": "0000000000000022"
+        },
+        {
+          "method": "BUFV",
+          "value": 0,
+          "hex": "0000000000000000"
+        }
+      ],
+      "files": {
+        "r1-add-left-copyobject.asl": "8d2988495ea3071916afcf9374e7f8bb9bc724435656ac97acd21128e9075ec3",
+        "r1-add-left-copyobject.aml": "723235836f37ebc538e1a71c1e8dd61c42f9e4db44cd4f469d83bf92cdb3d2fc",
+        "r1-add-left-copyobject.dsl": "be8e3335d1e3223d9e56d8ea28624e3adbc7b477c1d694d81006eaed8ab053f3",
+        "r1-add-left-copyobject-compile.log": "347764d3139f1f327375a3c6e68e1aa10394270f262a339eeb63e53fb51bb988",
+        "r1-add-left-copyobject-disassemble.log": "0a9194560b99ad951445840b28cfa2bc8d0e662266da2eee43421a5bd0ffbf27",
+        "r1-add-left-copyobject-execute.log": "abbac1237a31324aad7adf8bf92c94170373e3a7ea50bc7856bfe80aa4948295"
+      }
+    },
+    {
+      "case": 3,
+      "key": "r1-add-right-target-store",
+      "revision": 1,
+      "payload_sha256": "196e5104d4b0c7035c0474893394dd6ea6272ba00c0bc1372ef9946ec7378ccd",
+      "observations": [
+        {
+          "method": "CTRL",
+          "value": 165,
+          "hex": "00000000000000A5"
+        },
+        {
+          "method": "WIDT",
+          "value": 4294967295,
+          "hex": "00000000FFFFFFFF"
+        },
+        {
+          "method": "TEST",
+          "value": 35,
+          "hex": "0000000000000023"
+        },
+        {
+          "method": "SRCV",
+          "value": 34,
+          "hex": "0000000000000022"
+        },
+        {
+          "method": "BUFV",
+          "value": 35,
+          "hex": "0000000000000023"
+        },
+        {
+          "method": "TEST",
+          "value": 35,
+          "hex": "0000000000000023"
+        },
+        {
+          "method": "SRCV",
+          "value": 34,
+          "hex": "0000000000000022"
+        },
+        {
+          "method": "BUFV",
+          "value": 35,
+          "hex": "0000000000000023"
+        }
+      ],
+      "files": {
+        "r1-add-right-target-store.asl": "b490f4ce2d303bc2bb66023bffc6ac95ce13ec973b92fe78797d5e34d3fdec10",
+        "r1-add-right-target-store.aml": "05057843f58e9c187781daf7eb8fafa2c6e3c4541fc4c459858bfd2644ff1126",
+        "r1-add-right-target-store.dsl": "8970a14e6c52e7eb60d60f6624bf61ec9a488a47e8043d9a9a5b1fbd3e73c63d",
+        "r1-add-right-target-store-compile.log": "1d63f167d304c3a2647ef1922f6edf5959511a156a8260763c57be819f22c3a8",
+        "r1-add-right-target-store-disassemble.log": "8fe4015032f00a4484ec5d659481cecd58d04546382913430c9de4b5dd56bbdc",
+        "r1-add-right-target-store-execute.log": "cd53bd84e9cb183be1e16fa864c25a83f736b3f516794c704ccd888b089107b7"
+      }
+    },
+    {
+      "case": 4,
+      "key": "r1-add-right-target-copyobject",
+      "revision": 1,
+      "payload_sha256": "f7eb0ecf5f64e86f2828b2388c2968b1e8efd01dbf0cb3fa225d25acf857a9ce",
+      "observations": [
+        {
+          "method": "CTRL",
+          "value": 165,
+          "hex": "00000000000000A5"
+        },
+        {
+          "method": "WIDT",
+          "value": 4294967295,
+          "hex": "00000000FFFFFFFF"
+        },
+        {
+          "method": "TEST",
+          "value": 18,
+          "hex": "0000000000000012"
+        },
+        {
+          "method": "SRCV",
+          "value": 34,
+          "hex": "0000000000000022"
+        },
+        {
+          "method": "BUFV",
+          "value": 18,
+          "hex": "0000000000000012"
+        },
+        {
+          "method": "TEST",
+          "value": 18,
+          "hex": "0000000000000012"
+        },
+        {
+          "method": "SRCV",
+          "value": 34,
+          "hex": "0000000000000022"
+        },
+        {
+          "method": "BUFV",
+          "value": 18,
+          "hex": "0000000000000012"
+        }
+      ],
+      "files": {
+        "r1-add-right-target-copyobject.asl": "ec0618c6039f6f2dba810da7d94be7b5005a738c6be124878e910a312869716b",
+        "r1-add-right-target-copyobject.aml": "e5e99f335292e9149152d5dc83125e3568dfbb7ec3b98bb80badd81fce4331dc",
+        "r1-add-right-target-copyobject.dsl": "6c519cdca5d1093644fb04936a9839a150e69f82be8c6ddf4f325a1409158906",
+        "r1-add-right-target-copyobject-compile.log": "116173c1a7f14a3b2c4164eb974afed54b1d9d40b59e2e302c0090e08a961e41",
+        "r1-add-right-target-copyobject-disassemble.log": "54147bc64e659c4021d0cb983d28bcd43d8c479b8b69cbdd172b88916b46aeb5",
+        "r1-add-right-target-copyobject-execute.log": "b14b0643bdfff31a09855a07752418ab691c4cc60cfb477c08f9fb5745cf5777"
+      }
+    },
+    {
+      "case": 5,
+      "key": "r1-equal-left-store",
+      "revision": 1,
+      "payload_sha256": "0d4081814db7e46acf035a917fd54320948a6e29f8ce7fddef3f4806bac3158c",
+      "observations": [
+        {
+          "method": "CTRL",
+          "value": 165,
+          "hex": "00000000000000A5"
+        },
+        {
+          "method": "WIDT",
+          "value": 4294967295,
+          "hex": "00000000FFFFFFFF"
+        },
+        {
+          "method": "TEST",
+          "value": 4294967295,
+          "hex": "00000000FFFFFFFF"
+        },
+        {
+          "method": "SRCV",
+          "value": 34,
+          "hex": "0000000000000022"
+        },
+        {
+          "method": "BUFV",
+          "value": 0,
+          "hex": "0000000000000000"
+        },
+        {
+          "method": "TEST",
+          "value": 4294967295,
+          "hex": "00000000FFFFFFFF"
+        },
+        {
+          "method": "SRCV",
+          "value": 34,
+          "hex": "0000000000000022"
+        },
+        {
+          "method": "BUFV",
+          "value": 0,
+          "hex": "0000000000000000"
+        }
+      ],
+      "files": {
+        "r1-equal-left-store.asl": "4e42b8d672d4eca0f58138f0764c9a325704721f5c0d41da74af9a6dadd7395e",
+        "r1-equal-left-store.aml": "d051b7b47d7b099d04430e0a62bc3330f2ce8af814b841d2e9ae9cd92d3e5705",
+        "r1-equal-left-store.dsl": "06835589a80755bad414e0718d3e1d0c077554c7b783d1da31344f7acf55ca9c",
+        "r1-equal-left-store-compile.log": "9bfc231ece9173ea0868bdb93013dbd48c79ac96437ba6220475b4d9f33f0edd",
+        "r1-equal-left-store-disassemble.log": "a8874b02e093ed6beb66ba1f5a813c23f7f3d55a2ee1209a6187a169e861faad",
+        "r1-equal-left-store-execute.log": "af5fd608c9f4ec3401cc57f3b614be5b295ccc3564fb6c75a377a17f206b84ae"
+      }
+    },
+    {
+      "case": 6,
+      "key": "r1-equal-left-copyobject",
+      "revision": 1,
+      "payload_sha256": "dbdf898c6238fcfcc4a21c033dbab6bcf253cad11d867a78df5c1c0179cc9338",
+      "observations": [
+        {
+          "method": "CTRL",
+          "value": 165,
+          "hex": "00000000000000A5"
+        },
+        {
+          "method": "WIDT",
+          "value": 4294967295,
+          "hex": "00000000FFFFFFFF"
+        },
+        {
+          "method": "TEST",
+          "value": 0,
+          "hex": "0000000000000000"
+        },
+        {
+          "method": "SRCV",
+          "value": 34,
+          "hex": "0000000000000022"
+        },
+        {
+          "method": "BUFV",
+          "value": 0,
+          "hex": "0000000000000000"
+        },
+        {
+          "method": "TEST",
+          "value": 0,
+          "hex": "0000000000000000"
+        },
+        {
+          "method": "SRCV",
+          "value": 34,
+          "hex": "0000000000000022"
+        },
+        {
+          "method": "BUFV",
+          "value": 0,
+          "hex": "0000000000000000"
+        }
+      ],
+      "files": {
+        "r1-equal-left-copyobject.asl": "bee20c35f65f9f6eb03da5f41276a6e633d2944efabbb205fdd4ff349e810ffe",
+        "r1-equal-left-copyobject.aml": "03fbdbeffe101567833e4f03c0490a1c5ff42bc658a4694761a58bf02df08e24",
+        "r1-equal-left-copyobject.dsl": "8df19a1fe23e0df275a29ff43fb8712062ce52eccba919899315f359f8cf1e54",
+        "r1-equal-left-copyobject-compile.log": "eaaf0c507858a7ba4f46c2fe5a63ddceb056dec06840d8cc8932e7630a129903",
+        "r1-equal-left-copyobject-disassemble.log": "6b987260b7e1fb0cc628e6dce8ddfdef7b02a7cb67732aeb1262d00eb4b41f11",
+        "r1-equal-left-copyobject-execute.log": "e0f4a9ce3cc4462e91fbad68acc0492c0da63036acc0aa580c615ea600ab1e77"
+      }
+    },
+    {
+      "case": 7,
+      "key": "r1-land-left-store",
+      "revision": 1,
+      "payload_sha256": "cdbaa44f3263d61654aa8b21e8937021d710b4dae4882a8f15c958ccfe67d53e",
+      "observations": [
+        {
+          "method": "CTRL",
+          "value": 165,
+          "hex": "00000000000000A5"
+        },
+        {
+          "method": "WIDT",
+          "value": 4294967295,
+          "hex": "00000000FFFFFFFF"
+        },
+        {
+          "method": "TEST",
+          "value": 4294967295,
+          "hex": "00000000FFFFFFFF"
+        },
+        {
+          "method": "SRCV",
+          "value": 1,
+          "hex": "0000000000000001"
+        },
+        {
+          "method": "BUFV",
+          "value": 0,
+          "hex": "0000000000000000"
+        },
+        {
+          "method": "TEST",
+          "value": 4294967295,
+          "hex": "00000000FFFFFFFF"
+        },
+        {
+          "method": "SRCV",
+          "value": 1,
+          "hex": "0000000000000001"
+        },
+        {
+          "method": "BUFV",
+          "value": 0,
+          "hex": "0000000000000000"
+        }
+      ],
+      "files": {
+        "r1-land-left-store.asl": "16d905f6a68cd3b7e272eb04874f2b09f4eace87ae9fdd37596cc83d5fe3db16",
+        "r1-land-left-store.aml": "50e1783d7d6400bcec13ee21937db39db556b4c25fe335152c289ef593b24368",
+        "r1-land-left-store.dsl": "bec4f7b448f465beedaa4a2433c82db4d783cc9417301fbaf298afff9504353c",
+        "r1-land-left-store-compile.log": "36e4bbcba707a37306495f3474ece5f421e3b77cf5dd2ff921b96be776743c16",
+        "r1-land-left-store-disassemble.log": "84829d088c536553bfdc7dca85e19c9550f23480949414807bf5f2077401bf1d",
+        "r1-land-left-store-execute.log": "2e39c93b18c485f4a97eaee9e86d63ec92b9c5ade426b0c502601a2005c04bfb"
+      }
+    },
+    {
+      "case": 8,
+      "key": "r1-land-left-copyobject",
+      "revision": 1,
+      "payload_sha256": "c8e69827a0abca7a6620ad41387820e8e273db30f6b7f008917fada1baa68353",
+      "observations": [
+        {
+          "method": "CTRL",
+          "value": 165,
+          "hex": "00000000000000A5"
+        },
+        {
+          "method": "WIDT",
+          "value": 4294967295,
+          "hex": "00000000FFFFFFFF"
+        },
+        {
+          "method": "TEST",
+          "value": 0,
+          "hex": "0000000000000000"
+        },
+        {
+          "method": "SRCV",
+          "value": 1,
+          "hex": "0000000000000001"
+        },
+        {
+          "method": "BUFV",
+          "value": 0,
+          "hex": "0000000000000000"
+        },
+        {
+          "method": "TEST",
+          "value": 0,
+          "hex": "0000000000000000"
+        },
+        {
+          "method": "SRCV",
+          "value": 1,
+          "hex": "0000000000000001"
+        },
+        {
+          "method": "BUFV",
+          "value": 0,
+          "hex": "0000000000000000"
+        }
+      ],
+      "files": {
+        "r1-land-left-copyobject.asl": "7c8d1b86be41ab55f83ab36b34c6d753ebd231d173b0ee26ddbfbdc3e8e64675",
+        "r1-land-left-copyobject.aml": "a76bd65831762691f726687e1852e14a3f8c505475caa2740c6a321f8feef0b3",
+        "r1-land-left-copyobject.dsl": "6b90477414d46d64397ad6cc9cc2b6da2fa2719eb591a3a4578e0bc1600c7924",
+        "r1-land-left-copyobject-compile.log": "c6e59c64944a1eddd04e68d496de3243d31ba96af6fb4238556b46385f8415bd",
+        "r1-land-left-copyobject-disassemble.log": "ee3d5c859c50228dc6cbe58d2ffb50dd7cdae1c12110a2123b9ad84c2948bc29",
+        "r1-land-left-copyobject-execute.log": "bb64bac8544e0059a78a18b2d87e8ff5ccd04c19b9bf95be9949b1d8f56e9382"
+      }
+    },
+    {
+      "case": 9,
+      "key": "r1-named-add-left-store",
+      "revision": 1,
+      "payload_sha256": "f3d3006b16630c991af71614631d3a797a670f5f6c3b9e5e28e86decc9f136f5",
+      "observations": [
+        {
+          "method": "CTRL",
+          "value": 165,
+          "hex": "00000000000000A5"
+        },
+        {
+          "method": "WIDT",
+          "value": 4294967295,
+          "hex": "00000000FFFFFFFF"
+        },
+        {
+          "method": "TEST",
+          "value": 18,
+          "hex": "0000000000000012"
+        },
+        {
+          "method": "SRCV",
+          "value": 34,
+          "hex": "0000000000000022"
+        },
+        {
+          "method": "BUFV",
+          "value": 0,
+          "hex": "0000000000000000"
+        },
+        {
+          "method": "TEST",
+          "value": 18,
+          "hex": "0000000000000012"
+        },
+        {
+          "method": "SRCV",
+          "value": 34,
+          "hex": "0000000000000022"
+        },
+        {
+          "method": "BUFV",
+          "value": 0,
+          "hex": "0000000000000000"
+        }
+      ],
+      "files": {
+        "r1-named-add-left-store.asl": "6882629eb161e2d081da57df94e24fbae9fec14ca4d8602b690f9bbd2c1e61b6",
+        "r1-named-add-left-store.aml": "8f48cb57a6ffeb26ef570aa04faa23babd928d65a19d0e8cc49da5b6cf836058",
+        "r1-named-add-left-store.dsl": "66a55f0909519766d0c686bbab04a67b4a5ed483ab2faf2d7a8896f02d67e3d2",
+        "r1-named-add-left-store-compile.log": "f6fc584239a850cbf2b41f3232f5ea56b66782a08db82d31a226f05438bb4098",
+        "r1-named-add-left-store-disassemble.log": "3d7d434f9af39faf247eb071e8d41d696c85150f775800c117d3fb7bdc3d11c9",
+        "r1-named-add-left-store-execute.log": "a0cb4991d08918cb0da24fe66d365cab2ac5f85ad9d8a1c4b2385d003c0bfb97"
+      }
+    },
+    {
+      "case": 10,
+      "key": "r1-named-add-left-copyobject",
+      "revision": 1,
+      "payload_sha256": "d4177b2c85c9bd006f32b1acbca45658426e592d89b88880bfe8f88dc40566d3",
+      "observations": [
+        {
+          "method": "CTRL",
+          "value": 165,
+          "hex": "00000000000000A5"
+        },
+        {
+          "method": "WIDT",
+          "value": 4294967295,
+          "hex": "00000000FFFFFFFF"
+        },
+        {
+          "method": "TEST",
+          "value": 18,
+          "hex": "0000000000000012"
+        },
+        {
+          "method": "SRCV",
+          "value": 34,
+          "hex": "0000000000000022"
+        },
+        {
+          "method": "BUFV",
+          "value": 0,
+          "hex": "0000000000000000"
+        },
+        {
+          "method": "TEST",
+          "value": 18,
+          "hex": "0000000000000012"
+        },
+        {
+          "method": "SRCV",
+          "value": 34,
+          "hex": "0000000000000022"
+        },
+        {
+          "method": "BUFV",
+          "value": 0,
+          "hex": "0000000000000000"
+        }
+      ],
+      "files": {
+        "r1-named-add-left-copyobject.asl": "2cc34747272b4581d65445e156c5ade075cd9972daa2ae7bdd85f0086d494090",
+        "r1-named-add-left-copyobject.aml": "5824cd77340f0c45b244f92f1e6664f6e485cd1bcaa4ff41aff433c5fd12a025",
+        "r1-named-add-left-copyobject.dsl": "938d533687b54eb3a72306141a97fa6a8d816f4b22d65d27b6635a2e76436f75",
+        "r1-named-add-left-copyobject-compile.log": "802919b532edd7d3dc51521c328f1634a3f311f8e8551a6411c1a60ce7668ab1",
+        "r1-named-add-left-copyobject-disassemble.log": "9363555208cf417854c16b09574d754265d1a7eeca7c9bf1ce91f272fd276d48",
+        "r1-named-add-left-copyobject-execute.log": "c7d520f77e3262343d6a609d277539ce36d24bddf157bd817b1866f7fce42e33"
+      }
+    },
+    {
+      "case": 11,
+      "key": "r1-named-add-right-target-store",
+      "revision": 1,
+      "payload_sha256": "4fc24b64e917a23f275400cf62a226910aefc5d868ca92267e5766e811050881",
+      "observations": [
+        {
+          "method": "CTRL",
+          "value": 165,
+          "hex": "00000000000000A5"
+        },
+        {
+          "method": "WIDT",
+          "value": 4294967295,
+          "hex": "00000000FFFFFFFF"
+        },
+        {
+          "method": "TEST",
+          "value": 18,
+          "hex": "0000000000000012"
+        },
+        {
+          "method": "SRCV",
+          "value": 34,
+          "hex": "0000000000000022"
+        },
+        {
+          "method": "BUFV",
+          "value": 18,
+          "hex": "0000000000000012"
+        },
+        {
+          "method": "TEST",
+          "value": 18,
+          "hex": "0000000000000012"
+        },
+        {
+          "method": "SRCV",
+          "value": 34,
+          "hex": "0000000000000022"
+        },
+        {
+          "method": "BUFV",
+          "value": 18,
+          "hex": "0000000000000012"
+        }
+      ],
+      "files": {
+        "r1-named-add-right-target-store.asl": "6d4d52e20129b046ecca73cb1e2a5bac22a4c3f12f42179a4d230c13a74e8ae9",
+        "r1-named-add-right-target-store.aml": "8a3a56f815c35a48e9d6378c6548f3fd0a81e854ba87a3c3ffb19ea6890b21a8",
+        "r1-named-add-right-target-store.dsl": "67d7388e1506548b2486a627f47adfbdad17a8fde03a4fd9e648ceef596fdda8",
+        "r1-named-add-right-target-store-compile.log": "03bba000f4f37bda407983d588c747e43af3114adf7e65bf7b29df485e542b6c",
+        "r1-named-add-right-target-store-disassemble.log": "200a940f2d386ab8d1d7b9bc95d8b07261eac96471a72c491800d45ea8de44ed",
+        "r1-named-add-right-target-store-execute.log": "f85e5fd6785b9f3de1ee3b14e8996b00d86ad368ae698d8ef57f66d472bb33ac"
+      }
+    },
+    {
+      "case": 12,
+      "key": "r1-named-add-right-target-copyobject",
+      "revision": 1,
+      "payload_sha256": "f5cd269c4031a07287f5c01ee4d925f9e91b368d4aa67589b34f38d561c6b336",
+      "observations": [
+        {
+          "method": "CTRL",
+          "value": 165,
+          "hex": "00000000000000A5"
+        },
+        {
+          "method": "WIDT",
+          "value": 4294967295,
+          "hex": "00000000FFFFFFFF"
+        },
+        {
+          "method": "TEST",
+          "value": 18,
+          "hex": "0000000000000012"
+        },
+        {
+          "method": "SRCV",
+          "value": 34,
+          "hex": "0000000000000022"
+        },
+        {
+          "method": "BUFV",
+          "value": 18,
+          "hex": "0000000000000012"
+        },
+        {
+          "method": "TEST",
+          "value": 18,
+          "hex": "0000000000000012"
+        },
+        {
+          "method": "SRCV",
+          "value": 34,
+          "hex": "0000000000000022"
+        },
+        {
+          "method": "BUFV",
+          "value": 18,
+          "hex": "0000000000000012"
+        }
+      ],
+      "files": {
+        "r1-named-add-right-target-copyobject.asl": "fbc3059cc33cea37c07161b63e759092070c9fde6885e1288cbb5a65b767216e",
+        "r1-named-add-right-target-copyobject.aml": "b294f59fa38813e88ea2e39aceebafc84a2a0558aa122b49b0dc26028ced1456",
+        "r1-named-add-right-target-copyobject.dsl": "092e62ec350777a4f0e5086b31da0371067dfdabb2a16a7d7c9c4e4fc5be60f8",
+        "r1-named-add-right-target-copyobject-compile.log": "b17bcb8b3328a9d253e75f4d174e6ea6d9c97f8a1f576ac0eadf89e1558fab23",
+        "r1-named-add-right-target-copyobject-disassemble.log": "09a0f1cdddf6b287074c6f110bc9c81c697d71a6f8738df69939a940b9f892ae",
+        "r1-named-add-right-target-copyobject-execute.log": "a676e2a7829a87c2e3555ccee7598867001add33b0dbe0e9f9ba54749155803b"
+      }
+    },
+    {
+      "case": 13,
+      "key": "r2-add-left-store",
+      "revision": 2,
+      "payload_sha256": "3dd1604279c8bfeb4dc8829346cb3ff4523dbffaa12a459f2e0c09fb61c949d6",
+      "observations": [
+        {
+          "method": "CTRL",
+          "value": 165,
+          "hex": "00000000000000A5"
+        },
+        {
+          "method": "WIDT",
+          "value": 18446744073709551615,
+          "hex": "FFFFFFFFFFFFFFFF"
+        },
+        {
+          "method": "TEST",
+          "value": 35,
+          "hex": "0000000000000023"
+        },
+        {
+          "method": "SRCV",
+          "value": 34,
+          "hex": "0000000000000022"
+        },
+        {
+          "method": "BUFV",
+          "value": 0,
+          "hex": "0000000000000000"
+        },
+        {
+          "method": "TEST",
+          "value": 35,
+          "hex": "0000000000000023"
+        },
+        {
+          "method": "SRCV",
+          "value": 34,
+          "hex": "0000000000000022"
+        },
+        {
+          "method": "BUFV",
+          "value": 0,
+          "hex": "0000000000000000"
+        }
+      ],
+      "files": {
+        "r2-add-left-store.asl": "7dcd59bb0a746818f2a9d8b4ba125e6c863e9f50cd2e1e4b989ee0bff7f4c51a",
+        "r2-add-left-store.aml": "3f98ca16400d85d62a23c7ef738e4cdd996cac3dd1a106b349a4d575d10d0432",
+        "r2-add-left-store.dsl": "58e392c7317ac9320ce2e5f47f33ae9f08a08956258713faa3a967c415b2fe7a",
+        "r2-add-left-store-compile.log": "9a8978ff620a5de304fb34e5631c55a4eb274713c1d95c3e2de235b3a1bb67fb",
+        "r2-add-left-store-disassemble.log": "ac54e95962f03128b38df93a876777eb6ef2bf9fb52d47db3123e90f45715626",
+        "r2-add-left-store-execute.log": "ebd3fe6fefe4f81952ae31555471c088fe9be4494908c309cefe51e668e53060"
+      }
+    },
+    {
+      "case": 14,
+      "key": "r2-add-left-copyobject",
+      "revision": 2,
+      "payload_sha256": "665656f07097c58beb62bac7a4588a4d33e35bf647dd018e42e10a1c8ba63d17",
+      "observations": [
+        {
+          "method": "CTRL",
+          "value": 165,
+          "hex": "00000000000000A5"
+        },
+        {
+          "method": "WIDT",
+          "value": 18446744073709551615,
+          "hex": "FFFFFFFFFFFFFFFF"
+        },
+        {
+          "method": "TEST",
+          "value": 18,
+          "hex": "0000000000000012"
+        },
+        {
+          "method": "SRCV",
+          "value": 34,
+          "hex": "0000000000000022"
+        },
+        {
+          "method": "BUFV",
+          "value": 0,
+          "hex": "0000000000000000"
+        },
+        {
+          "method": "TEST",
+          "value": 18,
+          "hex": "0000000000000012"
+        },
+        {
+          "method": "SRCV",
+          "value": 34,
+          "hex": "0000000000000022"
+        },
+        {
+          "method": "BUFV",
+          "value": 0,
+          "hex": "0000000000000000"
+        }
+      ],
+      "files": {
+        "r2-add-left-copyobject.asl": "9ac8f54fe1d79b71d887522c0ecad494f1ab829a0bad027f226449a93ec3937b",
+        "r2-add-left-copyobject.aml": "1c8889d8b66aeb1ea3d4044234e552bbf3f38951e15dce769443f068a994b1a0",
+        "r2-add-left-copyobject.dsl": "393010add218ef40c0c5bef909f723bb2c9be869a128a190bf48fc6a5516f4fd",
+        "r2-add-left-copyobject-compile.log": "f491501c4fd134406e269916e0b0817d4905e055b59af843690fc5d52b6255e5",
+        "r2-add-left-copyobject-disassemble.log": "7cb61a5a27b4f6feed3a97d09eca6d770d7507277f4bcad88be8c4310db233df",
+        "r2-add-left-copyobject-execute.log": "9602168400d6744febb49aa7121274170bff48b4b608e0b3c6abfecd99cba064"
+      }
+    },
+    {
+      "case": 15,
+      "key": "r2-add-right-target-store",
+      "revision": 2,
+      "payload_sha256": "196e5104d4b0c7035c0474893394dd6ea6272ba00c0bc1372ef9946ec7378ccd",
+      "observations": [
+        {
+          "method": "CTRL",
+          "value": 165,
+          "hex": "00000000000000A5"
+        },
+        {
+          "method": "WIDT",
+          "value": 18446744073709551615,
+          "hex": "FFFFFFFFFFFFFFFF"
+        },
+        {
+          "method": "TEST",
+          "value": 35,
+          "hex": "0000000000000023"
+        },
+        {
+          "method": "SRCV",
+          "value": 34,
+          "hex": "0000000000000022"
+        },
+        {
+          "method": "BUFV",
+          "value": 35,
+          "hex": "0000000000000023"
+        },
+        {
+          "method": "TEST",
+          "value": 35,
+          "hex": "0000000000000023"
+        },
+        {
+          "method": "SRCV",
+          "value": 34,
+          "hex": "0000000000000022"
+        },
+        {
+          "method": "BUFV",
+          "value": 35,
+          "hex": "0000000000000023"
+        }
+      ],
+      "files": {
+        "r2-add-right-target-store.asl": "d2a040ea2237ccdb1ccdc12dacca22139971531ff425445bddadffc2a4fb7958",
+        "r2-add-right-target-store.aml": "e7efa3923a60b378b1de37d44ffb2a7edf01568a2fde7f037ff995cc69d7e5ce",
+        "r2-add-right-target-store.dsl": "460d2f8e62eabe6370d52e64c33016f1f198000c812572fecc52de21d1d6ac93",
+        "r2-add-right-target-store-compile.log": "b9c400a2d3b383d4435b760961d9f078e7b88add22511120b3351c04dffd13b0",
+        "r2-add-right-target-store-disassemble.log": "6f69eab6d3ccca3e68b9f5bb8239139c7ec7d87433b7bdb5a9dd2034395173fb",
+        "r2-add-right-target-store-execute.log": "8a0056f2796678e8dba3cea56568cbdc77edaad10f2e39871e6e109c5604f240"
+      }
+    },
+    {
+      "case": 16,
+      "key": "r2-add-right-target-copyobject",
+      "revision": 2,
+      "payload_sha256": "f7eb0ecf5f64e86f2828b2388c2968b1e8efd01dbf0cb3fa225d25acf857a9ce",
+      "observations": [
+        {
+          "method": "CTRL",
+          "value": 165,
+          "hex": "00000000000000A5"
+        },
+        {
+          "method": "WIDT",
+          "value": 18446744073709551615,
+          "hex": "FFFFFFFFFFFFFFFF"
+        },
+        {
+          "method": "TEST",
+          "value": 18,
+          "hex": "0000000000000012"
+        },
+        {
+          "method": "SRCV",
+          "value": 34,
+          "hex": "0000000000000022"
+        },
+        {
+          "method": "BUFV",
+          "value": 18,
+          "hex": "0000000000000012"
+        },
+        {
+          "method": "TEST",
+          "value": 18,
+          "hex": "0000000000000012"
+        },
+        {
+          "method": "SRCV",
+          "value": 34,
+          "hex": "0000000000000022"
+        },
+        {
+          "method": "BUFV",
+          "value": 18,
+          "hex": "0000000000000012"
+        }
+      ],
+      "files": {
+        "r2-add-right-target-copyobject.asl": "72df1fb43b405e6b0f43b813d0b02b14e2daa87b77bcfb12f384129ed5755a85",
+        "r2-add-right-target-copyobject.aml": "d449a858258758c4e88a69aba9844490bf2090508a6bd1f5cd673c4885bd7f2d",
+        "r2-add-right-target-copyobject.dsl": "1baa4aeb501be6c02e41a5f9185d188190d939654fd438ecfd6688992aa71f59",
+        "r2-add-right-target-copyobject-compile.log": "0a19cb7673c24e6fe8725c0fa1286ebad767b9ef5fd47609eb34b7af0c96f0cc",
+        "r2-add-right-target-copyobject-disassemble.log": "8532c8ed3c338eecdebcbc38ae20adaed248b87b4c99fe563b2bebe95d733f20",
+        "r2-add-right-target-copyobject-execute.log": "55f97874067c88f28c65cb9a8730d1dab25c4a605e7bc513b3081413ab7a4466"
+      }
+    },
+    {
+      "case": 17,
+      "key": "r2-equal-left-store",
+      "revision": 2,
+      "payload_sha256": "0d4081814db7e46acf035a917fd54320948a6e29f8ce7fddef3f4806bac3158c",
+      "observations": [
+        {
+          "method": "CTRL",
+          "value": 165,
+          "hex": "00000000000000A5"
+        },
+        {
+          "method": "WIDT",
+          "value": 18446744073709551615,
+          "hex": "FFFFFFFFFFFFFFFF"
+        },
+        {
+          "method": "TEST",
+          "value": 18446744073709551615,
+          "hex": "FFFFFFFFFFFFFFFF"
+        },
+        {
+          "method": "SRCV",
+          "value": 34,
+          "hex": "0000000000000022"
+        },
+        {
+          "method": "BUFV",
+          "value": 0,
+          "hex": "0000000000000000"
+        },
+        {
+          "method": "TEST",
+          "value": 18446744073709551615,
+          "hex": "FFFFFFFFFFFFFFFF"
+        },
+        {
+          "method": "SRCV",
+          "value": 34,
+          "hex": "0000000000000022"
+        },
+        {
+          "method": "BUFV",
+          "value": 0,
+          "hex": "0000000000000000"
+        }
+      ],
+      "files": {
+        "r2-equal-left-store.asl": "0c152515faee45fb78a0ecddeaf2b18f6a705ffa69c7f4fa9d56c3ae1702fde1",
+        "r2-equal-left-store.aml": "b0bc9d89e2fc02adf716b7f6e905005053507f842fe98616b5d089420f29fa35",
+        "r2-equal-left-store.dsl": "19ce6ad004498de60b35c614f1449513d58d515e7a4673f20f4b01d449f54b09",
+        "r2-equal-left-store-compile.log": "7fd7bf804100afa257b0cd7c75f9810c44bf3bedb94e01e9e033e50384ef0035",
+        "r2-equal-left-store-disassemble.log": "d083babd2331c42c9745522fff41d22db4270de8deb5e216d8d47b65e2da3dbf",
+        "r2-equal-left-store-execute.log": "613dc47c584ffd1cc8ad3f4f63cac74c69ad6a4c08035e7e0d41218a2a864ffc"
+      }
+    },
+    {
+      "case": 18,
+      "key": "r2-equal-left-copyobject",
+      "revision": 2,
+      "payload_sha256": "dbdf898c6238fcfcc4a21c033dbab6bcf253cad11d867a78df5c1c0179cc9338",
+      "observations": [
+        {
+          "method": "CTRL",
+          "value": 165,
+          "hex": "00000000000000A5"
+        },
+        {
+          "method": "WIDT",
+          "value": 18446744073709551615,
+          "hex": "FFFFFFFFFFFFFFFF"
+        },
+        {
+          "method": "TEST",
+          "value": 0,
+          "hex": "0000000000000000"
+        },
+        {
+          "method": "SRCV",
+          "value": 34,
+          "hex": "0000000000000022"
+        },
+        {
+          "method": "BUFV",
+          "value": 0,
+          "hex": "0000000000000000"
+        },
+        {
+          "method": "TEST",
+          "value": 0,
+          "hex": "0000000000000000"
+        },
+        {
+          "method": "SRCV",
+          "value": 34,
+          "hex": "0000000000000022"
+        },
+        {
+          "method": "BUFV",
+          "value": 0,
+          "hex": "0000000000000000"
+        }
+      ],
+      "files": {
+        "r2-equal-left-copyobject.asl": "064116d1148027c728744480522e216b38db4b9bc9ad1bdc66c8657a5221aa83",
+        "r2-equal-left-copyobject.aml": "602fd265ede1d933da8835583ccac6be06423b8b658c528300a3daf11e1964c1",
+        "r2-equal-left-copyobject.dsl": "d4dfe78fa63590fceeadb437e87405a58fed110e0bc83481e8a7b5f1d6dc1144",
+        "r2-equal-left-copyobject-compile.log": "a3117b30f0645eb32a40d74af097cdc632a04330a5e9ca911872f97b9b40adfc",
+        "r2-equal-left-copyobject-disassemble.log": "87a6217bf6d7c714dffbd25e10c2cbb3ddd507d4b197df69662159b788a5dfab",
+        "r2-equal-left-copyobject-execute.log": "7ac5178545180071bf4c46833b22e6ae8d658c11390b6ce34960cc88f0e07bfe"
+      }
+    },
+    {
+      "case": 19,
+      "key": "r2-land-left-store",
+      "revision": 2,
+      "payload_sha256": "cdbaa44f3263d61654aa8b21e8937021d710b4dae4882a8f15c958ccfe67d53e",
+      "observations": [
+        {
+          "method": "CTRL",
+          "value": 165,
+          "hex": "00000000000000A5"
+        },
+        {
+          "method": "WIDT",
+          "value": 18446744073709551615,
+          "hex": "FFFFFFFFFFFFFFFF"
+        },
+        {
+          "method": "TEST",
+          "value": 18446744073709551615,
+          "hex": "FFFFFFFFFFFFFFFF"
+        },
+        {
+          "method": "SRCV",
+          "value": 1,
+          "hex": "0000000000000001"
+        },
+        {
+          "method": "BUFV",
+          "value": 0,
+          "hex": "0000000000000000"
+        },
+        {
+          "method": "TEST",
+          "value": 18446744073709551615,
+          "hex": "FFFFFFFFFFFFFFFF"
+        },
+        {
+          "method": "SRCV",
+          "value": 1,
+          "hex": "0000000000000001"
+        },
+        {
+          "method": "BUFV",
+          "value": 0,
+          "hex": "0000000000000000"
+        }
+      ],
+      "files": {
+        "r2-land-left-store.asl": "9e89180a803b516650e106c0d487d9df1c48473cdd04807743fe80d146b473e6",
+        "r2-land-left-store.aml": "614a8b9216c34a4025f24165c5068d661b94f96f82c9ca972c0318a35b0c5ed0",
+        "r2-land-left-store.dsl": "37a6fb4510e9176ca3d33cda5b46ceaa1f55089ab74f1c880249c9c8779cc67f",
+        "r2-land-left-store-compile.log": "3709c47febd8fca0bb1f7255d8268c2f1dbbf4a7d5e943b0850e193c3267002e",
+        "r2-land-left-store-disassemble.log": "7044713dbc08eaa3e28c5e5e64ce8a5a4301aab6c213880ad777dadae8e70eaf",
+        "r2-land-left-store-execute.log": "8059f28411598a231b550a30aaa31779db67a79e1601966cc84683e9eaec64ab"
+      }
+    },
+    {
+      "case": 20,
+      "key": "r2-land-left-copyobject",
+      "revision": 2,
+      "payload_sha256": "c8e69827a0abca7a6620ad41387820e8e273db30f6b7f008917fada1baa68353",
+      "observations": [
+        {
+          "method": "CTRL",
+          "value": 165,
+          "hex": "00000000000000A5"
+        },
+        {
+          "method": "WIDT",
+          "value": 18446744073709551615,
+          "hex": "FFFFFFFFFFFFFFFF"
+        },
+        {
+          "method": "TEST",
+          "value": 0,
+          "hex": "0000000000000000"
+        },
+        {
+          "method": "SRCV",
+          "value": 1,
+          "hex": "0000000000000001"
+        },
+        {
+          "method": "BUFV",
+          "value": 0,
+          "hex": "0000000000000000"
+        },
+        {
+          "method": "TEST",
+          "value": 0,
+          "hex": "0000000000000000"
+        },
+        {
+          "method": "SRCV",
+          "value": 1,
+          "hex": "0000000000000001"
+        },
+        {
+          "method": "BUFV",
+          "value": 0,
+          "hex": "0000000000000000"
+        }
+      ],
+      "files": {
+        "r2-land-left-copyobject.asl": "d4de471328d880f1f1f5f89120ef42a51211a646674cf52f96ce2227b29eea21",
+        "r2-land-left-copyobject.aml": "9ab2af76236a9025c80a2c1eac7e5e241c45e26cc96f35c1a636f3ef262c62e1",
+        "r2-land-left-copyobject.dsl": "5795fbf594b6be8b3ab46dd868355c51f5d004eb7ac88c9a6305b7186ab1bad6",
+        "r2-land-left-copyobject-compile.log": "a8e9b565890456c9918a40516aa78a2fade1fc7fc7515635e8d47ea5552ab20c",
+        "r2-land-left-copyobject-disassemble.log": "3092b57f7027f3f6df17564841d5aed5aa9da772dc50543ce230854b50ea852f",
+        "r2-land-left-copyobject-execute.log": "edc945078b3b65f9f970f7f57134a025812a892b406b598af3f9508ed1d9ccc4"
+      }
+    },
+    {
+      "case": 21,
+      "key": "r2-named-add-left-store",
+      "revision": 2,
+      "payload_sha256": "f3d3006b16630c991af71614631d3a797a670f5f6c3b9e5e28e86decc9f136f5",
+      "observations": [
+        {
+          "method": "CTRL",
+          "value": 165,
+          "hex": "00000000000000A5"
+        },
+        {
+          "method": "WIDT",
+          "value": 18446744073709551615,
+          "hex": "FFFFFFFFFFFFFFFF"
+        },
+        {
+          "method": "TEST",
+          "value": 18,
+          "hex": "0000000000000012"
+        },
+        {
+          "method": "SRCV",
+          "value": 34,
+          "hex": "0000000000000022"
+        },
+        {
+          "method": "BUFV",
+          "value": 0,
+          "hex": "0000000000000000"
+        },
+        {
+          "method": "TEST",
+          "value": 18,
+          "hex": "0000000000000012"
+        },
+        {
+          "method": "SRCV",
+          "value": 34,
+          "hex": "0000000000000022"
+        },
+        {
+          "method": "BUFV",
+          "value": 0,
+          "hex": "0000000000000000"
+        }
+      ],
+      "files": {
+        "r2-named-add-left-store.asl": "60d0dd5253223ea5418b5660634aba497870e445455f38b368321e1821cff416",
+        "r2-named-add-left-store.aml": "917e84aca32af309d332dda935883ca1ecc161b345ca0c01497aa19863578af4",
+        "r2-named-add-left-store.dsl": "2806b0ab9dab7022fbc94b83a18cd5f18f60e6d6107b62d07d795b68451e9bcd",
+        "r2-named-add-left-store-compile.log": "a3a0d8280ae3dad97652f50d00c82d3010d4d28aed6baa860726670198ab6be3",
+        "r2-named-add-left-store-disassemble.log": "1a827dfdd0063f2683ffe61fe3030f3b3a566e1fbbe9520634f1168b8622a7c1",
+        "r2-named-add-left-store-execute.log": "13655e9afdbf5c90b5d2c883b21f7e86847ad2e708ff5712bc90d6a3f69c0df8"
+      }
+    },
+    {
+      "case": 22,
+      "key": "r2-named-add-left-copyobject",
+      "revision": 2,
+      "payload_sha256": "d4177b2c85c9bd006f32b1acbca45658426e592d89b88880bfe8f88dc40566d3",
+      "observations": [
+        {
+          "method": "CTRL",
+          "value": 165,
+          "hex": "00000000000000A5"
+        },
+        {
+          "method": "WIDT",
+          "value": 18446744073709551615,
+          "hex": "FFFFFFFFFFFFFFFF"
+        },
+        {
+          "method": "TEST",
+          "value": 18,
+          "hex": "0000000000000012"
+        },
+        {
+          "method": "SRCV",
+          "value": 34,
+          "hex": "0000000000000022"
+        },
+        {
+          "method": "BUFV",
+          "value": 0,
+          "hex": "0000000000000000"
+        },
+        {
+          "method": "TEST",
+          "value": 18,
+          "hex": "0000000000000012"
+        },
+        {
+          "method": "SRCV",
+          "value": 34,
+          "hex": "0000000000000022"
+        },
+        {
+          "method": "BUFV",
+          "value": 0,
+          "hex": "0000000000000000"
+        }
+      ],
+      "files": {
+        "r2-named-add-left-copyobject.asl": "f926a69ec52eb66296ee89bfdf51bc954e866e929c3ea9a3fa6eadb793826ffa",
+        "r2-named-add-left-copyobject.aml": "0d120f9a2bcbe5e709f9d4de5feafa56e618fafbf6a6f49878e2b30dd65f2a70",
+        "r2-named-add-left-copyobject.dsl": "64f965ca10e313dbd4228d577e65aaa5859841d5551eda3a76784423216afee3",
+        "r2-named-add-left-copyobject-compile.log": "4adfea27b4531bc5d4c3000aef01c21d42e335aba2562063bc5d0fb9719775d7",
+        "r2-named-add-left-copyobject-disassemble.log": "fda9bd6b276e3e0c2b041df0dd43549e8981f106653d41917327097048cb1f1e",
+        "r2-named-add-left-copyobject-execute.log": "691e34c94a83f09a67dd4712261f91b4483814ece83c359417e90cd57020e9bc"
+      }
+    },
+    {
+      "case": 23,
+      "key": "r2-named-add-right-target-store",
+      "revision": 2,
+      "payload_sha256": "4fc24b64e917a23f275400cf62a226910aefc5d868ca92267e5766e811050881",
+      "observations": [
+        {
+          "method": "CTRL",
+          "value": 165,
+          "hex": "00000000000000A5"
+        },
+        {
+          "method": "WIDT",
+          "value": 18446744073709551615,
+          "hex": "FFFFFFFFFFFFFFFF"
+        },
+        {
+          "method": "TEST",
+          "value": 18,
+          "hex": "0000000000000012"
+        },
+        {
+          "method": "SRCV",
+          "value": 34,
+          "hex": "0000000000000022"
+        },
+        {
+          "method": "BUFV",
+          "value": 18,
+          "hex": "0000000000000012"
+        },
+        {
+          "method": "TEST",
+          "value": 18,
+          "hex": "0000000000000012"
+        },
+        {
+          "method": "SRCV",
+          "value": 34,
+          "hex": "0000000000000022"
+        },
+        {
+          "method": "BUFV",
+          "value": 18,
+          "hex": "0000000000000012"
+        }
+      ],
+      "files": {
+        "r2-named-add-right-target-store.asl": "6c92d194ae6ba0618855b89106450b6fbba16d2554fdb6c3254040ead0f61994",
+        "r2-named-add-right-target-store.aml": "95fffc392fc0ede83b2fc2ed9f5ce8da3bea5c3dbcc5cca5cefe43abe7f3d0f6",
+        "r2-named-add-right-target-store.dsl": "d095d65f8e402ecf03bfa8d536a1928e661f4b1fce7f4bb873edf9290ba90aa9",
+        "r2-named-add-right-target-store-compile.log": "b191647a1bd0c24bceb50f52792b6e9937dd5ecede84ab8afe969c86a663e6b1",
+        "r2-named-add-right-target-store-disassemble.log": "266712744cfaeb9bdc4981abe7458eebbc58311f8e5012515806e6ca9fbba75f",
+        "r2-named-add-right-target-store-execute.log": "f352866cc9e409d8f5c12e83ae36c0920f7179a2dfed428081e365a95fe1298f"
+      }
+    },
+    {
+      "case": 24,
+      "key": "r2-named-add-right-target-copyobject",
+      "revision": 2,
+      "payload_sha256": "f5cd269c4031a07287f5c01ee4d925f9e91b368d4aa67589b34f38d561c6b336",
+      "observations": [
+        {
+          "method": "CTRL",
+          "value": 165,
+          "hex": "00000000000000A5"
+        },
+        {
+          "method": "WIDT",
+          "value": 18446744073709551615,
+          "hex": "FFFFFFFFFFFFFFFF"
+        },
+        {
+          "method": "TEST",
+          "value": 18,
+          "hex": "0000000000000012"
+        },
+        {
+          "method": "SRCV",
+          "value": 34,
+          "hex": "0000000000000022"
+        },
+        {
+          "method": "BUFV",
+          "value": 18,
+          "hex": "0000000000000012"
+        },
+        {
+          "method": "TEST",
+          "value": 18,
+          "hex": "0000000000000012"
+        },
+        {
+          "method": "SRCV",
+          "value": 34,
+          "hex": "0000000000000022"
+        },
+        {
+          "method": "BUFV",
+          "value": 18,
+          "hex": "0000000000000012"
+        }
+      ],
+      "files": {
+        "r2-named-add-right-target-copyobject.asl": "edbb566cf6c5ab3f502b78355dde1a649839d7f175386a02530dba37cd24ed1e",
+        "r2-named-add-right-target-copyobject.aml": "4b0fb92a2158f0b816afde540d67c7d4fcad7d45cf6132bf60a34484f4c72695",
+        "r2-named-add-right-target-copyobject.dsl": "91bfef349ff27ffe4ef9c571040b6aba8db4d9bf66b3b296e595458d3bbe569a",
+        "r2-named-add-right-target-copyobject-compile.log": "89f7192ddda29dbef93c46d08d16e26d69a88262a2632b9ce738d5d2e6be9771",
+        "r2-named-add-right-target-copyobject-disassemble.log": "d76b43aa48483c827c963360b0dc7d393e25c3827a70eb36d969052aa161d9f8",
+        "r2-named-add-right-target-copyobject-execute.log": "f5f9da767163a3a759e5df1205bdb8114c1b7bc7387231c01d6cb171f85113f4"
+      }
+    }
+  ],
+  "scope": "24normal compiled+disassembled bodies with exact revision width and repeated raw TEST/source/buffer values; CTRL/WIDT verified. All original cache allocation teardown warnings retained. No replay executed yet."
+}

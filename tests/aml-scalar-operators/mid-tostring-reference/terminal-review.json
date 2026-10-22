@@ -1,0 +1,13 @@
+{
+  "worker": 10503,
+  "exit": 0,
+  "source_pins_verified": 44,
+  "artifact_pins_verified": 163,
+  "tool_pins_verified": 2,
+  "cases": 38,
+  "method_returns": 280,
+  "repeated_calls": 76,
+  "cache_warning_cases": 38,
+  "observations_sha256": "ae4fc8c61ca430a06dd64baeea55920c4237a0af1ec32fbd6df9b17ebc674855",
+  "results_sha256": "07cca8209c31019ed25dbabeb880fd46136e221d1b5315116098ca0eef26eeb1"
+}

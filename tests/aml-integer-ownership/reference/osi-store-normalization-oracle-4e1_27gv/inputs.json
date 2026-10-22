@@ -1,0 +1,11 @@
+{
+  "hosted_capture.py": "bb667e639c2ba2c9c11aa0fb09e30f0bd768b8728290657fcff4ef090da231db",
+  "run.py": "7d7aebff473e08cf92aa708e4cd447f0b7918e538f92f72557a53fff59d1ea8a",
+  "bounded_tool.py": "e437db8639dc573a5218ed5bf862298e84a0ac48fdf8ddc46bf0c795d89373c8",
+  "tool-pins.json": "63b4e2eab8312270127d242e81e586cbfe17d297b10740a1798b0807f53beb08",
+  "cases.json": "61c24576ac1b9e9246d88b3d3a9c91959dbdaa71ceaf191ac8a1b300ece9f8fb",
+  "cases/store2.asl": "4530da550d61a2439335834392eda820083a285fb16e84497b7cb5be8390cb90",
+  "cases/base1.asl": "7f45cc63c8ecafc1d83d9effeebe779b4d4dccce685a4d4c24c6ee0cb6713d57",
+  "cases/base2.asl": "31eb4b90ed68bd86bc52e082e6f15d552f922ea0c1fbbbda6e8c47f9871ba375",
+  "cases/store1.asl": "45aef08f0549aaec61d2efbab2c632059ee66b51a8e253f70b752f02d56ed220"
+}

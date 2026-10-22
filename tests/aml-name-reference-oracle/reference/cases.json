@@ -1,0 +1,198 @@
+[
+  {
+    "key": "r1-runtime-self-Store",
+    "revision": 1,
+    "base": "cases/base1.asl",
+    "source": "cases/r1-runtime-self-Store.asl",
+    "methods": [
+      "INIT",
+      "TEST",
+      "INIT",
+      "TEST"
+    ],
+    "scope": "typed return, status, warning, repeat; no guessed expectation",
+    "repeat_equivalence": true
+  },
+  {
+    "key": "r1-static-data-Store",
+    "revision": 1,
+    "base": "cases/base1.asl",
+    "source": "cases/r1-static-data-Store.asl",
+    "methods": [
+      "INIT",
+      "TEST",
+      "INIT",
+      "TEST"
+    ],
+    "scope": "typed return, status, warning, repeat; no guessed expectation",
+    "repeat_equivalence": true
+  },
+  {
+    "key": "r1-runtime-self-CopyObject",
+    "revision": 1,
+    "base": "cases/base1.asl",
+    "source": "cases/r1-runtime-self-CopyObject.asl",
+    "methods": [
+      "INIT",
+      "TEST",
+      "INIT",
+      "TEST"
+    ],
+    "scope": "typed return, status, warning, repeat; no guessed expectation",
+    "repeat_equivalence": true
+  },
+  {
+    "key": "r1-static-data-CopyObject",
+    "revision": 1,
+    "base": "cases/base1.asl",
+    "source": "cases/r1-static-data-CopyObject.asl",
+    "methods": [
+      "INIT",
+      "TEST",
+      "INIT",
+      "TEST"
+    ],
+    "scope": "typed return, status, warning, repeat; no guessed expectation",
+    "repeat_equivalence": true
+  },
+  {
+    "key": "r1-escaped-runtime-self",
+    "revision": 1,
+    "base": "cases/base1.asl",
+    "source": "cases/r1-escaped-runtime-self.asl",
+    "methods": [
+      "INIT",
+      "TEST",
+      "INIT",
+      "TEST"
+    ],
+    "scope": "node teardown behavior; preserve failure/timeout, no force",
+    "repeat_equivalence": true
+  },
+  {
+    "key": "r1-detached-static-cycle",
+    "revision": 1,
+    "base": "cases/base1.asl",
+    "source": "cases/r1-detached-static-cycle.asl",
+    "methods": [
+      "INIT",
+      "TEST",
+      "INIT",
+      "TEST"
+    ],
+    "scope": "detached cycle teardown warnings/status only; numeric return cannot prove count multiplicity",
+    "repeat_equivalence": false
+  },
+  {
+    "key": "r1-detached-runtime-cycle",
+    "revision": 1,
+    "base": "cases/base1.asl",
+    "source": "cases/r1-detached-runtime-cycle.asl",
+    "methods": [
+      "INIT",
+      "TEST",
+      "INIT",
+      "TEST"
+    ],
+    "scope": "runtime captured self edge after detach; teardown warnings/status only",
+    "repeat_equivalence": true
+  },
+  {
+    "key": "r2-runtime-self-Store",
+    "revision": 2,
+    "base": "cases/base2.asl",
+    "source": "cases/r2-runtime-self-Store.asl",
+    "methods": [
+      "INIT",
+      "TEST",
+      "INIT",
+      "TEST"
+    ],
+    "scope": "typed return, status, warning, repeat; no guessed expectation",
+    "repeat_equivalence": true
+  },
+  {
+    "key": "r2-static-data-Store",
+    "revision": 2,
+    "base": "cases/base2.asl",
+    "source": "cases/r2-static-data-Store.asl",
+    "methods": [
+      "INIT",
+      "TEST",
+      "INIT",
+      "TEST"
+    ],
+    "scope": "typed return, status, warning, repeat; no guessed expectation",
+    "repeat_equivalence": true
+  },
+  {
+    "key": "r2-runtime-self-CopyObject",
+    "revision": 2,
+    "base": "cases/base2.asl",
+    "source": "cases/r2-runtime-self-CopyObject.asl",
+    "methods": [
+      "INIT",
+      "TEST",
+      "INIT",
+      "TEST"
+    ],
+    "scope": "typed return, status, warning, repeat; no guessed expectation",
+    "repeat_equivalence": true
+  },
+  {
+    "key": "r2-static-data-CopyObject",
+    "revision": 2,
+    "base": "cases/base2.asl",
+    "source": "cases/r2-static-data-CopyObject.asl",
+    "methods": [
+      "INIT",
+      "TEST",
+      "INIT",
+      "TEST"
+    ],
+    "scope": "typed return, status, warning, repeat; no guessed expectation",
+    "repeat_equivalence": true
+  },
+  {
+    "key": "r2-escaped-runtime-self",
+    "revision": 2,
+    "base": "cases/base2.asl",
+    "source": "cases/r2-escaped-runtime-self.asl",
+    "methods": [
+      "INIT",
+      "TEST",
+      "INIT",
+      "TEST"
+    ],
+    "scope": "node teardown behavior; preserve failure/timeout, no force",
+    "repeat_equivalence": true
+  },
+  {
+    "key": "r2-detached-static-cycle",
+    "revision": 2,
+    "base": "cases/base2.asl",
+    "source": "cases/r2-detached-static-cycle.asl",
+    "methods": [
+      "INIT",
+      "TEST",
+      "INIT",
+      "TEST"
+    ],
+    "scope": "detached cycle teardown warnings/status only; numeric return cannot prove count multiplicity",
+    "repeat_equivalence": false
+  },
+  {
+    "key": "r2-detached-runtime-cycle",
+    "revision": 2,
+    "base": "cases/base2.asl",
+    "source": "cases/r2-detached-runtime-cycle.asl",
+    "methods": [
+      "INIT",
+      "TEST",
+      "INIT",
+      "TEST"
+    ],
+    "scope": "runtime captured self edge after detach; teardown warnings/status only",
+    "repeat_equivalence": true
+  }
+]

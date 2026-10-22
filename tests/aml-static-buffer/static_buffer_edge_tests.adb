@@ -4,6 +4,7 @@ with AML_Namespace;
 with AML_Decode;
 with AML_Objects;
 procedure Static_Buffer_Edge_Tests is
+   use type AML_Decode.Bytes;
    use AML_Decode;
    use type AML_Decode.Integer_Value;
    package NS is new AML_Namespace (64, AML_Delays.Unavailable_Provider);

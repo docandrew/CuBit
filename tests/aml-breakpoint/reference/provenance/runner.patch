@@ -1,0 +1,34 @@
+--- parent/run.py
++++ successor/run.py
+@@ -1,7 +1,7 @@
+ from pathlib import Path
+ import sys
+ if not __debug__:raise SystemExit('Python optimization forbidden')
+-import hashlib,json,signal
++import hashlib,json,signal,re
+ from hosted_capture import capture,CaptureInterrupted
+ R=Path(__file__).resolve().parent
+ signal.signal(signal.SIGTERM,lambda *a: (_ for _ in ()).throw(CaptureInterrupted('TERM')))
+@@ -20,7 +20,22 @@
+   rc=capture(cmd,cwd=O,log=log,timeout=5,limit=1048576);verify()
+   item={**c,'compile_status':rc,'compile_log':str(log),'runtime_status':None};rows.append(item)
+   if rc==0 and pref.with_suffix('.aml').is_file():
++   aml=pref.with_suffix('.aml');item['aml_sha256']=H(aml)
++   dlog=O/(c['label']+'-disassembly.log')
++   item['disassembly_status']=capture([sys.executable,str(R/'bounded_tool.py'),tools['iasl']['path'],'-d',str(aml)],cwd=O,log=dlog,timeout=5,limit=1048576)
++   item['disassembly_log']=str(dlog);verify()
++   assert H(aml)==item['aml_sha256'],'disassembly changed emitted AML'
++   (O/'report.json').write_text(json.dumps(rows,indent=2,default=str)+'\n')
+    log=O/(c['label']+'-acpiexec.log');item['runtime_status']=capture([sys.executable,str(R/'bounded_tool.py'),tools['acpiexec']['path'],'-b',c['batch'],str(pref)+'.aml'],cwd=O,log=log,timeout=5,limit=1048576);item['runtime_log']=str(log);verify()
++   assert H(aml)==item['aml_sha256'],'execution changed emitted AML'
++   dsl=pref.with_suffix('.dsl')
++   if item['disassembly_status']==0 and dsl.is_file():
++    item['disassembly_dsl']=str(dsl);item['disassembly_sha256']=H(dsl)
++    # Lexical disassembly evidence only, not a reachability or equivalence claim.
++    text=re.sub(r'/\*.*?\*/|//[^\n]*','',dsl.read_text(errors='replace'),flags=re.S)
++    item['breakpoint_mentions']=len(re.findall(r'\bBreakPoint\b',text,re.I))
++    item['opcode_classification']=('breakpoint_in_disassembly' if item['breakpoint_mentions'] else 'no_breakpoint_in_successful_disassembly')
++   else:item['opcode_classification']='disassembly_unavailable; no opcode-presence inference'
+   else:item['classification']='compiler_process_failure; inspect diagnostic before syntactic inference'
+   (O/'report.json').write_text(json.dumps(rows,indent=2,default=str)+'\n')
+   print(c['label'],rc,item['runtime_status'],flush=True)

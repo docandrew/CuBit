@@ -1,0 +1,490 @@
+[
+  {
+    "case": "r1-local-self-read",
+    "revision": 1,
+    "results": [
+      {
+        "method": "TEST",
+        "kind": "integer",
+        "hex": "00000000FFFFFFFF"
+      },
+      {
+        "method": "TEST",
+        "kind": "integer",
+        "hex": "00000000FFFFFFFF"
+      }
+    ],
+    "cache_warning": true,
+    "aml_sha256": "ef3f20d3966abc73ca1bbfca86929b5e30e37ceb9e73b0b40b27a5ac7cee5046"
+  },
+  {
+    "case": "r1-local-self-expression",
+    "revision": 1,
+    "results": [
+      {
+        "method": "TEST",
+        "kind": "integer",
+        "hex": "00000000FFFFFFFF"
+      },
+      {
+        "method": "TEST",
+        "kind": "integer",
+        "hex": "00000000FFFFFFFF"
+      }
+    ],
+    "cache_warning": true,
+    "aml_sha256": "dc0d147d34b98a870c0f8780d97c44e746d85a7e4c73ce1b183fa5a3c6e41517"
+  },
+  {
+    "case": "r1-arg-self",
+    "revision": 1,
+    "results": [
+      {
+        "method": "TEST",
+        "kind": "integer",
+        "hex": "00000000FFFFFFFF"
+      },
+      {
+        "method": "TEST",
+        "kind": "integer",
+        "hex": "00000000FFFFFFFF"
+      }
+    ],
+    "cache_warning": true,
+    "aml_sha256": "c05db660c444c25cbb8884bbca59e10da87ee636b3b379f5ffec2e06f3316979"
+  },
+  {
+    "case": "r1-failed-target-effects",
+    "revision": 1,
+    "results": [
+      {
+        "method": "INIT",
+        "kind": "integer",
+        "hex": "0000000000000000"
+      },
+      {
+        "method": "TEST",
+        "kind": "error",
+        "status": "AE_AML_BUFFER_LIMIT"
+      },
+      {
+        "method": "PRE0",
+        "kind": "integer",
+        "hex": "0000000000000001"
+      },
+      {
+        "method": "POST",
+        "kind": "integer",
+        "hex": "0000000000000001"
+      },
+      {
+        "method": "AFT0",
+        "kind": "integer",
+        "hex": "0000000000000000"
+      },
+      {
+        "method": "BVAL",
+        "kind": "buffer",
+        "length": 1,
+        "hex": "00"
+      },
+      {
+        "method": "INIT",
+        "kind": "integer",
+        "hex": "0000000000000000"
+      },
+      {
+        "method": "TEST",
+        "kind": "error",
+        "status": "AE_AML_BUFFER_LIMIT"
+      },
+      {
+        "method": "PRE0",
+        "kind": "integer",
+        "hex": "0000000000000001"
+      },
+      {
+        "method": "POST",
+        "kind": "integer",
+        "hex": "0000000000000001"
+      },
+      {
+        "method": "AFT0",
+        "kind": "integer",
+        "hex": "0000000000000000"
+      },
+      {
+        "method": "BVAL",
+        "kind": "buffer",
+        "length": 1,
+        "hex": "00"
+      }
+    ],
+    "cache_warning": true,
+    "aml_sha256": "8d2b686e43fd8a0add00160827b6c54ee5fd9573f4bebd87256285f69755be4e"
+  },
+  {
+    "case": "r1-alias-rebind-store",
+    "revision": 1,
+    "results": [
+      {
+        "method": "INIT",
+        "kind": "integer",
+        "hex": "0000000000000000"
+      },
+      {
+        "method": "TEST",
+        "kind": "integer",
+        "hex": "0000000000000022"
+      },
+      {
+        "method": "POST",
+        "kind": "integer",
+        "hex": "0000000000000022"
+      },
+      {
+        "method": "FLG0",
+        "kind": "integer",
+        "hex": "0000000000000001"
+      },
+      {
+        "method": "BVAL",
+        "kind": "buffer",
+        "length": 2,
+        "hex": "0022"
+      },
+      {
+        "method": "INIT",
+        "kind": "integer",
+        "hex": "0000000000000000"
+      },
+      {
+        "method": "TEST",
+        "kind": "integer",
+        "hex": "0000000000000022"
+      },
+      {
+        "method": "POST",
+        "kind": "integer",
+        "hex": "0000000000000022"
+      },
+      {
+        "method": "FLG0",
+        "kind": "integer",
+        "hex": "0000000000000001"
+      },
+      {
+        "method": "BVAL",
+        "kind": "buffer",
+        "length": 2,
+        "hex": "0022"
+      }
+    ],
+    "cache_warning": true,
+    "aml_sha256": "c66ef54fed4d3f4bf103317ff439a7fdd83f7ec4a3a5d5aa4e30c992ea05697b"
+  },
+  {
+    "case": "r1-alias-rebind-copyobject",
+    "revision": 1,
+    "results": [
+      {
+        "method": "INIT",
+        "kind": "integer",
+        "hex": "0000000000000000"
+      },
+      {
+        "method": "TEST",
+        "kind": "integer",
+        "hex": "0000000000000011"
+      },
+      {
+        "method": "POST",
+        "kind": "integer",
+        "hex": "0000000000000022"
+      },
+      {
+        "method": "FLG0",
+        "kind": "integer",
+        "hex": "0000000000000001"
+      },
+      {
+        "method": "BVAL",
+        "kind": "buffer",
+        "length": 2,
+        "hex": "0011"
+      },
+      {
+        "method": "INIT",
+        "kind": "integer",
+        "hex": "0000000000000000"
+      },
+      {
+        "method": "TEST",
+        "kind": "integer",
+        "hex": "0000000000000011"
+      },
+      {
+        "method": "POST",
+        "kind": "integer",
+        "hex": "0000000000000022"
+      },
+      {
+        "method": "FLG0",
+        "kind": "integer",
+        "hex": "0000000000000001"
+      },
+      {
+        "method": "BVAL",
+        "kind": "buffer",
+        "length": 2,
+        "hex": "0011"
+      }
+    ],
+    "cache_warning": true,
+    "aml_sha256": "8bba64e4f1426fecc955cbd1d57cd142b783447943cd465236ccb8ca6a08fa0b"
+  },
+  {
+    "case": "r2-local-self-read",
+    "revision": 2,
+    "results": [
+      {
+        "method": "TEST",
+        "kind": "integer",
+        "hex": "FFFFFFFFFFFFFFFF"
+      },
+      {
+        "method": "TEST",
+        "kind": "integer",
+        "hex": "FFFFFFFFFFFFFFFF"
+      }
+    ],
+    "cache_warning": true,
+    "aml_sha256": "7061a92be80268af47d3031847f76ea6e9384fe8b3d7e1ccc4ada6b2afeb482f"
+  },
+  {
+    "case": "r2-local-self-expression",
+    "revision": 2,
+    "results": [
+      {
+        "method": "TEST",
+        "kind": "integer",
+        "hex": "FFFFFFFFFFFFFFFF"
+      },
+      {
+        "method": "TEST",
+        "kind": "integer",
+        "hex": "FFFFFFFFFFFFFFFF"
+      }
+    ],
+    "cache_warning": true,
+    "aml_sha256": "b44ae166f63b024c2738895758d84abbebda75ad268cc03a91849988ac09997f"
+  },
+  {
+    "case": "r2-arg-self",
+    "revision": 2,
+    "results": [
+      {
+        "method": "TEST",
+        "kind": "integer",
+        "hex": "FFFFFFFFFFFFFFFF"
+      },
+      {
+        "method": "TEST",
+        "kind": "integer",
+        "hex": "FFFFFFFFFFFFFFFF"
+      }
+    ],
+    "cache_warning": true,
+    "aml_sha256": "9e851fa86f62d91ed9c94dd2e7adf1ede908183891ed22826b42cab4e7b0b054"
+  },
+  {
+    "case": "r2-failed-target-effects",
+    "revision": 2,
+    "results": [
+      {
+        "method": "INIT",
+        "kind": "integer",
+        "hex": "0000000000000000"
+      },
+      {
+        "method": "TEST",
+        "kind": "error",
+        "status": "AE_AML_BUFFER_LIMIT"
+      },
+      {
+        "method": "PRE0",
+        "kind": "integer",
+        "hex": "0000000000000001"
+      },
+      {
+        "method": "POST",
+        "kind": "integer",
+        "hex": "0000000000000001"
+      },
+      {
+        "method": "AFT0",
+        "kind": "integer",
+        "hex": "0000000000000000"
+      },
+      {
+        "method": "BVAL",
+        "kind": "buffer",
+        "length": 1,
+        "hex": "00"
+      },
+      {
+        "method": "INIT",
+        "kind": "integer",
+        "hex": "0000000000000000"
+      },
+      {
+        "method": "TEST",
+        "kind": "error",
+        "status": "AE_AML_BUFFER_LIMIT"
+      },
+      {
+        "method": "PRE0",
+        "kind": "integer",
+        "hex": "0000000000000001"
+      },
+      {
+        "method": "POST",
+        "kind": "integer",
+        "hex": "0000000000000001"
+      },
+      {
+        "method": "AFT0",
+        "kind": "integer",
+        "hex": "0000000000000000"
+      },
+      {
+        "method": "BVAL",
+        "kind": "buffer",
+        "length": 1,
+        "hex": "00"
+      }
+    ],
+    "cache_warning": true,
+    "aml_sha256": "e50418c632a7ff78f497b9bf3479e2b6c5d1d5f825b39e354b7e397347b86bf9"
+  },
+  {
+    "case": "r2-alias-rebind-store",
+    "revision": 2,
+    "results": [
+      {
+        "method": "INIT",
+        "kind": "integer",
+        "hex": "0000000000000000"
+      },
+      {
+        "method": "TEST",
+        "kind": "integer",
+        "hex": "0000000000000022"
+      },
+      {
+        "method": "POST",
+        "kind": "integer",
+        "hex": "0000000000000022"
+      },
+      {
+        "method": "FLG0",
+        "kind": "integer",
+        "hex": "0000000000000001"
+      },
+      {
+        "method": "BVAL",
+        "kind": "buffer",
+        "length": 2,
+        "hex": "0022"
+      },
+      {
+        "method": "INIT",
+        "kind": "integer",
+        "hex": "0000000000000000"
+      },
+      {
+        "method": "TEST",
+        "kind": "integer",
+        "hex": "0000000000000022"
+      },
+      {
+        "method": "POST",
+        "kind": "integer",
+        "hex": "0000000000000022"
+      },
+      {
+        "method": "FLG0",
+        "kind": "integer",
+        "hex": "0000000000000001"
+      },
+      {
+        "method": "BVAL",
+        "kind": "buffer",
+        "length": 2,
+        "hex": "0022"
+      }
+    ],
+    "cache_warning": true,
+    "aml_sha256": "01cf0ff6960e7616f36294d6c0bfa5255295f53bb13da995b241955b20273f35"
+  },
+  {
+    "case": "r2-alias-rebind-copyobject",
+    "revision": 2,
+    "results": [
+      {
+        "method": "INIT",
+        "kind": "integer",
+        "hex": "0000000000000000"
+      },
+      {
+        "method": "TEST",
+        "kind": "integer",
+        "hex": "0000000000000011"
+      },
+      {
+        "method": "POST",
+        "kind": "integer",
+        "hex": "0000000000000022"
+      },
+      {
+        "method": "FLG0",
+        "kind": "integer",
+        "hex": "0000000000000001"
+      },
+      {
+        "method": "BVAL",
+        "kind": "buffer",
+        "length": 2,
+        "hex": "0011"
+      },
+      {
+        "method": "INIT",
+        "kind": "integer",
+        "hex": "0000000000000000"
+      },
+      {
+        "method": "TEST",
+        "kind": "integer",
+        "hex": "0000000000000011"
+      },
+      {
+        "method": "POST",
+        "kind": "integer",
+        "hex": "0000000000000022"
+      },
+      {
+        "method": "FLG0",
+        "kind": "integer",
+        "hex": "0000000000000001"
+      },
+      {
+        "method": "BVAL",
+        "kind": "buffer",
+        "length": 2,
+        "hex": "0011"
+      }
+    ],
+    "cache_warning": true,
+    "aml_sha256": "3faf35435be6652a3808a5c3f3041f03291cb3db29df2b149797e5399731ff8f"
+  }
+]

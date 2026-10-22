@@ -6,6 +6,8 @@ with AML_Namespace;
 with AML_References;
 with AML_Table_Backing;
 procedure Sync_Metadata_Tests is
+   use type AML_Execute.Named_Metadata_Type;
+   use type AML_Decode.Bytes;
    use type Byte;
    use type Integer_Value;
    package NS is new AML_Namespace (16, AML_Delays.Unavailable_Provider);

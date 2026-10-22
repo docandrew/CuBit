@@ -1,0 +1,44 @@
+[
+  {
+    "name": "local_ref_source",
+    "declarations": "Name (BUFF,Buffer (2) {0x41,0x42})",
+    "body": "CopyObject (RefOf (BUFF),Local0) Return (ToBuffer (Local0))",
+    "source_expectation": null,
+    "observed": false
+  },
+  {
+    "name": "arg_ref_source",
+    "declarations": "Name (BUFF,Buffer (2) {0x41,0x42}) Method (HELP,1) {Return (ToBuffer (Arg0))}",
+    "body": "Return (HELP (RefOf (BUFF)))",
+    "source_expectation": null,
+    "observed": false
+  },
+  {
+    "name": "package_target",
+    "declarations": "Name (PACK,Package (1) {9})",
+    "body": "ToBuffer (\"AB\",Index (PACK,Zero)) Return (DerefOf (Index (PACK,Zero)))",
+    "source_expectation": null,
+    "observed": false
+  },
+  {
+    "name": "byte_target",
+    "declarations": "Name (DEST,Buffer (2) {9,8})",
+    "body": "Store (ToBuffer (\"AB\",Index (DEST,Zero)),Local0) Return (Add (Multiply (SizeOf(Local0),256),DerefOf(Index(DEST,Zero))))",
+    "source_expectation": null,
+    "observed": false
+  },
+  {
+    "name": "fresh_string_alias",
+    "declarations": "",
+    "body": "Store (9, Index (ToBuffer (\"AB\",Local0),Zero)) Return (Local0)",
+    "source_expectation": null,
+    "observed": false
+  },
+  {
+    "name": "arg_frame_target",
+    "declarations": "Method (HELP,1) {ToBuffer (\"AB\",Arg0) Return (Zero)}",
+    "body": "Store (9,Local0) HELP (RefOf(Local0)) Return (Local0)",
+    "source_expectation": null,
+    "observed": false
+  }
+]

@@ -5,6 +5,7 @@ with AML_Delays;
 with AML_Namespace;
 with AML_Table_Backing;
 procedure Delay_Tests is
+   use type AML_Decode.Bytes;
    use type Integer_Value;
    use type AML_Delays.Outcome;
    use type AML_Delays.Normalization_Status;

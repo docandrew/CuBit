@@ -7,6 +7,7 @@ with AML_Table_Backing;
 with AML_Objects;
 with AML_References;
 procedure Runtime_Name_Tests is
+   use type AML_Decode.Bytes;
    package NS is new AML_Namespace (16, AML_Delays.Unavailable_Provider, Max_Pending_Members => 2, Max_Pending_Segments => 2);
    use NS; use NS.Owned;
    use type AML_Objects.Allocation_Status;

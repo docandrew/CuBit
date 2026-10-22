@@ -6,6 +6,7 @@ with AML_Frame_Handles;
 with AML_Table_Backing;
 with Test_Namespace;
 procedure Tointeger_Quota_Tests is
+   use type AML_Decode.Bytes;
    package NS renames Test_Namespace;
    package Owner renames NS.Owned;
    use type NS.Load_Status;

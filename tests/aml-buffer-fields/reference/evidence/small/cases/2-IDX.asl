@@ -1,0 +1,1 @@
+DefinitionBlock("","DSDT",2,"CUBIT","FLDSMALL",1){Name(MARK,Zero) Name(PKG0,Package(){Buffer(2){0x41,0x42}}) Method(GETR,0){Return(Index(PKG0,0))} Method(CTRL,0){Return(One)} Method(WIDT,0){Return(ShiftRight(Ones,32))} Method(TEST,0){CreateByteField(GETR(),0,FLD0) Return(FLD0)}}

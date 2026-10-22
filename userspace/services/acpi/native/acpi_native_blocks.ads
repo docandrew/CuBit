@@ -2,7 +2,6 @@ with Interfaces;
 with ACPI_Endpoint;
 with ACPI_Requests;
 with ACPI_Service;
-with CuBit.Messages;
 with CuBit.Memory_Grants;
 -- Native trusted boundary, serialized by the service loop. The supervisor must
 -- bind Provider and Config.Provider_Tag to the same snapshot provider.

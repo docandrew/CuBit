@@ -1,20 +1,82 @@
 #!/usr/bin/env python3
 """Portable Linux-hosted ACPI checks. Requires the repository's Nix shell."""
 from pathlib import Path
-import argparse, json, math, re, resource, subprocess, tempfile, time
+import argparse, json, math, os, re, resource, subprocess, sys, tempfile, time
 root = Path(__file__).resolve().parents[2]
 parser = argparse.ArgumentParser()
 parser.add_argument('--mode', choices=['release', 'checked'], default='release')
-parser.add_argument('--group', choices=['focused', 'features', 'fixtures', 'adapters', 'compile-original', 'original-tests', 'corrections', 'capacity', 'static-buffer', 'static-buffer-oracle', 'service-api', 'mixed-comparison', 'tail-conditionals', 'to-buffer', 'delay', 'delay-policy', 'mid', 'to-string', 'explicit-format', 'match', 'resource-templates', 'all'], default='focused')
+parser.add_argument('--group', choices=['focused', 'features', 'fixtures', 'adapters', 'compile-original', 'original-tests', 'corrections', 'capacity', 'static-buffer', 'static-buffer-oracle', 'service-api', 'mixed-comparison', 'tail-conditionals', 'to-buffer', 'delay', 'delay-policy', 'mid', 'to-string', 'explicit-format', 'match', 'resource-templates', 'buffer-fields', 'notify-alias', 'metadata', 'buffer-sizing', 'buffer-dynamic', 'table-fields', 'capture', 'package-store', 'integer-ownership', 'service-milestone', 'runtime-packages', 'breakpoint', 'scalar-ledger', 'all'], default='focused')
 parser.add_argument('--test-timeout', type=float, default=180.0, help='maximum seconds per test (default:180)')
 parser.add_argument('--skip-main', action='append', default=[], help='explicitly omit a previously validated main; recorded in report')
+parser.add_argument('--ledger-selection', nargs='+', help='Explicit scalar-ledger closure labels only')
 args = parser.parse_args()
+if args.ledger_selection and args.group != 'scalar-ledger':
+    parser.error('--ledger-selection requires --group scalar-ledger')
 if not math.isfinite(args.test_timeout) or args.test_timeout <= 0:
     parser.error('--test-timeout must be positive')
+if args.group == 'scalar-ledger':
+    if args.skip_main: parser.error('scalar-ledger uses explicit closure selections, not skip-main')
+    command = [sys.executable, '-B', str(root / 'tests/aml-scalar-ledger-count/run.py'), '--mode', args.mode]
+    if args.ledger_selection: command += ['--selection', *args.ledger_selection]
+    os.execv(sys.executable, command)
+
+if args.group == 'breakpoint':
+    if args.skip_main: parser.error('breakpoint requires its complete focused selection')
+    os.execv(sys.executable, [sys.executable, '-B', str(root / 'tests/aml-breakpoint/run.py'), '--mode', args.mode])
+
+if args.group == 'runtime-packages':
+    if args.skip_main: parser.error('runtime-packages requires its complete registered selection')
+    os.execv(sys.executable, [sys.executable, '-B', str(root / 'tests/aml-runtime-packages/run.py'), '--mode', args.mode])
+
+if args.group == 'service-milestone':
+    if args.skip_main: parser.error('service-milestone requires its complete selection')
+    os.execv(sys.executable, [sys.executable, '-B', str(root / 'tests/acpi-service-milestone/run.py'), '--mode', args.mode])
+
+if args.group == 'integer-ownership':
+    if args.skip_main:
+        parser.error('integer-ownership requires its complete wide selection; --skip-main is not supported')
+    os.execv(sys.executable, [sys.executable, '-B', str(root / 'tests/aml-integer-ownership/run.py'), '--selection', 'wide', '--mode', args.mode])
+
+if args.group == 'package-store':
+    if args.skip_main:
+        parser.error('package-store requires all seven mains; --skip-main is not supported')
+    os.execv(sys.executable, [sys.executable, '-B', str(root / 'tests/aml-package-store/run.py'), '--mode', args.mode])
+
+if args.group == 'capture':
+    if args.skip_main:
+        parser.error('capture requires its complete selection; --skip-main is not supported')
+    os.execv(sys.executable, [sys.executable, '-B', str(root / 'tests/aml-capture/run.py'), '--mode', args.mode])
+if args.group == 'table-fields':
+    if args.skip_main:
+        parser.error('table-fields requires all five mains and all twelve comparisons; --skip-main is not supported')
+    os.execv(sys.executable, [sys.executable, '-B', str(root / 'tests/aml-table-fields/run.py'),
+             '--mode', args.mode, '--test-timeout', str(args.test_timeout)])
+if args.group == 'buffer-dynamic':
+    if args.skip_main:
+        parser.error('buffer-dynamic requires the real owner main and all twenty comparisons; --skip-main is not supported')
+    os.execv(sys.executable, [sys.executable, '-B', str(root / 'tests/aml-buffer-dynamic/run.py'),
+             '--mode', args.mode, '--test-timeout', str(args.test_timeout)])
+if args.group == 'buffer-sizing':
+    if args.skip_main:
+        parser.error('buffer-sizing requires all five mains and thirteen adapters; --skip-main is not supported')
+    os.execv(sys.executable, [sys.executable, '-B', str(root / 'tests/aml-buffer-sizing/run.py'),
+             '--mode', args.mode, '--test-timeout', str(args.test_timeout)])
+if args.group == 'metadata':
+    if args.skip_main:
+        parser.error('metadata requires all ten mains; --skip-main is not supported')
+    os.execv(sys.executable, [sys.executable, '-B', str(root / 'tests/aml-metadata/run.py'),
+             '--mode', args.mode, '--test-timeout', str(args.test_timeout)])
+if args.group == 'notify-alias':
+    if args.skip_main:
+        parser.error('notify-alias requires all six mains; --skip-main is not supported')
+    # Replace this dispatcher so TERM reaches the suite directly.
+    os.execv(sys.executable, [sys.executable, str(root / 'tests/aml-notify/run.py'),
+             '--mode', args.mode, '--test-timeout', str(args.test_timeout)])
 resource.setrlimit(resource.RLIMIT_STACK, (64 * 1024 * 1024, resource.getrlimit(resource.RLIMIT_STACK)[1]))
 mode = args.mode
 focused = [f'tests/aml-containers/containers_{mode}.gpr', f'tests/aml-debug/revision_{mode}.gpr', f'tests/aml-concatenate/owner_{mode}.gpr']
 groups = {'focused': focused,
+          'buffer-fields': [],
           'resource-templates': [f'tests/aml-resource/{mode}.gpr'],
           'match': [f'tests/aml-match/{mode}.gpr'],
           'explicit-format': [f'tests/aml-explicit-format/{mode}.gpr'],
@@ -68,6 +130,14 @@ def run(cmd, label, timeout=None, cwd=root):
         save()
 save()
 try:
+    if args.group == 'buffer-fields':
+        command = ['python3', str(root / 'tests/aml-buffer-fields/run.py'),
+                   '--mode', mode, '--test-timeout', str(args.test_timeout)]
+        for main in args.skip_main:
+            command.extend(['--skip-main', main])
+        # The suite bounds each child and kills its process group on timeout.
+        # A second deadline here could kill only the supervisor, orphaning them.
+        run(command, 'buffer-fields-suite')
     for name in projects:
         project = root / name
         text = project.read_text()

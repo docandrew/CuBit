@@ -8,6 +8,7 @@ with AML_Objects;
 with AML_References;
 with AML_Table_Backing;
 procedure Provisional_Write_Tests is
+   use type AML_Decode.Bytes;
    use type Integer_Value;
    use type AML_Objects.State;
    use type AML_Objects.Allocation_Status;

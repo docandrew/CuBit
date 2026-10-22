@@ -1,0 +1,386 @@
+[
+  {
+    "case": "r1-alias",
+    "classification": "executed",
+    "observations": [
+      {
+        "method": "TEST",
+        "integer": 2
+      },
+      {
+        "method": "GETD",
+        "integer": 2
+      },
+      {
+        "method": "GETS",
+        "integer": 2
+      },
+      {
+        "method": "GETA",
+        "integer": 2
+      },
+      {
+        "method": "LEAF",
+        "integer": 17
+      },
+      {
+        "method": "NEST",
+        "integer": 34
+      }
+    ],
+    "cache_warning": true
+  },
+  {
+    "case": "r1-self",
+    "classification": "executed",
+    "observations": [
+      {
+        "method": "TEST",
+        "integer": 2
+      },
+      {
+        "method": "GETD",
+        "integer": 1
+      },
+      {
+        "method": "GETS",
+        "integer": 2
+      },
+      {
+        "method": "GETA",
+        "integer": 1
+      },
+      {
+        "method": "LEAF",
+        "integer": 17
+      },
+      {
+        "method": "NEST",
+        "integer": 34
+      }
+    ],
+    "cache_warning": true
+  },
+  {
+    "case": "r1-source-independence",
+    "classification": "executed",
+    "observations": [
+      {
+        "method": "TEST",
+        "integer": 17
+      },
+      {
+        "method": "GETD",
+        "integer": 2
+      },
+      {
+        "method": "GETS",
+        "integer": 2
+      },
+      {
+        "method": "GETA",
+        "integer": 2
+      },
+      {
+        "method": "LEAF",
+        "integer": 68
+      },
+      {
+        "method": "NEST",
+        "integer": 34
+      }
+    ],
+    "cache_warning": true
+  },
+  {
+    "case": "r1-nested-independence",
+    "classification": "executed",
+    "observations": [
+      {
+        "method": "TEST",
+        "integer": 34
+      },
+      {
+        "method": "GETD",
+        "integer": 2
+      },
+      {
+        "method": "GETS",
+        "integer": 2
+      },
+      {
+        "method": "GETA",
+        "integer": 2
+      },
+      {
+        "method": "LEAF",
+        "integer": 17
+      },
+      {
+        "method": "NEST",
+        "integer": 85
+      }
+    ],
+    "cache_warning": true
+  },
+  {
+    "case": "r1-old-target-local",
+    "classification": "executed",
+    "observations": [
+      {
+        "method": "TEST",
+        "integer": 1
+      },
+      {
+        "method": "GETD",
+        "integer": 2
+      },
+      {
+        "method": "GETS",
+        "integer": 2
+      },
+      {
+        "method": "GETA",
+        "integer": 2
+      },
+      {
+        "method": "LEAF",
+        "integer": 17
+      },
+      {
+        "method": "NEST",
+        "integer": 34
+      }
+    ],
+    "cache_warning": true
+  },
+  {
+    "case": "r1-integer-replacement",
+    "classification": "compiler_process_failure",
+    "observations": [],
+    "cache_warning": null
+  },
+  {
+    "case": "r2-alias",
+    "classification": "executed",
+    "observations": [
+      {
+        "method": "TEST",
+        "integer": 2
+      },
+      {
+        "method": "GETD",
+        "integer": 2
+      },
+      {
+        "method": "GETS",
+        "integer": 2
+      },
+      {
+        "method": "GETA",
+        "integer": 2
+      },
+      {
+        "method": "LEAF",
+        "integer": 17
+      },
+      {
+        "method": "NEST",
+        "integer": 34
+      }
+    ],
+    "cache_warning": true
+  },
+  {
+    "case": "r2-self",
+    "classification": "executed",
+    "observations": [
+      {
+        "method": "TEST",
+        "integer": 2
+      },
+      {
+        "method": "GETD",
+        "integer": 1
+      },
+      {
+        "method": "GETS",
+        "integer": 2
+      },
+      {
+        "method": "GETA",
+        "integer": 1
+      },
+      {
+        "method": "LEAF",
+        "integer": 17
+      },
+      {
+        "method": "NEST",
+        "integer": 34
+      }
+    ],
+    "cache_warning": true
+  },
+  {
+    "case": "r2-source-independence",
+    "classification": "executed",
+    "observations": [
+      {
+        "method": "TEST",
+        "integer": 17
+      },
+      {
+        "method": "GETD",
+        "integer": 2
+      },
+      {
+        "method": "GETS",
+        "integer": 2
+      },
+      {
+        "method": "GETA",
+        "integer": 2
+      },
+      {
+        "method": "LEAF",
+        "integer": 68
+      },
+      {
+        "method": "NEST",
+        "integer": 34
+      }
+    ],
+    "cache_warning": true
+  },
+  {
+    "case": "r2-nested-independence",
+    "classification": "executed",
+    "observations": [
+      {
+        "method": "TEST",
+        "integer": 34
+      },
+      {
+        "method": "GETD",
+        "integer": 2
+      },
+      {
+        "method": "GETS",
+        "integer": 2
+      },
+      {
+        "method": "GETA",
+        "integer": 2
+      },
+      {
+        "method": "LEAF",
+        "integer": 17
+      },
+      {
+        "method": "NEST",
+        "integer": 85
+      }
+    ],
+    "cache_warning": true
+  },
+  {
+    "case": "r2-old-target-local",
+    "classification": "executed",
+    "observations": [
+      {
+        "method": "TEST",
+        "integer": 1
+      },
+      {
+        "method": "GETD",
+        "integer": 2
+      },
+      {
+        "method": "GETS",
+        "integer": 2
+      },
+      {
+        "method": "GETA",
+        "integer": 2
+      },
+      {
+        "method": "LEAF",
+        "integer": 17
+      },
+      {
+        "method": "NEST",
+        "integer": 34
+      }
+    ],
+    "cache_warning": true
+  },
+  {
+    "case": "r2-integer-replacement",
+    "classification": "compiler_process_failure",
+    "observations": [],
+    "cache_warning": null
+  },
+  {
+    "case": "r1-self-old-index",
+    "classification": "executed",
+    "observations": [
+      {
+        "method": "TEST",
+        "integer": 17
+      },
+      {
+        "method": "GETD",
+        "integer": 1
+      },
+      {
+        "method": "GETS",
+        "integer": 2
+      },
+      {
+        "method": "GETA",
+        "integer": 1
+      },
+      {
+        "method": "LEAF",
+        "integer": 102
+      },
+      {
+        "method": "NEST",
+        "integer": 34
+      }
+    ],
+    "cache_warning": true
+  },
+  {
+    "case": "r2-self-old-index",
+    "classification": "executed",
+    "observations": [
+      {
+        "method": "TEST",
+        "integer": 17
+      },
+      {
+        "method": "GETD",
+        "integer": 1
+      },
+      {
+        "method": "GETS",
+        "integer": 2
+      },
+      {
+        "method": "GETA",
+        "integer": 1
+      },
+      {
+        "method": "LEAF",
+        "integer": 102
+      },
+      {
+        "method": "NEST",
+        "integer": 34
+      }
+    ],
+    "cache_warning": true
+  }
+]

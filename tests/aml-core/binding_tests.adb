@@ -3,10 +3,10 @@ with AML_Decode; use AML_Decode;
 with AML_Execute; use AML_Execute;
 with Namespace_Instance;
 procedure Binding_Tests is
+   use type AML_Decode.Bytes;
    package NS renames Namespace_Instance;
    use type NS.Load_Status;
    use type NS.State;
-   use type Byte;
    use type Integer_Value;
    Checks : Natural := 0;
    function Enc (Text : String) return Bytes is
@@ -41,11 +41,11 @@ procedure Binding_Tests is
          Check (Loaded = NS.Loaded);
          Node := NS.Child (Tree, NS.Child (Tree, NS.Root, "DEV0"), "READ");
          Before := Tree;
-         R := NS.Invoke (Tree, Node, [others => 0], 0, 30);
+         NS.Invoke_Read_Only (Tree, Node, [others => 0], 0, 30, R);
          Check (R.Status = Expected and then
                 (if Expected = Returned then R.Value = Value));
          Check (Tree = Before);
-         R := NS.Invoke (Tree, Node, [others => 0], 0, 1);
+         NS.Invoke_Read_Only (Tree, Node, [others => 0], 0, 1, R);
          Check (R.Status = Budget_Exceeded);
       end loop;
    end Case_Test;

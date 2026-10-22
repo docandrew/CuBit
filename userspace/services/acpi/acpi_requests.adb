@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with ACPI_Device_Policy;
 with Firmware_Tables.DMAR;
 with Firmware_Tables.MCFG;
 with Firmware_Tables.MADT;
@@ -6,12 +7,14 @@ with Firmware_Tables.SRAT;
 with Firmware_Tables.SLIT;
 package body ACPI_Requests with SPARK_Mode is
    pragma Unevaluated_Use_Of_Old (Allow);
-   function Valid (Server : State) return Boolean is (ACPI_Bootstrap.Valid (Server.Boot));
+   function Valid (Server : State) return Boolean is
+     (ACPI_Bootstrap.Valid (Server.Boot) and then Receipts.Valid (Server.Receipt));
    function Model (Server : State) return State_Model is
      (Table_Capacity => Server.Table_Capacity, Byte_Capacity => Server.Byte_Capacity,
       Table_Byte_Limit => Server.Table_Byte_Limit, Boot => ACPI_Bootstrap.Model (Server.Boot),
       Initial_Revision => Server.Initial_Revision,
-      Version => Server.Version, Open => Server.Open, ID => Server.ID,
+      Version => Server.Version, Receipt => Server.Receipt,
+      Staged_Notification => Server.Staged_Notification, Open => Server.Open, ID => Server.ID,
       Kind => Server.Kind, Extent => Server.Extent, Used => Server.Used,
       Buffer_Data => Server.Buffer_Data);
    use type ACPI_Service.Install_Status;
@@ -19,6 +22,10 @@ package body ACPI_Requests with SPARK_Mode is
    function Revision (Server : State) return Revision_Number is (Server.Version);
    function Table_Open (Server : State) return Boolean is (Server.Open);
    function Received (Server : State) return Natural is (Server.Used);
+   function Completion (Server : State) return ACPI_Bootstrap.Finish_Report is
+     (ACPI_Bootstrap.Completion (Server.Boot));
+   function Fatal_Diagnostic (Server : State) return ACPI_Fatal_Diagnostics.Observation is
+     (ACPI_Bootstrap.Fatal_Diagnostic (Server.Boot));
    function Observe (Server : State) return ACPI_Service.Metrics is (ACPI_Bootstrap.Observe (Server.Boot));
    procedure Import_Block
      (Server : in out State; Origin : Authority; Token : Unsigned_64;
@@ -50,6 +57,107 @@ package body ACPI_Requests with SPARK_Mode is
          Reply.Data (1) := Unsigned_64 (ACPI_Service.Install_Status'Pos (Result));
       end if;
    end Import_Block;
+   function Finish_Code (Item : ACPI_Bootstrap.Finish_Stage) return Finish_Stage_Code is
+     (case Item is
+        when ACPI_Bootstrap.Not_Attempted => Finish_Not_Attempted_Code,
+        when ACPI_Bootstrap.Freeze_Failed => Finish_Freeze_Failed_Code,
+        when ACPI_Bootstrap.Execution_Failed => Finish_Execution_Failed_Code,
+        when ACPI_Bootstrap.Members_Failed => Finish_Members_Failed_Code,
+        when ACPI_Bootstrap.Finished => Finish_Finished_Code);
+   function Freeze_Code (Item : ACPI_Service.Freeze_Status) return Freeze_Outcome_Code is
+     (case Item is
+        when ACPI_Service.Catalog_Frozen_OK => Freeze_Catalog_Frozen_OK_Code,
+        when ACPI_Service.Freeze_Wrong_Phase => Freeze_Freeze_Wrong_Phase_Code,
+        when ACPI_Service.Freeze_Empty => Freeze_Freeze_Empty_Code);
+   function Execution_Code (Item : ACPI_Service.Execution_Phase_Result) return Execution_Phase_Code is
+     (case Item is
+        when ACPI_Service.Execution_Not_Started => Execution_Execution_Not_Started_Code,
+        when ACPI_Service.Preparation_Failed => Execution_Preparation_Failed_Code,
+        when ACPI_Service.Module_Execution_Reported => Execution_Module_Execution_Reported_Code);
+   function Preparation_Code (Item : ACPI_Service.Values.Preparation_Outcome) return Preparation_Outcome_Code is
+     (case Item is
+        when ACPI_Service.Values.Preparation_Not_Attempted => Preparation_Preparation_Not_Attempted_Code,
+        when ACPI_Service.Values.Preparation_Rejected => Preparation_Preparation_Rejected_Code,
+        when ACPI_Service.Values.Firmware_Prepared => Preparation_Firmware_Prepared_Code,
+        when ACPI_Service.Values.Namespace_Capacity_Exceeded => Preparation_Namespace_Capacity_Exceeded_Code,
+        when ACPI_Service.Values.Value_Capacity_Exceeded => Preparation_Value_Capacity_Exceeded_Code);
+   function Access_Code (Item : ACPI_Service.Values.Access_Status) return Access_Outcome_Code is
+     (case Item is
+        when ACPI_Service.Values.Available => Access_Available_Code,
+        when ACPI_Service.Values.Invalid_Value => Access_Invalid_Value_Code,
+        when ACPI_Service.Values.Uninitialized_Element => Access_Uninitialized_Element_Code,
+        when ACPI_Service.Values.Wrong_Kind => Access_Wrong_Kind_Code,
+        when ACPI_Service.Values.Out_Of_Bounds => Access_Out_Of_Bounds_Code,
+        when ACPI_Service.Values.Root_Limit => Access_Root_Limit_Code,
+        when ACPI_Service.Values.Identity_Exhausted => Access_Identity_Exhausted_Code,
+        when ACPI_Service.Values.Busy => Access_Busy_Code,
+        when ACPI_Service.Values.Wrong_Phase => Access_Wrong_Phase_Code);
+   function Module_Code (Item : ACPI_Service.Values.Module_Outcome) return Module_Outcome_Code is
+     (case Item is
+        when ACPI_Service.Values.Catalog_Rejected => Module_Catalog_Rejected_Code,
+        when ACPI_Service.Values.Modules_Completed => Module_Modules_Completed_Code,
+        when ACPI_Service.Values.Module_Rejected => Module_Module_Rejected_Code);
+   function Device_Code (Item : ACPI_Bootstrap.Device_Phase) return Device_Phase_Code is
+     (case Item is
+        when ACPI_Bootstrap.Devices_Not_Started => Device_Not_Started_Code,
+        when ACPI_Bootstrap.Devices_Preparing => Device_Preparing_Code,
+        when ACPI_Bootstrap.Devices_Awaiting_Regions => Device_Awaiting_Regions_Code,
+        when ACPI_Bootstrap.Devices_Walking => Device_Walking_Code,
+        when ACPI_Bootstrap.Devices_Completed => Device_Completed_Code,
+        when ACPI_Bootstrap.Devices_Completed_With_Errors => Device_Completed_With_Errors_Code,
+        when ACPI_Bootstrap.Devices_Incomplete => Device_Incomplete_Code,
+        when ACPI_Bootstrap.Devices_Failed => Device_Failed_Code);
+   function Region_Code (Item : ACPI_Device_Policy.Region_Outcome) return Region_Status_Code is
+     (case Item is
+        when ACPI_Device_Policy.Regions_Connected => Regions_Connected_Code,
+        when ACPI_Device_Policy.No_Regions_Required => No_Regions_Required_Code,
+        when ACPI_Device_Policy.Regions_Unavailable => Regions_Unavailable_Code,
+        when ACPI_Device_Policy.Region_Initialization_Failed => Region_Failed_Code);
+   function Error_Code (Item : AML_Execute.Execution_Status) return Startup_Error_Code is
+     (case Item is
+        when AML_Execute.Returned => Error_Returned,
+        when AML_Execute.Object_Returned => Error_Object_Returned,
+        when AML_Execute.Reference_Returned => Error_Reference_Returned,
+        when AML_Execute.Metadata_Returned => Error_Metadata_Returned,
+        when AML_Execute.No_Return => Error_No_Return,
+        when AML_Execute.Truncated => Error_Truncated,
+        when AML_Execute.Unsupported => Error_Unsupported,
+        when AML_Execute.Uninitialized => Error_Uninitialized,
+        when AML_Execute.Missing_Argument => Error_Missing_Argument,
+        when AML_Execute.Budget_Exceeded => Error_Budget_Exceeded,
+        when AML_Execute.Invalid_Method => Error_Invalid_Method,
+        when AML_Execute.Argument_Mismatch => Error_Argument_Mismatch,
+        when AML_Execute.Mutex_Order => Error_Mutex_Order,
+        when AML_Execute.Duplicate_Name => Error_Duplicate_Name,
+        when AML_Execute.Namespace_Limit => Error_Namespace_Limit,
+        when AML_Execute.Expression_Limit => Error_Expression_Limit,
+        when AML_Execute.Block_Limit => Error_Block_Limit,
+        when AML_Execute.Bad_Package => Error_Bad_Package,
+        when AML_Execute.Invalid_Control => Error_Invalid_Control,
+        when AML_Execute.Unknown_Name => Error_Unknown_Name,
+        when AML_Execute.Unsupported_Value => Error_Unsupported_Value,
+        when AML_Execute.Bad_Name => Error_Bad_Name,
+        when AML_Execute.Call_Limit => Error_Call_Limit,
+        when AML_Execute.Division_By_Zero => Error_Division_By_Zero,
+        when AML_Execute.Empty_Buffer => Error_Empty_Buffer,
+        when AML_Execute.Missing_Result => Error_Missing_Result,
+        when AML_Execute.Value_Limit => Error_Value_Limit,
+        when AML_Execute.Numeric_Overflow => Error_Numeric_Overflow,
+        when AML_Execute.Invalid_Delay => Error_Invalid_Delay,
+        when AML_Execute.Delay_Failed => Error_Delay_Failed,
+        when AML_Execute.Package_Limit => Error_Package_Limit,
+        when AML_Execute.Invalid_Match_Operation => Error_Invalid_Match_Operation,
+        when AML_Execute.No_Resource_End_Tag => Error_No_Resource_End_Tag,
+        when AML_Execute.Invalid_Resource_Type => Error_Invalid_Resource_Type,
+        when AML_Execute.Bad_Resource_Length => Error_Bad_Resource_Length,
+        when AML_Execute.Resource_Buffer_Length => Error_Resource_Buffer_Length,
+        when AML_Execute.Invalid_Field_Length => Error_Invalid_Field_Length,
+        when AML_Execute.Buffer_Field_Limit => Error_Buffer_Field_Limit,
+        when AML_Execute.Notify_Limit => Error_Notify_Limit,
+        when AML_Execute.Module_Completed => Error_Module_Completed,
+        when AML_Execute.Mutex_Not_Acquired => Error_Mutex_Not_Acquired,
+        when AML_Execute.Fatal_Requested => Error_Fatal_Requested,
+        when AML_Execute.Field_Indeterminate => Error_Field_Indeterminate);
    -- Read requests cannot modify the snapshot or its upload state.
    procedure Read_Request (Server : State; Request : Packet; Reply : out Response)
      with Pre => Consistent (Server) and then Valid (Server) and then
@@ -61,9 +169,11 @@ package body ACPI_Requests with SPARK_Mode is
    begin
       Reply := (Status => Malformed, Data => [0 => Server.Version, others => 0]);
       if Request.Label = Read_Metrics then
-         if Request.Data (0) > 8 or else Request.Data (1 .. 3) /= [0, 0, 0] then return; end if;
+         if Request.Data (0) > Metrics_Last_Page or else Request.Data (1 .. 3) /= [0, 0, 0] then return; end if;
          declare
+            Finished : constant ACPI_Bootstrap.Finish_Report := Completion (Server);
             Stats : constant ACPI_Service.Metrics := Observe (Server);
+            Devices : constant ACPI_Bootstrap.Device_Report := ACPI_Bootstrap.Device_Completion (Server.Boot);
          begin
             Reply.Status := OK;
             case Request.Data (0) is
@@ -94,9 +204,40 @@ package body ACPI_Requests with SPARK_Mode is
                      Reply.Data (1 .. 3) := [Unsigned_64 (Report.Bound),
                        Unsigned_64 (Report.Missing), Unsigned_64 (Report.Unsupported)];
                   end;
-               when others => Reply.Data (1 .. 3) :=
+               when Metrics_Members_State_Page => Reply.Data (1 .. 3) :=
                  [Boolean'Pos (ACPI_Bootstrap.Members_Initialized (Server.Boot)),
                   Unsigned_64 (ACPI_Bootstrap.Pending_Members (Server.Boot)), 0];
+               when Metrics_Device_State_Page => Reply.Data (1 .. 3) :=
+                 [Unsigned_64 (Device_Phase_Code'Enum_Rep (Device_Code (Devices.Stage))),
+                  Unsigned_64 (Region_Status_Code'Enum_Rep (Region_Code (Devices.Region_Status))),
+                  Unsigned_64 (Devices.Errors)];
+               when Metrics_Startup_Fuel_Page => Reply.Data (1 .. 3) :=
+                 [Unsigned_64 (ACPI_Bootstrap.Startup_Charged (Server.Boot)),
+                  Unsigned_64 (Devices.Charged),
+                  Unsigned_64 (ACPI_Bootstrap.Completion (Server.Boot).Execution.Modules.Charged)];
+               when Metrics_Device_Calls_Page => Reply.Data (1 .. 3) :=
+                 [Unsigned_64 (Devices.Status_Methods), Unsigned_64 (Devices.Initialization_Methods),
+                  Unsigned_64 (Devices.First_Error_Node)];
+               when Metrics_Device_Error_Page => Reply.Data (1 .. 3) :=
+                 [Unsigned_64 (Startup_Error_Code'Enum_Rep (Error_Code (Devices.First_Error))), 0, 0];
+               when Metrics_Completion_State_Page => Reply.Data (1 .. 3) :=
+                 [Unsigned_64 (Finish_Stage_Code'Enum_Rep (Finish_Code (Finished.Stage))),
+                  Unsigned_64 (Freeze_Outcome_Code'Enum_Rep (Freeze_Code (Finished.Freeze))),
+                  Unsigned_64 (Execution_Phase_Code'Enum_Rep (Execution_Code (Finished.Execution.Phase)))];
+               when Metrics_Completion_Access_Page => Reply.Data (1 .. 3) :=
+                 [Unsigned_64 (Preparation_Outcome_Code'Enum_Rep (Preparation_Code (Finished.Execution.Preparation))),
+                  Unsigned_64 (Access_Outcome_Code'Enum_Rep (Access_Code (Finished.Execution_Status))),
+                  Unsigned_64 (Access_Outcome_Code'Enum_Rep (Access_Code (Finished.Member_Status)))];
+               when Metrics_Module_State_Page => Reply.Data (1 .. 3) :=
+                 [Unsigned_64 (Module_Outcome_Code'Enum_Rep (Module_Code (Finished.Execution.Modules.Outcome))),
+                  Unsigned_64 (Finished.Execution.Modules.Completed),
+                  Unsigned_64 (Finished.Execution.Failed_Table_ID)];
+               when Metrics_Module_Error_Page => Reply.Data (1 .. 3) :=
+                 [Unsigned_64 (Startup_Error_Code'Enum_Rep (Error_Code (Finished.Execution.Modules.Failure))),
+                  0,
+                  0];
+               when others => null; -- Rejected by the upper-bound guard.
+
             end case;
          end;
          return;
@@ -528,6 +669,148 @@ package body ACPI_Requests with SPARK_Mode is
          return;
       end if;
    end Read_Request;
+   function Notify_Kind (Kind : ACPI_Service.Namespace.Notification_Target_Kind)
+     return Notification_Kind_Code is
+     (case Kind is
+        when ACPI_Service.Namespace.Device_Notification => Notify_Device,
+        when ACPI_Service.Namespace.Processor_Notification => Notify_Processor,
+        when ACPI_Service.Namespace.Thermal_Notification => Notify_Thermal);
+   function Notify_Class (Class : ACPI_Service.Namespace.Notification_Class)
+     return Notification_Class_Code is
+     (case Class is
+        when ACPI_Service.Namespace.System_Notify => Notify_System_Class,
+        when ACPI_Service.Namespace.Device_Notify => Notify_Device_Class);
+   procedure Observe_Notification (Server : State; Request : Packet; Reply : out Response) is
+      ID : constant Receipt_Number := Receipts.Current (Server.Receipt);
+      Item : ACPI_Service.Notification_Observation renames Server.Staged_Notification;
+      Packed : Unsigned_64 := 0;
+   begin
+      Reply := (Status => Malformed, Data => [0 => Server.Version, others => 0]);
+      if Request.Label = Read_Notification_State then
+         if Request.Data (0) not in Notification_State_Page
+           or else Request.Data (1 .. 3) /= [0,0,0] then return; end if;
+         if Request.Data (0) = Notification_State_Summary then
+            Reply.Data (1 .. 3) :=
+              [Boolean'Pos (ACPI_Bootstrap.Notifications_Requested (Server.Boot)) +
+               2 * Boolean'Pos (ACPI_Bootstrap.Notifications_Enabled (Server.Boot)),
+               Unsigned_64 (ACPI_Bootstrap.Pending_Notifications (Server.Boot)), ID];
+         else
+            Reply.Data (1 .. 3) :=
+              [Unsigned_64 (Access_Outcome_Code'Enum_Rep
+                 (Access_Code (ACPI_Bootstrap.Notification_Status (Server.Boot)))),
+               Unsigned_64 (ACPI_Service.Notification_Count'Last), 1];
+         end if;
+         Reply.Status := OK;
+         return;
+      end if;
+      if Request.Data (1) not in Notification_Page or else Request.Data (3) /= 0
+        or else (Request.Data (1) /= Notification_Path_Page and then Request.Data (2) /= 0)
+      then return; end if;
+      if ID = 0 or else Request.Data (0) /= ID then Reply.Status := Stale; return; end if;
+      case Notification_Page (Request.Data (1)) is
+         when Notification_Data_Page =>
+            Reply.Data (1 .. 3) :=
+              [Unsigned_64 (Notification_Kind_Code'Enum_Rep (Notify_Kind (Item.Target_Kind))),
+               Unsigned_64 (Notification_Class_Code'Enum_Rep (Notify_Class (Item.Class))), Item.Number];
+         when Notification_Identity_Page =>
+            Reply.Data (1 .. 3) :=
+              [Unsigned_64 (Item.Node), Unsigned_64 (Item.Incarnation), Boolean'Pos (Item.Current_Target)];
+         when Notification_Path_Page =>
+            if Request.Data (2) >= Unsigned_64 (Item.Path_Length) then
+               Reply.Status := Index_Out_Of_Range; return;
+            end if;
+            declare
+               Segment : constant String := Item.Path (Natural (Request.Data (2)) + 1);
+            begin
+               for I in Segment'Range loop
+                  Packed := Packed or Shift_Left
+                    (Unsigned_64 (Character'Pos (Segment (I))), (I - Segment'First) * 8);
+               end loop;
+            end;
+            Reply.Data (1 .. 3) := [Packed, Unsigned_64 (Item.Path_Length), 0];
+      end case;
+      Reply.Status := OK;
+   end Observe_Notification;
+   procedure Mutate_Notification (Server : in out State; Request : Packet; Reply : out Response) is
+      Status : ACPI_Service.Values.Access_Status;
+      Item : ACPI_Service.Notification_Observation;
+      Present : Boolean;
+      Acknowledged : Receipts.Ack_Result;
+      use type Receipts.Ack_Result;
+      use type ACPI_Service.Values.Access_Status;
+      procedure Claim_Reply is
+      begin
+         Reply := (Status => OK, Data =>
+           [Server.Version, Receipts.Current (Server.Receipt),
+            Unsigned_64 (ACPI_Bootstrap.Pending_Notifications (Server.Boot)),
+            (if Receipts.Current (Server.Receipt) = 0 then 0
+             else Unsigned_64 (Server.Staged_Notification.Path_Length))]);
+      end Claim_Reply;
+   begin
+      Reply := (Status => Malformed, Data => [0 => Server.Version, others => 0]);
+      if Request.Data (2 .. 3) /= [0,0] then return; end if;
+      if Request.Label = Configure_Notifications then
+         if Request.Data (1) > 1 then return; end if;
+      elsif Request.Label = Claim_Notification then
+         if Request.Data (1) /= 0 then return; end if;
+      elsif Request.Data (1) = 0 or else Request.Data (1) > Max_Revision then return;
+      end if;
+      -- An old ACK cannot clear a newer active receipt. Zero never authorizes.
+      if Request.Label = Acknowledge_Notification and then
+        Request.Data (1) = Receipts.Last_Acknowledged (Server.Receipt)
+      then
+         Reply := (Status => OK, Data => [Server.Version, Request.Data (1),
+           Unsigned_64 (ACPI_Bootstrap.Pending_Notifications (Server.Boot)), 0]);
+         return;
+      end if;
+      if Request.Data (0) /= Server.Version then Reply.Status := Stale; return; end if;
+      if Request.Label = Claim_Notification then
+         if Receipts.Current (Server.Receipt) /= 0 then Claim_Reply; return; end if;
+         if not ACPI_Bootstrap.Members_Initialized (Server.Boot) then
+            Reply.Status := Wrong_Order; return;
+         end if;
+         if ACPI_Bootstrap.Pending_Notifications (Server.Boot) = 0 then Claim_Reply; return; end if;
+         if Server.Version = Max_Revision or else not Receipts.Can_Issue (Server.Receipt) then
+            Reply.Status := Resource_Limit; return;
+         end if;
+         ACPI_Bootstrap.Take_Notification (Server.Boot, Item, Present, Status);
+         if Status /= ACPI_Service.Values.Available then Reply.Status := Wrong_Order; return; end if;
+         if not Present then Claim_Reply; return; end if;
+         -- All admission checks preceded Take. Fixed record assignment and
+         -- preflighted monotonic counters cannot fail after the FIFO transfer.
+         Server.Staged_Notification := Item;
+         Receipts.Issue (Server.Receipt);
+         Server.Version := Server.Version + 1;
+         Claim_Reply;
+      elsif Request.Label = Acknowledge_Notification then
+         if Request.Data (1) /= Receipts.Current (Server.Receipt) then Reply.Status := Stale; return; end if;
+         if Server.Version = Max_Revision then Reply.Status := Resource_Limit; return; end if;
+         Receipts.Acknowledge (Server.Receipt, Request.Data (1), Acknowledged);
+         pragma Assert (Acknowledged = Receipts.Accepted);
+         Server.Staged_Notification := (others => <>);
+         Server.Version := Server.Version + 1;
+         Reply := (Status => OK, Data => [Server.Version, Request.Data (1),
+           Unsigned_64 (ACPI_Bootstrap.Pending_Notifications (Server.Boot)), 0]);
+      else
+         -- Reject failed pre-Ready sessions even if requested interest matches.
+         if Current (Server) = Failed and then not ACPI_Bootstrap.Members_Initialized (Server.Boot) then
+            Reply.Status := Wrong_Order; return;
+         end if;
+         if (Request.Data (1) = 1) /= ACPI_Bootstrap.Notifications_Requested (Server.Boot)
+           or else ACPI_Bootstrap.Notification_Status (Server.Boot) /= ACPI_Service.Values.Available
+         then
+            if Server.Version = Max_Revision then Reply.Status := Resource_Limit; return; end if;
+            ACPI_Bootstrap.Set_Notification_Interest (Server.Boot, Request.Data (1) = 1, Status);
+            if Status /= ACPI_Service.Values.Available then Reply.Status := Wrong_Order; return; end if;
+            Server.Version := Server.Version + 1;
+         end if;
+         Reply := (Status => OK, Data => [Server.Version,
+           Boolean'Pos (ACPI_Bootstrap.Notifications_Requested (Server.Boot)),
+           Boolean'Pos (ACPI_Bootstrap.Notifications_Enabled (Server.Boot)),
+           Unsigned_64 (Access_Outcome_Code'Enum_Rep
+             (Access_Code (ACPI_Bootstrap.Notification_Status (Server.Boot))))]);
+      end if;
+   end Mutate_Notification;
    -- The packet handler has already rejected repeated startup and bad counts.
    procedure Start_Validated (Session : in out ACPI_Bootstrap.State; Count : Positive)
      with Pre => ACPI_Bootstrap.Valid (Session)
@@ -564,7 +847,13 @@ package body ACPI_Requests with SPARK_Mode is
          Read_Request (Server, Request, Reply);
          return;
       end if;
+      if Request.Label in Read_Notification | Read_Notification_State then
+         Observe_Notification (Server, Request, Reply); return;
+      end if;
       if Origin /= Snapshot_Provider then Reply.Status := Denied; return; end if;
+      if Request.Label in Configure_Notifications | Claim_Notification | Acknowledge_Notification then
+         Mutate_Notification (Server, Request, Reply); return;
+      end if;
       if Request.Label not in Start_Snapshot .. Finish_Snapshot then return; end if;
       if Request.Data (0) /= Server.Version then Reply.Status := Stale; return; end if;
       if Initial_Version = Max_Revision then Reply.Status := Resource_Limit; return; end if;
@@ -638,7 +927,7 @@ package body ACPI_Requests with SPARK_Mode is
          when Finish_Snapshot =>
             if Request.Data (1 .. 3) /= [0, 0, 0] then return; end if;
             if Current (Server) /= Receiving or else Server.Open then Reply.Status := Wrong_Order; return; end if;
-            ACPI_Bootstrap.Finish (Server.Boot);
+            ACPI_Bootstrap.Finish (Server.Boot, ACPI_Bootstrap.Default_Startup_Budget);
             if Current (Server) /= Complete then Reply.Status := Incomplete; end if;
             pragma Assert (Consistent (Server));
          when others => return;

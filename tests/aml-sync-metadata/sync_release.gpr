@@ -1,5 +1,5 @@
 project Sync_release is
- for Source_Dirs use (".", "../aml-concatenate", "../../userspace/lib/acpi", "../../userspace/services/acpi", "../../shared/firmware");
+ for Source_Dirs use (".", "../aml-concatenate", "../../userspace/lib/acpi", "../../userspace/services/acpi", "../../shared/firmware", "../aml-core");
  for Object_Dir use "build-release";
  for Main use ("sync_metadata_tests.adb", "concatenate_oracle_runner.adb");
  package Compiler is

@@ -1,0 +1,7 @@
+project adapter_0_release is
+ for Source_Dirs use ("../acpi-integration", "../../userspace/lib/acpi", "../../shared/firmware");
+ for Object_Dir use "build-0-release";
+ package Compiler is
+  for Default_Switches ("Ada") use ("-O1", "-gnat2022", "-gnatwa", "-gnatwe", "-gnatp", "-gnatwF");
+ end Compiler;
+end adapter_0_release;

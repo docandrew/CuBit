@@ -1,5 +1,5 @@
 project Regions_release is
- for Source_Dirs use (".", "../aml-containers", "../aml-sync-metadata", "../aml-concatenate", "../../userspace/lib/acpi", "../../userspace/services/acpi", "../../shared/firmware");
+ for Source_Dirs use (".", "../aml-containers", "../aml-sync-metadata", "../aml-concatenate", "../../userspace/lib/acpi", "../../userspace/services/acpi", "../../shared/firmware", "../aml-core");
  for Object_Dir use "build-release";
  for Main use ("region_metadata_tests.adb", "container_tests.adb", "sync_metadata_tests.adb", "concatenate_oracle_runner.adb");
  package Compiler is

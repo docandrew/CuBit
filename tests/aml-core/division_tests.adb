@@ -2,6 +2,7 @@ with Ada.Text_IO;
 with AML_Decode; use AML_Decode;
 with AML_Execute; use AML_Execute;
 procedure Division_Tests is
+   use type AML_Decode.Bytes;
    use type Integer_Value;
    use type Byte;
    Checks : Natural := 0;

@@ -65,6 +65,24 @@ package body AML_Decode with SPARK_Mode is
       return (Kind => Limit_Exceeded);
    end Read_String;
 
+   function Read_String_Span (Data : Bytes) return String_Span_Result is
+   begin
+      if Data'Length = 0 then return (Kind => Truncated); end if;
+      if Data (Data'First) /= 16#0D# then return (Kind => Unsupported); end if;
+      if Data'Length < 2 then return (Kind => Truncated); end if;
+      for Offset in 1 .. Data'Length - 1 loop
+         pragma Loop_Invariant
+           (for all I in 1 .. Offset - 1 => Data (Data'First + I) in 1 .. 127);
+         if Data (Data'First + Offset) = 0 then
+            return (Kind => Accepted, Payload_Offset => 1,
+                    Length => Offset - 1, Consumed => Offset + 1);
+         elsif Data (Data'First + Offset) > 127 then
+            return (Kind => Malformed);
+         end if;
+      end loop;
+      return (Kind => Truncated);
+   end Read_String_Span;
+
    function Read_Field_Length (Data : Bytes) return Field_Length_Result is
       Following : Natural range 0 .. 3;
       Count : Positive range 1 .. 4;

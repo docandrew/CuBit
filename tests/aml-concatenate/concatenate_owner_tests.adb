@@ -8,9 +8,12 @@ with AML_References;
 with AML_Frame_Handles;
 with AML_Table_Backing;
 procedure Concatenate_Owner_Tests is
+   use type AML_Decode.Bytes;
    package NS is new AML_Namespace (16, AML_Delays.Unavailable_Provider);
    use NS; use NS.Owned;
    use type AML_Objects.State;
+   use type AML_References.Reference;
+   use type AML_Execute.Named_Metadata_Type;
    use type AML_Decode.Byte;
    use type AML_Decode.Integer_Value;
    A : Arena;
@@ -125,6 +128,8 @@ procedure Concatenate_Owner_Tests is
       Input : aliased AML_Table_Backing.State (1, 1);
       Result : Execution_Result;
       Loaded_Status : Load_Status;
+      Device_Identity : AML_References.Reference;
+      Description : Reference_Metadata;
       procedure Run (Code : Bytes) is
       begin
          Reset (A, OK); Check (OK);
@@ -137,7 +142,17 @@ procedure Concatenate_Owner_Tests is
       Run (Bytes'(16#A4#,16#8E#,16#71#,68,69,86,48));
       Check (Result.Status = Returned and then Result.Value = 6);
       Run (Bytes'(16#A4#,16#83#,16#71#,68,69,86,48));
-      Check (Result.Status = Unsupported_Value);
+      -- DerefOf a Device reference returns authenticated metadata, not data.
+      Make_Named_Identity (A, 1, Device_Identity, OK); Check (OK);
+      Check (Result.Status = Metadata_Returned
+        and then Result.Metadata.Mode = Live_Namespace
+        and then Metadata_Matches (A, Result.Metadata)
+        and then Result.Metadata.Namespace_Identity = Device_Identity);
+      Describe_Metadata_Value (A, Result.Metadata, Description);
+      Check (Description.Kind = Metadata_Only
+        and then Description.Object_Type = Device_Metadata);
+      Check (not Matches (A, Result.Metadata.Namespace_Identity)
+        and then Frame_Root_Count (A) = 0);
       Run (Bytes'(16#70#,0,16#71#,68,69,86,48,16#A4#,0));
       Check (Result.Status = Unsupported_Value);
    end Metadata_Check;

@@ -1,0 +1,8 @@
+project Checked is
+ for Source_Dirs use (".", "../../userspace/lib/acpi", "../../shared/firmware");
+ for Main use ("staged_lifetime_tests.adb");
+ for Object_Dir use "obj-checked"; for Exec_Dir use "bin-checked";
+ package Compiler is
+  for Default_Switches ("Ada") use ("-O1", "-gnat2022", "-gnatwa", "-gnatwe", "-gnata", "-gnato");
+ end Compiler;
+end Checked;

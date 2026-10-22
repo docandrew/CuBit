@@ -7,6 +7,7 @@ with ACPI_Service;
 with Firmware_Tables;
 with Capacity_Fixture; use Capacity_Fixture;
 procedure Core_Capacity_Tests is
+   use type AML_Decode.Bytes;
    use type Integer_Value;
    package S is new ACPI_Service_Core (Perform_Delay => AML_Delays.Unavailable_Provider, Namespace_Node_Capacity => 4,
       Aggregate_Method_Capacity => 70000, Retained_Result_Capacity => 1);
@@ -31,10 +32,10 @@ procedure Core_Capacity_Tests is
       Size : Natural := R'Length;
       Sum : Firmware_Tables.Byte := 0;
    begin
-      for I in 1 .. 4 loop R (I) := Firmware_Tables.Byte (Text ("DSDT") (I)); end loop;
+      for I in 1 .. 4 loop R (I) := Text ("DSDT") (I); end loop;
       for I in 5 .. 8 loop R (I) := Firmware_Tables.Byte (Size mod 256); Size := Size / 256; end loop;
       R (9) := 2;
-      for I in Code'Range loop R (37 + I - Code'First) := Firmware_Tables.Byte (Code (I)); end loop;
+      for I in Code'Range loop R (37 + I - Code'First) := Code (I); end loop;
       for B of R loop Sum := Sum + B; end loop; R (10) := 0 - Sum;
       return R;
    end Table;

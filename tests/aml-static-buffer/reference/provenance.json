@@ -1,0 +1,14 @@
+{
+  "archive_sha256": "91addf34cf6f00c310dcff1d456c2e04629c2b45efe409385068e9fc5e9fe43b",
+  "source_commit": "232ff3f8ae1a4da11c709f61d9154482cfe8e6df",
+  "source_files": {
+    "source/components/executer/exconvrt.c": "c69fb07eef00231b9ffa4050845c272a0b3ebe4afa18fc5d99f9462491d7e2a1",
+    "source/components/utilities/utstrtoul64.c": "dd06bff104b6758286c70e72a82742d3846c7a869468073928aa589e623b571c",
+    "source/components/dispatcher/dsobject.c": "27e4b1e379a15ccec5607bf285b43dd874075f1f84938e94f19e187e8fcc586c"
+  },
+  "tool_hashes": {
+    "iasl": "1c6a21c90ff6f846e27a98dbb3106362c706f67db8ceca21ccd81ab76a7d9dcb",
+    "acpiexec": "a161f8b3a0b94b4301c1d0f2ccca6c0f808d2998cd4c9e037a9d7b218c88dcfe"
+  },
+  "tool_source_distinction": "Nix20260408 executable and archived source commit retained separately; not asserted byte-identical build"
+}

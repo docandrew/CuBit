@@ -1,0 +1,1 @@
+DefinitionBlock ("", "DSDT", 2, "CUBIT", "TOBREF", 1) { Name (DEST,Buffer (2) {9,8}) Method (CTRL,0) {Return (One)} Method (TEST,0) {Store (ToBuffer ("AB",Index (DEST,Zero)),Local0) Return (Add (Multiply (SizeOf(Local0),256),DerefOf(Index(DEST,Zero))))} }

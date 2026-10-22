@@ -1,0 +1,14 @@
+{
+  "worker": 81677,
+  "terminal_chunk": "62b584",
+  "exit_code": 0,
+  "inputs": 27,
+  "tools": 3,
+  "artifacts": 71,
+  "tables": 14,
+  "compile_disassembly_runtime_processes_zero": true,
+  "test_method_failures": 28,
+  "scope": "Observed interpreter Fatal aborts; process0 is not method success. Unix signal no-op; no OS delivery claim. Outstanding cache diagnostics retained, not clean lifecycle claim.",
+  "audit_sha256": "f468355eb75aae8809a0c7a7c1e79b7b7c78f12ddb7f11a34e760220303f4354",
+  "observations_sha256": "984c53ca62a53ecc46d9cc92809b6f374925fa827a53f49d15ea0a5f1c8e34d5"
+}

@@ -1,0 +1,1 @@
+DefinitionBlock("","DSDT",1,"CUBIT","TOBFINAL",1){ Method(CTRL,0){Return(One)} Method(TEST,0){Store (9,Index(ToBuffer(0x1122334455667788,Local0),Zero)) Return(Local0)}}

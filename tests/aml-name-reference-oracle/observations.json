@@ -1,0 +1,376 @@
+{
+  "executed": [
+    {
+      "key": "r1-runtime-self-Store",
+      "revision": 1,
+      "aml_sha256": "a769a5aed8b306918bd0de070bf596685ed198f1a7cc2b87bdd18851aca9a539",
+      "base_sha256": "8ffdf4de87b5d8c536acd2ac1400daae14cb5e005d0ada111eebb3f1809a661f",
+      "body_hex": "1408494e495400a400142b54455354000854454d5012060154454d507054454d5060701206020a220a3354454d50a4878388600000",
+      "observations": [
+        {
+          "method": "INIT",
+          "status": "integer",
+          "value": 0
+        },
+        {
+          "method": "TEST",
+          "status": "integer",
+          "value": 2
+        },
+        {
+          "method": "INIT",
+          "status": "integer",
+          "value": 0
+        },
+        {
+          "method": "TEST",
+          "status": "integer",
+          "value": 2
+        }
+      ],
+      "teardown_cache_warning": true
+    },
+    {
+      "key": "r1-static-data-Store",
+      "revision": 1,
+      "aml_sha256": "1395deccad62bacdc54e83490dc24fc34540e7065f61ee87764427b932546d0a",
+      "base_sha256": "8ffdf4de87b5d8c536acd2ac1400daae14cb5e005d0ada111eebb3f1809a661f",
+      "body_hex": "08535243300a1108504b473012060153524330140f494e4954009d0a1153524330a40014165445535400700a2253524330a48388504b47300000",
+      "observations": [
+        {
+          "method": "INIT",
+          "status": "integer",
+          "value": 0
+        },
+        {
+          "method": "TEST",
+          "status": "integer",
+          "value": 17
+        },
+        {
+          "method": "INIT",
+          "status": "integer",
+          "value": 0
+        },
+        {
+          "method": "TEST",
+          "status": "integer",
+          "value": 17
+        }
+      ],
+      "teardown_cache_warning": true
+    },
+    {
+      "key": "r1-runtime-self-CopyObject",
+      "revision": 1,
+      "aml_sha256": "f636c686388350a0bd04ea8d9c69e5c5af1bc4abfbb2d3fd67a2d984891b39d6",
+      "base_sha256": "8ffdf4de87b5d8c536acd2ac1400daae14cb5e005d0ada111eebb3f1809a661f",
+      "body_hex": "1408494e495400a400142b54455354000854454d5012060154454d507054454d50609d1206020a220a3354454d50a4878388600000",
+      "observations": [
+        {
+          "method": "INIT",
+          "status": "integer",
+          "value": 0
+        },
+        {
+          "method": "TEST",
+          "status": "integer",
+          "value": 2
+        },
+        {
+          "method": "INIT",
+          "status": "integer",
+          "value": 0
+        },
+        {
+          "method": "TEST",
+          "status": "integer",
+          "value": 2
+        }
+      ],
+      "teardown_cache_warning": true
+    },
+    {
+      "key": "r1-static-data-CopyObject",
+      "revision": 1,
+      "aml_sha256": "f1edb66816487285f27c17f0b9181fbf8af9cb800edbf8cf5ad1c1f2149f72d1",
+      "base_sha256": "8ffdf4de87b5d8c536acd2ac1400daae14cb5e005d0ada111eebb3f1809a661f",
+      "body_hex": "08535243300a1108504b473012060153524330140f494e4954009d0a1153524330a400141654455354009d0a2253524330a48388504b47300000",
+      "observations": [
+        {
+          "method": "INIT",
+          "status": "integer",
+          "value": 0
+        },
+        {
+          "method": "TEST",
+          "status": "integer",
+          "value": 17
+        },
+        {
+          "method": "INIT",
+          "status": "integer",
+          "value": 0
+        },
+        {
+          "method": "TEST",
+          "status": "integer",
+          "value": 17
+        }
+      ],
+      "teardown_cache_warning": true
+    },
+    {
+      "key": "r1-escaped-runtime-self",
+      "revision": 1,
+      "aml_sha256": "324f2eaf22285d1f1c5ef3b1f9572509e5718cfa0b5b577a92f83dc7ebb23518",
+      "base_sha256": "8ffdf4de87b5d8c536acd2ac1400daae14cb5e005d0ada111eebb3f1809a661f",
+      "body_hex": "0853415645120200141d4d414b45000854454d5012060154454d507054454d5053415645a4001408494e495400a400141454455354004d414b45a4878388534156450000",
+      "observations": [
+        {
+          "method": "INIT",
+          "status": "integer",
+          "value": 0
+        },
+        {
+          "method": "TEST",
+          "status": "AE_AML_INTERNAL",
+          "cubit_status": "Unsupported_Value"
+        },
+        {
+          "method": "INIT",
+          "status": "integer",
+          "value": 0
+        },
+        {
+          "method": "TEST",
+          "status": "AE_AML_INTERNAL",
+          "cubit_status": "Unsupported_Value"
+        }
+      ],
+      "teardown_cache_warning": true
+    },
+    {
+      "key": "r1-detached-runtime-cycle",
+      "revision": 1,
+      "aml_sha256": "5c0ebf9fced8fd98ed35e6ebefea8ec37d21fa94cf2a263ac5495247dddd8192",
+      "base_sha256": "8ffdf4de87b5d8c536acd2ac1400daae14cb5e005d0ada111eebb3f1809a661f",
+      "body_hex": "1408494e495400a400142654455354000854454d5012080254454d500a1170838854454d500100609d0054454d50a460",
+      "observations": [
+        {
+          "method": "INIT",
+          "status": "integer",
+          "value": 0
+        },
+        {
+          "method": "TEST",
+          "status": "integer",
+          "value": 17
+        },
+        {
+          "method": "INIT",
+          "status": "integer",
+          "value": 0
+        },
+        {
+          "method": "TEST",
+          "status": "integer",
+          "value": 17
+        }
+      ],
+      "teardown_cache_warning": true
+    },
+    {
+      "key": "r2-runtime-self-Store",
+      "revision": 2,
+      "aml_sha256": "1c0830a148fc624099e614c0112986ff8f822eda410fa20774848657da2224c6",
+      "base_sha256": "c71c26cb931e1ee284dcedd9606327935624cb4e4972889f7b78718f5b52adbd",
+      "body_hex": "1408494e495400a400142b54455354000854454d5012060154454d507054454d5060701206020a220a3354454d50a4878388600000",
+      "observations": [
+        {
+          "method": "INIT",
+          "status": "integer",
+          "value": 0
+        },
+        {
+          "method": "TEST",
+          "status": "integer",
+          "value": 2
+        },
+        {
+          "method": "INIT",
+          "status": "integer",
+          "value": 0
+        },
+        {
+          "method": "TEST",
+          "status": "integer",
+          "value": 2
+        }
+      ],
+      "teardown_cache_warning": true
+    },
+    {
+      "key": "r2-static-data-Store",
+      "revision": 2,
+      "aml_sha256": "b9b51c0cba0f20caf9d840d8817875697f83b37e72788ef2b1b3e62bc9e9afe6",
+      "base_sha256": "c71c26cb931e1ee284dcedd9606327935624cb4e4972889f7b78718f5b52adbd",
+      "body_hex": "08535243300a1108504b473012060153524330140f494e4954009d0a1153524330a40014165445535400700a2253524330a48388504b47300000",
+      "observations": [
+        {
+          "method": "INIT",
+          "status": "integer",
+          "value": 0
+        },
+        {
+          "method": "TEST",
+          "status": "integer",
+          "value": 17
+        },
+        {
+          "method": "INIT",
+          "status": "integer",
+          "value": 0
+        },
+        {
+          "method": "TEST",
+          "status": "integer",
+          "value": 17
+        }
+      ],
+      "teardown_cache_warning": true
+    },
+    {
+      "key": "r2-runtime-self-CopyObject",
+      "revision": 2,
+      "aml_sha256": "547e9fec4064954128b72b4c01fe2929d0843b666c1ee60b912de924674f3175",
+      "base_sha256": "c71c26cb931e1ee284dcedd9606327935624cb4e4972889f7b78718f5b52adbd",
+      "body_hex": "1408494e495400a400142b54455354000854454d5012060154454d507054454d50609d1206020a220a3354454d50a4878388600000",
+      "observations": [
+        {
+          "method": "INIT",
+          "status": "integer",
+          "value": 0
+        },
+        {
+          "method": "TEST",
+          "status": "integer",
+          "value": 2
+        },
+        {
+          "method": "INIT",
+          "status": "integer",
+          "value": 0
+        },
+        {
+          "method": "TEST",
+          "status": "integer",
+          "value": 2
+        }
+      ],
+      "teardown_cache_warning": true
+    },
+    {
+      "key": "r2-static-data-CopyObject",
+      "revision": 2,
+      "aml_sha256": "ce992c1341fe25196fb75e33a4382fae0a9dcfb5fedc09c5eb64ff91a3e70300",
+      "base_sha256": "c71c26cb931e1ee284dcedd9606327935624cb4e4972889f7b78718f5b52adbd",
+      "body_hex": "08535243300a1108504b473012060153524330140f494e4954009d0a1153524330a400141654455354009d0a2253524330a48388504b47300000",
+      "observations": [
+        {
+          "method": "INIT",
+          "status": "integer",
+          "value": 0
+        },
+        {
+          "method": "TEST",
+          "status": "integer",
+          "value": 17
+        },
+        {
+          "method": "INIT",
+          "status": "integer",
+          "value": 0
+        },
+        {
+          "method": "TEST",
+          "status": "integer",
+          "value": 17
+        }
+      ],
+      "teardown_cache_warning": true
+    },
+    {
+      "key": "r2-escaped-runtime-self",
+      "revision": 2,
+      "aml_sha256": "18df28b056d8a2b3d4ed0846c66a741ef2ddea98dc3b2a44a96f0140e4ee51ba",
+      "base_sha256": "c71c26cb931e1ee284dcedd9606327935624cb4e4972889f7b78718f5b52adbd",
+      "body_hex": "0853415645120200141d4d414b45000854454d5012060154454d507054454d5053415645a4001408494e495400a400141454455354004d414b45a4878388534156450000",
+      "observations": [
+        {
+          "method": "INIT",
+          "status": "integer",
+          "value": 0
+        },
+        {
+          "method": "TEST",
+          "status": "AE_AML_INTERNAL",
+          "cubit_status": "Unsupported_Value"
+        },
+        {
+          "method": "INIT",
+          "status": "integer",
+          "value": 0
+        },
+        {
+          "method": "TEST",
+          "status": "AE_AML_INTERNAL",
+          "cubit_status": "Unsupported_Value"
+        }
+      ],
+      "teardown_cache_warning": true
+    },
+    {
+      "key": "r2-detached-runtime-cycle",
+      "revision": 2,
+      "aml_sha256": "1f25c3c523cb28943944742232b2f1093779a2888cf680938d4bfcdf5911644f",
+      "base_sha256": "c71c26cb931e1ee284dcedd9606327935624cb4e4972889f7b78718f5b52adbd",
+      "body_hex": "1408494e495400a400142654455354000854454d5012080254454d500a1170838854454d500100609d0054454d50a460",
+      "observations": [
+        {
+          "method": "INIT",
+          "status": "integer",
+          "value": 0
+        },
+        {
+          "method": "TEST",
+          "status": "integer",
+          "value": 17
+        },
+        {
+          "method": "INIT",
+          "status": "integer",
+          "value": 0
+        },
+        {
+          "method": "TEST",
+          "status": "integer",
+          "value": 17
+        }
+      ],
+      "teardown_cache_warning": true
+    }
+  ],
+  "excluded": [
+    {
+      "key": "r1-detached-static-cycle",
+      "reason": "reference log_limit; no complete TEST observation; not a passing case",
+      "log": "results/r1-detached-static-cycle-execute.log"
+    },
+    {
+      "key": "r2-detached-static-cycle",
+      "reason": "reference log_limit; no complete TEST observation; not a passing case",
+      "log": "results/r2-detached-static-cycle-execute.log"
+    }
+  ]
+}

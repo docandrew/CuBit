@@ -7,6 +7,7 @@ with AML_Objects;
 with AML_References;
 with AML_Table_Backing;
 procedure To_Buffer_Owner_Tests is
+   use type AML_Decode.Bytes;
    package NS is new AML_Namespace (16, Perform_Delay => AML_Delays.Unavailable_Provider);
    use NS; use NS.Owned;
    use type AML_Decode.Byte;

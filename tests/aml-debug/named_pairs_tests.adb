@@ -6,6 +6,7 @@ with AML_Namespace;
 with AML_Objects;
 with AML_References;
 procedure Named_Pairs_Tests is
+   use type AML_Decode.Bytes;
    use type AML_Decode.Integer_Value;
    package NS is new AML_Namespace (16, AML_Delays.Unavailable_Provider);
    use NS; use NS.Owned;

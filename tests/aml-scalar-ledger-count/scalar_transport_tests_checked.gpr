@@ -1,0 +1,10 @@
+project scalar_transport_tests_checked is
+ for Source_Dirs use (".", "../aml-scalar-transport", "../../userspace/lib/acpi", "../../shared/firmware", "../../shared/capabilities");
+ Build_Root := external ("SERVICE_MILESTONE_BUILD", "build-checked");
+ for Object_Dir use Build_Root & "/obj";
+ for Exec_Dir use Build_Root & "/bin";
+ for Main use ("scalar_transport_tests.adb");
+ package Compiler is
+ for Default_Switches ("Ada") use ("-O1", "-gnat2022", "-gnatwa", "-gnatwe", "-gnata", "-gnato");
+ end Compiler;
+end scalar_transport_tests_checked;

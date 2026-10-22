@@ -1,0 +1,10 @@
+project Owner_Transition_release is
+ for Source_Dirs use (".", "../aml-core", "../../userspace/lib/acpi", "../../userspace/services/acpi", "../../shared/firmware");
+ Build_Root := external ("AML_OWNER_TRANSITION_BUILD", "build-owner-transition-release");
+ for Object_Dir use Build_Root & "/obj";
+ for Exec_Dir use Build_Root;
+ for Main use ("owner_transition_tests.adb");
+ package Compiler is
+  for Default_Switches ("Ada") use ("-O1", "-gnatp", "-gnat2022", "-gnatwa", "-gnatwe");
+ end Compiler;
+end Owner_Transition_release;

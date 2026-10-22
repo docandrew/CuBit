@@ -1,0 +1,3386 @@
+[
+  {
+    "key": "r1-todecimalstring-reference-store",
+    "source": "r1-todecimalstring-reference-store.asl",
+    "revision": 1,
+    "op": "ToDecimalString",
+    "variant": "reference",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ],
+    "compile": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-oa",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r1-todecimalstring-reference-store.asl"
+      ],
+      "log": "results/r1-todecimalstring-reference-store-compile.log",
+      "sha256": "d947c44b6c7d2580aa9482595ac76609c712fe42641a1cc50993326eebcee9a0"
+    },
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute PRE0;execute TEST;execute POST;execute FLAG;execute DEST",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r1-todecimalstring-reference-store.aml"
+      ],
+      "log": "results/r1-todecimalstring-reference-store-execute.log",
+      "sha256": "34624690744ebdc9285fda3c87fc801c07b9d5d492449d8cfbe8120c0bd6737c"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": [],
+    "observations": {
+      "PRE0": {
+        "returned_line": "[Integer] = 0000000000000011",
+        "failure": null
+      },
+      "TEST": {
+        "returned_line": "[String] Length 02 = \"34\"",
+        "failure": null
+      },
+      "POST": {
+        "returned_line": "[Integer] = 0000000000000022",
+        "failure": null
+      },
+      "FLAG": {
+        "returned_line": "[Integer] = 0000000000000001",
+        "failure": null
+      },
+      "DEST": {
+        "returned_line": "[String] Length 02 = \"34\"",
+        "failure": null
+      }
+    },
+    "marker_A1": 1,
+    "all_methods_accounted": true,
+    "fixture_case": 1,
+    "aml_sha256": "3341cae7029720fcda46b93c3bd571379794460b7c80159e2820a100dcfff4fb"
+  },
+  {
+    "key": "r1-todecimalstring-reference-copyobject",
+    "source": "r1-todecimalstring-reference-copyobject.asl",
+    "revision": 1,
+    "op": "ToDecimalString",
+    "variant": "reference",
+    "mutation": "CopyObject",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ],
+    "compile": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-oa",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r1-todecimalstring-reference-copyobject.asl"
+      ],
+      "log": "results/r1-todecimalstring-reference-copyobject-compile.log",
+      "sha256": "d3ea570c99ec7d04409749bcdd06491115705ab73109282b1cf093dae032afe4"
+    },
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute PRE0;execute TEST;execute POST;execute FLAG;execute DEST",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r1-todecimalstring-reference-copyobject.aml"
+      ],
+      "log": "results/r1-todecimalstring-reference-copyobject-execute.log",
+      "sha256": "616423d2ff36f93810a46fcb807c88459c1cdc2b84e2a7278c2da9b6eabe5d93"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": [],
+    "observations": {
+      "PRE0": {
+        "returned_line": "[Integer] = 0000000000000011",
+        "failure": null
+      },
+      "TEST": {
+        "returned_line": "[String] Length 02 = \"17\"",
+        "failure": null
+      },
+      "POST": {
+        "returned_line": "[Integer] = 0000000000000022",
+        "failure": null
+      },
+      "FLAG": {
+        "returned_line": "[Integer] = 0000000000000001",
+        "failure": null
+      },
+      "DEST": {
+        "returned_line": "[String] Length 02 = \"17\"",
+        "failure": null
+      }
+    },
+    "marker_A1": 1,
+    "all_methods_accounted": true,
+    "fixture_case": 2,
+    "aml_sha256": "96cfc8f4a478ea10f5d900f69debb18a01900fe21b85f7c293b6378087855551"
+  },
+  {
+    "key": "r1-todecimalstring-name-store",
+    "source": "r1-todecimalstring-name-store.asl",
+    "revision": 1,
+    "op": "ToDecimalString",
+    "variant": "name",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ],
+    "compile": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-oa",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r1-todecimalstring-name-store.asl"
+      ],
+      "log": "results/r1-todecimalstring-name-store-compile.log",
+      "sha256": "db1f0dbac820505105e4005d63acbd1e8609e6c985cff155f7a78a308b6b215f"
+    },
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute PRE0;execute TEST;execute POST;execute FLAG;execute DEST",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r1-todecimalstring-name-store.aml"
+      ],
+      "log": "results/r1-todecimalstring-name-store-execute.log",
+      "sha256": "0bcedb91fe2957ddc136bd70728f06d1539a8727e6cd0c4428fe4b4fba9b29f3"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": [],
+    "observations": {
+      "PRE0": {
+        "returned_line": "[Integer] = 0000000000000011",
+        "failure": null
+      },
+      "TEST": {
+        "returned_line": "[String] Length 02 = \"17\"",
+        "failure": null
+      },
+      "POST": {
+        "returned_line": "[Integer] = 0000000000000022",
+        "failure": null
+      },
+      "FLAG": {
+        "returned_line": "[Integer] = 0000000000000001",
+        "failure": null
+      },
+      "DEST": {
+        "returned_line": "[String] Length 02 = \"17\"",
+        "failure": null
+      }
+    },
+    "marker_A1": 1,
+    "all_methods_accounted": true,
+    "fixture_case": 3,
+    "aml_sha256": "63e20ee014aa60510c4c9705593d5abb03b5b29b11d5750144597bea1c1bfeca"
+  },
+  {
+    "key": "r1-todecimalstring-name-copyobject",
+    "source": "r1-todecimalstring-name-copyobject.asl",
+    "revision": 1,
+    "op": "ToDecimalString",
+    "variant": "name",
+    "mutation": "CopyObject",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ],
+    "compile": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-oa",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r1-todecimalstring-name-copyobject.asl"
+      ],
+      "log": "results/r1-todecimalstring-name-copyobject-compile.log",
+      "sha256": "af2abb3657244025ce68d37fb4170cf56ad2caa71b8a561c11eb1f3dc04bd92d"
+    },
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute PRE0;execute TEST;execute POST;execute FLAG;execute DEST",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r1-todecimalstring-name-copyobject.aml"
+      ],
+      "log": "results/r1-todecimalstring-name-copyobject-execute.log",
+      "sha256": "219f199bf7957f17aac1bb0029f5ed71ec1284ca5cc532392e1c9c17f10586b0"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": [],
+    "observations": {
+      "PRE0": {
+        "returned_line": "[Integer] = 0000000000000011",
+        "failure": null
+      },
+      "TEST": {
+        "returned_line": "[String] Length 02 = \"17\"",
+        "failure": null
+      },
+      "POST": {
+        "returned_line": "[Integer] = 0000000000000022",
+        "failure": null
+      },
+      "FLAG": {
+        "returned_line": "[Integer] = 0000000000000001",
+        "failure": null
+      },
+      "DEST": {
+        "returned_line": "[String] Length 02 = \"17\"",
+        "failure": null
+      }
+    },
+    "marker_A1": 1,
+    "all_methods_accounted": true,
+    "fixture_case": 4,
+    "aml_sha256": "3eefc08bde8c5fbcf1e65ae83dba896c63e50793f2ebfb8fd8fdd4d171630edd"
+  },
+  {
+    "key": "r1-todecimalstring-unchanged-local-store",
+    "source": "r1-todecimalstring-unchanged-local-store.asl",
+    "revision": 1,
+    "op": "ToDecimalString",
+    "variant": "unchanged-local",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ],
+    "compile": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-oa",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r1-todecimalstring-unchanged-local-store.asl"
+      ],
+      "log": "results/r1-todecimalstring-unchanged-local-store-compile.log",
+      "sha256": "5d185055bb3e8ec99c63f7f532d2d72e737554fe7c8530b896dc0f1823aa49c2"
+    },
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute PRE0;execute TEST;execute POST;execute FLAG;execute DEST",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r1-todecimalstring-unchanged-local-store.aml"
+      ],
+      "log": "results/r1-todecimalstring-unchanged-local-store-execute.log",
+      "sha256": "7d2c364832f01e4c0bffb9d2ed56bcd418e58fce4e7905e79ab318a1faa7e84c"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": [],
+    "observations": {
+      "PRE0": {
+        "returned_line": "[Integer] = 0000000000000011",
+        "failure": null
+      },
+      "TEST": {
+        "returned_line": "[String] Length 02 = \"17\"",
+        "failure": null
+      },
+      "POST": {
+        "returned_line": "[Integer] = 0000000000000022",
+        "failure": null
+      },
+      "FLAG": {
+        "returned_line": "[Integer] = 0000000000000001",
+        "failure": null
+      },
+      "DEST": {
+        "returned_line": "[String] Length 02 = \"17\"",
+        "failure": null
+      }
+    },
+    "marker_A1": 1,
+    "all_methods_accounted": true,
+    "fixture_case": 5,
+    "aml_sha256": "b3d45fdf4339db17f0de779b0f46c0b28390ca0db202a584fa5523801d77e46c"
+  },
+  {
+    "key": "r1-tohexstring-reference-store",
+    "source": "r1-tohexstring-reference-store.asl",
+    "revision": 1,
+    "op": "ToHexString",
+    "variant": "reference",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ],
+    "compile": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-oa",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r1-tohexstring-reference-store.asl"
+      ],
+      "log": "results/r1-tohexstring-reference-store-compile.log",
+      "sha256": "eb03d0e98f6a64ee08b79d56a237ff100d8c8253c4bbb556b6a815431f034364"
+    },
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute PRE0;execute TEST;execute POST;execute FLAG;execute DEST",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r1-tohexstring-reference-store.aml"
+      ],
+      "log": "results/r1-tohexstring-reference-store-execute.log",
+      "sha256": "8ad8e10be6113f78c8850d31202ce8a9fa4d2947d9fb457f22084f384e28209e"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": [],
+    "observations": {
+      "PRE0": {
+        "returned_line": "[Integer] = 0000000000000011",
+        "failure": null
+      },
+      "TEST": {
+        "returned_line": "[String] Length 04 = \"0x22\"",
+        "failure": null
+      },
+      "POST": {
+        "returned_line": "[Integer] = 0000000000000022",
+        "failure": null
+      },
+      "FLAG": {
+        "returned_line": "[Integer] = 0000000000000001",
+        "failure": null
+      },
+      "DEST": {
+        "returned_line": "[String] Length 04 = \"0x22\"",
+        "failure": null
+      }
+    },
+    "marker_A1": 1,
+    "all_methods_accounted": true,
+    "fixture_case": 6,
+    "aml_sha256": "0c30d688eaea52531b512c94b359cfd4f19d30af589742b61117eaaa5c37ab3b"
+  },
+  {
+    "key": "r1-tohexstring-reference-copyobject",
+    "source": "r1-tohexstring-reference-copyobject.asl",
+    "revision": 1,
+    "op": "ToHexString",
+    "variant": "reference",
+    "mutation": "CopyObject",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ],
+    "compile": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-oa",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r1-tohexstring-reference-copyobject.asl"
+      ],
+      "log": "results/r1-tohexstring-reference-copyobject-compile.log",
+      "sha256": "1cb03212cff094a8d82309987ef105b6ccda6784d2046226f78a019426267ef2"
+    },
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute PRE0;execute TEST;execute POST;execute FLAG;execute DEST",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r1-tohexstring-reference-copyobject.aml"
+      ],
+      "log": "results/r1-tohexstring-reference-copyobject-execute.log",
+      "sha256": "ed5e09f12117beb382350d0f88d80a623daef99bc2349a4a3cdbaf3b026f1065"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": [],
+    "observations": {
+      "PRE0": {
+        "returned_line": "[Integer] = 0000000000000011",
+        "failure": null
+      },
+      "TEST": {
+        "returned_line": "[String] Length 04 = \"0x11\"",
+        "failure": null
+      },
+      "POST": {
+        "returned_line": "[Integer] = 0000000000000022",
+        "failure": null
+      },
+      "FLAG": {
+        "returned_line": "[Integer] = 0000000000000001",
+        "failure": null
+      },
+      "DEST": {
+        "returned_line": "[String] Length 04 = \"0x11\"",
+        "failure": null
+      }
+    },
+    "marker_A1": 1,
+    "all_methods_accounted": true,
+    "fixture_case": 7,
+    "aml_sha256": "5a8bd4a9f6bf9db2460af50735c7206534b5df6d1c0374f96514e6e255ac382e"
+  },
+  {
+    "key": "r1-tohexstring-name-store",
+    "source": "r1-tohexstring-name-store.asl",
+    "revision": 1,
+    "op": "ToHexString",
+    "variant": "name",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ],
+    "compile": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-oa",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r1-tohexstring-name-store.asl"
+      ],
+      "log": "results/r1-tohexstring-name-store-compile.log",
+      "sha256": "ed0700239988e59419f9ab64bf7aaacd4dd66bba812cdaaad7307cfc238446e7"
+    },
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute PRE0;execute TEST;execute POST;execute FLAG;execute DEST",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r1-tohexstring-name-store.aml"
+      ],
+      "log": "results/r1-tohexstring-name-store-execute.log",
+      "sha256": "4eec0cad9f17463cbef651cc45e6781495abe10e77bb2dc1b5103d101c56e962"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": [],
+    "observations": {
+      "PRE0": {
+        "returned_line": "[Integer] = 0000000000000011",
+        "failure": null
+      },
+      "TEST": {
+        "returned_line": "[String] Length 04 = \"0x11\"",
+        "failure": null
+      },
+      "POST": {
+        "returned_line": "[Integer] = 0000000000000022",
+        "failure": null
+      },
+      "FLAG": {
+        "returned_line": "[Integer] = 0000000000000001",
+        "failure": null
+      },
+      "DEST": {
+        "returned_line": "[String] Length 04 = \"0x11\"",
+        "failure": null
+      }
+    },
+    "marker_A1": 1,
+    "all_methods_accounted": true,
+    "fixture_case": 8,
+    "aml_sha256": "0b08e5a25b995cf9c9c179b7d0bdd0a26d7906dcf009dd24fec02a33974ba4ea"
+  },
+  {
+    "key": "r1-tohexstring-name-copyobject",
+    "source": "r1-tohexstring-name-copyobject.asl",
+    "revision": 1,
+    "op": "ToHexString",
+    "variant": "name",
+    "mutation": "CopyObject",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ],
+    "compile": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-oa",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r1-tohexstring-name-copyobject.asl"
+      ],
+      "log": "results/r1-tohexstring-name-copyobject-compile.log",
+      "sha256": "81e5305fe7b292e6f4a18ec47be92db89ff4ac356dabb572e99596942289b94c"
+    },
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute PRE0;execute TEST;execute POST;execute FLAG;execute DEST",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r1-tohexstring-name-copyobject.aml"
+      ],
+      "log": "results/r1-tohexstring-name-copyobject-execute.log",
+      "sha256": "0af42aea82193b2e2faaaac97f151be9eb3a2a6db1e828aa95f72ad7b9f9ec77"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": [],
+    "observations": {
+      "PRE0": {
+        "returned_line": "[Integer] = 0000000000000011",
+        "failure": null
+      },
+      "TEST": {
+        "returned_line": "[String] Length 04 = \"0x11\"",
+        "failure": null
+      },
+      "POST": {
+        "returned_line": "[Integer] = 0000000000000022",
+        "failure": null
+      },
+      "FLAG": {
+        "returned_line": "[Integer] = 0000000000000001",
+        "failure": null
+      },
+      "DEST": {
+        "returned_line": "[String] Length 04 = \"0x11\"",
+        "failure": null
+      }
+    },
+    "marker_A1": 1,
+    "all_methods_accounted": true,
+    "fixture_case": 9,
+    "aml_sha256": "36172de3f942aa7f55a2292bafa39abe6c50e7f59ea3a62afc09b68a0d161971"
+  },
+  {
+    "key": "r1-tohexstring-unchanged-local-store",
+    "source": "r1-tohexstring-unchanged-local-store.asl",
+    "revision": 1,
+    "op": "ToHexString",
+    "variant": "unchanged-local",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ],
+    "compile": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-oa",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r1-tohexstring-unchanged-local-store.asl"
+      ],
+      "log": "results/r1-tohexstring-unchanged-local-store-compile.log",
+      "sha256": "91f36f66dfbd374fdbcd89acf26c49f035e8a60486bae48e2d98dadb8a946313"
+    },
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute PRE0;execute TEST;execute POST;execute FLAG;execute DEST",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r1-tohexstring-unchanged-local-store.aml"
+      ],
+      "log": "results/r1-tohexstring-unchanged-local-store-execute.log",
+      "sha256": "a8c42d65a7e0468cf9f415da9e4ab180c551b52f1dad4fc192ac39c7dcfdd7e5"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": [],
+    "observations": {
+      "PRE0": {
+        "returned_line": "[Integer] = 0000000000000011",
+        "failure": null
+      },
+      "TEST": {
+        "returned_line": "[String] Length 04 = \"0x11\"",
+        "failure": null
+      },
+      "POST": {
+        "returned_line": "[Integer] = 0000000000000022",
+        "failure": null
+      },
+      "FLAG": {
+        "returned_line": "[Integer] = 0000000000000001",
+        "failure": null
+      },
+      "DEST": {
+        "returned_line": "[String] Length 04 = \"0x11\"",
+        "failure": null
+      }
+    },
+    "marker_A1": 1,
+    "all_methods_accounted": true,
+    "fixture_case": 10,
+    "aml_sha256": "27a7cd5797c808be397871a07fc024fad355c494853643a79692552ac97c49ea"
+  },
+  {
+    "key": "r1-frombcd-reference-store",
+    "source": "r1-frombcd-reference-store.asl",
+    "revision": 1,
+    "op": "FromBCD",
+    "variant": "reference",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ],
+    "compile": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-oa",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r1-frombcd-reference-store.asl"
+      ],
+      "log": "results/r1-frombcd-reference-store-compile.log",
+      "sha256": "73e8e4d204bd0c50fb7b92f24db1cf904582d04fac64da357bba4274a8e7c485"
+    },
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute PRE0;execute TEST;execute POST;execute FLAG;execute DEST",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r1-frombcd-reference-store.aml"
+      ],
+      "log": "results/r1-frombcd-reference-store-execute.log",
+      "sha256": "43cf73797bd7adf841488f85c10fc4d293dfaa9f6d5b50525acaa316ab912eb9"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": [],
+    "observations": {
+      "PRE0": {
+        "returned_line": "[Integer] = 0000000000000012",
+        "failure": null
+      },
+      "TEST": {
+        "returned_line": "[Integer] = 0000000000000022",
+        "failure": null
+      },
+      "POST": {
+        "returned_line": "[Integer] = 0000000000000034",
+        "failure": null
+      },
+      "FLAG": {
+        "returned_line": "[Integer] = 0000000000000001",
+        "failure": null
+      },
+      "DEST": {
+        "returned_line": "[Integer] = 0000000000000022",
+        "failure": null
+      }
+    },
+    "marker_A1": 1,
+    "all_methods_accounted": true,
+    "fixture_case": 11,
+    "aml_sha256": "86e13b3f7d0a9276aa008b1fc37a381c60f8de3bcf4b3c69cf184cd6d29ddfc6"
+  },
+  {
+    "key": "r1-frombcd-reference-copyobject",
+    "source": "r1-frombcd-reference-copyobject.asl",
+    "revision": 1,
+    "op": "FromBCD",
+    "variant": "reference",
+    "mutation": "CopyObject",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ],
+    "compile": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-oa",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r1-frombcd-reference-copyobject.asl"
+      ],
+      "log": "results/r1-frombcd-reference-copyobject-compile.log",
+      "sha256": "e5263c2632fb9c64ac2a5db7dff918ce8c8f3f425b3b4a849ea519c233220403"
+    },
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute PRE0;execute TEST;execute POST;execute FLAG;execute DEST",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r1-frombcd-reference-copyobject.aml"
+      ],
+      "log": "results/r1-frombcd-reference-copyobject-execute.log",
+      "sha256": "cf576bc4885ab5246c8c89ca61c2462b5decb934324d8233a745ea1146116262"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": [],
+    "observations": {
+      "PRE0": {
+        "returned_line": "[Integer] = 0000000000000012",
+        "failure": null
+      },
+      "TEST": {
+        "returned_line": "[Integer] = 000000000000000C",
+        "failure": null
+      },
+      "POST": {
+        "returned_line": "[Integer] = 0000000000000034",
+        "failure": null
+      },
+      "FLAG": {
+        "returned_line": "[Integer] = 0000000000000001",
+        "failure": null
+      },
+      "DEST": {
+        "returned_line": "[Integer] = 000000000000000C",
+        "failure": null
+      }
+    },
+    "marker_A1": 1,
+    "all_methods_accounted": true,
+    "fixture_case": 12,
+    "aml_sha256": "e2ac0edcbd417cae630b2620d335e407a1ccf879fcbc711abf647d53af8e416f"
+  },
+  {
+    "key": "r1-frombcd-name-store",
+    "source": "r1-frombcd-name-store.asl",
+    "revision": 1,
+    "op": "FromBCD",
+    "variant": "name",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ],
+    "compile": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-oa",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r1-frombcd-name-store.asl"
+      ],
+      "log": "results/r1-frombcd-name-store-compile.log",
+      "sha256": "530b5b35f79a9336d1417750bc1b5372152fd67ac88f23f945f6b316ab88bcc6"
+    },
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute PRE0;execute TEST;execute POST;execute FLAG;execute DEST",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r1-frombcd-name-store.aml"
+      ],
+      "log": "results/r1-frombcd-name-store-execute.log",
+      "sha256": "2a47227839d732f51f90b4712db906d0f12d9403cd9bf763ed7f7445b64b7dd4"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": [],
+    "observations": {
+      "PRE0": {
+        "returned_line": "[Integer] = 0000000000000012",
+        "failure": null
+      },
+      "TEST": {
+        "returned_line": "[Integer] = 000000000000000C",
+        "failure": null
+      },
+      "POST": {
+        "returned_line": "[Integer] = 0000000000000034",
+        "failure": null
+      },
+      "FLAG": {
+        "returned_line": "[Integer] = 0000000000000001",
+        "failure": null
+      },
+      "DEST": {
+        "returned_line": "[Integer] = 000000000000000C",
+        "failure": null
+      }
+    },
+    "marker_A1": 1,
+    "all_methods_accounted": true,
+    "fixture_case": 13,
+    "aml_sha256": "2e57842877fc5a91db5f48cdc0ed527a4feb376f5add7fde4b72cbc114d9832d"
+  },
+  {
+    "key": "r1-frombcd-name-copyobject",
+    "source": "r1-frombcd-name-copyobject.asl",
+    "revision": 1,
+    "op": "FromBCD",
+    "variant": "name",
+    "mutation": "CopyObject",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ],
+    "compile": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-oa",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r1-frombcd-name-copyobject.asl"
+      ],
+      "log": "results/r1-frombcd-name-copyobject-compile.log",
+      "sha256": "4d105b3fe0828523b6bf9bfcd17769bdc6d71ccf45dc23dd9b84bdc4fa902c71"
+    },
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute PRE0;execute TEST;execute POST;execute FLAG;execute DEST",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r1-frombcd-name-copyobject.aml"
+      ],
+      "log": "results/r1-frombcd-name-copyobject-execute.log",
+      "sha256": "c9d3e120c8dae4830b5345f5bef0c2aab3a92940aa1b7e8f19695e8b69ae8d55"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": [],
+    "observations": {
+      "PRE0": {
+        "returned_line": "[Integer] = 0000000000000012",
+        "failure": null
+      },
+      "TEST": {
+        "returned_line": "[Integer] = 000000000000000C",
+        "failure": null
+      },
+      "POST": {
+        "returned_line": "[Integer] = 0000000000000034",
+        "failure": null
+      },
+      "FLAG": {
+        "returned_line": "[Integer] = 0000000000000001",
+        "failure": null
+      },
+      "DEST": {
+        "returned_line": "[Integer] = 000000000000000C",
+        "failure": null
+      }
+    },
+    "marker_A1": 1,
+    "all_methods_accounted": true,
+    "fixture_case": 14,
+    "aml_sha256": "a8d8182e826688870c6897c97c70c4e15c099247066db4f5a0da84dcde2e175f"
+  },
+  {
+    "key": "r1-frombcd-unchanged-local-store",
+    "source": "r1-frombcd-unchanged-local-store.asl",
+    "revision": 1,
+    "op": "FromBCD",
+    "variant": "unchanged-local",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ],
+    "compile": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-oa",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r1-frombcd-unchanged-local-store.asl"
+      ],
+      "log": "results/r1-frombcd-unchanged-local-store-compile.log",
+      "sha256": "c127d930f36ddd30a7c8967038a0e1aca429e54988b718537188363a5e39b0a8"
+    },
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute PRE0;execute TEST;execute POST;execute FLAG;execute DEST",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r1-frombcd-unchanged-local-store.aml"
+      ],
+      "log": "results/r1-frombcd-unchanged-local-store-execute.log",
+      "sha256": "7c2fed436faeb226139d4d223e0d9208d742f73ac0f6ccc317dd5c6c2c7e1622"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": [],
+    "observations": {
+      "PRE0": {
+        "returned_line": "[Integer] = 0000000000000012",
+        "failure": null
+      },
+      "TEST": {
+        "returned_line": "[Integer] = 000000000000000C",
+        "failure": null
+      },
+      "POST": {
+        "returned_line": "[Integer] = 0000000000000034",
+        "failure": null
+      },
+      "FLAG": {
+        "returned_line": "[Integer] = 0000000000000001",
+        "failure": null
+      },
+      "DEST": {
+        "returned_line": "[Integer] = 000000000000000C",
+        "failure": null
+      }
+    },
+    "marker_A1": 1,
+    "all_methods_accounted": true,
+    "fixture_case": 15,
+    "aml_sha256": "1397be35da20980299ffae10bd2ae85a3d00564cfbbfae3aad2b6eb56de02138"
+  },
+  {
+    "key": "r1-tobcd-reference-store",
+    "source": "r1-tobcd-reference-store.asl",
+    "revision": 1,
+    "op": "ToBCD",
+    "variant": "reference",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ],
+    "compile": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-oa",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r1-tobcd-reference-store.asl"
+      ],
+      "log": "results/r1-tobcd-reference-store-compile.log",
+      "sha256": "66ea6f6fb054bcc7f34deebd859a50931d6cdb4177a8f7be2aa8d0bbbb19bd41"
+    },
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute PRE0;execute TEST;execute POST;execute FLAG;execute DEST",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r1-tobcd-reference-store.aml"
+      ],
+      "log": "results/r1-tobcd-reference-store-execute.log",
+      "sha256": "4e37678e3bf4abd8de4c3e76a75e581ed98e9a6285af733d0484250b5be9a6f8"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": [],
+    "observations": {
+      "PRE0": {
+        "returned_line": "[Integer] = 000000000000000C",
+        "failure": null
+      },
+      "TEST": {
+        "returned_line": "[Integer] = 0000000000000034",
+        "failure": null
+      },
+      "POST": {
+        "returned_line": "[Integer] = 0000000000000022",
+        "failure": null
+      },
+      "FLAG": {
+        "returned_line": "[Integer] = 0000000000000001",
+        "failure": null
+      },
+      "DEST": {
+        "returned_line": "[Integer] = 0000000000000034",
+        "failure": null
+      }
+    },
+    "marker_A1": 1,
+    "all_methods_accounted": true,
+    "fixture_case": 16,
+    "aml_sha256": "4d14481fa7b722cc8244d27cab3e5320f78bad810e0320bb419f07712c895b3a"
+  },
+  {
+    "key": "r1-tobcd-reference-copyobject",
+    "source": "r1-tobcd-reference-copyobject.asl",
+    "revision": 1,
+    "op": "ToBCD",
+    "variant": "reference",
+    "mutation": "CopyObject",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ],
+    "compile": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-oa",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r1-tobcd-reference-copyobject.asl"
+      ],
+      "log": "results/r1-tobcd-reference-copyobject-compile.log",
+      "sha256": "3f8b675fb19da4b6cc1d3b216f247d2a117b2b098bb7194fec877c263700ff27"
+    },
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute PRE0;execute TEST;execute POST;execute FLAG;execute DEST",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r1-tobcd-reference-copyobject.aml"
+      ],
+      "log": "results/r1-tobcd-reference-copyobject-execute.log",
+      "sha256": "3c59aefa9e641b932ce08b35ef34da3952a1e285ba81b08372c809f2c24f2aeb"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": [],
+    "observations": {
+      "PRE0": {
+        "returned_line": "[Integer] = 000000000000000C",
+        "failure": null
+      },
+      "TEST": {
+        "returned_line": "[Integer] = 0000000000000012",
+        "failure": null
+      },
+      "POST": {
+        "returned_line": "[Integer] = 0000000000000022",
+        "failure": null
+      },
+      "FLAG": {
+        "returned_line": "[Integer] = 0000000000000001",
+        "failure": null
+      },
+      "DEST": {
+        "returned_line": "[Integer] = 0000000000000012",
+        "failure": null
+      }
+    },
+    "marker_A1": 1,
+    "all_methods_accounted": true,
+    "fixture_case": 17,
+    "aml_sha256": "df2517ad0cf173c5f6afb73a5d6e8f9a936bac69914e9f07fd1b89b4ab7c89ab"
+  },
+  {
+    "key": "r1-tobcd-name-store",
+    "source": "r1-tobcd-name-store.asl",
+    "revision": 1,
+    "op": "ToBCD",
+    "variant": "name",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ],
+    "compile": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-oa",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r1-tobcd-name-store.asl"
+      ],
+      "log": "results/r1-tobcd-name-store-compile.log",
+      "sha256": "11dae19d88d2fc1860711db7b7ab0f69d1d2bfd6945564fba1c093c824883868"
+    },
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute PRE0;execute TEST;execute POST;execute FLAG;execute DEST",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r1-tobcd-name-store.aml"
+      ],
+      "log": "results/r1-tobcd-name-store-execute.log",
+      "sha256": "ad6ad203e1fafc2973bebd513c577d061ebacb3ec44c37b52cabeb32ce53c3ac"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": [],
+    "observations": {
+      "PRE0": {
+        "returned_line": "[Integer] = 000000000000000C",
+        "failure": null
+      },
+      "TEST": {
+        "returned_line": "[Integer] = 0000000000000012",
+        "failure": null
+      },
+      "POST": {
+        "returned_line": "[Integer] = 0000000000000022",
+        "failure": null
+      },
+      "FLAG": {
+        "returned_line": "[Integer] = 0000000000000001",
+        "failure": null
+      },
+      "DEST": {
+        "returned_line": "[Integer] = 0000000000000012",
+        "failure": null
+      }
+    },
+    "marker_A1": 1,
+    "all_methods_accounted": true,
+    "fixture_case": 18,
+    "aml_sha256": "bd81b4b3fe57f6e8f39ea98268a4132c785f05e2b11153cb53edacd31ccd8df7"
+  },
+  {
+    "key": "r1-tobcd-name-copyobject",
+    "source": "r1-tobcd-name-copyobject.asl",
+    "revision": 1,
+    "op": "ToBCD",
+    "variant": "name",
+    "mutation": "CopyObject",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ],
+    "compile": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-oa",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r1-tobcd-name-copyobject.asl"
+      ],
+      "log": "results/r1-tobcd-name-copyobject-compile.log",
+      "sha256": "2f04ea4eeb27d5be265e652fbcd60d5fec6bb6b4e567e614579af0355d4248a2"
+    },
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute PRE0;execute TEST;execute POST;execute FLAG;execute DEST",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r1-tobcd-name-copyobject.aml"
+      ],
+      "log": "results/r1-tobcd-name-copyobject-execute.log",
+      "sha256": "3c74bda79e09923d44339b37129deb9ce9df159fe8e5f7644880204b7bbf9c08"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": [],
+    "observations": {
+      "PRE0": {
+        "returned_line": "[Integer] = 000000000000000C",
+        "failure": null
+      },
+      "TEST": {
+        "returned_line": "[Integer] = 0000000000000012",
+        "failure": null
+      },
+      "POST": {
+        "returned_line": "[Integer] = 0000000000000022",
+        "failure": null
+      },
+      "FLAG": {
+        "returned_line": "[Integer] = 0000000000000001",
+        "failure": null
+      },
+      "DEST": {
+        "returned_line": "[Integer] = 0000000000000012",
+        "failure": null
+      }
+    },
+    "marker_A1": 1,
+    "all_methods_accounted": true,
+    "fixture_case": 19,
+    "aml_sha256": "3f3abfe9e23f37505083fbb229aa8b2f6d2ca1066b84f1e04807c482d8c5dc1b"
+  },
+  {
+    "key": "r1-tobcd-unchanged-local-store",
+    "source": "r1-tobcd-unchanged-local-store.asl",
+    "revision": 1,
+    "op": "ToBCD",
+    "variant": "unchanged-local",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ],
+    "compile": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-oa",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r1-tobcd-unchanged-local-store.asl"
+      ],
+      "log": "results/r1-tobcd-unchanged-local-store-compile.log",
+      "sha256": "70bc014960579db5714848d369ade13f4637cc9ddb641ff657b11337baabe630"
+    },
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute PRE0;execute TEST;execute POST;execute FLAG;execute DEST",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r1-tobcd-unchanged-local-store.aml"
+      ],
+      "log": "results/r1-tobcd-unchanged-local-store-execute.log",
+      "sha256": "2013647fc0644cf1f34b1795463dcde3da7e36fccdf7fda36ae67b3518f54594"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": [],
+    "observations": {
+      "PRE0": {
+        "returned_line": "[Integer] = 000000000000000C",
+        "failure": null
+      },
+      "TEST": {
+        "returned_line": "[Integer] = 0000000000000012",
+        "failure": null
+      },
+      "POST": {
+        "returned_line": "[Integer] = 0000000000000022",
+        "failure": null
+      },
+      "FLAG": {
+        "returned_line": "[Integer] = 0000000000000001",
+        "failure": null
+      },
+      "DEST": {
+        "returned_line": "[Integer] = 0000000000000012",
+        "failure": null
+      }
+    },
+    "marker_A1": 1,
+    "all_methods_accounted": true,
+    "fixture_case": 20,
+    "aml_sha256": "b4b89b9d7fed8663845a3079a76a6227dce0c2e2985cdba158e13f308b95f0db"
+  },
+  {
+    "key": "r1-frombcd-invalid-store",
+    "source": "r1-frombcd-invalid-store.asl",
+    "revision": 1,
+    "op": "FromBCD",
+    "variant": "invalid-reference",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ],
+    "compile": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-oa",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r1-frombcd-invalid-store.asl"
+      ],
+      "log": "results/r1-frombcd-invalid-store-compile.log",
+      "sha256": "cafa1288d41568cb8de6ff0a4b33b0278b2180564df4f87cdea06a049235fe2e"
+    },
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute PRE0;execute TEST;execute POST;execute FLAG;execute DEST",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r1-frombcd-invalid-store.aml"
+      ],
+      "log": "results/r1-frombcd-invalid-store-execute.log",
+      "sha256": "09380c4cc12bcb4f0b689adef134e4114afa276ef5d23fcc6da124a7852ad952"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": [
+      "AE_AML_NUMERIC_OVERFLOW"
+    ],
+    "observations": {
+      "PRE0": {
+        "returned_line": "[Integer] = 0000000000000012",
+        "failure": null
+      },
+      "TEST": {
+        "returned_line": null,
+        "failure": "AE_AML_NUMERIC_OVERFLOW"
+      },
+      "POST": {
+        "returned_line": "[Integer] = 00000000000000FA",
+        "failure": null
+      },
+      "FLAG": {
+        "returned_line": "[Integer] = 0000000000000001",
+        "failure": null
+      },
+      "DEST": {
+        "returned_line": "[Integer] = 0000000000000077",
+        "failure": null
+      }
+    },
+    "marker_A1": 1,
+    "all_methods_accounted": true,
+    "fixture_case": 21,
+    "aml_sha256": "0f79ac9432cd226dc44a5b42c7cab9465d88ca7102cb8c21a76bfe063f7407c3"
+  },
+  {
+    "key": "r1-frombcd-invalid-copyobject",
+    "source": "r1-frombcd-invalid-copyobject.asl",
+    "revision": 1,
+    "op": "FromBCD",
+    "variant": "invalid-reference",
+    "mutation": "CopyObject",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ],
+    "compile": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-oa",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r1-frombcd-invalid-copyobject.asl"
+      ],
+      "log": "results/r1-frombcd-invalid-copyobject-compile.log",
+      "sha256": "94335b9944e6acb550fcaae30d480b9c7b9ab581de450b4babb183459b4f82b9"
+    },
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute PRE0;execute TEST;execute POST;execute FLAG;execute DEST",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r1-frombcd-invalid-copyobject.aml"
+      ],
+      "log": "results/r1-frombcd-invalid-copyobject-execute.log",
+      "sha256": "57bd9ad677811eb0f1dba353de78e7d01f524683a498e328b9755c95093f230e"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": [],
+    "observations": {
+      "PRE0": {
+        "returned_line": "[Integer] = 0000000000000012",
+        "failure": null
+      },
+      "TEST": {
+        "returned_line": "[Integer] = 000000000000000C",
+        "failure": null
+      },
+      "POST": {
+        "returned_line": "[Integer] = 00000000000000FA",
+        "failure": null
+      },
+      "FLAG": {
+        "returned_line": "[Integer] = 0000000000000001",
+        "failure": null
+      },
+      "DEST": {
+        "returned_line": "[Integer] = 000000000000000C",
+        "failure": null
+      }
+    },
+    "marker_A1": 1,
+    "all_methods_accounted": true,
+    "fixture_case": 22,
+    "aml_sha256": "9b136233b0c7f5bfbf7fda5bb9e0dcf6316aef75e2c8105e50da8fecbbe56e3b"
+  },
+  {
+    "key": "r2-todecimalstring-reference-store",
+    "source": "r2-todecimalstring-reference-store.asl",
+    "revision": 2,
+    "op": "ToDecimalString",
+    "variant": "reference",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ],
+    "compile": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-oa",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r2-todecimalstring-reference-store.asl"
+      ],
+      "log": "results/r2-todecimalstring-reference-store-compile.log",
+      "sha256": "7007b0f2f89b7ed70c72f20be3fda4de168d51968a0218378594c46d41ddb25c"
+    },
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute PRE0;execute TEST;execute POST;execute FLAG;execute DEST",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r2-todecimalstring-reference-store.aml"
+      ],
+      "log": "results/r2-todecimalstring-reference-store-execute.log",
+      "sha256": "5e5a61b2e4c0309b5c337385c04db9e44527607fcf613bb31ba2e49d4cabf9ce"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": [],
+    "observations": {
+      "PRE0": {
+        "returned_line": "[Integer] = 0000000000000011",
+        "failure": null
+      },
+      "TEST": {
+        "returned_line": "[String] Length 02 = \"34\"",
+        "failure": null
+      },
+      "POST": {
+        "returned_line": "[Integer] = 0000000000000022",
+        "failure": null
+      },
+      "FLAG": {
+        "returned_line": "[Integer] = 0000000000000001",
+        "failure": null
+      },
+      "DEST": {
+        "returned_line": "[String] Length 02 = \"34\"",
+        "failure": null
+      }
+    },
+    "marker_A1": 1,
+    "all_methods_accounted": true,
+    "fixture_case": 23,
+    "aml_sha256": "4550c99cde0e4342ff670da330013df4c9eb336204ff2a2f76baa00c1cc936c5"
+  },
+  {
+    "key": "r2-todecimalstring-reference-copyobject",
+    "source": "r2-todecimalstring-reference-copyobject.asl",
+    "revision": 2,
+    "op": "ToDecimalString",
+    "variant": "reference",
+    "mutation": "CopyObject",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ],
+    "compile": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-oa",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r2-todecimalstring-reference-copyobject.asl"
+      ],
+      "log": "results/r2-todecimalstring-reference-copyobject-compile.log",
+      "sha256": "9a76eb21e9f4740d72b208a589c695e83ab3649732692c40ae474b5d6dc3aa61"
+    },
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute PRE0;execute TEST;execute POST;execute FLAG;execute DEST",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r2-todecimalstring-reference-copyobject.aml"
+      ],
+      "log": "results/r2-todecimalstring-reference-copyobject-execute.log",
+      "sha256": "f822da75ec1c64a77e2aa0d6bf5100c83b273a4b658ff79fee0a04348f53e2f6"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": [],
+    "observations": {
+      "PRE0": {
+        "returned_line": "[Integer] = 0000000000000011",
+        "failure": null
+      },
+      "TEST": {
+        "returned_line": "[String] Length 02 = \"17\"",
+        "failure": null
+      },
+      "POST": {
+        "returned_line": "[Integer] = 0000000000000022",
+        "failure": null
+      },
+      "FLAG": {
+        "returned_line": "[Integer] = 0000000000000001",
+        "failure": null
+      },
+      "DEST": {
+        "returned_line": "[String] Length 02 = \"17\"",
+        "failure": null
+      }
+    },
+    "marker_A1": 1,
+    "all_methods_accounted": true,
+    "fixture_case": 24,
+    "aml_sha256": "cb4a5339cd30d582b4ba726935a431750212dbaafce1fd312598cebd1c5650bb"
+  },
+  {
+    "key": "r2-todecimalstring-name-store",
+    "source": "r2-todecimalstring-name-store.asl",
+    "revision": 2,
+    "op": "ToDecimalString",
+    "variant": "name",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ],
+    "compile": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-oa",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r2-todecimalstring-name-store.asl"
+      ],
+      "log": "results/r2-todecimalstring-name-store-compile.log",
+      "sha256": "2c7aaf86c704c758c6b88fc09cfec2d8a3b092bb5e0299a5a6da4582a3841cbb"
+    },
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute PRE0;execute TEST;execute POST;execute FLAG;execute DEST",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r2-todecimalstring-name-store.aml"
+      ],
+      "log": "results/r2-todecimalstring-name-store-execute.log",
+      "sha256": "71fa116aad701b56cc7ae06dcdccdf1475feba7d2415bce056d34b81e2eeb5e8"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": [],
+    "observations": {
+      "PRE0": {
+        "returned_line": "[Integer] = 0000000000000011",
+        "failure": null
+      },
+      "TEST": {
+        "returned_line": "[String] Length 02 = \"17\"",
+        "failure": null
+      },
+      "POST": {
+        "returned_line": "[Integer] = 0000000000000022",
+        "failure": null
+      },
+      "FLAG": {
+        "returned_line": "[Integer] = 0000000000000001",
+        "failure": null
+      },
+      "DEST": {
+        "returned_line": "[String] Length 02 = \"17\"",
+        "failure": null
+      }
+    },
+    "marker_A1": 1,
+    "all_methods_accounted": true,
+    "fixture_case": 25,
+    "aml_sha256": "eb68ebf6bd11286513bc93bfe7b47c80cf8bb38292ef8da11edc0bc46941c1d4"
+  },
+  {
+    "key": "r2-todecimalstring-name-copyobject",
+    "source": "r2-todecimalstring-name-copyobject.asl",
+    "revision": 2,
+    "op": "ToDecimalString",
+    "variant": "name",
+    "mutation": "CopyObject",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ],
+    "compile": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-oa",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r2-todecimalstring-name-copyobject.asl"
+      ],
+      "log": "results/r2-todecimalstring-name-copyobject-compile.log",
+      "sha256": "cc6eb2488a7ea1def84fb3a3b095eabe3d9681f2808b3dc544fab0ed6941bb51"
+    },
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute PRE0;execute TEST;execute POST;execute FLAG;execute DEST",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r2-todecimalstring-name-copyobject.aml"
+      ],
+      "log": "results/r2-todecimalstring-name-copyobject-execute.log",
+      "sha256": "90243061426692f7dd2e0543e49750cdd02cad65a9b22494b03cead659ebd56b"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": [],
+    "observations": {
+      "PRE0": {
+        "returned_line": "[Integer] = 0000000000000011",
+        "failure": null
+      },
+      "TEST": {
+        "returned_line": "[String] Length 02 = \"17\"",
+        "failure": null
+      },
+      "POST": {
+        "returned_line": "[Integer] = 0000000000000022",
+        "failure": null
+      },
+      "FLAG": {
+        "returned_line": "[Integer] = 0000000000000001",
+        "failure": null
+      },
+      "DEST": {
+        "returned_line": "[String] Length 02 = \"17\"",
+        "failure": null
+      }
+    },
+    "marker_A1": 1,
+    "all_methods_accounted": true,
+    "fixture_case": 26,
+    "aml_sha256": "94608d0b52357270fba484c37e56cc3a7ac45745c225b396face077d09b2dde1"
+  },
+  {
+    "key": "r2-todecimalstring-unchanged-local-store",
+    "source": "r2-todecimalstring-unchanged-local-store.asl",
+    "revision": 2,
+    "op": "ToDecimalString",
+    "variant": "unchanged-local",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ],
+    "compile": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-oa",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r2-todecimalstring-unchanged-local-store.asl"
+      ],
+      "log": "results/r2-todecimalstring-unchanged-local-store-compile.log",
+      "sha256": "9ecdc16548e27a891095b729f0e3ad7adf59ec0286088dd99438965291e87116"
+    },
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute PRE0;execute TEST;execute POST;execute FLAG;execute DEST",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r2-todecimalstring-unchanged-local-store.aml"
+      ],
+      "log": "results/r2-todecimalstring-unchanged-local-store-execute.log",
+      "sha256": "299e35a4d0810d77ae6daa7912ba79b2ba551a515f291a5cd658d3cceddd619d"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": [],
+    "observations": {
+      "PRE0": {
+        "returned_line": "[Integer] = 0000000000000011",
+        "failure": null
+      },
+      "TEST": {
+        "returned_line": "[String] Length 02 = \"17\"",
+        "failure": null
+      },
+      "POST": {
+        "returned_line": "[Integer] = 0000000000000022",
+        "failure": null
+      },
+      "FLAG": {
+        "returned_line": "[Integer] = 0000000000000001",
+        "failure": null
+      },
+      "DEST": {
+        "returned_line": "[String] Length 02 = \"17\"",
+        "failure": null
+      }
+    },
+    "marker_A1": 1,
+    "all_methods_accounted": true,
+    "fixture_case": 27,
+    "aml_sha256": "bc3917e1a0261065c56dbc95571a807fe9c0fe9839757baf8c44407f50bc4c68"
+  },
+  {
+    "key": "r2-tohexstring-reference-store",
+    "source": "r2-tohexstring-reference-store.asl",
+    "revision": 2,
+    "op": "ToHexString",
+    "variant": "reference",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ],
+    "compile": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-oa",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r2-tohexstring-reference-store.asl"
+      ],
+      "log": "results/r2-tohexstring-reference-store-compile.log",
+      "sha256": "71a8cdbf2aa8692a144d4ad1d8acee0b0533ccf50768a91e9b90dbc3da21a7a6"
+    },
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute PRE0;execute TEST;execute POST;execute FLAG;execute DEST",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r2-tohexstring-reference-store.aml"
+      ],
+      "log": "results/r2-tohexstring-reference-store-execute.log",
+      "sha256": "57ec15eb4208fa897da8f46f7a3594216065d546b7f3263b3cd01398b51af104"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": [],
+    "observations": {
+      "PRE0": {
+        "returned_line": "[Integer] = 0000000000000011",
+        "failure": null
+      },
+      "TEST": {
+        "returned_line": "[String] Length 04 = \"0x22\"",
+        "failure": null
+      },
+      "POST": {
+        "returned_line": "[Integer] = 0000000000000022",
+        "failure": null
+      },
+      "FLAG": {
+        "returned_line": "[Integer] = 0000000000000001",
+        "failure": null
+      },
+      "DEST": {
+        "returned_line": "[String] Length 04 = \"0x22\"",
+        "failure": null
+      }
+    },
+    "marker_A1": 1,
+    "all_methods_accounted": true,
+    "fixture_case": 28,
+    "aml_sha256": "1de4ecc8361e14014b74bbbda47ccbf6f5334cd4dd772790711f5f7cfa01764c"
+  },
+  {
+    "key": "r2-tohexstring-reference-copyobject",
+    "source": "r2-tohexstring-reference-copyobject.asl",
+    "revision": 2,
+    "op": "ToHexString",
+    "variant": "reference",
+    "mutation": "CopyObject",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ],
+    "compile": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-oa",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r2-tohexstring-reference-copyobject.asl"
+      ],
+      "log": "results/r2-tohexstring-reference-copyobject-compile.log",
+      "sha256": "ff0e86a13c00194338e075837e859a5af93dd6d78a2a1448d63dbc473e146fef"
+    },
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute PRE0;execute TEST;execute POST;execute FLAG;execute DEST",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r2-tohexstring-reference-copyobject.aml"
+      ],
+      "log": "results/r2-tohexstring-reference-copyobject-execute.log",
+      "sha256": "6c4faac2f3ec2919ccf4bd10aa11566f9554a1436a8886aff8d64b1bbe02f555"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": [],
+    "observations": {
+      "PRE0": {
+        "returned_line": "[Integer] = 0000000000000011",
+        "failure": null
+      },
+      "TEST": {
+        "returned_line": "[String] Length 04 = \"0x11\"",
+        "failure": null
+      },
+      "POST": {
+        "returned_line": "[Integer] = 0000000000000022",
+        "failure": null
+      },
+      "FLAG": {
+        "returned_line": "[Integer] = 0000000000000001",
+        "failure": null
+      },
+      "DEST": {
+        "returned_line": "[String] Length 04 = \"0x11\"",
+        "failure": null
+      }
+    },
+    "marker_A1": 1,
+    "all_methods_accounted": true,
+    "fixture_case": 29,
+    "aml_sha256": "6f8c82f4ccdb57b135ef2bc9e9d407e5ea4436e6182f691463df33c36dda44b2"
+  },
+  {
+    "key": "r2-tohexstring-name-store",
+    "source": "r2-tohexstring-name-store.asl",
+    "revision": 2,
+    "op": "ToHexString",
+    "variant": "name",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ],
+    "compile": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-oa",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r2-tohexstring-name-store.asl"
+      ],
+      "log": "results/r2-tohexstring-name-store-compile.log",
+      "sha256": "13ece31fc1d977927c0dc0e07f1fc11d352503b4e1b4e822523e918ca96df152"
+    },
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute PRE0;execute TEST;execute POST;execute FLAG;execute DEST",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r2-tohexstring-name-store.aml"
+      ],
+      "log": "results/r2-tohexstring-name-store-execute.log",
+      "sha256": "01a0f216ad300908995936df423349d53bfe2f76ecaf3a5e6a1cf077e117a374"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": [],
+    "observations": {
+      "PRE0": {
+        "returned_line": "[Integer] = 0000000000000011",
+        "failure": null
+      },
+      "TEST": {
+        "returned_line": "[String] Length 04 = \"0x11\"",
+        "failure": null
+      },
+      "POST": {
+        "returned_line": "[Integer] = 0000000000000022",
+        "failure": null
+      },
+      "FLAG": {
+        "returned_line": "[Integer] = 0000000000000001",
+        "failure": null
+      },
+      "DEST": {
+        "returned_line": "[String] Length 04 = \"0x11\"",
+        "failure": null
+      }
+    },
+    "marker_A1": 1,
+    "all_methods_accounted": true,
+    "fixture_case": 30,
+    "aml_sha256": "d9793724e7664192926c2472ecbb8dc9d0600336ae8ae79579eb7aed347b0013"
+  },
+  {
+    "key": "r2-tohexstring-name-copyobject",
+    "source": "r2-tohexstring-name-copyobject.asl",
+    "revision": 2,
+    "op": "ToHexString",
+    "variant": "name",
+    "mutation": "CopyObject",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ],
+    "compile": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-oa",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r2-tohexstring-name-copyobject.asl"
+      ],
+      "log": "results/r2-tohexstring-name-copyobject-compile.log",
+      "sha256": "f5996f473b6f73c90d4c0ed39207419127def7b7980b060ffe3a614e21a82e99"
+    },
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute PRE0;execute TEST;execute POST;execute FLAG;execute DEST",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r2-tohexstring-name-copyobject.aml"
+      ],
+      "log": "results/r2-tohexstring-name-copyobject-execute.log",
+      "sha256": "df8f92bdd970ff826580e233f4ed7e0bb567fd4fd396e15c9fd74a9b774677f0"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": [],
+    "observations": {
+      "PRE0": {
+        "returned_line": "[Integer] = 0000000000000011",
+        "failure": null
+      },
+      "TEST": {
+        "returned_line": "[String] Length 04 = \"0x11\"",
+        "failure": null
+      },
+      "POST": {
+        "returned_line": "[Integer] = 0000000000000022",
+        "failure": null
+      },
+      "FLAG": {
+        "returned_line": "[Integer] = 0000000000000001",
+        "failure": null
+      },
+      "DEST": {
+        "returned_line": "[String] Length 04 = \"0x11\"",
+        "failure": null
+      }
+    },
+    "marker_A1": 1,
+    "all_methods_accounted": true,
+    "fixture_case": 31,
+    "aml_sha256": "d5e670fcc8a381f7e5db0f1103fc6af7694ae4706ead606f10abd55fe367f8e0"
+  },
+  {
+    "key": "r2-tohexstring-unchanged-local-store",
+    "source": "r2-tohexstring-unchanged-local-store.asl",
+    "revision": 2,
+    "op": "ToHexString",
+    "variant": "unchanged-local",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ],
+    "compile": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-oa",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r2-tohexstring-unchanged-local-store.asl"
+      ],
+      "log": "results/r2-tohexstring-unchanged-local-store-compile.log",
+      "sha256": "5a5d789cbb68cce552a3fb8b9726068f623790f11fcc0ac5edf12a37371d2dd8"
+    },
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute PRE0;execute TEST;execute POST;execute FLAG;execute DEST",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r2-tohexstring-unchanged-local-store.aml"
+      ],
+      "log": "results/r2-tohexstring-unchanged-local-store-execute.log",
+      "sha256": "d5909c7f6431dbbb51151f60fbaff94033b899d430bdcf615c8171f54ff56f07"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": [],
+    "observations": {
+      "PRE0": {
+        "returned_line": "[Integer] = 0000000000000011",
+        "failure": null
+      },
+      "TEST": {
+        "returned_line": "[String] Length 04 = \"0x11\"",
+        "failure": null
+      },
+      "POST": {
+        "returned_line": "[Integer] = 0000000000000022",
+        "failure": null
+      },
+      "FLAG": {
+        "returned_line": "[Integer] = 0000000000000001",
+        "failure": null
+      },
+      "DEST": {
+        "returned_line": "[String] Length 04 = \"0x11\"",
+        "failure": null
+      }
+    },
+    "marker_A1": 1,
+    "all_methods_accounted": true,
+    "fixture_case": 32,
+    "aml_sha256": "0827952e7ef80e2c51ce1e777a5a7fe59548083f304b9598351100979f0e1bb9"
+  },
+  {
+    "key": "r2-frombcd-reference-store",
+    "source": "r2-frombcd-reference-store.asl",
+    "revision": 2,
+    "op": "FromBCD",
+    "variant": "reference",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ],
+    "compile": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-oa",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r2-frombcd-reference-store.asl"
+      ],
+      "log": "results/r2-frombcd-reference-store-compile.log",
+      "sha256": "c0fb314f5b78f528389854bf46f01ab2327666c5f762ad7d2e5bcbca58eafe66"
+    },
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute PRE0;execute TEST;execute POST;execute FLAG;execute DEST",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r2-frombcd-reference-store.aml"
+      ],
+      "log": "results/r2-frombcd-reference-store-execute.log",
+      "sha256": "95b6a722b0406f8e29573ba4598f15e58d722a3229a5d13b38e1d22a027c18e0"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": [],
+    "observations": {
+      "PRE0": {
+        "returned_line": "[Integer] = 0000000000000012",
+        "failure": null
+      },
+      "TEST": {
+        "returned_line": "[Integer] = 0000000000000022",
+        "failure": null
+      },
+      "POST": {
+        "returned_line": "[Integer] = 0000000000000034",
+        "failure": null
+      },
+      "FLAG": {
+        "returned_line": "[Integer] = 0000000000000001",
+        "failure": null
+      },
+      "DEST": {
+        "returned_line": "[Integer] = 0000000000000022",
+        "failure": null
+      }
+    },
+    "marker_A1": 1,
+    "all_methods_accounted": true,
+    "fixture_case": 33,
+    "aml_sha256": "6daefee15e21fbb7bd0bcda4d3b093a41e95525f3e0f021fab73b84a73e4c8de"
+  },
+  {
+    "key": "r2-frombcd-reference-copyobject",
+    "source": "r2-frombcd-reference-copyobject.asl",
+    "revision": 2,
+    "op": "FromBCD",
+    "variant": "reference",
+    "mutation": "CopyObject",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ],
+    "compile": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-oa",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r2-frombcd-reference-copyobject.asl"
+      ],
+      "log": "results/r2-frombcd-reference-copyobject-compile.log",
+      "sha256": "cdd248ca4824c01ba9c4d536f48ba2bab4f6dfdf9aabf87e92ce69fc3ac0e9ce"
+    },
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute PRE0;execute TEST;execute POST;execute FLAG;execute DEST",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r2-frombcd-reference-copyobject.aml"
+      ],
+      "log": "results/r2-frombcd-reference-copyobject-execute.log",
+      "sha256": "deea4d8b3040c550b0d3699dba894b1fa78cf73f2f8468b08d4ea1d11942d2fc"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": [],
+    "observations": {
+      "PRE0": {
+        "returned_line": "[Integer] = 0000000000000012",
+        "failure": null
+      },
+      "TEST": {
+        "returned_line": "[Integer] = 000000000000000C",
+        "failure": null
+      },
+      "POST": {
+        "returned_line": "[Integer] = 0000000000000034",
+        "failure": null
+      },
+      "FLAG": {
+        "returned_line": "[Integer] = 0000000000000001",
+        "failure": null
+      },
+      "DEST": {
+        "returned_line": "[Integer] = 000000000000000C",
+        "failure": null
+      }
+    },
+    "marker_A1": 1,
+    "all_methods_accounted": true,
+    "fixture_case": 34,
+    "aml_sha256": "5c524569b7233fb352d4571f7753b3fbcf86279930d899b420437007286c899b"
+  },
+  {
+    "key": "r2-frombcd-name-store",
+    "source": "r2-frombcd-name-store.asl",
+    "revision": 2,
+    "op": "FromBCD",
+    "variant": "name",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ],
+    "compile": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-oa",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r2-frombcd-name-store.asl"
+      ],
+      "log": "results/r2-frombcd-name-store-compile.log",
+      "sha256": "4f6007313b449afbc32168c86e9ee126a995c25468ad00aed57e854f18965b97"
+    },
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute PRE0;execute TEST;execute POST;execute FLAG;execute DEST",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r2-frombcd-name-store.aml"
+      ],
+      "log": "results/r2-frombcd-name-store-execute.log",
+      "sha256": "ffdeecaa8d630683474905480dd52e1b393959dda016eefeae713517821d8a09"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": [],
+    "observations": {
+      "PRE0": {
+        "returned_line": "[Integer] = 0000000000000012",
+        "failure": null
+      },
+      "TEST": {
+        "returned_line": "[Integer] = 000000000000000C",
+        "failure": null
+      },
+      "POST": {
+        "returned_line": "[Integer] = 0000000000000034",
+        "failure": null
+      },
+      "FLAG": {
+        "returned_line": "[Integer] = 0000000000000001",
+        "failure": null
+      },
+      "DEST": {
+        "returned_line": "[Integer] = 000000000000000C",
+        "failure": null
+      }
+    },
+    "marker_A1": 1,
+    "all_methods_accounted": true,
+    "fixture_case": 35,
+    "aml_sha256": "0cff8bccbc4f8ab6049c850e438e03f4982b4c5c8e36919197cdc11756d6132e"
+  },
+  {
+    "key": "r2-frombcd-name-copyobject",
+    "source": "r2-frombcd-name-copyobject.asl",
+    "revision": 2,
+    "op": "FromBCD",
+    "variant": "name",
+    "mutation": "CopyObject",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ],
+    "compile": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-oa",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r2-frombcd-name-copyobject.asl"
+      ],
+      "log": "results/r2-frombcd-name-copyobject-compile.log",
+      "sha256": "398649eaf4ec37847cfe5558df947e43d66b1da807c7d8b6253754f83f2bfd26"
+    },
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute PRE0;execute TEST;execute POST;execute FLAG;execute DEST",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r2-frombcd-name-copyobject.aml"
+      ],
+      "log": "results/r2-frombcd-name-copyobject-execute.log",
+      "sha256": "d07f1d68b61e17d0abc5dfd615d9cef1ff0a49813c4f47ab2cd5f011a8fd2e5f"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": [],
+    "observations": {
+      "PRE0": {
+        "returned_line": "[Integer] = 0000000000000012",
+        "failure": null
+      },
+      "TEST": {
+        "returned_line": "[Integer] = 000000000000000C",
+        "failure": null
+      },
+      "POST": {
+        "returned_line": "[Integer] = 0000000000000034",
+        "failure": null
+      },
+      "FLAG": {
+        "returned_line": "[Integer] = 0000000000000001",
+        "failure": null
+      },
+      "DEST": {
+        "returned_line": "[Integer] = 000000000000000C",
+        "failure": null
+      }
+    },
+    "marker_A1": 1,
+    "all_methods_accounted": true,
+    "fixture_case": 36,
+    "aml_sha256": "4e0312b9c779e3f3c6f21b50fbfb929087194714d4bebcaff6c0c06aad799a54"
+  },
+  {
+    "key": "r2-frombcd-unchanged-local-store",
+    "source": "r2-frombcd-unchanged-local-store.asl",
+    "revision": 2,
+    "op": "FromBCD",
+    "variant": "unchanged-local",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ],
+    "compile": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-oa",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r2-frombcd-unchanged-local-store.asl"
+      ],
+      "log": "results/r2-frombcd-unchanged-local-store-compile.log",
+      "sha256": "c7eb64ff8573c6d9e1db24672b861590393d7bcd0274a98664471ef94cd2a61d"
+    },
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute PRE0;execute TEST;execute POST;execute FLAG;execute DEST",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r2-frombcd-unchanged-local-store.aml"
+      ],
+      "log": "results/r2-frombcd-unchanged-local-store-execute.log",
+      "sha256": "fbf5032b177275885a56ab1ba8b5835a2ba32858d9be903ab2e60b6e0640f44f"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": [],
+    "observations": {
+      "PRE0": {
+        "returned_line": "[Integer] = 0000000000000012",
+        "failure": null
+      },
+      "TEST": {
+        "returned_line": "[Integer] = 000000000000000C",
+        "failure": null
+      },
+      "POST": {
+        "returned_line": "[Integer] = 0000000000000034",
+        "failure": null
+      },
+      "FLAG": {
+        "returned_line": "[Integer] = 0000000000000001",
+        "failure": null
+      },
+      "DEST": {
+        "returned_line": "[Integer] = 000000000000000C",
+        "failure": null
+      }
+    },
+    "marker_A1": 1,
+    "all_methods_accounted": true,
+    "fixture_case": 37,
+    "aml_sha256": "5c8223c3741bb30d968b3de27c1a70d0860682081731dc3cf3c126cd2a04c265"
+  },
+  {
+    "key": "r2-tobcd-reference-store",
+    "source": "r2-tobcd-reference-store.asl",
+    "revision": 2,
+    "op": "ToBCD",
+    "variant": "reference",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ],
+    "compile": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-oa",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r2-tobcd-reference-store.asl"
+      ],
+      "log": "results/r2-tobcd-reference-store-compile.log",
+      "sha256": "bc44bd0ef5cdaadfe8199731855f82d3d89d365baaf0d5ab10e8b9ff0950c95b"
+    },
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute PRE0;execute TEST;execute POST;execute FLAG;execute DEST",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r2-tobcd-reference-store.aml"
+      ],
+      "log": "results/r2-tobcd-reference-store-execute.log",
+      "sha256": "ca0bab712d92fe8befd69e393269b207726903a666d9d846822e2577db1f32e8"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": [],
+    "observations": {
+      "PRE0": {
+        "returned_line": "[Integer] = 000000000000000C",
+        "failure": null
+      },
+      "TEST": {
+        "returned_line": "[Integer] = 0000000000000034",
+        "failure": null
+      },
+      "POST": {
+        "returned_line": "[Integer] = 0000000000000022",
+        "failure": null
+      },
+      "FLAG": {
+        "returned_line": "[Integer] = 0000000000000001",
+        "failure": null
+      },
+      "DEST": {
+        "returned_line": "[Integer] = 0000000000000034",
+        "failure": null
+      }
+    },
+    "marker_A1": 1,
+    "all_methods_accounted": true,
+    "fixture_case": 38,
+    "aml_sha256": "47aa82861a93ae8507606d75b01b666ae64b650089eb7dfb3d0492627d2a6ae6"
+  },
+  {
+    "key": "r2-tobcd-reference-copyobject",
+    "source": "r2-tobcd-reference-copyobject.asl",
+    "revision": 2,
+    "op": "ToBCD",
+    "variant": "reference",
+    "mutation": "CopyObject",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ],
+    "compile": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-oa",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r2-tobcd-reference-copyobject.asl"
+      ],
+      "log": "results/r2-tobcd-reference-copyobject-compile.log",
+      "sha256": "bed5e7d285bf6a02baaf109bc3867f0fc7a1558941ea750b7f460ad41cfdce79"
+    },
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute PRE0;execute TEST;execute POST;execute FLAG;execute DEST",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r2-tobcd-reference-copyobject.aml"
+      ],
+      "log": "results/r2-tobcd-reference-copyobject-execute.log",
+      "sha256": "442614eeabac72031deb8c350025722dc062993de010c012bdc014bc24efec7c"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": [],
+    "observations": {
+      "PRE0": {
+        "returned_line": "[Integer] = 000000000000000C",
+        "failure": null
+      },
+      "TEST": {
+        "returned_line": "[Integer] = 0000000000000012",
+        "failure": null
+      },
+      "POST": {
+        "returned_line": "[Integer] = 0000000000000022",
+        "failure": null
+      },
+      "FLAG": {
+        "returned_line": "[Integer] = 0000000000000001",
+        "failure": null
+      },
+      "DEST": {
+        "returned_line": "[Integer] = 0000000000000012",
+        "failure": null
+      }
+    },
+    "marker_A1": 1,
+    "all_methods_accounted": true,
+    "fixture_case": 39,
+    "aml_sha256": "745e0cf974abe01e8f9d8158df9adfe40b23b4181e702ac6a726af7a0d080db6"
+  },
+  {
+    "key": "r2-tobcd-name-store",
+    "source": "r2-tobcd-name-store.asl",
+    "revision": 2,
+    "op": "ToBCD",
+    "variant": "name",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ],
+    "compile": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-oa",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r2-tobcd-name-store.asl"
+      ],
+      "log": "results/r2-tobcd-name-store-compile.log",
+      "sha256": "fe6e0f958c462fc9d69b8fcf9a9e442f181ee8550e37645218a1d0d46555a8de"
+    },
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute PRE0;execute TEST;execute POST;execute FLAG;execute DEST",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r2-tobcd-name-store.aml"
+      ],
+      "log": "results/r2-tobcd-name-store-execute.log",
+      "sha256": "8920e523baa5196895946aa23ca4b7bf61ef145414161044ef2b487c11b89bb3"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": [],
+    "observations": {
+      "PRE0": {
+        "returned_line": "[Integer] = 000000000000000C",
+        "failure": null
+      },
+      "TEST": {
+        "returned_line": "[Integer] = 0000000000000012",
+        "failure": null
+      },
+      "POST": {
+        "returned_line": "[Integer] = 0000000000000022",
+        "failure": null
+      },
+      "FLAG": {
+        "returned_line": "[Integer] = 0000000000000001",
+        "failure": null
+      },
+      "DEST": {
+        "returned_line": "[Integer] = 0000000000000012",
+        "failure": null
+      }
+    },
+    "marker_A1": 1,
+    "all_methods_accounted": true,
+    "fixture_case": 40,
+    "aml_sha256": "4ec633a7eed3590b017e074e5119632066bdc616e5336dcb87f23a5a0f900f3d"
+  },
+  {
+    "key": "r2-tobcd-name-copyobject",
+    "source": "r2-tobcd-name-copyobject.asl",
+    "revision": 2,
+    "op": "ToBCD",
+    "variant": "name",
+    "mutation": "CopyObject",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ],
+    "compile": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-oa",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r2-tobcd-name-copyobject.asl"
+      ],
+      "log": "results/r2-tobcd-name-copyobject-compile.log",
+      "sha256": "90d9f4a4f3feacdc7b4dd915ed10889d902557460498d4986c7b02adc29835bb"
+    },
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute PRE0;execute TEST;execute POST;execute FLAG;execute DEST",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r2-tobcd-name-copyobject.aml"
+      ],
+      "log": "results/r2-tobcd-name-copyobject-execute.log",
+      "sha256": "bf00fda86d0fa02aab3b0a0624a01e68b5f40ab36875823319da61fd46562cd8"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": [],
+    "observations": {
+      "PRE0": {
+        "returned_line": "[Integer] = 000000000000000C",
+        "failure": null
+      },
+      "TEST": {
+        "returned_line": "[Integer] = 0000000000000012",
+        "failure": null
+      },
+      "POST": {
+        "returned_line": "[Integer] = 0000000000000022",
+        "failure": null
+      },
+      "FLAG": {
+        "returned_line": "[Integer] = 0000000000000001",
+        "failure": null
+      },
+      "DEST": {
+        "returned_line": "[Integer] = 0000000000000012",
+        "failure": null
+      }
+    },
+    "marker_A1": 1,
+    "all_methods_accounted": true,
+    "fixture_case": 41,
+    "aml_sha256": "f5845ef3ec2b72913635c3a399fecbfd674c71ccfebccfb24373d07d6f14ecb0"
+  },
+  {
+    "key": "r2-tobcd-unchanged-local-store",
+    "source": "r2-tobcd-unchanged-local-store.asl",
+    "revision": 2,
+    "op": "ToBCD",
+    "variant": "unchanged-local",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ],
+    "compile": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-oa",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r2-tobcd-unchanged-local-store.asl"
+      ],
+      "log": "results/r2-tobcd-unchanged-local-store-compile.log",
+      "sha256": "6c3031ebccd3d8e47d7265aa5d6a0251b936e202a2443d75f416d0144c954436"
+    },
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute PRE0;execute TEST;execute POST;execute FLAG;execute DEST",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r2-tobcd-unchanged-local-store.aml"
+      ],
+      "log": "results/r2-tobcd-unchanged-local-store-execute.log",
+      "sha256": "9cf312f632ccb6263da5b791a22b47e379295c7e662caf10809e20ff7178bb38"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": [],
+    "observations": {
+      "PRE0": {
+        "returned_line": "[Integer] = 000000000000000C",
+        "failure": null
+      },
+      "TEST": {
+        "returned_line": "[Integer] = 0000000000000012",
+        "failure": null
+      },
+      "POST": {
+        "returned_line": "[Integer] = 0000000000000022",
+        "failure": null
+      },
+      "FLAG": {
+        "returned_line": "[Integer] = 0000000000000001",
+        "failure": null
+      },
+      "DEST": {
+        "returned_line": "[Integer] = 0000000000000012",
+        "failure": null
+      }
+    },
+    "marker_A1": 1,
+    "all_methods_accounted": true,
+    "fixture_case": 42,
+    "aml_sha256": "4f44bccb57a2142d839f7340f4dd5d9f1938c532678edb450b332393d8d4f828"
+  },
+  {
+    "key": "r2-frombcd-invalid-store",
+    "source": "r2-frombcd-invalid-store.asl",
+    "revision": 2,
+    "op": "FromBCD",
+    "variant": "invalid-reference",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ],
+    "compile": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-oa",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r2-frombcd-invalid-store.asl"
+      ],
+      "log": "results/r2-frombcd-invalid-store-compile.log",
+      "sha256": "0bf4cf63bf0241a758b187a0c6349ff327f5d5bc2e64940104e3aa59c6618cc3"
+    },
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute PRE0;execute TEST;execute POST;execute FLAG;execute DEST",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r2-frombcd-invalid-store.aml"
+      ],
+      "log": "results/r2-frombcd-invalid-store-execute.log",
+      "sha256": "ee2fd02fd8b88f4114a621839c5501dcbb5152b70759976fc8cfac29085419da"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": [
+      "AE_AML_NUMERIC_OVERFLOW"
+    ],
+    "observations": {
+      "PRE0": {
+        "returned_line": "[Integer] = 0000000000000012",
+        "failure": null
+      },
+      "TEST": {
+        "returned_line": null,
+        "failure": "AE_AML_NUMERIC_OVERFLOW"
+      },
+      "POST": {
+        "returned_line": "[Integer] = 00000000000000FA",
+        "failure": null
+      },
+      "FLAG": {
+        "returned_line": "[Integer] = 0000000000000001",
+        "failure": null
+      },
+      "DEST": {
+        "returned_line": "[Integer] = 0000000000000077",
+        "failure": null
+      }
+    },
+    "marker_A1": 1,
+    "all_methods_accounted": true,
+    "fixture_case": 43,
+    "aml_sha256": "d075f11a44f745ab7f739f04166a174e740f8861a2a6817d325265d24666d837"
+  },
+  {
+    "key": "r2-frombcd-invalid-copyobject",
+    "source": "r2-frombcd-invalid-copyobject.asl",
+    "revision": 2,
+    "op": "FromBCD",
+    "variant": "invalid-reference",
+    "mutation": "CopyObject",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ],
+    "compile": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-oa",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r2-frombcd-invalid-copyobject.asl"
+      ],
+      "log": "results/r2-frombcd-invalid-copyobject-compile.log",
+      "sha256": "880894ebde1186076f92bb151a1a41008578659d2cada854d14d7ba62ef3f277"
+    },
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute PRE0;execute TEST;execute POST;execute FLAG;execute DEST",
+        "/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r2-frombcd-invalid-copyobject.aml"
+      ],
+      "log": "results/r2-frombcd-invalid-copyobject-execute.log",
+      "sha256": "d2fc351ac4058e62b9fd11d293f2eb8adfc2e960fb09324b31470ad7eb486f33"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": [],
+    "observations": {
+      "PRE0": {
+        "returned_line": "[Integer] = 0000000000000012",
+        "failure": null
+      },
+      "TEST": {
+        "returned_line": "[Integer] = 000000000000000C",
+        "failure": null
+      },
+      "POST": {
+        "returned_line": "[Integer] = 00000000000000FA",
+        "failure": null
+      },
+      "FLAG": {
+        "returned_line": "[Integer] = 0000000000000001",
+        "failure": null
+      },
+      "DEST": {
+        "returned_line": "[Integer] = 000000000000000C",
+        "failure": null
+      }
+    },
+    "marker_A1": 1,
+    "all_methods_accounted": true,
+    "fixture_case": 44,
+    "aml_sha256": "fc67c17f4e2d912258ca18d5203341e323d87333d863a583b2f566a229c9839a"
+  },
+  {
+    "key": "r1-todecimalstring-immediate-store",
+    "source": "r1-todecimalstring-immediate-store.asl",
+    "revision": 1,
+    "op": "ToDecimalString",
+    "variant": "immediate",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ],
+    "compile": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-oa",
+        "/home/doc/git/.acpi-proof-work/format-bcd-nulltarget-oracle-qj7nfvax/r1-todecimalstring-immediate-store.asl"
+      ],
+      "log": "results/r1-todecimalstring-immediate-store-compile.log",
+      "sha256": "392206d75d4f8b4492bc132d9a87abf8b311c634c3e576bb0672f052f40a4ad3"
+    },
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute PRE0;execute TEST;execute POST;execute FLAG;execute DEST",
+        "/home/doc/git/.acpi-proof-work/format-bcd-nulltarget-oracle-qj7nfvax/r1-todecimalstring-immediate-store.aml"
+      ],
+      "log": "results/r1-todecimalstring-immediate-store-execute.log",
+      "sha256": "7c63d2b9d4184e2f1c664087193d963429fb32f6ade80d8f55c754b645c1b60a"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": [],
+    "observations": {
+      "PRE0": {
+        "returned_line": "[Integer] = 0000000000000011",
+        "failure": null
+      },
+      "TEST": {
+        "returned_line": "[String] Length 02 = \"17\"",
+        "failure": null
+      },
+      "POST": {
+        "returned_line": "[Integer] = 0000000000000011",
+        "failure": null
+      },
+      "FLAG": {
+        "returned_line": "[Integer] = 0000000000000000",
+        "failure": null
+      },
+      "DEST": {
+        "returned_line": "[Integer] = 0000000000000000",
+        "failure": null
+      }
+    },
+    "marker_A1": 0,
+    "all_methods_accounted": true,
+    "fixture_case": 45,
+    "aml_sha256": "88b8ab19b801edae02d896434109d4970e048e5726f34b345fe9342515aea05f"
+  },
+  {
+    "key": "r1-tohexstring-immediate-store",
+    "source": "r1-tohexstring-immediate-store.asl",
+    "revision": 1,
+    "op": "ToHexString",
+    "variant": "immediate",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ],
+    "compile": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-oa",
+        "/home/doc/git/.acpi-proof-work/format-bcd-nulltarget-oracle-qj7nfvax/r1-tohexstring-immediate-store.asl"
+      ],
+      "log": "results/r1-tohexstring-immediate-store-compile.log",
+      "sha256": "78aca51589fa24e7d85d6660a9aef9c30f049b491ae6bfc62a40680b55fad7c7"
+    },
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute PRE0;execute TEST;execute POST;execute FLAG;execute DEST",
+        "/home/doc/git/.acpi-proof-work/format-bcd-nulltarget-oracle-qj7nfvax/r1-tohexstring-immediate-store.aml"
+      ],
+      "log": "results/r1-tohexstring-immediate-store-execute.log",
+      "sha256": "a8519b1fa11442c6eebcd10d643a0eaeeb282f13c02e325caf34ce702fd2b8d5"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": [],
+    "observations": {
+      "PRE0": {
+        "returned_line": "[Integer] = 0000000000000011",
+        "failure": null
+      },
+      "TEST": {
+        "returned_line": "[String] Length 04 = \"0x11\"",
+        "failure": null
+      },
+      "POST": {
+        "returned_line": "[Integer] = 0000000000000011",
+        "failure": null
+      },
+      "FLAG": {
+        "returned_line": "[Integer] = 0000000000000000",
+        "failure": null
+      },
+      "DEST": {
+        "returned_line": "[Integer] = 0000000000000000",
+        "failure": null
+      }
+    },
+    "marker_A1": 0,
+    "all_methods_accounted": true,
+    "fixture_case": 46,
+    "aml_sha256": "dff6e6a129d43d210f53f352f1754e08d82cf1a42811f464b436c59a8c8b2ea4"
+  },
+  {
+    "key": "r1-frombcd-immediate-store",
+    "source": "r1-frombcd-immediate-store.asl",
+    "revision": 1,
+    "op": "FromBCD",
+    "variant": "immediate",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ],
+    "compile": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-oa",
+        "/home/doc/git/.acpi-proof-work/format-bcd-nulltarget-oracle-qj7nfvax/r1-frombcd-immediate-store.asl"
+      ],
+      "log": "results/r1-frombcd-immediate-store-compile.log",
+      "sha256": "3304a0c146b903053fa461f9020830dcaa3404b7768c41a181489100f5196b47"
+    },
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute PRE0;execute TEST;execute POST;execute FLAG;execute DEST",
+        "/home/doc/git/.acpi-proof-work/format-bcd-nulltarget-oracle-qj7nfvax/r1-frombcd-immediate-store.aml"
+      ],
+      "log": "results/r1-frombcd-immediate-store-execute.log",
+      "sha256": "9f064788821b8ba786049fd2701439e9d67b5852e72a264af4ac7bb88e2e5e65"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": [],
+    "observations": {
+      "PRE0": {
+        "returned_line": "[Integer] = 0000000000000012",
+        "failure": null
+      },
+      "TEST": {
+        "returned_line": "[Integer] = 000000000000000C",
+        "failure": null
+      },
+      "POST": {
+        "returned_line": "[Integer] = 0000000000000012",
+        "failure": null
+      },
+      "FLAG": {
+        "returned_line": "[Integer] = 0000000000000000",
+        "failure": null
+      },
+      "DEST": {
+        "returned_line": "[Integer] = 0000000000000000",
+        "failure": null
+      }
+    },
+    "marker_A1": 0,
+    "all_methods_accounted": true,
+    "fixture_case": 47,
+    "aml_sha256": "41345a0de62cd893c54b044d1191a43b1eb4c3f3595b1fedaca8a00e02a5d9f4"
+  },
+  {
+    "key": "r1-tobcd-immediate-store",
+    "source": "r1-tobcd-immediate-store.asl",
+    "revision": 1,
+    "op": "ToBCD",
+    "variant": "immediate",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ],
+    "compile": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-oa",
+        "/home/doc/git/.acpi-proof-work/format-bcd-nulltarget-oracle-qj7nfvax/r1-tobcd-immediate-store.asl"
+      ],
+      "log": "results/r1-tobcd-immediate-store-compile.log",
+      "sha256": "857a4cbe0fa0846e048ef51bd5866cc9d5a4d3ddbe067f129d363c57b8c0aeaa"
+    },
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute PRE0;execute TEST;execute POST;execute FLAG;execute DEST",
+        "/home/doc/git/.acpi-proof-work/format-bcd-nulltarget-oracle-qj7nfvax/r1-tobcd-immediate-store.aml"
+      ],
+      "log": "results/r1-tobcd-immediate-store-execute.log",
+      "sha256": "33390520289ad2fa7e7f2fae94d0ad31df9fdd2b58c79f1a51131dc157a7dde2"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": [],
+    "observations": {
+      "PRE0": {
+        "returned_line": "[Integer] = 000000000000000C",
+        "failure": null
+      },
+      "TEST": {
+        "returned_line": "[Integer] = 0000000000000012",
+        "failure": null
+      },
+      "POST": {
+        "returned_line": "[Integer] = 000000000000000C",
+        "failure": null
+      },
+      "FLAG": {
+        "returned_line": "[Integer] = 0000000000000000",
+        "failure": null
+      },
+      "DEST": {
+        "returned_line": "[Integer] = 0000000000000000",
+        "failure": null
+      }
+    },
+    "marker_A1": 0,
+    "all_methods_accounted": true,
+    "fixture_case": 48,
+    "aml_sha256": "8083f031d3387cc2856096d8eb7cdb18b9f3cfb5bc37d16df1c80c4ae202a310"
+  },
+  {
+    "key": "r2-todecimalstring-immediate-store",
+    "source": "r2-todecimalstring-immediate-store.asl",
+    "revision": 2,
+    "op": "ToDecimalString",
+    "variant": "immediate",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ],
+    "compile": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-oa",
+        "/home/doc/git/.acpi-proof-work/format-bcd-nulltarget-oracle-qj7nfvax/r2-todecimalstring-immediate-store.asl"
+      ],
+      "log": "results/r2-todecimalstring-immediate-store-compile.log",
+      "sha256": "a121f1727fffcf8518418062bad2ded789ca180f074b6721dc81f436f91f19fc"
+    },
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute PRE0;execute TEST;execute POST;execute FLAG;execute DEST",
+        "/home/doc/git/.acpi-proof-work/format-bcd-nulltarget-oracle-qj7nfvax/r2-todecimalstring-immediate-store.aml"
+      ],
+      "log": "results/r2-todecimalstring-immediate-store-execute.log",
+      "sha256": "3fa5aa10a166a5acc5689aea98c97cbdb2f09e9845e0f5e9d543c278140ded10"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": [],
+    "observations": {
+      "PRE0": {
+        "returned_line": "[Integer] = 0000000000000011",
+        "failure": null
+      },
+      "TEST": {
+        "returned_line": "[String] Length 02 = \"17\"",
+        "failure": null
+      },
+      "POST": {
+        "returned_line": "[Integer] = 0000000000000011",
+        "failure": null
+      },
+      "FLAG": {
+        "returned_line": "[Integer] = 0000000000000000",
+        "failure": null
+      },
+      "DEST": {
+        "returned_line": "[Integer] = 0000000000000000",
+        "failure": null
+      }
+    },
+    "marker_A1": 0,
+    "all_methods_accounted": true,
+    "fixture_case": 49,
+    "aml_sha256": "d834a5ebe4d35be2054054256e0e953b800e7a347f54d4cbc07d05a2309d49a6"
+  },
+  {
+    "key": "r2-tohexstring-immediate-store",
+    "source": "r2-tohexstring-immediate-store.asl",
+    "revision": 2,
+    "op": "ToHexString",
+    "variant": "immediate",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ],
+    "compile": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-oa",
+        "/home/doc/git/.acpi-proof-work/format-bcd-nulltarget-oracle-qj7nfvax/r2-tohexstring-immediate-store.asl"
+      ],
+      "log": "results/r2-tohexstring-immediate-store-compile.log",
+      "sha256": "3f3c61ef161c5a0c9898634476d17b68121901f3f5230d9fa1581557acdf5965"
+    },
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute PRE0;execute TEST;execute POST;execute FLAG;execute DEST",
+        "/home/doc/git/.acpi-proof-work/format-bcd-nulltarget-oracle-qj7nfvax/r2-tohexstring-immediate-store.aml"
+      ],
+      "log": "results/r2-tohexstring-immediate-store-execute.log",
+      "sha256": "6fff430fbfa3226d6aed8cd1197e61efe5eaa0f8446f42fd69ec62c71f6f567f"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": [],
+    "observations": {
+      "PRE0": {
+        "returned_line": "[Integer] = 0000000000000011",
+        "failure": null
+      },
+      "TEST": {
+        "returned_line": "[String] Length 04 = \"0x11\"",
+        "failure": null
+      },
+      "POST": {
+        "returned_line": "[Integer] = 0000000000000011",
+        "failure": null
+      },
+      "FLAG": {
+        "returned_line": "[Integer] = 0000000000000000",
+        "failure": null
+      },
+      "DEST": {
+        "returned_line": "[Integer] = 0000000000000000",
+        "failure": null
+      }
+    },
+    "marker_A1": 0,
+    "all_methods_accounted": true,
+    "fixture_case": 50,
+    "aml_sha256": "c4f4cec354cbef0268667636fddfb372aaae9ec1c2c3b2f88d30d6a86489dde5"
+  },
+  {
+    "key": "r2-frombcd-immediate-store",
+    "source": "r2-frombcd-immediate-store.asl",
+    "revision": 2,
+    "op": "FromBCD",
+    "variant": "immediate",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ],
+    "compile": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-oa",
+        "/home/doc/git/.acpi-proof-work/format-bcd-nulltarget-oracle-qj7nfvax/r2-frombcd-immediate-store.asl"
+      ],
+      "log": "results/r2-frombcd-immediate-store-compile.log",
+      "sha256": "a9d82988d2c5f47e47dba0ef4e146ae6f25136e3154d821f45bb74bf16f213ee"
+    },
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute PRE0;execute TEST;execute POST;execute FLAG;execute DEST",
+        "/home/doc/git/.acpi-proof-work/format-bcd-nulltarget-oracle-qj7nfvax/r2-frombcd-immediate-store.aml"
+      ],
+      "log": "results/r2-frombcd-immediate-store-execute.log",
+      "sha256": "db6d50ebf5ffa7d2354bb1dacff5a4a85b977142bcf214a013a61dd57fa5c622"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": [],
+    "observations": {
+      "PRE0": {
+        "returned_line": "[Integer] = 0000000000000012",
+        "failure": null
+      },
+      "TEST": {
+        "returned_line": "[Integer] = 000000000000000C",
+        "failure": null
+      },
+      "POST": {
+        "returned_line": "[Integer] = 0000000000000012",
+        "failure": null
+      },
+      "FLAG": {
+        "returned_line": "[Integer] = 0000000000000000",
+        "failure": null
+      },
+      "DEST": {
+        "returned_line": "[Integer] = 0000000000000000",
+        "failure": null
+      }
+    },
+    "marker_A1": 0,
+    "all_methods_accounted": true,
+    "fixture_case": 51,
+    "aml_sha256": "60ea6dd00a0adcab2c6e6152f7041bf96eeb48339c436a85071cbe846d006967"
+  },
+  {
+    "key": "r2-tobcd-immediate-store",
+    "source": "r2-tobcd-immediate-store.asl",
+    "revision": 2,
+    "op": "ToBCD",
+    "variant": "immediate",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ],
+    "compile": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-oa",
+        "/home/doc/git/.acpi-proof-work/format-bcd-nulltarget-oracle-qj7nfvax/r2-tobcd-immediate-store.asl"
+      ],
+      "log": "results/r2-tobcd-immediate-store-compile.log",
+      "sha256": "d8e6afe767bed3e29d70e9650d09c3f17c11d74da1d06ed2b4e2da80c428886a"
+    },
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute PRE0;execute TEST;execute POST;execute FLAG;execute DEST",
+        "/home/doc/git/.acpi-proof-work/format-bcd-nulltarget-oracle-qj7nfvax/r2-tobcd-immediate-store.aml"
+      ],
+      "log": "results/r2-tobcd-immediate-store-execute.log",
+      "sha256": "e94ebe1145b096353766b3f47106b1ca4e2ac636bc217272fe952523af3bca0d"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": [],
+    "observations": {
+      "PRE0": {
+        "returned_line": "[Integer] = 000000000000000C",
+        "failure": null
+      },
+      "TEST": {
+        "returned_line": "[Integer] = 0000000000000012",
+        "failure": null
+      },
+      "POST": {
+        "returned_line": "[Integer] = 000000000000000C",
+        "failure": null
+      },
+      "FLAG": {
+        "returned_line": "[Integer] = 0000000000000000",
+        "failure": null
+      },
+      "DEST": {
+        "returned_line": "[Integer] = 0000000000000000",
+        "failure": null
+      }
+    },
+    "marker_A1": 0,
+    "all_methods_accounted": true,
+    "fixture_case": 52,
+    "aml_sha256": "05c04d07ba979c0daff1f040cffca07d5f7dcce0fa215305fbcafeb40696aaec"
+  }
+]

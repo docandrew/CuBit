@@ -1,0 +1,278 @@
+[
+  {
+    "key": "r1-keep",
+    "revision": 1,
+    "base": "cases/base1.asl",
+    "source": "cases/r1-keep.asl",
+    "methods": [
+      "INIT",
+      "RAW0",
+      "POST",
+      "FLG0",
+      "INIT",
+      "TEST",
+      "POST",
+      "FLG0",
+      "INIT",
+      "EXPR",
+      "POST",
+      "FLG0",
+      "INIT",
+      "RAW0",
+      "POST",
+      "FLG0",
+      "INIT",
+      "TEST",
+      "POST",
+      "FLG0",
+      "INIT",
+      "EXPR",
+      "POST",
+      "FLG0"
+    ],
+    "expected": "unknown; carrier/rawobjecttype and ownershiptransition are hypotheses to test",
+    "compiles": [
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/store-owner-transition-raw-control-6h73pyip/cases/base1.asl"
+        ],
+        "log": "results/r1-keep-base-compile.log",
+        "sha256": "29a0a7394f8c5d67a2d60ff11cfc555ecd6899a8badc1446ef1685473c08f56f"
+      },
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/store-owner-transition-raw-control-6h73pyip/cases/r1-keep.asl"
+        ],
+        "log": "results/r1-keep-source-compile.log",
+        "sha256": "3aac9014d16b891736d3ffdaa0bd96ad20c3e287a7158f1a94e7307d2d3011d5"
+      }
+    ],
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "osi install CuBitProbeSupported;osi;load /home/doc/git/.acpi-proof-work/store-owner-transition-raw-control-6h73pyip/cases/r1-keep.aml;execute INIT;execute RAW0;execute POST;execute FLG0;execute INIT;execute TEST;execute POST;execute FLG0;execute INIT;execute EXPR;execute POST;execute FLG0;execute INIT;execute RAW0;execute POST;execute FLG0;execute INIT;execute TEST;execute POST;execute FLG0;execute INIT;execute EXPR;execute POST;execute FLG0",
+        "/home/doc/git/.acpi-proof-work/store-owner-transition-raw-control-6h73pyip/cases/base1.aml"
+      ],
+      "log": "results/r1-keep-execute.log",
+      "sha256": "6d8b46afcace0e41f01965c864a5cb41479f6898fee902597b53222b5aaa06d5"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": []
+  },
+  {
+    "key": "r1-drop",
+    "revision": 1,
+    "base": "cases/base1.asl",
+    "source": "cases/r1-drop.asl",
+    "methods": [
+      "INIT",
+      "RAW0",
+      "POST",
+      "FLG0",
+      "INIT",
+      "TEST",
+      "POST",
+      "FLG0",
+      "INIT",
+      "EXPR",
+      "POST",
+      "FLG0",
+      "INIT",
+      "RAW0",
+      "POST",
+      "FLG0",
+      "INIT",
+      "TEST",
+      "POST",
+      "FLG0",
+      "INIT",
+      "EXPR",
+      "POST",
+      "FLG0"
+    ],
+    "expected": "unknown; carrier/rawobjecttype and ownershiptransition are hypotheses to test",
+    "compiles": [
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/store-owner-transition-raw-control-6h73pyip/cases/base1.asl"
+        ],
+        "log": "results/r1-drop-base-compile.log",
+        "sha256": "29a0a7394f8c5d67a2d60ff11cfc555ecd6899a8badc1446ef1685473c08f56f"
+      },
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/store-owner-transition-raw-control-6h73pyip/cases/r1-drop.asl"
+        ],
+        "log": "results/r1-drop-source-compile.log",
+        "sha256": "318c0a6716522714b91476555454afc2bd641990fc955235472feaf250cf0399"
+      }
+    ],
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "osi install CuBitProbeSupported;osi;load /home/doc/git/.acpi-proof-work/store-owner-transition-raw-control-6h73pyip/cases/r1-drop.aml;execute INIT;execute RAW0;execute POST;execute FLG0;execute INIT;execute TEST;execute POST;execute FLG0;execute INIT;execute EXPR;execute POST;execute FLG0;execute INIT;execute RAW0;execute POST;execute FLG0;execute INIT;execute TEST;execute POST;execute FLG0;execute INIT;execute EXPR;execute POST;execute FLG0",
+        "/home/doc/git/.acpi-proof-work/store-owner-transition-raw-control-6h73pyip/cases/base1.aml"
+      ],
+      "log": "results/r1-drop-execute.log",
+      "sha256": "3d05010e8a35cb12526246844354d9273b049bbd45667755ed40577c298373e6"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": []
+  },
+  {
+    "key": "r2-keep",
+    "revision": 2,
+    "base": "cases/base2.asl",
+    "source": "cases/r2-keep.asl",
+    "methods": [
+      "INIT",
+      "RAW0",
+      "POST",
+      "FLG0",
+      "INIT",
+      "TEST",
+      "POST",
+      "FLG0",
+      "INIT",
+      "EXPR",
+      "POST",
+      "FLG0",
+      "INIT",
+      "RAW0",
+      "POST",
+      "FLG0",
+      "INIT",
+      "TEST",
+      "POST",
+      "FLG0",
+      "INIT",
+      "EXPR",
+      "POST",
+      "FLG0"
+    ],
+    "expected": "unknown; carrier/rawobjecttype and ownershiptransition are hypotheses to test",
+    "compiles": [
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/store-owner-transition-raw-control-6h73pyip/cases/base2.asl"
+        ],
+        "log": "results/r2-keep-base-compile.log",
+        "sha256": "5d02e06fe758fc9c66b9c67d948399a02545def19dc94820f50b81eff27180c7"
+      },
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/store-owner-transition-raw-control-6h73pyip/cases/r2-keep.asl"
+        ],
+        "log": "results/r2-keep-source-compile.log",
+        "sha256": "eb60853d61304fa6a084e41dab710e2731b4e1a39df98c399e3310b1e3c5e831"
+      }
+    ],
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "osi install CuBitProbeSupported;osi;load /home/doc/git/.acpi-proof-work/store-owner-transition-raw-control-6h73pyip/cases/r2-keep.aml;execute INIT;execute RAW0;execute POST;execute FLG0;execute INIT;execute TEST;execute POST;execute FLG0;execute INIT;execute EXPR;execute POST;execute FLG0;execute INIT;execute RAW0;execute POST;execute FLG0;execute INIT;execute TEST;execute POST;execute FLG0;execute INIT;execute EXPR;execute POST;execute FLG0",
+        "/home/doc/git/.acpi-proof-work/store-owner-transition-raw-control-6h73pyip/cases/base2.aml"
+      ],
+      "log": "results/r2-keep-execute.log",
+      "sha256": "0a391346107b5eae9f8fe373509b0289b94b374f66f9c1d97e54875ab757b5ee"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": []
+  },
+  {
+    "key": "r2-drop",
+    "revision": 2,
+    "base": "cases/base2.asl",
+    "source": "cases/r2-drop.asl",
+    "methods": [
+      "INIT",
+      "RAW0",
+      "POST",
+      "FLG0",
+      "INIT",
+      "TEST",
+      "POST",
+      "FLG0",
+      "INIT",
+      "EXPR",
+      "POST",
+      "FLG0",
+      "INIT",
+      "RAW0",
+      "POST",
+      "FLG0",
+      "INIT",
+      "TEST",
+      "POST",
+      "FLG0",
+      "INIT",
+      "EXPR",
+      "POST",
+      "FLG0"
+    ],
+    "expected": "unknown; carrier/rawobjecttype and ownershiptransition are hypotheses to test",
+    "compiles": [
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/store-owner-transition-raw-control-6h73pyip/cases/base2.asl"
+        ],
+        "log": "results/r2-drop-base-compile.log",
+        "sha256": "5d02e06fe758fc9c66b9c67d948399a02545def19dc94820f50b81eff27180c7"
+      },
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/store-owner-transition-raw-control-6h73pyip/cases/r2-drop.asl"
+        ],
+        "log": "results/r2-drop-source-compile.log",
+        "sha256": "8ff91136b365384c91486968845bf8b07b316034e9630e3adbf54dacbfac1374"
+      }
+    ],
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "osi install CuBitProbeSupported;osi;load /home/doc/git/.acpi-proof-work/store-owner-transition-raw-control-6h73pyip/cases/r2-drop.aml;execute INIT;execute RAW0;execute POST;execute FLG0;execute INIT;execute TEST;execute POST;execute FLG0;execute INIT;execute EXPR;execute POST;execute FLG0;execute INIT;execute RAW0;execute POST;execute FLG0;execute INIT;execute TEST;execute POST;execute FLG0;execute INIT;execute EXPR;execute POST;execute FLG0",
+        "/home/doc/git/.acpi-proof-work/store-owner-transition-raw-control-6h73pyip/cases/base2.aml"
+      ],
+      "log": "results/r2-drop-execute.log",
+      "sha256": "39513628fe209cb39d0115065d9a61b55cfcea54948541802376a3e1290f9ab2"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": []
+  }
+]

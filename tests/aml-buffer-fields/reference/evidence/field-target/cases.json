@@ -1,0 +1,38 @@
+[
+  {
+    "name": "FIXEDBYTE",
+    "source": "BYTE",
+    "field": "FIXED",
+    "method_opcode": "CopyObject"
+  },
+  {
+    "name": "FIXEDPACKAGE",
+    "source": "PACKAGE",
+    "field": "FIXED",
+    "method_opcode": "CopyObject"
+  },
+  {
+    "name": "FIXEDEMPTY",
+    "source": "EMPTY",
+    "field": "FIXED",
+    "method_opcode": "CopyObject"
+  },
+  {
+    "name": "GENERICBYTE",
+    "source": "BYTE",
+    "field": "GENERIC",
+    "method_opcode": "CopyObject"
+  },
+  {
+    "name": "GENERICPACKAGE",
+    "source": "PACKAGE",
+    "field": "GENERIC",
+    "method_opcode": "CopyObject"
+  },
+  {
+    "name": "GENERICEMPTY",
+    "source": "EMPTY",
+    "field": "GENERIC",
+    "method_opcode": "CopyObject"
+  }
+]

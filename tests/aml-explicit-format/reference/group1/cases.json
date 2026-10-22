@@ -1,0 +1,226 @@
+[
+  {
+    "name": "DZERO",
+    "mode": "ToDecimalString",
+    "declarations": "Name (IVAL, Zero)",
+    "body": "Return (ToBuffer (ToDecimalString (IVAL)))",
+    "method_opcode": "ToDecimalString"
+  },
+  {
+    "name": "DEDGE",
+    "mode": "ToDecimalString",
+    "declarations": "Name (IVAL, 0xFEDCBA9876543210)",
+    "body": "Return (ToBuffer (ToDecimalString (IVAL)))",
+    "method_opcode": "ToDecimalString"
+  },
+  {
+    "name": "DONES",
+    "mode": "ToDecimalString",
+    "declarations": "Name (IVAL, Ones)",
+    "body": "Return (ToBuffer (ToDecimalString (IVAL)))",
+    "method_opcode": "ToDecimalString"
+  },
+  {
+    "name": "DEMPTY",
+    "mode": "ToDecimalString",
+    "declarations": "Name (BUFF, Buffer (Zero) {})",
+    "body": "Return (ToBuffer (ToDecimalString (BUFF)))",
+    "method_opcode": "ToDecimalString"
+  },
+  {
+    "name": "DBZERO",
+    "mode": "ToDecimalString",
+    "declarations": "Name (BUFF, Buffer () {0})",
+    "body": "Return (ToBuffer (ToDecimalString (BUFF)))",
+    "method_opcode": "ToDecimalString"
+  },
+  {
+    "name": "DMIX",
+    "mode": "ToDecimalString",
+    "declarations": "Name (BUFF, Buffer () {0,9,10,15,16,99,100,255})",
+    "body": "Return (ToBuffer (ToDecimalString (BUFF)))",
+    "method_opcode": "ToDecimalString"
+  },
+  {
+    "name": "DSTR",
+    "mode": "ToDecimalString",
+    "declarations": "Name (STR0, \"000xFF\")",
+    "body": "Return (ToBuffer (ToDecimalString (STR0)))",
+    "method_opcode": "ToDecimalString"
+  },
+  {
+    "name": "DID",
+    "mode": "ToDecimalString",
+    "declarations": "Name (STR0, \"ABC\")",
+    "body": "Store (0x5A, Index (ToDecimalString (STR0), Zero)) Return (ToBuffer (STR0))",
+    "method_opcode": "ToDecimalString"
+  },
+  {
+    "name": "DFRESH",
+    "mode": "ToDecimalString",
+    "declarations": "Name (BUFF, Buffer () {65,66})",
+    "body": "Store (0x5A, Index (ToDecimalString (BUFF), Zero)) Return (BUFF)",
+    "method_opcode": "ToDecimalString"
+  },
+  {
+    "name": "DLOCAL",
+    "mode": "ToDecimalString",
+    "declarations": "Name (IVAL, 65)",
+    "body": "Store (0x5A, Index (ToDecimalString (IVAL, Local0), Zero)) Return (ToBuffer (Local0))",
+    "method_opcode": "ToDecimalString"
+  },
+  {
+    "name": "DREF",
+    "mode": "ToDecimalString",
+    "declarations": "Name (STR0, \"ABC\")",
+    "body": "Store (RefOf (STR0), Local0) Return (ToBuffer (ToDecimalString (Local0)))",
+    "method_opcode": "ToDecimalString"
+  },
+  {
+    "name": "DINDEX",
+    "mode": "ToDecimalString",
+    "declarations": "Name (PKG0, Package () {65}) Method (SRC0, 0) {Return (Index (PKG0, Zero))}",
+    "body": "Return (ToBuffer (ToDecimalString (SRC0 ())))",
+    "method_opcode": "ToDecimalString"
+  },
+  {
+    "name": "HZERO",
+    "mode": "ToHexString",
+    "declarations": "Name (IVAL, Zero)",
+    "body": "Return (ToBuffer (ToHexString (IVAL)))",
+    "method_opcode": "ToHexString"
+  },
+  {
+    "name": "HEDGE",
+    "mode": "ToHexString",
+    "declarations": "Name (IVAL, 0xFEDCBA9876543210)",
+    "body": "Return (ToBuffer (ToHexString (IVAL)))",
+    "method_opcode": "ToHexString"
+  },
+  {
+    "name": "HONES",
+    "mode": "ToHexString",
+    "declarations": "Name (IVAL, Ones)",
+    "body": "Return (ToBuffer (ToHexString (IVAL)))",
+    "method_opcode": "ToHexString"
+  },
+  {
+    "name": "HEMPTY",
+    "mode": "ToHexString",
+    "declarations": "Name (BUFF, Buffer (Zero) {})",
+    "body": "Return (ToBuffer (ToHexString (BUFF)))",
+    "method_opcode": "ToHexString"
+  },
+  {
+    "name": "HBZERO",
+    "mode": "ToHexString",
+    "declarations": "Name (BUFF, Buffer () {0})",
+    "body": "Return (ToBuffer (ToHexString (BUFF)))",
+    "method_opcode": "ToHexString"
+  },
+  {
+    "name": "HMIX",
+    "mode": "ToHexString",
+    "declarations": "Name (BUFF, Buffer () {0,9,10,15,16,99,100,255})",
+    "body": "Return (ToBuffer (ToHexString (BUFF)))",
+    "method_opcode": "ToHexString"
+  },
+  {
+    "name": "HSTR",
+    "mode": "ToHexString",
+    "declarations": "Name (STR0, \"000xFF\")",
+    "body": "Return (ToBuffer (ToHexString (STR0)))",
+    "method_opcode": "ToHexString"
+  },
+  {
+    "name": "HID",
+    "mode": "ToHexString",
+    "declarations": "Name (STR0, \"ABC\")",
+    "body": "Store (0x5A, Index (ToHexString (STR0), Zero)) Return (ToBuffer (STR0))",
+    "method_opcode": "ToHexString"
+  },
+  {
+    "name": "HFRESH",
+    "mode": "ToHexString",
+    "declarations": "Name (BUFF, Buffer () {65,66})",
+    "body": "Store (0x5A, Index (ToHexString (BUFF), Zero)) Return (BUFF)",
+    "method_opcode": "ToHexString"
+  },
+  {
+    "name": "HLOCAL",
+    "mode": "ToHexString",
+    "declarations": "Name (IVAL, 65)",
+    "body": "Store (0x5A, Index (ToHexString (IVAL, Local0), Zero)) Return (ToBuffer (Local0))",
+    "method_opcode": "ToHexString"
+  },
+  {
+    "name": "HREF",
+    "mode": "ToHexString",
+    "declarations": "Name (STR0, \"ABC\")",
+    "body": "Store (RefOf (STR0), Local0) Return (ToBuffer (ToHexString (Local0)))",
+    "method_opcode": "ToHexString"
+  },
+  {
+    "name": "HINDEX",
+    "mode": "ToHexString",
+    "declarations": "Name (PKG0, Package () {65}) Method (SRC0, 0) {Return (Index (PKG0, Zero))}",
+    "body": "Return (ToBuffer (ToHexString (SRC0 ())))",
+    "method_opcode": "ToHexString"
+  },
+  {
+    "name": "DMATCH",
+    "mode": "ToDecimalString",
+    "declarations": "Name (IVAL, 65) Name (TARG, \"LONGER\")",
+    "body": "Store (0x5A, Index (ToDecimalString (IVAL,TARG),Zero)) Return (ToBuffer (TARG))",
+    "method_opcode": "ToDecimalString"
+  },
+  {
+    "name": "DDIFF",
+    "mode": "ToDecimalString",
+    "declarations": "Name (IVAL, 65) Name (TARG, Zero)",
+    "body": "Store (0x5A, Index (ToDecimalString (IVAL,TARG),Zero)) Return (ToBuffer (TARG))",
+    "method_opcode": "ToDecimalString"
+  },
+  {
+    "name": "DORDER",
+    "mode": "ToDecimalString",
+    "declarations": "Name (PKG0, Package () {Zero}) Method (SRC0,0) {Store (Add (Multiply(MARK,10),1),MARK) Return (65)} Method (TGT0,0) {Store (Add(Multiply(MARK,10),2),MARK) Return (Zero)}",
+    "body": "Return (ToBuffer(ToDecimalString(SRC0(),Index(PKG0,TGT0()))))",
+    "method_opcode": "ToDecimalString"
+  },
+  {
+    "name": "DERROR",
+    "mode": "ToDecimalString",
+    "declarations": "Name (PKG0, Package () {Zero}) Method (SRC0,0) {Store (Add(Multiply(MARK,10),1),MARK) Return(PKG0)} Method (TGT0,0) {Store(Add(Multiply(MARK,10),2),MARK) Return(Zero)}",
+    "body": "Return(ToBuffer(ToDecimalString(SRC0(),Index(PKG0,TGT0()))))",
+    "method_opcode": "ToDecimalString"
+  },
+  {
+    "name": "DTYPE",
+    "mode": "ToDecimalString",
+    "declarations": "Name (IVAL, 65)",
+    "body": "Store (ToDecimalString(IVAL),Local0) Return (Add(Multiply(ObjectType(Local0),100),SizeOf(Local0)))",
+    "method_opcode": "ToDecimalString"
+  },
+  {
+    "name": "DRAW",
+    "mode": "ToDecimalString",
+    "declarations": "Name (STR0, \"ABC\")",
+    "body": "Store(0x80,Index(STR0,Zero)) Store(Zero,Index(STR0,One)) Store(0xFF,Index(STR0,2)) Return(ToBuffer(ToDecimalString(STR0)))",
+    "method_opcode": "ToDecimalString"
+  },
+  {
+    "name": "HTYPE",
+    "mode": "ToHexString",
+    "declarations": "Name (IVAL, 65)",
+    "body": "Store (ToHexString(IVAL),Local0) Return (Add(Multiply(ObjectType(Local0),100),SizeOf(Local0)))",
+    "method_opcode": "ToHexString"
+  },
+  {
+    "name": "HRAW",
+    "mode": "ToHexString",
+    "declarations": "Name (STR0, \"ABC\")",
+    "body": "Store(0x80,Index(STR0,Zero)) Store(Zero,Index(STR0,One)) Store(0xFF,Index(STR0,2)) Return(ToBuffer(ToHexString(STR0)))",
+    "method_opcode": "ToHexString"
+  }
+]

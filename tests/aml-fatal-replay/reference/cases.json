@@ -1,0 +1,100 @@
+[
+  {
+    "label": "direct-r1",
+    "source": "direct-r1.asl",
+    "revision": 1,
+    "batch": "execute TEST;execute READ;execute CNTR;execute TEST;execute READ;execute CNTR",
+    "classification": "Normal source; compiler rejection/warning and runtime diagnostics retained. No expected process0 equivalence."
+  },
+  {
+    "label": "direct-r2",
+    "source": "direct-r2.asl",
+    "revision": 2,
+    "batch": "execute TEST;execute READ;execute CNTR;execute TEST;execute READ;execute CNTR",
+    "classification": "Normal source; compiler rejection/warning and runtime diagnostics retained. No expected process0 equivalence."
+  },
+  {
+    "label": "nested-r1",
+    "source": "nested-r1.asl",
+    "revision": 1,
+    "batch": "execute TEST;execute READ;execute CNTR;execute TEST;execute READ;execute CNTR",
+    "classification": "Normal source; compiler rejection/warning and runtime diagnostics retained. No expected process0 equivalence."
+  },
+  {
+    "label": "nested-r2",
+    "source": "nested-r2.asl",
+    "revision": 2,
+    "batch": "execute TEST;execute READ;execute CNTR;execute TEST;execute READ;execute CNTR",
+    "classification": "Normal source; compiler rejection/warning and runtime diagnostics retained. No expected process0 equivalence."
+  },
+  {
+    "label": "once-r1",
+    "source": "once-r1.asl",
+    "revision": 1,
+    "batch": "execute TEST;execute READ;execute CNTR;execute TEST;execute READ;execute CNTR",
+    "classification": "Normal source; compiler rejection/warning and runtime diagnostics retained. No expected process0 equivalence."
+  },
+  {
+    "label": "once-r2",
+    "source": "once-r2.asl",
+    "revision": 2,
+    "batch": "execute TEST;execute READ;execute CNTR;execute TEST;execute READ;execute CNTR",
+    "classification": "Normal source; compiler rejection/warning and runtime diagnostics retained. No expected process0 equivalence."
+  },
+  {
+    "label": "string-r1",
+    "source": "string-r1.asl",
+    "revision": 1,
+    "batch": "execute TEST;execute READ;execute CNTR;execute TEST;execute READ;execute CNTR",
+    "classification": "Normal source; compiler rejection/warning and runtime diagnostics retained. No expected process0 equivalence."
+  },
+  {
+    "label": "string-r2",
+    "source": "string-r2.asl",
+    "revision": 2,
+    "batch": "execute TEST;execute READ;execute CNTR;execute TEST;execute READ;execute CNTR",
+    "classification": "Normal source; compiler rejection/warning and runtime diagnostics retained. No expected process0 equivalence."
+  },
+  {
+    "label": "buffer-r1",
+    "source": "buffer-r1.asl",
+    "revision": 1,
+    "batch": "execute TEST;execute READ;execute CNTR;execute TEST;execute READ;execute CNTR",
+    "classification": "Normal source; compiler rejection/warning and runtime diagnostics retained. No expected process0 equivalence."
+  },
+  {
+    "label": "buffer-r2",
+    "source": "buffer-r2.asl",
+    "revision": 2,
+    "batch": "execute TEST;execute READ;execute CNTR;execute TEST;execute READ;execute CNTR",
+    "classification": "Normal source; compiler rejection/warning and runtime diagnostics retained. No expected process0 equivalence."
+  },
+  {
+    "label": "wide-r1",
+    "source": "wide-r1.asl",
+    "revision": 1,
+    "batch": "execute TEST;execute READ;execute CNTR;execute TEST;execute READ;execute CNTR",
+    "classification": "Normal source; compiler rejection/warning and runtime diagnostics retained. No expected process0 equivalence."
+  },
+  {
+    "label": "wide-r2",
+    "source": "wide-r2.asl",
+    "revision": 2,
+    "batch": "execute TEST;execute READ;execute CNTR;execute TEST;execute READ;execute CNTR",
+    "classification": "Normal source; compiler rejection/warning and runtime diagnostics retained. No expected process0 equivalence."
+  },
+  {
+    "label": "osi-r1",
+    "source": "osi-r1.asl",
+    "revision": 1,
+    "batch": "execute RAWV;execute TEST;execute READ;execute CNTR;execute TEST;execute READ;execute CNTR",
+    "classification": "Normal source; compiler rejection/warning and runtime diagnostics retained. No expected process0 equivalence."
+  },
+  {
+    "label": "osi-r2",
+    "source": "osi-r2.asl",
+    "revision": 2,
+    "batch": "execute RAWV;execute TEST;execute READ;execute CNTR;execute TEST;execute READ;execute CNTR",
+    "classification": "Normal source; compiler rejection/warning and runtime diagnostics retained. No expected process0 equivalence."
+  }
+]

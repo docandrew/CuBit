@@ -1,0 +1,10 @@
+project Store_checked is
+ for Source_Dirs use (".", "../aml-core", "../../userspace/lib/acpi", "../../userspace/services/acpi", "../../shared/firmware");
+ Build_Root := external ("AML_OSI_STORE_BUILD", "build-store-checked");
+ for Object_Dir use Build_Root & "/obj";
+ for Exec_Dir use Build_Root;
+ for Main use ("store_oracle_tests.adb");
+ package Compiler is
+  for Default_Switches ("Ada") use ("-O1", "-gnata", "-gnato", "-gnat2022", "-gnatwa", "-gnatwe");
+ end Compiler;
+end Store_checked;

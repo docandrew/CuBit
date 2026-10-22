@@ -35,6 +35,42 @@ package body AML_Coercions with SPARK_Mode is
       end loop;
       return (Status => Converted, Value => Value);
    end From_String;
+   package body String_Readers is
+   function From_String
+     (Data : aliased Source_Type; First_Byte, Byte_Length : Natural;
+      Width : Integer_Width) return Result is
+      Offset : Natural := 0;
+      Value : Integer_Value := 0;
+      Digit : Integer_Value range 0 .. 15;
+      B : Byte;
+   begin
+      while Offset < Byte_Length and then Source_Byte (Data, First_Byte + Offset) in 9 .. 13 | 32 loop
+         pragma Loop_Invariant (Offset <= Byte_Length);
+         pragma Loop_Variant (Decreases => Byte_Length - Offset);
+         Offset := Offset + 1;
+      end loop;
+      if Byte_Length - Offset >= 2 and then Source_Byte (Data, First_Byte + Offset) = 48
+        and then Source_Byte (Data, First_Byte + (Offset + 1)) in 88 | 120 then
+         Offset := Offset + 2;
+      end if;
+      while Offset < Byte_Length loop
+         pragma Loop_Invariant (Offset <= Byte_Length);
+         pragma Loop_Invariant (Value <= Maximum (Width));
+         pragma Loop_Variant (Decreases => Byte_Length - Offset);
+         B := Source_Byte (Data, First_Byte + Offset);
+         case B is
+            when 48 .. 57 => Digit := Integer_Value (B - 48);
+            when 65 .. 70 => Digit := Integer_Value (B - 55);
+            when 97 .. 102 => Digit := Integer_Value (B - 87);
+            when others => exit;
+         end case;
+         exit when Value > Maximum (Width) / 16;
+         Value := Value * 16 + Digit;
+         Offset := Offset + 1;
+      end loop;
+      return (Status => Converted, Value => Value);
+   end From_String;
+   end String_Readers;
    function From_Explicit_String (Data : Bytes; Width : Integer_Width) return Result is
       type Radix is (Decimal, Hexadecimal);
       Base : Radix := Decimal;

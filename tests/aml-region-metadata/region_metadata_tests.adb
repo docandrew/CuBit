@@ -7,6 +7,8 @@ with AML_Objects;
 with AML_References;
 with AML_Table_Backing;
 procedure Region_Metadata_Tests is
+   use type AML_Execute.Named_Metadata_Type;
+   use type AML_Decode.Bytes;
    package NS is new AML_Namespace (32, AML_Delays.Unavailable_Provider);
    use NS; use NS.Owned;
    use type AML_Objects.State;
@@ -129,10 +131,10 @@ begin
       end loop;
       Reset (A,OK); Check (OK); Load (A,Region & Field & Method ([16#A4#,70,76,68,48]),Width,Status); Check (Status = Loaded);
       Invoke (A,Input,3,[others => <>],0,100,Result); Check (Result.Status = Unsupported_Value);
-      Result := NS.Invoke (Snapshot (A),3,[others => 0],0,100);
+      NS.Invoke_Read_Only (Snapshot (A),3,[others => 0],0,100, Result);
       Check (Result.Status = Unsupported_Value);
       Reset (A,OK); Check (OK); Load (A,Region & Method ([16#A4#,82,69,71,48]),Width,Status); Check (Status = Loaded);
-      Result := NS.Invoke (Snapshot (A),2,[others => 0],0,100); Check (Result.Status = Unsupported_Value);
+      NS.Invoke_Read_Only (Snapshot (A),2,[others => 0],0,100, Result); Check (Result.Status = Unsupported_Value);
       Invoke (A,Input,2,[others => <>],0,100,Result); Check (Result.Status = Unsupported_Value);
    end loop;
    declare package Small is new AML_Namespace (8, AML_Delays.Unavailable_Provider, Max_Node_Incarnation => 2); S : Small.State := Small.Empty; R : Small.Load_Status; use type Small.Load_Status; begin

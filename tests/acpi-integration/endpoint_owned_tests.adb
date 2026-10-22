@@ -27,6 +27,13 @@ begin
             Reply : Packet;
             Allowed : constant Boolean := Config_ID = 0 and Stamp = 11;
          begin
+            for Page in Metrics_Completion_State_Page .. Metrics_Last_Page loop
+               ACPI_Endpoint.Dispatch (S, Config, Stamp,
+                 (Label => Read_Metrics, Data => [Page,0,0,0], others => <>), Reply);
+               Check (Reply.Label = (if Config_ID = 0 and Stamp in 10 .. 11 then
+                 ACPI_Endpoint.Reply_OK else ACPI_Endpoint.Reply_Error));
+               Check (Revision (S) = 0 and then Current (S) = Idle);
+            end loop;
             ACPI_Endpoint.Dispatch (S, Config, Stamp,
               (Label => Start_Snapshot, Data => [0, 1, 0, 0], others => <>), Reply);
             Check (Reply.Label = (if Allowed then ACPI_Endpoint.Reply_OK else ACPI_Endpoint.Reply_Error));

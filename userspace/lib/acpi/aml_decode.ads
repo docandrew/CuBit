@@ -1,5 +1,6 @@
 pragma Ada_2022;
 with Interfaces;
+with Firmware_Tables;
 
 --  Pure AML framing only. The caller supplies an immutable bounded slice,
 --  starting at the operand, within its enclosing package/table.
@@ -18,7 +19,7 @@ package AML_Decode with SPARK_Mode, Pure is
    subtype Integer_Value is Interfaces.Unsigned_64;
    -- CuBit AML interpreter policy version; distinct from _REV/table revision.
    Interpreter_Revision : constant Integer_Value := 1;
-   type Bytes is array (Positive range <>) of Byte;
+   subtype Bytes is Firmware_Tables.Bytes;
    type Status is (Accepted, Truncated, Unsupported, Malformed, Limit_Exceeded);
    type Integer_Width is (Bits_32, Bits_64);
    type Integer_Result (Kind : Status := Truncated) is record
@@ -48,6 +49,28 @@ package AML_Decode with SPARK_Mode, Pure is
           (for all I in 1 .. Read_String'Result.Length =>
              Read_String'Result.Text (I) = Character'Val (Data (Data'First + I))
              and then Character'Pos (Read_String'Result.Text (I)) in 1 .. 127));
+   -- A view into the caller's immutable, enclosing AML slice; no text copy.
+   subtype String_Payload_Offset is Positive range 1 .. 1;
+   subtype String_Span_Length is Natural range 0 .. Natural'Last - 2;
+   subtype String_Encoding_Length is Positive range 2 .. Natural'Last;
+   type String_Span_Result (Kind : Status := Truncated) is record
+      case Kind is
+         when Accepted =>
+            Payload_Offset : String_Payload_Offset;
+            Length : String_Span_Length;
+            Consumed : String_Encoding_Length;
+         when others => null;
+      end case;
+   end record;
+   function Read_String_Span (Data : Bytes) return String_Span_Result
+     with Post => Read_String_Span'Result.Kind /= Limit_Exceeded and then
+       (if Read_String_Span'Result.Kind = Accepted then
+          Read_String_Span'Result.Consumed <= Data'Length and then
+          Read_String_Span'Result.Consumed = Read_String_Span'Result.Length + 2 and then
+          Natural (Data (Data'First)) = 16#0D# and then
+          Natural (Data (Data'First + (Read_String_Span'Result.Consumed - 1))) = 0 and then
+          (for all I in 1 .. Read_String_Span'Result.Length =>
+             Data (Data'First + I) in 1 .. 127));
    type Package_Result (Kind : Status := Truncated) is record
       case Kind is
          when Accepted =>
@@ -122,7 +145,17 @@ package AML_Decode with SPARK_Mode, Pure is
    function Check_Buffer_Count_Span
      (Data : Bytes; Count_Consumed : Natural) return Buffer_Count_Layout
      with Post => (if Check_Buffer_Count_Span'Result.Kind = Accepted then
-       Check_Buffer_Count_Span'Result.Consumed <= Data'Length
+       Data'Length >= 2
+       and then Read_Package (Data (Data'First + 1 .. Data'Last)).Kind = Accepted
+       and then Count_Consumed > 0
+       and then Count_Consumed <=
+         Read_Package (Data (Data'First + 1 .. Data'Last)).Extent -
+         Read_Package (Data (Data'First + 1 .. Data'Last)).Encoding_Bytes
+       and then Check_Buffer_Count_Span'Result.Consumed =
+         Read_Package (Data (Data'First + 1 .. Data'Last)).Extent + 1
+       and then Check_Buffer_Count_Span'Result.Raw_Offset =
+         1 + Read_Package (Data (Data'First + 1 .. Data'Last)).Encoding_Bytes + Count_Consumed
+       and then Check_Buffer_Count_Span'Result.Consumed <= Data'Length
        and then Check_Buffer_Count_Span'Result.Raw_Offset <= Check_Buffer_Count_Span'Result.Consumed
        and then Check_Buffer_Count_Span'Result.Raw_Length =
          Check_Buffer_Count_Span'Result.Consumed - Check_Buffer_Count_Span'Result.Raw_Offset);

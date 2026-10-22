@@ -1,0 +1,10 @@
+project request_migration_tests_checked is
+ for Source_Dirs use ("../../tests/acpi-bootstrap-devices", "../../userspace/lib/acpi", "../../userspace/services/acpi", "../../shared/firmware");
+ Build_Root := external ("SERVICE_MILESTONE_BUILD", "build-request_migration_tests-checked");
+ for Object_Dir use Build_Root & "/obj";
+ for Exec_Dir use Build_Root & "/bin";
+ for Main use ("request_migration_tests.adb");
+ package Compiler is
+ for Default_Switches ("Ada") use ("-O1", "-gnat2022", "-gnatwa", "-gnatwe", "-gnata", "-gnato");
+ end Compiler;
+end request_migration_tests_checked;

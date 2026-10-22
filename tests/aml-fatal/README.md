@@ -1,0 +1,7 @@
+# Hosted Fatal milestone
+
+Opt-in suite: `python3 tests/aml-fatal/run.py --mode release` or `--mode checked` in the pinned development environment with `TMPDIR=/home/doc/cubit-build-tmp`. Existing 180-second build, 30-second runtime, 64 MiB stack and 1 MiB output bounds apply. Portable registration is checked separately with `--validate-only`; those checks do not compile or execute the interpreter.
+
+The final six-main focused suites passed 813 checks per profile (release 75451, checked 76862). The cached 14-table replay passed 713 checks per profile (63818/33215); all tables, literal observed hook goldens and original normal ACPICA provenance remain unchanged. Fifteen maintained mains per profile passed 808,013 checks per profile in gate 85389. Checked call coverage used the same binary in separate width processes; the original unsplit checked timeout remains unresolved. Earlier failures remain historical evidence. Service-milestone retains exactly 33 selections; this is not an all-33 runtime claim.
+
+PROVED: actual pure AML_Fatal framing/status, Kind, little-endian Code and host-low32 projection postconditions, safety and flow (34 proof entries, four flow entries; root fatal-helper-proof-reviewed.json). Read_Fixed uses the compiler Interfaces.Shift_Left intrinsic summaries. TESTED: typed interpreter payload propagation, cleanup and hosted observer behavior within the accepted fixtures. These are not full-interpreter proofs. Native Fatal logging/shutdown delivery remains unfinished. No new reference execution or hardware conformance claim.

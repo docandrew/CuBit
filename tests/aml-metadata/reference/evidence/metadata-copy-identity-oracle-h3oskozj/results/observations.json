@@ -1,0 +1,864 @@
+[
+  {
+    "key": "1-arg-integer-value",
+    "revision": 1,
+    "question": "Integer source discriminates replaced argument from namedtarget; POSTobservesrootandDevice.",
+    "compile_rc": 0,
+    "aml_sha256": "b430747a27fbb8a391e71900578f30a5820347d6026812283dccd48f989ae252",
+    "actual_revision": 1,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "1e9229d14cac108dc9623d965ed5ba46dae6f46cc08e132cbffe5aa1c727eac2",
+    "disassembled_operations": [
+      "Alias",
+      "CopyObject",
+      "ObjectType"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "0000000000000000"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000003"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "0000000000000295"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [],
+    "classification": "returned"
+  },
+  {
+    "key": "1-arg-integer-reference",
+    "revision": 1,
+    "question": "Integer source discriminates replaced argument from namedtarget; POSTobservesrootandDevice.",
+    "compile_rc": 0,
+    "aml_sha256": "06261b2dd2656f4698e009b25dec0f5e3ceea4f81a49ecc53b9c95eb085b459e",
+    "actual_revision": 1,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "31ad06d94a40f182e2ac67437c98a64860478750a68556b78f360ba78ebf1fc1",
+    "disassembled_operations": [
+      "Alias",
+      "CopyObject",
+      "ObjectType",
+      "RefOf"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "0000000000000000"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000003"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "0000000000000263"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [],
+    "classification": "returned"
+  },
+  {
+    "key": "1-arg-integer-root-reference",
+    "revision": 1,
+    "question": "Integer source discriminates replaced argument from namedtarget; POSTobservesrootandDevice.",
+    "compile_rc": 0,
+    "aml_sha256": "df127d035777d2b4a930c9fde31ec01b69fab26bc6435c04d07087dd8a8d9160",
+    "actual_revision": 1,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "ee732fc348b34dda86673eec38a624c19160d746e2a7cf84ca1bf96c2086761b",
+    "disassembled_operations": [
+      "Alias",
+      "CopyObject",
+      "ObjectType",
+      "RefOf"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "0000000000000000"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000003"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "00000000000000A1"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [],
+    "classification": "returned"
+  },
+  {
+    "key": "1-copy-local-source-replace",
+    "revision": 1,
+    "question": "Does copied metadata retainDevice type after originalnode changeskind?",
+    "compile_rc": 0,
+    "aml_sha256": "9b1c2d4b5276561c79b1b00ca1ec8a28f9aa1831ccf0bb2d016c74aae6c96b3a",
+    "actual_revision": 1,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "fc6e832b7bd592e82255cdf32232cceb44679e2f8f27ec64857599a50e228c73",
+    "disassembled_operations": [
+      "Alias",
+      "CopyObject",
+      "ObjectType"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "0000000000000000"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [
+          "0000000000000006"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000003"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "0000000000000263"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [],
+    "classification": "returned"
+  },
+  {
+    "key": "1-argument-source-replace",
+    "revision": 1,
+    "question": "Does directmetadata Arg retainliveoriginalnode semantics after source replacement?",
+    "compile_rc": 0,
+    "aml_sha256": "62c360bf4dc829bdd72b5d14a0da710f6275c0c50377bd6786623c41c89c6d56",
+    "actual_revision": 1,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "106593c94f9026572ba53bf36044af9823c726c126c59a81f8dcc69de2d59b09",
+    "disassembled_operations": [
+      "Alias",
+      "CopyObject",
+      "ObjectType"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "0000000000000000"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000003"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "0000000000000263"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [],
+    "classification": "returned"
+  },
+  {
+    "key": "1-copy-package-source-replace",
+    "revision": 1,
+    "question": "Copied package metadata leaf snapshot versus originalnode afterreplacement.",
+    "compile_rc": 0,
+    "aml_sha256": "24bfeb155ed0a0bf0f4069ba13c6d258c64afc7b452c5df16ead8bb6977cc10b",
+    "actual_revision": 1,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "bc69efccfe0329d2fb50ab35e98bcf096109a20c4e4124386aa4aa32e9a3f145",
+    "disassembled_operations": [
+      "Alias",
+      "CopyObject",
+      "DerefOf",
+      "ObjectType",
+      "Package"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "0000000000000000"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000003"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "0000000000000263"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [],
+    "classification": "returned"
+  },
+  {
+    "key": "1-copy-named-source-replace",
+    "revision": 1,
+    "question": "Copied metadata namedvariable snapshot versus originalnode afterreplacement.",
+    "compile_rc": 0,
+    "aml_sha256": "2985d2a387e99d13ce7c8d3c3656a7195978a77cb5d52766f573b0387af8d66c",
+    "actual_revision": 1,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "b29860dd970d80db3ed65d263771ca2c21c413bbad94abe7bc50146fcd49157c",
+    "disassembled_operations": [
+      "Alias",
+      "CopyObject",
+      "ObjectType"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "0000000000000000"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [
+          "0000000000000006"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000003"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "0000000000000268"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [],
+    "classification": "returned"
+  },
+  {
+    "key": "2-arg-integer-value",
+    "revision": 2,
+    "question": "Integer source discriminates replaced argument from namedtarget; POSTobservesrootandDevice.",
+    "compile_rc": 0,
+    "aml_sha256": "11e46c6cf614757ec1dde377cc10774a6c313b580f508411f7da8cc1333e6aee",
+    "actual_revision": 2,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "7ed24d34414919d3c311617b0933bf97d9c4a28c96db1ccdecbebed2dc3fd296",
+    "disassembled_operations": [
+      "Alias",
+      "CopyObject",
+      "ObjectType"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "00000000FFFFFFFF"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000003"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "0000000000000295"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [],
+    "classification": "returned"
+  },
+  {
+    "key": "2-arg-integer-reference",
+    "revision": 2,
+    "question": "Integer source discriminates replaced argument from namedtarget; POSTobservesrootandDevice.",
+    "compile_rc": 0,
+    "aml_sha256": "dc9ece64e55f8af3c10dec9e8753f1206ddc623637db8168140b5ef0e5f4279d",
+    "actual_revision": 2,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "e4d57f4adc5d8da70371f857062ef42f404952464c19c1868b6259970fbeac28",
+    "disassembled_operations": [
+      "Alias",
+      "CopyObject",
+      "ObjectType",
+      "RefOf"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "00000000FFFFFFFF"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000003"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "0000000000000263"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [],
+    "classification": "returned"
+  },
+  {
+    "key": "2-arg-integer-root-reference",
+    "revision": 2,
+    "question": "Integer source discriminates replaced argument from namedtarget; POSTobservesrootandDevice.",
+    "compile_rc": 0,
+    "aml_sha256": "62003cfbe481b481d335d00e7f735fd42059d9b2a7d0460613d0bbdad9f81e69",
+    "actual_revision": 2,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "b3675843c5cd95aaa0cdce970573ae26492c08f3df5e3489e175a5d9ee6dad41",
+    "disassembled_operations": [
+      "Alias",
+      "CopyObject",
+      "ObjectType",
+      "RefOf"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "00000000FFFFFFFF"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000003"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "00000000000000A1"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [],
+    "classification": "returned"
+  },
+  {
+    "key": "2-copy-local-source-replace",
+    "revision": 2,
+    "question": "Does copied metadata retainDevice type after originalnode changeskind?",
+    "compile_rc": 0,
+    "aml_sha256": "c24e271da62c4d573c32329ca16d52e0602306f9a605a9deb4314d09f61d7683",
+    "actual_revision": 2,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "45726ec04a6e1231a5d9c85d48f780e04efe1bda0bc373744d05a6bab3fb938a",
+    "disassembled_operations": [
+      "Alias",
+      "CopyObject",
+      "ObjectType"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "00000000FFFFFFFF"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [
+          "0000000000000006"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000003"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "0000000000000263"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [],
+    "classification": "returned"
+  },
+  {
+    "key": "2-argument-source-replace",
+    "revision": 2,
+    "question": "Does directmetadata Arg retainliveoriginalnode semantics after source replacement?",
+    "compile_rc": 0,
+    "aml_sha256": "135f3685c24b91f08075c76f159bccac0ce7c1ba588e86d047bea1a71442a13d",
+    "actual_revision": 2,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "6b0b82b8885317513a107c18e9b85cbbb92b485b1659b08d53d2931176c6a55d",
+    "disassembled_operations": [
+      "Alias",
+      "CopyObject",
+      "ObjectType"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "00000000FFFFFFFF"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000003"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "0000000000000263"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [],
+    "classification": "returned"
+  },
+  {
+    "key": "2-copy-package-source-replace",
+    "revision": 2,
+    "question": "Copied package metadata leaf snapshot versus originalnode afterreplacement.",
+    "compile_rc": 0,
+    "aml_sha256": "5f46baf96f18b05009cd035e2fcfd6fbcbc33e92a4dc7285c44b05726ef256f8",
+    "actual_revision": 2,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "43049b6a60f62d7c5c44473a54ddb96e01729afa7dcc724844651fd2a2bb5770",
+    "disassembled_operations": [
+      "Alias",
+      "CopyObject",
+      "DerefOf",
+      "ObjectType",
+      "Package"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "00000000FFFFFFFF"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000003"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "0000000000000263"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [],
+    "classification": "returned"
+  },
+  {
+    "key": "2-copy-named-source-replace",
+    "revision": 2,
+    "question": "Copied metadata namedvariable snapshot versus originalnode afterreplacement.",
+    "compile_rc": 0,
+    "aml_sha256": "e62b92a2c196520ff03db39afde2fa0a0f01b933c2fc50952e4ddc1bfb2a6b11",
+    "actual_revision": 2,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "13a977257dac5dbba8b96736dffe697f475576ff7db7d60e3e43d59b8b281e98",
+    "disassembled_operations": [
+      "Alias",
+      "CopyObject",
+      "ObjectType"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "00000000FFFFFFFF"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [
+          "0000000000000006"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000003"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "0000000000000268"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [],
+    "classification": "returned"
+  }
+]

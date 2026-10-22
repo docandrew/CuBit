@@ -5,6 +5,7 @@ with AML_Execute; use AML_Execute;
 with AML_Namespace;
 with Capacity_Fixture; use Capacity_Fixture;
 procedure Namespace_Capacity_Tests is
+   use type AML_Decode.Bytes;
    use type Integer_Value;
    Checks : Natural := 0;
    procedure Check (OK : Boolean; Why : String) is
@@ -43,7 +44,7 @@ procedure Namespace_Capacity_Tests is
       NS.Load_Names (Tree, Method ("AAAA", Body_Of_Size (40000)) & Method ("BBBB", Body_Of_Size (30000)), Bits_64, Status);
       Check (Status = NS.Loaded and then NS.Method_Usage (Tree) = 70000, "aggregate above individual limit");
       Check (NS.Method_Data (Tree, 1)'Length = 40000 and then NS.Method_Data (Tree, 2)'Length = 30000, "independent method spans");
-      R := NS.Invoke (Tree, 2, [others => 0], 0, 10);
+      NS.Invoke_Read_Only (Tree, 2, [others => 0], 0, 10, R);
       Check (R.Status = Returned and then R.Value = 1, "invoke above aggregate offset 40000");
       Saved := NS.Empty; Tree := NS.Empty;
       NS.Load_Names (Tree, Method ("HUGE", Body_Of_Size (Max_Method_Bytes + 1)), Bits_64, Status);

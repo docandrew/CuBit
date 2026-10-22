@@ -1,0 +1,17 @@
+[
+  {
+    "name": "LONG5",
+    "method_opcode": "ConcatenateResTemplate",
+    "data": "0x84,0,0,0x79,0"
+  },
+  {
+    "name": "LONG6",
+    "method_opcode": "ConcatenateResTemplate",
+    "data": "0x84,0,0,0x79,0,0"
+  },
+  {
+    "name": "SMALL0",
+    "method_opcode": "ConcatenateResTemplate",
+    "data": "0x70,0x79,0"
+  }
+]

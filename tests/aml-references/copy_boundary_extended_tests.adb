@@ -8,10 +8,13 @@ with AML_Frame_Handles;
 with AML_Table_Backing;
 with AML_Namespace;
 with AML_Names;
+with AML_References;
 procedure Copy_Boundary_Extended_Tests is
+   use type AML_Decode.Bytes;
    package NS is new AML_Namespace (64, AML_Delays.Unavailable_Provider);
    package Owner renames NS.Owned;
-   use type NS.State;
+   use type NS.Object_Kind;
+   use type AML_References.Node_Incarnation;
    use type NS.Load_Status;
    use type AML_Objects.Usage;
    use type AML_Objects.State;
@@ -48,7 +51,7 @@ procedure Copy_Boundary_Extended_Tests is
    end Fill_Objects;
 begin
    for W in Integer_Width loop
-      -- Nested source consumes two package elements per clone. Fill to8190.
+      -- Nested source consumes two package elements per clone. Leave only one free element.
       declare
          A : Owner.Arena;
          R : Execution_Result;
@@ -60,14 +63,14 @@ begin
            Bytes'(1 => 16#08#) & DST & Bytes'(16#0A#,42) &
            Bytes'(16#14#,17,16#54#,16#45#,16#53#,16#54#,0,16#9D#) &
            BUF & DST & Bytes'(16#A4#,1), W);
-         -- 32*255+28 filler entries plus source2 =8190.
+         -- 32*255+29 filler entries plus source2 =8191; one clone needs two.
          for I in 0 .. 32 loop
             Load (A, Bytes'(16#08#,16#50#,16#41#,
               Byte (Character'Pos ('A') + I / 26),
               Byte (Character'Pos ('A') + I mod 26),
-              16#12#,2,(if I < 32 then 255 else 28)), W);
+              16#12#,2,(if I < 32 then 255 else 29)), W);
          end loop;
-         Check (Owner.Values_Used (A).Elements = AML_Objects.Max_Elements - 2);
+         Check (Owner.Values_Used (A).Elements = AML_Objects.Max_Elements - 1);
          declare
             Before : constant NS.State := Owner.Snapshot (A);
          begin
@@ -96,7 +99,7 @@ begin
       begin
          Reset (A); Reset (Control);
          Load (A, Fixture, W); Load (Control, Fixture, W);
-         Fill_Objects (A, 1); Fill_Objects (Control, 1);
+         Fill_Objects (A, 0); Fill_Objects (Control, 0);
          -- Execute only the source on identically populated control arena.
          Owner.Invoke (Control, Input, 4, Args, 0, 100, Source_Result);
          Check (Source_Result.Status = Object_Returned);
@@ -133,10 +136,11 @@ begin
             Owner.Copy_And_Attach (A,
               (Named_Destination, 0, AML_Names.Read_Name (DST)), W,
               (Reference_Datum, Ref), Copy, S);
-            Check (S = Uninitialized);
-            Check (Owner.Snapshot (A) = Before);
+            Check (S = Returned);
+            Check (NS.Kind (Owner.Snapshot (A), 2) = NS.Reference_Object);
+            Check (NS.Incarnation_Of (Owner.Snapshot (A), 2) = NS.Incarnation_Of (Before, 2));
             Check (Owner.Invocation_Count (A) = Serial);
-            Check (Copy.Value_Kind = Integer_Datum and then Copy.Number = 0);
+            Check (Copy = (Reference_Datum, Ref));
          end;
       end;
    end loop;

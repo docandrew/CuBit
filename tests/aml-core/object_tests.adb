@@ -131,7 +131,7 @@ begin
          Check (NS.Integer_Data (Tree, 1) = Value and NS.Count (Tree) = 2
                 and NS.Data_Object (Tree, 1) = 1
                 and NS.Value_Usage (Tree).Objects = 1);
-         Result := NS.Invoke (Tree, 2, [others => 0], 0, 20);
+         NS.Invoke_Read_Only (Tree, 2, [others => 0], 0, 20, Result);
          Check (Result.Status = AML_Execute.Returned and then Result.Value = Value);
       end loop;
    end;

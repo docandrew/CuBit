@@ -4,6 +4,7 @@ with AML_Decode; use AML_Decode;
 with AML_Execute; use AML_Execute;
 with Namespace_Instance;
 procedure Method_Storage_Tests is
+   use type AML_Decode.Bytes;
    package NS renames Namespace_Instance;
    use NS;
    use type Byte;
@@ -39,12 +40,12 @@ begin
             Load_Names (Tree, Method ("LONG", Code), W, Loaded);
             Check (Loaded = NS.Loaded and Count (Tree) = 1);
             Check (Method_Usage (Tree) = Size and Method_Data (Tree, 1) = Code);
-            R := Invoke (Tree, 1, [others => 0], 0, Size + 1);
+            Invoke_Read_Only (Tree, 1, [others => 0], 0, Size + 1, R);
             Check (R.Charged = Size);
             Check ((if Size >= 2 then R.Status = Returned and then R.Value = 1
                     else R.Status = No_Return));
             if Size > 0 then
-               R := Invoke (Tree, 1, [others => 0], 0, Size - 1);
+               Invoke_Read_Only (Tree, 1, [others => 0], 0, Size - 1, R);
                Check (R.Status = Budget_Exceeded);
             end if;
             -- The namespace owns the bytes independently of caller storage.

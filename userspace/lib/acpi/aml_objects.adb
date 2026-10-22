@@ -1,5 +1,6 @@
 pragma Ada_2022;
 package body AML_Objects with SPARK_Mode is
+   use type AML_References.Reference_Kind;
    function Slot_Bound (Store : State) return Object_ID is (Store.Used);
    function Live_Count (Store : State) return Object_ID is (Store.Live_Used);
    function Is_Live (Store : State; ID : Object_ID) return Boolean is
@@ -39,7 +40,7 @@ package body AML_Objects with SPARK_Mode is
       and then Extends (Store, Prior)
       and then (for all I in 1 .. Max_Objects => (if I /= ID then Store.Objects (I) = Prior.Objects (I)))
       and then (case Store.Objects (ID).Tag is
-        when Integer_Object | Reference_Object =>
+        when Integer_Object | Reference_Object | Metadata_Object | Metadata_Snapshot_Object | Event_Object | Mutex_Object =>
           Store.Bytes_Used = Prior.Bytes_Used and then Store.Elements_Used = Prior.Elements_Used
           and then Store.Objects (ID).First = 0 and then Store.Objects (ID).Size = 0,
         when String_Object | Buffer_Object =>
@@ -65,12 +66,25 @@ package body AML_Objects with SPARK_Mode is
                if I > Store.Used or else Item.Stamp = AML_Object_Identifiers.No_Incarnation then return False; end if;
                Live := Live + 1;
                if Item.Tag /= Integer_Object and then Item.Origin /= AML_Decode.Ordinary_Integer then return False; end if;
-               if Item.Tag /= Reference_Object and then Item.Reference /= AML_References.No_Reference then return False; end if;
+               if Item.Tag not in Reference_Object | Metadata_Object and then Item.Reference /= AML_References.No_Reference then return False; end if;
+               if Item.Tag /= Metadata_Snapshot_Object
+                 and then Item.Snapshot /= AML_Metadata_Kinds.Snapshot_Description'(Object_Type => AML_Metadata_Kinds.Device_Metadata)
+               then return False; end if;
                case Item.Tag is
                   when Integer_Object => null;
+                  when Mutex_Object =>
+                     if Item.First /= 0 or else Item.Size /= 0 or else Item.Value > AML_Decode.Integer_Value (AML_Mutexes.Canonical_Flags_Last) then return False; end if;
+                  when Event_Object =>
+                     if Item.First /= 0 or else Item.Size /= 0 or else Item.Value > Max_Event_Units then return False; end if;
                   when Reference_Object =>
                      if Item.First /= 0 or else Item.Size /= 0 or else Item.Value /= 0
                        or else not AML_References.Well_Formed (Item.Reference) then return False; end if;
+                  when Metadata_Object =>
+                     if Item.First /= 0 or else Item.Size /= 0 or else Item.Value /= 0
+                       or else not Metadata_Identity (Item.Reference) then return False; end if;
+                  when Metadata_Snapshot_Object =>
+                     if Item.First /= 0 or else Item.Size /= 0 or else Item.Value /= 0
+                       or else not AML_Metadata_Kinds.Supported (Item.Snapshot) then return False; end if;
                   when String_Object | Buffer_Object =>
                      if Item.First > Store.Bytes_Used or else Item.Size > Store.Bytes_Used - Item.First then return False; end if;
                   when Package_Object =>
@@ -104,6 +118,29 @@ package body AML_Objects with SPARK_Mode is
         Objects => (Prior.Objects with delta ID =>
           Object_Record'(Occupied => True, Stamp => Prior.Objects (ID).Stamp + 1,
                          Tag => Reference_Object, Reference => Value, others => <>))));
+   function Metadata_Identity (Value : AML_References.Reference) return Boolean is
+     (AML_References.Well_Formed (Value)
+      and then AML_References.Kind (Value) in AML_References.Named_Cell | AML_References.Root_Namespace);
+   function Metadata_Data (Store : State; ID : Object_ID) return AML_References.Reference is
+     (Store.Objects (ID).Reference);
+   function Metadata_Allocated
+     (Store, Prior : State; ID : Object_ID; Value : AML_References.Reference)
+      return Boolean is
+     (Fresh_Allocation (Store, Prior, ID)
+      and then Store = (Prior with delta Used => Store.Used, Live_Used => Prior.Live_Used + 1,
+        Objects => (Prior.Objects with delta ID =>
+          Object_Record'(Occupied => True, Stamp => Prior.Objects (ID).Stamp + 1,
+                         Tag => Metadata_Object, Reference => Value, others => <>))));
+   function Metadata_Snapshot_Data (Store : State; ID : Object_ID)
+      return AML_Metadata_Kinds.Snapshot_Description is (Store.Objects (ID).Snapshot);
+   function Metadata_Snapshot_Allocated
+     (Store, Prior : State; ID : Object_ID;
+      Value : AML_Metadata_Kinds.Snapshot_Description) return Boolean is
+     (Fresh_Allocation (Store, Prior, ID)
+      and then Store = (Prior with delta Used => Store.Used, Live_Used => Prior.Live_Used + 1,
+        Objects => (Prior.Objects with delta ID =>
+          Object_Record'(Occupied => True, Stamp => Prior.Objects (ID).Stamp + 1,
+                         Tag => Metadata_Snapshot_Object, Snapshot => Value, others => <>))));
    function Byte_Data (Store : State; ID : Object_ID) return AML_Decode.Bytes is
      (Store.Bytes (Store.Objects (ID).First + 1 .. Store.Objects (ID).First + Store.Objects (ID).Size));
    function Element (Store : State; ID : Object_ID; Index : Natural) return Object_ID is
@@ -263,6 +300,55 @@ package body AML_Objects with SPARK_Mode is
       Occupy (Store, Slot, (Tag => Reference_Object, Reference => Value, others => <>));
       ID := Slot;
    end New_Reference;
+   procedure New_Metadata (Store : in out State; Value : AML_References.Reference;
+                            ID : out Object_ID; Status : out Allocation_Status) is
+      Slot : Object_ID;
+   begin
+      ID := No_Object;
+      if not Metadata_Identity (Value) then Status := Invalid_Reference; return; end if;
+      Select_Slot (Store, Slot, Status); if Status /= Allocated then return; end if;
+      Occupy (Store, Slot, (Tag => Metadata_Object, Reference => Value, others => <>));
+      ID := Slot;
+   end New_Metadata;
+   procedure New_Metadata_Snapshot
+     (Store : in out State; Value : AML_Metadata_Kinds.Snapshot_Description;
+      ID : out Object_ID; Status : out Allocation_Status) is
+      Slot : Object_ID;
+   begin
+      ID := No_Object;
+      if not AML_Metadata_Kinds.Supported (Value) then Status := Invalid_Metadata; return; end if;
+      Select_Slot (Store, Slot, Status); if Status /= Allocated then return; end if;
+      Occupy (Store, Slot, (Tag => Metadata_Snapshot_Object, Snapshot => Value, others => <>));
+      ID := Slot;
+   end New_Metadata_Snapshot;
+   function Event_Units (Store : State; ID : Object_ID) return Event_Unit_Count is
+     (Store.Objects (ID).Value);
+   procedure Set_Event_Units (Store : in out State; ID : Object_ID; Units : Event_Unit_Count) is
+   begin
+      Store.Objects (ID).Value := Units;
+   end Set_Event_Units;
+   function Mutex_Flags (Store : State; ID : Object_ID) return AML_Decode.Byte is
+     (AML_Decode.Byte (Store.Objects (ID).Value));
+   function Mutex_Level (Store : State; ID : Object_ID) return AML_Mutexes.Sync_Level is
+     (AML_Mutexes.Sync_Level (Store.Objects (ID).Value));
+   procedure New_Mutex (Store : in out State; Flags : AML_Decode.Byte;
+     ID : out Object_ID; Status : out Allocation_Status) is
+      Slot : Object_ID;
+   begin
+      ID := No_Object;
+      if not AML_Mutexes.Canonical_Flags (Flags) then Status := Invalid_Mutex_Flags; return; end if;
+      Select_Slot (Store, Slot, Status); if Status /= Allocated then return; end if;
+      Occupy (Store, Slot, (Tag => Mutex_Object, Value => AML_Decode.Integer_Value (Flags), others => <>));
+      ID := Slot;
+   end New_Mutex;
+   procedure New_Event (Store : in out State; ID : out Object_ID; Status : out Allocation_Status) is
+      Slot : Object_ID;
+   begin
+      ID := No_Object;
+      Select_Slot (Store, Slot, Status); if Status /= Allocated then return; end if;
+      Occupy (Store, Slot, (Tag => Event_Object, others => <>));
+      ID := Slot;
+   end New_Event;
    procedure New_Integer (Store : in out State; Value : AML_Decode.Integer_Value;
                           ID : out Object_ID; Status : out Allocation_Status;
                           Origin : AML_Decode.Integer_Origin := AML_Decode.Ordinary_Integer) is
@@ -288,6 +374,94 @@ package body AML_Objects with SPARK_Mode is
       Occupy (Store, Slot, (Tag => Tag, First => Start, Size => Data'Length, others => <>));
       ID := Slot;
    end New_Bytes;
+   procedure New_Buffer
+     (Store : in out State; Requested_Length : AML_Decode.Integer_Value;
+      Initializer : AML_Decode.Bytes; ID : out Object_ID;
+      Status : out Allocation_Status)
+   is
+      Effective : constant AML_Decode.Integer_Value := AML_Decode.Integer_Value'Max
+        (Requested_Length, AML_Decode.Integer_Value (Initializer'Length));
+      Start : constant Natural := Store.Bytes_Used;
+      Size : Natural;
+      Slot : Object_ID;
+   begin
+      ID := No_Object;
+      Select_Slot (Store, Slot, Status); if Status /= Allocated then return; end if;
+      -- Check in the wide input domain before narrowing or touching the arena.
+      if Effective > AML_Decode.Integer_Value (Max_Bytes - Start) then
+         Status := Byte_Limit; return;
+      end if;
+      Size := Natural (Effective);
+      for I in 1 .. Size loop
+         Store.Bytes (Start + I) :=
+           (if I <= Initializer'Length then Initializer (Initializer'First + (I - 1)) else 0);
+      end loop;
+      Store.Bytes_Used := Start + Size;
+      Occupy (Store, Slot, (Tag => Buffer_Object, First => Start, Size => Size, others => <>));
+      ID := Slot;
+   end New_Buffer;
+   package body Bit_Buffer_Initializers is
+      function Window
+        (Data : aliased Source_Type; First_Byte, Byte_Length, Offset : Natural;
+         Bits : Positive) return AML_Decode.Byte
+      is
+         pragma Unreferenced (Byte_Length); -- Used by the public precondition.
+         Address : constant Natural := First_Byte + Offset / 8;
+         Value : Natural := Natural (Source_Byte (Data, Address)) / AML_Field_Data.Scale (Offset mod 8);
+      begin
+         if Bits + Offset mod 8 > 8 then
+            Value := Value + Natural (Source_Byte (Data, Address + 1)) * AML_Field_Data.Scale (8 - Offset mod 8);
+         end if;
+         return AML_Decode.Byte (Value mod AML_Field_Data.Scale (Bits));
+      end Window;
+      procedure Allocate
+        (Store : in out State; Data : aliased Source_Type;
+         First_Byte, Byte_Length, Offset, Bits : Natural;
+         ID : out Object_ID; Status : out Allocation_Status)
+      is
+         Size : constant Natural := Bits / 8 + (if Bits mod 8 = 0 then 0 else 1);
+         Start : constant Natural := Store.Bytes_Used;
+         Slot : Object_ID;
+      begin
+         ID := No_Object;
+         Select_Slot (Store, Slot, Status); if Status /= Allocated then return; end if;
+         if Size > Max_Bytes - Start then Status := Byte_Limit; return; end if;
+         -- Initialize unpublished backing using only immutable byte readers.
+         -- No allocation hooks, collection or whole-arena setter contracts
+         -- occur inside this loop. Concrete readers must be side-effect free.
+         for I in 1 .. Size loop
+            Store.Bytes (Start + I) := Window
+              (Data, First_Byte, Byte_Length, Offset + (I - 1) * 8,
+               Positive'Min (8, Bits - (I - 1) * 8));
+         end loop;
+         Store.Bytes_Used := Start + Size;
+         Occupy (Store, Slot, (Tag => Buffer_Object, First => Start, Size => Size, others => <>));
+         ID := Slot;
+      end Allocate;
+   end Bit_Buffer_Initializers;
+   package body String_Initializers is
+      procedure Allocate
+        (Store : in out State; Data : aliased Source_Type;
+         First_Byte, Byte_Length : Natural; ID : out Object_ID;
+         Status : out Allocation_Status)
+      is
+         Start : constant Natural := Store.Bytes_Used;
+         Slot : Object_ID;
+      begin
+         ID := No_Object;
+         Select_Slot (Store, Slot, Status); if Status /= Allocated then return; end if;
+         if Byte_Length > Max_Bytes - Start then Status := Byte_Limit; return; end if;
+         -- Readers are trusted immutable observers, as for bit initializers.
+         -- No AML reentry, allocation hooks or collection occur in this loop.
+         for I in 1 .. Byte_Length loop
+            Store.Bytes (Start + I) := Source_Byte (Data, First_Byte + (I - 1));
+         end loop;
+         Store.Bytes_Used := Start + Byte_Length;
+         Occupy (Store, Slot,
+           (Tag => String_Object, First => Start, Size => Byte_Length, others => <>));
+         ID := Slot;
+      end Allocate;
+   end String_Initializers;
    procedure New_Package (Store : in out State; Size : Natural;
                           ID : out Object_ID; Status : out Allocation_Status) is
       Start : constant Natural := Store.Elements_Used;

@@ -7,6 +7,7 @@ with AML_Objects;
 with AML_References;
 with AML_Table_Backing;
 procedure Owned_Frame_Root_Tests is
+   use type AML_Decode.Bytes;
    procedure Capture (Value : out Integer_Value; Available : out Boolean);
    package N is new AML_Namespace (16, AML_Delays.Unavailable_Provider, Capture, Max_Frame_Roots => 2);
    use N; use N.Owned;

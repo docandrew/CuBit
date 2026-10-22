@@ -2,6 +2,7 @@ with Ada.Text_IO;
 with AML_Decode; use AML_Decode;
 with AML_Execute; use AML_Execute;
 procedure Expression_Tests is
+   use type AML_Decode.Bytes;
    use type Integer_Value;
    use type Byte;
    Ops : constant Bytes := [16#72#,16#74#,16#77#,16#7B#,16#7D#,16#7F#];

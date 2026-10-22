@@ -1,5 +1,5 @@
 project Containers_checked is
- for Source_Dirs use (".", "../aml-sync-metadata", "../aml-concatenate", "../../userspace/lib/acpi", "../../userspace/services/acpi", "../../shared/firmware");
+ for Source_Dirs use (".", "../aml-sync-metadata", "../aml-concatenate", "../../userspace/lib/acpi", "../../userspace/services/acpi", "../../shared/firmware", "../aml-core");
  for Object_Dir use "build-checked";
  for Main use ("container_tests.adb", "sync_metadata_tests.adb", "concatenate_oracle_runner.adb");
  package Compiler is

@@ -26,7 +26,7 @@ procedure Delay_Core_Tests is
       R (1 .. 4) := [16#44#,16#53#,16#44#,16#54#];
       for I in 5 .. 8 loop R (I) := Firmware_Tables.Byte (Size mod 256); Size := Size / 256; end loop;
       R (9) := 2;
-      for I in Code'Range loop R (37 + I - Code'First) := Firmware_Tables.Byte (Code (I)); end loop;
+      for I in Code'Range loop R (37 + I - Code'First) := Code (I); end loop;
       for B of R loop Sum := Sum + B; end loop; R (10) := 0 - Sum;
       return R;
    end Table;

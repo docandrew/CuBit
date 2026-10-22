@@ -7,6 +7,7 @@ with AML_Frame_Handles;
 with AML_References;
 with AML_Table_Backing;
 procedure Increment_Tests is
+   use type AML_Decode.Bytes;
    package NS is new AML_Namespace (32, AML_Delays.Unavailable_Provider);
    use NS; use NS.Owned;
    use type AML_Frame_Handles.Invocation_Serial;
@@ -91,9 +92,9 @@ begin
          Run ([16#A4#,Increment_Op,16#68#],Width,
               (if Budget<3 then Budget_Exceeded else Returned),Value=>1,Budget=>Budget);
       end loop;
-      Run (Bytes'(1=>16#A4#)&NEXT&Bytes'(1=>16#71#)&NVAR,Width,Unsupported_Value,
+      Run (Bytes'(1=>16#A4#)&NEXT&Bytes'(1=>16#71#)&NVAR,Width,Returned,2,
            Helper_Flags=>1,Helper=>[16#A4#,Increment_Op,16#68#]);
-      Run (Bytes'(16#70#,16#0A#,5,16#60#)&NEXT&Bytes'(16#71#,16#60#,16#A4#,16#60#),Width,Unsupported_Value,
+      Run (Bytes'(16#70#,16#0A#,5,16#60#)&NEXT&Bytes'(16#71#,16#60#,16#A4#,16#60#),Width,Returned,6,
            Helper_Flags=>1,Helper=>[16#A4#,Increment_Op,16#68#]);
       Run (Bytes'(16#70#,16#71#)&NVAR&Bytes'(16#60#,Increment_Op,16#60#,16#A4#)&NVAR,Width,Unsupported_Value);
       Run ([16#70#,1,16#60#,16#A4#,Increment_Op,16#60#],Width,Returned,2);
@@ -102,7 +103,7 @@ begin
       Run (Bytes'(16#A4#,Increment_Op)&STR0,Width,Returned,16);
       Run (Bytes'(1=>Increment_Op)&STR0&Bytes'(16#A4#,16#87#)&STR0,Width,Returned,(if Width=Bits_32 then 8 else 16));
       Run (Bytes'(1=>Increment_Op)&BUF0&Bytes'(16#A4#,16#83#,16#88#)&BUF0&Bytes'(0,0),Width,Returned,8);
-      Run (Bytes'(1=>16#A4#)&NEXT&Bytes'(1=>16#71#)&STR0,Width,Unsupported_Value,
+      Run (Bytes'(1=>16#A4#)&NEXT&Bytes'(1=>16#71#)&STR0,Width,Returned,16,
            Helper_Flags=>1,Helper=>[16#A4#,Increment_Op,16#68#]);
       Run (Bytes'(16#72#,1,1)&STR0&Bytes'(16#A4#,16#87#)&STR0,
            Width,Returned,(if Width=Bits_32 then 8 else 16));
@@ -110,8 +111,9 @@ begin
            Width,Returned,2);
       Run (Bytes'(16#A4#,16#70#,16#11#,2,0)&NVAR,Width,Empty_Buffer);
       Run (Bytes'(16#70#,16#11#,2,0)&STR0&Bytes'(16#A4#,16#87#)&STR0,Width,Returned,0);
-      -- Reference-valued Local/Arg operands fail integer conversion; they are
-      -- not recursively followed, matching the pinned ACPICA observations.
+      -- ACPI 6.6 Arg RefOf reads are followed for updates; Local references
+      -- remain rejected. The three Arg successes intentionally differ from
+      -- the preserved pinned ACPICA observations; see aml-aslts-provoke.
       -- Named String/Buffer updates now use destination-preserving owner conversion.
       declare
          Foreign : Arena;

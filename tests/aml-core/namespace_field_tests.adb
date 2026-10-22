@@ -65,8 +65,9 @@ begin
    Check (Loaded = NS.Loaded);
    Node := Child (Tree, Root, "TYPE");
    declare
-      R : constant AML_Execute.Execution_Result := Invoke (Tree, Node, [others => 0], 0, 100);
+      R : AML_Execute.Execution_Result;
    begin
+      Invoke_Read_Only (Tree, Node, [others => 0], 0, 100, R);
       Check (R.Status = AML_Execute.Returned and then R.Value = 10);
    end;
    Load_Names (Tree,
@@ -75,9 +76,9 @@ begin
       16#46#, 16#4C#, 16#44#, 16#30#], AML_Decode.Bits_64, Loaded);
    Check (Loaded = NS.Loaded);
    declare
-      R : constant AML_Execute.Execution_Result := Invoke
-        (Tree, Child (Tree, Root, "TYPF"), [others => 0], 0, 100);
+      R : AML_Execute.Execution_Result;
    begin
+      Invoke_Read_Only (Tree, Child (Tree, Root, "TYPF"), [others => 0], 0, 100, R);
       Check (R.Status = AML_Execute.Returned and then R.Value = 5);
    end;
    Before := Tree;

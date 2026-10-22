@@ -18,8 +18,6 @@ b~*
 *.elf
 *.bexch
 # GNAT compiler/binder output captures and stack-usage reports.
-*.stdout
-*.stderr
 *.cswi
 *.su
 __pycache__/
@@ -51,7 +49,10 @@ src/build.ads
 *.iso
 
 # --- Logs, captures, archives ---
+# Tool diagnostics stay local, including curated-reference raw output.
 *.log
+*.stdout
+*.stderr
 *.pcap
 *.zip
 /tests/performance/results/
@@ -99,5 +100,4 @@ src/build.ads
 tests/**/reference/**/*.log
 tests/**/reference/**/*.out
 tests/**/reference/**/*.err
-tests/**/reference/**/*.stdout
-tests/**/reference/**/*.stderr
+tests/**/reference/**/tests/**/reference/**/

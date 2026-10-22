@@ -9,6 +9,7 @@ with AML_Objects;
 with AML_References;
 with AML_Table_Backing;
 procedure Buffer_Completion_Tests is
+   use type AML_Decode.Bytes;
    use type AML_Objects.Allocation_Status;
    use type Integer_Value;
    use type AML_Objects.State;

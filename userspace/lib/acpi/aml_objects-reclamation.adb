@@ -17,7 +17,7 @@ package body AML_Objects.Reclamation with SPARK_Mode is
             if not Is_Live (Prior, I) then return False; end if;
             Live := Live + 1;
             case Prior.Objects (I).Tag is
-               when Integer_Object | Reference_Object =>
+               when Integer_Object | Reference_Object | Metadata_Object | Metadata_Snapshot_Object | Event_Object | Mutex_Object =>
                   if Store.Objects (I) /= Prior.Objects (I) then return False; end if;
                when String_Object | Buffer_Object =>
                   if Store.Objects (I) /= (Prior.Objects (I) with delta First => Bytes)
@@ -96,7 +96,7 @@ package body AML_Objects.Reclamation with SPARK_Mode is
                      Status := Unclosed_Container_Reference;
                      if Container /= No_Object and then not Keep (Container) then return; end if;
                   end if;
-               when Integer_Object => null;
+               when Integer_Object | Metadata_Object | Metadata_Snapshot_Object | Event_Object | Mutex_Object => null;
             end case;
          end if;
       end loop;
@@ -121,7 +121,7 @@ package body AML_Objects.Reclamation with SPARK_Mode is
                      Scratch.Elements (Elements + J) := Store.Elements (Store.Objects (I).First + J);
                   end loop;
                   Elements := Elements + Store.Objects (I).Size;
-               when Integer_Object | Reference_Object => null;
+               when Integer_Object | Reference_Object | Metadata_Object | Metadata_Snapshot_Object | Event_Object | Mutex_Object => null;
             end case;
          end if;
       end loop;

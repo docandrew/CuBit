@@ -98,19 +98,20 @@ begin
             Check (not Members_Initialized (S) and then Member_Initialization (S) = (0,0,0));
             Start (S, (if Mode = 2 then 1 else 2), OK); Check (OK);
             Import_Table (S, 1, ACPI_Service.DSDT, Package_Data, Status);
-            Check (Status = ACPI_Service.Installed and then Pending_Members (S) = 1);
+            Check (Status = ACPI_Service.Installed and then Pending_Members (S) = 0);
             Check (not Members_Initialized (S));
             if Mode = 0 then
                Import_Table (S, 2, ACPI_Service.SSDT, Source_Data, Status);
-               Check (Status = ACPI_Service.Installed and then Pending_Members (S) = 1);
+               Check (Status = ACPI_Service.Installed and then Pending_Members (S) = 0);
             end if;
             Before := Audit (S); Finish (S);
             if Mode = 1 then
                Check (Current (S) = Failed and then not Members_Initialized (S));
-               Check (Pending_Members (S) = 1 and then Audit (S) = Before);
+               Check (Pending_Members (S) = 0 and then Audit (S) = Before);
                Check (Member_Initialization (S) = (0,0,0));
             else
-               Check (Current (S) = Complete and then Members_Initialized (S));
+               Check (Current (S) = Complete and then Members_Initialized (S)
+                 and then Completion (S).Stage = Finished);
                Check (Pending_Members (S) = 0);
                Check (Member_Initialization (S) =
                  (if Mode = 0 then (1,0,0) else (0,1,0)));

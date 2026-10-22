@@ -4,9 +4,9 @@ with AML_Decode; use AML_Decode;
 with AML_Objects;
 with Namespace_Instance;
 procedure Package_Count_Tests is
+   use type AML_Decode.Bytes;
    package NS renames Namespace_Instance;
    use NS;
-   use type Byte;
    use type Integer_Value;
    Tree : State;
    Loaded : Load_Status;

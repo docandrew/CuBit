@@ -1,6 +1,7 @@
 with Ada.Text_IO;
 package body ACPI_Test_Results is
    package V renames ACPI_Service.Values;
+   use type ACPI_Service.Namespace.Lookup_Status;
    use type V.Value_Handle;
    use type V.Access_Status;
    use type V.Value_Kind;
@@ -40,12 +41,13 @@ package body ACPI_Test_Results is
    end Seal;
    function Child (Service : ACPI_Service.State; Parent : ACPI_Service.Namespace.Node_ID;
       Part : AML_Names.Segment) return ACPI_Service.Namespace.Node_ID is
-      Node : ACPI_Service.Namespace.Node_ID;
+      Located : ACPI_Service.Namespace.Lookup_Result;
       Status : V.Access_Status;
    begin
-      ACPI_Service.Find_Child (Service, Parent, Part, Node, Status);
+      ACPI_Service.Find_Object (Service, Parent, Part, Located, Status);
       if Status /= V.Available then raise Program_Error with "child access: " & Status'Image; end if;
-      return Node;
+      if Located.Status = ACPI_Service.Namespace.Found then return Located.Node; end if;
+      return ACPI_Service.Namespace.Root;
    end Child;
    function Integer_Data (Service : in out ACPI_Service.State;
       Node : ACPI_Service.Namespace.Node_ID) return AML_Decode.Integer_Value is
@@ -97,7 +99,9 @@ package body ACPI_Test_Results is
       if Status /= V.Available then raise Program_Error with "describe: " & Status'Image; end if;
       case Description.Kind is
          when V.Integer_Description => Ada.Text_IO.Put_Line ("INTEGER" & Description.Number'Image);
+         when V.Event_Description => Ada.Text_IO.Put_Line ("EVENT");
          when V.Reference_Description => Ada.Text_IO.Put_Line ("REFERENCE " & Description.Ref_Kind'Image);
+         when V.Metadata_Description => Ada.Text_IO.Put_Line ("METADATA " & Description.Object_Type'Image);
          when V.String_Description | V.Buffer_Description =>
             Ada.Text_IO.Put ((if Description.Kind = V.String_Description then "STRING " else "BUFFER"));
             while Offset < Description.Length loop

@@ -1,0 +1,39 @@
+{
+  "inputs": {
+    "/home/doc/git/.acpi-proof-work/runtime-package-root-oracle-x4j04dl3/tools.json": "3cc2d00ece458d14c55056b134f8b47858b1ec5c4f510e437bb04e9949a50885",
+    "/home/doc/git/.acpi-proof-work/runtime-package-root-oracle-x4j04dl3/roots-r2.asl": "31081e14a78e20371ed04e21fd3abbbef096b1c9fc3af94765d0f686f0633c96",
+    "/home/doc/git/.acpi-proof-work/runtime-package-root-oracle-x4j04dl3/hosted_capture.py": "bb667e639c2ba2c9c11aa0fb09e30f0bd768b8728290657fcff4ef090da231db",
+    "/home/doc/git/.acpi-proof-work/runtime-package-root-oracle-x4j04dl3/run.py": "b7486c65f87500105b77d7855f594ba4566a9d4431c918c367b0fe961f76d2a9",
+    "/home/doc/git/.acpi-proof-work/runtime-package-root-oracle-x4j04dl3/bounded_tool.py": "6ffc31aeb807149b491cde9a065c75ca6935e04a996da1f2b47fa45c41e53fd9",
+    "/home/doc/git/.acpi-proof-work/runtime-package-root-oracle-x4j04dl3/roots-r1.asl": "b65318ae75a784bed810ecb7f9fb6e627c548bade18373822c46eaaf285f8220",
+    "/home/doc/git/.acpi-proof-work/runtime-package-root-oracle-x4j04dl3/cases.json": "4a19a36522e19242ddf1a8c188f4532a4c07e297a13749dab1811da9e5c97496"
+  },
+  "tools": {
+    "iasl": {
+      "path": "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+      "sha256": "1c6a21c90ff6f846e27a98dbb3106362c706f67db8ceca21ccd81ab76a7d9dcb"
+    },
+    "acpiexec": {
+      "path": "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+      "sha256": "a161f8b3a0b94b4301c1d0f2ccca6c0f808d2998cd4c9e037a9d7b218c88dcfe"
+    },
+    "python": {
+      "path": "/usr/bin/python3.14",
+      "sha256": "52e0a13e60a981d8c4b6478be2ba5176f69da07948a056bf49cf6f077e30cb41"
+    }
+  },
+  "artifacts": {
+    "roots-r2-iasl.log": "44834b675cf3677f4632938fd74fdc14b0bdc4d4fbabb54a3fd6a3d832703954",
+    "roots-r1-disassemble.log": "33baba278b1f8c8e6eeccaeecf8191778f01275b2170593fd993762b874c49f8",
+    "roots-r1.dsl": "50a0e3e6117b725f46e9a59eb7a3a4786baff8cc20c06603314d1b86a14b24cb",
+    "roots-r1.aml": "a61e9ef9ebf665fdb62506ca0cbe3c742a612e7f089e235365bc69315e4b6178",
+    "roots-r1-acpiexec.log": "ebe0464bd5cc9eea04f71a85da3cd2e2dc84adeeaa04a7f0887dfd5cb2a10dd2",
+    "roots-r2.dsl": "77bdaf7c100eb61c6fb3cc402a731ec87ac59f1e6efeb45fcdee2c17b432cef6",
+    "report.json": "67f4e5caf8dbe00a14672a721874aa926708b7a27f6a6a7acde6edca3e9db2e7",
+    "roots-r2.aml": "2a401f6bd69224ea7d9780ee8aba16190a5a04ce385012d0f0b75966e7fac97b",
+    "roots-r2-acpiexec.log": "bc409f6e146609953ac19528f0ee157e5397e121d6c1d65c27ebb85f78b063d2",
+    "roots-r1-iasl.log": "9857e3a3c8ab1cc35a25f6b85c7907093b23d700788d2fe88b517eecb7167a04",
+    "roots-r2-disassemble.log": "4e19498e28ec3002edec0c2db1374f8e193b7ef106d6d5b9e6cdd155521e1917"
+  },
+  "scope": "outer0 harness completion only; runtime rc0 does not imply successful AML"
+}

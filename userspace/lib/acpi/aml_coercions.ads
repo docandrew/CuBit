@@ -21,6 +21,26 @@ package AML_Coercions with SPARK_Mode, Pure is
    function From_String (Data : AML_Decode.Bytes; Width : AML_Decode.Integer_Width) return Result
      with Post => From_String'Result.Status = Converted
        and then From_String'Result.Value <= Maximum (Width);
+   -- Source callbacks must provide a stable, side-effect-free byte view for
+   -- the duration of conversion. No source or pointer escapes this call.
+   generic
+      type Source_Type (<>) is limited private;
+      with function Source_Length (Data : aliased Source_Type) return Natural;
+      with function Source_Byte
+        (Data : aliased Source_Type; Index : Natural) return AML_Decode.Byte;
+   package String_Readers is
+      function Fits_Source
+        (Data : aliased Source_Type; First_Byte, Byte_Length : Natural)
+         return Boolean is
+        (First_Byte <= Source_Length (Data)
+         and then Byte_Length <= Source_Length (Data) - First_Byte);
+      function From_String
+        (Data : aliased Source_Type; First_Byte, Byte_Length : Natural;
+         Width : AML_Decode.Integer_Width) return Result
+        with Pre => Fits_Source (Data, First_Byte, Byte_Length),
+             Post => From_String'Result.Status = Converted
+               and then From_String'Result.Value <= Maximum (Width);
+   end String_Readers;
    -- Explicit ToInteger conversion: decimal unless prefixed with 0x/0X.
    -- Stop at the first non-digit or before active-width overflow.
    function From_Explicit_String

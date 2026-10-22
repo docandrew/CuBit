@@ -5,6 +5,7 @@ with AML_Execute; use AML_Execute;
 with AML_Namespace;
 with Capacity_Fixture; use Capacity_Fixture;
 procedure Capacity_Cleanup_Tests is
+   use type AML_Decode.Bytes;
    package NS is new AML_Namespace (Perform_Delay => AML_Delays.Unavailable_Provider, Capacity => 8, Aggregate_Method_Capacity => 70000);
    use type NS.Load_Status;
    use type Integer_Value;

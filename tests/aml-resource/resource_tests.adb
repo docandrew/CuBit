@@ -2,6 +2,7 @@ with Ada.Text_IO;
 with AML_Decode; use AML_Decode;
 with AML_Resource_Templates;
 procedure Resource_Tests is
+   use type AML_Decode.Bytes;
    use type Byte;
    package P is new AML_Resource_Templates (256);
    package Tiny is new AML_Resource_Templates (1);

@@ -1,0 +1,1 @@
+DefinitionBlock("","DSDT",1,"CUBIT","RESTEST",1){Name(MARK,Zero) Name(GOOD,Buffer(){0x79,0}) Method(CTRL,0){Return(One)} Method(WIDT,0){Return(ShiftRight(Ones,32))} Method(TEST,0){CopyObject(RefOf(GOOD),Local0) Return(ConcatenateResTemplate(Local0,GOOD))}}

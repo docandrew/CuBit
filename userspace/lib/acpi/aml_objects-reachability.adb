@@ -9,7 +9,7 @@ package body AML_Objects.Reachability with SPARK_Mode is
           when Package_Object => Length (Store, From) > 0 and then
             (for some Index in 0 .. Length (Store, From) - 1 => Element (Store, From, Index) = Into),
           when Reference_Object => Target (Store, Targets (From)) = Into,
-          when others => False)) with Ghost, Pre => Valid (Store);
+          when Integer_Object | String_Object | Buffer_Object | Metadata_Object | Metadata_Snapshot_Object | Event_Object | Mutex_Object => False)) with Ghost, Pre => Valid (Store);
    function Exact_Closure
      (Store : State; Seeds : Keep_Set; Targets : Reference_Targets;
       Keep : Keep_Set; Scratch : Workspace) return Boolean is
@@ -36,7 +36,7 @@ package body AML_Objects.Reachability with SPARK_Mode is
                Element (Store, ID, Index) = No_Object or else Keep (Element (Store, ID, Index)))),
            when Reference_Object => Target (Store, Targets (ID)) = No_Object
              or else Keep (Target (Store, Targets (ID))),
-           when others => True))));
+           when Integer_Object | String_Object | Buffer_Object | Metadata_Object | Metadata_Snapshot_Object | Event_Object | Mutex_Object => True))));
    procedure Trace
      (Store : State; Seeds : Keep_Set; Targets : Reference_Targets;
       Scratch : in out Workspace; Keep : out Keep_Set; Status : out Trace_Status)
@@ -78,7 +78,7 @@ package body AML_Objects.Reachability with SPARK_Mode is
             when Reference_Object =>
                Next := Target (Store, Targets (Current));
                if Next /= No_Object then Add (Next, Current); end if;
-            when others => null;
+            when Integer_Object | String_Object | Buffer_Object | Metadata_Object | Metadata_Snapshot_Object | Event_Object | Mutex_Object => null;
          end case;
       end loop;
       Status := Traced;

@@ -1,0 +1,10 @@
+project store_tests_checked is
+ for Source_Dirs use ("../../tests/aml-core", "../../userspace/lib/acpi", "../../userspace/services/acpi", "../../shared/firmware");
+ Build_Root := external ("PACKAGE_STORE_BUILD", "build-store_tests-checked");
+ for Object_Dir use Build_Root & "/obj";
+ for Exec_Dir use Build_Root & "/bin";
+ for Main use ("store_tests.adb");
+ package Compiler is
+ for Default_Switches ("Ada") use ("-O1", "-gnat2022", "-gnatwa", "-gnatwe", "-gnata", "-gnato");
+ end Compiler;
+end store_tests_checked;

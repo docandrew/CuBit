@@ -6,10 +6,43 @@ with Firmware_Tables.SRAT;
 with Firmware_Tables.SLIT;
 with ACPI_Service;
 with Firmware_Tables;
+with ACPI_Device_Initialization;
+with ACPI_Device_Policy;
+with AML_Execute;
+with AML_Fatal;
+with ACPI_Fatal_Diagnostics;
 package ACPI_Bootstrap with SPARK_Mode is
    pragma Unevaluated_Use_Of_Old (Allow);
    use type ACPI_Service.State_Model;
    use type ACPI_Service.Namespace.Initialization_Report;
+   use type ACPI_Service.Catalog_State;
+   use type ACPI_Service.Values.Module_Outcome;
+   use type ACPI_Service.Values.Access_Status;
+   use type ACPI_Service.Execution_Phase_Result;
+   use type ACPI_Service.Values.Preparation_Outcome;
+   Default_Startup_Budget : constant Natural := 100_000;
+   subtype Startup_Budget is Natural range 0 .. Default_Startup_Budget;
+   type Finish_Stage is
+     (Not_Attempted, Freeze_Failed, Execution_Failed, Members_Failed, Finished);
+   type Finish_Report is record
+      Stage : Finish_Stage := Not_Attempted;
+      Freeze : ACPI_Service.Freeze_Status := ACPI_Service.Freeze_Wrong_Phase;
+      Execution : ACPI_Service.Execution_Report;
+      Execution_Status : ACPI_Service.Values.Access_Status := ACPI_Service.Values.Wrong_Phase;
+      Member_Status : ACPI_Service.Values.Access_Status := ACPI_Service.Values.Wrong_Phase;
+   end record;
+   type Device_Phase is (Devices_Not_Started, Devices_Preparing, Devices_Awaiting_Regions,
+      Devices_Walking, Devices_Completed, Devices_Completed_With_Errors,
+      Devices_Incomplete, Devices_Failed);
+   type Device_Report is record
+      Stage : Device_Phase := Devices_Not_Started;
+      Charged, Status_Methods, Initialization_Methods, Errors : Natural := 0;
+      Region_Status : ACPI_Device_Policy.Region_Outcome := ACPI_Device_Policy.Regions_Unavailable;
+      First_Error_Node : ACPI_Service.Namespace.Node_ID := ACPI_Service.Namespace.Root;
+      First_Error : AML_Execute.Execution_Status := AML_Execute.No_Return;
+      Fatal : AML_Fatal.Observation;
+      Fatal_Initializer : ACPI_Service.Namespace.Node_ID := ACPI_Service.Namespace.Root;
+   end record;
    type Phase is (Receiving, Complete, Failed);
    type State (Table_Capacity, Byte_Capacity, Table_Byte_Limit : Positive) is limited private
      with Default_Initial_Condition => Valid (State) and then not Started (State)
@@ -24,6 +57,34 @@ package ACPI_Bootstrap with SPARK_Mode is
    function Core_Model (Session : State) return ACPI_Service.State_Model with Ghost,
      Post => Core_Model'Result.Table_Capacity = Session.Table_Capacity
        and then Core_Model'Result.Byte_Capacity = Session.Byte_Capacity;
+   function Completion (Session : State) return Finish_Report;
+   -- Read-only copied request and authoritative evaluation context; no delivery
+   -- or namespace authority is granted. A fresh session starts absent.
+   function Fatal_Diagnostic (Session : State) return ACPI_Fatal_Diagnostics.Observation
+     with Global => null;
+   -- Snapshot completion and device readiness are distinct. The current service
+   -- has no registered region provider, so its region phase is unavailable.
+   function Device_Completion (Session : State) return Device_Report;
+   function Startup_Charged (Session : State) return Natural
+     with Pre => Valid (Session), Post => Startup_Charged'Result <= Default_Startup_Budget;
+   -- Owner interest is latched before startup and applied only after Ready,
+   -- before device initializers. Module execution remains disabled.
+   function Notifications_Requested (Session : State) return Boolean;
+   function Notifications_Enabled (Session : State) return Boolean;
+   function Notification_Status (Session : State) return ACPI_Service.Values.Access_Status;
+   function Pending_Notifications (Session : State) return ACPI_Service.Notification_Count;
+   procedure Set_Notification_Interest (Session : in out State; Enabled : Boolean;
+      Status : out ACPI_Service.Values.Access_Status)
+     with Pre => Valid (Session), Post => Valid (Session)
+       and then (if Status /= ACPI_Service.Values.Available then
+         Model (Session) = Model (Session)'Old);
+   procedure Take_Notification (Session : in out State;
+      Item : out ACPI_Service.Notification_Observation; Present : out Boolean;
+      Status : out ACPI_Service.Values.Access_Status)
+     with Pre => Valid (Session), Post => Valid (Session);
+   function Catalog_Model (Session : State) return ACPI_Service.Catalog_State with Ghost,
+     Post => Catalog_Model'Result.Table_Capacity = Session.Table_Capacity
+       and then Catalog_Model'Result.Byte_Capacity = Session.Byte_Capacity;
    function Members_Initialized (Session : State) return Boolean;
    function Member_Initialization (Session : State) return ACPI_Service.Namespace.Initialization_Report;
    function Pending_Members (Session : State) return Natural;
@@ -66,7 +127,8 @@ package ACPI_Bootstrap with SPARK_Mode is
      with Pre => Index <= Installed (Session) and then Offset < Table_Info (Session, Index).Extent;
    -- The trusted provider advertises one DSDT first, followed by ordered SSDTs
    -- and other immutable description tables. Completion
-   -- includes static package member initialization, not full AML activation or device presence.
+   -- includes ordered definition-block execution and member initialization.
+   -- It does not establish device presence or activate hardware.
    procedure Start (Session : in out State; Table_Count : Natural; Accepted : out Boolean)
      with Pre => Valid (Session),
        Post => Valid (Session) and then Started (Session)
@@ -87,24 +149,39 @@ package ACPI_Bootstrap with SPARK_Mode is
        (if Current (Session)'Old /= Receiving then Model (Session) = Model (Session)'Old)
        and then (if Current (Session) = Complete then Current (Session)'Old = Complete);
    -- A failed table or premature finish is sticky for this session.
-   procedure Finish (Session : in out State) with
+   procedure Finish
+     (Session : in out State; Budget : Startup_Budget := Default_Startup_Budget) with
      Pre => Valid (Session), Post => Valid (Session)
        and then Started (Session) = Started (Session)'Old
        and then Expected (Session) = Expected (Session)'Old
        and then Installed (Session) = Installed (Session)'Old
+       and then Catalog_Model (Session) = Catalog_Model (Session)'Old
        and then (if Current (Session)'Old = Receiving and then
            Installed (Session)'Old = Expected (Session)'Old then
-             Current (Session) = Complete and then Members_Initialized (Session)
-             and then Pending_Members (Session) = 0
-             and then ACPI_Service.Initialization_Frame (Core_Model (Session), Core_Model (Session)'Old)
-             and then Member_Initialization (Session).Bound + Member_Initialization (Session).Missing
-               + Member_Initialization (Session).Unsupported = Pending_Members (Session)'Old
+             Current (Session) in Complete | Failed
+             and then Completion (Session).Stage /= Not_Attempted
+             and then Completion (Session).Execution.Modules.Charged <= Budget
+             and then Startup_Charged (Session) <= Budget
+             and then (if Current (Session) = Complete then
+               Completion (Session).Stage = Finished
+               and then Completion (Session).Execution_Status = ACPI_Service.Values.Available
+               and then Completion (Session).Execution.Phase = ACPI_Service.Module_Execution_Reported
+               and then Completion (Session).Execution.Preparation = ACPI_Service.Values.Firmware_Prepared
+               and then Completion (Session).Execution.Modules.Outcome = ACPI_Service.Values.Modules_Completed
+               and then Members_Initialized (Session) and then Pending_Members (Session) = 0)
          elsif Current (Session)'Old = Receiving then
              Current (Session) = Failed and then Core_Model (Session) = Core_Model (Session)'Old
              and then Members_Initialized (Session) = Members_Initialized (Session)'Old
              and then Member_Initialization (Session) = Member_Initialization (Session)'Old
+             and then Completion (Session) = Completion (Session)'Old
          else Model (Session) = Model (Session)'Old);
+
 private
+   procedure Unavailable_Regions
+     (Service : aliased in out ACPI_Service.State; Budget : Natural;
+      Charged : out Natural; Outcome : out ACPI_Device_Policy.Region_Outcome);
+   package Devices is new ACPI_Device_Initialization
+     (Core => ACPI_Service, Initialize_Regions => Unavailable_Regions);
    type State_Model (Table_Capacity, Byte_Capacity : Positive) is record
       Core : ACPI_Service.State_Model (Table_Capacity, Byte_Capacity);
       Stage : Phase;
@@ -112,11 +189,22 @@ private
       Begun : Boolean;
       Initialized : Boolean;
       Initialization : ACPI_Service.Namespace.Initialization_Report;
+      Completion_Data : Finish_Report;
+      Device_Data : Device_Report;
+      Startup_Limit : Startup_Budget := 0;
+      Notify_Requested, Notify_Enabled : Boolean := False;
+      Notify_Status : ACPI_Service.Values.Access_Status := ACPI_Service.Values.Wrong_Phase;
    end record;
    type State (Table_Capacity, Byte_Capacity, Table_Byte_Limit : Positive) is limited record
-      Core : ACPI_Service.State (Table_Capacity, Byte_Capacity, Table_Byte_Limit);
+      Core : aliased ACPI_Service.State (Table_Capacity, Byte_Capacity, Table_Byte_Limit);
+      Device_Run : Devices.Session;
       Begun : Boolean := False;
       Initialized : Boolean := False;
+      Completion_Data : Finish_Report;
+      Device_Data : Device_Report;
+      Startup_Limit : Startup_Budget := 0;
+      Notify_Requested, Notify_Enabled : Boolean := False;
+      Notify_Status : ACPI_Service.Values.Access_Status := ACPI_Service.Values.Wrong_Phase;
       Initialization : ACPI_Service.Namespace.Initialization_Report := (others => 0);
       Stage : Phase := Failed;
       Required : Natural := 0;
@@ -124,11 +212,20 @@ private
      (if not State.Begun then State.Stage = Failed and then State.Required = 0
        and then ACPI_Service.Observe (State.Core).Tables = 0)
      and then State.Required <= State.Table_Capacity
+     and then State.Completion_Data.Execution.Modules.Charged <= State.Startup_Limit
+     and then State.Device_Data.Charged <=
+       State.Startup_Limit - State.Completion_Data.Execution.Modules.Charged
      and then (if State.Stage in Receiving | Complete then
         State.Required > 0 and then ACPI_Service.Observe (State.Core).Tables <= State.Required)
      and then (if State.Stage = Complete then
         ACPI_Service.Observe (State.Core).Tables = State.Required
-        and then State.Initialized and then ACPI_Service.Pending_Members (State.Core) = 0)
+        and then State.Initialized and then ACPI_Service.Pending_Members (State.Core) = 0
+        and then State.Completion_Data.Stage = Finished
+        and then State.Completion_Data.Execution_Status = ACPI_Service.Values.Available
+        and then State.Completion_Data.Member_Status = ACPI_Service.Values.Available
+        and then State.Completion_Data.Execution.Phase = ACPI_Service.Module_Execution_Reported
+        and then State.Completion_Data.Execution.Preparation = ACPI_Service.Values.Firmware_Prepared
+        and then State.Completion_Data.Execution.Modules.Outcome = ACPI_Service.Values.Modules_Completed)
      and then (if not State.Initialized then State.Initialization = (0,0,0));
    function Started (Session : State) return Boolean is (Session.Begun);
 end ACPI_Bootstrap;

@@ -1,0 +1,1782 @@
+[
+  {
+    "key": "r1-mid-start-later-reference-store",
+    "revision": 1,
+    "family": "mid-start-later",
+    "origin": "reference",
+    "mutation": "store",
+    "values": [
+      {
+        "method": "TEST",
+        "type": "String",
+        "bytes": "444546"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      },
+      {
+        "method": "FLAG",
+        "type": "Integer",
+        "value": 1
+      },
+      {
+        "method": "DEST",
+        "type": "Integer",
+        "value": 0
+      },
+      {
+        "method": "TEST",
+        "type": "String",
+        "bytes": "444546"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      },
+      {
+        "method": "FLAG",
+        "type": "Integer",
+        "value": 1
+      },
+      {
+        "method": "DEST",
+        "type": "Integer",
+        "value": 0
+      }
+    ],
+    "cache_warning": true
+  },
+  {
+    "key": "r1-mid-start-later-reference-copy",
+    "revision": 1,
+    "family": "mid-start-later",
+    "origin": "reference",
+    "mutation": "copy",
+    "values": [
+      {
+        "method": "TEST",
+        "type": "String",
+        "bytes": "424344"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      },
+      {
+        "method": "FLAG",
+        "type": "Integer",
+        "value": 1
+      },
+      {
+        "method": "DEST",
+        "type": "Integer",
+        "value": 0
+      },
+      {
+        "method": "TEST",
+        "type": "String",
+        "bytes": "424344"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      },
+      {
+        "method": "FLAG",
+        "type": "Integer",
+        "value": 1
+      },
+      {
+        "method": "DEST",
+        "type": "Integer",
+        "value": 0
+      }
+    ],
+    "cache_warning": true
+  },
+  {
+    "key": "r1-mid-start-later-name-store",
+    "revision": 1,
+    "family": "mid-start-later",
+    "origin": "name",
+    "mutation": "store",
+    "values": [
+      {
+        "method": "TEST",
+        "type": "String",
+        "bytes": "424344"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      },
+      {
+        "method": "FLAG",
+        "type": "Integer",
+        "value": 1
+      },
+      {
+        "method": "DEST",
+        "type": "Integer",
+        "value": 0
+      },
+      {
+        "method": "TEST",
+        "type": "String",
+        "bytes": "424344"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      },
+      {
+        "method": "FLAG",
+        "type": "Integer",
+        "value": 1
+      },
+      {
+        "method": "DEST",
+        "type": "Integer",
+        "value": 0
+      }
+    ],
+    "cache_warning": true
+  },
+  {
+    "key": "r1-mid-start-later-name-copy",
+    "revision": 1,
+    "family": "mid-start-later",
+    "origin": "name",
+    "mutation": "copy",
+    "values": [
+      {
+        "method": "TEST",
+        "type": "String",
+        "bytes": "424344"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      },
+      {
+        "method": "FLAG",
+        "type": "Integer",
+        "value": 1
+      },
+      {
+        "method": "DEST",
+        "type": "Integer",
+        "value": 0
+      },
+      {
+        "method": "TEST",
+        "type": "String",
+        "bytes": "424344"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      },
+      {
+        "method": "FLAG",
+        "type": "Integer",
+        "value": 1
+      },
+      {
+        "method": "DEST",
+        "type": "Integer",
+        "value": 0
+      }
+    ],
+    "cache_warning": true
+  },
+  {
+    "key": "r1-mid-start-target-reference-store",
+    "revision": 1,
+    "family": "mid-start-target",
+    "origin": "reference",
+    "mutation": "store",
+    "values": [
+      {
+        "method": "TEST",
+        "type": "Buffer",
+        "bytes": "444546"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      },
+      {
+        "method": "FLAG",
+        "type": "Integer",
+        "value": 1
+      },
+      {
+        "method": "DEST",
+        "type": "Buffer",
+        "bytes": "444546"
+      },
+      {
+        "method": "TEST",
+        "type": "Buffer",
+        "bytes": "444546"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      },
+      {
+        "method": "FLAG",
+        "type": "Integer",
+        "value": 1
+      },
+      {
+        "method": "DEST",
+        "type": "Buffer",
+        "bytes": "444546"
+      }
+    ],
+    "cache_warning": true
+  },
+  {
+    "key": "r1-mid-start-target-reference-copy",
+    "revision": 1,
+    "family": "mid-start-target",
+    "origin": "reference",
+    "mutation": "copy",
+    "values": [
+      {
+        "method": "TEST",
+        "type": "Buffer",
+        "bytes": "424344"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      },
+      {
+        "method": "FLAG",
+        "type": "Integer",
+        "value": 1
+      },
+      {
+        "method": "DEST",
+        "type": "Buffer",
+        "bytes": "424344"
+      },
+      {
+        "method": "TEST",
+        "type": "Buffer",
+        "bytes": "424344"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      },
+      {
+        "method": "FLAG",
+        "type": "Integer",
+        "value": 1
+      },
+      {
+        "method": "DEST",
+        "type": "Buffer",
+        "bytes": "424344"
+      }
+    ],
+    "cache_warning": true
+  },
+  {
+    "key": "r1-mid-start-target-name-store",
+    "revision": 1,
+    "family": "mid-start-target",
+    "origin": "name",
+    "mutation": "store",
+    "values": [
+      {
+        "method": "TEST",
+        "type": "Buffer",
+        "bytes": "424344"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      },
+      {
+        "method": "FLAG",
+        "type": "Integer",
+        "value": 1
+      },
+      {
+        "method": "DEST",
+        "type": "Buffer",
+        "bytes": "424344"
+      },
+      {
+        "method": "TEST",
+        "type": "Buffer",
+        "bytes": "424344"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      },
+      {
+        "method": "FLAG",
+        "type": "Integer",
+        "value": 1
+      },
+      {
+        "method": "DEST",
+        "type": "Buffer",
+        "bytes": "424344"
+      }
+    ],
+    "cache_warning": true
+  },
+  {
+    "key": "r1-mid-start-target-name-copy",
+    "revision": 1,
+    "family": "mid-start-target",
+    "origin": "name",
+    "mutation": "copy",
+    "values": [
+      {
+        "method": "TEST",
+        "type": "Buffer",
+        "bytes": "424344"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      },
+      {
+        "method": "FLAG",
+        "type": "Integer",
+        "value": 1
+      },
+      {
+        "method": "DEST",
+        "type": "Buffer",
+        "bytes": "424344"
+      },
+      {
+        "method": "TEST",
+        "type": "Buffer",
+        "bytes": "424344"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      },
+      {
+        "method": "FLAG",
+        "type": "Integer",
+        "value": 1
+      },
+      {
+        "method": "DEST",
+        "type": "Buffer",
+        "bytes": "424344"
+      }
+    ],
+    "cache_warning": true
+  },
+  {
+    "key": "r1-mid-count-target-reference-store",
+    "revision": 1,
+    "family": "mid-count-target",
+    "origin": "reference",
+    "mutation": "store",
+    "values": [
+      {
+        "method": "TEST",
+        "type": "String",
+        "bytes": "424344"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      },
+      {
+        "method": "FLAG",
+        "type": "Integer",
+        "value": 1
+      },
+      {
+        "method": "DEST",
+        "type": "String",
+        "bytes": "424344"
+      },
+      {
+        "method": "TEST",
+        "type": "String",
+        "bytes": "424344"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      },
+      {
+        "method": "FLAG",
+        "type": "Integer",
+        "value": 1
+      },
+      {
+        "method": "DEST",
+        "type": "String",
+        "bytes": "424344"
+      }
+    ],
+    "cache_warning": true
+  },
+  {
+    "key": "r1-mid-count-target-reference-copy",
+    "revision": 1,
+    "family": "mid-count-target",
+    "origin": "reference",
+    "mutation": "copy",
+    "values": [
+      {
+        "method": "TEST",
+        "type": "String",
+        "bytes": "42"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      },
+      {
+        "method": "FLAG",
+        "type": "Integer",
+        "value": 1
+      },
+      {
+        "method": "DEST",
+        "type": "String",
+        "bytes": "42"
+      },
+      {
+        "method": "TEST",
+        "type": "String",
+        "bytes": "42"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      },
+      {
+        "method": "FLAG",
+        "type": "Integer",
+        "value": 1
+      },
+      {
+        "method": "DEST",
+        "type": "String",
+        "bytes": "42"
+      }
+    ],
+    "cache_warning": true
+  },
+  {
+    "key": "r1-mid-count-target-name-store",
+    "revision": 1,
+    "family": "mid-count-target",
+    "origin": "name",
+    "mutation": "store",
+    "values": [
+      {
+        "method": "TEST",
+        "type": "String",
+        "bytes": "42"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      },
+      {
+        "method": "FLAG",
+        "type": "Integer",
+        "value": 1
+      },
+      {
+        "method": "DEST",
+        "type": "String",
+        "bytes": "42"
+      },
+      {
+        "method": "TEST",
+        "type": "String",
+        "bytes": "42"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      },
+      {
+        "method": "FLAG",
+        "type": "Integer",
+        "value": 1
+      },
+      {
+        "method": "DEST",
+        "type": "String",
+        "bytes": "42"
+      }
+    ],
+    "cache_warning": true
+  },
+  {
+    "key": "r1-mid-count-target-name-copy",
+    "revision": 1,
+    "family": "mid-count-target",
+    "origin": "name",
+    "mutation": "copy",
+    "values": [
+      {
+        "method": "TEST",
+        "type": "String",
+        "bytes": "42"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      },
+      {
+        "method": "FLAG",
+        "type": "Integer",
+        "value": 1
+      },
+      {
+        "method": "DEST",
+        "type": "String",
+        "bytes": "42"
+      },
+      {
+        "method": "TEST",
+        "type": "String",
+        "bytes": "42"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      },
+      {
+        "method": "FLAG",
+        "type": "Integer",
+        "value": 1
+      },
+      {
+        "method": "DEST",
+        "type": "String",
+        "bytes": "42"
+      }
+    ],
+    "cache_warning": true
+  },
+  {
+    "key": "r1-tostring-length-target-reference-store",
+    "revision": 1,
+    "family": "tostring-length-target",
+    "origin": "reference",
+    "mutation": "store",
+    "values": [
+      {
+        "method": "TEST",
+        "type": "String",
+        "bytes": "414243"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      },
+      {
+        "method": "FLAG",
+        "type": "Integer",
+        "value": 1
+      },
+      {
+        "method": "DEST",
+        "type": "String",
+        "bytes": "414243"
+      },
+      {
+        "method": "TEST",
+        "type": "String",
+        "bytes": "414243"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      },
+      {
+        "method": "FLAG",
+        "type": "Integer",
+        "value": 1
+      },
+      {
+        "method": "DEST",
+        "type": "String",
+        "bytes": "414243"
+      }
+    ],
+    "cache_warning": true
+  },
+  {
+    "key": "r1-tostring-length-target-reference-copy",
+    "revision": 1,
+    "family": "tostring-length-target",
+    "origin": "reference",
+    "mutation": "copy",
+    "values": [
+      {
+        "method": "TEST",
+        "type": "String",
+        "bytes": "41"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      },
+      {
+        "method": "FLAG",
+        "type": "Integer",
+        "value": 1
+      },
+      {
+        "method": "DEST",
+        "type": "String",
+        "bytes": "41"
+      },
+      {
+        "method": "TEST",
+        "type": "String",
+        "bytes": "41"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      },
+      {
+        "method": "FLAG",
+        "type": "Integer",
+        "value": 1
+      },
+      {
+        "method": "DEST",
+        "type": "String",
+        "bytes": "41"
+      }
+    ],
+    "cache_warning": true
+  },
+  {
+    "key": "r1-tostring-length-target-name-store",
+    "revision": 1,
+    "family": "tostring-length-target",
+    "origin": "name",
+    "mutation": "store",
+    "values": [
+      {
+        "method": "TEST",
+        "type": "String",
+        "bytes": "41"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      },
+      {
+        "method": "FLAG",
+        "type": "Integer",
+        "value": 1
+      },
+      {
+        "method": "DEST",
+        "type": "String",
+        "bytes": "41"
+      },
+      {
+        "method": "TEST",
+        "type": "String",
+        "bytes": "41"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      },
+      {
+        "method": "FLAG",
+        "type": "Integer",
+        "value": 1
+      },
+      {
+        "method": "DEST",
+        "type": "String",
+        "bytes": "41"
+      }
+    ],
+    "cache_warning": true
+  },
+  {
+    "key": "r1-tostring-length-target-name-copy",
+    "revision": 1,
+    "family": "tostring-length-target",
+    "origin": "name",
+    "mutation": "copy",
+    "values": [
+      {
+        "method": "TEST",
+        "type": "String",
+        "bytes": "41"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      },
+      {
+        "method": "FLAG",
+        "type": "Integer",
+        "value": 1
+      },
+      {
+        "method": "DEST",
+        "type": "String",
+        "bytes": "41"
+      },
+      {
+        "method": "TEST",
+        "type": "String",
+        "bytes": "41"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      },
+      {
+        "method": "FLAG",
+        "type": "Integer",
+        "value": 1
+      },
+      {
+        "method": "DEST",
+        "type": "String",
+        "bytes": "41"
+      }
+    ],
+    "cache_warning": true
+  },
+  {
+    "key": "r1-mid-string-immediate",
+    "revision": 1,
+    "family": "mid-string",
+    "origin": "reference",
+    "mutation": "none",
+    "values": [
+      {
+        "method": "TEST",
+        "type": "String",
+        "bytes": "424344"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      },
+      {
+        "method": "TEST",
+        "type": "String",
+        "bytes": "424344"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      }
+    ],
+    "cache_warning": true
+  },
+  {
+    "key": "r1-mid-buffer-immediate",
+    "revision": 1,
+    "family": "mid-buffer",
+    "origin": "reference",
+    "mutation": "none",
+    "values": [
+      {
+        "method": "TEST",
+        "type": "Buffer",
+        "bytes": "424344"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      },
+      {
+        "method": "TEST",
+        "type": "Buffer",
+        "bytes": "424344"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      }
+    ],
+    "cache_warning": true
+  },
+  {
+    "key": "r1-tostring-immediate",
+    "revision": 1,
+    "family": "tostring",
+    "origin": "reference",
+    "mutation": "none",
+    "values": [
+      {
+        "method": "TEST",
+        "type": "String",
+        "bytes": "414243"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      },
+      {
+        "method": "TEST",
+        "type": "String",
+        "bytes": "414243"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      }
+    ],
+    "cache_warning": true
+  },
+  {
+    "key": "r2-mid-start-later-reference-store",
+    "revision": 2,
+    "family": "mid-start-later",
+    "origin": "reference",
+    "mutation": "store",
+    "values": [
+      {
+        "method": "TEST",
+        "type": "String",
+        "bytes": "444546"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      },
+      {
+        "method": "FLAG",
+        "type": "Integer",
+        "value": 1
+      },
+      {
+        "method": "DEST",
+        "type": "Integer",
+        "value": 0
+      },
+      {
+        "method": "TEST",
+        "type": "String",
+        "bytes": "444546"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      },
+      {
+        "method": "FLAG",
+        "type": "Integer",
+        "value": 1
+      },
+      {
+        "method": "DEST",
+        "type": "Integer",
+        "value": 0
+      }
+    ],
+    "cache_warning": true
+  },
+  {
+    "key": "r2-mid-start-later-reference-copy",
+    "revision": 2,
+    "family": "mid-start-later",
+    "origin": "reference",
+    "mutation": "copy",
+    "values": [
+      {
+        "method": "TEST",
+        "type": "String",
+        "bytes": "424344"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      },
+      {
+        "method": "FLAG",
+        "type": "Integer",
+        "value": 1
+      },
+      {
+        "method": "DEST",
+        "type": "Integer",
+        "value": 0
+      },
+      {
+        "method": "TEST",
+        "type": "String",
+        "bytes": "424344"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      },
+      {
+        "method": "FLAG",
+        "type": "Integer",
+        "value": 1
+      },
+      {
+        "method": "DEST",
+        "type": "Integer",
+        "value": 0
+      }
+    ],
+    "cache_warning": true
+  },
+  {
+    "key": "r2-mid-start-later-name-store",
+    "revision": 2,
+    "family": "mid-start-later",
+    "origin": "name",
+    "mutation": "store",
+    "values": [
+      {
+        "method": "TEST",
+        "type": "String",
+        "bytes": "424344"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      },
+      {
+        "method": "FLAG",
+        "type": "Integer",
+        "value": 1
+      },
+      {
+        "method": "DEST",
+        "type": "Integer",
+        "value": 0
+      },
+      {
+        "method": "TEST",
+        "type": "String",
+        "bytes": "424344"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      },
+      {
+        "method": "FLAG",
+        "type": "Integer",
+        "value": 1
+      },
+      {
+        "method": "DEST",
+        "type": "Integer",
+        "value": 0
+      }
+    ],
+    "cache_warning": true
+  },
+  {
+    "key": "r2-mid-start-later-name-copy",
+    "revision": 2,
+    "family": "mid-start-later",
+    "origin": "name",
+    "mutation": "copy",
+    "values": [
+      {
+        "method": "TEST",
+        "type": "String",
+        "bytes": "424344"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      },
+      {
+        "method": "FLAG",
+        "type": "Integer",
+        "value": 1
+      },
+      {
+        "method": "DEST",
+        "type": "Integer",
+        "value": 0
+      },
+      {
+        "method": "TEST",
+        "type": "String",
+        "bytes": "424344"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      },
+      {
+        "method": "FLAG",
+        "type": "Integer",
+        "value": 1
+      },
+      {
+        "method": "DEST",
+        "type": "Integer",
+        "value": 0
+      }
+    ],
+    "cache_warning": true
+  },
+  {
+    "key": "r2-mid-start-target-reference-store",
+    "revision": 2,
+    "family": "mid-start-target",
+    "origin": "reference",
+    "mutation": "store",
+    "values": [
+      {
+        "method": "TEST",
+        "type": "Buffer",
+        "bytes": "444546"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      },
+      {
+        "method": "FLAG",
+        "type": "Integer",
+        "value": 1
+      },
+      {
+        "method": "DEST",
+        "type": "Buffer",
+        "bytes": "444546"
+      },
+      {
+        "method": "TEST",
+        "type": "Buffer",
+        "bytes": "444546"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      },
+      {
+        "method": "FLAG",
+        "type": "Integer",
+        "value": 1
+      },
+      {
+        "method": "DEST",
+        "type": "Buffer",
+        "bytes": "444546"
+      }
+    ],
+    "cache_warning": true
+  },
+  {
+    "key": "r2-mid-start-target-reference-copy",
+    "revision": 2,
+    "family": "mid-start-target",
+    "origin": "reference",
+    "mutation": "copy",
+    "values": [
+      {
+        "method": "TEST",
+        "type": "Buffer",
+        "bytes": "424344"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      },
+      {
+        "method": "FLAG",
+        "type": "Integer",
+        "value": 1
+      },
+      {
+        "method": "DEST",
+        "type": "Buffer",
+        "bytes": "424344"
+      },
+      {
+        "method": "TEST",
+        "type": "Buffer",
+        "bytes": "424344"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      },
+      {
+        "method": "FLAG",
+        "type": "Integer",
+        "value": 1
+      },
+      {
+        "method": "DEST",
+        "type": "Buffer",
+        "bytes": "424344"
+      }
+    ],
+    "cache_warning": true
+  },
+  {
+    "key": "r2-mid-start-target-name-store",
+    "revision": 2,
+    "family": "mid-start-target",
+    "origin": "name",
+    "mutation": "store",
+    "values": [
+      {
+        "method": "TEST",
+        "type": "Buffer",
+        "bytes": "424344"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      },
+      {
+        "method": "FLAG",
+        "type": "Integer",
+        "value": 1
+      },
+      {
+        "method": "DEST",
+        "type": "Buffer",
+        "bytes": "424344"
+      },
+      {
+        "method": "TEST",
+        "type": "Buffer",
+        "bytes": "424344"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      },
+      {
+        "method": "FLAG",
+        "type": "Integer",
+        "value": 1
+      },
+      {
+        "method": "DEST",
+        "type": "Buffer",
+        "bytes": "424344"
+      }
+    ],
+    "cache_warning": true
+  },
+  {
+    "key": "r2-mid-start-target-name-copy",
+    "revision": 2,
+    "family": "mid-start-target",
+    "origin": "name",
+    "mutation": "copy",
+    "values": [
+      {
+        "method": "TEST",
+        "type": "Buffer",
+        "bytes": "424344"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      },
+      {
+        "method": "FLAG",
+        "type": "Integer",
+        "value": 1
+      },
+      {
+        "method": "DEST",
+        "type": "Buffer",
+        "bytes": "424344"
+      },
+      {
+        "method": "TEST",
+        "type": "Buffer",
+        "bytes": "424344"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      },
+      {
+        "method": "FLAG",
+        "type": "Integer",
+        "value": 1
+      },
+      {
+        "method": "DEST",
+        "type": "Buffer",
+        "bytes": "424344"
+      }
+    ],
+    "cache_warning": true
+  },
+  {
+    "key": "r2-mid-count-target-reference-store",
+    "revision": 2,
+    "family": "mid-count-target",
+    "origin": "reference",
+    "mutation": "store",
+    "values": [
+      {
+        "method": "TEST",
+        "type": "String",
+        "bytes": "424344"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      },
+      {
+        "method": "FLAG",
+        "type": "Integer",
+        "value": 1
+      },
+      {
+        "method": "DEST",
+        "type": "String",
+        "bytes": "424344"
+      },
+      {
+        "method": "TEST",
+        "type": "String",
+        "bytes": "424344"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      },
+      {
+        "method": "FLAG",
+        "type": "Integer",
+        "value": 1
+      },
+      {
+        "method": "DEST",
+        "type": "String",
+        "bytes": "424344"
+      }
+    ],
+    "cache_warning": true
+  },
+  {
+    "key": "r2-mid-count-target-reference-copy",
+    "revision": 2,
+    "family": "mid-count-target",
+    "origin": "reference",
+    "mutation": "copy",
+    "values": [
+      {
+        "method": "TEST",
+        "type": "String",
+        "bytes": "42"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      },
+      {
+        "method": "FLAG",
+        "type": "Integer",
+        "value": 1
+      },
+      {
+        "method": "DEST",
+        "type": "String",
+        "bytes": "42"
+      },
+      {
+        "method": "TEST",
+        "type": "String",
+        "bytes": "42"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      },
+      {
+        "method": "FLAG",
+        "type": "Integer",
+        "value": 1
+      },
+      {
+        "method": "DEST",
+        "type": "String",
+        "bytes": "42"
+      }
+    ],
+    "cache_warning": true
+  },
+  {
+    "key": "r2-mid-count-target-name-store",
+    "revision": 2,
+    "family": "mid-count-target",
+    "origin": "name",
+    "mutation": "store",
+    "values": [
+      {
+        "method": "TEST",
+        "type": "String",
+        "bytes": "42"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      },
+      {
+        "method": "FLAG",
+        "type": "Integer",
+        "value": 1
+      },
+      {
+        "method": "DEST",
+        "type": "String",
+        "bytes": "42"
+      },
+      {
+        "method": "TEST",
+        "type": "String",
+        "bytes": "42"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      },
+      {
+        "method": "FLAG",
+        "type": "Integer",
+        "value": 1
+      },
+      {
+        "method": "DEST",
+        "type": "String",
+        "bytes": "42"
+      }
+    ],
+    "cache_warning": true
+  },
+  {
+    "key": "r2-mid-count-target-name-copy",
+    "revision": 2,
+    "family": "mid-count-target",
+    "origin": "name",
+    "mutation": "copy",
+    "values": [
+      {
+        "method": "TEST",
+        "type": "String",
+        "bytes": "42"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      },
+      {
+        "method": "FLAG",
+        "type": "Integer",
+        "value": 1
+      },
+      {
+        "method": "DEST",
+        "type": "String",
+        "bytes": "42"
+      },
+      {
+        "method": "TEST",
+        "type": "String",
+        "bytes": "42"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      },
+      {
+        "method": "FLAG",
+        "type": "Integer",
+        "value": 1
+      },
+      {
+        "method": "DEST",
+        "type": "String",
+        "bytes": "42"
+      }
+    ],
+    "cache_warning": true
+  },
+  {
+    "key": "r2-tostring-length-target-reference-store",
+    "revision": 2,
+    "family": "tostring-length-target",
+    "origin": "reference",
+    "mutation": "store",
+    "values": [
+      {
+        "method": "TEST",
+        "type": "String",
+        "bytes": "414243"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      },
+      {
+        "method": "FLAG",
+        "type": "Integer",
+        "value": 1
+      },
+      {
+        "method": "DEST",
+        "type": "String",
+        "bytes": "414243"
+      },
+      {
+        "method": "TEST",
+        "type": "String",
+        "bytes": "414243"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      },
+      {
+        "method": "FLAG",
+        "type": "Integer",
+        "value": 1
+      },
+      {
+        "method": "DEST",
+        "type": "String",
+        "bytes": "414243"
+      }
+    ],
+    "cache_warning": true
+  },
+  {
+    "key": "r2-tostring-length-target-reference-copy",
+    "revision": 2,
+    "family": "tostring-length-target",
+    "origin": "reference",
+    "mutation": "copy",
+    "values": [
+      {
+        "method": "TEST",
+        "type": "String",
+        "bytes": "41"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      },
+      {
+        "method": "FLAG",
+        "type": "Integer",
+        "value": 1
+      },
+      {
+        "method": "DEST",
+        "type": "String",
+        "bytes": "41"
+      },
+      {
+        "method": "TEST",
+        "type": "String",
+        "bytes": "41"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      },
+      {
+        "method": "FLAG",
+        "type": "Integer",
+        "value": 1
+      },
+      {
+        "method": "DEST",
+        "type": "String",
+        "bytes": "41"
+      }
+    ],
+    "cache_warning": true
+  },
+  {
+    "key": "r2-tostring-length-target-name-store",
+    "revision": 2,
+    "family": "tostring-length-target",
+    "origin": "name",
+    "mutation": "store",
+    "values": [
+      {
+        "method": "TEST",
+        "type": "String",
+        "bytes": "41"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      },
+      {
+        "method": "FLAG",
+        "type": "Integer",
+        "value": 1
+      },
+      {
+        "method": "DEST",
+        "type": "String",
+        "bytes": "41"
+      },
+      {
+        "method": "TEST",
+        "type": "String",
+        "bytes": "41"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      },
+      {
+        "method": "FLAG",
+        "type": "Integer",
+        "value": 1
+      },
+      {
+        "method": "DEST",
+        "type": "String",
+        "bytes": "41"
+      }
+    ],
+    "cache_warning": true
+  },
+  {
+    "key": "r2-tostring-length-target-name-copy",
+    "revision": 2,
+    "family": "tostring-length-target",
+    "origin": "name",
+    "mutation": "copy",
+    "values": [
+      {
+        "method": "TEST",
+        "type": "String",
+        "bytes": "41"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      },
+      {
+        "method": "FLAG",
+        "type": "Integer",
+        "value": 1
+      },
+      {
+        "method": "DEST",
+        "type": "String",
+        "bytes": "41"
+      },
+      {
+        "method": "TEST",
+        "type": "String",
+        "bytes": "41"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      },
+      {
+        "method": "FLAG",
+        "type": "Integer",
+        "value": 1
+      },
+      {
+        "method": "DEST",
+        "type": "String",
+        "bytes": "41"
+      }
+    ],
+    "cache_warning": true
+  },
+  {
+    "key": "r2-mid-string-immediate",
+    "revision": 2,
+    "family": "mid-string",
+    "origin": "reference",
+    "mutation": "none",
+    "values": [
+      {
+        "method": "TEST",
+        "type": "String",
+        "bytes": "424344"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      },
+      {
+        "method": "TEST",
+        "type": "String",
+        "bytes": "424344"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      }
+    ],
+    "cache_warning": true
+  },
+  {
+    "key": "r2-mid-buffer-immediate",
+    "revision": 2,
+    "family": "mid-buffer",
+    "origin": "reference",
+    "mutation": "none",
+    "values": [
+      {
+        "method": "TEST",
+        "type": "Buffer",
+        "bytes": "424344"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      },
+      {
+        "method": "TEST",
+        "type": "Buffer",
+        "bytes": "424344"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      }
+    ],
+    "cache_warning": true
+  },
+  {
+    "key": "r2-tostring-immediate",
+    "revision": 2,
+    "family": "tostring",
+    "origin": "reference",
+    "mutation": "none",
+    "values": [
+      {
+        "method": "TEST",
+        "type": "String",
+        "bytes": "414243"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      },
+      {
+        "method": "TEST",
+        "type": "String",
+        "bytes": "414243"
+      },
+      {
+        "method": "POST",
+        "type": "Integer",
+        "value": 3
+      }
+    ],
+    "cache_warning": true
+  }
+]

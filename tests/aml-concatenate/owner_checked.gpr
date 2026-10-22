@@ -1,5 +1,5 @@
 project Owner_checked is
- for Source_Dirs use (".", "../../userspace/lib/acpi", "../../userspace/services/acpi", "../../shared/firmware");
+ for Source_Dirs use (".", "../aml-core", "../../userspace/lib/acpi", "../../userspace/services/acpi", "../../shared/firmware");
  for Object_Dir use "build-checked";
  for Main use ("concatenate_owner_tests.adb", "concatenate_oracle_runner.adb");
  package Compiler is

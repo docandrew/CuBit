@@ -1,0 +1,10 @@
+project mutex_request_tests_release is
+ for Source_Dirs use ("../../tests/aml-mutex", "../../userspace/lib/acpi", "../../shared/firmware", "../../userspace/services/acpi");
+ Build_Root := external ("SERVICE_MILESTONE_BUILD", "build-mutex_request_tests-release");
+ for Object_Dir use Build_Root & "/obj";
+ for Exec_Dir use Build_Root & "/bin";
+ for Main use ("mutex_request_tests.adb");
+ package Compiler is
+ for Default_Switches ("Ada") use ("-O1", "-gnat2022", "-gnatwa", "-gnatwe", "-gnatp");
+ end Compiler;
+end mutex_request_tests_release;

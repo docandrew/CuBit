@@ -1,0 +1,8 @@
+project release is
+   for Source_Dirs use (".", "../../userspace/lib/acpi", "../../shared/firmware");
+   for Object_Dir use "build-release";
+   for Main use ("arg_update_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-O1", "-gnat2022", "-gnatwa", "-gnatwe", "-fstack-usage", "-gnatp");
+   end Compiler;
+end release;

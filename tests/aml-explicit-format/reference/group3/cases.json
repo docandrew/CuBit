@@ -1,0 +1,10 @@
+[
+  {
+    "name": "DLATE",
+    "method_opcode": "ToDecimalString"
+  },
+  {
+    "name": "HLATE",
+    "method_opcode": "ToHexString"
+  }
+]

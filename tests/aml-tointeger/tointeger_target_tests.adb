@@ -7,6 +7,7 @@ with AML_Names;
 with AML_Objects;
 with AML_Table_Backing;
 procedure Tointeger_Target_Tests is
+   use type AML_Decode.Bytes;
    use type Integer_Value;
    use type AML_Objects.Allocation_Status;
    procedure Clock (Value : out Integer_Value; Available : out Boolean);

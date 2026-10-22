@@ -1,0 +1,10 @@
+project legacy_release is
+ Build_Root := external ("CAPTURE_BUILD", "build-legacy_release");
+ for Source_Dirs use ("../../shared/firmware", "../aml-buffer-field-integration", "../aml-concatenate", "../aml-core", "../aml-match", "../aml-mid", "../aml-retention", "../aml-scalar-operators", "../aml-tostring", "../../userspace/lib/acpi", "../../userspace/services/acpi");
+ for Object_Dir use Build_Root & "/obj";
+ for Exec_Dir use Build_Root & "/bin";
+ for Main use ("call_tests.adb", "owned_frame_root_tests.adb", "result_handoff_tests.adb", "mid_owner_tests.adb", "mid_collecting_tests.adb", "to_string_owner_tests.adb", "to_string_collecting_tests.adb", "concatenate_owner_tests.adb", "match_core_tests.adb", "match_collecting_tests.adb", "field_live_tests.adb", "field_package_tests.adb", "field_package_rollback_tests.adb");
+ package Compiler is
+ for Default_Switches ("Ada") use ("-O1", "-gnat2022", "-gnatwa", "-gnatwe", "-fstack-usage", "-gnatp");
+ end Compiler;
+end legacy_release;

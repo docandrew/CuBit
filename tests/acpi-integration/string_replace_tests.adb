@@ -2,6 +2,7 @@ with Ada.Text_IO;
 with AML_Decode; use AML_Decode;
 with AML_Objects; use AML_Objects;
 procedure String_Replace_Tests is
+   use type AML_Decode.Bytes;
    S : State := Empty;
    Prior : State;
    ID, Other, Link, Dummy : Object_ID;

@@ -1,0 +1,1 @@
+DefinitionBlock("", "DSDT", 2, "CUBIT", "TAIL", 1){ Method(TEST,1){Store(0,Local0) If(One){ If(Arg0){Store(11,Local0)} Else {Store(22,Local0)} } Add(Local0,3,Local0) Return(Local0)}}

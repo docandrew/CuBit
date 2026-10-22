@@ -1,0 +1,94 @@
+[
+  {
+    "case": "r1-direct",
+    "revision": 1,
+    "classification": "executed",
+    "method": "TEST",
+    "integer": 4294967295,
+    "cache_warning": true
+  },
+  {
+    "case": "r1-arg",
+    "revision": 1,
+    "classification": "executed",
+    "method": "TEST",
+    "integer": 4294967295,
+    "cache_warning": true
+  },
+  {
+    "case": "r1-local",
+    "revision": 1,
+    "classification": "executed",
+    "method": "TEST",
+    "integer": 4294967295,
+    "cache_warning": true
+  },
+  {
+    "case": "r1-arg-target-source",
+    "revision": 1,
+    "classification": "executed",
+    "method": "TEST",
+    "integer": 4294967295,
+    "cache_warning": true
+  },
+  {
+    "case": "r1-arg-target-dest",
+    "revision": 1,
+    "classification": "executed",
+    "method": "TEST",
+    "integer": 18446744073709551615,
+    "cache_warning": true
+  },
+  {
+    "case": "r1-package",
+    "revision": 1,
+    "classification": "compiler_process_failure",
+    "diagnostic": "iasl6058 direct Reference not valid ToInteger operand; no forced AML"
+  },
+  {
+    "case": "r2-direct",
+    "revision": 2,
+    "classification": "executed",
+    "method": "TEST",
+    "integer": 18446744073709551615,
+    "cache_warning": true
+  },
+  {
+    "case": "r2-arg",
+    "revision": 2,
+    "classification": "executed",
+    "method": "TEST",
+    "integer": 18446744073709551615,
+    "cache_warning": true
+  },
+  {
+    "case": "r2-local",
+    "revision": 2,
+    "classification": "executed",
+    "method": "TEST",
+    "integer": 18446744073709551615,
+    "cache_warning": true
+  },
+  {
+    "case": "r2-arg-target-source",
+    "revision": 2,
+    "classification": "executed",
+    "method": "TEST",
+    "integer": 18446744073709551615,
+    "cache_warning": true
+  },
+  {
+    "case": "r2-arg-target-dest",
+    "revision": 2,
+    "classification": "executed",
+    "method": "TEST",
+    "integer": 18446744073709551615,
+    "cache_warning": true
+  },
+  {
+    "case": "r2-package",
+    "revision": 2,
+    "classification": "compiler_process_failure",
+    "diagnostic": "iasl6058 direct Reference not valid ToInteger operand; no forced AML"
+  }
+]

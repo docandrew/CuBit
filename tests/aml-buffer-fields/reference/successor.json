@@ -1,0 +1,20 @@
+{
+  "comparator_parent": "/home/doc/git/.acpi-proof-work/createfield-portable-copy-dr9lg8o0",
+  "parent_audit_sha256": "2b7496b2e92069d724892b33524bda6ea51aa3eb5a4f8767969e89b0e342df3c",
+  "added_cases": [
+    "field-target-1-FIXEDBYTE",
+    "field-target-1-FIXEDPACKAGE",
+    "field-target-1-FIXEDEMPTY",
+    "field-target-1-GENERICBYTE",
+    "field-target-1-GENERICPACKAGE",
+    "field-target-1-GENERICEMPTY",
+    "field-target-2-FIXEDBYTE",
+    "field-target-2-FIXEDPACKAGE",
+    "field-target-2-FIXEDEMPTY",
+    "field-target-2-GENERICBYTE",
+    "field-target-2-GENERICPACKAGE",
+    "field-target-2-GENERICEMPTY"
+  ],
+  "added_oracle": "/home/doc/git/.acpi-proof-work/copy-index-field-oracle-whc6p6ad",
+  "scope": "cached import only; no new ACPICA run"
+}

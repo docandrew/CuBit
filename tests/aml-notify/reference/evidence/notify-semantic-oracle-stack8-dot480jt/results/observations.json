@@ -1,0 +1,2180 @@
+[
+  {
+    "key": "1-target-DEV0-0x01",
+    "revision": 1,
+    "compile_returncode": 0,
+    "aml_sha256": "549c233944ba4fb5f2273ff689843912f9a2fdf5e62470573648e1fe202fe562",
+    "disassemble_returncode": 0,
+    "control_returncode": 0,
+    "control_values": [
+      "0000000000000001",
+      "0000000000000000"
+    ],
+    "returncode": 0,
+    "test_values": [
+      "0000000000000003"
+    ],
+    "marker_values": [
+      "0000000000000003"
+    ],
+    "ae_statuses": [],
+    "global_notifications_observed": [
+      {
+        "class": "System",
+        "node": "DEV0",
+        "value_hex": "01"
+      }
+    ],
+    "thread_failure": false,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "timing_claim": "none: threaded OSL/no-op completion wait; callback absence/order not conclusive",
+    "classification": "returned"
+  },
+  {
+    "key": "1-target-DEV0-0x80",
+    "revision": 1,
+    "compile_returncode": 0,
+    "aml_sha256": "d95cd3bfdff008e009deec67061584d13f3e32edc49a62b906db55e67e876dca",
+    "disassemble_returncode": 0,
+    "control_returncode": 0,
+    "control_values": [
+      "0000000000000001",
+      "0000000000000000"
+    ],
+    "returncode": 0,
+    "test_values": [
+      "0000000000000003"
+    ],
+    "marker_values": [
+      "0000000000000003"
+    ],
+    "ae_statuses": [],
+    "global_notifications_observed": [
+      {
+        "class": "Device",
+        "node": "DEV0",
+        "value_hex": "80"
+      }
+    ],
+    "thread_failure": false,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "timing_claim": "none: threaded OSL/no-op completion wait; callback absence/order not conclusive",
+    "classification": "returned"
+  },
+  {
+    "key": "1-target-THM0-0x01",
+    "revision": 1,
+    "compile_returncode": 0,
+    "aml_sha256": "131432bff2974815c4ce5b5cad646d3012938115195e6e8a20acbbd5075572ca",
+    "disassemble_returncode": 0,
+    "control_returncode": 0,
+    "control_values": [
+      "0000000000000001",
+      "0000000000000000"
+    ],
+    "returncode": 0,
+    "test_values": [
+      "0000000000000003"
+    ],
+    "marker_values": [
+      "0000000000000003"
+    ],
+    "ae_statuses": [],
+    "global_notifications_observed": [
+      {
+        "class": "System",
+        "node": "THM0",
+        "value_hex": "01"
+      }
+    ],
+    "thread_failure": false,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "timing_claim": "none: threaded OSL/no-op completion wait; callback absence/order not conclusive",
+    "classification": "returned"
+  },
+  {
+    "key": "1-target-THM0-0x80",
+    "revision": 1,
+    "compile_returncode": 0,
+    "aml_sha256": "45bb8c196af24fd8521f141c59e4e09dd94accb2e1dd02e43fe102dc4b06d2f1",
+    "disassemble_returncode": 0,
+    "control_returncode": 0,
+    "control_values": [
+      "0000000000000001",
+      "0000000000000000"
+    ],
+    "returncode": 0,
+    "test_values": [
+      "0000000000000003"
+    ],
+    "marker_values": [
+      "0000000000000003"
+    ],
+    "ae_statuses": [],
+    "global_notifications_observed": [
+      {
+        "class": "Device",
+        "node": "THM0",
+        "value_hex": "80"
+      }
+    ],
+    "thread_failure": false,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "timing_claim": "none: threaded OSL/no-op completion wait; callback absence/order not conclusive",
+    "classification": "returned"
+  },
+  {
+    "key": "1-target-CPU0-0x01",
+    "revision": 1,
+    "compile_returncode": 0,
+    "aml_sha256": "b197bc0638f6c37794628baf9eab5d336145fdf16fc93e35062074a03123db4d",
+    "disassemble_returncode": 0,
+    "control_returncode": 0,
+    "control_values": [
+      "0000000000000001",
+      "0000000000000000"
+    ],
+    "returncode": 0,
+    "test_values": [
+      "0000000000000003"
+    ],
+    "marker_values": [
+      "0000000000000003"
+    ],
+    "ae_statuses": [],
+    "global_notifications_observed": [
+      {
+        "class": "System",
+        "node": "CPU0",
+        "value_hex": "01"
+      }
+    ],
+    "thread_failure": false,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "timing_claim": "none: threaded OSL/no-op completion wait; callback absence/order not conclusive",
+    "classification": "returned"
+  },
+  {
+    "key": "1-target-CPU0-0x80",
+    "revision": 1,
+    "compile_returncode": 0,
+    "aml_sha256": "05dbf78275296175054b35787e8f0679250d69488017e3398e6b1fd801aa68f0",
+    "disassemble_returncode": 0,
+    "control_returncode": 0,
+    "control_values": [
+      "0000000000000001",
+      "0000000000000000"
+    ],
+    "returncode": 0,
+    "test_values": [
+      "0000000000000003"
+    ],
+    "marker_values": [
+      "0000000000000003"
+    ],
+    "ae_statuses": [],
+    "global_notifications_observed": [
+      {
+        "class": "Device",
+        "node": "CPU0",
+        "value_hex": "80"
+      }
+    ],
+    "thread_failure": false,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "timing_claim": "none: threaded OSL/no-op completion wait; callback absence/order not conclusive",
+    "classification": "returned"
+  },
+  {
+    "key": "1-target-ALS0-0x01",
+    "revision": 1,
+    "compile_returncode": 0,
+    "aml_sha256": "8b71406dcfb8eab9a320469967643af8813edef6757e5617171028bcd1db5541",
+    "disassemble_returncode": 0,
+    "control_returncode": 0,
+    "control_values": [
+      "0000000000000001",
+      "0000000000000000"
+    ],
+    "returncode": 0,
+    "test_values": [
+      "0000000000000003"
+    ],
+    "marker_values": [
+      "0000000000000003"
+    ],
+    "ae_statuses": [],
+    "global_notifications_observed": [
+      {
+        "class": "System",
+        "node": "DEV0",
+        "value_hex": "01"
+      }
+    ],
+    "thread_failure": false,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "timing_claim": "none: threaded OSL/no-op completion wait; callback absence/order not conclusive",
+    "classification": "returned"
+  },
+  {
+    "key": "1-target-ALS0-0x80",
+    "revision": 1,
+    "compile_returncode": 0,
+    "aml_sha256": "2d23c8f5c6a643ee4b3dccb8c3ef33d15143a0cc9e2ea39b88dd78d3c0d9fee1",
+    "disassemble_returncode": 0,
+    "control_returncode": 0,
+    "control_values": [
+      "0000000000000001",
+      "0000000000000000"
+    ],
+    "returncode": 0,
+    "test_values": [
+      "0000000000000003"
+    ],
+    "marker_values": [
+      "0000000000000003"
+    ],
+    "ae_statuses": [],
+    "global_notifications_observed": [
+      {
+        "class": "Device",
+        "node": "DEV0",
+        "value_hex": "80"
+      }
+    ],
+    "thread_failure": false,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "timing_claim": "none: threaded OSL/no-op completion wait; callback absence/order not conclusive",
+    "classification": "returned"
+  },
+  {
+    "key": "1-value-Zero",
+    "revision": 1,
+    "compile_returncode": 0,
+    "aml_sha256": "4f0d62a94ec78a1d1a6aa61e46c3110035d383e4a1a19bd73cdc0af3c1c9ddc6",
+    "disassemble_returncode": 0,
+    "control_returncode": 0,
+    "control_values": [
+      "0000000000000001",
+      "0000000000000000"
+    ],
+    "returncode": 0,
+    "test_values": [
+      "0000000000000003"
+    ],
+    "marker_values": [
+      "0000000000000003"
+    ],
+    "ae_statuses": [],
+    "global_notifications_observed": [
+      {
+        "class": "System",
+        "node": "DEV0",
+        "value_hex": "00"
+      }
+    ],
+    "thread_failure": false,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "timing_claim": "none: threaded OSL/no-op completion wait; callback absence/order not conclusive",
+    "classification": "returned"
+  },
+  {
+    "key": "1-value-0x7F",
+    "revision": 1,
+    "compile_returncode": 0,
+    "aml_sha256": "71021bfaa6aa580605420353d212a97bb08850aa8826d3fec3e157ae42a6affb",
+    "disassemble_returncode": 0,
+    "control_returncode": 0,
+    "control_values": [
+      "0000000000000001",
+      "0000000000000000"
+    ],
+    "returncode": 0,
+    "test_values": [
+      "0000000000000003"
+    ],
+    "marker_values": [
+      "0000000000000003"
+    ],
+    "ae_statuses": [],
+    "global_notifications_observed": [
+      {
+        "class": "System",
+        "node": "DEV0",
+        "value_hex": "7F"
+      }
+    ],
+    "thread_failure": false,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "timing_claim": "none: threaded OSL/no-op completion wait; callback absence/order not conclusive",
+    "classification": "returned"
+  },
+  {
+    "key": "1-value-0xFF",
+    "revision": 1,
+    "compile_returncode": 0,
+    "aml_sha256": "a089a993d0d553927a33a20990a17ab45c6d55d47a6ff4a497b8b055f23f2e78",
+    "disassemble_returncode": 0,
+    "control_returncode": 0,
+    "control_values": [
+      "0000000000000001",
+      "0000000000000000"
+    ],
+    "returncode": 0,
+    "test_values": [
+      "0000000000000003"
+    ],
+    "marker_values": [
+      "0000000000000003"
+    ],
+    "ae_statuses": [],
+    "global_notifications_observed": [
+      {
+        "class": "Device",
+        "node": "DEV0",
+        "value_hex": "FF"
+      }
+    ],
+    "thread_failure": false,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "timing_claim": "none: threaded OSL/no-op completion wait; callback absence/order not conclusive",
+    "classification": "returned"
+  },
+  {
+    "key": "1-value-0x100",
+    "revision": 1,
+    "compile_returncode": 0,
+    "aml_sha256": "3b0d02ab7760aab93be29ab9d701afefb992f7f67499c75e432c51bd7da109bf",
+    "disassemble_returncode": 0,
+    "control_returncode": 0,
+    "control_values": [
+      "0000000000000001",
+      "0000000000000000"
+    ],
+    "returncode": 0,
+    "test_values": [
+      "0000000000000003"
+    ],
+    "marker_values": [
+      "0000000000000003"
+    ],
+    "ae_statuses": [],
+    "global_notifications_observed": [
+      {
+        "class": "Device",
+        "node": "DEV0",
+        "value_hex": "100"
+      }
+    ],
+    "thread_failure": false,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "timing_claim": "none: threaded OSL/no-op completion wait; callback absence/order not conclusive",
+    "classification": "returned"
+  },
+  {
+    "key": "1-value-0xFFFF",
+    "revision": 1,
+    "compile_returncode": 0,
+    "aml_sha256": "4ad4424e15d13f61116cf75fb7e9c4c12f4f81d682e240f9806222439ddc9b50",
+    "disassemble_returncode": 0,
+    "control_returncode": 0,
+    "control_values": [
+      "0000000000000001",
+      "0000000000000000"
+    ],
+    "returncode": 0,
+    "test_values": [
+      "0000000000000003"
+    ],
+    "marker_values": [
+      "0000000000000003"
+    ],
+    "ae_statuses": [],
+    "global_notifications_observed": [
+      {
+        "class": "Device",
+        "node": "DEV0",
+        "value_hex": "FFFF"
+      }
+    ],
+    "thread_failure": false,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "timing_claim": "none: threaded OSL/no-op completion wait; callback absence/order not conclusive",
+    "classification": "returned"
+  },
+  {
+    "key": "1-value-0x10000",
+    "revision": 1,
+    "compile_returncode": 0,
+    "aml_sha256": "e52f9f6fbcd140863d0ead9affadcec9397f505d6dd17ba9c4aaececa2704fa3",
+    "disassemble_returncode": 0,
+    "control_returncode": 0,
+    "control_values": [
+      "0000000000000001",
+      "0000000000000000"
+    ],
+    "returncode": 0,
+    "test_values": [
+      "0000000000000003"
+    ],
+    "marker_values": [
+      "0000000000000003"
+    ],
+    "ae_statuses": [],
+    "global_notifications_observed": [
+      {
+        "class": "Device",
+        "node": "DEV0",
+        "value_hex": "00"
+      }
+    ],
+    "thread_failure": false,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "timing_claim": "none: threaded OSL/no-op completion wait; callback absence/order not conclusive",
+    "classification": "returned"
+  },
+  {
+    "key": "1-value-0x10080",
+    "revision": 1,
+    "compile_returncode": 0,
+    "aml_sha256": "691c28116db90fc99896ad49b588be7f4dbb3b94f106e3a38ee231236bb32568",
+    "disassemble_returncode": 0,
+    "control_returncode": 0,
+    "control_values": [
+      "0000000000000001",
+      "0000000000000000"
+    ],
+    "returncode": 0,
+    "test_values": [
+      "0000000000000003"
+    ],
+    "marker_values": [
+      "0000000000000003"
+    ],
+    "ae_statuses": [],
+    "global_notifications_observed": [
+      {
+        "class": "Device",
+        "node": "DEV0",
+        "value_hex": "80"
+      }
+    ],
+    "thread_failure": false,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "timing_claim": "none: threaded OSL/no-op completion wait; callback absence/order not conclusive",
+    "classification": "returned"
+  },
+  {
+    "key": "1-value-0xFFFFFFFF",
+    "revision": 1,
+    "compile_returncode": 0,
+    "aml_sha256": "1408b256efc9f7e973355a1f632f1a78157f84e9658643d79059e338a46562e1",
+    "disassemble_returncode": 0,
+    "control_returncode": 0,
+    "control_values": [
+      "0000000000000001",
+      "0000000000000000"
+    ],
+    "returncode": 0,
+    "test_values": [
+      "0000000000000003"
+    ],
+    "marker_values": [
+      "0000000000000003"
+    ],
+    "ae_statuses": [],
+    "global_notifications_observed": [
+      {
+        "class": "Device",
+        "node": "DEV0",
+        "value_hex": "FFFF"
+      }
+    ],
+    "thread_failure": false,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "timing_claim": "none: threaded OSL/no-op completion wait; callback absence/order not conclusive",
+    "classification": "returned"
+  },
+  {
+    "key": "1-value-0x100000000",
+    "revision": 1,
+    "compile_returncode": 0,
+    "aml_sha256": "8ba5a802ebbc8c876de556b80d4eda32f0db4d3f66fc1572432149accbe35c4c",
+    "disassemble_returncode": 0,
+    "control_returncode": 0,
+    "control_values": [
+      "0000000000000001",
+      "0000000000000000"
+    ],
+    "returncode": 0,
+    "test_values": [
+      "0000000000000003"
+    ],
+    "marker_values": [
+      "0000000000000003"
+    ],
+    "ae_statuses": [],
+    "global_notifications_observed": [
+      {
+        "class": "System",
+        "node": "DEV0",
+        "value_hex": "00"
+      }
+    ],
+    "thread_failure": false,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "timing_claim": "none: threaded OSL/no-op completion wait; callback absence/order not conclusive",
+    "classification": "returned"
+  },
+  {
+    "key": "1-value-Ones",
+    "revision": 1,
+    "compile_returncode": 0,
+    "aml_sha256": "024141e06851045c25b2ed79b4dca7711f49e81ef0f82952a3377f3161311c02",
+    "disassemble_returncode": 0,
+    "control_returncode": 0,
+    "control_values": [
+      "0000000000000001",
+      "0000000000000000"
+    ],
+    "returncode": 0,
+    "test_values": [
+      "0000000000000003"
+    ],
+    "marker_values": [
+      "0000000000000003"
+    ],
+    "ae_statuses": [],
+    "global_notifications_observed": [
+      {
+        "class": "Device",
+        "node": "DEV0",
+        "value_hex": "FFFF"
+      }
+    ],
+    "thread_failure": false,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "timing_claim": "none: threaded OSL/no-op completion wait; callback absence/order not conclusive",
+    "classification": "returned"
+  },
+  {
+    "key": "1-coerce-string",
+    "revision": 1,
+    "compile_returncode": 0,
+    "aml_sha256": "345d7ad2b5ea32bc7014c04760170a159b8e9bac8039c462eda276ca042871c2",
+    "disassemble_returncode": 0,
+    "control_returncode": 0,
+    "control_values": [
+      "0000000000000001",
+      "0000000000000000"
+    ],
+    "returncode": 0,
+    "test_values": [
+      "0000000000000003"
+    ],
+    "marker_values": [
+      "0000000000000003"
+    ],
+    "ae_statuses": [],
+    "global_notifications_observed": [
+      {
+        "class": "Device",
+        "node": "DEV0",
+        "value_hex": "80"
+      }
+    ],
+    "thread_failure": false,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "timing_claim": "none: threaded OSL/no-op completion wait; callback absence/order not conclusive",
+    "classification": "returned"
+  },
+  {
+    "key": "1-coerce-buffer",
+    "revision": 1,
+    "compile_returncode": 0,
+    "aml_sha256": "3cbdbaf43d8291f088da0625650ec7f80108ce97c1dfd6a30f99f60379621854",
+    "disassemble_returncode": 0,
+    "control_returncode": 0,
+    "control_values": [
+      "0000000000000001",
+      "0000000000000000"
+    ],
+    "returncode": 0,
+    "test_values": [
+      "0000000000000003"
+    ],
+    "marker_values": [
+      "0000000000000003"
+    ],
+    "ae_statuses": [],
+    "global_notifications_observed": [
+      {
+        "class": "Device",
+        "node": "DEV0",
+        "value_hex": "80"
+      }
+    ],
+    "thread_failure": false,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "timing_claim": "none: threaded OSL/no-op completion wait; callback absence/order not conclusive",
+    "classification": "returned"
+  },
+  {
+    "key": "1-coerce-empty-buffer",
+    "revision": 1,
+    "compile_returncode": 0,
+    "aml_sha256": "bde73bb592021ba1484f4a0fa10ecf4b4bb4882855cd28244355e59e29d86ee1",
+    "disassemble_returncode": 0,
+    "control_returncode": 0,
+    "control_values": [
+      "0000000000000001",
+      "0000000000000000"
+    ],
+    "returncode": 0,
+    "test_values": [],
+    "marker_values": [
+      "0000000000000002"
+    ],
+    "ae_statuses": [
+      "AE_AML_BUFFER_LIMIT"
+    ],
+    "global_notifications_observed": [],
+    "thread_failure": false,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "timing_claim": "none: threaded OSL/no-op completion wait; callback absence/order not conclusive",
+    "classification": "runtime_error"
+  },
+  {
+    "key": "1-coerce-bad-string",
+    "revision": 1,
+    "compile_returncode": 0,
+    "aml_sha256": "05c6cc939c01eca24ea94df9a2735d69b9d327f3a83939784bfe4182e0f99e2c",
+    "disassemble_returncode": 0,
+    "control_returncode": 0,
+    "control_values": [
+      "0000000000000001",
+      "0000000000000000"
+    ],
+    "returncode": 0,
+    "test_values": [
+      "0000000000000003"
+    ],
+    "marker_values": [
+      "0000000000000003"
+    ],
+    "ae_statuses": [],
+    "global_notifications_observed": [
+      {
+        "class": "System",
+        "node": "DEV0",
+        "value_hex": "00"
+      }
+    ],
+    "thread_failure": false,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "timing_claim": "none: threaded OSL/no-op completion wait; callback absence/order not conclusive",
+    "classification": "returned"
+  },
+  {
+    "key": "1-coerce-package",
+    "revision": 1,
+    "compile_returncode": 0,
+    "aml_sha256": "c00cbdf690b9b10817ab9b8910ba5df3b5fa7e2a06b9596c7b864862a7a47d19",
+    "disassemble_returncode": 0,
+    "control_returncode": 0,
+    "control_values": [
+      "0000000000000001",
+      "0000000000000000"
+    ],
+    "returncode": 0,
+    "test_values": [],
+    "marker_values": [
+      "0000000000000002"
+    ],
+    "ae_statuses": [
+      "AE_AML_OPERAND_TYPE"
+    ],
+    "global_notifications_observed": [],
+    "thread_failure": false,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "timing_claim": "none: threaded OSL/no-op completion wait; callback absence/order not conclusive",
+    "classification": "runtime_error"
+  },
+  {
+    "key": "1-local-ref",
+    "revision": 1,
+    "compile_returncode": 0,
+    "aml_sha256": "012b34b7dc67e18827c7035eb2c25554633d0394ebbc5aae9fd9e7f5481b8e31",
+    "disassemble_returncode": 0,
+    "control_returncode": 0,
+    "control_values": [
+      "0000000000000001",
+      "0000000000000000"
+    ],
+    "returncode": 0,
+    "test_values": [],
+    "marker_values": [
+      "0000000000000001"
+    ],
+    "ae_statuses": [
+      "AE_AML_OPERAND_TYPE"
+    ],
+    "global_notifications_observed": [],
+    "thread_failure": false,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "timing_claim": "none: threaded OSL/no-op completion wait; callback absence/order not conclusive",
+    "classification": "runtime_error"
+  },
+  {
+    "key": "1-arg-ref",
+    "revision": 1,
+    "compile_returncode": 0,
+    "aml_sha256": "1aa0b25874281675720bf9569a1769f70265fed6edfb2ccf0992447cd797bff8",
+    "disassemble_returncode": 0,
+    "control_returncode": 0,
+    "control_values": [
+      "0000000000000001",
+      "0000000000000000"
+    ],
+    "returncode": 0,
+    "test_values": [],
+    "marker_values": [
+      "0000000000000001"
+    ],
+    "ae_statuses": [
+      "AE_AML_OPERAND_TYPE"
+    ],
+    "global_notifications_observed": [],
+    "thread_failure": false,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "timing_claim": "none: threaded OSL/no-op completion wait; callback absence/order not conclusive",
+    "classification": "runtime_error"
+  },
+  {
+    "key": "1-deref-local",
+    "revision": 1,
+    "compile_returncode": 255,
+    "classification": "compiler_rejected"
+  },
+  {
+    "key": "1-value-effects",
+    "revision": 1,
+    "compile_returncode": 0,
+    "aml_sha256": "764afc77146557180b45a3b198b396346bfbfc9857993fbb7a6abdfe6818892a",
+    "disassemble_returncode": 0,
+    "control_returncode": 0,
+    "control_values": [
+      "0000000000000001",
+      "0000000000000000"
+    ],
+    "returncode": 0,
+    "test_values": [
+      "0000000000000003"
+    ],
+    "marker_values": [
+      "0000000000000003"
+    ],
+    "ae_statuses": [],
+    "global_notifications_observed": [
+      {
+        "class": "Device",
+        "node": "DEV0",
+        "value_hex": "80"
+      }
+    ],
+    "thread_failure": false,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "timing_claim": "none: threaded OSL/no-op completion wait; callback absence/order not conclusive",
+    "classification": "returned"
+  },
+  {
+    "key": "1-invalid-INT0",
+    "revision": 1,
+    "compile_returncode": 255,
+    "classification": "compiler_rejected"
+  },
+  {
+    "key": "1-invalid-STR0",
+    "revision": 1,
+    "compile_returncode": 255,
+    "classification": "compiler_rejected"
+  },
+  {
+    "key": "1-invalid-BUF0",
+    "revision": 1,
+    "compile_returncode": 255,
+    "classification": "compiler_rejected"
+  },
+  {
+    "key": "1-invalid-PKG0",
+    "revision": 1,
+    "compile_returncode": 255,
+    "classification": "compiler_rejected"
+  },
+  {
+    "key": "1-invalid-MTX0",
+    "revision": 1,
+    "compile_returncode": 255,
+    "classification": "compiler_rejected"
+  },
+  {
+    "key": "1-invalid-Local0",
+    "revision": 1,
+    "compile_returncode": 255,
+    "classification": "compiler_rejected"
+  },
+  {
+    "key": "1-value-failure",
+    "revision": 1,
+    "compile_returncode": 0,
+    "aml_sha256": "99e925b9711f088c5e13215dbd983c702c8fffeb0c077a1dd0ac16bb5e316d2a",
+    "disassemble_returncode": 0,
+    "control_returncode": 0,
+    "control_values": [
+      "0000000000000001",
+      "0000000000000000"
+    ],
+    "returncode": 0,
+    "test_values": [],
+    "marker_values": [
+      "0000000000000002"
+    ],
+    "ae_statuses": [
+      "AE_AML_DIVIDE_BY_ZERO"
+    ],
+    "global_notifications_observed": [],
+    "thread_failure": false,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "timing_claim": "none: threaded OSL/no-op completion wait; callback absence/order not conclusive",
+    "classification": "runtime_error"
+  },
+  {
+    "key": "1-invalid-and-value-failure",
+    "revision": 1,
+    "compile_returncode": 255,
+    "classification": "compiler_rejected"
+  },
+  {
+    "key": "1-notify-then-failure",
+    "revision": 1,
+    "compile_returncode": 0,
+    "aml_sha256": "389f7f52b9b15c569f2aaed4f9c00101149306b81e420e2f56ae94c56c17a219",
+    "disassemble_returncode": 0,
+    "control_returncode": 0,
+    "control_values": [
+      "0000000000000001",
+      "0000000000000000"
+    ],
+    "returncode": 0,
+    "test_values": [],
+    "marker_values": [
+      "0000000000000002"
+    ],
+    "ae_statuses": [
+      "AE_AML_DIVIDE_BY_ZERO"
+    ],
+    "global_notifications_observed": [
+      {
+        "class": "Device",
+        "node": "DEV0",
+        "value_hex": "80"
+      }
+    ],
+    "thread_failure": false,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "timing_claim": "none: threaded OSL/no-op completion wait; callback absence/order not conclusive",
+    "classification": "runtime_error"
+  },
+  {
+    "key": "1-repeat",
+    "revision": 1,
+    "compile_returncode": 0,
+    "aml_sha256": "8d5673624a01a9a29cc1a18985bf64686119030cc797f2184375574df08a6bea",
+    "disassemble_returncode": 0,
+    "control_returncode": 0,
+    "control_values": [
+      "0000000000000001",
+      "0000000000000000"
+    ],
+    "returncode": 0,
+    "test_values": [
+      "0000000000000003"
+    ],
+    "marker_values": [
+      "0000000000000003"
+    ],
+    "ae_statuses": [],
+    "global_notifications_observed": [
+      {
+        "class": "Device",
+        "node": "DEV0",
+        "value_hex": "80"
+      },
+      {
+        "class": "Device",
+        "node": "DEV0",
+        "value_hex": "80"
+      },
+      {
+        "class": "Device",
+        "node": "DEV0",
+        "value_hex": "81"
+      }
+    ],
+    "thread_failure": false,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "timing_claim": "none: threaded OSL/no-op completion wait; callback absence/order not conclusive",
+    "classification": "returned"
+  },
+  {
+    "key": "1-target-capture",
+    "revision": 1,
+    "compile_returncode": 0,
+    "aml_sha256": "bb7ac8eae57667b3d40b67c37111cb826191714b5b52a795907dae0ec5d4673b",
+    "disassemble_returncode": 0,
+    "control_returncode": 0,
+    "control_values": [
+      "0000000000000001",
+      "0000000000000000"
+    ],
+    "returncode": 0,
+    "test_values": [],
+    "marker_values": [
+      "0000000000000002"
+    ],
+    "ae_statuses": [
+      "AE_AML_OPERAND_TYPE"
+    ],
+    "global_notifications_observed": [],
+    "thread_failure": false,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "timing_claim": "none: threaded OSL/no-op completion wait; callback absence/order not conclusive",
+    "classification": "runtime_error"
+  },
+  {
+    "key": "1-unknown-target",
+    "revision": 1,
+    "compile_returncode": 0,
+    "aml_sha256": "3a078acc17a6e3d9561704a67d3ccbdb0eb4bfff8c5f30ba997f5f0a80628e6c",
+    "disassemble_returncode": 0,
+    "control_returncode": 0,
+    "control_values": [
+      "0000000000000001",
+      "0000000000000000"
+    ],
+    "returncode": 0,
+    "test_values": [],
+    "marker_values": [],
+    "ae_statuses": [
+      "AE_NOT_FOUND"
+    ],
+    "global_notifications_observed": [],
+    "thread_failure": false,
+    "cache_diagnostics": [],
+    "timing_claim": "none: threaded OSL/no-op completion wait; callback absence/order not conclusive",
+    "classification": "runtime_error"
+  },
+  {
+    "key": "1-local-value-effects",
+    "revision": 1,
+    "compile_returncode": 0,
+    "aml_sha256": "0815d3e6bceabca28f0a4f4bd9f6ff0728fba44ee90495ef1ebb555ce474ed4a",
+    "disassemble_returncode": 0,
+    "control_returncode": 0,
+    "control_values": [
+      "0000000000000001",
+      "0000000000000000"
+    ],
+    "returncode": 0,
+    "test_values": [],
+    "marker_values": [
+      "0000000000000002"
+    ],
+    "ae_statuses": [
+      "AE_AML_OPERAND_TYPE"
+    ],
+    "global_notifications_observed": [],
+    "thread_failure": false,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "timing_claim": "none: threaded OSL/no-op completion wait; callback absence/order not conclusive",
+    "classification": "runtime_error"
+  },
+  {
+    "key": "1-local-value-failure",
+    "revision": 1,
+    "compile_returncode": 0,
+    "aml_sha256": "2b6442da86ec2464dd1c69ba5fa9394c48120a7ca58078d3da16e4f0e1b0749f",
+    "disassemble_returncode": 0,
+    "control_returncode": 0,
+    "control_values": [
+      "0000000000000001",
+      "0000000000000000"
+    ],
+    "returncode": 0,
+    "test_values": [],
+    "marker_values": [
+      "0000000000000002"
+    ],
+    "ae_statuses": [
+      "AE_AML_DIVIDE_BY_ZERO"
+    ],
+    "global_notifications_observed": [],
+    "thread_failure": false,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "timing_claim": "none: threaded OSL/no-op completion wait; callback absence/order not conclusive",
+    "classification": "runtime_error"
+  },
+  {
+    "key": "2-target-DEV0-0x01",
+    "revision": 2,
+    "compile_returncode": 0,
+    "aml_sha256": "7bea5e1a2bcbcead4403dd5021d924bd9e08b40f62376ad7bb74f3a5cc1b7df1",
+    "disassemble_returncode": 0,
+    "control_returncode": 0,
+    "control_values": [
+      "0000000000000001",
+      "00000000FFFFFFFF"
+    ],
+    "returncode": 0,
+    "test_values": [
+      "0000000000000003"
+    ],
+    "marker_values": [
+      "0000000000000003"
+    ],
+    "ae_statuses": [],
+    "global_notifications_observed": [
+      {
+        "class": "System",
+        "node": "DEV0",
+        "value_hex": "01"
+      }
+    ],
+    "thread_failure": false,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "timing_claim": "none: threaded OSL/no-op completion wait; callback absence/order not conclusive",
+    "classification": "returned"
+  },
+  {
+    "key": "2-target-DEV0-0x80",
+    "revision": 2,
+    "compile_returncode": 0,
+    "aml_sha256": "a07e1951356d7f54b08160d338f086789b9b925f9ea08a9fd53a5721dfd32a9e",
+    "disassemble_returncode": 0,
+    "control_returncode": 0,
+    "control_values": [
+      "0000000000000001",
+      "00000000FFFFFFFF"
+    ],
+    "returncode": 0,
+    "test_values": [
+      "0000000000000003"
+    ],
+    "marker_values": [
+      "0000000000000003"
+    ],
+    "ae_statuses": [],
+    "global_notifications_observed": [
+      {
+        "class": "Device",
+        "node": "DEV0",
+        "value_hex": "80"
+      }
+    ],
+    "thread_failure": false,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "timing_claim": "none: threaded OSL/no-op completion wait; callback absence/order not conclusive",
+    "classification": "returned"
+  },
+  {
+    "key": "2-target-THM0-0x01",
+    "revision": 2,
+    "compile_returncode": 0,
+    "aml_sha256": "4d9925f6f626ceec7fd0c8fc4dd12a47d46f183e0801ea9093d0d36827786451",
+    "disassemble_returncode": 0,
+    "control_returncode": 0,
+    "control_values": [
+      "0000000000000001",
+      "00000000FFFFFFFF"
+    ],
+    "returncode": 0,
+    "test_values": [
+      "0000000000000003"
+    ],
+    "marker_values": [
+      "0000000000000003"
+    ],
+    "ae_statuses": [],
+    "global_notifications_observed": [
+      {
+        "class": "System",
+        "node": "THM0",
+        "value_hex": "01"
+      }
+    ],
+    "thread_failure": false,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "timing_claim": "none: threaded OSL/no-op completion wait; callback absence/order not conclusive",
+    "classification": "returned"
+  },
+  {
+    "key": "2-target-THM0-0x80",
+    "revision": 2,
+    "compile_returncode": 0,
+    "aml_sha256": "1957d1709ddd57f801e3de7b8e0ab0ffb827622b39f63776faf7aacaa8feb509",
+    "disassemble_returncode": 0,
+    "control_returncode": 0,
+    "control_values": [
+      "0000000000000001",
+      "00000000FFFFFFFF"
+    ],
+    "returncode": 0,
+    "test_values": [
+      "0000000000000003"
+    ],
+    "marker_values": [
+      "0000000000000003"
+    ],
+    "ae_statuses": [],
+    "global_notifications_observed": [
+      {
+        "class": "Device",
+        "node": "THM0",
+        "value_hex": "80"
+      }
+    ],
+    "thread_failure": false,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "timing_claim": "none: threaded OSL/no-op completion wait; callback absence/order not conclusive",
+    "classification": "returned"
+  },
+  {
+    "key": "2-target-CPU0-0x01",
+    "revision": 2,
+    "compile_returncode": 0,
+    "aml_sha256": "12fe1e8c92b7bf659566f7d8ee4263a60bea08125a459b51afb881fd9754787f",
+    "disassemble_returncode": 0,
+    "control_returncode": 0,
+    "control_values": [
+      "0000000000000001",
+      "00000000FFFFFFFF"
+    ],
+    "returncode": 0,
+    "test_values": [
+      "0000000000000003"
+    ],
+    "marker_values": [
+      "0000000000000003"
+    ],
+    "ae_statuses": [],
+    "global_notifications_observed": [
+      {
+        "class": "System",
+        "node": "CPU0",
+        "value_hex": "01"
+      }
+    ],
+    "thread_failure": false,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "timing_claim": "none: threaded OSL/no-op completion wait; callback absence/order not conclusive",
+    "classification": "returned"
+  },
+  {
+    "key": "2-target-CPU0-0x80",
+    "revision": 2,
+    "compile_returncode": 0,
+    "aml_sha256": "bcd6dd4ceddef2c1437769bf618919ea4ba8f8e3c8275388ff9dff1ae697a787",
+    "disassemble_returncode": 0,
+    "control_returncode": 0,
+    "control_values": [
+      "0000000000000001",
+      "00000000FFFFFFFF"
+    ],
+    "returncode": 0,
+    "test_values": [
+      "0000000000000003"
+    ],
+    "marker_values": [
+      "0000000000000003"
+    ],
+    "ae_statuses": [],
+    "global_notifications_observed": [
+      {
+        "class": "Device",
+        "node": "CPU0",
+        "value_hex": "80"
+      }
+    ],
+    "thread_failure": false,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "timing_claim": "none: threaded OSL/no-op completion wait; callback absence/order not conclusive",
+    "classification": "returned"
+  },
+  {
+    "key": "2-target-ALS0-0x01",
+    "revision": 2,
+    "compile_returncode": 0,
+    "aml_sha256": "077cccd2c6eb0c1684ae8247267cb897813f41adae4c228580ac70c3e7ba5f03",
+    "disassemble_returncode": 0,
+    "control_returncode": 0,
+    "control_values": [
+      "0000000000000001",
+      "00000000FFFFFFFF"
+    ],
+    "returncode": 0,
+    "test_values": [
+      "0000000000000003"
+    ],
+    "marker_values": [
+      "0000000000000003"
+    ],
+    "ae_statuses": [],
+    "global_notifications_observed": [
+      {
+        "class": "System",
+        "node": "DEV0",
+        "value_hex": "01"
+      }
+    ],
+    "thread_failure": false,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "timing_claim": "none: threaded OSL/no-op completion wait; callback absence/order not conclusive",
+    "classification": "returned"
+  },
+  {
+    "key": "2-target-ALS0-0x80",
+    "revision": 2,
+    "compile_returncode": 0,
+    "aml_sha256": "6afbbb5d7cb6ce76749be5a86178b5fdeb428818a9f7dfc9d7232d7c4f0fef58",
+    "disassemble_returncode": 0,
+    "control_returncode": 0,
+    "control_values": [
+      "0000000000000001",
+      "00000000FFFFFFFF"
+    ],
+    "returncode": 0,
+    "test_values": [
+      "0000000000000003"
+    ],
+    "marker_values": [
+      "0000000000000003"
+    ],
+    "ae_statuses": [],
+    "global_notifications_observed": [
+      {
+        "class": "Device",
+        "node": "DEV0",
+        "value_hex": "80"
+      }
+    ],
+    "thread_failure": false,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "timing_claim": "none: threaded OSL/no-op completion wait; callback absence/order not conclusive",
+    "classification": "returned"
+  },
+  {
+    "key": "2-value-Zero",
+    "revision": 2,
+    "compile_returncode": 0,
+    "aml_sha256": "ebcc92bf0244ad478229999f82a81f4ae9eb7a8969da66b41c884ebfaf205c51",
+    "disassemble_returncode": 0,
+    "control_returncode": 0,
+    "control_values": [
+      "0000000000000001",
+      "00000000FFFFFFFF"
+    ],
+    "returncode": 0,
+    "test_values": [
+      "0000000000000003"
+    ],
+    "marker_values": [
+      "0000000000000003"
+    ],
+    "ae_statuses": [],
+    "global_notifications_observed": [
+      {
+        "class": "System",
+        "node": "DEV0",
+        "value_hex": "00"
+      }
+    ],
+    "thread_failure": false,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "timing_claim": "none: threaded OSL/no-op completion wait; callback absence/order not conclusive",
+    "classification": "returned"
+  },
+  {
+    "key": "2-value-0x7F",
+    "revision": 2,
+    "compile_returncode": 0,
+    "aml_sha256": "3140e3e36b5c24b4b6bcc64814afc5f165c00726f8202750e652eb82fb6369df",
+    "disassemble_returncode": 0,
+    "control_returncode": 0,
+    "control_values": [
+      "0000000000000001",
+      "00000000FFFFFFFF"
+    ],
+    "returncode": 0,
+    "test_values": [
+      "0000000000000003"
+    ],
+    "marker_values": [
+      "0000000000000003"
+    ],
+    "ae_statuses": [],
+    "global_notifications_observed": [
+      {
+        "class": "System",
+        "node": "DEV0",
+        "value_hex": "7F"
+      }
+    ],
+    "thread_failure": false,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "timing_claim": "none: threaded OSL/no-op completion wait; callback absence/order not conclusive",
+    "classification": "returned"
+  },
+  {
+    "key": "2-value-0xFF",
+    "revision": 2,
+    "compile_returncode": 0,
+    "aml_sha256": "b4c5503d6042cd1ac0a92cf3842dfd569afd8e9dba4500446d49b59ca1f279a5",
+    "disassemble_returncode": 0,
+    "control_returncode": 0,
+    "control_values": [
+      "0000000000000001",
+      "00000000FFFFFFFF"
+    ],
+    "returncode": 0,
+    "test_values": [
+      "0000000000000003"
+    ],
+    "marker_values": [
+      "0000000000000003"
+    ],
+    "ae_statuses": [],
+    "global_notifications_observed": [
+      {
+        "class": "Device",
+        "node": "DEV0",
+        "value_hex": "FF"
+      }
+    ],
+    "thread_failure": false,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "timing_claim": "none: threaded OSL/no-op completion wait; callback absence/order not conclusive",
+    "classification": "returned"
+  },
+  {
+    "key": "2-value-0x100",
+    "revision": 2,
+    "compile_returncode": 0,
+    "aml_sha256": "a4379e6a327b53dd73538cbd1bd12f550df6ad319ca94b66a02bc76b5e595fc7",
+    "disassemble_returncode": 0,
+    "control_returncode": 0,
+    "control_values": [
+      "0000000000000001",
+      "00000000FFFFFFFF"
+    ],
+    "returncode": 0,
+    "test_values": [
+      "0000000000000003"
+    ],
+    "marker_values": [
+      "0000000000000003"
+    ],
+    "ae_statuses": [],
+    "global_notifications_observed": [
+      {
+        "class": "Device",
+        "node": "DEV0",
+        "value_hex": "100"
+      }
+    ],
+    "thread_failure": false,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "timing_claim": "none: threaded OSL/no-op completion wait; callback absence/order not conclusive",
+    "classification": "returned"
+  },
+  {
+    "key": "2-value-0xFFFF",
+    "revision": 2,
+    "compile_returncode": 0,
+    "aml_sha256": "1946df86b4c3fa8f90f69736bbdc96a899b944d813b644cfc22d1baecbb3dfe8",
+    "disassemble_returncode": 0,
+    "control_returncode": 0,
+    "control_values": [
+      "0000000000000001",
+      "00000000FFFFFFFF"
+    ],
+    "returncode": 0,
+    "test_values": [
+      "0000000000000003"
+    ],
+    "marker_values": [
+      "0000000000000003"
+    ],
+    "ae_statuses": [],
+    "global_notifications_observed": [
+      {
+        "class": "Device",
+        "node": "DEV0",
+        "value_hex": "FFFF"
+      }
+    ],
+    "thread_failure": false,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "timing_claim": "none: threaded OSL/no-op completion wait; callback absence/order not conclusive",
+    "classification": "returned"
+  },
+  {
+    "key": "2-value-0x10000",
+    "revision": 2,
+    "compile_returncode": 0,
+    "aml_sha256": "1bdf460ad0cbc31cce5474a946dcfbe045ed81f156e530889dd957d6f79ff74a",
+    "disassemble_returncode": 0,
+    "control_returncode": 0,
+    "control_values": [
+      "0000000000000001",
+      "00000000FFFFFFFF"
+    ],
+    "returncode": 0,
+    "test_values": [
+      "0000000000000003"
+    ],
+    "marker_values": [
+      "0000000000000003"
+    ],
+    "ae_statuses": [],
+    "global_notifications_observed": [
+      {
+        "class": "Device",
+        "node": "DEV0",
+        "value_hex": "00"
+      }
+    ],
+    "thread_failure": false,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "timing_claim": "none: threaded OSL/no-op completion wait; callback absence/order not conclusive",
+    "classification": "returned"
+  },
+  {
+    "key": "2-value-0x10080",
+    "revision": 2,
+    "compile_returncode": 0,
+    "aml_sha256": "622cb97ee3fd57137b103c6e9b9712735902cfcc4e10cd80c59ba340194276be",
+    "disassemble_returncode": 0,
+    "control_returncode": 0,
+    "control_values": [
+      "0000000000000001",
+      "00000000FFFFFFFF"
+    ],
+    "returncode": 0,
+    "test_values": [
+      "0000000000000003"
+    ],
+    "marker_values": [
+      "0000000000000003"
+    ],
+    "ae_statuses": [],
+    "global_notifications_observed": [
+      {
+        "class": "Device",
+        "node": "DEV0",
+        "value_hex": "80"
+      }
+    ],
+    "thread_failure": false,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "timing_claim": "none: threaded OSL/no-op completion wait; callback absence/order not conclusive",
+    "classification": "returned"
+  },
+  {
+    "key": "2-value-0xFFFFFFFF",
+    "revision": 2,
+    "compile_returncode": 0,
+    "aml_sha256": "9b624342f6ea2f6e7c15b60ba0c19f12f0ff59e1abc6cb369d6c2c42b3afd33e",
+    "disassemble_returncode": 0,
+    "control_returncode": 0,
+    "control_values": [
+      "0000000000000001",
+      "00000000FFFFFFFF"
+    ],
+    "returncode": 0,
+    "test_values": [
+      "0000000000000003"
+    ],
+    "marker_values": [
+      "0000000000000003"
+    ],
+    "ae_statuses": [],
+    "global_notifications_observed": [
+      {
+        "class": "Device",
+        "node": "DEV0",
+        "value_hex": "FFFF"
+      }
+    ],
+    "thread_failure": false,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "timing_claim": "none: threaded OSL/no-op completion wait; callback absence/order not conclusive",
+    "classification": "returned"
+  },
+  {
+    "key": "2-value-0x100000000",
+    "revision": 2,
+    "compile_returncode": 0,
+    "aml_sha256": "b31c34742400bf4a61ded005500faee5bcfb1ec349aefdaf5cb68142d1c71924",
+    "disassemble_returncode": 0,
+    "control_returncode": 0,
+    "control_values": [
+      "0000000000000001",
+      "00000000FFFFFFFF"
+    ],
+    "returncode": 0,
+    "test_values": [
+      "0000000000000003"
+    ],
+    "marker_values": [
+      "0000000000000003"
+    ],
+    "ae_statuses": [],
+    "global_notifications_observed": [
+      {
+        "class": "System",
+        "node": "DEV0",
+        "value_hex": "00"
+      }
+    ],
+    "thread_failure": false,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "timing_claim": "none: threaded OSL/no-op completion wait; callback absence/order not conclusive",
+    "classification": "returned"
+  },
+  {
+    "key": "2-value-Ones",
+    "revision": 2,
+    "compile_returncode": 0,
+    "aml_sha256": "bfba5ae7f97842f7b5a94d91304eb49796a23368020706f6223a60ac38e29dcf",
+    "disassemble_returncode": 0,
+    "control_returncode": 0,
+    "control_values": [
+      "0000000000000001",
+      "00000000FFFFFFFF"
+    ],
+    "returncode": 0,
+    "test_values": [
+      "0000000000000003"
+    ],
+    "marker_values": [
+      "0000000000000003"
+    ],
+    "ae_statuses": [],
+    "global_notifications_observed": [
+      {
+        "class": "Device",
+        "node": "DEV0",
+        "value_hex": "FFFF"
+      }
+    ],
+    "thread_failure": false,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "timing_claim": "none: threaded OSL/no-op completion wait; callback absence/order not conclusive",
+    "classification": "returned"
+  },
+  {
+    "key": "2-coerce-string",
+    "revision": 2,
+    "compile_returncode": 0,
+    "aml_sha256": "42dcf8a79cf790a9d5eafe41c103052f2a9696cbf3c668258f8106e622d04ac2",
+    "disassemble_returncode": 0,
+    "control_returncode": 0,
+    "control_values": [
+      "0000000000000001",
+      "00000000FFFFFFFF"
+    ],
+    "returncode": 0,
+    "test_values": [
+      "0000000000000003"
+    ],
+    "marker_values": [
+      "0000000000000003"
+    ],
+    "ae_statuses": [],
+    "global_notifications_observed": [
+      {
+        "class": "Device",
+        "node": "DEV0",
+        "value_hex": "80"
+      }
+    ],
+    "thread_failure": false,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "timing_claim": "none: threaded OSL/no-op completion wait; callback absence/order not conclusive",
+    "classification": "returned"
+  },
+  {
+    "key": "2-coerce-buffer",
+    "revision": 2,
+    "compile_returncode": 0,
+    "aml_sha256": "290b311b03ff1c4c80baf1eb435f6a7531c925fd3aebdf3fdb8ce584fcdadf9a",
+    "disassemble_returncode": 0,
+    "control_returncode": 0,
+    "control_values": [
+      "0000000000000001",
+      "00000000FFFFFFFF"
+    ],
+    "returncode": 0,
+    "test_values": [
+      "0000000000000003"
+    ],
+    "marker_values": [
+      "0000000000000003"
+    ],
+    "ae_statuses": [],
+    "global_notifications_observed": [
+      {
+        "class": "Device",
+        "node": "DEV0",
+        "value_hex": "80"
+      }
+    ],
+    "thread_failure": false,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "timing_claim": "none: threaded OSL/no-op completion wait; callback absence/order not conclusive",
+    "classification": "returned"
+  },
+  {
+    "key": "2-coerce-empty-buffer",
+    "revision": 2,
+    "compile_returncode": 0,
+    "aml_sha256": "59d26c83e52fe46313bc12107fa4ecce61fe0f8455bed632f3a5f75014cfc785",
+    "disassemble_returncode": 0,
+    "control_returncode": 0,
+    "control_values": [
+      "0000000000000001",
+      "00000000FFFFFFFF"
+    ],
+    "returncode": 0,
+    "test_values": [],
+    "marker_values": [
+      "0000000000000002"
+    ],
+    "ae_statuses": [
+      "AE_AML_BUFFER_LIMIT"
+    ],
+    "global_notifications_observed": [],
+    "thread_failure": false,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "timing_claim": "none: threaded OSL/no-op completion wait; callback absence/order not conclusive",
+    "classification": "runtime_error"
+  },
+  {
+    "key": "2-coerce-bad-string",
+    "revision": 2,
+    "compile_returncode": 0,
+    "aml_sha256": "f7017a9786e07a05ec8de6fa9e31c0ffa7b502a5bccd395ed3757bf3f59d87ef",
+    "disassemble_returncode": 0,
+    "control_returncode": 0,
+    "control_values": [
+      "0000000000000001",
+      "00000000FFFFFFFF"
+    ],
+    "returncode": 0,
+    "test_values": [
+      "0000000000000003"
+    ],
+    "marker_values": [
+      "0000000000000003"
+    ],
+    "ae_statuses": [],
+    "global_notifications_observed": [
+      {
+        "class": "System",
+        "node": "DEV0",
+        "value_hex": "00"
+      }
+    ],
+    "thread_failure": false,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "timing_claim": "none: threaded OSL/no-op completion wait; callback absence/order not conclusive",
+    "classification": "returned"
+  },
+  {
+    "key": "2-coerce-package",
+    "revision": 2,
+    "compile_returncode": 0,
+    "aml_sha256": "3d8a1bd0ba399ff7a6a815fab4d1574e188b3f3740ba6e0220764ac8ff1dd7bd",
+    "disassemble_returncode": 0,
+    "control_returncode": 0,
+    "control_values": [
+      "0000000000000001",
+      "00000000FFFFFFFF"
+    ],
+    "returncode": 0,
+    "test_values": [],
+    "marker_values": [
+      "0000000000000002"
+    ],
+    "ae_statuses": [
+      "AE_AML_OPERAND_TYPE"
+    ],
+    "global_notifications_observed": [],
+    "thread_failure": false,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "timing_claim": "none: threaded OSL/no-op completion wait; callback absence/order not conclusive",
+    "classification": "runtime_error"
+  },
+  {
+    "key": "2-local-ref",
+    "revision": 2,
+    "compile_returncode": 0,
+    "aml_sha256": "3e56be50f3ba38bee0e6720357b865672ba420d550ed56ab344f583ee6e0df66",
+    "disassemble_returncode": 0,
+    "control_returncode": 0,
+    "control_values": [
+      "0000000000000001",
+      "00000000FFFFFFFF"
+    ],
+    "returncode": 0,
+    "test_values": [],
+    "marker_values": [
+      "0000000000000001"
+    ],
+    "ae_statuses": [
+      "AE_AML_OPERAND_TYPE"
+    ],
+    "global_notifications_observed": [],
+    "thread_failure": false,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "timing_claim": "none: threaded OSL/no-op completion wait; callback absence/order not conclusive",
+    "classification": "runtime_error"
+  },
+  {
+    "key": "2-arg-ref",
+    "revision": 2,
+    "compile_returncode": 0,
+    "aml_sha256": "706e5580af8915ad914bdfee5f331bd9849fe584c1775a35c85342874af17cb5",
+    "disassemble_returncode": 0,
+    "control_returncode": 0,
+    "control_values": [
+      "0000000000000001",
+      "00000000FFFFFFFF"
+    ],
+    "returncode": 0,
+    "test_values": [],
+    "marker_values": [
+      "0000000000000001"
+    ],
+    "ae_statuses": [
+      "AE_AML_OPERAND_TYPE"
+    ],
+    "global_notifications_observed": [],
+    "thread_failure": false,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "timing_claim": "none: threaded OSL/no-op completion wait; callback absence/order not conclusive",
+    "classification": "runtime_error"
+  },
+  {
+    "key": "2-deref-local",
+    "revision": 2,
+    "compile_returncode": 255,
+    "classification": "compiler_rejected"
+  },
+  {
+    "key": "2-value-effects",
+    "revision": 2,
+    "compile_returncode": 0,
+    "aml_sha256": "943da1562974cc594acbaf03728c96e40ec9ff0d6bdd974b5d5c1e23e0d504e5",
+    "disassemble_returncode": 0,
+    "control_returncode": 0,
+    "control_values": [
+      "0000000000000001",
+      "00000000FFFFFFFF"
+    ],
+    "returncode": 0,
+    "test_values": [
+      "0000000000000003"
+    ],
+    "marker_values": [
+      "0000000000000003"
+    ],
+    "ae_statuses": [],
+    "global_notifications_observed": [
+      {
+        "class": "Device",
+        "node": "DEV0",
+        "value_hex": "80"
+      }
+    ],
+    "thread_failure": false,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "timing_claim": "none: threaded OSL/no-op completion wait; callback absence/order not conclusive",
+    "classification": "returned"
+  },
+  {
+    "key": "2-invalid-INT0",
+    "revision": 2,
+    "compile_returncode": 255,
+    "classification": "compiler_rejected"
+  },
+  {
+    "key": "2-invalid-STR0",
+    "revision": 2,
+    "compile_returncode": 255,
+    "classification": "compiler_rejected"
+  },
+  {
+    "key": "2-invalid-BUF0",
+    "revision": 2,
+    "compile_returncode": 255,
+    "classification": "compiler_rejected"
+  },
+  {
+    "key": "2-invalid-PKG0",
+    "revision": 2,
+    "compile_returncode": 255,
+    "classification": "compiler_rejected"
+  },
+  {
+    "key": "2-invalid-MTX0",
+    "revision": 2,
+    "compile_returncode": 255,
+    "classification": "compiler_rejected"
+  },
+  {
+    "key": "2-invalid-Local0",
+    "revision": 2,
+    "compile_returncode": 255,
+    "classification": "compiler_rejected"
+  },
+  {
+    "key": "2-value-failure",
+    "revision": 2,
+    "compile_returncode": 0,
+    "aml_sha256": "1c0b5f25adbff6b0445b7c0bf3ba45c5ed022df819126c47a2ae18b40286162c",
+    "disassemble_returncode": 0,
+    "control_returncode": 0,
+    "control_values": [
+      "0000000000000001",
+      "00000000FFFFFFFF"
+    ],
+    "returncode": 0,
+    "test_values": [],
+    "marker_values": [
+      "0000000000000002"
+    ],
+    "ae_statuses": [
+      "AE_AML_DIVIDE_BY_ZERO"
+    ],
+    "global_notifications_observed": [],
+    "thread_failure": false,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "timing_claim": "none: threaded OSL/no-op completion wait; callback absence/order not conclusive",
+    "classification": "runtime_error"
+  },
+  {
+    "key": "2-invalid-and-value-failure",
+    "revision": 2,
+    "compile_returncode": 255,
+    "classification": "compiler_rejected"
+  },
+  {
+    "key": "2-notify-then-failure",
+    "revision": 2,
+    "compile_returncode": 0,
+    "aml_sha256": "77aff88c3aee925b7bc99598ca785f1e94392a68045d1c4c141520828a40d7f5",
+    "disassemble_returncode": 0,
+    "control_returncode": 0,
+    "control_values": [
+      "0000000000000001",
+      "00000000FFFFFFFF"
+    ],
+    "returncode": 0,
+    "test_values": [],
+    "marker_values": [
+      "0000000000000002"
+    ],
+    "ae_statuses": [
+      "AE_AML_DIVIDE_BY_ZERO"
+    ],
+    "global_notifications_observed": [
+      {
+        "class": "Device",
+        "node": "DEV0",
+        "value_hex": "80"
+      }
+    ],
+    "thread_failure": false,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "timing_claim": "none: threaded OSL/no-op completion wait; callback absence/order not conclusive",
+    "classification": "runtime_error"
+  },
+  {
+    "key": "2-repeat",
+    "revision": 2,
+    "compile_returncode": 0,
+    "aml_sha256": "f170121934335e3636b4ecacf057831ef051b193965619474aedf61f893e7741",
+    "disassemble_returncode": 0,
+    "control_returncode": 0,
+    "control_values": [
+      "0000000000000001",
+      "00000000FFFFFFFF"
+    ],
+    "returncode": 0,
+    "test_values": [
+      "0000000000000003"
+    ],
+    "marker_values": [
+      "0000000000000003"
+    ],
+    "ae_statuses": [],
+    "global_notifications_observed": [
+      {
+        "class": "Device",
+        "node": "DEV0",
+        "value_hex": "80"
+      },
+      {
+        "class": "Device",
+        "node": "DEV0",
+        "value_hex": "80"
+      },
+      {
+        "class": "Device",
+        "node": "DEV0",
+        "value_hex": "81"
+      }
+    ],
+    "thread_failure": false,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "timing_claim": "none: threaded OSL/no-op completion wait; callback absence/order not conclusive",
+    "classification": "returned"
+  },
+  {
+    "key": "2-target-capture",
+    "revision": 2,
+    "compile_returncode": 0,
+    "aml_sha256": "af87b22c26443a8c80e852a5f27707c8512e1f1db4a819b031da78c598d2d56e",
+    "disassemble_returncode": 0,
+    "control_returncode": 0,
+    "control_values": [
+      "0000000000000001",
+      "00000000FFFFFFFF"
+    ],
+    "returncode": 0,
+    "test_values": [],
+    "marker_values": [
+      "0000000000000002"
+    ],
+    "ae_statuses": [
+      "AE_AML_OPERAND_TYPE"
+    ],
+    "global_notifications_observed": [],
+    "thread_failure": false,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "timing_claim": "none: threaded OSL/no-op completion wait; callback absence/order not conclusive",
+    "classification": "runtime_error"
+  },
+  {
+    "key": "2-unknown-target",
+    "revision": 2,
+    "compile_returncode": 0,
+    "aml_sha256": "2ce52bdd159b686e199e1c89d34c62be1ec6d014dcaaf5f898bd7971099f7d03",
+    "disassemble_returncode": 0,
+    "control_returncode": 0,
+    "control_values": [
+      "0000000000000001",
+      "00000000FFFFFFFF"
+    ],
+    "returncode": 0,
+    "test_values": [],
+    "marker_values": [],
+    "ae_statuses": [
+      "AE_NOT_FOUND"
+    ],
+    "global_notifications_observed": [],
+    "thread_failure": false,
+    "cache_diagnostics": [],
+    "timing_claim": "none: threaded OSL/no-op completion wait; callback absence/order not conclusive",
+    "classification": "runtime_error"
+  },
+  {
+    "key": "2-local-value-effects",
+    "revision": 2,
+    "compile_returncode": 0,
+    "aml_sha256": "5209bef99f26f835fd0108fe47e25ba3d47432ab7cd8d6d9076aa3e5e9a1fde9",
+    "disassemble_returncode": 0,
+    "control_returncode": 0,
+    "control_values": [
+      "0000000000000001",
+      "00000000FFFFFFFF"
+    ],
+    "returncode": 0,
+    "test_values": [],
+    "marker_values": [
+      "0000000000000002"
+    ],
+    "ae_statuses": [
+      "AE_AML_OPERAND_TYPE"
+    ],
+    "global_notifications_observed": [],
+    "thread_failure": false,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "timing_claim": "none: threaded OSL/no-op completion wait; callback absence/order not conclusive",
+    "classification": "runtime_error"
+  },
+  {
+    "key": "2-local-value-failure",
+    "revision": 2,
+    "compile_returncode": 0,
+    "aml_sha256": "0a8dc920ab6a7a2f6def18a1ebfab560f1eda6d626bd8614ef9424e788783494",
+    "disassemble_returncode": 0,
+    "control_returncode": 0,
+    "control_values": [
+      "0000000000000001",
+      "00000000FFFFFFFF"
+    ],
+    "returncode": 0,
+    "test_values": [],
+    "marker_values": [
+      "0000000000000002"
+    ],
+    "ae_statuses": [
+      "AE_AML_DIVIDE_BY_ZERO"
+    ],
+    "global_notifications_observed": [],
+    "thread_failure": false,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "timing_claim": "none: threaded OSL/no-op completion wait; callback absence/order not conclusive",
+    "classification": "runtime_error"
+  }
+]

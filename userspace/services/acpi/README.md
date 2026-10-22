@@ -1,9 +1,51 @@
 # ACPI service core
 
+Hosted checkpoint (2026-10-14): static Alias lookup preserves source-node
+identity and method scope. `Find_Child` selects physical bindings; `Find_Object`
+returns a discriminated canonical lookup, including a valid root result distinct
+from a missing object. Root references are owner-generation-bound metadata and
+cannot be used as data-cell authority.
+
+Core also has trusted-owner notification configure/count/take operations. The
+bounded queue starts disabled, validates targets before admission, preserves an
+admitted event after later AML failure, and copies target identity/path metadata
+with a freshness indication when drained. Notification class uses the low 32 bits;
+the delivered number uses the low 16 bits. This internal queue does not provide
+CCL transport, subscriber authorization or asynchronous completion handling.
+
+Focused tests pass 290 checks per strict profile; the unchanged selected ACPICA
+Notify corpus matches 66 cases per profile. These are hosted results,
+not a new proof or native-service validation. Runtime Alias, broader metadata
+operations and full AML semantics remain incomplete. Run `python3 tests/acpi-hosted/run.py --group notify-alias --mode release`
+or use `--mode checked` inside the Nix shell. The public group also runs 8,568
+protocol checks per profile; see the coverage ledger for exact scope.
+
 `ACPI_Service` is the pure service state machine. A native entry point,
 identity manifest, configuration decoder and IPC runner exist, but real provider
 startup and service launch are not integrated. CCL bindings, SCI/EC handling
 and hardware callbacks remain unfinished.
+
+Runtime AML BufferField support includes all six Create* field instructions,
+authenticated bit views into owned Buffers, bounded reads/writes, and field-value
+capture in named or unnamed runtime packages. Namespace and active-frame roots
+keep the backing storage live; returned Buffer values follow the existing
+retained-result rules. Generic fields return Buffer values; fixed fields use
+Integer values when their width fits the effective AML integer width. Field
+inspection retains ObjectType 14 and does not allocate a value.
+
+Explicit CopyObject preserves authenticated Index references, including valid
+references to uninitialized Package elements; implicit value copies continue to
+resolve Index sources. A BufferField destination rejects an indexed reference
+operand with the observed operand-type failure before changing its backing bytes. Package field capture and failed multi-member
+construction are tested for atomic publication. None of these data operations
+authorizes a memory-mapped register or expands a caller's capabilities.
+
+The `buffer-fields` hosted group runs eleven runtime programs, 102 cached ACPICA
+comparisons and compilation of ten evaluator adapters in either strict release
+or assertion-enabled mode. The current evidence is hosted testing, not a proof
+of the complete interpreter or native startup. Static/deferred buffer-field
+loading and broader field/region access semantics remain unfinished. See the
+[coverage ledger](../../../docs/acpi-coverage.md) for scope and remaining work.
 
 The current collecting service exposes opaque retained results and copied
 observations. After table loading, Core callers use `Initialize_Members`, which initializes
@@ -361,10 +403,11 @@ The native endpoint now unifies scalar and bulk requests. Label 8 packs
 [revision, grant-generation/slot, table ID, kind/byte-length] into four words;
 see tests/aml-core/native-blocks/README.md for exact layout. It authenticates the
 received provider stamp before acquisition and accepts no address or offset.
-The configured provider capability slot is a separate trusted startup input.
+The provider endpoint is offered during authenticated startup and accepted by
+the native server; request words do not designate a capability slot.
 A failed grant return preserves the completed import reply and pending cleanup;
 the eventual loop must retry return without replaying import. The old scalar-only
-native Dispatch signature was replaced with an adapter-state/provider-slot form.
+native Dispatch signature was replaced with an adapter-state/provider-endpoint form.
 104 hosted adapter checks pass, and the unified native endpoint compiles against
 the actual runtime. The native runner described below consumes this dispatcher; launch manifest
 and provider table export are not wired yet; this native boundary is tested code, not itself SPARK-proved.
@@ -381,13 +424,12 @@ executable compilation/linking passes; kernel startup integration remains outsta
 
 Authenticated process startup (2026-10-01): `ACPI_Launch.Decode` accepts label
 0x4143 only with the kernel-stamped bootstrap tag 0x41435049424F4F54, exactly four
-words, and zero flags/reserved fields. Words are [observer tag, provider tag,
-provider capability slot, zero]. Tags must be nonzero, distinct, and different
-from the bootstrap tag. The slot must be 0..62; reply slot 63 is excluded.
-The supervisor must install that capability bound to the same immutable-table
-provider whose endpoint bears the provider tag. Neither the decoder nor a
-payload can establish that binding: trusted capability installation is still
-required. The kernel must prevent clients from minting the bootstrap tag.
+words, and zero flags/reserved fields in the decoded scalar packet. Words are
+[observer tag, provider tag, zero, zero]. Tags must be nonzero, distinct, and
+different from the bootstrap tag. The supervisor offers the provider endpoint
+with the call; `Await_Configuration` accepts that offered capability only after
+authenticating the configuration. The scalar decoder alone cannot establish
+that binding. No capability slot or PID in the payload establishes authority. The kernel must prevent clients from minting the bootstrap tag.
 
 `Await_Configuration` ignores denied configurations and accepts once, even if
 its acknowledgment fails. Normal dispatch rejects subsequent configuration
@@ -489,8 +531,9 @@ existing metadata behavior and gain no arena access.
 Replacement uses append-only byte storage; old extents are not reclaimed and
 repeated assignments may exhaust quota. Primitive replacement/clone failures
 publish no mutation, but earlier source materialization is not rolled back by
-an eventual target failure. Mixed named destination conversions and general
-RefOf are unsupported; CopyObject ARGR/LOCR/INXR remain unsupported. An Index
+an eventual target failure. This earlier String-specific milestone did not establish all named-destination
+conversions or reference forms. The later buffer-field milestone adds explicit
+CopyObject preservation of authenticated Index references. An Index
 invalidated by shrinking a string fails closed on later reads/writes. ACPICA's
 observed out-of-range byte result is not used as permission to access stale data.
 These additions are tested, not newly proved.
@@ -536,3 +579,82 @@ capture and named owner writes. The internal write result appends
 kinds retain their previous classification. This does not make whole expressions
 transactional: the quota fixture deliberately uses allocation-free earlier
 expressions to check exact state preservation on failed assignment.
+
+Additional ACPICA probes confirm missing metadata-value behavior in DerefOf,
+CopyObject and root/Device package members. Those functionality gaps remain
+open; rejecting metadata data-cell writes does not establish complete metadata
+value semantics.
+
+### Retained completion metrics
+
+The pages below extend the existing authenticated `Read_Metrics`
+request, `[page, 0, 0, 0]`, with response `[revision, a, b, c]`. Reading does not
+execute or retry startup, advance the revision, or change upload state. Pages
+0–12 retain their meaning.
+
+| Page | a | b | c |
+| --- | --- | --- | --- |
+| 13 | Finish stage | Freeze outcome | Execution phase |
+| 14 | Firmware preparation | Execution access status | Member access status |
+| 15 | Module outcome | Completed table count | Failed catalog table ID |
+| 16 | Module failure code | 0 | 0 |
+
+Wire values are explicitly assigned, independent of internal enumeration order:
+- Finish: not attempted=0, freeze failed=1, execution failed=2, members failed=3, finished=4.
+- Freeze: frozen=0, wrong phase=1, empty=2.
+- Execution phase: not started=0, preparation failed=1, module report=2.
+- Preparation: not attempted=0, rejected=1, prepared=2, namespace capacity=3, value capacity=4.
+- Access: available=0, invalid value=1, uninitialized element=2, wrong kind=3, out of bounds=4, root limit=5, identity exhausted=6, busy=7, wrong phase=8.
+- Module: catalog rejected=0, completed=1, rejected=2.
+- Module failure uses the existing explicit startup error codes (including No_Return=4, Unsupported=6, Budget_Exceeded=9).
+
+Read page0's overall phase together with these pages. Premature finish or an
+upload failure can leave completion at **not attempted** even though the session
+has failed. Default Catalog_Rejected, Wrong_Phase and No_Return fields describe
+an unattempted report; they are not independent evidence of a failed execution
+or successful startup. Available means a report was obtained, not that its
+module succeeded. Successful module completion also retains No_Return; phase
+and module outcome qualify it. Module fuel remains page10 word3. Failed table
+ID is a lifetime-local catalog identifier, never a PID, address or capability.
+Snapshot completion remains separate from device/region readiness.
+
+The private hosted gate passed all three release mains: completion metrics 732,
+existing startup metrics 57 and endpoint 129 checks (918 total). The checked
+completion main compiled but reached its unchanged 30-second runtime limit; the
+other two checked mains subsequently passed in a separate bounded gate
+(startup 57 and endpoint 129). This is functional release
+evidence with incomplete supplementary checked coverage, not a proof or native
+validation. The relocated portable completion test separately passed all 732 checks in
+release mode. This single selection is not an all-24-suite rerun.
+No transport, subscription, grants, native startup binding, region provider or
+logger behavior changed.
+
+
+## Retained Notify polling
+
+Authenticated Snapshot_Provider requests own the bounded polling receipt; Observer
+requests can only inspect it. Labels24–28 configure startup interest, claim one
+FIFO event into a retained receipt, read copied metadata/path, acknowledge the
+exact nonzero receipt, and inspect state. Retry of a lost claim response returns
+the same receipt. Duplicate old ACK never clears a newer receipt. No payload PID
+or path grants authority. Current_Target records dequeue-time authentication,
+not fresh authority to invoke a node later.
+
+Pre-INI interest is applied only after module completion/Ready. Module Notify
+still evaluates its target and value, including effects and errors, while queue
+admission remains disabled. The module entry guard requires a disabled empty
+queue. Module event delivery and asynchronous SCI/event push remain future work.
+
+Private hosted validation passed607checks in each release/checked profile across
+six mains. Concrete receipt-policy instances0/2/default separately proved their
+Issue/ACK contracts; this does not prove the full service. Native reply failure
+is represented by direct endpoint retry tests, not native transport execution.
+Portable registration and active-manifest repins are not reruns of predecessor
+suites; historical validation records remain immutable.
+
+Portable release polling379 and modulepolicy68 additionally passed via the new
+relative-path runner; no full-six portable rerun is implied.
+
+The bounded provider polling consumer policy and its hosted endpoint fixture are registered in `tests/acpi-notify-consumer`. It assembles copied observations using host-owned session/request correlation and requires explicit broker delivery confirmation before ACK. The provider endpoint remains trusted-broker-only; native CCL binding, completion routing and launcher distribution are not implemented by this policy. See the suite README for exact tested predecessor scope and portable commands.
+
+The bounded snapshot provider orchestration policy and injectable endpoint/grant-lifecycle fixture are registered in `tests/acpi-provider-bootstrap`. It serializes a complete immutable catalog, separates provider grant retirement from admission, and never replays an uncertain import or Finish. Callbacks require exact synchronous authentication and exclusive provider ownership. This is hosted policy, not native catalog export, launch or kernel-grant validation. Notify interest must be configured by the broker before Finish when startup notifications are desired. See the suite README for evidence and remaining binding work.

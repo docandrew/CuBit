@@ -1,0 +1,10 @@
+project scalar_ledger_dropped_tests_release is
+ for Source_Dirs use (".", "../aml-scalar-transport", "../../userspace/lib/acpi", "../../shared/firmware", "../../shared/capabilities");
+ Build_Root := external ("SERVICE_MILESTONE_BUILD", "build-release");
+ for Object_Dir use Build_Root & "/obj";
+ for Exec_Dir use Build_Root & "/bin";
+ for Main use ("scalar_ledger_dropped_tests.adb");
+ package Compiler is
+ for Default_Switches ("Ada") use ("-O1", "-gnat2022", "-gnatwa", "-gnatwe", "-gnatp");
+ end Compiler;
+end scalar_ledger_dropped_tests_release;

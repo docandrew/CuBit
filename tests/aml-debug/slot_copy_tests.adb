@@ -6,6 +6,7 @@ with AML_Namespace;
 with AML_Objects;
 with AML_Table_Backing;
 procedure Slot_Copy_Tests is
+   use type AML_Decode.Bytes;
    procedure Capture (Value : out Integer_Value; Available : out Boolean);
    package NS is new AML_Namespace (16, AML_Delays.Unavailable_Provider, Capture);
    use NS; use NS.Owned;

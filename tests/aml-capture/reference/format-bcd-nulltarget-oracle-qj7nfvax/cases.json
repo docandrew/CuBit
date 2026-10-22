@@ -1,0 +1,122 @@
+[
+  {
+    "key": "r1-todecimalstring-immediate-store",
+    "source": "r1-todecimalstring-immediate-store.asl",
+    "revision": 1,
+    "op": "ToDecimalString",
+    "variant": "immediate",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ]
+  },
+  {
+    "key": "r1-tohexstring-immediate-store",
+    "source": "r1-tohexstring-immediate-store.asl",
+    "revision": 1,
+    "op": "ToHexString",
+    "variant": "immediate",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ]
+  },
+  {
+    "key": "r1-frombcd-immediate-store",
+    "source": "r1-frombcd-immediate-store.asl",
+    "revision": 1,
+    "op": "FromBCD",
+    "variant": "immediate",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ]
+  },
+  {
+    "key": "r1-tobcd-immediate-store",
+    "source": "r1-tobcd-immediate-store.asl",
+    "revision": 1,
+    "op": "ToBCD",
+    "variant": "immediate",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ]
+  },
+  {
+    "key": "r2-todecimalstring-immediate-store",
+    "source": "r2-todecimalstring-immediate-store.asl",
+    "revision": 2,
+    "op": "ToDecimalString",
+    "variant": "immediate",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ]
+  },
+  {
+    "key": "r2-tohexstring-immediate-store",
+    "source": "r2-tohexstring-immediate-store.asl",
+    "revision": 2,
+    "op": "ToHexString",
+    "variant": "immediate",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ]
+  },
+  {
+    "key": "r2-frombcd-immediate-store",
+    "source": "r2-frombcd-immediate-store.asl",
+    "revision": 2,
+    "op": "FromBCD",
+    "variant": "immediate",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ]
+  },
+  {
+    "key": "r2-tobcd-immediate-store",
+    "source": "r2-tobcd-immediate-store.asl",
+    "revision": 2,
+    "op": "ToBCD",
+    "variant": "immediate",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ]
+  }
+]

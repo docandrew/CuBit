@@ -1,0 +1,10 @@
+project startup_policy_tests_checked is
+ for Source_Dirs use ("../../tests/acpi-startup-policy", "../../userspace/lib/acpi", "../../userspace/services/acpi", "../../shared/firmware");
+ Build_Root := external ("SERVICE_MILESTONE_BUILD", "build-startup_policy_tests-checked");
+ for Object_Dir use Build_Root & "/obj";
+ for Exec_Dir use Build_Root & "/bin";
+ for Main use ("startup_policy_tests.adb");
+ package Compiler is
+ for Default_Switches ("Ada") use ("-O1", "-gnat2022", "-gnatwa", "-gnatwe", "-gnata", "-gnato");
+ end Compiler;
+end startup_policy_tests_checked;

@@ -1,3 +1,4 @@
+with AML_Delays;
 with Ada.Text_IO;
 with AML_Decode; use AML_Decode;
 with AML_Execute; use AML_Execute;
@@ -5,7 +6,7 @@ with AML_Namespace;
 with AML_Table_Backing;
 procedure Tail_Tests is
  use type Integer_Value;
- package N is new AML_Namespace (512);
+ package N is new AML_Namespace (512, AML_Delays.Unavailable_Provider);
  use N; use N.Owned;
  A : Arena;
  Input : aliased AML_Table_Backing.State (1, 32);

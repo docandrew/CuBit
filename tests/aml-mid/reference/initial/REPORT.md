@@ -1,0 +1,29 @@
+# Mid oracle checkpoint and proposed datum policy
+
+All workers terminal:4823 initial,25416 unoptimized followup,86516 disassembly,88658 observation correction,33653 final disassembly. No CuBit implementation/tests run. Slot1 released. Source and tool hashes in audit.json/tools.json. Normal pinned iasl/acpiexec only, no forced compilation; nice19,5s per subprocess,128MiB address space,64MiB stack. All execution processes exited0, but semantic outcomes are classified independently below. ACPICA outstanding-cache warnings are preserved; not claimed clean shutdown/leak-free upstream.
+
+## Counts and classification
+
+Actual initial27cases×2widths=54 observations (early status message incorrectly said28cases). Initial:30 returned,8 AE_AML_OPERAND_TYPE,6 normal compiler rejections,10 compiler-internal AE_AML_INTERNAL failures. Literal range/coercion TEST expressions were constant-folded; these are compiler results, not runtime Mid coverage. Five literal-source target cases per width hit the constant evaluator internal error.
+
+Scoped -oa followup (optimization disabled, no force):15affected cases×2=30,26 returned and4 AE_TYPE during external serialization. Last two Index-target observation fixtures erroneously bundled reference descriptors; corrected only observations to DerefOf and ran4cases, all returned. Previous failures remain intact. selected-observations.json chooses latest applicable observation per case/width:40 returns,8 operand errors,6 normal compiler rejections. It is not88 independent cases. observations.json retains all88 attempts and full result lines/marker values, with raw files adjacent.
+
+Disassembly verified all30 unoptimized TEST methods contain Mid, and all4 corrected TEST methods contain Mid. Dynamic initial cases use Mid in TEST; argref uses HELP called by TEST. Separate disassembly/outcomes.json and index-disassembly/outcomes.json identify method-specific checks, not raw opcode byte counts. Returned arrays are small and complete in logs (no truncation/checksum-only observations).
+
+## Established observations (both widths unless noted)
+
+* String ABCDE[1,3] =>BCD; Buffer10 00 FE 33[1,2]=>00 FE. Empty/outside/zero count preserve String/Buffer type and produce empty. Huge count clamps; huge start empties. Integer1122334455667788 index1,Ones =>Buffer77 66 55 in32-bit,77 66 55 44 33 22 11 in64-bit. String index"1" and Buffer count{2}=>BC.
+* Local-held Index(Package,0) and Local-held RefOf(Buffer) reject with AE_AML_OPERAND_TYPE. Method-returned Index succeeds with BC; explicitDeref of RefOf(Buffer) succeeds with20 30. Direct Index source, direct Package source and uninitializedLocal are normally compiler-rejected, never forced; do not infer runtime outcomes from those.
+* Slice String BC remains expression result while named Integer target becomes0xBC, String target BC, existing4-byte Buffer target42 43 00 00. Package member is replaced by String BC; byte-index target receives0x42. Arg holding named String RefOf receives Buffer42 43 and named target changes type toBuffer.
+* Same-source Buffer target retains its4-byte length20 30 00 00, while fresh2-byte result can be mutated to77 30 independently. This proves this observed result/target independence; it is not a complete identity proof for all destinations.
+* Source/index/count helper effects occur once: marker111 on success. Invalid index still leaves marker1101 (source1+badindex1000+count100); invalid source leaves1110 (badsource1000+index10+count100). Conversion must occur after remaining operands evaluated. Target-expression side effects and competing-error priority are not covered by this batch.
+
+## Concrete policy for implementation review
+
+Owner Mid_And_Attach accepts authenticated primitive Datum (Integer/String/Buffer), normalized Start/Count integers and existing typed destination. It rejects unresolved Reference_Datum; evaluator resolves according to operand provenance first, without recursive traversal. Method-result Index follows expression-result one-step Index resolution; held Local reference remains reference and is rejected. Direct named reads/explicit Deref retain existing evaluator behavior. Do not reuse Concatenate namespace-descriptor acceptance: Mid has no Event/Device/stringification domain.
+
+Preserve all three raw operands until target evaluation and final operand-resolution stage. Separate Middle/Middle_Slot plus a stage guard publishes the saved index while count executes. Left source and Right count remain independently rooted; count restored fromRight across dynamic-target resume. Saved operands per frame2→3; no Complete_Numeric cache path. Scalar count/index conversion uses implicit integer policy only after provenance resolution. Primary resolver performs runtime argument resolution from target toward source; competing invalid operands require an ordering discriminator before claiming exact error priority.
+
+Mid's TARGETREF uses direct implicit named Store policy; Arg-indirect retains replacement. Never reuse ToBuffer Explicit_Result_Target or same-buffer no-op. Result always fresh even full/empty slice. Local/frame prepared result can share the newly constructed result rather than clone again; validate lifetime/destination first, stage all fallible allocation/attachment, publish last. Roll back only operation-owned allocations on failure, retain earlier AML effects. Root source/target through collection and return via existing retained handles.
+
+Use sibling AML_Slices.Select_Range helper with Extent0..Max_Bytes and normalized U64 Start/Count; owner authenticates canonical length/kind first. No quota/authority expansion. Remaining focused implementation tests must cover malformed AML, stale/cross-owner handles, quotas/rollback, forced collection during count/target, exact fuel, and additional target-effect ordering. These are CuBit contracts, not claims from this oracle.

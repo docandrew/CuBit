@@ -1,0 +1,1 @@
+DefinitionBlock("", "DSDT", 2, "CUBIT", "COMPARE", 1) { Name(MARK,Zero) Name(SRC0,Buffer(){1}) Method(MUT0,0){Increment(MARK) Store(2,Index(SRC0,0)) Return(Buffer(){2})} Method(TEST,0){Store(LEqual(SRC0,MUT0()),Local0) Return(Add(Multiply(MARK,10),Local0))} }

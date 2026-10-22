@@ -1,0 +1,1240 @@
+[
+  {
+    "key": "1-static-8192",
+    "revision": 1,
+    "question": "static Name admits8192,zero tail andsize",
+    "compile_rc": 0,
+    "aml_sha256": "d6869ba0a1930f8c0df10a7273997a026fc589b50c647773073dc233b4707ef4",
+    "actual_revision": 1,
+    "table_length": 139,
+    "checksum_valid": true,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "2bc3cee7f8fa3db31b4fc9b108153f0b497be129f9a18c142cbac7828e4a3d04",
+    "disassembled_operations": [
+      "Buffer",
+      "Name",
+      "Return",
+      "SizeOf"
+    ],
+    "disassembly_valid": true,
+    "disassembled_buffer_counts": [
+      "0x2000"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "0000000000000000"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [
+          "0000000000200000"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [],
+    "classification": "returned"
+  },
+  {
+    "key": "1-package-1025",
+    "revision": 1,
+    "question": "package child preserves1025bytes,firstbyte",
+    "compile_rc": 0,
+    "aml_sha256": "97c7a254a361ca67564924b4dc9053f067dd74e6e7f6d4ad2f06c3f9a1ab872d",
+    "actual_revision": 1,
+    "table_length": 144,
+    "checksum_valid": true,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "fe44a2e1bc794feaa3d4766361666a5e0510682efbba279932ac20a30ad17a6a",
+    "disassembled_operations": [
+      "Buffer",
+      "Name",
+      "Package",
+      "Return",
+      "SizeOf"
+    ],
+    "disassembly_valid": true,
+    "disassembled_buffer_counts": [
+      "0x0401"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "0000000000000000"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [
+          "000000000004015A"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [],
+    "classification": "returned"
+  },
+  {
+    "key": "1-return-store-8192",
+    "revision": 1,
+    "question": "returned large buffer stored andzero tail",
+    "compile_rc": 0,
+    "aml_sha256": "0e82ebaedfcff570734ed16590052e03b855bfce65815fb8f45ed9cb109443b2",
+    "actual_revision": 1,
+    "table_length": 149,
+    "checksum_valid": true,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "08d08c6eee209d6fd75e893efa23a8b4021d487813107c8b46078eacb5f5a765",
+    "disassembled_operations": [
+      "Buffer",
+      "Name",
+      "Return",
+      "SizeOf"
+    ],
+    "disassembly_valid": true,
+    "disassembled_buffer_counts": [
+      "0x2000"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "0000000000000000"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [
+          "0000000000200000"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000002"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "0000000000000002"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [],
+    "classification": "returned"
+  },
+  {
+    "key": "1-runtime-count-8192",
+    "revision": 1,
+    "question": "runtime named count method executes once,then bufferpublishes",
+    "compile_rc": 0,
+    "aml_sha256": "712043a5faba03f4d815a96552a3c11b6f50d000a053e9332dbdf5400115b692",
+    "actual_revision": 1,
+    "table_length": 177,
+    "checksum_valid": true,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "5c3d66cab0de3a97afef2d263d3e98582d8b702bb732cd363af1e38f4b11fd35",
+    "disassembled_operations": [
+      "Buffer",
+      "Name",
+      "Return",
+      "SizeOf"
+    ],
+    "disassembly_valid": true,
+    "disassembled_buffer_counts": [
+      "CNTM ("
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "0000000000000000"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [
+          "0000000000200044"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000003"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "0000000000000013"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [],
+    "classification": "returned"
+  },
+  {
+    "key": "1-initializer-extends",
+    "revision": 1,
+    "question": "1025initializer extendszero andlastbyte survives",
+    "compile_rc": 0,
+    "aml_sha256": "adf958058c75d4c1768440330da24a9600c47ec202eee42708e35d5a81ba518c",
+    "actual_revision": 1,
+    "table_length": 1162,
+    "checksum_valid": true,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "2f1ddd24e03ebd16799017c0b393221bd269c73f121d52f4da4e88da01cfe5f7",
+    "disassembled_operations": [
+      "Buffer",
+      "Name",
+      "Return",
+      "SizeOf"
+    ],
+    "disassembly_valid": true,
+    "disassembled_buffer_counts": [
+      "Zero"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "0000000000000000"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [
+          "000000000004017E"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [],
+    "classification": "returned"
+  },
+  {
+    "key": "1-uint32-mask",
+    "revision": 1,
+    "question": "count masksUINT32 beforeallocation;never allocate4GiB",
+    "compile_rc": 0,
+    "aml_sha256": "1c8b632cd55ac6051d8b9a5754503d19af4bb0e79e288f8831ffd5cbd9de77ab",
+    "actual_revision": 1,
+    "table_length": 134,
+    "checksum_valid": true,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "df929c830a0dca2e14ffab4e02df761015e39a5742860b7de7d4133a425e322d",
+    "disassembled_operations": [
+      "Buffer",
+      "Name",
+      "Return",
+      "SizeOf"
+    ],
+    "disassembly_valid": true,
+    "disassembled_buffer_counts": [
+      "0x02"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "0000000000000000"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [
+          "0000000000000200"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000002"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "0000000000000002"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [],
+    "classification": "returned"
+  },
+  {
+    "key": "1-integer-prefix",
+    "revision": 1,
+    "question": "ToInteger uses widthprefix despite8192effectivebytes",
+    "compile_rc": 0,
+    "aml_sha256": "186e80d7bfe1e5d70c22254bc0f761c8d650e766c8b8bdc99e86137414bba7c9",
+    "actual_revision": 1,
+    "table_length": 122,
+    "checksum_valid": true,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "70f4b75ac4c96274b131d0cc2d48d766dba8b9642d706f41af13e4a7ebfbba90",
+    "disassembled_operations": [
+      "Buffer",
+      "Name",
+      "Return",
+      "ToInteger"
+    ],
+    "disassembly_valid": true,
+    "disassembled_buffer_counts": [
+      "0x2000"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "0000000000000000"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [
+          "0000000004030201"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [],
+    "classification": "returned"
+  },
+  {
+    "key": "1-count-divide-zero",
+    "revision": 1,
+    "question": "count failure beforepublication,marker retainscountsideeffect",
+    "compile_rc": 0,
+    "aml_sha256": "aefc90e799160a8ecc68d255e68ffe6cc2d2f0c940a0e811a9a934b933cf58d5",
+    "actual_revision": 1,
+    "table_length": 158,
+    "checksum_valid": true,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "34d276f91af8263ebccfcabef9243e6d485bda2b6dd074e2cdf10f04f7724a08",
+    "disassembled_operations": [
+      "Buffer",
+      "Divide",
+      "Name",
+      "Return",
+      "SizeOf"
+    ],
+    "disassembly_valid": true,
+    "disassembled_buffer_counts": [
+      "CNTM ("
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "0000000000000000"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [],
+        "ae_statuses": [
+          "AE_AML_DIVIDE_BY_ZERO"
+        ],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000002"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "0000000000000012"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [
+      "AE_AML_DIVIDE_BY_ZERO"
+    ],
+    "classification": "runtime_error"
+  },
+  {
+    "key": "1-count-empty-buffer",
+    "revision": 1,
+    "question": "count coercion failure vsbufferconstruction,not inferredfromreturnstatus",
+    "compile_rc": 0,
+    "aml_sha256": "624da962c59099193d133e1ead6b68222202104856b9dc357cdc7dce67c92967",
+    "actual_revision": 1,
+    "table_length": 153,
+    "checksum_valid": true,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "8d1666465382bfb073a3e66d537a73b729d7c2722d460e96b0ce16dbf851b77e",
+    "disassembled_operations": [
+      "Buffer",
+      "Name",
+      "Return",
+      "SizeOf"
+    ],
+    "disassembly_valid": true,
+    "disassembled_buffer_counts": [
+      "Zero",
+      "CNTM ("
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "0000000000000000"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [],
+        "ae_statuses": [
+          "AE_AML_BUFFER_LIMIT"
+        ],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000002"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "0000000000000012"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [
+      "AE_AML_BUFFER_LIMIT"
+    ],
+    "classification": "runtime_error"
+  },
+  {
+    "key": "2-static-8192",
+    "revision": 2,
+    "question": "static Name admits8192,zero tail andsize",
+    "compile_rc": 0,
+    "aml_sha256": "f4ed932a20cf2c24b6a172283b6f20679cd12552f6531bbd63af9da7dacac5c5",
+    "actual_revision": 2,
+    "table_length": 139,
+    "checksum_valid": true,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "c6c5929e8ebba34bd607b610e8f87a012759d2d10199ecba79c7912a5ab94f17",
+    "disassembled_operations": [
+      "Buffer",
+      "Name",
+      "Return",
+      "SizeOf"
+    ],
+    "disassembly_valid": true,
+    "disassembled_buffer_counts": [
+      "0x2000"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "00000000FFFFFFFF"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [
+          "0000000000200000"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [],
+    "classification": "returned"
+  },
+  {
+    "key": "2-package-1025",
+    "revision": 2,
+    "question": "package child preserves1025bytes,firstbyte",
+    "compile_rc": 0,
+    "aml_sha256": "68defe7bfc7c0c644ddf0881a1644a45ecae0ceec922d866328605507176800d",
+    "actual_revision": 2,
+    "table_length": 144,
+    "checksum_valid": true,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "984caf63cf1464bb510b5ecbfe8c088ccef2cd2938c3e18882199cebc523eafe",
+    "disassembled_operations": [
+      "Buffer",
+      "Name",
+      "Package",
+      "Return",
+      "SizeOf"
+    ],
+    "disassembly_valid": true,
+    "disassembled_buffer_counts": [
+      "0x0401"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "00000000FFFFFFFF"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [
+          "000000000004015A"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [],
+    "classification": "returned"
+  },
+  {
+    "key": "2-return-store-8192",
+    "revision": 2,
+    "question": "returned large buffer stored andzero tail",
+    "compile_rc": 0,
+    "aml_sha256": "0a2f54e74422344678e67f5248a94aa9df6179e0ebe3bca9746fa7ee80c0258c",
+    "actual_revision": 2,
+    "table_length": 149,
+    "checksum_valid": true,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "ebb1668d91aabfbf10c0fd6ff738ea20917560630602320406370600a8024475",
+    "disassembled_operations": [
+      "Buffer",
+      "Name",
+      "Return",
+      "SizeOf"
+    ],
+    "disassembly_valid": true,
+    "disassembled_buffer_counts": [
+      "0x2000"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "00000000FFFFFFFF"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [
+          "0000000000200000"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000002"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "0000000000000002"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [],
+    "classification": "returned"
+  },
+  {
+    "key": "2-runtime-count-8192",
+    "revision": 2,
+    "question": "runtime named count method executes once,then bufferpublishes",
+    "compile_rc": 0,
+    "aml_sha256": "618db5a40c61c82755334769e98217fe847d17d91f354b09f5114b61cc9d28c3",
+    "actual_revision": 2,
+    "table_length": 177,
+    "checksum_valid": true,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "0ca7b5ad7855c4c1dbba501f2a0e9845c7ff387fc065c1c96fc6c52e0c9065db",
+    "disassembled_operations": [
+      "Buffer",
+      "Name",
+      "Return",
+      "SizeOf"
+    ],
+    "disassembly_valid": true,
+    "disassembled_buffer_counts": [
+      "CNTM ("
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "00000000FFFFFFFF"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [
+          "0000000000200044"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000003"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "0000000000000013"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [],
+    "classification": "returned"
+  },
+  {
+    "key": "2-initializer-extends",
+    "revision": 2,
+    "question": "1025initializer extendszero andlastbyte survives",
+    "compile_rc": 0,
+    "aml_sha256": "fae4f976c33cfef6a9139cdeb6ac92e0a15cd39a10a853fbb4256baf86acbca8",
+    "actual_revision": 2,
+    "table_length": 1162,
+    "checksum_valid": true,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "95614fae5ee19f8e318d812df59cc18364f7f81237013418acddafbed45b5ca1",
+    "disassembled_operations": [
+      "Buffer",
+      "Name",
+      "Return",
+      "SizeOf"
+    ],
+    "disassembly_valid": true,
+    "disassembled_buffer_counts": [
+      "Zero"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "00000000FFFFFFFF"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [
+          "000000000004017E"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [],
+    "classification": "returned"
+  },
+  {
+    "key": "2-uint32-mask",
+    "revision": 2,
+    "question": "count masksUINT32 beforeallocation;never allocate4GiB",
+    "compile_rc": 0,
+    "aml_sha256": "cc4d753f4b3e5abee27be25020333b05ed308c20c1165d0735518c86f355a996",
+    "actual_revision": 2,
+    "table_length": 134,
+    "checksum_valid": true,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "f52648e2699b4723b1943abdd5db7706dc4fc2bedf84e75ff2e0bef3118349bc",
+    "disassembled_operations": [
+      "Buffer",
+      "Name",
+      "Return",
+      "SizeOf"
+    ],
+    "disassembly_valid": true,
+    "disassembled_buffer_counts": [
+      "0x02"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "00000000FFFFFFFF"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [
+          "0000000000000200"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000002"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "0000000000000002"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [],
+    "classification": "returned"
+  },
+  {
+    "key": "2-integer-prefix",
+    "revision": 2,
+    "question": "ToInteger uses widthprefix despite8192effectivebytes",
+    "compile_rc": 0,
+    "aml_sha256": "6817d14a229e8be72f8cdb896c4a564aaf62dcec3c6f958dc3a8b59c71f47fd3",
+    "actual_revision": 2,
+    "table_length": 122,
+    "checksum_valid": true,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "12ebee486fac4b72535f5ee2613631716d46ab9db6a5fbe707dcc27f20147005",
+    "disassembled_operations": [
+      "Buffer",
+      "Name",
+      "Return",
+      "ToInteger"
+    ],
+    "disassembly_valid": true,
+    "disassembled_buffer_counts": [
+      "0x2000"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "00000000FFFFFFFF"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [
+          "0807060504030201"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [],
+    "classification": "returned"
+  },
+  {
+    "key": "2-count-divide-zero",
+    "revision": 2,
+    "question": "count failure beforepublication,marker retainscountsideeffect",
+    "compile_rc": 0,
+    "aml_sha256": "a487f4183dc9859ec7eabc6398c03660cf1a7ed60bf6f9b57b57aa0bfbe76d3a",
+    "actual_revision": 2,
+    "table_length": 158,
+    "checksum_valid": true,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "133f8c99151dc3c54ae99b88dc2f98c1ceff4a23d7c0bba8e76b712656b46b5c",
+    "disassembled_operations": [
+      "Buffer",
+      "Divide",
+      "Name",
+      "Return",
+      "SizeOf"
+    ],
+    "disassembly_valid": true,
+    "disassembled_buffer_counts": [
+      "CNTM ("
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "00000000FFFFFFFF"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [],
+        "ae_statuses": [
+          "AE_AML_DIVIDE_BY_ZERO"
+        ],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000002"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "0000000000000012"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [
+      "AE_AML_DIVIDE_BY_ZERO"
+    ],
+    "classification": "runtime_error"
+  },
+  {
+    "key": "2-count-empty-buffer",
+    "revision": 2,
+    "question": "count coercion failure vsbufferconstruction,not inferredfromreturnstatus",
+    "compile_rc": 0,
+    "aml_sha256": "6c1339ddd91ad562a97741356d4a858d263176b0b885d88011a57939b5b2a806",
+    "actual_revision": 2,
+    "table_length": 153,
+    "checksum_valid": true,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "f651a0381dc3c8cad3e283a0906b67a78d1efd13029e9839eecb585189e1dac0",
+    "disassembled_operations": [
+      "Buffer",
+      "Name",
+      "Return",
+      "SizeOf"
+    ],
+    "disassembly_valid": true,
+    "disassembled_buffer_counts": [
+      "Zero",
+      "CNTM ("
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "00000000FFFFFFFF"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [],
+        "ae_statuses": [
+          "AE_AML_BUFFER_LIMIT"
+        ],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000002"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "0000000000000012"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [
+      "AE_AML_BUFFER_LIMIT"
+    ],
+    "classification": "runtime_error"
+  }
+]

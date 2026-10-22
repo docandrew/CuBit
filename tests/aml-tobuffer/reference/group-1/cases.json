@@ -1,0 +1,227 @@
+[
+  {
+    "name": "integer_high",
+    "declarations": "",
+    "body": "Return (ToBuffer (0x1122334455667788))",
+    "source_expectation": {
+      "32": "88776655",
+      "64": "8877665544332211"
+    },
+    "note": "",
+    "observed": false
+  },
+  {
+    "name": "integer_zero",
+    "declarations": "",
+    "body": "Return (ToBuffer (Zero))",
+    "source_expectation": {
+      "32": "00000000",
+      "64": "0000000000000000"
+    },
+    "note": "",
+    "observed": false
+  },
+  {
+    "name": "integer_ones",
+    "declarations": "",
+    "body": "Return (ToBuffer (Ones))",
+    "source_expectation": {
+      "32": "ffffffff",
+      "64": "ffffffffffffffff"
+    },
+    "note": "",
+    "observed": false
+  },
+  {
+    "name": "string_empty",
+    "declarations": "",
+    "body": "Return (ToBuffer (\"\"))",
+    "source_expectation": {
+      "32": "00",
+      "64": "00"
+    },
+    "note": "",
+    "observed": false
+  },
+  {
+    "name": "string_text",
+    "declarations": "",
+    "body": "Return (ToBuffer (\"AB\"))",
+    "source_expectation": {
+      "32": "414200",
+      "64": "414200"
+    },
+    "note": "",
+    "observed": false
+  },
+  {
+    "name": "string_embedded",
+    "declarations": "Name (TEXT, \"ABC\")",
+    "body": "Store (Zero, Index (TEXT, One)) Return (ToBuffer (TEXT))",
+    "source_expectation": {
+      "32": "41004300",
+      "64": "41004300"
+    },
+    "note": "Declared length remains three after byte mutation; verify this assumption in observation.",
+    "observed": false
+  },
+  {
+    "name": "buffer_empty",
+    "declarations": "",
+    "body": "Return (ToBuffer (Buffer (Zero) {}))",
+    "source_expectation": {
+      "32": "",
+      "64": ""
+    },
+    "note": "",
+    "observed": false
+  },
+  {
+    "name": "buffer_bytes",
+    "declarations": "",
+    "body": "Return (ToBuffer (Buffer (3) {0x41,0,0xFF}))",
+    "source_expectation": {
+      "32": "4100ff",
+      "64": "4100ff"
+    },
+    "note": "",
+    "observed": false
+  },
+  {
+    "name": "local_target",
+    "declarations": "",
+    "body": "ToBuffer (\"AB\", Local0) Return (Local0)",
+    "source_expectation": {
+      "32": "414200",
+      "64": "414200"
+    },
+    "note": "",
+    "observed": false
+  },
+  {
+    "name": "named_target",
+    "declarations": "Name (DEST, Buffer (1) {9})",
+    "body": "ToBuffer (\"AB\", DEST) Return (DEST)",
+    "source_expectation": {
+      "32": "414200",
+      "64": "414200"
+    },
+    "note": "",
+    "observed": false
+  },
+  {
+    "name": "same_buffer_target",
+    "declarations": "Name (BUFF, Buffer (2) {0x41,0x42})",
+    "body": "ToBuffer (BUFF, BUFF) Return (BUFF)",
+    "source_expectation": {
+      "32": "4142",
+      "64": "4142"
+    },
+    "note": "",
+    "observed": false
+  },
+  {
+    "name": "identity_null",
+    "declarations": "Name (BUFF, Buffer (2) {0x41,0x42})",
+    "body": "Store (9, Index (ToBuffer (BUFF), Zero)) Return (BUFF)",
+    "source_expectation": null,
+    "note": "Direct mutation of conversion result avoids assigning it to a Local, which could copy.",
+    "observed": false
+  },
+  {
+    "name": "identity_local",
+    "declarations": "Name (BUFF, Buffer (2) {0x41,0x42})",
+    "body": "ToBuffer (BUFF, Local0) Store (9, Index (Local0, Zero)) Return (BUFF)",
+    "source_expectation": null,
+    "note": "Discriminates conversion identity from Local capture copy.",
+    "observed": false
+  },
+  {
+    "name": "identity_named",
+    "declarations": "Name (BUFF, Buffer (2) {0x41,0x42}) Name (DEST, Buffer (1) {0})",
+    "body": "ToBuffer (BUFF, DEST) Store (9, Index (DEST, Zero)) Return (BUFF)",
+    "source_expectation": null,
+    "note": "Named target Store policy can differ from null-target expression identity.",
+    "observed": false
+  },
+  {
+    "name": "string_independence",
+    "declarations": "Name (TEXT, \"AB\")",
+    "body": "ToBuffer (TEXT, Local0) Store (9, Index (Local0, Zero)) Return (ToBuffer (TEXT))",
+    "source_expectation": {
+      "32": "414200",
+      "64": "414200"
+    },
+    "note": "",
+    "observed": false
+  },
+  {
+    "name": "effect_order",
+    "declarations": "Name (MARK, Zero) Name (DEST, Buffer (2) {}) Method (SRC0,0) { Store (Add (Multiply (MARK,10),One),MARK) Return (\"AB\") } Method (TARG,0) { Store (Add (Multiply (MARK,10),2),MARK) Return (Zero) }",
+    "body": "ToBuffer (SRC0 (), Index (DEST, TARG ())) Return (MARK)",
+    "source_expectation": null,
+    "note": "Observe source method vs computed target order and byte-target conversion; normal compiler/runtime failure retained distinctly.",
+    "observed": false
+  },
+  {
+    "name": "effect_named",
+    "declarations": "Name (MARK, Zero) Name (DEST, Buffer (1) {}) Method (SRC0,0) { Increment (MARK) Return (\"AB\") }",
+    "body": "ToBuffer (SRC0 (), DEST) Return (MARK)",
+    "source_expectation": {
+      "integer": 1
+    },
+    "note": "",
+    "observed": false
+  },
+  {
+    "name": "source_package",
+    "declarations": "",
+    "body": "Return (ToBuffer (Package (1) {One}))",
+    "source_expectation": null,
+    "note": "Normal compiler rejection or runtime operand error recorded; never force compiler output.",
+    "observed": false
+  },
+  {
+    "name": "aslts_m321_reduction",
+    "declarations": "Name (TEXT, \"ABC\")",
+    "body": "ToBuffer (TEXT, Local3) Return (Local3)",
+    "source_expectation": {
+      "32": "41424300",
+      "64": "41424300"
+    },
+    "note": "Reduced M321 string-to-buffer/source-integrity core; original ToString/setup helpers intentionally excluded.",
+    "observed": false
+  },
+  {
+    "name": "aslts_m322_0",
+    "declarations": "",
+    "body": "Store (Buffer (Zero) {}, Local4) ToBuffer (Local4, Local3) Return (Local4)",
+    "source_expectation": null,
+    "note": "M322 source-corruption regression reduction: output source bytes and separately destination variant. Buffer(0){0x41} has effective length one, so zero case below uses empty initializer.",
+    "observed": false
+  },
+  {
+    "name": "aslts_m322_513",
+    "declarations": "",
+    "body": "Store (Buffer (513) {0x41}, Local4) ToBuffer (Local4, Local3) Return (Local4)",
+    "source_expectation": null,
+    "note": "M322 source-corruption regression reduction: output source bytes and separately destination variant. Buffer(0){0x41} has effective length one, so zero case below uses empty initializer.",
+    "observed": false
+  },
+  {
+    "name": "aslts_m322_0_dest",
+    "declarations": "",
+    "body": "Store (Buffer (Zero) {}, Local4) ToBuffer (Local4, Local3) Return (Local3)",
+    "source_expectation": null,
+    "note": "M322 source-corruption regression reduction: output source bytes and separately destination variant. Buffer(0){0x41} has effective length one, so zero case below uses empty initializer.",
+    "observed": false
+  },
+  {
+    "name": "aslts_m322_513_dest",
+    "declarations": "",
+    "body": "Store (Buffer (513) {0x41}, Local4) ToBuffer (Local4, Local3) Return (Local3)",
+    "source_expectation": null,
+    "note": "M322 source-corruption regression reduction: output source bytes and separately destination variant. Buffer(0){0x41} has effective length one, so zero case below uses empty initializer.",
+    "observed": false
+  }
+]

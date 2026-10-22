@@ -1,0 +1,1 @@
+DefinitionBlock("","DSDT",1,"CUBIT","TOSTR",1){Name(BUFF,Buffer(){0x41,0x42,0,0x43}) Name(DEST,Buffer(){0x58}) Name(MARK,Zero) Name(PKG0,Package(){Buffer(){0x41,0x42}}) Method(GETR,0){Return(Index(PKG0,Zero))} Name(TARG,"X") Method(CTRL,0){Return(One)} Method(WIDT,0){Return(ShiftRight(Ones,32))} Method(TEST,0){ToString(BUFF,Ones,TARG) Return(ToBuffer(TARG))}}

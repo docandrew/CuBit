@@ -1,0 +1,7 @@
+project adapter_1_checked is
+ for Source_Dirs use ("../aml-buffer-fields", "../../userspace/lib/acpi", "../../shared/firmware");
+ for Object_Dir use "build-1-checked";
+ package Compiler is
+  for Default_Switches ("Ada") use ("-O1", "-gnat2022", "-gnatwa", "-gnatwe", "-gnata", "-gnato");
+ end Compiler;
+end adapter_1_checked;

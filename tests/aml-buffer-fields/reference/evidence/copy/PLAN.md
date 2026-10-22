@@ -1,0 +1,5 @@
+# Bounded CopyObject indexed-reference semantics
+
+Twelve normal compilation attempts: six shapes at witnessed DSDT widths32/64. Byte index to named destination and Local control; populated package index to Local/named; empty package index to Local/named. Named DST0 initially Integer0. All buffers/packages size1, index0, values65/66. CopyObject first, MARK1 after copy; replace backing byte/package element with66, MARK2; DerefOf saved copy, MARK3, return value. A retained index should observe66; eager-copy behavior instead captures65 or fails Deref; empty source failure timing is visible via MARK. This is a hypothesis, not assumed outcome.
+
+Use pinned cached ACPICA20260408 tools through Nix, nice19; each subprocess5s,128MiB address-space,64MiB stack,1MiB disk-backed output. No huge inputs, diagnostic retries, kernel builds, forced compilation, or source policy changes. Check actual width witness and disassembled CopyObject/Index/DerefOf. Retain compile rejections separately and exact runtime logs including cache warnings. Source inputs frozen before execution.

@@ -6,6 +6,7 @@ with AML_Namespace;
 with AML_Objects;
 with AML_References;
 procedure To_String_Owner_Tests is
+   use type AML_Decode.Bytes;
    package N is new AML_Namespace (32, Perform_Delay => AML_Delays.Unavailable_Provider);
    use N; use N.Owned;
    use type AML_Objects.Object_Kind;

@@ -43,7 +43,7 @@ begin
    R := Run ([16#A4#], AML_Decode.Bits_64, Args, 0, 10);
    Check (R.Status = Truncated);
    R := Run ([16#5B#,16#80#], AML_Decode.Bits_64, Args, 0, 10);
-   Check (R.Status = Unsupported);
+   Check (R.Status = Truncated);
    R := Run ([16#A4#,1,16#5B#,16#80#], AML_Decode.Bits_64, Args, 0, 10);
    Check (R.Status = Returned and then R.Value = 1);
    R := Run ([Positive'Last - 1 => 16#A4#, Positive'Last => 1],

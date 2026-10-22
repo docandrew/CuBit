@@ -1,0 +1,218 @@
+[
+  {
+    "name": "FULL",
+    "body": "Return(ToBuffer(ToString(BUFF,Ones)))",
+    "extra": "",
+    "purpose": "primitive source/length conversion"
+  },
+  {
+    "name": "LIM1",
+    "body": "Return(ToBuffer(ToString(BUFF,One)))",
+    "extra": "",
+    "purpose": "primitive source/length conversion"
+  },
+  {
+    "name": "ZERO",
+    "body": "Return(ToBuffer(ToString(BUFF,Zero)))",
+    "extra": "",
+    "purpose": "primitive source/length conversion"
+  },
+  {
+    "name": "END",
+    "body": "Return(ToBuffer(ToString(Buffer(){0x41,0x42},Ones)))",
+    "extra": "",
+    "purpose": "primitive source/length conversion"
+  },
+  {
+    "name": "NUL0",
+    "body": "Return(ToBuffer(ToString(Buffer(){0,0x41},Ones)))",
+    "extra": "",
+    "purpose": "primitive source/length conversion"
+  },
+  {
+    "name": "EMPTY",
+    "body": "Return(ToBuffer(ToString(Buffer(Zero){},Ones)))",
+    "extra": "",
+    "purpose": "primitive source/length conversion"
+  },
+  {
+    "name": "ISTR",
+    "body": "Return(ToBuffer(ToString(0x44434241,Ones)))",
+    "extra": "",
+    "purpose": "primitive source/length conversion"
+  },
+  {
+    "name": "SSTR",
+    "body": "Return(ToBuffer(ToString(\"AB\",Ones)))",
+    "extra": "",
+    "purpose": "primitive source/length conversion"
+  },
+  {
+    "name": "LENH",
+    "body": "Return(ToBuffer(ToString(BUFF,\"01\")))",
+    "extra": "",
+    "purpose": "primitive source/length conversion"
+  },
+  {
+    "name": "LENB",
+    "body": "Return(ToBuffer(ToString(BUFF,Buffer(){One})))",
+    "extra": "",
+    "purpose": "primitive source/length conversion"
+  },
+  {
+    "name": "LEN0",
+    "body": "Return(ToBuffer(ToString(BUFF,Buffer(Zero){})))",
+    "extra": "",
+    "purpose": "primitive source/length conversion"
+  },
+  {
+    "name": "PACK",
+    "body": "Return(ToBuffer(ToString(PKG0,Ones)))",
+    "extra": "",
+    "purpose": "primitive source/length conversion"
+  },
+  {
+    "name": "LREF",
+    "body": "CopyObject(RefOf(BUFF),Local0) Return(ToBuffer(ToString(Local0,Ones)))",
+    "extra": "",
+    "purpose": "held Local reference source"
+  },
+  {
+    "name": "AREF",
+    "body": "Return(HELP(RefOf(BUFF)))",
+    "extra": "Method(HELP,1){Return(ToBuffer(ToString(Arg0,Ones)))}",
+    "purpose": "held Arg reference source"
+  },
+  {
+    "name": "INDX",
+    "body": "Return(ToBuffer(ToString(Index(PKG0,Zero),Ones)))",
+    "extra": "",
+    "purpose": "direct package Index expression"
+  },
+  {
+    "name": "MREF",
+    "body": "Return(ToBuffer(ToString(GETR(),Ones)))",
+    "extra": "",
+    "purpose": "returned package Index expression"
+  },
+  {
+    "name": "TINT",
+    "body": "ToString(BUFF,Ones,TARG) Return(ToBuffer(TARG))",
+    "extra": "Name(TARG,7)",
+    "purpose": "fixed named target replacement/extent"
+  },
+  {
+    "name": "TSTR",
+    "body": "ToString(BUFF,Ones,TARG) Return(ToBuffer(TARG))",
+    "extra": "Name(TARG,\"X\")",
+    "purpose": "fixed named target replacement/extent"
+  },
+  {
+    "name": "TBUF",
+    "body": "ToString(BUFF,Ones,TARG) Return(ToBuffer(TARG))",
+    "extra": "Name(TARG,Buffer(){0x58})",
+    "purpose": "fixed named target replacement/extent"
+  },
+  {
+    "name": "TEXP",
+    "body": "Return(ToBuffer(ToString(BUFF,Ones,DEST)))",
+    "extra": "",
+    "purpose": "expression result separate from target"
+  },
+  {
+    "name": "ALOC",
+    "body": "Store(0x5A,Index(ToString(BUFF,Ones,Local0),Zero)) Return(ToBuffer(Local0))",
+    "extra": "",
+    "purpose": "direct fresh expression result alias with Local target"
+  },
+  {
+    "name": "TARG",
+    "body": "Return(HELP(7))",
+    "extra": "Method(HELP,1){ToString(BUFF,Ones,Arg0) Return(ToBuffer(Arg0))}",
+    "purpose": "direct argument target"
+  },
+  {
+    "name": "ANAM",
+    "body": "HELP(RefOf(DEST)) Return(ToBuffer(DEST))",
+    "extra": "Method(HELP,1){ToString(BUFF,Ones,Arg0)}",
+    "purpose": "argument named reference target"
+  },
+  {
+    "name": "TPKG",
+    "body": "ToString(BUFF,Ones,Index(PKG0,Zero)) Return(ToBuffer(DerefOf(Index(PKG0,Zero))))",
+    "extra": "",
+    "purpose": "package target"
+  },
+  {
+    "name": "TBYT",
+    "body": "ToString(BUFF,Ones,Index(DEST,Zero)) Return(DEST)",
+    "extra": "",
+    "purpose": "byte target"
+  },
+  {
+    "name": "LATE",
+    "body": "Store(One,Local0) Return(ToBuffer(ToString(BUFF,Local0,Index(PKG0,Store(Zero,Local0)))))",
+    "extra": "",
+    "purpose": "delayed Local length after target mutation"
+  },
+  {
+    "name": "ORDR",
+    "body": "Return(ToBuffer(ToString(SRC0(),LEN0(),Index(PKG0,TGT0()))))",
+    "extra": "Method(SRC0,0){Store(Add(Multiply(MARK,10),One),MARK) Return(BUFF)} Method(LEN0,0){Store(Add(Multiply(MARK,10),2),MARK) Return(One)} Method(TGT0,0){Store(Add(Multiply(MARK,10),3),MARK) Return(Zero)}",
+    "purpose": "source length target effects exactly once"
+  },
+  {
+    "name": "ERRL",
+    "body": "Return(ToBuffer(ToString(BUFF,Buffer(Zero){},Index(PKG0,TGT0()))))",
+    "extra": "Method(TGT0,0){Store(One,MARK) Return(Zero)}",
+    "purpose": "target effect before length conversion failure"
+  },
+  {
+    "name": "BOTH",
+    "body": "Return(ToBuffer(ToString(SRCP(),Buffer(Zero){},Index(PKG0,TGT0()))))",
+    "extra": "Method(SRCP,0){Return(PKG0)} Method(TGT0,0){Store(One,MARK) Return(Zero)}",
+    "purpose": "distinct package-source versus empty-length conversion errors"
+  },
+  {
+    "name": "KIND",
+    "body": "ToString(BUFF,Ones,TARG) Return(ObjectType(TARG))",
+    "extra": "Name(TARG,Buffer(){0x58})",
+    "purpose": "namedBuffer becomes String"
+  },
+  {
+    "name": "RETN",
+    "body": "Store(0x5A,Index(ToString(BUFF,Ones,TARG),Zero)) Return(ToBuffer(TARG))",
+    "extra": "Name(TARG,\"XY\")",
+    "purpose": "result versus named target independence"
+  },
+  {
+    "name": "TYPE",
+    "body": "Store(ToString(BUFF,Ones),Local0) Return(Add(Multiply(ObjectType(Local0),256),SizeOf(Local0)))",
+    "extra": "",
+    "purpose": "actual String type and logical length"
+  },
+  {
+    "name": "RAWB",
+    "body": "Return(ToBuffer(ToString(RAW0,Ones)))",
+    "extra": "Name(RAW0,Buffer(){0x80,0x0A,0xFF,0,0x41})",
+    "purpose": "raw nonASCII newline bytes"
+  },
+  {
+    "name": "RTYP",
+    "body": "Store(ToString(RAW0,Ones),Local0) Return(Add(Multiply(ObjectType(Local0),256),SizeOf(Local0)))",
+    "extra": "Name(RAW0,Buffer(){0x80,0x0A,0xFF,0,0x41})",
+    "purpose": "raw String type2 length3"
+  },
+  {
+    "name": "SAFE",
+    "body": "Store(Concatenate(\"XY\",\"Z\"),TARG) Store(Index(TARG,Zero),Local0) Store(DerefOf(Local0),MARK) ToString(BUFF,Ones,TARG) Return(DerefOf(Local0))",
+    "extra": "Name(TARG,\"\")",
+    "purpose": "strictlyshrinking dynamic String alias read; MARK88 pre, return65 post"
+  },
+  {
+    "name": "I64",
+    "body": "Return(ToBuffer(ToString(0x4847464544434241,Ones)))",
+    "extra": "",
+    "purpose": "width-sensitiveInteger source"
+  }
+]

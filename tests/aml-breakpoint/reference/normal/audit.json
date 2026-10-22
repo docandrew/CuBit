@@ -1,0 +1,79 @@
+{
+  "inputs": {
+    "/home/doc/git/.acpi-proof-work/aml-breakpoint-disassembly-oracle-fdss8jb1/direct-r2.asl": "f8069a9eb750cea169864875410ff48300c2a6c49259990ae8cf8a299565121d",
+    "/home/doc/git/.acpi-proof-work/aml-breakpoint-disassembly-oracle-fdss8jb1/skipped-r2.asl": "5cbeaf432cfe991e1c0a414ba59dc113d2053bbd41539d5d3e7e9eb048782c0b",
+    "/home/doc/git/.acpi-proof-work/aml-breakpoint-disassembly-oracle-fdss8jb1/skipped-r1.asl": "7ed13efc924abcbab4ba5ff4564fedba5702da13026a0d42f515de45555c65a5",
+    "/home/doc/git/.acpi-proof-work/aml-breakpoint-disassembly-oracle-fdss8jb1/runner.patch": "b873286efa974ddc2d604bcec87cd9dea49353818662b52735f5b130eb5c43c6",
+    "/home/doc/git/.acpi-proof-work/aml-breakpoint-disassembly-oracle-fdss8jb1/tools.json": "63b4e2eab8312270127d242e81e586cbfe17d297b10740a1798b0807f53beb08",
+    "/home/doc/git/.acpi-proof-work/aml-breakpoint-disassembly-oracle-fdss8jb1/nested-r1.asl": "85fea3e38589a8552be9c1c009be60521a3788a2eeadad4a42361f4e343f808f",
+    "/home/doc/git/.acpi-proof-work/aml-breakpoint-disassembly-oracle-fdss8jb1/nested-r2.asl": "1a6a513b4a97f30c28a14dc95c9501260fd390b7920aac32f0061e695e624ab4",
+    "/home/doc/git/.acpi-proof-work/aml-breakpoint-disassembly-oracle-fdss8jb1/DISASSEMBLY-REVIEW.txt": "25e2b5d62a365fc3062d3a0a090fe07b8f7c0a05bd52023c389036ba3f985e5b",
+    "/home/doc/git/.acpi-proof-work/aml-breakpoint-disassembly-oracle-fdss8jb1/parent-pins.json": "d7c0661ac3edd8125acad862b7fe2660099ff2027e8c5db355ab9cbe5b20a57a",
+    "/home/doc/git/.acpi-proof-work/aml-breakpoint-disassembly-oracle-fdss8jb1/module-r1.asl": "e6514846f0febc0236ea4a2ee55d3365f113a3ba020b0ce2eac775a22928972d",
+    "/home/doc/git/.acpi-proof-work/aml-breakpoint-disassembly-oracle-fdss8jb1/REVIEW.txt": "cc24113812e898ac97896394b80c4e3cd8776d04a0913907142986fe6f189156",
+    "/home/doc/git/.acpi-proof-work/aml-breakpoint-disassembly-oracle-fdss8jb1/hosted_capture.py": "bb667e639c2ba2c9c11aa0fb09e30f0bd768b8728290657fcff4ef090da231db",
+    "/home/doc/git/.acpi-proof-work/aml-breakpoint-disassembly-oracle-fdss8jb1/run.py": "584631d0a96591f2577d60c95191bab9e5a876c123d93d688af3ddd4d1225276",
+    "/home/doc/git/.acpi-proof-work/aml-breakpoint-disassembly-oracle-fdss8jb1/bounded_tool.py": "6ffc31aeb807149b491cde9a065c75ca6935e04a996da1f2b47fa45c41e53fd9",
+    "/home/doc/git/.acpi-proof-work/aml-breakpoint-disassembly-oracle-fdss8jb1/direct-r1.asl": "1a26d2902dffccefe8b6f0170ba89767dd6ab577318ba19ae02cceb669ddd01e",
+    "/home/doc/git/.acpi-proof-work/aml-breakpoint-disassembly-oracle-fdss8jb1/module-r2.asl": "ae795aa39e090a506c0f986f8b642909b659b4170043072078202892bc423f0e",
+    "/home/doc/git/.acpi-proof-work/aml-breakpoint-disassembly-oracle-fdss8jb1/cases.json": "6a4e6234df9c09983059e11768e6ee9a21fe861d18aa6ba429c22916091268b3"
+  },
+  "tools": {
+    "iasl": {
+      "path": "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+      "sha256": "1c6a21c90ff6f846e27a98dbb3106362c706f67db8ceca21ccd81ab76a7d9dcb"
+    },
+    "acpiexec": {
+      "path": "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+      "sha256": "a161f8b3a0b94b4301c1d0f2ccca6c0f808d2998cd4c9e037a9d7b218c88dcfe"
+    },
+    "python": {
+      "path": "/nix/store/3n4qphl9s728sz8frmpqqrv9b1m87g68-python3-3.14.7/bin/python3.14",
+      "sha256": "ee3549b0a0c65576b13b32abd410551ec8af9b2307cd726c89295de24213192f"
+    }
+  },
+  "artifacts": {
+    "direct-r1.dsl": "8fb25398d70845559b059064c1ef8e5461cd80a1062561b980eae56842cde0f0",
+    "nested-r1.dsl": "0f28577dc1f98f68c31bb9e75d27989f4effae745bafe36ac8f5c1266742c517",
+    "skipped-r2-disassembly.log": "bd73d2f56b33cda522e120e0b5db6ab57663dd80ab2936f63649ba82b75b49e4",
+    "direct-r1.aml": "749468245b0b90b2cf0eeec383da19c0f0e9c71309ac03734dacddd32ddb37e0",
+    "module-r2.dsl": "92ceae82919c387fb7e7d9d3c1e8a709ce77985fa8940b9d594d6b7ca0ba263d",
+    "module-r2-acpiexec.log": "82ebe075f06ae53ba3b5bd46bdc3c62d44c1a9cd6e7c80249f3206b4520af5b3",
+    "nested-r2.aml": "7de17b683a9b65d8b79234abf96748e2c1ce19c183b5c6a4a03f97230285e9b4",
+    "direct-r1-disassembly.log": "8df1e50f93b358c80066561e537a9bb94ba5b9aedca09d50025d73050e6a8402",
+    "direct-r1-iasl.log": "35dab71a83c9cce841cbadfac12113f4e108650c3f580084b1a89e68415cdabd",
+    "skipped-r1-iasl.log": "a7e5281e5a1cddf7e67bf4ce234a46a871fc00b5c528344df2091af1b21a8f66",
+    "skipped-r2.aml": "aa7f2e867675a8f4ca939ad6df4565567cd118a71c01f093aad424912b3d817e",
+    "skipped-r1-disassembly.log": "05b3b3e4c749b74f0b9147b971910277663fcabd8aab34bf62424ccba8d8f2f1",
+    "nested-r1-iasl.log": "e6d5ebb996f3a13adaac9e2e3f99e79564f74983bbacf4e72bd71068817ea81d",
+    "nested-r1-disassembly.log": "c0a8b9a9892895aa8cca41dfb2abda034d9345c2c309e7482a7ab0c49c9da297",
+    "module-r2-iasl.log": "2e3ff0e86ecd303056f1d61241e4cbc70418a25d800a34dda4813d08ac01bea4",
+    "nested-r2-acpiexec.log": "fcfed51d47acc4d3b840427b3646638aebe7e4449891e5311e7cd60fb3751bc9",
+    "nested-r2.dsl": "26370f15a9f3f6b8ab3e151e7df7c4cdc62a0e4ca0436cd351a884af7cc57b69",
+    "nested-r1-acpiexec.log": "16b22bcbbc28294ec3f8953227ebfdf4cee418c9eb75c4d07d5bc95187a1c3ea",
+    "module-r1-acpiexec.log": "5b01a9ecc71b8049ad58f8249f71aee7c5039e1a708da5108b8694435819161f",
+    "module-r2-disassembly.log": "501c0eaece7f6f014cdf3c6d6479e6f30bb848c45c56a857e9323d158ddff834",
+    "nested-r2-iasl.log": "3344836d5f797d8ba84723ef61c9f64e2a5092625168fd4de51bb2300c9cc2bb",
+    "direct-r2.dsl": "bbdcb1c6e13e3e8f8229fd3f09f677c25fee4f306bfe39285fc74d95a4c444a1",
+    "direct-r2-acpiexec.log": "e13c0e1e415493d2d369f00028ee7206f9b681709b53bc5489b99cd3d23198d7",
+    "skipped-r1-acpiexec.log": "ad10b9ce6567b0d187f3894035b99f205f94ffed49703fb07771320fd80d908b",
+    "skipped-r2.dsl": "251ae072722aef97896437a9a4ef1697a01a67a04a4c7da2a5f3445a44d0d7b0",
+    "module-r1-disassembly.log": "23939471b83470232a795871cc9374a1d7c7166d5ec33134556c874a17ac464d",
+    "nested-r2-disassembly.log": "a41e60575123ced04da63bdba2c33f2d123fb66bd84e6966665dbc842e0c39bd",
+    "report.json": "a34caf896f45199891755c5e87c62b6fa5338d914b3136a47d1daaf7763a9248",
+    "skipped-r2-iasl.log": "e567b9adc963d7dbc2dd80f0ad3d115c32bff6b5fb64ec7bf640813cfef0c51d",
+    "direct-r1-acpiexec.log": "9039fc258a90fb85421dd918014a85e4b5eaf62fc265ed08686f8bf6b79255f5",
+    "module-r1.dsl": "f9e2711000dcfb3ad60cca7b7fa8ca8c4426445b580f9be75e74730cc5076466",
+    "direct-r2.aml": "018b080230473bc0080731214ab842d8fc2923f6335e5533b7f5edaa06af3ef1",
+    "direct-r2-iasl.log": "182a58b681077ceffa3736e6aea0a4f57c5c8b9a7a746e1ac0e0470b97601499",
+    "module-r1.aml": "ac0c3bace5f2f904e66bc3083f66b43c8043f533c316110de62e02a1fd001af0",
+    "skipped-r2-acpiexec.log": "0934a63c36f3870975715047b6d2b204ff1582dc579d4dd615971a63ac10ac01",
+    "skipped-r1.aml": "2c40840619df85a72b15d2a0243bb08b73508cc589e15783ce79b8cf66f1e155",
+    "direct-r2-disassembly.log": "d069c6a76eeed47f79222aa3da3f736f5ff164511ca56ea8ec2460333296cdbc",
+    "skipped-r1.dsl": "b9d439ba5392172199e57dd9d28a99c3caa710b5ebb58d8701a3b4b44bc8e05e",
+    "module-r1-iasl.log": "a9da434ef4ccd30e68cce2c67c114a2aff7c16002b1a39429a13fa7cebe6581c",
+    "module-r2.aml": "acdc925a7c1250a489a98d09ae7619920248919a67a3a69df7b8dafeed019a30",
+    "nested-r1.aml": "9e85d94bfe9834552d00f4d25cf993b03dfe1a2642d0fc0b56e2f2083bb7e060"
+  },
+  "scope": "normal BreakPoint oracle observations only; host debugger/OS policy may differ from CuBit non-debug Noop; process0 is not semantic equivalence"
+}

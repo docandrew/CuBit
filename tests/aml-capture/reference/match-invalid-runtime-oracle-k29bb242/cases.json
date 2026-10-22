@@ -1,0 +1,24 @@
+[
+  {
+    "key": "r1-predicate-invalid-type",
+    "source": "r1-predicate-invalid-type.asl",
+    "revision": 1,
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG"
+    ]
+  },
+  {
+    "key": "r2-predicate-invalid-type",
+    "source": "r2-predicate-invalid-type.asl",
+    "revision": 2,
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG"
+    ]
+  }
+]

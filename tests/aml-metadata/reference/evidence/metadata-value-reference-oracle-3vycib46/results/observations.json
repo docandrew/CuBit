@@ -1,0 +1,1648 @@
+[
+  {
+    "key": "1-double-deref-root",
+    "revision": 1,
+    "question": "Does explicit Deref result still support another Deref, or is it a metadata object?",
+    "compile_rc": 0,
+    "aml_sha256": "d08898e757b1e790d82890f0fe92e6eefdc69301083ba52bf7518256491f075b",
+    "actual_revision": 1,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "f578780fc177f6bb642ad9e2d323063d7719542ea5072104d0bcb8c748001b8d",
+    "disassembled_operations": [
+      "Alias",
+      "DerefOf",
+      "ObjectType",
+      "RefOf"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "0000000000000000"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [],
+        "ae_statuses": [
+          "AE_AML_OPERAND_TYPE"
+        ],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "000000000000000C"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [
+      "AE_AML_OPERAND_TYPE"
+    ],
+    "classification": "runtime_error"
+  },
+  {
+    "key": "1-arg-store-root-value",
+    "revision": 1,
+    "question": "Does Store to metadata-valued Arg replace its value or indirect to namespace target?",
+    "compile_rc": 0,
+    "aml_sha256": "c1364c6c6d75aaedd2b0a46bd752832ad4767946e7596222a1d6a356ba383122",
+    "actual_revision": 1,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "c62ba283f91282e4740d24a158de08ba2b1f0a785ac0d47dbb1d837b560ba853",
+    "disassembled_operations": [
+      "Alias",
+      "ObjectType"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "0000000000000000"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000003"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "000000000000000C"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [],
+    "classification": "returned"
+  },
+  {
+    "key": "1-arg-store-root-reference",
+    "revision": 1,
+    "question": "Does Store to metadata-valued Arg replace its value or indirect to namespace target?",
+    "compile_rc": 0,
+    "aml_sha256": "7eca9996023a4d6e92d2956dbeda4906cb952e2aaad6e59e7a696ac806f9956e",
+    "actual_revision": 1,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "95a8beea96f201e68bd1a23f307a78e49afee16622492b5e8f81abf249fe8742",
+    "disassembled_operations": [
+      "Alias",
+      "ObjectType",
+      "RefOf"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "0000000000000000"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [],
+        "ae_statuses": [
+          "AE_AML_TARGET_TYPE"
+        ],
+        "raw_reference_lines": [
+          "ACPI Error: Target must be [Buffer/Integer/String/Reference], found [Device] (\\___) (20260408/exstore-598)"
+        ]
+      },
+      "MARK": {
+        "values": [
+          "0000000000000002"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "000000000000000C"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [
+      "AE_AML_TARGET_TYPE"
+    ],
+    "classification": "runtime_error"
+  },
+  {
+    "key": "1-package-double-deref-root",
+    "revision": 1,
+    "question": "Does dereferencing package element yield metadata or another namespace reference?",
+    "compile_rc": 0,
+    "aml_sha256": "b2323f47ce2eb07b380bb70e16723ad35df8c886bafc8910fdc76d5c73db43f1",
+    "actual_revision": 1,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "2fabcede38b5fddc7e78e38830b9f98f9f647d5e272f36ff5c88789538a184df",
+    "disassembled_operations": [
+      "Alias",
+      "DerefOf",
+      "ObjectType",
+      "Package"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "0000000000000000"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [],
+        "ae_statuses": [
+          "AE_TYPE"
+        ],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000002"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "000000000000000C"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [
+      "AE_TYPE"
+    ],
+    "classification": "runtime_error"
+  },
+  {
+    "key": "1-package-index-write-root",
+    "revision": 1,
+    "question": "Does indexed target replace package metadata element while leaving namespace metadata intact?",
+    "compile_rc": 0,
+    "aml_sha256": "c0a2d1c42392b21770bf6b0e138b56c06f7b5653122226b21ec63df9d69e4068",
+    "actual_revision": 1,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "882935ceec1c3e4d3034978a0bd6cd79cb5989a22044b4a62bee3b0d41be8053",
+    "disassembled_operations": [
+      "Alias",
+      "DerefOf",
+      "ObjectType",
+      "Package"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "0000000000000000"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [
+          "000000000000002A"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000003"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "000000000000000C"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [],
+    "classification": "returned"
+  },
+  {
+    "key": "1-double-deref-device",
+    "revision": 1,
+    "question": "Does explicit Deref result still support another Deref, or is it a metadata object?",
+    "compile_rc": 0,
+    "aml_sha256": "65a149bb30fcc02fb302540bb3fc5d210662a2948328c2fde32ab9a9e990dc1c",
+    "actual_revision": 1,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "b17e707b2deeee0de1fe92bf378d4639212a64f485c120038d9237f927510c23",
+    "disassembled_operations": [
+      "Alias",
+      "DerefOf",
+      "ObjectType",
+      "RefOf"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "0000000000000000"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [],
+        "ae_statuses": [
+          "AE_AML_OPERAND_TYPE"
+        ],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "000000000000000C"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [
+      "AE_AML_OPERAND_TYPE"
+    ],
+    "classification": "runtime_error"
+  },
+  {
+    "key": "1-arg-store-device-value",
+    "revision": 1,
+    "question": "Does Store to metadata-valued Arg replace its value or indirect to namespace target?",
+    "compile_rc": 0,
+    "aml_sha256": "422f4622ad700ad4e4324737e075ab602a27c4188222b0622ac710a4a7e8661d",
+    "actual_revision": 1,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "eccffc1e1a3426cf09e408243274b7fc03cdceb3b26e7ef6df692588e36053d0",
+    "disassembled_operations": [
+      "Alias",
+      "ObjectType"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "0000000000000000"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000003"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "000000000000000C"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [],
+    "classification": "returned"
+  },
+  {
+    "key": "1-arg-store-device-reference",
+    "revision": 1,
+    "question": "Does Store to metadata-valued Arg replace its value or indirect to namespace target?",
+    "compile_rc": 0,
+    "aml_sha256": "c8fc8599d465489a7e1fc0fbf8541cd6e9da8d9ed6e461f195cc2c6ac772df33",
+    "actual_revision": 1,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "15e60e612cdd8fa07fd6cde3fdb911a7f29379444532c953323a6f6c9b6b14f4",
+    "disassembled_operations": [
+      "Alias",
+      "ObjectType",
+      "RefOf"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "0000000000000000"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [],
+        "ae_statuses": [
+          "AE_AML_TARGET_TYPE"
+        ],
+        "raw_reference_lines": [
+          "ACPI Error: Target must be [Buffer/Integer/String/Reference], found [Device] (DEV0) (20260408/exstore-598)"
+        ]
+      },
+      "MARK": {
+        "values": [
+          "0000000000000002"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "000000000000000C"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [
+      "AE_AML_TARGET_TYPE"
+    ],
+    "classification": "runtime_error"
+  },
+  {
+    "key": "1-package-double-deref-device",
+    "revision": 1,
+    "question": "Does dereferencing package element yield metadata or another namespace reference?",
+    "compile_rc": 0,
+    "aml_sha256": "8d3295b4d3d5dc3712a9bf1e4b46be16d783b8ecb0d1f40ee007966c335ac1af",
+    "actual_revision": 1,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "08413ea65627d713d66d3b1f7a89ba2257e0b21f84535fecc3f2fad9417eb4d9",
+    "disassembled_operations": [
+      "Alias",
+      "DerefOf",
+      "ObjectType",
+      "Package"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "0000000000000000"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [],
+        "ae_statuses": [
+          "AE_TYPE"
+        ],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000002"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "000000000000000C"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [
+      "AE_TYPE"
+    ],
+    "classification": "runtime_error"
+  },
+  {
+    "key": "1-package-index-write-device",
+    "revision": 1,
+    "question": "Does indexed target replace package metadata element while leaving namespace metadata intact?",
+    "compile_rc": 0,
+    "aml_sha256": "1a58c0810cd994975723ee0311856ababd60a0911038501c5cefa7a892feddce",
+    "actual_revision": 1,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "f2fe1279e5097b9d314e74c80b50117037466722b88802b4d21c723689ca8ede",
+    "disassembled_operations": [
+      "Alias",
+      "DerefOf",
+      "ObjectType",
+      "Package"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "0000000000000000"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [
+          "000000000000002A"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000003"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "000000000000000C"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [],
+    "classification": "returned"
+  },
+  {
+    "key": "1-local-store-value",
+    "revision": 1,
+    "question": "Local replacement control for metadata vs explicit reference.",
+    "compile_rc": 255,
+    "classification": "compiler_rejected"
+  },
+  {
+    "key": "1-copy-then-deref-value",
+    "revision": 1,
+    "question": "Does CopyObject of metadata vs RefOf metadata preserve a distinguishable Deref behavior?",
+    "compile_rc": 0,
+    "aml_sha256": "17921fc14764ab007fba68a14ba03f743ff36bddf710dff6e66f5effc95f4978",
+    "actual_revision": 1,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "5e8484f3c689162540e389254cdcf381581688a0b9657ea2ad3382ca23e9eef7",
+    "disassembled_operations": [
+      "Alias",
+      "CopyObject",
+      "DerefOf",
+      "ObjectType"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "0000000000000000"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [
+          "0000000000000006"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000002"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "000000000000000C"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [],
+    "classification": "returned"
+  },
+  {
+    "key": "1-local-store-reference",
+    "revision": 1,
+    "question": "Local replacement control for metadata vs explicit reference.",
+    "compile_rc": 0,
+    "aml_sha256": "1770baa8ab41dd45b0f91b543f4a7a413693bb8b99e2bcf746960d60f9a0b91b",
+    "actual_revision": 1,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "cfe24f8f616f07b38992443102dd64d838983b52f81bfced480c66912fbfc929",
+    "disassembled_operations": [
+      "Alias",
+      "ObjectType",
+      "RefOf"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "0000000000000000"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [
+          "000000000000002A"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000003"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "000000000000000C"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [],
+    "classification": "returned"
+  },
+  {
+    "key": "1-copy-then-deref-reference",
+    "revision": 1,
+    "question": "Does CopyObject of metadata vs RefOf metadata preserve a distinguishable Deref behavior?",
+    "compile_rc": 0,
+    "aml_sha256": "8fc6072da26a4867ea249855b260cefe74cebffc6de8ca6d0c98cb3c90b8dfa4",
+    "actual_revision": 1,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "0a073263960f96046df91a1e600a7531447fe2a985b8ed8450cb75831997b14a",
+    "disassembled_operations": [
+      "Alias",
+      "CopyObject",
+      "DerefOf",
+      "ObjectType",
+      "RefOf"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "0000000000000000"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [
+          "0000000000000006"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000002"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "000000000000000C"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [],
+    "classification": "returned"
+  },
+  {
+    "key": "2-double-deref-root",
+    "revision": 2,
+    "question": "Does explicit Deref result still support another Deref, or is it a metadata object?",
+    "compile_rc": 0,
+    "aml_sha256": "0b9651d2b16093e412877a15f40c7bb7fa580b2a660e49f0f1ebfd6d8004c57d",
+    "actual_revision": 2,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "dba20af611b82be943d31df3926393d3470a0f42e08c4c804dc8568968783fe8",
+    "disassembled_operations": [
+      "Alias",
+      "DerefOf",
+      "ObjectType",
+      "RefOf"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "00000000FFFFFFFF"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [],
+        "ae_statuses": [
+          "AE_AML_OPERAND_TYPE"
+        ],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "000000000000000C"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [
+      "AE_AML_OPERAND_TYPE"
+    ],
+    "classification": "runtime_error"
+  },
+  {
+    "key": "2-arg-store-root-value",
+    "revision": 2,
+    "question": "Does Store to metadata-valued Arg replace its value or indirect to namespace target?",
+    "compile_rc": 0,
+    "aml_sha256": "96da86afa7c3d3083fc5acc3f5577d469ef32c09b7821d01b458848b63cc078f",
+    "actual_revision": 2,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "4db1320f257cc0165d0e5e25d1663fc1aac1dc9bb1aa7a5d2cf34e255aa01b98",
+    "disassembled_operations": [
+      "Alias",
+      "ObjectType"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "00000000FFFFFFFF"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000003"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "000000000000000C"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [],
+    "classification": "returned"
+  },
+  {
+    "key": "2-arg-store-root-reference",
+    "revision": 2,
+    "question": "Does Store to metadata-valued Arg replace its value or indirect to namespace target?",
+    "compile_rc": 0,
+    "aml_sha256": "ff885b9fa659ac3a610603c90a9ab6ac0ab5b961f7032550cf01849d6d7eb5e5",
+    "actual_revision": 2,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "a90814e9d007e98ad65662dbda1604a08006211abf07186ce495382a2b85aa57",
+    "disassembled_operations": [
+      "Alias",
+      "ObjectType",
+      "RefOf"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "00000000FFFFFFFF"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [],
+        "ae_statuses": [
+          "AE_AML_TARGET_TYPE"
+        ],
+        "raw_reference_lines": [
+          "ACPI Error: Target must be [Buffer/Integer/String/Reference], found [Device] (\\___) (20260408/exstore-598)"
+        ]
+      },
+      "MARK": {
+        "values": [
+          "0000000000000002"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "000000000000000C"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [
+      "AE_AML_TARGET_TYPE"
+    ],
+    "classification": "runtime_error"
+  },
+  {
+    "key": "2-package-double-deref-root",
+    "revision": 2,
+    "question": "Does dereferencing package element yield metadata or another namespace reference?",
+    "compile_rc": 0,
+    "aml_sha256": "9fc2e268ea72acf545a451017609801f86fc1092eb08b23268fe1001b8afab5d",
+    "actual_revision": 2,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "317e814c74749253342066cd4ff8ea322c8b7c217bc52aafb5f005fa74449d51",
+    "disassembled_operations": [
+      "Alias",
+      "DerefOf",
+      "ObjectType",
+      "Package"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "00000000FFFFFFFF"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [],
+        "ae_statuses": [
+          "AE_TYPE"
+        ],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000002"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "000000000000000C"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [
+      "AE_TYPE"
+    ],
+    "classification": "runtime_error"
+  },
+  {
+    "key": "2-package-index-write-root",
+    "revision": 2,
+    "question": "Does indexed target replace package metadata element while leaving namespace metadata intact?",
+    "compile_rc": 0,
+    "aml_sha256": "e368cc16d217cb919f165ae05f91454f1237d8b8be8e2eed1949ac881ca73f95",
+    "actual_revision": 2,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "9d72e41691dc67ee8aca4b5db3dd045c56120e65dfc6950b31c8024d05035142",
+    "disassembled_operations": [
+      "Alias",
+      "DerefOf",
+      "ObjectType",
+      "Package"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "00000000FFFFFFFF"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [
+          "000000000000002A"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000003"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "000000000000000C"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [],
+    "classification": "returned"
+  },
+  {
+    "key": "2-double-deref-device",
+    "revision": 2,
+    "question": "Does explicit Deref result still support another Deref, or is it a metadata object?",
+    "compile_rc": 0,
+    "aml_sha256": "9bec42428d5aa966e94520c7494c67fcab051a94fbf074007df8d6d5d7296e38",
+    "actual_revision": 2,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "94790930156d95f8410b9b1bc963bd6128a74575bc96c148ce4a08503470c3c9",
+    "disassembled_operations": [
+      "Alias",
+      "DerefOf",
+      "ObjectType",
+      "RefOf"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "00000000FFFFFFFF"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [],
+        "ae_statuses": [
+          "AE_AML_OPERAND_TYPE"
+        ],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "000000000000000C"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [
+      "AE_AML_OPERAND_TYPE"
+    ],
+    "classification": "runtime_error"
+  },
+  {
+    "key": "2-arg-store-device-value",
+    "revision": 2,
+    "question": "Does Store to metadata-valued Arg replace its value or indirect to namespace target?",
+    "compile_rc": 0,
+    "aml_sha256": "daf11d7e34024e6f783d91dd0d8391753542820df3af4b5b6bf8f27de6296dd4",
+    "actual_revision": 2,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "ffaab93771c63eceed63672ce9381b46d6000e94ecf56951e83e75369b886037",
+    "disassembled_operations": [
+      "Alias",
+      "ObjectType"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "00000000FFFFFFFF"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000003"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "000000000000000C"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [],
+    "classification": "returned"
+  },
+  {
+    "key": "2-arg-store-device-reference",
+    "revision": 2,
+    "question": "Does Store to metadata-valued Arg replace its value or indirect to namespace target?",
+    "compile_rc": 0,
+    "aml_sha256": "33574282f033b526ff70c21622cdc79b3a3aebd40396b4565f6b73c5c8dc5a8e",
+    "actual_revision": 2,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "5380aacf502bea5f78c0619a3767a9562c022c711194ca30f9e553b57c2d28ca",
+    "disassembled_operations": [
+      "Alias",
+      "ObjectType",
+      "RefOf"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "00000000FFFFFFFF"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [],
+        "ae_statuses": [
+          "AE_AML_TARGET_TYPE"
+        ],
+        "raw_reference_lines": [
+          "ACPI Error: Target must be [Buffer/Integer/String/Reference], found [Device] (DEV0) (20260408/exstore-598)"
+        ]
+      },
+      "MARK": {
+        "values": [
+          "0000000000000002"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "000000000000000C"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [
+      "AE_AML_TARGET_TYPE"
+    ],
+    "classification": "runtime_error"
+  },
+  {
+    "key": "2-package-double-deref-device",
+    "revision": 2,
+    "question": "Does dereferencing package element yield metadata or another namespace reference?",
+    "compile_rc": 0,
+    "aml_sha256": "e0dd2d4ff890a2aca3f2e8a494257f8b1634c6eddd2726cca96608e86ac820cd",
+    "actual_revision": 2,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "c92221b30a655a9380b999b2853e84e7c971e5229f46163f813a72194461ca3c",
+    "disassembled_operations": [
+      "Alias",
+      "DerefOf",
+      "ObjectType",
+      "Package"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "00000000FFFFFFFF"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [],
+        "ae_statuses": [
+          "AE_TYPE"
+        ],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000002"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "000000000000000C"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [
+      "AE_TYPE"
+    ],
+    "classification": "runtime_error"
+  },
+  {
+    "key": "2-package-index-write-device",
+    "revision": 2,
+    "question": "Does indexed target replace package metadata element while leaving namespace metadata intact?",
+    "compile_rc": 0,
+    "aml_sha256": "9117160b320cce48b62b288cea1e0133416970774e9d655d6157488251642251",
+    "actual_revision": 2,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "6adbf3376fbee4f1ea28b65b4487bd12c3aadd612055831dd94d22d30bf822b3",
+    "disassembled_operations": [
+      "Alias",
+      "DerefOf",
+      "ObjectType",
+      "Package"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "00000000FFFFFFFF"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [
+          "000000000000002A"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000003"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "000000000000000C"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [],
+    "classification": "returned"
+  },
+  {
+    "key": "2-local-store-value",
+    "revision": 2,
+    "question": "Local replacement control for metadata vs explicit reference.",
+    "compile_rc": 255,
+    "classification": "compiler_rejected"
+  },
+  {
+    "key": "2-copy-then-deref-value",
+    "revision": 2,
+    "question": "Does CopyObject of metadata vs RefOf metadata preserve a distinguishable Deref behavior?",
+    "compile_rc": 0,
+    "aml_sha256": "c261146661c6415fc7c7e18278190c1008b76d61c5cc7d98383f0601dec8b712",
+    "actual_revision": 2,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "20acb6157b15689562076dd25c159d05c1a041ea2dade55a987ccf5a3f2aeb54",
+    "disassembled_operations": [
+      "Alias",
+      "CopyObject",
+      "DerefOf",
+      "ObjectType"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "00000000FFFFFFFF"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [
+          "0000000000000006"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000002"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "000000000000000C"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [],
+    "classification": "returned"
+  },
+  {
+    "key": "2-local-store-reference",
+    "revision": 2,
+    "question": "Local replacement control for metadata vs explicit reference.",
+    "compile_rc": 0,
+    "aml_sha256": "0aa8b0eed7ae38b38e7fd267ca2be1062c58d14f599ce617a70003798e880d71",
+    "actual_revision": 2,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "148dd53737ad4fc0cf771d9eb299cd3cfc306ccd357a24e8ad72e5dd470393a4",
+    "disassembled_operations": [
+      "Alias",
+      "ObjectType",
+      "RefOf"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "00000000FFFFFFFF"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [
+          "000000000000002A"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000003"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "000000000000000C"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [],
+    "classification": "returned"
+  },
+  {
+    "key": "2-copy-then-deref-reference",
+    "revision": 2,
+    "question": "Does CopyObject of metadata vs RefOf metadata preserve a distinguishable Deref behavior?",
+    "compile_rc": 0,
+    "aml_sha256": "47e872de167cc5bde6910f44acc721008103108468101d1b0271d54f068d9dad",
+    "actual_revision": 2,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "39bb5f65ec21da2d0225d7d2fe1501da75071d58dba8ca30818415b7a3cc0f15",
+    "disassembled_operations": [
+      "Alias",
+      "CopyObject",
+      "DerefOf",
+      "ObjectType",
+      "RefOf"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "00000000FFFFFFFF"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [
+          "0000000000000006"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000002"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "000000000000000C"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [],
+    "classification": "returned"
+  }
+]

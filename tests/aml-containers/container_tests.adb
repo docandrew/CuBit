@@ -6,6 +6,8 @@ with AML_Namespace;
 with AML_References;
 with AML_Table_Backing;
 procedure Container_Tests is
+   use type AML_Execute.Named_Metadata_Type;
+   use type AML_Decode.Bytes;
    use type Byte; use type Integer_Value;
    package NS is new AML_Namespace (32, AML_Delays.Unavailable_Provider);
    use NS; use NS.Owned;
@@ -52,11 +54,11 @@ procedure Container_Tests is
    end Bindings;
 begin
    Input.Count := 1; Input.Tables (1) := (0,36);
-   Input.Data (1 .. 4) := [68,83,68,84];
-   Input.Data (5) := 36; Input.Data (9) := 2;
+   Input.Data.Bytes (1 .. 4) := [68,83,68,84];
+   Input.Data.Bytes (5) := 36; Input.Data.Bytes (9) := 2;
    declare Sum : Byte := 0; begin
-      for B of Input.Data loop Sum := Sum + B; end loop;
-      Input.Data (10) := 0 - Sum;
+      for B of Input.Data.Bytes loop Sum := Sum + B; end loop;
+      Input.Data.Bytes (10) := 0 - Sum;
    end;
    for Width in Integer_Width loop
       for K in Container_Kind loop

@@ -1,0 +1,1 @@
+DefinitionBlock("", "DSDT", 2, "CUBIT", "TAIL", 1){ Method(TEST,1){Store(0,Local0) If(Increment(Local0)){Return(Local0)} Else {Return(99)}}}

@@ -3,6 +3,7 @@ with AML_Decode; use AML_Decode;
 with AML_Execute; use AML_Execute;
 with Namespace_Instance;
 procedure Method_Tests is
+   use type AML_Decode.Bytes;
    package NS renames Namespace_Instance;
    use type NS.Load_Status;
    use type NS.Object_Kind;
@@ -25,14 +26,14 @@ begin
       Tree := NS.Empty;
       NS.Load_Names (Tree, Data, W, Loaded);
       Check (Loaded = NS.Loaded and then NS.Kind (Tree, 1) = NS.Method_Object);
-      R := NS.Invoke (Tree, 1, Args, 1, 2);
+      NS.Invoke_Read_Only (Tree, 1, Args, 1, 2, R);
       Check (R.Status = Returned and then R.Value =
         Args (0));
-      R := NS.Invoke (Tree, 1, Args, 0, 2);
+      NS.Invoke_Read_Only (Tree, 1, Args, 0, 2, R);
       Check (R.Status = Argument_Mismatch and then R.Charged = 0);
-      R := NS.Invoke (Tree, 0, Args, 0, 2);
+      NS.Invoke_Read_Only (Tree, 0, Args, 0, 2, R);
       Check (R.Status = Invalid_Method);
-      R := NS.Invoke (Tree, 1, Args, 1, 1);
+      NS.Invoke_Read_Only (Tree, 1, Args, 1, 1, R);
       Check (R.Status = Budget_Exceeded);
    end loop;
    for Flags in 0 .. 255 loop
@@ -40,7 +41,7 @@ begin
       Tree := NS.Empty;
       NS.Load_Names (Tree, Data, Bits_64, Loaded);
       Check (Loaded = NS.Loaded);
-      R := NS.Invoke (Tree, 1, Args, Flags mod 8, 10);
+      NS.Invoke_Read_Only (Tree, 1, Args, Flags mod 8, 10, R);
       Check ((if Flags mod 8 = 0 then R.Status = Missing_Argument
               else R.Status = Returned));
    end loop;
@@ -54,7 +55,7 @@ begin
    NS.Load_Names (Tree, Data & [8,16#56#,16#41#,16#4C#,16#30#,1], Bits_64, Loaded);
    Check (Loaded = NS.Loaded and then NS.Kind (Tree, 2) = NS.Integer_Object);
    Data (9) := 0; --  Caller mutation cannot change the owned method body.
-   R := NS.Invoke (Tree, 1, Args, 1, 10);
+   NS.Invoke_Read_Only (Tree, 1, Args, 1, 10, R);
    Check (R.Status = Returned and then R.Value = Args (0));
    Before := Tree;
    NS.Load_Names (Tree, [16#14#,5,16#42#,16#41#,16#44#,16#30#], Bits_64, Loaded);

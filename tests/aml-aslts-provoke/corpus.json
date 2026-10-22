@@ -1,0 +1,41 @@
+{
+  "cases": [
+    {
+      "case": "provoke-n64",
+      "aml": "tests/aml-aslts-provoke/reference/provoke-n64.aml",
+      "aml_sha256": "7a3d4fa216eca024a697631451cb2f72a172e9cef8aa6dca56434c4134520f62",
+      "expected_MN00": 0,
+      "expected_ERRS": 0,
+      "repeats": 2,
+      "expected_RMRC": [
+        5,
+        10
+      ],
+      "expected_records_per_run": [
+        ":STST:complex:provoke:m130:PASS:",
+        ":STST:complex:provoke:m132:PASS:",
+        ":STST:complex:provoke:m133:PASS:",
+        ":STST:complex:provoke:m134:PASS:",
+        ":STST:complex:provoke:m136:PASS:"
+      ]
+    }
+  ],
+  "not_run": [
+    "all other entrypoints/configurations; no full corpus claim"
+  ],
+  "expectation_basis": "Original full suite success assertions, NOT observed failing ACPICA result. A hosted pass is not differential parity.",
+  "reference_observed": {
+    "MN00": [
+      1,
+      1
+    ],
+    "ERRS": [
+      4,
+      8
+    ],
+    "failed_cases": [
+      "m133",
+      "m134"
+    ]
+  }
+}

@@ -14,7 +14,7 @@ procedure Selection_Tests is
    procedure Put (Offset : Natural; Text : String) is
    begin
       for I in Text'Range loop
-         Input.Data (Offset + I - Text'First + 1) := Character'Pos (Text (I));
+         Input.Data.Bytes (Offset + I - Text'First + 1) := Character'Pos (Text (I));
       end loop;
    end Put;
 begin

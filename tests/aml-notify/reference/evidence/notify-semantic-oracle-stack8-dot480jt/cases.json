@@ -1,0 +1,207 @@
+[
+  {
+    "name": "target-DEV0-0x01",
+    "body": "Notify (DEV0, 0x01)",
+    "extra": ""
+  },
+  {
+    "name": "target-DEV0-0x80",
+    "body": "Notify (DEV0, 0x80)",
+    "extra": ""
+  },
+  {
+    "name": "target-THM0-0x01",
+    "body": "Notify (THM0, 0x01)",
+    "extra": ""
+  },
+  {
+    "name": "target-THM0-0x80",
+    "body": "Notify (THM0, 0x80)",
+    "extra": ""
+  },
+  {
+    "name": "target-CPU0-0x01",
+    "body": "Notify (CPU0, 0x01)",
+    "extra": ""
+  },
+  {
+    "name": "target-CPU0-0x80",
+    "body": "Notify (CPU0, 0x80)",
+    "extra": ""
+  },
+  {
+    "name": "target-ALS0-0x01",
+    "body": "Notify (ALS0, 0x01)",
+    "extra": ""
+  },
+  {
+    "name": "target-ALS0-0x80",
+    "body": "Notify (ALS0, 0x80)",
+    "extra": ""
+  },
+  {
+    "name": "value-Zero",
+    "body": "Notify (DEV0, Zero)",
+    "extra": ""
+  },
+  {
+    "name": "value-0x7F",
+    "body": "Notify (DEV0, 0x7F)",
+    "extra": ""
+  },
+  {
+    "name": "value-0xFF",
+    "body": "Notify (DEV0, 0xFF)",
+    "extra": ""
+  },
+  {
+    "name": "value-0x100",
+    "body": "Notify (DEV0, 0x100)",
+    "extra": ""
+  },
+  {
+    "name": "value-0xFFFF",
+    "body": "Notify (DEV0, 0xFFFF)",
+    "extra": ""
+  },
+  {
+    "name": "value-0x10000",
+    "body": "Notify (DEV0, 0x10000)",
+    "extra": ""
+  },
+  {
+    "name": "value-0x10080",
+    "body": "Notify (DEV0, 0x10080)",
+    "extra": ""
+  },
+  {
+    "name": "value-0xFFFFFFFF",
+    "body": "Notify (DEV0, 0xFFFFFFFF)",
+    "extra": ""
+  },
+  {
+    "name": "value-0x100000000",
+    "body": "Notify (DEV0, 0x100000000)",
+    "extra": ""
+  },
+  {
+    "name": "value-Ones",
+    "body": "Notify (DEV0, Ones)",
+    "extra": ""
+  },
+  {
+    "name": "coerce-string",
+    "body": "Notify (DEV0, VAL0())",
+    "extra": "Method (VAL0,0) { Store (2, MARK) Return (\"80\") }"
+  },
+  {
+    "name": "coerce-buffer",
+    "body": "Notify (DEV0, VAL0())",
+    "extra": "Method (VAL0,0) { Store (2, MARK) Return (Buffer(){0x80}) }"
+  },
+  {
+    "name": "coerce-empty-buffer",
+    "body": "Notify (DEV0, VAL0())",
+    "extra": "Method (VAL0,0) { Store (2, MARK) Return (Buffer(){}) }"
+  },
+  {
+    "name": "coerce-bad-string",
+    "body": "Notify (DEV0, VAL0())",
+    "extra": "Method (VAL0,0) { Store (2, MARK) Return (\"ZZ\") }"
+  },
+  {
+    "name": "coerce-package",
+    "body": "Notify (DEV0, VAL0())",
+    "extra": "Method (VAL0,0) { Store (2, MARK) Return (Package(){One}) }"
+  },
+  {
+    "name": "local-ref",
+    "body": "Store (RefOf(DEV0), Local0) Notify (Local0, 0x80)",
+    "extra": ""
+  },
+  {
+    "name": "arg-ref",
+    "body": "HELP(RefOf(DEV0))",
+    "extra": "Method(HELP,1){Notify(Arg0,0x80)}"
+  },
+  {
+    "name": "deref-local",
+    "body": "Store (RefOf(DEV0), Local0) Notify (DerefOf(Local0), 0x80)",
+    "extra": ""
+  },
+  {
+    "name": "value-effects",
+    "body": "Notify(DEV0,VAL0())",
+    "extra": "Method(VAL0,0){Store(2,MARK) Return(0x80)}"
+  },
+  {
+    "name": "invalid-INT0",
+    "body": "Notify(INT0, VAL0())",
+    "extra": "Method(VAL0,0){Store(2,MARK) Return(0x80)}"
+  },
+  {
+    "name": "invalid-STR0",
+    "body": "Notify(STR0, VAL0())",
+    "extra": "Method(VAL0,0){Store(2,MARK) Return(0x80)}"
+  },
+  {
+    "name": "invalid-BUF0",
+    "body": "Notify(BUF0, VAL0())",
+    "extra": "Method(VAL0,0){Store(2,MARK) Return(0x80)}"
+  },
+  {
+    "name": "invalid-PKG0",
+    "body": "Notify(PKG0, VAL0())",
+    "extra": "Method(VAL0,0){Store(2,MARK) Return(0x80)}"
+  },
+  {
+    "name": "invalid-MTX0",
+    "body": "Notify(MTX0, VAL0())",
+    "extra": "Method(VAL0,0){Store(2,MARK) Return(0x80)}"
+  },
+  {
+    "name": "invalid-Local0",
+    "body": "Notify(Local0, VAL0())",
+    "extra": "Method(VAL0,0){Store(2,MARK) Return(0x80)}"
+  },
+  {
+    "name": "value-failure",
+    "body": "Notify(DEV0,VAL0())",
+    "extra": "Method(VAL0,0){Store(2,MARK) Divide(One,Zero,Local0,Local1) Return(0x80)}"
+  },
+  {
+    "name": "invalid-and-value-failure",
+    "body": "Notify(INT0,VAL0())",
+    "extra": "Method(VAL0,0){Store(2,MARK) Divide(One,Zero,Local0,Local1) Return(0x80)}"
+  },
+  {
+    "name": "notify-then-failure",
+    "body": "Notify(DEV0,0x80) Store(2,MARK) Divide(One,Zero,Local0,Local1)",
+    "extra": ""
+  },
+  {
+    "name": "repeat",
+    "body": "Notify(DEV0,0x80) Notify(DEV0,0x80) Notify(DEV0,0x81)",
+    "extra": ""
+  },
+  {
+    "name": "target-capture",
+    "body": "Store(RefOf(DEV0),Local0) Notify(Local0,SWAP(RefOf(Local0)))",
+    "extra": "Method(SWAP,1){Store(RefOf(DEV1),Arg0) Store(2,MARK) Return(0x80)}"
+  },
+  {
+    "name": "unknown-target",
+    "extra": "External(MISS,DeviceObj) Method(VAL0,0){Store(2,MARK) Return(0x80)}",
+    "body": "Notify(MISS,VAL0())"
+  },
+  {
+    "name": "local-value-effects",
+    "extra": "Method(VAL0,0){Store(2,MARK) Return(0x80)}",
+    "body": "Store(RefOf(DEV0),Local0) Notify(Local0,VAL0())"
+  },
+  {
+    "name": "local-value-failure",
+    "extra": "Method(VAL0,0){Store(2,MARK) Divide(One,Zero,Local1,Local2) Return(0x80)}",
+    "body": "Store(RefOf(DEV0),Local0) Notify(Local0,VAL0())"
+  }
+]

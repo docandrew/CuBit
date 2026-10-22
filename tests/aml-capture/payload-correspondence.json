@@ -1,0 +1,4321 @@
+{
+  "scope": "Every long literal oracle payload array in11 replay mains matched full AML table body with valid length/checksum. Fixture expectations byte-identical to previously independently reviewed and runtime-tested source; this check does not newly infer expected statuses from interpreter output. Four other capture mains are structural/cleanup controls, not independent oracle tables.",
+  "payloads": [
+    {
+      "fixture": "tests/aml-scalar-operators/numeric_source_timing_tests.adb",
+      "fixture_sha256": "024f02925a0adb1c75cef5d735fe929d7775d284c1300fddfabe7f440dcaf8d3",
+      "array_ordinal": 1,
+      "body_sha256": "3dd1604279c8bfeb4dc8829346cb3ff4523dbffaa12a459f2e0c09fb61c949d6",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/numeric-timing-reference/r1-add-left-store.aml",
+          "sha256": "18ff62b5120d7314188bf45fddb41eec635fb43c8c6ff499fd02deafd5e36460",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-scalar-operators/numeric-timing-reference/r2-add-left-store.aml",
+          "sha256": "3f98ca16400d85d62a23c7ef738e4cdd996cac3dd1a106b349a4d575d10d0432",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/numeric_source_timing_tests.adb",
+      "fixture_sha256": "024f02925a0adb1c75cef5d735fe929d7775d284c1300fddfabe7f440dcaf8d3",
+      "array_ordinal": 2,
+      "body_sha256": "665656f07097c58beb62bac7a4588a4d33e35bf647dd018e42e10a1c8ba63d17",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/numeric-timing-reference/r1-add-left-copyobject.aml",
+          "sha256": "723235836f37ebc538e1a71c1e8dd61c42f9e4db44cd4f469d83bf92cdb3d2fc",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-scalar-operators/numeric-timing-reference/r2-add-left-copyobject.aml",
+          "sha256": "1c8889d8b66aeb1ea3d4044234e552bbf3f38951e15dce769443f068a994b1a0",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/numeric_source_timing_tests.adb",
+      "fixture_sha256": "024f02925a0adb1c75cef5d735fe929d7775d284c1300fddfabe7f440dcaf8d3",
+      "array_ordinal": 3,
+      "body_sha256": "196e5104d4b0c7035c0474893394dd6ea6272ba00c0bc1372ef9946ec7378ccd",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/numeric-timing-reference/r2-add-right-target-store.aml",
+          "sha256": "e7efa3923a60b378b1de37d44ffb2a7edf01568a2fde7f037ff995cc69d7e5ce",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-scalar-operators/numeric-timing-reference/r1-add-right-target-store.aml",
+          "sha256": "05057843f58e9c187781daf7eb8fafa2c6e3c4541fc4c459858bfd2644ff1126",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/numeric_source_timing_tests.adb",
+      "fixture_sha256": "024f02925a0adb1c75cef5d735fe929d7775d284c1300fddfabe7f440dcaf8d3",
+      "array_ordinal": 4,
+      "body_sha256": "f7eb0ecf5f64e86f2828b2388c2968b1e8efd01dbf0cb3fa225d25acf857a9ce",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/numeric-timing-reference/r2-add-right-target-copyobject.aml",
+          "sha256": "d449a858258758c4e88a69aba9844490bf2090508a6bd1f5cd673c4885bd7f2d",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-scalar-operators/numeric-timing-reference/r1-add-right-target-copyobject.aml",
+          "sha256": "e5e99f335292e9149152d5dc83125e3568dfbb7ec3b98bb80badd81fce4331dc",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/numeric_source_timing_tests.adb",
+      "fixture_sha256": "024f02925a0adb1c75cef5d735fe929d7775d284c1300fddfabe7f440dcaf8d3",
+      "array_ordinal": 5,
+      "body_sha256": "0d4081814db7e46acf035a917fd54320948a6e29f8ce7fddef3f4806bac3158c",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/numeric-timing-reference/r2-equal-left-store.aml",
+          "sha256": "b0bc9d89e2fc02adf716b7f6e905005053507f842fe98616b5d089420f29fa35",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-scalar-operators/numeric-timing-reference/r1-equal-left-store.aml",
+          "sha256": "d051b7b47d7b099d04430e0a62bc3330f2ce8af814b841d2e9ae9cd92d3e5705",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/numeric_source_timing_tests.adb",
+      "fixture_sha256": "024f02925a0adb1c75cef5d735fe929d7775d284c1300fddfabe7f440dcaf8d3",
+      "array_ordinal": 6,
+      "body_sha256": "dbdf898c6238fcfcc4a21c033dbab6bcf253cad11d867a78df5c1c0179cc9338",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/numeric-timing-reference/r2-equal-left-copyobject.aml",
+          "sha256": "602fd265ede1d933da8835583ccac6be06423b8b658c528300a3daf11e1964c1",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-scalar-operators/numeric-timing-reference/r1-equal-left-copyobject.aml",
+          "sha256": "03fbdbeffe101567833e4f03c0490a1c5ff42bc658a4694761a58bf02df08e24",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/numeric_source_timing_tests.adb",
+      "fixture_sha256": "024f02925a0adb1c75cef5d735fe929d7775d284c1300fddfabe7f440dcaf8d3",
+      "array_ordinal": 7,
+      "body_sha256": "cdbaa44f3263d61654aa8b21e8937021d710b4dae4882a8f15c958ccfe67d53e",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/numeric-timing-reference/r2-land-left-store.aml",
+          "sha256": "614a8b9216c34a4025f24165c5068d661b94f96f82c9ca972c0318a35b0c5ed0",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-scalar-operators/numeric-timing-reference/r1-land-left-store.aml",
+          "sha256": "50e1783d7d6400bcec13ee21937db39db556b4c25fe335152c289ef593b24368",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/numeric_source_timing_tests.adb",
+      "fixture_sha256": "024f02925a0adb1c75cef5d735fe929d7775d284c1300fddfabe7f440dcaf8d3",
+      "array_ordinal": 8,
+      "body_sha256": "c8e69827a0abca7a6620ad41387820e8e273db30f6b7f008917fada1baa68353",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/numeric-timing-reference/r2-land-left-copyobject.aml",
+          "sha256": "9ab2af76236a9025c80a2c1eac7e5e241c45e26cc96f35c1a636f3ef262c62e1",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-scalar-operators/numeric-timing-reference/r1-land-left-copyobject.aml",
+          "sha256": "a76bd65831762691f726687e1852e14a3f8c505475caa2740c6a321f8feef0b3",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/numeric_source_timing_tests.adb",
+      "fixture_sha256": "024f02925a0adb1c75cef5d735fe929d7775d284c1300fddfabe7f440dcaf8d3",
+      "array_ordinal": 9,
+      "body_sha256": "f3d3006b16630c991af71614631d3a797a670f5f6c3b9e5e28e86decc9f136f5",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/numeric-timing-reference/r2-named-add-left-store.aml",
+          "sha256": "917e84aca32af309d332dda935883ca1ecc161b345ca0c01497aa19863578af4",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-scalar-operators/numeric-timing-reference/r1-named-add-left-store.aml",
+          "sha256": "8f48cb57a6ffeb26ef570aa04faa23babd928d65a19d0e8cc49da5b6cf836058",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/numeric_source_timing_tests.adb",
+      "fixture_sha256": "024f02925a0adb1c75cef5d735fe929d7775d284c1300fddfabe7f440dcaf8d3",
+      "array_ordinal": 10,
+      "body_sha256": "d4177b2c85c9bd006f32b1acbca45658426e592d89b88880bfe8f88dc40566d3",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/numeric-timing-reference/r1-named-add-left-copyobject.aml",
+          "sha256": "5824cd77340f0c45b244f92f1e6664f6e485cd1bcaa4ff41aff433c5fd12a025",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-scalar-operators/numeric-timing-reference/r2-named-add-left-copyobject.aml",
+          "sha256": "0d120f9a2bcbe5e709f9d4de5feafa56e618fafbf6a6f49878e2b30dd65f2a70",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/numeric_source_timing_tests.adb",
+      "fixture_sha256": "024f02925a0adb1c75cef5d735fe929d7775d284c1300fddfabe7f440dcaf8d3",
+      "array_ordinal": 11,
+      "body_sha256": "4fc24b64e917a23f275400cf62a226910aefc5d868ca92267e5766e811050881",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/numeric-timing-reference/r1-named-add-right-target-store.aml",
+          "sha256": "8a3a56f815c35a48e9d6378c6548f3fd0a81e854ba87a3c3ffb19ea6890b21a8",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-scalar-operators/numeric-timing-reference/r2-named-add-right-target-store.aml",
+          "sha256": "95fffc392fc0ede83b2fc2ed9f5ce8da3bea5c3dbcc5cca5cefe43abe7f3d0f6",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/numeric_source_timing_tests.adb",
+      "fixture_sha256": "024f02925a0adb1c75cef5d735fe929d7775d284c1300fddfabe7f440dcaf8d3",
+      "array_ordinal": 12,
+      "body_sha256": "f5cd269c4031a07287f5c01ee4d925f9e91b368d4aa67589b34f38d561c6b336",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/numeric-timing-reference/r1-named-add-right-target-copyobject.aml",
+          "sha256": "b294f59fa38813e88ea2e39aceebafc84a2a0558aa122b49b0dc26028ced1456",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-scalar-operators/numeric-timing-reference/r2-named-add-right-target-copyobject.aml",
+          "sha256": "4b0fb92a2158f0b816afde540d67c7d4fcad7d45cf6132bf60a34484f4c72695",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/numeric_source_timing_tests.adb",
+      "fixture_sha256": "024f02925a0adb1c75cef5d735fe929d7775d284c1300fddfabe7f440dcaf8d3",
+      "array_ordinal": 13,
+      "body_sha256": "3dd1604279c8bfeb4dc8829346cb3ff4523dbffaa12a459f2e0c09fb61c949d6",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/numeric-timing-reference/r1-add-left-store.aml",
+          "sha256": "18ff62b5120d7314188bf45fddb41eec635fb43c8c6ff499fd02deafd5e36460",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-scalar-operators/numeric-timing-reference/r2-add-left-store.aml",
+          "sha256": "3f98ca16400d85d62a23c7ef738e4cdd996cac3dd1a106b349a4d575d10d0432",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/numeric_source_timing_tests.adb",
+      "fixture_sha256": "024f02925a0adb1c75cef5d735fe929d7775d284c1300fddfabe7f440dcaf8d3",
+      "array_ordinal": 14,
+      "body_sha256": "665656f07097c58beb62bac7a4588a4d33e35bf647dd018e42e10a1c8ba63d17",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/numeric-timing-reference/r1-add-left-copyobject.aml",
+          "sha256": "723235836f37ebc538e1a71c1e8dd61c42f9e4db44cd4f469d83bf92cdb3d2fc",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-scalar-operators/numeric-timing-reference/r2-add-left-copyobject.aml",
+          "sha256": "1c8889d8b66aeb1ea3d4044234e552bbf3f38951e15dce769443f068a994b1a0",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/numeric_source_timing_tests.adb",
+      "fixture_sha256": "024f02925a0adb1c75cef5d735fe929d7775d284c1300fddfabe7f440dcaf8d3",
+      "array_ordinal": 15,
+      "body_sha256": "196e5104d4b0c7035c0474893394dd6ea6272ba00c0bc1372ef9946ec7378ccd",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/numeric-timing-reference/r2-add-right-target-store.aml",
+          "sha256": "e7efa3923a60b378b1de37d44ffb2a7edf01568a2fde7f037ff995cc69d7e5ce",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-scalar-operators/numeric-timing-reference/r1-add-right-target-store.aml",
+          "sha256": "05057843f58e9c187781daf7eb8fafa2c6e3c4541fc4c459858bfd2644ff1126",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/numeric_source_timing_tests.adb",
+      "fixture_sha256": "024f02925a0adb1c75cef5d735fe929d7775d284c1300fddfabe7f440dcaf8d3",
+      "array_ordinal": 16,
+      "body_sha256": "f7eb0ecf5f64e86f2828b2388c2968b1e8efd01dbf0cb3fa225d25acf857a9ce",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/numeric-timing-reference/r2-add-right-target-copyobject.aml",
+          "sha256": "d449a858258758c4e88a69aba9844490bf2090508a6bd1f5cd673c4885bd7f2d",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-scalar-operators/numeric-timing-reference/r1-add-right-target-copyobject.aml",
+          "sha256": "e5e99f335292e9149152d5dc83125e3568dfbb7ec3b98bb80badd81fce4331dc",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/numeric_source_timing_tests.adb",
+      "fixture_sha256": "024f02925a0adb1c75cef5d735fe929d7775d284c1300fddfabe7f440dcaf8d3",
+      "array_ordinal": 17,
+      "body_sha256": "0d4081814db7e46acf035a917fd54320948a6e29f8ce7fddef3f4806bac3158c",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/numeric-timing-reference/r2-equal-left-store.aml",
+          "sha256": "b0bc9d89e2fc02adf716b7f6e905005053507f842fe98616b5d089420f29fa35",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-scalar-operators/numeric-timing-reference/r1-equal-left-store.aml",
+          "sha256": "d051b7b47d7b099d04430e0a62bc3330f2ce8af814b841d2e9ae9cd92d3e5705",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/numeric_source_timing_tests.adb",
+      "fixture_sha256": "024f02925a0adb1c75cef5d735fe929d7775d284c1300fddfabe7f440dcaf8d3",
+      "array_ordinal": 18,
+      "body_sha256": "dbdf898c6238fcfcc4a21c033dbab6bcf253cad11d867a78df5c1c0179cc9338",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/numeric-timing-reference/r2-equal-left-copyobject.aml",
+          "sha256": "602fd265ede1d933da8835583ccac6be06423b8b658c528300a3daf11e1964c1",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-scalar-operators/numeric-timing-reference/r1-equal-left-copyobject.aml",
+          "sha256": "03fbdbeffe101567833e4f03c0490a1c5ff42bc658a4694761a58bf02df08e24",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/numeric_source_timing_tests.adb",
+      "fixture_sha256": "024f02925a0adb1c75cef5d735fe929d7775d284c1300fddfabe7f440dcaf8d3",
+      "array_ordinal": 19,
+      "body_sha256": "cdbaa44f3263d61654aa8b21e8937021d710b4dae4882a8f15c958ccfe67d53e",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/numeric-timing-reference/r2-land-left-store.aml",
+          "sha256": "614a8b9216c34a4025f24165c5068d661b94f96f82c9ca972c0318a35b0c5ed0",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-scalar-operators/numeric-timing-reference/r1-land-left-store.aml",
+          "sha256": "50e1783d7d6400bcec13ee21937db39db556b4c25fe335152c289ef593b24368",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/numeric_source_timing_tests.adb",
+      "fixture_sha256": "024f02925a0adb1c75cef5d735fe929d7775d284c1300fddfabe7f440dcaf8d3",
+      "array_ordinal": 20,
+      "body_sha256": "c8e69827a0abca7a6620ad41387820e8e273db30f6b7f008917fada1baa68353",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/numeric-timing-reference/r2-land-left-copyobject.aml",
+          "sha256": "9ab2af76236a9025c80a2c1eac7e5e241c45e26cc96f35c1a636f3ef262c62e1",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-scalar-operators/numeric-timing-reference/r1-land-left-copyobject.aml",
+          "sha256": "a76bd65831762691f726687e1852e14a3f8c505475caa2740c6a321f8feef0b3",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/numeric_source_timing_tests.adb",
+      "fixture_sha256": "024f02925a0adb1c75cef5d735fe929d7775d284c1300fddfabe7f440dcaf8d3",
+      "array_ordinal": 21,
+      "body_sha256": "f3d3006b16630c991af71614631d3a797a670f5f6c3b9e5e28e86decc9f136f5",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/numeric-timing-reference/r2-named-add-left-store.aml",
+          "sha256": "917e84aca32af309d332dda935883ca1ecc161b345ca0c01497aa19863578af4",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-scalar-operators/numeric-timing-reference/r1-named-add-left-store.aml",
+          "sha256": "8f48cb57a6ffeb26ef570aa04faa23babd928d65a19d0e8cc49da5b6cf836058",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/numeric_source_timing_tests.adb",
+      "fixture_sha256": "024f02925a0adb1c75cef5d735fe929d7775d284c1300fddfabe7f440dcaf8d3",
+      "array_ordinal": 22,
+      "body_sha256": "d4177b2c85c9bd006f32b1acbca45658426e592d89b88880bfe8f88dc40566d3",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/numeric-timing-reference/r1-named-add-left-copyobject.aml",
+          "sha256": "5824cd77340f0c45b244f92f1e6664f6e485cd1bcaa4ff41aff433c5fd12a025",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-scalar-operators/numeric-timing-reference/r2-named-add-left-copyobject.aml",
+          "sha256": "0d120f9a2bcbe5e709f9d4de5feafa56e618fafbf6a6f49878e2b30dd65f2a70",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/numeric_source_timing_tests.adb",
+      "fixture_sha256": "024f02925a0adb1c75cef5d735fe929d7775d284c1300fddfabe7f440dcaf8d3",
+      "array_ordinal": 23,
+      "body_sha256": "4fc24b64e917a23f275400cf62a226910aefc5d868ca92267e5766e811050881",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/numeric-timing-reference/r1-named-add-right-target-store.aml",
+          "sha256": "8a3a56f815c35a48e9d6378c6548f3fd0a81e854ba87a3c3ffb19ea6890b21a8",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-scalar-operators/numeric-timing-reference/r2-named-add-right-target-store.aml",
+          "sha256": "95fffc392fc0ede83b2fc2ed9f5ce8da3bea5c3dbcc5cca5cefe43abe7f3d0f6",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/numeric_source_timing_tests.adb",
+      "fixture_sha256": "024f02925a0adb1c75cef5d735fe929d7775d284c1300fddfabe7f440dcaf8d3",
+      "array_ordinal": 24,
+      "body_sha256": "f5cd269c4031a07287f5c01ee4d925f9e91b368d4aa67589b34f38d561c6b336",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/numeric-timing-reference/r1-named-add-right-target-copyobject.aml",
+          "sha256": "b294f59fa38813e88ea2e39aceebafc84a2a0558aa122b49b0dc26028ced1456",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-scalar-operators/numeric-timing-reference/r2-named-add-right-target-copyobject.aml",
+          "sha256": "4b0fb92a2158f0b816afde540d67c7d4fcad7d45cf6132bf60a34484f4c72695",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/divide_target_timing_tests.adb",
+      "fixture_sha256": "b09809c3941527c99ef11eea99d69332334d88272386eb4b504ecb01d3c0e6d7",
+      "array_ordinal": 1,
+      "body_sha256": "f057f4f67d81ed8fbf51ec82e4eb4781f6aea047563ff5e51a615572269198f5",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/divide-timing-reference/r1-dividend-store-store.aml",
+          "sha256": "1007dabd868dc591a673d4ad8a033cb99ef11cf84a5a0fedb9389ca205bd1af4",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-scalar-operators/divide-timing-reference/r2-dividend-store-store.aml",
+          "sha256": "350e4432050cf2966fe3cc42528ccd3cba9b4a57631467a8b78aace90566ad5d",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/divide_target_timing_tests.adb",
+      "fixture_sha256": "b09809c3941527c99ef11eea99d69332334d88272386eb4b504ecb01d3c0e6d7",
+      "array_ordinal": 2,
+      "body_sha256": "0e265e0b79e104f220ad1356b806a385af00acc7aae32fd6c76606dc08a2d46c",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/divide-timing-reference/r2-dividend-copyobject-copyobject.aml",
+          "sha256": "be3c8714a06eb2099970ea55a93e74cd0cf0ae64080ef6a7938f8256c8570bf9",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-scalar-operators/divide-timing-reference/r1-dividend-copyobject-copyobject.aml",
+          "sha256": "722024fc9dd3f729ddbee748a444ff2dd6d66bb0175b6641cd066a04b3196f73",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/divide_target_timing_tests.adb",
+      "fixture_sha256": "b09809c3941527c99ef11eea99d69332334d88272386eb4b504ecb01d3c0e6d7",
+      "array_ordinal": 3,
+      "body_sha256": "d6cbe0b503d39d5925d088c082a1b2270d9f8b01cb9185fe14568034080d7b64",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/divide-timing-reference/r2-dividend-store-copyobject.aml",
+          "sha256": "b6dd6448a8247723ae5d3d5d2038fe225a3933d0bb5eb1cd85e7385b53ea1f05",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-scalar-operators/divide-timing-reference/r1-dividend-store-copyobject.aml",
+          "sha256": "9bfebc601d00bf9d518d056971839dd4158329dded80d98832486b6fc77534ea",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/divide_target_timing_tests.adb",
+      "fixture_sha256": "b09809c3941527c99ef11eea99d69332334d88272386eb4b504ecb01d3c0e6d7",
+      "array_ordinal": 4,
+      "body_sha256": "61f3698b8e1d124fa951b7c7be0faa0db8cf57a2f5355565d24ea3f7b74b9d9b",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/divide-timing-reference/r1-dividend-copyobject-store.aml",
+          "sha256": "93af90a65bd17ca51830a97c4a989cde7daacd6fe81a478f923d1e7d5b710d45",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-scalar-operators/divide-timing-reference/r2-dividend-copyobject-store.aml",
+          "sha256": "926a7d0533e7dcf00984dbce62517a34733009ba5a841c3d4360b4e2f4e8569e",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/divide_target_timing_tests.adb",
+      "fixture_sha256": "b09809c3941527c99ef11eea99d69332334d88272386eb4b504ecb01d3c0e6d7",
+      "array_ordinal": 5,
+      "body_sha256": "34585e19b385c58346e624043df3efd31c076a581aa601d213ab2579490720a8",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/divide-timing-reference/r2-divisor-store-store.aml",
+          "sha256": "6795f78e9d3d2cbaa568742de93f7d77175bcd74e29e137e1d0727accf795b1d",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-scalar-operators/divide-timing-reference/r1-divisor-store-store.aml",
+          "sha256": "b11cf4f300ed48af60922560c8e1123532050069ec22417ad63bb870932102b1",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/divide_target_timing_tests.adb",
+      "fixture_sha256": "b09809c3941527c99ef11eea99d69332334d88272386eb4b504ecb01d3c0e6d7",
+      "array_ordinal": 6,
+      "body_sha256": "eae0711a74be7d6af1721720cc2abe3bf3664598d1128c2b6fd5aeef4489f6f6",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/divide-timing-reference/r2-divisor-copyobject-copyobject.aml",
+          "sha256": "7aadf982369f2353ae11b2411a1b0ef0f2b7378a8aeccb6e49711e3d04120088",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-scalar-operators/divide-timing-reference/r1-divisor-copyobject-copyobject.aml",
+          "sha256": "e21b4b0c6525e1d6fd6455e381d7fec3617234ca9666eb9eb681233d501340bd",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/divide_target_timing_tests.adb",
+      "fixture_sha256": "b09809c3941527c99ef11eea99d69332334d88272386eb4b504ecb01d3c0e6d7",
+      "array_ordinal": 7,
+      "body_sha256": "fe0544d90e59cf90882b2d42fd01cf01f44097e3491fdc2d005f1bb7ca8d8181",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/divide-timing-reference/r2-divisor-store-copyobject.aml",
+          "sha256": "be05321ad6aeea73157869ee1ff3dd8a2beda52d538b3a74be47d8d6b3e8dc98",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-scalar-operators/divide-timing-reference/r1-divisor-store-copyobject.aml",
+          "sha256": "d1c5402ecedf1638bf74a441b096d3808bc191d0a16f4599413dda615b29f007",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/divide_target_timing_tests.adb",
+      "fixture_sha256": "b09809c3941527c99ef11eea99d69332334d88272386eb4b504ecb01d3c0e6d7",
+      "array_ordinal": 8,
+      "body_sha256": "69f8bff88abfaf85c1b6d7a8196a050ec562aeb20cec1fee0edddb4123e1485f",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/divide-timing-reference/r2-divisor-copyobject-store.aml",
+          "sha256": "24a29a3d8f21d48d6ec70aca86381b5ad1a5bd74a4ea7307950c71446b7676a7",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-scalar-operators/divide-timing-reference/r1-divisor-copyobject-store.aml",
+          "sha256": "cb2440067e312785f2d306a10711022b2743417a24a89de7f2fabc980d47d02a",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/divide_target_timing_tests.adb",
+      "fixture_sha256": "b09809c3941527c99ef11eea99d69332334d88272386eb4b504ecb01d3c0e6d7",
+      "array_ordinal": 9,
+      "body_sha256": "f057f4f67d81ed8fbf51ec82e4eb4781f6aea047563ff5e51a615572269198f5",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/divide-timing-reference/r1-dividend-store-store.aml",
+          "sha256": "1007dabd868dc591a673d4ad8a033cb99ef11cf84a5a0fedb9389ca205bd1af4",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-scalar-operators/divide-timing-reference/r2-dividend-store-store.aml",
+          "sha256": "350e4432050cf2966fe3cc42528ccd3cba9b4a57631467a8b78aace90566ad5d",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/divide_target_timing_tests.adb",
+      "fixture_sha256": "b09809c3941527c99ef11eea99d69332334d88272386eb4b504ecb01d3c0e6d7",
+      "array_ordinal": 10,
+      "body_sha256": "0e265e0b79e104f220ad1356b806a385af00acc7aae32fd6c76606dc08a2d46c",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/divide-timing-reference/r2-dividend-copyobject-copyobject.aml",
+          "sha256": "be3c8714a06eb2099970ea55a93e74cd0cf0ae64080ef6a7938f8256c8570bf9",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-scalar-operators/divide-timing-reference/r1-dividend-copyobject-copyobject.aml",
+          "sha256": "722024fc9dd3f729ddbee748a444ff2dd6d66bb0175b6641cd066a04b3196f73",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/divide_target_timing_tests.adb",
+      "fixture_sha256": "b09809c3941527c99ef11eea99d69332334d88272386eb4b504ecb01d3c0e6d7",
+      "array_ordinal": 11,
+      "body_sha256": "d6cbe0b503d39d5925d088c082a1b2270d9f8b01cb9185fe14568034080d7b64",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/divide-timing-reference/r2-dividend-store-copyobject.aml",
+          "sha256": "b6dd6448a8247723ae5d3d5d2038fe225a3933d0bb5eb1cd85e7385b53ea1f05",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-scalar-operators/divide-timing-reference/r1-dividend-store-copyobject.aml",
+          "sha256": "9bfebc601d00bf9d518d056971839dd4158329dded80d98832486b6fc77534ea",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/divide_target_timing_tests.adb",
+      "fixture_sha256": "b09809c3941527c99ef11eea99d69332334d88272386eb4b504ecb01d3c0e6d7",
+      "array_ordinal": 12,
+      "body_sha256": "61f3698b8e1d124fa951b7c7be0faa0db8cf57a2f5355565d24ea3f7b74b9d9b",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/divide-timing-reference/r1-dividend-copyobject-store.aml",
+          "sha256": "93af90a65bd17ca51830a97c4a989cde7daacd6fe81a478f923d1e7d5b710d45",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-scalar-operators/divide-timing-reference/r2-dividend-copyobject-store.aml",
+          "sha256": "926a7d0533e7dcf00984dbce62517a34733009ba5a841c3d4360b4e2f4e8569e",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/divide_target_timing_tests.adb",
+      "fixture_sha256": "b09809c3941527c99ef11eea99d69332334d88272386eb4b504ecb01d3c0e6d7",
+      "array_ordinal": 13,
+      "body_sha256": "34585e19b385c58346e624043df3efd31c076a581aa601d213ab2579490720a8",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/divide-timing-reference/r2-divisor-store-store.aml",
+          "sha256": "6795f78e9d3d2cbaa568742de93f7d77175bcd74e29e137e1d0727accf795b1d",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-scalar-operators/divide-timing-reference/r1-divisor-store-store.aml",
+          "sha256": "b11cf4f300ed48af60922560c8e1123532050069ec22417ad63bb870932102b1",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/divide_target_timing_tests.adb",
+      "fixture_sha256": "b09809c3941527c99ef11eea99d69332334d88272386eb4b504ecb01d3c0e6d7",
+      "array_ordinal": 14,
+      "body_sha256": "eae0711a74be7d6af1721720cc2abe3bf3664598d1128c2b6fd5aeef4489f6f6",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/divide-timing-reference/r2-divisor-copyobject-copyobject.aml",
+          "sha256": "7aadf982369f2353ae11b2411a1b0ef0f2b7378a8aeccb6e49711e3d04120088",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-scalar-operators/divide-timing-reference/r1-divisor-copyobject-copyobject.aml",
+          "sha256": "e21b4b0c6525e1d6fd6455e381d7fec3617234ca9666eb9eb681233d501340bd",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/divide_target_timing_tests.adb",
+      "fixture_sha256": "b09809c3941527c99ef11eea99d69332334d88272386eb4b504ecb01d3c0e6d7",
+      "array_ordinal": 15,
+      "body_sha256": "fe0544d90e59cf90882b2d42fd01cf01f44097e3491fdc2d005f1bb7ca8d8181",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/divide-timing-reference/r2-divisor-store-copyobject.aml",
+          "sha256": "be05321ad6aeea73157869ee1ff3dd8a2beda52d538b3a74be47d8d6b3e8dc98",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-scalar-operators/divide-timing-reference/r1-divisor-store-copyobject.aml",
+          "sha256": "d1c5402ecedf1638bf74a441b096d3808bc191d0a16f4599413dda615b29f007",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/divide_target_timing_tests.adb",
+      "fixture_sha256": "b09809c3941527c99ef11eea99d69332334d88272386eb4b504ecb01d3c0e6d7",
+      "array_ordinal": 16,
+      "body_sha256": "69f8bff88abfaf85c1b6d7a8196a050ec562aeb20cec1fee0edddb4123e1485f",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/divide-timing-reference/r2-divisor-copyobject-store.aml",
+          "sha256": "24a29a3d8f21d48d6ec70aca86381b5ad1a5bd74a4ea7307950c71446b7676a7",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-scalar-operators/divide-timing-reference/r1-divisor-copyobject-store.aml",
+          "sha256": "cb2440067e312785f2d306a10711022b2743417a24a89de7f2fabc980d47d02a",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-format-bcd/format_bcd_tests.adb",
+      "fixture_sha256": "d78490ce3e5f18bf273d33fd213fe294ab3586af77751524d229fe96f930dde8",
+      "array_ordinal": 1,
+      "body_sha256": "9f0bd51f02db572e29ee7e88be4d84a0610b1d584937feb0d91d56b0d8d04e83",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r2-todecimalstring-reference-store.aml",
+          "sha256": "4550c99cde0e4342ff670da330013df4c9eb336204ff2a2f76baa00c1cc936c5",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r1-todecimalstring-reference-store.aml",
+          "sha256": "3341cae7029720fcda46b93c3bd571379794460b7c80159e2820a100dcfff4fb",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-format-bcd/format_bcd_tests.adb",
+      "fixture_sha256": "d78490ce3e5f18bf273d33fd213fe294ab3586af77751524d229fe96f930dde8",
+      "array_ordinal": 2,
+      "body_sha256": "05a78b5c66b9a2ce748f99942f8d697eeb29ac123a6159fab82024e33be4ec35",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r1-todecimalstring-reference-copyobject.aml",
+          "sha256": "96cfc8f4a478ea10f5d900f69debb18a01900fe21b85f7c293b6378087855551",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r2-todecimalstring-reference-copyobject.aml",
+          "sha256": "cb4a5339cd30d582b4ba726935a431750212dbaafce1fd312598cebd1c5650bb",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-format-bcd/format_bcd_tests.adb",
+      "fixture_sha256": "d78490ce3e5f18bf273d33fd213fe294ab3586af77751524d229fe96f930dde8",
+      "array_ordinal": 3,
+      "body_sha256": "57d2b6e755fee53a1b7b55bc6e6a608ddf876e3bcbf10bd08f447ee1a20343cb",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r2-todecimalstring-name-store.aml",
+          "sha256": "eb68ebf6bd11286513bc93bfe7b47c80cf8bb38292ef8da11edc0bc46941c1d4",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r1-todecimalstring-name-store.aml",
+          "sha256": "63e20ee014aa60510c4c9705593d5abb03b5b29b11d5750144597bea1c1bfeca",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-format-bcd/format_bcd_tests.adb",
+      "fixture_sha256": "d78490ce3e5f18bf273d33fd213fe294ab3586af77751524d229fe96f930dde8",
+      "array_ordinal": 4,
+      "body_sha256": "665827ef24d5af3c27067170b7905409b289c60cc20b60d7019465ee6940797e",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r2-todecimalstring-name-copyobject.aml",
+          "sha256": "94608d0b52357270fba484c37e56cc3a7ac45745c225b396face077d09b2dde1",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r1-todecimalstring-name-copyobject.aml",
+          "sha256": "3eefc08bde8c5fbcf1e65ae83dba896c63e50793f2ebfb8fd8fdd4d171630edd",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-format-bcd/format_bcd_tests.adb",
+      "fixture_sha256": "d78490ce3e5f18bf273d33fd213fe294ab3586af77751524d229fe96f930dde8",
+      "array_ordinal": 5,
+      "body_sha256": "7a98a5e6e100f00841dfda1e5256f028ece502d76a7f2138cc222b0cfbff6277",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r1-todecimalstring-unchanged-local-store.aml",
+          "sha256": "b3d45fdf4339db17f0de779b0f46c0b28390ca0db202a584fa5523801d77e46c",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r2-todecimalstring-unchanged-local-store.aml",
+          "sha256": "bc3917e1a0261065c56dbc95571a807fe9c0fe9839757baf8c44407f50bc4c68",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-format-bcd/format_bcd_tests.adb",
+      "fixture_sha256": "d78490ce3e5f18bf273d33fd213fe294ab3586af77751524d229fe96f930dde8",
+      "array_ordinal": 6,
+      "body_sha256": "f7bc63d7897cf172ba865b0025cab9142460f3d517698f23133c365836db1367",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r2-tohexstring-reference-store.aml",
+          "sha256": "1de4ecc8361e14014b74bbbda47ccbf6f5334cd4dd772790711f5f7cfa01764c",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r1-tohexstring-reference-store.aml",
+          "sha256": "0c30d688eaea52531b512c94b359cfd4f19d30af589742b61117eaaa5c37ab3b",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-format-bcd/format_bcd_tests.adb",
+      "fixture_sha256": "d78490ce3e5f18bf273d33fd213fe294ab3586af77751524d229fe96f930dde8",
+      "array_ordinal": 7,
+      "body_sha256": "9c86213e92a665f9345d050ac9b04d8e3ae38351a6eafc9a7fc8d72bd70b3365",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r1-tohexstring-reference-copyobject.aml",
+          "sha256": "5a8bd4a9f6bf9db2460af50735c7206534b5df6d1c0374f96514e6e255ac382e",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r2-tohexstring-reference-copyobject.aml",
+          "sha256": "6f8c82f4ccdb57b135ef2bc9e9d407e5ea4436e6182f691463df33c36dda44b2",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-format-bcd/format_bcd_tests.adb",
+      "fixture_sha256": "d78490ce3e5f18bf273d33fd213fe294ab3586af77751524d229fe96f930dde8",
+      "array_ordinal": 8,
+      "body_sha256": "0ce51cd4ef606a807563e75819ed41e2195ce4233e307f006dd102d96c190bc1",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r2-tohexstring-name-store.aml",
+          "sha256": "d9793724e7664192926c2472ecbb8dc9d0600336ae8ae79579eb7aed347b0013",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r1-tohexstring-name-store.aml",
+          "sha256": "0b08e5a25b995cf9c9c179b7d0bdd0a26d7906dcf009dd24fec02a33974ba4ea",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-format-bcd/format_bcd_tests.adb",
+      "fixture_sha256": "d78490ce3e5f18bf273d33fd213fe294ab3586af77751524d229fe96f930dde8",
+      "array_ordinal": 9,
+      "body_sha256": "ca0b736836e8f603cbb09b37ae1c3b652170c9719aef396976577e69a36c2744",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r2-tohexstring-name-copyobject.aml",
+          "sha256": "d5e670fcc8a381f7e5db0f1103fc6af7694ae4706ead606f10abd55fe367f8e0",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r1-tohexstring-name-copyobject.aml",
+          "sha256": "36172de3f942aa7f55a2292bafa39abe6c50e7f59ea3a62afc09b68a0d161971",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-format-bcd/format_bcd_tests.adb",
+      "fixture_sha256": "d78490ce3e5f18bf273d33fd213fe294ab3586af77751524d229fe96f930dde8",
+      "array_ordinal": 10,
+      "body_sha256": "3fcfc8271359ba259dcf48a484c6f56f63043361d3180f4b5c975da62280ba75",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r1-tohexstring-unchanged-local-store.aml",
+          "sha256": "27a7cd5797c808be397871a07fc024fad355c494853643a79692552ac97c49ea",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r2-tohexstring-unchanged-local-store.aml",
+          "sha256": "0827952e7ef80e2c51ce1e777a5a7fe59548083f304b9598351100979f0e1bb9",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-format-bcd/format_bcd_tests.adb",
+      "fixture_sha256": "d78490ce3e5f18bf273d33fd213fe294ab3586af77751524d229fe96f930dde8",
+      "array_ordinal": 11,
+      "body_sha256": "1af9169185c9385f3479b00139d070a0916c82c9233bfbddef471ab45a7b4d2a",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r1-frombcd-reference-store.aml",
+          "sha256": "86e13b3f7d0a9276aa008b1fc37a381c60f8de3bcf4b3c69cf184cd6d29ddfc6",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r2-frombcd-reference-store.aml",
+          "sha256": "6daefee15e21fbb7bd0bcda4d3b093a41e95525f3e0f021fab73b84a73e4c8de",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-format-bcd/format_bcd_tests.adb",
+      "fixture_sha256": "d78490ce3e5f18bf273d33fd213fe294ab3586af77751524d229fe96f930dde8",
+      "array_ordinal": 12,
+      "body_sha256": "bc4474c92de71755ed599fa1ef9c85557e4fea2d83775fc9de88a7876823302a",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r1-frombcd-reference-copyobject.aml",
+          "sha256": "e2ac0edcbd417cae630b2620d335e407a1ccf879fcbc711abf647d53af8e416f",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r2-frombcd-reference-copyobject.aml",
+          "sha256": "5c524569b7233fb352d4571f7753b3fbcf86279930d899b420437007286c899b",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-format-bcd/format_bcd_tests.adb",
+      "fixture_sha256": "d78490ce3e5f18bf273d33fd213fe294ab3586af77751524d229fe96f930dde8",
+      "array_ordinal": 13,
+      "body_sha256": "102007172fa18a0725a13c604d1d5821722a25da0b429776f6270ef3aa8d7adb",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r2-frombcd-name-store.aml",
+          "sha256": "0cff8bccbc4f8ab6049c850e438e03f4982b4c5c8e36919197cdc11756d6132e",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r1-frombcd-name-store.aml",
+          "sha256": "2e57842877fc5a91db5f48cdc0ed527a4feb376f5add7fde4b72cbc114d9832d",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-format-bcd/format_bcd_tests.adb",
+      "fixture_sha256": "d78490ce3e5f18bf273d33fd213fe294ab3586af77751524d229fe96f930dde8",
+      "array_ordinal": 14,
+      "body_sha256": "83f3c0e489c7850ccb86f52432239ebc3dbb4b73babb6e3750a26b0a0d7e016a",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r1-frombcd-name-copyobject.aml",
+          "sha256": "a8d8182e826688870c6897c97c70c4e15c099247066db4f5a0da84dcde2e175f",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r2-frombcd-name-copyobject.aml",
+          "sha256": "4e0312b9c779e3f3c6f21b50fbfb929087194714d4bebcaff6c0c06aad799a54",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-format-bcd/format_bcd_tests.adb",
+      "fixture_sha256": "d78490ce3e5f18bf273d33fd213fe294ab3586af77751524d229fe96f930dde8",
+      "array_ordinal": 15,
+      "body_sha256": "be29fbc18557c8dfda2d046644eb1a9c37050ee6b2dd65a37d7f82488a342c01",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r2-frombcd-unchanged-local-store.aml",
+          "sha256": "5c8223c3741bb30d968b3de27c1a70d0860682081731dc3cf3c126cd2a04c265",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r1-frombcd-unchanged-local-store.aml",
+          "sha256": "1397be35da20980299ffae10bd2ae85a3d00564cfbbfae3aad2b6eb56de02138",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-format-bcd/format_bcd_tests.adb",
+      "fixture_sha256": "d78490ce3e5f18bf273d33fd213fe294ab3586af77751524d229fe96f930dde8",
+      "array_ordinal": 16,
+      "body_sha256": "eab8368bfe613ef24067f772f54524f16cc8bf2d5f1b16fb48fc16f80600b8a4",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r1-tobcd-reference-store.aml",
+          "sha256": "4d14481fa7b722cc8244d27cab3e5320f78bad810e0320bb419f07712c895b3a",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r2-tobcd-reference-store.aml",
+          "sha256": "47aa82861a93ae8507606d75b01b666ae64b650089eb7dfb3d0492627d2a6ae6",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-format-bcd/format_bcd_tests.adb",
+      "fixture_sha256": "d78490ce3e5f18bf273d33fd213fe294ab3586af77751524d229fe96f930dde8",
+      "array_ordinal": 17,
+      "body_sha256": "5692235dfda5c3e0dfae39cad456dc4f529a7d5a9261e99ee553fce5a3642240",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r2-tobcd-reference-copyobject.aml",
+          "sha256": "745e0cf974abe01e8f9d8158df9adfe40b23b4181e702ac6a726af7a0d080db6",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r1-tobcd-reference-copyobject.aml",
+          "sha256": "df2517ad0cf173c5f6afb73a5d6e8f9a936bac69914e9f07fd1b89b4ab7c89ab",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-format-bcd/format_bcd_tests.adb",
+      "fixture_sha256": "d78490ce3e5f18bf273d33fd213fe294ab3586af77751524d229fe96f930dde8",
+      "array_ordinal": 18,
+      "body_sha256": "430200eca7b6b81d619df2b813afb645dc5e84762f3b379c97acccfe152fb683",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r2-tobcd-name-store.aml",
+          "sha256": "4ec633a7eed3590b017e074e5119632066bdc616e5336dcb87f23a5a0f900f3d",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r1-tobcd-name-store.aml",
+          "sha256": "bd81b4b3fe57f6e8f39ea98268a4132c785f05e2b11153cb53edacd31ccd8df7",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-format-bcd/format_bcd_tests.adb",
+      "fixture_sha256": "d78490ce3e5f18bf273d33fd213fe294ab3586af77751524d229fe96f930dde8",
+      "array_ordinal": 19,
+      "body_sha256": "90f3bbefafb94ce9075b1b922bc7884dbbada8b806c0ae7e893bcdf0c5a7dea5",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r1-tobcd-name-copyobject.aml",
+          "sha256": "3f3abfe9e23f37505083fbb229aa8b2f6d2ca1066b84f1e04807c482d8c5dc1b",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r2-tobcd-name-copyobject.aml",
+          "sha256": "f5845ef3ec2b72913635c3a399fecbfd674c71ccfebccfb24373d07d6f14ecb0",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-format-bcd/format_bcd_tests.adb",
+      "fixture_sha256": "d78490ce3e5f18bf273d33fd213fe294ab3586af77751524d229fe96f930dde8",
+      "array_ordinal": 20,
+      "body_sha256": "b9cc8a613f82dfe823620c3824b7a946f126d36b45261f848e84b56164a967d6",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r2-tobcd-unchanged-local-store.aml",
+          "sha256": "4f44bccb57a2142d839f7340f4dd5d9f1938c532678edb450b332393d8d4f828",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r1-tobcd-unchanged-local-store.aml",
+          "sha256": "b4b89b9d7fed8663845a3079a76a6227dce0c2e2985cdba158e13f308b95f0db",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-format-bcd/format_bcd_tests.adb",
+      "fixture_sha256": "d78490ce3e5f18bf273d33fd213fe294ab3586af77751524d229fe96f930dde8",
+      "array_ordinal": 21,
+      "body_sha256": "74c4a9353c7035b299e2384534dad3c2d998e2656fb0a7d16d5c22fa268e8618",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r2-frombcd-invalid-store.aml",
+          "sha256": "d075f11a44f745ab7f739f04166a174e740f8861a2a6817d325265d24666d837",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r1-frombcd-invalid-store.aml",
+          "sha256": "0f79ac9432cd226dc44a5b42c7cab9465d88ca7102cb8c21a76bfe063f7407c3",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-format-bcd/format_bcd_tests.adb",
+      "fixture_sha256": "d78490ce3e5f18bf273d33fd213fe294ab3586af77751524d229fe96f930dde8",
+      "array_ordinal": 22,
+      "body_sha256": "fc54a316ef00d264435fd1e7fac854070d99aff5cc9113b926dfe3588cadf7ca",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r2-frombcd-invalid-copyobject.aml",
+          "sha256": "fc67c17f4e2d912258ca18d5203341e323d87333d863a583b2f566a229c9839a",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r1-frombcd-invalid-copyobject.aml",
+          "sha256": "9b136233b0c7f5bfbf7fda5bb9e0dcf6316aef75e2c8105e50da8fecbbe56e3b",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-format-bcd/format_bcd_tests.adb",
+      "fixture_sha256": "d78490ce3e5f18bf273d33fd213fe294ab3586af77751524d229fe96f930dde8",
+      "array_ordinal": 23,
+      "body_sha256": "9f0bd51f02db572e29ee7e88be4d84a0610b1d584937feb0d91d56b0d8d04e83",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r2-todecimalstring-reference-store.aml",
+          "sha256": "4550c99cde0e4342ff670da330013df4c9eb336204ff2a2f76baa00c1cc936c5",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r1-todecimalstring-reference-store.aml",
+          "sha256": "3341cae7029720fcda46b93c3bd571379794460b7c80159e2820a100dcfff4fb",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-format-bcd/format_bcd_tests.adb",
+      "fixture_sha256": "d78490ce3e5f18bf273d33fd213fe294ab3586af77751524d229fe96f930dde8",
+      "array_ordinal": 24,
+      "body_sha256": "05a78b5c66b9a2ce748f99942f8d697eeb29ac123a6159fab82024e33be4ec35",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r1-todecimalstring-reference-copyobject.aml",
+          "sha256": "96cfc8f4a478ea10f5d900f69debb18a01900fe21b85f7c293b6378087855551",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r2-todecimalstring-reference-copyobject.aml",
+          "sha256": "cb4a5339cd30d582b4ba726935a431750212dbaafce1fd312598cebd1c5650bb",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-format-bcd/format_bcd_tests.adb",
+      "fixture_sha256": "d78490ce3e5f18bf273d33fd213fe294ab3586af77751524d229fe96f930dde8",
+      "array_ordinal": 25,
+      "body_sha256": "57d2b6e755fee53a1b7b55bc6e6a608ddf876e3bcbf10bd08f447ee1a20343cb",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r2-todecimalstring-name-store.aml",
+          "sha256": "eb68ebf6bd11286513bc93bfe7b47c80cf8bb38292ef8da11edc0bc46941c1d4",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r1-todecimalstring-name-store.aml",
+          "sha256": "63e20ee014aa60510c4c9705593d5abb03b5b29b11d5750144597bea1c1bfeca",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-format-bcd/format_bcd_tests.adb",
+      "fixture_sha256": "d78490ce3e5f18bf273d33fd213fe294ab3586af77751524d229fe96f930dde8",
+      "array_ordinal": 26,
+      "body_sha256": "665827ef24d5af3c27067170b7905409b289c60cc20b60d7019465ee6940797e",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r2-todecimalstring-name-copyobject.aml",
+          "sha256": "94608d0b52357270fba484c37e56cc3a7ac45745c225b396face077d09b2dde1",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r1-todecimalstring-name-copyobject.aml",
+          "sha256": "3eefc08bde8c5fbcf1e65ae83dba896c63e50793f2ebfb8fd8fdd4d171630edd",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-format-bcd/format_bcd_tests.adb",
+      "fixture_sha256": "d78490ce3e5f18bf273d33fd213fe294ab3586af77751524d229fe96f930dde8",
+      "array_ordinal": 27,
+      "body_sha256": "7a98a5e6e100f00841dfda1e5256f028ece502d76a7f2138cc222b0cfbff6277",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r1-todecimalstring-unchanged-local-store.aml",
+          "sha256": "b3d45fdf4339db17f0de779b0f46c0b28390ca0db202a584fa5523801d77e46c",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r2-todecimalstring-unchanged-local-store.aml",
+          "sha256": "bc3917e1a0261065c56dbc95571a807fe9c0fe9839757baf8c44407f50bc4c68",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-format-bcd/format_bcd_tests.adb",
+      "fixture_sha256": "d78490ce3e5f18bf273d33fd213fe294ab3586af77751524d229fe96f930dde8",
+      "array_ordinal": 28,
+      "body_sha256": "f7bc63d7897cf172ba865b0025cab9142460f3d517698f23133c365836db1367",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r2-tohexstring-reference-store.aml",
+          "sha256": "1de4ecc8361e14014b74bbbda47ccbf6f5334cd4dd772790711f5f7cfa01764c",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r1-tohexstring-reference-store.aml",
+          "sha256": "0c30d688eaea52531b512c94b359cfd4f19d30af589742b61117eaaa5c37ab3b",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-format-bcd/format_bcd_tests.adb",
+      "fixture_sha256": "d78490ce3e5f18bf273d33fd213fe294ab3586af77751524d229fe96f930dde8",
+      "array_ordinal": 29,
+      "body_sha256": "9c86213e92a665f9345d050ac9b04d8e3ae38351a6eafc9a7fc8d72bd70b3365",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r1-tohexstring-reference-copyobject.aml",
+          "sha256": "5a8bd4a9f6bf9db2460af50735c7206534b5df6d1c0374f96514e6e255ac382e",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r2-tohexstring-reference-copyobject.aml",
+          "sha256": "6f8c82f4ccdb57b135ef2bc9e9d407e5ea4436e6182f691463df33c36dda44b2",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-format-bcd/format_bcd_tests.adb",
+      "fixture_sha256": "d78490ce3e5f18bf273d33fd213fe294ab3586af77751524d229fe96f930dde8",
+      "array_ordinal": 30,
+      "body_sha256": "0ce51cd4ef606a807563e75819ed41e2195ce4233e307f006dd102d96c190bc1",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r2-tohexstring-name-store.aml",
+          "sha256": "d9793724e7664192926c2472ecbb8dc9d0600336ae8ae79579eb7aed347b0013",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r1-tohexstring-name-store.aml",
+          "sha256": "0b08e5a25b995cf9c9c179b7d0bdd0a26d7906dcf009dd24fec02a33974ba4ea",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-format-bcd/format_bcd_tests.adb",
+      "fixture_sha256": "d78490ce3e5f18bf273d33fd213fe294ab3586af77751524d229fe96f930dde8",
+      "array_ordinal": 31,
+      "body_sha256": "ca0b736836e8f603cbb09b37ae1c3b652170c9719aef396976577e69a36c2744",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r2-tohexstring-name-copyobject.aml",
+          "sha256": "d5e670fcc8a381f7e5db0f1103fc6af7694ae4706ead606f10abd55fe367f8e0",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r1-tohexstring-name-copyobject.aml",
+          "sha256": "36172de3f942aa7f55a2292bafa39abe6c50e7f59ea3a62afc09b68a0d161971",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-format-bcd/format_bcd_tests.adb",
+      "fixture_sha256": "d78490ce3e5f18bf273d33fd213fe294ab3586af77751524d229fe96f930dde8",
+      "array_ordinal": 32,
+      "body_sha256": "3fcfc8271359ba259dcf48a484c6f56f63043361d3180f4b5c975da62280ba75",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r1-tohexstring-unchanged-local-store.aml",
+          "sha256": "27a7cd5797c808be397871a07fc024fad355c494853643a79692552ac97c49ea",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r2-tohexstring-unchanged-local-store.aml",
+          "sha256": "0827952e7ef80e2c51ce1e777a5a7fe59548083f304b9598351100979f0e1bb9",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-format-bcd/format_bcd_tests.adb",
+      "fixture_sha256": "d78490ce3e5f18bf273d33fd213fe294ab3586af77751524d229fe96f930dde8",
+      "array_ordinal": 33,
+      "body_sha256": "1af9169185c9385f3479b00139d070a0916c82c9233bfbddef471ab45a7b4d2a",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r1-frombcd-reference-store.aml",
+          "sha256": "86e13b3f7d0a9276aa008b1fc37a381c60f8de3bcf4b3c69cf184cd6d29ddfc6",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r2-frombcd-reference-store.aml",
+          "sha256": "6daefee15e21fbb7bd0bcda4d3b093a41e95525f3e0f021fab73b84a73e4c8de",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-format-bcd/format_bcd_tests.adb",
+      "fixture_sha256": "d78490ce3e5f18bf273d33fd213fe294ab3586af77751524d229fe96f930dde8",
+      "array_ordinal": 34,
+      "body_sha256": "bc4474c92de71755ed599fa1ef9c85557e4fea2d83775fc9de88a7876823302a",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r1-frombcd-reference-copyobject.aml",
+          "sha256": "e2ac0edcbd417cae630b2620d335e407a1ccf879fcbc711abf647d53af8e416f",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r2-frombcd-reference-copyobject.aml",
+          "sha256": "5c524569b7233fb352d4571f7753b3fbcf86279930d899b420437007286c899b",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-format-bcd/format_bcd_tests.adb",
+      "fixture_sha256": "d78490ce3e5f18bf273d33fd213fe294ab3586af77751524d229fe96f930dde8",
+      "array_ordinal": 35,
+      "body_sha256": "102007172fa18a0725a13c604d1d5821722a25da0b429776f6270ef3aa8d7adb",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r2-frombcd-name-store.aml",
+          "sha256": "0cff8bccbc4f8ab6049c850e438e03f4982b4c5c8e36919197cdc11756d6132e",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r1-frombcd-name-store.aml",
+          "sha256": "2e57842877fc5a91db5f48cdc0ed527a4feb376f5add7fde4b72cbc114d9832d",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-format-bcd/format_bcd_tests.adb",
+      "fixture_sha256": "d78490ce3e5f18bf273d33fd213fe294ab3586af77751524d229fe96f930dde8",
+      "array_ordinal": 36,
+      "body_sha256": "83f3c0e489c7850ccb86f52432239ebc3dbb4b73babb6e3750a26b0a0d7e016a",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r1-frombcd-name-copyobject.aml",
+          "sha256": "a8d8182e826688870c6897c97c70c4e15c099247066db4f5a0da84dcde2e175f",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r2-frombcd-name-copyobject.aml",
+          "sha256": "4e0312b9c779e3f3c6f21b50fbfb929087194714d4bebcaff6c0c06aad799a54",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-format-bcd/format_bcd_tests.adb",
+      "fixture_sha256": "d78490ce3e5f18bf273d33fd213fe294ab3586af77751524d229fe96f930dde8",
+      "array_ordinal": 37,
+      "body_sha256": "be29fbc18557c8dfda2d046644eb1a9c37050ee6b2dd65a37d7f82488a342c01",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r2-frombcd-unchanged-local-store.aml",
+          "sha256": "5c8223c3741bb30d968b3de27c1a70d0860682081731dc3cf3c126cd2a04c265",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r1-frombcd-unchanged-local-store.aml",
+          "sha256": "1397be35da20980299ffae10bd2ae85a3d00564cfbbfae3aad2b6eb56de02138",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-format-bcd/format_bcd_tests.adb",
+      "fixture_sha256": "d78490ce3e5f18bf273d33fd213fe294ab3586af77751524d229fe96f930dde8",
+      "array_ordinal": 38,
+      "body_sha256": "eab8368bfe613ef24067f772f54524f16cc8bf2d5f1b16fb48fc16f80600b8a4",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r1-tobcd-reference-store.aml",
+          "sha256": "4d14481fa7b722cc8244d27cab3e5320f78bad810e0320bb419f07712c895b3a",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r2-tobcd-reference-store.aml",
+          "sha256": "47aa82861a93ae8507606d75b01b666ae64b650089eb7dfb3d0492627d2a6ae6",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-format-bcd/format_bcd_tests.adb",
+      "fixture_sha256": "d78490ce3e5f18bf273d33fd213fe294ab3586af77751524d229fe96f930dde8",
+      "array_ordinal": 39,
+      "body_sha256": "5692235dfda5c3e0dfae39cad456dc4f529a7d5a9261e99ee553fce5a3642240",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r2-tobcd-reference-copyobject.aml",
+          "sha256": "745e0cf974abe01e8f9d8158df9adfe40b23b4181e702ac6a726af7a0d080db6",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r1-tobcd-reference-copyobject.aml",
+          "sha256": "df2517ad0cf173c5f6afb73a5d6e8f9a936bac69914e9f07fd1b89b4ab7c89ab",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-format-bcd/format_bcd_tests.adb",
+      "fixture_sha256": "d78490ce3e5f18bf273d33fd213fe294ab3586af77751524d229fe96f930dde8",
+      "array_ordinal": 40,
+      "body_sha256": "430200eca7b6b81d619df2b813afb645dc5e84762f3b379c97acccfe152fb683",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r2-tobcd-name-store.aml",
+          "sha256": "4ec633a7eed3590b017e074e5119632066bdc616e5336dcb87f23a5a0f900f3d",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r1-tobcd-name-store.aml",
+          "sha256": "bd81b4b3fe57f6e8f39ea98268a4132c785f05e2b11153cb53edacd31ccd8df7",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-format-bcd/format_bcd_tests.adb",
+      "fixture_sha256": "d78490ce3e5f18bf273d33fd213fe294ab3586af77751524d229fe96f930dde8",
+      "array_ordinal": 41,
+      "body_sha256": "90f3bbefafb94ce9075b1b922bc7884dbbada8b806c0ae7e893bcdf0c5a7dea5",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r1-tobcd-name-copyobject.aml",
+          "sha256": "3f3abfe9e23f37505083fbb229aa8b2f6d2ca1066b84f1e04807c482d8c5dc1b",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r2-tobcd-name-copyobject.aml",
+          "sha256": "f5845ef3ec2b72913635c3a399fecbfd674c71ccfebccfb24373d07d6f14ecb0",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-format-bcd/format_bcd_tests.adb",
+      "fixture_sha256": "d78490ce3e5f18bf273d33fd213fe294ab3586af77751524d229fe96f930dde8",
+      "array_ordinal": 42,
+      "body_sha256": "b9cc8a613f82dfe823620c3824b7a946f126d36b45261f848e84b56164a967d6",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r2-tobcd-unchanged-local-store.aml",
+          "sha256": "4f44bccb57a2142d839f7340f4dd5d9f1938c532678edb450b332393d8d4f828",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r1-tobcd-unchanged-local-store.aml",
+          "sha256": "b4b89b9d7fed8663845a3079a76a6227dce0c2e2985cdba158e13f308b95f0db",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-format-bcd/format_bcd_tests.adb",
+      "fixture_sha256": "d78490ce3e5f18bf273d33fd213fe294ab3586af77751524d229fe96f930dde8",
+      "array_ordinal": 43,
+      "body_sha256": "74c4a9353c7035b299e2384534dad3c2d998e2656fb0a7d16d5c22fa268e8618",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r2-frombcd-invalid-store.aml",
+          "sha256": "d075f11a44f745ab7f739f04166a174e740f8861a2a6817d325265d24666d837",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r1-frombcd-invalid-store.aml",
+          "sha256": "0f79ac9432cd226dc44a5b42c7cab9465d88ca7102cb8c21a76bfe063f7407c3",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-format-bcd/format_bcd_tests.adb",
+      "fixture_sha256": "d78490ce3e5f18bf273d33fd213fe294ab3586af77751524d229fe96f930dde8",
+      "array_ordinal": 44,
+      "body_sha256": "fc54a316ef00d264435fd1e7fac854070d99aff5cc9113b926dfe3588cadf7ca",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r2-frombcd-invalid-copyobject.aml",
+          "sha256": "fc67c17f4e2d912258ca18d5203341e323d87333d863a583b2f566a229c9839a",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-capture/reference/format-bcd-oracle-arrsb3nn/r1-frombcd-invalid-copyobject.aml",
+          "sha256": "9b136233b0c7f5bfbf7fda5bb9e0dcf6316aef75e2c8105e50da8fecbbe56e3b",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-format-bcd/format_bcd_tests.adb",
+      "fixture_sha256": "d78490ce3e5f18bf273d33fd213fe294ab3586af77751524d229fe96f930dde8",
+      "array_ordinal": 45,
+      "body_sha256": "46bcc2b55d915b7e98fb3b47725b5c9fea3d3c69ca2c2d8b1bdd64a290530dc4",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/format-bcd-nulltarget-oracle-qj7nfvax/r2-todecimalstring-immediate-store.aml",
+          "sha256": "d834a5ebe4d35be2054054256e0e953b800e7a347f54d4cbc07d05a2309d49a6",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-capture/reference/format-bcd-nulltarget-oracle-qj7nfvax/r1-todecimalstring-immediate-store.aml",
+          "sha256": "88b8ab19b801edae02d896434109d4970e048e5726f34b345fe9342515aea05f",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-format-bcd/format_bcd_tests.adb",
+      "fixture_sha256": "d78490ce3e5f18bf273d33fd213fe294ab3586af77751524d229fe96f930dde8",
+      "array_ordinal": 46,
+      "body_sha256": "0b68faa6f3af74c597084db64f2b196e7d9dfe1699228165a2f94cd7a555a365",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/format-bcd-nulltarget-oracle-qj7nfvax/r2-tohexstring-immediate-store.aml",
+          "sha256": "c4f4cec354cbef0268667636fddfb372aaae9ec1c2c3b2f88d30d6a86489dde5",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-capture/reference/format-bcd-nulltarget-oracle-qj7nfvax/r1-tohexstring-immediate-store.aml",
+          "sha256": "dff6e6a129d43d210f53f352f1754e08d82cf1a42811f464b436c59a8c8b2ea4",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-format-bcd/format_bcd_tests.adb",
+      "fixture_sha256": "d78490ce3e5f18bf273d33fd213fe294ab3586af77751524d229fe96f930dde8",
+      "array_ordinal": 47,
+      "body_sha256": "02eb321c57588dfb2d26442cf120945b1e68224ac7ae8e812f0f68a336535b7f",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/format-bcd-nulltarget-oracle-qj7nfvax/r2-frombcd-immediate-store.aml",
+          "sha256": "60ea6dd00a0adcab2c6e6152f7041bf96eeb48339c436a85071cbe846d006967",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-capture/reference/format-bcd-nulltarget-oracle-qj7nfvax/r1-frombcd-immediate-store.aml",
+          "sha256": "41345a0de62cd893c54b044d1191a43b1eb4c3f3595b1fedaca8a00e02a5d9f4",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-format-bcd/format_bcd_tests.adb",
+      "fixture_sha256": "d78490ce3e5f18bf273d33fd213fe294ab3586af77751524d229fe96f930dde8",
+      "array_ordinal": 48,
+      "body_sha256": "645f06aee5b57c8afd81931f167e7de9b89c2c900c5836bee61191e51dd53d99",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/format-bcd-nulltarget-oracle-qj7nfvax/r2-tobcd-immediate-store.aml",
+          "sha256": "05c04d07ba979c0daff1f040cffca07d5f7dcce0fa215305fbcafeb40696aaec",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-capture/reference/format-bcd-nulltarget-oracle-qj7nfvax/r1-tobcd-immediate-store.aml",
+          "sha256": "8083f031d3387cc2856096d8eb7cdb18b9f3cfb5bc37d16df1c80c4ae202a310",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-format-bcd/format_bcd_tests.adb",
+      "fixture_sha256": "d78490ce3e5f18bf273d33fd213fe294ab3586af77751524d229fe96f930dde8",
+      "array_ordinal": 49,
+      "body_sha256": "46bcc2b55d915b7e98fb3b47725b5c9fea3d3c69ca2c2d8b1bdd64a290530dc4",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/format-bcd-nulltarget-oracle-qj7nfvax/r2-todecimalstring-immediate-store.aml",
+          "sha256": "d834a5ebe4d35be2054054256e0e953b800e7a347f54d4cbc07d05a2309d49a6",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-capture/reference/format-bcd-nulltarget-oracle-qj7nfvax/r1-todecimalstring-immediate-store.aml",
+          "sha256": "88b8ab19b801edae02d896434109d4970e048e5726f34b345fe9342515aea05f",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-format-bcd/format_bcd_tests.adb",
+      "fixture_sha256": "d78490ce3e5f18bf273d33fd213fe294ab3586af77751524d229fe96f930dde8",
+      "array_ordinal": 50,
+      "body_sha256": "0b68faa6f3af74c597084db64f2b196e7d9dfe1699228165a2f94cd7a555a365",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/format-bcd-nulltarget-oracle-qj7nfvax/r2-tohexstring-immediate-store.aml",
+          "sha256": "c4f4cec354cbef0268667636fddfb372aaae9ec1c2c3b2f88d30d6a86489dde5",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-capture/reference/format-bcd-nulltarget-oracle-qj7nfvax/r1-tohexstring-immediate-store.aml",
+          "sha256": "dff6e6a129d43d210f53f352f1754e08d82cf1a42811f464b436c59a8c8b2ea4",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-format-bcd/format_bcd_tests.adb",
+      "fixture_sha256": "d78490ce3e5f18bf273d33fd213fe294ab3586af77751524d229fe96f930dde8",
+      "array_ordinal": 51,
+      "body_sha256": "02eb321c57588dfb2d26442cf120945b1e68224ac7ae8e812f0f68a336535b7f",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/format-bcd-nulltarget-oracle-qj7nfvax/r2-frombcd-immediate-store.aml",
+          "sha256": "60ea6dd00a0adcab2c6e6152f7041bf96eeb48339c436a85071cbe846d006967",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-capture/reference/format-bcd-nulltarget-oracle-qj7nfvax/r1-frombcd-immediate-store.aml",
+          "sha256": "41345a0de62cd893c54b044d1191a43b1eb4c3f3595b1fedaca8a00e02a5d9f4",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-format-bcd/format_bcd_tests.adb",
+      "fixture_sha256": "d78490ce3e5f18bf273d33fd213fe294ab3586af77751524d229fe96f930dde8",
+      "array_ordinal": 52,
+      "body_sha256": "645f06aee5b57c8afd81931f167e7de9b89c2c900c5836bee61191e51dd53d99",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/format-bcd-nulltarget-oracle-qj7nfvax/r2-tobcd-immediate-store.aml",
+          "sha256": "05c04d07ba979c0daff1f040cffca07d5f7dcce0fa215305fbcafeb40696aaec",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-capture/reference/format-bcd-nulltarget-oracle-qj7nfvax/r1-tobcd-immediate-store.aml",
+          "sha256": "8083f031d3387cc2856096d8eb7cdb18b9f3cfb5bc37d16df1c80c4ae202a310",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/mid_tostring_timing_tests.adb",
+      "fixture_sha256": "08ee1507ba0210af789a7125f8a793c59d1368b961e2bcaad79b72b0df9165db",
+      "array_ordinal": 1,
+      "body_sha256": "1cc95bc95f6d2814b885f290285e8f4e646ea3adcdb0cc6d69675bf5800da190",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r1-mid-start-later-reference-store.aml",
+          "sha256": "7ca1f125f99e2bcb743d7131841181b69a078c45ca7e5605c9e77b40025d0e23",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r2-mid-start-later-reference-store.aml",
+          "sha256": "1f7b6866a11b0d80e0a46616cd3ffc5cdf23334e7b1ac7205726288c229d8ace",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/mid_tostring_timing_tests.adb",
+      "fixture_sha256": "08ee1507ba0210af789a7125f8a793c59d1368b961e2bcaad79b72b0df9165db",
+      "array_ordinal": 2,
+      "body_sha256": "ca69fe9c10e2805d690faaaa54888fb6dcd48771394338dd347d7e76d5191fe0",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r1-mid-start-later-reference-copy.aml",
+          "sha256": "22d739534939490b2203f529154e597d0bafe6a3a27ca136a820a953057677ae",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r2-mid-start-later-reference-copy.aml",
+          "sha256": "9980ae52821fee91126872b6c206d458afc02cb3e8f4d4d4a760bc55a7aa11c1",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/mid_tostring_timing_tests.adb",
+      "fixture_sha256": "08ee1507ba0210af789a7125f8a793c59d1368b961e2bcaad79b72b0df9165db",
+      "array_ordinal": 3,
+      "body_sha256": "4e3a536b31f31f4455949ea35369e1e4dbe0668c15176acd67dc5ecef7239211",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r1-mid-start-later-name-store.aml",
+          "sha256": "ea530a07e92937c69aeca56a35ec87cd9054fea919e642201387a1dbf35688e0",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r2-mid-start-later-name-store.aml",
+          "sha256": "72038695f37f66a5227dff713376ad98d3ea3b21f7d88efddaf438fe02a5a73d",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/mid_tostring_timing_tests.adb",
+      "fixture_sha256": "08ee1507ba0210af789a7125f8a793c59d1368b961e2bcaad79b72b0df9165db",
+      "array_ordinal": 4,
+      "body_sha256": "7f618d9d9386ea8352d7f79aafecd4ddb271e22bed8b038e1e796262e65d5686",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r1-mid-start-later-name-copy.aml",
+          "sha256": "bacc950402711a142206a8136da63159ccf466c21f670858604d1e3870d90d3f",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r2-mid-start-later-name-copy.aml",
+          "sha256": "16ddd93b8c775656eaf54a2a44f59f4f4cd5521b43b66e04287a8b19f02ae7c6",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/mid_tostring_timing_tests.adb",
+      "fixture_sha256": "08ee1507ba0210af789a7125f8a793c59d1368b961e2bcaad79b72b0df9165db",
+      "array_ordinal": 5,
+      "body_sha256": "17a90dca510bfee6ac64165ed4bee46e405328ff30d789fc285ceaecc273c8f0",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r1-mid-start-target-reference-store.aml",
+          "sha256": "29be0eaaad05a19bb69e99e1e109127896bf5cc63395d14c4c097c403f2aa470",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r2-mid-start-target-reference-store.aml",
+          "sha256": "0583b6a9bac38da687ee23dc6d4819546b93a59084b992686d112a10f5353a7e",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/mid_tostring_timing_tests.adb",
+      "fixture_sha256": "08ee1507ba0210af789a7125f8a793c59d1368b961e2bcaad79b72b0df9165db",
+      "array_ordinal": 6,
+      "body_sha256": "b9ec382cab2039bd3f899769018aae3d5da7a166eec26649f292031edeca372f",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r2-mid-start-target-reference-copy.aml",
+          "sha256": "285331fe5c36c3f874827e880546d4cd75c3a19b394fe82e6fb6fff15a1088e3",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r1-mid-start-target-reference-copy.aml",
+          "sha256": "c835f7415872b959647ec1b45e99800a05db27e7e3f311881a08f132144191e5",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/mid_tostring_timing_tests.adb",
+      "fixture_sha256": "08ee1507ba0210af789a7125f8a793c59d1368b961e2bcaad79b72b0df9165db",
+      "array_ordinal": 7,
+      "body_sha256": "725cd012b41a37e1e209af475cbe3fec40936f13da57f1900514c2813089c7d4",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r1-mid-start-target-name-store.aml",
+          "sha256": "902aa9d47d985fbc7ab30f0c5313312d2f90660d494d3d48646db5394a49a623",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r2-mid-start-target-name-store.aml",
+          "sha256": "ccff07fc99fbe6ab55de1f28102eb5d809bbae398878d87a368146e86208a058",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/mid_tostring_timing_tests.adb",
+      "fixture_sha256": "08ee1507ba0210af789a7125f8a793c59d1368b961e2bcaad79b72b0df9165db",
+      "array_ordinal": 8,
+      "body_sha256": "0f71070b21d6aabb06edcfd87f5cb4b2400605f2dfdb8ea3df0a909069570694",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r1-mid-start-target-name-copy.aml",
+          "sha256": "bf7b8ac178f79c1f4429a4748faf4a6d4bc8f09132658c5e2e7115b232cc89fc",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r2-mid-start-target-name-copy.aml",
+          "sha256": "de7e92fe769ca10c007ddd03a50f9d5892fa770a5c18888e8685f75536095a24",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/mid_tostring_timing_tests.adb",
+      "fixture_sha256": "08ee1507ba0210af789a7125f8a793c59d1368b961e2bcaad79b72b0df9165db",
+      "array_ordinal": 9,
+      "body_sha256": "c0f89c78fbc017d7e0d296a71d370dfb67281d8b4f032cdab80eb96fb2e9d935",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r1-mid-count-target-reference-store.aml",
+          "sha256": "12a034e540a1220e8b6abf349eb38345b43034d5e4b9bab1719ea4e4bec87856",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r2-mid-count-target-reference-store.aml",
+          "sha256": "94d9193ebb84dc63351cc324e10b02a08a24d578a52bb7354ccdcb6d17c4f6c8",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/mid_tostring_timing_tests.adb",
+      "fixture_sha256": "08ee1507ba0210af789a7125f8a793c59d1368b961e2bcaad79b72b0df9165db",
+      "array_ordinal": 10,
+      "body_sha256": "9c939f746b216354c7b347769359da26d05ccf27723740c005f718a3d0f497a7",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r1-mid-count-target-reference-copy.aml",
+          "sha256": "0dee43e5159b6d425c88ff14b22023dfca1abf017e75a109c1c54d6a73d1ee01",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r2-mid-count-target-reference-copy.aml",
+          "sha256": "cbaf60e88bdba2e4a2aad6fcf30c44a5f998d51d018928b839bfd016b6c4e929",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/mid_tostring_timing_tests.adb",
+      "fixture_sha256": "08ee1507ba0210af789a7125f8a793c59d1368b961e2bcaad79b72b0df9165db",
+      "array_ordinal": 11,
+      "body_sha256": "825fea2415918b9d540324773410d72ad064f6b2a1d1bf957f29e8a7c993b08b",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r1-mid-count-target-name-store.aml",
+          "sha256": "0b3935d7f94dd5719a010f133390dc50c44bd7616a3454b65787babcaddf6e6a",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r2-mid-count-target-name-store.aml",
+          "sha256": "c6b2def9fcde727a05c299faadfc4f89e7834ac406357f8a07ce511a639d96fc",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/mid_tostring_timing_tests.adb",
+      "fixture_sha256": "08ee1507ba0210af789a7125f8a793c59d1368b961e2bcaad79b72b0df9165db",
+      "array_ordinal": 12,
+      "body_sha256": "047aeeb22fdebc1afdc1878bafe520188ea3256f85f0b1a2d5a4d39678c3acfe",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r1-mid-count-target-name-copy.aml",
+          "sha256": "8f3f58bde213a9a8080f52ccac2c81221f65d194d966d511a07d5208ff046e9a",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r2-mid-count-target-name-copy.aml",
+          "sha256": "138f535775da69c3f9cc1b75fbd21c713fe4cef23d3129c16d36dfac4cf21ef4",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/mid_tostring_timing_tests.adb",
+      "fixture_sha256": "08ee1507ba0210af789a7125f8a793c59d1368b961e2bcaad79b72b0df9165db",
+      "array_ordinal": 13,
+      "body_sha256": "49cc9bfaf672b8532b1c342d3a8e951acf32e4feed84196431a33ab1569b1973",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r1-tostring-length-target-reference-store.aml",
+          "sha256": "299ead81968a32d13e0870fcd2216f4d37fde9621207689db440cd0769b367af",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r2-tostring-length-target-reference-store.aml",
+          "sha256": "2105f608372da73057dd18ed4e0d8c240a7e21c55a60842c3035cdeb8ab73e8e",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/mid_tostring_timing_tests.adb",
+      "fixture_sha256": "08ee1507ba0210af789a7125f8a793c59d1368b961e2bcaad79b72b0df9165db",
+      "array_ordinal": 14,
+      "body_sha256": "fd188ba4d989601c6f9a9eb8f5c152180b6e136b515f6fad2c20bf95b89e932c",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r1-tostring-length-target-reference-copy.aml",
+          "sha256": "961eb39900299b273a39f4ee2bf984bfdb3a14a48f90b49c1ae2524aae09080e",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r2-tostring-length-target-reference-copy.aml",
+          "sha256": "23648550090f9c8d78a247bc525d2e1466e2651ae8fd8c3c01d8d417c82ad754",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/mid_tostring_timing_tests.adb",
+      "fixture_sha256": "08ee1507ba0210af789a7125f8a793c59d1368b961e2bcaad79b72b0df9165db",
+      "array_ordinal": 15,
+      "body_sha256": "7b8f6ae036ba4a34bbb99a60f44caf93711cc31865e135d8a86a5c3d6bb4b8fa",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r2-tostring-length-target-name-store.aml",
+          "sha256": "48aedb015991c8c2448084b7dc86e4b09b6a777ef564535bbfe17043f31c15b5",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r1-tostring-length-target-name-store.aml",
+          "sha256": "84686e59dc769bc32a6de1f1e1b55e714158f6fdc187966f305e6948ee1fddf6",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/mid_tostring_timing_tests.adb",
+      "fixture_sha256": "08ee1507ba0210af789a7125f8a793c59d1368b961e2bcaad79b72b0df9165db",
+      "array_ordinal": 16,
+      "body_sha256": "6bf987e4c932c9063d618bb2f645bb9385cf6a13a7624b9775c5f51029dd18ff",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r2-tostring-length-target-name-copy.aml",
+          "sha256": "5be71a9bbc9c3258a21bea85ceb316a2becb14153978baadace0140e6ba55aca",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r1-tostring-length-target-name-copy.aml",
+          "sha256": "bd33e17016052e7aa843d0589537a03fe51279b6b1bf8000d3cdffea4ad5a24b",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/mid_tostring_timing_tests.adb",
+      "fixture_sha256": "08ee1507ba0210af789a7125f8a793c59d1368b961e2bcaad79b72b0df9165db",
+      "array_ordinal": 17,
+      "body_sha256": "ff6861ff31af3e1526b20643dbff69953fda7d238c5dd73068a14234fbc74e8c",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r2-mid-string-immediate.aml",
+          "sha256": "9945f62de7e854a02156af3ea11399f59151d51a942c40a2eb7e4675789acf9c",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r1-mid-string-immediate.aml",
+          "sha256": "5578f5d2ef73dd483300022a8195abe89128af62b132eb0fae475c4e4c58fca3",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/mid_tostring_timing_tests.adb",
+      "fixture_sha256": "08ee1507ba0210af789a7125f8a793c59d1368b961e2bcaad79b72b0df9165db",
+      "array_ordinal": 18,
+      "body_sha256": "a3215f9454a1df752ceab3c27e28f0946ec961be84424e1aa42c244efd064cc1",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r1-mid-buffer-immediate.aml",
+          "sha256": "0153e753c44270958b948db18ab3a46231dadc3565d220b09bbbc801174ee9ed",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r2-mid-buffer-immediate.aml",
+          "sha256": "70745d52c7b3ed3d7cce9d62a4d4a0ecaffce0cd3d8a6c99889b0f488c253ecc",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/mid_tostring_timing_tests.adb",
+      "fixture_sha256": "08ee1507ba0210af789a7125f8a793c59d1368b961e2bcaad79b72b0df9165db",
+      "array_ordinal": 19,
+      "body_sha256": "ddaaf7d5fba5e66ad848cbaba82162e15da3e4445b5bcf3f7893e7f50fcca36a",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r2-tostring-immediate.aml",
+          "sha256": "3667a48c5b1c14da3783ef0499f54ad7b88c77fde96ade14b231a3cc534221fe",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r1-tostring-immediate.aml",
+          "sha256": "1b9ebb57fb1dadf28fb1050dc98f98076e20bda2c9b1dcf61a0f2739f3fd6ae4",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/mid_tostring_timing_tests.adb",
+      "fixture_sha256": "08ee1507ba0210af789a7125f8a793c59d1368b961e2bcaad79b72b0df9165db",
+      "array_ordinal": 20,
+      "body_sha256": "1cc95bc95f6d2814b885f290285e8f4e646ea3adcdb0cc6d69675bf5800da190",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r1-mid-start-later-reference-store.aml",
+          "sha256": "7ca1f125f99e2bcb743d7131841181b69a078c45ca7e5605c9e77b40025d0e23",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r2-mid-start-later-reference-store.aml",
+          "sha256": "1f7b6866a11b0d80e0a46616cd3ffc5cdf23334e7b1ac7205726288c229d8ace",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/mid_tostring_timing_tests.adb",
+      "fixture_sha256": "08ee1507ba0210af789a7125f8a793c59d1368b961e2bcaad79b72b0df9165db",
+      "array_ordinal": 21,
+      "body_sha256": "ca69fe9c10e2805d690faaaa54888fb6dcd48771394338dd347d7e76d5191fe0",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r1-mid-start-later-reference-copy.aml",
+          "sha256": "22d739534939490b2203f529154e597d0bafe6a3a27ca136a820a953057677ae",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r2-mid-start-later-reference-copy.aml",
+          "sha256": "9980ae52821fee91126872b6c206d458afc02cb3e8f4d4d4a760bc55a7aa11c1",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/mid_tostring_timing_tests.adb",
+      "fixture_sha256": "08ee1507ba0210af789a7125f8a793c59d1368b961e2bcaad79b72b0df9165db",
+      "array_ordinal": 22,
+      "body_sha256": "4e3a536b31f31f4455949ea35369e1e4dbe0668c15176acd67dc5ecef7239211",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r1-mid-start-later-name-store.aml",
+          "sha256": "ea530a07e92937c69aeca56a35ec87cd9054fea919e642201387a1dbf35688e0",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r2-mid-start-later-name-store.aml",
+          "sha256": "72038695f37f66a5227dff713376ad98d3ea3b21f7d88efddaf438fe02a5a73d",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/mid_tostring_timing_tests.adb",
+      "fixture_sha256": "08ee1507ba0210af789a7125f8a793c59d1368b961e2bcaad79b72b0df9165db",
+      "array_ordinal": 23,
+      "body_sha256": "7f618d9d9386ea8352d7f79aafecd4ddb271e22bed8b038e1e796262e65d5686",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r1-mid-start-later-name-copy.aml",
+          "sha256": "bacc950402711a142206a8136da63159ccf466c21f670858604d1e3870d90d3f",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r2-mid-start-later-name-copy.aml",
+          "sha256": "16ddd93b8c775656eaf54a2a44f59f4f4cd5521b43b66e04287a8b19f02ae7c6",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/mid_tostring_timing_tests.adb",
+      "fixture_sha256": "08ee1507ba0210af789a7125f8a793c59d1368b961e2bcaad79b72b0df9165db",
+      "array_ordinal": 24,
+      "body_sha256": "17a90dca510bfee6ac64165ed4bee46e405328ff30d789fc285ceaecc273c8f0",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r1-mid-start-target-reference-store.aml",
+          "sha256": "29be0eaaad05a19bb69e99e1e109127896bf5cc63395d14c4c097c403f2aa470",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r2-mid-start-target-reference-store.aml",
+          "sha256": "0583b6a9bac38da687ee23dc6d4819546b93a59084b992686d112a10f5353a7e",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/mid_tostring_timing_tests.adb",
+      "fixture_sha256": "08ee1507ba0210af789a7125f8a793c59d1368b961e2bcaad79b72b0df9165db",
+      "array_ordinal": 25,
+      "body_sha256": "b9ec382cab2039bd3f899769018aae3d5da7a166eec26649f292031edeca372f",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r2-mid-start-target-reference-copy.aml",
+          "sha256": "285331fe5c36c3f874827e880546d4cd75c3a19b394fe82e6fb6fff15a1088e3",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r1-mid-start-target-reference-copy.aml",
+          "sha256": "c835f7415872b959647ec1b45e99800a05db27e7e3f311881a08f132144191e5",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/mid_tostring_timing_tests.adb",
+      "fixture_sha256": "08ee1507ba0210af789a7125f8a793c59d1368b961e2bcaad79b72b0df9165db",
+      "array_ordinal": 26,
+      "body_sha256": "725cd012b41a37e1e209af475cbe3fec40936f13da57f1900514c2813089c7d4",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r1-mid-start-target-name-store.aml",
+          "sha256": "902aa9d47d985fbc7ab30f0c5313312d2f90660d494d3d48646db5394a49a623",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r2-mid-start-target-name-store.aml",
+          "sha256": "ccff07fc99fbe6ab55de1f28102eb5d809bbae398878d87a368146e86208a058",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/mid_tostring_timing_tests.adb",
+      "fixture_sha256": "08ee1507ba0210af789a7125f8a793c59d1368b961e2bcaad79b72b0df9165db",
+      "array_ordinal": 27,
+      "body_sha256": "0f71070b21d6aabb06edcfd87f5cb4b2400605f2dfdb8ea3df0a909069570694",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r1-mid-start-target-name-copy.aml",
+          "sha256": "bf7b8ac178f79c1f4429a4748faf4a6d4bc8f09132658c5e2e7115b232cc89fc",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r2-mid-start-target-name-copy.aml",
+          "sha256": "de7e92fe769ca10c007ddd03a50f9d5892fa770a5c18888e8685f75536095a24",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/mid_tostring_timing_tests.adb",
+      "fixture_sha256": "08ee1507ba0210af789a7125f8a793c59d1368b961e2bcaad79b72b0df9165db",
+      "array_ordinal": 28,
+      "body_sha256": "c0f89c78fbc017d7e0d296a71d370dfb67281d8b4f032cdab80eb96fb2e9d935",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r1-mid-count-target-reference-store.aml",
+          "sha256": "12a034e540a1220e8b6abf349eb38345b43034d5e4b9bab1719ea4e4bec87856",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r2-mid-count-target-reference-store.aml",
+          "sha256": "94d9193ebb84dc63351cc324e10b02a08a24d578a52bb7354ccdcb6d17c4f6c8",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/mid_tostring_timing_tests.adb",
+      "fixture_sha256": "08ee1507ba0210af789a7125f8a793c59d1368b961e2bcaad79b72b0df9165db",
+      "array_ordinal": 29,
+      "body_sha256": "9c939f746b216354c7b347769359da26d05ccf27723740c005f718a3d0f497a7",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r1-mid-count-target-reference-copy.aml",
+          "sha256": "0dee43e5159b6d425c88ff14b22023dfca1abf017e75a109c1c54d6a73d1ee01",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r2-mid-count-target-reference-copy.aml",
+          "sha256": "cbaf60e88bdba2e4a2aad6fcf30c44a5f998d51d018928b839bfd016b6c4e929",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/mid_tostring_timing_tests.adb",
+      "fixture_sha256": "08ee1507ba0210af789a7125f8a793c59d1368b961e2bcaad79b72b0df9165db",
+      "array_ordinal": 30,
+      "body_sha256": "825fea2415918b9d540324773410d72ad064f6b2a1d1bf957f29e8a7c993b08b",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r1-mid-count-target-name-store.aml",
+          "sha256": "0b3935d7f94dd5719a010f133390dc50c44bd7616a3454b65787babcaddf6e6a",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r2-mid-count-target-name-store.aml",
+          "sha256": "c6b2def9fcde727a05c299faadfc4f89e7834ac406357f8a07ce511a639d96fc",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/mid_tostring_timing_tests.adb",
+      "fixture_sha256": "08ee1507ba0210af789a7125f8a793c59d1368b961e2bcaad79b72b0df9165db",
+      "array_ordinal": 31,
+      "body_sha256": "047aeeb22fdebc1afdc1878bafe520188ea3256f85f0b1a2d5a4d39678c3acfe",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r1-mid-count-target-name-copy.aml",
+          "sha256": "8f3f58bde213a9a8080f52ccac2c81221f65d194d966d511a07d5208ff046e9a",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r2-mid-count-target-name-copy.aml",
+          "sha256": "138f535775da69c3f9cc1b75fbd21c713fe4cef23d3129c16d36dfac4cf21ef4",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/mid_tostring_timing_tests.adb",
+      "fixture_sha256": "08ee1507ba0210af789a7125f8a793c59d1368b961e2bcaad79b72b0df9165db",
+      "array_ordinal": 32,
+      "body_sha256": "49cc9bfaf672b8532b1c342d3a8e951acf32e4feed84196431a33ab1569b1973",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r1-tostring-length-target-reference-store.aml",
+          "sha256": "299ead81968a32d13e0870fcd2216f4d37fde9621207689db440cd0769b367af",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r2-tostring-length-target-reference-store.aml",
+          "sha256": "2105f608372da73057dd18ed4e0d8c240a7e21c55a60842c3035cdeb8ab73e8e",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/mid_tostring_timing_tests.adb",
+      "fixture_sha256": "08ee1507ba0210af789a7125f8a793c59d1368b961e2bcaad79b72b0df9165db",
+      "array_ordinal": 33,
+      "body_sha256": "fd188ba4d989601c6f9a9eb8f5c152180b6e136b515f6fad2c20bf95b89e932c",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r1-tostring-length-target-reference-copy.aml",
+          "sha256": "961eb39900299b273a39f4ee2bf984bfdb3a14a48f90b49c1ae2524aae09080e",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r2-tostring-length-target-reference-copy.aml",
+          "sha256": "23648550090f9c8d78a247bc525d2e1466e2651ae8fd8c3c01d8d417c82ad754",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/mid_tostring_timing_tests.adb",
+      "fixture_sha256": "08ee1507ba0210af789a7125f8a793c59d1368b961e2bcaad79b72b0df9165db",
+      "array_ordinal": 34,
+      "body_sha256": "7b8f6ae036ba4a34bbb99a60f44caf93711cc31865e135d8a86a5c3d6bb4b8fa",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r2-tostring-length-target-name-store.aml",
+          "sha256": "48aedb015991c8c2448084b7dc86e4b09b6a777ef564535bbfe17043f31c15b5",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r1-tostring-length-target-name-store.aml",
+          "sha256": "84686e59dc769bc32a6de1f1e1b55e714158f6fdc187966f305e6948ee1fddf6",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/mid_tostring_timing_tests.adb",
+      "fixture_sha256": "08ee1507ba0210af789a7125f8a793c59d1368b961e2bcaad79b72b0df9165db",
+      "array_ordinal": 35,
+      "body_sha256": "6bf987e4c932c9063d618bb2f645bb9385cf6a13a7624b9775c5f51029dd18ff",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r2-tostring-length-target-name-copy.aml",
+          "sha256": "5be71a9bbc9c3258a21bea85ceb316a2becb14153978baadace0140e6ba55aca",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r1-tostring-length-target-name-copy.aml",
+          "sha256": "bd33e17016052e7aa843d0589537a03fe51279b6b1bf8000d3cdffea4ad5a24b",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/mid_tostring_timing_tests.adb",
+      "fixture_sha256": "08ee1507ba0210af789a7125f8a793c59d1368b961e2bcaad79b72b0df9165db",
+      "array_ordinal": 36,
+      "body_sha256": "ff6861ff31af3e1526b20643dbff69953fda7d238c5dd73068a14234fbc74e8c",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r2-mid-string-immediate.aml",
+          "sha256": "9945f62de7e854a02156af3ea11399f59151d51a942c40a2eb7e4675789acf9c",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r1-mid-string-immediate.aml",
+          "sha256": "5578f5d2ef73dd483300022a8195abe89128af62b132eb0fae475c4e4c58fca3",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/mid_tostring_timing_tests.adb",
+      "fixture_sha256": "08ee1507ba0210af789a7125f8a793c59d1368b961e2bcaad79b72b0df9165db",
+      "array_ordinal": 37,
+      "body_sha256": "a3215f9454a1df752ceab3c27e28f0946ec961be84424e1aa42c244efd064cc1",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r1-mid-buffer-immediate.aml",
+          "sha256": "0153e753c44270958b948db18ab3a46231dadc3565d220b09bbbc801174ee9ed",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r2-mid-buffer-immediate.aml",
+          "sha256": "70745d52c7b3ed3d7cce9d62a4d4a0ecaffce0cd3d8a6c99889b0f488c253ecc",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/mid_tostring_timing_tests.adb",
+      "fixture_sha256": "08ee1507ba0210af789a7125f8a793c59d1368b961e2bcaad79b72b0df9165db",
+      "array_ordinal": 38,
+      "body_sha256": "ddaaf7d5fba5e66ad848cbaba82162e15da3e4445b5bcf3f7893e7f50fcca36a",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r2-tostring-immediate.aml",
+          "sha256": "3667a48c5b1c14da3783ef0499f54ad7b88c77fde96ade14b231a3cc534221fe",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-scalar-operators/mid-tostring-reference/r1-tostring-immediate.aml",
+          "sha256": "1b9ebb57fb1dadf28fb1050dc98f98076e20bda2c9b1dcf61a0f2739f3fd6ae4",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/concat_source_timing_tests.adb",
+      "fixture_sha256": "cccd8553b4f62a43687ec6b65bde2c35065175886e81cbd4866099069ad6eb7a",
+      "array_ordinal": 1,
+      "body_sha256": "f3efdfe850968ee712f8f34f74ac55f2c87fb9b316593d5abc73125919fbd840",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/concat-timing-reference/r2-left-owned-store.aml",
+          "sha256": "22626a9f6f6d35e4ef468890ddb662ab354a6821f8ad35b3ce307ccecc350bf0",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-scalar-operators/concat-timing-reference/r1-left-owned-store.aml",
+          "sha256": "62ec5bfec93470b870ba0c075c2026dbc4e87994993d11051a66cdd837053c2c",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/concat_source_timing_tests.adb",
+      "fixture_sha256": "cccd8553b4f62a43687ec6b65bde2c35065175886e81cbd4866099069ad6eb7a",
+      "array_ordinal": 2,
+      "body_sha256": "76708e7d65da84e4918fbc58294e0516b72b46d11043ccddd876106c7b806b61",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/concat-timing-reference/r2-left-owned-copyobject.aml",
+          "sha256": "3b98af99ee360ee258f8d878c22e3491a6856cd70348d74fc69e5ff6a4a9f115",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-scalar-operators/concat-timing-reference/r1-left-owned-copyobject.aml",
+          "sha256": "a2f2fab65808f7ec6af58b21f250416acb2630431c01d5f8d6f62aeae65ff77e",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/concat_source_timing_tests.adb",
+      "fixture_sha256": "cccd8553b4f62a43687ec6b65bde2c35065175886e81cbd4866099069ad6eb7a",
+      "array_ordinal": 3,
+      "body_sha256": "ce9a4fc0c66198b81727f450022a8cb927f43ca70c584a426777bdfb51c2cbe8",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/concat-timing-reference/r2-left-named-store.aml",
+          "sha256": "67ea2a05904987facb15ee75468ab729fca6ab4662694f3fe107516c371e0242",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-scalar-operators/concat-timing-reference/r1-left-named-store.aml",
+          "sha256": "d6e59db9f7a6561fa622bf58ac31e62120d8ece54e65eeaf56570ca07799beaa",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/concat_source_timing_tests.adb",
+      "fixture_sha256": "cccd8553b4f62a43687ec6b65bde2c35065175886e81cbd4866099069ad6eb7a",
+      "array_ordinal": 4,
+      "body_sha256": "ecffd0f8f1f83fe85924107304b469dc8bf90f3270975c7ae3da76b470588d07",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/concat-timing-reference/r1-left-named-copyobject.aml",
+          "sha256": "8e1e1ef7a3a23f676dfb22bdeceaf14626da38683ab25de517116a26f21f223a",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-scalar-operators/concat-timing-reference/r2-left-named-copyobject.aml",
+          "sha256": "93085782a2a0d4d6a401abdf586e15916890de8bad5bcc068c9e857c1bdd3c67",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/concat_source_timing_tests.adb",
+      "fixture_sha256": "cccd8553b4f62a43687ec6b65bde2c35065175886e81cbd4866099069ad6eb7a",
+      "array_ordinal": 5,
+      "body_sha256": "99e0229710421338961610b1c9a1a2170ae42c4f4941150e71be0bb66e9a49d0",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/concat-timing-reference/r2-right-target-owned-store.aml",
+          "sha256": "1f8a398915ff85ae01babf131fdf2dd47ceb245eec2db091ad587832d2491974",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-scalar-operators/concat-timing-reference/r1-right-target-owned-store.aml",
+          "sha256": "905b5fb2cd8aaeba50a0eb0f18ff06f8c80c84ed7cec4a265db8b72a29d21e70",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/concat_source_timing_tests.adb",
+      "fixture_sha256": "cccd8553b4f62a43687ec6b65bde2c35065175886e81cbd4866099069ad6eb7a",
+      "array_ordinal": 6,
+      "body_sha256": "58caf08b466782b1c0b754c2dacb0b7cc3b16491ba7255156553147d8dd35bfa",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/concat-timing-reference/r1-right-target-owned-copyobject.aml",
+          "sha256": "c881a43a4f3464f5c86b68f511fc60bb4122c0c516cca790921e39c1d7114bf4",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-scalar-operators/concat-timing-reference/r2-right-target-owned-copyobject.aml",
+          "sha256": "7efe2ff4b886b636eb584102adb2db22cc0341eed6aff53e60d70f70854d55b0",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/concat_source_timing_tests.adb",
+      "fixture_sha256": "cccd8553b4f62a43687ec6b65bde2c35065175886e81cbd4866099069ad6eb7a",
+      "array_ordinal": 7,
+      "body_sha256": "459ba7c848ea4fe54ec19e44e0fcf00141d156e06a7c919a36913a8ca305d092",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/concat-timing-reference/r1-right-target-named-store.aml",
+          "sha256": "a0ea913a8a5059ad9f581977977a069d127c4fbfd6bca09e3c3430167b5488b8",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-scalar-operators/concat-timing-reference/r2-right-target-named-store.aml",
+          "sha256": "2375be3d021f0a528641397d4e051d2f6413653a9410f95aa44d6a97c33c873b",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/concat_source_timing_tests.adb",
+      "fixture_sha256": "cccd8553b4f62a43687ec6b65bde2c35065175886e81cbd4866099069ad6eb7a",
+      "array_ordinal": 8,
+      "body_sha256": "38f13c2a6ee61a2ab35a97fc719da991cbed5fc23e363665a32e9f69b58b7821",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/concat-timing-reference/r2-right-target-named-copyobject.aml",
+          "sha256": "fad9a90bd9261994b5e5ecf9b7579e4f5b64dec1328de05cf23e832691e1d001",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-scalar-operators/concat-timing-reference/r1-right-target-named-copyobject.aml",
+          "sha256": "c1a453890fcc7f610f47c7ef2768cd08e3aa1d0f16300c6840b6d5d889fc6a48",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/concat_source_timing_tests.adb",
+      "fixture_sha256": "cccd8553b4f62a43687ec6b65bde2c35065175886e81cbd4866099069ad6eb7a",
+      "array_ordinal": 9,
+      "body_sha256": "f3efdfe850968ee712f8f34f74ac55f2c87fb9b316593d5abc73125919fbd840",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/concat-timing-reference/r2-left-owned-store.aml",
+          "sha256": "22626a9f6f6d35e4ef468890ddb662ab354a6821f8ad35b3ce307ccecc350bf0",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-scalar-operators/concat-timing-reference/r1-left-owned-store.aml",
+          "sha256": "62ec5bfec93470b870ba0c075c2026dbc4e87994993d11051a66cdd837053c2c",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/concat_source_timing_tests.adb",
+      "fixture_sha256": "cccd8553b4f62a43687ec6b65bde2c35065175886e81cbd4866099069ad6eb7a",
+      "array_ordinal": 10,
+      "body_sha256": "76708e7d65da84e4918fbc58294e0516b72b46d11043ccddd876106c7b806b61",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/concat-timing-reference/r2-left-owned-copyobject.aml",
+          "sha256": "3b98af99ee360ee258f8d878c22e3491a6856cd70348d74fc69e5ff6a4a9f115",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-scalar-operators/concat-timing-reference/r1-left-owned-copyobject.aml",
+          "sha256": "a2f2fab65808f7ec6af58b21f250416acb2630431c01d5f8d6f62aeae65ff77e",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/concat_source_timing_tests.adb",
+      "fixture_sha256": "cccd8553b4f62a43687ec6b65bde2c35065175886e81cbd4866099069ad6eb7a",
+      "array_ordinal": 11,
+      "body_sha256": "ce9a4fc0c66198b81727f450022a8cb927f43ca70c584a426777bdfb51c2cbe8",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/concat-timing-reference/r2-left-named-store.aml",
+          "sha256": "67ea2a05904987facb15ee75468ab729fca6ab4662694f3fe107516c371e0242",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-scalar-operators/concat-timing-reference/r1-left-named-store.aml",
+          "sha256": "d6e59db9f7a6561fa622bf58ac31e62120d8ece54e65eeaf56570ca07799beaa",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/concat_source_timing_tests.adb",
+      "fixture_sha256": "cccd8553b4f62a43687ec6b65bde2c35065175886e81cbd4866099069ad6eb7a",
+      "array_ordinal": 12,
+      "body_sha256": "ecffd0f8f1f83fe85924107304b469dc8bf90f3270975c7ae3da76b470588d07",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/concat-timing-reference/r1-left-named-copyobject.aml",
+          "sha256": "8e1e1ef7a3a23f676dfb22bdeceaf14626da38683ab25de517116a26f21f223a",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-scalar-operators/concat-timing-reference/r2-left-named-copyobject.aml",
+          "sha256": "93085782a2a0d4d6a401abdf586e15916890de8bad5bcc068c9e857c1bdd3c67",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/concat_source_timing_tests.adb",
+      "fixture_sha256": "cccd8553b4f62a43687ec6b65bde2c35065175886e81cbd4866099069ad6eb7a",
+      "array_ordinal": 13,
+      "body_sha256": "99e0229710421338961610b1c9a1a2170ae42c4f4941150e71be0bb66e9a49d0",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/concat-timing-reference/r2-right-target-owned-store.aml",
+          "sha256": "1f8a398915ff85ae01babf131fdf2dd47ceb245eec2db091ad587832d2491974",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-scalar-operators/concat-timing-reference/r1-right-target-owned-store.aml",
+          "sha256": "905b5fb2cd8aaeba50a0eb0f18ff06f8c80c84ed7cec4a265db8b72a29d21e70",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/concat_source_timing_tests.adb",
+      "fixture_sha256": "cccd8553b4f62a43687ec6b65bde2c35065175886e81cbd4866099069ad6eb7a",
+      "array_ordinal": 14,
+      "body_sha256": "58caf08b466782b1c0b754c2dacb0b7cc3b16491ba7255156553147d8dd35bfa",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/concat-timing-reference/r1-right-target-owned-copyobject.aml",
+          "sha256": "c881a43a4f3464f5c86b68f511fc60bb4122c0c516cca790921e39c1d7114bf4",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-scalar-operators/concat-timing-reference/r2-right-target-owned-copyobject.aml",
+          "sha256": "7efe2ff4b886b636eb584102adb2db22cc0341eed6aff53e60d70f70854d55b0",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/concat_source_timing_tests.adb",
+      "fixture_sha256": "cccd8553b4f62a43687ec6b65bde2c35065175886e81cbd4866099069ad6eb7a",
+      "array_ordinal": 15,
+      "body_sha256": "459ba7c848ea4fe54ec19e44e0fcf00141d156e06a7c919a36913a8ca305d092",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/concat-timing-reference/r1-right-target-named-store.aml",
+          "sha256": "a0ea913a8a5059ad9f581977977a069d127c4fbfd6bca09e3c3430167b5488b8",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-scalar-operators/concat-timing-reference/r2-right-target-named-store.aml",
+          "sha256": "2375be3d021f0a528641397d4e051d2f6413653a9410f95aa44d6a97c33c873b",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/concat_source_timing_tests.adb",
+      "fixture_sha256": "cccd8553b4f62a43687ec6b65bde2c35065175886e81cbd4866099069ad6eb7a",
+      "array_ordinal": 16,
+      "body_sha256": "38f13c2a6ee61a2ab35a97fc719da991cbed5fc23e363665a32e9f69b58b7821",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/concat-timing-reference/r2-right-target-named-copyobject.aml",
+          "sha256": "fad9a90bd9261994b5e5ecf9b7579e4f5b64dec1328de05cf23e832691e1d001",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-scalar-operators/concat-timing-reference/r1-right-target-named-copyobject.aml",
+          "sha256": "c1a453890fcc7f610f47c7ef2768cd08e3aa1d0f16300c6840b6d5d889fc6a48",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/named_source_timing_tests.adb",
+      "fixture_sha256": "35ba27761d8c281c49dadcb479d4dcc197c90f5ca457a65d02432b29a2a02cb4",
+      "array_ordinal": 1,
+      "body_sha256": "4e429a5479d1cbb14b695f1695c3ce2e723a72d9a7453b816975395930f71038",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/named-timing-reference/store-store.aml",
+          "sha256": "1790824a46ef49bd1a0b286ab0a140ea77202c8a9e841372e9621851dc442b7f",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/named_source_timing_tests.adb",
+      "fixture_sha256": "35ba27761d8c281c49dadcb479d4dcc197c90f5ca457a65d02432b29a2a02cb4",
+      "array_ordinal": 2,
+      "body_sha256": "169eb7241e64b06edf2fa0986a3e847bb0118238ab63239445ff3b60ffc4acc0",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/named-timing-reference/store-copyobject.aml",
+          "sha256": "84c69137734b1ef18586981ecfbfe73fc39859f5f827f82bb378470437db78a3",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/named_source_timing_tests.adb",
+      "fixture_sha256": "35ba27761d8c281c49dadcb479d4dcc197c90f5ca457a65d02432b29a2a02cb4",
+      "array_ordinal": 3,
+      "body_sha256": "6358f6310e9f9ff15888226ee6f2c3a0f4a79c83a710a47a54d5438a6edf3008",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/named-timing-reference/tointeger-store.aml",
+          "sha256": "457273ac854a363edc6f52f1a53991ecbb68ce44674f2d89dfe8c1dc468e7185",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/named_source_timing_tests.adb",
+      "fixture_sha256": "35ba27761d8c281c49dadcb479d4dcc197c90f5ca457a65d02432b29a2a02cb4",
+      "array_ordinal": 4,
+      "body_sha256": "dce1b4b46e67c03c4b3b782deb69b20df25624311d62bc6eac0dc4e2b9d1a165",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/named-timing-reference/tointeger-copyobject.aml",
+          "sha256": "f923bfb9e8b311a9782fc6ebfd1739317cc4be373ee11a7313b9f050cc85dd66",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/reference_source_timing_tests.adb",
+      "fixture_sha256": "74288f64596404c0f555938bd4114a23718d494ec2c9530acecc13bee31e7907",
+      "array_ordinal": 1,
+      "body_sha256": "2c4a6fd13a8b2c073ec95cb1c6c9254d260b230ed90db444891304d962aa8831",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/reference-timing-reference/store-store.aml",
+          "sha256": "f69a9fe3ff80b65f65849af338843c0ae81165dafdf28ce47e075ee3bf27d76c",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/reference_source_timing_tests.adb",
+      "fixture_sha256": "74288f64596404c0f555938bd4114a23718d494ec2c9530acecc13bee31e7907",
+      "array_ordinal": 2,
+      "body_sha256": "f1eda512e3e1026ec575a00bfcbae877a238e49747ef228b87ee4ed15d47809d",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/reference-timing-reference/store-copyobject.aml",
+          "sha256": "e77f873170f162571b0bf58843a0ca052742fd73e522d6d4115cb618b4aa6ce1",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/reference_source_timing_tests.adb",
+      "fixture_sha256": "74288f64596404c0f555938bd4114a23718d494ec2c9530acecc13bee31e7907",
+      "array_ordinal": 3,
+      "body_sha256": "7959a451796a2b3a8f4d378a843235337d16dab2aed1b1ef2a4a45ddee03abca",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/reference-timing-reference/tointeger-store.aml",
+          "sha256": "6cdb6392ec150c5327818c05edc7dc83e31fdb9323c4781bc7ff98ef50585c79",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/reference_source_timing_tests.adb",
+      "fixture_sha256": "74288f64596404c0f555938bd4114a23718d494ec2c9530acecc13bee31e7907",
+      "array_ordinal": 4,
+      "body_sha256": "65ea97fb784e96ed912d898f206b053b1326841595e221e89e2682bad558779e",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/reference-timing-reference/tointeger-copyobject.aml",
+          "sha256": "df916aed9ba49a512bab47cc582a75f5dcaecba6310030c03039de5b168ca4d9",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-match-routing/match_tests.adb",
+      "fixture_sha256": "758aef2c757f86d115f9ceb4766dd054f99ead58cb71be542b6ecf866408fdfc",
+      "array_ordinal": 1,
+      "body_sha256": "78092789cb5c7488109f2cf079f91c8fe908e3c629c5e6545668a9360d1ee3a0",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/match-operand-oracle-qm5z23xn/r1-first-second-effect-reference-store.aml",
+          "sha256": "1ff94a6040ddeb98cec31c7fa10c9d7b5bc7afc285f56d1a04228804ca568258",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-capture/reference/match-operand-oracle-qm5z23xn/r2-first-second-effect-reference-store.aml",
+          "sha256": "0b0a7c62490b1efac5c62d2a0cbfef8b8e41ac3f5e7b20e2f5682296538762aa",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-match-routing/match_tests.adb",
+      "fixture_sha256": "758aef2c757f86d115f9ceb4766dd054f99ead58cb71be542b6ecf866408fdfc",
+      "array_ordinal": 2,
+      "body_sha256": "40a795a3be92effc99cf06da1765f02182c0d872128117318c67e855c664f36c",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/match-operand-oracle-qm5z23xn/r2-first-second-effect-reference-copyobject.aml",
+          "sha256": "fc2123220fcef354a1d490940bd8a6de62cf3a8f262ccd99e3fe2edcb7543c37",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-capture/reference/match-operand-oracle-qm5z23xn/r1-first-second-effect-reference-copyobject.aml",
+          "sha256": "7ffe211f449a02e92b578652fa67bc46e9e1215a4819c1d52062277eb53503a9",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-match-routing/match_tests.adb",
+      "fixture_sha256": "758aef2c757f86d115f9ceb4766dd054f99ead58cb71be542b6ecf866408fdfc",
+      "array_ordinal": 3,
+      "body_sha256": "23a9ab370bcfdc2257ca2942d78769c8990dbf828a585b583b34b9a7c8bbad1d",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/match-operand-oracle-qm5z23xn/r2-first-second-effect-name-store.aml",
+          "sha256": "a7f7941f83c0c65d9497fb577304087fb37013e9bfc145667af4c6c6c01cece6",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-capture/reference/match-operand-oracle-qm5z23xn/r1-first-second-effect-name-store.aml",
+          "sha256": "a4091faa7fed6e528f1613533bf2fbbfa19b8820cd8b6f40c8e17deb0576760c",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-match-routing/match_tests.adb",
+      "fixture_sha256": "758aef2c757f86d115f9ceb4766dd054f99ead58cb71be542b6ecf866408fdfc",
+      "array_ordinal": 4,
+      "body_sha256": "f25dc77b5ff75ac5d5a628c8fcde4541091b7999ff0741f3412eeefff22c2e6b",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/match-operand-oracle-qm5z23xn/r1-first-second-effect-name-copyobject.aml",
+          "sha256": "29475fc161e85976d4698008322f8555cf9246346aa1439dd17ee9b3d643c3ce",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-capture/reference/match-operand-oracle-qm5z23xn/r2-first-second-effect-name-copyobject.aml",
+          "sha256": "fa374f818d193d641d12eb42264c5fa061622de3b223ec7f4194a807d4be8a13",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-match-routing/match_tests.adb",
+      "fixture_sha256": "758aef2c757f86d115f9ceb4766dd054f99ead58cb71be542b6ecf866408fdfc",
+      "array_ordinal": 5,
+      "body_sha256": "63696b3dd26d9a235b0c124c463fce6e6ac56f578dda748ddc7f46dbffbda848",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/match-operand-oracle-qm5z23xn/r2-first-start-effect-reference-store.aml",
+          "sha256": "2a34bd0c4d99a608eb4ddde2c809bb932a5ef5c877e68be95c6806f68ad992c0",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-capture/reference/match-operand-oracle-qm5z23xn/r1-first-start-effect-reference-store.aml",
+          "sha256": "e1b4d2f28211eab740b2f5729260aa42ab0ea9531b2a2058aadc5778c04165f1",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-match-routing/match_tests.adb",
+      "fixture_sha256": "758aef2c757f86d115f9ceb4766dd054f99ead58cb71be542b6ecf866408fdfc",
+      "array_ordinal": 6,
+      "body_sha256": "ba3a2c82d264fa051c3b93356898d242dd6971bf567add9bcbc1d84cf50f0107",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/match-operand-oracle-qm5z23xn/r2-first-start-effect-reference-copyobject.aml",
+          "sha256": "05a6bb51b32f53291b59a12a4c18fc780f17dce3799c760ba448ad4c33d68cce",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-capture/reference/match-operand-oracle-qm5z23xn/r1-first-start-effect-reference-copyobject.aml",
+          "sha256": "fc7577a101fd0033a6632ddf10504d27ee1d6cf2c14a95f4707b6aeb27d5d9ca",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-match-routing/match_tests.adb",
+      "fixture_sha256": "758aef2c757f86d115f9ceb4766dd054f99ead58cb71be542b6ecf866408fdfc",
+      "array_ordinal": 7,
+      "body_sha256": "345c679541b56022069f26b6168405593321d1bc58eaf2af7c75ccfda723dfad",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/match-operand-oracle-qm5z23xn/r1-first-start-effect-name-store.aml",
+          "sha256": "4a6022654a738b2f4e1b1fb6c6c47744aded9b01890f2ea7713b013ddfa0181e",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-capture/reference/match-operand-oracle-qm5z23xn/r2-first-start-effect-name-store.aml",
+          "sha256": "04d4a56a62d948e27da2d2cf6caccd2cf69a3f5b24a7c3d1a6b47dbe9d56f21f",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-match-routing/match_tests.adb",
+      "fixture_sha256": "758aef2c757f86d115f9ceb4766dd054f99ead58cb71be542b6ecf866408fdfc",
+      "array_ordinal": 8,
+      "body_sha256": "4cebe78bfa1288b5f7d5693ae4dff4a15fc3d462860576e31bc2ec1f2674be94",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/match-operand-oracle-qm5z23xn/r1-first-start-effect-name-copyobject.aml",
+          "sha256": "ee5546e742e6e5e418d6a61777508d6e5ab8993c523fbb74dbe9d0b8fd79e9e5",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-capture/reference/match-operand-oracle-qm5z23xn/r2-first-start-effect-name-copyobject.aml",
+          "sha256": "8559a393c5eea2b0475eacd6057defb7d765f8dd8ab6574ab06424e84f740243",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-match-routing/match_tests.adb",
+      "fixture_sha256": "758aef2c757f86d115f9ceb4766dd054f99ead58cb71be542b6ecf866408fdfc",
+      "array_ordinal": 9,
+      "body_sha256": "2ac77fff8bba97f33021b6ceab986c7f3fc3e19f7d7b9c65def323f34acdb857",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/match-operand-oracle-qm5z23xn/r1-second-start-effect-reference-store.aml",
+          "sha256": "d84572614cd011872cf69f8d03ba9df8ff3a9836e5ccb2df5a5d28cb00084e7c",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-capture/reference/match-operand-oracle-qm5z23xn/r2-second-start-effect-reference-store.aml",
+          "sha256": "9af728dd9a4063fd209c01ae3db02aef1e42004acce9effabdd2fed0e2caa43b",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-match-routing/match_tests.adb",
+      "fixture_sha256": "758aef2c757f86d115f9ceb4766dd054f99ead58cb71be542b6ecf866408fdfc",
+      "array_ordinal": 10,
+      "body_sha256": "39be8cd85ea5ebf8f615a85ca44a66c8a47e1ccc876cee89f3850df53663009a",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/match-operand-oracle-qm5z23xn/r2-second-start-effect-reference-copyobject.aml",
+          "sha256": "ef188bd654312eddbdd690595a76f59e820927875cbec4f20237970e67fd7b08",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-capture/reference/match-operand-oracle-qm5z23xn/r1-second-start-effect-reference-copyobject.aml",
+          "sha256": "0001ba7e9f0eb1520c2478723441a91a9d6188d8df0b5909685740d49c816eb8",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-match-routing/match_tests.adb",
+      "fixture_sha256": "758aef2c757f86d115f9ceb4766dd054f99ead58cb71be542b6ecf866408fdfc",
+      "array_ordinal": 11,
+      "body_sha256": "a0a3dfa5e1fee88056d07ff8b502fceaffeb67724107d8ee7421ff857b23da5b",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/match-operand-oracle-qm5z23xn/r1-second-start-effect-name-store.aml",
+          "sha256": "759a7bc0de43c46fc8a979c94441164bb9a3db6df16ada23b9191eb3fba530e1",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-capture/reference/match-operand-oracle-qm5z23xn/r2-second-start-effect-name-store.aml",
+          "sha256": "acc0398a0c27a78050bedc6483864328081b7c4ec12df08d8974b1f59a25a425",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-match-routing/match_tests.adb",
+      "fixture_sha256": "758aef2c757f86d115f9ceb4766dd054f99ead58cb71be542b6ecf866408fdfc",
+      "array_ordinal": 12,
+      "body_sha256": "bd36668e413c6a5a7b7b7e8c2c4044f0dd03a3663194a4ee2d401148c6096f17",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/match-operand-oracle-qm5z23xn/r2-second-start-effect-name-copyobject.aml",
+          "sha256": "675c4161aea8fa0ee9b2ac8ef549914dd79488536f6f8592e0f7702415ba375a",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-capture/reference/match-operand-oracle-qm5z23xn/r1-second-start-effect-name-copyobject.aml",
+          "sha256": "a36d52f371ccce095c3d57dc5064df236e2315033fd55002a97e30ccc44a4d75",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-match-routing/match_tests.adb",
+      "fixture_sha256": "758aef2c757f86d115f9ceb4766dd054f99ead58cb71be542b6ecf866408fdfc",
+      "array_ordinal": 13,
+      "body_sha256": "3f82471587631671d33aea97043a24c533d7adf66bf69b07074d647908767826",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/match-operand-oracle-qm5z23xn/r2-caller-local.aml",
+          "sha256": "38a7adeb0c699f845c88819324059f7111a990d30fd4386fc27f7c761412aac3",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-capture/reference/match-operand-oracle-qm5z23xn/r1-caller-local.aml",
+          "sha256": "ba495551f970d2690f112f4ca67f73c30aae71456dd8264a12d934679daae538",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-match-routing/match_tests.adb",
+      "fixture_sha256": "758aef2c757f86d115f9ceb4766dd054f99ead58cb71be542b6ecf866408fdfc",
+      "array_ordinal": 14,
+      "body_sha256": "3d0ab542b0cb88aa8136fa73db066cda0f4e3358fa69b644f4aefae213cb368e",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/match-operand-oracle-qm5z23xn/r2-package-rebind.aml",
+          "sha256": "f52c1b4ba7ce3821474ca5dc8ef6efe78a2e9998192325f616dddd859b2b7bf0",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-capture/reference/match-operand-oracle-qm5z23xn/r1-package-rebind.aml",
+          "sha256": "9be983bc47d6366e3e4986002ce316305e12c0215b68a3a3ae962ede4d7e5548",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-match-routing/match_tests.adb",
+      "fixture_sha256": "758aef2c757f86d115f9ceb4766dd054f99ead58cb71be542b6ecf866408fdfc",
+      "array_ordinal": 15,
+      "body_sha256": "d9a9d8d05cec9ae7362c60685e1abd2cb2a4268ef2298c04891d84357fafd3c9",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/match-operand-oracle-qm5z23xn/r1-start-out-of-range.aml",
+          "sha256": "653c23aaa088da59324877f28a89c1c627270a6a1ce8b6e3a9fdc5dcd1b55f6e",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-capture/reference/match-operand-oracle-qm5z23xn/r2-start-out-of-range.aml",
+          "sha256": "a9c41c57b35374e5505528383d809051c73773df4fff66fd92e8e2b205c6b97e",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-match-routing/match_tests.adb",
+      "fixture_sha256": "758aef2c757f86d115f9ceb4766dd054f99ead58cb71be542b6ecf866408fdfc",
+      "array_ordinal": 16,
+      "body_sha256": "78092789cb5c7488109f2cf079f91c8fe908e3c629c5e6545668a9360d1ee3a0",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/match-operand-oracle-qm5z23xn/r1-first-second-effect-reference-store.aml",
+          "sha256": "1ff94a6040ddeb98cec31c7fa10c9d7b5bc7afc285f56d1a04228804ca568258",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-capture/reference/match-operand-oracle-qm5z23xn/r2-first-second-effect-reference-store.aml",
+          "sha256": "0b0a7c62490b1efac5c62d2a0cbfef8b8e41ac3f5e7b20e2f5682296538762aa",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-match-routing/match_tests.adb",
+      "fixture_sha256": "758aef2c757f86d115f9ceb4766dd054f99ead58cb71be542b6ecf866408fdfc",
+      "array_ordinal": 17,
+      "body_sha256": "40a795a3be92effc99cf06da1765f02182c0d872128117318c67e855c664f36c",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/match-operand-oracle-qm5z23xn/r2-first-second-effect-reference-copyobject.aml",
+          "sha256": "fc2123220fcef354a1d490940bd8a6de62cf3a8f262ccd99e3fe2edcb7543c37",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-capture/reference/match-operand-oracle-qm5z23xn/r1-first-second-effect-reference-copyobject.aml",
+          "sha256": "7ffe211f449a02e92b578652fa67bc46e9e1215a4819c1d52062277eb53503a9",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-match-routing/match_tests.adb",
+      "fixture_sha256": "758aef2c757f86d115f9ceb4766dd054f99ead58cb71be542b6ecf866408fdfc",
+      "array_ordinal": 18,
+      "body_sha256": "23a9ab370bcfdc2257ca2942d78769c8990dbf828a585b583b34b9a7c8bbad1d",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/match-operand-oracle-qm5z23xn/r2-first-second-effect-name-store.aml",
+          "sha256": "a7f7941f83c0c65d9497fb577304087fb37013e9bfc145667af4c6c6c01cece6",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-capture/reference/match-operand-oracle-qm5z23xn/r1-first-second-effect-name-store.aml",
+          "sha256": "a4091faa7fed6e528f1613533bf2fbbfa19b8820cd8b6f40c8e17deb0576760c",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-match-routing/match_tests.adb",
+      "fixture_sha256": "758aef2c757f86d115f9ceb4766dd054f99ead58cb71be542b6ecf866408fdfc",
+      "array_ordinal": 19,
+      "body_sha256": "f25dc77b5ff75ac5d5a628c8fcde4541091b7999ff0741f3412eeefff22c2e6b",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/match-operand-oracle-qm5z23xn/r1-first-second-effect-name-copyobject.aml",
+          "sha256": "29475fc161e85976d4698008322f8555cf9246346aa1439dd17ee9b3d643c3ce",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-capture/reference/match-operand-oracle-qm5z23xn/r2-first-second-effect-name-copyobject.aml",
+          "sha256": "fa374f818d193d641d12eb42264c5fa061622de3b223ec7f4194a807d4be8a13",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-match-routing/match_tests.adb",
+      "fixture_sha256": "758aef2c757f86d115f9ceb4766dd054f99ead58cb71be542b6ecf866408fdfc",
+      "array_ordinal": 20,
+      "body_sha256": "63696b3dd26d9a235b0c124c463fce6e6ac56f578dda748ddc7f46dbffbda848",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/match-operand-oracle-qm5z23xn/r2-first-start-effect-reference-store.aml",
+          "sha256": "2a34bd0c4d99a608eb4ddde2c809bb932a5ef5c877e68be95c6806f68ad992c0",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-capture/reference/match-operand-oracle-qm5z23xn/r1-first-start-effect-reference-store.aml",
+          "sha256": "e1b4d2f28211eab740b2f5729260aa42ab0ea9531b2a2058aadc5778c04165f1",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-match-routing/match_tests.adb",
+      "fixture_sha256": "758aef2c757f86d115f9ceb4766dd054f99ead58cb71be542b6ecf866408fdfc",
+      "array_ordinal": 21,
+      "body_sha256": "ba3a2c82d264fa051c3b93356898d242dd6971bf567add9bcbc1d84cf50f0107",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/match-operand-oracle-qm5z23xn/r2-first-start-effect-reference-copyobject.aml",
+          "sha256": "05a6bb51b32f53291b59a12a4c18fc780f17dce3799c760ba448ad4c33d68cce",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-capture/reference/match-operand-oracle-qm5z23xn/r1-first-start-effect-reference-copyobject.aml",
+          "sha256": "fc7577a101fd0033a6632ddf10504d27ee1d6cf2c14a95f4707b6aeb27d5d9ca",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-match-routing/match_tests.adb",
+      "fixture_sha256": "758aef2c757f86d115f9ceb4766dd054f99ead58cb71be542b6ecf866408fdfc",
+      "array_ordinal": 22,
+      "body_sha256": "345c679541b56022069f26b6168405593321d1bc58eaf2af7c75ccfda723dfad",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/match-operand-oracle-qm5z23xn/r1-first-start-effect-name-store.aml",
+          "sha256": "4a6022654a738b2f4e1b1fb6c6c47744aded9b01890f2ea7713b013ddfa0181e",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-capture/reference/match-operand-oracle-qm5z23xn/r2-first-start-effect-name-store.aml",
+          "sha256": "04d4a56a62d948e27da2d2cf6caccd2cf69a3f5b24a7c3d1a6b47dbe9d56f21f",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-match-routing/match_tests.adb",
+      "fixture_sha256": "758aef2c757f86d115f9ceb4766dd054f99ead58cb71be542b6ecf866408fdfc",
+      "array_ordinal": 23,
+      "body_sha256": "4cebe78bfa1288b5f7d5693ae4dff4a15fc3d462860576e31bc2ec1f2674be94",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/match-operand-oracle-qm5z23xn/r1-first-start-effect-name-copyobject.aml",
+          "sha256": "ee5546e742e6e5e418d6a61777508d6e5ab8993c523fbb74dbe9d0b8fd79e9e5",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-capture/reference/match-operand-oracle-qm5z23xn/r2-first-start-effect-name-copyobject.aml",
+          "sha256": "8559a393c5eea2b0475eacd6057defb7d765f8dd8ab6574ab06424e84f740243",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-match-routing/match_tests.adb",
+      "fixture_sha256": "758aef2c757f86d115f9ceb4766dd054f99ead58cb71be542b6ecf866408fdfc",
+      "array_ordinal": 24,
+      "body_sha256": "2ac77fff8bba97f33021b6ceab986c7f3fc3e19f7d7b9c65def323f34acdb857",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/match-operand-oracle-qm5z23xn/r1-second-start-effect-reference-store.aml",
+          "sha256": "d84572614cd011872cf69f8d03ba9df8ff3a9836e5ccb2df5a5d28cb00084e7c",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-capture/reference/match-operand-oracle-qm5z23xn/r2-second-start-effect-reference-store.aml",
+          "sha256": "9af728dd9a4063fd209c01ae3db02aef1e42004acce9effabdd2fed0e2caa43b",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-match-routing/match_tests.adb",
+      "fixture_sha256": "758aef2c757f86d115f9ceb4766dd054f99ead58cb71be542b6ecf866408fdfc",
+      "array_ordinal": 25,
+      "body_sha256": "39be8cd85ea5ebf8f615a85ca44a66c8a47e1ccc876cee89f3850df53663009a",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/match-operand-oracle-qm5z23xn/r2-second-start-effect-reference-copyobject.aml",
+          "sha256": "ef188bd654312eddbdd690595a76f59e820927875cbec4f20237970e67fd7b08",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-capture/reference/match-operand-oracle-qm5z23xn/r1-second-start-effect-reference-copyobject.aml",
+          "sha256": "0001ba7e9f0eb1520c2478723441a91a9d6188d8df0b5909685740d49c816eb8",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-match-routing/match_tests.adb",
+      "fixture_sha256": "758aef2c757f86d115f9ceb4766dd054f99ead58cb71be542b6ecf866408fdfc",
+      "array_ordinal": 26,
+      "body_sha256": "a0a3dfa5e1fee88056d07ff8b502fceaffeb67724107d8ee7421ff857b23da5b",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/match-operand-oracle-qm5z23xn/r1-second-start-effect-name-store.aml",
+          "sha256": "759a7bc0de43c46fc8a979c94441164bb9a3db6df16ada23b9191eb3fba530e1",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-capture/reference/match-operand-oracle-qm5z23xn/r2-second-start-effect-name-store.aml",
+          "sha256": "acc0398a0c27a78050bedc6483864328081b7c4ec12df08d8974b1f59a25a425",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-match-routing/match_tests.adb",
+      "fixture_sha256": "758aef2c757f86d115f9ceb4766dd054f99ead58cb71be542b6ecf866408fdfc",
+      "array_ordinal": 27,
+      "body_sha256": "bd36668e413c6a5a7b7b7e8c2c4044f0dd03a3663194a4ee2d401148c6096f17",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/match-operand-oracle-qm5z23xn/r2-second-start-effect-name-copyobject.aml",
+          "sha256": "675c4161aea8fa0ee9b2ac8ef549914dd79488536f6f8592e0f7702415ba375a",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-capture/reference/match-operand-oracle-qm5z23xn/r1-second-start-effect-name-copyobject.aml",
+          "sha256": "a36d52f371ccce095c3d57dc5064df236e2315033fd55002a97e30ccc44a4d75",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-match-routing/match_tests.adb",
+      "fixture_sha256": "758aef2c757f86d115f9ceb4766dd054f99ead58cb71be542b6ecf866408fdfc",
+      "array_ordinal": 28,
+      "body_sha256": "3f82471587631671d33aea97043a24c533d7adf66bf69b07074d647908767826",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/match-operand-oracle-qm5z23xn/r2-caller-local.aml",
+          "sha256": "38a7adeb0c699f845c88819324059f7111a990d30fd4386fc27f7c761412aac3",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-capture/reference/match-operand-oracle-qm5z23xn/r1-caller-local.aml",
+          "sha256": "ba495551f970d2690f112f4ca67f73c30aae71456dd8264a12d934679daae538",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-match-routing/match_tests.adb",
+      "fixture_sha256": "758aef2c757f86d115f9ceb4766dd054f99ead58cb71be542b6ecf866408fdfc",
+      "array_ordinal": 29,
+      "body_sha256": "3d0ab542b0cb88aa8136fa73db066cda0f4e3358fa69b644f4aefae213cb368e",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/match-operand-oracle-qm5z23xn/r2-package-rebind.aml",
+          "sha256": "f52c1b4ba7ce3821474ca5dc8ef6efe78a2e9998192325f616dddd859b2b7bf0",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-capture/reference/match-operand-oracle-qm5z23xn/r1-package-rebind.aml",
+          "sha256": "9be983bc47d6366e3e4986002ce316305e12c0215b68a3a3ae962ede4d7e5548",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-match-routing/match_tests.adb",
+      "fixture_sha256": "758aef2c757f86d115f9ceb4766dd054f99ead58cb71be542b6ecf866408fdfc",
+      "array_ordinal": 30,
+      "body_sha256": "d9a9d8d05cec9ae7362c60685e1abd2cb2a4268ef2298c04891d84357fafd3c9",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/match-operand-oracle-qm5z23xn/r1-start-out-of-range.aml",
+          "sha256": "653c23aaa088da59324877f28a89c1c627270a6a1ce8b6e3a9fdc5dcd1b55f6e",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-capture/reference/match-operand-oracle-qm5z23xn/r2-start-out-of-range.aml",
+          "sha256": "a9c41c57b35374e5505528383d809051c73773df4fff66fd92e8e2b205c6b97e",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-match-routing/match_tests.adb",
+      "fixture_sha256": "758aef2c757f86d115f9ceb4766dd054f99ead58cb71be542b6ecf866408fdfc",
+      "array_ordinal": 31,
+      "body_sha256": "e5de7f1ce60fddcd3986b8784e6f5ec6f329a4e3275077e4a7b3c9e25412a0bd",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/match-invalid-runtime-oracle-k29bb242/r2-predicate-invalid-type.aml",
+          "sha256": "c2a99f8f6a6f963fa33bafd719aa085c941ddb5e46474e1a707fea1314d85e6c",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-capture/reference/match-invalid-runtime-oracle-k29bb242/r1-predicate-invalid-type.aml",
+          "sha256": "634db5728e126580bea7b4541f44b141c2662bc67985d5900e2b9ce52210e9e1",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-match-routing/match_tests.adb",
+      "fixture_sha256": "758aef2c757f86d115f9ceb4766dd054f99ead58cb71be542b6ecf866408fdfc",
+      "array_ordinal": 32,
+      "body_sha256": "e5de7f1ce60fddcd3986b8784e6f5ec6f329a4e3275077e4a7b3c9e25412a0bd",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/match-invalid-runtime-oracle-k29bb242/r2-predicate-invalid-type.aml",
+          "sha256": "c2a99f8f6a6f963fa33bafd719aa085c941ddb5e46474e1a707fea1314d85e6c",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-capture/reference/match-invalid-runtime-oracle-k29bb242/r1-predicate-invalid-type.aml",
+          "sha256": "634db5728e126580bea7b4541f44b141c2662bc67985d5900e2b9ce52210e9e1",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-staged-field-routing/staged_field_tests.adb",
+      "fixture_sha256": "7147c3d2ffd15797a029746cef598238dbb8342318360416971b6836428f470d",
+      "array_ordinal": 1,
+      "body_sha256": "29dceefa813fe053e855bb017fd21fcdfb529930d75017d091ad8bb18687b5d0",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/staged-field-operand-oracle-krxpdtlq/r1-reference-store.aml",
+          "sha256": "fac92a5b418f7bfc0fca24e80e39dce9374ebfb2599c4f9410edc469a04a8503",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-capture/reference/staged-field-operand-oracle-krxpdtlq/r2-reference-store.aml",
+          "sha256": "4ff20e8dad1d454d0c9fb9a70572199c551e84573c7a777249192a3c88b80c8e",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-staged-field-routing/staged_field_tests.adb",
+      "fixture_sha256": "7147c3d2ffd15797a029746cef598238dbb8342318360416971b6836428f470d",
+      "array_ordinal": 2,
+      "body_sha256": "c84af7a19303e12e83400cac84b03c272d3b03773e2e337a96deb4fa71479730",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/staged-field-operand-oracle-krxpdtlq/r2-reference-copy.aml",
+          "sha256": "fcfa3d8cb0c80e2683ab3055c05f75f15f10944a7a7b158bc5392daef7cd0dd5",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-capture/reference/staged-field-operand-oracle-krxpdtlq/r1-reference-copy.aml",
+          "sha256": "eeee9c6ebeae8a6dffbc1210d8a9955b4999c1b9ee40359b9136ce6925f08e9a",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-staged-field-routing/staged_field_tests.adb",
+      "fixture_sha256": "7147c3d2ffd15797a029746cef598238dbb8342318360416971b6836428f470d",
+      "array_ordinal": 3,
+      "body_sha256": "6d2bc2f29a19c9c8419bd9df8d3b3e94d3370db5e9cc0d38cc55dcb84209c891",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/staged-field-operand-oracle-krxpdtlq/r2-name-store.aml",
+          "sha256": "e053a9b39bc26fe0ac5a132dd70af55419033008ea85c53563e1d94b724e74cf",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-capture/reference/staged-field-operand-oracle-krxpdtlq/r1-name-store.aml",
+          "sha256": "e739fd9036b7e41420259c87d547d9f11cc7474c57aca2bb7ab85694fb37a643",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-staged-field-routing/staged_field_tests.adb",
+      "fixture_sha256": "7147c3d2ffd15797a029746cef598238dbb8342318360416971b6836428f470d",
+      "array_ordinal": 4,
+      "body_sha256": "6701537e68721d1c8f605697e8cfdd60cb9f972f0fc5779976066dee4098b970",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/staged-field-operand-oracle-krxpdtlq/r1-name-copy.aml",
+          "sha256": "ef32b16fe282df8b5b2dcada20e2b265ca50c8d991c30486520243cf927ae2c6",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-capture/reference/staged-field-operand-oracle-krxpdtlq/r2-name-copy.aml",
+          "sha256": "144a187361706d842101d46ab615fda6884b98799c4095d7680d9b06dc57f438",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-staged-field-routing/staged_field_tests.adb",
+      "fixture_sha256": "7147c3d2ffd15797a029746cef598238dbb8342318360416971b6836428f470d",
+      "array_ordinal": 5,
+      "body_sha256": "06b47cac5cc3787089bcd1635149ff7cda34f92f6361f4c40d03a8feb837eda4",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/staged-field-operand-oracle-krxpdtlq/r2-caller-local.aml",
+          "sha256": "c667a132328dce2a3a1c5468c44cd8b8339c9f31dec8b6f309417f645af18b75",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-capture/reference/staged-field-operand-oracle-krxpdtlq/r1-caller-local.aml",
+          "sha256": "cf0042c211fa38b2d82f6e9b0ec67cd0dbaacac16713bcdc1c9ddd99ad5b03c0",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-staged-field-routing/staged_field_tests.adb",
+      "fixture_sha256": "7147c3d2ffd15797a029746cef598238dbb8342318360416971b6836428f470d",
+      "array_ordinal": 6,
+      "body_sha256": "79082a0bf39694b16b75b826b92e44f299e10acc5fa8999c3d31830dfc2e0e2c",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/staged-field-operand-oracle-krxpdtlq/r1-nested-field.aml",
+          "sha256": "40ddd2b89d84eaa7b8a3705e0b211a55de059fd280b78790d665c85fee5ade01",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-capture/reference/staged-field-operand-oracle-krxpdtlq/r2-nested-field.aml",
+          "sha256": "5930d9a71dfc10beaf6844805e65b4aeae6ccd486331e89952b763fd89c782b5",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-staged-field-routing/staged_field_tests.adb",
+      "fixture_sha256": "7147c3d2ffd15797a029746cef598238dbb8342318360416971b6836428f470d",
+      "array_ordinal": 7,
+      "body_sha256": "7fcd668c3788611dfad336d1bd006ff4d9b9dfdf4e665e5132725c96b829bb4e",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/staged-field-operand-oracle-krxpdtlq/r2-bad-index.aml",
+          "sha256": "1bf9748e1d28073e63c402f6351daf35fc42243fce4e2b7a54e6fe7637f85922",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-capture/reference/staged-field-operand-oracle-krxpdtlq/r1-bad-index.aml",
+          "sha256": "2fe70460e4c4d883ca890517d42cafe844d128d19979d70942c32336ae0803f7",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-staged-field-routing/staged_field_tests.adb",
+      "fixture_sha256": "7147c3d2ffd15797a029746cef598238dbb8342318360416971b6836428f470d",
+      "array_ordinal": 8,
+      "body_sha256": "5ac7d2ffd1cea982f57288fb48c138f14dba0eb00dbdfd1c7e267e812b82edbe",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/staged-field-operand-oracle-krxpdtlq/r1-bad-count.aml",
+          "sha256": "f28464071683e4e95d38cbfcdf617e089378851b0aa928224d61e9970f4b98ac",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-capture/reference/staged-field-operand-oracle-krxpdtlq/r2-bad-count.aml",
+          "sha256": "1c6e8429b409bce04347dc7fa208c258b76a47b526142703f9b87872b581b2d0",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-staged-field-routing/staged_field_tests.adb",
+      "fixture_sha256": "7147c3d2ffd15797a029746cef598238dbb8342318360416971b6836428f470d",
+      "array_ordinal": 9,
+      "body_sha256": "29dceefa813fe053e855bb017fd21fcdfb529930d75017d091ad8bb18687b5d0",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/staged-field-operand-oracle-krxpdtlq/r1-reference-store.aml",
+          "sha256": "fac92a5b418f7bfc0fca24e80e39dce9374ebfb2599c4f9410edc469a04a8503",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-capture/reference/staged-field-operand-oracle-krxpdtlq/r2-reference-store.aml",
+          "sha256": "4ff20e8dad1d454d0c9fb9a70572199c551e84573c7a777249192a3c88b80c8e",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-staged-field-routing/staged_field_tests.adb",
+      "fixture_sha256": "7147c3d2ffd15797a029746cef598238dbb8342318360416971b6836428f470d",
+      "array_ordinal": 10,
+      "body_sha256": "c84af7a19303e12e83400cac84b03c272d3b03773e2e337a96deb4fa71479730",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/staged-field-operand-oracle-krxpdtlq/r2-reference-copy.aml",
+          "sha256": "fcfa3d8cb0c80e2683ab3055c05f75f15f10944a7a7b158bc5392daef7cd0dd5",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-capture/reference/staged-field-operand-oracle-krxpdtlq/r1-reference-copy.aml",
+          "sha256": "eeee9c6ebeae8a6dffbc1210d8a9955b4999c1b9ee40359b9136ce6925f08e9a",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-staged-field-routing/staged_field_tests.adb",
+      "fixture_sha256": "7147c3d2ffd15797a029746cef598238dbb8342318360416971b6836428f470d",
+      "array_ordinal": 11,
+      "body_sha256": "6d2bc2f29a19c9c8419bd9df8d3b3e94d3370db5e9cc0d38cc55dcb84209c891",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/staged-field-operand-oracle-krxpdtlq/r2-name-store.aml",
+          "sha256": "e053a9b39bc26fe0ac5a132dd70af55419033008ea85c53563e1d94b724e74cf",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-capture/reference/staged-field-operand-oracle-krxpdtlq/r1-name-store.aml",
+          "sha256": "e739fd9036b7e41420259c87d547d9f11cc7474c57aca2bb7ab85694fb37a643",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-staged-field-routing/staged_field_tests.adb",
+      "fixture_sha256": "7147c3d2ffd15797a029746cef598238dbb8342318360416971b6836428f470d",
+      "array_ordinal": 12,
+      "body_sha256": "6701537e68721d1c8f605697e8cfdd60cb9f972f0fc5779976066dee4098b970",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/staged-field-operand-oracle-krxpdtlq/r1-name-copy.aml",
+          "sha256": "ef32b16fe282df8b5b2dcada20e2b265ca50c8d991c30486520243cf927ae2c6",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-capture/reference/staged-field-operand-oracle-krxpdtlq/r2-name-copy.aml",
+          "sha256": "144a187361706d842101d46ab615fda6884b98799c4095d7680d9b06dc57f438",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-staged-field-routing/staged_field_tests.adb",
+      "fixture_sha256": "7147c3d2ffd15797a029746cef598238dbb8342318360416971b6836428f470d",
+      "array_ordinal": 13,
+      "body_sha256": "06b47cac5cc3787089bcd1635149ff7cda34f92f6361f4c40d03a8feb837eda4",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/staged-field-operand-oracle-krxpdtlq/r2-caller-local.aml",
+          "sha256": "c667a132328dce2a3a1c5468c44cd8b8339c9f31dec8b6f309417f645af18b75",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-capture/reference/staged-field-operand-oracle-krxpdtlq/r1-caller-local.aml",
+          "sha256": "cf0042c211fa38b2d82f6e9b0ec67cd0dbaacac16713bcdc1c9ddd99ad5b03c0",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-staged-field-routing/staged_field_tests.adb",
+      "fixture_sha256": "7147c3d2ffd15797a029746cef598238dbb8342318360416971b6836428f470d",
+      "array_ordinal": 14,
+      "body_sha256": "79082a0bf39694b16b75b826b92e44f299e10acc5fa8999c3d31830dfc2e0e2c",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/staged-field-operand-oracle-krxpdtlq/r1-nested-field.aml",
+          "sha256": "40ddd2b89d84eaa7b8a3705e0b211a55de059fd280b78790d665c85fee5ade01",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-capture/reference/staged-field-operand-oracle-krxpdtlq/r2-nested-field.aml",
+          "sha256": "5930d9a71dfc10beaf6844805e65b4aeae6ccd486331e89952b763fd89c782b5",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-staged-field-routing/staged_field_tests.adb",
+      "fixture_sha256": "7147c3d2ffd15797a029746cef598238dbb8342318360416971b6836428f470d",
+      "array_ordinal": 15,
+      "body_sha256": "7fcd668c3788611dfad336d1bd006ff4d9b9dfdf4e665e5132725c96b829bb4e",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/staged-field-operand-oracle-krxpdtlq/r2-bad-index.aml",
+          "sha256": "1bf9748e1d28073e63c402f6351daf35fc42243fce4e2b7a54e6fe7637f85922",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-capture/reference/staged-field-operand-oracle-krxpdtlq/r1-bad-index.aml",
+          "sha256": "2fe70460e4c4d883ca890517d42cafe844d128d19979d70942c32336ae0803f7",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-staged-field-routing/staged_field_tests.adb",
+      "fixture_sha256": "7147c3d2ffd15797a029746cef598238dbb8342318360416971b6836428f470d",
+      "array_ordinal": 16,
+      "body_sha256": "5ac7d2ffd1cea982f57288fb48c138f14dba0eb00dbdfd1c7e267e812b82edbe",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-capture/reference/staged-field-operand-oracle-krxpdtlq/r1-bad-count.aml",
+          "sha256": "f28464071683e4e95d38cbfcdf617e089378851b0aa928224d61e9970f4b98ac",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-capture/reference/staged-field-operand-oracle-krxpdtlq/r2-bad-count.aml",
+          "sha256": "1c6e8429b409bce04347dc7fa208c258b76a47b526142703f9b87872b581b2d0",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/resource_buffer_timing_tests.adb",
+      "fixture_sha256": "fe0f0fa448538fc473264ef16616ffe122c645fece6f37cd0654e9102e903e14",
+      "array_ordinal": 1,
+      "body_sha256": "865070eb718d379e14796d413f8b89b62c506d5d18dd4e2859071ea7be567cbe",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/resource-buffer-reference/r1-buffer-left-store.aml",
+          "sha256": "a150d21bbb2633c53b741c2c709be95d333c1784d3f6b3321c33b16fd4fada2d",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-scalar-operators/resource-buffer-reference/r2-buffer-left-store.aml",
+          "sha256": "9a98fb543a0ff13df4c6736b5cce56ffc18f2e5472f1d1666aa23649b68bcb32",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/resource_buffer_timing_tests.adb",
+      "fixture_sha256": "fe0f0fa448538fc473264ef16616ffe122c645fece6f37cd0654e9102e903e14",
+      "array_ordinal": 2,
+      "body_sha256": "c73bfe7caf97755fa94a55dc014c04079f94b6e92e2318778c6de7f4eae20cb0",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/resource-buffer-reference/r1-buffer-left-copyobject.aml",
+          "sha256": "14cc9920e91c67e4775b1f614e91fdf1d2a412da3645d57ffbdbc319e4f9e878",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-scalar-operators/resource-buffer-reference/r2-buffer-left-copyobject.aml",
+          "sha256": "927e197c88c9ef890a7b4c3b0373a11cd2ed0eaa2e5bea57de04cd8147bc7aa5",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/resource_buffer_timing_tests.adb",
+      "fixture_sha256": "fe0f0fa448538fc473264ef16616ffe122c645fece6f37cd0654e9102e903e14",
+      "array_ordinal": 3,
+      "body_sha256": "bc952f5a02e9eda51384f0f78c884e1cce0489429746ce17a34f791e591b9c21",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/resource-buffer-reference/r1-buffer-right-target-store.aml",
+          "sha256": "1597287d79280c0d19da562cf2728e73fc8705e5a4bf56c5fb0b4045f6e7937e",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-scalar-operators/resource-buffer-reference/r2-buffer-right-target-store.aml",
+          "sha256": "6c9269a1cedd9e7195c7c30b98fab82c80d1693d077fc79ee3b34537234cf313",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/resource_buffer_timing_tests.adb",
+      "fixture_sha256": "fe0f0fa448538fc473264ef16616ffe122c645fece6f37cd0654e9102e903e14",
+      "array_ordinal": 4,
+      "body_sha256": "ed95ddf790611a844fe4d33267bf41fd1639fecd069e3e29cd4cd4527afa6723",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/resource-buffer-reference/r2-buffer-right-target-copyobject.aml",
+          "sha256": "f310f75f65cf4d9f22eff4c61323770f2ec9422e2198e1add2dda6b802996cc4",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-scalar-operators/resource-buffer-reference/r1-buffer-right-target-copyobject.aml",
+          "sha256": "1c9a4709a462a0bd19949a7839b13c93b9e66905f9bbf9e4b5f18fa71fc153e6",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/resource_buffer_timing_tests.adb",
+      "fixture_sha256": "fe0f0fa448538fc473264ef16616ffe122c645fece6f37cd0654e9102e903e14",
+      "array_ordinal": 5,
+      "body_sha256": "865070eb718d379e14796d413f8b89b62c506d5d18dd4e2859071ea7be567cbe",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/resource-buffer-reference/r1-buffer-left-store.aml",
+          "sha256": "a150d21bbb2633c53b741c2c709be95d333c1784d3f6b3321c33b16fd4fada2d",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-scalar-operators/resource-buffer-reference/r2-buffer-left-store.aml",
+          "sha256": "9a98fb543a0ff13df4c6736b5cce56ffc18f2e5472f1d1666aa23649b68bcb32",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/resource_buffer_timing_tests.adb",
+      "fixture_sha256": "fe0f0fa448538fc473264ef16616ffe122c645fece6f37cd0654e9102e903e14",
+      "array_ordinal": 6,
+      "body_sha256": "c73bfe7caf97755fa94a55dc014c04079f94b6e92e2318778c6de7f4eae20cb0",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/resource-buffer-reference/r1-buffer-left-copyobject.aml",
+          "sha256": "14cc9920e91c67e4775b1f614e91fdf1d2a412da3645d57ffbdbc319e4f9e878",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-scalar-operators/resource-buffer-reference/r2-buffer-left-copyobject.aml",
+          "sha256": "927e197c88c9ef890a7b4c3b0373a11cd2ed0eaa2e5bea57de04cd8147bc7aa5",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/resource_buffer_timing_tests.adb",
+      "fixture_sha256": "fe0f0fa448538fc473264ef16616ffe122c645fece6f37cd0654e9102e903e14",
+      "array_ordinal": 7,
+      "body_sha256": "bc952f5a02e9eda51384f0f78c884e1cce0489429746ce17a34f791e591b9c21",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/resource-buffer-reference/r1-buffer-right-target-store.aml",
+          "sha256": "1597287d79280c0d19da562cf2728e73fc8705e5a4bf56c5fb0b4045f6e7937e",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-scalar-operators/resource-buffer-reference/r2-buffer-right-target-store.aml",
+          "sha256": "6c9269a1cedd9e7195c7c30b98fab82c80d1693d077fc79ee3b34537234cf313",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/resource_buffer_timing_tests.adb",
+      "fixture_sha256": "fe0f0fa448538fc473264ef16616ffe122c645fece6f37cd0654e9102e903e14",
+      "array_ordinal": 8,
+      "body_sha256": "ed95ddf790611a844fe4d33267bf41fd1639fecd069e3e29cd4cd4527afa6723",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/resource-buffer-reference/r2-buffer-right-target-copyobject.aml",
+          "sha256": "f310f75f65cf4d9f22eff4c61323770f2ec9422e2198e1add2dda6b802996cc4",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-scalar-operators/resource-buffer-reference/r1-buffer-right-target-copyobject.aml",
+          "sha256": "1c9a4709a462a0bd19949a7839b13c93b9e66905f9bbf9e4b5f18fa71fc153e6",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/resource_conversion_tests.adb",
+      "fixture_sha256": "bd935334d86d983243b8d10eecaddd62f524a56816f88083e2c86c277c1fb751",
+      "array_ordinal": 1,
+      "body_sha256": "e509515bd5aba4a224ca864089f13974a53e3aa9551b88a513ed3db59515afe1",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/resource-conversion-reference/1/r1-buffer-left-store.aml",
+          "sha256": "988ab5210e9dc811958c52a5a19e7fa506a6759eb7fb56e7dcac7e66205d4c39",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-scalar-operators/resource-conversion-reference/9/r2-buffer-left-store.aml",
+          "sha256": "14f17e3bfb38c620587d0bbb90d22298ce890deb8dda1d843ee7de62342f8a8f",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/resource_conversion_tests.adb",
+      "fixture_sha256": "bd935334d86d983243b8d10eecaddd62f524a56816f88083e2c86c277c1fb751",
+      "array_ordinal": 2,
+      "body_sha256": "fb16c6e3e081a16272f33b7d4f7214e6d5b8647cd8f59fa023c392166ca869fe",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/resource-conversion-reference/10/r2-buffer-left-copyobject.aml",
+          "sha256": "8e1a18caf31910cac02f53689642d84ba534bfe08c232837910f192dfd699065",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-scalar-operators/resource-conversion-reference/2/r1-buffer-left-copyobject.aml",
+          "sha256": "aa6f6dd67dea10c70a9e853bbe244ca3a012bbce8dfc9b034e0eed7d5650bf2b",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/resource_conversion_tests.adb",
+      "fixture_sha256": "bd935334d86d983243b8d10eecaddd62f524a56816f88083e2c86c277c1fb751",
+      "array_ordinal": 3,
+      "body_sha256": "3d95b26563718f264b413ee29397364c106bfd5eff2e9c6e7ab4f1bfdbb932d4",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/resource-conversion-reference/11/r2-buffer-right-target-store.aml",
+          "sha256": "942c3f3ee78666753087bc6ef5d7c330b046d9fbf29764a2a336e4d1d0153453",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-scalar-operators/resource-conversion-reference/3/r1-buffer-right-target-store.aml",
+          "sha256": "e5bb2e9bf9b7d35316863f9071f53af88c2ee776c824f605b9cf3cef5128fe99",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/resource_conversion_tests.adb",
+      "fixture_sha256": "bd935334d86d983243b8d10eecaddd62f524a56816f88083e2c86c277c1fb751",
+      "array_ordinal": 4,
+      "body_sha256": "e12d6651269e650b9106f1fb2ad91fee62f928a92d666e3ca0c3a848fa984fd0",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/resource-conversion-reference/12/r2-buffer-right-target-copyobject.aml",
+          "sha256": "8e22e16b84e8d61b29e6220debc72b638e390859e82339a1970452c79a3e72e0",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-scalar-operators/resource-conversion-reference/4/r1-buffer-right-target-copyobject.aml",
+          "sha256": "ee8f507f58cafece996ce70e943bc0b82a1afeae053aa9d5e88b317d7bb83435",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/resource_conversion_tests.adb",
+      "fixture_sha256": "bd935334d86d983243b8d10eecaddd62f524a56816f88083e2c86c277c1fb751",
+      "array_ordinal": 5,
+      "body_sha256": "46512299a60374713e2336a62c28d122cf00e562c70e30891e9e1576f6767b1c",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/resource-conversion-reference/5/r1-integer-valid-left-store.aml",
+          "sha256": "3d2b477cd661c4a71aa474e9c1c8ffcfa5c8a5b86ae656548c514ad2dad817a8",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-scalar-operators/resource-conversion-reference/13/r2-integer-valid-left-store.aml",
+          "sha256": "77a12fe6c4e79c51e760162702ee052917196b042291edca452d1d71929f56ac",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/resource_conversion_tests.adb",
+      "fixture_sha256": "bd935334d86d983243b8d10eecaddd62f524a56816f88083e2c86c277c1fb751",
+      "array_ordinal": 6,
+      "body_sha256": "30eb89d75ac02fceee5af929abb74d9cd536f51669b6256ee3bcf126b492c8e5",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/resource-conversion-reference/14/r2-integer-valid-left-copyobject.aml",
+          "sha256": "fe6bf59c67bfe1e2d0fe4cc053c4093b1ca0e23b01084d794921ee21176a36e0",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-scalar-operators/resource-conversion-reference/6/r1-integer-valid-left-copyobject.aml",
+          "sha256": "82e6dddc99f7a717a6500c44be712513011f137da107074dea0e2c2113550c48",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/resource_conversion_tests.adb",
+      "fixture_sha256": "bd935334d86d983243b8d10eecaddd62f524a56816f88083e2c86c277c1fb751",
+      "array_ordinal": 7,
+      "body_sha256": "cecf4e12853486b14def80506aafc1df7f26cfe9d6f56c749e28334c86e38785",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/resource-conversion-reference/15/r2-integer-valid-right-target-store.aml",
+          "sha256": "5cb1707407ded7cecd4381956ff38e1f65098e075a924b9ce50c533ce626f66a",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-scalar-operators/resource-conversion-reference/7/r1-integer-valid-right-target-store.aml",
+          "sha256": "cd85ca087279e88968005bf5e7bde20f0aa6fa053d3c855e6623b5d7a878f7e3",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/resource_conversion_tests.adb",
+      "fixture_sha256": "bd935334d86d983243b8d10eecaddd62f524a56816f88083e2c86c277c1fb751",
+      "array_ordinal": 8,
+      "body_sha256": "9d499967d96c71625a09510cca6b75d8d5b304351d5c4972eea68dc44fd848e6",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/resource-conversion-reference/16/r2-integer-valid-right-target-copyobject.aml",
+          "sha256": "fc3466edaedae982ba3837cf38b2cf461a4d7f2632f5a4e87fbe4be0e8ee085d",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-scalar-operators/resource-conversion-reference/8/r1-integer-valid-right-target-copyobject.aml",
+          "sha256": "4bea03f87702ac42c7da34416529ef893fdc407df3607ef236c0a6e99c96761f",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/resource_conversion_tests.adb",
+      "fixture_sha256": "bd935334d86d983243b8d10eecaddd62f524a56816f88083e2c86c277c1fb751",
+      "array_ordinal": 9,
+      "body_sha256": "e509515bd5aba4a224ca864089f13974a53e3aa9551b88a513ed3db59515afe1",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/resource-conversion-reference/1/r1-buffer-left-store.aml",
+          "sha256": "988ab5210e9dc811958c52a5a19e7fa506a6759eb7fb56e7dcac7e66205d4c39",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-scalar-operators/resource-conversion-reference/9/r2-buffer-left-store.aml",
+          "sha256": "14f17e3bfb38c620587d0bbb90d22298ce890deb8dda1d843ee7de62342f8a8f",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/resource_conversion_tests.adb",
+      "fixture_sha256": "bd935334d86d983243b8d10eecaddd62f524a56816f88083e2c86c277c1fb751",
+      "array_ordinal": 10,
+      "body_sha256": "fb16c6e3e081a16272f33b7d4f7214e6d5b8647cd8f59fa023c392166ca869fe",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/resource-conversion-reference/10/r2-buffer-left-copyobject.aml",
+          "sha256": "8e1a18caf31910cac02f53689642d84ba534bfe08c232837910f192dfd699065",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-scalar-operators/resource-conversion-reference/2/r1-buffer-left-copyobject.aml",
+          "sha256": "aa6f6dd67dea10c70a9e853bbe244ca3a012bbce8dfc9b034e0eed7d5650bf2b",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/resource_conversion_tests.adb",
+      "fixture_sha256": "bd935334d86d983243b8d10eecaddd62f524a56816f88083e2c86c277c1fb751",
+      "array_ordinal": 11,
+      "body_sha256": "3d95b26563718f264b413ee29397364c106bfd5eff2e9c6e7ab4f1bfdbb932d4",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/resource-conversion-reference/11/r2-buffer-right-target-store.aml",
+          "sha256": "942c3f3ee78666753087bc6ef5d7c330b046d9fbf29764a2a336e4d1d0153453",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-scalar-operators/resource-conversion-reference/3/r1-buffer-right-target-store.aml",
+          "sha256": "e5bb2e9bf9b7d35316863f9071f53af88c2ee776c824f605b9cf3cef5128fe99",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/resource_conversion_tests.adb",
+      "fixture_sha256": "bd935334d86d983243b8d10eecaddd62f524a56816f88083e2c86c277c1fb751",
+      "array_ordinal": 12,
+      "body_sha256": "e12d6651269e650b9106f1fb2ad91fee62f928a92d666e3ca0c3a848fa984fd0",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/resource-conversion-reference/12/r2-buffer-right-target-copyobject.aml",
+          "sha256": "8e22e16b84e8d61b29e6220debc72b638e390859e82339a1970452c79a3e72e0",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-scalar-operators/resource-conversion-reference/4/r1-buffer-right-target-copyobject.aml",
+          "sha256": "ee8f507f58cafece996ce70e943bc0b82a1afeae053aa9d5e88b317d7bb83435",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/resource_conversion_tests.adb",
+      "fixture_sha256": "bd935334d86d983243b8d10eecaddd62f524a56816f88083e2c86c277c1fb751",
+      "array_ordinal": 13,
+      "body_sha256": "46512299a60374713e2336a62c28d122cf00e562c70e30891e9e1576f6767b1c",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/resource-conversion-reference/5/r1-integer-valid-left-store.aml",
+          "sha256": "3d2b477cd661c4a71aa474e9c1c8ffcfa5c8a5b86ae656548c514ad2dad817a8",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-scalar-operators/resource-conversion-reference/13/r2-integer-valid-left-store.aml",
+          "sha256": "77a12fe6c4e79c51e760162702ee052917196b042291edca452d1d71929f56ac",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/resource_conversion_tests.adb",
+      "fixture_sha256": "bd935334d86d983243b8d10eecaddd62f524a56816f88083e2c86c277c1fb751",
+      "array_ordinal": 14,
+      "body_sha256": "30eb89d75ac02fceee5af929abb74d9cd536f51669b6256ee3bcf126b492c8e5",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/resource-conversion-reference/14/r2-integer-valid-left-copyobject.aml",
+          "sha256": "fe6bf59c67bfe1e2d0fe4cc053c4093b1ca0e23b01084d794921ee21176a36e0",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-scalar-operators/resource-conversion-reference/6/r1-integer-valid-left-copyobject.aml",
+          "sha256": "82e6dddc99f7a717a6500c44be712513011f137da107074dea0e2c2113550c48",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/resource_conversion_tests.adb",
+      "fixture_sha256": "bd935334d86d983243b8d10eecaddd62f524a56816f88083e2c86c277c1fb751",
+      "array_ordinal": 15,
+      "body_sha256": "cecf4e12853486b14def80506aafc1df7f26cfe9d6f56c749e28334c86e38785",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/resource-conversion-reference/15/r2-integer-valid-right-target-store.aml",
+          "sha256": "5cb1707407ded7cecd4381956ff38e1f65098e075a924b9ce50c533ce626f66a",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-scalar-operators/resource-conversion-reference/7/r1-integer-valid-right-target-store.aml",
+          "sha256": "cd85ca087279e88968005bf5e7bde20f0aa6fa053d3c855e6623b5d7a878f7e3",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/resource_conversion_tests.adb",
+      "fixture_sha256": "bd935334d86d983243b8d10eecaddd62f524a56816f88083e2c86c277c1fb751",
+      "array_ordinal": 16,
+      "body_sha256": "9d499967d96c71625a09510cca6b75d8d5b304351d5c4972eea68dc44fd848e6",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/resource-conversion-reference/16/r2-integer-valid-right-target-copyobject.aml",
+          "sha256": "fc3466edaedae982ba3837cf38b2cf461a4d7f2632f5a4e87fbe4be0e8ee085d",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-scalar-operators/resource-conversion-reference/8/r1-integer-valid-right-target-copyobject.aml",
+          "sha256": "4bea03f87702ac42c7da34416529ef893fdc407df3607ef236c0a6e99c96761f",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/resource_conversion_tests.adb",
+      "fixture_sha256": "bd935334d86d983243b8d10eecaddd62f524a56816f88083e2c86c277c1fb751",
+      "array_ordinal": 17,
+      "body_sha256": "e138289e0bdd499c215e0dfb11c67bacd9e6e9cb5d55f4e3102fe3f0cc0bdb08",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/resource-conversion-reference/25/r2-buffer-left-store.aml",
+          "sha256": "01af3c2bc7805005d65e83507c920383a7d8fc0f652374f2bc3857e50e4b981b",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-scalar-operators/resource-conversion-reference/17/r1-buffer-left-store.aml",
+          "sha256": "6e50597ebb39a477c3476a589c527076dc46fbe0992dcf7a295c8f0afeb085e3",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/resource_conversion_tests.adb",
+      "fixture_sha256": "bd935334d86d983243b8d10eecaddd62f524a56816f88083e2c86c277c1fb751",
+      "array_ordinal": 18,
+      "body_sha256": "25b32886cb9761527b2fa244fed01a901b9d9bb3194fc3ee9c4235e98c2c1cba",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/resource-conversion-reference/26/r2-buffer-left-copyobject.aml",
+          "sha256": "aba84e3a0f62940bf3749b0b31f9027eeccaa72ee703dafea6170e97cb7b743e",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-scalar-operators/resource-conversion-reference/18/r1-buffer-left-copyobject.aml",
+          "sha256": "87d9dd0428e1b4860b67a75ae79c90ac376198c408cb3ddcb5372c65e822dc29",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/resource_conversion_tests.adb",
+      "fixture_sha256": "bd935334d86d983243b8d10eecaddd62f524a56816f88083e2c86c277c1fb751",
+      "array_ordinal": 19,
+      "body_sha256": "69228b34cd15a6fb8f42f37868cb7b63f6347fffd0012c7510623769d66d865f",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/resource-conversion-reference/19/r1-buffer-right-target-store.aml",
+          "sha256": "7d6b61494d9edae538b92e843f8463edf1f34a3e556589e4f34f4de320860a34",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-scalar-operators/resource-conversion-reference/27/r2-buffer-right-target-store.aml",
+          "sha256": "a4b6bfb12901a98920dcdd52213c6b1472bcd2d3c78479c90c332040952ed66a",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/resource_conversion_tests.adb",
+      "fixture_sha256": "bd935334d86d983243b8d10eecaddd62f524a56816f88083e2c86c277c1fb751",
+      "array_ordinal": 20,
+      "body_sha256": "5651e4094ae668f6535a4f3824d79982bd871ed0c9438861e8518732a2c7d166",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/resource-conversion-reference/20/r1-buffer-right-target-copyobject.aml",
+          "sha256": "ad5f95c92b249976397dc475f2e3344085411b23a7ef2de05eab3a8015318820",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-scalar-operators/resource-conversion-reference/28/r2-buffer-right-target-copyobject.aml",
+          "sha256": "0fc320b60de38dcadc1365253999853d7676ec7917e99c8284dfe6837d62780d",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/resource_conversion_tests.adb",
+      "fixture_sha256": "bd935334d86d983243b8d10eecaddd62f524a56816f88083e2c86c277c1fb751",
+      "array_ordinal": 21,
+      "body_sha256": "4c583f9acd3a71861c793639d0194bf0844458d37036dca4a9b6a9b0c0caff9f",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/resource-conversion-reference/29/r2-string-valid-left-store.aml",
+          "sha256": "e0c661a97bee51cb728d837682bebbb856689f65f9b6a2e2a20ef28c1754a555",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-scalar-operators/resource-conversion-reference/21/r1-string-valid-left-store.aml",
+          "sha256": "9d5dfce707e09e6a0b0f07c94c6cc33f7a536015b492ba20898925f4bd01f4f8",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/resource_conversion_tests.adb",
+      "fixture_sha256": "bd935334d86d983243b8d10eecaddd62f524a56816f88083e2c86c277c1fb751",
+      "array_ordinal": 22,
+      "body_sha256": "33e94dce6f988514442341bf16aee771a7d94e92c724795e39bc07c3ea7ad781",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/resource-conversion-reference/22/r1-string-valid-left-copyobject.aml",
+          "sha256": "7af9b8ad8b4309963f7dc87e856e2b4d44268e8fe1283e8c95608bf0361d4df9",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-scalar-operators/resource-conversion-reference/30/r2-string-valid-left-copyobject.aml",
+          "sha256": "c2dd12cd1b58d63eb6db286dee8d784fa1c25a9977ba94c479b63ab20457a99d",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/resource_conversion_tests.adb",
+      "fixture_sha256": "bd935334d86d983243b8d10eecaddd62f524a56816f88083e2c86c277c1fb751",
+      "array_ordinal": 23,
+      "body_sha256": "986393ec58fdcdcd62cee1d3008ecf774d8595b70ad97987a2957228bf286430",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/resource-conversion-reference/23/r1-string-valid-right-target-store.aml",
+          "sha256": "2f990e20f36cf9c1509510feebfabaa1b63d008c31249004ccbb942b09a5a3a1",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-scalar-operators/resource-conversion-reference/31/r2-string-valid-right-target-store.aml",
+          "sha256": "20562a1c757d9750aedec31f834276df5803b3a0576e13e25ebc8fc24ad0b211",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/resource_conversion_tests.adb",
+      "fixture_sha256": "bd935334d86d983243b8d10eecaddd62f524a56816f88083e2c86c277c1fb751",
+      "array_ordinal": 24,
+      "body_sha256": "cea323703c046fe96b24fde18d11f0abdb5eb1709574338129458117dbd38f8f",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/resource-conversion-reference/32/r2-string-valid-right-target-copyobject.aml",
+          "sha256": "1e36f556e7d54be37d3b0cdaf6b4bb5381ae32aaf263ada520a3b1d478d20958",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-scalar-operators/resource-conversion-reference/24/r1-string-valid-right-target-copyobject.aml",
+          "sha256": "5aeb0fc2c7b2ce4869e81d69104c74e9cd3bcd32f051ae5c196f217d79988143",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/resource_conversion_tests.adb",
+      "fixture_sha256": "bd935334d86d983243b8d10eecaddd62f524a56816f88083e2c86c277c1fb751",
+      "array_ordinal": 25,
+      "body_sha256": "e138289e0bdd499c215e0dfb11c67bacd9e6e9cb5d55f4e3102fe3f0cc0bdb08",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/resource-conversion-reference/25/r2-buffer-left-store.aml",
+          "sha256": "01af3c2bc7805005d65e83507c920383a7d8fc0f652374f2bc3857e50e4b981b",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-scalar-operators/resource-conversion-reference/17/r1-buffer-left-store.aml",
+          "sha256": "6e50597ebb39a477c3476a589c527076dc46fbe0992dcf7a295c8f0afeb085e3",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/resource_conversion_tests.adb",
+      "fixture_sha256": "bd935334d86d983243b8d10eecaddd62f524a56816f88083e2c86c277c1fb751",
+      "array_ordinal": 26,
+      "body_sha256": "25b32886cb9761527b2fa244fed01a901b9d9bb3194fc3ee9c4235e98c2c1cba",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/resource-conversion-reference/26/r2-buffer-left-copyobject.aml",
+          "sha256": "aba84e3a0f62940bf3749b0b31f9027eeccaa72ee703dafea6170e97cb7b743e",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-scalar-operators/resource-conversion-reference/18/r1-buffer-left-copyobject.aml",
+          "sha256": "87d9dd0428e1b4860b67a75ae79c90ac376198c408cb3ddcb5372c65e822dc29",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/resource_conversion_tests.adb",
+      "fixture_sha256": "bd935334d86d983243b8d10eecaddd62f524a56816f88083e2c86c277c1fb751",
+      "array_ordinal": 27,
+      "body_sha256": "69228b34cd15a6fb8f42f37868cb7b63f6347fffd0012c7510623769d66d865f",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/resource-conversion-reference/19/r1-buffer-right-target-store.aml",
+          "sha256": "7d6b61494d9edae538b92e843f8463edf1f34a3e556589e4f34f4de320860a34",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-scalar-operators/resource-conversion-reference/27/r2-buffer-right-target-store.aml",
+          "sha256": "a4b6bfb12901a98920dcdd52213c6b1472bcd2d3c78479c90c332040952ed66a",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/resource_conversion_tests.adb",
+      "fixture_sha256": "bd935334d86d983243b8d10eecaddd62f524a56816f88083e2c86c277c1fb751",
+      "array_ordinal": 28,
+      "body_sha256": "5651e4094ae668f6535a4f3824d79982bd871ed0c9438861e8518732a2c7d166",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/resource-conversion-reference/20/r1-buffer-right-target-copyobject.aml",
+          "sha256": "ad5f95c92b249976397dc475f2e3344085411b23a7ef2de05eab3a8015318820",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-scalar-operators/resource-conversion-reference/28/r2-buffer-right-target-copyobject.aml",
+          "sha256": "0fc320b60de38dcadc1365253999853d7676ec7917e99c8284dfe6837d62780d",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/resource_conversion_tests.adb",
+      "fixture_sha256": "bd935334d86d983243b8d10eecaddd62f524a56816f88083e2c86c277c1fb751",
+      "array_ordinal": 29,
+      "body_sha256": "4c583f9acd3a71861c793639d0194bf0844458d37036dca4a9b6a9b0c0caff9f",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/resource-conversion-reference/29/r2-string-valid-left-store.aml",
+          "sha256": "e0c661a97bee51cb728d837682bebbb856689f65f9b6a2e2a20ef28c1754a555",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-scalar-operators/resource-conversion-reference/21/r1-string-valid-left-store.aml",
+          "sha256": "9d5dfce707e09e6a0b0f07c94c6cc33f7a536015b492ba20898925f4bd01f4f8",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/resource_conversion_tests.adb",
+      "fixture_sha256": "bd935334d86d983243b8d10eecaddd62f524a56816f88083e2c86c277c1fb751",
+      "array_ordinal": 30,
+      "body_sha256": "33e94dce6f988514442341bf16aee771a7d94e92c724795e39bc07c3ea7ad781",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/resource-conversion-reference/22/r1-string-valid-left-copyobject.aml",
+          "sha256": "7af9b8ad8b4309963f7dc87e856e2b4d44268e8fe1283e8c95608bf0361d4df9",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-scalar-operators/resource-conversion-reference/30/r2-string-valid-left-copyobject.aml",
+          "sha256": "c2dd12cd1b58d63eb6db286dee8d784fa1c25a9977ba94c479b63ab20457a99d",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/resource_conversion_tests.adb",
+      "fixture_sha256": "bd935334d86d983243b8d10eecaddd62f524a56816f88083e2c86c277c1fb751",
+      "array_ordinal": 31,
+      "body_sha256": "986393ec58fdcdcd62cee1d3008ecf774d8595b70ad97987a2957228bf286430",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/resource-conversion-reference/23/r1-string-valid-right-target-store.aml",
+          "sha256": "2f990e20f36cf9c1509510feebfabaa1b63d008c31249004ccbb942b09a5a3a1",
+          "revision": 1
+        },
+        {
+          "path": "tests/aml-scalar-operators/resource-conversion-reference/31/r2-string-valid-right-target-store.aml",
+          "sha256": "20562a1c757d9750aedec31f834276df5803b3a0576e13e25ebc8fc24ad0b211",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "fixture": "tests/aml-scalar-operators/resource_conversion_tests.adb",
+      "fixture_sha256": "bd935334d86d983243b8d10eecaddd62f524a56816f88083e2c86c277c1fb751",
+      "array_ordinal": 32,
+      "body_sha256": "cea323703c046fe96b24fde18d11f0abdb5eb1709574338129458117dbd38f8f",
+      "oracle_tables": [
+        {
+          "path": "tests/aml-scalar-operators/resource-conversion-reference/32/r2-string-valid-right-target-copyobject.aml",
+          "sha256": "1e36f556e7d54be37d3b0cdaf6b4bb5381ae32aaf263ada520a3b1d478d20958",
+          "revision": 2
+        },
+        {
+          "path": "tests/aml-scalar-operators/resource-conversion-reference/24/r1-string-valid-right-target-copyobject.aml",
+          "sha256": "5aeb0fc2c7b2ce4869e81d69104c74e9cd3bcd32f051ae5c196f217d79988143",
+          "revision": 1
+        }
+      ]
+    }
+  ]
+}

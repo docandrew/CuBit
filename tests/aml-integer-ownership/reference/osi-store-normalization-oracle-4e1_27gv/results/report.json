@@ -1,0 +1,114 @@
+[
+  {
+    "key": "store1",
+    "base": "cases/base1.asl",
+    "source": "cases/store1.asl",
+    "methods": [
+      "DRET",
+      "LOCL",
+      "LEXP",
+      "ARGT",
+      "AEXP",
+      "RSLT",
+      "RARG",
+      "NMST",
+      "NEXP",
+      "PIND",
+      "SRC0",
+      "DST0",
+      "PASS"
+    ],
+    "compiles": [
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/osi-store-normalization-oracle-4e1_27gv/cases/base1.asl"
+        ],
+        "log": "results/store1-base-compile.log",
+        "sha256": "e6a4e0c4cc0aa5a5ebf47b9ebf09d131bcdfa9b0027d2a24310abd3ca217c683"
+      },
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/osi-store-normalization-oracle-4e1_27gv/cases/store1.asl"
+        ],
+        "log": "results/store1-source-compile.log",
+        "sha256": "5898e8938ca23d6ec6ede12f5b66c1ce7b68dd943d13c6dbf488d0b972582910"
+      }
+    ],
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "osi install CuBitProbeSupported;osi;load /home/doc/git/.acpi-proof-work/osi-store-normalization-oracle-4e1_27gv/cases/store1.aml;execute DRET;execute LOCL;execute LEXP;execute ARGT;execute AEXP;execute RSLT;execute RARG;execute NMST;execute NEXP;execute PIND;execute SRC0;execute DST0;execute PASS",
+        "/home/doc/git/.acpi-proof-work/osi-store-normalization-oracle-4e1_27gv/cases/base1.aml"
+      ],
+      "log": "results/store1-execute.log",
+      "sha256": "919173844ce480375f653be202341fb325238804e9d67838dde3d66bb5bf6232"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": []
+  },
+  {
+    "key": "store2",
+    "base": "cases/base2.asl",
+    "source": "cases/store2.asl",
+    "methods": [
+      "DRET",
+      "LOCL",
+      "LEXP",
+      "ARGT",
+      "AEXP",
+      "RSLT",
+      "RARG",
+      "NMST",
+      "NEXP",
+      "PIND",
+      "SRC0",
+      "DST0",
+      "PASS"
+    ],
+    "compiles": [
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/osi-store-normalization-oracle-4e1_27gv/cases/base2.asl"
+        ],
+        "log": "results/store2-base-compile.log",
+        "sha256": "68721dc3a914fac0e5e11f9d38e7b56df35581edb656f357a51fe9014e7e2735"
+      },
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/osi-store-normalization-oracle-4e1_27gv/cases/store2.asl"
+        ],
+        "log": "results/store2-source-compile.log",
+        "sha256": "dd79169c2c6a1611d207a0a9c149553c3e9cbc74bf0a4997de48b18ff8704940"
+      }
+    ],
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "osi install CuBitProbeSupported;osi;load /home/doc/git/.acpi-proof-work/osi-store-normalization-oracle-4e1_27gv/cases/store2.aml;execute DRET;execute LOCL;execute LEXP;execute ARGT;execute AEXP;execute RSLT;execute RARG;execute NMST;execute NEXP;execute PIND;execute SRC0;execute DST0;execute PASS",
+        "/home/doc/git/.acpi-proof-work/osi-store-normalization-oracle-4e1_27gv/cases/base2.aml"
+      ],
+      "log": "results/store2-execute.log",
+      "sha256": "41092ed953be34aa867f5e9faf71ab44cb7280f402b9a7a98e6ebb226621622e"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": []
+  }
+]

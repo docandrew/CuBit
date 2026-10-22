@@ -5,10 +5,13 @@ with AML_Execute; use AML_Execute;
 with AML_Namespace;
 with AML_Table_Backing;
 with AML_Coercions;
+with AML_Objects;
 procedure Runtime_Buffer_Tests is
+   use type AML_Decode.Bytes;
    package NS is new AML_Namespace (16, AML_Delays.Unavailable_Provider);
    use NS; use NS.Owned;
    use type Integer_Value;
+   use type Byte;
    use type AML_Coercions.Conversion_Status;
    A : Arena;
    Input : aliased AML_Table_Backing.State (1,1);
@@ -44,14 +47,85 @@ procedure Runtime_Buffer_Tests is
       if Mark_Value=0 then pragma Assert(Allocating_Cleanup_Frame(Snapshot(A),Before)); end if;
       Check(R.Charged<=Budget);
    end Run;
+   function Static_Buffer_Code (Count, Initializer : Bytes) return Bytes is
+      Payload : constant Bytes := Count & Initializer;
+      Encoding : Positive := 1;
+      Extent, Remaining : Natural;
+      Header : Bytes (1 .. 4) := [others => 0];
+   begin
+      if Payload'Length + 1 > 63 then Encoding := 2; end if;
+      if Payload'Length + 2 > 4095 then Encoding := 3; end if;
+      if Payload'Length + 3 > 1_048_575 then Encoding := 4; end if;
+      Extent := Payload'Length + Encoding;
+      if Encoding = 1 then Header (1) := Byte (Extent);
+      else
+         Header (1) := Byte ((Encoding - 1) * 64 + Extent mod 16);
+         Remaining := Extent / 16;
+         for I in 2 .. Encoding loop
+            Header (I) := Byte (Remaining mod 256); Remaining := Remaining / 256;
+         end loop;
+      end if;
+      return Bytes'[16#11#] & Header (1 .. Encoding) & Payload;
+   end Static_Buffer_Code;
+   procedure Static_Cases (Width : Integer_Width) is
+      Count_Name : constant Bytes := [67,78,84,48];
+      Empty_Data : constant Bytes (1 .. 0) := [others => 0];
+      Long_Initializer : Bytes (7 .. 1031) := [others => 16#A5#];
+      procedure Load_And_Check (Count, Initializer : Bytes; Expected_Length : Natural;
+                                Named_Count : Boolean := False) is
+         Prefix : constant Bytes := (if Named_Count then
+           Bytes'[16#08#] & Count_Name & [16#0B#, 1, 4] else Empty_Data);
+         Node : Node_ID;
+      begin
+         Reset (A, OK); Check (OK);
+         Load (A, Prefix & Bytes'[16#08#] & Temp & Static_Buffer_Code (Count, Initializer),
+           Width, Loaded_Status); Check (Loaded_Status = Loaded);
+         Node := Child (Snapshot (A), Root, "TEMP");
+         Check (Node /= Root and then Kind (Snapshot (A), Node) = Buffer_Object);
+         declare
+            Actual : constant Bytes := NS.Buffer_Data (Snapshot (A), Node);
+            Correct : Boolean := Actual'Length = Expected_Length;
+         begin
+            for I in 1 .. Actual'Length loop
+               Correct := Correct and then Actual (Actual'First + I - 1) =
+                 (if I <= Initializer'Length then Initializer (Initializer'First + I - 1) else 0);
+            end loop;
+            Check (Correct);
+         end;
+      end Load_And_Check;
+   begin
+      Long_Initializer (Long_Initializer'First) := 16#D3#;
+      Long_Initializer (Long_Initializer'Last) := 16#7E#;
+      Load_And_Check ([16#0B#, 1, 4], [16#42#], 1025);
+      Load_And_Check (Count_Name, [16#52#], 1025, Named_Count => True);
+      Load_And_Check ([0], Empty_Data, 0);
+      Load_And_Check ([0], Long_Initializer, Long_Initializer'Length);
+      Load_And_Check ([16#0B#, 0, 32], Long_Initializer, 8192);
+      -- Byte quota failure must undo the new count binding and candidate buffer,
+      -- retaining the preexisting buffer's exact bytes and object state.
+      Before := Snapshot (A);
+      Load (A, Bytes'[16#08#] & Count_Name & [16#0C#, 1, 0, 1, 0]
+        & Bytes'[16#08#, 66,65,68,48] & Static_Buffer_Code (Count_Name, [16#CC#]),
+        Width, Loaded_Status);
+      Check (Loaded_Status = Value_Limit and then Snapshot (A) = Before);
+      Load (A, Bytes'[16#08#, 66,65,68,48]
+        & Static_Buffer_Code ([16#0C#, 1, 0, 1, 0], Empty_Data), Width, Loaded_Status);
+      Check (Loaded_Status = Value_Limit and then Snapshot (A) = Before);
+   end Static_Cases;
    Parsed : Buffer_Result;
    Conversion : AML_Coercions.Result;
 begin
    for W in Integer_Width loop
+      Static_Cases (W);
       Run(Declare_Buffer([1=>16#68#])&Return_Size,W,Returned,4);
       Run(Declare_Buffer([1=>16#68#],[1,2,3])&Return_Size,W,Returned,3,Arg=>0);
       Run(Declare_Buffer([1=>16#68#])&Return_Size,W,Returned,2,Arg=>16#1_0000_0002#);
-      Run(Declare_Buffer([1=>16#68#])&Return_Size,W,Value_Limit,Arg=>1025);
+      Run(Declare_Buffer([1=>16#68#])&Return_Size,W,Returned,1025,Arg=>1025);
+      Run(Declare_Buffer([1=>16#68#])&Return_Size,W,Returned,8192,Arg=>8192);
+      Run(Declare_Buffer([1=>16#68#])&Return_Size,W,Value_Limit,
+        Arg=>AML_Objects.Max_Bytes+1);
+      Run(Declare_Buffer(Helper_Name)&Return_Size,W,Value_Limit,Mark_Value=>1,
+        Helper=>Bytes'(16#70#,1)&Mark&Bytes'(16#A4#,16#0C#,1,0,1,0));
       Run(Bytes'(16#70#,16#0A#,3,16#60#)&Declare_Buffer([1=>16#60#])&Return_Size,W,Returned,3);
       Run(Declare_Buffer(Helper_Name)&Return_Size,W,Returned,4);
       Run(Declare_Buffer(Helper_Name)&Return_Size,W,Returned,3,

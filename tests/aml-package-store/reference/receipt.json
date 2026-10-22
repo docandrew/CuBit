@@ -1,0 +1,13 @@
+{
+  "worker": 22673,
+  "terminal": 0,
+  "source": "/home/doc/git/.acpi-proof-work/store-owner-transition-raw-control-6h73pyip",
+  "inputs": 14,
+  "artifacts": 37,
+  "audit_sha256": "2b49aed510ea00af80494f9bff5d66050fc0995a9416a27076da3710bebfa849",
+  "observations_sha256": "c3992f7333ed08f4594a4a5b79ac4f8bfddf488bacc63b8e1fc24d0503e7d36f",
+  "cases": 4,
+  "observations": 96,
+  "repeat_agreement": true,
+  "limitation": "External RAW0 is Integer raw64; external serialization can dereference an internal Index carrier, so internal integer identity/sole ownership is not established."
+}

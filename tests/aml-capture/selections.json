@@ -1,0 +1,173 @@
+{
+  "capture": [
+    {
+      "main": "numeric_source_timing_tests.adb",
+      "path": "tests/aml-scalar-operators/numeric_source_timing_tests.adb",
+      "sha256": "024f02925a0adb1c75cef5d735fe929d7775d284c1300fddfabe7f440dcaf8d3"
+    },
+    {
+      "main": "numeric_cleanup_tests.adb",
+      "path": "tests/aml-scalar-operators/numeric_cleanup_tests.adb",
+      "sha256": "2230e1265d998e12574abf3e10d7e68720887f35439f779f728850be7e4a524e"
+    },
+    {
+      "main": "divide_target_timing_tests.adb",
+      "path": "tests/aml-scalar-operators/divide_target_timing_tests.adb",
+      "sha256": "b09809c3941527c99ef11eea99d69332334d88272386eb4b504ecb01d3c0e6d7"
+    },
+    {
+      "main": "format_bcd_tests.adb",
+      "path": "tests/aml-format-bcd/format_bcd_tests.adb",
+      "sha256": "d78490ce3e5f18bf273d33fd213fe294ab3586af77751524d229fe96f930dde8"
+    },
+    {
+      "main": "mid_tostring_timing_tests.adb",
+      "path": "tests/aml-scalar-operators/mid_tostring_timing_tests.adb",
+      "sha256": "08ee1507ba0210af789a7125f8a793c59d1368b961e2bcaad79b72b0df9165db"
+    },
+    {
+      "main": "concat_source_timing_tests.adb",
+      "path": "tests/aml-scalar-operators/concat_source_timing_tests.adb",
+      "sha256": "cccd8553b4f62a43687ec6b65bde2c35065175886e81cbd4866099069ad6eb7a"
+    },
+    {
+      "main": "named_source_timing_tests.adb",
+      "path": "tests/aml-scalar-operators/named_source_timing_tests.adb",
+      "sha256": "35ba27761d8c281c49dadcb479d4dcc197c90f5ca457a65d02432b29a2a02cb4"
+    },
+    {
+      "main": "reference_source_timing_tests.adb",
+      "path": "tests/aml-scalar-operators/reference_source_timing_tests.adb",
+      "sha256": "74288f64596404c0f555938bd4114a23718d494ec2c9530acecc13bee31e7907"
+    },
+    {
+      "main": "scalar_transport_tests.adb",
+      "path": "tests/aml-scalar-transport/scalar_transport_tests.adb",
+      "sha256": "70a1576895db283cd87c72269e3758461bc14411aa7b8bc77b8ec80f63bdf352"
+    },
+    {
+      "main": "scalar_operator_tests.adb",
+      "path": "tests/aml-scalar-operators/scalar_operator_tests.adb",
+      "sha256": "12b72dba40dfeae37a22c932c94b435253831395fc77b73dd24c0e4926f90d16"
+    },
+    {
+      "main": "owned_gc_tests.adb",
+      "path": "tests/aml-scalar-owned-gc/owned_gc_tests.adb",
+      "sha256": "6dbf91330c9e4ef6fdd8e325af5d6a928219047b46978dfc070d1b65211d2b96"
+    },
+    {
+      "main": "match_tests.adb",
+      "path": "tests/aml-match-routing/match_tests.adb",
+      "sha256": "758aef2c757f86d115f9ceb4766dd054f99ead58cb71be542b6ecf866408fdfc"
+    },
+    {
+      "main": "staged_field_tests.adb",
+      "path": "tests/aml-staged-field-routing/staged_field_tests.adb",
+      "sha256": "7147c3d2ffd15797a029746cef598238dbb8342318360416971b6836428f470d"
+    },
+    {
+      "main": "resource_buffer_timing_tests.adb",
+      "path": "tests/aml-scalar-operators/resource_buffer_timing_tests.adb",
+      "sha256": "fe0f0fa448538fc473264ef16616ffe122c645fece6f37cd0654e9102e903e14"
+    },
+    {
+      "main": "resource_conversion_tests.adb",
+      "path": "tests/aml-scalar-operators/resource_conversion_tests.adb",
+      "sha256": "bd935334d86d983243b8d10eecaddd62f524a56816f88083e2c86c277c1fb751"
+    }
+  ],
+  "legacy": [
+    {
+      "main": "call_tests.adb",
+      "path": "tests/aml-core/call_tests.adb",
+      "sha256": "dfcab1a1d7f0bcfdece0a61df51f8bfb99f644b03b435f2466bace2d7d183462"
+    },
+    {
+      "main": "owned_frame_root_tests.adb",
+      "path": "tests/aml-retention/owned_frame_root_tests.adb",
+      "sha256": "e7bfe5769e021a5f0498f929dc7a0b6154bfe0b67f2d53913d9ad12bc5b71516"
+    },
+    {
+      "main": "result_handoff_tests.adb",
+      "path": "tests/aml-retention/result_handoff_tests.adb",
+      "sha256": "c9913b3dad189ac6330932c394292ab5a45511fa2e5ad78e698ca789eb7ea3d6"
+    },
+    {
+      "main": "mid_owner_tests.adb",
+      "path": "tests/aml-mid/mid_owner_tests.adb",
+      "sha256": "65fb7136f5abb566181ce5d64e34e53fa7159f9470e9b2f6b403e99fd1625311"
+    },
+    {
+      "main": "mid_collecting_tests.adb",
+      "path": "tests/aml-mid/mid_collecting_tests.adb",
+      "sha256": "1c2731afd0d1c8289e866e68558d4793e92c357f2a2a83eeecd0182399024436"
+    },
+    {
+      "main": "to_string_owner_tests.adb",
+      "path": "tests/aml-tostring/to_string_owner_tests.adb",
+      "sha256": "2a6f784598b4e0220bac73519ea68113b772a6040211add08f5f12d55a5fd458"
+    },
+    {
+      "main": "to_string_collecting_tests.adb",
+      "path": "tests/aml-tostring/to_string_collecting_tests.adb",
+      "sha256": "cdc608565635f5e07bf1e49aeceae810e606a8fcff900b078850891b569b1e1f"
+    },
+    {
+      "main": "concatenate_owner_tests.adb",
+      "path": "tests/aml-concatenate/concatenate_owner_tests.adb",
+      "sha256": "2e1d351af78e51547202fce3826af02dd56b3d9321e9a1c1ac82bb766c72d46d"
+    },
+    {
+      "main": "match_core_tests.adb",
+      "path": "tests/aml-match/match_core_tests.adb",
+      "sha256": "610c10fef4bab91fd524e0c550f991c24c70b8902712219a042d7ce85186afaa"
+    },
+    {
+      "main": "match_collecting_tests.adb",
+      "path": "tests/aml-match/match_collecting_tests.adb",
+      "sha256": "a124a858f7d596957b4d77943ed3f61b39e4aed429dfc20a600c57484f3f2117"
+    },
+    {
+      "main": "field_live_tests.adb",
+      "path": "tests/aml-buffer-field-integration/field_live_tests.adb",
+      "sha256": "324768ca30980023168717420ecf4ea5888c4961625b4359edd66fa93de524bc"
+    },
+    {
+      "main": "field_package_tests.adb",
+      "path": "tests/aml-buffer-field-integration/field_package_tests.adb",
+      "sha256": "3cf8ba8e6e8412266dd10d646b16dd82582c286330dbc848d9147d2cb2165b2f"
+    },
+    {
+      "main": "field_package_rollback_tests.adb",
+      "path": "tests/aml-buffer-field-integration/field_package_rollback_tests.adb",
+      "sha256": "cf499cd69cc4995670393d224207680fd485ce27fad7a56a0c8e44c6edecc575"
+    }
+  ],
+  "startup": [
+    {
+      "main": "bootstrap_migration_tests.adb",
+      "path": "tests/acpi-bootstrap-ordered/bootstrap_migration_tests.adb",
+      "sha256": "c79fb345298c06f632c7f9aaaa0f3b071ecc92f29fc2050a509ae506d5bb1c0f"
+    },
+    {
+      "main": "bootstrap_catalog_tests.adb",
+      "path": "tests/acpi-bootstrap-ordered/bootstrap_catalog_tests.adb",
+      "sha256": "b52ece033c86be78b1e7017b5dfe24f41700aac14cb5fe596a58ba718b08efb5"
+    },
+    {
+      "main": "request_migration_tests.adb",
+      "path": "tests/acpi-bootstrap-ordered/request_migration_tests.adb",
+      "sha256": "595e6f106b7693d3deca1111b1e74d293da3b7e2a1fcd1996fca08c301abab21"
+    },
+    {
+      "main": "request_boundary_tests.adb",
+      "path": "tests/acpi-bootstrap-ordered/request_boundary_tests.adb",
+      "sha256": "952897cda8546b89eabd122ccdef320b5ab2103dfc80f2b5e4f30115d1688d02"
+    },
+    {
+      "main": "module_core_tests.adb",
+      "path": "tests/aml-module-core/module_core_tests.adb",
+      "sha256": "9cb6293bd50ba4a254520d293a25caf4b53a6502a37b225a5c02ad9aa2721186"
+    }
+  ]
+}

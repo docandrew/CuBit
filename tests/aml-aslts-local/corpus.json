@@ -1,0 +1,44 @@
+{
+  "cases": [
+    {
+      "case": "local-n64",
+      "aml": "tests/aml-aslts-local/reference/local-n64.aml",
+      "aml_sha256": "85ad24f914b73399608f78ee273500e60a22c7053c47a2b8b16304ee7d5e3c28",
+      "expected_MN00": 0,
+      "expected_ERRS": 0,
+      "repeats": 2,
+      "expected_RMRC": [
+        1,
+        2
+      ],
+      "expected_record": ":STST:functional:local:CMO0:PASS:"
+    }
+  ],
+  "not_run": [
+    "all other entrypoints/configurations; module compiler-blocked preserved"
+  ],
+  "oracle_receipt": "tests/aml-aslts-local/reference/evidence.json",
+  "configuration": {
+    "compiler_flags": [
+      "-oa",
+      "-r",
+      "2",
+      "-of",
+      "-cr",
+      "-vs",
+      "-l",
+      "-sc",
+      "-sa",
+      "-ic",
+      "-ta",
+      "-ts",
+      "-so",
+      "-lm",
+      "-ln",
+      "-ls",
+      "-li"
+    ],
+    "default_upstream_target": false,
+    "note": "Original inventoried local is omitted from functional MDIRS; explicit common n64 configuration, not a default target."
+  }
+}

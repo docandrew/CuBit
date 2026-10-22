@@ -1,0 +1,1 @@
+DefinitionBlock("","DSDT",2,"CUBIT","FLDSMALL",1){Name(MARK,Zero) Name(BUFF,Buffer(8){0x41,0x42,0x43,0x44,0x45,0x46,0x47,0x48}) Method(CTRL,0){Return(One)} Method(WIDT,0){Return(ShiftRight(Ones,32))} Method(TEST,0){CreateField(BUFF,0,1,FLD0) Return(Add(Multiply(ObjectType(FLD0),256),SizeOf(ToBuffer(FLD0))))}}

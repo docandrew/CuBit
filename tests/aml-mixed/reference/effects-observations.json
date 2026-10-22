@@ -1,0 +1,202 @@
+[
+  {
+    "case": "string-1",
+    "compile_exit": 0,
+    "oracle_exit": 0,
+    "oracle_values": [
+      "0000000000000009"
+    ],
+    "aml_sha256": "37c496f4ca2ca7b6e479f597530c959ef6ae74d223591bc1ff3e22c40cd1b049",
+    "profiles": {
+      "release": {
+        "exit": 0,
+        "values": [
+          "9"
+        ],
+        "passed": true
+      },
+      "checked": {
+        "exit": 0,
+        "values": [
+          "9"
+        ],
+        "passed": true
+      }
+    }
+  },
+  {
+    "case": "buffer-1",
+    "compile_exit": 0,
+    "oracle_exit": 0,
+    "oracle_values": [
+      "0000000000000009"
+    ],
+    "aml_sha256": "c3c5bdf8db8d6ea1bd0759e625870e2f0140375f56f61c05229325caabe68f0a",
+    "profiles": {
+      "release": {
+        "exit": 0,
+        "values": [
+          "9"
+        ],
+        "passed": true
+      },
+      "checked": {
+        "exit": 0,
+        "values": [
+          "9"
+        ],
+        "passed": true
+      }
+    }
+  },
+  {
+    "case": "replace-1",
+    "compile_exit": 0,
+    "oracle_exit": 0,
+    "oracle_values": [
+      "000000000000000A"
+    ],
+    "aml_sha256": "4a5fb10d17e418c31adcc260725f6745c963e8e26f97b7f9aed7471f8c280cbc",
+    "profiles": {
+      "release": {
+        "exit": 0,
+        "values": [
+          "10"
+        ],
+        "passed": true
+      },
+      "checked": {
+        "exit": 0,
+        "values": [
+          "10"
+        ],
+        "passed": true
+      }
+    }
+  },
+  {
+    "case": "local-1",
+    "compile_exit": 0,
+    "oracle_exit": 0,
+    "oracle_values": [
+      "00000000FFFFFFFF"
+    ],
+    "aml_sha256": "b17c0f201f42131122ae12845cc1450deffe3b07268a6bdf04ecbbff90bb7ca9",
+    "profiles": {
+      "release": {
+        "exit": 0,
+        "values": [
+          "4294967295"
+        ],
+        "passed": true
+      },
+      "checked": {
+        "exit": 0,
+        "values": [
+          "4294967295"
+        ],
+        "passed": true
+      }
+    }
+  },
+  {
+    "case": "string-2",
+    "compile_exit": 0,
+    "oracle_exit": 0,
+    "oracle_values": [
+      "0000000000000009"
+    ],
+    "aml_sha256": "a3574a277015520cf7ca1995ef7c1c1e40446017e6f3ba3dc2c0de77c032d9e5",
+    "profiles": {
+      "release": {
+        "exit": 0,
+        "values": [
+          "9"
+        ],
+        "passed": true
+      },
+      "checked": {
+        "exit": 0,
+        "values": [
+          "9"
+        ],
+        "passed": true
+      }
+    }
+  },
+  {
+    "case": "buffer-2",
+    "compile_exit": 0,
+    "oracle_exit": 0,
+    "oracle_values": [
+      "0000000000000009"
+    ],
+    "aml_sha256": "d91775e5c131c7edb82f80e78f51fee87ecda93ee4047e67fdc76a3faa3753f0",
+    "profiles": {
+      "release": {
+        "exit": 0,
+        "values": [
+          "9"
+        ],
+        "passed": true
+      },
+      "checked": {
+        "exit": 0,
+        "values": [
+          "9"
+        ],
+        "passed": true
+      }
+    }
+  },
+  {
+    "case": "replace-2",
+    "compile_exit": 0,
+    "oracle_exit": 0,
+    "oracle_values": [
+      "000000000000000A"
+    ],
+    "aml_sha256": "10e3eb276e9fdf511d9ba39d1d0736d32ad1a11cfadc77e6ab113d0d56ab62e5",
+    "profiles": {
+      "release": {
+        "exit": 0,
+        "values": [
+          "10"
+        ],
+        "passed": true
+      },
+      "checked": {
+        "exit": 0,
+        "values": [
+          "10"
+        ],
+        "passed": true
+      }
+    }
+  },
+  {
+    "case": "local-2",
+    "compile_exit": 0,
+    "oracle_exit": 0,
+    "oracle_values": [
+      "FFFFFFFFFFFFFFFF"
+    ],
+    "aml_sha256": "6dda54fc6eeb6daa95f63ff2759dfc17fff54b0d7ca8663d80503b3c451cb080",
+    "profiles": {
+      "release": {
+        "exit": 0,
+        "values": [
+          "18446744073709551615"
+        ],
+        "passed": true
+      },
+      "checked": {
+        "exit": 0,
+        "values": [
+          "18446744073709551615"
+        ],
+        "passed": true
+      }
+    }
+  }
+]

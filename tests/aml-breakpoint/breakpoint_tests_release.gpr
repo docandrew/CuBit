@@ -1,0 +1,10 @@
+project breakpoint_tests_release is
+ for Source_Dirs use (".", "../../userspace/lib/acpi", "../../shared/firmware");
+ Build_Root := external ("SERVICE_MILESTONE_BUILD", "build-release");
+ for Object_Dir use Build_Root & "/obj";
+ for Exec_Dir use Build_Root & "/bin";
+ for Main use ("breakpoint_tests.adb");
+ package Compiler is
+ for Default_Switches ("Ada") use ("-O1", "-gnat2022", "-gnatwa", "-gnatwe", "-gnatp");
+ end Compiler;
+end breakpoint_tests_release;

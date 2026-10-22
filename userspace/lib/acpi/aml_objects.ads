@@ -1,20 +1,25 @@
 pragma Ada_2022;
+with AML_Mutexes;
 with AML_Decode;
+with AML_Field_Data;
 with AML_References;
+with AML_Metadata_Kinds;
 with AML_Object_Identifiers;
 package AML_Objects with SPARK_Mode, Pure is
    use type AML_Decode.Byte;
+   use type AML_Mutexes.Sync_Level;
    use type AML_Decode.Integer_Value;
    use type AML_Decode.Integer_Origin;
    use type AML_Decode.Bytes;
    use type AML_References.Reference;
+   use type AML_Metadata_Kinds.Snapshot_Description;
    use type AML_Object_Identifiers.Slot_Incarnation;
    Max_Objects : constant := AML_Object_Identifiers.Max_Objects;
    Max_Bytes : constant := 65_536;
    Max_Elements : constant := 8192;
    subtype Object_ID is AML_Object_Identifiers.Object_ID;
    No_Object : constant Object_ID := 0;
-   type Object_Kind is (Integer_Object, String_Object, Buffer_Object, Package_Object, Reference_Object);
+   type Object_Kind is (Integer_Object, String_Object, Buffer_Object, Package_Object, Reference_Object, Metadata_Object, Metadata_Snapshot_Object, Event_Object, Mutex_Object);
    subtype Byte_Kind is Object_Kind range String_Object .. Buffer_Object;
    type State is private;
    type Usage is record
@@ -48,11 +53,25 @@ package AML_Objects with SPARK_Mode, Pure is
    function Origin_Of (Store : State; ID : Object_ID) return AML_Decode.Integer_Origin
      with Pre => Is_Live (Store, ID)
        and then Kind (Store, ID) = Integer_Object;
+   Max_Event_Units : constant := 2 ** 32 - 1;
+   subtype Event_Unit_Count is AML_Decode.Integer_Value range 0 .. Max_Event_Units;
+   function Event_Units (Store : State; ID : Object_ID) return Event_Unit_Count
+     with Pre => Is_Live (Store, ID) and then Kind (Store, ID) = Event_Object;
    function Integer_Data (Store : State; ID : Object_ID) return AML_Decode.Integer_Value
      with Pre => Is_Live (Store, ID) and then Kind (Store, ID) = Integer_Object;
    -- Typed payload only: structural validity is not live referent authority.
    function Reference_Data (Store : State; ID : Object_ID) return AML_References.Reference
      with Pre => Is_Live (Store, ID) and then Kind (Store, ID) = Reference_Object;
+   --  Representation only: named/root metadata remains owner-authenticated by
+   --  the arena. It is not a dereferenceable Reference_Object or data address.
+   function Metadata_Identity (Value : AML_References.Reference) return Boolean;
+   function Metadata_Data (Store : State; ID : Object_ID) return AML_References.Reference
+     with Pre => Is_Live (Store, ID) and then Kind (Store, ID) = Metadata_Object;
+   function Metadata_Snapshot_Data (Store : State; ID : Object_ID)
+      return AML_Metadata_Kinds.Snapshot_Description
+     with Pre => Valid (Store) and then Is_Live (Store, ID)
+       and then Kind (Store, ID) = Metadata_Snapshot_Object,
+       Post => AML_Metadata_Kinds.Supported (Metadata_Snapshot_Data'Result);
    function Byte_Data (Store : State; ID : Object_ID) return AML_Decode.Bytes
      with Pre => Valid (Store) and then Is_Live (Store, ID)
        and then Kind (Store, ID) in Byte_Kind;
@@ -138,7 +157,7 @@ package AML_Objects with SPARK_Mode, Pure is
            and then Length (Store, J) = Length (Store'Old, J)));
    --  Reused slots receive a nonwrapping incarnation; exhausted slots retire.
    --  Zero denotes an uninitialized package element, not an Integer zero.
-   type Allocation_Status is (Allocated, Object_Limit, Generation_Limit, Byte_Limit, Element_Limit, Invalid_Reference);
+   type Allocation_Status is (Allocated, Object_Limit, Generation_Limit, Byte_Limit, Element_Limit, Invalid_Reference, Invalid_Metadata, Invalid_Mutex_Flags, Unsupported_Copy);
    function Fresh_Allocation (Store, Prior : State; ID : Object_ID) return Boolean
      with Ghost;
    function Reference_Allocated
@@ -161,6 +180,77 @@ package AML_Objects with SPARK_Mode, Pure is
            and then Element_Count (Store) = Element_Count (Store'Old)
           else Store = Store'Old and then ID = No_Object)
          and then (if not AML_References.Well_Formed (Value) then Status = Invalid_Reference);
+   function Metadata_Allocated
+     (Store, Prior : State; ID : Object_ID; Value : AML_References.Reference)
+      return Boolean with Ghost;
+   -- Invalid shape/kind takes precedence over exhausted object quota.
+   -- A well-formed named/root payload still needs arena authentication.
+   procedure New_Metadata (Store : in out State; Value : AML_References.Reference;
+                            ID : out Object_ID; Status : out Allocation_Status)
+     with Pre => Valid (Store),
+       Post => Valid (Store) and then Extends (Store, Store'Old)
+         and then Status in Allocated | Object_Limit | Generation_Limit | Invalid_Reference
+         and then (if Status = Allocated then
+           Fresh_Allocation (Store, Store'Old, ID)
+           and then Metadata_Allocated (Store, Store'Old, ID, Value)
+           and then Is_Live (Store, ID) and then Live_Count (Store) = Live_Count (Store'Old) + 1
+           and then Kind (Store, ID) = Metadata_Object and then Length (Store, ID) = 0
+           and then Metadata_Data (Store, ID) = Value
+           and then Byte_Count (Store) = Byte_Count (Store'Old)
+           and then Element_Count (Store) = Element_Count (Store'Old)
+          else Store = Store'Old and then ID = No_Object)
+         and then (if not Metadata_Identity (Value) then Status = Invalid_Reference);
+   function Metadata_Snapshot_Allocated
+     (Store, Prior : State; ID : Object_ID;
+      Value : AML_Metadata_Kinds.Snapshot_Description) return Boolean with Ghost;
+   --  Unsupported descriptor class precedes quota failure. This is structural
+   --  validation only; the owning arena authenticates capture and handles.
+   procedure New_Metadata_Snapshot
+     (Store : in out State; Value : AML_Metadata_Kinds.Snapshot_Description;
+      ID : out Object_ID; Status : out Allocation_Status)
+     with Pre => Valid (Store),
+       Post => Valid (Store) and then Extends (Store, Store'Old)
+         and then Status in Allocated | Object_Limit | Generation_Limit | Invalid_Metadata
+         and then (if Status = Allocated then
+           Fresh_Allocation (Store, Store'Old, ID)
+           and then Metadata_Snapshot_Allocated (Store, Store'Old, ID, Value)
+           and then Is_Live (Store, ID)
+           and then Live_Count (Store) = Live_Count (Store'Old) + 1
+           and then Kind (Store, ID) = Metadata_Snapshot_Object
+           and then Length (Store, ID) = 0
+           and then Metadata_Snapshot_Data (Store, ID) = Value
+           and then Byte_Count (Store) = Byte_Count (Store'Old)
+           and then Element_Count (Store) = Element_Count (Store'Old)
+          else Store = Store'Old and then ID = No_Object)
+         and then (if not AML_Metadata_Kinds.Supported (Value) then Status = Invalid_Metadata);
+   -- Runtime Mutex flags are canonical: reserved high bits are rejected.
+   function Mutex_Flags (Store : State; ID : Object_ID) return AML_Decode.Byte
+     with Pre => Valid (Store) and then Is_Live (Store, ID) and then Kind (Store, ID) = Mutex_Object;
+   function Mutex_Level (Store : State; ID : Object_ID) return AML_Mutexes.Sync_Level
+     with Pre => Valid (Store) and then Is_Live (Store, ID) and then Kind (Store, ID) = Mutex_Object;
+   procedure New_Mutex (Store : in out State; Flags : AML_Decode.Byte;
+     ID : out Object_ID; Status : out Allocation_Status)
+     with Pre => Valid (Store),
+       Post => Valid (Store) and then Extends (Store, Store'Old)
+         and then Status in Allocated | Object_Limit | Generation_Limit | Invalid_Mutex_Flags
+         and then (if not AML_Mutexes.Canonical_Flags (Flags) then Status = Invalid_Mutex_Flags)
+         and then (if Status = Allocated then Fresh_Allocation (Store, Store'Old, ID)
+           and then Kind (Store, ID) = Mutex_Object and then Mutex_Flags (Store, ID) = Flags
+           and then Mutex_Level (Store, ID) = AML_Mutexes.Sync_Level (Flags) and then Length (Store, ID) = 0
+           else Store = Store'Old and then ID = No_Object);
+   procedure New_Event (Store : in out State; ID : out Object_ID;
+     Status : out Allocation_Status)
+     with Pre => Valid (Store),
+       Post => Valid (Store) and then Extends (Store, Store'Old)
+         and then Status in Allocated | Object_Limit | Generation_Limit
+         and then (if Status = Allocated then Fresh_Allocation (Store, Store'Old, ID)
+           and then Kind (Store, ID) = Event_Object and then Event_Units (Store, ID) = 0
+           and then Length (Store, ID) = 0
+           else Store = Store'Old and then ID = No_Object);
+   procedure Set_Event_Units (Store : in out State; ID : Object_ID; Units : Event_Unit_Count)
+     with Pre => Valid (Store) and then Is_Live (Store, ID) and then Kind (Store, ID) = Event_Object,
+       Post => Valid (Store) and then Integer_Updated (Store, Store'Old, ID, Units)
+         and then Event_Units (Store, ID) = Units;
    procedure New_Integer (Store : in out State; Value : AML_Decode.Integer_Value;
                           ID : out Object_ID; Status : out Allocation_Status;
                           Origin : AML_Decode.Integer_Origin := AML_Decode.Ordinary_Integer)
@@ -188,6 +278,102 @@ package AML_Objects with SPARK_Mode, Pure is
                and then (for all J in 1 .. Slot_Bound (Store'Old) => (if Is_Live (Store'Old, J) then Kind (Store, J) = Kind (Store'Old, J)
                  and then Length (Store, J) = Length (Store'Old, J)))
              else Store = Store'Old and ID = 0);
+   -- Requested_Length is already a size, not an AML integer operand: no
+   -- implicit UINT32 truncation. Initializer may extend the requested length.
+   procedure New_Buffer
+     (Store : in out State; Requested_Length : AML_Decode.Integer_Value;
+      Initializer : AML_Decode.Bytes; ID : out Object_ID;
+      Status : out Allocation_Status)
+     with Pre => Valid (Store),
+       Post => Valid (Store) and then Extends (Store, Store'Old)
+         and then Status in Allocated | Object_Limit | Generation_Limit | Byte_Limit
+         and then (if Status = Allocated then
+           Fresh_Allocation (Store, Store'Old, ID) and then Is_Live (Store, ID)
+           and then Kind (Store, ID) = Buffer_Object
+           and then Live_Count (Store) = Live_Count (Store'Old) + 1
+           and then AML_Decode.Integer_Value (Length (Store, ID)) =
+             AML_Decode.Integer_Value'Max (Requested_Length, AML_Decode.Integer_Value (Initializer'Length))
+           and then Byte_Count (Store) = Byte_Count (Store'Old) + Length (Store, ID)
+           and then Element_Count (Store) = Element_Count (Store'Old)
+           and then (for all I in 1 .. Length (Store, ID) =>
+             Stored_Byte (Store, ID, I - 1) =
+               (if I <= Initializer'Length then Initializer (Initializer'First + (I - 1)) else 0))
+          else Store = Store'Old and then ID = No_Object);
+   -- An immutable byte view, not a table descriptor or physical authority.
+   -- The explicitly aliased source record is passed by reference. Readers
+   -- receive only that immutable source; no callback state or pointer escapes.
+   generic
+      type Source_Type (<>) is private;
+      with function Source_Length (Data : aliased Source_Type) return Natural;
+      with function Source_Byte (Data : aliased Source_Type; Index : Natural)
+         return AML_Decode.Byte;
+   package Bit_Buffer_Initializers is
+      function Fits_Source
+        (Data : aliased Source_Type; First_Byte, Byte_Length, Offset, Bits : Natural)
+         return Boolean is
+        (First_Byte <= Source_Length (Data) and then Byte_Length <= Source_Length (Data) - First_Byte
+         and then AML_Field_Data.Fits (Byte_Length, Offset, Bits));
+      function Window
+        (Data : aliased Source_Type; First_Byte, Byte_Length, Offset : Natural;
+         Bits : Positive) return AML_Decode.Byte
+        with Pre => Bits <= 8 and then Fits_Source (Data, First_Byte, Byte_Length, Offset, Bits),
+          Post => Natural (Window'Result) =
+            (Natural (Source_Byte (Data, First_Byte + Offset / 8)) / AML_Field_Data.Scale (Offset mod 8)
+             + (if Bits + Offset mod 8 > 8 then
+                  Natural (Source_Byte (Data, First_Byte + Offset / 8 + 1)) * AML_Field_Data.Scale (8 - Offset mod 8)
+                else 0)) mod AML_Field_Data.Scale (Bits);
+      procedure Allocate
+        (Store : in out State; Data : aliased Source_Type;
+         First_Byte, Byte_Length, Offset, Bits : Natural;
+         ID : out Object_ID; Status : out Allocation_Status)
+        with Pre => Valid (Store) and then Fits_Source (Data, First_Byte, Byte_Length, Offset, Bits),
+          Post => Valid (Store) and then Extends (Store, Store'Old)
+            and then Status in Allocated | Object_Limit | Generation_Limit | Byte_Limit
+            and then (if Status = Allocated then
+              Fresh_Allocation (Store, Store'Old, ID) and then Is_Live (Store, ID)
+              and then Kind (Store, ID) = Buffer_Object
+              and then Live_Count (Store) = Live_Count (Store'Old) + 1
+              and then Length (Store, ID) = Bits / 8 + (if Bits mod 8 = 0 then 0 else 1)
+              and then Byte_Count (Store) = Byte_Count (Store'Old) + Length (Store, ID)
+              and then Element_Count (Store) = Element_Count (Store'Old)
+              and then (for all I in 1 .. Length (Store, ID) =>
+                Stored_Byte (Store, ID, I - 1) = Window
+                  (Data, First_Byte, Byte_Length, Offset + (I - 1) * 8,
+                   Positive'Min (8, Bits - (I - 1) * 8)))
+             else Store = Store'Old and then ID = No_Object);
+   end Bit_Buffer_Initializers;
+   -- Immutable reader source; no reference escapes the allocation. This
+   -- stores general string bytes, including NUL/non-ASCII conversion results.
+   -- Literal syntax validation belongs to AML_Decode.Read_String_Span.
+   generic
+      type Source_Type (<>) is limited private;
+      with function Source_Length (Data : aliased Source_Type) return Natural;
+      with function Source_Byte (Data : aliased Source_Type; Index : Natural)
+         return AML_Decode.Byte;
+   package String_Initializers is
+      function Fits_Source
+        (Data : aliased Source_Type; First_Byte, Byte_Length : Natural)
+         return Boolean is
+        (First_Byte <= Source_Length (Data) and then
+         Byte_Length <= Source_Length (Data) - First_Byte);
+      procedure Allocate
+        (Store : in out State; Data : aliased Source_Type;
+         First_Byte, Byte_Length : Natural; ID : out Object_ID;
+         Status : out Allocation_Status)
+        with Pre => Valid (Store) and then Fits_Source (Data, First_Byte, Byte_Length),
+          Post => Valid (Store) and then Extends (Store, Store'Old)
+            and then Status in Allocated | Object_Limit | Generation_Limit | Byte_Limit
+            and then (if Status = Allocated then
+              Fresh_Allocation (Store, Store'Old, ID) and then Is_Live (Store, ID)
+              and then Kind (Store, ID) = String_Object
+              and then Live_Count (Store) = Live_Count (Store'Old) + 1
+              and then Length (Store, ID) = Byte_Length
+              and then Byte_Count (Store) = Byte_Count (Store'Old) + Byte_Length
+              and then Element_Count (Store) = Element_Count (Store'Old)
+              and then (for all I in 1 .. Byte_Length =>
+                Stored_Byte (Store, ID, I - 1) = Source_Byte (Data, First_Byte + (I - 1)))
+             else Store = Store'Old and then ID = No_Object);
+   end String_Initializers;
    procedure New_Package (Store : in out State; Size : Natural;
                           ID : out Object_ID; Status : out Allocation_Status)
      with Pre => Valid (Store),
@@ -228,6 +414,7 @@ private
       Value : AML_Decode.Integer_Value := 0;
       Origin : AML_Decode.Integer_Origin := AML_Decode.Ordinary_Integer;
       Reference : AML_References.Reference := AML_References.No_Reference;
+      Snapshot : AML_Metadata_Kinds.Snapshot_Description := (Object_Type => AML_Metadata_Kinds.Device_Metadata);
       First : Natural := 0;
       Size : Natural := 0;
    end record;

@@ -4,6 +4,7 @@ with AML_Decode; use AML_Decode;
 with AML_Execute; use AML_Execute;
 with Namespace_Instance;
 procedure Coercion_Tests is
+   use type AML_Decode.Bytes;
    use type Integer_Value;
    use type AML_Coercions.Conversion_Status;
    package NS renames Namespace_Instance;
@@ -48,12 +49,12 @@ procedure Coercion_Tests is
          NS.Load_Names (Tree, Data, W, Loaded);
          Check (Loaded = NS.Loaded);
          Before := Tree;
-         R := NS.Invoke (Tree, NS.Child (Tree, 0, "READ"), [others => 0], 0, 100);
+         NS.Invoke_Read_Only (Tree, NS.Child (Tree, 0, "READ"), [others => 0], 0, 100, R);
          Check (R.Status = Status and then (if Status = Returned then R.Value =
            (if Boolean_Result then AML_Coercions.Maximum (W) else V)));
          Check (Tree = Before);
          if R.Status = Returned then
-            R := NS.Invoke (Tree, NS.Child (Tree, 0, "READ"), [others => 0], 0, R.Charged - 1);
+            NS.Invoke_Read_Only (Tree, NS.Child (Tree, 0, "READ"), [others => 0], 0, R.Charged - 1, R);
             Check (R.Status = Budget_Exceeded);
          end if;
       end loop;

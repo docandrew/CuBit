@@ -1,0 +1,390 @@
+{
+  "observations": [
+    {
+      "revision": 1,
+      "method": "NAM0",
+      "value": {
+        "package_sizes": [
+          3,
+          2,
+          1
+        ],
+        "buffers": [
+          "55aa00ff",
+          "112233",
+          "778899aabb",
+          "ccdd"
+        ]
+      },
+      "raw_log": "/home/doc/git/.acpi-proof-work/runtime-package-root-oracle-x4j04dl3/results/roots-r1-acpiexec.log"
+    },
+    {
+      "revision": 1,
+      "method": "MARK",
+      "value": 4,
+      "raw_log": "/home/doc/git/.acpi-proof-work/runtime-package-root-oracle-x4j04dl3/results/roots-r1-acpiexec.log"
+    },
+    {
+      "revision": 1,
+      "method": "RET0",
+      "value": {
+        "package_sizes": [
+          3,
+          2,
+          1
+        ],
+        "buffers": [
+          "55aa00ff",
+          "112233",
+          "778899aabb",
+          "ccdd"
+        ]
+      },
+      "raw_log": "/home/doc/git/.acpi-proof-work/runtime-package-root-oracle-x4j04dl3/results/roots-r1-acpiexec.log"
+    },
+    {
+      "revision": 1,
+      "method": "MARK",
+      "value": 4,
+      "raw_log": "/home/doc/git/.acpi-proof-work/runtime-package-root-oracle-x4j04dl3/results/roots-r1-acpiexec.log"
+    },
+    {
+      "revision": 1,
+      "method": "CAL0",
+      "value": {
+        "package_sizes": [
+          3,
+          2,
+          1
+        ],
+        "buffers": [
+          "55aa00ff",
+          "112233",
+          "778899aabb",
+          "ccdd"
+        ]
+      },
+      "raw_log": "/home/doc/git/.acpi-proof-work/runtime-package-root-oracle-x4j04dl3/results/roots-r1-acpiexec.log"
+    },
+    {
+      "revision": 1,
+      "method": "MARK",
+      "value": 4,
+      "raw_log": "/home/doc/git/.acpi-proof-work/runtime-package-root-oracle-x4j04dl3/results/roots-r1-acpiexec.log"
+    },
+    {
+      "revision": 1,
+      "method": "CEL0",
+      "value": {
+        "package_sizes": [
+          3,
+          2,
+          1
+        ],
+        "buffers": [
+          "55aa00ff",
+          "112233",
+          "778899aabb",
+          "ccdd"
+        ]
+      },
+      "raw_log": "/home/doc/git/.acpi-proof-work/runtime-package-root-oracle-x4j04dl3/results/roots-r1-acpiexec.log"
+    },
+    {
+      "revision": 1,
+      "method": "MARK",
+      "value": 4,
+      "raw_log": "/home/doc/git/.acpi-proof-work/runtime-package-root-oracle-x4j04dl3/results/roots-r1-acpiexec.log"
+    },
+    {
+      "revision": 1,
+      "method": "NAM0",
+      "value": {
+        "package_sizes": [
+          3,
+          2,
+          1
+        ],
+        "buffers": [
+          "55aa00ff",
+          "112233",
+          "778899aabb",
+          "ccdd"
+        ]
+      },
+      "raw_log": "/home/doc/git/.acpi-proof-work/runtime-package-root-oracle-x4j04dl3/results/roots-r1-acpiexec.log"
+    },
+    {
+      "revision": 1,
+      "method": "MARK",
+      "value": 4,
+      "raw_log": "/home/doc/git/.acpi-proof-work/runtime-package-root-oracle-x4j04dl3/results/roots-r1-acpiexec.log"
+    },
+    {
+      "revision": 1,
+      "method": "RET0",
+      "value": {
+        "package_sizes": [
+          3,
+          2,
+          1
+        ],
+        "buffers": [
+          "55aa00ff",
+          "112233",
+          "778899aabb",
+          "ccdd"
+        ]
+      },
+      "raw_log": "/home/doc/git/.acpi-proof-work/runtime-package-root-oracle-x4j04dl3/results/roots-r1-acpiexec.log"
+    },
+    {
+      "revision": 1,
+      "method": "MARK",
+      "value": 4,
+      "raw_log": "/home/doc/git/.acpi-proof-work/runtime-package-root-oracle-x4j04dl3/results/roots-r1-acpiexec.log"
+    },
+    {
+      "revision": 1,
+      "method": "CAL0",
+      "value": {
+        "package_sizes": [
+          3,
+          2,
+          1
+        ],
+        "buffers": [
+          "55aa00ff",
+          "112233",
+          "778899aabb",
+          "ccdd"
+        ]
+      },
+      "raw_log": "/home/doc/git/.acpi-proof-work/runtime-package-root-oracle-x4j04dl3/results/roots-r1-acpiexec.log"
+    },
+    {
+      "revision": 1,
+      "method": "MARK",
+      "value": 4,
+      "raw_log": "/home/doc/git/.acpi-proof-work/runtime-package-root-oracle-x4j04dl3/results/roots-r1-acpiexec.log"
+    },
+    {
+      "revision": 1,
+      "method": "CEL0",
+      "value": {
+        "package_sizes": [
+          3,
+          2,
+          1
+        ],
+        "buffers": [
+          "55aa00ff",
+          "112233",
+          "778899aabb",
+          "ccdd"
+        ]
+      },
+      "raw_log": "/home/doc/git/.acpi-proof-work/runtime-package-root-oracle-x4j04dl3/results/roots-r1-acpiexec.log"
+    },
+    {
+      "revision": 1,
+      "method": "MARK",
+      "value": 4,
+      "raw_log": "/home/doc/git/.acpi-proof-work/runtime-package-root-oracle-x4j04dl3/results/roots-r1-acpiexec.log"
+    },
+    {
+      "revision": 2,
+      "method": "NAM0",
+      "value": {
+        "package_sizes": [
+          3,
+          2,
+          1
+        ],
+        "buffers": [
+          "55aa00ff",
+          "112233",
+          "778899aabb",
+          "ccdd"
+        ]
+      },
+      "raw_log": "/home/doc/git/.acpi-proof-work/runtime-package-root-oracle-x4j04dl3/results/roots-r2-acpiexec.log"
+    },
+    {
+      "revision": 2,
+      "method": "MARK",
+      "value": 4,
+      "raw_log": "/home/doc/git/.acpi-proof-work/runtime-package-root-oracle-x4j04dl3/results/roots-r2-acpiexec.log"
+    },
+    {
+      "revision": 2,
+      "method": "RET0",
+      "value": {
+        "package_sizes": [
+          3,
+          2,
+          1
+        ],
+        "buffers": [
+          "55aa00ff",
+          "112233",
+          "778899aabb",
+          "ccdd"
+        ]
+      },
+      "raw_log": "/home/doc/git/.acpi-proof-work/runtime-package-root-oracle-x4j04dl3/results/roots-r2-acpiexec.log"
+    },
+    {
+      "revision": 2,
+      "method": "MARK",
+      "value": 4,
+      "raw_log": "/home/doc/git/.acpi-proof-work/runtime-package-root-oracle-x4j04dl3/results/roots-r2-acpiexec.log"
+    },
+    {
+      "revision": 2,
+      "method": "CAL0",
+      "value": {
+        "package_sizes": [
+          3,
+          2,
+          1
+        ],
+        "buffers": [
+          "55aa00ff",
+          "112233",
+          "778899aabb",
+          "ccdd"
+        ]
+      },
+      "raw_log": "/home/doc/git/.acpi-proof-work/runtime-package-root-oracle-x4j04dl3/results/roots-r2-acpiexec.log"
+    },
+    {
+      "revision": 2,
+      "method": "MARK",
+      "value": 4,
+      "raw_log": "/home/doc/git/.acpi-proof-work/runtime-package-root-oracle-x4j04dl3/results/roots-r2-acpiexec.log"
+    },
+    {
+      "revision": 2,
+      "method": "CEL0",
+      "value": {
+        "package_sizes": [
+          3,
+          2,
+          1
+        ],
+        "buffers": [
+          "55aa00ff",
+          "112233",
+          "778899aabb",
+          "ccdd"
+        ]
+      },
+      "raw_log": "/home/doc/git/.acpi-proof-work/runtime-package-root-oracle-x4j04dl3/results/roots-r2-acpiexec.log"
+    },
+    {
+      "revision": 2,
+      "method": "MARK",
+      "value": 4,
+      "raw_log": "/home/doc/git/.acpi-proof-work/runtime-package-root-oracle-x4j04dl3/results/roots-r2-acpiexec.log"
+    },
+    {
+      "revision": 2,
+      "method": "NAM0",
+      "value": {
+        "package_sizes": [
+          3,
+          2,
+          1
+        ],
+        "buffers": [
+          "55aa00ff",
+          "112233",
+          "778899aabb",
+          "ccdd"
+        ]
+      },
+      "raw_log": "/home/doc/git/.acpi-proof-work/runtime-package-root-oracle-x4j04dl3/results/roots-r2-acpiexec.log"
+    },
+    {
+      "revision": 2,
+      "method": "MARK",
+      "value": 4,
+      "raw_log": "/home/doc/git/.acpi-proof-work/runtime-package-root-oracle-x4j04dl3/results/roots-r2-acpiexec.log"
+    },
+    {
+      "revision": 2,
+      "method": "RET0",
+      "value": {
+        "package_sizes": [
+          3,
+          2,
+          1
+        ],
+        "buffers": [
+          "55aa00ff",
+          "112233",
+          "778899aabb",
+          "ccdd"
+        ]
+      },
+      "raw_log": "/home/doc/git/.acpi-proof-work/runtime-package-root-oracle-x4j04dl3/results/roots-r2-acpiexec.log"
+    },
+    {
+      "revision": 2,
+      "method": "MARK",
+      "value": 4,
+      "raw_log": "/home/doc/git/.acpi-proof-work/runtime-package-root-oracle-x4j04dl3/results/roots-r2-acpiexec.log"
+    },
+    {
+      "revision": 2,
+      "method": "CAL0",
+      "value": {
+        "package_sizes": [
+          3,
+          2,
+          1
+        ],
+        "buffers": [
+          "55aa00ff",
+          "112233",
+          "778899aabb",
+          "ccdd"
+        ]
+      },
+      "raw_log": "/home/doc/git/.acpi-proof-work/runtime-package-root-oracle-x4j04dl3/results/roots-r2-acpiexec.log"
+    },
+    {
+      "revision": 2,
+      "method": "MARK",
+      "value": 4,
+      "raw_log": "/home/doc/git/.acpi-proof-work/runtime-package-root-oracle-x4j04dl3/results/roots-r2-acpiexec.log"
+    },
+    {
+      "revision": 2,
+      "method": "CEL0",
+      "value": {
+        "package_sizes": [
+          3,
+          2,
+          1
+        ],
+        "buffers": [
+          "55aa00ff",
+          "112233",
+          "778899aabb",
+          "ccdd"
+        ]
+      },
+      "raw_log": "/home/doc/git/.acpi-proof-work/runtime-package-root-oracle-x4j04dl3/results/roots-r2-acpiexec.log"
+    },
+    {
+      "revision": 2,
+      "method": "MARK",
+      "value": 4,
+      "raw_log": "/home/doc/git/.acpi-proof-work/runtime-package-root-oracle-x4j04dl3/results/roots-r2-acpiexec.log"
+    }
+  ],
+  "scope": "16 package returns and16MARK values; RSET no-return controls. Header revisions1/2; ACPICA acpiexec generated baseDSDT remainsrevision2, not a global32bit arithmetic experiment. All payload bytes and small count identical; hosted replay explicitly selects both AML widths.",
+  "warnings": "Compiler warnings/remarks and cache teardown diagnostics preserved."
+}

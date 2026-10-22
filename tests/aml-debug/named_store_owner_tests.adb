@@ -7,6 +7,7 @@ with AML_Objects;
 with AML_Objects.Byte_References;
 with AML_References;
 procedure Named_Store_Owner_Tests is
+   use type AML_Decode.Bytes;
    use type AML_Decode.Byte;
    use type AML_Decode.Integer_Value;
    package NS is new AML_Namespace (16, AML_Delays.Unavailable_Provider);

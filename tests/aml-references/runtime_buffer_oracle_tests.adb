@@ -5,6 +5,7 @@ with AML_Execute; use AML_Execute;
 with AML_Namespace;
 with AML_Table_Backing;
 procedure Runtime_Buffer_Oracle_Tests is
+   use type AML_Decode.Bytes;
    package NS is new AML_Namespace (16, AML_Delays.Unavailable_Provider);
    use NS; use NS.Owned;
    use type Integer_Value;

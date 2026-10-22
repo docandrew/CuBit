@@ -1,0 +1,22 @@
+[
+  {
+    "source": "index-observation/byte1.aml",
+    "returncode": 0,
+    "TEST_has_Mid": true
+  },
+  {
+    "source": "index-observation/byte2.aml",
+    "returncode": 0,
+    "TEST_has_Mid": true
+  },
+  {
+    "source": "index-observation/member1.aml",
+    "returncode": 0,
+    "TEST_has_Mid": true
+  },
+  {
+    "source": "index-observation/member2.aml",
+    "returncode": 0,
+    "TEST_has_Mid": true
+  }
+]

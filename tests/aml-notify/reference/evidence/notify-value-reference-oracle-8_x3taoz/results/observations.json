@@ -1,0 +1,80 @@
+[
+  {
+    "key": "1-ref-integer",
+    "revision": 1,
+    "compile_returncode": 0,
+    "aml_sha256": "59d7f044d1bf358d47fc344599d5df063c65288cb91a66bd17395be9af1bcc0c",
+    "disassemble_returncode": 0,
+    "control_returncode": 0,
+    "control_values": [
+      "0000000000000001",
+      "0000000000000000"
+    ],
+    "returncode": 0,
+    "test_values": [],
+    "marker_values": [
+      "0000000000000001"
+    ],
+    "ae_statuses": [
+      "AE_AML_OPERAND_TYPE"
+    ],
+    "global_notifications_observed": [],
+    "thread_failure": false,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "timing_claim": "none: threaded OSL/no-op completion wait; callback absence/order not conclusive",
+    "classification": "runtime_error"
+  },
+  {
+    "key": "1-index-buffer",
+    "revision": 1,
+    "compile_returncode": 255,
+    "classification": "compiler_rejected"
+  },
+  {
+    "key": "1-index-package",
+    "revision": 1,
+    "compile_returncode": 255,
+    "classification": "compiler_rejected"
+  },
+  {
+    "key": "2-ref-integer",
+    "revision": 2,
+    "compile_returncode": 0,
+    "aml_sha256": "a4f6594b31d686a5be6aee751c0196f3a9ee7d0a428359c4f239f0a31feb2870",
+    "disassemble_returncode": 0,
+    "control_returncode": 0,
+    "control_values": [
+      "0000000000000001",
+      "00000000FFFFFFFF"
+    ],
+    "returncode": 0,
+    "test_values": [],
+    "marker_values": [
+      "0000000000000001"
+    ],
+    "ae_statuses": [
+      "AE_AML_OPERAND_TYPE"
+    ],
+    "global_notifications_observed": [],
+    "thread_failure": false,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "timing_claim": "none: threaded OSL/no-op completion wait; callback absence/order not conclusive",
+    "classification": "runtime_error"
+  },
+  {
+    "key": "2-index-buffer",
+    "revision": 2,
+    "compile_returncode": 255,
+    "classification": "compiler_rejected"
+  },
+  {
+    "key": "2-index-package",
+    "revision": 2,
+    "compile_returncode": 255,
+    "classification": "compiler_rejected"
+  }
+]

@@ -2,7 +2,6 @@ pragma Ada_2022;
 with AML_Decode;
 with Interfaces;
 package AML_Integers with SPARK_Mode, Pure is
-   use type AML_Decode.Byte;
    use type AML_Decode.Integer_Value;
    use type AML_Decode.Integer_Width;
    function Supported (Op : AML_Decode.Byte) return Boolean is

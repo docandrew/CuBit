@@ -1,0 +1,14 @@
+{
+  "session": 24588,
+  "exit": 0,
+  "checks": 3225,
+  "cases": 102,
+  "returned": 74,
+  "runtime_errors": 28,
+  "excluded_compile_rejections": 4,
+  "excluded_inconclusive": 2,
+  "reference_inputs_verified": 1057,
+  "preserved_parent_cases": 90,
+  "source_copy_equality": true,
+  "scope": "Synthetic protocol validation only; no interpreter replay."
+}

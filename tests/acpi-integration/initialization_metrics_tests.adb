@@ -64,15 +64,15 @@ begin
          Check (Reply.Status = OK);
          Import_Block (Server, Snapshot_Provider, Revision (Server), 10, ACPI_Service.DSDT, DSDT_Data, Reply);
          Check (Reply.Status = OK);
-         Metrics (7, [0, 0, 0, 0]); Metrics (8, [0, 0, 3, 0]);
+         Metrics (7, [0, 0, 0, 0]); Metrics (8, [0, 0, 0, 0]);
          if Premature then
             Finish (Incomplete);
             Check (Current (Server) = Failed);
-            Metrics (7, [0, 0, 0, 0]); Metrics (8, [0, 0, 3, 0]);
+            Metrics (7, [0, 0, 0, 0]); Metrics (8, [0, 0, 0, 0]);
          else
             Import_Block (Server, Snapshot_Provider, Revision (Server), 20, ACPI_Service.SSDT, SSDT_Data, Reply);
             Check (Reply.Status = OK);
-            Metrics (7, [0, 0, 0, 0]); Metrics (8, [0, 0, 3, 0]);
+            Metrics (7, [0, 0, 0, 0]); Metrics (8, [0, 0, 0, 0]);
             Before := Model (Server);
             for Origin in No_Authority .. Observer loop
                Handle (Server, Origin,

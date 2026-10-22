@@ -7,9 +7,9 @@ with AML_Names;
 with AML_Objects;
 with AML_References;
 procedure Mid_Owner_Tests is
+   use type AML_Decode.Bytes;
    package N is new AML_Namespace (32, Perform_Delay => AML_Delays.Unavailable_Provider);
    use N; use N.Owned;
-   use type AML_Decode.Byte;
    use type AML_Decode.Integer_Value;
    A, Other : Arena;
    OK : Boolean;

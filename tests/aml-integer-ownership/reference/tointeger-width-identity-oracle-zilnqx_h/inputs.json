@@ -1,0 +1,22 @@
+{
+  "PLAN.txt": "bf02ae21a2aeab6a1cc76254ced4da7138904d05c904232bbc261ba7f4220c91",
+  "hosted_capture.py": "bb667e639c2ba2c9c11aa0fb09e30f0bd768b8728290657fcff4ef090da231db",
+  "run.py": "b98795205a47f873eb2344967c97cb910867485e604ea78a0eb2fffc37790589",
+  "bounded_tool.py": "e437db8639dc573a5218ed5bf862298e84a0ac48fdf8ddc46bf0c795d89373c8",
+  "tool-pins.json": "63b4e2eab8312270127d242e81e586cbfe17d297b10740a1798b0807f53beb08",
+  "cases.json": "b2166aa5d6f0c95d084f7056c16cb48bdceeef5ba2fd6d86db3551b9315a107e",
+  "cases/r2-arg.asl": "891841684d0a2f47a4cb63717e1673a5802c4fe6dfc5083bf17b5fcccdddaf27",
+  "cases/r2-arg-target-dest.asl": "820be4c2076182805156721f59cf31208225b17646c7ca37c50f1db81e109845",
+  "cases/r1-package.asl": "e8caef1580e07c4c894d54b16637f61fe340564cb81391fdee222e4d3b8ea053",
+  "cases/r2-direct.asl": "835258f3d7e0468dfeb3fc336de38c0fd32d1784d70549b7c3c4c51b9e157837",
+  "cases/r2-local.asl": "884a1334992e160bbe0137ddef8616a2394aae9883957f03b2f942eed0101e75",
+  "cases/r1-direct.asl": "abc4939f20dfd60bbe723df007b7b3d23cebb855c42636220193f390beddf910",
+  "cases/r2-package.asl": "41e429994352939b991c38c59148cabe0c4f8237093c5b75c93527e6b98c7950",
+  "cases/base1.asl": "6cfe7d358a7f930336d83c0478cc02f29c376b6ca9dbd73166345bd762e95256",
+  "cases/base2.asl": "0aafe49d2031ada16d799234abe1f4e8f64a2c377337d4587df3fbef161f1039",
+  "cases/r1-arg-target-source.asl": "ef03d80366bc03701a5e81de3e02f4512172c7c2aa30400641e89a9493de78f1",
+  "cases/r1-arg-target-dest.asl": "749afcfd3c9107a13cfdb005fda962a21729ef4b4d0694dc8d94fa8f48476a68",
+  "cases/r1-arg.asl": "ef0f740ee3fdf0a9512de9be20b78886fefffc4ae2d03688295b42176f158363",
+  "cases/r1-local.asl": "bdc35221917a82dd2f5e4618d0ba9efa98d22d8368b711e965a1fcfe1211120d",
+  "cases/r2-arg-target-source.asl": "8fb8192a99103a56c9e25d0d789aba8d25183d8f67ee62c066afb9a96be9e8ba"
+}

@@ -89,7 +89,7 @@ begin
    Reset_Fixture (2);
    Import_Table (Session_Ptr.all, 1, ACPI_Service.DSDT,
                  Table (ACPI_Service.DSDT, [8,86,65,76,48,1]), Outcome);
-   Checks := Checks + 1; pragma Assert (Outcome = ACPI_Service.Installed and Observe (Session_Ptr.all).Objects = 1);
+   Checks := Checks + 1; pragma Assert (Outcome = ACPI_Service.Installed and Observe (Session_Ptr.all).Objects = 0);
    Before_Tree := Audit (Session_Ptr.all);
    Import_Table (Session_Ptr.all, 1, ACPI_Service.SSDT, SSDT, Outcome);
    Checks := Checks + 1; pragma Assert (Outcome = ACPI_Service.Duplicate_ID and Current (Session_Ptr.all) = Failed
@@ -104,7 +104,17 @@ begin
    Checks := Checks + 1; pragma Assert (Outcome = ACPI_Service.Wrong_Order and Current (Session_Ptr.all) = Failed);
    Reset_Fixture (1);
    Import_Table (Session_Ptr.all, 1, ACPI_Service.DSDT, Table (ACPI_Service.DSDT, [1 => 16#FE#]), Outcome);
-   Checks := Checks + 1; pragma Assert (Outcome = ACPI_Service.Invalid_AML and Current (Session_Ptr.all) = Failed);
+   Checks := Checks + 1; pragma Assert (Outcome = ACPI_Service.Installed and Current (Session_Ptr.all) = Receiving);
+   Finish (Session_Ptr.all);
+   Checks := Checks + 1; pragma Assert (Current (Session_Ptr.all) = Failed
+     and Completion (Session_Ptr.all).Stage = Execution_Failed);
+   Reset_Fixture (1);
+   Import_Table (Session_Ptr.all, 1, ACPI_Service.DSDT,
+     Table (ACPI_Service.DSDT, [8,86,65,76,48,1]), Outcome);
+   Checks := Checks + 1; pragma Assert (Outcome = ACPI_Service.Installed and Observe (Session_Ptr.all).Objects = 0);
+   Finish (Session_Ptr.all);
+   Checks := Checks + 1; pragma Assert (Current (Session_Ptr.all) = Complete
+     and Completion (Session_Ptr.all).Stage = Finished and Observe (Session_Ptr.all).Objects = ACPI_Service.Values.Firmware_Seed_Count + 1);
    declare
       Length : constant Positive := 1_048_577;
       Large : State (35, Length + 34 * 36, Length);

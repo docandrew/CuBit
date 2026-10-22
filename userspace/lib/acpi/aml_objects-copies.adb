@@ -54,7 +54,7 @@ package body AML_Objects.Copies with SPARK_Mode is
                if Store.Objects (Link.Copy).First /= Elements
                  or else Length (Store, Link.Copy) > Max_Elements - Elements then return False; end if;
                Elements := Elements + Length (Store, Link.Copy);
-            when Integer_Object | Reference_Object => null;
+            when Integer_Object | Reference_Object | Metadata_Object | Metadata_Snapshot_Object | Event_Object | Mutex_Object => null;
          end case;
          if Link.Bytes_After /= Bytes or else Link.Elements_After /= Elements then return False; end if;
       end loop;
@@ -131,7 +131,7 @@ package body AML_Objects.Copies with SPARK_Mode is
            or else Witness.Links (Next).Original /= Original
            or else Witness.Links (Next).Copy /= Copy then return False; end if;
          case Kind (Prior, Original) is
-            when Integer_Object | Reference_Object => null;
+            when Integer_Object | Reference_Object | Metadata_Object | Metadata_Snapshot_Object | Event_Object | Mutex_Object => null;
             when String_Object | Buffer_Object =>
                if Store.Objects (Copy).First /= Bytes_Next
                  or else Length (Store, Copy) > Max_Bytes - Bytes_Next then return False; end if;
@@ -186,11 +186,16 @@ package body AML_Objects.Copies with SPARK_Mode is
            Candidate.Objects (Copy).First >= Store.Elements_Used)
          and then (if Kind (Store, Original) in Byte_Kind then
            Candidate.Objects (Copy).First >= Store.Bytes_Used)
+         and then (if Kind (Store, Original) = Event_Object then Event_Units (Candidate, Copy) = 0)
          and then (if Kind (Store, Original) = Integer_Object then
            Integer_Data (Candidate, Copy) = Integer_Data (Store, Original)
            and then Origin_Of (Candidate, Copy) = Origin_Of (Store, Original))
          and then (if Kind (Store, Original) = Reference_Object then
            Reference_Data (Candidate, Copy) = Reference_Data (Store, Original))
+         and then (if Kind (Store, Original) = Metadata_Object then
+           Metadata_Data (Candidate, Copy) = Metadata_Data (Store, Original))
+         and then (if Kind (Store, Original) = Metadata_Snapshot_Object then
+           Metadata_Snapshot_Data (Candidate, Copy) = Metadata_Snapshot_Data (Store, Original))
          and then (if Kind (Store, Original) in Byte_Kind then
            Byte_Data (Candidate, Copy) = Byte_Data (Store, Original)))
         with Ghost, Pre => Valid (Store) and then Valid (Candidate);
@@ -214,10 +219,18 @@ package body AML_Objects.Copies with SPARK_Mode is
       is
       begin
          case Kind (Store, Original) is
+            when Mutex_Object =>
+               Copy := No_Object; Status := Unsupported_Copy;
+            when Event_Object =>
+               New_Event (Candidate, Copy, Status);
             when Integer_Object =>
                New_Integer (Candidate, Integer_Data (Store, Original), Copy, Status, Origin_Of (Store, Original));
             when Reference_Object =>
                New_Reference (Candidate, Reference_Data (Store, Original), Copy, Status);
+            when Metadata_Object =>
+               New_Metadata (Candidate, Metadata_Data (Store, Original), Copy, Status);
+            when Metadata_Snapshot_Object =>
+               New_Metadata_Snapshot (Candidate, Metadata_Snapshot_Data (Store, Original), Copy, Status);
             when String_Object | Buffer_Object =>
                New_Bytes (Candidate, Kind (Store, Original), Byte_Data (Store, Original), Copy, Status);
             when Package_Object =>

@@ -1,0 +1,354 @@
+[
+  {
+    "key": "r1-first-second-effect-reference-store",
+    "source": "r1-first-second-effect-reference-store.asl",
+    "revision": 1,
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG"
+    ]
+  },
+  {
+    "key": "r1-first-second-effect-reference-copyobject",
+    "source": "r1-first-second-effect-reference-copyobject.asl",
+    "revision": 1,
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG"
+    ]
+  },
+  {
+    "key": "r1-first-second-effect-name-store",
+    "source": "r1-first-second-effect-name-store.asl",
+    "revision": 1,
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG"
+    ]
+  },
+  {
+    "key": "r1-first-second-effect-name-copyobject",
+    "source": "r1-first-second-effect-name-copyobject.asl",
+    "revision": 1,
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG"
+    ]
+  },
+  {
+    "key": "r1-first-start-effect-reference-store",
+    "source": "r1-first-start-effect-reference-store.asl",
+    "revision": 1,
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG"
+    ]
+  },
+  {
+    "key": "r1-first-start-effect-reference-copyobject",
+    "source": "r1-first-start-effect-reference-copyobject.asl",
+    "revision": 1,
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG"
+    ]
+  },
+  {
+    "key": "r1-first-start-effect-name-store",
+    "source": "r1-first-start-effect-name-store.asl",
+    "revision": 1,
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG"
+    ]
+  },
+  {
+    "key": "r1-first-start-effect-name-copyobject",
+    "source": "r1-first-start-effect-name-copyobject.asl",
+    "revision": 1,
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG"
+    ]
+  },
+  {
+    "key": "r1-second-start-effect-reference-store",
+    "source": "r1-second-start-effect-reference-store.asl",
+    "revision": 1,
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG"
+    ]
+  },
+  {
+    "key": "r1-second-start-effect-reference-copyobject",
+    "source": "r1-second-start-effect-reference-copyobject.asl",
+    "revision": 1,
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG"
+    ]
+  },
+  {
+    "key": "r1-second-start-effect-name-store",
+    "source": "r1-second-start-effect-name-store.asl",
+    "revision": 1,
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG"
+    ]
+  },
+  {
+    "key": "r1-second-start-effect-name-copyobject",
+    "source": "r1-second-start-effect-name-copyobject.asl",
+    "revision": 1,
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG"
+    ]
+  },
+  {
+    "key": "r1-caller-local",
+    "source": "r1-caller-local.asl",
+    "revision": 1,
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG"
+    ]
+  },
+  {
+    "key": "r1-package-rebind",
+    "source": "r1-package-rebind.asl",
+    "revision": 1,
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG"
+    ]
+  },
+  {
+    "key": "r1-start-out-of-range",
+    "source": "r1-start-out-of-range.asl",
+    "revision": 1,
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG"
+    ]
+  },
+  {
+    "key": "r1-predicate-invalid-type",
+    "source": "r1-predicate-invalid-type.asl",
+    "revision": 1,
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG"
+    ]
+  },
+  {
+    "key": "r2-first-second-effect-reference-store",
+    "source": "r2-first-second-effect-reference-store.asl",
+    "revision": 2,
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG"
+    ]
+  },
+  {
+    "key": "r2-first-second-effect-reference-copyobject",
+    "source": "r2-first-second-effect-reference-copyobject.asl",
+    "revision": 2,
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG"
+    ]
+  },
+  {
+    "key": "r2-first-second-effect-name-store",
+    "source": "r2-first-second-effect-name-store.asl",
+    "revision": 2,
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG"
+    ]
+  },
+  {
+    "key": "r2-first-second-effect-name-copyobject",
+    "source": "r2-first-second-effect-name-copyobject.asl",
+    "revision": 2,
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG"
+    ]
+  },
+  {
+    "key": "r2-first-start-effect-reference-store",
+    "source": "r2-first-start-effect-reference-store.asl",
+    "revision": 2,
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG"
+    ]
+  },
+  {
+    "key": "r2-first-start-effect-reference-copyobject",
+    "source": "r2-first-start-effect-reference-copyobject.asl",
+    "revision": 2,
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG"
+    ]
+  },
+  {
+    "key": "r2-first-start-effect-name-store",
+    "source": "r2-first-start-effect-name-store.asl",
+    "revision": 2,
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG"
+    ]
+  },
+  {
+    "key": "r2-first-start-effect-name-copyobject",
+    "source": "r2-first-start-effect-name-copyobject.asl",
+    "revision": 2,
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG"
+    ]
+  },
+  {
+    "key": "r2-second-start-effect-reference-store",
+    "source": "r2-second-start-effect-reference-store.asl",
+    "revision": 2,
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG"
+    ]
+  },
+  {
+    "key": "r2-second-start-effect-reference-copyobject",
+    "source": "r2-second-start-effect-reference-copyobject.asl",
+    "revision": 2,
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG"
+    ]
+  },
+  {
+    "key": "r2-second-start-effect-name-store",
+    "source": "r2-second-start-effect-name-store.asl",
+    "revision": 2,
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG"
+    ]
+  },
+  {
+    "key": "r2-second-start-effect-name-copyobject",
+    "source": "r2-second-start-effect-name-copyobject.asl",
+    "revision": 2,
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG"
+    ]
+  },
+  {
+    "key": "r2-caller-local",
+    "source": "r2-caller-local.asl",
+    "revision": 2,
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG"
+    ]
+  },
+  {
+    "key": "r2-package-rebind",
+    "source": "r2-package-rebind.asl",
+    "revision": 2,
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG"
+    ]
+  },
+  {
+    "key": "r2-start-out-of-range",
+    "source": "r2-start-out-of-range.asl",
+    "revision": 2,
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG"
+    ]
+  },
+  {
+    "key": "r2-predicate-invalid-type",
+    "source": "r2-predicate-invalid-type.asl",
+    "revision": 2,
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG"
+    ]
+  }
+]

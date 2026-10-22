@@ -85,7 +85,11 @@ begin
    Roundtrip ((Value_Kind=>AML_Execute.Object_Datum,Object=>(others=><>)));
    Roundtrip ((AML_Execute.Reference_Datum,AML_References.No_Reference));
    Roundtrip ((AML_Execute.Reference_Datum,AML_References.Bind_Named(A,1,42)));
-   Roundtrip ((AML_Execute.Reference_Datum,AML_References.Bind_Name_Member(A,1,42)));
+   Roundtrip ((AML_Execute.Reference_Datum,AML_References.Bind_Name_Member
+     (A,1,42,AML_References.No_Object_Handle)));
+   Roundtrip ((AML_Execute.Reference_Datum,AML_References.Bind_Name_Member
+     (A,1,42,AML_References.Bind_Object(A,AML_Object_Identifiers.Make_Address
+       (1,AML_Object_Identifiers.First_Incarnation)))));
    Roundtrip ((AML_Execute.Reference_Datum,AML_References.Bind(A,AML_Index_Handles.Bind_Byte(AML_Object_Identifiers.Make_Address(1,AML_Object_Identifiers.First_Incarnation),9))));
    Roundtrip ((AML_Execute.Reference_Datum,AML_References.Bind(A,AML_Index_Handles.Bind_Package(AML_Object_Identifiers.Make_Address(2,AML_Object_Identifiers.First_Incarnation),3))));
    Roundtrip ((AML_Execute.Reference_Datum,AML_References.Bind_Frame

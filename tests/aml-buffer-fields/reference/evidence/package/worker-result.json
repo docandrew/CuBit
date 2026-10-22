@@ -1,0 +1,10 @@
+{
+  "session_id": 34735,
+  "exit": 0,
+  "attempts": 4,
+  "classes": {
+    "returned": 4
+  },
+  "source_inputs_unchanged": 7,
+  "slot1": "released after terminal status"
+}

@@ -1,0 +1,10 @@
+project copy_store_collecting_tests_release is
+ for Source_Dirs use ("../../tests/aml-retention", "../../userspace/lib/acpi", "../../userspace/services/acpi", "../../shared/firmware");
+ Build_Root := external ("SERVICE_MILESTONE_BUILD", "build-copy_store_collecting_tests-release");
+ for Object_Dir use Build_Root & "/obj";
+ for Exec_Dir use Build_Root & "/bin";
+ for Main use ("copy_store_collecting_tests.adb");
+ package Compiler is
+ for Default_Switches ("Ada") use ("-O1", "-gnat2022", "-gnatwa", "-gnatwe", "-gnatp");
+ end Compiler;
+end copy_store_collecting_tests_release;

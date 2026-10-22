@@ -17,7 +17,6 @@ procedure Service_Field_Execution_Tests is
    use type Values.Value_Handle;
    use type AML_Decode.Bytes;
    use type AML_Decode.Status;
-   use type Firmware_Tables.Bytes;
    subtype Bytes is Firmware_Tables.Bytes;
    Checks : Natural := 0;
    procedure Check (B : Boolean) is
@@ -80,7 +79,7 @@ begin
       Reject (1, 64, 0, 8);
       Input.Count := 1;
       Input.Tables (1) := (Offset => 0, Extent => 64);
-      Input.Data := [others => 16#80#];
+      Input.Data.Bytes := [others => 16#80#];
       Result := AML_Table_Backing.Read_Field (Input, 1, 64, 0, 8);
       Check (Result.Status = AML_Decode.Accepted and then Result.Content (1) = 16#80#);
       Reject (2, 64, 0, 8);

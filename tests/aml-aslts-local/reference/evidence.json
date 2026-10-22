@@ -1,0 +1,105 @@
+{
+  "tested_predecessor": {
+    "receipt": "aslts-local-hosted-final-d9bl7tw6/receipt.json",
+    "sha256": "04d7ba51743f933b508e56ffa11a0e83386d820fba219cdb4061ad36d8eb5e63",
+    "worker": 77410,
+    "mn00": [
+      0,
+      0
+    ],
+    "errs": [
+      0,
+      0
+    ],
+    "charges": [
+      888,
+      903
+    ],
+    "rmrc": [
+      1,
+      2
+    ],
+    "all_records": ":STST:functional:local:CMO0:PASS:",
+    "retained_restored": true
+  },
+  "oracle": {
+    "receipt": "aslts-local-normal-final-xdr79opj/receipt.json",
+    "sha256": "215b0cd98c1a7b8e194a6d523c64734156367348900fe5aca76d3cba1129f271",
+    "compile_disassembly_runtime": [
+      0,
+      0,
+      0
+    ],
+    "warnings": 3,
+    "remarks": 110,
+    "optimizations": 0,
+    "cache_allocations": 4,
+    "ordered_results": [
+      [
+        "MN00",
+        0
+      ],
+      [
+        "ERRS",
+        0
+      ],
+      [
+        "MN00",
+        0
+      ],
+      [
+        "ERRS",
+        0
+      ]
+    ],
+    "CMO0_PASS_count": 2
+  },
+  "configuration": {
+    "compiler_flags": [
+      "-oa",
+      "-r",
+      "2",
+      "-of",
+      "-cr",
+      "-vs",
+      "-l",
+      "-sc",
+      "-sa",
+      "-ic",
+      "-ta",
+      "-ts",
+      "-so",
+      "-lm",
+      "-ln",
+      "-ls",
+      "-li"
+    ],
+    "default_upstream_target": false,
+    "note": "Original inventoried local is omitted from functional MDIRS; explicit common n64 configuration, not a default target."
+  },
+  "portable_execution": {
+    "worker": 20060,
+    "mn00": [
+      0,
+      0
+    ],
+    "errs": [
+      0,
+      0
+    ],
+    "charges": [
+      888,
+      903
+    ],
+    "rmrc": [
+      1,
+      2
+    ],
+    "guard_negatives": 2,
+    "receipt": "aslts-local-portable-final-i1b3036r/receipt.json",
+    "receipt_sha256": "13990dc29a172735baf974b80c71b15694348b35984135888de6fd7f3c2809bc",
+    "scope": "Tested parent; final README/evidence/manifest/docs only, executable and raw references unchanged."
+  },
+  "upstream_commit": "232ff3f8ae1a4da11c709f61d9154482cfe8e6df",
+  "aml_sha256": "85ad24f914b73399608f78ee273500e60a22c7053c47a2b8b16304ee7d5e3c28"
+}

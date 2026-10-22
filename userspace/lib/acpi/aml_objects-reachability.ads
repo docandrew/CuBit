@@ -5,7 +5,9 @@ package AML_Objects.Reachability with SPARK_Mode, Pure is
    -- Store-local edges, NOT authority. The owner must authenticate each
    -- descriptor against this same store snapshot before calling Trace; do not
    -- reuse this map after any store mutation. No_Address means
-   -- no object edge. Entries for non-reference objects are ignored. A stale
+   -- no object edge. Metadata_Object and Metadata_Snapshot_Object are metadata leaves; even a
+   -- supplied map entry cannot make it an object-store edge. Entries for other
+   -- non-reference objects are ignored. A stale
    -- generation never keeps a replacement object alive.
    type Reference_Targets is array (Object_ID range 1 .. Max_Objects)
       of AML_Object_Identifiers.Object_Address;

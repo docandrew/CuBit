@@ -5,6 +5,7 @@ with AML_Objects;
 with AML_Table_Backing;
 with Test_Namespace; use Test_Namespace;
 procedure Quota_Store_Tests is
+   use type AML_Decode.Bytes;
    use Owned;
    use type AML_Objects.Allocation_Status;
    A : Arena;

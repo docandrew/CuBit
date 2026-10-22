@@ -1,0 +1,3746 @@
+{
+  "cases": [
+    {
+      "case": {
+        "source": "cases/r1-uncontended.asl",
+        "revision": 1,
+        "family": "uncontended",
+        "batch": "execute TEST; evaluate MARK; execute PROB; execute TEST; evaluate MARK; execute PROB",
+        "expected": "unobserved; source-derived distinctions in DESIGN.txt, not acceptance values"
+      },
+      "source_sha256": "a1182bbe041d108847fec92055a5b8bbe4a3804d7f3e639b2b736764a07e61fe",
+      "compile": 0,
+      "header": {
+        "signature": "DSDT",
+        "length": 137,
+        "declared_length": 137,
+        "revision": 1,
+        "checksum_mod256": 0,
+        "sha256": "d892fd1a461b0540ea7c8ffaa7733e5ff347ed4dd7aabcf1e1a4f993f7709125"
+      },
+      "disassemble": 0,
+      "execute": 0,
+      "ordered_observation_lines": [
+        {
+          "line": 25,
+          "text": "Evaluating \\TEST"
+        },
+        {
+          "line": 26,
+          "text": "Evaluation of \\TEST returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 27,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 29,
+          "text": "Evaluating \\MARK"
+        },
+        {
+          "line": 30,
+          "text": "Evaluation of \\MARK returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 31,
+          "text": "  [Integer] = 0000000000000001"
+        },
+        {
+          "line": 33,
+          "text": "Evaluating \\PROB"
+        },
+        {
+          "line": 34,
+          "text": "Evaluation of \\PROB returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 35,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 37,
+          "text": "Evaluating \\TEST"
+        },
+        {
+          "line": 38,
+          "text": "Evaluation of \\TEST returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 39,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 41,
+          "text": "Evaluating \\MARK"
+        },
+        {
+          "line": 42,
+          "text": "Evaluation of \\MARK returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 43,
+          "text": "  [Integer] = 0000000000000001"
+        },
+        {
+          "line": 45,
+          "text": "Evaluating \\PROB"
+        },
+        {
+          "line": 46,
+          "text": "Evaluation of \\PROB returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 47,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 53,
+          "text": "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+        }
+      ],
+      "outcome": "raw observations only; no preassigned semantic acceptance"
+    },
+    {
+      "case": {
+        "source": "cases/r1-recursive.asl",
+        "revision": 1,
+        "family": "recursive",
+        "batch": "execute TEST; evaluate MARK; execute PROB; execute TEST; evaluate MARK; execute PROB",
+        "expected": "unobserved; source-derived distinctions in DESIGN.txt, not acceptance values"
+      },
+      "source_sha256": "56db7ecef63b416dd10132a8ae9e290e8af1d205944a6958f514609b4036388e",
+      "compile": 0,
+      "header": {
+        "signature": "DSDT",
+        "length": 156,
+        "declared_length": 156,
+        "revision": 1,
+        "checksum_mod256": 0,
+        "sha256": "9c1b4fed41b137fdd9b4e0201b1cb106a129bcd0f49a66f49780af71b4551cff"
+      },
+      "disassemble": 0,
+      "execute": 0,
+      "ordered_observation_lines": [
+        {
+          "line": 25,
+          "text": "Evaluating \\TEST"
+        },
+        {
+          "line": 26,
+          "text": "Evaluation of \\TEST returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 27,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 29,
+          "text": "Evaluating \\MARK"
+        },
+        {
+          "line": 30,
+          "text": "Evaluation of \\MARK returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 31,
+          "text": "  [Integer] = 0000000000000001"
+        },
+        {
+          "line": 33,
+          "text": "Evaluating \\PROB"
+        },
+        {
+          "line": 34,
+          "text": "Evaluation of \\PROB returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 35,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 37,
+          "text": "Evaluating \\TEST"
+        },
+        {
+          "line": 38,
+          "text": "Evaluation of \\TEST returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 39,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 41,
+          "text": "Evaluating \\MARK"
+        },
+        {
+          "line": 42,
+          "text": "Evaluation of \\MARK returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 43,
+          "text": "  [Integer] = 0000000000000001"
+        },
+        {
+          "line": 45,
+          "text": "Evaluating \\PROB"
+        },
+        {
+          "line": 46,
+          "text": "Evaluation of \\PROB returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 47,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 53,
+          "text": "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+        }
+      ],
+      "outcome": "raw observations only; no preassigned semantic acceptance"
+    },
+    {
+      "case": {
+        "source": "cases/r1-nested-sharing.asl",
+        "revision": 1,
+        "family": "nested-sharing",
+        "batch": "execute TEST; evaluate MARK; execute PROB; execute TEST; evaluate MARK; execute PROB",
+        "expected": "unobserved; source-derived distinctions in DESIGN.txt, not acceptance values"
+      },
+      "source_sha256": "204809aee636f8582d39f8c82f15ae00e4c0c85c71de90516dd88dc8dbb53fb7",
+      "compile": 0,
+      "header": {
+        "signature": "DSDT",
+        "length": 161,
+        "declared_length": 161,
+        "revision": 1,
+        "checksum_mod256": 0,
+        "sha256": "b11cf1b25a4f7a77a9e9670d3519d0a522170955ce1e07e7d8f7da9e92f22324"
+      },
+      "disassemble": 0,
+      "execute": 0,
+      "ordered_observation_lines": [
+        {
+          "line": 25,
+          "text": "Evaluating \\TEST"
+        },
+        {
+          "line": 26,
+          "text": "Evaluation of \\TEST returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 27,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 29,
+          "text": "Evaluating \\MARK"
+        },
+        {
+          "line": 30,
+          "text": "Evaluation of \\MARK returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 31,
+          "text": "  [Integer] = 0000000000000001"
+        },
+        {
+          "line": 33,
+          "text": "Evaluating \\PROB"
+        },
+        {
+          "line": 34,
+          "text": "Evaluation of \\PROB returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 35,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 37,
+          "text": "Evaluating \\TEST"
+        },
+        {
+          "line": 38,
+          "text": "Evaluation of \\TEST returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 39,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 41,
+          "text": "Evaluating \\MARK"
+        },
+        {
+          "line": 42,
+          "text": "Evaluation of \\MARK returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 43,
+          "text": "  [Integer] = 0000000000000001"
+        },
+        {
+          "line": 45,
+          "text": "Evaluating \\PROB"
+        },
+        {
+          "line": 46,
+          "text": "Evaluation of \\PROB returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 47,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 53,
+          "text": "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+        }
+      ],
+      "outcome": "raw observations only; no preassigned semantic acceptance"
+    },
+    {
+      "case": {
+        "source": "cases/r1-increasing.asl",
+        "revision": 1,
+        "family": "increasing",
+        "batch": "execute TEST; evaluate MARK; execute PROB; execute TEST; evaluate MARK; execute PROB",
+        "expected": "unobserved; source-derived distinctions in DESIGN.txt, not acceptance values"
+      },
+      "source_sha256": "65339b3020a9bc44289b0d0935d978767a39e2f652384d541c202935067918ca",
+      "compile": 0,
+      "header": {
+        "signature": "DSDT",
+        "length": 156,
+        "declared_length": 156,
+        "revision": 1,
+        "checksum_mod256": 0,
+        "sha256": "3fb992ae4006b7cb1990ab328b34d8ee872315e5bac8fe6b92fc9d2b3bf0b709"
+      },
+      "disassemble": 0,
+      "execute": 0,
+      "ordered_observation_lines": [
+        {
+          "line": 25,
+          "text": "Evaluating \\TEST"
+        },
+        {
+          "line": 26,
+          "text": "Evaluation of \\TEST returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 27,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 29,
+          "text": "Evaluating \\MARK"
+        },
+        {
+          "line": 30,
+          "text": "Evaluation of \\MARK returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 31,
+          "text": "  [Integer] = 0000000000000001"
+        },
+        {
+          "line": 33,
+          "text": "Evaluating \\PROB"
+        },
+        {
+          "line": 34,
+          "text": "Evaluation of \\PROB returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 35,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 37,
+          "text": "Evaluating \\TEST"
+        },
+        {
+          "line": 38,
+          "text": "Evaluation of \\TEST returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 39,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 41,
+          "text": "Evaluating \\MARK"
+        },
+        {
+          "line": 42,
+          "text": "Evaluation of \\MARK returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 43,
+          "text": "  [Integer] = 0000000000000001"
+        },
+        {
+          "line": 45,
+          "text": "Evaluating \\PROB"
+        },
+        {
+          "line": 46,
+          "text": "Evaluation of \\PROB returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 47,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 53,
+          "text": "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+        }
+      ],
+      "outcome": "raw observations only; no preassigned semantic acceptance"
+    },
+    {
+      "case": {
+        "source": "cases/r1-decreasing-acquire.asl",
+        "revision": 1,
+        "family": "decreasing-acquire",
+        "batch": "execute TEST; evaluate MARK; execute PROB; execute TEST; evaluate MARK; execute PROB",
+        "expected": "unobserved; source-derived distinctions in DESIGN.txt, not acceptance values"
+      },
+      "source_sha256": "d79e0cff320c53e6795c6111cf5cf36d8dbf57f71cdc243e1c434fb689f2a42b",
+      "compile": 0,
+      "header": {
+        "signature": "DSDT",
+        "length": 163,
+        "declared_length": 163,
+        "revision": 1,
+        "checksum_mod256": 0,
+        "sha256": "6a4c92a596d26ea759075bf14c77430e4f136828e81d28b6f22b16932b7f605e"
+      },
+      "disassemble": 0,
+      "execute": 0,
+      "ordered_observation_lines": [
+        {
+          "line": 25,
+          "text": "Evaluating \\TEST"
+        },
+        {
+          "line": 26,
+          "text": "ACPI Error: Cannot acquire Mutex [M001], current SyncLevel is too large (2) (20260408/exmutex-388)"
+        },
+        {
+          "line": 34,
+          "text": "ACPI Error: Aborting method \\TEST due to previous error (AE_AML_MUTEX_ORDER) (20260408/psparse-688)"
+        },
+        {
+          "line": 35,
+          "text": "ACPI Error: AE_AML_MUTEX_ORDER, while executing \\TEST from AML Debugger (20260408/dbexec-334)"
+        },
+        {
+          "line": 36,
+          "text": "Evaluation of \\TEST failed with status AE_AML_MUTEX_ORDER"
+        },
+        {
+          "line": 37,
+          "text": "Evaluating \\MARK"
+        },
+        {
+          "line": 38,
+          "text": "Evaluation of \\MARK returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 39,
+          "text": "  [Integer] = 0000000000000001"
+        },
+        {
+          "line": 41,
+          "text": "Evaluating \\PROB"
+        },
+        {
+          "line": 42,
+          "text": "Evaluation of \\PROB returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 43,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 45,
+          "text": "Evaluating \\TEST"
+        },
+        {
+          "line": 46,
+          "text": "ACPI Error: Cannot acquire Mutex [M001], current SyncLevel is too large (2) (20260408/exmutex-388)"
+        },
+        {
+          "line": 54,
+          "text": "ACPI Error: Aborting method \\TEST due to previous error (AE_AML_MUTEX_ORDER) (20260408/psparse-688)"
+        },
+        {
+          "line": 55,
+          "text": "ACPI Error: AE_AML_MUTEX_ORDER, while executing \\TEST from AML Debugger (20260408/dbexec-334)"
+        },
+        {
+          "line": 56,
+          "text": "Evaluation of \\TEST failed with status AE_AML_MUTEX_ORDER"
+        },
+        {
+          "line": 57,
+          "text": "Evaluating \\MARK"
+        },
+        {
+          "line": 58,
+          "text": "Evaluation of \\MARK returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 59,
+          "text": "  [Integer] = 0000000000000001"
+        },
+        {
+          "line": 61,
+          "text": "Evaluating \\PROB"
+        },
+        {
+          "line": 62,
+          "text": "Evaluation of \\PROB returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 63,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 69,
+          "text": "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+        }
+      ],
+      "outcome": "raw observations only; no preassigned semantic acceptance"
+    },
+    {
+      "case": {
+        "source": "cases/r1-wrong-level-release.asl",
+        "revision": 1,
+        "family": "wrong-level-release",
+        "batch": "execute TEST; evaluate MARK; execute PROB; execute TEST; evaluate MARK; execute PROB",
+        "expected": "unobserved; source-derived distinctions in DESIGN.txt, not acceptance values"
+      },
+      "source_sha256": "4e5f9d137534c418f3d0135be59c2f426d12445243c18fc358e7e7363a01bf27",
+      "compile": 0,
+      "header": {
+        "signature": "DSDT",
+        "length": 163,
+        "declared_length": 163,
+        "revision": 1,
+        "checksum_mod256": 0,
+        "sha256": "49c6f97337a96d5fcc75e0b0f5cb04e49434538065f460abe6aa266e0c5d4134"
+      },
+      "disassemble": 0,
+      "execute": 0,
+      "ordered_observation_lines": [
+        {
+          "line": 25,
+          "text": "Evaluating \\TEST"
+        },
+        {
+          "line": 26,
+          "text": "ACPI Error: Cannot release Mutex [M001], SyncLevel mismatch: mutex 1 current 2 (20260408/exmutex-579)"
+        },
+        {
+          "line": 36,
+          "text": "ACPI Error: Aborting method \\TEST due to previous error (AE_AML_MUTEX_ORDER) (20260408/psparse-688)"
+        },
+        {
+          "line": 37,
+          "text": "ACPI Error: AE_AML_MUTEX_ORDER, while executing \\TEST from AML Debugger (20260408/dbexec-334)"
+        },
+        {
+          "line": 38,
+          "text": "Evaluation of \\TEST failed with status AE_AML_MUTEX_ORDER"
+        },
+        {
+          "line": 39,
+          "text": "Evaluating \\MARK"
+        },
+        {
+          "line": 40,
+          "text": "Evaluation of \\MARK returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 41,
+          "text": "  [Integer] = 0000000000000001"
+        },
+        {
+          "line": 43,
+          "text": "Evaluating \\PROB"
+        },
+        {
+          "line": 44,
+          "text": "Evaluation of \\PROB returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 45,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 47,
+          "text": "Evaluating \\TEST"
+        },
+        {
+          "line": 48,
+          "text": "ACPI Error: Cannot release Mutex [M001], SyncLevel mismatch: mutex 1 current 2 (20260408/exmutex-579)"
+        },
+        {
+          "line": 58,
+          "text": "ACPI Error: Aborting method \\TEST due to previous error (AE_AML_MUTEX_ORDER) (20260408/psparse-688)"
+        },
+        {
+          "line": 59,
+          "text": "ACPI Error: AE_AML_MUTEX_ORDER, while executing \\TEST from AML Debugger (20260408/dbexec-334)"
+        },
+        {
+          "line": 60,
+          "text": "Evaluation of \\TEST failed with status AE_AML_MUTEX_ORDER"
+        },
+        {
+          "line": 61,
+          "text": "Evaluating \\MARK"
+        },
+        {
+          "line": 62,
+          "text": "Evaluation of \\MARK returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 63,
+          "text": "  [Integer] = 0000000000000001"
+        },
+        {
+          "line": 65,
+          "text": "Evaluating \\PROB"
+        },
+        {
+          "line": 66,
+          "text": "Evaluation of \\PROB returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 67,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 73,
+          "text": "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+        }
+      ],
+      "outcome": "raw observations only; no preassigned semantic acceptance"
+    },
+    {
+      "case": {
+        "source": "cases/r1-equal-level-out-of-order.asl",
+        "revision": 1,
+        "family": "equal-level-out-of-order",
+        "batch": "execute TEST; evaluate MARK; execute PROB; execute TEST; evaluate MARK; execute PROB",
+        "expected": "unobserved; source-derived distinctions in DESIGN.txt, not acceptance values"
+      },
+      "source_sha256": "ec1dbad6c1af26e336f552332a94e9d519a9e88390d644c03a84c7b4aed8ed8c",
+      "compile": 0,
+      "header": {
+        "signature": "DSDT",
+        "length": 176,
+        "declared_length": 176,
+        "revision": 1,
+        "checksum_mod256": 0,
+        "sha256": "23879838dcd508766a722484b7b8470d5069cde4d06622df227c8ee782065e6b"
+      },
+      "disassemble": 0,
+      "execute": 0,
+      "ordered_observation_lines": [
+        {
+          "line": 25,
+          "text": "Evaluating \\TEST"
+        },
+        {
+          "line": 26,
+          "text": "Evaluation of \\TEST returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 27,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 29,
+          "text": "Evaluating \\MARK"
+        },
+        {
+          "line": 30,
+          "text": "Evaluation of \\MARK returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 31,
+          "text": "  [Integer] = 0000000000000001"
+        },
+        {
+          "line": 33,
+          "text": "Evaluating \\PROB"
+        },
+        {
+          "line": 34,
+          "text": "Evaluation of \\PROB returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 35,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 37,
+          "text": "Evaluating \\TEST"
+        },
+        {
+          "line": 38,
+          "text": "Evaluation of \\TEST returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 39,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 41,
+          "text": "Evaluating \\MARK"
+        },
+        {
+          "line": 42,
+          "text": "Evaluation of \\MARK returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 43,
+          "text": "  [Integer] = 0000000000000001"
+        },
+        {
+          "line": 45,
+          "text": "Evaluating \\PROB"
+        },
+        {
+          "line": 46,
+          "text": "Evaluation of \\PROB returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 47,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 53,
+          "text": "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+        }
+      ],
+      "outcome": "raw observations only; no preassigned semantic acceptance"
+    },
+    {
+      "case": {
+        "source": "cases/r1-return-cleanup.asl",
+        "revision": 1,
+        "family": "return-cleanup",
+        "batch": "execute TEST; evaluate MARK; execute PROB; execute TEST; evaluate MARK; execute PROB",
+        "expected": "unobserved; source-derived distinctions in DESIGN.txt, not acceptance values"
+      },
+      "source_sha256": "d8ff4be487dd61f39da085d9da435da88e3436e9f740d90b970135a316f72644",
+      "compile": 0,
+      "header": {
+        "signature": "DSDT",
+        "length": 131,
+        "declared_length": 131,
+        "revision": 1,
+        "checksum_mod256": 0,
+        "sha256": "686d9a17fe6317c78ef41f9fafde6fa1a1ccecd6b450eaf301560ee76cb973ed"
+      },
+      "disassemble": 0,
+      "execute": 0,
+      "ordered_observation_lines": [
+        {
+          "line": 25,
+          "text": "Evaluating \\TEST"
+        },
+        {
+          "line": 26,
+          "text": "Evaluation of \\TEST returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 27,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 29,
+          "text": "Evaluating \\MARK"
+        },
+        {
+          "line": 30,
+          "text": "Evaluation of \\MARK returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 31,
+          "text": "  [Integer] = 0000000000000001"
+        },
+        {
+          "line": 33,
+          "text": "Evaluating \\PROB"
+        },
+        {
+          "line": 34,
+          "text": "Evaluation of \\PROB returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 35,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 37,
+          "text": "Evaluating \\TEST"
+        },
+        {
+          "line": 38,
+          "text": "Evaluation of \\TEST returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 39,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 41,
+          "text": "Evaluating \\MARK"
+        },
+        {
+          "line": 42,
+          "text": "Evaluation of \\MARK returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 43,
+          "text": "  [Integer] = 0000000000000001"
+        },
+        {
+          "line": 45,
+          "text": "Evaluating \\PROB"
+        },
+        {
+          "line": 46,
+          "text": "Evaluation of \\PROB returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 47,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 53,
+          "text": "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+        }
+      ],
+      "outcome": "raw observations only; no preassigned semantic acceptance"
+    },
+    {
+      "case": {
+        "source": "cases/r1-error-cleanup.asl",
+        "revision": 1,
+        "family": "error-cleanup",
+        "batch": "execute TEST; evaluate MARK; execute PROB; execute TEST; evaluate MARK; execute PROB",
+        "expected": "unobserved; source-derived distinctions in DESIGN.txt, not acceptance values"
+      },
+      "source_sha256": "e54e3becb0b4a0777d9d5ee6e82a34cd7c5dce17c37dbad12fed04f724e12ba5",
+      "compile": 0,
+      "header": {
+        "signature": "DSDT",
+        "length": 152,
+        "declared_length": 152,
+        "revision": 1,
+        "checksum_mod256": 0,
+        "sha256": "8ece8d22472c0451e23a9485541eaecae1cad415b33226e47f3c69ee27e0453f"
+      },
+      "disassemble": 0,
+      "execute": 0,
+      "ordered_observation_lines": [
+        {
+          "line": 25,
+          "text": "Evaluating \\TEST"
+        },
+        {
+          "line": 26,
+          "text": "ACPI Error: Divide by zero (20260408/utmath-705)"
+        },
+        {
+          "line": 35,
+          "text": "ACPI Error: Aborting method \\TEST due to previous error (AE_AML_DIVIDE_BY_ZERO) (20260408/psparse-688)"
+        },
+        {
+          "line": 36,
+          "text": "ACPI Error: AE_AML_DIVIDE_BY_ZERO, while executing \\TEST from AML Debugger (20260408/dbexec-334)"
+        },
+        {
+          "line": 37,
+          "text": "Evaluation of \\TEST failed with status AE_AML_DIVIDE_BY_ZERO"
+        },
+        {
+          "line": 38,
+          "text": "Evaluating \\MARK"
+        },
+        {
+          "line": 39,
+          "text": "Evaluation of \\MARK returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 40,
+          "text": "  [Integer] = 0000000000000001"
+        },
+        {
+          "line": 42,
+          "text": "Evaluating \\PROB"
+        },
+        {
+          "line": 43,
+          "text": "Evaluation of \\PROB returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 44,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 46,
+          "text": "Evaluating \\TEST"
+        },
+        {
+          "line": 47,
+          "text": "ACPI Error: Divide by zero (20260408/utmath-705)"
+        },
+        {
+          "line": 56,
+          "text": "ACPI Error: Aborting method \\TEST due to previous error (AE_AML_DIVIDE_BY_ZERO) (20260408/psparse-688)"
+        },
+        {
+          "line": 57,
+          "text": "ACPI Error: AE_AML_DIVIDE_BY_ZERO, while executing \\TEST from AML Debugger (20260408/dbexec-334)"
+        },
+        {
+          "line": 58,
+          "text": "Evaluation of \\TEST failed with status AE_AML_DIVIDE_BY_ZERO"
+        },
+        {
+          "line": 59,
+          "text": "Evaluating \\MARK"
+        },
+        {
+          "line": 60,
+          "text": "Evaluation of \\MARK returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 61,
+          "text": "  [Integer] = 0000000000000001"
+        },
+        {
+          "line": 63,
+          "text": "Evaluating \\PROB"
+        },
+        {
+          "line": 64,
+          "text": "Evaluation of \\PROB returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 65,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 71,
+          "text": "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+        }
+      ],
+      "outcome": "raw observations only; no preassigned semantic acceptance"
+    },
+    {
+      "case": {
+        "source": "cases/r1-unowned-release.asl",
+        "revision": 1,
+        "family": "unowned-release",
+        "batch": "execute TEST; evaluate MARK; execute PROB; execute TEST; evaluate MARK; execute PROB",
+        "expected": "unobserved; source-derived distinctions in DESIGN.txt, not acceptance values"
+      },
+      "source_sha256": "3634bbde9db8e1bfd6bfeb47535d66afda1dfd417e888c73ae2944fd2dfe2c05",
+      "compile": 0,
+      "header": {
+        "signature": "DSDT",
+        "length": 134,
+        "declared_length": 134,
+        "revision": 1,
+        "checksum_mod256": 0,
+        "sha256": "a9a5338ad2461548475514c76814edbdffdc06983b60685d5c39ad418b832bb4"
+      },
+      "disassemble": 0,
+      "execute": 0,
+      "ordered_observation_lines": [
+        {
+          "line": 25,
+          "text": "Evaluating \\TEST"
+        },
+        {
+          "line": 26,
+          "text": "ACPI Error: Cannot release Mutex [M000], not acquired (20260408/exmutex-539)"
+        },
+        {
+          "line": 33,
+          "text": "ACPI Error: Aborting method \\TEST due to previous error (AE_AML_MUTEX_NOT_ACQUIRED) (20260408/psparse-688)"
+        },
+        {
+          "line": 34,
+          "text": "ACPI Error: AE_AML_MUTEX_NOT_ACQUIRED, while executing \\TEST from AML Debugger (20260408/dbexec-334)"
+        },
+        {
+          "line": 35,
+          "text": "Evaluation of \\TEST failed with status AE_AML_MUTEX_NOT_ACQUIRED"
+        },
+        {
+          "line": 36,
+          "text": "Evaluating \\MARK"
+        },
+        {
+          "line": 37,
+          "text": "Evaluation of \\MARK returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 38,
+          "text": "  [Integer] = 0000000000000001"
+        },
+        {
+          "line": 40,
+          "text": "Evaluating \\PROB"
+        },
+        {
+          "line": 41,
+          "text": "Evaluation of \\PROB returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 42,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 44,
+          "text": "Evaluating \\TEST"
+        },
+        {
+          "line": 45,
+          "text": "ACPI Error: Cannot release Mutex [M000], not acquired (20260408/exmutex-539)"
+        },
+        {
+          "line": 52,
+          "text": "ACPI Error: Aborting method \\TEST due to previous error (AE_AML_MUTEX_NOT_ACQUIRED) (20260408/psparse-688)"
+        },
+        {
+          "line": 53,
+          "text": "ACPI Error: AE_AML_MUTEX_NOT_ACQUIRED, while executing \\TEST from AML Debugger (20260408/dbexec-334)"
+        },
+        {
+          "line": 54,
+          "text": "Evaluation of \\TEST failed with status AE_AML_MUTEX_NOT_ACQUIRED"
+        },
+        {
+          "line": 55,
+          "text": "Evaluating \\MARK"
+        },
+        {
+          "line": 56,
+          "text": "Evaluation of \\MARK returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 57,
+          "text": "  [Integer] = 0000000000000001"
+        },
+        {
+          "line": 59,
+          "text": "Evaluating \\PROB"
+        },
+        {
+          "line": 60,
+          "text": "Evaluation of \\PROB returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 61,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 67,
+          "text": "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+        }
+      ],
+      "outcome": "raw observations only; no preassigned semantic acceptance"
+    },
+    {
+      "case": {
+        "source": "cases/r1-serialized-restore.asl",
+        "revision": 1,
+        "family": "serialized-restore",
+        "batch": "execute TEST; evaluate MARK; execute PROB; execute TEST; evaluate MARK; execute PROB",
+        "expected": "unobserved; source-derived distinctions in DESIGN.txt, not acceptance values"
+      },
+      "source_sha256": "2efdb5e2e352fa7fa0c15f546fdc03d72e1ce0ccc67da32d4d95cd3ecafd515d",
+      "compile": 0,
+      "header": {
+        "signature": "DSDT",
+        "length": 149,
+        "declared_length": 149,
+        "revision": 1,
+        "checksum_mod256": 0,
+        "sha256": "e24b9b4b18689d14d0171a3dac194a05420d9ffa191c288795042a9c5e40987f"
+      },
+      "disassemble": 0,
+      "execute": 0,
+      "ordered_observation_lines": [
+        {
+          "line": 25,
+          "text": "Evaluating \\TEST"
+        },
+        {
+          "line": 26,
+          "text": "0x1 Outstanding allocations after evaluation of \\TEST"
+        },
+        {
+          "line": 27,
+          "text": "Evaluation of \\TEST returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 28,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 30,
+          "text": "Evaluating \\MARK"
+        },
+        {
+          "line": 31,
+          "text": "Evaluation of \\MARK returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 32,
+          "text": "  [Integer] = 0000000000000001"
+        },
+        {
+          "line": 34,
+          "text": "Evaluating \\PROB"
+        },
+        {
+          "line": 35,
+          "text": "Evaluation of \\PROB returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 36,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 38,
+          "text": "Evaluating \\TEST"
+        },
+        {
+          "line": 39,
+          "text": "Evaluation of \\TEST returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 40,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 42,
+          "text": "Evaluating \\MARK"
+        },
+        {
+          "line": 43,
+          "text": "Evaluation of \\MARK returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 44,
+          "text": "  [Integer] = 0000000000000001"
+        },
+        {
+          "line": 46,
+          "text": "Evaluating \\PROB"
+        },
+        {
+          "line": 47,
+          "text": "Evaluation of \\PROB returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 48,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 54,
+          "text": "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+        }
+      ],
+      "outcome": "raw observations only; no preassigned semantic acceptance"
+    },
+    {
+      "case": {
+        "source": "cases/r1-serialized-order.asl",
+        "revision": 1,
+        "family": "serialized-order",
+        "batch": "execute TEST; evaluate MARK; execute PROB; execute TEST; evaluate MARK; execute PROB",
+        "expected": "unobserved; source-derived distinctions in DESIGN.txt, not acceptance values"
+      },
+      "source_sha256": "bf937999de423bedf943da2632edea0888def388bd6bfdade142b3f434567425",
+      "compile": 0,
+      "header": {
+        "signature": "DSDT",
+        "length": 162,
+        "declared_length": 162,
+        "revision": 1,
+        "checksum_mod256": 0,
+        "sha256": "4392088ca8dd420ddb5a6c0a316e17cf8e586566909f2a7a5b3363c214c905df"
+      },
+      "disassemble": 0,
+      "execute": 0,
+      "ordered_observation_lines": [
+        {
+          "line": 25,
+          "text": "Evaluating \\TEST"
+        },
+        {
+          "line": 26,
+          "text": "ACPI Error: Cannot acquire Mutex for method [SER0], current SyncLevel is too large (2) (20260408/dsmethod-522)"
+        },
+        {
+          "line": 34,
+          "text": "ACPI Error: Aborting method \\TEST due to previous error (AE_AML_MUTEX_ORDER) (20260408/psparse-688)"
+        },
+        {
+          "line": 35,
+          "text": "ACPI Error: AE_AML_MUTEX_ORDER, while executing \\TEST from AML Debugger (20260408/dbexec-334)"
+        },
+        {
+          "line": 36,
+          "text": "0x1 Outstanding allocations after evaluation of \\TEST"
+        },
+        {
+          "line": 37,
+          "text": "Evaluation of \\TEST failed with status AE_AML_MUTEX_ORDER"
+        },
+        {
+          "line": 38,
+          "text": "Evaluating \\MARK"
+        },
+        {
+          "line": 39,
+          "text": "Evaluation of \\MARK returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 40,
+          "text": "  [Integer] = 0000000000000001"
+        },
+        {
+          "line": 42,
+          "text": "Evaluating \\PROB"
+        },
+        {
+          "line": 43,
+          "text": "Evaluation of \\PROB returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 44,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 46,
+          "text": "Evaluating \\TEST"
+        },
+        {
+          "line": 47,
+          "text": "ACPI Error: Cannot acquire Mutex for method [SER0], current SyncLevel is too large (2) (20260408/dsmethod-522)"
+        },
+        {
+          "line": 55,
+          "text": "ACPI Error: Aborting method \\TEST due to previous error (AE_AML_MUTEX_ORDER) (20260408/psparse-688)"
+        },
+        {
+          "line": 56,
+          "text": "ACPI Error: AE_AML_MUTEX_ORDER, while executing \\TEST from AML Debugger (20260408/dbexec-334)"
+        },
+        {
+          "line": 57,
+          "text": "Evaluation of \\TEST failed with status AE_AML_MUTEX_ORDER"
+        },
+        {
+          "line": 58,
+          "text": "Evaluating \\MARK"
+        },
+        {
+          "line": 59,
+          "text": "Evaluation of \\MARK returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 60,
+          "text": "  [Integer] = 0000000000000001"
+        },
+        {
+          "line": 62,
+          "text": "Evaluating \\PROB"
+        },
+        {
+          "line": 63,
+          "text": "Evaluation of \\PROB returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 64,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 70,
+          "text": "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+        }
+      ],
+      "outcome": "raw observations only; no preassigned semantic acceptance"
+    },
+    {
+      "case": {
+        "source": "cases/r2-uncontended.asl",
+        "revision": 2,
+        "family": "uncontended",
+        "batch": "execute TEST; evaluate MARK; execute PROB; execute TEST; evaluate MARK; execute PROB",
+        "expected": "unobserved; source-derived distinctions in DESIGN.txt, not acceptance values"
+      },
+      "source_sha256": "15af52470addb57217d0b6886f3ed0c0bdb9d2ced5d57f35941a414be524e683",
+      "compile": 0,
+      "header": {
+        "signature": "DSDT",
+        "length": 137,
+        "declared_length": 137,
+        "revision": 2,
+        "checksum_mod256": 0,
+        "sha256": "bcd10a40c985f6a4326f412d3f380a33add89cb934f5482b0d98ff77a1dcf339"
+      },
+      "disassemble": 0,
+      "execute": 0,
+      "ordered_observation_lines": [
+        {
+          "line": 25,
+          "text": "Evaluating \\TEST"
+        },
+        {
+          "line": 26,
+          "text": "Evaluation of \\TEST returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 27,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 29,
+          "text": "Evaluating \\MARK"
+        },
+        {
+          "line": 30,
+          "text": "Evaluation of \\MARK returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 31,
+          "text": "  [Integer] = 0000000000000001"
+        },
+        {
+          "line": 33,
+          "text": "Evaluating \\PROB"
+        },
+        {
+          "line": 34,
+          "text": "Evaluation of \\PROB returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 35,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 37,
+          "text": "Evaluating \\TEST"
+        },
+        {
+          "line": 38,
+          "text": "Evaluation of \\TEST returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 39,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 41,
+          "text": "Evaluating \\MARK"
+        },
+        {
+          "line": 42,
+          "text": "Evaluation of \\MARK returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 43,
+          "text": "  [Integer] = 0000000000000001"
+        },
+        {
+          "line": 45,
+          "text": "Evaluating \\PROB"
+        },
+        {
+          "line": 46,
+          "text": "Evaluation of \\PROB returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 47,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 53,
+          "text": "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+        }
+      ],
+      "outcome": "raw observations only; no preassigned semantic acceptance"
+    },
+    {
+      "case": {
+        "source": "cases/r2-recursive.asl",
+        "revision": 2,
+        "family": "recursive",
+        "batch": "execute TEST; evaluate MARK; execute PROB; execute TEST; evaluate MARK; execute PROB",
+        "expected": "unobserved; source-derived distinctions in DESIGN.txt, not acceptance values"
+      },
+      "source_sha256": "144d7c28c3006bf5be1e7e890c77a7d9f25648fc42725fe78663b8f5ccd9f2ef",
+      "compile": 0,
+      "header": {
+        "signature": "DSDT",
+        "length": 156,
+        "declared_length": 156,
+        "revision": 2,
+        "checksum_mod256": 0,
+        "sha256": "3637c412cc97c05dab21a7e0b5fcba179b3eab2b729a93873bb0b02ea6a98280"
+      },
+      "disassemble": 0,
+      "execute": 0,
+      "ordered_observation_lines": [
+        {
+          "line": 25,
+          "text": "Evaluating \\TEST"
+        },
+        {
+          "line": 26,
+          "text": "Evaluation of \\TEST returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 27,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 29,
+          "text": "Evaluating \\MARK"
+        },
+        {
+          "line": 30,
+          "text": "Evaluation of \\MARK returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 31,
+          "text": "  [Integer] = 0000000000000001"
+        },
+        {
+          "line": 33,
+          "text": "Evaluating \\PROB"
+        },
+        {
+          "line": 34,
+          "text": "Evaluation of \\PROB returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 35,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 37,
+          "text": "Evaluating \\TEST"
+        },
+        {
+          "line": 38,
+          "text": "Evaluation of \\TEST returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 39,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 41,
+          "text": "Evaluating \\MARK"
+        },
+        {
+          "line": 42,
+          "text": "Evaluation of \\MARK returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 43,
+          "text": "  [Integer] = 0000000000000001"
+        },
+        {
+          "line": 45,
+          "text": "Evaluating \\PROB"
+        },
+        {
+          "line": 46,
+          "text": "Evaluation of \\PROB returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 47,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 53,
+          "text": "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+        }
+      ],
+      "outcome": "raw observations only; no preassigned semantic acceptance"
+    },
+    {
+      "case": {
+        "source": "cases/r2-nested-sharing.asl",
+        "revision": 2,
+        "family": "nested-sharing",
+        "batch": "execute TEST; evaluate MARK; execute PROB; execute TEST; evaluate MARK; execute PROB",
+        "expected": "unobserved; source-derived distinctions in DESIGN.txt, not acceptance values"
+      },
+      "source_sha256": "2086b30cc5ec90e9bd834f4485fb33ec84c5a24afa725d74545c06e875572fab",
+      "compile": 0,
+      "header": {
+        "signature": "DSDT",
+        "length": 161,
+        "declared_length": 161,
+        "revision": 2,
+        "checksum_mod256": 0,
+        "sha256": "03dad1cffd86ab75781e4b9d7bba9a4dfa989c6ac3cf7e267b63354247ce95a1"
+      },
+      "disassemble": 0,
+      "execute": 0,
+      "ordered_observation_lines": [
+        {
+          "line": 25,
+          "text": "Evaluating \\TEST"
+        },
+        {
+          "line": 26,
+          "text": "Evaluation of \\TEST returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 27,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 29,
+          "text": "Evaluating \\MARK"
+        },
+        {
+          "line": 30,
+          "text": "Evaluation of \\MARK returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 31,
+          "text": "  [Integer] = 0000000000000001"
+        },
+        {
+          "line": 33,
+          "text": "Evaluating \\PROB"
+        },
+        {
+          "line": 34,
+          "text": "Evaluation of \\PROB returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 35,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 37,
+          "text": "Evaluating \\TEST"
+        },
+        {
+          "line": 38,
+          "text": "Evaluation of \\TEST returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 39,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 41,
+          "text": "Evaluating \\MARK"
+        },
+        {
+          "line": 42,
+          "text": "Evaluation of \\MARK returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 43,
+          "text": "  [Integer] = 0000000000000001"
+        },
+        {
+          "line": 45,
+          "text": "Evaluating \\PROB"
+        },
+        {
+          "line": 46,
+          "text": "Evaluation of \\PROB returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 47,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 53,
+          "text": "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+        }
+      ],
+      "outcome": "raw observations only; no preassigned semantic acceptance"
+    },
+    {
+      "case": {
+        "source": "cases/r2-increasing.asl",
+        "revision": 2,
+        "family": "increasing",
+        "batch": "execute TEST; evaluate MARK; execute PROB; execute TEST; evaluate MARK; execute PROB",
+        "expected": "unobserved; source-derived distinctions in DESIGN.txt, not acceptance values"
+      },
+      "source_sha256": "7e23fbabb8da524b48d7586f7c6ccd0c602ee2b9dcee91320f1c3db5fe19379c",
+      "compile": 0,
+      "header": {
+        "signature": "DSDT",
+        "length": 156,
+        "declared_length": 156,
+        "revision": 2,
+        "checksum_mod256": 0,
+        "sha256": "7b5d54b09fdbb210f082f2289cf46e570db717fe0b63b8553fe6be7459945ddd"
+      },
+      "disassemble": 0,
+      "execute": 0,
+      "ordered_observation_lines": [
+        {
+          "line": 25,
+          "text": "Evaluating \\TEST"
+        },
+        {
+          "line": 26,
+          "text": "Evaluation of \\TEST returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 27,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 29,
+          "text": "Evaluating \\MARK"
+        },
+        {
+          "line": 30,
+          "text": "Evaluation of \\MARK returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 31,
+          "text": "  [Integer] = 0000000000000001"
+        },
+        {
+          "line": 33,
+          "text": "Evaluating \\PROB"
+        },
+        {
+          "line": 34,
+          "text": "Evaluation of \\PROB returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 35,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 37,
+          "text": "Evaluating \\TEST"
+        },
+        {
+          "line": 38,
+          "text": "Evaluation of \\TEST returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 39,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 41,
+          "text": "Evaluating \\MARK"
+        },
+        {
+          "line": 42,
+          "text": "Evaluation of \\MARK returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 43,
+          "text": "  [Integer] = 0000000000000001"
+        },
+        {
+          "line": 45,
+          "text": "Evaluating \\PROB"
+        },
+        {
+          "line": 46,
+          "text": "Evaluation of \\PROB returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 47,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 53,
+          "text": "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+        }
+      ],
+      "outcome": "raw observations only; no preassigned semantic acceptance"
+    },
+    {
+      "case": {
+        "source": "cases/r2-decreasing-acquire.asl",
+        "revision": 2,
+        "family": "decreasing-acquire",
+        "batch": "execute TEST; evaluate MARK; execute PROB; execute TEST; evaluate MARK; execute PROB",
+        "expected": "unobserved; source-derived distinctions in DESIGN.txt, not acceptance values"
+      },
+      "source_sha256": "dc178ed61f0309a743643246612e911dc24d49feb859ca8deb6e7cfd037554d7",
+      "compile": 0,
+      "header": {
+        "signature": "DSDT",
+        "length": 163,
+        "declared_length": 163,
+        "revision": 2,
+        "checksum_mod256": 0,
+        "sha256": "6b29a0e3dffce74fd17031660c2d7fb757351ca80e258004d08579be221548b9"
+      },
+      "disassemble": 0,
+      "execute": 0,
+      "ordered_observation_lines": [
+        {
+          "line": 25,
+          "text": "Evaluating \\TEST"
+        },
+        {
+          "line": 26,
+          "text": "ACPI Error: Cannot acquire Mutex [M001], current SyncLevel is too large (2) (20260408/exmutex-388)"
+        },
+        {
+          "line": 34,
+          "text": "ACPI Error: Aborting method \\TEST due to previous error (AE_AML_MUTEX_ORDER) (20260408/psparse-688)"
+        },
+        {
+          "line": 35,
+          "text": "ACPI Error: AE_AML_MUTEX_ORDER, while executing \\TEST from AML Debugger (20260408/dbexec-334)"
+        },
+        {
+          "line": 36,
+          "text": "Evaluation of \\TEST failed with status AE_AML_MUTEX_ORDER"
+        },
+        {
+          "line": 37,
+          "text": "Evaluating \\MARK"
+        },
+        {
+          "line": 38,
+          "text": "Evaluation of \\MARK returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 39,
+          "text": "  [Integer] = 0000000000000001"
+        },
+        {
+          "line": 41,
+          "text": "Evaluating \\PROB"
+        },
+        {
+          "line": 42,
+          "text": "Evaluation of \\PROB returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 43,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 45,
+          "text": "Evaluating \\TEST"
+        },
+        {
+          "line": 46,
+          "text": "ACPI Error: Cannot acquire Mutex [M001], current SyncLevel is too large (2) (20260408/exmutex-388)"
+        },
+        {
+          "line": 54,
+          "text": "ACPI Error: Aborting method \\TEST due to previous error (AE_AML_MUTEX_ORDER) (20260408/psparse-688)"
+        },
+        {
+          "line": 55,
+          "text": "ACPI Error: AE_AML_MUTEX_ORDER, while executing \\TEST from AML Debugger (20260408/dbexec-334)"
+        },
+        {
+          "line": 56,
+          "text": "Evaluation of \\TEST failed with status AE_AML_MUTEX_ORDER"
+        },
+        {
+          "line": 57,
+          "text": "Evaluating \\MARK"
+        },
+        {
+          "line": 58,
+          "text": "Evaluation of \\MARK returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 59,
+          "text": "  [Integer] = 0000000000000001"
+        },
+        {
+          "line": 61,
+          "text": "Evaluating \\PROB"
+        },
+        {
+          "line": 62,
+          "text": "Evaluation of \\PROB returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 63,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 69,
+          "text": "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+        }
+      ],
+      "outcome": "raw observations only; no preassigned semantic acceptance"
+    },
+    {
+      "case": {
+        "source": "cases/r2-wrong-level-release.asl",
+        "revision": 2,
+        "family": "wrong-level-release",
+        "batch": "execute TEST; evaluate MARK; execute PROB; execute TEST; evaluate MARK; execute PROB",
+        "expected": "unobserved; source-derived distinctions in DESIGN.txt, not acceptance values"
+      },
+      "source_sha256": "9eeded497f4dfb44cf2c30af99dd73716f473d95225bce0eb61c6bec442a1489",
+      "compile": 0,
+      "header": {
+        "signature": "DSDT",
+        "length": 163,
+        "declared_length": 163,
+        "revision": 2,
+        "checksum_mod256": 0,
+        "sha256": "4c08be7582e513731dd7798da55fc3eeaf8d0842d6d36f11e2d79bc017388548"
+      },
+      "disassemble": 0,
+      "execute": 0,
+      "ordered_observation_lines": [
+        {
+          "line": 25,
+          "text": "Evaluating \\TEST"
+        },
+        {
+          "line": 26,
+          "text": "ACPI Error: Cannot release Mutex [M001], SyncLevel mismatch: mutex 1 current 2 (20260408/exmutex-579)"
+        },
+        {
+          "line": 36,
+          "text": "ACPI Error: Aborting method \\TEST due to previous error (AE_AML_MUTEX_ORDER) (20260408/psparse-688)"
+        },
+        {
+          "line": 37,
+          "text": "ACPI Error: AE_AML_MUTEX_ORDER, while executing \\TEST from AML Debugger (20260408/dbexec-334)"
+        },
+        {
+          "line": 38,
+          "text": "Evaluation of \\TEST failed with status AE_AML_MUTEX_ORDER"
+        },
+        {
+          "line": 39,
+          "text": "Evaluating \\MARK"
+        },
+        {
+          "line": 40,
+          "text": "Evaluation of \\MARK returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 41,
+          "text": "  [Integer] = 0000000000000001"
+        },
+        {
+          "line": 43,
+          "text": "Evaluating \\PROB"
+        },
+        {
+          "line": 44,
+          "text": "Evaluation of \\PROB returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 45,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 47,
+          "text": "Evaluating \\TEST"
+        },
+        {
+          "line": 48,
+          "text": "ACPI Error: Cannot release Mutex [M001], SyncLevel mismatch: mutex 1 current 2 (20260408/exmutex-579)"
+        },
+        {
+          "line": 58,
+          "text": "ACPI Error: Aborting method \\TEST due to previous error (AE_AML_MUTEX_ORDER) (20260408/psparse-688)"
+        },
+        {
+          "line": 59,
+          "text": "ACPI Error: AE_AML_MUTEX_ORDER, while executing \\TEST from AML Debugger (20260408/dbexec-334)"
+        },
+        {
+          "line": 60,
+          "text": "Evaluation of \\TEST failed with status AE_AML_MUTEX_ORDER"
+        },
+        {
+          "line": 61,
+          "text": "Evaluating \\MARK"
+        },
+        {
+          "line": 62,
+          "text": "Evaluation of \\MARK returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 63,
+          "text": "  [Integer] = 0000000000000001"
+        },
+        {
+          "line": 65,
+          "text": "Evaluating \\PROB"
+        },
+        {
+          "line": 66,
+          "text": "Evaluation of \\PROB returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 67,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 73,
+          "text": "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+        }
+      ],
+      "outcome": "raw observations only; no preassigned semantic acceptance"
+    },
+    {
+      "case": {
+        "source": "cases/r2-equal-level-out-of-order.asl",
+        "revision": 2,
+        "family": "equal-level-out-of-order",
+        "batch": "execute TEST; evaluate MARK; execute PROB; execute TEST; evaluate MARK; execute PROB",
+        "expected": "unobserved; source-derived distinctions in DESIGN.txt, not acceptance values"
+      },
+      "source_sha256": "496b49fec6770be3007cb72f0c0417f87cb3f669710cfb4f6b540269d12f4944",
+      "compile": 0,
+      "header": {
+        "signature": "DSDT",
+        "length": 176,
+        "declared_length": 176,
+        "revision": 2,
+        "checksum_mod256": 0,
+        "sha256": "6747164ece0d30a4f3ccda17c0cf1cf3c7fae71d5ac7cb56c4c38741584ec3c2"
+      },
+      "disassemble": 0,
+      "execute": 0,
+      "ordered_observation_lines": [
+        {
+          "line": 25,
+          "text": "Evaluating \\TEST"
+        },
+        {
+          "line": 26,
+          "text": "Evaluation of \\TEST returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 27,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 29,
+          "text": "Evaluating \\MARK"
+        },
+        {
+          "line": 30,
+          "text": "Evaluation of \\MARK returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 31,
+          "text": "  [Integer] = 0000000000000001"
+        },
+        {
+          "line": 33,
+          "text": "Evaluating \\PROB"
+        },
+        {
+          "line": 34,
+          "text": "Evaluation of \\PROB returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 35,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 37,
+          "text": "Evaluating \\TEST"
+        },
+        {
+          "line": 38,
+          "text": "Evaluation of \\TEST returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 39,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 41,
+          "text": "Evaluating \\MARK"
+        },
+        {
+          "line": 42,
+          "text": "Evaluation of \\MARK returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 43,
+          "text": "  [Integer] = 0000000000000001"
+        },
+        {
+          "line": 45,
+          "text": "Evaluating \\PROB"
+        },
+        {
+          "line": 46,
+          "text": "Evaluation of \\PROB returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 47,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 53,
+          "text": "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+        }
+      ],
+      "outcome": "raw observations only; no preassigned semantic acceptance"
+    },
+    {
+      "case": {
+        "source": "cases/r2-return-cleanup.asl",
+        "revision": 2,
+        "family": "return-cleanup",
+        "batch": "execute TEST; evaluate MARK; execute PROB; execute TEST; evaluate MARK; execute PROB",
+        "expected": "unobserved; source-derived distinctions in DESIGN.txt, not acceptance values"
+      },
+      "source_sha256": "4bd3cfed623e57ec459f90be8250ff0f1d38ac4b20762b99d253f9f6c9d3a50b",
+      "compile": 0,
+      "header": {
+        "signature": "DSDT",
+        "length": 131,
+        "declared_length": 131,
+        "revision": 2,
+        "checksum_mod256": 0,
+        "sha256": "fa9b0e5b5107c1de28d39bcd31bb981ecaf9d979ba4a9660905b9eb867678433"
+      },
+      "disassemble": 0,
+      "execute": 0,
+      "ordered_observation_lines": [
+        {
+          "line": 25,
+          "text": "Evaluating \\TEST"
+        },
+        {
+          "line": 26,
+          "text": "Evaluation of \\TEST returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 27,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 29,
+          "text": "Evaluating \\MARK"
+        },
+        {
+          "line": 30,
+          "text": "Evaluation of \\MARK returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 31,
+          "text": "  [Integer] = 0000000000000001"
+        },
+        {
+          "line": 33,
+          "text": "Evaluating \\PROB"
+        },
+        {
+          "line": 34,
+          "text": "Evaluation of \\PROB returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 35,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 37,
+          "text": "Evaluating \\TEST"
+        },
+        {
+          "line": 38,
+          "text": "Evaluation of \\TEST returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 39,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 41,
+          "text": "Evaluating \\MARK"
+        },
+        {
+          "line": 42,
+          "text": "Evaluation of \\MARK returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 43,
+          "text": "  [Integer] = 0000000000000001"
+        },
+        {
+          "line": 45,
+          "text": "Evaluating \\PROB"
+        },
+        {
+          "line": 46,
+          "text": "Evaluation of \\PROB returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 47,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 53,
+          "text": "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+        }
+      ],
+      "outcome": "raw observations only; no preassigned semantic acceptance"
+    },
+    {
+      "case": {
+        "source": "cases/r2-error-cleanup.asl",
+        "revision": 2,
+        "family": "error-cleanup",
+        "batch": "execute TEST; evaluate MARK; execute PROB; execute TEST; evaluate MARK; execute PROB",
+        "expected": "unobserved; source-derived distinctions in DESIGN.txt, not acceptance values"
+      },
+      "source_sha256": "ac16a8999520d5473715aee1e916ed745186ba02cd25399c6ae5b1853721ef18",
+      "compile": 0,
+      "header": {
+        "signature": "DSDT",
+        "length": 152,
+        "declared_length": 152,
+        "revision": 2,
+        "checksum_mod256": 0,
+        "sha256": "31bcdcc8039dc021e2ca6608720f5010cc076359620c89cac60eab0aed2129e0"
+      },
+      "disassemble": 0,
+      "execute": 0,
+      "ordered_observation_lines": [
+        {
+          "line": 25,
+          "text": "Evaluating \\TEST"
+        },
+        {
+          "line": 26,
+          "text": "ACPI Error: Divide by zero (20260408/utmath-705)"
+        },
+        {
+          "line": 35,
+          "text": "ACPI Error: Aborting method \\TEST due to previous error (AE_AML_DIVIDE_BY_ZERO) (20260408/psparse-688)"
+        },
+        {
+          "line": 36,
+          "text": "ACPI Error: AE_AML_DIVIDE_BY_ZERO, while executing \\TEST from AML Debugger (20260408/dbexec-334)"
+        },
+        {
+          "line": 37,
+          "text": "Evaluation of \\TEST failed with status AE_AML_DIVIDE_BY_ZERO"
+        },
+        {
+          "line": 38,
+          "text": "Evaluating \\MARK"
+        },
+        {
+          "line": 39,
+          "text": "Evaluation of \\MARK returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 40,
+          "text": "  [Integer] = 0000000000000001"
+        },
+        {
+          "line": 42,
+          "text": "Evaluating \\PROB"
+        },
+        {
+          "line": 43,
+          "text": "Evaluation of \\PROB returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 44,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 46,
+          "text": "Evaluating \\TEST"
+        },
+        {
+          "line": 47,
+          "text": "ACPI Error: Divide by zero (20260408/utmath-705)"
+        },
+        {
+          "line": 56,
+          "text": "ACPI Error: Aborting method \\TEST due to previous error (AE_AML_DIVIDE_BY_ZERO) (20260408/psparse-688)"
+        },
+        {
+          "line": 57,
+          "text": "ACPI Error: AE_AML_DIVIDE_BY_ZERO, while executing \\TEST from AML Debugger (20260408/dbexec-334)"
+        },
+        {
+          "line": 58,
+          "text": "Evaluation of \\TEST failed with status AE_AML_DIVIDE_BY_ZERO"
+        },
+        {
+          "line": 59,
+          "text": "Evaluating \\MARK"
+        },
+        {
+          "line": 60,
+          "text": "Evaluation of \\MARK returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 61,
+          "text": "  [Integer] = 0000000000000001"
+        },
+        {
+          "line": 63,
+          "text": "Evaluating \\PROB"
+        },
+        {
+          "line": 64,
+          "text": "Evaluation of \\PROB returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 65,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 71,
+          "text": "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+        }
+      ],
+      "outcome": "raw observations only; no preassigned semantic acceptance"
+    },
+    {
+      "case": {
+        "source": "cases/r2-unowned-release.asl",
+        "revision": 2,
+        "family": "unowned-release",
+        "batch": "execute TEST; evaluate MARK; execute PROB; execute TEST; evaluate MARK; execute PROB",
+        "expected": "unobserved; source-derived distinctions in DESIGN.txt, not acceptance values"
+      },
+      "source_sha256": "2b5c71c1a610ed72338decbb059615bb7b097bd7dd6678001a06fd47347f0f02",
+      "compile": 0,
+      "header": {
+        "signature": "DSDT",
+        "length": 134,
+        "declared_length": 134,
+        "revision": 2,
+        "checksum_mod256": 0,
+        "sha256": "4e779b8075e1446b38b5917a7aeade5dfea09cba8c0e94d8ba5bbc29b081c673"
+      },
+      "disassemble": 0,
+      "execute": 0,
+      "ordered_observation_lines": [
+        {
+          "line": 25,
+          "text": "Evaluating \\TEST"
+        },
+        {
+          "line": 26,
+          "text": "ACPI Error: Cannot release Mutex [M000], not acquired (20260408/exmutex-539)"
+        },
+        {
+          "line": 33,
+          "text": "ACPI Error: Aborting method \\TEST due to previous error (AE_AML_MUTEX_NOT_ACQUIRED) (20260408/psparse-688)"
+        },
+        {
+          "line": 34,
+          "text": "ACPI Error: AE_AML_MUTEX_NOT_ACQUIRED, while executing \\TEST from AML Debugger (20260408/dbexec-334)"
+        },
+        {
+          "line": 35,
+          "text": "Evaluation of \\TEST failed with status AE_AML_MUTEX_NOT_ACQUIRED"
+        },
+        {
+          "line": 36,
+          "text": "Evaluating \\MARK"
+        },
+        {
+          "line": 37,
+          "text": "Evaluation of \\MARK returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 38,
+          "text": "  [Integer] = 0000000000000001"
+        },
+        {
+          "line": 40,
+          "text": "Evaluating \\PROB"
+        },
+        {
+          "line": 41,
+          "text": "Evaluation of \\PROB returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 42,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 44,
+          "text": "Evaluating \\TEST"
+        },
+        {
+          "line": 45,
+          "text": "ACPI Error: Cannot release Mutex [M000], not acquired (20260408/exmutex-539)"
+        },
+        {
+          "line": 52,
+          "text": "ACPI Error: Aborting method \\TEST due to previous error (AE_AML_MUTEX_NOT_ACQUIRED) (20260408/psparse-688)"
+        },
+        {
+          "line": 53,
+          "text": "ACPI Error: AE_AML_MUTEX_NOT_ACQUIRED, while executing \\TEST from AML Debugger (20260408/dbexec-334)"
+        },
+        {
+          "line": 54,
+          "text": "Evaluation of \\TEST failed with status AE_AML_MUTEX_NOT_ACQUIRED"
+        },
+        {
+          "line": 55,
+          "text": "Evaluating \\MARK"
+        },
+        {
+          "line": 56,
+          "text": "Evaluation of \\MARK returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 57,
+          "text": "  [Integer] = 0000000000000001"
+        },
+        {
+          "line": 59,
+          "text": "Evaluating \\PROB"
+        },
+        {
+          "line": 60,
+          "text": "Evaluation of \\PROB returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 61,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 67,
+          "text": "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+        }
+      ],
+      "outcome": "raw observations only; no preassigned semantic acceptance"
+    },
+    {
+      "case": {
+        "source": "cases/r2-serialized-restore.asl",
+        "revision": 2,
+        "family": "serialized-restore",
+        "batch": "execute TEST; evaluate MARK; execute PROB; execute TEST; evaluate MARK; execute PROB",
+        "expected": "unobserved; source-derived distinctions in DESIGN.txt, not acceptance values"
+      },
+      "source_sha256": "edb02610d133c0e99502575dbdfbb62b69c90bd2214a61f4b91cc2d1192d9f0b",
+      "compile": 0,
+      "header": {
+        "signature": "DSDT",
+        "length": 149,
+        "declared_length": 149,
+        "revision": 2,
+        "checksum_mod256": 0,
+        "sha256": "29cdf62c33428e9938a2f1adaa1655af03812a84bd1ebbc1786715954dd7fb44"
+      },
+      "disassemble": 0,
+      "execute": 0,
+      "ordered_observation_lines": [
+        {
+          "line": 25,
+          "text": "Evaluating \\TEST"
+        },
+        {
+          "line": 26,
+          "text": "0x1 Outstanding allocations after evaluation of \\TEST"
+        },
+        {
+          "line": 27,
+          "text": "Evaluation of \\TEST returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 28,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 30,
+          "text": "Evaluating \\MARK"
+        },
+        {
+          "line": 31,
+          "text": "Evaluation of \\MARK returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 32,
+          "text": "  [Integer] = 0000000000000001"
+        },
+        {
+          "line": 34,
+          "text": "Evaluating \\PROB"
+        },
+        {
+          "line": 35,
+          "text": "Evaluation of \\PROB returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 36,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 38,
+          "text": "Evaluating \\TEST"
+        },
+        {
+          "line": 39,
+          "text": "Evaluation of \\TEST returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 40,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 42,
+          "text": "Evaluating \\MARK"
+        },
+        {
+          "line": 43,
+          "text": "Evaluation of \\MARK returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 44,
+          "text": "  [Integer] = 0000000000000001"
+        },
+        {
+          "line": 46,
+          "text": "Evaluating \\PROB"
+        },
+        {
+          "line": 47,
+          "text": "Evaluation of \\PROB returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 48,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 54,
+          "text": "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+        }
+      ],
+      "outcome": "raw observations only; no preassigned semantic acceptance"
+    },
+    {
+      "case": {
+        "source": "cases/r2-serialized-order.asl",
+        "revision": 2,
+        "family": "serialized-order",
+        "batch": "execute TEST; evaluate MARK; execute PROB; execute TEST; evaluate MARK; execute PROB",
+        "expected": "unobserved; source-derived distinctions in DESIGN.txt, not acceptance values"
+      },
+      "source_sha256": "0f347b375333626a9991f314bc8c00e5cfa6b742ce107fc959fc47253dd155de",
+      "compile": 0,
+      "header": {
+        "signature": "DSDT",
+        "length": 162,
+        "declared_length": 162,
+        "revision": 2,
+        "checksum_mod256": 0,
+        "sha256": "94e9af391e7ed0fe4000be11cc1af01c9ec43ecf0f8bc24b528f8daa67e21f02"
+      },
+      "disassemble": 0,
+      "execute": 0,
+      "ordered_observation_lines": [
+        {
+          "line": 25,
+          "text": "Evaluating \\TEST"
+        },
+        {
+          "line": 26,
+          "text": "ACPI Error: Cannot acquire Mutex for method [SER0], current SyncLevel is too large (2) (20260408/dsmethod-522)"
+        },
+        {
+          "line": 34,
+          "text": "ACPI Error: Aborting method \\TEST due to previous error (AE_AML_MUTEX_ORDER) (20260408/psparse-688)"
+        },
+        {
+          "line": 35,
+          "text": "ACPI Error: AE_AML_MUTEX_ORDER, while executing \\TEST from AML Debugger (20260408/dbexec-334)"
+        },
+        {
+          "line": 36,
+          "text": "0x1 Outstanding allocations after evaluation of \\TEST"
+        },
+        {
+          "line": 37,
+          "text": "Evaluation of \\TEST failed with status AE_AML_MUTEX_ORDER"
+        },
+        {
+          "line": 38,
+          "text": "Evaluating \\MARK"
+        },
+        {
+          "line": 39,
+          "text": "Evaluation of \\MARK returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 40,
+          "text": "  [Integer] = 0000000000000001"
+        },
+        {
+          "line": 42,
+          "text": "Evaluating \\PROB"
+        },
+        {
+          "line": 43,
+          "text": "Evaluation of \\PROB returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 44,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 46,
+          "text": "Evaluating \\TEST"
+        },
+        {
+          "line": 47,
+          "text": "ACPI Error: Cannot acquire Mutex for method [SER0], current SyncLevel is too large (2) (20260408/dsmethod-522)"
+        },
+        {
+          "line": 55,
+          "text": "ACPI Error: Aborting method \\TEST due to previous error (AE_AML_MUTEX_ORDER) (20260408/psparse-688)"
+        },
+        {
+          "line": 56,
+          "text": "ACPI Error: AE_AML_MUTEX_ORDER, while executing \\TEST from AML Debugger (20260408/dbexec-334)"
+        },
+        {
+          "line": 57,
+          "text": "Evaluation of \\TEST failed with status AE_AML_MUTEX_ORDER"
+        },
+        {
+          "line": 58,
+          "text": "Evaluating \\MARK"
+        },
+        {
+          "line": 59,
+          "text": "Evaluation of \\MARK returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 60,
+          "text": "  [Integer] = 0000000000000001"
+        },
+        {
+          "line": 62,
+          "text": "Evaluating \\PROB"
+        },
+        {
+          "line": 63,
+          "text": "Evaluation of \\PROB returned object 0x555555601dd0, external buffer length 18"
+        },
+        {
+          "line": 64,
+          "text": "  [Integer] = 0000000000000000"
+        },
+        {
+          "line": 70,
+          "text": "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+        }
+      ],
+      "outcome": "raw observations only; no preassigned semantic acceptance"
+    }
+  ],
+  "stages": [
+    {
+      "label": "iasl-version",
+      "argv": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-v"
+      ],
+      "status": 0,
+      "elapsed_ns": 13830260,
+      "log": "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/iasl-version.log",
+      "sha256": "4911816d4e6a4d863a7158965fb616fb5bcb1831acdf90f81b53c7f12b543968",
+      "wall_seconds": 5,
+      "stack_bytes": 67108864,
+      "log_bytes": 1048576
+    },
+    {
+      "label": "acpiexec-version",
+      "argv": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-v"
+      ],
+      "status": 0,
+      "elapsed_ns": 14554470,
+      "log": "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/acpiexec-version.log",
+      "sha256": "a67be5cf6cb60ee508792de0ca6bdd3bce6b85126fcebe0cf3d462e864374cad",
+      "wall_seconds": 5,
+      "stack_bytes": 67108864,
+      "log_bytes": 1048576
+    },
+    {
+      "label": "compile",
+      "argv": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-p",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r1-uncontended/table",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-source-f7kk0a1p/cases/r1-uncontended.asl"
+      ],
+      "status": 0,
+      "elapsed_ns": 13775829,
+      "log": "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r1-uncontended/compile.log",
+      "sha256": "386f654202307ace3d0135f450172ef87f6a2da84603d800cd016d444a072375",
+      "wall_seconds": 5,
+      "stack_bytes": 67108864,
+      "log_bytes": 1048576
+    },
+    {
+      "label": "disassemble",
+      "argv": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-d",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r1-uncontended/table.aml"
+      ],
+      "status": 0,
+      "elapsed_ns": 13951901,
+      "log": "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r1-uncontended/disassemble.log",
+      "sha256": "c3eb445b7b9ec7ded00ffe3ad0c3ecd958a2f74c8e58f83099188fe28dbe911c",
+      "wall_seconds": 5,
+      "stack_bytes": 67108864,
+      "log_bytes": 1048576
+    },
+    {
+      "label": "execute",
+      "argv": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute TEST; evaluate MARK; execute PROB; execute TEST; evaluate MARK; execute PROB",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r1-uncontended/table.aml"
+      ],
+      "status": 0,
+      "elapsed_ns": 1075695971,
+      "log": "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r1-uncontended/execute.log",
+      "sha256": "0acb71cdd09d9ca1ffdcd50a5a8bf05be11fdb4f7b448a9dbd3afe5c347e5b9c",
+      "wall_seconds": 5,
+      "stack_bytes": 67108864,
+      "log_bytes": 1048576
+    },
+    {
+      "label": "compile",
+      "argv": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-p",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r1-recursive/table",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-source-f7kk0a1p/cases/r1-recursive.asl"
+      ],
+      "status": 0,
+      "elapsed_ns": 13786439,
+      "log": "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r1-recursive/compile.log",
+      "sha256": "890c336df4deac2dbee7c44aa07dbda60d37b0ebcc59dcd4c178f07163400f31",
+      "wall_seconds": 5,
+      "stack_bytes": 67108864,
+      "log_bytes": 1048576
+    },
+    {
+      "label": "disassemble",
+      "argv": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-d",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r1-recursive/table.aml"
+      ],
+      "status": 0,
+      "elapsed_ns": 14637672,
+      "log": "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r1-recursive/disassemble.log",
+      "sha256": "b39bb0949ba3e59fab4c972473bb7fa1a640f42622864863f4f8e8c47258b011",
+      "wall_seconds": 5,
+      "stack_bytes": 67108864,
+      "log_bytes": 1048576
+    },
+    {
+      "label": "execute",
+      "argv": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute TEST; evaluate MARK; execute PROB; execute TEST; evaluate MARK; execute PROB",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r1-recursive/table.aml"
+      ],
+      "status": 0,
+      "elapsed_ns": 1077585642,
+      "log": "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r1-recursive/execute.log",
+      "sha256": "bba83587bd63515077d922953f79573591b1430e9b729f9f4b244660962d117b",
+      "wall_seconds": 5,
+      "stack_bytes": 67108864,
+      "log_bytes": 1048576
+    },
+    {
+      "label": "compile",
+      "argv": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-p",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r1-nested-sharing/table",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-source-f7kk0a1p/cases/r1-nested-sharing.asl"
+      ],
+      "status": 0,
+      "elapsed_ns": 15220771,
+      "log": "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r1-nested-sharing/compile.log",
+      "sha256": "ce6982de0dca967fc0153b8b4e0069f9255f3bffb5161fa0d926f464c74527d7",
+      "wall_seconds": 5,
+      "stack_bytes": 67108864,
+      "log_bytes": 1048576
+    },
+    {
+      "label": "disassemble",
+      "argv": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-d",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r1-nested-sharing/table.aml"
+      ],
+      "status": 0,
+      "elapsed_ns": 14558580,
+      "log": "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r1-nested-sharing/disassemble.log",
+      "sha256": "a54de767dc058251e6adfb2a0c670b836c93a9338817b4adebe5a8280bf597ae",
+      "wall_seconds": 5,
+      "stack_bytes": 67108864,
+      "log_bytes": 1048576
+    },
+    {
+      "label": "execute",
+      "argv": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute TEST; evaluate MARK; execute PROB; execute TEST; evaluate MARK; execute PROB",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r1-nested-sharing/table.aml"
+      ],
+      "status": 0,
+      "elapsed_ns": 1077034800,
+      "log": "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r1-nested-sharing/execute.log",
+      "sha256": "c015c0ec90b0ebc2b12b76faee52938d1c5cacd8fdab88e71e639c93b9dcecee",
+      "wall_seconds": 5,
+      "stack_bytes": 67108864,
+      "log_bytes": 1048576
+    },
+    {
+      "label": "compile",
+      "argv": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-p",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r1-increasing/table",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-source-f7kk0a1p/cases/r1-increasing.asl"
+      ],
+      "status": 0,
+      "elapsed_ns": 14484229,
+      "log": "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r1-increasing/compile.log",
+      "sha256": "ea46ce0c40b302760843b381546094e8d1ebc284a921bae6935de1d73fbb21fa",
+      "wall_seconds": 5,
+      "stack_bytes": 67108864,
+      "log_bytes": 1048576
+    },
+    {
+      "label": "disassemble",
+      "argv": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-d",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r1-increasing/table.aml"
+      ],
+      "status": 0,
+      "elapsed_ns": 13903720,
+      "log": "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r1-increasing/disassemble.log",
+      "sha256": "57d61291be448d64f28ac05a3e14b96f219128ddd683e0e9037a6a02636414e2",
+      "wall_seconds": 5,
+      "stack_bytes": 67108864,
+      "log_bytes": 1048576
+    },
+    {
+      "label": "execute",
+      "argv": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute TEST; evaluate MARK; execute PROB; execute TEST; evaluate MARK; execute PROB",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r1-increasing/table.aml"
+      ],
+      "status": 0,
+      "elapsed_ns": 1078425210,
+      "log": "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r1-increasing/execute.log",
+      "sha256": "2a6359fcb33fde3704c29b90b259d7fb4c7ff7f3c03af618656b0277bb5c7d81",
+      "wall_seconds": 5,
+      "stack_bytes": 67108864,
+      "log_bytes": 1048576
+    },
+    {
+      "label": "compile",
+      "argv": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-p",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r1-decreasing-acquire/table",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-source-f7kk0a1p/cases/r1-decreasing-acquire.asl"
+      ],
+      "status": 0,
+      "elapsed_ns": 14747544,
+      "log": "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r1-decreasing-acquire/compile.log",
+      "sha256": "ed7a46881e5f2d2392be87d9863c2eda2f2b776009333739e14e60ce0d0f026f",
+      "wall_seconds": 5,
+      "stack_bytes": 67108864,
+      "log_bytes": 1048576
+    },
+    {
+      "label": "disassemble",
+      "argv": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-d",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r1-decreasing-acquire/table.aml"
+      ],
+      "status": 0,
+      "elapsed_ns": 13059327,
+      "log": "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r1-decreasing-acquire/disassemble.log",
+      "sha256": "7be01ed8a08f58aa65679b6e23ff8a8ee1151a518b6bc8a3b14feca650dfe471",
+      "wall_seconds": 5,
+      "stack_bytes": 67108864,
+      "log_bytes": 1048576
+    },
+    {
+      "label": "execute",
+      "argv": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute TEST; evaluate MARK; execute PROB; execute TEST; evaluate MARK; execute PROB",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r1-decreasing-acquire/table.aml"
+      ],
+      "status": 0,
+      "elapsed_ns": 1076832969,
+      "log": "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r1-decreasing-acquire/execute.log",
+      "sha256": "6f549105d373afcceaa216cc44236ce2b803b3fb3efc691341168b65a30690f5",
+      "wall_seconds": 5,
+      "stack_bytes": 67108864,
+      "log_bytes": 1048576
+    },
+    {
+      "label": "compile",
+      "argv": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-p",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r1-wrong-level-release/table",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-source-f7kk0a1p/cases/r1-wrong-level-release.asl"
+      ],
+      "status": 0,
+      "elapsed_ns": 15058099,
+      "log": "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r1-wrong-level-release/compile.log",
+      "sha256": "f9ca178cebc69bbc7d81ee5759ee63d895be2cddefdd6a202d67208937feaeff",
+      "wall_seconds": 5,
+      "stack_bytes": 67108864,
+      "log_bytes": 1048576
+    },
+    {
+      "label": "disassemble",
+      "argv": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-d",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r1-wrong-level-release/table.aml"
+      ],
+      "status": 0,
+      "elapsed_ns": 14330097,
+      "log": "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r1-wrong-level-release/disassemble.log",
+      "sha256": "b65131a826f2e3bc161aa4eb1c1f370b3b16ab4f68c22dd64644105c35bfec85",
+      "wall_seconds": 5,
+      "stack_bytes": 67108864,
+      "log_bytes": 1048576
+    },
+    {
+      "label": "execute",
+      "argv": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute TEST; evaluate MARK; execute PROB; execute TEST; evaluate MARK; execute PROB",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r1-wrong-level-release/table.aml"
+      ],
+      "status": 0,
+      "elapsed_ns": 1077128812,
+      "log": "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r1-wrong-level-release/execute.log",
+      "sha256": "3950f9fd21694e52120ca8922ef1fd1973a893b46e057287ff6f5507ea8537ed",
+      "wall_seconds": 5,
+      "stack_bytes": 67108864,
+      "log_bytes": 1048576
+    },
+    {
+      "label": "compile",
+      "argv": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-p",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r1-equal-level-out-of-order/table",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-source-f7kk0a1p/cases/r1-equal-level-out-of-order.asl"
+      ],
+      "status": 0,
+      "elapsed_ns": 15309682,
+      "log": "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r1-equal-level-out-of-order/compile.log",
+      "sha256": "1e21eeaa3a3fe875d93e213c013b0cdb61736a294778de7dad796829c25aa36b",
+      "wall_seconds": 5,
+      "stack_bytes": 67108864,
+      "log_bytes": 1048576
+    },
+    {
+      "label": "disassemble",
+      "argv": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-d",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r1-equal-level-out-of-order/table.aml"
+      ],
+      "status": 0,
+      "elapsed_ns": 13965992,
+      "log": "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r1-equal-level-out-of-order/disassemble.log",
+      "sha256": "37e401c69c53d05e51a869460f881ba8a3723aa6cf93cc65b6b839926ecf404f",
+      "wall_seconds": 5,
+      "stack_bytes": 67108864,
+      "log_bytes": 1048576
+    },
+    {
+      "label": "execute",
+      "argv": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute TEST; evaluate MARK; execute PROB; execute TEST; evaluate MARK; execute PROB",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r1-equal-level-out-of-order/table.aml"
+      ],
+      "status": 0,
+      "elapsed_ns": 1077559567,
+      "log": "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r1-equal-level-out-of-order/execute.log",
+      "sha256": "88d8a7a7e34ad3be493438da1609fb75a7242d25103e2af03b809be68eeb3a35",
+      "wall_seconds": 5,
+      "stack_bytes": 67108864,
+      "log_bytes": 1048576
+    },
+    {
+      "label": "compile",
+      "argv": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-p",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r1-return-cleanup/table",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-source-f7kk0a1p/cases/r1-return-cleanup.asl"
+      ],
+      "status": 0,
+      "elapsed_ns": 14776453,
+      "log": "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r1-return-cleanup/compile.log",
+      "sha256": "b05b84328d3777d78bbe0af7ad1d50d3394598cf1c6982b10f41d5c4876bc44c",
+      "wall_seconds": 5,
+      "stack_bytes": 67108864,
+      "log_bytes": 1048576
+    },
+    {
+      "label": "disassemble",
+      "argv": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-d",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r1-return-cleanup/table.aml"
+      ],
+      "status": 0,
+      "elapsed_ns": 14482230,
+      "log": "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r1-return-cleanup/disassemble.log",
+      "sha256": "a00112cb06567b48bf439be6a8afcc0135e3cd799c14b65af82fe95142ed1c25",
+      "wall_seconds": 5,
+      "stack_bytes": 67108864,
+      "log_bytes": 1048576
+    },
+    {
+      "label": "execute",
+      "argv": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute TEST; evaluate MARK; execute PROB; execute TEST; evaluate MARK; execute PROB",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r1-return-cleanup/table.aml"
+      ],
+      "status": 0,
+      "elapsed_ns": 1077553764,
+      "log": "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r1-return-cleanup/execute.log",
+      "sha256": "ceba58c496b3099dca9aa62a2cbddb107ac598395b4787138a7b5c2f7545c177",
+      "wall_seconds": 5,
+      "stack_bytes": 67108864,
+      "log_bytes": 1048576
+    },
+    {
+      "label": "compile",
+      "argv": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-p",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r1-error-cleanup/table",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-source-f7kk0a1p/cases/r1-error-cleanup.asl"
+      ],
+      "status": 0,
+      "elapsed_ns": 13989401,
+      "log": "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r1-error-cleanup/compile.log",
+      "sha256": "44e5d0b7d958564dec6a2d8e360ee19e17be735e9b7db3c9dd0ba69182c18d53",
+      "wall_seconds": 5,
+      "stack_bytes": 67108864,
+      "log_bytes": 1048576
+    },
+    {
+      "label": "disassemble",
+      "argv": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-d",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r1-error-cleanup/table.aml"
+      ],
+      "status": 0,
+      "elapsed_ns": 14808945,
+      "log": "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r1-error-cleanup/disassemble.log",
+      "sha256": "bcccb471b693c7c75ba506c7eb49870427d715151f5f419a6e190a14ac81323f",
+      "wall_seconds": 5,
+      "stack_bytes": 67108864,
+      "log_bytes": 1048576
+    },
+    {
+      "label": "execute",
+      "argv": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute TEST; evaluate MARK; execute PROB; execute TEST; evaluate MARK; execute PROB",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r1-error-cleanup/table.aml"
+      ],
+      "status": 0,
+      "elapsed_ns": 1076652795,
+      "log": "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r1-error-cleanup/execute.log",
+      "sha256": "5b2b3fda4ad99e1930bd19914e40f7e4380a45cfddb044f3534a3eb75db9c89b",
+      "wall_seconds": 5,
+      "stack_bytes": 67108864,
+      "log_bytes": 1048576
+    },
+    {
+      "label": "compile",
+      "argv": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-p",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r1-unowned-release/table",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-source-f7kk0a1p/cases/r1-unowned-release.asl"
+      ],
+      "status": 0,
+      "elapsed_ns": 14537060,
+      "log": "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r1-unowned-release/compile.log",
+      "sha256": "d480314f0c187cb82d6f314bb5e61b82050a67a3c43b736d5c2971824b6d0bb6",
+      "wall_seconds": 5,
+      "stack_bytes": 67108864,
+      "log_bytes": 1048576
+    },
+    {
+      "label": "disassemble",
+      "argv": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-d",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r1-unowned-release/table.aml"
+      ],
+      "status": 0,
+      "elapsed_ns": 14162695,
+      "log": "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r1-unowned-release/disassemble.log",
+      "sha256": "b9839c258de7c4af8d6943270853f6bef070dceaba5da7c8205af92ec9b2c5d2",
+      "wall_seconds": 5,
+      "stack_bytes": 67108864,
+      "log_bytes": 1048576
+    },
+    {
+      "label": "execute",
+      "argv": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute TEST; evaluate MARK; execute PROB; execute TEST; evaluate MARK; execute PROB",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r1-unowned-release/table.aml"
+      ],
+      "status": 0,
+      "elapsed_ns": 1077175014,
+      "log": "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r1-unowned-release/execute.log",
+      "sha256": "184b6fd3fdede6465c000218e3120975eac2b0c929fe1171ece0323ef569d653",
+      "wall_seconds": 5,
+      "stack_bytes": 67108864,
+      "log_bytes": 1048576
+    },
+    {
+      "label": "compile",
+      "argv": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-p",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r1-serialized-restore/table",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-source-f7kk0a1p/cases/r1-serialized-restore.asl"
+      ],
+      "status": 0,
+      "elapsed_ns": 14310096,
+      "log": "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r1-serialized-restore/compile.log",
+      "sha256": "34cc470ce53f1cdd2bcbf7a2c4c327ddf7957af72e1eb655f80d044a409622ce",
+      "wall_seconds": 5,
+      "stack_bytes": 67108864,
+      "log_bytes": 1048576
+    },
+    {
+      "label": "disassemble",
+      "argv": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-d",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r1-serialized-restore/table.aml"
+      ],
+      "status": 0,
+      "elapsed_ns": 14252176,
+      "log": "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r1-serialized-restore/disassemble.log",
+      "sha256": "9f66533b1d06915762e25bd990320e3e99ab06291db5ac5a63c09e4daec47d8e",
+      "wall_seconds": 5,
+      "stack_bytes": 67108864,
+      "log_bytes": 1048576
+    },
+    {
+      "label": "execute",
+      "argv": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute TEST; evaluate MARK; execute PROB; execute TEST; evaluate MARK; execute PROB",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r1-serialized-restore/table.aml"
+      ],
+      "status": 0,
+      "elapsed_ns": 1077348154,
+      "log": "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r1-serialized-restore/execute.log",
+      "sha256": "0f5dae4d43e58277573e94148682635ec06ac2922ef2dc536dc38134830e4567",
+      "wall_seconds": 5,
+      "stack_bytes": 67108864,
+      "log_bytes": 1048576
+    },
+    {
+      "label": "compile",
+      "argv": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-p",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r1-serialized-order/table",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-source-f7kk0a1p/cases/r1-serialized-order.asl"
+      ],
+      "status": 0,
+      "elapsed_ns": 15085038,
+      "log": "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r1-serialized-order/compile.log",
+      "sha256": "ce4d4ae64608a69aa8707ceac3621cf2124d234071513cf4115b44b54ae41d9f",
+      "wall_seconds": 5,
+      "stack_bytes": 67108864,
+      "log_bytes": 1048576
+    },
+    {
+      "label": "disassemble",
+      "argv": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-d",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r1-serialized-order/table.aml"
+      ],
+      "status": 0,
+      "elapsed_ns": 14798754,
+      "log": "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r1-serialized-order/disassemble.log",
+      "sha256": "ae44f0feeab015f2a4d1f84bd66d7b4a9e0320974c40ed4d69c1c0aec3d261c7",
+      "wall_seconds": 5,
+      "stack_bytes": 67108864,
+      "log_bytes": 1048576
+    },
+    {
+      "label": "execute",
+      "argv": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute TEST; evaluate MARK; execute PROB; execute TEST; evaluate MARK; execute PROB",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r1-serialized-order/table.aml"
+      ],
+      "status": 0,
+      "elapsed_ns": 1076907760,
+      "log": "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r1-serialized-order/execute.log",
+      "sha256": "50a533e794132dabfacaf514f3238ef79c720345a08f790116125ca55c20f0d5",
+      "wall_seconds": 5,
+      "stack_bytes": 67108864,
+      "log_bytes": 1048576
+    },
+    {
+      "label": "compile",
+      "argv": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-p",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r2-uncontended/table",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-source-f7kk0a1p/cases/r2-uncontended.asl"
+      ],
+      "status": 0,
+      "elapsed_ns": 13749948,
+      "log": "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r2-uncontended/compile.log",
+      "sha256": "f52d40755997ab9802817219b4e3a9729880117af6a65fa37a25742824d7a788",
+      "wall_seconds": 5,
+      "stack_bytes": 67108864,
+      "log_bytes": 1048576
+    },
+    {
+      "label": "disassemble",
+      "argv": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-d",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r2-uncontended/table.aml"
+      ],
+      "status": 0,
+      "elapsed_ns": 14878266,
+      "log": "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r2-uncontended/disassemble.log",
+      "sha256": "16c8c61dad3b2fa43953ad3d650dccc43039f6d272be7ed79b8cfecd37f13d1b",
+      "wall_seconds": 5,
+      "stack_bytes": 67108864,
+      "log_bytes": 1048576
+    },
+    {
+      "label": "execute",
+      "argv": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute TEST; evaluate MARK; execute PROB; execute TEST; evaluate MARK; execute PROB",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r2-uncontended/table.aml"
+      ],
+      "status": 0,
+      "elapsed_ns": 1075324403,
+      "log": "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r2-uncontended/execute.log",
+      "sha256": "884cb9a8e72cb44a716741fe6cc2deffc9c54db34e26487f4be6f7d44a304abd",
+      "wall_seconds": 5,
+      "stack_bytes": 67108864,
+      "log_bytes": 1048576
+    },
+    {
+      "label": "compile",
+      "argv": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-p",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r2-recursive/table",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-source-f7kk0a1p/cases/r2-recursive.asl"
+      ],
+      "status": 0,
+      "elapsed_ns": 14675502,
+      "log": "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r2-recursive/compile.log",
+      "sha256": "7560a993a1514777c7b9ad345f77233ef004cec6c6956a53afb0279bf279e9be",
+      "wall_seconds": 5,
+      "stack_bytes": 67108864,
+      "log_bytes": 1048576
+    },
+    {
+      "label": "disassemble",
+      "argv": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-d",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r2-recursive/table.aml"
+      ],
+      "status": 0,
+      "elapsed_ns": 14399688,
+      "log": "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r2-recursive/disassemble.log",
+      "sha256": "ed08bcc603e805d31307f7d36640e62f39be5251d595a0bc7975365a3b0270f1",
+      "wall_seconds": 5,
+      "stack_bytes": 67108864,
+      "log_bytes": 1048576
+    },
+    {
+      "label": "execute",
+      "argv": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute TEST; evaluate MARK; execute PROB; execute TEST; evaluate MARK; execute PROB",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r2-recursive/table.aml"
+      ],
+      "status": 0,
+      "elapsed_ns": 1076834108,
+      "log": "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r2-recursive/execute.log",
+      "sha256": "c10883ebe09ddb906c46da80bd9562caf162e3ded25a1f3de35234f86745cec1",
+      "wall_seconds": 5,
+      "stack_bytes": 67108864,
+      "log_bytes": 1048576
+    },
+    {
+      "label": "compile",
+      "argv": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-p",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r2-nested-sharing/table",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-source-f7kk0a1p/cases/r2-nested-sharing.asl"
+      ],
+      "status": 0,
+      "elapsed_ns": 15074318,
+      "log": "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r2-nested-sharing/compile.log",
+      "sha256": "ae4a32c822fa916149344a5d6af0e303a5e237a0f66c2ae22ab73379e64a9713",
+      "wall_seconds": 5,
+      "stack_bytes": 67108864,
+      "log_bytes": 1048576
+    },
+    {
+      "label": "disassemble",
+      "argv": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-d",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r2-nested-sharing/table.aml"
+      ],
+      "status": 0,
+      "elapsed_ns": 13293512,
+      "log": "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r2-nested-sharing/disassemble.log",
+      "sha256": "e272de83c3a5e5d3556a1d4d5a08f29404228238a382af9f2a9e80f32a505d01",
+      "wall_seconds": 5,
+      "stack_bytes": 67108864,
+      "log_bytes": 1048576
+    },
+    {
+      "label": "execute",
+      "argv": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute TEST; evaluate MARK; execute PROB; execute TEST; evaluate MARK; execute PROB",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r2-nested-sharing/table.aml"
+      ],
+      "status": 0,
+      "elapsed_ns": 1076829578,
+      "log": "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r2-nested-sharing/execute.log",
+      "sha256": "f38c31d7639ea850594b218745d5fad46c4accd4914e07a7026d1419eed178bb",
+      "wall_seconds": 5,
+      "stack_bytes": 67108864,
+      "log_bytes": 1048576
+    },
+    {
+      "label": "compile",
+      "argv": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-p",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r2-increasing/table",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-source-f7kk0a1p/cases/r2-increasing.asl"
+      ],
+      "status": 0,
+      "elapsed_ns": 15315302,
+      "log": "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r2-increasing/compile.log",
+      "sha256": "f97b2f5b1e380690841818be13298b9d36d18ade4c4b084276b44325a6cf2418",
+      "wall_seconds": 5,
+      "stack_bytes": 67108864,
+      "log_bytes": 1048576
+    },
+    {
+      "label": "disassemble",
+      "argv": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-d",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r2-increasing/table.aml"
+      ],
+      "status": 0,
+      "elapsed_ns": 14029343,
+      "log": "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r2-increasing/disassemble.log",
+      "sha256": "49b505c3ad456a2c2678423d45f416841167237ed39f2fac88a979babbacd914",
+      "wall_seconds": 5,
+      "stack_bytes": 67108864,
+      "log_bytes": 1048576
+    },
+    {
+      "label": "execute",
+      "argv": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute TEST; evaluate MARK; execute PROB; execute TEST; evaluate MARK; execute PROB",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r2-increasing/table.aml"
+      ],
+      "status": 0,
+      "elapsed_ns": 1076323117,
+      "log": "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r2-increasing/execute.log",
+      "sha256": "60ac1a6a336a5c376b276acf17eea2bc030059f5af03e4bbe32605a9b31a030a",
+      "wall_seconds": 5,
+      "stack_bytes": 67108864,
+      "log_bytes": 1048576
+    },
+    {
+      "label": "compile",
+      "argv": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-p",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r2-decreasing-acquire/table",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-source-f7kk0a1p/cases/r2-decreasing-acquire.asl"
+      ],
+      "status": 0,
+      "elapsed_ns": 15369483,
+      "log": "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r2-decreasing-acquire/compile.log",
+      "sha256": "e9a11171cb703958dfe9c86e03dd4a1661f7c9fe03156b1c69bdef7d403d8f2f",
+      "wall_seconds": 5,
+      "stack_bytes": 67108864,
+      "log_bytes": 1048576
+    },
+    {
+      "label": "disassemble",
+      "argv": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-d",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r2-decreasing-acquire/table.aml"
+      ],
+      "status": 0,
+      "elapsed_ns": 14106373,
+      "log": "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r2-decreasing-acquire/disassemble.log",
+      "sha256": "23a610d27fa9d95063e52cf436dc46427f3a80a782813b2754550ac56cc3092c",
+      "wall_seconds": 5,
+      "stack_bytes": 67108864,
+      "log_bytes": 1048576
+    },
+    {
+      "label": "execute",
+      "argv": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute TEST; evaluate MARK; execute PROB; execute TEST; evaluate MARK; execute PROB",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r2-decreasing-acquire/table.aml"
+      ],
+      "status": 0,
+      "elapsed_ns": 1076223108,
+      "log": "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r2-decreasing-acquire/execute.log",
+      "sha256": "a4f1da0f46338eefaf4026e46befe2deec1f6c87c982bdf6cc80f5104fc7409e",
+      "wall_seconds": 5,
+      "stack_bytes": 67108864,
+      "log_bytes": 1048576
+    },
+    {
+      "label": "compile",
+      "argv": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-p",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r2-wrong-level-release/table",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-source-f7kk0a1p/cases/r2-wrong-level-release.asl"
+      ],
+      "status": 0,
+      "elapsed_ns": 14409019,
+      "log": "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r2-wrong-level-release/compile.log",
+      "sha256": "e8686b0d209938a2acddadc3cd452af34751ae0176423553b2789be00d1a2657",
+      "wall_seconds": 5,
+      "stack_bytes": 67108864,
+      "log_bytes": 1048576
+    },
+    {
+      "label": "disassemble",
+      "argv": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-d",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r2-wrong-level-release/table.aml"
+      ],
+      "status": 0,
+      "elapsed_ns": 13444103,
+      "log": "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r2-wrong-level-release/disassemble.log",
+      "sha256": "9d44701072e19eee6af9ab606ee4484e45cb238761061f613ad9b91873352117",
+      "wall_seconds": 5,
+      "stack_bytes": 67108864,
+      "log_bytes": 1048576
+    },
+    {
+      "label": "execute",
+      "argv": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute TEST; evaluate MARK; execute PROB; execute TEST; evaluate MARK; execute PROB",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r2-wrong-level-release/table.aml"
+      ],
+      "status": 0,
+      "elapsed_ns": 1078050333,
+      "log": "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r2-wrong-level-release/execute.log",
+      "sha256": "22aef4af674a2cc0ef8429c16e0ef6d87ba03c3f634ab2a1ca22af308a362d97",
+      "wall_seconds": 5,
+      "stack_bytes": 67108864,
+      "log_bytes": 1048576
+    },
+    {
+      "label": "compile",
+      "argv": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-p",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r2-equal-level-out-of-order/table",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-source-f7kk0a1p/cases/r2-equal-level-out-of-order.asl"
+      ],
+      "status": 0,
+      "elapsed_ns": 16511480,
+      "log": "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r2-equal-level-out-of-order/compile.log",
+      "sha256": "a89687cf087f4438c6ea3be97c12e5cbbb814ef56296081152eed78a87a0cf00",
+      "wall_seconds": 5,
+      "stack_bytes": 67108864,
+      "log_bytes": 1048576
+    },
+    {
+      "label": "disassemble",
+      "argv": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-d",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r2-equal-level-out-of-order/table.aml"
+      ],
+      "status": 0,
+      "elapsed_ns": 15174680,
+      "log": "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r2-equal-level-out-of-order/disassemble.log",
+      "sha256": "cd6b7adb9197522a4c8ee6df3d9b6b05878710f5a2154e77931021070eaa1e98",
+      "wall_seconds": 5,
+      "stack_bytes": 67108864,
+      "log_bytes": 1048576
+    },
+    {
+      "label": "execute",
+      "argv": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute TEST; evaluate MARK; execute PROB; execute TEST; evaluate MARK; execute PROB",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r2-equal-level-out-of-order/table.aml"
+      ],
+      "status": 0,
+      "elapsed_ns": 1075837894,
+      "log": "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r2-equal-level-out-of-order/execute.log",
+      "sha256": "16126978fb090f12261498dd7c92e397cf59633dd9bc1482f924188d60e3f1cd",
+      "wall_seconds": 5,
+      "stack_bytes": 67108864,
+      "log_bytes": 1048576
+    },
+    {
+      "label": "compile",
+      "argv": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-p",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r2-return-cleanup/table",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-source-f7kk0a1p/cases/r2-return-cleanup.asl"
+      ],
+      "status": 0,
+      "elapsed_ns": 16465200,
+      "log": "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r2-return-cleanup/compile.log",
+      "sha256": "d73fb43f96199ce1c566f5e599db36605d229766d0f122d37fa22f1cbe1a57db",
+      "wall_seconds": 5,
+      "stack_bytes": 67108864,
+      "log_bytes": 1048576
+    },
+    {
+      "label": "disassemble",
+      "argv": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-d",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r2-return-cleanup/table.aml"
+      ],
+      "status": 0,
+      "elapsed_ns": 16506571,
+      "log": "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r2-return-cleanup/disassemble.log",
+      "sha256": "2da5b4d86e14528ed8e968de791b36d2bd86b0d48de06d6976044537769c0193",
+      "wall_seconds": 5,
+      "stack_bytes": 67108864,
+      "log_bytes": 1048576
+    },
+    {
+      "label": "execute",
+      "argv": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute TEST; evaluate MARK; execute PROB; execute TEST; evaluate MARK; execute PROB",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r2-return-cleanup/table.aml"
+      ],
+      "status": 0,
+      "elapsed_ns": 1080240160,
+      "log": "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r2-return-cleanup/execute.log",
+      "sha256": "eaba01d1e09389ee8cb8188a11c839f0d1e2c614aa0e8fb7364f9561ad277274",
+      "wall_seconds": 5,
+      "stack_bytes": 67108864,
+      "log_bytes": 1048576
+    },
+    {
+      "label": "compile",
+      "argv": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-p",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r2-error-cleanup/table",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-source-f7kk0a1p/cases/r2-error-cleanup.asl"
+      ],
+      "status": 0,
+      "elapsed_ns": 14914656,
+      "log": "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r2-error-cleanup/compile.log",
+      "sha256": "628aeb4550cf06f1488a277656d9a427fe16bc88a6b926eb79988bfa050181b8",
+      "wall_seconds": 5,
+      "stack_bytes": 67108864,
+      "log_bytes": 1048576
+    },
+    {
+      "label": "disassemble",
+      "argv": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-d",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r2-error-cleanup/table.aml"
+      ],
+      "status": 0,
+      "elapsed_ns": 14667652,
+      "log": "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r2-error-cleanup/disassemble.log",
+      "sha256": "2f11aa273a21809b4924e61447a122baf7c69b4a1fa12f690b34a45d1a10b3d4",
+      "wall_seconds": 5,
+      "stack_bytes": 67108864,
+      "log_bytes": 1048576
+    },
+    {
+      "label": "execute",
+      "argv": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute TEST; evaluate MARK; execute PROB; execute TEST; evaluate MARK; execute PROB",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r2-error-cleanup/table.aml"
+      ],
+      "status": 0,
+      "elapsed_ns": 1075931906,
+      "log": "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r2-error-cleanup/execute.log",
+      "sha256": "bff2d7b028866b3418faa03831ff1954e4dd1f5bef9753b7672c1cf27683a156",
+      "wall_seconds": 5,
+      "stack_bytes": 67108864,
+      "log_bytes": 1048576
+    },
+    {
+      "label": "compile",
+      "argv": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-p",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r2-unowned-release/table",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-source-f7kk0a1p/cases/r2-unowned-release.asl"
+      ],
+      "status": 0,
+      "elapsed_ns": 15182841,
+      "log": "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r2-unowned-release/compile.log",
+      "sha256": "c9d059ed9571b1238bca2d9860211910cf914efeb7716e192c0bed3e17e6203e",
+      "wall_seconds": 5,
+      "stack_bytes": 67108864,
+      "log_bytes": 1048576
+    },
+    {
+      "label": "disassemble",
+      "argv": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-d",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r2-unowned-release/table.aml"
+      ],
+      "status": 0,
+      "elapsed_ns": 14155844,
+      "log": "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r2-unowned-release/disassemble.log",
+      "sha256": "87500af0d23bd98940803298e662de52c9763d8655a644735cf74ae677568433",
+      "wall_seconds": 5,
+      "stack_bytes": 67108864,
+      "log_bytes": 1048576
+    },
+    {
+      "label": "execute",
+      "argv": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute TEST; evaluate MARK; execute PROB; execute TEST; evaluate MARK; execute PROB",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r2-unowned-release/table.aml"
+      ],
+      "status": 0,
+      "elapsed_ns": 1077052522,
+      "log": "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r2-unowned-release/execute.log",
+      "sha256": "3c70de08c1811851d0943a2e8e951989018abf51582746a8808bf40b974db53b",
+      "wall_seconds": 5,
+      "stack_bytes": 67108864,
+      "log_bytes": 1048576
+    },
+    {
+      "label": "compile",
+      "argv": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-p",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r2-serialized-restore/table",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-source-f7kk0a1p/cases/r2-serialized-restore.asl"
+      ],
+      "status": 0,
+      "elapsed_ns": 15319871,
+      "log": "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r2-serialized-restore/compile.log",
+      "sha256": "e5c7e8858734cd2adab9926ad95c2c0fd1df18657e7aaa2cefee63a09ffbcf44",
+      "wall_seconds": 5,
+      "stack_bytes": 67108864,
+      "log_bytes": 1048576
+    },
+    {
+      "label": "disassemble",
+      "argv": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-d",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r2-serialized-restore/table.aml"
+      ],
+      "status": 0,
+      "elapsed_ns": 14015042,
+      "log": "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r2-serialized-restore/disassemble.log",
+      "sha256": "4423838b0ab8507176430ab2c176ad7dc80eb1fcba4f3c1b96f67e5bcc77a2f7",
+      "wall_seconds": 5,
+      "stack_bytes": 67108864,
+      "log_bytes": 1048576
+    },
+    {
+      "label": "execute",
+      "argv": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute TEST; evaluate MARK; execute PROB; execute TEST; evaluate MARK; execute PROB",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r2-serialized-restore/table.aml"
+      ],
+      "status": 0,
+      "elapsed_ns": 1076376380,
+      "log": "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r2-serialized-restore/execute.log",
+      "sha256": "dc36e8affa259d0eb16b0d8637c5ff1aa27560a946a50b3d6c89dbd0ead6fd3b",
+      "wall_seconds": 5,
+      "stack_bytes": 67108864,
+      "log_bytes": 1048576
+    },
+    {
+      "label": "compile",
+      "argv": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-p",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r2-serialized-order/table",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-source-f7kk0a1p/cases/r2-serialized-order.asl"
+      ],
+      "status": 0,
+      "elapsed_ns": 14707053,
+      "log": "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r2-serialized-order/compile.log",
+      "sha256": "b39cc53efd20c60cddc1fa58656c19ebce22f19fc8145e7a24b479502095a72c",
+      "wall_seconds": 5,
+      "stack_bytes": 67108864,
+      "log_bytes": 1048576
+    },
+    {
+      "label": "disassemble",
+      "argv": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-d",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r2-serialized-order/table.aml"
+      ],
+      "status": 0,
+      "elapsed_ns": 13694078,
+      "log": "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r2-serialized-order/disassemble.log",
+      "sha256": "caef9b839a69a7c47cbc96b4353118852fe10d7c409dde960fb4b698bbce987d",
+      "wall_seconds": 5,
+      "stack_bytes": 67108864,
+      "log_bytes": 1048576
+    },
+    {
+      "label": "execute",
+      "argv": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "execute TEST; evaluate MARK; execute PROB; execute TEST; evaluate MARK; execute PROB",
+        "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r2-serialized-order/table.aml"
+      ],
+      "status": 0,
+      "elapsed_ns": 1076372400,
+      "log": "/home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r2-serialized-order/execute.log",
+      "sha256": "bee74e77bfdb113a5f7110b229a8591d64a6caf67df5001fcf49d52bb76c2bf3",
+      "wall_seconds": 5,
+      "stack_bytes": 67108864,
+      "log_bytes": 1048576
+    }
+  ],
+  "semantics": "uninterpreted; compile/status/header/disassembly and ordered raw observations separate",
+  "retry": false,
+  "limits": {
+    "wall_per_tool": 5,
+    "stack": 67108864,
+    "log": 1048576,
+    "RLIMIT_AS": "not set"
+  }
+}

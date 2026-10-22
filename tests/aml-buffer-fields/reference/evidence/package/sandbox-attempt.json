@@ -1,0 +1,6 @@
+{
+  "exit": 1,
+  "phase": "Nix fetcher cache lock before Python",
+  "diagnostic": "read-only /home/doc/.cache/nix/fetcher-locks/d75c7f6dfa07aff2fc53a62bd1c68c5900eb1fc67ee356ce9f1c8bb4fa4c9b4c.lock",
+  "note": "Initial command accidentally named placeholder createfield-package-capture-oracle-missing/run.py; blocked before that path executed. Correct actual private path used for authorized retry."
+}

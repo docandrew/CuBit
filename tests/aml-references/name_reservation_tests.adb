@@ -8,6 +8,7 @@ with AML_Objects;
 with AML_References;
 with AML_Table_Backing;
 procedure Name_Reservation_Tests is
+   use type AML_Decode.Bytes;
    use type Integer_Value;
    use type AML_References.Reference;
    use type AML_References.Node_Incarnation;

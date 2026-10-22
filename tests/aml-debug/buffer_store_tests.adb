@@ -2,6 +2,7 @@ with Ada.Text_IO;
 with AML_Decode; use AML_Decode;
 with AML_Objects; use AML_Objects;
 procedure Buffer_Store_Tests is
+   use type AML_Decode.Bytes;
    use type AML_Decode.Byte;
    S, Prior : State := Empty;
    Empty_ID, Full_ID, Other_ID : Object_ID;

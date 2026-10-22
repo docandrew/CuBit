@@ -1,0 +1,20 @@
+[
+  {
+    "name": "SKIP",
+    "declarations": "Name(PKG0,Package(3){Package(){1},9})",
+    "body": "Return(Match(PKG0,MTR,Zero,MTR,Zero,2))",
+    "method_opcode": "Match"
+  },
+  {
+    "name": "BADRETURN",
+    "declarations": "Name(PKG0,Package(){1}) Method(IDEN,1){Return(Arg0)}",
+    "body": "Return(Match(PKG0,MTR,IDEN(Package(){}),MTR,Zero,Subtract(Store(One,MARK),One)))",
+    "method_opcode": "Match"
+  },
+  {
+    "name": "PRIORITY",
+    "declarations": "Name(PKG0,Package(){1}) Method(IDEN,1){Return(Arg0)} Method(STRT,0){Store(One,MARK) Return(Buffer(){})}",
+    "body": "Return(Match(PKG0,MEQ,IDEN(Package(){}),MTR,Zero,STRT()))",
+    "method_opcode": "Match"
+  }
+]

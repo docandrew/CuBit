@@ -1,5 +1,7 @@
 pragma Ada_2022;
+with AML_References;
 with AML_Delays;
+with AML_Interface_Policy;
 with Firmware_Tables.DMAR;
 with Firmware_Tables.MCFG;
 with Firmware_Tables.MADT;
@@ -10,9 +12,13 @@ with AML_Identity;
 with AML_Decode;
 with AML_Table_Backing;
 with AML_Field_Data;
+with AML_Field_Access;
+with AML_Field_Layout;
 with AML_Names;
 with ACPI_FADT;
 with AML_Execute;
+with AML_Execution_Limits;
+with AML_Events;
 with AML_Objects;
 with AML_Namespace;
 with Firmware_Tables;
@@ -28,18 +34,34 @@ generic
    Namespace_Node_Capacity : Positive := 512;
    Aggregate_Method_Capacity : Positive := AML_Execute.Max_Method_Bytes;
    Retained_Result_Capacity : Positive := 512;
+   -- Pending internal notifications, independent of retained AML values.
+   Notification_Capacity : Positive := 32;
+   Supported_Interfaces : AML_Interface_Policy.Policy := AML_Interface_Policy.Empty;
+   with procedure Wait_Event_Timeout
+     (Milliseconds : AML_Events.Timeout; Outcome : out AML_Events.Timeout_Outcome)
+     is AML_Events.Unavailable_Timeout;
+   Block_Capacity : AML_Execution_Limits.Continuation_Capacity :=
+     AML_Execution_Limits.Default_Continuation_Capacity;
 package ACPI_Service_Core with SPARK_Mode is
    pragma Unevaluated_Use_Of_Old (Allow);
    Max_Namespace_Nodes : constant Positive := Namespace_Node_Capacity;
    package Namespace is new AML_Namespace
      (Perform_Delay => Perform_Delay, Capacity => Max_Namespace_Nodes, Read_Microseconds => Read_Microseconds,
       Aggregate_Method_Capacity => Aggregate_Method_Capacity,
-      Max_Retained_Roots => Retained_Result_Capacity);
+      Max_Retained_Roots => Retained_Result_Capacity,
+      Max_Pending_Notifications => Notification_Capacity,
+      Supported_Interfaces => Supported_Interfaces,
+      Wait_Event_Timeout => Wait_Event_Timeout,
+      Block_Capacity => Block_Capacity);
    package Values is new Namespace.Owned.Collecting;
    use type Values.Audit_Value;
    use type Values.Access_Status;
+   use type Values.Preparation_Outcome;
+   use type Values.Module_Report;
    use type Values.Phase;
+   use type Values.Module_Outcome;
    use type Values.Value_Handle;
+   use type AML_Identity.Identity;
    use type Namespace.Bind_Status;
    use type Firmware_Tables.Byte;
    Max_Table_Bytes : constant := Firmware_Tables.Snapshots.Max_Table_Bytes;
@@ -59,6 +81,13 @@ package ACPI_Service_Core with SPARK_Mode is
    type Install_Status is
      (Installed, Wrong_Order, Duplicate_ID, Table_Limit, Byte_Limit,
       Invalid_Table, Invalid_AML);
+   -- Catalog admission is separate from AML execution. Frozen is not Ready.
+   type Import_Phase is (Undecided, Legacy_Import, Catalog_Staging, Catalog_Frozen,
+     Catalog_Executed, Catalog_Failed);
+   type Stage_Status is
+     (Staged, Stage_Wrong_Order, Stage_Duplicate_ID, Stage_Table_Limit,
+      Stage_Byte_Limit, Stage_Invalid_Table);
+   type Freeze_Status is (Catalog_Frozen_OK, Freeze_Wrong_Phase, Freeze_Empty);
    type Metrics is record
       Tables : Natural := 0;
       Bytes : Natural := 0;
@@ -79,6 +108,9 @@ package ACPI_Service_Core with SPARK_Mode is
      with Default_Initial_Condition => Valid (State) and then Observe (State) = Metrics'(others => <>)
        and then Observe (State).Objects = 0;
    function Valid (Service : State) return Boolean;
+   function Current_Import_Phase (Service : State) return Import_Phase;
+   function Namespace_Load_Phase (Service : State) return Values.Phase with Ghost;
+   function Namespace_Generation (Service : State) return AML_Identity.Identity with Ghost;
    function Table_Count (Service : State) return Natural with
      Post => Table_Count'Result <= Service.Table_Capacity;
    function Observe (Service : State) return Metrics with
@@ -86,8 +118,31 @@ package ACPI_Service_Core with SPARK_Mode is
        and then Observe'Result.Tables <= Service.Table_Capacity
        and then Observe'Result.Bytes <= Service.Byte_Capacity;
    function Audit (Service : State) return Values.Audit_Value;
+   -- Physical lexical binding; Root means absent.
+   -- Physical lexical binding; Root means absent.
+   subtype Node_Descriptor is Values.Node_Descriptor;
+   function Namespace_Node_Count (Service : State) return Namespace.Node_ID;
+   procedure Describe_Node (Service : State; Node : Namespace.Node_ID;
+      Item : out Node_Descriptor; Status : out Values.Access_Status)
+     with Pre => Valid (Service);
+   -- Binding identity includes owner, incarnation, parent and name; data kind may change.
+   function Current_Binding (Service : State; Item : Node_Descriptor) return Boolean
+     with Pre => Valid (Service);
+   -- Stronger snapshot check additionally requires the observed object kind.
+   function Current_Node (Service : State; Item : Node_Descriptor) return Boolean
+     with Pre => Valid (Service);
    procedure Find_Child (Service : State; Parent : Namespace.Node_ID; Part : AML_Names.Segment;
       Node : out Namespace.Node_ID; Status : out Values.Access_Status);
+   -- Semantic object selection follows aliases, retaining Found Root.
+   procedure Find_Object (Service : State; Parent : Namespace.Node_ID; Part : AML_Names.Segment;
+      Result : out Namespace.Lookup_Result; Status : out Values.Access_Status);
+   -- Detached metadata/key observation; neither grants hardware access.
+   procedure Read_Field_Descriptor
+     (Service : State; Node : Namespace.Node_ID;
+      Description : out Values.Field_Description; Key : out Values.Field_Key;
+      Status : out Values.Access_Status) with Pre => Valid (Service);
+   function Field_Key_Matches (Service : State; Key : Values.Field_Key) return Boolean
+     with Pre => Valid (Service);
    procedure Observe_Named_Value (Service : in out State; Node : Namespace.Node_ID;
       Result : out Values.Result; Status : out Values.Access_Status)
       with Pre => not Result'Constrained;
@@ -131,6 +186,10 @@ package ACPI_Service_Core with SPARK_Mode is
      (Service : State; Index : Positive; Bit_Offset, Bit_Count : Natural)
       return AML_Field_Data.Read_Result
      with Pre => Index <= Observe (Service).Tables;
+   function Table_Field_Window
+     (Service : State; Index : Positive; Bit_Offset, Bit_Count : Natural;
+      First_Byte, Count : Natural) return AML_Table_Backing.Window_Result
+     with Pre => Index <= Observe (Service).Tables;
    function Table_Identity (Service : State; Index : Positive)
       return Firmware_Tables.Identifiers.Identity
      with Pre => Index <= Observe (Service).Tables;
@@ -153,6 +212,25 @@ package ACPI_Service_Core with SPARK_Mode is
      Post => Catalog_Snapshot'Result.Table_Capacity = Service.Table_Capacity
        and then Catalog_Snapshot'Result.Byte_Capacity = Service.Byte_Capacity;
    function Same_Catalog (Service, Prior : State) return Boolean with Ghost;
+   subtype Notification_Count is Namespace.Notification_Count;
+   subtype Notification_Observation is Namespace.Notification_Observation;
+   -- Trusted service-owner API, not an AML or wire-supplied capability.
+   -- Disabled by default. Disabling affects future admissions only.
+   procedure Configure_Notifications
+     (Service : in out State; Enabled : Boolean; Status : out Values.Access_Status)
+     with Pre => Valid (Service), Post => Valid (Service)
+       and then Catalog_Snapshot (Service) = Catalog_Snapshot (Service)'Old
+       and then Audit (Service) = Audit (Service)'Old;
+   function Pending_Notifications (Service : State) return Notification_Count;
+   -- Non-reentrant dequeue: the owning arena rejects calls during invocation.
+   -- Observations contain copied descriptive data, never callable authority.
+   -- A stale target is reported explicitly rather than redirected after reuse.
+   procedure Take_Notification
+     (Service : in out State; Item : out Notification_Observation;
+      Present : out Boolean; Status : out Values.Access_Status)
+     with Pre => Valid (Service), Post => Valid (Service)
+       and then Catalog_Snapshot (Service) = Catalog_Snapshot (Service)'Old
+       and then Audit (Service) = Audit (Service)'Old;
    -- Audit-only full state, including identity metadata; never usable as authority.
    type State_Model (Table_Capacity, Byte_Capacity : Positive) is private with Ghost;
    function Model (Service : State) return State_Model with Ghost,
@@ -162,6 +240,15 @@ package ACPI_Service_Core with SPARK_Mode is
    -- result retained until all observations/serialization finish, then release.
    -- Integer-only arguments carry no borrowed object handles across this API.
    function Retained_Results (Service : State) return Namespace.Owned.Retained_Root_Count;
+   procedure Evaluate_Named (Service : aliased in out State; Item : Node_Descriptor;
+      Budget : Natural; Result : out Values.Result; Status : out Values.Access_Status)
+     with Pre => Valid (Service) and then not Result'Constrained,
+       Post => Valid (Service) and then Result.Charged <= Budget
+         and then Catalog_Snapshot (Service) = Catalog_Snapshot (Service)'Old
+         and then (if Result.Status in AML_Execute.Object_Returned | AML_Execute.Reference_Returned | AML_Execute.Metadata_Returned
+           then Status = Values.Available and then Result.Handle /= Values.No_Value
+             and then Retained_Results (Service) = Retained_Results (Service)'Old + 1
+           else Retained_Results (Service) = Retained_Results (Service)'Old);
    procedure Invoke_Retained
      (Service : aliased in out State; Node : Namespace.Node_ID; Args : AML_Execute.Arguments;
       Argument_Count : Natural; Budget : Natural; Result : out Values.Result;
@@ -169,10 +256,75 @@ package ACPI_Service_Core with SPARK_Mode is
      with Pre => Valid (Service) and then Argument_Count <= 7 and then not Result'Constrained,
        Post => Valid (Service) and then Result.Charged <= Budget
          and then Catalog_Snapshot (Service) = Catalog_Snapshot (Service)'Old
-         and then (if Result.Status in AML_Execute.Object_Returned | AML_Execute.Reference_Returned
+         and then (if Result.Status in AML_Execute.Object_Returned | AML_Execute.Reference_Returned | AML_Execute.Metadata_Returned
            then Status = Values.Available and then Result.Handle /= Values.No_Value
              and then Retained_Results (Service) = Retained_Results (Service)'Old + 1
            else Retained_Results (Service) = Retained_Results (Service)'Old);
+   -- Opt-in provider path. Caller exclusively owns Service and IO throughout
+   -- the synchronous call; trusted provider actuals must not capture Service.
+   -- A binding associates one live field with independently granted authority.
+   generic
+      type IO_Context is limited private;
+      with function Pending (IO : IO_Context) return Boolean;
+      with procedure Describe_Target
+        (IO : IO_Context; Target : AML_Field_Access.Target;
+         Geometry : out AML_Field_Layout.Register_Geometry; Accepted : out Boolean);
+      with procedure Dispatch
+        (IO : in out IO_Context; Item : AML_Field_Access.Request;
+         Reply : out AML_Field_Access.Response);
+      with procedure Completion_Confirmed
+        (IO : IO_Context; Expected : AML_Field_Access.Observation; Accepted : out Boolean);
+   package Field_IO is
+      pragma Unevaluated_Use_Of_Old (Allow);
+      type Binding is private;
+      No_Binding : constant Binding;
+      procedure Bind
+        (Service : State; IO : IO_Context; Key : Values.Field_Key;
+         Target : AML_Field_Access.Target; Item : out Binding;
+         Status : out Values.Access_Status) with Pre => Valid (Service);
+      function Uncertain (Service : State) return AML_Field_Access.Observation
+        with Pre => Valid (Service);
+      -- Historical identities only; these do not authorize a post-reset access.
+      function Original_Field (Service : State) return AML_References.Reference
+        with Pre => Valid (Service);
+      function Original_Region (Service : State) return AML_References.Reference
+        with Pre => Valid (Service);
+      procedure Reconcile
+        (Service : in out State; IO : IO_Context; Expected : AML_Field_Access.Observation;
+         Status : out Values.Access_Status) with Pre => Valid (Service),
+        Post => Valid (Service)
+          and then Catalog_Snapshot (Service) = Catalog_Snapshot (Service)'Old;
+      procedure Invoke_Retained
+        (Service : aliased in out State; IO : in out IO_Context; Item : Binding;
+         Node : Namespace.Node_ID; Args : AML_Execute.Arguments;
+         Argument_Count : Natural; Budget : Natural; Result : out Values.Result;
+         Status : out Values.Access_Status)
+        with Pre => Valid (Service) and then Argument_Count <= Values.Argument_Count'Last
+          and then not Result'Constrained,
+        Post => Valid (Service) and then Result.Charged <= Budget
+          and then Catalog_Snapshot (Service) = Catalog_Snapshot (Service)'Old
+          and then (if Result.Status in AML_Execute.Object_Returned | AML_Execute.Reference_Returned | AML_Execute.Metadata_Returned
+            then Status = Values.Available and then Result.Handle /= Values.No_Value
+              and then Retained_Results (Service) = Retained_Results (Service)'Old + 1
+            else Retained_Results (Service) = Retained_Results (Service)'Old);
+      procedure Invoke_Scalar
+        (Service : aliased in out State; IO : in out IO_Context; Item : Binding;
+         Node : Namespace.Node_ID; Args : AML_Execute.Arguments;
+         Argument_Count : Natural; Budget : Natural; Result : out AML_Execute.Execution_Result)
+        with Pre => Valid (Service) and then Argument_Count <= Values.Argument_Count'Last
+          and then not Result'Constrained,
+        Post => Valid (Service) and then Result.Charged <= Budget
+          and then Result.Status not in AML_Execute.Object_Returned | AML_Execute.Reference_Returned | AML_Execute.Metadata_Returned
+          and then Retained_Results (Service) = Retained_Results (Service)'Old
+          and then Catalog_Snapshot (Service) = Catalog_Snapshot (Service)'Old;
+   private
+      package Adapter is new Values.Field_IO
+        (IO_Context, Pending, Describe_Target, Dispatch, Completion_Confirmed);
+      type Binding is record
+         Inner : Adapter.Binding := Adapter.No_Binding;
+      end record;
+      No_Binding : constant Binding := (others => <>);
+   end Field_IO;
    procedure Describe_Result (Service : State; Handle : Values.Value_Handle;
       Description : out Values.Value_Description; Status : out Values.Access_Status)
       with Pre => not Description'Constrained;
@@ -196,7 +348,7 @@ package ACPI_Service_Core with SPARK_Mode is
       Argument_Count : Natural; Budget : Natural; Result : out AML_Execute.Execution_Result)
      with Pre => Valid (Service) and then Argument_Count <= 7 and then not Result'Constrained,
        Post => Valid (Service) and then Result.Charged <= Budget
-         and then Result.Status not in AML_Execute.Object_Returned | AML_Execute.Reference_Returned
+         and then Result.Status not in AML_Execute.Object_Returned | AML_Execute.Reference_Returned | AML_Execute.Metadata_Returned
          and then Retained_Results (Service) = Retained_Results (Service)'Old
          and then Catalog_Snapshot (Service) = Catalog_Snapshot (Service)'Old;
    -- Internal declaration/read path for immutable table-backed namespace
@@ -246,6 +398,70 @@ package ACPI_Service_Core with SPARK_Mode is
          and then Table_Info (Service, Observe (Service).Tables).Extent = Data'Length
          and then (for all I in 1 .. Data'Length =>
            Table_Byte (Service, Observe (Service).Tables, I - 1) = Data (Data'First + (I - 1))));
+   -- Physical admission only: AML bytes are retained but never executed.
+   -- Failure preserves all catalog bytes and the selected import mode.
+   procedure Stage_Table
+     (Service : in out State; ID : Positive; Kind : Table_Kind;
+      Data : Firmware_Tables.Bytes; Result : out Stage_Status)
+     with Pre => Valid (Service),
+       Post => Valid (Service) and then Audit (Service) = Audit (Service)'Old
+         and then Pending_Members (Service) = Pending_Members (Service)'Old
+         and then Namespace_Load_Phase (Service) = Namespace_Load_Phase (Service)'Old
+         and then Namespace_Generation (Service) = Namespace_Generation (Service)'Old
+         and then (if Result /= Staged then
+           Catalog_Snapshot (Service) = Catalog_Snapshot (Service)'Old
+           and then Current_Import_Phase (Service) = Current_Import_Phase (Service)'Old
+         else Current_Import_Phase (Service) = Catalog_Staging
+           and then Table_Count (Service) = Table_Count (Service)'Old + 1
+           and then Table_Info (Service, Table_Count (Service)).ID = ID
+           and then Table_Info (Service, Table_Count (Service)).Extent = Data'Length
+           and then (for all I in 1 .. Data'Length =>
+             Table_Byte (Service, Table_Count (Service), I - 1) = Data (Data'First + (I - 1))));
+   type Execution_Phase_Result is
+     (Execution_Not_Started, Preparation_Failed, Module_Execution_Reported);
+   type Execution_Report is record
+      Phase : Execution_Phase_Result := Execution_Not_Started;
+      Preparation : Values.Preparation_Outcome := Values.Preparation_Not_Attempted;
+      Modules : Values.Module_Report;
+      -- Lifetime-local catalog ID, never an address or hardware capability.
+      Failed_Table_ID : Natural := 0;
+   end record;
+   -- Consumes the frozen catalog once. Failure is terminal; no retry API.
+   procedure Execute_Frozen
+     (Service : in out State; Budget : Natural; Report : out Execution_Report;
+      Status : out Values.Access_Status)
+     with Pre => Valid (Service),
+       Post => Valid (Service) and then Report.Modules.Charged <= Budget
+         and then Catalog_Snapshot (Service) = Catalog_Snapshot (Service)'Old
+         and then (if Current_Import_Phase (Service)'Old /= Catalog_Frozen then
+           Model (Service) = Model (Service)'Old and then Status = Values.Wrong_Phase
+           and then Report.Phase = Execution_Not_Started
+           and then Report.Preparation = Values.Preparation_Not_Attempted
+         else Current_Import_Phase (Service) =
+           (if Report.Phase = Module_Execution_Reported
+              and then Report.Preparation = Values.Firmware_Prepared
+              and then Status = Values.Available and then Report.Modules.Outcome = Values.Modules_Completed
+            then Catalog_Executed else Catalog_Failed))
+         and then (if Report.Phase /= Module_Execution_Reported then
+           Report.Modules = Values.Module_Report'(others => <>)
+           and then Report.Failed_Table_ID = 0)
+         and then Retained_Results (Service) = Retained_Results (Service)'Old
+         and then Pending_Notifications (Service) = Pending_Notifications (Service)'Old
+         and then (if Report.Modules.Failed_Table > 0 then
+           Report.Modules.Failed_Table <= Table_Count (Service)
+           and then Report.Failed_Table_ID = Table_Info (Service, Report.Modules.Failed_Table).ID
+         else Report.Failed_Table_ID = 0);
+   -- Only closes admission. It neither initializes nor executes AML.
+   procedure Freeze_Catalog (Service : in out State; Result : out Freeze_Status)
+     with Pre => Valid (Service),
+       Post => Valid (Service) and then Audit (Service) = Audit (Service)'Old
+         and then Catalog_Snapshot (Service) = Catalog_Snapshot (Service)'Old
+         and then Observe (Service) = Observe (Service)'Old
+         and then Namespace_Load_Phase (Service) = Namespace_Load_Phase (Service)'Old
+         and then Namespace_Generation (Service) = Namespace_Generation (Service)'Old
+         and then (if Result = Catalog_Frozen_OK then
+           Current_Import_Phase (Service) = Catalog_Frozen
+         else Current_Import_Phase (Service) = Current_Import_Phase (Service)'Old);
 private
    type Table_Entry is record
       Metadata : Table_Metadata;
@@ -260,12 +476,15 @@ private
    type State_Model (Table_Capacity, Byte_Capacity : Positive) is record
       Catalog : Catalog_State (Table_Capacity, Byte_Capacity);
       Tree : Values.Audit_Value;
+      Notifications : Namespace.Notification_State;
       Stats : Metrics;
       Width : AML_Decode.Integer_Width;
       Table_Limit : Positive;
+      Import_State : Import_Phase;
       Generation : AML_Identity.Identity;
    end record;
    type State (Table_Capacity, Byte_Capacity, Table_Byte_Limit : Positive) is limited record
+      Import_State : Import_Phase := Undecided;
       Tree : Values.Arena;
       Stats : Metrics;
       Catalog : Table_Array (1 .. Table_Capacity);
@@ -273,7 +492,21 @@ private
       Width : AML_Decode.Integer_Width := AML_Decode.Bits_64;
    end record with Type_Invariant =>
      (if State.Stats.Tables = 0 then Values.Node_Count (State.Tree) = Namespace.Root)
-     and then (if State.Stats.Tables > 0 then Values.Current (State.Tree) /= Values.Uninitialized)
+     and then (if State.Import_State = Legacy_Import and then State.Stats.Tables > 0
+       then Values.Current (State.Tree) /= Values.Uninitialized)
+     and then (if State.Import_State in Catalog_Staging | Catalog_Frozen then
+       State.Stats.Tables > 0 and then Values.Current (State.Tree) in Values.Uninitialized | Values.Loading
+       and then Values.Node_Count (State.Tree) = Namespace.Root
+       and then Values.Observe_Usage (State.Tree).Pending = 0
+       and then Values.Observe_Usage (State.Tree).Methods = 0
+       and then Values.Observe_Usage (State.Tree).Values.Objects = 0
+       and then Values.Observe_Usage (State.Tree).Values.Bytes = 0
+       and then Values.Observe_Usage (State.Tree).Values.Elements = 0
+       and then Values.Retained_Count (State.Tree) = 0)
+     and then (if State.Import_State = Catalog_Executed then
+       State.Stats.Tables > 0 and then Values.Current (State.Tree) in Values.Loading | Values.Ready)
+     and then (if State.Import_State = Catalog_Failed then State.Stats.Tables > 0)
+     and then (if State.Import_State = Undecided then State.Stats.Tables = 0)
      and then State.Backing.Count = State.Stats.Tables
      and then State.Stats.Tables <= State.Table_Capacity
      and then State.Stats.Bytes <= State.Byte_Capacity

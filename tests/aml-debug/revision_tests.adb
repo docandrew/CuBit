@@ -5,6 +5,7 @@ with AML_Execute; use AML_Execute;
 with AML_Namespace;
 with AML_Table_Backing;
 procedure Revision_Tests is
+   use type AML_Decode.Bytes;
    use type Integer_Value;
    use type Byte;
    package NS is new AML_Namespace (16, AML_Delays.Unavailable_Provider);

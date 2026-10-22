@@ -1,0 +1,1 @@
+DefinitionBlock("", "DSDT", 1, "CUBIT", "TAIL", 1){ Method(TEST,1){Store(0,Local0) While(Local0 < 5){If(One){Increment(Local0)} Else {Store(99,Local0)}} Return(Local0)}}

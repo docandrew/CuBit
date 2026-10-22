@@ -2,6 +2,7 @@ with Ada.Text_IO;
 with AML_Decode; use AML_Decode;
 with Namespace_Instance;
 procedure Load_Tests is
+   use type AML_Decode.Bytes;
    package NS renames Namespace_Instance;
    use NS;
    use type Integer_Value;

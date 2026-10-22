@@ -1,0 +1,145 @@
+{
+  "schema": 1,
+  "kind": "historical-evidence-only",
+  "execution_note": "No loader/runner reads private receipt locations from this index. Identifiers and hashes are historical citations, not executable fallback paths.",
+  "current_production_sha256": {
+    "userspace/lib/acpi/aml_declaration_contexts.adb": "465872a5a6eb9836d39e22bee05ff4e754521af97bc41bdb2360e21cb66c25a3",
+    "userspace/lib/acpi/aml_declaration_contexts.ads": "ec96f85d74e7d004dc285479b888e4da81cadf465714e0eb690c7a2d492c4438",
+    "userspace/lib/acpi/aml_execute.adb": "991d5650cceeb11837a62dd7e78838bd879012566630fbbc1244215a0c5a6da1",
+    "userspace/lib/acpi/aml_execute.ads": "a36aa3d8164edff7974c6fd61466a1e1032fbacd6a44f72bd50b75b2dd555701",
+    "userspace/lib/acpi/aml_field_access.ads": "02a7262ee62e9c0e7d816ba49ba26ec96aab000ee8f7e7aa6b25dcab7cc96dc5",
+    "userspace/lib/acpi/aml_field_layout.adb": "2348f2bd93fecf5ed6d469f33ad8cca575d0ef992b64097ff02e6f99d4b9b2c4",
+    "userspace/lib/acpi/aml_field_layout.ads": "e719c6664fe4531dc7b0fb9be2d25db6ac9298555c101a00ff32dec7ac63d081",
+    "userspace/lib/acpi/aml_namespace.adb": "d1c568899fec60c4b4842686cc7b032b7fa01ec4cc2214a8f6abbde11b0ea96d",
+    "userspace/lib/acpi/aml_namespace.ads": "a28afd90ae49d0ca158365286d243c491e94fc8a7c6b014fd94ee2a04bd1735a",
+    "userspace/services/acpi/acpi_device_initialization.adb": "e841a6b7a60bfb74ba8826c93fa29ccf5fddade53f92fc0c25745dfc5af7c6e8",
+    "userspace/services/acpi/acpi_device_initialization.ads": "281bcf00a77934569ac9792c256d313134dfd306d779e75b4bfdb045f663fc42",
+    "userspace/services/acpi/acpi_requests.adb": "20e879758e372e6215c21887c818b25018eb97957d76a2b8e7289e0cb42cc847",
+    "userspace/services/acpi/acpi_requests.ads": "39abbb2852b8f9cf73e7c839d8d6319c25ce39025aacb3a0dda449b1f2082834",
+    "userspace/services/acpi/acpi_service_core.adb": "853467b898bd1f029cae2d4feaa6c3199fe3ff98862aab4269662c0806bea9d8",
+    "userspace/services/acpi/acpi_service_core.ads": "0eb78b4c92f937dba95bd8846db7ab8ca8e504cd6223bc8d9b7c15770e49c8a9",
+    "userspace/services/acpi-backend/acpi_field_hosted_provider.adb": "dd04951c1b5023afff0ec3c75b351d0f66be43695126f3175eb2c2504ad7a668",
+    "userspace/services/acpi-backend/acpi_field_hosted_provider.ads": "77f6e38c4ac5f6309c1fcea991afc86cee9a44b3dc58062f799436ec0506d604"
+  },
+  "root_receipts": [
+    {
+      "identifier": "field-current-portable-replay-release-reviewed.json",
+      "sha256": "82ea8b1cc00340ab3b9d4f8dc959eb3acf84307ec86e87ec4639a4fd9a017fc7"
+    },
+    {
+      "identifier": "field-current-portable-replay-checked-reviewed.json",
+      "sha256": "615530bc11bdc7161dcb176f6fe9cd0f509fcc3c287b04ec39b809e025b5bc7a"
+    },
+    {
+      "identifier": "field-current-portable-release-reviewed.json",
+      "sha256": "6c0135d1795e3ae0d2a54b64d90d93ebddb2f285f260f03ee916802824337c95"
+    },
+    {
+      "identifier": "field-fifteen-relocation-validation-reviewed.json",
+      "sha256": "d223a681a122191653b761e14e12cde65c7079c3813f14919e191fb7b4eb82b6"
+    },
+    {
+      "identifier": "field-core-reference-checked-reviewed.json",
+      "sha256": "f3f7aa5dd5f2d0d55de40b428dcd44cabe1a4975d688bb5465de333b2987e6b0"
+    },
+    {
+      "identifier": "field-core-captured-runtime-release-reviewed.json",
+      "sha256": "d4fff86dbe6fb742d9a8784566882445971470b00b70a5be22172625e4a9b07b"
+    },
+    {
+      "identifier": "field-deref-unknown-release-reviewed.json",
+      "sha256": "38450fd620af0d89be40b4348206144c0f6bfe91b8fa556446c263585711f047"
+    },
+    {
+      "identifier": "field-core-normal-replay-release-reviewed.json",
+      "sha256": "7f32780217d029d648619c2251cb8ac187af40e5a454ab90ae968db36d2699ff"
+    },
+    {
+      "identifier": "field-core-normal-replay-checked-reviewed.json",
+      "sha256": "2738f21385291799551f85e3d6b3601c10c1c2ef34254149a4a61cf778bba0ab"
+    },
+    {
+      "identifier": "field-default-current-release-reviewed.json",
+      "sha256": "edc90143fb62805a26a48390f8382030176272d2cd20729554c681604a07456f"
+    },
+    {
+      "identifier": "field-default-current-checked-reviewed.json",
+      "sha256": "7d93f21e0a6e83e4d6cde77359ac06a4a34f610ad3a42adde98b1b297f1f710f"
+    },
+    {
+      "identifier": "field-namespace42-current-release-reviewed.json",
+      "sha256": "1c1518f8737ceb726225a699821f89dd1a451e06d00a475d0c91409a7e4fd89f"
+    },
+    {
+      "identifier": "field-namespace42-current-checked-reviewed.json",
+      "sha256": "19949997163b498600426e84a93c9db51cd083ce9a4f14f2310c1844fe0bdcd5"
+    },
+    {
+      "identifier": "field-maintained-current-composition-reviewed.json",
+      "sha256": "54ed947d2e2634c0a4defe613f7bbb005e690c0e124ab18072e9ba8e1eeb4c88"
+    },
+    {
+      "identifier": "field-layout-proof-composition-reviewed.json",
+      "sha256": "f40c1b10a40048c36b0c1ce2c1cfa57d66a843edeb5996b32ff067bbad4d8dda"
+    }
+  ],
+  "scopes": {
+    "q9_checked": {
+      "checks": 702,
+      "parts": [
+        516,
+        186
+      ]
+    },
+    "prior_release": {
+      "separate_runs": [
+        516,
+        186
+      ],
+      "captured_core_not_recompiled": true
+    },
+    "portable_release_74630": {
+      "checks": 702,
+      "stages": 4,
+      "scope": "fresh current q9 portable Core516 plus unknown186"
+    },
+    "cached_replay": {
+      "checks_per_profile": 522,
+      "source_scope": "exact current source, release45830 and checked14096; original errors/goldens retained",
+      "historical_predecessor": "older h9l replay predates the DerefOf correction and is historical only"
+    },
+    "current_defaults": {
+      "checks_per_profile": 5232
+    },
+    "current_namespace_reset": {
+      "checks_per_profile": 42,
+      "not_public_Core_Values_compiler_repair": true
+    },
+    "maintained": {
+      "checks_per_profile": 808013,
+      "mains_per_profile": 15,
+      "reused_stages": 25,
+      "fresh_stages": 41,
+      "unsplit_checked_timeout": "unresolved; same binary executed in width-separated processes"
+    },
+    "layout_proof": {
+      "proof": 10,
+      "selected_flow": 6,
+      "generated_empty_effects": 2,
+      "scope": "existing Admitted Post and Octets/Aligned dependencies only"
+    },
+    "prior_relocated_validation": {
+      "worker": 42307,
+      "commands": 15,
+      "unsupported_not_invoked": 5,
+      "owner_receipt_sha256": "3ca7389174f19c63bc0a390aa23367e02bea491b3b74eefba68d0a5b544d2414",
+      "successor_validation": "not yet run"
+    }
+  },
+  "excluded_claims": [
+    "all33 runtime",
+    "full SPARK/interpreter proof",
+    "native hardware",
+    "partial/RMW/Qword/FACS lock support"
+  ]
+}

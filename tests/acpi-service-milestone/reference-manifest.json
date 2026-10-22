@@ -1,0 +1,17 @@
+{
+  "tests/aml-runtime-event/category-reference/r2-iasl.log": "1adf2ee9840cd8c47a82003e87a9409781b2f5dbbc469962fde7e629bc465d45",
+  "tests/aml-runtime-event/category-reference/r2-acpiexec.log": "2e1c52341cc13aa0b5e4f0dee56e08c16ee2896846be87ddc8cb044c3b513a5c",
+  "tests/aml-runtime-event/category-reference/event-r1.asl": "be2fe7052f0c981b4e93961dfe3fd6b0b1e249aeb61c92e5c9f7844a5d63f5e4",
+  "tests/aml-runtime-event/category-reference/r1-acpiexec.log": "55e35893b7e6e8251dbbc90d3b13d2e8c9ea1ccfa80c6b5bece252686f678d4d",
+  "tests/aml-runtime-event/category-reference/report.json": "6628de2a899c3bd9c921ed0d913204877e0516ec94f25f4a51891b4137fce58e",
+  "tests/aml-runtime-event/category-reference/r1-iasl.log": "43ff132ea5adb26a874854ddeeba01f74e009a1722ba36a214258aaefff2dbe1",
+  "tests/aml-runtime-event/category-reference/event-r1.aml": "339bafbb8d4602870b44bd98d357dbf67dfabd3c5b0744036a5eb12813a1b5c7",
+  "tests/aml-runtime-event/category-reference/event-r2.asl": "c23d83a7388f2c47238f1e88a674c29f02098cc2584a6bef2db622f75a150e8d",
+  "tests/aml-runtime-event/category-reference/event-r2.aml": "84ac5f11e9cb935bebaf680003288cdaebf1d9576c640840a18a4de26a8d8fa5",
+  "tests/aml-mutex-oracle/reference/r2-uncontended.asl": "15af52470addb57217d0b6886f3ed0c0bdb9d2ced5d57f35941a414be524e683",
+  "tests/aml-mutex-oracle/reference/table.aml": "bcd10a40c985f6a4326f412d3f380a33add89cb934f5482b0d98ff77a1dcf339",
+  "tests/aml-mutex-oracle/reference/disassemble.log": "16c8c61dad3b2fa43953ad3d650dccc43039f6d272be7ed79b8cfecd37f13d1b",
+  "tests/aml-mutex-oracle/reference/table.dsl": "edb21ce0533b6f31eb68675829477769104dbce51bbbd56d3803dd0c4b592bed",
+  "tests/aml-mutex-oracle/reference/compile.log": "f52d40755997ab9802817219b4e3a9729880117af6a65fa37a25742824d7a788",
+  "tests/aml-mutex-oracle/reference/execute.log": "884cb9a8e72cb44a716741fe6cc2deffc9c54db34e26487f4be6f7d44a304abd"
+}

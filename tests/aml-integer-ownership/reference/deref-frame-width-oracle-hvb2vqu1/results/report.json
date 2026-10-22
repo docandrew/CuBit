@@ -1,0 +1,450 @@
+[
+  {
+    "key": "r1-arg-control",
+    "revision": 1,
+    "base": "cases/base1.asl",
+    "source": "cases/r1-arg-control.asl",
+    "methods": [
+      "TEST"
+    ],
+    "scope": "Frame raw integer control versus explicit DerefOf mutation; normal ASL no forcing",
+    "compiles": [
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/cases/base1.asl"
+        ],
+        "log": "results/r1-arg-control-base-compile.log",
+        "sha256": "dfbcd1d76917663b8f78e3e36e0f9c8232bf23760d831c04edae38611eee08fc"
+      },
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/cases/r1-arg-control.asl"
+        ],
+        "log": "results/r1-arg-control-source-compile.log",
+        "sha256": "cc13ad6befa4d906d26cbf55410441421acad96e03ca8e83ed71353846384d9c"
+      }
+    ],
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "osi install CuBitProbeSupported;osi;load /home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/cases/r1-arg-control.aml;execute TEST",
+        "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/cases/base1.aml"
+      ],
+      "log": "results/r1-arg-control-execute.log",
+      "sha256": "1820af44e8dbd4f941e0834b9510f0a975cff12a914961b01ee4109a41b63789"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": []
+  },
+  {
+    "key": "r1-arg-ref",
+    "revision": 1,
+    "base": "cases/base1.asl",
+    "source": "cases/r1-arg-ref.asl",
+    "methods": [
+      "TEST"
+    ],
+    "scope": "Frame raw integer control versus explicit DerefOf mutation; normal ASL no forcing",
+    "compiles": [
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/cases/base1.asl"
+        ],
+        "log": "results/r1-arg-ref-base-compile.log",
+        "sha256": "dfbcd1d76917663b8f78e3e36e0f9c8232bf23760d831c04edae38611eee08fc"
+      },
+      {
+        "rc": 255,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/cases/r1-arg-ref.asl"
+        ],
+        "log": "results/r1-arg-ref-source-compile.log",
+        "sha256": "64da421b45f23b4d5f46a7e50c5cc06ea8b33f5be93a9153217a9b2a02534ca3"
+      }
+    ],
+    "classification": "compiler_process_failure"
+  },
+  {
+    "key": "r1-arg-held",
+    "revision": 1,
+    "base": "cases/base1.asl",
+    "source": "cases/r1-arg-held.asl",
+    "methods": [
+      "TEST"
+    ],
+    "scope": "Frame raw integer control versus explicit DerefOf mutation; normal ASL no forcing",
+    "compiles": [
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/cases/base1.asl"
+        ],
+        "log": "results/r1-arg-held-base-compile.log",
+        "sha256": "dfbcd1d76917663b8f78e3e36e0f9c8232bf23760d831c04edae38611eee08fc"
+      },
+      {
+        "rc": 255,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/cases/r1-arg-held.asl"
+        ],
+        "log": "results/r1-arg-held-source-compile.log",
+        "sha256": "37ce4ee4a6a61938564fa0d5fa9555bf4833ac1495b8e779576bb980f3c3dae0"
+      }
+    ],
+    "classification": "compiler_process_failure"
+  },
+  {
+    "key": "r1-local-control",
+    "revision": 1,
+    "base": "cases/base1.asl",
+    "source": "cases/r1-local-control.asl",
+    "methods": [
+      "TEST"
+    ],
+    "scope": "Frame raw integer control versus explicit DerefOf mutation; normal ASL no forcing",
+    "compiles": [
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/cases/base1.asl"
+        ],
+        "log": "results/r1-local-control-base-compile.log",
+        "sha256": "dfbcd1d76917663b8f78e3e36e0f9c8232bf23760d831c04edae38611eee08fc"
+      },
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/cases/r1-local-control.asl"
+        ],
+        "log": "results/r1-local-control-source-compile.log",
+        "sha256": "38f313167566a591d1d42166a1d86431a39f27eee721bd5934519c1fa03e95b4"
+      }
+    ],
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "osi install CuBitProbeSupported;osi;load /home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/cases/r1-local-control.aml;execute TEST",
+        "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/cases/base1.aml"
+      ],
+      "log": "results/r1-local-control-execute.log",
+      "sha256": "16e43b0c42729cb52355348f852f90bab5a6cbbe22adc5f988a0e438ccd72f76"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": []
+  },
+  {
+    "key": "r1-local-ref",
+    "revision": 1,
+    "base": "cases/base1.asl",
+    "source": "cases/r1-local-ref.asl",
+    "methods": [
+      "TEST"
+    ],
+    "scope": "Frame raw integer control versus explicit DerefOf mutation; normal ASL no forcing",
+    "compiles": [
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/cases/base1.asl"
+        ],
+        "log": "results/r1-local-ref-base-compile.log",
+        "sha256": "dfbcd1d76917663b8f78e3e36e0f9c8232bf23760d831c04edae38611eee08fc"
+      },
+      {
+        "rc": 255,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/cases/r1-local-ref.asl"
+        ],
+        "log": "results/r1-local-ref-source-compile.log",
+        "sha256": "b5965e2f9691686091c295b9d772f79f0dc4a315cdabad337865010e13abf7d2"
+      }
+    ],
+    "classification": "compiler_process_failure"
+  },
+  {
+    "key": "r1-local-held",
+    "revision": 1,
+    "base": "cases/base1.asl",
+    "source": "cases/r1-local-held.asl",
+    "methods": [
+      "TEST"
+    ],
+    "scope": "Frame raw integer control versus explicit DerefOf mutation; normal ASL no forcing",
+    "compiles": [
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/cases/base1.asl"
+        ],
+        "log": "results/r1-local-held-base-compile.log",
+        "sha256": "dfbcd1d76917663b8f78e3e36e0f9c8232bf23760d831c04edae38611eee08fc"
+      },
+      {
+        "rc": 255,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/cases/r1-local-held.asl"
+        ],
+        "log": "results/r1-local-held-source-compile.log",
+        "sha256": "352d503bd01e381fcd83874903377747c7f6482051742c738c8fcb6b63e3d19d"
+      }
+    ],
+    "classification": "compiler_process_failure"
+  },
+  {
+    "key": "r2-arg-control",
+    "revision": 2,
+    "base": "cases/base2.asl",
+    "source": "cases/r2-arg-control.asl",
+    "methods": [
+      "TEST"
+    ],
+    "scope": "Frame raw integer control versus explicit DerefOf mutation; normal ASL no forcing",
+    "compiles": [
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/cases/base2.asl"
+        ],
+        "log": "results/r2-arg-control-base-compile.log",
+        "sha256": "3b6f248ad52deaee6681408fd6ab463b717e59bebbe9a6d1e08c68e227e9b374"
+      },
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/cases/r2-arg-control.asl"
+        ],
+        "log": "results/r2-arg-control-source-compile.log",
+        "sha256": "2dd7ec16c72be532cbd8c2d5a1e291edd84c52199c71c057198053f4a81b06f2"
+      }
+    ],
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "osi install CuBitProbeSupported;osi;load /home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/cases/r2-arg-control.aml;execute TEST",
+        "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/cases/base2.aml"
+      ],
+      "log": "results/r2-arg-control-execute.log",
+      "sha256": "d7cf1bf741577189f4a9ef658cb03522fed997ffb78bf2d81b2be944555ec1ba"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": []
+  },
+  {
+    "key": "r2-arg-ref",
+    "revision": 2,
+    "base": "cases/base2.asl",
+    "source": "cases/r2-arg-ref.asl",
+    "methods": [
+      "TEST"
+    ],
+    "scope": "Frame raw integer control versus explicit DerefOf mutation; normal ASL no forcing",
+    "compiles": [
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/cases/base2.asl"
+        ],
+        "log": "results/r2-arg-ref-base-compile.log",
+        "sha256": "3b6f248ad52deaee6681408fd6ab463b717e59bebbe9a6d1e08c68e227e9b374"
+      },
+      {
+        "rc": 255,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/cases/r2-arg-ref.asl"
+        ],
+        "log": "results/r2-arg-ref-source-compile.log",
+        "sha256": "46c565f6e0cb4ae4a09c55bae5d0302b9073aea5554ad0f0bd393db0cec6cfe1"
+      }
+    ],
+    "classification": "compiler_process_failure"
+  },
+  {
+    "key": "r2-arg-held",
+    "revision": 2,
+    "base": "cases/base2.asl",
+    "source": "cases/r2-arg-held.asl",
+    "methods": [
+      "TEST"
+    ],
+    "scope": "Frame raw integer control versus explicit DerefOf mutation; normal ASL no forcing",
+    "compiles": [
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/cases/base2.asl"
+        ],
+        "log": "results/r2-arg-held-base-compile.log",
+        "sha256": "3b6f248ad52deaee6681408fd6ab463b717e59bebbe9a6d1e08c68e227e9b374"
+      },
+      {
+        "rc": 255,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/cases/r2-arg-held.asl"
+        ],
+        "log": "results/r2-arg-held-source-compile.log",
+        "sha256": "e742eb72c7586a70d6cc4366b296288b4b016bc89c84fcfc8d27d65fbc65718d"
+      }
+    ],
+    "classification": "compiler_process_failure"
+  },
+  {
+    "key": "r2-local-control",
+    "revision": 2,
+    "base": "cases/base2.asl",
+    "source": "cases/r2-local-control.asl",
+    "methods": [
+      "TEST"
+    ],
+    "scope": "Frame raw integer control versus explicit DerefOf mutation; normal ASL no forcing",
+    "compiles": [
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/cases/base2.asl"
+        ],
+        "log": "results/r2-local-control-base-compile.log",
+        "sha256": "3b6f248ad52deaee6681408fd6ab463b717e59bebbe9a6d1e08c68e227e9b374"
+      },
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/cases/r2-local-control.asl"
+        ],
+        "log": "results/r2-local-control-source-compile.log",
+        "sha256": "37685886b61ebd502cdb9e7b88308ca05add2397794d7aeb44fb0e4e94f85219"
+      }
+    ],
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "osi install CuBitProbeSupported;osi;load /home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/cases/r2-local-control.aml;execute TEST",
+        "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/cases/base2.aml"
+      ],
+      "log": "results/r2-local-control-execute.log",
+      "sha256": "f42df2bb63ab6f4f6f82aa4988d416745fcd799d56d6cd4b2a825cd6d9ea975f"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": []
+  },
+  {
+    "key": "r2-local-ref",
+    "revision": 2,
+    "base": "cases/base2.asl",
+    "source": "cases/r2-local-ref.asl",
+    "methods": [
+      "TEST"
+    ],
+    "scope": "Frame raw integer control versus explicit DerefOf mutation; normal ASL no forcing",
+    "compiles": [
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/cases/base2.asl"
+        ],
+        "log": "results/r2-local-ref-base-compile.log",
+        "sha256": "3b6f248ad52deaee6681408fd6ab463b717e59bebbe9a6d1e08c68e227e9b374"
+      },
+      {
+        "rc": 255,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/cases/r2-local-ref.asl"
+        ],
+        "log": "results/r2-local-ref-source-compile.log",
+        "sha256": "367f2ef8751e125ab77f4d8d562b76c09822bad6eadc17bace84c615a0712ead"
+      }
+    ],
+    "classification": "compiler_process_failure"
+  },
+  {
+    "key": "r2-local-held",
+    "revision": 2,
+    "base": "cases/base2.asl",
+    "source": "cases/r2-local-held.asl",
+    "methods": [
+      "TEST"
+    ],
+    "scope": "Frame raw integer control versus explicit DerefOf mutation; normal ASL no forcing",
+    "compiles": [
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/cases/base2.asl"
+        ],
+        "log": "results/r2-local-held-base-compile.log",
+        "sha256": "3b6f248ad52deaee6681408fd6ab463b717e59bebbe9a6d1e08c68e227e9b374"
+      },
+      {
+        "rc": 255,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/cases/r2-local-held.asl"
+        ],
+        "log": "results/r2-local-held-source-compile.log",
+        "sha256": "c4e20a19eaaa15e8c23467f638c08590a7434953a6a42f9234385d45768dd6ff"
+      }
+    ],
+    "classification": "compiler_process_failure"
+  }
+]

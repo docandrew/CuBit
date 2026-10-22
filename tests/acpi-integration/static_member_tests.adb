@@ -7,6 +7,7 @@ with AML_Objects.Package_References;
 with AML_Execute; use AML_Execute;
 with AML_Table_Backing;
 procedure Static_Member_Tests is
+   use type AML_Decode.Bytes;
    package NS is new AML_Namespace (32, AML_Delays.Unavailable_Provider, Max_Pending_Members => 4, Max_Pending_Segments => 4);
    use NS; use NS.Owned;
    use type AML_Objects.Package_References.Result_Status;
@@ -45,7 +46,7 @@ begin
    Check (R.Status = Uninitialized and then R.Charged = 0);
    Member_Is (0);
    Before := Snapshot (A);
-   R := NS.Invoke (Before, 2, [others => 0], 0, 20);
+   NS.Invoke_Read_Only (Before, 2, [others => 0], 0, 20, R);
    Check (R.Status = Uninitialized and then R.Charged = 0);
    NS.Invoke_Mutable (Before, 2, [others => 0], 0, 20, R);
    Check (R.Status = Uninitialized and then Before = Snapshot (A));

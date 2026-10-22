@@ -1,0 +1,130 @@
+{
+  "results/1-count-add-control.log": [
+    "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+  ],
+  "results/1-count-addexecute.log": [
+    "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+  ],
+  "results/1-count-failure-compile.log": [
+    "Warning  3144 -                                                                                                                                                                                        Method Local is set but never used ^  (Local0)"
+  ],
+  "results/1-count-failure-control.log": [
+    "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+  ],
+  "results/1-count-failureexecute.log": [
+    "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+  ],
+  "results/1-count-method-control.log": [
+    "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+  ],
+  "results/1-count-methodexecute.log": [
+    "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+  ],
+  "results/1-method-actual-control.log": [
+    "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+  ],
+  "results/1-method-actualexecute.log": [
+    "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+  ],
+  "results/1-nested-buffer-control.log": [
+    "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+  ],
+  "results/1-nested-bufferexecute.log": [
+    "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+  ],
+  "results/1-numeric-prefix-control.log": [
+    "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+  ],
+  "results/1-numeric-prefixexecute.log": [
+    "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+  ],
+  "results/1-raw-initializer-control.log": [
+    "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+  ],
+  "results/1-raw-initializerexecute.log": [
+    "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+  ],
+  "results/1-return-arg-control.log": [
+    "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+  ],
+  "results/1-return-argexecute.log": [
+    "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+  ],
+  "results/1-store-local-control.log": [
+    "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+  ],
+  "results/1-store-localexecute.log": [
+    "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+  ],
+  "results/1-target-failure-control.log": [
+    "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+  ],
+  "results/1-target-failureexecute.log": [
+    "0x1 Outstanding allocations after evaluation of \\TEST",
+    "ACPI Error: 6 (0x6) Outstanding cache allocations (20260408/uttrack-902)"
+  ],
+  "results/2-count-add-control.log": [
+    "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+  ],
+  "results/2-count-addexecute.log": [
+    "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+  ],
+  "results/2-count-failure-compile.log": [
+    "Warning  3144 -                                                                                                                                                                                        Method Local is set but never used ^  (Local0)"
+  ],
+  "results/2-count-failure-control.log": [
+    "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+  ],
+  "results/2-count-failureexecute.log": [
+    "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+  ],
+  "results/2-count-method-control.log": [
+    "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+  ],
+  "results/2-count-methodexecute.log": [
+    "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+  ],
+  "results/2-method-actual-control.log": [
+    "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+  ],
+  "results/2-method-actualexecute.log": [
+    "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+  ],
+  "results/2-nested-buffer-control.log": [
+    "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+  ],
+  "results/2-nested-bufferexecute.log": [
+    "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+  ],
+  "results/2-numeric-prefix-control.log": [
+    "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+  ],
+  "results/2-numeric-prefixexecute.log": [
+    "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+  ],
+  "results/2-raw-initializer-control.log": [
+    "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+  ],
+  "results/2-raw-initializerexecute.log": [
+    "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+  ],
+  "results/2-return-arg-control.log": [
+    "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+  ],
+  "results/2-return-argexecute.log": [
+    "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+  ],
+  "results/2-store-local-control.log": [
+    "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+  ],
+  "results/2-store-localexecute.log": [
+    "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+  ],
+  "results/2-target-failure-control.log": [
+    "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+  ],
+  "results/2-target-failureexecute.log": [
+    "0x1 Outstanding allocations after evaluation of \\TEST",
+    "ACPI Error: 6 (0x6) Outstanding cache allocations (20260408/uttrack-902)"
+  ]
+}

@@ -5,6 +5,7 @@ with AML_Execute;
 with AML_Namespace;
 with AML_Table_Backing;
 procedure Format_Collecting_Tests is
+   use type AML_Decode.Bytes;
    package N is new AML_Namespace (32, Max_Retained_Roots => 8,
      Perform_Delay => AML_Delays.Unavailable_Provider);
    package C is new N.Owned.Collecting;
