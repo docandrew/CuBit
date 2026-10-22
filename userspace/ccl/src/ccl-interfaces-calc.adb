@@ -17,6 +17,8 @@ package body CCL.Interfaces.Calc with SPARK_Mode is
       CCL.Interface_Sources.Declare_Types (TYPE_SOURCE, Types, Accepted);
       if Accepted then CCL.Objects.Bind (Types, Named ("Calc_Form"), FORM_KEY, Bound.Form, Accepted); end if;
       if Accepted then CCL.Objects.Bind (Types, Named ("Calc_Number"), NUMBER_KEY, Bound.Number, Accepted); end if;
+      if Accepted then CCL.Objects.Bind (Types, Named ("Calc_Options"), OPTIONS_KEY, Bound.Options, Accepted); end if;
+      if Accepted then CCL.Objects.Bind (Types, Named ("Calc_Request"), REQUEST_KEY, Bound.Request, Accepted); end if;
    end Define_Types;
 
    procedure Publish
@@ -41,18 +43,27 @@ package body CCL.Interfaces.Calc with SPARK_Mode is
          Argument_Text_Limit => CCL.Host_Values.Maximum_Text_Length,
          Result => CCL.Host_Values.Object_Value, Result_Schema => NUMBER_KEY,
          Authority => CCL.VM.No_Authority, others => <>);
+      --  A Calc_Request in, a Calc_Number out; no authority.
+      EVALUATE_WITH_CONTRACT : constant CCL.Host_Values.Import_Declaration :=
+        (Argument => CCL.Host_Values.Object_Value, Argument_Schema => REQUEST_KEY,
+         Result => CCL.Host_Values.Object_Value, Result_Schema => NUMBER_KEY,
+         Authority => CCL.VM.No_Authority, others => <>);
    begin
       Error := CCL.Catalog.Invalid_Host_Contract;
       Define_Types (Types, Bound, Accepted);
       Publish_Schema (Bound.Form);
       Publish_Schema (Bound.Number);
+      Publish_Schema (Bound.Options);
+      Publish_Schema (Bound.Request);
       if not Accepted then
          return;
       end if;
       CCL.Catalog.Define_Interface ("calc", 1, 0, DIGEST, Descriptor, Error);
       for Op in Operation loop
          exit when Error /= CCL.Catalog.Catalog_Valid;
-         CCL.Catalog.Define_Host_Operation (Name (Op), 1, EVALUATE_CONTRACT, Entry_Operation, Error);
+         CCL.Catalog.Define_Host_Operation
+           (Name (Op), 1, (if Op = Evaluate_With then EVALUATE_WITH_CONTRACT else EVALUATE_CONTRACT),
+            Entry_Operation, Error);
          if Error = CCL.Catalog.Catalog_Valid and then Is_Command (Op) then
             CCL.Catalog.Mark_Command (Entry_Operation);
          end if;

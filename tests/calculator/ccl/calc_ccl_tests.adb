@@ -69,7 +69,10 @@ begin
    Expect ("(field (calc.evaluate ""2/3 + 1/6"") decimal)", "String: 0.8(3)");
    Expect ("(field (calc.evaluate ""2/3 + 1/6"") exact)", "Boolean: true");
    Expect ("(field (calc.evaluate ""sqrt(2)"") exact)", "Boolean: false");
+   --  An approximation: its guaranteed digits and their stated bound.
    Expect ("(field (calc.evaluate ""sqrt(2)"") decimal)", "String: 1.4142135623730950488");
+   Expect ("(field (calc.evaluate ""sqrt(2)"") bound)", "String: 2e-21");
+   Expect ("(field (calc.evaluate ""1/3"") bound)", "String");
    Expect ("(field (calc.evaluate ""2^64"") numerator)", "String: 18446744073709551616");
    Expect ("(field (calc.evaluate ""-7/2"") numerator)", "String: -7");
    Expect ("(field (calc.evaluate ""1e-30"") decimal)", "String: 1e-30");
@@ -93,6 +96,23 @@ begin
    Expect ("(field (calc ""2/3+1/6"") decimal)", "String: 0.8(3)");
    Expect ("(= (field (calc ""sqrt(2)"") decimal) (field (calc.evaluate ""sqrt(2)"") decimal))", "Boolean: true");
    Show ("(calc ""1/0"")");
+   --  Modes: calc.evaluate-with a Calc_Request (the app's options).
+   Show ("(calc.evaluate-with (Calc_Request ""sin(30)"" (Calc_Options angle => Calc_Angle.Degrees)))");
+   Expect ("(field (calc.evaluate-with (Calc_Request ""sin(30)"" (Calc_Options angle => Calc_Angle.Degrees))) " &
+           "numerator)", "String: 1");
+   Expect ("(field (calc.evaluate-with (Calc_Request ""asin(1/2)"" (Calc_Options angle => Calc_Angle.Gradians)))" &
+           " decimal)", "String: 33.(3)");
+   Show ("(calc.evaluate-with (Calc_Request ""0xFF + 1"" (Calc_Options mode => Calc_Mode.Programmer " &
+         "word => Calc_Word.Bits_8 signed => false)))");
+   Expect ("(field (calc.evaluate-with (Calc_Request ""0xFF + 1"" (Calc_Options mode => Calc_Mode.Programmer " &
+           "word => Calc_Word.Bits_8 signed => false))) wrapped)", "Boolean: true");
+   Expect ("(field (calc.evaluate-with (Calc_Request ""-1"" (Calc_Options mode => Calc_Mode.Programmer " &
+           "word => Calc_Word.Bits_16))) hexadecimal)", "String: FFFF");
+   Expect ("(field (calc.evaluate-with (Calc_Request ""rotl(0b1001, 2)"" (Calc_Options mode => " &
+           "Calc_Mode.Programmer word => Calc_Word.Bits_8 signed => false))) binary)", "String: 00100100");
+   Expect ("(calc ""rotl(1, 1)"")", "calc rejected its argument: rotl and rotr need a word size (8, 16, 32 or " &
+           "64 bits) (column 1). Instead: use calc.evaluate-with and Calc_Options with mode Programmer and a word size");
+   Show ("(calc.evaluate-with (Calc_Request ""7/2"" (Calc_Options mode => Calc_Mode.Programmer)))");
    Put_Line ("calc.* in CCL:" & Passed'Image & " checks passed," & Failed'Image & " failed");
    if Failed > 0 then
       Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);

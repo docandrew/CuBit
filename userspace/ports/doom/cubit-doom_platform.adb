@@ -160,7 +160,7 @@ package body CuBit.Doom_Platform is
       end if;
       Created := D.Decode_Creation_Result
         (Send (D.Encode_Create ((Window_Width, Window_Height,
-                                 D.Window_Surface))));
+                                 D.Window_Surface, D.Desktop_Sized))));
       if Created.Status /= D.Success then
          return False;
       end if;

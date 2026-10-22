@@ -88,10 +88,49 @@ package Calc_Naturals with SPARK_Mode is
    procedure Square_Root (X : Magnitude; Result : in out Magnitude)
      with Pre => Is_Zero (Result) and then Length (X) < MAXIMUM_LIMBS - 8,
           Post => Length (Result) <= Length (X) + 3;
+   --  Result := floor (X ** (1 / Degree)), bit by bit from the top.
+   procedure Integer_Root (X : Magnitude; Degree : Positive; Result : in out Magnitude)
+     with Pre => Is_Zero (Result) and then Length (X) < MAXIMUM_LIMBS / 4,
+          Post => Length (Result) <= Length (X);
    --  Result := X * 2 ** Shift.
    procedure Shift_Left (X : Magnitude; Shift : Bit_Count; Result : in out Magnitude)
      with Pre => Is_Zero (Result) and then Length (X) + Shift / LIMB_BITS + 1 <= MAXIMUM_LIMBS,
           Post => Length (Result) <= Length (X) + Shift / LIMB_BITS + 1;
+
+   --  Result := X / 2 ** Shift (rounded down).
+   procedure Shift_Right (X : Magnitude; Shift : Bit_Count; Result : in out Magnitude)
+     with Pre => Is_Zero (Result),
+          Post => Length (Result) <= Length (X);
+   --  Result := X mod 2 ** Count (its low Count bits).
+   procedure Low_Bits (X : Magnitude; Count : Bit_Count; Result : in out Magnitude)
+     with Pre => Is_Zero (Result),
+          Post => Length (Result) <= Length (X);
+   --  Bitwise and, or, xor, and-not of two magnitudes.
+   procedure Bitwise
+     (Operation : Bitwise_Operation; A, B : Magnitude; Result : in out Magnitude)
+     with Pre => Is_Zero (Result),
+          Post => Length (Result) <= Natural'Max (Length (A), Length (B));
+
+   --  The digits of a number written in Base (2 .. 16): '0' .. '9', 'a' ..
+   --  'f' or 'A' .. 'F' below Base.
+   subtype Digit_Base is Limb range 2 .. 16;
+   function Is_Digit (C : Character; Base : Digit_Base) return Boolean is
+     (case C is
+         when '0' .. '9' => Character'Pos (C) - Character'Pos ('0') < Natural (Base),
+         when 'a' .. 'f' => Character'Pos (C) - Character'Pos ('a') + 10 < Natural (Base),
+         when 'A' .. 'F' => Character'Pos (C) - Character'Pos ('A') + 10 < Natural (Base),
+         when others => False);
+   procedure From_Digits (Text : String; Base : Digit_Base; Result : in out Magnitude)
+     with Pre => Is_Zero (Result)
+                 and then Text'Length <= MAXIMUM_LIMBS - 1
+                 and then (for all C of Text => Is_Digit (C, Base));
+   --  Its digits in Base, upper case: at most Digits_Bound (X) of them.
+   function Digits_Bound (X : Magnitude) return Positive
+     with Post => Digits_Bound'Result <= Length (X) * LIMB_BITS + 1;
+   procedure To_Digits (X : Magnitude; Base : Digit_Base; Into : out String; Last : out Natural)
+     with Pre => Into'First = 1 and then Into'Length >= Digits_Bound (X)
+                 and then Length (X) <= MAXIMUM_LIMBS / 2,
+          Post => Last in 1 .. Into'Last;
 
    --  Decimal digits: at most Decimal_Bound (X) of them ("0" for zero).
    function Decimal_Bound (X : Magnitude) return Positive

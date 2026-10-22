@@ -242,23 +242,25 @@ begin
    pragma Assert (not Decode_Operation (0).Valid);
    pragma Assert (not Decode_Operation (Unsigned_32'Last).Valid);
    for Kind in Surface_Kind loop
-      for Size in Pixel_Extent range 0 .. 32 loop
-         Wire := Encode_Create ((Size, Size, Kind));
-         pragma Assert (Decode_Create (Wire) = (True, (Size, Size, Kind)));
+      for Sizing in Window_Sizing loop
+         for Size in Pixel_Extent range 0 .. 32 loop
+            Wire := Encode_Create ((Size, Size, Kind, Sizing));
+            pragma Assert (Decode_Create (Wire) = (True, (Size, Size, Kind, Sizing)));
+         end loop;
       end loop;
    end loop;
-   Wire := Encode_Create ((Pixel_Extent'Last, Pixel_Extent'Last, Window_Surface));
+   Wire := Encode_Create ((Pixel_Extent'Last, Pixel_Extent'Last, Window_Surface, Desktop_Sized));
    pragma Assert (Decode_Create (Wire).Valid);
    Wire.Words (0) := Unsigned_64'Last;
    pragma Assert (not Decode_Create (Wire).Valid);
-   Wire := Encode_Create ((800, 600, Window_Surface));
+   Wire := Encode_Create ((800, 600, Window_Surface, Desktop_Sized));
    for Length in Unsigned_8 loop
       Wire.Length := Length;
       pragma Assert (Decode_Create (Wire).Valid = (Length = 4));
    end loop;
    Wire.Length := 4; Wire.Words (2) := 3;
    pragma Assert (not Decode_Create (Wire).Valid);
-   Wire.Words (2) := 2; Wire.Words (3) := 1;
+   Wire.Words (2) := 2; Wire.Words (3) := 2;
    pragma Assert (not Decode_Create (Wire).Valid);
    for Status in Status_Code range Denied .. Resources_Exhausted loop
       Wire := Encode_Creation_Result ((Status => Status));

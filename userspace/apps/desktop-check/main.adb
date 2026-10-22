@@ -41,7 +41,7 @@ procedure Main is
       package Pub renames CuBit.Desktop_Protocol.Publication;
       use type Pub.Receipt;
       Fixture : constant Creation_Result := Decode_Creation_Result
-        (Send (Encode_Create ((320, 200, Window_Surface))));
+        (Send (Encode_Create ((320, 200, Window_Surface, Desktop_Sized))));
       Config : Pub.Configuration_Result;
       Grants : array (Positive range 1 .. 2) of MG.Grant_Reference;
       Receipts : array (Positive range 1 .. 2) of Pub.Receipt;
@@ -157,7 +157,7 @@ procedure Main is
       Extent, Repair, Changed : Debt.Box;
       use type System.Address;
       Fixture : constant Creation_Result := Decode_Creation_Result
-        (Send (Encode_Create ((320, 200, Window_Surface))));
+        (Send (Encode_Create ((320, 200, Window_Surface, Desktop_Sized))));
       Config : Pub.Configuration_Result;
       Buffers : array (Positive range 1 .. 2) of Frames.Buffer;
       OK : Boolean;
@@ -271,7 +271,7 @@ procedure Main is
       package Pub renames CuBit.Desktop_Protocol.Publication;
       use type Pub.Receipt;
       Fixture : constant Creation_Result := Decode_Creation_Result
-        (Send (Encode_Create ((128, 96, Plain_Surface))));
+        (Send (Encode_Create ((128, 96, Plain_Surface, Desktop_Sized))));
       Raw : constant Unsigned_64 := syscall (SYSCALL_SBRK, 69_632);
       Grant, Short : MG.Grant_Reference;
       OK : Boolean;
@@ -363,7 +363,7 @@ procedure Main is
       package Pub renames CuBit.Desktop_Protocol.Publication;
       use type Pub.Configuration_Result;
       Fixture : constant Creation_Result := Decode_Creation_Result
-        (Send (Encode_Create ((320, 200, Plain_Surface))));
+        (Send (Encode_Create ((320, 200, Plain_Surface, Desktop_Sized))));
       Before, After : Pub.Configuration_Result;
       Request, Result : Wire_Message;
       Resized : Resize_Result;
@@ -458,7 +458,7 @@ procedure Main is
                 "malformed cursor rejected");
 
          Fixture := Decode_Creation_Result
-           (Send (Encode_Create ((320, 200, Plain_Surface))));
+           (Send (Encode_Create ((320, 200, Plain_Surface, Desktop_Sized))));
          Check (Fixture.Status = Success, "destroy boundary fixture");
          if Fixture.Status = Success then
             Request.Label := Code (Destroy_Surface);
@@ -539,7 +539,7 @@ procedure Main is
                 "malformed information query rejected");
 
          Fixture := Decode_Creation_Result
-           (Send (Encode_Create ((320, 200, Plain_Surface))));
+           (Send (Encode_Create ((320, 200, Plain_Surface, Desktop_Sized))));
          Check (Fixture.Status = Success, "goodbye boundary fixture");
          if Fixture.Status = Success then
             Request.Label := Code (Goodbye);
@@ -558,12 +558,12 @@ procedure Main is
              "supported handshake after malformed traffic");
       Check (Decode_Information_Result (Send (Encode_Empty_Request (Get_Information))).Status = Success,
              "checked display information");
-      Fixture := Decode_Creation_Result (Send (Encode_Create ((320, 200, Plain_Surface))));
+      Fixture := Decode_Creation_Result (Send (Encode_Create ((320, 200, Plain_Surface, Desktop_Sized))));
       Check (Fixture.Status = Success, "session cleanup fixture");
       if Fixture.Status = Success then
          declare
             Other : constant Creation_Result :=
-              Decode_Creation_Result (Send (Encode_Create ((320, 200, Plain_Surface))));
+              Decode_Creation_Result (Send (Encode_Create ((320, 200, Plain_Surface, Desktop_Sized))));
             Raw : constant Unsigned_64 := syscall (SYSCALL_SBRK, 8192);
             Grant : MG.Grant_Reference;
             Acquired : Boolean := False;
@@ -627,9 +627,9 @@ procedure Main is
            (Send (Encode_Input_Request ((Poll_Input, Target, After))), Poll_Input));
    begin
       Fixture := Decode_Creation_Result
-        (Send (Encode_Create ((320, 200, Plain_Surface))));
+        (Send (Encode_Create ((320, 200, Plain_Surface, Desktop_Sized))));
       Other := Decode_Creation_Result
-        (Send (Encode_Create ((320, 200, Plain_Surface))));
+        (Send (Encode_Create ((320, 200, Plain_Surface, Desktop_Sized))));
       Check (Fixture.Status = Success and Other.Status = Success,
              "input overflow fixtures created");
       if Fixture.Status = Success and Other.Status = Success then
@@ -738,7 +738,7 @@ procedure Main is
    begin
       for Op of Operations loop
          for Fault in 1 .. 4 loop
-            Fixture := Decode_Creation_Result (Send (Encode_Create ((320, 200, Plain_Surface))));
+            Fixture := Decode_Creation_Result (Send (Encode_Create ((320, 200, Plain_Surface, Desktop_Sized))));
             Check (Fixture.Status = Success, "input validation fixture");
             if Fixture.Status = Success then
                Request := (Code (Op), 4, 0, 0,
@@ -762,7 +762,7 @@ procedure Main is
          Check (Send (Request) = Encode_Status (Op, Bad_Object), "missing input target");
       end loop;
       Fixture := Decode_Creation_Result
-        (Send (Encode_Create ((320, 200, Plain_Surface))));
+        (Send (Encode_Create ((320, 200, Plain_Surface, Desktop_Sized))));
       Check (Fixture.Status = Success, "input waiter fixture");
       if Fixture.Status = Success then
          declare
@@ -867,7 +867,7 @@ procedure Main is
                   end if;
 
                   Fixture := Decode_Creation_Result
-                    (Send (Encode_Create ((320, 200, Plain_Surface))));
+                    (Send (Encode_Create ((320, 200, Plain_Surface, Desktop_Sized))));
                   Check (Fixture.Status = Success, "channel reuse after waiter destruction");
                   if Fixture.Status = Success then
                      Event := Decode_Input_Result
@@ -900,17 +900,17 @@ begin
       debugPrint ("TEST: FAIL desktop protocol startup capabilities" & ASCII.LF);
       return;
    end if;
-   Wire := Encode_Create ((320, 200, Plain_Surface));
+   Wire := Encode_Create ((320, 200, Plain_Surface, Desktop_Sized));
    Wire.Words (0) := Unsigned_64'Last;
    Response := Send (Wire);
    Check (Response.Words (0) = 0 and Decode_Creation_Result (Response).Status = Invalid_Request, "oversized width");
-   Wire := Encode_Create ((320, 200, Plain_Surface)); Wire.Length := 3;
+   Wire := Encode_Create ((320, 200, Plain_Surface, Desktop_Sized)); Wire.Length := 3;
    Check (Decode_Creation_Result (Send (Wire)).Status = Invalid_Request, "short header");
-   Wire := Encode_Create ((320, 200, Plain_Surface)); Wire.Reserved := 1;
+   Wire := Encode_Create ((320, 200, Plain_Surface, Desktop_Sized)); Wire.Reserved := 1;
    Check (Decode_Creation_Result (Send (Wire)).Status = Invalid_Request, "reserved header");
-   Wire := Encode_Create ((320, 200, Plain_Surface)); Wire.Words (2) := Unsigned_64'Last;
+   Wire := Encode_Create ((320, 200, Plain_Surface, Desktop_Sized)); Wire.Words (2) := Unsigned_64'Last;
    Check (Decode_Creation_Result (Send (Wire)).Status = Invalid_Request, "unknown kind");
-   Created := Decode_Creation_Result (Send (Encode_Create ((320, 200, Plain_Surface))));
+   Created := Decode_Creation_Result (Send (Encode_Create ((320, 200, Plain_Surface, Desktop_Sized))));
    Check (Created.Status = Success, "create after malformed traffic");
    if Created.Status /= Success then return; end if;
    Count := 1; Names (1) := Created.Surface;
@@ -1074,7 +1074,7 @@ begin
       end if;
    end;
    for Attempt in 2 .. Names'Last loop
-      Response := Send (Encode_Create ((320, 200, Plain_Surface)));
+      Response := Send (Encode_Create ((320, 200, Plain_Surface, Desktop_Sized)));
       Created := Decode_Creation_Result (Response);
       if Created.Status /= Success then
          Check (Created.Status = Resources_Exhausted and Response.Words (0) = 0, "unambiguous exhaustion");
@@ -1102,7 +1102,7 @@ begin
    end;
    Check_Input_Overflow;
    Check_Session_Boundaries;
-   Created := Decode_Creation_Result (Send (Encode_Create ((320, 200, Plain_Surface))));
+   Created := Decode_Creation_Result (Send (Encode_Create ((320, 200, Plain_Surface, Desktop_Sized))));
    Check (Created.Status = Success, "service usable after exhaustion");
    if Created.Status = Success then
       declare

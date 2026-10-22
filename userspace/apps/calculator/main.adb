@@ -47,14 +47,13 @@ procedure Main is
    HOME_ROW : constant String := "asdfghjkl";
    BOTTOM_ROW_FIRST : constant Unsigned_64 := 16#2C#;
    BOTTOM_ROW : constant String := "zxcvbnm";
+   --  The digit row (Ctrl+1, 2, 3 switch modes).
+   DIGIT_ROW_FIRST : constant Unsigned_64 := 16#02#;
+   DIGIT_ROW : constant String := "1234567890";
    CODE_POINT_MASK : constant Unsigned_64 := 16#FFFF_FFFF#;
    FIRST_PRINTABLE : constant := 16#20#;
    LAST_PRINTABLE : constant := 16#7E#;
 
-   INITIAL_WIDTH : constant := 420;
-   INITIAL_HEIGHT : constant := 660;
-   MINIMUM_WIDTH : constant := 340;
-   MINIMUM_HEIGHT : constant := 520;
    --  The app's explicit limits (docs/calculator.md, "Limits"): results up
    --  to 32,768 limbs (about 315,000 digits) on Enter; the live preview of
    --  each keystroke within 2,048 limbs, so typing never waits.
@@ -72,6 +71,8 @@ procedure Main is
    Opened : Boolean;
    First_Frame : Boolean := True;
    Shown_Count : Natural := 0;
+   Size : Shell.Window_Size;
+   Shown_Mode : Shell.Calc.Mode_Member := Shell.Calc.Standard;
 
    function Decimal (Value : Natural) return String is
       Image : constant String := Natural'Image (Value);
@@ -86,6 +87,8 @@ procedure Main is
       then HOME_ROW (HOME_ROW'First + Natural (Code - HOME_ROW_FIRST))
       elsif Code >= BOTTOM_ROW_FIRST and then Code - BOTTOM_ROW_FIRST < BOTTOM_ROW'Length
       then BOTTOM_ROW (BOTTOM_ROW'First + Natural (Code - BOTTOM_ROW_FIRST))
+      elsif Code >= DIGIT_ROW_FIRST and then Code - DIGIT_ROW_FIRST < DIGIT_ROW'Length
+      then DIGIT_ROW (DIGIT_ROW'First + Natural (Code - DIGIT_ROW_FIRST))
       else ' ');
 
    function Key_Of (Code : Unsigned_64) return Shell.Key is
@@ -102,7 +105,16 @@ procedure Main is
    --  shows; nothing in the shell depends on them.
    procedure Report is
       Count : constant Natural := Shell.History_Count (App);
+      Mode : constant Shell.Calc.Mode_Member := Shell.Options (App).Mode;
+      use type Shell.Calc.Mode_Member;
    begin
+      if Mode /= Shown_Mode then
+         Shown_Mode := Mode;
+         debugPrint ("calculator: mode "
+                     & (case Mode is
+                           when Shell.Calc.Standard => "STANDARD", when Shell.Calc.Scientific => "SCIENTIFIC",
+                           when Shell.Calc.Programmer => "PROGRAMMER") & ASCII.LF);
+      end if;
       if Count /= Shown_Count then
          Shown_Count := Count;
          if Count > 0 then
@@ -122,6 +134,20 @@ procedure Main is
       end if;
       Report;
    end Collect;
+
+   --  A mode switch: the window takes the new mode's size.
+   procedure Follow_Mode (Win : in out CuBit.UI.App.Window) is
+      Size : Shell.Window_Size;
+      Wanted, Resized : Boolean;
+   begin
+      Shell.Take_Size_Request (App, Size, Wanted);
+      if Wanted then
+         CuBit.UI.App.Request_Size (Win, Size.Width, Size.Height, Size.Minimum_Width, Size.Minimum_Height, Resized);
+         if not Resized then
+            debugPrint ("calculator: the desktop refused the mode's size" & ASCII.LF);
+         end if;
+      end if;
+   end Follow_Mode;
 
    procedure Render (Win : in out CuBit.UI.App.Window; Damage : Rect) is
    begin
@@ -193,6 +219,7 @@ procedure Main is
                              others => <>));
       end if;
       Collect (Dirty);
+      Follow_Mode (Win);
       if Shell.Quit_Requested (App) then
          Running := False;
       end if;
@@ -212,15 +239,18 @@ begin
       (Result_Budget => (Budget => RESULT_LIMBS, Precision => APPROXIMATE_DIGITS),
        Preview_Budget => (Budget => PREVIEW_LIMBS, Precision => APPROXIMATE_DIGITS),
        History_Capacity => HISTORY_ENTRIES, Places => DECIMAL_PLACES));
+   Size := Shell.Size_Of (Shell.Options (App).Mode);
+   --  The window opens at the remembered mode's designed size (a compact
+   --  tool, not the desktop's default share of the screen).
    CuBit.UI.App.Open
-     (Win, INITIAL_WIDTH, INITIAL_HEIGHT,
+     (Win, Size.Width, Size.Height,
       CuBit.Desktop_Protocol.Feature_Bits
         ([CuBit.Desktop_Protocol.Decorated | CuBit.Desktop_Protocol.Resizable |
           CuBit.Desktop_Protocol.Minimizable | CuBit.Desktop_Protocol.Maximizable |
           CuBit.Desktop_Protocol.Closeable | CuBit.Desktop_Protocol.Graceful_Close => True,
           others => False]),
       Opened, title => "Calculator", protected_frames => True, batched_input => False,
-      minimum_width => MINIMUM_WIDTH, minimum_height => MINIMUM_HEIGHT);
+      minimum_width => Size.Minimum_Width, minimum_height => Size.Minimum_Height, preferred_size => True);
    if Opened then
       Calc_Host_Native.Set_Surface (Host, CuBit.UI.App.Surface_ID (Win));
       Shell.Set_Bounds (App, CuBit.UI.App.Full_Rect (Win));

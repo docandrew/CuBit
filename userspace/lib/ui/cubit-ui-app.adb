@@ -250,7 +250,8 @@ package body CuBit.UI.App is
        protected_frames : Boolean := False;
        batched_input : Boolean := False;
        minimum_width : Natural := 0;
-       minimum_height : Natural := 0)
+       minimum_height : Natural := 0;
+       preferred_size : Boolean := False)
    is
       hello : Message;
       info : Message;
@@ -331,7 +332,8 @@ package body CuBit.UI.App is
       end if;
 
       created := CuBit.Desktop_Messages.From_Wire
-        (DP.Encode_Create ((DP.Pixel_Extent (initialW), DP.Pixel_Extent (initialH), DP.Window_Surface)));
+        (DP.Encode_Create ((DP.Pixel_Extent (initialW), DP.Pixel_Extent (initialH), DP.Window_Surface,
+                            (if preferred_size then DP.Preferred_Size else DP.Desktop_Sized))));
       created.tag := capCall (UI_Desktop_Service.Endpoint, created, CuBit.Messages.Wait_Forever);
       creation := DP.Decode_Creation_Result (CuBit.Desktop_Messages.To_Wire (created));
       if creation.Status /= DP.Success then
@@ -341,6 +343,8 @@ package body CuBit.UI.App is
       end if;
       win.surfaceId := Unsigned_64 (creation.Surface);
 
+      win.maximumW := maxW;
+      win.maximumH := maxH;
       limits.Surface := creation.Surface;
       limits.Bounds :=
         (DP.Pixel_Extent (minW), DP.Pixel_Extent (minH),
@@ -370,6 +374,52 @@ package body CuBit.UI.App is
 
       ok := True;
    end Open;
+
+   procedure Request_Size
+      (win : in out Window;
+       width, height : Natural;
+       minimum_width, minimum_height : Natural;
+       ok : out Boolean)
+   is
+      limits : DP.Limits_Request;
+      reply : Message;
+      resized : DP.Resize_Result;
+      chromeW : constant Natural := Horizontal_Chrome (win);
+      chromeH : constant Natural := Vertical_Chrome (win);
+   begin
+      ok := False;
+      if win.surfaceId = 0 or else
+        width not in 1 .. Natural (DP.Pixel_Extent'Last) - chromeW or else
+        height not in 1 .. Natural (DP.Pixel_Extent'Last) - chromeH or else
+        minimum_width > width or else minimum_height > height or else
+        (win.maximumW > 0 and then Unsigned_64 (width + chromeW) > win.maximumW) or else
+        (win.maximumH > 0 and then Unsigned_64 (height + chromeH) > win.maximumH)
+      then
+         return;
+      end if;
+      limits.Surface := DP.Live_Surface_Name (win.surfaceId);
+      limits.Bounds :=
+        (DP.Pixel_Extent (minimum_width + chromeW), DP.Pixel_Extent (minimum_height + chromeH),
+         DP.Pixel_Extent (win.maximumW), DP.Pixel_Extent (win.maximumH));
+      for feature in DP.Window_Feature loop
+         limits.Features (feature) :=
+           (win.flags and DP.Window_Feature'Enum_Rep (feature)) /= 0;
+      end loop;
+      reply := CuBit.Desktop_Messages.From_Wire (DP.Encode_Limits (limits));
+      reply.tag := capCall (UI_Desktop_Service.Endpoint, reply, CuBit.Messages.Wait_Forever);
+      if DP.Decode_Limits_Result
+        (CuBit.Desktop_Messages.To_Wire (reply)).Status /= DP.Success
+      then
+         debugPrint ("ui-app: window limits failed" & LF);
+         return;
+      end if;
+      reply := CuBit.Desktop_Messages.From_Wire
+        (DP.Encode_Resize ((DP.Live_Surface_Name (win.surfaceId),
+                            DP.Pixel_Extent (width + chromeW), DP.Pixel_Extent (height + chromeH))));
+      reply.tag := capCall (UI_Desktop_Service.Endpoint, reply, CuBit.Messages.Wait_Forever);
+      resized := DP.Decode_Resize_Result (CuBit.Desktop_Messages.To_Wire (reply));
+      ok := resized.Status = DP.Success;
+   end Request_Size;
 
    procedure Set_Title (win : Window; title : String) is
       request : Message;

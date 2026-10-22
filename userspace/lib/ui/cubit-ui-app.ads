@@ -86,7 +86,23 @@ package CuBit.UI.App is
        protected_frames : Boolean := False;
        batched_input : Boolean := False;
        minimum_width : Natural := 0;
-       minimum_height : Natural := 0);
+       minimum_height : Natural := 0;
+       preferred_size : Boolean := False);
+   -- preferred_size: width x height is the size the application is designed
+   -- for (a compact tool), and the window opens at it (cut only to fit the
+   -- work area); otherwise it is a preference the desktop's placement policy
+   -- may enlarge (Desktop_Protocol.Window_Sizing).
+
+   -- Ask the desktop to resize the open window to width x height of client
+   -- area, with new resize minima (for a layout that needs more room, such
+   -- as another mode of the same app). The maxima Open set stay. ok: the
+   -- desktop accepted both; the new size arrives as a configure event (it
+   -- may be cut to fit the work area).
+   procedure Request_Size
+      (win : in out Window;
+       width, height : Natural;
+       minimum_width, minimum_height : Natural;
+       ok : out Boolean);
 
    procedure Set_Title (win : Window; title : String);
 
@@ -276,6 +292,8 @@ private
       densityNumerator, densityDenominator : Positive := 1;
       surfaceId : Unsigned_64 := 0;
       flags : Unsigned_64 := 0;
+      -- The maximum surface size the window's limits allow (0: none).
+      maximumW, maximumH : Unsigned_64 := 0;
       bufferAddr : System.Address := System.Null_Address;
       bufferGrant : CuBit.Grant_References.Reference;
       bufferPages : Unsigned_64 := 0;

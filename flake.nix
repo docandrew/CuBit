@@ -138,6 +138,7 @@
               perl
               pkg-config
               python3Packages.pillow
+              python3Packages.mpmath # the calculator's independent reference (tests/calculator)
               qemu
               rgbds
               SDL2

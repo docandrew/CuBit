@@ -828,9 +828,9 @@ fi
 if [ "$TEST_NAME" = desktop-vm ]; then
     QEMU_MEMORY="${QEMU_MEMORY:-2G}"
 fi
-# CUBIT_TEST_VIDEO_SIZE=WxH (desktop-display only): the firmware mode, as
+# CUBIT_TEST_VIDEO_SIZE=WxH (desktop-display and calculator): the firmware mode, as
 # WIDTHxHEIGHT; larger modes need room for Desktop's output buffers.
-if [ "$TEST_NAME" = desktop-display ] && [ -n "${CUBIT_TEST_VIDEO_SIZE:-}" ]; then
+if { [ "$TEST_NAME" = desktop-display ] || [ "$TEST_NAME" = calculator ]; } && [ -n "${CUBIT_TEST_VIDEO_SIZE:-}" ]; then
     if ! [[ "$CUBIT_TEST_VIDEO_SIZE" =~ ^([0-9]+)x([0-9]+)$ ]]; then
         echo "headless: CUBIT_TEST_VIDEO_SIZE must be WIDTHxHEIGHT" >&2
         exit 1
@@ -2089,7 +2089,7 @@ fi
 rm -f "$SERIAL_LOG" "$NET_PCAP"
 
 sed -i 's/^set default=.*/set default=4/' "$GRUB_CFG"
-if [ "$TEST_NAME" = desktop-display ] && [ -n "${CUBIT_TEST_VIDEO_SIZE:-}" ]; then
+if { [ "$TEST_NAME" = desktop-display ] || [ "$TEST_NAME" = calculator ]; } && [ -n "${CUBIT_TEST_VIDEO_SIZE:-}" ]; then
     # The firmware mode Desktop starts at (VIDEO_ARGS below sizes the VGA).
     sed -i "s/set gfxpayload=1024x768x32/set gfxpayload=${VIDEO_WIDTH}x${VIDEO_HEIGHT}x32/" "$GRUB_CFG"
 fi
@@ -2155,7 +2155,7 @@ VIDEO_ARGS=(-device virtio-gpu-pci)
 # primary, using linear-fb"), so the size goes to GRUB's gfxpayload (set
 # above) on the primary std VGA, with video memory for the mode. SeaBIOS
 # VBE lists 1920x1080, 2560x1440, 2560x1600 and 3840x2160 among others.
-if [ "$TEST_NAME" = desktop-display ] && [ -n "${CUBIT_TEST_VIDEO_SIZE:-}" ]; then
+if { [ "$TEST_NAME" = desktop-display ] || [ "$TEST_NAME" = calculator ]; } && [ -n "${CUBIT_TEST_VIDEO_SIZE:-}" ]; then
     VGA_MEMORY_MB=16
     while [ $((VGA_MEMORY_MB * 1024 * 1024)) -lt $((VIDEO_WIDTH * VIDEO_HEIGHT * 4)) ]; do
         VGA_MEMORY_MB=$((VGA_MEMORY_MB * 2))
@@ -2897,7 +2897,9 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
             sleep 0.5
             for entry in '(calc.evaluate "2/3 + 1/6")' '(field (calc.evaluate "2^64") numerator)' \
                          '(field (calc.evaluate "sqrt(2)") exact)' '(calc.evaluate "1/0")' \
-                         '(field (calc "3/4+1/8") decimal)'; do
+                         '(field (calc "3/4+1/8") decimal)' '(field (calc "sqrt(2)") bound)' \
+                         '(field (calc.evaluate-with (Calc_Request "sin(30)" (Calc_Options angle => Calc_Angle.Degrees))) decimal)' \
+                         '(calc.evaluate-with (Calc_Request "0xFF + 1" (Calc_Options mode => Calc_Mode.Programmer word => Calc_Word.Bits_8)))'; do
                 python3 "$ROOT_DIR/tests/ccl-console/send-text.py" "$MONITOR_SOCKET" "$entry" 0.08
                 sleep 1
             done
@@ -3371,6 +3373,35 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
             sleep 1
             printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-calculator.ppm" | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
             sleep 0.5
+            calc_keys() {
+                for key in "$@"; do
+                    printf 'sendkey %s\n' "$key"
+                    sleep 0.08
+                done | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
+            }
+            # Scientific (Ctrl+2): an approximation with its stated bound;
+            # pi live, not entered.
+            calc_keys esc ctrl-2
+            calc_wait "calculator: mode SCIENTIFIC"
+            calc_enter "sin(1)"
+            calc_wait "calculator: evaluated sin(1) = 0.8414709848078965066"
+            calc_keys p i
+            sleep 1
+            printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-calculator-scientific.ppm" | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
+            sleep 0.5
+            # Programmer (Ctrl+3): a 64-bit signed word; ~0 live.
+            calc_keys esc ctrl-3
+            calc_wait "calculator: mode PROGRAMMER"
+            calc_enter "0xFF + 1"
+            calc_wait "calculator: evaluated 0xFF + 1 = 256"
+            calc_enter "1 << 63"
+            calc_wait "calculator: evaluated 1 << 63 = -9223372036854775808"
+            calc_keys shift-grave_accent 0 x f 0
+            sleep 1
+            printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-calculator-programmer.ppm" | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
+            sleep 0.5
+            calc_keys esc ctrl-1
+            calc_wait "calculator: mode STANDARD"
             printf 'sendkey ctrl-q\n' | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
             calc_wait "calculator: closed"
         else
@@ -4440,11 +4471,14 @@ ccl-console: REPL completed: Task<Run_Outcome>: Done (Run_Outcome.Finished (Unix
 "
         elif [ "${CCL_CONSOLE_DEMO:-}" = calc ]; then
             required_markers="$required_markers
-ccl-console: REPL completed: Calc_Number: (Calc_Number true \"5\" \"6\" \"0.8(3)\" Calc_Form.Repeating)
+ccl-console: REPL completed: Calc_Number: (Calc_Number true \"5\" \"6\" \"0.8(3)\" Calc_Form.Repeating \"\" \"\" \"\" \"\" false)
 ccl-console: REPL completed: String: 18446744073709551616
 ccl-console: REPL completed: Boolean: false
 ccl-console: REPL completed: calc.evaluate rejected its argument: division by zero (column 2)
 ccl-console: REPL completed: String: 0.875
+ccl-console: REPL completed: String: 2e-21
+ccl-console: REPL completed: String: 0.5
+ccl-console: REPL completed: Calc_Number: (Calc_Number true \"0\" \"1\" \"0\" Calc_Form.Integer_Form \"\" \"00\" \"000\" \"00000000\" true)
 "
         elif [ "${CCL_CONSOLE_DEMO:-}" = clipboard ]; then
             required_markers="$required_markers
@@ -4872,6 +4906,10 @@ calculator: evaluated 2^100 = 1267650600228229401496703205376 entries=2
 calculator: evaluated ans / 2^99 = 2 entries=3
 calculator: evaluated 100! = 93326215443944152681699238856266700490715968264381621468592963895217599993229915608941463976156518286253697920827223758251185210916864000000000000000000000000 entries=5
 calculator: evaluated 1/7 = 1/7 entries=6
+calculator: mode SCIENTIFIC
+calculator: mode PROGRAMMER
+calculator: evaluated 0xFF + 1 = 256 entries=8
+calculator: mode STANDARD
 calculator: closed
 "
         ;;
@@ -5318,14 +5356,18 @@ hello cubit"
     fi
 fi
 if [ "$TEST_NAME" = "calculator" ]; then
-    # A failed Enter (division by zero) adds nothing: six entries in all.
-    if grep -aF "entries=7" "$SERIAL_LOG" >/dev/null; then
+    # A failed Enter (division by zero) adds nothing: the next entry is
+    # the seventh.
+    if grep -aF "evaluated 1/(3-3)" "$SERIAL_LOG" >/dev/null ||
+       ! grep -aF "evaluated sin(1) = 0.8414709848078965066" "$SERIAL_LOG" | grep -qF "entries=7"; then
         echo "headless: the Calculator recorded a failed evaluation" >&2
         exit 1
     fi
     if [ -n "${CALC_SCREENSHOT_DIR:-}" ]; then
         mkdir -p "$CALC_SCREENSHOT_DIR"
-        python3 "$ROOT_DIR/tests/text-editor/ppm_to_png.py" "${SERIAL_LOG%.log}-calculator.ppm" --into "$CALC_SCREENSHOT_DIR"
+        python3 "$ROOT_DIR/tests/text-editor/ppm_to_png.py" "${SERIAL_LOG%.log}-calculator.ppm" \
+          "${SERIAL_LOG%.log}-calculator-scientific.ppm" "${SERIAL_LOG%.log}-calculator-programmer.ppm" \
+          --into "$CALC_SCREENSHOT_DIR"
     fi
 fi
 if [ "$CHECK_EXT2" -eq 1 ]; then

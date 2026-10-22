@@ -30,7 +30,7 @@ procedure Desktop_Frame_Pair (Passed : out Boolean) is
    end Check;
 begin
    Passed := True;
-   Created := DP.Decode_Creation_Result (Send (DP.Encode_Create ((320, 200, DP.Window_Surface))));
+   Created := DP.Decode_Creation_Result (Send (DP.Encode_Create ((320, 200, DP.Window_Surface, DP.Desktop_Sized))));
    Check (Created.Status = DP.Success, "create");
    if Created.Status /= DP.Success then return; end if;
    for Frame in 1 .. 12 loop

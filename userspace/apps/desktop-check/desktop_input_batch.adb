@@ -40,7 +40,7 @@ procedure Desktop_Input_Batch (Passed : out Boolean) is
    end Destroy;
 begin
    Passed := True;
-   Created := DP.Decode_Creation_Result (Send (DP.Encode_Create ((64, 64, DP.Plain_Surface))));
+   Created := DP.Decode_Creation_Result (Send (DP.Encode_Create ((64, 64, DP.Plain_Surface, DP.Desktop_Sized))));
    Check (Created.Status = DP.Success, "create raw surface");
    if Created.Status /= DP.Success then return; end if;
    for I in 1 .. 11 loop
@@ -85,7 +85,7 @@ begin
    Check (not App.Is_Open (Win), "close with cached events");
    Check (App.Input_Statistics (Win).Delivered_Events = 2, "diagnostics survive close");
    C.Clear (Cache);
-   Created := DP.Decode_Creation_Result (Send (DP.Encode_Create ((64, 64, DP.Plain_Surface))));
+   Created := DP.Decode_Creation_Result (Send (DP.Encode_Create ((64, 64, DP.Plain_Surface, DP.Desktop_Sized))));
    Check (Created.Status = DP.Success, "recreate after cached close");
    if Created.Status /= DP.Success then return; end if;
    Client_Input_Channel.Fetch (Cache, Unsigned_64 (Created.Surface), 0, Loaded);

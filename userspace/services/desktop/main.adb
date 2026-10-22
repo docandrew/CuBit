@@ -7023,14 +7023,18 @@ procedure main is
 
    --  A new client window's size and place (Desktop_Window_Placement): a
    --  share of the primary work area or the request, cascaded by slot.
-   procedure cascadePlace (Slot : Natural; W, H : in out Natural; X, Y : out Natural) is
+   procedure cascadePlace
+     (Slot : Natural; Sizing : DP.Window_Sizing; W, H : in out Natural; X, Y : out Natural) is
       Work : constant Rect := windowWorkArea (primaryBounds);
       Bound : constant := Desktop_Window_Placement.Maximum_Extent;
       Spot : constant Desktop_Window_Placement.Placement :=
         Desktop_Window_Placement.Place
           (Work_Width => Natural'Min (Work.w, Bound), Work_Height => Natural'Min (Work.h, Bound),
            Requested_Width => Natural'Min (W, Bound), Requested_Height => Natural'Min (H, Bound),
-           Minimum_Width => MIN_WIN_W, Minimum_Height => MIN_WIN_H, Slot => Slot);
+           Minimum_Width => MIN_WIN_W, Minimum_Height => MIN_WIN_H, Slot => Slot,
+           Policy => (case Sizing is
+                         when DP.Desktop_Sized => Desktop_Window_Placement.At_Least_Share,
+                         when DP.Preferred_Size => Desktop_Window_Placement.As_Requested));
    begin
       X := Spot.X;
       Y := Spot.Y;
@@ -9074,8 +9078,9 @@ procedure main is
                       elsif store.Last + 1 >= MAX_SURFACES then Table_Full else Out_Of_Memory));
                else
                   if (request.words (2) and SURFACE_FLAG_WINDOW) /= 0 then
-                     --  The request is a preference; Desktop policy sizes it.
-                     cascadePlace (Natural (slot), reqW, reqH, surfX, surfY);
+                     --  The request is a preference (Desktop policy sizes
+                     --  it) or the application's declared preferred size.
+                     cascadePlace (Natural (slot), creation.Value.Sizing, reqW, reqH, surfX, surfY);
                   else
                      if reqW = 0 or else reqW > primaryBounds.w then
                         reqW := primaryBounds.w;

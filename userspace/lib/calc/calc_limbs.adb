@@ -164,6 +164,24 @@ package body Calc_Limbs with SPARK_Mode is
       end loop;
    end Shift_Right;
 
+   procedure Bitwise (Operation : Bitwise_Operation; A, B : Limb_Array; Into : out Limb_Array) is
+      Left, Right : Limb;
+   begin
+      pragma Warnings (GNATprove, Off, "unused assignment", Reason => "flow needs the whole array set");
+      Into := [others => 0];
+      pragma Warnings (GNATprove, On, "unused assignment");
+      for I in Into'Range loop
+         Left := (if I <= A'Last then A (I) else 0);
+         Right := (if I <= B'Last then B (I) else 0);
+         Into (I) :=
+           (case Operation is
+               when Both => Left and Right,
+               when Either => Left or Right,
+               when Differ => Left xor Right,
+               when First_Only => Left and not Right);
+      end loop;
+   end Bitwise;
+
    --  The long division proper: Divisor has at least two significant limbs
    --  and its top bit set; Work holds the shifted numerator, one limb longer.
    procedure Divide_Normalized

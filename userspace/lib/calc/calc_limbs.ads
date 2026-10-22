@@ -91,6 +91,13 @@ package Calc_Limbs with SPARK_Mode, Pure is
    procedure Shift_Right (X : in out Limb_Array; Shift : Bit_Shift)
      with Pre => X'First = 1;
 
+   --  Bitwise: Both (and), Either (or), Differ (xor), First_Only (A and
+   --  not B), limb by limb; a missing limb is zero.
+   type Bitwise_Operation is (Both, Either, Differ, First_Only);
+   procedure Bitwise (Operation : Bitwise_Operation; A, B : Limb_Array; Into : out Limb_Array)
+     with Pre => A'First = 1 and then B'First = 1 and then Into'First = 1
+                 and then Into'Length >= Natural'Max (A'Length, B'Length);
+
    --  Quotient := Numerator / Divisor; Remainder := Numerator mod Divisor
    --  (Knuth, TAOCP vol. 2, 4.3.1, Algorithm D).
    procedure Divide

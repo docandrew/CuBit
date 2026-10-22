@@ -26,8 +26,9 @@ CHECKS = [
      {'DIGEST': None, 'DEFINITION_KEY': 'Definition', 'THESAURUS_KEY': 'Thesaurus_Result',
       'SYNONYMS_KEY': 'Synonyms', 'SPELLINGS_KEY': 'Near_Spellings',
       'MISSPELLINGS_KEY': 'List-Misspelling', 'PAGE_KEY': 'Page_Query'}),
-    (SRC / 'ccl-interfaces-calc.ads',
-     {'DIGEST': None, 'FORM_KEY': 'Calc_Form', 'NUMBER_KEY': 'Calc_Number'})]
+    ((SRC / 'ccl-interfaces-calc.ads', SRC / 'ccl-interfaces-calc_types.ads'),
+     {'DIGEST': None, 'FORM_KEY': 'Calc_Form', 'NUMBER_KEY': 'Calc_Number', 'OPTIONS_KEY': 'Calc_Options',
+      'REQUEST_KEY': 'Calc_Request'})]
 
 
 def constant(text, name):
@@ -37,9 +38,12 @@ def constant(text, name):
 
 def main():
     failures = 0
-    for path, keys in CHECKS:
+    for paths, keys in CHECKS:
+        # The keys' unit, and the unit that spells TYPE_SOURCE out (the same
+        # one unless a spec-only unit holds the types).
+        path, source_path = paths if isinstance(paths, tuple) else (paths, paths)
         text = path.read_text()
-        source = re.search(r'TYPE_SOURCE : constant String :=\s*(.*?);\n', text, re.S).group(1)
+        source = re.search(r'TYPE_SOURCE : constant String :=\s*(.*?);\n', source_path.read_text(), re.S).group(1)
         source = ''.join(part.replace('""', '"') for part in re.findall(r'"((?:[^"]|"")*)"', source))
         for name, type_name in keys.items():
             expected = hashlib.sha256(source.encode() + (b'#' + type_name.encode() if type_name else b'')).hexdigest()

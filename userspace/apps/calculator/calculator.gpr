@@ -7,7 +7,7 @@ project Calculator is
    for Languages use ("Ada");
    for Object_Dir use "build";
    for Source_Dirs use (".", "native", "../../lib/calc", "../../lib/ui", "../../lib/theme", "build/generated",
-                        "../../lib/compositor", "../../lib/display", "../../allocator/src");
+                        "../../lib/compositor", "../../lib/display", "../../allocator/src", "../../ccl/src");
    for Main use ("main.adb");
    for Runtime ("Ada") use "../../runtime";
    for Library_Dir use "";
@@ -29,6 +29,9 @@ project Calculator is
       for Switches ("calc_syntax.adb") use Calc_Flags.Proved_Switches;
       for Switches ("calc_engine.adb") use Calc_Flags.Proved_Switches;
       for Switches ("calc_format.adb") use Calc_Flags.Proved_Switches;
+      for Switches ("calc_balls.adb") use Calc_Flags.Proved_Switches;
+      for Switches ("calc_words.adb") use Calc_Flags.Proved_Switches;
+      for Switches ("calc_symbols.adb") use Calc_Flags.Proved_Switches;
    end Compiler;
 
    package Binder is

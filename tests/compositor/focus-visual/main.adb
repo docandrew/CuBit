@@ -15,8 +15,8 @@ begin
  if not CuBit.Startup_State.Ready(Startup.Verify) then
   debugPrint("TEST: FAIL focus startup capabilities" & ASCII.LF);return;
  end if;
- A:=Decode_Creation_Result(Send(Encode_Create((300,200,Window_Surface))));
- B:=Decode_Creation_Result(Send(Encode_Create((300,200,Window_Surface))));
+ A:=Decode_Creation_Result(Send(Encode_Create((300,200,Window_Surface, Desktop_Sized))));
+ B:=Decode_Creation_Result(Send(Encode_Create((300,200,Window_Surface, Desktop_Sized))));
  if A.Status/=Success or B.Status/=Success then
   debugPrint("TEST: FAIL focus windows" & ASCII.LF);return;
  end if;

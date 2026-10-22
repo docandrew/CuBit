@@ -1,6 +1,7 @@
 with Interfaces;
 with CCL.Catalog;
 with CCL.Evaluation;
+with CCL.Interfaces.Calc_Types;
 with CCL.Interfaces.Desktop_Display;
 with CCL.Interfaces.Desktop_Input;
 with CCL.Interfaces.Desktop_Launch;
@@ -36,6 +37,7 @@ package body CCL.Typed_Settings is
       elsif Key = CCL.Interfaces.GPU_Power.WAITBOOST_KEY then GPU_Waitboost_Setting
       elsif Key = CCL.Interfaces.Desktop_Display.DISPLAY_SCALE_KEY then Display_Scale_Setting
       elsif Key = CCL.Interfaces.Desktop_Display.MODESET_KEY then Display_Modeset_Setting
+      elsif Key = CCL.Interfaces.Calc_Types.SETTING_KEY then Calculator_Options_Setting
       else Untyped);
 
    function Schema (Kind : Setting_Kind) return String is
@@ -46,6 +48,7 @@ package body CCL.Typed_Settings is
          when Display_Scale_Setting => CCL.Interfaces.Desktop_Display.TYPE_SOURCE,
          when Display_Modeset_Setting => CCL.Interfaces.Desktop_Display.MODESET_TYPE_SOURCE,
          when Display_Mode_Setting => CCL.Interfaces.Desktop_Display.MODE_TYPE_SOURCE,
+         when Calculator_Options_Setting => CCL.Interfaces.Calc_Types.TYPE_SOURCE,
          when Untyped => "");
    function Root_Name (Kind : Setting_Kind) return String is
      (case Kind is
@@ -55,6 +58,7 @@ package body CCL.Typed_Settings is
          when Display_Scale_Setting => CCL.Interfaces.Desktop_Display.ROOT_TYPE_NAME,
          when Display_Modeset_Setting => CCL.Interfaces.Desktop_Display.MODESET_ROOT_TYPE_NAME,
          when Display_Mode_Setting => CCL.Interfaces.Desktop_Display.MODE_ROOT_TYPE_NAME,
+         when Calculator_Options_Setting => CCL.Interfaces.Calc_Types.ROOT_OPTIONS_NAME,
          when Untyped => "");
 
    function Named (Object : Views.Snapshot; At_Cursor : Views.Cursor; Name : String) return Views.Cursor is

@@ -122,7 +122,7 @@ package body CuBit.Desktop_Protocol with SPARK_Mode is
    end Encode_Title;
 
    function Decode_Create (Wire : Wire_Message) return Create_Decoding is
-     (if not Header (Wire, Create_Surface) or else Wire.Words (3) /= 0 or else
+     (if not Header (Wire, Create_Surface) or else Wire.Words (3) > 1 or else
         Wire.Words (0) > Unsigned_64 (Pixel_Extent'Last) or else
         Wire.Words (1) > Unsigned_64 (Pixel_Extent'Last) or else
         Wire.Words (2) > 2
@@ -132,7 +132,8 @@ package body CuBit.Desktop_Protocol with SPARK_Mode is
                 (case Wire.Words (2) is
                    when 0 => Plain_Surface,
                    when 1 => Shell_Surface,
-                   when others => Window_Surface))));
+                   when others => Window_Surface),
+                (if Wire.Words (3) = 0 then Desktop_Sized else Preferred_Size))));
 
    --  Surface_Kind's representation (the Enum_Rep), spelled out so the
    --  round trip with Decode_Create's case is immediate for the provers.
@@ -143,10 +144,17 @@ package body CuBit.Desktop_Protocol with SPARK_Mode is
         when Window_Surface => 2)
      with Annotate => (GNATprove, Inline_For_Proof);
 
+   --  Window_Sizing's representation, likewise spelled out.
+   function Sizing_Word (Sizing : Window_Sizing) return Unsigned_64 is
+     (case Sizing is
+        when Desktop_Sized => 0,
+        when Preferred_Size => 1)
+     with Annotate => (GNATprove, Inline_For_Proof);
+
    function Encode_Create (Item : Create_Request) return Wire_Message is
      (Label => Code (Create_Surface), Length => 4,
       Words => [Unsigned_64 (Item.Width), Unsigned_64 (Item.Height),
-                Kind_Word (Item.Kind), 0], others => <>);
+                Kind_Word (Item.Kind), Sizing_Word (Item.Sizing)], others => <>);
 
    function Decode_Creation_Result
      (Wire : Wire_Message) return Creation_Result is

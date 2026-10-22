@@ -309,36 +309,48 @@ procedure Main is
       P : WP.Placement;
    begin
       --  A small request opens at the default share of the work area.
-      P := WP.Place (Work_W, Work_H, 908, 556, Min_W, Min_H, 0);
+      P := WP.Place (Work_W, Work_H, 908, 556, Min_W, Min_H, 0, WP.At_Least_Share);
       Check (P.Width = Work_W * 2 / 3 and then P.Height = Work_H * 3 / 4
              and then P.X = WP.Cascade_Left and then P.Y = WP.Cascade_Top,
              "default share at the cascade corner:" & P.Width'Image & P.Height'Image);
       --  No preference: the share too.
-      P := WP.Place (Work_W, Work_H, 0, 0, Min_W, Min_H, 0);
+      P := WP.Place (Work_W, Work_H, 0, 0, Min_W, Min_H, 0, WP.At_Least_Share);
       Check (P.Width = Work_W * 2 / 3 and then P.Height = Work_H * 3 / 4, "no preference: the share");
       --  A larger request is kept.
-      P := WP.Place (Work_W, Work_H, 1500, 900, Min_W, Min_H, 0);
+      P := WP.Place (Work_W, Work_H, 1500, 900, Min_W, Min_H, 0, WP.At_Least_Share);
       Check (P.Width = 1500 and then P.Height = 900, "a larger request is kept");
       --  The next slots step down the diagonal.
-      P := WP.Place (Work_W, Work_H, 0, 0, Min_W, Min_H, 2);
+      P := WP.Place (Work_W, Work_H, 0, 0, Min_W, Min_H, 2, WP.At_Least_Share);
       Check (P.X = WP.Cascade_Left + 2 * WP.Cascade_Step and then P.Y = WP.Cascade_Top + 2 * WP.Cascade_Step,
              "cascade by slot");
       --  The cascade starts over before a window would leave the work area.
       for Slot in 0 .. 200 loop
-         P := WP.Place (Work_W, Work_H, 0, 0, Min_W, Min_H, Slot);
+         P := WP.Place (Work_W, Work_H, 0, 0, Min_W, Min_H, Slot, WP.At_Least_Share);
          Check (P.X + P.Width <= Work_W and then P.Y + P.Height <= Work_H
                 and then P.Width = Work_W * 2 / 3 and then P.Height = Work_H * 3 / 4,
                 "slot" & Slot'Image & " stays inside, full size");
       end loop;
       --  A request beyond the work area is cut to fit it.
-      P := WP.Place (1024, 728, 5000, 5000, Min_W, Min_H, 0);
+      P := WP.Place (1024, 728, 5000, 5000, Min_W, Min_H, 0, WP.At_Least_Share);
       Check (P.X + P.Width = 1024 and then P.Y + P.Height = 728, "an oversized request is cut to fit");
       --  At 1024x768 a request larger than the share is unchanged.
-      P := WP.Place (1024, 728, 868, 600, Min_W, Min_H, 1);
+      P := WP.Place (1024, 728, 868, 600, Min_W, Min_H, 1, WP.At_Least_Share);
       Check (P.Width = 868 and then P.Height = 600 and then P.X = 98 and then P.Y = 82,
              "small screens keep the request where it fits");
+      --  A declared preferred size opens as asked, smaller than the share.
+      P := WP.Place (Work_W, Work_H, 360, 520, Min_W, Min_H, 0, WP.As_Requested);
+      Check (P.Width = 360 and then P.Height = 520 and then P.X = WP.Cascade_Left,
+             "a preferred size is kept:" & P.Width'Image & P.Height'Image);
+      --  ... still at least the minimum, and cut to fit the work area.
+      P := WP.Place (Work_W, Work_H, 60, 40, Min_W, Min_H, 0, WP.As_Requested);
+      Check (P.Width = Min_W and then P.Height = Min_H, "a preferred size below the minimum");
+      P := WP.Place (1024, 728, 5000, 5000, Min_W, Min_H, 0, WP.As_Requested);
+      Check (P.X + P.Width = 1024 and then P.Y + P.Height = 728, "a preferred size is cut to fit");
+      --  Without a request the share stands in.
+      P := WP.Place (Work_W, Work_H, 0, 0, Min_W, Min_H, 0, WP.As_Requested);
+      Check (P.Width = Work_W * 2 / 3 and then P.Height = Work_H * 3 / 4, "no preferred size: the share");
       --  A tiny work area: the window keeps the minimum where it fits.
-      P := WP.Place (100, 60, 0, 0, Min_W, Min_H, 3);
+      P := WP.Place (100, 60, 0, 0, Min_W, Min_H, 3, WP.At_Least_Share);
       Check (P.X = 0 and then P.Y = 0 and then P.Width = 100 and then P.Height = 60, "tiny work area");
    end Placement;
 begin

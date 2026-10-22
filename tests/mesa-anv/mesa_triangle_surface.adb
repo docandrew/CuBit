@@ -22,7 +22,7 @@ package body Mesa_Triangle_Surface is
       if D.Decode_Hello_Result (Send (D.Encode_Hello (D.Current_Revision))).Status /=
         D.Success then return 0; end if;
       Created := D.Decode_Creation_Result
-        (Send (D.Encode_Create ((D.Pixel_Extent (Width), D.Pixel_Extent (Height), D.Window_Surface))));
+        (Send (D.Encode_Create ((D.Pixel_Extent (Width), D.Pixel_Extent (Height), D.Window_Surface, D.Desktop_Sized))));
       --  Desktop may enlarge the decorated window. The independent image
       --  attachment stays unscaled at the client origin; composition clips
       --  reads to its extent and fills the unused client area itself.

@@ -154,7 +154,7 @@ procedure Main is
       if not OK then return; end if;
       Borrowed := True;
       Created := D.Decode_Creation_Result
-        (Send (D.Encode_Create ((64, 64, D.Window_Surface))));
+        (Send (D.Encode_Create ((64, 64, D.Window_Surface, D.Desktop_Sized))));
       if Created.Status /= D.Success then return; end if;
       Surface := Created.Surface;
       Status := P.Forward (CuBit.Handles.C_ABI.To_C (Desktop), Root, 0, 16384, Child'Access);

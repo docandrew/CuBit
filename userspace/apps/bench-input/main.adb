@@ -152,7 +152,7 @@ procedure Main is
         Registered_Driver (DRIVER_DESKTOP)
       then Fail ("desktop unavailable"); return; end if;
       Created := Decode_Creation_Result
-        (Send (Encode_Create ((320, 200, Window_Surface))));
+        (Send (Encode_Create ((320, 200, Window_Surface, Desktop_Sized))));
       if Created.Status /= Success then Fail ("create"); return; end if;
       Surface := Created.Surface;
       -- Drain startup/configure events before accepting a strictly contiguous

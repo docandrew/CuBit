@@ -1,0 +1,13 @@
+--  SPARK proof of the Calculator's key symbols (docs/calculator.md):
+--  run.sh --prove (memory-capped, -j2).
+project Symbols_Proof is
+   for Source_Dirs use ("../../userspace/apps/calculator");
+   for Source_Files use ("calc_symbols.ads", "calc_symbols.adb");
+   for Object_Dir use "build/symbols-proof";
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--timeout=60");
+   end Prove;
+end Symbols_Proof;

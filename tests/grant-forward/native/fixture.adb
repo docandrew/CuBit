@@ -115,7 +115,7 @@ package body Fixture is
       begin
          Check (D.Decode_Hello_Result (Send (D.Encode_Hello (D.Current_Revision))).Status = D.Success,
                 "desktop handshake");
-         Created := D.Decode_Creation_Result (Send (D.Encode_Create ((32, 32, D.Plain_Surface))));
+         Created := D.Decode_Creation_Result (Send (D.Encode_Create ((32, 32, D.Plain_Surface, D.Desktop_Sized))));
          Check (Created.Status = D.Success, "desktop surface");
          Raw := Call (Owner_Cap, New_Root, 2);
          Check (GR.Valid_Wire (Raw), "desktop root wire"); Parent := GR.Decode (Raw);
@@ -141,7 +141,7 @@ package body Fixture is
                  D.Destroy_Surface) = D.Success, "destroy releases child");
          Check (P.Retire (Wire_Child) = 0, "child retired after destroy");
          Check (Call (Owner_Cap, Root_Status) = 0, "desktop root hold released");
-         Created := D.Decode_Creation_Result (Send (D.Encode_Create ((32, 32, D.Plain_Surface))));
+         Created := D.Decode_Creation_Result (Send (D.Encode_Create ((32, 32, D.Plain_Surface, D.Desktop_Sized))));
          Check (Created.Status = D.Success, "C presenter surface");
          Check (Presenter_Open (CuBit.Handles.C_ABI.To_C (Owner_Cap), CuBit.Handles.C_ABI.To_C (Desktop_Cap), Unsigned_64 (Created.Surface)) = 0,
                 "C presenter attached");

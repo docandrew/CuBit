@@ -254,10 +254,17 @@ package CuBit.Desktop_Protocol with SPARK_Mode, Pure is
    function Decode_Title (Wire : Wire_Message) return Title_Decoding;
    function Encode_Title (Item : Title_Request) return Wire_Message;
 
+   --  How a window's requested size is taken. Desktop_Sized: as a
+   --  preference, the desktop's placement policy may open it larger (a
+   --  share of the work area). Preferred_Size: the application declared
+   --  the size it is designed for (a compact tool such as the
+   --  Calculator); it opens at that size, cut only to fit the work area.
+   type Window_Sizing is (Desktop_Sized, Preferred_Size);
    type Create_Request is record
       --  Zero requests compositor-selected size.
       Width, Height : Pixel_Extent := 0;
       Kind : Surface_Kind := Window_Surface;
+      Sizing : Window_Sizing := Desktop_Sized;
    end record;
    type Create_Decoding (Valid : Boolean := False) is record
       case Valid is

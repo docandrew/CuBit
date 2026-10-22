@@ -290,6 +290,42 @@ package body Calc_Naturals with SPARK_Mode is
       Result := Guess;
    end Square_Root;
 
+   procedure Integer_Root (X : Magnitude; Degree : Positive; Result : in out Magnitude) is
+      Top : constant Natural := Bits (X);
+      Trial, Unit, Bit, Raised : Magnitude;
+      Fits : Boolean;
+   begin
+      if X.Store = null then
+         return;
+      end if;
+      if Degree = 1 then
+         Copy (X, Result);
+         return;
+      elsif Degree >= Top then
+         --  1 <= X < 2 ** Top <= 2 ** Degree: the root is 1.
+         Keep ([1 => 1], Result);
+         return;
+      end if;
+      --  The root has at most ceil (Top / Degree) bits; set them from the
+      --  top while Result ** Degree stays at most X.
+      Make (Unit, 1);
+      for Position in reverse 0 .. (Top + Degree - 1) / Degree loop
+         pragma Loop_Invariant (Is_Zero (Trial) and then Is_Zero (Bit) and then Is_Zero (Raised));
+         pragma Loop_Invariant (Length (Result) <= Length (X) and then Length (Unit) <= 2);
+         Shift_Left (Unit, Position, Bit);
+         Bitwise (Either, Result, Bit, Trial);
+         Free (Bit);
+         --  Trial ** Degree has at most Top + Degree bits when it fits.
+         Power (Trial, Degree, Top + Degree, Raised, Fits);
+         if Fits and then Compare (Raised, X) /= Greater and then Length (Trial) <= Length (X) then
+            Replace (Result, Trial);
+         end if;
+         Free (Trial);
+         Free (Raised);
+      end loop;
+      Free (Unit);
+   end Integer_Root;
+
    procedure Shift_Left (X : Magnitude; Shift : Bit_Count; Result : in out Magnitude) is
       Whole : constant Natural := Shift / LIMB_BITS;
    begin
@@ -305,6 +341,111 @@ package body Calc_Naturals with SPARK_Mode is
          Keep (Scratch, Result);
       end;
    end Shift_Left;
+
+   procedure Shift_Right (X : Magnitude; Shift : Bit_Count; Result : in out Magnitude) is
+      Whole : constant Natural := Shift / LIMB_BITS;
+   begin
+      if X.Store = null or else Whole >= X.Store.Size then
+         return;
+      end if;
+      declare
+         Scratch : Limb_Array (1 .. X.Store.Size - Whole) := X.Store.Limbs (Whole + 1 .. X.Store.Size);
+      begin
+         Calc_Limbs.Shift_Right (Scratch, Shift mod LIMB_BITS);
+         Keep (Scratch, Result);
+      end;
+   end Shift_Right;
+
+   procedure Low_Bits (X : Magnitude; Count : Bit_Count; Result : in out Magnitude) is
+      Whole : constant Natural := Count / LIMB_BITS;
+      Part : constant Bit_Shift := Count mod LIMB_BITS;
+   begin
+      if X.Store = null then
+         return;
+      end if;
+      if Whole >= X.Store.Size then
+         Copy (X, Result);
+         return;
+      end if;
+      declare
+         Scratch : Limb_Array (1 .. Whole + 1) := X.Store.Limbs (1 .. Whole + 1);
+      begin
+         Scratch (Whole + 1) := Scratch (Whole + 1) and (Shift_Left (Limb'(1), Part) - 1);
+         Keep (Scratch, Result);
+      end;
+   end Low_Bits;
+
+   procedure Bitwise
+     (Operation : Bitwise_Operation; A, B : Magnitude; Result : in out Magnitude)
+   is
+      Size : constant Limb_Count := Natural'Max (Length (A), Length (B));
+      Empty : constant Limb_Array (1 .. 0) := [others => 0];
+   begin
+      if Size = 0 then
+         return;
+      end if;
+      declare
+         Scratch : Limb_Array (1 .. Size);
+      begin
+         if A.Store = null then
+            Calc_Limbs.Bitwise (Operation, Empty, B.Store.Limbs, Scratch);
+         elsif B.Store = null then
+            Calc_Limbs.Bitwise (Operation, A.Store.Limbs, Empty, Scratch);
+         else
+            Calc_Limbs.Bitwise (Operation, A.Store.Limbs, B.Store.Limbs, Scratch);
+         end if;
+         Keep (Scratch, Result);
+      end;
+   end Bitwise;
+
+   function Value_Of (C : Character) return Limb is
+     (case C is
+         when '0' .. '9' => Limb (Character'Pos (C) - Character'Pos ('0')),
+         when 'a' .. 'f' => Limb (Character'Pos (C) - Character'Pos ('a') + 10),
+         when 'A' .. 'F' => Limb (Character'Pos (C) - Character'Pos ('A') + 10),
+         when others => 0);
+
+   procedure From_Digits (Text : String; Base : Digit_Base; Result : in out Magnitude) is
+      --  A digit in base 2 or more takes at least a bit: a limb per digit
+      --  over 32 is room (and Text'Length / 1 + 1 limbs is always enough).
+      Scratch : Limb_Array (1 .. Text'Length + 1) := [others => 0];
+      Carry : Limb;
+   begin
+      for C of Text loop
+         Multiply_Add_Small (Scratch, Base, Value_Of (C), Carry);
+      end loop;
+      Keep (Scratch, Result);
+   end From_Digits;
+
+   function Digits_Bound (X : Magnitude) return Positive is (Length (X) * LIMB_BITS + 1);
+
+   procedure To_Digits (X : Magnitude; Base : Digit_Base; Into : out String; Last : out Natural) is
+      DIGIT_NAMES : constant String := "0123456789ABCDEF";
+      Scratch : Limb_Array (1 .. Length (X));
+      Written : Natural := 0;
+      Digit : Limb;
+   begin
+      Into := [others => '0'];
+      if X.Store = null then
+         Last := 1;
+         return;
+      end if;
+      Calc_Limbs.Copy (X.Store.Limbs, Scratch);
+      while not Calc_Limbs.Is_Zero (Scratch) loop
+         pragma Loop_Invariant (Written <= Into'Length);
+         --  Never taken: Digits_Bound leaves room for every digit.
+         exit when Written = Into'Length;
+         Divide_Small (Scratch, Base, Digit);
+         Into (Into'Last - Written) := DIGIT_NAMES (Natural (Digit mod 16) + 1);
+         Written := Written + 1;
+      end loop;
+      if Written = 0 then
+         Last := 1;  --  never: a nonzero magnitude has digits
+         return;
+      end if;
+      Into (1 .. Written) := Into (Into'Last - Written + 1 .. Into'Last);
+      Last := Written;
+   end To_Digits;
 
    function Decimal_Bound (X : Magnitude) return Positive is (Length (X) * 10 + CHUNK_DIGITS);
 

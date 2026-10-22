@@ -45,7 +45,7 @@ build() {  # project, mode, mains...
   (cd "$root/kernel" && alr exec -- gprbuild -p -q -j8 -XCALC_MODE="$mode" -P "$here/$project" "$@")
 }
 cases() {
-  python3 -I "$here/calc_reference.py" "$here/build/cases.txt" "${1:-3000}" "${2:-2026}"
+  python3 "$here/calc_reference.py" "$here/build/cases.txt" "${1:-3000}" "${2:-2026}"
 }
 case "${1:-}" in
   --core)
@@ -77,6 +77,8 @@ case "${1:-}" in
     cd "$root/kernel"
     systemd-run --user --scope -p MemoryMax=24G -p MemorySwapMax=0 \
       alr exec -- gnatprove -P "$here/calc_proof.gpr" -j2 --level=2 --report=fail --checks-as-errors=on "${@:2}"
+    systemd-run --user --scope -p MemoryMax=24G -p MemorySwapMax=0 \
+      alr exec -- gnatprove -P "$here/symbols_proof.gpr" -j2 --level=1 --report=fail --checks-as-errors=on
     ;;
   --eval)
     build calculator.gpr checked

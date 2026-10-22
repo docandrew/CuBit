@@ -500,4 +500,315 @@ package body Calc_Format with SPARK_Mode is
       Put_Rounded (Digits_Value);
       Release;
    end Decimal_Text;
+
+   ---------------------------------------------------------------------------
+   --  Balls and bases.
+
+   --  The work of a display has the whole representation to itself.
+   WORK : constant Size_Budget := Size_Budget'Last;
+
+   procedure Step
+     (Operation : Binary_Operation; A, B : Number; Result : in out Number; State : in out Status)
+     with Pre => Calc_Numbers.Is_Reclaimed (Result)
+                 and then (if State = Done then Within (A, WORK) and then Within (B, WORK)),
+          Post => (if State = Done then Within (Result, WORK) else Calc_Numbers.Is_Reclaimed (Result))
+   is
+   begin
+      if State = Done then
+         Apply (Operation, A, B, WORK, Result, State);
+      end if;
+   end Step;
+
+   procedure Step
+     (Operation : Unary_Operation; X : Number; Result : in out Number; State : in out Status)
+     with Pre => Calc_Numbers.Is_Reclaimed (Result) and then (if State = Done then Within (X, WORK)),
+          Post => (if State = Done then Within (Result, WORK) else Calc_Numbers.Is_Reclaimed (Result))
+   is
+   begin
+      if State = Done then
+         Apply (Operation, X, WORK, Result, State);
+      end if;
+   end Step;
+
+   --  10 ** K, exact (K may be negative).
+   procedure Ten_Power (K : Integer; Result : in out Number; State : in out Status)
+     with Pre => Calc_Numbers.Is_Reclaimed (Result),
+          Post => (if State = Done then Within (Result, WORK) else Calc_Numbers.Is_Reclaimed (Result))
+   is
+      Ten, Exponent : Number;
+   begin
+      if State /= Done then
+         return;
+      end if;
+      From_Integer (DECIMAL_BASE, Ten);
+      From_Integer (Integer_64 (K), Exponent);
+      Step (Power, Ten, Exponent, Result, State);
+      Free (Ten);
+      Free (Exponent);
+   end Ten_Power;
+
+   --  floor (log10 |V|) for V /= 0: from the digits of its numerator and
+   --  denominator, then one comparison.
+   procedure Decimal_Exponent_Of (V : Number; E : out Integer; State : in out Status)
+     with Pre => (if State = Done then Within (V, WORK))
+   is
+      Num, Den : Magnitude;
+      Num_Digits, Den_Digits : Positive;
+      Abs_V, Power_Value : Number;
+      Order : Ordering := Less;
+   begin
+      E := 0;
+      if State /= Done or else Calc_Numbers.Is_Zero (V) then
+         return;
+      end if;
+      Parts (V, Num, Den);
+      Count_Digits (Num, Num_Digits);
+      Count_Digits (Den, Den_Digits);
+      Free (Num);
+      Free (Den);
+      E := Num_Digits - Den_Digits;
+      Step (Absolute, V, Abs_V, State);
+      Ten_Power (E, Power_Value, State);
+      if State = Done then
+         Compare (Abs_V, Power_Value, Order);
+      end if;
+      if Order = Less then
+         E := E - 1;
+      end if;
+      Free (Abs_V);
+      Free (Power_Value);
+   end Decimal_Exponent_Of;
+
+   function Ball_Bound (X : Calc_Balls.Ball; Places : Places_Count) return Positive is
+     (Natural'Max (3 * Places + 2 * DECORATION,
+                   2 * (Calc_Balls.Size (X) * DIGITS_PER_LIMB + 2 * DIGITS_PER_LIMB) + 2 * Places + DECORATION));
+
+   procedure Ball_Text
+     (X : Calc_Balls.Ball; Places : Places_Count; Into : out String; Last : out Natural;
+      Bound_Into : out String; Bound_Last : out Natural; Form : out Decimal_Form)
+   is
+      Mid, Rad, Twice_Rad, Two, Scale, Scaled, Whole, Shown, Difference, Abs_Difference, Bound, Unit,
+        Bound_Scaled, Bound_Units : Number;
+      State : Status := Done;
+      E, Error_Exponent, Q, Bound_Exponent : Integer := 0;
+      Bound_Digit : Natural := 1;
+
+      procedure Put (Text : String)
+        with Global => (In_Out => (Into, Last)),
+             Pre => Into'First = 1 and then Last <= Into'Last, Post => Last <= Into'Last
+      is
+      begin
+         if Text'Length > 0 and then Text'Length <= Into'Last - Last then
+            Into (Last + 1 .. Last + Text'Length) := Text;
+            Last := Last + Text'Length;
+         end if;
+      end Put;
+
+      procedure Put_Bound (Text : String)
+        with Global => (In_Out => (Bound_Into, Bound_Last)),
+             Pre => Bound_Into'First = 1 and then Bound_Last <= Bound_Into'Last, Post => Bound_Last <= Bound_Into'Last
+      is
+      begin
+         if Text'Length > 0 and then Text'Length <= Bound_Into'Last - Bound_Last then
+            Bound_Into (Bound_Last + 1 .. Bound_Last + Text'Length) := Text;
+            Bound_Last := Bound_Last + Text'Length;
+         end if;
+      end Put_Bound;
+
+      --  Num's digits, the sign and the point placed for Q and E.
+      procedure Emit (Num : Magnitude; Negative, Zero : Boolean)
+        with Global => (Input => (Q, E, Places), In_Out => (Into, Last), Output => Form),
+             Pre => Into'First = 1 and then Last <= Into'Last and then Length (Num) <= Small_Magnitude'Last
+                    and then Q > Integer'First,
+             Post => Last <= Into'Last
+      is
+         Buffer : String (1 .. Decimal_Bound (Num));
+         Count : Natural;
+         Scientific : constant Boolean :=
+           Q > 0 or else E >= Places or else E < -(Places / ZEROS_SHARE);
+      begin
+         Digits_Of (Num, Buffer, Count);
+         if Negative then
+            Put ("-");
+         end if;
+         if Zero then
+            Form := Approximate_Decimal;
+            Put ("0");
+         elsif Scientific then
+            Form := Approximate_Scientific;
+            Put (Buffer (1 .. 1));
+            if Count > 1 then
+               Put (".");
+               Put (Buffer (2 .. Count));
+            end if;
+            if Q < Integer'Last - Count then
+               Put ("e");
+               Put (Image (Q + Count - 1));
+            end if;
+         else
+            Form := Approximate_Decimal;
+            if Q = 0 then
+               Put (Buffer (1 .. Count));
+            elsif Count > -Q then
+               Put (Buffer (1 .. Count + Q));
+               Put (".");
+               Put (Buffer (Count + Q + 1 .. Count));
+            else
+               Put ("0.");
+               for K in 1 .. -Q - Count loop
+                  pragma Loop_Invariant (Last <= Into'Last);
+                  Put ("0");
+               end loop;
+               Put (Buffer (1 .. Count));
+            end if;
+         end if;
+      end Emit;
+   begin
+      Into := [others => ' '];
+      Last := 0;
+      Bound_Into := [others => ' '];
+      Bound_Last := 0;
+      Calc_Balls.Midpoint (X, Mid);
+      if Calc_Balls.Is_Exact (X) then
+         if Into'Length >= Decimal_Bound (Mid, Places) then
+            Decimal_Text (Mid, Places, Into, Last, Form);
+         else
+            Form := Rounded;  --  never: Ball_Bound is at least Decimal_Bound
+         end if;
+         Free (Mid);
+         return;
+      end if;
+      Calc_Balls.Radius (X, Rad);
+      --  The digits to show: Places significant ones at most, and none
+      --  below what the radius leaves certain (0.5 10 ** q >= r).
+      From_Integer (2, Two);
+      Step (Multiply, Rad, Two, Twice_Rad, State);
+      Decimal_Exponent_Of (Twice_Rad, Error_Exponent, State);
+      Decimal_Exponent_Of (Mid, E, State);
+      if Error_Exponent = Integer'Last or else E < Integer'First + Places then
+         State := Too_Large;  --  never: exponents are digit counts
+      end if;
+      Q := (if State /= Done then 0
+            elsif Calc_Numbers.Is_Zero (Mid) then Error_Exponent + 1
+            else Integer'Max (E - Places + 1, Error_Exponent + 1));
+      if Q = Integer'First then
+         State := Too_Large;
+      end if;
+      Ten_Power ((if State = Done then -Q else 0), Scale, State);
+      Step (Multiply, Mid, Scale, Scaled, State);
+      Step (Round, Scaled, Whole, State);
+      Step (Divide, Whole, Scale, Shown, State);
+      Step (Subtract, Shown, Mid, Difference, State);
+      Step (Absolute, Difference, Abs_Difference, State);
+      Step (Add, Rad, Abs_Difference, Bound, State);
+      --  The bound, up to one significant digit.
+      Decimal_Exponent_Of (Bound, Bound_Exponent, State);
+      Ten_Power ((if State = Done then Bound_Exponent else 0), Unit, State);
+      Step (Divide, Bound, Unit, Bound_Scaled, State);
+      Step (Ceiling, Bound_Scaled, Bound_Units, State);
+      if State = Done and then Fits_Natural (Bound_Units) then
+         Bound_Digit := To_Natural (Bound_Units);
+      end if;
+      if Bound_Digit >= DECIMAL_BASE and then Bound_Exponent < Integer'Last then
+         Bound_Digit := 1;
+         Bound_Exponent := Bound_Exponent + 1;
+      end if;
+      if State = Done then
+         Put_Bound (Image (Bound_Digit));
+         Put_Bound ("e");
+         Put_Bound (Image (Bound_Exponent));
+      end if;
+      --  The guaranteed digits of Whole, scaled by 10 ** Q.
+      if State = Done and then Calc_Numbers.Size (Whole) <= Small_Magnitude'Last then
+         declare
+            Num, Den : Magnitude;
+            Negative : constant Boolean := Calc_Numbers.Is_Negative (Whole);
+         begin
+            Parts (Whole, Num, Den);
+            Free (Den);
+            if Q > Integer'First then
+               Emit (Num, Negative, Calc_Numbers.Is_Zero (Whole));
+            else
+               Form := Approximate_Decimal;  --  never: Q = Integer'First fails above
+            end if;
+            Free (Num);
+         end;
+      else
+         Form := Approximate_Decimal;
+      end if;
+      Free (Mid);
+      Free (Rad);
+      Free (Twice_Rad);
+      Free (Two);
+      Free (Scale);
+      Free (Scaled);
+      Free (Whole);
+      Free (Shown);
+      Free (Difference);
+      Free (Abs_Difference);
+      Free (Bound);
+      Free (Unit);
+      Free (Bound_Scaled);
+      Free (Bound_Units);
+   end Ball_Text;
+
+   function Base_Bound (X : Number) return Positive is (Size (X) * LIMB_BITS + LIMB_BITS * 3 + DECORATION);
+
+   procedure Base_Text
+     (X : Number; Base : Display_Base; Word : Calc_Words.Word_Size; Into : out String; Last : out Natural)
+   is
+      use type Calc_Words.Word_Size;
+      Value : Number;
+      Num, Den : Magnitude;
+      State : Status := Done;
+      --  Digits a word of Width bits takes in Base.
+      Width : constant Natural := Calc_Words.Width (Word);
+      Bits_Per_Digit : constant Positive := (case Base is when 2 => 1, when 8 => 3, when 16 => 4, when others => 1);
+      Pad : constant Natural :=
+        (if Word = Calc_Words.Unbounded or else Base = DECIMAL_BASE then 0
+         else (Width + Bits_Per_Digit - 1) / Bits_Per_Digit);
+
+      --  Num's digits after the sign, padded with zeros to Pad digits.
+      procedure Emit (Num : Magnitude; Negative : Boolean)
+        with Global => (Input => (Base, Pad), In_Out => (Into, Last)),
+             Pre => Into'First = 1 and then Last = 0 and then Into'Length > 0
+                    and then Length (Num) <= Small_Magnitude'Last,
+             Post => Last <= Into'Last
+      is
+         Buffer : String (1 .. Digits_Bound (Num) + 1);
+         Count : Natural;
+      begin
+         To_Digits (Num, Base, Buffer, Count);
+         if Negative then
+            Into (1) := '-';
+            Last := 1;
+         end if;
+         for K in Count + 1 .. Pad loop
+            pragma Loop_Invariant (Last <= Into'Last);
+            if Last < Into'Last then
+               Last := Last + 1;
+               Into (Last) := '0';
+            end if;
+         end loop;
+         if Count <= Into'Last - Last then
+            Into (Last + 1 .. Last + Count) := Buffer (1 .. Count);
+            Last := Last + Count;
+         end if;
+      end Emit;
+   begin
+      Into := [others => ' '];
+      Last := 0;
+      if Word /= Calc_Words.Unbounded and then Base /= DECIMAL_BASE then
+         Calc_Words.Pattern (X, Word, WORK, Value, State);
+      else
+         Copy (X, Value);
+      end if;
+      if State = Done and then Size (Value) <= Small_Magnitude'Last then
+         Parts (Value, Num, Den);
+         Emit (Num, Is_Negative (Value));
+         Free (Num);
+         Free (Den);
+      end if;
+      Free (Value);
+   end Base_Text;
 end Calc_Format;
