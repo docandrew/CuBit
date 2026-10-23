@@ -1,0 +1,27 @@
+# The setting catalog as CCL types (CAP-003, docs/declaration-checking.md
+# section 1). Each file in settings/ is one expression of type
+# Setting_Catalog: the keys (or key families) Config serves, the type of
+# each value, its class and the Ada codec programs read it with. Manifests
+# name these keys in their Config scopes, and ccl-manifest refuses a scope
+# that names none; generated Startup.Settings packages give a program one
+# typed accessor per setting its scopes cover; CCL.Typed_Settings checks
+# values against these types when a configuration is compiled.
+
+# One key, or every key that starts with this prefix and names a member
+# (desktop.launch.<entry>, desktop.display.mode.<monitor>).
+(type Shape (enum Key Family))
+# The value's type: a CCL type (the Ada constant holding its declarations,
+# and its root type's name), or plain text, a network address (one 16-byte
+# IPv6 address, IPv4 as ::ffff:a.b.c.d) or a count. Collection: a typed
+# Config collection (CCL objects whose schema its creator registers), read
+# through the collection interface, not a setting accessor.
+(type CCL_Type (record (source String) (root String)))
+(type Value (variant (Typed CCL_Type) (Text) (Address) (Count) (Collection)))
+# Declaration_Managed: set only by a reviewed configuration; Application
+# State: the program keeps it (docs/config-declarative-state.md).
+(type Class (enum Declaration_Managed Application_State))
+# codec: the Ada package programs read the value with ("" for the built-in
+# Text, Address and Count codecs); its Value type and Decode, and Encode
+# for a writable one.
+(type Setting (record (key String) (shape Shape) (value Value) (class Class) (codec String)))
+(type Setting_Catalog (record (settings (List Setting))))

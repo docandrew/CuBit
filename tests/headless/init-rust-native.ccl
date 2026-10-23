@@ -4,4 +4,7 @@
   (start "ccl-test-host.svc" (priority 5))
   (start "clock.svc" (priority 5))
   (start "rust-probe.app" (priority 5))
-  (start "rust-probe-denied.app" (priority 5)))
+  (start "rust-probe-denied.app" (priority 5))
+  # Code built for rust-probe's manifest, linked with the denied one: its
+  # startup check stops it before it runs (CAP-003).
+  (start "rust-probe-mismatch.app" (priority 5)))

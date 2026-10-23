@@ -8,12 +8,10 @@
 --  to the GPU driver (Desktop_GPU_Wake.Set_Waitboost). Absent or invalid:
 --  waitboost stays on.
 ------------------------------------------------------------------------------
-with CCL.Interfaces.GPU_Power;
-with CCL.Typed_Settings;
 
 package Desktop_GPU_Power_Settings is
-   Config_Key : constant String := CCL.Interfaces.GPU_Power.WAITBOOST_KEY;
-   Maximum_Source : constant := CCL.Typed_Settings.MAXIMUM_CANONICAL;
    Default_Waitboost : constant Boolean := True;
    procedure Decode (Source : String; Waitboost : out Boolean; Success : out Boolean);
+   --  The setting catalog's codec (CAP-003).
+   subtype Value is Boolean;
 end Desktop_GPU_Power_Settings;

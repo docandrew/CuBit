@@ -6,6 +6,7 @@ with Ada.Command_Line;
 with Ada.Text_IO; use Ada.Text_IO;
 with CCL.Interfaces.Desktop_Display;
 with CCL.Typed_Settings;
+with CCL.Setting_Kinds;
 with CuBit.Display_Geometry;
 with Desktop_Display_Scale_Settings;
 
@@ -27,15 +28,15 @@ procedure Settings_Tests is
    function Canonical (Source : String) return String is
       Result : TS.Check_Result;
    begin
-      TS.Check (TS.Display_Scale_Setting, Source, Result);
+      TS.Check (CCL.Setting_Kinds.Display_Scale_Setting, Source, Result);
       return (if Result.Success then Result.Canonical (1 .. Result.Length) else "");
    end Canonical;
    function Accepted (Source : String) return Boolean is (Canonical (Source)'Length > 0);
    Item : S.Preference;
    OK : Boolean;
 begin
-   Check (TS.Kind_Of (DD.DISPLAY_SCALE_KEY) = TS.Display_Scale_Setting, "the key is typed");
-   Check (TS.Kind_Of ("desktop.display.other") = TS.Untyped, "only that key");
+   Check (TS.Kind_Of ("desktop.display.scale") = CCL.Setting_Kinds.Display_Scale_Setting, "the key is typed");
+   Check (TS.Kind_Of ("desktop.display.other") = CCL.Setting_Kinds.Untyped, "only that key");
    --  Encode is the canonical spelling.
    Check (Canonical (S.Encode (S.Default)) = S.Encode (S.Default), "Auto is canonical: " & S.Encode (S.Default));
    for N in G.Scale_Component loop

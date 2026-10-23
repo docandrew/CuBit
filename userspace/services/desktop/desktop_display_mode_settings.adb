@@ -2,6 +2,8 @@
 --  CuBit
 --  Copyright (C) 2026 Jon Andrew
 ------------------------------------------------------------------------------
+with CCL.Typed_Settings;
+with CCL.Setting_Kinds;
 with Interfaces;
 with CCL.Objects;
 with CCL.Objects.Views;
@@ -39,8 +41,8 @@ package body Desktop_Display_Mode_Settings is
    Product_Digits : constant := 4;
    Serial_Digits : constant := 8;
 
-   function Key_For (Monitor : OM.Monitor_Identity) return String is
-     (DD.MODE_PREFIX & Monitor.Vendor (1) & Monitor.Vendor (2) & Monitor.Vendor (3) & "-" &
+   function Member_For (Monitor : OM.Monitor_Identity) return String is
+     (Monitor.Vendor (1) & Monitor.Vendor (2) & Monitor.Vendor (3) & "-" &
       Hex (Interfaces.Unsigned_32 (Monitor.Product), Product_Digits) & "-" &
       Hex (Monitor.Serial, Serial_Digits));
 
@@ -55,7 +57,7 @@ package body Desktop_Display_Mode_Settings is
       if Work = null then
          Work := new Views.Snapshot;
       end if;
-      TS.Read (TS.Display_Mode_Setting, Source, Work.all, Read);
+      TS.Read (CCL.Setting_Kinds.Display_Mode_Setting, Source, Work.all, Read);
       if not Read then
          return;
       end if;

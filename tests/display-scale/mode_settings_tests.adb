@@ -5,15 +5,14 @@
 --  identity gives its own key.
 with Ada.Command_Line;
 with Ada.Text_IO; use Ada.Text_IO;
-with CCL.Interfaces.Desktop_Display;
 with CCL.Typed_Settings;
+with CCL.Setting_Kinds;
 with CuBit.Output_Modes;
 with Interfaces;
 with Desktop_Display_Mode_Settings;
 
 procedure Mode_Settings_Tests is
    package TS renames CCL.Typed_Settings;
-   package DD renames CCL.Interfaces.Desktop_Display;
    package S renames Desktop_Display_Mode_Settings;
    package OM renames CuBit.Output_Modes;
    use type TS.Setting_Kind, OM.Mode, OM.Mode_Request, Interfaces.Unsigned_32;
@@ -29,7 +28,7 @@ procedure Mode_Settings_Tests is
    function Canonical (Source : String) return String is
       Result : TS.Check_Result;
    begin
-      TS.Check (TS.Display_Mode_Setting, Source, Result);
+      TS.Check (CCL.Setting_Kinds.Display_Mode_Setting, Source, Result);
       return (if Result.Success then Result.Canonical (1 .. Result.Length) else "");
    end Canonical;
    function Accepted (Source : String) return Boolean is (Canonical (Source)'Length > 0);
@@ -41,13 +40,14 @@ procedure Mode_Settings_Tests is
    Sizes : constant array (1 .. 4) of OM.Mode := [(1, 1), (720, 576), (3840, 2160), (65_535, 65_535)];
    Rates : constant array (1 .. 4) of OM.Millihertz := [1, 59_940, 60_000, OM.Millihertz'Last];
 begin
-   Check (S.Key_For (LG) = "desktop.display.mode.GSM-5B9A-0001E0E7", "key " & S.Key_For (LG));
-   Check (S.Key_For ((LG with delta Serial => 0, Vendor => ['?', 'A', 'Z'])) =
-          "desktop.display.mode.?AZ-5B9A-00000000", "key of a bad vendor letter, serial zero");
-   Check (S.Key_For (LG) /= S.Key_For ((LG with delta Serial => 1)), "serials give their own keys");
-   Check (TS.Kind_Of (S.Key_For (LG)) = TS.Display_Mode_Setting, "the monitor key is typed");
-   Check (TS.Kind_Of (DD.MODESET_KEY) = TS.Display_Modeset_Setting, "desktop.display.modeset stays its own");
-   Check (TS.Kind_Of (DD.MODE_PREFIX) = TS.Untyped, "the bare prefix names no monitor");
+   Check (S.Member_For (LG) = "GSM-5B9A-0001E0E7", "member " & S.Member_For (LG));
+   Check (S.Member_For ((LG with delta Serial => 0, Vendor => ['?', 'A', 'Z'])) =
+          "?AZ-5B9A-00000000", "member of a bad vendor letter, serial zero");
+   Check (S.Member_For (LG) /= S.Member_For ((LG with delta Serial => 1)), "serials give their own keys");
+   Check (TS.Kind_Of ("desktop.display.mode." & S.Member_For (LG)) = CCL.Setting_Kinds.Display_Mode_Setting,
+          "the monitor key is typed");
+   Check (TS.Kind_Of ("desktop.display.modeset") = CCL.Setting_Kinds.Display_Modeset_Setting, "desktop.display.modeset stays its own");
+   Check (TS.Kind_Of ("desktop.display.mode.") = CCL.Setting_Kinds.Untyped, "the bare prefix names no monitor");
    Check (Canonical (S.Encode (S.Default)) = S.Encode (S.Default), "Auto is canonical: " & S.Encode (S.Default));
    S.Decode (S.Encode (S.Default), Item, OK);
    Check (OK and then Item.Auto, "Auto round trip");

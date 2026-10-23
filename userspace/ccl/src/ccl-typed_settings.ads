@@ -1,4 +1,5 @@
 with CCL.Objects.Views;
+with CCL.Setting_Kinds;
 
 --  Settings whose values are typed CCL values (docs/ccl-boot-configuration.md,
 --  "Typed settings"): a key prefix names the declared type its value must
@@ -8,17 +9,13 @@ with CCL.Objects.Views;
 --  (the desktop) reads that source back through the same typed path and
 --  accepts it only if it is that canonical spelling, so a stored value is
 --  never parsed by hand and never in any other form.
---  Users: desktop.launch.* (CCL.Interfaces.Desktop_Launch),
---  desktop.input.key-repeat (CCL.Interfaces.Desktop_Input),
---  gpu.power.waitboost (CCL.Interfaces.GPU_Power), desktop.display.scale,
---  desktop.display.modeset and desktop.display.mode.*
---  (CCL.Interfaces.Desktop_Display), calculator.options
---  (CCL.Interfaces.Calc: the Calculator's mode and options).
+--  Which keys are typed, and with which type, is the setting catalog's
+--  (userspace/ccl/interfaces/settings/, CAP-003): CCL.Setting_Kinds is
+--  generated from it.
 package CCL.Typed_Settings is
-   type Setting_Kind is
-     (Untyped, Launch_Entry_Setting, Key_Repeat_Setting, GPU_Waitboost_Setting, Display_Scale_Setting,
-      Display_Modeset_Setting, Display_Mode_Setting, Calculator_Options_Setting);
-   function Kind_Of (Key : String) return Setting_Kind;
+   subtype Setting_Kind is CCL.Setting_Kinds.Setting_Kind;
+   use all type CCL.Setting_Kinds.Setting_Kind;
+   function Kind_Of (Key : String) return Setting_Kind renames CCL.Setting_Kinds.Kind_Of;
 
    MAXIMUM_CANONICAL : constant := 1_024;
    MAXIMUM_MESSAGE : constant := 160;

@@ -1,0 +1,10 @@
+# netmgr.svc's interface settings: how if0 is configured ("static" or
+# "dhcp"), and its addresses, each one 16-byte IPv6 address (IPv4 written
+# ::ffff:a.b.c.d).
+(Setting_Catalog settings => [
+  (Setting "net.if0.method" Shape.Key Value.Text Class.Declaration_Managed "")
+  (Setting "net.if0.address" Shape.Key Value.Address Class.Declaration_Managed "")
+  (Setting "net.if0.netmask" Shape.Key Value.Address Class.Declaration_Managed "")
+  (Setting "net.if0.gateway" Shape.Key Value.Address Class.Declaration_Managed "")
+  (Setting "net.dns.primary" Shape.Key Value.Address Class.Declaration_Managed "")
+  (Setting "net.dns.secondary" Shape.Key Value.Address Class.Declaration_Managed "")])

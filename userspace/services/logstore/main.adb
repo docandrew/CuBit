@@ -4,8 +4,7 @@ with CuBit.Messages; use CuBit.Messages;
 with CuBit.Process_IDs.Text;
 with CuBit.Log_Protocol; use CuBit.Log_Protocol;
 with CuBit.Log_Records;
-with CuBit.Config_Inspection;
-with CuBit.Config_Reader;
+with CuBit.Settings;
 with Log_Fanout;
 with Log_Budgets;
 with Stream_Writers;
@@ -32,12 +31,10 @@ procedure Main is
          ": its endpoint lacks the badge for it (the logstore, log-observer or " &
          "log-control entry its manifest requests)");
    end Report_Refusal;
-   package Settings renames CuBit.Config_Inspection;
    use type Logs.Severity;
-   use type Settings.Status;
    --  The setting naming the least severe record kept, as a CCL Severity
    --  value ("Severity.Information"). Without it everything is kept.
-   MINIMUM_SETTING : constant String := "logs.minimum-level";
+   MINIMUM_SETTING : constant String := Startup.Settings.Logs_Minimum_Level.Setting_Key;
    --  Kept: records at Minimum and above. Others are acknowledged and dropped.
    Minimum : Logs.Severity := Logs.Trace;
    --  Until Config answers (or log-control sets it), the setting is retried.
@@ -87,20 +84,20 @@ procedure Main is
    package Kernel_Records is new Kernel_Device_Memory (Note);
 
    procedure Read_Minimum_Setting is
-      Value : Settings.Text;
-      Result : Settings.Status;
+      use all type CuBit.Settings.Outcome;
+      Stored : constant Startup.Settings.Logs_Minimum_Level.Reading := Startup.Settings.Logs_Minimum_Level.Read;
+      Value : constant String := (if Stored.Kind = Present then CuBit.Settings.Image (Stored.Item) else "");
    begin
-      CuBit.Config_Reader.Query (Startup.Config, Settings.Read_Value, MINIMUM_SETTING, Value, Result);
-      if Result = Settings.OK then
+      if Stored.Kind = Present then
          Minimum_Settled := True;
-         if Logs.Is_Severity_Literal (Value.Data (1 .. Value.Length)) then
-            Minimum := Logs.Severity_Of (Value.Data (1 .. Value.Length));
+         if Logs.Is_Severity_Literal (Value) then
+            Minimum := Logs.Severity_Of (Value);
             Note ("logstore: keeping " & Logs.Severity_Literal (Minimum) & " and above (" & MINIMUM_SETTING & ")");
          else
             Note ("logstore: " & MINIMUM_SETTING & " is not a Severity (for example Severity.Information); " &
                   "keeping everything", Logs.Warning);
          end if;
-      elsif Result in Settings.Missing | Settings.Denied then
+      elsif Stored.Kind in Absent | Denied then
          --  Nothing to wait for: no setting, or no grant to read it.
          Minimum_Settled := True;
       end if;

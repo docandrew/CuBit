@@ -7,7 +7,7 @@ with CuBit.Handles;
 with Startup;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Net_Channels;
-with CuBit.Config;
+with CuBit.Settings;
 with CuBit.Clocks;
 with CuBit.Clock_Control; use CuBit.Clock_Control;
 with CuBit.Clock_Control.Client;
@@ -57,46 +57,27 @@ procedure Main is
    Last_Length : Natural := 0;
    Failures : Natural := 0;
 
-   procedure Setting
-     (Key : String; Data : out String; Length : out Natural; Found : out Boolean)
-   is
-      Address : System.Address;
-      Status : CuBit.Config.ConfigStatus;
-      use type CuBit.Config.ConfigStatus;
+   --  time.servers into Data (Found False when absent or refused).
+   procedure Servers_Setting (Data : out String; Length : out Natural; Found : out Boolean) is
+      use all type CuBit.Settings.Outcome;
+      Stored : constant Startup.Settings.Time_Servers.Reading := Startup.Settings.Time_Servers.Read;
    begin
       Data := [others => ' '];
       Length := 0;
-      CuBit.Config.get (Key, Address, Length, Status);
-      Found := Status = CuBit.Config.OK and then Length in 1 .. Data'Length;
+      Found := Stored.Kind = Present and then Stored.Item.Length in 1 .. Data'Length;
       if Found then
-         declare
-            Source : String (1 .. Length) with Import, Address => Address;
-         begin
-            Data (Data'First .. Data'First + Length - 1) := Source;
-         end;
-      else
-         Length := 0;
+         Length := Stored.Item.Length;
+         Data (Data'First .. Data'First + Length - 1) := CuBit.Settings.Image (Stored.Item);
       end if;
-   end Setting;
+   end Servers_Setting;
 
    function Poll_Seconds return Unsigned_64 is
-      Data : String (1 .. 16);
-      Length : Natural;
-      Found : Boolean;
-      Value : Unsigned_64 := 0;
+      use all type CuBit.Settings.Outcome;
+      Stored : constant Startup.Settings.Time_Poll_Seconds.Reading := Startup.Settings.Time_Poll_Seconds.Read;
    begin
-      Setting ("time.poll-seconds", Data, Length, Found);
-      if not Found then
-         return Default_Poll_Seconds;
-      end if;
-      for C of Data (1 .. Length) loop
-         if C not in '0' .. '9' or else Value > Maximum_Poll_Seconds then
-            return Default_Poll_Seconds;
-         end if;
-         Value := Value * 10 + Character'Pos (C) - Character'Pos ('0');
-      end loop;
-      return (if Value in Minimum_Poll_Seconds .. Maximum_Poll_Seconds
-              then Value else Default_Poll_Seconds);
+      return (if Stored.Kind = Present
+                and then Unsigned_64 (Stored.Item) in Minimum_Poll_Seconds .. Maximum_Poll_Seconds
+              then Unsigned_64 (Stored.Item) else Default_Poll_Seconds);
    end Poll_Seconds;
 
    procedure Channel_Call (Label : Unsigned_32; Length : Unsigned_8;
@@ -180,7 +161,7 @@ procedure Main is
       Before_OK, After_OK : Boolean;
       use type SNTP.Rejection;
    begin
-      Setting ("time.servers", Text, Length, Found);
+      Servers_Setting (Text, Length, Found);
       if not Found then
          CuBit.Log.Warning ("timesync: time.servers not set; not synchronizing");
          return False;

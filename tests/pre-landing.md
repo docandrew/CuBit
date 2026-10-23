@@ -44,6 +44,16 @@ refused its required "ntp" entry; now any refusal fails the test
 bash tests/headless/run.sh --test logs --accel kvm
 ```
 
+## native-gprbuild-config
+
+Native fixture scripts resolve the gprbuild configuration before their
+first `cd`; resolved later from a relative `$0`, gprbuild ran with no
+configuration and mixed GNAT 16 with the GNAT 15 runtime objects.
+
+```sh
+bash tests/native-gprbuild-config/check.sh
+```
+
 ## fs-coherence (FS-022)
 
 Filesystem data and metadata stay coherent across writers.

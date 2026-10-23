@@ -1,4 +1,5 @@
-# Identical executable code; only its attached authority request differs.
+# The same source, built against this manifest's own generated bindings
+# (CAP-003); it declares no clock, and asks for one anyway.
 (executable-manifest v1
   (identity "com.cubit.rust-probe-denied")
   (version "0.1.0")

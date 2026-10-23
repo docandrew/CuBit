@@ -1,7 +1,6 @@
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
-with CuBit.Config_Reader;
-with CuBit.Config_Inspection;
+with CuBit.Settings;
 with CCL.Objects.Persistence;
 with Config_Database;
 with Config_Database.Schemas;
@@ -13,6 +12,7 @@ with Config_Worker_Receiver;
 with Config_Worker_Startup;
 with CuBit.Handles;
 with CuBit.Handles.IPC;
+with CuBit.Handles.Services;
 with Startup;
 
 package body Worker_Host is
@@ -20,42 +20,46 @@ package body Worker_Host is
    --  presence is not checked here: the generated Startup package's check
    --  stops the program before this library runs if the entry, or the
    --  whole startup table, is missing (CAP-003).
-   function Config_Service return CuBit.Handles.Endpoint renames Startup.Config;
+   function Config_Service return CuBit.Handles.Endpoint is (CuBit.Handles.Services.Config.Handle (Startup.Config));
    use type System.Address;
-   use type CuBit.Config_Inspection.Status;
-
-   --  The bootstrap setting naming the database (system.ccl, system-live.ccl).
-   Database_Key : constant String := "cubit.config.storage.database";
 
    function Database_Path
      (Buffer : System.Address; Capacity : Unsigned_64;
       Length : access Unsigned_64) return Unsigned_32
    is
-      Value : CuBit.Config_Inspection.Text;
-      Result : CuBit.Config_Inspection.Status;
+      use all type CuBit.Settings.Outcome;
+      package Setting renames Startup.Settings.Cubit_Config_Storage_Database;
+      --  The answers the Rust worker tells apart (src/lib.rs): a path, or none.
+      Path_Read : constant := 16#F000#;
+      No_Path : constant := 16#F001#;
    begin
-      if Length = null then return 16#F001#; end if;
+      if Length = null then return No_Path; end if;
       Length.all := 0;
-      if Buffer = System.Null_Address or Capacity < CuBit.Config_Inspection.Maximum_Text then
-         return 16#F001#;
+      if Buffer = System.Null_Address then
+         return No_Path;
       end if;
       --  Read once from bootstrap Config, BEFORE opening the database. There
       --  is deliberately no path default and no lookup in our own database.
-      CuBit.Config_Reader.Query
-        (Config_Service, CuBit.Config_Inspection.Read_Value, Database_Key, Value, Result);
-      if Result /= CuBit.Config_Inspection.OK then
-         debugPrint ("CONFIG-STORAGE: reading " & Database_Key & ": " &
-                     CuBit.Config_Inspection.Status'Image (Result) & ASCII.LF);
-         return CuBit.Config_Inspection.Status'Enum_Rep (Result);
-      end if;
       declare
-         Output : String (1 .. CuBit.Config_Inspection.Maximum_Text)
-           with Import, Address => Buffer;
+         Stored : constant Setting.Reading := Setting.Read;
       begin
-         Output (1 .. Value.Length) := Value.Data (1 .. Value.Length);
+         if Stored.Kind /= Present then
+            debugPrint ("CONFIG-STORAGE: reading " & Setting.Setting_Key & ": " &
+                        CuBit.Settings.Outcome'Image (Stored.Kind) & ASCII.LF);
+            return No_Path;
+         end if;
+         if Unsigned_64 (Stored.Item.Length) > Capacity then
+            debugPrint ("CONFIG-STORAGE: " & Setting.Setting_Key & " is longer than the worker's buffer" & ASCII.LF);
+            return No_Path;
+         end if;
+         declare
+            Output : String (1 .. Stored.Item.Length) with Import, Address => Buffer;
+         begin
+            Output := CuBit.Settings.Image (Stored.Item);
+         end;
+         Length.all := Unsigned_64 (Stored.Item.Length);
       end;
-      Length.all := Unsigned_64 (Value.Length);
-      return 16#F000#;
+      return Path_Read;
    end Database_Path;
 
    function Run (Database : System.Address) return Unsigned_32 is

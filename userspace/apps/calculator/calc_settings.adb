@@ -1,3 +1,4 @@
+with CCL.Setting_Kinds;
 with CCL.Objects.Views;
 
 package body Calc_Settings is
@@ -17,7 +18,7 @@ package body Calc_Settings is
       if Work = null then
          Work := new Views.Snapshot;
       end if;
-      TS.Read (TS.Calculator_Options_Setting, Source, Work.all, Success);
+      TS.Read (CCL.Setting_Kinds.Calc_Options_Setting, Source, Work.all, Success);
       if Success then
          Item := CCL_Calc_Options.Read (Work.all, Views.Root (Work.all));
       end if;

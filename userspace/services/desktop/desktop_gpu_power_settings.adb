@@ -2,6 +2,8 @@
 --  CuBit
 --  Copyright (C) 2026 Jon Andrew
 ------------------------------------------------------------------------------
+with CCL.Typed_Settings;
+with CCL.Setting_Kinds;
 with Interfaces;
 with CCL.Objects.Views;
 
@@ -21,7 +23,7 @@ package body Desktop_GPU_Power_Settings is
       if Work = null then
          Work := new Views.Snapshot;
       end if;
-      TS.Read (TS.GPU_Waitboost_Setting, Source, Work.all, Read);
+      TS.Read (CCL.Setting_Kinds.GPU_Waitboost_Setting, Source, Work.all, Read);
       if not Read then
          return;
       end if;

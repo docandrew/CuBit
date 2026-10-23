@@ -19,13 +19,9 @@
 --  (tests/display-scale checks it is what the CCL checker produces).
 ------------------------------------------------------------------------------
 with CuBit.Display_Geometry;
-with CCL.Interfaces.Desktop_Display;
-with CCL.Typed_Settings;
 
 package Desktop_Display_Scale_Settings is
-   Config_Key : constant String := CCL.Interfaces.Desktop_Display.DISPLAY_SCALE_KEY;
    --  The longest stored value Decode accepts.
-   Maximum_Source : constant := CCL.Typed_Settings.MAXIMUM_CANONICAL;
 
    type Preference (Auto : Boolean := True) is record
       case Auto is
@@ -36,5 +32,7 @@ package Desktop_Display_Scale_Settings is
    Default : constant Preference := (Auto => True);
 
    procedure Decode (Source : String; Item : out Preference; Success : out Boolean);
+   --  The setting catalog's codec (CAP-003).
+   subtype Value is Preference;
    function Encode (Item : Preference) return String;
 end Desktop_Display_Scale_Settings;

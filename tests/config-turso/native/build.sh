@@ -23,7 +23,7 @@ export RUSTFLAGS='--cfg getrandom_backend="rdrand" --cfg polyval_force_soft --cf
 bash "$repo_dir/userspace/rust/std/cargo-cubit.sh" cargo build --manifest-path Cargo.toml --locked --release \
     --target "$repo_dir/userspace/rust/std/x86_64-unknown-cubit.json" -Zjson-target-spec -Zbuild-std=std,panic_abort \
     -Zbuild-std-features=compiler-builtins-mem -j4 "$@"
-ld -nostdlib -static -z noexecstack -z stack-size=16777216 \
+ld -nostdlib -static -u __cubit_startup_check -z noexecstack -z stack-size=16777216 \
     -T "$repo_dir/userspace/c/link.ld" \
     --start-group "$build_dir/cargo/x86_64-unknown-cubit/release/libcubit_turso_native_probe.a" \
     "$repo_dir/userspace/allocator/build/native-lib/libcubit_allocator.a" \

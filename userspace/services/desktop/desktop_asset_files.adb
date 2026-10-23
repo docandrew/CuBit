@@ -1,7 +1,8 @@
 with System; use System;
 with System.Storage_Elements; use System.Storage_Elements;
 with Desktop_Endpoints;
-with CuBit.Config;
+with CuBit.Settings;
+with Startup;
 with CuBit.Filesystem_Queues;
 with CuBit.Filesystem_Sessions;
 with CuBit.Filesystems;
@@ -12,7 +13,6 @@ package body Desktop_Asset_Files is
    package FS renames CuBit.Filesystem_Sessions;
    package FQ renames CuBit.Filesystem_Queues;
    package Q renames CuBit.QOI;
-   use type CuBit.Config.ConfigStatus;
    use type FS.Token;
    use type FS.Wait_Result;
 
@@ -49,7 +49,7 @@ package body Desktop_Asset_Files is
      (case Result.Status is
         when Complete => "read" & Result.Bytes'Image & " bytes",
         when Refused => "rejected after" & Result.Bytes'Image & " bytes",
-        when No_Asset_Root => Root_Setting & " is not a valid asset root",
+        when No_Asset_Root => Startup.Settings.System_Assets_Root.Setting_Key & " is not a valid asset root",
         when No_Filesystem => "no filesystem queue",
         when Open_Failed => "open failed (" & Status_Name (Result.Open_Reply) & ")",
         when Read_Failed => "read failed after" & Result.Bytes'Image & " bytes",
@@ -58,20 +58,16 @@ package body Desktop_Asset_Files is
    --  The configured asset root: a volume path ending in a separator, made
    --  of printable characters, with no parent references.
    procedure Read_Root (Root : out String; Length : out Root_Length) is
-      Value : System.Address;
-      Size : Natural;
-      Status : CuBit.Config.ConfigStatus;
+      use all type CuBit.Settings.Outcome;
+      Stored : constant Startup.Settings.System_Assets_Root.Reading := Startup.Settings.System_Assets_Root.Read;
    begin
       Length := 0;
-      CuBit.Config.get (Root_Setting, Value, Size, Status);
-      if Status /= CuBit.Config.OK or else Value = System.Null_Address or else
-        Size not in 2 .. Maximum_Root
-      then
+      if Stored.Kind /= Present or else Stored.Item.Length not in 2 .. Maximum_Root then
          return;
       end if;
       declare
-         Text : constant String (1 .. Size) with Import, Address => Value;
-         Copy : constant String (1 .. Size) := Text;
+         Copy : constant String := CuBit.Settings.Image (Stored.Item);
+         Size : constant Natural := Copy'Length;
       begin
          if Copy (1) /= Volume_Mark or else Copy (Size) /= Separator or else
            (for some C of Copy => C not in '!' .. '~') or else

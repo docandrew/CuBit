@@ -2,6 +2,7 @@ with Interfaces; use Interfaces;
 with CCL.Language;
 with CCL.VM;
 with CCL.Typed_Settings;
+with CCL.Setting_Kinds;
 
 package body CCL.Configurations with SPARK_Mode => On is
    use CCL.Declarations;
@@ -106,8 +107,8 @@ package body CCL.Configurations with SPARK_Mode => On is
          Result.Plan.Setting_Count := Count;
          --  A typed setting: its value is checked against the key's declared
          --  type and stored as the value's canonical source.
-         if CCL.Typed_Settings."/=" (CCL.Typed_Settings.Kind_Of (Key.Data (1 .. Key.Length)),
-                                     CCL.Typed_Settings.Untyped)
+         if CCL.Setting_Kinds."/=" (CCL.Typed_Settings.Kind_Of (Key.Data (1 .. Key.Length)),
+                                     CCL.Setting_Kinds.Untyped)
          then
             declare
                First : Positive;

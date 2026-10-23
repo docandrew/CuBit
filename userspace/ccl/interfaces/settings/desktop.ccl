@@ -1,0 +1,25 @@
+# Desktop's settings (userspace/services/desktop): its appearance, Apps menu,
+# input, displays and the GPU power policy it hands the driver.
+(Setting_Catalog settings => [
+  (Setting "desktop.appearance.v1" Shape.Key Value.Text Class.Application_State "")
+  (Setting "desktop.appearance.theme.light" Shape.Key Value.Text Class.Declaration_Managed "")
+  (Setting "desktop.appearance.theme.dark" Shape.Key Value.Text Class.Declaration_Managed "")
+  (Setting "desktop.launch." Shape.Family
+    (Value.Typed (CCL_Type "CCL.Interfaces.Desktop_Launch.TYPE_SOURCE" "Launch_Entry"))
+    Class.Declaration_Managed "Desktop_Launch")
+  (Setting "desktop.metrics.trace" Shape.Key Value.Text Class.Declaration_Managed "")
+  (Setting "desktop.input.key-repeat" Shape.Key
+    (Value.Typed (CCL_Type "CCL.Interfaces.Desktop_Input.TYPE_SOURCE" "Key_Repeat"))
+    Class.Declaration_Managed "Desktop_Key_Repeat_Settings")
+  (Setting "desktop.display.scale" Shape.Key
+    (Value.Typed (CCL_Type "CCL.Interfaces.Desktop_Display.TYPE_SOURCE" "Display_Scale"))
+    Class.Application_State "Desktop_Display_Scale_Settings")
+  (Setting "desktop.display.mode." Shape.Family
+    (Value.Typed (CCL_Type "CCL.Interfaces.Desktop_Display.MODE_TYPE_SOURCE" "Display_Mode"))
+    Class.Application_State "Desktop_Display_Mode_Settings")
+  (Setting "desktop.display.modeset" Shape.Key
+    (Value.Typed (CCL_Type "CCL.Interfaces.Desktop_Display.MODESET_TYPE_SOURCE" "Display_Modeset"))
+    Class.Declaration_Managed "Desktop_Display_Modeset_Settings")
+  (Setting "gpu.power.waitboost" Shape.Key
+    (Value.Typed (CCL_Type "CCL.Interfaces.GPU_Power.TYPE_SOURCE" "GPU_Waitboost"))
+    Class.Declaration_Managed "Desktop_GPU_Power_Settings")])

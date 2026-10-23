@@ -7,7 +7,6 @@ with CuBit.Clock_Control;
 with CuBit.Logging;
 with CuBit.Log_Records;
 with Wall_Clock;
-with CuBit.Config;
 with Startup;
 
 procedure Main is
@@ -28,7 +27,6 @@ procedure Main is
    Found, Handled, Submitted : Boolean;
 begin
    debugPrint ("clock: starting" & LF);
-   CuBit.Config.Bind (Startup.Config);
    Wall_Clock.Initialize;
    Ignore := registerDriver (DRIVER_CLOCK, Startup.Registration);
    if Ignore = Unsigned_64'Last then

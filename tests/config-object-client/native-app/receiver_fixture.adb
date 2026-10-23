@@ -1,4 +1,6 @@
 with Startup;
+with CuBit.Handles;
+with CuBit.Handles.Services;
 with CuBit.Messages; use CuBit.Messages;
 with CCL.Types;
 with CCL.Resources;
@@ -16,6 +18,7 @@ with Config_Object_Messages;
 with Nested_Fixture;
 
 package body Receiver_Fixture is
+   Config_Endpoint : constant CuBit.Handles.Endpoint := CuBit.Handles.Services.Config.Handle (Startup.Config);
    use Interfaces;
    package T renames CCL.Types;
    package R renames CCL.Resources;
@@ -176,7 +179,7 @@ package body Receiver_Fixture is
          else
             Token := Token + 1;
             if Op = Acquire then
-               H.Create (Client, Owner, Session, Kind, Startup.Config,
+               H.Create (Client, Owner, Session, Kind, Config_Endpoint,
                  Nested_Fixture.Name, Contract, W.Read_Write, 0, Token, Sent);
             else
                -- The shared resource client owns and checks this pairing.

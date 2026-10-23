@@ -895,7 +895,7 @@ if [ -n "$INIT_PROFILE" ]; then
         exit 1
     fi
     if [ "$TEST_NAME" = "rust-native" ]; then
-        for app in rust-probe.app rust-probe-denied.app ccl-test-host.svc clock.svc; do
+        for app in rust-probe.app rust-probe-denied.app rust-probe-mismatch.app ccl-test-host.svc clock.svc; do
             if [ ! -f "$KERNEL_DIR/isodir/boot/$app" ]; then
                 echo "headless: build rust-probe ccl-test-host clock first ($app missing)" >&2
                 exit 1
@@ -3761,6 +3761,7 @@ TEST: PASS rust-clock-authorized
 TEST: PASS rust-clock-denied
 TEST: PASS rust-heap-rollback
 TEST: PASS rust-native
+startup: com.cubit.rust-probe: its startup table has no \"clock\"; stopping (CAP-003 startup check)
 "
         ;;
     config-storage|config-objects|config-objects-reopen|config-objects-benchmark)

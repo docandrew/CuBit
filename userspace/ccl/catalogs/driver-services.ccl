@@ -7,7 +7,7 @@
   (service filesystem 6 read-write)
   (service device-manager 7 read-write)
   (service mixer 9 read-write)
-  (service config 11 read-write)
+  (service config 11 read-write (client Config))
   (service gpu 17 read-write)
   # An endpoint the launcher wires by binding name (devmgr answers it from
   # what it prepared for that name): a NIC for netstack, hda for mixer, the

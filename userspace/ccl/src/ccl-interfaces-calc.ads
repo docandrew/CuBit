@@ -48,7 +48,6 @@ package CCL.Interfaces.Calc with SPARK_Mode is
       16#B963_345F_6F6F_78AE#];
    NUMBER_FIELDS : constant := 10;
    ROOT_OPTIONS_NAME : constant String := Calc_Types.ROOT_OPTIONS_NAME;
-   SETTING_KEY : constant String := Calc_Types.SETTING_KEY;
 
    --  The members, in declaration order (the app's Ada side).
    type Mode_Member is (Standard, Scientific, Programmer);

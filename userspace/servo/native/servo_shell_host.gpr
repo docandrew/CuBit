@@ -2,7 +2,7 @@ with "../../lib/ui/fonts_native.gpr";
 with "../../lib/ui/toolkit_flags.gpr";
 library project Servo_Shell_Host is
    for Languages use ("Ada");
-   for Source_Dirs use (".", "../../lib/ui", "../../lib/theme",
+   for Source_Dirs use (".", "build/generated", "../../lib/ui", "../../lib/theme",
                         "../../lib/compositor", "../../lib/display",
                         "../../allocator/src");
    for Object_Dir use "build/obj";

@@ -16,18 +16,17 @@
 --    ready        -> devmgr (OP_READY signal)
 ------------------------------------------------------------------------------
 with Interfaces; use Interfaces;
-with System; use System;
-with System.Storage_Elements; use System.Storage_Elements;
 
 with CuBit.Messages; use CuBit.Messages;
-with CuBit.Config;
+with CuBit.Net_Address;
+with CuBit.Settings;
+with CuBit.Settings.Readable;
 with CuBit.Handles;
 with DHCP;
 with Startup;
 
 procedure main is
    use ASCII;
-   use type CuBit.Config.ConfigStatus;
 
    --  Protocol constants
    PROTO_UDP : constant Unsigned_8 := 17;
@@ -67,97 +66,44 @@ procedure main is
    --  DHCP state (per interface)
    dhcpState : DHCP.DHCPState;
 
+
    ---------------------------------------------------------------------------
-   --  parseIPv4 - parse "A.B.C.D" from raw bytes, return packed Unsigned_64
-   --  Format: byte0 | (byte1 << 8) | (byte2 << 16) | (byte3 << 24)
+   --  An address setting (one 16-byte address, IPv4 as ::ffff:a.b.c.d) in
+   --  the netstack protocol's IPv4 word (a | b << 8 | c << 16 | d << 24);
+   --  0 when absent, refused, or not IPv4 (the configure protocol carries
+   --  IPv4 only so far).
    ---------------------------------------------------------------------------
-   function parseIPv4 (buf : System.Address;
-                       len : Natural) return Unsigned_64
-   is
-      data : array (0 .. len - 1) of Unsigned_8
-        with Import, Address => buf;
-      octets : array (0 .. 3) of Unsigned_64 := (others => 0);
-      idx    : Natural := 0;
-      val    : Unsigned_64 := 0;
+   generic
+      with package Setting is new CuBit.Settings.Readable (<>);
+      with function Address_Of (Item : Setting.Value) return CuBit.Net_Address.Address;
+   function IPv4_Word return Unsigned_64;
+   function IPv4_Word return Unsigned_64 is
+      use all type CuBit.Settings.Outcome;
+      Stored : constant Setting.Reading := Setting.Read;
    begin
-      if len = 0 then
+      if Stored.Kind /= Present then
+         if Stored.Kind /= Absent then
+            debugPrint ("netmgr: " & Setting.Setting_Key & " " & CuBit.Settings.Outcome'Image (Stored.Kind) & LF);
+         end if;
          return 0;
       end if;
-
-      for i in 0 .. len - 1 loop
-         if data (i) = 16#2E# then  --  '.'
-            if idx > 2 then
-               return 0;
-            end if;
-            octets (idx) := val;
-            idx := idx + 1;
-            val := 0;
-         elsif data (i) >= 16#30# and data (i) <= 16#39# then
-            val := val * 10 + Unsigned_64 (data (i) - 16#30#);
-            if val > 255 then
-               return 0;
-            end if;
-         else
+      declare
+         A : constant CuBit.Net_Address.Address := Address_Of (Stored.Item);
+      begin
+         if not CuBit.Net_Address.Is_Mapped (A) then
+            debugPrint ("netmgr: " & Setting.Setting_Key & " is not an IPv4 address; IPv6 is not configured yet" & LF);
             return 0;
          end if;
-      end loop;
-
-      if idx /= 3 then
-         return 0;
-      end if;
-      octets (3) := val;
-
-      return octets (0) or
-             Shift_Left (octets (1), 8) or
-             Shift_Left (octets (2), 16) or
-             Shift_Left (octets (3), 24);
-   end parseIPv4;
-
-   ---------------------------------------------------------------------------
-   --  strEq - freestanding string comparison
-   ---------------------------------------------------------------------------
-   function strEq (a : String; b : String) return Boolean is
-   begin
-      if a'Length /= b'Length then
-         return False;
-      end if;
-      for i in 0 .. a'Length - 1 loop
-         if a (a'First + i) /= b (b'First + i) then
-            return False;
-         end if;
-      end loop;
-      return True;
-   end strEq;
-
-   ---------------------------------------------------------------------------
-   --  readConfigKey - read a key from config.svc, return value address/len
-   ---------------------------------------------------------------------------
-   procedure readConfigKey (key      : String;
-                            val      : out System.Address;
-                            valLen   : out Natural;
-                            ok       : out Boolean)
-   is
-      status : CuBit.Config.ConfigStatus;
-   begin
-      CuBit.Config.get (key, val, valLen, status);
-      ok := (status = CuBit.Config.OK and valLen > 0);
-   end readConfigKey;
-
-   ---------------------------------------------------------------------------
-   --  readConfigIP - read an IP address from config
-   ---------------------------------------------------------------------------
-   function readConfigIP (key : String) return Unsigned_64
-   is
-      val    : System.Address;
-      valLen : Natural;
-      ok     : Boolean;
-   begin
-      readConfigKey (key, val, valLen, ok);
-      if ok then
-         return parseIPv4 (val, valLen);
-      end if;
-      return 0;
-   end readConfigIP;
+         return Unsigned_64 (A (12)) or Shift_Left (Unsigned_64 (A (13)), 8) or
+                Shift_Left (Unsigned_64 (A (14)), 16) or Shift_Left (Unsigned_64 (A (15)), 24);
+      end;
+   end IPv4_Word;
+   function Same (Item : CuBit.Net_Address.Address) return CuBit.Net_Address.Address is (Item);
+   function Interface_Address is new IPv4_Word (Startup.Settings.Net_If0_Address, Same);
+   function Interface_Netmask is new IPv4_Word (Startup.Settings.Net_If0_Netmask, Same);
+   function Interface_Gateway is new IPv4_Word (Startup.Settings.Net_If0_Gateway, Same);
+   function Primary_DNS is new IPv4_Word (Startup.Settings.Net_Dns_Primary, Same);
+   function Secondary_DNS is new IPv4_Word (Startup.Settings.Net_Dns_Secondary, Same);
 
    ---------------------------------------------------------------------------
    --  sendConfigure - send OP_NET_CONFIGURE to netstack
@@ -264,47 +210,41 @@ procedure main is
 
    --  Variables for main loop
    ret    : Unsigned_64;
-   val    : System.Address;
-   valLen : Natural;
-   ok     : Boolean;
    ifCount : Natural;
    sender : Process_ID;
    msg    : Message;
 
 begin
    debugPrint ("netmgr: starting" & LF);
-   CuBit.Config.Bind (Startup.Config);
 
    --  Register as DRIVER_NETMGR
    ret := registerDriver (DRIVER_NETMGR, Startup.Registration);
    debugPrint ("netmgr: registered" & LF);
 
-   --  Read net.if0.method from config
-   readConfigKey ("net.if0.method", val, valLen, ok);
-   if ok then
-      declare
-         mBuf : String (1 .. valLen) with Import, Address => val;
-      begin
-         if strEq (mBuf, "static") then
-            ifCfg.method := METHOD_STATIC;
-            debugPrint ("netmgr: if0 method=static" & LF);
-         elsif strEq (mBuf, "dhcp") then
-            ifCfg.method := METHOD_DHCP;
-            debugPrint ("netmgr: if0 method=dhcp" & LF);
-         else
-            debugPrint ("netmgr: if0 unknown method" & LF);
-         end if;
-      end;
-   else
-      debugPrint ("netmgr: no net.if0.method configured" & LF);
-   end if;
+   --  net.if0.method: "static" or "dhcp".
+   declare
+      use all type CuBit.Settings.Outcome;
+      Method : constant Startup.Settings.Net_If0_Method.Reading := Startup.Settings.Net_If0_Method.Read;
+   begin
+      if Method.Kind /= Present then
+         debugPrint ("netmgr: net.if0.method " & CuBit.Settings.Outcome'Image (Method.Kind) & LF);
+      elsif CuBit.Settings.Image (Method.Item) = "static" then
+         ifCfg.method := METHOD_STATIC;
+         debugPrint ("netmgr: if0 method=static" & LF);
+      elsif CuBit.Settings.Image (Method.Item) = "dhcp" then
+         ifCfg.method := METHOD_DHCP;
+         debugPrint ("netmgr: if0 method=dhcp" & LF);
+      else
+         debugPrint ("netmgr: if0 unknown method" & LF);
+      end if;
+   end;
 
    --  Read static config values (used as fallback even for DHCP)
-   ifCfg.address := readConfigIP ("net.if0.address");
-   ifCfg.netmask := readConfigIP ("net.if0.netmask");
-   ifCfg.gateway := readConfigIP ("net.if0.gateway");
-   primaryDNS    := readConfigIP ("net.dns.primary");
-   secondaryDNS  := readConfigIP ("net.dns.secondary");
+   ifCfg.address := Interface_Address;
+   ifCfg.netmask := Interface_Netmask;
+   ifCfg.gateway := Interface_Gateway;
+   primaryDNS    := Primary_DNS;
+   secondaryDNS  := Secondary_DNS;
 
    --  Signal ready to devmgr
    signalReady;

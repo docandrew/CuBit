@@ -14,3 +14,7 @@ alloc = []
 # __cubit_launch_block_length (the shared userspace/runtime/start/cubit_start.S):
 # startup::Table::from_start reads it.
 start-symbols = []
+# A program without the std runtime (the Rust probe) takes its entry from
+# here: the shared userspace/runtime/start/cubit_start.S, in this crate's
+# own object, apart from the program's generated startup check.
+start = ["start-symbols"]

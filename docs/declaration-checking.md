@@ -136,9 +136,10 @@ from the same declaration.
 
 Programs that really do need arbitrary keys are the shell, config-inspector,
 the CCL `config` built-ins and the config-check test. They declare
-`config-all`, and only then do they get `Startup.Config_Inspector`, a
-string-keyed `Inspector` object. A program without `config-all` cannot
-obtain that type.
+`config-all`, and only then do they get `Startup.Settings.Inspector`, a
+string-keyed `Inspector` object. A program without `config-all` gets no
+Inspector from its Startup package. If it builds one anyway, Config still
+refuses every key outside its scopes (slice 3 notes).
 
 Endpoints obtained at run time, rather than from the startup table, need a
 checked conversion until CAP-002's `Connect` returns typed handles:
@@ -444,6 +445,69 @@ Checked and clean:
   timesync, tls, lexicon, logstore, calculator, Penny, config-storage, and
   the shell and inspectors with `all`.
 
+## Run-time discovery and binding (proposal, for review)
+
+Not decided. This section proposes how programs whose needs are not known
+at build time keep working as the static checks grow. Those programs are
+the CCL VM, the console, and agents (docs/agent-security.md). The
+constraint (user, 2026-10-23): the CCL runtime must never be left with
+compile-time bindings only.
+
+**Two kinds of client, one set of declarations.**
+- *Compiled programs.* Their manifests declare what they use. The checks
+  in sections 1–4 run at build time, the startup check runs at first
+  instruction, and a mismatch never reaches a message.
+- *Dynamic clients.* These are CCL scripts in the VM or console, and
+  agents. They use the same service catalog, setting catalog and contract
+  identities (section 2, slice 6). Their checks run at *bind time*,
+  before the first message on the new binding, not at build time.
+
+**How a dynamic client binds.**
+- It asks `Connect (service, contract)`, in the CAP-002 sense, and gets
+  either a typed handle for that contract or a refusal that names the
+  reason.
+- procmgr decides. It checks the request against the caller's grant, and
+  later against its security context (CTX-001). It never decides from the
+  service's name alone.
+- The contract identity must be one the service offers, which is the
+  `Compatible` check of section 2 made at run time. A mismatch is refused
+  at bind time, not discovered at the first reply.
+- Settings work the same way. A dynamic client gets an Inspector, or a
+  typed accessor for a catalog entry. Config checks each key against the
+  scopes that were granted.
+
+**What a bind leaves behind.**
+- A refusal is logged once, by name, as in section 5.
+- The capability graph records each bind (declared, granted, exercised,
+  denied), whether it was static or dynamic. An agent's binds are then as
+  inspectable as a compiled program's manifest.
+
+**Today's run-time paths.** Slices 1–3 keep these:
+- the CCL VM's lookup `Optional_Endpoint_Named (Label, Kind)`
+  (`ccl_native_bindings.adb`);
+- the CCL config built-ins, which look up `config` at run time;
+- `CuBit.Settings.Inspection.Using` for any Config endpoint, with Config
+  as the authority.
+
+These lookups find entries that the launcher already put in the table.
+`Connect` would extend this to binds that are made after launch and
+checked by procmgr.
+
+**What slices 4–6 must preserve.**
+- Slice 4 (the image check) treats a program with a dynamic-binding
+  declaration as a consumer whose uses are unknown. It does not fail the
+  image for that program's undeclared uses. It does fail the image when a
+  declared `offered-by` is missing.
+- Slice 5 (badges) mints roles for a dynamic bind the same way as for a
+  static one, from the contract and role, at `Connect`. There is no
+  separate unchecked path.
+- Slice 6 (contracts) keeps the contract identities and descriptors
+  available at run time, both in the catalog and in each offer, so that
+  `Connect` can check `Compatible`. Generated codecs must not be the only
+  copy of a contract.
+- No slice removes a run-time lookup unless a checked `Connect` path
+  replaces it.
+
 ## 8. Slices
 
 | Slice | Content | Size | Catches |
@@ -585,9 +649,7 @@ The user accepted every recommendation below on 2026-10-22.
   there, no longer in `cubit_handles.h`.
 - They are used by config-storage and the Turso probe (`std_hooks`), the
   Rust probe, sched-latency and the Mesa window probe.
-- No startup check runs yet for Rust or C programs (the Ada programs
-  have theirs). That would be a weak `__cubit_startup_check` hook defined
-  by the generated bindings; it is the next step.
+- Rust and C programs got their startup check in slice 3 (below).
 
 **Build check.**
 - `tools/check_capability_numbers.py` is now `tools/check_declarations.py`,
@@ -600,3 +662,114 @@ The user accepted every recommendation below on 2026-10-22.
     word sizes, and `Maximum_Table_Bytes`.
 - Run on the slice-1 tree, it names the six old copies and the missing
   shared entry.
+
+## Implementation notes (slice 3, 2026-10-23)
+
+**Rust and C startup check.**
+- `cubit_start.S` calls a weak `__cubit_startup_check` before the
+  language start, when one is linked.
+- The generated bindings define it:
+  - `--rust-output` gives an `EXPECTED` table and a check that calls
+    `cubit::startup::require`.
+  - `--c-output` gives `cubit_startup_expected[]` and a weak check that
+    calls the libc's `cubit_startup_require` (Ada:
+    `CuBit.Libc_Startup.Require`).
+- Both stop the program with status 78 and name the missing entry, as
+  the Ada check does.
+- A weak reference does not pull an archive member in, so Rust links pass
+  `-u __cubit_startup_check`.
+- The no-std crate feature `start` includes `cubit_start.S`. A program
+  cannot both include the entry and define the check in one module.
+- Regression: `rust-probe-mismatch.app` links the probe's code against a
+  table whose clock entry is missing. rust-native expects it to stop by
+  name.
+
+**The catalog.**
+- The catalog is one typed CCL file per area under
+  `userspace/ccl/interfaces/settings/`, not a single `settings.ccl`. Its
+  schema is `interfaces/setting-catalog.ccl`. The tool reads it by field
+  name (`tools/ccl-manifest/setting_catalogs.adb`).
+- An entry is a key, or a family whose prefix ends in `.`, with:
+  - a value: `Typed` (a CCL type and an Ada codec), `Text`, `Address`,
+    `Count` or `Collection`;
+  - a class.
+- The tool refuses:
+  - a malformed key, including two separators in a row, so that each key
+    names one Ada package;
+  - an overlap with another entry;
+  - a typed value without a codec;
+  - a codec on a built-in value.
+- `ccl-manifest --setting-kinds` generates `CCL.Setting_Kinds`. Its
+  `Kind_Of` replaces the hand-written prefix table, and
+  `CCL.Typed_Settings.Kind_Of` renames it. A hosted test regenerates it and
+  compares.
+
+**Manifests name settings.**
+- Manifests keep their `config-scope` prefixes. The planned `(config
+  Setting.X)` syntax was not added.
+- A scope must reach at least one catalog setting, or ccl-manifest refuses
+  the manifest ("names no setting in the setting catalog"). `all`
+  (`config-all`) is the exception.
+- `.cubit.access` is unchanged, so procmgr and config.svc are unchanged.
+
+**`Startup.Settings`.**
+- The generated Startup package has one instance per covered setting,
+  named from its key (`Desktop_Display_Scale`, `Net_If0_Address`).
+- The instance's generic follows the entry's shape and the scope's
+  rights:
+  - `CuBit.Settings.Readable` or `Writable` for a key;
+  - `Family` or `Writable_Family` for a family.
+- `Read` returns `Present` with the decoded value, or `Absent`, `Denied`,
+  `Invalid` or `Unavailable`.
+- A manifest with covered settings, or with `config-all`, must request a
+  required `config` service.
+- `config-all` adds `Startup.Settings.Inspector`, a string-keyed
+  `CuBit.Settings.Inspection.Inspector`. It covers read, write, delete and
+  list, plus `Inspect`, the read-only inspection protocol (`Probe`,
+  `Read_Value`, `List_Keys`, with a context). Its users are the shell,
+  config-inspector and config-check.
+- The CCL `config` built-ins (`CCL_Config_IO`) do not use the generated
+  Startup package. A CCL program's needs are not known when its host is
+  built, so the host finds its `config` entry at run time
+  (`CuBit.Handles.Services.Config.Optional_Named`). It then builds an
+  Inspector from that entry, and `Probe` tells it whether it may inspect.
+  This is the run-time discovery path (below). The CCL VM's own run-time
+  lookup (`ccl_native_bindings.adb`, `Optional_Endpoint_Named`) is
+  unchanged.
+- `CuBit.Settings.Inspection.Using` stays public. config-denied builds an
+  Inspector without `config-all` on purpose, to show that Config refuses
+  it. Config decides, not the Inspector type.
+- Addresses use `CuBit.Settings.Codecs.Address_Codec`: one 16-byte
+  `CuBit.Net_Address.Address`, written as IPv6 text. IPv4 is mapped,
+  `::ffff:a.b.c.d`.
+  - The system configurations now write `net.*` that way.
+  - netmgr takes the IPv4 word from a mapped address and logs any other
+    address as unsupported.
+  - A hosted test checks that every key in the system configurations is a
+    catalog setting, and that every Address value parses as IPv6.
+
+**Removed.**
+- `CuBit.Config` (`get`, `set`, `delete`, `list`, `Bind`).
+- `CuBit.Config_Reader` (both `Query` overloads). Its grant handling moved
+  into `Inspection.Inspect`. Its lookup of `"config"` by name has a typed
+  replacement: `Config.Optional_Named`, then `Inspection.Using`.
+- The key constants the catalog now holds:
+  - `CuBit.Appearance.Config_Key`;
+  - `Calc_Types.SETTING_KEY` and `Calc.SETTING_KEY`;
+  - `*_KEY` and `MODE_PREFIX` in `CCL.Interfaces.Desktop_Display`,
+    `Desktop_Input` and `GPU_Power`;
+  - `Clock_Settings`.
+- The `scheme.*` settings and their header, which nothing read.
+
+**Not done.**
+- Several values stay `Text` and are not typed yet: `time.servers`,
+  `tls.hosts`, `system.assets.root`, `cubit.config.storage.database`,
+  `logs.minimum-level` and the theme strings.
+- config.svc does not check seeded values against the catalog. Only the
+  hosted test checks the system configurations.
+- Desktop's asynchronous launch-menu refresh (`Desktop_Launch_Refresh`)
+  still submits the raw Config list and get protocol. A typed
+  asynchronous settings API would replace it.
+- Penny's Ada chrome now gets a generated Startup package
+  (`build-cubitshell.sh` generates it before the Ada library). The full
+  Servo build was not rerun, only its native library.

@@ -1,0 +1,9 @@
+# Applications' settings: the Calculator's mode and options, Penny's tab
+# rail and the CCL Workbench's demonstration value.
+(Setting_Catalog settings => [
+  (Setting "calculator.options" Shape.Key
+    (Value.Typed (CCL_Type "CCL.Interfaces.Calc_Types.TYPE_SOURCE" "Calc_Options"))
+    Class.Application_State "Calc_Settings")
+  (Setting "browser.servo.vertical-tabs" Shape.Key Value.Text Class.Application_State "")
+  (Setting "browser.servo.vertical-tab-width" Shape.Key Value.Count Class.Application_State "")
+  (Setting "com.cubit.ccl-workbench.demo." Shape.Family Value.Collection Class.Application_State "")])

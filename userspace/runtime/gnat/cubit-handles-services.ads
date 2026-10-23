@@ -20,4 +20,6 @@ package CuBit.Handles.Services with SPARK_Mode is
    package Log_Observer is new CuBit.Handles.Typed_Endpoints;
    --  process-manager: launchers (CuBit.Launching.Launcher).
    package Process_Manager is new CuBit.Handles.Typed_Endpoints;
+   --  config: settings (CuBit.Settings, through Startup.Settings).
+   package Config is new CuBit.Handles.Typed_Endpoints;
 end CuBit.Handles.Services;

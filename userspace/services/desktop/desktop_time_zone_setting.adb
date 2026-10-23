@@ -1,36 +1,26 @@
-with System;
-with CuBit.Config;
-with Clock_Settings;
+with CuBit.Settings;
+with Startup;
 
 package body Desktop_Time_Zone_Setting is
-   use type CuBit.Config.ConfigStatus;
-   use type System.Address;
+   use all type CuBit.Settings.Outcome;
+   use all type CuBit.Settings.Change_Outcome;
+   package Setting renames Startup.Settings.Clock_Time_Zone;
 
    procedure Load (Zone : out Time_Zones.Time_Zone; Known : out Boolean) is
-      Value  : System.Address;
-      Length : Natural;
-      Status : CuBit.Config.ConfigStatus;
+      Stored : constant Setting.Reading := Setting.Read;
    begin
       Zone := Time_Zones.Zone_UTC;
-      CuBit.Config.get (Clock_Settings.Time_Zone_Key, Value, Length, Status);
-      if Status = CuBit.Config.NotFound then
-         Known := True;
-      elsif Status = CuBit.Config.OK and then Value /= System.Null_Address and then Length > 0 then
-         declare
-            Name : String (1 .. Length) with Import, Address => Value;
-         begin
-            Time_Zones.Find (Name, Zone, Known);
-         end;
-      else
-         Known := False;
-      end if;
+      case Stored.Kind is
+         when Absent => Known := True;
+         when Present => Time_Zones.Find (CuBit.Settings.Image (Stored.Item), Zone, Known);
+         when Denied | Invalid | Unavailable => Known := False;
+      end case;
    end Load;
 
    procedure Store (Zone : Time_Zones.Time_Zone; Saved : out Boolean) is
-      Name : constant String := Time_Zones.Name (Zone);
-      Status : CuBit.Config.ConfigStatus;
+      Status : CuBit.Settings.Change_Outcome;
    begin
-      CuBit.Config.set (Clock_Settings.Time_Zone_Key, Name'Address, Name'Length, Status);
-      Saved := Status = CuBit.Config.OK;
+      Setting.Write (CuBit.Settings.To_Text (Time_Zones.Name (Zone)), Status);
+      Saved := Status = Done;
    end Store;
 end Desktop_Time_Zone_Setting;

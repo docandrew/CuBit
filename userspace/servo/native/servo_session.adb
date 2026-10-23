@@ -15,7 +15,8 @@ with Servo_Input_Admission;
 with Servo_Input_Geometry;
 with CuBit.Messages;
 with CuBit.Desktop_Protocol;
-with CuBit.Config;
+with CuBit.Settings;
+with Startup;
 with Servo_Tab_Projection;
 with Servo_Bookmarks;
 with Penny_Artwork;
@@ -72,10 +73,13 @@ package body Servo_Session is
    Rail_Dragging : Boolean := False;
    Rail_Start_Width : Servo_Tab_Geometry.Rail_Size := 192;
    Rail_Grab_X : Integer := 0;
-   Rail_Key : constant String := "browser.servo.vertical-tab-width";
    Tab_Titles : array (Tabs.Slot) of String (1 .. 64) := [others => [others => ' ']];
    Tab_Lengths : array (Tabs.Slot) of Natural range 0 .. 64 := [others => 0];
-   Preference_Key : constant String := "browser.servo.vertical-tabs";
+   package Layout_Setting renames Startup.Settings.Browser_Servo_Vertical_Tabs;
+   package Rail_Setting renames Startup.Settings.Browser_Servo_Vertical_Tab_Width;
+   --  The layout setting's stored text.
+   VERTICAL_LAYOUT : constant String := "1";
+   HORIZONTAL_LAYOUT : constant String := "0";
    Toolbar_Height : constant := Servo_Tab_Geometry.Toolbar_Height;
    Status_Height : constant := 24;
    Max_Bytes : constant := 16 * 1_024 * 1_024;
@@ -180,51 +184,34 @@ package body Servo_Session is
        App.Height (Win) - Servo_Tab_Geometry.Strip_Top - Status_Height));
 
    procedure Read_Preference is
-      Data : System.Address;
-      Length : Natural;
-      Status : CuBit.Config.ConfigStatus;
-      use type CuBit.Config.ConfigStatus;
+      use type CuBit.Settings.Outcome;
+      Layout : constant Layout_Setting.Reading := Layout_Setting.Read;
+      Rail : constant Rail_Setting.Reading := Rail_Setting.Read;
    begin
-      CuBit.Config.get (Preference_Key, Data, Length, Status);
-      if Status = CuBit.Config.OK and then Length = 1 and then Data /= System.Null_Address then
-         declare Value : Character with Import, Address => Data;
-         begin Vertical_Tabs := Value = '1'; end;
+      if Layout.Kind = CuBit.Settings.Present then
+         Vertical_Tabs := CuBit.Settings.Image (Layout.Item) = VERTICAL_LAYOUT;
       end if;
       Rail_Width := 192;
-      CuBit.Config.get (Rail_Key, Data, Length, Status);
-      if Status = CuBit.Config.OK and then Length = 3 and then Data /= System.Null_Address then
-         declare
-            Value : String (1 .. 3) with Import, Address => Data;
-            Width : Natural := 0;
-         begin
-            if (for all C of Value => C in '0' .. '9') then
-               for C of Value loop Width := Width * 10 + Character'Pos (C) - Character'Pos ('0'); end loop;
-               if Width in Servo_Tab_Geometry.Rail_Size then Rail_Width := Width; end if;
-            end if;
-         end;
+      if Rail.Kind = CuBit.Settings.Present and then Rail.Item in Servo_Tab_Geometry.Rail_Size then
+         Rail_Width := Rail.Item;
       end if;
    end Read_Preference;
 
    procedure Save_Rail is
-      Value : aliased String (1 .. 3);
-      Status : CuBit.Config.ConfigStatus;
-      use type CuBit.Config.ConfigStatus;
+      use type CuBit.Settings.Change_Outcome;
+      Result : CuBit.Settings.Change_Outcome;
    begin
-      Value := [Character'Val (48 + Rail_Width / 100),
-                Character'Val (48 + (Rail_Width / 10) mod 10),
-                Character'Val (48 + Rail_Width mod 10)];
-      CuBit.Config.set (Rail_Key, Value'Address, Value'Length, Status);
-      Preference_Error := Status /= CuBit.Config.OK;
+      Rail_Setting.Write (Rail_Width, Result);
+      Preference_Error := Result /= CuBit.Settings.Done;
    end Save_Rail;
    procedure Toggle_Layout is
-      Value : aliased Character;
-      Status : CuBit.Config.ConfigStatus;
-      use type CuBit.Config.ConfigStatus;
+      use type CuBit.Settings.Change_Outcome;
+      Result : CuBit.Settings.Change_Outcome;
    begin
       Vertical_Tabs := not Vertical_Tabs;
-      Value := (if Vertical_Tabs then '1' else '0');
-      CuBit.Config.set (Preference_Key, Value'Address, 1, Status);
-      Preference_Error := Status /= CuBit.Config.OK;
+      Layout_Setting.Write
+        (CuBit.Settings.To_Text (if Vertical_Tabs then VERTICAL_LAYOUT else HORIZONTAL_LAYOUT), Result);
+      Preference_Error := Result /= CuBit.Settings.Done;
       Chrome_Dirty := True;
    end Toggle_Layout;
 

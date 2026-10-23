@@ -14,8 +14,9 @@ with CCL_Calc_Options;
 --  hand: anything but the canonical, schema-valid form is refused and the
 --  app starts in Standard mode.
 package Calc_Settings is
-   Config_Key : constant String := CCL.Interfaces.Calc_Types.SETTING_KEY;
    Maximum_Source : constant := CCL.Typed_Settings.MAXIMUM_CANONICAL;
-   function Source (Item : CCL_Calc_Options.Choice) return String renames CCL_Calc_Options.Source;
    procedure Decode (Source : String; Item : out CCL_Calc_Options.Choice; Success : out Boolean);
+   --  The setting catalog's codec (CAP-003).
+   subtype Value is CCL_Calc_Options.Choice;
+   function Encode (Item : Value) return String renames CCL_Calc_Options.Source;
 end Calc_Settings;

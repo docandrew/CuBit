@@ -55,6 +55,94 @@ pub enum Kind {
 }
 
 const LAST_KIND: u8 = Kind::Resource as u8;
+
+/// Whether a program's launch needs a startup capability
+/// (CuBit.Startup_Tables.Need).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Need {
+    Required,
+    Optional,
+}
+
+/// One capability a program's manifest declares; its generated bindings
+/// list them (ccl-manifest --rust-output, CAP-003).
+#[derive(Clone, Copy, Debug)]
+pub struct Expectation {
+    pub name: &'static str,
+    pub kind: Kind,
+    pub need: Need,
+}
+
+/// Why a loaded table falls short of a declaration.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Shortfall {
+    NotLoaded,
+    Missing,
+    WrongKind,
+    WrongNeed,
+    NotGranted,
+}
+
+/// sysexits.h's EX_CONFIG, as CuBit.Startup_Check.Startup_Refused.
+pub const STARTUP_REFUSED: u64 = 78;
+
+/// The startup check (CAP-003), run by the shared start code before the
+/// language's start (the generated __cubit_startup_check): when the
+/// table the start code kept lacks something `expected` declares, or the
+/// launch block carried none, say which and why and stop the process.
+#[cfg(feature = "start-symbols")]
+pub fn require(expected: &[Expectation], program: &str) {
+    let shortfall = match Table::from_start() {
+        None => Some((None, Shortfall::NotLoaded)),
+        Some(table) => table.verify(expected).err().map(|(index, why)| (Some(index), why)),
+    };
+    let Some((index, why)) = shortfall else { return };
+    // One write, so other programs' output cannot split the refusal.
+    let mut note = Note { bytes: [0; NOTE_BYTES], length: 0 };
+    note.put("startup: ");
+    note.put(program);
+    note.put(match why {
+        Shortfall::NotLoaded => ": the launch block carried no valid startup table",
+        Shortfall::Missing => ": its startup table has no ",
+        Shortfall::WrongKind => ": its startup table has another kind of ",
+        Shortfall::WrongNeed => ": its startup table disagrees on the need of ",
+        Shortfall::NotGranted => ": it was not granted its required ",
+    });
+    if let Some(index) = index {
+        note.put("\"");
+        note.put(expected[index].name);
+        note.put("\"");
+    }
+    note.put("; stopping (CAP-003 startup check)\n");
+    crate::debug_write(note.text());
+    crate::exit(STARTUP_REFUSED);
+}
+/// Room for the program's identity, one entry name and the reason.
+#[cfg(feature = "start-symbols")]
+const NOTE_BYTES: usize = 512;
+
+#[cfg(feature = "start-symbols")]
+struct Note {
+    bytes: [u8; NOTE_BYTES],
+    length: usize,
+}
+
+#[cfg(feature = "start-symbols")]
+impl Note {
+    fn put(&mut self, text: &str) {
+        // Whole characters only, so the note stays valid UTF-8.
+        let mut room = (NOTE_BYTES - self.length).min(text.len());
+        while !text.is_char_boundary(room) {
+            room -= 1;
+        }
+        self.bytes[self.length..self.length + room].copy_from_slice(&text.as_bytes()[..room]);
+        self.length += room;
+    }
+    fn text(&self) -> &str {
+        core::str::from_utf8(&self.bytes[..self.length]).unwrap_or("startup: refused")
+    }
+}
+
 const NEED_REQUIRED: u8 = 1;
 const NEED_OPTIONAL: u8 = 2;
 const STATE_GRANTED: u8 = 2;
@@ -176,6 +264,38 @@ impl Table {
         None
     }
 
+    /// The entry named `name`: its kind, need and state codes.
+    fn entry(&self, name: &str) -> Option<(u8, u8, u8)> {
+        (0..self.count).find_map(|index| {
+            let e = &self.bytes[HEADER_BYTES + index * ENTRY_BYTES..HEADER_BYTES + (index + 1) * ENTRY_BYTES];
+            let name_length = usize::from(e[NAME_LENGTH_AT]);
+            (&e[NAME_AT..NAME_AT + name_length] == name.as_bytes())
+                .then(|| (e[KIND_AT], e[NEED_AT], e[STATE_AT]))
+        })
+    }
+
+    /// Whether this table holds every entry `expected` declares, with its
+    /// kind and need, and every required one granted; the first that falls
+    /// short otherwise, and why (CuBit.Startup_State.Verify's cases).
+    pub fn verify(&self, expected: &[Expectation]) -> Result<(), (usize, Shortfall)> {
+        for (index, item) in expected.iter().enumerate() {
+            let need = match item.need {
+                Need::Required => NEED_REQUIRED,
+                Need::Optional => NEED_OPTIONAL,
+            };
+            match self.entry(item.name) {
+                None => return Err((index, Shortfall::Missing)),
+                Some((kind, _, _)) if kind != item.kind as u8 => return Err((index, Shortfall::WrongKind)),
+                Some((_, table_need, _)) if table_need != need => return Err((index, Shortfall::WrongNeed)),
+                Some((_, _, state)) if need == NEED_REQUIRED && state != STATE_GRANTED => {
+                    return Err((index, Shortfall::NotGranted));
+                }
+                Some(_) => {}
+            }
+        }
+        Ok(())
+    }
+
     /// The endpoint granted as `name` (a service, render or network entry).
     pub fn endpoint(&self, name: &str) -> Option<Endpoint> {
         [Kind::Endpoint, Kind::Render, Kind::Network]
@@ -254,6 +374,25 @@ mod tests {
         let n = short.len();
         short[n - 16..n - 8].copy_from_slice(&((HEADER_BYTES + ENTRY_BYTES + 8) as u64).to_le_bytes());
         assert!(Table::from_block(&short).is_none());
+    }
+
+    #[test]
+    fn verifies_a_declaration() {
+        let b = block(b"", &[
+            entry(Kind::Endpoint, NEED_REQUIRED, STATE_GRANTED, CLOCK, "clock"),
+            entry(Kind::Endpoint, NEED_OPTIONAL, STATE_ABSENT, 0, "mixer"),
+        ]);
+        let t = Table::from_block(&b).unwrap();
+        let clock = Expectation { name: "clock", kind: Kind::Endpoint, need: Need::Required };
+        let mixer = Expectation { name: "mixer", kind: Kind::Endpoint, need: Need::Optional };
+        assert_eq!(t.verify(&[clock, mixer]), Ok(()));
+        assert_eq!(t.verify(&[]), Ok(()));
+        let missing = Expectation { name: "config", ..clock };
+        assert_eq!(t.verify(&[clock, missing]), Err((1, Shortfall::Missing)));
+        let kind = Expectation { kind: Kind::Notification, ..clock };
+        assert_eq!(t.verify(&[kind]), Err((0, Shortfall::WrongKind)));
+        let need = Expectation { need: Need::Optional, ..clock };
+        assert_eq!(t.verify(&[need]), Err((0, Shortfall::WrongNeed)));
     }
 
     #[test]

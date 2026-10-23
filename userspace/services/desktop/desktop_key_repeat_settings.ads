@@ -15,13 +15,11 @@
 --  anything but the canonical, schema-valid form is refused and the desktop
 --  keeps Key_Repeat.DEFAULT_SETTINGS. (Tested on the host: tests/key-repeat.)
 ------------------------------------------------------------------------------
-with CCL.Interfaces.Desktop_Input;
-with CCL.Typed_Settings;
 with Key_Repeat;
 
 package Desktop_Key_Repeat_Settings is
-   Config_Key : constant String := CCL.Interfaces.Desktop_Input.KEY_REPEAT_KEY;
    --  The longest stored value Decode accepts.
-   Maximum_Source : constant := CCL.Typed_Settings.MAXIMUM_CANONICAL;
    procedure Decode (Source : String; Item : out Key_Repeat.Settings; Success : out Boolean);
+   --  The setting catalog's codec (CAP-003).
+   subtype Value is Key_Repeat.Settings;
 end Desktop_Key_Repeat_Settings;

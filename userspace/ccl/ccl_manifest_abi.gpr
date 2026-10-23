@@ -13,7 +13,9 @@ project CCL_Manifest_ABI is
       "cubit-launch_grants.ads", "cubit-launch_grants.adb",
       "cubit-program_descriptions.ads", "cubit-program_descriptions.adb",
       "cubit-startup_tables.ads", "cubit-startup_tables.adb",
-      "cubit-channel_limits.ads", "cubit-channel_declarations.ads", "cubit-channel_declarations.adb");
+      "cubit-channel_limits.ads", "cubit-channel_declarations.ads", "cubit-channel_declarations.adb",
+      --  Config scopes against the setting catalog (CAP-003).
+      "cubit-config_inspection.ads", "cubit-config_inspection.adb");
    for Object_Dir use "build/manifest-abi";
    package Compiler is
       for Default_Switches ("Ada") use

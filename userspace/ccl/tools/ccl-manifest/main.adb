@@ -13,6 +13,7 @@ with CCL.Manifests;
 with CuBit.Failures;
 with CuBit.Startup_Tables;
 with CCL.Language;
+with Setting_Catalogs;
 
 --  Linux-hosted file boundary only. No process execution or network access.
 --  stdout receives assembly only after the complete declaration validates.
@@ -48,7 +49,7 @@ procedure Main is
      (Argument_Count >= 2 and then Argument_Count mod 2 = 0 and then
       (for all Index in 3 .. Argument_Count =>
          (Index - 3) mod 2 = 1 or else
-         Argument (Index) in "--rust-output" | "--c-output" | "--startup-output" | "--schema"));
+         Argument (Index) in "--rust-output" | "--c-output" | "--startup-output" | "--schema" | "--settings"));
    --  Where the startup binding goes (none without --startup-output).
    function Startup_Path return String is (Option ("--startup-output"));
    --  The schema's default home: interfaces/ beside the catalogs directory.
@@ -58,7 +59,21 @@ procedure Main is
              (Ada.Directories.Containing_Directory (Ada.Directories.Full_Name (Argument (1)))) &
            "/interfaces/executable-manifest.ccl");
    Result : CCL.Manifests.Compilation_Result;
+   --  The setting catalog (interfaces/settings/*.ccl), when the manifest
+   --  has Config scopes: every scope must name settings in it (CAP-003).
+   Settings : Setting_Catalogs.Catalog;
+   Settings_Read : Boolean := False;
+   Settings_Why : CuBit.Failures.Failure;
    Hex : constant String := "0123456789abcdef";
+
+   --  The setting catalog's directory and schema: settings/ and
+   --  setting-catalog.ccl beside the manifest schema.
+   function Settings_Directory return String is
+     (if Option ("--settings")'Length > 0 then Option ("--settings")
+      else Ada.Directories.Containing_Directory (Ada.Directories.Full_Name (Schema_Path)) & "/settings");
+   function Settings_Schema_Path return String is
+     (Ada.Directories.Containing_Directory (Ada.Directories.Full_Name (Settings_Directory)) &
+      "/setting-catalog.ccl");
 
    procedure Read_Source (Path : String; Text : out String; Length : out Natural) is
    begin
@@ -76,6 +91,199 @@ procedure Main is
          Text (Index) := Character'Val (Bytes (Ada.Streams.Stream_Element_Offset (Index)));
       end loop;
    end Read_Source;
+
+   --  .cubit.access: a 16-byte header (magic, version, count), then 80-byte
+   --  entries: rights, prefix length, domain, 5 reserved, the 64-byte
+   --  prefix (CCL.Manifests.Encoding).
+   Access_Header : constant := 16;
+   Access_Entry : constant := 80;
+   Access_Count_At : constant := 7;
+   Access_Length_At : constant := 2;
+   Access_Domain_At : constant := 3;
+   Access_Path_At : constant := 9;
+   --  CCL.Manifests.Model.Access_Domain'Enum_Rep (Config_Domain).
+   Config_Domain : constant := 1;
+
+   function Scope_Count return Natural is
+     (if Result.Access_Scopes.Length < Access_Header then 0
+      else Natural (Result.Access_Scopes.Data (Access_Count_At)) +
+           256 * Natural (Result.Access_Scopes.Data (Access_Count_At + 1)));
+   function Scope_Base (Index : Positive) return Natural is (Access_Header + (Index - 1) * Access_Entry);
+   function Scope_Is_Config (Index : Positive) return Boolean is
+     (Natural (Result.Access_Scopes.Data (Scope_Base (Index) + Access_Domain_At)) = Config_Domain);
+   function Scope_Path (Index : Positive) return String is
+      Length : constant Natural := Natural (Result.Access_Scopes.Data (Scope_Base (Index) + Access_Length_At));
+      Path : String (1 .. Length);
+   begin
+      for I in Path'Range loop
+         Path (I) := Character'Val (Result.Access_Scopes.Data (Scope_Base (Index) + Access_Path_At + I - 1));
+      end loop;
+      return Path;
+   end Scope_Path;
+
+   --  Its rights mask (CCL.Manifests.Model.Access_Right codes: Write is 2).
+   Access_Rights_At : constant := 1;
+   Write_Right : constant := 2;
+   function Scope_Writes (Index : Positive) return Boolean is
+     ((Natural (Result.Access_Scopes.Data (Scope_Base (Index) + Access_Rights_At)) / Write_Right) mod 2 = 1);
+
+   function Has_Config_Scopes return Boolean is
+     (for some I in 1 .. Scope_Count => Scope_Is_Config (I));
+
+   --  Every catalog file, in name order (a stable catalog whatever the
+   --  directory's order).
+   procedure Read_Settings is
+      use Ada.Directories;
+      Search : Search_Type;
+      Found : Directory_Entry_Type;
+      Names : array (1 .. Setting_Catalogs.Maximum_Settings) of Setting_Catalogs.Bounded_Text;
+      Count : Natural := 0;
+      Schema_Text, Catalog_Text : String (1 .. CCL.Language.MAX_SOURCE_LENGTH);
+      Schema_Last, Catalog_Last : Natural;
+      Success : Boolean;
+   begin
+      Settings_Read := False;
+      if not Exists (Settings_Directory) or else not Exists (Settings_Schema_Path) then
+         Settings_Why := CuBit.Failures.Failed
+           (CuBit.Failures.Not_Found, "no setting catalog at " & Settings_Directory,
+            "keep interfaces/settings/ and interfaces/setting-catalog.ccl beside the manifest schema");
+         return;
+      end if;
+      Read_Source (Settings_Schema_Path, Schema_Text, Schema_Last);
+      Start_Search (Search, Settings_Directory, "*.ccl", [Ordinary_File => True, others => False]);
+      while More_Entries (Search) and then Count < Names'Last loop
+         Get_Next_Entry (Search, Found);
+         Count := Count + 1;
+         Names (Count) := (Length => Simple_Name (Found)'Length,
+                           Data => Simple_Name (Found) &
+                                   [1 .. Setting_Catalogs.Maximum_Text - Simple_Name (Found)'Length => ' ']);
+      end loop;
+      End_Search (Search);
+      for I in 2 .. Count loop
+         for J in reverse 2 .. I loop
+            exit when Setting_Catalogs.Image (Names (J - 1)) <= Setting_Catalogs.Image (Names (J));
+            declare
+               Swap : constant Setting_Catalogs.Bounded_Text := Names (J);
+            begin
+               Names (J) := Names (J - 1);
+               Names (J - 1) := Swap;
+            end;
+         end loop;
+      end loop;
+      for I in 1 .. Count loop
+         Read_Source (Settings_Directory & "/" & Setting_Catalogs.Image (Names (I)), Catalog_Text, Catalog_Last);
+         Setting_Catalogs.Add
+           (Settings, "settings/" & Setting_Catalogs.Image (Names (I)), Catalog_Text (1 .. Catalog_Last),
+            Schema_Text (1 .. Schema_Last), Success, Settings_Why);
+         if not Success then
+            return;
+         end if;
+      end loop;
+      Settings_Read := True;
+   end Read_Settings;
+
+   --  CCL.Setting_Kinds (userspace/ccl/src/ccl-setting_kinds.ads): the
+   --  setting kinds CCL.Typed_Settings checks values against, generated
+   --  from the catalog's CCL-typed settings (ccl-manifest --setting-kinds
+   --  OUTPUT [--settings DIR]).
+   procedure Emit_Setting_Kinds (Path : String) is
+      Output : Ada.Text_IO.File_Type;
+      use Setting_Catalogs;
+      function Package_Of (Source : String) return String is
+        (Source (Source'First .. Ada.Strings.Fixed.Index (Source, ".", Ada.Strings.Backward) - 1));
+      function Kind_Name (S : Setting) return String is (Image (S.Root) & "_Setting");
+      Listed : array (1 .. Maximum_Settings) of Bounded_Text;
+      Listed_Count : Natural := 0;
+      First : Boolean := True;
+   begin
+      Create (Output, Out_File, Path);
+      Put_Line (Output, "--  Generated from userspace/ccl/interfaces/settings/ by");
+      Put_Line (Output, "--  ccl-manifest --setting-kinds (CAP-003); do not edit. Regenerate with");
+      Put_Line (Output, "--  make -C kernel setting-kinds after changing the catalog.");
+      Put_Line (Output, "pragma Ada_2022;");
+      for I in 1 .. Settings.Count loop
+         if Settings.Settings (I).Value = Typed then
+            declare
+               Name : constant String := Package_Of (Image (Settings.Settings (I).Source));
+            begin
+               if not (for some J in 1 .. Listed_Count => Image (Listed (J)) = Name) then
+                  Listed_Count := Listed_Count + 1;
+                  Listed (Listed_Count) := (Length => Name'Length,
+                                            Data => Name & [1 .. Maximum_Text - Name'Length => ' ']);
+                  Put_Line (Output, "with " & Name & ";");
+               end if;
+            end;
+         end if;
+      end loop;
+      Put_Line (Output, "");
+      Put_Line (Output, "--  The settings whose values are CCL values of a declared type, by key");
+      Put_Line (Output, "--  (a family's members included), with each type's declarations and root.");
+      Put_Line (Output, "package CCL.Setting_Kinds with SPARK_Mode, Pure is");
+      Put (Output, "   type Setting_Kind is" & ASCII.LF & "     (Untyped");
+      for I in 1 .. Settings.Count loop
+         if Settings.Settings (I).Value = Typed then
+            Put (Output, "," & ASCII.LF & "      " & Kind_Name (Settings.Settings (I)));
+         end if;
+      end loop;
+      Put_Line (Output, ");");
+      Put_Line (Output, "");
+      Put_Line (Output, "   function Starts (Key, Prefix : String) return Boolean is");
+      Put_Line (Output, "     (Key'Length > Prefix'Length");
+      Put_Line (Output, "      and then Key (Key'First .. Key'First + Prefix'Length - 1) = Prefix);");
+      Put_Line (Output, "");
+      Put_Line (Output, "   function Kind_Of (Key : String) return Setting_Kind is");
+      for I in 1 .. Settings.Count loop
+         if Settings.Settings (I).Value = Typed then
+            Put_Line (Output, (if First then "     (if " else "      elsif ") &
+                      (if Settings.Settings (I).Form = Family
+                       then "Starts (Key, """ & Image (Settings.Settings (I).Key) & """)"
+                       else "Key = """ & Image (Settings.Settings (I).Key) & """") &
+                      " then " & Kind_Name (Settings.Settings (I)));
+            First := False;
+         end if;
+      end loop;
+      Put_Line (Output, (if First then "     (Untyped);" else "      else Untyped);"));
+      Put_Line (Output, "");
+      Put_Line (Output, "   --  The type's declarations, and its root type's name.");
+      Put_Line (Output, "   function Schema (Kind : Setting_Kind) return String is");
+      Put_Line (Output, "     (case Kind is");
+      for I in 1 .. Settings.Count loop
+         if Settings.Settings (I).Value = Typed then
+            Put_Line (Output, "         when " & Kind_Name (Settings.Settings (I)) & " => " &
+                      Image (Settings.Settings (I).Source) & ",");
+         end if;
+      end loop;
+      Put_Line (Output, "         when Untyped => """");");
+      Put_Line (Output, "   function Root_Name (Kind : Setting_Kind) return String is");
+      Put_Line (Output, "     (case Kind is");
+      for I in 1 .. Settings.Count loop
+         if Settings.Settings (I).Value = Typed then
+            Put_Line (Output, "         when " & Kind_Name (Settings.Settings (I)) & " => """ &
+                      Image (Settings.Settings (I).Root) & """,");
+         end if;
+      end loop;
+      Put_Line (Output, "         when Untyped => """");");
+      Put_Line (Output, "end CCL.Setting_Kinds;");
+      Close (Output);
+   end Emit_Setting_Kinds;
+
+   --  Every Config scope names settings in the catalog (CAP-003): false,
+   --  with a message, for one that names none.
+   function Scopes_Name_Settings return Boolean is
+   begin
+      for I in 1 .. Scope_Count loop
+         if Scope_Is_Config (I)
+           and then Scope_Path (I)'Length > 0
+           and then not (for some S in 1 .. Settings.Count => Setting_Catalogs.Covers (Settings, Scope_Path (I), S))
+         then
+            Put_Line (Standard_Error, Argument (2) & ": config scope """ & Scope_Path (I) &
+                      """ names no setting in the setting catalog (userspace/ccl/interfaces/settings/). " &
+                      "Fix: name a declared key or family, or declare the setting there first.");
+            return False;
+         end if;
+      end loop;
+      return True;
+   end Scopes_Name_Settings;
 
    procedure Emit (Name : String; Item : CCL.Manifests.Section) is
    begin
@@ -234,6 +442,22 @@ procedure Main is
       return True;
    end Rust_Names_Usable;
 
+   --  A startup capability kind as cubit::startup::Kind names it.
+   function Rust_Kind (Kind : ST.Capability_Kind) return String is
+     (case Kind is
+         when ST.Endpoint      => "Endpoint",
+         when ST.Notification  => "Notification",
+         when ST.Framebuffer   => "Framebuffer",
+         when ST.Render        => "Render",
+         when ST.Network       => "Network",
+         when ST.Device_Memory => "DeviceMemory",
+         when ST.IO_Ports      => "IoPorts",
+         when ST.Interrupt     => "Interrupt",
+         when ST.DMA           => "Dma",
+         when ST.Scheduling    => "Scheduling",
+         when ST.Process       => "Process",
+         when ST.Resource      => "Resource");
+
    --  The Rust startup accessors (CAP-003): module startup, one function
    --  per endpoint binding, taking the program's startup table
    --  (cubit::startup::Table) and returning its endpoint when granted.
@@ -267,9 +491,37 @@ procedure Main is
             end if;
          end;
       end loop;
+      --  The declared table and the startup check the shared start code
+      --  calls before the language's start (cubit::startup::require).
+      Put_Line (Output, "");
+      Put_Line (Output, "    /// The startup table this manifest declares.");
+      Put_Line (Output, "    pub const EXPECTED: &[cubit::startup::Expectation] = &[");
+      for Binding of Result.Bindings (1 .. Result.Binding_Count) loop
+         declare
+            use type ST.Need;
+         begin
+            Put_Line (Output, "        cubit::startup::Expectation { name: """ &
+                      Binding.Name.Data (1 .. Binding.Name.Length) & """, kind: cubit::startup::Kind::" &
+                      Rust_Kind (Binding.Kind) & ", need: cubit::startup::Need::" &
+                      (if Binding.Requirement = ST.Optional then "Optional" else "Required") & " },");
+         end;
+      end loop;
+      Put_Line (Output, "    ];");
+      Put_Line (Output, "");
+      Put_Line (Output, "    /// The startup check (CAP-003): the shared start code");
+      Put_Line (Output, "    /// (userspace/runtime/start/cubit_start.S) calls it before the");
+      Put_Line (Output, "    /// language's start; it stops the program, saying which entry and");
+      Put_Line (Output, "    /// why, when the startup table falls short of EXPECTED.");
+      Put_Line (Output, "    #[unsafe(no_mangle)]");
+      Put_Line (Output, "    pub extern ""C"" fn __cubit_startup_check() {");
+      Put_Line (Output, "        cubit::startup::require(EXPECTED, """ & Identity_Text & """);");
+      Put_Line (Output, "    }");
       Put_Line (Output, "}");
       Close (Output);
    end Emit_Rust;
+
+   function Image (Value : Natural) return String is
+     (Ada.Strings.Fixed.Trim (Natural'Image (Value), Ada.Strings.Left));
 
    --  The C startup header (CAP-003): one inline function per endpoint
    --  binding, cubit_startup_<binding>, over the libc's lookup
@@ -308,12 +560,181 @@ procedure Main is
             end if;
          end;
       end loop;
+      --  The declared table and the startup check the shared start code
+      --  calls before the libc's start (CuBit.Libc_Startup.Require). Weak:
+      --  every file that includes this header defines the same one.
+      Put_Line (Output, "");
+      Put_Line (Output, "/* One declared startup capability (CuBit.Startup_Tables codes). */");
+      Put_Line (Output, "struct cubit_startup_expectation {");
+      Put_Line (Output, "    const char *name;");
+      Put_Line (Output, "    unsigned char kind;");
+      Put_Line (Output, "    unsigned char need;");
+      Put_Line (Output, "};");
+      Put_Line (Output, "void cubit_startup_require(const struct cubit_startup_expectation *expected,");
+      Put_Line (Output, "                           unsigned long count, const char *program);");
+      if Result.Binding_Count > 0 then
+         Put_Line (Output, "static const struct cubit_startup_expectation cubit_startup_expected[] = {");
+         for Binding of Result.Bindings (1 .. Result.Binding_Count) loop
+            Put_Line (Output, "    {""" & Binding.Name.Data (1 .. Binding.Name.Length) & """, " &
+                      Image (ST.Capability_Kind'Enum_Rep (Binding.Kind)) & ", " &
+                      Image (ST.Need'Enum_Rep (Binding.Requirement)) & "},  /* " &
+                      Kind_Image (Binding.Kind) & ", " &
+                      Mixed (ST.Need'Image (Binding.Requirement)) & " */");
+         end loop;
+         Put_Line (Output, "};");
+      end if;
+      Put_Line (Output, "/* The startup check (CAP-003): the shared start code");
+      Put_Line (Output, " * (userspace/runtime/start/cubit_start.S) calls it before the libc's");
+      Put_Line (Output, " * start; it stops the program, saying which entry and why, when the");
+      Put_Line (Output, " * startup table falls short of the declaration. */");
+      Put_Line (Output, "__attribute__((weak)) void __cubit_startup_check(void)");
+      Put_Line (Output, "{");
+      Put_Line (Output, "    cubit_startup_require(" &
+                (if Result.Binding_Count > 0 then "cubit_startup_expected" else "0") & ", " &
+                Image (Result.Binding_Count) & ", """ & Identity_Text & """);");
+      Put_Line (Output, "}");
       Put_Line (Output, "#ifdef __cplusplus");
       Put_Line (Output, "}");
       Put_Line (Output, "#endif");
       Put_Line (Output, "#endif");
       Close (Output);
    end Emit_C;
+
+   --  The settings this program's Config scopes cover (CAP-003), each with
+   --  whether some scope covering it grants write, and whether a scope is
+   --  config-all (the Inspector).
+   type Covered_Array is array (1 .. Setting_Catalogs.Maximum_Settings) of Boolean;
+   Covered, Covered_Writes : Covered_Array := [others => False];
+   Inspects : Boolean := False;
+   procedure Cover_Settings is
+   begin
+      for I in 1 .. Scope_Count loop
+         if Scope_Is_Config (I) then
+            if Scope_Path (I)'Length = 0 then
+               Inspects := True;
+            else
+               for S in 1 .. Settings.Count loop
+                  if Setting_Catalogs.Covers (Settings, Scope_Path (I), S)
+                    and then Setting_Catalogs."/=" (Settings.Settings (S).Value, Setting_Catalogs.Collection)
+                  then
+                     Covered (S) := True;
+                     Covered_Writes (S) := Covered_Writes (S) or else Scope_Writes (I);
+                  end if;
+               end loop;
+            end if;
+         end if;
+      end loop;
+   end Cover_Settings;
+   function Any_Covered return Boolean is (for some S in 1 .. Settings.Count => Covered (S));
+
+   --  The config binding (a Config client) Settings reach Config through.
+   function Config_Binding return Natural is
+   begin
+      for I in 1 .. Result.Binding_Count loop
+         if CCL.Manifests."=" (Result.Bindings (I).Client, CCL.Manifests.Config) then
+            return I;
+         end if;
+      end loop;
+      return 0;
+   end Config_Binding;
+
+   --  "desktop.display.mode." -> "Desktop_Display_Mode".
+   function Setting_Name (Key : String) return String is
+      Name : String := (if Key (Key'Last) = '.' then Key (Key'First .. Key'Last - 1) else Key);
+      Start : Boolean := True;
+   begin
+      for C of Name loop
+         if C in '.' | '-' | '_' then
+            C := '_';
+            Start := True;
+         elsif Start then
+            C := Ada.Characters.Handling.To_Upper (C);
+            Start := False;
+         end if;
+      end loop;
+      return Name;
+   end Setting_Name;
+
+   function Codec_Of (S : Setting_Catalogs.Setting) return String is
+     ("Standard." &
+      (case S.Value is
+          when Setting_Catalogs.Typed => Setting_Catalogs.Image (S.Codec),
+          when Setting_Catalogs.Text => "CuBit.Settings.Codecs.Text_Codec",
+          when Setting_Catalogs.Address => "CuBit.Settings.Codecs.Address_Codec",
+          when Setting_Catalogs.Count | Setting_Catalogs.Collection => "CuBit.Settings.Codecs.Count_Codec"));
+
+   --  The context clauses the Settings package needs.
+   procedure Emit_Settings_Withs (Output : Ada.Text_IO.File_Type) is
+      use Setting_Catalogs;
+      Listed : array (1 .. Maximum_Settings) of Bounded_Text;
+      Count : Natural := 0;
+      procedure Need (Unit : String) is
+      begin
+         if not (for some J in 1 .. Count => Image (Listed (J)) = Unit) then
+            Count := Count + 1;
+            Listed (Count) := (Length => Unit'Length, Data => Unit & [1 .. Maximum_Text - Unit'Length => ' ']);
+            Put_Line (Output, "with " & Unit & ";");
+         end if;
+      end Need;
+   begin
+      if Inspects then
+         Need ("CuBit.Settings.Inspection");
+      end if;
+      for S in 1 .. Settings.Count loop
+         if Covered (S) then
+            declare
+               Item : Setting renames Settings.Settings (S);
+            begin
+               Need ("CuBit.Settings." &
+                     (if Item.Form = Family
+                      then (if Covered_Writes (S) then "Writable_Family" else "Family")
+                      else (if Covered_Writes (S) then "Writable" else "Readable")));
+               Need (if Item.Value = Typed then Image (Item.Codec) else "CuBit.Settings.Codecs");
+            end;
+         end if;
+      end loop;
+   end Emit_Settings_Withs;
+
+   --  package Settings: one accessor per covered setting, and the
+   --  Inspector for config-all.
+   procedure Emit_Settings (Output : Ada.Text_IO.File_Type) is
+      use Setting_Catalogs;
+      Service : constant String :=
+        Ada_Name (Result.Bindings (Config_Binding).Name.Data
+                    (1 .. Result.Bindings (Config_Binding).Name.Length));
+   begin
+      Put_Line (Output, "");
+      Put_Line (Output, "   --  The settings this manifest's Config scopes cover (CAP-003), one");
+      Put_Line (Output, "   --  accessor each, typed by the setting catalog");
+      Put_Line (Output, "   --  (userspace/ccl/interfaces/settings/).");
+      Put_Line (Output, "   package Settings with SPARK_Mode => Off is");
+      for S in 1 .. Settings.Count loop
+         if Covered (S) then
+            declare
+               Item : Setting renames Settings.Settings (S);
+               Codec : constant String := Codec_Of (Item);
+               Writes : constant Boolean := Covered_Writes (S);
+               Generic_Name : constant String :=
+                 (if Item.Form = Family then (if Writes then "Writable_Family" else "Family")
+                  else (if Writes then "Writable" else "Readable"));
+            begin
+               Put_Line (Output, "      --  """ & Image (Item.Key) & """ (" & Image (Item.File) & "), " &
+                         (if Writes then "read and write" else "read only") & ".");
+               Put_Line (Output, "      package " & Setting_Name (Image (Item.Key)) &
+                         " is new Standard.CuBit.Settings." & Generic_Name);
+               Put_Line (Output, "        (" & Codec & ".Value, """ & Image (Item.Key) & """, " &
+                         Service & ", " & Codec & ".Decode" &
+                         (if Writes then ", " & Codec & ".Encode" else "") & ");");
+            end;
+         end if;
+      end loop;
+      if Inspects then
+         Put_Line (Output, "      --  config-all: any key, as text (Config still checks each).");
+         Put_Line (Output, "      function Inspector return Standard.CuBit.Settings.Inspection.Inspector is");
+         Put_Line (Output, "        (Standard.CuBit.Settings.Inspection.Using (" & Service & "));");
+      end if;
+      Put_Line (Output, "   end Settings;");
+   end Emit_Settings;
 
    function Has_Client return Boolean is
      (for some Binding of Result.Bindings (1 .. Result.Binding_Count) =>
@@ -393,6 +814,7 @@ procedure Main is
       if Result.Channel_Offers.Count > 0 then
          Put_Line (Output, "with CuBit.Channel_Limits;");
       end if;
+      Emit_Settings_Withs (Output);
       Put_Line (Output, "package Startup with SPARK_Mode, Elaborate_Body is");
       for Binding of Result.Bindings (1 .. Result.Binding_Count) loop
          declare
@@ -472,6 +894,9 @@ procedure Main is
          end loop;
          Put_Line (Output, "   end Channels;");
       end if;
+      if Any_Covered or else Inspects then
+         Emit_Settings (Output);
+      end if;
       --  The declared table, which the body checks the loaded one against.
       if Result.Binding_Count > 0 then
          Put_Line (Output, "");
@@ -496,6 +921,25 @@ procedure Main is
       Emit_Startup_Body (Identity);
    end Emit_Startup;
 begin
+   --  ccl-manifest --setting-kinds OUTPUT [--settings DIR] [--schema FILE]
+   if Argument_Count >= 2 and then Argument (1) = "--setting-kinds" then
+      declare
+         task Generation with Storage_Size => 256 * 1024 * 1024;
+         task body Generation is
+         begin
+            Read_Settings;
+         end Generation;
+      begin
+         null;
+      end;
+      if not Settings_Read then
+         Put_Line (Standard_Error, Settings_Why.Detail (1 .. Settings_Why.Detail_Length));
+         Set_Exit_Status (Failure);
+         return;
+      end if;
+      Emit_Setting_Kinds (Argument (2));
+      return;
+   end if;
    if not Options_Valid then
       Put_Line (Standard_Error,
         "usage: ccl-manifest CATALOG.ccl MANIFEST.ccl [--startup-output startup.ads] " &
@@ -518,6 +962,9 @@ begin
          CCL.Manifests.Compile
            (Source (1 .. Source_Length), Catalog_Source (1 .. Catalog_Length), Result,
             Schema_Source (1 .. Schema_Length));
+         if Result.Success and then Has_Config_Scopes then
+            Read_Settings;
+         end if;
       end Compilation;
    begin
       null;
@@ -542,6 +989,35 @@ begin
         CCL.Language.Diagnostic_Code'Image (Result.Expression_Diagnostic));
       Set_Exit_Status (Failure);
       return;
+   end if;
+   if Has_Config_Scopes then
+      if not Settings_Read then
+         Put_Line (Standard_Error, Argument (2) & ": " &
+                   Settings_Why.Detail (1 .. Settings_Why.Detail_Length) &
+                   (if Settings_Why.Remedy_Length > 0
+                    then ". Fix: " & Settings_Why.Remedy (1 .. Settings_Why.Remedy_Length) & "." else ""));
+         Set_Exit_Status (Failure);
+         return;
+      end if;
+      if not Scopes_Name_Settings then
+         Set_Exit_Status (Failure);
+         return;
+      end if;
+      Cover_Settings;
+      if (Any_Covered or else Inspects) and then Config_Binding = 0 then
+         Put_Line (Standard_Error, Argument (2) & ": it has Config scopes but requests no config service " &
+                   "(its settings reach Config through it). Fix: request config.");
+         Set_Exit_Status (Failure);
+         return;
+      end if;
+      if (Any_Covered or else Inspects) and then
+        CuBit.Startup_Tables."=" (Result.Bindings (Config_Binding).Requirement, CuBit.Startup_Tables.Optional)
+      then
+         Put_Line (Standard_Error, Argument (2) & ": its settings need a required config service. " &
+                   "Fix: drop optional from the config request.");
+         Set_Exit_Status (Failure);
+         return;
+      end if;
    end if;
    if Startup_Path'Length > 0 then
       if Startup_Path'Length < 5 or else Startup_Path (Startup_Path'Last - 3 .. Startup_Path'Last) /= ".ads" then

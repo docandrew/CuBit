@@ -1,4 +1,6 @@
 with Startup;
+with CuBit.Handles;
+with CuBit.Handles.Services;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CCL.Types;
@@ -19,6 +21,7 @@ with Receiver_Fixture;
 -- Actual CuBit app: only a Config endpoint and scoped Config authority.
 -- No filesystem, worker endpoint, database, CBOR or SQL access.
 procedure Main is
+   Config_Endpoint : constant CuBit.Handles.Endpoint := CuBit.Handles.Services.Config.Handle (Startup.Config);
    package Client renames Config_Object_Client;
    package Wire renames Config_Object_Messages;
    package Adapter renames Config_Object_Client.VM;
@@ -101,9 +104,9 @@ begin
    Check (Built = CCL.Objects.Added, "first value");
    CCL.Objects.Append (Second, CCL.Objects.Integer_Cell (42), Built);
    Check (Built = CCL.Objects.Added, "second value");
-   Client.Initialize (Writer, Startup.Config, Good); Check (Good, "writer grant");
-   Client.Initialize (Reader, Startup.Config, Good); Check (Good, "reader grant");
-   Client.Initialize (Denied, Startup.Config, Good); Check (Good, "denied grant");
+   Client.Initialize (Writer, Config_Endpoint, Good); Check (Good, "writer grant");
+   Client.Initialize (Reader, Config_Endpoint, Good); Check (Good, "reader grant");
+   Client.Initialize (Denied, Config_Endpoint, Good); Check (Good, "denied grant");
    Client.Create (Denied, "org.other.private", Contract, Wire.Read_Write, 0, Next_Token, Sent);
    Finish (Denied, Wire.Denied, "out of scope create");
    Client.Open (Denied, "org.other.private", Contract, Wire.Read_Only, 0, Next_Token, Sent);

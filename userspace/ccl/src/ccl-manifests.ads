@@ -22,14 +22,15 @@ package CCL.Manifests with SPARK_Mode => On is
    --  give it only to what serves that service. Plain: a CuBit.Handles
    --  Endpoint. The service catalog names it: (service logstore 13
    --  read-write (client Logstore)).
-   type Service_Client is (Plain, Logstore, Log_Observer, Process_Manager);
+   type Service_Client is (Plain, Logstore, Log_Observer, Process_Manager, Config);
    --  Its spelling in the catalog, which is also its instance's Ada name.
    function Client_Name (Client : Service_Client) return String is
      (case Client is
          when Plain => "Plain",
          when Logstore => "Logstore",
          when Log_Observer => "Log_Observer",
-         when Process_Manager => "Process_Manager");
+         when Process_Manager => "Process_Manager",
+         when Config => "Config");
    --  A request's startup binding: its name, its kind, whether the launch
    --  needs it (CuBit.Startup_Tables) and its typed client.
    type Named_Binding is record

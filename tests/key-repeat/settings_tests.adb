@@ -6,6 +6,7 @@ with Ada.Text_IO;
 with Interfaces;
 with CCL.Interfaces.Desktop_Input;
 with CCL.Typed_Settings;
+with CCL.Setting_Kinds;
 with Desktop_Key_Repeat_Settings;
 with Key_Repeat;
 
@@ -36,14 +37,14 @@ procedure Settings_Tests is
    function Accepts (Source : String) return Boolean is
       Result : TS.Check_Result;
    begin
-      TS.Check (TS.Key_Repeat_Setting, Source, Result);
+      TS.Check (CCL.Setting_Kinds.Key_Repeat_Setting, Source, Result);
       return Result.Success;
    end Accepts;
 
    function Canonical (Source : String) return String is
       Result : TS.Check_Result;
    begin
-      TS.Check (TS.Key_Repeat_Setting, Source, Result);
+      TS.Check (CCL.Setting_Kinds.Key_Repeat_Setting, Source, Result);
       return (if Result.Success then Result.Canonical (1 .. Result.Length) else "");
    end Canonical;
 
@@ -54,8 +55,8 @@ procedure Settings_Tests is
    Item : Key_Repeat.Settings;
    OK : Boolean;
 begin
-   Check (TS.Kind_Of (DI.KEY_REPEAT_KEY) = TS.Key_Repeat_Setting, "the key is typed");
-   Check (TS.Kind_Of ("desktop.input.other") = TS.Untyped, "only that key");
+   Check (TS.Kind_Of ("desktop.input.key-repeat") = CCL.Setting_Kinds.Key_Repeat_Setting, "the key is typed");
+   Check (TS.Kind_Of ("desktop.input.other") = CCL.Setting_Kinds.Untyped, "only that key");
 
    --  Defaults: the schema's equal Key_Repeat's.
    Check (Canonical ("(Key_Repeat)") =

@@ -946,6 +946,14 @@ rust-probe: ccl-manifest
 	$(MAKE) -C ../userspace/rust
 	cp ../userspace/rust/build/rust-probe.app isodir/boot/rust-probe.app
 	cp ../userspace/rust/build/rust-probe-denied.app isodir/boot/rust-probe-denied.app
+	cp ../userspace/rust/build/rust-probe-mismatch.app isodir/boot/rust-probe-mismatch.app
+# CCL.Setting_Kinds, generated from the setting catalog (CAP-003); the
+# generated file is kept in the tree (tests/ccl-manifests compares it).
+.PHONY : setting-kinds
+setting-kinds: ccl-manifest
+	../userspace/ccl/build/manifest/ccl-manifest --setting-kinds ../userspace/ccl/src/ccl-setting_kinds.ads \
+	  --schema ../userspace/ccl/interfaces/executable-manifest.ccl
+
 .PHONY : ccl-manifest
 ccl-manifest:
 	$(ALR) gprbuild -p -P ../userspace/ccl/ccl_manifest.gpr
@@ -1223,9 +1231,10 @@ teapots: libc user_runtime ccl-manifest ui-fonts-native
 libc:
 	bash ../userspace/libc/build.sh
 libc-check: libc ccl-manifest libc-protection-check
-	../userspace/ccl/build/manifest/ccl-manifest ../userspace/ccl/catalogs/native-runtime-services.ccl ../userspace/libc/tests/manifest.ccl --schema ../userspace/ccl/interfaces/executable-manifest.ccl > ../userspace/libc/build/libc-check-manifest.S
+	mkdir -p ../userspace/libc/build/libc-check
+	../userspace/ccl/build/manifest/ccl-manifest ../userspace/ccl/catalogs/native-runtime-services.ccl ../userspace/libc/tests/manifest.ccl --schema ../userspace/ccl/interfaces/executable-manifest.ccl --c-output ../userspace/libc/build/libc-check/startup.h > ../userspace/libc/build/libc-check-manifest.S
 	as --64 ../userspace/libc/build/libc-check-manifest.S -o ../userspace/libc/build/libc-check-manifest.o
-	../userspace/libc/cubit-cc -O2 -g -pthread -o isodir/boot/libc-check.app ../userspace/libc/tests/libc-check.c --manifest ../userspace/libc/build/libc-check-manifest.o
+	../userspace/libc/cubit-cc -O2 -g -pthread -I../userspace/libc/build/libc-check -I../userspace/c -o isodir/boot/libc-check.app ../userspace/libc/tests/libc-check.c --manifest ../userspace/libc/build/libc-check-manifest.o
 cxx-check: libc ccl-manifest
 	../userspace/ccl/build/manifest/ccl-manifest ../userspace/ccl/catalogs/native-runtime-services.ccl ../userspace/libc/tests/cxx-manifest.ccl --schema ../userspace/ccl/interfaces/executable-manifest.ccl > ../userspace/libc/build/cxx-check-manifest.S
 	as --64 ../userspace/libc/build/cxx-check-manifest.S -o ../userspace/libc/build/cxx-check-manifest.o

@@ -1,4 +1,6 @@
 with Startup;
+with CuBit.Handles;
+with CuBit.Handles.Services;
 with CuBit.Messages; use CuBit.Messages;
 with CCL.Types;
 with CCL.Resources;
@@ -15,6 +17,7 @@ with Config_Object_Client;
 with Config_Object_Messages;
 
 package body Resource_Fixture is
+   Config_Endpoint : constant CuBit.Handles.Endpoint := CuBit.Handles.Services.Config.Handle (Startup.Config);
    use type Ccl.Vm.Import_Count;
    use Interfaces;
    package T renames CCL.Types;
@@ -135,7 +138,7 @@ package body Resource_Fixture is
       if not Good then return; end if;
       R.Start (Owner, Types, Session, Result); Good := Result = R.Succeeded;
       if not Good then return; end if;
-      C.Initialize (Client, Startup.Config, Good); if not Good then return; end if;
+      C.Initialize (Client, Config_Endpoint, Good); if not Good then return; end if;
       V.Initialize (Checked, 16, State);
       for Op in Operation loop
          V.Continue_Execution (Checked, State, Step);

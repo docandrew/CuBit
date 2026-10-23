@@ -15,6 +15,7 @@ with System;
 with CuBit.Startup_Tables;
 with CuBit.Handles;
 with CuBit.Handles.C_ABI;
+with Interfaces.C;
 
 package CuBit.Libc_Startup is
 
@@ -42,5 +43,25 @@ package CuBit.Libc_Startup is
    function Startup_Endpoint
      (Name : System.Address) return CuBit.Handles.C_ABI.C_Endpoint
    with Export, Convention => C, External_Name => "cubit_startup_endpoint";
+
+   --  The startup check of a C program (CAP-003): its generated startup.h
+   --  defines __cubit_startup_check, which the shared start code
+   --  (userspace/runtime/start/cubit_start.S) calls before the libc's start
+   --  and which calls this with the manifest's declared table (Count
+   --  struct cubit_startup_expectation entries at Expected) and identity
+   --  (NUL-terminated). When the startup table falls short (an entry
+   --  missing, of another kind or need, or a required one not granted) or
+   --  the launch block carried none, it says which and why on the console
+   --  and stops the process with EX_CONFIG (CuBit.Startup_Check's
+   --  Startup_Refused). It needs no elaboration: it runs before the libc's.
+   type C_Expectation is record
+      Name : System.Address;
+      Kind : Unsigned_8;
+      Need : Unsigned_8;
+   end record
+   with Convention => C;
+   procedure Require
+     (Expected : System.Address; Count : Interfaces.C.unsigned_long; Program : System.Address)
+   with Export, Convention => C, External_Name => "cubit_startup_require";
 
 end CuBit.Libc_Startup;

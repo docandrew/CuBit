@@ -13,7 +13,7 @@
 --    (Display_Mode.Fixed (Display_Mode_Choice width => 3840 height => 2160
 --       refresh_millihertz => 60000))
 --
---  The key names the monitor by its EDID identity (Key_For: vendor,
+--  The key names the monitor by its EDID identity (Member_For: vendor,
 --  product, serial), so each monitor keeps its own choice. Auto (also what
 --  an absent setting means) is the driver's best admitted mode; Fixed is
 --  one of the monitor's listed modes. Decode reads a stored value back
@@ -23,16 +23,16 @@
 ------------------------------------------------------------------------------
 with CuBit.Output_Modes;
 with CCL.Interfaces.Desktop_Display;
-with CCL.Typed_Settings;
 
 package Desktop_Display_Mode_Settings is
    package OM renames CuBit.Output_Modes;
    --  The longest stored value Decode accepts.
-   Maximum_Source : constant := CCL.Typed_Settings.MAXIMUM_CANONICAL;
 
    --  The Config key for a monitor: the prefix, then vendor-product-serial
    --  (product and serial in upper-case hexadecimal, fixed width).
-   function Key_For (Monitor : OM.Monitor_Identity) return String;
+   --  The monitor's member of the desktop.display.mode. family (the
+   --  setting catalog's): its key is the family's prefix and this.
+   function Member_For (Monitor : OM.Monitor_Identity) return String;
 
    type Preference (Auto : Boolean := True) is record
       case Auto is
@@ -50,6 +50,8 @@ package Desktop_Display_Mode_Settings is
      with Pre => not Item.Auto;
 
    procedure Decode (Source : String; Item : out Preference; Success : out Boolean);
+   --  The setting catalog's codec (CAP-003).
+   subtype Value is Preference;
    function Encode (Item : Preference) return String;
 
    pragma Compile_Time_Error

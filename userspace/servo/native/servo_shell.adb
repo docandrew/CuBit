@@ -1,41 +1,48 @@
 with Servo_Session;
 with CuBit.System_Facts;
-with CuBit.Config;
+with CuBit.Settings.Codecs;
+with CuBit.Settings.Writable;
+with Startup;
 package body Servo_Shell is
+   --  The sandbox probe: Penny's own setting reads, writes and deletes;
+   --  keys outside its "browser.servo" scope are refused by Config. The
+   --  foreign keys are deliberately not catalog instances of this program.
    function Config_Scope_Check return Unsigned_32 is
-      use type CuBit.Config.ConfigStatus;
-      use type System.Address;
-      Key : constant String := "browser.servo.sandbox_probe";
-      Value : aliased constant String := "penny-config-canary";
-      Data : System.Address;
-      Length : Natural;
-      Status : CuBit.Config.ConfigStatus;
-      function Denied (Foreign_Key : String) return Boolean is
+      use type CuBit.Settings.Outcome;
+      use type CuBit.Settings.Change_Outcome;
+      package Own renames Startup.Settings.Browser_Servo_Sandbox_Probe;
+      Value : constant String := "penny-config-canary";
+      Result : CuBit.Settings.Change_Outcome;
+      generic
+         Foreign_Key : String;
+      function Denied return Boolean;
+      function Denied return Boolean is
+         package Foreign is new CuBit.Settings.Writable
+           (CuBit.Settings.Codecs.Text_Codec.Value, Foreign_Key, Startup.Config,
+            CuBit.Settings.Codecs.Text_Codec.Decode, CuBit.Settings.Codecs.Text_Codec.Encode);
       begin
-         CuBit.Config.get (Foreign_Key, Data, Length, Status);
-         if Status /= CuBit.Config.AccessDenied then return False; end if;
-         CuBit.Config.set (Foreign_Key, Value'Address, Value'Length, Status);
-         if Status /= CuBit.Config.AccessDenied then return False; end if;
-         CuBit.Config.delete (Foreign_Key, Status);
-         return Status = CuBit.Config.AccessDenied;
+         if Foreign.Read.Kind /= CuBit.Settings.Denied then return False; end if;
+         Foreign.Write (CuBit.Settings.To_Text (Value), Result);
+         if Result /= CuBit.Settings.Refused then return False; end if;
+         Foreign.Delete (Result);
+         return Result = CuBit.Settings.Refused;
       end Denied;
+      function Escape_Denied is new Denied ("browser.servo_escape.sandbox_probe");
+      function Desktop_Denied is new Denied ("desktop.penny_sandbox_probe");
    begin
-      CuBit.Config.get (Key, Data, Length, Status);
-      if Status /= CuBit.Config.NotFound then return 1; end if;
-      CuBit.Config.set (Key, Value'Address, Value'Length, Status);
-      if Status /= CuBit.Config.OK then return 2; end if;
-      CuBit.Config.get (Key, Data, Length, Status);
-      if Status /= CuBit.Config.OK or else Length /= Value'Length or else
-        Data = System.Null_Address then return 3; end if;
+      if Own.Read.Kind /= CuBit.Settings.Absent then return 1; end if;
+      Own.Write (CuBit.Settings.To_Text (Value), Result);
+      if Result /= CuBit.Settings.Done then return 2; end if;
       declare
-         Readback : String (1 .. Value'Length) with Import, Address => Data;
+         Readback : constant Own.Reading := Own.Read;
       begin
-         if Readback /= Value then return 4; end if;
+         if Readback.Kind /= CuBit.Settings.Present then return 3; end if;
+         if CuBit.Settings.Image (Readback.Item) /= Value then return 4; end if;
       end;
-      CuBit.Config.delete (Key, Status);
-      if Status /= CuBit.Config.OK then return 5; end if;
-      if not Denied ("browser.servo_escape.sandbox_probe") then return 6; end if;
-      if not Denied ("desktop.penny_sandbox_probe") then return 7; end if;
+      Own.Delete (Result);
+      if Result /= CuBit.Settings.Done then return 5; end if;
+      if not Escape_Denied then return 6; end if;
+      if not Desktop_Denied then return 7; end if;
       return 0;
    end Config_Scope_Check;
 

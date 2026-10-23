@@ -4,7 +4,7 @@
 extern crate alloc;
 
 use alloc::{boxed::Box, string::String, vec::Vec};
-use core::{arch::global_asm, panic::PanicInfo};
+use core::panic::PanicInfo;
 use cubit::{CallError, Endpoint, Message, startup::Table};
 
 #[global_allocator]
@@ -14,10 +14,10 @@ include!(concat!(env!("CUBIT_BINDINGS_DIR"), "/bindings.rs"));
 
 // The ELF loader supplies initialized data/BSS and the requested stack.
 // No argv, environment, TLS, GNAT runtime, C startup, or Linux entry ABI:
-// the entry is the shared one (userspace/runtime/start/cubit_start.S,
-// CAP-003), which keeps the launch block's length (its startup table) and
+// the entry is the shared one (userspace/runtime/start/cubit_start.S, from
+// the cubit crate's `start` feature, CAP-003), which keeps the launch
+// block's length (its startup table), runs the generated startup check and
 // calls __cubit_language_start below.
-global_asm!(include_str!("../../../runtime/start/cubit_start.S"));
 
 const REPLY_OK: u32 = 0xf000;
 const ECHO: u32 = 0x0c10;
@@ -205,8 +205,10 @@ extern "C" fn __cubit_language_start(_initial_stack: u64, _payload_length: u64) 
             cubit::exit(6);
         }
     }
-    // The denied variant's manifest has no clock: its table has no entry.
-    let clock = startup::clock(&table);
+    // The denied variant's manifest has no clock, so its generated bindings
+    // have no accessor for it: both variants ask for the entry by name on
+    // purpose, and the denied one must find nothing (its table has no entry).
+    let clock = table.endpoint("clock");
     match clock.as_ref().ok_or(CallError::Unavailable)
         .and_then(|c| c.call(Message::new(CLOCK_MONOTONIC_MS, 1, [0; 4]))) {
         Ok(first) if first.tag.label == REPLY_OK && first.tag.length == 1 => {

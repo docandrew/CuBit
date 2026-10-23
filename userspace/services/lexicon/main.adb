@@ -9,7 +9,6 @@
 pragma Ada_2022;
 with Interfaces; use Interfaces;
 with CuBit.Channel_Servers;
-with CuBit.Config;
 with CuBit.Control_Events;
 with CuBit.Deadlines;
 with CuBit.Logging;
@@ -122,7 +121,6 @@ procedure Main is
    Ignore : Unsigned_64;
 begin
    debugPrint ("lexicon: starting" & LF);
-   CuBit.Config.Bind (Startup.Config);
    Servers.Configure
      (S, [1 => (Element => LC.Element,
                 Per_Client => Startup.Channels.Com_Cubit_Lexicon_Per_Client,

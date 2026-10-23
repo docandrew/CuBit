@@ -1,41 +1,24 @@
-with System;
-with CuBit.Config;
+with CuBit.Settings;
 with CuBit.UI.Clipboard;
-with Calc_Settings;
+with Startup;
 
 package body Calc_Host_Native is
    use type CuBit.UI.Clipboard.Outcome;
-   use type CuBit.Config.ConfigStatus;
-   use type System.Address;
 
    procedure Load_Options (H : in out Host; Item : out CCL_Calc_Options.Choice; Found : out Boolean) is
       pragma Unreferenced (H);
-      Value : System.Address;
-      Length : Natural;
-      Status : CuBit.Config.ConfigStatus;
+      use all type CuBit.Settings.Outcome;
+      Stored : constant Startup.Settings.Calculator_Options.Reading := Startup.Settings.Calculator_Options.Read;
    begin
-      Item := (others => <>);
-      Found := False;
-      CuBit.Config.get (Calc_Settings.Config_Key, Value, Length, Status);
-      if Status = CuBit.Config.OK and then Value /= System.Null_Address
-        and then Length in 1 .. Calc_Settings.Maximum_Source
-      then
-         declare
-            --  Borrowed from Config's buffer: copied before the next call.
-            Stored : String (1 .. Length) with Import, Address => Value;
-            Source : constant String := Stored;
-         begin
-            Calc_Settings.Decode (Source, Item, Found);
-         end;
-      end if;
+      Found := Stored.Kind = Present;
+      Item := (if Found then Stored.Item else (others => <>));
    end Load_Options;
 
    procedure Save_Options (H : in out Host; Item : CCL_Calc_Options.Choice) is
       pragma Unreferenced (H);
-      Source : constant String := Calc_Settings.Source (Item);
-      Status : CuBit.Config.ConfigStatus;
+      Ignore : CuBit.Settings.Change_Outcome;
    begin
-      CuBit.Config.set (Calc_Settings.Config_Key, Source'Address, Source'Length, Status);
+      Startup.Settings.Calculator_Options.Write (Item, Ignore);
    end Save_Options;
 
    procedure Set_Surface (H : in out Host; Surface : Interfaces.Unsigned_64) is

@@ -84,9 +84,13 @@ with socket.socket(socket.AF_UNIX) as connection:
     wait_for(lambda: log.exists() and "ps2: consumer registered, entering event loop" in log.read_text(errors="replace"),
              "Desktop input ready")
     time.sleep(1)
-    # Default Apps selection is Workbench; Up wraps to the new last entry.
+    # Apps opens on its first category row, System (UI-013). Right opens its
+    # submenu on the first entry, and Up wraps to the last, Config Inspector
+    # (desktop.launch.80-config-inspector).
     key("meta_l")
+    key("right")
     key("up")
+    capture("apps-menu")
     key("ret")
     wait_for(lambda: "config-inspector: native window ready" in log.read_text(errors="replace"),
              "Config Inspector did not launch from Apps")

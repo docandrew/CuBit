@@ -2,6 +2,9 @@
 --  CuBit
 --  Copyright (C) 2026 Jon Andrew
 ------------------------------------------------------------------------------
+with CCL.Interfaces.Desktop_Display;
+with CCL.Typed_Settings;
+with CCL.Setting_Kinds;
 with Interfaces;
 with CCL.Objects;
 with CCL.Objects.Views;
@@ -34,7 +37,7 @@ package body Desktop_Display_Scale_Settings is
       if Work = null then
          Work := new Views.Snapshot;
       end if;
-      TS.Read (TS.Display_Scale_Setting, Source, Work.all, Read);
+      TS.Read (CCL.Setting_Kinds.Display_Scale_Setting, Source, Work.all, Read);
       if not Read then
          return;
       end if;

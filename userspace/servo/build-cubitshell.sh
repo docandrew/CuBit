@@ -23,6 +23,14 @@ mkdir -p "$build"
 # holds coordination/build.lock over this script and all native staging.
 # The font helper packages its own Cargo output; do not leak Servo's target dir.
 env -u CARGO_TARGET_DIR make -C "$repo/kernel" ui-fonts-native >/dev/null
+# The checked manifest supplies the ELF requests and the native chrome's
+# Startup package (its typed Config settings).
+make -C "$repo/kernel" ccl-manifest >/dev/null
+mkdir -p "$here/native/build/generated"
+"$repo/userspace/ccl/build/manifest/ccl-manifest" \
+    "$repo/userspace/ccl/catalogs/native-runtime-services.ccl" \
+    "$here/manifest.ccl" --startup-output "$here/native/build/generated/startup.ads" > "$build/manifest.S"
+as --64 "$build/manifest.S" -o "$build/manifest.o"
 (cd "$repo/kernel" && alr exec -- gprbuild $gprbuild_config -p -P ../userspace/servo/native/servo_shell_host.gpr -j4)
 python3 "$repo/tests/servo/check_native_mmx.py" "$here/native/build/lib/libservo_shell_host.a"
 export CUBIT_SERVO_NATIVE_DIR="$here/native"
@@ -42,11 +50,6 @@ fi
 python3 "$repo/tests/servo/check_secondary_stack_link.py" \
     "$CARGO_TARGET_DIR/x86_64-unknown-cubit/release/cubitshell"
 
-make -C "$repo/kernel" ccl-manifest >/dev/null
-"$repo/userspace/ccl/build/manifest/ccl-manifest" \
-    "$repo/userspace/ccl/catalogs/native-runtime-services.ccl" \
-    "$here/manifest.ccl" > "$build/manifest.S"
-as --64 "$build/manifest.S" -o "$build/manifest.o"
 
 strip -o "$out.tmp" "$CARGO_TARGET_DIR/x86_64-unknown-cubit/release/cubitshell"
 for section in $(readelf -SW "$build/manifest.o" | grep -o '\.cubit\.[a-z_.]*' | sort -u); do

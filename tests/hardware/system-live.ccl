@@ -67,18 +67,11 @@
   (setting "desktop.launch.96-logs"
     (Launch_Entry label => "Logs" action => (Launch_Action.Program "logs.app") icon => (Launch_Icon "Logs") category => App_Category.System
       color => (App_Color.RGB (RGB_Color red => 133 green => 147 blue => 170))))
-  (setting "scheme.fs.driver" 6)
-  (setting "scheme.ata.driver" 6)
-  (setting "scheme.nvme.driver" 6)
-  (setting "scheme.config.driver" 11)
-  (setting "scheme.net.driver" 3)
-  (setting "scheme.mixer.driver" 9)
-  (setting "scheme.proc.driver" 4)
-  (setting "scheme.desktop.driver" 15)
-  (setting "scheme.display.driver" 16)
+  # Network interface configuration. Addresses are IPv6 text; an IPv4
+  # address is written mapped, as ::ffff:a.b.c.d (CuBit.Net_Address).
   (setting "net.if0.method" "static")
-  (setting "net.if0.address" "10.0.2.15")
-  (setting "net.if0.netmask" "255.255.255.0")
-  (setting "net.if0.gateway" "10.0.2.2")
-  (setting "net.dns.primary" "10.0.2.3")
+  (setting "net.if0.address" "::ffff:10.0.2.15")
+  (setting "net.if0.netmask" "::ffff:255.255.255.0")
+  (setting "net.if0.gateway" "::ffff:10.0.2.2")
+  (setting "net.dns.primary" "::ffff:10.0.2.3")
 )

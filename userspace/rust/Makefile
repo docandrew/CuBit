@@ -4,6 +4,7 @@ TARGET := x86_64-unknown-none
 MANIFEST := ../ccl/build/manifest/ccl-manifest
 CATALOG := ../ccl/catalogs/native-runtime-services.ccl
 LIB := build/cargo/$(TARGET)/release/libcubit_rust_probe.a
+DENIED_LIB := build/cargo-denied/$(TARGET)/release/libcubit_rust_probe.a
 # The emphasis face, from the same pinned ibm-plex package as Regular (also
 # exported by flake.nix; derived here for shells entered before it was).
 IBM_PLEX_SANS_SEMIBOLD_FONT ?= $(dir $(IBM_PLEX_SANS_FONT))IBMPlexSans-SemiBold.ttf
@@ -14,13 +15,22 @@ CARGO := cargo --config 'source.crates-io.replace-with="cubit-vendor"' --config 
 all:
 	mkdir -p build
 	cd ../../kernel && alr exec -- gprbuild -p -P ../userspace/allocator/allocator_native.gpr
+	mkdir -p build/denied
 	$(MANIFEST) $(CATALOG) probe/manifest.ccl --rust-output build/bindings.rs > build/manifest.S
-	$(MANIFEST) $(CATALOG) probe/denied.ccl > build/denied.S
+	$(MANIFEST) $(CATALOG) probe/denied.ccl --rust-output build/denied/bindings.rs > build/denied.S
 	as --64 build/manifest.S -o build/manifest.o
 	as --64 build/denied.S -o build/denied.o
+	# Each variant is built against its own manifest's generated bindings
+	# (its accessors and startup check, CAP-003).
 	CUBIT_BINDINGS_DIR=$(CURDIR)/build $(CARGO) build --locked --offline --release -p cubit-rust-probe
-	ld -nostdlib -static --build-id=sha1 -z noexecstack -z stack-size=1048576 -T ../c/link.ld --start-group $(LIB) ../allocator/build/native-lib/libcubit_allocator.a --end-group build/manifest.o -o build/rust-probe.app
-	ld -nostdlib -static --build-id=sha1 -z noexecstack -z stack-size=1048576 -T ../c/link.ld --start-group $(LIB) ../allocator/build/native-lib/libcubit_allocator.a --end-group build/denied.o -o build/rust-probe-denied.app
+	CUBIT_BINDINGS_DIR=$(CURDIR)/build/denied $(CARGO) build --locked --offline --release -p cubit-rust-probe --target-dir build/cargo-denied
+	# -u: the generated startup check is only weakly referenced by the start
+	# code, which would not pull its archive member in.
+	ld -nostdlib -static --build-id=sha1 -z noexecstack -z stack-size=1048576 -u __cubit_startup_check -T ../c/link.ld --start-group $(LIB) ../allocator/build/native-lib/libcubit_allocator.a --end-group build/manifest.o -o build/rust-probe.app
+	ld -nostdlib -static --build-id=sha1 -z noexecstack -z stack-size=1048576 -u __cubit_startup_check -T ../c/link.ld --start-group $(DENIED_LIB) ../allocator/build/native-lib/libcubit_allocator.a --end-group build/denied.o -o build/rust-probe-denied.app
+	# A deliberate mismatch: code built for manifest.ccl, linked with
+	# denied.ccl's sections. Its startup check must stop it (CAP-003).
+	ld -nostdlib -static --build-id=sha1 -z noexecstack -z stack-size=1048576 -u __cubit_startup_check -T ../c/link.ld --start-group $(LIB) ../allocator/build/native-lib/libcubit_allocator.a --end-group build/denied.o -o build/rust-probe-mismatch.app
 
 .PHONY: fonts-host fonts-native fonts-test
 .PHONY: fonts-bench

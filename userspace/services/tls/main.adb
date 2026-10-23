@@ -9,7 +9,7 @@ with Startup;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Memory_Grants;
 with CuBit.Net_Channels;
-with CuBit.Config;
+with CuBit.Settings;
 with CuBit.Filesystems;
 with CuBit.TLS_Protocol; use CuBit.TLS_Protocol;
 with CuBit.TLS_Scopes;
@@ -837,17 +837,15 @@ procedure Main is
    end Load_Roots;
 
    procedure Load_Hosts is
-      Address : System.Address;
-      Length : Natural;
-      Status : CuBit.Config.ConfigStatus;
-      use type CuBit.Config.ConfigStatus;
+      use all type CuBit.Settings.Outcome;
+      Stored : constant Startup.Settings.Tls_Hosts.Reading := Startup.Settings.Tls_Hosts.Read;
    begin
-      CuBit.Config.get ("tls.hosts", Address, Length, Status);
-      if Status /= CuBit.Config.OK or else Length = 0 or else Length > 1_024 then
+      if Stored.Kind /= Present or else Stored.Item.Length not in 1 .. 1_024 then
          return;
       end if;
       declare
-         Text : String (1 .. Length) with Import, Address => Address;
+         Text : constant String := CuBit.Settings.Image (Stored.Item);
+         Length : constant Natural := Text'Length;
          Position : Natural := 1;
       begin
          while Position <= Length and then Host_Count < Maximum_Hosts loop

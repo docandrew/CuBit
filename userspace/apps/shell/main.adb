@@ -17,7 +17,7 @@ with Interfaces; use Interfaces;
 with System; use System;
 with System.Storage_Elements; use System.Storage_Elements;
 
-with CuBit.Config;
+with CuBit.Settings.Inspection;
 with CuBit.Filesystems;
 with CuBit.Directory_Pages;
 with CuBit.Messages; use CuBit.Messages;
@@ -2811,39 +2811,43 @@ procedure main is
    --  Handle "config get/set/delete/list" subcommands.
    ---------------------------------------------------------------------------
    procedure cmdConfig (arg : String) is
-      use CuBit.Config;
+      use type CuBit.Settings.Outcome;
+      Config : constant CuBit.Settings.Inspection.Inspector := Startup.Settings.Inspector;
 
-      procedure printStatus (s : ConfigStatus) is
+      procedure printOutcome (s : CuBit.Settings.Outcome) is
       begin
          case s is
-            when OK          => null;
-            when NotFound    => putStr ("error: not found" & LF);
-            when Error       => putStr ("error" & LF);
-            when AccessDenied => putStr ("error: access denied" & LF);
+            when CuBit.Settings.Present     => null;
+            when CuBit.Settings.Absent      => putStr ("error: not found" & LF);
+            when CuBit.Settings.Denied      => putStr ("error: access denied" & LF);
+            when CuBit.Settings.Invalid     => putStr ("error: not a valid value" & LF);
+            when CuBit.Settings.Unavailable => putStr ("error: Config is not answering" & LF);
          end case;
-      end printStatus;
+      end printOutcome;
+
+      procedure printChange (s : CuBit.Settings.Change_Outcome) is
+      begin
+         case s is
+            when CuBit.Settings.Done        => putStr ("ok" & LF);
+            when CuBit.Settings.Not_Present => putStr ("error: not found" & LF);
+            when CuBit.Settings.Refused     => putStr ("error: access denied" & LF);
+            when CuBit.Settings.Too_Long    => putStr ("error: value too long" & LF);
+            when CuBit.Settings.No_Config   => putStr ("error: Config is not answering" & LF);
+         end case;
+      end printChange;
 
    begin
       if startsWith (arg, "get ") and arg'Length > 4 then
          declare
-            key    : String renames arg (arg'First + 4 .. arg'Last);
-            val    : System.Address;
-            valLen : Natural;
-            st     : ConfigStatus;
+            val : CuBit.Settings.Text;
+            st  : CuBit.Settings.Outcome;
          begin
-            CuBit.Config.get (key, val, valLen, st);
-            if st = OK then
-               if valLen > 0 then
-                  declare
-                     buf : String (1 .. valLen)
-                       with Import, Address => val;
-                  begin
-                     putStr (buf);
-                  end;
-               end if;
+            CuBit.Settings.Inspection.Read (Config, arg (arg'First + 4 .. arg'Last), val, st);
+            if st = CuBit.Settings.Present then
+               putStr (CuBit.Settings.Image (val));
                putChar (LF);
             else
-               printStatus (st);
+               printOutcome (st);
             end if;
          end;
 
@@ -2852,6 +2856,7 @@ procedure main is
          declare
             rest    : String renames arg (arg'First + 4 .. arg'Last);
             spaceAt : Natural := 0;
+            st      : CuBit.Settings.Change_Outcome;
          begin
             --  Find space separator between key and value
             for i in rest'Range loop
@@ -2864,85 +2869,50 @@ procedure main is
             if spaceAt = 0 then
                putStr ("usage: config set <key> <value>" & LF);
             else
-               declare
-                  key   : String renames rest (rest'First .. spaceAt - 1);
-                  value : String renames rest (spaceAt + 1 .. rest'Last);
-                  st    : ConfigStatus;
-               begin
-                  CuBit.Config.set (key, value'Address, value'Length, st);
-                  if st = OK then
-                     putStr ("ok" & LF);
-                  else
-                     printStatus (st);
-                  end if;
-               end;
+               CuBit.Settings.Inspection.Write
+                 (Config, rest (rest'First .. spaceAt - 1), rest (spaceAt + 1 .. rest'Last), st);
+               printChange (st);
             end if;
          end;
 
       elsif startsWith (arg, "delete ") and arg'Length > 7 then
          declare
-            key : String renames arg (arg'First + 7 .. arg'Last);
-            st  : ConfigStatus;
+            st : CuBit.Settings.Change_Outcome;
          begin
-            CuBit.Config.delete (key, st);
-            if st = OK then
-               putStr ("ok" & LF);
-            else
-               printStatus (st);
-            end if;
+            CuBit.Settings.Inspection.Delete (Config, arg (arg'First + 7 .. arg'Last), st);
+            printChange (st);
          end;
 
       elsif startsWith (arg, "list") then
          declare
-            prefix : String (1 .. 0);
-            keys   : System.Address;
-            count  : Natural;
-            st     : ConfigStatus;
+            count : Natural := 0;
+            st    : CuBit.Settings.Outcome;
+            procedure Show (Key : String) is
+            begin
+               putStr ("  " & Key & LF);
+               count := count + 1;
+            end Show;
+            procedure List is new CuBit.Settings.Inspection.For_Each (Show);
          begin
             if arg'Length > 5 and then arg (arg'First + 4) = ' ' then
-               --  Has a prefix argument
-               declare
-                  pfx : String renames
-                     arg (arg'First + 5 .. arg'Last);
-               begin
-                  CuBit.Config.list (pfx, keys, count, st);
-               end;
+               List (Config, arg (arg'First + 5 .. arg'Last), st);
             else
-               CuBit.Config.list (prefix, keys, count, st);
+               List (Config, "", st);
             end if;
-
-            if st = OK then
+            if st = CuBit.Settings.Present then
                putDec (Unsigned_32 (count));
-               putStr (" keys:" & LF);
-               if count > 0 then
-                  declare
-                     buf : array (0 .. 4095) of Unsigned_8
-                       with Import, Address => keys;
-                     pos : Natural := 0;
-                  begin
-                     for k in 0 .. count - 1 loop
-                        putStr ("  ");
-                        while pos < 4096 and then buf (pos) /= 0 loop
-                           putChar (Character'Val (buf (pos)));
-                           pos := pos + 1;
-                        end loop;
-                        putChar (LF);
-                        pos := pos + 1;  --  skip NUL
-                     end loop;
-                  end;
-               end if;
+               putStr (" keys" & LF);
             else
-               printStatus (st);
+               printOutcome (st);
             end if;
          end;
 
       else
-         putStr ("usage: config get|set|delete|list|resolve" & LF);
+         putStr ("usage: config get|set|delete|list" & LF);
          putStr ("  config get <key>" & LF);
          putStr ("  config set <key> <value>" & LF);
          putStr ("  config delete <key>" & LF);
          putStr ("  config list [prefix]" & LF);
-         putStr ("  config resolve <scheme>" & LF);
       end if;
    end cmdConfig;
 

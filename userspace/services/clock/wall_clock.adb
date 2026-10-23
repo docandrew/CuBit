@@ -1,10 +1,10 @@
 with Interfaces; use Interfaces;
-with System;
-with CuBit.Config;
+with CuBit.Settings;
+with CuBit.Settings.Readable;
+with Startup;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.System_Facts;
 with Civil_Time;
-with Clock_Settings;
 with Time_Zones;
 with Time_Zone_Rules;
 with Clock_Discipline;
@@ -14,22 +14,27 @@ package body Wall_Clock is
    Floor_MS : constant Clock_Discipline.UTC_Milliseconds :=
      Clock_Floor.UTC_Seconds * 1_000;
    Discipline : Clock_Discipline.State;
-   procedure Text (Key : String; Data : out String; Length : out Natural;
-                   OK : out Boolean) is
-      Address : System.Address;
-      Status : CuBit.Config.ConfigStatus;
-      use type CuBit.Config.ConfigStatus;
+   --  A text setting into Data: OK and Length 0 when absent, not OK when
+   --  Config refused it or it does not fit.
+   generic
+      with package Setting is new CuBit.Settings.Readable (<>);
+      with function Image (Item : Setting.Value) return String;
+   procedure Text (Data : out String; Length : out Natural; OK : out Boolean);
+   procedure Text (Data : out String; Length : out Natural; OK : out Boolean) is
+      use all type CuBit.Settings.Outcome;
+      Stored : constant Setting.Reading := Setting.Read;
    begin
       Data := [others => ' '];
-      CuBit.Config.get (Key, Address, Length, Status);
-      OK := Status = CuBit.Config.OK and then Length <= Data'Length;
-      if OK and then Length > 0 then
-         declare
-            Source : String (1 .. Length) with Import, Address => Address;
-         begin Data (Data'First .. Data'First + Length - 1) := Source; end;
-      else Length := 0; end if;
-      if Status = CuBit.Config.NotFound then OK := True; end if;
+      Length := 0;
+      OK := Stored.Kind = Absent;
+      if Stored.Kind = Present and then Image (Stored.Item)'Length <= Data'Length then
+         Length := Image (Stored.Item)'Length;
+         Data (Data'First .. Data'First + Length - 1) := Image (Stored.Item);
+         OK := True;
+      end if;
    end Text;
+   procedure Boot_Sample is new Text (Startup.Settings.Clock_Boot_Sample, CuBit.Settings.Image);
+   procedure Time_Zone is new Text (Startup.Settings.Clock_Time_Zone, CuBit.Settings.Image);
    procedure Initialize is
       Data : String (1 .. 128);
       Length, Position : Natural;
@@ -75,7 +80,7 @@ package body Wall_Clock is
       Unavailable : constant String := "unavailable";
       Supported, Read_OK : Boolean;
    begin
-      Text ("clock.boot-sample", Data, Length, OK);
+      Boot_Sample (Data, Length, OK);
       Read_OK := OK;
       Position := 1;
       if OK then Number (Base_UTC); Number (Base_Mono); end if;
@@ -159,7 +164,7 @@ package body Wall_Clock is
          UTC := UTC_MS / 1_000;
          Quality := CuBit.Clocks.Unsupported_Date;
          if UTC < 4_102_444_800 then
-            Text (Clock_Settings.Time_Zone_Key, Name, Length, OK);
+            Time_Zone (Name, Length, OK);
             if OK then
                Time_Zones.Find
                  ((if Length = 0 then "UTC" else Name (1 .. Length)), Zone, OK);

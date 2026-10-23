@@ -284,6 +284,11 @@ class Manifests(unittest.TestCase):
         self.assertIn('    pub fn clock(table: &Table) -> Option<Endpoint> {', text)
         self.assertNotIn('BINDING_', text)
         self.assertNotIn('SLOT', text)
+        # The declared table and the startup check the shared start calls.
+        self.assertIn('cubit::startup::Expectation { name: "clock", kind: cubit::startup::Kind::Endpoint, '
+                      'need: cubit::startup::Need::Required },', text)
+        self.assertIn('    pub extern "C" fn __cubit_startup_check() {\n'
+                      '        cubit::startup::require(EXPECTED, ', text)
 
     def test_c_header_shares_the_validated_manifest(self):
         ada = self.compile()
@@ -299,6 +304,9 @@ class Manifests(unittest.TestCase):
                       '    return cubit_startup_endpoint("test-host");\n}', text)
         self.assertIn('cubit_endpoint cubit_startup_endpoint(const char *name);', text)
         self.assertTrue(text.rstrip().endswith('#endif'))
+        self.assertIn('    {"test-host", 1, 1},  /* Endpoint, Required */', text)
+        self.assertIn('__attribute__((weak)) void __cubit_startup_check(void)', text)
+        self.assertIn('    cubit_startup_require(cubit_startup_expected, ', text)
 
     def test_rust_accessor_names(self):
         self.compile()
@@ -518,19 +526,21 @@ class Manifests(unittest.TestCase):
 
     def test_explicit_broad_access_and_config_domain(self):
         source = '''(executable-manifest v1 (identity "test") (version "1")
+          (request-service config read-write config)
           (filesystem-scope (rights read) all)
           (config-scope (rights read write) all))'''
-        result = self.compile(source)
+        native = (ROOT / 'userspace/ccl/catalogs/native-runtime-services.ccl').read_text()
+        result = self.compile(source, native)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.sections(result.stdout)['.cubit.access'],
                          struct.pack('<IHHQ', 0x43434143, 1, 2, 0) +
                          bytes([1, 0, 0]) + bytes(77) + bytes([3, 0, 1]) + bytes(77))
         self.reject(source.replace('config-scope (rights read write)',
-                                   'filesystem-scope (rights read write)'), diagnostic='DUPLICATE_SCOPE')
-        self.reject(source.replace('all)', '"")'), diagnostic='INVALID_PATH')
-        self.reject(source.replace('all)', 'all-folders)'), diagnostic='INVALID_PATH')
+                                   'filesystem-scope (rights read write)'), catalog=native, diagnostic='DUPLICATE_SCOPE')
+        self.reject(source.replace('all)', '"")'), catalog=native, diagnostic='INVALID_PATH')
+        self.reject(source.replace('all)', 'all-folders)'), catalog=native, diagnostic='INVALID_PATH')
         for right in ('execute', 'create'):
-            self.reject(source.replace('read write', right), diagnostic='INVALID_ACCESS_RIGHTS')
+            self.reject(source.replace('read write', right), catalog=native, diagnostic='INVALID_ACCESS_RIGHTS')
 
     def test_network_scope_encoding_and_validation(self):
         template = '''(executable-manifest v1 (identity "test") (version "1")
@@ -1011,6 +1021,39 @@ class Manifests(unittest.TestCase):
   (request-service process-manager read-write launcher)
   (request-service clock read-write clock))'''
 
+    def test_startup_settings_accessors(self):
+        """Startup.Settings: one instance per setting a scope covers, its
+        generic chosen by shape and right; config-all adds the Inspector;
+        settings need a required config request."""
+        source = '''(executable-manifest v1 (identity "com.cubit.settings") (version "1")
+  (request-service config read-write config)
+  (config-scope (rights read) "time")
+  (config-scope (rights read write) "desktop.display"))'''
+        result, output = self.generate(source, self.NATIVE)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        text = output.read_text()
+        for line in ('package Time_Servers is new Standard.CuBit.Settings.Readable',
+                     'package Time_Poll_Seconds is new Standard.CuBit.Settings.Readable\n'
+                     '        (Standard.CuBit.Settings.Codecs.Count_Codec.Value, "time.poll-seconds", Config,',
+                     'package Desktop_Display_Scale is new Standard.CuBit.Settings.Writable\n'
+                     '        (Standard.Desktop_Display_Scale_Settings.Value,',
+                     'package Desktop_Display_Mode is new Standard.CuBit.Settings.Writable_Family'):
+            self.assertIn(line, text)
+        self.assertNotIn('Inspector', text)
+        self.assertNotIn('Desktop_Appearance', text)
+        result, output = self.generate(source.replace('"time")', 'all)'), self.NATIVE)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('function Inspector return Standard.CuBit.Settings.Inspection.Inspector is\n'
+                      '        (Standard.CuBit.Settings.Inspection.Using (Config));', output.read_text())
+        for changed, message in [
+                (source.replace('  (request-service config read-write config)\n', ''), 'requests no config service'),
+                (source.replace('request-service config', 'request-service-optional config'),
+                 'need a required config service')]:
+            with self.subTest(message=message):
+                result, _ = self.generate(changed, self.NATIVE)
+                self.assertEqual(result.returncode, 1)
+                self.assertIn(message, result.stderr)
+
     def test_startup_typed_clients(self):
         result, output = self.generate(self.TYPED_CLIENTS, self.NATIVE)
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -1049,6 +1092,90 @@ class Manifests(unittest.TestCase):
         catalog = self.NATIVE.replace('(notification logstore 13 publish-and-manage)',
                                       '(notification logstore 13 publish-and-manage (client Logstore))')
         self.assertNotEqual(self.compile(self.TYPED_CLIENTS, catalog).returncode, 0)
+
+    def test_config_scopes_name_settings(self):
+        """CAP-003: a Config scope must name settings in the catalog."""
+        base = '(executable-manifest v1 (identity "com.cubit.scope") (version "1") ' \
+               '(request-service config read-write config) {})'
+        for scope, accepted in [('(config-scope (rights read) "desktop.display.scale")', True),
+                                ('(config-scope (rights read) "desktop.display.")', True),
+                                ('(config-scope (rights read) "desktop.launch.10-workbench")', True),
+                                ('(config-scope (rights read) all)', True),
+                                ('(config-scope (rights read) "desktop.dispaly.scale")', False),
+                                ('(config-scope (rights read) "no.such.setting")', False)]:
+            with self.subTest(scope=scope):
+                result = self.compile(base.format(scope), self.NATIVE)
+                self.assertEqual(result.returncode == 0, accepted, result.stderr)
+                if not accepted:
+                    self.assertIn('names no setting in the setting catalog', result.stderr)
+
+    def test_setting_catalog_is_checked(self):
+        """A malformed catalog file stops every manifest with Config scopes."""
+        settings = self.directory / 'settings'
+        settings.mkdir()
+        (self.directory / 'setting-catalog.ccl').write_text(
+            (ROOT / 'userspace/ccl/interfaces/setting-catalog.ccl').read_text())
+        manifest = self.directory / 'manifest.ccl'
+        manifest.write_text('(executable-manifest v1 (identity "a") (version "1") '
+                            '(request-service config read-write config) (config-scope (rights read) "a.b"))')
+        def run():
+            return subprocess.run([TOOL, ROOT / 'userspace/ccl/catalogs/native-runtime-services.ccl', manifest,
+                                   '--schema', SCHEMA, '--settings', settings],
+                                  capture_output=True, text=True, timeout=5)
+        (settings / 'a.ccl').write_text('(Setting_Catalog settings => [(Setting "a.b" Shape.Key Value.Text '
+                                        'Class.Application_State "")])')
+        self.assertEqual(run().returncode, 0, run().stderr)
+        for bad, why in [('(Setting "a.b" Shape.Key Value.Txt Class.Application_State "")', 'not a Setting_Catalog'),
+                         ('(Setting "a.b." Shape.Key Value.Text Class.Application_State "")', "ends with '.'"),
+                         ('(Setting "A.b" Shape.Key Value.Text Class.Application_State "")', 'is not 1 to 64'),
+                         ('(Setting "a._b" Shape.Key Value.Text Class.Application_State "")', 'is not 1 to 64'),
+                         ('(Setting "a.b" Shape.Key Value.Text Class.Application_State "Codec")', 'built-in codec'),
+                         ('(Setting "a.b" Shape.Key Value.Text Class.Application_State "") '
+                          '(Setting "a." Shape.Family Value.Text Class.Application_State "")', 'overlaps')]:
+            with self.subTest(bad=bad):
+                (settings / 'a.ccl').write_text(f'(Setting_Catalog settings => [{bad}])')
+                result = run()
+                self.assertEqual(result.returncode, 1)
+                self.assertIn(why, result.stderr)
+
+    def test_setting_kinds_are_generated_from_the_catalog(self):
+        """CCL.Setting_Kinds is the catalog's: regenerate it to compare."""
+        output = self.directory / 'ccl-setting_kinds.ads'
+        result = subprocess.run([TOOL, '--setting-kinds', output, '--schema', SCHEMA],
+                                capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(output.read_text(), (ROOT / 'userspace/ccl/src/ccl-setting_kinds.ads').read_text(),
+                         'run make -C kernel setting-kinds after changing userspace/ccl/interfaces/settings/')
+        self.assertIn('Starts (Key, "desktop.launch.") then Launch_Entry_Setting', output.read_text())
+
+    def test_system_configurations_name_catalog_settings(self):
+        """Every key a system configuration seeds is a catalog setting, and
+        an Address setting is IPv6 text (IPv4 mapped as ::ffff:a.b.c.d)."""
+        import ipaddress
+        import re
+        declared = {}
+        for catalog in sorted((ROOT / 'userspace/ccl/interfaces/settings').glob('*.ccl')):
+            for key, shape, value in re.findall(r'\(Setting "([^"]+)" Shape\.(\w+)\s+\(?Value\.(\w+)',
+                                                catalog.read_text()):
+                declared[key] = (shape, value)
+        self.assertIn('net.if0.address', declared)
+
+        def setting_of(key):
+            for name, (shape, value) in declared.items():
+                if name == key or (shape == 'Family' and key.startswith(name)):
+                    return value
+            return None
+        for configuration in ('system.ccl', 'tests/hardware/system-live.ccl',
+                              'tests/timesync/system-timesync-test.ccl', 'tests/tls/system-tls-test.ccl',
+                              'tests/config-turso/native/system-storage-test.ccl'):
+            for key, rest in re.findall(r'\(setting "([^"]+)"\s+("[^"]*")?', (ROOT / configuration).read_text()):
+                with self.subTest(configuration=configuration, key=key):
+                    value = setting_of(key)
+                    self.assertIsNotNone(value, f'{configuration}: "{key}" is in no userspace/ccl/interfaces/settings/ file')
+                    if value == 'Address':
+                        text = rest.strip('"')
+                        # Raises for anything but IPv6 text, a bare dotted IPv4 included.
+                        ipaddress.IPv6Address(text)
 
     def test_startup_output_must_be_a_spec(self):
         manifest = self.directory / 'manifest.ccl'

@@ -17,7 +17,9 @@ with Startup;
 
 package Desktop_Endpoints with SPARK_Mode => Off is
    Display_Service : constant CuBit.Handles.Endpoint := Startup.Display;
-   Config_Service  : constant CuBit.Handles.Endpoint := Startup.Config;
+   --  Raw, for the asynchronous launch-menu refresh (Desktop_Launch_Refresh);
+   --  everything else reads its settings through Startup.Settings.
+   Config_Service  : constant CuBit.Handles.Endpoint := CuBit.Handles.Services.Config.Handle (Startup.Config);
    Process_Manager : constant CuBit.Handles.Endpoint :=
      CuBit.Handles.Services.Process_Manager.Handle (Startup.Process_Manager);
    --  logstore's observer role (the bootstrap screen's recent records).

@@ -1,7 +1,7 @@
 with Ada.Unchecked_Deallocation;
 with System; use System;
 with System.Storage_Elements; use System.Storage_Elements;
-with CuBit.Config;
+with CuBit.Settings;
 with CuBit.Filesystem_Queues;
 with CuBit.Filesystem_Sessions;
 with CuBit.Filesystems;
@@ -13,11 +13,9 @@ package body Lexicon_Loading is
    use Lexicon_Images;
    package FS renames CuBit.Filesystem_Sessions;
    package FQ renames CuBit.Filesystem_Queues;
-   use type CuBit.Config.ConfigStatus;
    use type FS.Token;
    use type FS.Wait_Result;
 
-   ROOT_SETTING : constant String := "system.assets.root";
 
    --  The transfer window: the path in its first page, data in the rest.
    ARENA_PAGES : constant := 256;
@@ -39,7 +37,7 @@ package body Lexicon_Loading is
    function Describe (Result : Load_Result) return String is
      (case Result.Status is
         when Loaded => "loaded" & Result.Bytes'Image & " bytes in" & Result.Elapsed_Ms'Image & " ms",
-        when No_Asset_Root => ROOT_SETTING & " is not a valid asset root",
+        when No_Asset_Root => Startup.Settings.System_Assets_Root.Setting_Key & " is not a valid asset root",
         when No_Filesystem => "no filesystem queue",
         when Open_Failed => "the lexicon file could not be opened",
         when Read_Failed => "reading failed after" & Result.Bytes'Image & " bytes",
@@ -48,20 +46,16 @@ package body Lexicon_Loading is
    --  The configured asset root: a volume path ending in a separator, made
    --  of printable characters, with no parent references.
    procedure Read_Root (Root : out String; Length : out Natural) is
-      Value : System.Address;
-      Size : Natural;
-      Status : CuBit.Config.ConfigStatus;
+      use all type CuBit.Settings.Outcome;
+      Stored : constant Startup.Settings.System_Assets_Root.Reading := Startup.Settings.System_Assets_Root.Read;
    begin
       Length := 0;
-      CuBit.Config.get (ROOT_SETTING, Value, Size, Status);
-      if Status /= CuBit.Config.OK or else Value = System.Null_Address or else
-        Size not in 2 .. MAXIMUM_ROOT
-      then
+      if Stored.Kind /= Present or else Stored.Item.Length not in 2 .. MAXIMUM_ROOT then
          return;
       end if;
       declare
-         Text : constant String (1 .. Size) with Import, Address => Value;
-         Copy : constant String (1 .. Size) := Text;
+         Copy : constant String := CuBit.Settings.Image (Stored.Item);
+         Size : constant Natural := Copy'Length;
       begin
          if Copy (1) /= VOLUME_MARK or else Copy (Size) /= SEPARATOR or else
            (for some C of Copy => C not in '!' .. '~') or else

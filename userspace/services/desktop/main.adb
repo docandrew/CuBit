@@ -130,7 +130,6 @@ with Desktop_Clipboard;
 with Clipboard_Store;
 with Clipboard_Menu;
 with Key_Repeat;
-with Desktop_Key_Repeat_Settings;
 with Desktop_Display_Scale_Settings;
 with Desktop_Display_Modeset_Settings;
 with Desktop_Display_Mode_Settings;
@@ -142,7 +141,7 @@ with Client_Tooltip_Policy;
 with Desktop_Tooltips;
 with CCL.Interfaces.Desktop_Launch;
 with CuBit.Appearance;
-with CuBit.Config;
+with CuBit.Settings;
 with CuBit.UI;
 with CuBit.UI.Theme_CCL;
 with CuBit.UI.Theme_Data;
@@ -1249,41 +1248,44 @@ procedure main is
    end assignApp;
 
    procedure Load_Theme is
-      Value : System.Address;
-      Length : Natural;
-      Status : CuBit.Config.ConfigStatus;
-      Loaded : CuBit.UI.Theme_CCL.Result;
-      use type CuBit.Config.ConfigStatus;
       use type CuBit.Appearance.Color_Scheme;
-   begin
-      for Scheme in CuBit.Appearance.Color_Scheme loop
-      declare
+      use all type CuBit.Settings.Outcome;
+      --  One scheme's theme: the stored CCL source (Present), else the
+      --  built-in Alloy palette.
+      procedure Install (Scheme : CuBit.Appearance.Color_Scheme; Kind : CuBit.Settings.Outcome;
+                         Source : String) is
          Fallback : constant CuBit.UI.Theme := CuBit.UI.Default_Palette (Scheme);
+         Loaded : CuBit.UI.Theme_CCL.Result;
       begin
-      CuBit.UI.Install_Palette (Scheme, Fallback);
-      CuBit.Config.get
-        ((if Scheme = CuBit.Appearance.Alloy_Light then
-           "desktop.appearance.theme.light" else "desktop.appearance.theme.dark"),
-         Value, Length, Status);
-      if Status = CuBit.Config.OK and then Value /= System.Null_Address and then
-        Length in 1 .. CuBit.UI.Theme_CCL.Maximum_Source
-      then
-         declare
-            Source : String (1 .. Length) with Import, Address => Value;
-         begin
+         CuBit.UI.Install_Palette (Scheme, Fallback);
+         if Kind = Present and then Source'Length in 1 .. CuBit.UI.Theme_CCL.Maximum_Source then
             CuBit.UI.Theme_CCL.Load (Source, Fallback, Loaded);
-         end;
-         if Loaded.Success then
-            CuBit.UI.Install_Palette (Scheme, Loaded.Value);
-            debugPrint ("desktop: CCL theme loaded" & LF);
-         else
-            debugPrint ("desktop: invalid CCL theme; using built-in Alloy" & LF);
+            if Loaded.Success then
+               CuBit.UI.Install_Palette (Scheme, Loaded.Value);
+               debugPrint ("desktop: CCL theme loaded" & LF);
+            else
+               debugPrint ("desktop: invalid CCL theme; using built-in Alloy" & LF);
+            end if;
+         elsif Kind /= Absent then
+            debugPrint ("desktop: theme " & CuBit.Settings.Outcome'Image (Kind) &
+                        " or oversized; using built-in Alloy" & LF);
          end if;
-      elsif Status /= CuBit.Config.NotFound then
-         debugPrint ("desktop: theme unavailable or oversized; using built-in Alloy" & LF);
-      end if;
+      end Install;
+   begin
+      declare
+         Light : constant Startup.Settings.Desktop_Appearance_Theme_Light.Reading :=
+           Startup.Settings.Desktop_Appearance_Theme_Light.Read;
+      begin
+         Install (CuBit.Appearance.Alloy_Light, Light.Kind,
+                  (if Light.Kind = Present then CuBit.Settings.Image (Light.Item) else ""));
       end;
-      end loop;
+      declare
+         Dark : constant Startup.Settings.Desktop_Appearance_Theme_Dark.Reading :=
+           Startup.Settings.Desktop_Appearance_Theme_Dark.Read;
+      begin
+         Install (CuBit.Appearance.Alloy_Dark, Dark.Kind,
+                  (if Dark.Kind = Present then CuBit.Settings.Image (Dark.Item) else ""));
+      end;
       CuBit.UI.Set_Theme (CuBit.UI.Palette (appearance.Scheme));
       chromePalette := Window_Chrome.Colors (appearance.Scheme);
       for S of store.Surfaces loop
@@ -1292,18 +1294,12 @@ procedure main is
    end Load_Theme;
 
    procedure Read_Appearance is
-      Value : System.Address;
-      Length : Natural;
-      Status : CuBit.Config.ConfigStatus;
-      use type CuBit.Config.ConfigStatus;
+      use all type CuBit.Settings.Outcome;
+      Stored : constant Startup.Settings.Desktop_Appearance_V1.Reading :=
+        Startup.Settings.Desktop_Appearance_V1.Read;
    begin
-      CuBit.Config.get (CuBit.Appearance.Config_Key, Value, Length, Status);
-      if Status = CuBit.Config.OK and then Length = 3 and then Value /= System.Null_Address then
-         declare
-            Text : String (1 .. 3) with Import, Address => Value;
-         begin
-            if CuBit.Appearance.Valid (Text) then appearance := CuBit.Appearance.Decode (Text); end if;
-         end;
+      if Stored.Kind = Present and then CuBit.Appearance.Valid (CuBit.Settings.Image (Stored.Item)) then
+         appearance := CuBit.Appearance.Decode (CuBit.Settings.Image (Stored.Item));
       end if;
       Load_Theme;
    end Read_Appearance;
@@ -1312,10 +1308,8 @@ procedure main is
    --  key order. Invalid entries are skipped and reported; without a valid
    --  one the built-in list stays.
    procedure Load_Launch_Menu is
-      use type CuBit.Config.ConfigStatus;
-      Keys   : System.Address;
-      Count  : Natural;
-      Status : CuBit.Config.ConfigStatus;
+      use all type CuBit.Settings.Outcome;
+      package Entries renames Startup.Settings.Desktop_Launch;
       Loaded : Desktop_Launch.Menu;
       MAX_KEY : constant := 64;
       type Key_Text is record
@@ -1324,34 +1318,24 @@ procedure main is
       end record;
       Names : array (1 .. Desktop_Launch.Maximum_Entries) of Key_Text;
       Named : Natural := 0;
+      Listed : CuBit.Settings.Outcome;
+      --  Keep at most Maximum_Entries members.
+      procedure Note (Member : String) is
+      begin
+         if Named < Names'Last and then Member'Length in 1 .. MAX_KEY then
+            Named := Named + 1;
+            Names (Named).Text (1 .. Member'Length) := Member;
+            Names (Named).Length := Member'Length;
+         end if;
+      end Note;
+      procedure List_Entries is new Entries.For_Each (Note);
    begin
-      CuBit.Config.list ("desktop.launch.", Keys, Count, Status);
-      if Status /= CuBit.Config.OK or else Keys = System.Null_Address or else Count = 0 then
+      List_Entries (Listed);
+      if Listed /= Present or else Named = 0 then
+         debugPrint ("desktop: launch menu not listed " & CuBit.Settings.Outcome'Image (Listed) &
+                     " entries=" & Natural'Image (Named) & LF);
          return;
       end if;
-      --  Copy the NUL-separated names before the next Config call reuses
-      --  the buffer; keep at most Maximum_Entries.
-      declare
-         Buffer : String (1 .. 4096) with Import, Address => Keys;
-         Pos    : Positive := 1;
-      begin
-         for I in 1 .. Count loop
-            exit when Pos > Buffer'Last;
-            declare
-               First : constant Positive := Pos;
-            begin
-               while Pos <= Buffer'Last and then Buffer (Pos) /= ASCII.NUL loop
-                  Pos := Pos + 1;
-               end loop;
-               if Named < Names'Last and then Pos - First in 1 .. MAX_KEY then
-                  Named := Named + 1;
-                  Names (Named).Text (1 .. Pos - First) := Buffer (First .. Pos - 1);
-                  Names (Named).Length := Pos - First;
-               end if;
-               Pos := Pos + 1;
-            end;
-         end loop;
-      end;
       --  Key order (insertion sort; at most Maximum_Entries names).
       for I in 2 .. Named loop
          declare
@@ -1369,32 +1353,21 @@ procedure main is
       end loop;
       for I in 1 .. Named loop
          declare
-            Value  : System.Address;
-            Length : Natural;
-            Item   : Desktop_Launch.Entry_Info;
-            OK     : Boolean := False;
+            Member : constant String := Names (I).Text (1 .. Names (I).Length);
+            Stored : constant Entries.Reading := Entries.Read (Member);
          begin
-            CuBit.Config.get (Names (I).Text (1 .. Names (I).Length), Value, Length, Status);
-            if Status = CuBit.Config.OK and then Value /= System.Null_Address and then
-              Length in 1 .. 512
-            then
-               declare
-                  Source : String (1 .. Length) with Import, Address => Value;
-               begin
-                  Desktop_Launch.Decode (Source, Item, OK);
-               end;
-            end if;
-            if OK then
-               Desktop_Launch.Append (Loaded, Item);
+            if Stored.Kind = Present then
+               Desktop_Launch.Append (Loaded, Stored.Item);
             else
-               debugPrint ("desktop: invalid launch entry " &
-                           Names (I).Text (1 .. Names (I).Length) & LF);
+               debugPrint ("desktop: launch entry " & Entries.Setting_Prefix & Member & " " &
+                           CuBit.Settings.Outcome'Image (Stored.Kind) & LF);
             end if;
          end;
       end loop;
       if Loaded.Count > 0 then
          launchMenu := Loaded;
       end if;
+      debugPrint ("desktop: launch menu entries=" & Natural'Image (Loaded.Count) & LF);
    end Load_Launch_Menu;
    function C_BG return Unsigned_32 is (CuBit.UI.Current_Theme.desktop);
    function C_PANEL return Unsigned_32 is (CuBit.UI.Current_Theme.panel);
@@ -1477,18 +1450,16 @@ procedure main is
      (Desktop_Timing_Policy.Enabled or else Trace_Metrics_Enabled);
 
    procedure Read_Trace_Configuration is
-      Value : System.Address;
-      Length : Natural;
-      Status : CuBit.Config.ConfigStatus;
-      use type CuBit.Config.ConfigStatus;
+      use all type CuBit.Settings.Outcome;
    begin
       Trace_Metrics_Enabled := False;
       if not DM.Enabled then return; end if;
-      CuBit.Config.get ("desktop.metrics.trace", Value, Length, Status);
-      if Status = CuBit.Config.OK and then Value /= System.Null_Address and then Length = 4 then
-         declare Text : String (1 .. 4) with Import, Address => Value;
-         begin Trace_Metrics_Enabled := Text = "true"; end;
-      end if;
+      declare
+         Stored : constant Startup.Settings.Desktop_Metrics_Trace.Reading :=
+           Startup.Settings.Desktop_Metrics_Trace.Read;
+      begin
+         Trace_Metrics_Enabled := Stored.Kind = Present and then CuBit.Settings.Image (Stored.Item) = "true";
+      end;
       if Trace_Metrics_Enabled then
          debugPrint ("desktop: detailed trace metrics enabled" & LF);
       end if;
@@ -1500,119 +1471,70 @@ procedure main is
    --  gpu.power.waitboost (Desktop_GPU_Power_Settings): logged either way,
    --  handed to the GPU driver once its queue is open.
    procedure Load_GPU_Power is
-      use type CuBit.Config.ConfigStatus;
-      Value  : System.Address;
-      Length : Natural;
-      Status : CuBit.Config.ConfigStatus;
-      On     : Boolean := Desktop_GPU_Power_Settings.Default_Waitboost;
-      OK     : Boolean := False;
+      use all type CuBit.Settings.Outcome;
+      package Setting renames Startup.Settings.Gpu_Power_Waitboost;
+      Stored : constant Setting.Reading := Setting.Read;
+      On : constant Boolean :=
+        (if Stored.Kind = Present then Stored.Item else Desktop_GPU_Power_Settings.Default_Waitboost);
    begin
-      CuBit.Config.get (Desktop_GPU_Power_Settings.Config_Key, Value, Length, Status);
-      if Status = CuBit.Config.OK and then Value /= System.Null_Address and then
-        Length in 1 .. Desktop_GPU_Power_Settings.Maximum_Source
-      then
-         declare
-            Source : String (1 .. Length) with Import, Address => Value;
-         begin
-            Desktop_GPU_Power_Settings.Decode (Source, On, OK);
-         end;
-         if not OK then
-            On := Desktop_GPU_Power_Settings.Default_Waitboost;
-            debugPrint ("desktop: invalid " & Desktop_GPU_Power_Settings.Config_Key &
-                        "; using the default" & LF);
-         end if;
+      if Stored.Kind not in Present | Absent then
+         debugPrint ("desktop: " & Setting.Setting_Key & " " & CuBit.Settings.Outcome'Image (Stored.Kind) &
+                     "; using the default" & LF);
       end if;
       Desktop_GPU_Wake.Set_Waitboost (On);
       debugPrint ("desktop: gpu waitboost " & (if On then "on" else "off") &
-                  (if OK then " (configured)" else " (default)") & LF);
+                  (if Stored.Kind = Present then " (configured)" else " (default)") & LF);
    end Load_GPU_Power;
    --  desktop.display.modeset (Desktop_Display_Modeset_Settings): whether
    --  to ask for an Intel output's best admitted mode; logged either way.
    displayModeset : Boolean := Desktop_Display_Modeset_Settings.Default_Enabled;
    procedure Load_Display_Modeset is
-      use type CuBit.Config.ConfigStatus;
-      Value  : System.Address;
-      Length : Natural;
-      Status : CuBit.Config.ConfigStatus;
-      OK     : Boolean := False;
+      use all type CuBit.Settings.Outcome;
+      package Setting renames Startup.Settings.Desktop_Display_Modeset;
+      Stored : constant Setting.Reading := Setting.Read;
    begin
-      CuBit.Config.get (Desktop_Display_Modeset_Settings.Config_Key, Value, Length, Status);
-      if Status = CuBit.Config.OK and then Value /= System.Null_Address and then
-        Length in 1 .. Desktop_Display_Modeset_Settings.Maximum_Source
-      then
-         declare
-            Source : String (1 .. Length) with Import, Address => Value;
-         begin
-            Desktop_Display_Modeset_Settings.Decode (Source, displayModeset, OK);
-         end;
-         if not OK then
-            displayModeset := Desktop_Display_Modeset_Settings.Default_Enabled;
-            debugPrint ("desktop: invalid " & Desktop_Display_Modeset_Settings.Config_Key &
-                        "; using the default" & LF);
-         end if;
+      displayModeset :=
+        (if Stored.Kind = Present then Stored.Item else Desktop_Display_Modeset_Settings.Default_Enabled);
+      if Stored.Kind not in Present | Absent then
+         debugPrint ("desktop: " & Setting.Setting_Key & " " & CuBit.Settings.Outcome'Image (Stored.Kind) &
+                     "; using the default" & LF);
       end if;
       debugPrint ("desktop: display modeset " & (if displayModeset then "on" else "off") &
-                  (if OK then " (configured)" else " (default)") & LF);
+                  (if Stored.Kind = Present then " (configured)" else " (default)") & LF);
    end Load_Display_Modeset;
    procedure Load_Key_Repeat is
-      use type CuBit.Config.ConfigStatus;
-      Value  : System.Address;
-      Length : Natural;
-      Status : CuBit.Config.ConfigStatus;
-      Loaded : KR.Settings;
-      OK     : Boolean := False;
+      use all type CuBit.Settings.Outcome;
+      package Setting renames Startup.Settings.Desktop_Input_Key_Repeat;
+      Stored : constant Setting.Reading := Setting.Read;
    begin
-      CuBit.Config.get (Desktop_Key_Repeat_Settings.Config_Key, Value, Length, Status);
-      if Status = CuBit.Config.OK and then Value /= System.Null_Address and then
-        Length in 1 .. Desktop_Key_Repeat_Settings.Maximum_Source
-      then
-         declare
-            Source : String (1 .. Length) with Import, Address => Value;
-         begin
-            Desktop_Key_Repeat_Settings.Decode (Source, Loaded, OK);
-         end;
-      end if;
-      if OK then
-         keyRepeatSettings := Loaded;
-      elsif Status /= CuBit.Config.NotFound then
-         debugPrint ("desktop: invalid " & Desktop_Key_Repeat_Settings.Config_Key &
+      if Stored.Kind = Present then
+         keyRepeatSettings := Stored.Item;
+      elsif Stored.Kind /= Absent then
+         debugPrint ("desktop: " & Setting.Setting_Key & " " & CuBit.Settings.Outcome'Image (Stored.Kind) &
                      "; using the default key repeat" & LF);
       end if;
       debugPrint ("desktop: key repeat " &
                   (if keyRepeatSettings.Enabled then "on" else "off") &
                   " delay_ms=" & Decimal (keyRepeatSettings.Initial_Delay) &
                   " rate_hz=" & Decimal (keyRepeatSettings.Rate) &
-                  (if OK then " (configured)" else " (default)") & LF);
+                  (if Stored.Kind = Present then " (configured)" else " (default)") & LF);
    end Load_Key_Repeat;
 
    --  desktop.display.scale (Desktop_Display_Scale_Settings). Absent means
    --  Auto; an invalid value is reported and keeps Auto. Logged either way.
    procedure Load_Display_Scale is
-      use type CuBit.Config.ConfigStatus;
-      Value  : System.Address;
-      Length : Natural;
-      Status : CuBit.Config.ConfigStatus;
-      Loaded : Desktop_Display_Scale_Settings.Preference;
-      OK     : Boolean := False;
+      use all type CuBit.Settings.Outcome;
+      package Setting renames Startup.Settings.Desktop_Display_Scale;
+      Stored : constant Setting.Reading := Setting.Read;
    begin
-      CuBit.Config.get (Desktop_Display_Scale_Settings.Config_Key, Value, Length, Status);
-      if Status = CuBit.Config.OK and then Value /= System.Null_Address and then
-        Length in 1 .. Desktop_Display_Scale_Settings.Maximum_Source
-      then
-         declare
-            Source : String (1 .. Length) with Import, Address => Value;
-         begin
-            Desktop_Display_Scale_Settings.Decode (Source, Loaded, OK);
-         end;
-      end if;
-      if OK then
-         displayScale := Loaded;
-      elsif Status /= CuBit.Config.NotFound then
-         debugPrint ("desktop: invalid " & Desktop_Display_Scale_Settings.Config_Key &
+      if Stored.Kind = Present then
+         displayScale := Stored.Item;
+      elsif Stored.Kind /= Absent then
+         debugPrint ("desktop: " & Setting.Setting_Key & " " & CuBit.Settings.Outcome'Image (Stored.Kind) &
                      "; using the automatic scale" & LF);
       end if;
       debugPrint ("desktop: display scale " & Desktop_Display_Scale_Settings.Encode (displayScale) &
-                  (if OK then " (configured)" else " (default)") & LF);
+                  (if Stored.Kind = Present then " (configured)" else " (default)") & LF);
    end Load_Display_Scale;
 
    --  The scale an output starts at: the configured one, or (Auto, or a
@@ -10015,17 +9937,17 @@ procedure main is
       --  desktop.display.scale: Auto, or the user's choice (the primary
       --  output's scale), for the next session too.
       declare
-         use type CuBit.Config.ConfigStatus;
+         use all type CuBit.Settings.Change_Outcome;
          Wanted : constant Desktop_Display_Scale_Settings.Preference :=
            (if settingsView.Pending_Auto then Desktop_Display_Scale_Settings.Default
             else (Auto => False, Scale => Candidate.Items (Choice.Index).Geometry.Scale));
          Text : constant String := Desktop_Display_Scale_Settings.Encode (Wanted);
-         Status : CuBit.Config.ConfigStatus;
+         Status : CuBit.Settings.Change_Outcome;
       begin
-         CuBit.Config.set (Desktop_Display_Scale_Settings.Config_Key, Text'Address, Text'Length, Status);
+         Startup.Settings.Desktop_Display_Scale.Write (Wanted, Status);
          displayScale := Wanted;
          settingsView.Applied_Auto := settingsView.Pending_Auto;
-         if Status = CuBit.Config.OK then
+         if Status = Done then
             settingsView.Layout_Status := Desktop_Settings.Saved_In_Config;
          end if;
          debugPrint ("desktop: display scale " & Text & LF);
@@ -10045,16 +9967,16 @@ procedure main is
 
    procedure Apply_Appearance (damage : in out Rect) is
       Text : constant CuBit.Appearance.Encoding := CuBit.Appearance.Encode (settingsView.Pending);
-      Status : CuBit.Config.ConfigStatus;
-      use type CuBit.Config.ConfigStatus;
+      Status : CuBit.Settings.Change_Outcome;
+      use all type CuBit.Settings.Change_Outcome;
    begin
       if themeRevision = Unsigned_64'Last then return; end if;
       appearance := settingsView.Pending;
       Load_Theme;
       themeRevision := themeRevision + 1;
-      CuBit.Config.set (CuBit.Appearance.Config_Key, Text'Address, Text'Length, Status);
+      Startup.Settings.Desktop_Appearance_V1.Write (CuBit.Settings.To_Text (Text), Status);
       settingsView.Applied := appearance;
-      settingsView.Status := (if Status = CuBit.Config.OK then Desktop_Settings.Saved_In_Config
+      settingsView.Status := (if Status = Done then Desktop_Settings.Saved_In_Config
                               else Desktop_Settings.Session_Only);
       dragBaseReady := False;
       damage := (0, 0, fbWidth, fbHeight);
@@ -12575,28 +12497,19 @@ procedure main is
    --  The mode saved for a monitor (desktop.display.mode.<monitor>): Auto
    --  when none is saved or the stored value is not a canonical Display_Mode.
    function savedMode (Monitor : OM.Monitor_Identity) return Desktop_Display_Mode_Settings.Preference is
-      package S renames Desktop_Display_Mode_Settings;
-      use type CuBit.Config.ConfigStatus;
-      Value  : System.Address;
-      Length : Natural;
-      Status : CuBit.Config.ConfigStatus;
-      Result : S.Preference := S.Default;
-      OK     : Boolean;
+      use all type CuBit.Settings.Outcome;
+      package Modes renames Startup.Settings.Desktop_Display_Mode;
+      Member : constant String := Desktop_Display_Mode_Settings.Member_For (Monitor);
+      Stored : constant Modes.Reading := Modes.Read (Member);
    begin
-      CuBit.Config.get (S.Key_For (Monitor), Value, Length, Status);
-      if Status = CuBit.Config.OK and then Value /= System.Null_Address and then
-        Length in 1 .. S.Maximum_Source
-      then
-         declare
-            Source : String (1 .. Length) with Import, Address => Value;
-         begin
-            S.Decode (Source, Result, OK);
-         end;
-         if not OK then
-            debugPrint ("desktop: invalid " & S.Key_For (Monitor) & "; using Auto" & LF);
-         end if;
+      if Stored.Kind = Present then
+         return Stored.Item;
       end if;
-      return Result;
+      if Stored.Kind /= Absent then
+         debugPrint ("desktop: " & Modes.Setting_Prefix & Member & " " &
+                     CuBit.Settings.Outcome'Image (Stored.Kind) & "; using Auto" & LF);
+      end if;
+      return Desktop_Display_Mode_Settings.Default;
    end savedMode;
 
    --  "WxH@60.000Hz" (or "@best") for logs.
@@ -12863,9 +12776,9 @@ procedure main is
    --  Save the kept choice for the primary output's monitor.
    procedure storeModeChoice (Auto : Boolean; Trial : OM.Mode_Request) is
       package S renames Desktop_Display_Mode_Settings;
-      use type CuBit.Config.ConfigStatus;
+      use all type CuBit.Settings.Change_Outcome;
       Monitor : constant OM.Identity_Decoding := monitorIdentity (modeSwitch.Output);
-      Status : CuBit.Config.ConfigStatus;
+      Status : CuBit.Settings.Change_Outcome;
    begin
       settingsView.Monitor_Status := Desktop_Settings.Mode_Kept;
       if not Monitor.Valid then
@@ -12880,14 +12793,15 @@ procedure main is
            (if Auto then S.Default
             else (Auto => False, Size => Trial.Size, Refresh => Trial.Refresh));
          Text : constant String := S.Encode (Choice);
-         Key : constant String := S.Key_For (Monitor.Value);
+         Member : constant String := S.Member_For (Monitor.Value);
       begin
-         CuBit.Config.set (Key, Text'Address, Text'Length, Status);
-         if Status /= CuBit.Config.OK then
+         Startup.Settings.Desktop_Display_Mode.Write (Member, Choice, Status);
+         if Status /= Done then
             settingsView.Monitor_Status := Desktop_Settings.Mode_Saved_Session_Only;
          end if;
-         debugPrint ("desktop: display mode " & Key & " " & Text &
-           (if Status = CuBit.Config.OK then " saved" else " refused by Config") & LF);
+         debugPrint ("desktop: display mode " & Startup.Settings.Desktop_Display_Mode.Setting_Prefix &
+           Member & " " & Text &
+           (if Status = Done then " saved" else " refused by Config") & LF);
       end;
    end storeModeChoice;
 

@@ -7,5 +7,4 @@ package CCL.Interfaces.GPU_Power with SPARK_Mode, Pure is
    TYPE_SOURCE : constant String :=
      "(type GPU_Waitboost (record (enabled Boolean true)))";
    ROOT_TYPE_NAME : constant String := "GPU_Waitboost";
-   WAITBOOST_KEY : constant String := "gpu.power.waitboost";
 end CCL.Interfaces.GPU_Power;

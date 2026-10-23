@@ -5,6 +5,7 @@
 with Interfaces;
 with CCL.Objects.Views;
 with CCL.Typed_Settings;
+with CCL.Setting_Kinds;
 
 package body Desktop_Launch is
    package DL renames CCL.Interfaces.Desktop_Launch;
@@ -84,7 +85,7 @@ package body Desktop_Launch is
       if Work = null then
          Work := new Views.Snapshot;
       end if;
-      TS.Read (TS.Launch_Entry_Setting, Source, Work.all, Read);
+      TS.Read (CCL.Setting_Kinds.Launch_Entry_Setting, Source, Work.all, Read);
       if not Read then
          return;
       end if;

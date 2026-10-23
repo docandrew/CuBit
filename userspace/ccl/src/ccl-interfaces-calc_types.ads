@@ -25,5 +25,4 @@ package CCL.Interfaces.Calc_Types with SPARK_Mode, Pure is
      "Calc_Request (record (expression String) (options Calc_Options)))";
    --  The Calculator's remembered options: a Calc_Options.
    ROOT_OPTIONS_NAME : constant String := "Calc_Options";
-   SETTING_KEY : constant String := "calculator.options";
 end CCL.Interfaces.Calc_Types;

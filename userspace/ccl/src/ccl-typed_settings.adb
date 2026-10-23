@@ -1,12 +1,7 @@
 with Interfaces;
 with CCL.Catalog;
 with CCL.Evaluation;
-with CCL.Interfaces.Calc_Types;
-with CCL.Interfaces.Desktop_Display;
-with CCL.Interfaces.Desktop_Input;
-with CCL.Interfaces.Desktop_Launch;
 with CCL.Interfaces.Desktop_Launch.Icons;
-with CCL.Interfaces.GPU_Power;
 with CCL.Language;
 with CCL.Objects;
 with CCL.Types;
@@ -18,48 +13,14 @@ package body CCL.Typed_Settings is
    use type Standard.Interfaces.Unsigned_64;
    package Views renames CCL.Objects.Views;
 
-   LAUNCH_PREFIX : constant String := "desktop.launch.";
    FUEL : constant := 100_000;
    --  A local binding: the value never leaves the process as an image.
    LOCAL_KEY : constant CCL.Objects.Schema_Key :=
      [16#4C41_554E_4348_454E#, 16#5452_595F_4C4F_4341#, 16#4C5F_4B45_5900_0000#, 16#0000_0000_0000_0001#];
 
-   MODE_PREFIX : String renames CCL.Interfaces.Desktop_Display.MODE_PREFIX;
-
-   function Kind_Of (Key : String) return Setting_Kind is
-     (if Key'Length > LAUNCH_PREFIX'Length
-         and then Key (Key'First .. Key'First + LAUNCH_PREFIX'Length - 1) = LAUNCH_PREFIX
-      then Launch_Entry_Setting
-      elsif Key'Length > MODE_PREFIX'Length
-         and then Key (Key'First .. Key'First + MODE_PREFIX'Length - 1) = MODE_PREFIX
-      then Display_Mode_Setting
-      elsif Key = CCL.Interfaces.Desktop_Input.KEY_REPEAT_KEY then Key_Repeat_Setting
-      elsif Key = CCL.Interfaces.GPU_Power.WAITBOOST_KEY then GPU_Waitboost_Setting
-      elsif Key = CCL.Interfaces.Desktop_Display.DISPLAY_SCALE_KEY then Display_Scale_Setting
-      elsif Key = CCL.Interfaces.Desktop_Display.MODESET_KEY then Display_Modeset_Setting
-      elsif Key = CCL.Interfaces.Calc_Types.SETTING_KEY then Calculator_Options_Setting
-      else Untyped);
-
-   function Schema (Kind : Setting_Kind) return String is
-     (case Kind is
-         when Launch_Entry_Setting => CCL.Interfaces.Desktop_Launch.TYPE_SOURCE,
-         when Key_Repeat_Setting => CCL.Interfaces.Desktop_Input.TYPE_SOURCE,
-         when GPU_Waitboost_Setting => CCL.Interfaces.GPU_Power.TYPE_SOURCE,
-         when Display_Scale_Setting => CCL.Interfaces.Desktop_Display.TYPE_SOURCE,
-         when Display_Modeset_Setting => CCL.Interfaces.Desktop_Display.MODESET_TYPE_SOURCE,
-         when Display_Mode_Setting => CCL.Interfaces.Desktop_Display.MODE_TYPE_SOURCE,
-         when Calculator_Options_Setting => CCL.Interfaces.Calc_Types.TYPE_SOURCE,
-         when Untyped => "");
-   function Root_Name (Kind : Setting_Kind) return String is
-     (case Kind is
-         when Launch_Entry_Setting => CCL.Interfaces.Desktop_Launch.ROOT_TYPE_NAME,
-         when Key_Repeat_Setting => CCL.Interfaces.Desktop_Input.ROOT_TYPE_NAME,
-         when GPU_Waitboost_Setting => CCL.Interfaces.GPU_Power.ROOT_TYPE_NAME,
-         when Display_Scale_Setting => CCL.Interfaces.Desktop_Display.ROOT_TYPE_NAME,
-         when Display_Modeset_Setting => CCL.Interfaces.Desktop_Display.MODESET_ROOT_TYPE_NAME,
-         when Display_Mode_Setting => CCL.Interfaces.Desktop_Display.MODE_ROOT_TYPE_NAME,
-         when Calculator_Options_Setting => CCL.Interfaces.Calc_Types.ROOT_OPTIONS_NAME,
-         when Untyped => "");
+   --  The catalog's (CCL.Setting_Kinds, generated).
+   function Schema (Kind : Setting_Kind) return String renames CCL.Setting_Kinds.Schema;
+   function Root_Name (Kind : Setting_Kind) return String renames CCL.Setting_Kinds.Root_Name;
 
    function Named (Object : Views.Snapshot; At_Cursor : Views.Cursor; Name : String) return Views.Cursor is
       Shape : constant CCL.Types.Description := Views.Describe (Object, At_Cursor);

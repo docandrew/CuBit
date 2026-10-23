@@ -45,6 +45,24 @@ a console confined to a directory cannot write outside it (plus a temporary
 place), shown by a guest test. Related: SEC-020 (bootstrap delegation),
 docs/stream-wiring.md (approvals), and the capability graph plan.
 
+### CAP-003 — Remaining slice-3 settings work (2026-10-23)
+
+These follow slice 3 of docs/declaration-checking.md, which added the
+setting catalog and `Startup.Settings`.
+
+- Give the settings that are still `Text` their own types:
+  - `time.servers` and `tls.hosts` (host names);
+  - `system.assets.root` and `cubit.config.storage.database` (paths);
+  - `logs.minimum-level` (`Severity`);
+  - the theme strings (`Theme`).
+- Make config.svc refuse a seeded or written value that its catalog entry
+  does not accept. Today only a hosted test checks the system
+  configurations.
+- Add an asynchronous typed settings API (submit, then completion), so
+  that Desktop's launch-menu refresh stops using the raw Config protocol.
+
+Slices 4–6 of the same document follow.
+
 ## Builds
 
 ### BLD-002 — Kernel assembly to GNU as, Intel syntax (user, 2026-10-05)

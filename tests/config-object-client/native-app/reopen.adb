@@ -1,4 +1,6 @@
 with Startup;
+with CuBit.Handles;
+with CuBit.Handles.Services;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CCL.Types;
@@ -16,6 +18,7 @@ with Read_Fixture;
 
 -- Second independent boot: manifest grants ONLY Read in the fixture scope.
 procedure Reopen is
+   Config_Endpoint : constant CuBit.Handles.Endpoint := CuBit.Handles.Services.Config.Handle (Startup.Config);
    package Client renames Config_Object_Client;
    package Wire renames Config_Object_Messages;
    package Adapter renames Config_Object_Client.VM;
@@ -85,7 +88,7 @@ begin
    Expected := CCL.Objects.Empty (Contract);
    CCL.Objects.Append (Expected, CCL.Objects.Integer_Cell (42), Built);
    Check (Built = CCL.Objects.Added, "native value");
-   Client.Initialize (Reader, Startup.Config, Good); Check (Good, "grant");
+   Client.Initialize (Reader, Config_Endpoint, Good); Check (Good, "grant");
    Client.Create (Reader, Name, Contract, Wire.Read_Only, 0, Next_Token, Sent);
    Finish (Wire.Denied, "read authority cannot create");
    Client.Open (Reader, Name, Contract, Wire.Read_Write, 0, Next_Token, Sent);

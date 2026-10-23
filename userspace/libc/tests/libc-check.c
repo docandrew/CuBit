@@ -11,6 +11,9 @@
 #include <errno.h>
 #include <sys/mman.h>
 #include <sys/syscall.h>
+/* The manifest's generated startup header: its startup check runs before
+ * main (CAP-003); the run's "hello" line shows it passed. */
+#include "startup.h"
 #include <sys/stat.h>
 #include <sys/select.h>
 #include <limits.h>

@@ -10,7 +10,7 @@
   (service filesystem 6 read-write)
   (service device-manager 7 read-write)
   (service mixer 9 read-write)
-  (service config 11 read-write)
+  (service config 11 read-write (client Config))
   (service logstore 13 read-write (client Logstore))
   (service ipc-test 14 read-write)
   (service desktop 15 read-write)

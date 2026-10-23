@@ -17,7 +17,6 @@ package CCL.Interfaces.Desktop_Display with SPARK_Mode, Pure is
      "(type UI_Scale (record (numerator Scale_Part) (denominator Scale_Part))) " &
      "(type Display_Scale (variant (Auto) (Fixed UI_Scale)))";
    ROOT_TYPE_NAME : constant String := "Display_Scale";
-   DISPLAY_SCALE_KEY : constant String := "desktop.display.scale";
 
    --  `desktop.display.modeset` is one Display_Modeset: when enabled, the
    --  desktop asks display.svc for each Intel output's best admitted mode
@@ -27,16 +26,14 @@ package CCL.Interfaces.Desktop_Display with SPARK_Mode, Pure is
    MODESET_TYPE_SOURCE : constant String :=
      "(type Display_Modeset (record (enabled Boolean false)))";
    MODESET_ROOT_TYPE_NAME : constant String := "Display_Modeset";
-   MODESET_KEY : constant String := "desktop.display.modeset";
 
    --  `desktop.display.mode.<monitor>` is one Display_Mode: the mode chosen
    --  for that monitor in Settings > Monitor (DISP-016), keyed by its EDID
-   --  identity (Desktop_Display_Mode_Settings.Key_For: vendor, product and
+   --  identity (Desktop_Display_Mode_Settings.Member_For: vendor, product and
    --  serial). Auto (also what an absent setting means) is the best mode the
    --  driver admits; Fixed is one of the monitor's listed modes, its size
    --  and the refresh rate the driver lists for it. The bounds are the
    --  output mode protocol's (CuBit.Output_Modes: extents, millihertz).
-   MODE_PREFIX : constant String := "desktop.display.mode.";
    MAXIMUM_MODE_EXTENT : constant := 65_535;
    MAXIMUM_REFRESH_MILLIHERTZ : constant := 4_294_967_295;
    MODE_TYPE_SOURCE : constant String :=

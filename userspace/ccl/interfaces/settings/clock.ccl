@@ -1,0 +1,5 @@
+# clock.svc's settings: the time zone Settings > Date & Time picks, and the
+# boot RTC sample devmgr records (only devmgr and procmgr may write it).
+(Setting_Catalog settings => [
+  (Setting "clock.time-zone" Shape.Key Value.Text Class.Application_State "")
+  (Setting "clock.boot-sample" Shape.Key Value.Text Class.Declaration_Managed "")])

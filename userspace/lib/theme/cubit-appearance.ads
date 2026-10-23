@@ -10,7 +10,6 @@ package CuBit.Appearance with SPARK_Mode, Pure is
       Position : Placement := Fill;
    end record;
    Default : constant Preferences := (others => <>);
-   Config_Key : constant String := "desktop.appearance.v1";
    --  One atomic Config value: no partially applied theme/background tuple.
    subtype Encoding is String (1 .. 3);
    function Encode (Item : Preferences) return Encoding;

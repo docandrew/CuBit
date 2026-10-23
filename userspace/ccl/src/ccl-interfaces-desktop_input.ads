@@ -22,5 +22,4 @@ package CCL.Interfaces.Desktop_Input with SPARK_Mode, Pure is
      "(type Key_Repeat (record (enabled Boolean true) " &
      "(delay_ms Repeat_Delay 500) (rate_hz Repeat_Rate 30)))";
    ROOT_TYPE_NAME : constant String := "Key_Repeat";
-   KEY_REPEAT_KEY : constant String := "desktop.input.key-repeat";
 end CCL.Interfaces.Desktop_Input;

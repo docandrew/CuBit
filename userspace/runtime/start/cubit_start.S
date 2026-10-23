@@ -22,7 +22,9 @@
 # keeps them. Dropping the length (config-storage's hand-written start,
 # CAP-003 R3) left every startup entry absent.
 #
-# Then it calls the language's start with RDI = the initial stack pointer
+# Then it runs the program's startup check, __cubit_startup_check, when the
+# program defines one (weak: absent means none), and calls the language's
+# start with RDI = the initial stack pointer
 # and RSI = the payload's length, RBP = 0 (end of the frame chain), RSP
 # 16-byte aligned at the call and the direction flag clear:
 #   __cubit_language_start (initial_stack, payload_length), which never
@@ -55,6 +57,8 @@ __cubit_launch_arguments_length:
     .quad 0
     .popsection
 
+    .weak __cubit_startup_check
+
     .pushsection .text._start,"ax",@progbits
     .global _start
     .type _start,@function
@@ -81,11 +85,20 @@ _start:
     sub rax, rdx
 2:
     mov qword ptr [rip + __cubit_launch_arguments_length], rax
-    mov rsi, rax
-    mov rdi, rsp
+    mov rbx, rsp
     xor ebp, ebp
     and rsp, -16
     cld
+    # The program's startup check, when its generated bindings define one
+    # (Rust and C: ccl-manifest --rust-output, --c-output); Ada programs
+    # check in their Startup package's elaboration instead.
+    lea rax, [rip + __cubit_startup_check]
+    test rax, rax
+    jz 3f
+    call rax
+3:
+    mov rdi, rbx
+    mov rsi, qword ptr [rip + __cubit_launch_arguments_length]
     call __cubit_language_start
     ud2
     .size _start, . - _start

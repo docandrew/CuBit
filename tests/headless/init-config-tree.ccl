@@ -1,3 +1,5 @@
 (startup v1
+  # Desktop requires logstore (its startup table's "logstore" entry).
+  (start "logstore.svc" (priority 5))
   (start "display.svc" (priority 5))
   (start "desktop.svc" (priority 4)))

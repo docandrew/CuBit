@@ -71,6 +71,8 @@ package Desktop_Launch is
    --  is False for anything else, or a label or program out of bounds.
    --  (Tested on the host: tests/desktop-launch.)
    procedure Decode (Source : String; Item : out Entry_Info; Success : out Boolean);
+   --  The setting catalog's codec (desktop.launch. family, CAP-003).
+   subtype Value is Entry_Info;
 
    --  The built-in list (the menu before Config held it).
    function Defaults return Menu;

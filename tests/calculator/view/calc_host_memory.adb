@@ -9,7 +9,7 @@ package body Calc_Host_Memory is
    end Load_Options;
    procedure Save_Options (H : in out Host; Item : CCL_Calc_Options.Choice) is
    begin
-      H.Options := To_Unbounded_String (Calc_Settings.Source (Item));
+      H.Options := To_Unbounded_String (Calc_Settings.Encode (Item));
    end Save_Options;
    function Stored_Options (H : Host) return String is (To_String (H.Options));
    procedure Set_Stored_Options (H : in out Host; Source : String) is

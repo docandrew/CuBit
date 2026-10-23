@@ -4,7 +4,7 @@ with CuBit.Logging;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Config_Inspection;
-with CuBit.Config_Reader;
+with CuBit.Settings.Inspection;
 with CuBit.UI; use CuBit.UI;
 with CuBit.UI.App;
 with CuBit.UI.Clipboard;
@@ -59,7 +59,9 @@ procedure Main is
    begin
       Value := (others => <>); Value_Scroll := 0; Value_Status := P.OK;
       if Selected in 1 .. Model.Count and then Model.Nodes (Selected).Has_Value then
-         CuBit.Config_Reader.Query (P.Read_Value, T.Key (Model, Selected), Value, Value_Status);
+         CuBit.Settings.Inspection.Inspect
+           (Startup.Settings.Inspector, P.Read_Value, T.Key (Model, Selected), P.Machine_Context,
+            Value, Value_Status);
       end if;
    end Read_Selected;
 
@@ -68,7 +70,8 @@ procedure Main is
       Accepted : Boolean;
       Old_Key : constant String := T.Key (Model, Selected);
    begin
-      CuBit.Config_Reader.Query (P.List_Keys, "", Names, Load_Status);
+      CuBit.Settings.Inspection.Inspect
+        (Startup.Settings.Inspector, P.List_Keys, "", P.Machine_Context, Names, Load_Status);
       if Load_Status /= P.OK then return; end if;
       T.Load (Model, Names.Data (1 .. Names.Length), Accepted);
       if not Accepted then Load_Status := P.Invalid_Request; return; end if;

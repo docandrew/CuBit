@@ -341,6 +341,17 @@ package body Build_Ada_Programs is
             Schema : constant Input_Number := Add_Input
               (S, To_String (Profile.Manifest_Schema), Regular_File,
                Snapshot (To_String (Profile.Manifest_Schema), Regular_File));
+            --  The setting catalog ccl-manifest reads beside the schema
+            --  (CAP-003): its own schema and the settings/ directory.
+            Interfaces_Directory : constant String :=
+              Ada.Directories.Containing_Directory (To_String (Profile.Manifest_Schema));
+            Catalog_Schema_File : constant String := Interfaces_Directory / "setting-catalog.ccl";
+            Settings_Directory : constant String := Interfaces_Directory / "settings";
+            Catalog_Schema : constant Input_Number := Add_Input
+              (S, Catalog_Schema_File, Regular_File, Snapshot (Catalog_Schema_File, Regular_File));
+            Settings : constant Input_Number := Add_Input
+              (S, Settings_Directory, Tree, Snapshot (Settings_Directory, Tree));
+            pragma Unreferenced (Catalog_Schema, Settings);
             Source : constant Input_Number := Add_Input
               (S, Manifest_Source, Regular_File, Snapshot (Manifest_Source, Regular_File));
             Assembly : constant Output_Number := Add_Output (S, Objects / Manifest_Assembly);

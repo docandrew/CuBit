@@ -10,6 +10,11 @@ extern crate std;
 use core::arch::asm;
 
 pub mod startup;
+
+// The shared program entry (CAP-003), for programs without the std runtime
+// (whose moto-rt carries it instead): see the `start` feature.
+#[cfg(feature = "start")]
+core::arch::global_asm!(include_str!("../../../runtime/start/cubit_start.S"));
 pub mod sync;
 #[cfg(feature = "alloc")]
 pub mod thread;

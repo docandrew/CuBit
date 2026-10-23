@@ -1,4 +1,6 @@
 with Startup;
+with CuBit.Handles;
+with CuBit.Handles.Services;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Benchmark_Clock;
@@ -10,6 +12,7 @@ with Config_Object_Messages;
 -- Native public IPC benchmark, with the same narrow manifest as the regression
 -- app. No filesystem/worker authority, SQL, CBOR or direct service calls.
 procedure Benchmark is
+   Config_Endpoint : constant CuBit.Handles.Endpoint := CuBit.Handles.Services.Config.Handle (Startup.Config);
    package Client renames Config_Object_Client;
    package Wire renames Config_Object_Messages;
    package Clock renames CuBit.Benchmark_Clock;
@@ -114,9 +117,9 @@ begin
    Check (Rate > 0, "counter calibration");
    CCL.Objects.Bind (Types, CCL.Types.Integer_Type, [1, 2, 3, 4], Contract, Good);
    Check (Good, "binding");
-   Client.Initialize (Writer, Startup.Config, Good);
+   Client.Initialize (Writer, Config_Endpoint, Good);
    Check (Good, "writer grant");
-   Client.Initialize (Reader, Startup.Config, Good);
+   Client.Initialize (Reader, Config_Endpoint, Good);
    Check (Good, "reader grant");
    Client.Create (Writer, Name, Contract, Wire.Read_Write, 0, Next_Token, Sent);
    Finish (Writer, Item);

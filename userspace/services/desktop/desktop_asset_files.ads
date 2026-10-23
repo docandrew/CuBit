@@ -10,7 +10,6 @@ with CuBit.QOI;
 --  cleanly (or with a clean "not found"/"access denied" answer).
 --  Desktop's wallpapers and icons both load through here.
 package Desktop_Asset_Files is
-   Root_Setting : constant String := "system.assets.root";
 
    --  Why a read ended. Only Complete and Refused read the whole stream the
    --  sink wanted; every other outcome means the asset is unavailable.
