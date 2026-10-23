@@ -1,0 +1,6 @@
+# Roots tls.svc must never trust: SHA-256 of the DER certificate, then its name.
+# eMudhra, 2026-10-17: eight intermediate CA keys weakly generated and recovered.
+86a1ecba089c4a8d3bbe2734c612ba341d813e043cf9e8a862cd5c57a36bbe6b emSign ECC Root CA - G3
+40f6af0346a99aa1cd1d555a4e9cce62c7f9634603ee406615833dc8c8d00367 emSign Root CA - G1
+125609aa301da0a249b97a8239cb6a34216f44dcac9f3954b14292f2e8c8608f emSign Root CA - C1
+bc4d809b15189d78db3e1d8cf4f9726a795da1643ca5f1358e1ddb0edc0d7eb3 emSign ECC Root CA - C3

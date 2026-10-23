@@ -89,6 +89,20 @@
             { name = "sparknacl"; path = sparknacl; }
             { name = "libkeccak"; path = libkeccak; }
           ];
+          # tls.svc's trust store: Mozilla's root set without eMudhra's emSign
+          # roots. Eight eMudhra intermediate CA keys were weakly generated
+          # and recovered (2026-10-17). Mozilla dropped emSign ECC Root CA - G3
+          # in NSS 3.131.1; our pin predates that, and eMudhra is leaving
+          # public TLS, so its other roots go too.
+          # tests/tls-roots/check.sh keeps them out.
+          cubitCaCerts = pkgs.cacert.override {
+            blacklist = [
+              "emSign Root CA - G1"
+              "emSign ECC Root CA - G3"
+              "emSign Root CA - C1"
+              "emSign ECC Root CA - C3"
+            ];
+          };
           cubitRustVendor = pkgs.rustPlatform.importCargoLock {
             lockFile = ./userspace/rust/Cargo.lock;
           };
@@ -165,8 +179,8 @@
               export SAMEBOY_LIBM_NOTICES="${sameboyMath}/share/licenses/openlibm"
               export CBOR_ADA_SRC="${cbor_ada}"
               export CUBIT_SPARK_CRATES="${sparkCrates}/"
-              # Mozilla root set for tls.svc's trust store (tools/pem_bundle_to_der.py).
-              export CUBIT_CA_BUNDLE="${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
+              # tls.svc's trust store (cubitCaCerts, tools/pem_bundle_to_der.py).
+              export CUBIT_CA_BUNDLE="${cubitCaCerts}/etc/ssl/certs/ca-bundle.crt"
               # Lexicon sources (tools/build_lexicon.py, docs/lexicon.md):
               # WordNet 3.0 (Princeton licence) and SCOWL (permissive).
               export CUBIT_WORDNET_DICT="${pkgs.wordnet}/dict"

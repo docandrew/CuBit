@@ -1166,13 +1166,18 @@ tls-crates:
 	@test -n "$(CUBIT_SPARK_CRATES)" || \
 	  { echo "CUBIT_SPARK_CRATES is unset: build inside nix develop" >&2; exit 1; }
 
-# tls.svc's trust store: the pinned Mozilla root set (nixpkgs cacert) as
-# concatenated DER, installed on the development disk as tls/roots.der.
-build/tls-roots.der: $(CUBIT_CA_BUNDLE) ../tools/pem_bundle_to_der.py
+# tls.svc's trust store: the pinned Mozilla root set (flake.nix cubitCaCerts)
+# as concatenated DER, installed on the development disk as tls/roots.der.
+# A store holding a distrusted root (tests/tls-roots/distrusted.txt) is
+# never produced.
+build/tls-roots.der: $(CUBIT_CA_BUNDLE) ../tools/pem_bundle_to_der.py \
+		../tests/tls-roots/check.sh ../tests/tls-roots/distrusted.txt
 	@test -n "$(CUBIT_CA_BUNDLE)" || \
 	  { echo "CUBIT_CA_BUNDLE is unset: build inside nix develop" >&2; exit 1; }
 	mkdir -p build
-	python3 ../tools/pem_bundle_to_der.py $(CUBIT_CA_BUNDLE) $@
+	python3 ../tools/pem_bundle_to_der.py $(CUBIT_CA_BUNDLE) $@.new
+	../tests/tls-roots/check.sh $@.new
+	mv $@.new $@
 tls-roots: build/tls-roots.der
 
 # Test-only PKI (git-ignored) for the TLS regressions.
