@@ -1,4 +1,6 @@
 (startup v1
+  # clock.svc publishes its log through logstore (a required entry).
+  (start "logstore.svc" (priority 5))
   (start "clock.svc" (priority 5))
   (start "config-storage.svc" (priority 5) (role config-storage))
   (start "config-objects-reopen.app" (priority 4)))

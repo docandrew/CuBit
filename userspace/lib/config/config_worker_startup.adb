@@ -10,7 +10,7 @@ package body Config_Worker_Startup with SPARK_Mode is
       Registered_Config : CuBit.Messages.Process_ID) return Boolean is
      (CuBit.Messages.Is_Process (Registered_Config) and then
       CuBit.Messages."=" (Sender, Registered_Config) and then
-      Tag = CuBit.Messages.To_Word (Registered_Config));
+      Tag = Worker_Request_Tag);
    function Valid_Attachment (Request : CuBit.Messages.Message) return Boolean is
      (Request.tag.label = Operation'Enum_Rep (Attach_Worker)
       and then Request.tag.length = 1 and then Request.tag.protocol = 0

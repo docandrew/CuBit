@@ -1,8 +1,6 @@
 //! Isolated native bring-up, not the Config service or a general std port.
 #![deny(unsafe_op_in_unsafe_fn)]
 
-use core::arch::global_asm;
-
 #[cfg(feature = "turso")]
 #[path = "../../../../userspace/lib/storage/native/bridge.rs"]
 mod storage;
@@ -20,24 +18,8 @@ static ALLOCATOR: cubit_allocator::BoundedAllocator = cubit_allocator::BoundedAl
 
 include!(concat!(env!("CUBIT_BINDINGS_DIR"), "/bindings.rs"));
 
-global_asm!(
-    r#"
-    .section .text._start,"ax",@progbits
-    .global _start
-    _start:
-        mov [rip + __cubit_launch_block_length], rdi
-        xor rbp, rbp
-        and rsp, -16
-        cld
-        call rust_main
-        ud2
-    .section .bss.cubit_launch,"aw",@nobits
-    .balign 8
-    .global __cubit_launch_block_length
-    __cubit_launch_block_length: .quad 0
-    .section .note.GNU-stack,"",@progbits
-"#
-);
+#[path = "../../../../userspace/services/config-storage/entry.rs"]
+mod entry;
 
 #[path = "../../../../userspace/services/config-storage/std_hooks.rs"]
 mod std_hooks;
@@ -59,9 +41,16 @@ extern "C" fn rust_main() -> ! {
         time::Instant,
     };
     cubit::debug_write("TURSO-NATIVE: std probe starting\n");
-    // CuBit currently saves FXSAVE state, not AVX/AVX-512 extended state.
-    // Runtime SIMD dispatch must not select an unsupported register file.
-    assert!(!std::is_x86_feature_detected!("avx"));
+    // CuBit saves user FP/SIMD state with XSAVE: XCR0 holds x87 and SSE,
+    // plus AVX exactly when CPUID reports both XSAVE and AVX, and never the
+    // AVX-512 components (kernel/src/boot.asm). Runtime SIMD dispatch must
+    // select exactly that register file.
+    const CPUID_FEATURES: u32 = 1;
+    const ECX_XSAVE: u32 = 1 << 26;
+    const ECX_AVX: u32 = 1 << 28;
+    let features = core::arch::x86_64::__cpuid(CPUID_FEATURES).ecx;
+    let avx_saved = features & ECX_XSAVE != 0 && features & ECX_AVX != 0;
+    assert_eq!(std::is_x86_feature_detected!("avx"), avx_saved);
     assert!(!std::is_x86_feature_detected!("avx512f"));
     let start = Instant::now();
     let mut values = HashMap::new();

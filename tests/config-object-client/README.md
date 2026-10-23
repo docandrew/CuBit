@@ -584,6 +584,12 @@ not called Ada library elaboration. The worker now uses the tested source
 predicate and GNAT's generated standalone-library initializer before any Ada
 entrypoint. No response validation, authorization or entropy checks were relaxed.
 
+CAP-002 removed the kernel's holder-PID stamp: an untagged endpoint copy now
+arrives with tag zero, so that check refused every Config request (CFG-002).
+procmgr now offers Config a copy badged with `Worker_Request_Tag`, and the
+worker requires that badge plus the registered Config as kernel-stamped sender.
+The startup cases now number 23, including tag zero and the sender's own PID.
+
 ## Interpreter host-object adapter
 
 `Config_Object_Client.Host` is the reusable, nonblocking counterpart of the VM

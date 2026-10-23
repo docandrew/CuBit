@@ -341,8 +341,8 @@ numbers. It verifies the full maximum-text value under the original stable
 schema key and rejects writes through its read-only handle. Recovery restores
 data, not historical grants or process-local type numbers.
 
-The `config-objects-reopen` case can also run with `--accel kvm` and
-`QEMU_CPU_MODEL=host`, supplying `--disk RESULTS/create/disk.img`. The runner
+The `config-objects-reopen` case can also run with `--accel kvm`, supplying
+`--disk RESULTS/create/disk.img`. The runner
 copies that seed image; it does not modify it. This is recovery after quiescent
 VM termination, not a power-cut, service-supervision or hot-restart guarantee.
 

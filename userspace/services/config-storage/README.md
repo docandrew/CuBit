@@ -65,8 +65,19 @@ including denied writes and independent SQLite/WAL/e2fsck checks. See
 `tests/config-object-client/native-app/README.md`.
 
 **Not complete:** eager startup enumeration, automatic worker replacement,
-application/CCL bindings and legacy byte-setting migration. Ordinary desktop
-profiles do not start this worker, and their byte settings are still volatile.
+application/CCL bindings and legacy byte-setting migration. Only typed objects
+(`Config.create`/`open`) reach this worker. Scalar byte settings
+(`CuBit.Config.set`: `desktop.display.scale`, appearance, time zone,
+per-monitor modes, calculator options) live in config.svc's volatile
+`Config_Store` on **every** image and are lost at reboot (CFG-002).
+
+Where the worker stores typed objects:
+
+| Image | Startup | Database | Survives reboot |
+| --- | --- | --- | --- |
+| Live USB (`system-live.ccl`) | `init-usb-live.ccl` | `:memory:` | No: the medium is a read-only optical LUN and internal disks are deliberately not admitted |
+| `make run-desktop` | `init-desktop-session.ccl` | `@nvme:0/system-config.sqlite` | Within one disk; `prepare-desktop-disk --replace` makes a fresh scratch disk every launch |
+| `make world` default (`init.ccl`) | worker not started | - | - |
 
 The database is now experimental format **3**, adding immutable, namespace/
 context-scoped `object_types` declarations. Creating a declaration does not
@@ -125,14 +136,25 @@ backend to a production library is a separate packaging step.
 
 ## Limits
 
+The worker keeps its own `_start` (`entry.rs`, shared with the native Turso
+probe): it must record the kernel's entry RDI in `__cubit_launch_block_length`
+before `rust_main`. Without that the CAP-002 startup table never loads, every
+startup entry ("config", "clock", "filesystem") is absent, and the worker
+exits with `missing/invalid bootstrap database path`; that was CFG-002 from
+the CAP-002 handle change (2026-10-13) until this entry was shared.
+
 The Rust foreign main calls `config_storage_hostinit` exactly once before any
 Ada export. This is GNAT's generated initializer for the standalone static
 library, not a hand-maintained list of package-body calls. It initializes both
 worker and native-storage dependencies (including protocol constants requiring
 elaboration). Zero-filled BSS does not replace Ada elaboration. The public IPC
 regression caught this distinction where the earlier direct-storage probes did
-not. Worker authentication also checks the kernel's default PID authority tag,
-not zero; its source predicate is shared with the hosted startup tests.
+not. Worker authentication requires the kernel-stamped sender to be the
+registered Config and the request to carry `Worker_Request_Tag`: procmgr offers
+Config a copy of the worker's endpoint badged with it. Since CAP-002 the kernel
+stamps no holder identity, and an untagged copy arrives with tag zero; the old
+"PID as tag" check refused every request (CFG-002). The predicate is shared with
+the hosted startup tests.
 
 - One owning thread and one outstanding worker operation; no thread-safety claim.
 - File I/O submits native async IPC, but the worker's Rust File adapter waits

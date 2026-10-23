@@ -3223,9 +3223,11 @@ procedure main is
             Attachment.tag := (label => Config_Worker_Startup.Operation'Enum_Rep
               (Config_Worker_Startup.Attach_Worker), length => 1, protocol => 0, ipc => <>, reserved => 0);
             Attachment.words (0) := To_Word (newPID);
+            --  Badged: the worker accepts only requests carrying this tag
+            --  from the registered Config (Config_Worker_Startup).
             Attachment.tag := HIPC.Call_Offering
               (PH.Config, Attachment, CuBit.Messages.Wait_Forever,
-               Copy (Child.Mailbox, H.Read_Write));
+               Badged (Child.Mailbox, H.Read_Write, Config_Worker_Startup.Worker_Request_Tag));
             if Attachment.tag.label /= REPLY_OK or Attachment.tag.length /= 1
               or Attachment.tag.protocol /= 0 or Attachment.tag.reserved /= 0
               or Attachment.words /= [0, 0, 0, 0]

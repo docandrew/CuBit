@@ -38,22 +38,25 @@ begin
       package IDs renames CuBit.Process_IDs;
       Config : constant Process_ID := IDs.To_Process_ID (Slot => 22, Generation => 1);
       Other : constant Process_ID := IDs.To_Process_ID (Slot => 23, Generation => 1);
-      Tag : constant Unsigned_64 := To_Word (Config);
+      Tag : constant Unsigned_64 := Worker_Request_Tag;
       --  Slot 0 is ill formed, whatever its generation.
       Ill_Formed : constant Process_ID := IDs.To_Process_ID (Slot => 0, Generation => 1);
       --  The all-ones word is a well-formed identity, not a sentinel.
       All_Ones : constant Process_ID := IDs.From_Word (Unsigned_64'Last);
    begin
       pragma Assert (Authorized_Config_Request (Config, Tag, Config));
+      --  An untagged copy (tag zero) or the sender's own identity is not
+      --  the badge (CAP-002 stamps no identity; CFG-002).
       pragma Assert (not Authorized_Config_Request (Config, 0, Config));
+      pragma Assert (not Authorized_Config_Request (Config, To_Word (Config), Config));
       pragma Assert (not Authorized_Config_Request (Other, Tag, Config));
       pragma Assert (not Authorized_Config_Request (Config, Tag + 1, Config));
       pragma Assert (not Authorized_Config_Request (No_Process, 0, No_Process));
+      pragma Assert (not Authorized_Config_Request (No_Process, Tag, No_Process));
       pragma Assert (not Authorized_Config_Request (Config, Tag, No_Process));
       pragma Assert (not Authorized_Config_Request (Config, Tag, Ill_Formed));
-      pragma Assert (not Authorized_Config_Request
-                       (Ill_Formed, To_Word (Ill_Formed), Ill_Formed));
-      pragma Assert (Authorized_Config_Request (All_Ones, Unsigned_64'Last, All_Ones));
+      pragma Assert (not Authorized_Config_Request (Ill_Formed, Tag, Ill_Formed));
+      pragma Assert (Authorized_Config_Request (All_Ones, Tag, All_Ones));
    end;
-   Ada.Text_IO.Put_Line ("Config startup envelope/worker identity: 21 checks PASS");
+   Ada.Text_IO.Put_Line ("Config startup envelope/worker identity: 23 checks PASS");
 end Startup_Tests;

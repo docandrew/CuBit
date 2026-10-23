@@ -1,7 +1,6 @@
 //! Dedicated, single-owner native Config database worker. No ambient FS API.
 #![deny(unsafe_op_in_unsafe_fn)]
 use config_storage::{Store, native_io::NativeIO, worker::Database};
-use core::arch::global_asm;
 use std::sync::Arc;
 
 #[global_allocator]
@@ -12,19 +11,8 @@ mod std_hooks;
 #[path = "../../../lib/storage/native/bridge.rs"]
 mod storage;
 
-global_asm!(
-    r#"
-    .section .text._start,"ax",@progbits
-    .global _start
-    _start:
-        xor rbp, rbp
-        and rsp, -16
-        cld
-        call rust_main
-        ud2
-    .section .note.GNU-stack,"",@progbits
-"#
-);
+#[path = "../entry.rs"]
+mod entry;
 
 unsafe extern "C" {
     fn config_storage_hostinit();

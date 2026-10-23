@@ -9,9 +9,12 @@ package Config_Worker_Startup with SPARK_Mode is
    type Operation is (Attach_Worker);
    for Operation use (Attach_Worker => 16#0616#);
    function Valid_Attachment (Request : CuBit.Messages.Message) return Boolean;
-   -- The offered endpoint is an untagged copy. The kernel then stamps its
-   -- holder's identity as authority tag, NOT zero. Inputs must come from
-   -- RECEIVE and the trusted registry; this predicate grants nothing.
+   -- procmgr offers Config a copy of the worker's endpoint badged with
+   -- Worker_Request_Tag (CAP-002: an untagged copy arrives with tag zero,
+   -- the kernel stamps no identity). Only that copy carries the badge, and
+   -- the kernel-stamped sender must also be the registered Config. Inputs
+   -- must come from RECEIVE and the trusted registry; this grants nothing.
+   Worker_Request_Tag : constant Interfaces.Unsigned_64 := 16#4346_4757_524B_0001#;
    function Authorized_Config_Request
      (Sender : CuBit.Messages.Process_ID; Tag : Interfaces.Unsigned_64;
       Registered_Config : CuBit.Messages.Process_ID) return Boolean;

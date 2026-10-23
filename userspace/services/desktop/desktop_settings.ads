@@ -53,6 +53,9 @@ package Desktop_Settings is
       Mode_Reverted, Mode_Timed_Out);
    --  The answer to "Keep this display mode?", taken by Desktop.
    type Trial_Response is (No_Response, Keep_Response, Revert_Response);
+   --  Saved_In_Config: Config holds the value, which every page says lasts
+   --  until reboot: Config's scalar settings are volatile on every image
+   --  (only typed Config objects reach its storage worker; CFG-002).
    type Save_Status is (Unchanged, Saved_In_Config, Session_Only, Rejected, Scale_Rejected);
    type Diagram_Transform is record
       X, Y : Integer := 0;

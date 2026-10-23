@@ -2140,7 +2140,7 @@ run: nvme_disk.img
 	GDK_BACKEND=x11 qemu-system-x86_64 \
 		$(QEMU_ACCEL_ARGS) \
 		-machine q35 \
-		-cpu Broadwell \
+		-cpu Broadwell,vendor=GenuineIntel \
 		-smp 4 \
 		-m 128M \
 		-cdrom cubit_kernel.iso \
@@ -2192,7 +2192,7 @@ run-desktop: cubit_kernel desktop-session-content
 	GDK_BACKEND=x11 qemu-system-x86_64 \
 		$(QEMU_ACCEL_ARGS) \
 		-machine q35 \
-		-cpu Broadwell \
+		-cpu Broadwell,vendor=GenuineIntel \
 		-smp 4 \
 		-m $(DESKTOP_MEMORY) \
 		-cdrom cubit_kernel.iso \
@@ -2227,7 +2227,7 @@ run-desktop-fast:
 		--hash cubit_kernel.iso -- qemu-system-x86_64 \
 		$(QEMU_ACCEL_ARGS) \
 		-machine q35 \
-		-cpu Broadwell \
+		-cpu Broadwell,vendor=GenuineIntel \
 		-smp 4 \
 		-m $(DESKTOP_MEMORY) \
 		-cdrom cubit_kernel.iso \
@@ -2262,7 +2262,7 @@ run-desktop-inspect:
 	GDK_BACKEND=x11 qemu-system-x86_64 \
 		$(QEMU_ACCEL_ARGS) \
 		-machine q35 \
-		-cpu Broadwell \
+		-cpu Broadwell,vendor=GenuineIntel \
 		-smp 4 \
 		-m $(DESKTOP_MEMORY) \
 		-cdrom cubit_kernel.iso \
@@ -2302,7 +2302,7 @@ run-virtio-vga: nvme_disk.img
 	GDK_BACKEND=x11 qemu-system-x86_64 \
 		$(QEMU_ACCEL_ARGS) \
 		-machine q35 \
-		-cpu Broadwell \
+		-cpu Broadwell,vendor=GenuineIntel \
 		-smp 4 \
 		-m 128M \
 		-cdrom cubit_kernel.iso \

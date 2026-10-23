@@ -440,11 +440,11 @@ package body Desktop_Settings is
                     when Mode_Switching => "Switching the display mode...",
                     when Mode_Refused => "The display driver refused that mode",
                     when Mode_Kept =>
-                      (if M.Identified then "Kept and saved for this monitor" else "Kept for this session"),
+                      (if M.Identified then "Kept for this monitor until reboot" else "Kept for this session"),
                     when Mode_Saved_Session_Only => "Kept; Config refused to save it",
                     when Mode_Reverted => "Reverted to the previous mode",
                     when Mode_Timed_Out => "No answer: reverted to the previous mode"));
-               Text (20, 340, (if M.Identified then "Saved per monitor (EDID identity)"
+               Text (20, 340, (if M.Identified then "Kept per monitor until reboot (EDID identity)"
                                else "No EDID identity: choices last this session"));
             end if;
          end;
@@ -496,7 +496,7 @@ package body Desktop_Settings is
          end if;
          Text (20, 340,
            (if View.Pending_Zone /= View.Applied_Zone then "Unapplied time zone"
-            elsif View.Zone_Status = Saved_In_Config then "Applied / the clock follows Config"
+            elsif View.Zone_Status = Saved_In_Config then "Applied / kept in Config until reboot"
             elsif View.Zone_Status = Rejected then "Config refused the time zone"
             else "Tab to navigate; Enter to choose"));
          return;
@@ -547,7 +547,7 @@ package body Desktop_Settings is
             elsif View.Pending_Layout /= View.Applied_Layout or
               View.Pending_Primary /= View.Applied_Primary or
               View.Pending_Auto /= View.Applied_Auto then "Unapplied arrangement"
-            elsif View.Layout_Status = Saved_In_Config then "Applied / scale saved in Config"
+            elsif View.Layout_Status = Saved_In_Config then "Applied / scale kept in Config until reboot"
             elsif View.Layout_Status = Session_Only then "Applied / this session"
             else "Resolutions stay unchanged"));
          return;

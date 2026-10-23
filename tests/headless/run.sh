@@ -12,7 +12,13 @@ export SOURCE_DATE_EPOCH
 CUBIT_NATIVE_GPRBUILD_CONFIG="$(make -s --no-print-directory -C "$KERNEL_DIR" print-native-gprbuild-config)" || exit 1
 export CUBIT_NATIVE_GPRBUILD_CONFIG
 QEMU_BIN="${QEMU_BIN:-qemu-system-x86_64}"
-QEMU_CPU_MODEL="${QEMU_CPU_MODEL:-Broadwell}"
+# The default guest is an Intel Broadwell under TCG and KVM alike. Without an
+# explicit vendor, KVM reports the host's vendor beside Broadwell's family 6,
+# a CPU that does not exist: on an AMD host, getrandom's RDRAND backend then
+# (correctly, for real AMD before family 17h) refuses RDRAND, and every Rust
+# std service that draws randomness exits. The boot checks the vendor below.
+QEMU_CPU_VENDOR=GenuineIntel
+QEMU_CPU_MODEL="${QEMU_CPU_MODEL:-Broadwell,vendor=$QEMU_CPU_VENDOR}"
 TIMEOUT_BIN="${TIMEOUT_BIN:-timeout}"
 
 TEST_NAME="boot-shell-nvme"
@@ -101,7 +107,7 @@ Rust fixture: rust-native (build rust-probe ccl-test-host clock first).
 Native Turso: turso-native-std, turso-native, config-storage; see tests/config-turso/native/README.md.
 Public typed Config: config-objects, config-objects-reopen, config-objects-benchmark;
   build tests/config-object-client/native-app/build.sh first.
-QEMU_CPU_MODEL overrides Broadwell; use host with KVM for faithful CPU identification.
+QEMU_CPU_MODEL overrides Broadwell,vendor=GenuineIntel; use host with KVM for faithful CPU identification.
 Multi-output discovery: virtio-gpu-multi-output (QEMU 11.1 per-head modes;
 build virtio-gpu first). This does not yet test a multi-monitor desktop.
 Native catalog IPC: display-discovery-multi-output (build display, virtio-gpu,
@@ -867,6 +873,12 @@ fi
 # more than the 128M default. Resource-constrained sizing comes later.
 if [ -z "$QEMU_MEMORY" ] && [ -n "$INIT_PROFILE" ] && grep -q '"desktop.svc"' "$INIT_PROFILE"; then
     QEMU_MEMORY=512M
+fi
+# config-storage.svc and the Turso probe (each about 20 MiB on disk, Turso
+# linked in) do not fit beside the other services in 128M: config-storage's
+# heap commits fail after a few hundred KiB and the probe fails to load.
+if [ "$CONFIG_STORAGE_TEST" = 1 ] || [ "$TEST_NAME" = turso-native-std ] || [ "$TEST_NAME" = turso-native ]; then
+    QEMU_MEMORY="${QEMU_MEMORY:-512M}"
 fi
 if [ -n "$INIT_PROFILE" ]; then
     TEMP_DISK="$(mktemp "${TMPDIR:-/tmp}/cubit-${TEST_NAME}-disk.XXXXXX.img")"
@@ -5148,6 +5160,14 @@ if [ "${CUBIT_DISPLAY_TEST_MODE:-production}" = delayed ] && [ "$TEST_NAME" = in
     fi
     echo "headless: input progressed during delayed read; transfer remained stable"
 fi
+# A model that names its vendor must boot with that vendor (see QEMU_CPU_VENDOR).
+case "$QEMU_CPU_MODEL" in
+    *vendor=*)
+        expected_vendor="${QEMU_CPU_MODEL#*vendor=}"
+        required_markers="$required_markers
+CPU Vendor: ${expected_vendor%%,*}"
+        ;;
+esac
 missing=0
 while IFS= read -r marker; do
     [ -z "$marker" ] && continue

@@ -26,6 +26,9 @@ package body Worker_Host is
    use type System.Address;
    use type CuBit.Config_Inspection.Status;
 
+   --  The bootstrap setting naming the database (system.ccl, system-live.ccl).
+   Database_Key : constant String := "cubit.config.storage.database";
+
    function Database_Path
      (Buffer : System.Address; Capacity : Unsigned_64;
       Length : access Unsigned_64) return Unsigned_32
@@ -38,11 +41,18 @@ package body Worker_Host is
       if Buffer = System.Null_Address or Capacity < CuBit.Config_Inspection.Maximum_Text then
          return 16#F001#;
       end if;
+      --  Say which: a missing startup entry and each refusal are distinct.
+      if not CuBit.Handles.Valid (Config_Service) then
+         debugPrint ("CONFIG-STORAGE: no """ & Config_Binding & """ startup entry" & ASCII.LF);
+         return CuBit.Config_Inspection.Status'Enum_Rep (CuBit.Config_Inspection.Unavailable);
+      end if;
       --  Read once from bootstrap Config, BEFORE opening the database. There
       --  is deliberately no path default and no lookup in our own database.
       CuBit.Config_Reader.Query
-        (Config_Service, CuBit.Config_Inspection.Read_Value, "cubit.config.storage.database", Value, Result);
+        (Config_Service, CuBit.Config_Inspection.Read_Value, Database_Key, Value, Result);
       if Result /= CuBit.Config_Inspection.OK then
+         debugPrint ("CONFIG-STORAGE: reading " & Database_Key & ": " &
+                     CuBit.Config_Inspection.Status'Image (Result) & ASCII.LF);
          return CuBit.Config_Inspection.Status'Enum_Rep (Result);
       end if;
       declare

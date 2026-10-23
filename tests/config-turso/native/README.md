@@ -55,9 +55,11 @@ flock --exclusive coordination/build.lock nix develop -c bash -c '
     --accel tcg,thread=multi --timeout 60 --serial /tmp/turso-native.log --keep-logs'
 ```
 
-KVM may replace TCG when available; use `QEMU_CPU_MODEL=host` with KVM on AMD
-hosts to avoid mixed AMD-vendor/Intel-model identification tripping getrandom's
-old-AMD RDRAND safety exclusion. No entropy safety check is bypassed.
+KVM may replace TCG when available. The runner's default CPU,
+`Broadwell,vendor=GenuineIntel`, names its vendor because KVM otherwise reports
+the host's: on an AMD host the guest would see an AMD family 6 CPU, which trips
+getrandom's old-AMD RDRAND safety exclusion. The runner checks the booted
+vendor. No entropy safety check is bypassed.
 The tested guest has 128 MiB and four CPUs;
 the application also exercises four concurrent storage-client threads. The runner copies its executable
 and Clock into a disposable test disk. It does not install a new Config backend
