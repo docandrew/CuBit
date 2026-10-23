@@ -1,9 +1,8 @@
 # Filesystem benchmark (tests/fs-bench): fs-bench.app on the NVMe ext2
-# volume, the same program the Linux reference runs (linux.sh). A second
-# instance is the other process of the parked-handle coherence checks (the
-# first to claim @nvme:0/fs-bench/claim runs the benchmark).
+# volume, the same program the Linux reference runs (linux.sh). It starts
+# itself again (posix_spawn) as the other process of the parked-handle
+# coherence checks.
 (startup v1
   (start "logstore.svc" (priority 5))
-  (start "fs-bench.app" (priority 3))
   (start "fs-bench.app" (priority 3))
 )

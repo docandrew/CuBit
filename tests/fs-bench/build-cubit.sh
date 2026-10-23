@@ -11,5 +11,9 @@ mkdir -p "$out"
 "$root/userspace/ccl/build/manifest/ccl-manifest" \
     "$root/userspace/ccl/catalogs/native-runtime-services.ccl" "$here/manifest.ccl" > "$out/fs-bench-manifest.S"
 as --64 "$out/fs-bench-manifest.S" -o "$out/fs-bench-manifest.o"
+# It starts itself again as the other process of the coherence checks.
+# INTERIM launch table: see tests/process-spawn/launch-table.py.
+python3 "$root/tests/process-spawn/launch-table.py" fs-bench.app > "$out/fs-bench-launch.S"
+as --64 "$out/fs-bench-launch.S" -o "$out/fs-bench-launch.o"
 "$root/userspace/libc/cubit-cc" -O2 -g -DCUBIT ${FS_BENCH_CFLAGS:-} -o "$root/kernel/isodir/boot/fs-bench.app" \
-    "$here/fs-bench.c" --manifest "$out/fs-bench-manifest.o"
+    "$here/fs-bench.c" "$out/fs-bench-launch.o" --manifest "$out/fs-bench-manifest.o"

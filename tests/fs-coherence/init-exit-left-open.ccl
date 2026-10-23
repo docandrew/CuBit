@@ -1,0 +1,5 @@
+# tests/fs-coherence case exit-left-open (headless: fs-coherence-exit-left-open).
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "fs-coherence-exit-left-open.app" (priority 3))
+)

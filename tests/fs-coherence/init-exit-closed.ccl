@@ -1,0 +1,5 @@
+# tests/fs-coherence case exit-closed (headless: fs-coherence-exit-closed).
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "fs-coherence-exit-closed.app" (priority 3))
+)

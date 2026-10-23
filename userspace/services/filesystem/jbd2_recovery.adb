@@ -1,5 +1,3 @@
-with Jbd2_Revokes;
-
 package body Jbd2_Recovery is
    All_Ones : constant Unsigned_32 := 16#FFFF_FFFF#;
    Word_Bytes : constant := 4;
@@ -43,7 +41,6 @@ package body Jbd2_Recovery is
         (if Checksums then Crc32c_UUID (All_Ones, Super.Identity) else 0);
       Log_Blocks : constant Unsigned_32 := Super.Max_Length - Super.First;
       Limit : constant Natural := Usable_Bytes (Size, Incompat);
-      Revokes : Jbd2_Revokes.Table;
       End_Sequence : Unsigned_32 := Super.Sequence;
       Data, Payload : Block;
       Ok : Boolean;

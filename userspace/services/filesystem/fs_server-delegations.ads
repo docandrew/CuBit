@@ -28,6 +28,12 @@ private package Fs_Server.Delegations is
    --  Every write-delegated handle of queue q's owner, in one scan.
    procedure harvestOwner (q : Client_Queue_Index);
 
+   --  Take back every delegation of queue q's owner (its write delegations'
+   --  pages written to their files): its delegations live in the queue's
+   --  page and its buffered pages in its dirty arena, so none may outlive
+   --  the queue. Its handles stay open.
+   procedure recallOwner (q : Client_Queue_Index);
+
    --  Take back slot's write delegation: clear its valid word, then harvest.
    procedure recallWrite (slot : Handle_Slot);
 

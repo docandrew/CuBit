@@ -84,6 +84,10 @@ package body Fs_Server.Delegations is
    end forgetWriteErrors;
 
 
+   --  slot's valid word in queue q's page (its owner's).
+   function validWord (q : Client_Queue_Index; slot : Handle_Slot) return System.Address is
+     (serverWord (q, FQ.Delegations_At + slot * FQ.Delegation_Bytes + FQ.Delegation_Valid_At));
+
    procedure delegate (slot : Handle_Slot; grant : Boolean; write : Boolean := False) is
       q : constant Client_Queue_Count := queueOf (files (slot).ownerPID);
    begin
@@ -95,8 +99,7 @@ package body Fs_Server.Delegations is
       end if;
       declare
          entryAt : constant Natural := FQ.Delegations_At + slot * FQ.Delegation_Bytes;
-         valid : Unsigned_32 with Volatile, Import,
-           Address => serverWord (q, entryAt + FQ.Delegation_Valid_At);
+         valid : Unsigned_32 with Volatile, Import, Address => validWord (q, slot);
          mode : Unsigned_32 with Volatile, Import,
            Address => serverWord (q, entryAt + FQ.Delegation_Mode_At);
          inode : Unsigned_64 with Volatile, Import,
@@ -379,6 +382,36 @@ package body Fs_Server.Delegations is
    begin
       harvestEntries (q, -1);
    end harvestOwner;
+
+   --  Every delegation of queue q's owner, before the queue goes: all the
+   --  valid words are cleared first, so the client buffers no more; then
+   --  one scan of the dirty arena writes every write-delegated handle's
+   --  pages to its file; then the delegations end. The handles stay.
+   procedure recallOwner (q : Client_Queue_Index) is
+      owner : constant Process_ID := clientQueues (q).owner;
+      held : Boolean := False;
+   begin
+      for slot in Handle_Slot loop
+         if delegated (slot) and then files (slot).ownerPID = owner then
+            declare
+               valid : Unsigned_32 with Volatile, Import, Address => validWord (q, slot);
+            begin
+               valid := 0;
+               held := True;
+            end;
+         end if;
+      end loop;
+      if not held then
+         return;
+      end if;
+      System.Machine_Code.Asm ("mfence", Clobber => "memory", Volatile => True);
+      harvestOwner (q);
+      for slot in Handle_Slot loop
+         if delegated (slot) and then files (slot).ownerPID = owner then
+            delegate (slot, False);
+         end if;
+      end loop;
+   end recallOwner;
 
    --  Take back slot's write delegation: clear its valid word, then harvest.
    procedure recallWrite (slot : Handle_Slot) is

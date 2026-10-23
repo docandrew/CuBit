@@ -38,10 +38,15 @@ reach later openers; sizes after extension; unlink, mkdir and rmdir. The
 (docs/filesystem-data-plane.md, "Metadata operations"): reopening a name
 after it was unlinked and created again, after a rename, and after
 another process wrote the file, unlinked and created it again, or
-renamed it away and created it again; and the bytes another process
-wrote and left open when it exited without closing (`_exit`). The other process is a fork on
-Linux; on CuBit the startup (`init-bench-fs.ccl`) starts two fs-bench
-instances, and the one that creates `claim` first runs the benchmark.
+renamed it away and created it again; and, once `waitpid` says it has
+exited (`_exit`, so its libc closes nothing), the bytes another process
+wrote and left open, or wrote and closed (on CuBit parked, its pages still
+buffered under its write delegation). The other process is a fork on
+Linux; on CuBit fs-bench starts itself again (`posix_spawn`, with
+`other-process` as its second argument).
+
+The same cases, one per headless test and independent of the benchmark,
+are tests/fs-coherence (FS-022's regression tests).
 
 ```sh
 # Linux reference (builds everything, makes its own disk image).

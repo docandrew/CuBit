@@ -23,6 +23,15 @@ package body Ext2.Files is
 
    use type System.Address;
 
+   type Payload_Bytes is array (Natural range <>) of Unsigned_8;
+
+   --  appendRun's staging for one run of fresh blocks. It lives here, not
+   --  in appendRun's frame: the image's pages are all backed when the
+   --  service loads, while a stack frame this size is faulted in during a
+   --  write, and on a full machine that fault kills the service. The
+   --  service is single-threaded and appendRun never nests.
+   payload : Payload_Bytes (0 .. Maximum_Batch_Bytes - 1) with Alignment => 8;
+
    procedure readData
      (fs     : Filesystem;
       ino    : Inode;
@@ -199,8 +208,6 @@ package body Ext2.Files is
       readStatus : Read_Status;
       goal : Unsigned_32 := 0;
       bytes : Unsigned_64;
-      type Payload_Bytes is array (Natural range <>) of Unsigned_8;
-      payload : Payload_Bytes (0 .. Maximum_Batch_Bytes - 1) with Alignment => 8;
 
       procedure Load (number : Unsigned_32; contents : out Pointer_Block) is
       begin

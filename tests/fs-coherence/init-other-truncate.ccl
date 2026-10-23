@@ -1,0 +1,5 @@
+# tests/fs-coherence case other-truncate (headless: fs-coherence-other-truncate).
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "fs-coherence-other-truncate.app" (priority 3))
+)

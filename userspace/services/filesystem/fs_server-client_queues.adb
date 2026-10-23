@@ -177,6 +177,11 @@ package body Fs_Server.Client_Queues is
    begin
       for q in clientQueues'Range loop
          if clientQueues (q).owner = owner then
+            --  Its delegations end with the queue, and its buffered pages
+            --  are written before the dirty arena is returned: a client
+            --  that died (its channels' grant events can come before
+            --  procmgr's OP_RELEASE_OWNER) loses no write it made.
+            recallOwner (q);
             --  A held wake is answered (failed), so its slot is free for the
             --  queue's next owner.
             Queue_Wakes.Ended (clientQueues (q).wake, wakeHeld);

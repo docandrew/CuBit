@@ -1,5 +1,6 @@
 with Interfaces; use Interfaces;
 with Jbd2_Format; use Jbd2_Format;
+with Jbd2_Revokes;
 
 --  JBD2 journal recovery (replay), following Linux's three passes: find the
 --  end of the log, collect revokes of committed transactions, then write each
@@ -18,6 +19,10 @@ generic
      (Log_Block : Unsigned_32; Data : out Block; Ok : out Boolean);
    with procedure Write_Home
      (Home : Unsigned_64; Data : Block; Ok : out Boolean);
+   --  Recover's revoke table, in the instantiator's storage: at 256 KiB it
+   --  does not belong in a stack frame (a service's stack pages are faulted
+   --  in on first touch, and on a full machine that fault kills it).
+   Revokes : in out Jbd2_Revokes.Table;
 package Jbd2_Recovery is
    type Outcome is
      (Recovered,          -- zero or more transactions replayed

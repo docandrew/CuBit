@@ -8,6 +8,7 @@ with CuBit.Block_Devices; use CuBit.Block_Devices;
 with Volume_Admission; use Volume_Admission;
 with Jbd2_Format; use Jbd2_Format;
 with Jbd2_Recovery;
+with Jbd2_Revokes;
 
 --  Linux-hosted: production journal replay against a Linux-created image.
 --    replay admit IMAGE
@@ -19,6 +20,7 @@ with Jbd2_Recovery;
 --       logical order. Marks the journal clean as admission does.
 procedure Replay is
    Sector_Bytes : constant := 512;
+   Revokes : Jbd2_Revokes.Table;   --  the raw replay's (Jbd2_Recovery)
 
    procedure Transfer
      (Op : Unsigned_32; Block_Number : Unsigned_64; Size : Positive; Ok : out Boolean)
@@ -86,7 +88,7 @@ begin
          Transfer (OP_WRITE_BLOCKS, Home, Size, Done);
       end Write_Home;
 
-      package Recovery is new Jbd2_Recovery (Read_Log, Write_Home);
+      package Recovery is new Jbd2_Recovery (Read_Log, Write_Home, Revokes);
       use type Recovery.Outcome;
    begin
       Open (Map_File, In_File, Argument (5));

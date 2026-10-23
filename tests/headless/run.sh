@@ -49,6 +49,12 @@ TEMP_AUDIO=""
 TEMP_STORAGE_FIXTURE=""
 MONITOR_SOCKET=""
 QMP_SOCKET=""
+# This run's QEMU UNIX socket of one KIND (qmp, monitor, vnc): unique by
+# PID and short, since sun_path holds at most 107 bytes and TMPDIR may be
+# a long nix-shell directory, so the test name stays out of it.
+qemu_socket() {
+    printf '%s/cubit-%s-%s.sock' "${TMPDIR:-/tmp}" "$1" "$$"
+}
 INPUT_INJECTOR_PID=""
 
 usage() {
@@ -59,7 +65,7 @@ Mesa native tests: --test softpipe, opengl, buffer, mesa-window, mesa-sync, mesa
 
 Options:
   --build              Run make world before booting QEMU
-  --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-console, logs, ccl-remote, capability-security, network-authority, bench-net, bench-fs, threads, futex, clock, avx, rust-std, libc, processes, control-events, binutils, gcc, gnat, servo, bench-spread, timesync, tls-probe, tls-service, wget-https, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, text, calculator, lexicon, dictionary, clipboard, key-repeat, desktop-doom, desktop-virtio-vga, desktop-vm, virtio-gpu, virtio-vga-primary, launch-failure, or boot-timeline (--accel kvm --timeout 60)
+  --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-console, logs, ccl-remote, capability-security, network-authority, bench-net, bench-fs, threads, futex, clock, avx, rust-std, libc, processes, control-events, binutils, gcc, gnat, servo, bench-spread, timesync, tls-probe, tls-service, wget-https, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, text, calculator, lexicon, dictionary, clipboard, key-repeat, desktop-doom, desktop-virtio-vga, desktop-vm, virtio-gpu, virtio-vga-primary, launch-failure, fs-coherence-CASE, or boot-timeline (--accel kvm --timeout 60)
   --timeout SECONDS    QEMU runtime before timeout is treated as success
                        (default 25; 180 for desktop tests, see DESKTOP_TIMEOUT_SECONDS)
   --accel NAME         QEMU accelerator (for example: tcg,thread=multi)
@@ -83,6 +89,8 @@ The suite boots the NVMe profile headlessly and checks serial output for
 stable pass markers.
 Performance fixtures: bench-ipc, bench-audio, bench-storage, bench-input, bench-scheduler.
 bench-fs: tests/fs-bench (build tests/fs-bench/build-cubit.sh first).
+fs-coherence-CASE: one cross-process coherence case, CASE from
+  tests/fs-coherence/cases.txt (build tests/fs-coherence/build-cubit.sh first).
 bench-latency: tests/sched-latency (build tests/sched-latency/build-cubit.sh
   and bench-ipc-server first); defaults to 300 s. QEMU quits at its done marker.
 Logging fixture: log-authority (build logstore procmgr clock log-check first).
@@ -302,7 +310,7 @@ case "$TEST_NAME" in
         ;;
     grant-forward|grant-forward-intermediary-exit|grant-forward-owner-exit|grant-forward-desktop|config-tree|config-inspection|log-authority|log-fields|metrics|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
         ;;
-    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure)
+    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -588,6 +596,18 @@ case "$TEST_NAME" in
         # tests/fs-bench: the same program as the Linux reference (linux.sh),
         # with the same memory.
         INIT_PROFILE="$ROOT_DIR/tests/fs-bench/init-bench-fs.ccl"
+        QEMU_MEMORY="${QEMU_MEMORY:-512M}"
+        ;;
+    fs-coherence-*)
+        FS_COHERENCE_CASE=${TEST_NAME#fs-coherence-}
+        if ! grep -qx "$FS_COHERENCE_CASE" "$ROOT_DIR/tests/fs-coherence/cases.txt"; then
+            echo "headless: unknown fs-coherence case: $FS_COHERENCE_CASE" >&2
+            exit 2
+        fi
+        INIT_PROFILE="$ROOT_DIR/tests/fs-coherence/init-$FS_COHERENCE_CASE.ccl"
+        # As bench-fs: each process lends the service about 9 MiB of queue
+        # arenas, and two of them over the desktop's services exhaust the
+        # default 128 MiB (the guest ran out of memory, not the cases).
         QEMU_MEMORY="${QEMU_MEMORY:-512M}"
         ;;
     bench-latency)
@@ -1480,6 +1500,31 @@ if [ -n "$INIT_PROFILE" ]; then
             fi
         done
     fi
+    case "$TEST_NAME" in
+        fs-coherence-*)
+            for FS_COHERENCE_IMAGE in logstore.svc "$TEST_NAME.app"; do
+                debugfs -w -R "rm $FS_COHERENCE_IMAGE" "$TEMP_DISK" >/dev/null 2>&1
+                if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/$FS_COHERENCE_IMAGE $FS_COHERENCE_IMAGE" \
+                    "$TEMP_DISK" >/dev/null 2>&1; then
+                    echo "headless: failed to install $FS_COHERENCE_IMAGE (tests/fs-coherence/build-cubit.sh)" >&2
+                    exit 1
+                fi
+            done
+            # Journaled, as bench-fs; its directory is made on the copy.
+            if ! dumpe2fs -h "$TEMP_DISK" 2>/dev/null | grep -q has_journal && \
+               ! tune2fs -j "$TEMP_DISK" >/dev/null 2>&1; then
+                echo "headless: failed to add a journal to the fs-coherence disk" >&2
+                exit 1
+            fi
+            if [ -z "$(debugfs -R "stat fs-coherence" "$TEMP_DISK" 2>/dev/null)" ]; then
+                debugfs -w -R "mkdir fs-coherence" "$TEMP_DISK" >/dev/null 2>&1
+            fi
+            if ! debugfs -R "stat fs-coherence" "$TEMP_DISK" 2>/dev/null | grep -q 'Type: directory'; then
+                echo "headless: failed to make fs-coherence" >&2
+                exit 1
+            fi
+            ;;
+    esac
     if [ "$TEST_NAME" = "bench-latency" ]; then
         for BENCH_LATENCY_IMAGE in logstore.svc bench-ipc-server.app sched-latency.app; do
             debugfs -w -R "rm $BENCH_LATENCY_IMAGE" "$TEMP_DISK" >/dev/null 2>&1
@@ -2186,7 +2231,7 @@ if [ "$TEST_NAME" = "desktop-vm" ]; then
     # run-desktop's devices: virtio-vga plus a virtio tablet (absolute
     # pointer). VNC carries host resizes (SetDesktopSize, as a resized GTK
     # window does); QEMU's cursor trace shows the host cursor plane.
-    VM_VNC_SOCKET="${TMPDIR:-/tmp}/cubit-${TEST_NAME}-vnc-$$.sock"
+    VM_VNC_SOCKET="$(qemu_socket vnc)"
     VM_TRACE_LOG="${SERIAL_LOG}.cursor-trace.log"
     rm -f "$VM_VNC_SOCKET" "$VM_TRACE_LOG"
     VIDEO_ARGS=(-vga none -device virtio-vga,xres=1024,yres=768
@@ -2232,7 +2277,7 @@ fi
 MONITOR_ARGS=()
 QMP_ARGS=()
 if [ "$TEST_NAME" = "managed-ui" ]; then
-    MONITOR_SOCKET="${TMPDIR:-/tmp}/cubit-${TEST_NAME}-monitor-$$.sock"
+    MONITOR_SOCKET="$(qemu_socket monitor)"
     rm -f "$MONITOR_SOCKET"
     MONITOR_ARGS=(-monitor "unix:$MONITOR_SOCKET,server,nowait")
 fi
@@ -2248,11 +2293,11 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
         exit 127
     fi
 
-    MONITOR_SOCKET="${TMPDIR:-/tmp}/cubit-${TEST_NAME}-monitor-$$.sock"
+    MONITOR_SOCKET="$(qemu_socket monitor)"
     rm -f "$MONITOR_SOCKET"
     MONITOR_ARGS=(-monitor "unix:$MONITOR_SOCKET,server,nowait")
     if [ "$TEST_NAME" = "files" ]; then
-        QMP_SOCKET="${TMPDIR:-/tmp}/cubit-${TEST_NAME}-qmp-$$.sock"
+        QMP_SOCKET="$(qemu_socket qmp)"
         rm -f "$QMP_SOCKET"
         QMP_ARGS=(-qmp "unix:$QMP_SOCKET,server=on,wait=off")
     fi
@@ -3464,7 +3509,7 @@ fi
 
 if { [ "$TEST_NAME" = "display-dual-output" ] || [ "$TEST_NAME" = "desktop-dual-output" ]; } &&
    [ "${CUBIT_GPU_TEST_MODE:-production}" != clear-failure ]; then
-    QMP_SOCKET="${TMPDIR:-/tmp}/cubit-${TEST_NAME}-qmp-$$.sock"
+    QMP_SOCKET="$(qemu_socket qmp)"
     QMP_ARGS=(-qmp "unix:$QMP_SOCKET,server=on,wait=off")
     if [ "$TEST_NAME" = "desktop-dual-output" ]; then
         observer=check-dual-desktop.py
@@ -3482,7 +3527,7 @@ fi
 if [ "$TEST_NAME" = "desktop-vm" ]; then
     # Absolute pointer and dynamic resolution, driven from the host; the
     # checker quits QEMU when done (tests/vm-experience/check-desktop-vm.py).
-    QMP_SOCKET="${TMPDIR:-/tmp}/cubit-${TEST_NAME}-qmp-$$.sock"
+    QMP_SOCKET="$(qemu_socket qmp)"
     rm -f "$QMP_SOCKET"
     QMP_ARGS=(-qmp "unix:$QMP_SOCKET,server=on,wait=off")
     python3 "$ROOT_DIR/tests/vm-experience/check-desktop-vm.py" \
@@ -3493,7 +3538,7 @@ fi
 if [ "$TEST_NAME" = "key-repeat" ]; then
     # Keys held through QEMU's PS/2 keyboard (QMP); the checker reads the
     # text field's length and quits QEMU (tests/key-repeat/check-headless.py).
-    QMP_SOCKET="${TMPDIR:-/tmp}/cubit-${TEST_NAME}-qmp-$$.sock"
+    QMP_SOCKET="$(qemu_socket qmp)"
     rm -f "$QMP_SOCKET"
     QMP_ARGS=(-qmp "unix:$QMP_SOCKET,server=on,wait=off")
     python3 "$ROOT_DIR/tests/key-repeat/check-headless.py" \
@@ -3504,7 +3549,7 @@ fi
 if [ "$TEST_NAME" = "gcc" ]; then
     # Quit QEMU once gcc-check reports (TCG runs of the compilers are slow;
     # the timeout is only the bound).
-    QMP_SOCKET="${TMPDIR:-/tmp}/cubit-${TEST_NAME}-qmp-$$.sock"
+    QMP_SOCKET="$(qemu_socket qmp)"
     QMP_ARGS=(-qmp "unix:$QMP_SOCKET,server=on,wait=off")
     python3 "$ROOT_DIR/tests/headless/stop-on-markers.py" \
         "$SERIAL_LOG" "$QMP_SOCKET" "$TIMEOUT_SECONDS" "GCC-CHECK: PASS" "GCC-CHECK: FAIL" &
@@ -3512,14 +3557,29 @@ if [ "$TEST_NAME" = "gcc" ]; then
 fi
 if [ "$TEST_NAME" = "gnat" ]; then
     # Quit QEMU once gnat-check reports (the timeout is only the bound).
-    QMP_SOCKET="${TMPDIR:-/tmp}/cubit-${TEST_NAME}-qmp-$$.sock"
+    QMP_SOCKET="$(qemu_socket qmp)"
     QMP_ARGS=(-qmp "unix:$QMP_SOCKET,server=on,wait=off")
     python3 "$ROOT_DIR/tests/headless/stop-on-markers.py" \
         "$SERIAL_LOG" "$QMP_SOCKET" "$TIMEOUT_SECONDS" "GNAT-CHECK: PASS" "GNAT-CHECK: FAIL" &
     INPUT_INJECTOR_PID=$!
 fi
+case "$TEST_NAME" in
+    bench-fs|fs-coherence-*)
+        # Quit at the program's last line, not the timeout.
+        QMP_SOCKET="$(qemu_socket qmp)"
+        QMP_ARGS=(-qmp "unix:$QMP_SOCKET,server=on,wait=off")
+        if [ "$TEST_NAME" = "bench-fs" ]; then
+            FS_TEST_ENDS=("fs-bench: done" "fs-bench: FAIL")
+        else
+            FS_TEST_ENDS=("fs-coherence: end")
+        fi
+        python3 "$ROOT_DIR/tests/headless/stop-on-markers.py" \
+            "$SERIAL_LOG" "$QMP_SOCKET" "$TIMEOUT_SECONDS" "${FS_TEST_ENDS[@]}" &
+        INPUT_INJECTOR_PID=$!
+        ;;
+esac
 if [ "$TEST_NAME" = "control-events" ]; then
-    QMP_SOCKET="${TMPDIR:-/tmp}/cubit-${TEST_NAME}-qmp-$$.sock"
+    QMP_SOCKET="$(qemu_socket qmp)"
     QMP_ARGS=(-qmp "unix:$QMP_SOCKET,server=on,wait=off")
     python3 "$ROOT_DIR/tests/headless/stop-on-markers.py" \
         "$SERIAL_LOG" "$QMP_SOCKET" "$TIMEOUT_SECONDS" "CONTROL-CHECK: PASS" "CONTROL-CHECK: FAIL" &
@@ -3527,7 +3587,7 @@ if [ "$TEST_NAME" = "control-events" ]; then
 fi
 if [ "$TEST_NAME" = "bench-latency" ]; then
     # Quit QEMU once the benchmark prints its final marker.
-    QMP_SOCKET="${TMPDIR:-/tmp}/cubit-${TEST_NAME}-qmp-$$.sock"
+    QMP_SOCKET="$(qemu_socket qmp)"
     QMP_ARGS=(-qmp "unix:$QMP_SOCKET,server=on,wait=off")
     python3 "$ROOT_DIR/tests/sched-latency/stop-on-done.py" \
         "$SERIAL_LOG" "$QMP_SOCKET" "$TIMEOUT_SECONDS" &
@@ -3535,7 +3595,7 @@ if [ "$TEST_NAME" = "bench-latency" ]; then
 fi
 NETDEV_CONFIG="user,id=net0"
 if [ "$TEST_NAME" = "config-tree" ]; then
-    QMP_SOCKET="${TMPDIR:-/tmp}/cubit-${TEST_NAME}-qmp-$$.sock"
+    QMP_SOCKET="$(qemu_socket qmp)"
     QMP_ARGS=(-qmp "unix:$QMP_SOCKET,server=on,wait=off")
     python3 "$ROOT_DIR/tests/headless/check-config-tree.py" \
         "$SERIAL_LOG" "$QMP_SOCKET" "$TIMEOUT_SECONDS" &
@@ -3844,6 +3904,17 @@ fs-bench: done
 "
         if grep -qa 'fs-bench: .*FAIL' "$SERIAL_LOG"; then
             echo "headless: fs-bench reported a failure" >&2
+            exit 1
+        fi
+        ;;
+    fs-coherence-*)
+        required_markers="
+fs-coherence: start ${TEST_NAME#fs-coherence-}
+fs-coherence: ${TEST_NAME#fs-coherence-} PASS
+fs-coherence: end
+"
+        if grep -qa 'fs-coherence: .* FAIL' "$SERIAL_LOG"; then
+            echo "headless: $TEST_NAME reported a failure" >&2
             exit 1
         fi
         ;;

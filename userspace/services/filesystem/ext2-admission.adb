@@ -9,6 +9,7 @@ pragma Ada_2022;
 with Ext2_Support; use type Ext2_Support.File_Admission;
 with Block_Cache_Index;
 with Jbd2_Recovery;
+with Jbd2_Revokes;
 with Dentry_Cache;
 with CuBit.Block_Devices; use CuBit.Block_Devices;
 with CuBit.Messages; use CuBit.Messages;
@@ -93,6 +94,10 @@ package body Ext2.Admission is
    --  needs_recovery is set, as a Linux mount does; Detach undoes both. On a
    --  read-only device a clean journal is left alone and a dirty one refused.
    --  The cache is discarded after replay: it may have rewritten any block.
+   --  openJournal's revoke table for a replay (Jbd2_Recovery): service-
+   --  owned, as Admission_Candidate below. Admissions never nest.
+   Replay_Revokes : Jbd2_Revokes.Table;
+
    procedure openJournal
      (fs : in out Filesystem; result : out Admission_Result)
    is
@@ -148,7 +153,7 @@ package body Ext2.Admission is
          Ok := status = Write_Complete;
       end Write_Home;
 
-      package Recovery is new Jbd2_Recovery (Read_Log, Write_Home);
+      package Recovery is new Jbd2_Recovery (Read_Log, Write_Home, Replay_Revokes);
       use type Recovery.Outcome;
 
       procedure Put_Be32 (offset : Natural; value : Unsigned_32) is
@@ -343,6 +348,14 @@ package body Ext2.Admission is
       status := (if ok then Flush_Complete else Flush_IO_Error);
    end Detach;
 
+   --  initBlockDevice's volume under admission, published to its caller
+   --  only when admitted. It lives here, not in initBlockDevice's frame:
+   --  the image's pages are all backed when the service loads, while a
+   --  stack frame this size is faulted in when a drive is attached, and on
+   --  a full machine that fault kills the service. The service is
+   --  single-threaded and admissions never nest.
+   Admission_Candidate : Filesystem;
+
    procedure initBlockDevice
      (fs         : out Filesystem;
       endpoint   : CuBit.Handles.Endpoint;
@@ -358,7 +371,7 @@ package body Ext2.Admission is
       requiredBytes  : Unsigned_64;
       requiredBlocks : Unsigned_64;
       readStatus : Read_Status;
-      tmpFs : Filesystem;
+      tmpFs : Filesystem renames Admission_Candidate;
    begin
       --  No partial session is published on rejection, even when this output
       --  previously held an admitted filesystem.
@@ -410,7 +423,7 @@ package body Ext2.Admission is
          return;
       end if;
 
-      tmpFs.blkSize   := 0;
+      tmpFs := fs;   --  nothing kept from an earlier admission
       tmpFs.device :=
         (endpoint     => endpoint,
          volumeKey    => volume,

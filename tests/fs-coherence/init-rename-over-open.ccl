@@ -1,0 +1,5 @@
+# tests/fs-coherence case rename-over-open (headless: fs-coherence-rename-over-open).
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "fs-coherence-rename-over-open.app" (priority 3))
+)

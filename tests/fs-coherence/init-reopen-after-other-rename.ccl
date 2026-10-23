@@ -1,0 +1,5 @@
+# tests/fs-coherence case reopen-after-other-rename (headless: fs-coherence-reopen-after-other-rename).
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "fs-coherence-reopen-after-other-rename.app" (priority 3))
+)

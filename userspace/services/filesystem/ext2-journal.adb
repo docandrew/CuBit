@@ -33,6 +33,22 @@ package body Ext2.Journal is
    --  so ended with every earlier write durable.
    Commit_Was_Barrier : Boolean := False;
 
+   --  commitTransaction's working storage: the pending data and metadata
+   --  blocks (each a home block number above its cache slot) and the
+   --  staging buffer runs are coalesced in. It lives here, not in the
+   --  commit's frame: the image's pages are all backed when the service
+   --  loads, while a stack frame this size is faulted in during a commit,
+   --  and on a full machine that fault kills the service. The service is
+   --  single-threaded; the one commit that can run inside another (memory
+   --  pressure while applying its releases) ends before the outer one
+   --  first touches this storage.
+   slotBits : constant := 14;
+   pragma Compile_Time_Error
+     (2 ** slotBits <= Buffer_Slot'Last, "slot encoding too narrow");
+   type Pending_Array is array (1 .. Buffer_Slot'Last + 1) of Unsigned_64;
+   pendingData, pendingMeta : Pending_Array;
+   commitStaging : Staging_Buffer;
+
    function dirtyBlocks (fs : Filesystem) return Boolean is
      (Block_Cache_Index.Has_Dirty (Cache_Index, fs.device.volumeKey) or else
       fs.pendingCount > 0);
@@ -57,13 +73,7 @@ package body Ext2.Journal is
         (Jbd2_Format.Usable_Bytes (size, incompat) - Jbd2_Format.Header_Bytes -
            Jbd2_Format.UUID_Bytes) / tagBytes;
       logBlocks : constant Unsigned_32 := fs.journal.Max_Length - fs.journal.First;
-      slotBits : constant := 14;
-      pragma Compile_Time_Error
-        (2 ** slotBits <= Buffer_Slot'Last, "slot encoding too narrow");
-      type Pending_Array is array (1 .. Buffer_Slot'Last + 1) of Unsigned_64;
-      data, meta : Pending_Array;
       dataCount, metaCount : Natural := 0;
-      staging : Staging_Buffer;
       runStart : Unsigned_32 := 0;
       runBlocks : Natural := 0;
       ok : Boolean := True;
@@ -118,7 +128,7 @@ package body Ext2.Journal is
       begin
          if runBlocks > 0 and then ok then
             deviceWrite (fs, Storage_Offset (runStart) * Storage_Offset (blockBytes),
-                         staging'Address,
+                         commitStaging'Address,
                          Storage_Count (Unsigned_64 (runBlocks) * blockBytes), result);
             ok := result = Write_Complete;
          end if;
@@ -140,7 +150,7 @@ package body Ext2.Journal is
          declare
             from : String (1 .. Natural (blockBytes)) with Import, Address => source;
             to : String (1 .. Natural (blockBytes))
-              with Import, Address => staging (runBlocks * Natural (blockBytes))'Address;
+              with Import, Address => commitStaging (runBlocks * Natural (blockBytes))'Address;
          begin
             to := from;
          end;
@@ -256,8 +266,8 @@ package body Ext2.Journal is
                Header (descriptor, Jbd2_Format.Descriptor_Kind, sequence);
                for item in index .. groupLast loop
                   declare
-                     slot : constant Buffer_Slot := Slot_Of (meta (item));
-                     home : constant Unsigned_32 := Block_Of (meta (item));
+                     slot : constant Buffer_Slot := Slot_Of (pendingMeta (item));
+                     home : constant Unsigned_32 := Block_Of (pendingMeta (item));
                      flags : Unsigned_32 := 0;
                      tagChecksum : Unsigned_32 := 0;
                   begin
@@ -313,7 +323,7 @@ package body Ext2.Journal is
                   runningSum := Jbd2_Format.Crc32_Be (runningSum, descriptor, 0, size);
                   for item in index .. groupLast loop
                      declare
-                        slot : constant Buffer_Slot := Slot_Of (meta (item));
+                        slot : constant Buffer_Slot := Slot_Of (pendingMeta (item));
                      begin
                         copy := [others => 0];
                         for b in 0 .. Natural (blockBytes) - 1 loop
@@ -372,7 +382,7 @@ package body Ext2.Journal is
          --  the next barrier (the next commit's, or the tail's move) makes
          --  it durable. Until the tail moves, recovery replays it anyway.
          for item in first .. last loop
-            Append (Block_Of (meta (item)), Cache_Blocks (Slot_Of (meta (item))).all'Address);
+            Append (Block_Of (pendingMeta (item)), Cache_Blocks (Slot_Of (pendingMeta (item))).all'Address);
          end loop;
          Flush_Run;
          if not ok then
@@ -380,7 +390,7 @@ package body Ext2.Journal is
          end if;
          Home_Writes_Pending := True;
          for item in first .. last loop
-            Clean (Slot_Of (meta (item)));
+            Clean (Slot_Of (pendingMeta (item)));
          end loop;
       end Commit_Chunk;
    begin
@@ -410,7 +420,7 @@ package body Ext2.Journal is
       for index in 0 .. Spill_Used - 1 loop
          if Spill_Keys (index).Volume = volume then
             metaCount := metaCount + 1;
-            meta (metaCount) :=
+            pendingMeta (metaCount) :=
               Shift_Left (Unsigned_64 (Spill_Keys (index).Block), slotBits) or
               Unsigned_64 (First_Spill_Slot + index);
          end if;
@@ -426,30 +436,30 @@ package body Ext2.Journal is
             begin
                if Cache_Index.Classes (slot) = File_Data then
                   dataCount := dataCount + 1;
-                  data (dataCount) := item;
+                  pendingData (dataCount) := item;
                else
                   metaCount := metaCount + 1;
-                  meta (metaCount) := item;
+                  pendingMeta (metaCount) := item;
                end if;
             end;
          end if;
       end loop;
       --  (1) ordered data, home first.
-      Sort (data, dataCount);
+      Sort (pendingData, dataCount);
       for item in 1 .. dataCount loop
-         Append (Block_Of (data (item)), Cache_Blocks (Slot_Of (data (item))).all'Address);
+         Append (Block_Of (pendingData (item)), Cache_Blocks (Slot_Of (pendingData (item))).all'Address);
       end loop;
       Flush_Run;
       if ok then
          for item in 1 .. dataCount loop
-            Clean (Slot_Of (data (item)));
+            Clean (Slot_Of (pendingData (item)));
          end loop;
       end if;
       if ok and then metaCount > 0 then
          --  (2) The data a commit refers to must be durable before it: the
          --  barrier before each commit block (4) covers the data sent home
          --  above as well as the log copies, as jbd2's one pre-flush does.
-         Sort (meta, metaCount);
+         Sort (pendingMeta, metaCount);
          declare
             --  Blocks per transaction: copies + descriptors + commit fit the log.
             perTransaction : constant Positive := Positive

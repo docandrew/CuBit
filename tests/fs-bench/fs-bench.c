@@ -29,6 +29,9 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
+#ifdef CUBIT
+#include <spawn.h>
+#endif
 #include <time.h>
 #include <unistd.h>
 #ifdef CUBIT
@@ -511,12 +514,19 @@ static int coherence(const char *dir)
  * of its name reuses it with no request, while the namespace and the
  * file are unchanged (file.c). These reopen names another process or this
  * one changed meanwhile: each must see the file the name now holds. The
- * other process is a second fs-bench (CuBit: the startup runs two; the one
- * that creates the claim file first is the benchmark) or a fork (Linux). */
+ * other process is a fork (Linux) or this program started again with
+ * OTHER_ARGUMENT (CuBit: posix_spawn). Files it wrote and left buffered
+ * (on CuBit under its write delegations: one never closed, one closed and
+ * parked) are read only once waitpid says it has exited, so their bytes
+ * must outlive it. */
 #define PARK_BYTES 3000                 /* not a whole page */
 #define HOLD_OPENS 40                   /* more than a file's handle limit */
 #define WAIT_MS 20000
 #define POLL_NS 1000000L
+#define OTHER_ARGUMENT "other-process"
+#define SETTLE_MS 500                   /* the other process's teardown */
+#define NS_PER_MS 1000000L
+#define PROGRAM "fs-bench.app"          /* procmgr's name (CuBit) */
 
 static int put_file(const char *path, int byte)
 {
@@ -570,8 +580,9 @@ static int other_process(const char *dir)
 	name_in(y, dir, "park-renamed");
 	name_in(y2, dir, "park-renamed-away");
 	char kept[NAME_BYTES], stale[NAME_BYTES], dropped[NAME_BYTES],
-	     dropped2[NAME_BYTES], held[NAME_BYTES], go2[NAME_BYTES];
+	     dropped2[NAME_BYTES], held[NAME_BYTES], go2[NAME_BYTES], closed[NAME_BYTES];
 	name_in(kept, dir, "park-left-open");
+	name_in(closed, dir, "park-exit-closed");
 	name_in(stale, dir, "park-stale");
 	name_in(dropped, dir, "park-dropped");
 	name_in(dropped2, dir, "park-dropped-away");
@@ -601,8 +612,10 @@ static int other_process(const char *dir)
 		if (holds[k] >= 0) held_count++;
 	}
 	if (held_count == 0) failed = 1;
-	/* Written and left open: the bytes must outlive this process, which
+	/* Written and closed (CuBit: parked, its pages still buffered), and
+	 * written and left open: the bytes must outlive this process, which
 	 * exits without closing (CuBit: _exit, so the libc closes nothing). */
+	if (put_file(closed, 'c') < 0) failed = 1;
 	memset(data, 'k', sizeof data);
 	fd = open(kept, O_CREAT | O_TRUNC | O_WRONLY, FILE_MODE);
 	if (fd < 0 || write_all(fd, data, sizeof data) < 0) failed = 1;
@@ -664,33 +677,47 @@ static int parked(const char *dir)
 	    rename(stale, stale2) < 0 || rename(stale2, stale) < 0 ||
 	    put_file(dropped, 'U') < 0 || put_file(held, 'H') < 0)
 		return coherence_check(0, "other-process-setup");
-#ifndef CUBIT
+#ifdef CUBIT
+	char *other_argv[] = { PROGRAM, (char *)dir, OTHER_ARGUMENT, 0 };
+	char *other_envp[] = { 0 };
+	pid_t child = -1;
+	if (posix_spawn(&child, PROGRAM, 0, 0, other_argv, other_envp) != 0) child = -1;
+#else
 	pid_t child = fork();
 	if (child == 0) _exit(other_process(dir) < 0);
 #endif
+	if (child < 0)
+		return coherence_check(0, "other-process-setup");
 	int told = put_file(go, 'G') == 0;
 	int answered = told && wait_for(done) == 0 && file_is(done, 'D');
+	/* While the other process lives (it holds these names' files, or
+	 * held them, and may still buffer their pages). */
 	int held_open = open(held, O_RDONLY);
 	failures += coherence_check(answered && held_open >= 0, "open-while-other-holds-many") < 0;
 	if (held_open >= 0) close(held_open);
-	put_file(go2, 'G');
-#ifndef CUBIT
-	if (child > 0) waitpid(child, 0, 0);
-#endif
+	failures += coherence_check(answered && file_is(w, 'w'), "reopen-after-other-write") < 0;
+	failures += coherence_check(answered && file_is(x, 'x'), "reopen-after-other-unlink-recreate") < 0;
+	failures += coherence_check(answered && file_is(y, 'y') && file_is(y2, 'Y'),
+				    "reopen-after-other-rename") < 0;
+	/* Then once it has exited. */
+	int status = 0;
+	int exited = put_file(go2, 'G') == 0 && waitpid(child, &status, 0) == child &&
+		     WIFEXITED(status) && WEXITSTATUS(status) == 0;
+	/* Its teardown done by the service, too (tests/fs-coherence). */
+	struct timespec settle = { 0, SETTLE_MS * NS_PER_MS };
+	nanosleep(&settle, 0);
+	failures += coherence_check(answered && exited, "other-process") < 0;
 	failures += coherence_check(answered && file_is(stale, 's'),
 				    "reopen-after-other-delegated-write") < 0;
 	/* Unlinking our parked name, now another file's: the file it moved to
 	 * keeps our buffered bytes, the new one goes. */
 	failures += coherence_check(answered && unlink(dropped) == 0 && !file_is(dropped, 'N') &&
 				    file_is(dropped2, 'U'), "unlink-keeps-moved-files-data") < 0;
-	failures += coherence_check(answered, "other-process") < 0;
-	failures += coherence_check(answered && file_is(w, 'w'), "reopen-after-other-write") < 0;
-	failures += coherence_check(answered && file_is(x, 'x'), "reopen-after-other-unlink-recreate") < 0;
-	failures += coherence_check(answered && file_is(y, 'y') && file_is(y2, 'Y'),
-				    "reopen-after-other-rename") < 0;
-	char kept[NAME_BYTES];
+	char kept[NAME_BYTES], closed[NAME_BYTES];
 	name_in(kept, dir, "park-left-open");
-	failures += coherence_check(answered && file_is(kept, 'k'), "other-exit-left-open") < 0;
+	name_in(closed, dir, "park-exit-closed");
+	failures += coherence_check(exited && file_is(kept, 'k'), "other-exit-left-open") < 0;
+	failures += coherence_check(exited && file_is(closed, 'c'), "other-exit-closed") < 0;
 	unlink(go);
 	unlink(done);
 	unlink(w);
@@ -698,6 +725,7 @@ static int parked(const char *dir)
 	unlink(y);
 	unlink(y2);
 	unlink(kept);
+	unlink(closed);
 	unlink(stale);
 	unlink(dropped2);
 	unlink(held);
@@ -721,17 +749,12 @@ int main(int argc, char **argv)
 	}
 	snprintf(path, sizeof path, "%s/data", dir);
 #ifdef CUBIT
-	/* Two instances start: the first to claim is the benchmark, the other
-	 * the other process of the parked-handle checks. */
-	char claim[NAME_BYTES];
-	name_in(claim, dir, "claim");
-	int claimed = open(claim, O_CREAT | O_EXCL | O_WRONLY, FILE_MODE);
-	if (claimed < 0 && errno == EEXIST) {
+	/* Started again by parked() as its other process. */
+	if (argc > 2 && strcmp(argv[2], OTHER_ARGUMENT) == 0) {
 		int r = other_process(dir);
 		report("fs-bench: other process %s\n", r < 0 ? "FAIL" : "done");
 		_exit(r < 0);           /* no libc cleanup: the service's must do */
 	}
-	if (claimed >= 0) close(claimed);
 #endif
 	report("fs-bench: start dir=%s file_mib=%llu chunk=%d block=%d random_ops=%d fsync_ops=%d small_files=%d\n",
 	       dir, (unsigned long long)(file_bytes / MIB), (int)CHUNK_BYTES, BLOCK_BYTES,
@@ -750,9 +773,6 @@ int main(int argc, char **argv)
 	}
 	if (unlink(path) < 0 && errno != ENOSYS)
 		failures++;
-#ifdef CUBIT
-	unlink(claim);
-#endif
 	report(failures ? "fs-bench: FAIL\n" : "fs-bench: done\n");
 	return failures != 0;
 }

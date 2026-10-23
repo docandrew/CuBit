@@ -1,0 +1,9 @@
+# Cross-process coherence cases (tests/fs-coherence): files under
+# @nvme:0/fs-coherence only. Each case starts itself again (procmgr,
+# posix_spawn) as its other process.
+(executable-manifest v1
+  (identity "com.cubit.fs-coherence")
+  (version "0.1.0")
+  (request-service process-manager read-write process-manager)
+  (request-service filesystem read-write filesystem)
+  (filesystem-scope (rights read write create) "@nvme:0/fs-coherence"))
