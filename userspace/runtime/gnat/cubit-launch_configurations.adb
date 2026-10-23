@@ -8,7 +8,8 @@ with System;
 
 package body CuBit.Launch_Configurations is
 
-   --  Kept by the start code (userspace/c/crt0.S) from the entry RDI.
+   --  Kept by the start code (userspace/runtime/start/cubit_start.S) from
+   --  the entry RDI.
    Launch_Length : Unsigned_64
    with Import, Convention => C,
         External_Name => "__cubit_launch_arguments_length";

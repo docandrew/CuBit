@@ -19,8 +19,8 @@ all: $(CRT_OBJ)
 $(BUILDDIR):
 	mkdir -p $(BUILDDIR)
 
-$(CRT_OBJ): crt0.S | $(BUILDDIR)
-	$(AS) $(ASFLAGS) -c $< -o $@
+$(CRT_OBJ): crt0.S ../runtime/start/cubit_start.S | $(BUILDDIR)
+	$(AS) $(ASFLAGS) -Wa,-I../runtime/start -c $< -o $@
 
 clean:
 	rm -rf $(BUILDDIR)

@@ -33,13 +33,10 @@ static inline int cubit_endpoint_same(cubit_endpoint a, cubit_endpoint b)
     return a.opaque == b.opaque;
 }
 
-/* The endpoint this process's startup table grants under name (the binding
- * its manifest declares, e.g. "desktop"), or CUBIT_NO_ENDPOINT when it grants
- * none of that name and kind. Provided by the CuBit libc (CuBit.Libc_Startup);
+/* A program's startup endpoints come from its generated startup header
+ * (ccl-manifest --c-output startup.h, CAP-003): cubit_startup_<binding>()
+ * for each binding its manifest declares, so a misspelt name is a compile
+ * error. The libc provides the lookup underneath (CuBit.Libc_Startup);
  * programs without the libc read their Ada Startup package instead. */
-#ifdef __cplusplus
-extern "C"
-#endif
-cubit_endpoint cubit_startup_endpoint(const char *name);
 
 #endif

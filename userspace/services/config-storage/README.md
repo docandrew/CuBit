@@ -136,14 +136,17 @@ backend to a production library is a separate packaging step.
 
 ## Limits
 
-The worker keeps its own `_start` (`entry.rs`, shared with the native Turso
-probe): it must record the kernel's entry RDI in `__cubit_launch_block_length`
-before `rust_main`. Without that the CAP-002 startup table never loads, every
-startup entry ("config", "clock", "filesystem") is absent, and the worker
-exits with `missing/invalid bootstrap database path`; that was CFG-002 from
-the CAP-002 handle change (2026-10-13) until this entry was shared.
+The worker's entry is the shared `_start`
+(`userspace/runtime/start/cubit_start.S`, through the std runtime), which
+records the kernel's entry RDI in `__cubit_launch_block_length` and calls
+the worker's `__cubit_language_start` in place of std's `main`. A
+hand-written start that dropped RDI left every startup entry ("config",
+"clock", "filesystem") absent: that was CFG-002 from the CAP-002 handle
+change (2026-10-13) until the entry was shared (CAP-003 removed the last
+copies). The Ada host's generated `Startup` package now also stops the
+worker, naming the entry, if the table is missing.
 
-The Rust foreign main calls `config_storage_hostinit` exactly once before any
+The Rust language start calls `config_storage_hostinit` exactly once before any
 Ada export. This is GNAT's generated initializer for the standalone static
 library, not a hand-maintained list of package-body calls. It initializes both
 worker and native-storage dependencies (including protocol constants requiring

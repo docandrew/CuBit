@@ -8,8 +8,10 @@ here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../.." && pwd)
 out=$here/build
 mkdir -p "$out"
+# The manifest's sections, and its startup header (cubit_startup_ipc_test).
 "$root/userspace/ccl/build/manifest/ccl-manifest" \
-    "$root/userspace/ccl/catalogs/native-runtime-services.ccl" "$here/manifest.ccl" > "$out/sched-latency-manifest.S"
+    "$root/userspace/ccl/catalogs/native-runtime-services.ccl" "$here/manifest.ccl" \
+    --c-output "$out/startup.h" > "$out/sched-latency-manifest.S"
 as --64 "$out/sched-latency-manifest.S" -o "$out/sched-latency-manifest.o"
-"$root/userspace/libc/cubit-cc" -O2 -g -pthread -DCUBIT -Wall -Wextra -o "$root/kernel/isodir/boot/sched-latency.app" \
+"$root/userspace/libc/cubit-cc" -O2 -g -pthread -DCUBIT -Wall -Wextra -I"$out" -I"$root/userspace/c" -o "$root/kernel/isodir/boot/sched-latency.app" \
     "$here/sched-latency.c" --manifest "$out/sched-latency-manifest.o"

@@ -33,7 +33,8 @@ procedure Main is
    Schema_Source : String (1 .. CCL.Language.MAX_SOURCE_LENGTH);
    Schema_Length : Natural := 0;
    --  CATALOG MANIFEST, then options as pairs: --startup-output FILE (the
-   --  Ada Startup package), --rust-output FILE (binding names), --schema FILE.
+   --  Ada Startup package), --rust-output FILE (the Rust accessors),
+   --  --c-output FILE (the C header), --schema FILE.
    function Option (Name : String) return String is
    begin
       for Index in 3 .. Argument_Count - 1 loop
@@ -47,7 +48,7 @@ procedure Main is
      (Argument_Count >= 2 and then Argument_Count mod 2 = 0 and then
       (for all Index in 3 .. Argument_Count =>
          (Index - 3) mod 2 = 1 or else
-         Argument (Index) in "--rust-output" | "--startup-output" | "--schema"));
+         Argument (Index) in "--rust-output" | "--c-output" | "--startup-output" | "--schema"));
    --  Where the startup binding goes (none without --startup-output).
    function Startup_Path return String is (Option ("--startup-output"));
    --  The schema's default home: interfaces/ beside the catalogs directory.
@@ -87,27 +88,6 @@ procedure Main is
    end Emit;
 
 
-   procedure Emit_Rust is
-      Output : Ada.Text_IO.File_Type;
-   begin
-      Create (Output, Out_File, Option ("--rust-output"));
-      Put_Line (Output, "// Generated with the ELF manifest; do not edit.");
-      for Binding of Result.Bindings (1 .. Result.Binding_Count) loop
-         declare
-            Name : String := Binding.Name.Data (1 .. Binding.Name.Length);
-         begin
-            for C of Name loop
-               if C = '-' then C := '_';
-               else C := Ada.Characters.Handling.To_Upper (C);
-               end if;
-            end loop;
-            --  The startup entry's name (cubit::startup looks it up).
-            Put_Line (Output, "pub const BINDING_" & Name & " : &str = """ &
-                      Binding.Name.Data (1 .. Binding.Name.Length) & """;");
-         end;
-      end loop;
-      Close (Output);
-   end Emit_Rust;
    ---------------------------------------------------------------------------
    --  The startup binding (CAP-002): package Startup, one function per
    --  startup capability, named after its binding, returning that kind's
@@ -202,6 +182,139 @@ procedure Main is
       return True;
    end Startup_Names_Usable;
 
+   --  The manifest's identity, from its .cubit.id section: magic (4),
+   --  version (2), count (2), then the "id" pair: key length (1), value
+   --  length (2), the key "id", the value.
+   function Identity_Text return String is
+      Value_Length_At : constant := 10;
+      Value_At : constant := 14;
+      Length : constant Natural :=
+        Natural (Result.Identity.Data (Value_Length_At)) +
+        256 * Natural (Result.Identity.Data (Value_Length_At + 1));
+      Text : String (1 .. Length);
+   begin
+      for I in Text'Range loop
+         Text (I) := Character'Val (Result.Identity.Data (Value_At + I - 1));
+      end loop;
+      return Text;
+   end Identity_Text;
+
+   --  "pointer-events" -> "pointer_events": a binding as a Rust or C name.
+   function Snake_Name (Binding : String) return String is
+      Name : String := Binding;
+   begin
+      for C of Name loop
+         if C = '-' then C := '_'; end if;
+      end loop;
+      return Name;
+   end Snake_Name;
+
+   --  Rust's keywords (strict, reserved and weak), which cannot name an
+   --  accessor in the generated startup module.
+   Rust_Unusable : constant String :=
+     " as async await break const continue crate dyn else enum extern false fn for gen if impl in" &
+     " let loop match mod move mut pub ref return self static struct super trait true type unsafe" &
+     " use where while abstract become box do final macro override priv try typeof unsized virtual" &
+     " yield union ";
+
+   function Rust_Names_Usable return Boolean is
+   begin
+      for Binding of Result.Bindings (1 .. Result.Binding_Count) loop
+         declare
+            Name : constant String := Snake_Name (Binding.Name.Data (1 .. Binding.Name.Length));
+         begin
+            if Ada.Strings.Fixed.Index (Rust_Unusable, " " & Name & " ") > 0 then
+               Put_Line (Standard_Error, Argument (2) & ": binding """ &
+                         Binding.Name.Data (1 .. Binding.Name.Length) &
+                         """ cannot name a Rust startup accessor (a Rust keyword). Fix: rename the binding.");
+               return False;
+            end if;
+         end;
+      end loop;
+      return True;
+   end Rust_Names_Usable;
+
+   --  The Rust startup accessors (CAP-003): module startup, one function
+   --  per endpoint binding, taking the program's startup table
+   --  (cubit::startup::Table) and returning its endpoint when granted.
+   --  Names, never numbers or strings in the program's own code.
+   procedure Emit_Rust is
+      Output : Ada.Text_IO.File_Type;
+   begin
+      Create (Output, Out_File, Option ("--rust-output"));
+      Put_Line (Output, "// Generated with the ELF manifest; do not edit.");
+      Put_Line (Output, "// Startup capabilities of " & Identity_Text & ", by name (CAP-002, CAP-003).");
+      Put_Line (Output, "pub mod startup {");
+      Put_Line (Output, "    #![allow(dead_code)]");
+      Put_Line (Output, "    use cubit::startup::Table;");
+      Put_Line (Output, "    use cubit::Endpoint;");
+      for Binding of Result.Bindings (1 .. Result.Binding_Count) loop
+         declare
+            Name : constant String := Binding.Name.Data (1 .. Binding.Name.Length);
+            use type ST.Need;
+            Need : constant String :=
+              (if Binding.Requirement = ST.Optional then "optional" else "required");
+         begin
+            Put_Line (Output, "");
+            Put_Line (Output, "    /// " & Kind_Image (Binding.Kind) & " """ & Name & """, " & Need & ".");
+            if Binding.Kind in ST.Endpoint | ST.Render | ST.Network then
+               Put_Line (Output, "    pub fn " & Snake_Name (Name) &
+                         "(table: &Table) -> Option<Endpoint> {");
+               Put_Line (Output, "        table.endpoint(""" & Name & """)");
+               Put_Line (Output, "    }");
+            else
+               Put_Line (Output, "    // (no Rust accessor for this kind yet)");
+            end if;
+         end;
+      end loop;
+      Put_Line (Output, "}");
+      Close (Output);
+   end Emit_Rust;
+
+   --  The C startup header (CAP-003): one inline function per endpoint
+   --  binding, cubit_startup_<binding>, over the libc's lookup
+   --  (CuBit.Libc_Startup), which only this header declares.
+   procedure Emit_C is
+      Output : Ada.Text_IO.File_Type;
+   begin
+      Create (Output, Out_File, Option ("--c-output"));
+      Put_Line (Output, "/* Generated with the ELF manifest; do not edit.");
+      Put_Line (Output, " * Startup capabilities of " & Identity_Text & ", by name (CAP-002, CAP-003). */");
+      Put_Line (Output, "#ifndef CUBIT_STARTUP_H");
+      Put_Line (Output, "#define CUBIT_STARTUP_H");
+      Put_Line (Output, "#include <cubit_handles.h>");
+      Put_Line (Output, "#ifdef __cplusplus");
+      Put_Line (Output, "extern ""C"" {");
+      Put_Line (Output, "#endif");
+      Put_Line (Output, "/* The endpoint the startup table grants under name, or CUBIT_NO_ENDPOINT");
+      Put_Line (Output, " * (CuBit.Libc_Startup); programs call the functions below instead. */");
+      Put_Line (Output, "cubit_endpoint cubit_startup_endpoint(const char *name);");
+      for Binding of Result.Bindings (1 .. Result.Binding_Count) loop
+         declare
+            Name : constant String := Binding.Name.Data (1 .. Binding.Name.Length);
+            use type ST.Need;
+            Need : constant String :=
+              (if Binding.Requirement = ST.Optional then "optional" else "required");
+         begin
+            Put_Line (Output, "");
+            Put_Line (Output, "/* " & Kind_Image (Binding.Kind) & " """ & Name & """, " & Need & ". */");
+            if ST."=" (Binding.Kind, ST.Endpoint) then
+               Put_Line (Output, "static inline cubit_endpoint cubit_startup_" & Snake_Name (Name) & "(void)");
+               Put_Line (Output, "{");
+               Put_Line (Output, "    return cubit_startup_endpoint(""" & Name & """);");
+               Put_Line (Output, "}");
+            else
+               Put_Line (Output, "/* (no C accessor for this kind yet) */");
+            end if;
+         end;
+      end loop;
+      Put_Line (Output, "#ifdef __cplusplus");
+      Put_Line (Output, "}");
+      Put_Line (Output, "#endif");
+      Put_Line (Output, "#endif");
+      Close (Output);
+   end Emit_C;
+
    function Has_Client return Boolean is
      (for some Binding of Result.Bindings (1 .. Result.Binding_Count) =>
         CCL.Manifests."/=" (Binding.Client, CCL.Manifests.Plain));
@@ -253,18 +366,8 @@ procedure Main is
 
    procedure Emit_Startup is
       Output : Ada.Text_IO.File_Type;
-      --  .cubit.id: magic (4), version (2), count (2), then the "id" pair:
-      --  key length (1), value length (2), the key "id", the value.
-      Value_Length_At : constant := 10;
-      Value_At : constant := 14;
-      Identity_Length : constant Natural :=
-        Natural (Result.Identity.Data (Value_Length_At)) +
-        256 * Natural (Result.Identity.Data (Value_Length_At + 1));
-      Identity : String (1 .. Identity_Length);
+      Identity : constant String := Identity_Text;
    begin
-      for I in Identity'Range loop
-         Identity (I) := Character'Val (Result.Identity.Data (Value_At + I - 1));
-      end loop;
       Create (Output, Out_File, Startup_Path);
       Put_Line (Output, "--  Generated with the ELF manifest; do not edit.");
       Put_Line (Output, "--  Startup capabilities of " & Identity & ", by name (CAP-002).");
@@ -396,7 +499,7 @@ begin
    if not Options_Valid then
       Put_Line (Standard_Error,
         "usage: ccl-manifest CATALOG.ccl MANIFEST.ccl [--startup-output startup.ads] " &
-        "[--rust-output bindings.rs] [--schema executable-manifest.ccl] > manifest.S");
+        "[--rust-output bindings.rs] [--c-output startup.h] [--schema executable-manifest.ccl] > manifest.S");
       Set_Exit_Status (Failure);
       return;
    end if;
@@ -454,7 +557,14 @@ begin
       Emit_Startup;
    end if;
    if Option ("--rust-output")'Length > 0 then
+      if not Rust_Names_Usable then
+         Set_Exit_Status (Failure);
+         return;
+      end if;
       Emit_Rust;
+   end if;
+   if Option ("--c-output")'Length > 0 then
+      Emit_C;
    end if;
    Emit (".cubit.id", Result.Identity);
    Emit (".cubit.caps", Result.Capabilities);

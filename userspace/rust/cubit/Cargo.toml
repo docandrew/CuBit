@@ -11,6 +11,6 @@ path = "src/lib.rs"
 # Threads (spawn/join) need a global allocator.
 alloc = []
 # The program's start code keeps the launch block length in
-# __cubit_launch_block_length (userspace/c/crt0.S, moto-rt-cubit's _start):
+# __cubit_launch_block_length (the shared userspace/runtime/start/cubit_start.S):
 # startup::Table::from_start reads it.
 start-symbols = []

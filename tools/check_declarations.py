@@ -1,13 +1,19 @@
 #!/usr/bin/env python3
-"""CAP-002 build check: no capability is ever named by a number.
+"""Build check of what programs declare (CAP-002, CAP-003), first in `make world`.
 
-Programs name capabilities only through handles (CuBit.Handles in Ada,
-struct cubit_endpoint in C, cubit::Endpoint in Rust) obtained from the
-startup table, an accepted message or an offer. The type system already
-refuses an integer where a handle is expected; this check refuses the ways
-around it and the retired slot vocabulary, and runs first in `make world`.
+1. No capability is ever named by a number. Programs name capabilities
+   only through handles (CuBit.Handles in Ada, struct cubit_endpoint in C,
+   cubit::Endpoint in Rust) obtained from the startup table, an accepted
+   message or an offer. The type system already refuses an integer where a
+   handle is expected; this check refuses the ways around it and the
+   retired slot vocabulary.
+2. One program entry (CAP-003, docs/declaration-checking.md section 3):
+   only userspace/runtime/start/cubit_start.S defines _start; a
+   hand-copied entry that dropped the launch block's length left a program
+   without its startup table (CAP-003 R3). Its constants must equal the Ada
+   declarations they copy.
 
-    check_capability_numbers.py [--root ROOT] [--self-test]
+    check_declarations.py [--root ROOT] [--self-test]
 
 Exit status 0 when clean; 1 with one line per finding otherwise.
 """
@@ -81,11 +87,92 @@ RECORDED_EVIDENCE = {
 EXCLUDED = (
     'kernel/',
     'shared/',
-    'tools/check_capability_numbers.py',
+    'tools/check_declarations.py',
     'docs/',
     'userspace/ports/doom/src',
     'userspace/ports/sameboy/src',
 )
+
+
+# The one program entry, and the files that may define a _start of their
+# own, each with why (named one by one, never a pattern).
+START_SOURCE = 'userspace/runtime/start/cubit_start.S'
+OWN_ENTRY = {
+    # The binutils test's input: a Linux reference program assembled and
+    # linked by as/ld on CuBit and compared with Linux's output.
+    'tests/binutils/hello.s',
+    # Deliberately malformed assembler input for the CCL console's gcc demo.
+    'tests/ccl-console/bad.s',
+    # A fake devmgr (the boot root): it has no launch block to keep.
+    'tests/servo/audio-output/start.S',
+}
+ENTRY_SUFFIXES = {'.S', '.s', '.asm', '.rs', '.c'}
+# A definition of _start: its label, or making it global or weak.
+START_DEFINITION = re.compile(r'(^|[\s"])(_start\s*:|\.(globl|global|weak)\s+_start\b)', re.M)
+
+
+def check_entry(rel, text):
+    """A _start defined outside the shared entry."""
+    if rel == START_SOURCE or rel in OWN_ENTRY:
+        return []
+    return [(rel, text.count('\n', 0, match.start()) + 1,
+             f'_start defined here: include {START_SOURCE} instead')
+            for match in START_DEFINITION.finditer(text)]
+
+
+def ada_constant(text, name):
+    """An Ada named number or Unsigned_64 constant: its value."""
+    match = re.search(rf'\b{name}\s*:\s*constant(?:\s+Unsigned_64)?\s*:=\s*([^;]+);', text)
+    if not match:
+        return None
+    value = match.group(1).replace('_', '')
+    value = re.sub(r'16#([0-9A-Fa-f]+)#', lambda m: str(int(m.group(1), 16)), value)
+    return value
+
+
+def check_start_constants(root):
+    """cubit_start.S's constants equal the Ada declarations they copy."""
+    findings = []
+    start = root / START_SOURCE
+    if not start.is_file():
+        return [(START_SOURCE, 0, 'the shared program entry is missing')]
+    text = start.read_text()
+    sets = {m.group(1): int(m.group(2), 0)
+            for m in re.finditer(r'\.set\s+(\w+),\s*(0x[0-9A-Fa-f]+|[0-9]+)', text)}
+    gnat = root / 'userspace/runtime/gnat'
+    try:
+        block = (gnat / 'cubit-launch_block.adb').read_text()
+        envelopes = (gnat / 'cubit-launch_envelopes.ads').read_text()
+        tables = (gnat / 'cubit-startup_tables.ads').read_text()
+    except OSError as error:
+        return [(START_SOURCE, 0, f'cannot read the Ada declarations: {error}')]
+
+    def number(text, name):
+        value = ada_constant(text, name)
+        return None if value is None else value
+
+    word = int(number(envelopes, 'Word_Bytes') or 0)
+    expected = {
+        'CUBIT_LAUNCH_BLOCK_ADDRESS': number(block, 'Block_Address'),
+        'CUBIT_ENVELOPE_MAGIC': number(envelopes, 'Magic'),
+        'CUBIT_TRAILER_BYTES': str(2 * word) if word else None,
+        'CUBIT_WORD_BYTES': str(word) if word else None,
+    }
+    header = number(tables, 'Header_Bytes')
+    entries = number(tables, 'Maximum_Entries')
+    fixed = number(tables, 'Entry_Fixed_Bytes')
+    name = number(tables, 'Maximum_Name_Bytes')
+    if None not in (header, entries, fixed, name):
+        expected['CUBIT_MAXIMUM_TABLE_BYTES'] = str(int(header) + int(entries) * (int(fixed) + int(name)))
+    for constant, value in expected.items():
+        if value is None or not value.strip().isdigit():
+            findings.append((START_SOURCE, 0, f'{constant}: cannot find the Ada value it copies'))
+        elif constant not in sets:
+            findings.append((START_SOURCE, 0, f'{constant} is not set'))
+        elif sets[constant] != int(value):
+            findings.append((START_SOURCE, 0, f'{constant} is {sets[constant]:#x}, the Ada '
+                             f'declaration says {int(value):#x}'))
+    return findings
 
 
 def relevant(path, root):
@@ -160,7 +247,7 @@ def candidates(root):
 
 
 def scan(root):
-    findings = []
+    findings = check_start_constants(root)
     # An exemption names a file that exists: none outlives its evidence.
     for rel in sorted(RECORDED_EVIDENCE):
         if not (root / rel).is_file():
@@ -168,6 +255,13 @@ def scan(root):
     for path in candidates(root):
         if not path.is_file():
             continue
+        rel_entry = path.relative_to(root).as_posix()
+        if (path.suffix in ENTRY_SUFFIXES and not SKIP_PARTS & set(path.parts)
+                and not rel_entry.startswith(('kernel/', 'docs/'))):
+            try:
+                findings.extend(check_entry(rel_entry, path.read_text(errors='replace')))
+            except OSError:
+                pass
         rel = relevant(path, root)
         if rel is None:
             continue
@@ -202,6 +296,24 @@ def self_test():
         ('tests/x/hosted_test.c', 'cubit_endpoint e = (cubit_endpoint){15};', '.c'),
     ]
     failures = 0
+    entry_bad = [
+        ('userspace/services/x/entry.rs', 'global_asm!(".global _start", "_start:", "call rust_main");'),
+        ('userspace/c/crt9.S', '_start:\n    call main'),
+        ('userspace/rust/x/lib.rs', '".weak _start",'),
+    ]
+    entry_good = [
+        (START_SOURCE, '    .global _start\n_start:'),
+        ('userspace/rust/cubit/src/thread.rs', 'extern "C" fn thread_start<T>(start: *mut Start<T>) -> ! {'),
+        ('userspace/c/crt0.S', '    .include "cubit_start.S"\n__cubit_language_start:'),
+    ]
+    for rel, text in entry_bad:
+        if not check_entry(rel, text):
+            print(f'self-test: entry not caught: {text}')
+            failures += 1
+    for rel, text in entry_good:
+        if check_entry(rel, text):
+            print(f'self-test: false entry finding: {text}')
+            failures += 1
     for rel, text, suffix in bad:
         if not check_text(rel, text, suffix):
             print(f'self-test: not caught: {text}')
@@ -210,7 +322,8 @@ def self_test():
         if check_text(rel, text, suffix):
             print(f'self-test: false finding: {text}')
             failures += 1
-    print(f'self-test: {len(bad)} rejected, {len(good)} accepted, {failures} wrong')
+    print(f'self-test: {len(bad) + len(entry_bad)} rejected, {len(good) + len(entry_good)} accepted, '
+          f'{failures} wrong')
     return failures == 0
 
 
@@ -226,10 +339,11 @@ def main():
     for rel, line, what in findings:
         print(f'{rel}:{line}: {what}')
     if findings:
-        print(f'check_capability_numbers: {len(findings)} finding(s): '
-              'capabilities are named by handles, never numbers (docs/capability-handles.md)')
+        print(f'check_declarations: {len(findings)} finding(s): capabilities are named by handles, '
+              'never numbers, and every program has the one shared entry '
+              '(docs/capability-handles.md, docs/declaration-checking.md)')
         return 1
-    print('check_capability_numbers: clean')
+    print('check_declarations: clean')
     return 0
 
 

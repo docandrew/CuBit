@@ -19,10 +19,21 @@ libs=(src/mesa/libmesa.a src/mesa/libmesa_sse41.a
 ninja -C "$build_tree" -j4 "${libs[@]}"
 python3 "$root/tests/mesa-software/compile-native-probe.py" "$build_tree" \
   "$root/tests/mesa-software/native-opengl.c" "$build_tree/native-opengl.o"
-for probe in buffer-winsys buffer-target-test native-buffer native-mesa-window; do
+for probe in buffer-winsys buffer-target-test native-buffer; do
   python3 "$root/tests/mesa-software/compile-native-probe.py" "$build_tree" \
     "$root/tests/mesa-software/$probe.c" "$build_tree/$probe.o"
 done
+# The window probe names its desktop endpoint through the window manifest's
+# generated startup header (CAP-003).
+mkdir -p "$build_tree/window-startup"
+"$root/userspace/ccl/build/manifest/ccl-manifest" \
+  "$root/userspace/ccl/catalogs/native-runtime-services.ccl" \
+  "$root/tests/mesa-software/window-manifest.ccl" \
+  --c-output "$build_tree/window-startup/startup.h" > "$build_tree/window-manifest.S"
+as --64 "$build_tree/window-manifest.S" -o "$build_tree/window-manifest.o"
+python3 "$root/tests/mesa-software/compile-native-probe.py" "$build_tree" \
+  "$root/tests/mesa-software/native-mesa-window.c" "$build_tree/native-mesa-window.o" \
+  -I"$build_tree/window-startup" -I"$root/userspace/c"
 objects=()
 for lib in "${libs[@]}"; do objects+=("$build_tree/$lib"); done
 "$root/userspace/libc/cubit-c++" -Wl,--gc-sections \
@@ -48,10 +59,6 @@ python3 "$root/tests/mesa-software/compile-native-probe.py" "$build_tree" \
   "$build_tree/native-buffer.o" "$build_tree/buffer-winsys.o" "$build_tree/buffer-target-test.o" \
   -Wl,--start-group "${objects[@]}" -Wl,--end-group \
   --manifest "$build_tree/native-manifest.o" -o "$build_tree/native-buffer.app"
-"$root/userspace/ccl/build/manifest/ccl-manifest" \
-  "$root/userspace/ccl/catalogs/native-runtime-services.ccl" \
-  "$root/tests/mesa-software/window-manifest.ccl" > "$build_tree/window-manifest.S"
-as --64 "$build_tree/window-manifest.S" -o "$build_tree/window-manifest.o"
 "$root/userspace/libc/cubit-c++" -Wl,--gc-sections \
   "$build_tree/native-mesa-window.o" "$build_tree/buffer-winsys.o" \
   -Wl,--start-group "${objects[@]}" -Wl,--end-group \

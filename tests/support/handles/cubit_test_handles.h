@@ -1,6 +1,6 @@
 /* Hosted tests only (CAP-002): endpoint handles from numbers, so mocks can
  * stand in for the kernel. Never included by a CuBit program; native tests
- * take their handles from the startup table (cubit_startup_endpoint). */
+ * take their handles from the startup table (their generated startup.h). */
 #ifndef CUBIT_TEST_HANDLES_H
 #define CUBIT_TEST_HANDLES_H
 #include <stdint.h>

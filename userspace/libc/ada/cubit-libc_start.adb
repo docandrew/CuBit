@@ -124,7 +124,8 @@ package body CuBit.Libc_Start is
       return Default_Stack_Bytes;
    end Program_Stack_Size;
 
-   --  The whole launch block's length, kept by the start code (crt1.S).
+   --  The whole launch block's length, kept by the shared start code
+   --  (userspace/runtime/start/cubit_start.S).
    Block_Length : Unsigned_64
    with Import, Convention => C, External_Name => "__cubit_launch_block_length";
 

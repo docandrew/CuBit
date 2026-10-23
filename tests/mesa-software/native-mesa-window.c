@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <cubit/debug.h>
 #include "../../userspace/c/cubit_desktop.h"
+#include "startup.h"
 #include "pipe/p_context.h"
 #include "pipe/p_screen.h"
 #include "pipe/p_state.h"
@@ -90,7 +91,7 @@ static int call(unsigned label, uint64_t a, uint64_t b, uint64_t c, uint64_t d,
 int main(void)
 {
     enum { width = 512, height = 384, pitch = width * 4, bytes = pitch * height };
-    desktop = cubit_startup_endpoint("desktop");
+    desktop = cubit_startup_desktop();
     if (!cubit_endpoint_present(desktop))
         return report(3, "MESA-WINDOW: FAIL no desktop endpoint\n");
     void *pixels[2] = {NULL, NULL};

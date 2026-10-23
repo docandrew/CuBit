@@ -52,12 +52,15 @@ docs/stream-wiring.md (approvals), and the capability graph plan.
 Status: open, after the self-hosting tools (binutils, jj, gcc, GNAT): until
 jj runs on CuBit there is no way to clone the tree there anyway.
 
-The kernel and runtime use yasm for about 1,200 lines in eight files:
+The kernel and runtime use yasm for about 1,200 lines in seven files:
 - `kernel/src/`: `boot.asm`, `boot_ap.asm`, `interrupt_handlers.asm`,
   `syscall_entry.asm`, `context_switch.asm`, and `init.asm`, which is a
   flat binary;
-- `userspace/runtime/gnat/art0.asm`;
 - `userspace/apps/capability-test/syscall_registers.asm`.
+
+(The unused `userspace/runtime/gnat/art0.asm` was deleted by CAP-003; the
+program entry is `userspace/runtime/start/cubit_start.S`, already GNU `as`
+Intel syntax.)
 
 Move them to GNU `as` with `.intel_syntax noprefix`. This keeps Intel
 syntax, needs no yasm port (yasm is unmaintained), and means `as`, already

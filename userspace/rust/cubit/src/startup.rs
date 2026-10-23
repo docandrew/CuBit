@@ -93,8 +93,9 @@ impl Table {
     }
 
     /// The table, from the length the start code kept (feature
-    /// `start-symbols`: the program links userspace/c/crt0.S or the std
-    /// runtime's start, which define __cubit_launch_block_length).
+    /// `start-symbols`: every program's entry is the shared
+    /// userspace/runtime/start/cubit_start.S, which defines
+    /// __cubit_launch_block_length).
     #[cfg(feature = "start-symbols")]
     pub fn from_start() -> Option<Table> {
         unsafe extern "C" {

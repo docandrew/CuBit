@@ -90,7 +90,7 @@ for unit in "$here/../runtime/gnat/cubit-channel_rings.adb" "$here/../runtime/gn
 done
 ar rcs "$sysroot/lib/libc.a" "$ada_obj"/*.o
 
-gcc -c "$here/crt/crt1.S" -o "$sysroot/lib/cubit-crt1.o"
+gcc -c -Wa,-I"$here/../runtime/start" "$here/crt/crt1.S" -o "$sysroot/lib/cubit-crt1.o"
 install -m 0644 "$here/link.ld" "$sysroot/lib/cubit.ld"
 
 # C++: nixpkgs' musl cross gcc (libstdc++ built against musl headers of the

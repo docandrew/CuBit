@@ -1,7 +1,8 @@
 // Shared by the native probe and storage worker until the general Rust std
 // runtime port owns these hooks. The allocator and binding names come from
-// the host; the clock is its "clock" startup entry (CAP-002).
-use super::{ALLOCATOR, BINDING_CLOCK};
+// the host; the clock is its "clock" startup entry (CAP-002), through the
+// manifest's generated accessor (CAP-003).
+use super::{ALLOCATOR, startup};
 use core::alloc::{GlobalAlloc, Layout};
 use cubit::{Endpoint, Message, startup::Table};
 use std::sync::OnceLock;
@@ -9,7 +10,7 @@ use std::sync::OnceLock;
 /// The clock endpoint, looked up once.
 fn clock() -> Option<Endpoint> {
     static CLOCK: OnceLock<Option<Endpoint>> = OnceLock::new();
-    *CLOCK.get_or_init(|| Table::from_start().and_then(|t| t.endpoint(BINDING_CLOCK)))
+    *CLOCK.get_or_init(|| Table::from_start().and_then(|t| startup::clock(&t)))
 }
 // All bridge pointers originate in the matching patched std and are borrowed
 // only for the duration of the call. No Rust unwind crosses this ABI.

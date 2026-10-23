@@ -9,5 +9,5 @@ crate-type = ["staticlib"]
 path = "src/lib.rs"
 
 [dependencies]
-cubit = { path = "../cubit", features = ["alloc"] }
+cubit = { path = "../cubit", features = ["alloc", "start-symbols"] }
 cubit-allocator = { path = "../allocator" }

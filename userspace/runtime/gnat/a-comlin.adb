@@ -9,8 +9,9 @@ with CuBit.Launch_Arguments; use CuBit.Launch_Arguments;
 
 package body Ada.Command_Line is
 
-   --  Kept by the start code (userspace/c/crt0.S) from the entry RDI; the
-   --  start code exits with Exit_Code once Exit_Code_Set is nonzero.
+   --  Kept by the start code (userspace/runtime/start/cubit_start.S) from
+   --  the entry RDI; userspace/c/crt0.S exits with Exit_Code once
+   --  Exit_Code_Set is nonzero.
    Launch_Length : Unsigned_64
    with Import, Convention => C,
         External_Name => "__cubit_launch_arguments_length";

@@ -107,58 +107,26 @@ fn futex_wake_raw(word: *const AtomicU32, count: u64) -> u64 {
 
 // --- entry ------------------------------------------------------------------
 
-// The loader enters at _start with RSP at the stack top and no return
-// address. Align it for a SysV call into std's motor_start, which runs
-// moto-rt's init (install below) and then main.
+// The program's entry is the shared one (userspace/runtime/start/
+// cubit_start.S, CAP-003): it keeps the launch block's lengths (the startup
+// table, CAP-002, for cubit::startup and Ada units linked into the program)
+// and calls __cubit_language_start with the stack aligned for a SysV call.
+// Here that runs std's motor_start, which runs moto-rt's init (install
+// below) and then main.
 //
-// Both symbols are weak defaults: a Rust library linked into a program with
-// its own entry (the Ada-hosted Turso probe and Config storage worker) keeps
-// that entry, and has no Rust `main` for motor_start to name.
-//
-// The kernel passes the launch block's length in RDI (its startup table,
-// CAP-002). Like the C start code (userspace/c/crt0.S), keep the whole
-// length in __cubit_launch_block_length and the payload's (the block less
-// a CuBit.Launch_Envelopes trailer and table) in
-// __cubit_launch_arguments_length, for Ada units linked into the program
-// and for cubit::startup. Weak: a program with its own entry defines them.
+// Both are weak defaults: a program whose Rust library is hosted by Ada
+// (the Turso probe and the Config storage worker) defines its own
+// __cubit_language_start, and has no Rust `main` for motor_start to name.
+global_asm!(include_str!("../../../../runtime/start/cubit_start.S"));
 global_asm!(
-    ".weak _start",
-    "_start:",
-    "    and rsp, -16",
-    "    xor ebp, ebp",
-    "    mov [rip + __cubit_launch_block_length], rdi",
-    "    mov rax, rdi",
-    "    cmp rdi, 16",
-    "    jb 2f",
-    "    movabs rcx, 0x00005A0000000000",
-    "    add rcx, rdi",
-    "    movabs rdx, 0x31424C5449425543",
-    "    cmp rdx, [rcx - 8]",
-    "    jne 2f",
-    "    mov rdx, [rcx - 16]",
-    "    cmp rdx, 3216",
-    "    ja 2f",
-    "    add rdx, 7",
-    "    and rdx, -8",
-    "    add rdx, 16",
-    "    cmp rdx, rdi",
-    "    ja 2f",
-    "    mov rax, rdi",
-    "    sub rax, rdx",
-    "2:",
-    "    mov [rip + __cubit_launch_arguments_length], rax",
-    "    call motor_start",
-    "    ud2",
+    ".weak __cubit_language_start",
+    "__cubit_language_start:",
+    // A tail jump: motor_start is entered as if called by _start, with
+    // the stack aligned as the ABI requires.
+    "    jmp motor_start",
     ".weak main",
     "main:",
     "    ud2",
-    ".pushsection .bss.cubit_launch,\"aw\",@nobits",
-    ".balign 8",
-    ".weak __cubit_launch_block_length",
-    "__cubit_launch_block_length: .quad 0",
-    ".weak __cubit_launch_arguments_length",
-    "__cubit_launch_arguments_length: .quad 0",
-    ".popsection",
 );
 
 // --- a futex mutex for the runtime's own state ------------------------------

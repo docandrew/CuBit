@@ -4,7 +4,8 @@
 --
 --  @summary
 --  The libc program start (docs/process-arguments.md, docs/c-removal.md).
---  CuBit's loader enters _start (crt/crt1.S) with the stack pointer at the
+--  CuBit's loader enters _start (userspace/runtime/start/cubit_start.S,
+--  through crt/crt1.S), which calls Start, with the stack pointer at the
 --  top of an empty stack and RDI = the length of the process's launch
 --  block (0: none), mapped read-only at Block_Address. Start builds the
 --  block musl's __libc_start_main reads: argv and the environment from the
@@ -29,7 +30,10 @@ package CuBit.Libc_Start is
    Stack_Size : Unsigned_64 := 0
    with Export, Convention => C, External_Name => "__cubit_stack_size";
 
+   --  The language start the shared _start calls
+   --  (userspace/runtime/start/cubit_start.S): the initial stack pointer
+   --  and the launch block's payload length.
    procedure Start (Initial_Stack, Launch_Length : Unsigned_64)
-   with Export, Convention => C, External_Name => "__cubit_start", No_Return;
+   with Export, Convention => C, External_Name => "__cubit_language_start", No_Return;
 
 end CuBit.Libc_Start;

@@ -18,14 +18,13 @@ static ALLOCATOR: cubit_allocator::BoundedAllocator = cubit_allocator::BoundedAl
 
 include!(concat!(env!("CUBIT_BINDINGS_DIR"), "/bindings.rs"));
 
-#[path = "../../../../userspace/services/config-storage/entry.rs"]
-mod entry;
-
 #[path = "../../../../userspace/services/config-storage/std_hooks.rs"]
 mod std_hooks;
 
+// The language start the shared _start calls (userspace/runtime/start/
+// cubit_start.S, linked through the std runtime), in place of std's main.
 #[unsafe(no_mangle)]
-extern "C" fn rust_main() -> ! {
+extern "C" fn __cubit_language_start(_initial_stack: u64, _payload_length: u64) -> ! {
     #[cfg(feature = "turso")]
     {
         unsafe extern "C" {

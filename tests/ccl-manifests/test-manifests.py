@@ -276,9 +276,39 @@ class Manifests(unittest.TestCase):
             capture_output=True, text=True, timeout=5)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout, ada.stdout)
-        self.assertIn('pub const BINDING_TEST_HOST : &str = "test-host";', output.read_text())
-        self.assertIn('pub const BINDING_CLOCK : &str = "clock";', output.read_text())
-        self.assertNotIn('SLOT', output.read_text())
+        text = output.read_text()
+        # Typed accessors (CAP-003), not name constants.
+        self.assertIn('pub mod startup {', text)
+        self.assertIn('    pub fn test_host(table: &Table) -> Option<Endpoint> {\n'
+                      '        table.endpoint("test-host")\n    }', text)
+        self.assertIn('    pub fn clock(table: &Table) -> Option<Endpoint> {', text)
+        self.assertNotIn('BINDING_', text)
+        self.assertNotIn('SLOT', text)
+
+    def test_c_header_shares_the_validated_manifest(self):
+        ada = self.compile()
+        output = self.directory / 'startup.h'
+        result = subprocess.run([
+            TOOL, self.directory / 'catalog.ccl',
+            self.directory / 'manifest.ccl', '--c-output', output],
+            capture_output=True, text=True, timeout=5)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, ada.stdout)
+        text = output.read_text()
+        self.assertIn('static inline cubit_endpoint cubit_startup_test_host(void)\n{\n'
+                      '    return cubit_startup_endpoint("test-host");\n}', text)
+        self.assertIn('cubit_endpoint cubit_startup_endpoint(const char *name);', text)
+        self.assertTrue(text.rstrip().endswith('#endif'))
+
+    def test_rust_accessor_names(self):
+        self.compile()
+        manifest = self.directory / 'manifest.ccl'
+        manifest.write_text(SOURCE.replace('read-write clock)', 'read-write type)'))
+        result = subprocess.run([TOOL, self.directory / 'catalog.ccl', manifest,
+                                 '--rust-output', self.directory / 'bindings.rs'],
+                                capture_output=True, text=True, timeout=5)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('Rust keyword', result.stderr)
 
     def test_binding_name_validation(self):
         for name in ['25', 'bad_name', 'Clock', 'a--b', 'a-', '-a', '"clock"', 'x;bad']:

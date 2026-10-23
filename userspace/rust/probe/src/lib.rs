@@ -13,21 +13,11 @@ static ALLOCATOR: cubit_allocator::BoundedAllocator = cubit_allocator::BoundedAl
 include!(concat!(env!("CUBIT_BINDINGS_DIR"), "/bindings.rs"));
 
 // The ELF loader supplies initialized data/BSS and the requested stack.
-// No argv, environment, TLS, GNAT runtime, C startup, or Linux entry ABI.
-// RDI holds the launch block's length (its startup table) into rust_main.
-global_asm!(
-    r#"
-    .section .text._start,"ax",@progbits
-    .global _start
-    _start:
-        xor rbp, rbp
-        and rsp, -16
-        cld
-        call rust_main
-        ud2
-    .section .note.GNU-stack,"",@progbits
-"#
-);
+// No argv, environment, TLS, GNAT runtime, C startup, or Linux entry ABI:
+// the entry is the shared one (userspace/runtime/start/cubit_start.S,
+// CAP-003), which keeps the launch block's length (its startup table) and
+// calls __cubit_language_start below.
+global_asm!(include_str!("../../../runtime/start/cubit_start.S"));
 
 const REPLY_OK: u32 = 0xf000;
 const ECHO: u32 = 0x0c10;
@@ -45,16 +35,13 @@ const HELLO: [u64; 4] = [
 // Force a real BSS segment; the volatile read tests loader initialization.
 static mut ZEROED: [u64; 8] = [0; 8];
 
-/// The launch block's length, kept for the panic handler's report.
-static BLOCK_LENGTH: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(0);
-
-fn startup() -> Option<Table> {
-    // SAFETY: BLOCK_LENGTH holds the length the kernel passed at entry.
-    unsafe { Table::load(BLOCK_LENGTH.load(core::sync::atomic::Ordering::Relaxed)) }
+/// The startup table, from the length the shared start code kept.
+fn startup_table() -> Option<Table> {
+    Table::from_start()
 }
 
 fn report(outcome: u64, sample: u64) {
-    if let Some(host) = startup().and_then(|t| t.endpoint(BINDING_TEST_HOST)) {
+    if let Some(host) = startup_table().and_then(|t| startup::test_host(&t)) {
         let _ = host.call(Message::new(REPORT, 2, [outcome, sample, 0, 0]));
     }
 }
@@ -185,19 +172,18 @@ fn heap_failure_probe(host: &Endpoint) {
 }
 
 #[unsafe(no_mangle)]
-extern "C" fn rust_main(block_length: u64) -> ! {
-    BLOCK_LENGTH.store(block_length, core::sync::atomic::Ordering::Relaxed);
+extern "C" fn __cubit_language_start(_initial_stack: u64, _payload_length: u64) -> ! {
     // SAFETY: read before any thread starts; ZEROED is never mutated.
     let zeroed = unsafe { core::ptr::read_volatile(&raw const ZEROED) };
     if zeroed != [0; 8] {
         report(0, 1);
         cubit::exit(1);
     }
-    let Some(table) = startup() else {
+    let Some(table) = startup_table() else {
         cubit::debug_write("rust-probe: no startup table\n");
         cubit::exit(7);
     };
-    let Some(host) = table.endpoint(BINDING_TEST_HOST) else {
+    let Some(host) = startup::test_host(&table) else {
         cubit::debug_write("rust-probe: no test-host endpoint\n");
         cubit::exit(7);
     };
@@ -220,7 +206,7 @@ extern "C" fn rust_main(block_length: u64) -> ! {
         }
     }
     // The denied variant's manifest has no clock: its table has no entry.
-    let clock = table.endpoint(BINDING_CLOCK);
+    let clock = startup::clock(&table);
     match clock.as_ref().ok_or(CallError::Unavailable)
         .and_then(|c| c.call(Message::new(CLOCK_MONOTONIC_MS, 1, [0; 4]))) {
         Ok(first) if first.tag.label == REPLY_OK && first.tag.length == 1 => {

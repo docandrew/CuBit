@@ -11,17 +11,17 @@ mod std_hooks;
 #[path = "../../../lib/storage/native/bridge.rs"]
 mod storage;
 
-#[path = "../entry.rs"]
-mod entry;
-
 unsafe extern "C" {
     fn config_storage_hostinit();
     fn cubit_config_storage_path(buffer: *mut u8, capacity: u64, length: *mut u64) -> u32;
     fn cubit_config_storage_run(database: *mut core::ffi::c_void) -> u32;
 }
 
+// The language start the shared _start calls (userspace/runtime/start/
+// cubit_start.S, linked through the std runtime), in place of std's main:
+// the Ada host is initialized first.
 #[unsafe(no_mangle)]
-extern "C" fn rust_main() -> ! {
+extern "C" fn __cubit_language_start(_initial_stack: u64, _payload_length: u64) -> ! {
     // SAFETY: single-threaded startup, exactly once, before any Ada entrypoint.
     // The GNAT-generated binder initializes the full Ada library closure;
     // zeroed BSS alone does not elaborate package constants or bodies.

@@ -59,7 +59,8 @@ Diagnostics that must reach the kernel console (test markers) use
 `cubit_debug_write` from `<cubit/debug.h>`, explicitly; nothing is mirrored
 there implicitly.
 
-The start code (`crt/crt1.S`, then `CuBit.Libc_Start`) builds the
+The start code (the shared `userspace/runtime/start/cubit_start.S`
+through `crt/crt1.S`, then `CuBit.Libc_Start`) builds the
 argument block musl expects from the launch block (docs/process-arguments.md)
 or, without one, `argv = { "cubit-program" }` and an empty environment, and
 auxiliary entries for the program headers, page size and 16 random bytes.

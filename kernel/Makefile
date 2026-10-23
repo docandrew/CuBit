@@ -2108,12 +2108,12 @@ IMAGE_ONLY_BINARIES := ramdisk intel-gpu gpu-viewer teapots
 
 # CAP-002: capabilities are named by handles, never numbers. Runs first in
 # world; --self-test shows it rejecting each forbidden form.
-.PHONY : check-capability-numbers
-check-capability-numbers:
-	python3 ../tools/check_capability_numbers.py --self-test
-	python3 ../tools/check_capability_numbers.py --root ..
+.PHONY : check-declarations
+check-declarations:
+	python3 ../tools/check_declarations.py --self-test
+	python3 ../tools/check_declarations.py --root ..
 
-world: check-capability-numbers trace-viewer test-programs $(IMAGE_ONLY_BINARIES) cubit_kernel doom sameboy sleep thread-check futex-check clock-check avx-check devmem-check fault-check oom-check stall-check bench-spread capability-test storage-check ipctest-server ipctest-client bench-ipc-server bench-ipc-client ccl-test-host clock timesync tls ccl-vm ccl-workbench filesystem ata nvme virtio-net virtio-gpu netstack wget devices files text calculator lexicon dictionary config-inspector desktop-shell procmgr shell hda mixer ps2 xhci virtio-input config config-storage netmgr logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso
+world: check-declarations trace-viewer test-programs $(IMAGE_ONLY_BINARIES) cubit_kernel doom sameboy sleep thread-check futex-check clock-check avx-check devmem-check fault-check oom-check stall-check bench-spread capability-test storage-check ipctest-server ipctest-client bench-ipc-server bench-ipc-client ccl-test-host clock timesync tls ccl-vm ccl-workbench filesystem ata nvme virtio-net virtio-gpu netstack wget devices files text calculator lexicon dictionary config-inspector desktop-shell procmgr shell hda mixer ps2 xhci virtio-input config config-storage netmgr logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso
 
 .PHONY : headless-test
 headless-test: world

@@ -553,3 +553,50 @@ The user accepted every recommendation below on 2026-10-22.
 - Hosted: the ccl-manifests suite (typed clients, the catalog column,
   `.ads` only, the body), startup-tables (with a stub body) and
   driver-manifests (netmgr's scope).
+
+## Implementation notes (slice 2, 2026-10-23)
+
+**One entry.**
+- `userspace/runtime/start/cubit_start.S` (GNU `as`, Intel syntax) is the
+  only `_start`. It keeps `__cubit_launch_block_length` and
+  `__cubit_launch_arguments_length` (initialized data, so a later BSS clear
+  keeps them).
+- It then calls `__cubit_language_start (initial stack, payload length)`
+  with the stack aligned. It is included in four places:
+  - `userspace/c/crt0.S`, whose language start clears BSS, runs the
+    constructors and calls `main`;
+  - `userspace/libc/crt/crt1.S`, whose language start is
+    `CuBit.Libc_Start.Start`, exported under that name;
+  - moto-rt-cubit (`global_asm!(include_str!(…))`), with a weak language
+    start that calls `motor_start`;
+  - the no-std Rust probe.
+- config-storage and the Turso probe define the language start themselves
+  (`entry.rs` is deleted).
+- `art0.asm` and the legacy `userspace/Makefile` are deleted. The Makefile
+  built only `art0.o` and linked drivers from directories that no longer
+  exist.
+
+**Generated accessors.**
+- `--rust-output` writes `mod startup` with one function per endpoint
+  binding, `startup::clock(&table) -> Option<Endpoint>`, in place of the
+  `BINDING_*` string constants. Rust keywords are refused as binding names.
+- `--c-output startup.h` writes `cubit_startup_<binding>()` inline
+  functions. The libc lookup `cubit_startup_endpoint` is declared only
+  there, no longer in `cubit_handles.h`.
+- They are used by config-storage and the Turso probe (`std_hooks`), the
+  Rust probe, sched-latency and the Mesa window probe.
+- No startup check runs yet for Rust or C programs (the Ada programs
+  have theirs). That would be a weak `__cubit_startup_check` hook defined
+  by the generated bindings; it is the next step.
+
+**Build check.**
+- `tools/check_capability_numbers.py` is now `tools/check_declarations.py`,
+  and `make world`'s first step is `check-declarations`. It also refuses:
+  - a `_start` defined anywhere but `cubit_start.S`. Three files are
+    exempted by name, each with its reason: the binutils reference input,
+    the console's malformed demo input and a fake boot root.
+  - `cubit_start.S` constants that differ from the Ada declarations they
+    copy: the launch block address, the envelope magic, the trailer and
+    word sizes, and `Maximum_Table_Bytes`.
+- Run on the slice-1 tree, it names the six old copies and the missing
+  shared entry.

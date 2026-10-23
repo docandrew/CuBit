@@ -21,7 +21,7 @@
 --    saved reply);
 --  * in a reply to a request that accepted one (CuBit.Handles.Transfers).
 --  Only the children of this package see the kernel's words; programs never
---  do (tools/check_capability_numbers.py rejects a program unit in this
+--  do (tools/check_declarations.py rejects a program unit in this
 --  hierarchy, and an integer passed where a handle belongs).
 --
 --  Every result that may be a refusal is a discriminated record the caller

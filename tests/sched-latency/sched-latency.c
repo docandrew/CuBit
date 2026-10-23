@@ -678,13 +678,13 @@ static void run_wake(struct result *r)
 /* interactive: a paced request/response round trip to another process. */
 #ifdef CUBIT
 /* The ipc-test service (bench-ipc-server's echo): the manifest's "ipc-test"
- * startup entry (CAP-002: by name, never a slot number) and the server's
- * protocol (userspace/apps/bench-ipc-*). */
-#include "../../userspace/c/cubit_handles.h"
+ * startup entry (CAP-002: by name, never a slot number), through its
+ * generated startup header (CAP-003), and the server's protocol
+ * (userspace/apps/bench-ipc-*). */
+#include "startup.h"
 /* With a deadline (docs/ipc-fastpath.md, "Call deadlines"): none here. */
 #define SYSCALL_CALL_VIA_ENDPOINT_CAPABILITY 128
 #define WAIT_FOREVER (~0ul)
-#define IPC_TEST_BINDING "ipc-test"
 #define OP_BENCH_ECHO 0x0910
 #define REPLY_OK 0xF000
 #define ECHO_WORDS 1
@@ -713,7 +713,7 @@ static int echo(uint64_t value)
 	m.words[0] = value;
 	static cubit_endpoint ipc_test;
 	if (!cubit_endpoint_present(ipc_test))
-		ipc_test = cubit_startup_endpoint(IPC_TEST_BINDING);
+		ipc_test = cubit_startup_ipc_test();
 	if (!cubit_endpoint_present(ipc_test))
 		return 0;
 	unsigned long tag = cubit_call(SYSCALL_CALL_VIA_ENDPOINT_CAPABILITY,
