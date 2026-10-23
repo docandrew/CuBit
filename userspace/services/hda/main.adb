@@ -18,7 +18,6 @@ with CuBit.Messages; use CuBit.Messages;
 with CuBit.Memory_Grants; use CuBit.Memory_Grants;
 with HDA;
 with CuBit.Audio_Periods;
-with CuBit.Startup_State;
 with Startup;
 
 procedure main is
@@ -65,10 +64,6 @@ procedure main is
 
 begin
    debugPrint ("hda: starting" & ASCII.LF);
-   if not CuBit.Startup_State.Ready (Startup.Verify) then
-      debugPrint ("hda: startup capabilities missing" & ASCII.LF);
-      return;
-   end if;
 
    --  Initialize HDA controller
    HDA.initController;

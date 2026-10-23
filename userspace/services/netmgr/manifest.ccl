@@ -1,6 +1,8 @@
 # netmgr.svc's authority (CAP-002): its role registration, netstack's
 # endpoint badged as the network manager's authority (absent without
-# netstack), config.svc's endpoint, and its endpoint to devmgr.
+# netstack), config.svc's endpoint, and its endpoint to devmgr. It reads
+# its interface and DNS settings (net.*) and nothing else; devmgr installs
+# exactly this scope (CAP-003; it used to send a wildcard).
 (Executable_Manifest
   identity => "com.cubit.netmgr"
   version => "0.1.0"
@@ -9,4 +11,5 @@
     (service "network-stack" "netstack")
     (service "config" "config")
     (service "device-manager" "ready")]
-  optional => ["netstack"])
+  optional => ["netstack"]
+  scopes => [(config [File_Right.Read] "net.")])

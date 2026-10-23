@@ -185,7 +185,6 @@ begin
 
    --  The startup table holds exactly what the launcher gives every
    --  process (its manifest requests nothing).
-   Check (CuBit.Startup_State.Ready (Startup.Verify), "startup table loaded");
    Check (CuBit.Startup_State.Current.Count = Self_Entries
           and then CuBit.Startup_State.Current.Limit =
                    (Kind => ST.At_Most, Count => Handle_Limit),

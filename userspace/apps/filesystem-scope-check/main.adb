@@ -4,7 +4,6 @@ with CuBit.Messages; use CuBit.Messages;
 with CuBit.Filesystems; use CuBit.Filesystems;
 with CuBit.Memory_Grants;
 with CuBit.Handles;
-with CuBit.Startup_State;
 with Startup;
 
 procedure Main is
@@ -66,10 +65,6 @@ procedure Main is
       end if;
    end Reject_Rename;
 begin
-   if not CuBit.Startup_State.Ready (Startup.Verify) then
-      debugPrint ("FILESYSTEM-SCOPE-CHECK: FAIL startup capabilities" & ASCII.LF);
-      return;
-   end if;
    Raw := syscall (SYSCALL_SBRK, 2 * Page_Size);
    if Raw = Unsigned_64'Last then
       debugPrint ("FILESYSTEM-SCOPE-CHECK: FAIL allocation" & ASCII.LF);

@@ -31,11 +31,17 @@ with CuBit.Streams;
 with CuBit.Memory_Grants;
 
 with CuBit.Handles;
+with CuBit.Handles.Services;
 package CuBit.Launching is
 
-   --  The process manager endpoint every following call uses (the program's
-   --  startup handle for it); before Bind every call fails.
-   procedure Bind (Service : CuBit.Handles.Endpoint);
+   --  What a program starts programs through: made only from its
+   --  process-manager startup handle (the generated Startup function), so
+   --  a launch through nothing cannot be written (CAP-003).
+   type Launcher (<>) is private;
+   function Using (Process_Manager : CuBit.Handles.Services.Process_Manager.Endpoint) return Launcher;
+   --  The manifest declares process-manager optional: when the launch had
+   --  none, every call answers No_Process_Manager.
+   function Using (Process_Manager : CuBit.Handles.Services.Process_Manager.Optional_Endpoint) return Launcher;
 
    type Launch_Result is
      (Launched,
@@ -55,7 +61,8 @@ package CuBit.Launching is
    --  (Lend_Ring), which it then reads in place
    --  (CuBit.Stream_Regions.Read_Owned).
    procedure Launch
-     (Program   : String;
+     (Through   : Launcher;
+      Program   : String;
       Arguments : CuBit.Launch_Arguments.Block;
       Grants    : CuBit.Launch_Grants.Bytes;
       Started   : out Child;
@@ -76,7 +83,8 @@ package CuBit.Launching is
    --  Rings passed to Launch; revoke Reference (CuBit.Memory_Grants.Revoke) once
    --  the run is over, before reusing the pages.
    procedure Lend_Ring
-     (Pages : Positive;
+     (Through   : Launcher;
+      Pages : Positive;
       Entry_Type : CuBit.Streams.TypeTag;
       Base : in out Unsigned_64; Grant : out Unsigned_64;
       Reference : out CuBit.Memory_Grants.Grant_Reference; Success : out Boolean);
@@ -105,7 +113,8 @@ package CuBit.Launching is
    --  OP_LAUNCH_TABLE): Table (1 .. Length), Length 0 when it may start
    --  nothing, when Result = Launched (here: answered).
    procedure Launch_Table
-     (Table  : out CuBit.Launch_Authority.Table_Bytes;
+     (Through   : Launcher;
+      Table  : out CuBit.Launch_Authority.Table_Bytes;
       Length : out CuBit.Launch_Authority.Table_Length;
       Result : out Launch_Result)
    with Pre => Table'First = 1
@@ -116,7 +125,8 @@ package CuBit.Launching is
    --  it starts: Region (1 .. Length), Length 0 when it was given none,
    --  when Result = Launched (here: answered).
    procedure Delegated_Places
-     (Region : out CuBit.Launch_Grants.Bytes;
+     (Through   : Launcher;
+      Region : out CuBit.Launch_Grants.Bytes;
       Length : out CuBit.Launch_Grants.Byte_Count;
       Result : out Launch_Result)
    with Pre => Region'First = 1
@@ -127,7 +137,8 @@ package CuBit.Launching is
    --  declares none, when Result = Launched (here: answered). Decode it
    --  before use (CuBit.Program_Descriptions).
    procedure Describe
-     (Program    : String;
+     (Through   : Launcher;
+      Program    : String;
       Descriptor : out CuBit.Program_Descriptions.Bytes;
       Length     : out CuBit.Program_Descriptions.Descriptor_Length;
       Result     : out Launch_Result;
@@ -136,4 +147,14 @@ package CuBit.Launching is
                and then Descriptor'First = 1
                and then Descriptor'Length = CuBit.Program_Descriptions.Maximum_Descriptor_Bytes;
 
+private
+   type Launcher is record
+      Service : CuBit.Handles.Endpoint;
+   end record;
+   function Using (Process_Manager : CuBit.Handles.Services.Process_Manager.Endpoint) return Launcher is
+     ((Service => CuBit.Handles.Services.Process_Manager.Handle (Process_Manager)));
+   function Using (Process_Manager : CuBit.Handles.Services.Process_Manager.Optional_Endpoint) return Launcher is
+     ((Service => (if Process_Manager.Present
+                   then CuBit.Handles.Services.Process_Manager.Handle (Process_Manager.Value)
+                   else CuBit.Handles.No_Endpoint)));
 end CuBit.Launching;

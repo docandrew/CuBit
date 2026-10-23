@@ -353,7 +353,7 @@ class Manifests(unittest.TestCase):
         source = '(executable-manifest v1 (identity "a") (version "1"))'
         result = self.compile(source)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertNotIn('function ', (self.directory / 'startup.ads').read_text().split('function Verify')[0])
+        self.assertNotIn('function ', (self.directory / 'startup.ads').read_text())
         result = self.compile(source)
         self.assertEqual(result.returncode, 0, result.stderr)
         sections = self.sections(result.stdout)
@@ -792,6 +792,7 @@ class Manifests(unittest.TestCase):
     DRIVER = (ROOT / 'userspace/ccl/catalogs/driver-services.ccl').read_text()
     FIXTURE = (ROOT / 'tests/ccl-manifests/fixtures/startup/manifest.ccl').read_text()
     GOLDEN = ROOT / 'tests/startup-tables/generated/startup.ads'
+    GOLDEN_BODY = ROOT / 'tests/startup-tables/generated/startup.adb'
 
     def generate(self, source, catalog):
         manifest = self.directory / 'manifest.ccl'
@@ -940,6 +941,7 @@ class Manifests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         text = output.read_text()
         self.assertEqual(text, self.GOLDEN.read_text())
+        self.assertEqual(output.with_suffix('.adb').read_text(), self.GOLDEN_BODY.read_text())
         # Names, never numbers: no slot constants and no integer literals
         # outside comments. The Channels package carries the manifest's
         # declared channel limits (At_Most N), which are counts, not slots.
@@ -966,10 +968,69 @@ class Manifests(unittest.TestCase):
         self.assertIn('--  Handle limit: standard (4096).', text)
         empty, output = self.generate('(executable-manifest v1 (identity "a") (version "1"))', CATALOG)
         self.assertEqual(empty.returncode, 0, empty.stderr)
-        self.assertIn('(Standard.CuBit.Startup_State.Verify ([]));', output.read_text())
+        # Nothing declared, nothing to check (CAP-003): no table, no Require.
+        self.assertNotIn('Expected', output.read_text())
+        self.assertNotIn('Require', output.with_suffix('.adb').read_text())
+
+    # ------------------------------------------------------------------
+    # CAP-003: typed service endpoints and the startup check.
+    # ------------------------------------------------------------------
+    TYPED_CLIENTS = '''(executable-manifest v1 (identity "com.cubit.typed") (version "1")
+  (request-service logstore read-write log)
+  (request-service-optional log-observer read-write observer)
+  (request-service process-manager read-write launcher)
+  (request-service clock read-write clock))'''
+
+    def test_startup_typed_clients(self):
+        result, output = self.generate(self.TYPED_CLIENTS, self.NATIVE)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        text = output.read_text()
+        self.assertIn('function Log return Standard.CuBit.Handles.Services.Logstore.Endpoint is\n'
+                      '     (Standard.CuBit.Handles.Services.Logstore.Named ("log"));', text)
+        self.assertIn('function Observer return Standard.CuBit.Handles.Services.Log_Observer.Optional_Endpoint is',
+                      text)
+        self.assertIn('function Launcher return Standard.CuBit.Handles.Services.Process_Manager.Endpoint is', text)
+        # A service without a client stays a plain endpoint.
+        self.assertIn('function Clock return Standard.CuBit.Handles.Endpoint is', text)
+        self.assertIn('package Startup with SPARK_Mode, Elaborate_Body is', text)
+        body = output.with_suffix('.adb').read_text()
+        self.assertIn('Standard.CuBit.Startup_Check.Logged.Require\n     (Expected, "com.cubit.typed",\n'
+                      '      Standard.CuBit.Handles.Services.Logstore.Optional_Named ("log"));', body)
+        # The sections do not change with the clients.
+        self.assertEqual(self.sections(result.stdout),
+                         self.sections(self.compile(self.TYPED_CLIENTS, self.NATIVE).stdout))
+
+    def test_startup_check_without_logstore(self):
+        result, output = self.generate(SOURCE, CATALOG)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        body = output.with_suffix('.adb').read_text()
+        self.assertIn('   Standard.CuBit.Startup_Check.Require (Expected, ', body)
+        self.assertNotIn('Logged', body)
+
+    def test_catalog_client_column(self):
+        for column, accepted in [('(client Logstore)', True), ('(client Display)', False),
+                                 ('(clients Logstore)', False)]:
+            with self.subTest(column=column):
+                catalog = self.NATIVE.replace('(service logstore 13 read-write (client Logstore))',
+                                              f'(service logstore 13 read-write {column})')
+                result = self.compile(self.TYPED_CLIENTS, catalog)
+                self.assertEqual(result.returncode == 0, accepted, result.stderr)
+        # Only a service has a client, not a notification.
+        catalog = self.NATIVE.replace('(notification logstore 13 publish-and-manage)',
+                                      '(notification logstore 13 publish-and-manage (client Logstore))')
+        self.assertNotEqual(self.compile(self.TYPED_CLIENTS, catalog).returncode, 0)
+
+    def test_startup_output_must_be_a_spec(self):
+        manifest = self.directory / 'manifest.ccl'
+        manifest.write_text(self.TYPED_CLIENTS)
+        result = subprocess.run([TOOL, ROOT / 'userspace/ccl/catalogs/native-runtime-services.ccl', manifest,
+                                 '--startup-output', self.directory / 'startup.txt'],
+                                capture_output=True, text=True, timeout=5)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('.ads', result.stderr)
 
     def test_startup_binding_refuses_unusable_names(self):
-        for name in ('range', 'body', 'standard', 'verify', 'xor'):
+        for name in ('range', 'body', 'standard', 'expected', 'xor'):
             with self.subTest(name=name):
                 result, output = self.generate(SOURCE.replace('read-write clock)', f'read-write {name})'), CATALOG)
                 self.assertEqual(result.returncode, 1)

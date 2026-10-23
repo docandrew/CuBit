@@ -12,7 +12,6 @@ with CuBit.Display_Plane_Protocol;
 with Presentation_Test_Policy;
 with GPU_Test_Policy;
 with CuBit.Handles;
-with CuBit.Startup_State;
 with Startup;
 
 --  Dedicated fixture: never starts alongside a desktop session. Only authority
@@ -833,11 +832,6 @@ procedure Main is
       if Passed then debugPrint ("DISPLAY-BACKEND-FAILURE-CHECK: PASS" & ASCII.LF); end if;
    end Exercise_Backend_Failure;
 begin
-   if not CuBit.Startup_State.Ready (Startup.Verify) then
-      debugPrint ("DISPLAY-GRANTS-CHECK: FAIL startup capabilities" & ASCII.LF);
-      Ignored := syscall (SYSCALL_EXIT, 1);
-      return;
-   end if;
    if GPU_Test_Policy.Reject_Client_Clear then
       Exercise_Backend_Failure;
    else

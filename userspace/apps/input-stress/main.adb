@@ -6,7 +6,6 @@ with Interfaces; use Interfaces;
 with CuBit.Input; use CuBit.Input;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Handles;
-with CuBit.Startup_State;
 with Startup;
 
 procedure Main is
@@ -83,10 +82,6 @@ procedure Main is
    end Publish_Key;
 
 begin
-   if not CuBit.Startup_State.Ready (Startup.Verify) then
-      debugPrint ("input-stress: FAIL startup capabilities missing" & LF);
-      return;
-   end if;
    debugPrint ("input-stress: waiting for input consumers" & LF);
    for attempt in 1 .. 200 loop
       pointerConsumer :=

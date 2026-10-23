@@ -154,7 +154,6 @@ with CuBit.Handles.IPC;
 with CuBit.Handles.Control;
 with CuBit.Handles.Startup;
 with CuBit.Startup_Tables;
-with CuBit.Startup_State;
 with Startup;
 with Desktop_Endpoints;
 with CuBit.Graphics_Metrics;
@@ -13325,10 +13324,6 @@ begin
    --  Announce the session before anything slow (configuration, wallpaper
    --  reads): a framebuffer shell started next to the desktop checks this
    --  and leaves the display to it (shell setupDisplayPresent).
-   if not CuBit.Startup_State.Ready (Startup.Verify) then
-      debugPrint ("desktop: startup capabilities missing" & LF);
-      return;
-   end if;
    ret := registerDriver (DRIVER_DESKTOP, Startup.Registration);
    if ret = Unsigned_64'Last then
       debugPrint ("desktop: register failed" & LF);

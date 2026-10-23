@@ -48,8 +48,9 @@ rm -f "$here/ada/build/ada-args-check.app"
 cp "$here/ada/build/ada-args-check.app" "$out/ada-args-check.app"
 
 # delegate-check (Ada launcher): delegated places through CuBit.Launching.
-mkdir -p "$here/delegate/build"
+mkdir -p "$here/delegate/build/generated"
 "$manifest_tool" "$catalog" "$here/delegate/manifest.ccl" \
+    --startup-output "$here/delegate/build/generated/startup.ads" \
     > "$here/delegate/build/manifest.S"
 as --64 "$here/delegate/build/manifest.S" -o "$here/delegate/build/manifest.o"
 python3 "$here/launch-table.py" args-check.app > "$here/delegate/build/launch.S"

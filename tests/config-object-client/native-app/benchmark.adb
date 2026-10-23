@@ -1,4 +1,3 @@
-with CuBit.Startup_State;
 with Startup;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
@@ -111,7 +110,6 @@ procedure Benchmark is
       end loop;
    end Report;
 begin
-   Check (CuBit.Startup_State.Ready (Startup.Verify), "startup capabilities");
    Clock.Calibrate (Rate);
    Check (Rate > 0, "counter calibration");
    CCL.Objects.Bind (Types, CCL.Types.Integer_Type, [1, 2, 3, 4], Contract, Good);

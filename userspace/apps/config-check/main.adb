@@ -7,7 +7,6 @@ with CuBit.Config_Inspection;
 with CuBit.Memory_Grants;
 with CuBit.Config_Protocol;
 with Config_Worker_Startup;
-with CuBit.Startup_State;
 with Startup;
 with System;
 with CCL.Catalog;
@@ -176,7 +175,6 @@ procedure Main is
              "read-only fixture retired without outstanding acquisitions");
    end Check_Data_Protocol;
 begin
-   Check (CuBit.Startup_State.Ready (Startup.Verify), "startup capabilities");
    Check_Data_Protocol;
    CuBit.Config_Reader.Query (Probe, "", Value, Result);
    Check (Result = OK, "explicit wildcard read grant");

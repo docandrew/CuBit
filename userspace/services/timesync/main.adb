@@ -4,7 +4,6 @@ with Interfaces; use Interfaces;
 with System;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Handles;
-with CuBit.Startup_State;
 with Startup;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Net_Channels;
@@ -253,10 +252,6 @@ procedure Main is
    Ignore : Unsigned_64;
    Wait_Seconds : Unsigned_64;
 begin
-   if not CuBit.Startup_State.Ready (Startup.Verify) then
-      CuBit.Log.Warning ("timesync: startup capabilities missing");
-      return;
-   end if;
    CuBit.Log.Info ("timesync: started");
    if Allocation = Unsigned_64'Last then
       CuBit.Log.Warning ("timesync: buffer allocation failed");

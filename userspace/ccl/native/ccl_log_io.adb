@@ -9,6 +9,7 @@ with CuBit.Service_Names;
 with CCL.Interfaces.Logs;
 with CCL_Native_Bindings;
 with CuBit.Handles;
+with CuBit.Handles.Services;
 
 --  logs.recent on CuBit: a subscription to logstore filtered to one process,
 --  which replays that process's retained records; the newest that fit one
@@ -17,7 +18,9 @@ package body CCL_Log_IO is
    procedure Announce (Text : String) is
       Published : Boolean;
    begin
-      CuBit.Logging.Announce (Text, Published, CCL_Native_Bindings.Logstore);
+      if CCL_Native_Bindings.Logstore.Present then
+         CuBit.Logging.Announce (Text, Published, CCL_Native_Bindings.Logstore.Value);
+      end if;
    end Announce;
    package P renames CuBit.Log_Protocol;
    package L renames CuBit.Log_Records;
@@ -38,7 +41,7 @@ package body CCL_Log_IO is
    --  Observing logs needs the program's log-observer endpoint and a
    --  running logstore.
    function Available return Boolean is
-     (CuBit.Handles.Valid (CCL_Native_Bindings.Log_Observer)
+     (CCL_Native_Bindings.Log_Observer.Present
       and then CuBit.Messages."/=" (Logstore, CuBit.Messages.No_Process));
 
    --  A service name, or a process written in decimal (its Image): the log
@@ -82,7 +85,7 @@ package body CCL_Log_IO is
       Why : out CuBit.Failures.Failure)
    is
       Source : constant Unsigned_64 := Source_Of (Service);
-      Reader : CuBit.Logging.Reader;
+      Reader : CuBit.Logging.Reader := CuBit.Logging.Bound_To (CCL_Native_Bindings.Log_Observer);
       Result : P.Status;
       Value : P.Event;
       Lost : Unsigned_64;
@@ -102,7 +105,6 @@ package body CCL_Log_IO is
             "name a running service, or give its process number");
          return;
       end if;
-      CuBit.Logging.Bind (Reader, CCL_Native_Bindings.Log_Observer);
       CuBit.Logging.Subscribe (Reader, Result, Source => Source);
       Success := Result = P.OK;
       if not Success then
@@ -161,7 +163,11 @@ package body CCL_Log_IO is
       Kept : L.Severity;
       Result : P.Status;
    begin
-      CuBit.Logging.Get_Minimum (Kept, Result, CCL_Native_Bindings.Logstore);
+      CuBit.Logging.Get_Minimum
+        (Kept, Result,
+         (if CCL_Native_Bindings.Logstore.Present
+          then CuBit.Handles.Services.Logstore.Handle (CCL_Native_Bindings.Logstore.Value)
+          else CuBit.Handles.No_Endpoint));
       Level := Logs.Severity'Val (L.Severity'Pos (Kept));
       Success := Result = P.OK;
       Why := (if Success then (others => <>)

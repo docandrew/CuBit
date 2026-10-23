@@ -7,7 +7,6 @@ with Launch_Configuration;
 with Cpio;
 with Ram_Device;
 
-with CuBit.Startup_State;
 with Startup;
 
 procedure Main is
@@ -23,10 +22,6 @@ procedure Main is
    Ignore : Unsigned_64;
    Tag : MessageTag;
 begin
-   if not CuBit.Startup_State.Ready (Startup.Verify) then
-      debugPrint ("ramdisk: startup capabilities missing" & ASCII.LF);
-      return;
-   end if;
    --  The boot image devmgr mapped for us, from its launch configuration.
    declare
       Configuration : Launch_Configuration.Boot_Image_Configuration;

@@ -12,14 +12,16 @@
 --  => null on the accessors records that assumption for SPARK callers.
 ------------------------------------------------------------------------------
 with CuBit.Handles;
+with CuBit.Handles.Services;
 with Startup;
 
 package Desktop_Endpoints with SPARK_Mode => Off is
    Display_Service : constant CuBit.Handles.Endpoint := Startup.Display;
    Config_Service  : constant CuBit.Handles.Endpoint := Startup.Config;
-   Process_Manager : constant CuBit.Handles.Endpoint := Startup.Process_Manager;
+   Process_Manager : constant CuBit.Handles.Endpoint :=
+     CuBit.Handles.Services.Process_Manager.Handle (Startup.Process_Manager);
    --  logstore's observer role (the bootstrap screen's recent records).
-   Log_Observer    : constant CuBit.Handles.Endpoint := Startup.Log_Observer;
+   Log_Observer    : constant CuBit.Handles.Services.Log_Observer.Endpoint := Startup.Log_Observer;
    Files           : constant CuBit.Handles.Endpoint := Startup.Filesystem;
    --  The clock service; null when the profile starts none (no time shown).
    Clock_Service   : constant CuBit.Handles.Endpoint :=

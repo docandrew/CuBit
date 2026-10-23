@@ -6,7 +6,6 @@ with CuBit.Filesystems; use CuBit.Filesystems;
 with CuBit.Memory_Grants;
 with CuBit.Benchmark_Clock;
 with CuBit.Timing_Histograms;
-with CuBit.Startup_State;
 with Startup;
 
 procedure Main is
@@ -207,9 +206,6 @@ procedure Main is
       return True;
    end Run;
 begin
-   if not CuBit.Startup_State.Ready (Startup.Verify) then
-      debugPrint ("BENCH: FAIL storage startup" & ASCII.LF); return;
-   end if;
    Clock.Calibrate (Rate);
    if Rate = 0 then
       debugPrint ("BENCH: FAIL storage calibration" & ASCII.LF); return;

@@ -8,7 +8,7 @@ with Startup;
 procedure Main is
    package P renames CuBit.Log_Protocol;
    use type P.Status;
-   Reader : CuBit.Logging.Reader;
+   Reader : CuBit.Logging.Reader := CuBit.Logging.Bound_To (Startup.Log_Observer);
    Value : P.Event;
    Result : P.Status;
    Lost, Ignore, Source : Unsigned_64 := 0;
@@ -29,7 +29,6 @@ procedure Main is
       end if;
    end Check;
 begin
-   CuBit.Logging.Bind (Reader, Startup.Log_Observer);
    CuBit.Logging.Subscribe (Reader, Result);
    Check (Result = P.OK, "observer subscription");
    for Attempt in 1 .. 256 loop

@@ -3,6 +3,7 @@ with CuBit.Messages; use CuBit.Messages;
 with CuBit.Logging;
 with CuBit.Log_Records;
 with CuBit.Handles.Control;
+with CuBit.Handles.Services;
 
 package body Deferred_Warnings is
    package Logs renames CuBit.Log_Records;
@@ -23,7 +24,7 @@ package body Deferred_Warnings is
 
    type Phase is (Unbound, Bound, Failed);
    State  : Phase := Unbound;
-   Writer : CuBit.Logging.Publisher;
+   Writer : CuBit.Logging.Publisher := CuBit.Logging.Awaiting_Grant;
 
    Hex_Digits : constant String (1 .. 16) := "0123456789ABCDEF";
    function Hex (Value : Unsigned_64) return String is
@@ -108,7 +109,7 @@ package body Deferred_Warnings is
          debugPrint ("deferred warnings: no logstore binding" & ASCII.LF);
          return;
       end if;
-      CuBit.Logging.Bind (Writer, Target);
+      CuBit.Logging.Attach (Writer, CuBit.Handles.Services.Logstore.Granted (Target));
       State := Bound;
       for I in 1 .. Count loop
          Emit (Kept (I).Text (1 .. Kept (I).Length), Kept (I).Level);

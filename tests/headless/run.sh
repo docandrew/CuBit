@@ -71,7 +71,7 @@ Mesa native tests: --test softpipe, opengl, buffer, mesa-window, mesa-sync, mesa
 
 Options:
   --build              Run make world before booting QEMU
-  --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-console, logs, ccl-remote, capability-security, network-authority, bench-net, bench-fs, threads, futex, clock, avx, rust-std, libc, processes, control-events, binutils, gcc, gnat, servo, bench-spread, timesync, tls-probe, tls-service, wget-https, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, text, calculator, lexicon, dictionary, clipboard, key-repeat, desktop-doom, desktop-virtio-vga, desktop-vm, virtio-gpu, virtio-vga-primary, launch-failure, fs-coherence-CASE, or boot-timeline (--accel kvm --timeout 60)
+  --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-console, logs, ccl-remote, capability-security, network-authority, bench-net, bench-fs, threads, futex, clock, avx, rust-std, libc, processes, control-events, binutils, gcc, gnat, servo, bench-spread, timesync, tls-probe, tls-service, wget-https, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, text, calculator, lexicon, dictionary, clipboard, key-repeat, desktop-doom, desktop-virtio-vga, desktop-vm, virtio-gpu, virtio-vga-primary, launch-failure, fs-coherence-CASE, startup-health, or boot-timeline (--accel kvm --timeout 60)
   --timeout SECONDS    QEMU runtime before timeout is treated as success
                        (default 25; 180 for desktop tests, see DESKTOP_TIMEOUT_SECONDS)
   --accel NAME         QEMU accelerator (for example: tcg,thread=multi)
@@ -271,7 +271,7 @@ done
 
 if [ -z "$TIMEOUT_SECONDS" ]; then
     case "$TEST_NAME" in
-        desktop-display|desktop-protocol|files|text|calculator|lexicon|dictionary|clipboard|key-repeat|input-stream|launch-failure)
+        desktop-display|desktop-protocol|files|text|calculator|lexicon|dictionary|clipboard|key-repeat|input-stream|launch-failure|startup-health)
             TIMEOUT_SECONDS=$DESKTOP_TIMEOUT_SECONDS ;;
         network-authority)
             TIMEOUT_SECONDS=$NETWORK_AUTHORITY_TIMEOUT_SECONDS ;;
@@ -316,7 +316,7 @@ case "$TEST_NAME" in
         ;;
     grant-forward|grant-forward-intermediary-exit|grant-forward-owner-exit|grant-forward-desktop|config-tree|config-inspection|log-authority|log-fields|metrics|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
         ;;
-    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*)
+    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -782,6 +782,12 @@ case "$TEST_NAME" in
     files)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-files.ccl"
         ;;
+    startup-health)
+        # CAP-003: the full desktop boots with no refusal, every service
+        # registers, and the apps' records reach logstore (boot-logs prints
+        # what logstore keeps); check-refusals.py fails on refusals.
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-startup-health.ccl"
+        ;;
     launch-failure)
         # Desktop names why an Apps-menu launch failed (docs/process-arguments.md).
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-launch-failure.ccl"
@@ -1110,6 +1116,7 @@ if [ -n "$INIT_PROFILE" ]; then
        [ "$TEST_NAME" = "render-launch-policy" ] ||
        [ "$TEST_NAME" = "config-tree" ] ||
        [ "$TEST_NAME" = "files" ] ||
+       [ "$TEST_NAME" = "startup-health" ] ||
        [ "$TEST_NAME" = "launch-failure" ] ||
        [ "$TEST_NAME" = "text" ] ||
        [ "$TEST_NAME" = "calculator" ] ||
@@ -1184,6 +1191,20 @@ if [ -n "$INIT_PROFILE" ]; then
             echo "headless: failed to install desktop-check" >&2
             exit 1
         fi
+    fi
+    if [ "$TEST_NAME" = "startup-health" ]; then
+        # The current build of every program the profile starts (the base
+        # disk may be older), and boot-logs, which the disk does not carry.
+        for HEALTH_IMAGE in logstore.svc clock.svc timesync.svc tls.svc lexicon.svc shell.app \
+                            files.app calculator.app boot-logs.app; do
+            if [ ! -f "$KERNEL_DIR/isodir/boot/$HEALTH_IMAGE" ]; then
+                echo "headless: build $HEALTH_IMAGE first (make -C kernel world boot-logs)" >&2
+                exit 1
+            fi
+            debugfs -w -R "rm $HEALTH_IMAGE" "$TEMP_DISK" >/dev/null 2>&1
+            debugfs -w -R "write $KERNEL_DIR/isodir/boot/$HEALTH_IMAGE $HEALTH_IMAGE" \
+              "$TEMP_DISK" >/dev/null 2>&1 || exit 1
+        done
     fi
     if [ "$TEST_NAME" = "boot-timeline" ]; then
         for TIMELINE_IMAGE in logstore.svc clock.svc boot-timeline.app; do
@@ -4652,7 +4673,6 @@ capability-test: syscall registers unknown call PASS
 capability-test: syscall registers denied call PASS
 capability-test: syscall registers blocking return PASS
 capability-test: getpid PASS
-capability-test: startup table loaded PASS
 capability-test: startup table holds only the self entries, with the declared limit PASS
 capability-test: self entries are current handles PASS
 capability-test: no ambient capability at any old slot number PASS
@@ -5000,6 +5020,32 @@ calculator: mode STANDARD
 calculator: closed
 "
         ;;
+    startup-health)
+        # Every service registers; Files' and the Calculator's "started"
+        # records and Desktop's records reach logstore (their publishers are
+        # bound: CAP-003 R1/R2); Desktop reads its configured waitboost
+        # (its Config scope: live bug 2); netmgr reads its declared net.
+        # scope (no wildcard: live bug 4).
+        required_markers="
+devmgr: config server started
+devmgr: filesystem server started
+devmgr: procmgr started
+devmgr: netstack started
+devmgr: netmgr started
+logstore: authorized typed diagnostics ready
+clock: registered
+display: ready
+netmgr: if0 method=static
+netmgr: signaled ready
+desktop: internal shell active
+files: first frame presented
+calculator: window ready
+boot-logs: window ready
+boot-logs: files: started
+boot-logs: calculator: started
+boot-logs: desktop: gpu waitboost on (configured)
+"
+        ;;
     launch-failure)
         required_markers="
 procmgr: launch of files.app refused: unreadable capability manifest
@@ -5182,6 +5228,14 @@ EOF
 if [ "$missing" -ne 0 ]; then
     echo "headless: serial log: $SERIAL_LOG" >&2
     exit 1
+fi
+
+# Refusals (CAP-003): a declaration that fell short fails these tests.
+if [ "$TEST_NAME" = "startup-health" ] || [ "$TEST_NAME" = "logs" ]; then
+    if ! python3 "$ROOT_DIR/tests/headless/check-refusals.py" "$SERIAL_LOG"; then
+        echo "headless: serial log: $SERIAL_LOG" >&2
+        exit 1
+    fi
 fi
 
 if [ "$TEST_NAME" = "desktop-doom" ]; then

@@ -1,14 +1,17 @@
 # The services and registration roles procmgr's children may name in their
 # manifests. Numbers are service roles; a program gets its capabilities by
 # binding name in its startup table (CAP-002). No policy approval is implied.
+# (client X) names the typed handle a service's startup entry is handed out
+# as (CuBit.Handles.Services.X, CAP-003): a log publisher can only be bound
+# to a Logstore endpoint, a launcher only made from a Process_Manager one.
 (service-catalog v1
   (service network-stack 3 read-write)
-  (service process-manager 4 read-write)
+  (service process-manager 4 read-write (client Process_Manager))
   (service filesystem 6 read-write)
   (service device-manager 7 read-write)
   (service mixer 9 read-write)
   (service config 11 read-write)
-  (service logstore 13 read-write)
+  (service logstore 13 read-write (client Logstore))
   (service ipc-test 14 read-write)
   (service desktop 15 read-write)
   (service display 16 read-write)
@@ -16,7 +19,7 @@
   (service ccl-test-host 18 read-write)
   (service clock 19 read-write)
   (service mixer-control 20 read-write)
-  (service log-observer 21 read-write)
+  (service log-observer 21 read-write (client Log_Observer))
   (service clock-control 22 read-write)
   (service tls 23 read-write)
   (service metrics 24 read-write)

@@ -18,7 +18,6 @@ with CuBit.UI.App;
 with CuBit.UI.Controls;
 with CuBit.UI.Input;
 with CuBit.UI.State;
-with CuBit.Startup_State;
 with Startup;
 with Text_Commands; use Text_Commands;
 with Text_Documents;
@@ -366,10 +365,6 @@ procedure Main is
 begin
    Started_Us := Now_Us;
    debugPrint ("text: starting" & ASCII.LF);
-   if not CuBit.Startup_State.Ready (Startup.Verify) then
-      debugPrint ("text: startup capabilities missing" & ASCII.LF);
-      return;
-   end if;
    CuBit.Logging.Announce ("text: started", Opened, Startup.Logstore);
    Text_Host_Native.Open (Host, Startup.Text_Filesystem, Queue_Ready);
    debugPrint ((if Queue_Ready then "text: filesystem queue ready" else "text: no filesystem queue")

@@ -12,22 +12,25 @@ package body CCL_Native_Bindings is
    end Named;
 
    Clock_Entry            : constant CuBit.Handles.Endpoint := Named ("clock");
-   Logstore_Entry         : constant CuBit.Handles.Endpoint := Named ("logstore");
+   Logstore_Entry         : constant CuBit.Handles.Services.Logstore.Optional_Endpoint :=
+     CuBit.Handles.Services.Logstore.Optional_Named ("logstore");
    Filesystem_Entry       : constant CuBit.Handles.Endpoint := Named ("filesystem");
    Config_Entry           : constant CuBit.Handles.Endpoint := Named ("config");
    Process_Observer_Entry : constant CuBit.Handles.Endpoint := Named ("process-observer");
-   Log_Observer_Entry     : constant CuBit.Handles.Endpoint := Named ("log-observer");
+   Log_Observer_Entry     : constant CuBit.Handles.Services.Log_Observer.Optional_Endpoint :=
+     CuBit.Handles.Services.Log_Observer.Optional_Named ("log-observer");
    Log_Control_Entry      : constant CuBit.Handles.Endpoint := Named ("log-control");
    Network_Entry          : constant CuBit.Handles.Endpoint :=
      Named ("network", CuBit.Startup_Tables.Network);
    Lexicon_Entry          : constant CuBit.Handles.Endpoint := Named ("lexicon");
 
    function Clock            return CuBit.Handles.Endpoint is (Clock_Entry);
-   function Logstore         return CuBit.Handles.Endpoint is (Logstore_Entry);
+   function Logstore         return CuBit.Handles.Services.Logstore.Optional_Endpoint is (Logstore_Entry);
    function Filesystem       return CuBit.Handles.Endpoint is (Filesystem_Entry);
    function Config           return CuBit.Handles.Endpoint is (Config_Entry);
    function Process_Observer return CuBit.Handles.Endpoint is (Process_Observer_Entry);
-   function Log_Observer     return CuBit.Handles.Endpoint is (Log_Observer_Entry);
+   function Log_Observer     return CuBit.Handles.Services.Log_Observer.Optional_Endpoint is
+     (Log_Observer_Entry);
    function Log_Control      return CuBit.Handles.Endpoint is (Log_Control_Entry);
    function Network          return CuBit.Handles.Endpoint is (Network_Entry);
    function Lexicon          return CuBit.Handles.Endpoint is (Lexicon_Entry);

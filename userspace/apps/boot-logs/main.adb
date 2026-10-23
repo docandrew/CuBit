@@ -1,7 +1,6 @@
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Logging;
-with CuBit.Startup_State;
 with Startup;
 with CuBit.Log_Protocol;
 with CuBit.Log_Records;
@@ -21,7 +20,7 @@ procedure Main is
    Win : CuBit.UI.App.Window;
    UI : CuBit.UI.State.UI_State;
    Controls : CuBit.UI.Controls.Control_Map;
-   Reader : CuBit.Logging.Reader;
+   Reader : CuBit.Logging.Reader := CuBit.Logging.Bound_To (Startup.Log_Observer);
    Status : P.Status := P.Unavailable;
    Reported_Status : P.Status := P.Unavailable;
    Records : array (1 .. 512) of CuBit.Log_Records.Log_Record;
@@ -207,11 +206,6 @@ procedure Main is
      (UI, Controls, Render => Render, Handle_Event => Handle_Event,
       Next_Deadline => Deadline, On_Deadline => Tick, Activity_Wait => True);
 begin
-   if not CuBit.Startup_State.Ready (Startup.Verify) then
-      debugPrint ("boot-logs: startup capabilities missing" & ASCII.LF);
-      return;
-   end if;
-   CuBit.Logging.Bind (Reader, Startup.Log_Observer);
    CuBit.UI.App.Open (Win, 950, 610,
      CuBit.Desktop_Protocol.Feature_Bits
        ([CuBit.Desktop_Protocol.Decorated | CuBit.Desktop_Protocol.Resizable |

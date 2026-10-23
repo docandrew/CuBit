@@ -22,9 +22,14 @@ manifest() {  # manifest SOURCE OBJECT
         --schema "$repo/userspace/ccl/interfaces/executable-manifest.ccl" > "${2%.o}.S"
     as --64 "${2%.o}.S" -o "$2"
 }
-# The launcher (Ada): typed parameters through CuBit.Program_Parameters.
-mkdir -p "$here/check/build"
-manifest "$here/check/manifest.ccl" "$here/check/build/manifest.o"
+# The launcher (Ada): typed parameters through CuBit.Program_Parameters;
+# it launches through its generated Startup package (CAP-003).
+mkdir -p "$here/check/build/generated"
+"$repo/userspace/ccl/build/manifest/ccl-manifest" \
+    "$repo/userspace/ccl/catalogs/native-runtime-services.ccl" "$here/check/manifest.ccl" \
+    --schema "$repo/userspace/ccl/interfaces/executable-manifest.ccl" \
+    --startup-output "$here/check/build/generated/startup.ads" > "$here/check/build/manifest.S"
+as --64 "$here/check/build/manifest.S" -o "$here/check/build/manifest.o"
 rm -f "$here/check/build/binutils-check.app"
 (cd "$repo/kernel" && alr exec -- gprbuild $gprbuild_config -q -P "$here/check/binutils_check.gpr")
 cp "$here/check/build/binutils-check.app" "$out/binutils-check.app"

@@ -1,0 +1,18 @@
+# CuBit startup health (CAP-003, docs/declaration-checking.md section 5): the
+# full desktop with its services and a few apps, so that every declared
+# startup entry, Config scope and log publisher is exercised at boot.
+# boot-logs prints the records logstore keeps; tests/headless/
+# check-startup-health.py fails on any refusal.
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "clock.svc" (priority 5))
+  (start "timesync.svc" (priority 5) (network approve-declared))
+  (start "tls.svc" (priority 5) (network approve-declared))
+  (start "display.svc" (priority 5))
+  (start "lexicon.svc" (priority 4))
+  (start "desktop.svc" (priority 4))
+  (start "shell.app" (priority 3))
+  (start "files.app" (priority 3))
+  (start "calculator.app" (priority 3))
+  (start "boot-logs.app" (priority 2))
+)

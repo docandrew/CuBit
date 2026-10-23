@@ -19,7 +19,6 @@ with CuBit.Messages; use CuBit.Messages;
 with CuBit.Block_Devices; use CuBit.Block_Devices;
 with CuBit.Memory_Grants;
 with CuBit.Handles;
-with CuBit.Startup_State;
 with Startup;
 
 procedure main is
@@ -571,10 +570,6 @@ procedure main is
    msg    : Message;
 begin
    debugPrint ("ATA Driver: Starting..." & LF);
-   if not CuBit.Startup_State.Ready (Startup.Verify) then
-      debugPrint ("ATA Driver: startup capabilities missing" & LF);
-      return;
-   end if;
 
    --  Run IDENTIFY to detect primary master drive
    identification := doIdentify;

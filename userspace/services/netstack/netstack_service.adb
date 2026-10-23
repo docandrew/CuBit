@@ -22,7 +22,6 @@ with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Handles;
 with CuBit.Handles.IPC;
-with CuBit.Startup_State;
 with Startup;
 with CuBit.Process_IDs;
 with CuBit.Busy_Poll;
@@ -4858,10 +4857,6 @@ package body Netstack_Service is
       found   : Boolean;
    begin
    debugPrint ("netstack: starting..." & LF);
-   if not CuBit.Startup_State.Ready (Startup.Verify) then
-      debugPrint ("netstack: startup capabilities missing" & LF);
-      return;
-   end if;
    CuBit.Busy_Poll.Calibrate;
    TCP_Engine.Pool.Initialize (tcpPool);
    isnKey := (K0 => hardwareRandom, K1 => hardwareRandom);

@@ -1,10 +1,13 @@
 library project Worker_Host is
    CBOR_Source := external ("CBOR_ADA_SRC");
-   for Source_Dirs use (".", "../../lib/config", "../../ccl/src",
+   for Source_Dirs use (".", "build/generated", "../../lib/config", "../../ccl/src",
       "../../ccl/persistence", "../../lib/storage", "../../lib/storage/native", CBOR_Source & "/src");
    for Source_Files use
      ("ccl-types-correspondence.ads", "ccl-types-correspondence.adb") &
      ("worker_host.ads", "worker_host.adb", "native_storage.ads", "native_storage.adb",
+      --  Generated from manifest.ccl (build.sh): the startup entries and the
+      --  startup check, run when the Rust entry initializes this library.
+      "startup.ads", "startup.adb",
       "storage_channel.ads", "storage_channel.adb",
       "config_worker_receiver.ads", "config_worker_receiver.adb",
       "config_worker.ads", "config_worker.adb", "config_worker_storage.ads",

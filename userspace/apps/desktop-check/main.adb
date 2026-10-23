@@ -5,8 +5,10 @@ with Client_Frame_Damage;
 with Client_Frame_Buffer;
 with Interfaces; use Interfaces;
 with UI_Desktop_Service;
-with CuBit.Startup_State;
 with Startup;
+--  Withed for its elaboration, the startup check (CAP-003); nothing in it
+--  is used here.
+pragma Unreferenced (Startup);
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Desktop_Protocol.Publication;
 with CuBit.Memory_Grants;
@@ -896,10 +898,6 @@ procedure Main is
       end if;
    end Check_Input_Boundaries;
 begin
-   if not CuBit.Startup_State.Ready (Startup.Verify) then
-      debugPrint ("TEST: FAIL desktop protocol startup capabilities" & ASCII.LF);
-      return;
-   end if;
    Wire := Encode_Create ((320, 200, Plain_Surface, Desktop_Sized));
    Wire.Words (0) := Unsigned_64'Last;
    Response := Send (Wire);

@@ -5,8 +5,10 @@ with CuBit.Logging;
 with CuBit.Log_Records;
 package body Mesa_Probe_Log is
    use type System.Address;
+   --  The startup "logstore" endpoint (CAP-002), bound when declared
+   --  (CAP-003); one probe run per process.
+   Writer : CuBit.Logging.Publisher := CuBit.Logging.Bound_To (Startup.Logstore);
    type Log_Context is limited record
-      Writer : CuBit.Logging.Publisher;
       Enabled : Boolean := True;
    end record;
    package Pointers is new System.Address_To_Access_Conversions (Log_Context);
@@ -26,7 +28,7 @@ package body Mesa_Probe_Log is
            CuBit.Log_Records.Make (View);
       begin
          if Record_Value.Success then
-            CuBit.Logging.Emit (Item.Writer, Record_Value.Value, Ignore_Submitted);
+            CuBit.Logging.Emit (Writer, Record_Value.Value, Ignore_Submitted);
          end if;
       end;
    end Emit;
@@ -38,13 +40,11 @@ package body Mesa_Probe_Log is
       Ignore : Unsigned_64;
    begin
       if Callback = null then return 1; end if;
-      --  The startup "logstore" endpoint (CAP-002).
-      CuBit.Logging.Bind (Item.Writer, Startup.Logstore);
       Result := Callback (Item'Address);
       declare
          Hex_Digits : constant String := "0123456789ABCDEF";
          Hex : String (1 .. 16);
-         Loss : Unsigned_64 := CuBit.Logging.Dropped (Item.Writer);
+         Loss : Unsigned_64 := CuBit.Logging.Dropped (Writer);
       begin
          for I in reverse Hex'Range loop
             Hex (I) := Hex_Digits (Natural (Loss and 15) + 1);
@@ -57,13 +57,13 @@ package body Mesa_Probe_Log is
             Emit (Item'Address, Summary'Address, Summary'Length);
          end;
       end;
-      CuBit.Logging.Flush (Item.Writer, Drained);
-      CuBit.Logging.Disconnect (Item.Writer, Done);
+      CuBit.Logging.Flush (Writer, Drained);
+      CuBit.Logging.Disconnect (Writer, Done);
       if not Done then
          debugPrint ("MESA-DISCOVERY logger retiring; storage retained" & ASCII.LF);
       end if;
       while not Done loop
-         CuBit.Logging.Disconnect (Item.Writer, Done);
+         CuBit.Logging.Disconnect (Writer, Done);
          if not Done then Ignore := syscall (SYSCALL_SLEEP, 100); end if;
       end loop;
       return Result;

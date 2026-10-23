@@ -1,4 +1,3 @@
-with CuBit.Startup_State;
 with Startup;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
@@ -78,7 +77,6 @@ procedure Reopen is
       Check (Taken and Item.Valid and Item.Code = Code, Step & " reply");
    end Finish;
 begin
-   Check (CuBit.Startup_State.Ready (Startup.Verify), "startup capabilities");
    VM_Fixture.Run ("(+ 21 21)", Types, Expected_Value, Good); Check (Good, "compile expected value");
    CCL.Objects.Bind (Types, CCL.Types.Integer_Type, [1, 2, 3, 4], Contract, Good);
    Check (Good, "binding");

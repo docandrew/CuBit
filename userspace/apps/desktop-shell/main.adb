@@ -10,8 +10,10 @@ with System; use System;
 with System.Storage_Elements; use System.Storage_Elements;
 
 with CuBit.Messages; use CuBit.Messages;
-with CuBit.Startup_State;
 with Startup;
+--  Withed for its elaboration, the startup check (CAP-003); nothing in it
+--  is used here.
+pragma Unreferenced (Startup);
 with UI_Desktop_Service;
 with CuBit.Memory_Grants;
 with CuBit.Desktop_Protocol;
@@ -243,10 +245,6 @@ procedure main is
 
 begin
    debugPrint ("desktop-shell: starting" & LF);
-   if not CuBit.Startup_State.Ready (Startup.Verify) then
-      debugPrint ("desktop-shell: startup capabilities missing" & LF);
-      return;
-   end if;
 
    declare
       hello : Message := CuBit.Desktop_Messages.From_Wire

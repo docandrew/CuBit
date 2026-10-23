@@ -15,13 +15,23 @@ with CuBit.Channels;
 with CuBit.Control_Events;
 with CuBit.Process_Events;
 with Kernel_Device_Memory;
-with CuBit.Startup_State;
 with Startup;
+with CuBit.Refusal_Notes;
 
 procedure Main is
    function Image (Process : Process_ID) return String
      renames CuBit.Process_IDs.Text.Image;
    package Logs renames CuBit.Log_Records;
+   --  A request refused for want of the badge its operation needs, logged
+   --  once per process and operation (CAP-003).
+   procedure Report_Refusal (From : Process_ID; What : String) is
+   begin
+      CuBit.Refusal_Notes.Warn_Once
+        ("logstore", Image (From) & " " & What,
+         "process " & Image (From) & " " & What &
+         ": its endpoint lacks the badge for it (the logstore, log-observer or " &
+         "log-control entry its manifest requests)");
+   end Report_Refusal;
    package Settings renames CuBit.Config_Inspection;
    use type Logs.Severity;
    use type Settings.Status;
@@ -104,10 +114,6 @@ begin
         (Store, (Source => syscall (SYSCALL_GETPID), Node => This_Node, Publication_Tag => 0,
                  Monotonic_Ms => Now_Ms, Data => Decoded.Value));
    end if;
-   if not CuBit.Startup_State.Ready (Startup.Verify) then
-      debugPrint ("logstore: startup capabilities missing" & ASCII.LF);
-      return;
-   end if;
    Ignore := registerDriver (DRIVER_LOGSTORE, Startup.Registration);
    if Ignore = Unsigned_64'Last then
       debugPrint ("logstore: registration failed" & ASCII.LF);
@@ -152,6 +158,7 @@ begin
             Publisher_Rings.Open (Publishers, Store, Budgets, From, Request.authorityTag, Request,
                                   Minimum, Now_Ms, Response);
          else
+            Report_Refusal (From, "opening a publisher channel");
             Response := CuBit.Channels.Refusal_Reply (CuBit.Channel_Protocol.Unsupported);
          end if;
          Ignore := reply (From, Response);
@@ -160,6 +167,7 @@ begin
          if From /= No_Process and then May_Invoke (Request.authorityTag, Subscribe) then
             Stream_Writers.Open (Writers, From, Request.authorityTag, Request, Response);
          else
+            Report_Refusal (From, "opening a reader stream");
             Response := CuBit.Channels.Refusal_Reply (CuBit.Channel_Protocol.Unsupported);
          end if;
          Ignore := reply (From, Response);
@@ -185,6 +193,9 @@ begin
          end loop;
          Result := Denied;
          Send_Reply := True;
+         if Known and then not May_Invoke (Request.authorityTag, Op) then
+            Report_Refusal (From, Operation'Image (Op));
+         end if;
          if From /= No_Process and then Known and then
            May_Invoke (Request.authorityTag, Op)
          then

@@ -9,7 +9,7 @@
 --  The runtime's startup code loads the table its launcher installed
 --  (CuBit.Startup_Tables) exactly once, before the program runs; the
 --  generated Startup package then reads handles from it by name, through
---  CuBit.Capability_Handles, and Startup.Verify checks it against the
+--  CuBit.Capability_Handles, and its elaboration checks it against the
 --  program's declaration. A table is loaded only if it decodes and is
 --  complete (every entry Granted, or Absent and optional); a second Load
 --  is refused, so nothing later can replace what the launcher gave.

@@ -11,7 +11,7 @@ package body Desktop_Bootstrap_Logs is
    use type P.Status;
    use type CuBit.Log_Records.Severity;
 
-   Reader     : CuBit.Logging.Reader;
+   Reader     : CuBit.Logging.Reader := CuBit.Logging.Bound_To (Desktop_Endpoints.Log_Observer);
    Status     : P.Status := P.Unavailable;
    Next_Try   : Unsigned_64 := 0;
    Kept       : Desktop_Bootstrap_Notes.Notes;
@@ -29,7 +29,6 @@ package body Desktop_Bootstrap_Logs is
          end if;
          Next_Try := Started + Retry_Ms;
          --  Information and up: Warnings plus the kernel's physical map.
-         CuBit.Logging.Bind (Reader, Desktop_Endpoints.Log_Observer);
          CuBit.Logging.Subscribe (Reader, Status, CuBit.Log_Records.Information,
                                   Limit_Ms => Call_Limit_Ms);
          if Status not in P.OK | P.Empty | P.Gap then

@@ -10,7 +10,6 @@ with System.Machine_Code; use System.Machine_Code;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Handles;
 with CuBit.Handles.IPC;
-with CuBit.Startup_State;
 with Startup;
 with Channel_Session;
 with IPCtest_Channel;
@@ -166,10 +165,6 @@ procedure main is
 begin
    debugPrint ("ipctest-server: starting" & LF);
 
-   if not CuBit.Startup_State.Ready (Startup.Verify) then
-      debugPrint ("TEST: FAIL async-ipc server-startup" & LF);
-      return;
-   end if;
    ret := registerDriver (DRIVER_IPCTEST, Startup.Registration);
    if ret = Unsigned_64'Last then
       debugPrint ("TEST: FAIL async-ipc server-register" & LF);

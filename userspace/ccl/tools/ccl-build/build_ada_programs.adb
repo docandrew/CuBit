@@ -19,6 +19,8 @@ package body Build_Ada_Programs is
    Binder_Prefix : constant String := "b__";
    Generated_Directory : constant String := "generated";
    Startup_Spec : constant String := "startup.ads";
+   --  Its body: the startup check, run while the package elaborates (CAP-003).
+   Startup_Body : constant String := "startup.adb";
    Manifest_Assembly : constant String := "manifest.S";
    Manifest_Object_Name : constant String := "manifest.o";
    Manifest_File : constant String := "manifest.ccl";
@@ -353,6 +355,8 @@ package body Build_Ada_Programs is
             Literal (S, "--schema");
             Piece_Of (S, Input_Path, Schema);
             S.Capture := Assembly;
+            --  ccl-manifest writes the body beside the spec.
+            Declare_Output (S, Generated / Startup_Body);
             Run (S, Outcome);
             Remember (S, Outcome);
          end;
@@ -407,8 +411,11 @@ package body Build_Ada_Programs is
             if Program.Manifest_Catalog /= No_Manifest then
                declare
                   Startup : constant Input_Number := Use_Produced (S, Generated / Startup_Spec);
+                  Startup_Check : constant Input_Number := Use_Produced (S, Generated / Startup_Body);
                begin
-                  if In_Generated then Unit_Source := Startup; end if;
+                  if In_Generated then
+                     Unit_Source := (if File = Startup_Body then Startup_Check else Startup);
+                  end if;
                end;
             end if;
             Add_Runtime (S);
@@ -471,9 +478,12 @@ package body Build_Ada_Programs is
                               Withed : constant String := Base (Fields (3));
                               Unit_File : constant String :=
                                 (if Sources.Contains (Withed & Body_Suffix) then Withed & Body_Suffix
+                                 elsif Withed & Spec_Suffix = Startup_Spec
+                                   and then Program.Manifest_Catalog /= No_Manifest
+                                 then Startup_Body
                                  else Withed & Spec_Suffix);
                            begin
-                              if (Sources.Contains (Unit_File) or else Unit_File = Startup_Spec)
+                              if (Sources.Contains (Unit_File) or else Unit_File = Startup_Body)
                                 and then not Units.Contains (Unit_File)
                               then
                                  Units.Insert (Unit_File);

@@ -6,10 +6,12 @@ with Interfaces; use Interfaces;
 with CuBit.Launch_Arguments;
 with CuBit.Launch_Grants;
 with CuBit.Launching;
-with CuBit.Handles.Startup;
+with Startup;
 with CuBit.Messages; use CuBit.Messages;
 
 procedure Main is
+   --  Launches go through procmgr, the manifest\'s process-manager entry.
+   Launcher : constant CuBit.Launching.Launcher := CuBit.Launching.Using (Startup.Process_Manager);
    package LA renames CuBit.Launch_Arguments;
    package LG renames CuBit.Launch_Grants;
    use type CuBit.Launching.Launch_Result;
@@ -56,7 +58,7 @@ procedure Main is
       end if;
       LG.Finish (Grants, Region, Region_Length);
       CuBit.Launching.Launch
-        ("args-check.app", Block.Data (1 .. Length), Region (1 .. Region_Length),
+        (Launcher, "args-check.app", Block.Data (1 .. Length), Region (1 .. Region_Length),
          Child, Result, Failure);
    end Start;
 
@@ -64,7 +66,6 @@ procedure Main is
    Failure : LA.Launch_Failure;
 begin
    --  procmgr, the "process-manager" startup entry its manifest asks for.
-   CuBit.Launching.Bind (CuBit.Handles.Startup.Endpoint_Named ("process-manager"));
    --  Its own manifest does not let args-check read the place.
    Start ("denied", 0, "", Result, Failure);
    Say ("child started without delegation", Result = CuBit.Launching.Launched);

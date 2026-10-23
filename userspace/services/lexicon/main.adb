@@ -16,7 +16,6 @@ with CuBit.Logging;
 with CuBit.Log_Records;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Process_Events;
-with CuBit.Startup_State;
 with Lexicon_Answers;
 with Lexicon_Channel;
 with Lexicon_Images;
@@ -48,7 +47,7 @@ procedure Main is
    Data : Lexicon_Loading.Image_Access;
    Layout : Lexicon_Images.Layout;
    Loaded : Lexicon_Loading.Load_Result;
-   Logger : CuBit.Logging.Publisher;
+   Logger : CuBit.Logging.Publisher := CuBit.Logging.Bound_To (Startup.Logstore);
    Served : Unsigned_64 := 0;
 
    procedure Log (Text : String) is
@@ -123,12 +122,7 @@ procedure Main is
    Ignore : Unsigned_64;
 begin
    debugPrint ("lexicon: starting" & LF);
-   if not CuBit.Startup_State.Ready (Startup.Verify) then
-      debugPrint ("lexicon: startup capabilities missing" & LF);
-      return;
-   end if;
    CuBit.Config.Bind (Startup.Config);
-   CuBit.Logging.Bind (Logger, Startup.Logstore);
    Servers.Configure
      (S, [1 => (Element => LC.Element,
                 Per_Client => Startup.Channels.Com_Cubit_Lexicon_Per_Client,

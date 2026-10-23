@@ -11,13 +11,17 @@ mkdir -p "$build_dir"
 cd "$repo_dir/kernel"
 alr exec -- gprbuild -p -P ../userspace/allocator/allocator_native.gpr
 alr exec -- gprbuild -p -P ../userspace/runtime/user_runtime.gpr
+# The manifest first: the Ada host's generated Startup package (its typed
+# "config" entry and the startup check, CAP-003) comes with it.
+mkdir -p "$build_dir/generated"
+"$repo_dir/userspace/ccl/build/manifest/ccl-manifest" \
+    "$repo_dir/userspace/ccl/catalogs/native-runtime-services.ccl" \
+    "$service_dir/manifest.ccl" --rust-output "$build_dir/bindings.rs" \
+    --startup-output "$build_dir/generated/startup.ads" > "$build_dir/manifest.S"
+as --64 "$build_dir/manifest.S" -o "$build_dir/manifest.o"
 alr exec -- gprbuild $gprbuild_config -p -P ../userspace/services/config-storage/worker_host.gpr
 cd "$service_dir"
 bash "$probe_dir/prepare-turso.sh"
-"$repo_dir/userspace/ccl/build/manifest/ccl-manifest" \
-    "$repo_dir/userspace/ccl/catalogs/native-runtime-services.ccl" \
-    manifest.ccl --rust-output "$build_dir/bindings.rs" > "$build_dir/manifest.S"
-as --64 "$build_dir/manifest.S" -o "$build_dir/manifest.o"
 export CUBIT_BINDINGS_DIR="$build_dir"
 export CARGO_TARGET_DIR="$build_dir/cargo"
 export RUSTFLAGS='--cfg getrandom_backend="rdrand" --cfg polyval_force_soft --cfg aes_force_soft -C code-model=small -C relocation-model=static'

@@ -13,7 +13,9 @@ package body Display_Logs is
    package T renames CuBit.Text_To_Log;
    use type T.Step_Kind;
 
-   Writer : CuBit.Logging.Publisher;
+   --  Minimal profiles start Display without logstore (the manifest
+   --  declares it optional): then the console echo is all there is.
+   Writer : CuBit.Logging.Publisher := CuBit.Logging.Bound_To (Startup.Logstore);
    Framer : T.Adapter;
 
    procedure Write (Text : String) is
@@ -28,10 +30,4 @@ package body Display_Logs is
          end if;
       end loop;
    end Write;
-begin
-   --  Minimal profiles start Display without logstore: then the console
-   --  echo is all there is.
-   if Startup.Logstore.Present then
-      CuBit.Logging.Bind (Writer, Startup.Logstore.Value);
-   end if;
 end Display_Logs;

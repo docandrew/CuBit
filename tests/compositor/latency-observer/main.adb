@@ -8,7 +8,6 @@ with CuBit.Messages; use CuBit.Messages;
 with CuBit.Metrics;
 with CuBit.Metric_Protocol;
 with Compositor_Stage_Metrics;
-with CuBit.Startup_State;
 with Startup;
 procedure Main is
    package P renames CuBit.Metric_Protocol;
@@ -29,10 +28,6 @@ procedure Main is
       elsif Key = Unsigned_64 (SM.Key (SM.Input_To_Present)) then "input_to_present"
       else "input_source_age");
 begin
-   if not CuBit.Startup_State.Ready (Startup.Verify) then
-      debugPrint ("TEST: FAIL startup capabilities" & ASCII.LF);
-      return;
-   end if;
    CuBit.Metrics.Bind (Watcher, Startup.Metrics_Observer);
    loop
       Next := 0;

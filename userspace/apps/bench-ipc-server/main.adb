@@ -8,7 +8,6 @@
 with Interfaces; use Interfaces;
 
 with CuBit.Messages; use CuBit.Messages;
-with CuBit.Startup_State;
 with Startup;
 
 procedure main is
@@ -38,10 +37,6 @@ procedure main is
    end makeReply;
 
 begin
-   if not CuBit.Startup_State.Ready (Startup.Verify) then
-      debugPrint ("BENCH: FAIL ipc server-startup" & LF);
-      return;
-   end if;
    ret := registerDriver (DRIVER_IPCTEST, Startup.Registration);
    if ret = Unsigned_64'Last then
       debugPrint ("BENCH: FAIL ipc server-register" & LF);

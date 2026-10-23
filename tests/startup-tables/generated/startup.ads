@@ -6,7 +6,7 @@ with CuBit.Handles.Startup;
 with CuBit.Startup_State;
 with CuBit.Startup_Tables;
 with CuBit.Channel_Limits;
-package Startup with SPARK_Mode is
+package Startup with SPARK_Mode, Elaborate_Body is
 
    --  Device_Memory "registers", required.
    function Registers return Standard.CuBit.Handles.Device_Memory is
@@ -27,16 +27,6 @@ package Startup with SPARK_Mode is
    --  Scheduling "real-time", required.
    function Real_Time return Standard.CuBit.Handles.Scheduling is
      (Standard.CuBit.Handles.Startup.Scheduling_Named ("real-time", Standard.CuBit.Startup_Tables.Scheduling));
-
-   --  Whether the loaded startup table holds every capability above,
-   --  with its kind; call once at startup and stop if it is not Ready.
-   function Verify return Standard.CuBit.Startup_State.Verification is
-     (Standard.CuBit.Startup_State.Verify
-        ([(Standard.CuBit.Startup_Tables.To_Name ("registers"), Standard.CuBit.Startup_Tables.Device_Memory, Standard.CuBit.Startup_Tables.Required),
-          (Standard.CuBit.Startup_Tables.To_Name ("device"), Standard.CuBit.Startup_Tables.Interrupt, Standard.CuBit.Startup_Tables.Required),
-          (Standard.CuBit.Startup_Tables.To_Name ("devmgr"), Standard.CuBit.Startup_Tables.Endpoint, Standard.CuBit.Startup_Tables.Required),
-          (Standard.CuBit.Startup_Tables.To_Name ("pointer-events"), Standard.CuBit.Startup_Tables.Notification, Standard.CuBit.Startup_Tables.Optional),
-          (Standard.CuBit.Startup_Tables.To_Name ("real-time"), Standard.CuBit.Startup_Tables.Scheduling, Standard.CuBit.Startup_Tables.Required)]));
 
    package Channels is
       --  "gpu.display"
@@ -61,4 +51,13 @@ package Startup with SPARK_Mode is
       Gpu_Render_Class : constant Standard.CuBit.Channel_Limits.Channel_Class :=
         Standard.CuBit.Channel_Limits.Normal;
    end Channels;
+
+   --  The table declared above; the package's elaboration checks the
+   --  loaded one against it and stops the program if it falls short.
+   Expected : constant Standard.CuBit.Startup_State.Expectations :=
+     [(Standard.CuBit.Startup_Tables.To_Name ("registers"), Standard.CuBit.Startup_Tables.Device_Memory, Standard.CuBit.Startup_Tables.Required),
+      (Standard.CuBit.Startup_Tables.To_Name ("device"), Standard.CuBit.Startup_Tables.Interrupt, Standard.CuBit.Startup_Tables.Required),
+      (Standard.CuBit.Startup_Tables.To_Name ("devmgr"), Standard.CuBit.Startup_Tables.Endpoint, Standard.CuBit.Startup_Tables.Required),
+      (Standard.CuBit.Startup_Tables.To_Name ("pointer-events"), Standard.CuBit.Startup_Tables.Notification, Standard.CuBit.Startup_Tables.Optional),
+      (Standard.CuBit.Startup_Tables.To_Name ("real-time"), Standard.CuBit.Startup_Tables.Scheduling, Standard.CuBit.Startup_Tables.Required)];
 end Startup;

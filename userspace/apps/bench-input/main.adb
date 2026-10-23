@@ -5,7 +5,6 @@ with CuBit.Desktop_Protocol; use CuBit.Desktop_Protocol;
 with CuBit.Desktop_Messages; use CuBit.Desktop_Messages;
 with CuBit.Benchmark_Clock;
 with CuBit.Timing_Histograms;
-with CuBit.Startup_State;
 with Startup;
 
 --  Closed-loop diagnostic, NOT an interrupt-to-app or open-loop SLA test.
@@ -189,10 +188,6 @@ procedure Main is
       end if;
    end Exercise;
 begin
-   if not CuBit.Startup_State.Ready (Startup.Verify) then
-      Fail ("startup capabilities");
-      Ignored := syscall (SYSCALL_EXIT, 1);
-   end if;
    Exercise;
    Ignored := syscall (SYSCALL_EXIT, (if Passed then 0 else 1));
 end Main;

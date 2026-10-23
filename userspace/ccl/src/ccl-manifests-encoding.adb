@@ -294,7 +294,8 @@ package body CCL.Manifests.Encoding with SPARK_Mode => On is
       for Index in 1 .. Count loop
          Result.Bindings (Index) := (Name => Requests (Index).Name,
                                      Kind => Startup_Kind (Requests (Index).Kind),
-                                     Requirement => Requests (Index).Requirement);
+                                     Requirement => Requests (Index).Requirement,
+                                     Client => Requests (Index).Client);
       end loop;
       Result.Success := True;
       --  .cubit.launch: "LNCH", version, count, then each name as a length

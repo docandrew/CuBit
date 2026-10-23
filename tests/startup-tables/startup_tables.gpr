@@ -11,7 +11,7 @@ project Startup_Tables is
       "cubit-handles-startup.ads", "cubit-handles-startup.adb",
       "cubit-handles-test_words.ads", "launch_block_stub.ads",
       "cubit-launch_envelopes.ads", "cubit-launch_envelopes.adb",
-      "startup.ads",
+      "startup.ads", "startup_body_stub.adb", "cubit-channel_limits.ads",
       "cubit-startup_builder.ads", "cubit-startup_builder.adb",
       "builder_proof.ads", "builder_proof.adb",
       "main.adb");
@@ -22,6 +22,8 @@ project Startup_Tables is
    --  the tests load startup tables themselves.
    package Naming is
       for Spec ("CuBit.Launch_Block") use "launch_block_stub.ads";
+      --  The generated startup.adb stops the process on a failed check.
+      for Body ("Startup") use "startup_body_stub.adb";
    end Naming;
    package Compiler is
       for Default_Switches ("Ada") use

@@ -15,7 +15,6 @@ with CuBit.UI.State;
 with CuBit.UI.Trees;
 with CuBit.UI.Widgets;
 with Config_Tree;
-with CuBit.Startup_State;
 with Startup;
 
 procedure Main is
@@ -326,10 +325,6 @@ procedure Main is
    Opened : Boolean;
    Announced : Boolean;
 begin
-   if not CuBit.Startup_State.Ready (Startup.Verify) then
-      debugPrint ("config-inspector: startup capabilities missing" & ASCII.LF);
-      return;
-   end if;
    CuBit.Logging.Announce ("config-inspector: started (read-only)", Announced, Startup.Logstore);
    Refresh;
    CuBit.UI.App.Open (Win, 860, 560,

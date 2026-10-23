@@ -13,16 +13,14 @@ with Config_Worker_Receiver;
 with Config_Worker_Startup;
 with CuBit.Handles;
 with CuBit.Handles.IPC;
-with CuBit.Handles.Startup;
+with Startup;
 
 package body Worker_Host is
-   --  The Config endpoint: the program's "config" startup entry.
-   function Config_Service return CuBit.Handles.Endpoint is
-      Found : constant CuBit.Handles.Startup.Optional_Endpoint :=
-        CuBit.Handles.Startup.Optional_Endpoint_Named (Config_Binding);
-   begin
-      return (if Found.Present then Found.Value else CuBit.Handles.No_Endpoint);
-   end Config_Service;
+   --  The Config endpoint: the program's "config" startup entry. Its
+   --  presence is not checked here: the generated Startup package's check
+   --  stops the program before this library runs if the entry, or the
+   --  whole startup table, is missing (CAP-003).
+   function Config_Service return CuBit.Handles.Endpoint renames Startup.Config;
    use type System.Address;
    use type CuBit.Config_Inspection.Status;
 
@@ -40,11 +38,6 @@ package body Worker_Host is
       Length.all := 0;
       if Buffer = System.Null_Address or Capacity < CuBit.Config_Inspection.Maximum_Text then
          return 16#F001#;
-      end if;
-      --  Say which: a missing startup entry and each refusal are distinct.
-      if not CuBit.Handles.Valid (Config_Service) then
-         debugPrint ("CONFIG-STORAGE: no """ & Config_Binding & """ startup entry" & ASCII.LF);
-         return CuBit.Config_Inspection.Status'Enum_Rep (CuBit.Config_Inspection.Unavailable);
       end if;
       --  Read once from bootstrap Config, BEFORE opening the database. There
       --  is deliberately no path default and no lookup in our own database.
@@ -67,7 +60,7 @@ package body Worker_Host is
 
    function Run (Database : System.Address) return Unsigned_32 is
    begin
-      if Database = System.Null_Address or else not CuBit.Handles.Valid (Config_Service) then
+      if Database = System.Null_Address then
          return 16#F001#;
       end if;
       declare

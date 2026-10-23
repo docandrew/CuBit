@@ -22,7 +22,6 @@ with CuBit.Control_Events;
 with CuBit.Busy_Poll;
 with Fs_Server;
 with Fs_Attachments;
-with CuBit.Startup_State;
 with Startup;
 
 procedure main is
@@ -37,10 +36,6 @@ procedure main is
    volumesOk  : Boolean;
 begin
    debugPrint ("FS Server: Starting..." & LF);
-   if not CuBit.Startup_State.Ready (Startup.Verify) then
-      debugPrint ("FS Server: startup capabilities missing" & LF);
-      return;
-   end if;
 
    --  The boot image devmgr mapped for us, from its launch configuration.
    declare

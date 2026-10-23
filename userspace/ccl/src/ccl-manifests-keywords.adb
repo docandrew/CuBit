@@ -236,6 +236,7 @@ package body CCL.Manifests.Keywords with SPARK_Mode => On is
             for Binding of Services (1 .. Service_Count) loop
                if Name = Binding.Name and then Kind = Binding.Kind then
                   Item.Service := Binding.ID;
+                  Item.Client := Binding.Client;
                   Offered := Binding.Rights;
                   Found := True;
                end if;
@@ -677,6 +678,33 @@ package body CCL.Manifests.Keywords with SPARK_Mode => On is
                Fail (Invalid_Notification_ID, Cursor);
             end if;
             Read_Rights (Item.Rights, Item.Kind);
+            --  A service's typed client, if it has one: (client Logstore).
+            Item.Client := Plain;
+            Skip;
+            if not Failed and then Cursor <= Last and then Text (Cursor) = '(' then
+               Expect ('(');
+               Atom (Name);
+               if Failed or else not Is_Text (Name, "client") or else Item.Kind /= Service_Request then
+                  Fail (Unknown_Declaration, Cursor);
+                  return;
+               end if;
+               Atom (Name);
+               declare
+                  Found : Boolean := False;
+               begin
+                  for Client in Logstore .. Service_Client'Last loop
+                     if Is_Text (Name, Client_Name (Client)) then
+                        Item.Client := Client;
+                        Found := True;
+                     end if;
+                  end loop;
+                  if not Found then
+                     Fail (Unknown_Client, Cursor);
+                     return;
+                  end if;
+               end;
+               Expect (')');
+            end if;
             Expect (')');
             for Binding of Services (1 .. Service_Count) loop
                --  A service and a notification may share a name.

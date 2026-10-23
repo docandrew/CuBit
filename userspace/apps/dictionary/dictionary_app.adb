@@ -1,7 +1,6 @@
 with CuBit.Desktop_Protocol;
 with CuBit.Logging;
 with CuBit.Messages; use CuBit.Messages;
-with CuBit.Startup_State;
 with CuBit.UI; use CuBit.UI;
 with CuBit.UI.App;
 with CuBit.UI.Controls;
@@ -125,10 +124,6 @@ package body Dictionary_App is
       Name : constant String := "dictionary";
    begin
       debugPrint (Name & ": starting" & ASCII.LF);
-      if not CuBit.Startup_State.Ready (Startup.Verify) then
-         debugPrint (Name & ": startup capabilities missing" & ASCII.LF);
-         return;
-      end if;
       CuBit.Logging.Announce (Name & ": started", Announced, Startup.Logstore);
       Views.Initialize (View, Views.Dictionary_Mode);
       CuBit.UI.App.Open (Win, WINDOW_WIDTH, WINDOW_HEIGHT,

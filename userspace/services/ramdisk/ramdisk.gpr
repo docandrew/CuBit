@@ -8,7 +8,7 @@ project Ramdisk is
     for Source_Files use ("main.adb", "ram_device.ads", "ram_device.adb",
                           "cpio.ads", "cpio.adb",
                           --  Its startup capabilities (generated from manifest.ccl).
-                          "startup.ads");
+                          "startup.ads", "startup.adb");
 
     for Main use ("main.adb");
 

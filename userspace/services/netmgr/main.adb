@@ -22,7 +22,6 @@ with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Config;
 with CuBit.Handles;
-with CuBit.Startup_State;
 with DHCP;
 with Startup;
 
@@ -274,10 +273,6 @@ procedure main is
 
 begin
    debugPrint ("netmgr: starting" & LF);
-   if not CuBit.Startup_State.Ready (Startup.Verify) then
-      debugPrint ("netmgr: startup capabilities missing" & LF);
-      return;
-   end if;
    CuBit.Config.Bind (Startup.Config);
 
    --  Register as DRIVER_NETMGR

@@ -21,7 +21,7 @@ procedure Main is
    Reference, CPU, Retired : aliased Unsigned_64 := 0;
    Status : Unsigned_32;
    Failed : Boolean := False;
-   Writer : CuBit.Logging.Publisher;
+   Writer : CuBit.Logging.Publisher := CuBit.Logging.Bound_To (Startup.Logstore);
    Logging_Enabled : Boolean := True;
    function Discovery_Check (Endpoint : CuBit.Handles.C_ABI.C_Endpoint) return Unsigned_32
      with Import, Convention => C, External_Name => "cubit_test_native_discovery";
@@ -119,7 +119,6 @@ procedure Main is
       -- do not submit it or close its name while the sealed VM retains it.
    end Exercise;
 begin
-   CuBit.Logging.Bind (Writer, Startup.Logstore);
    Report ("RENDER-SESSION admitted app entered");
    Exercise;
    -- Exactly one close attempt, also on error. Uncertain resources stay held

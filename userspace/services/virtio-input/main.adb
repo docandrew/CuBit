@@ -33,7 +33,6 @@ with Launch_Configuration;
 with CuBit.Input; use CuBit.Input;
 with CuBit.Virtio_Input_Control;
 with CuBit.Device_Interrupts;
-with CuBit.Startup_State;
 with Startup;
 with Input_Pending;
 with Absolute_Pointer;
@@ -328,10 +327,6 @@ procedure main is
    end Reject;
 begin
    debugPrint ("virtio-input: starting" & LF);
-   if not CuBit.Startup_State.Ready (Startup.Verify) then
-      debugPrint ("virtio-input: startup capabilities missing" & LF);
-      return;
-   end if;
 
    --  Startup is bound to the registered device manager's kernel-supplied
    --  sender identity.

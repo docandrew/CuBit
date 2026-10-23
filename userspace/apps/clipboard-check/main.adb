@@ -12,8 +12,10 @@
 ------------------------------------------------------------------------------
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
-with CuBit.Startup_State;
 with Startup;
+--  Withed for its elaboration, the startup check (CAP-003); nothing in it
+--  is used here.
+pragma Unreferenced (Startup);
 with CuBit.UI; use CuBit.UI;
 with CuBit.UI.App;
 with CuBit.UI.State;
@@ -165,10 +167,6 @@ procedure Main is
      (UI, Map, Render => Render, Handle_Event => Handle, Activity_Wait => True);
    OK, Accepted : Boolean;
 begin
-   if not CuBit.Startup_State.Ready (Startup.Verify) then
-      debugPrint ("clipboard-check: startup capabilities missing" & ASCII.LF);
-      return;
-   end if;
    Editor.Initialize (Fields (Name_Field), "", Accepted);
    Editor.Initialize (Fields (Secret_Field), "", Accepted, Kind => Editor.Sensitive);
    App.Open (Win, WINDOW_W, WINDOW_H,

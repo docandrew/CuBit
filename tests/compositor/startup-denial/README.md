@@ -31,7 +31,8 @@ The modified SPARK adapter passes 31 checks, none unproved; this does not prove
 Mesa, hardware readiness, log transport or native allocation behavior.
 
 `native_log_observer.adb` is the source of the native channel observer (compiled
-as Main). It authenticates Desktop's publisher, requires the exact admission
+as Main, with a generated Startup package from a manifest that requests
+`log-observer`; no build script in the tree compiles it today). It authenticates Desktop's publisher, requires the exact admission
 record once between INIT_AFTER and software selection, rejects stream gaps,
 and closes its reader. The recorded native run also covers software Mesa,
 menus, pointer/keyboard progress, cursor damage at 100%/125% and metrics.

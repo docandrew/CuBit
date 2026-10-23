@@ -12,7 +12,6 @@ with Metric_Raw_Query;
 --  Metric_Store core: authenticates the immediate peer (kernel-stamped PID
 --  and tag), gates each operation, copies producer pages privately, and
 --  returns every grant acquisition before replying.
-with CuBit.Startup_State;
 with Startup;
 procedure Main is
    package Grants renames CuBit.Memory_Grants;
@@ -48,10 +47,6 @@ procedure Main is
       Bytes in Records.Batch_Bytes (Records.Batch_Record_Count'First) ..
                Records.Batch_Bytes (Records.Batch_Record_Count'Last));
 begin
-   if not CuBit.Startup_State.Ready (Startup.Verify) then
-      debugPrint ("metricsvc: startup capabilities missing" & ASCII.LF);
-      return;
-   end if;
    Ignore := registerDriver (Publisher_Service_Role, Startup.Registration);
    if Ignore = Unsigned_64'Last then
       debugPrint ("metricsvc: registration failed" & ASCII.LF);

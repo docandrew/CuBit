@@ -69,6 +69,8 @@ package CCL.Manifests.Model with SPARK_Mode => On is
       Extra : Unsigned_64 := 0;
       --  Whether the launch fails without it (the manifest's `optional`).
       Requirement : CuBit.Startup_Tables.Need := CuBit.Startup_Tables.Required;
+      --  The catalog service's typed client (its startup function's type).
+      Client : Service_Client := Plain;
    end record;
    type Request_Array is array (Positive range 1 .. MAX_REQUESTS) of Request;
    subtype Metadata_Text is Binding_Name;
@@ -78,6 +80,7 @@ package CCL.Manifests.Model with SPARK_Mode => On is
       Name : Metadata_Text;
       ID : Unsigned_32 := 0;
       Rights : Rights_Kind := Read_Only;
+      Client : Service_Client := Plain;
    end record;
    --  A service catalog names each kernel registry role (0 .. MAXIMUM_ROLE,
    --  System_Publications.Maximum_Role) at most once as a service and once

@@ -25,7 +25,6 @@ with CuBit.Handles.IPC;
 with CuBit.Handles.Startup;
 with CuBit.Handles.Devices;
 with CuBit.Startup_Tables;
-with CuBit.Startup_State;
 with Startup;
 with CuBit.Presentation_State;
 with CuBit.Display_Pool_Protocol;
@@ -3011,10 +3010,6 @@ begin
       return;
    end if;
 
-   if not CuBit.Startup_State.Ready (Startup.Verify) then
-      debugPrint ("display: startup capabilities missing" & LF);
-      return;
-   end if;
    ret := registerDriver (DRIVER_DISPLAY, Startup.Registration);
    if ret = Unsigned_64'Last then
       debugPrint ("display: register failed" & LF);

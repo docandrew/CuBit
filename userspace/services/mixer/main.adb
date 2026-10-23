@@ -26,7 +26,6 @@ with CuBit.Benchmark_Clock;
 with CuBit.Timing_Histograms;
 
 with CuBit.Handles.Devices;
-with CuBit.Startup_State;
 with Startup;
 
 procedure main is
@@ -273,10 +272,6 @@ procedure main is
 
 begin
    debugPrint ("mixer: starting" & ASCII.LF);
-   if not CuBit.Startup_State.Ready (Startup.Verify) then
-      debugPrint ("mixer: startup capabilities missing" & ASCII.LF);
-      return;
-   end if;
 
    --  The real-time reservation its manifest's scheduling binding covers.
    ret := CuBit.Handles.Devices.Reserve_Realtime

@@ -22,7 +22,6 @@ with CuBit.Memory_Grants;
 with CuBit.Grant_References;
 with CuBit.Process_Observer;
 with CuBit.Boot_Milestone_Codes;
-with CuBit.Startup_State;
 with Startup;
 with Boot_Timeline_Layout; use Boot_Timeline_Layout;
 with Boot_Timeline_Report; use Boot_Timeline_Report;
@@ -368,10 +367,6 @@ procedure Main is
    Result : Read_Result;
    Ignore : Unsigned_64;
 begin
-   if not CuBit.Startup_State.Ready (Startup.Verify) then
-      Put ("BOOT-TIMELINE: FAIL startup capabilities" & LF);
-      return;
-   end if;
    Put ("BOOT-TIMELINE: waiting for the first desktop frame" & LF);
    loop
       Result := Read_Pages (0);

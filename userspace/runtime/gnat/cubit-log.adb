@@ -1,12 +1,15 @@
 pragma Ada_2022;
 with CuBit.Logging;
 with CuBit.Messages;
-with CuBit.Handles.Startup;
+with CuBit.Handles.Services;
 
 package body CuBit.Log is
    use type Logs.Severity;
 
-   Writer : CuBit.Logging.Publisher;
+   --  The program's "logstore" startup entry, if it has one (none: records
+   --  are only echoed).
+   Writer : CuBit.Logging.Publisher :=
+     CuBit.Logging.Bound_To (CuBit.Handles.Services.Logstore.Optional_Named (Logstore_Binding));
    Echo : Boolean := True;
    --  Records that could not be made (too long, bad text); the ring's own
    --  sheds are the Writer's (CuBit.Logging.Dropped).
@@ -20,28 +23,8 @@ package body CuBit.Log is
       end if;
    end Lose;
 
-   --  The Writer goes to the program's "logstore" startup entry, looked up
-   --  once, on first use (none: records are only echoed).
-   Bound : Boolean := False;
-   procedure Ensure_Bound;
-   procedure Ensure_Bound is
-   begin
-      if not Bound then
-         Bound := True;
-         declare
-            Found : constant CuBit.Handles.Startup.Optional_Endpoint :=
-              CuBit.Handles.Startup.Optional_Endpoint_Named (Logstore_Binding);
-         begin
-            if Found.Present then
-               CuBit.Logging.Bind (Writer, Found.Value);
-            end if;
-         end;
-      end if;
-   end Ensure_Bound;
-
    function Wanted (Level : Logs.Severity) return Boolean is
    begin
-      Ensure_Bound;
       return CuBit.Logging.Wanted (Writer, Level);
    end Wanted;
 

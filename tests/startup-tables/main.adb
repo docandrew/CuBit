@@ -605,12 +605,12 @@ procedure Main is
    procedure Scenario (Name : String) is
    begin
       if Name /= "not-loaded" then
-         Check (Startup.Verify.Status = SS.Not_Loaded, "verify before load");
+         Check (SS.Verify (Startup.Expected).Status = SS.Not_Loaded, "verify before load");
          Check (not CuBit.Handles.Valid (Startup.Registers), "no handle before load");
       end if;
       if Name = "ready" or else Name = "absent" then
          Load (Launched (Pointer_Granted => Name = "ready"), SS.Loaded);
-         Check (Startup.Verify = (Status => SS.Ready, Index => 0), "verify ready");
+         Check (SS.Verify (Startup.Expected) = (Status => SS.Ready, Index => 0), "verify ready");
          Check (TW.Word (Startup.Registers) = 16#1_0000_0010#, "registers handle");
          Check (TW.Word (Startup.Device) = 16#1_0000_0011#, "device handle");
          Check (TW.Word (Startup.Devmgr) = 16#1_0000_0012#, "devmgr handle");
@@ -638,7 +638,7 @@ procedure Main is
             Build_Startup (Source, Fixture_Declaration, Self_Word, Self_Process_Word, Built, Result);
             Check (Result.Status = Ready, "builder ready");
             Load (Built, SS.Loaded);
-            Check (Startup.Verify = (Status => SS.Ready, Index => 0), "builder output verifies");
+            Check (SS.Verify (Startup.Expected) = (Status => SS.Ready, Index => 0), "builder output verifies");
             Check (not Startup.Pointer_Events.Present, "refused optional is absent");
             Check (TW.Word (Startup.Device) = 16#1_0000_0002#, "builder handle by name");
          end;
@@ -648,7 +648,7 @@ procedure Main is
          begin
             T.Entries (3) := Entry_Of ("devmgr-x", Endpoint, Required, Granted, 16#1_0000_0012#);
             Load (T, SS.Loaded);
-            Check (Startup.Verify = (Status => SS.Missing, Index => 3), "verify missing");
+            Check (SS.Verify (Startup.Expected) = (Status => SS.Missing, Index => 3), "verify missing");
             Check (not CuBit.Handles.Valid (Startup.Devmgr), "missing required is null");
          end;
       elsif Name = "wrong-kind" then
@@ -657,7 +657,7 @@ procedure Main is
          begin
             T.Entries (2).Kind := Device_Memory;
             Load (T, SS.Loaded);
-            Check (Startup.Verify = (Status => SS.Wrong_Kind, Index => 2), "verify wrong kind");
+            Check (SS.Verify (Startup.Expected) = (Status => SS.Wrong_Kind, Index => 2), "verify wrong kind");
             Check (not CuBit.Handles.Valid (Startup.Device), "wrong kind is null");
          end;
       elsif Name = "wrong-need" then
@@ -666,7 +666,7 @@ procedure Main is
          begin
             T.Entries (5).Requirement := Optional;
             Load (T, SS.Loaded);
-            Check (Startup.Verify = (Status => SS.Wrong_Need, Index => 5), "verify wrong need");
+            Check (SS.Verify (Startup.Expected) = (Status => SS.Wrong_Need, Index => 5), "verify wrong need");
          end;
       elsif Name = "incomplete" then
          declare
@@ -675,9 +675,9 @@ procedure Main is
             T.Entries (1).State := Unassigned;
             T.Entries (1).Handle := No_Handle;
             Load (T, SS.Incomplete);
-            Check (Startup.Verify.Status = SS.Not_Loaded, "incomplete is not loaded");
+            Check (SS.Verify (Startup.Expected).Status = SS.Not_Loaded, "incomplete is not loaded");
             Load (Launched, SS.Loaded);
-            Check (Startup.Verify.Status = SS.Ready, "a later good load still works");
+            Check (SS.Verify (Startup.Expected).Status = SS.Ready, "a later good load still works");
          end;
       elsif Name = "malformed" then
          declare
@@ -687,10 +687,10 @@ procedure Main is
             Raw (Raw'Last) := 1;  --  padding after the last name
             SS.Load (Raw, Outcome);
             Check (Outcome = SS.Malformed, "malformed refused");
-            Check (Startup.Verify.Status = SS.Not_Loaded, "malformed is not loaded");
+            Check (SS.Verify (Startup.Expected).Status = SS.Not_Loaded, "malformed is not loaded");
          end;
       elsif Name = "not-loaded" then
-         Check (Startup.Verify = (Status => SS.Not_Loaded, Index => 0), "nothing loaded");
+         Check (SS.Verify (Startup.Expected) = (Status => SS.Not_Loaded, Index => 0), "nothing loaded");
          Check (not Startup.Pointer_Events.Present, "optional absent before load");
       else
          Check (False, "unknown scenario " & Name);

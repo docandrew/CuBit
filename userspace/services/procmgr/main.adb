@@ -74,6 +74,7 @@ with CuBit.Process_List;
 with Intel_GPU_Broker_Request;
 with Intel_Render_Launch_Client;
 with CuBit.Input;
+with CuBit.Refusal_Notes;
 
 procedure main is
    function Image (Process : Process_ID) return String
@@ -2903,10 +2904,18 @@ procedure main is
          use type ST.Need;
       begin
          if Outcome /= SB.Granted and then not Into.Logged then
-            debugPrint ("procmgr: " & name & ": " &
-                        (if Item.Requirement = ST.Required then "required" else "optional") &
-                        " capability """ & String (Item.Label.Text (1 .. Item.Label.Length)) &
-                        """ not granted (" & SB.Mint_Outcome'Image (Outcome) & ")" & LF);
+            if Item.Requirement = ST.Required then
+               --  The launch fails; said once per program and entry (CAP-003).
+               CuBit.Refusal_Notes.Warn_Once
+                 ("procmgr", name & " " & String (Item.Label.Text (1 .. Item.Label.Length)),
+                  name & "'s required startup entry """ &
+                  String (Item.Label.Text (1 .. Item.Label.Length)) & """ (" &
+                  SB.Mint_Outcome'Image (Outcome) & "), so its launch");
+            else
+               debugPrint ("procmgr: " & name & ": optional capability """ &
+                           String (Item.Label.Text (1 .. Item.Label.Length)) &
+                           """ not granted (" & SB.Mint_Outcome'Image (Outcome) & ")" & LF);
+            end if;
          end if;
       end Report;
 

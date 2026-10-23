@@ -2,7 +2,6 @@ with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Handles.IPC;
 with CuBit.Handles.Startup;
-with CuBit.Startup_State;
 with CuBit.Startup_Tables;
 with Startup;
 
@@ -29,7 +28,7 @@ procedure Main is
    Now : Unsigned_64;
    Ignore : Unsigned_64;
 begin
-   if not CuBit.Startup_State.Ready (Startup.Verify) or else not CuBit.Handles.Valid (Self) then
+   if not CuBit.Handles.Valid (Self) then
       debugPrint ("stall-check: FAIL startup capabilities" & LF);
       return;
    end if;

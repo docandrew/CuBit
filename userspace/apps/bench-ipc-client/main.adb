@@ -10,7 +10,6 @@ with CuBit.Messages; use CuBit.Messages;
 with CuBit.Benchmark_Clock;
 with CuBit.Timing_Histograms;
 with CuBit.Handles;
-with CuBit.Startup_State;
 with Startup;
 
 procedure main is
@@ -309,10 +308,6 @@ procedure main is
 
 begin
    debugPrint ("bench-ipc-client: starting" & LF);
-   if not CuBit.Startup_State.Ready (Startup.Verify) then
-      fail ("startup-capabilities");
-      return;
-   end if;
    Clock.Calibrate (Rate);
    if Rate = 0 then
       fail ("unstable-counter-calibration");

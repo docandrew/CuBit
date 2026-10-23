@@ -3,7 +3,6 @@ with CuBit.Messages; use CuBit.Messages;
 with CuBit.Metrics;
 with CuBit.Metric_Protocol;
 with CuBit.Metric_Records;
-with CuBit.Startup_State;
 with Startup;
 procedure Main is
    package P renames CuBit.Metric_Protocol;
@@ -32,10 +31,6 @@ procedure Main is
       loop Ignore := syscall (SYSCALL_SLEEP, 1000); end loop;
    end Fail;
 begin
-   if not CuBit.Startup_State.Ready (Startup.Verify) then
-      debugPrint ("TEST: FAIL startup capabilities" & ASCII.LF);
-      return;
-   end if;
    CuBit.Metrics.Bind (Watcher, Startup.Metrics_Observer);
    for Attempt in 1 .. 400 loop
       CuBit.Metrics.Query (Watcher, 0, Rows, Written, Next, Result);

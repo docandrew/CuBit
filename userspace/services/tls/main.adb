@@ -5,7 +5,6 @@ with System;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Handles;
 with CuBit.Handles.IPC;
-with CuBit.Startup_State;
 with Startup;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Memory_Grants;
@@ -952,10 +951,6 @@ procedure Main is
    Completion : CompletionEntry;
    Ignore : Unsigned_64;
 begin
-   if not CuBit.Startup_State.Ready (Startup.Verify) then
-      CuBit.Log.Warning ("tls: startup capabilities missing; exiting");
-      return;
-   end if;
    CuBit.Log.Info ("tls: starting");
    SPARKTLS.RBG.Init (Entropy_OK);
    if not Entropy_OK then

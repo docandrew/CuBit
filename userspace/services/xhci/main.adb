@@ -11,7 +11,6 @@ with CuBit.Messages; use CuBit.Messages;
 with CuBit.Input; use CuBit.Input;
 with CuBit.Devices;
 with CuBit.Device_Interrupts;
-with CuBit.Startup_State;
 with Startup;
 with XHCI;
 with XHCI_Capabilities;
@@ -278,10 +277,6 @@ procedure main is
    end Reply_With;
 
 begin
-   if not CuBit.Startup_State.Ready (Startup.Verify) then
-      Boot_Log.Write ("xhci: startup capabilities missing" & LF);
-      return;
-   end if;
    Boot_Log.Write ("xhci: awaiting bounded controller authority" & LF);
    receive (sender, msg);
 

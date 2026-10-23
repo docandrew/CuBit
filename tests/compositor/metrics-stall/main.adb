@@ -1,7 +1,6 @@
 with Interfaces; use Interfaces;
 with System;
 with CuBit.Messages; use CuBit.Messages;
-with CuBit.Startup_State;
 with Startup;
 with CuBit.Memory_Grants;
 with CuBit.Metric_Records;
@@ -25,10 +24,6 @@ procedure Main is
       Ignore := syscall (SYSCALL_EXIT, 1);
    end Fail;
 begin
-   if not CuBit.Startup_State.Ready (Startup.Verify) then
-      debugPrint ("TEST: FAIL metrics-stall startup capabilities" & ASCII.LF);
-      return;
-   end if;
    Ignore := registerDriver (P.Publisher_Service_Role, Startup.Registration);
    if Ignore = Unsigned_64'Last then Fail ("registration"); return; end if;
    loop

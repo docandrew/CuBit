@@ -26,7 +26,6 @@ with Files_Filter;
 with Files_Limits;
 with Files_Queue;
 with Files_View;
-with CuBit.Startup_State;
 with Startup;
 
 procedure Main is
@@ -91,7 +90,7 @@ procedure Main is
    UI : CuBit.UI.State.UI_State;
    Controls : CuBit.UI.Controls.Control_Map;
    View : View_State;
-   Logger : CuBit.Logging.Publisher;
+   Logger : CuBit.Logging.Publisher := CuBit.Logging.Bound_To (Startup.Logstore);
    Opened : Boolean;
    --  More pump work waits: Run comes straight back (deadline now).
    Busy : Boolean := True;
@@ -496,13 +495,8 @@ procedure Main is
       On_Deadline => Tick, Activity_Wait => True, On_Completion => Completed);
 begin
    debugPrint ("files: starting" & ASCII.LF);
-   if not CuBit.Startup_State.Ready (Startup.Verify) then
-      debugPrint ("files: startup capabilities missing" & ASCII.LF);
-      return;
-   end if;
    CuBit.Logging.Announce ("files: started", Opened, Startup.Logstore);
    --  The timing records' publisher: unbound, it would drop every record.
-   CuBit.Logging.Bind (Logger, Startup.Logstore);
    --  The first listings start here: time them from now.
    Set_Clock (View, Now_Us);
    --  The places come from the service: the granted scopes (manifest)

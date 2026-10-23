@@ -284,6 +284,7 @@ package body CCL.Manifests.Typed with SPARK_Mode => On is
          for Entry_Binding of Cat.Services (1 .. Cat.Service_Count) loop
             if Entry_Binding.Name.Data (1 .. Entry_Binding.Name.Length) = Name and then Entry_Binding.Kind = Kind then
                Item.Service := Entry_Binding.ID;
+               Item.Client := Entry_Binding.Client;
                Offered := Entry_Binding.Rights;
                Found := True;
             end if;

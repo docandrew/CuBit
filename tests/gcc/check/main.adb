@@ -8,12 +8,12 @@
 pragma Ada_2022;
 with Interfaces; use Interfaces;
 with CuBit.Child_Exits;
-with CuBit.Handles.Startup;
 with CuBit.Launch_Arguments;
 with CuBit.Launch_Grants;
 with CuBit.Kernel_ABI;
 with CuBit.Kernel_Calls;
 with CuBit.Launching;
+with Startup;
 with CuBit.Memory_Grants;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Outlet_Rings;
@@ -22,6 +22,8 @@ with CuBit.Stream_Regions;
 with CuBit.Streams;
 
 procedure Main is
+   --  Launches go through procmgr, the manifest\'s process-manager entry.
+   Launcher : constant CuBit.Launching.Launcher := CuBit.Launching.Using (Startup.Process_Manager);
    package LA renames CuBit.Launch_Arguments;
    package LG renames CuBit.Launch_Grants;
    package PP renames CuBit.Program_Descriptions;
@@ -64,7 +66,7 @@ procedure Main is
       Grant : Unsigned_64;
    begin
       Stderr_Rings.Count := 0;
-      CuBit.Launching.Describe (Program, Descriptor, Length, Result, Failure);
+      CuBit.Launching.Describe (Launcher, Program, Descriptor, Length, Result, Failure);
       if Result /= CuBit.Launching.Launched or else Length = 0 then
          return;
       end if;
@@ -77,7 +79,7 @@ procedure Main is
          return;
       end if;
       CuBit.Launching.Lend_Ring
-        (Stderr_Pages, CuBit.Streams.TYPE_TEXT_LINE, Stderr_Base, Grant,
+        (Launcher, Stderr_Pages, CuBit.Streams.TYPE_TEXT_LINE, Stderr_Base, Grant,
          Stderr_Reference, Ok);
       if Ok then
          Stderr_Rings.Count := 1;
@@ -207,7 +209,7 @@ procedure Main is
          Lend_Stderr (Program);
       end if;
       CuBit.Launching.Launch
-        (Program, Block.Data (1 .. Length), Region (1 .. Region_Length), Child, Result, Failure,
+        (Launcher, Program, Block.Data (1 .. Length), Region (1 .. Region_Length), Child, Result, Failure,
          Stderr_Rings);
       if Result /= CuBit.Launching.Launched then
          Stderr_Rings.Count := 0;
@@ -251,7 +253,7 @@ procedure Main is
          Ok := Ok and then Found and then Added;
       end Set;
    begin
-      CuBit.Launching.Describe ("as.app", Descriptor, Length, Result, Failure);
+      CuBit.Launching.Describe (Launcher, "as.app", Descriptor, Length, Result, Failure);
       Ok := Result = CuBit.Launching.Launched and then Length > 0;
       if not Ok then return False; end if;
       PP.Decode (Descriptor (1 .. Length), S, Ok);
@@ -264,7 +266,7 @@ procedure Main is
       if Checked /= PP.Matches then return False; end if;
       LG.Finish (Grants, Region, Region_Length);
       CuBit.Launching.Launch
-        ("as.app", Block.Data (1 .. Block.Used), Region (1 .. Region_Length), Child, Result, Failure);
+        (Launcher, "as.app", Block.Data (1 .. Block.Used), Region (1 .. Region_Length), Child, Result, Failure);
       if Result /= CuBit.Launching.Launched then return False; end if;
       CuBit.Launching.Wait (Child, Ended);
       return Ended.Kind = CuBit.Child_Exits.Exited and then Ended.Code = 0;
@@ -273,7 +275,6 @@ procedure Main is
    Driver : constant String := "toolchain/bin/gcc";
 begin
    --  procmgr, the "process-manager" startup entry the manifest asks for.
-   CuBit.Launching.Bind (CuBit.Handles.Startup.Endpoint_Named ("process-manager"));
    --  The same options and names the Linux reference uses (tests/gcc/build.sh).
    --  Relative names, from the work place: GNU tools read an argument that
    --  starts with '@' as a response file, so a CuBit name in argv

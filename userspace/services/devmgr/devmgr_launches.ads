@@ -82,6 +82,13 @@ package Devmgr_Launches is
    with Pre => Item /= No_Child;
 
    --  What its manifest asks for.
+   --  Its manifest's Config scopes (CAP-003), which devmgr installs in
+   --  config.svc for it: exactly those, no wildcard.
+   function Config_Total (Item : Child) return Driver_Manifests.Scope_Count
+   with Pre => Item /= No_Child;
+   function Config_Scope (Item : Child; Index : Positive) return Driver_Manifests.Config_Scope
+   with Pre => Item /= No_Child and then Index <= Config_Total (Item);
+
    function Interrupt_Of (Item : Child) return Driver_Manifests.Interrupt_Request
    with Pre => Item /= No_Child;
    --  Whether its manifest declares a binding Name.

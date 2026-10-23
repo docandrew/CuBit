@@ -12,13 +12,6 @@ with CuBit.Messages; use CuBit.Messages;
 
 package body CuBit.Launching is
 
-   Service : CuBit.Handles.Endpoint := CuBit.Handles.No_Endpoint;
-
-   procedure Bind (Service : CuBit.Handles.Endpoint) is
-   begin
-      Launching.Service := Service;
-   end Bind;
-
    package LA renames CuBit.Launch_Arguments;
    package LG renames CuBit.Launch_Grants;
 
@@ -44,7 +37,8 @@ package body CuBit.Launching is
    Answer_Reference : CuBit.Memory_Grants.Grant_Reference;
 
    procedure Launch
-     (Program   : String;
+     (Through   : Launcher;
+      Program   : String;
       Arguments : CuBit.Launch_Arguments.Block;
       Grants    : CuBit.Launch_Grants.Bytes;
       Started   : out Child;
@@ -52,6 +46,7 @@ package body CuBit.Launching is
       Failure   : out CuBit.Launch_Arguments.Launch_Failure;
       Rings     : CuBit.Outlet_Rings.Table := (others => <>))
    is
+      Service : CuBit.Handles.Endpoint renames Through.Service;
       Ring_Table : CuBit.Outlet_Rings.Bytes (1 .. CuBit.Outlet_Rings.Maximum_Bytes);
       Ring_Bytes : CuBit.Outlet_Rings.Table_Length;
       Msg : Message := NULL_MESSAGE;
@@ -109,11 +104,13 @@ package body CuBit.Launching is
    end Launch;
 
    procedure Lend_Ring
-     (Pages : Positive;
+     (Through   : Launcher;
+      Pages : Positive;
       Entry_Type : CuBit.Streams.TypeTag;
       Base : in out Unsigned_64; Grant : out Unsigned_64;
       Reference : out CuBit.Memory_Grants.Grant_Reference; Success : out Boolean)
    is
+      Service : CuBit.Handles.Endpoint renames Through.Service;
       --  The whole region: the control page and the data ring.
       Region : constant Positive :=
         CuBit.Stream_Rings.Region_Pages (CuBit.Stream_Regions.Declared (Pages));
@@ -189,10 +186,12 @@ package body CuBit.Launching is
    Table_Reference : CuBit.Memory_Grants.Grant_Reference;
 
    procedure Launch_Table
-     (Table  : out CuBit.Launch_Authority.Table_Bytes;
+     (Through   : Launcher;
+      Table  : out CuBit.Launch_Authority.Table_Bytes;
       Length : out CuBit.Launch_Authority.Table_Length;
       Result : out Launch_Result)
    is
+      Service : CuBit.Handles.Endpoint renames Through.Service;
       Msg : Message := NULL_MESSAGE;
       Reply : MessageTag;
       Success : Boolean;
@@ -234,10 +233,12 @@ package body CuBit.Launching is
    Places_Reference : CuBit.Memory_Grants.Grant_Reference;
 
    procedure Delegated_Places
-     (Region : out CuBit.Launch_Grants.Bytes;
+     (Through   : Launcher;
+      Region : out CuBit.Launch_Grants.Bytes;
       Length : out CuBit.Launch_Grants.Byte_Count;
       Result : out Launch_Result)
    is
+      Service : CuBit.Handles.Endpoint renames Through.Service;
       Msg : Message := NULL_MESSAGE;
       Reply : MessageTag;
       Success : Boolean;
@@ -272,12 +273,14 @@ package body CuBit.Launching is
    end Delegated_Places;
 
    procedure Describe
-     (Program    : String;
+     (Through   : Launcher;
+      Program    : String;
       Descriptor : out CuBit.Program_Descriptions.Bytes;
       Length     : out CuBit.Program_Descriptions.Descriptor_Length;
       Result     : out Launch_Result;
       Failure    : out CuBit.Launch_Arguments.Launch_Failure)
    is
+      Service : CuBit.Handles.Endpoint renames Through.Service;
       Msg : Message := NULL_MESSAGE;
       Reply : MessageTag;
       Success : Boolean;

@@ -20,7 +20,6 @@ pragma Ada_2022;
 with Interfaces; use Interfaces;
 with CuBit.Handles;
 with CuBit.Handles.Devices;
-with CuBit.Startup_State;
 with Startup;
 with CuBit.Channel_Contracts;
 with CuBit.Channel_Protocol;
@@ -268,10 +267,6 @@ procedure Main is
       return Flooded >= Own_Credit and then Flooded < Flood_Limit;
    end Flood_Survived;
 begin
-   if not CuBit.Startup_State.Ready (Startup.Verify) then
-      Finish (Unread);
-      return;
-   end if;
    if not Flood_Survived then
       Finish (Attacked);
       return;

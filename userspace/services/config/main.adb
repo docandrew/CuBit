@@ -19,7 +19,6 @@ with System; use System;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Memory_Grants;
 with CuBit.Handles.IPC;
-with CuBit.Startup_State;
 with Startup;
 with CuBit.Config_Inspection;
 with Config_Authority;
@@ -29,6 +28,8 @@ with CuBit.Config_Protocol;
 with Config_Typed_Service;
 with Config_Worker_Startup;
 with Config_Object_Messages;
+with CuBit.Process_IDs.Text;
+with CuBit.Refusal_Notes;
 
 procedure main is
    use ASCII;
@@ -90,6 +91,19 @@ procedure main is
 
       return Config_Authority.Allows (Authorities, sender, key, rights);
    end checkAccess;
+
+   --  A request refused for want of a scope, logged once per process, key
+   --  and operation (CAP-003): a key read or written outside the caller's
+   --  declared Config scopes was silently taken as the default before.
+   procedure Report_Refusal (Sender : Process_ID; Operation, Key, Why : String) is
+      Who : constant String := CuBit.Process_IDs.Text.Image (Sender);
+   begin
+      CuBit.Refusal_Notes.Warn_Once
+        ("config", Who & " " & Operation & " " & Key,
+         "process " & Who & " " & Operation & " of """ & Key & """: " & Why);
+   end Report_Refusal;
+
+   No_Scope : constant String := "no config scope in its manifest covers it";
 
    --  Send a reply with the given label and word0 value
    procedure sendReply
@@ -245,6 +259,9 @@ procedure main is
       begin
          if not checkAccess (sender, Key, ACL_READ) then
             Result := Denied;
+            Report_Refusal
+              (sender, (if msg.tag.label = Operation'Enum_Rep (Read_Value) then "read" else "list"),
+               Key, No_Scope);
          elsif msg.tag.label = Operation'Enum_Rep (Read_Value) then
             Config_Store.Read (store, Key, Stored_Value, Found);
             if not Found then Result := Missing;
@@ -322,7 +339,16 @@ procedure main is
          begin
             if not checkAccess (Sender, Key, (if Writes_Output then ACL_READ else ACL_WRITE)) or else
               (not Writes_Output and then isSystemKey (Key) and then not isAdmin (Sender))
-            then Status := REPLY_ACCESS_DENIED;
+            then
+               Status := REPLY_ACCESS_DENIED;
+               Report_Refusal
+                 (Sender,
+                  (case Op is
+                      when Get_Value => "read", when Set_Value => "write",
+                      when Delete_Value => "delete", when List_Keys => "list"),
+                  Key,
+                  (if checkAccess (Sender, Key, (if Writes_Output then ACL_READ else ACL_WRITE))
+                   then "a system key: devmgr and procmgr only" else No_Scope));
             else
                case Op is
                   when Get_Value =>
@@ -380,10 +406,6 @@ procedure main is
    msg    : Message;
 begin
    debugPrint ("Config: starting..." & LF);
-   if not CuBit.Startup_State.Ready (Startup.Verify) then
-      debugPrint ("Config: startup capabilities missing" & LF);
-      return;
-   end if;
 
    --  Register as DRIVER_CONFIG so other services can discover us
    declare

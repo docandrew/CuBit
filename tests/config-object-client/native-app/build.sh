@@ -16,8 +16,10 @@ for mode in create reopen benchmark; do
     as --64 "$probe/build/manifest-$mode.S" -o "$probe/build/manifest-$mode.o"
 done
 # Every mode's manifest binds the same "config" entry: one Startup package.
+# (Its body, the startup check, comes with it.)
 cp "$probe/build/generated/startup-create.ads" "$probe/build/generated/startup.ads"
-rm -f "$probe"/build/generated/startup-*.ads
+cp "$probe/build/generated/startup-create.adb" "$probe/build/generated/startup.adb"
+rm -f "$probe"/build/generated/startup-*.ad[sb]
 cd kernel
 alr exec -- gprbuild $gprbuild_config -p -P ../tests/config-object-client/native-app/probe.gpr
 alr exec -- gprbuild $gprbuild_config -p -P ../tests/config-object-client/native-app/probe.gpr -XCONFIG_OBJECT_MODE=reopen

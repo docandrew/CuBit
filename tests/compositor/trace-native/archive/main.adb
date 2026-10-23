@@ -4,7 +4,6 @@ with CuBit.Metric_Raw_Observer;
 with CuBit.Metric_Protocol;
 with Compositor_Trace_Stream;
 with Compositor_Render_Trace;
-with CuBit.Startup_State;
 with Startup;
 with CuBit.Filesystems;
 with CuBit.Memory_Grants;
@@ -150,10 +149,6 @@ procedure Main is
         " events=" & F.Events (Archive)'Image & " flush=confirmed retirement=confirmed" & ASCII.LF);
    end Finish_Archive;
 begin
-   if not CuBit.Startup_State.Ready (Startup.Verify) then
-      debugPrint ("TEST: FAIL startup capabilities" & ASCII.LF);
-      return;
-   end if;
    O.Bind (Raw, Startup.Metrics_Observer);
    -- Bounded collector workload. It may lag and lose history; identity and
    -- completeness checks never turn an incomplete fragment group into an event.

@@ -2,13 +2,15 @@ with CuBit.Messages; use CuBit.Messages;
 with CuBit.Logging;
 with CuBit.Log_Records;
 with CuBit.Handles;
+with CuBit.Handles.Services;
 with Intel_GPU_Diagnostic_Capture;
 with Intel_GPU_Supervisor;
 package body Intel_GPU_Diagnostics is
    use Interfaces;
    package Buffering is new Intel_GPU_Diagnostic_Capture (512, 512);
    Buffer : Buffering.Queue;
-   Writer : CuBit.Logging.Publisher;
+   --  devmgr grants logstore at run time (Grant_Pending below).
+   Writer : CuBit.Logging.Publisher := CuBit.Logging.Awaiting_Grant;
    type State is (Need_Grant, Grant_Pending, Ready, Stopped);
    Phase : State := Need_Grant;
    Due : Unsigned_64 := 0;
@@ -81,7 +83,7 @@ package body Intel_GPU_Diagnostics is
                     Intel_GPU_Supervisor.Granted_Endpoint (Receipt);
                begin
                   if CuBit.Handles.Valid (Logstore) then
-                     CuBit.Logging.Bind (Writer, Logstore);
+                     CuBit.Logging.Attach (Writer, CuBit.Handles.Services.Logstore.Granted (Logstore));
                      Phase := Ready;
                   else
                      Phase := Stopped;

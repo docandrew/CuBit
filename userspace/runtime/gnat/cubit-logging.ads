@@ -1,5 +1,6 @@
 pragma Ada_2022;
 with CuBit.Handles;
+with CuBit.Handles.Services;
 with Interfaces; use Interfaces;
 with CuBit.Log_Protocol;
 with CuBit.Log_Records;
@@ -11,11 +12,26 @@ with CuBit.Channels;
 --  Readers remain process-lived.
 --  Calls on each object are serialized by its application event loop.
 package CuBit.Logging is
-   type Publisher is limited private;
-   --  The logstore endpoint a publisher's channel goes to (the program's
-   --  startup "logstore" handle). Bind before the first Emit; a publisher
-   --  never bound emits nothing (Submitted False, counted as dropped).
-   procedure Bind (Item : in out Publisher; Target : CuBit.Handles.Endpoint);
+   package Logstore_Handles renames CuBit.Handles.Services.Logstore;
+   package Observer_Handles renames CuBit.Handles.Services.Log_Observer;
+
+   --  A publisher exists only bound (CAP-003): declaring one needs one of
+   --  the functions below, and the endpoint they take comes from the
+   --  program's generated Startup package (its logstore function), so a
+   --  publisher that drops every record because nobody bound it cannot be
+   --  written.
+   type Publisher (<>) is limited private;
+   --  Records go to Target (the program's Startup logstore function).
+   function Bound_To (Target : Logstore_Handles.Endpoint) return Publisher;
+   --  The manifest declares logstore optional: when the launch had none,
+   --  records are counted (Dropped) and go nowhere.
+   function Bound_To (Target : Logstore_Handles.Optional_Endpoint) return Publisher;
+   --  A program handed logstore at run time (a driver's grant from devmgr):
+   --  no target until Attach; records emitted before it are counted.
+   function Awaiting_Grant return Publisher;
+   function Awaiting (Item : Publisher) return Boolean;
+   procedure Attach (Item : in out Publisher; Target : Logstore_Handles.Endpoint)
+   with Pre => Awaiting (Item);
    --  A publisher's records go into its own channel to logstore
    --  (CuBit.Log_Publish_Rings, CuBit.Channels), opened on the first Emit.
    --  Emitting is a copy into shared memory: no IPC, no waiting, no
@@ -42,10 +58,13 @@ package CuBit.Logging is
    --  until logstore lets go of them).
    procedure Disconnect (Item : in out Publisher; Done : out Boolean);
 
-   type Reader is limited private;
-   --  The logstore observer endpoint a reader subscribes through. Bind
-   --  before Subscribe.
-   procedure Bind (Item : in out Reader; Target : CuBit.Handles.Endpoint);
+   --  A reader exists only bound, like a publisher: Target is the
+   --  program's Startup log-observer function.
+   type Reader (<>) is limited private;
+   function Bound_To (Target : Observer_Handles.Endpoint) return Reader;
+   --  Declared optional: when the launch had none, Subscribe answers
+   --  Unavailable.
+   function Bound_To (Target : Observer_Handles.Optional_Endpoint) return Reader;
    --  Interactive synchronous operations. Never use these in interrupt or
    --  latency-sensitive service paths. Close ends the subscription and its
    --  channel; Subscribe again opens a new one.
@@ -101,20 +120,23 @@ package CuBit.Logging is
    --  binds to the first one given.
    procedure Publish_Now
      (Value : CuBit.Log_Records.Log_Record; Result : out CuBit.Log_Protocol.Status;
-      Kept_From : out CuBit.Log_Records.Severity; Target : CuBit.Handles.Endpoint);
+      Kept_From : out CuBit.Log_Records.Severity; Target : Logstore_Handles.Endpoint);
 
    procedure Announce
-     (Text : String; Published : out Boolean; Target : CuBit.Handles.Endpoint;
+     (Text : String; Published : out Boolean; Target : Logstore_Handles.Endpoint;
       Level : CuBit.Log_Records.Severity := CuBit.Log_Records.Information);
 private
    type Writer_State is (Uninitialized, Ready, Disabled);
    type Publisher is limited record
       Slot : CuBit.Handles.Endpoint := CuBit.Handles.No_Endpoint;
+      --  Made by Awaiting_Grant and not yet attached.
+      Pending : Boolean := False;
       Link : CuBit.Channels.Channel;
       State : Writer_State := Uninitialized;
       Loss : Unsigned_64 := 0;
       Disconnecting : Boolean := False;
    end record;
+   function Awaiting (Item : Publisher) return Boolean is (Item.Pending);
    type Reader is limited record
       Slot : CuBit.Handles.Endpoint := CuBit.Handles.No_Endpoint;
       Link : CuBit.Channels.Channel;

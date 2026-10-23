@@ -5,6 +5,9 @@ with CuBit.Handles.Devices;
 with CuBit.Startup_State;
 with CuBit.Startup_Tables;
 with Startup;
+--  Withed for its elaboration, the startup check (CAP-003); nothing in it
+--  is used here.
+pragma Unreferenced (Startup);
 
 --  CAP-001 diagnostics check: with no device-memory authority, ask the
 --  kernel to map a kernel-image page and a bus page. Both must be refused,
@@ -36,10 +39,6 @@ procedure Main is
    Self_Word         : Unsigned_64;
    Kernel_Refused, Bus_Refused, Forged_Refused : Boolean;
 begin
-   if not CuBit.Startup_State.Ready (Startup.Verify) then
-      debugPrint ("devmem-check: FAIL startup capabilities" & LF);
-      return;
-   end if;
    Kernel_Refused := not CuBit.Handles.Devices.Map_Device
      (CuBit.Handles.No_Device_Memory, Kernel_Image_Page, Map_Target, One_Page,
       Read_Only => True);

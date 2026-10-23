@@ -22,6 +22,10 @@
   (config-scope (rights read write) "desktop.display.scale")
   (config-scope (rights read write) "desktop.display.mode.")
   (config-scope (rights read) "desktop.display.modeset")
+  # The GPU's waitboost policy Desktop sends the driver (Desktop_GPU_Power_
+  # Settings); without this scope the read was denied and taken as the
+  # default (CAP-003).
+  (config-scope (rights read) "gpu.power.waitboost")
   (request-service-optional mixer-control read-write mixer-control)
   # The status bar's time; minimal profiles start Desktop without clock.
   (request-service-optional clock read-write clock)

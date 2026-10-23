@@ -20,7 +20,6 @@ with System; use System;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Input; use CuBit.Input;
 with CuBit.Handles;
-with CuBit.Startup_State;
 with Startup;
 with PS2_Boot_Probe;
 with Input_Pending;
@@ -360,10 +359,6 @@ procedure main is
 
 begin
    debugPrint ("ps2: starting" & LF);
-   if not CuBit.Startup_State.Ready (Startup.Verify) then
-      debugPrint ("ps2: startup capabilities missing" & LF);
-      return;
-   end if;
 
    --  Discard firmware/bootloader residue before enabling live reports.  A
    --  flush after F4 could consume only the first byte of a packet and leave

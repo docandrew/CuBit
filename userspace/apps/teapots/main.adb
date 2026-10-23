@@ -15,7 +15,6 @@ with CuBit.UI.Controls;
 with CuBit.UI.GPU_Canvas;
 with CuBit.UI.Input;
 with CuBit.UI.State;
-with CuBit.Startup_State;
 with Startup;
 with Teapot_Gallery;
 
@@ -175,10 +174,6 @@ procedure Main is
       On_Deadline => Tick, Activity_Wait => True);
 begin
    debugPrint ("teapots: starting" & ASCII.LF);
-   if not CuBit.Startup_State.Ready (Startup.Verify) then
-      debugPrint ("teapots: startup capabilities missing" & ASCII.LF);
-      return;
-   end if;
    CuBit.Logging.Announce ("teapots: started", Opened, Startup.Logstore);
    CuBit.UI.App.Open
      (Win, INITIAL_WIDTH, INITIAL_HEIGHT,

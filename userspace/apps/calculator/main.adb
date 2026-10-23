@@ -14,7 +14,6 @@ with CuBit.UI.App;
 with CuBit.UI.Controls;
 with CuBit.UI.Input;
 with CuBit.UI.State;
-with CuBit.Startup_State;
 with Calc_Host_Native;
 with Calc_Shell;
 with Startup;
@@ -229,10 +228,6 @@ procedure Main is
      (UI, Controls, Render => Render, Handle_Event => Handle_Event, Activity_Wait => True);
 begin
    debugPrint ("calculator: starting" & ASCII.LF);
-   if not CuBit.Startup_State.Ready (Startup.Verify) then
-      debugPrint ("calculator: startup capabilities missing" & ASCII.LF);
-      return;
-   end if;
    CuBit.Logging.Announce ("calculator: started", Opened, Startup.Logstore);
    Shell.Initialize
      (App, Host'Unchecked_Access,

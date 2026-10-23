@@ -23,8 +23,8 @@ package body CuBit.Logging is
    Announcer : Publisher;
 
    --  Open the channel to logstore, once.
-   procedure Attach (Item : in out Publisher);
-   procedure Attach (Item : in out Publisher) is
+   procedure Open_Channel (Item : in out Publisher);
+   procedure Open_Channel (Item : in out Publisher) is
       Result : Channels.Open_Result;
       Ignore_Refusal : CuBit.Channel_Protocol.Open_Refusal;
    begin
@@ -35,26 +35,40 @@ package body CuBit.Logging is
       Channels.Open (Item.Slot, Publish_Rings.CONTRACT, Channels.Producing, Item.Link, Result,
                      Ignore_Refusal, Deadline => CuBit.Messages.Wait_Forever);
       Item.State := (if Result = Channels.Opened then Ready else Disabled);
+   end Open_Channel;
+
+   function Bound_To (Target : Logstore_Handles.Endpoint) return Publisher is
+     (Slot => Logstore_Handles.Handle (Target), others => <>);
+
+   function Bound_To (Target : Logstore_Handles.Optional_Endpoint) return Publisher is
+     (Slot => (if Target.Present then Logstore_Handles.Handle (Target.Value)
+               else CuBit.Handles.No_Endpoint),
+      others => <>);
+
+   function Awaiting_Grant return Publisher is (Pending => True, others => <>);
+
+   procedure Attach (Item : in out Publisher; Target : Logstore_Handles.Endpoint) is
+   begin
+      Item.Slot := Logstore_Handles.Handle (Target);
+      Item.Pending := False;
    end Attach;
 
-   procedure Bind (Item : in out Publisher; Target : CuBit.Handles.Endpoint) is
-   begin
-      Item.Slot := Target;
-   end Bind;
+   function Bound_To (Target : Observer_Handles.Endpoint) return Reader is
+     (Slot => Observer_Handles.Handle (Target), others => <>);
 
-   procedure Bind (Item : in out Reader; Target : CuBit.Handles.Endpoint) is
-   begin
-      Item.Slot := Target;
-   end Bind;
+   function Bound_To (Target : Observer_Handles.Optional_Endpoint) return Reader is
+     (Slot => (if Target.Present then Observer_Handles.Handle (Target.Value)
+               else CuBit.Handles.No_Endpoint),
+      others => <>);
 
    procedure Publish_Now
      (Value : Logs.Log_Record; Result : out Status; Kept_From : out Logs.Severity;
-      Target : CuBit.Handles.Endpoint)
+      Target : Logstore_Handles.Endpoint)
    is
       Submitted, Drained : Boolean;
    begin
       if not CuBit.Handles.Valid (Announcer.Slot) then
-         Bind (Announcer, Target);
+         Announcer.Slot := Logstore_Handles.Handle (Target);
       end if;
       Result := Unavailable;
       Kept_From := Logs.Trace;
@@ -70,7 +84,7 @@ package body CuBit.Logging is
    end Publish_Now;
 
    procedure Announce
-     (Text : String; Published : out Boolean; Target : CuBit.Handles.Endpoint;
+     (Text : String; Published : out Boolean; Target : Logstore_Handles.Endpoint;
       Level : CuBit.Log_Records.Severity := CuBit.Log_Records.Information)
    is
       Value : constant Logs.Decoded := Logs.Make (Text, Level);
@@ -171,12 +185,12 @@ package body CuBit.Logging is
       Result : Channels.Put_Result;
    begin
       Submitted := False;
-      if Item.Disconnecting or else Item.State = Disabled then
+      if Item.Pending or else Item.Disconnecting or else Item.State = Disabled then
          Drop (Item);
          return;
       end if;
       if Item.State = Uninitialized then
-         Attach (Item);
+         Open_Channel (Item);
          if Item.State /= Ready then
             Drop (Item);
             return;

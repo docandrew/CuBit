@@ -30,6 +30,11 @@ package body Driver_Manifests with SPARK_Mode => On is
    CAPS_RIGHTS_OFFSET     : constant := 1;
    CAPS_SERVICE_OFFSET    : constant := 4;
    CAPS_DESCRIPTOR_OFFSET : constant := 8;
+   --  .cubit.access entry field offsets (its header is laid out as .cubit.caps').
+   ACCESS_RIGHTS_OFFSET   : constant := 0;
+   ACCESS_LENGTH_OFFSET   : constant := 1;
+   ACCESS_DOMAIN_OFFSET   : constant := 2;
+   ACCESS_PREFIX_OFFSET   : constant := 8;
 
    --  Little-endian field of Bytes bytes at 0-based Offset.
    function Field (Image : Byte_Array; Offset, Bytes : Unsigned_64) return Unsigned_64
@@ -227,10 +232,66 @@ package body Driver_Manifests with SPARK_Mode => On is
       Into.Resources_Found := Status = Decoded;
    end Read_Resources;
 
+   --  CAP-003: the Config scopes, which devmgr installs for the services it
+   --  starts. A malformed section gives none (the child is denied Config).
+   procedure Read_Config_Scopes (Image : Byte_Array; Into : in out Manifest)
+   with Pre  => Image'First = 1 and then Image'Last < Natural'Last,
+        Post => Into.Startup_Found = Into.Startup_Found'Old
+                and then Into.Declared = Into.Declared'Old
+   is
+      Offset, Size, Count, Base, Length : Unsigned_64;
+      Found : Boolean;
+   begin
+      Into.Config_Total := 0;
+      Find_Section (Image, ACCESS_MAGIC, ACCESS_HEADER_BYTES, MAX_ACCESS_BYTES, Offset, Size, Found);
+      if not Found
+        or else Field (Image, Offset + CAPS_VERSION_OFFSET, 2) /= ACCESS_VERSION
+      then
+         return;
+      end if;
+      Count := Field (Image, Offset + CAPS_COUNT_OFFSET, 2);
+      if Count > MAX_SCOPES
+        or else Size /= ACCESS_HEADER_BYTES + Count * ACCESS_ENTRY_BYTES
+      then
+         return;
+      end if;
+      for I in 1 .. Natural (Count) loop
+         pragma Loop_Invariant (Into.Config_Total < I);
+         pragma Loop_Invariant (Into.Startup_Found = Into.Startup_Found'Loop_Entry
+                                and then Into.Declared = Into.Declared'Loop_Entry);
+         pragma Assert (Unsigned_64 (I) <= Count);
+         pragma Assert (Unsigned_64 (I - 1) * ACCESS_ENTRY_BYTES + ACCESS_ENTRY_BYTES
+                        <= Count * ACCESS_ENTRY_BYTES);
+         Base := Offset + ACCESS_HEADER_BYTES + Unsigned_64 (I - 1) * ACCESS_ENTRY_BYTES;
+         pragma Assert (Base + ACCESS_ENTRY_BYTES <= Unsigned_64 (Image'Length));
+         Length := Field (Image, Base + ACCESS_LENGTH_OFFSET, 1);
+         if Field (Image, Base + ACCESS_DOMAIN_OFFSET, 1) = CONFIG_DOMAIN then
+            if Length > MAX_PREFIX_BYTES then
+               Into.Config_Total := 0;
+               return;
+            end if;
+            declare
+               Item : Config_Scope :=
+                 (Rights => Unsigned_8 (Field (Image, Base + ACCESS_RIGHTS_OFFSET, 1) and 16#FF#),
+                  Length => Natural (Length),
+                  Prefix => [others => 0]);
+            begin
+               for J in 1 .. MAX_PREFIX_BYTES loop
+                  Item.Prefix (J) := Unsigned_8
+                    (Field (Image, Base + ACCESS_PREFIX_OFFSET + Unsigned_64 (J - 1), 1) and 16#FF#);
+               end loop;
+               Into.Config_Total := Into.Config_Total + 1;
+               Into.Config_Scopes (Into.Config_Total) := Item;
+            end;
+         end if;
+      end loop;
+   end Read_Config_Scopes;
+
    function Read (Image : Byte_Array) return Manifest is
       Result : Manifest;
    begin
       Read_Capabilities (Image, Result);
+      Read_Config_Scopes (Image, Result);
       Read_Resources (Image, Result);
       Read_Startup (Image, Result);
       return Result;

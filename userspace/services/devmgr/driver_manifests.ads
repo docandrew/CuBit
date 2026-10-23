@@ -13,7 +13,9 @@
 --  * .cubit.caps: the capability requests (services, notifications,
 --    framebuffer, network, render) in request order;
 --  * .cubit.resources: the device and scheduling requests in request order,
---    decoded with the proved CCL.Resource_Sections.Decode.
+--    decoded with the proved CCL.Resource_Sections.Decode;
+--  * .cubit.access: the authority scopes; devmgr installs the Config ones
+--    for the services it starts (CAP-003: no undeclared wildcard).
 --  Entry I of the startup table is request I: the K-th entry of a resource
 --  kind is the K-th .cubit.resources entry, the K-th other entry the K-th
 --  .cubit.caps entry (Source_Of). devmgr builds the child's startup table
@@ -51,6 +53,31 @@ package Driver_Manifests with SPARK_Mode => On is
    subtype Capability_Count is Natural range 0 .. MAX_CAPABILITIES;
    type Capability_Array is array (Positive range 1 .. MAX_CAPABILITIES) of Capability_Request;
 
+   --  .cubit.access: "CACC" little-endian, version, count, 8 reserved bytes;
+   --  80-byte entries (rights mask, prefix length, domain, 5 reserved, the
+   --  64-byte prefix, 8 reserved), as CCL.Manifests.Encoding writes them.
+   ACCESS_MAGIC        : constant := 16#4343_4143#;
+   ACCESS_VERSION      : constant := 1;
+   ACCESS_HEADER_BYTES : constant := 16;
+   ACCESS_ENTRY_BYTES  : constant := 80;
+   --  CCL.Manifests.Model.MAX_SCOPES.
+   MAX_SCOPES          : constant := 16;
+   MAX_ACCESS_BYTES    : constant := ACCESS_HEADER_BYTES + MAX_SCOPES * ACCESS_ENTRY_BYTES;
+   --  CCL.Manifests.Model.Access_Domain'Enum_Rep (Config_Domain).
+   CONFIG_DOMAIN       : constant := 1;
+   MAX_PREFIX_BYTES        : constant := 64;
+
+   --  One Config scope: config.svc's ACL entry (rights mask, key prefix).
+   subtype Prefix_Length is Natural range 0 .. MAX_PREFIX_BYTES;
+   type Prefix_Bytes is array (1 .. MAX_PREFIX_BYTES) of Unsigned_8;
+   type Config_Scope is record
+      Rights : Unsigned_8 := 0;
+      Length : Prefix_Length := 0;
+      Prefix : Prefix_Bytes := [others => 0];
+   end record;
+   subtype Scope_Count is Natural range 0 .. MAX_SCOPES;
+   type Config_Scope_Array is array (Positive range 1 .. MAX_SCOPES) of Config_Scope;
+
    type Manifest is record
       Startup_Found    : Boolean := False;
       Declared         : ST.Table := ST.Empty_Table;
@@ -58,6 +85,9 @@ package Driver_Manifests with SPARK_Mode => On is
       Capability_Total : Capability_Count := 0;
       Resources_Found  : Boolean := False;
       Resources        : Section_Plan;
+      --  Its Config scopes (none when .cubit.access is absent or malformed).
+      Config_Scopes    : Config_Scope_Array := [others => (others => <>)];
+      Config_Total     : Scope_Count := 0;
    end record;
 
    --  A resource-kind startup entry (its request is in .cubit.resources).

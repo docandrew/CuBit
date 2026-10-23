@@ -9,7 +9,7 @@ set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 cd "$here/../../kernel"
 mkdir -p "$here/build/objects"
-for d in hda mixer ata netstack; do
+for d in hda mixer ata netstack netmgr; do
     ../userspace/ccl/build/manifest/ccl-manifest ../userspace/ccl/catalogs/driver-services.ccl \
         ../userspace/services/$d/manifest.ccl > "$here/build/objects/$d.S"
     alr exec -- gcc -c "$here/build/objects/$d.S" -o "$here/build/objects/$d.o"

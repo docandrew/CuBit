@@ -17,7 +17,6 @@
 ------------------------------------------------------------------------------
 pragma Ada_2022;
 with Interfaces; use Interfaces;
-with CuBit.Startup_State;
 with Startup;
 with CuBit.Child_Exits;
 with CuBit.Control_Events;
@@ -35,6 +34,8 @@ with CuBit.Stream_Regions;
 with CuBit.Streams;
 
 procedure Main is
+   --  Launches go through procmgr, the manifest\'s process-manager entry.
+   Launcher : constant CuBit.Launching.Launcher := CuBit.Launching.Using (Startup.Process_Manager);
    package CV renames CuBit.Control_Events;
    package LA renames CuBit.Launch_Arguments;
    package PD renames CuBit.Program_Descriptions;
@@ -102,7 +103,7 @@ procedure Main is
       Empty_Arguments : constant LA.Block (1 .. 0) := [others => 0];
       Empty_Grants : constant CuBit.Launch_Grants.Bytes (1 .. 0) := [others => 0];
    begin
-      CuBit.Launching.Describe (Child_Program, Descriptor, Length, Result, Failure);
+      CuBit.Launching.Describe (Launcher, Child_Program, Descriptor, Length, Result, Failure);
       if Result /= CuBit.Launching.Launched or else Length = 0 then
          return False;
       end if;
@@ -115,14 +116,14 @@ procedure Main is
          return False;
       end if;
       CuBit.Launching.Lend_Ring
-        (Ring_Pages, CuBit.Streams.TYPE_TEXT_LINE, Base, Grant, Reference, Ok);
+        (Launcher, Ring_Pages, CuBit.Streams.TYPE_TEXT_LINE, Base, Grant, Reference, Ok);
       if not Ok then
          return False;
       end if;
       Rings.Count := 1;
       Rings.Entries (1) := (Outlet => Index, Grant => Grant);
       CuBit.Launching.Launch
-        (Child_Program, Empty_Arguments, Empty_Grants, Started, Result, Failure, Rings);
+        (Launcher, Child_Program, Empty_Arguments, Empty_Grants, Started, Result, Failure, Rings);
       return Result = CuBit.Launching.Launched;
    end Start;
 
@@ -148,8 +149,6 @@ procedure Main is
    Item : CV.Event;
    Returned : Boolean := False;
 begin
-   Say ("the startup capabilities are present", CuBit.Startup_State.Ready (Startup.Verify));
-   CuBit.Launching.Bind (Startup.Process_Manager);
    Say ("the child starts with a lent ring", Start);
    Say ("the child writes into it", Ready);
 

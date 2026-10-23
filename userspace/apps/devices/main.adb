@@ -8,7 +8,6 @@
 with CuBit.Logging;
 with Interfaces; use Interfaces;
 with CuBit.Handles;
-with CuBit.Startup_State;
 with Startup;
 
 with CuBit.Devices;
@@ -942,10 +941,6 @@ procedure main is
    Announced : Boolean;
 begin
    debugPrint ("devices: starting read-only hardware inspector" & LF);
-   if not CuBit.Startup_State.Ready (Startup.Verify) then
-      debugPrint ("devices: startup capabilities missing" & LF);
-      return;
-   end if;
    CuBit.Logging.Announce ("devices: started (read-only inspector)", Announced, Startup.Logstore);
    Load_Inventory;
    declare

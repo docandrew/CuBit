@@ -11,12 +11,12 @@
 pragma Ada_2022;
 with Interfaces; use Interfaces;
 with CuBit.Child_Exits;
-with CuBit.Handles.Startup;
 with CuBit.Launch_Arguments;
 with CuBit.Launch_Grants;
 with CuBit.Kernel_ABI;
 with CuBit.Kernel_Calls;
 with CuBit.Launching;
+with Startup;
 with CuBit.Memory_Grants;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Outlet_Rings;
@@ -25,6 +25,8 @@ with CuBit.Stream_Regions;
 with CuBit.Streams;
 
 procedure Main is
+   --  Launches go through procmgr, the manifest\'s process-manager entry.
+   Launcher : constant CuBit.Launching.Launcher := CuBit.Launching.Using (Startup.Process_Manager);
    package LA renames CuBit.Launch_Arguments;
    package LG renames CuBit.Launch_Grants;
    package PP renames CuBit.Program_Descriptions;
@@ -73,7 +75,7 @@ procedure Main is
       Grant : Unsigned_64;
    begin
       Rings.Count := 0;
-      CuBit.Launching.Describe (Program, Descriptor, Length, Result, Failure);
+      CuBit.Launching.Describe (Launcher, Program, Descriptor, Length, Result, Failure);
       if Result /= CuBit.Launching.Launched or else Length = 0 then
          return;
       end if;
@@ -86,7 +88,7 @@ procedure Main is
          return;
       end if;
       CuBit.Launching.Lend_Ring
-        (Ring_Pages, CuBit.Streams.TYPE_TEXT_LINE, Ring_Base, Grant, Ring_Reference, Ok);
+        (Launcher, Ring_Pages, CuBit.Streams.TYPE_TEXT_LINE, Ring_Base, Grant, Ring_Reference, Ok);
       if Ok then
          Rings.Count := 1;
          Rings.Entries (1) := (Outlet => Index, Grant => Grant);
@@ -230,7 +232,7 @@ procedure Main is
          Lend_Outlet (Program, Outlet);
       end if;
       CuBit.Launching.Launch
-        (Program, Block.Data (1 .. Length), Region (1 .. Region_Length), Child, Result, Failure,
+        (Launcher, Program, Block.Data (1 .. Length), Region (1 .. Region_Length), Child, Result, Failure,
          Rings);
       if Result /= CuBit.Launching.Launched then
          Rings.Count := 0;
@@ -264,7 +266,6 @@ procedure Main is
    LF : constant Character := ASCII.LF;
 begin
    --  procmgr, the "process-manager" startup entry the manifest asks for.
-   CuBit.Launching.Bind (CuBit.Handles.Startup.Endpoint_Named ("process-manager"));
    --  The same options and names the Linux reference uses (tests/gnat/build.sh).
    --  Relative names, from the work place: GNU tools read an argument that
    --  starts with '@' as a response file (D8).

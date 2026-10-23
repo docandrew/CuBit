@@ -1,7 +1,6 @@
 with Interfaces; use Interfaces;
 with CuBit.Handles;
 with CuBit.Handles.Fixture;
-with CuBit.Startup_State;
 --  Hosted fixture of ps2.drv's generated Startup package: distinct handle
 --  words per binding, so the fixture can check which one the driver used.
 package Startup is
@@ -18,5 +17,4 @@ package Startup is
    function Mouse_Events return CuBit.Handles.Notification is
      (CuBit.Handles.Fixture.Notification_Of (Mouse_Events_Word));
    function Ready return CuBit.Handles.Endpoint is (CuBit.Handles.Fixture.Endpoint_Of (16#1_0000_000F#));
-   function Verify return CuBit.Startup_State.Verification is ((Loaded => True));
 end Startup;

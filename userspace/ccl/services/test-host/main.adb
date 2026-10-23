@@ -4,7 +4,6 @@ with CuBit.Messages; use CuBit.Messages;
 with CuBit.Protocols; use CuBit.Protocols;
 with CuBit.Handles;
 with CuBit.Handles.IPC;
-with CuBit.Startup_State;
 with Startup;
 
 procedure Main is
@@ -35,10 +34,6 @@ procedure Main is
       16#8000_0000_FFFF_FFFF#, 16#1234_5678_9ABC_DEF0#];
 begin
    debugPrint ("ccl-test-host: starting" & LF);
-   if not CuBit.Startup_State.Ready (Startup.Verify) then
-      debugPrint ("ccl-test-host: startup capabilities missing" & LF);
-      return;
-   end if;
    Ignore := registerDriver (DRIVER_CCL_TEST, Startup.Registration);
    if Ignore = Unsigned_64'Last then
       debugPrint ("ccl-test-host: registration failed" & LF);

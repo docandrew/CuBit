@@ -16,12 +16,27 @@ package CCL.Manifests with SPARK_Mode => On is
       Length : Binding_Name_Length := 0;
       Data : String (1 .. MAX_NAME_TEXT) := [others => ' '];
    end record;
-   --  A request's startup binding: its name, its kind and whether the
-   --  launch needs it (CuBit.Startup_Tables).
+   --  The typed client a catalog service's startup handle is handed out as
+   --  (CAP-003): the instance of that name in CuBit.Handles.Services
+   --  (CuBit.Handles.Services.Logstore.Endpoint and so on), so a program can
+   --  give it only to what serves that service. Plain: a CuBit.Handles
+   --  Endpoint. The service catalog names it: (service logstore 13
+   --  read-write (client Logstore)).
+   type Service_Client is (Plain, Logstore, Log_Observer, Process_Manager);
+   --  Its spelling in the catalog, which is also its instance's Ada name.
+   function Client_Name (Client : Service_Client) return String is
+     (case Client is
+         when Plain => "Plain",
+         when Logstore => "Logstore",
+         when Log_Observer => "Log_Observer",
+         when Process_Manager => "Process_Manager");
+   --  A request's startup binding: its name, its kind, whether the launch
+   --  needs it (CuBit.Startup_Tables) and its typed client.
    type Named_Binding is record
       Name : Binding_Name;
       Kind : CuBit.Startup_Tables.Capability_Kind := CuBit.Startup_Tables.Endpoint;
       Requirement : CuBit.Startup_Tables.Need := CuBit.Startup_Tables.Required;
+      Client : Service_Client := Plain;
    end record;
    type Binding_Array is array (Positive range 1 .. MAX_BINDINGS) of Named_Binding;
    type Byte_Array is array (Positive range 1 .. MAX_SECTION_BYTES)
@@ -45,7 +60,9 @@ package CCL.Manifests with SPARK_Mode => On is
       Invalid_Launch, Invalid_Parameters,
       --  Startup capabilities (CAP-002).
       Invalid_Handle_Limit, Invalid_Channel_Limit, Unknown_Optional_Name,
-      Reserved_Binding_Name, Not_Yet_Supported);
+      Reserved_Binding_Name, Not_Yet_Supported,
+      --  A catalog (client …) that is not a Service_Client (CAP-003).
+      Unknown_Client);
    type Compilation_Result is record
       Success : Boolean := False;
       Diagnostic : Diagnostic_Code := No_Error;

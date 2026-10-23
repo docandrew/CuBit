@@ -1,6 +1,7 @@
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Logging;
+with CuBit.Handles.Services;
 with CuBit.Log_Protocol;
 with CuBit.Log_Records;
 with CuBit.Memory_Grants;
@@ -60,7 +61,7 @@ procedure Main is
    Win : CuBit.UI.App.Window;
    UI : CuBit.UI.State.UI_State;
    Controls : CuBit.UI.Controls.Control_Map;
-   Reader : CuBit.Logging.Reader;
+   Reader : CuBit.Logging.Reader := CuBit.Logging.Bound_To (Startup.Log_Observer);
    Status : P.Status := P.Unavailable;
    --  About 1.4 MiB of records, on the 16 MiB main stack (no heap here).
    View : Log_View.View_State;
@@ -128,7 +129,8 @@ procedure Main is
       Level : CuBit.Log_Records.Severity;
       Result : P.Status;
    begin
-      CuBit.Logging.Get_Minimum (Level, Result, Startup.Logstore);
+      CuBit.Logging.Get_Minimum
+        (Level, Result, CuBit.Handles.Services.Logstore.Handle (Startup.Logstore));
       if Result = P.OK then
          Log_View.Set_Kept (View, Level);
       end if;
@@ -268,7 +270,6 @@ procedure Main is
       Due := Now + POLL_MS;
       Log_View.Set_Time (View, Now);
       if Status not in P.OK | P.Empty | P.Gap then
-         CuBit.Logging.Bind (Reader, Startup.Log_Observer);
          CuBit.Logging.Subscribe (Reader, Status);
          Log_View.Set_Connection
            (View, (if Status in P.OK | P.Empty | P.Gap then Log_View.Connected

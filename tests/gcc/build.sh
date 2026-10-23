@@ -17,10 +17,11 @@ mkdir -p "$b" "$out"
 
 bash "$repo/userspace/ports/gcc/build.sh" "$out"
 
-mkdir -p "$here/check/build"
+mkdir -p "$here/check/build/generated"
 "$repo/userspace/ccl/build/manifest/ccl-manifest" \
     "$repo/userspace/ccl/catalogs/native-runtime-services.ccl" "$here/check/manifest.ccl" \
-    --schema "$repo/userspace/ccl/interfaces/executable-manifest.ccl" > "$here/check/build/manifest.S"
+    --schema "$repo/userspace/ccl/interfaces/executable-manifest.ccl" \
+    --startup-output "$here/check/build/generated/startup.ads" > "$here/check/build/manifest.S"
 as --64 "$here/check/build/manifest.S" -o "$here/check/build/manifest.o"
 rm -f "$here/check/build/gcc-check.app"
 (cd "$repo/kernel" && alr exec -- gprbuild $gprbuild_config -q -P "$here/check/gcc_check.gpr")

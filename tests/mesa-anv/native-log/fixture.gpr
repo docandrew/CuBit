@@ -2,7 +2,7 @@ project Fixture is
    for Languages use ("Ada", "C");
    for Source_Dirs use (".", "..", "build/generated");
    for Source_Files use ("main.adb", "probe.c", "mesa_probe_log.ads",
-     "mesa_probe_log.adb", "startup.ads");
+     "mesa_probe_log.adb", "startup.ads", "startup.adb");
    for Object_Dir use "build";
    for Main use ("main.adb");
    for Runtime ("Ada") use "../../../userspace/runtime";

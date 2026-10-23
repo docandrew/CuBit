@@ -9,7 +9,8 @@
 --  Elaborating this package copies the startup table its launcher appended
 --  to the launch block (CuBit.Launch_Envelopes) once, and loads it into
 --  CuBit.Startup_State; a block without one leaves the state empty, so every
---  required startup handle is the null handle and Startup.Verify names it.
+--  required startup handle is the null handle, and the generated Startup
+--  package's check (CuBit.Startup_Check) names it and stops the program.
 --  CuBit.Handles.Startup depends on this package, so any program that looks
 --  a startup capability up has loaded its table first.
 ------------------------------------------------------------------------------

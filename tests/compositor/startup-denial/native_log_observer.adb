@@ -3,11 +3,14 @@ with CuBit.Messages; use CuBit.Messages;
 with CuBit.Logging;
 with CuBit.Log_Protocol;
 with CuBit.Log_Records;
+with Startup;
 procedure Main is
    package P renames CuBit.Log_Protocol;
    package L renames CuBit.Log_Records;
    use type P.Status;
-   Reader : CuBit.Logging.Reader;
+   --  Its manifest's log-observer entry (it was never bound before CAP-003,
+   --  so Subscribe could only fail).
+   Reader : CuBit.Logging.Reader := CuBit.Logging.Bound_To (Startup.Log_Observer);
    Value : P.Event;
    Result : P.Status;
    Lost, Ignore, Source, Deadline : Unsigned_64;

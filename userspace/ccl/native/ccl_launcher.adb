@@ -1,5 +1,5 @@
 with CuBit.Child_Exits;
-with CuBit.Handles.Startup;
+with CuBit.Handles.Services;
 with CuBit.Launch_Arguments;
 with CuBit.Launch_Failure_Text;
 with CuBit.Launch_Authority;
@@ -28,6 +28,11 @@ package body CCL_Launcher is
    use type CuBit.Child_Exits.Termination_Kind;
 
    NEWLINE : constant Unsigned_8 := 10;
+
+   --  procmgr: the program's "process-manager" startup entry. Without one
+   --  every launch is refused (No_Process_Manager).
+   Launcher : constant CuBit.Launching.Launcher :=
+     CuBit.Launching.Using (CuBit.Handles.Services.Process_Manager.Optional_Named ("process-manager"));
    MAXIMUM_LINE : constant := 200;
    type Partial is record
       Text : String (1 .. MAXIMUM_LINE) := [others => ' '];
@@ -83,7 +88,7 @@ package body CCL_Launcher is
    begin
       Items := [others => (others => <>)];
       Count := 0;
-      CuBit.Launching.Launch_Table (Table, Length, Answered);
+      CuBit.Launching.Launch_Table (Launcher, Table, Length, Answered);
       if Answered /= CuBit.Launching.Launched or else Length = 0
         or else not LAuth.Valid (Table (1 .. Length))
       then
@@ -111,7 +116,7 @@ package body CCL_Launcher is
                   for K in Name'Range loop
                      Name (K) := Character'Val (Table (First + K - 1));
                   end loop;
-                  CuBit.Launching.Describe (Name, Descriptor, Described, Result, Failure);
+                  CuBit.Launching.Describe (Launcher, Name, Descriptor, Described, Result, Failure);
                   if Result = CuBit.Launching.Launched and then Described > 0 then
                      PD.Decode (Descriptor (1 .. Described), Item.Description, Decoded);
                      if Decoded then
@@ -189,7 +194,7 @@ package body CCL_Launcher is
                Lent : Boolean;
             begin
                CuBit.Launching.Lend_Ring
-                 (Description.Connectors (P).Pages,
+                 (Launcher, Description.Connectors (P).Pages,
                   (if Description.Connectors (P).Element = PD.Text_Lines
                    then CuBit.Streams.TYPE_TEXT_LINE else CuBit.Streams.TYPE_RAW_BYTES),
                   Base, Grant, Reference, Lent);
@@ -208,7 +213,7 @@ package body CCL_Launcher is
          end if;
       end loop;
       CuBit.Launching.Launch
-        (Name, Block.Data (1 .. Block.Used), Region (1 .. Region_Length),
+        (Launcher, Name, Block.Data (1 .. Block.Used), Region (1 .. Region_Length),
          State.Child, Launched, Failure, Rings);
       if Launched /= CuBit.Launching.Launched then
          Result := (if Launched = CuBit.Launching.No_Process_Manager then Not_Available else Refused);
@@ -309,15 +314,4 @@ package body CCL_Launcher is
       end loop;
       State := (others => <>);
    end Release;
-begin
-   --  procmgr's endpoint: the program's "process-manager" startup entry
-   --  (loaded before units elaborate). Without one every launch is refused.
-   declare
-      Found : constant CuBit.Handles.Startup.Optional_Endpoint :=
-        CuBit.Handles.Startup.Optional_Endpoint_Named ("process-manager");
-   begin
-      if Found.Present then
-         CuBit.Launching.Bind (Found.Value);
-      end if;
-   end;
 end CCL_Launcher;

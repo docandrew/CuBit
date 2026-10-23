@@ -2,6 +2,7 @@ with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Logging;
 with CuBit.Handles.IPC;
+with CuBit.Handles.Services;
 with Startup;
 with CuBit.Log_Records;
 package body Boot_Log is
@@ -10,7 +11,9 @@ package body Boot_Log is
    Lengths : array (1 .. Capture_Capacity) of Natural := [others => 0];
    Used, Column, Sent : Natural := 0;
    Lost : Natural := 0;
-   Writer : CuBit.Logging.Publisher;
+   --  devmgr grants logstore at run time (below); until then records wait
+   --  in the buffer.
+   Writer : CuBit.Logging.Publisher := CuBit.Logging.Awaiting_Grant;
    Granted, Requested, Finished : Boolean := False;
    Summary_Sent : Boolean := False;
    Due : Unsigned_64 := 1;
@@ -57,7 +60,8 @@ package body Boot_Log is
                     CuBit.Handles.IPC.Accept_Endpoint (CuBit.Handles.IPC.Carried_By (Receipt.msg));
                begin
                   if Collector.OK then
-                     CuBit.Logging.Bind (Writer, Collector.Value);
+                     CuBit.Logging.Attach
+                       (Writer, CuBit.Handles.Services.Logstore.Granted (Collector.Value));
                      Granted := True;
                   end if;
                end;

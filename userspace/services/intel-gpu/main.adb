@@ -167,7 +167,6 @@ with Intel_GPU_Native_GT_Frequency;
 with Intel_GPU_Native_GuC_Invalidate;
 with CuBit.Device_Interrupts;
 with Startup;
-with CuBit.Startup_State;
 with CuBit.Handles;
 with CuBit.Handles.Devices;
 with Intel_GPU_Replies;
@@ -8347,27 +8346,20 @@ procedure Main is
    -- Why intel-gpu stopped before serving: its exit code. devmgr reports a
    -- child's nonzero exit as a warning (Desktop's bootstrap panel, Logs),
    -- so the reason is visible even when this driver's own log never binds.
+   -- (A missing startup capability stops it earlier, in its generated
+   -- Startup package's check: CAP-003.)
    type Early_Stop is
-     (Startup_Incomplete, Bootstrap_Rejected, Resource_Rejected,
+     (Bootstrap_Rejected, Resource_Rejected,
       Register_Mapping_Denied, Firmware_Descriptor_Inconsistent);
    for Early_Stop use
-     (Startup_Incomplete => 1, Bootstrap_Rejected => 2, Resource_Rejected => 3,
+     (Bootstrap_Rejected => 2, Resource_Rejected => 3,
       Register_Mapping_Denied => 4, Firmware_Descriptor_Inconsistent => 5);
    function Name (Why : Early_Stop) return String is
      (case Why is
-         when Startup_Incomplete               => "startup incomplete",
          when Bootstrap_Rejected               => "bootstrap rejected",
          when Resource_Rejected                => "resource rejected",
          when Register_Mapping_Denied          => "register mapping denied",
          when Firmware_Descriptor_Inconsistent => "firmware descriptor inconsistent");
-   function Name (Status : CuBit.Startup_State.Verification_Status) return String is
-     (case Status is
-         when CuBit.Startup_State.Ready       => "ready",
-         when CuBit.Startup_State.Not_Loaded  => "no startup table",
-         when CuBit.Startup_State.Missing     => "missing",
-         when CuBit.Startup_State.Wrong_Kind  => "wrong kind",
-         when CuBit.Startup_State.Wrong_Need  => "wrong requirement",
-         when CuBit.Startup_State.Not_Granted => "not granted");
    -- How long a stopping driver waits for logstore to take its last records
    -- (it may stop before logstore runs).
    Early_Stop_Flush_Ms : constant := 10_000;
@@ -8398,16 +8390,6 @@ procedure Main is
       Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Exit_Status (Early_Stop'Enum_Rep (Why)));
    end Stop_Early;
 begin
-   declare
-      use type CuBit.Startup_State.Verification_Status;
-      Check : constant CuBit.Startup_State.Verification := Startup.Verify;
-   begin
-      if Check.Status /= CuBit.Startup_State.Ready then
-         Stop_Early (Startup_Incomplete, "startup capability" & Natural'Image (Check.Index) &
-           " of its manifest " & Name (Check.Status));
-         return;
-      end if;
-   end;
    if not Prepare_Session_Storage then
       Stop_Early (Resource_Rejected, "session table storage unavailable");
       return;

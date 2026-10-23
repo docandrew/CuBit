@@ -10,10 +10,13 @@ with CuBit.Child_Exits;
 with CuBit.Launch_Arguments;
 with CuBit.Launch_Grants;
 with CuBit.Launching;
+with Startup;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Program_Descriptions;
 
 procedure Main is
+   --  Launches go through procmgr, the manifest\'s process-manager entry.
+   Launcher : constant CuBit.Launching.Launcher := CuBit.Launching.Using (Startup.Process_Manager);
    package LA renames CuBit.Launch_Arguments;
    package LG renames CuBit.Launch_Grants;
    package PP renames CuBit.Program_Descriptions;
@@ -38,7 +41,7 @@ procedure Main is
       Result : CuBit.Launching.Launch_Result;
       Failure : LA.Launch_Failure;
    begin
-      CuBit.Launching.Describe (Program, Descriptor, Length, Result, Failure);
+      CuBit.Launching.Describe (Launcher, Program, Descriptor, Length, Result, Failure);
       Ok := Result = CuBit.Launching.Launched and then Length > 0;
       if Ok then
          PP.Decode (Descriptor (1 .. Length), S, Ok);
@@ -82,7 +85,7 @@ procedure Main is
       end if;
       LG.Finish (Grants, Region, Region_Length);
       CuBit.Launching.Launch
-        (Program, Block.Data (1 .. Block.Used), Region (1 .. Region_Length),
+        (Launcher, Program, Block.Data (1 .. Block.Used), Region (1 .. Region_Length),
          Child, Launched, Failure);
       if Launched = CuBit.Launching.Launched then
          CuBit.Launching.Wait (Child, Ended);
@@ -107,7 +110,7 @@ procedure Main is
       LA.Add_Argument (Block, B, Accepted);
       LA.Finish (Block, Length, Accepted);
       CuBit.Launching.Launch
-        ("binutils-compare.app", Block.Data (1 .. Length), None, Child, Result, Failure);
+        (Launcher, "binutils-compare.app", Block.Data (1 .. Length), None, Child, Result, Failure);
       if Result /= CuBit.Launching.Launched then
          return False;
       end if;
@@ -170,7 +173,7 @@ begin
       LA.Add_Argument (Block, "@nvme:0/work/stray.o", Accepted);
       LA.Add_Argument (Block, "@nvme:0/work/hello.s", Accepted);
       LA.Finish (Block, Length, Accepted);
-      CuBit.Launching.Launch ("as.app", Block.Data (1 .. Length), None, Child, Launched, Failure);
+      CuBit.Launching.Launch (Launcher, "as.app", Block.Data (1 .. Length), None, Child, Launched, Failure);
       Passed := False;
       if Launched = CuBit.Launching.Launched then
          CuBit.Launching.Wait (Child, Ended);

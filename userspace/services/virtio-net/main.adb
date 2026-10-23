@@ -33,7 +33,6 @@ with CuBit.Memory_Grants;
 with Virtqueue_Index;
 with CuBit.Virtio_Net_Control;
 with CuBit.Device_Interrupts;
-with CuBit.Startup_State;
 with Startup;
 with CuBit.Busy_Poll;
 
@@ -729,10 +728,6 @@ procedure main is
    --  devQSz is used in queue setup debug output
 begin
    debugPrint ("virtio-net: starting..." & LF);
-   if not CuBit.Startup_State.Ready (Startup.Verify) then
-      debugPrint ("virtio-net: startup capabilities missing" & LF);
-      return;
-   end if;
    --  The legacy transport's register ports (absent for a modern device,
    --  whose BAR devmgr maps).
    if Startup.Registers.Present then

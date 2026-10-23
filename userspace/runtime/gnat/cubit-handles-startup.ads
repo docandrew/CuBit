@@ -11,7 +11,8 @@
 --  function per declared name; programs normally use that package rather
 --  than spelling names here. A required name that the table does not grant
 --  (of the kind asked) gives the null handle, which the kernel never
---  resolves; Startup.Verify reports it at startup. An optional one is
+--  resolves; the generated package's startup check reports it before the
+--  program runs (CAP-003). An optional one is
 --  Present or not, and the caller must look.
 ------------------------------------------------------------------------------
 pragma Ada_2022;

@@ -202,6 +202,11 @@ package body Devmgr_Launches is
    function Child_Self_Process (Item : Child) return H.Foreign_Handle is
      (Launches (Item).Spawned.Child_Self_Process);
 
+   function Config_Total (Item : Child) return Driver_Manifests.Scope_Count is
+     (Launches (Item).Manifest.Config_Total);
+   function Config_Scope (Item : Child; Index : Positive) return Driver_Manifests.Config_Scope is
+     (Launches (Item).Manifest.Config_Scopes (Index));
+
    function Interrupt_Of (Item : Child) return Driver_Manifests.Interrupt_Request is
      (Driver_Manifests.Interrupt_Of (Launches (Item).Manifest));
 

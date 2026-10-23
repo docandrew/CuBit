@@ -96,6 +96,8 @@ procedure Main is
    Mixer : constant Manifest := Read (Load ("mixer"));
    Ata : constant Manifest := Read (Load ("ata"));
    Netstack : constant Manifest := Read (Load ("netstack"));
+   Netmgr : constant Manifest := Read (Load ("netmgr"));
+   Net_Prefix : constant String (1 .. 4) := "net.";
    Empty : constant Byte_Array (1 .. 0) := [others => 0];
 begin
    --  No image, no manifest.
@@ -147,7 +149,18 @@ begin
       Check (Source_Of (Netstack, I) = (Capability_Source, I), "netstack sources");
    end loop;
 
+   --  Config scopes (CAP-003): netmgr.svc declares exactly "net.", read
+   --  only, which devmgr installs for it; the drivers declare none.
+   Check (Netmgr.Config_Total = 1, "netmgr declares one config scope");
+   Check (Netmgr.Config_Scopes (1).Length = 4
+          and then (for all J in 1 .. 4 =>
+                      Character'Val (Netmgr.Config_Scopes (1).Prefix (J)) = Net_Prefix (J)),
+          "netmgr's config scope is net.");
+   Check (Netmgr.Config_Scopes (1).Rights = 1, "netmgr's config scope is read only");
+   Check (Hda.Config_Total = 0 and Netstack.Config_Total = 0, "drivers declare no config scope");
+
    Robust ("hda");
+   Robust ("netmgr");
    Robust ("mixer");
    Robust ("ata");
    Robust ("netstack");

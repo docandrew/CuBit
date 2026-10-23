@@ -15,6 +15,7 @@ with CuBit.Grant_References;
 with CuBit.Kernel_ABI;
 with CuBit.Log_Publish_Rings;
 with CuBit.Handles;
+with CuBit.Handles.Services;
 with Startup;
 
 procedure Main is
@@ -27,13 +28,17 @@ procedure Main is
    --  A burst well past logstore's per-pool budget (Log_Budgets.Burst,
    --  2048): logstore sheds the excess and says so.
    Burst_Records : constant := 3_000;
-   Reader : CuBit.Logging.Reader;
-   Writer : CuBit.Logging.Publisher;
+   Reader : CuBit.Logging.Reader := CuBit.Logging.Bound_To (Startup.Log_Observer);
+   Writer : CuBit.Logging.Publisher := CuBit.Logging.Bound_To (Startup.Logstore);
    --  Logstore as publisher, and as observer (absent for the ordinary
    --  child: only trusted startup is granted it).
-   Logstore : constant CuBit.Handles.Endpoint := Startup.Logstore;
+   Logstore : constant CuBit.Handles.Endpoint :=
+     CuBit.Handles.Services.Logstore.Handle (Startup.Logstore);
+   Process_Manager : constant CuBit.Handles.Endpoint :=
+     CuBit.Handles.Services.Process_Manager.Handle (Startup.Process_Manager);
    Observer : constant CuBit.Handles.Endpoint :=
-     (if Startup.Log_Observer.Present then Startup.Log_Observer.Value
+     (if Startup.Log_Observer.Present
+      then CuBit.Handles.Services.Log_Observer.Handle (Startup.Log_Observer.Value)
       else CuBit.Handles.No_Endpoint);
    Value : P.Event;
    Result : P.Status;
@@ -117,14 +122,12 @@ procedure Main is
    end Check_Burst;
 
    procedure Check_Disconnect is
-      Logger : CuBit.Logging.Publisher;
-      Fresh : CuBit.Logging.Publisher;
+      Logger : CuBit.Logging.Publisher := CuBit.Logging.Bound_To (Startup.Logstore);
+      Fresh : CuBit.Logging.Publisher := CuBit.Logging.Bound_To (Startup.Logstore);
       Record_Value : constant L.Decoded := L.Make ("disconnect check");
       Done : Boolean;
       Deadline : constant Unsigned_64 := syscall (SYSCALL_GETTIME) + 2000;
    begin
-      CuBit.Logging.Bind (Logger, Logstore);
-      CuBit.Logging.Bind (Fresh, Logstore);
       CuBit.Logging.Disconnect (Fresh, Done);
       Check (Done, "unused publisher disconnects immediately");
       CuBit.Logging.Emit (Fresh, Record_Value.Value, Submitted);
@@ -149,14 +152,15 @@ procedure Main is
    --  The ipc-test entry is log-retire (the fault fixture): it maps the
    --  ring region and exits without answering Attach.
    procedure Check_Collector_Death is
-      Logger : CuBit.Logging.Publisher;
-      Stale : CuBit.Logging.Publisher;
+      --  log-retire stands in for logstore here, deliberately.
+      Retiring : constant CuBit.Handles.Services.Logstore.Endpoint :=
+        CuBit.Handles.Services.Logstore.Granted (Startup.Ipc_Test);
+      Logger : CuBit.Logging.Publisher := CuBit.Logging.Bound_To (Retiring);
+      Stale : CuBit.Logging.Publisher := CuBit.Logging.Bound_To (Retiring);
       Record_Value : constant L.Decoded := L.Make ("collector death check");
       Done : Boolean;
       Deadline : constant Unsigned_64 := syscall (SYSCALL_GETTIME) + 2000;
    begin
-      CuBit.Logging.Bind (Logger, Startup.Ipc_Test);
-      CuBit.Logging.Bind (Stale, Startup.Ipc_Test);
       CuBit.Logging.Emit (Logger, Record_Value.Value, Submitted);
       Check (not Submitted and then CuBit.Logging.Dropped (Logger) = 1,
              "a collector dying in Attach costs one counted record, no wait");
@@ -174,8 +178,6 @@ procedure Main is
       debugPrint ("TEST: PASS log-collector-death" & ASCII.LF);
    end Check_Collector_Death;
 begin
-   CuBit.Logging.Bind (Reader, Observer);
-   CuBit.Logging.Bind (Writer, Logstore);
    --  The ordinary child requests exactly the same ELF manifest, but cannot
    --  opt into trusted-startup approval. Its observer endpoint stays absent.
    CuBit.Logging.Subscribe (Reader, Result);
@@ -279,13 +281,13 @@ begin
          Buffer (I) := Character'Pos (Filename (I));
       end loop;
       G.Create_Via_Capability
-        (Startup.Process_Manager, Buffer'Address, 1, False, Grant, Created);
+        (Process_Manager, Buffer'Address, 1, False, Grant, Created);
       Check (Created, "spawn name grant created");
       Msg := NULL_MESSAGE;
       Msg.tag := (label => 16#0100#, length => Filename'Length,
                   protocol => 0, ipc => <>, reserved => 0);
       Msg.words := [CuBit.Grant_References.Encode (Grant), 5, 0, 0];
-      Tag := capCall (Startup.Process_Manager, Msg, CuBit.Messages.Wait_Forever);
+      Tag := capCall (Process_Manager, Msg, CuBit.Messages.Wait_Forever);
       Check (Tag.label = 16#F000#, "ordinary child launched");
    end;
    debugPrint ("TEST: PASS log-authority" & ASCII.LF);

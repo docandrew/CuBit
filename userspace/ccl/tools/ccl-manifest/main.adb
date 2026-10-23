@@ -112,8 +112,11 @@ procedure Main is
    --  The startup binding (CAP-002): package Startup, one function per
    --  startup capability, named after its binding, returning that kind's
    --  private handle (Required) or an Optional_Handle the caller must
-   --  examine (Optional); Verify checks the loaded table against the
-   --  declaration. No numbers: handles come from the startup table only.
+   --  examine (Optional), typed by the catalog's (client X) where it names
+   --  one (CuBit.Handles.Services.X, CAP-003). Its body checks the loaded
+   --  table against the declaration while the package elaborates, before
+   --  the program's main (CuBit.Startup_Check). No numbers: handles come
+   --  from the startup table only.
    ---------------------------------------------------------------------------
    package ST renames CuBit.Startup_Tables;
 
@@ -135,14 +138,15 @@ procedure Main is
    end Ada_Name;
 
    --  Names the generated package cannot use as function names: Ada's
-   --  reserved words, Standard (the generated code's anchor) and Verify.
+   --  reserved words, Standard (the generated code's anchor) and Expected
+   --  (its declared table).
    Unusable : constant String :=
      " abort abs abstract accept access aliased all and array at begin body case constant" &
      " declare delay delta digits do else elsif end entry exception exit for function generic" &
      " goto if in interface is limited loop mod new not null of or others out overriding" &
      " package pragma private procedure protected raise range record rem renames requeue" &
      " return reverse select separate some subtype synchronized tagged task terminate then" &
-     " type until use when while with xor standard verify ";
+     " type until use when while with xor standard expected ";
 
    --  The CuBit.Handles type each kind's handle is (DMA and Resource
    --  entries are not capabilities and get no accessor).
@@ -189,7 +193,7 @@ procedure Main is
          begin
             if Ada.Strings.Fixed.Index (Unusable, " " & Name & " ") > 0 then
                Put_Line (Standard_Error, Argument (2) & ": binding """ & Name &
-                         """ cannot name a startup function (an Ada reserved word, Standard or Verify). " &
+                         """ cannot name a startup function (an Ada reserved word, Standard or Expected). " &
                          "Fix: rename the binding.");
                return False;
             end if;
@@ -197,6 +201,55 @@ procedure Main is
       end loop;
       return True;
    end Startup_Names_Usable;
+
+   function Has_Client return Boolean is
+     (for some Binding of Result.Bindings (1 .. Result.Binding_Count) =>
+        CCL.Manifests."/=" (Binding.Client, CCL.Manifests.Plain));
+
+   --  startup.adb beside startup.ads: the startup check (CAP-003), run while
+   --  the package elaborates, so before the program's main; it stops the
+   --  program, saying which entry and why, when the loaded table lacks a
+   --  required one. Nothing to check when nothing is declared.
+   procedure Emit_Startup_Body (Identity : String) is
+      Output : Ada.Text_IO.File_Type;
+      Spec : constant String := Startup_Path;
+      Log : Natural := 0;
+   begin
+      for Index in 1 .. Result.Binding_Count loop
+         if Log = 0 and then CCL.Manifests."=" (Result.Bindings (Index).Client, CCL.Manifests.Logstore) then
+            Log := Index;
+         end if;
+      end loop;
+      Create (Output, Out_File, Spec (Spec'First .. Spec'Last - 1) & "b");
+      Put_Line (Output, "--  Generated with the ELF manifest; do not edit.");
+      Put_Line (Output, "pragma Ada_2022;");
+      if Result.Binding_Count = 0 then
+         Put_Line (Output, "package body Startup with SPARK_Mode => Off is");
+         Put_Line (Output, "end Startup;");
+         Close (Output);
+         return;
+      end if;
+      if Log = 0 then
+         Put_Line (Output, "with CuBit.Startup_Check;");
+      else
+         Put_Line (Output, "with CuBit.Startup_Check.Logged;");
+         Put_Line (Output, "with CuBit.Handles.Services;");
+      end if;
+      Put_Line (Output, "package body Startup with SPARK_Mode => Off is");
+      Put_Line (Output, "begin");
+      Put_Line (Output, "   --  Stops here, saying which entry and why, if the loaded startup");
+      Put_Line (Output, "   --  table lacks a required capability declared above (CAP-003).");
+      if Log = 0 then
+         Put_Line (Output, "   Standard.CuBit.Startup_Check.Require (Expected, """ & Identity & """);");
+      else
+         Put_Line (Output, "   Standard.CuBit.Startup_Check.Logged.Require");
+         Put_Line (Output, "     (Expected, """ & Identity & """,");
+         Put_Line (Output, "      Standard.CuBit.Handles.Services.Logstore.Optional_Named (""" &
+                   Result.Bindings (Log).Name.Data (1 .. Result.Bindings (Log).Name.Length) & """));");
+      end if;
+      Put_Line (Output, "end Startup;");
+      Close (Output);
+   end Emit_Startup_Body;
 
    procedure Emit_Startup is
       Output : Ada.Text_IO.File_Type;
@@ -222,13 +275,22 @@ procedure Main is
                     when ST.At_Most => "at most" & ST.Handle_Count'Image (Result.Handles.Count),
                     when ST.Kernel_Limit => "the kernel limit") & ".");
       Put_Line (Output, "pragma Ada_2022;");
-      Put_Line (Output, "with CuBit.Handles.Startup;");
-      Put_Line (Output, "with CuBit.Startup_State;");
-      Put_Line (Output, "with CuBit.Startup_Tables;");
+      if (for some Binding of Result.Bindings (1 .. Result.Binding_Count) =>
+            CCL.Manifests."=" (Binding.Client, CCL.Manifests.Plain) and then Handle_Type (Binding.Kind) /= "")
+      then
+         Put_Line (Output, "with CuBit.Handles.Startup;");
+      end if;
+      if Result.Binding_Count > 0 then
+         Put_Line (Output, "with CuBit.Startup_State;");
+         Put_Line (Output, "with CuBit.Startup_Tables;");
+      end if;
+      if Has_Client then
+         Put_Line (Output, "with CuBit.Handles.Services;");
+      end if;
       if Result.Channel_Offers.Count > 0 then
          Put_Line (Output, "with CuBit.Channel_Limits;");
       end if;
-      Put_Line (Output, "package Startup with SPARK_Mode is");
+      Put_Line (Output, "package Startup with SPARK_Mode, Elaborate_Body is");
       for Binding of Result.Bindings (1 .. Result.Binding_Count) loop
          declare
             Name : constant String := Binding.Name.Data (1 .. Binding.Name.Length);
@@ -242,6 +304,20 @@ procedure Main is
                       (if Optional then "optional" else "required") & ".");
             if T = "" then
                Put_Line (Output, "   --  (not a capability: no handle)");
+            elsif CCL.Manifests."/=" (Binding.Client, CCL.Manifests.Plain) then
+               declare
+                  Typed : constant String := "Standard.CuBit.Handles.Services." &
+                    CCL.Manifests.Client_Name (Binding.Client);
+               begin
+                  if Optional then
+                     Put_Line (Output, "   function " & Ada_Name (Name) & " return " & Typed &
+                               ".Optional_Endpoint is");
+                     Put_Line (Output, "     (" & Typed & ".Optional_Named (""" & Name & """));");
+                  else
+                     Put_Line (Output, "   function " & Ada_Name (Name) & " return " & Typed & ".Endpoint is");
+                     Put_Line (Output, "     (" & Typed & ".Named (""" & Name & """));");
+                  end if;
+               end;
             elsif Optional then
                Put_Line (Output, "   function " & Ada_Name (Name) &
                          " return Standard.CuBit.Handles.Startup.Optional_" & T & " is");
@@ -255,27 +331,6 @@ procedure Main is
             end if;
          end;
       end loop;
-      Put_Line (Output, "");
-      Put_Line (Output, "   --  Whether the loaded startup table holds every capability above,");
-      Put_Line (Output, "   --  with its kind; call once at startup and stop if it is not Ready.");
-      Put_Line (Output, "   function Verify return Standard.CuBit.Startup_State.Verification is");
-      if Result.Binding_Count = 0 then
-         Put_Line (Output, "     (Standard.CuBit.Startup_State.Verify ([]));");
-      else
-         Put_Line (Output, "     (Standard.CuBit.Startup_State.Verify");
-         for Index in 1 .. Result.Binding_Count loop
-            declare
-               Binding : CCL.Manifests.Named_Binding renames Result.Bindings (Index);
-               Name : constant String := Binding.Name.Data (1 .. Binding.Name.Length);
-            begin
-               Put_Line (Output, (if Index = 1 then "        ([" else "          ") &
-                         "(Standard.CuBit.Startup_Tables.To_Name (""" & Name & """), " &
-                         "Standard.CuBit.Startup_Tables." & Kind_Image (Binding.Kind) & ", " &
-                         "Standard.CuBit.Startup_Tables." & Mixed (ST.Need'Image (Binding.Requirement)) & ")" &
-                         (if Index = Result.Binding_Count then "]));" else ","));
-            end;
-         end loop;
-      end if;
       if Result.Channel_Offers.Count > 0 then
          --  The channel offers this program serves (CAP-002 step 3), for
          --  Channel_Servers.Configure: constants per contract, named after
@@ -314,8 +369,28 @@ procedure Main is
          end loop;
          Put_Line (Output, "   end Channels;");
       end if;
+      --  The declared table, which the body checks the loaded one against.
+      if Result.Binding_Count > 0 then
+         Put_Line (Output, "");
+         Put_Line (Output, "   --  The table declared above; the package's elaboration checks the");
+         Put_Line (Output, "   --  loaded one against it and stops the program if it falls short.");
+         Put_Line (Output, "   Expected : constant Standard.CuBit.Startup_State.Expectations :=");
+         for Index in 1 .. Result.Binding_Count loop
+            declare
+               Binding : CCL.Manifests.Named_Binding renames Result.Bindings (Index);
+               Name : constant String := Binding.Name.Data (1 .. Binding.Name.Length);
+            begin
+               Put_Line (Output, (if Index = 1 then "     [" else "      ") &
+                         "(Standard.CuBit.Startup_Tables.To_Name (""" & Name & """), " &
+                         "Standard.CuBit.Startup_Tables." & Kind_Image (Binding.Kind) & ", " &
+                         "Standard.CuBit.Startup_Tables." & Mixed (ST.Need'Image (Binding.Requirement)) & ")" &
+                         (if Index = Result.Binding_Count then "];" else ","));
+            end;
+         end loop;
+      end if;
       Put_Line (Output, "end Startup;");
       Close (Output);
+      Emit_Startup_Body (Identity);
    end Emit_Startup;
 begin
    if not Options_Valid then
@@ -366,6 +441,12 @@ begin
       return;
    end if;
    if Startup_Path'Length > 0 then
+      if Startup_Path'Length < 5 or else Startup_Path (Startup_Path'Last - 3 .. Startup_Path'Last) /= ".ads" then
+         Put_Line (Standard_Error, "--startup-output names the package spec, a .ads file " &
+                   "(its body goes beside it, as .adb).");
+         Set_Exit_Status (Failure);
+         return;
+      end if;
       if not Startup_Names_Usable then
          Set_Exit_Status (Failure);
          return;

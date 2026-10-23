@@ -38,6 +38,7 @@ with Font8x16;
 with CuBit.Handles.Control;
 with CuBit.Handles.Devices;
 with CuBit.Handles.Startup;
+with CuBit.Handles.Services;
 with CuBit.Startup_Tables;
 with Startup;
 
@@ -52,6 +53,9 @@ procedure main is
    use ASCII;
 
    --  The approved network scope, or the null handle (calls through it fail).
+   --  procmgr, for the shell's own raw launch and process requests.
+   Process_Manager_Endpoint : constant CuBit.Handles.Endpoint :=
+     CuBit.Handles.Services.Process_Manager.Handle (Startup.Process_Manager);
    Network_Service : constant CuBit.Handles.Endpoint :=
      (if Startup.Network.Present then Startup.Network.Value
       else CuBit.Handles.No_Endpoint);
@@ -845,7 +849,7 @@ procedure main is
          msg.words (1) := 5;  -- default priority
          msg.words (2) := 0;  -- no sandbox override from shell
          msg.words (3) := Unsigned_64 (cwdLen);
-         tag := capCall (Startup.Process_Manager, msg, CuBit.Messages.Wait_Forever);
+         tag := capCall (Process_Manager_Endpoint, msg, CuBit.Messages.Wait_Forever);
       end;
 
       if tag.label = REPLY_OK then
@@ -940,7 +944,7 @@ procedure main is
          msg.words (1) := 5;
          msg.words (2) := 0;  -- no sandbox override from shell
          msg.words (3) := Unsigned_64 (cwdLen);
-         tag := capCall (Startup.Process_Manager, msg, CuBit.Messages.Wait_Forever);
+         tag := capCall (Process_Manager_Endpoint, msg, CuBit.Messages.Wait_Forever);
       end;
 
       if tag.label = REPLY_OK then
@@ -3296,7 +3300,7 @@ procedure main is
    --  cmdLogs - inspect typed diagnostics through an observer authority.
    --  The reader owns its output page for the lifetime of this process.
    ---------------------------------------------------------------------------
-   Log_Reader : CuBit.Logging.Reader;
+   Log_Reader : CuBit.Logging.Reader := CuBit.Logging.Bound_To (Startup.Log_Observer);
 
    procedure cmdLogs is
       use CuBit.Log_Protocol;
@@ -3304,7 +3308,6 @@ procedure main is
       Lost : Unsigned_64;
       Result : Status;
    begin
-      CuBit.Logging.Bind (Log_Reader, Startup.Log_Observer);
       CuBit.Logging.Subscribe (Log_Reader, Result);
       if Result /= OK then
          putStr ("logs: observer unavailable or not authorized: " &
@@ -3638,7 +3641,7 @@ begin
          if ret /= Unsigned_64'Last then
             grantBuf := To_Address (Integer_Address (ret));
             CuBit.Memory_Grants.Create_Via_Capability (
-               slot      => Startup.Process_Manager,
+               slot      => Process_Manager_Endpoint,
                localAddr => grantBuf,
                numPages  => GRANT_BUF_PAGES,
                readWrite => True,

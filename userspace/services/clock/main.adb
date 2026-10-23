@@ -8,7 +8,6 @@ with CuBit.Logging;
 with CuBit.Log_Records;
 with Wall_Clock;
 with CuBit.Config;
-with CuBit.Startup_State;
 with Startup;
 
 procedure Main is
@@ -24,17 +23,12 @@ procedure Main is
    Response : Message;
    Ignore   : Unsigned_64;
    Now_Ms   : Unsigned_64;
-   Logger : CuBit.Logging.Publisher;
+   Logger : CuBit.Logging.Publisher := CuBit.Logging.Bound_To (Startup.Logstore);
    Completion : CompletionEntry;
    Found, Handled, Submitted : Boolean;
 begin
    debugPrint ("clock: starting" & LF);
-   if not CuBit.Startup_State.Ready (Startup.Verify) then
-      debugPrint ("clock: startup capabilities missing" & LF);
-      return;
-   end if;
    CuBit.Config.Bind (Startup.Config);
-   CuBit.Logging.Bind (Logger, Startup.Logstore);
    Wall_Clock.Initialize;
    Ignore := registerDriver (DRIVER_CLOCK, Startup.Registration);
    if Ignore = Unsigned_64'Last then

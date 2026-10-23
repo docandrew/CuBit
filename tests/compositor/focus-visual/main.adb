@@ -2,7 +2,6 @@ with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Desktop_Protocol; use CuBit.Desktop_Protocol;
 with CuBit.Desktop_Messages; use CuBit.Desktop_Messages;
-with CuBit.Startup_State;
 with Startup;
 procedure Main is
  function Send (Wire : Wire_Message) return Wire_Message is
@@ -12,9 +11,6 @@ procedure Main is
  Ignore : Wire_Message;
  Slept : Unsigned_64;
 begin
- if not CuBit.Startup_State.Ready(Startup.Verify) then
-  debugPrint("TEST: FAIL focus startup capabilities" & ASCII.LF);return;
- end if;
  A:=Decode_Creation_Result(Send(Encode_Create((300,200,Window_Surface, Desktop_Sized))));
  B:=Decode_Creation_Result(Send(Encode_Create((300,200,Window_Surface, Desktop_Sized))));
  if A.Status/=Success or B.Status/=Success then

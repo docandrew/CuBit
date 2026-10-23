@@ -1226,6 +1226,61 @@ procedure main is
    end sendWildcardACLConfig;
 
    ---------------------------------------------------------------------------
+   --  Install the Config scopes a child's manifest declares in config.svc
+   --  (CAP-003): exactly those, read from its ELF, never a wildcard. A
+   --  child that declares none gets no ACL, so Config denies it.
+   ---------------------------------------------------------------------------
+   --  config.svc's ACL record (Config_Authority_Wire): rights mask, prefix
+   --  length, six zero bytes, the prefix.
+   ACL_ENTRY_BYTES   : constant := 72;
+   ACL_RIGHTS_BYTE   : constant := 1;
+   ACL_LENGTH_BYTE   : constant := 2;
+   ACL_PREFIX_FIRST  : constant := 9;
+   ACL_PAGE_BYTES    : constant := 4096;
+   type ACL_Page is array (1 .. ACL_PAGE_BYTES) of Unsigned_8;
+   pragma Compile_Time_Error
+     (Driver_Manifests.MAX_SCOPES * ACL_ENTRY_BYTES > ACL_PAGE_BYTES, "ACL records exceed one page");
+   ACL_Buffer : ACL_Page with Alignment => ACL_PAGE_BYTES;
+
+   procedure sendDeclaredConfigScopes (Item : DL.Child; Name : String) is
+      Count : constant Natural := DL.Config_Total (Item);
+      Grant : CuBit.Memory_Grants.Grant_Reference;
+      Lent, Revoked : Boolean;
+      aclMsg : Message := NULL_MESSAGE;
+      Tag : MessageTag;
+   begin
+      if configPID = No_Process or else Count = 0 then
+         return;
+      end if;
+      ACL_Buffer := [others => 0];
+      for I in 1 .. Count loop
+         declare
+            Scope : constant Driver_Manifests.Config_Scope := DL.Config_Scope (Item, I);
+            Base : constant Natural := (I - 1) * ACL_ENTRY_BYTES;
+         begin
+            ACL_Buffer (Base + ACL_RIGHTS_BYTE) := Scope.Rights;
+            ACL_Buffer (Base + ACL_LENGTH_BYTE) := Unsigned_8 (Scope.Length);
+            for J in 1 .. Scope.Length loop
+               ACL_Buffer (Base + ACL_PREFIX_FIRST + J - 1) := Scope.Prefix (J);
+            end loop;
+         end;
+      end loop;
+      CuBit.Memory_Grants.Create_Via_Capability (Config_Endpoint, ACL_Buffer'Address, 1, False, Grant, Lent);
+      if not Lent then
+         debugPrint ("devmgr: config scopes not installed (no grant): " & Name & LF);
+         return;
+      end if;
+      aclMsg.tag := (label => OP_SET_ACL, length => 4, protocol => 0, ipc => <>, reserved => 0);
+      aclMsg.words := [0 => To_Word (DL.PID (Item)), 1 => Unsigned_64 (Count),
+                       2 => Grant.slot, 3 => Grant.generation];
+      Tag := capCall (Config_Endpoint, aclMsg, CuBit.Messages.Wait_Forever);
+      if Tag.label /= REPLY_OK then
+         debugPrint ("devmgr: config.svc refused the declared config scopes of " & Name & LF);
+      end if;
+      CuBit.Memory_Grants.Revoke (Grant, Revoked);
+   end sendDeclaredConfigScopes;
+
+   ---------------------------------------------------------------------------
    --  Attach a block driver devmgr started to the running filesystem: an
    --  offer of a Read+Write copy of the driver's endpoint (Fs_Attachments).
    ---------------------------------------------------------------------------
@@ -3215,8 +3270,8 @@ begin
          DL.Withhold (netmgrChild, "netstack");
       end if;
 
-      --  Config ACL for reading net.* keys
-      sendWildcardACLConfig (netmgrPID);
+      --  Its declared Config scope (net., read only).
+      sendDeclaredConfigScopes (netmgrChild, "netmgr.svc");
 
       assignCPU (netmgrChild, "netmgr.svc");
       if DL.Start (netmgrChild) then

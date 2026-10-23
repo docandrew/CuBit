@@ -1,4 +1,3 @@
-with CuBit.Startup_State;
 with Startup;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
@@ -92,7 +91,6 @@ procedure Main is
       Client.Retire (Object, Good); Check (Good, "grant retirement");
    end Close;
 begin
-   Check (CuBit.Startup_State.Ready (Startup.Verify), "startup capabilities");
    debugPrint ("CONFIG-OBJECTS: starting" & ASCII.LF);
    VM_Fixture.Run ("(+ 20 21)", Types, First_Value, Good); Check (Good, "compile and execute 41");
    VM_Fixture.Run ("(+ 20 22)", Types, Second_Value, Good); Check (Good, "compile and execute 42");

@@ -23,7 +23,6 @@ with CuBit.Memory_Grants;
 with CuBit.Busy_Poll;
 with CuBit.NVMe_Control;
 with CuBit.Device_Interrupts;
-with CuBit.Startup_State;
 with Startup;
 with NVMe;
 
@@ -250,10 +249,6 @@ procedure main is
 #end if;
 begin
    debugPrint ("NVMe Driver: Starting..." & LF);
-   if not CuBit.Startup_State.Ready (Startup.Verify) then
-      debugPrint ("NVMe Driver: startup capabilities missing" & LF);
-      return;
-   end if;
 
    --  0. The first message is devmgr's interrupt configuration, bound to
    --  the registered devmgr's kernel-supplied identity.
