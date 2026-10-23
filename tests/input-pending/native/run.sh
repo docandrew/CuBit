@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Invoke under the shared build lock and nix develop. No production staging.
 set -euo pipefail
+# Resolved before any cd, while a relative $0 still names this script.
+gprbuild_config=${CUBIT_NATIVE_GPRBUILD_CONFIG:-$(make -s --no-print-directory -C "$(git -C "$(dirname "$0")" rev-parse --show-toplevel)/kernel" print-native-gprbuild-config)}
 root=$(cd "$(dirname "$0")/../../.." && pwd)
 cd "$root"
 test -s kernel/cubit_kernel
@@ -10,7 +12,7 @@ export TMPDIR="$out/tmp"
 echo "Native input retention evidence: $out"
 (
     cd kernel
-    alr exec -- gprbuild -p -P ../tests/input-pending/native/input_native.gpr \
+    alr exec -- gprbuild $gprbuild_config -p -P ../tests/input-pending/native/input_native.gpr \
         -XINPUT_NATIVE_BUILD="$out/obj"
 )
 cp "$out/obj/devmgr.svc" "$out/cpio/devmgr.svc"

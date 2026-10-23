@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Invoke under the shared build lock and nix develop. No production staging.
 set -euo pipefail
+# Resolved before any cd, while a relative $0 still names this script.
+gprbuild_config=${CUBIT_NATIVE_GPRBUILD_CONFIG:-$(make -s --no-print-directory -C "$(git -C "$(dirname "$0")" rev-parse --show-toplevel)/kernel" print-native-gprbuild-config)}
 root=$(pwd)
 test -s kernel/cubit_kernel
 task_dir=$(mktemp -d "${TMPDIR:-/tmp}/owned-records-native.XXXXXX")
@@ -9,7 +11,7 @@ export TMPDIR="$task_dir/tmp"
 echo "Native owned-record evidence: $task_dir"
 (
     cd kernel
-    alr exec -- gprbuild -p -P ../tests/owned-record-table/native.gpr \
+    alr exec -- gprbuild $gprbuild_config -p -P ../tests/owned-record-table/native.gpr \
         -XDEMAND_BUILD="$task_dir/obj"
 )
 cp "$task_dir/obj/devmgr.svc" "$task_dir/cpio/devmgr.svc"

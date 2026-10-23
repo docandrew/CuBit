@@ -1,0 +1,14 @@
+--  Hosted tests of CCL build's Storehouse core and executor
+--  (docs/ccl-build.md); run with tests/ccl-build/run.sh.
+with "../../userspace/lib/tls/sparktls_host.gpr";
+project CCL_Build_Tests is
+   for Languages use ("Ada");
+   for Source_Dirs use (".", "../../userspace/lib/storehouse", "../../userspace/ccl/tools/ccl-build");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("core_tests.adb", "store_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-O2", "-gnat2022", "-gnatwa", "-gnatwe", "-gnata");
+   end Compiler;
+end CCL_Build_Tests;

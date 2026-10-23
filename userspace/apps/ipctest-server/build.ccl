@@ -1,0 +1,5 @@
+# ipctest_server.gpr translated by tools/gpr_to_ccl.py (docs/ccl-build.md).
+(Component.Ada_Program (Ada_Program
+  executable => "ipctest-server.app"
+  directory => "userspace/apps/ipctest-server"
+  sources => ["userspace/apps/ipctest-server/channel"]))

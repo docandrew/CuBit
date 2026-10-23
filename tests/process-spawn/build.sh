@@ -5,6 +5,8 @@
 # over the libc), and delegate-check (Ada launcher handing a child a place). Run in the Nix shell, under the shared build lock, after
 # `make -C kernel libc user_runtime ccl-manifest`.
 set -euo pipefail
+# Resolved before any cd, while a relative $0 still names this script.
+gprbuild_config=${CUBIT_NATIVE_GPRBUILD_CONFIG:-$(make -s --no-print-directory -C "$(git -C "$(dirname "$0")" rev-parse --show-toplevel)/kernel" print-native-gprbuild-config)}
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../.." && pwd)
 out=${1:-$repo/kernel/isodir/boot}
@@ -42,7 +44,7 @@ mkdir -p "$here/ada/build/generated"
 as --64 "$here/ada/build/manifest.S" -o "$here/ada/build/manifest.o"
 # gprbuild does not track crt0.o or the runtime library: always relink.
 rm -f "$here/ada/build/ada-args-check.app"
-(cd "$repo/kernel" && alr exec -- gprbuild -q -P "$here/ada/ada_args_check.gpr")
+(cd "$repo/kernel" && alr exec -- gprbuild $gprbuild_config -q -P "$here/ada/ada_args_check.gpr")
 cp "$here/ada/build/ada-args-check.app" "$out/ada-args-check.app"
 
 # delegate-check (Ada launcher): delegated places through CuBit.Launching.
@@ -53,7 +55,7 @@ as --64 "$here/delegate/build/manifest.S" -o "$here/delegate/build/manifest.o"
 python3 "$here/launch-table.py" args-check.app > "$here/delegate/build/launch.S"
 as --64 "$here/delegate/build/launch.S" -o "$here/delegate/build/launch.o"
 rm -f "$here/delegate/build/delegate-check.app"
-(cd "$repo/kernel" && alr exec -- gprbuild -q -P "$here/delegate/delegate_check.gpr")
+(cd "$repo/kernel" && alr exec -- gprbuild $gprbuild_config -q -P "$here/delegate/delegate_check.gpr")
 cp "$here/delegate/build/delegate-check.app" "$out/delegate-check.app"
 
 manifest rust-args-check "$here/rust/manifest.ccl"

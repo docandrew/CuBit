@@ -1,0 +1,19 @@
+--  ccl-build, the CCL build tool, hosted on Linux (docs/ccl-build.md). The
+--  Storehouse core (userspace/lib/storehouse) is SPARK and proved; the
+--  host tool keeps run-time checks and assertions, like the other CCL tools.
+with "cubit_shared.gpr";
+with "../lib/tls/sparktls_host.gpr";
+project CCL_Build is
+   for Languages use ("Ada");
+   for Source_Dirs use ("src", "tools/ccl-build", "../lib/storehouse");
+   for Object_Dir use "build/ccl-build";
+   for Exec_Dir use "build/ccl-build";
+   for Main use ("main.adb");
+   package Builder is
+      for Executable ("main.adb") use "ccl-build";
+   end Builder;
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-O2", "-gnat2022", "-gnatwa", "-gnatwe", "-gnata");
+   end Compiler;
+end CCL_Build;

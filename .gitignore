@@ -9,8 +9,10 @@ build-*/
 *-build/
 obj/
 gnatprove/
-# A tracked test directory, not output.
+# Tracked source and test directories, not output.
 !/tests/build-workspace/
+!/tests/ccl-build/
+!/userspace/ccl/tools/ccl-build/
 b~*
 *.ali
 *.o

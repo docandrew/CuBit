@@ -226,7 +226,7 @@ def main():
             run([compiler, catalog, selected_manifest, '--schema', schema,
                  '--startup-output', generated / 'startup.ads'], stdout=assembly)
         run([*c_prefix, '-c', metadata / 'manifest.S', '-o', metadata / 'manifest.o'])
-        run(['alr', 'exec', '--', 'gprbuild', '-q', '-p', '-c', '-b', '-P',
+        run(['alr', 'exec', '--', 'gprbuild', *os.environ['CUBIT_NATIVE_GPRBUILD_CONFIG'].split(), '-q', '-p', '-c', '-b', '-P',
              desktop / 'desktop.gpr', '-XCUBIT_COMPOSITOR=vulkan',
              '-XCUBIT_COMPOSITOR_METRICS=' + args.metrics], toolchain / 'kernel')
         shader_out = out / 'generated'

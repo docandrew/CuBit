@@ -6,6 +6,8 @@
 # the Nix shell, under the shared build lock, after
 # `make -C kernel libc user_runtime ccl-manifest`.
 set -euo pipefail
+# Resolved before any cd, while a relative $0 still names this script.
+gprbuild_config=${CUBIT_NATIVE_GPRBUILD_CONFIG:-$(make -s --no-print-directory -C "$(git -C "$(dirname "$0")" rev-parse --show-toplevel)/kernel" print-native-gprbuild-config)}
 export NIX_HARDENING_ENABLE=""
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../.." && pwd)
@@ -21,7 +23,7 @@ mkdir -p "$here/check/build"
     --schema "$repo/userspace/ccl/interfaces/executable-manifest.ccl" > "$here/check/build/manifest.S"
 as --64 "$here/check/build/manifest.S" -o "$here/check/build/manifest.o"
 rm -f "$here/check/build/gcc-check.app"
-(cd "$repo/kernel" && alr exec -- gprbuild -q -P "$here/check/gcc_check.gpr")
+(cd "$repo/kernel" && alr exec -- gprbuild $gprbuild_config -q -P "$here/check/gcc_check.gpr")
 cp "$here/check/build/gcc-check.app" "$out/gcc-check.app"
 # The archive-walk diagnostic (C).
 "$repo/userspace/ccl/build/manifest/ccl-manifest" \

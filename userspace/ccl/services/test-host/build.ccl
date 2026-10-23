@@ -1,0 +1,5 @@
+# ccl_test_host.gpr translated by tools/gpr_to_ccl.py (docs/ccl-build.md).
+(Component.Ada_Program (Ada_Program
+  executable => "ccl-test-host.svc"
+  directory => "userspace/ccl/services/test-host"
+  compiler => (Switches.Exactly ["-g" "-gnatwa" "-gnatw.X" "-O2" "-gnat2022" "-fstack-usage" "-fomit-frame-pointer" "-mno-red-zone" "-fno-pic"])))

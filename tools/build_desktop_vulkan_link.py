@@ -177,7 +177,7 @@ env={**os.environ,'CUBIT_STACK_SIZE':'16777216','NIX_HARDENING_ENABLE':''}
 def run(command,cwd=out):subprocess.run(list(map(str,command)),cwd=cwd,env=env,check=True)
 result={'status':'INCOMPLETE','gpu_enabled':False,'gpu_drawing_enabled':False,'admitted_device_startup_enabled':args.admitted_startup,'executed':False,'device_startup_probe':args.device_startup_probe,'optional_render_probe':args.optional_render_probe,'admitted_startup':args.admitted_startup,'prepare_targets':args.prepare_targets,'prepare_pipeline':args.prepare_pipeline}
 try:
- run(['alr','exec','--','gprbuild','-q','-p','-c','-b','-P',gpr,'-XCUBIT_COMPOSITOR=legacy'],root/'kernel')
+ run(['alr','exec','--','gprbuild', *os.environ['CUBIT_NATIVE_GPRBUILD_CONFIG'].split(),'-q','-p','-c','-b','-P',gpr,'-XCUBIT_COMPOSITOR=legacy'],root/'kernel')
  generated=out/'generated';run(['python3',out/'tests/compositor/build-vulkan-affine-shaders.py',generated])
  objects=[]
  for name in ('vulkan_context','vulkan_submission_native','vulkan_affine','vulkan_backdrop','vulkan_sources','vulkan_device_storage','vulkan_upload_buffer','vulkan_upload_record','vulkan_targets','vulkan_owned_image','vulkan_owned_target_binding'):

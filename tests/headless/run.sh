@@ -7,6 +7,10 @@ KERNEL_DIR="$ROOT_DIR/kernel"
 # timestamp, like the images kernel/Makefile builds, not the Nix shell's 1980.
 SOURCE_DATE_EPOCH="$(make -s --no-print-directory -C "$KERNEL_DIR" print-build-epoch)" || exit 1
 export SOURCE_DATE_EPOCH
+# Native fixtures built by the test scripts use the same GNAT 15.3
+# configuration as make (docs/ccl-build.md).
+CUBIT_NATIVE_GPRBUILD_CONFIG="$(make -s --no-print-directory -C "$KERNEL_DIR" print-native-gprbuild-config)" || exit 1
+export CUBIT_NATIVE_GPRBUILD_CONFIG
 QEMU_BIN="${QEMU_BIN:-qemu-system-x86_64}"
 QEMU_CPU_MODEL="${QEMU_CPU_MODEL:-Broadwell}"
 TIMEOUT_BIN="${TIMEOUT_BIN:-timeout}"

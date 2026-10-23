@@ -1,0 +1,8 @@
+# procmgr.gpr translated by tools/gpr_to_ccl.py (docs/ccl-build.md).
+(Component.Ada_Program (Ada_Program
+  executable => "procmgr.svc"
+  directory => "userspace/services/procmgr"
+  sources => ["userspace/ccl/src" "userspace/lib/config" "userspace/lib/display" "userspace/services/intel-gpu" "userspace/lib/logging"]
+  catalog => Catalog.No_Manifest
+  compiler => (Switches.Exactly ["-g" "-gnatwa" "-gnatw.X" "-O2" "-gnat2022" "-fstack-usage" "-fomit-frame-pointer" "-mno-red-zone" "-fno-pic"])
+  linker => (Linking.Exactly [(Link_Argument.Text "-nostdlib") (Link_Argument.Text "-static") (Link_Argument.Text "-no-pie") (Link_Argument.Text "-Wl,-z,stack-size=16777216") (Link_Argument.Text "-lgnat-user") (Link_Argument.Text "-T") (Link_Argument.File "userspace/c/link.ld") (Link_Argument.File "userspace/c/build/crt0.o")])))

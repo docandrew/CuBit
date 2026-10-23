@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Run under shared build lock and nix develop; never changes production staging.
 set -euo pipefail
+# Resolved before any cd, while a relative $0 still names this script.
+gprbuild_config=${CUBIT_NATIVE_GPRBUILD_CONFIG:-$(make -s --no-print-directory -C "$(git -C "$(dirname "$0")" rev-parse --show-toplevel)/kernel" print-native-gprbuild-config)}
 root=$(cd "$(dirname "$0")/../../.." && pwd)
 cd "$root"
 mode=${1:-lifetime}
@@ -14,7 +16,7 @@ export TMPDIR="$task_dir/tmp"
 echo "Grant lifetime evidence: $task_dir"
 (
     cd kernel
-    alr exec -- gprbuild -p -P ../tests/grant-storage/native/lifetime.gpr \
+    alr exec -- gprbuild $gprbuild_config -p -P ../tests/grant-storage/native/lifetime.gpr \
         -XLIFETIME_BUILD="$task_dir/obj" -XLIFETIME_MAIN="$mode.adb"
 )
 cp "$task_dir/obj/devmgr.svc" "$task_dir/cpio/devmgr.svc"

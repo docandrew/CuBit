@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# Resolved before any cd, while a relative $0 still names this script.
+gprbuild_config=${CUBIT_NATIVE_GPRBUILD_CONFIG:-$(make -s --no-print-directory -C "$(git -C "$(dirname "$0")" rev-parse --show-toplevel)/kernel" print-native-gprbuild-config)}
 cd "$(dirname "$0")"
 service_dir=$PWD
 repo_dir=$(realpath ../../..)
@@ -9,7 +11,7 @@ mkdir -p "$build_dir"
 cd "$repo_dir/kernel"
 alr exec -- gprbuild -p -P ../userspace/allocator/allocator_native.gpr
 alr exec -- gprbuild -p -P ../userspace/runtime/user_runtime.gpr
-alr exec -- gprbuild -p -P ../userspace/services/config-storage/worker_host.gpr
+alr exec -- gprbuild $gprbuild_config -p -P ../userspace/services/config-storage/worker_host.gpr
 cd "$service_dir"
 bash "$probe_dir/prepare-turso.sh"
 "$repo_dir/userspace/ccl/build/manifest/ccl-manifest" \

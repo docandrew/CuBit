@@ -179,6 +179,10 @@
               export SAMEBOY_LIBM_NOTICES="${sameboyMath}/share/licenses/openlibm"
               export CBOR_ADA_SRC="${cbor_ada}"
               export CUBIT_SPARK_CRATES="${sparkCrates}/"
+              # Native CuBit Ada: GCC/GNAT 15.3, the compiler that also runs
+              # on CuBit (userspace/toolchain/gnat-15.cgpr, docs/ccl-build.md).
+              export CUBIT_GNAT="${pkgs.pkgsCross.musl64.buildPackages.gnat15.cc}"
+              export CUBIT_BINUTILS="${pkgs.binutils-unwrapped}"
               # tls.svc's trust store (cubitCaCerts, tools/pem_bundle_to_der.py).
               export CUBIT_CA_BUNDLE="${cubitCaCerts}/etc/ssl/certs/ca-bundle.crt"
               # Lexicon sources (tools/build_lexicon.py, docs/lexicon.md):

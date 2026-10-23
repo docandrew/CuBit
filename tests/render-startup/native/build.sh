@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Run inside Nix while holding coordination/build.lock.
 set -euo pipefail
+# Resolved before any cd, while a relative $0 still names this script.
+gprbuild_config=${CUBIT_NATIVE_GPRBUILD_CONFIG:-$(make -s --no-print-directory -C "$(git -C "$(dirname "$0")" rev-parse --show-toplevel)/kernel" print-native-gprbuild-config)}
 cd "$(dirname "$0")/../../.."
 fixture=tests/render-startup/native
 mkdir -p "$fixture/build"
@@ -21,7 +23,7 @@ PY
 objcopy -I binary -O elf64-x86-64 -B i386:x86-64 \
   --rename-section .data=.cubit.caps,alloc,load,readonly,data,contents \
   "$fixture/build/optional.caps" "$fixture/build/manifest.o"
-(cd kernel && alr exec -- gprbuild -p -P ../"$fixture/fixture.gpr")
+(cd kernel && alr exec -- gprbuild $gprbuild_config -p -P ../"$fixture/fixture.gpr")
 cp "$fixture/build/software.app" kernel/isodir/boot/render-software.app
 cp "$fixture/build/software.app" kernel/isodir/boot/render-fallback.app
 objcopy --update-section .cubit.caps="$fixture/build/occupied.caps" \

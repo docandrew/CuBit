@@ -1,0 +1,8 @@
+# virtio_net.gpr translated by tools/gpr_to_ccl.py (docs/ccl-build.md).
+(Component.Ada_Program (Ada_Program
+  executable => "virtio-net.drv"
+  directory => "userspace/services/virtio-net"
+  sources => ["userspace/net/src"]
+  catalog => Catalog.Driver
+  compiler => (Switches.Exactly ["-g" "-gnatwa" "-gnatw.X" "-O3" "-gnat2022" "-gnatp" "-fstack-usage" "-fomit-frame-pointer" "-mno-red-zone" "-fno-pic"])
+  binder_unit => (Switches.Exactly ["-g" "-O3" "-fstack-usage" "-fomit-frame-pointer" "-mno-red-zone" "-fno-pic"])))

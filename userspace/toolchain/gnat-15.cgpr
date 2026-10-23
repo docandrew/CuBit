@@ -1,0 +1,104 @@
+--  GPRbuild configuration for native CuBit Ada (the user runtime and the
+--  programs built on it) with GCC/GNAT 15.3, the compiler that also runs on
+--  CuBit: nixpkgs' musl cross GNAT (pkgsCross.musl64 gnat15), unwrapped,
+--  with nixpkgs' unwrapped binutils for ld (docs/ccl-build.md, "Toolchains
+--  and bootstrapping"). kernel/Makefile passes the externals:
+--    CUBIT_GNAT       the GNAT 15.3 store path (flake.nix exports it)
+--    CUBIT_BINUTILS   the binutils store path (flake.nix exports it)
+--    CUBIT_GPRBIND    gprbuild's gprbind
+--    CUBIT_RUNTIME    userspace/runtime, absolute
+--    CUBIT_SOURCE_ROOT  the checkout, absolute: mapped to "." in debug
+--                     information, which records no command line either,
+--                     so the same sources give the same bytes anywhere
+--  Derived from the configuration gprconfig writes for the same layout.
+configuration project Default is
+   GNAT := external ("CUBIT_GNAT");
+   Binutils := external ("CUBIT_BINUTILS");
+   Runtime := external ("CUBIT_RUNTIME");
+   Source_Root := external ("CUBIT_SOURCE_ROOT");
+   Triplet := "x86_64-unknown-linux-musl";
+   Driver := GNAT & "/bin/" & Triplet & "-gcc";
+   --  ld from binutils; as is the one the compiler was configured with.
+   Tools := "-B" & Binutils & "/bin/";
+
+   for Target use "x86_64-linux";
+   for Canonical_Target use "x86_64-linux";
+   for Default_Language use "Ada";
+   for Toolchain_Version ("Ada") use "GNAT 15.3";
+   for Runtime_Dir ("Ada") use Runtime;
+   for Object_Lister use ("nm", "-g");
+   for Object_Lister_Matcher use " [TDRB] (.*)";
+   for Archive_Builder use ("ar", "cr");
+   for Archive_Builder_Append_Option use ("q");
+   for Archive_Indexer use ("ranlib");
+   for Archive_Suffix use ".a";
+   for Library_Builder use external ("CUBIT_GPRLIB");
+   for Library_Support use "static_only";
+   for Library_Partial_Linker use (Driver, Tools, "-nostdlib", "-no-pie", "-Wl,-r", "-o");
+
+   package Compiler is
+      for Language_Kind ("Ada") use "unit_based";
+      for Driver ("Ada") use Driver;
+      for Dependency_Kind ("Ada") use "ALI_File";
+      for Leading_Required_Switches ("Ada") use
+        ("-c", "-x", "ada", "-gnatA", Tools, "--RTS=" & Runtime,
+         "-gno-record-gcc-switches", "-ffile-prefix-map=" & Source_Root & "=.");
+      for Mapping_File_Switches ("Ada") use ("-gnatem=");
+      for Mapping_Spec_Suffix ("Ada") use "%s";
+      for Mapping_Body_Suffix ("Ada") use "%b";
+      for Config_File_Switches ("Ada") use ("-gnatec=");
+      for Include_Path_File ("Ada") use "ADA_PRJ_INCLUDE_FILE";
+      for Multi_Unit_Switches ("Ada") use ("-gnateI");
+      for Multi_Unit_Object_Separator ("Ada") use "~";
+      for Config_Body_File_Name ("Ada") use
+        "pragma Source_File_Name_Project (%u, Body_File_Name => ""%f"");";
+      for Config_Spec_File_Name ("Ada") use
+        "pragma Source_File_Name_Project (%u, Spec_File_Name => ""%f"");";
+      for Config_Body_File_Name_Index ("Ada") use
+        "pragma Source_File_Name_Project (%u, Body_File_Name => ""%f"", Index => %i);";
+      for Config_Spec_File_Name_Index ("Ada") use
+        "pragma Source_File_Name_Project (%u, Spec_File_Name => ""%f"", Index => %i);";
+      for Config_Body_File_Name_Pattern ("Ada") use
+        "pragma Source_File_Name_Project " &
+        "  (Body_File_Name  => ""*%b""," &
+        "   Casing          => %c," &
+        "   Dot_Replacement => ""%d"");";
+      for Config_Spec_File_Name_Pattern ("Ada") use
+        "pragma Source_File_Name_Project " &
+        "  (Spec_File_Name  => ""*%s""," &
+        "   Casing          => %c," &
+        "   Dot_Replacement => ""%d"");";
+      for Config_File_Unique ("Ada") use "False";
+      for PIC_Option ("Ada") use ("-fPIC");
+      --  C appears only as externally built libraries (the font library).
+      for Driver ("C") use Driver;
+      for Language_Kind ("C") use "file_based";
+      for Dependency_Kind ("C") use "Makefile";
+      for Leading_Required_Switches ("C") use ("-c", Tools);
+   end Compiler;
+
+   package Naming is
+      for Spec_Suffix ("Ada") use ".ads";
+      for Body_Suffix ("Ada") use ".adb";
+      for Body_Suffix ("Asm") use ".s";
+      for Body_Suffix ("Asm_Cpp") use ".S";
+      for Body_Suffix ("C") use ".c";
+      for Spec_Suffix ("C") use ".h";
+      for Casing use "lowercase";
+      for Dot_Replacement use "-";
+   end Naming;
+
+   package Binder is
+      for Objects_Path_File ("Ada") use "ADA_PRJ_OBJECTS_FILE";
+      for Driver ("Ada") use external ("CUBIT_GPRBIND");
+      for Required_Switches ("Ada") use
+        ("ada_binder=" & GNAT & "/bin/" & Triplet & "-gnatbind", "--RTS=" & Runtime);
+   end Binder;
+
+   package Linker is
+      for Driver use Driver;
+      for Required_Switches use (Tools, "-Wl,--build-id=sha1");
+      for Response_File_Format use "GCC_GNU";
+      for Max_Command_Line_Length use "8192";
+   end Linker;
+end Default;

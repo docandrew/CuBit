@@ -1,0 +1,6 @@
+# virtio_input.gpr translated by tools/gpr_to_ccl.py (docs/ccl-build.md).
+(Component.Ada_Program (Ada_Program
+  executable => "virtio-input.drv"
+  directory => "userspace/services/virtio-input"
+  sources => ["userspace/lib/input"]
+  catalog => Catalog.Driver))

@@ -1,0 +1,7 @@
+# desktop_shell.gpr translated by tools/gpr_to_ccl.py (docs/ccl-build.md).
+(Component.Ada_Program (Ada_Program
+  executable => "desktop-shell.app"
+  directory => "userspace/apps/desktop-shell"
+  sources => ["userspace/lib/ui" "userspace/lib/theme" "userspace/lib/compositor" "userspace/lib/display" "userspace/allocator/src"]
+  compiler => (Switches.Exactly ["-g" "-gnatwa" "-gnatw.X" "-O2" "-gnat2022" "-fstack-usage" "-fomit-frame-pointer" "-mno-red-zone" "-fno-pic"])
+  libraries => ["fonts-native" "toolkit-flags"]))

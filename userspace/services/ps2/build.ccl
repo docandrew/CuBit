@@ -1,0 +1,6 @@
+# ps2.gpr translated by tools/gpr_to_ccl.py (docs/ccl-build.md).
+(Component.Ada_Program (Ada_Program
+  executable => "ps2.drv"
+  directory => "userspace/services/ps2"
+  sources => ["userspace/lib/input"]
+  catalog => Catalog.Driver))

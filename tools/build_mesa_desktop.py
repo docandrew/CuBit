@@ -38,7 +38,7 @@ if trace:
          root/'tests/compositor/allocation-trace.c',trace_obj])
     trace_args = [trace_obj, *(f'-Wl,--wrap={name}' for name in
                   ('malloc','calloc','realloc','aligned_alloc','posix_memalign'))]
-run(['alr','exec','--','gprbuild','-p','-c','-b','-P',desktop/'desktop.gpr',
+run(['alr','exec','--','gprbuild', *os.environ['CUBIT_NATIVE_GPRBUILD_CONFIG'].split(),'-p','-c','-b','-P',desktop/'desktop.gpr',
      '-XCUBIT_COMPOSITOR=mesa', '-XCUBIT_COMPOSITOR_METRICS='+args.metrics],root/'kernel')
 d=desktop/build_directory
 bexch=(d/'main.bexch').read_text()

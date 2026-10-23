@@ -2,6 +2,8 @@
 # Repository root, Nix environment and shared build lock. The caller builds
 # desktop/metricsvc prerequisites; this helper adds the publishing variant.
 set -euo pipefail
+# Resolved before any cd, while a relative $0 still names this script.
+gprbuild_config=${CUBIT_NATIVE_GPRBUILD_CONFIG:-$(make -s --no-print-directory -C "$(git -C "$(dirname "$0")" rev-parse --show-toplevel)/kernel" print-native-gprbuild-config)}
 if [ "$#" -gt 1 ] || { [ "$#" -eq 1 ] && [ "$1" != --stage ]; }; then
     echo "usage: build_desktop_metrics.sh [--stage]" >&2
     exit 2
@@ -32,7 +34,7 @@ if [ "${CUBIT_COMPOSITOR:-vulkan}" = mesa ]; then
 elif [ "${CUBIT_COMPOSITOR:-vulkan}" = vulkan ]; then
   python3 ../tools/build_vulkan_desktop.py --metrics on
 else
-alr exec -- gprbuild -p -P ../userspace/services/desktop/desktop.gpr \
+alr exec -- gprbuild $gprbuild_config -p -P ../userspace/services/desktop/desktop.gpr \
   -XCUBIT_COMPOSITOR="${CUBIT_COMPOSITOR:-vulkan}" \
   -XCUBIT_COMPOSITOR_TIMING="${CUBIT_COMPOSITOR_TIMING:-off}" \
   -XCUBIT_COMPOSITOR_STORAGE="${CUBIT_COMPOSITOR_STORAGE:-production}" \

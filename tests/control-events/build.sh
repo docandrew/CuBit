@@ -4,6 +4,8 @@
 # shell, under the shared build lock, after
 # `make -C kernel user_runtime ccl-manifest`.
 set -euo pipefail
+# Resolved before any cd, while a relative $0 still names this script.
+gprbuild_config=${CUBIT_NATIVE_GPRBUILD_CONFIG:-$(make -s --no-print-directory -C "$(git -C "$(dirname "$0")" rev-parse --show-toplevel)/kernel" print-native-gprbuild-config)}
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../.." && pwd)
 out=${1:-$repo/kernel/isodir/boot}
@@ -16,6 +18,6 @@ for part in check child producer; do
         --startup-output "$here/$part/build/generated/startup.ads" > "$here/$part/build/manifest.S"
     as --64 "$here/$part/build/manifest.S" -o "$here/$part/build/manifest.o"
     rm -f "$here/$part/build/control-$part.app"
-    (cd "$repo/kernel" && alr exec -- gprbuild -q -P "$here/$part/control_$part.gpr")
+    (cd "$repo/kernel" && alr exec -- gprbuild $gprbuild_config -q -P "$here/$part/control_$part.gpr")
     cp "$here/$part/build/control-$part.app" "$out/control-$part.app"
 done

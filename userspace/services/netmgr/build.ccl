@@ -1,0 +1,5 @@
+# netmgr.gpr translated by tools/gpr_to_ccl.py (docs/ccl-build.md).
+(Component.Ada_Program (Ada_Program
+  executable => "netmgr.svc"
+  directory => "userspace/services/netmgr"
+  catalog => Catalog.Driver))

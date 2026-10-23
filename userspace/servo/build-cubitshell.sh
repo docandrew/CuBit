@@ -6,6 +6,8 @@
 # rebuild Servo. Uses userspace/rust/build/servo-work (checkout, CARGO_HOME,
 # target) unless SERVO_DIR/CARGO_HOME/CARGO_TARGET_DIR say otherwise.
 set -euo pipefail
+# Resolved before any cd, while a relative $0 still names this script.
+gprbuild_config=${CUBIT_NATIVE_GPRBUILD_CONFIG:-$(make -s --no-print-directory -C "$(git -C "$(dirname "$0")" rev-parse --show-toplevel)/kernel" print-native-gprbuild-config)}
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../.." && pwd)
 work=$repo/userspace/rust/build/servo-work
@@ -21,7 +23,7 @@ mkdir -p "$build"
 # holds coordination/build.lock over this script and all native staging.
 # The font helper packages its own Cargo output; do not leak Servo's target dir.
 env -u CARGO_TARGET_DIR make -C "$repo/kernel" ui-fonts-native >/dev/null
-(cd "$repo/kernel" && alr exec -- gprbuild -p -P ../userspace/servo/native/servo_shell_host.gpr -j4)
+(cd "$repo/kernel" && alr exec -- gprbuild $gprbuild_config -p -P ../userspace/servo/native/servo_shell_host.gpr -j4)
 python3 "$repo/tests/servo/check_native_mmx.py" "$here/native/build/lib/libservo_shell_host.a"
 export CUBIT_SERVO_NATIVE_DIR="$here/native"
 

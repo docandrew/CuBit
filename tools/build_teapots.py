@@ -56,7 +56,7 @@ def main():
     run([*c_prefix, '-c', build / 'manifest.S', '-o', build / 'manifest.o'], build, env)
 
     # Ada: compile and bind only; the link is below.
-    run(['alr', 'exec', '--', 'gprbuild', '-q', '-p', '-c', '-b', '-P', app / 'teapots.gpr'],
+    run(['alr', 'exec', '--', 'gprbuild', *os.environ['CUBIT_NATIVE_GPRBUILD_CONFIG'].split(), '-q', '-p', '-c', '-b', '-P', app / 'teapots.gpr'],
         root / 'kernel', env)
 
     # Shaders: GLSL -> SPIR-V words in a C header.

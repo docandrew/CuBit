@@ -1,0 +1,7 @@
+# lexicon.gpr translated by tools/gpr_to_ccl.py (docs/ccl-build.md).
+(Component.Ada_Program (Ada_Program
+  executable => "lexicon.svc"
+  directory => "userspace/services/lexicon"
+  sources => ["userspace/lib/lexicon" "userspace/lib/lexicon/channel"]
+  compiler => (Switches.Exactly ["-g" "-gnatwa" "-gnatw.X" "-O3" "-gnatp" "-gnat2022" "-fstack-usage" "-fomit-frame-pointer" "-mno-red-zone" "-fno-pic" "-fno-tree-vrp"])
+  binder_unit => (Switches.Exactly ["-g" "-O3" "-fstack-usage" "-fomit-frame-pointer" "-mno-red-zone" "-fno-pic" "-fno-tree-vrp"])))

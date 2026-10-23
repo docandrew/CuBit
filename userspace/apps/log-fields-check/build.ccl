@@ -1,0 +1,6 @@
+# log_fields_check.gpr translated by tools/gpr_to_ccl.py (docs/ccl-build.md).
+(Component.Ada_Program (Ada_Program
+  executable => "log-fields-check.app"
+  directory => "userspace/apps/log-fields-check"
+  compiler => (Switches.Exactly ["-O2" "-gnat2022" "-gnatwa" "-fstack-usage" "-fomit-frame-pointer" "-mno-red-zone" "-fno-pic"])
+  binder_unit => (Switches.Exactly ["-O2" "-fstack-usage" "-fomit-frame-pointer" "-mno-red-zone" "-fno-pic"])))

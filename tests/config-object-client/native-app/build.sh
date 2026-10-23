@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Run inside Nix with coordination/build.lock held.
 set -euo pipefail
+# Resolved before any cd, while a relative $0 still names this script.
+gprbuild_config=${CUBIT_NATIVE_GPRBUILD_CONFIG:-$(make -s --no-print-directory -C "$(git -C "$(dirname "$0")" rev-parse --show-toplevel)/kernel" print-native-gprbuild-config)}
 cd "$(dirname "$0")/../../.."
 make -C kernel ccl-manifest user_runtime
 probe=tests/config-object-client/native-app
@@ -17,6 +19,6 @@ done
 cp "$probe/build/generated/startup-create.ads" "$probe/build/generated/startup.ads"
 rm -f "$probe"/build/generated/startup-*.ads
 cd kernel
-alr exec -- gprbuild -p -P ../tests/config-object-client/native-app/probe.gpr
-alr exec -- gprbuild -p -P ../tests/config-object-client/native-app/probe.gpr -XCONFIG_OBJECT_MODE=reopen
-alr exec -- gprbuild -p -P ../tests/config-object-client/native-app/probe.gpr -XCONFIG_OBJECT_MODE=benchmark
+alr exec -- gprbuild $gprbuild_config -p -P ../tests/config-object-client/native-app/probe.gpr
+alr exec -- gprbuild $gprbuild_config -p -P ../tests/config-object-client/native-app/probe.gpr -XCONFIG_OBJECT_MODE=reopen
+alr exec -- gprbuild $gprbuild_config -p -P ../tests/config-object-client/native-app/probe.gpr -XCONFIG_OBJECT_MODE=benchmark

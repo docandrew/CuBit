@@ -1,0 +1,9 @@
+# logs.gpr translated by tools/gpr_to_ccl.py (docs/ccl-build.md).
+(Component.Ada_Program (Ada_Program
+  executable => "logs.app"
+  directory => "userspace/apps/logs"
+  sources => ["userspace/lib/ui" "userspace/lib/theme" "userspace/lib/compositor" "userspace/lib/display" "userspace/allocator/src"]
+  compiler => (Switches.Exactly ["-O2" "-gnat2022" "-gnatwa" "-fstack-usage" "-fomit-frame-pointer" "-mno-red-zone" "-fno-pic"])
+  binder_unit => (Switches.Exactly ["-O2" "-fstack-usage" "-fomit-frame-pointer" "-mno-red-zone" "-fno-pic"])
+  libraries => ["fonts-native" "toolkit-flags"]
+  builder => Switches.No_Switches))

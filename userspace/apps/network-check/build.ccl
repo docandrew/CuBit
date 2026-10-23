@@ -1,0 +1,6 @@
+# network_check.gpr translated by tools/gpr_to_ccl.py (docs/ccl-build.md).
+(Component.Ada_Program (Ada_Program
+  executable => "network-check.app"
+  directory => "userspace/apps/network-check"
+  compiler => (Switches.Exactly ["-g" "-O2" "-gnat2022" "-mno-red-zone" "-fno-pic"])
+  binder_unit => (Switches.Exactly ["-g" "-O2" "-mno-red-zone" "-fno-pic"])))

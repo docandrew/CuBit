@@ -5,6 +5,8 @@
 # version, on Linux, from the same input. Run in the Nix shell, under the
 # shared build lock, after `make -C kernel libc user_runtime ccl-manifest`.
 set -euo pipefail
+# Resolved before any cd, while a relative $0 still names this script.
+gprbuild_config=${CUBIT_NATIVE_GPRBUILD_CONFIG:-$(make -s --no-print-directory -C "$(git -C "$(dirname "$0")" rev-parse --show-toplevel)/kernel" print-native-gprbuild-config)}
 export NIX_HARDENING_ENABLE=""
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../.." && pwd)
@@ -24,7 +26,7 @@ manifest() {  # manifest SOURCE OBJECT
 mkdir -p "$here/check/build"
 manifest "$here/check/manifest.ccl" "$here/check/build/manifest.o"
 rm -f "$here/check/build/binutils-check.app"
-(cd "$repo/kernel" && alr exec -- gprbuild -q -P "$here/check/binutils_check.gpr")
+(cd "$repo/kernel" && alr exec -- gprbuild $gprbuild_config -q -P "$here/check/binutils_check.gpr")
 cp "$here/check/build/binutils-check.app" "$out/binutils-check.app"
 # The comparer (C).
 manifest "$here/compare.ccl" "$b/compare-manifest.o"

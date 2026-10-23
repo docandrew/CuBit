@@ -12,6 +12,8 @@
 # - the program built by the development shell's native GNAT and run on
 #   Linux: its transcript.
 set -euo pipefail
+# Resolved before any cd, while a relative $0 still names this script.
+gprbuild_config=${CUBIT_NATIVE_GPRBUILD_CONFIG:-$(make -s --no-print-directory -C "$(git -C "$(dirname "$0")" rev-parse --show-toplevel)/kernel" print-native-gprbuild-config)}
 export NIX_HARDENING_ENABLE=""
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../.." && pwd)
@@ -30,7 +32,7 @@ mkdir -p "$here/check/build"
 manifest "$here/check/manifest.ccl" "$here/check/build/manifest.S"
 as --64 "$here/check/build/manifest.S" -o "$here/check/build/manifest.o"
 rm -f "$here/check/build/gnat-check.app"
-(cd "$repo/kernel" && alr exec -- gprbuild -q -P "$here/check/gnat_check.gpr")
+(cd "$repo/kernel" && alr exec -- gprbuild $gprbuild_config -q -P "$here/check/gnat_check.gpr")
 cp "$here/check/build/gnat-check.app" "$out/gnat-check.app"
 manifest "$here/hello-manifest.ccl" "$b/hello-manifest.s"
 

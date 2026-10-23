@@ -1,0 +1,29 @@
+# The repository's build parameters for CCL build (docs/ccl-build.md): the
+# toolchain pins and the profile every native Ada program shares. A
+# program's build.ccl names only what differs.
+(Parameters
+  # GCC/GNAT 15.3, the compiler that also runs on CuBit: nixpkgs'
+  # pkgsCross.musl64 gnat15 (flake.nix exports it as CUBIT_GNAT).
+  toolchain => (Toolchain "gnat-15.3.0-x86_64-linux-musl"
+    "537d17c4afd57c05b36e797bc507d2d340336488c026cacd660bc74fcc85f608"
+    prefix => "x86_64-unknown-linux-musl-")
+  # nixpkgs' unwrapped binutils, for ld (CUBIT_BINUTILS).
+  binutils => (Toolchain "binutils-2.46"
+    "12b0a97cfd6fccff837ffc7a521a6716bffb9da7e339ace12900b9131301b037" prefix => "")
+  runtime => "userspace/runtime"
+  manifest_tool => "userspace/ccl/build/manifest/ccl-manifest"
+  manifest_schema => "userspace/ccl/interfaces/executable-manifest.ccl"
+  native_catalog => "userspace/ccl/catalogs/native-runtime-services.ccl"
+  driver_catalog => "userspace/ccl/catalogs/driver-services.ccl"
+  compiler => ["-g" "-gnatwa" "-gnatw.X" "-O2" "-fstack-usage" "-fomit-frame-pointer"
+               "-mno-red-zone" "-fno-pic"]
+  binder => ["-d_C" "-nostdlib"]
+  binder_unit => ["-g" "-O2" "-fstack-usage" "-fomit-frame-pointer" "-mno-red-zone" "-fno-pic"]
+  linker => [(Link_Argument.Text "-nostdlib") (Link_Argument.Text "-static")
+             (Link_Argument.Text "-no-pie") (Link_Argument.Text "-Wl,-z,stack-size=16777216")
+             (Link_Argument.Text "-lgnat-user") (Link_Argument.Text "-T")
+             (Link_Argument.File "userspace/c/link.ld") (Link_Argument.File "userspace/c/build/crt0.o")
+             Link_Argument.Manifest_Object]
+  # gprbuild's Builder switches of the native programs: every compilation
+  # starts with them; library unit switches follow them.
+  builder => ["-g" "-gnatwa" "-gnatw.X"])
