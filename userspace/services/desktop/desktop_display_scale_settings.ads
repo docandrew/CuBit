@@ -13,8 +13,8 @@
 --
 --  Auto (also what an absent setting means) gives each output the scale its
 --  size asks for (Desktop_Auto_Scale); Fixed is the user's choice in
---  Settings > Displays. Decode reads a stored value back through the typed
---  path (CCL.Typed_Settings); anything but the canonical, schema-valid form
+--  Settings > Displays. Decode reads a stored value with the decoder generated
+--  from its type (CCL.Setting_Codecs.Display_Scale); anything but the canonical, schema-valid form
 --  is refused and the desktop keeps Auto. Encode writes the canonical form
 --  (tests/display-scale checks it is what the CCL checker produces).
 ------------------------------------------------------------------------------

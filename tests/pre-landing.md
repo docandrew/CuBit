@@ -229,3 +229,20 @@ interface re-validates its lease with INIT-REBOOT when its link returns.
 ```sh
 bash tests/headless/run.sh --test net-multi --accel kvm
 ```
+
+## setting-codecs (SETMEM)
+
+Reading a typed setting runs no CCL: the generated decoders accept exactly
+what the CCL path accepts (every truncation and single-character mutation
+of a corpus of every catalog type), line breaks in strings round-trip as
+`\n`/`\r`, the decoders and token readers prove at level 2, and the
+checked-in decoders are a fresh generation. tls-service fits its 128 MiB
+again with a static interface setting (before: tls.svc found no netstack
+buffers, because netmgr and devmgr each spent about 3 MiB compiling the
+setting's CCL type).
+
+```sh
+bash tests/setting-codecs/run.sh --prove
+python3 tests/ccl-manifests/test-manifests.py -k setting
+bash tests/headless/run.sh --test tls-service --accel kvm
+```

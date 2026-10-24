@@ -997,11 +997,16 @@ rust-probe: ccl-manifest
 	cp ../userspace/rust/build/rust-probe.app isodir/boot/rust-probe.app
 	cp ../userspace/rust/build/rust-probe-denied.app isodir/boot/rust-probe-denied.app
 	cp ../userspace/rust/build/rust-probe-mismatch.app isodir/boot/rust-probe-mismatch.app
-# CCL.Setting_Kinds, generated from the setting catalog (CAP-003); the
-# generated file is kept in the tree (tests/ccl-manifests compares it).
+# CCL.Setting_Kinds and the typed settings' decoders (CCL.Setting_Codecs),
+# generated from the setting catalog (CAP-003); the generated files are kept
+# in the tree (tests/ccl-manifests compares them).
 .PHONY : setting-kinds
 setting-kinds: ccl-manifest
 	../userspace/ccl/build/manifest/ccl-manifest --setting-kinds ../userspace/ccl/src/ccl-setting_kinds.ads \
+	  --schema ../userspace/ccl/interfaces/executable-manifest.ccl
+	# The decoders are generated from the kinds compiled into the tool.
+	$(ALR) gprbuild -p -P ../userspace/ccl/ccl_manifest.gpr
+	../userspace/ccl/build/manifest/ccl-manifest --setting-codecs ../userspace/ccl/src \
 	  --schema ../userspace/ccl/interfaces/executable-manifest.ccl
 
 .PHONY : ccl-manifest

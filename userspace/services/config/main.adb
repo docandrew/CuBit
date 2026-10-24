@@ -24,6 +24,8 @@ with CuBit.Config_Inspection;
 with Config_Authority;
 with Config_Authority_Wire;
 with Config_Store;
+with CCL.Setting_Kinds;
+with CCL.Setting_Codecs.Checks;
 with CuBit.Config_Protocol;
 with Config_Typed_Service;
 with Config_Worker_Startup;
@@ -359,9 +361,19 @@ procedure main is
                         Output (1 .. Output_Length) := Stored_Value.Data (1 .. Output_Length);
                      end if;
                   when Set_Value =>
-                     Config_Store.Put
-                       (store, Key, Input (Bounds.Key + 1 .. Bounds.Input_Bytes), Update);
-                     if Update /= Config_Store.Stored then Status := REPLY_ERR; end if;
+                     --  A typed setting's value is stored only in its
+                     --  canonical source, the one its readers decode
+                     --  (CCL.Setting_Codecs, generated from the catalog).
+                     if CCL.Setting_Kinds."/=" (CCL.Setting_Kinds.Kind_Of (Key), CCL.Setting_Kinds.Untyped)
+                       and then not CCL.Setting_Codecs.Checks.Canonical
+                         (CCL.Setting_Kinds.Kind_Of (Key), Input (Bounds.Key + 1 .. Bounds.Input_Bytes))
+                     then
+                        Status := REPLY_ERR;
+                     else
+                        Config_Store.Put
+                          (store, Key, Input (Bounds.Key + 1 .. Bounds.Input_Bytes), Update);
+                        if Update /= Config_Store.Stored then Status := REPLY_ERR; end if;
+                     end if;
                   when Delete_Value =>
                      Config_Store.Remove (store, Key, Found);
                      if not Found then Status := 16#F060#; end if;

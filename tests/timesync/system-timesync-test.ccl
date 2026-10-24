@@ -10,9 +10,10 @@
   # SNTP servers for timesync.svc (host or host:port). A majority of at least
   # two must agree before the clock is adjusted.
   (setting "time.servers" "10.0.2.2:18123 10.0.2.2:18124 10.0.2.2:18125")
-  # Network interfaces: none set, so each gets netmgr's default policy
-  # (DHCP and SLAAC; QEMU's user network answers with 10.0.2.15). A typed
-  # interface setting makes config.svc and netmgr compile its CCL type at
-  # start, which this minimal 128 MiB profile has no memory to spare for.
+  # The NIC (pinned at PCI 00:10.0) gets a static address, so the run does
+  # not wait for DHCP. IPv4 is written mapped, ::ffff:a.b.c.d.
+  (setting "net.interface.pci-00-10-0"
+    (Net_Interface.Static (Static_Interface address => "::ffff:10.0.2.15" prefix => 120
+      gateway => (Gateway.Via "::ffff:10.0.2.2"))))
   (setting "net.dns.primary" "::ffff:10.0.2.3")
 )

@@ -1221,6 +1221,23 @@ class Manifests(unittest.TestCase):
                          'run make -C kernel setting-kinds after changing userspace/ccl/interfaces/settings/')
         self.assertIn('Starts (Key, "desktop.launch.") then Launch_Entry_Setting', output.read_text())
 
+    def test_setting_codecs_are_generated_from_the_catalog(self):
+        """CCL.Setting_Codecs (the readers' decoders) is the catalog's types':
+        regenerate it to compare, file by file."""
+        output = self.directory / 'codecs'
+        output.mkdir()
+        result = subprocess.run([TOOL, '--setting-codecs', output, '--schema', SCHEMA],
+                                capture_output=True, text=True, timeout=60)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        generated = sorted(path.name for path in output.iterdir())
+        source = ROOT / 'userspace/ccl/src'
+        self.assertEqual(generated, sorted(path.name for path in source.glob('ccl-setting_codecs*.ad?')))
+        for name in generated:
+            self.assertEqual((output / name).read_text(), (source / name).read_text(),
+                             'run make -C kernel setting-kinds after changing a typed setting or its type')
+        self.assertIn('procedure Decode (Source : String; Item : out Net_Interface_Value; Success : out Boolean)',
+                      (output / 'ccl-setting_codecs-net_interface.ads').read_text())
+
     def test_system_configurations_name_catalog_settings(self):
         """Every key a system configuration seeds is a catalog setting, and
         an Address setting is IPv6 text (IPv4 mapped as ::ffff:a.b.c.d)."""

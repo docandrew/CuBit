@@ -16,8 +16,8 @@
 --  The key names the monitor by its EDID identity (Member_For: vendor,
 --  product, serial), so each monitor keeps its own choice. Auto (also what
 --  an absent setting means) is the driver's best admitted mode; Fixed is
---  one of the monitor's listed modes. Decode reads a stored value back
---  through the typed path (CCL.Typed_Settings) and refuses anything but the
+--  one of the monitor's listed modes. Decode reads a stored value with
+--  the decoder generated from its type (CCL.Setting_Codecs.Display_Mode) and refuses anything but the
 --  canonical, schema-valid form; Encode writes that form
 --  (tests/display-scale checks it is what the CCL checker produces).
 ------------------------------------------------------------------------------

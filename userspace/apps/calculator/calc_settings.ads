@@ -1,5 +1,4 @@
 with CCL.Interfaces.Calc_Types;
-with CCL.Typed_Settings;
 with CCL_Calc_Options;
 
 --  The Calculator's remembered mode and options (docs/calculator.md,
@@ -10,11 +9,10 @@ with CCL_Calc_Options;
 --    (Calc_Options mode => Calc_Mode.Programmer angle => Calc_Angle.Radians
 --     word => Calc_Word.Bits_32 signed => false base => Calc_Base.Hexadecimal)
 --
---  Read back through the typed path (CCL.Typed_Settings), never parsed by
---  hand: anything but the canonical, schema-valid form is refused and the
---  app starts in Standard mode.
+--  Read back with the decoder generated from the type (CCL.Setting_Codecs.
+--  Calc_Options), never parsed by hand: anything but the canonical,
+--  schema-valid form is refused and the app starts in Standard mode.
 package Calc_Settings is
-   Maximum_Source : constant := CCL.Typed_Settings.MAXIMUM_CANONICAL;
    procedure Decode (Source : String; Item : out CCL_Calc_Options.Choice; Success : out Boolean);
    --  The setting catalog's codec (CAP-003).
    subtype Value is CCL_Calc_Options.Choice;

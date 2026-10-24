@@ -14,6 +14,7 @@ with CuBit.Failures;
 with CuBit.Startup_Tables;
 with CCL.Language;
 with Setting_Catalogs;
+with Setting_Codecs;
 
 --  Linux-hosted file boundary only. No process execution or network access.
 --  stdout receives assembly only after the complete declaration validates.
@@ -938,6 +939,35 @@ begin
          return;
       end if;
       Emit_Setting_Kinds (Argument (2));
+      return;
+   end if;
+   --  ccl-manifest --setting-codecs DIRECTORY [--settings DIR] [--schema FILE]
+   if Argument_Count >= 2 and then Argument (1) = "--setting-codecs" then
+      declare
+         Generated : Boolean := False;
+         Why : CuBit.Failures.Failure;
+      begin
+         declare
+            task Generation with Storage_Size => 256 * 1024 * 1024;
+            task body Generation is
+            begin
+               Read_Settings;
+               if Settings_Read then
+                  Setting_Codecs.Emit (Settings, Argument (2), Generated, Why);
+               end if;
+            end Generation;
+         begin
+            null;
+         end;
+         if not Settings_Read then
+            Put_Line (Standard_Error, Settings_Why.Detail (1 .. Settings_Why.Detail_Length));
+            Set_Exit_Status (Failure);
+         elsif not Generated then
+            Put_Line (Standard_Error, Why.Detail (1 .. Why.Detail_Length) &
+                      (if Why.Remedy_Length > 0 then ": " & Why.Remedy (1 .. Why.Remedy_Length) else ""));
+            Set_Exit_Status (Failure);
+         end if;
+      end;
       return;
    end if;
    if not Options_Valid then

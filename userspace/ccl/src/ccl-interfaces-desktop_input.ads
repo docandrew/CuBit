@@ -1,7 +1,8 @@
 --  The desktop's keyboard settings as CCL types: `desktop.input.key-repeat`
 --  is one Key_Repeat, checked against these declarations when the
---  configuration is compiled (CCL.Typed_Settings) and read back the same way
---  by the desktop (Desktop_Key_Repeat_Settings). The bounds are the desktop's
+--  configuration is compiled (CCL.Typed_Settings) and read back by the
+--  desktop (Desktop_Key_Repeat_Settings) with the decoder generated from
+--  these declarations (CCL.Setting_Codecs.Key_Repeat). The bounds are the desktop's
 --  typematic limits (Key_Repeat): the type system refuses a value outside
 --  them, so the desktop never clamps or guesses.
 package CCL.Interfaces.Desktop_Input with SPARK_Mode, Pure is

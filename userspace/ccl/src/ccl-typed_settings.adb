@@ -4,6 +4,7 @@ with CCL.Evaluation;
 with CCL.Interfaces.Desktop_Launch.Icons;
 with CCL.Language;
 with CCL.Objects;
+with CCL.Objects.Views;
 with CCL.Types;
 
 package body CCL.Typed_Settings is
@@ -22,6 +23,7 @@ package body CCL.Typed_Settings is
    function Schema (Kind : Setting_Kind) return String renames CCL.Setting_Kinds.Schema;
    function Root_Name (Kind : Setting_Kind) return String renames CCL.Setting_Kinds.Root_Name;
 
+   --  A record's field by name, and an enum or variant's alternative name.
    function Named (Object : Views.Snapshot; At_Cursor : Views.Cursor; Name : String) return Views.Cursor is
       Shape : constant CCL.Types.Description := Views.Describe (Object, At_Cursor);
    begin
@@ -42,16 +44,20 @@ package body CCL.Typed_Settings is
 
    --  The value's canonical source: records name every field in order,
    --  sums are Type.Member or (Type.Member payload), strings are quoted with
-   --  \" and \\ escaped, lists are [...], integers (range types too) are
-   --  decimal.
+   --  \", \\, \n and \r escaped (and nothing else), lists are [...], integers
+   --  (range types too) are decimal. CCL.Canonical_Readers reads this form.
    function Render (Object : Views.Snapshot; At_Cursor : Views.Cursor) return String is
       Kind : constant CCL.Types.Type_Reference := Views.Type_Of (Object, At_Cursor);
       Shape : constant CCL.Types.Description := Views.Describe (Object, At_Cursor);
+      --  A line break is written as its escape: CCL source strings never
+      --  hold one raw.
       function Quote (Text : String) return String is
       begin
          for K in Text'Range loop
-            if Text (K) in '"' | '\' then
-               return Text (Text'First .. K - 1) & '\' & Text (K) & Quote (Text (K + 1 .. Text'Last));
+            if Text (K) in '"' | '\' | ASCII.LF | ASCII.CR then
+               return Text (Text'First .. K - 1) & '\'
+                 & (case Text (K) is when ASCII.LF => 'n', when ASCII.CR => 'r', when others => Text (K))
+                 & Quote (Text (K + 1 .. Text'Last));
             end if;
          end loop;
          return Text;
@@ -169,21 +175,19 @@ package body CCL.Typed_Settings is
       Result.Success := True;
    end Capture;
 
-   type Snapshot_Access is access Views.Snapshot;
-   Work : Snapshot_Access;
+   --  In the program's data, not the heap: one heap block this size would
+   --  open a whole medium-block arena (CuAlloc commits 1 MiB).
+   Work : Views.Snapshot;
 
    procedure Check (Kind : Setting_Kind; Source : String; Result : out Check_Result) is
    begin
       Result := (others => <>);
-      if Work = null then
-         Work := new Views.Snapshot;
-      end if;
-      Capture (Kind, Source, Work.all, Result);
+      Capture (Kind, Source, Work, Result);
       if not Result.Success then
          return;
       end if;
       declare
-         Text : constant String := Render (Work.all, Views.Root (Work.all));
+         Text : constant String := Render (Work, Views.Root (Work));
       begin
          if Text'Length = 0 or else Text'Length > MAXIMUM_CANONICAL then
             Result.Success := False;
@@ -195,12 +199,4 @@ package body CCL.Typed_Settings is
       end;
    end Check;
 
-   procedure Read
-     (Kind : Setting_Kind; Canonical : String; Object : in out Views.Snapshot; Success : out Boolean)
-   is
-      Result : Check_Result;
-   begin
-      Capture (Kind, Canonical, Object, Result);
-      Success := Result.Success and then Render (Object, Views.Root (Object)) = Canonical;
-   end Read;
 end CCL.Typed_Settings;

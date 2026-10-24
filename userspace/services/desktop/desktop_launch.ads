@@ -16,7 +16,8 @@
 --      single_instance => false color => (App_Color.RGB (RGB_Color red => 184
 --      green => 106 blue => 58)))
 --
---  Decode reads it back through the same typed path (CCL.Typed_Settings);
+--  Decode reads it with the decoder generated from its type
+--  (CCL.Setting_Codecs.Launch_Entry) and checks its icon is in the atlas;
 --  anything but the canonical, schema-valid form is refused. Labels and
 --  program names are bounded; an invalid entry is skipped and reported. Without any valid entry the built-in list is used. The menu
 --  names programs only; what a launched program may do is decided by

@@ -1,7 +1,8 @@
 --  One network interface's configuration as CCL types: every
 --  `net.interface.<name>` setting is one Net_Interface, checked when the
---  configuration is compiled (CCL.Typed_Settings) and read back the same
---  way by netmgr (Net_Interface_Settings). <name> is the interface's
+--  configuration is compiled (CCL.Typed_Settings) and read back by netmgr
+--  (Net_Interface_Settings) with the decoder generated from these
+--  declarations (CCL.Setting_Codecs.Net_Interface). <name> is the interface's
 --  stable name (docs/net-link.md section 7): `pci-<bus>-<device>-<function>`
 --  in lower-case hexadecimal, or `mac-<12 hex digits>` for a device with no
 --  stable location.

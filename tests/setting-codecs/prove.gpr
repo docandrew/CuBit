@@ -1,0 +1,26 @@
+--  The token readers and the generated decoders, for gnatprove (level 2).
+project Prove is
+   for Source_Dirs use ("../../userspace/ccl/src");
+   for Source_Files use
+     ("ccl.ads", "ccl-canonical_readers.ads", "ccl-canonical_readers.adb",
+      "ccl-setting_codecs.ads", "ccl-setting_kinds.ads", "ccl-interfaces.ads",
+      "ccl-interfaces-calc_types.ads", "ccl-interfaces-desktop_launch.ads", "ccl-interfaces-desktop_input.ads",
+      "ccl-interfaces-desktop_display.ads", "ccl-interfaces-gpu_power.ads", "ccl-interfaces-net_interface.ads",
+      "ccl-setting_codecs-checks.ads", "ccl-setting_codecs-checks.adb",
+      "ccl-setting_codecs-calc_options.ads", "ccl-setting_codecs-calc_options.adb",
+      "ccl-setting_codecs-display_mode.ads", "ccl-setting_codecs-display_mode.adb",
+      "ccl-setting_codecs-display_modeset.ads", "ccl-setting_codecs-display_modeset.adb",
+      "ccl-setting_codecs-display_scale.ads", "ccl-setting_codecs-display_scale.adb",
+      "ccl-setting_codecs-gpu_rendering.ads", "ccl-setting_codecs-gpu_rendering.adb",
+      "ccl-setting_codecs-gpu_waitboost.ads", "ccl-setting_codecs-gpu_waitboost.adb",
+      "ccl-setting_codecs-key_repeat.ads", "ccl-setting_codecs-key_repeat.adb",
+      "ccl-setting_codecs-launch_entry.ads", "ccl-setting_codecs-launch_entry.adb",
+      "ccl-setting_codecs-net_interface.ads", "ccl-setting_codecs-net_interface.adb");
+   for Object_Dir use "build/prove";
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=2", "--checks-as-errors=on");
+   end Prove;
+end Prove;

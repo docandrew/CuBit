@@ -1,7 +1,8 @@
 --  The desktop's Apps menu entries as CCL types (docs/development-backlog.md
 --  UI-013): each `desktop.launch.<key>` setting is one Launch_Entry, checked
 --  against these declarations when the configuration is compiled
---  (CCL.Typed_Settings) and read back the same way by the desktop. The
+--  (CCL.Typed_Settings) and read back, with the decoder generated from
+--  these declarations (CCL.Setting_Codecs), by the desktop. The
 --  categories are the Apps menu's submenus. The color is the app's identity
 --  colour (the window title stripe and tile); Theme_Accent defers to the
 --  current theme's accent.

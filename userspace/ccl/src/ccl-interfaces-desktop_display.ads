@@ -1,6 +1,7 @@
 --  The desktop's display scale as CCL types: `desktop.display.scale` is one
 --  Display_Scale, checked when the configuration is compiled
---  (CCL.Typed_Settings) and read back the same way by the desktop
+--  (CCL.Typed_Settings) and read back, with the decoder generated from
+--  these declarations (CCL.Setting_Codecs), by the desktop
 --  (Desktop_Display_Scale_Settings). Auto (the default, and what an absent
 --  setting means) lets the desktop pick each output's scale from its size
 --  (Desktop_Auto_Scale); Fixed is the user's choice in Settings > Displays,

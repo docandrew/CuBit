@@ -1,7 +1,8 @@
 --  GPU power policy as CCL types: `gpu.power.waitboost` is one
 --  GPU_Waitboost, checked when the configuration is compiled
---  (CCL.Typed_Settings) and read back by Desktop, which hands it to the GPU
---  driver (OP_GPU_BOOST policy; docs/gpu-async-submission.md "SLPC
+--  (CCL.Typed_Settings) and read back, with the decoder generated from
+--  these declarations (CCL.Setting_Codecs), by Desktop, which hands it to
+--  the GPU driver (OP_GPU_BOOST policy; docs/gpu-async-submission.md "SLPC
 --  waitboost"). Absent: waitboost stays on.
 --
 --  `desktop.render.gpu` is one GPU_Rendering: whether Desktop may render on

@@ -3,19 +3,15 @@
 --  Copyright (C) 2026 Jon Andrew
 ------------------------------------------------------------------------------
 with CCL.Interfaces.Desktop_Display;
-with CCL.Typed_Settings;
-with CCL.Setting_Kinds;
-with Interfaces;
-with CCL.Objects;
-with CCL.Objects.Views;
+with CCL.Setting_Codecs.Display_Scale;
 
 package body Desktop_Display_Scale_Settings is
-   package Views renames CCL.Objects.Views;
-   package TS renames CCL.Typed_Settings;
    package DD renames CCL.Interfaces.Desktop_Display;
    package G renames CuBit.Display_Geometry;
+   package Codec renames CCL.Setting_Codecs.Display_Scale;
+   use type Codec.Display_Scale_Choice;
 
-   --  The schema's member and field names (DD.TYPE_SOURCE).
+   --  The schema's member and field names (DD.TYPE_SOURCE), for Encode.
    Auto_Member : constant String := "Auto";
    Fixed_Member : constant String := "Fixed";
    Numerator_Field : constant String := "numerator";
@@ -23,48 +19,20 @@ package body Desktop_Display_Scale_Settings is
 
    pragma Compile_Time_Error
      (DD.MINIMUM_SCALE_PART /= Natural (G.Scale_Component'First) or else
-      DD.MAXIMUM_SCALE_PART /= Natural (G.Scale_Component'Last),
+      DD.MAXIMUM_SCALE_PART /= Natural (G.Scale_Component'Last) or else
+      Long_Long_Integer (Codec.Scale_Part_Value'First) /= Long_Long_Integer (G.Scale_Component'First) or else
+      Long_Long_Integer (Codec.Scale_Part_Value'Last) /= Long_Long_Integer (G.Scale_Component'Last),
       "the CCL scale part bounds must be the display geometry's");
 
-   type Snapshot_Access is access Views.Snapshot;
-   Work : Snapshot_Access;
-
    procedure Decode (Source : String; Item : out Preference; Success : out Boolean) is
-      Read : Boolean;
+      Setting : Codec.Display_Scale_Value;
    begin
       Item := Default;
-      Success := False;
-      if Work = null then
-         Work := new Views.Snapshot;
+      Codec.Decode (Source, Setting, Success);
+      if Success and then Setting.Choice = Codec.Fixed then
+         Item := (Auto => False, Scale => (G.Scale_Component (Setting.Fixed_Payload.numerator),
+                                           G.Scale_Component (Setting.Fixed_Payload.denominator)));
       end if;
-      TS.Read (CCL.Setting_Kinds.Display_Scale_Setting, Source, Work.all, Read);
-      if not Read then
-         return;
-      end if;
-      declare
-         Root : constant Views.Cursor := Views.Root (Work.all);
-         Member : constant String := TS.Alternative_Name (Work.all, Root);
-      begin
-         if Member = Auto_Member then
-            Success := True;
-         elsif Member = Fixed_Member then
-            declare
-               Scale : constant Views.Cursor := Views.Payload (Work.all, Root);
-               N : constant Interfaces.Integer_64 :=
-                 CCL.Objects.Integer_Of (Views.Scalar (Work.all, TS.Named (Work.all, Scale, Numerator_Field)));
-               D : constant Interfaces.Integer_64 :=
-                 CCL.Objects.Integer_Of (Views.Scalar (Work.all, TS.Named (Work.all, Scale, Denominator_Field)));
-               subtype Part is Interfaces.Integer_64 range
-                 Interfaces.Integer_64 (G.Scale_Component'First) .. Interfaces.Integer_64 (G.Scale_Component'Last);
-            begin
-               --  The schema's range type already bounds both.
-               if N in Part and then D in Part then
-                  Item := (Auto => False, Scale => (G.Scale_Component (N), G.Scale_Component (D)));
-                  Success := True;
-               end if;
-            end;
-         end if;
-      end;
    end Decode;
 
    function Image (Value : G.Scale_Component) return String is

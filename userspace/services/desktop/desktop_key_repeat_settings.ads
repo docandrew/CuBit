@@ -11,7 +11,8 @@
 --
 --    (Key_Repeat enabled => true delay_ms => 500 rate_hz => 30)
 --
---  Decode reads it back through the same typed path (CCL.Typed_Settings);
+--  Decode reads it with the decoder generated from its type
+--  (CCL.Setting_Codecs.Key_Repeat);
 --  anything but the canonical, schema-valid form is refused and the desktop
 --  keeps Key_Repeat.DEFAULT_SETTINGS. (Tested on the host: tests/key-repeat.)
 ------------------------------------------------------------------------------

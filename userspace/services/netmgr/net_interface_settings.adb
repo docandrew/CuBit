@@ -4,95 +4,68 @@
 ------------------------------------------------------------------------------
 pragma Ada_2022;
 with Interfaces; use Interfaces;
-with CCL.Typed_Settings;
-with CCL.Setting_Kinds;
-with CCL.Objects;
-with CCL.Objects.Views;
+with CCL.Canonical_Readers;
 with CCL.Interfaces.Net_Interface;
+with CCL.Setting_Codecs.Net_Interface;
 with CuBit.Net_Address;
 with CuBit.Settings.Codecs;
 
 package body Net_Interface_Settings is
-   package Views renames CCL.Objects.Views;
-   package TS renames CCL.Typed_Settings;
    package NI renames CCL.Interfaces.Net_Interface;
+   package Codec renames CCL.Setting_Codecs.Net_Interface;
    package Addresses renames CuBit.Settings.Codecs.Address_Codec;
-
-   --  The schema's member and field names (NI.TYPE_SOURCE).
-   Automatic_Member : constant String := "Automatic";
-   Static_Member    : constant String := "Static";
-   Disabled_Member  : constant String := "Disabled";
-   Address_Field    : constant String := "address";
-   Prefix_Field     : constant String := "prefix";
-   Gateway_Field    : constant String := "gateway";
-   Via_Member       : constant String := "Via";
-   Metric_Field     : constant String := "metric";
+   use type Codec.Net_Interface_Choice;
+   use type Codec.Gateway_Choice;
+   use type Codec.Prefix_Length_Value;
 
    pragma Compile_Time_Error
-     (NI.MAXIMUM_METRIC /= Long_Long_Integer (NM.Route_Metric'Last),
-      "the CCL metric bound must be the management contract's");
+     (NI.MAXIMUM_METRIC /= Long_Long_Integer (NM.Route_Metric'Last)
+      or else Long_Long_Integer (Codec.Route_Metric_Value'Last) /= Long_Long_Integer (NM.Route_Metric'Last)
+      or else Long_Long_Integer (Codec.Route_Metric_Value'First) /= Long_Long_Integer (NM.Route_Metric'First),
+      "the CCL metric bounds must be the management contract's");
 
-   --  In the program's data, not the heap: one heap block this size would
-   --  open a whole medium-block arena for netmgr (CuAlloc commits 1 MiB).
-   Work : Views.Snapshot;
+   Mapped_Prefix : constant := CuBit.Net_Address.Mapped_Prefix;
+   --  The prefixes of a mapped IPv4 network: an IPv4 prefix length plus 96.
+   subtype Mapped_Prefix_Length is Codec.Prefix_Length_Value
+     range Mapped_Prefix .. Mapped_Prefix + Codec.Prefix_Length_Value (NM.IPv4_Prefix'Last);
 
    procedure Decode (Source : String; Item : out Value; Success : out Boolean) is
-      Read : Boolean;
+      Setting : Codec.Net_Interface_Value;
    begin
       Item := Default;
-      Success := False;
-      TS.Read (CCL.Setting_Kinds.Net_Interface_Setting, Source, Work, Read);
-      if not Read then
+      Codec.Decode (Source, Setting, Success);
+      if not Success then
          return;
       end if;
-      declare
-         Root : constant Views.Cursor := Views.Root (Work);
-         Member : constant String := TS.Alternative_Name (Work, Root);
-      begin
-         if Member = Automatic_Member then
+      case Setting.Choice is
+         when Codec.Automatic =>
             Item := (Kind => Automatic);
-            Success := True;
-         elsif Member = Disabled_Member then
+         when Codec.Disabled =>
             Item := (Kind => Disabled);
-            Success := True;
-         elsif Member = Static_Member then
+         when Codec.Static =>
             declare
-               Fields : constant Views.Cursor := Views.Payload (Work, Root);
-               function Field_Text (Name : String) return String is
-                 (Views.Text (Work, TS.Named (Work, Fields, Name)));
-               function Field_Number (Name : String) return Integer_64 is
-                 (CCL.Objects.Integer_Of (Views.Scalar (Work, TS.Named (Work, Fields, Name))));
+               Fields : Codec.Static_Interface_Value renames Setting.Static_Payload;
+               Has_Gateway : constant Boolean := Fields.gateway.Choice = Codec.Via;
                Address, Gateway : CuBit.Net_Address.Address := CuBit.Net_Address.Unspecified;
                Address_OK : Boolean;
                Gateway_OK : Boolean := True;
-               Gateway_Choice : constant Views.Cursor := TS.Named (Work, Fields, Gateway_Field);
-               Has_Gateway : constant Boolean := TS.Alternative_Name (Work, Gateway_Choice) = Via_Member;
-               Prefix : constant Integer_64 := Field_Number (Prefix_Field);
-               Metric : constant Integer_64 := Field_Number (Metric_Field);
-               Mapped_Prefix : constant := CuBit.Net_Address.Mapped_Prefix;
             begin
-               Addresses.Decode (Field_Text (Address_Field), Address, Address_OK);
+               Addresses.Decode (CCL.Canonical_Readers.Image (Fields.address), Address, Address_OK);
                if Has_Gateway then
-                  Addresses.Decode (Views.Text (Work, Views.Payload (Work, Gateway_Choice)),
-                                    Gateway, Gateway_OK);
+                  Addresses.Decode (CCL.Canonical_Readers.Image (Fields.gateway.Via_Payload), Gateway, Gateway_OK);
                   Gateway_OK := Gateway_OK and then CuBit.Net_Address.Is_Mapped (Gateway);
                end if;
-               --  The schema bounds the prefix (0 .. 128) and the metric.
-               if Address_OK and then CuBit.Net_Address.Is_Mapped (Address) and then Gateway_OK
-                 and then Prefix in Mapped_Prefix .. Mapped_Prefix + Integer_64 (NM.IPv4_Prefix'Last)
-                 and then Metric in 0 .. Integer_64 (NM.Route_Metric'Last)
-               then
+               Success := Address_OK and then CuBit.Net_Address.Is_Mapped (Address) and then Gateway_OK
+                 and then Fields.prefix in Mapped_Prefix_Length;
+               if Success then
                   Item := (Kind => Static,
                            Settings => (Address => NM.Word_Of (Address),
-                                        Prefix  => NM.IPv4_Prefix (Prefix - Mapped_Prefix),
-                                        Gateway => (if Has_Gateway
-                                                    then NM.Word_Of (Gateway) else NM.No_IPv4),
-                                        Metric  => NM.Route_Metric (Metric)));
-                  Success := True;
+                                        Prefix  => NM.IPv4_Prefix (Fields.prefix - Mapped_Prefix),
+                                        Gateway => (if Has_Gateway then NM.Word_Of (Gateway) else NM.No_IPv4),
+                                        Metric  => NM.Route_Metric (Fields.metric)));
                end if;
             end;
-         end if;
-      end;
+      end case;
    end Decode;
 
 end Net_Interface_Settings;

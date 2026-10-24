@@ -2,32 +2,15 @@
 --  CuBit
 --  Copyright (C) 2026 Jon Andrew
 ------------------------------------------------------------------------------
-with CCL.Typed_Settings;
-with CCL.Setting_Kinds;
-with Interfaces;
-with CCL.Objects.Views;
+with CCL.Setting_Codecs.Display_Modeset;
 
 package body Desktop_Display_Modeset_Settings is
-   use type Interfaces.Unsigned_64;
-   package Views renames CCL.Objects.Views;
-   package TS renames CCL.Typed_Settings;
-
-   type Snapshot_Access is access Views.Snapshot;
-   Work : Snapshot_Access;
+   package Codec renames CCL.Setting_Codecs.Display_Modeset;
 
    procedure Decode (Source : String; Enabled : out Boolean; Success : out Boolean) is
-      Read : Boolean;
+      Setting : Codec.Display_Modeset_Value;
    begin
-      Enabled := Default_Enabled;
-      Success := False;
-      if Work = null then
-         Work := new Views.Snapshot;
-      end if;
-      TS.Read (CCL.Setting_Kinds.Display_Modeset_Setting, Source, Work.all, Read);
-      if not Read then
-         return;
-      end if;
-      Enabled := Views.Scalar (Work.all, TS.Named (Work.all, Views.Root (Work.all), "enabled")).First = 1;
-      Success := True;
+      Codec.Decode (Source, Setting, Success);
+      Enabled := (if Success then Setting.enabled else Default_Enabled);
    end Decode;
 end Desktop_Display_Modeset_Settings;
