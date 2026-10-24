@@ -1,0 +1,8 @@
+# Settings a startup plan delegates a grant to (HW-002): procmgr reads them
+# when it starts the program the plan names.
+(Setting_Catalog settings => [
+  # Whether Desktop may render on the GPU: the plan says
+  # (render setting "desktop.render.gpu"); absent means enabled.
+  (Setting "desktop.render.gpu" Shape.Key
+    (Value.Typed (CCL_Type "CCL.Interfaces.GPU_Power.RENDERING_TYPE_SOURCE" "GPU_Rendering"))
+    Class.Declaration_Managed "GPU_Rendering_Settings")])

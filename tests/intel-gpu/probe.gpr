@@ -15,7 +15,7 @@ project Probe is
      "intel_gpu_va_placement.ads", "intel_gpu_va_placement.adb",
      "domain_lease_tests.adb", "intel_gpu_domain_lease.ads", "intel_gpu_domain_lease.adb",
      "dma_lifetime_tests.adb", "intel_gpu_dma_lifetime.ads", "intel_gpu_dma_lifetime.adb",
-     "intel_gpu_probe.ads", "intel_gpu_probe.adb", "intel_gpu_resources.ads",
+     "intel_gpu_adln_devices.ads", "intel_gpu_probe.ads", "intel_gpu_probe.adb", "intel_gpu_resources.ads",
      "intel_gpu_resources.adb", "intel_gpu_boot.ads", "intel_gpu_boot.adb");
    for Object_Dir use "build";
    for Exec_Dir use "build";

@@ -316,7 +316,7 @@ case "$TEST_NAME" in
         ;;
     grant-forward|grant-forward-intermediary-exit|grant-forward-owner-exit|grant-forward-desktop|config-tree|config-inspection|log-authority|log-fields|metrics|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
         ;;
-    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health)
+    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -782,6 +782,11 @@ case "$TEST_NAME" in
     files)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-files.ccl"
         ;;
+    generic-launch)
+        # HW-002: a driver devmgr has no dedicated setup for, started from
+        # its manifest alone (docs/device-matching.md "Generic PCI launch").
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-generic-launch.ccl"
+        ;;
     startup-health)
         # CAP-003: the full desktop boots with no refusal, every service
         # registers, and the apps' records reach logstore (boot-logs prints
@@ -1191,6 +1196,18 @@ if [ -n "$INIT_PROFILE" ]; then
             echo "headless: failed to install desktop-check" >&2
             exit 1
         fi
+    fi
+    if [ "$TEST_NAME" = "generic-launch" ]; then
+        # boot-logs prints the records logstore keeps (the base disk lacks it).
+        for GENERIC_IMAGE in logstore.svc boot-logs.app; do
+            if [ ! -f "$KERNEL_DIR/isodir/boot/$GENERIC_IMAGE" ]; then
+                echo "headless: build $GENERIC_IMAGE first (make -C kernel world boot-logs)" >&2
+                exit 1
+            fi
+            debugfs -w -R "rm $GENERIC_IMAGE" "$TEMP_DISK" >/dev/null 2>&1
+            debugfs -w -R "write $KERNEL_DIR/isodir/boot/$GENERIC_IMAGE $GENERIC_IMAGE" \
+              "$TEMP_DISK" >/dev/null 2>&1 || exit 1
+        done
     fi
     if [ "$TEST_NAME" = "startup-health" ]; then
         # The current build of every program the profile starts (the base
@@ -2302,6 +2319,12 @@ if [ -n "$QEMU_ACCEL" ]; then
 fi
 
 AUDIO_ARGS=(-audiodev none,id=snd0)
+# Devices only some tests add: QEMU's edu device binds the generic launch's
+# fixture driver (HW-002); without it the driver stays unbound.
+TEST_DEVICE_ARGS=()
+if [ "$TEST_NAME" = "generic-launch" ]; then
+    TEST_DEVICE_ARGS=(-device edu)
+fi
 if [ "$TEST_NAME" = "desktop-doom" ] || [ "$TEST_NAME" = "bench-audio" ]; then
     TEMP_AUDIO="$(mktemp "$(dirname "$SERIAL_LOG")/cubit-${TEST_NAME}-audio.XXXXXX.wav")"
     AUDIO_ARGS=(-audiodev "wav,id=snd0,path=$TEMP_AUDIO")
@@ -3701,6 +3724,7 @@ if [ "$TEST_NAME" = "bench-net" ] && [ -z "${BENCH_NET_PCAP:-}" ]; then PCAP_ARG
         -netdev "$NETDEV_CONFIG" \
         "${PCAP_ARGS[@]}" \
         "${AUDIO_ARGS[@]}" \
+        "${TEST_DEVICE_ARGS[@]}" \
         -device intel-hda \
         -device hda-output,audiodev=snd0 \
         -no-reboot
@@ -5021,6 +5045,24 @@ calculator: mode STANDARD
 calculator: closed
 "
         ;;
+    generic-launch)
+        # The driver gets its window, DMA and MSI from its manifest, its
+        # lines reach logstore (boot-logs prints them), and the device's
+        # interrupt arrives after OP_READY.
+        required_markers="
+devmgr: match 00:
+1234:11E8 class 00.FF.00 -> generic-check.drv (PCI_IDs 1234:11E8..11E8)
+devmgr: generic-check.drv launched for
+generic-check: stage identify ok
+generic-check: stage map ok
+generic-check: stage registers ok
+generic-check: stage dma ok
+devmgr: generic driver ready for
+generic-check: stage irq ok
+generic-check: bring-up complete
+boot-logs: generic-check: bring-up complete
+"
+        ;;
     startup-health)
         # Every service registers; Files' and the Calculator's "started"
         # records and Desktop's records reach logstore (their publishers are
@@ -5408,6 +5450,25 @@ if [ "$TEST_NAME" = "managed-ui" ]; then
     fi
 fi
 if [ "$TEST_NAME" = "devices" ]; then
+    # HW-002: devmgr binds each present device to the driver that declares
+    # it (devices.index) and says so, one line per device; unmatched devices
+    # say "-> unmatched" (docs/device-matching.md).
+    for match in \
+        '^devmgr: match [0-9A-F:.]+ 1AF4:1000 class 02\.00\.00 -> virtio-net\.drv \(PCI_IDs 1AF4:1000\.\.1000\)' \
+        '^devmgr: match [0-9A-F:.]+ 1B36:0010 class 01\.08\.02 -> nvme\.drv \(PCI_Class 01\.08\.02\)' \
+        '^devmgr: match [0-9A-F:.]+ 8086:2668 class 04\.03\.00 -> hda\.drv \(PCI_Class 04\.03\.00\)' \
+        '^devmgr: match [0-9A-F:.]+ 8086:29C0 class 06\.00\.00 -> unmatched' \
+        '^devmgr: match platform PS2_Controller -> ps2\.drv' \
+        '^devmgr: drivers bound to [0-9]+ PCI devices; [0-9]+ matched no driver'; do
+        if ! tr -d '\r' < "$SERIAL_LOG" | grep -Eq "$match"; then
+            echo "headless: devmgr match line missing: $match" >&2
+            exit 1
+        fi
+    done
+    if tr -d '\r' < "$SERIAL_LOG" | grep -Eq '^devmgr: (match .* -> ambiguous|no valid devices\.index)'; then
+        echo "headless: devmgr could not bind by the driver index" >&2
+        exit 1
+    fi
     # A prefix match would accept the old malformed id with two version-header
     # bytes appended. Require exactly the canonical identity from the loader.
     if ! tr -d '\r' < "$SERIAL_LOG" | grep -Fx 'procmgr: pkg id=com.cubit.devices' >/dev/null; then

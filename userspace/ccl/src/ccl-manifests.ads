@@ -72,6 +72,8 @@ package CCL.Manifests with SPARK_Mode => On is
       Expression_Diagnostic : CCL.Language.Diagnostic_Code :=
         CCL.Language.No_Diagnostic;
       Identity, Capabilities, Access_Scopes, Resources : Section;
+      --  .cubit.devices: the devices it drives (CCL.Device_Sections).
+      Devices : Section;
       --  .cubit.launch: the programs this executable may start (CuBit.Launch_Authority).
       Launch : Section;
       --  .cubit.description: typed parameters and their argv, ports and the

@@ -1,5 +1,4 @@
 with Interfaces;
-with CCL.Resource_Sections;
 with CuBit.Channel_Declarations;
 with CuBit.Network_Authority;
 with CuBit.Launch_Authority;
@@ -9,7 +8,6 @@ with CuBit.Startup_Tables;
 package body CCL.Manifests.Encoding with SPARK_Mode => On is
    use Interfaces;
    use Model;
-   use all type CCL.Resource_Sections.Match_Kind;
    package ST renames CuBit.Startup_Tables;
 
    --  The startup table holds every request plus the launcher's two self
@@ -41,8 +39,7 @@ package body CCL.Manifests.Encoding with SPARK_Mode => On is
       Count : Request_Count renames Decl.Count;
       Scopes : Scope_Array renames Decl.Scopes;
       Scope_Count : Scope_Count_Type renames Decl.Scope_Count;
-      Match : Match_Kind renames Decl.Match;
-      Match_Values : Match_Value_Array renames Decl.Match_Values;
+      Basis : Sections.Basis_Info renames Decl.Basis;
       Explicit_No_Requests : Boolean renames Decl.Explicit_No_Requests;
       Identity : Metadata_Text renames Decl.Identity;
       Version : Metadata_Text renames Decl.Version;
@@ -117,16 +114,28 @@ package body CCL.Manifests.Encoding with SPARK_Mode => On is
          end if;
       end loop;
       end if;
-      --  .cubit.resources: "CBRS", version, entry count; a 16-byte match
+      --  .cubit.devices: the drives list (CCL.Device_Sections).
+      if Decl.Drives.Count > 0 then
+         declare
+            Bytes : Devices.Section_Bytes;
+            Length : Devices.Section_Length;
+         begin
+            Devices.Encode (Decl.Drives, Bytes, Length);
+            for I in 1 .. Length loop
+               Append (Result.Devices, Unsigned_64 (Bytes (I)), 1);
+            end loop;
+         end;
+      end if;
+      --  .cubit.resources: "CBRS", version, entry count; a 16-byte basis
       --  (kind, reserved, three 16-bit values, reserved); then 24-byte
       --  entries (kind, rights, reserved u16, index, amount, extra).
       if Resource_Count > 0 then
          Append (Result.Resources, Sections.MAGIC, 4);
          Append (Result.Resources, Sections.VERSION, 2);
          Append (Result.Resources, Unsigned_64 (Resource_Count), 2);
-         Append (Result.Resources, Unsigned_64 (Match_Kind'Enum_Rep (Match)), 1);
+         Append (Result.Resources, Unsigned_64 (Basis_Kind'Enum_Rep (Basis.Kind)), 1);
          Append (Result.Resources, 0, 1);
-         for Number of Match_Values loop
+         for Number of Basis.Values loop
             Append (Result.Resources, Unsigned_64 (Number), 2);
          end loop;
          Append (Result.Resources, 0, 8);
@@ -140,10 +149,6 @@ package body CCL.Manifests.Encoding with SPARK_Mode => On is
                Append (Result.Resources, Item.Extra, 8);
             end if;
          end loop;
-      elsif Match /= No_Match then
-         --  A match without resources grants nothing; reject it as a mistake.
-         Fail (Missing_Device_Match, Cursor);
-         return;
       end if;
       --  Emit only what startup's decoder accepts.
       if Result.Resources.Length > 0 then

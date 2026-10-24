@@ -1,8 +1,12 @@
 with Ada.Containers.Indefinite_Ordered_Maps;
 with Ada.Containers.Indefinite_Ordered_Sets;
+with Ada.Characters.Handling;
 with Ada.Directories;
+with Ada.Environment_Variables;
 with Ada.Strings.Fixed;
 with Ada.Text_IO;
+with Interfaces.C.Strings;
+with Build_POSIX;
 with Build_Steps;
 with Storehouse.Hex;
 with Storehouse.Paths;
@@ -38,6 +42,30 @@ package body Build_Ada_Programs is
    --  The "W" (with) lines of a .ali file: W unit%s source library.
    With_Line : constant String := "W ";
    Short_Identity : constant := 12;
+   --  Embedded blobs (docs/device-matching.md, "Firmware"): the generated
+   --  package that names them, each blob's object and its licence.
+   Embedded_Spec : constant String := "embedded.ads";
+   Embedded_Directory : constant String := "embedded";
+   Licence_Directory : constant String := "licenses";
+   --  The name each blob has in its objcopy step, so its symbols are
+   --  _binary_blob_* whatever the file is called.
+   Blob_Input : constant String := "blob";
+   Blob_Symbol_Prefix : constant String := "_binary_" & Blob_Input;
+   --  The three symbols objcopy -I binary defines for it.
+   type Suffix_Text is access constant String;
+   Start_Suffix : aliased constant String := "_start";
+   End_Suffix : aliased constant String := "_end";
+   Size_Suffix : aliased constant String := "_size";
+   Blob_Symbol_Suffixes : constant array (1 .. 3) of Suffix_Text :=
+     [Start_Suffix'Access, End_Suffix'Access, Size_Suffix'Access];
+   Embedded_Symbol_Prefix : constant String := "cubit_blob_";
+   Objcopy_Name : constant String := "objcopy";
+   --  An empty section marks the object's stack non-executable, as every
+   --  assembler output here does (ld warns otherwise).
+   Stack_Note : constant String := "empty";
+   Stack_Note_Section : constant String := ".note.GNU-stack=";
+   --  The host program that downloads a Fetch blob, found on PATH.
+   Fetcher_Name : constant String := "curl";
    Build_Id_Switch : constant String := "-Wl,--build-id=sha1";
 
    package Name_Sets is new Ada.Containers.Indefinite_Ordered_Sets (String);
@@ -95,6 +123,73 @@ package body Build_Ada_Programs is
       end loop;
       return To_String (Result);
    end Resolve;
+
+   --  A blob's name as an Ada identifier (guc-firmware: Guc_Firmware) and
+   --  as a symbol suffix (guc_firmware).
+   function Ada_Name (Name : String) return String is
+      Result : String := Name;
+      Word_Start : Boolean := True;
+   begin
+      for C of Result loop
+         if C = '-' then
+            C := '_';
+            Word_Start := True;
+         elsif Word_Start then
+            C := Ada.Characters.Handling.To_Upper (C);
+            Word_Start := False;
+         end if;
+      end loop;
+      return Result;
+   end Ada_Name;
+
+   function Symbol_Name (Name : String) return String is
+     (Embedded_Symbol_Prefix & Ada.Characters.Handling.To_Lower (Ada_Name (Name)));
+
+   --  The fetcher's absolute path, from this tool's PATH.
+   function Fetcher return String is
+      Search : constant String :=
+        (if Ada.Environment_Variables.Exists ("PATH") then Ada.Environment_Variables.Value ("PATH") else "");
+      First : Positive := Search'First;
+   begin
+      while First <= Search'Last loop
+         declare
+            Last : Natural := Ada.Strings.Fixed.Index (Search (First .. Search'Last), ":");
+         begin
+            if Last = 0 then Last := Search'Last + 1; end if;
+            declare
+               Candidate : constant String := Search (First .. Last - 1) / Fetcher_Name;
+            begin
+               if Last > First and then Ada.Directories.Exists (Candidate)
+                 and then Build_POSIX.Is_Executable (Candidate)
+               then
+                  return Candidate;
+               end if;
+            end;
+            First := Last + 1;
+         end;
+      end loop;
+      raise Step_Error with Fetcher_Name & " is not on PATH: a Fetch blob that is not yet stored needs it";
+   end Fetcher;
+
+   --  Downloads URL into File with an empty environment, following
+   --  redirects, over http or https only.
+   procedure Download (URL, File, Directory : String) is
+      use Interfaces.C.Strings;
+      Arguments : Build_POSIX.Argument_List :=
+        [New_String (Fetcher_Name), New_String ("-sSfL"), New_String ("--proto"),
+         New_String ("=http,https"), New_String ("-o"), New_String (File), New_String (URL),
+         Null_Ptr];
+      Status : Integer;
+   begin
+      Build_POSIX.Run (Fetcher, Arguments, Directory, "", Status);
+      for A of Arguments loop
+         Free (A);
+      end loop;
+      if Status /= 0 then
+         raise Step_Error with "fetching " & URL & " failed (" & Fetcher_Name & " exit status" &
+           Integer'Image (Status) & ")";
+      end if;
+   end Download;
 
    procedure Build
      (Store : Build_Store.Store; Source_Root : String;
@@ -294,6 +389,97 @@ package body Build_Ada_Programs is
       Pending : String_Vectors.Vector;
       Main_Base : constant String := Base (To_String (Program.Main));
       Binder_Base : constant String := Binder_Prefix & Main_Base;
+      --  Units written by steps or by this build, not found in a source
+      --  directory: the startup bindings and the Embedded package.
+      Generated_Units : String_Vectors.Vector;
+      --  Each blob's object, linked into the program.
+      Blob_Objects : String_Vectors.Vector;
+
+      procedure Log (Ran : Boolean; Identity : Digest; Label : String) is
+      begin
+         if Ran then Result.Ran := Result.Ran + 1; else Result.Answered := Result.Answered + 1; end if;
+         Ada.Text_IO.Put_Line ((if Ran then "ran  " else "hit  ") &
+           Storehouse.Hex.Image (Identity) (1 .. Short_Identity) & "  " & Label);
+      end Log;
+
+      --  A blob's bytes in the store, checked against its pinned digest.
+      function Blob_Bytes (B : Blob) return Digest is
+         Name : constant String := To_String (B.Name);
+         Location : constant String := To_String (B.Location);
+         Identity : Digest;
+         procedure Mismatch (Actual : Digest) is
+         begin
+            raise Step_Error with "blob """ & Name & """ (" & Location & "): SHA-256 is " &
+              Storehouse.Hex.Image (Actual) & ", its declaration pins " & Storehouse.Hex.Image (B.SHA256);
+         end Mismatch;
+      begin
+         case B.Origin is
+            when Vendored =>
+               Identity := Snapshot (Location, Regular_File);
+               if Identity /= B.SHA256 then
+                  Mismatch (Identity);
+               end if;
+            when Fetch =>
+               if Store.Contains (Regular_File, B.SHA256) then
+                  Log (False, B.SHA256, "fetch " & Name);
+                  return B.SHA256;
+               end if;
+               declare
+                  Work : constant String := Store.New_Work;
+                  File : constant String := Work / Blob_Input;
+               begin
+                  Download (Location, File, Work);
+                  Identity := Build_Store.Hash_File (File);
+                  if Identity /= B.SHA256 then
+                     Build_Store.Remove (Work);
+                     Mismatch (Identity);
+                  end if;
+                  Store.Put_File (File, Regular_File, Identity);
+                  Build_Store.Remove (Work);
+                  Log (True, Identity, "fetch " & Name);
+               end;
+         end case;
+         return Identity;
+      end Blob_Bytes;
+
+      --  The Embedded package: per blob, its exact length and its bytes.
+      procedure Write_Embedded (Lengths : String_Vectors.Vector) is
+         use Ada.Text_IO;
+         Work : constant String := Store.New_Work;
+         Spec : constant String := Work / Embedded_Spec;
+         File : File_Type;
+         Identity : Digest;
+      begin
+         Create (File, Out_File, Spec);
+         Put_Line (File, "--  Generated by ccl-build from " & Directory / Component_File & "'s embedded");
+         Put_Line (File, "--  blobs (docs/device-matching.md, ""Firmware""). Do not edit.");
+         Put_Line (File, "pragma Ada_2022;");
+         Put_Line (File, "with Interfaces;");
+         Put_Line (File, "package Embedded with Preelaborate is");
+         for I in Program.Blobs.First_Index .. Program.Blobs.Last_Index loop
+            declare
+               B : constant Blob := Program.Blobs (I);
+               Ident : constant String := Ada_Name (To_String (B.Name));
+            begin
+               New_Line (File);
+               Put_Line (File, "   --  " & To_String (B.Location));
+               Put_Line (File, "   --  SHA-256 " & Storehouse.Hex.Image (B.SHA256));
+               Put_Line (File, "   " & Ident & "_Bytes : constant := " & Lengths (I) & ";");
+               Put_Line (File, "   type " & Ident & "_Data is array (1 .. " & Ident &
+                         "_Bytes) of Interfaces.Unsigned_8;");
+               Put_Line (File, "   " & Ident & " : constant " & Ident & "_Data");
+               Put_Line (File, "     with Import, Convention => C, External_Name => """ &
+                         Symbol_Name (To_String (B.Name)) & Start_Suffix & """;");
+            end;
+         end loop;
+         Put_Line (File, "end Embedded;");
+         Close (File);
+         Store.Put_File (Spec, Regular_File, Identity);
+         Build_Store.Remove (Work);
+         Produced.Include (Generated / Embedded_Spec, Identity);
+         Generated_Units.Append (Embedded_Spec);
+         Result.Products.Append (Product'(To_Unbounded_String (Generated / Embedded_Spec), Regular_File, Identity));
+      end Write_Embedded;
    begin
       Result := (others => <>);
       Need_Relative (Directory, "directory");
@@ -313,6 +499,71 @@ package body Build_Ada_Programs is
          Search_Directories.Append (D);
       end loop;
       Search_Directories.Append (Generated);
+
+      --  0. Embedded blobs: their checked bytes, one object each, the
+      --  Embedded package naming them, and their licences.
+      if not Program.Blobs.Is_Empty then
+         declare
+            Lengths : String_Vectors.Vector;
+            Empty : Digest;
+         begin
+            declare
+               Work : constant String := Store.New_Work;
+               File : Ada.Text_IO.File_Type;
+            begin
+               Ada.Text_IO.Create (File, Ada.Text_IO.Out_File, Work / Stack_Note);
+               Ada.Text_IO.Close (File);
+               Store.Put_File (Work / Stack_Note, Regular_File, Empty);
+               Build_Store.Remove (Work);
+            end;
+            for B of Program.Blobs loop
+               declare
+                  Name : constant String := To_String (B.Name);
+                  Bytes : constant Digest := Blob_Bytes (B);
+                  Working : constant String := Objects / Embedded_Directory / Name;
+                  S : Step := New_Step ("embed " & Name, Working);
+                  Blob_File : constant Input_Number := Add_Input (S, Working / Blob_Input, Regular_File, Bytes);
+                  Note : constant Input_Number := Add_Input (S, Working / Stack_Note, Regular_File, Empty);
+                  Object_Path : constant String := Objects / Embedded_Directory / (Name & Object_Suffix);
+                  Object : constant Output_Number := Add_Output (S, Object_Path);
+                  Symbol : constant String := Symbol_Name (Name);
+                  Outcome : Build_Steps.Outcome;
+                  Licence : constant String := To_String (B.Licence);
+               begin
+                  S.Tool := (Kind => Toolchain_Program, Toolchain => Binutils,
+                             Path => To_Unbounded_String
+                               (Program_Directory / (To_String (Profile.Binutils.Prefix) & Objcopy_Name)),
+                             others => <>);
+                  Literal (S, "-I");
+                  Literal (S, "binary");
+                  Literal (S, "-O");
+                  Literal (S, "elf64-x86-64");
+                  Literal (S, "-B");
+                  Literal (S, "i386:x86-64");
+                  Literal (S, "--rename-section");
+                  Literal (S, ".data=.rodata,alloc,load,readonly,data,contents");
+                  for Suffix of Blob_Symbol_Suffixes loop
+                     Literal (S, "--redefine-sym");
+                     Literal (S, Blob_Symbol_Prefix & Suffix.all & "=" & Symbol & Suffix.all);
+                  end loop;
+                  Literal (S, "--add-section");
+                  Piece_Of (S, Local_Input, Note, Prefix => Stack_Note_Section);
+                  Piece_Of (S, Local_Input, Blob_File);
+                  Piece_Of (S, Output_Path, Object);
+                  Run (S, Outcome);
+                  Remember (S, Outcome);
+                  Blob_Objects.Append (Object_Path);
+                  Lengths.Append (Ada.Strings.Fixed.Trim
+                    (Ada.Directories.File_Size'Image
+                       (Ada.Directories.Size (Store.Path_Of (Regular_File, Bytes))), Ada.Strings.Left));
+                  Result.Products.Append
+                    (Product'(To_Unbounded_String (Objects / Licence_Directory / Ada.Directories.Simple_Name (Licence)),
+                              Regular_File, Snapshot (Licence, Regular_File)));
+               end;
+            end loop;
+            Write_Embedded (Lengths);
+         end;
+      end if;
 
       --  1 and 2. The manifest's ELF section assembly and startup bindings,
       --  and its object; none for a program without a manifest.
@@ -377,8 +628,8 @@ package body Build_Ada_Programs is
             Run (S, Outcome);
             Remember (S, Outcome);
          end;
-
-
+         Generated_Units.Append (Startup_Spec);
+         Generated_Units.Append (Startup_Body);
       end if;
 
       --  3. One compile per unit, from main through the .ali "W" lines.
@@ -408,16 +659,15 @@ package body Build_Ada_Programs is
                   end if;
                end;
             end loop;
-            if Program.Manifest_Catalog /= No_Manifest then
+            for G of Generated_Units loop
                declare
-                  Startup : constant Input_Number := Use_Produced (S, Generated / Startup_Spec);
-                  Startup_Check : constant Input_Number := Use_Produced (S, Generated / Startup_Body);
+                  Index : constant Input_Number := Use_Produced (S, Generated / G);
                begin
-                  if In_Generated then
-                     Unit_Source := (if File = Startup_Body then Startup_Check else Startup);
+                  if In_Generated and then G = File then
+                     Unit_Source := Index;
                   end if;
                end;
-            end if;
+            end loop;
             Add_Runtime (S);
             Declare_Output (S, Objects / (Base (File) & Object_Suffix));
             Declare_Output (S, Objects / (Base (File) & ALI_Suffix));
@@ -483,7 +733,7 @@ package body Build_Ada_Programs is
                                  then Startup_Body
                                  else Withed & Spec_Suffix);
                            begin
-                              if (Sources.Contains (Unit_File) or else Unit_File = Startup_Body)
+                              if (Sources.Contains (Unit_File) or else Generated_Units.Contains (Unit_File))
                                 and then not Units.Contains (Unit_File)
                               then
                                  Units.Insert (Unit_File);
@@ -622,7 +872,10 @@ package body Build_Ada_Programs is
          for O of Ordered loop
             Piece_Of (S, Local_Input, Use_Produced (S, O));
          end loop;
-         --  Library archives follow the objects, as gprbuild links them.
+         --  The blobs' objects, then library archives, as gprbuild links them.
+         for O of Blob_Objects loop
+            Piece_Of (S, Local_Input, Use_Produced (S, O));
+         end loop;
          for A of Archives loop
             Piece_Of (S, Input_Path, Add_Input (S, A, Regular_File, Snapshot (A, Regular_File)));
          end loop;

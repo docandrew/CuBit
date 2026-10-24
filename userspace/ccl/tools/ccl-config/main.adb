@@ -79,7 +79,12 @@ begin
                   --  profiles dump exactly as before.
                   if Item.Mode = Per_Device then Put (" launch=per-device"); end if;
                   if Item.Approve_Device then Put (" device=approved"); end if;
-                  if Item.Approve_Render then Put (" render=declared"); end if;
+                  case Item.Render is
+                     when Render_Denied => null;
+                     when Render_Declared => Put (" render=declared");
+                     when Render_By_Setting =>
+                        Put (" render=setting:" & Item.Render_Setting.Data (1 .. Item.Render_Setting.Length));
+                  end case;
                   for Index in 1 .. Item.Dependency_Total loop
                      Put ((if Index = 1 then " after=" else ",") &
                           Image (Long_Long_Integer (Item.Dependencies (Index))));

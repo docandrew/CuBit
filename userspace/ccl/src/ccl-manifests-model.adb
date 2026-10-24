@@ -34,4 +34,49 @@ package body CCL.Manifests.Model with SPARK_Mode => On is
       end loop;
       return True;
    end Valid_Scope_Path;
+   procedure Add_Drive
+     (Decl : in out Declaration; Item : Devices.Device_Match;
+      Accepted : out Boolean; Diagnostic : out Diagnostic_Code)
+   is
+      use type Devices.Match_Kind;
+      use type Devices.Device_Match;
+      use type Sections.Basis_Info;
+      Wanted : Sections.Basis_Info;
+   begin
+      Accepted := False;
+      Diagnostic := Invalid_Device_Match;
+      if not Devices.Valid_Match (Item) then
+         return;
+      end if;
+      if Decl.Drives.Count = Devices.MAX_ENTRIES then
+         Diagnostic := Too_Many_Requests;
+         return;
+      end if;
+      for I in 1 .. Decl.Drives.Count loop
+         if Decl.Drives.Entries (I) = Item then
+            Diagnostic := Duplicate_Device_Match;
+            return;
+         end if;
+      end loop;
+      Wanted := Decl.Basis;
+      case Item.Kind is
+         when Devices.PCI_IDs | Devices.PCI_Class =>
+            Wanted := (Kind => PCI_Basis, Values => [others => 0]);
+         when Devices.Platform =>
+            Wanted := (Kind => Platform_Basis,
+                       Values => [1 => Unsigned_16 (Platform_Device'Enum_Rep (Item.Device)),
+                                  others => 0]);
+         when Devices.ACPI_ID | Devices.USB_Class =>
+            null;
+      end case;
+      if Decl.Basis.Kind /= No_Basis and then Wanted /= Decl.Basis then
+         --  Resource indexes refer to one kind of device only.
+         return;
+      end if;
+      Decl.Basis := Wanted;
+      Decl.Drives.Count := Decl.Drives.Count + 1;
+      Decl.Drives.Entries (Decl.Drives.Count) := Item;
+      Accepted := True;
+      Diagnostic := No_Error;
+   end Add_Drive;
 end CCL.Manifests.Model;

@@ -7,16 +7,20 @@ with Interfaces; use Interfaces;
 --  A decoded section is still only a request: policy decides what is granted.
 package CCL.Resource_Sections with Pure, SPARK_Mode => On is
    MAGIC : constant := 16#5352_4243#;   --  "CBRS" little-endian
-   VERSION : constant := 1;
+   --  Version 2: the header names the resource basis, not a device match
+   --  (matches moved to .cubit.devices, CCL.Device_Sections; HW-002).
+   VERSION : constant := 2;
    HEADER_BYTES : constant := 8;
-   MATCH_BYTES : constant := 16;
+   BASIS_BYTES : constant := 16;
    ENTRY_BYTES : constant := 24;
    MAX_ENTRIES : constant := 32;
-   MAX_SECTION_BYTES : constant := HEADER_BYTES + MATCH_BYTES + MAX_ENTRIES * ENTRY_BYTES;
+   MAX_SECTION_BYTES : constant := HEADER_BYTES + BASIS_BYTES + MAX_ENTRIES * ENTRY_BYTES;
 
-   type Match_Kind is (No_Match, PCI_Class_Match, PCI_ID_Match, Platform_Match);
-   for Match_Kind use
-     (No_Match => 0, PCI_Class_Match => 1, PCI_ID_Match => 2, Platform_Match => 3);
+   --  What the resource indexes refer to: the matched PCI function's BARs,
+   --  or one entry of devmgr's platform catalog. The encoder derives it
+   --  from the manifest's device matches.
+   type Basis_Kind is (No_Basis, PCI_Basis, Platform_Basis);
+   for Basis_Kind use (No_Basis => 0, PCI_Basis => 1, Platform_Basis => 3);
    --  Legacy devices with fixed resources, described by devmgr's platform
    --  catalog; resource indexes refer to that catalog's entry.
    type Platform_Device is (PS2_Controller, ATA_Primary, CMOS_RTC);
@@ -40,11 +44,13 @@ package CCL.Resource_Sections with Pure, SPARK_Mode => On is
    PCI_ID_LAST : constant := 16#FFFF#;
    PCI_CODE_LAST : constant := 16#FF#;
 
-   subtype Match_Value_Index is Positive range 1 .. 3;
-   type Match_Values is array (Match_Value_Index) of Unsigned_16;
-   type Match_Info is record
-      Kind : Match_Kind := No_Match;
-      Values : Match_Values := [others => 0];
+   subtype Basis_Value_Index is Positive range 1 .. 3;
+   type Basis_Values is array (Basis_Value_Index) of Unsigned_16;
+   --  Platform_Basis: Values (1) is the Platform_Device code; every other
+   --  value is zero.
+   type Basis_Info is record
+      Kind : Basis_Kind := No_Basis;
+      Values : Basis_Values := [others => 0];
    end record;
 
    type Resource is record
@@ -61,19 +67,19 @@ package CCL.Resource_Sections with Pure, SPARK_Mode => On is
    subtype Entry_Count is Natural range 0 .. MAX_ENTRIES;
    type Resource_Array is array (Positive range 1 .. MAX_ENTRIES) of Resource;
    type Section_Plan is record
-      Match : Match_Info;
+      Basis : Basis_Info;
       Count : Entry_Count := 0;
       Entries : Resource_Array := [others => (others => <>)];
    end record;
 
    type Decode_Status is
-     (Decoded, Invalid_Length, Invalid_Header, Invalid_Match, Invalid_Entry,
-      Device_Without_Match, Match_Without_Device);
+     (Decoded, Invalid_Length, Invalid_Header, Invalid_Basis, Invalid_Entry,
+      Device_Without_Basis, Basis_Without_Device);
 
-   --  Whether Match is one the compiler can emit.
-   function Valid_Match (Match : Match_Info) return Boolean;
-   --  Whether Item is a resource the compiler can emit for Match.
-   function Valid_Resource (Match : Match_Info; Item : Resource) return Boolean;
+   --  Whether Basis is one the compiler can emit.
+   function Valid_Basis (Basis : Basis_Info) return Boolean;
+   --  Whether Item is a resource the compiler can emit for Basis.
+   function Valid_Resource (Basis : Basis_Info; Item : Resource) return Boolean;
 
    type Byte_Array is array (Positive range <>) of Unsigned_8;
 
@@ -82,10 +88,10 @@ package CCL.Resource_Sections with Pure, SPARK_Mode => On is
    with Pre  => Data'First = 1 and then Data'Length <= MAX_SECTION_BYTES,
         Post => (if Status = Decoded then
                    Plan.Count >= 1
-                   and then Valid_Match (Plan.Match)
+                   and then Valid_Basis (Plan.Basis)
                    and then (for all I in 1 .. Plan.Count =>
-                               Valid_Resource (Plan.Match, Plan.Entries (I)))
-                   and then (Plan.Match.Kind /= No_Match) =
+                               Valid_Resource (Plan.Basis, Plan.Entries (I)))
+                   and then (Plan.Basis.Kind /= No_Basis) =
                      (for some I in 1 .. Plan.Count =>
                         Plan.Entries (I).Kind in Device_Resource));
 end CCL.Resource_Sections;

@@ -17,6 +17,11 @@
   (file bootstrap "ps2" "ps2.drv")
   (file bootstrap "xhci" "xhci.drv")
   (file bootstrap "virtio-input" "virtio-input.drv")
+  # Every driver is in every image; devmgr starts those whose declared
+  # devices are present (docs/device-matching.md).
+  (file bootstrap "intel-gpu" "intel-gpu.drv")
+  # The generic launch's fixture driver: bound only to QEMU's edu device.
+  (file bootstrap "generic-check" "generic-check.drv")
   (file bootstrap "config" "config.svc")
   (file bootstrap "netmgr" "netmgr.svc")
   (file bootstrap "procmgr" "procmgr.svc")

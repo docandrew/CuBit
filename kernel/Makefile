@@ -1013,7 +1013,8 @@ CCL_IMAGE_CATALOG := ../images/artifacts.ccl
 .PHONY: ccl-image test-ccl-images
 ccl-image: $(CCL_IMAGE_TOOL) ccl-config
 $(CCL_IMAGE_TOOL): $(wildcard ../userspace/ccl/src/*.ad?) \
-	../userspace/ccl/ccl_image.gpr ../userspace/ccl/tools/ccl-image/main.adb
+	../userspace/ccl/ccl_image.gpr ../userspace/ccl/tools/ccl-image/main.adb \
+	../userspace/ccl/tools/ccl-image/device_index.adb
 	$(ALR) gprbuild -p -P ../userspace/ccl/ccl_image.gpr
 test-ccl-images: ccl-image
 	$(ALR) python3 ../tests/ccl-images/test-images.py -v
@@ -1640,6 +1641,14 @@ ps2: ccl-build user_runtime ccl-manifest
 
 # Build the userspace virtio-input driver (QEMU virtio-tablet absolute pointer)
 .PHONY : virtio-input
+# The generic PCI launch's fixture driver (HW-002): bound only when a test
+# adds QEMU's edu device (tests/headless/run.sh --test generic-launch).
+.PHONY: generic-check
+generic-check: ccl-build user_runtime ccl-manifest
+	mkdir -p ../tests/generic-launch/driver/build
+	$(CCL_BUILD) ../tests/generic-launch/driver/component.ccl
+	cp ../tests/generic-launch/driver/build/generic-check.drv isodir/boot/generic-check.drv
+
 virtio-input: ccl-build user_runtime ccl-manifest
 	mkdir -p ../userspace/services/virtio-input/build
 	$(CCL_BUILD) ../userspace/services/virtio-input/component.ccl
@@ -1897,7 +1906,7 @@ servo: libc ccl-manifest
 # to the staging targets: copying an old service beside a newly rebuilt driver
 # can silently violate their capability/protocol contract.
 INITRD_SERVICES := filesystem ramdisk ata nvme netstack virtio-net virtio-gpu hda \
-	mixer ps2 xhci virtio-input config netmgr procmgr devmgr
+	mixer ps2 xhci virtio-input intel-gpu generic-check config netmgr procmgr devmgr
 
 # Binaries used by the graphical desktop session. Keep this as a separate
 # staging target so run-desktop can build/copy them into isodir first, then
@@ -1944,7 +1953,7 @@ $(CAPABILITY_SECURITY_DISK): capability-test ../tests/headless/init-capability-s
 # all services have been staged so a parallel caller cannot capture a partial
 # archive.
 CAPABILITY_SECURITY_STAGE1 := filesystem ramdisk ata nvme netstack virtio-net \
-	virtio-gpu hda mixer ps2 config netmgr procmgr devmgr
+	virtio-gpu hda mixer ps2 xhci virtio-input intel-gpu generic-check config netmgr procmgr devmgr
 
 .PHONY : capability-security-image
 capability-security-image: cubit_kernel $(CAPABILITY_SECURITY_STAGE1) $(CAPABILITY_SECURITY_DISK)
@@ -1964,7 +1973,7 @@ initrd: $(INITRD_SERVICES) ccl-image ../images/development-initrd.ccl $(CCL_IMAG
 # this separate from the normal two-stage image: the laptop must reach a
 # desktop and diagnostic UI before AHCI or any other block driver works.
 LAPTOP_LIVE_STAGE1 := filesystem ramdisk ata nvme netstack virtio-net virtio-gpu hda \
-	mixer ps2 xhci config netmgr procmgr devmgr
+	mixer ps2 xhci virtio-input intel-gpu config netmgr procmgr devmgr
 LAPTOP_LIVE_STAGE2 := logstore clock display desktop ccl-workbench ccl-console logs devices files config-inspector boot-logs \
 	storage-check doom sameboy
 LAPTOP_LIVE_RW_DISK := laptop_live_rw.img
@@ -1973,7 +1982,7 @@ LAPTOP_LIVE_RW_DISK := laptop_live_rw.img
 CCL_WORKSPACE_SAMPLES := $(sort $(wildcard ../userspace/ccl/samples/*.ccl))
 
 # Native USB optical edition. Keep the original initrd-only laptop image as
-# an independent fallback; no ATA/NVMe driver is admitted in this profile.
+# an independent fallback.
 .PHONY: usb-live-iso run-usb-live run-usb-live-fast
 usb-live-iso: ccl-image ../images/laptop-usb.ccl $(CCL_IMAGE_CATALOG) cubit_kernel $(LAPTOP_LIVE_STAGE1) $(LAPTOP_LIVE_STAGE2) intel-gpu gpu-viewer config-storage teapots calculator lexicon dictionary $(LAPTOP_LIVE_RW_DISK) $(DESKTOP_ASSETS)
 	@test -s isodir/boot/cubitshell.app || (echo "missing Servo payload; run make -C kernel servo first" && false)
@@ -1983,17 +1992,13 @@ run-usb-live: usb-live-iso
 	$(MAKE) run-usb-live-fast
 
 # UEFI-only companion for machines without CSM, e.g. the N95 reference NUC.
-# Retain the existing legacy image for the laptop/IODD regression path.
+# Retain the existing legacy image for the laptop/IODD regression path. One
+# live image for every machine (HW-002): every driver is in it, devmgr
+# starts those whose devices are present, and Desktop's GPU rendering is a
+# setting (desktop.render.gpu), not an image variant.
 .PHONY: usb-live-uefi-iso
 usb-live-uefi-iso: usb-live-iso
 	bash ../tests/usb-optical/build-live.sh "$(DOOM_WAD)" --uefi
-
-# The UEFI live image with GPU rendering approved for Desktop
-# (images/laptop-usb-gpu.ccl): a hardware boot tries Vulkan startup and
-# reports each stage's time and where it stops.
-.PHONY: usb-live-uefi-gpu-iso
-usb-live-uefi-gpu-iso: usb-live-iso
-	bash ../tests/usb-optical/build-live.sh "$(DOOM_WAD)" --uefi --gpu
 
 # Match the working desktop frontend: SDL's native Wayland display can leave
 # a running guest without a visible window on the development workstation.

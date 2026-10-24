@@ -16,6 +16,7 @@ package body Intel_GPU_Native_Reset is
    use Interfaces;
    Description : Inventory;
    Saved_Fuse : Unsigned_32 := Unsigned_32'Last;
+   Saved_Device : Intel_GPU_ADLN_Devices.Device_ID := Intel_GPU_ADLN_Devices.Device_ID'First;
    Attempted, Access_Fault : Boolean := False;
    Succeeded : Boolean := False;
    function Last_Succeeded return Boolean is (Succeeded);
@@ -190,20 +191,25 @@ package body Intel_GPU_Native_Reset is
       end if;
    end GT_Status;
    procedure Hold (Success : out Boolean) is
-   begin Power.Acquire (16#8086#, 16#46D2#, Saved_Fuse, Success); end Hold;
+   begin
+      Power.Acquire (Intel_GPU_ADLN_Devices.Intel_Vendor, Saved_Device, Saved_Fuse, Success);
+   end Hold;
    package Reset is new Intel_GPU_ADLN_Reset (Read, Write, Hold, Now, Pause);
-   function Execute (Fuse : Unsigned_32) return String is
+   function Execute
+     (Device : Intel_GPU_ADLN_Devices.Device_ID; Fuse : Unsigned_32) return String
+   is
       Status : Reset.Result;
       use type Reset.Result;
    begin
       Succeeded := False;
       if Attempted then return "already-attempted"; end if;
       Attempted := True;
-      Description := Decode (16#8086#, 16#46D2#, Fuse);
+      Saved_Device := Device;
+      Description := Decode (Intel_GPU_ADLN_Devices.Intel_Vendor, Device, Fuse);
       if not Description.Valid then return "invalid-inventory"; end if;
       if Now = Unsigned_64'Last then return "clock-unavailable"; end if;
       Saved_Fuse := Fuse;
-      Reset.Execute (16#8086#, 16#46D2#, Fuse, Status);
+      Reset.Execute (Intel_GPU_ADLN_Devices.Intel_Vendor, Device, Fuse, Status);
       if Access_Fault then return "register-access-rejected"; end if;
       Succeeded := Status = Reset.Complete;
       if Succeeded then

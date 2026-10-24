@@ -42,6 +42,11 @@ with CuBit.Device_Interrupts;
 with Device_Vector_ABI;
 with CCL.Resource_Sections;
 with Driver_Manifests;
+with Devmgr_Bindings;
+with CCL.Device_Sections;
+with CCL.Device_Index;
+with CuBit.Driver_Readiness;
+with Intel_GPU_ADLN_Devices;
 with PCI_Message_Interrupts;
 with PCI_Message_Functions;
 with CuBit.Filesystems;
@@ -120,21 +125,16 @@ procedure main is
    PCI_CONFIG_ADDR : constant Unsigned_16 := 16#0CF8#;
    PCI_CONFIG_DATA : constant Unsigned_16 := 16#0CFC#;
 
-   --  PCI class codes
+   --  PCI base classes and class codes (base class << 8 | subclass).
+   CLASS_BASE_STORAGE    : constant Unsigned_8 := 16#01#;
+   CLASS_BASE_NETWORK    : constant Unsigned_8 := 16#02#;
+   CLASS_BASE_DISPLAY    : constant Unsigned_8 := 16#03#;
+   CLASS_BASE_MULTIMEDIA : constant Unsigned_8 := 16#04#;
+   CLASS_BASE_SERIAL_BUS : constant Unsigned_8 := 16#0C#;
    CLASS_STORAGE_IDE   : constant Unsigned_16 := 16#0101#;
-   CLASS_STORAGE_SATA  : constant Unsigned_16 := 16#0106#;
-   CLASS_STORAGE_NVME  : constant Unsigned_16 := 16#0108#;
-   CLASS_NET_ETHERNET  : constant Unsigned_16 := 16#0200#;
    CLASS_MULTIMEDIA_HDA : constant Unsigned_16 := 16#0403#;
    CLASS_DISPLAY_VGA    : constant Unsigned_16 := 16#0300#;
    CLASS_SERIAL_USB     : constant Unsigned_16 := 16#0C03#;
-
-   --  PCI vendor ID for virtio devices
-   VENDOR_VIRTIO       : constant Unsigned_16 := 16#1AF4#;
-   DEVICE_VIRTIO_GPU    : constant Unsigned_16 := 16#1050#;
-   --  virtio 1.0 device ID 18 (input) at 0x1040 + ID: virtio-tablet-pci,
-   --  virtio-mouse-pci and virtio-keyboard-pci all present this one ID.
-   DEVICE_VIRTIO_INPUT  : constant Unsigned_16 := 16#1052#;
 
    --  PCI config space offsets
    PCI_VENDOR_ID       : constant Unsigned_8 := 0;
@@ -148,7 +148,6 @@ procedure main is
    PCI_CAP_PTR         : constant Unsigned_8 := 52;
    PCI_INTERRUPT_LINE  : constant Unsigned_8 := 60;
    PCI_HEADER_MULTIFUNCTION : constant Unsigned_8 := 16#80#;
-   PCI_PROG_IF_AHCI         : constant Unsigned_8 := 16#01#;
    PCI_PROG_IF_XHCI         : constant Unsigned_8 := 16#30#;
 
    --  VirtIO modern PCI capability types
@@ -558,7 +557,7 @@ procedure main is
       Success := False; Intel_IRQ_Plan_Ready := False;
       Data := [others => 255];
       if not Intel_IRQ_Active or else not Intel_Config_Frozen or else
-        not intelDev.found or else Intel_Claim_Identity /= 16#46D2_8086#
+        not intelDev.found or else not Intel_GPU_ADLN_Devices.Supported_Identity (Intel_Claim_Identity)
       then return; end if;
       for Index in 0 .. 63 loop
          if portOutp32 (Root.PCI_Ports, PCI_CONFIG_ADDR, Intel_Config_Address (Index * 4)) /= 0 then return; end if;
@@ -647,10 +646,6 @@ procedure main is
             return;
          end if;
          while Index < 6 loop
-            if Family = Alder_Lake_N and then not intelDev.found then
-               intelDev := Location;
-               intelDev.found := True;
-            end if;
             Low := pciReadConfig32 (Location.bus, Location.slot, Location.func,
                                    Unsigned_8 (16 + Index * 4));
             High := 0;
@@ -740,58 +735,23 @@ procedure main is
          debugPrint (" prog-if=");
          printHex8 (progIf);
 
-         if classCode = CLASS_STORAGE_NVME then
-            nvmeDev := location;
-            observedKind := CuBit.Devices.Storage_Controller;
-            debugPrint (" NVMe");
-         elsif classCode = CLASS_STORAGE_IDE then
-            ataDev := location;
-            observedKind := CuBit.Devices.Storage_Controller;
-            debugPrint (" IDE");
-         elsif classCode = CLASS_STORAGE_SATA and then
-               progIf = PCI_PROG_IF_AHCI
-         then
-            observedKind := CuBit.Devices.Storage_Controller;
-            debugPrint (" AHCI (unclaimed)");
-         elsif classCode = CLASS_NET_ETHERNET then
-            observedKind := CuBit.Devices.Network_Controller;
-            if vendorID = VENDOR_VIRTIO then
-               netDev := location;
-               debugPrint (" virtio-net");
-            else
-               debugPrint (" Ethernet (unclaimed)");
-            end if;
-         elsif classCode = CLASS_MULTIMEDIA_HDA then
-            hdaDev := location;
-            observedKind := CuBit.Devices.Audio_Controller;
-            debugPrint (" HDA");
-         elsif classCode = CLASS_SERIAL_USB and then
-               progIf = PCI_PROG_IF_XHCI
-         then
-            xhciDev := location;
-            observedKind := CuBit.Devices.USB_Controller;
-            debugPrint (" xHCI");
-         elsif vendorID = VENDOR_VIRTIO and then deviceID = DEVICE_VIRTIO_INPUT then
-            --  One virtio-input driver: the first such function. The driver
-            --  itself declines devices that are not absolute pointers.
-            if inputDev.found then
-               debugPrint (" virtio-input (unclaimed)");
-            else
-               inputDev := location;
-               debugPrint (" virtio-input");
-            end if;
-         elsif vendorID = VENDOR_VIRTIO and then
-               (deviceID = DEVICE_VIRTIO_GPU or else
-                classCode = CLASS_DISPLAY_VGA)
-         then
-            gpuDev := location;
-            gpuIsPrimary := classCode = CLASS_DISPLAY_VGA;
-            observedKind := CuBit.Devices.Display_Controller;
-            debugPrint (" virtio-gpu");
-         elsif Shift_Right (classCode, 8) = 3 then
-            observedKind := CuBit.Devices.Display_Controller;
-            debugPrint (" display (firmware/unclaimed)");
-         end if;
+         --  What kind of device it is, for the Devices app. Which driver
+         --  drives it is the drivers' declared matches' decision
+         --  (Bind_Devices), not this classification's.
+         case Unsigned_8 (Shift_Right (classCode, 8)) is
+            when CLASS_BASE_STORAGE => observedKind := CuBit.Devices.Storage_Controller;
+            when CLASS_BASE_NETWORK => observedKind := CuBit.Devices.Network_Controller;
+            when CLASS_BASE_DISPLAY => observedKind := CuBit.Devices.Display_Controller;
+            when CLASS_BASE_MULTIMEDIA =>
+               if classCode = CLASS_MULTIMEDIA_HDA then
+                  observedKind := CuBit.Devices.Audio_Controller;
+               end if;
+            when CLASS_BASE_SERIAL_BUS =>
+               if classCode = CLASS_SERIAL_USB and then progIf = PCI_PROG_IF_XHCI then
+                  observedKind := CuBit.Devices.USB_Controller;
+               end if;
+            when others => null;
+         end case;
 
          if inventoryCount < inventory'Length then
             inventoryCount := inventoryCount + 1;
@@ -946,6 +906,24 @@ procedure main is
          size := Unsigned_64 (cpioArchive.files (idx).dataSize);
       end if;
       Spawned := DL.Spawn (name, To_Address (Integer_Address (addr)), size, priority);
+      --  A driver's own .cubit.devices must say what the image's driver
+      --  index bound it by (HW-002): an index cannot bind a driver to a
+      --  device the driver never declared.
+      if Spawned /= DL.No_Child then
+         declare
+            Driver : constant CCL.Device_Index.Driver_Count := Devmgr_Bindings.Driver_Named (name);
+            Own : constant CCL.Device_Sections.Match_Table := DL.Devices_Of (Spawned);
+         begin
+            if (if Driver = 0 then Own.Count > 0
+                else not Devmgr_Bindings.Agrees (Driver, Own))
+            then
+               debugPrint ("devmgr: " & name & " declares devices other than the image's " &
+                           "driver index lists; not started" & LF);
+               DL.Abandon (Spawned);
+               return DL.No_Child;
+            end if;
+         end;
+      end if;
       return Spawned;
    end spawnFromBootStorage;
 
@@ -1020,6 +998,197 @@ procedure main is
       end loop;
       return True;
    end strEq;
+
+   ---------------------------------------------------------------------------
+   --  Devices bound by presence (HW-002, docs/device-matching.md). Every
+   --  driver in the image is in its driver index; each present device binds
+   --  the driver whose declared entry matches it most specifically. One
+   --  line per device says which, or that nothing matched.
+   ---------------------------------------------------------------------------
+   package DS renames CCL.Device_Sections;
+   package DI renames CCL.Device_Index;
+   use type DI.Binding_Kind;
+   use type DI.Decode_Status;
+   DEVICE_INDEX_FILE : constant String := "devices.index";
+   deviceBindings : array (Inventory_Index) of DI.Binding := [others => (others => <>)];
+   --  Platform devices (devmgr's platform catalog). Assumed present: the
+   --  PS/2 controller and the CMOS clock (no ACPI/FADT check yet). The
+   --  primary ATA channel is present when PCI shows an IDE controller.
+   ps2Present, ataPrimaryPresent : Boolean := False;
+
+   function PCI_Function_Of (Item : Inventory_Device) return DS.PCI_Function is
+     (Vendor    => Item.vendorID,
+      Device    => Item.deviceID,
+      Class     => Unsigned_8 (Shift_Right (Item.classCode, 8)),
+      Subclass  => Unsigned_8 (Item.classCode and 16#FF#),
+      Program   => Item.progIf);
+
+   --  Drivers devmgr has dedicated setup for, one instance each; every
+   --  other PCI driver gets the generic launch (Launch_Generic_PCI).
+   function Has_Driver_Setup (Name : String) return Boolean is
+     (strEq (Name, "nvme.drv") or else strEq (Name, "xhci.drv")
+      or else strEq (Name, "hda.drv") or else strEq (Name, "virtio-net.drv")
+      or else strEq (Name, "virtio-gpu.drv") or else strEq (Name, "virtio-input.drv")
+      or else strEq (Name, "intel-gpu.drv") or else strEq (Name, "ata.drv")
+      or else strEq (Name, "ps2.drv"));
+
+   --  Which of several bound devices a single-instance setup starts: the
+   --  first for these, the last in scan order for the rest (as before
+   --  HW-002's matching).
+   function Starts_First (Name : String) return Boolean is
+     (strEq (Name, "virtio-input.drv") or else strEq (Name, "intel-gpu.drv"));
+
+   --  The device bound to driver Name: the first one, or the last one
+   --  (the PCI scan's order) when Last_Match.
+   function Bound_Location (Name : String; Last_Match : Boolean) return PCIDeviceInfo is
+      Driver : constant DI.Driver_Count := Devmgr_Bindings.Driver_Named (Name);
+      Result : PCIDeviceInfo;
+   begin
+      if Driver = 0 then
+         return Result;
+      end if;
+      for I in 1 .. inventoryCount loop
+         if deviceBindings (I).Kind = DI.Bound and then deviceBindings (I).Driver = Driver then
+            Result := inventory (I).location;
+            exit when not Last_Match;
+         end if;
+      end loop;
+      return Result;
+   end Bound_Location;
+
+   function Location_Text (Location : PCIDeviceInfo) return String is
+     (Devmgr_Bindings.Hex (Unsigned_64 (Location.bus), 2) & ":" &
+      Devmgr_Bindings.Hex (Unsigned_64 (Location.slot), 2) & "." &
+      Devmgr_Bindings.Hex (Unsigned_64 (Location.func), 1));
+
+   function Device_Text (Item : Inventory_Device) return String is
+     (Location_Text (Item.location) & " " &
+      Devmgr_Bindings.Hex (Unsigned_64 (Item.vendorID), 4) & ":" &
+      Devmgr_Bindings.Hex (Unsigned_64 (Item.deviceID), 4) & " class " &
+      Devmgr_Bindings.Hex (Unsigned_64 (Shift_Right (Item.classCode, 8)), 2) & "." &
+      Devmgr_Bindings.Hex (Unsigned_64 (Item.classCode and 16#FF#), 2) & "." &
+      Devmgr_Bindings.Hex (Unsigned_64 (Item.progIf), 2));
+
+   --  Whether driver Name is the one bound to platform device P.
+   function Platform_Bound (Name : String; P : DS.Platform_Device) return Boolean is
+     (Devmgr_Bindings.Driver_Named (Name) /= 0
+      and then Devmgr_Bindings.Platform_Driver (P) = Devmgr_Bindings.Driver_Named (Name));
+
+   procedure Bind_Devices is
+      Index_File : constant Natural := Cpio.findFile (cpioArchive, DEVICE_INDEX_FILE);
+      Status : DI.Decode_Status := DI.Invalid_Length;
+      Bound_Total, Unbound_Total : Natural := 0;
+      Index : DI.Index;
+   begin
+      if Index_File < cpioArchive.count
+        and then cpioArchive.files (Index_File).dataSize <= DI.MAX_INDEX_BYTES
+      then
+         declare
+            Data : constant DI.Byte_Array (1 .. Natural (cpioArchive.files (Index_File).dataSize))
+              with Import, Address => To_Address (Integer_Address
+                (INITRD_BASE + Unsigned_64 (cpioArchive.files (Index_File).dataOff)));
+         begin
+            Devmgr_Bindings.Load (Data, Status);
+         end;
+      end if;
+      if Status /= DI.Decoded then
+         Warnings.Warn ("devmgr: no valid " & DEVICE_INDEX_FILE & " (" &
+           DI.Status_Name (Status) & "); no driver is bound");
+         return;
+      end if;
+      Index := Devmgr_Bindings.Index;
+      for I in 1 .. inventoryCount loop
+         Devmgr_Bindings.Bind (PCI_Function_Of (inventory (I)), deviceBindings (I));
+      end loop;
+      ataPrimaryPresent := (for some I in 1 .. inventoryCount =>
+                              inventory (I).classCode = CLASS_STORAGE_IDE);
+      ps2Present := True;
+
+      --  The devices devmgr's single-instance setup will start.
+      nvmeDev  := Bound_Location ("nvme.drv", not Starts_First ("nvme.drv"));
+      netDev   := Bound_Location ("virtio-net.drv", not Starts_First ("virtio-net.drv"));
+      hdaDev   := Bound_Location ("hda.drv", not Starts_First ("hda.drv"));
+      xhciDev  := Bound_Location ("xhci.drv", not Starts_First ("xhci.drv"));
+      gpuDev   := Bound_Location ("virtio-gpu.drv", not Starts_First ("virtio-gpu.drv"));
+      inputDev := Bound_Location ("virtio-input.drv", not Starts_First ("virtio-input.drv"));
+      intelDev := Bound_Location ("intel-gpu.drv", not Starts_First ("intel-gpu.drv"));
+      for I in 1 .. inventoryCount loop
+         if Same_Location (inventory (I).location, gpuDev) then
+            gpuIsPrimary := inventory (I).classCode = CLASS_DISPLAY_VGA;
+         end if;
+      end loop;
+
+      for I in 1 .. inventoryCount loop
+         declare
+            B : constant DI.Binding := deviceBindings (I);
+            Item : constant Inventory_Device := inventory (I);
+         begin
+            case B.Kind is
+               when DI.Unbound =>
+                  Unbound_Total := Unbound_Total + 1;
+                  Warnings.Inform ("devmgr: match " & Device_Text (Item) & " -> unmatched");
+               when DI.Ambiguous =>
+                  Unbound_Total := Unbound_Total + 1;
+                  Warnings.Warn ("devmgr: match " & Device_Text (Item) & " -> ambiguous: " &
+                    Devmgr_Bindings.Name_Of (B.Driver) & " and " &
+                    Devmgr_Bindings.Name_Of (B.Rival) & " match equally; neither started");
+               when DI.Bound =>
+                  Bound_Total := Bound_Total + 1;
+                  declare
+                     Name : constant String := Devmgr_Bindings.Name_Of (B.Driver);
+                     Line : constant String :=
+                       "devmgr: match " & Device_Text (Item) & " -> " & Name & " (" &
+                       Devmgr_Bindings.Image (Index.Drivers (B.Driver).Matches.Entries (B.At_Entry)) & ")";
+                     Started : constant Boolean :=
+                       not Has_Driver_Setup (Name)
+                       or else Same_Location
+                         (Item.location, Bound_Location (Name, Last_Match => not Starts_First (Name)));
+                  begin
+                     if Started then
+                        Warnings.Inform (Line);
+                     else
+                        Warnings.Inform (Line & "; not started: devmgr starts one " & Name);
+                     end if;
+                  end;
+            end case;
+         end;
+      end loop;
+
+      --  Platform devices, and entries devmgr does not enumerate.
+      for D in 1 .. Index.Count loop
+         for E in 1 .. Index.Drivers (D).Matches.Count loop
+            declare
+               M : constant DS.Device_Match := Index.Drivers (D).Matches.Entries (E);
+               Name : constant String := Devmgr_Bindings.Name_Of (D);
+               use type DS.Match_Kind;
+               use type CCL.Resource_Sections.Platform_Device;
+            begin
+               case M.Kind is
+                  when DS.Platform =>
+                     if (M.Device = CCL.Resource_Sections.PS2_Controller and then ps2Present)
+                       or else (M.Device = CCL.Resource_Sections.ATA_Primary and then ataPrimaryPresent)
+                       or else M.Device = CCL.Resource_Sections.CMOS_RTC
+                     then
+                        Warnings.Inform ("devmgr: match platform " &
+                                         Devmgr_Bindings.Platform_Name (M.Device) & " -> " & Name);
+                     else
+                        Warnings.Inform ("devmgr: match platform " &
+                                         Devmgr_Bindings.Platform_Name (M.Device) & " absent; " &
+                                         Name & " not started");
+                     end if;
+                  when DS.ACPI_ID | DS.USB_Class =>
+                     debugPrint ("devmgr: " & Name & " declares " & Devmgr_Bindings.Image (M) &
+                                 ": not enumerated by devmgr" & LF);
+                  when DS.PCI_IDs | DS.PCI_Class =>
+                     null;
+               end case;
+            end;
+         end loop;
+      end loop;
+      Warnings.Inform ("devmgr: drivers bound to" & Natural'Image (Bound_Total) &
+        " PCI devices;" & Natural'Image (Unbound_Total) & " matched no driver" &
+        (if inventoryOverflow then " (inventory overflowed)" else ""));
+   end Bind_Devices;
 
 
    ---------------------------------------------------------------------------
@@ -1113,8 +1282,8 @@ procedure main is
 
 
    --  IPC ready protocol constants
-   OP_READY      : constant Unsigned_32 := 16#FF00#;
-   OP_NOT_PRESENT : constant Unsigned_32 := 16#FF01#;
+   OP_READY       : constant Unsigned_32 := CuBit.Driver_Readiness.Ready_Label;
+   OP_NOT_PRESENT : constant Unsigned_32 := CuBit.Driver_Readiness.Not_Present_Label;
    --  mixer.svc may reserve real-time CPU for one audio period: 1.5 ms of
    --  every 5 ms (docs/scheduler.md, "Soft real time").
    MIXER_REALTIME_BUDGET_US : constant Unsigned_64 := 1_500;
@@ -1371,8 +1540,11 @@ procedure main is
    --  to the local APIC of the CPU the driver is pinned to (cpuOf). A block
    --  is released only after the function is masked and disabled.
    ---------------------------------------------------------------------------
+   --  Memory BARs up to Limit bytes (xHCI's arena bound by default).
+   XHCI_BAR_LIMIT : constant Unsigned_64 := 1024 * 1024;
    function probeMemoryBARSize
-     (dev : PCIDeviceInfo; bar : Unsigned_8) return Unsigned_64;
+     (dev : PCIDeviceInfo; bar : Unsigned_8; Limit : Unsigned_64 := XHCI_BAR_LIMIT)
+      return Unsigned_64;
 
    --  PCI command register bits.
    PCI_COMMAND_INTX_DISABLE   : constant Unsigned_16 := 16#0400#;
@@ -2416,7 +2588,8 @@ procedure main is
    -- Returns zero for an I/O BAR or a malformed/unsupported result.
    ---------------------------------------------------------------------------
    function probeMemoryBARSize
-     (dev : PCIDeviceInfo; bar : Unsigned_8) return Unsigned_64
+     (dev : PCIDeviceInfo; bar : Unsigned_8; Limit : Unsigned_64 := XHCI_BAR_LIMIT)
+      return Unsigned_64
    is
       command : constant Unsigned_16 :=
         pciReadConfig16 (dev.bus, dev.slot, dev.func, PCI_COMMAND);
@@ -2470,7 +2643,7 @@ procedure main is
          size := Unsigned_64 ((not Unsigned_32 (barMask)) + 1);
       end if;
 
-      if size < 4096 or else size > 1024 * 1024 or else
+      if size < 4096 or else size > Limit or else
          (size and (size - 1)) /= 0
       then
          return 0;
@@ -2624,6 +2797,226 @@ procedure main is
    end setupXHCI;
 
    ---------------------------------------------------------------------------
+   --  The generic PCI launch (HW-002, docs/device-matching.md "Generic PCI
+   --  launch"): a driver bound by its declared match that devmgr has no
+   --  dedicated setup for. Everything it gets comes from its manifest: one
+   --  window per device-memory request (at most its BAR and its max_bytes),
+   --  its MSI or MSI-X interrupt, its one DMA region and its endpoint to
+   --  devmgr. Where they are reaches it as a Generic_PCI launch
+   --  configuration; MSI-X stays masked until it reports ready.
+   ---------------------------------------------------------------------------
+   DMA_MAX_ORDER : constant := 14;   --  2 ** 14 pages: CCL.Resource_Sections.MAX_DMA_BYTES
+   --  Generic drivers launched, awaiting or past their readiness report.
+   Generic_Capacity : constant := 16;
+   type Generic_Child is record
+      PID        : Process_ID := No_Process;
+      Interrupts : Message_Function;
+      Device     : Inventory_Device;
+      Waiting    : Boolean := False;
+   end record;
+   Generic_Children : array (1 .. Generic_Capacity) of Generic_Child;
+   Generic_Total : Natural range 0 .. Generic_Capacity := 0;
+   Generic_Started : array (Inventory_Index) of Boolean := [others => False];
+   --  Each generic driver's log publications (CuBit.Log_Protocol), after
+   --  devmgr's own drivers' issuances.
+   Generic_Log_Issuance_First : constant CuBit.Log_Protocol.Publication_Issuance := 16;
+   PCI_COMMAND_MEMORY_BUS_MASTER : constant Unsigned_16 := 16#0006#;
+
+   procedure Launch_Generic_PCI (Item : Inventory_Device; Name : String) is
+      package RS renames CCL.Resource_Sections;
+      use type RS.Resource_Kind;
+      use type RS.Basis_Kind;
+      use type RS.Rights_Kind;
+      dev : constant PCIDeviceInfo := Item.location;
+      Child : DL.Child;
+      PID : Process_ID;
+      Plan : RS.Section_Plan;
+      Config : LC.Generic_PCI_Configuration;
+      Interrupts : Message_Function;
+      Window : LC.Window_Count := 0;
+      DMA_Requests : Natural := 0;
+      Failed : Boolean := False;
+
+      procedure Refuse (Why : String) is
+      begin
+         Warnings.Warn ("devmgr: " & Name & " at " & Location_Text (dev) & " not started: " & Why);
+         Failed := True;
+      end Refuse;
+   begin
+      Child := spawnFromBootStorage (Name, 5);
+      if Child = DL.No_Child then
+         Warnings.Warn ("devmgr: " & Name & " bound to " & Location_Text (dev) & " but not spawned");
+         return;
+      end if;
+      PID := DL.PID (Child);
+      Plan := DL.Resources_Of (Child);
+      if Plan.Basis.Kind /= RS.PCI_Basis and then Plan.Count > 0 then
+         Refuse ("its resources are not relative to a PCI function");
+      end if;
+      Config.Location := Shift_Left (Unsigned_64 (dev.bus), 8) or
+        Shift_Left (Unsigned_64 (dev.slot), 3) or Unsigned_64 (dev.func);
+      Config.Vendor := Unsigned_64 (Item.vendorID);
+      Config.Device := Unsigned_64 (Item.deviceID);
+      Config.Revision := Unsigned_64 (pciReadConfig8 (dev.bus, dev.slot, dev.func, 8));
+      Config.Class_Code := Shift_Left (Unsigned_64 (Item.classCode), 8) or Unsigned_64 (Item.progIf);
+      pciWriteConfig16 (dev.bus, dev.slot, dev.func, PCI_COMMAND,
+        pciReadConfig16 (dev.bus, dev.slot, dev.func, PCI_COMMAND) or PCI_COMMAND_MEMORY_BUS_MASTER);
+      assignCPU (Child, Name);
+      if H.Valid (Logstore_Endpoint) then
+         DL.Give_Service (Child, Unsigned_32 (DRIVER_LOGSTORE),
+           H.Badged (Logstore_Endpoint, H.Read_Write,
+             CuBit.Log_Protocol.Publisher_Tag
+               (Driver_Log_Budget, Generic_Log_Issuance_First + Unsigned_64 (Generic_Total))));
+      end if;
+
+      for I in 1 .. Plan.Count loop
+         exit when Failed;
+         declare
+            R : constant RS.Resource := Plan.Entries (I);
+         begin
+            case R.Kind is
+               when RS.Device_Memory =>
+                  if Window = LC.Maximum_Windows then
+                     Refuse ("more device-memory requests than PCI BARs");
+                  else
+                     declare
+                        Offset : constant Unsigned_8 := PCI_BASEADDR_0 + Unsigned_8 (R.Index) * PCI_BAR_BYTES;
+                        Low : constant Unsigned_32 := pciReadConfig32 (dev.bus, dev.slot, dev.func, Offset);
+                        High : constant Unsigned_32 :=
+                          (if (Low and PCI_BAR_TYPE_MASK) = PCI_BAR_TYPE_64 and then R.Index < 5
+                           then pciReadConfig32 (dev.bus, dev.slot, dev.func, Offset + PCI_BAR_BYTES) else 0);
+                        Base : constant Unsigned_64 :=
+                          Shift_Left (Unsigned_64 (High), 32) or Unsigned_64 (Low and PCI_BAR_ADDRESS_MASK);
+                        Size : constant Unsigned_64 :=
+                          probeMemoryBARSize (dev, Offset, RS.MAX_DEVICE_MEMORY_BYTES);
+                        Bytes : constant Unsigned_64 := Unsigned_64'Min (Size, R.Amount);
+                     begin
+                        if (Low and PCI_BAR_IO) /= 0 or else Base = 0 or else Size = 0 then
+                           Refuse ("BAR" & Unsigned_32'Image (R.Index) & " is not an assigned memory BAR");
+                        elsif not Devmgr_Authority.Covered (Base, Bytes) then
+                           Refuse ("BAR" & Unsigned_32'Image (R.Index) & " outside device memory");
+                        else
+                           Window := Window + 1;
+                           Config.Windows (Window) := (First => Base, Bytes => Bytes);
+                           if not DL.Give_Nth (Child, ST.Device_Memory, Window,
+                             Devmgr_Authority.Device_Copy
+                               (Base, Bytes, (if R.Rights = RS.Read_Only then H.Read_Only else H.Read_Write)))
+                           then
+                              Refuse ("its manifest has no device-memory binding" & Natural'Image (Window));
+                           end if;
+                        end if;
+                     end;
+                  end if;
+               when RS.DMA =>
+                  DMA_Requests := DMA_Requests + 1;
+                  if DMA_Requests > 1 then
+                     Refuse ("more than one dma request");
+                  else
+                     declare
+                        Pages : constant Unsigned_64 := (R.Amount + PAGE_BYTES - 1) / PAGE_BYTES;
+                        Order : Unsigned_64 := 0;
+                        Physical : Unsigned_64;
+                     begin
+                        while Shift_Left (Unsigned_64'(1), Natural (Order)) < Pages
+                          and then Order < DMA_MAX_ORDER
+                        loop
+                           Order := Order + 1;
+                        end loop;
+                        Physical := allocDma (PID, Order, DMA_VIRT_BASE, DL.Control (Child));
+                        if Physical = reterr then
+                           Refuse ("DMA allocation of" & Unsigned_64'Image (R.Amount) & " bytes failed");
+                        else
+                           Config.DMA := (First => Physical,
+                                          Bytes => Shift_Left (Unsigned_64'(1), Natural (Order)) * PAGE_BYTES);
+                           Config.DMA_Virtual := DMA_VIRT_BASE;
+                        end if;
+                     end;
+                  end if;
+               when RS.IO_Ports =>
+                  Refuse ("I/O port BARs are not given by the generic launch");
+               when RS.Interrupt | RS.Scheduling =>
+                  null;
+            end case;
+         end;
+      end loop;
+      Config.Window_Total := Window;
+
+      if not Failed then
+         Setup_Message_Interrupts (dev, Child, Name, Interrupts);
+         case Interrupts.Mode is
+            when Polled    => Config.Delivery := LC.Polled; Config.Vectors := 0;
+            when MSI_Mode  => Config.Delivery := LC.MSI;    Config.Vectors := 1;
+            when MSIX_Mode =>
+               Config.Delivery := LC.MSI_X;
+               Config.Vectors := Unsigned_64 (Interrupts.Vectors.Count);
+         end case;
+         DL.Set_Payload (Child, LC.Encode (Config));
+      end if;
+
+      if Failed or else not DL.Start (Child) then
+         if not Failed then
+            Close_Message_Interrupts (Interrupts);
+         end if;
+         DL.Abandon (Child);
+         return;
+      end if;
+      --  It reports OP_READY or OP_NOT_PRESENT to the service loop
+      --  (Generic_Report), which then unmasks or releases its vectors.
+      if Generic_Total < Generic_Capacity then
+         Generic_Total := Generic_Total + 1;
+         Generic_Children (Generic_Total) :=
+           (PID => PID, Interrupts => Interrupts, Device => Item, Waiting => True);
+      end if;
+      Warnings.Inform ("devmgr: " & Name & " launched for " & Device_Text (Item) & " (generic launch)");
+   end Launch_Generic_PCI;
+
+   --  A generic driver's readiness report, in the service loop: True when
+   --  From is one and the message was its report (answered here).
+   function Generic_Report (From : Process_ID; Msg : Message) return Boolean is
+      Ignore : Unsigned_64;
+   begin
+      for I in 1 .. Generic_Total loop
+         if Generic_Children (I).Waiting and then Generic_Children (I).PID = From
+           and then Msg.tag.label in OP_READY | OP_NOT_PRESENT
+         then
+            Generic_Children (I).Waiting := False;
+            if Msg.tag.label = OP_READY then
+               Open_Message_Interrupts (Generic_Children (I).Interrupts);
+               Warnings.Inform ("devmgr: generic driver ready for " &
+                                Device_Text (Generic_Children (I).Device));
+            else
+               Close_Message_Interrupts (Generic_Children (I).Interrupts);
+               Warnings.Inform ("devmgr: generic driver declined " &
+                                Device_Text (Generic_Children (I).Device));
+            end if;
+            Ignore := reply (From, NULL_MESSAGE);
+            return True;
+         end if;
+      end loop;
+      return False;
+   end Generic_Report;
+
+   --  Generic drivers start once logstore runs, so their bring-up lines
+   --  reach it from their first one (the bring-up logging convention): a
+   --  (service "logstore" ...) request is answered with a publisher
+   --  endpoint badged for that driver.
+   procedure Launch_Pending_Generic is
+   begin
+      for I in 1 .. inventoryCount loop
+         if deviceBindings (I).Kind = DI.Bound and then not Generic_Started (I) then
+            declare
+               Name : constant String := Devmgr_Bindings.Name_Of (deviceBindings (I).Driver);
+            begin
+               if not Has_Driver_Setup (Name) then
+                  Generic_Started (I) := True;
+                  Launch_Generic_PCI (inventory (I), Name);
+               end if;
+            end;
+         end if;
+      end loop;
+   end Launch_Pending_Generic;
+
+   ---------------------------------------------------------------------------
    -- Main entry point
    ---------------------------------------------------------------------------
 
@@ -2735,8 +3128,10 @@ begin
       end if;
    end if;
 
-   --  Scan PCI bus for devices
+   --  Scan PCI bus for devices, then bind each to the driver that
+   --  declares it (devices.index).
    scanPCI;
+   Bind_Devices;
 
    -----------------------------------------------------------------------
    -- Phase 1: Spawn filesystem server (auto-assign PID)
@@ -2814,8 +3209,10 @@ begin
    -- Phase 2: Spawn and setup disk drivers
    -----------------------------------------------------------------------
 
-   --  ATA driver
-   ataChild := spawnFromBootStorage ("ata.drv", 5);
+   --  ATA driver, for a present primary channel it declares.
+   if ataPrimaryPresent and then Platform_Bound ("ata.drv", CCL.Resource_Sections.ATA_Primary) then
+      ataChild := spawnFromBootStorage ("ata.drv", 5);
+   end if;
    ataPID := PID_Of (ataChild);
    if ataPID /= No_Process then
       setupAta;
@@ -2837,8 +3234,10 @@ begin
       end if;
    end if;
 
-   --  NVMe driver
-   nvmeChild := spawnFromBootStorage ("nvme.drv", 5);
+   --  NVMe driver, for the controller bound to it.
+   if nvmeDev.found then
+      nvmeChild := spawnFromBootStorage ("nvme.drv", 5);
+   end if;
    nvmePID := PID_Of (nvmeChild);
    if nvmePID /= No_Process then
       --  Placed first: its completion vectors go to the CPU it runs on.
@@ -2889,7 +3288,9 @@ begin
    -----------------------------------------------------------------------
    -- Phase 2b: Spawn PS/2 keyboard + mouse driver
    -----------------------------------------------------------------------
-   ps2Child := spawnFromBootStorage ("ps2.drv", 5);
+   if ps2Present and then Platform_Bound ("ps2.drv", CCL.Resource_Sections.PS2_Controller) then
+      ps2Child := spawnFromBootStorage ("ps2.drv", 5);
+   end if;
    ps2PID := PID_Of (ps2Child);
    if ps2PID /= No_Process then
       setupPS2;
@@ -3483,6 +3884,13 @@ begin
    end if;
 
    -----------------------------------------------------------------------
+   -- Phase 4b: drivers bound by their declared matches that devmgr has no
+   -- dedicated setup for (docs/device-matching.md "Generic PCI launch").
+   -----------------------------------------------------------------------
+   --  They start in the service loop once procmgr offers logstore
+   --  (Launch_Pending_Generic).
+
+   -----------------------------------------------------------------------
    -- Phase 5: Spawn procmgr
    -- Disk drivers already waited in Phase 2, no duplicate wait needed.
    -----------------------------------------------------------------------
@@ -3599,6 +4007,8 @@ begin
                ret := syscall (SYSCALL_SLEEP, 1);
             end if;
          end if;
+      elsif Generic_Report (from, msg) then
+         null;
       elsif msg.tag.label = Intel_GPU_Broker_Request.Label then
          declare
             ID : GPU_Launch.Ticket;
@@ -3609,6 +4019,16 @@ begin
                Launch_Now,
                (if Launch_Now > Unsigned_64'Last - 5_000 then Launch_Now
                 else Launch_Now + 5_000), ID);
+            --  Why a render session (Desktop's GPU rendering) will be
+            --  refused, for the bring-up photo; intel-gpu's own stage lines
+            --  say why it refuses one when it runs.
+            if not intelDev.found or else Intel_Inspection_PID = No_Process then
+               Warnings.Inform ("devmgr: render admission refused: " &
+                 (if not intelDev.found then "no supported GPU bound (software rendering)"
+                  else "intel-gpu.drv not running (software rendering)"));
+            elsif ID = 0 then
+               Warnings.Inform ("devmgr: render admission refused: request not admissible");
+            end if;
             if ID = 0 then
                ret := reply (from,
                  (tag => (label => Intel_GPU_Broker_Request.Label, length => 4,
@@ -3672,6 +4092,10 @@ begin
             ret := reply (from, (tag => (label => REPLY_OK, length => 0,
                                          protocol => 0, ipc => <>, reserved => 0), authorityTag => 0,
                                  words => [others => 0]));
+            --  After the reply: procmgr is not kept waiting while they spawn.
+            if Role = DRIVER_LOGSTORE and then H.Valid (Logstore_Endpoint) then
+               Launch_Pending_Generic;
+            end if;
          end;
       elsif msg.tag.label = GP.Desktop_Binding_Label then
          --  The GPU viewer asks for the desktop endpoint (accepting it in the
@@ -3788,7 +4212,7 @@ begin
             use type Intel_GPU_PCI_Power.Power_Status;
          begin
             if Intel_Config_Frozen and then intelDev.found and then
-              Intel_Claim_Identity = 16#46D2_8086# and then
+              Intel_GPU_ADLN_Devices.Supported_Identity (Intel_Claim_Identity) and then
               Intel_GPU_Display_Claim.Owner (Intel_Display_Ownership) = 0
             then
                for Byte in Config'Range loop
@@ -3852,7 +4276,7 @@ begin
          begin
             if not Intel_Reset_Authorized and then Intel_Config_Frozen and then
               intelDev.found and then Intel_Forcewake_Granted and then
-              Intel_Claim_Identity = 16#46D2_8086# and then
+              Intel_GPU_ADLN_Devices.Supported_Identity (Intel_Claim_Identity) and then
               (for all Granted of Intel_Reset_Granted => Granted)
             then
                for Byte in Config'Range loop
@@ -3945,7 +4369,7 @@ begin
                   pciReadConfig32 (intelDev.bus, intelDev.slot, intelDev.func, 16#14#),
                   Offset, 4096);
                if Intel_GPU_PCI_Power.Decode (Config) = Intel_GPU_PCI_Power.D0 and then
-                 Intel_Claim_Identity = 16#46D2_8086# and then
+                 Intel_GPU_ADLN_Devices.Supported_Identity (Intel_Claim_Identity) and then
                  pciReadConfig32 (intelDev.bus, intelDev.slot, intelDev.func, 0) =
                    Intel_Claim_Identity and then Plan.Status = Intel_GPU_Resources.Admitted and then
                  Plan.Physical_Base >= Intel_Claim_Base and then
@@ -3984,7 +4408,7 @@ begin
                -- Consume before inspection/mint; lost replies cannot replay.
                Intel_GGTT_Write_Attempted := True;
                if Intel_Config_Frozen and then intelDev.found and then
-                 Intel_Claim_Identity = 16#46D2_8086# and then
+                 Intel_GPU_ADLN_Devices.Supported_Identity (Intel_Claim_Identity) and then
                  Intel_Reset_Authorized and then Intel_GGTT_Granted and then
                  Intel_GPU_Display_Claim.Owner (Intel_Display_Ownership) = To_Word (from) and then
                  Intel_IRQ_Disable.State = Intel_IRQ_Disable.PCI_Disabled

@@ -18,6 +18,11 @@ project Devmgr is
        "pci_message_interrupts.ads", "pci_message_interrupts.adb",
        "pci_message_functions.ads", "pci_message_functions.adb",
        "driver_manifests.ads", "driver_manifests.adb",
+       --  Devices bound by their drivers' declared matches (HW-002).
+       "devmgr_bindings.ads", "devmgr_bindings.adb",
+       "ccl-device_sections.ads", "ccl-device_sections.adb",
+       "ccl-device_index.ads", "ccl-device_index.adb",
+       "intel_gpu_adln_devices.ads",
        --  Launching children by handle (CAP-002).
        "devmgr_launches.ads", "devmgr_launches.adb",
        "devmgr_authority.ads", "devmgr_authority.adb",

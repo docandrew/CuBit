@@ -1,4 +1,5 @@
 #include "cubit-device-query.h"
+#include "cubit-adln-devices.h"
 
 bool
 cubit_gpu_query_budget(cubit_gpu_query_call call, void *endpoint,
@@ -99,12 +100,13 @@ cubit_gpu_query_device(cubit_gpu_query_call call, void *endpoint,
       return false;
    /* v1 has no public render feature bits. Reject unknown bits rather than
     * mistakenly interpreting a future service as this prototype contract. */
-   if ((reply.words[2] >> 40) != 0 ||
-       (reply.words[2] & UINT64_C(0xffffffff)) != UINT64_C(0x46d28086) ||
-       reply.words[3] != 0)
+   const uint32_t vendor = (uint32_t)(reply.words[2] & UINT64_C(0xffff));
+   const uint32_t device = (uint32_t)((reply.words[2] >> 16) & UINT64_C(0xffff));
+   if ((reply.words[2] >> 40) != 0 || vendor != CUBIT_INTEL_VENDOR ||
+       !cubit_adln_supported_device(device) || reply.words[3] != 0)
       return false;
    struct cubit_gpu_device_snapshot result = {
-      .device = 0x46d2, .pci_revision = (uint8_t)(reply.words[2] >> 32),
+      .device = (uint16_t)device, .pci_revision = (uint8_t)(reply.words[2] >> 32),
    };
    if (!query(call, endpoint, 1, &reply))
       return false;

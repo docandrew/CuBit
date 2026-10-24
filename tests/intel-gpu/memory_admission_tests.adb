@@ -1,3 +1,4 @@
+with Intel_GPU_ADLN_Devices;
 with Interfaces; use Interfaces;
 with Ada.Text_IO;
 with Intel_GPU_Device_Query; use Intel_GPU_Device_Query;
@@ -23,7 +24,7 @@ begin
    for Device in Unsigned_16 loop
       State.Device := Device;
       pragma Assert (Policy (State) =
-        (if Device = 16#46D2# then Owned_WB_Coherent else Not_Admitted));
+        (if Device in Intel_GPU_ADLN_Devices.Device_ID then Owned_WB_Coherent else Not_Admitted));
    end loop;
    State := (16#46D2#, True, True, True, False, True, True);
    -- A historical probe success cannot survive current ownership/health loss.

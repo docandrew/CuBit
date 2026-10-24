@@ -13,6 +13,21 @@ CATALOG = (ROOT / 'userspace/ccl/catalogs/bootstrap-services.ccl').read_text()
 DECODER = ROOT / 'tests/ccl-manifests/build/resources/resource_decode'
 SOURCE = (ROOT / 'userspace/ccl/apps/ccl-vm/manifest.ccl').read_text()
 SCHEMA = ROOT / 'userspace/ccl/interfaces/executable-manifest.ccl'
+# .cubit.resources version 2: the header names the resource basis
+# (CCL.Resource_Sections.Basis_Kind: 0 none, 1 PCI function, 3 platform).
+RESOURCES_VERSION = 2
+BASIS_PCI, BASIS_PLATFORM = 1, 3
+# .cubit.devices (CCL.Device_Sections): "CBDV", version 1, 16-byte entries.
+DEVICES_MAGIC, DEVICES_VERSION = 0x56444243, 1
+MATCH_PCI_IDS, MATCH_PCI_CLASS, MATCH_ACPI_ID, MATCH_USB_CLASS, MATCH_PLATFORM = 1, 2, 3, 4, 5
+
+
+def devices_section(*entries):
+    """The .cubit.devices bytes for (kind, payload) entries."""
+    out = struct.pack('<IHH', DEVICES_MAGIC, DEVICES_VERSION, len(entries))
+    for kind, payload in entries:
+        out += struct.pack('<BBH', kind, len(payload), 0) + payload + bytes(12 - len(payload))
+    return out
 
 
 class Manifests(unittest.TestCase):
@@ -631,16 +646,65 @@ class Manifests(unittest.TestCase):
         sections = self.sections(result.stdout)
         # Device resources never appear as endpoint capability requests.
         self.assertNotIn('.cubit.caps', sections)
-        header = struct.pack('<IHH', 0x53524243, 1, 3) + struct.pack('<BBHHHQ', 1, 0, 1, 8, 2, 0)
+        header = struct.pack('<IHH', 0x53524243, RESOURCES_VERSION, 3) + struct.pack('<BBHHHQ', BASIS_PCI, 0, 0, 0, 0, 0)
         entries = (struct.pack('<BBHIQQ', 16, 3, 0, 0, 16384, 0) +
                    struct.pack('<BBHIQQ', 18, 1, 0, 0, 1, 1) +
                    struct.pack('<BBHIQQ', 19, 3, 0, 0, 1048576, 0))
         self.assertEqual(sections['.cubit.resources'], header + entries)
+        self.assertEqual(sections['.cubit.devices'], devices_section((MATCH_PCI_CLASS, bytes([1, 8, 2]))))
         _, startup = self.startup(sections['.cubit.startup'])
         self.assertEqual([e[0] for e in startup], ['registers', 'completion', 'queues'])
         # Truncation must fail without exceptions or partial ELF output.
         for end in range(len(template) - 1):
             self.reject(template[:end])
+
+    def test_typed_drives(self):
+        # HW-002: a driver lists every device it drives (docs/device-matching.md).
+        base = """(Executable_Manifest identity => "drv" version => "1"
+          drives => [(Device_Match.PCI_IDs (PCI_IDs 0x8086 0x46D0 0x46D4))
+                     (Device_Match.PCI_Class (PCI_Class 0x0C 0x03 0x30))
+                     (Device_Match.ACPI_ID "PNP0C50")
+                     (Device_Match.USB_Class (USB_Class 0x03 0x01 0x02))]
+          requests => [(device-memory "registers" 0 16384 Access.Read_Write)])"""
+        result = self.compile(base, self.DRIVER)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        sections = self.sections(result.stdout)
+        self.assertEqual(sections['.cubit.devices'], devices_section(
+            (MATCH_PCI_IDS, struct.pack('<HHH', 0x8086, 0x46D0, 0x46D4)),
+            (MATCH_PCI_CLASS, bytes([0x0C, 0x03, 0x30])),
+            (MATCH_ACPI_ID, b'PNP0C50'),
+            (MATCH_USB_CLASS, bytes([3, 1, 2]))))
+        self.assertEqual(sections['.cubit.resources'][8:24],
+                         struct.pack('<BBHHHQ', BASIS_PCI, 0, 0, 0, 0, 0))
+        # Hexadecimal and decimal spell the same value.
+        decimal = base.replace('0x8086 0x46D0 0x46D4', '32902 18128 18132')
+        self.assertEqual(self.sections(self.compile(decimal, self.DRIVER).stdout)['.cubit.devices'],
+                         sections['.cubit.devices'])
+        pci_ids = '(Device_Match.PCI_IDs (PCI_IDs 0x8086 0x46D0 0x46D4))'
+        for old, bad, diagnostic in [
+                ('0x8086 0x46D0', '0xFFFF 0x46D0', 'INVALID_DEVICE_MATCH'),
+                ('0x46D0 0x46D4', '0x46D4 0x46D0', 'INVALID_DEVICE_MATCH'),
+                ('0x46D0 0x46D4', '0x46D0 0x10000', 'INVALID_DEVICE_MATCH'),
+                ('0x0C 0x03 0x30', '0x0C 0x03 0x130', 'INVALID_DEVICE_MATCH'),
+                ('"PNP0C50"', '"pnp0c50"', 'INVALID_DEVICE_MATCH'),
+                ('"PNP0C50"', '"PNP0C5"', 'INVALID_DEVICE_MATCH'),
+                ('"PNP0C50"', '"PNP0C50AB"', 'INVALID_DEVICE_MATCH'),
+                (pci_ids, pci_ids + ' ' + pci_ids, 'DUPLICATE_DEVICE_MATCH'),
+                (pci_ids, pci_ids + ' (Device_Match.Platform Platform_Device.PS2_Controller)',
+                 'INVALID_DEVICE_MATCH'),
+                ('(Device_Match.PCI_IDs', '(Device_Match.PCI_Range', 'INVALID_EXPRESSION')]:
+            with self.subTest(bad=bad):
+                result = self.compile(base.replace(old, bad), self.DRIVER)
+                self.assertEqual(result.returncode, 1, result.stderr)
+                self.assertEqual(result.stdout, '')
+        # Seventeen entries exceed CCL.Device_Sections.MAX_ENTRIES.
+        many = ' '.join('(Device_Match.PCI_IDs (PCI_IDs 0x8086 %d %d))' % (n, n) for n in range(17))
+        result = self.compile(base.replace(pci_ids, many), self.DRIVER)
+        self.assertEqual(result.returncode, 1)
+        # Resources need a device devmgr gives resources for.
+        acpi_only = base.replace(pci_ids, '').replace(
+            '(Device_Match.PCI_Class (PCI_Class 0x0C 0x03 0x30))', '')
+        self.assertEqual(self.compile(acpi_only, self.DRIVER).returncode, 1)
 
     def test_platform_device_and_ports(self):
         template = '''(executable-manifest v1 (identity "ps2") (version "1")
@@ -652,8 +716,10 @@ class Manifests(unittest.TestCase):
         result = self.compile(template)
         self.assertEqual(result.returncode, 0, result.stderr)
         resources = self.sections(result.stdout)['.cubit.resources']
-        self.assertEqual(resources[:24], struct.pack('<IHH', 0x53524243, 1, 4) +
-                         struct.pack('<BBHHHQ', 3, 0, 1, 0, 0, 0))
+        self.assertEqual(resources[:24], struct.pack('<IHH', 0x53524243, RESOURCES_VERSION, 4) +
+                         struct.pack('<BBHHHQ', BASIS_PLATFORM, 0, 1, 0, 0, 0))
+        self.assertEqual(self.sections(result.stdout)['.cubit.devices'],
+                         devices_section((MATCH_PLATFORM, bytes([1]))))
         self.assertEqual(resources[24:], struct.pack('<BBHIQQ', 17, 3, 0, 0, 1, 0) +
                          struct.pack('<BBHIQQ', 17, 3, 0, 1, 1, 0) +
                          struct.pack('<BBHIQQ', 18, 1, 0, 2, 1, 4) +
@@ -688,9 +754,14 @@ class Manifests(unittest.TestCase):
                 ('regs', 'Regs', 'INVALID_BINDING_NAME')]:
             with self.subTest(bad=bad):
                 self.reject(base.replace(old, bad), diagnostic=diagnostic)
-        # A match that asks for no resources grants nothing and is a mistake.
-        self.reject(base.replace('(device-memory regs (bar 0) (max-bytes 4096) read-write)', ''),
-                    diagnostic='MISSING_DEVICE_MATCH')
+        # A driver may declare the devices it drives without asking for
+        # resources (they come at run time); it still gets .cubit.devices.
+        bare = self.compile(base.replace('(device-memory regs (bar 0) (max-bytes 4096) read-write)', ''))
+        self.assertEqual(bare.returncode, 0, bare.stderr)
+        bare_sections = self.sections(bare.stdout)
+        self.assertNotIn('.cubit.resources', bare_sections)
+        self.assertEqual(bare_sections['.cubit.devices'],
+                         devices_section((MATCH_PCI_IDS, struct.pack('<HHH', 6900, 4096, 4096))))
         extra = base.replace('read-write))', 'read-write) {})')
         for form, diagnostic in [
                 ('(interrupt irq msix (vectors 0))', 'INVALID_DEVICE_RESOURCE'),
@@ -715,7 +786,7 @@ class Manifests(unittest.TestCase):
         sections = self.sections(result.stdout)
         self.assertNotIn('.cubit.caps', sections)
         self.assertEqual(sections['.cubit.resources'],
-                         struct.pack('<IHH', 0x53524243, 1, 1) + bytes(16) +
+                         struct.pack('<IHH', 0x53524243, RESOURCES_VERSION, 1) + bytes(16) +
                          struct.pack('<BBHIQQ', 20, 1, 0, 0, 1500, 5000))
         # The kernel admits at most 70% of a CPU and budget <= period <= 2^30 us.
         for budget, period in [('5000', '7143'), ('1', '1073741824'), ('700', '1000')]:
@@ -788,13 +859,13 @@ class Manifests(unittest.TestCase):
         nvme = self.sections(self.compile((ROOT / 'userspace/services/nvme/manifest.ccl').read_text(),
                                           catalog).stdout)['.cubit.resources']
         self.assertEqual(self.decode(nvme).stdout.splitlines(), [
-            'match PCI_CLASS_MATCH 1 8 2',
+            'basis PCI_BASIS 0 0 0',
             'DEVICE_MEMORY READ_WRITE index=0 amount=16384 extra=0',
             'INTERRUPT READ_ONLY index=0 amount=1 extra=1',
             'DMA READ_WRITE index=0 amount=1048576 extra=0'])
         # Hand-made sections the compiler never emits are refused.
-        header = struct.pack('<IHH', 0x53524243, 1, 1)
-        pci = struct.pack('<BBHHHQ', 1, 0, 1, 8, 2, 0)
+        header = struct.pack('<IHH', 0x53524243, RESOURCES_VERSION, 1)
+        pci = struct.pack('<BBHHHQ', BASIS_PCI, 0, 0, 0, 0, 0)
         memory = lambda **f: struct.pack('<BBHIQQ', f.get('kind', 16), f.get('rights', 3),
                                          f.get('reserved', 0), f.get('index', 0),
                                          f.get('amount', 4096), f.get('extra', 0))
@@ -807,20 +878,22 @@ class Manifests(unittest.TestCase):
                 (header + pci + memory(index=6), 'INVALID_ENTRY'),
                 (header + pci + memory(extra=1), 'INVALID_ENTRY'),
                 (header + pci + memory(kind=21), 'INVALID_ENTRY'),
-                (header + struct.pack('<BBHHHQ', 0, 0, 0, 0, 0, 0) + memory(), 'DEVICE_WITHOUT_MATCH'),
-                (header + struct.pack('<BBHHHQ', 1, 1, 1, 8, 2, 0) + memory(), 'INVALID_MATCH'),
-                (header + struct.pack('<BBHHHQ', 1, 0, 1, 8, 2, 1) + memory(), 'INVALID_MATCH'),
-                (header + struct.pack('<BBHHHQ', 2, 0, 0xFFFF, 1, 0, 0) + memory(), 'INVALID_MATCH'),
+                (header + struct.pack('<BBHHHQ', 0, 0, 0, 0, 0, 0) + memory(), 'DEVICE_WITHOUT_BASIS'),
+                (header + struct.pack('<BBHHHQ', BASIS_PCI, 1, 0, 0, 0, 0) + memory(), 'INVALID_BASIS'),
+                (header + struct.pack('<BBHHHQ', BASIS_PCI, 0, 0, 0, 0, 1) + memory(), 'INVALID_BASIS'),
+                (header + struct.pack('<BBHHHQ', BASIS_PCI, 0, 1, 8, 2, 0) + memory(), 'INVALID_BASIS'),
+                (header + struct.pack('<BBHHHQ', 2, 0, 0, 0, 0, 0) + memory(), 'INVALID_BASIS'),
+                (header + struct.pack('<BBHHHQ', BASIS_PLATFORM, 0, 9, 0, 0, 0) + memory(), 'INVALID_BASIS'),
                 (header + pci + struct.pack('<BBHIQQ', 20, 1, 0, 0, 1500, 5000),
-                 'MATCH_WITHOUT_DEVICE'),
-                (struct.pack('<IHH', 0x53524243, 2, 1) + pci + memory(), 'INVALID_HEADER'),
-                (struct.pack('<IHH', 0x53524243, 1, 0) + pci, 'INVALID_HEADER')]:
+                 'BASIS_WITHOUT_DEVICE'),
+                (struct.pack('<IHH', 0x53524243, 1, 1) + pci + memory(), 'INVALID_HEADER'),
+                (struct.pack('<IHH', 0x53524243, RESOURCES_VERSION, 0) + pci, 'INVALID_HEADER')]:
             with self.subTest(status=status, bad=bad.hex()):
                 result = self.decode(bad)
                 self.assertEqual(result.returncode, 1)
                 self.assertEqual(result.stdout.strip(), status)
         # Scheduling beyond the kernel's real-time share is refused.
-        scheduling = struct.pack('<IHH', 0x53524243, 1, 1) + bytes(16)
+        scheduling = struct.pack('<IHH', 0x53524243, RESOURCES_VERSION, 1) + bytes(16)
         self.assertEqual(self.decode(scheduling + struct.pack('<BBHIQQ', 20, 1, 0, 0, 3500, 5000)).returncode, 0)
         self.assertEqual(self.decode(scheduling + struct.pack('<BBHIQQ', 20, 1, 0, 0, 3501, 5000)).stdout.strip(),
                          'INVALID_ENTRY')

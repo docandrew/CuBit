@@ -75,7 +75,7 @@ for transport in cubit_handles.h anv_cubit_memory.c anv_cubit_memory.h anv_cubit
   native_gpu_queue.h native_gpu_timeline.h \
   anv_cubit_state_table.c anv_cubit_state_table.h \
   cubit-device-query.c cubit-device-query.h cubit-device-info.c cubit-device-native.c \
-  cubit-topology.c cubit-topology.h cubit-memory-info.c cubit-memory-info.h; do
+  cubit-topology.c cubit-topology.h cubit-adln-devices.h cubit-memory-info.c cubit-memory-info.h; do
   cp "$root/userspace/mesa/anv/$transport" "$destination/src/intel/vulkan/$transport"
 done
 echo "Prepared complete CuBit ANV source: $destination (native backend still incomplete)"

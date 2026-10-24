@@ -30,5 +30,6 @@ package CuBit.Launch_Configurations is
                   Value : out LC.Queue_Configuration; Valid : out Boolean)
    with Pre => Kind in LC.Virtio_Net | LC.Virtio_Input;
    procedure Get (Value : out LC.Virtio_GPU_Configuration; Valid : out Boolean);
+   procedure Get (Value : out LC.Generic_PCI_Configuration; Valid : out Boolean);
 
 end CuBit.Launch_Configurations;

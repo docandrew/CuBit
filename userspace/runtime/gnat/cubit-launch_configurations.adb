@@ -87,4 +87,12 @@ package body CuBit.Launch_Configurations is
       LC.Decode (Words (1 .. Length), Value, Valid);
    end Get;
 
+   procedure Get (Value : out LC.Generic_PCI_Configuration; Valid : out Boolean) is
+      Words : LC.Word_Array (1 .. LC.Maximum_Words);
+      Length : LC.Word_Count;
+   begin
+      Read (Words, Length);
+      LC.Decode (Words (1 .. Length), Value, Valid);
+   end Get;
+
 end CuBit.Launch_Configurations;

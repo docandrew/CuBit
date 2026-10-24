@@ -67,6 +67,12 @@ profiles, and verifies startup executable membership. Only then does it invoke
 CPIO/GRUB using fixed argument lists. It checks the resulting archive and ISO
 primary-tree bytes against the plan before replacing an existing image.
 
+Every image carries every driver. The realizer indexes each `.drv` payload's
+declared devices with `ccl-device-index` and adds the generated
+`devices.index` to the bootstrap archive, which devmgr binds present devices
+by; an image whose drivers match one device equally well is refused
+(docs/device-matching.md).
+
 Path traversal, conflicting file/directory destinations, case aliases, unknown
 artifacts/providers, and missing bootstrap dependencies are rejected. The
 generated `boot/initrd.img` path is reserved.

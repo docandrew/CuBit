@@ -41,10 +41,15 @@
 (type Outlet (record (name String) (element Element) (signal Signal Signal.Stream) (pages Integer 1)))
 (type Inlet (record (name String) (element Element) (signal Signal Signal.Stream) (pages Integer 1)))
 (type Descriptor (record (number Integer) (name String)))
+# What a driver drives (docs/device-matching.md). PCI_IDs: vendor, device
+# range first..last. Write IDs in hex.
+(type PCI_IDs (record (vendor Integer) (first Integer) (last Integer)))
 (type PCI_Class (record (class Integer) (subclass Integer) (interface Integer)))
-(type PCI_ID (record (vendor Integer) (device Integer)))
+(type USB_Class (record (class Integer) (subclass Integer) (protocol Integer)))
 (type Platform_Device (enum PS2_Controller ATA_Primary CMOS_RTC))
-(type Device_Match (variant (No_Device) (PCI_Class PCI_Class) (PCI_ID PCI_ID) (Platform Platform_Device)))
+(type Device_Match (variant
+  (PCI_IDs PCI_IDs) (PCI_Class PCI_Class) (ACPI_ID String) (USB_Class USB_Class)
+  (Platform Platform_Device)))
 (type Launch (record (program String) (invoked_as (List String) [])))
 # A ported tool's typed parameters and how they render into its argv
 # (docs/ccl-launch-parameters.md); file values become delegated places.
@@ -77,7 +82,7 @@
   (requests (List Request) []) (scopes (List Scope) [])
   (optional (List String) []) (handles Handle_Limit Handle_Limit.Standard_Limit)
   (channels (List Channel_Offer) []) (connections (List Connection) [])
-  (device Device_Match Device_Match.No_Device) (requests_none Boolean false)
+  (drives (List Device_Match) []) (requests_none Boolean false)
   (may_launch (List Launch) [])
   (parameters (List Parameter) []) (arguments (List Argument_Piece) [])
   (outlets (List Outlet) []) (inlets (List Inlet) []) (descriptors (List Descriptor) [])))

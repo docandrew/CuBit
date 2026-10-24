@@ -1,6 +1,6 @@
 project Inventory is
    for Source_Dirs use (".", "../../userspace/services/intel-gpu");
-   for Source_Files use ("inventory_tests.adb", "intel_gpu_adln_inventory.ads",
+   for Source_Files use ("inventory_tests.adb", "intel_gpu_adln_devices.ads", "intel_gpu_adln_inventory.ads",
                         "intel_gpu_adln_inventory.adb");
    for Object_Dir use "build-inventory";
    for Main use ("inventory_tests.adb");

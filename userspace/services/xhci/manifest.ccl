@@ -6,7 +6,7 @@
 (Executable_Manifest
   identity => "com.cubit.xhci"
   version => "0.1.0"
-  device => (Device_Match.PCI_Class (PCI_Class 12 3 48))
+  drives => [(Device_Match.PCI_Class (PCI_Class 0x0C 0x03 0x30))]
   requests => [
     (device-memory "registers" 0 65536 Access.Read_Write)
     # Interrupter 0. MSI-X when the controller has it, else one MSI.

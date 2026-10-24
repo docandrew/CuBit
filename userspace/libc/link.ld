@@ -93,6 +93,7 @@ SECTIONS
     .cubit.startup (INFO) : ALIGN(4) { KEEP(*(.cubit.startup)) }
     .cubit.channels (INFO) : ALIGN(4) { KEEP(*(.cubit.channels)) }
     .cubit.resources (INFO) : ALIGN(4) { KEEP(*(.cubit.resources)) }
+    .cubit.devices (INFO) : ALIGN(4) { KEEP(*(.cubit.devices)) }
     .cubit.launch (INFO) : ALIGN(4) { KEEP(*(.cubit.launch)) }
     .cubit.description (INFO) : ALIGN(4) { KEEP(*(.cubit.description)) }
 

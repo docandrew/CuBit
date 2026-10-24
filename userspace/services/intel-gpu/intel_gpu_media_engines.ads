@@ -1,3 +1,4 @@
+with Intel_GPU_ADLN_Devices;
 with Interfaces; use Interfaces;
 -- Media engine discovery for Gen12.0 (Alder Lake-P and its ADL-N
 -- subplatform): decodes GEN11_GT_VEBOX_VDBOX_DISABLE into a typed engine set
@@ -22,10 +23,8 @@ package Intel_GPU_Media_Engines with SPARK_Mode is
    VDBOX_Field_Shift : constant := 0;   -- GEN11_GT_VDBOX_DISABLE_MASK 7:0
    VEBOX_Field_Shift : constant := 16;  -- GEN11_GT_VEBOX_DISABLE_MASK 19:16
 
-   Intel_Vendor : constant Unsigned_16 := 16#8086#;
-   -- Admitted devices. Only the validated N95 (ADL-N GT1) for now; other
-   -- ADL-P/ADL-N IDs share the ceiling but are not yet admitted.
-   ADLN_N95_Device : constant Unsigned_16 := 16#46D2#;
+   -- Admitted devices: the ADL-N family (Intel_GPU_ADLN_Devices), which
+   -- shares ADL-P's media engine ceiling.
 
    type VDBOX_Instance is range 0 .. 7;   -- I915_MAX_VCS
    type VEBOX_Instance is range 0 .. 3;   -- I915_MAX_VECS
@@ -51,7 +50,7 @@ package Intel_GPU_Media_Engines with SPARK_Mode is
       Item : Platform := Alder_Lake_P;
    end record;
    function Identify (Vendor, Device : Unsigned_16) return Identity is
-     (if Vendor = Intel_Vendor and then Device = ADLN_N95_Device
+     (if Intel_GPU_ADLN_Devices.Supported (Vendor, Device)
       then (Known => True, Item => Alder_Lake_P)
       else (others => <>));
 

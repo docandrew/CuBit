@@ -20,6 +20,7 @@ with Ada.Unchecked_Conversion;
 with Config_Worker_Startup;
 with Interfaces; use Interfaces;
 with CCL.Configurations;
+with GPU_Rendering_Settings;
 with CCL.Declarations;
 with System; use System;
 with System.Storage_Elements; use System.Storage_Elements;
@@ -3352,9 +3353,20 @@ procedure main is
             end if;
             if Next = CuBit.Render_Startup.Resume_Render then
                debugPrint ("procmgr: render admission complete" & LF);
+               Warnings.Inform ("procmgr: stage render-admission ok " & name & " GPU session admitted");
             else
                Render_Endpoint := H.No_Endpoint;
                debugPrint ("procmgr: render software-only admitted" & LF);
+               if approveRender and then Mode /= CuBit.Render_Startup.Software_Only then
+                  Warnings.Inform ("procmgr: stage render-admission fail " & name &
+                    " admission=" & (case Render_Launch.State (Render_Launcher, Render_Ticket) is
+                                       when Render_Launch.Absent => "not-requested",
+                                       when Render_Launch.Rejected => "rejected",
+                                       when Render_Launch.Pending => "unanswered",
+                                       when Render_Launch.Admitted => "admitted",
+                                       when Render_Launch.Uncertain => "uncertain") &
+                    "; software rendering");
+               end if;
             end if;
          end;
       end if;
@@ -3994,6 +4006,66 @@ procedure main is
    end handleSpawn;
 
    ---------------------------------------------------------------------------
+   --  Whether a startup entry may render on the GPU (HW-002): as its plan
+   --  says, or, when the plan delegates it, (render setting "<key>"), as the
+   --  GPU_Rendering setting says. Absent means enabled; one that does not
+   --  decode refuses. Either way devmgr still admits the session only for a
+   --  present, supported GPU (otherwise the program renders in software).
+   ---------------------------------------------------------------------------
+   function Render_Granted (Item : CCL.Configurations.Launch_Entry; Name : String) return Boolean is
+      use CCL.Configurations;
+      Key : String renames Item.Render_Setting.Data (1 .. Item.Render_Setting.Length);
+      cfgMsg : Message := NULL_MESSAGE;
+      Enabled, Decoded : Boolean;
+   begin
+      case Item.Render is
+         when Render_Denied => return False;
+         when Render_Declared => return True;
+         when Render_By_Setting => null;
+      end case;
+      if not Config_Grant_Ready or else Key'Length > PAGE_SIZE then
+         Warnings.Warn ("procmgr: stage render-grant fail " & Name & " setting=" & Key & " unreadable");
+         return False;
+      end if;
+      declare
+         Buffer : String (1 .. Key'Length) with Import, Address => elfBuf;
+      begin
+         Buffer := Key;
+      end;
+      cfgMsg.tag := (label => OP_CONFIG_GET, length => 4, protocol => 0, ipc => <>, reserved => 0);
+      cfgMsg.words (0) := Config_Grant.slot;
+      cfgMsg.words (1) := Config_Grant.generation;
+      cfgMsg.words (2) := Unsigned_64 (Key'Length);
+      cfgMsg.tag := capCall (PH.Config, cfgMsg, CuBit.Messages.Wait_Forever);
+      if cfgMsg.tag.label /= REPLY_OK or else cfgMsg.tag.length /= 1 then
+         Warnings.Inform ("procmgr: stage render-grant ok " & Name & " setting=" & Key &
+                          " absent, default enabled");
+         return GPU_Rendering_Settings.Default_Enabled;
+      end if;
+      if cfgMsg.words (0) not in 1 .. PAGE_SIZE then
+         Warnings.Warn ("procmgr: stage render-grant fail " & Name & " setting=" & Key & " empty");
+         return False;
+      end if;
+      declare
+         Value : String (1 .. Natural (cfgMsg.words (0))) with Import, Address => elfBuf;
+      begin
+         GPU_Rendering_Settings.Decode (Value, Enabled, Decoded);
+      end;
+      if not Decoded then
+         Warnings.Warn ("procmgr: stage render-grant fail " & Name & " setting=" & Key &
+                        " is not a GPU_Rendering");
+         return False;
+      end if;
+      if Enabled then
+         Warnings.Inform ("procmgr: stage render-grant ok " & Name & " setting=" & Key & " enabled");
+      else
+         Warnings.Inform ("procmgr: stage render-grant fail " & Name & " setting=" & Key &
+                          " disabled; software rendering");
+      end if;
+      return Enabled;
+   end Render_Granted;
+
+   ---------------------------------------------------------------------------
    --  processInitCCL
    --  Read init.ccl from the filesystem, parse entries, and spawn each.
    --  Format: one filename per line, optional "pri=N" suffix.
@@ -4057,7 +4129,7 @@ procedure main is
             debugPrint ("/" & Unsigned_32'Image (Unsigned_32 (Plan.Plan.Launch_Count)) & ": " & Name & LF);
             PID := spawnByName
               (Name, Unsigned_64 (Item.Priority), systemStartup => True, startupRole => Item.Role,
-               approveRender => Item.Approve_Render,
+               approveRender => Render_Granted (Item, Name),
                approveNetwork =>
                  (if Item.Approval = Approve_Declared then Declared_Network
                   else No_Network),

@@ -1,7 +1,7 @@
 project ADLN_Regset is
    for Source_Dirs use (".", "../../userspace/services/intel-gpu");
    for Source_Files use ("adln_regset_tests.adb", "intel_gpu_adln_regset.ads",
-                         "intel_gpu_adln_regset.adb", "intel_gpu_adln_inventory.ads",
+                         "intel_gpu_adln_regset.adb", "intel_gpu_adln_devices.ads", "intel_gpu_adln_inventory.ads",
                          "intel_gpu_adln_inventory.adb", "intel_gpu_adln_steering.ads",
                          "intel_gpu_adln_steering.adb", "intel_gpu_ads_regset.ads",
                          "intel_gpu_ads_regset.adb", "intel_gpu_adln_engine_settings.ads",

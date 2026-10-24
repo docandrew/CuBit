@@ -1,3 +1,4 @@
+with Intel_GPU_ADLN_Devices;
 package body Intel_GPU_Probe with SPARK_Mode is
    function Identify
      (Vendor, Device : Unsigned_16; Base_Class : Unsigned_8)
@@ -11,7 +12,7 @@ package body Intel_GPU_Probe with SPARK_Mode is
       --  Recognition does not assert native modesetting/rendering support.
       case Device is
          when 16#5916# | 16#5921# => return Kaby_Lake_ULT_GT2;
-         when 16#46D0# .. 16#46D4# => return Alder_Lake_N;
+         when Intel_GPU_ADLN_Devices.Device_ID => return Alder_Lake_N;
          when others => return Unrecognized;
       end case;
    end Identify;

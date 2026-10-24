@@ -4,7 +4,7 @@ project ADS_Capture_Image is
      "intel_gpu_ads_capture_image.ads", "intel_gpu_ads_capture_image.adb",
      "intel_gpu_adln_capture.ads", "intel_gpu_adln_capture.adb",
      "intel_gpu_capture_list.ads", "intel_gpu_capture_list.adb",
-     "intel_gpu_adln_inventory.ads", "intel_gpu_adln_inventory.adb",
+     "intel_gpu_adln_devices.ads", "intel_gpu_adln_inventory.ads", "intel_gpu_adln_inventory.adb",
      "intel_gpu_adln_steering.ads", "intel_gpu_adln_steering.adb");
    for Object_Dir use "build-ads-capture-image";
    for Main use ("ads_capture_image_tests.adb");

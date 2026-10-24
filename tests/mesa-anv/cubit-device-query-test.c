@@ -57,12 +57,24 @@ int main(void)
             f = valid; f.replies[stage].words[word] ^= UINT64_C(1) << bit;
             /* Only the documented revision and nonempty DSS bits can vary
              * individually in these two valid baseline messages. */
+            /* Device bits 0 and 1 turn 46d2 into 46d3 and 46d0: still the
+             * ADL-N family (HW-002). */
             bool allowed = (stage == 0 && word == 2 && bit >= 32 && bit < 40) ||
+                           (stage == 0 && word == 2 && (bit == 16 || bit == 17)) ||
                            (stage == 1 && word == 2 && bit > 0 && bit < 6);
             if (!allowed) reject(f);
             else assert(cubit_gpu_query_device(exchange, &f, &out));
          }
       }
+   }
+   /* HW-002: the whole ADL-N family (46d0..46d4; the i3-N350 IdeaPad is
+    * 46d4), and nothing next to it. */
+   for (uint64_t device = 0x46c0; device <= 0x46e0; device++) {
+      f = valid;
+      f.replies[0].words[2] = (UINT64_C(0x11) << 32) | (device << 16) | 0x8086;
+      bool family = device >= 0x46d0 && device <= 0x46d4;
+      assert(cubit_gpu_query_device(exchange, &f, &out) == family);
+      if (family) assert(out.device == device);
    }
    for (unsigned eu = 0; eu < 65536; eu++) {
       f = valid; f.replies[1].words[3] = eu;

@@ -5,6 +5,7 @@ project Driver_Manifests_Tests is
      "../../userspace/ccl/src", "../../userspace/runtime/gnat");
    for Source_Files use ("main.adb", "driver_manifests.ads", "driver_manifests.adb",
      "ccl.ads", "ccl-resource_sections.ads", "ccl-resource_sections.adb",
+     "ccl-device_sections.ads", "ccl-device_sections.adb",
      "ccl-scheduling_limits.ads", "cubit.ads", "cubit-startup_tables.ads",
      "cubit-startup_tables.adb");
    for Object_Dir use "build/obj";

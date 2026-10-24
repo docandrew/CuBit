@@ -1,0 +1,10 @@
+--  HW-002: intel-gpu accepts the whole ADL-N family it declares
+--  (8086:46D0..46D4), not only the N95 NUC's 46D2.
+project ADLN_Family is
+   for Source_Dirs use (".", "../../userspace/services/intel-gpu");
+   for Object_Dir use "build-adln-family";
+   for Main use ("adln_family_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end ADLN_Family;

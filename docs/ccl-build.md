@@ -962,6 +962,51 @@ allocator library's members are identical too; the library itself differs
 only in the timestamp ranlib writes into its symbol index (`gnat-15.cgpr`
 indexes without `-D`), which no program links.
 
+## Embedded blobs (2026-10-23, HW-002)
+
+A component can link bytes into its program, such as a driver's firmware.
+The firmware itself lives in the top-level `firmware/` directory, laid out as
+linux-firmware lays it out (docs/device-matching.md, "Firmware"). The
+declaration is `embedded`, a list of `Blob` values in `component.ccl`. The
+types are in `interfaces/build.ccl`.
+
+- **Source.** A blob comes from one of two places:
+  - `(vendored path digest)`: a file under `firmware/`. It is hashed and
+    stored like any input. A path outside `firmware/` is refused.
+  - `(fetch url digest)`: an `http://` or `https://` download. It runs once,
+    as its own logged action (`fetch <name>`), with an empty environment and
+    the host's `curl`. The bytes are hashed before they are stored. After
+    that the blob is answered from the store by its digest, with no network.
+
+  The digest is a `SHA256_Digest`: eight 32-bit words of the hex digest, in
+  order. The CCL type checker refuses a word wider than 32 bits and a digest
+  with a word missing. A mismatch is a hard error naming the blob, both
+  digests and the location, and a refused fetch stores nothing.
+- **Steps.** Each blob has one `embed <name>` step. It runs the binutils
+  `objcopy -I binary`, with the bytes placed as `blob` in the step's working
+  directory, so the symbols do not depend on the file's name. It renames
+  them `cubit_blob_<name>_start`, `_end` and `_size`, puts the bytes in
+  `.rodata`, adds an empty `.note.GNU-stack`, and writes
+  `build/embedded/<name>.o`. The program links that object after its own.
+- **Ada.** ccl-build writes `build/generated/embedded.ads`, package
+  `Embedded`. For each blob it declares `<Name>_Bytes` (the exact length),
+  `<Name>_Data` and `<Name>`, a constant byte array imported from the
+  `_start` symbol. Programs never write Import names themselves. Only
+  programs that declare blobs get the package.
+- **Licence.** Each blob's licence file becomes a product at
+  `build/licenses/<file>`, so `--out` exports it. The bundle layout
+  (`Drivers/<name>/<version>/licenses/`) takes it from
+  there.
+- **Tests** (`tests/ccl-build/run.sh`):
+  - negative declarations: a digest word too wide, seven words, a misspelt
+    Blob field, a vendored path outside `firmware/`;
+  - the `fixtures/embedded` program: its blob's bytes in the linked ELF hash
+    to the pinned digest (`check-embedded.py`), and its licence is exported;
+  - a wrong vendored digest is refused;
+  - a fetch from a local HTTP server: a wrong digest is refused and nothing
+    is stored; the right digest builds; with the server stopped, a rebuild
+    is answered from the store.
+
 ## Open questions for the user
 
 1. ~~Read `.gpr` files or translate once?~~ Decided: translate once, then

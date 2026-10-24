@@ -83,15 +83,19 @@ class Images(unittest.TestCase):
                     ROOT / "images/artifacts.ccl", ROOT / f"images/{name}.ccl")
                 bootstrap = {row[5] for row in rows if row[0] == "BOOTSTRAP"}
                 if name == "development-initrd":
-                    # QEMU sessions add the virtio-tablet driver (docs/vm-guide.md).
-                    self.assertEqual(bootstrap, stage1 | {"system.ccl", "virtio-input.drv"})
+                    # Every driver is in every image (HW-002), and devmgr binds
+                    # them by the generated driver index.
+                    self.assertEqual(bootstrap, stage1 | {"system.ccl", "virtio-input.drv", "intel-gpu.drv",
+                                                         "generic-check.drv"})
                 elif name == "laptop-initrd":
                     self.assertEqual(bootstrap, stage1 | stage2 |
-                                     {"system.ccl", "init.ccl", "live-rw.ext2", "doom1.wad"})
+                                     {"system.ccl", "init.ccl", "live-rw.ext2", "doom1.wad",
+                                      "virtio-input.drv", "intel-gpu.drv"})
                 else:
                     self.assertEqual(header[1], "OPTICAL_IMAGE")
                     self.assertEqual(bootstrap, {"devmgr.svc", "filesystem.svc", "ramdisk.drv", "ps2.drv",
-                                                "xhci.drv", "system.ccl", "init.ccl", "live-rw.ext2"})
+                                                "xhci.drv", "ata.drv", "nvme.drv", "virtio-input.drv",
+                                                "system.ccl", "init.ccl", "live-rw.ext2"})
                     apps = {row[5].removeprefix("apps/") for row in rows if row[5].startswith("apps/")}
                     self.assertEqual(apps, (stage1 | stage2 | {"sameboy.app", "sameboy/00.gb", "doom1.wad", "config-storage.svc", "cubitshell.app",
                                                             "intel-gpu.drv", "firmware/intel/tgl_guc_70.bin", "teapots.app",

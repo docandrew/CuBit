@@ -58,6 +58,10 @@
   # GPU waitboost (docs/gpu-async-submission.md "SLPC waitboost"): RP0
   # while clients wait on the GPU or Desktop takes input. Set false to A/B.
   (setting "gpu.power.waitboost" (GPU_Waitboost enabled => true))
+  # Whether Desktop may render on the GPU where a supported GPU is present
+  # (a startup plan delegates the approval with (render setting ...)).
+  # Set false to keep Desktop in software rendering.
+  (setting "desktop.render.gpu" (GPU_Rendering enabled => true))
   # Native mode on Intel outputs (docs/display-modesetting.md, DISP-006):
   # switch to the monitor's best admitted mode from EDID instead of the
   # firmware's. Off until the modeset passes its hardware soak (DISP-013).

@@ -1,0 +1,10 @@
+# HW-002 generic PCI launch: QEMU's edu device (added by run.sh) binds the
+# fixture driver tests/generic-launch/driver, which devmgr starts once
+# logstore runs. boot-logs prints what logstore keeps, so the driver's
+# bring-up lines are seen arriving through logstore.
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "display.svc" (priority 5))
+  (start "desktop.svc" (priority 4))
+  (start "boot-logs.app" (priority 2))
+)

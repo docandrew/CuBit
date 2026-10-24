@@ -125,3 +125,59 @@ fixed and descriptor sense. USB optical's BOT codec encodes through it.
 ```sh
 make -C kernel test-scsi prove-scsi test-usb-optical prove-usb-optical
 ```
+
+## device-matching (HW-002)
+
+Every driver is in every image and devmgr binds present devices by their
+declared matches. The real drivers' index binds the IdeaPad's lspci
+(intel-gpu to 8086:46D4, xhci to both controllers, hda to 54C8, the rest
+unmatched) and QEMU q35; the index tool refuses two equally specific drivers;
+the decoders survive every truncation and bit flip.
+
+```sh
+make -C kernel ccl-manifest ccl-image
+bash tests/device-matching/run.sh
+```
+
+The headless `devices` test fails when devmgr's match lines are missing.
+
+```sh
+bash tests/headless/run.sh --test devices --accel kvm
+```
+
+## generic-launch (HW-002)
+
+A driver devmgr has no dedicated setup for, started from its manifest
+alone: QEMU's edu device binds the fixture driver tests/generic-launch/
+driver, which maps its window, finds its DMA region, gets one MSI after
+OP_READY, and logs every stage through the logstore endpoint devmgr grants
+it (boot-logs prints them).
+
+```sh
+make -C kernel world boot-logs
+bash tests/headless/run.sh --test generic-launch --accel kvm
+```
+
+## intel-gpu ADL-N family (HW-002)
+
+intel-gpu's device gates accept 8086:46D0..46D4 (the IdeaPad is 46D4), not
+only the NUC's 46D2; neighbours and other vendors stay refused. Failed on
+micro (46D0 device query refused), passes now.
+
+```sh
+(cd kernel && alr exec -- gprbuild -q -p -P ../tests/intel-gpu/adln_family.gpr && \
+  ../tests/intel-gpu/build-adln-family/adln_family_tests)
+```
+
+## ccl-build embedded blobs (HW-002)
+
+Firmware is baked into drivers: a vendored or fetched blob is pinned by its
+SHA-256 (a mismatch is a hard error, a fetch is answered from the
+Storehouse offline), linked into the program and exposed as package
+Embedded. Part of the CCL build suite.
+
+```sh
+bash tests/ccl-build/run.sh
+```
+```
+```

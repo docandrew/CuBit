@@ -9,6 +9,9 @@
   (service mixer 9 read-write)
   (service config 11 read-write (client Config))
   (service gpu 17 read-write)
+  # A log publisher for a driver devmgr launches generically (HW-002): the
+  # endpoint is badged for that driver; optional, as logstore starts later.
+  (service logstore 13 read-write (client Logstore))
   # An endpoint the launcher wires by binding name (devmgr answers it from
   # what it prepared for that name): a NIC for netstack, hda for mixer, the
   # ramdisk for filesystem.

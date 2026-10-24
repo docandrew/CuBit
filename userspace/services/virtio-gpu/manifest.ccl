@@ -8,7 +8,7 @@
   identity => "com.cubit.virtio-gpu"
   version => "0.1.0"
   # 0x1AF4:0x1050, virtio-gpu (also behind virtio-vga).
-  device => (Device_Match.PCI_ID (PCI_ID 6900 4176))
+  drives => [(Device_Match.PCI_IDs (PCI_IDs 0x1AF4 0x1050 0x1050))]
   requests => [
     (device-memory "registers" 4 1048576 Access.Read_Write)
     # Entry 0: control and cursor queues; entry 1: configuration changes

@@ -23,6 +23,10 @@ sys.path.insert(0, str(ROOT / "tools"))
 import image_debug  # noqa: E402  (tools/image_debug.py, docs/image-debug-info.md)
 CCL = ROOT / "userspace/ccl/build/image/ccl-image"
 CONFIG = ROOT / "userspace/ccl/build/config/ccl-config"
+DEVICE_INDEX = ROOT / "userspace/ccl/build/image/ccl-device-index"
+# The generated driver index devmgr binds devices by (docs/device-matching.md).
+DEVICE_INDEX_NAME = "devices.index"
+DRIVER_SUFFIX = ".drv"
 MAX_FILE = 128 * 1024 * 1024
 MAX_TOTAL = 512 * 1024 * 1024
 MAX_FILES = 512
@@ -174,6 +178,24 @@ def prepare(catalog, profile, inputs, private_roms=None, release=False, root=ROO
                 raise ValueError("private cartridge is too small")
             add("OPTICAL", "CONTENT", f"private-cartridge-{index:02d}",
                 f"apps/sameboy/{index:02d}.gb", data, True)
+
+    # Every driver in the image, indexed by the devices it declares; the
+    # tool refuses an image whose drivers match one device equally well.
+    if any(f.region == "BOOTSTRAP" and f.destination == DEVICE_INDEX_NAME for f in files):
+        raise ValueError(f"{DEVICE_INDEX_NAME} is generated, not placed")
+    with tempfile.TemporaryDirectory(prefix="ccl-image-drivers.") as directory:
+        bindings = []
+        for index, item in enumerate(files):
+            if item.destination.endswith(DRIVER_SUFFIX):
+                path = Path(directory) / f"{index}.drv"
+                path.write_bytes(item.data)
+                bindings.append(f"{item.destination.rsplit('/', 1)[-1]}={path}")
+        output = Path(directory) / DEVICE_INDEX_NAME
+        result = subprocess.run([DEVICE_INDEX, "--output", output, *bindings],
+                                text=True, capture_output=True, timeout=60)
+        if result.returncode:
+            raise ValueError(result.stderr.strip())
+        add("BOOTSTRAP", "CONTENT", "device-index", DEVICE_INDEX_NAME, output.read_bytes())
 
     # Validate native CCL inputs with the same frontend used during boot.
     with tempfile.TemporaryDirectory(prefix="ccl-image-config.") as directory:

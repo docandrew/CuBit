@@ -1,0 +1,4 @@
+# ccl-build's embedded-blob fixture: requests nothing.
+(Executable_Manifest
+  identity => "com.cubit.test.embed-check"
+  version => "1.0.0")

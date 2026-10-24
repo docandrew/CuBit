@@ -1,3 +1,4 @@
+with Intel_GPU_ADLN_Devices;
 with Intel_GPU_GGTT;
 with Intel_GPU_Probe;
 with Intel_GPU_Resources;
@@ -21,7 +22,7 @@ package body Intel_GPU_GGTT_Access with SPARK_Mode is
       Bytes : Unsigned_64;
    begin
       if not Owner_Ready or else not IRQ_Disabled or else Expected_BAR = 0 or else
-        Word (0) /= 16#46D2_8086# or else
+        not Intel_GPU_ADLN_Devices.Supported_Identity (Word (0)) or else
         Intel_GPU_PCI_Power.Decode (Config) /= Intel_GPU_PCI_Power.D0
       then return (others => <>); end if;
       IRQ := Intel_GPU_PCI_Interrupts.Decode (Config);

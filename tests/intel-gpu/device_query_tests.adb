@@ -1,3 +1,4 @@
+with Intel_GPU_ADLN_Devices;
 with Interfaces; use Interfaces;
 with Intel_GPU_Device_Query; use Intel_GPU_Device_Query;
 procedure Device_Query_Tests is
@@ -67,7 +68,7 @@ begin
    for Device in Unsigned_16 loop
       Data.Device := Device;
       pragma Assert ((Respond (Data, Label, 4, 0, 0, Request) (0) = OK) =
-        (Device = 16#46D2#));
+        (Device in Intel_GPU_ADLN_Devices.Device_ID));
    end loop;
    Data.Device := 16#46D2#;
    for Byte in Unsigned_8 loop

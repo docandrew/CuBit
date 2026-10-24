@@ -13,7 +13,7 @@ with CCL.Manifests.Encoding;
 package body CCL.Manifests.Keywords with SPARK_Mode => On is
    use Interfaces;
    use Model;
-   use all type CCL.Resource_Sections.Match_Kind;
+   use all type CCL.Resource_Sections.Basis_Kind;
    use all type CCL.Resource_Sections.Platform_Device;
    use all type CCL.Resource_Sections.Interrupt_Mode;
    use type CCL.Language.Interpretation_Status;
@@ -43,8 +43,8 @@ package body CCL.Manifests.Keywords with SPARK_Mode => On is
       Scopes : Scope_Array renames Decl.Scopes;
       Scope_Count : Scope_Count_Type renames Decl.Scope_Count;
       Explicit_No_Requests : Boolean renames Decl.Explicit_No_Requests;
-      Match : Match_Kind renames Decl.Match;
-      Match_Values : Match_Value_Array renames Decl.Match_Values;
+      --  The keyword forms of a device match: one per manifest.
+      type Match_Form is (PCI_Class_Form, PCI_ID_Form, Platform_Form);
       Value : CCL.Language.Interpretation_Result;
 
       procedure Fail (Code : Diagnostic_Code; At_Position : Natural) is
@@ -394,45 +394,53 @@ package body CCL.Manifests.Keywords with SPARK_Mode => On is
          Expect (')');
       end Keyed_Integer;
 
-      procedure Add_Match (Kind : Match_Kind) is
+      procedure Add_Match (Form : Match_Form) is
          Name : Metadata_Text;
          Number : Integer_64;
+         Item : Devices.Device_Match;
+         Accepted : Boolean;
+         Why : Diagnostic_Code;
       begin
-         if Match /= No_Match then Fail (Duplicate_Device_Match, Cursor); return; end if;
-         Match := Kind;
-         case Kind is
-            when PCI_Class_Match =>
+         if Decl.Drives.Count > 0 then Fail (Duplicate_Device_Match, Cursor); return; end if;
+         case Form is
+            when PCI_Class_Form =>
                --  class, subclass, programming interface
-               for Index in Match_Values'Range loop
-                  Integer_Field (0, PCI_CODE_LAST, Invalid_Device_Match, Number);
-                  Match_Values (Index) := Unsigned_16 (Number);
-               end loop;
-            when PCI_ID_Match =>
-               for Index in 1 .. 2 loop
-                  Integer_Field (0, PCI_ID_LAST, Invalid_Device_Match, Number);
-                  Match_Values (Index) := Unsigned_16 (Number);
-               end loop;
-               --  0xFFFF is "no device" in PCI configuration space.
-               if Match_Values (1) = PCI_ID_LAST then Fail (Invalid_Device_Match, Cursor); end if;
-            when Platform_Match =>
+               Item.Kind := Devices.PCI_Class;
+               Integer_Field (0, PCI_CODE_LAST, Invalid_Device_Match, Number);
+               Item.Class := Unsigned_8 (Number);
+               Integer_Field (0, PCI_CODE_LAST, Invalid_Device_Match, Number);
+               Item.Subclass := Unsigned_8 (Number);
+               Integer_Field (0, PCI_CODE_LAST, Invalid_Device_Match, Number);
+               Item.Program := Unsigned_8 (Number);
+            when PCI_ID_Form =>
+               Item.Kind := Devices.PCI_IDs;
+               Integer_Field (0, PCI_ID_LAST, Invalid_Device_Match, Number);
+               Item.Vendor := Unsigned_16 (Number);
+               Integer_Field (0, PCI_ID_LAST, Invalid_Device_Match, Number);
+               Item.First := Unsigned_16 (Number);
+               Item.Last := Item.First;
+            when Platform_Form =>
+               Item.Kind := Devices.Platform;
                Atom (Name);
                if Is_Text (Name, "ps2-controller") then
-                  Match_Values (1) := Unsigned_16 (Platform_Device'Enum_Rep (PS2_Controller));
+                  Item.Device := PS2_Controller;
                elsif Is_Text (Name, "ata-primary") then
-                  Match_Values (1) := Unsigned_16 (Platform_Device'Enum_Rep (ATA_Primary));
+                  Item.Device := ATA_Primary;
                elsif Is_Text (Name, "cmos-rtc") then
-                  Match_Values (1) := Unsigned_16 (Platform_Device'Enum_Rep (CMOS_RTC));
+                  Item.Device := CMOS_RTC;
                else Fail (Invalid_Device_Match, Cursor);
                end if;
-            when No_Match => Fail (Invalid_Device_Match, Cursor);
          end case;
+         if Failed then return; end if;
+         Model.Add_Drive (Decl, Item, Accepted, Why);
+         if not Accepted then Fail (Why, Cursor); end if;
       end Add_Match;
 
       --  (bar n) for a PCI device, (resource n) for a platform device.
       procedure Resource_Index (Item : in out Request) is
          Number : Integer_64;
       begin
-         if Match = Platform_Match then
+         if Decl.Basis.Kind = Platform_Basis then
             Keyed_Integer ("resource", 0, MAX_PLATFORM_RESOURCES - 1,
                            Invalid_Device_Resource, Number);
          else
@@ -448,7 +456,7 @@ package body CCL.Manifests.Keywords with SPARK_Mode => On is
       begin
          --  Resources are relative to the matched device, so the match
          --  must come first.
-         if Match = No_Match then Fail (Missing_Device_Match, Cursor); return; end if;
+         if Decl.Basis.Kind = No_Basis then Fail (Missing_Device_Match, Cursor); return; end if;
          Item.Kind := Kind;
          Read_Binding_Name (Item.Name);
          case Kind is
@@ -467,7 +475,7 @@ package body CCL.Manifests.Keywords with SPARK_Mode => On is
                Item.Rights := Read_Write;
             when Interrupt_Request =>
                Item.Rights := Read_Only;
-               if Match = Platform_Match then
+               if Decl.Basis.Kind = Platform_Basis then
                   Item.Extra := Unsigned_64 (Interrupt_Mode'Enum_Rep (Platform_Line));
                   Keyed_Integer ("resource", 0, MAX_PLATFORM_RESOURCES - 1,
                                  Invalid_Device_Resource, Number);
@@ -779,9 +787,9 @@ package body CCL.Manifests.Keywords with SPARK_Mode => On is
          elsif Is_Text (Name, "filesystem-scope") then Add_Scope (Filesystem_Domain);
          elsif Is_Text (Name, "config-scope") then Add_Scope (Config_Domain);
          elsif Is_Text (Name, "tls-scope") then Add_TLS_Scope;
-         elsif Is_Text (Name, "match-pci-class") then Add_Match (PCI_Class_Match);
-         elsif Is_Text (Name, "match-pci-id") then Add_Match (PCI_ID_Match);
-         elsif Is_Text (Name, "platform-device") then Add_Match (Platform_Match);
+         elsif Is_Text (Name, "match-pci-class") then Add_Match (PCI_Class_Form);
+         elsif Is_Text (Name, "match-pci-id") then Add_Match (PCI_ID_Form);
+         elsif Is_Text (Name, "platform-device") then Add_Match (Platform_Form);
          elsif Is_Text (Name, "device-memory") then Add_Resource (Device_Memory_Request);
          elsif Is_Text (Name, "io-ports") then Add_Resource (IO_Port_Request);
          elsif Is_Text (Name, "interrupt") then Add_Resource (Interrupt_Request);

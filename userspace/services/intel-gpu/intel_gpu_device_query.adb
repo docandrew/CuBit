@@ -1,3 +1,4 @@
+with Intel_GPU_ADLN_Devices;
 package body Intel_GPU_Device_Query with SPARK_Mode is
    function Respond
      (Data : Snapshot; Request_Label : Unsigned_32;
@@ -16,9 +17,9 @@ package body Intel_GPU_Device_Query with SPARK_Mode is
       then
          return [Bad_Request, Version, 0, 0];
       end if;
-      -- Only the measured ADL-N path is admitted today; never infer support
-      -- from a PCI-table default or from a successful firmware upload.
-      if Data.Device /= 16#46D2# then
+      -- Only the ADL-N family is admitted (Intel_GPU_ADLN_Devices); never
+      -- infer support from a PCI-table default or a firmware upload.
+      if not Intel_GPU_ADLN_Devices.Supported_Device (Data.Device) then
          return [Unavailable, Version, 0, 0];
       end if;
       if Request (1) = Virtual_Memory then

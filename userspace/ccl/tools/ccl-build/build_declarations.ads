@@ -1,6 +1,7 @@
 with Ada.Containers.Indefinite_Vectors;
 with Ada.Containers.Vectors;
 with Ada.Strings.Unbounded;
+with Storehouse;
 
 --  build-params.ccl, build-catalog.ccl and a component's component.ccl,
 --  checked by the CCL type checker against interfaces/build.ccl and read by
@@ -86,6 +87,23 @@ package Build_Declarations is
    end record;
    package Unit_Switch_Vectors is new Ada.Containers.Vectors (Positive, Unit_Switches);
 
+   --  Bytes linked into a program (component.ccl's embedded): a file
+   --  under firmware/ or a download, pinned by its SHA-256, and the licence
+   --  that goes with it into the program's bundle.
+   type Blob_Origin is (Vendored, Fetch);
+   type Blob is record
+      Name : Unbounded_String;           --  lowercase kebab, unique in the component
+      Origin : Blob_Origin := Vendored;
+      Location : Unbounded_String;       --  Vendored: a path; Fetch: a URL
+      SHA256 : Storehouse.Digest := [others => 0];
+      Licence : Unbounded_String;        --  a path in the tree
+   end record;
+   package Blob_Vectors is new Ada.Containers.Vectors (Positive, Blob);
+
+   --  Vendored blobs live here, so the firmware can become its own
+   --  repository (docs/device-matching.md, "Firmware").
+   Blob_Directory : constant String := "firmware/";
+
    --  A component resolved for the Ada program rule family.
    type Ada_Program is record
       Name, Executable, Directory, Main : Unbounded_String;
@@ -98,6 +116,7 @@ package Build_Declarations is
       --  the first group naming it.
       Units : Unit_Switch_Vectors.Vector;
       Archives : String_Vectors.Vector;
+      Blobs : Blob_Vectors.Vector;
    end record;
 
    --  The file a component is declared in, in its own directory.

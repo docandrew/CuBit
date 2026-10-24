@@ -1,0 +1,16 @@
+# The generic PCI launch's fixture driver (HW-002, docs/device-matching.md
+# "Generic PCI launch"): devmgr has no dedicated setup for it, so everything
+# it gets comes from this manifest. It drives QEMU's educational PCI device,
+# present only when a test adds -device edu.
+(Executable_Manifest
+  identity => "com.cubit.test.generic-check"
+  version => "0.1.0"
+  # QEMU edu: 0x1234:0x11E8.
+  drives => [(Device_Match.PCI_IDs (PCI_IDs 0x1234 0x11E8 0x11E8))]
+  requests => [
+    (device-memory "registers" 0 1048576 Access.Read_Write)
+    (interrupt "device" Interrupt_Mode.MSI 1)
+    (dma "buffer" 4096)
+    (service "device-manager" "ready")
+    (service "logstore" "logstore")]
+  optional => ["logstore"])

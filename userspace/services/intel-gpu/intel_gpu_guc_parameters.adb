@@ -1,3 +1,4 @@
+with Intel_GPU_ADLN_Devices;
 package body Intel_GPU_GuC_Parameters with SPARK_Mode is
    function Address (GPU_Byte_Offset : Unsigned_64) return GPU_Page_Address is
    begin
@@ -30,7 +31,7 @@ package body Intel_GPU_GuC_Parameters with SPARK_Mode is
       ADS_Start : constant Unsigned_64 := Unsigned_64 (Config.ADS.Page) * 4096;
       Log_Start : constant Unsigned_64 := Unsigned_64 (Config.Log.Base.Page) * 4096;
    begin
-      if Config.Device not in 16#46D0# .. 16#46D4# or else
+      if not Intel_GPU_ADLN_Devices.Supported_Device (Config.Device) or else
         not Valid (Config.ADS) or else not Valid (Config.Log.Base) or else
         (Config.Workarounds and not Allowed_Workarounds) /= 0
       then return Result; end if;

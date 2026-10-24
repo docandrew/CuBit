@@ -235,9 +235,20 @@ package body CCL.Configurations with SPARK_Mode => On is
             elsif Matches (Name, "render") then
                if Have_Render then Fail (Duplicate_Field); end if;
                Read_Symbol (Reader, Name);
-               if Matches (Name, "deny") then Item.Approve_Render := False;
+               if Matches (Name, "deny") then Item.Render := Render_Denied;
                elsif Matches (Name, "approve-declared") then
-                  Item.Approve_Render := True;
+                  Item.Render := Render_Declared;
+               elsif Matches (Name, "setting") then
+                  Read_Key (Item.Render_Setting);
+                  if Stopped then return; end if;
+                  if CCL.Setting_Kinds."/="
+                       (CCL.Setting_Kinds.Kind_Of
+                          (Item.Render_Setting.Data (1 .. Item.Render_Setting.Length)),
+                        CCL.Setting_Kinds.GPU_Rendering_Setting)
+                  then
+                     Fail (Invalid_Approval);
+                  end if;
+                  Item.Render := Render_By_Setting;
                else Fail (Invalid_Approval);
                end if;
                Have_Render := True;

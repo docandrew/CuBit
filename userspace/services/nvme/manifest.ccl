@@ -5,7 +5,7 @@
 (Executable_Manifest
   identity => "com.cubit.nvme"
   version => "0.1.0"
-  device => (Device_Match.PCI_Class (PCI_Class 1 8 2))
+  drives => [(Device_Match.PCI_Class (PCI_Class 0x01 0x08 0x02))]
   requests => [
     (device-memory "registers" 0 16384 Access.Read_Write)
     # One completion vector; per-queue MSI-X is the next step.

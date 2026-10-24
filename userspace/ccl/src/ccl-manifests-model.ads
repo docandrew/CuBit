@@ -1,5 +1,6 @@
 with Interfaces;
 with CCL.Resource_Sections;
+with CCL.Device_Sections;
 with CuBit.Network_Authority;
 with CuBit.Render_Authority;
 with CuBit.Launch_Authority;
@@ -39,11 +40,14 @@ package CCL.Manifests.Model with SPARK_Mode => On is
    subtype Device_Request is Request_Kind
      range Device_Memory_Request .. DMA_Request;
 
-   --  Which devices a driver may be bound to. devmgr's discovery supplies the
+   --  Which devices a driver may be bound to (its `drives`, written to
+   --  .cubit.devices; docs/device-matching.md), and what its resource
+   --  indexes refer to, derived from them. devmgr's discovery supplies the
    --  actual device; a manifest never names an address or a vector. The wire
-   --  codes and limits are CCL.Resource_Sections', whose decoder startup uses.
-   subtype Match_Kind is Sections.Match_Kind;
-   use all type Sections.Match_Kind;
+   --  codes and limits are CCL.Resource_Sections' and CCL.Device_Sections'.
+   package Devices renames CCL.Device_Sections;
+   subtype Basis_Kind is Sections.Basis_Kind;
+   use all type Sections.Basis_Kind;
    subtype Platform_Device is Sections.Platform_Device;
    subtype Interrupt_Mode is Sections.Interrupt_Mode;
    PAGE_BYTES : constant := Sections.PAGE_BYTES;
@@ -107,8 +111,6 @@ package CCL.Manifests.Model with SPARK_Mode => On is
 
    subtype Request_Count is Natural range 0 .. MAX_REQUESTS;
    subtype Scope_Count_Type is Natural range 0 .. MAX_SCOPES;
-   MATCH_VALUES : constant := 3;
-   type Match_Value_Array is array (Positive range 1 .. MATCH_VALUES) of Unsigned_16;
 
    --  The programs an executable may start by name (may_launch).
    MAX_LAUNCHES : constant := CuBit.Launch_Authority.Maximum_Names;
@@ -143,8 +145,8 @@ package CCL.Manifests.Model with SPARK_Mode => On is
       --  An explicit statement that the executable requests no capabilities:
       --  an empty .cubit.caps section rather than none.
       Explicit_No_Requests : Boolean := False;
-      Match : Match_Kind := No_Match;
-      Match_Values : Match_Value_Array := [others => 0];
+      Drives : Devices.Match_Table;
+      Basis : Sections.Basis_Info;
       Launches : Launch_Array := [others => (others => <>)];
       Launch_Count : Launch_Count_Type := 0;
       --  The program's description: typed parameters and how they render
@@ -172,6 +174,14 @@ package CCL.Manifests.Model with SPARK_Mode => On is
    --  package's function names: a leading letter, no trailing or doubled
    --  hyphens.
    function Valid_Binding_Name (Item : String) return Boolean;
+   --  Add a `drives` entry: Accepted False (with Diagnostic) for an invalid
+   --  entry, a duplicate, a 17th entry, or one whose resource basis
+   --  conflicts with an earlier entry's (PCI and Platform, or two Platform
+   --  devices). PCI entries give the PCI basis, a Platform entry the
+   --  platform basis; ACPI and USB entries none.
+   procedure Add_Drive
+     (Decl : in out Declaration; Item : Devices.Device_Match;
+      Accepted : out Boolean; Diagnostic : out Diagnostic_Code);
    --  An authority scope's exact bytes: 1 .. 64 printable ASCII, no
    --  wildcards or backslash, no "." or ".." components, no "//".
    function Valid_Scope_Path (Path : String) return Boolean;

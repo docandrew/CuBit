@@ -131,6 +131,48 @@ begin
       Check (not OK, "an NVMe block is not an HDA block");
    end;
 
+   --  Generic_PCI (HW-002): what a driver launched by its declared match
+   --  receives; decoding the encoder's output returns it, and windows past
+   --  the count, vectors that do not fit the delivery, or DMA at a virtual
+   --  address without a region are refused.
+   declare
+      Value : constant Generic_PCI_Configuration :=
+        (Location => 16#0012#, Vendor => 16#10EC#, Device => 16#B852#, Revision => 0,
+         Class_Code => 16#02_8000#,
+         Windows => [1 => (16#8000_0000#, 16#10_0000#), 2 => (16#8010_0000#, 16#4000#),
+                     others => (0, 0)],
+         Window_Total => 2, DMA => (16#1_0000_0000#, 16#10_0000#), DMA_Virtual => 16#7000_0000_0000#,
+         Delivery => MSI_X, Vectors => 4);
+      E : constant Encoded := Encode (Value);
+      W : Word_Array (1 .. E.Length);
+      D : Generic_PCI_Configuration; OK : Boolean;
+   begin
+      Decode (E.Words (1 .. E.Length), D, OK);
+      Check (OK and then D = Value, "generic PCI round trip");
+      Check (E.Length = Header_Words + Field_Count (Generic_PCI), "generic PCI length");
+      --  Word 15: window 3's first address, beyond Window_Total.
+      W := E.Words (1 .. E.Length);
+      W (14) := 16#9000_0000#;
+      Decode (W, D, OK);
+      Check (not OK, "a window past the count is refused");
+      --  The last word: the vector count; MSI-X with 0 vectors.
+      W := E.Words (1 .. E.Length);
+      W (E.Length) := 0;
+      Decode (W, D, OK);
+      Check (not OK, "MSI-X without vectors is refused");
+      W := E.Words (1 .. E.Length);
+      W (E.Length) := Maximum_Vectors + 1;
+      Decode (W, D, OK);
+      Check (not OK, "too many vectors refused");
+      --  The delivery word: an unknown code.
+      W := E.Words (1 .. E.Length);
+      W (E.Length - 1) := 9;
+      Decode (W, D, OK);
+      Check (not OK, "an unknown delivery refused");
+      Decode (E.Words (1 .. E.Length - 1), D, OK);
+      Check (not OK, "a short generic block refused");
+   end;
+
    --  Refusals: header and field corruption.
    declare
       E : constant Encoded := Encode (GPU);

@@ -293,7 +293,10 @@ For one image (the programs it contains, its startup plan and its catalogs):
    catalog with that type, and some program in the image may read it, so a
    setting nobody can read is reported (R6 seen from the other side).
 4. **Unused offers** (a service started that nobody uses) are warnings.
-5. **Undeclared grants.** A launcher grant with no declaration behind it is
+5. **Device matches** (HW-002, docs/device-matching.md): already checked
+   per image by `ccl-device-index`, which the realizer runs over every
+   driver; two drivers matching one device equally well fail the image.
+6. **Undeclared grants.** A launcher grant with no declaration behind it is
    an error once the launcher's grants are declared. Today that means
    devmgr's `sendWildcardACLConfig (netmgrPID)`.
 

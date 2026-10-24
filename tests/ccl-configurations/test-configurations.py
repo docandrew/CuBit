@@ -41,8 +41,14 @@ class Configurations(unittest.TestCase):
         result = self.compile(base % '(render approve-declared)')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout, 'render.app pri=5 render=declared\n')
+        # HW-002: the approval delegated to a GPU_Rendering catalog setting.
+        result = self.compile(base % '(render setting "desktop.render.gpu")')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, 'render.app pri=5 render=setting:desktop.render.gpu\n')
         for clause in ('(render all)', '(render true)', '(render 1)',
-                       '(render)', '(render approve-declared extra)'):
+                       '(render)', '(render approve-declared extra)',
+                       '(render setting)', '(render setting "gpu.power.waitboost")',
+                       '(render setting "desktop.render.gpu.x")', '(render setting desktop)'):
             self.reject(base % clause)
         for first in ('deny', 'approve-declared'):
             for second in ('deny', 'approve-declared'):

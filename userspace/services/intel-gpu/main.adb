@@ -34,6 +34,8 @@ with Intel_GPU_ADS_System_Info;
 with Intel_GPU_PCI_Interrupts;
 with Intel_GPU_Resources; use Intel_GPU_Resources;
 with Intel_GPU_Observation;
+with Intel_GPU_ADLN_Devices;
+with Intel_GPU_Bring_Up;
 with Intel_GPU_Probe;
 with Intel_GPU_Forcewake;
 with Intel_GPU_Firmware_File;
@@ -239,6 +241,9 @@ procedure Main is
    -- Initial-boot bounded GT reset after one-shot authorization. Firmware
    -- execution is gated separately on reset, PAT and mapping readiness.
    Enable_Native_Reset : constant Boolean := True;
+   --  Probe_Forcewake's and Inspect_GGTT's success results.
+   Forcewake_Release_Ready : constant String := "release-ready; domains-release-ready";
+   GGTT_Read_Prefix : constant String := "first=";
    Upload_Ledger : Intel_GPU_GGTT_Reservations.Ledger;
    Upload_Backing : Intel_GPU_Firmware_Buffer.Prepared_Buffer;
    Upload_Bound : Boolean := False;
@@ -309,7 +314,7 @@ procedure Main is
    PAT_Active : Boolean := False;
    function PAT_Owner_Ready return Boolean is
      (PAT_Active and then not Firmware_Mapped and then not ADS_Mapped and then
-      not Log_Mapped and then not CT_Mapped and then PCI_Device = 16#46D2# and then
+      not Log_Mapped and then not CT_Mapped and then Intel_GPU_ADLN_Devices.Supported_Device (PCI_Device) and then
       Publication_Owner_Base);
    package PAT_IO is new Intel_GPU_Native_PAT (PAT_Owner_Ready);
    package Native_PAT is new Intel_GPU_ADLN_PAT
@@ -319,7 +324,7 @@ procedure Main is
    function MOCS_Owner_Ready return Boolean is
      (MOCS_Active and then PAT_Ready and then not Firmware_Mapped and then
       not ADS_Mapped and then not Log_Mapped and then not CT_Mapped and then
-      PCI_Device = 16#46D2# and then Publication_Owner_Base);
+      Intel_GPU_ADLN_Devices.Supported_Device (PCI_Device) and then Publication_Owner_Base);
    package MOCS_IO is new Intel_GPU_Native_MOCS (MOCS_Owner_Ready);
    package Native_MOCS is new Intel_GPU_MOCS_Configure
      (MOCS_Owner_Ready, MOCS_IO.Read32, MOCS_IO.Write32);
@@ -328,7 +333,7 @@ procedure Main is
    function GT_Settings_Owner return Boolean is
      (GT_Settings_Active and then PAT_Ready and then MOCS_Ready and then
       not Firmware_Mapped and then not ADS_Mapped and then not Log_Mapped and then
-      not CT_Mapped and then PCI_Device = 16#46D2# and then
+      not CT_Mapped and then Intel_GPU_ADLN_Devices.Supported_Device (PCI_Device) and then
       Intel_GPU_Native_Reset.ADS_Observed and then Publication_Owner_Base);
    package GT_Settings_IO is new Intel_GPU_Native_GT_Settings
      (GT_Settings_Owner, Intel_GPU_Native_Reset.ADS_Inventory,
@@ -340,7 +345,7 @@ procedure Main is
    function Render_Settings_Owner return Boolean is
      (Render_Settings_Active and then PAT_Ready and then MOCS_Ready and then GT_Settings_Ready and then
       not Firmware_Mapped and then not ADS_Mapped and then not Log_Mapped and then
-      not CT_Mapped and then PCI_Device = 16#46D2# and then
+      not CT_Mapped and then Intel_GPU_ADLN_Devices.Supported_Device (PCI_Device) and then
       Intel_GPU_Native_Reset.ADS_Observed and then Publication_Owner_Base);
    package Render_Settings_IO is new Intel_GPU_Native_Engine_Settings
      (Intel_GPU_ADLN_Inventory.Render, Render_Settings_Owner,
@@ -1715,7 +1720,7 @@ procedure Main is
      (Initial_Backing_Owner and then
       Context_Pool.Work_Allowed (Contexts, Render_Context_ID));
    function Live_Coherent_Ready return Boolean is
-     (PCI_Device = 16#46D2# and then Live_Backing_Owner);
+     (Intel_GPU_ADLN_Devices.Supported_Device (PCI_Device) and then Live_Backing_Owner);
    -- ADL-N LLC system-memory/WB contract only, not a cross-platform default.
    function Live_CPU_Base return Unsigned_64 is (Submission_CPU);
    function Live_Bytes return Unsigned_64 is (81920);
@@ -1914,6 +1919,23 @@ procedure Main is
    begin
       Publish_Snapshot (Text);
    end Display_Log;
+   --  One bring-up stage line (Intel_GPU_Bring_Up): Information when it
+   --  passed, a Warning when it failed, as the bring-up convention asks.
+   BRING_UP_DETAIL : constant := 400;
+   procedure Bring_Up_Stage (S : Intel_GPU_Bring_Up.Stage; OK : Boolean; Details : String := "") is
+      Shown : constant String :=
+        Details (Details'First .. Details'First + Natural'Min (Details'Length, BRING_UP_DETAIL) - 1);
+   begin
+      Intel_GPU_Bring_Up.Report (S, OK);
+      Publish_Snapshot (Intel_GPU_Bring_Up.Line (S, OK, Shown),
+        (if OK then CuBit.Log_Records.Information else CuBit.Log_Records.Warning));
+   end Bring_Up_Stage;
+   procedure Bring_Up_Summary is
+   begin
+      Publish_Snapshot (Intel_GPU_Bring_Up.Summary,
+        (if Intel_GPU_Bring_Up.Complete then CuBit.Log_Records.Information
+         else CuBit.Log_Records.Warning));
+   end Bring_Up_Summary;
    function Hex (Value : Unsigned_32) return String;
    -- One-shot offline-bind -> prepared context transition. Admission remains
    -- disabled at Handle_Render_Control until the complete backend is usable.
@@ -2295,7 +2317,7 @@ procedure Main is
       Buffer_Retirement_Pending = 0 and then
       not Application_Maps.Presentation_Held (Application_Map_State, Selected_Session) and then
       not Application_Buffers.Image_Writes_Held (Application_Buffer_State, Selected_Session) and then
-      not Runtime_Fault and then Context_Owner and then PCI_Device = 16#46D2# and then
+      not Runtime_Fault and then Context_Owner and then Intel_GPU_ADLN_Devices.Supported_Device (PCI_Device) and then
       Application_Setup_Complete (Selected_Index) and then
       Application_Session (Selected_Sender, Selected_Stamp) = Selected_Session and then
       Intel_GPU_Render_Control.Recipient_Identity
@@ -3098,7 +3120,7 @@ procedure Main is
    Update_Held : Boolean := False;
    function Update_Owner return Boolean is
      (Update_Index in Private_Contexts'Range and then not Runtime_Fault and then
-      Context_Owner and then PCI_Device = 16#46D2# and then Reset_Pages_Mapped and then
+      Context_Owner and then Intel_GPU_ADLN_Devices.Supported_Device (PCI_Device) and then Reset_Pages_Mapped and then
       Intel_GPU_Native_Reset.Last_Succeeded and then
       Application_Setup_Complete (Update_Index) and then
       Private_Contexts (Update_Index).Life = Application_Lifetime.Published and then
@@ -5577,7 +5599,7 @@ procedure Main is
       use type Application_Maps.Retirement_State;
    begin
       if Image_Retirement_Index = 0 or else Image_Retirement_First = 0 or else
-        PCI_Device /= 16#46D2# or else not Render_Backend_Ready or else
+        not Intel_GPU_ADLN_Devices.Supported_Device (PCI_Device) or else not Render_Backend_Ready or else
         not Reset_Pages_Mapped or else not Intel_GPU_Native_Reset.Last_Succeeded
       then return False; end if;
       Session := Intel_GPU_Render_Control.Issued_Tag (Render_Admission, Image_Retirement_Index);
@@ -6754,7 +6776,7 @@ procedure Main is
       TLB_Armed : Boolean := False;
       Update_Held, Update_Released : Boolean := False;
       function TLB_Probe_Owner return Boolean is
-        (TLB_Armed and then Update_Held and then PCI_Device = 16#46D2# and then
+        (TLB_Armed and then Update_Held and then Intel_GPU_ADLN_Devices.Supported_Device (PCI_Device) and then
          Initial_Backing_Owner and then not Runtime_Fault and then
          Reset_Pages_Mapped and then Intel_GPU_Native_Reset.Last_Succeeded and then
          not Application_Contexts_Open and then
@@ -6929,7 +6951,7 @@ procedure Main is
            (Intel_GPU_ADLN_L3.Decode_Allocation (L3_Value));
          L3_URB_KiB := Intel_GPU_ADLN_L3.Probe_URB_KiB
            (L3_Matches and then L3_Fresh and then Context_Owner and then
-              PCI_Device = 16#46D2# and then Steering.Valid,
+              Intel_GPU_ADLN_Devices.Supported_Device (PCI_Device) and then Steering.Valid,
             Intel_GPU_ADLN_L3.Decode_Fuse (Steering_First.L3_Disable),
             Intel_GPU_ADLN_L3.Decode_Parameters (L3_Parameters),
             Intel_GPU_ADLN_L3.Decode_Allocation (L3_Value));
@@ -8375,6 +8397,8 @@ procedure Main is
       Activity : Activity_Result;
       pragma Unreferenced (Ignore, Activity);
    begin
+      Bring_Up_Stage (Intel_GPU_Bring_Up.Next, False, Name (Why) & ": " & Text);
+      Bring_Up_Summary;
       Publish_Snapshot ("intel-gpu: stopped, exit code" & Integer'Image (Early_Stop'Enum_Rep (Why)) &
                         " (" & Name (Why) & "): " & Text,
                         CuBit.Log_Records.Warning);
@@ -8439,6 +8463,18 @@ begin
    Display_Executor.Register_Service;
    PCI_Device := Unsigned_16 (Shift_Right (Request.words (1), 16) and 16#FFFF#);
    PCI_Revision := Unsigned_8 (Shift_Right (Request.words (1), 32) and 16#FF#);
+   --  The hardware first: device, family, stepping (PCI revision) and the
+   --  register window (bring-up convention).
+   Bring_Up_Stage (Intel_GPU_Bring_Up.Identify,
+     Intel_GPU_ADLN_Devices.Supported_Device (PCI_Device),
+     "device=8086:" & Hex (Unsigned_32 (PCI_Device)) &
+     (if Intel_GPU_ADLN_Devices.Supported_Device (PCI_Device)
+      then " family=ADL-N gt=" & Intel_GPU_ADLN_Devices.GT_Name
+             (Intel_GPU_ADLN_Devices.Facts (PCI_Device).GT)
+      else " family=unsupported") &
+     " revision=" & Hex (Unsigned_32 (PCI_Revision)) &
+     " bar0=" & Hex64 (Plan.Physical_Base) & " bytes=" & Hex64 (Plan.Bytes) &
+     " ggtt-bytes=" & Hex64 (Table_Bytes));
    debugPrint ("intel-gpu: GGC=" & Hex (Unsigned_32 (GGC)) &
      " GGTT table bytes" & Unsigned_64'Image (Table_Bytes) & ASCII.LF);
    if not CuBit.Handles.Devices.Map_Device
@@ -8450,6 +8486,7 @@ begin
       return;
    end if;
    debugPrint ("intel-gpu: read-only register mapping ready; firmware scanout retained" & ASCII.LF);
+   Bring_Up_Stage (Intel_GPU_Bring_Up.Registers, True, "read-only mapping");
    Display_Power_Owned := Request_Authorization (16#022F#);
    Publish_Snapshot
      (if Display_Power_Owned then
@@ -8508,9 +8545,18 @@ begin
       begin
       debugPrint ("intel-gpu: forcewake " & Forcewake_Result & ASCII.LF);
       debugPrint ("intel-gpu: GGTT read-only " & GGTT_Result & ASCII.LF);
+      Bring_Up_Stage (Intel_GPU_Bring_Up.Forcewake,
+        Forcewake_Result = Forcewake_Release_Ready, Forcewake_Result);
+      Bring_Up_Stage (Intel_GPU_Bring_Up.GGTT,
+        GGTT_Result'Length > GGTT_Read_Prefix'Length
+        and then GGTT_Result (GGTT_Result'First .. GGTT_Result'First + GGTT_Read_Prefix'Length - 1)
+                   = GGTT_Read_Prefix, GGTT_Result);
       Intel_GPU_Firmware_File.Load
         ((if Startup.Firmware.Present then Startup.Firmware.Value
           else CuBit.Handles.No_Endpoint), Firmware_Address, Firmware_Bytes, Firmware_Plan, Firmware_Status);
+      Bring_Up_Stage (Intel_GPU_Bring_Up.Firmware,
+        Firmware_Status = Intel_GPU_Firmware_File.Loaded,
+        Intel_GPU_Firmware_File.Name (Firmware_Status) & " bytes=" & Hex64 (Firmware_Bytes));
       debugPrint ("intel-gpu: firmware file " &
         Intel_GPU_Firmware_File.Name (Firmware_Status) &
         " bytes" & Unsigned_64'Image (Firmware_Bytes) &
@@ -8548,7 +8594,7 @@ begin
            " before=" & Hex (Unsigned_32 (Clock.Timer_Before and 16#FFFF_FFFF#)) &
            " after=" & Hex (Unsigned_32 (Clock.Timer_After and 16#FFFF_FFFF#)));
       end;
-      if Forcewake_Result = "release-ready; domains-release-ready" then
+      if Forcewake_Result = Forcewake_Release_Ready then
          declare
             Mapping_Result : constant String := Map_Reset_Pages;
          begin
@@ -8699,9 +8745,13 @@ begin
          Publish_Snapshot ("intel-gpu: PCI IRQ sources disabled (NOT handler drain)");
          Publish_Snapshot ("intel-gpu: native reset beginning; scanout retained");
          declare
-            Reset_Result : constant String := Intel_GPU_Native_Reset.Execute (Media_Fuse);
+            Reset_Result : constant String :=
+              (if Intel_GPU_ADLN_Devices.Supported_Device (PCI_Device)
+               then Intel_GPU_Native_Reset.Execute (PCI_Device, Media_Fuse)
+               else "unsupported-device");
          begin
             debugPrint ("intel-gpu: native reset " & Reset_Result & ASCII.LF);
+            Bring_Up_Stage (Intel_GPU_Bring_Up.Reset, Intel_GPU_Native_Reset.Last_Succeeded, Reset_Result);
             Publish_Snapshot ("intel-gpu: native reset " & Reset_Result);
             Publish_Snapshot ("intel-gpu: CS timestamp Hz=" &
               Unsigned_32'Image (Intel_GPU_Native_Reset.Timestamp_Hz) &
@@ -9288,7 +9338,7 @@ begin
                           Intel_GPU_ADS_Buffer.Initialized_GPU_Start = ADS_GPU_Start
                         then
                            -- Loaded firmware is metadata-admitted70.49.4;
-                           -- native inventory admits ADL-N46D2/IP12.0 only.
+                           -- native inventory admits the ADL-N family (IP12.0) only.
                            -- i915 selects PRE_PARSER, POLLCS and (>=70.7.0)
                            -- TSC_CHECK_ON_RC6, independently of PCI revision.
                            Startup_Parameters := Intel_GPU_GuC_Parameters.Encode_ADLN
@@ -9364,6 +9414,17 @@ begin
                  when Native_GuC.Firmware_Ready => "FIRMWARE-READY (NOT submission-ready)") &
               " raw=" & Hex (Native_GuC.Last_Startup_Raw));
             Publish_Snapshot ("intel-gpu: GuC transfer " & Native_GuC.Last_Transfer_Detail);
+            Bring_Up_Stage (Intel_GPU_Bring_Up.GuC, Status = Native_GuC.Firmware_Ready,
+              (case Status is
+                 when Native_GuC.Rejected => "rejected",
+                 when Native_GuC.Parameters_Failed => "parameters-failed",
+                 when Native_GuC.WOPCM_Failed => "wopcm-failed",
+                 when Native_GuC.Preparation_Failed => "preparation-failed",
+                 when Native_GuC.Signature_Failed => "signature-failed",
+                 when Native_GuC.Transfer_Failed => "transfer-failed",
+                 when Native_GuC.Startup_Failed => "startup-failed",
+                 when Native_GuC.Firmware_Ready => "firmware-ready") &
+              " raw=" & Hex (Native_GuC.Last_Startup_Raw));
             if Status = Native_GuC.Firmware_Ready and then CT_Mapped then
                declare
                   CT_Status : Native_CT.Result;
@@ -9380,6 +9441,9 @@ begin
                     Hex (Unsigned_32 (Native_CT.Last_Step (CT_Registration))));
                   Publish_Snapshot ("intel-gpu: CT reply=" & Hex (Native_CT.Last_Reply (CT_Registration)) &
                     " transport=" & Runtime_MMIO.Result'Image (Runtime_Last_Result));
+                  Bring_Up_Stage (Intel_GPU_Bring_Up.CT, CT_Status = Native_CT.Complete,
+                    Native_CT.Result'Image (CT_Status) & " reply=" &
+                    Hex (Native_CT.Last_Reply (CT_Registration)));
                   if CT_Status = Native_CT.Complete then
                      Publish_Snapshot ("intel-gpu: CT enabled (NOT engine submission-ready)");
                      CT_Receive.Initialize (Receive_Channel,
@@ -9522,6 +9586,15 @@ begin
       end if;
    end if;
    Submit_Budget_Query;
+   --  Render last: Desktop (and every GPU app) gets a render session only
+   --  once the backend is ready; otherwise devmgr's admission is refused
+   --  and Desktop renders in software.
+   Bring_Up_Stage (Intel_GPU_Bring_Up.Render, Render_Backend_Ready,
+     (if Render_Backend_Ready then "render sessions admitted (Desktop may render on the GPU)"
+      else "render sessions refused (Desktop renders in software): GuC " &
+           (if Runtime_Admitted then "running" else "not running") & ", RCS " &
+           (if RCS_Ready then "ready" else "not ready")));
+   Bring_Up_Summary;
    Publish_Snapshot ("intel-gpu: startup step=request-loop (serving requests; GuC " &
      (if Runtime_Admitted then "running" else "not running") & ", render " &
      (if RCS_Ready then "ready" else "not ready") & ")");

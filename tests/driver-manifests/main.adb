@@ -9,6 +9,7 @@ with Interfaces; use Interfaces;
 with CCL.Resource_Sections; use CCL.Resource_Sections;
 with CuBit.Startup_Tables;
 with Driver_Manifests; use Driver_Manifests;
+with CCL.Device_Sections;
 
 procedure Main is
    package ST renames CuBit.Startup_Tables;
@@ -125,6 +126,17 @@ begin
    Check (Hda.Resources.Entries (1).Kind = Device_Memory and Hda.Resources.Entries (1).Amount = 16384,
           "hda registers request");
    Check (Source_Of (Hda, 7) = (None, 0), "beyond the table");
+   --  HW-002: the devices it drives (.cubit.devices): HD Audio, plain and
+   --  in Intel's DSP-capable mode.
+   Check (Hda.Devices.Count = 2
+          and then CCL.Device_Sections."=" (Hda.Devices.Entries (1).Kind, CCL.Device_Sections.PCI_Class)
+          and then Hda.Devices.Entries (1).Class = 16#04# and then Hda.Devices.Entries (1).Subclass = 16#03#
+          and then Hda.Devices.Entries (1).Program = 16#00#
+          and then Hda.Devices.Entries (2).Program = 16#80#, "hda drives HD Audio");
+   Check (Ata.Devices.Count = 1
+          and then CCL.Device_Sections."=" (Ata.Devices.Entries (1).Kind, CCL.Device_Sections.Platform),
+          "ata drives the primary ATA channel");
+   Check (Mixer.Devices.Count = 0, "mixer drives no device");
 
    --  mixer.svc: a scheduling resource first, then capabilities.
    Check (Mixer.Startup_Found and Mixer.Declared.Count = 4, "mixer table");

@@ -7,8 +7,13 @@
 #      a fresh store giving the same bytes, early cutoff after a comment
 #      edit, a real code edit (the byte comparison against make's gprbuild
 #      outputs is tests/ccl-build/compare.sh, run when a program migrates);
-#   4. a real crash: SIGKILL while a tree is copied in, then recovery;
-#   5. with --prove: gnatprove on the Storehouse core (level 1, memory-capped).
+#   4. embedded blobs: a vendored firmware blob linked into a program, its
+#      bytes checked in the ELF against the pinned digest, its licence
+#      exported; a wrong digest refused; a Fetch blob from a local HTTP
+#      server (wrong digest refused and not stored, then stored, then a
+#      rebuild with the server stopped answered from the store);
+#   5. a real crash: SIGKILL while a tree is copied in, then recovery;
+#   6. with --prove: gnatprove on the Storehouse core (level 1, memory-capped).
 # Run inside `nix develop` with TMPDIR outside /tmp:
 #   TMPDIR=/home/doc/cubit-build-tmp nix develop -c bash tests/ccl-build/run.sh [--prove]
 set -euo pipefail
@@ -19,7 +24,11 @@ prove=no
 [[ ${1:-} == --prove ]] && prove=yes
 : "${TMPDIR:?set TMPDIR outside /tmp}"
 scratch=$(mktemp -d "$TMPDIR/ccl-build-tests.XXXXXX")
-cleanup() { chmod -R u+w "$scratch" 2>/dev/null || true; rm -rf "$scratch"; }
+server=
+cleanup() {
+    if [[ -n $server ]]; then kill "$server" 2>/dev/null || true; fi
+    chmod -R u+w "$scratch" 2>/dev/null || true; rm -rf "$scratch"
+}
 trap cleanup EXIT
 
 passed=0
@@ -52,7 +61,8 @@ check "store tests" "$here/build/store_tests" "$scratch/unit"
 
 echo "== declarations: every component.ccl type-checks against build-params.ccl and build-catalog.ccl"
 check "all declarations type-check" "$tool" check --source-root "$repo" \
-    $(cd "$repo" && ls userspace/apps/*/component.ccl userspace/services/*/component.ccl userspace/ccl/services/*/component.ccl)
+    $(cd "$repo" && ls userspace/apps/*/component.ccl userspace/services/*/component.ccl userspace/ccl/services/*/component.ccl \
+      tests/ccl-build/fixtures/*/component.ccl)
 
 echo "== negative declarations: each is refused with its diagnostic"
 for case in "$here"/negative/*/; do
@@ -126,6 +136,73 @@ check "code edit recompiles and relinks" step_ran "$scratch/code.log" "link user
 check "code edit changes sleep.app" bash -c "! cmp -s '$scratch/out2/$program' '$scratch/out/$program'"
 
 check "store verifies" "$tool" verify --store "$store"
+
+echo "== embedded blobs (docs/device-matching.md, \"Firmware\")"
+guc=firmware/i915/tgl_guc_70.bin
+guc_sha256=2f1f57a1b23d186f2592318d1e07a1365968932841ccb3e7177c516ba006e2f6
+embedded=tests/ccl-build/fixtures/embedded
+check "embedded fixture builds" build "$repo" "$scratch/embed.log" "$embedded/component.ccl" --out "$scratch/out-embed"
+cat "$scratch/embed.log"
+check "the blob has its own step" step_ran "$scratch/embed.log" "embed guc-firmware"
+check "the program's blob bytes hash to the pinned digest" python3 "$here/check-embedded.py" \
+    "$scratch/out-embed/$embedded/build/embed-check.app" cubit_blob_guc_firmware "$guc_sha256"
+check "the licence is exported with the program" \
+    cmp -s "$scratch/out-embed/$embedded/build/licenses/LICENSE.i915" "$repo/firmware/LICENSE.i915"
+
+# A checkout copy for declarations the repository does not hold.
+blob_root=$scratch/blob-root
+for p in "$guc" firmware/LICENSE.i915 "$embedded" build-params.ccl build-catalog.ccl \
+         userspace/runtime/ada_source_path userspace/runtime/ada_object_path \
+         userspace/runtime/gnat userspace/runtime/adalib \
+         shared/time shared/interrupts shared/launch shared/publications shared/capabilities shared/boot \
+         userspace/c/link.ld userspace/c/build/crt0.o userspace/ccl/build/manifest/ccl-manifest \
+         userspace/ccl/catalogs/native-runtime-services.ccl userspace/ccl/catalogs/driver-services.ccl \
+         userspace/ccl/interfaces/executable-manifest.ccl userspace/ccl/interfaces/build.ccl \
+         userspace/ccl/interfaces/setting-catalog.ccl userspace/ccl/interfaces/settings; do
+    mkdir -p "$blob_root/$(dirname "$p")"; cp -a "$repo/$p" "$blob_root/$p"
+done
+# The pinned digest's last word, and a wrong one.
+right_word=0xa006e2f6
+wrong_word=0xa006e2f7
+sed -i "s/$right_word/$wrong_word/" "$blob_root/$embedded/component.ccl"
+refused() {  # refused LOG EXPECTED DECLARATION [store]: the build fails, saying EXPECTED
+    local log=$1 expected=$2 file=$3 at=${4:-$store}
+    ! "$tool" build --store "$at" --source-root "$blob_root" "${imports[@]}" "$blob_root/$file" >"$log" 2>&1 &&
+        grep -qF -- "$expected" "$log"
+}
+check "a vendored blob with a wrong digest is refused" \
+    refused "$scratch/embed-wrong.log" "SHA-256 is $guc_sha256" "$embedded/component.ccl"
+
+serve=$scratch/serve
+mkdir -p "$serve"
+cp "$repo/$guc" "$serve/"
+port=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')
+python3 -m http.server --bind 127.0.0.1 --directory "$serve" "$port" >"$scratch/http.log" 2>&1 &
+server=$!
+for _ in $(seq 1 50); do curl -sf -o /dev/null "http://127.0.0.1:$port/" && break; sleep 0.1; done
+fetched=tests/ccl-build/fixtures/fetched
+mkdir -p "$blob_root/$fetched"
+cp "$repo/$embedded/main.adb" "$repo/$embedded/manifest.ccl" "$blob_root/$fetched/"
+sed -e 's/"embed-check"/"fetch-check"/' \
+    -e "s|(vendored \"$guc\"|(fetch \"http://127.0.0.1:$port/tgl_guc_70.bin\"|" \
+    "$blob_root/$embedded/component.ccl" >"$blob_root/$fetched/component.ccl"
+fetch_store=$scratch/fetch-store
+check "a fetched blob with a wrong digest is refused" \
+    refused "$scratch/fetch-wrong.log" "SHA-256 is $guc_sha256" "$fetched/component.ccl" "$fetch_store"
+check "a refused fetch stores nothing" test ! -e "$fetch_store/files/$guc_sha256"
+sed -i "s/$wrong_word/$right_word/" "$blob_root/$fetched/component.ccl"
+check "a fetched blob with the pinned digest builds" "$tool" build --store "$fetch_store" --source-root "$blob_root" \
+    "${imports[@]}" --out "$scratch/out-fetch" "$blob_root/$fetched/component.ccl" >"$scratch/fetch.log" 2>&1
+cat "$scratch/fetch.log"
+check "the fetch ran" step_ran "$scratch/fetch.log" "fetch guc-firmware"
+check "fetched bytes hash to the pinned digest" python3 "$here/check-embedded.py" \
+    "$scratch/out-fetch/$fetched/build/fetch-check.app" cubit_blob_guc_firmware "$guc_sha256"
+kill "$server"
+wait "$server" 2>/dev/null || true
+server=
+check "with the server stopped, the store answers" "$tool" build --store "$fetch_store" --source-root "$blob_root" \
+    "${imports[@]}" "$blob_root/$fetched/component.ccl" >"$scratch/fetch-offline.log" 2>&1
+check "offline: the fetch is a hit" step_hit "$scratch/fetch-offline.log" "fetch guc-firmware"
 
 echo "== crash: SIGKILL while copying a tree into the store"
 crash_store=$scratch/crash-store

@@ -1,14 +1,14 @@
 with CCL.Scheduling_Limits;
 package body CCL.Resource_Sections with SPARK_Mode => On is
 
-   MATCH_FIRST : constant := HEADER_BYTES + 1;
-   ENTRIES_FIRST : constant := HEADER_BYTES + MATCH_BYTES + 1;
+   BASIS_FIRST : constant := HEADER_BYTES + 1;
+   ENTRIES_FIRST : constant := HEADER_BYTES + BASIS_BYTES + 1;
 
-   function Valid_Index (Match : Match_Info; Index : Unsigned_32) return Boolean is
-     (case Match.Kind is
-         when PCI_Class_Match | PCI_ID_Match => Index < PCI_BAR_COUNT,
-         when Platform_Match => Index < MAX_PLATFORM_RESOURCES,
-         when No_Match => False);
+   function Valid_Index (Basis : Basis_Info; Index : Unsigned_32) return Boolean is
+     (case Basis.Kind is
+         when PCI_Basis => Index < PCI_BAR_COUNT,
+         when Platform_Basis => Index < MAX_PLATFORM_RESOURCES,
+         when No_Basis => False);
 
    function Page_Sized (Amount, Limit : Unsigned_64) return Boolean is
      (Amount in PAGE_BYTES .. Limit and then Amount mod PAGE_BYTES = 0);
@@ -18,48 +18,43 @@ package body CCL.Resource_Sections with SPARK_Mode => On is
 
    --  Ordinary bodies, so proofs use these predicates as opaque facts rather
    --  than unfolding them inside quantifiers.
-   function Valid_Match (Match : Match_Info) return Boolean is
+   function Valid_Basis (Basis : Basis_Info) return Boolean is
    begin
       return
-        (case Match.Kind is
-           when No_Match =>
-              (for all Value of Match.Values => Value = 0),
-           when PCI_Class_Match =>
-              (for all Value of Match.Values => Value <= PCI_CODE_LAST),
-           --  0xFFFF is "no device" in PCI configuration space.
-           when PCI_ID_Match =>
-              Match.Values (1) /= PCI_ID_LAST and then Match.Values (3) = 0,
-           when Platform_Match =>
-              Match.Values (1) in
+        (case Basis.Kind is
+           when No_Basis | PCI_Basis =>
+              (for all Value of Basis.Values => Value = 0),
+           when Platform_Basis =>
+              Basis.Values (1) in
                 Unsigned_16 (Platform_Device'Enum_Rep (Platform_Device'First)) ..
                 Unsigned_16 (Platform_Device'Enum_Rep (Platform_Device'Last))
-              and then Match.Values (2) = 0 and then Match.Values (3) = 0);
-   end Valid_Match;
+              and then Basis.Values (2) = 0 and then Basis.Values (3) = 0);
+   end Valid_Basis;
 
-   function Valid_Resource (Match : Match_Info; Item : Resource) return Boolean is
+   function Valid_Resource (Basis : Basis_Info; Item : Resource) return Boolean is
    begin
       return
         (case Item.Kind is
            when Device_Memory =>
-              Valid_Index (Match, Item.Index)
+              Valid_Index (Basis, Item.Index)
               and then Page_Sized (Item.Amount, MAX_DEVICE_MEMORY_BYTES)
               and then Item.Rights in Read_Only | Read_Write
               and then Item.Extra = 0,
            when IO_Ports =>
-              Valid_Index (Match, Item.Index)
+              Valid_Index (Basis, Item.Index)
               and then Item.Amount in 1 .. IO_PORT_SPACE
               and then Item.Rights = Read_Write
               and then Item.Extra = 0,
            when Interrupt =>
               Item.Rights = Read_Only
               and then
-                (case Match.Kind is
-                    when No_Match => False,
-                    when Platform_Match =>
+                (case Basis.Kind is
+                    when No_Basis => False,
+                    when Platform_Basis =>
                        Item.Extra = Code (Platform_Line)
-                       and then Valid_Index (Match, Item.Index)
+                       and then Valid_Index (Basis, Item.Index)
                        and then Item.Amount = 1,
-                    when PCI_Class_Match | PCI_ID_Match =>
+                    when PCI_Basis =>
                        Item.Index = 0
                        and then
                          ((Item.Extra = Code (Line) and then Item.Amount = 1)
@@ -67,7 +62,7 @@ package body CCL.Resource_Sections with SPARK_Mode => On is
                           ((Item.Extra = Code (MSI_X) or else Item.Extra = Code (MSI))
                            and then Item.Amount in 1 .. MAX_INTERRUPT_VECTORS))),
            when DMA =>
-              Match.Kind /= No_Match
+              Basis.Kind /= No_Basis
               and then Item.Index = 0
               and then Page_Sized (Item.Amount, MAX_DMA_BYTES)
               and then Item.Rights = Read_Write
@@ -107,7 +102,7 @@ package body CCL.Resource_Sections with SPARK_Mode => On is
    begin
       Plan := (others => <>);
       Status := Invalid_Length;
-      if Data'Length < HEADER_BYTES + MATCH_BYTES then
+      if Data'Length < HEADER_BYTES + BASIS_BYTES then
          return;
       end if;
       Count := U16 (7);
@@ -117,35 +112,35 @@ package body CCL.Resource_Sections with SPARK_Mode => On is
          Status := Invalid_Header;
          return;
       end if;
-      if Data'Length /= HEADER_BYTES + MATCH_BYTES + Natural (Count) * ENTRY_BYTES then
+      if Data'Length /= HEADER_BYTES + BASIS_BYTES + Natural (Count) * ENTRY_BYTES then
          return;
       end if;
 
-      --  The match: kind, a reserved byte, three values, 8 reserved bytes.
+      --  The basis: kind, a reserved byte, three values, 8 reserved bytes.
       Known := False;
-      for Kind in Match_Kind loop
-         if Unsigned_8 (Match_Kind'Enum_Rep (Kind)) = U8 (MATCH_FIRST) then
-            Plan.Match.Kind := Kind;
+      for Kind in Basis_Kind loop
+         if Unsigned_8 (Basis_Kind'Enum_Rep (Kind)) = U8 (BASIS_FIRST) then
+            Plan.Basis.Kind := Kind;
             Known := True;
          end if;
       end loop;
-      for Value in Match_Value_Index loop
-         Plan.Match.Values (Value) := U16 (MATCH_FIRST + 2 * Value);
+      for Value in Basis_Value_Index loop
+         Plan.Basis.Values (Value) := U16 (BASIS_FIRST + 2 * Value);
       end loop;
-      if not Known or else U8 (MATCH_FIRST + 1) /= 0
-        or else U64 (MATCH_FIRST + 8) /= 0
-        or else not Valid_Match (Plan.Match)
+      if not Known or else U8 (BASIS_FIRST + 1) /= 0
+        or else U64 (BASIS_FIRST + 8) /= 0
+        or else not Valid_Basis (Plan.Basis)
       then
-         Status := Invalid_Match;
+         Status := Invalid_Basis;
          return;
       end if;
 
       for Number in 1 .. Natural (Count) loop
          pragma Loop_Invariant (Plan.Count = Number - 1);
-         pragma Loop_Invariant (Valid_Match (Plan.Match));
+         pragma Loop_Invariant (Valid_Basis (Plan.Basis));
          pragma Loop_Invariant
            (for all I in 1 .. Plan.Count =>
-              Valid_Resource (Plan.Match, Plan.Entries (I)));
+              Valid_Resource (Plan.Basis, Plan.Entries (I)));
          Base := ENTRIES_FIRST + (Number - 1) * ENTRY_BYTES;
          Kind_Code := U8 (Base);
          Rights_Code := U8 (Base + 1);
@@ -176,11 +171,11 @@ package body CCL.Resource_Sections with SPARK_Mode => On is
          Item.Index := U32 (Base + 4);
          Item.Amount := U64 (Base + 8);
          Item.Extra := U64 (Base + 16);
-         if Item.Kind in Device_Resource and then Plan.Match.Kind = No_Match then
-            Status := Device_Without_Match;
+         if Item.Kind in Device_Resource and then Plan.Basis.Kind = No_Basis then
+            Status := Device_Without_Basis;
             return;
          end if;
-         if not Valid_Resource (Plan.Match, Item) then
+         if not Valid_Resource (Plan.Basis, Item) then
             Status := Invalid_Entry;
             return;
          end if;
@@ -197,8 +192,8 @@ package body CCL.Resource_Sections with SPARK_Mode => On is
               (for some J in 1 .. I => Plan.Entries (J).Kind in Device_Resource));
       end loop;
 
-      if (Plan.Match.Kind /= No_Match) /= Has_Device then
-         Status := Match_Without_Device;
+      if (Plan.Basis.Kind /= No_Basis) /= Has_Device then
+         Status := Basis_Without_Device;
          return;
       end if;
       Status := Decoded;

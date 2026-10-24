@@ -3,14 +3,16 @@ with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
 with Intel_GPU_Media_Engines; use Intel_GPU_Media_Engines;
 with Intel_GPU_ADLN_Inventory;
+with Intel_GPU_ADLN_Devices;
 with Intel_GPU_Native_Media_Fuse;
 -- Hosted bit-pattern tests for the Gen12.0 media fuse decoder, including
 -- the ADL-N ceiling, the SFC rule, stability, and equivalence with the
 -- existing Intel_GPU_ADLN_Inventory decode. Not hardware evidence: the NUC
 -- fuse value is still unknown (gpu-async-submission.md H8, Low).
 procedure Media_Engines_Tests is
-   V : constant Unsigned_16 := Intel_Vendor;
-   D : constant Unsigned_16 := ADLN_N95_Device;
+   V : constant Unsigned_16 := Intel_GPU_ADLN_Devices.Intel_Vendor;
+   --  The N95 NUC's device; ADLN_Family_Tests covers the rest of the family.
+   D : constant Unsigned_16 := 16#46D2#;
    E : Engines;
    Checks : Natural := 0;
    procedure Check (Condition : Boolean; Label : String) is

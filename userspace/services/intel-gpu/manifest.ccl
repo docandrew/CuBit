@@ -10,7 +10,7 @@
 (Executable_Manifest
   identity => "com.cubit.driver.intel-gpu"
   version => "0.1.0"
-  device => (Device_Match.PCI_Class (PCI_Class 3 0 0))
+  drives => [(Device_Match.PCI_IDs (PCI_IDs 0x8086 0x46D0 0x46D4))]
   requests => [
     (device-memory "registers" 0 16777216 Access.Read)
     (interrupt "device" Interrupt_Mode.MSI 1)

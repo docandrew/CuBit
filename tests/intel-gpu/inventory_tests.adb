@@ -1,3 +1,4 @@
+with Intel_GPU_ADLN_Devices;
 with Interfaces; use Interfaces;
 with Intel_GPU_ADLN_Inventory; use Intel_GPU_ADLN_Inventory;
 procedure Inventory_Tests is
@@ -30,7 +31,7 @@ begin
    end loop;
    for ID in Unsigned_16 loop
       Result := Decode (16#8086#, ID, 0);
-      pragma Assert (Result.Valid = (ID = 16#46D2#));
+      pragma Assert (Result.Valid = (ID in Intel_GPU_ADLN_Devices.Device_ID));
       if not Result.Valid then
          pragma Assert (Result.Engines = Engine_Set'[others => False]);
          pragma Assert (Result.Domains = Domain_Set'[others => False]);

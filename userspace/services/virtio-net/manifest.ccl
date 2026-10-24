@@ -6,8 +6,9 @@
 (Executable_Manifest
   identity => "com.cubit.virtio-net"
   version => "0.1.0"
-  # 0x1AF4:0x1000, transitional virtio-net.
-  device => (Device_Match.PCI_ID (PCI_ID 6900 4096))
+  # Transitional (0x1000) and modern (0x1041) virtio-net.
+  drives => [(Device_Match.PCI_IDs (PCI_IDs 0x1AF4 0x1000 0x1000))
+            (Device_Match.PCI_IDs (PCI_IDs 0x1AF4 0x1041 0x1041))]
   requests => [
     (io-ports "registers" 0 32)
     # RX, TX and configuration changes share MSI-X entry 0.

@@ -2,7 +2,7 @@ project ADLN_Engine_Settings is
    for Source_Dirs use (".", "../../userspace/services/intel-gpu");
    for Source_Files use ("adln_engine_settings_tests.adb",
                          "intel_gpu_adln_engine_settings.ads", "intel_gpu_adln_engine_settings.adb",
-                         "intel_gpu_adln_inventory.ads", "intel_gpu_adln_inventory.adb");
+                         "intel_gpu_adln_devices.ads", "intel_gpu_adln_inventory.ads", "intel_gpu_adln_inventory.adb");
    for Object_Dir use "build-adln-engine-settings";
    for Main use ("adln_engine_settings_tests.adb");
    package Compiler is

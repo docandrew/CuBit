@@ -110,7 +110,10 @@ while True:
     start = (position + 110 + name_size + 3) & ~3
     assert start + size <= len(archive)
     position = (start + size + 3) & ~3
+# Every driver is in the image (HW-002); devices.index is the generated
+# driver index devmgr binds present devices by.
 assert names == {'devmgr.svc', 'filesystem.svc', 'ramdisk.drv', 'ps2.drv', 'xhci.drv',
+                 'ata.drv', 'nvme.drv', 'virtio-input.drv', 'devices.index',
                  'live-rw.ext2', 'init.ccl', 'system.ccl'}, names
 assert not names & expected_apps
 grub = entries(*boot['grub'])

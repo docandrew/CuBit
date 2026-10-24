@@ -21,7 +21,7 @@ with CuBit.Startup_Tables;
 package body CCL.Manifests.Typed with SPARK_Mode => On is
    use Standard.Interfaces;
    use Model;
-   use all type CCL.Resource_Sections.Match_Kind;
+   use all type CCL.Resource_Sections.Basis_Kind;
    use all type CCL.Resource_Sections.Platform_Device;
    use all type CCL.Resource_Sections.Interrupt_Mode;
    use type CCL.Language.Interpretation_Status;
@@ -395,12 +395,12 @@ package body CCL.Manifests.Typed with SPARK_Mode => On is
                Binding (Named (Body_Cursor, "binding"), Item);
          elsif Kind in "Device_Memory" | "IO_Ports" | "Interrupt" | "DMA" then
                --  Resources are relative to the matched device.
-               if Decl.Match = No_Match then Fail (Missing_Device_Match); return; end if;
+               if Decl.Basis.Kind = No_Basis then Fail (Missing_Device_Match); return; end if;
                Binding (Named (Body_Cursor, "binding"), Item);
                if Kind = "Device_Memory" then
                      Item.Kind := Device_Memory_Request;
                      Number_Value := Number (Named (Body_Cursor, "index"));
-                     if not In_Range (Number_Value, 0, (if Decl.Match = Platform_Match
+                     if not In_Range (Number_Value, 0, (if Decl.Basis.Kind = Platform_Basis
                                                         then MAX_PLATFORM_RESOURCES else PCI_BAR_COUNT) - 1)
                      then Fail (Invalid_Device_Resource); return; end if;
                      Item.Index := Unsigned_32 (Number_Value);
@@ -414,7 +414,7 @@ package body CCL.Manifests.Typed with SPARK_Mode => On is
                elsif Kind = "IO_Ports" then
                      Item.Kind := IO_Port_Request;
                      Number_Value := Number (Named (Body_Cursor, "index"));
-                     if not In_Range (Number_Value, 0, (if Decl.Match = Platform_Match
+                     if not In_Range (Number_Value, 0, (if Decl.Basis.Kind = Platform_Basis
                                                         then MAX_PLATFORM_RESOURCES else PCI_BAR_COUNT) - 1)
                      then Fail (Invalid_Device_Resource); return; end if;
                      Item.Index := Unsigned_32 (Number_Value);
@@ -426,7 +426,7 @@ package body CCL.Manifests.Typed with SPARK_Mode => On is
                      Item.Kind := Interrupt_Request;
                      Item.Rights := Read_Only;
                      if Alt (Named (Body_Cursor, "mode")) = "Platform_Line" then
-                           if Decl.Match /= Platform_Match then Fail (Invalid_Device_Resource); return; end if;
+                           if Decl.Basis.Kind /= Platform_Basis then Fail (Invalid_Device_Resource); return; end if;
                            Item.Extra := Unsigned_64 (Interrupt_Mode'Enum_Rep (Platform_Line));
                            Number_Value := Number (Named (Body_Cursor, "index"));
                            if not In_Range (Number_Value, 0, MAX_PLATFORM_RESOURCES - 1) then
@@ -435,11 +435,11 @@ package body CCL.Manifests.Typed with SPARK_Mode => On is
                            Item.Index := Unsigned_32 (Number_Value);
                            Item.Amount := 1;
                      elsif Alt (Named (Body_Cursor, "mode")) = "Line" then
-                           if Decl.Match = Platform_Match then Fail (Invalid_Device_Resource); return; end if;
+                           if Decl.Basis.Kind = Platform_Basis then Fail (Invalid_Device_Resource); return; end if;
                            Item.Extra := Unsigned_64 (Interrupt_Mode'Enum_Rep (Line));
                            Item.Amount := 1;
                      else
-                           if Decl.Match = Platform_Match then Fail (Invalid_Device_Resource); return; end if;
+                           if Decl.Basis.Kind = Platform_Basis then Fail (Invalid_Device_Resource); return; end if;
                            Item.Extra := Unsigned_64 (Interrupt_Mode'Enum_Rep
                              ((if Alt (Named (Body_Cursor, "mode")) = "MSI_X" then MSI_X else MSI)));
                            Number_Value := Number (Named (Body_Cursor, "vectors"));
@@ -991,40 +991,106 @@ package body CCL.Manifests.Typed with SPARK_Mode => On is
          end loop;
       end Add_Parameters;
 
-      procedure Add_Match (At_Cursor : Views.Cursor) is
+      --  One `drives` entry (docs/device-matching.md).
+      procedure Add_Drive (At_Cursor : Views.Cursor) is
          Kind : constant String := Alt (At_Cursor);
-         Body_Cursor : Views.Cursor;
+         Body_Cursor : constant Views.Cursor := Views.Payload (Object, At_Cursor);
+         Item : Devices.Device_Match;
          Number_Value : Integer_64;
+         Accepted : Boolean;
+         Why : Diagnostic_Code;
+
+         --  A field of 0 .. Last, or a failure naming it.
+         procedure Field (Name : String; Last : Integer_64; Value : out Integer_64; Ok : out Boolean) is
+         begin
+            Value := Number (Named (Body_Cursor, Name));
+            Ok := In_Range (Value, 0, Last);
+            if not Ok then
+               Fail (Invalid_Device_Match, Kind & ": " & Name &
+                     " is outside 0 .. " & Integer_64'Image (Last) (2 .. Integer_64'Image (Last)'Last),
+                     "write it in hexadecimal (0x...) within that range");
+            end if;
+         end Field;
+
+         procedure Triple (First, Second, Third : String) is
+            Ok : Boolean;
+         begin
+            Field (First, PCI_CODE_LAST, Number_Value, Ok);
+            if not Ok then return; end if;
+            Item.Class := Unsigned_8 (Number_Value);
+            Field (Second, PCI_CODE_LAST, Number_Value, Ok);
+            if not Ok then return; end if;
+            Item.Subclass := Unsigned_8 (Number_Value);
+            Field (Third, PCI_CODE_LAST, Number_Value, Ok);
+            if not Ok then return; end if;
+            Item.Program := Unsigned_8 (Number_Value);
+         end Triple;
+
+         Ok : Boolean;
       begin
-         if Kind = "No_Device" then return; end if;
-         Body_Cursor := Views.Payload (Object, At_Cursor);
-         if Kind = "PCI_Class" then
-            Decl.Match := PCI_Class_Match;
-            for Index in 1 .. MATCH_VALUES loop
-               Number_Value := Number (Named (Body_Cursor, (case Index is when 1 => "class",
-                                                                        when 2 => "subclass",
-                                                                        when others => "interface")));
-               if not In_Range (Number_Value, 0, PCI_CODE_LAST) then Fail (Invalid_Device_Match); return; end if;
-               Decl.Match_Values (Index) := Unsigned_16 (Number_Value);
-            end loop;
-         elsif Kind = "PCI_ID" then
-            Decl.Match := PCI_ID_Match;
-            for Index in 1 .. 2 loop
-               Number_Value := Number (Named (Body_Cursor, (if Index = 1 then "vendor" else "device")));
-               if not In_Range (Number_Value, 0, PCI_ID_LAST) then Fail (Invalid_Device_Match); return; end if;
-               Decl.Match_Values (Index) := Unsigned_16 (Number_Value);
-            end loop;
-            --  0xFFFF is "no device" in PCI configuration space.
-            if Decl.Match_Values (1) = PCI_ID_LAST then Fail (Invalid_Device_Match); return; end if;
+         if Kind = "PCI_IDs" then
+            Item.Kind := Devices.PCI_IDs;
+            Field ("vendor", PCI_ID_LAST, Number_Value, Ok);
+            if not Ok then return; end if;
+            Item.Vendor := Unsigned_16 (Number_Value);
+            Field ("first", PCI_ID_LAST, Number_Value, Ok);
+            if not Ok then return; end if;
+            Item.First := Unsigned_16 (Number_Value);
+            Field ("last", PCI_ID_LAST, Number_Value, Ok);
+            if not Ok then return; end if;
+            Item.Last := Unsigned_16 (Number_Value);
+            if Item.Vendor = Devices.NO_VENDOR then
+               Fail (Invalid_Device_Match, "PCI_IDs: vendor 0xFFFF is ""no device""",
+                     "write the device's vendor ID");
+               return;
+            elsif Item.First > Item.Last then
+               Fail (Invalid_Device_Match, "PCI_IDs: first is above last",
+                     "write the range low to high");
+               return;
+            end if;
+         elsif Kind = "PCI_Class" then
+            Item.Kind := Devices.PCI_Class;
+            Triple ("class", "subclass", "interface");
+         elsif Kind = "USB_Class" then
+            Item.Kind := Devices.USB_Class;
+            Triple ("class", "subclass", "protocol");
+         elsif Kind = "ACPI_ID" then
+            Item.Kind := Devices.ACPI_ID;
+            declare
+               ID : constant String := Text (Body_Cursor);
+            begin
+               if ID'Length not in Devices.ACPI_ID_MIN .. Devices.ACPI_ID_MAX
+                 or else (for some C of ID => C not in 'A' .. 'Z' | '0' .. '9')
+               then
+                  Fail (Invalid_Device_Match, "ACPI_ID """ & ID &
+                        """ is not an ACPI ID", "write 7 or 8 characters of A-Z and 0-9, as PNP0C50");
+                  return;
+               end if;
+               Item.ID_Length := ID'Length;
+               for I in 1 .. ID'Length loop
+                  Item.ID (I) := ID (ID'First + I - 1);
+               end loop;
+            end;
          elsif Kind = "Platform" then
-            Decl.Match := Platform_Match;
-            Decl.Match_Values (1) := Unsigned_16 (Platform_Device'Enum_Rep
-              ((if Alt (Body_Cursor) = "PS2_Controller" then PS2_Controller
-                elsif Alt (Body_Cursor) = "ATA_Primary" then ATA_Primary else CMOS_RTC)));
+            Item.Kind := Devices.Platform;
+            Item.Device :=
+              (if Alt (Body_Cursor) = "PS2_Controller" then PS2_Controller
+               elsif Alt (Body_Cursor) = "ATA_Primary" then ATA_Primary else CMOS_RTC);
          else
             Fail (Invalid_Device_Match, "device match """ & Kind & """ is not one this tool encodes");
+            return;
          end if;
-      end Add_Match;
+         if Failed then return; end if;
+         Model.Add_Drive (Decl, Item, Accepted, Why);
+         if not Accepted then
+            Fail (Why, (case Why is
+                          when Duplicate_Device_Match => "drives lists this entry twice",
+                          when Too_Many_Requests => "drives has more than 16 entries",
+                          when others => "drives mixes PCI and Platform devices, or two Platform devices; "
+                                         & "resource indexes refer to one kind of device"),
+                  "remove the extra entry");
+         end if;
+      end Add_Drive;
       --  For a misspelled member (File_Right.Reed): that type's members.
       function Members_Of (Qualified : String) return String is
          Types : constant CCL.Types.Registry := CCL.Language.Analysis_Types (Checked);
@@ -1134,9 +1200,16 @@ package body CCL.Manifests.Typed with SPARK_Mode => On is
          Metadata (Named (Root, "identity"), Decl.Identity);
          Locate ("version");
          Metadata (Named (Root, "version"), Decl.Version);
-         --  The device match first: resources are relative to it.
-         Locate ("device");
-         Add_Match (Named (Root, "device"));
+         --  The device matches first: resources are relative to them.
+         declare
+            Drives : constant Views.Cursor := Named (Root, "drives");
+         begin
+            for Index in 1 .. Views.Length (Object, Drives) loop
+               exit when Failed;
+               Locate (Entry_Text ("drives", Index));
+               Add_Drive (Views.Element (Object, Drives, Index));
+            end loop;
+         end;
          for Index in 1 .. Views.Length (Object, Requests) loop
             exit when Failed;
             Locate (Entry_Text ("requests", Index));

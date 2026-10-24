@@ -3,7 +3,7 @@ project ADS_Register_Image is
    for Source_Files use ("ads_register_image_tests.adb", "intel_gpu_ads_register_image.ads",
                          "intel_gpu_ads_register_image.adb", "intel_gpu_adln_regset.ads",
                          "intel_gpu_adln_regset.adb", "intel_gpu_adln_engine_settings.ads",
-                         "intel_gpu_adln_engine_settings.adb", "intel_gpu_adln_inventory.ads",
+                         "intel_gpu_adln_engine_settings.adb", "intel_gpu_adln_devices.ads", "intel_gpu_adln_inventory.ads",
                          "intel_gpu_adln_inventory.adb", "intel_gpu_adln_steering.ads",
                          "intel_gpu_adln_steering.adb", "intel_gpu_ads_regset.ads",
                          "intel_gpu_ads_regset.adb");

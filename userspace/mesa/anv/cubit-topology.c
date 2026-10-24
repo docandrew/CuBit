@@ -1,4 +1,5 @@
 #include "cubit-topology.h"
+#include "cubit-adln-devices.h"
 #include <string.h>
 #include "intel/dev/intel_device_info.h"
 
@@ -6,7 +7,7 @@ bool
 cubit_mesa_adln_topology_masks(struct intel_device_info *info,
                                uint8_t dss_mask, uint16_t eu_mask)
 {
-   if (!info || info->pci_device_id != 0x46d2 ||
+   if (!info || !cubit_adln_supported_device(info->pci_device_id) ||
        info->platform != INTEL_PLATFORM_ADL || info->ver != 12 ||
        info->verx10 != 120 || !dss_mask || (dss_mask & ~0x3fu) || !eu_mask)
       return false;

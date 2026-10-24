@@ -20,3 +20,8 @@
 *.gz binary
 *.xz binary
 *.zip binary
+
+# Upstream firmware and licences stay byte for byte (LICENSE.i915 has CRLF
+# lines; firmware/WHENCE pins every file by SHA-256).
+firmware/** -text
+firmware/WHENCE text eol=lf

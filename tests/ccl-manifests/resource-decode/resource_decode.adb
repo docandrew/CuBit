@@ -44,10 +44,10 @@ begin
       Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
       return;
    end if;
-   Put_Line ("match " & Plan.Match.Kind'Image & " " &
-             Image (Interfaces.Unsigned_64 (Plan.Match.Values (1))) & " " &
-             Image (Interfaces.Unsigned_64 (Plan.Match.Values (2))) & " " &
-             Image (Interfaces.Unsigned_64 (Plan.Match.Values (3))));
+   Put_Line ("basis " & Plan.Basis.Kind'Image & " " &
+             Image (Interfaces.Unsigned_64 (Plan.Basis.Values (1))) & " " &
+             Image (Interfaces.Unsigned_64 (Plan.Basis.Values (2))) & " " &
+             Image (Interfaces.Unsigned_64 (Plan.Basis.Values (3))));
    for Item of Plan.Entries (1 .. Plan.Count) loop
       Put_Line (Item.Kind'Image & " " & Item.Rights'Image & " index=" &
                 Image (Interfaces.Unsigned_64 (Item.Index)) & " amount=" &

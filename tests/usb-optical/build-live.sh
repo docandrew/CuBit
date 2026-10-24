@@ -16,11 +16,7 @@ elif [[ -n ${2:-} ]]; then
     echo 'Expected optional --uefi' >&2
     exit 2
 fi
-if [[ ${3:-} == --gpu ]]; then
-    # The ordinary live image with GPU rendering approved for Desktop.
-    profile=../images/laptop-usb-gpu.ccl
-    output=${output%.img}_gpu.img
-elif [[ ${3:-} == --render-session ]]; then
+if [[ ${3:-} == --render-session ]]; then
     profile=../images/render-session.ccl
     output=cubit_live_render_session.img
 elif [[ ${3:-} == --mesa-device ]]; then
@@ -47,7 +43,7 @@ elif [[ ${3:-} == --desktop-vulkan-compositor ]]; then
         "${CUBIT_DESKTOP_VULKAN_DIR:?explicit verified Vulkan compositor directory required}")
     extra_inputs=(--input "desktop-mesa-startup=$desktop_candidate")
 elif [[ -n ${3:-} ]]; then
-    echo 'Expected --gpu, --render-session, --mesa-device, --mesa-triangle, --mesa-triangle-window, --desktop-mesa-startup or --desktop-vulkan-compositor after the platform option' >&2
+    echo 'Expected --render-session, --mesa-device, --mesa-triangle, --mesa-triangle-window, --desktop-mesa-startup or --desktop-vulkan-compositor after the platform option' >&2
     exit 2
 fi
 if [[ -n ${SAMEBOY_ROMS_DIR:-} ]]; then

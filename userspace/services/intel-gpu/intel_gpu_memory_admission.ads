@@ -1,3 +1,4 @@
+with Intel_GPU_ADLN_Devices;
 with Interfaces;
 with Intel_GPU_Device_Query;
 package Intel_GPU_Memory_Admission with SPARK_Mode, Pure is
@@ -26,7 +27,7 @@ package Intel_GPU_Memory_Admission with SPARK_Mode, Pure is
       GPU_To_CPU_Checked : Boolean := False;
    end record;
    function Live (State : Evidence) return Boolean is
-     (State.Device = 16#46D2# and then State.Runtime_Admitted and then
+     (Intel_GPU_ADLN_Devices.Supported_Device (State.Device) and then State.Runtime_Admitted and then
       State.Owner_Held and then State.Session_Healthy and then not State.Faulted);
    function Policy (State : Evidence)
       return Intel_GPU_Device_Query.Memory_Contract

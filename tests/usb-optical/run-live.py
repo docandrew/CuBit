@@ -831,6 +831,8 @@ with (run / 'qemu.log').open('w') as log:
         required = ['xhci: optical LUN=', 'FS: native USB ISO9660 apps mounted',
                     'xhci: pre-reset sleep resumed',
                     'devmgr: loaded from filesystem: procmgr.svc',
+                    # HW-002: devmgr bound the devices by the driver index.
+                    'devmgr: drivers bound to',
                     'desktop: display info ready']
         if args.quiet_xhci:
             required = [marker for marker in required if not marker.startswith('xhci:')]

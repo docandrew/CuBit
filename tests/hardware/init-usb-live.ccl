@@ -6,6 +6,9 @@
   (start "display.svc" (priority 5))
   # Dictionary, thesaurus and spelling (docs/lexicon.md).
   (start "lexicon.svc" (priority 4))
-  (start "desktop.svc" (priority 4))
+  # GPU rendering is a settings grant (desktop.render.gpu, default on);
+  # without a supported GPU devmgr refuses the session and Desktop renders
+  # in software. One image for every machine (HW-002).
+  (start "desktop.svc" (priority 4) (render setting "desktop.render.gpu"))
   (start "boot-logs.app" (priority 4))
 )

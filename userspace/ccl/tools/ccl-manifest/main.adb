@@ -1046,6 +1046,7 @@ begin
    Emit (".cubit.caps", Result.Capabilities);
    Emit (".cubit.access", Result.Access_Scopes);
    Emit (".cubit.resources", Result.Resources);
+   Emit (".cubit.devices", Result.Devices);
    Emit (".cubit.launch", Result.Launch);
    Emit (".cubit.description", Result.Description);
    Emit (".cubit.startup", Result.Startup);

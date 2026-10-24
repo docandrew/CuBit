@@ -203,14 +203,18 @@ is
       procedure Parse_Elements
         (Depth : Natural; Close : Character; Index : out Node_Reference);
 
-      --  An integer literal's value: optional '-', decimal digits, no
-      --  overflow. Sets Invalid_Integer and Ok := False otherwise.
+      --  An integer literal's value: optional '-', then decimal digits or
+      --  0x and hexadecimal digits, no overflow. Sets Invalid_Integer and
+      --  Ok := False otherwise.
       procedure Read_Integer_Value (Item : out Integer_64; Ok : out Boolean) is
          Negative  : Boolean := False;
          Magnitude : Unsigned_64 := 0;
          Digit     : Unsigned_64;
          Started   : Boolean := False;
          Limit     : Unsigned_64 := Unsigned_64 (Integer_64'Last);
+         DECIMAL_BASE     : constant Unsigned_64 := 10;
+         HEXADECIMAL_BASE : constant Unsigned_64 := 16;
+         Base      : Unsigned_64 range DECIMAL_BASE .. HEXADECIMAL_BASE := DECIMAL_BASE;
       begin
          Item := 0;
          Ok := False;
@@ -222,19 +226,38 @@ is
             Cursor := Cursor + 1;
          end if;
 
-         while Cursor < Source'Length and then
-           Source (Source'First + Cursor) >= '0' and then
-           Source (Source'First + Cursor) <= '9'
+         --  0x: hexadecimal digits follow (PCI and USB IDs are hex).
+         if Cursor < Source'Length - 2 and then
+           Source (Source'First + Cursor) = '0' and then
+           Source (Source'First + Cursor + 1) in 'x' | 'X' and then
+           Source (Source'First + Cursor + 2) in '0' .. '9' | 'a' .. 'f' | 'A' .. 'F'
+         then
+            Base := HEXADECIMAL_BASE;
+            Cursor := Cursor + 2;
+         end if;
+
          loop
+            pragma Loop_Invariant (Magnitude <= Limit);
+            exit when Cursor >= Source'Length;
+            declare
+               Item : constant Character := Source (Source'First + Cursor);
+            begin
+               if Item in '0' .. '9' then
+                  Digit := Unsigned_64 (Character'Pos (Item) - Character'Pos ('0'));
+               elsif Base = HEXADECIMAL_BASE and then Item in 'a' .. 'f' then
+                  Digit := Unsigned_64 (Character'Pos (Item) - Character'Pos ('a')) + DECIMAL_BASE;
+               elsif Base = HEXADECIMAL_BASE and then Item in 'A' .. 'F' then
+                  Digit := Unsigned_64 (Character'Pos (Item) - Character'Pos ('A')) + DECIMAL_BASE;
+               else
+                  exit;
+               end if;
+            end;
             Started := True;
-            Digit := Unsigned_64
-              (Character'Pos (Source (Source'First + Cursor)) -
-               Character'Pos ('0'));
-            if Magnitude > (Limit - Digit) / 10 then
+            if Magnitude > (Limit - Digit) / Base then
                Diagnostic := Invalid_Integer;
                return;
             end if;
-            Magnitude := Magnitude * 10 + Digit;
+            Magnitude := Magnitude * Base + Digit;
             Cursor := Cursor + 1;
          end loop;
 

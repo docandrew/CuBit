@@ -6,6 +6,7 @@ with CCL.Language;
 with CCL.Objects;
 with CCL.Objects.Views;
 with CCL.Types;
+with Storehouse.Paths;
 
 package body Build_Declarations is
    package Views renames CCL.Objects.Views;
@@ -270,6 +271,7 @@ package body Build_Declarations is
       Debug_Info : Boolean := True;
       Units : Unit_Code_Vectors.Vector;
       Link_Extra : Link_Vectors.Vector;
+      Blobs : Blob_Vectors.Vector;
    end record;
 
    --  The executable's suffix by kind; a tool, like the toolchain's
@@ -278,6 +280,48 @@ package body Build_Declarations is
      (case Of_Kind is
         when Application => ".app", when Service => ".svc",
         when Driver => ".drv", when Tool => "");
+
+   --  SHA256_Digest: eight 32-bit words, big-endian, the hex digest's order.
+   Digest_Words : constant := 8;
+   Word_Bytes : constant := Storehouse.Digest_Bytes / Digest_Words;
+   Byte_Bits : constant := 8;
+
+   function Digest_Of (Object : Views.Snapshot; At_Cursor : Views.Cursor) return Storehouse.Digest is
+      use type Interfaces.Unsigned_64;
+      Result : Storehouse.Digest;
+   begin
+      for W in 1 .. Digest_Words loop
+         declare
+            Word : constant Interfaces.Unsigned_64 :=
+              Views.Scalar (Object, Named (Object, At_Cursor, "w" & Character'Val (Character'Pos ('0') + W))).First;
+         begin
+            for B in 1 .. Word_Bytes loop
+               Result ((W - 1) * Word_Bytes + B) := Storehouse.Byte
+                 (Interfaces.Shift_Right (Word, Byte_Bits * (Word_Bytes - B)) and 16#FF#);
+            end loop;
+         end;
+      end loop;
+      return Result;
+   end Digest_Of;
+
+   procedure Blobs_Of (Object : Views.Snapshot; At_Cursor : Views.Cursor; Into : out Blob_Vectors.Vector) is
+   begin
+      Into.Clear;
+      for I in 1 .. Views.Length (Object, At_Cursor) loop
+         declare
+            Item : constant Views.Cursor := Views.Element (Object, At_Cursor, I);
+            Source : constant Views.Cursor := Named (Object, Item, "source");
+            Pin : constant Views.Cursor := Views.Payload (Object, Source);
+         begin
+            Into.Append
+              (Blob'(Name => Field (Object, Item, "name"),
+                     Origin => Blob_Origin'Value (Alternative (Object, Source)),
+                     Location => Field (Object, Pin, "location"),
+                     SHA256 => Digest_Of (Object, Named (Object, Pin, "sha256")),
+                     Licence => Field (Object, Item, "licence")));
+         end;
+      end loop;
+   end Blobs_Of;
 
    procedure Component_Value (Object : Views.Snapshot; Result : out Declared_Component) is
       Root : constant Views.Cursor := Views.Root (Object);
@@ -308,6 +352,7 @@ package body Build_Declarations is
          Unit_Codes (Object, Named (Object, Ada_Source, "units"), Result.Units);
          Links (Object, Named (Object, Ada_Source, "link_extra"), Result.Link_Extra);
       end;
+      Blobs_Of (Object, Named (Object, Root, "embedded"), Result.Blobs);
    end Component_Value;
 
    procedure Read_Component_Document is new Read_Document (Declared_Component, Component_Value);
@@ -352,6 +397,42 @@ package body Build_Declarations is
       and then (for all I in Name'Range => Name (I) in 'a' .. 'z' | '0' .. '9' | '-')
       and then (for all I in Name'First .. Name'Last - 1 =>
                   not (Name (I) = '-' and then Name (I + 1) = '-')));
+
+   --  The URL schemes a Fetch may use; the pinned digest, not the
+   --  transport, makes the bytes trustworthy.
+   HTTP_Scheme : constant String := "http://";
+   HTTPS_Scheme : constant String := "https://";
+
+   function Starts_With (Text, Prefix : String) return Boolean is
+     (Text'Length > Prefix'Length and then Text (Text'First .. Text'First + Prefix'Length - 1) = Prefix);
+
+   procedure Check_Blob (B : Blob) is
+      Name : constant String := To_String (B.Name);
+      Location : constant String := To_String (B.Location);
+   begin
+      if not Is_Component_Name (Name) then
+         raise Declaration_Error with "blob name """ & Name &
+           """ is not a lowercase kebab name (a-z, 0-9 and single hyphens, starting with a letter)";
+      end if;
+      case B.Origin is
+         when Vendored =>
+            if not Storehouse.Paths.Is_Relative (Location) or else not Starts_With (Location, Blob_Directory) then
+               raise Declaration_Error with "blob """ & Name & """: " & Location &
+                 " is not a file under " & Blob_Directory & " (vendored blobs live there only)";
+            end if;
+         when Fetch =>
+            if not (Starts_With (Location, HTTPS_Scheme) or else Starts_With (Location, HTTP_Scheme))
+              or else (for some C of Location => C not in '!' .. '~')
+            then
+               raise Declaration_Error with "blob """ & Name & """: " & Location &
+                 " is not an http:// or https:// URL";
+            end if;
+      end case;
+      if not Storehouse.Paths.Is_Relative (To_String (B.Licence)) then
+         raise Declaration_Error with "blob """ & Name & """: licence " & To_String (B.Licence) &
+           " is not a relative path in the tree";
+      end if;
+   end Check_Blob;
 
    procedure Read_Component
      (Source, Schema, Directory : String; Profile : Parameters; Known : Build_Catalog;
@@ -462,6 +543,15 @@ package body Build_Declarations is
             raise Declaration_Error with "link_extra names the manifest object, which build-params.ccl already links";
          end if;
          Program.Linker.Append (A);
+      end loop;
+      for B of Declared.Blobs loop
+         Check_Blob (B);
+         for Earlier of Program.Blobs loop
+            if Earlier.Name = B.Name then
+               raise Declaration_Error with "embedded names blob """ & To_String (B.Name) & """ twice";
+            end if;
+         end loop;
+         Program.Blobs.Append (B);
       end loop;
    end Read_Component;
 

@@ -33,6 +33,11 @@ package CCL.Configurations with SPARK_Mode => On is
       Length : Natural range 0 .. 64 := 0;
       Data : String (1 .. 64) := [others => ' '];
    end record;
+   --  Who approves a program's GPU render session (HW-002): no one, the
+   --  startup plan itself, or a typed GPU_Rendering catalog setting the
+   --  plan names, (render setting "desktop.render.gpu"), which procmgr
+   --  reads when it starts the program (absent: enabled).
+   type Render_Approval is (Render_Denied, Render_Declared, Render_By_Setting);
    type Setting_Entry is record
       Key : Key_Text;
       Value : Value_Text;
@@ -43,7 +48,9 @@ package CCL.Configurations with SPARK_Mode => On is
       Approval : Network_Approval := Deny;
       -- Trusted startup approval, not authority claimed by the executable.
       -- Still requires its declared render endpoint and broker admission.
-      Approve_Render : Boolean := False;
+      Render : Render_Approval := Render_Denied;
+      --  Render_By_Setting: the GPU_Rendering catalog setting that decides.
+      Render_Setting : Key_Text;
       Role : Startup_Role := Application;
       Mode : Launch_Mode := At_Startup;
       --  Per_Device drivers only: the manifest's device resources may be

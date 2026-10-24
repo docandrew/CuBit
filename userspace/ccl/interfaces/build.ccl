@@ -76,4 +76,20 @@
 
 (type Source (variant (Ada Ada_Source)))
 
-(type Component (record (name String) (kind Kind) (source Source)))
+# Bytes linked into a program (docs/device-matching.md, "Firmware"): a
+# file under firmware/ or a download, pinned by its SHA-256 as eight
+# 32-bit words of the hex digest, in order. ccl-build hashes the bytes and
+# refuses a mismatch; Ada reads them from the generated package Embedded.
+(type Digest_Word (range 0 4294967295))
+(type SHA256_Digest (record (w1 Digest_Word) (w2 Digest_Word) (w3 Digest_Word) (w4 Digest_Word)
+  (w5 Digest_Word) (w6 Digest_Word) (w7 Digest_Word) (w8 Digest_Word)))
+(type Pinned (record (location String) (sha256 SHA256_Digest)))
+(type Blob_Source (variant (Vendored Pinned) (Fetch Pinned)))
+(type Blob (record (name String) (source Blob_Source) (licence String)))
+
+(type Component (record (name String) (kind Kind) (source Source) (embedded (List Blob) [])))
+
+(define (vendored (path String) (digest SHA256_Digest)) Blob_Source
+  (Blob_Source.Vendored (Pinned path digest)))
+(define (fetch (url String) (digest SHA256_Digest)) Blob_Source
+  (Blob_Source.Fetch (Pinned url digest)))

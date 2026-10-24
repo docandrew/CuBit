@@ -1,6 +1,6 @@
 project GGTT_Access is
    for Source_Dirs use (".", "../../userspace/services/intel-gpu");
-   for Source_Files use ("ggtt_access_tests.adb", "intel_gpu_ggtt_access.ads",
+   for Source_Files use ("ggtt_access_tests.adb", "intel_gpu_adln_devices.ads", "intel_gpu_ggtt_access.ads",
      "intel_gpu_ggtt_access.adb", "intel_gpu_ggtt.ads", "intel_gpu_ggtt.adb",
      "intel_gpu_pci_power.ads", "intel_gpu_pci_power.adb",
      "intel_gpu_pci_interrupts.ads", "intel_gpu_pci_interrupts.adb",

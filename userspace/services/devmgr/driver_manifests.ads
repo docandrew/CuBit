@@ -15,7 +15,9 @@
 --  * .cubit.resources: the device and scheduling requests in request order,
 --    decoded with the proved CCL.Resource_Sections.Decode;
 --  * .cubit.access: the authority scopes; devmgr installs the Config ones
---    for the services it starts (CAP-003: no undeclared wildcard).
+--    for the services it starts (CAP-003: no undeclared wildcard);
+--  * .cubit.devices: the devices it drives (HW-002), which must agree with
+--    the image's driver index before devmgr starts it.
 --  Entry I of the startup table is request I: the K-th entry of a resource
 --  kind is the K-th .cubit.resources entry, the K-th other entry the K-th
 --  .cubit.caps entry (Source_Of). devmgr builds the child's startup table
@@ -27,6 +29,7 @@
 pragma Ada_2022;
 with Interfaces; use Interfaces;
 with CCL.Resource_Sections;
+with CCL.Device_Sections;
 with CuBit.Startup_Tables;
 
 package Driver_Manifests with SPARK_Mode => On is
@@ -88,6 +91,9 @@ package Driver_Manifests with SPARK_Mode => On is
       --  Its Config scopes (none when .cubit.access is absent or malformed).
       Config_Scopes    : Config_Scope_Array := [others => (others => <>)];
       Config_Total     : Scope_Count := 0;
+      --  The devices it drives (Count 0 when .cubit.devices is absent or
+      --  malformed).
+      Devices          : CCL.Device_Sections.Match_Table;
    end record;
 
    --  A resource-kind startup entry (its request is in .cubit.resources).

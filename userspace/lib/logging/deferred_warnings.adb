@@ -11,7 +11,9 @@ package body Deferred_Warnings is
    --  The driver budget xhci and intel-gpu publish under too.
    Driver_Budget : constant CuBit.Log_Protocol.Budget_Id := 15;
 
-   Capacity   : constant := 32;
+   --  Room for devmgr's bring-up lines (one per PCI device, HW-002: about
+   --  20 on the IdeaPad) besides its warnings, before logstore runs.
+   Capacity   : constant := 64;
    Line_Bytes : constant := 240;
    type Line is record
       Text   : String (1 .. Line_Bytes) := [others => ' '];

@@ -5,7 +5,6 @@
 --  The children devmgr launches - implementation
 ------------------------------------------------------------------------------
 pragma Ada_2022;
-with CCL.Resource_Sections;
 with CuBit.Handles.Control;
 with CuBit.Input;
 with CuBit.Launch_Envelopes;
@@ -210,6 +209,9 @@ package body Devmgr_Launches is
    function Interrupt_Of (Item : Child) return Driver_Manifests.Interrupt_Request is
      (Driver_Manifests.Interrupt_Of (Launches (Item).Manifest));
 
+   function Devices_Of (Item : Child) return CCL.Device_Sections.Match_Table is
+     (Launches (Item).Manifest.Devices);
+
    function Declares (Item : Child; Name : String) return Boolean is
      (Name'Length <= ST.Maximum_Name_Bytes
       and then Launches (Item).Manifest.Startup_Found
@@ -268,19 +270,67 @@ package body Devmgr_Launches is
    end Give_Placed;
 
    --  The label of the first declared entry of Kind, or an empty name.
-   function First_Of (Item : Child; Kind : ST.Capability_Kind) return ST.Name is
+   --  The label of its N-th declared binding of Kind, or an empty name.
+   function Nth_Of (Item : Child; Kind : ST.Capability_Kind; N : Positive) return ST.Name is
       L : Launch renames Launches (Item);
+      Seen : Natural := 0;
       use type ST.Capability_Kind;
    begin
       if L.Manifest.Startup_Found then
          for I in 1 .. L.Manifest.Declared.Count loop
             if L.Manifest.Declared.Entries (I).Kind = Kind then
-               return L.Manifest.Declared.Entries (I).Label;
+               Seen := Seen + 1;
+               if Seen = N then
+                  return L.Manifest.Declared.Entries (I).Label;
+               end if;
             end if;
          end loop;
       end if;
       return (others => <>);
-   end First_Of;
+   end Nth_Of;
+
+   function First_Of (Item : Child; Kind : ST.Capability_Kind) return ST.Name is
+     (Nth_Of (Item, Kind, 1));
+
+   function Give_Nth
+     (Item : Child; Kind : ST.Capability_Kind; N : Positive; Copy : H.Derivation) return Boolean
+   is
+      Label : constant ST.Name := Nth_Of (Item, Kind, N);
+   begin
+      if Label.Length = 0 then
+         return False;
+      end if;
+      Remember_Answer (Item, (Label => Label, Kind => Copy_Answer, Copy => Copy, Placed => <>));
+      return True;
+   end Give_Nth;
+
+   procedure Give_Service (Item : Child; Role : Unsigned_32; Copy : H.Derivation) is
+      L : Launch renames Launches (Item);
+      use type ST.Capability_Kind;
+      use type Driver_Manifests.Source_Kind;
+   begin
+      if not L.Manifest.Startup_Found then
+         return;
+      end if;
+      for I in 1 .. L.Manifest.Declared.Count loop
+         if L.Manifest.Declared.Entries (I).Kind = ST.Endpoint then
+            declare
+               Origin : constant Driver_Manifests.Source := Driver_Manifests.Source_Of (L.Manifest, I);
+            begin
+               if Origin.Kind = Driver_Manifests.Capability_Source
+                 and then L.Manifest.Capabilities (Origin.Index).Service = Role
+               then
+                  Remember_Answer (Item, (Label => L.Manifest.Declared.Entries (I).Label,
+                                          Kind => Copy_Answer, Copy => Copy, Placed => <>));
+               end if;
+            end;
+         end if;
+      end loop;
+   end Give_Service;
+
+   function Resources_Of (Item : Child) return CCL.Resource_Sections.Section_Plan is
+     (if Launches (Item).Manifest.Resources_Found then Launches (Item).Manifest.Resources
+      else (others => <>));
 
    function Give_First
      (Item : Child; Kind : ST.Capability_Kind; Copy : H.Derivation) return Boolean

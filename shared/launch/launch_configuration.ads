@@ -69,7 +69,7 @@ package Launch_Configuration with Pure, SPARK_Mode is
 
    type Configuration_Kind is
      (Device_Manager, Process_Manager, Boot_Image_Reader, NVMe_Controller,
-      HDA_Controller, Virtio_Net, Virtio_Input, Virtio_GPU);
+      HDA_Controller, Virtio_Net, Virtio_Input, Virtio_GPU, Generic_PCI);
    for Configuration_Kind use
      (Device_Manager    => 1,
       Process_Manager   => 2,
@@ -78,7 +78,8 @@ package Launch_Configuration with Pure, SPARK_Mode is
       HDA_Controller    => 5,
       Virtio_Net        => 6,
       Virtio_Input      => 7,
-      Virtio_GPU        => 8);
+      Virtio_GPU        => 8,
+      Generic_PCI       => 9);
 
    --  devmgr's capability handles, placed by the kernel before it runs
    --  (CAP-002): handle words in its own table, never names or slot
@@ -217,6 +218,78 @@ package Launch_Configuration with Pure, SPARK_Mode is
       Boot_Display      : Boolean := False;
    end record;
 
+   --  devmgr to a PCI driver it launched by its declared match with no
+   --  driver-specific setup (HW-002, docs/device-matching.md "Generic PCI
+   --  launch"). Authority is never here: each register window's
+   --  device-memory capability and the interrupt capability are the
+   --  driver's startup entries (Startup.<binding>). This says where things
+   --  are: the driver maps window K, the K-th device-memory request of its
+   --  manifest, with Map_Device (Startup.<that binding>, Windows (K).First,
+   --  a virtual address of its choice, pages), and the kernel refuses any
+   --  page outside the capability.
+   --
+   --  Interrupts: MSI-X entries are programmed and stay masked, and MSI is
+   --  programmed and enabled (it has no mask), until the driver sends
+   --  OP_READY to its "device-manager" endpoint; devmgr then unmasks. So
+   --  the driver arms its handler on the interrupt capability first, then
+   --  reports ready, then enables interrupts in the device. OP_NOT_PRESENT
+   --  instead declines the device: devmgr masks and releases the vectors.
+   --  A PCI type-0 header has six base address registers (PCI Local Bus
+   --  3.0, 6.2.5.1): one window per BAR at most.
+   PCI_Type0_BAR_Count : constant := 6;
+   Maximum_Windows : constant := PCI_Type0_BAR_Count;
+   subtype Window_Count is Natural range 0 .. Maximum_Windows;
+   subtype Window_Index is Positive range 1 .. Maximum_Windows;
+   type Window_Array is array (Window_Index) of Physical_Span;
+   --  bus << 8 | device << 3 | function (the PCI routing ID).
+   subtype Routing_ID is Unsigned_64 range 0 .. 2 ** 16 - 1;
+   subtype PCI_ID is Unsigned_64 range 0 .. 2 ** 16 - 1;
+   subtype PCI_Revision is Unsigned_64 range 0 .. 2 ** 8 - 1;
+   --  base class << 16 | subclass << 8 | programming interface.
+   subtype PCI_Class_Code is Unsigned_64 range 0 .. 2 ** 24 - 1;
+   --  Lower-half canonical user addresses (x86-64, 4-level paging).
+   subtype Virtual_Address is Unsigned_64 range 0 .. 2 ** 47 - 1;
+   type Interrupt_Delivery is (Polled, Line, MSI, MSI_X);
+   for Interrupt_Delivery use (Polled => 0, Line => 1, MSI => 2, MSI_X => 3);
+   Maximum_Vectors : constant := 32;
+   subtype Vector_Count is Unsigned_64 range 0 .. Maximum_Vectors;
+
+   type Generic_PCI_Configuration is record
+      Location    : Routing_ID := 0;
+      Vendor      : PCI_ID := 0;
+      Device      : PCI_ID := 0;
+      Revision    : PCI_Revision := 0;
+      Class_Code  : PCI_Class_Code := 0;
+      --  The granted part of each declared window: at most its BAR's size
+      --  and the request's max_bytes. Unused windows are (0, 0).
+      Windows     : Window_Array := [others => (0, 0)];
+      Window_Total : Window_Count := 0;
+      --  The DMA region devmgr allocated for the manifest's dma request,
+      --  mapped at DMA_Virtual in the driver ((0, 0) and 0: none).
+      DMA         : Physical_Span := (0, 0);
+      DMA_Virtual : Virtual_Address := 0;
+      --  How the interrupt request was met, and how many vectors
+      --  (Polled: 0; Line and MSI: 1; MSI_X: 1 .. 32).
+      Delivery    : Interrupt_Delivery := Polled;
+      Vectors     : Vector_Count := 0;
+   end record;
+
+   function Valid_Span (Span : Physical_Span) return Boolean is
+     (Span.Bytes <= Byte_Count'Last - Span.First);
+   function Valid_Vectors (Delivery : Interrupt_Delivery; Vectors : Vector_Count)
+     return Boolean is
+     (case Delivery is
+         when Polled => Vectors = 0,
+         when Line | MSI => Vectors = 1,
+         when MSI_X => Vectors >= 1);
+   function Valid_Generic (Value : Generic_PCI_Configuration) return Boolean is
+     ((for all K in Window_Index =>
+         Valid_Span (Value.Windows (K))
+         and then (if K > Value.Window_Total then Value.Windows (K) = (0, 0)))
+      and then Valid_Span (Value.DMA)
+      and then (if Value.DMA.Bytes = 0 then Value.DMA_Virtual = 0)
+      and then Valid_Vectors (Value.Delivery, Value.Vectors));
+
    function Field_Count (Kind : Configuration_Kind) return Natural is
      (case Kind is
          when Device_Manager    => 3 + Device_Manager_Handle_Fields + 1 + Maximum_Device_Roots,
@@ -224,7 +297,8 @@ package Launch_Configuration with Pure, SPARK_Mode is
          when Boot_Image_Reader => 1,
          when NVMe_Controller | HDA_Controller => 2,
          when Virtio_Net | Virtio_Input => 1,
-         when Virtio_GPU        => 10)
+         when Virtio_GPU        => 10,
+         when Generic_PCI       => 5 + 1 + 2 * Maximum_Windows + 3 + 2)
    with Post => Field_Count'Result <= Maximum_Fields;
 
    --  Words (1 .. Length) is a header for Kind with the right length.
@@ -321,6 +395,12 @@ package Launch_Configuration with Pure, SPARK_Mode is
                 and then Encode'Result.Words (12) = Value.Notify_Multiplier
                 and then Encode'Result.Words (13) = (if Value.Boot_Display then 1 else 0);
 
+   function Encode (Value : Generic_PCI_Configuration) return Encoded
+   with Pre  => Valid_Generic (Value),
+        Post => Encode'Result.Length = Header_Words + Field_Count (Generic_PCI)
+                and then Header_Valid (Encode'Result.Words (1 .. Encode'Result.Length),
+                                       Generic_PCI);
+
    --  Decoders: Valid exactly when Words is a header for the kind followed
    --  by in-range fields; then Value holds the fields.
    procedure Decode
@@ -396,4 +476,8 @@ package Launch_Configuration with Pure, SPARK_Mode is
                             and then Value.Device_Offset = Words (11)
                             and then Value.Notify_Multiplier = Words (12)
                             and then Value.Boot_Display = (Words (13) = 1));
+   procedure Decode
+     (Words : Word_Array; Value : out Generic_PCI_Configuration; Valid : out Boolean)
+   with Post => (if Valid then Header_Valid (Words, Generic_PCI)
+                               and then Valid_Generic (Value));
 end Launch_Configuration;

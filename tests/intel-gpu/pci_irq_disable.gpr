@@ -1,7 +1,7 @@
 project PCI_IRQ_Disable is
    for Source_Dirs use (".", "../../userspace/services/intel-gpu");
    for Source_Files use ("pci_irq_disable_tests.adb", "pci_irq_executor_tests.adb",
-     "intel_gpu_pci_irq_disable.ads", "intel_gpu_pci_irq_disable.adb", "intel_gpu_pci_interrupts.ads",
+     "intel_gpu_adln_devices.ads", "intel_gpu_pci_irq_disable.ads", "intel_gpu_pci_irq_disable.adb", "intel_gpu_pci_interrupts.ads",
      "intel_gpu_pci_interrupts.adb", "intel_gpu_pci_power.ads", "intel_gpu_pci_power.adb");
    for Object_Dir use "build-pci-irq-disable";
    for Main use ("pci_irq_disable_tests.adb", "pci_irq_executor_tests.adb");

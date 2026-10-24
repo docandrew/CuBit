@@ -1,10 +1,11 @@
+with Intel_GPU_ADLN_Devices;
 package body Intel_GPU_ADLN_Inventory with SPARK_Mode is
    function Decode (Vendor, Device : Unsigned_16; Fuse : Unsigned_32)
      return Inventory
    is
       Result : Inventory;
    begin
-      if Vendor /= 16#8086# or Device /= 16#46D2# or Fuse = Unsigned_32'Last then
+      if not Intel_GPU_ADLN_Devices.Supported (Vendor, Device) or Fuse = Unsigned_32'Last then
          return Result;
       end if;
       Result.Valid := True;

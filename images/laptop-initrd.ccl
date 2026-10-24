@@ -1,4 +1,5 @@
-# Existing all-in-initrd laptop fallback; preserve current membership.
+# The all-in-initrd laptop fallback. Every driver is in every image; devmgr
+# starts those whose declared devices are present (docs/device-matching.md).
 (system-image v1
   (catalog "cubit-native-v1")
   (layout bootstrap-only)
@@ -17,6 +18,8 @@
   (file bootstrap "mixer" "mixer.svc")
   (file bootstrap "ps2" "ps2.drv")
   (file bootstrap "xhci" "xhci.drv")
+  (file bootstrap "virtio-input" "virtio-input.drv")
+  (file bootstrap "intel-gpu" "intel-gpu.drv")
   (file bootstrap "config" "config.svc")
   (file bootstrap "netmgr" "netmgr.svc")
   (file bootstrap "procmgr" "procmgr.svc")

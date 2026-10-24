@@ -6,7 +6,7 @@
   identity => "com.cubit.virtio-input"
   version => "0.1.0"
   # 0x1AF4:0x1052, virtio-input (virtio-tablet-pci and siblings).
-  device => (Device_Match.PCI_ID (PCI_ID 6900 4178))
+  drives => [(Device_Match.PCI_IDs (PCI_IDs 0x1AF4 0x1052 0x1052))]
   requests => [
     (device-memory "registers" 4 65536 Access.Read_Write)
     # The event queue uses MSI-X entry 0.

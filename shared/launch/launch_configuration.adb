@@ -219,4 +219,90 @@ package body Launch_Configuration with SPARK_Mode is
       end if;
    end Decode;
 
+   --  Generic_PCI words: 4 location, 5 vendor, 6 device, 7 revision,
+   --  8 class code, 9 window count, then (first, bytes) per window, then
+   --  DMA first, DMA bytes, DMA virtual, delivery and vectors.
+   GENERIC_WINDOW_COUNT : constant := 9;
+   GENERIC_WINDOWS      : constant := 10;
+   GENERIC_DMA          : constant := GENERIC_WINDOWS + 2 * Maximum_Windows;
+   GENERIC_DELIVERY     : constant := GENERIC_DMA + 3;
+
+   function Encode (Value : Generic_PCI_Configuration) return Encoded is
+      Result : Encoded := Header (Generic_PCI);
+   begin
+      Result.Words (4) := Value.Location;
+      Result.Words (5) := Value.Vendor;
+      Result.Words (6) := Value.Device;
+      Result.Words (7) := Value.Revision;
+      Result.Words (8) := Value.Class_Code;
+      Result.Words (GENERIC_WINDOW_COUNT) := Unsigned_64 (Value.Window_Total);
+      for K in Window_Index loop
+         Result.Words (GENERIC_WINDOWS + 2 * (K - 1)) := Value.Windows (K).First;
+         Result.Words (GENERIC_WINDOWS + 2 * (K - 1) + 1) := Value.Windows (K).Bytes;
+      end loop;
+      Result.Words (GENERIC_DMA) := Value.DMA.First;
+      Result.Words (GENERIC_DMA + 1) := Value.DMA.Bytes;
+      Result.Words (GENERIC_DMA + 2) := Value.DMA_Virtual;
+      Result.Words (GENERIC_DELIVERY) := Interrupt_Delivery'Enum_Rep (Value.Delivery);
+      Result.Words (GENERIC_DELIVERY + 1) := Value.Vectors;
+      return Result;
+   end Encode;
+
+   procedure Decode
+     (Words : Word_Array; Value : out Generic_PCI_Configuration; Valid : out Boolean)
+   is
+      Delivery : Interrupt_Delivery := Polled;
+      Known : Boolean := False;
+   begin
+      Value := (others => <>);
+      Valid := False;
+      if not Header_Valid (Words, Generic_PCI)
+        or else Words (4) not in Routing_ID or else Words (5) not in PCI_ID
+        or else Words (6) not in PCI_ID or else Words (7) not in PCI_Revision
+        or else Words (8) not in PCI_Class_Code
+        or else Words (GENERIC_WINDOW_COUNT) > Maximum_Windows
+        or else Words (GENERIC_DELIVERY + 1) > Maximum_Vectors
+        or else Words (GENERIC_DMA + 2) not in Virtual_Address
+      then
+         return;
+      end if;
+      for D in Interrupt_Delivery loop
+         if Interrupt_Delivery'Enum_Rep (D) = Words (GENERIC_DELIVERY) then
+            Delivery := D;
+            Known := True;
+         end if;
+      end loop;
+      if not Known then
+         return;
+      end if;
+      for K in Window_Index loop
+         if Words (GENERIC_WINDOWS + 2 * (K - 1)) not in Physical_Address
+           or else Words (GENERIC_WINDOWS + 2 * (K - 1) + 1) not in Byte_Count
+         then
+            return;
+         end if;
+         Value.Windows (K) := (First => Words (GENERIC_WINDOWS + 2 * (K - 1)),
+                               Bytes => Words (GENERIC_WINDOWS + 2 * (K - 1) + 1));
+      end loop;
+      if Words (GENERIC_DMA) not in Physical_Address
+        or else Words (GENERIC_DMA + 1) not in Byte_Count
+      then
+         return;
+      end if;
+      Value.Location := Words (4);
+      Value.Vendor := Words (5);
+      Value.Device := Words (6);
+      Value.Revision := Words (7);
+      Value.Class_Code := Words (8);
+      Value.Window_Total := Window_Count (Words (GENERIC_WINDOW_COUNT));
+      Value.DMA := (First => Words (GENERIC_DMA), Bytes => Words (GENERIC_DMA + 1));
+      Value.DMA_Virtual := Words (GENERIC_DMA + 2);
+      Value.Delivery := Delivery;
+      Value.Vectors := Words (GENERIC_DELIVERY + 1);
+      Valid := Valid_Generic (Value);
+      if not Valid then
+         Value := (others => <>);
+      end if;
+   end Decode;
+
 end Launch_Configuration;

@@ -30,6 +30,8 @@ with System;
 with CuBit.Handles;
 with CuBit.Process_IDs;
 with CuBit.Startup_Tables;
+with CCL.Device_Sections;
+with CCL.Resource_Sections;
 with Driver_Manifests;
 with Launch_Configuration;
 
@@ -91,6 +93,9 @@ package Devmgr_Launches is
 
    function Interrupt_Of (Item : Child) return Driver_Manifests.Interrupt_Request
    with Pre => Item /= No_Child;
+   --  The devices its manifest says it drives (.cubit.devices).
+   function Devices_Of (Item : Child) return CCL.Device_Sections.Match_Table
+   with Pre => Item /= No_Child;
    --  Whether its manifest declares a binding Name.
    function Declares (Item : Child; Name : String) return Boolean
    with Pre => Item /= No_Child;
@@ -114,6 +119,20 @@ package Devmgr_Launches is
    function Give_First
      (Item : Child; Kind : CuBit.Startup_Tables.Capability_Kind; Copy : H.Derivation)
       return Boolean
+   with Pre => Item /= No_Child;
+   --  The same for its N-th declared binding of Kind (the K-th device-memory
+   --  binding is the K-th device-memory request of Resources_Of).
+   function Give_Nth
+     (Item : Child; Kind : CuBit.Startup_Tables.Capability_Kind; N : Positive;
+      Copy : H.Derivation) return Boolean
+   with Pre => Item /= No_Child;
+   --  Answer every (service ...) request of its manifest for catalog role
+   --  Role with Copy (a badged copy where the service needs one, such as a
+   --  log publisher's endpoint to logstore).
+   procedure Give_Service (Item : Child; Role : Unsigned_32; Copy : H.Derivation)
+   with Pre => Item /= No_Child;
+   --  Its decoded .cubit.resources (Count 0 when it has none).
+   function Resources_Of (Item : Child) return CCL.Resource_Sections.Section_Plan
    with Pre => Item /= No_Child;
    function Give_First_Placed
      (Item : Child; Kind : CuBit.Startup_Tables.Capability_Kind; Placed : H.Foreign_Handle)

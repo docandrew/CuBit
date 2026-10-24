@@ -5,7 +5,9 @@
 (Executable_Manifest
   identity => "com.cubit.hda"
   version => "0.1.0"
-  device => (Device_Match.PCI_Class (PCI_Class 4 3 0))
+  # HD Audio, and the same controller in DSP-capable mode (Intel 0x80).
+  drives => [(Device_Match.PCI_Class (PCI_Class 0x04 0x03 0x00))
+             (Device_Match.PCI_Class (PCI_Class 0x04 0x03 0x80))]
   requests => [
     (device-memory "registers" 0 16384 Access.Read_Write)
     (interrupt "controller" Interrupt_Mode.MSI 1)

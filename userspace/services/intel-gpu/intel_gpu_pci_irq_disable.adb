@@ -1,3 +1,4 @@
+with Intel_GPU_ADLN_Devices;
 with Interfaces; use Interfaces;
 with Intel_GPU_PCI_Interrupts;
 package body Intel_GPU_PCI_IRQ_Disable is
@@ -5,8 +6,10 @@ package body Intel_GPU_PCI_IRQ_Disable is
    Value : Phase := Fresh;
    function State return Phase is (Value);
    function Admitted (Data : Configuration) return Boolean is
-     (Data (0) = 16#86# and then Data (1) = 16#80# and then Data (2) = 16#D2# and then
-      Data (3) = 16#46# and then Decode (Data) = D0);
+     (Intel_GPU_ADLN_Devices.Supported
+        (Unsigned_16 (Data (0)) or Shift_Left (Unsigned_16 (Data (1)), 8),
+         Unsigned_16 (Data (2)) or Shift_Left (Unsigned_16 (Data (3)), 8))
+      and then Decode (Data) = D0);
    function Matches (Expected, Actual : Configuration) return Boolean is
      ((Expected (6) and 16#10#) = (Actual (6) and 16#10#) and then
       (for all I in Configuration'Range =>

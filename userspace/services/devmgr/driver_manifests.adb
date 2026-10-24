@@ -287,9 +287,47 @@ package body Driver_Manifests with SPARK_Mode => On is
       end loop;
    end Read_Config_Scopes;
 
+   procedure Read_Devices (Image : Byte_Array; Into : in out Manifest)
+   with Pre  => Image'First = 1 and then Image'Last < Natural'Last,
+        Post => Into.Startup_Found = Into.Startup_Found'Old
+                and then Into.Declared = Into.Declared'Old
+   is
+      package DS renames CCL.Device_Sections;
+      use type DS.Decode_Status;
+      Offset, Size : Unsigned_64;
+      Found : Boolean;
+      Status : DS.Decode_Status;
+   begin
+      Into.Devices := (others => <>);
+      Find_Section (Image, DS.MAGIC, DS.HEADER_BYTES, DS.MAX_SECTION_BYTES, Offset, Size, Found);
+      if not Found then
+         return;
+      end if;
+      declare
+         Data : DS.Byte_Array (1 .. DS.MAX_SECTION_BYTES) := [others => 0];
+         Last : constant Positive := Positive (Size);
+      begin
+         for J in 1 .. Size loop
+            pragma Assert (Offset + J <= Unsigned_64 (Image'Last));
+            declare
+               Index : constant Positive := Positive (Offset + J);
+            begin
+               pragma Assert (Unsigned_64 (Index) = Offset + J);
+               pragma Assert (Index <= Image'Last);
+               Data (Positive (J)) := Image (Index);
+            end;
+         end loop;
+         DS.Decode (Data (1 .. Last), Into.Devices, Status);
+      end;
+      if Status /= DS.Decoded then
+         Into.Devices := (others => <>);
+      end if;
+   end Read_Devices;
+
    function Read (Image : Byte_Array) return Manifest is
       Result : Manifest;
    begin
+      Read_Devices (Image, Result);
       Read_Capabilities (Image, Result);
       Read_Config_Scopes (Image, Result);
       Read_Resources (Image, Result);

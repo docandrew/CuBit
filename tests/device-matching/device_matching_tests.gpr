@@ -1,0 +1,20 @@
+--  HW-002: the device-match formats and devmgr's binding rule, hosted
+--  (run.sh builds the real drivers' index first).
+project Device_Matching_Tests is
+   for Source_Dirs use (".", "../../userspace/ccl/src", "../../userspace/services/devmgr");
+   for Source_Files use ("device_matching_tests.adb", "ccl.ads",
+     "ccl-resource_sections.ads", "ccl-resource_sections.adb", "ccl-scheduling_limits.ads",
+     "ccl-device_sections.ads", "ccl-device_sections.adb",
+     "ccl-device_index.ads", "ccl-device_index.adb",
+     --  devmgr's binding state over the index (proved with the formats).
+     "devmgr_bindings.ads", "devmgr_bindings.adb");
+   for Object_Dir use "build/obj";
+   for Exec_Dir use "build";
+   for Main use ("device_matching_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-O1", "-gnata", "-gnato", "-gnatwa");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=2", "--checks-as-errors=on");
+   end Prove;
+end Device_Matching_Tests;
