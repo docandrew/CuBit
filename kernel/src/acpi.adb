@@ -138,6 +138,29 @@ package body acpi is
       (if Boot_Snapshot = null then 0
        else Firmware_Tables.Snapshots.Count (Boot_Snapshot.all));
 
+    function Describe_Snapshot_Table (Index : Natural)
+      return Firmware_Tables.Snapshots.Metadata_Result is
+    begin
+        if Boot_Snapshot = null then
+            return (Status => Firmware_Tables.Snapshots.Snapshot_Not_Ready);
+        end if;
+        return Firmware_Tables.Snapshots.Describe (Boot_Snapshot.all, Index);
+    end Describe_Snapshot_Table;
+
+    procedure Copy_Table_Part
+      (Index, Offset : Natural; Destination : out Firmware_Tables.Bytes;
+       Result : out Firmware_Tables.Snapshots.Transfers.Transfer_Result) is
+    begin
+        if Boot_Snapshot = null then
+            Destination := (others => 0);
+            Result := (Status => Firmware_Tables.Snapshots.Transfers.Source_Not_Ready,
+                       Copied => 0);
+            return;
+        end if;
+        Firmware_Tables.Snapshots.Transfers.Copy_Part
+          (Boot_Snapshot.all, Index, Offset, Destination, Result);
+    end Copy_Table_Part;
+
     function Table_Inventory_State return Firmware_Tables.Catalog.Phase is
       (Firmware_Tables.Catalog.Current (Source_Inventory));
     function Table_Count return Natural is

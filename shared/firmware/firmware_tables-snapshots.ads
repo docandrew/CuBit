@@ -25,6 +25,32 @@ package Firmware_Tables.Snapshots with SPARK_Mode, Pure is
    function Item (S : State; Index : Positive) return Catalog.Descriptor with
      Pre => Index <= Count (S),
      Post => Item'Result.Extent <= S.Table_Byte_Limit;
+   -- Public copy metadata deliberately contains no source address. IDs are
+   -- ordinals within this snapshot, never capabilities or process identities.
+   type Table_ID is new Positive;
+   type Public_Descriptor is record
+      ID : Table_ID;
+      Name : Signature;
+      Revision : Byte;
+      Extent : Catalog.Table_Length;
+   end record;
+   type Metadata_Status is (Snapshot_Not_Ready, Unknown_Table, Metadata_Available);
+   type Metadata_Result (Status : Metadata_Status := Snapshot_Not_Ready) is record
+      case Status is
+         when Metadata_Available => Info : Public_Descriptor;
+         when others => null;
+      end case;
+   end record;
+   function Describe (S : State; Index : Natural) return Metadata_Result with
+     Post =>
+       (if Current (S) /= Ready then Describe'Result.Status = Snapshot_Not_Ready
+        elsif Index not in 1 .. Count (S) then Describe'Result.Status = Unknown_Table
+        else Describe'Result.Status = Metadata_Available
+          and then Describe'Result.Info.ID = Table_ID (Index)
+          and then Describe'Result.Info.Name = Item (S, Index).Name
+          and then Describe'Result.Info.Name /= "FACS"
+          and then Describe'Result.Info.Revision = Item (S, Index).Revision
+          and then Describe'Result.Info.Extent = Item (S, Index).Extent);
    function Value (S : State; Index : Positive; Offset : Natural) return Byte with
      Pre => Index <= Count (S) and then Offset < Item (S, Index).Extent;
    procedure Begin_Snapshot (S : in out State; Tables : Natural) with
@@ -84,7 +110,8 @@ private
      and then State.Used <= State.Required
      and then State.Total <= State.Byte_Capacity
      and then (for all I in 1 .. State.Used =>
-       State.Tables (I).Description.Extent <= State.Table_Byte_Limit
+       State.Tables (I).Description.Name /= "FACS"
+       and then State.Tables (I).Description.Extent <= State.Table_Byte_Limit
        and then State.Tables (I).Offset <= State.Total
        and then State.Tables (I).Description.Extent <=
          State.Total - State.Tables (I).Offset)

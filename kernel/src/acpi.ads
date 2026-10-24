@@ -13,6 +13,7 @@ with System;
 with virtmem;
 with Firmware_Tables.Catalog;
 with Firmware_Tables.Snapshots;
+with Firmware_Tables.Snapshots.Transfers;
 with Firmware_Tables.Exposure;
 
 -- Firmware-table overlays are Ada; no blanket SPARK claim for this package.
@@ -799,6 +800,14 @@ package acpi is
     -- bytes are reread by Copy_Table. A failed snapshot publishes no prefix.
     function Table_Snapshot_State return Firmware_Tables.Snapshots.Phase;
     function Snapshot_Table_Count return Natural;
+    -- Detached metadata of the owned sealed snapshot, without source addresses.
+    function Describe_Snapshot_Table (Index : Natural)
+      return Firmware_Tables.Snapshots.Metadata_Result;
+    -- Bounded trusted-kernel copy. No userspace pointer, mapping or authority
+    -- is admitted here; a future syscall adapter must validate those separately.
+    procedure Copy_Table_Part
+      (Index, Offset : Natural; Destination : out Firmware_Tables.Bytes;
+       Result : out Firmware_Tables.Snapshots.Transfers.Transfer_Result);
     -- Trusted kernel caller supplies writable, disjoint owned storage. Padding
     -- and all failure outputs are zero. The caller owns snapshot lifetime.
     -- This is not a userspace pointer/syscall or reclamation authorization.

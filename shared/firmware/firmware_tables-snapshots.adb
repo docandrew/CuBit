@@ -9,6 +9,18 @@ package body Firmware_Tables.Snapshots with SPARK_Mode is
      (if S.Mode = Ready then S.Used else 0);
    function Item (S : State; Index : Positive) return Catalog.Descriptor is
      (S.Tables (Index).Description);
+   function Describe (S : State; Index : Natural) return Metadata_Result is
+   begin
+      if S.Mode /= Ready then return (Status => Snapshot_Not_Ready); end if;
+      if Index not in 1 .. S.Used then return (Status => Unknown_Table); end if;
+      declare
+         Description : constant Catalog.Descriptor := S.Tables (Index).Description;
+      begin
+         return (Status => Metadata_Available,
+           Info => (ID => Table_ID (Index), Name => Description.Name,
+             Revision => Description.Revision, Extent => Description.Extent));
+      end;
+   end Describe;
    function Value (S : State; Index : Positive; Offset : Natural) return Byte is
      (S.Data (S.Tables (Index).Offset + Offset + 1));
    procedure Begin_Snapshot (S : in out State; Tables : Natural) is
@@ -27,6 +39,7 @@ package body Firmware_Tables.Snapshots with SPARK_Mode is
       Success := False;
       if S.Mode /= Building then return; end if;
       if S.Used >= S.Required
+        or else Expected.Name = "FACS"
         or else Expected.Extent > S.Table_Byte_Limit
         or else Expected.Extent > S.Byte_Capacity - S.Total
         or else (S.Used = 0 and then Expected.Name /= "DSDT")
