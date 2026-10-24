@@ -90,7 +90,8 @@ def compile_plan(catalog, profile):
     if header[1] not in ("BOOTSTRAP_ONLY", "OPTICAL_IMAGE"):
         raise ValueError("unsupported layout")
     rows = [line.split("\t") for line in lines[1:]]
-    if not 1 <= len(rows) <= 64 or any(len(row) != 6 for row in rows):
+    # Sized by the profile: every driver is in every image (HW-002).
+    if not rows or any(len(row) != 6 for row in rows):
         raise ValueError("invalid placement list")
     return header, rows, [digest(data) for data in documents]
 

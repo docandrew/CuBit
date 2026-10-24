@@ -132,6 +132,17 @@ class Images(unittest.TestCase):
                     self.assertEqual((matches[0][0], matches[0][5]),
                                      ('OPTICAL', f'apps/{artifact}.app'))
 
+    def test_every_image_profile_plans(self):
+        # Every driver is in every image (HW-002), so placement counts grow
+        # with the driver set; the realizer must not cap them.
+        catalog = ROOT / "images/artifacts.ccl"
+        for profile in sorted((ROOT / "images").glob("*.ccl")):
+            if profile.name == "artifacts.ccl":
+                continue
+            with self.subTest(profile=profile.name):
+                _, rows, _ = realizer.compile_plan(catalog, profile)
+                self.assertTrue(rows)
+
     def test_mesa_device_profile_is_opt_in(self):
         catalog = ROOT / "images/artifacts.ccl"
         _, normal, _ = realizer.compile_plan(catalog, ROOT / "images/laptop-usb.ccl")
