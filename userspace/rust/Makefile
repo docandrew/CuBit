@@ -9,12 +9,20 @@ DENIED_LIB := build/cargo-denied/$(TARGET)/release/libcubit_rust_probe.a
 # exported by flake.nix; derived here for shells entered before it was).
 IBM_PLEX_SANS_SEMIBOLD_FONT ?= $(dir $(IBM_PLEX_SANS_FONT))IBMPlexSans-SemiBold.ttf
 export IBM_PLEX_SANS_SEMIBOLD_FONT
-CARGO := cargo --config 'source.crates-io.replace-with="cubit-vendor"' --config 'source.cubit-vendor.directory="$(CUBIT_RUST_VENDOR)"'
+# The checkout's absolute path is remapped to "." (as gnat-15.cgpr does for
+# Ada), so the archives built here are the same bytes in every checkout.
+REPO_ROOT := $(abspath ../..)
+CARGO := cargo --config 'source.crates-io.replace-with="cubit-vendor"' --config 'source.cubit-vendor.directory="$(CUBIT_RUST_VENDOR)"' \
+	--config 'target.x86_64-unknown-none.rustflags=["--remap-path-prefix=$(REPO_ROOT)=."]'
+# The native GNAT configuration (GNAT 15.3, kernel/Makefile exports it): the
+# allocator built here is the one user_runtime builds. Without it gprbuild
+# compiles with alr's default GNAT and mixes that object into the library.
+NATIVE_GPRBUILD_CONFIG := $(or $(CUBIT_NATIVE_GPRBUILD_CONFIG),$(shell $(MAKE) -s --no-print-directory -C ../../kernel print-native-gprbuild-config))
 
 .PHONY: all
 all:
 	mkdir -p build
-	cd ../../kernel && alr exec -- gprbuild -p -P ../userspace/allocator/allocator_native.gpr
+	cd ../../kernel && alr exec -- gprbuild $(NATIVE_GPRBUILD_CONFIG) -p -P ../userspace/allocator/allocator_native.gpr
 	mkdir -p build/denied
 	$(MANIFEST) $(CATALOG) probe/manifest.ccl --rust-output build/bindings.rs > build/manifest.S
 	$(MANIFEST) $(CATALOG) probe/denied.ccl --rust-output build/denied/bindings.rs > build/denied.S
@@ -43,7 +51,7 @@ fonts-host:
 	cp build/cargo/x86_64-unknown-linux-gnu/release/libcubit_fonts.a build/font-host/
 
 fonts-native:
-	cd ../../kernel && alr exec -- gprbuild -p -P ../userspace/allocator/allocator_native.gpr
+	cd ../../kernel && alr exec -- gprbuild $(NATIVE_GPRBUILD_CONFIG) -p -P ../userspace/allocator/allocator_native.gpr
 	$(CARGO) build --locked --offline --release -p cubit-fonts
 	mkdir -p build/font-native
 	printf '%s\n' 'CREATE build/font-native/libcubit_fonts.a' 'ADDLIB build/cargo/$(TARGET)/release/libcubit_fonts.a' 'ADDLIB ../allocator/build/native-lib/libcubit_allocator.a' 'SAVE' 'END' | ar -M

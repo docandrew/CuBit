@@ -9,8 +9,8 @@ build_dir="$service_dir/build"
 probe_dir="$repo_dir/tests/config-turso/native"
 mkdir -p "$build_dir"
 cd "$repo_dir/kernel"
-alr exec -- gprbuild -p -P ../userspace/allocator/allocator_native.gpr
-alr exec -- gprbuild -p -P ../userspace/runtime/user_runtime.gpr
+alr exec -- gprbuild $gprbuild_config -p -P ../userspace/allocator/allocator_native.gpr
+alr exec -- gprbuild $gprbuild_config -p -P ../userspace/runtime/user_runtime.gpr
 # The manifest first: the Ada host's generated Startup package (its typed
 # "config" entry and the startup check, CAP-003) comes with it.
 mkdir -p "$build_dir/generated"

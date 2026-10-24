@@ -934,11 +934,33 @@ switches are now composed in one order); their outputs did not, so every executa
 unchanged.
 
 One difference appeared first and is not the model's: the Rust font
-archive (`userspace/rust/build/font-native/libcubit_fonts.a`) embeds the
-checkout's absolute path (13 times), so the toolkit applications built in
-two checkouts differ. With the same archive they are identical. The Rust
-build needs `--remap-path-prefix` (or the archive becomes a ccl-build
-step) before toolkit programs can be shared between checkouts.
+archive (`userspace/rust/build/font-native/libcubit_fonts.a`) embedded the
+checkout's absolute path, so the toolkit applications built in two
+checkouts differed. With the same archive they were identical.
+
+### Checkout-independent fonts archive
+
+The archive embedded the path two ways, both fixed in
+`userspace/rust/Makefile`:
+
+- **rustc's panic and debug paths.** Cargo now passes
+  `--remap-path-prefix=<checkout>=.`, as `gnat-15.cgpr` maps the path to
+  `.` for Ada.
+- **The allocator objects it bundles.** Its rules ran gprbuild on
+  `allocator_native.gpr` without the native configuration, so gprbuild
+  used alr's default GNAT (16.1) and its own switches: `cualloc_native.o`
+  was recompiled by GNAT 16.1, without `-ffile-prefix-map`, and went into
+  the archive and so into every toolkit program. The rules (and
+  config-storage's `build.sh`, the other such call) now pass the native
+  configuration.
+
+`tests/reproducible-paths/check.sh` (after `make world`) fails when an
+archive or a component program embeds the checkout path, or when an archive
+holds Ada compiled by anything but GNAT 15.3. Built in two checkouts, every
+component program and the fonts archive are now byte-identical. The
+allocator library's members are identical too; the library itself differs
+only in the timestamp ranlib writes into its symbol index (`gnat-15.cgpr`
+indexes without `-D`), which no program links.
 
 ## Open questions for the user
 
