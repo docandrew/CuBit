@@ -115,3 +115,13 @@ Proofs: the front end against the fixtures and the runtime's own specs.
 ```sh
 make -C kernel test-block-requests prove-block-requests
 ```
+
+## scsi (HW-001)
+
+Typed SCSI command blocks and response decoders shared by USB optical and
+UFS: byte-exact CDB fixtures, status, INQUIRY, READ CAPACITY(10/16),
+fixed and descriptor sense. USB optical's BOT codec encodes through it.
+
+```sh
+make -C kernel test-scsi prove-scsi test-usb-optical prove-usb-optical
+```

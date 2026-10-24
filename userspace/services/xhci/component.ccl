@@ -1,4 +1,4 @@
 (Component name => "xhci" kind => Kind.Driver
   source => (Source.Ada (Ada_Source
-    sources => ["userspace/lib/input"]
+    sources => ["userspace/lib/input" "userspace/lib/scsi"]
     language => Ada_Language.Ada_2022)))

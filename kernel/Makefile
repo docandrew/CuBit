@@ -377,7 +377,7 @@ test-usb-optical:
 
 prove-usb-optical:
 	$(ALR) gnatprove -P../tests/usb-optical/usb_optical_tests.gpr \
-		-u usb_optical.adb usb_configurations.adb xhci_completions.adb iso_records.adb xhci_capabilities.adb xhci_dma_layout.adb xhci_ports.adb xhci_legacy.ads \
+		-u usb_optical.adb usb_configurations.adb xhci_completions.adb iso_records.adb xhci_capabilities.adb xhci_dma_layout.adb xhci_ports.adb xhci_legacy.ads scsi.adb \
 		--level=2 --report=all --checks-as-errors=on -j2
 	@cat ../tests/usb-optical/build/gnatprove/gnatprove.out
 
@@ -396,6 +396,17 @@ prove-block-requests:
 		--level=2 --report=all --checks-as-errors=on -j2
 	$(ALR) gnatprove -P../tests/block-requests/runtime_proof.gpr \
 		-u cubit-block_requests.adb --level=2 --report=all --checks-as-errors=on -j2
+
+# HW-001: typed SCSI command blocks and response decoders (shared by USB
+# optical and UFS).
+.PHONY: test-scsi prove-scsi
+test-scsi:
+	$(ALR) gprbuild -p -P../tests/scsi/scsi_tests.gpr
+	../tests/scsi/build/main
+
+prove-scsi:
+	$(ALR) gnatprove -P../tests/scsi/scsi_tests.gpr -u scsi.adb \
+		--level=2 --report=all --checks-as-errors=on -j2
 
 .PHONY : test-tcp-session prove-tcp-session
 test-network-authority:

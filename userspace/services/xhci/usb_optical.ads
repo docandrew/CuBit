@@ -1,9 +1,12 @@
 with Interfaces; use Interfaces;
+with SCSI;
 
---  Read-only SCSI/Bulk-Only Transport wire boundary. No raw CDB constructor
---  is exported: every command this package can produce is non-mutating.
---  Hardware, DMA lifetime, timeout/recovery and endpoint authority belong to
---  the transport adapter, not this pure codec.
+--  Read-only SCSI/Bulk-Only Transport wire boundary (USB Mass Storage BOT
+--  1.0). Command blocks and SCSI responses come from package SCSI; this
+--  package adds the BOT wrappers. No raw CDB constructor is exported: every
+--  command this package can produce is non-mutating. Hardware, DMA
+--  lifetime, timeout/recovery and endpoint authority belong to the
+--  transport adapter, not this pure codec.
 package USB_Optical with SPARK_Mode => On is
    type Bytes is array (Positive range <>) of Unsigned_8;
    subtype Logical_Unit is Unsigned_8 range 0 .. 15;
@@ -25,14 +28,24 @@ package USB_Optical with SPARK_Mode => On is
       Format : Sector_Format := Sector_2048) return Command
      with Pre => First_Block <= Unsigned_32'Last / Sectors_Per_Block (Format);
    function Transfer_Bytes (Item : Command) return Unsigned_32;
+
+   --  The only SCSI operations this package encodes: none writes.
+   subtype Non_Mutating is SCSI.Operation_Code
+     with Static_Predicate => Non_Mutating in
+       SCSI.Test_Unit_Ready | SCSI.Request_Sense | SCSI.Inquiry
+       | SCSI.Read_Capacity_10 | SCSI.Read_10;
+   function Operation (Item : Command) return Non_Mutating;
+
+   --  CBW byte 16: the first byte of the command block, its opcode.
+   CBW_Command_Block : constant := 16;
    function Read_Fits
      (First_Block : Unsigned_32; Count : Read_Block_Count;
       Media_Blocks : Unsigned_64) return Boolean;
    function Encode
      (Item : Command; Tag : Unsigned_32; LUN : Logical_Unit)
       return Command_Wrapper
-     with Post => Encode'Result (16) in
-       16#00# | 16#03# | 16#12# | 16#25# | 16#28#;
+     with Post => Encode'Result (CBW_Command_Block) =
+                    SCSI.Code (Operation (Item));
 
    type Status_Result is
      (Command_Passed, Command_Failed, Short_Data,
@@ -73,5 +86,11 @@ private
       First_Block : Unsigned_32 := 0;
       Count : Read_Block_Count := 1;
       Format : Sector_Format := Sector_2048;
-   end record;
+   end record
+     --  Read_Request's precondition, kept by every value: the native
+     --  sector address fits READ(10).
+     with Dynamic_Predicate =>
+       (if Command.Kind = Read_Blocks then
+          Command.First_Block <=
+            Unsigned_32'Last / Sectors_Per_Block (Command.Format));
 end USB_Optical;
