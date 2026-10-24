@@ -1,0 +1,13 @@
+# rtw89.drv: the RTL8852BE bring-up driver (docs/wifi.md). The Realtek
+# firmware is embedded unmodified (D6), with its licence in the bundle.
+(Component name => "rtw89" kind => Kind.Driver
+  source => (Source.Ada (Ada_Source
+    sources => ["userspace/services/rtw89/spark"]
+    language => Ada_Language.Ada_2022
+    optimization => Optimization.Maximum
+    checks => Checks.Suppressed))
+  embedded => [(Blob name => "rtw8852b-firmware"
+                 source => (vendored "firmware/rtw89/rtw8852b_fw-1.bin"
+                   (SHA256_Digest 0x5b68415e 0x3bfe7271 0x5d63a707 0x03d4471b
+                                  0x04b5475b 0x8ff69cfd 0xc8cdf482 0x33cd5d3a))
+                 licence => "firmware/LICENCE.rtlwifi_firmware.txt")])

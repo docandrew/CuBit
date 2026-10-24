@@ -29,6 +29,7 @@
   (file optical "intel-guc" "apps/firmware/intel/tgl_guc_70.bin")
   (file optical "intel-firmware-license" "licenses/Intel-GPU.txt")
   (file optical "hda" "apps/hda.drv")
+  (file optical "rtw89" "apps/rtw89.drv")
   (file optical "mixer" "apps/mixer.svc")
   (file optical "config" "apps/config.svc")
   (file optical "config-storage" "apps/config-storage.svc")

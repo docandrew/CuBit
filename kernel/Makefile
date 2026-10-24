@@ -1643,6 +1643,14 @@ hda: ccl-build user_runtime ccl-manifest
 	$(CCL_BUILD) ../userspace/services/hda/component.ccl
 	cp ../userspace/services/hda/build/hda.drv isodir/boot/hda.drv
 
+# Build the Realtek RTL8852BE Wi-Fi bring-up driver (docs/wifi.md). Its
+# firmware is embedded at build time from firmware/rtw89 (D6).
+.PHONY : rtw89
+rtw89: ccl-build user_runtime ccl-manifest
+	mkdir -p ../userspace/services/rtw89/build
+	$(CCL_BUILD) ../userspace/services/rtw89/component.ccl
+	cp ../userspace/services/rtw89/build/rtw89.drv isodir/boot/rtw89.drv
+
 # Build the userspace audio mixer service
 .PHONY : mixer
 mixer: ccl-build user_runtime ccl-manifest
@@ -1924,7 +1932,7 @@ servo: libc ccl-manifest
 # to the staging targets: copying an old service beside a newly rebuilt driver
 # can silently violate their capability/protocol contract.
 INITRD_SERVICES := filesystem ramdisk ata nvme netstack virtio-net virtio-gpu hda \
-	mixer ps2 xhci virtio-input intel-gpu ufs generic-check config netmgr procmgr devmgr
+	mixer ps2 xhci virtio-input intel-gpu ufs generic-check rtw89 config netmgr procmgr devmgr
 
 # Binaries used by the graphical desktop session. Keep this as a separate
 # staging target so run-desktop can build/copy them into isodir first, then
@@ -1971,7 +1979,7 @@ $(CAPABILITY_SECURITY_DISK): capability-test ../tests/headless/init-capability-s
 # all services have been staged so a parallel caller cannot capture a partial
 # archive.
 CAPABILITY_SECURITY_STAGE1 := filesystem ramdisk ata nvme netstack virtio-net \
-	virtio-gpu hda mixer ps2 xhci virtio-input intel-gpu ufs generic-check config netmgr procmgr devmgr
+	virtio-gpu hda mixer ps2 xhci virtio-input intel-gpu ufs generic-check rtw89 config netmgr procmgr devmgr
 
 .PHONY : capability-security-image
 capability-security-image: cubit_kernel $(CAPABILITY_SECURITY_STAGE1) $(CAPABILITY_SECURITY_DISK)
@@ -1991,7 +1999,7 @@ initrd: $(INITRD_SERVICES) ccl-image ../images/development-initrd.ccl $(CCL_IMAG
 # this separate from the normal two-stage image: the laptop must reach a
 # desktop and diagnostic UI before AHCI or any other block driver works.
 LAPTOP_LIVE_STAGE1 := filesystem ramdisk ata nvme netstack virtio-net virtio-gpu hda \
-	mixer ps2 xhci virtio-input intel-gpu ufs config netmgr procmgr devmgr
+	mixer ps2 xhci virtio-input intel-gpu ufs rtw89 config netmgr procmgr devmgr
 LAPTOP_LIVE_STAGE2 := logstore clock display desktop ccl-workbench ccl-console logs devices files config-inspector boot-logs \
 	storage-check doom sameboy
 LAPTOP_LIVE_RW_DISK := laptop_live_rw.img

@@ -11,6 +11,7 @@
   (artifact "virtio-net" repository "kernel/isodir/boot/virtio-net.drv")
   (artifact "virtio-gpu" repository "kernel/isodir/boot/virtio-gpu.drv")
   (artifact "hda" repository "kernel/isodir/boot/hda.drv")
+  (artifact "rtw89" repository "kernel/isodir/boot/rtw89.drv")
   (artifact "mixer" repository "kernel/isodir/boot/mixer.svc")
   (artifact "ps2" repository "kernel/isodir/boot/ps2.drv")
   (artifact "xhci" repository "kernel/isodir/boot/xhci.drv")

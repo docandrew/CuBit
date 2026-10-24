@@ -15,6 +15,7 @@
   (file bootstrap "virtio-net" "virtio-net.drv")
   (file bootstrap "virtio-gpu" "virtio-gpu.drv")
   (file bootstrap "hda" "hda.drv")
+  (file bootstrap "rtw89" "rtw89.drv")
   (file bootstrap "mixer" "mixer.svc")
   (file bootstrap "ps2" "ps2.drv")
   (file bootstrap "xhci" "xhci.drv")

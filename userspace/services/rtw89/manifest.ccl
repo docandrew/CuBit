@@ -1,0 +1,19 @@
+# rtw89.drv's authority (docs/wifi.md, docs/device-matching.md "Generic
+# PCI launch"). devmgr binds it to a present Realtek RTL8852BE and answers
+# every request: BAR2 (the MAC register window), one MSI vector, the DMA
+# region the driver carves into rings and buffers, devmgr's endpoint for the
+# readiness report, and a logstore publisher. The Realtek firmware is not requested here: it is
+# embedded in the driver at build time (component.ccl, docs/wifi.md).
+(Executable_Manifest
+  identity => "com.cubit.driver.rtw89"
+  version => "0.1.0"
+  drives => [(Device_Match.PCI_IDs (PCI_IDs 0x10ec 0xb852 0xb852))]
+  requests => [
+    (device-memory "registers" 2 65536 Access.Read_Write)
+    # Bring-up polls; the data path will use this vector.
+    (interrupt "device" Interrupt_Mode.MSI 1)
+    (dma "rings" 1048576)
+    (service "device-manager" "device-manager")
+    # Stage lines reach the boot-logs view through logstore.
+    (service "logstore" "logstore")]
+  optional => ["device" "logstore"])
