@@ -1,0 +1,19 @@
+# Named code profiles and the libraries components use (docs/ccl-build.md):
+# one Build_Catalog value, read with build-params.ccl.
+(Build_Catalog
+  profiles => [
+    # Units whose absence of run-time errors is proved: checks off, -O3.
+    (Code_Profile "proved" (Ada_Code language => Ada_Language.Ada_2022
+       optimization => Optimization.Maximum checks => Checks.Suppressed
+       value_range_propagation => false))
+    # The UI toolkit's pixel loops: -O3 with checks on.
+    (Code_Profile "pixel-loop" (Ada_Code language => Ada_Language.Ada_2022
+       optimization => Optimization.Maximum value_range_propagation => false))]
+  libraries => [
+    # The UI toolkit, compiled into each application that uses it, with
+    # the font library built by userspace/rust (make ui-fonts-native).
+    (Library name => "ui-toolkit"
+      sources => ["userspace/lib/ui" "userspace/lib/theme" "userspace/lib/compositor"
+                  "userspace/lib/display" "userspace/allocator/src"]
+      units => [(Unit_Code ["client_raster.adb" "client_glyph_blend.adb"] "pixel-loop")]
+      archives => ["userspace/rust/build/font-native/libcubit_fonts.a"])])

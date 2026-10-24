@@ -1,0 +1,5 @@
+(Component name => "metrics-check" kind => Kind.Application
+  source => (Source.Ada (Ada_Source
+    sources => ["userspace/lib/compositor"]
+    language => Ada_Language.Ada_2022
+    debug_info => false)))

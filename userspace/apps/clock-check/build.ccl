@@ -1,4 +1,0 @@
-# clock_check.gpr translated by tools/gpr_to_ccl.py (docs/ccl-build.md).
-(Component.Ada_Program (Ada_Program
-  executable => "clock-check.app"
-  directory => "userspace/apps/clock-check"))

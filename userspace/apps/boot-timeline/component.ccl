@@ -1,0 +1,3 @@
+(Component name => "boot-timeline" kind => Kind.Application
+  source => (Source.Ada (Ada_Source
+    sources => ["userspace/lib/display" "shared/boot"])))

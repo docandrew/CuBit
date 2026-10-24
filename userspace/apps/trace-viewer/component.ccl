@@ -1,0 +1,6 @@
+(Component name => "trace-viewer" kind => Kind.Application
+  source => (Source.Ada (Ada_Source
+    sources => ["userspace/lib/observatory" "userspace/ccl/src" "userspace/lib/config"]
+    libraries => ["ui-toolkit"]
+    language => Ada_Language.Ada_2022
+    debug_info => false)))

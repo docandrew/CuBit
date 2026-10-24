@@ -1,0 +1,2 @@
+# The old file name is refused.
+(Component name => "neg" kind => Kind.Application source => (Source.Ada (Ada_Source)))

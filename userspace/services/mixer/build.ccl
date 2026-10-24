@@ -1,5 +1,0 @@
-# mixer.gpr translated by tools/gpr_to_ccl.py (docs/ccl-build.md).
-(Component.Ada_Program (Ada_Program
-  executable => "mixer.svc"
-  directory => "userspace/services/mixer"
-  catalog => Catalog.Driver))

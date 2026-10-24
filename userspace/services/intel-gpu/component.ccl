@@ -1,0 +1,6 @@
+(Component name => "intel-gpu" kind => Kind.Driver
+  source => (Source.Ada (Ada_Source
+    sources => ["userspace/mesa/anv" "userspace/lib/display"]
+    language => Ada_Language.Ada_2022
+    frame_pointer => Frame_Pointer.Kept
+    debug_info => false)))

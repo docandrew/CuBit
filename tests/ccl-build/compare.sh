@@ -22,7 +22,7 @@ for program in "$@"; do
     out=$scratch/$(basename "$program")
     if ! "$tool" build --store "$CCL_BUILD_STORE" --source-root "$repo" \
          --import "gnat-15.3.0-x86_64-linux-musl=$CUBIT_GNAT" --import "binutils-2.46=$CUBIT_BINUTILS" \
-         --out "$out" "$repo/$program/build.ccl" >"$out.log" 2>&1; then
+         --out "$out" "$repo/$program/component.ccl" >"$out.log" 2>&1; then
         echo "FAIL  $program: ccl-build failed"; tail -5 "$out.log"; different=$((different + 1)); continue
     fi
     result=SAME

@@ -1,0 +1,2 @@
+(Component name => "ata" kind => Kind.Driver
+  source => (Source.Ada (Ada_Source)))

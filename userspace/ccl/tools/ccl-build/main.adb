@@ -16,8 +16,9 @@ with Storehouse.Hex;
 --  ccl-build, hosted on Linux (docs/ccl-build.md):
 --
 --    ccl-build build --store DIR --source-root DIR [--import NAME=PATH]...
---                    [--out DIR] COMPONENT.ccl     (reads build-params.ccl)
---    ccl-build check --source-root DIR COMPONENT.ccl...   (type-check only)
+--                    [--out DIR] DIR/component.ccl
+--                    (with build-params.ccl and build-catalog.ccl)
+--    ccl-build check --source-root DIR DIR/component.ccl...   (type-check only)
 --    ccl-build verify --store DIR
 --    ccl-build import --store DIR TREE   (copy a tree in, print its identity)
 --    ccl-build hash-tree DIR
@@ -31,7 +32,7 @@ procedure Main is
    --  The build schema's and the build parameters' places in the tree.
    Schema_Path : constant String := "userspace/ccl/interfaces/build.ccl";
    Parameters_Path : constant String := "build-params.ccl";
-   Libraries_Path : constant String := "build-libraries.ccl";
+   Catalog_Path : constant String := "build-catalog.ccl";
    Root_Tag : constant String := "cubit.root";
    Root_Version : constant := 1;
    Root_Fields : constant := 3;
@@ -126,6 +127,22 @@ procedure Main is
       return Identity;
    end Toolchain;
 
+   --  A component's directory relative to the source tree's root: the
+   --  directory of its component.ccl, which must lie in the tree.
+   function Component_Directory (Source_Root, File : String) return String is
+      Root : constant String := Ada.Directories.Full_Name (Source_Root) & "/";
+      Full : constant String := Ada.Directories.Full_Name (File);
+   begin
+      if Ada.Directories.Simple_Name (Full) /= Build_Declarations.Component_File then
+         raise Build_Declarations.Declaration_Error with
+           "a component is declared in a file named " & Build_Declarations.Component_File;
+      end if;
+      if Full'Length <= Root'Length or else Full (Full'First .. Full'First + Root'Length - 1) /= Root then
+         raise Build_Declarations.Declaration_Error with "the component is not in the source tree " & Source_Root;
+      end if;
+      return Ada.Directories.Containing_Directory (Full (Full'First + Root'Length .. Full'Last));
+   end Component_Directory;
+
    procedure Export (Store : Build_Store.Store; Directory : String; Products : Build_Ada_Programs.Report) is
    begin
       for P of Products.Products loop
@@ -164,12 +181,15 @@ procedure Main is
       Source_Root : constant String := Required ("--source-root");
       Schema : constant String := Read_File (Source_Root / Schema_Path);
       Profile : Build_Declarations.Parameters;
+      Known : Build_Declarations.Build_Catalog;
       Program : Build_Declarations.Ada_Program;
       Result : Build_Ada_Programs.Report;
    begin
       Build_Declarations.Read_Parameters (Read_File (Source_Root / Parameters_Path), Schema, Profile);
-      Build_Declarations.Read_Libraries (Read_File (Source_Root / Libraries_Path), Schema, Profile);
-      Build_Declarations.Read_Program (Read_File (Argument (Argument_Count)), Schema, Profile, Program);
+      Build_Declarations.Read_Catalog (Read_File (Source_Root / Catalog_Path), Schema, Known);
+      Build_Declarations.Read_Component
+        (Read_File (Argument (Argument_Count)), Schema,
+         Component_Directory (Source_Root, Argument (Argument_Count)), Profile, Known, Program);
       Build_Ada_Programs.Build
         (Store, Source_Root, Profile, Program,
          Toolchain (Store, Profile.Compiler_Tools), Toolchain (Store, Profile.Binutils), Result);
@@ -190,17 +210,20 @@ procedure Main is
       Source_Root : constant String := Required ("--source-root");
       Schema : constant String := Read_File (Source_Root / Schema_Path);
       Profile : Build_Declarations.Parameters;
+      Known : Build_Declarations.Build_Catalog;
       Program : Build_Declarations.Ada_Program;
       Last : Positive := Argument_Count;
    begin
       Build_Declarations.Read_Parameters (Read_File (Source_Root / Parameters_Path), Schema, Profile);
-      Build_Declarations.Read_Libraries (Read_File (Source_Root / Libraries_Path), Schema, Profile);
+      Build_Declarations.Read_Catalog (Read_File (Source_Root / Catalog_Path), Schema, Known);
       while Last > 1 and then Argument (Last - 1) /= "--source-root" loop
          Last := Last - 1;
       end loop;
       for I in Last + 1 .. Argument_Count loop
          begin
-            Build_Declarations.Read_Program (Read_File (Argument (I)), Schema, Profile, Program);
+            Build_Declarations.Read_Component
+              (Read_File (Argument (I)), Schema, Component_Directory (Source_Root, Argument (I)),
+               Profile, Known, Program);
             Put_Line ("checked " & Argument (I) & ": " & To_String (Program.Executable));
          exception
             when E : Build_Declarations.Declaration_Error =>
@@ -258,8 +281,8 @@ exception
    when E : Usage_Error =>
       Put_Line (Standard_Error, "ccl-build: " & Ada.Exceptions.Exception_Message (E));
       Put_Line (Standard_Error,
-        "usage: ccl-build build --store DIR --source-root DIR [--import NAME=PATH] [--out DIR] COMPONENT.ccl" &
-        ASCII.LF & "       ccl-build check --source-root DIR COMPONENT.ccl..." &
+        "usage: ccl-build build --store DIR --source-root DIR [--import NAME=PATH] [--out DIR] DIR/component.ccl" &
+        ASCII.LF & "       ccl-build check --source-root DIR DIR/component.ccl..." &
         ASCII.LF & "       ccl-build verify --store DIR" & ASCII.LF & "       ccl-build import --store DIR TREE" &
         ASCII.LF & "       ccl-build hash-tree DIR");
       Set_Exit_Status (Failure);

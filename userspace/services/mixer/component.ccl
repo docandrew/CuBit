@@ -1,0 +1,2 @@
+(Component name => "mixer" kind => (Kind.Service Launcher.Device_Manager)
+  source => (Source.Ada (Ada_Source)))

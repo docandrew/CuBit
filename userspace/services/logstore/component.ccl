@@ -1,0 +1,2 @@
+(Component name => "logstore" kind => (Kind.Service Launcher.Process_Manager)
+  source => (Source.Ada (Ada_Source)))

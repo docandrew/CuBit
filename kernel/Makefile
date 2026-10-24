@@ -410,7 +410,7 @@ prove-timesync:
 .PHONY: network-check test-network-authority prove-network-authority
 network-check: ccl-build user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/network-check/build
-	$(CCL_BUILD) ../userspace/apps/network-check/build.ccl
+	$(CCL_BUILD) ../userspace/apps/network-check/component.ccl
 	cp ../userspace/apps/network-check/build/network-check.app isodir/boot/network-check.app
 
 test-tcp-session:
@@ -510,7 +510,7 @@ sameboy: libc ccl-manifest
 .PHONY : sleep
 sleep: ccl-build user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/sleep/build
-	$(CCL_BUILD) ../userspace/apps/sleep/build.ccl
+	$(CCL_BUILD) ../userspace/apps/sleep/component.ccl
 	cp ../userspace/apps/sleep/build/sleep.app isodir/boot/sleep.app
 
 .PHONY : capability-test
@@ -518,7 +518,7 @@ capability-test: ccl-build user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/capability-test/build
 	yasm -f elf64 ../userspace/apps/capability-test/syscall_registers.asm \
 		-o ../userspace/apps/capability-test/build/syscall_registers.o
-	$(CCL_BUILD) ../userspace/apps/capability-test/build.ccl
+	$(CCL_BUILD) ../userspace/apps/capability-test/component.ccl
 	cp ../userspace/apps/capability-test/build/capability-test.app isodir/boot/capability-test.app
 	$(ALR) python3 ../tests/process-construction/make-fixtures.py \
 		isodir/boot/capability-test.app ../tests/process-construction/build
@@ -574,7 +574,7 @@ prove-appearance:
 # tests and the level-2 proof of the store, gestures, wire codec and menu.
 clipboard-check: ccl-build user_runtime ccl-manifest ui-fonts-native
 	mkdir -p ../userspace/apps/clipboard-check/build
-	$(CCL_BUILD) ../userspace/apps/clipboard-check/build.ccl
+	$(CCL_BUILD) ../userspace/apps/clipboard-check/component.ccl
 	cp ../userspace/apps/clipboard-check/build/clipboard-check.app isodir/boot/clipboard-check.app
 
 test-clipboard:
@@ -586,7 +586,7 @@ prove-clipboard:
 .PHONY : desktop-check prepare-desktop-protocol test-desktop-protocol prove-desktop-protocol
 desktop-check: ccl-build user_runtime ccl-manifest ui-fonts-native
 	mkdir -p ../userspace/apps/desktop-check/build
-	$(CCL_BUILD) ../userspace/apps/desktop-check/build.ccl
+	$(CCL_BUILD) ../userspace/apps/desktop-check/component.ccl
 	cp ../userspace/apps/desktop-check/build/desktop-check.app isodir/boot/desktop-check.app
 
 .PHONY: display-check
@@ -649,7 +649,7 @@ prove-ipc-request-ids: prepare-ipc-request-ids
 .PHONY : input-stress
 input-stress: ccl-build user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/input-stress/build
-	$(CCL_BUILD) ../userspace/apps/input-stress/build.ccl
+	$(CCL_BUILD) ../userspace/apps/input-stress/component.ccl
 	cp ../userspace/apps/input-stress/build/input-stress.app isodir/boot/input-stress.app
 
 .PHONY: grant-forward
@@ -669,7 +669,7 @@ grant-forward: user_runtime ccl-manifest
 .PHONY : ipctest-server
 ipctest-server: ccl-build user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/ipctest-server/build
-	$(CCL_BUILD) ../userspace/apps/ipctest-server/build.ccl
+	$(CCL_BUILD) ../userspace/apps/ipctest-server/component.ccl
 	cp ../userspace/apps/ipctest-server/build/ipctest-server.app isodir/boot/ipctest-server.app
 
 .PHONY : ipctest-client
@@ -684,7 +684,7 @@ ipctest-client: user_runtime ccl-manifest
 .PHONY : bench-storage
 bench-storage: ccl-build user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/bench-storage/build
-	$(CCL_BUILD) ../userspace/apps/bench-storage/build.ccl
+	$(CCL_BUILD) ../userspace/apps/bench-storage/component.ccl
 	cp ../userspace/apps/bench-storage/build/bench-storage.app isodir/boot/bench-storage.app
 
 bench-load: user_runtime ccl-manifest
@@ -698,25 +698,25 @@ bench-load: user_runtime ccl-manifest
 .PHONY : bench-audio
 bench-audio: ccl-build user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/bench-audio/build
-	$(CCL_BUILD) ../userspace/apps/bench-audio/build.ccl
+	$(CCL_BUILD) ../userspace/apps/bench-audio/component.ccl
 	cp ../userspace/apps/bench-audio/build/bench-audio.app isodir/boot/bench-audio.app
 
 .PHONY : bench-input
 bench-input: ccl-build user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/bench-input/build
-	$(CCL_BUILD) ../userspace/apps/bench-input/build.ccl
+	$(CCL_BUILD) ../userspace/apps/bench-input/component.ccl
 	cp ../userspace/apps/bench-input/build/bench-input.app isodir/boot/bench-input.app
 
 .PHONY : bench-ipc-server
 bench-ipc-server: ccl-build user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/bench-ipc-server/build
-	$(CCL_BUILD) ../userspace/apps/bench-ipc-server/build.ccl
+	$(CCL_BUILD) ../userspace/apps/bench-ipc-server/component.ccl
 	cp ../userspace/apps/bench-ipc-server/build/bench-ipc-server.app isodir/boot/bench-ipc-server.app
 
 .PHONY : bench-ipc-client
 bench-ipc-client: ccl-build user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/bench-ipc-client/build
-	$(CCL_BUILD) ../userspace/apps/bench-ipc-client/build.ccl
+	$(CCL_BUILD) ../userspace/apps/bench-ipc-client/component.ccl
 	cp ../userspace/apps/bench-ipc-client/build/bench-ipc-client.app isodir/boot/bench-ipc-client.app
 
 # Build the freestanding CuBit Control Language VM self-test app.
@@ -1042,8 +1042,8 @@ export CUBIT_NATIVE_GPRBUILD_CONFIG := --config=$(abspath ../userspace/toolchain
 	-XCUBIT_GPRBIND=$(GPRBUILD_LIBEXEC)/gprbind -XCUBIT_GPRLIB=$(GPRBUILD_LIBEXEC)/gprlib \
 	-XCUBIT_RUNTIME=$(abspath ../userspace/runtime) -XCUBIT_SOURCE_ROOT=$(abspath ..)
 NATIVE_GPRBUILD = $(ALR) gprbuild $(CUBIT_NATIVE_GPRBUILD_CONFIG)
-# CCL build (docs/ccl-build.md) builds the migrated programs: their build.ccl
-# with build-params.ccl, outputs copied back to where make put them. The
+# CCL build (docs/ccl-build.md) builds the migrated programs: their
+# component.ccl with build-params.ccl and build-catalog.ccl, outputs copied back to where make put them. The
 # Storehouse is shared by every checkout; the toolchain names are
 # build-params.ccl's pins.
 CCL_BUILD_TOOL := ../userspace/ccl/build/ccl-build/ccl-build
@@ -1132,14 +1132,14 @@ ccl-console: user_runtime ccl-manifest ui-fonts-native
 .PHONY : ccl-test-host
 ccl-test-host: ccl-build user_runtime ccl-manifest
 	mkdir -p ../userspace/ccl/services/test-host/build
-	$(CCL_BUILD) ../userspace/ccl/services/test-host/build.ccl
+	$(CCL_BUILD) ../userspace/ccl/services/test-host/component.ccl
 	cp ../userspace/ccl/services/test-host/build/ccl-test-host.svc isodir/boot/ccl-test-host.svc
 
 # SNTP time synchronization service.
 .PHONY : timesync timesync-test
 timesync: ccl-build user_runtime ccl-manifest
 	mkdir -p ../userspace/services/timesync/build
-	$(CCL_BUILD) ../userspace/services/timesync/build.ccl
+	$(CCL_BUILD) ../userspace/services/timesync/component.ccl
 	cp ../userspace/services/timesync/build/timesync.svc isodir/boot/timesync.svc
 
 # Headless-test variant: the same executable with only .cubit.caps replaced by
@@ -1176,7 +1176,7 @@ timesync-test: timesync
 .PHONY : timesync-check
 timesync-check: ccl-build user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/timesync-check/build
-	$(CCL_BUILD) ../userspace/apps/timesync-check/build.ccl
+	$(CCL_BUILD) ../userspace/apps/timesync-check/component.ccl
 	cp ../userspace/apps/timesync-check/build/timesync-check.app isodir/boot/timesync-check.app
 
 # SPARKTLS and its dependencies are pinned flake inputs; nix develop exports
@@ -1215,7 +1215,7 @@ tls-test-pki:
 .PHONY : bench-spread
 bench-spread: ccl-build user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/bench-spread/build
-	$(CCL_BUILD) ../userspace/apps/bench-spread/build.ccl
+	$(CCL_BUILD) ../userspace/apps/bench-spread/component.ccl
 	cp ../userspace/apps/bench-spread/build/bench-spread.app isodir/boot/bench-spread.app
 
 # CuBit Teapots (userspace/apps/teapots): the Vulkan teapot gallery on a GPU
@@ -1256,7 +1256,7 @@ rust-std-hello: ccl-manifest
 .PHONY : avx-check
 avx-check: ccl-build user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/avx-check/build
-	$(CCL_BUILD) ../userspace/apps/avx-check/build.ccl
+	$(CCL_BUILD) ../userspace/apps/avx-check/component.ccl
 	cp ../userspace/apps/avx-check/build/avx-check.app isodir/boot/avx-check.app
 
 # CAP-001 diagnostics check: device memory without authority is refused
@@ -1264,7 +1264,7 @@ avx-check: ccl-build user_runtime ccl-manifest
 .PHONY : devmem-check
 devmem-check: ccl-build user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/devmem-check/build
-	$(CCL_BUILD) ../userspace/apps/devmem-check/build.ccl
+	$(CCL_BUILD) ../userspace/apps/devmem-check/component.ccl
 	cp ../userspace/apps/devmem-check/build/devmem-check.app isodir/boot/devmem-check.app
 
 # Process-kill diagnostics check: faults on purpose (tests/headless:
@@ -1272,40 +1272,40 @@ devmem-check: ccl-build user_runtime ccl-manifest
 .PHONY : stall-check
 stall-check: ccl-build user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/stall-check/build
-	$(CCL_BUILD) ../userspace/apps/stall-check/build.ccl
+	$(CCL_BUILD) ../userspace/apps/stall-check/component.ccl
 	cp ../userspace/apps/stall-check/build/stall-check.app isodir/boot/stall-check.app
 
 .PHONY : fault-check
 fault-check: ccl-build user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/fault-check/build
-	$(CCL_BUILD) ../userspace/apps/fault-check/build.ccl
+	$(CCL_BUILD) ../userspace/apps/fault-check/component.ccl
 	cp ../userspace/apps/fault-check/build/fault-check.app isodir/boot/fault-check.app
 
 # Out-of-memory reclaim check (headless oom-reclaim): teardown allocates nothing.
 .PHONY : oom-check
 oom-check: ccl-build user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/oom-check/build
-	$(CCL_BUILD) ../userspace/apps/oom-check/build.ccl
+	$(CCL_BUILD) ../userspace/apps/oom-check/component.ccl
 	cp ../userspace/apps/oom-check/build/oom-check.app isodir/boot/oom-check.app
 
 .PHONY : futex-check
 futex-check: ccl-build user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/futex-check/build
-	$(CCL_BUILD) ../userspace/apps/futex-check/build.ccl
+	$(CCL_BUILD) ../userspace/apps/futex-check/component.ccl
 	cp ../userspace/apps/futex-check/build/futex-check.app isodir/boot/futex-check.app
 
 # Clock publication checks (docs/fast-clock.md): headless --test clock.
 .PHONY : clock-check
 clock-check: ccl-build user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/clock-check/build
-	$(CCL_BUILD) ../userspace/apps/clock-check/build.ccl
+	$(CCL_BUILD) ../userspace/apps/clock-check/component.ccl
 	cp ../userspace/apps/clock-check/build/clock-check.app isodir/boot/clock-check.app
 
 # Boot timeline reader (BOOT-001, docs/boot-timeline.md)
 .PHONY : boot-timeline
 boot-timeline: ccl-build user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/boot-timeline/build
-	$(CCL_BUILD) ../userspace/apps/boot-timeline/build.ccl
+	$(CCL_BUILD) ../userspace/apps/boot-timeline/component.ccl
 	cp ../userspace/apps/boot-timeline/build/boot-timeline.app isodir/boot/boot-timeline.app
 
 # Boot timeline bookkeeping proof (kernel/src/boot_timeline_records.ad?) and
@@ -1317,13 +1317,13 @@ prove-boot-timeline:
 .PHONY : thread-check
 thread-check: ccl-build user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/thread-check/build
-	$(CCL_BUILD) ../userspace/apps/thread-check/build.ccl
+	$(CCL_BUILD) ../userspace/apps/thread-check/component.ccl
 	cp ../userspace/apps/thread-check/build/thread-check.app isodir/boot/thread-check.app
 
 .PHONY : tls-check
 tls-check: ccl-build user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/tls-check/build
-	$(CCL_BUILD) ../userspace/apps/tls-check/build.ccl
+	$(CCL_BUILD) ../userspace/apps/tls-check/component.ccl
 	cp ../userspace/apps/tls-check/build/tls-check.app isodir/boot/tls-check.app
 
 # TLS client service.
@@ -1390,14 +1390,14 @@ ramdisk: user_runtime ccl-manifest
 .PHONY : filesystem
 filesystem: ccl-build user_runtime ccl-manifest
 	mkdir -p ../userspace/services/filesystem/build
-	$(CCL_BUILD) ../userspace/services/filesystem/build.ccl
+	$(CCL_BUILD) ../userspace/services/filesystem/component.ccl
 	cp ../userspace/services/filesystem/build/filesystem.svc isodir/boot/filesystem.svc
 
 # Build the userspace ATA driver
 .PHONY : ata
 ata: ccl-build user_runtime ccl-manifest
 	mkdir -p ../userspace/services/ata/build
-	$(CCL_BUILD) ../userspace/services/ata/build.ccl
+	$(CCL_BUILD) ../userspace/services/ata/component.ccl
 	cp ../userspace/services/ata/build/ata.drv isodir/boot/ata.drv
 
 # Build the userspace NVMe driver
@@ -1412,7 +1412,7 @@ nvme: user_runtime ccl-manifest
 .PHONY : virtio-net
 virtio-net: ccl-build user_runtime ccl-manifest
 	mkdir -p ../userspace/services/virtio-net/build
-	$(CCL_BUILD) ../userspace/services/virtio-net/build.ccl
+	$(CCL_BUILD) ../userspace/services/virtio-net/component.ccl
 	cp ../userspace/services/virtio-net/build/virtio-net.drv isodir/boot/virtio-net.drv
 
 # Build the userspace virtio-gpu driver
@@ -1437,7 +1437,7 @@ netstack: user_runtime ccl-manifest
 .PHONY : wget
 wget: ccl-build user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/wget/build
-	$(CCL_BUILD) ../userspace/apps/wget/build.ccl
+	$(CCL_BUILD) ../userspace/apps/wget/component.ccl
 	cp ../userspace/apps/wget/build/wget.app isodir/boot/wget.app
 
 # Build the unified hardware inventory and diagnostics app
@@ -1446,17 +1446,17 @@ wget: ccl-build user_runtime ccl-manifest
 .PHONY: intel-gpu
 intel-gpu: ccl-build user_runtime ccl-manifest intel-buffer-layout-check
 	mkdir -p ../userspace/services/intel-gpu/build
-	$(CCL_BUILD) ../userspace/services/intel-gpu/build.ccl
+	$(CCL_BUILD) ../userspace/services/intel-gpu/component.ccl
 	cp ../userspace/services/intel-gpu/build/intel-gpu.drv isodir/boot/intel-gpu.drv
 
 config-inspector: ccl-build user_runtime ccl-manifest ui-fonts-native
 	mkdir -p ../userspace/apps/config-inspector/build
-	$(CCL_BUILD) ../userspace/apps/config-inspector/build.ccl
+	$(CCL_BUILD) ../userspace/apps/config-inspector/component.ccl
 	cp ../userspace/apps/config-inspector/build/config-inspector.app isodir/boot/config-inspector.app
 
 devices: ccl-build user_runtime ccl-manifest ui-fonts-native
 	mkdir -p ../userspace/apps/devices/build
-	$(CCL_BUILD) ../userspace/apps/devices/build.ccl
+	$(CCL_BUILD) ../userspace/apps/devices/component.ccl
 	cp ../userspace/apps/devices/build/devices.app isodir/boot/devices.app
 
 .PHONY: render-launch-policy
@@ -1498,21 +1498,21 @@ gpu-viewer-test: user_runtime ccl-manifest
 .PHONY: gpu-viewer
 gpu-viewer: ccl-build user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/gpu-viewer/build
-	$(CCL_BUILD) ../userspace/apps/gpu-viewer/build.ccl
+	$(CCL_BUILD) ../userspace/apps/gpu-viewer/component.ccl
 	cp ../userspace/apps/gpu-viewer/build/gpu-viewer.app isodir/boot/gpu-viewer.app
 
 .PHONY : logs
 # The Logs app (docs/logs-app.md): every service's records, live.
 logs: ccl-build user_runtime ccl-manifest ui-fonts-native
 	mkdir -p ../userspace/apps/logs/build
-	$(CCL_BUILD) ../userspace/apps/logs/build.ccl
+	$(CCL_BUILD) ../userspace/apps/logs/component.ccl
 	cp ../userspace/apps/logs/build/logs.app isodir/boot/logs.app
 
 .PHONY : trace-viewer
 # Read-only checked desktop trace archive viewer.
 trace-viewer: ccl-build user_runtime ccl-manifest ui-fonts-native
 	mkdir -p ../userspace/apps/trace-viewer/build
-	$(CCL_BUILD) ../userspace/apps/trace-viewer/build.ccl
+	$(CCL_BUILD) ../userspace/apps/trace-viewer/component.ccl
 	cp ../userspace/apps/trace-viewer/build/trace-viewer.app isodir/boot/trace-viewer.app
 
 isodir/boot/trace-viewer.app: trace-viewer
@@ -1521,30 +1521,28 @@ isodir/boot/trace-viewer.app: trace-viewer
 .PHONY : boot-logs
 boot-logs: ccl-build user_runtime ccl-manifest ui-fonts-native
 	mkdir -p ../userspace/apps/boot-logs/build
-	$(CCL_BUILD) ../userspace/apps/boot-logs/build.ccl
+	$(CCL_BUILD) ../userspace/apps/boot-logs/component.ccl
 	cp ../userspace/apps/boot-logs/build/boot-logs.app isodir/boot/boot-logs.app
 
 files: ccl-build user_runtime ccl-manifest ui-fonts-native
 	mkdir -p ../userspace/apps/files/build
-	$(CCL_BUILD) ../userspace/apps/files/build.ccl
+	$(CCL_BUILD) ../userspace/apps/files/component.ccl
 	cp ../userspace/apps/files/build/files.app isodir/boot/files.app
 
 # The text editor (docs/text-editor.md): the editor core in userspace/lib/text.
 .PHONY : text
-text: user_runtime ccl-manifest ui-fonts-native
+text: ccl-build user_runtime ccl-manifest ui-fonts-native
 	mkdir -p ../userspace/apps/text/build
-	$(call compile_ccl_manifest,../userspace/apps/text)
-	$(NATIVE_GPRBUILD) -P ../userspace/apps/text/text.gpr
+	$(CCL_BUILD) ../userspace/apps/text/component.ccl
 	cp ../userspace/apps/text/build/text.app isodir/boot/text.app
 
 # The calculator (docs/calculator.md): the calculator core in userspace/lib/calc.
 .PHONY : calculator
 # On gprbuild until CCL capacity M1: its declaration exceeds the program
 # size cap (docs/ccl-build.md), like text's.
-calculator: user_runtime ccl-manifest ui-fonts-native
+calculator: ccl-build user_runtime ccl-manifest ui-fonts-native
 	mkdir -p ../userspace/apps/calculator/build
-	$(call compile_ccl_manifest,../userspace/apps/calculator)
-	$(NATIVE_GPRBUILD) -P ../userspace/apps/calculator/calculator.gpr
+	$(CCL_BUILD) ../userspace/apps/calculator/component.ccl
 	cp ../userspace/apps/calculator/build/calculator.app isodir/boot/calculator.app
 
 # The dictionary, thesaurus and spelling service (docs/lexicon.md): it reads
@@ -1553,7 +1551,7 @@ calculator: user_runtime ccl-manifest ui-fonts-native
 lexicon: ccl-build user_runtime ccl-manifest
 	mkdir -p ../userspace/services/lexicon/build
 	rm -f ../userspace/services/lexicon/build/lexicon.svc
-	$(CCL_BUILD) ../userspace/services/lexicon/build.ccl
+	$(CCL_BUILD) ../userspace/services/lexicon/component.ccl
 	cp ../userspace/services/lexicon/build/lexicon.svc isodir/boot/lexicon.svc
 
 # Dictionary (docs/lexicon.md), with Dictionary and Thesaurus modes, asking
@@ -1562,69 +1560,69 @@ lexicon: ccl-build user_runtime ccl-manifest
 dictionary: ccl-build user_runtime ccl-manifest ui-fonts-native
 	mkdir -p ../userspace/apps/dictionary/build
 	rm -f ../userspace/apps/dictionary/build/dictionary.app
-	$(CCL_BUILD) ../userspace/apps/dictionary/build.ccl
+	$(CCL_BUILD) ../userspace/apps/dictionary/component.ccl
 	cp ../userspace/apps/dictionary/build/dictionary.app isodir/boot/dictionary.app
 
 # Build the live writable-storage diagnostic app.
 .PHONY : storage-check
 storage-check: ccl-build user_runtime filesystem-scope-check ccl-manifest
 	mkdir -p ../userspace/apps/storage-check/build
-	$(CCL_BUILD) ../userspace/apps/storage-check/build.ccl
+	$(CCL_BUILD) ../userspace/apps/storage-check/component.ccl
 	cp ../userspace/apps/storage-check/build/storage-check.app isodir/boot/storage-check.app
 
 .PHONY : filesystem-scope-check
 filesystem-scope-check: ccl-build user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/filesystem-scope-check/build
-	$(CCL_BUILD) ../userspace/apps/filesystem-scope-check/build.ccl
+	$(CCL_BUILD) ../userspace/apps/filesystem-scope-check/component.ccl
 	cp ../userspace/apps/filesystem-scope-check/build/filesystem-scope-check.app isodir/boot/filesystem-scope-check.app
 
 # Build the first desktop shell client
 .PHONY : desktop-shell
 desktop-shell: ccl-build user_runtime ccl-manifest ui-fonts-native
 	mkdir -p ../userspace/apps/desktop-shell/build
-	$(CCL_BUILD) ../userspace/apps/desktop-shell/build.ccl
+	$(CCL_BUILD) ../userspace/apps/desktop-shell/component.ccl
 	cp ../userspace/apps/desktop-shell/build/desktop-shell.app isodir/boot/desktop-shell.app
 
 # Build the userspace process manager service
 .PHONY : procmgr
 procmgr: ccl-build user_runtime
 	mkdir -p ../userspace/services/procmgr/build
-	$(CCL_BUILD) ../userspace/services/procmgr/build.ccl
+	$(CCL_BUILD) ../userspace/services/procmgr/component.ccl
 	cp ../userspace/services/procmgr/build/procmgr.svc isodir/boot/procmgr.svc
 
 # Build the userspace HDA audio driver
 .PHONY : hda
 hda: ccl-build user_runtime ccl-manifest
 	mkdir -p ../userspace/services/hda/build
-	$(CCL_BUILD) ../userspace/services/hda/build.ccl
+	$(CCL_BUILD) ../userspace/services/hda/component.ccl
 	cp ../userspace/services/hda/build/hda.drv isodir/boot/hda.drv
 
 # Build the userspace audio mixer service
 .PHONY : mixer
 mixer: ccl-build user_runtime ccl-manifest
 	mkdir -p ../userspace/services/mixer/build
-	$(CCL_BUILD) ../userspace/services/mixer/build.ccl
+	$(CCL_BUILD) ../userspace/services/mixer/component.ccl
 	cp ../userspace/services/mixer/build/mixer.svc isodir/boot/mixer.svc
 
 # Build the userspace PS/2 keyboard + mouse driver
 .PHONY : ps2
 ps2: ccl-build user_runtime ccl-manifest
 	mkdir -p ../userspace/services/ps2/build
-	$(CCL_BUILD) ../userspace/services/ps2/build.ccl
+	$(CCL_BUILD) ../userspace/services/ps2/component.ccl
 	cp ../userspace/services/ps2/build/ps2.drv isodir/boot/ps2.drv
 
 # Build the userspace virtio-input driver (QEMU virtio-tablet absolute pointer)
 .PHONY : virtio-input
 virtio-input: ccl-build user_runtime ccl-manifest
 	mkdir -p ../userspace/services/virtio-input/build
-	$(CCL_BUILD) ../userspace/services/virtio-input/build.ccl
+	$(CCL_BUILD) ../userspace/services/virtio-input/component.ccl
 	cp ../userspace/services/virtio-input/build/virtio-input.drv isodir/boot/virtio-input.drv
 
 # Build the userspace xHCI controller driver
 .PHONY : xhci
 xhci: ccl-build user_runtime ccl-manifest
 	mkdir -p ../userspace/services/xhci/build
-	$(CCL_BUILD) ../userspace/services/xhci/build.ccl
+	$(CCL_BUILD) ../userspace/services/xhci/component.ccl
 	cp ../userspace/services/xhci/build/xhci.drv isodir/boot/xhci.drv
 
 # Build the userspace config store service
@@ -1632,7 +1630,7 @@ xhci: ccl-build user_runtime ccl-manifest
 .PHONY: config-check
 config-check: ccl-build user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/config-check/build
-	$(CCL_BUILD) ../userspace/apps/config-check/build.ccl
+	$(CCL_BUILD) ../userspace/apps/config-check/component.ccl
 	cp ../userspace/apps/config-check/build/config-check.app isodir/boot/config-check.app
 	mkdir -p ../userspace/apps/config-denied/build
 	$(call compile_ccl_manifest,../userspace/apps/config-denied)
@@ -1653,18 +1651,18 @@ config: user_runtime ccl-manifest
 .PHONY : log-retire
 log-retire: ccl-build user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/log-retire/build
-	$(CCL_BUILD) ../userspace/apps/log-retire/build.ccl
+	$(CCL_BUILD) ../userspace/apps/log-retire/component.ccl
 	cp ../userspace/apps/log-retire/build/log-retire.app isodir/boot/log-retire.app
 
 log-check: ccl-build user_runtime ccl-manifest log-retire
 	mkdir -p ../userspace/apps/log-check/build
-	$(CCL_BUILD) ../userspace/apps/log-check/build.ccl
+	$(CCL_BUILD) ../userspace/apps/log-check/component.ccl
 	cp ../userspace/apps/log-check/build/log-check.app isodir/boot/log-check.app
 
 .PHONY : logstore
 logstore: ccl-build user_runtime ccl-manifest
 	mkdir -p ../userspace/services/logstore/build
-	$(CCL_BUILD) ../userspace/services/logstore/build.ccl
+	$(CCL_BUILD) ../userspace/services/logstore/component.ccl
 	cp ../userspace/services/logstore/build/logstore.svc isodir/boot/logstore.svc
 
 # Observability (docs/metrics-service.md). metrics.svc is not yet in world or
@@ -1672,19 +1670,19 @@ logstore: ccl-build user_runtime ccl-manifest
 .PHONY : metricsvc
 metricsvc: ccl-build user_runtime ccl-manifest
 	mkdir -p ../userspace/services/metricsvc/build
-	$(CCL_BUILD) ../userspace/services/metricsvc/build.ccl
+	$(CCL_BUILD) ../userspace/services/metricsvc/component.ccl
 	cp ../userspace/services/metricsvc/build/metrics.svc isodir/boot/metrics.svc
 
 .PHONY : metrics-check
 metrics-check: ccl-build user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/metrics-check/build
-	$(CCL_BUILD) ../userspace/apps/metrics-check/build.ccl
+	$(CCL_BUILD) ../userspace/apps/metrics-check/component.ccl
 	cp ../userspace/apps/metrics-check/build/metrics-check.app isodir/boot/metrics-check.app
 
 .PHONY : log-fields-check
 log-fields-check: ccl-build user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/log-fields-check/build
-	$(CCL_BUILD) ../userspace/apps/log-fields-check/build.ccl
+	$(CCL_BUILD) ../userspace/apps/log-fields-check/component.ccl
 	cp ../userspace/apps/log-fields-check/build/log-fields-check.app isodir/boot/log-fields-check.app
 
 # Standard desktop-session build: nonblocking typed metrics, with a matching
@@ -1777,7 +1775,7 @@ display: user_runtime ccl-manifest
 .PHONY : netmgr
 netmgr: ccl-build user_runtime ccl-manifest
 	mkdir -p ../userspace/services/netmgr/build
-	$(CCL_BUILD) ../userspace/services/netmgr/build.ccl
+	$(CCL_BUILD) ../userspace/services/netmgr/component.ccl
 	cp ../userspace/services/netmgr/build/netmgr.svc isodir/boot/netmgr.svc
 
 # Build the userspace device manager
@@ -1795,7 +1793,7 @@ intel-buffer-layout-check:
 .PHONY : shell
 shell: ccl-build user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/shell/build
-	$(CCL_BUILD) ../userspace/apps/shell/build.ccl
+	$(CCL_BUILD) ../userspace/apps/shell/component.ccl
 	cp ../userspace/apps/shell/build/shell.app isodir/boot/shell.app
 
 # The Rust/Turso worker is a stage-2 service, not part of the boot initrd.

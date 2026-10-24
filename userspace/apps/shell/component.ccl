@@ -1,0 +1,2 @@
+(Component name => "shell" kind => Kind.Application
+  source => (Source.Ada (Ada_Source)))

@@ -1,5 +1,0 @@
-# boot_timeline.gpr translated by tools/gpr_to_ccl.py (docs/ccl-build.md).
-(Component.Ada_Program (Ada_Program
-  executable => "boot-timeline.app"
-  directory => "userspace/apps/boot-timeline"
-  sources => ["userspace/lib/display" "shared/boot"]))

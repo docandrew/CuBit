@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # CCL build, first slice (docs/ccl-build.md), hosted on Linux:
 #   1. core and store unit tests (hosted Ada);
-#   2. every build.ccl type-checks; sleep.app and the multi-unit
+#   2. every component.ccl type-checks, the negative cases are refused; sleep.app and the multi-unit
 #      boot-timeline.app build with GNAT 15.3;
 #   3. cache hits, mtime-only changes, another checkout sharing the store,
 #      a fresh store giving the same bytes, early cutoff after a comment
@@ -41,8 +41,8 @@ echo "== building ccl-build, the tests and the user runtime"
 tool=$repo/userspace/ccl/build/ccl-build/ccl-build
 : "${CUBIT_GNAT:?run inside nix develop}" "${CUBIT_BINUTILS:?run inside nix develop}"
 imports=(--import "gnat-15.3.0-x86_64-linux-musl=$CUBIT_GNAT" --import "binutils-2.46=$CUBIT_BINUTILS")
-declaration=userspace/apps/sleep/build.ccl
-multi=userspace/apps/boot-timeline/build.ccl
+declaration=userspace/apps/sleep/component.ccl
+multi=userspace/apps/boot-timeline/component.ccl
 program=userspace/apps/sleep/build/sleep.app
 
 echo "== unit tests"
@@ -50,9 +50,20 @@ check "core tests" "$here/build/core_tests"
 mkdir -p "$scratch/unit"
 check "store tests" "$here/build/store_tests" "$scratch/unit"
 
-echo "== declarations: every build.ccl type-checks against build-params.ccl"
+echo "== declarations: every component.ccl type-checks against build-params.ccl and build-catalog.ccl"
 check "all declarations type-check" "$tool" check --source-root "$repo" \
-    $(cd "$repo" && ls userspace/apps/*/build.ccl userspace/services/*/build.ccl userspace/ccl/services/*/build.ccl)
+    $(cd "$repo" && ls userspace/apps/*/component.ccl userspace/services/*/component.ccl userspace/ccl/services/*/component.ccl)
+
+echo "== negative declarations: each is refused with its diagnostic"
+for case in "$here"/negative/*/; do
+    file=$(ls "$case"*.ccl)
+    expected=$(cat "$case/expect")
+    if output=$("$tool" check --source-root "$repo" "$file" 2>&1); then
+        check "refused: $(basename "$case")" false
+    else
+        check "refused: $(basename "$case")" grep -qF -- "$expected" <<<"$output"
+    fi
+done
 
 echo "== sleep.app and boot-timeline.app (multi-unit) with GNAT 15.3"
 store=$scratch/store
@@ -74,13 +85,14 @@ check "second build ran nothing" test "$(ran "$scratch/second.log")" = 0
 # Another checkout (a copy of what the declaration reads) shares the store.
 root=$scratch/root
 copy() { mkdir -p "$root/$(dirname "$1")"; cp -a "$repo/$1" "$root/$1"; }
-for p in userspace/apps/sleep/main.adb userspace/apps/sleep/manifest.ccl "$declaration" build-params.ccl build-libraries.ccl \
+for p in userspace/apps/sleep/main.adb userspace/apps/sleep/manifest.ccl "$declaration" build-params.ccl build-catalog.ccl \
          userspace/runtime/ada_source_path userspace/runtime/ada_object_path \
          userspace/runtime/gnat userspace/runtime/adalib \
          shared/time shared/interrupts shared/launch shared/publications shared/capabilities shared/boot \
          userspace/c/link.ld userspace/c/build/crt0.o userspace/ccl/build/manifest/ccl-manifest \
          userspace/ccl/catalogs/native-runtime-services.ccl userspace/ccl/catalogs/driver-services.ccl \
-         userspace/ccl/interfaces/executable-manifest.ccl userspace/ccl/interfaces/build.ccl; do
+         userspace/ccl/interfaces/executable-manifest.ccl userspace/ccl/interfaces/build.ccl \
+         userspace/ccl/interfaces/setting-catalog.ccl userspace/ccl/interfaces/settings; do
     copy "$p"
 done
 check "other checkout" build "$root" "$scratch/other.log" "$declaration"

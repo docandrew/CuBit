@@ -1,8 +1,10 @@
-# CCL build declarations (docs/ccl-build.md). build-params.ccl at the root
-# is one Parameters value: the toolchain pins and the native profile every
-# program shares. A component's build.ccl is one Component value that names
-# only what differs from the profile. ccl-build reads both by field and
-# alternative name and expands the component with its kind's rule family.
+# CCL build declarations (docs/ccl-build.md). Three documents use them:
+# - build-params.ccl, one Parameters value: toolchain pins, the runtime,
+#   the manifest tool and catalogs, and what every native link shares;
+# - build-catalog.ccl, one Build_Catalog value: named code profiles and the
+#   libraries components may use;
+# - each component's component.ccl, one Component value that names only
+#   what differs from them. Its directory is where its component.ccl is.
 # Paths are relative to the source tree's root, with no "." or "..".
 
 # A toolchain tree, pinned by its identity (64 lowercase hex digits), and
@@ -12,52 +14,66 @@
 (type Toolchain (record (name String) (identity String) (prefix String)))
 
 # One link argument: literal text (no file names), a file from the tree,
-# or the program's manifest object.
+# or the component's manifest object (left out when it has no manifest).
 (type Link_Argument (variant (Text String) (File String) (Manifest_Object)))
 
-# Switches: the profile's, exactly these, or none (an empty list literal
-# needs a type the checker cannot infer yet).
-(type Switches (variant (Profile) (Exactly (List String)) (No_Switches)))
-(type Linking (variant (Profile) (Exactly (List Link_Argument))))
+# How Ada code is compiled, by intent; ccl-build turns this into switches.
+# Ada_2012 is GNAT's default language version.
+(type Ada_Language (enum Ada_2012 Ada_2022))
+# Normal is -O2; Maximum is -O3, for proved hot paths.
+(type Optimization (enum Normal Maximum))
+# Suppressed (-gnatp) only for units whose absence of run-time errors is
+# proved.
+(type Checks (enum Enabled Suppressed))
+(type Frame_Pointer (enum Omitted Kept))
+# value_range_propagation false is SPARKNaCl's -fno-tree-vrp workaround.
+(type Ada_Code (record
+  (language Ada_Language Ada_Language.Ada_2012) (optimization Optimization Optimization.Normal)
+  (checks Checks Checks.Enabled) (frame_pointer Frame_Pointer Frame_Pointer.Omitted)
+  (value_range_propagation Boolean true)))
 
-# A program's main unit: main.adb, or another file.
-(type Main (variant (Conventional) (File String)))
+# A named code profile (build-catalog.ccl) and units compiled with one.
+(type Code_Profile (record (name String) (code Ada_Code)))
+(type Unit_Code (record (files (List String)) (profile String)))
 
-# Switches for some units instead of the program's compiler switches (the
-# whole list, as gprbuild's per-file Switches replace Default_Switches).
-(type Unit_Switches (record (files (List String)) (switches (List String))))
-
-# A library the build parameters name and programs use: per-unit switches
-# its units always get (the UI toolkit's pixel loops), after the program's
-# builder switches, and archives built elsewhere that programs link after
-# their objects (the font library).
-(type Library (record (name String) (units (List Unit_Switches) []) (archives (List String) [])))
-
-# Which service catalog a program's manifest is checked against, or none
-# for a program without a typed manifest (procmgr).
-(type Catalog (enum Native_Runtime Driver No_Manifest))
+# A library components name: source directories compiled into each user,
+# units with their own code profile, and archives built elsewhere, linked
+# after the component's objects (the font library).
+(type Library (record
+  (name String) (sources (List String) []) (units (List Unit_Code) []) (archives (List String) [])))
 
 (type Parameters (record
   (toolchain Toolchain) (binutils Toolchain) (runtime String)
   (manifest_tool String) (manifest_schema String)
-  (native_catalog String) (driver_catalog String)
-  (compiler (List String)) (binder (List String)) (binder_unit (List String))
-  (linker (List Link_Argument)) (builder (List String))))
+  (process_manager_catalog String) (device_manager_catalog String)
+  (target (List String)) (binder (List String)) (linker (List Link_Argument))))
 
-# build-libraries.ccl: the libraries programs may name.
-(type Library_Catalog (record (libraries (List Library))))
+(type Build_Catalog (record (profiles (List Code_Profile)) (libraries (List Library))))
+
+# Who launches a service: its manifest is checked against that launcher's
+# catalog; one the kernel starts has no manifest.
+(type Launcher (enum Process_Manager Device_Manager Kernel))
+
+# What a component is. The executable is its name with the kind's suffix
+# (.app, .svc, .drv; a tool has none); applications and tools are launched
+# by the process manager, drivers by the device manager.
+(type Kind (variant (Application) (Service Launcher) (Driver) (Tool)))
+
+# A program's main unit: main.adb, or another file.
+(type Main (variant (Conventional) (File String)))
 
 # An Ada program, built per compilation unit: gcc -c for each unit reached
 # from main through its .ali files, gnatbind, the binder unit, and the link
 # (D5: no gnatlink, gnatmake or gprbuild). Its sources are the Ada files in
-# directory, then in sources, then the generated startup bindings; objects
-# go to directory/build.
-(type Ada_Program (record
-  (executable String) (directory String) (main Main Main.Conventional)
-  (sources (List String) []) (catalog Catalog Catalog.Native_Runtime)
-  (compiler Switches Switches.Profile) (binder Switches Switches.Profile)
-  (binder_unit Switches Switches.Profile) (linker Linking Linking.Profile)
-  (libraries (List String) []) (units (List Unit_Switches) [])
-  (builder Switches Switches.Profile)))
+# its directory, then in sources, then its libraries' sources, then the
+# generated startup bindings; objects go to its directory's build/.
+(type Ada_Source (record
+  (main Main Main.Conventional) (sources (List String) []) (libraries (List String) [])
+  (language Ada_Language Ada_Language.Ada_2012) (optimization Optimization Optimization.Normal)
+  (checks Checks Checks.Enabled) (frame_pointer Frame_Pointer Frame_Pointer.Omitted)
+  (value_range_propagation Boolean true) (debug_info Boolean true)
+  (units (List Unit_Code) []) (link_extra (List Link_Argument) [])))
 
-(type Component (variant (Ada_Program Ada_Program)))
+(type Source (variant (Ada Ada_Source)))
+
+(type Component (record (name String) (kind Kind) (source Source)))

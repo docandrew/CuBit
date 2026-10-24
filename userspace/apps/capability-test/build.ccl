@@ -1,5 +1,0 @@
-# capability_test.gpr translated by tools/gpr_to_ccl.py (docs/ccl-build.md).
-(Component.Ada_Program (Ada_Program
-  executable => "capability-test.app"
-  directory => "userspace/apps/capability-test"
-  linker => (Linking.Exactly [(Link_Argument.Text "-nostdlib") (Link_Argument.Text "-static") (Link_Argument.Text "-no-pie") (Link_Argument.Text "-Wl,-z,stack-size=16777216") (Link_Argument.Text "-lgnat-user") (Link_Argument.Text "-T") (Link_Argument.File "userspace/c/link.ld") (Link_Argument.File "userspace/c/build/crt0.o") Link_Argument.Manifest_Object (Link_Argument.File "userspace/apps/capability-test/build/syscall_registers.o")])))

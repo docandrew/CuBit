@@ -1,0 +1,1 @@
+(Component name => "Neg_App" kind => Kind.Application source => (Source.Ada (Ada_Source)))

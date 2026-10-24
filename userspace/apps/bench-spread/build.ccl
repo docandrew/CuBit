@@ -1,4 +1,0 @@
-# bench_spread.gpr translated by tools/gpr_to_ccl.py (docs/ccl-build.md).
-(Component.Ada_Program (Ada_Program
-  executable => "bench-spread.app"
-  directory => "userspace/apps/bench-spread"))

@@ -1,4 +1,0 @@
-# thread_check.gpr translated by tools/gpr_to_ccl.py (docs/ccl-build.md).
-(Component.Ada_Program (Ada_Program
-  executable => "thread-check.app"
-  directory => "userspace/apps/thread-check"))

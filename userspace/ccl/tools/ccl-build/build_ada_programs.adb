@@ -110,21 +110,12 @@ package body Build_Ada_Programs is
       --  The libraries' archives, in the program's library order.
       Archives : String_Vectors.Vector;
 
-      --  A unit's switches: the first group naming it among the program's
-      --  own groups, then its libraries' groups; otherwise the program's.
+      --  A unit's switches: the first group naming it (the program's own,
+      --  then its libraries'); otherwise the program's.
       function Switches_For (File : String) return String_Vectors.Vector is
       begin
          for G of Program.Units loop
             if G.Files.Contains (File) then return G.Switches; end if;
-         end loop;
-         for L of Program.Libraries loop
-            for G of L.Units loop
-               if G.Files.Contains (File) then
-                  return Result : String_Vectors.Vector := Program.Builder do
-                     Result.Append (G.Switches);
-                  end return;
-               end if;
-            end loop;
          end loop;
          return Program.Compiler;
       end Switches_For;
@@ -312,11 +303,9 @@ package body Build_Ada_Programs is
       if Length (Library_Directory) = 0 then
          raise Step_Error with Runtime / Object_Path_File & " names no library directory";
       end if;
-      for L of Program.Libraries loop
-         for A of L.Archives loop
-            Need_Relative (A, "archive");
-            Archives.Append (A);
-         end loop;
+      for A of Program.Archives loop
+         Need_Relative (A, "archive");
+         Archives.Append (A);
       end loop;
       Find_Sources (Directory);
       for D of Program.Sources loop
@@ -645,9 +634,7 @@ package body Build_Ada_Programs is
                   Piece_Of (S, Input_Path, Add_Input
                     (S, To_String (A.Value), Regular_File, Snapshot (To_String (A.Value), Regular_File)));
                when Manifest_Object =>
-                  if Program.Manifest_Catalog = No_Manifest then
-                     raise Step_Error with "the linker names the manifest object of a program without a manifest";
-                  end if;
+                  --  Build_Declarations leaves it out for programs without one.
                   Piece_Of (S, Local_Input, Use_Produced (S, Objects / Manifest_Object_Name));
             end case;
          end loop;

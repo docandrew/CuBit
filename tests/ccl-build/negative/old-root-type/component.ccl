@@ -1,0 +1,2 @@
+# The former declaration shape is refused, not translated.
+(Component.Ada_Program (Ada_Program executable => "neg.app" directory => "tests/ccl-build/negative/old-root-type"))

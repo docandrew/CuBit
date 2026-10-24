@@ -1,0 +1,2 @@
+(Component name => "fault-check" kind => Kind.Application
+  source => (Source.Ada (Ada_Source)))

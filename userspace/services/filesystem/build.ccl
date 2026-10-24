@@ -1,7 +1,0 @@
-# filesystem.gpr translated by tools/gpr_to_ccl.py (docs/ccl-build.md).
-(Component.Ada_Program (Ada_Program
-  executable => "filesystem.svc"
-  directory => "userspace/services/filesystem"
-  catalog => Catalog.Driver
-  compiler => (Switches.Exactly ["-g" "-gnatwa" "-gnatw.X" "-O2" "-gnat2022" "-fstack-usage" "-fomit-frame-pointer" "-mno-red-zone" "-fno-pic"])
-  linker => (Linking.Exactly [(Link_Argument.Text "-O2") (Link_Argument.Text "-fomit-frame-pointer") (Link_Argument.Text "-mno-red-zone") (Link_Argument.Text "-fno-pic") (Link_Argument.Text "-nostdlib") (Link_Argument.Text "-static") (Link_Argument.Text "-no-pie") (Link_Argument.Text "-Wl,-z,stack-size=16777216") (Link_Argument.Text "-lgnat-user") (Link_Argument.Text "-T") (Link_Argument.File "userspace/c/link.ld") (Link_Argument.File "userspace/c/build/crt0.o") Link_Argument.Manifest_Object])))

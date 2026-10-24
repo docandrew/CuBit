@@ -1,4 +1,5 @@
 with Ada.Exceptions;
+with Interfaces;
 with CCL.Catalog;
 with CCL.Evaluation;
 with CCL.Language;
@@ -28,18 +29,43 @@ package body Build_Declarations is
       Published, Captured : Boolean;
       Value : CCL.Language.Object_Interpretation_Result;
 
-      --  Positions in the declaration, not in the schema before it.
+      --  Positions in the declaration as line:column, not counting the
+      --  schema before it.
       function Where (Position : Natural) return String is
-        (if Position > Schema_Length then "character" & Natural'Image (Position - Schema_Length) & ": "
-         else "in the schema, character" & Natural'Image (Position) & ": ");
+         Line, Column : Natural := 1;
+      begin
+         if Position <= Schema_Length then
+            --  The checker placed it in interfaces/build.ccl (a value it
+            --  could not match against the schema's types).
+            return "against interfaces/build.ccl: ";
+         end if;
+         for I in Program_Text'First + Schema_Length .. Program_Text'First + Position - 2 loop
+            if Program_Text (I) = ASCII.LF then
+               Line := Line + 1;
+               Column := 1;
+            else
+               Column := Column + 1;
+            end if;
+         end loop;
+         return "line" & Natural'Image (Line) & ", column" & Natural'Image (Column) & ": ";
+      end Where;
+
+      --  What the checker says a diagnostic is about, when it says.
+      function About (Subject, Expected, Found : CCL.Types.Name) return String is
+        ((if CCL.Types.Image (Subject)'Length > 0 then " (" & CCL.Types.Image (Subject) & ")" else "") &
+         (if CCL.Types.Image (Expected)'Length > 0
+          then ": expected " & CCL.Types.Image (Expected) & ", found " & CCL.Types.Image (Found) else ""));
    begin
       CCL.Catalog.Initialize (Catalog);
       CCL.Language.Analyze (Program_Text, Catalog, Checked);
       if CCL.Language.Analysis_Status_Of (Checked) /= CCL.Language.Analysis_Succeeded then
          raise Declaration_Error with
            Where (CCL.Language.Analysis_Diagnostic_Position (Checked)) &
-           CCL.Language.Analysis_Status_Of (Checked)'Image & " " &
-           CCL.Language.Analysis_Diagnostic (Checked)'Image;
+           CCL.Language.Analysis_Diagnostic (Checked)'Image &
+           About (CCL.Language.Analysis_Diagnostic_Subject (Checked),
+                  CCL.Language.Analysis_Diagnostic_Expected (Checked),
+                  CCL.Language.Analysis_Diagnostic_Found (Checked)) &
+           " (a " & Root_Type & " is expected)";
       end if;
       CCL.Objects.Bind
         (CCL.Language.Analysis_Types (Checked),
@@ -51,9 +77,9 @@ package body Build_Declarations is
       CCL.Evaluation.Evaluate_Object (Program_Text, DECLARATION_FUEL, Contract, Value);
       if Value.Status /= CCL.Language.Succeeded or else not Value.Has_Value then
          raise Declaration_Error with
-           Where (Value.Diagnostic_Position) & Value.Status'Image & " " &
-           Value.Diagnostic'Image & " " & CCL.Types.Image (Value.Diagnostic_Subject) &
-           " (expected a " & Root_Type & ")";
+           Where (Value.Diagnostic_Position) & Value.Diagnostic'Image &
+           About (Value.Diagnostic_Subject, Value.Diagnostic_Expected, Value.Diagnostic_Found) &
+           " (a " & Root_Type & " is expected)";
       end if;
       Views.Capture (Object, Contract, Value.Value, Captured);
       if not Captured then
@@ -145,24 +171,35 @@ package body Build_Declarations is
       end loop;
    end Links;
 
-   procedure Unit_Groups (Object : Views.Snapshot; At_Cursor : Views.Cursor; Into : out Unit_Switch_Vectors.Vector) is
+   function Flag (Object : Views.Snapshot; At_Cursor : Views.Cursor) return Boolean is
+     (Interfaces."=" (Views.Scalar (Object, At_Cursor).First, 1));
+
+   function Toolchain_Of (Object : Views.Snapshot; At_Cursor : Views.Cursor) return Toolchain is
+     ((Name => Field (Object, At_Cursor, "name"), Identity => Field (Object, At_Cursor, "identity"),
+       Prefix => Field (Object, At_Cursor, "prefix")));
+
+   --  Ada_Code's fields, as they appear in Ada_Code and in Ada_Source.
+   function Code_Of (Object : Views.Snapshot; At_Cursor : Views.Cursor) return Ada_Code is
+     ((Language => Ada_Language'Value (Alternative (Object, Named (Object, At_Cursor, "language"))),
+       Level => Optimization'Value (Alternative (Object, Named (Object, At_Cursor, "optimization"))),
+       Run_Time_Checks => Checks'Value (Alternative (Object, Named (Object, At_Cursor, "checks"))),
+       Frames => Frame_Pointer'Value (Alternative (Object, Named (Object, At_Cursor, "frame_pointer"))),
+       Value_Range_Propagation => Flag (Object, Named (Object, At_Cursor, "value_range_propagation"))));
+
+   procedure Unit_Codes (Object : Views.Snapshot; At_Cursor : Views.Cursor; Into : out Unit_Code_Vectors.Vector) is
    begin
       Into.Clear;
       for I in 1 .. Views.Length (Object, At_Cursor) loop
          declare
             Group : constant Views.Cursor := Views.Element (Object, At_Cursor, I);
-            Item : Unit_Switches;
+            Item : Unit_Code;
          begin
             Texts (Object, Named (Object, Group, "files"), Item.Files);
-            Texts (Object, Named (Object, Group, "switches"), Item.Switches);
+            Item.Profile := Field (Object, Group, "profile");
             Into.Append (Item);
          end;
       end loop;
-   end Unit_Groups;
-
-   function Toolchain_Of (Object : Views.Snapshot; At_Cursor : Views.Cursor) return Toolchain is
-     ((Name => Field (Object, At_Cursor, "name"), Identity => Field (Object, At_Cursor, "identity"),
-       Prefix => Field (Object, At_Cursor, "prefix")));
+   end Unit_Codes;
 
    procedure Parameters_Value (Object : Views.Snapshot; Result : out Parameters) is
       Root : constant Views.Cursor := Views.Root (Object);
@@ -172,135 +209,260 @@ package body Build_Declarations is
       Result.Runtime := Field (Object, Root, "runtime");
       Result.Manifest_Tool := Field (Object, Root, "manifest_tool");
       Result.Manifest_Schema := Field (Object, Root, "manifest_schema");
-      Result.Catalogs (Native_Runtime) := Field (Object, Root, "native_catalog");
-      Result.Catalogs (Driver) := Field (Object, Root, "driver_catalog");
-      Texts (Object, Named (Object, Root, "compiler"), Result.Compiler);
+      Result.Catalogs (Process_Manager) := Field (Object, Root, "process_manager_catalog");
+      Result.Catalogs (Device_Manager) := Field (Object, Root, "device_manager_catalog");
+      Texts (Object, Named (Object, Root, "target"), Result.Target);
       Texts (Object, Named (Object, Root, "binder"), Result.Binder);
-      Texts (Object, Named (Object, Root, "binder_unit"), Result.Binder_Unit);
       Links (Object, Named (Object, Root, "linker"), Result.Linker);
-      Texts (Object, Named (Object, Root, "builder"), Result.Builder);
-      Result.Libraries.Clear;
    end Parameters_Value;
 
-   procedure Libraries_Value (Object : Views.Snapshot; Result : out Library_Vectors.Vector) is
+   procedure Catalog_Value (Object : Views.Snapshot; Result : out Build_Catalog) is
       Root : constant Views.Cursor := Views.Root (Object);
+      Profiles : constant Views.Cursor := Named (Object, Root, "profiles");
+      Libraries : constant Views.Cursor := Named (Object, Root, "libraries");
    begin
-      declare
-         List : constant Views.Cursor := Named (Object, Root, "libraries");
-      begin
-         Result.Clear;
-         for I in 1 .. Views.Length (Object, List) loop
-            declare
-               Item : constant Views.Cursor := Views.Element (Object, List, I);
-               L : Library;
-            begin
-               L.Name := Field (Object, Item, "name");
-               Unit_Groups (Object, Named (Object, Item, "units"), L.Units);
-               Texts (Object, Named (Object, Item, "archives"), L.Archives);
-               Result.Append (L);
-            end;
-         end loop;
-      end;
-   end Libraries_Value;
-
-   procedure Read_Libraries_Document is new Read_Document (Library_Vectors.Vector, Libraries_Value);
-
-   procedure Read_Libraries (Source, Schema : String; Profile : in out Parameters) is
-   begin
-      Read_Libraries_Document (Source, Schema, "Library_Catalog", Profile.Libraries);
-   end Read_Libraries;
+      Result := (others => <>);
+      for I in 1 .. Views.Length (Object, Profiles) loop
+         declare
+            Item : constant Views.Cursor := Views.Element (Object, Profiles, I);
+         begin
+            Result.Profiles.Append (Code_Profile'(Name => Field (Object, Item, "name"),
+                                     Code => Code_Of (Object, Named (Object, Item, "code"))));
+         end;
+      end loop;
+      for I in 1 .. Views.Length (Object, Libraries) loop
+         declare
+            Item : constant Views.Cursor := Views.Element (Object, Libraries, I);
+            L : Library;
+         begin
+            L.Name := Field (Object, Item, "name");
+            Texts (Object, Named (Object, Item, "sources"), L.Sources);
+            Unit_Codes (Object, Named (Object, Item, "units"), L.Units);
+            Texts (Object, Named (Object, Item, "archives"), L.Archives);
+            Result.Libraries.Append (L);
+         end;
+      end loop;
+   end Catalog_Value;
 
    procedure Read_Parameters_Document is new Read_Document (Parameters, Parameters_Value);
+   procedure Read_Catalog_Document is new Read_Document (Build_Catalog, Catalog_Value);
 
    procedure Read_Parameters (Source, Schema : String; Result : out Parameters) is
    begin
       Read_Parameters_Document (Source, Schema, "Parameters", Result);
    end Read_Parameters;
 
-   --  A program as declared: its own lists, and which parts are the
-   --  profile's (filled in by Read_Program).
-   type Switch_Part is (Compiler_Part, Binder_Part, Binder_Unit_Part, Linker_Part, Builder_Part);
-   type Profile_Parts is array (Switch_Part) of Boolean;
-   type Declared_Program is record
-      Program : Ada_Program;
-      Library_Names : String_Vectors.Vector;
-      From_Profile : Profile_Parts := [others => False];
+   procedure Read_Catalog (Source, Schema : String; Result : out Build_Catalog) is
+   begin
+      Read_Catalog_Document (Source, Schema, "Build_Catalog", Result);
+   end Read_Catalog;
+
+   --  A component as declared, before it is resolved against the
+   --  parameters and the catalog.
+   type Kind is (Application, Service, Driver, Tool);
+   type Launcher is (Process_Manager, Device_Manager, Kernel);
+   type Declared_Component is record
+      Name, Main : Unbounded_String;
+      Of_Kind : Kind := Application;
+      Launched_By : Launcher := Process_Manager;
+      Sources, Libraries : String_Vectors.Vector;
+      Code : Ada_Code;
+      Debug_Info : Boolean := True;
+      Units : Unit_Code_Vectors.Vector;
+      Link_Extra : Link_Vectors.Vector;
    end record;
 
-   procedure Program_Value (Object : Views.Snapshot; Result : out Declared_Program) is
-      Root : constant Views.Cursor := Views.Root (Object);
+   --  The executable's suffix by kind; a tool, like the toolchain's
+   --  programs, has none.
+   function Executable_Suffix (Of_Kind : Kind) return String is
+     (case Of_Kind is
+        when Application => ".app", when Service => ".svc",
+        when Driver => ".drv", when Tool => "");
 
-      --  A Switches value: the profile's, or exactly the listed ones.
-      procedure Choose (At_Cursor : Views.Cursor; Part : Switch_Part; Into : out String_Vectors.Vector) is
-      begin
-         Into.Clear;
-         Result.From_Profile (Part) := Alternative (Object, At_Cursor) = "Profile";
-         if not Result.From_Profile (Part) and then Alternative (Object, At_Cursor) /= "No_Switches" then
-            Texts (Object, Views.Payload (Object, At_Cursor), Into);
-         end if;
-      end Choose;
+   procedure Component_Value (Object : Views.Snapshot; Result : out Declared_Component) is
+      Root : constant Views.Cursor := Views.Root (Object);
+      Kind_Value : constant Views.Cursor := Named (Object, Root, "kind");
+      Source : constant Views.Cursor := Named (Object, Root, "source");
    begin
-      if Alternative (Object, Root) /= "Ada_Program" then
-         raise Declaration_Error with "unknown component kind " & Alternative (Object, Root);
+      Result := (others => <>);
+      Result.Name := Field (Object, Root, "name");
+      Result.Of_Kind := Kind'Value (Alternative (Object, Kind_Value));
+      if Result.Of_Kind = Service then
+         Result.Launched_By := Launcher'Value (Alternative (Object, Views.Payload (Object, Kind_Value)));
+      elsif Result.Of_Kind = Driver then
+         Result.Launched_By := Device_Manager;
+      end if;
+      if Alternative (Object, Source) /= "Ada" then
+         raise Declaration_Error with "no rule family for source " & Alternative (Object, Source);
       end if;
       declare
-         Item : constant Views.Cursor := Views.Payload (Object, Root);
-         Linker : constant Views.Cursor := Named (Object, Item, "linker");
-         P : Ada_Program renames Result.Program;
+         Ada_Source : constant Views.Cursor := Views.Payload (Object, Source);
+         Main : constant Views.Cursor := Named (Object, Ada_Source, "main");
       begin
-         P.Executable := Field (Object, Item, "executable");
-         P.Directory := Field (Object, Item, "directory");
-         declare
-            Main : constant Views.Cursor := Named (Object, Item, "main");
-         begin
-            P.Main := (if Alternative (Object, Main) = "Conventional" then To_Unbounded_String (Conventional_Main)
-                       else To_Unbounded_String (Views.Text (Object, Views.Payload (Object, Main))));
-         end;
-         Texts (Object, Named (Object, Item, "sources"), P.Sources);
-         P.Manifest_Catalog := Catalog'Value (Alternative (Object, Named (Object, Item, "catalog")));
-         Choose (Named (Object, Item, "compiler"), Compiler_Part, P.Compiler);
-         Choose (Named (Object, Item, "binder"), Binder_Part, P.Binder);
-         Choose (Named (Object, Item, "binder_unit"), Binder_Unit_Part, P.Binder_Unit);
-         Choose (Named (Object, Item, "builder"), Builder_Part, P.Builder);
-         Result.From_Profile (Linker_Part) := Alternative (Object, Linker) = "Profile";
-         P.Linker.Clear;
-         if not Result.From_Profile (Linker_Part) then
-            Links (Object, Views.Payload (Object, Linker), P.Linker);
-         end if;
-         Texts (Object, Named (Object, Item, "libraries"), Result.Library_Names);
-         Unit_Groups (Object, Named (Object, Item, "units"), P.Units);
+         Result.Main := (if Alternative (Object, Main) = "Conventional" then To_Unbounded_String (Conventional_Main)
+                         else To_Unbounded_String (Views.Text (Object, Views.Payload (Object, Main))));
+         Texts (Object, Named (Object, Ada_Source, "sources"), Result.Sources);
+         Texts (Object, Named (Object, Ada_Source, "libraries"), Result.Libraries);
+         Result.Code := Code_Of (Object, Ada_Source);
+         Result.Debug_Info := Flag (Object, Named (Object, Ada_Source, "debug_info"));
+         Unit_Codes (Object, Named (Object, Ada_Source, "units"), Result.Units);
+         Links (Object, Named (Object, Ada_Source, "link_extra"), Result.Link_Extra);
       end;
-   end Program_Value;
+   end Component_Value;
 
-   procedure Read_Program_Document is new Read_Document (Declared_Program, Program_Value);
+   procedure Read_Component_Document is new Read_Document (Declared_Component, Component_Value);
 
-   procedure Read_Program
-     (Source, Schema : String; Profile : Parameters; Program : out Ada_Program)
+   --  GNAT's switches for code described by intent. The order is fixed:
+   --  the same intent gives the same command line, so the same step.
+   Debug_Switch : constant String := "-g";
+   All_Warnings : constant String := "-gnatwa";
+   No_Propagation_Warnings : constant String := "-gnatw.X";
+   function Level_Switch (Level : Optimization) return String is
+     (case Level is when Normal => "-O2", when Maximum => "-O3");
+   Ada_2022_Switch : constant String := "-gnat2022";
+   Suppress_Checks : constant String := "-gnatp";
+   Stack_Usage : constant String := "-fstack-usage";
+   Omit_Frame_Pointer : constant String := "-fomit-frame-pointer";
+   No_Value_Range_Propagation : constant String := "-fno-tree-vrp";
+   GNAT_Switch_Prefix : constant String := "-gnat";
+
+   function Switches_For (Debug : Boolean; Code : Ada_Code; Target : String_Vectors.Vector)
+     return String_Vectors.Vector
    is
-      Declared : Declared_Program;
+      Result : String_Vectors.Vector;
    begin
-      Read_Program_Document (Source, Schema, "Component", Declared);
-      Program := Declared.Program;
-      if Declared.From_Profile (Compiler_Part) then Program.Compiler := Profile.Compiler; end if;
-      if Declared.From_Profile (Binder_Part) then Program.Binder := Profile.Binder; end if;
-      if Declared.From_Profile (Binder_Unit_Part) then Program.Binder_Unit := Profile.Binder_Unit; end if;
-      if Declared.From_Profile (Linker_Part) then Program.Linker := Profile.Linker; end if;
-      if Declared.From_Profile (Builder_Part) then Program.Builder := Profile.Builder; end if;
-      for Name of Declared.Library_Names loop
+      if Debug then Result.Append (Debug_Switch); end if;
+      Result.Append (All_Warnings);
+      Result.Append (No_Propagation_Warnings);
+      Result.Append (Level_Switch (Code.Level));
+      if Code.Language = Ada_2022 then Result.Append (Ada_2022_Switch); end if;
+      if Code.Run_Time_Checks = Suppressed then Result.Append (Suppress_Checks); end if;
+      Result.Append (Stack_Usage);
+      if Code.Frames = Omitted then Result.Append (Omit_Frame_Pointer); end if;
+      Result.Append (Target);
+      if not Code.Value_Range_Propagation then Result.Append (No_Value_Range_Propagation); end if;
+      return Result;
+   end Switches_For;
+
+   --  A lowercase kebab name: letters, digits and single hyphens, starting
+   --  with a letter.
+   function Is_Component_Name (Name : String) return Boolean is
+     (Name'Length > 0 and then Name (Name'First) in 'a' .. 'z'
+      and then Name (Name'Last) /= '-'
+      and then (for all I in Name'Range => Name (I) in 'a' .. 'z' | '0' .. '9' | '-')
+      and then (for all I in Name'First .. Name'Last - 1 =>
+                  not (Name (I) = '-' and then Name (I + 1) = '-')));
+
+   procedure Read_Component
+     (Source, Schema, Directory : String; Profile : Parameters; Known : Build_Catalog;
+      Program : out Ada_Program)
+   is
+      Declared : Declared_Component;
+
+      function Known_Names (Libraries : Boolean) return String is
+         Result : Unbounded_String;
+      begin
+         if Libraries then
+            for L of Known.Libraries loop
+               Append (Result, (if Length (Result) = 0 then "" else ", ") & L.Name);
+            end loop;
+         else
+            for P of Known.Profiles loop
+               Append (Result, (if Length (Result) = 0 then "" else ", ") & P.Name);
+            end loop;
+         end if;
+         return To_String (Result);
+      end Known_Names;
+
+      function Code_Named (Name : String) return Ada_Code is
+      begin
+         for P of Known.Profiles loop
+            if To_String (P.Name) = Name then
+               return P.Code;
+            end if;
+         end loop;
+         raise Declaration_Error with "build-catalog.ccl has no code profile """ & Name &
+           """ (it has: " & Known_Names (Libraries => False) & ")";
+      end Code_Named;
+
+      procedure Add_Units (Units : Unit_Code_Vectors.Vector) is
+      begin
+         for U of Units loop
+            Program.Units.Append
+              (Unit_Switches'(Files => U.Files,
+                Switches => Switches_For (Declared.Debug_Info, Code_Named (To_String (U.Profile)), Profile.Target)));
+         end loop;
+      end Add_Units;
+
+      procedure Add_Sources (Directories : String_Vectors.Vector) is
+      begin
+         for D of Directories loop
+            if D = Directory then
+               raise Declaration_Error with "sources names the component's own directory " & D;
+            end if;
+            if not Program.Sources.Contains (D) then
+               Program.Sources.Append (D);
+            end if;
+         end loop;
+      end Add_Sources;
+   begin
+      Read_Component_Document (Source, Schema, "Component", Declared);
+      Program := (others => <>);
+      if not Is_Component_Name (To_String (Declared.Name)) then
+         raise Declaration_Error with "name """ & To_String (Declared.Name) &
+           """ is not a lowercase kebab name (a-z, 0-9 and single hyphens, starting with a letter)";
+      end if;
+      Program.Name := Declared.Name;
+      Program.Executable := Declared.Name & Executable_Suffix (Declared.Of_Kind);
+      Program.Directory := To_Unbounded_String (Directory);
+      Program.Main := Declared.Main;
+      Program.Manifest_Catalog :=
+        (case Declared.Launched_By is
+           when Process_Manager => Process_Manager,
+           when Device_Manager => Device_Manager,
+           when Kernel => No_Manifest);
+      Program.Compiler := Switches_For (Declared.Debug_Info, Declared.Code, Profile.Target);
+      --  The binder unit: the program's switches without GNAT's own (as
+      --  gprbuild compiles it from the main unit's recorded switches).
+      for S of Program.Compiler loop
+         if S'Length < GNAT_Switch_Prefix'Length
+           or else S (S'First .. S'First + GNAT_Switch_Prefix'Length - 1) /= GNAT_Switch_Prefix
+         then
+            Program.Binder_Unit.Append (S);
+         end if;
+      end loop;
+      Program.Binder := Profile.Binder;
+      Add_Sources (Declared.Sources);
+      Add_Units (Declared.Units);
+      for Name of Declared.Libraries loop
          declare
             Found : Boolean := False;
          begin
-            for L of Profile.Libraries loop
+            for L of Known.Libraries loop
                if To_String (L.Name) = Name then
-                  Program.Libraries.Append (L);
                   Found := True;
+                  Add_Sources (L.Sources);
+                  Add_Units (L.Units);
+                  Program.Archives.Append (L.Archives);
                end if;
             end loop;
             if not Found then
-               raise Declaration_Error with "build-params.ccl names no library " & Name;
+               raise Declaration_Error with "build-catalog.ccl has no library """ & Name &
+                 """ (it has: " & Known_Names (Libraries => True) & ")";
             end if;
          end;
       end loop;
-   end Read_Program;
+      for A of Profile.Linker loop
+         if A.Kind /= Manifest_Object or else Program.Manifest_Catalog /= No_Manifest then
+            Program.Linker.Append (A);
+         end if;
+      end loop;
+      for A of Declared.Link_Extra loop
+         if A.Kind = Manifest_Object then
+            raise Declaration_Error with "link_extra names the manifest object, which build-params.ccl already links";
+         end if;
+         Program.Linker.Append (A);
+      end loop;
+   end Read_Component;
 
 end Build_Declarations;

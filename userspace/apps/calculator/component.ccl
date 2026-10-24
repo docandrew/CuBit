@@ -1,0 +1,8 @@
+(Component name => "calculator" kind => Kind.Application
+  source => (Source.Ada (Ada_Source
+    sources => ["userspace/apps/calculator/native" "userspace/lib/calc" "userspace/ccl/src"]
+    libraries => ["ui-toolkit"]
+    language => Ada_Language.Ada_2022
+    units => [(Unit_Code ["calc_limbs.adb" "calc_naturals.adb" "calc_numbers.adb" "calc_syntax.adb"
+                          "calc_engine.adb" "calc_format.adb" "calc_balls.adb" "calc_words.adb"
+                          "calc_symbols.adb"] "proved")])))

@@ -17,7 +17,7 @@ and left alone, never guessed at:
 
 Usage:
   gpr_to_ccl.py survey                 classify every project in the tree
-  gpr_to_ccl.py convert GPR [--write]  print (or write beside it) build.ccl
+  gpr_to_ccl.py convert GPR [--write]  print (or write beside it) component.ccl
 
 The output is typed CCL: `ccl-build check` runs it through the type checker.
 """
@@ -27,14 +27,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 MAKEFILE = ROOT / "kernel/Makefile"
-PARAMETERS = ROOT / "build-params.ccl"
 RUNTIME = "userspace/runtime"
 GENERATED = "build/generated"
 OBJECTS = "build"
 CONVENTIONAL_MAIN = "main.adb"
 MANIFEST_OBJECT = "build/manifest.o"
-# build-params.ccl's builder switches (what every compilation starts with).
-PROFILE_BUILDER = ["-g", "-gnatwa", "-gnatw.X"]
 # Builder switches that are gprbuild's own, not the compiler's.
 BUILDER_ONLY = {"-s", "-v", "-p", "-nostdlib"}
 SUFFIXES = {".app", ".svc", ".drv"}
@@ -163,19 +160,51 @@ def ccl_strings(values):
     return "[" + " ".join(ccl_string(v) for v in values) + "]"
 
 
-def ccl_switches(values):
-    """A Switches value other than the profile's."""
-    return f"(Switches.Exactly {ccl_strings(values)})" if values else "Switches.No_Switches"
+# What build-params.ccl and build-catalog.ccl hold, which a translated
+# component must not repeat.
+PROFILE_BINDER = ["-d_C", "-nostdlib"]
+PROFILE_LINK = ['(Link_Argument.Text "-nostdlib")', '(Link_Argument.Text "-static")',
+                '(Link_Argument.Text "-no-pie")', '(Link_Argument.Text "-Wl,-z,stack-size=16777216")',
+                '(Link_Argument.Text "-lgnat-user")', '(Link_Argument.Text "-T")',
+                '(Link_Argument.File "userspace/c/link.ld")', '(Link_Argument.File "userspace/c/build/crt0.o")',
+                "Link_Argument.Manifest_Object"]
+TOOLKIT_SOURCES = ["userspace/lib/ui", "userspace/lib/theme", "userspace/lib/compositor",
+                   "userspace/lib/display", "userspace/allocator/src"]
+DEBUG_SWITCH = "-g"
+# Switches that change no object code (warnings, stack-usage reports) or
+# that build-params.ccl's target list supplies.
+NEUTRAL = {"-gnatwa", "-gnatw.X", "-fstack-usage", "-mno-red-zone", "-fno-pic"}
+# build-catalog.ccl's code profiles, by the facets that change object code.
+PROFILES = {"proved": dict(language=True, maximum=True, suppressed=True, kept=False, no_vrp=True),
+            "pixel-loop": dict(language=True, maximum=True, suppressed=False, kept=False, no_vrp=True)}
 
 
-def profile():
-    """The profile's switch lists, read from build-params.ccl's text."""
-    text = strip_comments(PARAMETERS.read_text().replace("#", "--"))
-    def field(name):
-        m = re.search(rf"\b{name}\s*=>\s*\[(.*?)\]\s*(?=\w+\s*=>|\)\s*$)", text, re.S)
-        return m.group(1) if m else ""
-    return {name: string_list(field(name)) for name in ("compiler", "binder", "binder_unit")}, \
-        re.sub(r"\s+", " ", field("linker")).strip()
+def facets(switches):
+    """The intent behind a switch list; Unsupported for anything else."""
+    known = NEUTRAL | {DEBUG_SWITCH, "-O2", "-O3", "-gnat2022", "-gnatp", "-fomit-frame-pointer", "-fno-tree-vrp"}
+    if set(switches) - known:
+        raise Unsupported(f"switches {sorted(set(switches) - known)} have no intent in the schema")
+    return dict(language="-gnat2022" in switches, maximum="-O3" in switches, suppressed="-gnatp" in switches,
+                kept="-fomit-frame-pointer" not in switches, no_vrp="-fno-tree-vrp" in switches)
+
+
+def code_fields(switches):
+    f = facets(switches)
+    return ([s for flag, s in ((f["language"], "language => Ada_Language.Ada_2022"),
+                                (f["maximum"], "optimization => Optimization.Maximum"),
+                                (f["suppressed"], "checks => Checks.Suppressed"),
+                                (f["kept"], "frame_pointer => Frame_Pointer.Kept"),
+                                (f["no_vrp"], "value_range_propagation => false")) if flag])
+
+
+def profile_named(switches, debug):
+    if (DEBUG_SWITCH in switches) != debug:
+        raise Unsupported("a unit's debug information differs from its program's")
+    f = facets(switches)
+    for name, wanted in PROFILES.items():
+        if f == wanted:
+            return name
+    raise Unsupported(f"no code profile in build-catalog.ccl matches {switches}")
 
 
 def catalog(path):
@@ -222,7 +251,8 @@ def convert(path):
         else:
             groups.append(([unit], full))
     binder = project.get("binder_switches", []) + (["-nostdlib"] if "-nostdlib" in builder else [])
-    binder_unit = [s for s in compiler if not s.startswith("-gnat")]
+    if binder != PROFILE_BINDER:
+        raise Unsupported(f"binder switches {binder} differ from build-params.ccl's")
     sources = []
     for name in project.get("source_dirs", []):
         if name in (".", GENERATED):
@@ -232,36 +262,49 @@ def convert(path):
             raise Unsupported(f"reads make-generated sources from {source}")
         sources.append(source)
     link = []
-    switches = project.get("linker_switches", [])
-    for s in switches:
+    for s in project.get("linker_switches", []):
         if s == MANIFEST_OBJECT:
             link.append("Link_Argument.Manifest_Object")
         elif "/" in s:
             link.append(f"(Link_Argument.File {ccl_string(resolve(path.parent, s))})")
         else:
             link.append(f"(Link_Argument.Text {ccl_string(s)})")
-    lists, profile_link = profile()
-    fields = [f"executable => {ccl_string(executable)}", f"directory => {ccl_string(directory)}"]
+    launcher = {"Native_Runtime": "Process_Manager", "Driver": "Device_Manager",
+                "No_Manifest": "Kernel"}[catalog(path)]
+    suffix = Path(executable).suffix
+    kind = {".app": "Kind.Application", ".drv": "Kind.Driver", ".svc": f"(Kind.Service Launcher.{launcher})"}[suffix]
+    if (suffix == ".app" and launcher != "Process_Manager") or (suffix == ".drv" and launcher != "Device_Manager"):
+        raise Unsupported(f"{executable} is checked against the {catalog(path)} catalog")
+    base_link = [a for a in PROFILE_LINK if not (launcher == "Kernel" and a == "Link_Argument.Manifest_Object")]
+    if link[:len(base_link)] != base_link:
+        raise Unsupported("link switches differ from build-params.ccl's")
+    debug = DEBUG_SWITCH in compiler
+    fields = []
     if main != CONVENTIONAL_MAIN:
         fields.append(f"main => (Main.File {ccl_string(main)})")
+    libraries = []
+    if project["libraries"]:
+        if sorted(project["libraries"]) != ["fonts-native", "toolkit-flags"]:
+            raise Unsupported(f"libraries {project['libraries']}")
+        libraries = ["ui-toolkit"]
+        sources = [d for d in sources if d not in TOOLKIT_SOURCES]
     if sources:
         fields.append(f"sources => {ccl_strings(sources)}")
-    if catalog(path) != "Native_Runtime":
-        fields.append(f"catalog => Catalog.{catalog(path)}")
-    for name, value in (("compiler", compiler), ("binder", binder), ("binder_unit", binder_unit)):
-        if value != lists[name]:
-            fields.append(f"{name} => {ccl_switches(value)}")
-    if " ".join(link) != profile_link:
-        fields.append(f"linker => (Linking.Exactly [{' '.join(link)}])")
-    if project["libraries"]:
-        fields.append(f"libraries => {ccl_strings(project['libraries'])}")
-    if builder_compile != PROFILE_BUILDER:
-        fields.append(f"builder => {ccl_switches(builder_compile)}")
+    if libraries:
+        fields.append(f"libraries => {ccl_strings(libraries)}")
+    fields += code_fields(compiler)
+    if not debug:
+        fields.append("debug_info => false")
     if groups:
-        fields.append("units => [" + " ".join(
-            f"(Unit_Switches {ccl_strings(files)} {ccl_strings(switches)})" for files, switches in groups) + "]")
-    header = f"# {path.name} translated by tools/gpr_to_ccl.py (docs/ccl-build.md).\n"
-    return header + "(Component.Ada_Program (Ada_Program\n  " + "\n  ".join(fields) + "))\n"
+        units = []
+        for files, switches in groups:
+            units.append(f"(Unit_Code {ccl_strings(files)} {ccl_string(profile_named(switches, debug))})")
+        fields.append("units => [" + " ".join(units) + "]")
+    if link[len(base_link):]:
+        fields.append("link_extra => [" + " ".join(link[len(base_link):]) + "]")
+    name = Path(executable).stem
+    return (f'(Component name => {ccl_string(name)} kind => {kind}\n'
+            f'  source => (Source.Ada (Ada_Source' + "".join("\n    " + f for f in fields) + ")))\n")
 
 
 def projects():
@@ -288,7 +331,7 @@ def main(argv):
         path = Path(argv[1]).resolve()
         text = convert(path)
         if argv[2:] == ["--write"]:
-            (path.parent / "build.ccl").write_text(text)
+            (path.parent / "component.ccl").write_text(text)
         else:
             sys.stdout.write(text)
         return 0

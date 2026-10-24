@@ -1,0 +1,2 @@
+(Component name => "neg" kind => Kind.Application
+  source => (Source.Ada (Ada_Source units => [(Unit_Code ["a.adb"] "proven")])))

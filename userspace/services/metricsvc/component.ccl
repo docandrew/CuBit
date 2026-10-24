@@ -1,0 +1,4 @@
+(Component name => "metrics" kind => (Kind.Service Launcher.Process_Manager)
+  source => (Source.Ada (Ada_Source
+    optimization => Optimization.Maximum
+    checks => Checks.Suppressed)))

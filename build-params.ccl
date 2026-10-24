@@ -1,6 +1,6 @@
 # The repository's build parameters for CCL build (docs/ccl-build.md): the
-# toolchain pins and the profile every native Ada program shares. A
-# program's build.ccl names only what differs.
+# toolchain pins and what every native program shares. A component's
+# component.ccl names only what differs.
 (Parameters
   # GCC/GNAT 15.3, the compiler that also runs on CuBit: nixpkgs'
   # pkgsCross.musl64 gnat15 (flake.nix exports it as CUBIT_GNAT).
@@ -13,17 +13,13 @@
   runtime => "userspace/runtime"
   manifest_tool => "userspace/ccl/build/manifest/ccl-manifest"
   manifest_schema => "userspace/ccl/interfaces/executable-manifest.ccl"
-  native_catalog => "userspace/ccl/catalogs/native-runtime-services.ccl"
-  driver_catalog => "userspace/ccl/catalogs/driver-services.ccl"
-  compiler => ["-g" "-gnatwa" "-gnatw.X" "-O2" "-fstack-usage" "-fomit-frame-pointer"
-               "-mno-red-zone" "-fno-pic"]
+  process_manager_catalog => "userspace/ccl/catalogs/native-runtime-services.ccl"
+  device_manager_catalog => "userspace/ccl/catalogs/driver-services.ccl"
+  # Native CuBit code: no red zone (interrupt frames), not position independent.
+  target => ["-mno-red-zone" "-fno-pic"]
   binder => ["-d_C" "-nostdlib"]
-  binder_unit => ["-g" "-O2" "-fstack-usage" "-fomit-frame-pointer" "-mno-red-zone" "-fno-pic"]
   linker => [(Link_Argument.Text "-nostdlib") (Link_Argument.Text "-static")
              (Link_Argument.Text "-no-pie") (Link_Argument.Text "-Wl,-z,stack-size=16777216")
              (Link_Argument.Text "-lgnat-user") (Link_Argument.Text "-T")
              (Link_Argument.File "userspace/c/link.ld") (Link_Argument.File "userspace/c/build/crt0.o")
-             Link_Argument.Manifest_Object]
-  # gprbuild's Builder switches of the native programs: every compilation
-  # starts with them; library unit switches follow them.
-  builder => ["-g" "-gnatwa" "-gnatw.X"])
+             Link_Argument.Manifest_Object])
