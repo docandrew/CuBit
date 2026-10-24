@@ -1,0 +1,19 @@
+--  CuBit.Block_Requests proved against the runtime's own CuBit.Messages
+--  and CuBit.Memory_Grants specs (block_requests_tests.gpr uses the
+--  ram-block fixtures, which the hosted tests need).
+project Runtime_Proof is
+   for Languages use ("Ada");
+   for Source_Dirs use
+     ("../../userspace/runtime/gnat", "../../shared/capabilities");
+   for Source_Files use
+     ("cubit.ads", "cubit-messages.ads", "cubit-process_ids.ads",
+      "cubit-memory_grants.ads", "cubit-grant_references.ads",
+      "cubit-handles.ads", "capability_abi.ads",
+      "cubit-block_devices.ads", "cubit-block_devices.adb",
+      "cubit-block_requests.ads", "cubit-block_requests.adb",
+      "cubit-block_device_server.ads", "cubit-block_device_server.adb");
+   for Object_Dir use "build-runtime";
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022");
+   end Compiler;
+end Runtime_Proof;

@@ -1,0 +1,25 @@
+--  Block.Device.V1 front end: hosted tests and the SPARK proof of
+--  CuBit.Block_Requests and a CuBit.Block_Device_Server instance.
+project Block_Requests_Tests is
+   for Languages use ("Ada");
+   for Source_Dirs use
+     (".", "../ram-block/fixture", "../../userspace/runtime/gnat",
+      "../../shared/capabilities");
+   for Source_Files use
+     ("main.adb", "proof_device.ads", "proof_device.adb",
+      "cubit.ads", "cubit-messages.ads", "cubit-memory_grants.ads",
+      "cubit-memory_grants.adb", "cubit-grant_references.ads",
+      "cubit-handles.ads", "capability_abi.ads", "capability_abi.adb",
+      "cubit-handles-fixture.ads", "cubit-handles-fixture.adb",
+      "cubit-block_devices.ads", "cubit-block_devices.adb",
+      "cubit-block_requests.ads", "cubit-block_requests.adb",
+      "cubit-block_device_server.ads", "cubit-block_device_server.adb");
+   for Object_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnata", "-I-");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=2", "--checks-as-errors=on");
+   end Prove;
+end Block_Requests_Tests;

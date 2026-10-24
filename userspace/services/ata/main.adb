@@ -17,7 +17,8 @@ with System.Storage_Elements; use System.Storage_Elements;
 
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Block_Devices; use CuBit.Block_Devices;
-with CuBit.Memory_Grants;
+with CuBit.Block_Requests; use CuBit.Block_Requests;
+with CuBit.Block_Device_Server;
 with CuBit.Handles;
 with Startup;
 
@@ -58,8 +59,11 @@ procedure main is
    STATUS_DRQ     : constant Unsigned_8 := 16#08#;
    STATUS_ERR     : constant Unsigned_8 := 16#01#;
 
-   --  Sector size
+   --  Sector size, and the most sectors one 28-bit PIO command moves here.
    SECTOR_SIZE    : constant := 512;
+   MAX_PIO_SECTORS : constant := 255;
+   --  Blocks a 28-bit LBA addresses.
+   LBA28_BLOCKS   : constant := 2 ** 28;
    ATA_POLL_LIMIT : constant Positive := 100_000;
 
    --  No offered device is distinct from a failed IDENTIFY transaction.
@@ -152,7 +156,7 @@ procedure main is
 
       --  256-word (512 byte) identify buffer
       type IdentifyBuf is array (0 .. 255) of Unsigned_16;
-      buf : IdentifyBuf := (others => 0);
+      buf : IdentifyBuf := [others => 0];
    begin
       --  Select master drive
       outb (REG_DRIVE_SEL, SELECT_MASTER);
@@ -211,8 +215,8 @@ procedure main is
         Shift_Left (Unsigned_64 (buf (61)), 16);
       writeCacheEnabled :=
         (buf (IDENTIFY_ENABLED_FEATURES) and WRITE_CACHE_ENABLED) /= 0;
-      if driveBlockCount > 16#1000_0000# then
-         driveBlockCount := 16#1000_0000#;
+      if driveBlockCount > LBA28_BLOCKS then
+         driveBlockCount := LBA28_BLOCKS;
       end if;
       if driveBlockCount = 0 then
          return Identification_Failed;
@@ -375,195 +379,50 @@ procedure main is
    end flushCache;
 
    ---------------------------------------------------------------------------
-   --  sendReply - send a reply message
+   --  Block.Device.V1 through the shared front end (CuBit.Block_Requests).
    ---------------------------------------------------------------------------
-   procedure sendReply
-     (dest   : Process_ID;
-      label  : Unsigned_32;
-      word0  : Unsigned_64)
+   function deviceState return Device_State is
+     (case identification is
+        when Identified =>
+          (Presence      => Available,
+           Blocks        => driveBlockCount,
+           Logical_Size  => SECTOR_SIZE,
+           Physical_Size => SECTOR_SIZE,
+           Max_Transfer  => MAX_PIO_SECTORS,
+           --  PIO writes offer no FUA: FLUSH CACHE is the only barrier.
+           Features      =>
+             FEATURE_FLUSH or
+             (if writeCacheEnabled then FEATURE_VOLATILE_CACHE else 0),
+           Media         => Fixed_Media),
+        when No_Device => (Presence => No_Device),
+        when Identification_Failed => (Presence => Faulted));
+
+   --  The block count is capped to 28-bit LBAs and Count to MAX_PIO_SECTORS,
+   --  so both conversions are exact.
+   procedure transfer
+     (state  : Device_State;
+      item   : Transfer_Request;
+      buffer : System.Address;
+      moved  : out Unsigned_64)
    is
-      replyMsg : Message;
-      ignore   : Unsigned_64;
+      pragma Unreferenced (state);
    begin
-      replyMsg.tag := (label  => label,
-                       length => 1,
-                       protocol  => 0, ipc => <>,
-                       reserved  => 0);
-      replyMsg.words := (0 => word0, others => 0);
-      ignore := reply (dest, replyMsg);
-   end sendReply;
-
-   ---------------------------------------------------------------------------
-   --  handleReadBlock
-   --  words(0) = LBA (sector number)
-   --  words(1) = grant slot (buffer to write data into)
-   --  words(2) = sector_count (number of sectors to read)
-   --  words(3) = grant generation
-   ---------------------------------------------------------------------------
-   procedure handleReadBlock (sender : Process_ID; msg : Message) is
-      lba       : Unsigned_32 := 0;
-      sectorCt  : Unsigned_8 := 0;
-      grantAddr : System.Address := System.Null_Address;
-      resolved  : Boolean := False;
-      returned  : Boolean := False;
-      bytesRead : Unsigned_64;
-      expectedBytes : Unsigned_64;
-   begin
-      if identification /= Identified then
-         sendReply (sender, REPLY_ERROR, 0);
-         return;
-      end if;
-
-      if msg.tag.length /= 4 or else
-         msg.words (1) > CuBit.Memory_Grants.MAXIMUM_GLOBAL_SLOT or else
-         msg.words (3) = 0 or else
-         msg.words (3) > CuBit.Memory_Grants.MAXIMUM_GENERATION or else
-         msg.words (2) = 0 or else
-         msg.words (0) >= driveBlockCount or else
-         msg.words (0) > Unsigned_64 (Unsigned_32'Last) or else
-         msg.words (2) > 255 or else
-         msg.words (2) > driveBlockCount - msg.words (0)
-      then
-         sendReply (sender, REPLY_ERROR, 0);
-         return;
-      end if;
-
-      lba := Unsigned_32 (msg.words (0));
-      sectorCt := Unsigned_8 (msg.words (2));
-      expectedBytes := Unsigned_64 (sectorCt) * SECTOR_SIZE;
-      CuBit.Memory_Grants.Acquire
-        (reference      =>
-           (slot => CuBit.Memory_Grants.Global_Grant_Slot (msg.words (1)),
-            generation =>
-              CuBit.Memory_Grants.Grant_Generation (msg.words (3))),
-         expectedOwner => sender,
-         byteOffset     => 0,
-         byteLength     => Unsigned_64 (sectorCt) * SECTOR_SIZE,
-         requiredAccess => CuBit.Memory_Grants.Write_Access,
-         mappedAddress  => grantAddr,
-         success        => resolved);
-      if not resolved then
-         sendReply (sender, REPLY_ERROR, 0);
-         return;
-      end if;
-
-      bytesRead := readSectors (lba, sectorCt, grantAddr);
-      CuBit.Memory_Grants.Return_Acquisition
-        ((slot => CuBit.Memory_Grants.Global_Grant_Slot (msg.words (1)),
-          generation =>
-            CuBit.Memory_Grants.Grant_Generation (msg.words (3))),
-         returned);
-      if not returned then
-         sendReply (sender, REPLY_ERROR, 0);
-         return;
-      end if;
-      if bytesRead = expectedBytes then
-         sendReply (sender, REPLY_OK, bytesRead);
+      if item.Direction = Device_Read then
+         moved := readSectors
+           (Unsigned_32 (item.First_Block), Unsigned_8 (item.Count), buffer);
       else
-         sendReply (sender, REPLY_ERROR, bytesRead);
+         moved := writeSectors
+           (Unsigned_32 (item.First_Block), Unsigned_8 (item.Count), buffer);
       end if;
-   end handleReadBlock;
+   end transfer;
 
-   ---------------------------------------------------------------------------
-   --  handleWriteBlock
-   --  words(0) = LBA (sector number)
-   --  words(1) = grant slot (buffer to read data from)
-   --  words(2) = sector_count (number of sectors to write)
-   --  words(3) = grant generation
-   ---------------------------------------------------------------------------
-   procedure handleWriteBlock (sender : Process_ID; msg : Message) is
-      lba          : Unsigned_32 := 0;
-      sectorCt     : Unsigned_8 := 0;
-      grantAddr    : System.Address := System.Null_Address;
-      resolved     : Boolean := False;
-      returned     : Boolean := False;
-      bytesWritten : Unsigned_64;
-      expectedBytes : Unsigned_64;
+   procedure flush (state : Device_State; durable : out Boolean) is
+      pragma Unreferenced (state);
    begin
-      if identification /= Identified then
-         sendReply (sender, REPLY_ERROR, 0);
-         return;
-      end if;
+      durable := not writeCacheEnabled or else flushCache;
+   end flush;
 
-      --  No request flags are honoured: FUA is not advertised.
-      if msg.tag.length /= 4 or else msg.tag.protocol /= 0 or else
-         msg.tag.reserved /= 0 or else
-         msg.words (1) > CuBit.Memory_Grants.MAXIMUM_GLOBAL_SLOT or else
-         msg.words (3) = 0 or else
-         msg.words (3) > CuBit.Memory_Grants.MAXIMUM_GENERATION or else
-         msg.words (2) = 0 or else
-         msg.words (0) >= driveBlockCount or else
-         msg.words (0) > Unsigned_64 (Unsigned_32'Last) or else
-         msg.words (2) > 255 or else
-         msg.words (2) > driveBlockCount - msg.words (0)
-      then
-         sendReply (sender, REPLY_ERROR, 0);
-         return;
-      end if;
-
-      lba := Unsigned_32 (msg.words (0));
-      sectorCt := Unsigned_8 (msg.words (2));
-      expectedBytes := Unsigned_64 (sectorCt) * SECTOR_SIZE;
-      CuBit.Memory_Grants.Acquire
-        (reference      =>
-           (slot => CuBit.Memory_Grants.Global_Grant_Slot (msg.words (1)),
-            generation =>
-              CuBit.Memory_Grants.Grant_Generation (msg.words (3))),
-         expectedOwner => sender,
-         byteOffset     => 0,
-         byteLength     => Unsigned_64 (sectorCt) * SECTOR_SIZE,
-         requiredAccess => CuBit.Memory_Grants.Read_Access,
-         mappedAddress  => grantAddr,
-         success        => resolved);
-      if not resolved then
-         sendReply (sender, REPLY_ERROR, 0);
-         return;
-      end if;
-
-      bytesWritten := writeSectors (lba, sectorCt, grantAddr);
-      CuBit.Memory_Grants.Return_Acquisition
-        ((slot => CuBit.Memory_Grants.Global_Grant_Slot (msg.words (1)),
-          generation =>
-            CuBit.Memory_Grants.Grant_Generation (msg.words (3))),
-         returned);
-      if not returned then
-         sendReply (sender, REPLY_ERROR, 0);
-         return;
-      end if;
-      if bytesWritten = expectedBytes then
-         sendReply (sender, REPLY_OK, bytesWritten);
-      else
-         sendReply (sender, REPLY_ERROR, bytesWritten);
-      end if;
-   end handleWriteBlock;
-
-   ---------------------------------------------------------------------------
-   --  handleDescribe
-   --  Return Block.Device.V1 geometry and features.
-   ---------------------------------------------------------------------------
-   procedure handleDescribe (sender : Process_ID) is
-      replyMsg : Message;
-      ignore   : Unsigned_64;
-   begin
-      if identification = Identified then
-         replyMsg.tag := (label => REPLY_OK, length => 4,
-                          protocol => 0, ipc => <>, reserved => 0);
-         replyMsg.authorityTag := 0;
-         replyMsg.words :=
-           (0 => driveBlockCount,
-            1 => Pack_Sizes (512, 512),
-            2 => 255,
-            3 => Pack_Properties
-              (FEATURE_FLUSH or
-                 (if writeCacheEnabled then FEATURE_VOLATILE_CACHE else 0),
-               Fixed_Media));
-         ignore := reply (sender, replyMsg);
-      elsif identification = No_Device then
-         sendReply (sender, REPLY_NO_DEVICE, 0);
-      else
-         sendReply (sender, REPLY_ERROR, 0);
-      end if;
-   end handleDescribe;
+   package Block_Server is new CuBit.Block_Device_Server (transfer, flush);
 
    --  Main message loop variables
    sender : Process_ID;
@@ -594,7 +453,7 @@ begin
          (tag      => (label => OP_READY, length => 0,
                        protocol => 0, ipc => <>, reserved => 0),
           authorityTag => 0,
-          words    => (others => 0)), CuBit.Messages.Wait_Forever);
+          words    => [others => 0]), CuBit.Messages.Wait_Forever);
    end;
 
    debugPrint ("ATA: registered, entering message loop" & LF);
@@ -603,24 +462,12 @@ begin
    loop
       receive (sender, msg);
 
-      case msg.tag.label is
-         when OP_READ_BLOCKS =>
-            handleReadBlock (sender, msg);
-         when OP_WRITE_BLOCKS =>
-            handleWriteBlock (sender, msg);
-         when OP_DESCRIBE_DEVICE =>
-            handleDescribe (sender);
-         when OP_FLUSH_DEVICE =>
-            if identification = Identified and then msg.tag.length = 0 and then
-              msg.tag.protocol = 0 and then msg.tag.reserved = 0 and then
-              (not writeCacheEnabled or else flushCache)
-            then
-               sendReply (sender, REPLY_OK, 0);
-            else
-               sendReply (sender, REPLY_ERROR, 0);
-            end if;
-         when others =>
-            sendReply (sender, REPLY_ERROR, 0);
-      end case;
+      declare
+         response : Message;
+         ignore   : Unsigned_64;
+      begin
+         Block_Server.Handle (deviceState, sender, msg, response);
+         ignore := reply (sender, response);
+      end;
    end loop;
 end main;

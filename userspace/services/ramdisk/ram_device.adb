@@ -1,6 +1,7 @@
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Block_Devices; use CuBit.Block_Devices;
-with CuBit.Memory_Grants; use CuBit.Memory_Grants;
+with CuBit.Block_Requests; use CuBit.Block_Requests;
+with CuBit.Block_Device_Server;
 with CuBit.Messages; use CuBit.Messages;
 
 package body Ram_Device is
@@ -26,77 +27,48 @@ package body Ram_Device is
       Success := True;
    end Initialize;
 
-   procedure Handle
-     (Sender : Process_ID; Request : Message; Response : out Message)
-   is
-      LBA : constant Unsigned_64 := Request.words (0);
-      Count : constant Unsigned_64 := Request.words (2);
-      Bytes : Unsigned_64;
-      Reference : Grant_Reference;
-      Buffer : System.Address;
-      Acquired, Returned : Boolean;
-   begin
-      Response := NULL_MESSAGE;
-      Response.tag := (label => REPLY_ERROR, length => 1,
-                       protocol => 0, ipc => <>, reserved => 0);
-      if Blocks = 0 or else Request.tag.protocol /= 0 or else
-        Request.tag.reserved /= 0
-      then
-         return;
-      end if;
-      if Request.tag.label = OP_DESCRIBE_DEVICE then
-         if Request.tag.length /= 0 then
-            return;
-         end if;
-         Response.tag := (label => REPLY_OK, length => 4,
-                          protocol => 0, ipc => <>, reserved => 0);
-         Response.words :=
-           [0 => Blocks, 1 => Pack_Sizes (Block_Size, Block_Size),
-            2 => Maximum_Transfer_Blocks,
-            3 => Pack_Properties (FEATURE_VOLATILE, Memory_Media)];
-         return;
-      end if;
+   function State return Device_State is
+     (if Blocks = 0 then (Presence => Faulted)
+      else (Presence      => Available,
+            Blocks        => Blocks,
+            Logical_Size  => Block_Size,
+            Physical_Size => Block_Size,
+            Max_Transfer  => Maximum_Transfer_Blocks,
+            --  No flush and no FUA: RAM is not durable storage.
+            Features      => FEATURE_VOLATILE,
+            Media         => Memory_Media));
 
-      --  FLUSH is deliberately unsupported. RAM is not durable storage.
-      if Request.tag.label not in OP_READ_BLOCKS | OP_WRITE_BLOCKS or else
-        Request.tag.length /= 4 or else
-        Count = 0 or else Count > Maximum_Transfer_Blocks or else
-        LBA >= Blocks or else Count > Blocks - LBA or else
-        Request.words (1) > MAXIMUM_GLOBAL_SLOT or else
-        Request.words (3) = 0 or else Request.words (3) > MAXIMUM_GENERATION
-      then
-         return;
+   procedure Transfer
+     (Current : Device_State; Item : Transfer_Request;
+      Buffer : System.Address; Moved : out Unsigned_64)
+   is
+      pragma Unreferenced (Current);
+      Device_Bytes : String (1 .. Natural (Bytes (Item)))
+        with Import,
+             Address => Storage + Storage_Offset (Item.First_Block * Block_Size);
+      Grant_Bytes : String (1 .. Natural (Bytes (Item)))
+        with Import, Address => Buffer;
+   begin
+      if Item.Direction = Device_Read then
+         Grant_Bytes := Device_Bytes;
+      else
+         Device_Bytes := Grant_Bytes;
       end if;
-      Bytes := Count * Block_Size;
-      Reference :=
-        (slot => Global_Grant_Slot (Request.words (1)),
-         generation => Grant_Generation (Request.words (3)));
-      Acquire
-        (reference => Reference, expectedOwner => Sender,
-         byteOffset => 0, byteLength => Bytes,
-         requiredAccess =>
-           (if Request.tag.label = OP_READ_BLOCKS then Write_Access
-            else Read_Access),
-         mappedAddress => Buffer, success => Acquired);
-      if not Acquired then
-         return;
-      end if;
-      declare
-         Device_Bytes : String (1 .. Natural (Bytes))
-           with Import, Address => Storage + Storage_Offset (LBA * Block_Size);
-         Grant_Bytes : String (1 .. Natural (Bytes))
-           with Import, Address => Buffer;
-      begin
-         if Request.tag.label = OP_READ_BLOCKS then
-            Grant_Bytes := Device_Bytes;
-         else
-            Device_Bytes := Grant_Bytes;
-         end if;
-      end;
-      Return_Acquisition (Reference, Returned);
-      if Returned then
-         Response.tag.label := REPLY_OK;
-         Response.words (0) := Bytes;
-      end if;
+      Moved := Bytes (Item);
+   end Transfer;
+
+   --  Never called: the device offers no FEATURE_FLUSH.
+   procedure Flush (Current : Device_State; Durable : out Boolean) is
+      pragma Unreferenced (Current);
+   begin
+      Durable := False;
+   end Flush;
+
+   package Server is new CuBit.Block_Device_Server (Transfer, Flush);
+
+   procedure Handle
+     (Sender : Process_ID; Request : Message; Response : out Message) is
+   begin
+      Server.Handle (State, Sender, Request, Response);
    end Handle;
 end Ram_Device;

@@ -19,7 +19,8 @@ with CuBit.Messages; use CuBit.Messages;
 with CuBit.Launch_Configurations;
 with Launch_Configuration;
 with CuBit.Block_Devices; use CuBit.Block_Devices;
-with CuBit.Memory_Grants;
+with CuBit.Block_Requests; use CuBit.Block_Requests;
+with CuBit.Block_Device_Server;
 with CuBit.Busy_Poll;
 with CuBit.NVMe_Control;
 with CuBit.Device_Interrupts;
@@ -48,187 +49,75 @@ procedure main is
       ignore := reply (dest, replyMsg);
    end sendReply;
 
+#if nvme_io_profile = "on" then
+   --  Diagnostic: how completion waits end, every so many flushes.
+   flushes : Unsigned_64 := 0;
+   WAIT_REPORT_FLUSHES : constant := 256;
+#end if;
+
    ---------------------------------------------------------------------------
-   --  handleReadBlock
-   --  words(0) = LBA (sector number)
-   --  words(1) = grant slot (buffer to write data into)
-   --  words(2) = sector_count (number of sectors to read)
-   --  words(3) = grant generation
+   --  Block.Device.V1 through the shared front end (CuBit.Block_Requests).
    ---------------------------------------------------------------------------
-   procedure handleReadBlock (sender : Process_ID; msg : Message) is
-      lba       : constant Unsigned_64 := msg.words (0);
-      sectorCt  : Unsigned_32 := 0;
-      grantAddr : System.Address := System.Null_Address;
-      resolved  : Boolean := False;
-      returned  : Boolean := False;
-      bytesRead : Unsigned_64;
-      expectedBytes : Unsigned_64;
+   function deviceState return Device_State is
+      maxBlocks : Unsigned_64;
    begin
-      if msg.tag.length /= 4 or else
-         msg.words (1) > CuBit.Memory_Grants.MAXIMUM_GLOBAL_SLOT or else
-         msg.words (3) = 0 or else
-         msg.words (3) > CuBit.Memory_Grants.MAXIMUM_GENERATION or else
-         msg.words (2) = 0 or else
-         msg.words (2) > Unsigned_64 (Unsigned_32'Last) or else
-         NVMe.nsSectorSize = 0 or else
-         lba >= NVMe.nsBlockCount or else
-         msg.words (2) > NVMe.nsBlockCount - lba
+      if NVMe.nsBlockCount = 0 or else
+        NVMe.nsSectorSize not in Logical_Block_Size
       then
-         sendReply (sender, REPLY_ERROR, 0);
-         return;
+         return (Presence => Faulted);
       end if;
+      maxBlocks := Unsigned_64'Min
+        (NVMe.maxTransferBytes / Unsigned_64 (NVMe.nsSectorSize),
+         Transfer_Limit'Last);
+      if maxBlocks = 0 then
+         return (Presence => Faulted);
+      end if;
+      return (Presence      => Available,
+              Blocks        => NVMe.nsBlockCount,
+              Logical_Size  => NVMe.nsSectorSize,
+              Physical_Size => NVMe.nsSectorSize,
+              Max_Transfer  => maxBlocks,
+              Features      =>
+                FEATURE_FLUSH or FEATURE_FUA or
+                (if NVMe.volatileWriteCache then FEATURE_VOLATILE_CACHE
+                 else 0),
+              Media         => Fixed_Media);
+   end deviceState;
 
-      sectorCt := Unsigned_32 (msg.words (2));
-      expectedBytes :=
-        Unsigned_64 (sectorCt) * Unsigned_64 (NVMe.nsSectorSize);
-      CuBit.Memory_Grants.Acquire
-        (reference      =>
-           (slot => CuBit.Memory_Grants.Global_Grant_Slot (msg.words (1)),
-            generation =>
-              CuBit.Memory_Grants.Grant_Generation (msg.words (3))),
-         expectedOwner => sender,
-         byteOffset     => 0,
-         byteLength     =>
-           Unsigned_64 (sectorCt) * Unsigned_64 (NVMe.nsSectorSize),
-         --  A device read writes the result into the caller's grant.
-         requiredAccess => CuBit.Memory_Grants.Write_Access,
-         mappedAddress  => grantAddr,
-         success        => resolved);
-      if not resolved then
-         sendReply (sender, REPLY_ERROR, 0);
-         return;
-      end if;
-
-      bytesRead := NVMe.readBlocks (lba, sectorCt, grantAddr);
-      CuBit.Memory_Grants.Return_Acquisition
-        ((slot => CuBit.Memory_Grants.Global_Grant_Slot (msg.words (1)),
-          generation =>
-            CuBit.Memory_Grants.Grant_Generation (msg.words (3))),
-         returned);
-      if not returned then
-         sendReply (sender, REPLY_ERROR, 0);
-         return;
-      end if;
-      if bytesRead = expectedBytes then
-         sendReply (sender, REPLY_OK, bytesRead);
-      else
-         --  A short controller transfer is an error.  The completed prefix
-         --  remains in word 0 for diagnostics and future recovery policy.
-         sendReply (sender, REPLY_ERROR, bytesRead);
-      end if;
-   end handleReadBlock;
-
-   ---------------------------------------------------------------------------
-   --  handleWriteBlock
-   --  words(0) = LBA (sector number)
-   --  words(1) = grant slot (buffer to read data from)
-   --  words(2) = sector_count (number of sectors to write)
-   --  words(3) = grant generation
-   ---------------------------------------------------------------------------
-   procedure handleWriteBlock (sender : Process_ID; msg : Message) is
-      lba          : constant Unsigned_64 := msg.words (0);
-      sectorCt     : Unsigned_32 := 0;
-      grantAddr    : System.Address := System.Null_Address;
-      resolved     : Boolean := False;
-      returned     : Boolean := False;
-      bytesWritten : Unsigned_64;
-      expectedBytes : Unsigned_64;
+   --  Count is at most Max_Transfer, which fits 32 bits.
+   procedure transfer
+     (state  : Device_State;
+      item   : Transfer_Request;
+      buffer : System.Address;
+      moved  : out Unsigned_64)
+   is
+      pragma Unreferenced (state);
    begin
-      if msg.tag.length /= 4 or else
-         --  WRITE_FLAG_FUA is the only request flag this device honours.
-         (msg.tag.protocol and not WRITE_FLAG_FUA) /= 0 or else
-         msg.tag.reserved /= 0 or else
-         msg.words (1) > CuBit.Memory_Grants.MAXIMUM_GLOBAL_SLOT or else
-         msg.words (3) = 0 or else
-         msg.words (3) > CuBit.Memory_Grants.MAXIMUM_GENERATION or else
-         msg.words (2) = 0 or else
-         msg.words (2) > Unsigned_64 (Unsigned_32'Last) or else
-         NVMe.nsSectorSize = 0 or else
-         lba >= NVMe.nsBlockCount or else
-         msg.words (2) > NVMe.nsBlockCount - lba
-      then
-         sendReply (sender, REPLY_ERROR, 0);
-         return;
-      end if;
-
-      sectorCt := Unsigned_32 (msg.words (2));
-      expectedBytes :=
-        Unsigned_64 (sectorCt) * Unsigned_64 (NVMe.nsSectorSize);
-      CuBit.Memory_Grants.Acquire
-        (reference      =>
-           (slot => CuBit.Memory_Grants.Global_Grant_Slot (msg.words (1)),
-            generation =>
-              CuBit.Memory_Grants.Grant_Generation (msg.words (3))),
-         expectedOwner => sender,
-         byteOffset     => 0,
-         byteLength     =>
-           Unsigned_64 (sectorCt) * Unsigned_64 (NVMe.nsSectorSize),
-         --  A device write reads source bytes from the caller's grant.
-         requiredAccess => CuBit.Memory_Grants.Read_Access,
-         mappedAddress  => grantAddr,
-         success        => resolved);
-      if not resolved then
-         sendReply (sender, REPLY_ERROR, 0);
-         return;
-      end if;
-
-      bytesWritten := NVMe.writeBlocks
-        (lba, sectorCt, grantAddr, fua => (msg.tag.protocol and WRITE_FLAG_FUA) /= 0);
-      CuBit.Memory_Grants.Return_Acquisition
-        ((slot => CuBit.Memory_Grants.Global_Grant_Slot (msg.words (1)),
-          generation =>
-            CuBit.Memory_Grants.Grant_Generation (msg.words (3))),
-         returned);
-      if not returned then
-         sendReply (sender, REPLY_ERROR, 0);
-         return;
-      end if;
-      if bytesWritten = expectedBytes then
-         sendReply (sender, REPLY_OK, bytesWritten);
+      if item.Direction = Device_Read then
+         moved := NVMe.readBlocks
+           (item.First_Block, Unsigned_32 (item.Count), buffer);
       else
-         --  Never turn a short controller transfer into protocol success.
-         sendReply (sender, REPLY_ERROR, bytesWritten);
+         moved := NVMe.writeBlocks
+           (item.First_Block, Unsigned_32 (item.Count), buffer,
+            fua => item.Force_Unit_Access);
       end if;
-   end handleWriteBlock;
+   end transfer;
 
-   ---------------------------------------------------------------------------
-   --  handleDescribe
-   --  Return Block.Device.V1 geometry and features.
-   ---------------------------------------------------------------------------
-   procedure handleDescribe (sender : Process_ID) is
-      replyMsg : Message;
-      ignore   : Unsigned_64;
-      maxBlocks64 : Unsigned_64;
+   --  Without a volatile write cache every completed write is already
+   --  durable: the barrier needs no controller command.
+   procedure flush (state : Device_State; durable : out Boolean) is
+      pragma Unreferenced (state);
    begin
-      if NVMe.nsBlockCount > 0 then
-         maxBlocks64 := NVMe.maxTransferBytes /
-           Unsigned_64 (NVMe.nsSectorSize);
-         if maxBlocks64 = 0 then
-            sendReply (sender, REPLY_ERROR, 0);
-            return;
-         end if;
-         if maxBlocks64 > Unsigned_64 (Unsigned_32'Last) then
-            maxBlocks64 := Unsigned_64 (Unsigned_32'Last);
-         end if;
-
-         replyMsg.tag := (label => REPLY_OK, length => 4,
-                          protocol => 0, ipc => <>, reserved => 0);
-         replyMsg.authorityTag := 0;
-         replyMsg.words :=
-           [0 => NVMe.nsBlockCount,
-            1 => Pack_Sizes
-              (Logical_Block_Size (NVMe.nsSectorSize),
-               Logical_Block_Size (NVMe.nsSectorSize)),
-            2 => maxBlocks64,
-            3 => Pack_Properties
-              (FEATURE_FLUSH or FEATURE_FUA or
-                 (if NVMe.volatileWriteCache then FEATURE_VOLATILE_CACHE else 0),
-               Fixed_Media)];
-         ignore := reply (sender, replyMsg);
-      else
-         sendReply (sender, REPLY_ERROR, 0);
+#if nvme_io_profile = "on" then
+      flushes := flushes + 1;
+      if flushes mod WAIT_REPORT_FLUSHES = 0 then
+         NVMe.reportWaits;
       end if;
-   end handleDescribe;
+#end if;
+      durable := not NVMe.volatileWriteCache or else NVMe.flush;
+   end flush;
+
+   package Block_Server is new CuBit.Block_Device_Server (transfer, flush);
 
    --  Main message loop variables
    sender   : Process_ID;
@@ -242,11 +131,6 @@ procedure main is
    useInterrupts : Boolean := False;
    configValid : Boolean;
    queuesOk : Boolean;
-#if nvme_io_profile = "on" then
-   --  Diagnostic: how completion waits end, every so many flushes.
-   flushes : Unsigned_64 := 0;
-   WAIT_REPORT_FLUSHES : constant := 256;
-#end if;
 begin
    debugPrint ("NVMe Driver: Starting..." & LF);
 
@@ -353,32 +237,12 @@ begin
    loop
       receive (sender, msg);
 
-      case msg.tag.label is
-         when OP_READ_BLOCKS =>
-            handleReadBlock (sender, msg);
-         when OP_WRITE_BLOCKS =>
-            handleWriteBlock (sender, msg);
-         when OP_DESCRIBE_DEVICE =>
-            handleDescribe (sender);
-         when OP_FLUSH_DEVICE =>
-#if nvme_io_profile = "on" then
-            flushes := flushes + 1;
-            if flushes mod WAIT_REPORT_FLUSHES = 0 then
-               NVMe.reportWaits;
-            end if;
-#end if;
-            --  Without a volatile write cache every completed write is
-            --  already durable: the barrier needs no controller command.
-            if msg.tag.length = 0 and then msg.tag.protocol = 0 and then
-              msg.tag.reserved = 0 and then
-              (not NVMe.volatileWriteCache or else NVMe.flush)
-            then
-               sendReply (sender, REPLY_OK, 0);
-            else
-               sendReply (sender, REPLY_ERROR, 0);
-            end if;
-         when others =>
-            sendReply (sender, REPLY_ERROR, 0);
-      end case;
+      declare
+         response : Message;
+         ignore   : Unsigned_64;
+      begin
+         Block_Server.Handle (deviceState, sender, msg, response);
+         ignore := reply (sender, response);
+      end;
    end loop;
 end main;

@@ -102,3 +102,16 @@ Typed Config collections survive a restart of the store.
 ```sh
 bash tests/headless/run.sh --test config-objects-reopen --accel kvm
 ```
+
+## block-requests (HW-001)
+
+The shared Block.Device.V1 front end (CuBit.Block_Requests and the
+CuBit.Block_Device_Server generic) that nvme, ata, ramdisk and the USB
+optical service use: request checks, grant acquire and return, replies,
+in every driver's configuration (flush, FUA, read only, absent, faulted).
+The RAM disk's own regression (tests/ram-block) runs on it unchanged.
+Proofs: the front end against the fixtures and the runtime's own specs.
+
+```sh
+make -C kernel test-block-requests prove-block-requests
+```

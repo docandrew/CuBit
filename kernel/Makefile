@@ -381,6 +381,22 @@ prove-usb-optical:
 		--level=2 --report=all --checks-as-errors=on -j2
 	@cat ../tests/usb-optical/build/gnatprove/gnatprove.out
 
+# HW-001: the shared Block.Device.V1 front end (hosted tests, the RAM
+# disk's regression on it, and its SPARK proofs).
+.PHONY: test-block-requests prove-block-requests
+test-block-requests:
+	$(ALR) gprbuild -p -P../tests/block-requests/block_requests_tests.gpr
+	../tests/block-requests/build/main
+	$(ALR) gprbuild -p -P../tests/ram-block/ram_block_tests.gpr
+	../tests/ram-block/build/main
+
+prove-block-requests:
+	$(ALR) gnatprove -P../tests/block-requests/block_requests_tests.gpr \
+		-u cubit-block_requests.adb proof_device.adb \
+		--level=2 --report=all --checks-as-errors=on -j2
+	$(ALR) gnatprove -P../tests/block-requests/runtime_proof.gpr \
+		-u cubit-block_requests.adb --level=2 --report=all --checks-as-errors=on -j2
+
 .PHONY : test-tcp-session prove-tcp-session
 test-network-authority:
 	$(ALR) gprbuild -p -P../tests/network-authority/network_authority_tests.gpr

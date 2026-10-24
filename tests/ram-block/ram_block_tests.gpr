@@ -6,7 +6,9 @@ project Ram_Block_Tests is
    for Source_Files use
      ("cubit-handles.ads", "capability_abi.ads", "capability_abi.adb", "cubit-handles-fixture.ads", "cubit-handles-fixture.adb", "main.adb", "ram_device.ads", "ram_device.adb", "cubit.ads",
       "cubit-messages.ads", "cubit-memory_grants.ads", "cubit-memory_grants.adb",
-      "cubit-grant_references.ads", "cubit-block_devices.ads", "cubit-block_devices.adb");
+      "cubit-grant_references.ads", "cubit-block_devices.ads", "cubit-block_devices.adb",
+      "cubit-block_requests.ads", "cubit-block_requests.adb",
+      "cubit-block_device_server.ads", "cubit-block_device_server.adb");
    for Object_Dir use "build";
    for Main use ("main.adb");
    package Compiler is
