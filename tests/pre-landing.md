@@ -181,3 +181,17 @@ bash tests/ccl-build/run.sh
 ```
 ```
 ```
+
+## ufs (HW-001)
+
+The UFS driver's codecs (UFSHCI registers, UPIUs and request descriptors,
+UFS descriptors, GPT) as byte-exact fixtures and proofs, and the driver on
+QEMU's UFS model: every bring-up stage logs `ok`, the unit's capacity and
+the GPT of a disk laid out like the IdeaPad's are read, nothing is written
+(the disk is read only at the host too). QEMU is not the hardware test.
+
+```sh
+make -C kernel test-ufs prove-ufs
+make -C kernel world boot-logs
+bash tests/headless/run.sh --test ufs --accel kvm --timeout 150
+```

@@ -20,6 +20,7 @@
   (file bootstrap "xhci" "xhci.drv")
   (file bootstrap "virtio-input" "virtio-input.drv")
   (file bootstrap "intel-gpu" "intel-gpu.drv")
+  (file bootstrap "ufs" "ufs.drv")
   (file bootstrap "config" "config.svc")
   (file bootstrap "netmgr" "netmgr.svc")
   (file bootstrap "procmgr" "procmgr.svc")

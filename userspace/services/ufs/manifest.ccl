@@ -1,0 +1,26 @@
+# ufs.drv's authority (CAP-002) and the controllers it drives (HW-002,
+# docs/device-matching.md). devmgr's generic PCI launch answers every
+# binding: BAR 0's register window, the DMA region it divides into request
+# lists, command tables and buffers (UFS_Layout), and its endpoint to
+# devmgr. No interrupt yet: the driver polls its slots (the generic launch
+# refuses a driver whose interrupt request it cannot meet, and QEMU's UFS
+# model has no MSI).
+(Executable_Manifest
+  identity => "com.cubit.ufs"
+  version => "0.1.0"
+  drives => [
+    # Intel Alder Lake-N (the IdeaPad's i3-N350) and Alder Lake-P: named
+    # so the Intel link-startup quirk is tied to the IDs it applies to.
+    (Device_Match.PCI_IDs (PCI_IDs 0x8086 0x54FF 0x54FF))
+    (Device_Match.PCI_IDs (PCI_IDs 0x8086 0x51FF 0x51FF))
+    # QEMU's UFS model (-device ufs), for the headless test.
+    (Device_Match.PCI_IDs (PCI_IDs 0x1B36 0x0013 0x0013))
+    # Any other UFSHCI controller: mass storage, UFS, UFSHCI interface.
+    (Device_Match.PCI_Class (PCI_Class 0x01 0x09 0x01))]
+  requests => [
+    (device-memory "registers" 0 16384 Access.Read_Write)
+    (dma "queues" 1048576)
+    (service "device-manager" "ready")
+    # Bring-up stage lines reach the boot-logs view (and serial).
+    (service "logstore" "logstore")]
+  optional => ["logstore"])

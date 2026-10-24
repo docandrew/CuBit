@@ -53,6 +53,9 @@ CONFIG_EXPORT=""
 CONFIG_STORAGE_TEST=0
 TEMP_AUDIO=""
 TEMP_STORAGE_FIXTURE=""
+# --test ufs: the GPT disk behind QEMU's UFS logical unit, and its devices.
+TEMP_UFS_DISK=""
+UFS_ARGS=()
 MONITOR_SOCKET=""
 QMP_SOCKET=""
 # This run's QEMU UNIX socket of one KIND (qmp, monitor, vnc): unique by
@@ -316,7 +319,7 @@ case "$TEST_NAME" in
         ;;
     grant-forward|grant-forward-intermediary-exit|grant-forward-owner-exit|grant-forward-desktop|config-tree|config-inspection|log-authority|log-fields|metrics|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
         ;;
-    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch)
+    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -431,6 +434,9 @@ cleanup() {
     fi
     if [ -n "$TEMP_STORAGE_FIXTURE" ]; then
         rm -f "$TEMP_STORAGE_FIXTURE"
+    fi
+    if [ -n "$TEMP_UFS_DISK" ]; then
+        rm -f "$TEMP_UFS_DISK"
     fi
     if [ -n "$TEMP_AUDIO" ] && [ "$KEEP_LOGS" -eq 0 ] &&
        [ "${HEADLESS_TEST_FAILED:-0}" -eq 0 ]; then
@@ -786,6 +792,18 @@ case "$TEST_NAME" in
         # HW-002: a driver devmgr has no dedicated setup for, started from
         # its manifest alone (docs/device-matching.md "Generic PCI launch").
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-generic-launch.ccl"
+        ;;
+    ufs)
+        # tests/ufs: the UFS driver (HW-001) on QEMU's UFS model, reading a
+        # GPT disk laid out like the IdeaPad's. QEMU is a first check, not
+        # the hardware test: the laptop's controller is.
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-ufs.ccl"
+        TEMP_UFS_DISK="$(mktemp "${TMPDIR:-/tmp}/cubit-ufs-disk.XXXXXX.img")"
+        python3 -I "$ROOT_DIR/tests/ufs/make-disk.py" "$TEMP_UFS_DISK"
+        # Read only at the host as well: the driver must never write.
+        UFS_ARGS=(-drive "file=$TEMP_UFS_DISK,if=none,id=ufs0,format=raw,readonly=on"
+                  -device ufs,serial=cubitufs,id=ufs
+                  -device ufs-lu,drive=ufs0,bus=ufs,lun=0)
         ;;
     startup-health)
         # CAP-003: the full desktop boots with no refusal, every service
@@ -1197,8 +1215,9 @@ if [ -n "$INIT_PROFILE" ]; then
             exit 1
         fi
     fi
-    if [ "$TEST_NAME" = "generic-launch" ]; then
-        # boot-logs prints the records logstore keeps (the base disk lacks it).
+    if [ "$TEST_NAME" = "generic-launch" ] || [ "$TEST_NAME" = "ufs" ]; then
+        # boot-logs prints the records logstore keeps (the base disk lacks it):
+        # generic drivers (generic-check, ufs) log through logstore.
         for GENERIC_IMAGE in logstore.svc boot-logs.app; do
             if [ ! -f "$KERNEL_DIR/isodir/boot/$GENERIC_IMAGE" ]; then
                 echo "headless: build $GENERIC_IMAGE first (make -C kernel world boot-logs)" >&2
@@ -3719,6 +3738,7 @@ if [ "$TEST_NAME" = "bench-net" ] && [ -z "${BENCH_NET_PCAP:-}" ]; then PCAP_ARG
         "${QMP_ARGS[@]}" \
         -drive "file=$DISK_IMAGE,if=none,id=nvme0,format=raw" \
         -device nvme,serial=cubitnvme,drive=nvme0 \
+        "${UFS_ARGS[@]}" \
         -device "virtio-net-pci,netdev=net0${NET_DEVICE_OPTIONS:-}" \
         "${VIDEO_ARGS[@]}" \
         -netdev "$NETDEV_CONFIG" \
@@ -3954,6 +3974,29 @@ BENCH: spread elapsed_ms
 net-bench: start
 net-bench: done
 "
+        ;;
+    ufs)
+        required_markers="
+ufs: stage identify ok pci=1b36:0013
+ufs: stage enable ok
+ufs: stage link-up ok
+ufs: stage lists ok
+ufs: stage nop ok
+ufs: stage device-init ok
+ufs: stage device-desc ok spec=
+ufs: stage geometry ok
+ufs: stage lun ok lun=0 blocks=16384 bs=4096
+ufs: stage unit-ready ok
+ufs: stage inquiry ok
+ufs: stage capacity ok blocks=16384 bs=4096 size=64M
+ufs: stage partitions ok gpt n=4 p1=esp:8192K p2=msr:4096K p3=basic:43M p4=recovery:8172K
+ufs: bring-up complete (13/13), serving lun 0 read-only
+boot-logs: ufs: bring-up complete
+"
+        if grep -qa 'ufs: stage [a-z-]* fail' "$SERIAL_LOG"; then
+            echo "headless: a UFS bring-up stage failed" >&2
+            exit 1
+        fi
         ;;
     bench-fs)
         required_markers="

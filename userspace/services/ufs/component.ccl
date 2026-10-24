@@ -1,0 +1,8 @@
+(Component name => "ufs" kind => Kind.Driver
+  source => (Source.Ada (Ada_Source
+    sources => ["userspace/lib/scsi" "userspace/lib/partitions"]
+    language => Ada_Language.Ada_2022
+    # SPARK-proved codecs (tests/ufs, tests/scsi): built without checks.
+    units => [(Unit_Code ["scsi.adb" "ufshci.adb" "ufs_upiu.adb"
+                          "ufs_descriptors.adb" "partition_tables.adb"
+                          "ufs_text.adb"] "proved")])))

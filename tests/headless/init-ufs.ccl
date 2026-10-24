@@ -1,0 +1,9 @@
+# tests/ufs: devmgr starts generic drivers once logstore runs; the UFS
+# driver then identifies QEMU's UFS device and reads its partition table.
+# boot-logs prints what logstore keeps: the stage lines arrive through it.
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "display.svc" (priority 5))
+  (start "desktop.svc" (priority 4))
+  (start "boot-logs.app" (priority 2))
+)

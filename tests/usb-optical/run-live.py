@@ -19,6 +19,9 @@ import time
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--cpus', type=int, default=1)
+parser.add_argument('--ufs', action='store_true',
+                    help='add QEMU\'s UFS controller with a GPT disk laid out like the IdeaPad\'s '
+                         '(read only) and require the UFS driver\'s bring-up (HW-001)')
 parser.add_argument('--without-ps2', action='store_true',
                     help='remove i8042; check USB mouse and desktop boot (no keyboard app-launch test)')
 parser.add_argument('--image', type=pathlib.Path, help='explicit read-only image for boot regressions')
@@ -115,6 +118,13 @@ command = ['qemu-system-x86_64', '-enable-kvm', '-machine', 'q35', '-cpu', 'host
            '-device', f'usb-mouse,bus=xhci.0,port={mouse_port}',
            '-serial', f'file:{serial}', '-qmp', f'unix:{monitor},server,nowait',
            '-display', 'none', '-no-reboot']
+if args.ufs:
+    ufs_disk = run / 'ufs.img'
+    subprocess.run([sys.executable, '-I', str(root / 'tests/ufs/make-disk.py'), str(ufs_disk)],
+                   check=True)
+    command += ['-drive', f'file={ufs_disk},if=none,id=ufs0,format=raw,readonly=on',
+                '-device', 'ufs,serial=cubitufs,id=ufs',
+                '-device', 'ufs-lu,drive=ufs0,bus=ufs,lun=0']
 if args.usb_flash:
     command[command.index(f'file={image},if=none,id=cd,media=cdrom,format=raw,readonly=on')] = f'file={image},if=none,id=cd,format=raw,readonly=on'
     command[command.index(f'scsi-cd,bus=usbcd.0,lun={lun},drive=cd,bootindex=1')] = f'scsi-hd,bus=usbcd.0,lun={lun},drive=cd,bootindex=1'
@@ -840,6 +850,9 @@ with (run / 'qemu.log').open('w') as log:
                 raise RuntimeError('quiet xHCI build emitted USB diagnostics')
         if not all(marker in text for marker in required):
             raise RuntimeError('missing native optical boot evidence')
+        if args.ufs and ('ufs: bring-up complete' not in text
+                         or 'ufs: stage partitions ok gpt n=4' not in text):
+            raise RuntimeError('UFS bring-up incomplete; see serial.log')
         if args.without_audio:
             # Without a device capability, sysinfo may itself deny the
             # physical-address query; mapping rejection is also a safe exit.

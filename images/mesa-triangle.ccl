@@ -24,6 +24,7 @@
   (file optical "virtio-net" "apps/virtio-net.drv")
   (file optical "virtio-gpu" "apps/virtio-gpu.drv")
   (file optical "intel-gpu" "apps/intel-gpu.drv")
+  (file optical "ufs" "apps/ufs.drv")
   # The bootstrap filesystem resolves application paths beneath apps/.
   (file optical "intel-guc" "apps/firmware/intel/tgl_guc_70.bin")
   (file optical "intel-firmware-license" "licenses/Intel-GPU.txt")
