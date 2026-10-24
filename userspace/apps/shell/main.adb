@@ -28,6 +28,8 @@ with CuBit.Process_List;
 with CuBit.Display_Protocol;
 with CuBit.Desktop_Messages;
 with CuBit.Grant_References;
+with CuBit.Net_Link;
+with CuBit.Net_Management;
 with CuBit.Memory_Grants;
 with CuBit.Logging;
 with CuBit.Log_Protocol;
@@ -76,9 +78,6 @@ procedure main is
 
    --  Network IPC labels
    OP_NET_RESOLVE    : constant Unsigned_32 := 16#0410#;
-   OP_NET_IF_DETAIL  : constant Unsigned_32 := 16#0436#;
-   OP_NET_ROUTE_LIST : constant Unsigned_32 := 16#0437#;
-   OP_NET_PING       : constant Unsigned_32 := 16#0438#;
 
    --  GPU mode renders into owned RAM granted read-only to display.svc.
    --  Linear framebuffer mode still draws directly into the device mapping.
@@ -2917,89 +2916,83 @@ procedure main is
    end cmdConfig;
 
    ---------------------------------------------------------------------------
-   --  cmdIfconfig - show network interface details
+   --  cmdIfconfig - show every network interface (CuBit.Net_Management)
    ---------------------------------------------------------------------------
    procedure cmdIfconfig is
+      package NM renames CuBit.Net_Management;
+      package NL renames CuBit.Net_Link;
       msg : Message;
       tag : MessageTag;
+      previous : Unsigned_64 := 0;
+      shown : Natural := 0;
    begin
       if not netstackReady then
          putStr ("error: netstack not available" & LF);
          return;
       end if;
-
-      msg := NULL_MESSAGE;
-      msg.tag := (label  => OP_NET_IF_DETAIL,
-                  length => 1, protocol => 0, ipc => <>, reserved => 0);
-      msg.words (0) := 0;  -- interface 0
-      tag := capCall (Network_Service, msg, CuBit.Messages.Wait_Forever);
-
-      if tag.label /= REPLY_OK then
-         putStr ("error: no interfaces" & LF);
-         return;
+      loop
+         msg := NULL_MESSAGE;
+         msg.tag := (label => NM.Label (NM.Interface_Next),
+                     length => Unsigned_8 (NM.Request_Words (NM.Interface_Next)),
+                     protocol => 0, ipc => <>, reserved => 0);
+         msg.words (0) := previous;
+         tag := capCall (Network_Service, msg, CuBit.Messages.Wait_Forever);
+         exit when tag.label /= REPLY_OK or else not NL.Valid_Handle_Word (msg.words (0))
+           or else msg.words (0) = previous;
+         previous := msg.words (0);
+         msg := NULL_MESSAGE;
+         msg.tag := (label => NM.Label (NM.Interface_Detail),
+                     length => Unsigned_8 (NM.Request_Words (NM.Interface_Detail)),
+                     protocol => 0, ipc => <>, reserved => 0);
+         msg.words (0) := previous;
+         tag := capCall (Network_Service, msg, CuBit.Messages.Wait_Forever);
+         if tag.label = REPLY_OK then
+            declare
+               S : constant NM.Decoded_Summary :=
+                 NM.Decode_Summary ((msg.words (0), msg.words (1), msg.words (2), msg.words (3)));
+            begin
+               if S.Valid then
+                  declare
+                     Name : constant NL.Interface_Name := NL.Name_Of (S.Item.Identity, S.Item.Address);
+                  begin
+                     shown := shown + 1;
+                     putStr (Name.Text (1 .. Name.Length) & ":" & LF);
+                     putStr ("  link:    " &
+                             (case S.Item.Condition is
+                                 when NL.Up => "UP", when NL.Dormant => "DORMANT", when NL.Down => "DOWN") &
+                             (case S.Item.Kind is
+                                 when NL.Ethernet => " (ethernet)", when NL.Wireless => " (wireless)") & LF);
+                     putStr ("  inet:    ");
+                     putIP (Unsigned_64 (S.Item.Settings.Address));
+                     putStr ("/");
+                     putDec (Unsigned_32 (S.Item.Settings.Prefix));
+                     putStr ("  metric ");
+                     putDec (Unsigned_32 (S.Item.Settings.Metric));
+                     putChar (LF);
+                     putStr ("  gw:      ");
+                     putIP (Unsigned_64 (S.Item.Settings.Gateway));
+                     putChar (LF);
+                     putStr ("  ether:   ");
+                     putMAC (NL.Address_Word (S.Item.Address));
+                     putChar (LF);
+                  end;
+               end if;
+            end;
+         end if;
+      end loop;
+      if shown = 0 then
+         putStr ("(no interfaces)" & LF);
       end if;
-
-      putStr ("eth0:" & LF);
-
-      --  State (high 32 bits of word 0)
-      declare
-         stateVal : constant Unsigned_64 :=
-            Shift_Right (msg.words (0), 32) and 16#FF#;
-      begin
-         putStr ("  state:   ");
-         if stateVal = 1 then
-            putStr ("UP");
-         elsif stateVal = 2 then
-            putStr ("CONFIGURING");
-         else
-            putStr ("DOWN");
-         end if;
-         putChar (LF);
-      end;
-
-      --  IP (low 32 bits of word 0)
-      putStr ("  inet:    ");
-      putIP (msg.words (0) and 16#FFFF_FFFF#);
-      putChar (LF);
-
-      --  Netmask (low 32 bits of word 1)
-      putStr ("  mask:    ");
-      putIP (msg.words (1) and 16#FFFF_FFFF#);
-      putChar (LF);
-
-      --  Gateway (high 32 bits of word 1)
-      putStr ("  gw:      ");
-      putIP (Shift_Right (msg.words (1), 32) and 16#FFFF_FFFF#);
-      putChar (LF);
-
-      --  MAC (low 48 bits of word 2)
-      putStr ("  ether:   ");
-      putMAC (msg.words (2));
-      putChar (LF);
-
-      --  DNS (word 3: low 32 = primary, high 32 = secondary)
-      putStr ("  dns:     ");
-      putIP (msg.words (3) and 16#FFFF_FFFF#);
-      declare
-         sec : constant Unsigned_64 :=
-            Shift_Right (msg.words (3), 32) and 16#FFFF_FFFF#;
-      begin
-         if sec /= 0 then
-            putStr (", ");
-            putIP (sec);
-         end if;
-      end;
-      putChar (LF);
    end cmdIfconfig;
 
    ---------------------------------------------------------------------------
    --  cmdRoute - show routing table
    ---------------------------------------------------------------------------
    procedure cmdRoute is
+      package NM renames CuBit.Net_Management;
       msg       : Message;
       tag       : MessageTag;
       startIdx  : Unsigned_64 := 0;
-      total     : Natural := 0;
       printed   : Natural := 0;
    begin
       if not netstackReady then
@@ -3011,63 +3004,41 @@ procedure main is
 
       loop
          msg := NULL_MESSAGE;
-         msg.tag := (label  => OP_NET_ROUTE_LIST,
-                     length => 1, protocol => 0, ipc => <>, reserved => 0);
+         msg.tag := (label  => NM.Label (NM.Route_List),
+                     length => Unsigned_8 (NM.Request_Words (NM.Route_List)),
+                     protocol => 0, ipc => <>, reserved => 0);
          msg.words (0) := startIdx;
          tag := capCall (Network_Service, msg, CuBit.Messages.Wait_Forever);
+         exit when tag.label /= REPLY_OK or else tag.length = 0;
 
-         if tag.label /= REPLY_OK then
-            exit;
-         end if;
-
-         total := Natural (tag.length);
-         if total = 0 then
-            exit;
-         end if;
-
-         --  Unpack up to 2 routes from the reply
-         for slot in 0 .. 1 loop
-            if printed < total then
-               declare
-                  w0 : constant Unsigned_64 := msg.words (slot * 2);
-                  w1 : constant Unsigned_64 := msg.words (slot * 2 + 1);
-                  dest   : constant Unsigned_64 := w0 and 16#FFFF_FFFF#;
-                  prefix : constant Unsigned_64 :=
-                     Shift_Right (w0, 32) and 16#FF#;
-                  ifIdx  : constant Unsigned_64 :=
-                     Shift_Right (w0, 40) and 16#FF#;
-                  metric : constant Unsigned_64 :=
-                     Shift_Right (w0, 48) and 16#FFFF#;
-                  gw : constant Unsigned_64 := w1 and 16#FFFF_FFFF#;
-               begin
-                  --  Skip empty padding slots
-                  if dest /= 0 or prefix /= 0 or gw /= 0 then
-                     putIP (dest);
-                     putStr ("  /");
-                     putDec (Unsigned_32 (prefix));
-                     if prefix < 10 then
-                        putStr ("    ");
-                     else
-                        putStr ("   ");
-                     end if;
-                     putIP (gw);
-                     putStr ("  ");
-                     putDec (Unsigned_32 (ifIdx));
-                     putStr ("   ");
-                     putDec (Unsigned_32 (metric));
-                     putChar (LF);
-                  end if;
-               end;
-               printed := printed + 1;
-            end if;
+         for slot in 0 .. Natural'Min (Natural (tag.length), NM.Routes_Per_Answer) - 1 loop
+            declare
+               R : constant NM.Decoded_Route :=
+                 NM.Decode_Route ((msg.words (slot * 2), msg.words (slot * 2 + 1)));
+            begin
+               if R.Valid then
+                  putIP (Unsigned_64 (R.Item.Destination));
+                  putStr ("  /");
+                  putDec (Unsigned_32 (R.Item.Prefix));
+                  putStr (if R.Item.Prefix < 10 then "    " else "   ");
+                  putIP (Unsigned_64 (R.Item.Gateway));
+                  putStr ("  ");
+                  putDec (R.Item.Slot);
+                  putStr ("   ");
+                  putDec (Unsigned_32 (R.Item.Metric));
+                  putStr (if R.Item.Usable then "" else "  (link down)");
+                  putChar (LF);
+                  printed := printed + 1;
+               end if;
+            end;
          end loop;
 
-         --  Next page (reserved = next startIndex)
+         --  The next page (the answer's reserved field; 0: no more).
+         exit when tag.reserved = 0;
          startIdx := Unsigned_64 (tag.reserved);
-         exit when printed >= total;
       end loop;
 
-      if total = 0 then
+      if printed = 0 then
          putStr ("(no routes)" & LF);
       end if;
    end cmdRoute;
@@ -3103,7 +3074,7 @@ procedure main is
             ignore : Unsigned_64;
          begin
             msg := NULL_MESSAGE;
-            msg.tag := (label  => OP_NET_PING,
+            msg.tag := (label  => CuBit.Net_Management.Label (CuBit.Net_Management.Ping),
                         length => 3, protocol => 0, ipc => <>, reserved => 0);
             msg.words (0) := dstPacked;
             msg.words (1) := Unsigned_64 (seq);

@@ -1,0 +1,4 @@
+(Component name => "net-multi-check" kind => Kind.Application
+  source => (Source.Ada (Ada_Source
+    language => Ada_Language.Ada_2022
+    frame_pointer => Frame_Pointer.Kept)))

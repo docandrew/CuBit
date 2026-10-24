@@ -1,0 +1,14 @@
+# The net-multi headless test's guest (tests/net-link): a TCP stream from
+# the host fixture over the second interface's network (10.0.3.0/24), and
+# datagrams to an address on neither network (TEST-NET-1, RFC 5737) that
+# only a default route reaches, so the fixture can see which interface it
+# leaves by. Needs network=declared launch approval.
+(executable-manifest v1
+  (identity "com.cubit.net-multi-check")
+  (version "0.1.0")
+  (request-network tcp-connect (ipv4 "10.0.3.2" 32)
+    (ports 18471 18471) (dns deny)
+    (connections 1) stream)
+  (request-network udp-connect (ipv4 "192.0.2.1" 32)
+    (ports 9 9) (dns deny)
+    (connections 1) probe))

@@ -54,4 +54,29 @@ package UDP_Frame with SPARK_Mode is
              IPv4_Frame.Unicast (Source) and then IPv4_Frame.Unicast (Destination),
      Post => IPv4_Frame.Emittable (Frame);
 
+   --  DHCP's client messages before the client has an address (RFC 2131
+   --  4.1): from 0.0.0.0 to the limited broadcast address 255.255.255.255,
+   --  Ethernet broadcast. Never Emittable (that is for unicast traffic);
+   --  netstack sends these only for netmgr's DHCP_Send.
+   Unspecified_Source : constant Address := [0, 0, 0, 0];
+   Limited_Broadcast  : constant Address := [255, 255, 255, 255];
+   Broadcast_MAC      : constant IPv4_Frame.MAC := [others => 16#FF#];
+
+   function Discovery (Frame : Bytes) return Boolean is
+     (Frame'First = 0 and then
+      Frame'Length in IPv4_Frame.Ethernet_Header + Minimum_Size .. IPv4_Frame.Maximum_Frame and then
+      Frame (12) = IPv4_Frame.Type_High and then Frame (13) = IPv4_Frame.Type_Low and then
+      Frame (IPv4_Frame.Header_At) = Version_IHL and then
+      Frame (IPv4_Frame.Source_At) = Unspecified_Source (0) and then
+      Frame (IPv4_Frame.Destination_At) = Limited_Broadcast (0) and then
+      (for all K in 0 .. 5 => Frame (K) = Broadcast_MAC (K)));
+
+   procedure Build_Discovery
+     (Our_MAC : IPv4_Frame.MAC; Source_Port, Destination_Port : Unsigned_16;
+      Payload : Bytes; Frame : out Bytes)
+   with
+     Pre  => Payload'Length <= Maximum_Payload and then Frame'First = 0 and then
+             Frame'Length = Payload_At + Payload'Length,
+     Post => Discovery (Frame);
+
 end UDP_Frame;

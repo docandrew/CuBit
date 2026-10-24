@@ -1,5 +1,6 @@
 package body IPv6_Link_Proof with SPARK_Mode is
-   procedure Send (Frame : IPv6_Header.Bytes) is
+   procedure Send (Link_Owner : Owner; Frame : IPv6_Header.Bytes) is
+      pragma Unreferenced (Link_Owner, Frame);
    begin
       if Frames < Natural'Last then
          Frames := Frames + 1;

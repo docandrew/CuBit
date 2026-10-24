@@ -70,7 +70,7 @@ package body Virtio is
    --  initDevice - perform virtio device initialization sequence
    --  ACKNOWLEDGE -> DRIVER -> negotiate features -> DRIVER_OK
    ---------------------------------------------------------------------------
-   procedure initDevice (ioBase : Unsigned_16) is
+   procedure initDevice (ioBase : Unsigned_16; Agreed : out Unsigned_32) is
       devFeatures : Unsigned_32;
       drvFeatures : Unsigned_32;
       status      : Unsigned_8;
@@ -89,11 +89,15 @@ package body Virtio is
       --  4. Read device features, negotiate
       devFeatures := inl (ioBase + REG_DEVICE_FEATURES);
 
-      --  We want MAC address if available
-      drvFeatures := devFeatures and VIRTIO_NET_F_MAC;
+      --  The MAC address and the link status, if the device has them.
+      drvFeatures := devFeatures and (VIRTIO_NET_F_MAC or VIRTIO_NET_F_STATUS);
       outl (ioBase + REG_DRIVER_FEATURES, drvFeatures);
+      Agreed := drvFeatures;
 
    end initDevice;
+
+   function netStatus (ioBase : Unsigned_16) return Unsigned_16 is
+     (inw (ioBase + REG_NET_STATUS));
 
    procedure startDevice (ioBase : Unsigned_16) is
    begin

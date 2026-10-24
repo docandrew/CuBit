@@ -5,10 +5,11 @@
 --  @summary
 --  Userspace virtio-net driver — thin packet mover.
 --
---  Initializes virtio-net legacy PCI device, reads MAC address,
---  sets up RX and TX virtqueues. All protocol processing (ARP, IPv4,
---  ICMP) is handled by the netstack service. This driver communicates
---  with netstack via IPC and a shared memory grant.
+--  Initializes a virtio-net device (legacy or modern transport), reads its
+--  MAC address, sets up RX and TX virtqueues and attaches to netstack as
+--  one interface (CuBit.Net_Link, docs/net-link.md): frames through the
+--  frame grant, the link's state in the grant's link block. All protocol
+--  processing is netstack's.
 --
 --  DMA region at 0x7000_0000_0000 (mapped by kernel):
 --    0x0000 .. 0x2FFF : RX vring (3 pages)
@@ -28,6 +29,8 @@ with Virtio;
 with Virtio.Modern;
 with Descriptor_Pool;
 with CuBit.Frame_Rings;
+with CuBit.Net_Link;
+with CuBit.Kernel_ABI;
 with CuBit.Grant_References;
 with CuBit.Memory_Grants;
 with Virtqueue_Index;
@@ -77,20 +80,35 @@ procedure main is
    --  MAC address (raw bytes)
    mac : array (0 .. 5) of Unsigned_8;
 
-   --  Grant region constants (must match kernel process.ads)
+   package NL renames CuBit.Net_Link;
+   REPLY_OK  : constant Unsigned_32 := CuBit.Kernel_ABI.Reply_OK;
+   REPLY_ERR : constant Unsigned_32 := CuBit.Kernel_ABI.Reply_Error;
+   --  A one-way message: no reply (the tag's protocol flags).
+   ONE_WAY : constant := 1;
+   --  The MTU we attach with (Ethernet's).
+   ETHERNET_MTU : constant := 1_500;
 
-   --  Cap slot for netstack endpoint (granted by kernel modules.adb)
+   --  Where the device is (devmgr's launch configuration): names the
+   --  interface.
+   pciLocation : NL.PCI_Location := 0;
 
-   --  IPC label constants (must match kernel ipc_labels.ads)
-   OP_NET_ATTACH : constant Unsigned_32 := 16#0400#;
-   OP_NET_RX     : constant Unsigned_32 := 16#0401#;
-   OP_NET_TX     : constant Unsigned_32 := 16#0402#;
-   REPLY_OK      : constant Unsigned_32 := 16#F000#;
-
-   --  Netstack connection state
+   --  Netstack connection state: the interface handle Attach answered and
+   --  the frame grant.
+   ifHandle       : NL.Interface_Handle;
    packetGrant    : CuBit.Grant_References.Reference;
-   grantBufSize   : Unsigned_64 := 0;
    grantBase      : System.Address := System.Null_Address;
+
+   --  The link (VIRTIO_NET_F_STATUS): whether the device reports it; without
+   --  it the link is always up (virtio 1.x 5.1.4).
+   statusFeature : Boolean := False;
+   linkUp        : Boolean := True;
+   linkGeneration : NL.Generation := NL.Never_Reported;
+
+   --  The transmit wait parked with netstack (docs/net-link.md section 2):
+   --  submitted when about to sleep with none outstanding; its completion
+   --  (this token) wakes us when netstack has queued frames.
+   TX_WAIT_TOKEN : constant Unsigned_64 := 16#7458_5741_4954_0001#;
+   txWaitOutstanding : Boolean := False;
 
    ---------------------------------------------------------------------------
    --  RX vring components (overlay on DMA memory)
@@ -499,10 +517,10 @@ procedure main is
    --  Received frames go to netstack through the grant's receive ring
    --  (netstack's drainRXRing reads it; layout in CuBit.Frame_Rings).
    --  - produced (ours) and consumed (netstack's) are free-running counts;
-   --  - space wanted (ours): the ring was full; netstack rings our doorbell
-   --    (OP_NET_TX) once it frees slots;
+   --  - space wanted (ours): the ring was full; netstack answers our parked
+   --    transmit wait once it frees slots;
    --  - wake (netstack's): a nonzero epoch while netstack is idle; one
-   --    OP_NET_RX (one-way) per epoch wakes it.
+   --    receive doorbell (one-way) per epoch wakes it.
    --  No call and no reply per batch: we never wait for netstack.
    type Frame_Bytes is array (Natural range <>) of Unsigned_8;
    rxRungEpoch : Unsigned_32 := 0;   --  the netstack epoch we last woke
@@ -529,12 +547,12 @@ procedure main is
         Address => rxWord (Frames.Wake_At);
       epoch : Unsigned_32;
       rxMsg : constant Message :=
-        (tag      => (label  => OP_NET_RX,
-                      length => 0,
-                      protocol  => 1, ipc => <>,      --  a doorbell: no reply
+        (tag      => (label  => NL.Label (NL.Receive_Doorbell),
+                      length => Unsigned_8 (NL.Request_Words (NL.Receive_Doorbell)),
+                      protocol  => ONE_WAY, ipc => <>,      --  a doorbell: no reply
                       reserved  => 0),
          authorityTag => 0,
-         words    => (others => 0));
+         words    => (0 => NL.Handle_Word (ifHandle), others => 0));
       ignore : Boolean;
    begin
       --  The frames were written before the count that hands them over.
@@ -602,7 +620,7 @@ procedure main is
            New_Entries (Index (lastRXUsedIdx), Index (usedIdx), NUM_RX_BUFS - rxPool.Top);
       begin
          --  A full ring leaves the rest in the device's used ring until
-         --  netstack frees slots (it rings our doorbell). Before netstack
+         --  netstack frees slots (it answers our transmit wait). Before netstack
          --  attaches, frames are dropped.
          for K in 1 .. returned loop
             exit when attached and then not rxRoom;
@@ -648,56 +666,119 @@ procedure main is
    end processRX;
 
    ---------------------------------------------------------------------------
-   --  attachToNetstack - send OP_NET_ATTACH to netstack, get grant back
+   --  The link block (CuBit.Frame_Rings.Link_At, docs/net-link.md section
+   --  3): the generation (a seqlock: odd while we write) and the report.
+   ---------------------------------------------------------------------------
+   function linkWord (W : Frames.Link_Word_Index) return System.Address is
+     (grantBase + Storage_Offset (Frames.Link_Word_At (W)));
+
+   --  Publish the link's state, then wake netstack if it is idle (the
+   --  receive doorbell, once per netstack epoch: no message per change).
+   procedure publishLink is
+      generation : Unsigned_32 with Volatile, Import,
+        Address => linkWord (Frames.Link_Generation_Word);
+      state : constant NL.Link_State :=
+        (if linkUp then (Condition => NL.Up, Detail => (Kind => NL.Ethernet, Speed => 0))
+         else (Condition => NL.Down, Reason => NL.No_Carrier));
+      report : constant NL.Report_Words := NL.Encode (state);
+      doorbell : Unsigned_32 with Volatile, Import,
+        Address => rxWord (Frames.Wake_At);
+      epoch : Unsigned_32;
+      ringMsg : constant Message :=
+        (tag      => (label  => NL.Label (NL.Receive_Doorbell),
+                      length => Unsigned_8 (NL.Request_Words (NL.Receive_Doorbell)),
+                      protocol  => ONE_WAY, ipc => <>, reserved => 0),
+         authorityTag => 0,
+         words    => (0 => NL.Handle_Word (ifHandle), others => 0));
+      ignore : Boolean;
+   begin
+      if not attached then
+         return;
+      end if;
+      linkGeneration := NL.Begin_Write (linkGeneration);
+      generation := linkGeneration;
+      --  x86 keeps stores in order; the compiler must too.
+      System.Machine_Code.Asm ("", Clobber => "memory", Volatile => True);
+      for W in NL.Report_Index loop
+         declare
+            word : Unsigned_32 with Volatile, Import, Address => linkWord (W);
+         begin
+            word := report (W);
+         end;
+      end loop;
+      System.Machine_Code.Asm ("", Clobber => "memory", Volatile => True);
+      linkGeneration := NL.End_Write (linkGeneration);
+      generation := linkGeneration;
+      --  The report must be visible before netstack's epoch is read.
+      System.Machine_Code.Asm ("mfence", Clobber => "memory", Volatile => True);
+      epoch := doorbell;
+      if epoch /= 0 and then epoch /= rxRungEpoch then
+         rxRungEpoch := epoch;
+         ignore := capSubmit (Startup.Netstack, ringMsg, NO_COMPLETION_TOKEN);
+      end if;
+      debugPrint (if linkUp then "virtio-net: link up" & LF else "virtio-net: link down" & LF);
+   end publishLink;
+
+   --  The device's link now (always up without VIRTIO_NET_F_STATUS).
+   function deviceLinkUp return Boolean is
+      status : Unsigned_16;
+   begin
+      if not statusFeature then
+         return True;
+      end if;
+      status := (if modern then Virtio.Modern.Net_Status else Virtio.netStatus (ioBase));
+      return (status and Virtio.VIRTIO_NET_S_LINK_UP) /= 0;
+   end deviceLinkUp;
+
+   ---------------------------------------------------------------------------
+   --  attachToNetstack - Attach (CuBit.Net_Link): our interface's handle and
+   --  the frame grant back.
    ---------------------------------------------------------------------------
    procedure attachToNetstack is
-      macPacked : Unsigned_64 := 0;
+      request : constant NL.Attach_Request :=
+        (Kind     => NL.Ethernet,
+         Address  => [for I in NL.Octet_Index => mac (I)],
+         Size     => ETHERNET_MTU,
+         Offload  => NL.No_Offloads,
+         Identity => (Kind => NL.PCI_Function, Location => pciLocation));
+      words : constant NL.Words3 := NL.Encode (request);
+      attachMsg : Message :=
+        (tag      => (label  => NL.Label (NL.Attach),
+                      length => Unsigned_8 (NL.Request_Words (NL.Attach)),
+                      protocol  => 0, ipc => <>,
+                      reserved  => 0),
+         authorityTag => 0,
+         words    => (0 => words (0), 1 => words (1), 2 => words (2), others => 0));
+      replyTag : MessageTag;
    begin
-      --  Pack MAC address into a u64 (low 48 bits)
-      for i in mac'Range loop
-         macPacked := macPacked or
-            Shift_Left (Unsigned_64 (mac (i)), i * 8);
-      end loop;
-
-      declare
-         attachMsg : Message :=
-           (tag      => (label  => OP_NET_ATTACH,
-                         length => 1,
-                         protocol  => 0, ipc => <>,
-                         reserved  => 0),
-            authorityTag => 0,
-            words    => (0 => macPacked,
-                         others => 0));
-         replyTag : MessageTag;
-      begin
-         replyTag := capCall (Startup.Netstack, attachMsg, CuBit.Messages.Wait_Forever);
-
-         if replyTag.label = REPLY_OK then
-            grantBufSize := attachMsg.words (1);
-            --  Only a grant laid out as CuBit.Frame_Rings says is used, and
-            --  only once the kernel confirms netstack owns it; the kernel
-            --  says where it is mapped.
-            attached := grantBufSize = Frames.Grant_Bytes and then
-                        CuBit.Grant_References.Valid_Wire (attachMsg.words (0));
-            if attached then
-               packetGrant := CuBit.Grant_References.Decode (attachMsg.words (0));
-               CuBit.Memory_Grants.Acquire_Via_Capability
-                 (Startup.Netstack, packetGrant, 0, grantBufSize,
-                  CuBit.Memory_Grants.Write_Access, grantBase, attached);
-            end if;
-            if not attached then
-               debugPrint ("virtio-net: packet grant refused" & LF);
-            end if;
-
-            debugPrint ("virtio-net: attached to netstack, grant=");
-            printDec (Unsigned_32 (packetGrant.slot));
-            debugPrint (" size=");
-            printDec (Unsigned_32 (grantBufSize));
-            debugPrint ("" & LF);
-         else
-            debugPrint ("virtio-net: netstack attach failed" & LF);
-         end if;
-      end;
+      replyTag := capCall (Startup.Netstack, attachMsg, CuBit.Messages.Wait_Forever);
+      if replyTag.label /= REPLY_OK then
+         debugPrint ("virtio-net: netstack refused the attach (");
+         printDec (Unsigned_32 (attachMsg.words (0) and 16#FFFF_FFFF#));
+         debugPrint (")" & LF);
+         return;
+      end if;
+      --  Only a handle and a grant netstack owns, mapped where the kernel
+      --  says; the grant is laid out as CuBit.Frame_Rings says.
+      attached := NL.Valid_Handle_Word (attachMsg.words (0)) and then
+                  CuBit.Grant_References.Valid_Wire (attachMsg.words (1));
+      if attached then
+         ifHandle := NL.Handle_Of (attachMsg.words (0));
+         packetGrant := CuBit.Grant_References.Decode (attachMsg.words (1));
+         CuBit.Memory_Grants.Acquire_Via_Capability
+           (Startup.Netstack, packetGrant, 0, Frames.Grant_Bytes,
+            CuBit.Memory_Grants.Write_Access, grantBase, attached);
+      end if;
+      if not attached then
+         debugPrint ("virtio-net: packet grant refused" & LF);
+         return;
+      end if;
+      debugPrint ("virtio-net: attached to netstack, interface ");
+      printDec (ifHandle.Slot);
+      debugPrint ("" & LF);
+      --  The first report: until it, netstack counts the link down.
+      linkUp := deviceLinkUp;
+      publishLink;
    end attachToNetstack;
 
    --  Main variables
@@ -711,6 +792,8 @@ procedure main is
    rxPFN      : Unsigned_32;
    txPFN      : Unsigned_32;
    configSender : Process_ID;
+   --  We slept: look for completions and requests (the loop's first step).
+   woke : Boolean := False;
    configMessage : Message;
    ignore : Unsigned_64;
 
@@ -722,7 +805,7 @@ procedure main is
          Virtio.resetDevice (ioBase);
       end if;
       ignore := reply (configSender,
-        (tag => (label => 16#F001#, length => 0, protocol => 0, ipc => <>, reserved => 0),
+        (tag => (label => REPLY_ERR, length => 0, protocol => 0, ipc => <>, reserved => 0),
          authorityTag => 0, words => (others => 0)));
    end Reject_Configuration;
    --  devQSz is used in queue setup debug output
@@ -772,7 +855,7 @@ begin
       then
          modern := False;
          ignore := reply (configSender,
-           (tag => (label => 16#F001#, length => 0, protocol => 0, ipc => <>, reserved => 0),
+           (tag => (label => REPLY_ERR, length => 0, protocol => 0, ipc => <>, reserved => 0),
             authorityTag => 0, words => (others => 0)));
          return;
       end if;
@@ -789,20 +872,21 @@ begin
       debugPrint ("" & LF);
    end if;
 
-   --  2. The DMA region's device address, from devmgr's launch
-   --  configuration (devmgr allocated it at DMA_BASE).
+   --  2. The DMA region's device address and the device's location, from
+   --  devmgr's launch configuration (devmgr allocated the region at
+   --  DMA_BASE).
    declare
-      Configuration : Launch_Configuration.Queue_Configuration;
+      Configuration : Launch_Configuration.Network_Device_Configuration;
       Configured : Boolean;
    begin
-      CuBit.Launch_Configurations.Get
-        (Launch_Configuration.Virtio_Net, Configuration, Configured);
+      CuBit.Launch_Configurations.Get (Configuration, Configured);
       if not Configured or else Configuration.DMA = 0 then
          Reject_Configuration;
          debugPrint ("virtio-net: no DMA region configured." & LF);
          return;
       end if;
       DMA_PHYS_BASE := Configuration.DMA;
+      pciLocation := NL.PCI_Location (Configuration.Location);
    end;
 
    --  3. Initialize the device and read its MAC address.
@@ -813,8 +897,9 @@ begin
       begin
          Virtio.Modern.Negotiate
            (Virtio.Modern.F_VERSION_1 or Virtio.Modern.F_NET_MAC or
-            Virtio.Modern.F_EVENT_IDX, agreed, ok);
+            Virtio.Modern.F_EVENT_IDX or Virtio.Modern.F_NET_STATUS, agreed, ok);
          eventIdx := (agreed and Virtio.Modern.F_EVENT_IDX) /= 0;
+         statusFeature := (agreed and Virtio.Modern.F_NET_STATUS) /= 0;
          if not ok then
             debugPrint ("virtio-net: feature negotiation failed" & LF);
             Reject_Configuration;
@@ -825,7 +910,12 @@ begin
          mac (i) := Virtio.Modern.Device_Byte (i);
       end loop;
    else
-      Virtio.initDevice (ioBase);
+      declare
+         agreed : Unsigned_32;
+      begin
+         Virtio.initDevice (ioBase, agreed);
+         statusFeature := (agreed and Virtio.VIRTIO_NET_F_STATUS) /= 0;
+      end;
       --  MSI-X-enabled legacy MAC address (BAR0+0x18).
       for i in mac'Range loop
          mac (i) := Unsigned_8 (portInp8 (Virtio.Bound_Ports, ioBase + Virtio.REG_NET_MAC +
@@ -949,23 +1039,36 @@ begin
       --  Reclaim TX even when no RX arrives, before accepting another send.
       processTXUsed;
 
-      --  Check for service requests from netstack. IRQ-style traffic is
-      --  handled through Poll_Event below, so this must stay request-only.
-      --  OP_NET_TX is only a doorbell: the frames are in the TX ring.
-      Poll_Service_Request (ipcSender, ipcMsg, ipcFound);
-      if ipcFound and then ipcMsg.tag.label = OP_NET_TX and then ipcMsg.tag.protocol = 0 then
+      --  After a wait: what woke us besides the device. The answer to our
+      --  parked transmit wait (netstack queued frames, or freed receive
+      --  slots), and any request (nobody but devmgr's startup calls us;
+      --  anything else is refused). Not polled while busy: a completion or
+      --  request that arrives meanwhile makes the next wait return at once.
+      if woke then
+         woke := False;
          declare
-            replyMsg : constant Message :=
-              (tag      => (label  => REPLY_OK,
-                            length => 0,
-                            protocol  => 0, ipc => <>,
-                            reserved  => 0),
-               authorityTag => 0,
-               words    => (others => 0));
-            ignore : Unsigned_64;
+            completion : CompletionEntry;
          begin
-            ignore := reply (ipcSender, replyMsg);
+            while Poll_Completion (completion'Address) = 1 loop
+               if completion.token = TX_WAIT_TOKEN then
+                  txWaitOutstanding := False;
+                  ipcFound := True;
+               end if;
+            end loop;
          end;
+         loop
+            Poll_Service_Request (ipcSender, ipcMsg, ipcFound);
+            exit when not ipcFound;
+            declare
+               ignore : Unsigned_64;
+            begin
+               ignore := reply (ipcSender,
+                 (tag => (label => REPLY_ERR, length => 0, protocol => 0, ipc => <>,
+                          reserved => 0),
+                  authorityTag => 0, words => (others => 0)));
+            end;
+         end loop;
+         ipcFound := True;
       end if;
 
       --  Every frame netstack has queued, while descriptors last; one kick.
@@ -977,6 +1080,12 @@ begin
       --  nothing needs acknowledging in the device: the ISR register exists
       --  for legacy INTx, and reading it is a costly exit to the hypervisor.
       evtFound := Poll_Event (evtMsg);
+      --  A configuration change shares the vector with the queues: on an
+      --  interrupt (never per frame), look at the link.
+      if evtFound and then statusFeature and then attached and then deviceLinkUp /= linkUp then
+         linkUp := not linkUp;
+         publishLink;
+      end if;
 
       --  Inspect durable ring state, not the number of coalesced IRQs.
       if lastRXUsedIdx /= rxUsed.idx and then
@@ -1025,6 +1134,19 @@ begin
                txIdleEpoch :=
                  (if txIdleEpoch = Unsigned_32'Last then 1 else txIdleEpoch + 1);
                epochWord := txIdleEpoch;
+               --  netstack answers this when it queues frames (or frees
+               --  receive slots) after seeing the epoch: our wake. One is
+               --  parked at a time; none is sent while busy.
+               if not txWaitOutstanding then
+                  txWaitOutstanding := capSubmit
+                    (Startup.Netstack,
+                     (tag => (label => NL.Label (NL.Transmit_Wait),
+                              length => Unsigned_8 (NL.Request_Words (NL.Transmit_Wait)),
+                              protocol => 0, ipc => <>, reserved => 0),
+                      authorityTag => 0,
+                      words => (0 => NL.Handle_Word (ifHandle), others => 0)),
+                     TX_WAIT_TOKEN);
+               end if;
                --  A lone frame in flight (a request awaiting its reply):
                --  take its completion interrupt, which keeps this CPU
                --  quick to wake for the reply. Bulk sending reclaims
@@ -1051,6 +1173,7 @@ begin
             activity : Activity_Result;
          begin
             activity := Wait_For_Activity_Until (Unsigned_64'Last);
+            woke := True;
             if activity = Unavailable then
                debugPrint ("virtio-net: activity wait unavailable" & LF);
                return;

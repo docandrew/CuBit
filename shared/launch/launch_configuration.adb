@@ -77,6 +77,14 @@ package body Launch_Configuration with SPARK_Mode is
       return Result;
    end Encode;
 
+   function Encode (Value : Network_Device_Configuration) return Encoded is
+      Result : Encoded := Header (Network_Device);
+   begin
+      Result.Words (4) := Value.DMA;
+      Result.Words (5) := Value.Location;
+      return Result;
+   end Encode;
+
    function Encode (Value : Virtio_GPU_Configuration) return Encoded is
       Result : Encoded := Header (Virtio_GPU);
    begin
@@ -191,6 +199,18 @@ package body Launch_Configuration with SPARK_Mode is
       Valid := Header_Valid (Words, Kind) and then Is_Address (Words (4));
       if Valid then
          Value := (DMA => Words (4));
+      end if;
+   end Decode;
+
+   procedure Decode
+     (Words : Word_Array; Value : out Network_Device_Configuration; Valid : out Boolean)
+   is
+   begin
+      Value := (others => <>);
+      Valid := Header_Valid (Words, Network_Device)
+        and then Is_Address (Words (4)) and then Words (5) in Routing_ID;
+      if Valid then
+         Value := (DMA => Words (4), Location => Words (5));
       end if;
    end Decode;
 

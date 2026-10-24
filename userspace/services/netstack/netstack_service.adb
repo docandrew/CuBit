@@ -5,15 +5,12 @@
 --  @summary
 --  Userspace network stack service (netstack.svc).
 --
---  Owns all protocol processing (ARP, IPv4, ICMP). Communicates with the
---  virtio-net driver via IPC and a shared memory grant for packet data.
---
---  Grant layout:
---    The netstack allocates a packet buffer via sbrk and grants it to the
---    driver.  Both sides use offsets within this grant for RX/TX packets.
---    Offset 0 is reserved for RX (driver writes, netstack reads).
---    Offset PACKET_BUF_SIZE/2 is reserved for TX (netstack writes, driver
---    reads).
+--  Owns all protocol processing (ARP, IPv4, ICMP, IPv6 on the link, UDP,
+--  TCP). Network drivers attach interfaces (CuBit.Net_Link, as many as
+--  memory holds): each gets a frame grant (CuBit.Frame_Rings) with its rings
+--  and the driver's link report (docs/net-link.md). netmgr configures them
+--  (CuBit.Net_Management) and hears of their changes through a Watch it
+--  parks here.
 ------------------------------------------------------------------------------
 with Interfaces; use Interfaces;
 with System; use System;
@@ -77,6 +74,13 @@ with CuBit.Channel_Rings;
 with CuBit.Datagram_Rings;
 with CuBit.Net_Channel_Layout;
 with Netstack_Profile;
+with CuBit.Net_Link;
+with CuBit.Net_Management;
+with CuBit.Control_Events;
+with Link_Tracker;
+with Interface_Table;
+with CuBit.Kernel_ABI;
+with CuBit.Kernel_Calls;
 
 package body Netstack_Service is
    use ASCII;
@@ -102,12 +106,6 @@ package body Netstack_Service is
    networkGrants : Network_Grants.Table;
    listeners : TCP_Listeners.Table;
 
-   --  Well-known capability slots (granted by kernel modules.adb)
-   --  The NIC driver's endpoint (its manifest's optional "nic" binding),
-   --  or the null handle without a NIC: submissions through it fail.
-   function NIC return CuBit.Handles.Endpoint is
-     (if Startup.Nic.Present then Startup.Nic.Value else CuBit.Handles.No_Endpoint);
-
    --  Where an answer goes (CAP-002): the request being handled now
    --  (answered by reply to its sender), or one saved with Save_Reply.
    type Reply_Target is record
@@ -122,55 +120,145 @@ package body Netstack_Service is
      (if Target.Saved then replyCap (Target.Handle, Msg)
       else reply (Current_Sender, Msg));
 
-   --  The packet grant shared with the driver: a header page, then the
-   --  receive and transmit frame rings (CuBit.Frame_Rings). The driver
-   --  drains the transmit ring (virtio-net's drainTXRing); OP_NET_TX is
-   --  only a doorbell.
+   --  Each interface's frame grant (docs/net-link.md): a header page with
+   --  the driver's link block, then the receive and transmit frame rings
+   --  (CuBit.Frame_Rings). The driver drains the transmit ring; netstack
+   --  answers the driver's parked Transmit_Wait as its doorbell.
    package Frames renames CuBit.Frame_Rings;
    package Frame_Ring renames CuBit.Frame_Rings.Rings;
    use type Frame_Ring.Index;
+   package NL renames CuBit.Net_Link;
+   package NM renames CuBit.Net_Management;
+   use type NL.Interface_Handle, NL.Link_Condition, NL.Link_Kind;
+   use type NL.Operation, NM.Operation, NL.Address_Outcome;
+   use type Link_Tracker.Transition, Link_Tracker.Outcome;
    PACKET_BUF_PAGES : constant := Frames.Grant_Pages;
    PACKET_BUF_SIZE  : constant := Frames.Grant_Bytes;
-
-
-   --  Multi-interface support
-   MAX_INTERFACES : constant := 4;
-   type InterfaceState is (IF_DOWN, IF_UP, IF_CONFIGURING);
-
-   type InterfaceRecord is record
-      state     : InterfaceState := IF_DOWN;
-      mac       : Net.MACAddress := [others => 0];
-      ipv4      : Net.IPv4Address := [others => 0];
-      netmask   : Net.IPv4Address := [others => 0];
-      gateway   : Net.IPv4Address := [others => 0];
-      driverPID : Process_ID := No_Process;
-      --  Neighbours (proved: unsolicited replies never change it).
-      arpCache  : ARP_Cache.Table;
-      gwMAC     : Net.MACAddress := Net.ZERO_MAC;
-      grantId   : Unsigned_64 := 0;
-      txRing    : Frame_Ring.Producer;   --  our transmit ring's indices
-      pktBuf    : System.Address := System.Null_Address;
-      pktGrant  : CuBit.Memory_Grants.Grant_Reference;
-   end record;
-
-   interfaces : array (0 .. MAX_INTERFACES - 1) of InterfaceRecord;
 
    function arpIP (A : Net.IPv4Address) return ARP_Packet.IPv4 is ([A (0), A (1), A (2), A (3)]);
    function netMAC (M : ARP_Packet.MAC) return Net.MACAddress is
      ([M (0), M (1), M (2), M (3), M (4), M (5)]);
+   function linkAddress (M : Net.MACAddress) return NL.Hardware_Address is
+     ([M (0), M (1), M (2), M (3), M (4), M (5)]);
+   function netAddress (M : NL.Hardware_Address) return Net.MACAddress is
+     ([M (0), M (1), M (2), M (3), M (4), M (5)]);
+
+   --  IPv6 on each interface (ipv6_link.ads, proved through
+   --  tests/tcp-session/ipv6_link_proof.ads): its frames go out on the
+   --  interface its Link names.
+   procedure sendIPv6Frame (Owner : NL.Interface_Handle; Frame : IPv6_Header.Bytes)
+     with Pre => IPv6_Frame.Emittable (Frame);
+   package IPv6 is new IPv6_Link
+     (Link_Owner => NL.Interface_Handle, Send => sendIPv6Frame, Log => debugPrint);
+
+   --  The IPv4 self-test (tests/headless network-authority): once an
+   --  interface is configured with a gateway, ping it once and log the reply.
+   type SelfTest is (TEST_OFF, TEST_WAITING, TEST_SENT, TEST_DONE);
+   SELF_TEST_TRIES : constant := 3;
+
+   --  A request parked until netstack has something for it (a driver's
+   --  Transmit_Wait, netmgr's DHCP_Await): its saved reply.
+   type Parked is record
+      present : Boolean := False;
+      handle  : CuBit.Handles.Reply := CuBit.Handles.No_Reply;
+   end record;
+
+   type ARP_Asked is array (ARP_Cache.Index) of Unsigned_64;
+
+   type InterfaceRecord is record
+      handle    : NL.Interface_Handle;
+      kind      : NL.Link_Kind := NL.Ethernet;
+      mtu       : NL.MTU := NL.Minimum_MTU;
+      offload   : NL.Offloads := NL.No_Offloads;
+      identity  : NL.Stable_Identity := (Kind => NL.Factory_Address);
+      mac       : Net.MACAddress := [others => 0];
+      --  The address it attached with, and its name (from its identity):
+      --  neither changes with Set_Address.
+      factory   : Net.MACAddress := [others => 0];
+      name      : NL.Interface_Name;
+      driverPID : Process_ID := No_Process;
+      --  IPv4 configuration (netmgr's Configure): its routes are the
+      --  connected network and, with a gateway, a default route.
+      configured : Boolean := False;
+      ipv4      : Net.IPv4Address := [others => 0];
+      prefix    : NM.IPv4_Prefix := 0;
+      netmask   : Net.IPv4Address := [others => 0];
+      gateway   : Net.IPv4Address := [others => 0];
+      metric    : NM.Route_Metric := 0;
+      --  Neighbours (proved: unsolicited replies never change it), and when
+      --  each slot's neighbour was last asked about.
+      arpCache  : ARP_Cache.Table;
+      arpAskedAt : ARP_Asked := [others => 0];
+      gwMAC     : Net.MACAddress := Net.ZERO_MAC;
+      --  The frame grant (owned memory) and our view of its rings.
+      pktBuf    : System.Address := System.Null_Address;
+      pktGrant  : CuBit.Memory_Grants.Grant_Reference;
+      txRing    : Frame_Ring.Producer;
+      rxRing    : Frame_Ring.Consumer;
+      rxEpoch   : Unsigned_32 := 0;
+      txRungEpoch : Unsigned_32 := 0;
+      txDoorbell : Boolean := False;   --  frames (or freed slots) since told
+      txWait    : Parked;              --  the driver's Transmit_Wait
+      --  The link, as the driver last reported it (Link_Tracker), and
+      --  whether traffic may flow (its last report says Up).
+      link      : Link_Tracker.Observation;
+      usable    : Boolean := False;
+      --  How many times the link has come Up (netmgr's Watch shows bounces).
+      upCount   : NM.Up_Count := 0;
+      --  Frames dropped because the link was not Up (reported, never
+      --  printed per frame).
+      linkDrops : Unsigned_64 := 0;
+      --  The event sequence of the interface's last change (netmgr's Watch).
+      lastChange : Unsigned_32 := 0;
+      v6        : IPv6.Link;
+      ipv6Started : Boolean := False;
+      --  netmgr's DHCP page for this interface (DHCP_Open), its parked
+      --  DHCP_Await, and a message that arrived with none parked.
+      dhcpBase  : System.Address := System.Null_Address;
+      dhcpGrant : CuBit.Memory_Grants.Grant_Reference;
+      dhcpAwait : Parked;
+      dhcpHeld  : Natural := 0;
+      ipv4Test      : SelfTest := TEST_OFF;
+      ipv4TestTries : Natural range 0 .. SELF_TEST_TRIES := 0;
+      ipv4TestAt    : Unsigned_64 := 0;
+   end record;
+
+   --  The interfaces: no cap; as many as netstack's memory holds.
+   package Ifaces is new Interface_Table (InterfaceRecord);
+   subtype Interface_Access is Ifaces.Element_Access;
+   use type Ifaces.Element_Access;
+   No_Interface : constant Interface_Access := null;
+
+   --  The interface a handle names, or null if it is gone.
+   function interfaceOf (H : NL.Interface_Handle) return Interface_Access is
+      Slot  : Natural;
+      Found : Boolean;
+   begin
+      Ifaces.Find (H, Slot, Found);
+      return (if Found then Ifaces.Get (Slot) else No_Interface);
+   end interfaceOf;
 
    --  The neighbour's hardware address, if resolved.
-   function arpLookup (ifIdx : Natural; ip : Net.IPv4Address; mac : out Net.MACAddress)
+   function arpLookup (ifc : Interface_Access; ip : Net.IPv4Address; mac : out Net.MACAddress)
      return Boolean
    is
       hw    : ARP_Packet.MAC;
       found : Boolean;
    begin
-      ARP_Cache.Lookup (interfaces (ifIdx).arpCache, arpIP (ip), hw, found);
+      ARP_Cache.Lookup (ifc.arpCache, arpIP (ip), hw, found);
       mac := (if found then netMAC (hw) else Net.ZERO_MAC);
       return found;
    end arpLookup;
-   numIfaces  : Natural := 0;
+
+   --  Interface events for netmgr (CuBit.Net_Management, Watch): one
+   --  sequence; each interface keeps the sequence of its last change, and
+   --  a detached interface leaves a record until netmgr's Seen passes it.
+   eventSequence : Unsigned_32 := 0;
+   type Detach_Record is record
+      handle   : NL.Interface_Handle;
+      sequence : Unsigned_32 := 0;
+   end record;
+   --  Detach records, in a CuAlloc-backed list (Detach_Log below).
 
    --  Global DNS (not per-interface)
    primaryDNS   : Net.IPv4Address := [others => 0];
@@ -185,14 +273,9 @@ package body Netstack_Service is
    DNS_PORT_FIRST : constant Unsigned_16 := 49152;
    DNS_PORT_COUNT : constant := 16_384;
    DNS_SERVER_PORT : constant Unsigned_16 := 53;
-   IPV4_PREFIX_BITS  : constant := 32;
    --  The largest TCP segment an IPv4 packet can carry.
    TCP_MAXIMUM_SEGMENT : constant := 65_535 - 20;
    secondaryDNS : Net.IPv4Address := [others => 0];
-
-   --  Convenience aliases for interface 0 (used during transition)
-   --  These are procedures/functions that access interfaces(0) directly.
-   --  TODO: thread ifIdx through all packet handlers for full multi-if.
 
    --  Self-test state (removed: netmgr handles config now)
    resolvedIP   : Net.IPv4Address := [others => 0];
@@ -278,6 +361,7 @@ package body Netstack_Service is
    procedure claimSlot (localIP, remoteIP : Net.IPv4Address;
                         localPort, remotePort : Unsigned_16;
                         remoteMAC : Net.MACAddress;
+                        egress : NL.Interface_Handle;
                         index : out TCP_Slots.Connection_Reference);
    --  The slot's connection is gone from the table.
    procedure dropSlot (index : TCP_Slots.Connection_Index);
@@ -285,6 +369,7 @@ package body Netstack_Service is
    procedure claimSlot (localIP, remoteIP : Net.IPv4Address;
                         localPort, remotePort : Unsigned_16;
                         remoteMAC : Net.MACAddress;
+                        egress : NL.Interface_Handle;
                         index : out TCP_Slots.Connection_Reference) is
       h : Conns.Handle;
       status : Conns.Insert_Status;
@@ -300,7 +385,8 @@ package body Netstack_Service is
       connHandle (index) := h;
       tcpConns (index) := (inUse => True, reserved => True,
                            localPort => localPort, remotePort => remotePort,
-                           remoteIP => remoteIP, remoteMAC => remoteMAC);
+                           remoteIP => remoteIP, remoteMAC => remoteMAC,
+                           localIP => localIP, routed => True, egress => egress);
    end claimSlot;
 
    procedure dropSlot (index : TCP_Slots.Connection_Index) is
@@ -331,46 +417,35 @@ package body Netstack_Service is
    --  Datagram channels opened: mixed into each one's starting port.
    udpOpens  : Unsigned_32 := 0;
 
-   --  Legacy aliases to interface 0 (for incremental refactoring)
-   --  New code should use interfaces(ifIdx).xxx directly.
-
-   --  IPC label constants (must match kernel ipc_labels.ads)
-   OP_NET_ATTACH  : constant Unsigned_32 := 16#0400#;
-   OP_NET_RX      : constant Unsigned_32 := 16#0401#;
-   OP_NET_TX      : constant Unsigned_32 := 16#0402#;
+   --  Application operations (must match kernel ipc_labels.ads). The
+   --  driver's operations are CuBit.Net_Link's, netmgr's CuBit.Net_Management's.
    OP_NET_RESOLVE : constant Unsigned_32 := 16#0410#;
    OP_NET_OPEN    : constant Unsigned_32 := 16#0420#;
    OP_NET_SHUT    : constant Unsigned_32 := 16#0423#;
-   OP_NET_OPEN_RAW : constant Unsigned_32 := 16#0426#;
-
-   --  Network management IPC labels (from netmgr)
-   OP_NET_CONFIGURE : constant Unsigned_32 := 16#0430#;
-   OP_NET_SET_DNS   : constant Unsigned_32 := 16#0432#;
-   OP_NET_ROUTE_ADD : constant Unsigned_32 := 16#0433#;
-   OP_NET_ROUTE_DEL : constant Unsigned_32 := 16#0434#;
-   OP_NET_LIST_IF    : constant Unsigned_32 := 16#0435#;
-   OP_NET_IF_DETAIL  : constant Unsigned_32 := 16#0436#;
-   OP_NET_ROUTE_LIST : constant Unsigned_32 := 16#0437#;
-   OP_NET_PING       : constant Unsigned_32 := 16#0438#;
 
    REPLY_OK       : constant Unsigned_32 := 16#F000#;
    REPLY_ERR      : constant Unsigned_32 := 16#F001#;
 
-   --  Routing table
-   MAX_ROUTES : constant := 16;
+   --  Static routes (netmgr's Route_Add). Each configured interface's own
+   --  routes (its connected network and its default route) are part of
+   --  the interface, so they need no room here; this table is only for
+   --  routes netmgr adds beyond them.
+   MAX_STATIC_ROUTES : constant := 16;
    type RouteEntry is record
       active  : Boolean := False;
       dest    : Net.IPv4Address := [others => 0];
-      prefix  : Natural := 0;
+      prefix  : NM.IPv4_Prefix := 0;
       gateway : Net.IPv4Address := [others => 0];
-      ifIdx   : Natural := 0;
-      metric  : Natural := 0;
+      via     : NL.Interface_Handle;
+      metric  : NM.Route_Metric := 0;
    end record;
-   routeTable : array (0 .. MAX_ROUTES - 1) of RouteEntry;
+   routeTable : array (0 .. MAX_STATIC_ROUTES - 1) of RouteEntry;
 
-   --  Deferred TX queue: during OP_NET_RX processing we can't capCall to
-   --  the driver (it's blocked waiting for our reply). Buffer frames here
-   --  and flush between message receives.
+   --  Detached interfaces netmgr has not seen yet (Watch).
+   package Detach_Log is new Interface_Table (Detach_Record);
+
+   --  Deferred TX queue: frames that found their interface's transmit ring
+   --  full wait here, flushed between message receives.
    --  STOPGAP (2026-09-25): deep enough that Servo's parallel downloads do
    --  not drop frames while the driver's mailbox is full. TCP here has no
    --  retransmission yet, so a dropped segment stalls its connection. To be
@@ -380,9 +455,12 @@ package body Netstack_Service is
 
    type FrameData is array (0 .. MAX_DEFERRED_LEN - 1) of Unsigned_8;
 
+   --  One queue for every interface, in order; each frame names its
+   --  interface (dropped when that interface is gone or not Up).
    type DeferredFrame is record
       data : FrameData;
       len  : Natural := 0;
+      via  : NL.Interface_Handle;
    end record;
 
    --  TCP stops sending data above the high-water mark and resumes below
@@ -634,22 +712,26 @@ package body Netstack_Service is
    function admittedRequest (Owner : Process_ID; Request : Message)
                              return Boolean is
    begin
+      --  A driver's (CuBit.Net_Link): the driver's badge and the
+      --  operation's exact length. Handles are checked when used.
+      if NL.Is_Operation (Request.tag.label) then
+         return Request.authorityTag = Network_Authority.Driver_Authority_Tag and then
+           Natural (Request.tag.length) =
+             NL.Request_Words (NL.Operation_Of (Request.tag.label));
+      end if;
+      --  netmgr's (CuBit.Net_Management): the manager's badge, except
+      --  the inspection operations any holder of the endpoint may use.
+      if NM.Is_Operation (Request.tag.label) then
+         return Natural (Request.tag.length) =
+             NM.Request_Words (NM.Operation_Of (Request.tag.label)) and then
+           (not NM.Manager_Only (NM.Operation_Of (Request.tag.label)) or else
+            Request.authorityTag = Network_Authority.Manager_Authority_Tag);
+      end if;
       case Request.tag.label is
          when Network_Authority.OP_INSTALL_SCOPE |
               Network_Authority.OP_RELEASE_SCOPE |
               Network_Authority.OP_RELEASE_OWNER =>
             return Request.authorityTag = Network_Authority.Policy_Authority_Tag;
-         when OP_NET_ATTACH | OP_NET_RX | REPLY_OK =>
-            return Request.authorityTag = Network_Authority.Driver_Authority_Tag;
-         when OP_NET_CONFIGURE | OP_NET_SET_DNS | OP_NET_ROUTE_ADD |
-              OP_NET_ROUTE_DEL | OP_NET_OPEN_RAW | OP_NET_PING =>
-            return Request.authorityTag = Network_Authority.Manager_Authority_Tag;
-         when OP_NET_LIST_IF =>
-            return True; -- an endpoint invocation is still required by the kernel
-         when OP_NET_IF_DETAIL =>
-            return Request.words (0) < Unsigned_64 (numIfaces);
-         when OP_NET_ROUTE_LIST =>
-            return Request.words (0) <= Unsigned_64 (routeTable'Length);
          when OP_NET_RESOLVE =>
             return Request.tag.length in 1 .. 32 and then Network_Grants.May_Resolve
               (networkGrants, Owner, Request.authorityTag);
@@ -691,38 +773,14 @@ package body Netstack_Service is
       end case;
    end admittedRequest;
 
-   ---------------------------------------------------------------------------
-   --  hexDigit
-   ---------------------------------------------------------------------------
-   function hexDigit (n : Unsigned_8) return Character is
-      hex : constant String := "0123456789ABCDEF";
-   begin
-      return hex (Natural (n) + 1);
-   end hexDigit;
 
    ---------------------------------------------------------------------------
    --  printHex8
    ---------------------------------------------------------------------------
-   procedure printHex8 (val : Unsigned_8) is
-      s : String (1 .. 2);
-   begin
-      s (1) := hexDigit (Shift_Right (val, 4) and 16#0F#);
-      s (2) := hexDigit (val and 16#0F#);
-      debugPrint (s);
-   end printHex8;
 
    ---------------------------------------------------------------------------
    --  printMACAddr
    ---------------------------------------------------------------------------
-   procedure printMACAddr (m : Net.MACAddress) is
-   begin
-      for i in m'Range loop
-         if i > 0 then
-            debugPrint (":");
-         end if;
-         printHex8 (m (i));
-      end loop;
-   end printMACAddr;
 
    ---------------------------------------------------------------------------
    --  printDec - print a small unsigned number in decimal
@@ -768,248 +826,302 @@ package body Netstack_Service is
    end printIP;
 
 
-   ---------------------------------------------------------------------------
-   --  findInterfaceForIP - find interface that owns this IP
-   ---------------------------------------------------------------------------
-   function findInterfaceForIP (ip : Net.IPv4Address) return Integer is
-   begin
-      for i in 0 .. numIfaces - 1 loop
-         if interfaces (i).state = IF_UP and then
-            interfaces (i).ipv4 = ip
-         then
-            return i;
-         end if;
-      end loop;
-      --  Also accept broadcast
-      if ip = [255, 255, 255, 255] and numIfaces > 0 then
-         return 0;
-      end if;
-      return -1;
-   end findInterfaceForIP;
+   NO_ADDRESS : constant Net.IPv4Address := [others => 0];
 
    ---------------------------------------------------------------------------
-   --  routeLookup - longest-prefix match routing lookup
-   --  Returns interface index and next-hop gateway.
+   --  Logging (coordination/release-stack.md, "bring-up logging
+   --  convention"): link transitions and interface changes as one line
+   --  each on serial, built in a fixed buffer. netstack has no secondary
+   --  stack, so it cannot link the log publisher; netmgr logs each
+   --  transition to logstore from the interface events, with the same
+   --  fields (docs/net-link.md section 5).
    ---------------------------------------------------------------------------
+   type Log_Level is (Information, Warning);
+
+   logText   : String (1 .. 200);
+   logLength : Natural range 0 .. 200 := 0;
+
+   procedure logPut (Text : String) is
+      Kept : constant Natural := Natural'Min (Text'Length, logText'Last - logLength);
+   begin
+      logText (logLength + 1 .. logLength + Kept) := Text (Text'First .. Text'First + Kept - 1);
+      logLength := logLength + Kept;
+   end logPut;
+
+   procedure logDec (Value : Unsigned_64) is
+      Digits_Of : String (1 .. 20);
+      Pos : Natural := Digits_Of'Last;
+      V : Unsigned_64 := Value;
+   begin
+      loop
+         Digits_Of (Pos) := Character'Val (Character'Pos ('0') + Natural (V mod 10));
+         V := V / 10;
+         exit when V = 0;
+         Pos := Pos - 1;
+      end loop;
+      logPut (Digits_Of (Pos .. Digits_Of'Last));
+   end logDec;
+
+   procedure logMAC (M : Net.MACAddress) is
+      Hex : constant String := "0123456789abcdef";
+   begin
+      for I in M'Range loop
+         if I > M'First then
+            logPut (":");
+         end if;
+         logPut ([1 => Hex (Natural (Shift_Right (M (I), 4)) + 1),
+                  2 => Hex (Natural (M (I) and 16#F#) + 1)]);
+      end loop;
+   end logMAC;
+
+   procedure logIP (IP : Net.IPv4Address) is
+   begin
+      for I in IP'Range loop
+         if I > IP'First then
+            logPut (".");
+         end if;
+         logDec (Unsigned_64 (IP (I)));
+      end loop;
+   end logIP;
+
+   procedure logSend (Level : Log_Level := Information) is
+      pragma Unreferenced (Level);   --  serial has no levels
+   begin
+      debugPrint (logText (1 .. logLength));
+      debugPrint ("" & LF);
+      logLength := 0;
+   end logSend;
+
+   --  The interface configured with ip, or null (any link state: frames for
+   --  an interface that is down do not arrive).
+   function interfaceForIP (ip : Net.IPv4Address) return Interface_Access is
+   begin
+      for S in 0 .. Ifaces.Slot_Count - 1 loop
+         if Ifaces.In_Use (S) and then Ifaces.Get (S).configured and then
+           Ifaces.Get (S).ipv4 = ip
+         then
+            return Ifaces.Get (S);
+         end if;
+      end loop;
+      return No_Interface;
+   end interfaceForIP;
+
+   function isOurAddress (ip : Net.IPv4Address) return Boolean is
+     (interfaceForIP (ip) /= No_Interface);
+
+   ---------------------------------------------------------------------------
+   --  Routing (docs/net-link.md section 6): every configured interface whose
+   --  link is Up offers its connected network and, with a gateway, a
+   --  default route, both at its metric; static routes add to them. The
+   --  longest prefix wins, then the lowest metric. Routes through an
+   --  interface whose link is not Up are skipped, so traffic fails over to
+   --  another interface's route when there is one.
+   ---------------------------------------------------------------------------
+
+   --  The netmask of a prefix length.
+   function maskOf (prefix : NM.IPv4_Prefix) return Net.IPv4Address is
+      m : Net.IPv4Address := [others => 0];
+   begin
+      for I in m'Range loop
+         m (I) := (if prefix >= 8 * (I + 1) then 16#FF#
+                   elsif prefix <= 8 * I then 0
+                   else Shift_Left (Unsigned_8'Last, 8 - (prefix - 8 * I)));
+      end loop;
+      return m;
+   end maskOf;
+
    procedure routeLookup (dstIP   : Net.IPv4Address;
-                          ifIdx   : out Integer;
+                          via     : out Interface_Access;
                           nextHop : out Net.IPv4Address)
    is
       bestPrefix : Integer := -1;
-      bestMetric : Natural := Natural'Last;
-   begin
-      ifIdx := -1;
-      nextHop := [others => 0];
+      bestMetric : NM.Route_Metric := NM.Route_Metric'Last;
 
-      for i in routeTable'Range loop
-         if routeTable (i).active then
-            if Net.matchesPrefix (dstIP, routeTable (i).dest,
-                                  routeTable (i).prefix) then
-               if routeTable (i).prefix > bestPrefix or
-                  (routeTable (i).prefix = bestPrefix and
-                   routeTable (i).metric < bestMetric)
-               then
-                  bestPrefix := routeTable (i).prefix;
-                  bestMetric := routeTable (i).metric;
-                  ifIdx := routeTable (i).ifIdx;
-                  nextHop := routeTable (i).gateway;
+      procedure consider (ifc : Interface_Access; prefix : NM.IPv4_Prefix;
+                          metric : NM.Route_Metric; gateway : Net.IPv4Address) is
+      begin
+         if prefix > bestPrefix or else (prefix = bestPrefix and then metric < bestMetric) then
+            bestPrefix := prefix;
+            bestMetric := metric;
+            via := ifc;
+            nextHop := (if gateway = NO_ADDRESS then dstIP else gateway);
+         end if;
+      end consider;
+   begin
+      via := No_Interface;
+      nextHop := NO_ADDRESS;
+      for S in 0 .. Ifaces.Slot_Count - 1 loop
+         if Ifaces.In_Use (S) then
+            declare
+               ifc : constant Interface_Access := Ifaces.Get (S);
+            begin
+               if ifc.configured and then ifc.usable then
+                  if Net.matchesPrefix (dstIP, ifc.ipv4, ifc.prefix) then
+                     consider (ifc, ifc.prefix, ifc.metric, NO_ADDRESS);
+                  end if;
+                  if ifc.gateway /= NO_ADDRESS then
+                     consider (ifc, 0, ifc.metric, ifc.gateway);
+                  end if;
                end if;
-            end if;
+            end;
          end if;
       end loop;
-
-      --  If next-hop is 0.0.0.0 (connected route), send directly
-      if ifIdx >= 0 and nextHop = Net.IPv4Address'(others => 0) then
-         nextHop := dstIP;
-      end if;
+      for R of routeTable loop
+         if R.active and then Net.matchesPrefix (dstIP, R.dest, R.prefix) then
+            declare
+               ifc : constant Interface_Access := interfaceOf (R.via);
+            begin
+               if ifc /= No_Interface and then ifc.configured and then ifc.usable then
+                  consider (ifc, R.prefix, R.metric, R.gateway);
+               end if;
+            end;
+         end if;
+      end loop;
    end routeLookup;
 
    ---------------------------------------------------------------------------
-   --  installConnectedRoute - add connected route for an interface
+   --  Sending frames: each interface's transmit ring. A frame for an
+   --  interface whose link is not Up is dropped (counted): docs/net-link.md
+   --  section 5. Checking costs one field of the interface's record, never
+   --  a read of shared memory.
    ---------------------------------------------------------------------------
-   procedure installConnectedRoute (ifIdx : Natural) is
-      network : Net.IPv4Address;
-   begin
-      --  Compute network address from IP & netmask
-      for i in 0 .. 3 loop
-         network (i) := interfaces (ifIdx).ipv4 (i) and
-                        interfaces (ifIdx).netmask (i);
-      end loop;
-
-      --  Compute prefix length from netmask
-      declare
-         maskPacked : constant Unsigned_32 :=
-            Shift_Left (Unsigned_32 (interfaces (ifIdx).netmask (0)), 24) or
-            Shift_Left (Unsigned_32 (interfaces (ifIdx).netmask (1)), 16) or
-            Shift_Left (Unsigned_32 (interfaces (ifIdx).netmask (2)), 8) or
-            Unsigned_32 (interfaces (ifIdx).netmask (3));
-         prefix : Natural := 0;
-         m : Unsigned_32 := maskPacked;
-      begin
-         while (m and 16#8000_0000#) /= 0 loop
-            prefix := prefix + 1;
-            m := Shift_Left (m, 1);
-         end loop;
-
-         --  Find free slot
-         for i in routeTable'Range loop
-            if not routeTable (i).active then
-               routeTable (i) := (active  => True,
-                                   dest    => network,
-                                   prefix  => prefix,
-                                   gateway => [others => 0],
-                                   ifIdx   => ifIdx,
-                                   metric  => 0);
-               exit;
-            end if;
-         end loop;
-      end;
-
-      --  Install default route via gateway if set
-      if interfaces (ifIdx).gateway /= Net.IPv4Address'(others => 0) then
-         for i in routeTable'Range loop
-            if not routeTable (i).active then
-               routeTable (i) := (active  => True,
-                                   dest    => [others => 0],
-                                   prefix  => 0,
-                                   gateway => interfaces (ifIdx).gateway,
-                                   ifIdx   => ifIdx,
-                                   metric  => 100);
-               exit;
-            end if;
-         end loop;
-      end if;
-   end installConnectedRoute;
-
-   ---------------------------------------------------------------------------
-   --  doSendFrame - send a frame to the driver via capSubmit (non-blocking)
-   --
-   --  Copies the frame into a rotating TX slot of the shared grant buffer,
-   --  then sends OP_NET_TX to the driver using capSubmit with flags=1 so
-   --  the driver does not reply (avoiding stale replies in our mailbox).
-   --  Rotating slots ensure consecutive frames don't overwrite each other.
-   --  Returns True if the submit succeeded, False if mailbox was full.
-   ---------------------------------------------------------------------------
-   --  Frames were added to the TX ring since the driver was last told.
-   txDoorbell : Boolean := False;
-
    --  The transmit direction's header words.
-   function txWord (Offset : Natural) return System.Address is
-     (interfaces (0).pktBuf + Storage_Offset (Frames.Transmit_Header_At + Offset));
+   function txWord (ifc : Interface_Access; Offset : Natural) return System.Address is
+     (ifc.pktBuf + Storage_Offset (Frames.Transmit_Header_At + Offset));
 
    --  Take the driver's consumed count if it is sane (a bad one frees
    --  nothing); True if a frame fits in the ring now.
-   function txRoom (frameLen : Natural) return Boolean is
+   function txRoom (ifc : Interface_Access; frameLen : Natural) return Boolean is
       consumed : Unsigned_32 with Volatile, Import,
-        Address => txWord (Frames.Consumed_At);
+        Address => txWord (ifc, Frames.Consumed_At);
       ignore : Boolean;
    begin
-      Frame_Ring.Accept_Consumed
-        (interfaces (0).txRing, Frame_Ring.Index (consumed), ignore);
-      return Frame_Ring.Space (interfaces (0).txRing) > 0 and then
-        frameLen <= Frames.Maximum_Frame;
+      Frame_Ring.Accept_Consumed (ifc.txRing, Frame_Ring.Index (consumed), ignore);
+      return Frame_Ring.Space (ifc.txRing) > 0 and then frameLen <= Frames.Maximum_Frame;
    end txRoom;
 
    --  The next transmit slot's start.
-   function txSlot return System.Address is
-     (interfaces (0).pktBuf + Storage_Offset
-        (Frames.Transmit_Slot_At (Frame_Ring.Next_Slot (interfaces (0).txRing))));
+   function txSlot (ifc : Interface_Access) return System.Address is
+     (ifc.pktBuf + Storage_Offset
+        (Frames.Transmit_Slot_At (Frame_Ring.Next_Slot (ifc.txRing))));
 
    --  Hand the frame in the next slot (frameLen bytes) to the driver.
-   procedure txCommit (frameLen : Natural) is
+   procedure txCommit (ifc : Interface_Access; frameLen : Natural) is
       produced : Unsigned_32 with Volatile, Import,
-        Address => txWord (Frames.Produced_At);
+        Address => txWord (ifc, Frames.Produced_At);
       len : Unsigned_32 with Volatile, Import,
-        Address => txSlot + Storage_Offset (Frames.Length_At);
+        Address => txSlot (ifc) + Storage_Offset (Frames.Length_At);
    begin
       len := Unsigned_32 (frameLen);
       --  The frame is written before the count that hands it over.
       System.Machine_Code.Asm ("", Clobber => "memory", Volatile => True);
-      Frame_Ring.Commit (interfaces (0).txRing);
-      produced := Unsigned_32 (interfaces (0).txRing.Produced);
-      txDoorbell := True;
+      Frame_Ring.Commit (ifc.txRing);
+      produced := Unsigned_32 (ifc.txRing.Produced);
+      ifc.txDoorbell := True;
    end txCommit;
 
-   function doSendFrame (frameAddr : System.Address;
+   function doSendFrame (ifc : Interface_Access; frameAddr : System.Address;
                          frameLen  : Natural) return Boolean is
    begin
-      if not txRoom (frameLen) then
+      if not txRoom (ifc, frameLen) then
          return False;   --  the ring is full: the caller defers the frame
       end if;
       declare
          type Frame is array (0 .. frameLen - 1) of Unsigned_8;
          src : Frame with Import, Address => frameAddr;
-         dst : Frame with Import, Address => txSlot + Storage_Offset (Frames.Frame_At);
+         dst : Frame with Import, Address => txSlot (ifc) + Storage_Offset (Frames.Frame_At);
       begin
          dst := src;
       end;
-      txCommit (frameLen);
+      txCommit (ifc, frameLen);
       return True;
    end doSendFrame;
 
-   --  Zero-copy transmit: the next ring slot's frame area, to build a frame
-   --  in place, or Null_Address if the ring is full or older frames still
-   --  wait in the deferred queue (they go first). txCommit hands it over.
-   function txReserve (frameLen : Natural) return System.Address is
+   --  A frame for ifc is dropped: its link is not Up.
+   procedure linkDrop (ifc : Interface_Access) is
    begin
-      if interfaces (0).pktBuf = System.Null_Address or else deferredCount > 0 or else
-        not txRoom (frameLen)
+      ifc.linkDrops := ifc.linkDrops + 1;
+   end linkDrop;
+
+   --  Zero-copy transmit: the next ring slot's frame area, to build a frame
+   --  in place, or Null_Address if the link is not Up, the ring is full, or
+   --  older frames still wait in the deferred queue (they go first).
+   --  txCommit hands it over.
+   function txReserve (ifc : Interface_Access; frameLen : Natural) return System.Address is
+   begin
+      if ifc = No_Interface or else not ifc.usable or else deferredCount > 0 or else
+        not txRoom (ifc, frameLen)
       then
          return System.Null_Address;
       end if;
-      return txSlot + Storage_Offset (Frames.Frame_At);
+      return txSlot (ifc) + Storage_Offset (Frames.Frame_At);
    end txReserve;
 
-   --  The driver publishes a new nonzero epoch (the transmit header's
-   --  Wake_At) each time it is about to wait; one doorbell per epoch.
-   txRungEpoch : Unsigned_32 := 0;
-
-   --  Tell the driver the ring has frames (or the RX ring has room), if it
-   --  is idle: a busy driver drains the ring before it waits again.
-   procedure ringTXDoorbell is
-      doorbell : constant Message :=
-        (tag      => (label  => OP_NET_TX,
-                      length => 0,
-                      protocol  => 1, ipc => <>,      -- no reply
-                      reserved  => 0),
+   --  The answer to a parked request: empty, REPLY_OK.
+   procedure answerParked (p : in out Parked; w0 : Unsigned_64 := 0; ok : Boolean := True) is
+      msg : constant Message :=
+        (tag      => (label => (if ok then REPLY_OK else REPLY_ERR), length => 1,
+                      protocol => 0, ipc => <>, reserved => 0),
          authorityTag => 0,
-         words    => [others => 0]);
-      ignore : Boolean;
+         words    => [0 => w0, others => 0]);
+      ignore : Unsigned_64;
    begin
-      if txDoorbell and then interfaces (0).driverPID /= No_Process and then
-        interfaces (0).pktBuf /= System.Null_Address
-      then
-         txDoorbell := False;
-         --  The counts were published before the epoch is read.
-         System.Machine_Code.Asm ("mfence", Clobber => "memory", Volatile => True);
-         declare
-            epoch : Unsigned_32 with Volatile, Import,
-              Address => txWord (Frames.Wake_At);
-            seen : constant Unsigned_32 := epoch;
-         begin
-            if seen /= 0 and then seen /= txRungEpoch then
-               txRungEpoch := seen;
-               ignore := capSubmit (NIC, doorbell, Unsigned_64'Last);
-            end if;
-         end;
+      if p.present then
+         p.present := False;
+         ignore := replyCap (p.handle, msg);
       end if;
+   end answerParked;
+
+   --  Tell each idle driver its transmit ring has frames (or its receive
+   --  ring room): answer its parked Transmit_Wait once per wake epoch it
+   --  publishes. A busy driver drains the ring before it waits again.
+   procedure ringTXDoorbell is
+   begin
+      for S in 0 .. Ifaces.Slot_Count - 1 loop
+         if Ifaces.In_Use (S) then
+            declare
+               ifc : constant Interface_Access := Ifaces.Get (S);
+            begin
+               if ifc.txDoorbell and then ifc.txWait.present then
+                  --  The counts were published before the epoch is read.
+                  System.Machine_Code.Asm ("mfence", Clobber => "memory", Volatile => True);
+                  declare
+                     epoch : Unsigned_32 with Volatile, Import,
+                       Address => txWord (ifc, Frames.Wake_At);
+                     seen : constant Unsigned_32 := epoch;
+                  begin
+                     ifc.txDoorbell := False;
+                     if seen /= 0 and then seen /= ifc.txRungEpoch then
+                        ifc.txRungEpoch := seen;
+                        answerParked (ifc.txWait);
+                     end if;
+                  end;
+               end if;
+            end;
+         end if;
+      end loop;
    end ringTXDoorbell;
 
    ---------------------------------------------------------------------------
-   --  flushOneDeferredTX - try to send one deferred TX frame via capSubmit
+   --  flushOneDeferredTX - hand the oldest deferred frame to its interface
    --
-   --  Returns True if the frame was sent, False if the driver's mailbox
-   --  was full (caller should yield and retry later).
+   --  True if it went (or was dropped: its interface is gone or down), False
+   --  if its ring is still full.
    ---------------------------------------------------------------------------
    function flushOneDeferredTX return Boolean is
-      ok : Boolean;
+      ok  : Boolean;
+      ifc : Interface_Access;
    begin
       if deferredCount = 0 then
          return True;
       end if;
-
-      ok := doSendFrame (deferredTX (deferredHead).data'Address,
-                          deferredTX (deferredHead).len);
+      ifc := interfaceOf (deferredTX (deferredHead).via);
+      if ifc = No_Interface or else not ifc.usable then
+         ok := True;   --  nowhere to go: dropped
+      else
+         ok := doSendFrame (ifc, deferredTX (deferredHead).data'Address,
+                            deferredTX (deferredHead).len);
+      end if;
       if ok then
          deferredHead := (deferredHead + 1) mod MAX_DEFERRED_TX;
          deferredCount := deferredCount - 1;
@@ -1018,34 +1130,30 @@ package body Netstack_Service is
    end flushOneDeferredTX;
 
    ---------------------------------------------------------------------------
-   --  sendFrame - send a frame to the driver via capSubmit
-   --
-   --  Always attempts capSubmit immediately.  If the driver's mailbox is
-   --  full (submit fails), the frame is buffered in the deferred TX queue
-   --  for later retry from the main loop.
+   --  sendFrame - put a frame in ifc's transmit ring, or the deferred queue
+   --  if the ring is full (older frames go first: sending around them would
+   --  reorder the wire).
    ---------------------------------------------------------------------------
-   procedure sendFrame (frameAddr : System.Address; frameLen : Natural) is
+   procedure sendFrame (ifc : Interface_Access; frameAddr : System.Address; frameLen : Natural) is
       ok : Boolean;
    begin
-      if interfaces (0).driverPID = No_Process or
-         interfaces (0).pktBuf = System.Null_Address
-      then
-         debugPrint ("netstack: sendFrame: not attached" & LF);
+      if ifc = No_Interface or else ifc.pktBuf = System.Null_Address then
          return;
       end if;
-
+      if not ifc.usable then
+         linkDrop (ifc);
+         return;
+      end if;
       if frameLen > MAX_DEFERRED_LEN then
          debugPrint ("netstack: sendFrame: frame too large" & LF);
          return;
       end if;
 
-      --  Older frames go first: sending around them would reorder the wire.
       while deferredCount > 0 and then flushOneDeferredTX loop
          null;
       end loop;
-      ok := deferredCount = 0 and then doSendFrame (frameAddr, frameLen);
+      ok := deferredCount = 0 and then doSendFrame (ifc, frameAddr, frameLen);
       if not ok then
-         --  Driver mailbox full, buffer for later
          if deferredCount < MAX_DEFERRED_TX then
             declare
                slot : constant Natural :=
@@ -1057,6 +1165,7 @@ package body Netstack_Service is
                   deferredTX (slot).data (i) := src (i);
                end loop;
                deferredTX (slot).len := frameLen;
+               deferredTX (slot).via := ifc.handle;
             end;
             deferredCount := deferredCount + 1;
          else
@@ -1074,29 +1183,28 @@ package body Netstack_Service is
    function v4 (a : Net.IPv4Address) return IPv4_Header.Address is
      ([a (0), a (1), a (2), a (3)]);
 
+   --  The interface IPv4 frames built by the proved generics (ICMPv4) go
+   --  out on: set by whoever asks them to send.
+   currentIf : Interface_Access := No_Interface;
+
    procedure sendIPv4 (frame : IPv4_Header.Bytes)
      with Pre => IPv4_Frame.Emittable (frame);
    procedure sendIPv4 (frame : IPv4_Header.Bytes) is
    begin
-      sendFrame (frame'Address, frame'Length);
+      sendFrame (currentIf, frame'Address, frame'Length);
    end sendIPv4;
 
-   procedure sendIPv6 (frame : IPv6_Header.Bytes)
-     with Pre => IPv6_Frame.Emittable (frame);
-   procedure sendIPv6 (frame : IPv6_Header.Bytes) is
+   procedure sendIPv6Frame (Owner : NL.Interface_Handle; Frame : IPv6_Header.Bytes) is
    begin
-      sendFrame (frame'Address, frame'Length);
-   end sendIPv6;
-
-   --  IPv6 on the link: address configuration and neighbors (ipv6_link.ads,
-   --  proved through tests/tcp-session/ipv6_link_proof.ads).
-   package IPv6 is new IPv6_Link (Send => sendIPv6, Log => debugPrint);
+      sendFrame (interfaceOf (Owner), Frame'Address, Frame'Length);
+   end sendIPv6Frame;
 
    ---------------------------------------------------------------------------
-   --  sendARPReply - respond to an ARP request
+   --  ARP on each interface
    ---------------------------------------------------------------------------
-   --  An ARP frame from our address, built by the proved ARP_Packet.Build.
-   procedure sendARP (op       : ARP_Packet.Operation;
+   --  An ARP frame from ifc's address, built by the proved ARP_Packet.Build.
+   procedure sendARP (ifc      : Interface_Access;
+                      op       : ARP_Packet.Operation;
                       ethDest  : Net.MACAddress;
                       targetHW : Net.MACAddress;
                       targetIP : Net.IPv4Address) is
@@ -1104,56 +1212,48 @@ package body Netstack_Service is
    begin
       ARP_Packet.Build
         ((Op        => op,
-          Sender_HW => ARP_Packet.MAC (interfaces (0).mac),
-          Sender_IP => arpIP (interfaces (0).ipv4),
+          Sender_HW => ARP_Packet.MAC (ifc.mac),
+          Sender_IP => arpIP (ifc.ipv4),
           Target_HW => ARP_Packet.MAC (targetHW),
           Target_IP => arpIP (targetIP)),
          ARP_Packet.MAC (ethDest), frame);
-      sendFrame (frame'Address, frame'Length);
+      sendFrame (ifc, frame'Address, frame'Length);
    end sendARP;
 
-   procedure sendARPReply (dstMAC : Net.MACAddress;
+   procedure sendARPReply (ifc    : Interface_Access;
+                           dstMAC : Net.MACAddress;
                            dstIP  : Net.IPv4Address) is
    begin
-      sendARP (ARP_Packet.Reply, dstMAC, dstMAC, dstIP);
-      debugPrint ("NET: sent ARP reply to ");
-      printIP (dstIP);
-      debugPrint ("" & LF);
+      sendARP (ifc, ARP_Packet.Reply, dstMAC, dstMAC, dstIP);
+      if Trace_Packets then
+         debugPrint ("NET: sent ARP reply to ");
+         printIP (dstIP);
+         debugPrint ("" & LF);
+      end if;
    end sendARPReply;
 
-   ---------------------------------------------------------------------------
-   --  sendGratuitousARP
-   ---------------------------------------------------------------------------
    --  An ARP announcement (RFC 5227 2.3): a request whose sender and
    --  target addresses are both ours, to everyone.
-   procedure sendGratuitousARP is
+   procedure sendGratuitousARP (ifc : Interface_Access) is
    begin
-      sendARP (ARP_Packet.Request, Net.BROADCAST_MAC, Net.ZERO_MAC, interfaces (0).ipv4);
+      sendARP (ifc, ARP_Packet.Request, Net.BROADCAST_MAC, Net.ZERO_MAC, ifc.ipv4);
       debugPrint ("NET: sent gratuitous ARP for ");
-      printIP (interfaces (0).ipv4);
+      printIP (ifc.ipv4);
       debugPrint ("" & LF);
    end sendGratuitousARP;
 
-   ---------------------------------------------------------------------------
-   --  sendARPRequest
-   ---------------------------------------------------------------------------
-   --  When each ARP cache slot's neighbour was last asked about (the
-   --  cache's Since is when the question began, for expiry).
-   arpAskedAt : array (ARP_Cache.Index) of Unsigned_64 := [others => 0];
-
-   procedure sendARPRequest (targetIP : Net.IPv4Address) is
+   procedure sendARPRequest (ifc : Interface_Access; targetIP : Net.IPv4Address) is
    begin
       --  The reply to this, and only it, may resolve targetIP.
-      ARP_Cache.Request (interfaces (0).arpCache, arpIP (targetIP), syscall (SYSCALL_GETTIME));
+      ARP_Cache.Request (ifc.arpCache, arpIP (targetIP), syscall (SYSCALL_GETTIME));
       declare
-         pos : constant Integer :=
-           ARP_Cache.Position (interfaces (0).arpCache, arpIP (targetIP));
+         pos : constant Integer := ARP_Cache.Position (ifc.arpCache, arpIP (targetIP));
       begin
          if pos >= 0 then
-            arpAskedAt (pos) := clockNow;
+            ifc.arpAskedAt (pos) := clockNow;
          end if;
       end;
-      sendARP (ARP_Packet.Request, Net.BROADCAST_MAC, Net.ZERO_MAC, targetIP);
+      sendARP (ifc, ARP_Packet.Request, Net.BROADCAST_MAC, Net.ZERO_MAC, targetIP);
    end sendARPRequest;
 
    --  How often an unanswered neighbour is asked again (RFC 1122 2.3.2.1:
@@ -1165,109 +1265,103 @@ package body Netstack_Service is
    ARP_REACHABLE_MS : constant Unsigned_64 := 30_000;
    ARP_PROBE_MS     : constant Unsigned_64 := 3_000;
 
-   --  hop's mapping is doubted (stale, or traffic through it stalls): ask
-   --  again. The answer may change the address (a replaced router).
-   procedure doubtNeighbour (hop : Net.IPv4Address) is
-      pos : constant Integer := ARP_Cache.Position (interfaces (0).arpCache, arpIP (hop));
+   --  hop's mapping on ifc is doubted (stale, or traffic through it
+   --  stalls): ask again. The answer may change the address (a replaced
+   --  router).
+   procedure doubtNeighbour (ifc : Interface_Access; hop : Net.IPv4Address) is
       use type ARP_Cache.State;
    begin
-      --  Only a confirmed mapping is doubted; one already being asked
-      --  about is left to its question.
-      if hop /= [0, 0, 0, 0] and then pos >= 0 and then
-        interfaces (0).arpCache (pos).St = ARP_Cache.Resolved
-      then
-         ARP_Cache.Reconfirm (interfaces (0).arpCache, arpIP (hop), clockNow);
-         sendARPRequest (hop);
+      if ifc = No_Interface then
+         return;
       end if;
+      declare
+         pos : constant Integer := ARP_Cache.Position (ifc.arpCache, arpIP (hop));
+      begin
+         --  Only a confirmed mapping is doubted; one already being asked
+         --  about is left to its question.
+         if hop /= NO_ADDRESS and then pos >= 0 and then
+           ifc.arpCache (pos).St = ARP_Cache.Resolved
+         then
+            ARP_Cache.Reconfirm (ifc.arpCache, arpIP (hop), clockNow);
+            sendARPRequest (ifc, hop);
+         end if;
+      end;
    end doubtNeighbour;
 
    --  Ask for hop's link address, unless we asked within ARP_RETRY_MS.
-   procedure requestNeighbour (hop : Net.IPv4Address) is
-      pos : constant Integer := ARP_Cache.Position (interfaces (0).arpCache, arpIP (hop));
+   procedure requestNeighbour (ifc : Interface_Access; hop : Net.IPv4Address) is
+      pos : constant Integer := ARP_Cache.Position (ifc.arpCache, arpIP (hop));
       use type ARP_Cache.State;
    begin
       if pos >= 0 and then
-        (interfaces (0).arpCache (pos).St = ARP_Cache.Resolved or else
-         clockNow < deadlineAfter (arpAskedAt (pos), ARP_RETRY_MS))
+        (ifc.arpCache (pos).St = ARP_Cache.Resolved or else
+         clockNow < deadlineAfter (ifc.arpAskedAt (pos), ARP_RETRY_MS))
       then
          return;   --  confirmed, or asked within the last second
       end if;
-      sendARPRequest (hop);
+      sendARPRequest (ifc, hop);
    end requestNeighbour;
 
    --  hop's mapping has gone unconfirmed for ARP_REACHABLE_MS: ask again,
    --  using the address meanwhile.
-   procedure doubtIfStale (hop : Net.IPv4Address) is
-      pos : constant Integer := ARP_Cache.Position (interfaces (0).arpCache, arpIP (hop));
+   procedure doubtIfStale (ifc : Interface_Access; hop : Net.IPv4Address) is
+      pos : constant Integer := ARP_Cache.Position (ifc.arpCache, arpIP (hop));
       use type ARP_Cache.State;
    begin
-      if pos >= 0 and then interfaces (0).arpCache (pos).St = ARP_Cache.Resolved and then
-        clockNow >= deadlineAfter (interfaces (0).arpCache (pos).Since, ARP_REACHABLE_MS)
+      if pos >= 0 and then ifc.arpCache (pos).St = ARP_Cache.Resolved and then
+        clockNow >= deadlineAfter (ifc.arpCache (pos).Since, ARP_REACHABLE_MS)
       then
-         doubtNeighbour (hop);
+         doubtNeighbour (ifc, hop);
       end if;
    end doubtIfStale;
 
-   --  The link address to send to dstIP by: its next hop's (the route
-   --  table's gateway, or dstIP itself on a connected network), from the
-   --  ARP cache. If it is not resolved yet, a request goes out and found
-   --  is False: the caller drops the frame, and TCP's retransmission or
-   --  the resolver's retry sends it again.
+   --  The interface and link address to send to dstIP by: the route's
+   --  interface and its next hop's address (the gateway, or dstIP itself on
+   --  a connected network), from that interface's ARP cache. If it is not
+   --  resolved yet, a request goes out and found is False: the caller drops
+   --  the frame, and TCP's retransmission or the resolver's retry sends it
+   --  again. via is null when no usable route exists.
    procedure neighbourMAC (dstIP : Net.IPv4Address;
+                           via   : out Interface_Access;
                            mac   : out Net.MACAddress;
                            found : out Boolean) is
-      ifIdx : Integer;
-      hop   : Net.IPv4Address;
+      hop : Net.IPv4Address;
    begin
       mac := Net.ZERO_MAC;
       found := False;
-      routeLookup (dstIP, ifIdx, hop);
-      if ifIdx < 0 then
-         return;   --  no route
+      routeLookup (dstIP, via, hop);
+      if via = No_Interface then
+         return;   --  no usable route
       end if;
-      found := arpLookup (0, hop, mac);
+      found := arpLookup (via, hop, mac);
       --  Unresolved or being reconfirmed: ask (at most once a second). A
       --  confirmed mapping gone stale is doubted.
-      requestNeighbour (hop);
+      requestNeighbour (via, hop);
       if found then
-         doubtIfStale (hop);
+         doubtIfStale (via, hop);
       end if;
    end neighbourMAC;
 
-   --  dstIP's next-hop link address, or zero if not resolved yet (asked).
-   function resolvedNeighbour (dstIP : Net.IPv4Address) return Net.MACAddress is
-      mac   : Net.MACAddress;
-      found : Boolean;
+   --  The next hop for dstIP and its interface (null: no usable route).
+   procedure nextHopOf (dstIP : Net.IPv4Address; via : out Interface_Access;
+                        hop : out Net.IPv4Address) is
    begin
-      neighbourMAC (dstIP, mac, found);
-      return mac;
-   end resolvedNeighbour;
-
-   --  The next hop for dstIP, or 0.0.0.0 with no route.
-   function nextHopOf (dstIP : Net.IPv4Address) return Net.IPv4Address is
-      ifIdx : Integer;
-      hop   : Net.IPv4Address;
-   begin
-      routeLookup (dstIP, ifIdx, hop);
-      return (if ifIdx < 0 then [others => 0] else hop);
+      routeLookup (dstIP, via, hop);
    end nextHopOf;
-
-
-
-
 
    ---------------------------------------------------------------------------
    --  sendUDP - build and send a UDP datagram inside an IPv4 frame
    --
    --  The whole frame is built by the proved UDP_Frame.
    ---------------------------------------------------------------------------
-   procedure sendUDP (dstIP      : Net.IPv4Address;
+   procedure sendUDP (ifc        : Interface_Access;
+                      dstIP      : Net.IPv4Address;
                       dstMAC     : Net.MACAddress;
                       srcPort    : Unsigned_16;
                       dstPort    : Unsigned_16;
                       payload    : System.Address;
                       payloadLen : Natural) is
-      ours : constant IPv4_Header.Address := v4 (interfaces (0).ipv4);
+      ours : constant IPv4_Header.Address := v4 (ifc.ipv4);
       dest : constant IPv4_Header.Address := v4 (dstIP);
    begin
       --  Built whole by the proved UDP_Frame (only unicast is sent).
@@ -1282,9 +1376,9 @@ package body Netstack_Service is
          frame : IPv4_Header.Bytes (0 .. UDP_Frame.Payload_At + payloadLen - 1);
       begin
          UDP_Frame.Build
-           (IPv4_Frame.MAC (interfaces (0).mac), IPv4_Frame.MAC (dstMAC), ours, dest,
+           (IPv4_Frame.MAC (ifc.mac), IPv4_Frame.MAC (dstMAC), ours, dest,
             srcPort, dstPort, data, frame);
-         sendIPv4 (frame);
+         sendFrame (ifc, frame'Address, frame'Length);
       end;
    end sendUDP;
 
@@ -1303,6 +1397,7 @@ package body Netstack_Service is
       length : Natural;
       dnsMAC : Net.MACAddress;
       found  : Boolean;
+      via    : Interface_Access;
    begin
       if nameLen = 0 then
          return;
@@ -1311,13 +1406,12 @@ package body Netstack_Service is
       DNS_Query.Build (txid, name, nameLen, query, length);
       --  The server's next hop; unresolved, this attempt is lost and the
       --  next one (or an ARP reply) sends the question again.
-      neighbourMAC (server, dnsMAC, found);
+      neighbourMAC (server, via, dnsMAC, found);
       if found then
-         sendUDP (server, dnsMAC, port, DNS_SERVER_PORT, query'Address, length);
+         sendUDP (via, server, dnsMAC, port, DNS_SERVER_PORT, query'Address, length);
       end if;
    end sendDNSQuery;
 
-   NO_ADDRESS : constant Net.IPv4Address := [others => 0];
 
    --  The server for a query's Nth attempt: the primary, then the
    --  secondary if there is one, and so on alternately.
@@ -1343,7 +1437,6 @@ package body Netstack_Service is
 
    --  Forward declarations for functions used by handleDNSResponse
    function tcpConnect (dstIP   : Net.IPv4Address;
-                        dstMAC  : Net.MACAddress;
                         dstPort : Unsigned_16) return Integer;
    procedure replyError
      (to   : Process_ID;
@@ -1479,8 +1572,7 @@ package body Netstack_Service is
                     policyAddress (resolvedIP), pendingReqs (i).dstPort)
                then
                   channels (chIdx).remoteIP := resolvedIP;
-                  connIdx := tcpConnect (resolvedIP, resolvedNeighbour (resolvedIP),
-                                         pendingReqs (i).dstPort);
+                  connIdx := tcpConnect (resolvedIP, pendingReqs (i).dstPort);
                   if connIdx < 0 then
                      releaseChannel (chIdx);
                      answerError (pendingReqs (i));
@@ -1606,6 +1698,7 @@ package body Netstack_Service is
    --  payloadInPlace the payload is already at fAddr + TCP_PAYLOAD_OFFSET
    --  (no options) and is not copied.
    procedure buildTCPSegment (fAddr   : System.Address;
+                              ifc     : Interface_Access;
                               conn    : TCP_Slots.Slot;
                               flags   : Unsigned_8;
                               seqNum  : Unsigned_32;
@@ -1657,12 +1750,12 @@ package body Netstack_Service is
       --  anything else is not sent).
       declare
          frame : IPv4_Header.Bytes (0 .. frameLen - 1) with Import, Address => fAddr;
-         ours  : constant IPv4_Header.Address := v4 (interfaces (0).ipv4);
+         ours  : constant IPv4_Header.Address := v4 (conn.localIP);
          peer  : constant IPv4_Header.Address := v4 (conn.remoteIP);
       begin
          --  sendTCPSegment sends only between unicast addresses.
          if IPv4_Frame.Unicast (ours) and then IPv4_Frame.Unicast (peer) then
-            TCP_Frame.Finish (frame, IPv4_Frame.MAC (interfaces (0).mac),
+            TCP_Frame.Finish (frame, IPv4_Frame.MAC (ifc.mac),
                               IPv4_Frame.MAC (conn.remoteMAC), ours, peer);
          end if;
       end;
@@ -1688,34 +1781,51 @@ package body Netstack_Service is
       slot     : System.Address;
       conn     : TCP_Slots.Slot := slotIn;
       found    : Boolean;
+      ifc      : Interface_Access := No_Interface;
+      hop      : Net.IPv4Address;
    begin
       --  Only between unicast addresses (connect refuses any other peer;
       --  arriving segments from one are dropped).
-      if not IPv4_Frame.Unicast (v4 (interfaces (0).ipv4)) or else
+      if not IPv4_Frame.Unicast (v4 (conn.localIP)) or else
         not IPv4_Frame.Unicast (v4 (conn.remoteIP))
       then
          return;
       end if;
-      --  A connection opened before its next hop answered ARP: resolve now,
-      --  or drop the segment (retransmission sends it again).
-      if conn.remoteMAC = Net.ZERO_MAC then
-         neighbourMAC (conn.remoteIP, conn.remoteMAC, found);
-         if not found then
-            return;
-         end if;
+      --  The connection's interface (one record lookup), or for a segment
+      --  without a slot (TIME-WAIT) the route's. Gone or down: dropped;
+      --  retransmission sends it again once the link is back.
+      if conn.routed then
+         ifc := interfaceOf (conn.egress);
+      else
+         routeLookup (conn.remoteIP, ifc, hop);
       end if;
-      slot := txReserve (frameLen);
+      if ifc = No_Interface then
+         return;
+      end if;
+      --  A connection opened before its next hop answered ARP (or whose
+      --  link went down and came back): resolve now, or drop the segment.
+      if conn.remoteMAC = Net.ZERO_MAC then
+         declare
+            via : Interface_Access;
+         begin
+            neighbourMAC (conn.remoteIP, via, conn.remoteMAC, found);
+            if not found or else via /= ifc then
+               return;
+            end if;
+         end;
+      end if;
+      slot := txReserve (ifc, frameLen);
       if slot /= System.Null_Address then
-         buildTCPSegment (slot, conn, flags, seqNum, ackNum, window, payload, payLen,
+         buildTCPSegment (slot, ifc, conn, flags, seqNum, ackNum, window, payload, payLen,
                           synOptions, windowScale);
-         txCommit (frameLen);
+         txCommit (ifc, frameLen);
       else
          declare
             frame : array (0 .. frameLen - 1) of Unsigned_8;
          begin
-            buildTCPSegment (frame'Address, conn, flags, seqNum, ackNum, window, payload, payLen,
+            buildTCPSegment (frame'Address, ifc, conn, flags, seqNum, ackNum, window, payload, payLen,
                              synOptions, windowScale);
-            sendFrame (frame'Address, frameLen);
+            sendFrame (ifc, frame'Address, frameLen);
          end;
       end if;
    end sendTCPSegment;
@@ -1784,7 +1894,7 @@ package body Netstack_Service is
    begin
       return TCP_Isn.Initial_Sequence
         (isnKey,
-         (Local       => mapped (interfaces (0).ipv4),
+         (Local       => mapped (tcpConns (Index).localIP),
           Remote      => mapped (tcpConns (Index).remoteIP),
           Local_Port  => tcpConns (Index).localPort,
           Remote_Port => tcpConns (Index).remotePort),
@@ -1860,7 +1970,8 @@ package body Netstack_Service is
                sendTCPSegment ((inUse => True, reserved => False, localPort => w.Key.Local_Port,
                                 remotePort => w.Key.Remote_Port, remoteIP => seg.srcIP,
                                 remoteMAC => [w.Remote_MAC (0), w.Remote_MAC (1), w.Remote_MAC (2),
-                                              w.Remote_MAC (3), w.Remote_MAC (4), w.Remote_MAC (5)]),
+                                              w.Remote_MAC (3), w.Remote_MAC (4), w.Remote_MAC (5)],
+                                localIP => seg.dstIP, routed => False, egress => <>),
                                TCP_Wire.Flag_ACK, Unsigned_32 (w.Snd_Nxt), Unsigned_32 (w.Rcv_Nxt),
                                0, System.Null_Address, 0);
             end;
@@ -1980,10 +2091,22 @@ package body Netstack_Service is
       debugPrint ("" & LF);
    end reportSlots;
 
+   --  The interface a new connection to dstIP leaves by: the route's.
+   function egressFor (dstIP : Net.IPv4Address) return Interface_Access is
+      via : Interface_Access;
+      hop : Net.IPv4Address;
+   begin
+      routeLookup (dstIP, via, hop);
+      return via;
+   end egressFor;
+
+   --  A connection to dstIP from the address of the interface its route
+   --  leaves by (source selection: the egress interface's address); -1
+   --  with no usable route or no free slot.
    function tcpConnect (dstIP   : Net.IPv4Address;
-                        dstMAC  : Net.MACAddress;
                         dstPort : Unsigned_16) return Integer is
-      ours  : constant Net.IPv4Address := interfaces (0).ipv4;
+      via   : constant Interface_Access := egressFor (dstIP);
+      ours  : constant Net.IPv4Address := (if via = No_Interface then NO_ADDRESS else via.ipv4);
       h     : constant Unsigned_64 := SipHash.Hash
         (portKey, [ours (0), ours (1), ours (2), ours (3), dstIP (0), dstIP (1), dstIP (2),
                    dstIP (3), Unsigned_8 (dstPort / 256), Unsigned_8 (dstPort mod 256)]);
@@ -1993,7 +2116,7 @@ package body Netstack_Service is
       found : Boolean := False;
       idx   : Integer;
    begin
-      if not IPv4_Frame.Unicast (v4 (dstIP)) then
+      if not IPv4_Frame.Unicast (v4 (dstIP)) or else via = No_Interface then
          return -1;   --  never a broadcast, multicast, loopback or zero peer
       end if;
       --  A port is free for this destination if nothing listens on it, no
@@ -2016,7 +2139,15 @@ package body Netstack_Service is
          return -1;
       end if;
 
-      claimSlot (ours, dstIP, lport, dstPort, dstMAC, idx);
+      declare
+         dstMAC : Net.MACAddress;
+         found  : Boolean;
+         hopVia : Interface_Access;
+      begin
+         --  Unresolved: the SYN waits for ARP (sendTCPSegment resolves).
+         neighbourMAC (dstIP, hopVia, dstMAC, found);
+         claimSlot (ours, dstIP, lport, dstPort, dstMAC, via.handle, idx);
+      end;
       if idx < 0 then
          return -1;
       end if;
@@ -2198,6 +2329,11 @@ package body Netstack_Service is
       taken : Sends.Byte_Count;
       fin   : Boolean;
       sent  : Boolean := False;
+      --  The connection's interface, for building segments in its ring;
+      --  none (gone, down, or the next hop unresolved): sendTCPSegment.
+      egress : constant Interface_Access :=
+        (if tcpConns (Index).routed and then tcpConns (Index).remoteMAC /= Net.ZERO_MAC
+         then interfaceOf (tcpConns (Index).egress) else No_Interface);
    begin
       --  Nothing to retransmit, nothing unsent and no FIN: no segment to
       --  build (the usual case for a data segment arriving on a receiving
@@ -2219,7 +2355,7 @@ package body Netstack_Service is
                --  Room for a full segment in the next ring slot: the flow
                --  copies the payload straight to its place in the frame.
                slot : constant System.Address :=
-                 txReserve (TCP_PAYLOAD_OFFSET + LINK_MSS);
+                 txReserve (egress, TCP_PAYLOAD_OFFSET + LINK_MSS);
                inPlace : Sends.Byte_Array (1 .. LINK_MSS)
                   with Import, Address => slot + Storage_Offset (TCP_PAYLOAD_OFFSET);
             begin
@@ -2227,12 +2363,12 @@ package body Netstack_Service is
                   Flows.Send (F, tcpPool, Now, inPlace, first, taken, fin);
                   exit when taken = 0 and then not fin;
                   buildTCPSegment
-                    (slot, tcpConns (Index),
+                    (slot, egress, tcpConns (Index),
                      TCP_Wire.Flag_ACK or (if taken > 0 then TCP_Wire.Flag_PSH else 0) or
                        (if fin then TCP_Wire.Flag_FIN else 0),
                      Unsigned_32 (first), Unsigned_32 (F.E.C.Rcv_Nxt), windowOf (Index),
                      slot + Storage_Offset (TCP_PAYLOAD_OFFSET), taken, payloadInPlace => True);
-                  txCommit (TCP_PAYLOAD_OFFSET + taken);
+                  txCommit (egress, TCP_PAYLOAD_OFFSET + taken);
                   sent := True;
                   goto Next_Segment;
                end if;
@@ -2595,12 +2731,18 @@ package body Netstack_Service is
             declare
                mac   : Net.MACAddress;
                found : Boolean;
+               via   : Interface_Access;
             begin
+               --  No usable route (no interface Up reaches the peer): the
+               --  channel ends Unreachable (docs/net-link.md section 5).
                --  Unresolved, the datagram is lost, as UDP allows; the
                --  request sent now resolves the next one.
-               neighbourMAC (C.remoteIP, mac, found);
-               if found then
-                  sendUDP (C.remoteIP, mac, C.localPort, C.remotePort, buffer'Address, len);
+               neighbourMAC (C.remoteIP, via, mac, found);
+               if via = No_Interface then
+                  setStatus (chIdx, Layout.Status_Unreachable);
+                  exit;
+               elsif found then
+                  sendUDP (via, C.remoteIP, mac, C.localPort, C.remotePort, buffer'Address, len);
                end if;
             end;
          end if;
@@ -3033,7 +3175,13 @@ package body Netstack_Service is
                      abortConnection (Index, Now);
                   else
                      --  No answer for an RTO: the next hop may have changed.
-                     doubtNeighbour (nextHopOf (tcpConns (Index).remoteIP));
+                     declare
+                        via : Interface_Access;
+                        hop : Net.IPv4Address;
+                     begin
+                        nextHopOf (tcpConns (Index).remoteIP, via, hop);
+                        doubtNeighbour (via, hop);
+                     end;
                      Flows.Retransmit_Timeout (F, tcpPool, Now);
                      case F.E.C.St is
                         when TCP_Connection.Syn_Sent     => sendSyn (Index);
@@ -3078,7 +3226,8 @@ package body Netstack_Service is
    rstTokens   : Natural := RST_BURST;
    rstRefillAt : Unsigned_64 := 0;
 
-   procedure refuseSegment (seg    : TCP_Slots.SegmentInfo;
+   procedure refuseSegment (rxIf   : Interface_Access;
+                            seg    : TCP_Slots.SegmentInfo;
                             dstIP  : Net.IPv4Address;
                             srcMAC : Net.MACAddress;
                             Now    : Unsigned_64) is
@@ -3087,7 +3236,7 @@ package body Netstack_Service is
           ((SYN => seg.flagSYN, ACK => seg.flagACK, FIN => seg.flagFIN, RST => seg.flagRST,
             Seq_No => Seq (seg.seqNum), Ack_No => Seq (seg.ackNum), Length => seg.dataLen));
    begin
-      if not reply.Send or else findInterfaceForIP (dstIP) < 0 then
+      if not reply.Send or else not rxIf.configured or else dstIP /= rxIf.ipv4 then
          return;
       end if;
       if Now > rstRefillAt then
@@ -3101,7 +3250,8 @@ package body Netstack_Service is
       end if;
       rstTokens := rstTokens - 1;
       sendTCPSegment ((inUse => True, reserved => False, localPort => seg.dstPort,
-                       remotePort => seg.srcPort, remoteIP => seg.srcIP, remoteMAC => srcMAC),
+                       remotePort => seg.srcPort, remoteIP => seg.srcIP, remoteMAC => srcMAC,
+                       localIP => dstIP, routed => True, egress => rxIf.handle),
                       (if reply.With_ACK then TCP_Wire.Flag_RST or TCP_Wire.Flag_ACK
                        else TCP_Wire.Flag_RST),
                       Unsigned_32 (reply.Seq_No), Unsigned_32 (reply.Ack_No), 0,
@@ -3116,7 +3266,8 @@ package body Netstack_Service is
    --  (arrivalExpected). Control requests and timers do not set it.
    peerActive : Boolean := False;
 
-   procedure handleTCP (pktBuf     : System.Address;
+   procedure handleTCP (rxIf       : Interface_Access;
+                        pktBuf     : System.Address;
                         ipOff      : Natural;
                         ipHdrLen   : Natural;
                         srcIP      : Net.IPv4Address;
@@ -3132,11 +3283,9 @@ package body Netstack_Service is
       Now     : constant Unsigned_64 := clockNow;
       mark    : Unsigned_64 := Prof.Now;
    begin
-      --  The connection table/TX path currently supports interface zero only.
-      --  Broadcast and another interface must not match a unicast TCP tuple.
-      if tcpLen < 20 or else numIfaces = 0 or else interfaces (0).state /= IF_UP or else
-        dstIP /= interfaces (0).ipv4
-      then
+      --  Only to the receiving interface's own address: a broadcast, or
+      --  another interface's address, must not match a unicast TCP tuple.
+      if tcpLen < 20 or else not rxIf.configured or else dstIP /= rxIf.ipv4 then
          return;
       end if;
 
@@ -3177,6 +3326,7 @@ package body Netstack_Service is
          TCP_Header.Parse (segment, h);
 
          seg.srcIP   := srcIP;
+         seg.dstIP   := dstIP;
          seg.srcPort := h.Source_Port;
          seg.dstPort := h.Destination_Port;
          seg.seqNum  := h.Seq_No;
@@ -3230,10 +3380,10 @@ package body Netstack_Service is
             when Taken_By_Time_Wait | Drop =>
                return;
             when Refuse =>
-               refuseSegment (seg, dstIP, srcMAC, Now);
+               refuseSegment (rxIf, seg, dstIP, srcMAC, Now);
                return;
             when Open_Passive =>
-               claimSlot (dstIP, srcIP, seg.dstPort, seg.srcPort, srcMAC, connIdx);
+               claimSlot (dstIP, srcIP, seg.dstPort, seg.srcPort, srcMAC, rxIf.handle, connIdx);
                if connIdx < 0 then return; end if;
                TCP_Listeners.Reserve
                  (listeners, listener, connIdx,
@@ -3262,29 +3412,37 @@ package body Netstack_Service is
    --  hop's link address is now known: connections that opened before it
    --  was take it, and resolver questions to a server behind it go again
    --  now instead of at their next retry.
-   procedure neighbourResolved (hop : Net.IPv4Address; mac : Net.MACAddress) is
+   procedure neighbourResolved (ifc : Interface_Access; hop : Net.IPv4Address;
+                                mac : Net.MACAddress) is
+      via : Interface_Access;
+      next : Net.IPv4Address;
    begin
-      --  Every connection through hop takes its (possibly new) address.
+      --  Every connection through hop on ifc takes its (possibly new) address.
       for I in tcpConns'Range loop
          if tcpConns (I).inUse and then tcpConns (I).remoteMAC /= mac and then
-           nextHopOf (tcpConns (I).remoteIP) = hop
+           tcpConns (I).routed and then tcpConns (I).egress = ifc.handle
          then
-            tcpConns (I).remoteMAC := mac;
+            nextHopOf (tcpConns (I).remoteIP, via, next);
+            if via = ifc and then next = hop then
+               tcpConns (I).remoteMAC := mac;
+            end if;
          end if;
       end loop;
       for P of pendingReqs loop
          if P.kind in PENDING_RESOLVE | PENDING_OPEN and then P.attempts in 1 .. DNS_ATTEMPTS - 1
-           and then nextHopOf (dnsServer (P.attempts - 1)) = hop
          then
-            sendAttempt (P, clockNow);
+            nextHopOf (dnsServer (P.attempts - 1), via, next);
+            if via = ifc and then next = hop then
+               sendAttempt (P, clockNow);
+            end if;
          end if;
       end loop;
    end neighbourResolved;
 
    ---------------------------------------------------------------------------
-   --  handleARP
+   --  handleARP: an ARP packet that arrived on ifc
    ---------------------------------------------------------------------------
-   procedure handleARP (pktBuf : System.Address; pktLen : Natural) is
+   procedure handleARP (ifc : Interface_Access; pktBuf : System.Address; pktLen : Natural) is
       packet : ARP_Packet.Bytes (0 .. pktLen - 15)
          with Import, Address => pktBuf + 14;
       p      : ARP_Packet.Packet;
@@ -3298,27 +3456,25 @@ package body Netstack_Service is
       ARP_Packet.Parse (packet, p);
       senderIP := [p.Sender_IP (0), p.Sender_IP (1), p.Sender_IP (2), p.Sender_IP (3)];
       targetIP := [p.Target_IP (0), p.Target_IP (1), p.Target_IP (2), p.Target_IP (3)];
-      ours := findInterfaceForIP (targetIP) >= 0;
+      --  For this interface's own address only.
+      ours := ifc.configured and then targetIP = ifc.ipv4;
       --  Learn only what the proved cache accepts (no unsolicited replies,
       --  no rewriting a resolved address, no bogus senders).
-      ARP_Cache.Learn (interfaces (0).arpCache, p, ours, syscall (SYSCALL_GETTIME));
+      ARP_Cache.Learn (ifc.arpCache, p, ours, syscall (SYSCALL_GETTIME));
 
       if p.Op = ARP_Packet.Request and then ours and then
         ARP_Cache.Usable_Sender (p.Sender_IP, p.Sender_HW)
       then
-         sendARPReply (netMAC (p.Sender_HW), senderIP);
+         sendARPReply (ifc, netMAC (p.Sender_HW), senderIP);
       end if;
       --  What the cache now holds for the sender (only what it accepted).
-      if arpLookup (0, senderIP, mac) then
-         for i in 0 .. numIfaces - 1 loop
-            if interfaces (i).gateway = senderIP then
-               interfaces (i).gwMAC := mac;
-            end if;
-         end loop;
-         neighbourResolved (senderIP, mac);
+      if arpLookup (ifc, senderIP, mac) then
+         if ifc.gateway = senderIP then
+            ifc.gwMAC := mac;
+         end if;
+         neighbourResolved (ifc, senderIP, mac);
       end if;
    end handleARP;
-
 
    --  An ICMP error about one of our packets (RFC 1122 4.2.3.9, RFC 1191,
    --  RFC 5927). It must quote a packet we sent: our address, and for TCP
@@ -3334,11 +3490,16 @@ package body Netstack_Service is
       use ICMPv4_Error;
       e  : Error;
       ok : Boolean;
-      ours : constant Net.IPv4Address := interfaces (0).ipv4;
+      ours : Net.IPv4Address;
       peer : Net.IPv4Address;
    begin
       Parse (message, e, ok);
-      if not ok or else [e.Source (0), e.Source (1), e.Source (2), e.Source (3)] /= ours then
+      if not ok then
+         return;
+      end if;
+      --  It must quote one of our addresses as the source.
+      ours := [e.Source (0), e.Source (1), e.Source (2), e.Source (3)];
+      if not isOurAddress (ours) then
          return;
       end if;
       peer := [e.Destination (0), e.Destination (1), e.Destination (2), e.Destination (3)];
@@ -3412,23 +3573,24 @@ package body Netstack_Service is
    --  The self-test (tests/headless network-authority): once configured,
    --  ping the gateway once and log its reply.
    SELF_TEST_SEQUENCE : constant Unsigned_16 := 16#FFFF#;
-   SELF_TEST_TRIES    : constant := 3;
    SELF_TEST_POLL_MS  : constant Unsigned_64 := 100;
-   type SelfTest is (TEST_OFF, TEST_WAITING, TEST_SENT, TEST_DONE);
-   ipv4Test      : SelfTest := TEST_OFF;
-   ipv4TestTries : Natural range 0 .. SELF_TEST_TRIES := 0;
-   ipv4TestAt    : Unsigned_64 := 0;
 
    --  A reply to our ping Sequence: complete the request waiting for it.
    procedure pingAnswered (From : IPv4_Header.Address; Sequence : Unsigned_16) is
       source : constant Net.IPv4Address := [From (0), From (1), From (2), From (3)];
    begin
-      if Sequence = SELF_TEST_SEQUENCE and then ipv4Test = TEST_SENT then
-         ipv4Test := TEST_DONE;
-         debugPrint ("netstack: IPv4 echo reply from ");
-         printIP (source);
-         debugPrint ("" & LF);
-         return;
+      if Sequence = SELF_TEST_SEQUENCE then
+         for S in 0 .. Ifaces.Slot_Count - 1 loop
+            if Ifaces.In_Use (S) and then Ifaces.Get (S).ipv4Test = TEST_SENT and then
+              Ifaces.Get (S).gateway = source
+            then
+               Ifaces.Get (S).ipv4Test := TEST_DONE;
+               debugPrint ("netstack: IPv4 echo reply from ");
+               printIP (source);
+               debugPrint ("" & LF);
+               return;
+            end if;
+         end loop;
       end if;
       for i in pendingReqs'Range loop
          if pendingReqs (i).kind = PENDING_PING and then pendingReqs (i).txid = Sequence then
@@ -3460,32 +3622,87 @@ package body Netstack_Service is
    package ICMPv4 is new IPv4_ICMP
      (Send => sendIPv4, Echo_Answered => pingAnswered, Error_Arrived => icmpError);
 
-   --  The self-test's next step: ping the gateway once its address is
-   --  known, up to SELF_TEST_TRIES times a second apart.
-   procedure ipv4SelfTest (Now : Unsigned_64) is
-      gw  : constant Net.IPv4Address := interfaces (0).gateway;
+   --  The self-test's next step on ifc: ping its gateway once its address
+   --  is known, up to SELF_TEST_TRIES times a second apart.
+   procedure ipv4SelfTest (ifc : Interface_Access; Now : Unsigned_64) is
+      gw  : constant Net.IPv4Address := ifc.gateway;
       mac : Net.MACAddress;
    begin
-      if ipv4Test not in TEST_WAITING | TEST_SENT or else ipv4TestTries = SELF_TEST_TRIES or else
-        Now < ipv4TestAt
+      if ifc.ipv4Test not in TEST_WAITING | TEST_SENT or else
+        ifc.ipv4TestTries = SELF_TEST_TRIES or else Now < ifc.ipv4TestAt or else
+        not ifc.usable
       then
          return;
       end if;
-      if not arpLookup (0, gw, mac) then
-         ipv4TestAt := deadlineAfter (Now, SELF_TEST_POLL_MS);   --  not resolved yet
+      if not arpLookup (ifc, gw, mac) then
+         ifc.ipv4TestAt := deadlineAfter (Now, SELF_TEST_POLL_MS);   --  not resolved yet
          return;
       end if;
-      ICMPv4.Echo (interfaces (0).mac, mac, v4 (interfaces (0).ipv4), v4 (gw), SELF_TEST_SEQUENCE);
-      ipv4Test := TEST_SENT;
-      ipv4TestTries := ipv4TestTries + 1;
-      ipv4TestAt := deadlineAfter (Now, ARP_RETRY_MS);
+      currentIf := ifc;
+      ICMPv4.Echo (ifc.mac, mac, v4 (ifc.ipv4), v4 (gw), SELF_TEST_SEQUENCE);
+      ifc.ipv4Test := TEST_SENT;
+      ifc.ipv4TestTries := ifc.ipv4TestTries + 1;
+      ifc.ipv4TestAt := deadlineAfter (Now, ARP_RETRY_MS);
    end ipv4SelfTest;
 
+   ---------------------------------------------------------------------------
+   --  DHCP: a datagram to the client port on ifc goes to netmgr's page for
+   --  ifc (CuBit.Net_Management, DHCP_Await), whatever its destination
+   --  address (the server may answer by broadcast or to the address it is
+   --  offering). Its UDP header and checksum are checked here; netmgr
+   --  parses the message.
+   ---------------------------------------------------------------------------
+   procedure handleDHCP (ifc        : Interface_Access;
+                         pktBuf     : System.Address;
+                         ipOff      : Natural;
+                         ipHdrLen   : Natural;
+                         srcIP      : Net.IPv4Address;
+                         dstIP      : Net.IPv4Address;
+                         totalIPLen : Natural)
+   is
+      udpOff : constant Natural := ipOff + ipHdrLen;
+      udpLen : constant Natural := totalIPLen - ipHdrLen;
+      datagram : UDP_Header.Bytes (0 .. udpLen - 1)
+         with Import, Address => pktBuf + Storage_Offset (udpOff);
+      h : UDP_Header.Header;
+      len : Natural;
+   begin
+      if ifc.dhcpBase = System.Null_Address or else udpLen < UDP_Header.Size or else
+        not UDP_Header.Well_Formed (datagram)
+      then
+         return;
+      end if;
+      UDP_Header.Parse (datagram, h);
+      if h.Source_Port /= NM.DHCP_Server_Port or else h.Length > UDP_Frame.Maximum_Datagram or else
+        not UDP_Frame.Checksum_OK (v4 (srcIP), v4 (dstIP), IPv4_Header.Bytes (datagram (0 .. h.Length - 1)))
+      then
+         return;
+      end if;
+      len := h.Length - UDP_Header.Size;
+      if len not in NM.Message_Length then
+         return;
+      end if;
+      declare
+         src : constant IPv4_Header.Bytes (0 .. len - 1)
+           with Import, Address => pktBuf + Storage_Offset (udpOff + UDP_Header.Size);
+         dst : IPv4_Header.Bytes (0 .. len - 1)
+           with Import, Address => ifc.dhcpBase + Storage_Offset (NM.Incoming_At);
+      begin
+         --  The newest message replaces one netmgr has not taken yet.
+         dst := src;
+      end;
+      if ifc.dhcpAwait.present then
+         ifc.dhcpHeld := 0;
+         answerParked (ifc.dhcpAwait, Unsigned_64 (len));
+      else
+         ifc.dhcpHeld := len;
+      end if;
+   end handleDHCP;
 
    ---------------------------------------------------------------------------
-   --  handleIPv4
+   --  handleIPv4: an IPv4 packet that arrived on ifc
    ---------------------------------------------------------------------------
-   procedure handleIPv4 (pktBuf : System.Address; pktLen : Natural) is
+   procedure handleIPv4 (ifc : Interface_Access; pktBuf : System.Address; pktLen : Natural) is
       ipOff    : constant Natural := 14;
       ipHdrLen : Natural;
       proto    : Unsigned_8;
@@ -3520,7 +3737,18 @@ package body Netstack_Service is
       end;
       Net.getMAC (pktBuf, 6, srcMAC);
 
-      if findInterfaceForIP (dstIP) < 0 then
+      --  DHCP replies arrive before the interface has an address.
+      if proto = Net.PROTO_UDP and then ifc.dhcpBase /= System.Null_Address and then
+        totalLen >= ipHdrLen + UDP_Header.Size and then
+        Net.getU16BE (pktBuf, ipOff + ipHdrLen + 2) = NM.DHCP_Client_Port
+      then
+         handleDHCP (ifc, pktBuf, ipOff, ipHdrLen, srcIP, dstIP, totalLen);
+         return;
+      end if;
+
+      --  Only for this interface's address (or broadcast, which nothing
+      --  here listens to yet).
+      if not ifc.configured or else dstIP /= ifc.ipv4 then
          return;
       end if;
 
@@ -3529,19 +3757,20 @@ package body Netstack_Service is
             packet : constant IPv4_Header.Bytes (0 .. pktLen - ipOff - 1)
               with Import, Address => pktBuf + Storage_Offset (ipOff);
          begin
-            ICMPv4.Receive (packet, interfaces (0).mac, srcMAC, clockNow);
+            currentIf := ifc;   --  echo replies go back the way they came
+            ICMPv4.Receive (packet, ifc.mac, srcMAC, clockNow);
          end;
       elsif proto = Net.PROTO_UDP then
          handleUDP (pktBuf, ipOff, ipHdrLen, srcIP, dstIP, totalLen);
       elsif proto = Net.PROTO_TCP then
-         handleTCP (pktBuf, ipOff, ipHdrLen, srcIP, dstIP, srcMAC, totalLen);
+         handleTCP (ifc, pktBuf, ipOff, ipHdrLen, srcIP, dstIP, srcMAC, totalLen);
       end if;
    end handleIPv4;
 
    ---------------------------------------------------------------------------
-   --  handlePacket - dispatch on EtherType
+   --  handlePacket - dispatch a frame that arrived on ifc on its EtherType
    ---------------------------------------------------------------------------
-   procedure handlePacket (pktBuf : System.Address; pktLen : Natural) is
+   procedure handlePacket (ifc : Interface_Access; pktBuf : System.Address; pktLen : Natural) is
       etherType : Unsigned_16;
    begin
       if pktLen < 14 then
@@ -3551,22 +3780,19 @@ package body Netstack_Service is
       etherType := Net.getU16BE (pktBuf, 12);
 
       if etherType = Net.ETHERTYPE_ARP then
-         handleARP (pktBuf, pktLen);
+         handleARP (ifc, pktBuf, pktLen);
       elsif etherType = Net.ETHERTYPE_IPV4 then
-         handleIPv4 (pktBuf, pktLen);
+         handleIPv4 (ifc, pktBuf, pktLen);
       elsif etherType = Net.ETHERTYPE_IPV6 then
          declare
             --  The driver's frame, in place: the one unproved step.
             frame : constant IPv6_Header.Bytes (0 .. pktLen - 1)
               with Import, Address => pktBuf;
          begin
-            IPv6.Receive (frame, clockNow);
+            IPv6.Receive (ifc.v6, frame, clockNow);
          end;
       end if;
    end handlePacket;
-
-   --  State machine removed: netmgr now handles IP configuration.
-   --  Interface goes IF_DOWN -> IF_UP via OP_NET_CONFIGURE.
 
    ---------------------------------------------------------------------------
    --  Scheme parser types and procedure
@@ -3874,9 +4100,8 @@ package body Netstack_Service is
             conflict := True;
          end if;
       end loop;
-      if not ipOK or else conflict or else numIfaces = 0 or else
-        interfaces (0).state /= IF_UP or else
-        policyAddress (interfaces (0).ipv4) /= policyAddress (address) or else
+      --  Only on an address one of our interfaces is configured with.
+      if not ipOK or else conflict or else not isOurAddress (address) or else
         not Network_Grants.Allows
           (networkGrants, snd, tag, Network_Authority.Listen_TCP,
            policyAddress (address), scheme.port)
@@ -3902,8 +4127,12 @@ package body Netstack_Service is
    procedure expireRequests (Now : Unsigned_64) is
       children : TCP_Listeners.Connection_List;
    begin
-      ARP_Cache.Expire (interfaces (0).arpCache, Now, ARP_PROBE_MS);
-      ipv4SelfTest (Now);
+      for S in 0 .. Ifaces.Slot_Count - 1 loop
+         if Ifaces.In_Use (S) then
+            ARP_Cache.Expire (Ifaces.Get (S).arpCache, Now, ARP_PROBE_MS);
+            ipv4SelfTest (Ifaces.Get (S), Now);
+         end if;
+      end loop;
       tcpTimers (Now);
       TCP_Listeners.Expire (listeners, Now, children);
       for I in children'Range loop
@@ -3929,9 +4158,24 @@ package body Netstack_Service is
 
    function nextDeadline return Unsigned_64 is
       deadline : Unsigned_64 :=
-        Unsigned_64'Min (Unsigned_64'Min (TCP_Listeners.Next_Deadline (listeners), tcpNextDeadline),
-                         IPv6.Next_Deadline);
+        Unsigned_64'Min (TCP_Listeners.Next_Deadline (listeners), tcpNextDeadline);
    begin
+      for S in 0 .. Ifaces.Slot_Count - 1 loop
+         if Ifaces.In_Use (S) then
+            declare
+               ifc : constant Interface_Access := Ifaces.Get (S);
+            begin
+               if ifc.ipv6Started then
+                  deadline := Unsigned_64'Min (deadline, IPv6.Next_Deadline (ifc.v6));
+               end if;
+               if ifc.ipv4Test in TEST_WAITING | TEST_SENT and then
+                 ifc.ipv4TestTries < SELF_TEST_TRIES and then ifc.usable
+               then
+                  deadline := Unsigned_64'Min (deadline, ifc.ipv4TestAt);
+               end if;
+            end;
+         end if;
+      end loop;
       for P of pendingReqs loop
          if P.kind = PENDING_WAIT then
             deadline := Unsigned_64'Min (deadline, P.waitDeadline);
@@ -3943,9 +4187,6 @@ package body Netstack_Service is
               (deadline, Unsigned_64'Min (P.queryDeadline, P.nextSend));
          end if;
       end loop;
-      if ipv4Test in TEST_WAITING | TEST_SENT and then ipv4TestTries < SELF_TEST_TRIES then
-         deadline := Unsigned_64'Min (deadline, ipv4TestAt);
-      end if;
       return deadline;
    end nextDeadline;
 
@@ -4326,9 +4567,9 @@ package body Netstack_Service is
             end if;
 
             channels (chIdx).remoteIP := dstIP;
-            connIdx := tcpConnect (dstIP, resolvedNeighbour (dstIP), scheme.port);
+            connIdx := tcpConnect (dstIP, scheme.port);
             if connIdx < 0 then
-               debugPrint ("netstack: open: no free TCP connection slot" & LF);
+               debugPrint ("netstack: open: no route or no free TCP connection slot" & LF);
                reportSlots;
                releaseChannel (chIdx);
                replyError (snd);
@@ -4544,125 +4785,812 @@ package body Netstack_Service is
       return found;
    end armQueues;
 
-   --  The interface's address changed: connections and connected datagram
-   --  channels bound to the old one end, reported Unreachable.
-   procedure addressWithdrawn is
+   function hardwareRandom return Unsigned_64;
+
+   ---------------------------------------------------------------------------
+   --  Interfaces: logging, events, configuration
+   ---------------------------------------------------------------------------
+
+   --  The interface changed (attached, its link, its configuration): the
+   --  next event sequence is its, and netmgr's parked Watch is answered.
+   watchWait : Parked;
+   watchSeen : Unsigned_32 := 0;
+   procedure answerWatch;
+
+   procedure interfaceChanged (ifc : Interface_Access) is
+   begin
+      eventSequence := eventSequence + 1;
+      ifc.lastChange := eventSequence;
+      answerWatch;
+   end interfaceChanged;
+
+   --  The interface's address changed: connections from the old one end,
+   --  and connected datagram channels whose route leaves by it are told
+   --  Unreachable (their peers knew the old address).
+   procedure addressWithdrawn (ifc : Interface_Access; old : Net.IPv4Address) is
    begin
       for I in tcpConns'Range loop
-         if tcpConns (I).inUse then
+         if tcpConns (I).inUse and then tcpConns (I).localIP = old then
             abortConnection (I, clockNow, Layout.Status_Unreachable);
          end if;
       end loop;
       for C in channels'Range loop
-         if channels (C).kind /= CHANNEL_NONE and then channels (C).proto = Net.PROTO_UDP then
+         if channels (C).kind /= CHANNEL_NONE and then channels (C).proto = Net.PROTO_UDP and then
+           egressFor (channels (C).remoteIP) = ifc
+         then
             setStatus (C, Layout.Status_Unreachable);
          end if;
       end loop;
    end addressWithdrawn;
 
-   ---------------------------------------------------------------------------
-   --  handleAttach - process OP_NET_ATTACH from the driver
-   --
-   --  The driver sends us its PID; we allocate a grant buffer and reply
-   --  with the grant ID + our MAC address packed into a u64.
-   ---------------------------------------------------------------------------
-   procedure handleAttach (sender : Process_ID) is
-      ok    : Boolean;
-      ifIdx : Natural;
+   --  What the link knows about its neighbours may be stale (another
+   --  network, another router, a new address): forget it, in the ARP cache
+   --  and in the connections through ifc (they resolve again).
+   procedure forgetNeighbours (ifc : Interface_Access) is
    begin
-      --  Allocate an interface slot for this driver
-      if numIfaces >= MAX_INTERFACES then
-         debugPrint ("netstack: too many interfaces" & LF);
-         replyError (sender);
+      ifc.arpCache := [others => (others => <>)];
+      ifc.arpAskedAt := [others => 0];
+      ifc.gwMAC := Net.ZERO_MAC;
+      for I in tcpConns'Range loop
+         if tcpConns (I).inUse and then tcpConns (I).routed and then
+           tcpConns (I).egress = ifc.handle
+         then
+            tcpConns (I).remoteMAC := Net.ZERO_MAC;
+         end if;
+      end loop;
+   end forgetNeighbours;
+
+   --  Tell the link about ourselves: our IPv4 address to everyone (RFC 5227
+   --  2.3) and a question for the gateway (reconfirming the router, as
+   --  RFC 4436 does); IPv6 announces each address once detection passes.
+   procedure announce (ifc : Interface_Access) is
+   begin
+      if ifc.configured and then ifc.usable then
+         sendGratuitousARP (ifc);
+         if ifc.gateway /= NO_ADDRESS then
+            sendARPRequest (ifc, ifc.gateway);
+         end if;
+      end if;
+   end announce;
+
+   --  The deferred queue's frames for ifc (sent when its link was Up) go:
+   --  they would reach another network late, or no one.
+   procedure dropDeferredFor (ifc : Interface_Access) is
+   begin
+      for K in 0 .. deferredCount - 1 loop
+         declare
+            slot : constant Natural := (deferredHead + K) mod MAX_DEFERRED_TX;
+         begin
+            if deferredTX (slot).via = ifc.handle then
+               deferredTX (slot).via := (Slot => NL.Interface_Slot'Last,
+                                         Epoch => NL.Interface_Epoch'Last);
+               --  flushOneDeferredTX drops a frame whose interface is gone.
+            end if;
+         end;
+      end loop;
+   end dropDeferredFor;
+
+   procedure logCondition (S : NL.Link_State) is
+   begin
+      case S.Condition is
+         when NL.Down    => logPut ("Down");
+         when NL.Dormant => logPut ("Dormant");
+         when NL.Up      => logPut ("Up");
+      end case;
+   end logCondition;
+
+   --  One line per link transition (docs/net-link.md section 5):
+   --  netstack: <name> link <new> reason=<why> was=<old> kind=<kind>
+   --    mac=<address> gen=<generation> [speed=<Mb/s>] [bssid=<address>]
+   procedure logLink (ifc : Interface_Access; old : NL.Link_State;
+                      change : Link_Tracker.Transition) is
+      S : constant NL.Link_State := ifc.link.State;
+   begin
+      logPut ("netstack: ");
+      logPut (ifc.name.Text (1 .. ifc.name.Length));
+      logPut (" link ");
+      logCondition (S);
+      logPut (" reason=");
+      case S.Condition is
+         when NL.Down =>
+            case S.Reason is
+               when NL.Not_Reported          => logPut ("Not_Reported");
+               when NL.No_Carrier            => logPut ("No_Carrier");
+               when NL.Administratively_Down => logPut ("Administratively_Down");
+               when NL.Not_Associated        => logPut ("Not_Associated");
+               when NL.Authentication_Failed => logPut ("Authentication_Failed");
+               when NL.Hardware_Fault        => logPut ("Hardware_Fault");
+            end case;
+         when NL.Dormant | NL.Up =>
+            case change is
+               when Link_Tracker.Bounced         => logPut ("Bounced");
+               when Link_Tracker.Moved           => logPut ("Moved");
+               when Link_Tracker.Went_Up         => logPut ("Went_Up");
+               when Link_Tracker.Went_Down       => logPut ("Went_Down");
+               when Link_Tracker.Inactive_Change => logPut ("Changed");
+               when Link_Tracker.Unchanged       => logPut ("Unchanged");
+            end case;
+      end case;
+      logPut (" was=");
+      logCondition (old);
+      logPut (if ifc.kind = NL.Ethernet then " kind=Ethernet" else " kind=Wireless");
+      logPut (" mac=");
+      logMAC (ifc.mac);
+      logPut (" gen=");
+      logDec (Unsigned_64 (ifc.link.Seen));
+      if S.Condition = NL.Up then
+         logPut (" speed=");
+         logDec (Unsigned_64 (S.Detail.Speed));
+         if S.Detail.Kind = NL.Wireless then
+            logPut (" bssid=");
+            logMAC (netAddress (S.Detail.BSSID));
+         end if;
+      end if;
+      logSend (if S.Condition = NL.Up then Information
+               else Warning);
+   end logLink;
+
+   ---------------------------------------------------------------------------
+   --  The link block: once per pass over the receive ring and before
+   --  netstack sleeps, never per frame (docs/net-link.md section 3).
+   ---------------------------------------------------------------------------
+   procedure observeLink (ifc : Interface_Access) is
+      function word (W : Frames.Link_Word_Index) return System.Address is
+        (ifc.pktBuf + Storage_Offset (Frames.Link_Word_At (W)));
+      generation : Unsigned_32 with Volatile, Import,
+        Address => word (Frames.Link_Generation_Word);
+      before, after : NL.Generation;
+      words : NL.Report_Words;
+      step  : Link_Tracker.Step;
+      old   : constant NL.Link_State := ifc.link.State;
+   begin
+      before := generation;
+      if before = ifc.link.Seen then
+         return;   --  nothing new: the common case, one load
+      end if;
+      for Attempt in 1 .. NL.Read_Attempts loop
+         before := generation;
+         System.Machine_Code.Asm ("", Clobber => "memory", Volatile => True);
+         for W in NL.Report_Index loop
+            declare
+               value : Unsigned_32 with Volatile, Import, Address => word (W);
+            begin
+               words (W) := value;
+            end;
+         end loop;
+         System.Machine_Code.Asm ("", Clobber => "memory", Volatile => True);
+         after := generation;
+         Link_Tracker.Observe (ifc.link, before, words, after, step);
+         exit when step.Found /= Link_Tracker.Unstable;
+      end loop;
+      if step.Found in Link_Tracker.Taken | Link_Tracker.Refused then
+         if step.Found = Link_Tracker.Refused then
+            logPut ("netstack: ");
+            logPut (ifc.name.Text (1 .. ifc.name.Length));
+            logPut (" link report malformed: treated as down gen=");
+            logDec (Unsigned_64 (before));
+            logSend (Warning);
+         end if;
+         ifc.usable := Link_Tracker.Usable (ifc.link);
+         if Link_Tracker.Stops (step.Change) then
+            --  Stop transmitting; routes through ifc are skipped while it
+            --  is not usable; TCP connections stay (a flap must not reset
+            --  them).
+            dropDeferredFor (ifc);
+            forgetNeighbours (ifc);
+            if ifc.ipv6Started then
+               IPv6.Link_Down (ifc.v6);
+            end if;
+         end if;
+         if Link_Tracker.Starts (step.Change) then
+            ifc.upCount := (if ifc.upCount = NM.Up_Count'Last then 0 else ifc.upCount + 1);
+            if ifc.ipv6Started then
+               IPv6.Link_Up (ifc.v6, clockNow);
+            else
+               IPv6.Start (ifc.v6, ifc.handle, ifc.mac,
+                           (K0 => hardwareRandom, K1 => hardwareRandom),
+                           clockNow, Self_Test => True);
+               ifc.ipv6Started := True;
+            end if;
+            announce (ifc);
+            ifc.txDoorbell := True;
+         end if;
+         if step.Change /= Link_Tracker.Unchanged then
+            logLink (ifc, old, step.Change);
+            interfaceChanged (ifc);
+         end if;
+      end if;
+   end observeLink;
+
+   ---------------------------------------------------------------------------
+   --  Attach (CuBit.Net_Link): a new interface, its frame grant in owned
+   --  memory, its handle in the answer.
+   ---------------------------------------------------------------------------
+   procedure refuseAttach (why : NL.Attach_Refusal) is
+      msg : constant Message :=
+        (tag => (label => REPLY_ERR, length => 1, protocol => 0, ipc => <>, reserved => 0),
+         authorityTag => 0,
+         words => [0 => Unsigned_64 (NL.Attach_Refusal'Enum_Rep (why)), others => 0]);
+      ignore : Unsigned_64;
+   begin
+      ignore := Send_Answer (Current_Request, msg);
+   end refuseAttach;
+
+   --  Owned memory: a grant's pages are released only once the kernel
+   --  confirms the grant retired (no mapping left), so a driver that is
+   --  slow to let go never sees them reused.
+   type Retiring_Region is record
+      base  : Unsigned_64 := 0;
+      bytes : Unsigned_64 := 0;
+      grant : CuBit.Memory_Grants.Grant_Reference;
+   end record;
+   package Retiring is new Interface_Table (Retiring_Region);
+
+   procedure releaseOwned (base, bytes : Unsigned_64) is
+      ignore : Unsigned_64;
+   begin
+      ignore := CuBit.Kernel_Calls.Call (CuBit.Kernel_ABI.Release_Owned_Memory, base, bytes);
+   end releaseOwned;
+
+   procedure releaseRetired is
+   begin
+      for S in 0 .. Retiring.Slot_Count - 1 loop
+         if Retiring.In_Use (S) and then
+           CuBit.Memory_Grants.Retirement_Confirmed (Retiring.Get (S).grant)
+         then
+            releaseOwned (Retiring.Get (S).base, Retiring.Get (S).bytes);
+            Retiring.Remove (S);
+         end if;
+      end loop;
+   end releaseRetired;
+
+   procedure retire (base, bytes : Unsigned_64; grant : CuBit.Memory_Grants.Grant_Reference) is
+      ok : Boolean;
+      ignoreHandle : NL.Interface_Handle;
+   begin
+      CuBit.Memory_Grants.Revoke (grant, ok);
+      if CuBit.Memory_Grants.Retirement_Confirmed (grant) then
+         releaseOwned (base, bytes);
          return;
       end if;
-      ifIdx := numIfaces;
-      numIfaces := numIfaces + 1;
-      interfaces (ifIdx).driverPID := sender;
+      Retiring.Insert ((base => base, bytes => bytes, grant => grant), ignoreHandle, ok);
+      --  Not remembered (no memory): the pages stay ours, never reused.
+   end retire;
 
-      --  Allocate shared packet buffer if not yet done
-      if interfaces (ifIdx).pktBuf = System.Null_Address then
-         declare
-            ret : Unsigned_64;
-         begin
-            ret := syscall (SYSCALL_SBRK, Unsigned_64 (PACKET_BUF_SIZE));
-            if ret = Unsigned_64'Last then
-               debugPrint ("netstack: sbrk failed for packet buffer" & LF);
-               replyError (sender);
-               numIfaces := numIfaces - 1;
-               return;
-            end if;
-            interfaces (ifIdx).pktBuf := To_Address (Integer_Address (ret));
-         end;
-
-         --  Zero the buffer manually (avoid memset)
-         declare
-            buf : array (0 .. PACKET_BUF_SIZE - 1) of Unsigned_8 with
-               Import, Address => interfaces (ifIdx).pktBuf;
-         begin
-            for i in buf'Range loop
-               buf (i) := 0;
-            end loop;
-         end;
+   procedure handleAttach (sender : Process_ID; m : Message) is
+      decoded : constant NL.Decoded_Attach :=
+        NL.Decode ([m.words (0), m.words (1), m.words (2)]);
+      base    : Unsigned_64;
+      handle  : NL.Interface_Handle;
+      ok      : Boolean;
+      ifc     : Interface_Access;
+   begin
+      if not decoded.Valid then
+         refuseAttach (NL.Malformed);
+         return;
       end if;
-
-      --  Create grant to the driver for our packet buffer
-      CuBit.Memory_Grants.Create_For_Process (
-         grantee   => interfaces (ifIdx).driverPID,
-         localAddr => interfaces (ifIdx).pktBuf,
+      base := CuBit.Kernel_Calls.Call
+        (CuBit.Kernel_ABI.Allocate_Owned_Memory, Unsigned_64 (PACKET_BUF_SIZE));
+      if base = CuBit.Kernel_ABI.Failed then
+         refuseAttach (NL.Out_Of_Memory);
+         return;
+      end if;
+      declare
+         R : InterfaceRecord;
+      begin
+         R.kind := decoded.Request.Kind;
+         R.mtu := decoded.Request.Size;
+         R.offload := decoded.Request.Offload;
+         R.identity := decoded.Request.Identity;
+         R.mac := netAddress (decoded.Request.Address);
+         R.factory := R.mac;
+         R.name := NL.Name_Of (R.identity, decoded.Request.Address);
+         R.driverPID := sender;
+         R.pktBuf := To_Address (Integer_Address (base));
+         Ifaces.Insert (R, handle, ok);
+      end;
+      if not ok then
+         releaseOwned (base, Unsigned_64 (PACKET_BUF_SIZE));
+         refuseAttach (NL.Out_Of_Memory);
+         return;
+      end if;
+      ifc := interfaceOf (handle);
+      ifc.handle := handle;
+      --  Owned memory is fresh (zero): the rings are empty and the link
+      --  block says Never_Reported (Down) until the driver reports.
+      CuBit.Memory_Grants.Create_For_Process
+        (grantee   => sender,
+         localAddr => ifc.pktBuf,
          numPages  => PACKET_BUF_PAGES,
          readWrite => True,
-         reference => interfaces (ifIdx).pktGrant,
-         success   => ok);
-
+         reference => ifc.pktGrant,
+         success   => ok,
+         notify    => True);   --  its return (the driver let go or exited) detaches
       if not ok then
-         debugPrint ("netstack: createGrant failed" & LF);
-         replyError (sender);
-         numIfaces := numIfaces - 1;
+         releaseOwned (base, Unsigned_64 (PACKET_BUF_SIZE));
+         declare
+            S : Natural;
+            F : Boolean;
+         begin
+            Ifaces.Find (handle, S, F);
+            Ifaces.Remove (S);
+         end;
+         refuseAttach (NL.Grant_Refused);
          return;
       end if;
-
-      debugPrint ("netstack: grant created, id=");
-      printDec (Unsigned_32 (interfaces (ifIdx).pktGrant.slot));
-      debugPrint ("" & LF);
-
-      --  Reply with the grant reference (the driver acquires it) and size
       declare
          replyMsg : constant Message :=
-           (tag      => (label  => REPLY_OK,
-                         length => 2,
-                         protocol  => 0, ipc => <>,
-                         reserved  => 0),
+           (tag      => (label => REPLY_OK, length => 2, protocol => 0, ipc => <>, reserved => 0),
             authorityTag => 0,
-            words    => [0 => CuBit.Grant_References.Encode
-                                    (interfaces (ifIdx).pktGrant),
-                         1 => Unsigned_64 (PACKET_BUF_SIZE),
+            words    => [0 => NL.Handle_Word (handle),
+                         1 => CuBit.Grant_References.Encode (ifc.pktGrant),
                          others => 0]);
          ignore : Unsigned_64;
       begin
          ignore := Send_Answer (Current_Request, replyMsg);
       end;
-
-      debugPrint ("netstack: attached to driver pid=");
-      printProcess (interfaces (ifIdx).driverPID);
-      debugPrint ("" & LF);
+      logPut ("netstack: ");
+      logPut (ifc.name.Text (1 .. ifc.name.Length));
+      logPut (if ifc.kind = NL.Ethernet then " attached kind=Ethernet" else " attached kind=Wireless");
+      logPut (" mac=");
+      logMAC (ifc.mac);
+      logPut (" mtu=");
+      logDec (Unsigned_64 (ifc.mtu));
+      logPut (" handle=");
+      logDec (Unsigned_64 (handle.Slot));
+      logPut (".");
+      logDec (Unsigned_64 (handle.Epoch));
+      logSend;
+      --  Publish our first receive wake epoch: the ring is empty.
+      ifc.rxEpoch := 1;
+      declare
+         doorbell : Unsigned_32 with Volatile, Import,
+           Address => ifc.pktBuf + Storage_Offset (Frames.Receive_Header_At + Frames.Wake_At);
+      begin
+         doorbell := ifc.rxEpoch;
+      end;
+      interfaceChanged (ifc);
    end handleAttach;
 
+   --  The interface a driver's request names, if the driver owns it.
+   function driverInterface (sender : Process_ID; word : Unsigned_64) return Interface_Access is
+      ifc : Interface_Access;
+   begin
+      if not NL.Valid_Handle_Word (word) then
+         return No_Interface;
+      end if;
+      ifc := interfaceOf (NL.Handle_Of (word));
+      return (if ifc /= No_Interface and then ifc.driverPID = sender then ifc else No_Interface);
+   end driverInterface;
+
+   --  The interface is gone (its driver returned the grant or exited):
+   --  connections through it end, its parked requests are answered, its
+   --  memory goes back, and netmgr hears of it.
+   procedure detachInterface (S : Natural) is
+      ifc : constant Interface_Access := Ifaces.Get (S);
+      handle : constant NL.Interface_Handle := ifc.handle;
+      ok : Boolean;
+      ignoreHandle : NL.Interface_Handle;
+   begin
+      logPut ("netstack: ");
+      logPut (ifc.name.Text (1 .. ifc.name.Length));
+      logPut (" detached mac=");
+      logMAC (ifc.mac);
+      logSend (Warning);
+      ifc.usable := False;
+      for I in tcpConns'Range loop
+         if tcpConns (I).inUse and then tcpConns (I).routed and then tcpConns (I).egress = handle then
+            abortConnection (I, clockNow, Layout.Status_Unreachable);
+         end if;
+      end loop;
+      dropDeferredFor (ifc);
+      answerParked (ifc.txWait, ok => False);
+      answerParked (ifc.dhcpAwait, ok => False);
+      if ifc.dhcpBase /= System.Null_Address then
+         CuBit.Memory_Grants.Return_Acquisition (ifc.dhcpGrant, ok);
+      end if;
+      retire (Unsigned_64 (To_Integer (ifc.pktBuf)), Unsigned_64 (PACKET_BUF_SIZE), ifc.pktGrant);
+      for R of routeTable loop
+         if R.active and then R.via = handle then
+            R.active := False;
+         end if;
+      end loop;
+      Ifaces.Remove (S);
+      eventSequence := eventSequence + 1;
+      Detach_Log.Insert ((handle => handle, sequence => eventSequence), ignoreHandle, ok);
+      --  Not recorded (no memory): netmgr finds it gone when it next asks.
+      answerWatch;
+   end detachInterface;
+
+   --  A kernel notice: a frame grant came back (detach).
+   procedure handleEvent (m : Message) is
+      E : constant CuBit.Control_Events.Event :=
+        CuBit.Control_Events.Decode (m.tag.label, m.tag.length, m.words (0), m.words (1), m.words (2));
+      use type CuBit.Control_Events.Event_Kind;
+   begin
+      if E.Kind /= CuBit.Control_Events.Grant_Returned then
+         return;
+      end if;
+      for S in 0 .. Ifaces.Slot_Count - 1 loop
+         if Ifaces.In_Use (S) and then Ifaces.Get (S).pktGrant.slot = E.Slot and then
+           Ifaces.Get (S).pktGrant.generation = E.Generation
+         then
+            detachInterface (S);
+            return;
+         end if;
+      end loop;
+   end handleEvent;
+
+   --  Set_Address: only while the link is not Up (per-network random
+   --  addresses are chosen before associating).
+   procedure handleSetAddress (sender : Process_ID; m : Message) is
+      ifc : constant Interface_Access := driverInterface (sender, m.words (0));
+      outcome : NL.Address_Outcome;
+   begin
+      if ifc = No_Interface then
+         outcome := NL.Refused_Unknown_Interface;
+      elsif not NL.Valid_Address_Word (m.words (1)) or else
+        not NL.Assignable (NL.Address_Of (m.words (1)))
+      then
+         outcome := NL.Refused_Not_Assignable;
+      elsif ifc.usable then
+         outcome := NL.Refused_Link_Up;
+      else
+         outcome := NL.Address_Set;
+         ifc.mac := netAddress (NL.Address_Of (m.words (1)));
+         forgetNeighbours (ifc);
+         --  A new address on the link: IPv6 starts over with it (new
+         --  stable identifiers, detected again once the link is Up).
+         declare
+            Fresh : IPv6.Link;
+         begin
+            ifc.v6 := Fresh;
+         end;
+         ifc.ipv6Started := False;
+         logPut ("netstack: ");
+         logPut (ifc.name.Text (1 .. ifc.name.Length));
+         logPut (" address set mac=");
+         logMAC (ifc.mac);
+         logSend;
+         interfaceChanged (ifc);
+      end if;
+      declare
+         msg : constant Message :=
+           (tag => (label => (if outcome = NL.Address_Set then REPLY_OK else REPLY_ERR),
+                    length => 1, protocol => 0, ipc => <>, reserved => 0),
+            authorityTag => 0,
+            words => [0 => Unsigned_64 (NL.Address_Outcome'Enum_Rep (outcome)), others => 0]);
+         ignore : Unsigned_64;
+      begin
+         ignore := Send_Answer (Current_Request, msg);
+      end;
+   end handleSetAddress;
+
+   --  The receive direction's header words.
+   function rxWord (ifc : Interface_Access; Offset : Natural) return System.Address is
+     (ifc.pktBuf + Storage_Offset (Frames.Receive_Header_At + Offset));
+
+   --  Every receive slot holds a frame netstack has not taken.
+   function rxFull (ifc : Interface_Access) return Boolean is
+     (ifc.rxRing.Available = Frame_Ring.Fill_Count'Last);
+
+   --  Park a request until netstack has something for it.
+   procedure park (p : in out Parked; ok : out Boolean) is
+      Saved : constant CuBit.Handles.IPC.Saved_Reply := CuBit.Handles.IPC.Save_Reply;
+   begin
+      ok := Saved.Saved;
+      if ok then
+         if p.present then
+            answerParked (p, ok => False);   --  a second one replaces the first
+         end if;
+         p := (present => True, handle => Saved.Handle);
+      end if;
+   end park;
+
+   procedure handleTransmitWait (sender : Process_ID; m : Message) is
+      ifc : constant Interface_Access := driverInterface (sender, m.words (0));
+      ok  : Boolean;
+   begin
+      if ifc = No_Interface then
+         replyError (sender);
+         return;
+      end if;
+      park (ifc.txWait, ok);
+      if not ok then
+         replyError (sender);
+         return;
+      end if;
+      --  Work already waiting (frames it has not taken, or receive slots
+      --  it asked for that are free): answer now. netstack may have read
+      --  the driver's epoch before this wait arrived, so the next pass
+      --  could otherwise miss it. Only real work answers: a wait answered
+      --  for nothing would come straight back.
+      declare
+         consumed : Unsigned_32 with Volatile, Import,
+           Address => txWord (ifc, Frames.Consumed_At);
+         spaceWanted : Unsigned_32 with Volatile, Import,
+           Address => rxWord (ifc, Frames.Space_Wanted_At);
+      begin
+         if Frame_Ring.Index (consumed) /= ifc.txRing.Produced or else
+           (spaceWanted /= 0 and then not rxFull (ifc))
+         then
+            ifc.txRungEpoch := 0;
+            ifc.txDoorbell := False;
+            answerParked (ifc.txWait);
+         end if;
+      end;
+   end handleTransmitWait;
+
    ---------------------------------------------------------------------------
-   --  Received frames: the grant's receive ring, which the driver fills
-   --  (virtio-net's processRX; layout in CuBit.Frame_Rings).
+   --  netmgr (CuBit.Net_Management)
+   ---------------------------------------------------------------------------
+   --  The interface a handle word names, or null.
+   function managedInterface (word : Unsigned_64) return Interface_Access is
+     (if NL.Valid_Handle_Word (word) then interfaceOf (NL.Handle_Of (word)) else No_Interface);
+
+   --  The oldest change netmgr has not seen: an interface whose last change
+   --  is after watchSeen, or a detach record after it. Detach records at or
+   --  before watchSeen are acknowledged: they go.
+   procedure answerWatch is
+      best : Unsigned_32 := Unsigned_32'Last;
+      report : NM.Event_Report;
+      found : Boolean := False;
+   begin
+      for S in 0 .. Detach_Log.Slot_Count - 1 loop
+         if Detach_Log.In_Use (S) and then Detach_Log.Get (S).sequence <= watchSeen then
+            Detach_Log.Remove (S);
+         end if;
+      end loop;
+      if not watchWait.present or else eventSequence = watchSeen then
+         return;
+      end if;
+      for S in 0 .. Ifaces.Slot_Count - 1 loop
+         if Ifaces.In_Use (S) and then Ifaces.Get (S).lastChange > watchSeen and then
+           Ifaces.Get (S).lastChange < best
+         then
+            best := Ifaces.Get (S).lastChange;
+            report := (Sequence => best, Handle => Ifaces.Get (S).handle,
+                       Event => NM.Changed,
+                       Condition => Ifaces.Get (S).link.State.Condition,
+                       Ups => Ifaces.Get (S).upCount,
+                       Reason => (if Ifaces.Get (S).link.State.Condition = NL.Down
+                                  then Ifaces.Get (S).link.State.Reason else NL.Not_Reported),
+                       Latest => eventSequence,
+                       Generation => Ifaces.Get (S).link.Seen);
+            found := True;
+         end if;
+      end loop;
+      for S in 0 .. Detach_Log.Slot_Count - 1 loop
+         if Detach_Log.In_Use (S) and then Detach_Log.Get (S).sequence < best then
+            best := Detach_Log.Get (S).sequence;
+            report := (Sequence => best, Handle => Detach_Log.Get (S).handle,
+                       Event => NM.Detached, Condition => NL.Down, Ups => 0,
+                       Reason => NL.Not_Reported, Latest => eventSequence,
+                       Generation => NL.Never_Reported);
+            found := True;
+         end if;
+      end loop;
+      if not found then
+         return;
+      end if;
+      declare
+         W : constant NM.Words4 := NM.Encode (report);
+         msg : constant Message :=
+           (tag => (label => REPLY_OK, length => 4, protocol => 0, ipc => <>, reserved => 0),
+            authorityTag => 0, words => [W (0), W (1), W (2), W (3)]);
+         ignore : Unsigned_64;
+      begin
+         watchWait.present := False;
+         ignore := replyCap (watchWait.handle, msg);
+      end;
+   end answerWatch;
+
+   procedure handleWatch (sender : Process_ID; m : Message) is
+      ok : Boolean;
+   begin
+      if m.words (0) > Unsigned_64 (eventSequence) then
+         replyError (sender);
+         return;
+      end if;
+      watchSeen := Unsigned_32 (m.words (0));
+      park (watchWait, ok);
+      if not ok then
+         replyError (sender);
+         return;
+      end if;
+      answerWatch;
+   end handleWatch;
+
+   procedure handleConfigure (sender : Process_ID; m : Message) is
+      D : constant NM.Decoded_Configuration :=
+        NM.Decode_Configuration ([m.words (0), m.words (1), m.words (2), m.words (3)]);
+      ifc : Interface_Access;
+   begin
+      if not D.Valid then
+         replyError (sender);
+         return;
+      end if;
+      ifc := interfaceOf (D.Handle);
+      if ifc = No_Interface then
+         replyError (sender);
+         return;
+      end if;
+      declare
+         newAddr : constant Net.IPv4Address := Net.unpackIPv4 (Unsigned_64 (D.Item.Address));
+         newGW   : constant Net.IPv4Address := Net.unpackIPv4 (Unsigned_64 (D.Item.Gateway));
+         clear   : constant Boolean := D.Item.Address = NM.No_IPv4;
+      begin
+         --  A new address (or none): what was bound to the old one cannot
+         --  go on (its peers know the old address).
+         if ifc.configured and then (clear or else ifc.ipv4 /= newAddr) then
+            addressWithdrawn (ifc, ifc.ipv4);
+         end if;
+         --  A new address or gateway: what the link told us may be stale.
+         if clear or else ifc.ipv4 /= newAddr or else ifc.gateway /= newGW then
+            forgetNeighbours (ifc);
+         end if;
+         ifc.configured := not clear;
+         ifc.ipv4 := (if clear then NO_ADDRESS else newAddr);
+         ifc.prefix := (if clear then 0 else D.Item.Prefix);
+         ifc.netmask := maskOf (ifc.prefix);
+         ifc.gateway := (if clear then NO_ADDRESS else newGW);
+         ifc.metric := D.Item.Metric;
+         if not clear and then newGW /= NO_ADDRESS and then ifc.ipv4Test = TEST_OFF then
+            ifc.ipv4Test := TEST_WAITING;
+         end if;
+         announce (ifc);
+         logPut ("netstack: ");
+         logPut (ifc.name.Text (1 .. ifc.name.Length));
+         if clear then
+            logPut (" unconfigured");
+         else
+            logPut (" configured: ");
+            logIP (ifc.ipv4);
+            logPut ("/");
+            logDec (Unsigned_64 (ifc.prefix));
+            logPut (" gateway=");
+            logIP (ifc.gateway);
+            logPut (" metric=");
+            logDec (Unsigned_64 (ifc.metric));
+         end if;
+         logSend;
+         interfaceChanged (ifc);
+         replyOKWord (sender, 0);
+      end;
+   end handleConfigure;
+
+   procedure handleInterfaceNext (sender : Process_ID; m : Message) is
+      first : Natural := 0;
+   begin
+      if m.words (0) /= 0 then
+         if not NL.Valid_Handle_Word (m.words (0)) then
+            replyError (sender);
+            return;
+         end if;
+         first := Natural (NL.Handle_Of (m.words (0)).Slot) + 1;
+      end if;
+      for S in first .. Ifaces.Slot_Count - 1 loop
+         if Ifaces.In_Use (S) then
+            replyOKWord (sender, NL.Handle_Word (Ifaces.Get (S).handle));
+            return;
+         end if;
+      end loop;
+      replyError (sender);   --  no more
+   end handleInterfaceNext;
+
+   procedure handleInterfaceDetail (sender : Process_ID; m : Message) is
+      ifc : constant Interface_Access := managedInterface (m.words (0));
+   begin
+      if ifc = No_Interface then
+         replyError (sender);
+         return;
+      end if;
+      declare
+         S : constant NM.Interface_Summary :=
+           (Identity  => ifc.identity,
+            Address   => linkAddress (ifc.factory),
+            Kind      => ifc.kind,
+            Condition => ifc.link.State.Condition,
+            Settings  => (Address => (if ifc.configured
+                                      then NM.IPv4_Word (Net.packIPv4 (ifc.ipv4)) else NM.No_IPv4),
+                          Prefix  => ifc.prefix,
+                          Gateway => NM.IPv4_Word (Net.packIPv4 (ifc.gateway)),
+                          Metric  => ifc.metric),
+            Sequence  => ifc.lastChange);
+         W : constant NM.Words4 := NM.Encode (S);
+         msg : constant Message :=
+           (tag => (label => REPLY_OK, length => 4, protocol => 0, ipc => <>, reserved => 0),
+            authorityTag => 0, words => [W (0), W (1), W (2), W (3)]);
+         ignore : Unsigned_64;
+      begin
+         ignore := Send_Answer (Current_Request, msg);
+      end;
+   end handleInterfaceDetail;
+
+   --  DHCP_Open: netmgr lends one page for ifc's DHCP messages.
+   procedure handleDHCPOpen (sender : Process_ID; m : Message) is
+      ifc : constant Interface_Access := managedInterface (m.words (0));
+      mapped : System.Address;
+      ok : Boolean;
+   begin
+      if ifc = No_Interface or else not CuBit.Grant_References.Valid_Wire (m.words (1)) then
+         replyError (sender);
+         return;
+      end if;
+      if ifc.dhcpBase /= System.Null_Address then
+         CuBit.Memory_Grants.Return_Acquisition (ifc.dhcpGrant, ok);
+         ifc.dhcpBase := System.Null_Address;
+      end if;
+      ifc.dhcpGrant := CuBit.Grant_References.Decode (m.words (1));
+      CuBit.Memory_Grants.Acquire
+        (ifc.dhcpGrant, sender, 0, NM.DHCP_Page_Bytes,
+         CuBit.Memory_Grants.Write_Access, mapped, ok);
+      if not ok then
+         replyError (sender);
+         return;
+      end if;
+      ifc.dhcpBase := mapped;
+      ifc.dhcpHeld := 0;
+      replyOKWord (sender, 0);
+   end handleDHCPOpen;
+
+   --  DHCP_Send: the message at Outgoing_At, broadcast from 0.0.0.0:68.
+   procedure handleDHCPSend (sender : Process_ID; m : Message) is
+      ifc : constant Interface_Access := managedInterface (m.words (0));
+   begin
+      if ifc = No_Interface or else ifc.dhcpBase = System.Null_Address or else
+        m.words (1) not in Unsigned_64 (NM.Message_Length'First) .. Unsigned_64 (NM.Message_Length'Last)
+        or else not ifc.usable
+      then
+         replyError (sender);
+         return;
+      end if;
+      declare
+         len : constant Natural := Natural (m.words (1));
+         --  The page is shared with netmgr: copied once, then framed.
+         shared : constant IPv4_Header.Bytes (0 .. len - 1)
+           with Import, Address => ifc.dhcpBase + Storage_Offset (NM.Outgoing_At);
+         payload : constant IPv4_Header.Bytes (0 .. len - 1) := shared;
+         frame : IPv4_Header.Bytes (0 .. UDP_Frame.Payload_At + len - 1);
+      begin
+         UDP_Frame.Build_Discovery
+           (IPv4_Frame.MAC (ifc.mac), NM.DHCP_Client_Port, NM.DHCP_Server_Port, payload, frame);
+         sendFrame (ifc, frame'Address, frame'Length);
+      end;
+      replyOKWord (sender, 0);
+   end handleDHCPSend;
+
+   procedure handleDHCPAwait (sender : Process_ID; m : Message) is
+      ifc : constant Interface_Access := managedInterface (m.words (0));
+      ok  : Boolean;
+   begin
+      if ifc = No_Interface or else ifc.dhcpBase = System.Null_Address then
+         replyError (sender);
+         return;
+      end if;
+      if ifc.dhcpHeld > 0 then
+         replyOKWord (sender, Unsigned_64 (ifc.dhcpHeld));
+         ifc.dhcpHeld := 0;
+         return;
+      end if;
+      park (ifc.dhcpAwait, ok);
+      if not ok then
+         replyError (sender);
+      end if;
+   end handleDHCPAwait;
+
+   ---------------------------------------------------------------------------
+   --  Received frames: each interface's receive ring, which its driver
+   --  fills (layout in CuBit.Frame_Rings).
    --  - produced (the driver's) and consumed (ours) are free-running frame
    --    counts; a produced count that goes back or more than a ring ahead
    --    is refused (Frame_Ring.Accept_Produced);
-   --  - space wanted (the driver's): it found the ring full; we ring its
-   --    doorbell (OP_NET_TX) after freeing slots;
+   --  - space wanted (the driver's): it found the ring full; its parked
+   --    Transmit_Wait is answered after we free slots;
    --  - wake (ours): a new nonzero epoch each time we are about to go idle;
-   --    the driver sends one OP_NET_RX per epoch.
+   --    the driver sends one Receive_Doorbell per epoch.
    --  No call and no reply per batch: neither side waits for the other.
    ---------------------------------------------------------------------------
-   rxRing  : Frame_Ring.Consumer;   --  our receive ring's indices
-   rxEpoch : Unsigned_32 := 0;
-
    --  Received frames are handled from netstack's own copy (drainRXRing).
    type Frame_Bytes is array (Natural range <>) of Unsigned_8;
    rxPrivate : Frame_Bytes (0 .. Frames.Maximum_Frame - 1) := [others => 0]
@@ -4672,22 +5600,23 @@ package body Netstack_Service is
    --  flows (CuBit.Busy_Poll).
    lastActivity : Unsigned_64 := 0;
 
-   --  Frames wait in the driver's receive ring.
-   --  The receive direction's header words.
-   function rxWord (Offset : Natural) return System.Address is
-     (interfaces (0).pktBuf + Storage_Offset (Frames.Receive_Header_At + Offset));
-
+   --  Frames wait in some interface's receive ring.
    function rxPending return Boolean is
    begin
-      if interfaces (0).pktBuf = System.Null_Address then
-         return False;
-      end if;
-      declare
-         produced : Unsigned_32 with Volatile, Import,
-           Address => rxWord (Frames.Produced_At);
-      begin
-         return Frame_Ring.Index (produced) /= rxRing.Consumed;
-      end;
+      for S in 0 .. Ifaces.Slot_Count - 1 loop
+         if Ifaces.In_Use (S) then
+            declare
+               ifc : constant Interface_Access := Ifaces.Get (S);
+               produced : Unsigned_32 with Volatile, Import,
+                 Address => rxWord (ifc, Frames.Produced_At);
+            begin
+               if Frame_Ring.Index (produced) /= ifc.rxRing.Consumed then
+                  return True;
+               end if;
+            end;
+         end if;
+      end loop;
+      return False;
    end rxPending;
 
    --  An arrival is due soon, so a short poll will likely find it: a
@@ -4722,47 +5651,47 @@ package body Netstack_Service is
       return False;
    end arrivalExpected;
 
-   --  Handle every frame in the receive ring. With arm, then ask the
-   --  driver for a doorbell before going idle (and look once more); without,
-   --  the caller is polling and no doorbell is wanted.
-   procedure drainRXRing (arm : Boolean := True) is
-      area : constant System.Address := interfaces (0).pktBuf;
+   --  Handle every frame in ifc's receive ring, and its link block. With
+   --  arm, then ask the driver for a doorbell before going idle (and look
+   --  once more, at the ring and the link block); without, the caller is
+   --  polling and no doorbell is wanted.
+   procedure drainRXRing (ifc : Interface_Access; arm : Boolean := True) is
+      area : constant System.Address := ifc.pktBuf;
       mark : Unsigned_64;
       ok   : Boolean;
+      produced : Unsigned_32 with Volatile, Import,
+        Address => rxWord (ifc, Frames.Produced_At);
+      consumed : Unsigned_32 with Volatile, Import,
+        Address => rxWord (ifc, Frames.Consumed_At);
+      spaceWanted : Unsigned_32 with Volatile, Import,
+        Address => rxWord (ifc, Frames.Space_Wanted_At);
+      doorbell : Unsigned_32 with Volatile, Import,
+        Address => rxWord (ifc, Frames.Wake_At);
+      linkGeneration : Unsigned_32 with Volatile, Import,
+        Address => area + Storage_Offset (Frames.Link_Word_At (Frames.Link_Generation_Word));
    begin
-      if area = System.Null_Address then
-         return;
-      end if;
-      declare
-         produced : Unsigned_32 with Volatile, Import,
-           Address => rxWord (Frames.Produced_At);
-         consumed : Unsigned_32 with Volatile, Import,
-           Address => rxWord (Frames.Consumed_At);
-         spaceWanted : Unsigned_32 with Volatile, Import,
-           Address => rxWord (Frames.Space_Wanted_At);
-         doorbell : Unsigned_32 with Volatile, Import,
-           Address => rxWord (Frames.Wake_At);
-      begin
       --  Busy: no doorbells needed until we are about to go idle again.
       doorbell := 0;
       loop
+         --  The link block: one load when nothing changed.
+         observeLink (ifc);
          --  The driver's count, read once and accepted only if sane.
-         Frame_Ring.Accept_Produced (rxRing, Frame_Ring.Index (produced), ok);
+         Frame_Ring.Accept_Produced (ifc.rxRing, Frame_Ring.Index (produced), ok);
          if not ok then
             debugPrint ("netstack: RX ring count out of range" & LF);
             return;
          end if;
          --  The frames were written before the count was: read them after.
          System.Machine_Code.Asm ("", Clobber => "memory", Volatile => True);
-         if rxRing.Available > 0 then
+         if ifc.rxRing.Available > 0 then
             inRxBatch := True;
             clockNow := syscall (SYSCALL_GETTIME);
             mark := Prof.Now;
-            while rxRing.Available > 0 loop
+            while ifc.rxRing.Available > 0 loop
                declare
                   slot : constant System.Address :=
                     area + Storage_Offset
-                      (Frames.Receive_Slot_At (Frame_Ring.Head_Slot (rxRing)));
+                      (Frames.Receive_Slot_At (Frame_Ring.Head_Slot (ifc.rxRing)));
                   shared : Unsigned_32 with Volatile, Import,
                     Address => slot + Storage_Offset (Frames.Length_At);
                   --  The driver shares this memory: its length is read once,
@@ -4770,41 +5699,55 @@ package body Netstack_Service is
                   --  what was checked is what is used (no double fetch).
                   len : constant Unsigned_32 := shared;
                begin
-                  if Frames.Fits (len) then
+                  if Frames.Fits (len) and then ifc.usable then
                      declare
                         frame : Frame_Bytes (0 .. Natural (len) - 1)
                           with Import, Address => slot + Storage_Offset (Frames.Frame_At);
                      begin
                         rxPrivate (0 .. Natural (len) - 1) := frame;
                      end;
-                     handlePacket (rxPrivate'Address, Natural (len));
+                     handlePacket (ifc, rxPrivate'Address, Natural (len));
                   end if;
                end;
-               Frame_Ring.Release (rxRing);
+               Frame_Ring.Release (ifc.rxRing);
             end loop;
             Prof.Charge (Prof.Batch, mark);
             --  The frames are handled before their slots are handed back.
             System.Machine_Code.Asm ("", Clobber => "memory", Volatile => True);
-            consumed := Unsigned_32 (rxRing.Consumed);
+            consumed := Unsigned_32 (ifc.rxRing.Consumed);
             mark := Prof.Now;
             tcpBatchDone;
             Prof.Charge (Prof.Batch_Done, mark);
             System.Machine_Code.Asm ("mfence", Clobber => "memory", Volatile => True);
             if spaceWanted /= 0 then
-               txDoorbell := True;   --  the driver waits for slots
+               ifc.txDoorbell := True;   --  the driver waits for slots
             end if;
          end if;
-         exit when not arm and then Frame_Ring.Index (produced) = rxRing.Consumed;
+         exit when not arm and then Frame_Ring.Index (produced) = ifc.rxRing.Consumed;
          --  About to go idle: ask for a doorbell, then look once more (the
-         --  driver may have published before it could see the request).
-         rxEpoch := (if rxEpoch = Unsigned_32'Last then 1 else rxEpoch + 1);
-         doorbell := rxEpoch;
+         --  driver may have published frames or a link report before it
+         --  could see the request).
+         ifc.rxEpoch := (if ifc.rxEpoch = Unsigned_32'Last then 1 else ifc.rxEpoch + 1);
+         doorbell := ifc.rxEpoch;
          System.Machine_Code.Asm ("mfence", Clobber => "memory", Volatile => True);
-         exit when Frame_Ring.Index (produced) = rxRing.Consumed;
+         --  A report being written (odd generation) rings the doorbell
+         --  once it is complete: no need to wait for it here.
+         exit when Frame_Ring.Index (produced) = ifc.rxRing.Consumed and then
+                   (NL.Generation (linkGeneration) = ifc.link.Seen or else
+                    NL.Writing (NL.Generation (linkGeneration)));
          doorbell := 0;
       end loop;
-      end;
    end drainRXRing;
+
+   --  Every interface's receive ring.
+   procedure drainAll (arm : Boolean := True) is
+   begin
+      for S in 0 .. Ifaces.Slot_Count - 1 loop
+         if Ifaces.In_Use (S) then
+            drainRXRing (Ifaces.Get (S), arm);
+         end if;
+      end loop;
+   end drainAll;
 
    --  64 random bits from the CPU (RDRAND), or, without it, a mix of the
    --  time-stamp counter and the clock: weak, and reported. To come from
@@ -4850,6 +5793,216 @@ package body Netstack_Service is
    flushFailures : Natural := 0;
 
 
+   ---------------------------------------------------------------------------
+   --  The driver's and netmgr's requests (CuBit.Net_Link, CuBit.Net_Management)
+   ---------------------------------------------------------------------------
+   procedure handleRoutes (sender : Process_ID; m : Message; add : Boolean) is
+      D : constant NM.Decoded_Configuration :=
+        NM.Decode_Configuration ([m.words (0), m.words (1), m.words (2), m.words (3)]);
+      dest : Net.IPv4Address;
+      done : Boolean := False;
+   begin
+      if not D.Valid or else interfaceOf (D.Handle) = No_Interface then
+         replyError (sender);
+         return;
+      end if;
+      dest := Net.unpackIPv4 (Unsigned_64 (D.Item.Address));
+      for R of routeTable loop
+         if add and then not R.active then
+            R := (active => True, dest => dest, prefix => D.Item.Prefix,
+                  gateway => Net.unpackIPv4 (Unsigned_64 (D.Item.Gateway)),
+                  via => D.Handle, metric => D.Item.Metric);
+            done := True;
+            exit;
+         elsif not add and then R.active and then R.dest = dest and then
+           R.prefix = D.Item.Prefix and then R.via = D.Handle
+         then
+            R.active := False;
+            done := True;
+            exit;
+         end if;
+      end loop;
+      if done then
+         replyOKWord (sender, 0);
+      else
+         replyError (sender);
+      end if;
+   end handleRoutes;
+
+   --  Route_List: every interface's own routes, then the static ones.
+   procedure handleRouteList (m : Message) is
+      startIdx : constant Natural := wordNatural (m.words (0));
+      seen     : Natural := 0;
+      total    : Natural := 0;
+      packed   : NM.Words4 := [others => 0];
+      put      : Natural := 0;
+      nextStart : Natural := 0;
+
+      procedure offer (R : NM.Route_Entry) is
+      begin
+         if seen >= startIdx and then put < NM.Routes_Per_Answer then
+            declare
+               W : constant NM.Words2 := NM.Encode (R);
+            begin
+               packed (2 * put) := W (0);
+               packed (2 * put + 1) := W (1);
+            end;
+            put := put + 1;
+            nextStart := seen + 1;
+         end if;
+         seen := seen + 1;
+         total := total + 1;
+      end offer;
+   begin
+      for S in 0 .. Ifaces.Slot_Count - 1 loop
+         if Ifaces.In_Use (S) and then Ifaces.Get (S).configured then
+            declare
+               ifc : constant Interface_Access := Ifaces.Get (S);
+               network : Net.IPv4Address;
+            begin
+               for I in network'Range loop
+                  network (I) := ifc.ipv4 (I) and ifc.netmask (I);
+               end loop;
+               offer ((Destination => NM.IPv4_Word (Net.packIPv4 (network)), Prefix => ifc.prefix,
+                       Usable => ifc.usable, Metric => ifc.metric, Gateway => NM.No_IPv4,
+                       Slot => ifc.handle.Slot));
+               if ifc.gateway /= NO_ADDRESS then
+                  offer ((Destination => NM.No_IPv4, Prefix => 0, Usable => ifc.usable,
+                          Metric => ifc.metric,
+                          Gateway => NM.IPv4_Word (Net.packIPv4 (ifc.gateway)),
+                          Slot => ifc.handle.Slot));
+               end if;
+            end;
+         end if;
+      end loop;
+      for R of routeTable loop
+         if R.active then
+            declare
+               ifc : constant Interface_Access := interfaceOf (R.via);
+            begin
+               offer ((Destination => NM.IPv4_Word (Net.packIPv4 (R.dest)), Prefix => R.prefix,
+                       Usable => ifc /= No_Interface and then ifc.usable, Metric => R.metric,
+                       Gateway => NM.IPv4_Word (Net.packIPv4 (R.gateway)),
+                       Slot => R.via.Slot));
+            end;
+         end if;
+      end loop;
+      declare
+         routeReply : constant Message :=
+           (tag      => (label  => REPLY_OK,
+                         length => Unsigned_8 (put),
+                         --  The next page's first index (0: no more); tag
+                         --  flags are not data (IPC layer bits).
+                         protocol  => 0, ipc => <>,
+                         reserved  => (if nextStart < total then Unsigned_16 (nextStart) else 0)),
+            authorityTag => 0,
+            words    => [packed (0), packed (1), packed (2), packed (3)]);
+         ignore : Unsigned_64;
+      begin
+         ignore := Send_Answer (Current_Request, routeReply);
+      end;
+   end handleRouteList;
+
+   procedure handlePing (sender : Process_ID; m : Message) is
+      dstIP  : constant Net.IPv4Address := Net.unpackIPv4 (m.words (0));
+      seq    : constant Unsigned_16 := Unsigned_16 (m.words (1) and 16#FFFF#);
+      sendTs : constant Unsigned_64 := m.words (2);
+      via    : Interface_Access;
+      dstMAC : Net.MACAddress;
+      found  : Boolean;
+      ok     : Boolean;
+   begin
+      --  Loopback: 127.0.0.0/8 or one of our addresses: answered at once.
+      if dstIP (0) = IPv4_Frame.Loopback_Net or else isOurAddress (dstIP) then
+         declare
+            nowMs : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+            loopReply : constant Message :=
+              (tag      => (label => REPLY_OK, length => 3, protocol => 0, ipc => <>, reserved => 0),
+               authorityTag => 0,
+               words    => [0 => Unsigned_64 (seq), 1 => m.words (0),
+                            2 => (if nowMs >= sendTs then nowMs - sendTs else 0),
+                            others => 0]);
+            ignore : Unsigned_64;
+         begin
+            ignore := Send_Answer (Current_Request, loopReply);
+         end;
+         return;
+      end if;
+      neighbourMAC (dstIP, via, dstMAC, found);
+      if via = No_Interface then
+         replyError (sender);
+         return;
+      end if;
+      ok := addPending ((kind => PENDING_PING, sender => sender,
+                         bufAddr => To_Address (Integer_Address (sendTs)),
+                         txid => seq, replySlot => Current_Request, others => <>));
+      if not ok then
+         replyError (sender);
+         return;
+      end if;
+      --  Unresolved, the echo is lost and the ping times out (asked meanwhile).
+      if found then
+         currentIf := via;
+         ICMPv4.Echo (via.mac, dstMAC, v4 (via.ipv4), v4 (dstIP), seq);
+      end if;
+   end handlePing;
+
+   procedure dispatchDriver (sender : Process_ID; m : Message) is
+   begin
+      case NL.Operation_Of (m.tag.label) is
+         when NL.Attach =>
+            handleAttach (sender, m);
+         when NL.Receive_Doorbell =>
+            --  One-way: frames or a link report wait in its grant.
+            declare
+               ifc : constant Interface_Access := driverInterface (sender, m.words (0));
+            begin
+               if ifc /= No_Interface then
+                  drainRXRing (ifc);
+               end if;
+            end;
+         when NL.Transmit_Wait =>
+            handleTransmitWait (sender, m);
+         when NL.Set_Address =>
+            handleSetAddress (sender, m);
+      end case;
+   end dispatchDriver;
+
+   procedure dispatchManager (sender : Process_ID; m : Message) is
+   begin
+      case NM.Operation_Of (m.tag.label) is
+         when NM.Configure =>
+            handleConfigure (sender, m);
+         when NM.Set_DNS =>
+            primaryDNS := Net.unpackIPv4 (m.words (0));
+            secondaryDNS := Net.unpackIPv4 (m.words (1));   --  0.0.0.0: none
+            debugPrint ("netstack: DNS set to ");
+            printIP (primaryDNS);
+            debugPrint ("" & LF);
+            replyOKWord (sender, 0);
+         when NM.Route_Add =>
+            handleRoutes (sender, m, add => True);
+         when NM.Route_Delete =>
+            handleRoutes (sender, m, add => False);
+         when NM.Interface_Next =>
+            handleInterfaceNext (sender, m);
+         when NM.Interface_Detail =>
+            handleInterfaceDetail (sender, m);
+         when NM.Route_List =>
+            handleRouteList (m);
+         when NM.Ping =>
+            handlePing (sender, m);
+         when NM.Watch =>
+            handleWatch (sender, m);
+         when NM.DHCP_Open =>
+            handleDHCPOpen (sender, m);
+         when NM.DHCP_Send =>
+            handleDHCPSend (sender, m);
+         when NM.DHCP_Await =>
+            handleDHCPAwait (sender, m);
+      end case;
+   end dispatchManager;
+
    procedure Run is
       lastExpiry : Unsigned_64 := Unsigned_64'Last;
       sender  : Process_ID;
@@ -4874,10 +6027,6 @@ package body Netstack_Service is
       debugPrint ("" & LF);
    end;
 
-   --  Query the driver's MAC address via capCall to its endpoint (NIC)
-   --  We do this after the driver starts and sends us OP_NET_ATTACH.
-   --  For now, just enter the message loop and wait.
-
    --  Signal devmgr that we are ready
    declare
       OP_READY       : constant Unsigned_32 := 16#FF00#;
@@ -4894,10 +6043,10 @@ package body Netstack_Service is
 
    --  Message loop
    --
-   --  TX uses fire-and-forget capSubmit (no reply from driver), so no
-   --  deadlock risk.  If the driver's single-slot mailbox is full when we
-   --  submit, the frame is buffered in deferredTX and retried between
-   --  message dispatches.
+   --  netstack never calls or submits to a driver: frames go through the
+   --  rings, and a driver's doorbell is the answer to its parked
+   --  Transmit_Wait. A full ring defers frames to deferredTX, retried
+   --  between message dispatches.
    loop
       found := False;
       --  Timers must run even under a continuous stream of service requests.
@@ -4909,7 +6058,12 @@ package body Netstack_Service is
             mark : constant Unsigned_64 := Prof.Now;
          begin
             expireRequests (clockNow);
-            IPv6.Tick (clockNow);
+            for S in 0 .. Ifaces.Slot_Count - 1 loop
+               if Ifaces.In_Use (S) and then Ifaces.Get (S).ipv6Started then
+                  IPv6.Tick (Ifaces.Get (S).v6, clockNow);
+               end if;
+            end loop;
+            releaseRetired;
             lastExpiry := clockNow;
             Prof.Charge (Prof.Timers, mark);
          end;
@@ -4959,7 +6113,7 @@ package body Netstack_Service is
               (lastActivity, CuBit.Busy_Poll.Default_Window_Microseconds)
             loop
                if rxPending then
-                  drainRXRing (arm => False);
+                  drainAll (arm => False);
                   lastActivity := CuBit.Busy_Poll.Now;
                end if;
                serviceQueues;
@@ -4970,12 +6124,15 @@ package body Netstack_Service is
          end;
          if not found then
             peerActive := False;
-            drainRXRing;   --  arm the doorbell (and take anything that came)
+            drainAll;   --  arm the doorbells (and take anything that came)
             Poll_Service_Request (sender, msg, found);
             --  Queue requests that came meanwhile: the next pass takes them.
             --  Channels whose kick never came: take them up, then look again
             --  rather than sleep.
             if not found and then not armQueues and then not serviceArmedChannels then
+               --  Frames the drain above queued (acknowledgements) reach
+               --  their drivers before netstack sleeps.
+               ringTXDoorbell;
                receiveUntil (nextDeadline, sender, msg, found);
             end if;
          end if;
@@ -4985,10 +6142,20 @@ package body Netstack_Service is
       end if;
 
       --  4. Dispatch message
+      --  A kernel notice (a frame grant came back) has no sender: only
+      --  the sleeping receive takes these.
+      if found and then sender = No_Process then
+         handleEvent (msg);
+         found := False;
+      end if;
       if found then
          Current_Sender := sender;
          if not admittedRequest (sender, msg) then
             replyError (sender);
+         elsif NL.Is_Operation (msg.tag.label) then
+            dispatchDriver (sender, msg);
+         elsif NM.Is_Operation (msg.tag.label) then
+            dispatchManager (sender, msg);
          else
          case msg.tag.label is
             when Network_Authority.OP_INSTALL_SCOPE =>
@@ -5023,390 +6190,6 @@ package body Netstack_Service is
                   releaseOwner (From_Word (msg.words (0)));
                   replyOKWord (sender, 0);
                else replyError (sender); end if;
-
-            when OP_NET_ATTACH =>
-               handleAttach (sender);
-               --  Publish our first doorbell epoch: the RX ring is empty.
-               drainRXRing;
-
-               --  Extract MAC from attach message into latest interface
-               if numIfaces > 0 then
-                  declare
-                     macPacked : constant Unsigned_64 := msg.words (0);
-                     idx : constant Natural := numIfaces - 1;
-                  begin
-                     interfaces (idx).mac (0) :=
-                        Unsigned_8 (macPacked and 16#FF#);
-                     interfaces (idx).mac (1) := Unsigned_8 (
-                        Shift_Right (macPacked, 8) and 16#FF#);
-                     interfaces (idx).mac (2) := Unsigned_8 (
-                        Shift_Right (macPacked, 16) and 16#FF#);
-                     interfaces (idx).mac (3) := Unsigned_8 (
-                        Shift_Right (macPacked, 24) and 16#FF#);
-                     interfaces (idx).mac (4) := Unsigned_8 (
-                        Shift_Right (macPacked, 32) and 16#FF#);
-                     interfaces (idx).mac (5) := Unsigned_8 (
-                        Shift_Right (macPacked, 40) and 16#FF#);
-
-                     debugPrint ("netstack: attached, MAC=");
-                     printMACAddr (interfaces (idx).mac);
-                     debugPrint ("" & LF);
-                     --  IPv6 needs only the link: start now. Its self-test
-                     --  pings the router once, when there is one.
-                     IPv6.Start (interfaces (idx).mac,
-                                 (K0 => hardwareRandom, K1 => hardwareRandom),
-                                 syscall (SYSCALL_GETTIME), Self_Test => True);
-                  end;
-               end if;
-
-            when OP_NET_RX =>
-               --  A doorbell (one-way): the frames are in the RX ring.
-               drainRXRing;
-
-            --  Network management IPC (from netmgr)
-            when OP_NET_CONFIGURE =>
-               if msg.words (0) >= Unsigned_64 (numIfaces) then
-                  replyError (sender);
-                  goto Configure_Done;
-               end if;
-               declare
-                  cfgIfIdx : constant Natural :=
-                     Natural (msg.words (0));
-                  newAddr : constant Net.IPv4Address := Net.unpackIPv4 (msg.words (1));
-                  newMask : constant Net.IPv4Address := Net.unpackIPv4 (msg.words (2));
-                  newGW   : constant Net.IPv4Address := Net.unpackIPv4 (msg.words (3));
-                  wasUp   : constant Boolean := interfaces (cfgIfIdx).state = IF_UP;
-               begin
-                  if cfgIfIdx < numIfaces then
-                     --  A new address: what was bound to the old one cannot
-                     --  go on (its peers know the old address). Connections
-                     --  and connected datagram channels end as Unreachable.
-                     if wasUp and then interfaces (cfgIfIdx).ipv4 /= newAddr then
-                        addressWithdrawn;
-                     end if;
-                     --  A new address or gateway: what the link told us may
-                     --  be stale (another network, another router).
-                     if interfaces (cfgIfIdx).ipv4 /= newAddr or else
-                       interfaces (cfgIfIdx).gateway /= newGW
-                     then
-                        interfaces (cfgIfIdx).arpCache := [others => (others => <>)];
-                        interfaces (cfgIfIdx).gwMAC := Net.ZERO_MAC;
-                     end if;
-                     interfaces (cfgIfIdx).ipv4 := newAddr;
-                     interfaces (cfgIfIdx).netmask := newMask;
-                     interfaces (cfgIfIdx).gateway := newGW;
-                     interfaces (cfgIfIdx).state := IF_UP;
-                     if ipv4Test = TEST_OFF and then newGW /= Net.IPv4Address'(others => 0) then
-                        ipv4Test := TEST_WAITING;
-                     end if;
-
-                     --  Replace (not add to) the interface's connected and
-                     --  default routes.
-                     for R of routeTable loop
-                        if R.active and then R.ifIdx = cfgIfIdx then
-                           R.active := False;
-                        end if;
-                     end loop;
-                     installConnectedRoute (cfgIfIdx);
-
-                     --  Send gratuitous ARP and ARP for gateway
-                     sendGratuitousARP;
-                     if interfaces (cfgIfIdx).gateway /=
-                        Net.IPv4Address'(others => 0)
-                     then
-                        sendARPRequest (interfaces (cfgIfIdx).gateway);
-                     end if;
-
-                     debugPrint ("netstack: if");
-                     printDec (Unsigned_32 (cfgIfIdx));
-                     debugPrint (" configured: ");
-                     printIP (interfaces (cfgIfIdx).ipv4);
-                     debugPrint ("" & LF);
-
-                     replyOKWord (sender, 0);
-                  else
-                     replyError (sender);
-                  end if;
-               end;
-               <<Configure_Done>>
-
-            when OP_NET_SET_DNS =>
-               primaryDNS := Net.unpackIPv4 (msg.words (0));
-               secondaryDNS := Net.unpackIPv4 (msg.words (1));   --  0.0.0.0: none
-               debugPrint ("netstack: DNS set to ");
-               printIP (primaryDNS);
-               debugPrint ("" & LF);
-               replyOKWord (sender, 0);
-
-            when OP_NET_LIST_IF =>
-               replyOKWord (sender, Unsigned_64 (numIfaces));
-
-            when OP_NET_IF_DETAIL =>
-               declare
-                  reqIfIdx : constant Natural := wordNatural (msg.words (0));
-               begin
-                  if reqIfIdx < numIfaces then
-                     declare
-                        ifc : InterfaceRecord renames
-                           interfaces (reqIfIdx);
-                        stateVal : Unsigned_64 :=
-                           (case ifc.state is
-                               when IF_DOWN => 0,
-                               when IF_UP => 1,
-                               when IF_CONFIGURING => 2);
-                        ipPacked : constant Unsigned_64 :=
-                           Net.packIPv4 (ifc.ipv4);
-                        maskPacked : constant Unsigned_64 :=
-                           Net.packIPv4 (ifc.netmask);
-                        gwPacked : constant Unsigned_64 :=
-                           Net.packIPv4 (ifc.gateway);
-                        macPacked : constant Unsigned_64 :=
-                           Unsigned_64 (ifc.mac (0)) or
-                           Shift_Left (Unsigned_64 (ifc.mac (1)), 8) or
-                           Shift_Left (Unsigned_64 (ifc.mac (2)), 16) or
-                           Shift_Left (Unsigned_64 (ifc.mac (3)), 24) or
-                           Shift_Left (Unsigned_64 (ifc.mac (4)), 32) or
-                           Shift_Left (Unsigned_64 (ifc.mac (5)), 40);
-                        dnsPri : constant Unsigned_64 :=
-                           Net.packIPv4 (primaryDNS);
-                        dnsSec : constant Unsigned_64 :=
-                           Net.packIPv4 (secondaryDNS);
-                        detailMsg : constant Message :=
-                          (tag      => (label  => REPLY_OK,
-                                        length => 4,
-                                        protocol  => 0, ipc => <>,
-                                        reserved  => 0),
-                           authorityTag => 0,
-                           words    => [
-                              0 => ipPacked or
-                                   Shift_Left (stateVal, 32),
-                              1 => maskPacked or
-                                   Shift_Left (gwPacked, 32),
-                              2 => macPacked,
-                              3 => dnsPri or
-                                   Shift_Left (dnsSec, 32)]);
-                        ignore : Unsigned_64;
-                     begin
-                        ignore := Send_Answer (Current_Request, detailMsg);
-                     end;
-                  else
-                     replyError (sender);
-                  end if;
-               end;
-
-            when OP_NET_ROUTE_LIST =>
-               declare
-                  startIdx : constant Natural := wordNatural (msg.words (0));
-                  total  : Natural := 0;
-                  packed : array (0 .. 3) of Unsigned_64 := [others => 0];
-                  slot   : Natural := 0;
-                  nextStart : Natural := 0;
-               begin
-                  --  Count total active routes
-                  for i in routeTable'Range loop
-                     if routeTable (i).active then
-                        total := total + 1;
-                     end if;
-                  end loop;
-
-                  --  Pack up to 2 routes starting from startIdx
-                  declare
-                     seen : Natural := 0;
-                  begin
-                     for i in routeTable'Range loop
-                        if routeTable (i).active then
-                           if seen >= startIdx and slot < 2 then
-                              packed (slot * 2) :=
-                                 Net.packIPv4 (routeTable (i).dest) or
-                                 Shift_Left (Unsigned_64 (
-                                    routeTable (i).prefix), 32) or
-                                 Shift_Left (Unsigned_64 (
-                                    routeTable (i).ifIdx), 40) or
-                                 Shift_Left (Unsigned_64 (
-                                    routeTable (i).metric), 48);
-                              packed (slot * 2 + 1) :=
-                                 Net.packIPv4 (routeTable (i).gateway);
-                              slot := slot + 1;
-                              nextStart := seen + 1;
-                           end if;
-                           seen := seen + 1;
-                        end if;
-                     end loop;
-                  end;
-
-                  declare
-                     routeReply : constant Message :=
-                       (tag      => (label  => REPLY_OK,
-                                     length => Unsigned_8 (total),
-                                     --  The next page's first index; tag
-                                     --  flags are not data (IPC layer bits).
-                                     protocol  => 0, ipc => <>,
-                                     reserved  => Unsigned_16 (nextStart)),
-                        authorityTag => 0,
-                        words    => [0 => packed (0),
-                                     1 => packed (1),
-                                     2 => packed (2),
-                                     3 => packed (3)]);
-                     ignore : Unsigned_64;
-                  begin
-                     ignore := Send_Answer (Current_Request, routeReply);
-                  end;
-               end;
-
-            when OP_NET_PING =>
-               declare
-                  dstIP : constant Net.IPv4Address :=
-                     Net.unpackIPv4 (msg.words (0));
-                  seq : constant Unsigned_16 :=
-                     Unsigned_16 (msg.words (1) and 16#FFFF#);
-                  sendTs : constant Unsigned_64 := msg.words (2);
-                  isLoopback : Boolean := False;
-                  rIfIdx  : Integer;
-                  nextHop : Net.IPv4Address;
-                  dstMAC  : Net.MACAddress;
-                  ok : Boolean;
-               begin
-                  --  Loopback: 127.0.0.0/8 or own interface IP
-                  if dstIP (0) = 127 then
-                     isLoopback := True;
-                  else
-                     for i in 0 .. numIfaces - 1 loop
-                        if interfaces (i).ipv4 = dstIP and
-                           interfaces (i).state = IF_UP
-                        then
-                           isLoopback := True;
-                           exit;
-                        end if;
-                     end loop;
-                  end if;
-
-                  if isLoopback then
-                     --  Immediate reply with RTT=0
-                     declare
-                        nowMs : constant Unsigned_64 :=
-                           syscall (SYSCALL_GETTIME);
-                        rtt   : constant Unsigned_64 :=
-                           (if nowMs >= sendTs then nowMs - sendTs
-                            else 0);
-                        loopReply : Message :=
-                          (tag      => (label  => REPLY_OK,
-                                        length => 3,
-                                        protocol  => 0, ipc => <>,
-                                        reserved  => 0),
-                           authorityTag => 0,
-                           words    => [0 => Unsigned_64 (seq),
-                                        1 => msg.words (0),
-                                        2 => rtt,
-                                        others => 0]);
-                        ignore : Unsigned_64;
-                     begin
-                        ignore := Send_Answer (Current_Request, loopReply);
-                     end;
-                  else
-                     routeLookup (dstIP, rIfIdx, nextHop);
-                     if rIfIdx < 0 then
-                        replyError (sender);
-                     else
-                        --  The next hop's link address; unresolved, the echo
-                        --  is lost and the ping times out (asked meanwhile).
-                        dstMAC := resolvedNeighbour (dstIP);
-
-                        ok := addPending (
-                           (kind       => PENDING_PING,
-                            sender     => sender,
-                            connIdx    => -1,
-                            channelIdx => -1,
-                            bufAddr    => To_Address (
-                               Integer_Address (sendTs)),
-                            bufOff     => 0,
-                            maxLen     => 0,
-                            txid       => seq,
-                            dstPort    => 0,
-                            replySlot  => Current_Request,
-          others     => <>));
-
-                        if ok then
-                           ICMPv4.Echo (interfaces (rIfIdx).mac, dstMAC,
-                                        v4 (interfaces (rIfIdx).ipv4), v4 (dstIP), seq);
-                        else
-                           replyError (sender);
-                        end if;
-                     end if;
-                  end if;
-               end;
-
-            when OP_NET_ROUTE_ADD =>
-               --  The prefix and interface are checked while still words:
-               --  converting an out-of-range word (netstack has no run-time
-               --  checks) would give a garbage index.
-               if msg.words (1) > IPV4_PREFIX_BITS or else
-                 msg.words (3) >= Unsigned_64 (numIfaces)
-               then
-                  replyError (sender);
-                  goto Route_Done;
-               end if;
-               declare
-                  routeDest : constant Net.IPv4Address :=
-                     Net.unpackIPv4 (msg.words (0));
-                  routePrefix : constant Natural :=
-                     Natural (msg.words (1));
-                  routeGW : constant Net.IPv4Address :=
-                     Net.unpackIPv4 (msg.words (2));
-                  routeIF : constant Natural :=
-                     Natural (msg.words (3));
-                  added : Boolean := False;
-               begin
-                  for i in routeTable'Range loop
-                     if not routeTable (i).active then
-                        routeTable (i) :=
-                          (active  => True,
-                           dest    => routeDest,
-                           prefix  => routePrefix,
-                           gateway => routeGW,
-                           ifIdx   => routeIF,
-                           metric  => 0);
-                        added := True;
-                        exit;
-                     end if;
-                  end loop;
-                  if added then
-                     replyOKWord (sender, 0);
-                  else
-                     replyError (sender);
-                  end if;
-               end;
-               <<Route_Done>>
-
-            when OP_NET_ROUTE_DEL =>
-               declare
-                  routeDest : constant Net.IPv4Address :=
-                     Net.unpackIPv4 (msg.words (0));
-                  routePrefix : constant Natural := wordNatural (msg.words (1));
-                  deleted : Boolean := False;
-               begin
-                  for i in routeTable'Range loop
-                     if routeTable (i).active and then
-                        routeTable (i).dest = routeDest and then
-                        routeTable (i).prefix = routePrefix
-                     then
-                        routeTable (i).active := False;
-                        deleted := True;
-                        exit;
-                     end if;
-                  end loop;
-                  if deleted then
-                     replyOKWord (sender, 0);
-                  else
-                     replyError (sender);
-                  end if;
-               end;
-
-            when OP_NET_OPEN_RAW =>
-               --  Open raw UDP channel (for DHCP etc.)
-               --  words(0)=ifIdx, words(1)=proto, words(2)=port
-               --  For now, just acknowledge (raw channel handled by
-               --  regular packet dispatch with broadcast acceptance)
-               replyOKWord (sender, 0);
 
             when OP_NET_RESOLVE =>
                handleAppResolve (sender, msg);

@@ -1,0 +1,17 @@
+project Netmgr_DHCP is
+   --  netmgr's DHCP client state machine (userspace/services/netmgr/
+   --  dhcp_client.ads) against a simulated server.
+   Runtime := "../../userspace/runtime/gnat";
+   for Source_Dirs use (".", Runtime, "../../userspace/services/netmgr");
+   for Source_Files use ("cubit.ads", "cubit-channel_rings.ads", "cubit-channel_rings.adb",
+                         "cubit-slot_rings.ads", "cubit-slot_rings.adb",
+                         "cubit-frame_rings.ads", "cubit-net_link.ads", "cubit-net_link.adb",
+                         "cubit-net_address.ads", "cubit-net_management.ads", "cubit-net_management.adb",
+                         "dhcp_client.ads", "dhcp_client.adb", "main.adb");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-O2", "-gnata", "-gnato", "-I-");
+   end Compiler;
+end Netmgr_DHCP;

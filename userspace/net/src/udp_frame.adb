@@ -75,4 +75,44 @@ package body UDP_Frame with SPARK_Mode is
         (IPv4_Frame.Address_At (Frame, IPv4_Frame.Destination_At) (0) = Destination (0));
    end Build;
 
+   procedure Build_Discovery
+     (Our_MAC : IPv4_Frame.MAC; Source_Port, Destination_Port : Unsigned_16;
+      Payload : Bytes; Frame : out Bytes)
+   is
+      Length : constant Natural := Header_Size + Payload'Length;
+      Packet : Bytes (0 .. Minimum_Size + Length - 1) := [others => 0];
+      Sum    : Unsigned_16;
+   begin
+      Frame := [others => 0];
+      Put16 (Packet, Minimum_Size, Source_Port);
+      Put16 (Packet, Minimum_Size + 2, Destination_Port);
+      Put16 (Packet, Minimum_Size + 4, Unsigned_16 (Length));
+      Packet (Minimum_Size + Header_Size .. Packet'Last) := Payload;
+      Sum := Transport_Sum (Unspecified_Source, Limited_Broadcast,
+                            Packet (Minimum_Size .. Packet'Last));
+      Put16 (Packet, Minimum_Size + 6, (if Sum = No_Checksum then Zero_Checksum else Sum));
+      Build ((Size => Minimum_Size, Total_Length => Minimum_Size + Length,
+              Protocol => UDP_Protocol, TTL => Default_TTL,
+              Source => Unspecified_Source, Destination => Limited_Broadcast),
+             DF => True, B => Packet);
+      for K in 0 .. 5 loop
+         Frame (K) := Broadcast_MAC (K);
+         Frame (6 + K) := Our_MAC (K);
+         pragma Loop_Invariant (for all J in 0 .. K => Frame (J) = Broadcast_MAC (J));
+      end loop;
+      Frame (12) := IPv4_Frame.Type_High;
+      Frame (13) := IPv4_Frame.Type_Low;
+      for K in Packet'Range loop
+         Frame (IPv4_Frame.Ethernet_Header + K) := Packet (K);
+         pragma Loop_Invariant
+           (for all J in 0 .. K => Frame (IPv4_Frame.Ethernet_Header + J) = Packet (J));
+         pragma Loop_Invariant
+           (Frame (12) = IPv4_Frame.Type_High and then Frame (13) = IPv4_Frame.Type_Low);
+         pragma Loop_Invariant (for all J in 0 .. 5 => Frame (J) = Broadcast_MAC (J));
+      end loop;
+      pragma Assert (Frame (IPv4_Frame.Header_At) = Packet (0));
+      pragma Assert (Frame (IPv4_Frame.Source_At) = Packet (12));
+      pragma Assert (Frame (IPv4_Frame.Destination_At) = Packet (16));
+   end Build_Discovery;
+
 end UDP_Frame;

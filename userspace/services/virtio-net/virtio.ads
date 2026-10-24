@@ -29,6 +29,8 @@ package Virtio is
 
    --  MSI-X enabled legacy layout: device configuration moves by four bytes.
    REG_NET_MAC           : constant Unsigned_16 := 16#18#;
+   --  virtio-net's 16-bit status, after the 6-byte MAC (with F_STATUS).
+   REG_NET_STATUS        : constant Unsigned_16 := REG_NET_MAC + 6;
 
    ---------------------------------------------------------------------------
    --  Device status bits
@@ -45,6 +47,8 @@ package Virtio is
    ---------------------------------------------------------------------------
    VIRTIO_NET_F_MAC      : constant Unsigned_32 := Shift_Left (1, 5);
    VIRTIO_NET_F_STATUS   : constant Unsigned_32 := Shift_Left (1, 16);
+   --  The status field's link bit (virtio 1.x 5.1.4).
+   VIRTIO_NET_S_LINK_UP  : constant Unsigned_16 := 1;
 
    ---------------------------------------------------------------------------
    --  Vring descriptor flags
@@ -131,7 +135,11 @@ package Virtio is
    function Bound_Ports return CuBit.Handles.IO_Ports;
 
    procedure resetDevice (ioBase : Unsigned_16);
-   procedure initDevice  (ioBase : Unsigned_16);
+   --  Reset, acknowledge and agree on the MAC and status features; Agreed
+   --  is what the device accepted.
+   procedure initDevice  (ioBase : Unsigned_16; Agreed : out Unsigned_32);
+   --  The status field (valid when VIRTIO_NET_F_STATUS was agreed).
+   function netStatus (ioBase : Unsigned_16) return Unsigned_16;
    procedure startDevice (ioBase : Unsigned_16);
    function setQueueVector (ioBase : Unsigned_16) return Boolean;
    function  readISR     (ioBase : Unsigned_16) return Unsigned_8;

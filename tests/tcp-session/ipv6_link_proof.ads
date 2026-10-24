@@ -7,9 +7,10 @@ with IPv6_Frame;
 with IPv6_Link;
 
 package IPv6_Link_Proof with SPARK_Mode is
+   type Owner is range 0 .. 1_000;
    Frames, Lines : Natural := 0;
-   procedure Send (Frame : IPv6_Header.Bytes) with
+   procedure Send (Link_Owner : Owner; Frame : IPv6_Header.Bytes) with
      Global => (In_Out => Frames), Pre => IPv6_Frame.Emittable (Frame);
    procedure Log (Text : String) with Global => (In_Out => Lines);
-   package Link is new IPv6_Link (Send => Send, Log => Log);
+   package Link is new IPv6_Link (Link_Owner => Owner, Send => Send, Log => Log);
 end IPv6_Link_Proof;

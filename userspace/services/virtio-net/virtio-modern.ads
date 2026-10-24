@@ -14,6 +14,7 @@ package Virtio.Modern is
    F_VERSION_1 : constant Unsigned_64 := Shift_Left (1, 32);
    F_NET_MAC   : constant Unsigned_64 := Shift_Left (1, 5);
    F_EVENT_IDX : constant Unsigned_64 := Shift_Left (1, 29);
+   F_NET_STATUS : constant Unsigned_64 := Shift_Left (1, 16);
 
    --  The layout devmgr found; False if it does not fit what was mapped.
    procedure Bind
@@ -40,5 +41,10 @@ package Virtio.Modern is
 
    --  Device configuration byte I (virtio-net: the MAC is bytes 0 .. 5).
    function Device_Byte (I : Natural) return Unsigned_8;
+
+   --  virtio-net's status field (device configuration bytes 6 .. 7; valid
+   --  with F_NET_STATUS), read between two equal config_generation reads
+   --  (virtio 1.0 4.1.4.3.1).
+   function Net_Status return Unsigned_16;
 
 end Virtio.Modern;

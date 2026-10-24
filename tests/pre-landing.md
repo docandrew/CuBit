@@ -195,3 +195,37 @@ make -C kernel test-ufs prove-ufs
 make -C kernel world boot-logs
 bash tests/headless/run.sh --test ufs --accel kvm --timeout 150
 ```
+
+## net-link-state (NET-LINK-001)
+
+The driver contract's codecs and netstack's link state machine: a torn or
+malformed link report is never taken as a report, and a flap the reader
+missed (Up, Down, Up between two looks) is a bounce, never "unchanged".
+
+```sh
+bash tests/net-link-state/run.sh --prove
+make -C kernel test-tcp-session   # IPv6 re-detection after the link comes back
+```
+
+## net-link (NET-LINK-001)
+
+The host pulls the virtual cable for two seconds: netstack and netmgr log
+Down then Up once each, a UDP send while down ends Unreachable, the TCP
+stream survives and keeps transferring, the static settings are applied
+again and IPv6 detection runs again.
+
+```sh
+make -C kernel world
+bash tests/headless/run.sh --test net-link --accel kvm
+```
+
+## net-multi (NET-LINK-001)
+
+Two virtio-net devices: both attach and are configured independently
+(static, DHCP); while one cable is out, traffic keeps flowing over the
+other and the default route fails over (and back, by metric); the DHCP
+interface re-validates its lease with INIT-REBOOT when its link returns.
+
+```sh
+bash tests/headless/run.sh --test net-multi --accel kvm
+```

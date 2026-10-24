@@ -27,6 +27,8 @@ TEST_NAME="boot-shell-nvme"
 DEFAULT_TIMEOUT_SECONDS=25
 DESKTOP_TIMEOUT_SECONDS=180
 NETWORK_AUTHORITY_TIMEOUT_SECONDS=100
+# net-link and net-multi: boot, DHCP, and each pulled cable (tests/net-link).
+NET_LINK_TIMEOUT_SECONDS=150
 BENCH_LATENCY_TIMEOUT_SECONDS=300
 TIMEOUT_SECONDS=""
 BUILD_WORLD=0
@@ -278,6 +280,8 @@ if [ -z "$TIMEOUT_SECONDS" ]; then
             TIMEOUT_SECONDS=$DESKTOP_TIMEOUT_SECONDS ;;
         network-authority)
             TIMEOUT_SECONDS=$NETWORK_AUTHORITY_TIMEOUT_SECONDS ;;
+        net-link|net-multi)
+            TIMEOUT_SECONDS=$NET_LINK_TIMEOUT_SECONDS ;;
         bench-latency)
             TIMEOUT_SECONDS=$BENCH_LATENCY_TIMEOUT_SECONDS ;;
         *)
@@ -319,7 +323,7 @@ case "$TEST_NAME" in
         ;;
     grant-forward|grant-forward-intermediary-exit|grant-forward-owner-exit|grant-forward-desktop|config-tree|config-inspection|log-authority|log-fields|metrics|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
         ;;
-    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs)
+    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|net-link|net-multi)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -598,6 +602,12 @@ case "$TEST_NAME" in
         ;;
     network-authority)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-network-authority.ccl"
+        ;;
+    net-link)
+        INIT_PROFILE="$ROOT_DIR/tests/net-link/init-net-link.ccl"
+        ;;
+    net-multi)
+        INIT_PROFILE="$ROOT_DIR/tests/net-link/init-net-multi.ccl"
         ;;
     bench-net)
         # tests/net-bench: the same client as the Linux reference (linux.sh).
@@ -1609,6 +1619,15 @@ if [ -n "$INIT_PROFILE" ]; then
         fi
         if ! debugfs -R "stat sched-latency" "$TEMP_DISK" 2>/dev/null | grep -q 'Type: directory'; then
             echo "headless: failed to make sched-latency" >&2
+            exit 1
+        fi
+    fi
+    if [ "$TEST_NAME" = "net-link" ] || [ "$TEST_NAME" = "net-multi" ]; then
+        NET_LINK_IMAGE="$TEST_NAME-check.app"
+        debugfs -w -R "rm $NET_LINK_IMAGE" "$TEMP_DISK" >/dev/null 2>&1
+        if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/$NET_LINK_IMAGE $NET_LINK_IMAGE" \
+          "$TEMP_DISK" >/dev/null 2>&1; then
+            echo "headless: failed to install $NET_LINK_IMAGE" >&2
             exit 1
         fi
     fi
@@ -3684,6 +3703,31 @@ if [ "$TEST_NAME" = "network-authority" ]; then
     python3 "$ROOT_DIR/tests/network-authority/peer.py" "$SERIAL_LOG" &
     NETWORK_PEER_PID=$!
 fi
+# The NICs' PCI slots, pinned: netmgr names an interface by its location
+# (docs/net-link.md), and the system profiles configure pci-00-10-0.
+NET0_PCI_SLOT=0x10
+NET1_PCI_SLOT=0x11
+# net-link / net-multi (tests/net-link): the fixture pulls virtual cables
+# over QMP (set_link) and quits QEMU when its checks are done.
+SECOND_NET_ARGS=()
+if [ "$TEST_NAME" = "net-link" ] || [ "$TEST_NAME" = "net-multi" ]; then
+    QMP_SOCKET="$(qemu_socket qmp)"
+    rm -f "$QMP_SOCKET"
+    QMP_ARGS=(-qmp "unix:$QMP_SOCKET,server=on,wait=off")
+    if [ "$TEST_NAME" = "net-link" ]; then
+        python3 "$ROOT_DIR/tests/net-link/fixture.py" \
+            "$SERIAL_LOG" "$QMP_SOCKET" "$TIMEOUT_SECONDS" &
+    else
+        # A second NIC on its own user network (10.0.3.0/24, DHCP from
+        # QEMU): pci-00-11-0, which has no setting (netmgr's default, DHCP).
+        NET_PCAP1="${NET_PCAP%.pcap}-net1.pcap"
+        SECOND_NET_ARGS=(-device "virtio-net-pci,netdev=net1,addr=$NET1_PCI_SLOT" -netdev user,id=net1,net=10.0.3.0/24
+                         -object "filter-dump,id=f1,netdev=net1,file=$NET_PCAP1")
+        python3 "$ROOT_DIR/tests/net-link/multi_fixture.py" \
+            "$SERIAL_LOG" "$QMP_SOCKET" "$TIMEOUT_SECONDS" "$NET_PCAP" "$NET_PCAP1" &
+    fi
+    INPUT_INJECTOR_PID=$!
+fi
 if [ "$TEST_NAME" = "bench-net" ]; then
     # The serve workload connects in to the guest's listener on port 8080.
     NETDEV_CONFIG="user,id=net0,hostfwd=tcp:127.0.0.1:18486-10.0.2.15:8080"
@@ -3739,10 +3783,11 @@ if [ "$TEST_NAME" = "bench-net" ] && [ -z "${BENCH_NET_PCAP:-}" ]; then PCAP_ARG
         -drive "file=$DISK_IMAGE,if=none,id=nvme0,format=raw" \
         -device nvme,serial=cubitnvme,drive=nvme0 \
         "${UFS_ARGS[@]}" \
-        -device "virtio-net-pci,netdev=net0${NET_DEVICE_OPTIONS:-}" \
+        -device "virtio-net-pci,netdev=net0,addr=$NET0_PCI_SLOT${NET_DEVICE_OPTIONS:-}" \
         "${VIDEO_ARGS[@]}" \
         -netdev "$NETDEV_CONFIG" \
         "${PCAP_ARGS[@]}" \
+        "${SECOND_NET_ARGS[@]}" \
         "${AUDIO_ARGS[@]}" \
         "${TEST_DEVICE_ARGS[@]}" \
         -device intel-hda \
@@ -3959,6 +4004,21 @@ capability-test: all tests passed
             exit 1
         fi
         NETWORK_PEER_PID=""
+        ;;
+    net-link)
+        required_markers="
+net-link-check: udp send while down is unreachable PASS
+net-link-check: udp works after the link is back PASS
+net-link-check: tcp stream survived the flap and kept transferring in order PASS
+TEST: PASS net-link
+"
+        ;;
+    net-multi)
+        required_markers="
+net-multi-check: stream kept flowing in order until the fixture ended it PASS
+net-multi-check: a default route was always usable for the probes PASS
+TEST: PASS net-multi
+"
         ;;
     bench-spread)
         required_markers="
@@ -5121,7 +5181,7 @@ devmgr: netmgr started
 logstore: authorized typed diagnostics ready
 clock: registered
 display: ready
-netmgr: if0 method=static
+netmgr: pci-00-10-0 static settings applied
 netmgr: signaled ready
 desktop: internal shell active
 files: first frame presented

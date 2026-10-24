@@ -219,6 +219,16 @@ procedure main is
    nvmeDev   : PCIDeviceInfo;
    ataDev    : PCIDeviceInfo;
    netDev    : PCIDeviceInfo;
+   --  NETLINK interim (until devmgr starts one instance per device for its
+   --  dedicated setups, docs/device-matching.md "Follow-ups"): every
+   --  virtio-net function gets its own driver. netDev and the net* state
+   --  below describe the one being set up; these keep each one's.
+   Maximum_Net_Devices : constant := 8;
+   subtype Net_Device_Count is Natural range 0 .. Maximum_Net_Devices;
+   subtype Net_Device_Index is Positive range 1 .. Maximum_Net_Devices;
+   netDevs     : array (Net_Device_Index) of PCIDeviceInfo;
+   netDevCount : Net_Device_Count := 0;
+   netPIDs     : array (Net_Device_Index) of Process_ID := [others => No_Process];
    hdaDev    : PCIDeviceInfo;
    xhciDev   : PCIDeviceInfo;
    gpuDev    : PCIDeviceInfo;
@@ -1107,6 +1117,19 @@ procedure main is
       --  The devices devmgr's single-instance setup will start.
       nvmeDev  := Bound_Location ("nvme.drv", not Starts_First ("nvme.drv"));
       netDev   := Bound_Location ("virtio-net.drv", not Starts_First ("virtio-net.drv"));
+      --  Every function bound to virtio-net.drv, in bus order (NETLINK interim).
+      declare
+         Net_Driver : constant DI.Driver_Count := Devmgr_Bindings.Driver_Named ("virtio-net.drv");
+      begin
+         for I in 1 .. inventoryCount loop
+            if Net_Driver /= 0 and then deviceBindings (I).Kind = DI.Bound and then
+              deviceBindings (I).Driver = Net_Driver and then netDevCount < Maximum_Net_Devices
+            then
+               netDevCount := netDevCount + 1;
+               netDevs (netDevCount) := inventory (I).location;
+            end if;
+         end loop;
+      end;
       hdaDev   := Bound_Location ("hda.drv", not Starts_First ("hda.drv"));
       xhciDev  := Bound_Location ("xhci.drv", not Starts_First ("xhci.drv"));
       gpuDev   := Bound_Location ("virtio-gpu.drv", not Starts_First ("virtio-gpu.drv"));
@@ -1487,6 +1510,8 @@ procedure main is
    Driver_Log_Budget  : constant CuBit.Log_Protocol.Budget_Id := 15;
    XHCI_Log_Issuance  : constant CuBit.Log_Protocol.Publication_Issuance := 1;
    Intel_Log_Issuance : constant CuBit.Log_Protocol.Publication_Issuance := 2;
+   --  netmgr's link and configuration lines (docs/net-link.md).
+   Netmgr_Log_Issuance : constant CuBit.Log_Protocol.Publication_Issuance := 3;
 
    procedure Refuse (From : Process_ID; Answered : Boolean) is
       ignore : Unsigned_64;
@@ -1839,6 +1864,18 @@ procedure main is
 
    nvmeInterrupts, netInterrupts, hdaInterrupts, gpuInterrupts,
      xhciInterrupts, intelInterrupts : Message_Function;
+   netInterruptSets : array (Net_Device_Index) of Message_Function;
+
+   --  Which of the virtio-net functions Location is (0: none).
+   function Net_Device_At (Location : PCIDeviceInfo) return Net_Device_Count is
+   begin
+      for K in 1 .. netDevCount loop
+         if Same_Location (Location, netDevs (K)) then
+            return K;
+         end if;
+      end loop;
+      return 0;
+   end Net_Device_At;
 
    NVME_REGISTER_BYTES : constant Unsigned_64 := 16#4000#;
    HDA_REGISTER_BYTES  : constant Unsigned_64 := 16#4000#;
@@ -2103,10 +2140,13 @@ procedure main is
          Give_Ports (virtioNetChild, "registers", bar0Base, VIRTIO_NET_LEGACY_PORTS);
       end if;
 
-      --  Its DMA region's device address, for the driver alone (it no longer
-      --  translates its own addresses, so it holds no device memory).
+      --  Its DMA region's device address and its location (which names its
+      --  interface), for the driver alone.
       DL.Set_Payload
-        (virtioNetChild, LC.Encode (LC.Queue_Configuration'(DMA => dmaPhys), LC.Virtio_Net));
+        (virtioNetChild, LC.Encode (LC.Network_Device_Configuration'
+           (DMA => dmaPhys,
+            Location => Shift_Left (Unsigned_64 (netDev.bus), 8) or
+                        Shift_Left (Unsigned_64 (netDev.slot), 3) or Unsigned_64 (netDev.func))));
       netIOBase := bar0Base;
       netTransportReady := True;
 
@@ -3560,28 +3600,11 @@ begin
    -- Phase 3: Spawn networking services
    -----------------------------------------------------------------------
 
-   --  Netstack service
+   --  Netstack service. Drivers attach to it whenever they come up
+   --  (docs/net-link.md); it holds no endpoint to any of them.
    netstackChild := spawnFromBootStorage ("netstack.svc", 5);
    netstackPID := PID_Of (netstackChild);
-
-   --  Virtio-net driver
-   if netDev.found then
-      virtioNetChild := spawnFromBootStorage ("virtio-net.drv", 5);
-      virtioNetPID := PID_Of (virtioNetChild);
-   end if;
-
-   if netstackPID /= No_Process and virtioNetPID /= No_Process then
-      --  Placed first: its vector goes to the CPU it runs on.
-      assignCPU (virtioNetChild, "virtio-net.drv");
-      setupVirtioNet;
-
-      --  netstack reaches the NIC driver; the driver reaches netstack
-      --  through an endpoint badged as the network driver's authority.
-      DL.Give (netstackChild, "nic", H.Copy (DL.Mailbox (virtioNetChild), H.Read_Write));
-      DL.Give (virtioNetChild, "netstack",
-        H.Badged (DL.Mailbox (netstackChild), H.Read_Write,
-                  CuBit.Network_Authority.Driver_Authority_Tag));
-
+   if netstackPID /= No_Process then
       assignCPU (netstackChild, "netstack.svc");
       if DL.Start (netstackChild) then
          debugPrint ("devmgr: netstack started" & LF);
@@ -3591,70 +3614,77 @@ begin
       else
          netstackPID := No_Process;
       end if;
+   end if;
 
-      if netTransportReady and then DL.Start (virtioNetChild) then
-         declare
-            use CuBit.Virtio_Net_Control;
-            cfg : Message :=
-              (if netModern then
-                 (tag => (label => Operation'Enum_Rep (Configure_Modern),
-                          length => 3, protocol => 0, ipc => <>, reserved => 0),
-                  authorityTag => 0,
-                  words => [0 => Pair (netCommonOff, netDeviceOff),
-                            1 => Pair (netNotifyOff, netNotifyMult),
-                            2 => Pair (netModernBytes, 0),
-                            others => 0])
+   --  One virtio-net driver per virtio-net function (NETLINK interim):
+   --  netDev and the net* state describe the one being set up.
+   for K in 1 .. netDevCount loop
+      exit when netstackPID = No_Process;
+      netDev := netDevs (K);
+      netInterrupts := (others => <>);
+      netModern := False;
+      netTransportReady := False;
+      netIOBase := 0;
+      virtioNetChild := spawnFromBootStorage ("virtio-net.drv", 5);
+      virtioNetPID := PID_Of (virtioNetChild);
+      if virtioNetPID /= No_Process then
+         --  Placed first: its vector goes to the CPU it runs on.
+         assignCPU (virtioNetChild, "virtio-net.drv");
+         setupVirtioNet;
+
+         --  The driver reaches netstack through an endpoint badged as the
+         --  network driver's authority.
+         DL.Give (virtioNetChild, "netstack",
+           H.Badged (DL.Mailbox (netstackChild), H.Read_Write,
+                     CuBit.Network_Authority.Driver_Authority_Tag));
+
+         if netTransportReady and then DL.Start (virtioNetChild) then
+            declare
+               use CuBit.Virtio_Net_Control;
+               cfg : Message :=
+                 (if netModern then
+                    (tag => (label => Operation'Enum_Rep (Configure_Modern),
+                             length => 3, protocol => 0, ipc => <>, reserved => 0),
+                     authorityTag => 0,
+                     words => [0 => Pair (netCommonOff, netDeviceOff),
+                               1 => Pair (netNotifyOff, netNotifyMult),
+                               2 => Pair (netModernBytes, 0),
+                               others => 0])
+                  else
+                    (tag => (label => Operation'Enum_Rep (Configure_MSIX),
+                             length => 1, protocol => 0, ipc => <>, reserved => 0),
+                     authorityTag => 0,
+                     words => [0 => netIOBase, others => 0]));
+               response : MessageTag;
+            begin
+               response := capCall (DL.Mailbox (virtioNetChild), cfg, CuBit.Messages.Wait_Forever);
+               netTransportReady := response.label = REPLY_OK;
+               if netTransportReady then
+                  --  Queue vectors are set: unmask the entry and the function.
+                  Open_Message_Interrupts (netInterrupts);
+                  debugPrint ("devmgr: virtio-net using MSI-X" & LF);
                else
-                 (tag => (label => Operation'Enum_Rep (Configure_MSIX),
-                          length => 1, protocol => 0, ipc => <>, reserved => 0),
-                  authorityTag => 0,
-                  words => [0 => netIOBase, others => 0]));
-            response : MessageTag;
-         begin
-            response := capCall (DL.Mailbox (virtioNetChild), cfg, CuBit.Messages.Wait_Forever);
-            netTransportReady := response.label = REPLY_OK;
-            if netTransportReady then
-               --  Queue vectors are set: unmask the entry and the function.
-               Open_Message_Interrupts (netInterrupts);
-               debugPrint ("devmgr: virtio-net using MSI-X" & LF);
-            else
-               Close_Message_Interrupts (netInterrupts);
-            end if;
-         end;
-         debugPrint ("devmgr: virtio-net driver started" & LF);
+                  Close_Message_Interrupts (netInterrupts);
+               end if;
+            end;
+            debugPrint ("devmgr: virtio-net driver started" & LF);
 
-         if not netTransportReady or else not waitReady (virtioNetPID) then
+            if not netTransportReady or else not waitReady (virtioNetPID) then
+               virtioNetPID := No_Process;
+            end if;
+         else
+            debugPrint ("devmgr: virtio-net interrupt setup unavailable" & LF);
+            Close_Message_Interrupts (netInterrupts);
+            DL.Abandon (virtioNetChild);
             virtioNetPID := No_Process;
          end if;
-      else
-         debugPrint ("devmgr: virtio-net interrupt setup unavailable" & LF);
-         Close_Message_Interrupts (netInterrupts);
-         DL.Abandon (virtioNetChild);
-         virtioNetPID := No_Process;
       end if;
-   elsif netstackPID /= No_Process then
-      --  Netstack without virtio-net (no network device found)
-      if virtioNetPID /= No_Process then
-         DL.Abandon (virtioNetChild);
-         virtioNetPID := No_Process;
-      end if;
-      DL.Withhold (netstackChild, "nic");
-      assignCPU (netstackChild, "netstack.svc");
-      if DL.Start (netstackChild) then
-         if not waitReady (netstackPID) then
-            netstackPID := No_Process;
-         end if;
-      else
-         netstackPID := No_Process;
-      end if;
-   elsif virtioNetPID /= No_Process then
-      DL.Abandon (virtioNetChild);
-      virtioNetPID := No_Process;
-   end if;
+      netPIDs (K) := virtioNetPID;
+      netInterruptSets (K) := netInterrupts;
+   end loop;
    if netstackPID /= No_Process then
       DL.Provide (Unsigned_32 (DRIVER_NETSTACK), DL.Mailbox (netstackChild));
    end if;
-
    -----------------------------------------------------------------------
    -- Phase 3b: Spawn network manager service
    -----------------------------------------------------------------------
@@ -4131,14 +4161,20 @@ begin
             end if;
          end;
       elsif msg.tag = (label => 16#0228#, length => 0, protocol => 0, ipc => Accepting, reserved => 0) and then
-        from = xhciPID and then xhciPID /= No_Process and then msg.words = [0, 0, 0, 0]
+        from /= No_Process and then
+        (from = xhciPID or else from = netmgrPID) and then
+        msg.words = [0, 0, 0, 0]
       then
-         --  xhci's log publisher: a logstore endpoint badged with its
-         --  publication tag, in the reply.
+         --  A log publisher for a child started before logstore (xhci,
+         --  netmgr): a logstore endpoint badged with its publication tag,
+         --  in the reply.
          if not H.Valid (Logstore_Endpoint) or else
            not Answer_With (from, [others => 0], 0,
              H.Badged (Logstore_Endpoint, H.Read_Write,
-                       CuBit.Log_Protocol.Publisher_Tag (Driver_Log_Budget, XHCI_Log_Issuance)))
+                       CuBit.Log_Protocol.Publisher_Tag
+                         (Driver_Log_Budget,
+                          (if from = xhciPID then XHCI_Log_Issuance
+                           else Netmgr_Log_Issuance))))
          then
             Refuse (from, Answered => H.Valid (Logstore_Endpoint));
          end if;
@@ -4694,8 +4730,8 @@ begin
                      driverPID := ataPID;
                   end if;
                when CuBit.Devices.Network_Controller =>
-                  if Same_Location (item.location, netDev) then
-                     driverPID := virtioNetPID;
+                  if Net_Device_At (item.location) /= 0 then
+                     driverPID := netPIDs (Net_Device_At (item.location));
                   end if;
                when CuBit.Devices.Display_Controller =>
                   if Same_Location (item.location, gpuDev) then
@@ -4747,7 +4783,8 @@ begin
               inventory (Natural (msg.words (0)));
             F : constant Message_Function :=
               (if Same_Location (item.location, nvmeDev) then nvmeInterrupts
-               elsif Same_Location (item.location, netDev) then netInterrupts
+               elsif Net_Device_At (item.location) /= 0 then
+                 netInterruptSets (Net_Device_At (item.location))
                elsif Same_Location (item.location, gpuDev) then gpuInterrupts
                elsif Same_Location (item.location, intelDev) then intelInterrupts
                elsif Same_Location (item.location, hdaDev) then hdaInterrupts

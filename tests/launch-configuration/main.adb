@@ -123,6 +123,18 @@ begin
       Check (OK and then D = GPU, "virtio-gpu round trip");
    end;
    declare
+      V : constant Network_Device_Configuration := (DMA => 16#7F00_0000#, Location => 16#0018#);
+      D : Network_Device_Configuration; OK : Boolean;
+      E : constant Encoded := Encode (V);
+      W : Word_Array (1 .. E.Length) := E.Words (1 .. E.Length);
+   begin
+      Round_Trips.Network_Device (V, D, OK);
+      Check (OK and then D = V, "network device round trip");
+      W (5) := 16#1_0000#;
+      Decode (W, D, OK);
+      Check (not OK, "network device location past 16 bits refused");
+   end;
+   declare
       D : Controller_Configuration; OK : Boolean;
    begin
       Round_Trips.Controller ((16#FEB0_0000#, 16#4000_0000#), NVMe_Controller, D, OK);

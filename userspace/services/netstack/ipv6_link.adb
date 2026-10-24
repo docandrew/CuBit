@@ -6,21 +6,14 @@ pragma Ada_2022;
 with IPv6_Header; use IPv6_Header;
 with Internet_Checksum;
 with ND_Message;
-with Neighbor_Cache;
 with RA_Message;
-with SLAAC_Table;
 
-package body IPv6_Link with
-  SPARK_Mode,
-  Refined_State => (State => (Our_MAC, Key, Link_Local, LL_State, LL_Until,
-                              Addresses, Probed, Announced, Neighbors, Router,
-                              Have_Router, Solicits_Sent, Next_Solicit, Test,
-                              Test_Tries, Test_Until))
-is
+package body IPv6_Link with SPARK_Mode is
 
    use type ND_Message.Kind;
    use type ND_Message.MAC;
    use type SLAAC_Table.State;
+   use type Neighbor_Cache.Table;
 
    ICMPv6              : constant := 58;
    Echo_Request        : constant := 128;
@@ -43,7 +36,6 @@ is
    DAD_Milliseconds    : constant := SLAAC_Table.DAD_Seconds * Milliseconds;
    Retry_Milliseconds  : constant := 1_000;
    Solicit_Interval    : constant := 4 * Retry_Milliseconds;
-   Maximum_Retries     : constant := 3;
    Echo_Identifier     : constant := 16#C0B1#;
    Flag_Solicited      : constant := 16#40#;      --  RFC 4861 4.4 S
    Flag_Override       : constant := 16#20#;      --  O
@@ -54,33 +46,7 @@ is
    All_Routers : constant Address := [0 => 16#FF#, 1 => 16#02#, 15 => 2, others => 0];
    Unspecified : constant Address := [others => 0];
 
-   type Link_Local_State is (Absent, Tentative, Usable, Duplicate);
-   type Test_State is (Off, Waiting, Resolving, Sent, Done);
-   subtype Retry_Count is Natural range 0 .. Maximum_Retries;
-   type Flags is array (SLAAC_Table.Index) of Boolean;
-
-   Our_MAC       : Net.MACAddress := Net.ZERO_MAC;
-   Key           : SipHash.Key := (K0 => 0, K1 => 0);
-   Link_Local    : Address := Unspecified;
-   LL_State      : Link_Local_State := Absent;
-   LL_Until      : Unsigned_64 := 0;
-   Addresses     : SLAAC_Table.Table;
-   Probed        : Flags := [others => False];
-   Announced     : Flags := [others => False];
-   Neighbors     : Neighbor_Cache.Table;
-   Router        : Address := Unspecified;
-   Have_Router   : Boolean := False;
-   Solicits_Sent : Retry_Count := 0;
-   Next_Solicit  : Unsigned_64 := Unsigned_64'Last;
-   Test          : Test_State := Off;
-   Test_Tries    : Retry_Count := 0;
-   Test_Until    : Unsigned_64 := Unsigned_64'Last;
-
    subtype Message_Bytes is IPv6_Header.Bytes;
-
-   function Valid return Boolean is
-     (SLAAC_Table.Unique (Addresses) and then Neighbor_Cache.Unique (Neighbors))
-   with Refined_Global => (Addresses, Neighbors);
 
    --  Now plus Delta, or the end of time rather than wrapping.
    function Later (Now : Unsigned_64; Delta_Ms : Unsigned_64) return Unsigned_64 is
@@ -118,7 +84,7 @@ is
    end Image;
 
    ---------------------------------------------------------------------------
-   --  Addresses
+   --  L.Addresses
    ---------------------------------------------------------------------------
    function Solicited_Node (Target : Address) return Address is
      [0 => 16#FF#, 1 => 16#02#, 11 => 1, 12 => 16#FF#,
@@ -137,21 +103,21 @@ is
    end With_ID;
 
    --  One of our addresses, usable as a source.
-   function Ours (A : Address) return Boolean is
-     ((LL_State = Usable and then A = Link_Local) or else
+   function Ours (L : Link; A : Address) return Boolean is
+     ((L.LL_State = Usable and then A = L.Link_Local) or else
       (for some I in SLAAC_Table.Index =>
-         Addresses (I).St in SLAAC_Table.Preferred | SLAAC_Table.Deprecated and then
-         Addresses (I).Addr = A));
+         L.Addresses (I).St in SLAAC_Table.Preferred | SLAAC_Table.Deprecated and then
+         L.Addresses (I).Addr = A));
 
    --  One of ours still under detection.
-   function Tentative (A : Address) return Boolean is
-     ((LL_State = Tentative and then A = Link_Local) or else
+   function Detecting (L : Link; A : Address) return Boolean is
+     ((L.LL_State = Tentative and then A = L.Link_Local) or else
       (for some I in SLAAC_Table.Index =>
-         Addresses (I).St = SLAAC_Table.Tentative and then Addresses (I).Addr = A));
+         L.Addresses (I).St = SLAAC_Table.Tentative and then L.Addresses (I).Addr = A));
 
    --  A destination this node receives.
-   function For_Us (A : Address) return Boolean is
-     (Ours (A) or else Tentative (A) or else A = All_Nodes or else
+   function For_Us (L : Link; A : Address) return Boolean is
+     (Ours (L, A) or else Detecting (L, A) or else A = All_Nodes or else
       (A (0 .. 12) = Solicited_Node (Unspecified) (0 .. 12)));
 
    ---------------------------------------------------------------------------
@@ -174,7 +140,7 @@ is
    end Checksum;
 
    procedure Send_ICMP
-     (To_MAC : Net.MACAddress; Source, Destination : Address;
+     (L : Link; To_MAC : Net.MACAddress; Source, Destination : Address;
       Hop_Limit : Unsigned_8; Message : Message_Bytes)
    with Pre => Message'First = 0 and then
                Message'Length in Minimum_Message .. Maximum_Message
@@ -201,183 +167,184 @@ is
          Packet);
       for K in 0 .. 5 loop
          Frame (K) := To_MAC (K);
-         Frame (6 + K) := Our_MAC (K);
+         Frame (6 + K) := L.Our_MAC (K);
       end loop;
       Frame (12) := IPv6_Frame.Type_High;
       Frame (13) := IPv6_Frame.Type_Low;
       Frame (Ethernet_Header .. Frame'Last) := Packet;
       pragma Assert (Address_At (Frame, IPv6_Frame.Source_At) = Address_At (Packet, 8));
       pragma Assert (Address_At (Frame, IPv6_Frame.Destination_At) = Address_At (Packet, 24));
-      Send (Frame);
+      Send (L.Owner, Frame);
    end Send_ICMP;
 
    --  A link-layer address option: fixed size (no secondary stack).
    subtype Option_Bytes is Message_Bytes (0 .. 7);
-   function Link_Option (Kind : Unsigned_8) return Option_Bytes is
-     [Kind, MAC_Octets, Our_MAC (0), Our_MAC (1), Our_MAC (2), Our_MAC (3),
-      Our_MAC (4), Our_MAC (5)];
+   function Link_Option (L : Link; Kind : Unsigned_8) return Option_Bytes is
+     [Kind, MAC_Octets, L.Our_MAC (0), L.Our_MAC (1), L.Our_MAC (2), L.Our_MAC (3),
+      L.Our_MAC (4), L.Our_MAC (5)];
 
    --  Neighbor Solicitation for Target: from Source (with our link
    --  address), or from :: for duplicate address detection (without).
-   procedure Solicit (Source, Target : Address) is
+   procedure Solicit (L : Link; Source, Target : Address) is
       Detecting : constant Boolean := Source = Unspecified;
       M : Message_Bytes (0 .. (if Detecting then 23 else 31)) := [others => 0];
    begin
       M (0) := Neighbor_Solicit;
       M (8 .. 23) := Message_Bytes (Target);
       if not Detecting then
-         M (24 .. 31) := Link_Option (ND_Message.Source_Link_Option);
+         M (24 .. 31) := Link_Option (L, ND_Message.Source_Link_Option);
       end if;
-      Send_ICMP (Multicast_MAC (Solicited_Node (Target)), Source, Solicited_Node (Target),
+      Send_ICMP (L, Multicast_MAC (Solicited_Node (Target)), Source, Solicited_Node (Target),
                  ND_Hop_Limit, M);
    end Solicit;
 
-   procedure Advertise (To_MAC : Net.MACAddress; Destination, Target : Address;
+   procedure Advertise (L : Link; To_MAC : Net.MACAddress; Destination, Target : Address;
                         Solicited : Boolean) is
       M : Message_Bytes (0 .. 31) := [others => 0];
    begin
       M (0) := Neighbor_Advert;
       M (4) := (if Solicited then Flag_Solicited + Flag_Override else Flag_Override);
       M (8 .. 23) := Message_Bytes (Target);
-      M (24 .. 31) := Link_Option (ND_Message.Target_Link_Option);
-      Send_ICMP (To_MAC, Target, Destination, ND_Hop_Limit, M);
+      M (24 .. 31) := Link_Option (L, ND_Message.Target_Link_Option);
+      Send_ICMP (L, To_MAC, Target, Destination, ND_Hop_Limit, M);
    end Advertise;
 
-   procedure Solicit_Routers is
+   procedure Solicit_Routers (L : Link) is
       M : Message_Bytes (0 .. 15) := [others => 0];
    begin
       M (0) := Router_Solicitation;
-      M (8 .. 15) := Link_Option (ND_Message.Source_Link_Option);
-      Send_ICMP (Multicast_MAC (All_Routers), Link_Local, All_Routers, ND_Hop_Limit, M);
+      M (8 .. 15) := Link_Option (L, ND_Message.Source_Link_Option);
+      Send_ICMP (L, Multicast_MAC (All_Routers), L.Link_Local, All_Routers, ND_Hop_Limit, M);
    end Solicit_Routers;
 
    --  The link address for an on-link neighbor, if resolved.
-   procedure Neighbor_MAC (A : Address; MAC : out Net.MACAddress; Found : out Boolean) is
+   procedure Neighbor_MAC (L : Link; A : Address; MAC : out Net.MACAddress; Found : out Boolean) is
       Link : ND_Message.MAC;
    begin
-      Neighbor_Cache.Lookup (Neighbors, A, Link, Found);
+      Neighbor_Cache.Lookup (L.Neighbors, A, Link, Found);
       MAC := [Link (0), Link (1), Link (2), Link (3), Link (4), Link (5)];
    end Neighbor_MAC;
 
-   function Global_Source return Address is
+   function Global_Source (L : Link) return Address is
    begin
       for I in SLAAC_Table.Index loop
-         if Addresses (I).St = SLAAC_Table.Preferred then
-            return Addresses (I).Addr;
+         if L.Addresses (I).St = SLAAC_Table.Preferred then
+            return L.Addresses (I).Addr;
          end if;
       end loop;
       return Unspecified;
    end Global_Source;
 
-   procedure Echo (To_MAC : Net.MACAddress; Source, Destination : Address) is
+   procedure Echo (L : Link; To_MAC : Net.MACAddress; Source, Destination : Address) is
       M : Message_Bytes (0 .. 15) := [others => 0];
    begin
       M (0) := Echo_Request;
       M (4 .. 5) := [Unsigned_8 (Echo_Identifier / 256), Unsigned_8 (Echo_Identifier mod 256)];
       M (7) := 1;
       M (8 .. 15) := [16#43#, 16#75#, 16#42#, 16#69#, 16#74#, 16#76#, 16#36#, 16#21#];  --  "CuBitv6!"
-      Send_ICMP (To_MAC, Source, Destination, Default_Hop_Limit, M);
+      Send_ICMP (L, To_MAC, Source, Destination, Default_Hop_Limit, M);
    end Echo;
 
    ---------------------------------------------------------------------------
    --  Start
    ---------------------------------------------------------------------------
    procedure Start
-     (MAC : Net.MACAddress; Secret : SipHash.Key; Now : Unsigned_64;
+     (L : in out Link; Owner : Link_Owner; MAC : Net.MACAddress; Secret : SipHash.Key; Now : Unsigned_64;
       Self_Test : Boolean)
    is
       ID : SLAAC_Table.Interface_ID;
    begin
-      Our_MAC := MAC;
-      Key := Secret;
-      ID := SLAAC_Table.Stable_ID (Key, Link_Local_Prefix, 0);
+      L.Owner := Owner;
+      L.Our_MAC := MAC;
+      L.Key := Secret;
+      ID := SLAAC_Table.Stable_ID (L.Key, Link_Local_Prefix, 0);
       if SLAAC_Table.Reserved (ID) then
-         ID := SLAAC_Table.Stable_ID (Key, Link_Local_Prefix, 1);
+         ID := SLAAC_Table.Stable_ID (L.Key, Link_Local_Prefix, 1);
       end if;
-      Link_Local := With_ID (Link_Local_Prefix, ID);
-      LL_State := Tentative;
-      LL_Until := Later (Now, DAD_Milliseconds);
-      Solicit (Unspecified, Link_Local);
-      Test := (if Self_Test then Waiting else Off);
+      L.Link_Local := With_ID (Link_Local_Prefix, ID);
+      L.LL_State := Tentative;
+      L.LL_Until := Later (Now, DAD_Milliseconds);
+      Solicit (L, Unspecified, L.Link_Local);
+      L.Test := (if Self_Test then Waiting else Off);
    end Start;
 
    ---------------------------------------------------------------------------
    --  Receiving
    ---------------------------------------------------------------------------
    --  Another node claims Target, which we are still detecting.
-   procedure Claimed (Target : Address) with
-     Pre  => SLAAC_Table.Unique (Addresses),
-     Post => SLAAC_Table.Unique (Addresses)
+   procedure Claimed (L : in out Link; Target : Address) with
+     Pre  => SLAAC_Table.Unique (L.Addresses),
+     Post => SLAAC_Table.Unique (L.Addresses) and then L.Neighbors = L.Neighbors'Old
    is
    begin
-      if LL_State = Tentative and then Target = Link_Local then
-         LL_State := Duplicate;
+      if L.LL_State = Tentative and then Target = L.Link_Local then
+         L.LL_State := Duplicate;
          Log ("netstack: IPv6 " & Image (Target) & " is in use by another node" & ASCII.LF);
       else
-         SLAAC_Table.Conflict (Addresses, Target);
+         SLAAC_Table.Conflict (L.Addresses, Target);
       end if;
    end Claimed;
 
    procedure Handle_Solicitation
-     (H : Header; M : ND_Message.Message; From_MAC : Net.MACAddress; Now : Unsigned_64)
-   with Pre  => Valid,
-        Post => Valid
+     (L : in out Link; H : Header; M : ND_Message.Message; From_MAC : Net.MACAddress; Now : Unsigned_64)
+   with Pre  => Valid (L),
+        Post => Valid (L)
    is
       Target : constant Address := M.Target;
       Reply_MAC : Net.MACAddress;
       Found : Boolean;
    begin
-      if Tentative (Target) then
+      if Detecting (L, Target) then
          --  Another node detecting the same address: ours is a duplicate.
          if H.Source = Unspecified then
-            Claimed (Target);
+            Claimed (L, Target);
          end if;
          return;
       end if;
-      if not Ours (Target) then
+      if not Ours (L, Target) then
          return;
       end if;
       if H.Source = Unspecified then
-         Advertise (Multicast_MAC (All_Nodes), All_Nodes, Target, Solicited => False);
+         Advertise (L, Multicast_MAC (All_Nodes), All_Nodes, Target, Solicited => False);
          return;
       end if;
       Neighbor_Cache.Learn
-        (Neighbors, (Of_Kind => ND_Message.Solicitation, Solicited => False, Ours => True,
+        (L.Neighbors, (Of_Kind => ND_Message.Solicitation, Solicited => False, Ours => True,
                      Peer => H.Source, Has_Link => M.Has_Link, Link => M.Link), Now);
-      Neighbor_MAC (H.Source, Reply_MAC, Found);
-      Advertise ((if Found then Reply_MAC else From_MAC), H.Source, Target, Solicited => True);
+      Neighbor_MAC (L, H.Source, Reply_MAC, Found);
+      Advertise (L, (if Found then Reply_MAC else From_MAC), H.Source, Target, Solicited => True);
    end Handle_Solicitation;
 
-   procedure Handle_Advertisement (RA : RA_Message.Advertisement; Source : Address;
+   procedure Handle_Advertisement (L : in out Link; RA : RA_Message.Advertisement; Source : Address;
                                    Now : Unsigned_64)
-   with Pre  => Valid and then
+   with Pre  => Valid (L) and then
                 (for all I in 1 .. RA.Count => RA_Message.Usable (RA.Prefixes (I))),
-        Post => Valid
+        Post => Valid (L)
    is
       ID : SLAAC_Table.Interface_ID;
    begin
       if RA.Router_Lifetime > 0 then
-         Router := Source;
-         Have_Router := True;
+         L.Router := Source;
+         L.Have_Router := True;
       end if;
       for I in 1 .. RA.Count loop
-         pragma Loop_Invariant (Valid);
-         ID := SLAAC_Table.Stable_ID (Key, RA.Prefixes (I).Network, 0);
+         pragma Loop_Invariant (Valid (L));
+         ID := SLAAC_Table.Stable_ID (L.Key, RA.Prefixes (I).Network, 0);
          if SLAAC_Table.Reserved (ID) then
-            ID := SLAAC_Table.Stable_ID (Key, RA.Prefixes (I).Network, 1);
+            ID := SLAAC_Table.Stable_ID (L.Key, RA.Prefixes (I).Network, 1);
          end if;
          if not SLAAC_Table.Reserved (ID) then
-            SLAAC_Table.Advertised (Addresses, RA.Prefixes (I), ID, Seconds (Now));
+            SLAAC_Table.Advertised (L.Addresses, RA.Prefixes (I), ID, Seconds (Now));
          end if;
       end loop;
    end Handle_Advertisement;
 
    --  An ICMPv6 message for us, checksum not yet checked.
    procedure Handle_ICMP
-     (H : Header; M : Message_Bytes; From_MAC : Net.MACAddress; Now : Unsigned_64)
-   with Pre  => Valid and then M'First = 0 and then
+     (L : in out Link; H : Header; M : Message_Bytes; From_MAC : Net.MACAddress; Now : Unsigned_64)
+   with Pre  => Valid (L) and then M'First = 0 and then
                 M'Length in Minimum_Message .. Maximum_Message,
-        Post => Valid
+        Post => Valid (L)
    is
       ND : ND_Message.Message;
       RA : RA_Message.Advertisement;
@@ -390,19 +357,19 @@ is
          when Neighbor_Solicit =>
             ND_Message.Parse (M, H.Hop_Limit, ND, OK);
             if OK then
-               Handle_Solicitation (H, ND, From_MAC, Seconds (Now));
+               Handle_Solicitation (L, H, ND, From_MAC, Seconds (Now));
             end if;
          when Neighbor_Advert =>
             ND_Message.Parse (M, H.Hop_Limit, ND, OK);
             if not OK then
                return;
             end if;
-            if Tentative (ND.Target) then
-               Claimed (ND.Target);
+            if Detecting (L, ND.Target) then
+               Claimed (L, ND.Target);
                return;
             end if;
             Neighbor_Cache.Learn
-              (Neighbors, (Of_Kind => ND_Message.Advertisement, Solicited => ND.Solicited,
+              (L.Neighbors, (Of_Kind => ND_Message.Advertisement, Solicited => ND.Solicited,
                            Ours => False, Peer => ND.Target, Has_Link => ND.Has_Link,
                            Link => ND.Link), Seconds (Now));
          when Router_Advertisement =>
@@ -410,10 +377,10 @@ is
             if not OK then
                return;
             end if;
-            Handle_Advertisement (RA, H.Source, Now);
-            Tick (Now);   --  probe new addresses at once
+            Handle_Advertisement (L, RA, H.Source, Now);
+            Tick (L, Now);   --  probe new addresses at once
          when Echo_Request =>
-            if Ours (H.Destination) and then H.Source /= Unspecified and then
+            if Ours (L, H.Destination) and then H.Source /= Unspecified and then
               not Is_Multicast (H.Source)
             then
                declare
@@ -422,18 +389,18 @@ is
                   Found : Boolean;
                begin
                   Reply (0) := Echo_Reply;
-                  Neighbor_MAC (H.Source, Reply_MAC, Found);
-                  Send_ICMP ((if Found then Reply_MAC else From_MAC), H.Destination,
+                  Neighbor_MAC (L, H.Source, Reply_MAC, Found);
+                  Send_ICMP (L, (if Found then Reply_MAC else From_MAC), H.Destination,
                              H.Source, Default_Hop_Limit, Reply);
                end;
             end if;
          when Echo_Reply =>
-            if Test = Sent and then H.Source = Router and then
+            if L.Test = Sent and then H.Source = L.Router and then
               M'Length >= Echo_Minimum and then
               M (4) = Unsigned_8 (Echo_Identifier / 256) and then
               M (5) = Unsigned_8 (Echo_Identifier mod 256)
             then
-               Test := Done;
+               L.Test := Done;
                Log ("netstack: IPv6 echo reply from " & Image (H.Source) & ASCII.LF);
             end if;
          when others =>
@@ -441,11 +408,11 @@ is
       end case;
    end Handle_ICMP;
 
-   procedure Receive (Frame : IPv6_Header.Bytes; Now : Unsigned_64)
+   procedure Receive (L : in out Link; Frame : IPv6_Header.Bytes; Now : Unsigned_64)
    is
    begin
       if Frame'Length < Ethernet_Header + IPv6_Header.Size or else
-        Frame'Length > Maximum_Frame or else LL_State = Absent
+        Frame'Length > Maximum_Frame or else L.LL_State = Absent
       then
          return;
       end if;
@@ -461,7 +428,7 @@ is
             return;
          end if;
          Parse (Packet, H);
-         if H.Next_Header /= ICMPv6 or else not For_Us (H.Destination) or else
+         if H.Next_Header /= ICMPv6 or else not For_Us (L, H.Destination) or else
            H.Payload_Length < Minimum_Message
          then
             return;   --  no IPv6 transport or extension headers yet
@@ -469,53 +436,57 @@ is
          --  Copied to a fixed buffer: its length is the header's.
          Buffer (0 .. H.Payload_Length - 1) :=
            Packet (IPv6_Header.Size .. IPv6_Header.Size + H.Payload_Length - 1);
-         Handle_ICMP (H, Buffer (0 .. H.Payload_Length - 1), From_MAC, Now);
+         Handle_ICMP (L, H, Buffer (0 .. H.Payload_Length - 1), From_MAC, Now);
       end;
    end Receive;
 
    ---------------------------------------------------------------------------
    --  Timers
    ---------------------------------------------------------------------------
-   procedure Tick (Now : Unsigned_64)
+   procedure Tick (L : in out Link; Now : Unsigned_64)
    is
       Router_MAC : Net.MACAddress;
       Found : Boolean;
    begin
-      if LL_State = Tentative and then Now >= LL_Until then
-         LL_State := Usable;
-         Log ("netstack: IPv6 link-local " & Image (Link_Local) & ASCII.LF);
-         Solicit_Routers;
-         Solicits_Sent := 1;
-         Next_Solicit := Later (Now, Solicit_Interval);
+      if L.LL_State = Tentative and then Now >= L.LL_Until then
+         L.LL_State := Usable;
+         Log ("netstack: IPv6 link-local " & Image (L.Link_Local) & ASCII.LF);
+         --  Detection passed: announce it (RFC 4861 7.2.6).
+         Advertise (L, Multicast_MAC (All_Nodes), All_Nodes, L.Link_Local, Solicited => False);
+         Solicit_Routers (L);
+         L.Solicits_Sent := 1;
+         L.Next_Solicit := Later (Now, Solicit_Interval);
       end if;
-      if LL_State = Usable and then not Have_Router and then Now >= Next_Solicit and then
-        Solicits_Sent < Maximum_Retries
+      if L.LL_State = Usable and then not L.Have_Router and then Now >= L.Next_Solicit and then
+        L.Solicits_Sent < Maximum_Retries
       then
-         Solicit_Routers;
-         Solicits_Sent := Solicits_Sent + 1;
-         Next_Solicit := Later (Now, Solicit_Interval);
+         Solicit_Routers (L);
+         L.Solicits_Sent := L.Solicits_Sent + 1;
+         L.Next_Solicit := Later (Now, Solicit_Interval);
       end if;
-      SLAAC_Table.Tick (Addresses, Seconds (Now));
+      SLAAC_Table.Tick (L.Addresses, Seconds (Now));
       for I in SLAAC_Table.Index loop
-         pragma Loop_Invariant (Valid);
-         case Addresses (I).St is
+         pragma Loop_Invariant (Valid (L));
+         case L.Addresses (I).St is
             when SLAAC_Table.Free =>
-               Probed (I) := False;
-               Announced (I) := False;
+               L.Probed (I) := False;
+               L.Announced (I) := False;
             when SLAAC_Table.Tentative =>
-               if not Probed (I) then
-                  Solicit (Unspecified, Addresses (I).Addr);
-                  Probed (I) := True;
+               if not L.Probed (I) then
+                  Solicit (L, Unspecified, L.Addresses (I).Addr);
+                  L.Probed (I) := True;
                end if;
             when SLAAC_Table.Preferred =>
-               if not Announced (I) then
-                  Announced (I) := True;
-                  Log ("netstack: IPv6 address " & Image (Addresses (I).Addr) & ASCII.LF);
+               if not L.Announced (I) then
+                  L.Announced (I) := True;
+                  Log ("netstack: IPv6 address " & Image (L.Addresses (I).Addr) & ASCII.LF);
+                  Advertise (L, Multicast_MAC (All_Nodes), All_Nodes, L.Addresses (I).Addr,
+                             Solicited => False);
                end if;
             when SLAAC_Table.Duplicate =>
-               if not Announced (I) then
-                  Announced (I) := True;
-                  Log ("netstack: IPv6 " & Image (Addresses (I).Addr) &
+               if not L.Announced (I) then
+                  L.Announced (I) := True;
+                  Log ("netstack: IPv6 " & Image (L.Addresses (I).Addr) &
                        " is in use by another node" & ASCII.LF);
                end if;
             when SLAAC_Table.Deprecated =>
@@ -523,58 +494,88 @@ is
          end case;
       end loop;
       --  The self-test: resolve the router, then ping it once.
-      case Test is
+      case L.Test is
          when Waiting =>
-            if Have_Router and then Global_Source /= Unspecified and then LL_State = Usable then
-               Neighbor_Cache.Solicit (Neighbors, Router, Seconds (Now));
-               Solicit (Link_Local, Router);
-               Test := Resolving;
-               Test_Tries := 1;
-               Test_Until := Later (Now, Retry_Milliseconds);
+            if L.Have_Router and then Global_Source (L) /= Unspecified and then L.LL_State = Usable then
+               Neighbor_Cache.Solicit (L.Neighbors, L.Router, Seconds (Now));
+               Solicit (L, L.Link_Local, L.Router);
+               L.Test := Resolving;
+               L.Test_Tries := 1;
+               L.Test_Until := Later (Now, Retry_Milliseconds);
             end if;
          when Resolving =>
-            Neighbor_MAC (Router, Router_MAC, Found);
+            Neighbor_MAC (L, L.Router, Router_MAC, Found);
             if Found then
-               Echo (Router_MAC, Link_Local, Router);
-               Test := Sent;
-               Test_Until := Later (Now, Retry_Milliseconds);
-            elsif Now >= Test_Until and then Test_Tries < Maximum_Retries then
-               Solicit (Link_Local, Router);
-               Test_Tries := Test_Tries + 1;
-               Test_Until := Later (Now, Retry_Milliseconds);
+               Echo (L, Router_MAC, L.Link_Local, L.Router);
+               L.Test := Sent;
+               L.Test_Until := Later (Now, Retry_Milliseconds);
+            elsif Now >= L.Test_Until and then L.Test_Tries < Maximum_Retries then
+               Solicit (L, L.Link_Local, L.Router);
+               L.Test_Tries := L.Test_Tries + 1;
+               L.Test_Until := Later (Now, Retry_Milliseconds);
             end if;
          when Sent =>
-            if Now >= Test_Until and then Test_Tries < Maximum_Retries then
-               Neighbor_MAC (Router, Router_MAC, Found);
+            if Now >= L.Test_Until and then L.Test_Tries < Maximum_Retries then
+               Neighbor_MAC (L, L.Router, Router_MAC, Found);
                if Found then
-                  Echo (Router_MAC, Link_Local, Router);
+                  Echo (L, Router_MAC, L.Link_Local, L.Router);
                end if;
-               Test_Tries := Test_Tries + 1;
-               Test_Until := Later (Now, Retry_Milliseconds);
+               L.Test_Tries := L.Test_Tries + 1;
+               L.Test_Until := Later (Now, Retry_Milliseconds);
             end if;
          when Off | Done =>
             null;
       end case;
    end Tick;
 
-   function Next_Deadline return Unsigned_64 is
+   ---------------------------------------------------------------------------
+   --  The link going down and coming back
+   ---------------------------------------------------------------------------
+   procedure Link_Down (L : in out Link) is
+   begin
+      L.Neighbors := [others => (others => <>)];
+      L.Router := Unspecified;
+      L.Have_Router := False;
+      L.Solicits_Sent := 0;
+      L.Next_Solicit := Unsigned_64'Last;
+   end Link_Down;
+
+   procedure Link_Up (L : in out Link; Now : Unsigned_64) is
+   begin
+      if L.LL_State = Absent then
+         return;   --  never started: Start detects
+      end if;
+      --  A duplicate stays one; anything else is detected again.
+      if L.LL_State /= Duplicate then
+         L.LL_State := Tentative;
+         L.LL_Until := Later (Now, DAD_Milliseconds);
+         Solicit (L, Unspecified, L.Link_Local);
+      end if;
+      SLAAC_Table.Restart_Detection (L.Addresses, Seconds (Now));
+      L.Probed := [others => False];
+      L.Announced := [others => False];
+      L.Solicits_Sent := 0;
+      L.Next_Solicit := Unsigned_64'Last;
+   end Link_Up;
+
+   function Next_Deadline (L : Link) return Unsigned_64 is
       D : Unsigned_64 := Unsigned_64'Last;
    begin
-      if LL_State = Tentative then
-         D := LL_Until;
+      if L.LL_State = Tentative then
+         D := L.LL_Until;
       end if;
-      if LL_State = Usable and then not Have_Router and then Solicits_Sent < Maximum_Retries then
-         D := Unsigned_64'Min (D, Next_Solicit);
+      if L.LL_State = Usable and then not L.Have_Router and then L.Solicits_Sent < Maximum_Retries then
+         D := Unsigned_64'Min (D, L.Next_Solicit);
       end if;
-      if Test in Resolving | Sent then
-         D := Unsigned_64'Min (D, Test_Until);
+      if L.Test in Resolving | Sent then
+         D := Unsigned_64'Min (D, L.Test_Until);
       end if;
       for I in SLAAC_Table.Index loop
-         if Addresses (I).St = SLAAC_Table.Tentative then
+         if L.Addresses (I).St = SLAAC_Table.Tentative then
             D := Unsigned_64'Min
-              (D, (if Addresses (I).DAD_Until > Unsigned_64'Last / Milliseconds
+              (D, (if L.Addresses (I).DAD_Until > Unsigned_64'Last / Milliseconds
                    then Unsigned_64'Last
-                   else Addresses (I).DAD_Until * Milliseconds));
+                   else L.Addresses (I).DAD_Until * Milliseconds));
          end if;
       end loop;
       return D;

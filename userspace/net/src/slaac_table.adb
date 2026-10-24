@@ -144,4 +144,24 @@ package body SLAAC_Table with SPARK_Mode is
       end loop;
    end Tick;
 
+   procedure Restart_Detection (T : in out Table; Now : Time) is
+   begin
+      for I in Index loop
+         if T (I).St in Tentative | Preferred | Deprecated then
+            T (I).St := Tentative;
+            T (I).DAD_Until := Now + DAD_Seconds;
+         end if;
+         pragma Loop_Invariant
+           (for all J in Index =>
+              (if J > I then T (J) = T'Loop_Entry (J)));
+         pragma Loop_Invariant
+           (for all J in Index =>
+              (if J <= I then
+                 (if T'Loop_Entry (J).St in Tentative | Preferred | Deprecated then
+                    T (J) = (T'Loop_Entry (J) with delta St => Tentative,
+                                                          DAD_Until => Now + DAD_Seconds)
+                  else T (J) = T'Loop_Entry (J))));
+      end loop;
+   end Restart_Detection;
+
 end SLAAC_Table;

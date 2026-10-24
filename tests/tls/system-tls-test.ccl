@@ -11,11 +11,9 @@
   # two must agree before the clock is adjusted.
   (setting "tls.hosts" "tls-test.cubit.internal=10.0.2.2")
   (setting "time.servers" "time.cloudflare.com 0.pool.ntp.org 1.pool.ntp.org 2.pool.ntp.org")
-  # Network interface configuration. Addresses are IPv6 text; an IPv4
-  # address is written mapped, as ::ffff:a.b.c.d (CuBit.Net_Address).
-  (setting "net.if0.method" "static")
-  (setting "net.if0.address" "::ffff:10.0.2.15")
-  (setting "net.if0.netmask" "::ffff:255.255.255.0")
-  (setting "net.if0.gateway" "::ffff:10.0.2.2")
+  # Network interfaces: none set, so each gets netmgr's default policy
+  # (DHCP and SLAAC; QEMU's user network answers with 10.0.2.15). A typed
+  # interface setting makes config.svc and netmgr compile its CCL type at
+  # start, which this minimal 128 MiB profile has no memory to spare for.
   (setting "net.dns.primary" "::ffff:10.0.2.3")
 )

@@ -1231,7 +1231,8 @@ class Manifests(unittest.TestCase):
             for key, shape, value in re.findall(r'\(Setting "([^"]+)" Shape\.(\w+)\s+\(?Value\.(\w+)',
                                                 catalog.read_text()):
                 declared[key] = (shape, value)
-        self.assertIn('net.if0.address', declared)
+        self.assertIn('net.interface.', declared)
+        self.assertNotIn('net.if0.address', declared)
 
         def setting_of(key):
             for name, (shape, value) in declared.items():

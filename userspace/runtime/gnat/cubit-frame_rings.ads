@@ -46,6 +46,40 @@ package CuBit.Frame_Rings with Pure, SPARK_Mode is
    Consumed_At     : constant := 64;
    Wake_At         : constant := 68;
 
+   --  The end of a direction's header (Wake_At's word).
+   Direction_Header_Bytes : constant := Wake_At + 4;
+
+   --  The link block (docs/net-link.md): the driver's report of its link
+   --  as a level value, in its own cache lines between the two direction
+   --  headers. The driver alone writes it. Its words are 32-bit, little
+   --  endian; word 0 is the generation (CuBit.Net_Link's seqlock: odd
+   --  while the driver writes, even once a report is complete, zero when
+   --  none was ever made), words 1 .. Link_Words - 1 the report
+   --  (CuBit.Net_Link.Encode). A change costs no message: the driver
+   --  rings the receive doorbell it already has, and netstack reads the
+   --  block once per pass over the receive ring, never per frame.
+   Link_At         : constant := 1_024;
+   Link_Word_Bytes : constant := 4;
+   Link_Words      : constant := 14;
+   Link_Bytes      : constant := Link_Words * Link_Word_Bytes;
+   subtype Link_Word_Index is Natural range 0 .. Link_Words - 1;
+   Link_Generation_Word : constant Link_Word_Index := 0;
+
+   --  The block lies after the receive header, before the transmit
+   --  header, and within the header page.
+   pragma Compile_Time_Error
+     (Link_At < Receive_Header_At + Direction_Header_Bytes or else
+      Link_At + Link_Bytes > Transmit_Header_At or else
+      Transmit_Header_At + Direction_Header_Bytes > Page_Bytes,
+      "the link block overlaps a direction header or leaves the header page");
+
+   --  Byte offset in the grant of the link block's word W.
+   function Link_Word_At (W : Link_Word_Index) return Natural is
+     (Link_At + W * Link_Word_Bytes)
+   with Post => Link_Word_At'Result >= Receive_Header_At + Direction_Header_Bytes
+                and then Link_Word_At'Result + Link_Word_Bytes <= Transmit_Header_At
+                and then Link_Word_At'Result mod Link_Word_Bytes = 0;
+
    --  The slot areas after the header page.
    Receive_Slots_At  : constant := Page_Bytes;
    Transmit_Slots_At : constant := Receive_Slots_At + Slots * Slot_Bytes;

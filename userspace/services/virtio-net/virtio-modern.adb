@@ -15,6 +15,7 @@ package body Virtio.Modern is
    DRIVER_FEATURE        : constant := 16#0C#;
    MSIX_CONFIG           : constant := 16#10#;
    DEVICE_STATUS         : constant := 16#14#;
+   CONFIG_GENERATION     : constant := 16#15#;
    QUEUE_SELECT          : constant := 16#16#;
    QUEUE_SIZE_REG        : constant := 16#18#;
    QUEUE_MSIX_VECTOR     : constant := 16#1A#;
@@ -24,7 +25,9 @@ package body Virtio.Modern is
    QUEUE_DRIVER          : constant := 16#28#;
    QUEUE_DEVICE          : constant := 16#30#;
    COMMON_SIZE           : constant := 16#38#;
-   NET_CONFIG_SIZE       : constant := 6;       --  the MAC
+   NET_STATUS_AT         : constant := 6;       --  after the MAC
+   NET_CONFIG_SIZE       : constant := 8;       --  the MAC and the status
+   GENERATION_TRIES      : constant := 8;
    NOTIFY_WRITE          : constant := 2;       --  a 16-bit queue index
    MAXIMUM_NOTIFY_OFF    : constant := 16#FFFF#;
    RESET_POLLS           : constant := 1_000_000;
@@ -187,5 +190,18 @@ package body Virtio.Modern is
 
    function Device_Byte (I : Natural) return Unsigned_8 is
      (if Unsigned_64 (I) < NET_CONFIG_SIZE then R8 (Device_At + Integer_Address (I)) else 0);
+
+   function Net_Status return Unsigned_16 is
+      Before, After : Unsigned_8;
+      Value : Unsigned_16 := 0;
+   begin
+      for Try in 1 .. GENERATION_TRIES loop
+         Before := R8 (Common_At + CONFIG_GENERATION);
+         Value := R16 (Device_At + NET_STATUS_AT);
+         After := R8 (Common_At + CONFIG_GENERATION);
+         exit when Before = After;
+      end loop;
+      return Value;
+   end Net_Status;
 
 end Virtio.Modern;

@@ -71,11 +71,7 @@
   (setting "desktop.launch.96-logs"
     (Launch_Entry label => "Logs" action => (Launch_Action.Program "logs.app") icon => (Launch_Icon "Logs") category => App_Category.System
       color => (App_Color.RGB (RGB_Color red => 133 green => 147 blue => 170))))
-  # Network interface configuration. Addresses are IPv6 text; an IPv4
-  # address is written mapped, as ::ffff:a.b.c.d (CuBit.Net_Address).
-  (setting "net.if0.method" "static")
-  (setting "net.if0.address" "::ffff:10.0.2.15")
-  (setting "net.if0.netmask" "::ffff:255.255.255.0")
-  (setting "net.if0.gateway" "::ffff:10.0.2.2")
-  (setting "net.dns.primary" "::ffff:10.0.2.3")
+  # Network interfaces: none named, so each one a machine has is
+  # Automatic (DHCP for IPv4, SLAAC for IPv6), DNS servers included
+  # (docs/net-link.md section 7).
 )

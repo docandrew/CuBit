@@ -12,6 +12,7 @@ with Interfaces; use Interfaces;
 
 with Net;
 with TCP_Options;
+with CuBit.Net_Link;
 
 package TCP_Slots with SPARK_Mode is
 
@@ -25,6 +26,11 @@ package TCP_Slots with SPARK_Mode is
       remotePort : Unsigned_16 := 0;
       remoteIP   : Net.IPv4Address := [others => 0];
       remoteMAC  : Net.MACAddress := [others => 0];
+      --  Our address on the connection, and the interface its segments go
+      --  out on (routed: chosen; a TIME-WAIT acknowledgement routes anew).
+      localIP    : Net.IPv4Address := [others => 0];
+      routed     : Boolean := False;
+      egress     : CuBit.Net_Link.Interface_Handle;
    end record;
 
    --  Connections, including ones their owner released that are still
@@ -43,6 +49,7 @@ package TCP_Slots with SPARK_Mode is
    --  Parsed fields of an arriving segment (from TCP_Header).
    type SegmentInfo is record
       srcIP   : Net.IPv4Address;
+      dstIP   : Net.IPv4Address;   --  ours: the address it came to
       srcPort : Unsigned_16;
       dstPort : Unsigned_16;
       seqNum  : Unsigned_32;

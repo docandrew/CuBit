@@ -130,6 +130,19 @@ package SLAAC_Table with SPARK_Mode is
              (for all I in Index =>
                 (if T'Old (I).St = Duplicate then T (I).St in Duplicate | Free));
 
+   --  The link came back (or its address changed): every address in use
+   --  goes through duplicate address detection again (RFC 4862 5.4: on
+   --  attaching to a link, which a link coming up may be). Duplicates and
+   --  free entries stay as they are.
+   procedure Restart_Detection (T : in out Table; Now : Time) with
+     Pre  => Unique (T),
+     Post => Unique (T) and then
+             (for all I in Index =>
+                (if T'Old (I).St in Tentative | Preferred | Deprecated then
+                   T (I) = (T'Old (I) with delta St => Tentative,
+                                                 DAD_Until => Now + DAD_Seconds)
+                 else T (I) = T'Old (I)));
+
    --  Addr may be the source of new connections.
    function Preferred_Source (T : Table; Addr : Address) return Boolean is
      (for some I in Index => T (I).St = Preferred and then T (I).Addr = Addr);

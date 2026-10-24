@@ -451,6 +451,18 @@ network-check: ccl-build user_runtime ccl-manifest
 	$(CCL_BUILD) ../userspace/apps/network-check/component.ccl
 	cp ../userspace/apps/network-check/build/network-check.app isodir/boot/network-check.app
 
+# The net-link and net-multi headless tests' guests (tests/net-link).
+.PHONY: net-link-check net-multi-check
+net-link-check: ccl-build user_runtime ccl-manifest
+	mkdir -p ../userspace/apps/net-link-check/build
+	$(CCL_BUILD) ../userspace/apps/net-link-check/component.ccl
+	cp ../userspace/apps/net-link-check/build/net-link-check.app isodir/boot/net-link-check.app
+
+net-multi-check: ccl-build user_runtime ccl-manifest
+	mkdir -p ../userspace/apps/net-multi-check/build
+	$(CCL_BUILD) ../userspace/apps/net-multi-check/component.ccl
+	cp ../userspace/apps/net-multi-check/build/net-multi-check.app isodir/boot/net-multi-check.app
+
 test-tcp-session:
 	$(ALR) gprbuild -p -P../tests/tcp-session/tcp_session_tests.gpr
 	../tests/tcp-session/build/main
@@ -2157,7 +2169,8 @@ iso: cubit_kernel initrd
 # runs a binary left over from an older ABI (a stale one passes or fails for
 # the wrong reason).
 TEST_PROGRAMS := logs boot-logs timesync-test ccl-console log-check \
-	log-fields-check libc-check cxx-check network-check timesync-check \
+	log-fields-check libc-check cxx-check network-check net-link-check \
+	net-multi-check timesync-check \
 	tls-probe tls-check config-check desktop-check display-check clipboard-check \
 	metrics-check grant-forward ccl-control input-stress bench-storage \
 	bench-input

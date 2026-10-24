@@ -1,0 +1,7 @@
+# The net-multi headless test (tests/net-link): two network interfaces, a
+# stream over the second and probes by the default route, while the host
+# pulls each cable in turn.
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "net-multi-check.app" (priority 3) (network approve-declared))
+)

@@ -77,11 +77,13 @@
   # Trace records are discarded unless this is lowered; log-control holders
   # (Logs, the CCL console and Workbench) can change it while running.
   (setting "logs.minimum-level" "Severity.Information")
-  # Network interface configuration. Addresses are IPv6 text; an IPv4
-  # address is written mapped, as ::ffff:a.b.c.d (CuBit.Net_Address).
-  (setting "net.if0.method" "static")
-  (setting "net.if0.address" "::ffff:10.0.2.15")
-  (setting "net.if0.netmask" "::ffff:255.255.255.0")
-  (setting "net.if0.gateway" "::ffff:10.0.2.2")
+  # Network interfaces, each by its stable name (docs/net-link.md): the
+  # virtio-net function QEMU's headless runs place at 00:10.0. Any other
+  # interface, or this one without a setting, is Automatic (DHCP, SLAAC).
+  # Addresses are IPv6 text, IPv4 mapped (::ffff:a.b.c.d); an IPv4 /24 is
+  # prefix 120.
+  (setting "net.interface.pci-00-10-0"
+    (Net_Interface.Static (Static_Interface address => "::ffff:10.0.2.15" prefix => 120
+      gateway => (Gateway.Via "::ffff:10.0.2.2"))))
   (setting "net.dns.primary" "::ffff:10.0.2.3")
 )

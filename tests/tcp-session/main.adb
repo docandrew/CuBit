@@ -1,3 +1,4 @@
+with CuBit.Process_IDs;
 with Ada.Text_IO;
 with Interfaces; use Interfaces;
 with Net;
@@ -110,52 +111,55 @@ procedure Main is
       Ada.Text_IO.Put_Line ("TCP listeners: ownership, bounded backlog, stale handles, admission to accept, expiry, owner exit PASS");
    end Test_Listeners;
    procedure Test_Channel_Handles is
+      --  A process identity from its word (CuBit.Process_IDs is private).
+      function P (Word : Unsigned_64) return CuBit.Process_IDs.Process_ID
+        renames CuBit.Process_IDs.From_Word;
       use Network_Channel_Handles;
       Handles : Table;
       Slot : Channel_Reference;
       Old, New_Id : Handle;
       Saved : array (Channel_Index) of Handle;
    begin
-      Allocate (Handles, 0, 42, Slot);
+      Allocate (Handles, P (0), 42, Slot);
       pragma Assert (Slot = No_Channel);
-      Allocate (Handles, 10, 0, Slot);
+      Allocate (Handles, P (10), 0, Slot);
       pragma Assert (Slot = No_Channel);
-      Allocate (Handles, 10, 42, Slot);
+      Allocate (Handles, P (10), 42, Slot);
       pragma Assert (Slot = 0);
       Old := Value (Handles, Slot);
       pragma Assert (Old /= No_Handle);
-      pragma Assert (Resolve (Handles, 10, 42, Old) = Slot);
-      pragma Assert (Resolve (Handles, 11, 42, Old) = No_Channel);
-      pragma Assert (Resolve (Handles, 10, 43, Old) = No_Channel);
-      pragma Assert (Resolve (Handles, 10, 42, No_Handle) = No_Channel);
-      pragma Assert (Resolve (Handles, 10, 42, Handle'Last) = No_Channel);
+      pragma Assert (Resolve (Handles, P (10), 42, Old) = Slot);
+      pragma Assert (Resolve (Handles, P (11), 42, Old) = No_Channel);
+      pragma Assert (Resolve (Handles, P (10), 43, Old) = No_Channel);
+      pragma Assert (Resolve (Handles, P (10), 42, No_Handle) = No_Channel);
+      pragma Assert (Resolve (Handles, P (10), 42, Handle'Last) = No_Channel);
       for Round in 1 .. 1000 loop
          Release (Handles, 0);
-         Allocate (Handles, 10, 42, Slot);
+         Allocate (Handles, P (10), 42, Slot);
          pragma Assert (Slot = 0);
          New_Id := Value (Handles, Slot);
          pragma Assert (New_Id > Old);
-         pragma Assert (Resolve (Handles, 10, 42, Old) = No_Channel);
-         pragma Assert (Resolve (Handles, 10, 42, New_Id) = 0);
+         pragma Assert (Resolve (Handles, P (10), 42, Old) = No_Channel);
+         pragma Assert (Resolve (Handles, P (10), 42, New_Id) = 0);
          Old := New_Id;
       end loop;
       Saved (0) := Old;
       for I in Channel_Index range 1 .. Channel_Index'Last loop
-         Allocate (Handles, 10, 42, Slot);
+         Allocate (Handles, P (10), 42, Slot);
          pragma Assert (Slot = I);
          Saved (I) := Value (Handles, I);
       end loop;
-      Allocate (Handles, 10, 42, Slot);
+      Allocate (Handles, P (10), 42, Slot);
       pragma Assert (Slot = No_Channel);
       for I in Saved'Range loop
-         pragma Assert (Resolve (Handles, 10, 42, Saved (I)) = I);
+         pragma Assert (Resolve (Handles, P (10), 42, Saved (I)) = I);
       end loop;
       Release (Handles, 3);
       Release (Handles, 3); -- repeated internal release cannot revive an ID
-      Allocate (Handles, 11, 43, Slot);
+      Allocate (Handles, P (11), 43, Slot);
       pragma Assert (Slot = 3);
-      pragma Assert (Resolve (Handles, 10, 42, Saved (3)) = No_Channel);
-      pragma Assert (Resolve (Handles, 11, 43, Value (Handles, 3)) = 3);
+      pragma Assert (Resolve (Handles, P (10), 42, Saved (3)) = No_Channel);
+      pragma Assert (Resolve (Handles, P (11), 43, Value (Handles, 3)) = 3);
       Ada.Text_IO.Put_Line ("Network channel handles: owner/tag binding, non-reuse, stale rejection, table exhaustion PASS");
    end Test_Channel_Handles;
 
@@ -273,23 +277,34 @@ procedure Main is
       Ada.Text_IO.Put_Line ("TCP frames (proved finisher): IPv4 and TCP checksums for every segment length 20 .. 1460 PASS");
    end Test_TCP_Frames;
 
-   --  The proved IPv6_Link instance: detection, then a router solicitation.
+   --  The proved IPv6_Link instance: detection, an announcement and a
+   --  router solicitation; detection again when the link comes back
+   --  (docs/net-link.md section 5).
    procedure Test_IPv6_Link is
       use IPv6_Link_Proof;
+      L : Link.Link;
       Before : Natural;
    begin
-      Link.Start ([16#52#, 16#54#, 0, 16#12#, 16#34#, 16#56#], (K0 => 1, K1 => 2), 0, False);
+      Link.Start (L, 1, [16#52#, 16#54#, 0, 16#12#, 16#34#, 16#56#], (K0 => 1, K1 => 2), 0, False);
       pragma Assert (Frames = 1);                      --  the detection probe
-      pragma Assert (Link.Next_Deadline = 1_000);
-      Link.Tick (999);
+      pragma Assert (Link.Next_Deadline (L) = 1_000);
+      Link.Tick (L, 999);
       pragma Assert (Frames = 1 and then Lines = 0);
-      Link.Tick (1_000);
-      pragma Assert (Frames = 2 and then Lines = 1);   --  usable; solicit routers
+      Link.Tick (L, 1_000);
+      pragma Assert (Frames = 3 and then Lines = 1);   --  usable: announce, solicit routers
       Before := Frames;
-      Link.Receive ([0 .. 20 => 0], 2_000);            --  runt: ignored
-      Link.Tick (Unsigned_64'Last);                    --  no overflow at the end of time
-      pragma Assert (Frames >= Before);
-      Ada.Text_IO.Put_Line ("IPv6 link (proved instance): detection period, router solicitation, runt frames, clock limit PASS");
+      Link.Receive (L, [0 .. 20 => 0], 2_000);         --  runt: ignored
+      pragma Assert (Frames = Before);
+      --  The link goes down and comes back: the address is detected again
+      --  before it is used, then announced again.
+      Link.Link_Down (L);
+      Link.Link_Up (L, 5_000);
+      pragma Assert (Frames = Before + 1);             --  a new detection probe
+      pragma Assert (Link.Next_Deadline (L) = 6_000);
+      Link.Tick (L, 6_000);
+      pragma Assert (Frames = Before + 3 and then Lines = 2);
+      Link.Tick (L, Unsigned_64'Last);                 --  no overflow at the end of time
+      Ada.Text_IO.Put_Line ("IPv6 link (proved instance): detection period, announcement, router solicitation, runt frames, re-detection after the link comes back, clock limit PASS");
    end Test_IPv6_Link;
 
    procedure Test_Time_Wait is

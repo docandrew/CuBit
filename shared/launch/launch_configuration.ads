@@ -69,17 +69,17 @@ package Launch_Configuration with Pure, SPARK_Mode is
 
    type Configuration_Kind is
      (Device_Manager, Process_Manager, Boot_Image_Reader, NVMe_Controller,
-      HDA_Controller, Virtio_Net, Virtio_Input, Virtio_GPU, Generic_PCI);
+      HDA_Controller, Virtio_Input, Virtio_GPU, Generic_PCI, Network_Device);
    for Configuration_Kind use
      (Device_Manager    => 1,
       Process_Manager   => 2,
       Boot_Image_Reader => 3,
       NVMe_Controller   => 4,
       HDA_Controller    => 5,
-      Virtio_Net        => 6,
       Virtio_Input      => 7,
       Virtio_GPU        => 8,
-      Generic_PCI       => 9);
+      Generic_PCI       => 9,
+      Network_Device    => 10);
 
    --  devmgr's capability handles, placed by the kernel before it runs
    --  (CAP-002): handle words in its own table, never names or slot
@@ -197,10 +197,20 @@ package Launch_Configuration with Pure, SPARK_Mode is
       DMA       : Physical_Address := 0;
    end record;
 
-   --  devmgr to virtio-net and virtio-input: their DMA region (queues and
-   --  buffers), which devmgr allocated at the driver's fixed address.
+   --  devmgr to virtio-input: its DMA region (queues and buffers), which
+   --  devmgr allocated at the driver's fixed address.
    type Queue_Configuration is record
       DMA : Physical_Address := 0;
+   end record;
+
+   --  bus << 8 | device << 3 | function (the PCI routing ID).
+   subtype Routing_ID is Unsigned_64 range 0 .. 2 ** 16 - 1;
+
+   --  devmgr to a network driver (virtio-net): its DMA region, and where
+   --  its device is, which names the interface (docs/net-link.md).
+   type Network_Device_Configuration is record
+      DMA      : Physical_Address := 0;
+      Location : Routing_ID := 0;
    end record;
 
    --  devmgr to virtio-gpu: the modern transport and its DMA banks.
@@ -241,8 +251,6 @@ package Launch_Configuration with Pure, SPARK_Mode is
    subtype Window_Count is Natural range 0 .. Maximum_Windows;
    subtype Window_Index is Positive range 1 .. Maximum_Windows;
    type Window_Array is array (Window_Index) of Physical_Span;
-   --  bus << 8 | device << 3 | function (the PCI routing ID).
-   subtype Routing_ID is Unsigned_64 range 0 .. 2 ** 16 - 1;
    subtype PCI_ID is Unsigned_64 range 0 .. 2 ** 16 - 1;
    subtype PCI_Revision is Unsigned_64 range 0 .. 2 ** 8 - 1;
    --  base class << 16 | subclass << 8 | programming interface.
@@ -296,9 +304,10 @@ package Launch_Configuration with Pure, SPARK_Mode is
          when Process_Manager   => 2 + Process_Manager_Handle_Fields,
          when Boot_Image_Reader => 1,
          when NVMe_Controller | HDA_Controller => 2,
-         when Virtio_Net | Virtio_Input => 1,
+         when Virtio_Input      => 1,
          when Virtio_GPU        => 10,
-         when Generic_PCI       => 5 + 1 + 2 * Maximum_Windows + 3 + 2)
+         when Generic_PCI       => 5 + 1 + 2 * Maximum_Windows + 3 + 2,
+         when Network_Device    => 2)
    with Post => Field_Count'Result <= Maximum_Fields;
 
    --  Words (1 .. Length) is a header for Kind with the right length.
@@ -376,10 +385,16 @@ package Launch_Configuration with Pure, SPARK_Mode is
                 and then Encode'Result.Words (5) = Value.DMA;
    function Encode
      (Value : Queue_Configuration; Kind : Configuration_Kind) return Encoded
-   with Pre  => Kind in Virtio_Net | Virtio_Input,
+   with Pre  => Kind in Virtio_Input,
         Post => Encode'Result.Length = Header_Words + Field_Count (Kind)
                 and then Header_Valid (Encode'Result.Words (1 .. Encode'Result.Length), Kind)
                 and then Encode'Result.Words (4) = Value.DMA;
+   function Encode (Value : Network_Device_Configuration) return Encoded
+   with Post => Encode'Result.Length = Header_Words + Field_Count (Network_Device)
+                and then Header_Valid (Encode'Result.Words (1 .. Encode'Result.Length),
+                                       Network_Device)
+                and then Encode'Result.Words (4) = Value.DMA
+                and then Encode'Result.Words (5) = Value.Location;
    function Encode (Value : Virtio_GPU_Configuration) return Encoded
    with Post => Encode'Result.Length = Header_Words + Field_Count (Virtio_GPU)
                 and then Header_Valid (Encode'Result.Words (1 .. Encode'Result.Length),
@@ -452,10 +467,17 @@ package Launch_Configuration with Pure, SPARK_Mode is
    procedure Decode
      (Words : Word_Array; Kind : Configuration_Kind;
       Value : out Queue_Configuration; Valid : out Boolean)
-   with Pre  => Kind in Virtio_Net | Virtio_Input,
+   with Pre  => Kind in Virtio_Input,
         Post => Valid = (Header_Valid (Words, Kind)
                          and then Words (4) in Physical_Address)
                 and then (if Valid then Value.DMA = Words (4));
+   procedure Decode
+     (Words : Word_Array; Value : out Network_Device_Configuration; Valid : out Boolean)
+   with Post => Valid = (Header_Valid (Words, Network_Device)
+                         and then Words (4) in Physical_Address
+                         and then Words (5) in Routing_ID)
+                and then (if Valid then
+                            Value.DMA = Words (4) and then Value.Location = Words (5));
    procedure Decode
      (Words : Word_Array; Value : out Virtio_GPU_Configuration; Valid : out Boolean)
    with Post => Valid = (Header_Valid (Words, Virtio_GPU)

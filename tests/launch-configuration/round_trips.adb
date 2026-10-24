@@ -51,6 +51,14 @@ package body Round_Trips with SPARK_Mode is
       Decode (E.Words (1 .. E.Length), Kind, Decoded, Valid);
    end Queue;
 
+   procedure Network_Device (Value : Network_Device_Configuration;
+                             Decoded : out Network_Device_Configuration;
+                             Valid : out Boolean) is
+      E : constant Encoded := Encode (Value);
+   begin
+      Decode (E.Words (1 .. E.Length), Decoded, Valid);
+   end Network_Device;
+
    procedure GPU (Value : Virtio_GPU_Configuration;
                   Decoded : out Virtio_GPU_Configuration;
                   Valid : out Boolean) is

@@ -31,8 +31,13 @@ package Round_Trips with SPARK_Mode is
    procedure Queue (Value : Queue_Configuration; Kind : Configuration_Kind;
                     Decoded : out Queue_Configuration;
                     Valid : out Boolean)
-   with Pre  => Kind in Virtio_Net | Virtio_Input,
+   with Pre  => Kind in Virtio_Input,
         Post => Valid and then Decoded = Value;
+
+   procedure Network_Device (Value : Network_Device_Configuration;
+                             Decoded : out Network_Device_Configuration;
+                             Valid : out Boolean)
+   with Post => Valid and then Decoded = Value;
 
    procedure GPU (Value : Virtio_GPU_Configuration;
                   Decoded : out Virtio_GPU_Configuration;

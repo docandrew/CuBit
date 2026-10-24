@@ -1,2 +1,7 @@
 (Component name => "netmgr" kind => (Kind.Service Launcher.Device_Manager)
-  source => (Source.Ada (Ada_Source)))
+  source => (Source.Ada (Ada_Source
+    # The typed net.interface.<name> setting is read through CCL's typed
+    # settings (Net_Interface_Settings).
+    sources => ["userspace/ccl/src"]
+    language => Ada_Language.Ada_2022
+    units => [(Unit_Code ["dhcp_client.adb"] "proved")])))
