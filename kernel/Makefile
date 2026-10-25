@@ -1350,6 +1350,25 @@ futex-check: ccl-build user_runtime ccl-manifest
 	$(CCL_BUILD) ../userspace/apps/futex-check/component.ccl
 	cp ../userspace/apps/futex-check/build/futex-check.app isodir/boot/futex-check.app
 
+# FIRMWARE_SNAPSHOT checks (shared/boot/firmware_snapshot_abi.ads):
+# headless --test firmware-snapshot.
+.PHONY : firmware-check firmware-undeclared
+firmware-check: ccl-build user_runtime ccl-manifest
+	mkdir -p ../userspace/apps/firmware-check/build
+	$(CCL_BUILD) ../userspace/apps/firmware-check/component.ccl
+	cp ../userspace/apps/firmware-check/build/firmware-check.app isodir/boot/firmware-check.app
+
+# Test-only stand-in for acpi.svc's "acpi" service (never in world/images).
+.PHONY : acpi-standin
+acpi-standin: ccl-build user_runtime ccl-manifest
+	mkdir -p ../userspace/apps/acpi-standin/build
+	$(CCL_BUILD) ../userspace/apps/acpi-standin/component.ccl
+
+firmware-undeclared: ccl-build user_runtime ccl-manifest
+	mkdir -p ../userspace/apps/firmware-undeclared/build
+	$(CCL_BUILD) ../userspace/apps/firmware-undeclared/component.ccl
+	cp ../userspace/apps/firmware-undeclared/build/firmware-undeclared.app isodir/boot/firmware-undeclared.app
+
 # Clock publication checks (docs/fast-clock.md): headless --test clock.
 .PHONY : clock-check
 clock-check: ccl-build user_runtime ccl-manifest
@@ -2196,7 +2215,7 @@ check-declarations:
 	python3 ../tools/check_declarations.py --self-test
 	python3 ../tools/check_declarations.py --root ..
 
-world: check-declarations trace-viewer test-programs $(IMAGE_ONLY_BINARIES) cubit_kernel doom sameboy sleep thread-check futex-check clock-check avx-check devmem-check fault-check oom-check stall-check bench-spread capability-test storage-check ipctest-server ipctest-client bench-ipc-server bench-ipc-client ccl-test-host clock timesync tls ccl-vm ccl-workbench filesystem ata nvme ufs virtio-net virtio-gpu netstack wget devices files text calculator lexicon dictionary config-inspector desktop-shell procmgr shell hda mixer ps2 xhci virtio-input config config-storage netmgr logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso
+world: check-declarations trace-viewer test-programs $(IMAGE_ONLY_BINARIES) cubit_kernel doom sameboy sleep thread-check futex-check firmware-check firmware-undeclared clock-check avx-check devmem-check fault-check oom-check stall-check bench-spread capability-test storage-check ipctest-server ipctest-client bench-ipc-server bench-ipc-client ccl-test-host clock timesync tls ccl-vm ccl-workbench filesystem ata nvme ufs virtio-net virtio-gpu netstack wget devices files text calculator lexicon dictionary config-inspector desktop-shell procmgr shell hda mixer ps2 xhci virtio-input config config-storage netmgr logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso
 
 .PHONY : headless-test
 headless-test: world

@@ -25,6 +25,7 @@ with x86;
 with Build;
 with Boot_Timeline;
 with Boot_Timeline_Layout;
+with Firmware_Snapshot_Export;
 
 
 package body Syscall is
@@ -141,6 +142,8 @@ package body Syscall is
             when 141  => number := SYSCALL_ACCEPT_OFFERED_CAPABILITY;
             when 142  => number := SYSCALL_REPLY_SAVED_WITH_CAPABILITY;
             when 143  => number := SYSCALL_DERIVE_CAPABILITY;
+            when Firmware_Snapshot_ABI.System_Call_Number =>
+                number := SYSCALL_FIRMWARE_SNAPSHOT;
             when 42   => number := SYSCALL_SUBMIT_VIA_ENDPOINT_CAPABILITY;
             when 48   => number := SYSCALL_REPLY_WAIT;
             when 51   => number := SYSCALL_MOVE_REPLY_CAPABILITY;
@@ -542,6 +545,14 @@ package body Syscall is
             when SYSCALL_DERIVE_CAPABILITY =>
                 Admin.handleDeriveCap (
                     Process.processOf (percpu.currentThread), arg0, retval);
+
+            -- arg0 authority handle, arg1 operation, arg2 table, arg3
+            -- offset, arg4 destination, arg5 capacity, arg6 reply record.
+            when SYSCALL_FIRMWARE_SNAPSHOT =>
+                Firmware_Snapshot_Export.Handle
+                  (Process.processOf (percpu.currentThread),
+                   arg0, (Op => arg1, Table => arg2, Offset => arg3,
+                          Destination => arg4, Capacity => arg5), arg6, retval);
 
             when SYSCALL_REPLY_WITH_CAPABILITY =>
                 IPC.handleReplyWithCap (

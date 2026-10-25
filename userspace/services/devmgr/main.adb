@@ -3969,7 +3969,13 @@ begin
                else 0),
             --  Inventory queries ("device-manager" requests): untagged,
             --  with Grant so procmgr can hand narrowed copies on.
-            Device_Inspection => DL.Place (C, H.Copy (Root.Self_Grantable, Read_Write_Grant)));
+            Device_Inspection => DL.Place (C, H.Copy (Root.Self_Grantable, Read_Write_Grant)),
+            --  The firmware snapshot reader, with Grant: procmgr installs a
+            --  read-only copy only where the startup plan approves a
+            --  declared request (Firmware_Snapshot_ABI).
+            Firmware_Snapshot =>
+              DL.Place (C, H.Copy (Root.Firmware_Snapshot_Root,
+                                   (Read | Grant => True, others => False))));
       begin
          if not LC.Process_Handles_Well_Formed (Handles) then
             debugPrint ("devmgr: procmgr handles incomplete; boot denied" & LF);

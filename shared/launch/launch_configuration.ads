@@ -90,8 +90,9 @@ package Launch_Configuration with Pure, SPARK_Mode is
    --  process control (CAP_PROCESS, all processes), PCI configuration
    --  ports, its own registration, the device-vector authority, the I/O
    --  port space, the legacy interrupt lines, every service role's
-   --  notification, real-time scheduling, and one device-memory root per
-   --  maximal run of device-mappable pages (largest first).
+   --  notification, real-time scheduling, reading the sealed firmware-table
+   --  snapshot (FIRMWARE_SNAPSHOT), and one device-memory root per maximal
+   --  run of device-mappable pages (largest first).
    Maximum_Device_Roots : constant := 8;
    subtype Device_Root_Count is Natural range 0 .. Maximum_Device_Roots;
    subtype Device_Root_Index is Positive range 1 .. Maximum_Device_Roots;
@@ -109,10 +110,11 @@ package Launch_Configuration with Pure, SPARK_Mode is
       Legacy_Interrupts : Unsigned_64 := 0;
       Notifications     : Unsigned_64 := 0;
       Scheduling        : Unsigned_64 := 0;
+      Firmware_Snapshot : Unsigned_64 := 0;
       Root_Count        : Device_Root_Count := 0;
       Device_Roots      : Root_Handles := [others => 0];
    end record;
-   Device_Manager_Handle_Fields : constant := 11;
+   Device_Manager_Handle_Fields : constant := 12;
 
    --  A handle word: its generation (high half) is never zero.
    function Is_Handle (Word : Unsigned_64) return Boolean is
@@ -125,7 +127,7 @@ package Launch_Configuration with Pure, SPARK_Mode is
       and then Is_Handle (H.PCI_Ports) and then Is_Handle (H.Registration)
       and then Is_Handle (H.Vector_Authority) and then Is_Handle (H.IO_Ports)
       and then Is_Handle (H.Legacy_Interrupts) and then Is_Handle (H.Notifications)
-      and then Is_Handle (H.Scheduling)
+      and then Is_Handle (H.Scheduling) and then Is_Handle (H.Firmware_Snapshot)
       and then (for all R in Device_Root_Index =>
                   (if R <= H.Root_Count then Is_Handle (H.Device_Roots (R))
                    else H.Device_Roots (R) = 0)));
@@ -162,8 +164,12 @@ package Launch_Configuration with Pure, SPARK_Mode is
       --  devmgr's untagged endpoint with Grant: procmgr copies it, without
       --  Grant, to programs that ask for "device-manager" (inspection).
       Device_Inspection : Unsigned_64 := 0;
+      --  The firmware snapshot reader, with Grant: procmgr installs a
+      --  read-only copy in a program whose manifest declares it and whose
+      --  startup entry approves it (Firmware_Snapshot_ABI).
+      Firmware_Snapshot : Unsigned_64 := 0;
    end record;
-   Process_Manager_Handle_Fields : constant := 15;
+   Process_Manager_Handle_Fields : constant := 16;
 
    --  The handles every procmgr needs are handles; the others (mixer, the
    --  framebuffer) are a handle or zero.
@@ -176,7 +182,8 @@ package Launch_Configuration with Pure, SPARK_Mode is
       and then (H.Mixer = 0 or else Is_Handle (H.Mixer))
       and then Is_Handle (H.Device_Manager) and then Is_Handle (H.Ready)
       and then (H.Framebuffer = 0 or else Is_Handle (H.Framebuffer))
-      and then Is_Handle (H.Device_Inspection));
+      and then Is_Handle (H.Device_Inspection)
+      and then Is_Handle (H.Firmware_Snapshot));
 
    --  devmgr to procmgr.
    type Process_Manager_Configuration is record
@@ -320,11 +327,11 @@ package Launch_Configuration with Pure, SPARK_Mode is
        and then Words (3) = Unsigned_64 (Field_Count (Kind)));
 
    --  Encoders: the header for the kind, then the fields in order.
-   --  The handles' words, in field order (Words (7 .. 26)).
+   --  The handles' words, in field order (Words (7 .. 27)).
    function Handle_Words (H : Device_Manager_Handles) return Word_Array is
      [H.Self, H.Self_Process, H.Self_Grantable, H.Process_Root, H.PCI_Ports,
       H.Registration, H.Vector_Authority, H.IO_Ports, H.Legacy_Interrupts,
-      H.Notifications, H.Scheduling, Unsigned_64 (H.Root_Count),
+      H.Notifications, H.Scheduling, H.Firmware_Snapshot, Unsigned_64 (H.Root_Count),
       H.Device_Roots (1), H.Device_Roots (2), H.Device_Roots (3),
       H.Device_Roots (4), H.Device_Roots (5), H.Device_Roots (6),
       H.Device_Roots (7), H.Device_Roots (8)]
@@ -354,11 +361,12 @@ package Launch_Configuration with Pure, SPARK_Mode is
                 and then Encode'Result.Words (6) = Value.Framebuffer.Bytes
                 and then (for all I in 1 .. Device_Manager_Handle_Fields + 1 + Maximum_Device_Roots =>
                             Encode'Result.Words (6 + I) = Handle_Words (Value.Handles) (I));
-   --  The handles' words, in field order (Words (6 .. 20)).
+   --  The handles' words, in field order (Words (6 .. 21)).
    function Process_Handle_Words (H : Process_Manager_Handles) return Word_Array is
      [H.Self, H.Self_Process, H.Self_Grantable, H.Process_Root, H.Registration,
       H.Notifications, H.Filesystem, H.Config, H.Netstack, H.Network_Policy,
-      H.Mixer, H.Device_Manager, H.Ready, H.Framebuffer, H.Device_Inspection]
+      H.Mixer, H.Device_Manager, H.Ready, H.Framebuffer, H.Device_Inspection,
+      H.Firmware_Snapshot]
    with Post => Process_Handle_Words'Result'First = 1
                 and then Process_Handle_Words'Result'Length = Process_Manager_Handle_Fields;
 
@@ -424,12 +432,12 @@ package Launch_Configuration with Pure, SPARK_Mode is
                          and then Words (4) in Byte_Count
                          and then Words (5) in Physical_Address
                          and then Words (6) in Byte_Count
-                         and then Handles_Valid (Words (7 .. 26)))
+                         and then Handles_Valid (Words (7 .. 27)))
                 and then (if Valid then
                             Value.Boot_Image = Words (4)
                             and then Value.Framebuffer.First = Words (5)
                             and then Value.Framebuffer.Bytes = Words (6)
-                            and then (for all I in 1 .. 20 =>
+                            and then (for all I in 1 .. 21 =>
                                         Handle_Words (Value.Handles) (I) = Words (6 + I)));
    procedure Decode
      (Words : Word_Array; Value : out Process_Manager_Configuration; Valid : out Boolean)
@@ -444,7 +452,8 @@ package Launch_Configuration with Pure, SPARK_Mode is
                              Netstack => Words (14), Network_Policy => Words (15),
                              Mixer => Words (16), Device_Manager => Words (17),
                              Ready => Words (18), Framebuffer => Words (19),
-                             Device_Inspection => Words (20))))
+                             Device_Inspection => Words (20),
+                             Firmware_Snapshot => Words (21))))
                 and then (if Valid then
                             Value.Framebuffer.First = Words (4)
                             and then Value.Framebuffer.Bytes = Words (5)

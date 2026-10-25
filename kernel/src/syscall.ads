@@ -10,6 +10,7 @@ with System;
 
 with Boot_Timeline_Layout;
 with Descriptors;
+with Firmware_Snapshot_ABI;
 
 package Syscall with
     SPARK_Mode => On
@@ -98,6 +99,7 @@ is
         SYSCALL_ACCEPT_OFFERED_CAPABILITY,
         SYSCALL_REPLY_SAVED_WITH_CAPABILITY,
         SYSCALL_DERIVE_CAPABILITY,
+        SYSCALL_FIRMWARE_SNAPSHOT,
         SYSCALL_REGISTER_DRIVER)
     with Size => Unsigned_64'Size;
 
@@ -169,6 +171,9 @@ is
         SYSCALL_REPLY_SAVED_WITH_CAPABILITY => 142,
         -- A derivation of one of the caller's capabilities in its own table.
         SYSCALL_DERIVE_CAPABILITY => 143,
+        -- The sealed boot firmware-table snapshot, read only
+        -- (Firmware_Snapshot_ABI): one call, a typed operation selector.
+        SYSCALL_FIRMWARE_SNAPSHOT => Firmware_Snapshot_ABI.System_Call_Number,
         SYSCALL_SUBMIT_VIA_ENDPOINT_CAPABILITY => 42,
         SYSCALL_REPLY_WAIT           => 48,
         SYSCALL_MOVE_REPLY_CAPABILITY              => 51,

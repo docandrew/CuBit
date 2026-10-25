@@ -32,6 +32,7 @@ package CuBit.Handles.Boot_Roots is
       Legacy_Interrupts : Interrupt;      --  the legacy lines
       Notifications     : Notification;   --  every service role
       Scheduling_Root   : Scheduling;
+      Firmware_Snapshot_Root : Firmware_Snapshot;  --  READ and GRANT
       Count             : Root_Count := 0;
       Memory            : Device_Roots := [others => No_Device_Memory];
    end record;
@@ -58,6 +59,7 @@ package CuBit.Handles.Boot_Roots is
       Ready          : Endpoint;       --  devmgr's "ready" endpoint
       Framebuffer    : Device_Memory;  --  the boot framebuffer; may be null
       Device_Inspection : Endpoint;    --  devmgr, untagged, Grant (inventory)
+      Firmware_Snapshot_Reader : Firmware_Snapshot;  --  READ and GRANT
    end record;
 
    function Process_Manager return Launcher_Handles;

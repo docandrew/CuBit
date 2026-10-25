@@ -178,7 +178,7 @@ package body CCL.Configurations with SPARK_Mode => On is
       procedure Launch is
          Executable : Key_Text;
          Have_Priority, Have_Network, Have_Role, Have_Mode, Have_Device,
-           Have_Scheduling, Have_Deadline, Have_Render : Boolean := False;
+           Have_Scheduling, Have_Deadline, Have_Render, Have_Firmware : Boolean := False;
          Priority : Integer_64 := 5;
          Approval : Network_Approval := Deny;
          Role : Startup_Role := Application;
@@ -252,6 +252,14 @@ package body CCL.Configurations with SPARK_Mode => On is
                else Fail (Invalid_Approval);
                end if;
                Have_Render := True;
+            elsif Matches (Name, "firmware-snapshot") then
+               if Have_Firmware then Fail (Duplicate_Field); end if;
+               Read_Symbol (Reader, Name);
+               if Matches (Name, "deny") then Item.Approve_Firmware_Snapshot := False;
+               elsif Matches (Name, "approve-declared") then Item.Approve_Firmware_Snapshot := True;
+               else Fail (Invalid_Approval);
+               end if;
+               Have_Firmware := True;
             elsif Matches (Name, "role") then
                if Have_Role then Fail (Duplicate_Field); end if;
                Read_Symbol (Reader, Name);

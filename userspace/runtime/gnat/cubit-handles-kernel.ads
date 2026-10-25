@@ -7,6 +7,7 @@
 --  CuBit.Handles hierarchy sees handle words or these call numbers.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with Firmware_Snapshot_ABI;
 
 private package CuBit.Handles.Kernel is
 
@@ -53,6 +54,7 @@ private package CuBit.Handles.Kernel is
    Accept_Offered_Capability   : constant Unsigned_64 := 141;
    Reply_Saved_With_Capability : constant Unsigned_64 := 142;
    Derive_Capability           : constant Unsigned_64 := 143;
+   Firmware_Snapshot_Call      : constant Unsigned_64 := Firmware_Snapshot_ABI.System_Call_Number;
    Register_Driver             : constant Unsigned_64 := 2000;
 
    --  One system call with up to seven arguments (the seventh in R12, as
@@ -71,6 +73,7 @@ private package CuBit.Handles.Kernel is
    function Word (Item : Interrupt) return Unsigned_64 is (Item.Word);
    function Word (Item : Notification) return Unsigned_64 is (Item.Word);
    function Word (Item : Scheduling) return Unsigned_64 is (Item.Word);
+   function Word (Item : Firmware_Snapshot) return Unsigned_64 is (Item.Word);
    function Word (Item : Foreign_Handle) return Unsigned_64 is (Item.Word);
 
    --  Handles from words the kernel gave this process (never from a
@@ -84,6 +87,7 @@ private package CuBit.Handles.Kernel is
    function To_Interrupt (W : Unsigned_64) return Interrupt is ((Word => W));
    function To_Notification (W : Unsigned_64) return Notification is ((Word => W));
    function To_Scheduling (W : Unsigned_64) return Scheduling is ((Word => W));
+   function To_Firmware_Snapshot (W : Unsigned_64) return Firmware_Snapshot is ((Word => W));
    function To_Foreign (W : Unsigned_64) return Foreign_Handle is ((Word => W));
 
    function Derivation_Words (Item : Derivation) return ABI.Derivation is

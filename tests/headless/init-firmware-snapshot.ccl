@@ -1,0 +1,12 @@
+# FIRMWARE_SNAPSHOT (shared/boot/firmware_snapshot_abi.ads): the approved
+# reader reads every table; the same image unapproved is refused at launch;
+# a program that declares no reader is refused by the kernel. acpi-standin
+# offers the "acpi" service as acpi.svc does; firmware-check, a declared
+# client, must get the observer-badged endpoint.
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "acpi-standin.app" (priority 4))
+  (start "firmware-check.app" (priority 3) (firmware-snapshot approve-declared))
+  (start "firmware-denied.app" (priority 3))
+  (start "firmware-undeclared.app" (priority 3))
+)

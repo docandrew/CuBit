@@ -1,0 +1,5 @@
+# FIRMWARE_SNAPSHOT regression: a program that declares no firmware snapshot
+# reader holds none; the call answers Not_Authorized for any handle.
+(executable-manifest v1
+  (identity "com.cubit.firmware-undeclared")
+  (version "0.1.0"))

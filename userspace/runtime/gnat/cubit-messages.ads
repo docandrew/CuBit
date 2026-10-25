@@ -138,6 +138,9 @@ package CuBit.Messages is
    --  lexicon.svc (docs/lexicon.md); 20..27 are taken by roles declared
    --  with their protocols (mixer control, TLS, metrics, ...).
    DRIVER_LEXICON  : constant Unsigned_64 := 28;
+   --  acpi.svc: the ACPI namespace service; its clients' endpoints carry
+   --  ACPI_Protocol.Observer_Tag (shared/acpi).
+   DRIVER_ACPI     : constant Unsigned_64 := 29;
 
    --  Scheduler latency classes. Values match kernel Process.LatencyClass.
    LATENCY_BACKGROUND  : constant Unsigned_64 := 0;

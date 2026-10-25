@@ -55,6 +55,21 @@ class Configurations(unittest.TestCase):
                 self.reject(base % f'(render {first}) (render {second})',
                             'DUPLICATE_FIELD')
 
+    def test_firmware_snapshot_requires_explicit_approval(self):
+        base = '(startup v1 (start "acpi.svc" (priority 5) %s))'
+        for clause in ('', '(firmware-snapshot deny)'):
+            result = self.compile(base % clause)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout, 'acpi.svc pri=5\n')
+        result = self.compile(base % '(firmware-snapshot approve-declared)')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, 'acpi.svc pri=5 firmware-snapshot=approved\n')
+        for clause in ('(firmware-snapshot)', '(firmware-snapshot all)',
+                       '(firmware-snapshot approve-declared extra)', '(firmware-snapshot "tables")'):
+            self.reject(base % clause)
+        self.reject(base % '(firmware-snapshot deny) (firmware-snapshot approve-declared)',
+                    'DUPLICATE_FIELD')
+
     def test_all_existing_profiles(self):
         fixtures = sorted(FIXTURES.rglob('*.conf'))
         self.assertEqual(len(fixtures), 28)

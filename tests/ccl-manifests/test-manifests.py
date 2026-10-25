@@ -3,6 +3,7 @@
 import pathlib
 import random
 import struct
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -981,6 +982,55 @@ class Manifests(unittest.TestCase):
         result = self.compile(typed, self.NATIVE)
         self.assertEqual(self.startup(self.sections(result.stdout)['.cubit.startup'])[1],
                          [('render', 4, 1, 1, 0)])
+
+    def compile_startup_pair(self, source, catalog):
+        """Generate startup.ads/.adb and check them with the native runtime
+        under -gnatwa -gnatwe (a strict project's switches)."""
+        result, output = self.generate(source, catalog)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        if shutil.which('alr') is None:
+            self.skipTest('alr (the GNAT toolchain) is not on PATH')
+        command = (f'cd {self.directory} && gcc -c -gnatc -gnat2022 -gnatwa -gnatwe '
+                   f'--RTS={ROOT / "userspace/runtime"} startup.adb')
+        return subprocess.run(['alr', 'exec', '--', 'bash', '-c', command], cwd=ROOT / 'kernel',
+                              capture_output=True, text=True, timeout=120)
+
+    def test_generated_startup_compiles_strict(self):
+        """The generated body withs only what its spec lacks: a Logstore
+        client's spec already withs CuBit.Handles.Services."""
+        for name, requests in [('logged', '(service "logstore" "logstore")'),
+                               ('firmware', '(Request.Firmware_Snapshot "tables")')]:
+            with self.subTest(name=name):
+                source = ('(Executable_Manifest identity => "com.cubit.test.' + name +
+                          '" version => "1" requests => [' + requests + '])')
+                checked = self.compile_startup_pair(source, self.NATIVE)
+                self.assertEqual(checked.returncode, 0, checked.stdout + checked.stderr)
+
+    def test_firmware_snapshot_request(self):
+        """FIRMWARE_SNAPSHOT: (Request.Firmware_Snapshot "tables") is a
+        required, read-only .cubit.caps request (kind 12) and startup entry
+        (kind 13) whose Startup function returns the typed Authority; never
+        optional, never twice."""
+        typed = ('(Executable_Manifest identity => "a" version => "1" '
+                 'requests => [(Request.Firmware_Snapshot "tables")])')
+        result = self.compile(typed, self.NATIVE)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        sections = self.sections(result.stdout)
+        caps = sections['.cubit.caps']
+        self.assertEqual(struct.unpack_from('<IHH', caps, 0), (0x43424954, 1, 1))
+        self.assertEqual(struct.unpack_from('<BBHIQ', caps, 8), (12, 1, 0, 0, 0))
+        self.assertEqual(self.startup(sections['.cubit.startup'])[1], [('tables', 13, 1, 1, 0)])
+        generated = (self.directory / 'startup.ads').read_text()
+        self.assertIn('with CuBit.Firmware_Snapshot;', generated)
+        self.assertNotIn('with CuBit.Handles.Startup;', generated)
+        self.assertIn('   function Tables return Standard.CuBit.Firmware_Snapshot.Authority is\n'
+                      '     (Standard.CuBit.Firmware_Snapshot.Named ("tables"));', generated)
+        self.assertIn('Standard.CuBit.Startup_Tables.Firmware_Snapshot, '
+                      'Standard.CuBit.Startup_Tables.Required', generated)
+        self.reject(typed.replace('])', '] optional => ["tables"])'), self.NATIVE,
+                    'never optional')
+        self.reject(typed.replace('"tables")]', '"tables") (Request.Firmware_Snapshot "more")]'),
+                    self.NATIVE, 'a second firmware snapshot request')
 
     def test_startup_channel_limits(self):
         def channels(text):

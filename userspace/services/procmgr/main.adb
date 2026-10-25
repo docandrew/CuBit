@@ -67,6 +67,8 @@ with Windowed_Reads;
 with CuBit.File_Access;
 with CuBit.Network_Authority;
 with CuBit.Render_Authority;
+with CuBit.Firmware_Snapshot_Authority;
+with ACPI_Protocol;
 with CuBit.Render_Startup;
 with CuBit.Launch_Policy; use CuBit.Launch_Policy;
 with CuBit.Capability_Grants;
@@ -93,7 +95,7 @@ procedure main is
    Next_Metric_Issuance : Unsigned_32 := 1;
    package GPU_Grants renames CuBit.Capability_Grants;
    package H renames CuBit.Handles;
-   use all type H.Endpoint, H.Process, H.Cspace, H.Device_Memory, H.Notification,
+   use all type H.Endpoint, H.Process, H.Cspace, H.Device_Memory, H.Notification, H.Firmware_Snapshot,
                 H.Rights, H.Derivation;
    package HIPC renames CuBit.Handles.IPC;
    package HC renames CuBit.Handles.Control;
@@ -866,6 +868,8 @@ procedure main is
    CAP_TYPE_NOTIFICATION  : constant Unsigned_64 := 2;
    CAP_TYPE_PROCESS       : constant Unsigned_64 := 6;
    CAP_TYPE_DEVICE_MEM    : constant Unsigned_64 := 7;
+   CAP_TYPE_FIRMWARE_SNAPSHOT : constant Unsigned_64 :=
+     CuBit.Handles.ABI.Kind'Enum_Rep (CuBit.Handles.ABI.Firmware_Snapshot);
 
    ---------------------------------------------------------------------------
    --  readU16 - read a little-endian Unsigned_16 from elfBuf at byte offset
@@ -1158,7 +1162,8 @@ procedure main is
 
    --  The startup kinds whose requests are in .cubit.caps.
    function In_Caps (Kind : ST.Capability_Kind) return Boolean is
-     (Kind in ST.Endpoint | ST.Notification | ST.Framebuffer | ST.Render | ST.Network);
+     (Kind in ST.Endpoint | ST.Notification | ST.Framebuffer | ST.Render | ST.Network
+              | ST.Firmware_Snapshot);
 
    procedure readManifest
      (elfSize : Unsigned_64;
@@ -1286,6 +1291,8 @@ procedure main is
                         when ST.Framebuffer  => Kind /= REQ_FRAMEBUFFER,
                         when ST.Render       => Kind /= CuBit.Render_Authority.Manifest_Request,
                         when ST.Network      => Kind /= CuBit.Network_Authority.Manifest_Request,
+                        when ST.Firmware_Snapshot =>
+                          Kind /= CuBit.Firmware_Snapshot_Authority.Manifest_Request,
                         when others          => True)
                   then
                      reading := Requests_Disagree;
@@ -1334,7 +1341,8 @@ procedure main is
      (Role = DRIVER_LOGSTORE or else Role = DRIVER_DESKTOP or else
       Role = DRIVER_DISPLAY or else Role = DRIVER_CCL_TEST or else
       Role = DRIVER_CLOCK or else Role = CuBit.TLS_Protocol.Service_Role or else
-      Role = CuBit.Metric_Protocol.Publisher_Service_Role or else Role = DRIVER_LEXICON);
+      Role = CuBit.Metric_Protocol.Publisher_Service_Role or else Role = DRIVER_LEXICON or else
+      Role = DRIVER_ACPI);
 
    --  For each launched-service role: the live process procmgr started with
    --  its registration, until that process exits.
@@ -1476,6 +1484,9 @@ procedure main is
       elsif Role = DRIVER_LEXICON then
          --  An impostor would read every text its clients spell-check.
          return systemStartup and then Identity = "com.cubit.lexicon";
+      elsif Role = DRIVER_ACPI then
+         --  An impostor would answer for the machine's firmware.
+         return systemStartup and then Identity = "com.cubit.acpi";
       end if;
       return False;
    end registrationAllowed;
@@ -2460,7 +2471,8 @@ procedure main is
       approveNetwork : Network_Approval := No_Network;
       approveRender : Boolean := False;
       systemStartup : Boolean := False;
-      startupRole : CCL.Configurations.Startup_Role := CCL.Configurations.Application)
+      startupRole : CCL.Configurations.Startup_Role := CCL.Configurations.Application;
+      approveFirmwareSnapshot : Boolean := False)
       return Process_ID
    is
       package SB renames CuBit.Startup_Builder;
@@ -2620,6 +2632,8 @@ procedure main is
          isProcessObserver : constant Boolean :=
            Role = CuBit.Process_Observer.Observer_Service_Role;
          isLogControl : constant Boolean := Role = CuBit.Log_Protocol.Control_Service_Role;
+         --  An ACPI client: its one client role, the observer badge.
+         isACPI : constant Boolean := Role = DRIVER_ACPI;
          use CuBit.Authority_Policy;
          Authority : constant Bootstrap_Authority :=
            (if isAudioControl then Master_Audio
@@ -2672,7 +2686,9 @@ procedure main is
          end if;
          Service := providerFor (Provider_Role, Item.Requirement = ST.Required);
 
-         if isAudioControl then
+         if isACPI then
+            Issued_Tag := Unsigned_64 (ACPI_Protocol.Observer_Tag);
+         elsif isAudioControl then
             Issued_Tag := CuBit.Audio_Control.Authority_Tag;
          elsif isClockControl then
             Issued_Tag := CuBit.Clock_Control.Authority_Tag;
@@ -2862,6 +2878,33 @@ procedure main is
          end;
       end Mint_Network;
 
+      --  The firmware snapshot reader (FIRMWARE_SNAPSHOT): a read-only copy
+      --  of devmgr's root, only for a program the trusted startup plan
+      --  started and approved, (firmware-snapshot approve-declared). The
+      --  request itself (read only, no parameters) is never approval.
+      procedure Mint_Firmware_Snapshot
+        (R : Caps_Request; Index : ST.Entry_Index;
+         Handle : out Unsigned_64; Outcome : out SB.Mint_Outcome)
+      is
+      begin
+         Handle := ST.No_Handle;
+         Outcome := SB.Refused_By_Policy;
+         if Manifest_Rights (Unsigned_64 (R.Rights)) /= H.Read_Only or else R.Param0 /= 0 or else R.Param1 /= 0 then
+            Warnings.Warn ("procmgr: firmware snapshot request malformed for pid" & Image (newPID));
+         elsif not (systemStartup and then approveFirmwareSnapshot) then
+            Warnings.Warn ("procmgr: firmware snapshot refused: " & name &
+                           " is not approved by the startup plan");
+         elsif not Valid (PH.Firmware_Snapshot_Reader) then
+            Outcome := SB.Not_Available;
+            Warnings.Warn ("procmgr: firmware snapshot refused: no reader configured");
+         else
+            Install (Copy (PH.Firmware_Snapshot_Reader, H.Read_Only), Handle, Outcome);
+         end if;
+         recordAuthority
+           (newPID, Index, AUTH_SOURCE_CONFIG_POLICY, AUTH_REASON_MANIFEST_REQUEST,
+            CAP_TYPE_FIRMWARE_SNAPSHOT, True, Outcome = SB.Granted, Mask (H.Read_Only), 0, 0);
+      end Mint_Firmware_Snapshot;
+
       procedure Mint
         (Into : in out Build_Context; Item : ST.Startup_Entry; Index : ST.Entry_Index;
          Handle : out Unsigned_64; Outcome : out SB.Mint_Outcome)
@@ -2882,6 +2925,7 @@ procedure main is
             when ST.Notification => Mint_Notification (R, Index, Handle, Outcome);
             when ST.Framebuffer  => Mint_Framebuffer (R, Index, Handle, Outcome);
             when ST.Network      => Mint_Network (R, Index, Handle, Outcome);
+            when ST.Firmware_Snapshot => Mint_Firmware_Snapshot (R, Index, Handle, Outcome);
             when ST.Render =>
                --  The session devmgr admitted before the table was built;
                --  a software start has none.
@@ -3506,6 +3550,7 @@ procedure main is
       approveRender : Boolean := False;
       systemStartup : Boolean := False;
       startupRole : CCL.Configurations.Startup_Role := CCL.Configurations.Application;
+      approveFirmwareSnapshot : Boolean := False;
       Failure : out CuBit.Launch_Arguments.Launch_Failure)
       return Process_ID
    is
@@ -3515,14 +3560,15 @@ procedure main is
    begin
       Result := Spawn_Attempt
         (False, No_Process, Retry, Identity, Failure, name, priority, requester, sandboxMode,
-         cwd, approveNetwork, approveRender, systemStartup, startupRole);
+         cwd, approveNetwork, approveRender, systemStartup, startupRole, approveFirmwareSnapshot);
       if Result = No_Process and then Retry then
          -- Exactly one fresh attempt, with no broker request. The failed
          -- attempt's launcher resources stay retained independently.
          debugPrint ("procmgr: render retry software with fresh child" & LF);
          Result := Spawn_Attempt
            (True, Identity, Retry, Retry_Identity, Failure, name, priority, requester,
-            sandboxMode, cwd, approveNetwork, approveRender, systemStartup, startupRole);
+            sandboxMode, cwd, approveNetwork, approveRender, systemStartup, startupRole,
+            approveFirmwareSnapshot);
       end if;
       return Result;
    end spawnByName;
@@ -4130,6 +4176,7 @@ procedure main is
             PID := spawnByName
               (Name, Unsigned_64 (Item.Priority), systemStartup => True, startupRole => Item.Role,
                approveRender => Render_Granted (Item, Name),
+               approveFirmwareSnapshot => Item.Approve_Firmware_Snapshot,
                approveNetwork =>
                  (if Item.Approval = Approve_Declared then Declared_Network
                   else No_Network),

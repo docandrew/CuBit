@@ -1,0 +1,12 @@
+# FIRMWARE_SNAPSHOT regression (tests/headless, firmware-snapshot): reads
+# every table of the kernel's sealed boot copy of the ACPI tables. The
+# startup plan must approve the reader, (firmware-snapshot approve-declared);
+# the same image started without that approval must be refused at launch.
+# "acpi" is the ACPI service's client endpoint, badged by procmgr with
+# ACPI_Protocol.Observer_Tag (the test's acpi-standin.app provides it).
+(Executable_Manifest
+  identity => "com.cubit.firmware-check"
+  version => "0.1.0"
+  requests => [
+    (Request.Firmware_Snapshot "tables")
+    (service "acpi" "acpi")])

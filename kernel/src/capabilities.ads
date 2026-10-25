@@ -43,7 +43,8 @@ is
         CAP_CSPACE,         -- Capability-table administration
         CAP_SCHEDULING,     -- May reserve real-time CPU (docs/scheduler.md)
         CAP_HARDWARE_GROUP, -- Kernel catalog group; no raw-address authority
-        CAP_HARDWARE_REGISTER -- Kernel catalog member; fixed admitted operation
+        CAP_HARDWARE_REGISTER, -- Kernel catalog member; fixed admitted operation
+        CAP_FIRMWARE_SNAPSHOT  -- Read the sealed boot firmware-table snapshot
     );
 
     ---------------------------------------------------------------------------
@@ -117,6 +118,7 @@ is
     -- | RESOURCE     | (retired: quotas are RESUME arguments) |  |
     -- | CSPACE       | Target PID (one child, until it runs) | (reserved) |
     -- | SCHEDULING   | Budget µs            | Period µs      |
+    -- | FIRMWARE_SNAPSHOT | (reserved, 0)   | (reserved, 0)  |
     --
     -- Two plain fields instead of a variant record (README warns against
     -- variant records for overlays).

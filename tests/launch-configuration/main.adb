@@ -45,8 +45,8 @@ begin
         (Self => H (0), Self_Process => H (1), Self_Grantable => H (2),
          Process_Root => H (3), PCI_Ports => H (4), Registration => H (5),
          Vector_Authority => H (6), IO_Ports => H (7), Legacy_Interrupts => H (8),
-         Notifications => H (9), Scheduling => H (10), Root_Count => 3,
-         Device_Roots => [H (11), H (12), H (13), others => 0]);
+         Notifications => H (9), Scheduling => H (10), Firmware_Snapshot => H (14),
+         Root_Count => 3, Device_Roots => [H (11), H (12), H (13), others => 0]);
       V : Device_Manager_Configuration :=
         (Boot_Image => 40 * 1024 * 1024, Framebuffer => (16#FD00_0000#, 16#30_0000#),
          Handles => Handles);
@@ -66,7 +66,7 @@ begin
       --  array, a root in use that is zero, an unused root that is not.
       V := (Boot_Image => 1, Framebuffer => (0, 0), Handles => Handles);
       E := Encode (V);
-      for Bad in 7 .. 17 loop
+      for Bad in 7 .. 18 loop
          declare
             W : Word_Array := E.Words (1 .. E.Length);
          begin
@@ -78,13 +78,13 @@ begin
       declare
          W : Word_Array := E.Words (1 .. E.Length);
       begin
-         W (18) := Maximum_Device_Roots + 1;
+         W (19) := Maximum_Device_Roots + 1;
          Decode (W, D, OK);
          Check (not OK, "root count past the array refused");
-         W (18) := 4;
+         W (19) := 4;
          Decode (W, D, OK);
          Check (not OK, "a zero root in use refused");
-         W (18) := 2;
+         W (19) := 2;
          Decode (W, D, OK);
          Check (not OK, "a handle in an unused root refused");
       end;
@@ -98,7 +98,7 @@ begin
                      Notifications => H (5), Filesystem => H (6), Config => H (7),
                      Netstack => H (8), Network_Policy => H (9), Mixer => 0,
                      Device_Manager => H (10), Ready => H (11), Framebuffer => H (12),
-                     Device_Inspection => H (13)));
+                     Device_Inspection => H (13), Firmware_Snapshot => H (14)));
       D : Process_Manager_Configuration; OK : Boolean;
       E : Encoded;
    begin
@@ -114,6 +114,10 @@ begin
          W (9) := 7;   --  process root without a generation
          Decode (W, D, OK);
          Check (not OK, "process manager refuses a non-handle root");
+         W := E.Words (1 .. E.Length);
+         W (21) := 0;  --  no firmware snapshot reader
+         Decode (W, D, OK);
+         Check (not OK, "process manager refuses a missing firmware snapshot reader");
       end;
    end;
    declare

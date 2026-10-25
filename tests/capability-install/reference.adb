@@ -15,7 +15,7 @@ package body Reference is
    begin
       case Source.capType is
          when CAP_ENDPOINT | CAP_NOTIFICATION | CAP_IOPORT | CAP_IRQ |
-              CAP_PROCESS | CAP_DEVICE_MEM | CAP_SCHEDULING => null;
+              CAP_PROCESS | CAP_DEVICE_MEM | CAP_SCHEDULING | CAP_FIRMWARE_SNAPSHOT => null;
          when others => return False;
       end case;
       if not Source.rights (RIGHT_GRANT) then

@@ -368,6 +368,18 @@ package body CCL.Manifests.Typed with SPARK_Mode => On is
                end if;
                Item.Rights := Read_Write;
                Binding (Body_Cursor, Item);
+         elsif Kind = "Firmware_Snapshot" then
+               --  One reader per program (Firmware_Snapshot_ABI).
+               for Existing of Decl.Requests (1 .. Decl.Count) loop
+                  if Existing.Kind = Firmware_Snapshot_Request then
+                     Fail (Duplicate_Field, "a second firmware snapshot request",
+                           "declare (Request.Firmware_Snapshot ...) once");
+                     return;
+                  end if;
+               end loop;
+               Item.Kind := Firmware_Snapshot_Request;
+               Item.Rights := Read_Only;
+               Binding (Body_Cursor, Item);
          elsif Kind = "Network" then
                Item.Kind := Network_Request;
                Item.Rights := Read_Write;
@@ -505,6 +517,11 @@ package body CCL.Manifests.Typed with SPARK_Mode => On is
                if Found = 0 then
                   Fail (Unknown_Optional_Name, """" & Name & """ is not the binding of a request",
                         "name a request's binding");
+                  return;
+               end if;
+               if Decl.Requests (Found).Kind = Firmware_Snapshot_Request then
+                  Fail (Not_Yet_Supported, """" & Name & """ is a firmware snapshot reader, never optional",
+                        "remove it from optional; the startup entry approves the launch or refuses it");
                   return;
                end if;
                if Decl.Requests (Found).Requirement = ST.Optional then

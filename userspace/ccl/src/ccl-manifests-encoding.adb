@@ -25,6 +25,7 @@ package body CCL.Manifests.Encoding with SPARK_Mode => On is
          when Notification_Request  => ST.Notification,
          when Network_Request       => ST.Network,
          when Render_Request        => ST.Render,
+         when Firmware_Snapshot_Request => ST.Firmware_Snapshot,
          when Device_Memory_Request => ST.Device_Memory,
          when IO_Port_Request       => ST.IO_Ports,
          when Interrupt_Request     => ST.Interrupt,

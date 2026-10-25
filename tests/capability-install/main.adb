@@ -96,12 +96,26 @@ procedure Main is
       -- Kinds never copied.
       for K in CapabilityType loop
          if K not in CAP_ENDPOINT | CAP_NOTIFICATION | CAP_IOPORT | CAP_IRQ |
-                     CAP_PROCESS | CAP_DEVICE_MEM | CAP_SCHEDULING
+                     CAP_PROCESS | CAP_DEVICE_MEM | CAP_SCHEDULING |
+                     CAP_FIRMWARE_SNAPSHOT
          then
             Expect_Refusal (Cap (K, ALL_RIGHTS, 5, 1), Req (READ_ONLY),
                             ABI.Not_Transferable, "kind " & K'Image);
          end if;
       end loop;
+      -- The firmware snapshot reader: devmgr to procmgr (with Grant), then a
+      -- read-only copy to the program; never a tag, never narrowed, never
+      -- more than read.
+      declare
+         Snapshot : constant Capability :=
+           Cap (CAP_FIRMWARE_SNAPSHOT, (RIGHT_READ | RIGHT_GRANT => True, others => False), 0, 0);
+      begin
+         Expect_Copy (Snapshot, Req (READ_ONLY), Cap (CAP_FIRMWARE_SNAPSHOT, READ_ONLY, 0, 0, 0),
+                      "firmware snapshot read-only copy");
+         Expect_Refusal (Snapshot, Req (READ_WRITE), ABI.Would_Amplify, "firmware snapshot write");
+         Expect_Refusal (Cap (CAP_FIRMWARE_SNAPSHOT, READ_ONLY, 0, 0), Req (READ_ONLY),
+                         ABI.Insufficient_Rights, "firmware snapshot copy without grant");
+      end;
       -- Device vectors: never; legacy lines: yes, and narrowed.
       Expect_Refusal (Vectors, Req (READ_ONLY), ABI.Not_Transferable, "vector authority");
       Expect_Refusal (Cap (CAP_IRQ, GRANT_ONLY, 40, 9), Req (NO_RIGHTS),

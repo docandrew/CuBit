@@ -61,6 +61,10 @@ package CCL.Configurations with SPARK_Mode => On is
       --  A ceiling on the manifest's real-time request, never a grant by
       --  itself.
       Approve_Scheduling : Boolean := False;
+      --  (firmware-snapshot approve-declared): the trusted startup plan
+      --  approves the manifest's declared firmware snapshot reader
+      --  (Firmware_Snapshot_ABI). Never claimed by the executable itself.
+      Approve_Firmware_Snapshot : Boolean := False;
       Scheduling_Budget, Scheduling_Period : CCL.Scheduling_Limits.Microseconds :=
         CCL.Scheduling_Limits.Microseconds'First;
       Has_Ready_Deadline : Boolean := False;

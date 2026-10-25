@@ -127,4 +127,12 @@ package CuBit.Handles.Startup with SPARK_Mode is
    with Global => CuBit.Startup_State.Loaded_Table,
         Pre    => Kind in ST.Process;
 
+   --  Required only (a manifest may not make it optional): the generated
+   --  startup check stops the program before main when it is missing.
+   function Firmware_Snapshot_Named
+     (Label : String; Kind : ST.Capability_Kind := ST.Firmware_Snapshot)
+     return Firmware_Snapshot
+   with Global => CuBit.Startup_State.Loaded_Table,
+        Pre    => Kind in ST.Firmware_Snapshot;
+
 end CuBit.Handles.Startup;

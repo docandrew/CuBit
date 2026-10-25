@@ -48,6 +48,7 @@ package CuBit.Handles with Pure, SPARK_Mode is
    type Interrupt is private;      --  interrupt lines or a vector block
    type Notification is private;   --  service roles: register, publish
    type Scheduling is private;     --  reserve real-time CPU
+   type Firmware_Snapshot is private;  --  read the sealed firmware tables
 
    --  The null handle of each kind: the kernel never resolves it
    --  (generation 0 is never issued).
@@ -60,6 +61,7 @@ package CuBit.Handles with Pure, SPARK_Mode is
    No_Interrupt     : constant Interrupt;
    No_Notification  : constant Notification;
    No_Scheduling    : constant Scheduling;
+   No_Firmware_Snapshot : constant Firmware_Snapshot;
 
    --  Whether a handle could name an entry (it is not a null handle).
    --  A valid handle may still be stale; the kernel decides.
@@ -72,6 +74,7 @@ package CuBit.Handles with Pure, SPARK_Mode is
    function Valid (Item : Interrupt) return Boolean;
    function Valid (Item : Notification) return Boolean;
    function Valid (Item : Scheduling) return Boolean;
+   function Valid (Item : Firmware_Snapshot) return Boolean;
 
    ---------------------------------------------------------------------------
    --  Rights a derived copy keeps (a subset of its source's).
@@ -112,6 +115,7 @@ package CuBit.Handles with Pure, SPARK_Mode is
    function Copy (Item : Interrupt; Kept : Rights) return Derivation;
    function Copy (Item : Notification; Kept : Rights) return Derivation;
    function Copy (Item : Scheduling; Kept : Rights) return Derivation;
+   function Copy (Item : Firmware_Snapshot; Kept : Rights) return Derivation;
 
    --  A copy of an untagged endpoint carrying Tag (nonzero): the server
    --  sees Tag as the authority of every message sent through it.
@@ -168,6 +172,7 @@ private
    type Interrupt is new Word_Holder;
    type Notification is new Word_Holder;
    type Scheduling is new Word_Holder;
+   type Firmware_Snapshot is new Word_Holder;
    type Foreign_Handle is new Word_Holder;
 
    No_Endpoint      : constant Endpoint := (Word => ABI.No_Handle);
@@ -179,6 +184,7 @@ private
    No_Interrupt     : constant Interrupt := (Word => ABI.No_Handle);
    No_Notification  : constant Notification := (Word => ABI.No_Handle);
    No_Scheduling    : constant Scheduling := (Word => ABI.No_Handle);
+   No_Firmware_Snapshot : constant Firmware_Snapshot := (Word => ABI.No_Handle);
 
    function Valid (Item : Endpoint) return Boolean is (ABI.Is_Handle_Word (Item.Word));
    function Valid (Item : Reply) return Boolean is (ABI.Is_Handle_Word (Item.Word));
@@ -189,6 +195,7 @@ private
    function Valid (Item : Interrupt) return Boolean is (ABI.Is_Handle_Word (Item.Word));
    function Valid (Item : Notification) return Boolean is (ABI.Is_Handle_Word (Item.Word));
    function Valid (Item : Scheduling) return Boolean is (ABI.Is_Handle_Word (Item.Word));
+   function Valid (Item : Firmware_Snapshot) return Boolean is (ABI.Is_Handle_Word (Item.Word));
 
    type Derivation is record
       Words  : ABI.Derivation := [others => 0];
@@ -219,6 +226,8 @@ private
      (Make (ABI.Notification, Item.Word, Kept, 0, 0, 0, 0));
    function Copy (Item : Scheduling; Kept : Rights) return Derivation is
      (Make (ABI.Scheduling, Item.Word, Kept, 0, 0, 0, 0));
+   function Copy (Item : Firmware_Snapshot; Kept : Rights) return Derivation is
+     (Make (ABI.Firmware_Snapshot, Item.Word, Kept, 0, 0, 0, 0));
 
    function Badged (Item : Endpoint; Kept : Rights; Tag : Unsigned_64)
      return Derivation is

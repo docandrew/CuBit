@@ -38,7 +38,7 @@ package body Launch_Configuration with SPARK_Mode is
       Result.Words (4) := Value.Boot_Image;
       Result.Words (5) := Value.Framebuffer.First;
       Result.Words (6) := Value.Framebuffer.Bytes;
-      Result.Words (7 .. 26) := Handle_Words (Value.Handles);
+      Result.Words (7 .. 27) := Handle_Words (Value.Handles);
       return Result;
    end Encode;
 
@@ -47,7 +47,7 @@ package body Launch_Configuration with SPARK_Mode is
    begin
       Result.Words (4) := Value.Framebuffer.First;
       Result.Words (5) := Value.Framebuffer.Bytes;
-      Result.Words (6 .. 20) := Process_Handle_Words (Value.Handles);
+      Result.Words (6 .. 21) := Process_Handle_Words (Value.Handles);
       return Result;
    end Encode;
 
@@ -118,7 +118,7 @@ package body Launch_Configuration with SPARK_Mode is
       Valid := Header_Valid (Words, Device_Manager)
         and then Is_Bytes (Words (4)) and then Is_Address (Words (5))
         and then Is_Bytes (Words (6))
-        and then Handles_Valid (Words (7 .. 26));
+        and then Handles_Valid (Words (7 .. 27));
       if Valid then
          Value := (Boot_Image  => Words (4),
                    Framebuffer => (First => Words (5), Bytes => Words (6)),
@@ -134,8 +134,9 @@ package body Launch_Configuration with SPARK_Mode is
                       Legacy_Interrupts => Words (15),
                       Notifications     => Words (16),
                       Scheduling        => Words (17),
-                      Root_Count        => Device_Root_Count (Words (18)),
-                      Device_Roots      => [for R in Device_Root_Index => Words (18 + R)]));
+                      Firmware_Snapshot => Words (18),
+                      Root_Count        => Device_Root_Count (Words (19)),
+                      Device_Roots      => [for R in Device_Root_Index => Words (19 + R)]));
       end if;
    end Decode;
 
@@ -157,7 +158,7 @@ package body Launch_Configuration with SPARK_Mode is
          Netstack => Words (14), Network_Policy => Words (15),
          Mixer => Words (16), Device_Manager => Words (17),
          Ready => Words (18), Framebuffer => Words (19),
-         Device_Inspection => Words (20));
+         Device_Inspection => Words (20), Firmware_Snapshot => Words (21));
       Valid := Process_Handles_Well_Formed (Value.Handles);
       if Valid then
          Value.Framebuffer := (First => Words (4), Bytes => Words (5));

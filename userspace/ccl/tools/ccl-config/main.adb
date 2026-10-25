@@ -79,6 +79,7 @@ begin
                   --  profiles dump exactly as before.
                   if Item.Mode = Per_Device then Put (" launch=per-device"); end if;
                   if Item.Approve_Device then Put (" device=approved"); end if;
+                  if Item.Approve_Firmware_Snapshot then Put (" firmware-snapshot=approved"); end if;
                   case Item.Render is
                      when Render_Denied => null;
                      when Render_Declared => Put (" render=declared");

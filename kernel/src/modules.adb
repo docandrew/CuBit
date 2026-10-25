@@ -415,6 +415,14 @@ package body Modules with SPARK_Mode => Off is
             place (root (Capabilities.CAP_SCHEDULING, GRANT_ONLY,
                          SCHEDULING_ROOT_BUDGET_US, SCHEDULING_ROOT_PERIOD_US),
                    handles.Scheduling);
+            -- The only firmware snapshot reader (Firmware_Snapshot_ABI):
+            -- read the sealed boot copy of the ACPI tables, nothing else.
+            -- devmgr passes it to procmgr, which installs a read-only copy
+            -- only where a manifest declares it and the startup plan
+            -- approves it. Minted even if the snapshot failed: the call
+            -- then answers Not_Ready.
+            place (root (Capabilities.CAP_FIRMWARE_SNAPSHOT, READ_GRANT, 0, 0),
+                   handles.Firmware_Snapshot);
 
             -- Device-memory roots (CAP-001): one CAP_DEVICE_MEM per maximal
             -- run of device-mappable pages in the boot classification (PCI

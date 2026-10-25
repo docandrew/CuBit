@@ -52,9 +52,10 @@ pub enum Kind {
     Scheduling = 10,
     Process = 11,
     Resource = 12,
+    FirmwareSnapshot = 13,
 }
 
-const LAST_KIND: u8 = Kind::Resource as u8;
+const LAST_KIND: u8 = Kind::FirmwareSnapshot as u8;
 
 /// Whether a program's launch needs a startup capability
 /// (CuBit.Startup_Tables.Need).

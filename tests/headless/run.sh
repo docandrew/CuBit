@@ -76,7 +76,7 @@ Mesa native tests: --test softpipe, opengl, buffer, mesa-window, mesa-sync, mesa
 
 Options:
   --build              Run make world before booting QEMU
-  --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-console, logs, ccl-remote, capability-security, network-authority, bench-net, bench-fs, threads, futex, clock, avx, rust-std, libc, processes, control-events, binutils, gcc, gnat, servo, bench-spread, timesync, tls-probe, tls-service, wget-https, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, text, calculator, lexicon, dictionary, clipboard, key-repeat, desktop-doom, desktop-virtio-vga, desktop-vm, virtio-gpu, virtio-vga-primary, launch-failure, fs-coherence-CASE, startup-health, or boot-timeline (--accel kvm --timeout 60)
+  --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-console, logs, ccl-remote, capability-security, network-authority, bench-net, bench-fs, threads, futex, clock, avx, rust-std, libc, processes, control-events, binutils, gcc, gnat, servo, bench-spread, timesync, tls-probe, tls-service, wget-https, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, text, calculator, lexicon, dictionary, clipboard, key-repeat, desktop-doom, desktop-virtio-vga, desktop-vm, virtio-gpu, virtio-vga-primary, launch-failure, fs-coherence-CASE, startup-health, firmware-snapshot, or boot-timeline (--accel kvm --timeout 60)
   --timeout SECONDS    QEMU runtime before timeout is treated as success
                        (default 25; 180 for desktop tests, see DESKTOP_TIMEOUT_SECONDS)
   --accel NAME         QEMU accelerator (for example: tcg,thread=multi)
@@ -323,7 +323,7 @@ case "$TEST_NAME" in
         ;;
     grant-forward|grant-forward-intermediary-exit|grant-forward-owner-exit|grant-forward-desktop|config-tree|config-inspection|log-authority|log-fields|metrics|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
         ;;
-    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|net-link|net-multi)
+    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|net-link|net-multi|firmware-snapshot)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -645,6 +645,11 @@ case "$TEST_NAME" in
     futex)
         # Threads of one process on every CPU at once (default four).
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-futex.ccl"
+        ;;
+    firmware-snapshot)
+        # FIRMWARE_SNAPSHOT over q35's ACPI tables: the approved reader,
+        # the same image unapproved, and a program with no reader.
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-firmware-snapshot.ccl"
         ;;
     clock)
         # docs/fast-clock.md: the clock publication page. The kernel
@@ -1648,6 +1653,27 @@ if [ -n "$INIT_PROFILE" ]; then
             if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/$THREADS_IMAGE $THREADS_IMAGE" \
               "$TEMP_DISK" >/dev/null 2>&1; then
                 echo "headless: failed to install $THREADS_IMAGE" >&2
+                exit 1
+            fi
+        done
+    fi
+    if [ "$TEST_NAME" = "firmware-snapshot" ]; then
+        # firmware-denied.app is firmware-check.app under another name: the
+        # same declaration, without the startup plan's approval.
+        for FIRMWARE_PAIR in logstore.svc:logstore.svc firmware-check.app:firmware-check.app \
+                             firmware-check.app:firmware-denied.app \
+                             firmware-undeclared.app:firmware-undeclared.app \
+                             ../../../userspace/apps/acpi-standin/build/acpi-standin.app:acpi-standin.app; do
+            FIRMWARE_SOURCE="$KERNEL_DIR/isodir/boot/${FIRMWARE_PAIR%%:*}"
+            FIRMWARE_TARGET="${FIRMWARE_PAIR##*:}"
+            if [ ! -f "$FIRMWARE_SOURCE" ]; then
+                echo "headless: build ${FIRMWARE_PAIR%%:*} first (make -C kernel firmware-check firmware-undeclared acpi-standin)" >&2
+                exit 1
+            fi
+            debugfs -w -R "rm $FIRMWARE_TARGET" "$TEMP_DISK" >/dev/null 2>&1
+            if ! debugfs -w -R "write $FIRMWARE_SOURCE $FIRMWARE_TARGET" \
+              "$TEMP_DISK" >/dev/null 2>&1; then
+                echo "headless: failed to install $FIRMWARE_TARGET" >&2
                 exit 1
             fi
         done
@@ -4434,6 +4460,40 @@ clock-check: write to the clock page armed
                   fault && /reclaimProcess: stopped PID/ { found = 1 }
                   END { exit !found }' "$SERIAL_LOG"; then
             echo "headless: clock checks failed, or the page write was not refused" >&2
+            exit 1
+        fi
+        ;;
+    firmware-snapshot)
+        required_markers="
+firmware-check: catalog info PASS
+firmware-check: snapshot ready with tables PASS
+firmware-check: checksum FACP PASS
+firmware-check: checksum DSDT PASS
+firmware-check: FADT present PASS
+firmware-check: DSDT present PASS
+firmware-check: FACS excluded PASS
+firmware-check: catalog totals PASS
+firmware-check: unknown table refused PASS
+firmware-check: copy of an unknown table refused PASS
+acpi-standin: registered
+acpi-standin: probe observer=yes
+firmware-check: acpi endpoint carries the observer badge PASS
+TEST: PASS firmware-snapshot
+procmgr: firmware snapshot refused: firmware-denied.app is not approved by the startup plan
+procmgr: init spawn failed: firmware-denied.app
+firmware-undeclared: no handle not authorized PASS
+firmware-undeclared: own endpoint not authorized PASS
+firmware-undeclared: own process not authorized PASS
+firmware-undeclared: forged handle word not authorized PASS
+firmware-undeclared: no acpi endpoint PASS
+TEST: PASS firmware-undeclared
+"
+        # The unapproved image never runs; no check fails.
+        if grep -F 'firmware-check: ' "$SERIAL_LOG" | grep -qF ' FAIL' ||
+           grep -qF 'TEST: FAIL firmware' "$SERIAL_LOG" ||
+           grep -qF 'acpi-standin: probe observer=no' "$SERIAL_LOG" ||
+           [ "$(grep -cF 'firmware-check: starting' "$SERIAL_LOG")" -ne 1 ]; then
+            echo "headless: firmware snapshot checks failed, or the unapproved image ran" >&2
             exit 1
         fi
         ;;

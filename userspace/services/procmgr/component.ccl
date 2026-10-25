@@ -1,4 +1,4 @@
 (Component name => "procmgr" kind => (Kind.Service Launcher.Kernel)
   source => (Source.Ada (Ada_Source
-    sources => ["userspace/ccl/src" "userspace/lib/config" "userspace/lib/display" "userspace/services/intel-gpu" "userspace/lib/logging"]
+    sources => ["userspace/ccl/src" "userspace/lib/config" "userspace/lib/display" "userspace/services/intel-gpu" "userspace/lib/logging" "shared/acpi"]
     language => Ada_Language.Ada_2022)))

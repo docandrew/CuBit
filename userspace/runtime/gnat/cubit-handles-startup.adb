@@ -114,4 +114,9 @@ package body CuBit.Handles.Startup with SPARK_Mode => Off is
       return (Present => True, Value => K.To_Process (Found));
    end Optional_Process_Named;
 
+   function Firmware_Snapshot_Named
+     (Label : String; Kind : ST.Capability_Kind := ST.Firmware_Snapshot)
+     return Firmware_Snapshot is
+     (K.To_Firmware_Snapshot (CuBit.Startup_State.Granted (Label, Kind)));
+
 end CuBit.Handles.Startup;

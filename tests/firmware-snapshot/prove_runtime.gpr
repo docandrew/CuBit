@@ -1,0 +1,23 @@
+--  SPARK proof (level 2) of the runtime binding CuBit.Firmware_Snapshot:
+--  its decoding of kernel answers and its postconditions. The syscall glue
+--  (Kernel_Call, Kernel_Copy) is SPARK_Mode Off and trusted.
+project Prove_Runtime is
+   for Source_Dirs use ("../../userspace/runtime/gnat", "../../shared/boot",
+                        "../../shared/capabilities", "../startup-tables");
+   for Source_Files use
+     ("cubit.ads", "cubit-firmware_snapshot.ads", "cubit-firmware_snapshot.adb",
+      "firmware_snapshot_abi.ads", "firmware_snapshot_abi.adb",
+      "cubit-handles.ads", "cubit-handles-kernel.ads", "cubit-handles-kernel.adb",
+      "cubit-handles-startup.ads", "cubit-handles-startup.adb",
+      "cubit-handles-firmware_snapshots.ads", "cubit-handles-firmware_snapshots.adb",
+      "cubit-startup_tables.ads", "cubit-startup_tables.adb",
+      "cubit-startup_state.ads", "cubit-startup_state.adb",
+      "capability_abi.ads", "capability_abi.adb", "launch_block_stub.ads");
+   for Object_Dir use "build/prove-runtime";
+   package Naming is
+      for Spec ("CuBit.Launch_Block") use "launch_block_stub.ads";
+   end Naming;
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-I-");
+   end Compiler;
+end Prove_Runtime;

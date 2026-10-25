@@ -3,7 +3,7 @@
 project CCL_Manifest_ABI is
    for Source_Dirs use ("../runtime/gnat");
    for Source_Files use
-     ("cubit.ads", "cubit-render_authority.ads",
+     ("cubit.ads", "cubit-render_authority.ads", "cubit-firmware_snapshot_authority.ads",
       "cubit-network_authority.ads", "cubit-network_authority.adb",
       "cubit-tls_scopes.ads", "cubit-tls_scopes.adb",
       "cubit-failures.ads", "cubit-failures.adb",

@@ -348,6 +348,7 @@ procedure Main is
          when ST.Notification => "Notification",
          when ST.Scheduling   => "Scheduling",
          when ST.Process      => "Process",
+         when ST.Firmware_Snapshot => "Firmware_Snapshot",
          when ST.DMA | ST.Resource => "");
 
    --  An enumeration literal's image in Ada's mixed case (IO and DMA stay
@@ -457,7 +458,8 @@ procedure Main is
          when ST.DMA           => "Dma",
          when ST.Scheduling    => "Scheduling",
          when ST.Process       => "Process",
-         when ST.Resource      => "Resource");
+         when ST.Resource      => "Resource",
+         when ST.Firmware_Snapshot => "FirmwareSnapshot");
 
    --  The Rust startup accessors (CAP-003): module startup, one function
    --  per endpoint binding, taking the program's startup table
@@ -768,7 +770,12 @@ procedure Main is
          Put_Line (Output, "with CuBit.Startup_Check;");
       else
          Put_Line (Output, "with CuBit.Startup_Check.Logged;");
-         Put_Line (Output, "with CuBit.Handles.Services;");
+         --  The spec already withs it when any binding has a typed client
+         --  (always, for a Logstore one); a second with is a warning that
+         --  stops strict (-gnatwa -gnatwe) builds.
+         if not Has_Client then
+            Put_Line (Output, "with CuBit.Handles.Services;");
+         end if;
       end if;
       Put_Line (Output, "package body Startup with SPARK_Mode => Off is");
       Put_Line (Output, "begin");
@@ -801,9 +808,15 @@ procedure Main is
                     when ST.Kernel_Limit => "the kernel limit") & ".");
       Put_Line (Output, "pragma Ada_2022;");
       if (for some Binding of Result.Bindings (1 .. Result.Binding_Count) =>
-            CCL.Manifests."=" (Binding.Client, CCL.Manifests.Plain) and then Handle_Type (Binding.Kind) /= "")
+            CCL.Manifests."=" (Binding.Client, CCL.Manifests.Plain) and then Handle_Type (Binding.Kind) /= ""
+            and then ST."/=" (Binding.Kind, ST.Firmware_Snapshot))
       then
          Put_Line (Output, "with CuBit.Handles.Startup;");
+      end if;
+      if (for some Binding of Result.Bindings (1 .. Result.Binding_Count) =>
+            ST."=" (Binding.Kind, ST.Firmware_Snapshot))
+      then
+         Put_Line (Output, "with CuBit.Firmware_Snapshot;");
       end if;
       if Result.Binding_Count > 0 then
          Put_Line (Output, "with CuBit.Startup_State;");
@@ -830,6 +843,11 @@ procedure Main is
                       (if Optional then "optional" else "required") & ".");
             if T = "" then
                Put_Line (Output, "   --  (not a capability: no handle)");
+            elsif ST."=" (Binding.Kind, ST.Firmware_Snapshot) then
+               --  Never optional (the manifest compiler refuses it).
+               Put_Line (Output, "   function " & Ada_Name (Name) &
+                         " return Standard.CuBit.Firmware_Snapshot.Authority is");
+               Put_Line (Output, "     (Standard.CuBit.Firmware_Snapshot.Named (""" & Name & """));");
             elsif CCL.Manifests."/=" (Binding.Client, CCL.Manifests.Plain) then
                declare
                   Typed : constant String := "Standard.CuBit.Handles.Services." &

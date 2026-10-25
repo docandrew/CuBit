@@ -28,6 +28,9 @@
   (service log-control 27 read-write)
   # The dictionary, thesaurus and spelling service (docs/lexicon.md).
   (service lexicon 28 read-write)
+  # The ACPI namespace service (acpi.svc); clients get the observer badge
+  # (ACPI_Protocol.Observer_Tag).
+  (service acpi 29 read-write)
   (notification keyboard 1 publish-and-manage)
   (notification mouse 10 publish-and-manage)
   (notification ipc-test-registration 14 publish-and-manage)
@@ -40,4 +43,5 @@
   (notification clock 19 publish-and-manage)
   (notification tls 23 publish-and-manage)
   (notification metrics 24 publish-and-manage)
-  (notification lexicon 28 publish-and-manage))
+  (notification lexicon 28 publish-and-manage)
+  (notification acpi 29 publish-and-manage))

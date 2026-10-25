@@ -95,11 +95,12 @@ package CuBit.Startup_Tables with Pure, SPARK_Mode is
    --  a new code, never an old one.
    type Capability_Kind is
      (Endpoint, Notification, Framebuffer, Render, Network, Device_Memory,
-      IO_Ports, Interrupt, DMA, Scheduling, Process, Resource);
+      IO_Ports, Interrupt, DMA, Scheduling, Process, Resource, Firmware_Snapshot);
    for Capability_Kind use
      (Endpoint => 1, Notification => 2, Framebuffer => 3, Render => 4,
       Network => 5, Device_Memory => 6, IO_Ports => 7, Interrupt => 8,
-      DMA => 9, Scheduling => 10, Process => 11, Resource => 12);
+      DMA => 9, Scheduling => 10, Process => 11, Resource => 12,
+      Firmware_Snapshot => 13);
 
    --  A required capability the launcher cannot obtain fails the launch; an
    --  optional one is recorded Absent and the program runs without it.

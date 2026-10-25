@@ -8,12 +8,12 @@ package body Round_Trips with SPARK_Mode is
       E : constant Encoded := Encode (Value);
       H : constant Word_Array := Handle_Words (Value.Handles) with Ghost;
    begin
-      pragma Assert (for all I in 1 .. 20 => E.Words (6 + I) = H (I));
-      pragma Assert (Handles_Valid (E.Words (7 .. 26)));
+      pragma Assert (for all I in 1 .. 21 => E.Words (6 + I) = H (I));
+      pragma Assert (Handles_Valid (E.Words (7 .. 27)));
       Decode (E.Words (1 .. E.Length), Decoded, Valid);
       pragma Assert (Valid);
       pragma Assert
-        (for all I in 1 .. 20 => Handle_Words (Decoded.Handles) (I) = H (I));
+        (for all I in 1 .. 21 => Handle_Words (Decoded.Handles) (I) = H (I));
       pragma Assert (Decoded.Handles.Root_Count = Value.Handles.Root_Count);
       pragma Assert (Decoded.Handles.Device_Roots = Value.Handles.Device_Roots);
       pragma Assert (Decoded.Handles = Value.Handles);
