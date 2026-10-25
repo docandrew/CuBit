@@ -141,10 +141,26 @@ begin
    declare
       D : Controller_Configuration; OK : Boolean;
    begin
-      Round_Trips.Controller ((16#FEB0_0000#, 16#4000_0000#), NVMe_Controller, D, OK);
-      Check (OK and then D = (16#FEB0_0000#, 16#4000_0000#), "nvme round trip");
-      Round_Trips.Kinds_Distinct ((1, 2), OK);
+      Round_Trips.Controller ((16#FEB0_0000#, 16#4000_0000#, 16#0400#), NVMe_Controller, D, OK);
+      Check (OK and then D = (16#FEB0_0000#, 16#4000_0000#, 16#0400#), "nvme round trip");
+      --  xHCI: the IdeaPad's TCSS controller, 00:0d.0.
+      Round_Trips.Controller ((16#6000_0000#, 16#1000_0000#, 16#0068#), XHCI_Controller, D, OK);
+      Check (OK and then D.Location = 16#0068#, "xhci round trip");
+      Check (Location_Image (16#0068#) = "00:0D.0", "location image TCSS");
+      Check (Location_Image (16#00A0#) = "00:14.0", "location image PCH");
+      Check (Location_Image (16#FFFF#) = "FF:1F.7", "location image maximum");
+      Round_Trips.Kinds_Distinct ((1, 2, 3), OK);
       Check (not OK, "an NVMe block is not an HDA block");
+      Round_Trips.XHCI_Distinct ((1, 2, 3), OK);
+      Check (not OK, "an xHCI block is not an NVMe block");
+      --  A location wider than a routing ID is refused.
+      declare
+         E : Encoded := Encode (Controller_Configuration'(1, 2, 3), HDA_Controller);
+      begin
+         E.Words (6) := 2 ** 16;
+         Decode (E.Words (1 .. E.Length), HDA_Controller, D, OK);
+         Check (not OK, "controller refuses a location past 16 bits");
+      end;
    end;
 
    --  Generic_PCI (HW-002): what a driver launched by its declared match

@@ -158,6 +158,35 @@ make -C kernel world boot-logs
 bash tests/headless/run.sh --test generic-launch --accel kvm
 ```
 
+## multi-instance (HW-002 follow-up)
+
+devmgr starts one xhci, nvme and hda driver per bound device, each with its
+own device's registers, vectors, DMA and PCI location. Two qemu-xhci
+controllers (a USB keyboard on one, a USB optical drive on the other) and
+two NVMe disks: both xHCI instances start and each reports only its own
+devices; the disks attach as @nvme:0 and @nvme:1; devmgr's lines reach
+logstore. Fails on the code before it by construction (not re-run
+there): devmgr started only the last xHCI and NVMe controller and logged
+"not started: devmgr starts one xhci.drv", which check.py refuses; the
+IdeaPad's USB-C controller never ran.
+
+```sh
+make -C kernel world boot-logs
+bash tests/headless/run.sh --test multi-instance --accel kvm --timeout 120
+```
+
+## pci-capabilities (HW-002 follow-up)
+
+devmgr's PCI capability walk (MSI / MSI-X facts on every match line, and
+the offsets devmgr programs) on well-formed, truncated and looping lists,
+reserved pointer bits, structures past configuration space and random
+spaces; proved at level 2. Its mutations (no loop check, no header
+check, no fit check, unmasked pointers, reserved MSI encodings) all fail.
+
+```sh
+bash tests/pci-capabilities/run.sh --prove
+```
+
 ## intel-gpu ADL-N family (HW-002)
 
 intel-gpu's device gates accept 8086:46D0..46D4 (the IdeaPad is 46D4), not

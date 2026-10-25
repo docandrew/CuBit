@@ -2,6 +2,8 @@
 # answers every binding when it launches the driver: the register window,
 # the completion interrupt (an allocated vector block), its registration and
 # its endpoint to devmgr. The DMA region is devmgr's (launch configuration).
+# devmgr starts one driver per controller; only the first that reports
+# ready gets the NVMe role's registration.
 (Executable_Manifest
   identity => "com.cubit.nvme"
   version => "0.1.0"
@@ -12,4 +14,5 @@
     (interrupt "completion" Interrupt_Mode.MSI_X 1)
     (dma "queues" 1048576)
     (notification "nvme" Notify_Access.Manage "registration")
-    (service "device-manager" "ready")])
+    (service "device-manager" "ready")]
+  optional => ["registration"])

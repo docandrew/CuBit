@@ -90,8 +90,11 @@ begin
       return;
    end if;
 
-   --  Register as HDA driver
-   ret := registerDriver (DRIVER_HDA, Startup.Registration);
+   --  Register as HDA driver: devmgr gives the role to the driver of the
+   --  mixer's output alone (the first controller ready).
+   if Startup.Registration.Present then
+      ret := registerDriver (DRIVER_HDA, Startup.Registration.Value);
+   end if;
 
    --  Signal devmgr that we are ready
    declare

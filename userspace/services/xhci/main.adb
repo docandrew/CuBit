@@ -12,8 +12,11 @@ with CuBit.Input; use CuBit.Input;
 with CuBit.Devices;
 with CuBit.Device_Interrupts;
 with Startup;
+with CuBit.Launch_Configurations;
+with Launch_Configuration;
 with XHCI;
 with XHCI_Capabilities;
+with XHCI_Configure_Reply;
 with Optical_Service;
 with USB_Keyboards;
 with Input_Pending;
@@ -25,6 +28,8 @@ procedure main is
    use type XHCI.Init_Result;
 
    OP_XHCI_CONFIGURE : constant Unsigned_32 := 16#0220#;
+   --  This controller's PCI location, "??:??.?" until devmgr says.
+   Location : Launch_Configuration.Location_Text := "??:??.?";
    REPLY_OK           : constant Unsigned_32 := 16#F000#;
    REPLY_ERR          : constant Unsigned_32 := 16#F001#;
 
@@ -266,17 +271,32 @@ procedure main is
    procedure Reply_With
      (label : Unsigned_32;
       word0 : Unsigned_64 := 0;
-      word1 : Unsigned_64 := 0)
+      word1 : Unsigned_64 := 0;
+      word2 : Unsigned_64 := 0)
    is
    begin
       ignore := reply
         (sender,
-         (tag => (label => label, length => 2, protocol => 0, ipc => <>, reserved => 0),
+         (tag => (label => label, length => XHCI_Configure_Reply.Reply_Words,
+                  protocol => 0, ipc => <>, reserved => 0),
           authorityTag => 0,
-          words => [0 => word0, 1 => word1, others => 0]));
+          words => [0 => word0, 1 => word1, 2 => word2, others => 0]));
    end Reply_With;
 
 begin
+   --  devmgr starts one driver per controller; its location (launch
+   --  configuration) names this one in the lines below.
+   declare
+      Configuration : Launch_Configuration.Controller_Configuration;
+      Configured : Boolean;
+   begin
+      CuBit.Launch_Configurations.Get
+        (Launch_Configuration.XHCI_Controller, Configuration, Configured);
+      if Configured then
+         Location := Launch_Configuration.Location_Image (Configuration.Location);
+         Boot_Log.Write ("xhci: controller " & Location & LF);
+      end if;
+   end;
    Boot_Log.Write ("xhci: awaiting bounded controller authority" & LF);
    receive (sender, msg);
 
@@ -400,10 +420,17 @@ begin
 
    --  For MSI-X this reply tells devmgr that the xHCI interrupter is ready,
    --  so it may unmask the table entry and the function.
+   --  This controller's devices, one line naming it, for the boot logs.
+   Boot_Log.Write ("xhci: " & Location & " devices keyboard=" &
+                   (if XHCI.Has_Keyboard then "1" else "0") & " mouse=" &
+                   (if XHCI.Has_Mouse then "1" else "0") & " storage=" &
+                   (if XHCI.Has_Storage then "1" else "0") & LF);
    Reply_With
      (REPLY_OK,
       Unsigned_64 (XHCI.Port_Count),
-      Unsigned_64 (XHCI.Connected_Port_Count));
+      Unsigned_64 (XHCI.Connected_Port_Count),
+      XHCI_Configure_Reply.Device_Bits
+        (Keyboard => XHCI.Has_Keyboard, Mouse => XHCI.Has_Mouse, Storage => XHCI.Has_Storage));
 
    --  Keep the controller's MMIO and DMA authority private.  For this first
    --  vertical slice, translate boot reports to the existing desktop mouse

@@ -17,6 +17,9 @@ project Devmgr is
        --  Message-signaled interrupts (docs/msi-interrupts.md).
        "pci_message_interrupts.ads", "pci_message_interrupts.adb",
        "pci_message_functions.ads", "pci_message_functions.adb",
+       --  The capability-list walk (MSI / MSI-X facts, PCI_Capabilities).
+       "pci_capabilities.ads", "pci_capabilities.adb",
+       "xhci_configure_reply.ads",
        "driver_manifests.ads", "driver_manifests.adb",
        --  Devices bound by their drivers' declared matches (HW-002).
        "devmgr_bindings.ads", "devmgr_bindings.adb",

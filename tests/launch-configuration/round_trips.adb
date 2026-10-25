@@ -73,4 +73,11 @@ package body Round_Trips with SPARK_Mode is
    begin
       Decode (E.Words (1 .. E.Length), HDA_Controller, Decoded, Valid);
    end Kinds_Distinct;
+
+   procedure XHCI_Distinct (Value : Controller_Configuration; Valid : out Boolean) is
+      E : constant Encoded := Encode (Value, XHCI_Controller);
+      Decoded : Controller_Configuration;
+   begin
+      Decode (E.Words (1 .. E.Length), NVMe_Controller, Decoded, Valid);
+   end XHCI_Distinct;
 end Round_Trips;

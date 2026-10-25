@@ -52,6 +52,11 @@ package XHCI is
    function Port_Count return Natural;
    function Connected_Port_Count return Natural;
    function Device_Slot return Natural;
+   --  What Initialize enumerated on this controller: a boot keyboard, a
+   --  boot mouse, a USB mass-storage device (the optical drive).
+   function Has_Keyboard return Boolean;
+   function Has_Mouse return Boolean;
+   function Has_Storage return Boolean;
 
    --  Probe before starting HID/runtime service delivery. Runtime reads below
    --  are nonblocking so the service can continue draining mouse reports.

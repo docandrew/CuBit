@@ -1880,6 +1880,10 @@ package body XHCI is
       return activeSlot;
    end Device_Slot;
 
+   function Has_Keyboard return Boolean is (keyboardSlot /= 0);
+   function Has_Mouse return Boolean is (mouseSlot /= 0);
+   function Has_Storage return Boolean is (storageSlot /= 0);
+
    procedure Queue_HID_Transfer is
       reportOffset : constant Natural := hidTail * HID_REPORT_STRIDE;
       reportPhys   : constant Unsigned_64 :=

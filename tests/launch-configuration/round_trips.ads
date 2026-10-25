@@ -25,7 +25,7 @@ package Round_Trips with SPARK_Mode is
    procedure Controller (Value : Controller_Configuration; Kind : Configuration_Kind;
                          Decoded : out Controller_Configuration;
                          Valid : out Boolean)
-   with Pre  => Kind in NVMe_Controller | HDA_Controller,
+   with Pre  => Is_Controller (Kind),
         Post => Valid and then Decoded = Value;
 
    procedure Queue (Value : Queue_Configuration; Kind : Configuration_Kind;
@@ -46,5 +46,7 @@ package Round_Trips with SPARK_Mode is
 
    --  A block for one kind never decodes as another.
    procedure Kinds_Distinct (Value : Controller_Configuration; Valid : out Boolean)
+   with Post => not Valid;
+   procedure XHCI_Distinct (Value : Controller_Configuration; Valid : out Boolean)
    with Post => not Valid;
 end Round_Trips;

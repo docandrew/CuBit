@@ -162,6 +162,10 @@ package body HDA is
            (Launch_Configuration.HDA_Controller, Configuration, Configured);
          bar0Phys := (if Configured then Configuration.Registers else 0);
          dmaPhysBase := (if Configured then Configuration.DMA else 0);
+         if Configured then
+            debugPrint ("hda: controller " &
+                        Launch_Configuration.Location_Image (Configuration.Location) & ASCII.LF);
+         end if;
       end;
       if bar0Phys = 0 or else dmaPhysBase = 0 then
          debugPrint ("hda: missing controller/DMA allocation" & ASCII.LF);

@@ -32,6 +32,25 @@ package body Launch_Configuration with SPARK_Mode is
    function To_Word (Flag : Boolean) return Unsigned_64 is
      (if Flag then 1 else 0);
 
+   function Location_Image (Location : Routing_ID) return Location_Text is
+      Hex_Digits : constant String (1 .. 16) := "0123456789ABCDEF";
+      Bus_Shift    : constant := 8;
+      Device_Shift : constant := 3;
+      Device_Mask  : constant := 16#1F#;
+      Function_Mask : constant := 16#7#;
+      Nibble_Mask  : constant := 16#F#;
+      Nibble_Bits  : constant := 4;
+      Bus    : constant Unsigned_64 := Shift_Right (Location, Bus_Shift);
+      Device : constant Unsigned_64 := Shift_Right (Location, Device_Shift) and Device_Mask;
+      Func   : constant Unsigned_64 := Location and Function_Mask;
+      function Digit (Value : Unsigned_64) return Character is
+        (Hex_Digits (Natural (Value and Nibble_Mask) + 1));
+   begin
+      return [1 => Digit (Shift_Right (Bus, Nibble_Bits)), 2 => Digit (Bus), 3 => ':',
+              4 => Digit (Shift_Right (Device, Nibble_Bits)), 5 => Digit (Device), 6 => '.',
+              7 => Digit (Func)];
+   end Location_Image;
+
    function Encode (Value : Device_Manager_Configuration) return Encoded is
       Result : Encoded := Header (Device_Manager);
    begin
@@ -65,6 +84,7 @@ package body Launch_Configuration with SPARK_Mode is
    begin
       Result.Words (4) := Value.Registers;
       Result.Words (5) := Value.DMA;
+      Result.Words (6) := Value.Location;
       return Result;
    end Encode;
 
@@ -185,9 +205,10 @@ package body Launch_Configuration with SPARK_Mode is
    begin
       Value := (others => <>);
       Valid := Header_Valid (Words, Kind)
-        and then Is_Address (Words (4)) and then Is_Address (Words (5));
+        and then Is_Address (Words (4)) and then Is_Address (Words (5))
+        and then Words (6) in Routing_ID;
       if Valid then
-         Value := (Registers => Words (4), DMA => Words (5));
+         Value := (Registers => Words (4), DMA => Words (5), Location => Words (6));
       end if;
    end Decode;
 

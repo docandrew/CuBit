@@ -61,6 +61,15 @@ package Launch_Configuration with Pure, SPARK_Mode is
    --  A register offset or multiplier inside one BAR (virtio's are u32).
    subtype Register_Offset is Unsigned_64 range 0 .. 2 ** 32 - 1;
 
+   --  A PCI function's location: bus << 8 | device << 3 | function (the
+   --  PCI routing ID).
+   subtype Routing_ID is Unsigned_64 range 0 .. 2 ** 16 - 1;
+
+   --  "BB:DD.F" in hexadecimal, as lspci and devmgr print a location: how
+   --  a driver started per device names its instance in its log lines.
+   subtype Location_Text is String (1 .. 7);
+   function Location_Image (Location : Routing_ID) return Location_Text;
+
    --  Physical pages: First and Bytes, or Bytes = 0 for none.
    type Physical_Span is record
       First : Physical_Address := 0;
@@ -69,7 +78,8 @@ package Launch_Configuration with Pure, SPARK_Mode is
 
    type Configuration_Kind is
      (Device_Manager, Process_Manager, Boot_Image_Reader, NVMe_Controller,
-      HDA_Controller, Virtio_Input, Virtio_GPU, Generic_PCI, Network_Device);
+      HDA_Controller, Virtio_Input, Virtio_GPU, Generic_PCI, Network_Device,
+      XHCI_Controller);
    for Configuration_Kind use
      (Device_Manager    => 1,
       Process_Manager   => 2,
@@ -79,7 +89,12 @@ package Launch_Configuration with Pure, SPARK_Mode is
       Virtio_Input      => 7,
       Virtio_GPU        => 8,
       Generic_PCI       => 9,
-      Network_Device    => 10);
+      Network_Device    => 10,
+      XHCI_Controller   => 11);
+
+   --  The kinds whose configuration is a Controller_Configuration.
+   function Is_Controller (Kind : Configuration_Kind) return Boolean is
+     (Kind in NVMe_Controller | HDA_Controller | XHCI_Controller);
 
    --  devmgr's capability handles, placed by the kernel before it runs
    --  (CAP-002): handle words in its own table, never names or slot
@@ -197,11 +212,14 @@ package Launch_Configuration with Pure, SPARK_Mode is
       Boot_Image : Byte_Count := 0;
    end record;
 
-   --  devmgr to NVMe and HDA: the register BAR and the DMA region devmgr
-   --  allocated for the driver.
+   --  devmgr to NVMe, HDA and xHCI: the register BAR, the DMA region devmgr
+   --  allocated for the driver, and the PCI location of the controller it
+   --  drives (devmgr starts one driver per controller; the location names
+   --  the instance in its log lines).
    type Controller_Configuration is record
       Registers : Physical_Address := 0;
       DMA       : Physical_Address := 0;
+      Location  : Routing_ID := 0;
    end record;
 
    --  devmgr to virtio-input: its DMA region (queues and buffers), which
@@ -209,9 +227,6 @@ package Launch_Configuration with Pure, SPARK_Mode is
    type Queue_Configuration is record
       DMA : Physical_Address := 0;
    end record;
-
-   --  bus << 8 | device << 3 | function (the PCI routing ID).
-   subtype Routing_ID is Unsigned_64 range 0 .. 2 ** 16 - 1;
 
    --  devmgr to a network driver (virtio-net): its DMA region, and where
    --  its device is, which names the interface (docs/net-link.md).
@@ -310,11 +325,12 @@ package Launch_Configuration with Pure, SPARK_Mode is
          when Device_Manager    => 3 + Device_Manager_Handle_Fields + 1 + Maximum_Device_Roots,
          when Process_Manager   => 2 + Process_Manager_Handle_Fields,
          when Boot_Image_Reader => 1,
-         when NVMe_Controller | HDA_Controller => 2,
+         when NVMe_Controller | HDA_Controller => 3,
          when Virtio_Input      => 1,
          when Virtio_GPU        => 10,
          when Generic_PCI       => 5 + 1 + 2 * Maximum_Windows + 3 + 2,
-         when Network_Device    => 2)
+         when Network_Device    => 2,
+         when XHCI_Controller   => 3)
    with Post => Field_Count'Result <= Maximum_Fields;
 
    --  Words (1 .. Length) is a header for Kind with the right length.
@@ -386,11 +402,12 @@ package Launch_Configuration with Pure, SPARK_Mode is
                 and then Encode'Result.Words (4) = Value.Boot_Image;
    function Encode
      (Value : Controller_Configuration; Kind : Configuration_Kind) return Encoded
-   with Pre  => Kind in NVMe_Controller | HDA_Controller,
+   with Pre  => Is_Controller (Kind),
         Post => Encode'Result.Length = Header_Words + Field_Count (Kind)
                 and then Header_Valid (Encode'Result.Words (1 .. Encode'Result.Length), Kind)
                 and then Encode'Result.Words (4) = Value.Registers
-                and then Encode'Result.Words (5) = Value.DMA;
+                and then Encode'Result.Words (5) = Value.DMA
+                and then Encode'Result.Words (6) = Value.Location;
    function Encode
      (Value : Queue_Configuration; Kind : Configuration_Kind) return Encoded
    with Pre  => Kind in Virtio_Input,
@@ -467,12 +484,14 @@ package Launch_Configuration with Pure, SPARK_Mode is
    procedure Decode
      (Words : Word_Array; Kind : Configuration_Kind;
       Value : out Controller_Configuration; Valid : out Boolean)
-   with Pre  => Kind in NVMe_Controller | HDA_Controller,
+   with Pre  => Is_Controller (Kind),
         Post => Valid = (Header_Valid (Words, Kind)
                          and then Words (4) in Physical_Address
-                         and then Words (5) in Physical_Address)
+                         and then Words (5) in Physical_Address
+                         and then Words (6) in Routing_ID)
                 and then (if Valid then
-                            Value.Registers = Words (4) and then Value.DMA = Words (5));
+                            Value.Registers = Words (4) and then Value.DMA = Words (5)
+                            and then Value.Location = Words (6));
    procedure Decode
      (Words : Word_Array; Kind : Configuration_Kind;
       Value : out Queue_Configuration; Valid : out Boolean)

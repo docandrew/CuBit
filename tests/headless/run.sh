@@ -54,6 +54,8 @@ TURSO_EXPORT=""
 CONFIG_EXPORT=""
 CONFIG_STORAGE_TEST=0
 TEMP_AUDIO=""
+TEMP_SECOND_NVME=""
+TEMP_OPTICAL_TREE=""
 TEMP_STORAGE_FIXTURE=""
 # --test ufs: the GPT disk behind QEMU's UFS logical unit, and its devices.
 TEMP_UFS_DISK=""
@@ -323,7 +325,7 @@ case "$TEST_NAME" in
         ;;
     grant-forward|grant-forward-intermediary-exit|grant-forward-owner-exit|grant-forward-desktop|config-tree|config-inspection|log-authority|log-fields|metrics|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
         ;;
-    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|net-link|net-multi|firmware-snapshot)
+    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|net-link|net-multi|firmware-snapshot|multi-instance)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -441,6 +443,12 @@ cleanup() {
     fi
     if [ -n "$TEMP_UFS_DISK" ]; then
         rm -f "$TEMP_UFS_DISK"
+    fi
+    if [ -n "$TEMP_SECOND_NVME" ]; then
+        rm -f "$TEMP_SECOND_NVME"
+    fi
+    if [ -n "$TEMP_OPTICAL_TREE" ]; then
+        rm -rf "$TEMP_OPTICAL_TREE"
     fi
     if [ -n "$TEMP_AUDIO" ] && [ "$KEEP_LOGS" -eq 0 ] &&
        [ "${HEADLESS_TEST_FAILED:-0}" -eq 0 ]; then
@@ -819,6 +827,11 @@ case "$TEST_NAME" in
         UFS_ARGS=(-drive "file=$TEMP_UFS_DISK,if=none,id=ufs0,format=raw,readonly=on"
                   -device ufs,serial=cubitufs,id=ufs
                   -device ufs-lu,drive=ufs0,bus=ufs,lun=0)
+        ;;
+    multi-instance)
+        # One driver per device for devmgr's dedicated setups: two xHCI
+        # controllers and two NVMe disks (tests/multi-instance).
+        INIT_PROFILE="$ROOT_DIR/tests/multi-instance/init.ccl"
         ;;
     startup-health)
         # CAP-003: the full desktop boots with no refusal, every service
@@ -1230,9 +1243,10 @@ if [ -n "$INIT_PROFILE" ]; then
             exit 1
         fi
     fi
-    if [ "$TEST_NAME" = "generic-launch" ] || [ "$TEST_NAME" = "ufs" ]; then
+    if [ "$TEST_NAME" = "generic-launch" ] || [ "$TEST_NAME" = "ufs" ] ||
+       [ "$TEST_NAME" = "multi-instance" ]; then
         # boot-logs prints the records logstore keeps (the base disk lacks it):
-        # generic drivers (generic-check, ufs) log through logstore.
+        # generic drivers (generic-check, ufs) and devmgr log through logstore.
         for GENERIC_IMAGE in logstore.svc boot-logs.app; do
             if [ ! -f "$KERNEL_DIR/isodir/boot/$GENERIC_IMAGE" ]; then
                 echo "headless: build $GENERIC_IMAGE first (make -C kernel world boot-logs)" >&2
@@ -2388,6 +2402,34 @@ AUDIO_ARGS=(-audiodev none,id=snd0)
 TEST_DEVICE_ARGS=()
 if [ "$TEST_NAME" = "generic-launch" ]; then
     TEST_DEVICE_ARGS=(-device edu)
+fi
+# Two xHCI controllers, a USB keyboard on one and a USB optical drive on
+# the other (a disc with the apps/ tree @cd:0 mounts, holding one file),
+# and a second NVMe disk with an empty ext2 volume: each gets its own
+# driver instance.
+if [ "$TEST_NAME" = "multi-instance" ]; then
+    TEMP_SECOND_NVME="$(mktemp "$(dirname "$SERIAL_LOG")/cubit-${TEST_NAME}-nvme1.XXXXXX.img")"
+    if ! mke2fs -q -t ext2 -F "$TEMP_SECOND_NVME" 16M; then
+        echo "headless: failed to create the second NVMe disk" >&2
+        exit 1
+    fi
+    TEMP_OPTICAL_TREE="$(mktemp -d "$(dirname "$SERIAL_LOG")/cubit-${TEST_NAME}-disc.XXXXXX")"
+    mkdir -p "$TEMP_OPTICAL_TREE/tree/apps"
+    echo "multi-instance optical disc" > "$TEMP_OPTICAL_TREE/tree/apps/readme.txt"
+    if ! xorriso -as mkisofs -quiet -V CUBITMULTI -o "$TEMP_OPTICAL_TREE/disc.iso" \
+      "$TEMP_OPTICAL_TREE/tree"; then
+        echo "headless: failed to create the optical disc image" >&2
+        exit 1
+    fi
+    TEST_DEVICE_ARGS=(
+        -device qemu-xhci,id=xhcikbd
+        -device usb-kbd,bus=xhcikbd.0,port=1
+        -device qemu-xhci,id=xhcicd
+        -drive "file=$TEMP_OPTICAL_TREE/disc.iso,if=none,id=usbcd,format=raw,media=cdrom,readonly=on"
+        -device usb-bot,id=usbbot,bus=xhcicd.0,port=1
+        -device scsi-cd,bus=usbbot.0,lun=0,drive=usbcd
+        -drive "file=$TEMP_SECOND_NVME,if=none,id=nvme1,format=raw"
+        -device nvme,serial=cubitnvme1,drive=nvme1)
 fi
 if [ "$TEST_NAME" = "desktop-doom" ] || [ "$TEST_NAME" = "bench-audio" ]; then
     TEMP_AUDIO="$(mktemp "$(dirname "$SERIAL_LOG")/cubit-${TEST_NAME}-audio.XXXXXX.wav")"
@@ -5208,13 +5250,21 @@ calculator: mode STANDARD
 calculator: closed
 "
         ;;
+    multi-instance)
+        # tests/multi-instance/check.py checks each instance by location.
+        required_markers="
+devmgr: startup complete, entering service loop
+boot-logs: window ready
+"
+        ;;
     generic-launch)
         # The driver gets its window, DMA and MSI from its manifest, its
         # lines reach logstore (boot-logs prints them), and the device's
-        # interrupt arrives after OP_READY.
+        # interrupt arrives after OP_READY. QEMU's edu device has MSI (one
+        # vector) and no MSI-X.
         required_markers="
 devmgr: match 00:
-1234:11E8 class 00.FF.00 -> generic-check.drv (PCI_IDs 1234:11E8..11E8)
+1234:11E8 class 00.FF.00 msi=1/1 msix=0 -> generic-check.drv (PCI_IDs 1234:11E8..11E8)
 devmgr: generic-check.drv launched for
 generic-check: stage identify ok
 generic-check: stage map ok
@@ -5436,6 +5486,13 @@ if [ "$missing" -ne 0 ]; then
     exit 1
 fi
 
+if [ "$TEST_NAME" = "multi-instance" ]; then
+    if ! python3 "$ROOT_DIR/tests/multi-instance/check.py" "$SERIAL_LOG"; then
+        echo "headless: serial log: $SERIAL_LOG" >&2
+        exit 1
+    fi
+fi
+
 # Refusals (CAP-003): a declaration that fell short fails these tests.
 if [ "$TEST_NAME" = "startup-health" ] || [ "$TEST_NAME" = "logs" ]; then
     if ! python3 "$ROOT_DIR/tests/headless/check-refusals.py" "$SERIAL_LOG"; then
@@ -5615,12 +5672,14 @@ fi
 if [ "$TEST_NAME" = "devices" ]; then
     # HW-002: devmgr binds each present device to the driver that declares
     # it (devices.index) and says so, one line per device; unmatched devices
-    # say "-> unmatched" (docs/device-matching.md).
+    # say "-> unmatched" (docs/device-matching.md). Each line carries the
+    # function's MSI and MSI-X capabilities: QEMU's virtio-net and NVMe
+    # have MSI-X, intel-hda one MSI vector, the host bridge neither.
     for match in \
-        '^devmgr: match [0-9A-F:.]+ 1AF4:1000 class 02\.00\.00 -> virtio-net\.drv \(PCI_IDs 1AF4:1000\.\.1000\)' \
-        '^devmgr: match [0-9A-F:.]+ 1B36:0010 class 01\.08\.02 -> nvme\.drv \(PCI_Class 01\.08\.02\)' \
-        '^devmgr: match [0-9A-F:.]+ 8086:2668 class 04\.03\.00 -> hda\.drv \(PCI_Class 04\.03\.00\)' \
-        '^devmgr: match [0-9A-F:.]+ 8086:29C0 class 06\.00\.00 -> unmatched' \
+        '^devmgr: match [0-9A-F:.]+ 1AF4:1000 class 02\.00\.00 msi=(0|1/[0-9]+) msix=1/[0-9]+ -> virtio-net\.drv \(PCI_IDs 1AF4:1000\.\.1000\)' \
+        '^devmgr: match [0-9A-F:.]+ 1B36:0010 class 01\.08\.02 msi=(0|1/[0-9]+) msix=1/[0-9]+ -> nvme\.drv \(PCI_Class 01\.08\.02\)' \
+        '^devmgr: match [0-9A-F:.]+ 8086:2668 class 04\.03\.00 msi=1/1 msix=0 -> hda\.drv \(PCI_Class 04\.03\.00\)' \
+        '^devmgr: match [0-9A-F:.]+ 8086:29C0 class 06\.00\.00 msi=0 msix=0 -> unmatched' \
         '^devmgr: match platform PS2_Controller -> ps2\.drv' \
         '^devmgr: drivers bound to [0-9]+ PCI devices; [0-9]+ matched no driver'; do
         if ! tr -d '\r' < "$SERIAL_LOG" | grep -Eq "$match"; then

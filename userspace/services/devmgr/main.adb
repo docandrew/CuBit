@@ -49,6 +49,7 @@ with CuBit.Driver_Readiness;
 with Intel_GPU_ADLN_Devices;
 with PCI_Message_Interrupts;
 with PCI_Message_Functions;
+with PCI_Capabilities;
 with CuBit.Filesystems;
 with CuBit.Memory_Grants;
 with CuBit.File_Access;
@@ -56,6 +57,7 @@ with Cpio;
 with Deferred_Warnings;
 with XHCI_DMA_Layout;
 with XHCI_Capabilities;
+with XHCI_Configure_Reply;
 with Intel_GPU_Probe;
 with Intel_GPU_Display_Pages;
 with Intel_GPU_Pipe_Pages;
@@ -194,6 +196,8 @@ procedure main is
       classCode : Unsigned_16 := 0;
       progIf    : Unsigned_8 := 0;
       kind      : CuBit.Devices.Device_Kind := CuBit.Devices.Other_Device;
+      --  Its MSI and MSI-X capabilities (the capability walk at scan time).
+      interrupts : PCI_Capabilities.Interrupt_Facts;
    end record;
    subtype Inventory_Index is
      Positive range 1 .. CuBit.Devices.MAX_PCI_DEVICES;
@@ -214,23 +218,10 @@ procedure main is
       interruptMode     : CuBit.Devices.Interrupt_Mode :=
         CuBit.Devices.Interrupt_Polling;
    end record;
-   xhciDiagnostics : XHCI_Diagnostic_Snapshot;
+   --  Each xHCI instance's last published statistics, by its device.
+   xhciDiagnostics : array (Inventory_Index) of XHCI_Diagnostic_Snapshot;
 
-   nvmeDev   : PCIDeviceInfo;
    ataDev    : PCIDeviceInfo;
-   netDev    : PCIDeviceInfo;
-   --  NETLINK interim (until devmgr starts one instance per device for its
-   --  dedicated setups, docs/device-matching.md "Follow-ups"): every
-   --  virtio-net function gets its own driver. netDev and the net* state
-   --  below describe the one being set up; these keep each one's.
-   Maximum_Net_Devices : constant := 8;
-   subtype Net_Device_Count is Natural range 0 .. Maximum_Net_Devices;
-   subtype Net_Device_Index is Positive range 1 .. Maximum_Net_Devices;
-   netDevs     : array (Net_Device_Index) of PCIDeviceInfo;
-   netDevCount : Net_Device_Count := 0;
-   netPIDs     : array (Net_Device_Index) of Process_ID := [others => No_Process];
-   hdaDev    : PCIDeviceInfo;
-   xhciDev   : PCIDeviceInfo;
    gpuDev    : PCIDeviceInfo;
    inputDev  : PCIDeviceInfo;
    intelDev : PCIDeviceInfo;
@@ -399,9 +390,7 @@ procedure main is
    filesystemPID : Process_ID := No_Process;
    ataPID        : Process_ID := No_Process;
    ramdiskPID    : Process_ID := No_Process;
-   nvmePID       : Process_ID := No_Process;
    netstackPID   : Process_ID := No_Process;
-   virtioNetPID  : Process_ID := No_Process;
    netIOBase : Unsigned_64 := 0;
    --  A modern (virtio 1.0) device: its register layout within the mapped
    --  BAR (CuBit.Virtio_Net_Control.Configure_Modern).
@@ -411,18 +400,16 @@ procedure main is
    netTransportReady : Boolean := False;
    procmgrPID    : Process_ID := No_Process;
    shellPID      : Process_ID := No_Process;
-   hdaPID        : Process_ID := No_Process;
    mixerPID      : Process_ID := No_Process;
    ps2PID        : Process_ID := No_Process;
-   xhciPID       : Process_ID := No_Process;
    configPID     : Process_ID := No_Process;
    netmgrPID     : Process_ID := No_Process;
    virtioGpuPID  : Process_ID := No_Process;
    virtioInputPID : Process_ID := No_Process;
    --  Their launches (Devmgr_Launches).
-   filesystemChild, ataChild, ramdiskChild, nvmeChild, netstackChild,
-     virtioNetChild, procmgrChild, hdaChild, mixerChild, ps2Child,
-     xhciChild, configChild, netmgrChild, virtioGpuChild,
+   filesystemChild, ataChild, ramdiskChild, netstackChild,
+     procmgrChild, mixerChild, ps2Child,
+     configChild, netmgrChild, virtioGpuChild,
      virtioInputChild : DL.Child := DL.No_Child;
 
    --  CPIO archive
@@ -545,6 +532,28 @@ procedure main is
       ignore := portOutp16
         (Root.PCI_Ports, PCI_CONFIG_DATA + Unsigned_16 (offset and 2), value);
    end pciWriteConfig16;
+
+   ---------------------------------------------------------------------------
+   --  The capability list of one function (PCI_Capabilities: bounded,
+   --  loop- and truncation-safe), read through configuration reads.
+   ---------------------------------------------------------------------------
+   walkDevice : PCIDeviceInfo;
+   function Read_Walk_Byte (Offset : PCI_Capabilities.Config_Offset) return Unsigned_8 is
+     (pciReadConfig8 (walkDevice.bus, walkDevice.slot, walkDevice.func, Unsigned_8 (Offset)));
+   package Capability_Walk is new PCI_Capabilities.Walks (Read_Walk_Byte);
+
+   function Interrupt_Facts_Of (dev : PCIDeviceInfo) return PCI_Capabilities.Interrupt_Facts is
+   begin
+      walkDevice := dev;
+      return Capability_Walk.Interrupts;
+   end Interrupt_Facts_Of;
+
+   --  A function's PCI routing ID: bus << 8 | device << 3 | function.
+   ROUTING_BUS_SHIFT    : constant := 8;
+   ROUTING_DEVICE_SHIFT : constant := 3;
+   function Routing_Of (dev : PCIDeviceInfo) return LC.Routing_ID is
+     (Shift_Left (Unsigned_64 (dev.bus), ROUTING_BUS_SHIFT) or
+      Shift_Left (Unsigned_64 (dev.slot), ROUTING_DEVICE_SHIFT) or Unsigned_64 (dev.func));
 
    Intel_IRQ_Active, Intel_IRQ_Plan_Ready : Boolean := False;
    Intel_IRQ_Plan : Intel_GPU_PCI_Interrupts.Disable_Plan;
@@ -771,7 +780,8 @@ procedure main is
                deviceID  => deviceID,
                classCode => classCode,
                progIf    => progIf,
-               kind      => observedKind);
+               kind      => observedKind,
+               interrupts => Interrupt_Facts_Of (location));
          else
             inventoryOverflow := True;
          end if;
@@ -1033,20 +1043,50 @@ procedure main is
       Subclass  => Unsigned_8 (Item.classCode and 16#FF#),
       Program   => Item.progIf);
 
-   --  Drivers devmgr has dedicated setup for, one instance each; every
-   --  other PCI driver gets the generic launch (Launch_Generic_PCI).
-   function Has_Driver_Setup (Name : String) return Boolean is
+   --  Drivers devmgr has dedicated setup for that start one instance per
+   --  bound device, each with its own device's registers, vectors, DMA and
+   --  location (Driver_Instance).
+   function Starts_Per_Device (Name : String) return Boolean is
      (strEq (Name, "nvme.drv") or else strEq (Name, "xhci.drv")
-      or else strEq (Name, "hda.drv") or else strEq (Name, "virtio-net.drv")
-      or else strEq (Name, "virtio-gpu.drv") or else strEq (Name, "virtio-input.drv")
+      or else strEq (Name, "hda.drv") or else strEq (Name, "virtio-net.drv"));
+
+   --  Drivers devmgr has dedicated setup for that start one instance in
+   --  all: virtio-gpu, virtio-input and intel-gpu drive one display or
+   --  tablet; ata and ps2 are platform devices.
+   function Starts_Once (Name : String) return Boolean is
+     (strEq (Name, "virtio-gpu.drv") or else strEq (Name, "virtio-input.drv")
       or else strEq (Name, "intel-gpu.drv") or else strEq (Name, "ata.drv")
       or else strEq (Name, "ps2.drv"));
+
+   --  Every other PCI driver gets the generic launch (Launch_Generic_PCI).
+   function Has_Driver_Setup (Name : String) return Boolean is
+     (Starts_Per_Device (Name) or else Starts_Once (Name));
 
    --  Which of several bound devices a single-instance setup starts: the
    --  first for these, the last in scan order for the rest (as before
    --  HW-002's matching).
    function Starts_First (Name : String) return Boolean is
      (strEq (Name, "virtio-input.drv") or else strEq (Name, "intel-gpu.drv"));
+
+   --  Whether inventory entry I is bound to driver Name.
+   function Bound_To (I : Inventory_Index; Name : String) return Boolean is
+     (I <= inventoryCount and then deviceBindings (I).Kind = DI.Bound
+      and then Devmgr_Bindings.Driver_Named (Name) /= 0
+      and then deviceBindings (I).Driver = Devmgr_Bindings.Driver_Named (Name));
+
+   --  Entry I's place among the devices bound to Name, from 0, in PCI
+   --  location order (the scan's order): the instance's stable name
+   --  (nvme:0, nvme:1) for one machine's hardware.
+   function Ordinal_Of (I : Inventory_Index; Name : String) return Natural is
+      Count : Natural := 0;
+   begin
+      for J in 1 .. I - 1 loop
+         if Bound_To (J, Name) then
+            Count := Count + 1;
+         end if;
+      end loop;
+      return Count;
+   end Ordinal_Of;
 
    --  The device bound to driver Name: the first one, or the last one
    --  (the PCI scan's order) when Last_Match.
@@ -1070,6 +1110,22 @@ procedure main is
      (Devmgr_Bindings.Hex (Unsigned_64 (Location.bus), 2) & ":" &
       Devmgr_Bindings.Hex (Unsigned_64 (Location.slot), 2) & "." &
       Devmgr_Bindings.Hex (Unsigned_64 (Location.func), 1));
+
+   function Decimal (Value : Natural) return String is
+      Image : constant String := Natural'Image (Value);
+   begin
+      return Image (Image'First + 1 .. Image'Last);
+   end Decimal;
+
+   --  " msi=1/<vectors> msix=1/<table entries>", 0 for an absent one, and
+   --  the walk's end when the capability list is broken.
+   function Interrupt_Text (F : PCI_Capabilities.Interrupt_Facts) return String is
+     (" msi=" & (if F.MSI = PCI_Capabilities.No_Entry then "0" else "1/" & Decimal (F.MSI_Vectors)) &
+      " msix=" & (if F.MSIX = PCI_Capabilities.No_Entry then "0" else "1/" & Decimal (F.MSIX_Vectors)) &
+      (case F.Status is
+          when PCI_Capabilities.Truncated => " caps=truncated",
+          when PCI_Capabilities.Looped    => " caps=looped",
+          when PCI_Capabilities.No_List | PCI_Capabilities.Complete => ""));
 
    function Device_Text (Item : Inventory_Device) return String is
      (Location_Text (Item.location) & " " &
@@ -1114,24 +1170,7 @@ procedure main is
                               inventory (I).classCode = CLASS_STORAGE_IDE);
       ps2Present := True;
 
-      --  The devices devmgr's single-instance setup will start.
-      nvmeDev  := Bound_Location ("nvme.drv", not Starts_First ("nvme.drv"));
-      netDev   := Bound_Location ("virtio-net.drv", not Starts_First ("virtio-net.drv"));
-      --  Every function bound to virtio-net.drv, in bus order (NETLINK interim).
-      declare
-         Net_Driver : constant DI.Driver_Count := Devmgr_Bindings.Driver_Named ("virtio-net.drv");
-      begin
-         for I in 1 .. inventoryCount loop
-            if Net_Driver /= 0 and then deviceBindings (I).Kind = DI.Bound and then
-              deviceBindings (I).Driver = Net_Driver and then netDevCount < Maximum_Net_Devices
-            then
-               netDevCount := netDevCount + 1;
-               netDevs (netDevCount) := inventory (I).location;
-            end if;
-         end loop;
-      end;
-      hdaDev   := Bound_Location ("hda.drv", not Starts_First ("hda.drv"));
-      xhciDev  := Bound_Location ("xhci.drv", not Starts_First ("xhci.drv"));
+      --  The devices devmgr's single-instance setups will start.
       gpuDev   := Bound_Location ("virtio-gpu.drv", not Starts_First ("virtio-gpu.drv"));
       inputDev := Bound_Location ("virtio-input.drv", not Starts_First ("virtio-input.drv"));
       intelDev := Bound_Location ("intel-gpu.drv", not Starts_First ("intel-gpu.drv"));
@@ -1149,10 +1188,12 @@ procedure main is
             case B.Kind is
                when DI.Unbound =>
                   Unbound_Total := Unbound_Total + 1;
-                  Warnings.Inform ("devmgr: match " & Device_Text (Item) & " -> unmatched");
+                  Warnings.Inform ("devmgr: match " & Device_Text (Item) &
+                    Interrupt_Text (Item.interrupts) & " -> unmatched");
                when DI.Ambiguous =>
                   Unbound_Total := Unbound_Total + 1;
-                  Warnings.Warn ("devmgr: match " & Device_Text (Item) & " -> ambiguous: " &
+                  Warnings.Warn ("devmgr: match " & Device_Text (Item) &
+                    Interrupt_Text (Item.interrupts) & " -> ambiguous: " &
                     Devmgr_Bindings.Name_Of (B.Driver) & " and " &
                     Devmgr_Bindings.Name_Of (B.Rival) & " match equally; neither started");
                when DI.Bound =>
@@ -1160,10 +1201,11 @@ procedure main is
                   declare
                      Name : constant String := Devmgr_Bindings.Name_Of (B.Driver);
                      Line : constant String :=
-                       "devmgr: match " & Device_Text (Item) & " -> " & Name & " (" &
+                       "devmgr: match " & Device_Text (Item) & Interrupt_Text (Item.interrupts) &
+                       " -> " & Name & " (" &
                        Devmgr_Bindings.Image (Index.Drivers (B.Driver).Matches.Entries (B.At_Entry)) & ")";
                      Started : constant Boolean :=
-                       not Has_Driver_Setup (Name)
+                       not Starts_Once (Name)
                        or else Same_Location
                          (Item.location, Bound_Location (Name, Last_Match => not Starts_First (Name)));
                   begin
@@ -1476,14 +1518,18 @@ procedure main is
    --  Attach a block driver devmgr started to the running filesystem: an
    --  offer of a Read+Write copy of the driver's endpoint (Fs_Attachments).
    ---------------------------------------------------------------------------
+   pragma Compile_Time_Error
+     (CuBit.Devices.MAX_PCI_DEVICES > Fs_Attachments.Maximum_Ordinal + 1,
+      "a device ordinal must fit Fs_Attachments.Device_Ordinal");
    function Attach_Storage
-     (Which : Fs_Attachments.Device; Driver : DL.Child) return Boolean
+     (Which : Fs_Attachments.Device; Driver : DL.Child;
+      Ordinal : Fs_Attachments.Device_Ordinal := 0) return Boolean
    is
       Request : Message :=
         (tag => (label => Fs_Attachments.Attach_Label, length => Fs_Attachments.Attach_Words,
                  protocol => 0, ipc => <>, reserved => 0),
          authorityTag => 0,
-         words => [Fs_Attachments.Device_Code (Which), 0, 0, 0]);
+         words => [Fs_Attachments.Device_Code (Which), Unsigned_64 (Ordinal), 0, 0]);
       Reply : MessageTag;
    begin
       if not H.Valid (Filesystem_Endpoint) or else Driver = DL.No_Child then
@@ -1573,13 +1619,7 @@ procedure main is
 
    --  PCI command register bits.
    PCI_COMMAND_INTX_DISABLE   : constant Unsigned_16 := 16#0400#;
-   PCI_STATUS_CAPABILITIES    : constant Unsigned_16 := 16#0010#;
-   --  Conventional capability list: pointers are dword-aligned, inside the
-   --  device-specific header, and the walk is bounded against cycles.
-   PCI_CAP_POINTER_MASK       : constant Unsigned_8 := 16#FC#;
-   PCI_CAP_FIRST              : constant Unsigned_8 := 16#40#;
-   PCI_CAP_LAST               : constant Unsigned_8 := 16#F4#;
-   PCI_CAP_MAX_HOPS           : constant := 48;
+   PCI_COMMAND_MEMORY_BUS_MASTER : constant Unsigned_16 := 16#0006#;
    PCI_BAR_IO                 : constant Unsigned_32 := 16#0000_0001#;
    PCI_BAR_TYPE_MASK          : constant Unsigned_32 := 16#0000_0006#;
    PCI_BAR_TYPE_64            : constant Unsigned_32 := 16#0000_0004#;
@@ -1589,10 +1629,11 @@ procedure main is
 
    --  MSI-X tables are mapped into devmgr, one window per programmed
    --  function. A table is at most 2048 entries (32 KiB) and may start
-   --  anywhere in its page, so a window holds nine pages.
+   --  anywhere in its page, so a window holds nine pages. As many windows
+   --  as inventory entries: every device can have its own driver.
    MSIX_TABLE_WINDOW_BASE  : constant Unsigned_64 := 16#0000_6000_2000_0000#;
    MSIX_TABLE_WINDOW_BYTES : constant Unsigned_64 := 16#0001_0000#;
-   MAX_MESSAGE_FUNCTIONS   : constant := 16;
+   MAX_MESSAGE_FUNCTIONS   : constant := CuBit.Devices.MAX_PCI_DEVICES;
    subtype Table_Window is Natural range 0 .. MAX_MESSAGE_FUNCTIONS - 1;
    nextTableWindow : Natural := 0;
 
@@ -1643,27 +1684,6 @@ procedure main is
    package Message_Functions is new PCI_Message_Functions
      (Write_Entry, Read_Function_16, Write_Function_16, Write_Function_32);
 
-   --  The offset of capability ID in dev's list, or zero.
-   function Find_Capability (dev : PCIDeviceInfo; ID : Unsigned_8) return Unsigned_8 is
-      at_offset : Unsigned_8;
-   begin
-      if (pciReadConfig16 (dev.bus, dev.slot, dev.func, PCI_STATUS) and
-          PCI_STATUS_CAPABILITIES) = 0
-      then
-         return 0;
-      end if;
-      at_offset := pciReadConfig8 (dev.bus, dev.slot, dev.func, PCI_CAP_PTR) and
-        PCI_CAP_POINTER_MASK;
-      for Hop in 1 .. PCI_CAP_MAX_HOPS loop
-         exit when at_offset not in PCI_CAP_FIRST .. PCI_CAP_LAST;
-         if pciReadConfig8 (dev.bus, dev.slot, dev.func, at_offset) = ID then
-            return at_offset;
-         end if;
-         at_offset := pciReadConfig8 (dev.bus, dev.slot, dev.func, at_offset + 1) and
-           PCI_CAP_POINTER_MASK;
-      end loop;
-      return 0;
-   end Find_Capability;
 
    --  A memory BAR's physical base and size, or zero bytes.
    procedure Memory_BAR
@@ -1755,8 +1775,11 @@ procedure main is
       use PCI_Message_Interrupts;
       request : constant Driver_Manifests.Interrupt_Request :=
         DL.Interrupt_Of (owner);
-      msix : constant Unsigned_8 := Find_Capability (dev, MSIX_CAPABILITY_ID);
-      msi  : constant Unsigned_8 := Find_Capability (dev, MSI_CAPABILITY_ID);
+      --  The capability walk refuses an MSI or MSI-X structure that runs
+      --  past configuration space, so the offsets below stay inside it.
+      facts : constant PCI_Capabilities.Interrupt_Facts := Interrupt_Facts_Of (dev);
+      msix : constant Unsigned_8 := Unsigned_8 (facts.MSIX);
+      msi  : constant Unsigned_8 := Unsigned_8 (facts.MSI);
       cpu  : constant Natural := cpuOf (DL.PID (owner));
    begin
       F := (Device => dev, Owner => owner, others => <>);
@@ -1862,20 +1885,56 @@ procedure main is
       F.Mode := Polled;
    end Close_Message_Interrupts;
 
-   nvmeInterrupts, netInterrupts, hdaInterrupts, gpuInterrupts,
-     xhciInterrupts, intelInterrupts : Message_Function;
-   netInterruptSets : array (Net_Device_Index) of Message_Function;
+   gpuInterrupts, intelInterrupts : Message_Function;
 
-   --  Which of the virtio-net functions Location is (0: none).
-   function Net_Device_At (Location : PCIDeviceInfo) return Net_Device_Count is
+   ---------------------------------------------------------------------------
+   --  Per-device instances (Starts_Per_Device: xhci, nvme, hda, virtio-net). Each bound
+   --  device gets its own driver, launched with that device's register
+   --  window, vectors, DMA region and PCI location only. Indexed by the
+   --  device's inventory entry: as many instances as devices, no fixed
+   --  instance count.
+   ---------------------------------------------------------------------------
+   type Driver_Instance is record
+      Child      : DL.Child := DL.No_Child;
+      PID        : Process_ID := No_Process;
+      Interrupts : Message_Function;
+   end record;
+   instances : array (Inventory_Index) of Driver_Instance;
+
+   --  The inventory entry of the running instance of Name that From is,
+   --  or 0.
+   function Instance_Of (From : Process_ID; Name : String) return Natural is
    begin
-      for K in 1 .. netDevCount loop
-         if Same_Location (Location, netDevs (K)) then
-            return K;
+      if From = No_Process then
+         return 0;
+      end if;
+      for I in 1 .. inventoryCount loop
+         if instances (I).PID = From and then Bound_To (I, Name) then
+            return I;
          end if;
       end loop;
       return 0;
-   end Net_Device_At;
+   end Instance_Of;
+
+   --  The statistics OP_XHCI_DIAGNOSTICS reports: those of the xHCI
+   --  instance that decoded the most pointer reports (the one the mouse
+   --  is on), or an invalid snapshot before any published.
+   function Pointer_Diagnostics return XHCI_Diagnostic_Snapshot is
+      Best : XHCI_Diagnostic_Snapshot;
+   begin
+      for I in 1 .. inventoryCount loop
+         if xhciDiagnostics (I).valid and then
+           (not Best.valid or else xhciDiagnostics (I).decodedReports > Best.decodedReports)
+         then
+            Best := xhciDiagnostics (I);
+         end if;
+      end loop;
+      return Best;
+   end Pointer_Diagnostics;
+
+   --  "<name> <bus:dev.fn>": how devmgr's lines name one instance.
+   function Instance_Text (I : Inventory_Index; Name : String) return String is
+     (Name & " " & Location_Text (inventory (I).location));
 
    NVME_REGISTER_BYTES : constant Unsigned_64 := 16#4000#;
    HDA_REGISTER_BYTES  : constant Unsigned_64 := 16#4000#;
@@ -1924,9 +1983,12 @@ procedure main is
    end Give_Ports;
 
    ---------------------------------------------------------------------------
-   -- Setup NVMe driver: PCI config, DMA, capabilities
+   -- Setup the NVMe driver of inventory entry I: PCI config, DMA,
+   -- capabilities, for that controller alone.
    ---------------------------------------------------------------------------
-   procedure setupNvme is
+   procedure setupNvme (I : Inventory_Index) is
+      dev       : constant PCIDeviceInfo := inventory (I).location;
+      child     : constant DL.Child := instances (I).Child;
       bar0Lo    : Unsigned_32;
       bar0Hi    : Unsigned_32;
       bar0Phys  : Unsigned_64;
@@ -1935,44 +1997,42 @@ procedure main is
 
       DMA_ORDER : constant Unsigned_64 := 8;  --  256 pages = 1 MiB
    begin
-      if not nvmeDev.found or nvmePID = No_Process then
+      if instances (I).PID = No_Process then
          return;
       end if;
 
       --  Read BAR0 (64-bit MMIO)
-      bar0Lo := pciReadConfig32 (nvmeDev.bus, nvmeDev.slot, nvmeDev.func,
-                                 PCI_BASEADDR_0);
-      bar0Hi := pciReadConfig32 (nvmeDev.bus, nvmeDev.slot, nvmeDev.func,
-                                 PCI_BASEADDR_1);
+      bar0Lo := pciReadConfig32 (dev.bus, dev.slot, dev.func, PCI_BASEADDR_0);
+      bar0Hi := pciReadConfig32 (dev.bus, dev.slot, dev.func, PCI_BASEADDR_1);
       bar0Phys := Shift_Left (Unsigned_64 (bar0Hi), 32) or
-                  Unsigned_64 (bar0Lo and 16#FFFF_FFF0#);
+                  Unsigned_64 (bar0Lo and PCI_BAR_ADDRESS_MASK);
 
       --  Enable bus master + memory space
-      pciCmd := pciReadConfig16 (nvmeDev.bus, nvmeDev.slot, nvmeDev.func,
-                                 PCI_COMMAND);
-      pciWriteConfig16 (nvmeDev.bus, nvmeDev.slot, nvmeDev.func,
-                        PCI_COMMAND, pciCmd or 16#0006#);
+      pciCmd := pciReadConfig16 (dev.bus, dev.slot, dev.func, PCI_COMMAND);
+      pciWriteConfig16 (dev.bus, dev.slot, dev.func,
+                        PCI_COMMAND, pciCmd or PCI_COMMAND_MEMORY_BUS_MASTER);
 
       --  Completion interrupts by MSI-X, programmed here and left masked
       --  until the driver has created its queues; otherwise it polls.
-      Setup_Message_Interrupts (nvmeDev, nvmeChild, "nvme.drv", nvmeInterrupts);
+      Setup_Message_Interrupts (dev, child, "nvme.drv", instances (I).Interrupts);
 
       --  Allocate DMA
-      dmaPhys := allocDma (nvmePID, DMA_ORDER, DMA_VIRT_BASE, DL.Control (nvmeChild));
+      dmaPhys := allocDma (instances (I).PID, DMA_ORDER, DMA_VIRT_BASE, DL.Control (child));
       if dmaPhys = reterr then
          debugPrint ("devmgr: NVMe DMA alloc failed" & LF);
          return;
       end if;
 
       --  Its register window (16 KiB of BAR0), as its manifest declares.
-      Give_Registers (nvmeChild, "nvme.drv", bar0Phys, NVME_REGISTER_BYTES, H.Read_Write);
+      Give_Registers (child, "nvme.drv", bar0Phys, NVME_REGISTER_BYTES, H.Read_Write);
 
-      --  BAR0 and the DMA region, for the driver alone.
+      --  BAR0, the DMA region and the location, for the driver alone.
       DL.Set_Payload
-        (nvmeChild, LC.Encode (LC.Controller_Configuration'
-           (Registers => bar0Phys, DMA => dmaPhys), LC.NVMe_Controller));
+        (child, LC.Encode (LC.Controller_Configuration'
+           (Registers => bar0Phys, DMA => dmaPhys, Location => Routing_Of (dev)),
+           LC.NVMe_Controller));
 
-      debugPrint ("devmgr: NVMe setup complete" & LF);
+      debugPrint ("devmgr: NVMe setup complete for " & Location_Text (dev) & LF);
    end setupNvme;
 
    ---------------------------------------------------------------------------
@@ -2003,7 +2063,7 @@ procedure main is
    ---------------------------------------------------------------------------
    netModernBar : Unsigned_64 := 0;
 
-   procedure findModernNet is
+   procedure findModernNet (netDev : PCIDeviceInfo) is
       NONE : constant Unsigned_8 := 16#FF#;
       capPtr, capId, next, cfgType, barIndex : Unsigned_8;
       capOff : Unsigned_32;
@@ -2064,9 +2124,16 @@ procedure main is
    end findModernNet;
 
    ---------------------------------------------------------------------------
-   -- Setup virtio-net driver: PCI config, DMA, capabilities
+   -- Setup the virtio-net driver of inventory entry I: PCI config, DMA,
+   -- capabilities, for that function alone. Its transport (netModern and
+   -- the offsets, netIOBase, netTransportReady) is left in the net* state
+   -- for phase 3 to configure it with.
    ---------------------------------------------------------------------------
-   procedure setupVirtioNet is
+   procedure setupVirtioNet (I : Inventory_Index) is
+      netDev         : constant PCIDeviceInfo := inventory (I).location;
+      virtioNetChild : constant DL.Child := instances (I).Child;
+      virtioNetPID   : constant Process_ID := instances (I).PID;
+      netInterrupts  : Message_Function renames instances (I).Interrupts;
       bar0Raw   : Unsigned_32;
       bar0Base  : Unsigned_64;
       pciCmd    : Unsigned_16;
@@ -2078,14 +2145,17 @@ procedure main is
       DMA_ORDER : constant Unsigned_64 := 8;  --  256 pages = 1 MiB
       VIRTIO_NET_LEGACY_PORTS : constant Unsigned_64 := 32;
    begin
-      if not netDev.found or virtioNetPID = No_Process then
+      netModern := False;
+      netTransportReady := False;
+      netIOBase := 0;
+      if virtioNetPID = No_Process then
          return;
       end if;
 
       --  A modern device (virtio 1.0, as a cloud host may offer only)
       --  is preferred: common, notification and device configuration in
       --  one memory BAR. Otherwise the legacy I/O transport (BAR0).
-      findModernNet;
+      findModernNet (netDev);
       if not netModern then
          bar0Raw := pciReadConfig32 (netDev.bus, netDev.slot, netDev.func,
                                      PCI_BASEADDR_0);
@@ -2145,19 +2215,20 @@ procedure main is
       DL.Set_Payload
         (virtioNetChild, LC.Encode (LC.Network_Device_Configuration'
            (DMA => dmaPhys,
-            Location => Shift_Left (Unsigned_64 (netDev.bus), 8) or
-                        Shift_Left (Unsigned_64 (netDev.slot), 3) or Unsigned_64 (netDev.func))));
+            Location => Routing_Of (netDev))));
       netIOBase := bar0Base;
       netTransportReady := True;
 
-      debugPrint ("devmgr: virtio-net setup complete" & LF);
+      debugPrint ("devmgr: virtio-net setup complete for " & Location_Text (netDev) & LF);
    end setupVirtioNet;
 
    ---------------------------------------------------------------------------
-   -- Setup HDA driver: PCI config, DMA, capabilities
-   -- Follows the same pattern as setupNvme.
+   -- Setup the HDA driver of inventory entry I: PCI config, DMA,
+   -- capabilities. Follows the same pattern as setupNvme.
    ---------------------------------------------------------------------------
-   procedure setupHDA is
+   procedure setupHDA (I : Inventory_Index) is
+      dev       : constant PCIDeviceInfo := inventory (I).location;
+      child     : constant DL.Child := instances (I).Child;
       bar0Lo    : Unsigned_32;
       bar0Hi    : Unsigned_32;
       bar0Phys  : Unsigned_64;
@@ -2165,65 +2236,61 @@ procedure main is
       irqVector : Unsigned_64;
       pciCmd    : Unsigned_16;
       dmaPhys   : Unsigned_64;
-      ret       : Unsigned_64;
       msiReady  : Boolean := False;
 
       DMA_ORDER : constant Unsigned_64 := 5;   --  32 pages = 128KB
    begin
-      if not hdaDev.found or hdaPID = No_Process then
+      if instances (I).PID = No_Process then
          return;
       end if;
 
       --  Read BAR0 (64-bit MMIO)
-      bar0Lo := pciReadConfig32 (hdaDev.bus, hdaDev.slot, hdaDev.func,
-                                 PCI_BASEADDR_0);
-      bar0Hi := pciReadConfig32 (hdaDev.bus, hdaDev.slot, hdaDev.func,
-                                 PCI_BASEADDR_1);
+      bar0Lo := pciReadConfig32 (dev.bus, dev.slot, dev.func, PCI_BASEADDR_0);
+      bar0Hi := pciReadConfig32 (dev.bus, dev.slot, dev.func, PCI_BASEADDR_1);
       bar0Phys := Shift_Left (Unsigned_64 (bar0Hi), 32) or
-                  Unsigned_64 (bar0Lo and 16#FFFF_FFF0#);
+                  Unsigned_64 (bar0Lo and PCI_BAR_ADDRESS_MASK);
 
       --  Read IRQ line, compute vector (legacy PCI: vector = 32 + line)
-      irqLine := pciReadConfig8 (hdaDev.bus, hdaDev.slot, hdaDev.func,
-                                 PCI_INTERRUPT_LINE);
+      irqLine := pciReadConfig8 (dev.bus, dev.slot, dev.func, PCI_INTERRUPT_LINE);
       irqVector := LEGACY_VECTOR_BASE + Unsigned_64 (irqLine);
 
       --  Enable bus master + memory space
-      pciCmd := pciReadConfig16 (hdaDev.bus, hdaDev.slot, hdaDev.func,
-                                 PCI_COMMAND);
-      pciWriteConfig16 (hdaDev.bus, hdaDev.slot, hdaDev.func,
-                        PCI_COMMAND, pciCmd or 16#0006#);
+      pciCmd := pciReadConfig16 (dev.bus, dev.slot, dev.func, PCI_COMMAND);
+      pciWriteConfig16 (dev.bus, dev.slot, dev.func,
+                        PCI_COMMAND, pciCmd or PCI_COMMAND_MEMORY_BUS_MASTER);
 
       --  Prefer an allocated MSI vector. Besides avoiding legacy PCI IRQ
       --  sharing, MSI is edge-triggered and therefore fits a userspace driver:
       --  the kernel may EOI immediately without a level line retriggering
       --  before HDA has cleared its stream status.
-      Setup_Message_Interrupts (hdaDev, hdaChild, "hda.drv", hdaInterrupts);
-      msiReady := hdaInterrupts.Mode /= Polled;
+      Setup_Message_Interrupts (dev, child, "hda.drv", instances (I).Interrupts);
+      msiReady := instances (I).Interrupts.Mode /= Polled;
 
       if not msiReady then
          --  Compatibility fallback. The long-term legacy-INTx path needs a
          --  mask/ack/unmask protocol before it can offer the same latency.
          --  The line's capability answers the manifest's interrupt binding.
-         Give_Line (hdaChild, "", irqVector);
+         Give_Line (child, "", irqVector);
          debugPrint ("devmgr: HDA using legacy INTx fallback" & LF);
       end if;
 
       --  Allocate DMA
-      dmaPhys := allocDma (hdaPID, DMA_ORDER, DMA_VIRT_BASE, DL.Control (hdaChild));
+      dmaPhys := allocDma (instances (I).PID, DMA_ORDER, DMA_VIRT_BASE, DL.Control (child));
       if dmaPhys = reterr then
          debugPrint ("devmgr: HDA DMA alloc failed" & LF);
          return;
       end if;
 
       --  Its register window (16 KiB of BAR0), as its manifest declares.
-      Give_Registers (hdaChild, "hda.drv", bar0Phys, HDA_REGISTER_BYTES, H.Read_Write);
+      Give_Registers (child, "hda.drv", bar0Phys, HDA_REGISTER_BYTES, H.Read_Write);
 
-      --  BAR0 and the DMA region, for the driver alone.
+      --  BAR0, the DMA region and the location, for the driver alone.
       DL.Set_Payload
-        (hdaChild, LC.Encode (LC.Controller_Configuration'
-           (Registers => bar0Phys, DMA => dmaPhys), LC.HDA_Controller));
+        (child, LC.Encode (LC.Controller_Configuration'
+           (Registers => bar0Phys, DMA => dmaPhys, Location => Routing_Of (dev)),
+           LC.HDA_Controller));
 
-      debugPrint ("devmgr: HDA setup complete" & LF);
+      debugPrint ("devmgr: HDA setup complete for " & Location_Text (dev) & LF);
    end setupHDA;
 
    ---------------------------------------------------------------------------
@@ -2695,7 +2762,9 @@ procedure main is
    -- Setup xHCI: grant the driver only its precisely sized BAR and a bounded
    -- DMA arena, then send the physical configuration over a private endpoint.
    ---------------------------------------------------------------------------
-   procedure setupXHCI is
+   procedure setupXHCI (I : Inventory_Index) is
+      dev       : constant PCIDeviceInfo := inventory (I).location;
+      child     : constant DL.Child := instances (I).Child;
       type XHCI_Interrupt_Mode is
         (XHCI_INTERRUPT_POLLING,
          XHCI_INTERRUPT_MSI,
@@ -2719,19 +2788,24 @@ procedure main is
 
       scratchpads : XHCI_Capabilities.Scratchpad_Buffer_Count;
       dmaLayout : XHCI_DMA_Layout.Allocation;
-      --  Bootstrap-only, uncached capability-register mapping. devmgr already
-      --  owns physical mapping authority; it never touches rings or payloads.
+      --  Bootstrap-only, uncached capability-register mapping, one page per
+      --  controller. devmgr already owns physical mapping authority; it
+      --  never touches rings or payloads.
       CAPABILITY_PROBE_BASE : constant Unsigned_64 := 16#0000_6000_1000_0000#;
+      probePage : constant Unsigned_64 :=
+        CAPABILITY_PROBE_BASE + Unsigned_64 (I - Inventory_Index'First) * PAGE_BYTES;
       OP_XHCI_CONFIGURE : constant Unsigned_32 := 16#0220#;
+      Name : constant String := Instance_Text (I, "xhci.drv");
+      storage : Boolean := False;
    begin
-      if not xhciDev.found or else xhciPID = No_Process then
+      if instances (I).PID = No_Process then
          return;
       end if;
 
       bar0Lo := pciReadConfig32
-        (xhciDev.bus, xhciDev.slot, xhciDev.func, PCI_BASEADDR_0);
+        (dev.bus, dev.slot, dev.func, PCI_BASEADDR_0);
       bar0Hi := pciReadConfig32
-        (xhciDev.bus, xhciDev.slot, xhciDev.func, PCI_BASEADDR_1);
+        (dev.bus, dev.slot, dev.func, PCI_BASEADDR_1);
 
       if (bar0Lo and 1) /= 0 then
          debugPrint ("devmgr: xHCI BAR0 is not MMIO" & LF);
@@ -2743,7 +2817,7 @@ procedure main is
          bar0Phys := Unsigned_64 (bar0Lo and 16#FFFF_FFF0#);
       end if;
 
-      barSize := probeMemoryBARSize (xhciDev, PCI_BASEADDR_0);
+      barSize := probeMemoryBARSize (dev, PCI_BASEADDR_0);
       if bar0Phys = 0 or else bar0Phys mod 4096 /= 0 or else
          barSize < 4096 or else barSize > 256 * 4096 then
          debugPrint ("devmgr: xHCI BAR probe failed" & LF);
@@ -2752,19 +2826,19 @@ procedure main is
       barPages := (barSize + 4095) / 4096;
 
       pciCmd := pciReadConfig16
-        (xhciDev.bus, xhciDev.slot, xhciDev.func, PCI_COMMAND);
+        (dev.bus, dev.slot, dev.func, PCI_COMMAND);
       pciWriteConfig16
-        (xhciDev.bus, xhciDev.slot, xhciDev.func,
-         PCI_COMMAND, pciCmd or 16#0006#);
+        (dev.bus, dev.slot, dev.func,
+         PCI_COMMAND, pciCmd or PCI_COMMAND_MEMORY_BUS_MASTER);
 
       --  xHCI is a latency-sensitive producer: an allocated vector lets its
       --  driver block on event-ring changes instead of polling on the
       --  millisecond tick. MSI-X (QEMU's controller) stays masked until the
       --  driver has enabled its interrupter.
-      assignCPU (xhciChild, "xhci.drv");
-      Setup_Message_Interrupts (xhciDev, xhciChild, "xhci.drv", xhciInterrupts);
+      assignCPU (child, "xhci.drv");
+      Setup_Message_Interrupts (dev, child, Name, instances (I).Interrupts);
       interruptMode :=
-        (case xhciInterrupts.Mode is
+        (case instances (I).Interrupts.Mode is
             when MSIX_Mode => XHCI_INTERRUPT_MSIX,
             when MSI_Mode  => XHCI_INTERRUPT_MSI,
             when Polled    => XHCI_INTERRUPT_POLLING);
@@ -2773,7 +2847,7 @@ procedure main is
          debugPrint ("devmgr: xHCI using queued polling fallback" & LF);
       end if;
 
-      irqRet := mapInto (myPID, bar0Phys, CAPABILITY_PROBE_BASE, 1, MAP_INTO_DEVICE,
+      irqRet := mapInto (myPID, bar0Phys, probePage, 1, MAP_INTO_DEVICE,
                          Root.Process_Root, Devmgr_Authority.Device_Region (bar0Phys, PAGE_BYTES));
       if irqRet = reterr then
          Warnings.Warn ("devmgr: xHCI capability page map refused " &
@@ -2783,13 +2857,13 @@ procedure main is
       declare
          type Capability_Register is new Unsigned_32 with Volatile_Full_Access;
          parameters : Capability_Register with Import,
-           Address => To_Address (Integer_Address (CAPABILITY_PROBE_BASE + 8));
+           Address => To_Address (Integer_Address (probePage + 8));
       begin
          scratchpads := XHCI_Capabilities.Scratchpad_Count (Unsigned_32 (parameters));
       end;
       dmaLayout := XHCI_DMA_Layout.Plan (scratchpads);
-      dmaPhys := allocDma (xhciPID, Unsigned_64 (dmaLayout.Order), DMA_VIRT_BASE,
-                           DL.Control (xhciChild));
+      dmaPhys := allocDma (instances (I).PID, Unsigned_64 (dmaLayout.Order), DMA_VIRT_BASE,
+                           DL.Control (child));
       if dmaPhys = reterr then
          debugPrint ("devmgr: xHCI DMA allocation failed" & LF);
          return;
@@ -2799,10 +2873,16 @@ procedure main is
       --  keyboard publication (to the registered consumers only; never
       --  registering or replacing them) and its endpoint to devmgr come
       --  from its manifest too.
-      Give_Registers (xhciChild, "xhci.drv", bar0Phys, barPages * PAGE_BYTES, H.Read_Write);
-      if not DL.Start (xhciChild) then
-         Close_Message_Interrupts (xhciInterrupts);
-         xhciPID := No_Process;
+      Give_Registers (child, "xhci.drv", bar0Phys, barPages * PAGE_BYTES, H.Read_Write);
+      --  Its location, which names it in its log lines; the registers and
+      --  DMA region come in the configure message, which it checks.
+      DL.Set_Payload
+        (child, LC.Encode (LC.Controller_Configuration'
+           (Registers => bar0Phys, DMA => dmaPhys, Location => Routing_Of (dev)),
+           LC.XHCI_Controller));
+      if not DL.Start (child) then
+         Close_Message_Interrupts (instances (I).Interrupts);
+         instances (I).PID := No_Process;
          return;
       end if;
 
@@ -2819,20 +2899,36 @@ procedure main is
             2 => dmaPhys,
             --  The interrupt mode alone: devmgr programmed the message.
             3 => Unsigned_64 (XHCI_Interrupt_Mode'Enum_Rep (interruptMode))]);
-      replyTag := capCall (DL.Mailbox (xhciChild), cfgMsg, CuBit.Messages.Wait_Forever);
+      replyTag := capCall (DL.Mailbox (child), cfgMsg, CuBit.Messages.Wait_Forever);
       if replyTag.label = REPLY_OK then
          --  The interrupter is enabled: unmask the entry and the function.
-         Open_Message_Interrupts (xhciInterrupts);
-         debugPrint ("devmgr: xHCI controller started" & LF);
+         Open_Message_Interrupts (instances (I).Interrupts);
+         declare
+            package R renames XHCI_Configure_Reply;
+            Devices : constant Unsigned_64 :=
+              (if replyTag.length >= R.Reply_Words then cfgMsg.words (R.Devices_Word) else 0);
+         begin
+            --  What this controller enumerated, named by its location.
+            Warnings.Inform ("devmgr: " & Name & " started; root ports" &
+              Unsigned_64'Image (cfgMsg.words (R.Ports_Word)) & ", connected" &
+              Unsigned_64'Image (cfgMsg.words (R.Connected_Word)) & "; devices keyboard=" &
+              (if R.Has (Devices, R.Keyboard_Bit) then "1" else "0") & " mouse=" &
+              (if R.Has (Devices, R.Mouse_Bit) then "1" else "0") & " storage=" &
+              (if R.Has (Devices, R.Storage_Bit) then "1" else "0"));
+            storage := R.Has (Devices, R.Storage_Bit);
+         end;
          --  Read-only optical block endpoint; no raw controller authority.
-         if filesystemPID /= No_Process then
+         --  The filesystem has one optical volume (@cd:0): the first
+         --  controller with a USB storage device serves it.
+         if filesystemPID /= No_Process and then not Optical_Storage_Ready and then storage then
             Optical_Storage_Ready :=
-              Attach_Storage (Fs_Attachments.Optical_Device, xhciChild);
+              Attach_Storage (Fs_Attachments.Optical_Device, child, Ordinal_Of (I, "xhci.drv"));
          end if;
       else
-         debugPrint ("devmgr: xHCI controller rejected setup" & LF);
-         Close_Message_Interrupts (xhciInterrupts);
-         xhciPID := No_Process;
+         Warnings.Inform ("devmgr: " & Name & " rejected setup (no device or a fault; " &
+                          "see its lines)");
+         Close_Message_Interrupts (instances (I).Interrupts);
+         instances (I).PID := No_Process;
       end if;
    end setupXHCI;
 
@@ -2846,8 +2942,9 @@ procedure main is
    --  configuration; MSI-X stays masked until it reports ready.
    ---------------------------------------------------------------------------
    DMA_MAX_ORDER : constant := 14;   --  2 ** 14 pages: CCL.Resource_Sections.MAX_DMA_BYTES
-   --  Generic drivers launched, awaiting or past their readiness report.
-   Generic_Capacity : constant := 16;
+   --  Generic drivers launched, awaiting or past their readiness report:
+   --  at most one per inventory entry.
+   Generic_Capacity : constant := CuBit.Devices.MAX_PCI_DEVICES;
    type Generic_Child is record
       PID        : Process_ID := No_Process;
       Interrupts : Message_Function;
@@ -2860,7 +2957,6 @@ procedure main is
    --  Each generic driver's log publications (CuBit.Log_Protocol), after
    --  devmgr's own drivers' issuances.
    Generic_Log_Issuance_First : constant CuBit.Log_Protocol.Publication_Issuance := 16;
-   PCI_COMMAND_MEMORY_BUS_MASTER : constant Unsigned_16 := 16#0006#;
 
    procedure Launch_Generic_PCI (Item : Inventory_Device; Name : String) is
       package RS renames CCL.Resource_Sections;
@@ -2893,8 +2989,7 @@ procedure main is
       if Plan.Basis.Kind /= RS.PCI_Basis and then Plan.Count > 0 then
          Refuse ("its resources are not relative to a PCI function");
       end if;
-      Config.Location := Shift_Left (Unsigned_64 (dev.bus), 8) or
-        Shift_Left (Unsigned_64 (dev.slot), 3) or Unsigned_64 (dev.func);
+      Config.Location := Routing_Of (dev);
       Config.Vendor := Unsigned_64 (Item.vendorID);
       Config.Device := Unsigned_64 (Item.deviceID);
       Config.Revision := Unsigned_64 (pciReadConfig8 (dev.bus, dev.slot, dev.func, 8));
@@ -3274,56 +3369,83 @@ begin
       end if;
    end if;
 
-   --  NVMe driver, for the controller bound to it.
-   if nvmeDev.found then
-      nvmeChild := spawnFromBootStorage ("nvme.drv", 5);
-   end if;
-   nvmePID := PID_Of (nvmeChild);
-   if nvmePID /= No_Process then
-      --  Placed first: its completion vectors go to the CPU it runs on.
-      assignCPU (nvmeChild, "nvme.drv");
-      setupNvme;
-      if not DL.Start (nvmeChild) then
-         Close_Message_Interrupts (nvmeInterrupts);
-         nvmePID := No_Process;
-      else
-         declare
-            use CuBit.NVMe_Control;
-            cfg : Message :=
-              (tag => (label => Operation'Enum_Rep
-                         (if nvmeInterrupts.Mode /= Polled then Configure_Interrupts
-                          else Configure_Polled),
-                       length => 0, protocol => 0, ipc => <>, reserved => 0),
-               authorityTag => 0, words => [others => 0]);
-            response : MessageTag;
-         begin
-            response := capCall (DL.Mailbox (nvmeChild), cfg, CuBit.Messages.Wait_Forever);
-            if response.label = REPLY_OK then
-               --  The queues exist: unmask the entries and the function.
-               Open_Message_Interrupts (nvmeInterrupts);
-               if nvmeInterrupts.Mode /= Polled then
-                  debugPrint ("devmgr: NVMe using " &
-                    (if nvmeInterrupts.Mode = MSIX_Mode then "MSI-X" else "MSI") & LF);
+   --  NVMe: one driver per controller bound to it, in PCI location order.
+   --  The first to report ready registers the NVMe role; each is attached
+   --  to the filesystem as @nvme:<its ordinal>.
+   declare
+      Role_Taken : Boolean := False;
+   begin
+      for I in 1 .. inventoryCount loop
+         if Bound_To (I, "nvme.drv") then
+            declare
+               Name : constant String := Instance_Text (I, "nvme.drv");
+               Ordinal : constant Natural := Ordinal_Of (I, "nvme.drv");
+               child : DL.Child;
+               PID : Process_ID;
+            begin
+               child := spawnFromBootStorage ("nvme.drv", 5);
+               instances (I).Child := child;
+               instances (I).PID := PID_Of (child);
+               PID := instances (I).PID;
+               if PID /= No_Process then
+                  --  Placed first: its completion vectors go to the CPU it runs on.
+                  assignCPU (child, "nvme.drv");
+                  setupNvme (I);
+                  if Role_Taken then
+                     DL.Withhold (child, "registration");
+                  end if;
+                  if not DL.Start (child) then
+                     Close_Message_Interrupts (instances (I).Interrupts);
+                     PID := No_Process;
+                  else
+                     declare
+                        use CuBit.NVMe_Control;
+                        cfg : Message :=
+                          (tag => (label => Operation'Enum_Rep
+                                     (if instances (I).Interrupts.Mode /= Polled
+                                      then Configure_Interrupts else Configure_Polled),
+                                   length => 0, protocol => 0, ipc => <>, reserved => 0),
+                           authorityTag => 0, words => [others => 0]);
+                        response : MessageTag;
+                     begin
+                        response := capCall (DL.Mailbox (child), cfg, CuBit.Messages.Wait_Forever);
+                        if response.label = REPLY_OK then
+                           --  The queues exist: unmask the entries and the function.
+                           Open_Message_Interrupts (instances (I).Interrupts);
+                           if instances (I).Interrupts.Mode /= Polled then
+                              debugPrint ("devmgr: " & Name & " using " &
+                                (if instances (I).Interrupts.Mode = MSIX_Mode
+                                 then "MSI-X" else "MSI") & LF);
+                           end if;
+                        else
+                           --  The driver polls: mask, disable and release the vectors.
+                           Close_Message_Interrupts (instances (I).Interrupts);
+                        end if;
+                     end;
+                     debugPrint ("devmgr: " & Name & " started" & LF);
+
+                     if not waitReady (PID) then
+                        PID := No_Process;
+                     end if;
+                  end if;
+                  instances (I).PID := PID;
+
+                  --  Attach it to the filesystem under its ordinal.
+                  if filesystemPID /= No_Process and PID /= No_Process then
+                     Role_Taken := True;
+                     if Attach_Storage (Fs_Attachments.NVMe_Device, child, Ordinal) then
+                        Warnings.Inform ("devmgr: " & Name & " attached as @nvme:" & Decimal (Ordinal));
+                     else
+                        Warnings.Warn ("devmgr: " & Name & " not attached to the filesystem");
+                     end if;
+                  elsif PID /= No_Process then
+                     Role_Taken := True;
+                  end if;
                end if;
-            else
-               --  The driver polls: mask, disable and release the vectors.
-               Close_Message_Interrupts (nvmeInterrupts);
-            end if;
-         end;
-         debugPrint ("devmgr: NVMe driver started" & LF);
-
-         if not waitReady (nvmePID) then
-            nvmePID := No_Process;
+            end;
          end if;
-      end if;
-
-      --  Attach the NVMe driver to the filesystem.
-      if filesystemPID /= No_Process and nvmePID /= No_Process then
-         if not Attach_Storage (Fs_Attachments.NVMe_Device, nvmeChild) then
-            debugPrint ("devmgr: NVMe not attached to the filesystem" & LF);
-         end if;
-      end if;
-   end if;
+      end loop;
+   end;
 
    -----------------------------------------------------------------------
    -- Phase 2b: Spawn PS/2 keyboard + mouse driver
@@ -3395,15 +3517,18 @@ begin
    end if;
 
    -----------------------------------------------------------------------
-   -- Phase 2c: Spawn xHCI only when PCI discovery found a controller.
+   -- Phase 2c: one xHCI driver per controller bound to it (the IdeaPad
+   -- has two: 00:0d.0 TCSS for the USB-C ports, 00:14.0 PCH).
    -----------------------------------------------------------------------
-   if xhciDev.found then
-      xhciChild := spawnFromBootStorage ("xhci.drv", 5);
-      xhciPID := PID_Of (xhciChild);
-      if xhciPID /= No_Process then
-         setupXHCI;
+   for I in 1 .. inventoryCount loop
+      if Bound_To (I, "xhci.drv") then
+         instances (I).Child := spawnFromBootStorage ("xhci.drv", 5);
+         instances (I).PID := PID_Of (instances (I).Child);
+         if instances (I).PID /= No_Process then
+            setupXHCI (I);
+         end if;
       end if;
-   end if;
+   end loop;
 
    -----------------------------------------------------------------------
    -- Phase 2d: Spawn config store service
@@ -3616,71 +3741,74 @@ begin
       end if;
    end if;
 
-   --  One virtio-net driver per virtio-net function (NETLINK interim):
-   --  netDev and the net* state describe the one being set up.
-   for K in 1 .. netDevCount loop
-      exit when netstackPID = No_Process;
-      netDev := netDevs (K);
-      netInterrupts := (others => <>);
-      netModern := False;
-      netTransportReady := False;
-      netIOBase := 0;
-      virtioNetChild := spawnFromBootStorage ("virtio-net.drv", 5);
-      virtioNetPID := PID_Of (virtioNetChild);
-      if virtioNetPID /= No_Process then
-         --  Placed first: its vector goes to the CPU it runs on.
-         assignCPU (virtioNetChild, "virtio-net.drv");
-         setupVirtioNet;
+   --  One virtio-net driver per function bound to it, in PCI location
+   --  order; each names its interface by its location (docs/net-link.md).
+   for I in 1 .. inventoryCount loop
+      if netstackPID /= No_Process and then Bound_To (I, "virtio-net.drv") then
+         declare
+            Name : constant String := Instance_Text (I, "virtio-net.drv");
+            virtioNetChild : DL.Child;
+            virtioNetPID : Process_ID;
+         begin
+            virtioNetChild := spawnFromBootStorage ("virtio-net.drv", 5);
+            virtioNetPID := PID_Of (virtioNetChild);
+            instances (I).Child := virtioNetChild;
+            instances (I).PID := virtioNetPID;
+            if virtioNetPID /= No_Process then
+               --  Placed first: its vector goes to the CPU it runs on.
+               assignCPU (virtioNetChild, "virtio-net.drv");
+               setupVirtioNet (I);
 
-         --  The driver reaches netstack through an endpoint badged as the
-         --  network driver's authority.
-         DL.Give (virtioNetChild, "netstack",
-           H.Badged (DL.Mailbox (netstackChild), H.Read_Write,
-                     CuBit.Network_Authority.Driver_Authority_Tag));
+               --  The driver reaches netstack through an endpoint badged as
+               --  the network driver's authority.
+               DL.Give (virtioNetChild, "netstack",
+                 H.Badged (DL.Mailbox (netstackChild), H.Read_Write,
+                           CuBit.Network_Authority.Driver_Authority_Tag));
 
-         if netTransportReady and then DL.Start (virtioNetChild) then
-            declare
-               use CuBit.Virtio_Net_Control;
-               cfg : Message :=
-                 (if netModern then
-                    (tag => (label => Operation'Enum_Rep (Configure_Modern),
-                             length => 3, protocol => 0, ipc => <>, reserved => 0),
-                     authorityTag => 0,
-                     words => [0 => Pair (netCommonOff, netDeviceOff),
-                               1 => Pair (netNotifyOff, netNotifyMult),
-                               2 => Pair (netModernBytes, 0),
-                               others => 0])
-                  else
-                    (tag => (label => Operation'Enum_Rep (Configure_MSIX),
-                             length => 1, protocol => 0, ipc => <>, reserved => 0),
-                     authorityTag => 0,
-                     words => [0 => netIOBase, others => 0]));
-               response : MessageTag;
-            begin
-               response := capCall (DL.Mailbox (virtioNetChild), cfg, CuBit.Messages.Wait_Forever);
-               netTransportReady := response.label = REPLY_OK;
-               if netTransportReady then
-                  --  Queue vectors are set: unmask the entry and the function.
-                  Open_Message_Interrupts (netInterrupts);
-                  debugPrint ("devmgr: virtio-net using MSI-X" & LF);
+               if netTransportReady and then DL.Start (virtioNetChild) then
+                  declare
+                     use CuBit.Virtio_Net_Control;
+                     cfg : Message :=
+                       (if netModern then
+                          (tag => (label => Operation'Enum_Rep (Configure_Modern),
+                                   length => 3, protocol => 0, ipc => <>, reserved => 0),
+                           authorityTag => 0,
+                           words => [0 => Pair (netCommonOff, netDeviceOff),
+                                     1 => Pair (netNotifyOff, netNotifyMult),
+                                     2 => Pair (netModernBytes, 0),
+                                     others => 0])
+                        else
+                          (tag => (label => Operation'Enum_Rep (Configure_MSIX),
+                                   length => 1, protocol => 0, ipc => <>, reserved => 0),
+                           authorityTag => 0,
+                           words => [0 => netIOBase, others => 0]));
+                     response : MessageTag;
+                  begin
+                     response := capCall (DL.Mailbox (virtioNetChild), cfg, CuBit.Messages.Wait_Forever);
+                     netTransportReady := response.label = REPLY_OK;
+                     if netTransportReady then
+                        --  Queue vectors are set: unmask the entry and the function.
+                        Open_Message_Interrupts (instances (I).Interrupts);
+                        debugPrint ("devmgr: virtio-net using MSI-X (" & Name & ")" & LF);
+                     else
+                        Close_Message_Interrupts (instances (I).Interrupts);
+                     end if;
+                  end;
+                  Warnings.Inform ("devmgr: " & Name & " started");
+
+                  if not netTransportReady or else not waitReady (virtioNetPID) then
+                     virtioNetPID := No_Process;
+                  end if;
                else
-                  Close_Message_Interrupts (netInterrupts);
+                  Warnings.Inform ("devmgr: " & Name & " interrupt setup unavailable");
+                  Close_Message_Interrupts (instances (I).Interrupts);
+                  DL.Abandon (virtioNetChild);
+                  virtioNetPID := No_Process;
                end if;
-            end;
-            debugPrint ("devmgr: virtio-net driver started" & LF);
-
-            if not netTransportReady or else not waitReady (virtioNetPID) then
-               virtioNetPID := No_Process;
             end if;
-         else
-            debugPrint ("devmgr: virtio-net interrupt setup unavailable" & LF);
-            Close_Message_Interrupts (netInterrupts);
-            DL.Abandon (virtioNetChild);
-            virtioNetPID := No_Process;
-         end if;
+            instances (I).PID := virtioNetPID;
+         end;
       end if;
-      netPIDs (K) := virtioNetPID;
-      netInterruptSets (K) := netInterrupts;
    end loop;
    if netstackPID /= No_Process then
       DL.Provide (Unsigned_32 (DRIVER_NETSTACK), DL.Mailbox (netstackChild));
@@ -3856,12 +3984,6 @@ begin
       end;
    end if;
 
-   --  HDA driver
-   if hdaDev.found then
-      hdaChild := spawnFromBootStorage ("hda.drv", 5);
-      hdaPID := PID_Of (hdaChild);
-   end if;
-
    --  Mixer service
    mixerChild := spawnFromBootStorage ("mixer.svc", 5);
    mixerPID := PID_Of (mixerChild);
@@ -3870,32 +3992,57 @@ begin
       DL.Provide (Unsigned_32 (DRIVER_MIXER), DL.Mailbox (mixerChild));
    end if;
 
-   if hdaPID /= No_Process and mixerPID /= No_Process then
-      --  Placed first: its vector goes to the CPU it runs on.
-      assignCPU (hdaChild, "hda.drv");
-      setupHDA;
-
-      --  The mixer reaches the HDA driver.
-      DL.Give (mixerChild, "hda", H.Copy (DL.Mailbox (hdaChild), H.Read_Write));
-
-      if DL.Start (hdaChild) then
-         debugPrint ("devmgr: HDA driver started" & LF);
-         if not waitReady (hdaPID) then
-            hdaPID := No_Process;
+   --  One HDA driver per controller bound to it, in PCI location order.
+   --  The mixer plays to one: the first that reports ready, which alone
+   --  registers the HDA role (the mixer knows its driver by it).
+   declare
+      Mixer_Output : Natural := 0;
+   begin
+      for I in 1 .. inventoryCount loop
+         if Bound_To (I, "hda.drv") and then mixerPID /= No_Process then
+            declare
+               Name : constant String := Instance_Text (I, "hda.drv");
+            begin
+               instances (I).Child := spawnFromBootStorage ("hda.drv", 5);
+               instances (I).PID := PID_Of (instances (I).Child);
+               if instances (I).PID /= No_Process then
+                  --  Placed first: its vector goes to the CPU it runs on.
+                  assignCPU (instances (I).Child, "hda.drv");
+                  setupHDA (I);
+                  if Mixer_Output /= 0 then
+                     DL.Withhold (instances (I).Child, "registration");
+                  end if;
+                  if DL.Start (instances (I).Child) then
+                     debugPrint ("devmgr: " & Name & " started" & LF);
+                     if not waitReady (instances (I).PID) then
+                        instances (I).PID := No_Process;
+                     end if;
+                  else
+                     instances (I).PID := No_Process;
+                  end if;
+                  if instances (I).PID /= No_Process and then Mixer_Output = 0 then
+                     Mixer_Output := I;
+                     Warnings.Inform ("devmgr: " & Name & " is the mixer's output");
+                  elsif instances (I).PID /= No_Process then
+                     Warnings.Inform ("devmgr: " & Name & " started; the mixer plays to " &
+                                      Location_Text (inventory (Mixer_Output).location));
+                  end if;
+               end if;
+            end;
          end if;
-      else
-         hdaPID := No_Process;
-      end if;
-   else
-      if hdaPID /= No_Process then
-         DL.Abandon (hdaChild);
-         hdaPID := No_Process;
-      end if;
+      end loop;
+
       if mixerPID /= No_Process then
-         --  Mixer without HDA (no audio hardware found)
-         DL.Withhold (mixerChild, "hda");
+         if Mixer_Output /= 0 then
+            --  The mixer reaches its HDA driver.
+            DL.Give (mixerChild, "hda",
+                     H.Copy (DL.Mailbox (instances (Mixer_Output).Child), H.Read_Write));
+         else
+            --  Mixer without HDA (no audio hardware found)
+            DL.Withhold (mixerChild, "hda");
+         end if;
       end if;
-   end if;
+   end;
 
    if mixerPID /= No_Process then
       --  mixer.svc may reserve real-time CPU for one audio period: 1.5 ms
@@ -4167,19 +4314,20 @@ begin
             end if;
          end;
       elsif msg.tag = (label => 16#0228#, length => 0, protocol => 0, ipc => Accepting, reserved => 0) and then
-        from /= No_Process and then
-        (from = xhciPID or else from = netmgrPID) and then
+        (Instance_Of (from, "xhci.drv") /= 0 or else
+         (from /= No_Process and then from = netmgrPID)) and then
         msg.words = [0, 0, 0, 0]
       then
-         --  A log publisher for a child started before logstore (xhci,
-         --  netmgr): a logstore endpoint badged with its publication tag,
-         --  in the reply.
+         --  A log publisher for a child started before logstore (every
+         --  xhci instance, netmgr): a logstore endpoint badged with its
+         --  publication tag, in the reply (logstore tells xhci instances
+         --  apart by their process).
          if not H.Valid (Logstore_Endpoint) or else
            not Answer_With (from, [others => 0], 0,
              H.Badged (Logstore_Endpoint, H.Read_Write,
                        CuBit.Log_Protocol.Publisher_Tag
                          (Driver_Log_Budget,
-                          (if from = xhciPID then XHCI_Log_Issuance
+                          (if from /= netmgrPID then XHCI_Log_Issuance
                            else Netmgr_Log_Issuance))))
          then
             Refuse (from, Answered => H.Valid (Logstore_Endpoint));
@@ -4730,27 +4878,21 @@ begin
          begin
             case item.kind is
                when CuBit.Devices.Storage_Controller =>
-                  if Same_Location (item.location, nvmeDev) then
-                     driverPID := nvmePID;
+                  if instances (Natural (msg.words (0))).PID /= No_Process then
+                     driverPID := instances (Natural (msg.words (0))).PID;
                   elsif Same_Location (item.location, ataDev) then
                      driverPID := ataPID;
                   end if;
                when CuBit.Devices.Network_Controller =>
-                  if Net_Device_At (item.location) /= 0 then
-                     driverPID := netPIDs (Net_Device_At (item.location));
+                  if instances (Natural (msg.words (0))).PID /= No_Process then
+                     driverPID := instances (Natural (msg.words (0))).PID;
                   end if;
                when CuBit.Devices.Display_Controller =>
                   if Same_Location (item.location, gpuDev) then
                      driverPID := virtioGpuPID;
                   end if;
-               when CuBit.Devices.Audio_Controller =>
-                  if Same_Location (item.location, hdaDev) then
-                     driverPID := hdaPID;
-                  end if;
-               when CuBit.Devices.USB_Controller =>
-                  if Same_Location (item.location, xhciDev) then
-                     driverPID := xhciPID;
-                  end if;
+               when CuBit.Devices.Audio_Controller | CuBit.Devices.USB_Controller =>
+                  driverPID := instances (Natural (msg.words (0))).PID;
                when CuBit.Devices.Other_Device =>
                   null;
             end case;
@@ -4788,13 +4930,10 @@ begin
             item : Inventory_Device renames
               inventory (Natural (msg.words (0)));
             F : constant Message_Function :=
-              (if Same_Location (item.location, nvmeDev) then nvmeInterrupts
-               elsif Net_Device_At (item.location) /= 0 then
-                 netInterruptSets (Net_Device_At (item.location))
+              (if instances (Natural (msg.words (0))).Child /= DL.No_Child
+               then instances (Natural (msg.words (0))).Interrupts
                elsif Same_Location (item.location, gpuDev) then gpuInterrupts
                elsif Same_Location (item.location, intelDev) then intelInterrupts
-               elsif Same_Location (item.location, hdaDev) then hdaInterrupts
-               elsif Same_Location (item.location, xhciDev) then xhciInterrupts
                elsif Same_Location (item.location, inputDev) then inputInterrupts
                else (others => <>));
             mode : constant CuBit.Devices.Interrupt_Mode :=
@@ -4827,57 +4966,66 @@ begin
                       3 => delivered])));
          end;
       elsif msg.tag.label = CuBit.Devices.OP_PUBLISH_XHCI_STATS and then
-            from = xhciPID and then msg.tag.length >= 3
+            Instance_Of (from, "xhci.drv") /= 0 and then msg.tag.length >= 3
       then
-         xhciDiagnostics.valid := True;
-         xhciDiagnostics.decodedReports :=
-           msg.words (0) and 16#FFFF_FFFF#;
-         xhciDiagnostics.motionReports := Shift_Right (msg.words (0), 32);
-         xhciDiagnostics.buttonTransitions :=
-           Unsigned_32 (msg.words (1) and 16#FFFF_FFFF#);
-         xhciDiagnostics.completionErrors :=
-           Unsigned_32 (Shift_Right (msg.words (1), 32));
-         xhciDiagnostics.lastReport :=
-           Unsigned_32 (msg.words (2) and 16#FFFF_FFFF#);
-         xhciDiagnostics.lastLength :=
-           Unsigned_8 (Shift_Right (msg.words (2), 32) and 16#FF#);
-         xhciDiagnostics.lastCompletion :=
-           Unsigned_8 (Shift_Right (msg.words (2), 40) and 16#FF#);
-         case Shift_Right (msg.words (2), 48) and 16#FF# is
-            when 1 =>
-               xhciDiagnostics.interruptMode :=
-                 CuBit.Devices.Interrupt_MSI;
-            when 2 =>
-               xhciDiagnostics.interruptMode :=
-                 CuBit.Devices.Interrupt_MSIX;
-            when others =>
-               xhciDiagnostics.interruptMode :=
-                 CuBit.Devices.Interrupt_Polling;
-         end case;
+         declare
+            xhciDiagnostics : XHCI_Diagnostic_Snapshot renames
+              main.xhciDiagnostics (Instance_Of (from, "xhci.drv"));
+         begin
+            xhciDiagnostics.valid := True;
+            xhciDiagnostics.decodedReports :=
+              msg.words (0) and 16#FFFF_FFFF#;
+            xhciDiagnostics.motionReports := Shift_Right (msg.words (0), 32);
+            xhciDiagnostics.buttonTransitions :=
+              Unsigned_32 (msg.words (1) and 16#FFFF_FFFF#);
+            xhciDiagnostics.completionErrors :=
+              Unsigned_32 (Shift_Right (msg.words (1), 32));
+            xhciDiagnostics.lastReport :=
+              Unsigned_32 (msg.words (2) and 16#FFFF_FFFF#);
+            xhciDiagnostics.lastLength :=
+              Unsigned_8 (Shift_Right (msg.words (2), 32) and 16#FF#);
+            xhciDiagnostics.lastCompletion :=
+              Unsigned_8 (Shift_Right (msg.words (2), 40) and 16#FF#);
+            case Shift_Right (msg.words (2), 48) and 16#FF# is
+               when 1 =>
+                  xhciDiagnostics.interruptMode :=
+                    CuBit.Devices.Interrupt_MSI;
+               when 2 =>
+                  xhciDiagnostics.interruptMode :=
+                    CuBit.Devices.Interrupt_MSIX;
+               when others =>
+                  xhciDiagnostics.interruptMode :=
+                    CuBit.Devices.Interrupt_Polling;
+            end case;
+         end;
       elsif msg.tag.label = CuBit.Devices.OP_XHCI_DIAGNOSTICS then
-         ret := Unsigned_64
-           (reply
-              (from,
-               (tag =>
-                  (label => CuBit.Devices.REPLY_OK,
-                   length => 4, protocol => 0, ipc => <>, reserved => 0),
-                authorityTag => 0,
-                words =>
-                  [0 => xhciDiagnostics.decodedReports,
-                   1 => xhciDiagnostics.motionReports,
-                   2 => Unsigned_64 (xhciDiagnostics.buttonTransitions) or
-                     Shift_Left
-                       (Unsigned_64 (xhciDiagnostics.completionErrors), 32),
-                   3 => Unsigned_64 (xhciDiagnostics.lastReport) or
-                     Shift_Left
-                       (Unsigned_64 (xhciDiagnostics.lastLength), 32) or
-                     Shift_Left
-                       (Unsigned_64 (xhciDiagnostics.lastCompletion), 40) or
-                     Shift_Left
-                       (Unsigned_64
-                          (CuBit.Devices.Interrupt_Mode'Enum_Rep
-                             (xhciDiagnostics.interruptMode)), 48) or
-                     (if xhciDiagnostics.valid then 2**56 else 0)])));
+         declare
+            xhciDiagnostics : constant XHCI_Diagnostic_Snapshot := Pointer_Diagnostics;
+         begin
+            ret := Unsigned_64
+              (reply
+                 (from,
+                  (tag =>
+                     (label => CuBit.Devices.REPLY_OK,
+                      length => 4, protocol => 0, ipc => <>, reserved => 0),
+                   authorityTag => 0,
+                   words =>
+                     [0 => xhciDiagnostics.decodedReports,
+                      1 => xhciDiagnostics.motionReports,
+                      2 => Unsigned_64 (xhciDiagnostics.buttonTransitions) or
+                        Shift_Left
+                          (Unsigned_64 (xhciDiagnostics.completionErrors), 32),
+                      3 => Unsigned_64 (xhciDiagnostics.lastReport) or
+                        Shift_Left
+                          (Unsigned_64 (xhciDiagnostics.lastLength), 32) or
+                        Shift_Left
+                          (Unsigned_64 (xhciDiagnostics.lastCompletion), 40) or
+                        Shift_Left
+                          (Unsigned_64
+                             (CuBit.Devices.Interrupt_Mode'Enum_Rep
+                                (xhciDiagnostics.interruptMode)), 48) or
+                        (if xhciDiagnostics.valid then 2**56 else 0)])));
+         end;
       else
          debugPrint ("devmgr: rejected unknown message" & LF);
          ret := Unsigned_64

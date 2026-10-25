@@ -24,6 +24,14 @@ package body Fs_Server.Storage is
 
    FS_PAGE_SIZE : constant := 4096;
 
+   --  The volume a block device attaches as: "<kind>:<ordinal>", where
+   --  the ordinal is its controller's place among those of its kind in PCI
+   --  location order (Fs_Attachments). @nvme:0 is registered at startup;
+   --  another NVMe controller's volume is registered when it attaches.
+   --  The ATA channel is one device.
+   NVMe_Volume_Prefix : constant String := "nvme:";
+   NVMe_Transfer_Pages : constant Transfer_Page_Count := 128;
+
    --  Generic endpoint admission. The registry role is only a boot-order hint;
    --  grant creation is authorized by the endpoint already installed by devmgr.
    procedure ensureVolume (Volume : Volume_Index; Result : out Admission_Result) is
@@ -124,8 +132,9 @@ package body Fs_Server.Storage is
          debugPrint ("FS Server: volume list initialization failed." & LF);
          return;
       end if;
-      Register (Volumes, "nvme:0",
-        (Endpoint => CuBit.Handles.No_Endpoint, Ready_Role => DRIVER_NVME, Transfer_Pages => 128),
+      Register (Volumes, NVMe_Volume_Prefix & "0",
+        (Endpoint => CuBit.Handles.No_Endpoint, Ready_Role => DRIVER_NVME,
+         Transfer_Pages => NVMe_Transfer_Pages),
         Volume, Result);
       if Result /= Registered then
          debugPrint ("FS Server: volume list initialization failed." & LF);
@@ -134,34 +143,62 @@ package body Fs_Server.Storage is
       ok := True;
    end registerVolumes;
 
+   function Ordinal_Image (Ordinal : Fs_Attachments.Device_Ordinal) return String is
+      Image : constant String := Fs_Attachments.Device_Ordinal'Image (Ordinal);
+   begin
+      return Image (Image'First + 1 .. Image'Last);
+   end Ordinal_Image;
+
    procedure handleAttach (sender : Process_ID; msg : Message) is
       Device : Unsigned_64;
+      Ordinal : Fs_Attachments.Device_Ordinal;
       Attached : Boolean := False;
       Volume : Volume_Reference := No_Volume;
+      Result : Registration_Result;
    begin
       if sender = No_Process or else sender /= Registered_Driver (DRIVER_DEVMGR)
         or else msg.tag.length /= Fs_Attachments.Attach_Words
         or else not CuBit.Handles.IPC.Offers (msg)
+        or else msg.words (1) > Fs_Attachments.Maximum_Ordinal
       then
          sendReply (sender, REPLY_ERR, 0);
          return;
       end if;
       Device := msg.words (0);
+      Ordinal := Fs_Attachments.Device_Ordinal (msg.words (1));
       declare
          Offered : constant CuBit.Handles.IPC.Accepted_Endpoint :=
            CuBit.Handles.IPC.Accept_Endpoint (CuBit.Handles.IPC.Accept_Offered (sender));
       begin
          if Offered.OK then
             if Device = Fs_Attachments.Device_Code (Fs_Attachments.Optical_Device) then
+               --  One optical volume (@cd:0): the first drive devmgr attaches.
                ISO9660.Attach (Offered.Value, Attached);
-            else
-               Volume := Volume_List.Find
-                 (Volumes,
-                  (if Device = Fs_Attachments.Device_Code (Fs_Attachments.ATA_Device) then "ata:0"
-                   elsif Device = Fs_Attachments.Device_Code (Fs_Attachments.NVMe_Device) then "nvme:0"
-                   else ""));
-               if Volume /= No_Volume then
-                  Volume_List.Attach (Volumes, Volume, Offered.Value, Attached);
+            elsif Device = Fs_Attachments.Device_Code (Fs_Attachments.ATA_Device) then
+               if Ordinal = 0 then
+                  Volume := Volume_List.Find (Volumes, "ata:0");
+               end if;
+            elsif Device = Fs_Attachments.Device_Code (Fs_Attachments.NVMe_Device) then
+               declare
+                  Name : constant String := NVMe_Volume_Prefix & Ordinal_Image (Ordinal);
+               begin
+                  Volume := Volume_List.Find (Volumes, Name);
+                  if Volume = No_Volume then
+                     Register (Volumes, Name,
+                       (Endpoint => CuBit.Handles.No_Endpoint, Ready_Role => 0,
+                        Transfer_Pages => NVMe_Transfer_Pages),
+                       Volume, Result);
+                     if Result /= Registered then
+                        debugPrint ("FS Server: volume " & Name & " not registered" & LF);
+                        Volume := No_Volume;
+                     end if;
+                  end if;
+               end;
+            end if;
+            if Volume /= No_Volume then
+               Volume_List.Attach (Volumes, Volume, Offered.Value, Attached);
+               if Attached then
+                  bumpNamespace;   --  a new volume's names resolve
                end if;
             end if;
             if not Attached then

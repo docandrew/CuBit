@@ -166,6 +166,11 @@ begin
         (Launch_Configuration.NVMe_Controller, Configuration, Configured);
       bar0Phys := (if Configured then Configuration.Registers else 0);
       dmaPhys  := (if Configured then Configuration.DMA else 0);
+      if Configured then
+         --  devmgr starts one driver per controller: this one's.
+         debugPrint ("NVMe Driver: controller " &
+                     Launch_Configuration.Location_Image (Configuration.Location) & LF);
+      end if;
    end;
 
    if bar0Phys = 0 then
@@ -212,12 +217,15 @@ begin
                 then "NVMe Driver: completion interrupts (MSI-X)" & LF
                 else "NVMe Driver: completions polled" & LF));
 
-   --  5. Register as NVMe driver
-   declare
-      ignore : Unsigned_64;
-   begin
-      ignore := registerDriver (DRIVER_NVME, Startup.Registration);
-   end;
+   --  5. Register as NVMe driver: devmgr gives the role to the first
+   --  controller's driver only.
+   if Startup.Registration.Present then
+      declare
+         ignore : Unsigned_64;
+      begin
+         ignore := registerDriver (DRIVER_NVME, Startup.Registration.Value);
+      end;
+   end if;
 
    --  Signal devmgr that we are ready
    declare

@@ -1,0 +1,11 @@
+# Per-device driver instances (docs/device-matching.md "One instance per
+# device"): run.sh adds two qemu-xhci controllers (a USB keyboard on one,
+# a USB optical drive on the other) and a second NVMe disk. boot-logs
+# prints what logstore keeps, so devmgr's and xhci's lines are seen
+# arriving through logstore too.
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "display.svc" (priority 5))
+  (start "desktop.svc" (priority 4))
+  (start "boot-logs.app" (priority 2))
+)

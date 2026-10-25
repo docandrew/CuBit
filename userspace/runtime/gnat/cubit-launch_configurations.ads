@@ -25,7 +25,7 @@ package CuBit.Launch_Configurations is
    procedure Get (Value : out LC.Boot_Image_Configuration; Valid : out Boolean);
    procedure Get (Kind  : LC.Configuration_Kind;
                   Value : out LC.Controller_Configuration; Valid : out Boolean)
-   with Pre => Kind in LC.NVMe_Controller | LC.HDA_Controller;
+   with Pre => LC.Is_Controller (Kind);
    procedure Get (Kind  : LC.Configuration_Kind;
                   Value : out LC.Queue_Configuration; Valid : out Boolean)
    with Pre => Kind in LC.Virtio_Input;
