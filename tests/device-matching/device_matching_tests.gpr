@@ -7,7 +7,9 @@ project Device_Matching_Tests is
      "ccl-device_sections.ads", "ccl-device_sections.adb",
      "ccl-device_index.ads", "ccl-device_index.adb",
      --  devmgr's binding state over the index (proved with the formats).
-     "devmgr_bindings.ads", "devmgr_bindings.adb");
+     "devmgr_bindings.ads", "devmgr_bindings.adb",
+     --  The generic launch's device-memory window rule.
+     "devmgr_windows.ads");
    for Object_Dir use "build/obj";
    for Exec_Dir use "build";
    for Main use ("device_matching_tests.adb");

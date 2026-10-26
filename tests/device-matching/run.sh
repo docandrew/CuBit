@@ -13,7 +13,7 @@ mkdir -p "$objects"
 tool=../userspace/ccl/build/manifest/ccl-manifest
 index=../userspace/ccl/build/image/ccl-device-index
 args=()
-for d in ata hda intel-gpu nvme ps2 ramdisk virtio-gpu virtio-input virtio-net xhci mixer; do
+for d in ata hda intel-gpu nvme ps2 ramdisk virtio-gpu virtio-input virtio-net xhci ufs mixer; do
     $tool ../userspace/ccl/catalogs/driver-services.ccl ../userspace/services/$d/manifest.ccl > "$objects/$d.S"
     alr exec -- gcc -c "$objects/$d.S" -o "$objects/$d.o"
     suffix=.drv; [[ $d == mixer ]] && suffix=.svc
@@ -27,10 +27,12 @@ fi
 grep -q "ambiguous drivers: nvme.drv (PCI_Class 01.08.02) and nvme2.drv" <<<"$out" ||
     { echo "DEVICE-MATCHING: FAIL ambiguity not named: $out"; exit 1; }
 alr exec -- gprbuild -q -p -P "$here/device_matching_tests.gpr"
-"$here/build/device_matching_tests" "$here/build/devices.index"
+#  ufs.drv's resource requests, for the window-size check.
+objcopy --dump-section .cubit.resources="$here/build/ufs.resources" "$objects/ufs.o" "$objects/ufs.dump.o"
+"$here/build/device_matching_tests" "$here/build/devices.index" "$here/build/ufs.resources"
 if [[ ${1:-} == --prove ]]; then
     systemd-run --user --scope -p MemoryMax=24G -p MemorySwapMax=0 --quiet \
         alr exec -- gnatprove -P "$here/device_matching_tests.gpr" \
-        -u ccl-device_sections.adb -u ccl-device_index.adb -u devmgr_bindings.adb \
+        -u ccl-device_sections.adb -u ccl-device_index.adb -u devmgr_bindings.adb -u devmgr_windows.ads \
         --level=2 -j2 --report=statistics
 fi

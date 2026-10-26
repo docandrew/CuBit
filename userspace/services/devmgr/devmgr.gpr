@@ -22,7 +22,7 @@ project Devmgr is
        "xhci_configure_reply.ads",
        "driver_manifests.ads", "driver_manifests.adb",
        --  Devices bound by their drivers' declared matches (HW-002).
-       "devmgr_bindings.ads", "devmgr_bindings.adb",
+       "devmgr_bindings.ads", "devmgr_bindings.adb", "devmgr_windows.ads",
        "ccl-device_sections.ads", "ccl-device_sections.adb",
        "ccl-device_index.ads", "ccl-device_index.adb",
        "intel_gpu_adln_devices.ads",

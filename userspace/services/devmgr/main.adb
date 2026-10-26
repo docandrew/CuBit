@@ -43,6 +43,7 @@ with Device_Vector_ABI;
 with CCL.Resource_Sections;
 with Driver_Manifests;
 with Devmgr_Bindings;
+with Devmgr_Windows;
 with CCL.Device_Sections;
 with CCL.Device_Index;
 with CuBit.Driver_Readiness;
@@ -3024,13 +3025,22 @@ procedure main is
                           Shift_Left (Unsigned_64 (High), 32) or Unsigned_64 (Low and PCI_BAR_ADDRESS_MASK);
                         Size : constant Unsigned_64 :=
                           probeMemoryBARSize (dev, Offset, RS.MAX_DEVICE_MEMORY_BYTES);
-                        Bytes : constant Unsigned_64 := Unsigned_64'Min (Size, R.Amount);
+                        --  Never more than the BAR decodes (Devmgr_Windows).
+                        Grant : constant Devmgr_Windows.Window_Grant :=
+                          Devmgr_Windows.Window (R.Amount, Size);
+                        Bytes : constant Unsigned_64 := Grant.Bytes;
                      begin
                         if (Low and PCI_BAR_IO) /= 0 or else Base = 0 or else Size = 0 then
                            Refuse ("BAR" & Unsigned_32'Image (R.Index) & " is not an assigned memory BAR");
                         elsif not Devmgr_Authority.Covered (Base, Bytes) then
                            Refuse ("BAR" & Unsigned_32'Image (R.Index) & " outside device memory");
                         else
+                           if Grant.Clamped then
+                              Warnings.Inform
+                                ("devmgr: " & Name & " BAR" & Unsigned_32'Image (R.Index) &
+                                 " request of" & Unsigned_64'Image (R.Amount) &
+                                 " bytes clamped to the BAR's" & Unsigned_64'Image (Size));
+                           end if;
                            Window := Window + 1;
                            Config.Windows (Window) := (First => Base, Bytes => Bytes);
                            if not DL.Give_Nth (Child, ST.Device_Memory, Window,

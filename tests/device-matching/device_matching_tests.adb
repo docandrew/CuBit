@@ -16,6 +16,7 @@ with Interfaces; use Interfaces;
 with CCL.Device_Sections;
 with CCL.Device_Index;
 with CCL.Resource_Sections;
+with Devmgr_Windows;
 
 procedure Device_Matching_Tests is
    package DS renames CCL.Device_Sections;
@@ -88,7 +89,7 @@ procedure Device_Matching_Tests is
       (16#8086#, 16#46D4#, 16#03#, 16#00#, 16#00#, Pad ("intel-gpu.drv")),  --  graphics
       (16#8086#, 16#464E#, 16#0C#, 16#03#, 16#30#, Pad ("xhci.drv")),       --  TCSS xHCI
       (16#8086#, 16#54ED#, 16#0C#, 16#03#, 16#30#, Pad ("xhci.drv")),       --  PCH xHCI
-      (16#8086#, 16#54FF#, 16#01#, 16#09#, 16#01#, Pad ("")),               --  UFS (no driver yet)
+      (16#8086#, 16#54FF#, 16#01#, 16#09#, 16#01#, Pad ("ufs.drv")),        --  UFS
       (16#8086#, 16#54E8#, 16#0C#, 16#80#, 16#00#, Pad ("")),               --  I2C 0
       (16#8086#, 16#54E9#, 16#0C#, 16#80#, 16#00#, Pad ("")),               --  I2C 1
       (16#8086#, 16#54FC#, 16#07#, 16#00#, 16#00#, Pad ("")),               --  ISH
@@ -108,7 +109,8 @@ procedure Device_Matching_Tests is
       (16#1B36#, 16#0010#, 16#01#, 16#08#, 16#02#, Pad ("nvme.drv")),
       (16#8086#, 16#293E#, 16#04#, 16#03#, 16#00#, Pad ("hda.drv")),
       (16#1B36#, 16#000D#, 16#0C#, 16#03#, 16#30#, Pad ("xhci.drv")),       --  qemu-xhci
-      (16#8086#, 16#2922#, 16#01#, 16#06#, 16#01#, Pad (""))];              --  ICH9 AHCI (no driver)
+      (16#8086#, 16#2922#, 16#01#, 16#06#, 16#01#, Pad ("")),               --  ICH9 AHCI (no driver)
+      (16#1B36#, 16#0013#, 16#01#, 16#09#, 16#01#, Pad ("ufs.drv"))];       --  QEMU UFS (tests/ufs)
 
    function PCI_IDs (Vendor, First, Last : Unsigned_16) return DS.Device_Match is
      ((Kind => DS.PCI_IDs, Vendor => Vendor, First => First, Last => Last, others => <>));
@@ -136,6 +138,49 @@ begin
    end loop;
    DI.First_Ambiguity (Index, Found, Left, Right, Left_Entry, Right_Entry);
    Check (not Found, "the image's drivers are unambiguous");
+
+   --  The generic launch's device-memory windows never exceed the BAR: the
+   --  UFS driver once asked 16 KiB of the IdeaPad's 4 KiB BAR 0.
+   declare
+      use type Devmgr_Windows.Window_Grant;
+      BAR_4K : constant := 4096;
+      Asked_16K : constant := 16_384;
+   begin
+      Check (Devmgr_Windows.Window (Asked_16K, BAR_4K) = (Bytes => BAR_4K, Clamped => True),
+             "an oversize request is clamped to the BAR");
+      Check (Devmgr_Windows.Window (BAR_4K, BAR_4K) = (Bytes => BAR_4K, Clamped => False),
+             "a request of the whole BAR is granted");
+      Check (Devmgr_Windows.Window (256, BAR_4K) = (Bytes => 256, Clamped => False),
+             "a smaller request is granted as asked");
+      Check (Devmgr_Windows.Window (Asked_16K, 0).Bytes = 0,
+             "no window from an unusable BAR");
+   end;
+
+   --  ufs.drv asks no more device memory than 54FF's BAR 0 decodes
+   --  (its .cubit.resources section, extracted by run.sh).
+   declare
+      package RS renames CCL.Resource_Sections;
+      use type RS.Resource_Kind;
+      use type RS.Decode_Status;
+      IdeaPad_UFS_BAR_Bytes : constant := 4096;
+      Raw : constant DI.Byte_Array := Load (Ada.Command_Line.Argument (2));
+      Section : constant RS.Byte_Array (1 .. Raw'Length) :=
+        [for I in 1 .. Raw'Length => Raw (Raw'First + I - 1)];
+      Plan : RS.Section_Plan;
+      Section_Status : RS.Decode_Status;
+      Windows : Natural := 0;
+   begin
+      RS.Decode (Section, Plan, Section_Status);
+      Check (Section_Status = RS.Decoded, "ufs.drv's resource section decodes");
+      for I in 1 .. Plan.Count loop
+         if Plan.Entries (I).Kind = RS.Device_Memory then
+            Windows := Windows + 1;
+            Check (Plan.Entries (I).Amount <= IdeaPad_UFS_BAR_Bytes,
+                   "ufs.drv's register window fits 54FF's 4 KiB BAR");
+         end if;
+      end loop;
+      Check (Windows = 1, "ufs.drv asks for one register window");
+   end;
 
    --  Precedence on hand-made tables: an ID range beats a class, a
    --  narrower range a wider one, equals are ambiguous.

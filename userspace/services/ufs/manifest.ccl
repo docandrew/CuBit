@@ -18,7 +18,9 @@
     # Any other UFSHCI controller: mass storage, UFS, UFSHCI interface.
     (Device_Match.PCI_Class (PCI_Class 0x01 0x09 0x01))]
   requests => [
-    (device-memory "registers" 0 16384 Access.Read_Write)
+    # BAR 0's first 4 KiB: every register the driver uses is below 0x100
+    # (UFSHCI 2.0 register block); 8086:54FF's BAR is exactly 4 KiB.
+    (device-memory "registers" 0 4096 Access.Read_Write)
     (dma "queues" 1048576)
     (service "device-manager" "ready")
     # Bring-up stage lines reach the boot-logs view (and serial).

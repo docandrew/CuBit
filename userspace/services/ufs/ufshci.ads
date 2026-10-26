@@ -3,9 +3,16 @@
 --  Copyright (C) 2026 Jon Andrew
 --
 --  @summary
---  UFS host controller interface (JEDEC JESD223 UFSHCI 3.0/4.0): register
---  map, register fields, UIC commands and attributes, and the decoders for
---  the identification registers. Pure: no MMIO here (HW-001 step 3).
+--  UFS host controller interface (JEDEC JESD223, UFSHCI 2.0 and later):
+--  register map, register fields, UIC commands and attributes, and the
+--  decoders for the identification registers. Pure: no MMIO here (HW-001).
+--
+--  The driver uses only what UFSHCI 2.0 has (the IdeaPad's 8086:54FF is
+--  2.0): completions by doorbell-clear polling, the 2.0 register block
+--  (everything below offset 16#A0#, so a 4 KiB BAR suffices) and 2.0's
+--  interrupt sources. Later additions it does not use: UTRLCNR completion
+--  notification and auto-hibernate (3.0), crypto (2.1), MCQ (4.0); the one
+--  later interrupt source, the crypto engine's (2.1), is gated on version.
 ------------------------------------------------------------------------------
 with Interfaces; use Interfaces;
 
@@ -14,24 +21,21 @@ package UFSHCI with SPARK_Mode, Pure is
    --  Registers (UFSHCI 5.1). Offsets in bytes from BAR 0.
    ---------------------------------------------------------------------------
    type Register is
-     (Capabilities, MCQ_Capabilities, Version, Product_ID, Manufacturer_ID,
-      Auto_Hibernate_Idle_Timer, Interrupt_Status, Interrupt_Enable,
+     (Capabilities, Version, Product_ID, Manufacturer_ID,
+      Interrupt_Status, Interrupt_Enable,
       Controller_Status, Controller_Enable, UIC_Error_PHY_Adapter,
       UIC_Error_Data_Link, UIC_Error_Network, UIC_Error_Transport,
       UIC_Error_DME, Transfer_Interrupt_Aggregation,
       Transfer_List_Base_Low, Transfer_List_Base_High, Transfer_Doorbell,
       Transfer_List_Clear, Transfer_List_Run_Stop,
-      Transfer_Completion_Notification,
       Task_List_Base_Low, Task_List_Base_High, Task_Doorbell,
       Task_List_Clear, Task_List_Run_Stop,
       UIC_Command, UIC_Argument_1, UIC_Argument_2, UIC_Argument_3);
    for Register use
      (Capabilities                     => 16#00#,
-      MCQ_Capabilities                 => 16#04#,
       Version                          => 16#08#,
       Product_ID                       => 16#10#,
       Manufacturer_ID                  => 16#14#,
-      Auto_Hibernate_Idle_Timer        => 16#18#,
       Interrupt_Status                 => 16#20#,
       Interrupt_Enable                 => 16#24#,
       Controller_Status                => 16#30#,
@@ -47,7 +51,6 @@ package UFSHCI with SPARK_Mode, Pure is
       Transfer_Doorbell                => 16#58#,
       Transfer_List_Clear              => 16#5C#,
       Transfer_List_Run_Stop           => 16#60#,
-      Transfer_Completion_Notification => 16#64#,
       Task_List_Base_Low               => 16#70#,
       Task_List_Base_High              => 16#74#,
       Task_Doorbell                    => 16#78#,
@@ -78,9 +81,7 @@ package UFSHCI with SPARK_Mode, Pure is
    type Controller_Capabilities is record
       Transfer_Slots : Transfer_Slot_Count := 1;
       Task_Slots     : Task_Slot_Count := 1;
-      Auto_Hibernate : Boolean := False;
       Addressing_64  : Boolean := False;
-      Crypto         : Boolean := False;
    end record;
 
    function Decode_Capabilities (Value : Register_Value)
@@ -95,7 +96,18 @@ package UFSHCI with SPARK_Mode, Pure is
       Suffix : Unsigned_8 := 0;
    end record;
 
+   --  UFSHCI 1.x encodes VER differently (16#0001_0m00# for 1.m); it is
+   --  decoded into the same major.minor (as Linux ufshcd_get_ufs_version).
    function Decode_Version (Value : Register_Value) return Interface_Version;
+
+   function At_Least (Item : Interface_Version; Major, Minor : Unsigned_8)
+     return Boolean is
+     (Item.Major > Major or else (Item.Major = Major and then Item.Minor >= Minor));
+
+   --  UFSHCI 2.0 and later: one command type (UFS storage) for every
+   --  request, the transfer descriptor this driver writes. 1.x is declined.
+   function Supported (Item : Interface_Version) return Boolean is
+     (At_Least (Item, 2, 0));
 
    ---------------------------------------------------------------------------
    --  IS / IE: interrupt sources (UFSHCI 5.3.1).
@@ -111,17 +123,21 @@ package UFSHCI with SPARK_Mode, Pure is
    UTP_Error               : constant Register_Value := 2 ** 12;
    Controller_Fatal_Error  : constant Register_Value := 2 ** 16;
    System_Bus_Fatal_Error  : constant Register_Value := 2 ** 17;
+   --  UFSHCI 2.1 and later only (reserved before).
    Crypto_Engine_Fatal     : constant Register_Value := 2 ** 18;
 
-   --  Errors after which the controller must be reset.
-   Fatal_Errors : constant Register_Value :=
-     Device_Fatal_Error or Controller_Fatal_Error or System_Bus_Fatal_Error
-     or Crypto_Engine_Fatal or UIC_Link_Lost;
+   --  Errors after which the controller must be reset, on Item's version
+   --  (Linux INTERRUPT_MASK_ALL_VER_11 / _VER_21).
+   function Fatal_Errors (Item : Interface_Version) return Register_Value is
+     (Device_Fatal_Error or Controller_Fatal_Error or System_Bus_Fatal_Error
+      or UIC_Link_Lost
+      or (if At_Least (Item, 2, 1) then Crypto_Engine_Fatal else 0));
 
    --  The sources this driver handles: completions and every error.
-   Driver_Interrupts : constant Register_Value :=
-     Transfer_Completed or Task_Completed or UIC_Error or UTP_Error
-     or Fatal_Errors;
+   function Handled_Interrupts (Item : Interface_Version)
+     return Register_Value is
+     (Transfer_Completed or Task_Completed or UIC_Error or UTP_Error
+      or Fatal_Errors (Item));
 
    ---------------------------------------------------------------------------
    --  HCS: controller status (UFSHCI 5.3.3).

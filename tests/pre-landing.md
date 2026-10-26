@@ -130,9 +130,12 @@ make -C kernel test-scsi prove-scsi test-usb-optical prove-usb-optical
 
 Every driver is in every image and devmgr binds present devices by their
 declared matches. The real drivers' index binds the IdeaPad's lspci
-(intel-gpu to 8086:46D4, xhci to both controllers, hda to 54C8, the rest
-unmatched) and QEMU q35; the index tool refuses two equally specific drivers;
-the decoders survive every truncation and bit flip.
+(intel-gpu to 8086:46D4, xhci to both controllers, hda to 54C8, ufs to
+54FF, the rest unmatched) and QEMU q35; the index tool refuses two equally
+specific drivers; the decoders survive every truncation and bit flip. The
+generic launch never grants a device-memory window larger than the BAR
+decodes (Devmgr_Windows; clamps are logged), and ufs.drv asks for no more
+than 54FF's 4 KiB BAR 0 (it once asked 16 KiB).
 
 ```sh
 make -C kernel ccl-manifest ccl-image
@@ -214,7 +217,9 @@ bash tests/ccl-build/run.sh
 ## ufs (HW-001)
 
 The UFS driver's codecs (UFSHCI registers, UPIUs and request descriptors,
-UFS descriptors, GPT) as byte-exact fixtures and proofs, and the driver on
+UFS descriptors, GPT) as byte-exact fixtures and proofs, including the
+IdeaPad's UFSHCI 2.0 register set (the driver once declined it as too
+old), and the driver on
 QEMU's UFS model: every bring-up stage logs `ok`, the unit's capacity and
 the GPT of a disk laid out like the IdeaPad's are read, nothing is written
 (the disk is read only at the host too). QEMU is not the hardware test.

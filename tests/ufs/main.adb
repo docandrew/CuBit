@@ -49,11 +49,36 @@ begin
       Small : constant Controller_Capabilities := Decode_Capabilities (0);
    begin
       Expect (Caps.Transfer_Slots = 32 and Caps.Task_Slots = 8
-              and Caps.Addressing_64 and not Caps.Auto_Hibernate);
+              and Caps.Addressing_64);
       Expect (Small.Transfer_Slots = 1 and Small.Task_Slots = 1
               and not Small.Addressing_64);
    end;
    Expect (Decode_Version (16#0310#) = (Major => 3, Minor => 1, Suffix => 0));
+   --  The IdeaPad's 8086:54FF reports UFSHCI 2.0 (VER 16#0000_0200#): a
+   --  supported controller, without 2.1's crypto engine interrupt. QEMU's
+   --  model reports 4.1; UFSHCI 1.x (VER 16#0001_0m00#) is declined.
+   declare
+      HCI_2_0 : constant Interface_Version := Decode_Version (16#0000_0200#);
+      HCI_4_1 : constant Interface_Version := Decode_Version (16#0000_0410#);
+      HCI_1_1 : constant Interface_Version := Decode_Version (16#0001_0100#);
+      Caps_2_0 : constant Controller_Capabilities :=
+        Decode_Capabilities (16#0107_001F#);
+   begin
+      Expect (HCI_2_0 = (Major => 2, Minor => 0, Suffix => 0)
+              and Supported (HCI_2_0));
+      Expect (HCI_4_1 = (Major => 4, Minor => 1, Suffix => 0)
+              and Supported (HCI_4_1));
+      Expect (HCI_1_1 = (Major => 1, Minor => 1, Suffix => 0)
+              and not Supported (HCI_1_1));
+      Expect ((Fatal_Errors (HCI_2_0) and Crypto_Engine_Fatal) = 0
+              and (Fatal_Errors (HCI_4_1) and Crypto_Engine_Fatal) /= 0);
+      --  Linux INTERRUPT_MASK_ALL_VER_11 and _VER_21 bound what is handled.
+      Expect ((Handled_Interrupts (HCI_2_0) and not 16#0003_1FFF#) = 0
+              and (Handled_Interrupts (HCI_4_1) and not 16#0007_1FFF#) = 0);
+      Expect (Caps_2_0.Transfer_Slots = 32 and Caps_2_0.Task_Slots = 8);
+      --  Every register the driver touches is in a 4 KiB BAR (54FF's).
+      Expect (for all Item in Register => Offset (Item) + 4 <= 16#1000#);
+   end;
    Expect (Offset (Transfer_Doorbell) = 16#58# and Offset (UIC_Command) = 16#90#);
    Expect (Attribute_Argument (PA_Local_TX_LCC_Enable) = 16#155E_0000#);
    Expect (Command_Word (DME_Link_Startup) = 16#16#);

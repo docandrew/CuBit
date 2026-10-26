@@ -37,10 +37,6 @@ procedure Main is
    --  Where this driver maps the controller's register window.
    Register_Virtual : constant := 16#6000_0000_0000#;
    Page_Bytes       : constant := 4096;
-   --  UFSHCI 2.1 is the first with the descriptor layout this driver
-   --  writes (one command type for every request).
-   Oldest_Major : constant := 2;
-   Oldest_Minor : constant := 1;
    Four_GiB : constant := 2 ** 32;
    Link_Startup_Attempts : constant := 3;
    --  How long to sleep between polls while a polled request is in flight.
@@ -153,6 +149,7 @@ procedure Main is
    Configured, Mapped, Up, Ready : Boolean := False;
    Result : Step_Result;
    Caps : Controller_Capabilities;
+   Raw_Capabilities, Raw_Version : Register_Value;
    Version_Info : Interface_Version;
    Device : UFS_Identify.Identity;
    Progressed : Boolean;
@@ -187,8 +184,10 @@ begin
    Attach (To_Address (Register_Virtual),
            To_Address (Integer_Address (Config.DMA_Virtual)), Config.DMA.First);
 
-   Caps := Decode_Capabilities (Read (Capabilities));
-   Version_Info := Decode_Version (Read (Version));
+   Raw_Capabilities := Read (Capabilities);
+   Raw_Version := Read (Version);
+   Caps := Decode_Capabilities (Raw_Capabilities);
+   Version_Info := Decode_Version (Raw_Version);
    declare
       Identity : constant String :=
         " pci=" & Hex (Config.Vendor, 4) & ":" & Hex (Config.Device, 4) &
@@ -200,12 +199,11 @@ begin
         Decimal (Unsigned_64 (Version_Info.Minor)) &
         " slots=" & Decimal (Unsigned_64 (Caps.Transfer_Slots)) & "/" &
         Decimal (Unsigned_64 (Caps.Task_Slots)) &
-        UFS_Log.Field ("dma64", Boolean'Pos (Caps.Addressing_64));
+        UFS_Log.Field ("dma64", Boolean'Pos (Caps.Addressing_64)) &
+        UFS_Log.Hex_Field ("cap", Unsigned_64 (Raw_Capabilities), 8) &
+        UFS_Log.Hex_Field ("ver", Unsigned_64 (Raw_Version), 8);
    begin
-      if Version_Info.Major < Oldest_Major
-        or else (Version_Info.Major = Oldest_Major
-                 and then Version_Info.Minor < Oldest_Minor)
-      then
+      if not Supported (Version_Info) then
          UFS_Log.Failed (UFS_Log.Identify, "ufshci-too-old", Identity);
          Decline;
          return;
@@ -264,11 +262,11 @@ begin
       UFS_Service.Poll (Progressed);
       declare
          Sources : constant Register_Value :=
-           Pending_Interrupts and Driver_Interrupts;
+           Pending_Interrupts and Handled_Interrupts (Version_Info);
       begin
          if Sources /= 0 then
             Acknowledge (Sources);
-            if (Sources and Fatal_Errors) /= 0 then
+            if (Sources and Fatal_Errors (Version_Info)) /= 0 then
                UFS_Log.Note ("fatal error" &
                              UFS_Log.Hex_Field ("is", Unsigned_64 (Sources), 8));
             end if;
