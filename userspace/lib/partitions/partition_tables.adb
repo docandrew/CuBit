@@ -5,43 +5,6 @@
 package body Partition_Tables with SPARK_Mode is
    Byte_Bits : constant := 8;
 
-   --  Protective MBR (UEFI 5.2.3), zero-based offsets.
-   MBR_Records       : constant := 446;
-   MBR_Record_Bytes  : constant := 16;
-   MBR_Record_Count  : constant := 4;
-   MBR_Type_Offset   : constant := 4;
-   MBR_Signature     : constant := 510;
-   Signature_Low     : constant Unsigned_8 := 16#55#;
-   Signature_High    : constant Unsigned_8 := 16#AA#;
-   Protective_Type   : constant Unsigned_8 := 16#EE#;
-   Empty_Type        : constant Unsigned_8 := 16#00#;
-
-   --  GPT header (UEFI 5.3.2), zero-based offsets.
-   GPT_Signature : constant Bytes (1 .. 8) :=
-     [Character'Pos ('E'), Character'Pos ('F'), Character'Pos ('I'),
-      Character'Pos (' '), Character'Pos ('P'), Character'Pos ('A'),
-      Character'Pos ('R'), Character'Pos ('T')];
-   Header_Size_Offset  : constant := 12;
-   Header_CRC_Offset   : constant := 16;
-   My_LBA_Offset       : constant := 24;
-   Backup_LBA_Offset   : constant := 32;
-   First_Usable_Offset : constant := 40;
-   Last_Usable_Offset  : constant := 48;
-   Disk_GUID_Offset    : constant := 56;
-   Entries_LBA_Offset  : constant := 72;
-   Entry_Count_Offset  : constant := 80;
-   Entry_Size_Offset   : constant := 84;
-   Entries_CRC_Offset  : constant := 88;
-   Minimum_Header      : constant := 92;
-   --  Arrays larger than this are refused (the usual table has 128).
-   Maximum_Entries     : constant := 1024;
-
-   --  Partition entry (UEFI 5.3.3), zero-based offsets.
-   Entry_Unique_Offset : constant := 16;
-   Entry_First_Offset  : constant := 32;
-   Entry_Last_Offset   : constant := 40;
-   Entry_Flags_Offset  : constant := 48;
-
    CRC_Polynomial : constant Unsigned_32 := 16#EDB8_8320#;
 
    function Little_Endian (Data : Bytes; Offset, Width : Natural)

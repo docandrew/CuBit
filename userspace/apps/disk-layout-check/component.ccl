@@ -1,0 +1,9 @@
+(Component name => "disk-layout-check" kind => Kind.Application
+  source => (Source.Ada (Ada_Source
+    sources => ["userspace/lib/disk-layout" "userspace/lib/partitions"
+                "userspace/services/filesystem"]
+    language => Ada_Language.Ada_2022
+    # SPARK-proved encoders (tests/disk-layout): built without checks.
+    units => [(Unit_Code ["disk_layout.adb" "gpt_image.adb" "fat32_image.adb"
+                          "ext2_image.adb" "layout_writer.adb"
+                          "partition_tables.adb" "ext2_format.adb"] "proved")])))

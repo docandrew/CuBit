@@ -1,0 +1,7 @@
+# tests/headless ufs-layout: disk-layout-check (the installer's stand-in,
+# holding disk-install from this trusted startup plan) writes the GPT, the
+# FAT32 ESP and the ext2 root to the UFS disk; the host checks the image.
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "disk-layout-check.app" (priority 2))
+)

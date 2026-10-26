@@ -397,6 +397,18 @@ prove-block-requests:
 	$(ALR) gnatprove -P../tests/block-requests/runtime_proof.gpr \
 		-u cubit-block_requests.adb cubit-disk_install.adb --level=2 --report=all --checks-as-errors=on -j2
 
+# SYS-001: the installer's disk layout writer (GPT, FAT32 ESP, ext2 root):
+# Linux-hosted images checked by sgdisk, fsck.fat and e2fsck, and proofs.
+.PHONY: test-disk-layout prove-disk-layout
+test-disk-layout:
+	bash ../tests/disk-layout/run.sh
+
+prove-disk-layout:
+	$(ALR) gnatprove -P../tests/disk-layout/disk_layout_tests.gpr \
+		-u disk_layout.adb gpt_image.adb fat32_image.adb ext2_image.adb \
+		partition_tables.adb proof_writer.adb \
+		--level=2 --report=all --checks-as-errors=on -j2
+
 # HW-001: typed SCSI command blocks and response decoders (shared by USB
 # optical and UFS).
 .PHONY: test-scsi prove-scsi
@@ -1654,6 +1666,14 @@ disk-write-check: ccl-build user_runtime ccl-manifest
 	$(CCL_BUILD) ../userspace/apps/disk-write-check/component.ccl
 	cp ../userspace/apps/disk-write-check/build/disk-write-check.app isodir/boot/disk-write-check.app
 
+# SYS-001 step 2: the installer's layout writer on a real block device
+# (headless ufs-layout).
+.PHONY : disk-layout-check
+disk-layout-check: ccl-build user_runtime ccl-manifest
+	mkdir -p ../userspace/apps/disk-layout-check/build
+	$(CCL_BUILD) ../userspace/apps/disk-layout-check/component.ccl
+	cp ../userspace/apps/disk-layout-check/build/disk-layout-check.app isodir/boot/disk-layout-check.app
+
 .PHONY : storage-check
 storage-check: ccl-build user_runtime filesystem-scope-check ccl-manifest
 	mkdir -p ../userspace/apps/storage-check/build
@@ -2205,7 +2225,7 @@ TEST_PROGRAMS := logs boot-logs timesync-test ccl-console log-check \
 	net-multi-check timesync-check \
 	tls-probe tls-check config-check desktop-check display-check clipboard-check \
 	metrics-check grant-forward ccl-control input-stress bench-storage \
-	bench-input disk-write-check
+	bench-input disk-write-check disk-layout-check
 
 .PHONY : test-programs
 test-programs: $(TEST_PROGRAMS)

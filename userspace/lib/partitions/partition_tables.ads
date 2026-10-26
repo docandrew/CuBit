@@ -3,7 +3,7 @@
 --  Copyright (C) 2026 Jon Andrew
 --
 --  @summary
---  Read-only decoding of a disk's partition table: the protective MBR and
+--  Decoding of a disk's partition table, and its on-disk layout: the protective MBR and
 --  the GUID partition table (UEFI 2.10 section 5). Fields are
 --  little-endian. Header and entry-array CRC32s are checked.
 ------------------------------------------------------------------------------
@@ -14,6 +14,58 @@ package Partition_Tables with SPARK_Mode, Pure is
 
    Sector_Bytes : constant := 512;
    subtype Sector is Bytes (1 .. Sector_Bytes);
+
+   --  On-disk layout, shared by the decoder here and the installer's
+   --  encoder (Disk_Layout.GPT_Image).
+   --  Protective MBR (UEFI 5.2.3), zero-based offsets.
+   MBR_Records       : constant := 446;
+   MBR_Record_Bytes  : constant := 16;
+   MBR_Record_Count  : constant := 4;
+   MBR_Type_Offset   : constant := 4;
+   MBR_Signature     : constant := 510;
+   Signature_Low     : constant Unsigned_8 := 16#55#;
+   Signature_High    : constant Unsigned_8 := 16#AA#;
+   Protective_Type   : constant Unsigned_8 := 16#EE#;
+   Empty_Type        : constant Unsigned_8 := 16#00#;
+
+   --  GPT header (UEFI 5.3.2), zero-based offsets.
+   GPT_Signature : constant Bytes (1 .. 8) :=
+     [Character'Pos ('E'), Character'Pos ('F'), Character'Pos ('I'),
+      Character'Pos (' '), Character'Pos ('P'), Character'Pos ('A'),
+      Character'Pos ('R'), Character'Pos ('T')];
+   Revision_Offset     : constant := 8;
+   GPT_Revision        : constant := 16#0001_0000#;   --  UEFI 2.x: 1.0
+   Header_Size_Offset  : constant := 12;
+   Header_CRC_Offset   : constant := 16;
+   My_LBA_Offset       : constant := 24;
+   Backup_LBA_Offset   : constant := 32;
+   First_Usable_Offset : constant := 40;
+   Last_Usable_Offset  : constant := 48;
+   Disk_GUID_Offset    : constant := 56;
+   Entries_LBA_Offset  : constant := 72;
+   Entry_Count_Offset  : constant := 80;
+   Entry_Size_Offset   : constant := 84;
+   Entries_CRC_Offset  : constant := 88;
+   Minimum_Header      : constant := 92;
+   --  Arrays larger than this are refused (the usual table has 128).
+   Maximum_Entries     : constant := 1024;
+
+   --  Partition entry (UEFI 5.3.3), zero-based offsets.
+   Entry_Unique_Offset : constant := 16;
+   Entry_First_Offset  : constant := 32;
+   Entry_Last_Offset   : constant := 40;
+   Entry_Flags_Offset  : constant := 48;
+   Entry_Name_Offset   : constant := 56;
+   Entry_Name_Bytes    : constant := 72;   --  36 UTF-16LE code units
+
+   --  A protective record's CHS fields (UEFI table 5-4): start 0/0/2, end
+   --  "not representable".
+   Protective_Start_CHS : constant := 16#00_0200#;
+   Protective_End_CHS   : constant := 16#FF_FFFF#;
+   MBR_CHS_Start_Offset : constant := 1;
+   MBR_CHS_End_Offset   : constant := 5;
+   MBR_First_LBA_Offset : constant := 8;
+   MBR_Size_Offset      : constant := 12;
 
    type MBR_Kind is (No_Table, Protective_GPT, Legacy_MBR);
 

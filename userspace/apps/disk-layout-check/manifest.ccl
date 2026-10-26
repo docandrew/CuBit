@@ -1,0 +1,6 @@
+# The installer's stand-in for the layout writer test (tests/headless
+# ufs-layout): disk-install is startup-only authority.
+(executable-manifest v1
+  (identity "com.cubit.disk-layout-check")
+  (version "0.1.0")
+  (request-service disk-install read-write disk-install))

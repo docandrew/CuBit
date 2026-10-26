@@ -34,6 +34,8 @@ procedure Main is
    Pattern_Blocks : constant Unsigned_64 := 4;
    FUA_Block : constant Unsigned_64 := Pattern_Block + Pattern_Blocks;
    Session_Pages : constant Page_Count := 16;
+   --  TODO(STARTUP-001): wait on the disk's readiness event instead of
+   --  asking again; polling is a stopgap until readiness events exist.
    Disk_Wait_Milliseconds : constant := 30_000;
    Disk_Poll_Milliseconds : constant := 250;
    --  The first bytes of every written block, then (offset * 7 + block)

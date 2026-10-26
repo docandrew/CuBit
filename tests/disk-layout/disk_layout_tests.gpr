@@ -1,0 +1,23 @@
+--  The installer's disk layout writer (GPT, FAT32 ESP, ext2 root):
+--  Linux-hosted image tests (run.sh checks them with sgdisk, fsck.fat,
+--  e2fsck) and the SPARK proofs (SYS-001, HW-001).
+project Disk_Layout_Tests is
+   for Languages use ("Ada");
+   for Source_Dirs use
+     (".", "../../userspace/lib/disk-layout", "../../userspace/lib/partitions",
+      "../../userspace/services/filesystem");
+   for Source_Files use
+     ("main.adb", "disk_layout.ads", "disk_layout.adb", "gpt_image.ads",
+      "gpt_image.adb", "fat32_image.ads", "fat32_image.adb", "ext2_image.ads",
+      "ext2_image.adb", "layout_writer.ads", "layout_writer.adb",
+      "partition_tables.ads", "partition_tables.adb", "ext2_format.ads",
+      "ext2_format.adb", "proof_writer.ads", "proof_writer.adb");
+   for Object_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnata", "-gnatwa");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=2", "--checks-as-errors=on");
+   end Prove;
+end Disk_Layout_Tests;

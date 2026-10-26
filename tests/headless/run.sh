@@ -325,7 +325,7 @@ case "$TEST_NAME" in
         ;;
     grant-forward|grant-forward-intermediary-exit|grant-forward-owner-exit|grant-forward-desktop|config-tree|config-inspection|log-authority|log-fields|metrics|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
         ;;
-    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|multi-instance)
+    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|ufs-layout|net-link|net-multi|firmware-snapshot|multi-instance)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -841,6 +841,23 @@ case "$TEST_NAME" in
                   -device ufs,serial=cubitufs,id=ufs
                   -device ufs-lu,drive=ufs0,bus=ufs,lun=0)
         ;;
+    ufs-layout)
+        # SYS-001 step 2: the installer's layout writer on QEMU's UFS model
+        # (4 KiB blocks, as the IdeaPad's disk). The 1 GiB disk starts full
+        # of a non-zero pattern, so every structure the writer relies on
+        # being zero must have been zeroed. The host then checks the image
+        # (tests/disk-layout/check-image.sh).
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-ufs-layout.ccl"
+        TEMP_UFS_DISK="$(mktemp "${TMPDIR:-/tmp}/cubit-ufs-disk.XXXXXX.img")"
+        python3 -I -c 'import sys
+chunk = bytes([0xA5]) * (1 << 20)
+with open(sys.argv[1], "wb") as f:
+    for _ in range(1024):
+        f.write(chunk)' "$TEMP_UFS_DISK"
+        UFS_ARGS=(-drive "file=$TEMP_UFS_DISK,if=none,id=ufs0,format=raw"
+                  -device ufs,serial=cubitufs,id=ufs
+                  -device ufs-lu,drive=ufs0,bus=ufs,lun=0)
+        ;;
     multi-instance)
         # One driver per device for devmgr's dedicated setups: two xHCI
         # controllers and two NVMe disks (tests/multi-instance).
@@ -1257,7 +1274,8 @@ if [ -n "$INIT_PROFILE" ]; then
         fi
     fi
     if [ "$TEST_NAME" = "generic-launch" ] || [ "$TEST_NAME" = "ufs" ] ||
-       [ "$TEST_NAME" = "ufs-write" ] || [ "$TEST_NAME" = "multi-instance" ]; then
+       [ "$TEST_NAME" = "ufs-write" ] || [ "$TEST_NAME" = "ufs-layout" ] ||
+       [ "$TEST_NAME" = "multi-instance" ]; then
         # boot-logs prints the records logstore keeps (the base disk lacks it):
         # generic drivers (generic-check, ufs) and devmgr log through logstore.
         for GENERIC_IMAGE in logstore.svc boot-logs.app; do
@@ -1270,14 +1288,16 @@ if [ -n "$INIT_PROFILE" ]; then
               "$TEMP_DISK" >/dev/null 2>&1 || exit 1
         done
     fi
-    if [ "$TEST_NAME" = "ufs-write" ]; then
-        WRITE_CHECK_IMAGE="$KERNEL_DIR/isodir/boot/disk-write-check.app"
+    if [ "$TEST_NAME" = "ufs-write" ] || [ "$TEST_NAME" = "ufs-layout" ]; then
+        CHECK_APP="disk-write-check"
+        [ "$TEST_NAME" = "ufs-layout" ] && CHECK_APP="disk-layout-check"
+        WRITE_CHECK_IMAGE="$KERNEL_DIR/isodir/boot/$CHECK_APP.app"
         if [ ! -f "$WRITE_CHECK_IMAGE" ]; then
-            echo "headless: build disk-write-check first (make -C kernel disk-write-check)" >&2
+            echo "headless: build $CHECK_APP first (make -C kernel $CHECK_APP)" >&2
             exit 1
         fi
-        debugfs -w -R "rm disk-write-check.app" "$TEMP_DISK" >/dev/null 2>&1
-        debugfs -w -R "write $WRITE_CHECK_IMAGE disk-write-check.app" \
+        debugfs -w -R "rm $CHECK_APP.app" "$TEMP_DISK" >/dev/null 2>&1
+        debugfs -w -R "write $WRITE_CHECK_IMAGE $CHECK_APP.app" \
           "$TEMP_DISK" >/dev/null 2>&1 || exit 1
     fi
     if [ "$TEST_NAME" = "startup-health" ]; then
@@ -4174,6 +4194,18 @@ TEST: PASS ufs-write
             exit 1
         fi
         ;;
+    ufs-layout)
+        required_markers="
+ufs: bring-up complete (13/13), serving lun 0, writes by grant
+devmgr: disk 0 (00:03.0 1B36:0013 class 01.09.01) opened read-write for install
+disk-layout-check: layout written and flushed PASS
+TEST: PASS ufs-layout
+"
+        if grep -qa 'disk-layout-check: .* FAIL\|ufs: write failed\|ufs: io timeout' "$SERIAL_LOG"; then
+            echo "headless: ufs-layout reported a failure" >&2
+            exit 1
+        fi
+        ;;
     bench-fs)
         required_markers="
 fs-bench: start
@@ -5537,6 +5569,16 @@ fi
 if [ "$TEST_NAME" = "ufs-write" ]; then
     # What the guest wrote reached the medium: the image file holds it.
     if ! python3 -I "$ROOT_DIR/tests/ufs/check-write.py" "$TEMP_UFS_DISK"; then
+        echo "headless: serial log: $SERIAL_LOG" >&2
+        exit 1
+    fi
+fi
+
+if [ "$TEST_NAME" = "ufs-layout" ]; then
+    # Independent tools read what the guest wrote: GPT, FAT32, ext2. The
+    # offsets are Disk_Layout's for a 260 MiB ESP: 1 MiB, 260 MiB, 261 MiB.
+    if ! bash "$ROOT_DIR/tests/disk-layout/check-image.sh" "$TEMP_UFS_DISK" 4096 \
+         1048576 272629760 273678336; then
         echo "headless: serial log: $SERIAL_LOG" >&2
         exit 1
     fi
