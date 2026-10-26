@@ -14,6 +14,12 @@ with CCL.Interfaces.Calc_Types;
 --  angle unit, programmer word size and sign). Pure computation: no
 --  authority, no service, no state.
 package CCL.Interfaces.Calc with SPARK_Mode is
+
+   --  What Publish adds to a catalog: one interface and this many data
+   --  schemas. CCL_Host_Environment sums these to check the catalog's
+   --  capacity at compile time; tests/ccl-install's probe checks a real run.
+   PUBLISHED_INTERFACES : constant := 1;
+   PUBLISHED_SCHEMAS : constant := 4;
    use Standard.Interfaces;
 
    --  The types, as CCL source (CCL.Interfaces.Calc_Types, which the

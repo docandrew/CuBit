@@ -25,8 +25,10 @@ package Fs_Attachments with Pure is
    Attach_Label : constant Unsigned_32 := 16#0090#;
    Attach_Words : constant := 2;
 
-   type Device is (ATA_Device, NVMe_Device, Optical_Device);
-   for Device use (ATA_Device => 1, NVMe_Device => 2, Optical_Device => 3);
+   --  UFS_Device: a disk behind a generic storage driver (UFS); its
+   --  volume (@ufs:N) is the GPT disk's Linux filesystem partition.
+   type Device is (ATA_Device, NVMe_Device, Optical_Device, UFS_Device);
+   for Device use (ATA_Device => 1, NVMe_Device => 2, Optical_Device => 3, UFS_Device => 4);
 
    function Device_Code (Item : Device) return Unsigned_64 is
      (Unsigned_64 (Device'Enum_Rep (Item)));

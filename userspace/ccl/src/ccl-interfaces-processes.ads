@@ -8,6 +8,12 @@ with CCL.Types;
 --  this package holds no Ada description of them. The keys are SHA-256 of
 --  TYPE_SOURCE, then "#" and the type's name (tests/ccl-console checks them).
 package CCL.Interfaces.Processes with SPARK_Mode is
+
+   --  What Publish adds to a catalog: one interface and this many data
+   --  schemas. CCL_Host_Environment sums these to check the catalog's
+   --  capacity at compile time; tests/ccl-install's probe checks a real run.
+   PUBLISHED_INTERFACES : constant := 1;
+   PUBLISHED_SCHEMAS : constant := 2;
    use Standard.Interfaces;
 
    TYPE_SOURCE : constant String :=

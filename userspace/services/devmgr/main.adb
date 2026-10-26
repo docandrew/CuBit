@@ -172,6 +172,7 @@ procedure main is
    package ST renames CuBit.Startup_Tables;
    use type IPC.Reply_Outcome;
    use type DL.Child;
+   use type CuBit.Devices.Device_Kind;
    --  Set first thing in the body (Devmgr_Authority.Initialize).
    Root : CuBit.Handles.Boot_Roots.Roots;
 
@@ -1549,9 +1550,37 @@ procedure main is
    pragma Compile_Time_Error
      (CuBit.Devices.MAX_PCI_DEVICES > Fs_Attachments.Maximum_Ordinal + 1,
       "a device ordinal must fit Fs_Attachments.Device_Ordinal");
+   --  storage.system-volume (system.ccl): "ufs:0" makes UFS disk 0 the
+   --  installed system's root, which the filesystem may write.
+   System_Volume_Key : constant String := "storage.system-volume";
+   --  The value as CCL text (a string literal), or its contents.
+   System_Volume_UFS : constant String := """ufs:0""";
+   System_Volume_Text : constant String := "ufs:0";
+   System_Disk_Writable : Boolean := False;
+
+   function Attach_Storage
+     (Which : Fs_Attachments.Device; Driver : DL.Child;
+      Ordinal : Fs_Attachments.Device_Ordinal := 0) return Boolean;
+   --  The same, offering Copy of the driver's endpoint (a write-badged one
+   --  for the system disk).
+   function Attach_Storage_With
+     (Which : Fs_Attachments.Device; Ordinal : Fs_Attachments.Device_Ordinal;
+      Copy : H.Derivation) return Boolean;
+
    function Attach_Storage
      (Which : Fs_Attachments.Device; Driver : DL.Child;
       Ordinal : Fs_Attachments.Device_Ordinal := 0) return Boolean
+   is
+   begin
+      if Driver = DL.No_Child then
+         return False;
+      end if;
+      return Attach_Storage_With (Which, Ordinal, H.Copy (DL.Mailbox (Driver), H.Read_Write));
+   end Attach_Storage;
+
+   function Attach_Storage_With
+     (Which : Fs_Attachments.Device; Ordinal : Fs_Attachments.Device_Ordinal;
+      Copy : H.Derivation) return Boolean
    is
       Request : Message :=
         (tag => (label => Fs_Attachments.Attach_Label, length => Fs_Attachments.Attach_Words,
@@ -1560,18 +1589,17 @@ procedure main is
          words => [Fs_Attachments.Device_Code (Which), Unsigned_64 (Ordinal), 0, 0]);
       Reply : MessageTag;
    begin
-      if not H.Valid (Filesystem_Endpoint) or else Driver = DL.No_Child then
+      if not H.Valid (Filesystem_Endpoint) then
          return False;
       end if;
       Reply := IPC.Call_Offering
-        (Filesystem_Endpoint, Request, CuBit.Messages.Wait_Forever,
-         H.Copy (DL.Mailbox (Driver), H.Read_Write));
+        (Filesystem_Endpoint, Request, CuBit.Messages.Wait_Forever, Copy);
       if Reply.label /= REPLY_OK then
          debugPrint ("devmgr: filesystem refused a block device" & LF);
          return False;
       end if;
       return True;
-   end Attach_Storage;
+   end Attach_Storage_With;
 
    ---------------------------------------------------------------------------
    --  Runtime grants (PLAN §9 item 4): a driver's request that accepts a
@@ -3156,6 +3184,75 @@ procedure main is
       Warnings.Inform ("devmgr: " & Name & " launched for " & Device_Text (Item) & " (generic launch)");
    end Launch_Generic_PCI;
 
+   --  Generic child I's place among the storage controllers' drivers (the
+   --  disk ordinal Open_Disk and @ufs:N name).
+   function Storage_Ordinal (I : Positive) return Natural is
+      Count : Natural := 0;
+   begin
+      for J in 1 .. I - 1 loop
+         if Generic_Children (J).Device.kind = CuBit.Devices.Storage_Controller
+           and then Generic_Children (J).Launched /= DL.No_Child
+         then
+            Count := Count + 1;
+         end if;
+      end loop;
+      return Count;
+   end Storage_Ordinal;
+
+   --  A disk ready: the filesystem names its root partition @ufs:N,
+   --  read-only unless system.ccl declares it the system volume.
+   procedure Attach_Disk (I : Positive) is
+      Disk : constant Natural := Storage_Ordinal (I);
+      Writable : constant Boolean := System_Disk_Writable and then Disk = 0;
+      Driver : H.Endpoint;
+   begin
+      if Generic_Children (I).Launched = DL.No_Child then
+         return;
+      end if;
+      Driver := DL.Mailbox (Generic_Children (I).Launched);
+      if Attach_Storage_With
+        (Fs_Attachments.UFS_Device, Fs_Attachments.Device_Ordinal (Disk),
+         (if Writable
+          then H.Badged (Driver, H.Read_Write, CuBit.Block_Devices.Write_Authority_Tag)
+          else H.Copy (Driver, H.Read_Write)))
+      then
+         Warnings.Inform ("devmgr: disk" & Natural'Image (Disk) & " attached as @ufs:" &
+                          Natural'Image (Disk) (2 .. Natural'Image (Disk)'Last) &
+                          (if Writable then " (writable)" else " (read-only)"));
+      end if;
+   end Attach_Disk;
+
+   --  An installed system's disk (storage.system-volume): its driver starts
+   --  before procmgr, so the programs and data on the disk are there from
+   --  the first launch. Its bring-up lines then reach only the serial log.
+   procedure Launch_System_Disk is
+   begin
+      for I in 1 .. inventoryCount loop
+         if deviceBindings (I).Kind = DI.Bound and then not Generic_Started (I)
+           and then inventory (I).kind = CuBit.Devices.Storage_Controller
+         then
+            declare
+               Name : constant String := Devmgr_Bindings.Name_Of (deviceBindings (I).Driver);
+               Before : constant Natural := Generic_Total;
+            begin
+               if not Has_Driver_Setup (Name) then
+                  Generic_Started (I) := True;
+                  Launch_Generic_PCI (inventory (I), Name);
+                  if Generic_Total > Before and then waitReady (Generic_Children (Generic_Total).PID) then
+                     Generic_Children (Generic_Total).Waiting := False;
+                     Generic_Children (Generic_Total).Serving := True;
+                     Open_Message_Interrupts (Generic_Children (Generic_Total).Interrupts);
+                     Attach_Disk (Generic_Total);
+                  elsif Generic_Total > Before then
+                     Generic_Children (Generic_Total).Waiting := False;
+                     Close_Message_Interrupts (Generic_Children (Generic_Total).Interrupts);
+                  end if;
+               end if;
+            end;
+         end if;
+      end loop;
+   end Launch_System_Disk;
+
    --  A generic driver's readiness report, in the service loop: True when
    --  From is one and the message was its report (answered here).
    function Generic_Report (From : Process_ID; Msg : Message) return Boolean is
@@ -3169,6 +3266,11 @@ procedure main is
             if Msg.tag.label = OP_READY then
                Generic_Children (I).Serving := True;
                Open_Message_Interrupts (Generic_Children (I).Interrupts);
+               if Generic_Children (I).Device.kind = CuBit.Devices.Storage_Controller then
+                  Ignore := reply (From, NULL_MESSAGE);
+                  Attach_Disk (I);
+                  return True;
+               end if;
                Warnings.Inform ("devmgr: generic driver ready for " &
                                 Device_Text (Generic_Children (I).Device));
             else
@@ -3716,6 +3818,19 @@ begin
                   return;
                end if;
 
+               --  storage.system-volume: an installed system's root (SYS-001)
+               --  is the volume the filesystem may write. Read here, before
+               --  any disk attaches; absent, every UFS disk attaches read-only.
+               for Item of Plan.Plan.Settings (1 .. Plan.Plan.Setting_Count) loop
+                  if Item.Key.Data (1 .. Item.Key.Length) = System_Volume_Key
+                    and then (Item.Value.Data (1 .. Item.Value.Length) = System_Volume_UFS
+                              or else Item.Value.Data (1 .. Item.Value.Length) = System_Volume_Text)
+                  then
+                     System_Disk_Writable := True;
+                     Warnings.Inform ("devmgr: the system volume is @ufs:0 (writable)");
+                  end if;
+               end loop;
+
                --  Allocate 3 pages for a 2-page aligned payload buffer.
                cfgRawAddr := syscall (SYSCALL_SBRK, 3 * 4096);
                if cfgRawAddr /= Unsigned_64'Last then
@@ -4188,7 +4303,10 @@ begin
    -- dedicated setup for (docs/device-matching.md "Generic PCI launch").
    -----------------------------------------------------------------------
    --  They start in the service loop once procmgr offers logstore
-   --  (Launch_Pending_Generic).
+   --  (Launch_Pending_Generic), except an installed system's disk.
+   if System_Disk_Writable then
+      Launch_System_Disk;
+   end if;
 
    -----------------------------------------------------------------------
    -- Phase 5: Spawn procmgr

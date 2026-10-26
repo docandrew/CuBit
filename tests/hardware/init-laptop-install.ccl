@@ -1,0 +1,18 @@
+# The installer's live medium (SYS-001): the live system plus installer.svc,
+# and the CCL console from the trusted startup plan, which grants it the
+# installer role: (system.disks) and (system.install ...) are typed there.
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "clock.svc" (priority 5))
+  (start "config-storage.svc" (priority 5) (role config-storage))
+  (start "display.svc" (priority 5))
+  # Dictionary, thesaurus and spelling (docs/lexicon.md).
+  (start "lexicon.svc" (priority 4))
+  # GPU rendering is a settings grant (desktop.render.gpu, default on);
+  # without a supported GPU devmgr refuses the session and Desktop renders
+  # in software. One image for every machine (HW-002).
+  (start "desktop.svc" (priority 4) (render setting "desktop.render.gpu"))
+  (start "boot-logs.app" (priority 4))
+  (start "installer.svc" (priority 4))
+  (start "ccl-console.app" (priority 3))
+)

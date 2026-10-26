@@ -40,6 +40,12 @@ package Log_Fanout with SPARK_Mode is
    procedure Close
      (Item : in out Broker; Caller : Process_ID; Authority_Tag, Handle : Unsigned_64;
       Result : out CuBit.Log_Protocol.Status);
+   --  Every published record also waits, in order, for the persistent log
+   --  (logstore's file on the system volume): the oldest, and how many
+   --  were dropped before it (the queue's capacity is Capacity).
+   procedure Take_Persistent
+     (Item : in out Broker; Value : out CuBit.Log_Protocol.Event; Found : out Boolean;
+      Lost : out Unsigned_64);
 private
    subtype Index is Natural range 0 .. Capacity - 1;
    subtype Count is Natural range 0 .. Capacity;
@@ -63,6 +69,7 @@ private
      of Subscriber;
    type Broker is limited record
       Recent : Queue;
+      Persist : Queue;
       Clients : Subscribers;
       Next_Handle : Unsigned_64 := 1;
       Now_Ms : Unsigned_64 := 0;

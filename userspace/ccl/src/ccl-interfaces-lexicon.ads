@@ -18,6 +18,12 @@ with CCL.Types;
 --  the image file in hosted tests; this package holds only the types, the
 --  catalog publication and the sizes of results.
 package CCL.Interfaces.Lexicon with SPARK_Mode is
+
+   --  What Publish adds to a catalog: one interface and this many data
+   --  schemas. CCL_Host_Environment sums these to check the catalog's
+   --  capacity at compile time; tests/ccl-install's probe checks a real run.
+   PUBLISHED_INTERFACES : constant := 1;
+   PUBLISHED_SCHEMAS : constant := 6;
    use Standard.Interfaces;
 
    --  The types, as CCL source; the digest and keys are SHA-256 of it (then

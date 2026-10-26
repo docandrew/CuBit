@@ -6,6 +6,7 @@ with CuBit.Log_Protocol; use CuBit.Log_Protocol;
 with CuBit.Log_Records;
 with CuBit.Settings;
 with Log_Fanout;
+with Log_Persistence;
 with Log_Budgets;
 with Stream_Writers;
 with Publisher_Rings;
@@ -83,6 +84,30 @@ procedure Main is
    --  The kernel's device-memory refusals and physical map (CAP-001).
    package Kernel_Records is new Kernel_Device_Memory (Note);
 
+   --  storage.system-volume: where the persistent log goes ("" or absent:
+   --  nowhere, as on a live boot). Read until Config answers.
+   Volume_Settled : Boolean := False;
+   procedure Read_Volume_Setting is
+      use all type CuBit.Settings.Outcome;
+      Stored : constant Startup.Settings.Storage_System_Volume.Reading :=
+        Startup.Settings.Storage_System_Volume.Read;
+   begin
+      if Stored.Kind = Present then
+         Volume_Settled := True;
+         declare
+            Raw : constant String := CuBit.Settings.Image (Stored.Item);
+            Value : constant String :=
+              (if Raw'Length >= 2 and then Raw (Raw'First) = '"' and then Raw (Raw'Last) = '"'
+               then Raw (Raw'First + 1 .. Raw'Last - 1) else Raw);
+         begin
+            Log_Persistence.Configure (Value);
+            Note ("logstore: persisting to @" & Value & "/logstore.log once it attaches");
+         end;
+      elsif Stored.Kind in Absent | Denied then
+         Volume_Settled := True;
+      end if;
+   end Read_Volume_Setting;
+
    procedure Read_Minimum_Setting is
       use all type CuBit.Settings.Outcome;
       Stored : constant Startup.Settings.Logs_Minimum_Level.Reading := Startup.Settings.Logs_Minimum_Level.Read;
@@ -138,6 +163,9 @@ begin
       Now_Ms := syscall (SYSCALL_GETTIME);
       if not Minimum_Settled then
          Read_Minimum_Setting;
+      end if;
+      if not Volume_Settled then
+         Read_Volume_Setting;
       end if;
       Log_Fanout.Advance_Time (Store, Now_Ms);
       Log_Budgets.Advance_Time (Budgets, Now_Ms);
@@ -264,6 +292,7 @@ begin
       --  subscriptions: every pass.
       Publisher_Rings.Drain (Publishers, Store, Budgets, Minimum, Now_Ms, Waiting_Records);
       Stream_Writers.Drain (Writers, Store, Backlog);
+      Log_Persistence.Pump (Store, Now_Ms);
       Publisher_Rings.Release (Publishers);
    end loop;
 end Main;

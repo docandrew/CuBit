@@ -150,6 +150,10 @@ package CuBit.Block_Devices is
       grant        : CuBit.Memory_Grants.Grant_Reference;
       grantBuffer  : System.Address := System.Null_Address;
       grantBytes   : Unsigned_32 := 0;
+      --  The volume's window on the device: its first block (a GPT
+      --  partition's start; 0 for a whole device). description.blockCount
+      --  is then the window's length.
+      firstBlock   : Unsigned_64 := 0;
       description  : Device_Description;
    end record;
 end CuBit.Block_Devices;

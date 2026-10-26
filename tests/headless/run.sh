@@ -441,7 +441,7 @@ cleanup() {
     if [ -n "$TEMP_STORAGE_FIXTURE" ]; then
         rm -f "$TEMP_STORAGE_FIXTURE"
     fi
-    if [ -n "$TEMP_UFS_DISK" ]; then
+    if [ -n "$TEMP_UFS_DISK" ] && [ "$TEMP_UFS_DISK" != "${CUBIT_INSTALL_DISK:-}" ]; then
         rm -f "$TEMP_UFS_DISK"
     fi
     if [ -n "$TEMP_SECOND_NVME" ]; then
@@ -573,8 +573,15 @@ case "$TEST_NAME" in
             # non-zero pattern, so every structure the install relies on
             # being zero must have been zeroed. The payload (esp/, root/) is
             # @nvme:0/install. The host then checks the disk image.
+            # CUBIT_INSTALL_PAYLOAD names another payload directory (esp/,
+            # root/, INDEX) and CUBIT_INSTALL_DISK keeps the disk at that
+            # path (tests/install-reboot boots it afterwards).
             INIT_PROFILE="$ROOT_DIR/tests/headless/init-ccl-console-install.ccl"
-            TEMP_UFS_DISK="$(mktemp "${TMPDIR:-/tmp}/cubit-ufs-disk.XXXXXX.img")"
+            if [ -n "${CUBIT_INSTALL_DISK:-}" ]; then
+                TEMP_UFS_DISK="$CUBIT_INSTALL_DISK"
+            else
+                TEMP_UFS_DISK="$(mktemp "${TMPDIR:-/tmp}/cubit-ufs-disk.XXXXXX.img")"
+            fi
             python3 -I -c 'import sys
 chunk = bytes([0xA5]) * (1 << 20)
 with open(sys.argv[1], "wb") as f:
@@ -1422,8 +1429,12 @@ if [ -n "$INIT_PROFILE" ]; then
                 debugfs -w -R "write $KERNEL_DIR/isodir/boot/installer.svc installer.svc" \
                   "$TEMP_DISK" >/dev/null 2>&1 || exit 1
                 INSTALL_PAYLOAD="$(mktemp -d "${TMPDIR:-/tmp}/cubit-install-payload.XXXXXX")"
-                python3 -I "$ROOT_DIR/tests/disk-layout/make-payload.py" \
-                  "$INSTALL_PAYLOAD/esp" "$INSTALL_PAYLOAD/root"
+                if [ -n "${CUBIT_INSTALL_PAYLOAD:-}" ]; then
+                    cp -r "$CUBIT_INSTALL_PAYLOAD/." "$INSTALL_PAYLOAD/"
+                else
+                    python3 -I "$ROOT_DIR/tests/disk-layout/make-payload.py" \
+                      "$INSTALL_PAYLOAD/esp" "$INSTALL_PAYLOAD/root"
+                fi
                 python3 -I "$ROOT_DIR/tests/disk-layout/debugfs-script.py" "$INSTALL_PAYLOAD" install \
                   > "$INSTALL_PAYLOAD.commands"
                 debugfs -w -f "$INSTALL_PAYLOAD.commands" "$TEMP_DISK" >/dev/null 2>&1 || exit 1
@@ -3171,8 +3182,8 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
             done
             sleep 0.5
             for entry in '(system.disks)' \
-                '(system.install (Install_Request disk => 0 confirm => (Disk_Identity "QEMU UFS" "not-this-disk") inode_ratio => 262144 esp_mib => 260 source => "@nvme:0/install"))' \
-                '(system.install (Install_Request disk => 0 confirm => (Disk_Identity "QEMU UFS" "") inode_ratio => 262144 esp_mib => 260 source => "@nvme:0/install"))'; do
+                '(system.install (Install_Request disk => 0 confirm => (Disk_Identity "QEMU UFS" "not-this-disk" 262144 4096) inode_ratio => 262144 esp_mib => 260 source => "@nvme:0/install"))' \
+                '(system.install (Install_Request disk => 0 confirm => (Disk_Identity "QEMU UFS" "" 262144 4096) inode_ratio => 262144 esp_mib => 260 source => "@nvme:0/install"))'; do
                 python3 "$ROOT_DIR/tests/ccl-console/send-text.py" "$MONITOR_SOCKET" "$entry" 0.05
                 sleep 2
             done
@@ -4920,12 +4931,13 @@ ccl-console: REPL completed: Task<Run_Outcome>: Done (Run_Outcome.Finished (Unix
             required_markers="$required_markers
 ufs: bring-up complete (13/13), serving lun 0, writes by grant
 installer: registered
-ccl-console: REPL completed: List<Disk>: [(Disk 0 (Disk_Identity \"QEMU UFS\" \"\") 262144 4096)]
+ccl-console: REPL completed: List<Disk>: [(Disk 0 (Disk_Identity \"QEMU UFS\" \"\" 262144 4096))]
 installer: install refused: confirmation names
-ccl-console: REPL completed: Install_Report: (Install_Report Install_Outcome.Wrong_Disk 0 0)
+ccl-console: REPL completed: Install_Report: (Install_Report Install_Outcome.Wrong_Disk Identity_Proof.Serial_Number 0 0)
 installer: installing to disk 0
 installer: install done: installed
-ccl-console: REPL completed: Install_Report: (Install_Report Install_Outcome.Installed
+ccl-console: REPL completed: Install_Report: (Install_Report Install_Outcome.Installed Identity_Proof.Model_Geometry
+installer: disk 0 reports no serial: identified by model and geometry
 "
         elif [ "${CCL_CONSOLE_DEMO:-}" = calc ]; then
             required_markers="$required_markers
@@ -5619,7 +5631,21 @@ if [ "$TEST_NAME" = "ccl-console" ] && [ "${CCL_CONSOLE_DEMO:-}" = install ]; th
     # every payload file byte for byte (the payload is deterministic). The
     # offsets are Disk_Layout's for a 260 MiB ESP: 1 MiB, 260 MiB, 261 MiB.
     CHECK_PAYLOAD="$(mktemp -d "${TMPDIR:-/tmp}/cubit-install-check.XXXXXX")"
-    python3 -I "$ROOT_DIR/tests/disk-layout/make-payload.py" "$CHECK_PAYLOAD/esp" "$CHECK_PAYLOAD/root"
+    if [ -n "${CUBIT_INSTALL_PAYLOAD:-}" ]; then
+        cp -r "$CUBIT_INSTALL_PAYLOAD/." "$CHECK_PAYLOAD/"
+        # INDEX lines naming a file elsewhere on the medium (@nvme:0, the
+        # payload at install/): the installed root holds it too.
+        python3 -I -c 'import shutil, sys, pathlib
+payload = pathlib.Path(sys.argv[1])
+for line in (payload / "INDEX").read_text().splitlines():
+    if "\t" in line:
+        name, where = line.split("\t")
+        target = payload / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(payload / where.removeprefix("install/"), target)' "$CHECK_PAYLOAD"
+    else
+        python3 -I "$ROOT_DIR/tests/disk-layout/make-payload.py" "$CHECK_PAYLOAD/esp" "$CHECK_PAYLOAD/root"
+    fi
     if ! bash "$ROOT_DIR/tests/disk-layout/check-image.sh" "$TEMP_UFS_DISK" 4096 \
          1048576 272629760 273678336 "$CHECK_PAYLOAD/esp" "$CHECK_PAYLOAD/root"; then
         rm -rf "$CHECK_PAYLOAD"

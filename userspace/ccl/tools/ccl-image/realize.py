@@ -21,6 +21,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(ROOT / "tools"))
 import image_debug  # noqa: E402  (tools/image_debug.py, docs/image-debug-info.md)
+import install_payload  # noqa: E402  (tools/install_payload.py, SYS-001)
 CCL = ROOT / "userspace/ccl/build/image/ccl-image"
 CONFIG = ROOT / "userspace/ccl/build/config/ccl-config"
 DEVICE_INDEX = ROOT / "userspace/ccl/build/image/ccl-device-index"
@@ -406,7 +407,47 @@ def split_debug(files, report, splitter):
     return staged
 
 
-def realize(files, report, output, audit_usb=False, grub_directory=None, debug_dir=None):
+# The install payload's place on the live medium: @cd:0/install (the
+# optical filesystem is rooted at apps/).
+INSTALL_PAYLOAD = "apps/install/"
+APPLICATIONS = "apps/"
+# procmgr reads the startup plan by this name, the installed root's here.
+INSTALLED_STARTUP = "init.ccl"
+
+
+def add_install_payload(files, efi, initrd, startup):
+    """The payload installer.svc installs from (tools/install_payload.py),
+    derived from the checked plan: the root closure is every optical file
+    (minus the live medium's own boot files and private cartridges) at its
+    path below the optical root, named in INDEX where it already is (not
+    stored twice); the ESP the loader, this plan's kernel and the installed
+    system's bootstrap archive; and the installed system's startup plan,
+    init.ccl on the installed root."""
+    with tempfile.TemporaryDirectory() as directory:
+        path = Path(directory) / INSTALLED_STARTUP
+        path.write_bytes(startup)
+        result = subprocess.run([CONFIG, path, "--dump-startup"], text=True, capture_output=True, timeout=30)
+        if result.returncode:
+            raise ValueError(f"invalid installed startup plan: {result.stderr.strip()}")
+    kernels = [f.data for f in files if f.role == "KERNEL"]
+    if len(kernels) != 1:
+        raise ValueError("the install payload needs exactly one kernel in the plan")
+    on_medium = {}
+    for item in files:
+        if item.region != "OPTICAL" or item.private or item.role != "CONTENT":
+            continue
+        if not item.destination.startswith(APPLICATIONS):
+            continue   # outside the optical filesystem's root: not readable there
+        name = item.destination[len(APPLICATIONS):]
+        on_medium[name] = name
+    added = []
+    for name, data in install_payload.entries(efi, kernels[0], initrd, {INSTALLED_STARTUP: startup}, on_medium).items():
+        added.append(File("OPTICAL", "CONTENT", "install-payload", INSTALL_PAYLOAD + name, data))
+    return files + added
+
+
+def realize(files, report, output, audit_usb=False, grub_directory=None, debug_dir=None,
+            install_efi=None, install_initrd=None, install_startup=None):
     optical_layout = report["layout"] == "OPTICAL_IMAGE"
     # Layout comes from the checked CCL plan, not the burner's preferred
     # filename. Optical images may use .img without changing their contents.
@@ -415,6 +456,12 @@ def realize(files, report, output, audit_usb=False, grub_directory=None, debug_d
         raise ValueError("output extension must match the declared layout")
     splitter = image_debug.Splitter(debug_dir or output.parent / "debug", output.name)
     files = split_debug(files, report, splitter)
+    if install_efi is not None:
+        if report["layout"] != "OPTICAL_IMAGE" or install_initrd is None or install_startup is None:
+            raise ValueError("an install payload needs an optical image, --install-initrd and --install-startup")
+        files = add_install_payload(files, read_regular(install_efi), read_regular(install_initrd),
+                                    read_regular(install_startup))
+        report["install_payload"] = True
     # Retain staging and its input hashes for inspection/reproduction.
     directory = Path(tempfile.mkdtemp(prefix="cubit-ccl-image."))
     bootstrap, optical = stage(files, directory)
@@ -472,6 +519,12 @@ def main():
                         help="host directory for separated debug files (default: debug/ next to the output)")
     parser.add_argument("--grub-directory", type=Path,
                         help="trusted build input: explicit GRUB platform module directory")
+    parser.add_argument("--install-efi", type=Path,
+                        help="add an install payload (SYS-001) with this UEFI fallback loader")
+    parser.add_argument("--install-initrd", type=Path,
+                        help="the installed system's bootstrap archive for the install payload")
+    parser.add_argument("--install-startup", type=Path,
+                        help="the installed system's startup plan (init.ccl on its root)")
     args = parser.parse_args()
     inputs = {}
     try:
@@ -487,7 +540,8 @@ def main():
         if args.check_only:
             print(json.dumps(report, indent=2, sort_keys=True))
         else:
-            realize(files, report, args.output, args.audit_usb, args.grub_directory, args.debug_dir)
+            realize(files, report, args.output, args.audit_usb, args.grub_directory, args.debug_dir,
+                    args.install_efi, args.install_initrd, args.install_startup)
     except (OSError, ValueError, subprocess.SubprocessError) as error:
         parser.exit(1, f"ccl-image: {error}\n")
 

@@ -173,6 +173,20 @@ package body Ext2 is
       grant      : CuBit.Memory_Grants.Grant_Reference;
       grantBuf   : System.Address;
       grantBytes : Unsigned_32;
+      result     : out Admission_Result) is
+   begin
+      Ext2.Admission.initBlockDevice
+        (fs, endpoint, volume, grant, grantBuf, grantBytes, Whole_Device, result);
+   end initBlockDevice;
+
+   procedure initBlockDevice
+     (fs         : out Filesystem;
+      endpoint   : CuBit.Handles.Endpoint;
+      volume     : Unsigned_64;
+      grant      : CuBit.Memory_Grants.Grant_Reference;
+      grantBuf   : System.Address;
+      grantBytes : Unsigned_32;
+      window     : Volume_Window;
       result     : out Admission_Result)
      renames Ext2.Admission.initBlockDevice;
 

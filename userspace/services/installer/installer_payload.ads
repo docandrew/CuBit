@@ -4,10 +4,13 @@
 --
 --  @summary
 --  The install payload, read through filesystem.svc: a directory holding
---  esp/ (the boot files) and root/ (the image closure). Walk lists a tree
---  into an Install_Tree; Read gives a file's bytes to the layout writer.
---  The installer's manifest scopes say which payload directories it may
---  read (the live medium's install/ directory).
+--  esp/ (the boot files), root/ (the image closure) and INDEX, the list of
+--  their files (one "esp/<path>" or "root/<path>" per line; directories
+--  follow from the paths, sizes from the files; a line may name, after a
+--  tab, where the file is below the medium's root). Walk builds the two
+--  Install_Trees from it; Read gives a file's bytes to the layout writer.
+--  The installer's manifest scopes say what it may read (the live
+--  medium).
 ------------------------------------------------------------------------------
 pragma Ada_2022;
 with Interfaces; use Interfaces;
@@ -26,8 +29,7 @@ package Installer_Payload is
    type Payload_Trees is array (Disk_Layout.Install_Volume) of Install_Tree.Tree;
    Trees : Payload_Trees;
 
-   --  Lists Source/esp into Trees (ESP_Volume) and Source/root into Trees
-   --  (Root_Volume).
+   --  Reads Source/INDEX into Trees (ESP_Volume, Root_Volume).
    procedure Walk (Source : String; Result : out Walk_Result);
 
    --  Data'Length bytes of File from Offset (the writer's Read).

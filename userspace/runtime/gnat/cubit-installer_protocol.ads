@@ -16,7 +16,12 @@
 --  Disk_Record; REPLY_NO_DEVICE when no disk has that number.
 --  Install (words [slot, generation, 0, 0]): the grant holds an
 --  Install_Request; the reply's word 0 is an Install_Outcome, word 1 the
---  files written, word 2 their bytes.
+--  files written, word 2 their bytes, word 3 the Identity_Proof matched.
+--
+--  The confirmation names the disk's model, serial, block count and block
+--  size, all of which must equal the disk's own. A disk that reports no
+--  serial is then identified by model and geometry alone, and the reply
+--  says so (Model_And_Geometry): never silently.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
 with Interfaces; use Interfaces;
@@ -59,8 +64,10 @@ package CuBit.Installer_Protocol with Pure, SPARK_Mode is
 
    type Install_Request is record
       Disk         : Disk_Ordinal := 0;
-      --  Must equal the disk's identity, model and serial both.
+      --  Must equal the disk's identity: model, serial, size.
       Confirmation : DId.Identity;
+      Confirm_Blocks : Unsigned_64 := 0;
+      Confirm_Block_Size : Unsigned_32 := 0;
       Ratio        : Inode_Ratio := 262_144;
       ESP_Size     : ESP_MiB := 260;
       --  The payload directory: its esp/ and root/ trees are installed.
@@ -77,6 +84,11 @@ package CuBit.Installer_Protocol with Pure, SPARK_Mode is
       Confirmation_Mismatch => 3, Disk_Too_Small => 4, Unsupported_Block_Size => 5,
       Source_Unreadable => 6, Payload_Too_Large => 7, Files_Do_Not_Fit => 8,
       Device_Failed => 9, Random_Unavailable => 10, Bad_Request => 11);
+
+   --  What identified the disk: its serial number (with model and
+   --  geometry), or, for a disk without one, model and geometry alone.
+   type Identity_Proof is (Serial_Number, Model_And_Geometry);
+   for Identity_Proof use (Serial_Number => 0, Model_And_Geometry => 1);
 
    function Encode_Disk (Item : Disk_Record) return Page
      with Pre => DId.Well_Formed (Item.Identity.Model)

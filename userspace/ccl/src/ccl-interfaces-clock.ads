@@ -3,6 +3,12 @@ with CCL.Catalog;
 package CCL.Interfaces.Clock with
    SPARK_Mode => On
 is
+
+   --  What Publish adds to a catalog: one interface and this many data
+   --  schemas. CCL_Host_Environment sums these to check the catalog's
+   --  capacity at compile time; tests/ccl-install's probe checks a real run.
+   PUBLISHED_INTERFACES : constant := 1;
+   PUBLISHED_SCHEMAS : constant := 0;
    DESCRIPTOR_DIGEST : constant CCL.Catalog.Descriptor_Digest :=
      [16#7DEA_1745_99CE_1FB1#,
       16#A09C_B4F8_1B3D_E54C#,

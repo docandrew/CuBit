@@ -31,6 +31,7 @@ package body Log_Fanout with SPARK_Mode is
    procedure Publish (Item : in out Broker; Value : Event) is
    begin
       Append (Item.Recent, Value);
+      Append (Item.Persist, Value);
       for Client of Item.Clients loop
          if Client.Owner /= No_Process and then Wanted (Client, Value) then
             Append (Client.Pending, Value);
@@ -134,4 +135,19 @@ package body Log_Fanout with SPARK_Mode is
          end if;
       end loop;
    end Close;
+   procedure Take_Persistent
+     (Item : in out Broker; Value : out Event; Found : out Boolean; Lost : out Unsigned_64) is
+   begin
+      Lost := Item.Persist.Lost;
+      Item.Persist.Lost := 0;
+      Found := Item.Persist.Used > 0;
+      if Found then
+         Value := Item.Persist.Data (Item.Persist.Head);
+         Item.Persist.Head := (Item.Persist.Head + 1) mod Capacity;
+         Item.Persist.Used := Item.Persist.Used - 1;
+      else
+         Value := (others => <>);
+      end if;
+   end Take_Persistent;
+
 end Log_Fanout;

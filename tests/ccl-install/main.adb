@@ -48,9 +48,11 @@ procedure Main is
       return CCL.Sessions.Result_Image (Outcome);
    end Run;
 
-   function Request (Model, Serial : String; Ratio : String := "262144") return String is
-     ("(system.install (Install_Request disk => 0 confirm => (Disk_Identity """ & Model &
-      """ """ & Serial & """) inode_ratio => " & Ratio &
+   function Request
+     (Model, Serial : String; Disk : String := "0"; Blocks : String := "262144";
+      Ratio : String := "262144") return String is
+     ("(system.install (Install_Request disk => " & Disk & " confirm => (Disk_Identity """ & Model &
+      """ """ & Serial & """ " & Blocks & " 4096) inode_ratio => " & Ratio &
       " esp_mib => 260 source => ""@nvme:0/install""))");
 begin
    CCL.Catalog.Initialize (Catalog);
@@ -61,24 +63,36 @@ begin
    declare
       Listed : constant String := Run ("(system.disks)");
    begin
-      Check (Listed = "List<Disk>: [(Disk 0 (Disk_Identity ""QEMU UFS"" ""cubitufs"") 262144 4096)]",
+      Check (Listed = "List<Disk>: [(Disk 0 (Disk_Identity ""QEMU UFS"" ""cubitufs"" 262144 4096)) (Disk 1 (Disk_Identity ""NO SERIAL"" """" 31246336 4096))]",
              "system.disks lists the disk: " & Listed);
    end;
    declare
       Refused : constant String := Run (Request ("QEMU UFS", "another-disk"));
    begin
-      Check (Refused = "Install_Report: (Install_Report Install_Outcome.Wrong_Disk 0 0)",
+      Check (Refused = "Install_Report: (Install_Report Install_Outcome.Wrong_Disk Identity_Proof.Serial_Number 0 0)",
              "a confirmation naming another disk is refused: " & Refused);
    end;
    declare
       Done : constant String := Run (Request ("QEMU UFS", "cubitufs"));
    begin
-      Check (Done = "Install_Report: (Install_Report Install_Outcome.Installed 7 12345)",
+      Check (Done = "Install_Report: (Install_Report Install_Outcome.Installed Identity_Proof.Serial_Number 7 12345)",
              "the confirmed install is answered: " & Done);
       Check (Install_Record.Seen and then Install_Record.Last.Disk = 0
              and then Install_Record.Last.Ratio = 262_144 and then Install_Record.Last.ESP_Size = 260
              and then Install_Record.Last.Source (1 .. Install_Record.Last.Length) = "@nvme:0/install",
              "the request decodes into the installer protocol");
+   end;
+   declare
+      Geometry : constant String := Run (Request ("QEMU UFS", "cubitufs", Blocks => "262143"));
+   begin
+      Check (Geometry = "Install_Report: (Install_Report Install_Outcome.Wrong_Disk Identity_Proof.Serial_Number 0 0)",
+             "a confirmation with the wrong block count is refused: " & Geometry);
+   end;
+   declare
+      Unserial : constant String := Run (Request ("NO SERIAL", "", Disk => "1", Blocks => "31246336"));
+   begin
+      Check (Unserial = "Install_Report: (Install_Report Install_Outcome.Installed Identity_Proof.Model_Geometry 7 12345)",
+             "a disk without a serial installs by model and geometry, and says so: " & Unserial);
    end;
    declare
       Low : constant String := Run (Request ("QEMU UFS", "cubitufs", Ratio => "4096"));

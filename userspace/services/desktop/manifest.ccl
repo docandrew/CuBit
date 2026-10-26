@@ -39,6 +39,9 @@
   (filesystem-scope (rights read) "@cd:0/Assets/cubit-wallpapers/")
   (filesystem-scope (rights read) "@nvme:0/Assets/cubit-icons/")
   (filesystem-scope (rights read) "@cd:0/Assets/cubit-icons/")
+  # The installed root (SYS-001).
+  (filesystem-scope (rights read) "@ufs:0/Assets/cubit-wallpapers/")
+  (filesystem-scope (rights read) "@ufs:0/Assets/cubit-icons/")
   (config-scope (rights read) "system.assets.")
   (request-notification keyboard manage keyboard)
   (request-notification mouse manage mouse)

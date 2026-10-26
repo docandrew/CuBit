@@ -363,6 +363,7 @@ package body Ext2.Admission is
       grant      : CuBit.Memory_Grants.Grant_Reference;
       grantBuf   : System.Address;
       grantBytes : Unsigned_32;
+      window     : Volume_Window;
       result     : out Admission_Result)
    is
       sb : Superblock;
@@ -422,6 +423,16 @@ package body Ext2.Admission is
          result := Invalid_Session;
          return;
       end if;
+      --  A partition: the volume sees only its window of the device.
+      if window.Blocks > 0 then
+         if window.First >= description.blockCount
+           or else window.Blocks > description.blockCount - window.First
+         then
+            result := Invalid_Description;
+            return;
+         end if;
+         description.blockCount := window.Blocks;
+      end if;
 
       tmpFs := fs;   --  nothing kept from an earlier admission
       tmpFs.device :=
@@ -430,6 +441,7 @@ package body Ext2.Admission is
          grant        => grant,
          grantBuffer  => grantBuf,
          grantBytes   => grantBytes,
+         firstBlock   => window.First,
          description  => description);
 
       --  Completion must mean the grant is usable. Do not hide a failed read

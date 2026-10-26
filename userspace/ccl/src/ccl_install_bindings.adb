@@ -119,6 +119,7 @@ package body CCL_Install_Bindings is
       Request : IP.Install_Request;
       Outcome : IP.Install_Outcome;
       Files, Bytes : Unsigned_64;
+      Proof : IP.Identity_Proof;
       Result : CCL_Installer.Result_Kind;
    begin
       if Argument.Kind = CCL.Host_Values.Object_Value then
@@ -140,6 +141,10 @@ package body CCL_Install_Bindings is
          Model : constant String := Views.Text (Object, Views.Field (Object, Confirm, Install_Interface.IDENTITY_MODEL));
          Serial : constant String := Views.Text (Object, Views.Field (Object, Confirm, Install_Interface.IDENTITY_SERIAL));
          Source : constant String := Views.Text (Object, Views.Field (Object, Root, Install_Interface.REQUEST_SOURCE));
+         Blocks : constant Integer_64 := CCL.Objects.Integer_Of
+           (Views.Scalar (Object, Views.Field (Object, Confirm, Install_Interface.IDENTITY_BLOCKS)));
+         Block_Bytes : constant Integer_64 := CCL.Objects.Integer_Of
+           (Views.Scalar (Object, Views.Field (Object, Confirm, Install_Interface.IDENTITY_BLOCK_BYTES)));
       begin
          --  The CCL range types check these too; the protocol's are the same.
          if Disk not in 0 .. Integer_64 (IP.Disk_Ordinal'Last)
@@ -150,6 +155,7 @@ package body CCL_Install_Bindings is
            or else DId.To_Text (Model).Length /= Model'Length
            or else DId.To_Text (Serial).Length /= Serial'Length
            or else (for some C of Source => C not in ' ' .. '~')
+           or else Blocks < 0 or else Block_Bytes not in 0 .. Integer_64 (Unsigned_32'Last)
          then
             Reply.Why := Failures.Failed
               (Failures.Invalid_Argument, "an Install_Request field is out of range",
@@ -159,12 +165,14 @@ package body CCL_Install_Bindings is
          end if;
          Request.Disk := IP.Disk_Ordinal (Disk);
          Request.Confirmation := (Model => DId.To_Text (Model), Serial => DId.To_Text (Serial));
+         Request.Confirm_Blocks := Unsigned_64 (Blocks);
+         Request.Confirm_Block_Size := Unsigned_32 (Block_Bytes);
          Request.Ratio := IP.Inode_Ratio (Ratio);
          Request.ESP_Size := IP.ESP_MiB (ESP);
          Request.Length := Source'Length;
          Request.Source (1 .. Source'Length) := Source;
       end;
-      CCL_Installer.Install (Request, Outcome, Files, Bytes, Result);
+      CCL_Installer.Install (Request, Outcome, Files, Bytes, Proof, Result);
       if Result = CCL_Installer.Not_Granted then
          Reply.Why := NOT_GRANTED;
          return;
@@ -182,6 +190,8 @@ package body CCL_Install_Bindings is
       begin
          Put (CCL.Objects.Product_Cell (Install_Interface.REPORT_FIELDS));
          Put (CCL.Objects.Variant_Cell (IP.Install_Outcome'Pos (Outcome) + 1));
+         Put (CCL.Objects.Unit_Cell);
+         Put (CCL.Objects.Variant_Cell (IP.Identity_Proof'Pos (Proof) + 1));
          Put (CCL.Objects.Unit_Cell);
          Put (CCL.Objects.Integer_Cell (Integer_64 (Unsigned_64'Min (Files, Unsigned_64 (Integer_64'Last)))));
          Put (CCL.Objects.Integer_Cell (Integer_64 (Unsigned_64'Min (Bytes, Unsigned_64 (Integer_64'Last)))));

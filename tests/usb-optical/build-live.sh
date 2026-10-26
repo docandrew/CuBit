@@ -42,8 +42,18 @@ elif [[ ${3:-} == --desktop-vulkan-compositor ]]; then
     desktop_candidate=$(python3 ../tools/verify_desktop_vulkan_compositor.py \
         "${CUBIT_DESKTOP_VULKAN_DIR:?explicit verified Vulkan compositor directory required}")
     extra_inputs=(--input "desktop-mesa-startup=$desktop_candidate")
+elif [[ ${3:-} == --install ]]; then
+    # SYS-001: the installer's live medium. The realizer adds the install
+    # payload (@cd:0/install) from the plan: this loader, the installed
+    # system's bootstrap archive, and the optical closure as the root.
+    profile=../images/laptop-install.ccl
+    output=cubit_laptop_install_uefi.img
+    make install-efi installed-initrd installer
+    extra_inputs=(--install-efi isodir/boot/install-bootx64.efi
+                  --install-initrd isodir/boot/installed-initrd.img
+                  --install-startup ../tests/hardware/init-installed.ccl)
 elif [[ -n ${3:-} ]]; then
-    echo 'Expected --render-session, --mesa-device, --mesa-triangle, --mesa-triangle-window, --desktop-mesa-startup or --desktop-vulkan-compositor after the platform option' >&2
+    echo 'Expected --install, --render-session, --mesa-device, --mesa-triangle, --mesa-triangle-window, --desktop-mesa-startup or --desktop-vulkan-compositor after the platform option' >&2
     exit 2
 fi
 if [[ -n ${SAMEBOY_ROMS_DIR:-} ]]; then

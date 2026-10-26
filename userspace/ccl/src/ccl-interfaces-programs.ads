@@ -58,6 +58,13 @@ package CCL.Interfaces.Programs is
    type Outcome_Alternative is (Finished, Stopped);
 
    MAXIMUM_PROGRAMS : constant := 16;
+   --  What Publish adds per program: its interface and its parameters'
+   --  schema; once for all programs, the shared types' schemas (Input_File,
+   --  Output_File, Input_Directory, Output_Directory, Run, Outlet_State,
+   --  Run_Outcome, List<Outlet_State>).
+   PER_PROGRAM_INTERFACES : constant := 1;
+   PER_PROGRAM_SCHEMAS : constant := 1;
+   SHARED_SCHEMAS : constant := 8;
    --  Operations per program: run, its outlets, outlets and outcome.
    MAXIMUM_OPERATIONS : constant := 3 + PD.Maximum_Connectors;
    subtype Program_Index is Natural range 0 .. MAXIMUM_PROGRAMS - 1;

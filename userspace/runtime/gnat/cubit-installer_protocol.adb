@@ -17,7 +17,9 @@ package body CuBit.Installer_Protocol with SPARK_Mode is
    Ratio_At         : constant := 4;
    ESP_At           : constant := 8;
    Source_Length_At : constant := 12;
-   Confirmation_At  : constant := 16;
+   Confirm_Blocks_At : constant := 16;
+   Confirm_Size_At  : constant := 24;
+   Confirmation_At  : constant := 32;
    Source_At        : constant := Confirmation_At + DId.Record_Bytes;
 
    pragma Compile_Time_Error (Source_At + Maximum_Source > Page_Bytes, "install request too big");
@@ -69,6 +71,8 @@ package body CuBit.Installer_Protocol with SPARK_Mode is
       Put (Result, Ratio_At, Unsigned_64 (Item.Ratio), 4);
       Put (Result, ESP_At, Unsigned_64 (Item.ESP_Size), 4);
       Put (Result, Source_Length_At, Unsigned_64 (Item.Length), 2);
+      Put (Result, Confirm_Blocks_At, Item.Confirm_Blocks, 8);
+      Put (Result, Confirm_Size_At, Unsigned_64 (Item.Confirm_Block_Size), 4);
       Result (Confirmation_At + 1 .. Confirmation_At + DId.Record_Bytes) :=
         Byte_Array (DId.Encode (Item.Confirmation));
       for I in 1 .. Item.Length loop
@@ -95,6 +99,8 @@ package body CuBit.Installer_Protocol with SPARK_Mode is
       Item.Ratio := Inode_Ratio (Ratio);
       Item.ESP_Size := ESP_MiB (ESP);
       Item.Length := Source_Length (Length);
+      Item.Confirm_Blocks := Get (Data, Confirm_Blocks_At, 8);
+      Item.Confirm_Block_Size := Unsigned_32 (Get (Data, Confirm_Size_At, 4) mod 2 ** 32);
       for I in 1 .. Item.Length loop
          if Data (Source_At + I) not in Character'Pos (' ') .. Character'Pos ('~') then
             Valid := False;

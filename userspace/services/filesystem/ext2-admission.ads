@@ -30,6 +30,7 @@ private package Ext2.Admission is
       grant      : CuBit.Memory_Grants.Grant_Reference;
       grantBuf   : System.Address;
       grantBytes : Unsigned_32;
+      window     : Volume_Window;
       result     : out Admission_Result)
      --  The geometry every location function relies on (Ext2_Geometry).
      with Post => (if result = Admitted then Ext2_Geometry.Valid (Ext2.Metadata.Shape (fs)));

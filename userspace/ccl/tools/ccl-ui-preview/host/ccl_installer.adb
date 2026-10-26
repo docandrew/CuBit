@@ -14,13 +14,15 @@ package body CCL_Installer is
 
    procedure Install
      (Request : IP.Install_Request; Outcome : out IP.Install_Outcome;
-      Files, Bytes : out Interfaces.Unsigned_64; Result : out Result_Kind)
+      Files, Bytes : out Interfaces.Unsigned_64; Proof : out IP.Identity_Proof;
+      Result : out Result_Kind)
    is
       pragma Unreferenced (Request);
    begin
       Outcome := IP.Bad_Request;
       Files := 0;
       Bytes := 0;
+      Proof := IP.Serial_Number;
       Result := Unavailable;
    end Install;
 end CCL_Installer;

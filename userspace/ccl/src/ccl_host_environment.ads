@@ -2,6 +2,20 @@ with Interfaces;
 with CCL.Catalog;
 with CCL.Host_Values;
 with CCL.Streams;
+with CCL.Objects.Catalog;
+with CCL.Interfaces.Config;
+with CCL.Interfaces.Logs;
+with CCL.Interfaces.Images;
+with CCL.Interfaces.Files;
+with CCL.Interfaces.Processes;
+with CCL.Interfaces.Lexicon;
+with CCL.Interfaces.Calc;
+with CCL.Interfaces.Install;
+with CCL.Interfaces.Clock;
+with CCL.Interfaces.Timer;
+with CCL.Interfaces.Programs;
+with CCL.Interfaces.Console;
+with CCL_Execution;
 
 --  Every system interface a CCL front end offers (the Workbench, the console,
 --  the remote session host): discovery, grants and dispatch in one place, so
@@ -11,6 +25,34 @@ generic
    --  Monotonic milliseconds, or Available = False.
    with function Monotonic_Ms (Available : out Boolean) return Interfaces.Unsigned_64;
 package CCL_Host_Environment is
+   --  The most Install publishes, summed from each interface's own counts,
+   --  with every program a front end may launch, plus one front-end
+   --  interface (the console's console.*, the Workbench's ui.*): checked
+   --  against the catalog's capacity below, so adding an interface that
+   --  does not fit fails to compile instead of failing at startup.
+   MOST_INTERFACES : constant :=
+     CCL.Interfaces.Config.PUBLISHED_INTERFACES + CCL_Execution.PUBLISHED_INTERFACES +
+     CCL.Interfaces.Logs.PUBLISHED_INTERFACES + CCL.Interfaces.Images.PUBLISHED_INTERFACES +
+     CCL.Interfaces.Files.PUBLISHED_INTERFACES + CCL.Interfaces.Processes.PUBLISHED_INTERFACES +
+     CCL.Interfaces.Lexicon.PUBLISHED_INTERFACES + CCL.Interfaces.Calc.PUBLISHED_INTERFACES +
+     CCL.Interfaces.Install.PUBLISHED_INTERFACES + CCL.Interfaces.Clock.PUBLISHED_INTERFACES +
+     CCL.Interfaces.Timer.PUBLISHED_INTERFACES +
+     CCL.Interfaces.Programs.MAXIMUM_PROGRAMS * CCL.Interfaces.Programs.PER_PROGRAM_INTERFACES +
+     CCL.Interfaces.Console.PUBLISHED_INTERFACES;
+   MOST_SCHEMAS : constant :=
+     CCL.Interfaces.Config.PUBLISHED_SCHEMAS + CCL_Execution.PUBLISHED_SCHEMAS +
+     CCL.Interfaces.Logs.PUBLISHED_SCHEMAS + CCL.Interfaces.Images.PUBLISHED_SCHEMAS +
+     CCL.Interfaces.Files.PUBLISHED_SCHEMAS + CCL.Interfaces.Processes.PUBLISHED_SCHEMAS +
+     CCL.Interfaces.Lexicon.PUBLISHED_SCHEMAS + CCL.Interfaces.Calc.PUBLISHED_SCHEMAS +
+     CCL.Interfaces.Install.PUBLISHED_SCHEMAS + CCL.Interfaces.Clock.PUBLISHED_SCHEMAS +
+     CCL.Interfaces.Timer.PUBLISHED_SCHEMAS + CCL.Interfaces.Programs.SHARED_SCHEMAS +
+     CCL.Interfaces.Programs.MAXIMUM_PROGRAMS * CCL.Interfaces.Programs.PER_PROGRAM_SCHEMAS +
+     CCL.Interfaces.Console.PUBLISHED_SCHEMAS;
+   pragma Compile_Time_Error
+     (MOST_INTERFACES > CCL.Catalog.MAX_INTERFACES, "the CCL catalog cannot hold every interface");
+   pragma Compile_Time_Error
+     (MOST_SCHEMAS > CCL.Objects.Catalog.Maximum_Schemas, "the CCL catalog cannot hold every schema");
+
    --  config (inspector) and typed Config collections, clock, logs: each
    --  published and granted only where this process may use it.
    procedure Install

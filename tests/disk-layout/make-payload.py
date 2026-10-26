@@ -5,6 +5,9 @@ needing double indirect blocks, a directory spanning several blocks).
 Contents are deterministic pseudo-random bytes.
 
 usage: make-payload.py ESP_DIR ROOT_DIR
+
+Also writes INDEX next to ESP_DIR (their common parent): one line per file,
+"esp/<path>" or "root/<path>", as the image build writes it for installer.svc.
 """
 import hashlib
 import os
@@ -43,6 +46,19 @@ def main() -> None:
     put(root, "licenses/a-file-with-a-rather-long-name-to-pack-records.txt", 4096)
     for i in range(300):                               # a multi-block directory
         put(root, f"many/file-{i:04d}.dat", (i * 37) % 9000)
+    write_index(esp, root)
+
+
+def write_index(esp: str, root: str) -> None:
+    lines = []
+    for label, top in (("esp", esp), ("root", root)):
+        for directory, dirs, files in os.walk(top):
+            dirs.sort()
+            for name in sorted(files):
+                path = os.path.relpath(os.path.join(directory, name), top)
+                lines.append(f"{label}/{path}")
+    with open(os.path.join(os.path.dirname(os.path.abspath(esp)), "INDEX"), "w") as f:
+        f.write("\n".join(lines) + "\n")
 
 
 if __name__ == "__main__":

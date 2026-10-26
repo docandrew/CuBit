@@ -1,6 +1,9 @@
 # The other services' settings: tls.svc's host addresses, the least severe
-# record logstore keeps, and the Config storage worker's database.
+# record logstore keeps, the Config storage worker's database, and the
+# installed system's root volume (storage.system-volume, "ufs:0"), which
+# devmgr lets the filesystem write and logstore persists to.
 (Setting_Catalog settings => [
   (Setting "tls.hosts" Shape.Key Value.Text Class.Declaration_Managed "")
   (Setting "logs.minimum-level" Shape.Key Value.Text Class.Declaration_Managed "")
-  (Setting "cubit.config.storage.database" Shape.Key Value.Text Class.Declaration_Managed "")])
+  (Setting "cubit.config.storage.database" Shape.Key Value.Text Class.Declaration_Managed "")
+  (Setting "storage.system-volume" Shape.Key Value.Text Class.Declaration_Managed "")])

@@ -13,9 +13,10 @@ is
    use type CCL.Types.Type_Reference;
 
    MAX_NAME_LENGTH : constant := 48;
-   --  Every interface a front end publishes (CCL_Host_Environment, the
-   --  programs it may launch, its own UI) fits, with room to grow.
-   MAX_INTERFACES  : constant := 24;
+   --  CCL_Host_Environment checks at compile time that the most it can
+   --  publish (MOST_INTERFACES: its interfaces, every program a front end
+   --  may launch, the front end's own) fits.
+   MAX_INTERFACES  : constant := 32;
    MAX_OPERATIONS  : constant := 16;
 
    subtype Parameter_Count is Natural range 0 .. 1;
@@ -178,6 +179,8 @@ is
       Found          : out Boolean);
 
    function Length (Item : Interface_Catalog) return Interface_Count;
+   --  The data schemas published into it (CCL.Objects.Catalog).
+   function Schema_Length (Item : Interface_Catalog) return Natural;
 
    function Same_Operation
      (Left, Right : Resolved_Operation) return Boolean;
@@ -321,6 +324,8 @@ private
 
    function Length (Item : Interface_Catalog) return Interface_Count is
      (Item.Count);
+   function Schema_Length (Item : Interface_Catalog) return Natural is
+     (CCL.Objects.Catalog.Length (Item.Data_Types));
 
    function Visible_Types (Item : Interface_Catalog) return CCL.Types.Registry is
      (CCL.Objects.Catalog.Visible_Types (Item.Data_Types));

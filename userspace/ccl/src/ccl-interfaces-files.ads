@@ -8,6 +8,12 @@ with CCL.Types;
 --  (its root) and a path below it; it grants nothing by itself, and the
 --  filesystem service checks the scope on every request.
 package CCL.Interfaces.Files with SPARK_Mode is
+
+   --  What Publish adds to a catalog: one interface and this many data
+   --  schemas. CCL_Host_Environment sums these to check the catalog's
+   --  capacity at compile time; tests/ccl-install's probe checks a real run.
+   PUBLISHED_INTERFACES : constant := 1;
+   PUBLISHED_SCHEMAS : constant := 5;
    use Standard.Interfaces;
 
    --  The types, as CCL source: checked by the CCL type checker when the

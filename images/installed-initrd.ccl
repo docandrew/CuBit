@@ -1,0 +1,33 @@
+# The installed system's bootstrap archive (SYS-001): the development
+# bootstrap set (UFS included); everything else is on the installed root,
+# @ufs:0, which devmgr attaches before procmgr (storage.system-volume).
+# Its startup plan, init.ccl, is on the installed root too.
+(system-image v1
+  (catalog "cubit-native-v1")
+  (layout bootstrap-only)
+  (provider "disk")
+  (settings "system-installed")
+  (file bootstrap "devmgr" "devmgr.svc")
+  (file bootstrap "filesystem" "filesystem.svc")
+  (file bootstrap "ramdisk" "ramdisk.drv")
+  (file bootstrap "ata" "ata.drv")
+  (file bootstrap "nvme" "nvme.drv")
+  (file bootstrap "netstack" "netstack.svc")
+  (file bootstrap "virtio-net" "virtio-net.drv")
+  (file bootstrap "virtio-gpu" "virtio-gpu.drv")
+  (file bootstrap "hda" "hda.drv")
+  (file bootstrap "rtw89" "rtw89.drv")
+  (file bootstrap "mixer" "mixer.svc")
+  (file bootstrap "ps2" "ps2.drv")
+  (file bootstrap "xhci" "xhci.drv")
+  (file bootstrap "virtio-input" "virtio-input.drv")
+  # Every driver is in every image; devmgr starts those whose declared
+  # devices are present (docs/device-matching.md).
+  (file bootstrap "intel-gpu" "intel-gpu.drv")
+  (file bootstrap "ufs" "ufs.drv")
+  # The generic launch's fixture driver: bound only to QEMU's edu device.
+  (file bootstrap "generic-check" "generic-check.drv")
+  (file bootstrap "config" "config.svc")
+  (file bootstrap "netmgr" "netmgr.svc")
+  (file bootstrap "procmgr" "procmgr.svc")
+)

@@ -1,0 +1,8 @@
+# The installed system's boot check (tests/headless install-reboot):
+# publishes a marker through logstore and reads the persistent log.
+(executable-manifest v1
+  (identity "com.cubit.install-boot-check")
+  (version "0.1.0")
+  (request-service logstore read-write logstore)
+  (request-service filesystem read-write filesystem)
+  (filesystem-scope (rights read) "@ufs:0/logstore.log"))

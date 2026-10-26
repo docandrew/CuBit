@@ -36,7 +36,7 @@ procedure Allocation_Scan is
       Disk (4096) := 254; -- First block in the selected group is free.
       fs := (sb => sb, blkSize => 1024,
         device => (endpoint => CuBit.Handles.Fixture.Endpoint_Of (1), volumeKey => 1, grant => (slot => 1, generation => 1),
-          grantBuffer => Grant_Buffer'Address, grantBytes => Grant_Buffer'Length,
+          grantBuffer => Grant_Buffer'Address, grantBytes => Grant_Buffer'Length, firstBlock => 0,
           description => (blockCount => 128, maxTransferBlocks => 8,
             features => FEATURE_FLUSH or FEATURE_VOLATILE_CACHE, others => <>)),
         writeQuarantined => False, journal => <>, others => <>);

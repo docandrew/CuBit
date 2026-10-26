@@ -3,7 +3,8 @@
 --  descriptions nor authenticates their publishers. The catalog is append-only
 --  so a live key can never silently change the meaning of an existing object.
 package CCL.Objects.Catalog with SPARK_Mode is
-   Maximum_Schemas : constant := 48;
+   --  Checked against CCL_Host_Environment.MOST_SCHEMAS at compile time.
+   Maximum_Schemas : constant := 64;
    subtype Schema_Count is Natural range 0 .. Maximum_Schemas;
    type Schema_Catalog is private;
    type Publication_Result is

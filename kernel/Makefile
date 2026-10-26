@@ -1675,6 +1675,27 @@ disk-write-check: ccl-build user_runtime ccl-manifest
 	$(CCL_BUILD) ../userspace/apps/disk-write-check/component.ccl
 	cp ../userspace/apps/disk-write-check/build/disk-write-check.app isodir/boot/disk-write-check.app
 
+# SYS-001: the installed system's boot check (headless install-reboot).
+.PHONY : install-boot-check
+install-boot-check: ccl-build user_runtime ccl-manifest
+	mkdir -p ../userspace/apps/install-boot-check/build
+	$(CCL_BUILD) ../userspace/apps/install-boot-check/component.ccl
+	cp ../userspace/apps/install-boot-check/build/install-boot-check.app isodir/boot/install-boot-check.app
+
+# SYS-001: the install payload's pieces. The UEFI fallback loader is GRUB,
+# the same loader the live medium uses, standalone with its configuration
+# (tests/hardware/grub-installed.cfg) inside. The installed system's
+# bootstrap archive (its startup plan, init.ccl, is on the installed root).
+INSTALL_EFI_MODULES := part_gpt fat search search_fs_file multiboot2 all_video serial terminal echo normal
+.PHONY : install-efi installed-initrd
+install-efi: ../tests/hardware/grub-installed.cfg
+	grub-mkstandalone -O x86_64-efi --directory="$(CUBIT_GRUB_EFI_DIR)" \
+		--modules="$(INSTALL_EFI_MODULES)" -o isodir/boot/install-bootx64.efi \
+		"boot/grub/grub.cfg=../tests/hardware/grub-installed.cfg"
+installed-initrd: $(INITRD_SERVICES) ccl-image ../images/installed-initrd.ccl $(CCL_IMAGE_CATALOG)
+	$(ALR) python3 $(CCL_IMAGE_REALIZER) ../images/installed-initrd.ccl \
+		--debug-dir debug --output isodir/boot/installed-initrd.img
+
 # SYS-001: installer.svc, system.disks and system.install (holds disk-install).
 .PHONY : installer
 installer: ccl-build user_runtime ccl-manifest
@@ -2098,6 +2119,12 @@ run-usb-live: usb-live-iso
 usb-live-uefi-iso: usb-live-iso
 	bash ../tests/usb-optical/build-live.sh "$(DOOM_WAD)" --uefi
 
+# SYS-001: the UEFI live medium that installs CuBit (installer.svc, the
+# console, and the install payload at @cd:0/install).
+.PHONY: usb-live-install-iso
+usb-live-install-iso: usb-live-iso installer install-efi installed-initrd
+	bash ../tests/usb-optical/build-live.sh "$(DOOM_WAD)" --uefi --install
+
 # Match the working desktop frontend: SDL's native Wayland display can leave
 # a running guest without a visible window on the development workstation.
 # This target only reuses the completed ISO; it never refreshes its contents.
@@ -2233,7 +2260,7 @@ TEST_PROGRAMS := logs boot-logs timesync-test ccl-console log-check \
 	net-multi-check timesync-check \
 	tls-probe tls-check config-check desktop-check display-check clipboard-check \
 	metrics-check grant-forward ccl-control input-stress bench-storage \
-	bench-input disk-write-check
+	bench-input disk-write-check install-boot-check
 
 .PHONY : test-programs
 test-programs: $(TEST_PROGRAMS)

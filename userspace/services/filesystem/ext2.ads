@@ -280,6 +280,15 @@ package Ext2 is
    --  empty and clear needs_recovery, as a Linux unmount does.
    procedure Detach (fs : in out Filesystem; status : out Flush_Status);
 
+
+   --  A volume's window on its device: First is its first block, Blocks
+   --  its length (Whole_Device: the device itself, as described).
+   type Volume_Window is record
+      First  : Unsigned_64 := 0;
+      Blocks : Unsigned_64 := 0;
+   end record;
+   Whole_Device : constant Volume_Window := (First => 0, Blocks => 0);
+
    --  Initialize a filesystem over any Block.Device.V1 endpoint.
    procedure initBlockDevice
      (fs         : out Filesystem;
@@ -288,6 +297,16 @@ package Ext2 is
       grant      : CuBit.Memory_Grants.Grant_Reference;
       grantBuf   : System.Address;
       grantBytes : Unsigned_32;
+      result     : out Volume_Admission.Admission_Result);
+   --  The same over Window of the device (a GPT partition).
+   procedure initBlockDevice
+     (fs         : out Filesystem;
+      endpoint   : CuBit.Handles.Endpoint;
+      volume     : Unsigned_64;
+      grant      : CuBit.Memory_Grants.Grant_Reference;
+      grantBuf   : System.Address;
+      grantBytes : Unsigned_32;
+      window     : Volume_Window;
       result     : out Volume_Admission.Admission_Result);
 
    --  Read an inode by number

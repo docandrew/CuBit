@@ -244,7 +244,8 @@ procedure Main is
    end Count;
 
    procedure Run_Install
-     (Item : Install_Request; Outcome : out Install_Outcome; Files, Bytes_Written : out Unsigned_64)
+     (Item : Install_Request; Outcome : out Install_Outcome; Files, Bytes_Written : out Unsigned_64;
+      Proof : out Identity_Proof)
    is
       Found, Known, Ready : Boolean;
       Description : CuBit.Block_Devices.Device_Description;
@@ -254,6 +255,7 @@ procedure Main is
    begin
       Files := 0;
       Bytes_Written := 0;
+      Proof := Serial_Number;
       Look (Item.Disk, Found, Description, Identity, Known);
       if not Found then
          Outcome := No_Such_Disk;
@@ -263,16 +265,22 @@ procedure Main is
          return;
       elsif not CuBit.Device_Identities.Same (Identity.Model, Item.Confirmation.Model)
         or else not CuBit.Device_Identities.Same (Identity.Serial, Item.Confirmation.Serial)
+        or else Item.Confirm_Blocks /= Description.blockCount
+        or else Item.Confirm_Block_Size /= Description.logicalBlockSize
       then
          Log ("install refused: confirmation names """ & Show (Item.Confirmation.Model) & """/""" &
-              Show (Item.Confirmation.Serial) & """, disk" & Item.Disk'Image & " is """ &
-              Show (Identity.Model) & """/""" & Show (Identity.Serial) & """");
+              Show (Item.Confirmation.Serial) & """" & Item.Confirm_Blocks'Image & " x" &
+              Item.Confirm_Block_Size'Image & ", disk" & Item.Disk'Image & " is """ &
+              Show (Identity.Model) & """/""" & Show (Identity.Serial) & """" &
+              Description.blockCount'Image & " x" & Description.logicalBlockSize'Image);
          Outcome := Confirmation_Mismatch;
          return;
-      elsif Identity.Serial.Length = 0 then
-         --  Not refused (QEMU's UFS model has none), but said: the
-         --  confirmation could name only the model.
-         Log ("disk" & Item.Disk'Image & " reports no serial number");
+      end if;
+      --  A disk without a serial is identified by model and geometry: the
+      --  reply says which proof matched, never silently.
+      Proof := (if Identity.Serial.Length = 0 then Model_And_Geometry else Serial_Number);
+      if Proof = Model_And_Geometry then
+         Log ("disk" & Item.Disk'Image & " reports no serial: identified by model and geometry");
       end if;
       if Description.logicalBlockSize not in 512 | 4096 then
          Outcome := Unsupported_Block_Size;
@@ -382,6 +390,7 @@ procedure Main is
       Item : Install_Request;
       Outcome : Install_Outcome := Bad_Request;
       Files, Bytes_Written : Unsigned_64 := 0;
+      Proof : Identity_Proof := Serial_Number;
    begin
       Borrow (From, Request.words (0), Request.words (1), False, Where, Valid, Reference);
       if Valid then
@@ -394,13 +403,14 @@ procedure Main is
          end;
       end if;
       if Valid then
-         Run_Install (Item, Outcome, Files, Bytes_Written);
+         Run_Install (Item, Outcome, Files, Bytes_Written, Proof);
       end if;
       Log ("install " & (case Outcome is
                            when Installed => "done",
                            when others => "refused or failed") &
            ": " & Outcome_Name (Outcome));
-      Answer (From, Reply_OK, [Unsigned_64 (Install_Outcome'Enum_Rep (Outcome)), Files, Bytes_Written, 0], 3);
+      Answer (From, Reply_OK, [Unsigned_64 (Install_Outcome'Enum_Rep (Outcome)), Files, Bytes_Written,
+                               Unsigned_64 (Identity_Proof'Enum_Rep (Proof))], 4);
    end Handle_Install;
 
    From : Process_ID;

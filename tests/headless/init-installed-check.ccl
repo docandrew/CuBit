@@ -1,0 +1,8 @@
+# The installed system's first boots in QEMU (SYS-001, tests/headless
+# install-reboot): logstore persists to @ufs:0/logstore.log, and
+# install-boot-check reads what an earlier boot wrote there.
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "clock.svc" (priority 5))
+  (start "install-boot-check.app" (priority 3))
+)

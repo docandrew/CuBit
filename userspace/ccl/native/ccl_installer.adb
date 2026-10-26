@@ -78,13 +78,15 @@ package body CCL_Installer is
 
    procedure Install
      (Request : IP.Install_Request; Outcome : out IP.Install_Outcome;
-      Files, Bytes : out Interfaces.Unsigned_64; Result : out Result_Kind)
+      Files, Bytes : out Interfaces.Unsigned_64; Proof : out IP.Identity_Proof;
+      Result : out Result_Kind)
    is
       Reply : Message;
    begin
       Outcome := IP.Bad_Request;
       Files := 0;
       Bytes := 0;
+      Proof := IP.Serial_Number;
       Prepare (Result);
       if Result /= Answered then
          return;
@@ -104,5 +106,7 @@ package body CCL_Installer is
       Outcome := IP.Install_Outcome'Enum_Val (Reply.words (0));
       Files := Reply.words (1);
       Bytes := Reply.words (2);
+      Proof := (if Reply.words (3) = IP.Identity_Proof'Enum_Rep (IP.Model_And_Geometry)
+                then IP.Model_And_Geometry else IP.Serial_Number);
    end Install;
 end CCL_Installer;

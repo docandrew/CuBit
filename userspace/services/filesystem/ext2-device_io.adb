@@ -88,7 +88,7 @@ package body Ext2.Device_IO is
                         protocol  => 0, ipc => <>,
                         reserved  => 0);
             msg.authorityTag := 0;
-            msg.words := [0 => lba,
+            msg.words := [0 => fs.device.firstBlock + lba,
                           1 => fs.device.grant.slot,
                           2 => sectorsNeeded,
                           3 => fs.device.grant.generation];
@@ -201,7 +201,7 @@ package body Ext2.Device_IO is
                               protocol  => 0, ipc => <>,
                               reserved  => 0);
                   msg.authorityTag := 0;
-                  msg.words := [0 => lba,
+                  msg.words := [0 => fs.device.firstBlock + lba,
                                 1 => fs.device.grant.slot,
                                 2 => 1,
                                 3 => fs.device.grant.generation];
@@ -238,7 +238,7 @@ package body Ext2.Device_IO is
                            protocol  => 0, ipc => <>,
                            reserved  => 0);
                msg.authorityTag := 0;
-               msg.words := [0 => lba,
+               msg.words := [0 => fs.device.firstBlock + lba,
                              1 => fs.device.grant.slot,
                              2 => 1,
                              3 => fs.device.grant.generation];
@@ -297,7 +297,7 @@ package body Ext2.Device_IO is
                               protocol  => (if fua then WRITE_FLAG_FUA else 0), ipc => <>,
                               reserved  => 0);
                   msg.authorityTag := 0;
-                  msg.words := [0 => lba,
+                  msg.words := [0 => fs.device.firstBlock + lba,
                                 1 => fs.device.grant.slot,
                                 2 => sectorsNeeded,
                                 3 => fs.device.grant.generation];

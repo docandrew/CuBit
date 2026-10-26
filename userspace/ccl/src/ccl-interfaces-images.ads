@@ -10,6 +10,12 @@ with CCL.Types;
 --  This package holds the types, the catalog publication and the result a
 --  host builds; CCL_Image_Bindings answers the operations.
 package CCL.Interfaces.Images with SPARK_Mode is
+
+   --  What Publish adds to a catalog: one interface and this many data
+   --  schemas. CCL_Host_Environment sums these to check the catalog's
+   --  capacity at compile time; tests/ccl-install's probe checks a real run.
+   PUBLISHED_INTERFACES : constant := 1;
+   PUBLISHED_SCHEMAS : constant := 6;
    use Standard.Interfaces;
 
    --  The types, as CCL source: checked by the CCL type checker when the

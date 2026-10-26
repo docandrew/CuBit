@@ -5,6 +5,7 @@ with Startup;
 with CuBit.Filesystems; use CuBit.Filesystems;
 with CuBit.Volume_Descriptions;
 with Ext2_Support;
+with Fs_Partitions;
 with ISO9660;
 with Fs_Path_Checks;
 with Fs_Reply_Labels;
@@ -31,6 +32,9 @@ package body Fs_Server.Storage is
    --  The ATA channel is one device.
    NVMe_Volume_Prefix : constant String := "nvme:";
    NVMe_Transfer_Pages : constant Transfer_Page_Count := 128;
+   --  A UFS disk: one slot's buffer (64 KiB) per transfer.
+   UFS_Volume_Prefix : constant String := "ufs:";
+   UFS_Transfer_Pages : constant Transfer_Page_Count := 16;
 
    --  Generic endpoint admission. The registry role is only a boot-order hint;
    --  grant creation is authorized by the endpoint already installed by devmgr.
@@ -71,9 +75,24 @@ package body Fs_Server.Storage is
          Result := Grant_Rejected;
          return;
       end if;
-      Ext2.initBlockDevice
-        (Context.Fs, Device.Endpoint, Unsigned_64 (Volume), Context.Grant, Context.Buffer,
-         Unsigned_32 (Device.Transfer_Pages) * FS_PAGE_SIZE, Result);
+      --  A GPT disk's volume is its Linux filesystem partition.
+      declare
+         Window : Ext2.Volume_Window;
+         Found : Fs_Partitions.Window_Result;
+         use type Fs_Partitions.Window_Result;
+      begin
+         Fs_Partitions.Find_Root
+           (Device.Endpoint, Context.Grant, Context.Buffer,
+            Unsigned_32 (Device.Transfer_Pages) * FS_PAGE_SIZE, Window, Found);
+         if Found in Fs_Partitions.Whole_Device | Fs_Partitions.Partition then
+            Ext2.initBlockDevice
+              (Context.Fs, Device.Endpoint, Unsigned_64 (Volume), Context.Grant, Context.Buffer,
+               Unsigned_32 (Device.Transfer_Pages) * FS_PAGE_SIZE, Window, Result);
+         else
+            Result := (if Found = Fs_Partitions.Device_Error then Device_Error
+                       else Unsupported_Filesystem);
+         end if;
+      end;
       Context.Status := Result;
       bumpNamespace;   --  names on this volume resolve anew
       if Result = Admitted then
@@ -178,15 +197,20 @@ package body Fs_Server.Storage is
                if Ordinal = 0 then
                   Volume := Volume_List.Find (Volumes, "ata:0");
                end if;
-            elsif Device = Fs_Attachments.Device_Code (Fs_Attachments.NVMe_Device) then
+            elsif Device in Fs_Attachments.Device_Code (Fs_Attachments.NVMe_Device)
+                          | Fs_Attachments.Device_Code (Fs_Attachments.UFS_Device)
+            then
                declare
-                  Name : constant String := NVMe_Volume_Prefix & Ordinal_Image (Ordinal);
+                  UFS : constant Boolean :=
+                    Device = Fs_Attachments.Device_Code (Fs_Attachments.UFS_Device);
+                  Name : constant String :=
+                    (if UFS then UFS_Volume_Prefix else NVMe_Volume_Prefix) & Ordinal_Image (Ordinal);
                begin
                   Volume := Volume_List.Find (Volumes, Name);
                   if Volume = No_Volume then
                      Register (Volumes, Name,
                        (Endpoint => CuBit.Handles.No_Endpoint, Ready_Role => 0,
-                        Transfer_Pages => NVMe_Transfer_Pages),
+                        Transfer_Pages => (if UFS then UFS_Transfer_Pages else NVMe_Transfer_Pages)),
                        Volume, Result);
                      if Result /= Registered then
                         debugPrint ("FS Server: volume " & Name & " not registered" & LF);

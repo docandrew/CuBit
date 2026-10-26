@@ -1,3 +1,5 @@
 (Component name => "filesystem" kind => (Kind.Service Launcher.Device_Manager)
   source => (Source.Ada (Ada_Source
+    # Partition_Tables: a GPT disk's root partition (Fs_Partitions).
+    sources => ["userspace/lib/partitions"]
     language => Ada_Language.Ada_2022)))

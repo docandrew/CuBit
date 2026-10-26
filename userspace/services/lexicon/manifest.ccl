@@ -16,7 +16,8 @@
     (config [File_Right.Read] "system.assets.")
     # Exactly the lexicon package on each image's system volume.
     (filesystem [File_Right.Read] "@nvme:0/Assets/cubit-lexicon/")
-    (filesystem [File_Right.Read] "@cd:0/Assets/cubit-lexicon/")]
+    (filesystem [File_Right.Read] "@cd:0/Assets/cubit-lexicon/")
+    (filesystem [File_Right.Read] "@ufs:0/Assets/cubit-lexicon/")]
   # The exported interface (APP-003): one duplex request channel per
   # client conversation; a few per client (the app's views, a script).
   channels => [

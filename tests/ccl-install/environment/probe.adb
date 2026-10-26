@@ -19,5 +19,11 @@ begin
    CCL.Catalog.Initialize (Catalog);
    CCL.Catalog.Initialize (Grants);
    Host.Install (Catalog, Grants, Success);
+   Ada.Text_IO.Put_Line ("interfaces" & CCL.Catalog.Length (Catalog)'Image &
+                         " schemas" & CCL.Catalog.Schema_Length (Catalog)'Image);
+   --  What a run published stays within the declared most (the catalog's
+   --  capacity is checked against that at compile time).
+   Success := Success and then CCL.Catalog.Length (Catalog) <= Host.MOST_INTERFACES
+     and then CCL.Catalog.Schema_Length (Catalog) <= Host.MOST_SCHEMAS;
    Ada.Text_IO.Put_Line ("CCL-ENVIRONMENT-CHECK: " & (if Success then "PASS" else "FAIL"));
 end Probe;

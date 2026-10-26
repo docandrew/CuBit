@@ -8,21 +8,16 @@ with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Memory_Grants;
 with CuBit.Filesystems; use CuBit.Filesystems;
-with CuBit.Directory_Pages;
 with Startup;
 
 package body Installer_Payload is
 
    use type Install_Tree.Add_Result, Install_Tree.Entry_Kind, Disk_Layout.Install_Volume;
-   package DP renames CuBit.Directory_Pages;
 
    --  The loan: path names, directory pages and file chunks pass through
    --  it. Its size bounds one Read.
    Loan_Pages : constant := 16;
    Loan_Bytes : constant := Loan_Pages * CuBit.Memory_Grants.PAGE_SIZE;
-   --  A directory listing longer than this is refused, not truncated.
-   Maximum_Directory_Pages : constant := 64;
-   Maximum_Depth : constant := 32;
 
    Loan : CuBit.Memory_Grants.Grant_Reference;
    Buffer : System.Address := System.Null_Address;
@@ -34,9 +29,6 @@ package body Installer_Payload is
    Open_Volume : Disk_Layout.Install_Volume := Disk_Layout.Root_Volume;
    Open_Entry : Natural := 0;
    Open_Handle : File_Handle := 0;
-
-   function Subtree_Name (Volume : Disk_Layout.Install_Volume) return String is
-     (case Volume is when Disk_Layout.ESP_Volume => "/esp", when Disk_Layout.Root_Volume => "/root");
 
    function Call (Request : in out Message) return Boolean is
    begin
@@ -65,149 +57,253 @@ package body Installer_Payload is
       Ready := Ready_State;
    end Initialize;
 
-   --  The path of an entry of Volume's tree (Install_Tree.Volume_Root: the
-   --  subtree itself).
-   function Path_Of (Volume : Disk_Layout.Install_Volume; Item : Install_Tree.Parent_Index)
-     return String
-   is
-      Base : constant String := Source_Root (1 .. Source_Length) & Subtree_Name (Volume);
-   begin
-      if Item = Install_Tree.Volume_Root then
-         return Base;
-      end if;
-      declare
-         E : constant Install_Tree.Tree_Entry := Trees (Volume).Entries (Item);
-      begin
-         return Path_Of (Volume, E.Parent) & "/" & Install_Tree.Name_Of (Trees (Volume), Item);
-      end;
-   end Path_Of;
+   --  The payload's index: one line per file, "esp/<path>" or
+   --  "root/<path>", directories implied by the paths (the ISO9660 live
+   --  medium lists no directories). A line may name where the file is
+   --  instead, after a tab: a path below the medium's root (the live
+   --  image's own files, which the image closure is, are not stored
+   --  twice). Written by the image build.
+   Index_Name : constant String := "/INDEX";
+   Medium_Separator : constant Character := ASCII.HT;
+   Maximum_Index : constant := 256 * 1024;
+   subtype Index_Position is Natural range 0 .. Maximum_Index;
+   Index_Text : String (1 .. Maximum_Index);
+   Index_Length : Index_Position := 0;
 
-   procedure List
-     (Volume : Disk_Layout.Install_Volume; Parent : Install_Tree.Parent_Index;
-      Depth : Natural; Result : in out Walk_Result)
-   is
-      Path : constant String := Path_Of (Volume, Parent);
-      Request : Message;
-      Directory : Directory_Handle;
-      Previous_Resume : Unsigned_64 := 0;
-      First_Child : constant Natural := Trees (Volume).Count + 1;
-      Last_Child : Natural;
+   --  Where each file's bytes are: a slice of Index_Text, below the
+   --  payload directory or (Medium_Relative) below the medium's root.
+   type File_Source is record
+      First : Index_Position := 1;
+      Last : Index_Position := 0;
+      Medium_Relative : Boolean := False;
+   end record;
+   type Source_Table is array (Disk_Layout.Install_Volume, Install_Tree.Entry_Index) of File_Source;
+   Sources : Source_Table;
+
+   --  The medium's root: the source directory's volume ("@cd:0").
+   function Medium return String is
    begin
-      if Path'Length > MAXIMUM_PATH_BYTES or else Path'Length > Loan_Bytes then
-         Result := Too_Large;
-         return;
-      end if;
-      Put_Path (Path);
-      Request := Open_Directory_Request (Loan, Path'Length);
-      if not Call (Request) then
-         Result := Unreadable;
-         return;
-      end if;
-      Directory := Directory_Handle (Request.words (0));
-      Pages :
-      for Page_Number in 1 .. Maximum_Directory_Pages loop
-         Request := Read_Directory_Page_Request (Directory, Loan);
-         if not Call (Request) then
-            Result := Unreadable;
-            exit Pages;
-         end if;
-         declare
-            Shared : constant DP.Page with Import, Address => Buffer;
-            Copy : constant DP.Page := Shared;   --  copied, then checked
-            Valid, Ended, OK : Boolean;
-            Count : DP.Entry_Count;
-            Used : DP.Used_Bytes;
-            Resume, Stamp : Unsigned_64;
-            At_Entry, Next : Natural;
-            Item : DP.Facts;
-            Bytes : DP.Name_Bytes;
-            Length : DP.Name_Length;
-            Added : Install_Tree.Add_Result;
-         begin
-            DP.Check (Copy, Valid, Count, Used, Ended, Resume, Stamp);
-            if not Valid then
-               Result := Unreadable;
-               exit Pages;
-            end if;
-            At_Entry := DP.Header_Bytes;
-            for Index in 1 .. Count loop
-               DP.Get (Copy, At_Entry, Used, Item, Bytes, Length, Next, OK);
-               if not OK then
-                  Result := Unreadable;
-                  exit Pages;
-               end if;
-               At_Entry := Next;
-               declare
-                  Name : String (1 .. Length);
-               begin
-                  for C in Name'Range loop
-                     Name (C) := Character'Val (Bytes (C));
-                  end loop;
-                  if Name /= "." and then Name /= ".."
-                    and then Item.Kind in DIRECTORY_KIND_FILE | DIRECTORY_KIND_DIRECTORY
-                  then
-                     Install_Tree.Add
-                       (Trees (Volume),
-                        (if Item.Kind = DIRECTORY_KIND_DIRECTORY then Install_Tree.Directory
-                         else Install_Tree.Regular_File),
-                        Parent, Name,
-                        (if Item.Kind = DIRECTORY_KIND_DIRECTORY then 0
-                         else Unsigned_64'Min (Item.Size, Install_Tree.Maximum_File_Bytes)),
-                        Added);
-                     if Added /= Install_Tree.Added
-                       or else Item.Size > Install_Tree.Maximum_File_Bytes
-                     then
-                        Result := Too_Large;
-                        exit Pages;
-                     end if;
-                  end if;
-               end;
-            end loop;
-            exit Pages when Ended;
-            if Count = 0 or else Resume = Previous_Resume or else Page_Number = Maximum_Directory_Pages then
-               Result := Unreadable;   --  no progress, or too long: never a partial list
-               exit Pages;
-            end if;
-            Previous_Resume := Resume;
-         end;
-      end loop Pages;
-      Request := Close_Directory_Request (Directory);
-      if not Call (Request) and then Result = Walked then
-         Result := Unreadable;
-      end if;
-      Last_Child := Trees (Volume).Count;
-      if Result /= Walked then
-         return;
-      end if;
-      if Depth = Maximum_Depth and then Last_Child >= First_Child then
-         Result := Too_Large;
-         return;
-      end if;
-      for Child in First_Child .. Last_Child loop
-         exit when Result /= Walked;
-         if Trees (Volume).Entries (Child).Kind = Install_Tree.Directory then
-            List (Volume, Child, Depth + 1, Result);
+      for I in 1 .. Source_Length loop
+         if Source_Root (I) = '/' then
+            return Source_Root (1 .. I - 1);
          end if;
       end loop;
-   end List;
+      return Source_Root (1 .. Source_Length);
+   end Medium;
+
+   function Source_Path (Item : File_Source) return String is
+     ((if Item.Medium_Relative then Medium else Source_Root (1 .. Source_Length))
+      & "/" & Index_Text (Item.First .. Item.Last));
+
+   --  Opens Path; on success its handle.
+   function Open (Path : String; Handle : out File_Handle) return Boolean is
+      Request : Message;
+   begin
+      Handle := 0;
+      if Path'Length > MAXIMUM_PATH_BYTES or else Path'Length > Loan_Bytes then
+         return False;
+      end if;
+      Put_Path (Path);
+      Request := Open_Request (Loan, Path'Length);
+      if not Call (Request) then
+         return False;
+      end if;
+      Handle := File_Handle (Request.words (0));
+      return True;
+   end Open;
+
+   procedure Close (Handle : File_Handle) is
+      Request : Message := Close_Request (Handle);
+      Ignore : Boolean;
+   begin
+      Ignore := Call (Request);
+   end Close;
+
+   --  A file's size: its end, by a seek (no metadata query needed).
+   function Size_Of (Path : String; Size : out Unsigned_64) return Boolean is
+      Handle : File_Handle;
+      Request : Message;
+      OK : Boolean;
+   begin
+      Size := 0;
+      if not Open (Path, Handle) then
+         return False;
+      end if;
+      Request := Seek_Request (Handle, 0, From_End);
+      OK := Call (Request);
+      if OK then
+         Size := Request.words (0);
+      end if;
+      Close (Handle);
+      return OK;
+   end Size_Of;
+
+   function Read_Index (Path : String) return Walk_Result is
+      Handle : File_Handle;
+      Request : Message;
+   begin
+      Index_Length := 0;
+      if not Open (Path, Handle) then
+         return Unreadable;
+      end if;
+      loop
+         declare
+            Chunk : String (1 .. Loan_Bytes) with Import, Address => Buffer;
+         begin
+            Request := Read_At_Request (Handle, Loan, Loan_Bytes, Unsigned_64 (Index_Length));
+            exit when not Call (Request);
+            declare
+               Got : constant Natural := Natural (Unsigned_64'Min (Request.words (0), Loan_Bytes));
+            begin
+               exit when Got = 0;
+               if Index_Length + Got > Maximum_Index then
+                  Close (Handle);
+                  return Too_Large;
+               end if;
+               Index_Text (Index_Length + 1 .. Index_Length + Got) := Chunk (1 .. Got);
+               Index_Length := Index_Length + Got;
+            end;
+         end;
+      end loop;
+      Close (Handle);
+      return Walked;
+   end Read_Index;
+
+   --  The entry Name under Parent in Volume's tree (0: none).
+   function Child (Volume : Disk_Layout.Install_Volume; Parent : Install_Tree.Parent_Index;
+                   Name : String) return Natural is
+   begin
+      for E in 1 .. Trees (Volume).Count loop
+         if Trees (Volume).Entries (E).Parent = Parent
+           and then Install_Tree.Name_Of (Trees (Volume), E) = Name
+         then
+            return E;
+         end if;
+      end loop;
+      return 0;
+   end Child;
+
+   --  Adds the file at payload path Line (esp/... or root/...), its bytes
+   --  at Source, and the directories its path implies.
+   procedure Add_Path (Line : String; Source : File_Source; Result : in out Walk_Result);
+
+   --  Adds one index line's file.
+   procedure Add_Line (Whole : String; Result : in out Walk_Result) is
+      Line_Last : Natural := Whole'Last;
+      Source : File_Source := (First => Whole'First, Last => Whole'Last, Medium_Relative => False);
+      Volume : Disk_Layout.Install_Volume;
+      Rest_First : Positive;
+      Parent : Install_Tree.Parent_Index := Install_Tree.Volume_Root;
+      Component_First : Positive;
+      Added : Install_Tree.Add_Result;
+      Size : Unsigned_64;
+   begin
+      for I in Whole'Range loop
+         if Whole (I) = Medium_Separator then
+            Line_Last := I - 1;
+            Source := (First => I + 1, Last => Whole'Last, Medium_Relative => True);
+            exit;
+         end if;
+      end loop;
+      if Source.Last < Source.First then
+         Result := Unreadable;
+         return;
+      end if;
+      Add_Path (Whole (Whole'First .. Line_Last), Source, Result);
+   end Add_Line;
+
+   procedure Add_Path (Line : String; Source : File_Source; Result : in out Walk_Result) is
+      Volume : Disk_Layout.Install_Volume;
+      Rest_First : Positive;
+      Parent : Install_Tree.Parent_Index := Install_Tree.Volume_Root;
+      Component_First : Positive;
+      Added : Install_Tree.Add_Result;
+      Size : Unsigned_64;
+   begin
+      if Line'Length > 4 and then Line (Line'First .. Line'First + 3) = "esp/" then
+         Volume := Disk_Layout.ESP_Volume;
+         Rest_First := Line'First + 4;
+      elsif Line'Length > 5 and then Line (Line'First .. Line'First + 4) = "root/" then
+         Volume := Disk_Layout.Root_Volume;
+         Rest_First := Line'First + 5;
+      else
+         Result := Unreadable;
+         return;
+      end if;
+      Component_First := Rest_First;
+      for I in Rest_First .. Line'Last loop
+         if Line (I) = '/' then
+            declare
+               Name : constant String := Line (Component_First .. I - 1);
+               Existing : constant Natural := Child (Volume, Parent, Name);
+            begin
+               if Existing /= 0 then
+                  if Trees (Volume).Entries (Existing).Kind /= Install_Tree.Directory then
+                     Result := Unreadable;
+                     return;
+                  end if;
+                  Parent := Existing;
+               else
+                  Install_Tree.Add (Trees (Volume), Install_Tree.Directory, Parent, Name, 0, Added);
+                  if Added /= Install_Tree.Added then
+                     Result := Too_Large;
+                     return;
+                  end if;
+                  Parent := Trees (Volume).Count;
+               end if;
+            end;
+            Component_First := I + 1;
+         end if;
+      end loop;
+      if Component_First > Line'Last then
+         Result := Unreadable;
+         return;
+      end if;
+      if not Size_Of (Source_Path (Source), Size) then
+         Result := Unreadable;
+         return;
+      elsif Size > Install_Tree.Maximum_File_Bytes then
+         Result := Too_Large;
+         return;
+      end if;
+      Install_Tree.Add (Trees (Volume), Install_Tree.Regular_File, Parent,
+                        Line (Component_First .. Line'Last), Size, Added);
+      if Added /= Install_Tree.Added then
+         Result := (if Added = Install_Tree.Tree_Full then Too_Large else Unreadable);
+      else
+         Sources (Volume, Trees (Volume).Count) := Source;
+      end if;
+   end Add_Path;
 
    procedure Walk (Source : String; Result : out Walk_Result) is
+      Line_First : Positive := 1;
    begin
       Finish;
-      Result := Walked;
       for Volume in Trees'Range loop
          Trees (Volume).Count := 0;
          Trees (Volume).Used := 0;
       end loop;
       if Source'Length > Source_Root'Length then
          Result := Too_Large;
-      else
-         Source_Length := Source'Length;
-         Source_Root (1 .. Source_Length) := Source;
-         List (Disk_Layout.ESP_Volume, Install_Tree.Volume_Root, 0, Result);
-         if Result = Walked then
-            List (Disk_Layout.Root_Volume, Install_Tree.Volume_Root, 0, Result);
+         return;
+      end if;
+      Source_Length := Source'Length;
+      Source_Root (1 .. Source_Length) := Source;
+      Result := Read_Index (Source & Index_Name);
+      if Result /= Walked then
+         return;
+      end if;
+      for I in 1 .. Index_Length loop
+         exit when Result /= Walked;
+         if Index_Text (I) = ASCII.LF then
+            if I > Line_First then
+               Add_Line (Index_Text (Line_First .. I - 1), Result);
+            end if;
+            Line_First := I + 1;
          end if;
+      end loop;
+      if Result = Walked and then Line_First <= Index_Length then
+         Add_Line (Index_Text (Line_First .. Index_Length), Result);
       end if;
    end Walk;
 
@@ -237,7 +333,7 @@ package body Installer_Payload is
       if Open_Entry /= File or else Open_Volume /= Volume then
          Finish;
          declare
-            Path : constant String := Path_Of (Volume, File);
+            Path : constant String := Source_Path (Sources (Volume, File));
          begin
             if Path'Length > MAXIMUM_PATH_BYTES then
                return;
