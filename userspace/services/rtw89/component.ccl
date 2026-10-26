@@ -2,7 +2,7 @@
 # firmware is embedded unmodified (D6), with its licence in the bundle.
 (Component name => "rtw89" kind => Kind.Driver
   source => (Source.Ada (Ada_Source
-    sources => ["userspace/services/rtw89/spark"]
+    sources => ["userspace/services/rtw89/spark" "userspace/services/rtw89/crypto"]
     language => Ada_Language.Ada_2022
     optimization => Optimization.Maximum
     checks => Checks.Suppressed))

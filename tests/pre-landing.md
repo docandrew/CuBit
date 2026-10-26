@@ -280,3 +280,18 @@ bash tests/setting-codecs/run.sh --prove
 python3 tests/ccl-manifests/test-manifests.py -k setting
 bash tests/headless/run.sh --test tls-service --accel kvm
 ```
+
+## wifi-crypto (W2)
+
+The Wi-Fi driver's crypto units (WiFi_Crypto, userspace/services/rtw89/crypto;
+docs/wifi.md, W2), Linux-hosted against the flake's pinned, unmodified
+SPARKTLSCrypto and SPARKNaCl: HMAC_G (HMAC-SHA1 in Legacy_WPA2, and
+HMAC_SHA256), PBKDF2-HMAC-SHA1 and the 802.11 PRF, AES key wrap, AES-CMAC,
+AES-CCM, and the P-256 field helpers and SSWU hash-to-curve. Known answers
+from RFC 2202, 4231, 6070, 3394, 4493, 3610 and 9380, NIST SP 800-38B, IEEE
+802.11 Annex J (PSK, PRF, CCMP, SAE H2E PWE) and the 802.11i CCMP MPDUs.
+`--prove` runs gnatprove (memory-capped) on every WiFi_Crypto unit.
+
+```sh
+bash tests/wifi-crypto/run.sh --prove
+```

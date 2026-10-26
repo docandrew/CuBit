@@ -1,0 +1,27 @@
+--  Proof of the Wi-Fi driver's crypto units (run.sh --prove). The units
+--  are analysed in place in userspace/services/rtw89/crypto against the
+--  flake's pinned, unmodified SPARKTLSCrypto and SPARKNaCl, with the
+--  crate's accelerated tiers disabled: the units proved here call only
+--  proved code.
+project Wifi_Crypto_Proof is
+   Crates := external ("CUBIT_SPARK_CRATES");
+
+   for Languages use ("Ada");
+   for Source_Dirs use
+     ("../../userspace/services/rtw89/crypto",
+      Crates & "sparktlscrypto/src", Crates & "sparktlscrypto/src/tiers/disabled",
+      Crates & "sparknacl/src");
+   for Excluded_Source_Files use
+     ("sparknacl-debug.ads", "sparknacl-debug.adb",
+      "sparknacl-pdebug.ads", "sparknacl-pdebug.adb");
+   for Object_Dir use "build/proof";
+
+   package Compiler is
+      for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnatp");
+   end Compiler;
+
+   package Prove is
+      for Proof_Switches ("Ada") use
+        ("--checks-as-errors=on", "--counterexamples=off", "--level=1");
+   end Prove;
+end Wifi_Crypto_Proof;
