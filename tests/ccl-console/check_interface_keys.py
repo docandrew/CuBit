@@ -12,6 +12,8 @@ SRC = ROOT / 'userspace/ccl/src'
 CHECKS = [
     (SRC / 'ccl-interfaces-processes.ads',
      {'DIGEST': None, 'PROCESS_KEY': 'Process', 'PROCESSES_KEY': 'List-Process'}),
+    (SRC / 'ccl-interfaces-wifi.ads',
+     {'DIGEST': None, 'NETWORK_KEY': 'Wifi_Network', 'NETWORKS_KEY': 'List-Wifi_Network'}),
     (SRC / 'ccl-interfaces-files.ads',
      {'DIGEST': None, 'KIND_KEY': 'File_Kind', 'PLACE_KEY': 'Place', 'CHILD_KEY': 'Child',
       'METADATA_KEY': 'File_Metadata', 'LISTING_KEY': 'List-File_Metadata'}),

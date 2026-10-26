@@ -101,6 +101,9 @@ package RTW89_Descriptors with Pure, SPARK_Mode is
       or Shift_Left (Unsigned_32'(H2C_Delivery_H2C), H2C_Delivery_Shift)
       or Shift_Left (Unsigned_32 (Sequence), H2C_Sequence_Shift));
 
+   H2C_Receive_Ack : constant Unsigned_32 := 2 ** 14;   --  H2C_HDR_REC_ACK
+   H2C_Done_Ack    : constant Unsigned_32 := 2 ** 15;   --  H2C_HDR_DONE_ACK
+
    function H2C_Header1 (Payload : H2C_Payload) return Unsigned_32 is
      (Unsigned_32 (Payload + H2C_Header_Bytes) and H2C_Length_Mask);
 

@@ -42,7 +42,11 @@ package RTW89_Power is
    procedure Read_Identity (Chip : out Identity; Result : out Outcome)
      with Pre => RTW89_MMIO.Attached;
 
-   procedure Power_On (Result : out Outcome) with Pre => RTW89_MMIO.Attached;
+   --  Trim: apply the efuse-gated regulator trims (rtw8852b_pwr_on_func
+   --  with a valid, autoloaded efuse whose power calibration byte is not
+   --  set; core start). The probe-time power-on passes False, as rtw89's
+   --  does before the efuse is parsed.
+   procedure Power_On (Trim : Boolean; Result : out Outcome) with Pre => RTW89_MMIO.Attached;
    procedure Power_Off (Result : out Outcome) with Pre => RTW89_MMIO.Attached;
 
    --  Whether the hardware autoloaded the efuse (R_AX_SYS_WL_EFUSE_CTRL).
@@ -60,6 +64,14 @@ package RTW89_Power is
    Secure_Boot_Info_Bytes   : constant := 2;
    type Secure_Boot_Info is array (1 .. Secure_Boot_Info_Bytes) of Unsigned_8;
    procedure Read_Secure_Boot_Info (Info : out Secure_Boot_Info; Result : out Outcome)
+     with Pre => RTW89_MMIO.Attached;
+
+   --  One byte of the physical efuse at any address the controller decodes
+   --  (the phycap area 0x580 .. 0x5FF lies past the wifi bank Read_Efuse
+   --  maps), with the efuse power cut around it.
+   subtype Efuse_Address is Unsigned_32 range 0 .. 16#7FF#;
+   procedure Read_Physical_Byte (Address : Efuse_Address; Value : out Unsigned_8;
+                                 Result : out Outcome)
      with Pre => RTW89_MMIO.Attached;
 
 end RTW89_Power;

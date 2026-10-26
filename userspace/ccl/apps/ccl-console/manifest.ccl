@@ -23,9 +23,11 @@
     # (dict ..), (synonym ..), (thesaurus ..), (spell-check ..): lexicon.svc.
     (service "lexicon" "lexicon")
     # system.* (installer.svc, startup only)
-    (service "installer" "installer")]
-  # Without either the console runs; lexicon.*, system.* say why not.
-  optional => ["lexicon" "installer"]
+    (service "installer" "installer")
+    # (wifi.scan) reads netstack, inspection only.
+    (service "network-stack" "network-stack")]
+  # Without these the console runs; lexicon.*, system.*, wifi.scan say why not.
+  optional => ["lexicon" "installer" "network-stack"]
   scopes => [
     (config-all [File_Right.Read])
     # :files, :save and :load; and the files handed to programs it starts.

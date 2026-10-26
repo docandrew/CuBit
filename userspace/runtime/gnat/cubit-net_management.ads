@@ -33,7 +33,7 @@ package CuBit.Net_Management with Pure, SPARK_Mode is
    type Operation is
      (Configure, Set_DNS, Route_Add, Route_Delete, Interface_Next,
       Interface_Detail, Route_List, Ping, Watch, DHCP_Open, DHCP_Send,
-      DHCP_Await);
+      DHCP_Await, Scan_Results);
    for Operation use
      (Configure        => 16#0430#,
       Set_DNS          => 16#0432#,
@@ -46,7 +46,8 @@ package CuBit.Net_Management with Pure, SPARK_Mode is
       Watch            => 16#0439#,
       DHCP_Open        => 16#043A#,
       DHCP_Send        => 16#043B#,
-      DHCP_Await       => 16#043C#);
+      DHCP_Await       => 16#043C#,
+      Scan_Results     => 16#043D#);
 
    function Label (Op : Operation) return Unsigned_32 is (Operation'Enum_Rep (Op));
 
@@ -60,14 +61,14 @@ package CuBit.Net_Management with Pure, SPARK_Mode is
    function Request_Words (Op : Operation) return Natural is
      (case Op is
          when Configure | Route_Add | Route_Delete => 4,
-         when Set_DNS | DHCP_Open | DHCP_Send => 2,
+         when Set_DNS | DHCP_Open | DHCP_Send | Scan_Results => 2,
          when Ping => 3,
          when Interface_Next | Interface_Detail | Route_List | Watch | DHCP_Await => 1);
 
    --  Who may send it: the manager's badge, or any holder of netstack's
    --  endpoint (inspection only).
    function Manager_Only (Op : Operation) return Boolean is
-     (Op not in Interface_Next | Interface_Detail | Route_List);
+     (Op not in Interface_Next | Interface_Detail | Route_List | Scan_Results);
 
    ---------------------------------------------------------------------------
    --  IPv4 words and the 16-byte address.
@@ -273,6 +274,20 @@ package CuBit.Net_Management with Pure, SPARK_Mode is
 
    function Decode_Route (W : Words2) return Decoded_Route
    with Post => (if Decode_Route'Result.Valid then Encode (Decode_Route'Result.Item) = W);
+
+   ---------------------------------------------------------------------------
+   --  Scan_Results (inspection; NET-WIFI-001 W1): a Wireless interface's
+   --  last passive scan (CuBit.Wifi_Scan). Words: 0 = handle, 1 = the grant
+   --  reference of one page the inspector lends. netstack copies the
+   --  interface's scan block (CuBit.Frame_Rings.Scan_At) into the page's
+   --  start as it reads it under the block's seqlock, and never interprets
+   --  it: the inspector decodes it (CuBit.Wifi_Scan.Decode) and refuses
+   --  what does not decode. Answer: REPLY_OK with word 0 = the block's
+   --  generation (Never_Reported: no scan published yet); REPLY_ERR for an
+   --  unknown or non-Wireless interface, a page that cannot be acquired, or
+   --  a block the driver was writing on every attempt.
+   ---------------------------------------------------------------------------
+   Scan_Page_Bytes : constant := 4_096;
 
    ---------------------------------------------------------------------------
    --  DHCP datagrams (RFC 2131). netmgr runs the client; netstack carries

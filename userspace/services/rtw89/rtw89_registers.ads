@@ -19,8 +19,10 @@ with Interfaces; use Interfaces;
 
 package RTW89_Registers with Pure is
 
-   --  BAR2 covers at least the CMAC range (R_AX_CMAC_REG_END = 0xFFFF).
-   Register_Window_Bytes : constant := 16#1_0000#;
+   --  The part of BAR2 the driver maps: the MAC (system, DMAC, CMAC up to
+   --  R_AX_CMAC_REG_END = 0xFFFF), then the baseband (phy_def cr_base
+   --  0x10000) including the RF paths' direct windows at 0x1E000 / 0x1F000.
+   Register_Window_Bytes : constant := 16#2_0000#;
    subtype Register is Unsigned_32 range 0 .. Register_Window_Bytes - 1;
 
    --  Read results that mean "no device" or "block not clocked".
@@ -412,6 +414,7 @@ package RTW89_Registers with Pure is
    --  CMAC range: narrow reads go through an aligned 32-bit read, and a
    --  read of Dead means the block's clocks are gated (pci.c, ACCESS_CMAC).
    CMAC_REG_START         : constant Register := 16#C000#;
+   CMAC_REG_END           : constant Register := 16#FFFF#;
    CK_EN                  : constant Register := 16#C004#;
    CMAC_ALLCKEN           : constant Unsigned_32 := 16#FFFF_FFFF#;
    CMAC_DEAD_RETRIES      : constant := 10;   --  MAC_REG_POOL_COUNT

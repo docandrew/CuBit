@@ -14,6 +14,15 @@ package body RTW89_Bringup is
    ---------------------------------------------------------------------------
    --  DMA memory
    ---------------------------------------------------------------------------
+   type Command_Ring is record
+      Host_Next : Natural := 0;   --  next BD the host fills
+   end record;
+
+   --  Channel 12's host index (PCIe pre-init resets the ring) and the H2C
+   --  sequence number (0 after a download, as rtw89 resets fw.h2c_seq).
+   Ring : Command_Ring;
+   Sequence : Unsigned_8 := 0;
+
    procedure Put8 (DMA : Region; Offset : Natural; Value : Unsigned_8) is
       Cell : Unsigned_8 with Import, Volatile,
         Address => To_Address (Integer_Address (DMA.Virtual + Unsigned_64 (Offset)));
@@ -307,6 +316,7 @@ package body RTW89_Bringup is
       Clear32 (PKTIN_SETTING, WD_ADDR_INFO_LENGTH);
 
       Program_Rings (DMA);
+      Ring := (Host_Next => 0);
 
       Set32 (PCIE_INIT_CFG1, RST_BDRAM);
       if not Poll32 (PCIE_INIT_CFG1, RST_BDRAM, 0, BDRAM_Budget) then
@@ -335,9 +345,6 @@ package body RTW89_Bringup is
      (RTW89_Registers.Download_Status'Val
         (Shift_Right (Read32 (WCPU_FW_CTRL) and WCPU_FWDL_STS_MASK, WCPU_FWDL_STS_SHIFT)));
 
-   type Command_Ring is record
-      Host_Next : Natural := 0;   --  next BD the host fills
-   end record;
 
    function Hardware_Done return Natural is
      (Hardware_Index (Read32 (TX_Rings (CH12).Index)) mod TX_Ring_Entries);
@@ -411,7 +418,6 @@ package body RTW89_Bringup is
       Packets : out Natural;
       Result  : out Outcome)
    is
-      Ring : Command_Ring;
       OK : Boolean;
       Remaining, Offset, Count : Natural;
       Value : Unsigned_32;
@@ -501,6 +507,7 @@ package body RTW89_Bringup is
          Result := Failure (Firmware_Ring_Full, TX_Rings (CH12).Index, Read32 (TX_Rings (CH12).Index));
          return;
       end if;
+      Sequence := 0;
       Sleep (Boot_Settle);
       if not Poll32 (WCPU_FW_CTRL, WCPU_FWDL_STS_MASK,
                      Shift_Left (Unsigned_32 (RTW89_Registers.Download_Status'Pos
@@ -511,5 +518,50 @@ package body RTW89_Bringup is
          Result := Failure (Firmware_Not_Ready, WCPU_FW_CTRL, Read32 (WCPU_FW_CTRL));
       end if;
    end Download;
+
+   ---------------------------------------------------------------------------
+   --  H2C commands after the download (rtw89_h2c_pkt_set_hdr, AX): the WD
+   --  body, the 8-byte H2C header, the payload, on channel 12.
+   ---------------------------------------------------------------------------
+   Forced_Ack_Period : constant := 4;   --  AX: rack on every 4th sequence
+
+   procedure Send_H2C
+     (DMA : Region; Category, Class, Func : Unsigned_8; Payload : H2C_Bytes;
+      Done_Ack : Boolean; OK : out Boolean)
+   is
+      Slot   : constant Natural := Ring.Host_Next mod Command_Slots;
+      Base   : constant Natural := Command_Offset + Slot * Command_Slot_Bytes;
+      Prefix : constant Natural := WD_Body_Bytes + H2C_Header_Bytes;
+      Header1 : Unsigned_32 := H2C_Header1 (Payload'Length);
+   begin
+      OK := Drain_To (Ring, Maximum_In_Flight);
+      if not OK then
+         return;
+      end if;
+      if Sequence mod Forced_Ack_Period = 0 then
+         Header1 := Header1 or H2C_Receive_Ack;
+      end if;
+      if Done_Ack then
+         Header1 := Header1 or H2C_Done_Ack;
+      end if;
+      Put32 (DMA, Base, WD_Dword0 (False));
+      Put32 (DMA, Base + 4, 0);
+      Put32 (DMA, Base + 8, WD_Dword2 (Payload'Length + H2C_Header_Bytes));
+      Put32 (DMA, Base + 12, 0);
+      Put32 (DMA, Base + 16, 0);
+      Put32 (DMA, Base + 20, 0);
+      Put32 (DMA, Base + WD_Body_Bytes, H2C_Header0 (Category, Class, Func, Sequence));
+      Put32 (DMA, Base + WD_Body_Bytes + 4, Header1);
+      for I in Payload'Range loop
+         Put8 (DMA, Base + Prefix + (I - Payload'First), Payload (I));
+      end loop;
+      Put_BD (DMA, TX_Ring_Offset (CH12) + Ring.Host_Next * BD_Bytes,
+              TX_BD (Buffer_Length (Prefix + Payload'Length), Bus (DMA, Base)));
+      Ring.Host_Next := (Ring.Host_Next + 1) mod TX_Ring_Entries;
+      Sequence := Sequence + 1;
+      Write16 (TX_Rings (CH12).Index, Unsigned_16 (Ring.Host_Next));
+   end Send_H2C;
+
+   function H2C_Drained return Boolean is (Drain_To (Ring, 0));
 
 end RTW89_Bringup;

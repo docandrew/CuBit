@@ -76,6 +76,7 @@ with CuBit.Net_Channel_Layout;
 with Netstack_Profile;
 with CuBit.Net_Link;
 with CuBit.Net_Management;
+with CuBit.Wifi_Scan;
 with CuBit.Control_Events;
 with Link_Tracker;
 with Interface_Table;
@@ -5507,6 +5508,72 @@ package body Netstack_Service is
       end;
    end handleInterfaceDetail;
 
+   --  Scan_Results: an inspector lends one page; the Wireless interface's
+   --  scan block is copied into it as read under the block's seqlock. Never
+   --  interpreted here: the inspector decodes it (CuBit.Wifi_Scan).
+   procedure handleScanResults (sender : Process_ID; m : Message) is
+      ifc : constant Interface_Access := managedInterface (m.words (0));
+      loan : CuBit.Memory_Grants.Grant_Reference;
+      mapped : System.Address;
+      ok, returned : Boolean;
+      before, after : NL.Generation := NL.Never_Reported;
+      stable : Boolean := False;
+   begin
+      if ifc = No_Interface or else ifc.kind /= NL.Wireless
+        or else ifc.pktBuf = System.Null_Address
+        or else not CuBit.Grant_References.Valid_Wire (m.words (1))
+      then
+         replyError (sender);
+         return;
+      end if;
+      loan := CuBit.Grant_References.Decode (m.words (1));
+      CuBit.Memory_Grants.Acquire
+        (loan, sender, 0, NM.Scan_Page_Bytes, CuBit.Memory_Grants.Write_Access, mapped, ok);
+      if not ok then
+         replyError (sender);
+         return;
+      end if;
+      declare
+         function blockWord (W : Natural) return System.Address is
+           (ifc.pktBuf + Storage_Offset (Frames.Scan_At + W * CuBit.Wifi_Scan.Word_Bytes));
+         function pageWord (W : Natural) return System.Address is
+           (mapped + Storage_Offset (W * CuBit.Wifi_Scan.Word_Bytes));
+         generation : Unsigned_32 with Volatile, Import,
+           Address => blockWord (CuBit.Wifi_Scan.Generation_Word);
+      begin
+         for Attempt in 1 .. NL.Read_Attempts loop
+            before := generation;
+            System.Machine_Code.Asm ("", Clobber => "memory", Volatile => True);
+            for W in CuBit.Wifi_Scan.Generation_Word + 1 .. CuBit.Wifi_Scan.Block_Words - 1 loop
+               declare
+                  source : Unsigned_32 with Volatile, Import, Address => blockWord (W);
+                  target : Unsigned_32 with Volatile, Import, Address => pageWord (W);
+               begin
+                  target := source;
+               end;
+            end loop;
+            System.Machine_Code.Asm ("", Clobber => "memory", Volatile => True);
+            after := generation;
+            stable := NL.Stable (before, after);
+            exit when stable;
+         end loop;
+         if stable then
+            declare
+               target : Unsigned_32 with Volatile, Import,
+                 Address => pageWord (CuBit.Wifi_Scan.Generation_Word);
+            begin
+               target := before;
+            end;
+         end if;
+      end;
+      CuBit.Memory_Grants.Return_Acquisition (loan, returned);
+      if stable then
+         replyOKWord (sender, Unsigned_64 (before));
+      else
+         replyError (sender);
+      end if;
+   end handleScanResults;
+
    --  DHCP_Open: netmgr lends one page for ifc's DHCP messages.
    procedure handleDHCPOpen (sender : Process_ID; m : Message) is
       ifc : constant Interface_Access := managedInterface (m.words (0));
@@ -6000,6 +6067,8 @@ package body Netstack_Service is
             handleDHCPSend (sender, m);
          when NM.DHCP_Await =>
             handleDHCPAwait (sender, m);
+         when NM.Scan_Results =>
+            handleScanResults (sender, m);
       end case;
    end dispatchManager;
 

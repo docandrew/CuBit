@@ -1,13 +1,29 @@
---  Hosted tests and proofs for the RTL8852BE driver's SPARK parsers
---  (efuse logical map, firmware container). run.sh builds and runs them.
+--  Hosted tests and proofs for the RTL8852BE driver's SPARK units (efuse
+--  logical map, firmware container, RX descriptor and PPDU status, beacon
+--  decoding, the BSS list, the PHY table walk) and the scan contract
+--  (CuBit.Wifi_Scan). run.sh builds and runs them.
 project RTW89_Tests is
-   for Source_Dirs use (".", "../../userspace/services/rtw89/spark");
+   Runtime := "../../userspace/runtime/gnat";
+   for Source_Dirs use (".", "../../userspace/services/rtw89/spark", Runtime);
+   for Source_Files use
+     ("cubit.ads", "cubit-channel_rings.ads", "cubit-channel_rings.adb",
+      "cubit-slot_rings.ads", "cubit-slot_rings.adb", "cubit-frame_rings.ads",
+      "cubit-net_link.ads", "cubit-net_link.adb", "cubit-wifi_scan.ads", "cubit-wifi_scan.adb",
+      "rtw89_efuse.ads", "rtw89_efuse.adb", "rtw89_firmware.ads", "rtw89_firmware.adb",
+      "rtw89_descriptors.ads", "rtw89_rx.ads", "rtw89_rx.adb",
+      "ieee80211_beacons.ads", "ieee80211_beacons.adb",
+      "wifi_bss_table.ads", "wifi_bss_table.adb", "wifi_channel_plan.ads",
+      "rtw89_phy_tables.ads", "rtw89_phy_tables.adb", "rtw89_tables_8852b.ads",
+      "rtw89_h2c.ads", "rtw89_h2c.adb", "rtw89_channel_values.ads",
+      "test_support.ads", "test_support.adb", "efuse_tests.adb", "firmware_tests.adb",
+      "descriptor_tests.adb", "scan_tests.adb", "beacon_tests.adb", "rx_tests.adb",
+      "corpus.ads", "corpus.adb", "main.adb");
    for Object_Dir use "build/obj";
    for Exec_Dir use "build";
    for Main use ("main.adb");
    package Compiler is
       for Default_Switches ("Ada") use
-        ("-gnat2022", "-O2", "-gnata", "-gnato", "-gnatwa", "-gnatwe");
+        ("-gnat2022", "-O2", "-gnata", "-gnato", "-gnatwa", "-gnatwe", "-I-");
    end Compiler;
    package Prove is
       for Proof_Switches ("Ada") use ("--level=2", "--checks-as-errors=on");

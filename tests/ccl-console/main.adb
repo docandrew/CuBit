@@ -17,6 +17,7 @@ with CCL_Console_Bindings;
 with CCL.Units;
 with CCL_File_Bindings;
 with CCL_Process_Bindings;
+with CCL_Wifi_Bindings;
 with Ada.Directories;
 with Ada.Environment_Variables;
 with CCL.Interfaces.Console;
@@ -129,6 +130,8 @@ procedure Main is
    begin
       if CCL_Process_Bindings.Handles (Binding) then
          CCL_Process_Bindings.Invoke (Binding, Argument, Reply);
+      elsif CCL_Wifi_Bindings.Handles (Binding) then
+         CCL_Wifi_Bindings.Invoke (Binding, Argument, Reply);
       else
          CCL_File_Bindings.Invoke (Binding, Argument, Reply);
       end if;
@@ -580,6 +583,7 @@ begin
       CCL.Catalog.Initialize (Place_Grants);
       CCL_File_Bindings.Install (Place_Catalog, Place_Grants, Installed);
       if Installed then CCL_Process_Bindings.Install (Place_Catalog, Place_Grants, Installed); end if;
+      if Installed then CCL_Wifi_Bindings.Install (Place_Catalog, Place_Grants, Installed); end if;
       Check (Installed, "fs.* is published and granted");
       Initialize (Placed, Place_Catalog);
       Run (":cd");
@@ -628,6 +632,16 @@ begin
       Run ("(sort-by (fn ((p Process)) (- 0 (field p memory))) (proc.list))");
       Draw (Placed, Canvas, Bounds);
       Save ("console-processes");
+      --  wifi.scan: typed networks (the Linux preview has no radio: none).
+      Run ("(wifi.scan)");
+      Check (Latest_Result (Placed)'Length >= 19 and then Latest_Result (Placed) (1 .. 19) = "List<Wifi_Network>:",
+             "wifi.scan returns typed networks: " & Latest_Result (Placed));
+      Run ("(length (wifi.scan))");
+      Check (Latest_Result (Placed) = "Integer: 0", "no radio in the preview: " & Latest_Result (Placed));
+      Run ("(each (fn ((n Wifi_Network)) (field n signal)) (where (fn ((n Wifi_Network)) " &
+           "(= (field n security) Wifi_Security.RSN)) (wifi.scan)))");
+      Check (Latest_Result (Placed)'Length >= 4 and then Latest_Result (Placed) (1 .. 4) = "List",
+             "Wifi_Network fields type-check: " & Latest_Result (Placed));
       --  A built-in describes itself while its call is typed.
       for C of String'("(sort-by ") loop
          Placed_Handle (Placed, (Kind => Text_Input, Character_Value => C, others => <>), Submitted, Redraw);

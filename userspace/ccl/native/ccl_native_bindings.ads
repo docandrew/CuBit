@@ -20,6 +20,9 @@ package CCL_Native_Bindings is
    function Log_Observer     return CuBit.Handles.Services.Log_Observer.Optional_Endpoint;  --  "log-observer"
    function Log_Control      return CuBit.Handles.Endpoint;   --  "log-control"
    function Network          return CuBit.Handles.Endpoint;   --  "network"
+   --  netstack's endpoint for inspection only (interfaces, wifi.scan): a
+   --  plain network-stack service, no network authority.
+   function Network_Stack    return CuBit.Handles.Endpoint;   --  "network-stack"
    function Lexicon          return CuBit.Handles.Endpoint;   --  "lexicon"
    function Installer        return CuBit.Handles.Endpoint;   --  "installer"
 end CCL_Native_Bindings;

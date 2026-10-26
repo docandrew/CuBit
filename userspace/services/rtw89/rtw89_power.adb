@@ -5,6 +5,7 @@
 pragma Ada_2022;
 with RTW89_Registers; use RTW89_Registers;
 with RTW89_MMIO; use RTW89_MMIO;
+with RTW89_MAC_Registers; use RTW89_MAC_Registers;
 
 package body RTW89_Power is
 
@@ -66,7 +67,7 @@ package body RTW89_Power is
       return False;
    end Wait;
 
-   procedure Power_On (Result : out Outcome) is
+   procedure Power_On (Trim : Boolean; Result : out Outcome) is
    begin
       Result := Success;
 
@@ -131,7 +132,14 @@ package body RTW89_Power is
       Clear32 (SYS_ISO_CTRL, PWC_EV2EF_B14);
       Clear32 (PMC_DBG_CTRL2, SYSON_DIS_PMCR_AX_WRMSK);
 
-      --  Efuse not read yet: rtw89 skips the voltage trims (goto func_en).
+      if Trim then
+         --  Regulator trims (rtw8852b.c, cut CBV over PCIe).
+         Field32 (SPS_DIG_ON_CTRL0, VOL_L1_MASK, VOL_L1_SHIFT, VOL_L1_TRIM);
+         Field32 (SPS_DIG_ON_CTRL0, VREFPFM_L_MASK, VREFPFM_L_SHIFT, VREFPFM_L_TRIM);
+         Set32 (PMC_DBG_CTRL2, SYSON_DIS_PMCR_AX_WRMSK);
+         Write16 (HCI_LDO_CTRL, (Read16 (HCI_LDO_CTRL) and not R_AX_VADJ_MASK) or VADJ_TRIM);
+         Clear32 (PMC_DBG_CTRL2, SYSON_DIS_PMCR_AX_WRMSK);
+      end if;
       Set32 (DMAC_FUNC_EN,
              MAC_FUNC_EN or DMAC_FUNC_ENABLE or MPDU_PROC_EN or WD_RLS_EN
              or DLE_WDE_EN or TXPKT_CTRL_EN or STA_SCH_EN or DLE_PLE_EN
@@ -143,6 +151,8 @@ package body RTW89_Power is
              or TMAC_EN or RMAC_EN);
       Field32 (EECS_EESK_FUNC_SEL, PINMUX_EESK_FUNC_SEL_MASK,
                PINMUX_EESK_FUNC_SEL_SHIFT, PINMUX_EESK_FUNC_SEL_BT_LOG);
+      --  Tell the Bluetooth side the WLAN MAC is on (scoreboard).
+      Write8 (SCOREBOARD_NOTIFY, NOTIFY_TP_MAJOR);
    end Power_On;
 
    procedure Power_Off (Result : out Outcome) is
@@ -182,6 +192,7 @@ package body RTW89_Power is
       Set32 (SYS_SWR_CTRL1, SYM_CTRL_SPS_PWMFREQ);
       Field32 (SPS_DIG_ON_CTRL0, REG_ZCDC_H_MASK, REG_ZCDC_H_SHIFT, REG_ZCDC_H_POWER_OFF);
       Set32 (SYS_PW_CTRL, APFM_SWLPS);
+      Write8 (SCOREBOARD_NOTIFY, NOTIFY_PWR_MAJOR);
    end Power_Off;
 
    function Efuse_Autoloaded return Boolean is
@@ -269,5 +280,25 @@ package body RTW89_Power is
       end loop;
       Efuse_Power_Cut (False, Burst);
    end Read_Secure_Boot_Info;
+
+   procedure Read_Physical_Byte (Address : Efuse_Address; Value : out Unsigned_8;
+                                 Result : out Outcome) is
+      Chip   : Identity;
+      Ignore : Outcome;
+      Burst  : Boolean;
+   begin
+      Value := RTW89_Efuse.Unprogrammed;
+      Read_Identity (Chip, Ignore);
+      Burst := Chip.Cut = CAV;
+      Result := Success;
+      Efuse_Power_Cut (True, Burst);
+      Write32 (EFUSE_CTRL, Shift_Left (Address, EF_ADDR_SHIFT) and EF_ADDR_MASK);
+      if Poll32 (EFUSE_CTRL, EF_RDY, EF_RDY, Efuse_Poll_Budget) then
+         Value := Unsigned_8 (Read32 (EFUSE_CTRL) and EF_DATA_MASK);
+      else
+         Result := Failure (Poll_Timeout, EFUSE_CTRL, Read32 (EFUSE_CTRL));
+      end if;
+      Efuse_Power_Cut (False, Burst);
+   end Read_Physical_Byte;
 
 end RTW89_Power;

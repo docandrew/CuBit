@@ -28,7 +28,14 @@ package RTW89_Outcomes with Pure is
       Firmware_Rejected,   --  container or header refused by our parser
       Firmware_Ring_Full,
       Firmware_Download_Failed,
-      Firmware_Not_Ready);
+      Firmware_Not_Ready,
+      CMAC_Disabled,       --  CMAC 0 function bits not set when required
+      Page_Count_Mismatch, --  HCI flow control's public pages do not add up
+      H2C_Ring_Full,       --  a command to the firmware was not consumed
+      Table_Unconfigured,  --  a BB/RF table has no configuration for this board
+      Table_Aborted,       --  a BB/RF table's branches matched nothing
+      Calibration_Failed,  --  an RF calibration step did not complete
+      Synthesizer_Unlocked); --  the RF synthesizer did not lock on a channel
 
    type Outcome is record
       Why    : Reason := None;
@@ -61,6 +68,13 @@ package RTW89_Outcomes with Pure is
         when Firmware_Rejected        => "firmware-rejected",
         when Firmware_Ring_Full       => "fwcmd-ring-full",
         when Firmware_Download_Failed => "fwdl-failed",
-        when Firmware_Not_Ready       => "firmware-not-ready");
+        when Firmware_Not_Ready       => "firmware-not-ready",
+        when CMAC_Disabled            => "cmac-disabled",
+        when Page_Count_Mismatch      => "hfc-page-mismatch",
+        when H2C_Ring_Full            => "h2c-ring-full",
+        when Table_Unconfigured       => "table-unconfigured",
+        when Table_Aborted            => "table-aborted",
+        when Calibration_Failed       => "calibration-failed",
+        when Synthesizer_Unlocked     => "synthesizer-unlocked");
 
 end RTW89_Outcomes;

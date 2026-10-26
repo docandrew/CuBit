@@ -9,6 +9,7 @@ with CCL.Interfaces.Logs;
 with CCL.Interfaces.Images;
 with CCL.Interfaces.Files;
 with CCL.Interfaces.Processes;
+with CCL.Interfaces.Wifi;
 with CCL.Interfaces.Lexicon;
 with CCL.Interfaces.Calc;
 with CCL.Interfaces.Install;
@@ -35,6 +36,7 @@ package CCL_Host_Environment is
      CCL.Interfaces.Config.PUBLISHED_INTERFACES + CCL_Execution.PUBLISHED_INTERFACES +
      CCL.Interfaces.Logs.PUBLISHED_INTERFACES + CCL.Interfaces.Images.PUBLISHED_INTERFACES +
      CCL.Interfaces.Files.PUBLISHED_INTERFACES + CCL.Interfaces.Processes.PUBLISHED_INTERFACES +
+     CCL.Interfaces.Wifi.PUBLISHED_INTERFACES +
      CCL.Interfaces.Lexicon.PUBLISHED_INTERFACES + CCL.Interfaces.Calc.PUBLISHED_INTERFACES +
      CCL.Interfaces.Install.PUBLISHED_INTERFACES + CCL.Interfaces.Clock.PUBLISHED_INTERFACES +
      CCL.Interfaces.Timer.PUBLISHED_INTERFACES +
@@ -44,6 +46,7 @@ package CCL_Host_Environment is
      CCL.Interfaces.Config.PUBLISHED_SCHEMAS + CCL_Execution.PUBLISHED_SCHEMAS +
      CCL.Interfaces.Logs.PUBLISHED_SCHEMAS + CCL.Interfaces.Images.PUBLISHED_SCHEMAS +
      CCL.Interfaces.Files.PUBLISHED_SCHEMAS + CCL.Interfaces.Processes.PUBLISHED_SCHEMAS +
+     CCL.Interfaces.Wifi.PUBLISHED_SCHEMAS +
      CCL.Interfaces.Lexicon.PUBLISHED_SCHEMAS + CCL.Interfaces.Calc.PUBLISHED_SCHEMAS +
      CCL.Interfaces.Install.PUBLISHED_SCHEMAS + CCL.Interfaces.Clock.PUBLISHED_SCHEMAS +
      CCL.Interfaces.Timer.PUBLISHED_SCHEMAS + CCL.Interfaces.Programs.SHARED_SCHEMAS +
@@ -53,6 +56,7 @@ package CCL_Host_Environment is
      CCL.Interfaces.Config.PUBLISHED_TYPES + CCL_Execution.PUBLISHED_TYPES +
      CCL.Interfaces.Logs.PUBLISHED_TYPES + CCL.Interfaces.Images.PUBLISHED_TYPES +
      CCL.Interfaces.Files.PUBLISHED_TYPES + CCL.Interfaces.Processes.PUBLISHED_TYPES +
+     CCL.Interfaces.Wifi.PUBLISHED_TYPES +
      CCL.Interfaces.Lexicon.PUBLISHED_TYPES + CCL.Interfaces.Calc.PUBLISHED_TYPES +
      CCL.Interfaces.Install.PUBLISHED_TYPES + CCL.Interfaces.Clock.PUBLISHED_TYPES +
      CCL.Interfaces.Timer.PUBLISHED_TYPES + CCL.Interfaces.Programs.SHARED_TYPES +

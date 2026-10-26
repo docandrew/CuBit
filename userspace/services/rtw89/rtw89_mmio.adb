@@ -30,7 +30,7 @@ package body RTW89_MMIO is
    function Read32 (Offset : Register) return Unsigned_32 is
       Value : Unsigned_32 := Raw32 (Offset);
    begin
-      if Offset >= CMAC_REG_START then
+      if Offset in CMAC_REG_START .. CMAC_REG_END then
          for Attempt in 1 .. CMAC_DEAD_RETRIES loop
             exit when Value /= Dead;
             Write32 (CK_EN, CMAC_ALLCKEN);
@@ -45,7 +45,7 @@ package body RTW89_MMIO is
 
    function Read16 (Offset : Register) return Unsigned_16 is
    begin
-      if Offset >= CMAC_REG_START then
+      if Offset in CMAC_REG_START .. CMAC_REG_END then
          return Unsigned_16 (Shift_Right (Read32 (Offset and not Byte_Lane_Mask),
                              Natural (Offset and Byte_Lane_Mask) * Bits_Per_Byte)
                              and 16#FFFF#);
@@ -59,7 +59,7 @@ package body RTW89_MMIO is
 
    function Read8 (Offset : Register) return Unsigned_8 is
    begin
-      if Offset >= CMAC_REG_START then
+      if Offset in CMAC_REG_START .. CMAC_REG_END then
          return Unsigned_8 (Shift_Right (Read32 (Offset and not Byte_Lane_Mask),
                             Natural (Offset and Byte_Lane_Mask) * Bits_Per_Byte)
                             and 16#FF#);
@@ -208,6 +208,14 @@ package body RTW89_MMIO is
       end loop;
       return (Read8 (Offset) and Mask) = Expected;
    end Poll8;
+
+   procedure Delay_For (Budget : Microseconds) is
+      W : Waiter := Begin_Wait (Budget);
+   begin
+      while Keep_Waiting (W) loop
+         null;
+      end loop;
+   end Delay_For;
 
    procedure Sleep (Duration : Milliseconds) is
       Ignore : Unsigned_64;

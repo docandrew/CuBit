@@ -20,6 +20,9 @@
   (config-scope (rights read write) "com.cubit.ccl-workbench.demo")
   # (dict ..), (synonym ..), (thesaurus ..), (spell-check ..): lexicon.svc.
   (request-service-optional lexicon read-write lexicon)
+  # (wifi.scan): what the radios heard, through netstack's inspection
+  # operations (no network authority).
+  (request-service-optional network-stack read-write network-stack)
   (request-service filesystem read-write filesystem)
   (filesystem-scope (rights read write create) "@nvme:0/work")
   (filesystem-scope (rights read write create) "@mem:0/work"))

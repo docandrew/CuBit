@@ -3079,6 +3079,14 @@ procedure main is
              CuBit.Log_Protocol.Publisher_Tag
                (Driver_Log_Budget, Generic_Log_Issuance_First + Unsigned_64 (Generic_Total))));
       end if;
+      --  A network driver's (service "network-stack" ...) request: netstack's
+      --  endpoint badged as the network driver's authority, as virtio-net
+      --  gets it (docs/net-link.md); only requests for that role are answered.
+      if netstackPID /= No_Process then
+         DL.Give_Service (Child, Unsigned_32 (DRIVER_NETSTACK),
+           H.Badged (DL.Mailbox (netstackChild), H.Read_Write,
+                     CuBit.Network_Authority.Driver_Authority_Tag));
+      end if;
 
       for I in 1 .. Plan.Count loop
          exit when Failed;

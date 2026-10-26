@@ -71,7 +71,7 @@ package body RTW89_Launch is
          return;
       end if;
 
-      --  Map only the register map we use (the CMAC range ends at 0xFFFF).
+      --  Map only the registers we use: the MAC, then the baseband and RF.
       Mapped_Bytes := RTW89_Registers.Register_Window_Bytes;
       if not CuBit.Handles.Devices.Map_Device
         (Startup.Registers, Window.First, Registers_Virtual_Base,

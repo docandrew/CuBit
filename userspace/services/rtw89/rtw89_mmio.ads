@@ -60,6 +60,9 @@ package RTW89_MMIO is
                    Budget : Microseconds) return Boolean
      with Pre => Attached;
 
+   --  Busy-wait at least Budget microseconds (udelay in rtw89).
+   procedure Delay_For (Budget : Microseconds);
+
    --  Sleep at least Milliseconds (fsleep/mdelay in rtw89).
    subtype Milliseconds is Unsigned_64 range 1 .. 1_000;
    procedure Sleep (Duration : Milliseconds);

@@ -80,6 +80,20 @@ package CuBit.Frame_Rings with Pure, SPARK_Mode is
                 and then Link_Word_At'Result + Link_Word_Bytes <= Transmit_Header_At
                 and then Link_Word_At'Result mod Link_Word_Bytes = 0;
 
+   --  The scan block (CuBit.Wifi_Scan, docs/wifi.md "Scan"): a wireless
+   --  driver's last passive scan result, a level value under the link
+   --  block's seqlock discipline (its own generation word), after the
+   --  transmit header, within the header page. Only a Wireless interface's
+   --  driver writes it; netstack copies it out when an inspector asks
+   --  (CuBit.Net_Management.Scan_Results) and never interprets it.
+   Scan_At    : constant := 2_176;
+   Scan_Bytes : constant := 1_680;   --  CuBit.Wifi_Scan.Block_Bytes
+
+   pragma Compile_Time_Error
+     (Scan_At < Transmit_Header_At + Direction_Header_Bytes or else
+      Scan_At + Scan_Bytes > Page_Bytes or else Scan_At mod Link_Word_Bytes /= 0,
+      "the scan block overlaps the transmit header or leaves the header page");
+
    --  The slot areas after the header page.
    Receive_Slots_At  : constant := Page_Bytes;
    Transmit_Slots_At : constant := Receive_Slots_At + Slots * Slot_Bytes;

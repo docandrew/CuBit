@@ -3151,6 +3151,20 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
             sleep 2
             printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-demo-programs.ppm" | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
             sleep 0.5
+            elif [ "${CCL_CONSOLE_DEMO:-}" = wifi ]; then
+            # What the radios heard (CCL_CONSOLE_DEMO=wifi, NET-WIFI-001 W1):
+            # QEMU has no RTL8852BE, so wifi.scan answers through netstack
+            # with no wireless interface (an empty list), or says why not.
+            send_text() {
+                python3 "$ROOT_DIR/tests/ccl-console/send-text.py" "$MONITOR_SOCKET" "$1"
+            }
+            sleep 0.5
+            send_text '(wifi.scan)'
+            sleep 2
+            send_text '(length (wifi.scan))'
+            sleep 2
+            printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-demo-wifi.ppm" | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
+            sleep 0.5
             elif [ "${CCL_CONSOLE_DEMO:-}" = ps ]; then
             # What runs on the guest (CCL_CONSOLE_DEMO=ps): :ps, then the
             # largest by memory.
@@ -5054,6 +5068,11 @@ ccl-console: REPL completed: String: 0.875
 ccl-console: REPL completed: String: 2e-21
 ccl-console: REPL completed: String: 0.5
 ccl-console: REPL completed: Calc_Number: (Calc_Number true \"0\" \"1\" \"0\" Calc_Form.Integer_Form \"\" \"00\" \"000\" \"00000000\" true)
+"
+        elif [ "${CCL_CONSOLE_DEMO:-}" = wifi ]; then
+            required_markers="$required_markers
+ccl-console: REPL completed: List<Wifi_Network>: (list-of Wifi_Network)
+ccl-console: REPL completed: Integer: 0
 "
         elif [ "${CCL_CONSOLE_DEMO:-}" = clipboard ]; then
             required_markers="$required_markers

@@ -58,4 +58,19 @@ package RTW89_Bringup is
      with Pre => RTW89_MMIO.Attached and then File'First = 0
                  and then RTW89_Firmware.Valid_Plan (Plan, File'Length);
 
+   --  An H2C payload (the 8-byte header is added).
+   Maximum_H2C_Payload : constant := 128;
+   type H2C_Bytes is array (Positive range <>) of Unsigned_8
+   with Predicate => H2C_Bytes'Length <= Maximum_H2C_Payload;
+
+   --  Queue one H2C command on channel 12 (after Download). OK is False
+   --  when the ring stayed full for its whole budget.
+   procedure Send_H2C
+     (DMA : Region; Category, Class, Func : Unsigned_8; Payload : H2C_Bytes;
+      Done_Ack : Boolean; OK : out Boolean)
+   with Pre => RTW89_MMIO.Attached;
+
+   --  Whether the device consumed every queued command (bounded wait).
+   function H2C_Drained return Boolean with Pre => RTW89_MMIO.Attached;
+
 end RTW89_Bringup;

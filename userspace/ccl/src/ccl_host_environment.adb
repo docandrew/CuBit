@@ -11,6 +11,7 @@ with CCL_Lexicon_Bindings;
 with CCL_Calc_Bindings;
 with CCL_Install_Bindings;
 with CCL_Process_Bindings;
+with CCL_Wifi_Bindings;
 with CCL_Program_Bindings;
 with CuBit.Failures;
 
@@ -43,6 +44,7 @@ package body CCL_Host_Environment is
       if Success then CCL_Image_Loading.Install (Catalog, Grants, Success); end if;
       if Success then CCL_File_Bindings.Install (Catalog, Grants, Success); end if;
       if Success then CCL_Process_Bindings.Install (Catalog, Grants, Success); end if;
+      if Success then CCL_Wifi_Bindings.Install (Catalog, Grants, Success); end if;
       if Success then CCL_Program_Bindings.Install (Catalog, Grants, Success); end if;
       if Success then CCL_Lexicon_Bindings.Install (Catalog, Grants, Success); end if;
       if Success then CCL_Calc_Bindings.Install (Catalog, Grants, Success); end if;
@@ -71,7 +73,8 @@ package body CCL_Host_Environment is
      (Binding in CLOCK_BINDING | TIMER_EVERY_BINDING or else CCL_Config_Bindings.Handles (Binding) or else
       CCL_Log_Bindings.Handles (Binding) or else CCL_Image_Bindings.Handles (Binding) or else
       CCL_Image_Loading.Handles (Binding) or else CCL_File_Bindings.Handles (Binding) or else
-      CCL_Process_Bindings.Handles (Binding) or else CCL_Program_Bindings.Handles (Binding) or else
+      CCL_Process_Bindings.Handles (Binding) or else CCL_Wifi_Bindings.Handles (Binding) or else
+      CCL_Program_Bindings.Handles (Binding) or else
       CCL_Lexicon_Bindings.Handles (Binding) or else CCL_Calc_Bindings.Handles (Binding) or else
       CCL_Install_Bindings.Handles (Binding));
 
@@ -99,6 +102,8 @@ package body CCL_Host_Environment is
          CCL_File_Bindings.Invoke (Binding, Argument, Reply);
       elsif CCL_Process_Bindings.Handles (Binding) then
          CCL_Process_Bindings.Invoke (Binding, Argument, Reply);
+      elsif CCL_Wifi_Bindings.Handles (Binding) then
+         CCL_Wifi_Bindings.Invoke (Binding, Argument, Reply);
       elsif CCL_Program_Bindings.Handles (Binding) then
          CCL_Program_Bindings.Invoke (Binding, Argument, Streams, Reply);
       elsif CCL_Lexicon_Bindings.Handles (Binding) then
