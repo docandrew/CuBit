@@ -20,6 +20,7 @@ with Interfaces; use Interfaces;
 with System;
 with CuBit.Handles;
 with CuBit.Block_Devices; use CuBit.Block_Devices;
+with CuBit.Device_Identities;
 
 package CuBit.Block_Client is
 
@@ -73,6 +74,18 @@ package CuBit.Block_Client is
      with Pre => Item.Open and then Count in 1 .. Transfer_Limit (Item)
                  and then (if Force_Unit_Access then
                              Supports_FUA (Description (Item)));
+
+   --  The device's model and serial (OP_IDENTIFY_DEVICE). Known False:
+   --  the driver reports no identity, or its record was malformed.
+   procedure Identify
+     (Item : Session; Identity : out CuBit.Device_Identities.Identity;
+      Known : out Boolean)
+     with Pre => Item.Open;
+
+   --  Revokes the grant and closes the endpoint (its buffer's pages stay
+   --  with the process).
+   procedure Close (Item : in out Session)
+     with Post => not Item.Open;
 
    --  Makes every completed write durable (OP_FLUSH_DEVICE).
    procedure Flush (Item : Session; Durable : out Boolean)

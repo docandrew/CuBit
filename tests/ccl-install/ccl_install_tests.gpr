@@ -1,0 +1,14 @@
+with "../../userspace/allocator/allocator_runtime_host.gpr";
+with "../../userspace/ccl/cubit_shared.gpr";
+--  Hosted tests of system.disks and system.install as CCL: the interface's
+--  types, argument decoding and results, over a stand-in installer
+--  (ccl_installer.adb here) instead of installer.svc.
+project CCL_Install_Tests is
+   for Source_Dirs use (".", "../../userspace/ccl/src");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnata", "-gnatwa");
+   end Compiler;
+end CCL_Install_Tests;

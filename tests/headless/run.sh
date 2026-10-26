@@ -325,7 +325,7 @@ case "$TEST_NAME" in
         ;;
     grant-forward|grant-forward-intermediary-exit|grant-forward-owner-exit|grant-forward-desktop|config-tree|config-inspection|log-authority|log-fields|metrics|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
         ;;
-    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|ufs-layout|net-link|net-multi|firmware-snapshot|multi-instance)
+    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|multi-instance)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -566,6 +566,24 @@ case "$TEST_NAME" in
         ;;
     ccl-console)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-ccl-console.ccl"
+        if [ "${CCL_CONSOLE_DEMO:-}" = install ]; then
+            # SYS-001: system.disks and system.install typed at the console,
+            # answered by installer.svc, onto QEMU's UFS model (4 KiB blocks,
+            # as the IdeaPad's disk). The 1 GiB disk starts full of a
+            # non-zero pattern, so every structure the install relies on
+            # being zero must have been zeroed. The payload (esp/, root/) is
+            # @nvme:0/install. The host then checks the disk image.
+            INIT_PROFILE="$ROOT_DIR/tests/headless/init-ccl-console-install.ccl"
+            TEMP_UFS_DISK="$(mktemp "${TMPDIR:-/tmp}/cubit-ufs-disk.XXXXXX.img")"
+            python3 -I -c 'import sys
+chunk = bytes([0xA5]) * (1 << 20)
+with open(sys.argv[1], "wb") as f:
+    for _ in range(1024):
+        f.write(chunk)' "$TEMP_UFS_DISK"
+            UFS_ARGS=(-drive "file=$TEMP_UFS_DISK,if=none,id=ufs0,format=raw"
+                      -device ufs,serial=cubitufs,id=ufs
+                      -device ufs-lu,drive=ufs0,bus=ufs,lun=0)
+        fi
         # The gcc demo runs cc1, a 45 MB image procmgr reads whole.
         if [ "${CCL_CONSOLE_DEMO:-}" = gcc ]; then QEMU_MEMORY="${QEMU_MEMORY:-1G}"; fi
         ;;
@@ -837,23 +855,6 @@ case "$TEST_NAME" in
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-ufs-write.ccl"
         TEMP_UFS_DISK="$(mktemp "${TMPDIR:-/tmp}/cubit-ufs-disk.XXXXXX.img")"
         python3 -I "$ROOT_DIR/tests/ufs/make-disk.py" "$TEMP_UFS_DISK"
-        UFS_ARGS=(-drive "file=$TEMP_UFS_DISK,if=none,id=ufs0,format=raw"
-                  -device ufs,serial=cubitufs,id=ufs
-                  -device ufs-lu,drive=ufs0,bus=ufs,lun=0)
-        ;;
-    ufs-layout)
-        # SYS-001 step 2: the installer's layout writer on QEMU's UFS model
-        # (4 KiB blocks, as the IdeaPad's disk). The 1 GiB disk starts full
-        # of a non-zero pattern, so every structure the writer relies on
-        # being zero must have been zeroed. The host then checks the image
-        # (tests/disk-layout/check-image.sh).
-        INIT_PROFILE="$ROOT_DIR/tests/headless/init-ufs-layout.ccl"
-        TEMP_UFS_DISK="$(mktemp "${TMPDIR:-/tmp}/cubit-ufs-disk.XXXXXX.img")"
-        python3 -I -c 'import sys
-chunk = bytes([0xA5]) * (1 << 20)
-with open(sys.argv[1], "wb") as f:
-    for _ in range(1024):
-        f.write(chunk)' "$TEMP_UFS_DISK"
         UFS_ARGS=(-drive "file=$TEMP_UFS_DISK,if=none,id=ufs0,format=raw"
                   -device ufs,serial=cubitufs,id=ufs
                   -device ufs-lu,drive=ufs0,bus=ufs,lun=0)
@@ -1274,8 +1275,7 @@ if [ -n "$INIT_PROFILE" ]; then
         fi
     fi
     if [ "$TEST_NAME" = "generic-launch" ] || [ "$TEST_NAME" = "ufs" ] ||
-       [ "$TEST_NAME" = "ufs-write" ] || [ "$TEST_NAME" = "ufs-layout" ] ||
-       [ "$TEST_NAME" = "multi-instance" ]; then
+       [ "$TEST_NAME" = "ufs-write" ] || [ "$TEST_NAME" = "multi-instance" ]; then
         # boot-logs prints the records logstore keeps (the base disk lacks it):
         # generic drivers (generic-check, ufs) and devmgr log through logstore.
         for GENERIC_IMAGE in logstore.svc boot-logs.app; do
@@ -1288,9 +1288,8 @@ if [ -n "$INIT_PROFILE" ]; then
               "$TEMP_DISK" >/dev/null 2>&1 || exit 1
         done
     fi
-    if [ "$TEST_NAME" = "ufs-write" ] || [ "$TEST_NAME" = "ufs-layout" ]; then
+    if [ "$TEST_NAME" = "ufs-write" ]; then
         CHECK_APP="disk-write-check"
-        [ "$TEST_NAME" = "ufs-layout" ] && CHECK_APP="disk-layout-check"
         WRITE_CHECK_IMAGE="$KERNEL_DIR/isodir/boot/$CHECK_APP.app"
         if [ ! -f "$WRITE_CHECK_IMAGE" ]; then
             echo "headless: build $CHECK_APP first (make -C kernel $CHECK_APP)" >&2
@@ -1413,6 +1412,22 @@ if [ -n "$INIT_PROFILE" ]; then
                 for PROGRAM_OUTPUT in hello bad; do
                     debugfs -w -R "rm work/$PROGRAM_OUTPUT" "$TEMP_DISK" >/dev/null 2>&1
                 done
+            fi
+            if [ "${CCL_CONSOLE_DEMO:-}" = install ]; then
+                if [ ! -f "$KERNEL_DIR/isodir/boot/installer.svc" ]; then
+                    echo "headless: build installer.svc first (make -C kernel installer)" >&2
+                    exit 1
+                fi
+                debugfs -w -R "rm installer.svc" "$TEMP_DISK" >/dev/null 2>&1
+                debugfs -w -R "write $KERNEL_DIR/isodir/boot/installer.svc installer.svc" \
+                  "$TEMP_DISK" >/dev/null 2>&1 || exit 1
+                INSTALL_PAYLOAD="$(mktemp -d "${TMPDIR:-/tmp}/cubit-install-payload.XXXXXX")"
+                python3 -I "$ROOT_DIR/tests/disk-layout/make-payload.py" \
+                  "$INSTALL_PAYLOAD/esp" "$INSTALL_PAYLOAD/root"
+                python3 -I "$ROOT_DIR/tests/disk-layout/debugfs-script.py" "$INSTALL_PAYLOAD" install \
+                  > "$INSTALL_PAYLOAD.commands"
+                debugfs -w -f "$INSTALL_PAYLOAD.commands" "$TEMP_DISK" >/dev/null 2>&1 || exit 1
+                rm -rf "$INSTALL_PAYLOAD" "$INSTALL_PAYLOAD.commands"
             fi
             if [ "${CCL_CONSOLE_DEMO:-}" = programs ]; then
                 # as and ld, typed from the console (docs/ccl-launch-parameters.md):
@@ -3143,6 +3158,32 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
                 printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-demo-logs.ppm"
                 sleep 0.5
             } | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
+            elif [ "${CCL_CONSOLE_DEMO:-}" = install ]; then
+            # SYS-001 from the console (CCL_CONSOLE_DEMO=install): list the
+            # disks, refuse an install whose confirmation names another
+            # disk, then install to the UFS disk (it takes a while). QEMU's
+            # UFS model reports no serial number: its identity is the model
+            # and an empty serial, which the confirmation must name.
+            for ((attempt = 0; attempt < 300; attempt++)); do
+                grep -qa "installer: registered" "$SERIAL_LOG" &&
+                  grep -qa "ufs: bring-up complete" "$SERIAL_LOG" && break
+                sleep 0.2
+            done
+            sleep 0.5
+            for entry in '(system.disks)' \
+                '(system.install (Install_Request disk => 0 confirm => (Disk_Identity "QEMU UFS" "not-this-disk") inode_ratio => 262144 esp_mib => 260 source => "@nvme:0/install"))' \
+                '(system.install (Install_Request disk => 0 confirm => (Disk_Identity "QEMU UFS" "") inode_ratio => 262144 esp_mib => 260 source => "@nvme:0/install"))'; do
+                python3 "$ROOT_DIR/tests/ccl-console/send-text.py" "$MONITOR_SOCKET" "$entry" 0.05
+                sleep 2
+            done
+            for ((attempt = 0; attempt < 600; attempt++)); do
+                # Both installs answered: the refusal, then the install.
+                [ "$(grep -ac 'installer: install \(done\|refused or failed\):' "$SERIAL_LOG")" -ge 2 ] && break
+                sleep 0.2
+            done
+            sleep 1
+            printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-demo-install.ppm" | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
+            sleep 0.5
             elif [ "${CCL_CONSOLE_DEMO:-}" = calc ]; then
             # The calculator core from CCL (CCL_CONSOLE_DEMO=calc,
             # docs/calculator.md): calc.evaluate gives the app's exact answer
@@ -4194,18 +4235,6 @@ TEST: PASS ufs-write
             exit 1
         fi
         ;;
-    ufs-layout)
-        required_markers="
-ufs: bring-up complete (13/13), serving lun 0, writes by grant
-devmgr: disk 0 (00:03.0 1B36:0013 class 01.09.01) opened read-write for install
-disk-layout-check: layout written and flushed PASS
-TEST: PASS ufs-layout
-"
-        if grep -qa 'disk-layout-check: .* FAIL\|ufs: write failed\|ufs: io timeout' "$SERIAL_LOG"; then
-            echo "headless: ufs-layout reported a failure" >&2
-            exit 1
-        fi
-        ;;
     bench-fs)
         required_markers="
 fs-bench: start
@@ -4886,6 +4915,17 @@ ccl-console: REPL completed: List<Outlet_State>: [(Outlet_State \"unix.stdout\" 
 ccl-console: REPL completed: Expression does not type-check: field output takes Output_File, not Input_File
 ccl-console: REPL completed: Task<Run_Outcome>: Done (Run_Outcome.Finished (Unix_Exit 1))
 ccl-console: REPL completed: Task<Run_Outcome>: Done (Run_Outcome.Finished (Unix_Exit 0))
+"
+        elif [ "${CCL_CONSOLE_DEMO:-}" = install ]; then
+            required_markers="$required_markers
+ufs: bring-up complete (13/13), serving lun 0, writes by grant
+installer: registered
+ccl-console: REPL completed: List<Disk>: [(Disk 0 (Disk_Identity \"QEMU UFS\" \"\") 262144 4096)]
+installer: install refused: confirmation names
+ccl-console: REPL completed: Install_Report: (Install_Report Install_Outcome.Wrong_Disk 0 0)
+installer: installing to disk 0
+installer: install done: installed
+ccl-console: REPL completed: Install_Report: (Install_Report Install_Outcome.Installed
 "
         elif [ "${CCL_CONSOLE_DEMO:-}" = calc ]; then
             required_markers="$required_markers
@@ -5574,14 +5614,19 @@ if [ "$TEST_NAME" = "ufs-write" ]; then
     fi
 fi
 
-if [ "$TEST_NAME" = "ufs-layout" ]; then
-    # Independent tools read what the guest wrote: GPT, FAT32, ext2. The
+if [ "$TEST_NAME" = "ccl-console" ] && [ "${CCL_CONSOLE_DEMO:-}" = install ]; then
+    # Independent tools read the installed disk: GPT, FAT32 and ext2, and
+    # every payload file byte for byte (the payload is deterministic). The
     # offsets are Disk_Layout's for a 260 MiB ESP: 1 MiB, 260 MiB, 261 MiB.
+    CHECK_PAYLOAD="$(mktemp -d "${TMPDIR:-/tmp}/cubit-install-check.XXXXXX")"
+    python3 -I "$ROOT_DIR/tests/disk-layout/make-payload.py" "$CHECK_PAYLOAD/esp" "$CHECK_PAYLOAD/root"
     if ! bash "$ROOT_DIR/tests/disk-layout/check-image.sh" "$TEMP_UFS_DISK" 4096 \
-         1048576 272629760 273678336; then
+         1048576 272629760 273678336 "$CHECK_PAYLOAD/esp" "$CHECK_PAYLOAD/root"; then
+        rm -rf "$CHECK_PAYLOAD"
         echo "headless: serial log: $SERIAL_LOG" >&2
         exit 1
     fi
+    rm -rf "$CHECK_PAYLOAD"
 fi
 
 if [ "$TEST_NAME" = "multi-instance" ]; then

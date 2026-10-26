@@ -13,7 +13,9 @@ is
    use type CCL.Types.Type_Reference;
 
    MAX_NAME_LENGTH : constant := 48;
-   MAX_INTERFACES  : constant := 16;
+   --  Every interface a front end publishes (CCL_Host_Environment, the
+   --  programs it may launch, its own UI) fits, with room to grow.
+   MAX_INTERFACES  : constant := 24;
    MAX_OPERATIONS  : constant := 16;
 
    subtype Parameter_Count is Natural range 0 .. 1;

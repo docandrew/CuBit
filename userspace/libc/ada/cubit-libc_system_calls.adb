@@ -8,6 +8,7 @@ with Ada.Unchecked_Conversion;
 with System.Machine_Code; use System.Machine_Code;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Published_Clock;
+with CuBit.Hardware_Random;
 with CuBit.Kernel_ABI;
 with CuBit.Kernel_Calls;
 with CuBit.System_Facts;
@@ -43,8 +44,6 @@ package body CuBit.Libc_System_Calls is
    CPU_Mask_Bytes : constant := 8;
    --  The largest cpu_set_t a caller passes (CPU_SETSIZE bits).
    Maximum_CPU_Set_Bytes : constant := 128;
-   --  getrandom: RDRAND attempts per word before giving up.
-   Random_Attempts : constant := 16;
    Random_Word_Bytes : constant := 8;
    --  Page alignment a file mapping's offset needs.
    Page_Mask : constant Unsigned_64 := K.Page_Bytes - 1;
@@ -596,23 +595,8 @@ package body CuBit.Libc_System_Calls is
    ---------------------------------------------------------------------------
    --  Randomness: RDRAND (not yet the entropy service).
    ---------------------------------------------------------------------------
-   procedure Random_Word (Value : out Unsigned_64; Ok : out Boolean);
-   procedure Random_Word (Value : out Unsigned_64; Ok : out Boolean) is
-      Carry : Unsigned_8;
-   begin
-      Value := 0;
-      Ok := False;
-      for Attempt in 1 .. Random_Attempts loop
-         Asm ("rdrand %0" & ASCII.LF & "setc %1",
-              Outputs => [Unsigned_64'Asm_Output ("=r", Value),
-                          Unsigned_8'Asm_Output ("=qm", Carry)],
-              Volatile => True);
-         if Carry /= 0 then
-            Ok := True;
-            return;
-         end if;
-      end loop;
-   end Random_Word;
+   procedure Random_Word (Value : out Unsigned_64; Ok : out Boolean)
+     renames CuBit.Hardware_Random.Word;
 
    function Get_Random (Buffer : System.Address; Length : size_t) return long;
    function Get_Random (Buffer : System.Address; Length : size_t) return long is

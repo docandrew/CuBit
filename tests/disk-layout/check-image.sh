@@ -4,9 +4,13 @@
 # ESP (fsck.fat, mtools) and the root (e2fsck, debugfs).
 #
 # usage: check-image.sh IMAGE BLOCK_BYTES ESP_OFFSET ESP_BYTES ROOT_OFFSET
+#                       [ESP_DIR ROOT_DIR]
+# With the payload directories, every file must read back byte-identical
+# from the image (mtools for the ESP, debugfs rdump for the root).
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 IMG="$1"; BLOCK="$2"; ESP_OFF="$3"; ESP_BYTES="$4"; ROOT_OFF="$5"
+ESP_DIR="${6:-}"; ROOT_DIR="${7:-}"
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/check-image.XXXXXX")"
 trap 'rm -rf "$WORK"' EXIT
 MIB=$((1024 * 1024))
@@ -45,5 +49,24 @@ if debugfs -R "ls -l /" "$WORK/root.img" 2>/dev/null | grep -q "lost+found"; the
     pass "debugfs lists lost+found"
 else
     fail "debugfs lists lost+found" /dev/null
+fi
+if [ -n "$ESP_DIR" ]; then
+    mkdir -p "$WORK/esp-out"
+    if mcopy -s -n -i "$WORK/esp.img" ::EFI ::BOOT "$WORK/esp-out/" 2> "$WORK/mcopy.txt" \
+       && diff -r "$ESP_DIR" "$WORK/esp-out" > "$WORK/esp-diff.txt" 2>&1; then
+        pass "ESP files read back identical"
+    else
+        cat "$WORK/mcopy.txt"; fail "ESP files read back identical" "$WORK/esp-diff.txt"
+    fi
+fi
+if [ -n "$ROOT_DIR" ]; then
+    mkdir -p "$WORK/root-out"
+    debugfs -R "rdump / $WORK/root-out" "$WORK/root.img" > /dev/null 2>&1
+    rm -rf "$WORK/root-out/lost+found"
+    if diff -r "$ROOT_DIR" "$WORK/root-out" > "$WORK/root-diff.txt" 2>&1; then
+        pass "root files read back identical"
+    else
+        head -20 "$WORK/root-diff.txt"; fail "root files read back identical" /dev/null
+    fi
 fi
 exit "$FAILED"

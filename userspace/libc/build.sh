@@ -57,7 +57,7 @@ for unit in "$here/../runtime/gnat/cubit-channel_rings.adb" "$here/../runtime/gn
     "$here/../runtime/gnat/cubit-path_names.adb" "$here/../runtime/gnat/cubit-path_names_c.adb" \
     "$here/../runtime/gnat/cubit-kernel_calls.adb" "$here/../runtime/gnat/cubit-child_table.adb" \
     "$here/../../shared/time/clock_publication.adb" "$here/../runtime/gnat/cubit-published_clock.adb" \
-    "$here/../runtime/gnat/cubit-system_facts.adb" \
+    "$here/../runtime/gnat/cubit-system_facts.adb" "$here/../runtime/gnat/cubit-hardware_random.adb" \
     "$here/ada/cubit-libc_process.adb" "$here/ada/cubit-libc_time.adb" \
     "$here/ada/cubit-libc_select.adb" "$here/ada/cubit-libc_reports.adb" \
     "$here/ada/cubit-libc_system_calls.adb" "$here/ada/cubit-libc_start.adb" \

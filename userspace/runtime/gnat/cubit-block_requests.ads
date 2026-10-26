@@ -163,6 +163,29 @@ is
                else False),
           when Rejected => True);
 
+   --  OP_IDENTIFY_DEVICE, for drivers that report an identity: a one-block
+   --  read of block 0 into the caller's grant, which the driver fills with
+   --  the identity record instead of the block's data. Decode rejects it.
+   type Identify_Request (Valid : Boolean := False) is record
+      case Valid is
+         when True  => Data : Transfer_Request;
+         when False => null;
+      end case;
+   end record;
+
+   function Decode_Identify
+     (Request : CuBit.Messages.Message; State : Device_State)
+      return Identify_Request
+     with Post =>
+       (if Decode_Identify'Result.Valid then
+          Request.tag.label = OP_IDENTIFY_DEVICE
+          and then Valid_Transfer (State, Decode_Identify'Result.Data)
+          and then Decode_Identify'Result.Data.Direction = Device_Read
+          and then Decode_Identify'Result.Data.First_Block = 0
+          and then Decode_Identify'Result.Data.Count = 1
+          and then Decode_Identify'Result.Data.Grant.slot = Request.words (1)
+          and then Decode_Identify'Result.Data.Grant.generation = Request.words (3));
+
    --  Every reply is one word except a successful Describe (four).
    function Status_Reply (Success : Boolean; Moved : Unsigned_64)
      return CuBit.Messages.Message

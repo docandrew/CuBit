@@ -22,6 +22,7 @@ package UFS_Descriptors with SPARK_Mode, Pure is
       --  String descriptor indexes.
       Product_Name    : Unsigned_8 := 0;
       Manufacturer_Name : Unsigned_8 := 0;
+      Serial_Number     : Unsigned_8 := 0;
    end record;
 
    procedure Decode_Device

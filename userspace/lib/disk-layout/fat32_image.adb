@@ -120,35 +120,244 @@ package body FAT32_Image with SPARK_Mode is
       return Result;
    end Boot_Sector;
 
-   function FSInfo (Item : Volume) return Sector_Image is
+   function FSInfo (Item : Volume; Layout : Tree_Layout) return Sector_Image is
       Result : Sector_Image (1 .. Item.Sector_Bytes) := [others => 0];
+      Used : constant Unsigned_32 := Layout.Next - Root_Cluster;
    begin
       Put_32 (Result, 0, Lead_Signature);
       Put_32 (Result, Structure_At, Structure_Signature);
-      --  The root directory holds cluster 2; the next free one is 3.
-      Put_32 (Result, Free_Count_At, Item.Clusters - 1);
-      Put_32 (Result, Next_Free_At, Root_Cluster + 1);
+      Put_32 (Result, Free_Count_At, Item.Clusters - Used);
+      Put_32 (Result, Next_Free_At, Layout.Next);
       Put_32 (Result, Trail_At, Trail_Signature);
       return Result;
    end FSInfo;
 
-   function First_FAT_Sector (Item : Volume) return Sector_Image is
-      Result : Sector_Image (1 .. Item.Sector_Bytes) := [others => 0];
-   begin
-      Put_32 (Result, 0, Media_Entry);
-      Put_32 (Result, Entry_Bytes, End_Of_Chain);
-      Put_32 (Result, Root_Cluster * Entry_Bytes, End_Of_Chain);
-      return Result;
-   end First_FAT_Sector;
+   procedure To_Short_Name (Source : String; Result : out Short_Name; Valid : out Boolean) is
+      Base_Bytes : constant := 8;
+      Extension_Bytes : constant := 3;
+      Dot : Natural := 0;
+      Case_Offset : constant := Character'Pos ('a') - Character'Pos ('A');
 
-   function Root_Directory_Sector (Item : Volume; Label : Volume_Label)
-     return Sector_Image
+      function Allowed (C : Character) return Boolean is
+        (C in 'A' .. 'Z' | 'a' .. 'z' | '0' .. '9' | '_' | '-');
+      function Folded (C : Character) return Character is
+        (if C in 'a' .. 'z' then Character'Val (Character'Pos (C) - Case_Offset) else C);
+   begin
+      Result := [others => ' '];
+      Valid := False;
+      --  At most 8 + 1 + 3 characters: anything longer is not 8.3.
+      if Source'Length not in 1 .. Short_Name'Length + 1 then
+         return;
+      end if;
+      declare
+         Name : constant String (1 .. Source'Length) := Source;
+      begin
+      for I in Name'Range loop
+         pragma Loop_Invariant (Dot < I);
+         if Name (I) = '.' then
+            if Dot /= 0 then
+               return;
+            end if;
+            Dot := I;
+         elsif not Allowed (Name (I)) then
+            return;
+         end if;
+      end loop;
+      declare
+         Base_Last : constant Integer := (if Dot = 0 then Name'Last else Dot - 1);
+      begin
+         if Base_Last < Name'First or else Base_Last - Name'First + 1 > Base_Bytes then
+            return;
+         end if;
+         if Dot /= 0 and then (Dot = Name'Last or else Name'Last - Dot > Extension_Bytes) then
+            return;
+         end if;
+         for I in Name'First .. Base_Last loop
+            Result (I - Name'First + 1) := Folded (Name (I));
+         end loop;
+         if Dot /= 0 then
+            for I in Dot + 1 .. Name'Last loop
+               Result (Base_Bytes + I - Dot) := Folded (Name (I));
+            end loop;
+         end if;
+      end;
+      end;
+      Valid := True;
+   end To_Short_Name;
+
+   procedure Plan_Tree
+     (Item : Volume; Files : Install_Tree.Tree; Result : out Tree_Layout)
+   is
+      use Install_Tree;
+      Next : Unsigned_64 range Root_Cluster + 1 .. Unsigned_64 (Unsigned_32'Last) := Root_Cluster + 1;
+      Limit : constant Unsigned_64 := Unsigned_64 (Item.Clusters) + Root_Cluster;
+      OK : Boolean := True;
+      Name : Short_Name;
+      Valid : Boolean;
+
+      --  "." and ".." (or the root's label), then the children.
+      function Entry_Count (Directory : Parent_Index) return Natural is
+         Count : Natural range 0 .. Maximum_Entries + 2 := 2;
+      begin
+         for E in 1 .. Files.Count loop
+            pragma Loop_Invariant (Count <= E + 1);
+            if Files.Entries (E).Parent = Directory then
+               Count := Count + 1;
+            end if;
+         end loop;
+         return Count;
+      end Entry_Count;
+
+      procedure Take (E : Entry_Index; Count : Unsigned_64) is
+      begin
+         if not OK or else Next > Limit or else Count > Limit - Next then
+            OK := False;
+            return;
+         end if;
+         Result.Start (E) := (if Count = 0 then 0 else Unsigned_32 (Next));
+         Result.Clusters (E) := Unsigned_32 (Count);
+         Next := Next + Count;
+      end Take;
+   begin
+      Result := (others => <>);
+      if Limit <= Next then
+         return;
+      end if;
+      OK := Entry_Count (Volume_Root) <= Entries_Per_Cluster;
+      for E in 1 .. Files.Count loop
+         pragma Loop_Invariant (Next <= Limit);
+         To_Short_Name (Name_Of (Files, E), Name, Valid);
+         OK := OK and then Valid;
+         if Files.Entries (E).Kind = Directory then
+            OK := OK and then Entry_Count (E) <= Entries_Per_Cluster;
+            Take (E, 1);
+         end if;
+      end loop;
+      for E in 1 .. Files.Count loop
+         pragma Loop_Invariant (Next <= Limit);
+         if Files.Entries (E).Kind = Regular_File then
+            --  FAT sizes are 32 bits.
+            OK := OK and then Files.Entries (E).Size <= Unsigned_64 (Unsigned_32'Last);
+            Take (E, (Files.Entries (E).Size + Cluster_Bytes - 1) / Cluster_Bytes);
+         end if;
+      end loop;
+      Result.Next := Unsigned_32 (Next);
+      Result.Fits := OK;
+   end Plan_Tree;
+
+   function Entries_Per_Sector (Item : Volume) return Unsigned_64 is
+     (Unsigned_64 (Item.Sector_Bytes) / Entry_Bytes);
+
+   function Used_FAT_Sectors (Item : Volume; Layout : Tree_Layout) return Unsigned_64 is
+     (Unsigned_64'Min
+        (Unsigned_64 (Item.FAT_Sectors),
+         (Unsigned_64 (Layout.Next) + Entries_Per_Sector (Item) - 1) / Entries_Per_Sector (Item)));
+
+   function FAT_Sector
+     (Item : Volume; Layout : Tree_Layout; Files : Install_Tree.Tree; Index : Unsigned_64)
+      return Sector_Image
    is
       Result : Sector_Image (1 .. Item.Sector_Bytes) := [others => 0];
+      Per : constant Unsigned_64 := Entries_Per_Sector (Item);
+      First : constant Unsigned_64 := (if Index <= Unsigned_64 (Item.FAT_Sectors) then Index * Per else 0);
+      Last : constant Unsigned_64 := First + Per - 1;
+
+      procedure Put_Entry (Cluster : Unsigned_64; Value : Unsigned_32) is
+      begin
+         pragma Assert (Item.Sector_Bytes in 512 | 4096);
+         if Cluster in First .. Last and then Cluster - First < Unsigned_64 (Item.Sector_Bytes) / Entry_Bytes then
+            Put_32 (Result, Natural (Cluster - First) * Entry_Bytes, Value);
+         end if;
+      end Put_Entry;
    begin
-      Put_Text (Result, 0, Label);
-      Put_8 (Result, Attribute_At, Volume_Id_Attribute);
+      Put_Entry (0, Media_Entry);
+      Put_Entry (1, End_Of_Chain);
+      Put_Entry (Root_Cluster, End_Of_Chain);
+      for E in 1 .. Files.Count loop
+         declare
+            Start : constant Unsigned_64 := Unsigned_64 (Layout.Start (E));
+            Count : constant Unsigned_64 := Unsigned_64 (Layout.Clusters (E));
+         begin
+            --  Only the part of the run inside this sector.
+            if Count > 0 and then Start <= Last and then Start + Count - 1 >= First then
+               for C in Unsigned_64'Max (Start, First) .. Unsigned_64'Min (Start + Count - 1, Last) loop
+                  Put_Entry (C, (if C >= Start + Count - 1 then End_Of_Chain
+                                 else Unsigned_32 (Unsigned_64'Min (C + 1, Unsigned_64 (Unsigned_32'Last)))));
+               end loop;
+            end if;
+         end;
+      end loop;
       return Result;
-   end Root_Directory_Sector;
+   end FAT_Sector;
+
+   --  Directory entry attributes and fields (spec 6).
+   Directory_Attribute : constant := 16#10#;
+   Archive_Attribute   : constant := 16#20#;
+   Write_Date_At       : constant := 24;
+   Create_Date_At      : constant := 16;
+   Access_Date_At      : constant := 18;
+   Cluster_High_At     : constant := 20;
+   Cluster_Low_At      : constant := 26;
+   Size_At             : constant := 28;
+   --  1980-01-01, the first date FAT can hold: (0 << 9) | (1 << 5) | 1.
+   Epoch_Date          : constant := 16#0021#;
+   Dot_Name            : constant Short_Name := ".          ";
+   Dot_Dot_Name        : constant Short_Name := "..         ";
+
+   function Directory_Cluster
+     (Layout : Tree_Layout; Files : Install_Tree.Tree;
+      Directory : Install_Tree.Parent_Index; Label : Volume_Label) return Cluster_Image
+   is
+      use Install_Tree;
+      Result : Cluster_Image := [others => 0];
+      Slot : Natural range 0 .. Entries_Per_Cluster := 0;
+
+      procedure Put_Entry (Name : Short_Name; Attribute : Unsigned_8; Cluster : Unsigned_32;
+                           Size : Unsigned_32) is
+         At_Byte : constant Natural := Slot * Directory_Entry_Bytes;
+      begin
+         if Slot >= Entries_Per_Cluster then
+            return;
+         end if;
+         Put_Text (Result, At_Byte, Name);
+         Put_8 (Result, At_Byte + Attribute_At, Attribute);
+         if Attribute /= Volume_Id_Attribute then
+            Put_16 (Result, At_Byte + Create_Date_At, Epoch_Date);
+            Put_16 (Result, At_Byte + Access_Date_At, Epoch_Date);
+            Put_16 (Result, At_Byte + Write_Date_At, Epoch_Date);
+         end if;
+         Put_16 (Result, At_Byte + Cluster_High_At, Unsigned_16 (Cluster / 2 ** 16));
+         Put_16 (Result, At_Byte + Cluster_Low_At, Unsigned_16 (Cluster mod 2 ** 16));
+         Put_32 (Result, At_Byte + Size_At, Size);
+         Slot := Slot + 1;
+      end Put_Entry;
+
+      Name : Short_Name;
+      Valid : Boolean;
+   begin
+      if Directory = Volume_Root then
+         Put_Entry (Label, Volume_Id_Attribute, 0, 0);
+      else
+         Put_Entry (Dot_Name, Directory_Attribute, Layout.Start (Directory), 0);
+         --  ".." of a directory in the root names cluster 0 (spec 6.7).
+         Put_Entry (Dot_Dot_Name, Directory_Attribute,
+                    (if Files.Entries (Directory).Parent = Volume_Root then 0
+                     else Layout.Start (Files.Entries (Directory).Parent)), 0);
+      end if;
+      for E in 1 .. Files.Count loop
+         if Files.Entries (E).Parent = Directory then
+            To_Short_Name (Name_Of (Files, E), Name, Valid);
+            case Files.Entries (E).Kind is
+               when Install_Tree.Directory =>
+                  Put_Entry (Name, Directory_Attribute, Layout.Start (E), 0);
+               when Regular_File =>
+                  Put_Entry (Name, Archive_Attribute, Layout.Start (E),
+                             Unsigned_32 (Unsigned_64'Min (Files.Entries (E).Size,
+                                                           Unsigned_64 (Unsigned_32'Last))));
+            end case;
+         end if;
+      end loop;
+      return Result;
+   end Directory_Cluster;
 
 end FAT32_Image;

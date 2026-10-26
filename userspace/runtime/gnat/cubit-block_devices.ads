@@ -28,6 +28,11 @@ package CuBit.Block_Devices is
    OP_WRITE_BLOCKS    : constant Unsigned_32 := 16#0211#;
    OP_DESCRIBE_DEVICE : constant Unsigned_32 := 16#0212#;
    OP_FLUSH_DEVICE    : constant Unsigned_32 := 16#0213#;
+   --  The device's model and serial (CuBit.Device_Identities) into the
+   --  first block of the caller's grant. Words as OP_READ_BLOCKS with
+   --  block 0 and a count of 1. Optional: drivers that offer it decode it
+   --  with CuBit.Block_Requests.Decode_Identify; others reject it.
+   OP_IDENTIFY_DEVICE : constant Unsigned_32 := 16#0214#;
 
    REPLY_OK    : constant Unsigned_32 := 16#F000#;
    REPLY_ERROR : constant Unsigned_32 := 16#F001#;

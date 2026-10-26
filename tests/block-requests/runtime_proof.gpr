@@ -12,7 +12,9 @@ project Runtime_Proof is
       "cubit-block_devices.ads", "cubit-block_devices.adb",
       "cubit-block_requests.ads", "cubit-block_requests.adb",
       "cubit-block_device_server.ads", "cubit-block_device_server.adb",
-      "cubit-disk_install.ads", "cubit-disk_install.adb");
+      "cubit-disk_install.ads", "cubit-disk_install.adb",
+      "cubit-device_identities.ads", "cubit-device_identities.adb",
+      "cubit-installer_protocol.ads", "cubit-installer_protocol.adb");
    for Object_Dir use "build-runtime";
    package Compiler is
       for Default_Switches ("Ada") use ("-gnat2022");

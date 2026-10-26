@@ -63,6 +63,9 @@ package Disk_Layout with SPARK_Mode, Pure is
       Root_Id      : GUID := [others => 0];
    end record;
 
+   --  The two filesystems an install writes.
+   type Install_Volume is (ESP_Volume, Root_Volume);
+
    type Disk_Shape is record
       Block_Size : Device_Block_Bytes := 4096;
       Blocks     : Block_Count := 0;

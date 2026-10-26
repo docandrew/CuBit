@@ -28,7 +28,10 @@ CHECKS = [
       'MISSPELLINGS_KEY': 'List-Misspelling', 'PAGE_KEY': 'Page_Query'}),
     ((SRC / 'ccl-interfaces-calc.ads', SRC / 'ccl-interfaces-calc_types.ads'),
      {'DIGEST': None, 'FORM_KEY': 'Calc_Form', 'NUMBER_KEY': 'Calc_Number', 'OPTIONS_KEY': 'Calc_Options',
-      'REQUEST_KEY': 'Calc_Request'})]
+      'REQUEST_KEY': 'Calc_Request'}),
+    (SRC / 'ccl-interfaces-install.ads',
+     {'DIGEST': None, 'DISK_KEY': 'Disk', 'DISKS_KEY': 'List-Disk', 'REQUEST_KEY': 'Install_Request',
+      'REPORT_KEY': 'Install_Report'})]
 
 
 def constant(text, name):

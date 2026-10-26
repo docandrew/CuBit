@@ -21,6 +21,7 @@ package body UFS_Descriptors with SPARK_Mode is
    Device_Spec_Version : constant := 16#10#;
    Device_Manufacturer_Name : constant := 16#14#;
    Device_Product_Name : constant := 16#15#;
+   Device_Serial_Number : constant := 16#16#;
    Device_Manufacturer : constant := 16#18#;
    Device_Required     : constant := Device_Manufacturer + 2;
 
@@ -85,7 +86,8 @@ package body UFS_Descriptors with SPARK_Mode is
             Logical_Units     => Field_8 (Data, Device_Number_LU),
             Manufacturer      => Field_16 (Data, Device_Manufacturer),
             Product_Name      => Field_8 (Data, Device_Product_Name),
-            Manufacturer_Name => Field_8 (Data, Device_Manufacturer_Name));
+            Manufacturer_Name => Field_8 (Data, Device_Manufacturer_Name),
+            Serial_Number     => Field_8 (Data, Device_Serial_Number));
       end if;
    end Decode_Device;
 

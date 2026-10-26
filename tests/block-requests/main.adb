@@ -10,6 +10,7 @@ with CuBit.Block_Devices; use CuBit.Block_Devices;
 with CuBit.Block_Requests; use CuBit.Block_Requests;
 with CuBit.Disk_Install;
 with CuBit.Authority_Policy;
+with CuBit.Device_Identities;
 with Proof_Device; use Proof_Device;
 
 procedure Main is
@@ -252,6 +253,41 @@ begin
                        (CuBit.Authority_Policy.Disk_Installation, False));
       pragma Assert (CuBit.Authority_Policy.Bootstrap_Approves
                        (CuBit.Authority_Policy.Disk_Installation, True));
+      Checks := Checks + 1;
+   end;
+
+   --  OP_IDENTIFY_DEVICE: decoded only by Decode_Identify, as a one-block
+   --  read of block 0; the identity record round-trips.
+   declare
+      package DId renames CuBit.Device_Identities;
+      Item : Message := Request (OP_IDENTIFY_DEVICE, 0, 1);
+      Got : DId.Identity;
+      Valid : Boolean;
+      Image : DId.Record_Image;
+      Sample : constant DId.Identity :=
+        (Model => DId.To_Text ("UUHMGKH128DBB"), Serial => DId.To_Text ("cubitufs"));
+   begin
+      pragma Assert (Decode (Item, NVMe).Kind = Rejected);
+      pragma Assert (Decode_Identify (Item, NVMe).Valid);
+      pragma Assert (Decode_Identify (Item, Optical).Valid);
+      pragma Assert (not Decode_Identify (Item, (Presence => Faulted)).Valid);
+      Item.words (0) := 1;
+      pragma Assert (not Decode_Identify (Item, NVMe).Valid);
+      Item.words (0) := 0; Item.words (2) := 2;
+      pragma Assert (not Decode_Identify (Item, NVMe).Valid);
+      pragma Assert (not Decode_Identify (Request (OP_READ_BLOCKS, 0, 1), NVMe).Valid);
+      DId.Decode (DId.Encode (Sample), Got, Valid);
+      pragma Assert (Valid and then DId.Same (Got.Model, Sample.Model)
+                     and then DId.Same (Got.Serial, Sample.Serial));
+      Image := DId.Encode (Sample);
+      Image (1) := DId.Maximum_Text + 1;
+      DId.Decode (Image, Got, Valid);
+      pragma Assert (not Valid);
+      Image := DId.Encode (Sample);
+      Image (3) := 7;   --  a control character in the model
+      DId.Decode (Image, Got, Valid);
+      pragma Assert (not Valid);
+      pragma Assert (DId.To_Text ("ab" & ASCII.NUL & "cd").Length = 2);
       Checks := Checks + 1;
    end;
 

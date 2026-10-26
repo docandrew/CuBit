@@ -4,13 +4,18 @@
 --  driver's decoder (Partition_Tables). tests/disk-layout/run.sh then
 --  checks the same image with sgdisk, fsck.fat and e2fsck.
 --
---  usage: main IMAGE BLOCK_BYTES DISK_MIB
+--  usage: main IMAGE BLOCK_BYTES DISK_MIB ESP_DIR ROOT_DIR
+--  The two directories are the payloads: their trees are written into the
+--  ESP and the root.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
 with Ada.Command_Line; use Ada.Command_Line;
 with Ada.Streams; use Ada.Streams;
 with Ada.Streams.Stream_IO; use Ada.Streams.Stream_IO;
 with Ada.Text_IO;
+with Ada.Directories;
+with Ada.Strings.Unbounded; use Ada.Strings.Unbounded;
+with Install_Tree;
 with Interfaces; use Interfaces;
 with Disk_Layout; use Disk_Layout;
 with GPT_Image;
@@ -72,7 +77,85 @@ procedure Main is
       return Result;
    end Read_At;
 
-   package Writer is new Layout_Writer (Put, Zero);
+   --  Each payload entry's host path.
+   type Path_Array is array (Install_Tree.Entry_Index) of Unbounded_String;
+   ESP_Paths, Root_Paths : Path_Array;
+   ESP_Files, Root_Files : Install_Tree.Tree;
+
+   procedure Read
+     (Volume : Install_Volume; File : Install_Tree.Entry_Index; Offset : Unsigned_64;
+      Data : out Bytes; OK : out Boolean)
+   is
+      Source : File_Type;
+      Chunk : Stream_Element_Array (1 .. Stream_Element_Offset (Data'Length));
+      Last : Stream_Element_Offset;
+   begin
+      Open (Source, In_File, To_String
+              (if Volume = ESP_Volume then ESP_Paths (File) else Root_Paths (File)));
+      Set_Index (Source, Positive_Count (Offset + 1));
+      Read (Source, Chunk, Last);
+      Close (Source);
+      OK := Last = Chunk'Last;
+      for I in Data'Range loop
+         Data (I) := Unsigned_8 (Chunk (Stream_Element_Offset (I - Data'First + 1)));
+      end loop;
+   end Read;
+
+   --  Adds Directory's contents (sorted by name) under Parent, depth first.
+   procedure Walk
+     (Files : in out Install_Tree.Tree; Paths : in out Path_Array;
+      Directory : String; Parent : Install_Tree.Parent_Index)
+   is
+      use Ada.Directories;
+      type Name_List is array (1 .. 1024) of Unbounded_String;
+      Names : Name_List;
+      Count : Natural := 0;
+      Search : Search_Type;
+      Item : Directory_Entry_Type;
+      Added : Install_Tree.Add_Result;
+      use type Install_Tree.Add_Result;
+   begin
+      Start_Search (Search, Directory, "*");
+      while More_Entries (Search) loop
+         Get_Next_Entry (Search, Item);
+         if Simple_Name (Item) /= "." and then Simple_Name (Item) /= ".." then
+            Count := Count + 1;
+            Names (Count) := To_Unbounded_String (Simple_Name (Item));
+         end if;
+      end loop;
+      End_Search (Search);
+      for I in 2 .. Count loop
+         for J in reverse 2 .. I loop
+            exit when Names (J - 1) <= Names (J);
+            declare
+               T : constant Unbounded_String := Names (J);
+            begin
+               Names (J) := Names (J - 1);
+               Names (J - 1) := T;
+            end;
+         end loop;
+      end loop;
+      for I in 1 .. Count loop
+         declare
+            Name : constant String := To_String (Names (I));
+            Full : constant String := Compose (Directory, Name);
+            Is_Directory : constant Boolean := Kind (Full) = Ada.Directories.Directory;
+         begin
+            Install_Tree.Add
+              (Files, (if Is_Directory then Install_Tree.Directory else Install_Tree.Regular_File),
+               Parent, Name, (if Is_Directory then 0 else Unsigned_64 (Size (Full))), Added);
+            if Added /= Install_Tree.Added then
+               raise Program_Error with "payload entry refused: " & Full;
+            end if;
+            Paths (Files.Count) := To_Unbounded_String (Full);
+            if Is_Directory then
+               Walk (Files, Paths, Full, Files.Count);
+            end if;
+         end;
+      end loop;
+   end Walk;
+
+   package Writer is new Layout_Writer (Put, Zero, Read);
 
    Path : constant String := Argument (1);
    Block : constant Device_Block_Bytes := Device_Block_Bytes'Value (Argument (2));
@@ -110,7 +193,9 @@ begin
    --  The disk's size: its last byte.
    Set_Index (Image, Positive_Count (Shape.Blocks * Unsigned_64 (Block)));
    Write (Image, Stream_Element_Array'(1 => 0));
-   Writer.Write_Disk (Shape, Layout, Result);
+   Walk (ESP_Files, ESP_Paths, Argument (4), Install_Tree.Volume_Root);
+   Walk (Root_Files, Root_Paths, Argument (5), Install_Tree.Volume_Root);
+   Writer.Write_Disk (Shape, Layout, ESP_Files, Root_Files, Result);
    Check (Result = Writer.Written, "layout written");
    Reset (Image, In_File);
 

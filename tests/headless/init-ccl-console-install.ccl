@@ -1,0 +1,11 @@
+# The CCL console with installer.svc (CCL_CONSOLE_DEMO=install, SYS-001):
+# the trusted startup plan grants the installer disk-install and the
+# console the installer role; system.install is typed at the console.
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "clock.svc" (priority 5))
+  (start "display.svc" (priority 5))
+  (start "desktop.svc" (priority 4))
+  (start "installer.svc" (priority 4))
+  (start "ccl-console.app" (priority 3))
+)

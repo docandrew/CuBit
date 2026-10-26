@@ -395,7 +395,7 @@ prove-block-requests:
 		-u cubit-block_requests.adb cubit-disk_install.adb proof_device.adb \
 		--level=2 --report=all --checks-as-errors=on -j2
 	$(ALR) gnatprove -P../tests/block-requests/runtime_proof.gpr \
-		-u cubit-block_requests.adb cubit-disk_install.adb --level=2 --report=all --checks-as-errors=on -j2
+		-u cubit-block_requests.adb cubit-disk_install.adb cubit-device_identities.adb cubit-installer_protocol.adb --level=2 --report=all --checks-as-errors=on -j2
 
 # SYS-001: the installer's disk layout writer (GPT, FAT32 ESP, ext2 root):
 # Linux-hosted images checked by sgdisk, fsck.fat and e2fsck, and proofs.
@@ -403,10 +403,19 @@ prove-block-requests:
 test-disk-layout:
 	bash ../tests/disk-layout/run.sh
 
+# SYS-001: system.disks and system.install as CCL over a stand-in installer.
+.PHONY: test-ccl-install
+test-ccl-install:
+	$(ALR) gprbuild -q -p -P../tests/ccl-install/ccl_install_tests.gpr
+	../tests/ccl-install/build/main
+	# Every interface the host environment installs fits the catalog.
+	$(ALR) gprbuild -q -p -P../tests/ccl-install/environment/probe.gpr
+	../tests/ccl-install/environment/build/probe
+
 prove-disk-layout:
 	$(ALR) gnatprove -P../tests/disk-layout/disk_layout_tests.gpr \
 		-u disk_layout.adb gpt_image.adb fat32_image.adb ext2_image.adb \
-		partition_tables.adb proof_writer.adb \
+		install_tree.adb partition_tables.adb proof_writer.adb \
 		--level=2 --report=all --checks-as-errors=on -j2
 
 # HW-001: typed SCSI command blocks and response decoders (shared by USB
@@ -1666,13 +1675,12 @@ disk-write-check: ccl-build user_runtime ccl-manifest
 	$(CCL_BUILD) ../userspace/apps/disk-write-check/component.ccl
 	cp ../userspace/apps/disk-write-check/build/disk-write-check.app isodir/boot/disk-write-check.app
 
-# SYS-001 step 2: the installer's layout writer on a real block device
-# (headless ufs-layout).
-.PHONY : disk-layout-check
-disk-layout-check: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/apps/disk-layout-check/build
-	$(CCL_BUILD) ../userspace/apps/disk-layout-check/component.ccl
-	cp ../userspace/apps/disk-layout-check/build/disk-layout-check.app isodir/boot/disk-layout-check.app
+# SYS-001: installer.svc, system.disks and system.install (holds disk-install).
+.PHONY : installer
+installer: ccl-build user_runtime ccl-manifest
+	mkdir -p ../userspace/services/installer/build
+	$(CCL_BUILD) ../userspace/services/installer/component.ccl
+	cp ../userspace/services/installer/build/installer.svc isodir/boot/installer.svc
 
 .PHONY : storage-check
 storage-check: ccl-build user_runtime filesystem-scope-check ccl-manifest
@@ -2225,7 +2233,7 @@ TEST_PROGRAMS := logs boot-logs timesync-test ccl-console log-check \
 	net-multi-check timesync-check \
 	tls-probe tls-check config-check desktop-check display-check clipboard-check \
 	metrics-check grant-forward ccl-control input-stress bench-storage \
-	bench-input disk-write-check disk-layout-check
+	bench-input disk-write-check
 
 .PHONY : test-programs
 test-programs: $(TEST_PROGRAMS)
@@ -2243,7 +2251,7 @@ check-declarations:
 	python3 ../tools/check_declarations.py --self-test
 	python3 ../tools/check_declarations.py --root ..
 
-world: check-declarations trace-viewer test-programs $(IMAGE_ONLY_BINARIES) cubit_kernel doom sameboy sleep thread-check futex-check firmware-check firmware-undeclared clock-check avx-check devmem-check fault-check oom-check stall-check bench-spread capability-test storage-check ipctest-server ipctest-client bench-ipc-server bench-ipc-client ccl-test-host clock timesync tls ccl-vm ccl-workbench filesystem ata nvme ufs virtio-net virtio-gpu netstack wget devices files text calculator lexicon dictionary config-inspector desktop-shell procmgr shell hda mixer ps2 xhci virtio-input config config-storage netmgr logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso
+world: check-declarations trace-viewer test-programs $(IMAGE_ONLY_BINARIES) cubit_kernel doom sameboy sleep thread-check futex-check firmware-check firmware-undeclared clock-check avx-check devmem-check fault-check oom-check stall-check bench-spread capability-test storage-check ipctest-server ipctest-client bench-ipc-server bench-ipc-client ccl-test-host clock timesync tls ccl-vm ccl-workbench filesystem ata nvme ufs installer virtio-net virtio-gpu netstack wget devices files text calculator lexicon dictionary config-inspector desktop-shell procmgr shell hda mixer ps2 xhci virtio-input config config-storage netmgr logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso
 
 .PHONY : headless-test
 headless-test: world

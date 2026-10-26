@@ -41,6 +41,7 @@ with CuBit.Process_IDs.Text;
 with CuBit.Audio_Control;
 with CuBit.Clock_Control;
 with CuBit.Disk_Install;
+with CuBit.Installer_Protocol;
 with CuBit.TLS_Protocol;
 with CuBit.TLS_Scopes;
 with CuBit.Authority_Policy;
@@ -1343,7 +1344,7 @@ procedure main is
       Role = DRIVER_DISPLAY or else Role = DRIVER_CCL_TEST or else
       Role = DRIVER_CLOCK or else Role = CuBit.TLS_Protocol.Service_Role or else
       Role = CuBit.Metric_Protocol.Publisher_Service_Role or else Role = DRIVER_LEXICON or else
-      Role = DRIVER_ACPI);
+      Role = DRIVER_ACPI or else Role = CuBit.Installer_Protocol.Service_Role);
 
    --  For each launched-service role: the live process procmgr started with
    --  its registration, until that process exits.
@@ -1488,6 +1489,9 @@ procedure main is
       elsif Role = DRIVER_ACPI then
          --  An impostor would answer for the machine's firmware.
          return systemStartup and then Identity = "com.cubit.acpi";
+      elsif Role = CuBit.Installer_Protocol.Service_Role then
+         --  An impostor would see what is installed where, and refuse it.
+         return systemStartup and then Identity = "com.cubit.installer";
       end if;
       return False;
    end registrationAllowed;
@@ -2636,6 +2640,8 @@ procedure main is
          --  The installer's whole-disk authority: devmgr's endpoint badged
          --  for it, only for the trusted startup plan.
          isDiskInstall : constant Boolean := Role = CuBit.Disk_Install.Service_Role;
+         --  installer.svc's clients: they can ask for a disk to be erased.
+         isInstaller : constant Boolean := Role = CuBit.Installer_Protocol.Service_Role;
          --  An ACPI client: its one client role, the observer badge.
          isACPI : constant Boolean := Role = DRIVER_ACPI;
          use CuBit.Authority_Policy;
@@ -2648,6 +2654,7 @@ procedure main is
             elsif isProcessObserver then Process_Observation
             elsif isLogControl then Log_Control
             elsif isDiskInstall then Disk_Installation
+            elsif isInstaller then Installer_Use
             else Log_Publication);
          Approval : constant Decision := Evaluate
            (Requested => True,
@@ -2678,7 +2685,7 @@ procedure main is
          -- the other startup-only authorities.
          if (isAudioControl or isLogObserver or isClockControl
              or isMetricObserver or isProcessObserver or isLogControl
-             or isDiskInstall)
+             or isDiskInstall or isInstaller)
            and then Approval /= Approved
          then
             recordAuthority

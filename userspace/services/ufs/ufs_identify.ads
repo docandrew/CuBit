@@ -12,6 +12,7 @@
 with Interfaces; use Interfaces;
 with CuBit.Block_Devices;
 with UFS_UPIU;
+with UFS_Descriptors;
 
 package UFS_Identify is
    type Identity is record
@@ -19,6 +20,10 @@ package UFS_Identify is
       Blocks     : Unsigned_64 := 0;
       Block_Size : CuBit.Block_Devices.Logical_Block_Size :=
         CuBit.Block_Devices.Logical_Block_Size'First;
+      --  The device's identity (its product name and serial number string
+      --  descriptors), which the installer's confirmation must name.
+      Model      : UFS_Descriptors.Text;
+      Serial     : UFS_Descriptors.Text;
    end record;
 
    --  Ready: the unit answered and its capacity is usable.

@@ -22,7 +22,9 @@ package CuBit.Authority_Policy with Pure, SPARK_Mode is
      (Log_Publication, Log_Observation, Master_Audio, Clock_Adjustment,
       Metric_Publication, Metric_Observation, Process_Observation, Log_Control,
       --  Whole-disk access for the installer (CuBit.Disk_Install).
-      Disk_Installation);
+      Disk_Installation,
+      --  Asking installer.svc to list and install (CuBit.Installer_Protocol).
+      Installer_Use);
    --  Transitional development-image approval: entry in the trusted startup
    --  plan approves declared privileged requests. OP_SPAWN cannot select it.
    --  Publication preserves the existing manifest-request policy.

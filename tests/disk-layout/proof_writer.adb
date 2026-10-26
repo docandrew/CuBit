@@ -10,4 +10,14 @@ package body Proof_Writer with SPARK_Mode is
    begin
       OK := True;
    end Zero;
+
+   procedure Read
+     (Volume : Install_Volume; File : Install_Tree.Entry_Index; Offset : Unsigned_64;
+      Data : out Bytes; OK : out Boolean)
+   is
+      pragma Unreferenced (Volume, File, Offset);
+   begin
+      Data := [others => 0];
+      OK := True;
+   end Read;
 end Proof_Writer;

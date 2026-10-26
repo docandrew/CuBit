@@ -3,12 +3,19 @@
 --  Copyright (C) 2026 Jon Andrew
 --
 --  @summary
---  Makes an empty ext2 volume for the root (the mkfs the installer needs;
---  a typed library, not a Unix tool). Revision 1 with typed directory
---  records, sparse superblock backups and large files: exactly the profile
---  the filesystem service admits (Ext2_Support.Supported_Volume) and Linux
---  mounts. 4 KiB blocks, 256-byte inodes, one bitmap block per group. The
---  root directory (inode 2) holds lost+found (inode 11).
+--  Makes an ext2 volume for the root, already holding the install's files
+--  (the mkfs the installer needs, populating like mke2fs -d; a typed
+--  library, not a Unix tool). Revision 1 with typed directory records,
+--  sparse superblock backups and large files: exactly the profile the
+--  filesystem service admits (Ext2_Support.Supported_Volume) and Linux
+--  mounts. 4 KiB blocks, 256-byte inodes, one bitmap block per group.
+--
+--  Allocation is sequential, so every bitmap and count follows from three
+--  numbers (Allocation): inodes 2 (root) and 11 (lost+found), then one per
+--  directory of the tree, then one per file; blocks from group 0's first
+--  data block onwards, skipping each group's metadata: lost+found's block,
+--  the root's blocks, each directory's, then each file's indirect blocks
+--  followed by its data.
 --
 --  Pure and proved free of run-time errors. e2fsck checks the result
 --  (tests/disk-layout). A journal (ext3) is not made yet.
@@ -17,6 +24,7 @@ pragma Ada_2022;
 with Interfaces; use Interfaces;
 with Disk_Layout; use Disk_Layout;
 with Ext2_Format;
+with Install_Tree; use Install_Tree;
 
 package Ext2_Image with SPARK_Mode, Pure is
 
@@ -26,6 +34,8 @@ package Ext2_Image with SPARK_Mode, Pure is
    --  One block bitmap block maps a group.
    Blocks_Per_Group : constant := Block_Bytes * Ext2_Format.Bits_Per_Byte;
    Descriptors_Per_Block : constant := Block_Bytes / Ext2_Format.Group_Descriptor_Bytes;
+   Pointers_Per_Block : constant := Block_Bytes / Ext2_Format.Block_Pointer_Bytes;
+   Direct_Blocks    : constant := 12;   --  i_block[0 .. 11]
 
    Root_Inode       : constant := Ext2_Format.Root_Inode;
    First_Inode      : constant := Ext2_Format.Good_Old_First_Inode;
@@ -63,8 +73,6 @@ package Ext2_Image with SPARK_Mode, Pure is
    --  kept (as mke2fs does), else the volume ends a group early.
    Minimum_Group_Data : constant := 64;
 
-   --  The most metadata a group carries: a superblock and descriptor copy,
-   --  two bitmaps, its inode table.
    function Group_Overhead_Limit (Item : Volume) return Unsigned_64 is
      (1 + Unsigned_64 (Item.Descriptor_Blocks) + 2 + Unsigned_64 (Item.Inode_Table_Blocks));
 
@@ -84,8 +92,6 @@ package Ext2_Image with SPARK_Mode, Pure is
       and then Unsigned_64 (Item.Groups) * Unsigned_64 (Item.Inodes_Per_Group)
                  <= Unsigned_64 (Unsigned_32'Last));
 
-   --  The volume for a partition of Partition_Bytes. Valid (Plan) when the
-   --  partition holds at least one group's metadata and Minimum_Group_Data.
    function Plan (Partition_Bytes : Unsigned_64; Ratio : Bytes_Per_Inode)
      return Volume
      with Post => Unsigned_64 (Plan'Result.Blocks) * Block_Bytes <= Partition_Bytes;
@@ -95,6 +101,9 @@ package Ext2_Image with SPARK_Mode, Pure is
 
    function Group_First (Group : Group_Index) return Unsigned_64 is
      (Unsigned_64 (Group) * Blocks_Per_Group);
+   function Group_Blocks (Item : Volume; Group : Group_Index) return Unsigned_64 is
+     (if Group = Item.Groups - 1 then Last_Group_Blocks (Item) else Blocks_Per_Group)
+     with Pre => Valid (Item) and then Group < Item.Groups;
    function Block_Bitmap_Block (Item : Volume; Group : Group_Index) return Unsigned_64 is
      (Group_First (Group)
       + (if Has_Backup (Group) then 1 + Unsigned_64 (Item.Descriptor_Blocks) else 0));
@@ -105,39 +114,110 @@ package Ext2_Image with SPARK_Mode, Pure is
    function First_Data_Block (Item : Volume; Group : Group_Index) return Unsigned_64 is
      (Inode_Table_Block (Item, Group) + Unsigned_64 (Item.Inode_Table_Blocks));
 
-   --  The root directory's and lost+found's one block each.
-   function Root_Directory_Block (Item : Volume) return Unsigned_64 is
-     (First_Data_Block (Item, 0));
-   function Lost_Found_Block (Item : Volume) return Unsigned_64 is
-     (First_Data_Block (Item, 0) + 1);
+   --  The data block after Block in allocation order (skipping the next
+   --  group's metadata), and Steps blocks on. Past the last group they
+   --  return the volume's block count (allocation then does not fit).
+   function Next_Block (Item : Volume; Block : Unsigned_64) return Unsigned_64
+     with Pre => Valid (Item) and then Block < Unsigned_64 (Item.Blocks),
+          Post => Next_Block'Result <= Unsigned_64 (Item.Blocks);
+   function Advance (Item : Volume; Block, Steps : Unsigned_64) return Unsigned_64
+     with Pre => Valid (Item) and then Block <= Unsigned_64 (Item.Blocks),
+          Post => Advance'Result <= Unsigned_64 (Item.Blocks);
+
+   ---------------------------------------------------------------------------
+   --  The files' layout.
+   ---------------------------------------------------------------------------
+   type Block_Numbers is array (Entry_Index) of Unsigned_64;
+   type Inode_Numbers is array (Entry_Index) of Unsigned_32;
+   type Entry_Map is array (Entry_Index) of Entry_Index;
+
+   type Allocation is record
+      --  One past the last block allocated, in allocation order.
+      Data_End    : Unsigned_64 := 0;
+      --  The highest inode in use (First_Inode: none but the reserved ones).
+      Last_Inode  : Unsigned_32 := First_Inode;
+      --  Directory inodes First_Inode + 1 .. First_Inode + Directories.
+      Directories : Unsigned_32 := 0;
+   end record;
+
+   type Tree_Layout is record
+      --  The tree fits the volume: blocks, inodes, directories of at most
+      --  Direct_Blocks blocks, files of at most what double indirection maps.
+      Fits         : Boolean := False;
+      Used         : Allocation;
+      Lost_Found   : Unsigned_64 := 0;
+      Root_Start   : Unsigned_64 := 0;
+      Root_Blocks  : Unsigned_64 := 1;
+      Inode        : Inode_Numbers := [others => 0];
+      Start        : Block_Numbers := [others => 0];
+      --  Directories: their blocks. Files: data blocks, after Meta indirect.
+      Data         : Block_Numbers := [others => 0];
+      Meta         : Block_Numbers := [others => 0];
+      --  Which entry inode First_Inode + I is.
+      By_Inode     : Entry_Map := [others => Entry_Index'First];
+   end record;
+
+   function Data_Blocks (Size : File_Size) return Unsigned_64 is
+     ((Size + Block_Bytes - 1) / Block_Bytes);
+
+   --  Indirect blocks a file of Count data blocks needs.
+   function Indirect_Blocks (Count : Unsigned_64) return Unsigned_64 is
+     (if Count <= Direct_Blocks then 0
+      elsif Count <= Direct_Blocks + Pointers_Per_Block then 1
+      else 2 + (Count - Direct_Blocks - Pointers_Per_Block + Pointers_Per_Block - 1)
+                 / Pointers_Per_Block)
+     with Pre => Count <= Data_Blocks (Maximum_File_Bytes);
+
+   procedure Plan_Tree (Item : Volume; Files : Tree; Result : out Tree_Layout)
+     with Pre => Valid (Item);
 
    subtype Block_Image is Bytes (1 .. Block_Bytes);
    subtype Superblock_Image is Bytes (1 .. Ext2_Format.Superblock_Bytes);
 
    --  The superblock copy kept in Group (s_block_group_nr).
    function Superblock
-     (Item : Volume; Request : Volume_Request; Group : Group_Index)
+     (Item : Volume; Layout : Tree_Layout; Request : Volume_Request; Group : Group_Index)
       return Superblock_Image
-     with Pre => Valid (Item) and then Group < Item.Groups;
+     with Pre => Valid (Item) and then Layout.Fits and then Group < Item.Groups;
 
    --  Descriptor block Index (0-based) of the group descriptor table.
-   function Descriptor_Block (Item : Volume; Index : Unsigned_32) return Block_Image
-     with Pre => Valid (Item) and then Index < Item.Descriptor_Blocks;
+   function Descriptor_Block
+     (Item : Volume; Layout : Tree_Layout; Index : Unsigned_32) return Block_Image
+     with Pre => Valid (Item) and then Layout.Fits and then Index < Item.Descriptor_Blocks;
 
-   function Block_Bitmap (Item : Volume; Group : Group_Index) return Block_Image
-     with Pre => Valid (Item) and then Group < Item.Groups;
-   function Inode_Bitmap (Item : Volume; Group : Group_Index) return Block_Image
-     with Pre => Valid (Item) and then Group < Item.Groups;
+   function Block_Bitmap
+     (Item : Volume; Layout : Tree_Layout; Group : Group_Index) return Block_Image
+     with Pre => Valid (Item) and then Layout.Fits and then Group < Item.Groups;
+   function Inode_Bitmap
+     (Item : Volume; Layout : Tree_Layout; Group : Group_Index) return Block_Image
+     with Pre => Valid (Item) and then Layout.Fits and then Group < Item.Groups;
 
-   --  Group 0's first inode table block: inodes 1 .. 16, of which the root
-   --  and lost+found are in use.
-   function First_Inode_Block (Item : Volume; Request : Volume_Request)
-     return Block_Image
-     with Pre => Valid (Item);
+   --  How many of Group's inode table blocks hold inodes in use (the rest
+   --  are zero).
+   function Used_Table_Blocks
+     (Item : Volume; Layout : Tree_Layout; Group : Group_Index) return Unsigned_32
+     with Pre => Valid (Item) and then Layout.Fits and then Group < Item.Groups,
+          Post => Used_Table_Blocks'Result <= Item.Inode_Table_Blocks;
 
-   function Root_Directory (Item : Volume) return Block_Image
-     with Pre => Valid (Item);
-   function Lost_Found_Directory (Item : Volume) return Block_Image
-     with Pre => Valid (Item);
+   function Inode_Table
+     (Item : Volume; Layout : Tree_Layout; Files : Tree; Request : Volume_Request;
+      Group : Group_Index; Index : Unsigned_32) return Block_Image
+     with Pre => Valid (Item) and then Layout.Fits and then Group < Item.Groups
+                 and then Index < Item.Inode_Table_Blocks;
+
+   --  Block Index of a directory (Volume_Root: the root).
+   function Directory_Block
+     (Layout : Tree_Layout; Files : Tree; Directory : Parent_Index; Index : Unsigned_64)
+      return Block_Image
+     with Pre => Layout.Fits and then Directory <= Files.Count;
+
+   function Lost_Found_Directory return Block_Image;
+
+   --  A file's indirect block Index (0 .. Meta - 1): its single indirect
+   --  block, its double indirect block, then the latter's children.
+   function Indirect_Block
+     (Item : Volume; Layout : Tree_Layout; File : Entry_Index; Index : Unsigned_64)
+      return Block_Image
+     with Pre => Valid (Item) and then Layout.Fits;
 
 end Ext2_Image;

@@ -9,6 +9,7 @@ with CCL_Image_Loading;
 with CCL_File_Bindings;
 with CCL_Lexicon_Bindings;
 with CCL_Calc_Bindings;
+with CCL_Install_Bindings;
 with CCL_Process_Bindings;
 with CCL_Program_Bindings;
 with CuBit.Failures;
@@ -45,6 +46,7 @@ package body CCL_Host_Environment is
       if Success then CCL_Program_Bindings.Install (Catalog, Grants, Success); end if;
       if Success then CCL_Lexicon_Bindings.Install (Catalog, Grants, Success); end if;
       if Success then CCL_Calc_Bindings.Install (Catalog, Grants, Success); end if;
+      if Success then CCL_Install_Bindings.Install (Catalog, Grants, Success); end if;
       if not Success then return; end if;
       CCL.Interfaces.Clock.Publish (Catalog, Error);
       Success := Error = CCL.Catalog.Catalog_Valid;
@@ -70,7 +72,8 @@ package body CCL_Host_Environment is
       CCL_Log_Bindings.Handles (Binding) or else CCL_Image_Bindings.Handles (Binding) or else
       CCL_Image_Loading.Handles (Binding) or else CCL_File_Bindings.Handles (Binding) or else
       CCL_Process_Bindings.Handles (Binding) or else CCL_Program_Bindings.Handles (Binding) or else
-      CCL_Lexicon_Bindings.Handles (Binding) or else CCL_Calc_Bindings.Handles (Binding));
+      CCL_Lexicon_Bindings.Handles (Binding) or else CCL_Calc_Bindings.Handles (Binding) or else
+      CCL_Install_Bindings.Handles (Binding));
 
    CLOCK_UNAVAILABLE : constant CuBit.Failures.Failure := CuBit.Failures.Failed
      (CuBit.Failures.Unavailable, "the system clock did not answer",
@@ -102,6 +105,8 @@ package body CCL_Host_Environment is
          CCL_Lexicon_Bindings.Invoke (Binding, Argument, Reply);
       elsif CCL_Calc_Bindings.Handles (Binding) then
          CCL_Calc_Bindings.Invoke (Binding, Argument, Reply);
+      elsif CCL_Install_Bindings.Handles (Binding) then
+         CCL_Install_Bindings.Invoke (Binding, Argument, Reply);
       elsif Binding = CLOCK_BINDING and then
         Argument.Kind = CCL.Host_Values.Integer_Value and then Argument.Integer = 0
       then

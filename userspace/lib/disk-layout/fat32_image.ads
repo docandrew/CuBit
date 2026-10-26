@@ -12,6 +12,7 @@
 pragma Ada_2022;
 with Interfaces; use Interfaces;
 with Disk_Layout; use Disk_Layout;
+with Install_Tree;
 
 package FAT32_Image with SPARK_Mode, Pure is
 
@@ -77,23 +78,71 @@ package FAT32_Image with SPARK_Mode, Pure is
           Post => Boot_Sector'Result'First = 1
                   and then Boot_Sector'Result'Length = Item.Sector_Bytes;
 
-   function FSInfo (Item : Volume) return Sector_Image
+   ---------------------------------------------------------------------------
+   --  The files (Install_Tree) laid out at format time: every directory
+   --  takes one cluster (at most Entries_Per_Cluster entries), each file a
+   --  contiguous run, all allocated in order from cluster 3 (the root is
+   --  cluster 2): directories first, then files. Names are 8.3 (no long
+   --  file names): the payload's ESP names must fit it.
+   ---------------------------------------------------------------------------
+   Directory_Entry_Bytes : constant := 32;
+   Entries_Per_Cluster   : constant := Cluster_Bytes / Directory_Entry_Bytes;
+   subtype Short_Name is String (1 .. 11);
+
+   --  Source as an 8.3 directory name (upper case, space padded). Valid:
+   --  1-8 name characters, an optional 1-3 character extension, from
+   --  A-Z 0-9 _ - (lower case is folded).
+   procedure To_Short_Name (Source : String; Result : out Short_Name; Valid : out Boolean);
+
+   type Cluster_Numbers is array (Install_Tree.Entry_Index) of Unsigned_32;
+
+   type Tree_Layout is record
+      --  The tree fits: valid names, small enough directories, clusters.
+      Fits     : Boolean := False;
+      Start    : Cluster_Numbers := [others => 0];   --  0: an empty file
+      Clusters : Cluster_Numbers := [others => 0];
+      --  One past the last cluster allocated.
+      Next     : Unsigned_32 := Root_Cluster + 1;
+   end record;
+
+   procedure Plan_Tree
+     (Item : Volume; Files : Install_Tree.Tree; Result : out Tree_Layout)
      with Pre => Valid (Item),
+          Post => (if Result.Fits then
+                     Result.Next >= Root_Cluster + 1
+                     and then Unsigned_64 (Result.Next) <= Unsigned_64 (Item.Clusters) + Root_Cluster);
+
+   --  The free clusters and the next free one reflect Layout.
+   function FSInfo (Item : Volume; Layout : Tree_Layout) return Sector_Image
+     with Pre => Valid (Item) and then Layout.Fits,
           Post => FSInfo'Result'First = 1
                   and then FSInfo'Result'Length = Item.Sector_Bytes;
 
-   --  Entries 0 and 1 (media, clean) and 2 (the root directory's one
-   --  cluster, end of chain); the rest of each FAT is zero (free).
-   function First_FAT_Sector (Item : Volume) return Sector_Image
-     with Pre => Valid (Item),
-          Post => First_FAT_Sector'Result'First = 1
-                  and then First_FAT_Sector'Result'Length = Item.Sector_Bytes;
+   --  How many sectors at the start of each FAT hold allocated entries.
+   function Used_FAT_Sectors (Item : Volume; Layout : Tree_Layout) return Unsigned_64
+     with Pre => Valid (Item) and then Layout.Fits,
+          Post => Used_FAT_Sectors'Result <= Unsigned_64 (Item.FAT_Sectors);
 
-   --  The root directory's first sector: the volume label entry.
-   function Root_Directory_Sector (Item : Volume; Label : Volume_Label)
-     return Sector_Image
-     with Pre => Valid (Item),
-          Post => Root_Directory_Sector'Result'First = 1
-                  and then Root_Directory_Sector'Result'Length = Item.Sector_Bytes;
+   --  FAT sector Index: entries 0 and 1 (media, clean), the root's chain
+   --  and every allocated run; free entries are zero.
+   function FAT_Sector
+     (Item : Volume; Layout : Tree_Layout; Files : Install_Tree.Tree; Index : Unsigned_64)
+      return Sector_Image
+     with Pre => Valid (Item) and then Layout.Fits,
+          Post => FAT_Sector'Result'First = 1
+                  and then FAT_Sector'Result'Length = Item.Sector_Bytes;
+
+   subtype Cluster_Image is Bytes (1 .. Cluster_Bytes);
+
+   --  A directory's cluster (Volume_Root: the root, with the label first).
+   function Directory_Cluster
+     (Layout : Tree_Layout; Files : Install_Tree.Tree;
+      Directory : Install_Tree.Parent_Index; Label : Volume_Label) return Cluster_Image
+     with Pre => Layout.Fits and then Directory <= Files.Count;
+
+   --  The sector a cluster starts at, from the volume's start.
+   function Cluster_Sector (Item : Volume; Cluster : Unsigned_32) return Unsigned_64 is
+     (Data_Start (Item) + Unsigned_64 (Cluster - Root_Cluster) * Unsigned_64 (Item.Sectors_Per_Cluster))
+     with Pre => Cluster >= Root_Cluster;
 
 end FAT32_Image;

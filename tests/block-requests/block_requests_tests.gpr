@@ -15,7 +15,8 @@ project Block_Requests_Tests is
       "cubit-block_requests.ads", "cubit-block_requests.adb",
       "cubit-block_device_server.ads", "cubit-block_device_server.adb",
       "cubit-disk_install.ads", "cubit-disk_install.adb",
-      "cubit-authority_policy.ads");
+      "cubit-authority_policy.ads", "cubit-device_identities.ads",
+      "cubit-device_identities.adb");
    for Object_Dir use "build";
    for Main use ("main.adb");
    package Compiler is

@@ -11,7 +11,8 @@ project Disk_Layout_Tests is
       "gpt_image.adb", "fat32_image.ads", "fat32_image.adb", "ext2_image.ads",
       "ext2_image.adb", "layout_writer.ads", "layout_writer.adb",
       "partition_tables.ads", "partition_tables.adb", "ext2_format.ads",
-      "ext2_format.adb", "proof_writer.ads", "proof_writer.adb");
+      "ext2_format.adb", "proof_writer.ads", "proof_writer.adb",
+      "install_tree.ads", "install_tree.adb");
    for Object_Dir use "build";
    for Main use ("main.adb");
    package Compiler is

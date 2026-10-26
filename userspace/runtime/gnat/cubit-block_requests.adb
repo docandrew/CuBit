@@ -88,6 +88,35 @@ is
             Force_Unit_Access => FUA));
    end Decode_Transfer;
 
+   function Decode_Identify
+     (Request : CuBit.Messages.Message; State : Device_State)
+      return Identify_Request
+   is
+      Slot  : constant Unsigned_64 := Request.words (1);
+      Generation : constant Unsigned_64 := Request.words (3);
+   begin
+      if Request.tag.label /= OP_IDENTIFY_DEVICE
+        or else not Clean_Tag (Request, 4)
+        or else State.Presence /= Available
+        or else Request.words (0) /= 0
+        or else Request.words (2) /= 1
+        or else Slot > CuBit.Grant_References.Maximum_Slot
+        or else Generation = 0
+        or else Generation > CuBit.Grant_References.Maximum_Generation
+      then
+         return (Valid => False);
+      end if;
+      return
+        (Valid => True,
+         Data =>
+           (Direction   => Device_Read,
+            First_Block => 0,
+            Count       => 1,
+            Block_Bytes => State.Logical_Size,
+            Grant       => (slot => Slot, generation => Generation),
+            Force_Unit_Access => False));
+   end Decode_Identify;
+
    function Decode
      (Request : CuBit.Messages.Message; State : Device_State)
       return Decoded_Request

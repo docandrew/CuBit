@@ -21,4 +21,5 @@ package CCL_Native_Bindings is
    function Log_Control      return CuBit.Handles.Endpoint;   --  "log-control"
    function Network          return CuBit.Handles.Endpoint;   --  "network"
    function Lexicon          return CuBit.Handles.Endpoint;   --  "lexicon"
+   function Installer        return CuBit.Handles.Endpoint;   --  "installer"
 end CCL_Native_Bindings;

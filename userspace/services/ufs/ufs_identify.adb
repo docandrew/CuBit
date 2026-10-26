@@ -74,15 +74,16 @@ package body UFS_Identify is
       end if;
    end Initialize_Device;
 
-   procedure Describe_Device (Units : out Natural; Ready : out Boolean) is
+   procedure Describe_Device
+     (Units : out Natural; Name, Serial : out Text; Ready : out Boolean) is
       Data : Descriptor_Buffer;
       Length : Natural;
       Valid : Boolean;
       Device : Device_Information;
       Geometry_Info : Geometry_Information;
-      Name : Text;
    begin
       Units := 0;
+      Serial := (others => <>);
       Run_Read_Descriptor (Device_Descriptor, 0, Query_Microseconds, Data,
                            Length, Valid);
       if not Valid then
@@ -108,11 +109,19 @@ package body UFS_Identify is
             Decode_String (Data (1 .. Length), Name, Valid);
          end if;
       end if;
+      if Device.Serial_Number /= 0 then
+         Run_Read_Descriptor (String_Descriptor, Device.Serial_Number,
+                              Query_Microseconds, Data, Length, Valid);
+         if Valid then
+            Decode_String (Data (1 .. Length), Serial, Valid);
+         end if;
+      end if;
       Passed (Device_Descriptor,
               " spec=" & Version_Text (Device.Specification) &
               Hex_Field ("mfr", Unsigned_64 (Device.Manufacturer), 4) &
               Field ("luns", Unsigned_64 (Device.Logical_Units)) &
-              Quoted (Name.Value (1 .. Name.Length)));
+              Quoted (Name.Value (1 .. Name.Length)) &
+              " serial=""" & Serial.Value (1 .. Serial.Length) & """");
       Ready := True;
       Run_Read_Descriptor (Geometry_Descriptor, 0, Query_Microseconds, Data,
                            Length, Valid);
@@ -214,7 +223,7 @@ package body UFS_Identify is
       if not Ready then
          return;
       end if;
-      Describe_Device (Units, Ready);
+      Describe_Device (Units, Result.Model, Result.Serial, Ready);
       if not Ready then
          return;
       end if;

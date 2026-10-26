@@ -10,6 +10,7 @@ with CuBit.Handles.IPC;
 with CuBit.Block_Devices; use CuBit.Block_Devices;
 with CuBit.Block_Requests; use CuBit.Block_Requests;
 with CuBit.Busy_Poll;
+with CuBit.Device_Identities;
 with CuBit.String;
 with SCSI;
 with UFS_Commands; use UFS_Commands;
@@ -41,6 +42,8 @@ package body UFS_Service is
    Unit : UFS_UPIU.Logical_Unit := 0;
    Timeouts : Unsigned_64 := 0;
    Refused_Writes : Unsigned_64 := 0;
+   --  What OP_IDENTIFY_DEVICE reports (its string descriptors).
+   Device_Identity : CuBit.Device_Identities.Identity;
 
    --  What the unit offers a holder of the write grant. UFS devices keep a
    --  volatile write cache: SYNCHRONIZE CACHE commits it, and a FUA write
@@ -52,6 +55,11 @@ package body UFS_Service is
    procedure Start (Device : UFS_Identify.Identity) is
    begin
       Unit := Device.Unit;
+      Device_Identity :=
+        (Model  => CuBit.Device_Identities.To_Text
+                     (Device.Model.Value (1 .. Device.Model.Length)),
+         Serial => CuBit.Device_Identities.To_Text
+                     (Device.Serial.Value (1 .. Device.Serial.Length)));
       UFS_Service.Device :=
         (Presence      => Available,
          Blocks        => Device.Blocks,
@@ -172,6 +180,30 @@ package body UFS_Service is
       Start_SCSI (Free, Unit, Command);
    end Begin_Work;
 
+   --  OP_IDENTIFY_DEVICE: the identity record into the caller's grant,
+   --  at once (no device command), the rest of the block zero.
+   procedure Identify (Sender : Process_ID; Item : Transfer_Request) is
+      package DId renames CuBit.Device_Identities;
+      Granted : Loan;
+      Admitted : Boolean;
+      Response : Message;
+   begin
+      Admit (Sender, Item, Granted, Admitted);
+      if not Admitted then
+         Respond (Sender, Status_Reply (False, 0));
+         return;
+      end if;
+      declare
+         Block : DId.Byte_Array (1 .. Natural (Bytes (Item)))
+           with Import, Address => Granted.Buffer;
+      begin
+         Block := [others => 0];
+         Block (1 .. DId.Record_Bytes) := DId.Encode (Device_Identity);
+      end;
+      Settle (Granted, Bytes (Item), Response);
+      Respond (Sender, Response);
+   end Identify;
+
    --  Takes one request into Free. Found: there was one.
    procedure Accept_Request (Free : Slot; Found : out Boolean) is
       Sender : Process_ID;
@@ -189,7 +221,13 @@ package body UFS_Service is
          View : constant Device_State :=
            Granted_View (Device, Authority_Of (Request.authorityTag));
          Decoded : constant Decoded_Request := Decode (Request, View);
+         Identity_Request : constant Identify_Request :=
+           Decode_Identify (Request, View);
       begin
+         if Identity_Request.Valid then
+            Identify (Sender, Identity_Request.Data);
+            return;
+         end if;
          case Decoded.Kind is
             when Describe =>
                Respond (Sender, Describe_Reply (View));

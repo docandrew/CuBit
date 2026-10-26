@@ -6,6 +6,7 @@ pragma Ada_2022;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Memory_Grants;
+with CuBit.Handles.IPC;
 
 package body CuBit.Block_Client is
 
@@ -118,6 +119,36 @@ package body CuBit.Block_Client is
             (if Force_Unit_Access then WRITE_FLAG_FUA else 0),
             First, Count, Moved, Result);
    end Write;
+
+   procedure Identify
+     (Item : Session; Identity : out CuBit.Device_Identities.Identity;
+      Known : out Boolean)
+   is
+      package DId renames CuBit.Device_Identities;
+      Msg : Message := Request
+        (OP_IDENTIFY_DEVICE, Transfer_Words, 0,
+         [0, Item.Device.grant.slot, 1, Item.Device.grant.generation]);
+      Ignore : MessageTag;
+      Image : DId.Record_Image with Import, Address => Item.Device.grantBuffer;
+   begin
+      Identity := (others => <>);
+      Ignore := capCall (Item.Device.endpoint, Msg, Wait_Forever);
+      Known := Msg.tag.label = REPLY_OK and then Msg.tag.length = Status_Words;
+      if Known then
+         DId.Decode (Image, Identity, Known);
+      end if;
+   end Identify;
+
+   procedure Close (Item : in out Session) is
+      Revoked : Boolean;
+      Ignore : CuBit.Handles.IPC.Close_Result;
+   begin
+      if Item.Open then
+         CuBit.Memory_Grants.Revoke (Item.Device.grant, Revoked);
+         Ignore := CuBit.Handles.IPC.Close (Item.Device.endpoint);
+      end if;
+      Item.Open := False;
+   end Close;
 
    procedure Flush (Item : Session; Durable : out Boolean) is
       Msg : Message := Request (OP_FLUSH_DEVICE, 0, 0, [others => 0]);
