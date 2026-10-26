@@ -64,7 +64,7 @@ parser.add_argument('--boot-log-delivery', action='store_true',
                     help='require real logstore and clock replay through the boot viewer, including quiet USB images')
 parser.add_argument('--boot-log-window-controls', action='store_true',
                     help='exercise boot viewer minimize/restore/maximize/close using native USB input')
-parser.add_argument('--quiet-xhci', action='store_true', help='require quiet USB logs; retain filesystem and interactive input checks')
+parser.add_argument('--quiet-xhci', action='store_true', help='skip USB-log-dependent checks (xhci now always logs its bring-up stages)')
 parser.add_argument('--boot-logs-menu', action='store_true', help='launch an additional boot viewer from Apps and verify log replay')
 parser.add_argument('--sameboy-audio', action='store_true',
                     help='capture the original test ROM tone and verify volume, mute and pause')
@@ -225,9 +225,11 @@ with (run / 'qemu.log').open('w') as log:
             markers = marker if isinstance(marker, tuple) else (marker,)
             while time.monotonic() < deadline and process.poll() is None:
                 text = serial.read_text(errors='replace') if serial.exists() else ''
-                if any(text.count(m) >= count for m in markers):
+                # A marker starting with "re:" is a regular expression.
+                if any((len(re.findall(m[3:], text)) if m.startswith('re:') else text.count(m)) >= count
+                       for m in markers):
                     return
-                if 'EXCEPTION' in text or 'optical transport quarantined' in text:
+                if 'EXCEPTION' in text or 'storage transport quarantined' in text:
                     raise RuntimeError('native fault; see serial.log')
                 time.sleep(0.2)
             if process.poll() is None:
@@ -428,17 +430,17 @@ with (run / 'qemu.log').open('w') as log:
                   flush=True)
         if args.boot_logs:
             wait_for('boot-logs: window ready')
-            wait_for('boot-logs: xhci: controller running;')
-            wait_for('boot-logs: xhci startup capture: overflow 0 publication losses 0')
+            wait_for(r're:boot-logs: xhci: \S+ bring-up complete')
+            wait_for(r're:boot-logs: xhci: logstore attached after \d+ ms; captured \d+ lines, lost 0')
             hmp(f'screendump {run}/boot-logs.ppm')
             print('BOOT LOGS PASS: viewer opened and replayed USB startup without capture losses.', flush=True)
         if args.boot_logs_menu:
             before = serial.read_text(errors='replace')
             windows = before.count('boot-logs: window ready')
-            replays = before.count('boot-logs: xhci: controller running;')
+            replays = len(re.findall(r'boot-logs: xhci: \S+ bring-up complete', before))
             launch('Boot Diagnostics')
             wait_for('boot-logs: window ready', windows + 1)
-            wait_for('boot-logs: xhci: controller running;', replays + 1)
+            wait_for(r're:boot-logs: xhci: \S+ bring-up complete', replays + 1)
             hmp(f'screendump {run}/boot-logs-menu.ppm')
             print('BOOT LOGS MENU PASS: Apps launched a new viewer with log read authority and replay.', flush=True)
         time.sleep(2)
@@ -822,7 +824,7 @@ with (run / 'qemu.log').open('w') as log:
             # storage session is invalidated, but the mouse must remain live.
             removal_deadline = time.monotonic() + 10
             while time.monotonic() < removal_deadline:
-                if 'optical transport quarantined' in serial.read_text(errors='replace'):
+                if 'storage transport quarantined' in serial.read_text(errors='replace'):
                     break
                 time.sleep(0.1)
             else:
@@ -838,16 +840,16 @@ with (run / 'qemu.log').open('w') as log:
             time.sleep(2)
             hmp(f'screendump {run}/media-removed.ppm')
         text = serial.read_text(errors='replace')
-        required = ['xhci: optical LUN=', 'FS: native USB ISO9660 apps mounted',
-                    'xhci: pre-reset sleep resumed',
+        required = ['FS: native USB ISO9660 apps mounted',
                     'devmgr: loaded from filesystem: procmgr.svc',
                     # HW-002: devmgr bound the devices by the driver index.
                     'devmgr: drivers bound to',
                     'desktop: display info ready']
-        if args.quiet_xhci:
-            required = [marker for marker in required if not marker.startswith('xhci:')]
-            if 'xhci: ' in text or 'xhci-log:' in text:
-                raise RuntimeError('quiet xHCI build emitted USB diagnostics')
+        if not args.quiet_xhci:
+            for pattern in (r'xhci: \S+ optical LUN=', r'xhci: \S+ stage reset ok',
+                            r'xhci: \S+ stage handoff ok'):
+                if not re.search(pattern, text):
+                    raise RuntimeError(f'missing xHCI bring-up evidence: {pattern}')
         if not all(marker in text for marker in required):
             raise RuntimeError('missing native optical boot evidence')
         if args.ufs and ('ufs: bring-up complete' not in text
@@ -864,21 +866,17 @@ with (run / 'qemu.log').open('w') as log:
                 raise RuntimeError('missing HDA failure handshake')
             if 'hda: registered, entering service loop' in text:
                 raise RuntimeError('absent HDA was incorrectly registered')
-        if not args.quiet_xhci and not any(marker in text for marker in
-                   ['xhci: no firmware ownership capability',
-                    'xhci: firmware ownership acquired=']):
-            raise RuntimeError('missing firmware handoff evidence')
         if any(marker in text for marker in ['EXCEPTION', 'PANIC']):
             raise RuntimeError('native fault; see serial.log')
-        if not args.eject and 'optical transport quarantined' in text:
+        if not args.eject and 'storage transport quarantined' in text:
             raise RuntimeError('unexpected storage failure')
         if args.eject:
-            after = text.split('optical transport quarantined', 1)[1]
+            after = text.split('storage transport quarantined', 1)[1]
             if 'FS Server: ATA driver not registered' in after or 'FS: file not found' in after:
                 raise RuntimeError('failed CD lookup incorrectly fell through to writable backends')
             if 'procmgr: OP_OPEN failed' not in after or 'Loaded module devices.app' in after:
                 raise RuntimeError('Devices launch did not fail closed after removal')
-            counters = re.findall(r'xhci: stats events=(\d+) reports=(\d+) motion=(\d+) buttons=(\d+) errors=(\d+)', after)
+            counters = re.findall(r'xhci: \S+ stats events=(\d+) reports=(\d+) motion=(\d+) buttons=(\d+) errors=(\d+)', after)
             if not counters or int(counters[-1][1]) < 330 or int(counters[-1][3]) < 8 or int(counters[-1][4]) != 0:
                 raise RuntimeError('mouse did not remain healthy after optical removal')
             print('USB MEDIA REMOVAL PASS: storage fails closed, HID remains live.', flush=True)

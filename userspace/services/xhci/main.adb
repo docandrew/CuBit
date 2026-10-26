@@ -1,9 +1,11 @@
-with Boot_Log;
 ------------------------------------------------------------------------------
 --  CuBit
 --  Copyright (C) 2026 Jon Andrew
 --
---  xHCI userspace driver entry point.
+--  xHCI userspace driver entry point. devmgr starts one instance per
+--  controller; each serves only its own controller's devices and publishes
+--  their input under its own process identity (Desktop tells sources apart
+--  by publisher, CuBit.Input.Decode).
 ------------------------------------------------------------------------------
 with Interfaces; use Interfaces;
 
@@ -11,12 +13,15 @@ with CuBit.Messages; use CuBit.Messages;
 with CuBit.Input; use CuBit.Input;
 with CuBit.Devices;
 with CuBit.Device_Interrupts;
+with CuBit.Monotonic;
 with Startup;
 with CuBit.Launch_Configurations;
 with Launch_Configuration;
+with Boot_Log;
 with XHCI;
 with XHCI_Capabilities;
 with XHCI_Configure_Reply;
+with XHCI_Controller_Identity;
 with Optical_Service;
 with USB_Keyboards;
 with Input_Pending;
@@ -24,14 +29,29 @@ with Pointer_Pending;
 with Keyboard_Pending;
 
 procedure main is
-   use ASCII;
    use type XHCI.Init_Result;
+   package CI renames XHCI_Controller_Identity;
 
    OP_XHCI_CONFIGURE : constant Unsigned_32 := 16#0220#;
+   CONFIGURE_WORDS   : constant := 4;
+   REPLY_OK          : constant Unsigned_32 := 16#F000#;
+   REPLY_ERR         : constant Unsigned_32 := 16#F001#;
+   PAGES_MASK        : constant Unsigned_64 := 16#FFFF_FFFF#;
+   SCRATCHPAD_SHIFT  : constant := 32;
+   STATISTICS_INTERVAL_MS : constant Unsigned_64 := 1_000;
+   --  Report events between statistics checks (keeps clock reads out of
+   --  the report hot path).
+   STATISTICS_EVERY  : constant := 64;
+   PS2_RELEASED      : constant Unsigned_8 := 16#80#;
+   PS2_EXTENDED      : constant Unsigned_8 := 16#E0#;
+   PS2_EXTENDED_FLAG : constant Unsigned_16 := 16#100#;
+   USAGE_FIRST_KEY   : constant Unsigned_8 := 4;
+   USAGE_LAST_KEY    : constant Unsigned_8 := 223;
+   USAGE_FIRST_MODIFIER : constant Unsigned_8 := 224;
+   USAGE_LAST_MODIFIER  : constant Unsigned_8 := 231;
+
    --  This controller's PCI location, "??:??.?" until devmgr says.
    Location : Launch_Configuration.Location_Text := "??:??.?";
-   REPLY_OK           : constant Unsigned_32 := 16#F000#;
-   REPLY_ERR          : constant Unsigned_32 := 16#F001#;
 
    sender : Process_ID;
    msg    : Message;
@@ -39,29 +59,27 @@ procedure main is
    ignore : Unsigned_64;
    mouseConsumer : Process_ID := No_Process;
    buttons : Unsigned_8;
-   deltaX  : Integer;
-   deltaY  : Integer;
-   deltaZ  : Integer;
-   reportReady : Boolean;
-   eventAvailable : Boolean;
+   deltaX, deltaY, deltaZ : Integer;
+   reportReady, eventAvailable : Boolean;
    interruptMode : XHCI.Runtime_Interrupt_Mode := XHCI.INTERRUPT_POLLING;
    interruptEnabled : Boolean := False;
-   interruptDriven : Boolean := False;
    lastButtons : Unsigned_8 := 0;
    pointerPending : Pointer_Pending.State;
    pointerOverflowReported : Boolean := False;
    pointerNeedsSnapshot : Boolean := True;
    pointerOutcome : Pointer_Pending.Append_Outcome;
-   --  Publication accounting (stats line): reports merged by agreement,
-   --  true retention overflows (explicit loss, flagged for recovery), and
-   --  kernel credit refusals (busy: the report was kept and retried).
+   --  Publication accounting (stats line): reports the kernel accepted for
+   --  the registered consumer, merged by agreement, true retention
+   --  overflows, and credit refusals (busy: kept and retried).
+   pointerPublished, keyboardPublished : Unsigned_64 := 0;
    pointerCoalesced : Unsigned_64 := 0;
    pointerOverflows : Unsigned_64 := 0;
    publishBusy : Unsigned_64 := 0;
    diagnostics : XHCI.Boot_Mouse_Diagnostics;
-   diagnosticsStartMs : Unsigned_64 := 0;
-   diagnosticsCountdown : Natural := 64;
-   storageProgress, irqAvailable : Boolean;
+   diagnosticsDue : Unsigned_64 := 0;
+   diagnosticsCountdown : Natural := STATISTICS_EVERY;
+   lastPublished : Unsigned_64 := Unsigned_64'Last;
+   storageProgress, irqAvailable, serviceProgress : Boolean;
    activity : Activity_Result;
    keyboardState : USB_Keyboards.State;
    keyboardData : USB_Keyboards.Report;
@@ -71,7 +89,14 @@ procedure main is
    keyboardPending : Keyboard_Pending.State;
    keyboardConsumer : Process_ID := No_Process;
    keyboardOverflowReported : Boolean := False;
+   keyboardPresent : Boolean := False;
    use type USB_Keyboards.Decode_Result;
+
+   function Image (Value : Unsigned_64) return String is
+      Text : constant String := Unsigned_64'Image (Value);
+   begin
+      return Text (Text'First + 1 .. Text'Last);
+   end Image;
 
    procedure Refresh_Pointer_Consumer is
       previous : constant Process_ID := mouseConsumer;
@@ -102,6 +127,7 @@ procedure main is
             publishBusy := publishBusy + 1;
             exit;
          end if;
+         pointerPublished := pointerPublished + 1;
          Pointer_Pending.Acknowledge (pointerPending);
       end loop;
    end Flush_Pointer;
@@ -124,11 +150,13 @@ procedure main is
          if not trySendEvent (keyboardConsumer, Encode
            (Source_Report'(sourceIdentity => 0, sequence => Pending.Sequence,
              generation => 1, device => KEYBOARD, delivery => ORDERED_TRANSITION,
-             flags => [RESYNCHRONIZE => Pending.Recover], payload => Pending.Payload, snapshot => 0)), Startup.Keyboard_Events)
+             flags => [RESYNCHRONIZE => Pending.Recover], payload => Pending.Payload, snapshot => 0)),
+           Startup.Keyboard_Events)
          then
             publishBusy := publishBusy + 1;
             exit;
          end if;
+         keyboardPublished := keyboardPublished + 1;
          Keyboard_Pending.Acknowledge (keyboardPending);
       end loop;
    end Flush_Keyboard;
@@ -158,89 +186,61 @@ procedure main is
       begin
          Keyboard_Pending.Append_Byte (keyboardPending, Byte, Added, Lost);
          if Lost and then not keyboardOverflowReported then
-            Boot_Log.Write ("xhci: keyboard retention overflow; resynchronizing" & LF);
+            Boot_Log.Line ("xhci: " & Location & " keyboard retention overflow; resynchronizing", True);
             keyboardOverflowReported := True;
          end if;
       end Send_Byte;
    begin
       if Code = 0 then return; end if;
-      if Code > 255 then Send_Byte (16#E0#); end if;
-      Send_Byte (Unsigned_8 (Code and 255) or (if Released then 16#80# else 0));
+      if Code >= PS2_EXTENDED_FLAG then Send_Byte (PS2_EXTENDED); end if;
+      Send_Byte (Unsigned_8 (Code and 16#FF#) or (if Released then PS2_RELEASED else 0));
       if keyboardConsumer = No_Process then Keyboard_Pending.Reset_Consumer (keyboardPending);
       else Flush_Keyboard; end if;
    end Send_Key;
 
-   procedure Print_Decimal (value : Unsigned_64) is
-      text : String (1 .. 20);
-      first : Natural := text'Last;
-      remaining : Unsigned_64 := value;
+   procedure Send_Changes is
    begin
-      if remaining = 0 then
-         Boot_Log.Write ("0");
-         return;
-      end if;
-      while remaining > 0 loop
-         text (first) := Character'Val
-           (Character'Pos ('0') + Natural (remaining mod 10));
-         remaining := remaining / 10;
-         first := first - 1;
+      for K in Unsigned_8 loop
+         if keyboardChanges.Released (K) then Send_Key (K, True); end if;
       end loop;
-      Boot_Log.Write (text (first + 1 .. text'Last));
-   end Print_Decimal;
-
-   procedure Print_Hex32 (value : Unsigned_32) is
-      hexChars : constant String := "0123456789ABCDEF";
-      text : String (1 .. 8);
-   begin
-      for i in text'Range loop
-         text (i) := hexChars
-           (Natural (Shift_Right (value, (text'Last - i) * 4) and 16#F#) + 1);
+      for K in USAGE_FIRST_MODIFIER .. USAGE_LAST_MODIFIER loop
+         if keyboardChanges.Pressed (K) then Send_Key (K, False); end if;
       end loop;
-      Boot_Log.Write (text);
-   end Print_Hex32;
+      for K in USAGE_FIRST_KEY .. USAGE_LAST_KEY loop
+         if keyboardChanges.Pressed (K) then Send_Key (K, False); end if;
+      end loop;
+   end Send_Changes;
 
+   --  Serial statistics once a second while reports flow (the QEMU HID
+   --  regressions read them), and the replaceable snapshot for devmgr.
    procedure Maybe_Print_Diagnostics is
-      now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+      now : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
       publish : Message;
    begin
-      if now = Unsigned_64'Last then
-         return;
-      elsif diagnosticsStartMs = 0 then
-         diagnosticsStartMs := now;
-         return;
-      elsif now < diagnosticsStartMs or else now - diagnosticsStartMs < 1000
-      then
+      if now < diagnosticsDue then
          return;
       end if;
-
+      diagnosticsDue := now + STATISTICS_INTERVAL_MS;
       diagnostics := XHCI.Mouse_Diagnostics;
-      Boot_Log.Write ("xhci: stats events=");
-      Print_Decimal (diagnostics.transferEvents);
-      Boot_Log.Write (" reports=");
-      Print_Decimal (diagnostics.decodedReports);
-      Boot_Log.Write (" motion=");
-      Print_Decimal (diagnostics.motionReports);
-      Boot_Log.Write (" buttons=");
-      Print_Decimal (diagnostics.buttonTransitions);
-      Boot_Log.Write (" errors=");
-      Print_Decimal (diagnostics.completionErrors);
-      Boot_Log.Write (" short=");
-      Print_Decimal (diagnostics.shortReports);
-      Boot_Log.Write (" other=");
-      Print_Decimal (diagnostics.unexpectedEvents);
-      Boot_Log.Write (" raw=");
-      Print_Hex32 (diagnostics.lastReport);
-      Boot_Log.Write (" len=");
-      Print_Decimal (Unsigned_64 (diagnostics.lastLength));
-      Boot_Log.Write (" cc=");
-      Print_Decimal (Unsigned_64 (diagnostics.lastCompletion));
-      Boot_Log.Write (" coalesced=");
-      Print_Decimal (pointerCoalesced);
-      Boot_Log.Write (" overflow=");
-      Print_Decimal (pointerOverflows);
-      Boot_Log.Write (" busy=");
-      Print_Decimal (publishBusy);
-      Boot_Log.Write (LF & "");
+      if pointerPublished + keyboardPublished = lastPublished then
+         return;
+      end if;
+      lastPublished := pointerPublished + keyboardPublished;
+      Boot_Log.Serial
+        ("xhci: " & Location & " stats events=" & Image (diagnostics.transferEvents) &
+         " reports=" & Image (diagnostics.decodedReports) &
+         " motion=" & Image (diagnostics.motionReports) &
+         " buttons=" & Image (diagnostics.buttonTransitions) &
+         " errors=" & Image (diagnostics.completionErrors) &
+         " short=" & Image (diagnostics.shortReports) &
+         " other=" & Image (diagnostics.unexpectedEvents) &
+         " cc=" & Image (Unsigned_64 (diagnostics.lastCompletion)) &
+         " published=" & Image (pointerPublished) &
+         " keys-published=" & Image (keyboardPublished) &
+         " coalesced=" & Image (pointerCoalesced) &
+         " overflow=" & Image (pointerOverflows) &
+         " busy=" & Image (publishBusy) &
+         " consumer=" & (if mouseConsumer = No_Process then "none" else "registered"));
       publish :=
         (tag => (label => CuBit.Devices.OP_PUBLISH_XHCI_STATS,
                  length => 3, protocol => 0, ipc => <>, reserved => 0),
@@ -260,12 +260,9 @@ procedure main is
             3 => 0]);
       --  Input diagnostics must never wait for devmgr. A full destination
       --  ring merely loses this replaceable snapshot; the next one follows.
-      if not capSubmit
-        (Startup.Ready, publish, NO_COMPLETION_TOKEN)
-      then
+      if not capSubmit (Startup.Ready, publish, NO_COMPLETION_TOKEN) then
          null;
       end if;
-      diagnosticsStartMs := now;
    end Maybe_Print_Diagnostics;
 
    procedure Reply_With
@@ -283,9 +280,9 @@ procedure main is
           words => [0 => word0, 1 => word1, 2 => word2, others => 0]));
    end Reply_With;
 
+   function Earliest (A, B : Unsigned_64) return Unsigned_64 is (Unsigned_64'Min (A, B));
+
 begin
-   --  devmgr starts one driver per controller; its location (launch
-   --  configuration) names this one in the lines below.
    declare
       Configuration : Launch_Configuration.Controller_Configuration;
       Configured : Boolean;
@@ -294,151 +291,110 @@ begin
         (Launch_Configuration.XHCI_Controller, Configuration, Configured);
       if Configured then
          Location := Launch_Configuration.Location_Image (Configuration.Location);
-         Boot_Log.Write ("xhci: controller " & Location & LF);
       end if;
    end;
-   Boot_Log.Write ("xhci: awaiting bounded controller authority" & LF);
+   Boot_Log.Line ("xhci: " & Location & " stage start ok awaiting devmgr configuration");
    receive (sender, msg);
 
    if sender = No_Process or else
       sender /= Registered_Driver (DRIVER_DEVMGR) or else
-      msg.tag.label /= OP_XHCI_CONFIGURE or else msg.tag.length /= 4 or else
-      Shift_Right (msg.words (1), 32) >
-        Unsigned_64 (XHCI_Capabilities.Scratchpad_Buffer_Count'Last) then
-      Boot_Log.Write ("xhci: invalid configuration message" & LF);
+      msg.tag.label /= OP_XHCI_CONFIGURE or else msg.tag.length /= CONFIGURE_WORDS or else
+      Shift_Right (msg.words (1), SCRATCHPAD_SHIFT) >
+        Unsigned_64 (XHCI_Capabilities.Scratchpad_Buffer_Count'Last) or else
+      not CI.Well_Formed (msg.words (3))
+   then
+      Boot_Log.Line ("xhci: " & Location & " stage configure fail invalid message", True);
       Reply_With (REPLY_ERR);
       ignore := syscall (SYSCALL_EXIT);
       return;
    end if;
 
-   --  Word 3 is the interrupt mode alone: devmgr programmed MSI or the
-   --  MSI-X table itself, for the vector in the manifest's events slot.
-   if msg.words (3) =
-        XHCI.Runtime_Interrupt_Mode'Enum_Rep (XHCI.INTERRUPT_POLLING)
-   then
-      interruptMode := XHCI.INTERRUPT_POLLING;
-   elsif msg.words (3) =
-           XHCI.Runtime_Interrupt_Mode'Enum_Rep (XHCI.INTERRUPT_MSI)
-   then
-      interruptMode := XHCI.INTERRUPT_MSI;
-   elsif msg.words (3) =
-           XHCI.Runtime_Interrupt_Mode'Enum_Rep (XHCI.INTERRUPT_MSIX)
-   then
-      interruptMode := XHCI.INTERRUPT_MSIX;
-   else
-      Boot_Log.Write ("xhci: invalid interrupt mode" & LF);
-      Reply_With (REPLY_ERR);
-      ignore := syscall (SYSCALL_EXIT);
-      return;
-   end if;
+   --  Word 3: the interrupt mode devmgr programmed (MSI or MSI-X entry 0
+   --  for the manifest's events slot) and the controller's PCI identity.
+   case CI.Mode_Of (msg.words (3)) is
+      when XHCI.Runtime_Interrupt_Mode'Enum_Rep (XHCI.INTERRUPT_POLLING) =>
+         interruptMode := XHCI.INTERRUPT_POLLING;
+      when XHCI.Runtime_Interrupt_Mode'Enum_Rep (XHCI.INTERRUPT_MSI) =>
+         interruptMode := XHCI.INTERRUPT_MSI;
+      when XHCI.Runtime_Interrupt_Mode'Enum_Rep (XHCI.INTERRUPT_MSIX) =>
+         interruptMode := XHCI.INTERRUPT_MSIX;
+      when others =>
+         Boot_Log.Line ("xhci: " & Location & " stage configure fail interrupt mode", True);
+         Reply_With (REPLY_ERR);
+         ignore := syscall (SYSCALL_EXIT);
+         return;
+   end case;
    if interruptMode in XHCI.INTERRUPT_MSI | XHCI.INTERRUPT_MSIX and then
      not CuBit.Device_Interrupts.Block_Of (Startup.Events).Valid
    then
-      Boot_Log.Write ("xhci: no interrupt capability; polling" & LF);
+      Boot_Log.Line ("xhci: " & Location & " stage configure fail no interrupt capability; polling", True);
       interruptMode := XHCI.INTERRUPT_POLLING;
    end if;
+   XHCI.Set_Identity (Location, CI.Identity_Of (msg.words (3)), interruptMode);
 
    XHCI.Initialize
      (barPhys  => msg.words (0),
-      barPages => msg.words (1) and 16#FFFF_FFFF#,
+      barPages => msg.words (1) and PAGES_MASK,
       dmaPhys  => msg.words (2),
-      expectedScratchpads => Natural (Shift_Right (msg.words (1), 32)),
+      expectedScratchpads => Natural (Shift_Right (msg.words (1), SCRATCHPAD_SHIFT)),
       result   => initResult);
 
    if initResult /= XHCI.INIT_OK then
-      Boot_Log.Write ("xhci: controller initialization failed: ");
-      case initResult is
-         when XHCI.INIT_OK =>
-            Boot_Log.Write ("unexpected-success-state");
-         when XHCI.INIT_MAP_FAILED =>
-            Boot_Log.Write ("map-failed");
-         when XHCI.INIT_BAD_CAPABILITY =>
-            Boot_Log.Write ("bad-capability-registers");
-         when XHCI.INIT_PAGE_SIZE_UNSUPPORTED =>
-            Boot_Log.Write ("4k-page-size-unsupported");
-         when XHCI.INIT_DMA_LAYOUT_MISMATCH =>
-            Boot_Log.Write ("dma-layout-mismatch");
-         when XHCI.INIT_FIRMWARE_HANDOFF_FAILED =>
-            Boot_Log.Write ("firmware-handoff-failed");
-         when XHCI.INIT_STOP_TIMEOUT =>
-            Boot_Log.Write ("stop-timeout");
-         when XHCI.INIT_RESET_TIMEOUT =>
-            Boot_Log.Write ("reset-timeout");
-         when XHCI.INIT_START_TIMEOUT =>
-            Boot_Log.Write ("start-timeout");
-         when XHCI.INIT_NO_DEVICE =>
-            Boot_Log.Write ("no-connected-device");
-         when XHCI.INIT_PORT_RESET_TIMEOUT =>
-            Boot_Log.Write ("port-reset-timeout");
-         when XHCI.INIT_COMMAND_TIMEOUT =>
-            Boot_Log.Write ("command-timeout");
-         when XHCI.INIT_COMMAND_FAILED =>
-            Boot_Log.Write ("command-failed");
-         when XHCI.INIT_ADDRESS_FAILED =>
-            Boot_Log.Write ("address-device-failed");
-         when XHCI.INIT_DESCRIPTOR_FAILED =>
-            Boot_Log.Write ("descriptor-failed");
-         when XHCI.INIT_NOT_BOOT_MOUSE =>
-            Boot_Log.Write ("not-a-boot-mouse");
-         when XHCI.INIT_CONFIGURE_FAILED =>
-            Boot_Log.Write ("configure-endpoint-failed");
-      end case;
-      Boot_Log.Write (LF & "");
-      Reply_With
-        (REPLY_ERR,
-         Unsigned_64 (XHCI.Init_Result'Pos (initResult)));
+      Boot_Log.Line ("xhci: " & Location & " bring-up failed " &
+                     "result=" & Image (Unsigned_64 (XHCI.Init_Result'Pos (initResult))) &
+                     " (XHCI.Init_Result position)", True);
+      Reply_With (REPLY_ERR, Unsigned_64 (XHCI.Init_Result'Pos (initResult)));
+      --  Give the log grant a chance to carry the failure out.
+      for Attempt in 1 .. 50 loop
+         Boot_Log.Poll;
+         ignore := syscall (SYSCALL_SLEEP, 20);
+      end loop;
       ignore := syscall (SYSCALL_EXIT);
       return;
    end if;
-
-   Boot_Log.Write ("xhci: controller running; root ports=");
-   Print_Decimal (Unsigned_64 (XHCI.Port_Count));
-   Boot_Log.Write (" connected=");
-   Print_Decimal (Unsigned_64 (XHCI.Connected_Port_Count));
-   Boot_Log.Write (LF & "");
-   Boot_Log.Write ("xhci: enabled slot=");
-   declare
-      digit : constant Character :=
-        Character'Val (Character'Pos ('0') + XHCI.Device_Slot mod 10);
-   begin
-      Boot_Log.Write (String'(1 => digit));
-   end;
-   Boot_Log.Write (LF & "");
 
    XHCI.Probe_Optical;
    XHCI.Start_Boot_Mouse_Transfers;
    XHCI.Start_Boot_Keyboard_Transfers;
-   XHCI.Enable_Runtime_Interrupts
-     (interruptMode,
-      interruptEnabled);
-   interruptDriven := interruptEnabled;
-   if interruptEnabled then
-      Boot_Log.Write ("xhci: interrupt-driven HID input enabled" & LF);
-   else
-      Boot_Log.Write ("xhci: HID input using queued polling fallback" & LF);
-   end if;
+   XHCI.Enable_Runtime_Interrupts (interruptMode, interruptEnabled);
 
-   --  For MSI-X this reply tells devmgr that the xHCI interrupter is ready,
-   --  so it may unmask the table entry and the function.
-   --  This controller's devices, one line naming it, for the boot logs.
-   Boot_Log.Write ("xhci: " & Location & " devices keyboard=" &
-                   (if XHCI.Has_Keyboard then "1" else "0") & " mouse=" &
-                   (if XHCI.Has_Mouse then "1" else "0") & " storage=" &
-                   (if XHCI.Has_Storage then "1" else "0") & LF);
+   --  This controller's devices, one line naming it.
+   Boot_Log.Line ("xhci: " & Location & " devices keyboard=" &
+                  (if XHCI.Has_Keyboard then "1" else "0") & " mouse=" &
+                  (if XHCI.Has_Mouse then "1" else "0") & " storage=" &
+                  (if XHCI.Has_Storage then "1" else "0") & " ports=" &
+                  Image (Unsigned_64 (XHCI.Port_Count)) & " connected=" &
+                  Image (Unsigned_64 (XHCI.Connected_Port_Count)));
+   Boot_Log.Line ("xhci: " & Location & " bring-up complete (" &
+                  (if interruptEnabled then "interrupt-driven" else "polled") & ", hotplug armed)");
+   --  For MSI-X this reply tells devmgr the interrupter is ready, so it
+   --  may unmask the table entry and the function.
    Reply_With
      (REPLY_OK,
       Unsigned_64 (XHCI.Port_Count),
       Unsigned_64 (XHCI.Connected_Port_Count),
       XHCI_Configure_Reply.Device_Bits
         (Keyboard => XHCI.Has_Keyboard, Mouse => XHCI.Has_Mouse, Storage => XHCI.Has_Storage));
+   keyboardPresent := XHCI.Has_Keyboard;
 
-   --  Keep the controller's MMIO and DMA authority private.  For this first
-   --  vertical slice, translate boot reports to the existing desktop mouse
-   --  event ABI.  A dedicated typed usb-hid service endpoint will replace
-   --  this legacy driver lookup as the service boundary is split out.
    loop
+      --  The interrupt doorbell first: acknowledge, then drain (Service).
+      irqAvailable := Poll_Event (msg);
+      if irqAvailable and then CuBit.Device_Interrupts.Is_Doorbell (msg) then
+         XHCI.Acknowledge_Runtime_Interrupt;
+      end if;
       Boot_Log.Poll;
+      XHCI.Service (serviceProgress);
       Optical_Service.Poll (storageProgress);
+
+      --  A keyboard that went away releases every key it held.
+      if keyboardPresent and then not XHCI.Has_Keyboard then
+         USB_Keyboards.Release_All (keyboardState, keyboardChanges);
+         Refresh_Keyboard_Consumer;
+         Send_Changes;
+      end if;
+      keyboardPresent := XHCI.Has_Keyboard;
+
       XHCI.Poll_Boot_Keyboard (keyboardData, keyboardReady, keyboardProgress);
       if keyboardReady or else Keyboard_Pending.Count (keyboardPending) > 0 then
          Refresh_Keyboard_Consumer;
@@ -447,101 +403,79 @@ begin
       if keyboardReady then
          USB_Keyboards.Update (keyboardState, keyboardData, keyboardChanges, keyboardResult);
          if keyboardResult = USB_Keyboards.Decoded then
-            for K in Unsigned_8 loop
-               if keyboardChanges.Released (K) then Send_Key (K, True); end if;
-            end loop;
-            for K in Unsigned_8 range 224 .. 231 loop
-               if keyboardChanges.Pressed (K) then Send_Key (K, False); end if;
-            end loop;
-            for K in Unsigned_8 range 4 .. 223 loop
-               if keyboardChanges.Pressed (K) then Send_Key (K, False); end if;
-            end loop;
+            Send_Changes;
          end if;
       end if;
-      XHCI.Poll_Boot_Mouse
-        (buttons, deltaX, deltaY, deltaZ, reportReady, eventAvailable);
+
+      XHCI.Poll_Boot_Mouse (buttons, deltaX, deltaY, deltaZ, reportReady, eventAvailable);
       if reportReady or else Pointer_Pending.Count (pointerPending) > 0 then
          Refresh_Pointer_Consumer;
          Flush_Pointer;
       end if;
-      if reportReady then
-         if mouseConsumer /= No_Process and then
-            (deltaX /= 0 or else deltaY /= 0 or else deltaZ /= 0 or else
-             buttons /= lastButtons or else pointerNeedsSnapshot)
-         then
-            --  The desktop's existing event ABI uses PS/2 Y orientation
-            --  (positive upward); USB HID uses positive downward. Boot
-            --  report fields are signed bytes, inside the wire ranges.
-            Pointer_Pending.Append
-              (pointerPending,
-               (Buttons => buttons,
-                X => deltaX,
-                Y => -deltaY,
-                Wheel => deltaZ,
-                Flags => 0),
-               syscall (SYSCALL_GETTIME), pointerOutcome);
-            case pointerOutcome is
-               when Pointer_Pending.Appended => null;
-               when Pointer_Pending.Coalesced =>
-                  pointerCoalesced := pointerCoalesced + 1;
-               when Pointer_Pending.Overflowed =>
-                  pointerOverflows := pointerOverflows + 1;
-                  if not pointerOverflowReported then
-                     Boot_Log.Write ("xhci: pointer retention overflow; resynchronizing" & LF);
-                     pointerOverflowReported := True;
-                  end if;
-            end case;
-            Flush_Pointer;
-            pointerNeedsSnapshot := False;
-            lastButtons := buttons;
-         end if;
+      if reportReady and then mouseConsumer /= No_Process and then
+        (deltaX /= 0 or else deltaY /= 0 or else deltaZ /= 0 or else
+         buttons /= lastButtons or else pointerNeedsSnapshot)
+      then
+         --  The desktop's event ABI uses PS/2 Y orientation (positive
+         --  upward); USB HID uses positive downward.
+         Pointer_Pending.Append
+           (pointerPending,
+            (Buttons => buttons, X => deltaX, Y => -deltaY, Wheel => deltaZ, Flags => 0),
+            CuBit.Monotonic.Milliseconds, pointerOutcome);
+         case pointerOutcome is
+            when Pointer_Pending.Appended => null;
+            when Pointer_Pending.Coalesced =>
+               pointerCoalesced := pointerCoalesced + 1;
+            when Pointer_Pending.Overflowed =>
+               pointerOverflows := pointerOverflows + 1;
+               if not pointerOverflowReported then
+                  Boot_Log.Line ("xhci: " & Location & " pointer retention overflow; resynchronizing", True);
+                  pointerOverflowReported := True;
+               end if;
+         end case;
+         Flush_Pointer;
+         pointerNeedsSnapshot := False;
+         lastButtons := buttons;
       end if;
 
-      irqAvailable := Poll_Event (msg);
-      if irqAvailable then
-         XHCI.Acknowledge_Runtime_Interrupt;
-      end if;
-      if not eventAvailable and then not keyboardProgress and then not storageProgress and then
-         not irqAvailable
-      then
-         if interruptDriven then
-            -- IRQ/storage/log deadlines remain authoritative. Retained input
-            -- adds a retry deadline only while publication is backpressured.
-            declare
-               D : Unsigned_64 := XHCI.Optical_Deadline;
-            begin
-               if Boot_Log.Deadline /= 0 and then (D = 0 or else Boot_Log.Deadline < D) then
-                  D := Boot_Log.Deadline;
-               end if;
-               if Pointer_Pending.Count (pointerPending) > 0 then
-                  D := Pointer_Pending.Wake_Deadline
-                    (pointerPending, syscall (SYSCALL_GETTIME), D);
-               end if;
-               if Keyboard_Pending.Count (keyboardPending) > 0 then
-                  D := Keyboard_Pending.Wake_Deadline (keyboardPending, syscall (SYSCALL_GETTIME), D);
-               end if;
-               activity := Wait_For_Activity_Until (D);
-               if activity = Unavailable and then
-                  (Pointer_Pending.Count (pointerPending) > 0 or else
-                   Keyboard_Pending.Count (keyboardPending) > 0)
-               then
-                  ignore := syscall (SYSCALL_SLEEP, 1);
-               end if;
-            end;
-         else
-            ignore := syscall (SYSCALL_SLEEP, 1);
-         end if;
-      end if;
-      --  Keep time queries and formatted diagnostics out of the report hot
-      --  path.  At 125 Hz this checks roughly twice per second; at 1000 Hz it
-      --  checks often enough to retain one-second aggregate visibility.
-      if eventAvailable then
+      if eventAvailable or else keyboardProgress then
          if diagnosticsCountdown = 0 then
             Maybe_Print_Diagnostics;
-            diagnosticsCountdown := 64;
+            diagnosticsCountdown := STATISTICS_EVERY;
          else
             diagnosticsCountdown := diagnosticsCountdown - 1;
          end if;
+      end if;
+
+      if not eventAvailable and then not keyboardProgress and then not storageProgress and then
+         not irqAvailable and then not serviceProgress
+      then
+         --  Flush the last statistics of a burst before sleeping.
+         Maybe_Print_Diagnostics;
+         declare
+            Now : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
+            D : Unsigned_64 := Earliest (XHCI.Next_Deadline, XHCI.Optical_Deadline);
+         begin
+            D := Earliest (D, Boot_Log.Deadline);
+            D := Earliest (D, diagnosticsDue);
+            if Pointer_Pending.Count (pointerPending) > 0 then
+               D := Pointer_Pending.Wake_Deadline (pointerPending, Now, D);
+            end if;
+            if Keyboard_Pending.Count (keyboardPending) > 0 then
+               D := Keyboard_Pending.Wake_Deadline (keyboardPending, Now, D);
+            end if;
+            if interruptEnabled and then XHCI.Interrupts_Trusted then
+               if D > Now then
+                  activity := Wait_For_Activity_Until (D);
+                  if activity = Unavailable then
+                     ignore := syscall (SYSCALL_SLEEP, 1);
+                  end if;
+               end if;
+            else
+               --  Polled controller: the event ring every millisecond.
+               ignore := syscall (SYSCALL_SLEEP, 1);
+            end if;
+         end;
       end if;
    end loop;
 end main;

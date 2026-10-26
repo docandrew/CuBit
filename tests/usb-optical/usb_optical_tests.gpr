@@ -5,6 +5,7 @@ project USB_Optical_Tests is
       "scsi.ads", "scsi.adb",
       "usb_configurations.ads", "usb_configurations.adb", "configuration_tests.adb",
       "xhci_completions.ads", "xhci_completions.adb", "completion_tests.adb",
+      "xhci_registers.ads",
       "iso_records.ads", "iso_records.adb", "iso_tests.adb",
       "xhci_capabilities.ads", "xhci_capabilities.adb", "capability_tests.adb",
       "xhci_dma_layout.ads", "xhci_dma_layout.adb", "dma_layout_tests.adb",

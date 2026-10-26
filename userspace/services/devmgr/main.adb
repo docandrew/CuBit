@@ -61,6 +61,7 @@ with Deferred_Warnings;
 with XHCI_DMA_Layout;
 with XHCI_Capabilities;
 with XHCI_Configure_Reply;
+with XHCI_Controller_Identity;
 with Intel_GPU_Probe;
 with Intel_GPU_Display_Pages;
 with Intel_GPU_Pipe_Pages;
@@ -145,6 +146,7 @@ procedure main is
    PCI_VENDOR_ID       : constant Unsigned_8 := 0;
    PCI_COMMAND         : constant Unsigned_8 := 4;
    PCI_STATUS          : constant Unsigned_8 := 6;
+   PCI_REVISION_ID     : constant Unsigned_8 := 8;
    PCI_PROG_IF         : constant Unsigned_8 := 9;
    PCI_CLASS_DEVICE    : constant Unsigned_8 := 10;
    PCI_HEADER_TYPE     : constant Unsigned_8 := 14;
@@ -2963,8 +2965,13 @@ procedure main is
             --  accessing DMA; this does not grant arbitrary allocation size.
             1 => barPages or Shift_Left (Unsigned_64 (scratchpads), 32),
             2 => dmaPhys,
-            --  The interrupt mode alone: devmgr programmed the message.
-            3 => Unsigned_64 (XHCI_Interrupt_Mode'Enum_Rep (interruptMode))]);
+            --  The interrupt mode devmgr programmed, and the controller's
+            --  PCI identity for its log lines and quirk table.
+            3 => XHCI_Controller_Identity.Encode
+              (Unsigned_8 (XHCI_Interrupt_Mode'Enum_Rep (interruptMode)),
+               (Vendor   => inventory (I).vendorID,
+                Device   => inventory (I).deviceID,
+                Revision => pciReadConfig8 (dev.bus, dev.slot, dev.func, PCI_REVISION_ID)))]);
       replyTag := capCall (DL.Mailbox (child), cfgMsg, CuBit.Messages.Wait_Forever);
       if replyTag.label = REPLY_OK then
          --  The interrupter is enabled: unmask the entry and the function.

@@ -34,6 +34,13 @@ package XHCI_Completions with SPARK_Mode => On is
    function Pending
      (State : Mailboxes; Slot : Slot_Number; Endpoint : Endpoint_Number)
       return Natural;
+   --  Route would queue Item (or ignore it): never Queue_Full. The event
+   --  ring owner leaves an event in the ring rather than overflow a
+   --  mailbox, and drains it once the consumer has taken its backlog.
+   function Has_Room (State : Mailboxes; Item : Event) return Boolean;
+   --  A disabled slot's stale completions go with it (hotplug detach).
+   procedure Clear_Slot (State : in out Mailboxes; Slot : Slot_Number)
+   with Post => (for all E in Endpoint_Number => Pending (State, Slot, E) = 0);
 private
    subtype Queue_Position is Positive range 1 .. Queue_Depth;
    subtype Queue_Count is Natural range 0 .. Queue_Depth;

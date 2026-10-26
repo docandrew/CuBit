@@ -178,6 +178,30 @@ make -C kernel world boot-logs
 bash tests/headless/run.sh --test multi-instance --accel kvm --timeout 120
 ```
 
+## usb-hotplug and xhci-hotplug (xhci bring-up, IdeaPad mouse)
+
+Two qemu-xhci controllers, the boot mouse on the SECOND (the IdeaPad's
+layout: empty TCSS controller first, PCH with the mouse second). Its
+reports reach Desktop; unplugging it detaches and disables the slot; a
+mouse hot-plugged on the first controller enumerates and delivers, and
+again after an unplug/replug (slot reuse); a hot-plugged keyboard on the
+second controller delivers keys. Both instances log their bring-up stages
+through logstore. Fails before the fix: the old driver had no Port Status
+Change handling and exited when its controller had no device at boot.
+
+The hosted tests: transfer/event rings against model controllers; the
+EHB race (the old ERDP policy stalls in the model, the production policy
+never does); the port machine (debounce, reset, recovery, detach); halted
+endpoint recovery; composite receivers (boot keyboard + boot mouse) drive
+both roles, not the keyboard alone.
+
+```sh
+bash tests/xhci-hotplug/run.sh
+systemd-run --user --scope -p MemoryMax=24G -p MemorySwapMax=0 bash tests/xhci-hotplug/prove.sh
+make -C kernel world boot-logs
+bash tests/headless/run.sh --test usb-hotplug --accel kvm --timeout 150
+```
+
 ## pci-capabilities (HW-002 follow-up)
 
 devmgr's PCI capability walk (MSI / MSI-X facts on every match line, and

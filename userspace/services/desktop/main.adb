@@ -1410,6 +1410,8 @@ procedure main is
    statsScenePixels  : Unsigned_64 := 0;
    statsSourceGaps   : Unsigned_64 := 0;
    statsSourceRejects : Unsigned_64 := 0;
+   --  Invalid source reports printed so far (the first few only).
+   rejectsPrinted : Natural := 0;
    -- Timing builds only (microseconds): the longest output pass that
    -- published a frame, and the longest wait from the first unpresented
    -- pointer motion until the next accepted frame submission.
@@ -11387,6 +11389,14 @@ procedure main is
             if report.device = CuBit.Input.ABSOLUTE_POINTER then
                debugPrint ("desktop: absolute pointer source on output 0" & LF);
             end if;
+            --  One line per new input source (its publisher): evidence that
+            --  each driver instance's input reaches Desktop.
+            debugPrint ("desktop: input source " &
+              (case report.device is
+                  when CuBit.Input.KEYBOARD => "keyboard",
+                  when CuBit.Input.RELATIVE_POINTER => "relative-pointer",
+                  when CuBit.Input.ABSOLUTE_POINTER => "absolute-pointer") & " publisher" &
+              Unsigned_64'Image (report.sourceIdentity) & LF);
          end if;
          source.used := True;
          source.identity := report.sourceIdentity;
@@ -11642,6 +11652,7 @@ procedure main is
 
    procedure handleEvent (eventMsg : Message; publisher : Process_ID;
                           running : in out Boolean) is
+      Reported_Rejects : constant := 4;
       raw : Unsigned_8;
       packed : Unsigned_64;
       sourceReport : CuBit.Input.Source_Report :=
@@ -11686,6 +11697,14 @@ procedure main is
          else
             statsSourceRejects := statsSourceRejects + 1;
             DI.Reject (Input_Diagnostic, DI.Malformed);
+            --  The first few, with what made them invalid (bring-up evidence).
+            if rejectsPrinted < Reported_Rejects then
+               rejectsPrinted := rejectsPrinted + 1;
+               debugPrint ("desktop: rejected source report publisher" &
+                 Unsigned_64'Image (To_Word (publisher)) & " authority=" &
+                 Unsigned_64'Image (eventMsg.authorityTag) & " length=" &
+                 Unsigned_8'Image (eventMsg.tag.length) & LF);
+            end if;
          end if;
 
          if not sourceAccepted then

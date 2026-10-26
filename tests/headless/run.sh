@@ -325,7 +325,7 @@ case "$TEST_NAME" in
         ;;
     grant-forward|grant-forward-intermediary-exit|grant-forward-owner-exit|grant-forward-desktop|config-tree|config-inspection|log-authority|log-fields|metrics|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
         ;;
-    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|multi-instance|program-parameters)
+    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|multi-instance|program-parameters|usb-hotplug)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -876,6 +876,12 @@ with open(sys.argv[1], "wb") as f:
         # controllers and two NVMe disks (tests/multi-instance).
         INIT_PROFILE="$ROOT_DIR/tests/multi-instance/init.ccl"
         ;;
+    usb-hotplug)
+        # Two xHCI controllers, the boot mouse on the SECOND (as on the
+        # IdeaPad: 00:0d.0 TCSS empty, 00:14.0 PCH with the mouse), then
+        # hotplug through the monitor (tests/usb-hotplug).
+        INIT_PROFILE="$ROOT_DIR/tests/multi-instance/init.ccl"
+        ;;
     startup-health)
         # CAP-003: the full desktop boots with no refusal, every service
         # registers, and the apps' records reach logstore (boot-logs prints
@@ -1220,6 +1226,7 @@ if [ -n "$INIT_PROFILE" ]; then
        [ "$TEST_NAME" = "desktop-vm" ] ||
        [ "$TEST_NAME" = "desktop-doom" ] ||
        [ "$TEST_NAME" = "virtio-vga-primary" ] ||
+       [ "$TEST_NAME" = "usb-hotplug" ] ||
        [ "$TEST_NAME" = "boot-timeline" ]; then
         for DESKTOP_TEST_IMAGE_NAME in display.svc desktop.svc virtio-gpu.drv; do
             DESKTOP_TEST_IMAGE="$KERNEL_DIR/isodir/boot/$DESKTOP_TEST_IMAGE_NAME"
@@ -1287,7 +1294,8 @@ if [ -n "$INIT_PROFILE" ]; then
         fi
     fi
     if [ "$TEST_NAME" = "generic-launch" ] || [ "$TEST_NAME" = "ufs" ] ||
-       [ "$TEST_NAME" = "ufs-write" ] || [ "$TEST_NAME" = "multi-instance" ]; then
+       [ "$TEST_NAME" = "ufs-write" ] || [ "$TEST_NAME" = "multi-instance" ] ||
+       [ "$TEST_NAME" = "usb-hotplug" ]; then
         # boot-logs prints the records logstore keeps (the base disk lacks it):
         # generic drivers (generic-check, ufs) and devmgr log through logstore.
         for GENERIC_IMAGE in logstore.svc boot-logs.app; do
@@ -2545,6 +2553,14 @@ if [ "$TEST_NAME" = "multi-instance" ]; then
         -device scsi-cd,bus=usbbot.0,lun=0,drive=usbcd
         -drive "file=$TEMP_SECOND_NVME,if=none,id=nvme1,format=raw"
         -device nvme,serial=cubitnvme1,drive=nvme1)
+fi
+# usb-hotplug: two controllers, the boot mouse on the second; the driver
+# script hot-plugs devices through the HMP monitor (tests/usb-hotplug).
+if [ "$TEST_NAME" = "usb-hotplug" ]; then
+    TEST_DEVICE_ARGS=(
+        -device qemu-xhci,id=xhcia
+        -device qemu-xhci,id=xhcib
+        -device usb-mouse,bus=xhcib.0,port=1,id=bootmouse)
 fi
 if [ "$TEST_NAME" = "desktop-doom" ] || [ "$TEST_NAME" = "bench-audio" ]; then
     TEMP_AUDIO="$(mktemp "$(dirname "$SERIAL_LOG")/cubit-${TEST_NAME}-audio.XXXXXX.wav")"
@@ -3824,6 +3840,15 @@ if { [ "$TEST_NAME" = "display-dual-output" ] || [ "$TEST_NAME" = "desktop-dual-
     fi
     python3 "$ROOT_DIR/tests/headless/$observer" \
         "$SERIAL_LOG" "$QMP_SOCKET" "$TIMEOUT_SECONDS" &
+    INPUT_INJECTOR_PID=$!
+fi
+
+if [ "$TEST_NAME" = "usb-hotplug" ]; then
+    MONITOR_SOCKET="$(qemu_socket monitor)"
+    rm -f "$MONITOR_SOCKET"
+    MONITOR_ARGS=(-monitor "unix:$MONITOR_SOCKET,server,nowait")
+    python3 "$ROOT_DIR/tests/usb-hotplug/drive.py" \
+        "$SERIAL_LOG" "$MONITOR_SOCKET" "$TIMEOUT_SECONDS" &
     INPUT_INJECTOR_PID=$!
 fi
 
@@ -5447,6 +5472,12 @@ calculator: mode STANDARD
 calculator: closed
 "
         ;;
+    usb-hotplug)
+        # tests/usb-hotplug/check.py checks both instances and hotplug.
+        required_markers="
+devmgr: startup complete, entering service loop
+"
+        ;;
     multi-instance)
         # tests/multi-instance/check.py checks each instance by location.
         required_markers="
@@ -5686,6 +5717,13 @@ fi
 if [ "$TEST_NAME" = "ufs-write" ]; then
     # What the guest wrote reached the medium: the image file holds it.
     if ! python3 -I "$ROOT_DIR/tests/ufs/check-write.py" "$TEMP_UFS_DISK"; then
+        echo "headless: serial log: $SERIAL_LOG" >&2
+        exit 1
+    fi
+fi
+
+if [ "$TEST_NAME" = "usb-hotplug" ]; then
+    if ! python3 "$ROOT_DIR/tests/usb-hotplug/check.py" "$SERIAL_LOG"; then
         echo "headless: serial log: $SERIAL_LOG" >&2
         exit 1
     fi

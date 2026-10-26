@@ -3,7 +3,7 @@
 # USB-CD loading test: the normal fixture still loads applications from NVMe.
 set -euo pipefail
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
-test_dir=$(mktemp -d /tmp/cubit-usb-hid.XXXXXX)
+test_dir=$(mktemp -d "${TMPDIR:-/tmp}/cubit-usb-hid.XXXXXX")
 export CUBIT_USB_MONITOR="$test_dir/monitor.sock"
 serial="$test_dir/serial.log"
 injector=""
@@ -48,14 +48,14 @@ QEMU_BIN="$root/tests/usb-optical/qemu-hid.sh" \
         > "$test_dir/headless.log" 2>&1
 wait "$injector"
 injector=""
-grep -q 'xhci: interrupt-driven HID input enabled' "$serial"
+grep -Eq 'xhci: [^ ]+ bring-up complete \(interrupt-driven' "$serial"
 if grep -Eq 'xhci: completion routing fault|EXCEPTION|PANIC' "$serial"; then
     echo "USB HID regression failed; logs: $test_dir" >&2
     exit 1
 fi
 # Require decoded motion AND button transitions, not just controller startup.
 awk '
-    /xhci: stats / {
+    /xhci: [^ ]* stats / {
         reports=0; motion=0; buttons=0; errors=0; short_reports=0
         for (i=1; i<=NF; i++) {
             split($i, pair, "=")

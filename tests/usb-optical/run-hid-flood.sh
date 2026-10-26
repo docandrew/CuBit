@@ -83,7 +83,7 @@ serial, injected = sys.argv[1], int(sys.argv[2])
 text = open(serial, errors="replace").read()
 def fields(line):
     return {k: int(v) for k, v in re.findall(r"\b([a-z_]+)=(\d+)", line)}
-xhci = [fields(l) for l in text.splitlines() if "xhci: stats " in l]
+xhci = [fields(l) for l in text.splitlines() if " stats events=" in l and "xhci: " in l]
 desk = [fields(l) for l in text.splitlines() if "desktop: stats " in l]
 frames = [fields(l) for l in text.splitlines() if "desktop: frames=" in l]
 last = xhci[-1] if xhci else {}

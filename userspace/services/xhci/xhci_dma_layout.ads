@@ -22,6 +22,13 @@ package XHCI_DMA_Layout with SPARK_Mode => On, Pure is
    BULK_OUT_RING_OFFSET : constant Unsigned_64 := HID_REPORT_OFFSET + PAGE_SIZE;
    BULK_IN_RING_OFFSET : constant Unsigned_64 := BULK_OUT_RING_OFFSET + PAGE_SIZE;
    DEVICE_STRIDE : constant Unsigned_64 := DEVICE_PAGES * PAGE_SIZE;
+   --  A composite HID device (boot keyboard and boot mouse interfaces on one
+   --  slot) needs a second interrupt-IN ring and report page. A slot is
+   --  never both a HID device and the bulk-storage device, so the second
+   --  pipe uses the bulk ring pages: ring in the bulk-IN page, reports in
+   --  the bulk-OUT page.
+   SECOND_INTERRUPT_RING_OFFSET   : constant Unsigned_64 := BULK_IN_RING_OFFSET;
+   SECOND_INTERRUPT_REPORT_OFFSET : constant Unsigned_64 := BULK_OUT_RING_OFFSET;
    BULK_DATA_OFFSET : constant Unsigned_64 :=
      DEVICE_CONTEXT_OFFSET + MAX_DEVICE_SLOTS * DEVICE_STRIDE;
    BULK_CBW_OFFSET : constant Unsigned_64 :=

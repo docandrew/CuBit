@@ -2,14 +2,21 @@
 --  CuBit
 --  Copyright (C) 2026 Jon Andrew
 --
---  Minimal xHCI controller foundation.  This package deliberately exposes
---  no raw USB device access to clients; BAR and DMA authority remain inside
---  xhci.drv.
+--  xHCI controller driver. This package deliberately exposes no raw USB
+--  device access to clients; BAR and DMA authority remain inside xhci.drv.
+--
+--  Initialize resets the controller and enumerates what is attached at
+--  boot (bounded, before devmgr's configure reply). After it, Service runs
+--  everything from the event loop without blocking: the event ring, Port
+--  Status Change handling (hotplug attach and detach), the enumeration of
+--  hot-plugged root-port HID devices, halted-endpoint recovery and the
+--  periodic health line.
 ------------------------------------------------------------------------------
 with Interfaces; use Interfaces;
 with System;
 with USB_Optical;
 with XHCI_Capabilities;
+with XHCI_Controller_Identity;
 with USB_Keyboards;
 
 package XHCI is
@@ -42,6 +49,15 @@ package XHCI is
       INIT_NOT_BOOT_MOUSE,
       INIT_CONFIGURE_FAILED);
 
+   --  Who this controller is (for log lines and the quirk table) and how
+   --  devmgr wired its interrupter. Before Initialize.
+   procedure Set_Identity
+     (Location : String;
+      Identity : XHCI_Controller_Identity.Identity;
+      Mode     : Runtime_Interrupt_Mode);
+
+   --  INIT_OK once the controller runs, even with nothing attached: the
+   --  driver stays for hotplug. Other results are controller faults.
    procedure Initialize
      (barPhys  : Unsigned_64;
       barPages : Unsigned_64;
@@ -52,8 +68,6 @@ package XHCI is
    function Port_Count return Natural;
    function Connected_Port_Count return Natural;
    function Device_Slot return Natural;
-   --  What Initialize enumerated on this controller: a boot keyboard, a
-   --  boot mouse, a USB mass-storage device (the optical drive).
    function Has_Keyboard return Boolean;
    function Has_Mouse return Boolean;
    function Has_Storage return Boolean;
@@ -71,26 +85,34 @@ package XHCI is
    function Optical_Read_Buffer return System.Address;
    function Optical_Deadline return Unsigned_64;
 
-   --  Arm a bounded queue of interrupt-IN requests before entering the
-   --  service loop. Keeping requests resident across scheduling gaps avoids
-   --  losing whole USB service intervals between mouse reports.
+   --  Arm the interrupt-IN queues of the HID devices found at boot.
    procedure Start_Boot_Mouse_Transfers;
    procedure Start_Boot_Keyboard_Transfers;
-   procedure Poll_Boot_Keyboard
-     (Data : out USB_Keyboards.Report; Ready, Progressed : out Boolean);
 
-   --  Enable and acknowledge the controller's primary interrupter. devmgr
-   --  has programmed MSI or MSI-X entry 0 (docs/msi-interrupts.md).
+   --  Enable the primary interrupter (devmgr programmed MSI or MSI-X entry
+   --  0, docs/msi-interrupts.md), then arm hotplug.
    procedure Enable_Runtime_Interrupts
      (mode    : Runtime_Interrupt_Mode;
       enabled : out Boolean);
+   --  The interrupt doorbell arrived: clear USBSTS.EINT and IMAN.IP (both
+   --  RW1C); the next Service writes ERDP with EHB even if the ring is
+   --  empty (xHCI 1.2, 4.17.2).
    procedure Acknowledge_Runtime_Interrupt;
 
-   --  Bounded, aggregate observability for the interrupt hot path.  The
-   --  driver can publish this at a low rate without printing per report or
-   --  perturbing input latency.  lastReport contains the first four bytes in
-   --  little-endian order so boot-protocol and unexpected report-ID layouts
-   --  are distinguishable during hardware bring-up.
+   --  Everything that is not a HID report: drain the event ring into the
+   --  completion mailboxes, ports, enumeration, recovery, health.
+   procedure Service (Progressed : out Boolean);
+   --  The next monotonic millisecond Service has timed work; Last if none.
+   function Next_Deadline return Unsigned_64;
+   --  False once events kept arriving with no interrupt (logged): the
+   --  caller then polls every millisecond instead of waiting for one.
+   function Interrupts_Trusted return Boolean;
+
+   procedure Poll_Boot_Keyboard
+     (Data : out USB_Keyboards.Report; Ready, Progressed : out Boolean);
+
+   --  Bounded, aggregate observability for the interrupt hot path.
+   --  lastReport holds the first four bytes in little-endian order.
    type Boot_Mouse_Diagnostics is record
       transferEvents    : Unsigned_64 := 0;
       decodedReports    : Unsigned_64 := 0;

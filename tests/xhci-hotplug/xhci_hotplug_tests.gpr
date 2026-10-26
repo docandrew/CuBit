@@ -1,0 +1,21 @@
+--  Hosted tests of xhci.drv's ring, interrupter, port, recovery and role
+--  logic (the pure units the native driver uses), and their SPARK proofs.
+project XHCI_Hotplug_Tests is
+   for Source_Dirs use (".", "../../userspace/services/xhci", "../../userspace/lib/logging");
+   for Source_Files use
+     ("ring_tests.adb", "ehb_tests.adb", "port_machine_tests.adb", "recovery_tests.adb",
+      "xhci_registers.ads", "xhci_rings.ads", "xhci_rings.adb",
+      "xhci_port_machine.ads", "xhci_port_machine.adb",
+      "xhci_endpoint_recovery.ads", "xhci_endpoint_recovery.adb",
+      "xhci_controller_identity.ads", "usb_device_roles.ads",
+      "usb_configurations.ads", "usb_configurations.adb",
+      "xhci_completions.ads", "xhci_completions.adb",
+      "xhci_ports.ads", "xhci_ports.adb",
+      "driver_log_grant.ads", "driver_log_grant.adb");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("ring_tests.adb", "ehb_tests.adb", "port_machine_tests.adb", "recovery_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnata", "-gnatwa");
+   end Compiler;
+end XHCI_Hotplug_Tests;

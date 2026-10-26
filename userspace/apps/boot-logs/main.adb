@@ -57,8 +57,9 @@ procedure Main is
    type Filter_Kind is (All_Sources, One_Source, Bring_Up);
    Filter : Filter_Kind := All_Sources;
    Filter_Source : Source_Count := 0;
-   Bring_Up_Sources : constant array (1 .. 3) of access constant String :=
-     [new String'("devmgr"), new String'("intel-gpu"), new String'("procmgr")];
+   Bring_Up_Sources : constant array (1 .. 4) of access constant String :=
+     [new String'("devmgr"), new String'("intel-gpu"), new String'("procmgr"),
+      new String'("xhci")];
    --  Set-1 scancodes (the desktop protocol's key payload).
    KEY_TAB : constant := 16#0F#;
    KEY_B   : constant := 16#30#;
@@ -108,7 +109,7 @@ procedure Main is
      (case Filter is
         when All_Sources => "all sources",
         when One_Source => Sources (Filter_Source).Text (1 .. Sources (Filter_Source).Length),
-        when Bring_Up => "bring-up (devmgr, intel-gpu, procmgr)");
+        when Bring_Up => "bring-up (devmgr, intel-gpu, procmgr, xhci)");
    function Pinned (Item : CuBit.Log_Records.Log_Record) return Boolean is
       Text : constant String := CuBit.Log_Records.Text (Item);
    begin
