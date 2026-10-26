@@ -2,13 +2,13 @@
 --  ccl-manifest --setting-codecs (CAP-003); do not edit. Regenerate with
 --  make -C kernel setting-kinds after changing the catalog or a type.
 pragma Ada_2022;
-with CCL.Canonical_Readers;
+with CuBit.Canonical_Readers;
 
 --  The typed setting calculator.options: a CCL Calc_Options (CCL.Interfaces.Calc_Types.TYPE_SOURCE),
 --  as Ada types, and Decode, which reads its canonical source
---  (CCL.Typed_Settings renders it; CCL.Canonical_Readers).
+--  (CCL.Typed_Settings renders it; CuBit.Canonical_Readers).
 package CCL.Setting_Codecs.Calc_Options with SPARK_Mode, Pure is
-   subtype Text is CCL.Canonical_Readers.Text;
+   subtype Text is CuBit.Canonical_Readers.Text;
    type Calc_Mode_Value is (Standard, Scientific, Programmer);
    type Calc_Angle_Value is (Radians, Degrees, Gradians);
    type Calc_Word_Value is (Unbounded, Bits_8, Bits_16, Bits_32, Bits_64);

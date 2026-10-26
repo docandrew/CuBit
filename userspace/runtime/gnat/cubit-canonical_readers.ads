@@ -17,12 +17,16 @@
 --  sequence and look at OK once. Position never moves past Source'Last + 1.
 pragma Ada_2022;
 with Interfaces;
+with CuBit.Launch_Arguments;
 
-package CCL.Canonical_Readers with SPARK_Mode, Pure is
+package CuBit.Canonical_Readers with SPARK_Mode, Pure is
    use type Interfaces.Integer_64;
 
-   --  The longest canonical source a typed setting may have.
-   Maximum_Canonical : constant := 1_024;
+   --  The longest canonical source a typed value may have: the launch
+   --  block's budget for a program's parameter value
+   --  (CuBit.Launch_Arguments.Parameter_Value_Budget), which typed
+   --  settings share.
+   Maximum_Canonical : constant := CuBit.Launch_Arguments.Parameter_Value_Budget;
    subtype Canonical_Length is Natural range 0 .. Maximum_Canonical;
 
    --  A string field's value, unescaped: never longer than its source.
@@ -107,4 +111,4 @@ package CCL.Canonical_Readers with SPARK_Mode, Pure is
    with Always_Terminates,
      Pre => In_Source (Source, Position),
      Post => OK = (OK'Old and then Position = Source'Last + 1);
-end CCL.Canonical_Readers;
+end CuBit.Canonical_Readers;

@@ -66,7 +66,10 @@ package body CCL.Diagnostics with SPARK_Mode is
          when Missing_Field_Argument => "This field has no default, so the construction must give it",
          when Positional_After_Named => "Positional values come before named ones (field => value)",
          when Resource_Ownership_Violation =>
-            "A resource is copied, used after it was moved, or never released");
+            "A resource is copied, used after it was moved, or never released",
+         when Invalid_Range_Bounds => "A range's low bound is above its high bound: write (range Low High)",
+         when Duplicate_Type_Name => "A type of this name is already declared",
+         when Duplicate_Component_Name => "This field or alternative is already named in the declaration");
    end Message;
 
    function Message (Status : CCL.Language.Interpretation_Status) return String is

@@ -4,7 +4,7 @@
 ------------------------------------------------------------------------------
 pragma Ada_2022;
 with Interfaces; use Interfaces;
-with CCL.Canonical_Readers;
+with CuBit.Canonical_Readers;
 with CCL.Interfaces.Net_Interface;
 with CCL.Setting_Codecs.Net_Interface;
 with CuBit.Net_Address;
@@ -50,9 +50,9 @@ package body Net_Interface_Settings is
                Address_OK : Boolean;
                Gateway_OK : Boolean := True;
             begin
-               Addresses.Decode (CCL.Canonical_Readers.Image (Fields.address), Address, Address_OK);
+               Addresses.Decode (CuBit.Canonical_Readers.Image (Fields.address), Address, Address_OK);
                if Has_Gateway then
-                  Addresses.Decode (CCL.Canonical_Readers.Image (Fields.gateway.Via_Payload), Gateway, Gateway_OK);
+                  Addresses.Decode (CuBit.Canonical_Readers.Image (Fields.gateway.Via_Payload), Gateway, Gateway_OK);
                   Gateway_OK := Gateway_OK and then CuBit.Net_Address.Is_Mapped (Gateway);
                end if;
                Success := Address_OK and then CuBit.Net_Address.Is_Mapped (Address) and then Gateway_OK

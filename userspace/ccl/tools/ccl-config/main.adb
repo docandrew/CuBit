@@ -4,6 +4,7 @@ with Ada.Streams.Stream_IO;
 with Ada.Text_IO;
 with CCL.Configurations;
 with CCL.Declarations;
+with Startup_Arguments;
 
 --  Linux-only boundary. No file is read during CCL evaluation, and failed
 --  declarations never emit a partial runtime configuration.
@@ -18,9 +19,14 @@ procedure Main is
    Result : CCL.Configurations.Compilation_Result;
    use CCL.Configurations;
 begin
-   if Argument_Count not in 1 .. 2 or else
+   --  --programs DIR: also check each startup entry's typed arguments
+   --  against its program's .cubit.parameters in DIR (Startup_Arguments).
+   if Argument_Count = 3 and then Argument (2) = "--programs" then
+      null;
+   elsif Argument_Count not in 1 .. 2 or else
      (Argument_Count = 2 and then Argument (2) not in "--dump-plan" | "--dump-startup" | "--dump-system") then
-      Put_Line (Standard_Error, "usage: ccl-config PROFILE.ccl [--dump-plan|--dump-startup|--dump-system]");
+      Put_Line (Standard_Error, "usage: ccl-config PROFILE.ccl [--dump-plan|--dump-startup|--dump-system" &
+                "|--programs DIRECTORY]");
       Set_Exit_Status (Failure);
       return;
    end if;
@@ -41,6 +47,17 @@ begin
       Put_Line (Standard_Error, Argument (1) & ": character" & Result.Position'Image &
                 ": " & Result.Diagnostic'Image & " / " & Result.Syntax_Diagnostic'Image);
       Set_Exit_Status (Failure);
+      return;
+   end if;
+   if Argument_Count = 3 then
+      declare
+         Checked : Boolean;
+      begin
+         Startup_Arguments.Check (Argument (1), Source (1 .. Natural (Last)), Result.Plan, Argument (3), Checked);
+         if not Checked then
+            Set_Exit_Status (Failure);
+         end if;
+      end;
       return;
    end if;
    if Argument_Count = 2 and then
@@ -96,6 +113,9 @@ begin
                   end if;
                   if Item.Has_Ready_Deadline then
                      Put (" ready-ms=" & Image (Long_Long_Integer (Item.Ready_Deadline_Ms)));
+                  end if;
+                  if Item.Arguments.Length > 0 then
+                     Put (" arguments=" & Item.Arguments.Data (1 .. Item.Arguments.Length));
                   end if;
                   New_Line;
                end;

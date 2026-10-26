@@ -1,0 +1,3 @@
+# parameters-plain (tests/program-parameters): declares no parameters, so
+# a launch that supplies any is refused (Parameters_Unexpected).
+(Executable_Manifest identity => "com.cubit.parameters-plain" version => "1")

@@ -2,13 +2,13 @@
 --  ccl-manifest --setting-codecs (CAP-003); do not edit. Regenerate with
 --  make -C kernel setting-kinds after changing the catalog or a type.
 pragma Ada_2022;
-with CCL.Canonical_Readers;
+with CuBit.Canonical_Readers;
 
 --  The typed setting desktop.render.gpu: a CCL GPU_Rendering (CCL.Interfaces.GPU_Power.RENDERING_TYPE_SOURCE),
 --  as Ada types, and Decode, which reads its canonical source
---  (CCL.Typed_Settings renders it; CCL.Canonical_Readers).
+--  (CCL.Typed_Settings renders it; CuBit.Canonical_Readers).
 package CCL.Setting_Codecs.GPU_Rendering with SPARK_Mode, Pure is
-   subtype Text is CCL.Canonical_Readers.Text;
+   subtype Text is CuBit.Canonical_Readers.Text;
    type GPU_Rendering_Value is record
       enabled : Boolean := False;
    end record;

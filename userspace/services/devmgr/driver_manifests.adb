@@ -332,6 +332,20 @@ package body Driver_Manifests with SPARK_Mode => On is
       Read_Config_Scopes (Image, Result);
       Read_Resources (Image, Result);
       Read_Startup (Image, Result);
+      declare
+         package PS renames CuBit.Parameter_Signatures;
+         Parameters_Magic : constant Unsigned_64 :=
+           Unsigned_64 (PS.Magic_0) or Shift_Left (Unsigned_64 (PS.Magic_1), BITS_PER_BYTE)
+           or Shift_Left (Unsigned_64 (PS.Magic_2), 2 * BITS_PER_BYTE)
+           or Shift_Left (Unsigned_64 (PS.Magic_3), 3 * BITS_PER_BYTE);
+         --  Only whether it is there matters.
+         Offset, Size : Unsigned_64;
+         pragma Warnings (Off, Offset);
+         pragma Warnings (Off, Size);
+      begin
+         Find_Section (Image, Parameters_Magic, MAGIC_BYTES, Unsigned_64'Last, Offset, Size,
+                       Result.Declares_Parameters);
+      end;
       return Result;
    end Read;
 

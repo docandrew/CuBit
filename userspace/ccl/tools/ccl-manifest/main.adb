@@ -8,6 +8,7 @@ with Ada.Text_IO;
 with Ada.Characters.Handling;
 with Ada.Strings;
 with Ada.Strings.Fixed;
+with Ada.Strings.Unbounded;
 with Interfaces;
 with CCL.Manifests;
 with CuBit.Failures;
@@ -15,6 +16,10 @@ with CuBit.Startup_Tables;
 with CCL.Language;
 with Setting_Catalogs;
 with Setting_Codecs;
+with Parameter_Bindings;
+with CuBit.Parameter_Signatures;
+with SPARKNaCl;
+with SPARKTLSCrypto.Hashing.SHA256;
 
 --  Linux-hosted file boundary only. No process execution or network access.
 --  stdout receives assembly only after the complete declaration validates.
@@ -25,14 +30,17 @@ procedure Main is
    use type Ada.Streams.Stream_Element_Offset;
    use type Interfaces.Unsigned_8;
    Input : Ada.Streams.Stream_IO.File_Type;
-   Bytes : Ada.Streams.Stream_Element_Array
-     (1 .. CCL.Language.MAX_SOURCE_LENGTH);
+   --  The schema file may be longer than a CCL program: its comments and
+   --  indentation are removed before it is prepended to the manifest
+   --  (CCL.Manifests.Typed), which must then fit one.
+   Maximum_Schema_File : constant := 2 * CCL.Language.MAX_SOURCE_LENGTH;
+   Bytes : Ada.Streams.Stream_Element_Array (1 .. Maximum_Schema_File);
    Last : Ada.Streams.Stream_Element_Offset;
    Source, Catalog_Source : String (1 .. CCL.Manifests.MAX_DECLARATION_LENGTH);
    Source_Length, Catalog_Length : Natural;
    --  interfaces/executable-manifest.ccl: the CCL declarations typed
    --  manifests are checked against, found beside the catalogs directory.
-   Schema_Source : String (1 .. CCL.Language.MAX_SOURCE_LENGTH);
+   Schema_Source : String (1 .. Maximum_Schema_File);
    Schema_Length : Natural := 0;
    --  CATALOG MANIFEST, then options as pairs: --startup-output FILE (the
    --  Ada Startup package), --rust-output FILE (the Rust accessors),
@@ -285,6 +293,56 @@ procedure Main is
       end loop;
       return True;
    end Scopes_Name_Settings;
+
+   ---------------------------------------------------------------------------
+   --  Typed program parameters (docs/ccl-launch-parameters.md): the
+   --  canonical signature the manifest compiler rendered, its identity
+   --  (SHA-256, verified SPARKTLSCrypto) and its .cubit.parameters
+   --  descriptor (CuBit.Parameter_Signatures).
+   ---------------------------------------------------------------------------
+   function Has_Parameters return Boolean is (Result.Parameter_Signature_Length > 0);
+   function Parameter_Root return String is
+     (Result.Parameter_Root.Data (1 .. Result.Parameter_Root.Length));
+   function Parameter_Signature return String is
+     (Result.Parameter_Signature (1 .. Result.Parameter_Signature_Length));
+
+   function Signature_Identity return CuBit.Parameter_Signatures.Identity is
+      use type SPARKNaCl.N32;
+      Signature : constant String := Parameter_Signature;
+      Message : SPARKNaCl.Byte_Seq (0 .. SPARKNaCl.N32 (Signature'Length) - 1);
+      Digest : SPARKTLSCrypto.Hashing.SHA256.Digest;
+      Identity : CuBit.Parameter_Signatures.Identity := [others => 0];
+   begin
+      for K in Signature'Range loop
+         Message (SPARKNaCl.N32 (K - Signature'First)) := Character'Pos (Signature (K));
+      end loop;
+      SPARKTLSCrypto.Hashing.SHA256.Hash (Digest, Message);
+      for I in Identity'Range loop
+         Identity (I) := Interfaces.Unsigned_8 (Digest (SPARKNaCl.Index_32 (I - 1)));
+      end loop;
+      return Identity;
+   end Signature_Identity;
+
+   --  The .cubit.parameters section; empty when the manifest declares none.
+   function Parameters_Section return CCL.Manifests.Section is
+      Item : CCL.Manifests.Section;
+      Descriptor : CuBit.Parameter_Signatures.Bytes (1 .. CuBit.Parameter_Signatures.Maximum_Descriptor_Bytes);
+      Length : CuBit.Parameter_Signatures.Descriptor_Length;
+      Accepted : Boolean;
+   begin
+      if not Has_Parameters then
+         return Item;
+      end if;
+      CuBit.Parameter_Signatures.Encode
+        (Parameter_Root, Parameter_Signature, Signature_Identity, Descriptor, Length, Accepted);
+      if Accepted then
+         Item.Length := Length;
+         for I in 1 .. Length loop
+            Item.Data (I) := Descriptor (I);
+         end loop;
+      end if;
+      return Item;
+   end Parameters_Section;
 
    procedure Emit (Name : String; Item : CCL.Manifests.Section) is
    begin
@@ -760,8 +818,16 @@ procedure Main is
       Create (Output, Out_File, Spec (Spec'First .. Spec'Last - 1) & "b");
       Put_Line (Output, "--  Generated with the ELF manifest; do not edit.");
       Put_Line (Output, "pragma Ada_2022;");
+      if Has_Parameters then
+         Put_Line (Output, "with Parameters;");
+      end if;
       if Result.Binding_Count = 0 then
          Put_Line (Output, "package body Startup with SPARK_Mode => Off is");
+         if Has_Parameters then
+            Put_Line (Output, "begin");
+            Put_Line (Output, "   --  Stops here, saying why, without valid typed parameters.");
+            Put_Line (Output, "   Parameters.Require;");
+         end if;
          Put_Line (Output, "end Startup;");
          Close (Output);
          return;
@@ -788,6 +854,10 @@ procedure Main is
          Put_Line (Output, "     (Expected, """ & Identity & """,");
          Put_Line (Output, "      Standard.CuBit.Handles.Services.Logstore.Optional_Named (""" &
                    Result.Bindings (Log).Name.Data (1 .. Result.Bindings (Log).Name.Length) & """));");
+      end if;
+      if Has_Parameters then
+         Put_Line (Output, "   --  Then its typed parameters: stops here, saying why, without valid ones.");
+         Put_Line (Output, "   Parameters.Require;");
       end if;
       Put_Line (Output, "end Startup;");
       Close (Output);
@@ -1079,6 +1149,23 @@ begin
          return;
       end if;
       Emit_Startup;
+      --  The typed-parameter binding (package Parameters) beside it, empty
+      --  when the manifest declares no parameters.
+      declare
+         Generated : Boolean;
+         Detail : Ada.Strings.Unbounded.Unbounded_String;
+      begin
+         Parameter_Bindings.Emit
+           (Ada.Directories.Containing_Directory (Ada.Directories.Full_Name (Startup_Path)) & "/parameters.ads",
+            Identity_Text, Parameter_Root, Parameter_Signature,
+            (if Has_Parameters then Signature_Identity else [others => 0]), Generated, Detail);
+         if not Generated then
+            Put_Line (Standard_Error, Argument (2) & ": its parameters binding: " &
+                      Ada.Strings.Unbounded.To_String (Detail));
+            Set_Exit_Status (Failure);
+            return;
+         end if;
+      end;
    end if;
    if Option ("--rust-output")'Length > 0 then
       if not Rust_Names_Usable then
@@ -1099,6 +1186,7 @@ begin
    Emit (".cubit.description", Result.Description);
    Emit (".cubit.startup", Result.Startup);
    Emit (".cubit.channels", Result.Channels);
+   Emit (".cubit.parameters", Parameters_Section);
    Put_Line (".section .note.GNU-stack,"""",@progbits");
 exception
    when Ada.Streams.Stream_IO.Name_Error | Ada.Streams.Stream_IO.Use_Error =>

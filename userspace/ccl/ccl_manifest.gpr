@@ -1,4 +1,6 @@
 with "ccl_manifest_abi.gpr";
+--  SHA-256 identities (.cubit.parameters) through the verified SPARK stack.
+with "../lib/tls/sparktls_host.gpr";
 project CCL_Manifest is
    for Languages use ("Ada");
    for Source_Dirs use ("src", "tools/ccl-manifest");

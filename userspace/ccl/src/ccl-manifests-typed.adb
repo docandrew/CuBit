@@ -13,6 +13,7 @@ with CCL.Manifests.Model;
 with CCL.Manifests.Encoding;
 with CCL.Manifests.Keywords;
 with CCL.Diagnostics;
+with CCL.Parameter_Signatures;
 with CCL.Types;
 with CuBit.Failures;
 with CuBit.Program_Descriptions;
@@ -858,10 +859,10 @@ package body CCL.Manifests.Typed with SPARK_Mode => On is
          Decl.Launches (Decl.Launch_Count) := Name;
       end Add_Launch;
 
-      --  A ported tool's typed parameters and the argv they render into
+      --  A ported tool's argv parameters and the argv they render into
       --  (CuBit.Program_Descriptions). Every parameter must be rendered by
       --  some piece, so no value is granted without being passed.
-      procedure Add_Parameters (Parameters, Pieces : Views.Cursor) is
+      procedure Add_Argv (Parameters, Pieces : Views.Cursor) is
          package PP renames CuBit.Program_Descriptions;
          use type PP.Kind;
          S : PP.Signature renames Decl.Description;
@@ -892,7 +893,7 @@ package body CCL.Manifests.Typed with SPARK_Mode => On is
             return;
          end if;
          for Index in 1 .. Views.Length (Object, Parameters) loop
-            Locate (Entry_Text ("parameters", Index));
+            Locate (Entry_Text ("argv parameters", Index));
             declare
                At_Cursor : constant Views.Cursor := Views.Element (Object, Parameters, Index);
                Name : constant String := Text (Named (At_Cursor, "name"));
@@ -932,7 +933,7 @@ package body CCL.Manifests.Typed with SPARK_Mode => On is
             end;
          end loop;
          for Index in 1 .. Views.Length (Object, Pieces) loop
-            Locate (Entry_Text ("arguments", Index));
+            Locate (Entry_Text ("argv pieces", Index));
             declare
                At_Cursor : constant Views.Cursor := Views.Element (Object, Pieces, Index);
                Kind : constant String := Alt (At_Cursor);
@@ -990,23 +991,124 @@ package body CCL.Manifests.Typed with SPARK_Mode => On is
                S.Pieces (S.Piece_Total) := Item;
             end;
          end loop;
-         Locate ("parameters");
+         Locate ("argv parameters");
          for P in 0 .. S.Parameter_Total - 1 loop
             if Place_Only (P) and then Rendered (P) then
                Fail (Invalid_Parameters,
                      "parameter """ & S.Parameters (P).Name (1 .. S.Parameters (P).Name_Length)
                      & """ is declared in_arguments => false but is rendered",
-                     "remove it from arguments, or drop in_arguments => false");
+                     "remove it from the argv pieces, or drop in_arguments => false");
                return;
             elsif not Place_Only (P) and then not Rendered (P) then
                Fail (Invalid_Parameters,
                      "parameter """ & S.Parameters (P).Name (1 .. S.Parameters (P).Name_Length)
                      & """ is never rendered",
-                     "name it in arguments, or declare it in_arguments => false (a place only)");
+                     "name it in the argv pieces, or declare it in_arguments => false (a place only)");
                return;
             end if;
          end loop;
-      end Add_Parameters;
+      end Add_Argv;
+
+      --  "line L, column C" of Offset (from 1) in the manifest.
+      function Line_Column (Offset : Positive) return String is
+         Line, Column : Positive := 1;
+      begin
+         for I in Source'First .. Source'First + Natural'Min (Offset, Source'Length + 1) - 2 loop
+            if Source (I) = ASCII.LF then Line := Line + 1; Column := 1; else Column := Column + 1; end if;
+         end loop;
+         return "line" & Positive'Image (Line) & ", column" & Positive'Image (Column);
+      end Line_Column;
+
+      --  Where Text first occurs in the manifest (from 1), or 0.
+      function Offset_Of (Text : String) return Natural is
+      begin
+         for I in Source'First .. Source'Last - Text'Length + 1 loop
+            if Source (I .. I + Text'Length - 1) = Text then
+               return I - Source'First + 1;
+            end if;
+         end loop;
+         return 0;
+      end Offset_Of;
+
+      --  Typed program parameters (docs/ccl-launch-parameters.md):
+      --  (Parameter_Signature.Declared "Record") names a record type the
+      --  manifest declares ahead of its Executable_Manifest; its fields are
+      --  the parameters. CCL.Parameter_Signatures checks what the CCL type
+      --  check cannot (declared here, no bare Integer, no defaulted numbers,
+      --  Ada-usable names) and renders the canonical signature.
+      procedure Add_Typed_Parameters (Signature : Views.Cursor) is
+         package PS renames CCL.Parameter_Signatures;
+         use type PS.Refusal;
+         Schema_Checked : CCL.Language.Analysis_Result;
+         Schema_Catalog : CCL.Catalog.Interface_Catalog;
+         Rendered : PS.Result;
+      begin
+         Locate ("parameters");
+         if Alt (Signature) /= "Declared" then
+            return;
+         end if;
+         declare
+            Root_Name : constant String := Text (Views.Payload (Object, Signature));
+            Quoted : constant Natural := Offset_Of ("""" & Root_Name & """");
+            function Where_Named return String is
+              (if Quoted > 0 then Line_Column (Quoted) & ": " else "");
+            function Where_Declared (Name : String) return String is
+              (if Offset_Of ("(type " & Name & " ") > 0
+               then Line_Column (Offset_Of ("(type " & Name & " ")) & ": " else Where_Named);
+         begin
+            --  The schema's own types come first in the registry.
+            CCL.Catalog.Initialize (Schema_Catalog);
+            CCL.Language.Analyze (Schema_Source & ASCII.LF & "0", Schema_Catalog, Schema_Checked);
+            PS.Render (CCL.Language.Analysis_Types (Checked), Root_Name,
+                       CCL.Types."+" (CCL.Types.Last (CCL.Language.Analysis_Types (Schema_Checked)), 1), Rendered);
+            declare
+               Culprit : constant String := CCL.Types.Image (Rendered.Culprit_Type);
+               Field : constant String := CCL.Types.Image (Rendered.Culprit_Field);
+               Subject : constant String :=
+                 (if Field'Length > 0 then "field " & Field & " of " & Culprit else Culprit);
+            begin
+               case Rendered.Why is
+                  when PS.Accepted =>
+                     Set_Text (Result.Parameter_Root, Root_Name);
+                     Result.Parameter_Signature (1 .. Rendered.Length) := Rendered.Text (1 .. Rendered.Length);
+                     Result.Parameter_Signature_Length := Rendered.Length;
+                  when PS.Unknown_Type =>
+                     Fail (Invalid_Parameters, Where_Named & "parameters names """ & Root_Name &
+                           """, a type this manifest does not declare",
+                           "declare (type " & Root_Name & " (record ...)) ahead of the Executable_Manifest");
+                  when PS.Not_A_Record =>
+                     Fail (Invalid_Parameters, Where_Named & "parameters names " & Root_Name & ", which is not a record",
+                           "declare the parameters as the fields of a record type");
+                  when PS.Schema_Type =>
+                     Fail (Invalid_Parameters, Where_Named & Culprit &
+                           " is a manifest schema type, not one this manifest declares",
+                           "declare the parameter types in the manifest itself");
+                  when PS.Unsupported_Type =>
+                     Fail (Invalid_Parameters, Where_Named & "a parameter type reaches " &
+                           (if Culprit'Length > 0 then Culprit else "a type") &
+                           ", which is not a record, variant, enumeration, range, Boolean or String",
+                           "parameters hold no lists, functions or streams");
+                  when PS.Bare_Integer =>
+                     Fail (Invalid_Parameters, Where_Declared (Culprit) & Subject & " is a bare Integer",
+                           "declare a range type with its bounds, (type Count (range 1 4096))");
+                  when PS.Defaulted_Number =>
+                     Fail (Invalid_Parameters, Where_Declared (Culprit) & Subject &
+                           " has a default, but it holds a number (a limit, capacity or deadline)",
+                           "remove the default: the launcher gives every limit, capacity and deadline");
+                  when PS.Unusable_Name =>
+                     Fail (Invalid_Parameters, Where_Declared (Culprit) & """" &
+                           (if Field'Length > 0 then Field else Culprit) &
+                           """ cannot be an Ada name in the generated binding",
+                           "rename it: letters, digits and single underscores, not an Ada reserved word, " &
+                           "Value, Identity or Parameters");
+                  when PS.Too_Long =>
+                     Fail (Invalid_Parameters, Where_Named & "the signature of " & Root_Name & " is over" &
+                           Natural'Image (PS.Maximum_Signature_Bytes) & " bytes",
+                           "use fewer or shorter types and names");
+               end case;
+            end;
+         end;
+      end Add_Typed_Parameters;
 
       --  One `drives` entry (docs/device-matching.md).
       procedure Add_Drive (At_Cursor : Views.Cursor) is
@@ -1251,21 +1353,88 @@ package body CCL.Manifests.Typed with SPARK_Mode => On is
             end loop;
          end;
          if not Failed then
-            Add_Parameters (Named (Root, "parameters"), Named (Root, "arguments"));
+            declare
+               --  (Argv.Mapped (Argv_Mapping parameters => [...] pieces => [...])),
+               --  or Argv.None for a program with no argv mapping.
+               Argv : constant Views.Cursor := Named (Root, "argv");
+            begin
+               if Alt (Argv) = "Mapped" then
+                  Add_Argv (Named (Views.Payload (Object, Argv), "parameters"),
+                            Named (Views.Payload (Object, Argv), "pieces"));
+               end if;
+            end;
          end if;
          if not Failed then
             Add_Connectors (Named (Root, "outlets"), Named (Root, "inlets"), Named (Root, "descriptors"));
          end if;
+         if not Failed then
+            Add_Typed_Parameters (Named (Root, "parameters"));
+         end if;
       end;
       if Failed then return; end if;
-      Encoding.Encode (Decl, 0, Result);
+      declare
+         --  Encoding starts the result afresh; the signature is kept apart.
+         Root_Name : constant Binding_Name := Result.Parameter_Root;
+         Signature : constant String := Result.Parameter_Signature (1 .. Result.Parameter_Signature_Length);
+      begin
+         Encoding.Encode (Decl, 0, Result);
+         if Result.Success then
+            Result.Parameter_Root := Root_Name;
+            Result.Parameter_Signature (1 .. Signature'Length) := Signature;
+            Result.Parameter_Signature_Length := Signature'Length;
+         end if;
+      end;
    end Compile_Compacted;
+
+   --  The manifest without its comments' text: each comment, '#' to the
+   --  end of its line outside a string, is dropped but its line break kept,
+   --  so every expression keeps its line and column (diagnostics stay
+   --  exact) and comments do not count against the CCL source limit.
+   procedure Strip_Comments (Source : String; Text : out String; Length : out Natural)
+   with Pre => Text'First = 1 and then Text'Length >= Source'Length;
+   procedure Strip_Comments (Source : String; Text : out String; Length : out Natural) is
+      Comment : constant Character := '#';
+      Quote : constant Character := '"';
+      Escape : constant Character := '\';
+      In_String, Escaped, In_Comment : Boolean := False;
+   begin
+      Text := [others => ' '];
+      Length := 0;
+      for C of Source loop
+         if In_Comment then
+            if C = ASCII.LF then
+               In_Comment := False;
+               Length := Length + 1;
+               Text (Length) := C;
+            end if;
+         elsif not In_String and then C = Comment then
+            In_Comment := True;
+         else
+            if In_String then
+               if Escaped then
+                  Escaped := False;
+               elsif C = Escape then
+                  Escaped := True;
+               elsif C = Quote then
+                  In_String := False;
+               end if;
+            elsif C = Quote then
+               In_String := True;
+            end if;
+            Length := Length + 1;
+            Text (Length) := C;
+         end if;
+      end loop;
+   end Strip_Comments;
 
    procedure Compile (Source, Catalog_Source, Schema_Source : String; Result : out Compilation_Result) is
       Schema_Text : String (1 .. Schema_Source'Length);
       Schema_Length : Natural;
+      Manifest_Text : String (1 .. Source'Length);
+      Manifest_Length : Natural;
    begin
       Compact (Schema_Source, Schema_Text, Schema_Length);
-      Compile_Compacted (Source, Catalog_Source, Schema_Text (1 .. Schema_Length), Result);
+      Strip_Comments (Source, Manifest_Text, Manifest_Length);
+      Compile_Compacted (Manifest_Text (1 .. Manifest_Length), Catalog_Source, Schema_Text (1 .. Schema_Length), Result);
    end Compile;
 end CCL.Manifests.Typed;

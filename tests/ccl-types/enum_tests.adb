@@ -64,16 +64,16 @@ begin
    Reject ("(define (bad) Integer Color.Red) " & Prefix & "(bad)", Unknown_Name);
    Reject ("(define (bad) Color Color.Red) " & Prefix & "(bad)", Expected_Type_Name);
    Reject ("(type Color (enum)) 0", Invalid_Type_Declaration);
-   Reject ("(type Color (enum Red Red)) 0", Invalid_Type_Declaration);
-   Reject (Prefix & "(type Color (enum Red)) 0", Invalid_Type_Declaration);
-   Reject ("(type Integer (enum Zero)) 0", Invalid_Type_Declaration);
+   Reject ("(type Color (enum Red Red)) 0", Duplicate_Component_Name);
+   Reject (Prefix & "(type Color (enum Red)) 0", Duplicate_Type_Name);
+   Reject ("(type Integer (enum Zero)) 0", Duplicate_Type_Name);
    Reject ("(type Bad.Name (enum Red)) 0", Invalid_Type_Declaration);
    Reject ("(type Color (enum A B C D E F G H I J K L M N O P Q)) 0", Invalid_Type_Declaration);
    Reject ("(type VeryLongTypeNameForAnEnumeration (enum Red)) 0", Invalid_Type_Declaration);
    Reject ("(type Color (enum Red", Expected_Close);
    -- Strings are now ordinary payloads; live callbacks remain nonpersistable.
    Reject ("(type Color (variant (Red Handler))) 0", Expected_Type_Name);
-   Reject ("(type Color (record (Red Integer) (Red Boolean))) 0", Invalid_Type_Declaration);
+   Reject ("(type Color (record (Red Integer) (Red Boolean))) 0", Duplicate_Component_Name);
    Reject ("(type Color (enum Red)) (Color.Red)", Unknown_Form);
    -- Every truncated declaration must fail without an unchecked exception.
    for Last in 0 .. Prefix'Length loop

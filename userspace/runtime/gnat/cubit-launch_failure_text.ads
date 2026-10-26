@@ -29,6 +29,10 @@ package CuBit.Launch_Failure_Text with Pure, SPARK_Mode is
         when Capability_Denied     => "a capability it requires was denied",
         when Service_Unavailable   => "a service it requires is not running",
         when Render_Denied         => "GPU rendering was not admitted",
-        when Out_Of_Memory         => "the system is out of memory");
+        when Out_Of_Memory         => "the system is out of memory",
+        when Parameters_Missing    => "it requires typed parameters and the launch gave none",
+        when Parameters_Rejected   => "its typed parameters are not of its parameter record",
+        when Parameters_Unexpected => "it declares no parameters and the launch gave some",
+        when Parameter_Signature_Invalid => "its parameter signature (.cubit.parameters) is malformed");
 
 end CuBit.Launch_Failure_Text;

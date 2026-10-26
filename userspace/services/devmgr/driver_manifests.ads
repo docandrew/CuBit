@@ -31,6 +31,7 @@ with Interfaces; use Interfaces;
 with CCL.Resource_Sections;
 with CCL.Device_Sections;
 with CuBit.Startup_Tables;
+with CuBit.Parameter_Signatures;
 
 package Driver_Manifests with SPARK_Mode => On is
    use CCL.Resource_Sections;
@@ -94,6 +95,9 @@ package Driver_Manifests with SPARK_Mode => On is
       --  The devices it drives (Count 0 when .cubit.devices is absent or
       --  malformed).
       Devices          : CCL.Device_Sections.Match_Table;
+      --  It carries a .cubit.parameters descriptor: it declares typed
+      --  parameters, which only procmgr gives (docs/ccl-launch-parameters.md).
+      Declares_Parameters : Boolean := False;
    end record;
 
    --  A resource-kind startup entry (its request is in .cubit.resources).

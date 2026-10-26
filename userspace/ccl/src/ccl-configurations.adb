@@ -30,6 +30,7 @@ package body CCL.Configurations with SPARK_Mode => On is
          when Invalid_Scheduling => return "INVALID_SCHEDULING";
          when Invalid_Deadline => return "INVALID_DEADLINE";
          when Invalid_Typed_Value => return "INVALID_TYPED_VALUE";
+         when Invalid_Arguments => return "INVALID_ARGUMENTS";
       end case;
    end Diagnostic_Name;
 
@@ -178,7 +179,7 @@ package body CCL.Configurations with SPARK_Mode => On is
       procedure Launch is
          Executable : Key_Text;
          Have_Priority, Have_Network, Have_Role, Have_Mode, Have_Device,
-           Have_Scheduling, Have_Deadline, Have_Render, Have_Firmware : Boolean := False;
+           Have_Scheduling, Have_Deadline, Have_Render, Have_Firmware, Have_Arguments : Boolean := False;
          Priority : Integer_64 := 5;
          Approval : Network_Approval := Deny;
          Role : Startup_Role := Application;
@@ -215,6 +216,7 @@ package body CCL.Configurations with SPARK_Mode => On is
          end Dependency;
       begin
          if Count = 16 then Fail (Too_Many_Entries); return; end if;
+         Item.Entry_At := Position (Reader);
          Read_Key (Executable, True);
          while not Stopped and then not At_Close (Reader) and then not At_End (Reader) loop
             Open_Form (Reader);
@@ -310,6 +312,26 @@ package body CCL.Configurations with SPARK_Mode => On is
                end if;
                Item.Approve_Scheduling := True;
                Have_Scheduling := True;
+            elsif Matches (Name, "arguments") then
+               --  (arguments (Record field => value ...)): kept as written;
+               --  its type is the program's, known only with its file.
+               if Have_Arguments then Fail (Invalid_Arguments); end if;
+               declare
+                  First : Positive;
+                  Last : Natural;
+               begin
+                  Take_Expression (Reader, First, Last);
+                  if Stopped then return; end if;
+                  if Last < First or else Last - First + 1 > Item.Arguments.Data'Length then
+                     Fail (Invalid_Arguments);
+                     Result.Position := First;
+                     return;
+                  end if;
+                  Item.Arguments.Length := Last - First + 1;
+                  Item.Arguments.Data (1 .. Item.Arguments.Length) := Source_Of (Reader, First, Last);
+                  Item.Arguments_At := First;
+               end;
+               Have_Arguments := True;
             elsif Matches (Name, "ready-deadline-ms") then
                if Have_Deadline then Fail (Duplicate_Field); end if;
                Integer_Field (1, MAX_READY_DEADLINE_MS, Number);

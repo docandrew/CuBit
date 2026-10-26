@@ -21,6 +21,7 @@
 ------------------------------------------------------------------------------
 pragma Ada_2022;
 with Interfaces; use Interfaces;
+with CuBit.Launch_Arguments;
 
 package CuBit.Outlet_Rings with Pure, SPARK_Mode is
 
@@ -33,6 +34,9 @@ package CuBit.Outlet_Rings with Pure, SPARK_Mode is
    Entry_Bytes  : constant := 16;
    Maximum_Entries : constant := 16;
    Maximum_Bytes : constant := Header_Bytes + Maximum_Entries * Entry_Bytes;
+   pragma Compile_Time_Error
+     (Maximum_Bytes > CuBit.Launch_Arguments.Ring_Table_Budget,
+      "a ring table must fit the launch block's trailer budget for it");
 
    subtype Entry_Count is Natural range 0 .. Maximum_Entries;
    subtype Table_Length is Natural range 0 .. Maximum_Bytes;

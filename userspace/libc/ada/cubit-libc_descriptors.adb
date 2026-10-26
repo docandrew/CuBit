@@ -7,6 +7,7 @@ with Ada.Unchecked_Conversion;
 with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Child_Exits;
+with CuBit.Parameter_Sections;
 with CuBit.Kernel_ABI;
 with CuBit.Kernel_Calls;
 with CuBit.Libc_ABI; use CuBit.Libc_ABI;
@@ -217,6 +218,7 @@ package body CuBit.Libc_Descriptors is
    procedure Adopt_Ports (Trailer : System.Address; Length : Natural) is
       package PD renames CuBit.Program_Descriptions;
       package PR renames CuBit.Outlet_Rings;
+      package PS renames CuBit.Parameter_Sections;
       use type PD.Connector_Direction;
       use type PD.Element_Kind;
       S : PD.Signature;
@@ -227,7 +229,7 @@ package body CuBit.Libc_Descriptors is
       for P of Ports loop
          P := (others => <>);
       end loop;
-      if Length = 0 or else Length > PR.Maximum_Bytes + PD.Maximum_Descriptor_Bytes then
+      if Length = 0 or else Length > PR.Maximum_Bytes + PS.Maximum_Section_Bytes + PD.Maximum_Descriptor_Bytes then
          return;
       end if;
       declare
@@ -237,14 +239,27 @@ package body CuBit.Libc_Descriptors is
          if Present then
             PR.Decode (Item (1 .. Ring_Length), Rings, Rings_Valid);
          end if;
-         if Length - Ring_Length not in 1 .. PD.Maximum_Descriptor_Bytes then
+         if Length = Ring_Length then
             return;
          end if;
          declare
-            Description : constant PD.Bytes (1 .. Length - Ring_Length)
+            --  The typed parameters section (the program's binding reads
+            --  it), if any, then the description.
+            After_Rings : constant PS.Bytes (1 .. Length - Ring_Length)
             with Import, Address => Item (Ring_Length + 1)'Address;
+            Section_Present : Boolean;
+            Section_Length : PS.Section_Length;
          begin
-            PD.Decode (Description, S, Accepted);
+            PS.Measure (After_Rings, Section_Present, Section_Length);
+            if After_Rings'Length - Section_Length not in 1 .. PD.Maximum_Descriptor_Bytes then
+               return;
+            end if;
+            declare
+               Description : constant PD.Bytes (1 .. After_Rings'Length - Section_Length)
+               with Import, Address => After_Rings (Section_Length + 1)'Address;
+            begin
+               PD.Decode (Description, S, Accepted);
+            end;
          end;
       end;
       if not Accepted then

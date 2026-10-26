@@ -263,7 +263,11 @@ package body CuBit.Libc_Process is
                 when LA.Capability_Denied |
                      LA.Render_Denied         => EACCES,
                 when LA.Service_Unavailable   => EAGAIN,
-                when LA.Out_Of_Memory         => ENOMEM);
+                when LA.Out_Of_Memory         => ENOMEM,
+                when LA.Parameters_Missing |
+                     LA.Parameters_Rejected |
+                     LA.Parameters_Unexpected  => EINVAL,
+                when LA.Parameter_Signature_Invalid => ENOEXEC);
    end Launch_Error;
 
    --  Start the program named at Path with the vectors; 0 or an errno

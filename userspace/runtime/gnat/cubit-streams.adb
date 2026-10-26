@@ -13,6 +13,7 @@ with CuBit.Messages; use CuBit.Messages;
 with CuBit.Launch_Arguments;
 with CuBit.Program_Descriptions;
 with CuBit.Outlet_Rings;
+with CuBit.Parameter_Sections;
 with CuBit.Memory_Grants;
 with CuBit.Grant_References;
 with CuBit.Channel_Rings;
@@ -311,17 +312,29 @@ package body CuBit.Streams is
                PR.Decode (Trailer (1 .. Ring_Length), Ring_Table, Rings_Valid);
             end if;
             declare
-               Description : PD.Bytes (1 .. Trailer'Length - Ring_Length);
+               --  Then the typed parameters section, if any, then the
+               --  description (the rest).
+               After_Rings : CuBit.Parameter_Sections.Bytes (1 .. Trailer'Length - Ring_Length);
+               Section_Present : Boolean;
+               Section_Length : CuBit.Parameter_Sections.Section_Length;
             begin
-               if Description'Length = 0
-                 or else Description'Length > PD.Maximum_Descriptor_Bytes
-               then
-                  return NO_STREAM;
-               end if;
-               for K in Description'Range loop
-                  Description (K) := Trailer (Ring_Length + K);
+               for K in After_Rings'Range loop
+                  After_Rings (K) := Trailer (Ring_Length + K);
                end loop;
-               PD.Decode (Description, S, Accepted);
+               CuBit.Parameter_Sections.Measure (After_Rings, Section_Present, Section_Length);
+               declare
+                  Description : PD.Bytes (1 .. After_Rings'Length - Section_Length);
+               begin
+                  if Description'Length = 0
+                    or else Description'Length > PD.Maximum_Descriptor_Bytes
+                  then
+                     return NO_STREAM;
+                  end if;
+                  for K in Description'Range loop
+                     Description (K) := After_Rings (Section_Length + K);
+                  end loop;
+                  PD.Decode (Description, S, Accepted);
+               end;
             end;
          end;
       end;

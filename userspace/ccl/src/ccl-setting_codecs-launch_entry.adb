@@ -5,7 +5,7 @@ pragma Ada_2022;
 with Interfaces;
 
 package body CCL.Setting_Codecs.Launch_Entry with SPARK_Mode is
-   package R renames CCL.Canonical_Readers;
+   package R renames CuBit.Canonical_Readers;
 
    procedure Read_Launch_Action
      (Source : String; Position : in out Positive; OK : in out Boolean; Item : out Launch_Action_Value)

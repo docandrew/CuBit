@@ -1,0 +1,1 @@
+../../../userspace/runtime/gnat/cubit-outlet_rings.ads

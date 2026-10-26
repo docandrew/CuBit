@@ -529,13 +529,19 @@ is
             end;
             return;
          end if;
-         Read_Name (Token, Good);
-         if Good then
-            Kind := CCL.Types.Find (Tree.Types, Token);
-            if Kind in Invalid_Type | Handler_Type or else (Kind = Unit_Type and not Allow_Unit) then
-               Diagnostic := Expected_Type_Name;
+         declare
+            --  An unknown type is reported at its name.
+            Name_Start : constant Natural := Cursor;
+         begin
+            Read_Name (Token, Good);
+            if Good then
+               Kind := CCL.Types.Find (Tree.Types, Token);
+               if Kind in Invalid_Type | Handler_Type or else (Kind = Unit_Type and not Allow_Unit) then
+                  Diagnostic := Expected_Type_Name;
+                  Diagnostic_Position := To_Diagnostic_Position (Name_Start);
+               end if;
             end if;
-         end if;
+         end;
       end Read_Type;
 
       procedure Parse_List
@@ -1334,6 +1340,15 @@ is
          Self_Parts : array (CCL.Types.Component_Index) of Boolean := [others => False];
          Defaults : array (CCL.Types.Component_Index) of CCL.Types.Field_Default :=
            [others => CCL.Types.No_Field_Default];
+         --  Where a type declaration's name, range bounds and each field or
+         --  alternative start, for diagnostics that point at the culprit.
+         Name_Start, Bounds_Start, Part_Start : Natural := 0;
+         --  A type declaration refused at At_Offset (a source offset).
+         procedure Refuse_Type (Code : Diagnostic_Code; At_Offset : Natural) is
+         begin
+            Diagnostic := Code;
+            Diagnostic_Position := To_Diagnostic_Position (At_Offset);
+         end Refuse_Type;
       begin
          Index := NO_NODE;
          if Diagnostic /= No_Diagnostic then return; end if;
@@ -1346,8 +1361,13 @@ is
             if not Ok then return; end if;
          end if;
          if Name_Is (Token, "type") then
+            Skip_Trivia;
+            Name_Start := Cursor;
             Read_Name (Definition.Identifier, Ok);
             if not Ok then return; end if;
+            if CCL.Types.Find (Tree.Types, Definition.Identifier) /= Invalid_Type then
+               Refuse_Type (Duplicate_Type_Name, Name_Start); return;
+            end if;
             Expect ('(', Ok);
             if not Ok then return; end if;
             Read_Name (Token, Ok);
@@ -1359,6 +1379,7 @@ is
                   Range_Status : CCL.Types.Definition_Result;
                begin
                   Skip_Trivia;
+                  Bounds_Start := Cursor;
                   Read_Integer_Value (Low, Ok);
                   if not Ok then return; end if;
                   Skip_Trivia;
@@ -1368,10 +1389,13 @@ is
                   if not Ok then return; end if;
                   Expect (')', Ok);
                   if not Ok then return; end if;
+                  if Low > High then
+                     Refuse_Type (Invalid_Range_Bounds, Bounds_Start); return;
+                  end if;
                   CCL.Types.Define_Range
                     (Tree.Types, Definition.Identifier, Low, High, Defined_Type, Range_Status);
                   if Range_Status /= CCL.Types.Defined then
-                     Diagnostic := Invalid_Type_Declaration; return;
+                     Refuse_Type (Invalid_Type_Declaration, Start); return;
                   end if;
                   Add_Node
                     ((Kind => Type_Definition, Declared_Kind => Defined_Type,
@@ -1387,7 +1411,7 @@ is
             Is_Enum := Name_Is (Token, "enum");
             Is_Record := Name_Is (Token, "record");
             if not Is_Enum and then not Is_Record and then not Name_Is (Token, "variant") then
-               Diagnostic := Invalid_Type_Declaration; return;
+               Refuse_Type (Invalid_Type_Declaration, Start); return;
             end if;
             Definition.Form := (if Is_Record then CCL.Types.Product else CCL.Types.Sum);
             Declaring := Definition.Identifier;
@@ -1396,18 +1420,27 @@ is
               Source (Source'First + Cursor) /= ')'
             loop
                if Definition.Count = CCL.Types.Maximum_Components then
-                  Diagnostic := Invalid_Type_Declaration; return;
+                  Refuse_Type (Invalid_Type_Declaration, Cursor); return;
                end if;
                if not Is_Enum then
                   Expect ('(', Ok);
                   if not Ok then return; end if;
                end if;
+               Skip_Trivia;
+               Part_Start := Cursor;
                Definition.Count := Definition.Count + 1;
                Read_Name (Definition.Parts (Definition.Count).Identifier, Ok);
                if not Ok then return; end if;
+               for Earlier in 1 .. Definition.Count - 1 loop
+                  if CCL.Types.Same (Definition.Parts (Earlier).Identifier,
+                                     Definition.Parts (Definition.Count).Identifier)
+                  then
+                     Refuse_Type (Duplicate_Component_Name, Part_Start); return;
+                  end if;
+               end loop;
                if not Is_Record and then Definition.Identifier.Length + 1 +
                  Definition.Parts (Definition.Count).Identifier.Length > MAX_NAME_LENGTH
-               then Diagnostic := Invalid_Type_Declaration; return; end if;
+               then Refuse_Type (Invalid_Type_Declaration, Part_Start); return; end if;
                Definition.Parts (Definition.Count).Payload := Unit_Type;
                if not Is_Enum then
                   Skip_Trivia;
@@ -1449,7 +1482,7 @@ is
             end loop;
             CCL.Types.Define (Tree.Types, Definition, Defined_Type, Definition_Status);
             if Definition_Status /= CCL.Types.Defined then
-               Diagnostic := Invalid_Type_Declaration; return;
+               Refuse_Type (Invalid_Type_Declaration, Start); return;
             end if;
             for P in 1 .. Definition.Count loop
                if CCL.Types."/=" (Defaults (P).Kind, CCL.Types.No_Default) then
@@ -1458,7 +1491,7 @@ is
                   begin
                      CCL.Types.Set_Default (Tree.Types, Defined_Type, P, Defaults (P), Set);
                      if CCL.Types."/=" (Set, CCL.Types.Default_Set) then
-                        Diagnostic := Invalid_Field_Default; return;
+                        Refuse_Type (Invalid_Field_Default, Start); return;
                      end if;
                   end;
                end if;

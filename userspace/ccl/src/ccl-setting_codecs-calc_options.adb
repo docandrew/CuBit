@@ -4,7 +4,7 @@
 pragma Ada_2022;
 
 package body CCL.Setting_Codecs.Calc_Options with SPARK_Mode is
-   package R renames CCL.Canonical_Readers;
+   package R renames CuBit.Canonical_Readers;
 
    procedure Read_Calc_Mode
      (Source : String; Position : in out Positive; OK : in out Boolean; Item : out Calc_Mode_Value)

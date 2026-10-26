@@ -58,6 +58,9 @@ with CuBit.Launch_Failure_Text;
 with CuBit.Launch_Grants;
 with CuBit.Program_Descriptions;
 with CuBit.Outlet_Rings;
+with CuBit.Parameter_Sections;
+with CuBit.Parameter_Signatures;
+with CCL.Typed_Values;
 with CuBit.Stream_Regions;
 with CuBit.Stream_Rings;
 with CuBit.Child_Exits;
@@ -207,6 +210,10 @@ procedure main is
    launchBlock : CuBit.Launch_Arguments.Block
      (1 .. CuBit.Launch_Arguments.Maximum_Block_Bytes) := [others => 0];
    pendingArgumentBytes : CuBit.Launch_Arguments.Block_Length := 0;
+   --  The startup plan's (arguments ...) for the program being started
+   --  (docs/ccl-launch-parameters.md), as written; empty for every other
+   --  launch (OP_LAUNCH, OP_SPAWN), which cannot give typed parameters.
+   pendingParameters : CCL.Configurations.Value_Text;
    --  The block a child is given: that payload, then its startup table
    --  (CuBit.Launch_Envelopes).
    launchEnvelope : CuBit.Launch_Envelopes.Block
@@ -1102,6 +1109,57 @@ procedure main is
          end;
       end loop;
    end findDescription;
+
+   ---------------------------------------------------------------------------
+   --  findParameters
+   --  The program's .cubit.parameters (CuBit.Parameter_Signatures) in the
+   --  ELF in elfBuf: where it is and how long (0: the program declares no
+   --  parameters). One too long to be a descriptor is reported one byte
+   --  over the limit, so it fails validation.
+   ---------------------------------------------------------------------------
+   procedure findParameters
+     (elfSize : Unsigned_64; Found_At : out Unsigned_64; Found_Length : out Natural)
+   is
+      package PS renames CuBit.Parameter_Signatures;
+      Magic : constant Unsigned_32 :=
+        Unsigned_32 (PS.Magic_0) or Shift_Left (Unsigned_32 (PS.Magic_1), 8)
+        or Shift_Left (Unsigned_32 (PS.Magic_2), 16)
+        or Shift_Left (Unsigned_32 (PS.Magic_3), 24);
+      e_shoff : Unsigned_64;
+      e_shnum : Unsigned_16;
+   begin
+      Found_At := 0;
+      Found_Length := 0;
+      if elfSize < 64 then
+         return;
+      end if;
+      e_shoff := readU64 (40);
+      e_shnum := readU16 (60);
+      if readU16 (58) /= 64 or else e_shoff = 0 or else e_shnum = 0
+        or else e_shoff > elfSize
+        or else Unsigned_64 (e_shnum) > (elfSize - e_shoff) / 64
+      then
+         return;
+      end if;
+      for i in 0 .. Unsigned_16'(e_shnum - 1) loop
+         declare
+            shBase    : constant Unsigned_64 := e_shoff + Unsigned_64 (i) * 64;
+            sh_offset : constant Unsigned_64 := readU64 (shBase + 24);
+            sh_size   : constant Unsigned_64 := readU64 (shBase + 32);
+         begin
+            if readU32 (shBase + 4) = SHT_PROGBITS
+              and then sh_size >= PS.Magic_Bytes
+              and then sh_offset <= elfSize
+              and then sh_size <= elfSize - sh_offset
+              and then readU32 (sh_offset) = Magic
+            then
+               Found_At := sh_offset;
+               Found_Length := Natural (Unsigned_64'Min (sh_size, PS.Maximum_Descriptor_Bytes + 1));
+               return;
+            end if;
+         end;
+      end loop;
+   end findParameters;
 
    ---------------------------------------------------------------------------
    --  The manifest a child's ELF carries (CCL.Manifests): its declared
@@ -3075,6 +3133,8 @@ procedure main is
          Description_Length : CuBit.Program_Descriptions.Descriptor_Length;
          Description_Valid : Boolean;
          Accepted : Boolean := True;
+         Parameter_Section : CuBit.Parameter_Sections.Bytes (1 .. CuBit.Parameter_Sections.Maximum_Section_Bytes);
+         Parameter_Length : CuBit.Parameter_Sections.Section_Length := 0;
       begin
          findDescription
            (elfSize, Description_At, Description_Length, Description_Valid, streamBitmask);
@@ -3084,7 +3144,71 @@ procedure main is
             Failure := LA.Manifest_Refused;
             return No_Process;
          end if;
-         if Description_Length > 0 then
+         --  Typed parameters (docs/ccl-launch-parameters.md): the
+         --  launcher's value is checked against the program's signature
+         --  and placed, canonical, in the trailer between the rings and
+         --  the description. A program that declares parameters needs a
+         --  value; one that declares none takes none.
+         declare
+            package PS renames CuBit.Parameter_Signatures;
+            package PV renames CuBit.Parameter_Sections;
+            use type PS.Validation;
+            Signature_At : Unsigned_64;
+            Signature_Length : Natural;
+            Given : String renames pendingParameters.Data (1 .. pendingParameters.Length);
+            Refused : Boolean := False;
+         begin
+            findParameters (elfSize, Signature_At, Signature_Length);
+            if Signature_Length = 0 and then Given'Length > 0 then
+               debugPrint ("procmgr: parameters refused: " & name & " declares none" & LF);
+               Failure := LA.Parameters_Unexpected;
+               Refused := True;
+            elsif Signature_Length > 0 then
+               declare
+                  Source : constant PS.Bytes (1 .. Natural'Min (Signature_Length, PS.Maximum_Descriptor_Bytes))
+                    with Import, Address => elfBuf + Storage_Offset (Signature_At);
+                  Descriptor : constant PS.Bytes := Source;
+                  Checked : CCL.Typed_Values.Check_Result;
+               begin
+                  Refused := True;
+                  if Signature_Length > PS.Maximum_Descriptor_Bytes
+                    or else PS.Validate (Descriptor) /= PS.Valid
+                  then
+                     debugPrint ("procmgr: parameters refused: " & name & ": malformed .cubit.parameters" & LF);
+                     Failure := LA.Parameter_Signature_Invalid;
+                  elsif Given'Length = 0 then
+                     debugPrint ("procmgr: parameters refused: " & name & " requires " &
+                                 PS.Root_Of (Descriptor) & " and the launch gave none" & LF);
+                     Failure := LA.Parameters_Missing;
+                  else
+                     CCL.Typed_Values.Check (PS.Signature_Of (Descriptor), PS.Root_Of (Descriptor), Given, Checked);
+                     if not Checked.Success then
+                        debugPrint ("procmgr: parameters refused: " & name & ": " &
+                                    Checked.Message (1 .. Checked.Message_Length) & LF);
+                        Failure := LA.Parameters_Rejected;
+                     else
+                        PV.Encode (PS.Identity_Of (Descriptor), Checked.Canonical (1 .. Checked.Length),
+                                   Parameter_Section, Parameter_Length, Accepted);
+                        if not Accepted then
+                           debugPrint ("procmgr: parameters refused: " & name &
+                                       ": the value does not fit its section" & LF);
+                           Failure := LA.Parameters_Rejected;
+                           Accepted := True;
+                        else
+                           debugPrint ("procmgr: parameters " & name & ": " &
+                                       Checked.Canonical (1 .. Checked.Length) & LF);
+                           Refused := False;
+                        end if;
+                     end if;
+                  end if;
+               end;
+            end if;
+            if Refused then
+               Stop_Suspended_Child;
+               return No_Process;
+            end if;
+         end;
+         if Description_Length > 0 or else Parameter_Length > 0 then
             if Block_Length = 0 then
                declare
                   Builder : LA.Builder;
@@ -3106,19 +3230,24 @@ procedure main is
                   Source : constant LA.Block (1 .. Description_Length)
                     with Import, Address => elfBuf + Storage_Offset (Description_At);
                   Rings : constant CuBit.Outlet_Rings.Table :=
-                    deriveRings (newPID, Source, Child.Mailbox);
+                    (if Description_Length > 0 then deriveRings (newPID, Source, Child.Mailbox)
+                     else (others => <>));
                   Ring_Table : CuBit.Outlet_Rings.Bytes (1 .. CuBit.Outlet_Rings.Maximum_Bytes);
                   Ring_Length : CuBit.Outlet_Rings.Table_Length;
                   Length : LA.Present_Length := Block_Length;
                begin
                   CuBit.Outlet_Rings.Encode (Rings, Ring_Table, Ring_Length);
                   declare
-                     Trailer : LA.Block (1 .. Ring_Length + Description_Length);
+                     --  Rings, then the parameters section, then the description.
+                     Trailer : LA.Block (1 .. Ring_Length + Parameter_Length + Description_Length);
                   begin
                      for K in 1 .. Ring_Length loop
                         Trailer (K) := Ring_Table (K);
                      end loop;
-                     Trailer (Ring_Length + 1 .. Trailer'Last) := Source;
+                     for K in 1 .. Parameter_Length loop
+                        Trailer (Ring_Length + K) := Parameter_Section (K);
+                     end loop;
+                     Trailer (Ring_Length + Parameter_Length + 1 .. Trailer'Last) := Source;
                      LA.Attach_Description (launchBlock, Length, Trailer, Accepted);
                   end;
                   Block_Length := Length;
@@ -4189,6 +4318,7 @@ procedure main is
             debugPrint ("procmgr: init launch ");
             printDec (Unsigned_32 (Entry_Number));
             debugPrint ("/" & Unsigned_32'Image (Unsigned_32 (Plan.Plan.Launch_Count)) & ": " & Name & LF);
+            pendingParameters := Item.Arguments;
             PID := spawnByName
               (Name, Unsigned_64 (Item.Priority), systemStartup => True, startupRole => Item.Role,
                approveRender => Render_Granted (Item, Name),
@@ -4197,6 +4327,7 @@ procedure main is
                  (if Item.Approval = Approve_Declared then Declared_Network
                   else No_Network),
                Failure => Failure);
+            pendingParameters := (others => <>);
             if PID = No_Process then
                debugPrint ("procmgr: init spawn failed: " & Name & ": " &
                            CuBit.Launch_Failure_Text.Explanation (Failure) & LF);

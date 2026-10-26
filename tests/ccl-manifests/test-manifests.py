@@ -171,7 +171,7 @@ class Manifests(unittest.TestCase):
                 self.assertEqual(failed.returncode, 1)
                 self.assertIn(message, failed.stderr)
 
-    def test_typed_parameters_match_program_parameters_layout(self):
+    def test_argv_parameters_match_program_description_layout(self):
         # The binutils ld manifest: an independent encoding of the
         # .cubit.description descriptor (CuBit.Program_Descriptions).
         catalog = (ROOT / 'userspace/ccl/catalogs/native-runtime-services.ccl').read_text()
@@ -196,25 +196,120 @@ class Manifests(unittest.TestCase):
         expected += bytes([1, 0, 2, 1])
         self.assertEqual(self.sections(result.stdout)['.cubit.description'], expected)
         for old, new, message in [
-                ('(Argument_Piece.Value "inputs")', '(Argument_Piece.Value "input")',
+                ('(Argv_Piece.Value "inputs")', '(Argv_Piece.Value "input")',
                  'no parameter "input"'),
-                ('(Argument_Piece.Value "inputs")', '(Argument_Piece.Value "static")',
+                ('(Argv_Piece.Value "inputs")', '(Argv_Piece.Value "static")',
                  'flag "static" has no value'),
-                ('(Argument_Piece.Value "inputs")', '(Argument_Piece.Literal "-v")',
+                ('(Argv_Piece.Value "inputs")', '(Argv_Piece.Literal "-v")',
                  'parameter "inputs" is never rendered'),
-                ('"entry" Parameter_Kind.Text', '"output" Parameter_Kind.Text',
+                ('"entry" Argv_Kind.Text', '"output" Argv_Kind.Text',
                  'parameter "output" is declared twice'),
-                ('"entry" Parameter_Kind.Text', '"Entry" Parameter_Kind.Text',
+                ('"entry" Argv_Kind.Text', '"Entry" Argv_Kind.Text',
                  'name "Entry" is not 1 to 32'),
-                ('(Parameter "static" Parameter_Kind.Flag)',
-                 '(Parameter "static" Parameter_Kind.Flag many => true)',
+                ('(Argv_Parameter "static" Argv_Kind.Flag)',
+                 '(Argv_Parameter "static" Argv_Kind.Flag many => true)',
                  'flag "static" cannot take many values'),
-                ('(Argument_Piece.Literal "-o")', '(Argument_Piece.Literal "%s")' % ('x' * 49),
+                ('(Argv_Piece.Literal "-o")', '(Argv_Piece.Literal "%s")' % ('x' * 49),
                  'literal is not 1 to 48 printable')]:
             with self.subTest(new=new):
                 failed = self.compile(source.replace(old, new, 1), catalog)
                 self.assertEqual(failed.returncode, 1)
                 self.assertIn(message, failed.stderr)
+
+    PARAMETER_TYPES = (
+        '(type Deadline_Milliseconds (range 1 9223372036854775807))\n'
+        '(type Namespace_Node_Count (range 1 2147483647))\n'
+        '(type ACPI_Deadline (variant (Within Deadline_Milliseconds) (Forever)))\n'
+        '(type Mode (enum Quiet Verbose))\n'
+        '(type Sample_Parameters (record\n'
+        '  (deferred ACPI_Deadline)\n'
+        '  (nodes Namespace_Node_Count)\n'
+        '  (mode Mode Mode.Quiet)\n'
+        '  (trace Boolean false)))\n')
+    PARAMETER_MANIFEST = (
+        '(Executable_Manifest identity => "com.cubit.sample" version => "1"\n'
+        '  parameters => (Parameter_Signature.Declared "Sample_Parameters"))\n')
+
+    def test_typed_parameters_descriptor_and_binding(self):
+        """The parameters form: a record the manifest declares becomes a
+        .cubit.parameters descriptor (canonical signature, SHA-256 identity)
+        and a Parameters binding beside the Startup package."""
+        import hashlib
+        result = self.compile(self.PARAMETER_TYPES + self.PARAMETER_MANIFEST, CATALOG)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        section = self.sections(result.stdout)['.cubit.parameters']
+        magic, version, length = struct.unpack_from('<4sHH', section, 0)
+        root = section[41:41 + section[40]].decode()
+        signature = section[41 + section[40]:]
+        self.assertEqual((magic, version, root, len(signature)), (b'PRMS', 1, 'Sample_Parameters', length))
+        self.assertEqual(signature.decode(),
+                         '(type Deadline_Milliseconds (range 1 9223372036854775807)) '
+                         '(type ACPI_Deadline (variant (Within Deadline_Milliseconds) (Forever))) '
+                         '(type Namespace_Node_Count (range 1 2147483647)) (type Mode (enum Quiet Verbose)) '
+                         '(type Sample_Parameters (record (deferred ACPI_Deadline) (nodes Namespace_Node_Count) '
+                         '(mode Mode Mode.Quiet) (trace Boolean false)))')
+        self.assertEqual(section[8:40], hashlib.sha256(signature).digest())
+        binding = (self.directory / 'parameters.ads').read_text()
+        self.assertIn('type Sample_Parameters_Value is record', binding)
+        self.assertIn('function Value return Sample_Parameters_Value', binding)
+        self.assertIn('Parameters.Require;', (self.directory / 'startup.adb').read_text())
+        # The same signature however the manifest spells it.
+        respelled = self.compile(self.PARAMETER_TYPES.replace('(record\n  ', '(record ').replace('\n  ', ' ')
+                                 + self.PARAMETER_MANIFEST, CATALOG)
+        self.assertEqual(self.sections(respelled.stdout)['.cubit.parameters'], section)
+        # No parameters: no section, and an empty binding.
+        plain = self.compile()
+        self.assertNotIn('.cubit.parameters', self.sections(plain.stdout))
+        self.assertIn('declares no typed parameters', (self.directory / 'parameters.ads').read_text())
+
+    def test_typed_parameters_refused(self):
+        """Strict errors with line and column."""
+        for old, new, message in [
+                ('(nodes Namespace_Node_Count)', '(nodes Namespace_Node_Cont)',
+                 'line 7, column 10: "Namespace_Node_Cont": Expected a built-in value type'),
+                ('(trace Boolean false)', '(nodes Boolean false)',
+                 'line 9, column 4: "nodes": This field or alternative is already named'),
+                ('(type Mode (enum Quiet Verbose))', '(type Mode (enum Quiet Quiet))',
+                 'line 4, column 24: "Quiet": This field or alternative is already named'),
+                ('(type Mode (enum', '(type Namespace_Node_Count (enum',
+                 'line 4, column 7: "Namespace_Node_Count": A type of this name is already declared'),
+                ('(range 1 2147483647)', '(range 2147483647 1)',
+                 'line 2, column 35: "2147483647": A range\'s low bound is above its high bound'),
+                ('(nodes Namespace_Node_Count)', '(nodes Namespace_Node_Count 4096)',
+                 'line 5, column 1: field nodes of Sample_Parameters has a default, but it holds a number'),
+                ('(deferred ACPI_Deadline)', '(deferred ACPI_Deadline ACPI_Deadline.Forever)',
+                 'field deferred of Sample_Parameters has a default, but it holds a number'),
+                ('(nodes Namespace_Node_Count)', '(nodes Integer)',
+                 'field nodes of Sample_Parameters is a bare Integer'),
+                ('(nodes Namespace_Node_Count)', '(nodes (List Mode))',
+                 'which is not a record, variant, enumeration, range, Boolean or String'),
+                ('"Sample_Parameters")', '"Sample_Parameter")',
+                 'line 11, column 47: parameters names "Sample_Parameter", a type this manifest does not declare'),
+                ('"Sample_Parameters")', '"Mode")', 'parameters names Mode, which is not a record'),
+                ('"Sample_Parameters")', '"Service_Request")',
+                 'Service_Request is a manifest schema type, not one this manifest declares'),
+                ('(trace Boolean false)', '(Value Boolean false)',
+                 '"Value" cannot be an Ada name in the generated binding')]:
+            with self.subTest(new=new):
+                source = self.PARAMETER_TYPES + self.PARAMETER_MANIFEST
+                self.assertIn(old, source)
+                self.reject(source.replace(old, new, 1), CATALOG, message)
+
+    def test_manifest_comments_do_not_count_against_the_source_limit(self):
+        """Regression: comments counted against the CCL source limit, so a
+        well-commented manifest (ccl-console's, gcc's driver) failed with
+        "Source exceeds its size limit". Comments are dropped before the
+        check, keeping every line and column."""
+        comment = ''.join('# %s\n' % ('x' * 70) for _ in range(40))
+        source = comment + self.PARAMETER_TYPES.replace('(trace Boolean false)))', '(trace Boolean false))) # "#" kept') \
+            + self.PARAMETER_MANIFEST
+        self.assertGreater(len(source), 3000)
+        result = self.compile(source, CATALOG)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        # A '#' inside a string is not a comment, and positions are unchanged.
+        bad = source.replace('(range 1 2147483647)', '(range 2147483647 1)', 1)
+        self.reject(bad, CATALOG, 'line 42, column 35: "2147483647"')
+        self.reject(source.replace('"com.cubit.sample"', '"com.cubit#sample"'), CATALOG, 'com.cubit#sample')
 
     def test_existing_elf_bytes_unchanged(self):
         legacy = {'.' + path.name[:-len('.bin')]: path.read_bytes() for path in

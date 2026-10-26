@@ -7,6 +7,10 @@ project CCL_Manifest_ABI is
       "cubit-network_authority.ads", "cubit-network_authority.adb",
       "cubit-tls_scopes.ads", "cubit-tls_scopes.adb",
       "cubit-failures.ads", "cubit-failures.adb",
+      --  The canonical-source readers the generated decoders use.
+      "cubit-canonical_readers.ads", "cubit-canonical_readers.adb",
+      --  The typed-parameter descriptor (.cubit.parameters).
+      "cubit-parameter_signatures.ads", "cubit-parameter_signatures.adb",
       "cubit-launch_authority.ads", "cubit-launch_authority.adb",
       "cubit-file_access.ads", "cubit-file_access.adb",
       "cubit-launch_arguments.ads", "cubit-launch_arguments.adb",

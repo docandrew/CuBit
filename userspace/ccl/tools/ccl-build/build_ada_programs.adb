@@ -25,6 +25,10 @@ package body Build_Ada_Programs is
    Startup_Spec : constant String := "startup.ads";
    --  Its body: the startup check, run while the package elaborates (CAP-003).
    Startup_Body : constant String := "startup.adb";
+   --  The typed-parameter binding ccl-manifest writes beside them (empty
+   --  for a program that declares no parameters).
+   Parameters_Spec : constant String := "parameters.ads";
+   Parameters_Body : constant String := "parameters.adb";
    Manifest_Assembly : constant String := "manifest.S";
    Manifest_Object_Name : constant String := "manifest.o";
    Manifest_File : constant String := "manifest.ccl";
@@ -606,8 +610,11 @@ package body Build_Ada_Programs is
             Literal (S, "--schema");
             Piece_Of (S, Input_Path, Schema);
             S.Capture := Assembly;
-            --  ccl-manifest writes the body beside the spec.
+            --  ccl-manifest writes the body beside the spec, and the
+            --  parameters binding beside both.
             Declare_Output (S, Generated / Startup_Body);
+            Declare_Output (S, Generated / Parameters_Spec);
+            Declare_Output (S, Generated / Parameters_Body);
             Run (S, Outcome);
             Remember (S, Outcome);
          end;
@@ -630,6 +637,8 @@ package body Build_Ada_Programs is
          end;
          Generated_Units.Append (Startup_Spec);
          Generated_Units.Append (Startup_Body);
+         Generated_Units.Append (Parameters_Spec);
+         Generated_Units.Append (Parameters_Body);
       end if;
 
       --  3. One compile per unit, from main through the .ali "W" lines.
@@ -731,6 +740,9 @@ package body Build_Ada_Programs is
                                  elsif Withed & Spec_Suffix = Startup_Spec
                                    and then Program.Manifest_Catalog /= No_Manifest
                                  then Startup_Body
+                                 elsif Withed & Spec_Suffix = Parameters_Spec
+                                   and then Program.Manifest_Catalog /= No_Manifest
+                                 then Parameters_Body
                                  else Withed & Spec_Suffix);
                            begin
                               if (Sources.Contains (Unit_File) or else Generated_Units.Contains (Unit_File))

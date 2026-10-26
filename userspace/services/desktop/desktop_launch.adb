@@ -2,7 +2,7 @@
 --  CuBit
 --  Copyright (C) 2026 Jon Andrew
 ------------------------------------------------------------------------------
-with CCL.Canonical_Readers;
+with CuBit.Canonical_Readers;
 with CCL.Setting_Codecs.Launch_Entry;
 
 package body Desktop_Launch is
@@ -93,8 +93,8 @@ package body Desktop_Launch is
       end if;
       Success := False;
       declare
-         Label : constant String := CCL.Canonical_Readers.Image (Setting.label);
-         Icon : constant String := CCL.Canonical_Readers.Image (Setting.icon.name);
+         Label : constant String := CuBit.Canonical_Readers.Image (Setting.label);
+         Icon : constant String := CuBit.Canonical_Readers.Image (Setting.icon.name);
       begin
          if Label'Length not in 1 .. Maximum_Label then
             return;
@@ -103,7 +103,7 @@ package body Desktop_Launch is
          Item.Label_Length := Label'Length;
          if Setting.action.Choice = Codec.Program then
             declare
-               Program : constant String := CCL.Canonical_Readers.Image (Setting.action.Program_Payload);
+               Program : constant String := CuBit.Canonical_Readers.Image (Setting.action.Program_Payload);
             begin
                --  A program name, not a path: procmgr resolves it.
                if Program'Length not in 1 .. Maximum_Program

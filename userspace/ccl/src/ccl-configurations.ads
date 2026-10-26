@@ -69,6 +69,15 @@ package CCL.Configurations with SPARK_Mode => On is
         CCL.Scheduling_Limits.Microseconds'First;
       Has_Ready_Deadline : Boolean := False;
       Ready_Deadline_Ms : Ready_Deadline := Ready_Deadline'Last;
+      --  (arguments (Record field => value ...)): the program's typed
+      --  parameters (docs/ccl-launch-parameters.md), as written. procmgr
+      --  checks it against the program's .cubit.parameters signature when
+      --  it launches it, and so does the image build; empty: none given.
+      --  Arguments_At: where the expression starts in the profile, from 1.
+      Arguments : Value_Text;
+      Arguments_At : Natural := 0;
+      --  Where the entry's executable name starts in the profile, from 1.
+      Entry_At : Natural := 0;
    end record;
    type Setting_Array is array (Positive range 1 .. MAX_SETTINGS) of Setting_Entry;
    type Launch_Array is array (Positive range 1 .. MAX_LAUNCHES) of Launch_Entry;
@@ -84,7 +93,9 @@ package CCL.Configurations with SPARK_Mode => On is
       Invalid_Key, Invalid_Value, Duplicate_Key, Too_Many_Entries,
       Invalid_Executable, Invalid_Priority, Invalid_Approval, Invalid_Role, Duplicate_Field,
       Missing_Field, Trailing_Input, Invalid_Dependency, Invalid_Launch_Mode,
-      Invalid_Scheduling, Invalid_Deadline, Invalid_Typed_Value);
+      Invalid_Scheduling, Invalid_Deadline, Invalid_Typed_Value,
+      --  (arguments ...) given twice, or longer than a Value_Text.
+      Invalid_Arguments);
    type Compilation_Result is record
       Success : Boolean := False;
       Diagnostic : Diagnostic_Code := No_Error;

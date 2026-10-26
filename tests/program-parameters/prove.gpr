@@ -1,0 +1,19 @@
+--  The generated binding's Decode, the token readers it calls, and the
+--  descriptor and launch-block section codecs, for gnatprove (level 2).
+project Prove is
+   for Source_Dirs use ("build/generated", "../../userspace/ccl/runtime-shared", "host");
+   for Source_Files use
+     ("parameters.ads", "parameters.adb", "cubit.ads",
+      "cubit-canonical_readers.ads", "cubit-canonical_readers.adb",
+      "cubit-parameter_signatures.ads", "cubit-parameter_signatures.adb",
+      "cubit-parameter_sections.ads", "cubit-parameter_sections.adb",
+      "cubit-launch_arguments.ads", "cubit-launch_arguments.adb",
+      "cubit-launch_parameters.ads");
+   for Object_Dir use "build/prove";
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=2", "--checks-as-errors=on");
+   end Prove;
+end Prove;

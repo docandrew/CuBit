@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #  Hosted tests of the generated typed-setting decoders (CCL.Setting_Codecs,
 #  ccl-manifest --setting-codecs) against CCL.Typed_Settings; --prove also
-#  runs gnatprove (level 2) over CCL.Canonical_Readers and the decoders
+#  runs gnatprove (level 2) over CuBit.Canonical_Readers and the decoders
 #  (under a memory cap: docs/proofs, cap-proof-memory).
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"

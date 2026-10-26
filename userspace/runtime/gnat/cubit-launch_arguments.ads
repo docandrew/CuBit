@@ -18,11 +18,14 @@
 --        working directory if there is one, each ended by one NUL byte;
 --        then, filling the rest of the block (at most
 --        Maximum_Description_Bytes), the trailer: the table of outlet rings
---        the launcher lent the child (CuBit.Outlet_Rings), if any, then the
---        program's description (CuBit.Program_Descriptions: its
+--        the launcher lent the child (CuBit.Outlet_Rings), if any; then the
+--        typed parameters section (CuBit.Parameter_Sections: the value of
+--        the program's parameter record, checked by procmgr against its
+--        .cubit.parameters signature), if the program declares parameters;
+--        then the program's description (CuBit.Program_Descriptions: its
 --        connectors and descriptor map), which procmgr attaches from the
---        program's .cubit.description after validating it, and which the
---        child decodes before use.
+--        program's .cubit.description after validating it. The child
+--        decodes each part before use.
 --
 --  Arguments are data, never authority: nothing in a block grants access
 --  to anything. The working directory is a name relative names start
@@ -37,11 +40,23 @@ with Interfaces; use Interfaces;
 
 package CuBit.Launch_Arguments with Pure, SPARK_Mode is
 
-   Format_Version      : constant := 3;
+   --  4: the typed parameters section joined the trailer.
+   Format_Version      : constant := 4;
    Header_Bytes        : constant := 16;
-   --  CuBit.Program_Descriptions.Maximum_Descriptor_Bytes and a full
-   --  CuBit.Outlet_Rings table fit.
-   Maximum_Description_Bytes : constant := 4096 + 272;
+   --  The trailer's budget, part by part. Each part's own unit states its
+   --  bound as this budget and checks the relation where it is compiled:
+   --  CuBit.Program_Descriptions.Maximum_Descriptor_Bytes,
+   --  CuBit.Outlet_Rings.Maximum_Bytes and
+   --  CuBit.Parameter_Sections.Maximum_Section_Bytes (a section header and
+   --  at most Parameter_Value_Budget bytes of canonical source, which is
+   --  also CuBit.Canonical_Readers.Maximum_Canonical).
+   Description_Budget       : constant := 4096;
+   Ring_Table_Budget        : constant := 272;
+   Parameter_Header_Budget  : constant := 38;
+   Parameter_Value_Budget   : constant := 1024;
+   Parameter_Section_Budget : constant := Parameter_Header_Budget + Parameter_Value_Budget;
+   Maximum_Description_Bytes : constant :=
+     Ring_Table_Budget + Parameter_Section_Budget + Description_Budget;
    Maximum_Block_Bytes : constant := 64 * 1024;
    Maximum_Strings     : constant := 4096;   --  directory included
    Maximum_Directories : constant := 1;
@@ -282,18 +297,32 @@ package CuBit.Launch_Arguments with Pure, SPARK_Mode is
    --  Service_Unavailable: a service it requires is not running.
    --  Render_Denied: GPU render admission refused it.
    --  Out_Of_Memory: no memory for the child or its capabilities.
+   --  Typed program parameters (docs/ccl-launch-parameters.md):
+   --  Parameters_Missing: the program declares parameters (every one is
+   --  required) and the launch gave no value, or came through a path that
+   --  cannot give one (OP_LAUNCH, OP_SPAWN).
+   --  Parameters_Rejected: the value is not of the program's parameter
+   --  record: ill-typed, a field missing or unknown, a number outside its
+   --  range, or a canonical source over its budget.
+   --  Parameters_Unexpected: a value for a program that declares none.
+   --  Parameter_Signature_Invalid: the program's .cubit.parameters is
+   --  malformed.
    type Launch_Failure is
      (Malformed_Request, Grant_Unavailable, Arguments_Rejected, Spawn_Failed,
       Not_Granted, Executable_Not_Found, Startup_Table_Missing,
       Startup_Table_Invalid, Manifest_Refused, Capability_Denied,
-      Service_Unavailable, Render_Denied, Out_Of_Memory);
+      Service_Unavailable, Render_Denied, Out_Of_Memory,
+      Parameters_Missing, Parameters_Rejected, Parameters_Unexpected,
+      Parameter_Signature_Invalid);
    for Launch_Failure use
      (Malformed_Request => 1, Grant_Unavailable => 2,
       Arguments_Rejected => 3, Spawn_Failed => 4, Not_Granted => 5,
       Executable_Not_Found => 6, Startup_Table_Missing => 7,
       Startup_Table_Invalid => 8, Manifest_Refused => 9,
       Capability_Denied => 10, Service_Unavailable => 11,
-      Render_Denied => 12, Out_Of_Memory => 13);
+      Render_Denied => 12, Out_Of_Memory => 13,
+      Parameters_Missing => 14, Parameters_Rejected => 15,
+      Parameters_Unexpected => 16, Parameter_Signature_Invalid => 17);
 
    --  A reply word that names a Launch_Failure (the codes are contiguous),
    --  and which one.
@@ -315,6 +344,10 @@ package CuBit.Launch_Arguments with Pure, SPARK_Mode is
         when Launch_Failure'Enum_Rep (Service_Unavailable)   => Service_Unavailable,
         when Launch_Failure'Enum_Rep (Render_Denied)         => Render_Denied,
         when Launch_Failure'Enum_Rep (Out_Of_Memory)         => Out_Of_Memory,
+        when Launch_Failure'Enum_Rep (Parameters_Missing)    => Parameters_Missing,
+        when Launch_Failure'Enum_Rep (Parameters_Rejected)   => Parameters_Rejected,
+        when Launch_Failure'Enum_Rep (Parameters_Unexpected) => Parameters_Unexpected,
+        when Launch_Failure'Enum_Rep (Parameter_Signature_Invalid) => Parameter_Signature_Invalid,
         when others                                          => Spawn_Failed)
      with Pre  => Is_Failure (Word),
           Post => Launch_Failure'Enum_Rep (Failure_Of'Result) = Word;

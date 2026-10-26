@@ -1,6 +1,6 @@
 pragma Ada_2022;
 
-package body CCL.Canonical_Readers with SPARK_Mode is
+package body CuBit.Canonical_Readers with SPARK_Mode is
    use type Interfaces.Unsigned_64;
 
    procedure Expect (Source : String; Position : in out Positive; OK : in out Boolean; Literal : String) is
@@ -160,4 +160,4 @@ package body CCL.Canonical_Readers with SPARK_Mode is
    begin
       OK := OK and then Position = Source'Last + 1;
    end Finish;
-end CCL.Canonical_Readers;
+end CuBit.Canonical_Readers;

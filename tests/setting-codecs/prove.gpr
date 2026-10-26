@@ -1,8 +1,8 @@
 --  The token readers and the generated decoders, for gnatprove (level 2).
 project Prove is
-   for Source_Dirs use ("../../userspace/ccl/src");
+   for Source_Dirs use ("../../userspace/ccl/src", "../../userspace/ccl/runtime-shared");
    for Source_Files use
-     ("ccl.ads", "ccl-canonical_readers.ads", "ccl-canonical_readers.adb",
+     ("ccl.ads", "cubit.ads", "cubit-canonical_readers.ads", "cubit-canonical_readers.adb",
       "ccl-setting_codecs.ads", "ccl-setting_kinds.ads", "ccl-interfaces.ads",
       "ccl-interfaces-calc_types.ads", "ccl-interfaces-desktop_launch.ads", "ccl-interfaces-desktop_input.ads",
       "ccl-interfaces-desktop_display.ads", "ccl-interfaces-gpu_power.ads", "ccl-interfaces-net_interface.ads",

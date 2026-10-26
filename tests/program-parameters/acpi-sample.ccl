@@ -1,0 +1,18 @@
+# A sample program with typed parameters (docs/ccl-launch-parameters.md):
+# the parameter types the ACPI service will declare, the former acpi.startup
+# setting. deferred_initialization is (ACPI_Deadline.Within N), a relative
+# duration of N scheduler (GETTIME) milliseconds armed after passive
+# startup, or ACPI_Deadline.Forever; the capacities are the service's
+# subtypes. No field has a default: every one is required.
+(type Deadline_Milliseconds (range 1 9223372036854775807))
+(type Namespace_Node_Count (range 1 2147483647))
+(type Method_Byte_Count (range 1 2147483647))
+(type ACPI_Deadline (variant (Within Deadline_Milliseconds) (Forever)))
+(type ACPI_Parameters (record
+  (deferred_initialization ACPI_Deadline)
+  (namespace_nodes Namespace_Node_Count)
+  (method_bytes Method_Byte_Count)))
+(Executable_Manifest
+  identity => "com.cubit.parameters-sample"
+  version => "1"
+  parameters => (Parameter_Signature.Declared "ACPI_Parameters"))

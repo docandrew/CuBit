@@ -325,7 +325,7 @@ case "$TEST_NAME" in
         ;;
     grant-forward|grant-forward-intermediary-exit|grant-forward-owner-exit|grant-forward-desktop|config-tree|config-inspection|log-authority|log-fields|metrics|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
         ;;
-    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|multi-instance)
+    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|multi-instance|program-parameters)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -752,6 +752,11 @@ with open(sys.argv[1], "wb") as f:
     processes)
         # docs/process-arguments.md: launch arguments, posix_spawn, waitpid.
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-processes.ccl"
+        ;;
+    program-parameters)
+        # docs/ccl-launch-parameters.md: typed program parameters from the
+        # startup plan, checked by procmgr, decoded by the program.
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-program-parameters.ccl"
         ;;
     servo)
         # Servo (docs/servo-port.md): an 85 MB program whose heap grows
@@ -1857,6 +1862,47 @@ if [ -n "$INIT_PROFILE" ]; then
             if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/$PROCESS_IMAGE $PROCESS_IMAGE" \
               "$TEMP_DISK" >/dev/null 2>&1; then
                 echo "headless: failed to install $PROCESS_IMAGE" >&2
+                exit 1
+            fi
+        done
+    fi
+    if [ "$TEST_NAME" = "program-parameters" ]; then
+        # The programs (one declaring typed parameters, one declaring none),
+        # then the image build's check of the plan's arguments against
+        # their .cubit.parameters, which must refuse exactly the plan's
+        # three deliberate mistakes, with their lines and columns; the plan
+        # is installed anyway so procmgr's refusals are tested too.
+        if ! make -C "$KERNEL_DIR" ccl-config program-parameters-test >/dev/null; then
+            echo "headless: failed to build the program-parameters test programs" >&2
+            exit 1
+        fi
+        PARAMETER_CHECK="$(dirname "$SERIAL_LOG")/program-parameters-image-check.txt"
+        if "$ROOT_DIR/userspace/ccl/build/config/ccl-config" "$INIT_PROFILE" \
+             --programs "$KERNEL_DIR/isodir/boot" 2> "$PARAMETER_CHECK"; then
+            echo "headless: the image build accepted the plan's bad arguments" >&2
+            exit 1
+        fi
+        for EXPECTED in \
+          "line 13, column 10: parameters-check.app requires its parameters, a Check_Parameters" \
+          "line 16, column 16: parameters-check.app: not a Check_Parameters: Value is outside the range of its type" \
+          "line 19, column 16: parameters-plain.app declares no parameters, so it takes no arguments"; do
+            if ! grep -qF "$EXPECTED" "$PARAMETER_CHECK"; then
+                echo "headless: image check did not report: $EXPECTED" >&2
+                cat "$PARAMETER_CHECK" >&2
+                exit 1
+            fi
+        done
+        if [ "$(wc -l < "$PARAMETER_CHECK")" -ne 3 ]; then
+            echo "headless: image check reported other refusals:" >&2
+            cat "$PARAMETER_CHECK" >&2
+            exit 1
+        fi
+        echo "headless: image build check refused the plan's three bad entries"
+        for PARAMETER_IMAGE in parameters-check.app parameters-plain.app; do
+            debugfs -w -R "rm $PARAMETER_IMAGE" "$TEMP_DISK" >/dev/null 2>&1
+            if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/$PARAMETER_IMAGE $PARAMETER_IMAGE" \
+              "$TEMP_DISK" >/dev/null 2>&1; then
+                echo "headless: failed to install $PARAMETER_IMAGE" >&2
                 exit 1
             fi
         done
@@ -4500,6 +4546,25 @@ control-check: the launcher is told its ring came back PASS
 control-check: the launcher flooded the producer throughout, and the child still got through PASS
 CONTROL-CHECK: PASS
 "
+        ;;
+    program-parameters)
+        required_markers="
+procmgr: parameters parameters-check.app: (Check_Parameters count => 64 deadline => (Check_Deadline.Within 2500) verbose => false)
+parameters-check: decoded count=64 deadline=Within 2500 verbose=false
+procmgr: parameters parameters-check.app: (Check_Parameters count => 4096 deadline => Check_Deadline.Forever verbose => true)
+parameters-check: decoded count=4096 deadline=Forever verbose=true
+parameters-plain: started without arguments
+procmgr: init spawn failed: parameters-check.app: it requires typed parameters and the launch gave none
+procmgr: parameters refused: parameters-check.app: not a Check_Parameters: Value is outside the range of its type
+procmgr: init spawn failed: parameters-check.app: its typed parameters are not of its parameter record
+procmgr: parameters refused: parameters-plain.app declares none
+procmgr: init spawn failed: parameters-plain.app: it declares no parameters and the launch gave some
+"
+        if [ "$(grep -c 'parameters-check: decoded' "$SERIAL_LOG")" -ne 2 ] ||
+           [ "$(grep -c 'parameters-plain: started' "$SERIAL_LOG")" -ne 1 ]; then
+            echo "headless: a refused launch ran, or an accepted one did not" >&2
+            exit 1
+        fi
         ;;
     processes)
         required_markers="

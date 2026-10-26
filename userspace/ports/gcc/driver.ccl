@@ -5,7 +5,7 @@
 # places its launcher delegated to it (decision D2); it has no file scopes
 # of its own.
 #
-# Typed parameters (docs/ccl-launch-parameters.md), for the CCL console:
+# Argv parameters (docs/ccl-launch-parameters.md, "Legacy tools"), for the CCL console:
 # sources in, one output out. Two places are delegated without appearing in
 # argv (in_arguments => false): work, a directory the output must be in, where -save-temps=obj
 # keeps the intermediate files (no TMPDIR, so no temporary place); and the
@@ -24,16 +24,17 @@
     (Outlet "unix.stdout" Element.Text pages => 4)
     (Outlet "unix.stderr" Element.Text pages => 4)]
   descriptors => [(Descriptor 1 "unix.stdout") (Descriptor 2 "unix.stderr")]
-  parameters => [
-    (Parameter "output" Parameter_Kind.Output_File)
-    (Parameter "sources" Parameter_Kind.Input_File many => true)
-    (Parameter "work" Parameter_Kind.Output_Directory in_arguments => false)
-    (Parameter "toolchain" Parameter_Kind.Input_Directory in_arguments => false)
-    (Parameter "compile_only" Parameter_Kind.Flag)
-    (Parameter "optimize" Parameter_Kind.Flag)]
-  arguments => [
-    (Argument_Piece.When_Set (Conditional_Literal "optimize" "-O2"))
-    (Argument_Piece.When_Set (Conditional_Literal "compile_only" "-c"))
-    (Argument_Piece.Literal "-save-temps=obj")
-    (Argument_Piece.Literal "-o") (Argument_Piece.Value "output")
-    (Argument_Piece.Value "sources")])
+  argv => (Argv.Mapped (Argv_Mapping
+    parameters => [
+      (Argv_Parameter "output" Argv_Kind.Output_File)
+      (Argv_Parameter "sources" Argv_Kind.Input_File many => true)
+      (Argv_Parameter "work" Argv_Kind.Output_Directory in_arguments => false)
+      (Argv_Parameter "toolchain" Argv_Kind.Input_Directory in_arguments => false)
+      (Argv_Parameter "compile_only" Argv_Kind.Flag)
+      (Argv_Parameter "optimize" Argv_Kind.Flag)]
+    pieces => [
+      (Argv_Piece.When_Set (Conditional_Literal "optimize" "-O2"))
+      (Argv_Piece.When_Set (Conditional_Literal "compile_only" "-c"))
+      (Argv_Piece.Literal "-save-temps=obj")
+      (Argv_Piece.Literal "-o") (Argv_Piece.Value "output")
+      (Argv_Piece.Value "sources")])))

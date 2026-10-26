@@ -108,7 +108,8 @@ project Devmgr is
        "ccl-vm-resource_values.ads", "ccl-vm-resource_values.adb",
        "ccl-scheduling_limits.ads",
        "ccl-configurations.ads", "ccl-configurations.adb",
-       "ccl-typed_settings.ads", "ccl-typed_settings.adb", "ccl-canonical_readers.ads", "ccl-canonical_readers.adb", "ccl-setting_kinds.ads", "ccl-interfaces-desktop_input.ads", "ccl-interfaces-gpu_power.ads", "ccl-interfaces-desktop_display.ads", "ccl-interfaces.ads",
+       "ccl-typed_settings.ads", "ccl-typed_settings.adb", "ccl-typed_values.ads", "ccl-typed_values.adb", "ccl-diagnostics.ads", "ccl-diagnostics.adb",
+       "ccl-setting_codecs.ads", "ccl-setting_codecs-launch_entry.ads", "ccl-setting_codecs-launch_entry.adb", "ccl-setting_kinds.ads", "ccl-interfaces-desktop_input.ads", "ccl-interfaces-gpu_power.ads", "ccl-interfaces-desktop_display.ads", "ccl-interfaces.ads",
        "ccl-interfaces-desktop_launch.ads", "ccl-interfaces-desktop_launch-icons.ads",
        "ccl-interfaces-calc_types.ads", "ccl-interfaces-net_interface.ads");
 

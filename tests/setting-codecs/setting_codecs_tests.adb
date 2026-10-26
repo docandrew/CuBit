@@ -13,7 +13,7 @@
 --    the decoder exactly when the CCL path does.
 pragma Ada_2022;
 with Ada.Text_IO; use Ada.Text_IO;
-with CCL.Canonical_Readers;
+with CuBit.Canonical_Readers;
 with CCL.Setting_Kinds;
 with CCL.Typed_Settings;
 with CCL.Setting_Codecs.Calc_Options;
@@ -30,7 +30,7 @@ with CCL.Interfaces.Desktop_Launch.Icons;
 procedure Setting_Codecs_Tests is
    package TS renames CCL.Typed_Settings;
    package SK renames CCL.Setting_Kinds;
-   package CR renames CCL.Canonical_Readers;
+   package CR renames CuBit.Canonical_Readers;
    use all type SK.Setting_Kind;
 
    Failures : Natural := 0;

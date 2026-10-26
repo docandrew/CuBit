@@ -30,8 +30,8 @@ procedure Main is
 
    --  Independent reference: decode the header, then split the string bytes
    --  at each NUL and require exactly the declared number of strings with
-   --  nothing after the last terminator; the description (format 3) fills
-   --  the rest and is not looked at here.
+   --  nothing after the last terminator; the trailer (format 4: rings,
+   --  parameters, description, 5430 bytes at most) fills the rest and is not looked at here.
    function Reference_Valid (Item : Block) return Boolean is
       function U32 (Offset : Natural) return Long_Long_Integer is
         (Long_Long_Integer (Item (Offset + 1)) +
@@ -45,7 +45,7 @@ procedure Main is
       if Item'Length < 16 or else Item'Length > 65536 then
          return False;
       end if;
-      if Item (1) /= 3 or else Item (2) /= 0 then
+      if Item (1) /= 4 or else Item (2) /= 0 then
          return False;
       end if;
       Directory := Long_Long_Integer (Item (3)) + 256 * Long_Long_Integer (Item (4));
@@ -58,7 +58,7 @@ procedure Main is
       if Arguments > 4096 or else Environment > 4096
         or else Arguments + Environment + Directory > 4096
         or else Strings_Bytes > Long_Long_Integer (Item'Length - 16)
-        or else Long_Long_Integer (Item'Length - 16) - Strings_Bytes > 4096
+        or else Long_Long_Integer (Item'Length - 16) - Strings_Bytes > 272 + 38 + 1024 + 4096
       then
          return False;
       end if;
@@ -334,7 +334,7 @@ begin
                end if;
             end loop;
             if N >= 16 then
-               Item (1 .. 16) := [3, 0, 0, 0, others => 0];
+               Item (1 .. 16) := [4, 0, 0, 0, others => 0];
                declare
                   D : constant Natural :=
                     (if Strings > 0 and then Choices.Random (C) < 5 then 1 else 0);

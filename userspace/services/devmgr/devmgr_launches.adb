@@ -7,7 +7,9 @@
 pragma Ada_2022;
 with CuBit.Handles.Control;
 with CuBit.Input;
+with CuBit.Launch_Arguments;
 with CuBit.Launch_Envelopes;
+with CuBit.Launch_Failure_Text;
 with CuBit.Messages;
 with CuBit.Startup_Builder;
 with Devmgr_Children;
@@ -172,6 +174,15 @@ package body Devmgr_Launches is
       begin
          L := (others => <>);
          L.Manifest := Driver_Manifests.Read (Contents);
+         --  Typed parameters come only from procmgr's startup plan; devmgr
+         --  has none to give, so such a program is refused here, typed,
+         --  rather than started without them.
+         if L.Manifest.Declares_Parameters then
+            Refusal ("devmgr: spawn refused: " & Name & " (" &
+                     CuBit.Launch_Failure_Text.Explanation (CuBit.Launch_Arguments.Parameters_Missing) &
+                     "; only procmgr gives typed parameters)");
+            return No_Child;
+         end if;
          declare
             Answer : constant HC.Spawn_Result :=
               HC.Spawn (Spawner, Image, Bytes, Priority, Name, CuBit.Process_IDs.No_Process,

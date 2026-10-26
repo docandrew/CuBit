@@ -5,7 +5,7 @@ pragma Ada_2022;
 with Interfaces;
 
 package body CCL.Setting_Codecs.Net_Interface with SPARK_Mode is
-   package R renames CCL.Canonical_Readers;
+   package R renames CuBit.Canonical_Readers;
 
    procedure Read_Prefix_Length
      (Source : String; Position : in out Positive; OK : in out Boolean; Item : out Prefix_Length_Value)

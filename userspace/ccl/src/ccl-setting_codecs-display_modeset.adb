@@ -4,7 +4,7 @@
 pragma Ada_2022;
 
 package body CCL.Setting_Codecs.Display_Modeset with SPARK_Mode is
-   package R renames CCL.Canonical_Readers;
+   package R renames CuBit.Canonical_Readers;
 
    procedure Read_Display_Modeset
      (Source : String; Position : in out Positive; OK : in out Boolean; Item : out Display_Modeset_Value)

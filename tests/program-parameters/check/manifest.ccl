@@ -1,0 +1,14 @@
+# parameters-check (docs/ccl-launch-parameters.md): a program with typed
+# parameters, a record with a range-typed field and a variant with a
+# Forever alternative; it logs exactly the value it decoded.
+(type Check_Count (range 1 4096))
+(type Check_Milliseconds (range 1 600000))
+(type Check_Deadline (variant (Within Check_Milliseconds) (Forever)))
+(type Check_Parameters (record
+  (count Check_Count)
+  (deadline Check_Deadline)
+  (verbose Boolean false)))
+(Executable_Manifest
+  identity => "com.cubit.parameters-check"
+  version => "1"
+  parameters => (Parameter_Signature.Declared "Check_Parameters"))

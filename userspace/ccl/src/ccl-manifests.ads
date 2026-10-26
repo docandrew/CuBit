@@ -3,6 +3,7 @@ with CCL.Language;
 with CuBit.Failures;
 with CuBit.Startup_Tables;
 with CuBit.Channel_Declarations;
+with CuBit.Parameter_Signatures;
 
 --  Pure executable-declaration frontend. This emits requests, never grants.
 --  Field expressions use the existing CCL evaluator without a host adapter.
@@ -11,6 +12,7 @@ package CCL.Manifests with SPARK_Mode => On is
    MAX_SECTION_BYTES : constant := 4_096;
    MAX_BINDINGS : constant := 32;
    MAX_NAME_TEXT : constant := 64;
+   MAX_SIGNATURE_BYTES : constant := CuBit.Parameter_Signatures.Maximum_Signature_Bytes;
    subtype Binding_Name_Length is Natural range 0 .. MAX_NAME_TEXT;
    type Binding_Name is record
       Length : Binding_Name_Length := 0;
@@ -92,6 +94,13 @@ package CCL.Manifests with SPARK_Mode => On is
       Bindings : Binding_Array := [others => (others => <>)];
       --  Which entry is wrong, why, and what would fix it (typed manifests).
       Why : CuBit.Failures.Failure;
+      --  Typed program parameters (docs/ccl-launch-parameters.md): the
+      --  parameter record's type name and its canonical signature
+      --  (CCL.Parameter_Signatures); both empty when the manifest declares
+      --  none (Parameter_Signature.None).
+      Parameter_Root : Binding_Name;
+      Parameter_Signature : String (1 .. MAX_SIGNATURE_BYTES) := [others => ' '];
+      Parameter_Signature_Length : Natural range 0 .. MAX_SIGNATURE_BYTES := 0;
    end record;
    --  Schema_Source: interfaces/executable-manifest.ccl, needed for typed manifests.
    procedure Compile

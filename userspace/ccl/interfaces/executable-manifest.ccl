@@ -52,16 +52,25 @@
   (PCI_IDs PCI_IDs) (PCI_Class PCI_Class) (ACPI_ID String) (USB_Class USB_Class)
   (Platform Platform_Device)))
 (type Launch (record (program String) (invoked_as (List String) [])))
-# A ported tool's typed parameters and how they render into its argv
-# (docs/ccl-launch-parameters.md); file values become delegated places.
-# Pieces are written with the variant's constructors: helper functions would
-# exceed the CCL program's 16-function limit.
-(type Parameter_Kind (enum Input_File Output_File Input_Directory Output_Directory Flag Text))
+# Legacy argv mapping for a ported Unix tool (docs/ccl-launch-parameters.md,
+# "Legacy tools"): what its argv may hold and how it is rendered; file values
+# become delegated places. Pieces are written with the variant's
+# constructors: helper functions would exceed the CCL program's 16-function
+# limit. Native programs declare typed parameters instead (parameters).
+(type Argv_Kind (enum Input_File Output_File Input_Directory Output_Directory Flag Text))
 # in_arguments false: a file or directory delegated as a place only, never
 # rendered into argv (a work directory, a toolchain).
-(type Parameter (record (name String) (kind Parameter_Kind) (many Boolean false) (required Boolean true) (in_arguments Boolean true)))
+(type Argv_Parameter (record (name String) (kind Argv_Kind) (many Boolean false) (required Boolean true) (in_arguments Boolean true)))
 (type Conditional_Literal (record (parameter String) (text String)))
-(type Argument_Piece (variant (Literal String) (Value String) (When_Set Conditional_Literal)))
+(type Argv_Piece (variant (Literal String) (Value String) (When_Set Conditional_Literal)))
+(type Argv_Mapping (record (parameters (List Argv_Parameter)) (pieces (List Argv_Piece))))
+(type Argv (variant (None) (Mapped Argv_Mapping)))
+# Typed program parameters (docs/ccl-launch-parameters.md): the record type,
+# declared with its field types in the manifest's own (type ...) forms ahead
+# of the Executable_Manifest, whose fields are the parameters. A launcher
+# supplies one value of it, immutable for the process's lifetime. None: the
+# program accepts no arguments, and supplying any refuses the launch.
+(type Parameter_Signature (variant (None) (Declared String)))
 # CAP-002: a request's binding is its startup name (Startup.<Name>). Names in
 # `optional` may be left absent at launch; every other request is required.
 # Standard_Limit is CuBit.Startup_Tables.Standard_Handle_Limit (4096).
@@ -85,7 +94,7 @@
   (channels (List Channel_Offer) []) (connections (List Connection) [])
   (drives (List Device_Match) []) (requests_none Boolean false)
   (may_launch (List Launch) [])
-  (parameters (List Parameter) []) (arguments (List Argument_Piece) [])
+  (parameters Parameter_Signature Parameter_Signature.None) (argv Argv Argv.None)
   (outlets (List Outlet) []) (inlets (List Inlet) []) (descriptors (List Descriptor) [])))
 
 (define (service (name String) (binding String)) Request

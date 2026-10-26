@@ -430,7 +430,12 @@ is
       Missing_Field_Argument,
       Positional_After_Named,
       --  A resource copied, used after it moved, or never released.
-      Resource_Ownership_Violation);
+      Resource_Ownership_Violation,
+      --  A type declaration: (range Low High) with Low above High, a type
+      --  name declared before, a field or alternative named twice.
+      Invalid_Range_Bounds,
+      Duplicate_Type_Name,
+      Duplicate_Component_Name);
 
    type Text_Result is record
       Length : Natural range 0 .. MAX_TEXT_BYTES := 0;

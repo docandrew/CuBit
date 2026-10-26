@@ -58,6 +58,9 @@ package CuBit.Program_Descriptions with Pure, SPARK_Mode is
      Header_Bytes + Maximum_Parameters * (3 + Maximum_Name_Bytes) +
      Maximum_Pieces * (3 + Maximum_Text_Bytes) +
      Maximum_Connectors * (5 + Maximum_Connector_Name_Bytes) + Maximum_Descriptors * 2;
+   pragma Compile_Time_Error
+     (Maximum_Descriptor_Bytes > CuBit.Launch_Arguments.Description_Budget,
+      "a program description must fit the launch block's trailer budget for it");
    --  It fits a manifest section (CCL.Manifests.MAX_SECTION_BYTES, 4096).
    pragma Compile_Time_Error
      (Maximum_Descriptor_Bytes > 4_096, "descriptor exceeds a manifest section");

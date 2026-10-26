@@ -1729,6 +1729,16 @@ procmgr: ccl-build user_runtime
 	$(CCL_BUILD) ../userspace/services/procmgr/component.ccl
 	cp ../userspace/services/procmgr/build/procmgr.svc isodir/boot/procmgr.svc
 
+# Typed program parameters (docs/ccl-launch-parameters.md): the headless
+# program-parameters test's programs, one that declares parameters and one
+# that declares none.
+.PHONY : program-parameters-test
+program-parameters-test: ccl-build user_runtime ccl-manifest
+	$(CCL_BUILD) ../tests/program-parameters/check/component.ccl
+	$(CCL_BUILD) ../tests/program-parameters/plain/component.ccl
+	cp ../tests/program-parameters/check/build/parameters-check.app isodir/boot/parameters-check.app
+	cp ../tests/program-parameters/plain/build/parameters-plain.app isodir/boot/parameters-plain.app
+
 # Build the userspace HDA audio driver
 .PHONY : hda
 hda: ccl-build user_runtime ccl-manifest

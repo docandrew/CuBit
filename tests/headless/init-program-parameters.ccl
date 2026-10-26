@@ -1,0 +1,20 @@
+# Typed program parameters (docs/ccl-launch-parameters.md): procmgr checks
+# each entry's (arguments ...) against its program's .cubit.parameters and
+# hands it over canonical; parameters-check logs what it decoded. The last
+# three entries are refused at launch on purpose (and by the image build's
+# check, which tests/headless/run.sh expects to fail on exactly them).
+(startup v1
+  (start "parameters-check.app" (priority 3)
+    (arguments (Check_Parameters count => 64 deadline => (Check_Deadline.Within 2500))))
+  (start "parameters-check.app" (priority 3)
+    (arguments (Check_Parameters verbose => true deadline => Check_Deadline.Forever count => 4096)))
+  (start "parameters-plain.app" (priority 3))
+  # Missing: every parameter is required.
+  (start "parameters-check.app" (priority 3))
+  # Out of range: count is 1 .. 4096.
+  (start "parameters-check.app" (priority 3)
+    (arguments (Check_Parameters count => 4097 deadline => Check_Deadline.Forever)))
+  # Arguments for a program that declares no parameters.
+  (start "parameters-plain.app" (priority 3)
+    (arguments (Check_Parameters count => 1 deadline => Check_Deadline.Forever)))
+)
