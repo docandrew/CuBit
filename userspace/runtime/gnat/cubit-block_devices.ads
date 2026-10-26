@@ -74,6 +74,15 @@ package CuBit.Block_Devices is
    --  OP_WRITE_BLOCKS protocol flags (the tag's protocol nibble).
    WRITE_FLAG_FUA : constant CuBit.Messages.Protocol_Flags := 2#0001#;
 
+   --  The endpoint badge that grants writes on a device whose driver
+   --  requires one (HW-001 step 4: UFS). A driver offering this grant
+   --  answers every request that arrives without it as if the device were
+   --  read only (Describe reports FEATURE_READ_ONLY, writes are refused).
+   --  Only the device's launcher can badge an endpoint with it: the
+   --  kernel lets a badge be set only on an untagged endpoint held with
+   --  Grant, and never replaced. ASCII "BLKWRITE".
+   Write_Authority_Tag : constant Unsigned_64 := 16#424C_4B57_5249_5445#;
+
    subtype Logical_Block_Size is Unsigned_32 range 512 .. 65_536;
 
    type Device_Description is record

@@ -1,0 +1,8 @@
+# The installer's stand-in for the UFS write test (tests/headless ufs-write):
+# disk-install is startup-only authority; device-manager is the ordinary
+# endpoint, through which a disk open must be refused.
+(executable-manifest v1
+  (identity "com.cubit.disk-write-check")
+  (version "0.1.0")
+  (request-service disk-install read-write disk-install)
+  (request-service device-manager read-write device-manager))

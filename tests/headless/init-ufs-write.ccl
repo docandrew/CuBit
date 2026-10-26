@@ -1,0 +1,8 @@
+# tests/headless ufs-write: devmgr starts the UFS driver once logstore runs;
+# disk-write-check (the installer's stand-in, holding disk-install from this
+# trusted startup plan) opens the disk read-only and read-write through
+# devmgr and writes, flushes and reads back.
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "disk-write-check.app" (priority 2))
+)

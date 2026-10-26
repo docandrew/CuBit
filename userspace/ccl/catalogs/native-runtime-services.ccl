@@ -31,6 +31,9 @@
   # The ACPI namespace service (acpi.svc); clients get the observer badge
   # (ACPI_Protocol.Observer_Tag).
   (service acpi 29 read-write)
+  # The installer's whole-disk authority (CuBit.Disk_Install): devmgr's
+  # endpoint badged for it, minted only for the trusted startup plan.
+  (service disk-install 30 read-write)
   (notification keyboard 1 publish-and-manage)
   (notification mouse 10 publish-and-manage)
   (notification ipc-test-registration 14 publish-and-manage)

@@ -8,6 +8,8 @@ with CuBit.Messages; use CuBit.Messages;
 with CuBit.Memory_Grants; use CuBit.Memory_Grants;
 with CuBit.Block_Devices; use CuBit.Block_Devices;
 with CuBit.Block_Requests; use CuBit.Block_Requests;
+with CuBit.Disk_Install;
+with CuBit.Authority_Policy;
 with Proof_Device; use Proof_Device;
 
 procedure Main is
@@ -189,6 +191,69 @@ begin
    Expect_Transfer (ATA, Request (OP_READ_BLOCKS, 16#0FFF_FFF0#, 8), Device_Read);
    Expect_Reject (ATA, Request (OP_READ_BLOCKS, 0, 256));
    Expect_Reject (ATA, Request (OP_WRITE_BLOCKS, 0, 1, WRITE_FLAG_FUA));
+
+   --  The write grant (HW-001 step 4, UFS): a request without
+   --  Write_Authority_Tag sees the device read only; with it, as offered.
+   declare
+      UFS : constant Device_State :=
+        (Presence => Available, Blocks => 16384, Logical_Size => 4096,
+         Physical_Size => 4096, Max_Transfer => 16,
+         Features => FEATURE_FLUSH or FEATURE_FUA or FEATURE_VOLATILE_CACHE,
+         Media => Fixed_Media);
+      Unbadged : constant Device_State :=
+        Granted_View (UFS, Authority_Of (0));
+      Badged : constant Device_State :=
+        Granted_View (UFS, Authority_Of (Write_Authority_Tag));
+      Write : Message := Request (OP_WRITE_BLOCKS, 0, 1);
+   begin
+      pragma Assert (Authority_Of (0) = Read_Only_Access);
+      pragma Assert (Authority_Of (Write_Authority_Tag + 1) = Read_Only_Access);
+      pragma Assert (Authority_Of (Write_Authority_Tag) = Writes_Granted);
+      pragma Assert (Offers (Unbadged, FEATURE_READ_ONLY));
+      pragma Assert (Badged = UFS);
+      Expect_Reject (Unbadged, Write);
+      Expect_Reject (Unbadged, Request (OP_WRITE_BLOCKS, 0, 1, WRITE_FLAG_FUA));
+      Expect_Transfer (Unbadged, Request (OP_READ_BLOCKS, 0, 1), Device_Read);
+      Write.authorityTag := Write_Authority_Tag;
+      Expect_Transfer (Granted_View (UFS, Authority_Of (Write.authorityTag)),
+                       Write, Device_Write);
+      Server.Handle (Unbadged, Owner, Bare (OP_DESCRIBE_DEVICE), Response);
+      OK := Decode_Description
+        (Response.words (0), Response.words (1), Response.words (2),
+         Response.words (3), Description);
+      pragma Assert (OK and Is_Read_Only (Description));
+      --  Absent and faulted devices stay as they are.
+      pragma Assert (Granted_View ((Presence => Faulted), Read_Only_Access) =
+                     (Presence => Faulted));
+   end;
+
+   --  The installer's Open_Disk request (CuBit.Disk_Install): round trip,
+   --  and every out-of-range word refused.
+   declare
+      package DI renames CuBit.Disk_Install;
+      use type DI.Disk_Ordinal, DI.Disk_Access;
+      Item : DI.Open_Request;
+      Valid : Boolean;
+   begin
+      for Mode in DI.Disk_Access loop
+         DI.Decode (DI.Encode ((Disk => DI.Disk_Ordinal'Last, Mode => Mode)),
+                    Item, Valid);
+         pragma Assert (Valid and Item.Disk = DI.Disk_Ordinal'Last and
+                        Item.Mode = Mode);
+      end loop;
+      DI.Decode ([Unsigned_64 (DI.Disk_Ordinal'Last) + 1, 1], Item, Valid);
+      pragma Assert (not Valid);
+      DI.Decode ([0, 0], Item, Valid);
+      pragma Assert (not Valid);
+      DI.Decode ([0, 3], Item, Valid);
+      pragma Assert (not Valid);
+      --  procmgr mints disk-install only from the trusted startup plan.
+      pragma Assert (not CuBit.Authority_Policy.Bootstrap_Approves
+                       (CuBit.Authority_Policy.Disk_Installation, False));
+      pragma Assert (CuBit.Authority_Policy.Bootstrap_Approves
+                       (CuBit.Authority_Policy.Disk_Installation, True));
+      Checks := Checks + 1;
+   end;
 
    --  Nothing is served without an available device.
    Expect_Reject ((Presence => No_Device), Request (OP_READ_BLOCKS, 0, 1));

@@ -11,6 +11,22 @@ is
 
    No_Request : constant Decoded_Request := (Kind => Rejected);
 
+   function Granted_View
+     (State : Device_State; Authority : Write_Authority) return Device_State
+   is
+   begin
+      if State.Presence /= Available or else Authority = Writes_Granted then
+         return State;
+      end if;
+      return (Presence      => Available,
+              Blocks        => State.Blocks,
+              Logical_Size  => State.Logical_Size,
+              Physical_Size => State.Physical_Size,
+              Max_Transfer  => State.Max_Transfer,
+              Features      => State.Features or FEATURE_READ_ONLY,
+              Media         => State.Media);
+   end Granted_View;
+
    --  The read and write branch of Decode.
    function Decode_Transfer
      (Request : CuBit.Messages.Message; State : Device_State)

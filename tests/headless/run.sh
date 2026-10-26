@@ -325,7 +325,7 @@ case "$TEST_NAME" in
         ;;
     grant-forward|grant-forward-intermediary-exit|grant-forward-owner-exit|grant-forward-desktop|config-tree|config-inspection|log-authority|log-fields|metrics|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
         ;;
-    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|net-link|net-multi|firmware-snapshot|multi-instance)
+    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|multi-instance)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -828,6 +828,19 @@ case "$TEST_NAME" in
                   -device ufs,serial=cubitufs,id=ufs
                   -device ufs-lu,drive=ufs0,bus=ufs,lun=0)
         ;;
+    ufs-write)
+        # HW-001 step 4: writes behind the block write grant, on QEMU's UFS
+        # model (not the laptop's controller). disk-write-check, holding
+        # disk-install, opens the disk through devmgr read-only (a write is
+        # refused) and read-write (write, FUA write, flush, readback); the
+        # host then reads the blocks back out of the image file.
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-ufs-write.ccl"
+        TEMP_UFS_DISK="$(mktemp "${TMPDIR:-/tmp}/cubit-ufs-disk.XXXXXX.img")"
+        python3 -I "$ROOT_DIR/tests/ufs/make-disk.py" "$TEMP_UFS_DISK"
+        UFS_ARGS=(-drive "file=$TEMP_UFS_DISK,if=none,id=ufs0,format=raw"
+                  -device ufs,serial=cubitufs,id=ufs
+                  -device ufs-lu,drive=ufs0,bus=ufs,lun=0)
+        ;;
     multi-instance)
         # One driver per device for devmgr's dedicated setups: two xHCI
         # controllers and two NVMe disks (tests/multi-instance).
@@ -1244,7 +1257,7 @@ if [ -n "$INIT_PROFILE" ]; then
         fi
     fi
     if [ "$TEST_NAME" = "generic-launch" ] || [ "$TEST_NAME" = "ufs" ] ||
-       [ "$TEST_NAME" = "multi-instance" ]; then
+       [ "$TEST_NAME" = "ufs-write" ] || [ "$TEST_NAME" = "multi-instance" ]; then
         # boot-logs prints the records logstore keeps (the base disk lacks it):
         # generic drivers (generic-check, ufs) and devmgr log through logstore.
         for GENERIC_IMAGE in logstore.svc boot-logs.app; do
@@ -1256,6 +1269,16 @@ if [ -n "$INIT_PROFILE" ]; then
             debugfs -w -R "write $KERNEL_DIR/isodir/boot/$GENERIC_IMAGE $GENERIC_IMAGE" \
               "$TEMP_DISK" >/dev/null 2>&1 || exit 1
         done
+    fi
+    if [ "$TEST_NAME" = "ufs-write" ]; then
+        WRITE_CHECK_IMAGE="$KERNEL_DIR/isodir/boot/disk-write-check.app"
+        if [ ! -f "$WRITE_CHECK_IMAGE" ]; then
+            echo "headless: build disk-write-check first (make -C kernel disk-write-check)" >&2
+            exit 1
+        fi
+        debugfs -w -R "rm disk-write-check.app" "$TEMP_DISK" >/dev/null 2>&1
+        debugfs -w -R "write $WRITE_CHECK_IMAGE disk-write-check.app" \
+          "$TEMP_DISK" >/dev/null 2>&1 || exit 1
     fi
     if [ "$TEST_NAME" = "startup-health" ]; then
         # The current build of every program the profile starts (the base
@@ -4118,11 +4141,36 @@ ufs: stage unit-ready ok
 ufs: stage inquiry ok
 ufs: stage capacity ok blocks=16384 bs=4096 size=64M
 ufs: stage partitions ok gpt n=4 p1=esp:8192K p2=msr:4096K p3=basic:43M p4=recovery:8172K
-ufs: bring-up complete (13/13), serving lun 0 read-only
+ufs: bring-up complete (13/13), serving lun 0, writes by grant
 boot-logs: ufs: bring-up complete
 "
         if grep -qa 'ufs: stage [a-z-]* fail' "$SERIAL_LOG"; then
             echo "headless: a UFS bring-up stage failed" >&2
+            exit 1
+        fi
+        ;;
+    ufs-write)
+        required_markers="
+ufs: bring-up complete (13/13), serving lun 0, writes by grant
+devmgr: disk open refused: no disk-install authority
+disk-write-check: device-manager endpoint cannot open a disk PASS
+disk-write-check: no disk 1 PASS
+disk-write-check: disk 0 opened read-only PASS
+disk-write-check: read-only describe PASS
+disk-write-check: read block 0 (protective MBR) PASS
+ufs: write refused: no write grant count=1
+disk-write-check: write without grant refused PASS
+disk-write-check: refused write left the block unchanged PASS
+disk-write-check: disk 0 opened read-write PASS
+disk-write-check: read-write describe (flush, FUA) PASS
+disk-write-check: write 4 blocks PASS
+disk-write-check: FUA write PASS
+disk-write-check: flush PASS
+disk-write-check: readback PASS
+TEST: PASS ufs-write
+"
+        if grep -qa 'disk-write-check: .* FAIL\|ufs: stage [a-z-]* fail' "$SERIAL_LOG"; then
+            echo "headless: ufs-write reported a failure" >&2
             exit 1
         fi
         ;;
@@ -5484,6 +5532,14 @@ EOF
 if [ "$missing" -ne 0 ]; then
     echo "headless: serial log: $SERIAL_LOG" >&2
     exit 1
+fi
+
+if [ "$TEST_NAME" = "ufs-write" ]; then
+    # What the guest wrote reached the medium: the image file holds it.
+    if ! python3 -I "$ROOT_DIR/tests/ufs/check-write.py" "$TEMP_UFS_DISK"; then
+        echo "headless: serial log: $SERIAL_LOG" >&2
+        exit 1
+    fi
 fi
 
 if [ "$TEST_NAME" = "multi-instance" ]; then

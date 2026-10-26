@@ -55,6 +55,30 @@ is
    function Flushes (State : Device_State) return Boolean is
      (Offers (State, FEATURE_FLUSH));
 
+   --  Whether a request's sender holds the write grant
+   --  (Write_Authority_Tag), for drivers that require it. Without it the
+   --  request sees the device read only.
+   type Write_Authority is (Read_Only_Access, Writes_Granted);
+
+   function Authority_Of (Authority_Tag : Unsigned_64) return Write_Authority
+   is (if Authority_Tag = Write_Authority_Tag then Writes_Granted
+       else Read_Only_Access);
+
+   --  The device as a sender with Authority sees it: without the grant,
+   --  FEATURE_READ_ONLY is added; nothing else changes.
+   function Granted_View
+     (State : Device_State; Authority : Write_Authority) return Device_State
+     with Post =>
+       Granted_View'Result.Presence = State.Presence
+       and then (if State.Presence = Available then
+                   Granted_View'Result.Blocks = State.Blocks
+                   and then Granted_View'Result.Logical_Size = State.Logical_Size
+                   and then Granted_View'Result.Max_Transfer = State.Max_Transfer
+                   and then
+                     (if Authority = Read_Only_Access then
+                        Offers (Granted_View'Result, FEATURE_READ_ONLY)
+                      else Granted_View'Result.Features = State.Features));
+
    type Transfer_Direction is (Device_Read, Device_Write);
 
    type Transfer_Request is record

@@ -13,7 +13,9 @@ project Block_Requests_Tests is
       "cubit-handles-fixture.ads", "cubit-handles-fixture.adb",
       "cubit-block_devices.ads", "cubit-block_devices.adb",
       "cubit-block_requests.ads", "cubit-block_requests.adb",
-      "cubit-block_device_server.ads", "cubit-block_device_server.adb");
+      "cubit-block_device_server.ads", "cubit-block_device_server.adb",
+      "cubit-disk_install.ads", "cubit-disk_install.adb",
+      "cubit-authority_policy.ads");
    for Object_Dir use "build";
    for Main use ("main.adb");
    package Compiler is

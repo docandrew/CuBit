@@ -18,6 +18,8 @@ with CuBit.Handles.Boot_Roots;
 with CuBit.Handles.Control;
 with CuBit.Handles.IPC;
 with CuBit.Service_Exchange;
+with CuBit.Disk_Install;
+with CuBit.Block_Devices;
 with CuBit.Startup_Tables;
 with Devmgr_Authority;
 with Devmgr_Launches;
@@ -2983,9 +2985,12 @@ procedure main is
    Generic_Capacity : constant := CuBit.Devices.MAX_PCI_DEVICES;
    type Generic_Child is record
       PID        : Process_ID := No_Process;
+      Launched   : DL.Child := DL.No_Child;
       Interrupts : Message_Function;
       Device     : Inventory_Device;
       Waiting    : Boolean := False;
+      --  It reported OP_READY: it serves its device on its endpoint.
+      Serving    : Boolean := False;
    end record;
    Generic_Children : array (1 .. Generic_Capacity) of Generic_Child;
    Generic_Total : Natural range 0 .. Generic_Capacity := 0;
@@ -3145,7 +3150,8 @@ procedure main is
       if Generic_Total < Generic_Capacity then
          Generic_Total := Generic_Total + 1;
          Generic_Children (Generic_Total) :=
-           (PID => PID, Interrupts => Interrupts, Device => Item, Waiting => True);
+           (PID => PID, Launched => Child, Interrupts => Interrupts, Device => Item,
+            Waiting => True, Serving => False);
       end if;
       Warnings.Inform ("devmgr: " & Name & " launched for " & Device_Text (Item) & " (generic launch)");
    end Launch_Generic_PCI;
@@ -3161,6 +3167,7 @@ procedure main is
          then
             Generic_Children (I).Waiting := False;
             if Msg.tag.label = OP_READY then
+               Generic_Children (I).Serving := True;
                Open_Message_Interrupts (Generic_Children (I).Interrupts);
                Warnings.Inform ("devmgr: generic driver ready for " &
                                 Device_Text (Generic_Children (I).Device));
@@ -3175,6 +3182,67 @@ procedure main is
       end loop;
       return False;
    end Generic_Report;
+
+   --  The installer's Open_Disk (CuBit.Disk_Install), in the service loop.
+   --  The disks are the generic drivers of storage controllers that
+   --  reported ready, in launch (PCI location) order. Only a request
+   --  through the disk-install badge is answered with a capability:
+   --  Read_Only gives the driver's endpoint as it is, Read_Write one badged
+   --  with the block write grant. Every grant is logged.
+   procedure Open_Install_Disk (From : Process_ID; Msg : Message) is
+      package DI renames CuBit.Disk_Install;
+      use type CuBit.Devices.Device_Kind;
+      Request : DI.Open_Request;
+      Valid : Boolean;
+      Seen : Natural := 0;
+      Found : Natural := 0;
+   begin
+      if Msg.authorityTag /= DI.Authority_Tag then
+         Warnings.Warn ("devmgr: disk open refused: no disk-install authority");
+         Refuse (From, Answered => False);
+         return;
+      end if;
+      DI.Decode ([Msg.words (DI.Ordinal_Word), Msg.words (DI.Access_Word)], Request, Valid);
+      if Valid then
+         for I in 1 .. Generic_Total loop
+            if Generic_Children (I).Serving
+              and then Generic_Children (I).Launched /= DL.No_Child
+              and then Generic_Children (I).Device.kind = CuBit.Devices.Storage_Controller
+            then
+               if Seen = Natural (Request.Disk) then
+                  Found := I;
+                  exit;
+               end if;
+               Seen := Seen + 1;
+            end if;
+         end loop;
+      end if;
+      if Found = 0 then
+         Warnings.Inform ("devmgr: disk open refused: no such disk");
+         Refuse (From, Answered => False);
+         return;
+      end if;
+      declare
+         Driver : constant H.Endpoint := DL.Mailbox (Generic_Children (Found).Launched);
+         Disk_Words : constant MessageWords := [Unsigned_64 (Request.Disk), 0, 0, 0];
+         Given : constant Boolean :=
+           Answer_With
+             (From, Disk_Words, 1,
+              (case Request.Mode is
+                 when DI.Read_Only => H.Copy (Driver, H.Read_Write),
+                 when DI.Read_Write =>
+                   H.Badged (Driver, H.Read_Write, CuBit.Block_Devices.Write_Authority_Tag)));
+      begin
+         if Given then
+            Warnings.Inform
+              ("devmgr: disk" & DI.Disk_Ordinal'Image (Request.Disk) & " (" &
+               Device_Text (Generic_Children (Found).Device) & ") opened " &
+               (case Request.Mode is
+                  when DI.Read_Only => "read-only",
+                  when DI.Read_Write => "read-write") & " for install");
+         end if;
+      end;
+   end Open_Install_Disk;
 
    --  Generic drivers start once logstore runs, so their bring-up lines
    --  reach it from their first one (the bring-up logging convention): a
@@ -4297,6 +4365,11 @@ begin
                Refuse (from, Answered => H.Valid (Provider));
             end if;
          end;
+      elsif msg.tag = (label => CuBit.Disk_Install.Open_Disk,
+                       length => CuBit.Disk_Install.Open_Words, protocol => 0,
+                       ipc => Accepting, reserved => 0)
+      then
+         Open_Install_Disk (from, msg);
       elsif msg.tag.label = CuBit.Service_Exchange.Available
         and then msg.tag.length = 1
         and then procmgrPID /= No_Process and then from = procmgrPID

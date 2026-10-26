@@ -40,6 +40,7 @@ with Launch_Configuration;
 with CuBit.Process_IDs.Text;
 with CuBit.Audio_Control;
 with CuBit.Clock_Control;
+with CuBit.Disk_Install;
 with CuBit.TLS_Protocol;
 with CuBit.TLS_Scopes;
 with CuBit.Authority_Policy;
@@ -2632,6 +2633,9 @@ procedure main is
          isProcessObserver : constant Boolean :=
            Role = CuBit.Process_Observer.Observer_Service_Role;
          isLogControl : constant Boolean := Role = CuBit.Log_Protocol.Control_Service_Role;
+         --  The installer's whole-disk authority: devmgr's endpoint badged
+         --  for it, only for the trusted startup plan.
+         isDiskInstall : constant Boolean := Role = CuBit.Disk_Install.Service_Role;
          --  An ACPI client: its one client role, the observer badge.
          isACPI : constant Boolean := Role = DRIVER_ACPI;
          use CuBit.Authority_Policy;
@@ -2643,6 +2647,7 @@ procedure main is
             elsif isMetricPublisher then Metric_Publication
             elsif isProcessObserver then Process_Observation
             elsif isLogControl then Log_Control
+            elsif isDiskInstall then Disk_Installation
             else Log_Publication);
          Approval : constant Decision := Evaluate
            (Requested => True,
@@ -2659,6 +2664,7 @@ procedure main is
             elsif isLogObserver or isLogControl then DRIVER_LOGSTORE
             elsif isMetricObserver then CuBit.Metric_Protocol.Publisher_Service_Role
             elsif isProcessObserver then DRIVER_PROCMGR
+            elsif isDiskInstall then DRIVER_DEVMGR
             else Role);
          Kept : constant H.Rights := Manifest_Rights (Unsigned_64 (R.Rights));
          Issued_Tag : Unsigned_64 := 0;
@@ -2671,7 +2677,8 @@ procedure main is
          -- system log viewer. This exception grants observation only, not
          -- the other startup-only authorities.
          if (isAudioControl or isLogObserver or isClockControl
-             or isMetricObserver or isProcessObserver or isLogControl)
+             or isMetricObserver or isProcessObserver or isLogControl
+             or isDiskInstall)
            and then Approval /= Approved
          then
             recordAuthority
@@ -2692,6 +2699,8 @@ procedure main is
             Issued_Tag := CuBit.Audio_Control.Authority_Tag;
          elsif isClockControl then
             Issued_Tag := CuBit.Clock_Control.Authority_Tag;
+         elsif isDiskInstall then
+            Issued_Tag := CuBit.Disk_Install.Authority_Tag;
          elsif (isLogObserver or isLogPublisher or isLogControl)
            and then Next_Log_Issuance /= 0
          then

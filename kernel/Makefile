@@ -392,10 +392,10 @@ test-block-requests:
 
 prove-block-requests:
 	$(ALR) gnatprove -P../tests/block-requests/block_requests_tests.gpr \
-		-u cubit-block_requests.adb proof_device.adb \
+		-u cubit-block_requests.adb cubit-disk_install.adb proof_device.adb \
 		--level=2 --report=all --checks-as-errors=on -j2
 	$(ALR) gnatprove -P../tests/block-requests/runtime_proof.gpr \
-		-u cubit-block_requests.adb --level=2 --report=all --checks-as-errors=on -j2
+		-u cubit-block_requests.adb cubit-disk_install.adb --level=2 --report=all --checks-as-errors=on -j2
 
 # HW-001: typed SCSI command blocks and response decoders (shared by USB
 # optical and UFS).
@@ -1646,6 +1646,14 @@ dictionary: ccl-build user_runtime ccl-manifest ui-fonts-native
 	cp ../userspace/apps/dictionary/build/dictionary.app isodir/boot/dictionary.app
 
 # Build the live writable-storage diagnostic app.
+# HW-001 step 4: whole-disk writes behind the block write grant (headless
+# ufs-write); the installer's stand-in, holding disk-install.
+.PHONY : disk-write-check
+disk-write-check: ccl-build user_runtime ccl-manifest
+	mkdir -p ../userspace/apps/disk-write-check/build
+	$(CCL_BUILD) ../userspace/apps/disk-write-check/component.ccl
+	cp ../userspace/apps/disk-write-check/build/disk-write-check.app isodir/boot/disk-write-check.app
+
 .PHONY : storage-check
 storage-check: ccl-build user_runtime filesystem-scope-check ccl-manifest
 	mkdir -p ../userspace/apps/storage-check/build
@@ -2197,7 +2205,7 @@ TEST_PROGRAMS := logs boot-logs timesync-test ccl-console log-check \
 	net-multi-check timesync-check \
 	tls-probe tls-check config-check desktop-check display-check clipboard-check \
 	metrics-check grant-forward ccl-control input-stress bench-storage \
-	bench-input
+	bench-input disk-write-check
 
 .PHONY : test-programs
 test-programs: $(TEST_PROGRAMS)

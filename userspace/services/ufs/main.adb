@@ -9,7 +9,8 @@
 --  generic PCI launch of docs/device-matching.md). Bring-up logs one line
 --  per stage: controller version, link up, device descriptor, units,
 --  INQUIRY, capacity, partition table. Then it serves the first enabled
---  logical unit as a read-only Block.Device.V1 device.
+--  logical unit as a Block.Device.V1 device, read only except through the
+--  block write grant (UFS_Service).
 ------------------------------------------------------------------------------
 with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
@@ -253,7 +254,7 @@ begin
       UFS_Identify.Report_Partitions (Device);
       UFS_Service.Start (Device);
       UFS_Log.Summary (", serving lun " & Decimal (Unsigned_64 (Device.Unit)) &
-                       " read-only");
+                       ", writes by grant");
    else
       UFS_Log.Summary (", nothing served");
    end if;

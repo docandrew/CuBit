@@ -9,9 +9,12 @@
 --  completes or times out. New requests are taken only while a slot is
 --  free, so the kernel queue holds the rest (no request is dropped).
 --
---  Read only: the device is offered with FEATURE_READ_ONLY, so writes are
---  refused before any command is built (the laptop's disk holds Windows;
---  writing waits for the user's consent, HW-001).
+--  Writes need the block write grant (HW-001 step 4): a request arriving
+--  without CuBit.Block_Devices.Write_Authority_Tag sees the unit read only
+--  (Describe reports FEATURE_READ_ONLY; writes are refused before any
+--  command is built). devmgr badges an endpoint with it only for the
+--  installer's disk-install authority (CuBit.Disk_Install). With it, the
+--  unit offers writes, FUA and a flush (SYNCHRONIZE CACHE).
 ------------------------------------------------------------------------------
 with UFS_Identify;
 
