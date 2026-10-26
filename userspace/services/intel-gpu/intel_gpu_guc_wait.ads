@@ -5,7 +5,11 @@ generic
    with function Read_Status return Interfaces.Unsigned_32;
    with function Now return Interfaces.Unsigned_64;
    with procedure Pause;
+   -- Each distinct status value, as first read (the first read included),
+   -- with microseconds since the wait began: the boot log's heartbeat.
+   with procedure Observe (Raw : Interfaces.Unsigned_32; Elapsed : Interfaces.Unsigned_64);
 package Intel_GPU_GuC_Wait is
+   Startup_Limit_Us : constant := 3_000_000;
    type Result is (Firmware_Ready, Device_Failed, Invalid_Clock, Timed_Out);
    procedure Execute (Poll_Limit : Positive; Status : out Result;
      Last_Raw : out Interfaces.Unsigned_32;

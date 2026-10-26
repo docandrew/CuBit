@@ -1,5 +1,6 @@
 with Interfaces;
 with Intel_GPU_Scanout_Range;
+with Intel_GPU_Plane_Control;
 package Intel_GPU_Plane_Decode with SPARK_Mode is
    use Interfaces;
    -- ADL-N universal plane register values, not MMIO offsets. The collector
@@ -10,6 +11,12 @@ package Intel_GPU_Plane_Decode with SPARK_Mode is
    end record;
    type Status is (Invalid_Read, Changing, Disabled, Unsupported,
                    Invalid_Geometry, Linear_Ready);
+   function Status_Name (S : Status) return String is
+     (case S is
+        when Invalid_Read => "invalid-read", when Changing => "changing",
+        when Disabled => "disabled", when Unsupported => "unsupported",
+        when Invalid_Geometry => "invalid-geometry",
+        when Linear_Ready => "linear-ready");
    type Decoded is record
       State : Status := Invalid_Read;
       Memory : Intel_GPU_Scanout_Range.Extent;
@@ -37,7 +44,8 @@ package Intel_GPU_Plane_Decode with SPARK_Mode is
          Plan_Linear_Flip'Result.Memory.First = Target_First and then
          Plan_Linear_Flip'Result.Memory.Bytes <= Target_Bytes and then
          Unsigned_64 (Plan_Linear_Flip'Result.Surface_Word) = Target_First);
-   -- Initially supports unrotated, uncompressed, linear 32-bit RGB only.
+   -- Supports unrotated, uncompressed, linear 32-bit RGB only, with any
+   -- Footprint_Neutral_Bits set.
    -- Reject unrecognized control bits and a pending/live address mismatch:
    -- current dimensions cannot safely describe an older live surface.
    -- Neither Disabled nor any rejection permits reclamation/admission.
@@ -49,8 +57,8 @@ package Intel_GPU_Plane_Decode with SPARK_Mode is
        (if Decode'Result.State = Linear_Ready then
           Before = After and then
           (Before.Surface and 16#FFFF_F000#) = Before.Live_Surface and then
-          Before.Control in 16#8400_0000# | 16#8410_0000# |
-            16#8400_0008# | 16#8410_0008# and then
+          (Before.Control and not Intel_GPU_Plane_Control.Footprint_Neutral_Bits) =
+            Intel_GPU_Plane_Control.Enabled_Linear_XRGB8888 and then
           Decode'Result.Memory.First = Unsigned_64 (Before.Live_Surface) and then
           Decode'Result.Memory.Bytes > 0 and then
           Decode'Result.Memory.Bytes mod 4096 = 0 and then

@@ -9,8 +9,9 @@ package body Intel_GPU_GuC_Upload is
    Saved_State : Intel_GPU_GuC_Status.State := Intel_GPU_GuC_Status.Invalid_MMIO;
    function Last_Startup_Raw return Unsigned_32 is (Saved_Raw);
    function Last_Startup_State return Intel_GPU_GuC_Status.State is (Saved_State);
-   function Read_Status return Unsigned_32 is (Read32 (16#C000#));
-   package Boot is new Intel_GPU_GuC_Wait (Read_Status, Now, Pause);
+   function Read_Status return Unsigned_32 is
+     (Read32 (Intel_GPU_GuC_Status.Register_Offset));
+   package Boot is new Intel_GPU_GuC_Wait (Read_Status, Now, Pause, Observe);
    function DMA_Read (Offset : Unsigned_32) return Unsigned_32 is
    begin
       if Write_Error then return Unsigned_32'Last; end if;

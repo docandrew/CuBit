@@ -1,3 +1,4 @@
+with Ada.Text_IO;
 with Interfaces; use Interfaces;
 with Intel_GPU_Firmware; use Intel_GPU_Firmware;
 procedure Firmware_Tests is
@@ -82,4 +83,68 @@ begin
          end;
       end if;
    end loop;
+   --  Real CSS headers (first 128 bytes, as 32 little-endian dwords) of
+   --  linux-firmware 20250917 i915/tgl_guc_70.bin (sha256 2f1f57a1...,
+   --  335360 bytes, the vendored blob) and i915/adlp_guc_70.bin (sha256
+   --  b7a800cb..., 347904 bytes). Linux loads tgl on ADL-N (intel_uc_fw.c,
+   --  v6.12, lines 293-300); adlp parses as a valid CSS layout of the same
+   --  version but is not the pinned ADL-N blob.
+   declare
+      type Header_Words is array (0 .. 31) of Unsigned_32;
+      TGL : constant Header_Words :=
+        [16#6#, 16#A1#, 16#10000#, 16#0#, 16#8086#, 16#20250825#, 16#147C1#,
+         16#40#, 16#40#, 16#1#, 16#375720#, 16#5F737973#, 16#62736267#,
+         16#312D4350#, 16#332E302E#, 16#303531#, 16#463104#, 16#11804#,
+         others => 0];
+      ADLP : constant Header_Words :=
+        [16#6#, 16#A1#, 16#10000#, 16#0#, 16#8086#, 16#20250825#, 16#15401#,
+         16#40#, 16#40#, 16#1#, 16#590221#, 16#5F737973#, 16#62736267#,
+         16#312D4350#, 16#332E302E#, 16#303531#, 16#463104#, 16#11804#,
+         others => 0];
+      Private_Data_Word : constant := 30;
+      Header_Info_Word : constant := 31;
+      TGL_Bytes : constant := 335_360;
+      ADLP_Bytes : constant := 347_904;
+      procedure Load (Words : Header_Words) is
+      begin
+         Header := [others => 0];
+         for I in Words'Range loop
+            Put (I * 4, Words (I));
+         end loop;
+         Put (Private_Data_Word * 4, 16#801000#);
+         Put (Header_Info_Word * 4, 16#400100#);
+      end Load;
+      F : CSS_Fields;
+      V : Firmware_Version;
+   begin
+      Load (TGL);
+      V := Version (Header);
+      pragma Assert (V = (70, 49, 4) and V = Selected_GuC_Version);
+      pragma Assert (Version_Image (V) = "70.49.4");
+      F := Fields (Header);
+      pragma Assert (F.Module_Type = 6 and F.Header_Words = 161 and
+        F.Size_Words = 16#147C1# and F.Key_Words = 64 and F.Modulus_Words = 64 and
+        F.Exponent_Words = 1 and F.Module_Vendor = 16#8086# and
+        F.Header_Version = 16#10000# and F.Private_Data_Bytes = 16#801000#);
+      Plan := Decode (Header, TGL_Bytes);
+      pragma Assert (Plan.Valid and Plan.Code_Bytes = Selected_GuC_Code_Bytes and
+        Plan.Signature_Offset = 128 + Selected_GuC_Code_Bytes and
+        Plan.Signature_Bytes = 256);
+      pragma Assert (Matches_Selected_ADLN_GuC (Header, TGL_Bytes));
+      --  The sw_version top byte is unused and must stay zero.
+      Put (SW_Version_Offset, 16#0146_3104#);
+      pragma Assert (Version (Header) = Selected_GuC_Version);
+      pragma Assert (not Matches_Selected_ADLN_GuC (Header, TGL_Bytes));
+
+      Load (ADLP);
+      pragma Assert (Version (Header) = (70, 49, 4));
+      Plan := Decode (Header, ADLP_Bytes);
+      pragma Assert (Plan.Valid and Plan.Code_Bytes = (16#15401# - 161) * 4 and
+        Plan.Signature_Bytes = 256);
+      pragma Assert (not Matches_Selected_ADLN_GuC (Header, ADLP_Bytes));
+      pragma Assert (not Matches_Selected_ADLN_GuC (Header, TGL_Bytes));
+      pragma Assert (Version_Image ((255, 255, 255)) = "255.255.255");
+      pragma Assert (Version_Image ((0, 0, 0)) = "0.0.0");
+   end;
+   Ada.Text_IO.Put_Line ("PASS: firmware CSS layout, version and real tgl/adlp headers");
 end Firmware_Tests;

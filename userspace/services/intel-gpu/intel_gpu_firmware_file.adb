@@ -15,8 +15,12 @@ package body Intel_GPU_Firmware_File is
    Scratch : Intel_GPU_Firmware_Reader.Byte_Array (0 .. 4095)
      with Alignment => 4096;
    Loan : CuBit.Memory_Grants.Grant_Reference;
+   Saved_Header : Intel_GPU_Firmware.CSS_Header := [others => 0];
+   Saved_Header_Read : Boolean := False;
+   function Header_Read return Boolean is (Saved_Header_Read);
+   function Last_Header return Intel_GPU_Firmware.CSS_Header is (Saved_Header);
    procedure Load
-     (Filesystem : CuBit.Handles.Endpoint; Address : out System.Address;
+     (Filesystem : CuBit.Handles.Endpoint; Path : String; Address : out System.Address;
       Bytes : out Unsigned_64; Plan : out Intel_GPU_Firmware.Layout;
       Status : out Load_Status)
    is
@@ -96,6 +100,9 @@ package body Intel_GPU_Firmware_File is
       Status := Already_Attempted;
       if Attempted then return; end if;
       Attempted := True;
+      if Path'Length = 0 or else Path'Length > Scratch'Length then
+         Status := Open_Failed; return;
+      end if;
       Raw := syscall (SYSCALL_SBRK, Intel_GPU_Firmware_Reader.Maximum_Blob_Bytes);
       if Raw = Unsigned_64'Last or else Raw = 0 or else
         Raw > Unsigned_64'Last - Intel_GPU_Firmware_Reader.Maximum_Blob_Bytes
@@ -127,6 +134,7 @@ package body Intel_GPU_Firmware_File is
                end loop;
                Metadata_Matches := Intel_GPU_Firmware.Matches_Selected_ADLN_GuC
                  (Header, File_Bytes);
+               Saved_Header := Header; Saved_Header_Read := True;
             end if;
          end;
          Status := Contents_Rejected;

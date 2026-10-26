@@ -1414,6 +1414,9 @@ procedure main is
 
    procedure Grant_Intel_Firmware (Launch : DL.Child) is
       Child : constant Process_ID := DL.PID (Launch);
+      --  The one GuC every ADL-N loads: intel-gpu picks it from its family
+      --  table (Intel_GPU_ADLN_Devices.GuC_Path; Linux i915 intel_uc_fw.c
+      --  v6.12 lines 293-300 give ADL-N the ADL-S tgl blob).
       Path : constant String := "firmware/intel/tgl_guc_70.bin";
       Request : Message := NULL_MESSAGE;
       Tag : MessageTag;

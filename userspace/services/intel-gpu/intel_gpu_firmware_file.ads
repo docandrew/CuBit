@@ -3,7 +3,6 @@ with System;
 with CuBit.Handles;
 with Intel_GPU_Firmware;
 package Intel_GPU_Firmware_File is
-   Path : constant String := "firmware/intel/tgl_guc_70.bin";
    type Load_Status is
      (Loaded, Already_Attempted, Allocation_Failed, Grant_Failed,
       Transport_Failed, Open_Failed, Access_Denied, Contents_Rejected,
@@ -25,8 +24,13 @@ package Intel_GPU_Firmware_File is
    --  On timeout, process-lived scratch/loan storage is quarantined, never
    --  reused. Loaded bytes are private, immutable by convention, not DMA-ready
    --  or authenticated. No GPU registers are touched.
+   --  Path: the device's GuC file (Intel_GPU_ADLN_Devices.GuC_Path).
    procedure Load
-     (Filesystem : CuBit.Handles.Endpoint;
+     (Filesystem : CuBit.Handles.Endpoint; Path : String;
       Address : out System.Address; Bytes : out Interfaces.Unsigned_64;
       Plan : out Intel_GPU_Firmware.Layout; Status : out Load_Status);
+   --  The CSS header Load read (Header_Read: the whole file was read, so
+   --  this is valid even when the metadata was rejected), for the boot log.
+   function Header_Read return Boolean;
+   function Last_Header return Intel_GPU_Firmware.CSS_Header;
 end Intel_GPU_Firmware_File;

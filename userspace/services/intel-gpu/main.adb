@@ -96,6 +96,8 @@ with Intel_GPU_Native_GGTT;
 with Intel_GPU_GGTT_Invalidate;
 with Intel_GPU_GuC_Parameters;
 with Intel_GPU_GuC_Upload;
+with Intel_GPU_Plane_Decode;
+with Intel_GPU_Cursor_Decode;
 with Intel_GPU_GuC_Status;
 with Intel_GPU_GuC_CT_Setup;
 with Intel_GPU_GuC_CT_Register;
@@ -1385,8 +1387,24 @@ procedure Main is
       Intel_GPU_Wait_Report.Pulse (Intel_GPU_Wait_Report.GuC_Load);
       System.Machine_Code.Asm ("pause", Volatile => True);
    end GuC_Pause;
+   --  Every distinct GUC_STATUS value while the firmware boots, decoded,
+   --  so a stuck or failed boot shows where the GuC stopped.
+   procedure GuC_Observe (Raw : Unsigned_32; Elapsed : Unsigned_64) is
+   begin
+      Publish_Snapshot ("intel-gpu: GuC status us=" &
+        Unsigned_64'Image (Elapsed) & " " & Intel_GPU_GuC_Status.Describe (Raw),
+        (if Intel_GPU_GuC_Status."=" (Intel_GPU_GuC_Status.Decode (Raw), Intel_GPU_GuC_Status.Pending)
+            or else Intel_GPU_GuC_Status."=" (Intel_GPU_GuC_Status.Decode (Raw), Intel_GPU_GuC_Status.Ready)
+         then CuBit.Log_Records.Information else CuBit.Log_Records.Warning));
+   end GuC_Observe;
    package Native_GuC is new Intel_GPU_GuC_Upload
-     (GuC_Read, GuC_Write, GuC_Byte, GuC_Now, GuC_Pause);
+     (GuC_Read, GuC_Write, GuC_Byte, GuC_Now, GuC_Pause, GuC_Observe);
+   --  GUC_STATUS is read only once the transfer completed.
+   function GuC_Startup_Status (Status : Native_GuC.Result) return String is
+     (if Native_GuC."=" (Status, Native_GuC.Startup_Failed) or else
+         Native_GuC."=" (Status, Native_GuC.Firmware_Ready)
+      then Intel_GPU_GuC_Status.Describe (Native_GuC.Last_Startup_Raw)
+      else "guc-status=not-read");
    -- Optional boot diagnostic viewer devmgr launches. Only devmgr holds the
    -- driver's untagged endpoint, so a request stamped Viewer_Tag came over
    -- the badged endpoint devmgr gave the viewer: that stamp authenticates
@@ -8561,18 +8579,59 @@ begin
         GGTT_Result'Length > GGTT_Read_Prefix'Length
         and then GGTT_Result (GGTT_Result'First .. GGTT_Result'First + GGTT_Read_Prefix'Length - 1)
                    = GGTT_Read_Prefix, GGTT_Result);
-      Intel_GPU_Firmware_File.Load
-        ((if Startup.Firmware.Present then Startup.Firmware.Value
-          else CuBit.Handles.No_Endpoint), Firmware_Address, Firmware_Bytes, Firmware_Plan, Firmware_Status);
-      Bring_Up_Stage (Intel_GPU_Bring_Up.Firmware,
-        Firmware_Status = Intel_GPU_Firmware_File.Loaded,
-        Intel_GPU_Firmware_File.Name (Firmware_Status) & " bytes=" & Hex64 (Firmware_Bytes));
+      declare
+         --  The device's GuC, from the family table (all ADL-N: tgl).
+         GuC_File : constant String :=
+           (if Intel_GPU_ADLN_Devices.Supported_Device (PCI_Device)
+            then Intel_GPU_ADLN_Devices.GuC_File_Name
+                   (Intel_GPU_ADLN_Devices.Facts (PCI_Device).GuC)
+            else "unsupported-device");
+      begin
+         Intel_GPU_Firmware_File.Load
+           ((if Startup.Firmware.Present then Startup.Firmware.Value
+             else CuBit.Handles.No_Endpoint),
+            (if Intel_GPU_ADLN_Devices.Supported_Device (PCI_Device)
+             then Intel_GPU_ADLN_Devices.GuC_Path
+                    (Intel_GPU_ADLN_Devices.Facts (PCI_Device).GuC)
+             else ""),
+            Firmware_Address, Firmware_Bytes, Firmware_Plan, Firmware_Status);
+         if Intel_GPU_Firmware_File.Header_Read then
+            declare
+               Header : constant Intel_GPU_Firmware.CSS_Header :=
+                 Intel_GPU_Firmware_File.Last_Header;
+               F : constant Intel_GPU_Firmware.CSS_Fields :=
+                 Intel_GPU_Firmware.Fields (Header);
+            begin
+               Bring_Up_Stage (Intel_GPU_Bring_Up.Firmware,
+                 Firmware_Status = Intel_GPU_Firmware_File.Loaded,
+                 Intel_GPU_Firmware_File.Name (Firmware_Status) & " file=" & GuC_File &
+                 " bytes=" & Hex64 (Firmware_Bytes) & " version=" &
+                 Intel_GPU_Firmware.Version_Image (Intel_GPU_Firmware.Version (Header)) &
+                 " want=" & Intel_GPU_Firmware.Version_Image (Intel_GPU_Firmware.Selected_GuC_Version) &
+                 " pinned-bytes=" & Hex64 (Intel_GPU_Firmware.Selected_GuC_Blob_Bytes));
+               Publish_Snapshot ("intel-gpu: GuC CSS type=" & Hex (F.Module_Type) &
+                 " header-dw=" & Hex (F.Header_Words) & " size-dw=" & Hex (F.Size_Words) &
+                 " key-dw=" & Hex (F.Key_Words) & " modulus-dw=" & Hex (F.Modulus_Words) &
+                 " exponent-dw=" & Hex (F.Exponent_Words) & " vendor=" & Hex (F.Module_Vendor) &
+                 " header-version=" & Hex (F.Header_Version) &
+                 " private-data=" & Hex (F.Private_Data_Bytes),
+                 (if Firmware_Status = Intel_GPU_Firmware_File.Loaded
+                  then CuBit.Log_Records.Information else CuBit.Log_Records.Warning));
+            end;
+         else
+            Bring_Up_Stage (Intel_GPU_Bring_Up.Firmware,
+              Firmware_Status = Intel_GPU_Firmware_File.Loaded,
+              Intel_GPU_Firmware_File.Name (Firmware_Status) & " file=" & GuC_File &
+              " bytes=" & Hex64 (Firmware_Bytes));
+         end if;
+      end;
       debugPrint ("intel-gpu: firmware file " &
         Intel_GPU_Firmware_File.Name (Firmware_Status) &
         " bytes" & Unsigned_64'Image (Firmware_Bytes) &
         " code" & Unsigned_64'Image (Firmware_Plan.Code_Bytes) &
         " (NOT authenticated or uploaded)" & ASCII.LF);
-      Publish_Snapshot ("intel-gpu: read-only snapshot; firmware=" &
+      --  HSW_PWR_WELL_CTL1 (BIOS) / CTL2 (driver) display power wells.
+      Publish_Snapshot ("intel-gpu: read-only snapshot; power-well-ctl bios=" &
         Hex (Observation.Values (Intel_GPU_Observation.Firmware_Power_Control)) &
         " driver=" & Hex (Observation.Values (Intel_GPU_Observation.Driver_Power_Control)) &
         "; scanout retained");
@@ -8826,21 +8885,29 @@ begin
                      if A.Collected then
                      Publish_Snapshot ("intel-gpu: A" & Label & " ctl=" & Hex (A.Before.Control) &
                        " surface=" & Hex (A.Before.Surface) & " live=" & Hex (A.Before.Live_Surface));
+                     Publish_Snapshot ("intel-gpu: A" & Label & " stride=" & Hex (A.Before.Stride) &
+                       " size=" & Hex (A.Before.Size) & " offset=" & Hex (A.Before.Offset));
                      end if;
                      Publish_Snapshot ("intel-gpu: B" & Label & " " & Plane_B.Diagnostic (B));
                      if B.Collected then
                      Publish_Snapshot ("intel-gpu: B" & Label & " ctl=" & Hex (B.Before.Control) &
                        " surface=" & Hex (B.Before.Surface) & " live=" & Hex (B.Before.Live_Surface));
+                     Publish_Snapshot ("intel-gpu: B" & Label & " stride=" & Hex (B.Before.Stride) &
+                       " size=" & Hex (B.Before.Size) & " offset=" & Hex (B.Before.Offset));
                      end if;
                      Publish_Snapshot ("intel-gpu: C" & Label & " " & Plane_C.Diagnostic (C));
                      if C.Collected then
                      Publish_Snapshot ("intel-gpu: C" & Label & " ctl=" & Hex (C.Before.Control) &
                        " surface=" & Hex (C.Before.Surface) & " live=" & Hex (C.Before.Live_Surface));
+                     Publish_Snapshot ("intel-gpu: C" & Label & " stride=" & Hex (C.Before.Stride) &
+                       " size=" & Hex (C.Before.Size) & " offset=" & Hex (C.Before.Offset));
                      end if;
                      Publish_Snapshot ("intel-gpu: D" & Label & " " & Plane_D.Diagnostic (D));
                      if D.Collected then
                      Publish_Snapshot ("intel-gpu: D" & Label & " ctl=" & Hex (D.Before.Control) &
                        " surface=" & Hex (D.Before.Surface) & " live=" & Hex (D.Before.Live_Surface));
+                     Publish_Snapshot ("intel-gpu: D" & Label & " stride=" & Hex (D.Before.Stride) &
+                       " size=" & Hex (D.Before.Size) & " offset=" & Hex (D.Before.Offset));
                      end if;
                   end;
                   end loop;
@@ -8890,7 +8957,34 @@ begin
                        when Intel_GPU_Scanout_Inventory.Incomplete => "INCOMPLETE",
                        when Intel_GPU_Scanout_Inventory.Unsupported_Plane => "UNSUPPORTED-PLANE",
                        when Intel_GPU_Scanout_Inventory.Unsupported_Cursor => "UNSUPPORTED-CURSOR") &
-                    " ranges=" & Natural'Image (Scanout.Count) & " (NOT GGTT ownership)");
+                    " ranges=" & Natural'Image (Scanout.Count) & " (NOT GGTT ownership)",
+                    (if Scanout.Status = Intel_GPU_Scanout_Inventory.Complete
+                     then CuBit.Log_Records.Information else CuBit.Log_Records.Warning));
+                  if Scanout.Status /= Intel_GPU_Scanout_Inventory.Complete then
+                     --  Name the object: pipe letter and plane number from
+                     --  the inventory's flat indices (Planes_Per_Pipe each).
+                     declare
+                        package SI renames Intel_GPU_Scanout_Inventory;
+                        Pipe_Letters : constant String := "ABCD";
+                        Object : constant String :=
+                          (if Scanout.Failed_Plane /= 0 then
+                             " pipe " & Pipe_Letters (Pipe_Letters'First +
+                               (Scanout.Failed_Plane - 1) / SI.Planes_Per_Pipe) &
+                             " plane" & Natural'Image
+                               ((Scanout.Failed_Plane - 1) mod SI.Planes_Per_Pipe + 1) &
+                             " decode=" & Intel_GPU_Plane_Decode.Status_Name (Scanout.Plane_State)
+                           elsif Scanout.Failed_Cursor /= 0 then
+                             " pipe " & Pipe_Letters (Pipe_Letters'First + Scanout.Failed_Cursor - 1) &
+                             " cursor decode=" & Intel_GPU_Cursor_Decode.Status_Name (Scanout.Cursor_State)
+                           else "");
+                     begin
+                        Publish_Snapshot ("intel-gpu: scanout inventory missing " &
+                          SI.Shortfall_Name (Scanout.Missing) & Object &
+                          " presence-known=" & Boolean'Image (Display_Presence.Known) &
+                          " ggtt-table-bytes=" & Hex64 (Table_Bytes),
+                          CuBit.Log_Records.Warning);
+                     end;
+                  end if;
                   Display_Executor.Select_Output
                     ([Intel_GPU_Display_Topology.A =>
                         (Scanout_Planes (1).Collected, Scanout_Planes (1).Before, Scanout_Planes (1).After),
@@ -9111,12 +9205,15 @@ begin
                      end if;
                   end;
                else
-                  Publish_Snapshot ("intel-gpu: firmware mapping prerequisites unavailable; backing retained");
+                  --  Blocks the GuC upload, so a Warning; Require names each.
+                  Publish_Snapshot ("intel-gpu: firmware mapping prerequisites unavailable; backing retained",
+                    CuBit.Log_Records.Warning);
                   declare
                      procedure Require (Name : String; Ready : Boolean) is
                      begin
                         if not Ready then
-                           Publish_Snapshot ("intel-gpu: upload missing " & Name);
+                           Publish_Snapshot ("intel-gpu: upload missing " & Name,
+                             CuBit.Log_Records.Warning);
                         end if;
                      end Require;
                      Held : constant DP.Held_Set :=
@@ -9422,7 +9519,9 @@ begin
                  when Native_GuC.Transfer_Failed => "TRANSFER-FAILED",
                  when Native_GuC.Startup_Failed => "STARTUP-FAILED",
                  when Native_GuC.Firmware_Ready => "FIRMWARE-READY (NOT submission-ready)") &
-              " raw=" & Hex (Native_GuC.Last_Startup_Raw));
+              " " & GuC_Startup_Status (Status),
+              (if Status = Native_GuC.Firmware_Ready then CuBit.Log_Records.Information
+               else CuBit.Log_Records.Warning));
             Publish_Snapshot ("intel-gpu: GuC transfer " & Native_GuC.Last_Transfer_Detail);
             Bring_Up_Stage (Intel_GPU_Bring_Up.GuC, Status = Native_GuC.Firmware_Ready,
               (case Status is
@@ -9434,7 +9533,8 @@ begin
                  when Native_GuC.Transfer_Failed => "transfer-failed",
                  when Native_GuC.Startup_Failed => "startup-failed",
                  when Native_GuC.Firmware_Ready => "firmware-ready") &
-              " raw=" & Hex (Native_GuC.Last_Startup_Raw));
+              " transfer=" & Native_GuC.Last_Transfer_Detail &
+              " " & GuC_Startup_Status (Status));
             if Status = Native_GuC.Firmware_Ready and then CT_Mapped then
                declare
                   CT_Status : Native_CT.Result;
@@ -9546,11 +9646,23 @@ begin
             end if;
          else
             Startup_Active := False;
-            Publish_Snapshot ("intel-gpu: GuC source/owner rejected before upload");
+            Publish_Snapshot ("intel-gpu: GuC source/owner rejected before upload",
+              CuBit.Log_Records.Warning);
+            Bring_Up_Stage (Intel_GPU_Bring_Up.GuC, False,
+              "not attempted: GuC source/owner rejected before upload");
          end if;
       end;
    else
-      Publish_Snapshot ("intel-gpu: native GuC startup prerequisites unavailable");
+      --  The GuC stage reports a failure too, naming each missing
+      --  prerequisite: without it the summary only says "reached reset".
+      Bring_Up_Stage (Intel_GPU_Bring_Up.GuC, False,
+        "not attempted: missing" &
+        (if Firmware_Mapped then "" else " firmware-mapping") &
+        (if ADS_Mapped then "" else " ads-mapping") &
+        (if Log_Mapped then "" else " log-mapping") &
+        (if Intel_GPU_GuC_Parameters.Valid (Startup_Parameters) then "" else " startup-parameters") &
+        (if Selected_WOPCM.Valid then "" else " wopcm-layout") &
+        (if Publication_Owner_Ready then "" else " publication-owner"));
    end if;
    if Display_Executor.Output_Selected then
       -- The cursor's staging image and surfaces, before any client request.

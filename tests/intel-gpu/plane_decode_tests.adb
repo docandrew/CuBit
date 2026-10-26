@@ -42,7 +42,8 @@ begin
    for Bit in 0 .. 31 loop
       S := Baseline;
       S.Control := S.Control xor Shift_Left (1, Bit);
-      Expect (S, (if Bit = 31 then Disabled elsif Bit in 3 | 20 then Linear_Ready
+      Expect (S, (if Bit = 31 then Disabled
+                  elsif Bit in 3 | 13 | 14 | 20 | 28 .. 30 then Linear_Ready
                   else Unsupported));
    end loop;
    for Field in 0 .. 5 loop
@@ -76,6 +77,16 @@ begin
    pragma Assert (D.State = Linear_Ready and D.Memory.First = 0 and
                     D.Memory.Bytes = 8_294_400);
    S.Control := 16#8410_0008#; Expect (S, Linear_Ready);
+   -- Every footprint-neutral field at once (GOP eDP planes set arbitration
+   -- slots, trickle feed and clear-colour disable): same footprint.
+   S.Control := Intel_GPU_Plane_Control.Enabled_Linear_XRGB8888 or
+     Intel_GPU_Plane_Control.Footprint_Neutral_Bits;
+   D := Decode (S, S, 8 * 1024 * 1024);
+   pragma Assert (D.State = Linear_Ready and D.Memory.First = 0 and
+                    D.Memory.Bytes = 8_294_400);
+   -- Clear-colour disable stays neutral only while render decompression is
+   -- rejected.
+   S.Control := S.Control or 16#8000#; Expect (S, Unsupported);
    S := Baseline; S.Live_Surface := 16#300000#; Expect (S, Changing);
    for Bit in 0 .. 11 loop
       S := Baseline; S.Surface := S.Surface or Shift_Left (1, Bit);

@@ -20,7 +20,11 @@ procedure GuC_Status_Tests is
       end Now;
       procedure Pause is
       begin Pauses := Pauses + 1; end Pause;
-      package W is new Intel_GPU_GuC_Wait (Read_Status, Now, Pause);
+      Observed : Natural := 0;
+      procedure Observe (Raw : Unsigned_32; Elapsed : Unsigned_64) is
+         pragma Unreferenced (Raw, Elapsed);
+      begin Observed := Observed + 1; end Observe;
+      package W is new Intel_GPU_GuC_Wait (Read_Status, Now, Pause, Observe);
       use type W.Result;
       Status : W.Result;
       Raw : Unsigned_32;
@@ -35,6 +39,8 @@ procedure GuC_Status_Tests is
       pragma Assert (Decoded = Decode (Raw));
       pragma Assert (Reads = (if Mode = 4 then 0 elsif Mode = 3 then 3 else 1));
       pragma Assert (Pauses = (if Mode = 3 then 2 else 0));
+      --  One report per distinct value; none when the clock failed first.
+      pragma Assert (Observed = (if Mode in 4 | 5 | 6 then 0 else 1));
    end Run;
 begin
    for B in Unsigned_32 range 0 .. 127 loop
@@ -55,6 +61,18 @@ begin
       end loop;
    end loop;
    pragma Assert (Decode (Unsigned_32'Last) = Invalid_MMIO);
+   --  Named-field decoding for the boot log.
+   pragma Assert (Describe (16#8000_F0EC#) =
+     "raw=0x8000F0EC mia-reset=0 bootrom=0x76(jump-passed) ukernel=0xF0(ready) mia=0x0 auth=good state=ready");
+   pragma Assert (Describe (16#4000_00A0#) =
+     "raw=0x400000A0 mia-reset=0 bootrom=0x50(rsa-failed) ukernel=0x00(default) mia=0x0 auth=bad state=authentication-failed");
+   pragma Assert (Describe (16#0001_0701#) =
+     "raw=0x00010701 mia-reset=1 bootrom=0x00(unknown) ukernel=0x07(hwconfig-error) mia=0x1 auth=unchecked state=firmware-failed");
+   pragma Assert (Describe (Unsigned_32'Last) = "raw=0xFFFFFFFF invalid-mmio");
+   for Raw in Unsigned_32 range 0 .. 16#FFFF# loop
+      pragma Assert (Describe (Shift_Left (Raw, 16) or Raw)'Length <= 160);
+      pragma Assert (Split (Raw).Bootrom = (Shift_Right (Raw, 1) and 16#7F#));
+   end loop;
    for Mode in 0 .. 7 loop Run (Mode); end loop;
    Ada.Text_IO.Put_Line ("PASS: 262144 GuC status combinations, all-ones and8 bounded wait cases");
 end GuC_Status_Tests;

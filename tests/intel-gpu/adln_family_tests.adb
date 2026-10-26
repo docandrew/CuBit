@@ -44,6 +44,15 @@ procedure ADLN_Family_Tests is
 begin
    Check (Facts (NUC_Device).GT = GT0_5, "46D2 is GT0.5 (Mesa adl_gt05)");
    Check (Facts (Laptop_Device).GT = GT1, "46D4 is GT1 (Mesa adl_gt1)");
+   --  GuC selection: i915 loads tgl_guc_70.bin on every ADL-N (intel_uc_fw.c
+   --  v6.12 lines 293-300), so the IdeaPad and the NUC both get tgl.
+   Check (Facts (Laptop_Device).GuC = TGL_GuC_70, "46D4 loads tgl_guc_70");
+   Check (Facts (NUC_Device).GuC = TGL_GuC_70, "46D2 loads tgl_guc_70");
+   Check (GuC_Path (Facts (Laptop_Device).GuC) = "firmware/intel/tgl_guc_70.bin",
+          "46D4 GuC path is the file devmgr grants");
+   for Device in Device_ID loop
+      Check (Facts (Device).GuC = TGL_GuC_70, "every ADL-N device loads tgl_guc_70");
+   end loop;
    for Device in Device_ID loop
       declare
          Name : constant String := Unsigned_16'Image (Device);

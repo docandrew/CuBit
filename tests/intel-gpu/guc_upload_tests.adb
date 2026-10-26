@@ -299,7 +299,8 @@ procedure GuC_Upload_Tests is
          return 100;
       end Now;
       procedure Pause is null;
-      package U is new Intel_GPU_GuC_Upload (Read32, Write32, Read_Byte, Now, Pause);
+      procedure Observe (Raw : Unsigned_32; Elapsed : Unsigned_64) is null;
+      package U is new Intel_GPU_GuC_Upload (Read32, Write32, Read_Byte, Now, Pause, Observe);
       use type U.Result;
       package P renames Intel_GPU_GuC_Parameters;
       Invalid_Parameters : P.Parameter_Block;

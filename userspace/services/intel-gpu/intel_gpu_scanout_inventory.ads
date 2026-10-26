@@ -18,10 +18,32 @@ package Intel_GPU_Scanout_Inventory with SPARK_Mode is
    type Cursors is array (Cursor_Index) of Cursor_Observation;
    type Extents is array (Positive range 1 .. 24) of Intel_GPU_Scanout_Range.Extent;
    type Outcome is (Incomplete, Unsupported_Plane, Unsupported_Cursor, Complete);
+   --  Why an inventory is not Complete, so the boot log names the object.
+   type Shortfall is
+     (None, Presence_Unknown, Table_Size_Unsupported, Plane_Not_Collected,
+      Plane_Rejected, Cursor_Not_Collected, Cursor_Rejected);
+   function Shortfall_Name (Item : Shortfall) return String is
+     (case Item is
+        when None => "none",
+        when Presence_Unknown => "pipe-presence-unknown",
+        when Table_Size_Unsupported => "ggtt-table-size-unsupported",
+        when Plane_Not_Collected => "plane-not-collected",
+        when Plane_Rejected => "plane-rejected",
+        when Cursor_Not_Collected => "cursor-not-collected",
+        when Cursor_Rejected => "cursor-rejected");
+   Planes_Per_Pipe : constant := 5;
+   subtype Plane_Reference is Natural range 0 .. Plane_Index'Last;
+   subtype Cursor_Reference is Natural range 0 .. Cursor_Index'Last;
    type Inventory is record
       Status : Outcome := Incomplete;
       Count : Natural range 0 .. 24 := 0;
       Ranges : Extents := (others => (others => <>));
+      --  First object that kept the inventory from Complete (0: none).
+      Missing : Shortfall := None;
+      Failed_Plane : Plane_Reference := 0;
+      Plane_State : Intel_GPU_Plane_Decode.Status := Intel_GPU_Plane_Decode.Invalid_Read;
+      Failed_Cursor : Cursor_Reference := 0;
+      Cursor_State : Intel_GPU_Cursor_Decode.Status := Intel_GPU_Cursor_Decode.Invalid_Read;
    end record;
    -- Each physically present pipe has five planes and one cursor. Caller
    -- retains serialization and power across collection/publication. This is
@@ -30,7 +52,8 @@ package Intel_GPU_Scanout_Inventory with SPARK_Mode is
    -- Unknown presence is incomplete. Absent objects need no fabricated
    -- disabled sample. Presence evidence must belong to this same device.
    function Collect (P : Planes; C : Cursors; Table_Bytes : Unsigned_64;
-     Presence : Intel_GPU_Display_Presence.Snapshot) return Inventory;
+     Presence : Intel_GPU_Display_Presence.Snapshot) return Inventory
+   with Post => (Collect'Result.Status = Complete) = (Collect'Result.Missing = None);
    -- Collect and plan from the same observations. Reject missing/unsupported
    -- objects and any target allocation overlapping a live plane or cursor.
    -- Caller retains power/serialization throughout; this is GGTT geometry,

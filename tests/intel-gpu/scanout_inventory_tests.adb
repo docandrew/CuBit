@@ -1,8 +1,10 @@
+with Intel_GPU_Plane_Decode;
 with Intel_GPU_Display_Presence;
 with Ada.Text_IO; with Interfaces;
 with Intel_GPU_Scanout_Inventory; with Intel_GPU_Scanout_Range;
 procedure Scanout_Inventory_Tests is
    use Interfaces; use Intel_GPU_Scanout_Inventory;
+   use type Intel_GPU_Plane_Decode.Status;
    package DP renames Intel_GPU_Display_Presence;
    Present_Pipes : constant DP.Snapshot := (True, [others => DP.Present]);
    P : Planes; C : Cursors; R : Inventory;
@@ -139,10 +141,24 @@ begin
       R := Collect (P, C, 8_388_608, Present_Pipes);
       pragma Assert (R.Status = Unsupported_Plane and
         not No_Scanout_Overlap (R, Candidate));
+      pragma Assert (R.Missing = Plane_Rejected and R.Failed_Plane = I and
+        R.Plane_State = Intel_GPU_Plane_Decode.Changing);
       Reset; P (I).Collected := False; R := Collect (P, C, 8_388_608, Present_Pipes);
       pragma Assert (R.Status = Incomplete and not No_Scanout_Overlap (R, Candidate));
+      pragma Assert (R.Missing = Plane_Not_Collected and R.Failed_Plane = I and
+        R.Failed_Cursor = 0);
       Reset; P (I).After.Surface := 0; R := Collect (P, C, 8_388_608, Present_Pipes);
       pragma Assert (R.Status = Unsupported_Plane);
+      --  A tiled firmware plane is named, with its decode result.
+      Reset; P (I).Before.Control := P (I).Before.Control or 16#400#;
+      P (I).After := P (I).Before; R := Collect (P, C, 8_388_608, Present_Pipes);
+      pragma Assert (R.Missing = Plane_Rejected and R.Failed_Plane = I and
+        R.Plane_State = Intel_GPU_Plane_Decode.Unsupported);
+      --  GOP eDP control bits that leave the footprint alone (arbitration
+      --  slots, trickle feed, clear colour): still Complete (IdeaPad 46D4).
+      Reset; P (I).Before.Control := P (I).Before.Control or 16#7000_6000#;
+      P (I).After := P (I).Before; R := Collect (P, C, 8_388_608, Present_Pipes);
+      pragma Assert (R.Status = Complete and R.Missing = None and R.Count = 24);
    end loop;
    for I in Cursor_Index loop
       for Mode in Unsigned_32 range 1 .. 63 loop
@@ -157,6 +173,8 @@ begin
       end loop;
       Reset; C (I).Collected := False; R := Collect (P, C, 8_388_608, Present_Pipes);
       pragma Assert (R.Status = Incomplete);
+      pragma Assert (R.Missing = Cursor_Not_Collected and R.Failed_Cursor = I and
+        R.Failed_Plane = 0);
       Reset; C (I).After.Base := 0; R := Collect (P, C, 8_388_608, Present_Pipes);
       pragma Assert (R.Status = Unsupported_Cursor);
    end loop;
@@ -168,6 +186,9 @@ begin
    pragma Assert (not No_Scanout_Overlap (R, (True, Unsigned_64'Last, 1)));
    pragma Assert (not No_Scanout_Overlap (R, (True, 0, 0)));
    pragma Assert (Collect (P, C, 0, Present_Pipes).Status = Incomplete);
+   pragma Assert (Collect (P, C, 0, Present_Pipes).Missing = Table_Size_Unsupported);
+   pragma Assert (Collect (P, C, 8_388_608, (others => <>)).Missing = Presence_Unknown);
+   pragma Assert (R.Missing = None);
    -- Independent endpoint-based oracle, including containment and adjacency.
    -- Production arithmetic uses differences rather than endpoint addition.
    R.Status := Complete; R.Count := 1;

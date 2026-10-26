@@ -12,6 +12,8 @@ generic
      Value : out Interfaces.Unsigned_8; Success : out Boolean);
    with function Now return Interfaces.Unsigned_64;
    with procedure Pause;
+   -- GUC_STATUS changes while waiting for the firmware (Intel_GPU_GuC_Wait).
+   with procedure Observe (Raw : Interfaces.Unsigned_32; Elapsed : Interfaces.Unsigned_64);
 package Intel_GPU_GuC_Upload is
    -- Firmware ABI startup words, SOFT_SCRATCH(1..14). The caller must
    -- construct these for the selected firmware/device, including retained

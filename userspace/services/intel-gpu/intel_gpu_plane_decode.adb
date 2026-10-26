@@ -1,4 +1,3 @@
-with Intel_GPU_Plane_Control;
 package body Intel_GPU_Plane_Decode with SPARK_Mode is
    function Decode
      (Before, After : Sample; Table_Bytes : Unsigned_64) return Decoded
@@ -22,12 +21,15 @@ package body Intel_GPU_Plane_Decode with SPARK_Mode is
       if Fields.Enabled = 0 then
          return (Disabled, (others => <>));
       end if;
-      -- These fields do not alter the supported linear RGB footprint.
-      -- Bit 3 permits global double-buffer-update suspension; leave hardware
-      -- unchanged. All other control fields remain conservatively checked.
+      -- Footprint_Neutral_Bits (Intel_GPU_Plane_Control) do not alter the
+      -- supported linear RGB footprint; leave hardware unchanged. All other
+      -- control fields remain conservatively checked.
       Fields.Enabled := 0;
       Fields.RGB_Order := 0;
       Fields.Allow_Update_Disable := 0;
+      Fields.Arbitration_Slots := 0;
+      Fields.Trickle_Feed_Disable := 0;
+      Fields.Clear_Color_Disable := 0;
       if Fields.Pixel_Format /= 8 then
          return (Unsupported, (others => <>));
       end if;

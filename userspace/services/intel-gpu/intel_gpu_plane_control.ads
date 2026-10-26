@@ -22,7 +22,7 @@ package Intel_GPU_Plane_Control with SPARK_Mode is
       Async_Address_Update : Bits_1 := 0;
       Tiling : Bits_3 := 0;
       Clear_Color_Disable : Bits_1 := 0;
-      Reserved_14 : Bits_1 := 0;
+      Trickle_Feed_Disable : Bits_1 := 0;
       Render_Decompression : Bits_1 := 0;
       YUV_Byte_Order : Bits_2 := 0;
       Reserved_18 : Bits_1 := 0;
@@ -44,7 +44,7 @@ package Intel_GPU_Plane_Control with SPARK_Mode is
       Async_Address_Update at 0 range 9 .. 9;
       Tiling at 0 range 10 .. 12;
       Clear_Color_Disable at 0 range 13 .. 13;
-      Reserved_14 at 0 range 14 .. 14;
+      Trickle_Feed_Disable at 0 range 14 .. 14;
       Render_Decompression at 0 range 15 .. 15;
       YUV_Byte_Order at 0 range 16 .. 17;
       Reserved_18 at 0 range 18 .. 18;
@@ -59,6 +59,31 @@ package Intel_GPU_Plane_Control with SPARK_Mode is
      (Interfaces.Unsigned_32, Control);
    function To_Word is new Ada.Unchecked_Conversion
      (Control, Interfaces.Unsigned_32);
+   -- Whole-word views of the same fields, for contracts and diagnostics.
+   -- Linux i915 skl_universal_plane_regs.h (v6.12) names them PLANE_CTL_
+   -- ENABLE, _ARB_SLOTS_MASK, _ORDER_RGBX, _TRICKLE_FEED_DISABLE,
+   -- _CLEAR_COLOR_DISABLE; format 8 in bits 27:23 is XRGB8888 (ICL+).
+   use type Interfaces.Unsigned_32;
+   Enable_Bit : constant Interfaces.Unsigned_32 := 16#8000_0000#;
+   Arbitration_Slots_Bits : constant Interfaces.Unsigned_32 := 16#7000_0000#;
+   RGB_Order_Bit : constant Interfaces.Unsigned_32 := 16#0010_0000#;
+   Trickle_Feed_Disable_Bit : constant Interfaces.Unsigned_32 := 16#0000_4000#;
+   Clear_Color_Disable_Bit : constant Interfaces.Unsigned_32 := 16#0000_2000#;
+   Allow_Update_Disable_Bit : constant Interfaces.Unsigned_32 := 16#0000_0008#;
+   XRGB8888_Format : constant := 8;
+   Format_Shift : constant := 23;
+   XRGB8888_Format_Bits : constant Interfaces.Unsigned_32 :=
+     XRGB8888_Format * 2 ** Format_Shift;
+   -- Fields that do not change a linear, unrotated, uncompressed plane's
+   -- memory footprint: DBUF arbitration slots, channel order, trickle feed,
+   -- clear colour (meaningful only with render decompression, which stays
+   -- rejected) and double-buffer-update suspension. Firmware (GOP) may set
+   -- any of them; the IdeaPad eDP plane is one such.
+   Footprint_Neutral_Bits : constant Interfaces.Unsigned_32 :=
+     Arbitration_Slots_Bits or RGB_Order_Bit or Trickle_Feed_Disable_Bit or
+     Clear_Color_Disable_Bit or Allow_Update_Disable_Bit;
+   Enabled_Linear_XRGB8888 : constant Interfaces.Unsigned_32 :=
+     Enable_Bit or XRGB8888_Format_Bits;
    -- Same PRM: PLANE_OFFSET p789, PLANE_SIZE pp830-831,
    -- PLANE_STRIDE pp835-836. Numeric fields preserve all bit patterns.
    type Bits_12 is mod 2 ** 12 with Size => 12;

@@ -7,6 +7,11 @@ package Intel_GPU_Cursor_Decode with SPARK_Mode is
    end record;
    type Status is (Invalid_Read, Changing, Disabled, Unsupported,
                    Invalid_Geometry, Ready);
+   function Status_Name (S : Status) return String is
+     (case S is
+        when Invalid_Read => "invalid-read", when Changing => "changing",
+        when Disabled => "disabled", when Unsupported => "unsupported",
+        when Invalid_Geometry => "invalid-geometry", when Ready => "ready");
    type Decoded is record
       State : Status := Invalid_Read;
       Memory : Intel_GPU_Scanout_Range.Extent;

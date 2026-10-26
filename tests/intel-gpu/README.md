@@ -1185,6 +1185,12 @@ optional absent modulus/exponent data, empty code/key, inconsistent/wrapped
 header counts and maximum DWORD code-size arithmetic. The layout contract
 passes GNATprove level 2 with `-u intel_gpu_firmware.adb`. These are layout
 proofs, not firmware authenticity, compatibility, upload or execution tests.
+It also checks the CSS version parser (`Version`, `Fields`) against the real
+headers of linux-firmware 20250917 `tgl_guc_70.bin` (the vendored blob) and
+`adlp_guc_70.bin`: both are 70.49.4 and valid layouts, only tgl matches the
+ADL-N pin. Linux i915 loads tgl on every ADL-N (`intel_uc_fw.c`, v6.12, lines
+293-300: ADL-N has no HWConfig table, so it uses the ADL-S blob);
+`adln_family_tests.adb` checks 46D0..46D4 all select it.
 
 Real-file hosted fixture (also packaged by the private bring-up image):
 
@@ -1399,6 +1405,9 @@ of zero/under-rounded spans was added.
 ## ADL-N linear plane decoder
 
 `plane_decode.gpr` tests the strict initial RGB8888 plane-register decoder.
+Footprint-neutral PLANE_CTL fields (arbitration slots, RGB order, trickle
+feed, clear-colour disable, update-disable) are accepted: firmware (GOP) eDP
+planes set them, and the IdeaPad 46D4 inventory needs them.
 It covers a 1920x1080 baseline, all 32 control-bit mutations, all-ones values
 and changes in each of six sampled registers, pending/live mismatch, offsets,
 stride flags, address flags and aperture overflow. Every rejected result has

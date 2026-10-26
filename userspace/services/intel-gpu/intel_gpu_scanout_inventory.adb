@@ -10,11 +10,21 @@ package body Intel_GPU_Scanout_Inventory with SPARK_Mode is
       if not Presence.Known or else
         (for some P in DP.Pipe => Presence.Pipes (P) = DP.Unknown) or else
         Table_Bytes not in 2_097_152 | 4_194_304 | 8_388_608
-      then return Result; end if;
+      then
+         Result.Missing :=
+           (if Presence.Known and then
+               (for all P in DP.Pipe => Presence.Pipes (P) /= DP.Unknown)
+            then Table_Size_Unsupported else Presence_Unknown);
+         return Result;
+      end if;
       for I in Plane_Index loop
          pragma Loop_Invariant (Result.Count <= I - 1);
-         if Presence.Pipes (DP.Pipe'Val ((I - 1) / 5)) = DP.Present then
-         if not P (I).Collected then return Result; end if;
+         pragma Loop_Invariant (Result.Missing = None);
+         if Presence.Pipes (DP.Pipe'Val ((I - 1) / Planes_Per_Pipe)) = DP.Present then
+         if not P (I).Collected then
+            Result.Missing := Plane_Not_Collected; Result.Failed_Plane := I;
+            return Result;
+         end if;
          declare
             D : constant Intel_GPU_Plane_Decode.Decoded :=
               Intel_GPU_Plane_Decode.Decode (P (I).Before, P (I).After, Table_Bytes);
@@ -22,15 +32,22 @@ package body Intel_GPU_Scanout_Inventory with SPARK_Mode is
             if D.State = Intel_GPU_Plane_Decode.Linear_Ready then
                Result.Count := Result.Count + 1; Result.Ranges (Result.Count) := D.Memory;
             elsif D.State /= Intel_GPU_Plane_Decode.Disabled then
-               Result.Status := Unsupported_Plane; return Result;
+               Result.Status := Unsupported_Plane;
+               Result.Missing := Plane_Rejected; Result.Failed_Plane := I;
+               Result.Plane_State := D.State;
+               return Result;
             end if;
          end;
          end if;
       end loop;
       for I in Cursor_Index loop
          pragma Loop_Invariant (Result.Count <= 20 + I - 1);
+         pragma Loop_Invariant (Result.Missing = None);
          if Presence.Pipes (DP.Pipe'Val (I - 1)) = DP.Present then
-         if not C (I).Collected then return Result; end if;
+         if not C (I).Collected then
+            Result.Missing := Cursor_Not_Collected; Result.Failed_Cursor := I;
+            return Result;
+         end if;
          declare
             D : constant Intel_GPU_Cursor_Decode.Decoded :=
               Intel_GPU_Cursor_Decode.Decode (C (I).Before, C (I).After, Table_Bytes);
@@ -38,7 +55,10 @@ package body Intel_GPU_Scanout_Inventory with SPARK_Mode is
             if D.State = Intel_GPU_Cursor_Decode.Ready then
                Result.Count := Result.Count + 1; Result.Ranges (Result.Count) := D.Memory;
             elsif D.State /= Intel_GPU_Cursor_Decode.Disabled then
-               Result.Status := Unsupported_Cursor; return Result;
+               Result.Status := Unsupported_Cursor;
+               Result.Missing := Cursor_Rejected; Result.Failed_Cursor := I;
+               Result.Cursor_State := D.State;
+               return Result;
             end if;
          end;
          end if;
