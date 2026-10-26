@@ -1,0 +1,24 @@
+--  intel-gpu's diagnostics reach logstore during bring-up (IdeaPad 46D4,
+--  2026-10-24): the grant state machine, the real Intel_GPU_Diagnostics
+--  glue over a scripted completion queue, and the wait-heartbeat bound.
+project Log_Grant is
+   for Source_Dirs use (".", "diagnostic-fixture", "../../userspace/services/intel-gpu");
+   for Source_Files use ("log_grant_tests.adb",
+     "intel_gpu_log_grant.ads", "intel_gpu_log_grant.adb",
+     "intel_gpu_wait_heartbeat.ads", "intel_gpu_wait_heartbeat.adb",
+     "intel_gpu_diagnostics.ads", "intel_gpu_diagnostics.adb",
+     "intel_gpu_diagnostic_capture.ads", "intel_gpu_diagnostic_capture.adb",
+     "fixture_supervisor.ads", "fixture_supervisor.adb",
+     "cubit.ads", "cubit-messages.ads", "cubit-messages.adb", "cubit-monotonic.ads",
+     "cubit-handles.ads", "cubit-handles-services.ads",
+     "cubit-log_records.ads", "cubit-log_records.adb", "cubit-logging.ads", "cubit-logging.adb");
+   for Object_Dir use "build-log-grant";
+   for Main use ("log_grant_tests.adb");
+   package Naming is
+      for Spec ("Intel_GPU_Supervisor") use "fixture_supervisor.ads";
+      for Body ("Intel_GPU_Supervisor") use "fixture_supervisor.adb";
+   end Naming;
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Log_Grant;

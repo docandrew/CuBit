@@ -161,6 +161,7 @@ with Intel_GPU_Native_Combo_State;
 with Intel_GPU_Combo_PHY;
 with Intel_GPU_Display_Topology;
 with Intel_GPU_Native_Reset;
+with Intel_GPU_Wait_Report;
 with Intel_GPU_ADLN_PPHWSP;
 with Intel_GPU_GT_Frequency;
 with Intel_GPU_SLPC;
@@ -1348,6 +1349,7 @@ procedure Main is
       Value : constant Unsigned_32 := GuC_IO.Read32 (Offset);
    begin
       if Value = Unsigned_32'Last then Startup_Access_Fault := True; end if;
+      Intel_GPU_Wait_Report.Observe (Offset, Value);
       return Value;
    end GuC_Read;
    procedure GuC_Write (Offset, Value : Unsigned_32; Success : out Boolean) is
@@ -1380,6 +1382,7 @@ procedure Main is
      (if Startup_Owner_Ready then DC_Now_Us else Unsigned_64'Last);
    procedure GuC_Pause is
    begin
+      Intel_GPU_Wait_Report.Pulse (Intel_GPU_Wait_Report.GuC_Load);
       System.Machine_Code.Asm ("pause", Volatile => True);
    end GuC_Pause;
    package Native_GuC is new Intel_GPU_GuC_Upload
@@ -1835,6 +1838,7 @@ procedure Main is
                  Receipt.msg.words = [0, 0, 0, 0];
             end if;
          end if;
+         Intel_GPU_Wait_Report.Pulse (Intel_GPU_Wait_Report.Devmgr_Grant);
          Activity := Wait_For_Activity_Until
            (if Now < Unsigned_64'Last then Now + 1 else Now);
       end loop;
@@ -1881,6 +1885,7 @@ procedure Main is
                      exit;
                   end if;
                end if;
+               Intel_GPU_Wait_Report.Pulse (Intel_GPU_Wait_Report.Devmgr_Grant);
                Activity := Wait_For_Activity_Until
                  (if Now < Unsigned_64'Last then Now + 1 else Now);
             end loop;
@@ -1913,7 +1918,6 @@ procedure Main is
       else
          Intel_GPU_Diagnostics.Capture (Text, Intel_GPU_Map_Report.Escalate (Text, Level));
       end if;
-      Intel_GPU_Diagnostics.Tick;
    end Publish_Snapshot;
    procedure Display_Log (Text : String) is
    begin
@@ -7525,6 +7529,7 @@ procedure Main is
             exit;
             end if;
          end if;
+         Intel_GPU_Wait_Report.Pulse (Intel_GPU_Wait_Report.Devmgr_Grant);
          Activity := Wait_For_Activity_Until
            (if Now < Unsigned_64'Last then Now + 1 else Now);
       end loop;
@@ -7624,6 +7629,7 @@ procedure Main is
                exit;
             end if;
          end if;
+         Intel_GPU_Wait_Report.Pulse (Intel_GPU_Wait_Report.Devmgr_Grant);
          Activity := Wait_For_Activity_Until
            (if Now < Unsigned_64'Last then Now + 1 else Now);
       end loop;
@@ -8411,6 +8417,10 @@ procedure Main is
            (if Now <= Unsigned_64'Last - Early_Stop_Poll_Ms then Now + Early_Stop_Poll_Ms else Now);
          Now := syscall (SYSCALL_GETTIME);
       end loop;
+      if Intel_GPU_Diagnostics.Pending then
+         debugPrint ("intel-gpu: stopping with lines not yet in logstore after" &
+           Unsigned_64'Image (Early_Stop_Flush_Ms) & " ms (serial has them)" & ASCII.LF);
+      end if;
       Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Exit_Status (Early_Stop'Enum_Rep (Why)));
    end Stop_Early;
 begin

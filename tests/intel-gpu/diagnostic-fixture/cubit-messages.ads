@@ -1,7 +1,8 @@
 with Interfaces; use Interfaces;
 with System;
+--  Hosted stand-in for CuBit.Messages: what Intel_GPU_Diagnostics uses,
+--  with a scripted completion queue, clock and logstore registration.
 package CuBit.Messages is
-   --  The tag's flag byte, as CuBit.Messages has it (CAP-002).
    type Protocol_Flags is mod 2 ** 4;
    type IPC_Flags is record
       Accepts_Capability, Capability_Transferred, Capability_Refused,
@@ -14,7 +15,7 @@ package CuBit.Messages is
       ipc : IPC_Flags := No_IPC_Flags;
       reserved : Unsigned_64 := 0;
    end record;
-   --  The whole flag byte, as decoders that validate it exactly read it.
+   subtype MessageTag is Tag_Type;
    function Flag_Byte (Tag : Tag_Type) return Unsigned_8 is
      (Unsigned_8 (Tag.protocol)
       + (if Tag.ipc.Accepts_Capability then 16 else 0)
@@ -32,13 +33,22 @@ package CuBit.Messages is
       msg : Message;
    end record;
    COMPLETION_OK : constant Unsigned_64 := 0;
-   SYSCALL_GETTIME, SYSINFO_REGISTERED_DRIVER, DRIVER_LOGSTORE : constant := 1;
+   COMPLETION_FAILED : constant Unsigned_64 := 1;
+
+   type Process_ID is new Unsigned_64;
+   No_Process : constant Process_ID := 0;
+   DRIVER_LOGSTORE : constant := 7;
+   --  The scripted world.
    Now : Unsigned_64 := 0;
-   Submissions : Natural := 0;
+   Logstore : Process_ID := No_Process;
+   Serial_Lines : Natural := 0;
+   Last_Serial : String (1 .. 512) := [others => ' '];
+   Last_Serial_Length : Natural := 0;
+   function Serial_Text return String is (Last_Serial (1 .. Last_Serial_Length));
+
    procedure debugPrint (Text : String);
-   function syscall (Op : Natural) return Unsigned_64;
-   function getInfo (Op, Arg : Natural) return Unsigned_64;
-   function capSubmit (Slot : Natural; Msg : Message; Token : Unsigned_64) return Boolean;
+   function Registered_Driver (Driver : Natural) return Process_ID;
    procedure Inject (Value : CompletionEntry);
+   function Queued return Natural;
    function Poll_Completion (Result : System.Address) return Unsigned_64;
 end CuBit.Messages;

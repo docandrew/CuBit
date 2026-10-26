@@ -992,7 +992,10 @@ procedure main is
               "devmgr: child " & Name (1 .. Length) & " (" & Hex (To_Word (Child)) & ") " &
               (if Report.Kind = CuBit.Child_Exits.Stopped
                then "stopped (killed or faulted)"
-               else "exited code" & Unsigned_64'Image (Report.Code));
+               else "exited code" & Unsigned_64'Image (Report.Code) &
+                 --  The GPU viewer's codes say why it ended.
+                 (if Child = GPU_Viewer_PID and then GPU_Viewer_PID /= No_Process
+                  then " (" & GP.Exit_Name (Report.Code) & ")" else ""));
          begin
             if Report.Kind = CuBit.Child_Exits.Stopped or else Report.Code /= 0 then
                Warnings.Warn (Line);
@@ -1362,6 +1365,21 @@ procedure main is
    -- Wait for a driver to signal readiness via IPC.
    -- Returns True if driver sent OP_READY, False if OP_NOT_PRESENT.
    ---------------------------------------------------------------------------
+   --  A request whose tag carries this flag accepts a capability in the reply.
+   Accepting : constant IPC_Flags := (Accepts_Capability => True, others => False);
+
+   --  intel-gpu's request for its logstore publisher (label 16#0229#): only
+   --  from intel-gpu's PID, over the endpoint badged Intel_Ready_Tag.
+   Intel_Log_Grant_Label : constant Unsigned_32 := 16#0229#;
+   function Intel_Log_Grant_Request (From : Process_ID; Msg : Message) return Boolean is
+     (Msg.tag = (label => Intel_Log_Grant_Label, length => 0, protocol => 0,
+                 ipc => Accepting, reserved => 0) and then
+      Intel_Inspection_PID /= No_Process and then From = Intel_Inspection_PID and then
+      Msg.authorityTag = Intel_Ready_Tag and then Msg.words = [0, 0, 0, 0]);
+   --  Answer it: the publisher endpoint, or REPLY_ERR while devmgr has no
+   --  logstore endpoint yet (intel-gpu asks again).
+   procedure Answer_Intel_Log_Grant (From : Process_ID);
+
    function waitReady (driverPID : Process_ID) return Boolean is
       sender : Process_ID;
       rdyMsg : Message;
@@ -1372,6 +1390,10 @@ procedure main is
          if sender = driverPID then
             ignore := reply (sender, NULL_MESSAGE);
             return rdyMsg.tag.label = OP_READY;
+         elsif Intel_Log_Grant_Request (sender, rdyMsg) then
+            --  Its bring-up lines must not wait for the service loop
+            --  (IdeaPad 46D4, 2026-10-24: none reached logstore).
+            Answer_Intel_Log_Grant (sender);
          elsif sender = Intel_Inspection_PID and then sender /= No_Process and then
            rdyMsg.authorityTag = Intel_Ready_Tag
          then
@@ -1548,9 +1570,8 @@ procedure main is
 
    ---------------------------------------------------------------------------
    --  Runtime grants (PLAN §9 item 4): a driver's request that accepts a
-   --  capability is answered with REPLY_WITH_CAPABILITY.
+   --  capability (Accepting, above) is answered with REPLY_WITH_CAPABILITY.
    ---------------------------------------------------------------------------
-   Accepting : constant IPC_Flags := (Accepts_Capability => True, others => False);
 
    --  The shared driver log budget and the issuances of devmgr's drivers
    --  in it (CuBit.Log_Protocol.Publisher_Tag).
@@ -1593,6 +1614,17 @@ procedure main is
             return False;
       end case;
    end Answer_With;
+
+   procedure Answer_Intel_Log_Grant (From : Process_ID) is
+   begin
+      if not H.Valid (Logstore_Endpoint) or else
+        not Answer_With (From, [others => 0], 0,
+          H.Badged (Logstore_Endpoint, H.Read_Write,
+                    CuBit.Log_Protocol.Publisher_Tag (Driver_Log_Budget, Intel_Log_Issuance)))
+      then
+         Refuse (From, Answered => H.Valid (Logstore_Endpoint));
+      end if;
+   end Answer_Intel_Log_Grant;
 
    procedure Close_Quietly (Item : H.Endpoint) is
       Ignore : constant IPC.Close_Result := IPC.Close (Item);
@@ -3859,6 +3891,10 @@ begin
 
    if intelDev.found then
       declare
+         --  GMADR, the graphics aperture (64-bit BAR at 18h/1Ch): logged
+         --  with GTTMMADR, as above-4-GiB placements differ by machine.
+         PCI_BAR2_Low  : constant Unsigned_8 := 16#18#;
+         PCI_BAR2_High : constant Unsigned_8 := 16#1C#;
          Low : constant Unsigned_32 := pciReadConfig32
            (intelDev.bus, intelDev.slot, intelDev.func, 16#10#);
          High : constant Unsigned_32 := pciReadConfig32
@@ -3883,17 +3919,23 @@ begin
          end loop;
          Power := Intel_GPU_PCI_Power.Decode (Config);
          IRQ_State := Intel_GPU_PCI_Interrupts.Decode (Config);
-         debugPrint ("devmgr: Intel PCI IRQ snapshot valid=" &
-           Boolean'Image (IRQ_State.Valid) & " INTx-disabled=" &
-           Boolean'Image (IRQ_State.INTx_Disabled) & LF);
-         debugPrint ("devmgr: Intel MSI present/enabled=" &
+         Warnings.Inform ("devmgr: intel-gpu pci irq-snapshot valid=" &
+           Boolean'Image (IRQ_State.Valid) & " intx-disabled=" &
+           Boolean'Image (IRQ_State.INTx_Disabled));
+         Warnings.Inform ("devmgr: intel-gpu pci msi present/enabled=" &
            Boolean'Image (IRQ_State.MSI_Present) & "/" &
            Boolean'Image (IRQ_State.MSI_Enabled) & " MSI-X present/enabled/masked=" &
            Boolean'Image (IRQ_State.MSIX_Present) & "/" &
            Boolean'Image (IRQ_State.MSIX_Enabled) & "/" &
-           Boolean'Image (IRQ_State.MSIX_Masked) & LF);
-         debugPrint ("devmgr: Intel PCI power=" &
-           Intel_GPU_PCI_Power.Power_Status'Image (Power) & LF);
+           Boolean'Image (IRQ_State.MSIX_Masked));
+         Warnings.Inform ("devmgr: intel-gpu pci power=" & Intel_GPU_PCI_Power.Name (Power) &
+           " registers=" & Intel_GPU_Resources.Name (Plan.Status) &
+           " bar0=" & Hex (Shift_Left (Unsigned_64 (High), 32) or Unsigned_64 (Low)) &
+           " bar2=" & Hex (Shift_Left (Unsigned_64 (pciReadConfig32
+              (intelDev.bus, intelDev.slot, intelDev.func, PCI_BAR2_High)), 32) or
+              Unsigned_64 (pciReadConfig32
+              (intelDev.bus, intelDev.slot, intelDev.func, PCI_BAR2_Low))) &
+           " command=" & Hex (Unsigned_64 (Command)));
          if Plan.Status = Intel_GPU_Resources.Admitted and then
            Power = Intel_GPU_PCI_Power.D0
          then
@@ -4342,17 +4384,8 @@ begin
          then
             Refuse (from, Answered => H.Valid (Logstore_Endpoint));
          end if;
-      elsif msg.tag = (label => 16#0229#, length => 0, protocol => 0, ipc => Accepting, reserved => 0) and then
-        Intel_Inspection_PID /= No_Process and then from = Intel_Inspection_PID and then
-        msg.authorityTag = Intel_Ready_Tag and then msg.words = [0, 0, 0, 0]
-      then
-         if not H.Valid (Logstore_Endpoint) or else
-           not Answer_With (from, [others => 0], 0,
-             H.Badged (Logstore_Endpoint, H.Read_Write,
-                       CuBit.Log_Protocol.Publisher_Tag (Driver_Log_Budget, Intel_Log_Issuance)))
-         then
-            Refuse (from, Answered => H.Valid (Logstore_Endpoint));
-         end if;
+      elsif Intel_Log_Grant_Request (from, msg) then
+         Answer_Intel_Log_Grant (from);
       elsif msg.tag = (label => 16#022A#, length => 0, protocol => 0, ipc => Accepting, reserved => 0) and then
         Intel_Inspection_PID /= No_Process and then from = Intel_Inspection_PID and then
         msg.authorityTag = Intel_Ready_Tag and then msg.words = [0, 0, 0, 0]

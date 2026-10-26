@@ -1,7 +1,8 @@
 project GGTT_Mapping is
-   for Source_Dirs use (".", "ggtt-fixture", "../../userspace/services/intel-gpu",
+   for Source_Dirs use (".", "wait-fixture", "ggtt-fixture", "../../userspace/services/intel-gpu",
      "../../userspace/runtime/gnat", "../support/handles", "../../shared/capabilities");
-   for Source_Files use ("ggtt_mapping_tests.adb", "cubit.ads",
+   for Source_Files use ("intel_gpu_wait_report.ads", "fixture_wait_report.adb", "intel_gpu_diagnostics.ads", "fixture_diagnostics.adb",
+     "ggtt_mapping_tests.adb", "cubit.ads",
      "fixture_messages.ads", "fixture_messages.adb",
      "fixture_supervisor.ads", "fixture_supervisor.adb",
      "fixture_devices.ads", "fixture_devices.adb",
@@ -19,6 +20,8 @@ project GGTT_Mapping is
    for Object_Dir use "build-ggtt-mapping";
    for Main use ("ggtt_mapping_tests.adb");
    package Naming is
+      for Body ("Intel_GPU_Wait_Report") use "fixture_wait_report.adb";
+      for Body ("Intel_GPU_Diagnostics") use "fixture_diagnostics.adb";
       for Spec ("CuBit.Messages") use "fixture_messages.ads";
       for Body ("CuBit.Messages") use "fixture_messages.adb";
       for Spec ("Intel_GPU_Supervisor") use "fixture_supervisor.ads";

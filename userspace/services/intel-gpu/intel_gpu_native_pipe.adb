@@ -1,3 +1,4 @@
+with Intel_GPU_Wait_Report;
 with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
 with System.Machine_Code;
@@ -21,7 +22,11 @@ package body Intel_GPU_Native_Pipe is
       declare
          Value : Unsigned_32 with Import, Volatile_Full_Access,
            Address => To_Address (16#6000_0000# + Integer_Address (Offset));
-      begin return Value; end;
+         Sample : constant Unsigned_32 := Value;
+      begin
+         Intel_GPU_Wait_Report.Observe (Offset, Sample);
+         return Sample;
+      end;
    end Read;
    procedure Write (Offset, Value : Unsigned_32; Success : out Boolean) is
       Prior : Unsigned_32;
@@ -112,7 +117,10 @@ package body Intel_GPU_Native_Pipe is
       Stamp : constant CuBit.Monotonic.Reading := CuBit.Monotonic.Read;
    begin return (if Stamp.Available then Stamp.Microseconds else Unsigned_64'Last); end Now_Us;
    procedure Pause is
-   begin System.Machine_Code.Asm ("pause", Volatile => True); end Pause;
+   begin
+      Intel_GPU_Wait_Report.Pulse (Intel_GPU_Wait_Report.Pipe_Power);
+      System.Machine_Code.Asm ("pause", Volatile => True);
+   end Pause;
    package Enable is new Intel_GPU_Display_Enable
      (Well, Read, Write, Now_Us, Pause, Post_Enable, Never_Disable);
    function Acquire

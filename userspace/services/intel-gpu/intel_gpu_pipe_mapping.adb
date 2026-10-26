@@ -1,3 +1,5 @@
+with Intel_GPU_Diagnostics;
+with Intel_GPU_Wait_Report;
 with Interfaces; use Interfaces;
 with Intel_GPU_Map_Report;
 with CuBit.Messages; use CuBit.Messages;
@@ -43,7 +45,7 @@ package body Intel_GPU_Pipe_Mapping is
            Now - Started >= Grant_Deadline_Ms
          then return "grant-timeout-or-invalid-clock"; end if;
          Previous := Now;
-         if Poll_Completion (Receipt'Address) /= 0 and then Receipt.token = Token then
+         if Intel_GPU_Diagnostics.Poll_Driver (Receipt'Address) /= 0 and then Receipt.token = Token then
             if Receipt.status = COMPLETION_OK and then
               Intel_GPU_Supervisor.Reply_Tag (Receipt) = (label => Retry_Label, length => 0, protocol => 0, ipc => <>, reserved => 0) and then
               Receipt.msg.words = [0, 0, 0, 0]
@@ -58,6 +60,7 @@ package body Intel_GPU_Pipe_Mapping is
                exit;
             end if;
          end if;
+         Intel_GPU_Wait_Report.Pulse (Intel_GPU_Wait_Report.Devmgr_Grant);
          Activity := Wait_For_Activity_Until (Now + 1);
       end loop;
       if not Granted then return "grant-denied"; end if;

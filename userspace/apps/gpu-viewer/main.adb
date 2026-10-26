@@ -1,3 +1,4 @@
+with Ada.Command_Line;
 with Interfaces; use Interfaces;
 with System;
 with CuBit.Messages; use CuBit.Messages;
@@ -38,6 +39,15 @@ procedure Main is
    Ignored : Unsigned_64;
    Status : Unsigned_32;
    After_Serial : Unsigned_64 := 0;
+   --  Why Run ended: the exit code devmgr names in its log line.
+   Outcome : Q.Viewer_Outcome := Q.Closed;
+   use type Q.Viewer_Outcome;
+   --  Desktop binding: devmgr's codes (Q.Valid_Desktop_Reply), how often to
+   --  ask while there is no desktop yet, and how long apart.
+   Binding_Bound : constant Unsigned_64 := 0;
+   Binding_Not_Yet : constant Unsigned_64 := 2;
+   Binding_Attempts : constant := 600;
+   Binding_Retry_Ms : constant := 100;
 
    function Send (Request : D.Wire_Message) return D.Wire_Message is
       Msg : Message := CuBit.Desktop_Messages.From_Wire (Request);
@@ -111,7 +121,8 @@ procedure Main is
          Carried : CuBit.Handles.IPC.Carried;
          Bound : Boolean := False;
       begin
-         for Attempt in 1 .. 600 loop
+         Outcome := Q.Binding_Timed_Out;
+         for Attempt in 1 .. Binding_Attempts loop
             Msg := NULL_MESSAGE;
             Msg.tag := (label => Q.Desktop_Binding_Label, length => 4,
                         protocol => 0, ipc => <>, reserved => 0);
@@ -119,10 +130,14 @@ procedure Main is
             --  A bound reply carries Desktop's endpoint (Read+Write).
             Returned := CuBit.Handles.IPC.Call_Accepting
               (Startup.Device_Manager, Msg, CuBit.Messages.Wait_Forever, Carried);
-            exit when Returned.label /= Q.Desktop_Binding_Label or else
+            if Returned.label /= Q.Desktop_Binding_Label or else
               Returned.length /= 4 or else Returned.reserved /= 0 or else
-              not Q.Valid_Desktop_Reply (Q.Words (Msg.words));
-            if Msg.words (0) = 0 then
+              not Q.Valid_Desktop_Reply (Q.Words (Msg.words))
+            then
+               Outcome := Q.Binding_Malformed;
+               exit;
+            end if;
+            if Msg.words (0) = Binding_Bound then
                declare
                   Accepted : constant CuBit.Handles.IPC.Accepted_Endpoint :=
                     CuBit.Handles.IPC.Accept_Endpoint (Carried);
@@ -130,43 +145,48 @@ procedure Main is
                   if Accepted.OK then
                      Desktop := Accepted.Value;
                      Bound := True;
+                  else
+                     Outcome := Q.Binding_Malformed;
                   end if;
                end;
                exit;
             end if;
-            exit when Msg.words (0) /= 2;
-            Ignored := syscall (SYSCALL_SLEEP, 100);
+            if Msg.words (0) /= Binding_Not_Yet then
+               Outcome := Q.Binding_Refused;
+               exit;
+            end if;
+            Ignored := syscall (SYSCALL_SLEEP, Binding_Retry_Ms);
          end loop;
          if not Bound then
-            debugPrint ("gpu-viewer: Desktop binding unavailable" & ASCII.LF);
             return;
          end if;
+         Outcome := Q.Closed;
       end;
       if D.Decode_Hello_Result (Send (D.Encode_Hello (D.Current_Revision))).Status /= D.Success
-      then debugPrint ("gpu-viewer: Desktop unavailable" & ASCII.LF); return; end if;
+      then Outcome := Q.Desktop_Unavailable; return; end if;
       Reply_Words := Probe (False);
       if Reply_Words (0) /= 0 or else Reply_Words (3) /= 16384 or else
         not R.Valid_Wire (Reply_Words (2))
-      then debugPrint ("gpu-viewer: completed target unavailable" & ASCII.LF); return; end if;
+      then Outcome := Q.Target_Unavailable; return; end if;
       Root := Reply_Words (2);
       G.Acquire_Via_Capability (Driver, R.Decode (Root), 0, 16384,
         G.Read_Access, Address, OK);
-      if not OK then return; end if;
+      if not OK then Outcome := Q.Acquire_Failed; return; end if;
       Borrowed := True;
       Created := D.Decode_Creation_Result
         (Send (D.Encode_Create ((64, 64, D.Window_Surface, D.Desktop_Sized))));
-      if Created.Status /= D.Success then return; end if;
+      if Created.Status /= D.Success then Outcome := Q.Surface_Failed; return; end if;
       Surface := Created.Surface;
       Status := P.Forward (CuBit.Handles.C_ABI.To_C (Desktop), Root, 0, 16384, Child'Access);
-      if Status /= 0 then return; end if;
+      if Status /= 0 then Outcome := Q.Forward_Failed; return; end if;
       G.Return_Acquisition (R.Decode (Root), OK);
-      if not OK then return; end if;
+      if not OK then Outcome := Q.Return_Failed; return; end if;
       Borrowed := False;
       Status := P.Attach_Linear
         (CuBit.Handles.C_ABI.To_C (Desktop), Unsigned_64 (Surface), Child, 64, 64, 256);
-      if Status /= 0 then return; end if;
+      if Status /= 0 then Outcome := Q.Attach_Failed; return; end if;
       if D.Decode_Status (Send (D.Encode_Present ((Surface, (0, 0, 64, 64)))),
-        D.Present_Surface) /= D.Success then return; end if;
+        D.Present_Surface) /= D.Success then Outcome := Q.Present_Failed; return; end if;
       debugPrint ("gpu-viewer: completed target attached; viewer copied no pixels" & ASCII.LF);
       -- Any key closes the diagnostic. Poll bounded requests so destroyed
       -- windows also retire their child grant rather than leaving a waiter.
@@ -185,4 +205,10 @@ procedure Main is
 begin
    Run;
    Cleanup;
+   if Outcome /= Q.Closed then
+      debugPrint ("gpu-viewer: ended: " & Q.Outcome_Name (Outcome) & ASCII.LF);
+   end if;
+   --  Always set: without it the start code exits with whatever is in RAX.
+   Ada.Command_Line.Set_Exit_Status
+     (Ada.Command_Line.Exit_Status (Q.Viewer_Outcome'Enum_Rep (Outcome)));
 end Main;

@@ -1,3 +1,5 @@
+with Intel_GPU_Diagnostics;
+with Intel_GPU_Wait_Report;
 with CuBit.Messages; use CuBit.Messages;
 with Intel_GPU_Supervisor;
 with System.Storage_Elements; use System.Storage_Elements;
@@ -64,7 +66,7 @@ package body Intel_GPU_Firmware_Buffer is
       loop
          Now := syscall (SYSCALL_GETTIME);
          if Now < Start or else Now - Start >= 30_000 then return "timeout"; end if;
-         if Poll_Completion (Receipt'Address) /= 0 and then Receipt.token = Token then
+         if Intel_GPU_Diagnostics.Poll_Driver (Receipt'Address) /= 0 and then Receipt.token = Token then
             if Receipt.status = COMPLETION_OK and then
               Intel_GPU_Supervisor.Reply_Tag (Receipt) = (label => 16#F002#, length => 0, protocol => 0, ipc => <>, reserved => 0) and then
               Receipt.msg.words = [0, 0, 0, 0]
@@ -82,6 +84,7 @@ package body Intel_GPU_Firmware_Buffer is
                exit;
             end if;
          end if;
+         Intel_GPU_Wait_Report.Pulse (Intel_GPU_Wait_Report.Devmgr_Grant);
          Activity := Wait_For_Activity_Until
            (if Now < Unsigned_64'Last then Now + 1 else Now);
       end loop;

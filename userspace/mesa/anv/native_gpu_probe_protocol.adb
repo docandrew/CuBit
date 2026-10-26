@@ -26,4 +26,13 @@ package body Native_GPU_Probe_Protocol with SPARK_Mode is
        elsif Action = Read_Target then
          Value (2) /= 0 and then Value (3) = Pixel_Bytes
        else Value (2) = 0 and then Value (3) = 0));
+   function Exit_Name (Code : Unsigned_64) return String is
+   begin
+      for Outcome in Viewer_Outcome loop
+         if Unsigned_64 (Viewer_Outcome'Enum_Rep (Outcome)) = Code then
+            return Outcome_Name (Outcome);
+         end if;
+      end loop;
+      return "unknown";
+   end Exit_Name;
 end Native_GPU_Probe_Protocol;

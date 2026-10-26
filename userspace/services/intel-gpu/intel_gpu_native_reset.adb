@@ -1,3 +1,4 @@
+with Intel_GPU_Wait_Report;
 with System.Storage_Elements; use System.Storage_Elements;
 with System.Machine_Code;
 with CuBit.Messages; use CuBit.Messages;
@@ -49,7 +50,11 @@ package body Intel_GPU_Native_Reset is
       declare
          Value : Unsigned_32 with Import, Volatile_Full_Access,
            Address => To_Address (16#6000_0000# + Integer_Address (Offset));
-      begin return Value; end;
+         Sample : constant Unsigned_32 := Value;
+      begin
+         Intel_GPU_Wait_Report.Observe (Offset, Sample);
+         return Sample;
+      end;
    end Read;
    package ADS_Reader is new Intel_GPU_ADS_Observe (Read);
    ADS : ADS_Reader.Observation;
@@ -96,7 +101,10 @@ package body Intel_GPU_Native_Reset is
       begin Register_Value := Value; end;
    end Write;
    procedure Pause is
-   begin System.Machine_Code.Asm ("pause", Volatile => True); end Pause;
+   begin
+      Intel_GPU_Wait_Report.Pulse (Intel_GPU_Wait_Report.Reset);
+      System.Machine_Code.Asm ("pause", Volatile => True);
+   end Pause;
    function Now return Unsigned_64 is
       Value : constant CuBit.Monotonic.Reading := CuBit.Monotonic.Read;
    begin

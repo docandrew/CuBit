@@ -1,3 +1,5 @@
+with Intel_GPU_Diagnostics;
+with Intel_GPU_Wait_Report;
 with CuBit.Messages;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Filesystems;
@@ -50,9 +52,10 @@ package body Intel_GPU_Firmware_File is
             if Now < Started or else Now - Started >= 30_000 then
                Failed := True; return False;
             end if;
-            if Poll_Completion (Receipt'Address) /= 0 then
-               --  This phase is the process's sole async producer. Never
-               --  mistake an unrelated completion for return of our loan.
+            if Intel_GPU_Diagnostics.Poll_Driver (Receipt'Address) /= 0 then
+               --  The log grant may be in flight too (Poll_Driver takes
+               --  it). Never mistake an unrelated completion for return
+               --  of our loan.
                if Receipt.token = Token then
                   Pending := False;
                   if Receipt.status /= COMPLETION_OK then
@@ -63,6 +66,7 @@ package body Intel_GPU_Firmware_File is
                                     protocol => 0, ipc => <>, reserved => 0);
                end if;
             end if;
+            Intel_GPU_Wait_Report.Pulse (Intel_GPU_Wait_Report.Firmware_File);
             Activity := Wait_For_Activity_Until
               (if Now < Unsigned_64'Last then Now + 1 else Now);
          end loop;

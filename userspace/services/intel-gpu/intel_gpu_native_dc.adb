@@ -1,3 +1,4 @@
+with Intel_GPU_Wait_Report;
 with System.Storage_Elements; use System.Storage_Elements;
 with System.Machine_Code;
 with Intel_GPU_DC_State;
@@ -11,13 +12,20 @@ package body Intel_GPU_Native_DC is
    function Available return Boolean is
      (Active and then Owner_Held and then PW1_Held and then
       Display_Pages_Ready and then PHY_Pages_Ready);
+   --  DC_STATE_EN, read through the display register window.
+   Display_Window : constant Integer_Address := 16#6000_0000#;
+   DC_State_Offset : constant Interfaces.Unsigned_32 := 16#45504#;
    function Read_Control return Unsigned_32 is
    begin
       if not Available then return Unsigned_32'Last; end if;
       declare
          Value : Unsigned_32 with Import, Volatile_Full_Access,
-           Address => To_Address (16#60045504#);
-      begin return Value; end;
+           Address => To_Address (Display_Window + Integer_Address (DC_State_Offset));
+         Sample : constant Unsigned_32 := Value;
+      begin
+         Intel_GPU_Wait_Report.Observe (DC_State_Offset, Sample);
+         return Sample;
+      end;
    end Read_Control;
    function DC_Disabled return Boolean is
       Value : constant Unsigned_32 := Read_Control;
@@ -55,7 +63,10 @@ package body Intel_GPU_Native_DC is
       pragma Unreferenced (Status);
    begin Success := PHYs.Last_Succeeded; end;
    procedure Pause is
-   begin System.Machine_Code.Asm ("pause", Volatile => True); end;
+   begin
+      Intel_GPU_Wait_Report.Pulse (Intel_GPU_Wait_Report.Display_Power);
+      System.Machine_Code.Asm ("pause", Volatile => True);
+   end;
    package Transition is new Intel_GPU_DC_Transition
      (Available, Capture, Read_Control, Write_Control, Now_Us, Pause, Restore_PHYs);
    function Execute (Owner : Boolean) return String is
