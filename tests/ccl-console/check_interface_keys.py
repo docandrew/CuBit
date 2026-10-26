@@ -31,7 +31,7 @@ CHECKS = [
       'REQUEST_KEY': 'Calc_Request'}),
     (SRC / 'ccl-interfaces-install.ads',
      {'DIGEST': None, 'DISK_KEY': 'Disk', 'DISKS_KEY': 'List-Disk', 'REQUEST_KEY': 'Install_Request',
-      'REPORT_KEY': 'Install_Report'})]
+      'REPORT_KEY': 'Install_Report', 'PROGRESS_KEY': 'Install_Progress'})]
 
 
 def constant(text, name):

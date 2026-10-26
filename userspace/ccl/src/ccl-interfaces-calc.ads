@@ -20,6 +20,9 @@ package CCL.Interfaces.Calc with SPARK_Mode is
    --  capacity at compile time; tests/ccl-install's probe checks a real run.
    PUBLISHED_INTERFACES : constant := 1;
    PUBLISHED_SCHEMAS : constant := 4;
+   --  Declared types Publish adds to the catalog's registry (its named
+   --  types and the list types it specializes).
+   PUBLISHED_TYPES : constant := 8;
    use Standard.Interfaces;
 
    --  The types, as CCL source (CCL.Interfaces.Calc_Types, which the

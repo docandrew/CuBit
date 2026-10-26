@@ -12,17 +12,18 @@ package body CCL_Installer is
       Result := Unavailable;
    end Disk_Info;
 
-   procedure Install
-     (Request : IP.Install_Request; Outcome : out IP.Install_Outcome;
-      Files, Bytes : out Interfaces.Unsigned_64; Proof : out IP.Identity_Proof;
-      Result : out Result_Kind)
+   procedure Start
+     (Request : IP.Install_Request; Started : out IP.Start_Result; Result : out Result_Kind)
    is
       pragma Unreferenced (Request);
    begin
-      Outcome := IP.Bad_Request;
-      Files := 0;
-      Bytes := 0;
-      Proof := IP.Serial_Number;
+      Started := IP.Rejected;
       Result := Unavailable;
-   end Install;
+   end Start;
+
+   procedure Status (Progress : out IP.Install_Progress; Result : out Result_Kind) is
+   begin
+      Progress := (others => <>);
+      Result := Unavailable;
+   end Status;
 end CCL_Installer;

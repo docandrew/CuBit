@@ -1,3 +1,4 @@
+with Interfaces;
 with System;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Handles;
@@ -76,17 +77,12 @@ package body CCL_Installer is
       end if;
    end Disk_Info;
 
-   procedure Install
-     (Request : IP.Install_Request; Outcome : out IP.Install_Outcome;
-      Files, Bytes : out Interfaces.Unsigned_64; Proof : out IP.Identity_Proof;
-      Result : out Result_Kind)
+   procedure Start
+     (Request : IP.Install_Request; Started : out IP.Start_Result; Result : out Result_Kind)
    is
       Reply : Message;
    begin
-      Outcome := IP.Bad_Request;
-      Files := 0;
-      Bytes := 0;
-      Proof := IP.Serial_Number;
+      Started := IP.Rejected;
       Prepare (Result);
       if Result /= Answered then
          return;
@@ -98,15 +94,28 @@ package body CCL_Installer is
       end;
       Reply := Call (IP.Install, [Loan.slot, Loan.generation, 0, 0]);
       if Reply.tag.label /= IP.Reply_OK
-        or else Reply.words (0) > IP.Install_Outcome'Enum_Rep (IP.Install_Outcome'Last)
+        or else Reply.words (0) > IP.Start_Result'Enum_Rep (IP.Start_Result'Last)
       then
          Result := Unavailable;
          return;
       end if;
-      Outcome := IP.Install_Outcome'Enum_Val (Reply.words (0));
-      Files := Reply.words (1);
-      Bytes := Reply.words (2);
-      Proof := (if Reply.words (3) = IP.Identity_Proof'Enum_Rep (IP.Model_And_Geometry)
-                then IP.Model_And_Geometry else IP.Serial_Number);
-   end Install;
+      Started := IP.Start_Result'Enum_Val (Reply.words (0));
+   end Start;
+
+   procedure Status (Progress : out IP.Install_Progress; Result : out Result_Kind) is
+      Reply : Message;
+      Valid : Boolean;
+   begin
+      Progress := (others => <>);
+      if not CuBit.Handles.Valid (CCL_Native_Bindings.Installer) then
+         Result := Not_Granted;
+         return;
+      end if;
+      Reply := Call (IP.Install_Status, [0, 0, 0, 0]);
+      Valid := Reply.tag.label = IP.Reply_OK and then Reply.tag.length = IP.Status_Words'Length;
+      if Valid then
+         IP.Decode_Status (IP.Status_Words (Reply.words), Progress, Valid);
+      end if;
+      Result := (if Valid then Answered else Unavailable);
+   end Status;
 end CCL_Installer;

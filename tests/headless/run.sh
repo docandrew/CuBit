@@ -3237,6 +3237,9 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
             # disk, then install to the UFS disk (it takes a while). QEMU's
             # UFS model reports no serial number: its identity is the model
             # and an empty serial, which the confirmation must name.
+            # system.install answers with a task at once: each (wait ...)
+            # entry finishes when its install does, and (system.progress),
+            # typed while the install runs, is answered meanwhile.
             for ((attempt = 0; attempt < 300; attempt++)); do
                 grep -qa "installer: registered" "$SERIAL_LOG" &&
                   grep -qa "ufs: bring-up complete" "$SERIAL_LOG" && break
@@ -3244,14 +3247,24 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
             done
             sleep 0.5
             for entry in '(system.disks)' \
-                '(system.install (Install_Request disk => 0 confirm => (Disk_Identity "QEMU UFS" "not-this-disk" 262144 4096) inode_ratio => 262144 esp_mib => 260 source => "@nvme:0/install"))' \
-                '(system.install (Install_Request disk => 0 confirm => (Disk_Identity "QEMU UFS" "" 262144 4096) inode_ratio => 262144 esp_mib => 260 source => "@nvme:0/install"))'; do
-                python3 "$ROOT_DIR/tests/ccl-console/send-text.py" "$MONITOR_SOCKET" "$entry" 0.05
-                sleep 2
+                '(wait (system.install (Install_Request disk => 0 confirm => (Disk_Identity "QEMU UFS" "not-this-disk" 262144 4096) inode_ratio => 262144 esp_mib => 260 source => "@nvme:0/install")))' \
+                '(wait (system.install (Install_Request disk => 0 confirm => (Disk_Identity "QEMU UFS" "" 262144 4096) inode_ratio => 262144 esp_mib => 260 source => "@nvme:0/install")))' \
+                '(system.progress)'; do
+                # (system.progress) follows the install at once, typed fast.
+                case "$entry" in
+                    '(system.progress)')
+                        python3 "$ROOT_DIR/tests/ccl-console/send-text.py" "$MONITOR_SOCKET" "$entry" 0.005 ;;
+                    *'"QEMU UFS" ""'*)
+                        python3 "$ROOT_DIR/tests/ccl-console/send-text.py" "$MONITOR_SOCKET" "$entry" 0.05 ;;
+                    *)
+                        python3 "$ROOT_DIR/tests/ccl-console/send-text.py" "$MONITOR_SOCKET" "$entry" 0.05
+                        sleep 2 ;;
+                esac
             done
             for ((attempt = 0; attempt < 600; attempt++)); do
-                # Both installs answered: the refusal, then the install.
-                [ "$(grep -ac 'installer: install \(done\|refused or failed\):' "$SERIAL_LOG")" -ge 2 ] && break
+                # Both installs' tasks completed at the console: the
+                # refusal, then the install.
+                [ "$(grep -ac 'REPL completed: Install_Report:' "$SERIAL_LOG")" -ge 2 ] && break
                 sleep 0.2
             done
             sleep 1
@@ -5025,6 +5038,8 @@ ccl-console: REPL completed: List<Disk>: [(Disk 0 (Disk_Identity \"QEMU UFS\" \"
 installer: install refused: confirmation names
 ccl-console: REPL completed: Install_Report: (Install_Report Install_Outcome.Wrong_Disk Identity_Proof.Serial_Number 0 0)
 installer: installing to disk 0
+installer: status answered during the install:
+ccl-console: REPL completed: Install_Progress: (Install_Progress Install_State.
 installer: install done: installed
 ccl-console: REPL completed: Install_Report: (Install_Report Install_Outcome.Installed Identity_Proof.Model_Geometry
 installer: disk 0 reports no serial: identified by model and geometry

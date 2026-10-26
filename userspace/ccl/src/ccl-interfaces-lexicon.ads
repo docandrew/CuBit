@@ -24,6 +24,9 @@ package CCL.Interfaces.Lexicon with SPARK_Mode is
    --  capacity at compile time; tests/ccl-install's probe checks a real run.
    PUBLISHED_INTERFACES : constant := 1;
    PUBLISHED_SCHEMAS : constant := 6;
+   --  Declared types Publish adds to the catalog's registry (its named
+   --  types and the list types it specializes).
+   PUBLISHED_TYPES : constant := 13;
    use Standard.Interfaces;
 
    --  The types, as CCL source; the digest and keys are SHA-256 of it (then

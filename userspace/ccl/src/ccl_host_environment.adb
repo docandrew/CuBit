@@ -106,7 +106,7 @@ package body CCL_Host_Environment is
       elsif CCL_Calc_Bindings.Handles (Binding) then
          CCL_Calc_Bindings.Invoke (Binding, Argument, Reply);
       elsif CCL_Install_Bindings.Handles (Binding) then
-         CCL_Install_Bindings.Invoke (Binding, Argument, Reply);
+         CCL_Install_Bindings.Invoke (Binding, Argument, Streams, Reply);
       elsif Binding = CLOCK_BINDING and then
         Argument.Kind = CCL.Host_Values.Integer_Value and then Argument.Integer = 0
       then
@@ -173,6 +173,8 @@ package body CCL_Host_Environment is
       begin
          CCL_Program_Bindings.Pump (Streams, From_Programs);
          Arrived := Arrived or else From_Programs;
+         CCL_Install_Bindings.Pump (Streams, Now, Available, From_Programs);
+         Arrived := Arrived or else From_Programs;
       end;
    end Pump_Streams;
 
@@ -196,10 +198,13 @@ package body CCL_Host_Environment is
       Available : Boolean;
       Now : constant Interfaces.Unsigned_64 := Monotonic_Ms (Available);
       Due : constant Interfaces.Unsigned_64 := CCL_Stream_Table.Next_Due (Streams);
+      Install_Due : constant Interfaces.Unsigned_64 :=
+        (if Available then CCL_Install_Bindings.Next_Query_Delay (Now) else Interfaces.Unsigned_64'Last);
+      use type Interfaces.Unsigned_64;
    begin
       if Due = Interfaces.Unsigned_64'Last or else not Available then
-         return Interfaces.Unsigned_64'Last;
+         return Install_Due;
       end if;
-      return (if Now >= Due then 0 else Due - Now);
+      return Interfaces.Unsigned_64'Min ((if Now >= Due then 0 else Due - Now), Install_Due);
    end Next_Stream_Delay;
 end CCL_Host_Environment;

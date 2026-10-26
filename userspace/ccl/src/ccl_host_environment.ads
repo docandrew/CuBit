@@ -3,6 +3,7 @@ with CCL.Catalog;
 with CCL.Host_Values;
 with CCL.Streams;
 with CCL.Objects.Catalog;
+with CCL.Types;
 with CCL.Interfaces.Config;
 with CCL.Interfaces.Logs;
 with CCL.Interfaces.Images;
@@ -48,8 +49,24 @@ package CCL_Host_Environment is
      CCL.Interfaces.Timer.PUBLISHED_SCHEMAS + CCL.Interfaces.Programs.SHARED_SCHEMAS +
      CCL.Interfaces.Programs.MAXIMUM_PROGRAMS * CCL.Interfaces.Programs.PER_PROGRAM_SCHEMAS +
      CCL.Interfaces.Console.PUBLISHED_SCHEMAS;
+   MOST_TYPES : constant :=
+     CCL.Interfaces.Config.PUBLISHED_TYPES + CCL_Execution.PUBLISHED_TYPES +
+     CCL.Interfaces.Logs.PUBLISHED_TYPES + CCL.Interfaces.Images.PUBLISHED_TYPES +
+     CCL.Interfaces.Files.PUBLISHED_TYPES + CCL.Interfaces.Processes.PUBLISHED_TYPES +
+     CCL.Interfaces.Lexicon.PUBLISHED_TYPES + CCL.Interfaces.Calc.PUBLISHED_TYPES +
+     CCL.Interfaces.Install.PUBLISHED_TYPES + CCL.Interfaces.Clock.PUBLISHED_TYPES +
+     CCL.Interfaces.Timer.PUBLISHED_TYPES + CCL.Interfaces.Programs.SHARED_TYPES +
+     CCL.Interfaces.Programs.MAXIMUM_PROGRAMS * CCL.Interfaces.Programs.PER_PROGRAM_TYPES +
+     CCL.Interfaces.Console.PUBLISHED_TYPES;
+   --  Room a session keeps in its copy of the registry for its own type
+   --  declarations and the Task, Stream and List types its calls need
+   --  (system.install's Task<Install_Report>, a timer's Stream<Integer>).
+   SESSION_TYPES : constant := 24;
    pragma Compile_Time_Error
      (MOST_INTERFACES > CCL.Catalog.MAX_INTERFACES, "the CCL catalog cannot hold every interface");
+   pragma Compile_Time_Error
+     (MOST_TYPES + SESSION_TYPES > CCL.Types.Maximum_Declarations,
+      "the CCL type registry cannot hold every interface's types and a session's own");
    pragma Compile_Time_Error
      (MOST_SCHEMAS > CCL.Objects.Catalog.Maximum_Schemas, "the CCL catalog cannot hold every schema");
 
@@ -80,7 +97,8 @@ package CCL_Host_Environment is
    function Open_Streams return Natural;
    --  Whether task Handle completed (an entry waiting on it can resume).
    function Task_Done (Handle : CCL.Streams.Handle) return Boolean;
-   --  Milliseconds until the next element is due: 0 when one is due now,
-   --  Unsigned_64'Last when no stream is open.
+   --  Milliseconds until the next element is due, or the next query about
+   --  a followed install: 0 when one is due now, Unsigned_64'Last when
+   --  nothing is.
    function Next_Stream_Delay return Interfaces.Unsigned_64;
 end CCL_Host_Environment;

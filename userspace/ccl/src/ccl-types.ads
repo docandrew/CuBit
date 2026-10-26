@@ -9,7 +9,9 @@ package CCL.Types with SPARK_Mode is
    --  the startup ones). Each declaration slot costs about 0.8 KiB in a
    --  registry (name and 16 components); a precompiled manifest schema
    --  would remove this pressure (follow-up).
-   Maximum_Declarations : constant := 64;
+   --  Declared types one registry holds: every interface's (summed and
+   --  checked in CCL_Host_Environment) and a session's own.
+   Maximum_Declarations : constant := 128;
    Maximum_Components : constant := 16;
    Maximum_Value_Cells : constant := 256;
 

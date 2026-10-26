@@ -13,7 +13,10 @@
 --    the payload's root/ tree: the image closure), written in that order
 --    with the GPT last, then a device flush. GUIDs, the filesystem UUID
 --    and the ESP serial come from the CPU's random source.
---  Every step and refusal is logged.
+--  Every step and refusal is logged. Install answers at once and the
+--  install runs in this loop's place; between the writer's device writes
+--  the service keeps answering (Install_Status: how far it is; another
+--  Install: Busy; Disk_Info: Reply_Busy while the disk is held).
 ------------------------------------------------------------------------------
 pragma Ada_2022;
 with Interfaces; use Interfaces;
@@ -65,12 +68,23 @@ procedure Main is
 
    type Byte_View is array (Natural range <>) of Unsigned_8;
 
+   --  The current or last install; Installing while one runs. Serve
+   --  answers requests between the writer's device writes, so the
+   --  install's client and others hear back while it runs.
+   Current : Install_Progress;
+   Installing : Boolean := False;
+   --  The first status query an install answers while it runs is logged:
+   --  the service answering during an install is visible.
+   Answered_While_Installing : Boolean := False;
+   procedure Serve;
+
    procedure Put (Offset : Byte_Offset; Data : Bytes; OK : out Boolean) is
       View : Byte_View (0 .. Data'Length - 1) with Import, Address => BC.Buffer (Disk);
       Moved : Unsigned_64;
       Result : BC.Transfer_Result;
       use type BC.Transfer_Result;
    begin
+      Serve;
       OK := Offset mod Disk_Block = 0 and then Unsigned_64 (Data'Length) mod Disk_Block = 0
         and then Unsigned_64 (Data'Length) / Disk_Block in 1 .. BC.Transfer_Limit (Disk);
       if not OK then
@@ -103,6 +117,7 @@ procedure Main is
          end;
       end if;
       while OK and then Left > 0 loop
+         Serve;
          Step := Unsigned_64'Min (Left, BC.Transfer_Limit (Disk));
          BC.Write (Disk, Next, Step, False, Moved, Result);
          OK := Result = BC.Transferred;
@@ -299,6 +314,8 @@ procedure Main is
       end if;
       Count (ESP_Files, Files, Bytes_Written);
       Count (Root_Files, Files, Bytes_Written);
+      Current.Files := Unsigned_64'Min (Files, File_Count'Last);
+      Current.Bytes := Bytes_Written;
       declare
          Shape : constant Disk_Shape :=
            (Block_Size => Device_Block_Bytes (Description.logicalBlockSize),
@@ -383,6 +400,8 @@ procedure Main is
         when Random_Unavailable => "no random source",
         when Bad_Request => "bad request");
 
+   --  Install answers at once (Start_Result), then installs; the outcome
+   --  is Install_Status's to tell.
    procedure Handle_Install (From : Process_ID; Request : Message) is
       Where : System.Address;
       Valid : Boolean;
@@ -402,16 +421,75 @@ procedure Main is
             Decode_Install (Copy, Item, Valid);
          end;
       end if;
-      if Valid then
-         Run_Install (Item, Outcome, Files, Bytes_Written, Proof);
+      if not Valid then
+         Log ("install refused or failed: " & Outcome_Name (Bad_Request));
+         Answer (From, Reply_OK, [Unsigned_64 (Start_Result'Enum_Rep (Rejected)), 0, 0, 0], 1);
+         return;
       end if;
+      Answer (From, Reply_OK, [Unsigned_64 (Start_Result'Enum_Rep (Started)), 0, 0, 0], 1);
+      Current := (State => Running, others => <>);
+      Answered_While_Installing := False;
+      Installing := True;
+      Run_Install (Item, Outcome, Files, Bytes_Written, Proof);
+      Installing := False;
+      Current :=
+        (State => Finished, Outcome => Outcome, Proof => Proof,
+         Files => Current.Files, Bytes => Current.Bytes,
+         Files_Done => (if Outcome = Installed then Current.Files
+                        else Unsigned_64'Min (Installer_Payload.Files_Read, Current.Files)),
+         Bytes_Done => (if Outcome = Installed then Current.Bytes
+                        else Unsigned_64'Min (Installer_Payload.Bytes_Read, Current.Bytes)));
       Log ("install " & (case Outcome is
                            when Installed => "done",
                            when others => "refused or failed") &
            ": " & Outcome_Name (Outcome));
-      Answer (From, Reply_OK, [Unsigned_64 (Install_Outcome'Enum_Rep (Outcome)), Files, Bytes_Written,
-                               Unsigned_64 (Identity_Proof'Enum_Rep (Proof))], 4);
    end Handle_Install;
+
+   procedure Handle_Status (From : Process_ID) is
+      Now : Install_Progress := Current;
+   begin
+      if Installing then
+         Now.Files_Done := Unsigned_64'Min (Installer_Payload.Files_Read, Now.Files);
+         Now.Bytes_Done := Unsigned_64'Min (Installer_Payload.Bytes_Read, Now.Bytes);
+         if not Answered_While_Installing then
+            Answered_While_Installing := True;
+            Log ("status answered during the install:" & Now.Files_Done'Image & " of" &
+                 Now.Files'Image & " files");
+         end if;
+      end if;
+      Answer (From, Reply_OK, MessageWords (Encode_Status (Now)), Status_Words'Length);
+   end Handle_Status;
+
+   procedure Dispatch (From : Process_ID; Request : Message) is
+   begin
+      if Request.tag.length /= Request_Words then
+         Answer (From, Reply_Error, [0, 0, 0, 0], 1);
+      elsif Request.tag.label = Install_Status then
+         Handle_Status (From);
+      elsif Installing and then Request.tag.label = Disk_Info then
+         Answer (From, Reply_Busy, [0, 0, 0, 0], 1);
+      elsif Installing and then Request.tag.label = Install then
+         Answer (From, Reply_OK, [Unsigned_64 (Start_Result'Enum_Rep (Busy)), 0, 0, 0], 1);
+      elsif Request.tag.label = Disk_Info then
+         Handle_Disk_Info (From, Request);
+      elsif Request.tag.label = Install then
+         Handle_Install (From, Request);
+      else
+         Answer (From, Reply_Error, [0, 0, 0, 0], 1);
+      end if;
+   end Dispatch;
+
+   procedure Serve is
+      From : Process_ID;
+      Request : Message;
+      Found : Boolean;
+   begin
+      loop
+         Poll_Any_Ipc (From, Request, Found);
+         exit when not Found;
+         Dispatch (From, Request);
+      end loop;
+   end Serve;
 
    From : Process_ID;
    Request : Message;
@@ -425,12 +503,8 @@ begin
       Poll_Any_Ipc (From, Request, Found);
       if not Found then
          Ignored_Activity := Wait_For_Activity_Until (Wait_Forever);
-      elsif Request.tag.label = Disk_Info and then Request.tag.length = Request_Words then
-         Handle_Disk_Info (From, Request);
-      elsif Request.tag.label = Install and then Request.tag.length = Request_Words then
-         Handle_Install (From, Request);
       else
-         Answer (From, Reply_Error, [0, 0, 0, 0], 1);
+         Dispatch (From, Request);
       end if;
    end loop;
 end Main;

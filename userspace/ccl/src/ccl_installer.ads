@@ -1,4 +1,3 @@
-with Interfaces;
 with CuBit.Installer_Protocol;
 
 --  installer.svc for system.disks and system.install, one body per
@@ -14,8 +13,10 @@ package CCL_Installer is
      (Number : IP.Disk_Ordinal; Item : out IP.Disk_Record; Present : out Boolean;
       Result : out Result_Kind);
 
-   procedure Install
-     (Request : IP.Install_Request; Outcome : out IP.Install_Outcome;
-      Files, Bytes : out Interfaces.Unsigned_64; Proof : out IP.Identity_Proof;
-      Result : out Result_Kind);
+   --  Starts an install; the service answers at once.
+   procedure Start
+     (Request : IP.Install_Request; Started : out IP.Start_Result; Result : out Result_Kind);
+
+   --  How the current or last install stands.
+   procedure Status (Progress : out IP.Install_Progress; Result : out Result_Kind);
 end CCL_Installer;

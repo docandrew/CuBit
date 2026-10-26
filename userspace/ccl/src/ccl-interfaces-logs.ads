@@ -16,6 +16,9 @@ package CCL.Interfaces.Logs with SPARK_Mode is
    --  capacity at compile time; tests/ccl-install's probe checks a real run.
    PUBLISHED_INTERFACES : constant := 1;
    PUBLISHED_SCHEMAS : constant := 2;
+   --  Declared types Publish adds to the catalog's registry (its named
+   --  types and the list types it specializes).
+   PUBLISHED_TYPES : constant := 3;
    use Standard.Interfaces;
 
    --  The types, as CCL source: checked by the CCL type checker when the

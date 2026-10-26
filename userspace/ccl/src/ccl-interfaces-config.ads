@@ -6,6 +6,9 @@ package CCL.Interfaces.Config with SPARK_Mode is
    --  capacity at compile time; tests/ccl-install's probe checks a real run.
    PUBLISHED_INTERFACES : constant := 1;
    PUBLISHED_SCHEMAS : constant := 0;
+   --  Declared types Publish adds to the catalog's registry (its named
+   --  types and the list types it specializes).
+   PUBLISHED_TYPES : constant := 0;
    type Operation is (Get, Keys);
    function Name (Op : Operation) return String is
      (case Op is when Get => "get", when Keys => "keys");

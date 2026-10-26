@@ -31,6 +31,9 @@ package body CCL.Interfaces.Install with SPARK_Mode is
       if Accepted then
          CCL.Objects.Bind (Types, Named ("Install_Report"), REPORT_KEY, Bound.Report, Accepted);
       end if;
+      if Accepted then
+         CCL.Objects.Bind (Types, Named ("Install_Progress"), PROGRESS_KEY, Bound.Progress, Accepted);
+      end if;
    end Define_Types;
 
    procedure Publish
@@ -49,7 +52,8 @@ package body CCL.Interfaces.Install with SPARK_Mode is
             Accepted := Result in CCL.Objects.Catalog.Published | CCL.Objects.Catalog.Already_Published;
          end if;
       end Publish_Schema;
-      --  Listing disks observes the machine; installing changes it.
+      --  Listing disks and an install's progress observe the machine;
+      --  installing changes it, and answers with a task at once.
       CONTRACTS_OF : constant array (Operation) of CCL.Host_Values.Import_Declaration :=
         [Disks =>
            (Argument => CCL.Host_Values.Integer_Value,
@@ -57,9 +61,13 @@ package body CCL.Interfaces.Install with SPARK_Mode is
             Authority => CCL.VM.Observe_Authority, others => <>),
          Install =>
            (Argument => CCL.Host_Values.Object_Value, Argument_Schema => REQUEST_KEY,
-            Result => CCL.Host_Values.Object_Value, Result_Schema => REPORT_KEY,
-            Authority => CCL.VM.Control_Authority, others => <>)];
-      PARAMETERS : constant array (Operation) of Natural := [Disks => 0, Install => 1];
+            Result => CCL.Host_Values.Object_Value, Result_Schema => REPORT_KEY, Result_Task => True,
+            Authority => CCL.VM.Control_Authority, others => <>),
+         Progress =>
+           (Argument => CCL.Host_Values.Integer_Value,
+            Result => CCL.Host_Values.Object_Value, Result_Schema => PROGRESS_KEY,
+            Authority => CCL.VM.Observe_Authority, others => <>)];
+      PARAMETERS : constant array (Operation) of Natural := [Disks => 0, Install => 1, Progress => 0];
    begin
       Error := CCL.Catalog.Invalid_Host_Contract;
       Define_Types (Types, Bound, Accepted);
@@ -67,6 +75,7 @@ package body CCL.Interfaces.Install with SPARK_Mode is
       Publish_Schema (Bound.Disks);
       Publish_Schema (Bound.Request);
       Publish_Schema (Bound.Report);
+      Publish_Schema (Bound.Progress);
       if not Accepted then
          return;
       end if;

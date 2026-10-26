@@ -10,6 +10,9 @@ package CCL_Execution is
    --  spare for the outcome's variant).
    PUBLISHED_INTERFACES : constant := 1;
    PUBLISHED_SCHEMAS : constant := 4;
+   --  Declared types Publish adds to the catalog's registry (its named
+   --  types and the list types it specializes).
+   PUBLISHED_TYPES : constant := 0;
    procedure Install
      (Catalog : in out CCL.Catalog.Interface_Catalog;
       Grants : in out CCL.Catalog.Granted_Bindings; Success : out Boolean);

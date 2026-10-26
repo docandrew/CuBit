@@ -9,6 +9,9 @@ is
    --  capacity at compile time; tests/ccl-install's probe checks a real run.
    PUBLISHED_INTERFACES : constant := 1;
    PUBLISHED_SCHEMAS : constant := 0;
+   --  Declared types Publish adds to the catalog's registry (its named
+   --  types and the list types it specializes).
+   PUBLISHED_TYPES : constant := 0;
    DESCRIPTOR_DIGEST : constant CCL.Catalog.Descriptor_Digest :=
      [16#7DEA_1745_99CE_1FB1#,
       16#A09C_B4F8_1B3D_E54C#,

@@ -15,8 +15,12 @@
 --  Disk_Info (words [disk, slot, generation, 0]): REPLY_OK writes a
 --  Disk_Record; REPLY_NO_DEVICE when no disk has that number.
 --  Install (words [slot, generation, 0, 0]): the grant holds an
---  Install_Request; the reply's word 0 is an Install_Outcome, word 1 the
---  files written, word 2 their bytes, word 3 the Identity_Proof matched.
+--  Install_Request. The reply comes at once (word 0 a Start_Result); the
+--  install then runs while the service keeps answering.
+--  Install_Status (words [0, 0, 0, 0]): how the current or last install
+--  stands (Encode_Status): running with files and bytes done of the
+--  totals, or finished with its Install_Outcome and Identity_Proof.
+--  Disk_Info during an install: Reply_Busy (the disk is held for writing).
 --
 --  The confirmation names the disk's model, serial, block count and block
 --  size, all of which must equal the disk's own. A disk that reports no
@@ -37,10 +41,12 @@ package CuBit.Installer_Protocol with Pure, SPARK_Mode is
 
    Disk_Info : constant Unsigned_32 := 16#0260#;
    Install   : constant Unsigned_32 := 16#0261#;
+   Install_Status : constant Unsigned_32 := 16#0262#;
    Request_Words : constant := 4;
    Reply_OK        : constant Unsigned_32 := 16#F000#;
    Reply_Error     : constant Unsigned_32 := 16#F001#;
    Reply_No_Device : constant Unsigned_32 := 16#F002#;
+   Reply_Busy      : constant Unsigned_32 := 16#F003#;
 
    Page_Bytes : constant := 4096;
    type Byte_Array is array (Positive range <>) of Unsigned_8;
@@ -89,6 +95,35 @@ package CuBit.Installer_Protocol with Pure, SPARK_Mode is
    --  geometry), or, for a disk without one, model and geometry alone.
    type Identity_Proof is (Serial_Number, Model_And_Geometry);
    for Identity_Proof use (Serial_Number => 0, Model_And_Geometry => 1);
+
+   --  Install's answer: started, refused because one is running, or the
+   --  request did not decode.
+   type Start_Result is (Started, Busy, Rejected);
+   for Start_Result use (Started => 0, Busy => 1, Rejected => 2);
+
+   type Install_State is (Idle, Running, Finished);
+   for Install_State use (Idle => 0, Running => 1, Finished => 2);
+
+   --  Files fit 32 bits of a status word (Install_Tree holds far fewer).
+   subtype File_Count is Unsigned_64 range 0 .. 2 ** 32 - 1;
+
+   type Install_Progress is record
+      State      : Install_State := Idle;
+      --  Meaningful once Finished.
+      Outcome    : Install_Outcome := Bad_Request;
+      Proof      : Identity_Proof := Serial_Number;
+      Files_Done : File_Count := 0;
+      Files      : File_Count := 0;
+      Bytes_Done : Unsigned_64 := 0;
+      Bytes      : Unsigned_64 := 0;
+   end record;
+
+   type Status_Words is array (0 .. 3) of Unsigned_64;
+
+   function Encode_Status (Item : Install_Progress) return Status_Words;
+   --  Valid: every field in range, done never past the totals.
+   procedure Decode_Status (Words : Status_Words; Item : out Install_Progress; Valid : out Boolean)
+     with Post => (if Valid then Item.Files_Done <= Item.Files and then Item.Bytes_Done <= Item.Bytes);
 
    function Encode_Disk (Item : Disk_Record) return Page
      with Pre => DId.Well_Formed (Item.Identity.Model)

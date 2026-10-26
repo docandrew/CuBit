@@ -1,6 +1,7 @@
 with CCL.Interfaces.Install;
 with CCL.Objects;
 with CCL.Objects.Views;
+with CCL.Streams;
 with CCL_Installer;
 with CuBit.Device_Identities;
 with CuBit.Failures;
@@ -40,8 +41,9 @@ package body CCL_Install_Bindings is
       CCL.Catalog.Resolve_Schema (Catalog, Install_Interface.DISKS_KEY, Contracts.Disks);
       CCL.Catalog.Resolve_Schema (Catalog, Install_Interface.REQUEST_KEY, Contracts.Request);
       CCL.Catalog.Resolve_Schema (Catalog, Install_Interface.REPORT_KEY, Contracts.Report);
+      CCL.Catalog.Resolve_Schema (Catalog, Install_Interface.PROGRESS_KEY, Contracts.Progress);
       Success := CCL.Objects.Is_Bound (Contracts.Disks) and then CCL.Objects.Is_Bound (Contracts.Request)
-        and then CCL.Objects.Is_Bound (Contracts.Report);
+        and then CCL.Objects.Is_Bound (Contracts.Report) and then CCL.Objects.Is_Bound (Contracts.Progress);
       for Op in Install_Interface.Operation loop
          exit when not Success;
          CCL.Catalog.Resolve (Catalog, "system." & Install_Interface.Name (Op), Resolved, Found);
@@ -113,15 +115,37 @@ package body CCL_Install_Bindings is
       end if;
    end List_Disks;
 
-   procedure Run_Install (Argument : CCL.Host_Values.Value; Reply : in out CCL.Host_Values.Call_Result) is
+   function Count (Value : Unsigned_64) return CCL.Objects.Cell is
+     (CCL.Objects.Integer_Cell (Integer_64 (Unsigned_64'Min (Value, Unsigned_64 (Integer_64'Last)))));
+
+   --  The install this session started and follows: its task, pinned until
+   --  it completes. One install runs at a time (the installer's rule). The
+   --  last completed install's task stays pinned until the next install
+   --  starts, so an entry waiting on it resumes even when no name holds it
+   --  (as a program run's outcome does).
+   Pending : CCL.Streams.Handle := CCL.Streams.No_Handle;
+   Completed_Task : CCL.Streams.Handle := CCL.Streams.No_Handle;
+   Last_Query : Unsigned_64 := 0;
+   --  How often Pump asks the installer while an install runs.
+   Query_Interval_Ms : constant := 250;
+
+   procedure Run_Install
+     (Argument : CCL.Host_Values.Value; Streams : in out CCL_Stream_Table.Table;
+      Reply : in out CCL.Host_Values.Call_Result)
+   is
       Object : Views.Snapshot;
       Captured : Boolean := False;
       Request : IP.Install_Request;
-      Outcome : IP.Install_Outcome;
-      Files, Bytes : Unsigned_64;
-      Proof : IP.Identity_Proof;
+      Started : IP.Start_Result;
       Result : CCL_Installer.Result_Kind;
+      use type IP.Start_Result;
+      use type CCL.Streams.Handle;
    begin
+      if Pending /= CCL.Streams.No_Handle then
+         Reply.Why := Failures.Failed
+           (Failures.Refused, "an install is running", "(system.progress) tells how far it is");
+         return;
+      end if;
       if Argument.Kind = CCL.Host_Values.Object_Value then
          Views.Capture (Object, Contracts.Request, Argument.Object, Captured);
       end if;
@@ -172,7 +196,67 @@ package body CCL_Install_Bindings is
          Request.Length := Source'Length;
          Request.Source (1 .. Source'Length) := Source;
       end;
-      CCL_Installer.Install (Request, Outcome, Files, Bytes, Proof, Result);
+      CCL_Installer.Start (Request, Started, Result);
+      if Result = CCL_Installer.Not_Granted then
+         Reply.Why := NOT_GRANTED;
+         return;
+      elsif Result /= CCL_Installer.Answered then
+         Reply.Why := UNAVAILABLE;
+         return;
+      elsif Started = IP.Busy then
+         Reply.Why := Failures.Failed
+           (Failures.Refused, "the installer is already installing", "(system.progress) tells how far it is");
+         return;
+      elsif Started = IP.Rejected then
+         Reply.Why := Failures.Failed (Failures.Invalid_Argument, "the installer refused the request");
+         return;
+      end if;
+      if Completed_Task /= CCL.Streams.No_Handle then
+         CCL_Stream_Table.Unpin (Streams, Completed_Task);
+         Completed_Task := CCL.Streams.No_Handle;
+      end if;
+      CCL_Stream_Table.Open_Task (Streams, Pending, Pinned => True);
+      if Pending = CCL.Streams.No_Handle then
+         Reply.Why := Failures.Failed
+           (Failures.Exhausted, "the install started, but this session has no task slot to follow it",
+            "(system.progress) tells how far it is");
+         return;
+      end if;
+      Reply := (Value => CCL.Host_Values.Integer_Constant (Integer_64 (Pending)), Success => True, Why => <>);
+   end Run_Install;
+
+   --  The report a finished install's task completes with.
+   procedure Report_Image
+     (Progress : IP.Install_Progress; Image : out CCL.Objects.Image; Built : out Boolean)
+   is
+      Step : CCL.Objects.Build_Result := CCL.Objects.Added;
+      procedure Put (Cell : CCL.Objects.Cell) is
+      begin
+         if Step = CCL.Objects.Added then CCL.Objects.Append (Image, Cell, Step); end if;
+      end Put;
+   begin
+      Image := CCL.Objects.Empty (Contracts.Report);
+      Put (CCL.Objects.Product_Cell (Install_Interface.REPORT_FIELDS));
+      Put (CCL.Objects.Variant_Cell (IP.Install_Outcome'Pos (Progress.Outcome) + 1));
+      Put (CCL.Objects.Unit_Cell);
+      Put (CCL.Objects.Variant_Cell (IP.Identity_Proof'Pos (Progress.Proof) + 1));
+      Put (CCL.Objects.Unit_Cell);
+      Put (Count (Progress.Files_Done));
+      Put (Count (Progress.Bytes_Done));
+      Built := Step = CCL.Objects.Added and then CCL.Objects.Validate (Image, Contracts.Report);
+   end Report_Image;
+
+   procedure Show_Progress (Reply : in out CCL.Host_Values.Call_Result) is
+      Progress : IP.Install_Progress;
+      Result : CCL_Installer.Result_Kind;
+      Image : CCL.Objects.Image := CCL.Objects.Empty (Contracts.Progress);
+      Step : CCL.Objects.Build_Result := CCL.Objects.Added;
+      procedure Put (Cell : CCL.Objects.Cell) is
+      begin
+         if Step = CCL.Objects.Added then CCL.Objects.Append (Image, Cell, Step); end if;
+      end Put;
+   begin
+      CCL_Installer.Status (Progress, Result);
       if Result = CCL_Installer.Not_Granted then
          Reply.Why := NOT_GRANTED;
          return;
@@ -180,31 +264,65 @@ package body CCL_Install_Bindings is
          Reply.Why := UNAVAILABLE;
          return;
       end if;
-      declare
-         Image : CCL.Objects.Image := CCL.Objects.Empty (Contracts.Report);
-         Step : CCL.Objects.Build_Result := CCL.Objects.Added;
-         procedure Put (Cell : CCL.Objects.Cell) is
-         begin
-            if Step = CCL.Objects.Added then CCL.Objects.Append (Image, Cell, Step); end if;
-         end Put;
-      begin
-         Put (CCL.Objects.Product_Cell (Install_Interface.REPORT_FIELDS));
-         Put (CCL.Objects.Variant_Cell (IP.Install_Outcome'Pos (Outcome) + 1));
-         Put (CCL.Objects.Unit_Cell);
-         Put (CCL.Objects.Variant_Cell (IP.Identity_Proof'Pos (Proof) + 1));
-         Put (CCL.Objects.Unit_Cell);
-         Put (CCL.Objects.Integer_Cell (Integer_64 (Unsigned_64'Min (Files, Unsigned_64 (Integer_64'Last)))));
-         Put (CCL.Objects.Integer_Cell (Integer_64 (Unsigned_64'Min (Bytes, Unsigned_64 (Integer_64'Last)))));
-         if Step = CCL.Objects.Added and then CCL.Objects.Validate (Image, Contracts.Report) then
-            Reply := (Value => CCL.Host_Values.Object_Constant (Image), Success => True, Why => <>);
-         else
-            Reply.Why := UNAVAILABLE;
-         end if;
-      end;
-   end Run_Install;
+      Put (CCL.Objects.Product_Cell (Install_Interface.PROGRESS_FIELDS));
+      Put (CCL.Objects.Variant_Cell (IP.Install_State'Pos (Progress.State) + 1));
+      Put (CCL.Objects.Unit_Cell);
+      Put (Count (Progress.Files_Done));
+      Put (Count (Progress.Files));
+      Put (Count (Progress.Bytes_Done));
+      Put (Count (Progress.Bytes));
+      if Step = CCL.Objects.Added and then CCL.Objects.Validate (Image, Contracts.Progress) then
+         Reply := (Value => CCL.Host_Values.Object_Constant (Image), Success => True, Why => <>);
+      else
+         Reply.Why := UNAVAILABLE;
+      end if;
+   end Show_Progress;
+
+   procedure Pump
+     (Streams : in out CCL_Stream_Table.Table; Now : Unsigned_64; Clocked : Boolean;
+      Arrived : out Boolean)
+   is
+      use type CCL.Streams.Handle;
+      use type IP.Install_State;
+      Progress : IP.Install_Progress;
+      Result : CCL_Installer.Result_Kind;
+      Image : CCL.Objects.Image;
+      Built, Completed : Boolean;
+   begin
+      Arrived := False;
+      if Pending = CCL.Streams.No_Handle
+        or else (Clocked and then Now >= Last_Query and then Now - Last_Query < Query_Interval_Ms)
+      then
+         return;
+      end if;
+      Last_Query := Now;
+      CCL_Installer.Status (Progress, Result);
+      if Result /= CCL_Installer.Answered or else Progress.State /= IP.Finished then
+         return;
+      end if;
+      Report_Image (Progress, Image, Built);
+      if Built then
+         CCL_Stream_Table.Complete_Task (Streams, Pending, Image, Completed);
+         Arrived := Completed;
+      end if;
+      Completed_Task := Pending;
+      Pending := CCL.Streams.No_Handle;
+   end Pump;
+
+   function Next_Query_Delay (Now : Unsigned_64) return Unsigned_64 is
+      use type CCL.Streams.Handle;
+   begin
+      if Pending = CCL.Streams.No_Handle then
+         return Unsigned_64'Last;
+      elsif Now < Last_Query or else Now - Last_Query >= Query_Interval_Ms then
+         return 0;
+      end if;
+      return Query_Interval_Ms - (Now - Last_Query);
+   end Next_Query_Delay;
 
    procedure Invoke
      (Binding : Unsigned_32; Argument : CCL.Host_Values.Value;
+      Streams : in out CCL_Stream_Table.Table;
       Reply : out CCL.Host_Values.Call_Result) is
    begin
       Reply := (Value => CCL.Host_Values.Integer_Constant (0), Success => False, Why => <>);
@@ -213,7 +331,8 @@ package body CCL_Install_Bindings is
       end if;
       case Install_Interface.Operation'Val (Binding - Install_Interface.FIRST_BINDING) is
          when Install_Interface.Disks => List_Disks (Reply);
-         when Install_Interface.Install => Run_Install (Argument, Reply);
+         when Install_Interface.Install => Run_Install (Argument, Streams, Reply);
+         when Install_Interface.Progress => Show_Progress (Reply);
       end case;
    end Invoke;
 end CCL_Install_Bindings;

@@ -40,4 +40,8 @@ package Installer_Payload is
    --  Closes the file Read keeps open between calls.
    procedure Finish;
 
+   --  Progress since the last Walk: files Read has opened, bytes it gave.
+   function Files_Read return Unsigned_64;
+   function Bytes_Read return Unsigned_64;
+
 end Installer_Payload;

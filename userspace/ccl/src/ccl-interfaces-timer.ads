@@ -13,6 +13,9 @@ is
    --  capacity at compile time; tests/ccl-install's probe checks a real run.
    PUBLISHED_INTERFACES : constant := 1;
    PUBLISHED_SCHEMAS : constant := 0;
+   --  Declared types Publish adds to the catalog's registry (its named
+   --  types and the list types it specializes).
+   PUBLISHED_TYPES : constant := 0;
    --  SHA-256 of interfaces/timer.ccl-interface.
    DESCRIPTOR_DIGEST : constant CCL.Catalog.Descriptor_Digest :=
      [16#5EEA_0076_E8D8_F124#,

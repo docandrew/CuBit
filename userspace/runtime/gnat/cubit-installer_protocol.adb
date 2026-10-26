@@ -112,4 +112,44 @@ package body CuBit.Installer_Protocol with SPARK_Mode is
                   Item.Confirmation, Valid);
    end Decode_Install;
 
+   --  Install_Status's words: [state | outcome | proof (a byte each),
+   --  files done | files (32 bits each), bytes done, bytes].
+   State_Shift   : constant := 0;
+   Outcome_Shift : constant := 8;
+   Proof_Shift   : constant := 16;
+   Field_Bits    : constant := 8;
+   Field_Mask    : constant := 2 ** Field_Bits - 1;
+   Files_Shift   : constant := 32;
+   Files_Mask    : constant := 16#FFFF_FFFF#;
+
+   function Encode_Status (Item : Install_Progress) return Status_Words is
+     [0 => Shift_Left (Unsigned_64 (Install_State'Enum_Rep (Item.State)), State_Shift)
+           or Shift_Left (Unsigned_64 (Install_Outcome'Enum_Rep (Item.Outcome)), Outcome_Shift)
+           or Shift_Left (Unsigned_64 (Identity_Proof'Enum_Rep (Item.Proof)), Proof_Shift),
+      1 => Item.Files_Done or Shift_Left (Item.Files, Files_Shift),
+      2 => Item.Bytes_Done,
+      3 => Item.Bytes];
+
+   procedure Decode_Status (Words : Status_Words; Item : out Install_Progress; Valid : out Boolean) is
+      State : constant Unsigned_64 := Shift_Right (Words (0), State_Shift) and Field_Mask;
+      Outcome : constant Unsigned_64 := Shift_Right (Words (0), Outcome_Shift) and Field_Mask;
+      Proof : constant Unsigned_64 := Shift_Right (Words (0), Proof_Shift) and Field_Mask;
+      Files_Done : constant Unsigned_64 := Words (1) and Files_Mask;
+      Files : constant Unsigned_64 := Shift_Right (Words (1), Files_Shift);
+   begin
+      Item := (others => <>);
+      Valid := State <= Install_State'Enum_Rep (Install_State'Last)
+        and then Outcome <= Install_Outcome'Enum_Rep (Install_Outcome'Last)
+        and then Proof <= Identity_Proof'Enum_Rep (Identity_Proof'Last)
+        and then Shift_Right (Words (0), Proof_Shift + Field_Bits) = 0
+        and then Files_Done <= Files and then Words (2) <= Words (3);
+      if Valid then
+         Item := (State => Install_State'Enum_Val (State),
+                  Outcome => Install_Outcome'Enum_Val (Outcome),
+                  Proof => Identity_Proof'Enum_Val (Proof),
+                  Files_Done => Files_Done, Files => Files,
+                  Bytes_Done => Words (2), Bytes => Words (3));
+      end if;
+   end Decode_Status;
+
 end CuBit.Installer_Protocol;

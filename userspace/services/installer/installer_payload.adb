@@ -29,6 +29,11 @@ package body Installer_Payload is
    Open_Volume : Disk_Layout.Install_Volume := Disk_Layout.Root_Volume;
    Open_Entry : Natural := 0;
    Open_Handle : File_Handle := 0;
+   Files_Opened : Unsigned_64 := 0;
+   Bytes_Given : Unsigned_64 := 0;
+
+   function Files_Read return Unsigned_64 is (Files_Opened);
+   function Bytes_Read return Unsigned_64 is (Bytes_Given);
 
    function Call (Request : in out Message) return Boolean is
    begin
@@ -279,6 +284,8 @@ package body Installer_Payload is
       Line_First : Positive := 1;
    begin
       Finish;
+      Files_Opened := 0;
+      Bytes_Given := 0;
       for Volume in Trees'Range loop
          Trees (Volume).Count := 0;
          Trees (Volume).Used := 0;
@@ -347,6 +354,7 @@ package body Installer_Payload is
          Open_Handle := File_Handle (Request.words (0));
          Open_Entry := File;
          Open_Volume := Volume;
+         Files_Opened := Files_Opened + 1;
       end if;
       while Done < Data'Length loop
          declare
@@ -362,6 +370,7 @@ package body Installer_Payload is
             Done := Done + Want;
          end;
       end loop;
+      Bytes_Given := Bytes_Given + Unsigned_64 (Data'Length);
       OK := True;
    end Read;
 

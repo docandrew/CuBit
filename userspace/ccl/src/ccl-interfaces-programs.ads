@@ -65,6 +65,10 @@ package CCL.Interfaces.Programs is
    PER_PROGRAM_INTERFACES : constant := 1;
    PER_PROGRAM_SCHEMAS : constant := 1;
    SHARED_SCHEMAS : constant := 8;
+   --  Declared types: each program's parameters; once for all programs,
+   --  the shared types (SHARED_SOURCE) and List<Outlet_State>.
+   PER_PROGRAM_TYPES : constant := 1;
+   SHARED_TYPES : constant := 10;
    --  Operations per program: run, its outlets, outlets and outcome.
    MAXIMUM_OPERATIONS : constant := 3 + PD.Maximum_Connectors;
    subtype Program_Index is Natural range 0 .. MAXIMUM_PROGRAMS - 1;
