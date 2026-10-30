@@ -1,5 +1,5 @@
 project Proof is
- for Source_Dirs use ("../../userspace/lib/acpi");
+ for Source_Dirs use ("../../userspace/services/acpi/lib");
  for Object_Dir use "proof-obj";
  package Compiler is
  for Default_Switches ("Ada") use ("-gnat2022", "-gnatwa", "-gnatwe");

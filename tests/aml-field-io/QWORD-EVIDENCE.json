@@ -1,0 +1,114 @@
+{
+  "source": "field-qword-frozen-qpFMkL7J",
+  "classification": "private-hosted-Qword-functionality",
+  "production_files_changed": 2,
+  "FieldIO_checks_per_profile": 14600,
+  "new_Qword_checks_per_profile": 6663,
+  "existing_checks_per_profile": 7937,
+  "geometry_checks_per_profile": 163059,
+  "metadata_validators": 21,
+  "reference": {
+    "source": "/home/doc/git/.acpi-proof-work/field-qword-reference-split-6Al2cF2d",
+    "tables": 36,
+    "logical_scenarios": 18,
+    "method_returns": 108,
+    "observed_backing_bytes": 1728,
+    "read_kind": {
+      "AML32": "eight-byteBuffer",
+      "AML64": "Integer64"
+    },
+    "scope": "Normal ACPICA simulator values only; no physical access width/count/atomicity/authority claim. First1426character batches rejected by1023limit are preserved; freshsplit groups compile/disassemble/execute0."
+  },
+  "runtime": {
+    "new_release": {
+      "source": "/home/doc/git/.acpi-proof-work/field-qword-frozen-qpFMkL7J/source",
+      "output": "/home/doc/git/.acpi-proof-work/field-qword-frozen-qpFMkL7J/source/tests/aml-field-io/results/release-_xn9wkha",
+      "mode": "release",
+      "inputs": 206,
+      "references": 296,
+      "tools": 5,
+      "runtime_sources": 1582,
+      "binaries": 1,
+      "artifacts": 339,
+      "stages": 2,
+      "logs": {
+        "field_qword_tests": "Qword Field checks 6663"
+      },
+      "ALI": 83,
+      "dependencies": 1121,
+      "strict_commands": 82,
+      "audit_sha256": "e82fb5b874b138b5a5ed04911c21bac2a522fef7e21509b8f56179e754bbc8bf",
+      "scope": "Hosted runtime evidence for the exact selected source/profile only; no native delivery or whole-interpreter proof."
+    },
+    "new_checked": {
+      "source": "/home/doc/git/.acpi-proof-work/field-qword-frozen-qpFMkL7J/source",
+      "output": "/home/doc/git/.acpi-proof-work/field-qword-frozen-qpFMkL7J/source/tests/aml-field-io/results/checked-b7gzplhu",
+      "mode": "checked",
+      "inputs": 206,
+      "references": 296,
+      "tools": 5,
+      "runtime_sources": 1582,
+      "binaries": 1,
+      "artifacts": 339,
+      "stages": 2,
+      "logs": {
+        "field_qword_tests": "Qword Field checks 6663"
+      },
+      "ALI": 83,
+      "dependencies": 1454,
+      "strict_commands": 82,
+      "audit_sha256": "444df5c2a82c77a6480cc8aea4236339733e7e773073686ebff61b69b983f693",
+      "scope": "Hosted runtime evidence for the exact selected source/profile only; no native delivery or whole-interpreter proof."
+    },
+    "existing_release": {
+      "source": "/home/doc/git/.acpi-proof-work/field-qword-frozen-qpFMkL7J/source",
+      "output": "/home/doc/git/.acpi-proof-work/field-qword-frozen-qpFMkL7J/source/tests/aml-field-io/results/release-zujs1j8o",
+      "mode": "release",
+      "inputs": 206,
+      "references": 296,
+      "tools": 5,
+      "runtime_sources": 1582,
+      "binaries": 5,
+      "artifacts": 1627,
+      "stages": 10,
+      "logs": {
+        "field_io_core_tests": "Field IO Core checks 516",
+        "field_deref_unknown_tests": "Field Deref unknown checks 186",
+        "field_partial_read_tests": "Partial Field reads passed 482",
+        "field_any_space_tests": "Any-space Field reads passed 440",
+        "field_partial_write_tests": "Partial Field write checks 6313"
+      },
+      "ALI": 401,
+      "dependencies": 5493,
+      "strict_commands": 396,
+      "audit_sha256": "dca94d3f0a707eef2ec37da94b5fc15f6108ff8a7cc01b3d9d9bcdd61cf61423",
+      "scope": "Hosted runtime evidence for the exact selected source/profile only; no native delivery or whole-interpreter proof."
+    },
+    "existing_checked": {
+      "source": "/home/doc/git/.acpi-proof-work/field-qword-frozen-qpFMkL7J/source",
+      "output": "/home/doc/git/.acpi-proof-work/field-qword-frozen-qpFMkL7J/source/tests/aml-field-io/results/checked-p6khqhv8",
+      "mode": "checked",
+      "inputs": 206,
+      "references": 296,
+      "tools": 5,
+      "runtime_sources": 1582,
+      "binaries": 5,
+      "artifacts": 1627,
+      "stages": 10,
+      "logs": {
+        "field_io_core_tests": "Field IO Core checks 516",
+        "field_deref_unknown_tests": "Field Deref unknown checks 186",
+        "field_partial_read_tests": "Partial Field reads passed 482",
+        "field_any_space_tests": "Any-space Field reads passed 440",
+        "field_partial_write_tests": "Partial Field write checks 6313"
+      },
+      "ALI": 401,
+      "dependencies": 7110,
+      "strict_commands": 396,
+      "audit_sha256": "700a224547b18566a168ed606de240cf6fa1d2d5c3e1bcaab4019a5923fd53bf",
+      "scope": "Hosted runtime evidence for the exact selected source/profile only; no native delivery or whole-interpreter proof."
+    }
+  },
+  "scope": "MemoryQword through explicit vector bindings only; IOQword remains rejected. Hosted tests/normal cached ACPICA values, no native hardware/bus atomicity proof. No new proof on changed ReadPlans/Namespace body; unchanged datum safety proof is separate. New code remains private; publication/docs/reference registration and broader service gates unfinished.",
+  "publication_note": "Historical runtime receipts retain their original private source/output paths. The publication candidate carries byte-identical production and compiled fixture inputs; metadata and portable reference checks are validated separately. No executable fallback uses these paths."
+}

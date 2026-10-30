@@ -82,7 +82,7 @@ package body ACPI_Device_Initialization with SPARK_Mode is
          Error (Run, Scope, AML_Execute.Unsupported_Value); return;
       end if;
       Is_Method := V.Node_Kind (Description) = N.Method_Object;
-      Core.Evaluate_Named (Service, Description,
+      Evaluate_Named (Service, Description,
         Run.Budget - Run.Info.Charged, Value, Access_Result);
       if Value.Charged > Run.Budget - Run.Info.Charged then
          Run.Info.Stage := Failed;
@@ -207,6 +207,7 @@ package body ACPI_Device_Initialization with SPARK_Mode is
          Run.Info.Stage := Failed; Error (Run, N.Root, AML_Execute.Unsupported_Value); return; end if;
       -- Consume before entering the trusted callback, preventing replay.
       Run.Info.Stage := Incomplete;
+      Run.Info.Regions_Attempted := True;
       Initialize_Regions (Service, Run.Budget - Run.Info.Charged, Charge, Run.Info.Region_Status);
       if Charge > Run.Budget - Run.Info.Charged then
          Run.Info.Stage := Failed; Error (Run, N.Root, AML_Execute.Budget_Exceeded); return; end if;

@@ -1,0 +1,656 @@
+[
+  {
+    "label": "byteacc-r1",
+    "bytes_per_register": 1,
+    "revision": 1,
+    "aml_sha256": "5d7f18930873cfda7205fb2c5e1c45a88ca7239b09f721e1b95a9f4c7fefd827",
+    "raw_log_sha256": "ac568fbde44e83e4697118063fa3b8e9efef12a3986565ca61dc0702b83adf95",
+    "observations": [
+      {
+        "path": "\\BUFR",
+        "kind": "integer",
+        "value": 199
+      },
+      {
+        "path": "\\PR01",
+        "kind": "integer",
+        "value": 199
+      },
+      {
+        "path": "\\PR02",
+        "kind": "integer",
+        "value": 90
+      },
+      {
+        "path": "\\PR03",
+        "kind": "integer",
+        "value": 60
+      },
+      {
+        "path": "\\STRG",
+        "kind": "integer",
+        "value": 65
+      },
+      {
+        "path": "\\PR01",
+        "kind": "integer",
+        "value": 65
+      },
+      {
+        "path": "\\PR02",
+        "kind": "integer",
+        "value": 90
+      },
+      {
+        "path": "\\PR03",
+        "kind": "integer",
+        "value": 60
+      },
+      {
+        "path": "\\SDEC",
+        "kind": "integer",
+        "value": 49
+      },
+      {
+        "path": "\\PR01",
+        "kind": "integer",
+        "value": 49
+      },
+      {
+        "path": "\\PR02",
+        "kind": "integer",
+        "value": 90
+      },
+      {
+        "path": "\\PR03",
+        "kind": "integer",
+        "value": 60
+      },
+      {
+        "path": "\\SMP0",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\PR01",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\PR02",
+        "kind": "integer",
+        "value": 90
+      },
+      {
+        "path": "\\PR03",
+        "kind": "integer",
+        "value": 60
+      },
+      {
+        "path": "\\BMP0",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\PR01",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\PR02",
+        "kind": "integer",
+        "value": 90
+      },
+      {
+        "path": "\\PR03",
+        "kind": "integer",
+        "value": 60
+      }
+    ]
+  },
+  {
+    "label": "byteacc-r2",
+    "bytes_per_register": 1,
+    "revision": 2,
+    "aml_sha256": "94387cb3eb04ab3210ac489d76b3b4fcfc15d98d9ae8aac5dc7b3d90b6406567",
+    "raw_log_sha256": "c28f443a7f6ae597e25f8af1c7ab8025c445549e88f27f16000f3ae56f7d2ca7",
+    "observations": [
+      {
+        "path": "\\BUFR",
+        "kind": "integer",
+        "value": 199
+      },
+      {
+        "path": "\\PR01",
+        "kind": "integer",
+        "value": 199
+      },
+      {
+        "path": "\\PR02",
+        "kind": "integer",
+        "value": 90
+      },
+      {
+        "path": "\\PR03",
+        "kind": "integer",
+        "value": 60
+      },
+      {
+        "path": "\\STRG",
+        "kind": "integer",
+        "value": 65
+      },
+      {
+        "path": "\\PR01",
+        "kind": "integer",
+        "value": 65
+      },
+      {
+        "path": "\\PR02",
+        "kind": "integer",
+        "value": 90
+      },
+      {
+        "path": "\\PR03",
+        "kind": "integer",
+        "value": 60
+      },
+      {
+        "path": "\\SDEC",
+        "kind": "integer",
+        "value": 49
+      },
+      {
+        "path": "\\PR01",
+        "kind": "integer",
+        "value": 49
+      },
+      {
+        "path": "\\PR02",
+        "kind": "integer",
+        "value": 90
+      },
+      {
+        "path": "\\PR03",
+        "kind": "integer",
+        "value": 60
+      },
+      {
+        "path": "\\SMP0",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\PR01",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\PR02",
+        "kind": "integer",
+        "value": 90
+      },
+      {
+        "path": "\\PR03",
+        "kind": "integer",
+        "value": 60
+      },
+      {
+        "path": "\\BMP0",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\PR01",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\PR02",
+        "kind": "integer",
+        "value": 90
+      },
+      {
+        "path": "\\PR03",
+        "kind": "integer",
+        "value": 60
+      }
+    ]
+  },
+  {
+    "label": "wordacc-r1",
+    "bytes_per_register": 2,
+    "revision": 1,
+    "aml_sha256": "5ad21816b60139c42f4bfe73183af19d8230b1990e6d3fb91bcb709cacef789f",
+    "raw_log_sha256": "6112cb7568bbe6461e4498968a14b7f2b16c9f8fa04e14aec5423dcfe0233c7f",
+    "observations": [
+      {
+        "path": "\\BUFR",
+        "kind": "integer",
+        "value": 13511
+      },
+      {
+        "path": "\\PR01",
+        "kind": "integer",
+        "value": 13511
+      },
+      {
+        "path": "\\PR02",
+        "kind": "integer",
+        "value": 90
+      },
+      {
+        "path": "\\PR03",
+        "kind": "integer",
+        "value": 60
+      },
+      {
+        "path": "\\STRG",
+        "kind": "integer",
+        "value": 31297
+      },
+      {
+        "path": "\\PR01",
+        "kind": "integer",
+        "value": 31297
+      },
+      {
+        "path": "\\PR02",
+        "kind": "integer",
+        "value": 90
+      },
+      {
+        "path": "\\PR03",
+        "kind": "integer",
+        "value": 60
+      },
+      {
+        "path": "\\SDEC",
+        "kind": "integer",
+        "value": 12849
+      },
+      {
+        "path": "\\PR01",
+        "kind": "integer",
+        "value": 12849
+      },
+      {
+        "path": "\\PR02",
+        "kind": "integer",
+        "value": 90
+      },
+      {
+        "path": "\\PR03",
+        "kind": "integer",
+        "value": 60
+      },
+      {
+        "path": "\\SMP0",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\PR01",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\PR02",
+        "kind": "integer",
+        "value": 90
+      },
+      {
+        "path": "\\PR03",
+        "kind": "integer",
+        "value": 60
+      },
+      {
+        "path": "\\BMP0",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\PR01",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\PR02",
+        "kind": "integer",
+        "value": 90
+      },
+      {
+        "path": "\\PR03",
+        "kind": "integer",
+        "value": 60
+      }
+    ]
+  },
+  {
+    "label": "wordacc-r2",
+    "bytes_per_register": 2,
+    "revision": 2,
+    "aml_sha256": "2ae6c474a644af760c8ebbb4a4c2b14630cf8d30ca6da61431f2b02c81188d02",
+    "raw_log_sha256": "cc1a4970c01850e888cad926522312fcd7e77013dc792dfb59dafb4bdb6d8848",
+    "observations": [
+      {
+        "path": "\\BUFR",
+        "kind": "integer",
+        "value": 13511
+      },
+      {
+        "path": "\\PR01",
+        "kind": "integer",
+        "value": 13511
+      },
+      {
+        "path": "\\PR02",
+        "kind": "integer",
+        "value": 90
+      },
+      {
+        "path": "\\PR03",
+        "kind": "integer",
+        "value": 60
+      },
+      {
+        "path": "\\STRG",
+        "kind": "integer",
+        "value": 31297
+      },
+      {
+        "path": "\\PR01",
+        "kind": "integer",
+        "value": 31297
+      },
+      {
+        "path": "\\PR02",
+        "kind": "integer",
+        "value": 90
+      },
+      {
+        "path": "\\PR03",
+        "kind": "integer",
+        "value": 60
+      },
+      {
+        "path": "\\SDEC",
+        "kind": "integer",
+        "value": 12849
+      },
+      {
+        "path": "\\PR01",
+        "kind": "integer",
+        "value": 12849
+      },
+      {
+        "path": "\\PR02",
+        "kind": "integer",
+        "value": 90
+      },
+      {
+        "path": "\\PR03",
+        "kind": "integer",
+        "value": 60
+      },
+      {
+        "path": "\\SMP0",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\PR01",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\PR02",
+        "kind": "integer",
+        "value": 90
+      },
+      {
+        "path": "\\PR03",
+        "kind": "integer",
+        "value": 60
+      },
+      {
+        "path": "\\BMP0",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\PR01",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\PR02",
+        "kind": "integer",
+        "value": 90
+      },
+      {
+        "path": "\\PR03",
+        "kind": "integer",
+        "value": 60
+      }
+    ]
+  },
+  {
+    "label": "dwordacc-r1",
+    "bytes_per_register": 4,
+    "revision": 1,
+    "aml_sha256": "fcdc27266da41635a58a3bd9b46acfa681b0b719f20c457e9c2c9d1842240086",
+    "raw_log_sha256": "2096a763caf841bab0694504d33b23dfcb40b019dae3c569a0d342fe579e09bd",
+    "observations": [
+      {
+        "path": "\\BUFR",
+        "kind": "integer",
+        "value": 1511142599
+      },
+      {
+        "path": "\\PR01",
+        "kind": "integer",
+        "value": 1511142599
+      },
+      {
+        "path": "\\PR02",
+        "kind": "integer",
+        "value": 90
+      },
+      {
+        "path": "\\PR03",
+        "kind": "integer",
+        "value": 60
+      },
+      {
+        "path": "\\STRG",
+        "kind": "integer",
+        "value": 556956225
+      },
+      {
+        "path": "\\PR01",
+        "kind": "integer",
+        "value": 556956225
+      },
+      {
+        "path": "\\PR02",
+        "kind": "integer",
+        "value": 90
+      },
+      {
+        "path": "\\PR03",
+        "kind": "integer",
+        "value": 60
+      },
+      {
+        "path": "\\SDEC",
+        "kind": "integer",
+        "value": 875770417
+      },
+      {
+        "path": "\\PR01",
+        "kind": "integer",
+        "value": 875770417
+      },
+      {
+        "path": "\\PR02",
+        "kind": "integer",
+        "value": 90
+      },
+      {
+        "path": "\\PR03",
+        "kind": "integer",
+        "value": 60
+      },
+      {
+        "path": "\\SMP0",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\PR01",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\PR02",
+        "kind": "integer",
+        "value": 90
+      },
+      {
+        "path": "\\PR03",
+        "kind": "integer",
+        "value": 60
+      },
+      {
+        "path": "\\BMP0",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\PR01",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\PR02",
+        "kind": "integer",
+        "value": 90
+      },
+      {
+        "path": "\\PR03",
+        "kind": "integer",
+        "value": 60
+      }
+    ]
+  },
+  {
+    "label": "dwordacc-r2",
+    "bytes_per_register": 4,
+    "revision": 2,
+    "aml_sha256": "1a82aa3a31a8e3de973e94f9b460b8176bc3e355bfcebd873e7bb19270a19283",
+    "raw_log_sha256": "8ec229076c1eae37ba30f17600e15ed1c3a9394a79fb9089d38aa842819e9856",
+    "observations": [
+      {
+        "path": "\\BUFR",
+        "kind": "integer",
+        "value": 1511142599
+      },
+      {
+        "path": "\\PR01",
+        "kind": "integer",
+        "value": 1511142599
+      },
+      {
+        "path": "\\PR02",
+        "kind": "integer",
+        "value": 90
+      },
+      {
+        "path": "\\PR03",
+        "kind": "integer",
+        "value": 60
+      },
+      {
+        "path": "\\STRG",
+        "kind": "integer",
+        "value": 556956225
+      },
+      {
+        "path": "\\PR01",
+        "kind": "integer",
+        "value": 556956225
+      },
+      {
+        "path": "\\PR02",
+        "kind": "integer",
+        "value": 90
+      },
+      {
+        "path": "\\PR03",
+        "kind": "integer",
+        "value": 60
+      },
+      {
+        "path": "\\SDEC",
+        "kind": "integer",
+        "value": 875770417
+      },
+      {
+        "path": "\\PR01",
+        "kind": "integer",
+        "value": 875770417
+      },
+      {
+        "path": "\\PR02",
+        "kind": "integer",
+        "value": 90
+      },
+      {
+        "path": "\\PR03",
+        "kind": "integer",
+        "value": 60
+      },
+      {
+        "path": "\\SMP0",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\PR01",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\PR02",
+        "kind": "integer",
+        "value": 90
+      },
+      {
+        "path": "\\PR03",
+        "kind": "integer",
+        "value": 60
+      },
+      {
+        "path": "\\BMP0",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\PR01",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\PR02",
+        "kind": "integer",
+        "value": 90
+      },
+      {
+        "path": "\\PR03",
+        "kind": "integer",
+        "value": 60
+      }
+    ]
+  }
+]

@@ -1,0 +1,16 @@
+File appears to be binary: found 84 non-ASCII characters, disassembling
+Binary file appears to be a valid ACPI table, disassembling
+Input file /home/doc/git/.acpi-proof-work/resource-string-conversion-oracle-qcp41i68/r1-string-valid-right-target-store.aml, Length 0x105 (261) bytes
+ACPI: DSDT 0x0000000000000000 000105 (v01 CUBIT  RESTIME  00000001 INTL 20260408)
+Pass 1 parse of [DSDT]
+Pass 2 parse of [DSDT]
+Parsing Deferred Opcodes (Methods/Buffers/Packages/Regions)
+
+Parsing completed
+
+Intel ACPI Component Architecture
+ASL+ Optimizing Compiler/Disassembler version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+Disassembly completed
+ASL Output:    /home/doc/git/.acpi-proof-work/resource-string-conversion-oracle-qcp41i68/r1-string-valid-right-target-store.dsl - 2005 bytes

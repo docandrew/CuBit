@@ -1,5 +1,5 @@
 project Dmar_checked is
-   for Source_Dirs use (".", "mocks", "../support/handles", "../support/handles/runtime", "../../shared/capabilities", "../../userspace/lib/acpi", "../../userspace/services/acpi", "../../userspace/services/acpi/native", "../../shared/firmware");
+   for Source_Dirs use (".", "mocks", "../support/handles", "../support/handles/runtime", "../../shared/capabilities", "../../userspace/services/acpi/lib", "../../userspace/services/acpi", "../acpi-table-import-model", "../../shared/firmware");
    for Object_Dir use "build-dmar-checked/obj";
    for Exec_Dir use "build-dmar-checked";
    for Main use ("dmar_query_tests.adb", "srat_query_tests.adb", "madt_query_tests.adb", "metadata_query_tests.adb", "requests_owned_tests.adb", "endpoint_owned_tests.adb");

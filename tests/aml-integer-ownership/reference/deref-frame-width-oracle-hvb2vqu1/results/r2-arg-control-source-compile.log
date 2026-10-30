@@ -1,0 +1,9 @@
+
+Intel ACPI Component Architecture
+ASL+ Optimizing Compiler/Disassembler version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+ASL Input:     /home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/cases/r2-arg-control.asl -     188 bytes      4 keywords      0 source lines
+AML Output:    /home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/cases/r2-arg-control.aml -      93 bytes      2 opcodes       2 named objects
+
+Compilation successful. 0 Errors, 0 Warnings, 0 Remarks, 0 Optimizations

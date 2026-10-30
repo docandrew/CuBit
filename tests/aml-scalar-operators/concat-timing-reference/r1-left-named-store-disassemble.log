@@ -1,0 +1,16 @@
+File appears to be binary: found 58 non-ASCII characters, disassembling
+Binary file appears to be a valid ACPI table, disassembling
+Input file /home/doc/git/.acpi-proof-work/concat-source-timing-oracle-3pyqjc0w/r1-left-named-store.aml, Length 0xA3 (163) bytes
+ACPI: DSDT 0x0000000000000000 0000A3 (v01 CUBIT  CATTIME  00000001 INTL 20260408)
+Pass 1 parse of [DSDT]
+Pass 2 parse of [DSDT]
+Parsing Deferred Opcodes (Methods/Buffers/Packages/Regions)
+
+Parsing completed
+
+Intel ACPI Component Architecture
+ASL+ Optimizing Compiler/Disassembler version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+Disassembly completed
+ASL Output:    /home/doc/git/.acpi-proof-work/concat-source-timing-oracle-3pyqjc0w/r1-left-named-store.dsl - 1495 bytes

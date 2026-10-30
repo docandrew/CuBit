@@ -1,0 +1,11 @@
+[
+  "/nix/store/9xvbsfi448cx9fjk4ivla9fsq390a8gn-gnatprove-fsf-15_2025-06-10/bin/gnatprove",
+  "-P",
+  "/home/doc/git/.acpi-proof-work/bank-catalog-atomicity-EunyJxV9/source/tests/aml-field-geometry/geometry_proof.gpr",
+  "-XPLAN_PROOF_OBJECTS=/home/doc/git/.acpi-proof-work/bank-catalog-atomicity-EunyJxV9/source/tests/aml-field-geometry/proof-plans-check-gNF2lhZd/obj",
+  "-u",
+  "aml_field_plans.adb",
+  "--mode=check",
+  "-j1",
+  "--report=all"
+]

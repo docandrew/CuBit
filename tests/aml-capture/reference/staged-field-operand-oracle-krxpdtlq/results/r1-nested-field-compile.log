@@ -1,0 +1,12 @@
+/home/doc/git/.acpi-proof-work/staged-field-operand-oracle-krxpdtlq/r1-nested-field.asl      6:  Method (CNT0, 0) { Store (One, FLG0) Store (0xA1, Debug) CreateByteField (BUF0, Zero, TMP0) Store (8, IDX0) Return (8) }
+Remark   2089 -                                                                                                                                                 Object is not referenced ^  (Name [TMP0] is within a method [CNT0])
+
+
+Intel ACPI Component Architecture
+ASL+ Optimizing Compiler/Disassembler version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+ASL Input:     /home/doc/git/.acpi-proof-work/staged-field-operand-oracle-krxpdtlq/r1-nested-field.asl -     481 bytes     21 keywords      0 source lines
+AML Output:    /home/doc/git/.acpi-proof-work/staged-field-operand-oracle-krxpdtlq/r1-nested-field.aml -     168 bytes     11 opcodes      10 named objects
+
+Compilation successful. 0 Errors, 0 Warnings, 1 Remarks, 0 Optimizations

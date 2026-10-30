@@ -104,7 +104,10 @@ begin
          Finished;
          Handle (S, Observer,
            (Label => Read_Metrics, Data => [Metrics_Device_State_Page,0,0,0], others => <>), Reply);
-         Check (Reply.Status = OK and then Reply.Data (1) = (if Case_ID = Successful then 6 else 0));
+         Check (Reply.Status = OK and then Reply.Data (1) =
+           (if Case_ID = Successful then
+              Unsigned_64 (Device_Phase_Code'Enum_Rep (Device_Completed_Code))
+            else Unsigned_64 (Device_Phase_Code'Enum_Rep (Device_Not_Started_Code))));
          Handle (S, Observer,
            (Label => Read_Metrics, Data => [Metrics_Startup_Fuel_Page,0,0,0], others => <>), Reply);
          Check (Reply.Status = OK and then Reply.Data (3) > 0);

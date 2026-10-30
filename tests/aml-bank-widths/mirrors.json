@@ -1,0 +1,4 @@
+{
+  "tests/aml-bank-widths/hosted_capture.py": "tests/acpi-resource-data/hosted_capture.py",
+  "tests/aml-bank-widths/source_guards.py": "tests/acpi-resource-data/source_guards.py"
+}

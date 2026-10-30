@@ -1,6 +1,6 @@
 project legacy_checked is
  Build_Root := external ("CAPTURE_BUILD", "build-legacy_checked");
- for Source_Dirs use ("../../shared/firmware", "../aml-buffer-field-integration", "../aml-concatenate", "../aml-core", "../aml-match", "../aml-mid", "../aml-retention", "../aml-scalar-operators", "../aml-tostring", "../../userspace/lib/acpi", "../../userspace/services/acpi");
+ for Source_Dirs use ("../../shared/firmware", "../aml-buffer-field-integration", "../aml-concatenate", "../aml-core", "../aml-match", "../aml-mid", "../aml-retention", "../aml-scalar-operators", "../aml-tostring", "../../userspace/services/acpi", "../../userspace/services/acpi/lib");
  for Object_Dir use Build_Root & "/obj";
  for Exec_Dir use Build_Root & "/bin";
  for Main use ("call_tests.adb", "owned_frame_root_tests.adb", "result_handoff_tests.adb", "mid_owner_tests.adb", "mid_collecting_tests.adb", "to_string_owner_tests.adb", "to_string_collecting_tests.adb", "concatenate_owner_tests.adb", "match_core_tests.adb", "match_collecting_tests.adb", "field_live_tests.adb", "field_package_tests.adb", "field_package_rollback_tests.adb");

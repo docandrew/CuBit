@@ -1,0 +1,9 @@
+project Observer_Checked is
+ for Source_Dirs use (".", "../../userspace/services/acpi", "../../userspace/services/acpi/lib", "../../userspace/services/acpi/power", "../../shared/firmware");
+ for Main use ("battery_observer_tests.adb");
+ for Object_Dir use external ("BATTERY_OBSERVER_BUILD") & "/obj";
+ for Exec_Dir use external ("BATTERY_OBSERVER_BUILD") & "/bin";
+ package Compiler is
+  for Default_Switches ("Ada") use ("-O1", "-gnat2022", "-gnatwa", "-gnatwe", "-gnata", "-gnato");
+ end Compiler;
+end Observer_Checked;

@@ -1,0 +1,6 @@
+tests/acpi-native-server-loop/boundary/acpi_native_endpoint.ads	userspace/services/acpi/native/acpi_native_endpoint.ads
+tests/acpi-native-server-loop/boundary/acpi_native_endpoint.adb	userspace/services/acpi/native/acpi_native_endpoint.adb
+tests/acpi-native-server-loop/boundary/acpi_native_server.ads	userspace/services/acpi/native/acpi_native_server.ads
+tests/acpi-native-server-loop/boundary/acpi_native_server.adb	userspace/services/acpi/native/acpi_native_server.adb
+tests/acpi-native-server-loop/models/cubit-refusal_notes.ads	userspace/runtime/gnat/cubit-refusal_notes.ads
+tests/acpi-native-server-loop/models/cubit-refusal_notes.adb	userspace/runtime/gnat/cubit-refusal_notes.adb

@@ -1,5 +1,5 @@
 project named_evaluation_adversarial_tests_checked is
- for Source_Dirs use ("../../tests/aml-device-initialization", "../../userspace/lib/acpi", "../../userspace/services/acpi", "../../shared/firmware");
+ for Source_Dirs use ("../../shared/firmware", "../aml-device-initialization", "../../userspace/services/acpi", "../../userspace/services/acpi/lib");
  Build_Root := external ("SERVICE_MILESTONE_BUILD", "build-named_evaluation_adversarial_tests-checked");
  for Object_Dir use Build_Root & "/obj";
  for Exec_Dir use Build_Root & "/bin";

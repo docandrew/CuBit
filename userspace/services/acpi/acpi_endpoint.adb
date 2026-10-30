@@ -8,6 +8,17 @@ package body ACPI_Endpoint with SPARK_Mode is
         (Label => Reply_Error,
          Data => [Unsigned_64 (Outcome'Pos (Result.Status)), Result.Data (0), Result.Data (1), 0],
          others => <>));
+   package body With_Handler is
+   procedure Route
+     (Server : in out State; Config : Configuration;
+      Stamp : Unsigned_64; Request : Packet; Reply : out Packet)
+   is
+      Result : Response;
+   begin
+      Handle_Request (Server, Classify (Config, Stamp), Request, Result);
+      Reply := Encode (Result);
+   end Route;
+   end With_Handler;
    procedure Dispatch
      (Server : in out State; Config : Configuration;
       Stamp : Unsigned_64; Request : Packet; Reply : out Packet)

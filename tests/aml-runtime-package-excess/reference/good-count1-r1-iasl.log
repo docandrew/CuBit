@@ -1,0 +1,15 @@
+/home/doc/git/.acpi-proof-work/runtime-package-excess-names-oracle-bxg15ztm/good-count1-r1.asl      7:  Method (TEST, 0) { Store (Zero, MARK) Store (1, Local0)
+Remark   2120 -                  Control Method should be made Serialized due to creation of named objects within ^  (\TEST)
+
+/home/doc/git/.acpi-proof-work/runtime-package-excess-names-oracle-bxg15ztm/good-count1-r1.asl      8:  Name (P000, Package (Local0) { One, Package (2) { GOOD, Buffer (Increment (MARK)) {} } })
+Remark   2173 -                                                                                                 ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\TEST)
+
+
+Intel ACPI Component Architecture
+ASL+ Optimizing Compiler/Disassembler version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+ASL Input:     /home/doc/git/.acpi-proof-work/runtime-package-excess-names-oracle-bxg15ztm/good-count1-r1.asl -     335 bytes     11 keywords      0 source lines
+AML Output:    /home/doc/git/.acpi-proof-work/runtime-package-excess-names-oracle-bxg15ztm/results/good-count1-r1.aml -     117 bytes      6 opcodes       5 named objects
+
+Compilation successful. 0 Errors, 0 Warnings, 2 Remarks, 1 Optimizations

@@ -1,0 +1,20 @@
+{
+  "tests/aml-index-data-widths/reference/bank.aml": "0cf72403b792f37216e9893ad593ceab88d6e739e6b80da8d4dc7d99f9a35cab",
+  "tests/aml-index-data-widths/reference/bank.asl": "3f444d4f09a7127a7cf025e7878ff05ff1b4cb89fb376312bc8b5831fac2e703",
+  "tests/aml-index-data-widths/reference/compile.log": "547e15bfc5aae37178040d51a6da40774e79894de09e146459061c4ff894df96",
+  "tests/aml-index-data-widths/reference/evidence.sha256": "9344472a7faaa50ed65eb6734c77bee90ada2d53fbc8693efbff215b61680212",
+  "tests/aml-index-data-widths/reference/expected.tsv": "441d2bbf1941bdfb99e9018e42ccb108b52be022b47816f3800d450cb7e2aef2",
+  "tests/aml-index-data-widths/reference/hosted/checked-audit.json": "b9ee46addffaaf21bb40ad4a76925d3bf34f40995ab01d2ebe31ad68f71fa125",
+  "tests/aml-index-data-widths/reference/hosted/graphs-checked-audit.json": "c5c73d9febb9959d9f2f7bbbc2e4f4f1dd95beba8c9ff4b308e34737b2a76a86",
+  "tests/aml-index-data-widths/reference/hosted/graphs-release-audit.json": "d8d8d9f86399c56a0c4e27dd39aab3ed31962493ffc68812307e9b80631ec88b",
+  "tests/aml-index-data-widths/reference/hosted/index-checked-audit.json": "b668957cc63c0fa7fc34ea2859eadea713783c5a8f293046194ca1c72b4f2eb3",
+  "tests/aml-index-data-widths/reference/hosted/index-release-audit.json": "bf0827ccd0ffc72b8cda1cf72dec14ac44a84fd9e673e95ac843c30aa8f24949",
+  "tests/aml-index-data-widths/reference/hosted/recovery-checked-reviewed.json": "29436be0435d04c542ebd9cda6942b4d1ad2c73a372b3d171bf71a85d27a8872",
+  "tests/aml-index-data-widths/reference/hosted/recovery-release-reviewed.json": "0a9eb26c3966ddb89ed5776c7f005686aca31834202c1452f1f77824a5620a59",
+  "tests/aml-index-data-widths/reference/hosted/release-audit.json": "bb9485e952de9b4b4e8d1bd87ca72d09d77fbad20962eb9a4a4646a3826703fb",
+  "tests/aml-index-data-widths/reference/hosted/writes-checked-audit.json": "0f0dd9b6508828a52f8a01ee808d3b3a2cbe255808973ee0ee945d5d77ccb73e",
+  "tests/aml-index-data-widths/reference/hosted/writes-release-audit.json": "1dc21908db1903b0998e02abf927d7cbfa16d7f65352d3323df69e14cbabc0ff",
+  "tests/aml-index-data-widths/reference/inputs.sha256": "880577d26323157b3a9e0209a4370339e1c81c52d7b6e55ec6b9450e144d4543",
+  "tests/aml-index-data-widths/reference/reference.log": "663220c9bf2f9812706ac68c27003c7a2f1f74e2659b2ac2a8d0fa1d104bc962",
+  "tests/aml-index-data-widths/reference/status.tsv": "d2d70804ecd697d5a9c3ede742b29e5e7f86572fff79369985db325a6aba3d3a"
+}

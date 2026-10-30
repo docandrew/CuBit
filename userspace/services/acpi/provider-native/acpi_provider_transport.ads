@@ -3,6 +3,7 @@ with Interfaces;
 with ACPI_Requests;
 with ACPI_Snapshot_Provider;
 with ACPI_Notification_Consumer;
+with ACPI_Snapshot_Manifest;
 with Firmware_Tables;
 with CuBit.Handles;
 -- Provider-process unit only; not linked into the ACPI server. One serialized,
@@ -37,6 +38,24 @@ package ACPI_Provider_Transport is
    -- Disabled is the explicit upload-only policy, retained for existing callers.
    procedure Initialize (Target : CuBit.Handles.Endpoint; Items : Table_Slices;
       Data : Firmware_Tables.Bytes; Limits : Deadlines; Accepted : out Boolean;
+      Startup : Startup_Notifications := Disabled);
+   type Snapshot_Startup_Status is
+     (Snapshot_Initialized, Already_Attempted, Manifest_Rejected,
+      Data_Length_Mismatch, Transport_Unavailable);
+   type Snapshot_Startup_Result is record
+      Status : Snapshot_Startup_Status := Already_Attempted;
+      Sizing : ACPI_Snapshot_Manifest.Plan;
+   end record;
+   -- Trusted caller supplies a complete authenticated export manifest and its
+   -- packed immutable copy. Derive kinds/offsets here; no address or arbitrary
+   -- slice is accepted. Like Initialize, consumes the sole startup attempt even
+   -- on rejection. A sizing approval is not transport or hardware authority.
+   -- Current transport quotas still apply; full needed sizes survive rejection.
+   procedure Initialize_Snapshot
+     (Target : CuBit.Handles.Endpoint;
+      Items : ACPI_Snapshot_Manifest.Catalog; Expected_Count : Natural;
+      Data : Firmware_Tables.Bytes; Limits : Deadlines;
+      Result : out Snapshot_Startup_Result;
       Startup : Startup_Notifications := Disabled);
    -- Consumes the single attempt before its Idle query. Unknown/rejected or
    -- malformed outcomes permanently block Required upload; no query repairs it.

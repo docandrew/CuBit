@@ -1,0 +1,134 @@
+------------------------------------------------------------------------------
+--  CuBit
+--  Copyright (C) 2026 Jon Andrew
+--
+--  @summary
+--  The kernel's system-call numbers and IPC message layout, as code without
+--  an Ada run-time library (the libc's Ada, docs/c-removal.md) uses them.
+--
+--  @description
+--  CuBit.Messages has these too but needs the user runtime. A hosted test
+--  (tests/libc-ada) checks every system call here against the kernel's own
+--  enumeration (kernel/src/syscall.ads). Grows as the libc's C is replaced.
+------------------------------------------------------------------------------
+pragma Ada_2022;
+with Interfaces; use Interfaces;
+
+package CuBit.Kernel_ABI with Pure, SPARK_Mode is
+
+   subtype System_Call is Unsigned_64;
+
+   Exit_Process                 : constant System_Call := 0;
+   Get_Process_Id               : constant System_Call := 6;
+   Grow_Heap                    : constant System_Call := 8;
+   Write                        : constant System_Call := 12;
+   Receive                      : constant System_Call := 17;
+   Reply                        : constant System_Call := 18;
+   --  SEND_EVENT: also the channel wake (Channel_Wake_ABI).
+   Send_Event                   : constant System_Call := 19;
+   Poll_Any_IPC                 : constant System_Call := 22;
+   Wait_Completion              : constant System_Call := 24;
+   Receive_Event_Nonblocking    : constant System_Call := 26;
+   Get_Time                     : constant System_Call := 27;
+   --  With a deadline (arg 2; Forever, spelled out, for none).
+   Call_Via_Endpoint_Capability : constant System_Call := 128;
+   Submit_Via_Endpoint_Capability : constant System_Call := 42;
+   Create_Shared_Memory_Grant_For_Process_Id : constant System_Call := 102;
+   Revoke_Shared_Memory_Grant   : constant System_Call := 103;
+   Revoke_Shared_Memory_Grant_Reference : constant System_Call := 110;
+   Create_Shared_Memory_Grant_Via_Capability : constant System_Call := 106;
+   Get_Owned_Shared_Memory_Grant_Generation  : constant System_Call := 108;
+   Acquire_Shared_Memory_Grant  : constant System_Call := 109;
+   --  The same, the owner named by an endpoint capability (slot, grant
+   --  slot, generation, offset, length, access).
+   Acquire_Shared_Memory_Grant_Via_Capability : constant System_Call := 112;
+   Wait_For_IPC_Or_Completion_Until_Monotonic_Millisecond :
+     constant System_Call := 113;
+   Thread_Exit                  : constant System_Call := 91;
+   Futex_Wait                   : constant System_Call := 92;
+   Futex_Wake                   : constant System_Call := 93;
+   Read_Monotonic_Microseconds  : constant System_Call := 114;
+   Allocate_Owned_Memory        : constant System_Call := 115;
+   Release_Owned_Memory         : constant System_Call := 116;
+   Protect_Owned_Memory         : constant System_Call := 117;
+   Yield                        : constant System_Call := 118;
+   Sleep_Until_Monotonic_Microsecond : constant System_Call := 119;
+   --  Growable owned memory (kernel Process.Owned_Memory): reserve address
+   --  space with no backing, back an exact prefix, give it all back. CuAlloc
+   --  grows the process heap with these.
+   Reserve_Owned_Memory         : constant System_Call := 123;
+   Commit_Owned_Memory_Prefix   : constant System_Call := 124;
+   Release_Owned_Reservation    : constant System_Call := 125;
+   --  A control message to a child, or to a process this one holds the
+   --  process capability for (CuBit.Control_Events).
+   Send_Control                 : constant System_Call := 127;
+   --  This process's statistics and free memory (System_Publications).
+   Read_Statistics              : constant System_Call := 134;
+   --  A value published through the kernel (System_Publications).
+   Publish                      : constant System_Call := 135;
+   --  The most one commit may add (kernel Owned_Reservation_Policy).
+   Maximum_Owned_Commit_Bytes : constant := 16 * 1024 * 1024;
+
+   --  What a call returns when it fails or has nothing to give.
+   Failed : constant Unsigned_64 := Unsigned_64'Last;
+   --  Not accepted now, but may be later; the caller keeps its request
+   --  (SEND_CONTROL when the target's sender slots are full).
+   Busy : constant Unsigned_64 := Unsigned_64'Last - 1;
+   --  SYSCALL_RECEIVE_EVENT_NB: an event was copied out.
+   Event_Received : constant Unsigned_64 := 1;
+   --  The deadline that never comes.
+   Forever : constant Unsigned_64 := Unsigned_64'Last;
+
+   --  FUTEX_WAIT results (kernel/src/process-futex.ads).
+   Futex_Woken     : constant Unsigned_64 := 0;
+   Futex_Retry     : constant Unsigned_64 := 1;
+   Futex_Timed_Out : constant Unsigned_64 := 2;
+
+   --  The largest owned-memory region (kernel Process.Owned_Memory).
+   Maximum_Owned_Bytes : constant := 256 * 1024 * 1024;
+
+   --  The service role netstack registers (CuBit.Messages.DRIVER_NETSTACK).
+   Driver_Netstack   : constant := 3;
+
+   Reply_OK    : constant Unsigned_32 := 16#F000#;
+   Reply_Error : constant Unsigned_32 := 16#F001#;
+
+   --  A message (kernel Process.Message, 48 bytes).
+   type Message_Words is array (0 .. 3) of Unsigned_64;
+   type Message is record
+      Label     : Unsigned_32 := 0;
+      Length    : Unsigned_8 := 0;
+      Flags     : Unsigned_8 := 0;
+      Reserved  : Unsigned_16 := 0;
+      Authority : Unsigned_64 := 0;   --  kernel-stamped
+      Words     : Message_Words := [others => 0];
+   end record;
+   for Message use record
+      Label     at 0 range 0 .. 31;
+      Length    at 4 range 0 .. 7;
+      Flags     at 5 range 0 .. 7;
+      Reserved  at 6 range 0 .. 15;
+      Authority at 8 range 0 .. 63;
+      Words     at 16 range 0 .. 255;
+   end record;
+   Message_Bytes : constant := 48;
+   pragma Compile_Time_Error (Message'Size /= Message_Bytes * 8,
+                              "the IPC message ABI is 48 bytes");
+
+   --  Shared-memory grants (SYSCALL_CREATE_SHARED_MEMORY_GRANT_*).
+   Grant_Read_Only : constant := 0;
+   Grant_Read_Write : constant := 1;
+   --  Added to the above: the recipient (procmgr) may derive grants from it.
+   Grant_Forwardable : constant := 2;
+   Grant_Forwardable_Read_Write : constant := Grant_Forwardable + Grant_Read_Write;
+   --  Added to the above: post grant lifecycle events for it
+   --  (CuBit.Control_Events; docs/data-plane.md).
+   Grant_Notify : constant := 4;
+   Generation_Shift : constant := 32;   --  wire form: generation << 32 | slot
+
+   Page_Bytes : constant := 4_096;
+
+   --  SYSCALL_WRITE's console device.
+   Console : constant := 1;
+
+end CuBit.Kernel_ABI;

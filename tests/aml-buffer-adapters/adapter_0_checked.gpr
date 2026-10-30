@@ -1,5 +1,5 @@
 project adapter_0_checked is
- for Source_Dirs use ("../acpi-integration", "../../userspace/lib/acpi", "../../shared/firmware");
+ for Source_Dirs use ("../acpi-integration", "../../userspace/services/acpi/lib", "../../shared/firmware");
  for Object_Dir use "build-0-checked";
  package Compiler is
   for Default_Switches ("Ada") use ("-O1", "-gnat2022", "-gnatwa", "-gnatwe", "-gnata", "-gnato");

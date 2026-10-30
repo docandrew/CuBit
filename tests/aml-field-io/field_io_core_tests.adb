@@ -50,7 +50,7 @@ procedure Field_IO_Core_Tests is
    end Transact;
    package P is new ACPI_Field_Hosted_Provider (Hardware, Transact);
    package F is new C.Field_IO
-     (P.Context, P.Pending, P.Describe, P.Dispatch, P.Reconciled);
+     (P.Context, P.Pending, P.Describe, P.Dispatch, P.Reconciled, Authorize_Target => P.Authorize);
    Checks : Natural := 0;
    procedure Check (OK : Boolean; Why : String) is
    begin
@@ -83,7 +83,7 @@ procedure Field_IO_Core_Tests is
                  & [16#60#,16#70#,16#68#,16#83#,16#60#,16#A4#,0])
         & Block ([16#14#], Enc ("DIRW") & [1,16#70#,16#68#,16#71#]
                  & Enc ("FLD0") & [16#A4#,0])
-        & Method ("BADV", [16#70#] & Block ([16#11#], [0]) & Enc ("FLD0") & [16#A4#,0])
+        & Method ("EMPT", [16#70#] & Block ([16#11#], [0]) & Enc ("FLD0") & [16#A4#,0])
         & Method ("ERRW", [16#70#,16#0A#,16#33#] & Enc ("FLD0") & [16#A4#,16#78#,1,0,0,0])
         & Method ("UNKN", [16#70#,16#0A#,16#E1#] & Enc ("FLD0")
                  & [16#70#,1] & Enc ("FLD0") & [16#A4#,0]);
@@ -155,8 +155,6 @@ begin
             Before := P.Observe_Hardware (IO);
             Run ("READ", E.Budget_Exceeded, Budget => 0);
             Check (P.Observe_Hardware (IO) = Before, "fuel before effect");
-            Run ("BADV", E.Empty_Buffer);
-            Check (P.Observe_Hardware (IO) = Before, "conversion before effect");
             -- Independent trusted contexts exercise real named rights and
             -- layout admission; no AML address becomes a backend offset.
             for Denial in 1 .. 3 loop
@@ -188,6 +186,12 @@ begin
             Run ("READ", E.Returned); Check (Result.Value = 16#5A#, "read value");
             Run ("NEST", E.Returned); Check (Result.Value = 16#5A#, "nested value");
             Run ("DREF", E.Returned); Check (Result.Value = 16#5A#, "reference read");
+            Before := P.Observe_Hardware (IO);
+            Run ("EMPT", E.Returned);
+            Check (P.Observe_Hardware (IO).Value = 0
+                   and then P.Observe_Hardware (IO).Reads = Before.Reads
+                   and then P.Observe_Hardware (IO).Writes = Before.Writes + 1,
+                   "empty Buffer writes zero once without reading");
             Run ("WRIT", E.Returned, Unsigned_64'Last);
             Check (P.Observe_Hardware (IO).Value = Configuration.Register_Authority.Write_Mask, "truncate");
             Run ("REFW", E.Unsupported_Value, 16#44#);

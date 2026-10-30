@@ -1,0 +1,13 @@
+{
+  "shared/boot/firmware_snapshot_abi.ads": "a3be1c99dac9a4bc7387fa65d9b634512b0f095d29eb4c4b5764b18858aaa351",
+  "shared/capabilities/capability_abi.ads": "34dcb0be4c952d0bb2f52278b1e9ed99cc32ad95dc9c97fdd3fbfa2efd920892",
+  "userspace/runtime/gnat/cubit-firmware_snapshot.ads": "8932a739cad110a2ab165a55a62da5ed5f3f2c84ce060b9b44e08f176fdc8c2d",
+  "userspace/runtime/gnat/cubit-firmware_snapshot_authority.ads": "ef6c05b620ff551b5687c55771b14de75d77eafe3745bbba0eb61d640be7cfa1",
+  "userspace/runtime/gnat/cubit-handles-boot_roots.ads": "cc17ea2c04f1d855eaf9e2ad13495507ec6a5103e5cf2099ee58aa8447b0af77",
+  "userspace/runtime/gnat/cubit-handles-firmware_snapshots.ads": "79255983c83bf8981d8067fb3ff9e6ea7f5eaf1db67c7c19120072a08e0f1996",
+  "userspace/runtime/gnat/cubit-handles-kernel.ads": "0d196a29dfad362d78192433d8bb646639731d4205e09e8f8b76b34eb59b1019",
+  "userspace/runtime/gnat/cubit-handles-startup.ads": "662ad62de5378aa7cccbe59cf4dfb3e2463ff54ea62b03e8e9428b7bf5ae87c0",
+  "userspace/runtime/gnat/cubit-handles.ads": "a974a7110bef7339a223fb254a77c530768821a547f34ff7a8f1db4adcd8197d",
+  "userspace/runtime/gnat/cubit-messages.ads": "175291d13e5740c2fab5f5148dd2a9b832b7dcc6a6af70f59a0e649eda07c95a",
+  "userspace/runtime/gnat/cubit-startup_tables.ads": "c61ccb99568f9991f532709e0914a73064e8ecb579181e17bdb77159c0b18293"
+}

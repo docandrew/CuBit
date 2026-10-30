@@ -1,0 +1,15 @@
+/home/doc/git/.acpi-proof-work/match-invalid-runtime-oracle-k29bb242/r2-predicate-invalid-type.asl      7:  Method (BAD0, 0) { Return (Package (0) {}) }
+Remark   2095 -                                                                                           Effective AML package length is zero ^ 
+
+/home/doc/git/.acpi-proof-work/match-invalid-runtime-oracle-k29bb242/r2-predicate-invalid-type.asl      9:  Method (TEST, 0) {  Return (Match (PKG0, MEQ, BAD0 (), MTR, Zero, MUT0 ())) }
+Warning  3058 -                                                                                                                                Invalid type ^  (Method returns [Package], Match operator requires [Integer|String|Buffer])
+
+
+Intel ACPI Component Architecture
+ASL+ Optimizing Compiler/Disassembler version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+ASL Input:     /home/doc/git/.acpi-proof-work/match-invalid-runtime-oracle-k29bb242/r2-predicate-invalid-type.asl -     445 bytes     18 keywords      0 source lines
+AML Output:    /home/doc/git/.acpi-proof-work/match-invalid-runtime-oracle-k29bb242/r2-predicate-invalid-type.aml -     152 bytes      9 opcodes       9 named objects
+
+Compilation successful. 0 Errors, 1 Warnings, 1 Remarks, 0 Optimizations

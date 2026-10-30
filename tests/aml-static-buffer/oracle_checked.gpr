@@ -1,5 +1,5 @@
 project Oracle_checked is
- for Source_Dirs use (".", "../../userspace/lib/acpi", "../../userspace/services/acpi", "../../shared/firmware");
+ for Source_Dirs use (".", "../../userspace/services/acpi/lib", "../../userspace/services/acpi", "../../shared/firmware");
  for Object_Dir use "oracle-checked/obj";
  for Exec_Dir use "oracle-checked";
  for Main use ("static_buffer_oracle_runner.adb");

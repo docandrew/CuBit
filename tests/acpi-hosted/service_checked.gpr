@@ -1,5 +1,5 @@
 project service_checked is
- for Source_Dirs use ("../../tests/acpi-integration", "../../tests/acpi-integration/mocks", "../../userspace/lib/acpi", "../../userspace/services/acpi", "../../userspace/services/acpi/native", "../../shared/firmware");
+ for Source_Dirs use ("../../tests/acpi-integration", "../../tests/acpi-integration/mocks", "../../userspace/services/acpi/lib", "../../userspace/services/acpi", "../acpi-table-import-model", "../../shared/firmware");
  for Object_Dir use "service_checked";
  for Main use ("quota_store_tests.adb", "string_store_tests.adb", "copy_value_tests.adb", "string_compare_tests.adb", "static_member_tests.adb");
  package Compiler is

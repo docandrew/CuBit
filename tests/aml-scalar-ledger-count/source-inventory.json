@@ -18,7 +18,7 @@
     "aml_execute-scalar_transport_test_support.ads",
     "scalar_transport_tests.adb"
   ],
-  "userspace/lib/acpi": [
+  "userspace/services/acpi/lib": [
     "acpi_fadt-registers.adb",
     "acpi_fadt-registers.ads",
     "acpi_fadt-transactions.adb",
@@ -65,8 +65,13 @@
     "aml_field_access.ads",
     "aml_field_data.adb",
     "aml_field_data.ads",
+    "aml_field_datums.adb",
+    "aml_field_datums.ads",
     "aml_field_layout.adb",
     "aml_field_layout.ads",
+    "aml_field_plans.adb",
+    "aml_field_plans.ads",
+    "aml_field_targets.ads",
     "aml_fields.adb",
     "aml_fields.ads",
     "aml_frame_handles.ads",

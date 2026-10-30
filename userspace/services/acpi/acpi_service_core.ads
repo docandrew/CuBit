@@ -14,6 +14,8 @@ with AML_Table_Backing;
 with AML_Field_Data;
 with AML_Field_Access;
 with AML_Field_Layout;
+with AML_Field_Plans;
+with AML_Field_Targets;
 with AML_Names;
 with ACPI_FADT;
 with AML_Execute;
@@ -54,6 +56,7 @@ package ACPI_Service_Core with SPARK_Mode is
       Wait_Event_Timeout => Wait_Event_Timeout,
       Block_Capacity => Block_Capacity);
    package Values is new Namespace.Owned.Collecting;
+   use type AML_Execute.Execution_Status;
    use type Values.Audit_Value;
    use type Values.Access_Status;
    use type Values.Preparation_Outcome;
@@ -61,8 +64,10 @@ package ACPI_Service_Core with SPARK_Mode is
    use type Values.Phase;
    use type Values.Module_Outcome;
    use type Values.Value_Handle;
+   use type Values.Node_Descriptor;
    use type AML_Identity.Identity;
    use type Namespace.Bind_Status;
+   use type Namespace.Object_Kind;
    use type Firmware_Tables.Byte;
    Max_Table_Bytes : constant := Firmware_Tables.Snapshots.Max_Table_Bytes;
    Max_Total_Bytes : constant := Firmware_Tables.Snapshots.Max_Total_Bytes;
@@ -137,6 +142,10 @@ package ACPI_Service_Core with SPARK_Mode is
    procedure Find_Object (Service : State; Parent : Namespace.Node_ID; Part : AML_Names.Segment;
       Result : out Namespace.Lookup_Result; Status : out Values.Access_Status);
    -- Detached metadata/key observation; neither grants hardware access.
+   procedure Read_Region_Descriptor
+     (Service : State; Item : Node_Descriptor;
+      Description : out Namespace.Operation_Region_Attributes;
+      Status : out Values.Access_Status) with Pre => Valid (Service);
    procedure Read_Field_Descriptor
      (Service : State; Node : Namespace.Node_ID;
       Description : out Values.Field_Description; Key : out Values.Field_Key;
@@ -238,7 +247,8 @@ package ACPI_Service_Core with SPARK_Mode is
        and then Model'Result.Byte_Capacity = Service.Byte_Capacity;
    -- Result handles belong to this exact service lifetime. Keep a compound
    -- result retained until all observations/serialization finish, then release.
-   -- Integer-only arguments carry no borrowed object handles across this API.
+   -- Invoke_Retained carries integer arguments; Invoke_With_Arguments borrows only
+   -- service-owned retained result handles, never raw AML object identifiers.
    function Retained_Results (Service : State) return Namespace.Owned.Retained_Root_Count;
    procedure Evaluate_Named (Service : aliased in out State; Item : Node_Descriptor;
       Budget : Natural; Result : out Values.Result; Status : out Values.Access_Status)
@@ -260,6 +270,39 @@ package ACPI_Service_Core with SPARK_Mode is
            then Status = Values.Available and then Result.Handle /= Values.No_Value
              and then Retained_Results (Service) = Retained_Results (Service)'Old + 1
            else Retained_Results (Service) = Retained_Results (Service)'Old);
+   -- Arguments borrow live retained results from this exact service.
+   procedure Invoke_With_Arguments
+     (Service : aliased in out State; Node : Namespace.Node_ID; Args : Values.Arguments;
+      Argument_Count : Values.Argument_Count; Budget : Natural; Result : out Values.Result;
+      Status : out Values.Access_Status)
+     with Pre => Valid (Service) and then not Result'Constrained,
+       Post => Valid (Service) and then Result.Charged <= Budget
+         and then Catalog_Snapshot (Service) = Catalog_Snapshot (Service)'Old
+         and then (if Result.Status in AML_Execute.Object_Returned | AML_Execute.Reference_Returned | AML_Execute.Metadata_Returned
+           then Status = Values.Available and then Result.Handle /= Values.No_Value
+             and then Retained_Results (Service) = Retained_Results (Service)'Old + 1
+           else Retained_Results (Service) = Retained_Results (Service)'Old);
+   -- Copied host data for method arguments, with ordinary retained-result
+   -- ownership. Charged counts AML instructions; construction executes none.
+   procedure Create_Buffer_Result
+     (Service : in out State; Data : AML_Decode.Bytes;
+      Result : out Values.Result; Status : out Values.Access_Status)
+     with Pre => Valid (Service) and then not Result'Constrained,
+       Post => Valid (Service) and then Result.Charged = 0
+         and then Catalog_Snapshot (Service) = Catalog_Snapshot (Service)'Old
+         and then (if Result.Status = AML_Execute.Object_Returned then
+           Status = Values.Available and then Result.Handle /= Values.No_Value
+           and then Retained_Results (Service) = Retained_Results (Service)'Old + 1
+         else Retained_Results (Service) = Retained_Results (Service)'Old);
+   procedure Create_Empty_Package_Result
+     (Service : in out State; Result : out Values.Result; Status : out Values.Access_Status)
+     with Pre => Valid (Service) and then not Result'Constrained,
+       Post => Valid (Service) and then Result.Charged = 0
+         and then Catalog_Snapshot (Service) = Catalog_Snapshot (Service)'Old
+         and then (if Result.Status = AML_Execute.Object_Returned then
+           Status = Values.Available and then Result.Handle /= Values.No_Value
+           and then Retained_Results (Service) = Retained_Results (Service)'Old + 1
+         else Retained_Results (Service) = Retained_Results (Service)'Old);
    -- Opt-in provider path. Caller exclusively owns Service and IO throughout
    -- the synchronous call; trusted provider actuals must not capture Service.
    -- A binding associates one live field with independently granted authority.
@@ -274,10 +317,40 @@ package ACPI_Service_Core with SPARK_Mode is
          Reply : out AML_Field_Access.Response);
       with procedure Completion_Confirmed
         (IO : IO_Context; Expected : AML_Field_Access.Observation; Accepted : out Boolean);
+      Maximum_Bindings : Positive := AML_Field_Access.Default_Maximum_Bindings;
+      with procedure Authorize_Target
+        (IO : IO_Context; Target : AML_Field_Access.Target;
+         For_Write : Boolean; Accepted : out Boolean);
+      Maximum_Requests : AML_Execution_Limits.Field_Request_Limit :=
+        AML_Execution_Limits.Default_Field_Request_Limit;
+      Maximum_Work : AML_Execution_Limits.Field_Work_Limit :=
+        AML_Execution_Limits.Default_Field_Work_Limit;
    package Field_IO is
       pragma Unevaluated_Use_Of_Old (Allow);
       type Binding is private;
       No_Binding : constant Binding;
+      type Binding_Set is private;
+      procedure Clear (Items : out Binding_Set);
+      procedure Add_Region_Register
+        (Service : State; IO : IO_Context; Region : Node_Descriptor;
+         Target : AML_Field_Access.Target; Allow_Read, Allow_Write : Boolean;
+         Items : in out Binding_Set; Status : out Values.Access_Status)
+        with Pre => Valid (Service);
+      procedure Add_Binding
+        (Service : State; IO : IO_Context; Key : Values.Field_Key;
+         Target : AML_Field_Access.Target; Items : in out Binding_Set;
+         Status : out Values.Access_Status) with Pre => Valid (Service);
+      procedure Add_Read_Binding
+        (Service : State; IO : IO_Context; Key : Values.Field_Key;
+         Targets : AML_Field_Targets.Vector; Count : AML_Field_Plans.Datum_Count;
+         Items : in out Binding_Set; Status : out Values.Access_Status)
+        with Pre => Valid (Service);
+      procedure Add_Write_Binding
+        (Service : State; IO : IO_Context; Key : Values.Field_Key;
+         Targets : AML_Field_Targets.Vector; Count : AML_Field_Plans.Datum_Count;
+         Items : in out Binding_Set; Status : out Values.Access_Status)
+        with Pre => Valid (Service);
+
       procedure Bind
         (Service : State; IO : IO_Context; Key : Values.Field_Key;
          Target : AML_Field_Access.Target; Item : out Binding;
@@ -307,6 +380,48 @@ package ACPI_Service_Core with SPARK_Mode is
             then Status = Values.Available and then Result.Handle /= Values.No_Value
               and then Retained_Results (Service) = Retained_Results (Service)'Old + 1
             else Retained_Results (Service) = Retained_Results (Service)'Old);
+   -- Arguments borrow live retained results from this exact service.
+   procedure Invoke_With_Arguments
+        (Service : aliased in out State; IO : in out IO_Context; Item : Binding;
+         Node : Namespace.Node_ID; Args : Values.Arguments;
+         Argument_Count : Values.Argument_Count; Budget : Natural; Result : out Values.Result;
+         Status : out Values.Access_Status)
+        with Pre => Valid (Service)
+          and then not Result'Constrained,
+        Post => Valid (Service) and then Result.Charged <= Budget
+          and then Catalog_Snapshot (Service) = Catalog_Snapshot (Service)'Old
+          and then (if Result.Status in AML_Execute.Object_Returned | AML_Execute.Reference_Returned | AML_Execute.Metadata_Returned
+            then Status = Values.Available and then Result.Handle /= Values.No_Value
+              and then Retained_Results (Service) = Retained_Results (Service)'Old + 1
+            else Retained_Results (Service) = Retained_Results (Service)'Old);
+
+      procedure Invoke_Retained
+        (Service : aliased in out State; IO : in out IO_Context; Items : Binding_Set;
+         Node : Namespace.Node_ID; Args : AML_Execute.Arguments;
+         Argument_Count : Natural; Budget : Natural; Result : out Values.Result;
+         Status : out Values.Access_Status)
+        with Pre => Valid (Service) and then Argument_Count <= Values.Argument_Count'Last
+          and then not Result'Constrained,
+        Post => Valid (Service) and then Result.Charged <= Budget
+          and then Catalog_Snapshot (Service) = Catalog_Snapshot (Service)'Old
+          and then (if Result.Status in AML_Execute.Object_Returned | AML_Execute.Reference_Returned | AML_Execute.Metadata_Returned
+            then Status = Values.Available and then Result.Handle /= Values.No_Value
+              and then Retained_Results (Service) = Retained_Results (Service)'Old + 1
+            else Retained_Results (Service) = Retained_Results (Service)'Old);
+   -- Arguments borrow live retained results from this exact service.
+   procedure Invoke_With_Arguments
+        (Service : aliased in out State; IO : in out IO_Context; Items : Binding_Set;
+         Node : Namespace.Node_ID; Args : Values.Arguments;
+         Argument_Count : Values.Argument_Count; Budget : Natural; Result : out Values.Result;
+         Status : out Values.Access_Status)
+        with Pre => Valid (Service)
+          and then not Result'Constrained,
+        Post => Valid (Service) and then Result.Charged <= Budget
+          and then Catalog_Snapshot (Service) = Catalog_Snapshot (Service)'Old
+          and then (if Result.Status in AML_Execute.Object_Returned | AML_Execute.Reference_Returned | AML_Execute.Metadata_Returned
+            then Status = Values.Available and then Result.Handle /= Values.No_Value
+              and then Retained_Results (Service) = Retained_Results (Service)'Old + 1
+            else Retained_Results (Service) = Retained_Results (Service)'Old);
       procedure Invoke_Scalar
         (Service : aliased in out State; IO : in out IO_Context; Item : Binding;
          Node : Namespace.Node_ID; Args : AML_Execute.Arguments;
@@ -317,17 +432,49 @@ package ACPI_Service_Core with SPARK_Mode is
           and then Result.Status not in AML_Execute.Object_Returned | AML_Execute.Reference_Returned | AML_Execute.Metadata_Returned
           and then Retained_Results (Service) = Retained_Results (Service)'Old
           and then Catalog_Snapshot (Service) = Catalog_Snapshot (Service)'Old;
+
+      procedure Invoke_Scalar
+        (Service : aliased in out State; IO : in out IO_Context; Items : Binding_Set;
+         Node : Namespace.Node_ID; Args : AML_Execute.Arguments;
+         Argument_Count : Natural; Budget : Natural; Result : out AML_Execute.Execution_Result)
+        with Pre => Valid (Service) and then Argument_Count <= Values.Argument_Count'Last
+          and then not Result'Constrained,
+        Post => Valid (Service) and then Result.Charged <= Budget
+          and then Result.Status not in AML_Execute.Object_Returned | AML_Execute.Reference_Returned | AML_Execute.Metadata_Returned
+          and then Retained_Results (Service) = Retained_Results (Service)'Old
+          and then Catalog_Snapshot (Service) = Catalog_Snapshot (Service)'Old;
+      procedure Evaluate_Named
+        (Service : aliased in out State; IO : in out IO_Context;
+         Items : Binding_Set; Item : Node_Descriptor; Budget : Natural;
+         Result : out Values.Result; Status : out Values.Access_Status)
+        with Pre => Valid (Service) and then not Result'Constrained,
+          Post => Valid (Service) and then Result.Charged <= Budget
+            and then Catalog_Snapshot (Service) = Catalog_Snapshot (Service)'Old
+            and then (if Result.Status in AML_Execute.Object_Returned |
+                AML_Execute.Reference_Returned | AML_Execute.Metadata_Returned
+              then Status = Values.Available and then Result.Handle /= Values.No_Value
+                and then Retained_Results (Service) = Retained_Results (Service)'Old + 1
+              else Retained_Results (Service) = Retained_Results (Service)'Old);
    private
       package Adapter is new Values.Field_IO
-        (IO_Context, Pending, Describe_Target, Dispatch, Completion_Confirmed);
+        (IO_Context, Pending, Describe_Target, Dispatch, Completion_Confirmed, Maximum_Bindings,
+         Authorize_Target, Maximum_Requests, Maximum_Work);
       type Binding is record
          Inner : Adapter.Binding := Adapter.No_Binding;
+      end record;
+      type Binding_Set is record
+         Inner : Adapter.Binding_Set;
       end record;
       No_Binding : constant Binding := (others => <>);
    end Field_IO;
    procedure Describe_Result (Service : State; Handle : Values.Value_Handle;
       Description : out Values.Value_Description; Status : out Values.Access_Status)
       with Pre => not Description'Constrained;
+   procedure Read_Result_Device (Service : State; Handle : Values.Value_Handle;
+      Item : out Node_Descriptor; Status : out Values.Access_Status)
+     with Pre => Valid (Service),
+     Post => (if Status = Values.Available then Current_Node (Service, Item)
+       and then Values.Node_Kind (Item) = Namespace.Device_Object else Item = Values.No_Node);
    procedure Read_Result_Bytes (Service : State; Handle : Values.Value_Handle; Offset : Natural;
       Data : out AML_Decode.Bytes; Copied : out Natural; Status : out Values.Access_Status);
    procedure Read_Result_Element (Service : in out State; Handle : Values.Value_Handle;

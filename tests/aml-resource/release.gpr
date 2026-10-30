@@ -1,5 +1,5 @@
 project Release is
- for Source_Dirs use (".", "../acpi-integration", "../acpi-integration/mocks", "../aml-core", "../aml-match", "../aml-explicit-format", "../aml-tostring", "../aml-tobuffer", "../aml-tointeger", "../../userspace/lib/acpi", "../../userspace/services/acpi", "../../userspace/services/acpi/native", "../../shared/firmware");
+ for Source_Dirs use (".", "../acpi-integration", "../acpi-integration/mocks", "../aml-core", "../aml-match", "../aml-explicit-format", "../aml-tostring", "../aml-tobuffer", "../aml-tointeger", "../../userspace/services/acpi/lib", "../../userspace/services/acpi", "../acpi-table-import-model", "../../shared/firmware");
  for Object_Dir use "build-release/obj";
  for Exec_Dir use "build-release";
  for Main use ("resource_tests.adb", "resources_owner_tests.adb", "resource_collecting_tests.adb", "resource_core_tests.adb", "resource_runner.adb", "match_collecting_tests.adb", "match_core_tests.adb");

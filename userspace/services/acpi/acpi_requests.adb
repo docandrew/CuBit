@@ -236,6 +236,10 @@ package body ACPI_Requests with SPARK_Mode is
                  [Unsigned_64 (Startup_Error_Code'Enum_Rep (Error_Code (Finished.Execution.Modules.Failure))),
                   0,
                   0];
+               when Metrics_Region_Attempt_Page => Reply.Data (1 .. 3) :=
+                 [Boolean'Pos (Devices.Regions_Attempted),
+                  Unsigned_64 (Region_Status_Code'Enum_Rep (Region_Code (Devices.Region_Status))),
+                  0];
                when others => null; -- Rejected by the upper-bound guard.
 
             end case;

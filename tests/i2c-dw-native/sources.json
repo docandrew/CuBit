@@ -1,0 +1,528 @@
+{
+  "production": {
+    "userspace/services/i2c-dw/transfer/dw_i2c_registers.adb": "835982d2793c24b6f27ed7a07f09cfa0f4b3f845b0c77e599b8e240548c75707",
+    "userspace/services/i2c-dw/transfer/dw_i2c_registers.ads": "bc489efad780b31a556acc96fec29822de8ae364a16ae4fdff357b749b6c411d",
+    "userspace/services/i2c-dw/transfer/dw_i2c_transfer.adb": "36eb964220cc438dd823abd2805a59c74c0f3f720282af03e6d84e8022bd8bf0",
+    "userspace/services/i2c-dw/transfer/dw_i2c_transfer.ads": "725e563b0cabe33fa0b4a152ff0a85d02c032fa258f7544a5e0417f5eb19d429",
+    "userspace/services/i2c-dw/setup/dw_i2c_configuration.adb": "c5b5cf95ceb053bfcbb4aa8ea1cf722aeaf28e2393f07e725109d049c8a64a47",
+    "userspace/services/i2c-dw/setup/dw_i2c_configuration.ads": "587cebd90a4fa540fe6ba261cfd944da52d4ad14851b771bf055cb513deb02e1",
+    "userspace/services/i2c-dw/lpss/intel_lpss_i2c_profile.adb": "14a2642b2af890a8a2f5ca47ed21465b67d882fa7b3c9b5bb1a9cf6f31ea13a8",
+    "userspace/services/i2c-dw/lpss/intel_lpss_i2c_profile.ads": "770750ca0e04a827d9257de048b33702d14662addcfa2bebb3b1b247cad6fad9",
+    "userspace/services/i2c-dw/lpss/intel_lpss_i2c_reset.adb": "897e6184ee73e50b6e6230eaefdd7a8d11f4141c94cfe15db184821c477298e6",
+    "userspace/services/i2c-dw/lpss/intel_lpss_i2c_reset.ads": "cfc0f6288c52dcda9f4c8b512802df76df2eede27559eb26c96d191478341b20",
+    "userspace/services/i2c-dw/owner/dw_i2c_owner.adb": "00d0f8499e9127a8b024a4befba698d79f6377e5deaf9aa5ed57aacd91c3ef7a",
+    "userspace/services/i2c-dw/owner/dw_i2c_owner.ads": "ea5fac2fb8e7c3245a45fc12aa46401e194d5a1db7977a8887022c2c867c0be7",
+    "userspace/services/i2c-dw/native/i2c_mapping_policy.ads": "849a37ab6eb519e892b7f0cc05c0efbeba2844fcc960d0d3f60009be022eff02",
+    "userspace/services/i2c-dw/native/i2c_mapping_policy.adb": "fabdd0d8e3c9d1bfc1a752fd8d96c01622f3c4b0055bdc128ce62fc79cb6977d",
+    "userspace/services/i2c-dw/native/i2c_register_window.ads": "937310ccf92349653095799a40f6772e05aae11a93ffedac8e9d93c77c5f6fab",
+    "userspace/services/i2c-dw/native/i2c_register_window.adb": "619827cff4f667bd304512e6b239a42b34073dd9b637d1dfcb9b9de9ccf48c9d",
+    "userspace/services/i2c-dw/native/i2c_native_registers.ads": "46b905606afa44f75167448d30594b741acab5c1e86d8c68965e0ed3f83b9775",
+    "userspace/services/i2c-dw/native/i2c_native_registers.adb": "b5641cf90ad07fbcab57aeedec6b3bd0a82a5e558045473af25ac1249cf969bf",
+    "userspace/services/i2c-dw/native/i2c_native_clock.ads": "506750f531f674266c027547f8bb0f2e0b8901a8bcda71fafbf706ba5b8ba20a",
+    "userspace/services/i2c-dw/native/i2c_native_clock.adb": "75a61108999ea51876828a2e359fcd8039103beed69fdc3df35ec1505909e88e",
+    "userspace/services/i2c-dw/native/i2c_native_controller.ads": "5ffd744adaff6d909880f9cf6f1793e7ee9081a51c75d2ac60332dc95b4ebec5",
+    "userspace/services/i2c-dw/native/i2c_native_controller.adb": "9051fc995d9f0ed0457eccb845efb7b37afceefffc2c6f78f4bc9ba3980b69a2",
+    "userspace/services/i2c-dw/native/i2c_grant_copy.ads": "31ddec51ab4be3eadc5d580e77db582ba16dc0458b70bb2579a6ee70b7d5152f",
+    "userspace/services/i2c-dw/native/i2c_grant_copy.adb": "14e3117713be1ff6ea0ab5714fd6f3e39c60a414a5d4a587ed3d5c63caae7781",
+    "userspace/services/i2c-dw/native/i2c_native_grant_copy.ads": "6a213f9038fd5fe974d106068c5d0fed6caa6568616a1a1eb9b9e35c7e7fdb18",
+    "userspace/services/i2c-dw/native/i2c_native_grant_copy.adb": "536a6d718bde0de94bf39daba14e3ead51e35a525c564630ffdcd111c1554879",
+    "userspace/services/i2c-dw/native/i2c_native_requests.ads": "0fc83411f6c265a44c969188f301c9435c79199e50acfce8f8107fc37ee707fb",
+    "userspace/services/i2c-dw/requests/dw_i2c_request_types.ads": "ba40d40fa2c073e096f7e4ebba652abf2e0af50a6cf476eaf4c8b90a1b307979",
+    "userspace/services/i2c-dw/requests/dw_i2c_requests.ads": "a8bd970201d75552960faea86f3d57e530f12fcfc221e6534a77dd8737aa70dd",
+    "userspace/services/i2c-dw/requests/dw_i2c_requests.adb": "4feb6f310bd106b16293d2b6783579552b03179c4f30ceb8196ea46dd68ac9dd",
+    "userspace/runtime/gnat/cubit-process_ids.ads": "d012ffd2942827ef674e11921492508bfc46f0787553c94fb1c745cdcbe5d48a",
+    "userspace/runtime/gnat/cubit-process_ids.adb": "0670a89f145f4ae0006e7f4014d9c9c6e28e6e7cc4cae29c54edf205d5ff2478",
+    "userspace/runtime/gnat/cubit-grant_references.ads": "929c3ba1f4d612d6d0f3ee62b2a76f27540a8b6dd0946564dc84ba6b4f67814e",
+    "userspace/lib/i2c-admission/i2c_channel_badges.ads": "e6ac1559f8a052c12de21f8f2afc06f2cd0b2821430f0959dd4428f11c5a9ce5",
+    "userspace/lib/i2c-admission/i2c_channel_badges.adb": "1a9447f272ec1ad54b4755407786810cbf512a52713cb17ee5475cf6ed582dbd",
+    "userspace/lib/i2c-admission/i2c_configure_replies.ads": "6286411cb273d3b882c5288cb3cbdd0f82fa34197c52351720351a1b1e416ffc",
+    "userspace/lib/i2c-admission/i2c_configure_replies.adb": "e6b29ae8df14a9116e996ec54210a08d43f89ad7fc0ade5fdb24090be3f4e721",
+    "userspace/services/i2c-dw/native/i2c_native_loop.ads": "d35a38d0dfd29a45370ccb6154ece7519443ff4f4dfa53b55a51a73b40cc8590",
+    "userspace/services/i2c-dw/native/i2c_native_loop.adb": "fb6c864eb1c607f03726a58d6c027a1035062b24cbc1afbfefc1b6c139eb1721",
+    "userspace/services/i2c-dw/native/i2c_native_results.ads": "dc1c7bffb217fbfed2ea631457398716f77a05b81ad7ebd0443f7bb57127f217",
+    "userspace/services/i2c-dw/native/i2c_native_results.adb": "3633381196cddc449985b117ca5eb9ed4418c256860bad747b9730df287297a6",
+    "userspace/services/i2c-dw/native/i2c_work_policy.ads": "77486f38a6f52d589efc6f92ed022dc615c8d35307bb9ae4276bea19d029fddc",
+    "userspace/services/i2c-dw/native/i2c_work_policy.adb": "30939ad4415312b40f9dc64a60b67f6637b95c6a63aecb1a11bbbb6eefc824ee",
+    "userspace/lib/i2c-admission/i2c_transfer_wire.ads": "afdfc3acb95f5827b9d70657ab08f2910e89f24d002d8c5ee6e85fdbdde5f601",
+    "userspace/lib/i2c-admission/i2c_transfer_wire.adb": "4aa574887fed3794f54970adfc10e7f0934608f20104e57d6f561cc42b0faf7c",
+    "userspace/services/i2c-dw/native/i2c_event_policy.ads": "440fac2bf107db52985eff55b52b3d30b0c2171b526c6be2f7505697ec1bfa27",
+    "userspace/services/i2c-dw/native/i2c_event_policy.adb": "d49595cd0460a3127f0467033ab9a54b403744b17e92410a27efc4baac119b8e",
+    "userspace/runtime/gnat/cubit-control_events.ads": "9917bc1c897c36acaac0b8968d7fa6be527bd1bd5cefe42d3d92eadec04b6511",
+    "shared/capabilities/channel_wake_abi.ads": "ef921b0ac679aff21ba9bbe4909f07b0ca904a03842b9596feee06d3b33bfeea",
+    "userspace/services/i2c-dw/i2c_log.ads": "9869d62670994988b01d93487e86aaeb4a4437cd4eadbf72a35eb586ae886689",
+    "userspace/services/i2c-dw/i2c_log.adb": "a59d91283cc172aea8f2f9c816703eb3d2a4d98688349c8f5d9e48edbcd51ae3"
+  },
+  "assets": {
+    "window_tests.adb": "91d5442d8db0ac0042931eaebe72f48b1a9cef60b45d9bb8eb8bbb6fa0cfb11d",
+    "clock_tests.adb": "104ab06149428de9f78b06c4f9681d89a241b76f2e24a2d96ea5ff65e8ca06e0",
+    "composition_tests.adb": "c1b522f386fe53272551616037c8ccff98add535566065e4739bbef6333492c1",
+    "request_tests.adb": "f38493900be07106b9efdc04957f8d5802aee6dbe543706df424ece59dded6d5",
+    "grant_copy_tests.adb": "c8d2e528d02d17c25aa57c7a0b5bf690defa64f245f99b83d44313dd57ccf028",
+    "model/cubit-handles-devices.adb": "14faaed1c6c2e207bca90bd3daefa7bd92e6a3308ef1f35d039c2d1830819d26",
+    "model/cubit-handles-devices.ads": "b8184c0ce7943872e7847d9923ecea9dd7cd94ed03dabc21a52496823bc218d5",
+    "model/cubit-handles-ipc.adb": "6d9939d80a5b807994c2aae613e50bf222cfdee87a02f77571c72080fcc27196",
+    "model/cubit-handles-ipc.ads": "f9307ef68ecb2dbd9a99fca9bd9666b76b90a4e581801f6fa932db82411ba53b",
+    "model/cubit-handles.ads": "92493f827a0706ed6e5b13eb4c360307806e97286c04e879cc0db0d4b2f83c38",
+    "model/cubit-messages.adb": "8b5ed8ae890f7a8bfc2a9e27a77d240a8e3984b9a72d6d0927fb0336eb9bb840",
+    "model/cubit-messages.ads": "87c079d239c7447070a0acee4a563c053fb0991af691ce3ef737dff5872a8230",
+    "model/cubit.ads": "71457764669fdd527275d8c9ba6f39c09cdc28bf4a3caa39d806e52238436534",
+    "pure-root/cubit.ads": "6a3f0b27b91935d939c20d290422ebfb6e2e7447d6f9f04f7373ad5cb9c728f2",
+    "native_request_fixture.ads": "37257b33552d93021308bc7fb1d7a8055266651ed19594e167a900c3804a8059",
+    "native_request_fixture.adb": "de6f9ad8a3229c36d01306b4ce84f7559044d662e2442bc5ae186b1217423dc4",
+    "loop-model/cubit-handles.ads": "6b53e847961da4b0ba17b30728a70a9827399ef7587f2dd57d3e909ef3dd9bce",
+    "loop-model/cubit.ads": "6a3f0b27b91935d939c20d290422ebfb6e2e7447d6f9f04f7373ad5cb9c728f2",
+    "loop_tests.adb": "158c0dde94ef7180d07ca586f3fa581b1164890f1545402257b5276c7bc8bc6d",
+    "event_policy_tests.adb": "45e5b0f4e9adaeabe7d90e48ef5a1610475033ff9f46851c81f080da9d3c322d",
+    "log-model/cubit-log_records.adb": "7e679c91091b372563bab88d25870784a3433d92471fc2da613b663189d1cd39",
+    "log-model/cubit-log_records.ads": "c102594d7be68f4927c90286b526844570f157b12a75d122baca6df464b3532a",
+    "log-model/cubit-logging.adb": "abe053e472dc508d6a99aa9479ad50844dcb510c8910c230b1969a4b74b13aff",
+    "log-model/cubit-logging.ads": "5abe9c93e3b8e35ab7899f29a6be9a6c5157b0f72bd9f765a4d2d20943e504e5",
+    "log-model/cubit-messages.adb": "6e38b37f6dc70d8e2d015a45170aa751229545c3b6820bb9a699e7889eefd763",
+    "log-model/cubit-messages.ads": "190eb2fcfc0dfef990f686032f4af0f7f56f7bfd6c672eaefa543d806fca9c17",
+    "log-model/cubit.ads": "6a3f0b27b91935d939c20d290422ebfb6e2e7447d6f9f04f7373ad5cb9c728f2",
+    "log-model/startup.ads": "886212b8c912b64814a7726a98e9464762dbbe3fd75413f4eee8fe246a7bb96a",
+    "log_tests.adb": "f7fb677a1e94abb498161856e994e534aa6bbd117e13a954c99fc74754f16ad8"
+  },
+  "groups": {
+    "window": {
+      "sources": [
+        "userspace/services/i2c-dw/transfer/dw_i2c_registers.adb",
+        "userspace/services/i2c-dw/transfer/dw_i2c_registers.ads",
+        "userspace/services/i2c-dw/transfer/dw_i2c_transfer.adb",
+        "userspace/services/i2c-dw/transfer/dw_i2c_transfer.ads",
+        "userspace/services/i2c-dw/setup/dw_i2c_configuration.adb",
+        "userspace/services/i2c-dw/setup/dw_i2c_configuration.ads",
+        "userspace/services/i2c-dw/lpss/intel_lpss_i2c_profile.adb",
+        "userspace/services/i2c-dw/lpss/intel_lpss_i2c_profile.ads",
+        "userspace/services/i2c-dw/lpss/intel_lpss_i2c_reset.adb",
+        "userspace/services/i2c-dw/lpss/intel_lpss_i2c_reset.ads",
+        "userspace/services/i2c-dw/owner/dw_i2c_owner.adb",
+        "userspace/services/i2c-dw/owner/dw_i2c_owner.ads",
+        "userspace/services/i2c-dw/native/i2c_mapping_policy.ads",
+        "userspace/services/i2c-dw/native/i2c_mapping_policy.adb",
+        "userspace/services/i2c-dw/native/i2c_register_window.ads",
+        "userspace/services/i2c-dw/native/i2c_register_window.adb",
+        "tests/i2c-dw-native/window_tests.adb"
+      ],
+      "mains": [
+        {
+          "name": "window_tests",
+          "args": [],
+          "label": "I2C register window checks",
+          "checks": 110
+        }
+      ]
+    },
+    "composition": {
+      "sources": [
+        "userspace/services/i2c-dw/transfer/dw_i2c_registers.adb",
+        "userspace/services/i2c-dw/transfer/dw_i2c_registers.ads",
+        "userspace/services/i2c-dw/transfer/dw_i2c_transfer.adb",
+        "userspace/services/i2c-dw/transfer/dw_i2c_transfer.ads",
+        "userspace/services/i2c-dw/setup/dw_i2c_configuration.adb",
+        "userspace/services/i2c-dw/setup/dw_i2c_configuration.ads",
+        "userspace/services/i2c-dw/lpss/intel_lpss_i2c_profile.adb",
+        "userspace/services/i2c-dw/lpss/intel_lpss_i2c_profile.ads",
+        "userspace/services/i2c-dw/lpss/intel_lpss_i2c_reset.adb",
+        "userspace/services/i2c-dw/lpss/intel_lpss_i2c_reset.ads",
+        "userspace/services/i2c-dw/owner/dw_i2c_owner.adb",
+        "userspace/services/i2c-dw/owner/dw_i2c_owner.ads",
+        "userspace/services/i2c-dw/native/i2c_mapping_policy.ads",
+        "userspace/services/i2c-dw/native/i2c_mapping_policy.adb",
+        "userspace/services/i2c-dw/native/i2c_register_window.ads",
+        "userspace/services/i2c-dw/native/i2c_register_window.adb",
+        "userspace/services/i2c-dw/native/i2c_native_registers.ads",
+        "userspace/services/i2c-dw/native/i2c_native_registers.adb",
+        "userspace/services/i2c-dw/native/i2c_native_clock.ads",
+        "userspace/services/i2c-dw/native/i2c_native_clock.adb",
+        "userspace/services/i2c-dw/native/i2c_native_controller.ads",
+        "userspace/services/i2c-dw/native/i2c_native_controller.adb",
+        "tests/i2c-dw-native/model/cubit-handles-devices.adb",
+        "tests/i2c-dw-native/model/cubit-handles-devices.ads",
+        "tests/i2c-dw-native/model/cubit-handles-ipc.adb",
+        "tests/i2c-dw-native/model/cubit-handles-ipc.ads",
+        "tests/i2c-dw-native/model/cubit-handles.ads",
+        "tests/i2c-dw-native/model/cubit-messages.adb",
+        "tests/i2c-dw-native/model/cubit-messages.ads",
+        "tests/i2c-dw-native/model/cubit.ads",
+        "tests/i2c-dw-native/clock_tests.adb",
+        "tests/i2c-dw-native/composition_tests.adb"
+      ],
+      "mains": [
+        {
+          "name": "clock_tests",
+          "args": [],
+          "label": "clock checks",
+          "checks": 5128
+        },
+        {
+          "name": "composition_tests",
+          "args": [
+            "0"
+          ],
+          "label": "composition case 0 checks",
+          "checks": 8
+        },
+        {
+          "name": "composition_tests",
+          "args": [
+            "1"
+          ],
+          "label": "composition case 1 checks",
+          "checks": 7
+        },
+        {
+          "name": "composition_tests",
+          "args": [
+            "2"
+          ],
+          "label": "composition case 2 checks",
+          "checks": 6
+        },
+        {
+          "name": "composition_tests",
+          "args": [
+            "3"
+          ],
+          "label": "composition case 3 checks",
+          "checks": 6
+        },
+        {
+          "name": "composition_tests",
+          "args": [
+            "4"
+          ],
+          "label": "composition case 4 checks",
+          "checks": 7
+        },
+        {
+          "name": "composition_tests",
+          "args": [
+            "5"
+          ],
+          "label": "composition case 5 checks",
+          "checks": 7
+        },
+        {
+          "name": "composition_tests",
+          "args": [
+            "6"
+          ],
+          "label": "composition case 6 checks",
+          "checks": 7
+        },
+        {
+          "name": "composition_tests",
+          "args": [
+            "7"
+          ],
+          "label": "composition case 7 checks",
+          "checks": 7
+        },
+        {
+          "name": "composition_tests",
+          "args": [
+            "8"
+          ],
+          "label": "composition case 8 checks",
+          "checks": 7
+        },
+        {
+          "name": "composition_tests",
+          "args": [
+            "9"
+          ],
+          "label": "composition case 9 checks",
+          "checks": 7
+        },
+        {
+          "name": "composition_tests",
+          "args": [
+            "10"
+          ],
+          "label": "composition case 10 checks",
+          "checks": 7
+        }
+      ]
+    },
+    "requests": {
+      "sources": [
+        "userspace/services/i2c-dw/transfer/dw_i2c_registers.adb",
+        "userspace/services/i2c-dw/transfer/dw_i2c_registers.ads",
+        "userspace/services/i2c-dw/transfer/dw_i2c_transfer.adb",
+        "userspace/services/i2c-dw/transfer/dw_i2c_transfer.ads",
+        "userspace/services/i2c-dw/setup/dw_i2c_configuration.adb",
+        "userspace/services/i2c-dw/setup/dw_i2c_configuration.ads",
+        "userspace/services/i2c-dw/lpss/intel_lpss_i2c_profile.adb",
+        "userspace/services/i2c-dw/lpss/intel_lpss_i2c_profile.ads",
+        "userspace/services/i2c-dw/lpss/intel_lpss_i2c_reset.adb",
+        "userspace/services/i2c-dw/lpss/intel_lpss_i2c_reset.ads",
+        "userspace/services/i2c-dw/owner/dw_i2c_owner.adb",
+        "userspace/services/i2c-dw/owner/dw_i2c_owner.ads",
+        "userspace/services/i2c-dw/requests/dw_i2c_request_types.ads",
+        "userspace/services/i2c-dw/requests/dw_i2c_requests.ads",
+        "userspace/services/i2c-dw/requests/dw_i2c_requests.adb",
+        "tests/i2c-dw-native/request_tests.adb",
+        "userspace/lib/i2c-admission/i2c_channel_badges.ads",
+        "userspace/lib/i2c-admission/i2c_channel_badges.adb"
+      ],
+      "mains": [
+        {
+          "name": "request_tests",
+          "args": [],
+          "label": "I2C request owner checks",
+          "checks": 1109
+        }
+      ]
+    },
+    "grants": {
+      "sources": [
+        "userspace/services/i2c-dw/transfer/dw_i2c_transfer.adb",
+        "userspace/services/i2c-dw/transfer/dw_i2c_transfer.ads",
+        "userspace/services/i2c-dw/requests/dw_i2c_request_types.ads",
+        "userspace/services/i2c-dw/native/i2c_grant_copy.ads",
+        "userspace/services/i2c-dw/native/i2c_grant_copy.adb",
+        "userspace/runtime/gnat/cubit-process_ids.ads",
+        "userspace/runtime/gnat/cubit-process_ids.adb",
+        "userspace/runtime/gnat/cubit-grant_references.ads",
+        "tests/i2c-dw-native/pure-root/cubit.ads",
+        "tests/i2c-dw-native/grant_copy_tests.adb"
+      ],
+      "mains": [
+        {
+          "name": "grant_copy_tests",
+          "args": [],
+          "label": "I2C grant copy checks",
+          "checks": 255
+        }
+      ]
+    },
+    "loop": {
+      "sources": [
+        "userspace/runtime/gnat/cubit-grant_references.ads",
+        "tests/i2c-dw-native/model/cubit-handles-devices.adb",
+        "tests/i2c-dw-native/model/cubit-handles-devices.ads",
+        "tests/i2c-dw-native/model/cubit-handles-ipc.adb",
+        "tests/i2c-dw-native/model/cubit-handles-ipc.ads",
+        "tests/i2c-dw-native/loop-model/cubit-handles.ads",
+        "tests/i2c-dw-native/model/cubit-messages.adb",
+        "tests/i2c-dw-native/model/cubit-messages.ads",
+        "userspace/runtime/gnat/cubit-process_ids.adb",
+        "userspace/runtime/gnat/cubit-process_ids.ads",
+        "tests/i2c-dw-native/loop-model/cubit.ads",
+        "userspace/services/i2c-dw/setup/dw_i2c_configuration.adb",
+        "userspace/services/i2c-dw/setup/dw_i2c_configuration.ads",
+        "userspace/services/i2c-dw/owner/dw_i2c_owner.adb",
+        "userspace/services/i2c-dw/owner/dw_i2c_owner.ads",
+        "userspace/services/i2c-dw/transfer/dw_i2c_registers.adb",
+        "userspace/services/i2c-dw/transfer/dw_i2c_registers.ads",
+        "userspace/services/i2c-dw/requests/dw_i2c_request_types.ads",
+        "userspace/services/i2c-dw/requests/dw_i2c_requests.adb",
+        "userspace/services/i2c-dw/requests/dw_i2c_requests.ads",
+        "userspace/services/i2c-dw/transfer/dw_i2c_transfer.adb",
+        "userspace/services/i2c-dw/transfer/dw_i2c_transfer.ads",
+        "userspace/lib/i2c-admission/i2c_channel_badges.adb",
+        "userspace/lib/i2c-admission/i2c_channel_badges.ads",
+        "userspace/lib/i2c-admission/i2c_configure_replies.adb",
+        "userspace/lib/i2c-admission/i2c_configure_replies.ads",
+        "userspace/services/i2c-dw/native/i2c_grant_copy.adb",
+        "userspace/services/i2c-dw/native/i2c_grant_copy.ads",
+        "userspace/services/i2c-dw/native/i2c_mapping_policy.adb",
+        "userspace/services/i2c-dw/native/i2c_mapping_policy.ads",
+        "userspace/services/i2c-dw/native/i2c_native_clock.adb",
+        "userspace/services/i2c-dw/native/i2c_native_clock.ads",
+        "userspace/services/i2c-dw/native/i2c_native_controller.adb",
+        "userspace/services/i2c-dw/native/i2c_native_controller.ads",
+        "userspace/services/i2c-dw/native/i2c_native_grant_copy.adb",
+        "userspace/services/i2c-dw/native/i2c_native_grant_copy.ads",
+        "userspace/services/i2c-dw/native/i2c_native_loop.adb",
+        "userspace/services/i2c-dw/native/i2c_native_loop.ads",
+        "userspace/services/i2c-dw/native/i2c_native_registers.adb",
+        "userspace/services/i2c-dw/native/i2c_native_registers.ads",
+        "userspace/services/i2c-dw/native/i2c_native_requests.ads",
+        "userspace/services/i2c-dw/native/i2c_register_window.adb",
+        "userspace/services/i2c-dw/native/i2c_register_window.ads",
+        "userspace/services/i2c-dw/lpss/intel_lpss_i2c_profile.adb",
+        "userspace/services/i2c-dw/lpss/intel_lpss_i2c_profile.ads",
+        "userspace/services/i2c-dw/lpss/intel_lpss_i2c_reset.adb",
+        "userspace/services/i2c-dw/lpss/intel_lpss_i2c_reset.ads",
+        "tests/i2c-dw-native/loop_tests.adb"
+      ],
+      "mains": [
+        {
+          "name": "loop_tests",
+          "args": [
+            "0"
+          ],
+          "label": "native loop case 0 checks",
+          "checks": 81
+        },
+        {
+          "name": "loop_tests",
+          "args": [
+            "1"
+          ],
+          "label": "native loop case 1 checks",
+          "checks": 16
+        },
+        {
+          "name": "loop_tests",
+          "args": [
+            "2"
+          ],
+          "label": "native loop case 2 checks",
+          "checks": 16
+        },
+        {
+          "name": "loop_tests",
+          "args": [
+            "3"
+          ],
+          "label": "native loop case 3 checks",
+          "checks": 34
+        },
+        {
+          "name": "loop_tests",
+          "args": [
+            "4"
+          ],
+          "label": "native loop case 4 checks",
+          "checks": 38
+        },
+        {
+          "name": "loop_tests",
+          "args": [
+            "5"
+          ],
+          "label": "native loop case 5 checks",
+          "checks": 38
+        },
+        {
+          "name": "loop_tests",
+          "args": [
+            "6"
+          ],
+          "label": "native loop case 6 checks",
+          "checks": 81
+        },
+        {
+          "name": "loop_tests",
+          "args": [
+            "7"
+          ],
+          "label": "native loop case 7 checks",
+          "checks": 85
+        },
+        {
+          "name": "loop_tests",
+          "args": [
+            "8"
+          ],
+          "label": "native loop case 8 checks",
+          "checks": 81
+        },
+        {
+          "name": "loop_tests",
+          "args": [
+            "9"
+          ],
+          "label": "native loop case 9 checks",
+          "checks": 37
+        },
+        {
+          "name": "loop_tests",
+          "args": [
+            "10"
+          ],
+          "label": "native loop case 10 checks",
+          "checks": 37
+        },
+        {
+          "name": "loop_tests",
+          "args": [
+            "11"
+          ],
+          "label": "native loop case 11 checks",
+          "checks": 38
+        },
+        {
+          "name": "loop_tests",
+          "args": [
+            "12"
+          ],
+          "label": "native loop case 12 checks",
+          "checks": 40
+        },
+        {
+          "name": "loop_tests",
+          "args": [
+            "13"
+          ],
+          "label": "native loop case 13 checks",
+          "checks": 83
+        },
+        {
+          "name": "loop_tests",
+          "args": [
+            "14"
+          ],
+          "label": "native loop case 14 checks",
+          "checks": 64
+        }
+      ]
+    },
+    "events": {
+      "sources": [
+        "userspace/services/i2c-dw/native/i2c_event_policy.ads",
+        "userspace/services/i2c-dw/native/i2c_event_policy.adb",
+        "userspace/runtime/gnat/cubit-process_ids.ads",
+        "userspace/runtime/gnat/cubit-process_ids.adb",
+        "userspace/runtime/gnat/cubit-control_events.ads",
+        "shared/capabilities/channel_wake_abi.ads",
+        "tests/i2c-dw-native/pure-root/cubit.ads",
+        "tests/i2c-dw-native/event_policy_tests.adb"
+      ],
+      "mains": [
+        {
+          "name": "event_policy_tests",
+          "args": [],
+          "label": "I2C event policy checks",
+          "checks": 1082
+        }
+      ]
+    },
+    "log": {
+      "sources": [
+        "userspace/services/i2c-dw/i2c_log.ads",
+        "userspace/services/i2c-dw/i2c_log.adb",
+        "tests/i2c-dw-native/log-model/cubit-log_records.adb",
+        "tests/i2c-dw-native/log-model/cubit-log_records.ads",
+        "tests/i2c-dw-native/log-model/cubit-logging.adb",
+        "tests/i2c-dw-native/log-model/cubit-logging.ads",
+        "tests/i2c-dw-native/log-model/cubit-messages.adb",
+        "tests/i2c-dw-native/log-model/cubit-messages.ads",
+        "tests/i2c-dw-native/log-model/cubit.ads",
+        "tests/i2c-dw-native/log-model/startup.ads",
+        "tests/i2c-dw-native/log_tests.adb"
+      ],
+      "mains": [
+        {
+          "name": "log_tests",
+          "args": [
+            "0"
+          ],
+          "label": "I2C local log checks",
+          "checks": 6
+        },
+        {
+          "name": "log_tests",
+          "args": [
+            "1"
+          ],
+          "label": "I2C local log checks",
+          "checks": 6
+        }
+      ]
+    }
+  }
+}

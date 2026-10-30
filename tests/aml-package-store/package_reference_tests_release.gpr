@@ -1,5 +1,5 @@
 project package_reference_tests_release is
- for Source_Dirs use ("../../tests/aml-core", "../../userspace/lib/acpi", "../../userspace/services/acpi", "../../shared/firmware");
+ for Source_Dirs use ("../../shared/firmware", "../aml-core", "../../userspace/services/acpi", "../../userspace/services/acpi/lib");
  Build_Root := external ("PACKAGE_STORE_BUILD", "build-package_reference_tests-release");
  for Object_Dir use Build_Root & "/obj";
  for Exec_Dir use Build_Root & "/bin";

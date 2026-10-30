@@ -1,0 +1,58 @@
+Input file lid.aml, Length 0x9C (156) bytes
+
+Intel ACPI Component Architecture
+AML Execution/Debug Utility version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+
+
+ACPI: RSDP 0x0000615D5B11C180 000024 (v02 Intel )
+ACPI: XSDT 0x0000615D8D4D8D90 000034 (v00 Intel  AcpiExec 00001001 INTL 20260408)
+ACPI: FACP 0x0000615D5B11BFA0 000114 (v05 Intel  AcpiExec 00001001 INTL 20260408)
+ACPI: DSDT 0x0000615D8D4DF160 00009C (v02 CUBIT  LIDTEST  00000001 INTL 20260408)
+ACPI: FACS 0x0000615D5B11C140 000040
+
+ACPI table initialization:
+Table [DSDT: LIDTEST ] (id 01) -    8 Objects with   1 Devices,   1 Regions,    4 Methods (0/4/0 Serial/Non/Cvt)
+ACPI: 1 ACPI AML tables successfully acquired and loaded
+
+Final data object initialization: Namespace contains 17 (0x11) objects
+Initializing General Purpose Events (GPEs):
+    Initialized GPE 00 to 7F [_GPE] 16 regs on interrupt 0x0 (SCI)
+    Initialized GPE 80 to FF [_GPE] 16 regs on interrupt 0x0 (SCI)
+Evaluating \LID0._HID
+Evaluation of \LID0._HID returned object 0x615d8d4d8dd0, external buffer length 18
+  [Integer] = 000000000D0CD041
+
+Evaluating \LCLO
+ACPI Exec: Global:    Received a Device Notify on [LID0] 0x615d8d4df9f0 Value 0x80 (Status Change)
+Evaluation of \LCLO returned object 0x615d8d4d8dd0, external buffer length 18
+  [Integer] = 0000000000000000
+
+Evaluating \LID0._LID
+Evaluation of \LID0._LID returned object 0x615d8d4d8dd0, external buffer length 18
+  [Integer] = 0000000000000000
+
+Evaluating \LOPN
+ACPI Exec: Global:    Received a Device Notify on [LID0] 0x615d8d4df9f0 Value 0x80 (Status Change)
+Evaluation of \LOPN returned object 0x615d8d4d8dd0, external buffer length 18
+  [Integer] = 0000000000000000
+
+Evaluating \LID0._LID
+Evaluation of \LID0._LID returned object 0x615d8d4d8dd0, external buffer length 18
+  [Integer] = 0000000000000001
+
+Evaluating \LHI0
+ACPI Exec: Global:    Received a Device Notify on [LID0] 0x615d8d4df9f0 Value 0x80 (Status Change)
+Evaluation of \LHI0 returned object 0x615d8d4d8dd0, external buffer length 18
+  [Integer] = 0000000000000000
+
+Evaluating \LID0._LID
+Evaluation of \LID0._LID returned object 0x615d8d4d8dd0, external buffer length 18
+  [Integer] = 0000000000000080
+
+0x615d8d4dfd50 Length 0x0048   utcache-0453 [Operand Object]       Method  RefCount 0x0001
+0x615d8d4dece0 Length 0x0023  nsxfname-0723 [Not a Descriptor] 
+0x615d8d4deba0 Length 0x0023  nsxfname-0723 [Not a Descriptor] 
+0x615d8d4de9f0 Length 0x0048   utcache-0453 [Operand Object]       Method  RefCount 0x0001
+ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)

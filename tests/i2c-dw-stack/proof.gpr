@@ -1,0 +1,8 @@
+project Proof is
+ for Source_Dirs use (".");
+ for Source_Files use ("dw_i2c_transfer.ads", "dw_i2c_transfer.adb", "intel_lpss_i2c_profile.ads", "intel_lpss_i2c_profile.adb");
+ for Object_Dir use "proof/obj";
+ package Compiler is
+  for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato");
+ end Compiler;
+end Proof;

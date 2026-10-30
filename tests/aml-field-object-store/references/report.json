@@ -1,0 +1,128 @@
+[
+  {
+    "label": "byteacc-r1",
+    "source": "byteacc-r1.asl",
+    "batch": "execute BUFR; execute PR01; execute PR02; execute PR03; execute STRG; execute PR01; execute PR02; execute PR03; execute SDEC; execute PR01; execute PR02; execute PR03; execute SMP0; execute PR01; execute PR02; execute PR03; execute BMP0; execute PR01; execute PR02; execute PR03",
+    "compile_status": 0,
+    "compile_log": "/home/doc/git/.acpi-proof-work/field-whole-object-reference-vzz5bqba/results/byteacc-r1-iasl.log",
+    "runtime_status": 0,
+    "aml_sha256": "5d7f18930873cfda7205fb2c5e1c45a88ca7239b09f721e1b95a9f4c7fefd827",
+    "disassembly_status": 0,
+    "disassembly_log": "/home/doc/git/.acpi-proof-work/field-whole-object-reference-vzz5bqba/results/byteacc-r1-disassembly.log",
+    "runtime_log": "/home/doc/git/.acpi-proof-work/field-whole-object-reference-vzz5bqba/results/byteacc-r1-acpiexec.log",
+    "disassembly_dsl": "/home/doc/git/.acpi-proof-work/field-whole-object-reference-vzz5bqba/results/byteacc-r1.dsl",
+    "disassembly_sha256": "6a1439a1d3c4f1eb5e9aea98755d7a0fd749f83ab7f66a58cd5663c9e7638012",
+    "retained_terms": {
+      "OperationRegion": 1,
+      "Field": 1,
+      "Offset": 0,
+      "Store": 0
+    },
+    "opcode_classification": "region_and_field_in_disassembly"
+  },
+  {
+    "label": "byteacc-r2",
+    "source": "byteacc-r2.asl",
+    "batch": "execute BUFR; execute PR01; execute PR02; execute PR03; execute STRG; execute PR01; execute PR02; execute PR03; execute SDEC; execute PR01; execute PR02; execute PR03; execute SMP0; execute PR01; execute PR02; execute PR03; execute BMP0; execute PR01; execute PR02; execute PR03",
+    "compile_status": 0,
+    "compile_log": "/home/doc/git/.acpi-proof-work/field-whole-object-reference-vzz5bqba/results/byteacc-r2-iasl.log",
+    "runtime_status": 0,
+    "aml_sha256": "94387cb3eb04ab3210ac489d76b3b4fcfc15d98d9ae8aac5dc7b3d90b6406567",
+    "disassembly_status": 0,
+    "disassembly_log": "/home/doc/git/.acpi-proof-work/field-whole-object-reference-vzz5bqba/results/byteacc-r2-disassembly.log",
+    "runtime_log": "/home/doc/git/.acpi-proof-work/field-whole-object-reference-vzz5bqba/results/byteacc-r2-acpiexec.log",
+    "disassembly_dsl": "/home/doc/git/.acpi-proof-work/field-whole-object-reference-vzz5bqba/results/byteacc-r2.dsl",
+    "disassembly_sha256": "db0ef1bd62e55d1a207fc01c6b34b188cfb2a38e971881f1eb880967e01a5ae1",
+    "retained_terms": {
+      "OperationRegion": 1,
+      "Field": 1,
+      "Offset": 0,
+      "Store": 0
+    },
+    "opcode_classification": "region_and_field_in_disassembly"
+  },
+  {
+    "label": "wordacc-r1",
+    "source": "wordacc-r1.asl",
+    "batch": "execute BUFR; execute PR01; execute PR02; execute PR03; execute STRG; execute PR01; execute PR02; execute PR03; execute SDEC; execute PR01; execute PR02; execute PR03; execute SMP0; execute PR01; execute PR02; execute PR03; execute BMP0; execute PR01; execute PR02; execute PR03",
+    "compile_status": 0,
+    "compile_log": "/home/doc/git/.acpi-proof-work/field-whole-object-reference-vzz5bqba/results/wordacc-r1-iasl.log",
+    "runtime_status": 0,
+    "aml_sha256": "5ad21816b60139c42f4bfe73183af19d8230b1990e6d3fb91bcb709cacef789f",
+    "disassembly_status": 0,
+    "disassembly_log": "/home/doc/git/.acpi-proof-work/field-whole-object-reference-vzz5bqba/results/wordacc-r1-disassembly.log",
+    "runtime_log": "/home/doc/git/.acpi-proof-work/field-whole-object-reference-vzz5bqba/results/wordacc-r1-acpiexec.log",
+    "disassembly_dsl": "/home/doc/git/.acpi-proof-work/field-whole-object-reference-vzz5bqba/results/wordacc-r1.dsl",
+    "disassembly_sha256": "29af89fd03be73a2a5ea492382df7c554454b0e83dfd20eaefccd3a4773ab299",
+    "retained_terms": {
+      "OperationRegion": 1,
+      "Field": 1,
+      "Offset": 0,
+      "Store": 0
+    },
+    "opcode_classification": "region_and_field_in_disassembly"
+  },
+  {
+    "label": "wordacc-r2",
+    "source": "wordacc-r2.asl",
+    "batch": "execute BUFR; execute PR01; execute PR02; execute PR03; execute STRG; execute PR01; execute PR02; execute PR03; execute SDEC; execute PR01; execute PR02; execute PR03; execute SMP0; execute PR01; execute PR02; execute PR03; execute BMP0; execute PR01; execute PR02; execute PR03",
+    "compile_status": 0,
+    "compile_log": "/home/doc/git/.acpi-proof-work/field-whole-object-reference-vzz5bqba/results/wordacc-r2-iasl.log",
+    "runtime_status": 0,
+    "aml_sha256": "2ae6c474a644af760c8ebbb4a4c2b14630cf8d30ca6da61431f2b02c81188d02",
+    "disassembly_status": 0,
+    "disassembly_log": "/home/doc/git/.acpi-proof-work/field-whole-object-reference-vzz5bqba/results/wordacc-r2-disassembly.log",
+    "runtime_log": "/home/doc/git/.acpi-proof-work/field-whole-object-reference-vzz5bqba/results/wordacc-r2-acpiexec.log",
+    "disassembly_dsl": "/home/doc/git/.acpi-proof-work/field-whole-object-reference-vzz5bqba/results/wordacc-r2.dsl",
+    "disassembly_sha256": "47e349c901b6441746854501495bf3bceefcbd431a04a4177830aea6fb172cc5",
+    "retained_terms": {
+      "OperationRegion": 1,
+      "Field": 1,
+      "Offset": 0,
+      "Store": 0
+    },
+    "opcode_classification": "region_and_field_in_disassembly"
+  },
+  {
+    "label": "dwordacc-r1",
+    "source": "dwordacc-r1.asl",
+    "batch": "execute BUFR; execute PR01; execute PR02; execute PR03; execute STRG; execute PR01; execute PR02; execute PR03; execute SDEC; execute PR01; execute PR02; execute PR03; execute SMP0; execute PR01; execute PR02; execute PR03; execute BMP0; execute PR01; execute PR02; execute PR03",
+    "compile_status": 0,
+    "compile_log": "/home/doc/git/.acpi-proof-work/field-whole-object-reference-vzz5bqba/results/dwordacc-r1-iasl.log",
+    "runtime_status": 0,
+    "aml_sha256": "fcdc27266da41635a58a3bd9b46acfa681b0b719f20c457e9c2c9d1842240086",
+    "disassembly_status": 0,
+    "disassembly_log": "/home/doc/git/.acpi-proof-work/field-whole-object-reference-vzz5bqba/results/dwordacc-r1-disassembly.log",
+    "runtime_log": "/home/doc/git/.acpi-proof-work/field-whole-object-reference-vzz5bqba/results/dwordacc-r1-acpiexec.log",
+    "disassembly_dsl": "/home/doc/git/.acpi-proof-work/field-whole-object-reference-vzz5bqba/results/dwordacc-r1.dsl",
+    "disassembly_sha256": "83e281d079a19b31ac629dd35eabf7cc5dfb700299cf9193bb7389ca2d13bc7b",
+    "retained_terms": {
+      "OperationRegion": 1,
+      "Field": 1,
+      "Offset": 0,
+      "Store": 0
+    },
+    "opcode_classification": "region_and_field_in_disassembly"
+  },
+  {
+    "label": "dwordacc-r2",
+    "source": "dwordacc-r2.asl",
+    "batch": "execute BUFR; execute PR01; execute PR02; execute PR03; execute STRG; execute PR01; execute PR02; execute PR03; execute SDEC; execute PR01; execute PR02; execute PR03; execute SMP0; execute PR01; execute PR02; execute PR03; execute BMP0; execute PR01; execute PR02; execute PR03",
+    "compile_status": 0,
+    "compile_log": "/home/doc/git/.acpi-proof-work/field-whole-object-reference-vzz5bqba/results/dwordacc-r2-iasl.log",
+    "runtime_status": 0,
+    "aml_sha256": "1a82aa3a31a8e3de973e94f9b460b8176bc3e355bfcebd873e7bb19270a19283",
+    "disassembly_status": 0,
+    "disassembly_log": "/home/doc/git/.acpi-proof-work/field-whole-object-reference-vzz5bqba/results/dwordacc-r2-disassembly.log",
+    "runtime_log": "/home/doc/git/.acpi-proof-work/field-whole-object-reference-vzz5bqba/results/dwordacc-r2-acpiexec.log",
+    "disassembly_dsl": "/home/doc/git/.acpi-proof-work/field-whole-object-reference-vzz5bqba/results/dwordacc-r2.dsl",
+    "disassembly_sha256": "db3b4b899d8f0958b1af349b40dbf00252c51346dea2c073bb6f5038b67c6176",
+    "retained_terms": {
+      "OperationRegion": 1,
+      "Field": 1,
+      "Offset": 0,
+      "Store": 0
+    },
+    "opcode_classification": "region_and_field_in_disassembly"
+  }
+]

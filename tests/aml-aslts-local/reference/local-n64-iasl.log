@@ -1,0 +1,530 @@
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     38: Name(z999, 1)
+Remark   2182 -                       At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (Z999)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     40: Method(ma00, 7)
+Remark   2182 -                         At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (MA00)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     42:     Method(m000, 6)
+Remark   2182 -                             At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (M000)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     44:         Method(m000, 5)
+Remark   2182 -                                 At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (M000)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     46:             Method(m000, 4)
+Remark   2182 -                                     At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (M000)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     48:                 Method(m000, 3)
+Remark   2182 -                                         At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (M000)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     50:                     Method(m000, 2)
+Remark   2182 -                                             At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (M000)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     52:                         Method(m000, 1)
+Remark   2182 -                                                 At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (M000)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     54:                             Method(m000, 0)
+Remark   2182 -                                                     At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (M000)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     56:                                 Method(m000)
+Remark   2182 -                                                         At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (M000)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     59:                                 m000()
+Remark   2182 -                                                  At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (M000)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     61:                             m000()
+Remark   2182 -                                              At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (M000)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     63:                         m000(28)
+Remark   2182 -                                          At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (M000)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     65:                     m000(26,27)
+Remark   2182 -                                      At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (M000)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     67:                 m000(23,24,25)
+Remark   2182 -                                  At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (M000)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     69:             m000(19,20,21,22)
+Remark   2182 -                              At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (M000)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     73:             err(arg0, z999, __LINE__, 0, 0, arg0, 8)
+Remark   2182 -                             At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (ERR_)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     73:             err(arg0, z999, __LINE__, 0, 0, arg0, 8)
+Remark   2182 -                                        At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (Z999)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     76:             err(arg0, z999, __LINE__, 0, 0, arg0, 9)
+Remark   2182 -                             At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (ERR_)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     76:             err(arg0, z999, __LINE__, 0, 0, arg0, 9)
+Remark   2182 -                                        At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (Z999)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     79:             err(arg0, z999, __LINE__, 0, 0, arg0, 10)
+Remark   2182 -                             At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (ERR_)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     79:             err(arg0, z999, __LINE__, 0, 0, arg0, 10)
+Remark   2182 -                                        At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (Z999)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     82:             err(arg0, z999, __LINE__, 0, 0, arg0, 11)
+Remark   2182 -                             At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (ERR_)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     82:             err(arg0, z999, __LINE__, 0, 0, arg0, 11)
+Remark   2182 -                                        At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (Z999)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     85:             err(arg0, z999, __LINE__, 0, 0, arg0, 12)
+Remark   2182 -                             At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (ERR_)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     85:             err(arg0, z999, __LINE__, 0, 0, arg0, 12)
+Remark   2182 -                                        At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (Z999)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     88:             err(arg0, z999, __LINE__, 0, 0, arg0, 13)
+Remark   2182 -                             At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (ERR_)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     88:             err(arg0, z999, __LINE__, 0, 0, arg0, 13)
+Remark   2182 -                                        At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (Z999)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     94:         m000(14,15,16,17,18)
+Remark   2182 -                          At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (M000)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     99:         err(arg0, z999, __LINE__, 0, 0, arg0, 1)
+Remark   2182 -                         At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (ERR_)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     99:         err(arg0, z999, __LINE__, 0, 0, arg0, 1)
+Remark   2182 -                                    At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (Z999)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl    102:         err(arg0, z999, __LINE__, 0, 0, arg0, 2)
+Remark   2182 -                         At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (ERR_)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl    102:         err(arg0, z999, __LINE__, 0, 0, arg0, 2)
+Remark   2182 -                                    At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (Z999)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl    105:         err(arg0, z999, __LINE__, 0, 0, arg0, 3)
+Remark   2182 -                         At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (ERR_)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl    105:         err(arg0, z999, __LINE__, 0, 0, arg0, 3)
+Remark   2182 -                                    At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (Z999)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl    108:         err(arg0, z999, __LINE__, 0, 0, arg0, 4)
+Remark   2182 -                         At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (ERR_)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl    108:         err(arg0, z999, __LINE__, 0, 0, arg0, 4)
+Remark   2182 -                                    At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (Z999)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl    111:         err(arg0, z999, __LINE__, 0, 0, arg0, 5)
+Remark   2182 -                         At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (ERR_)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl    111:         err(arg0, z999, __LINE__, 0, 0, arg0, 5)
+Remark   2182 -                                    At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (Z999)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl    114:         err(arg0, z999, __LINE__, 0, 0, arg0, 6)
+Remark   2182 -                         At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (ERR_)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl    114:         err(arg0, z999, __LINE__, 0, 0, arg0, 6)
+Remark   2182 -                                    At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (Z999)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl    117:         err(arg0, z999, __LINE__, 0, 0, arg0, 7)
+Remark   2182 -                         At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (ERR_)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl    117:         err(arg0, z999, __LINE__, 0, 0, arg0, 7)
+Remark   2182 -                                    At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (Z999)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl    120:     m000(8,9,10,11,12,13)
+Remark   2182 -                      At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (M000)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl    123:         err(arg0, z999, __LINE__, 0, 0, arg0, 1)
+Remark   2182 -                         At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (ERR_)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl    123:         err(arg0, z999, __LINE__, 0, 0, arg0, 1)
+Remark   2182 -                                    At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (Z999)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl    126:         err(arg0, z999, __LINE__, 0, 0, arg0, 2)
+Remark   2182 -                         At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (ERR_)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl    126:         err(arg0, z999, __LINE__, 0, 0, arg0, 2)
+Remark   2182 -                                    At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (Z999)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl    129:         err(arg0, z999, __LINE__, 0, 0, arg0, 3)
+Remark   2182 -                         At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (ERR_)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl    129:         err(arg0, z999, __LINE__, 0, 0, arg0, 3)
+Remark   2182 -                                    At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (Z999)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl    132:         err(arg0, z999, __LINE__, 0, 0, arg0, 4)
+Remark   2182 -                         At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (ERR_)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl    132:         err(arg0, z999, __LINE__, 0, 0, arg0, 4)
+Remark   2182 -                                    At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (Z999)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl    135:         err(arg0, z999, __LINE__, 0, 0, arg0, 5)
+Remark   2182 -                         At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (ERR_)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl    135:         err(arg0, z999, __LINE__, 0, 0, arg0, 5)
+Remark   2182 -                                    At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (Z999)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl    138:         err(arg0, z999, __LINE__, 0, 0, arg0, 6)
+Remark   2182 -                         At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (ERR_)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl    138:         err(arg0, z999, __LINE__, 0, 0, arg0, 6)
+Remark   2182 -                                    At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (Z999)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl    141:         err(arg0, z999, __LINE__, 0, 0, arg0, 7)
+Remark   2182 -                         At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (ERR_)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl    141:         err(arg0, z999, __LINE__, 0, 0, arg0, 7)
+Remark   2182 -                                    At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (Z999)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl    148:     ma00(1,2,3,4,5,6,7)
+Remark   2182 -                      At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (MA00)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/cntl/common.asl    390:     Method (RPT0, 0, NotSerialized)
+Remark   2120 -                          Control Method should be made Serialized due to creation of named objects within ^  (\RPT0)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/cntl/common.asl    394:         Name (B000, Buffer (0x04){})
+Remark   2173 -                                                                                                             ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\RPT0)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/cntl/common.asl    917:         Name (LPN0, 0x00)
+Remark   2173 -                                                                                                             ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\PRN0)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/cntl/common.asl    918:         Name (LPC0, 0x00)
+Remark   2173 -                                                                                                             ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\PRN0)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/cntl/common.asl   1137:         Name (N000, 0x00)
+Remark   2173 -                                                                                                             ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\SFT0)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/cntl/common.asl   1138:         Name (NCUR, 0x00)
+Remark   2173 -                                                                                                             ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\SFT0)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/cntl/common.asl   1155:         Name (B000, Buffer (Local0){})
+Remark   2173 -                                                                                                             ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\SFT0)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/cntl/common.asl   1186:         Divide (Local1, 0x08, Local2, Local0)
+Warning  3144 -                                                                                            Method Local is set but never used ^  (Local2)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/cntl/common.asl   1201:         Name (PREV, 0x00)
+Remark   2173 -                                                                                                             ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/cntl/common.asl   1202:         Name (MS00, 0x00)
+Remark   2173 -                                                                                                             ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/cntl/common.asl   1203:         Name (MS01, 0x00)
+Remark   2173 -                                                                                                             ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/cntl/common.asl   1204:         Name (MS02, 0x00)
+Remark   2173 -                                                                                                             ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/cntl/common.asl   1205:         Name (MS03, 0x00)
+Remark   2173 -                                                                                                             ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/cntl/common.asl   1206:         Name (TAIL, 0x00)
+Remark   2173 -                                                                                                             ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/cntl/common.asl   1207:         Name (LBT0, 0x00)
+Remark   2173 -                                                                                                             ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/cntl/common.asl   1210:         Name (LPN0, 0x00)
+Remark   2173 -                                                                                                             ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/cntl/common.asl   1211:         Name (LPC0, 0x00)
+Remark   2173 -                                                                                                             ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/cntl/common.asl   1214:         Name (NB01, 0x00)
+Remark   2173 -                                                                                                             ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/cntl/common.asl   1217:         Name (NREG, 0x00)
+Remark   2173 -                                                                                                             ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/cntl/common.asl   1220:         Name (NB08, 0x00)
+Remark   2173 -                                                                                                             ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/cntl/common.asl   1223:         Name (NB09, 0x00)
+Remark   2173 -                                                                                                             ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/cntl/common.asl   1226:         Name (REST, 0x00)
+Remark   2173 -                                                                                                             ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/cntl/common.asl   1240:         Name (B000, Buffer (NB01){})
+Remark   2173 -                                                                                                             ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/cntl/common.asl   1362:         Name (TMP0, 0x00)
+Remark   2173 -                                                                                                             ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\M4C0)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/cntl/common.asl   1363:         Name (TMP1, 0x00)
+Remark   2173 -                                                                                                             ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\M4C0)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/cntl/common.asl   1406:         Name (S000, " ")
+Remark   2173 -                                                                                                             ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\M4A1)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/cntl/common.asl   1422:         DataTableRegion (HDR, "DSDT", "", "")
+Remark   2173 -        Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\STRT)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/cntl/common.asl   2021:         Name (LPN0, 0x00)
+Remark   2173 -                                                                                                             ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\RERR)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/cntl/common.asl   2022:         Name (LPC0, 0x00)
+Remark   2173 -                                                                                                             ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\RERR)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/cntl/common.asl   2069:         Name (LPN0, 0x00)
+Remark   2173 -                                                                                                             ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\RRM0)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/cntl/common.asl   2070:         Name (LPC0, 0x00)
+Remark   2173 -                                                                                                             ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\RRM0)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/cntl/common.asl   2159:     Method (TRC0, 3, NotSerialized)
+Remark   2146 -                                                                             Method Argument is never used ^  (Arg0)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/cntl/common.asl   2177:     Method (TRC1, 3, NotSerialized)
+Remark   2146 -                                                                             Method Argument is never used ^  (Arg0)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/cntl/common.asl   2240:         Divide (Local1, 0x000F4240, Local0, Local2)
+Warning  3144 -                                                                                                  Method Local is set but never used ^  (Local0)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/cntl/ehandle.asl    793:         Name (EBUF, Buffer (ISZC){})
+Remark   2173 -                                                                                                              ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\ST16)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/cntl/ehandle.asl    796:         Name (RBUF, Buffer (0x04){})
+Remark   2173 -                                                                                                              ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\ST16)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/cntl/ehandle.asl    917:     Method (CH06, 3, NotSerialized)
+Remark   2146 -                                                                              Method Argument is never used ^  (Arg1)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/cntl/ehandle.asl    934:     Method (CH07, 7, NotSerialized)
+Remark   2146 -                                                                              Method Argument is never used ^  (Arg4)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/cntl/ehandle.asl   1038:             Local7 = 0x01
+Warning  3144 -                                                                           Method Local is set but never used ^  (Local7)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     38: Name(z999, 1)
+Remark   2182 -                       At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (Z999)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     40: Method(ma00, 7)
+Remark   2182 -                         At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (MA00)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     42:     Method(m000, 6)
+Remark   2182 -                             At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (M000)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     44:         Method(m000, 5)
+Remark   2182 -                                 At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (M000)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     44:         Method(m000, 5)
+Remark   2146 -                                                                                                       Method Argument is never used ^  (Arg0)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     44:         Method(m000, 5)
+Remark   2146 -                                                                                                       Method Argument is never used ^  (Arg1)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     44:         Method(m000, 5)
+Remark   2146 -                                                                                                       Method Argument is never used ^  (Arg2)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     44:         Method(m000, 5)
+Remark   2146 -                                                                                                       Method Argument is never used ^  (Arg3)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     44:         Method(m000, 5)
+Remark   2146 -                                                                                                       Method Argument is never used ^  (Arg4)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     46:             Method(m000, 4)
+Remark   2182 -                                     At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (M000)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     46:             Method(m000, 4)
+Remark   2146 -                                                                                                           Method Argument is never used ^  (Arg0)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     46:             Method(m000, 4)
+Remark   2146 -                                                                                                           Method Argument is never used ^  (Arg1)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     46:             Method(m000, 4)
+Remark   2146 -                                                                                                           Method Argument is never used ^  (Arg2)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     46:             Method(m000, 4)
+Remark   2146 -                                                                                                           Method Argument is never used ^  (Arg3)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     48:                 Method(m000, 3)
+Remark   2182 -                                         At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (M000)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     48:                 Method(m000, 3)
+Remark   2146 -                                                                                                               Method Argument is never used ^  (Arg0)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     48:                 Method(m000, 3)
+Remark   2146 -                                                                                                               Method Argument is never used ^  (Arg1)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     48:                 Method(m000, 3)
+Remark   2146 -                                                                                                               Method Argument is never used ^  (Arg2)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     50:                     Method(m000, 2)
+Remark   2182 -                                             At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (M000)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     50:                     Method(m000, 2)
+Remark   2146 -                                                                                                                   Method Argument is never used ^  (Arg0)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     50:                     Method(m000, 2)
+Remark   2146 -                                                                                                                   Method Argument is never used ^  (Arg1)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     52:                         Method(m000, 1)
+Remark   2182 -                                                 At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (M000)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     52:                         Method(m000, 1)
+Remark   2146 -                                                                                                                       Method Argument is never used ^  (Arg0)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     54:                             Method(m000, 0)
+Remark   2182 -                                                     At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (M000)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     56:                                 Method(m000)
+Remark   2182 -                                                         At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (M000)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     59:                                 m000()
+Remark   2182 -                                                  At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (M000)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     61:                             m000()
+Remark   2182 -                                              At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (M000)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     63:                         m000(28)
+Remark   2182 -                                          At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (M000)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     65:                     m000(26,27)
+Remark   2182 -                                      At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (M000)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     67:                 m000(23,24,25)
+Remark   2182 -                                  At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (M000)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     69:             m000(19,20,21,22)
+Remark   2182 -                              At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (M000)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     73:             err(arg0, z999, __LINE__, 0, 0, arg0, 8)
+Remark   2182 -                             At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (ERR_)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     73:             err(arg0, z999, __LINE__, 0, 0, arg0, 8)
+Remark   2182 -                                        At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (Z999)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     76:             err(arg0, z999, __LINE__, 0, 0, arg0, 9)
+Remark   2182 -                             At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (ERR_)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     76:             err(arg0, z999, __LINE__, 0, 0, arg0, 9)
+Remark   2182 -                                        At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (Z999)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     79:             err(arg0, z999, __LINE__, 0, 0, arg0, 10)
+Remark   2182 -                             At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (ERR_)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     79:             err(arg0, z999, __LINE__, 0, 0, arg0, 10)
+Remark   2182 -                                        At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (Z999)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     82:             err(arg0, z999, __LINE__, 0, 0, arg0, 11)
+Remark   2182 -                             At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (ERR_)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     82:             err(arg0, z999, __LINE__, 0, 0, arg0, 11)
+Remark   2182 -                                        At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (Z999)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     85:             err(arg0, z999, __LINE__, 0, 0, arg0, 12)
+Remark   2182 -                             At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (ERR_)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     85:             err(arg0, z999, __LINE__, 0, 0, arg0, 12)
+Remark   2182 -                                        At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (Z999)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     88:             err(arg0, z999, __LINE__, 0, 0, arg0, 13)
+Remark   2182 -                             At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (ERR_)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     88:             err(arg0, z999, __LINE__, 0, 0, arg0, 13)
+Remark   2182 -                                        At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (Z999)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     94:         m000(14,15,16,17,18)
+Remark   2182 -                          At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (M000)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     99:         err(arg0, z999, __LINE__, 0, 0, arg0, 1)
+Remark   2182 -                         At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (ERR_)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl     99:         err(arg0, z999, __LINE__, 0, 0, arg0, 1)
+Remark   2182 -                                    At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (Z999)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl    102:         err(arg0, z999, __LINE__, 0, 0, arg0, 2)
+Remark   2182 -                         At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (ERR_)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl    102:         err(arg0, z999, __LINE__, 0, 0, arg0, 2)
+Remark   2182 -                                    At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (Z999)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl    105:         err(arg0, z999, __LINE__, 0, 0, arg0, 3)
+Remark   2182 -                         At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (ERR_)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl    105:         err(arg0, z999, __LINE__, 0, 0, arg0, 3)
+Remark   2182 -                                    At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (Z999)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl    108:         err(arg0, z999, __LINE__, 0, 0, arg0, 4)
+Remark   2182 -                         At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (ERR_)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl    108:         err(arg0, z999, __LINE__, 0, 0, arg0, 4)
+Remark   2182 -                                    At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (Z999)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl    111:         err(arg0, z999, __LINE__, 0, 0, arg0, 5)
+Remark   2182 -                         At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (ERR_)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl    111:         err(arg0, z999, __LINE__, 0, 0, arg0, 5)
+Remark   2182 -                                    At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (Z999)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl    114:         err(arg0, z999, __LINE__, 0, 0, arg0, 6)
+Remark   2182 -                         At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (ERR_)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl    114:         err(arg0, z999, __LINE__, 0, 0, arg0, 6)
+Remark   2182 -                                    At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (Z999)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl    117:         err(arg0, z999, __LINE__, 0, 0, arg0, 7)
+Remark   2182 -                         At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (ERR_)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl    117:         err(arg0, z999, __LINE__, 0, 0, arg0, 7)
+Remark   2182 -                                    At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (Z999)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl    120:     m000(8,9,10,11,12,13)
+Remark   2182 -                      At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (M000)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl    123:         err(arg0, z999, __LINE__, 0, 0, arg0, 1)
+Remark   2182 -                         At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (ERR_)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl    123:         err(arg0, z999, __LINE__, 0, 0, arg0, 1)
+Remark   2182 -                                    At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (Z999)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl    126:         err(arg0, z999, __LINE__, 0, 0, arg0, 2)
+Remark   2182 -                         At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (ERR_)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl    126:         err(arg0, z999, __LINE__, 0, 0, arg0, 2)
+Remark   2182 -                                    At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (Z999)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl    129:         err(arg0, z999, __LINE__, 0, 0, arg0, 3)
+Remark   2182 -                         At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (ERR_)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl    129:         err(arg0, z999, __LINE__, 0, 0, arg0, 3)
+Remark   2182 -                                    At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (Z999)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl    132:         err(arg0, z999, __LINE__, 0, 0, arg0, 4)
+Remark   2182 -                         At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (ERR_)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl    132:         err(arg0, z999, __LINE__, 0, 0, arg0, 4)
+Remark   2182 -                                    At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (Z999)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl    135:         err(arg0, z999, __LINE__, 0, 0, arg0, 5)
+Remark   2182 -                         At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (ERR_)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl    135:         err(arg0, z999, __LINE__, 0, 0, arg0, 5)
+Remark   2182 -                                    At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (Z999)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl    138:         err(arg0, z999, __LINE__, 0, 0, arg0, 6)
+Remark   2182 -                         At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (ERR_)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl    138:         err(arg0, z999, __LINE__, 0, 0, arg0, 6)
+Remark   2182 -                                    At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (Z999)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl    141:         err(arg0, z999, __LINE__, 0, 0, arg0, 7)
+Remark   2182 -                         At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (ERR_)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl    141:         err(arg0, z999, __LINE__, 0, 0, arg0, 7)
+Remark   2182 -                                    At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (Z999)
+
+/home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/local.asl    148:     ma00(1,2,3,4,5,6,7)
+Remark   2182 -                      At least one lower case letter found in NameSeg, ASL is case insensitive - converting to upper case ^  (MA00)
+
+ASL Input:     /home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/src/runtime/collections/functional/local/MAIN.asl -    2125 bytes   1571 keywords      0 source lines
+AML Output:    /home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/results/local-n64.aml -   18930 bytes   1143 opcodes     428 named objects
+Source Output: /home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/results/local-n64.src -  127008 bytes
+Preprocessor:  /home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/results/local-n64.i -    2125 bytes
+Listing File:  /home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/results/local-n64.lst -  530767 bytes
+Hex Dump:      /home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/results/local-n64.hex -  187416 bytes
+Namespace:     /home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/results/local-n64.nsp -  104297 bytes
+ASM Source:    /home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/results/local-n64.asm -  574219 bytes
+C Source:      /home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/results/local-n64.c -  651078 bytes
+C Include:     /home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/results/local-n64.h -   19206 bytes
+Offset Table:  /home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/results/local-n64.offset.h -   46793 bytes
+Device Map:    /home/doc/git/.acpi-proof-work/aslts-local-upstream-n64-source-p2o_i5b2/results/local-n64.map -     354 bytes
+
+Compilation successful. 0 Errors, 3 Warnings, 110 Remarks, 0 Optimizations

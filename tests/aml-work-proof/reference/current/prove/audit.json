@@ -1,0 +1,73 @@
+{
+  "phase": "prove",
+  "process_status": 0,
+  "shell_status": 0,
+  "accepted": true,
+  "inputs": {
+    "tests/aml-work-proof/README.md": "e052344c9dcc55fac696a7b054c577b0fd6c85947ef32fcc08b2e02f04865592",
+    "tests/aml-work-proof/proof-tools.json": "1caf9c23c3de89808024cf2351fdbcc6fe050a77f65e86390bc4c0fd913fe30d",
+    "tests/aml-work-proof/run.sh": "8749ffb2354171c02ab9c1be88d39d97a03d01ea2b55cf5808e100410a7b66b1",
+    "tests/aml-work-proof/work_proof.gpr": "94c95c8b8e4fef55d57dd0f29ba68df6258662e99acb663ea9ee772493367de9",
+    "userspace/lib/acpi/aml_execution_limits.ads": "0f39494ae4418a3c8c639e2875c41ed9bec40c28849eed3f147940757a150794"
+  },
+  "tools": {
+    "gnatprove": {
+      "path": "/nix/store/9xvbsfi448cx9fjk4ivla9fsq390a8gn-gnatprove-fsf-15_2025-06-10/bin/gnatprove",
+      "sha256": "ef4dd76057294453d4cc43781aa0f25fad9b351533e380cc9a60a9b86fa797ef"
+    },
+    "gprbuild": {
+      "path": "/nix/store/3xpy8h5k8fdlfi1v43iwfap0zv5n4bmp-gprbuild-25.0.0/bin/gprbuild",
+      "sha256": "98d565f501e7840286e90daeddf276ff4c0bdb16e09f94e6ad7835b8063d7ee2"
+    },
+    "gnatls": {
+      "path": "/nix/store/a6xads67a2s6pb2d297lr5fxjk2lhcpc-gnat-wrapper-15.3.0/bin/gnatls",
+      "sha256": "4e9ac2f8b9c8de37bd724dd191e5f6768952a4dd25bcefd8e60a84c8262cf361"
+    },
+    "gnatbind": {
+      "path": "/nix/store/a6xads67a2s6pb2d297lr5fxjk2lhcpc-gnat-wrapper-15.3.0/bin/gnatbind",
+      "sha256": "a6e0efb740f0d6bc7b96f4a6b1718a8684a5200bd53023baff8b169620368546"
+    },
+    "cvc5": {
+      "path": "/nix/store/kpamqxdkwynzxyzhqj4csy6h5qj0pz21-cvc5-1.3.4/bin/cvc5",
+      "sha256": "06fba7a8fe0e188ba77e049c4b08acf932f5280183830dfc5838f420678626d1"
+    },
+    "z3": {
+      "path": "/nix/store/c92vyfgscj1s8xnmgfiqvqk3ic35jcz1-z3-4.16.0/bin/z3",
+      "sha256": "796dbda9afa35f2369d00e90c329d31a7d49afac75a683ddd14647f2c77f607a"
+    },
+    "python": {
+      "path": "/nix/store/3n4qphl9s728sz8frmpqqrv9b1m87g68-python3-3.14.7/bin/python3.14",
+      "sha256": "ee3549b0a0c65576b13b32abd410551ec8af9b2307cd726c89295de24213192f"
+    },
+    "gcc": {
+      "path": "/nix/store/a6xads67a2s6pb2d297lr5fxjk2lhcpc-gnat-wrapper-15.3.0/bin/gcc",
+      "sha256": "216c8e207c60cee4b90866c28a4a89d424e37fecc03526d2ba825a2d2d58a1ef"
+    }
+  },
+  "artifacts": {
+    "command.json": "b958c0143d6ac6603666e4a2677cbfa7b3496215e07aef50dc44b35106e70793",
+    "obj/gnatprove/aml_execution_limits.ads.stderr": "8f559a04dc65959bedca4d408e51fc6ee990114207ae493256e4e4c4f2fe26c3",
+    "obj/gnatprove/aml_execution_limits.ads.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "obj/gnatprove/aml_execution_limits.ali": "079b9207b715537d80f1ef9584870d847a489c2882de6c0b37cd3b84952f3583",
+    "obj/gnatprove/aml_execution_limits.cswi": "177d8eb1d05f186a35baddbb9b0e5aec1d3b82a24ddf53b3da0aec14dcd83148",
+    "obj/gnatprove/aml_execution_limits.spark": "3a2f84b71a180d37b48f0abed7c6c7ad350cfaf06708dd8ac0d347548541bd1b",
+    "obj/gnatprove/aml_execution_limits__charged_field_work.gnat-json": "f46735aa9cebaa9b61e389130f562a67094f8ce76fa6310010ed15d060034f11",
+    "obj/gnatprove/aml_execution_limits__charged_field_work/why3session.xml": "2fe8e91e38126f5ea901130b5b7d40da46eb5987cd8c231615691cb9bd47a47e",
+    "obj/gnatprove/aml_execution_limits__charged_field_work/why3shapes.gz": "6bcb2b1e93eef8697bcb6f545161113def5b2d42b01e62757c6fae82611514a8",
+    "obj/gnatprove/data_representation/aml_execution_limits.ads.json": "ba6c68f6b7a4ae5c23b013345fb82f8686e6f0b4e5681dd5fa7af53852673f3f",
+    "obj/gnatprove/data_representation/aml_execution_limits.ads.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "obj/gnatprove/data_representation/aml_execution_limits.ads.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "obj/gnatprove/data_representation/aml_execution_limits.ali": "df947da9cbdfbc61dda8ce063dafd3f6568eeb2e554c0c8602c587d69dd1e509",
+    "obj/gnatprove/data_representation/aml_execution_limits.cswi": "5cf971da42275cd7d996e991b2d4b8f95879f25f17d72c2c9383cad8f1c24769",
+    "obj/gnatprove/data_representation/aml_execution_limits.s": "189266f747f825ef4a00242a460a52b153e96343c5ea1ab7660c3f78410a72d9",
+    "obj/gnatprove/data_representation_generation.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "obj/gnatprove/gnatprove.out": "17c04f834054867e73c890ab2e951cfb69cb3336a5a841f46e5b28deb3c36db8",
+    "obj/gnatprove/phase1/aml_execution_limits.ads.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "obj/gnatprove/phase1/aml_execution_limits.ads.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "obj/gnatprove/phase1/aml_execution_limits.ali": "079b9207b715537d80f1ef9584870d847a489c2882de6c0b37cd3b84952f3583",
+    "obj/gnatprove/phase1/aml_execution_limits.cswi": "7561f76cee8ba120906b2f89b2c6ada31df9abcd84fdaac20d5d15a5bc49828b",
+    "obj/gnatprove/why3.conf": "f83746bab113aeaa0d1b3ccfd13a2ce0cd965f2673ac89b84973fd4b121dd1fb",
+    "prove.log": "31c90155d706d457e5d5124cd24bb772dead6575cba531f7eced50a374f6a444"
+  },
+  "scope": "Pure Charged_Field_Work function and its local contracts/range only; not router, namespace, interpreter or native correctness."
+}

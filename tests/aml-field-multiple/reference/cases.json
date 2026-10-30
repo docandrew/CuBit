@@ -1,0 +1,44 @@
+[
+  {
+    "label": "multi8-r1",
+    "source": "multi8-r1.asl",
+    "revision": 1,
+    "batch": "execute TEST; execute OBS0; execute PR01; execute PR02; execute PR03; execute FAIL; execute OBS0; execute PR01; execute PR02; execute PR03; execute TEST; execute OBS0; execute PR01; execute PR02; execute PR03; execute FAIL; execute OBS0; execute PR01; execute PR02; execute PR03",
+    "classification": "unobserved normal multi-Field reference; predictions are not goldens"
+  },
+  {
+    "label": "multi8-r2",
+    "source": "multi8-r2.asl",
+    "revision": 2,
+    "batch": "execute TEST; execute OBS0; execute PR01; execute PR02; execute PR03; execute FAIL; execute OBS0; execute PR01; execute PR02; execute PR03; execute TEST; execute OBS0; execute PR01; execute PR02; execute PR03; execute FAIL; execute OBS0; execute PR01; execute PR02; execute PR03",
+    "classification": "unobserved normal multi-Field reference; predictions are not goldens"
+  },
+  {
+    "label": "multi16-r1",
+    "source": "multi16-r1.asl",
+    "revision": 1,
+    "batch": "execute TEST; execute OBS0; execute PR01; execute PR02; execute PR03; execute FAIL; execute OBS0; execute PR01; execute PR02; execute PR03; execute TEST; execute OBS0; execute PR01; execute PR02; execute PR03; execute FAIL; execute OBS0; execute PR01; execute PR02; execute PR03",
+    "classification": "unobserved normal multi-Field reference; predictions are not goldens"
+  },
+  {
+    "label": "multi16-r2",
+    "source": "multi16-r2.asl",
+    "revision": 2,
+    "batch": "execute TEST; execute OBS0; execute PR01; execute PR02; execute PR03; execute FAIL; execute OBS0; execute PR01; execute PR02; execute PR03; execute TEST; execute OBS0; execute PR01; execute PR02; execute PR03; execute FAIL; execute OBS0; execute PR01; execute PR02; execute PR03",
+    "classification": "unobserved normal multi-Field reference; predictions are not goldens"
+  },
+  {
+    "label": "multi32-r1",
+    "source": "multi32-r1.asl",
+    "revision": 1,
+    "batch": "execute TEST; execute OBS0; execute PR01; execute PR02; execute PR03; execute FAIL; execute OBS0; execute PR01; execute PR02; execute PR03; execute TEST; execute OBS0; execute PR01; execute PR02; execute PR03; execute FAIL; execute OBS0; execute PR01; execute PR02; execute PR03",
+    "classification": "unobserved normal multi-Field reference; predictions are not goldens"
+  },
+  {
+    "label": "multi32-r2",
+    "source": "multi32-r2.asl",
+    "revision": 2,
+    "batch": "execute TEST; execute OBS0; execute PR01; execute PR02; execute PR03; execute FAIL; execute OBS0; execute PR01; execute PR02; execute PR03; execute TEST; execute OBS0; execute PR01; execute PR02; execute PR03; execute FAIL; execute OBS0; execute PR01; execute PR02; execute PR03",
+    "classification": "unobserved normal multi-Field reference; predictions are not goldens"
+  }
+]

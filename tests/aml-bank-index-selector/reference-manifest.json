@@ -1,0 +1,10 @@
+{
+  "tests/aml-bank-index-selector/reference/status.tsv": "d2d70804ecd697d5a9c3ede742b29e5e7f86572fff79369985db325a6aba3d3a",
+  "tests/aml-bank-index-selector/reference/bank.aml": "77ed086dfe05046c0d59448f520a39fb918dbee3b7d9dbe085c43c537b8f8b4b",
+  "tests/aml-bank-index-selector/reference/bank.asl": "4aa48df06fa8e12e0f2d137b255b616c43d0dc1e2c7516716d1642bc4ecb2d89",
+  "tests/aml-bank-index-selector/reference/expected.tsv": "e7638f16e6a7c39ec18ac9d02f5ee35f967519e4d4eaecae36fda481d693d4c6",
+  "tests/aml-bank-index-selector/reference/reference.log": "8febd2e86d28e6d46fef8e89b0bd2a580407c4ad171a93016966159dee33a70d",
+  "tests/aml-bank-index-selector/reference/inputs.sha256": "a8f921d8088220054e5f40f1f1efedd0a4a442442dfd18cb3febc71612b67827",
+  "tests/aml-bank-index-selector/reference/compile.log": "b6be26ab3f0bd13933b4065d795b9c388e4300a4343ccd3ee30f6e60369993a8",
+  "tests/aml-bank-index-selector/reference/evidence.sha256": "46a571099c49906b5a1af7f3ad56bcd93fd2e61112e880b15d5b88588a893a94"
+}

@@ -1,0 +1,12 @@
+{
+  "shared/firmware/firmware_tables.adb": "120555c25910e45212c229526c232c0b1afae7f63effd04fdd54a5f567690cfa",
+  "shared/firmware/firmware_tables.ads": "cdd038a8b009c7009c8f6286b34b6ab7d3c0bf7be8410ca782b0831780ae1ef4",
+  "tests/acpi-field-remote/hosted_capture.py": "bb667e639c2ba2c9c11aa0fb09e30f0bd768b8728290657fcff4ef090da231db",
+  "tests/acpi-resource-proof/README.md": "003aca61ae14cd4fe934faa4dc4be05eb829b1c13d1d44f50154cd44ac611a3f",
+  "tests/acpi-resource-proof/capture_phase.py": "6a305152749fb706f0366659a0bd40705e4c92e0dca21acb49f8111c6d168880",
+  "tests/acpi-resource-proof/check-result.sh": "8fb1b18e74ef16555cbc8ec2d90d48716d6935008f0000800a45457b94166ee7",
+  "tests/acpi-resource-proof/resource_proof.gpr": "50d8ba7c94c509b8875aeef85b5ec03f5aa516b54437d6a55a35f16e6b824926",
+  "tests/acpi-resource-proof/run.sh": "25d1e65bf79dbbc0c7ecee3e07303d7a01b3e99e2fdb674659b7f94410ad6cac",
+  "userspace/services/acpi/resource-data/acpi_resource_data.adb": "8ecf9d25b2f2984eea61216cdb290b4420ef1ce2d8c844ebccc9128c97263512",
+  "userspace/services/acpi/resource-data/acpi_resource_data.ads": "704a461f20c90cbde9e15c34fc457373b2fed6d3e948d4706daa2ffe55ee8532"
+}

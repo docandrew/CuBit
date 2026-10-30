@@ -1,0 +1,13 @@
+{
+  "tests/aml-index-widths/reference/compile.log": "9aa93b977e64bf561dd2bf4bd2c7f1283e7d273a6a82e025d8eb3970cae8c6d7",
+  "tests/aml-index-widths/reference/evidence.sha256": "147df761b4d9b402b1c7745a6d6e30812919321930ab1d1a5c41fd866ea1af7e",
+  "tests/aml-index-widths/reference/hosted/checked-reviewed.json": "66407af4a15003647ac9cdaf48ce1bc266abe0c104cea376b91f53d7526000f2",
+  "tests/aml-index-widths/reference/hosted/release-reviewed.json": "885b5935588aa0253a8cf26e6e1c07ac68a5a418455b3fd5da8b0883c21496a3",
+  "tests/aml-index-widths/reference/inputs.sha256": "7cfdd6e420ef8ac0873bc760148d5e92340393f9a5116edad20aecf856f37487",
+  "tests/aml-index-widths/reference/status.tsv": "557666928fd1380ca8401272eebc86fff04bd8faf0f6d09fdab9e353f1aab4de",
+  "tests/aml-index-widths/reference/widths.aml": "f5714c11a7ef4b1aa4d5fe9c7d56b9e3d16156e19a8cc6d757c433f18d4d1032",
+  "tests/aml-index-widths/reference/widths.asl": "92cc40e5e1220e70e7c88f03a95339853963019f32fa7e02bfbada9567c58f9d",
+  "tests/aml-index-widths/reference/widths.log": "d9952162b6e87f4affb6a7fd3201c5258258e63841e709830a50177645f5e327",
+  "tests/aml-index-widths/reference/widths32.aml": "07184f57967e09c19c30ced3f8f00a37404d84289fc3bba7526c2e2475279284",
+  "tests/aml-index-widths/reference/widths32.log": "a59fed00cb8db87ec2833d66208db7124328f2bcf487786e6be5267021a89713"
+}

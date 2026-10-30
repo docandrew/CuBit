@@ -1,0 +1,69 @@
+{
+  "assumptions": [
+  ],
+  "entities": {
+    " 1": {
+      "name": "AML_Execution_Limits.Charged_Field_Work",
+      "sloc": [
+        {
+          "file": "aml_execution_limits.ads",
+          "line": 20
+        }
+      ]
+    },
+    " 2": {
+      "name": "AML_Execution_Limits",
+      "sloc": [
+        {
+          "file": "aml_execution_limits.ads",
+          "line": 1
+        }
+      ]
+    }
+  },
+  "flow": [
+    {
+      "check_tree": {
+      },
+      "col": 13,
+      "entity": 1,
+      "file": "aml_execution_limits.ads",
+      "how_proved": "flow",
+      "line": 20,
+      "msg_id": 0,
+      "rule": "SUBPROGRAM_TERMINATION",
+      "severity": "info"
+    },
+    {
+      "check_tree": {
+      },
+      "col": 11,
+      "entity": 1,
+      "file": "aml_execution_limits.ads",
+      "how_proved": "flow",
+      "line": 22,
+      "msg_id": 1,
+      "rule": "GLOBAL_WRONG",
+      "severity": "info"
+    }
+  ],
+  "progress": "PROGRESS_FLOW",
+  "skip_flow_proof": [
+  ],
+  "skip_proof": [
+  ],
+  "spark": {
+    " 1": "all",
+    " 2": "all"
+  },
+  "stop_reason": "STOP_REASON_FLOW_MODE",
+  "timings": {
+    "global": {
+      "flow analysis": 3.45800002105534E-03,
+      "globals (advanced)": 2.96000012895092E-04,
+      "globals (basic)": 3.17499996162951E-03,
+      "marking": 1.03699997998774E-03,
+      "properties (advanced)": 7.20000025467016E-05
+    }
+  }
+}

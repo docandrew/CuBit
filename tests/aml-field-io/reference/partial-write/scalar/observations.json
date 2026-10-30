@@ -1,0 +1,4985 @@
+[
+  {
+    "label": "byte-three-preserve-r1",
+    "aml_sha256": "385cbf7656b4770855e7e25453a57db3870b94e93546f0775be13f6b5beaafc1",
+    "raw_log_sha256": "567455c9c87ad5eb1bd172185bd0d6c23ab922461b7855edbd4e87b300bf8b3c",
+    "observations": [
+      {
+        "path": "\\TZE0",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 37
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 56
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 195
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 150
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 105
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 240
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      },
+      {
+        "path": "\\TON1",
+        "kind": "integer",
+        "value": 4095
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 165
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 63
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 195
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 150
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 105
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 240
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      },
+      {
+        "path": "\\PATT",
+        "kind": "integer",
+        "value": 1223
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 165
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 99
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 58
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 195
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 150
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 105
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 240
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      }
+    ]
+  },
+  {
+    "label": "byte-three-preserve-r2",
+    "aml_sha256": "0b2be30954878104b2b675dda05541d77a76d5eb393b7172925e856a3ce2d17d",
+    "raw_log_sha256": "65a3c2d54ae9c236196e05ab561f73d15aa6d272e866b889158bfd83d4099b94",
+    "observations": [
+      {
+        "path": "\\TZE0",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 37
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 56
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 195
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 150
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 105
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 240
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      },
+      {
+        "path": "\\TON1",
+        "kind": "integer",
+        "value": 4095
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 165
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 63
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 195
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 150
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 105
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 240
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      },
+      {
+        "path": "\\PATT",
+        "kind": "integer",
+        "value": 1223
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 165
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 99
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 58
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 195
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 150
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 105
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 240
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      }
+    ]
+  },
+  {
+    "label": "byte-three-writeasones-r1",
+    "aml_sha256": "1c69d34b1d40865ed9a54ffcab27d6a5ecb028dec581c5d85f34209f20ca8b53",
+    "raw_log_sha256": "959eab32600e59fdab2466d508d8326f67e8eb95464e3eff2f133834142008c2",
+    "observations": [
+      {
+        "path": "\\TZE0",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 127
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 248
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 195
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 150
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 105
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 240
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      },
+      {
+        "path": "\\TON1",
+        "kind": "integer",
+        "value": 4095
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 195
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 150
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 105
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 240
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      },
+      {
+        "path": "\\PATT",
+        "kind": "integer",
+        "value": 1223
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 99
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 250
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 195
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 150
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 105
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 240
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      }
+    ]
+  },
+  {
+    "label": "byte-three-writeasones-r2",
+    "aml_sha256": "762f7d723170d3ea1de97100eaee9270c5bb34e196067305bafaae97a825254e",
+    "raw_log_sha256": "5f48412047e6c7b590476bd8979c94ac79905bbbe99a93d1cd2f1398409fe2a4",
+    "observations": [
+      {
+        "path": "\\TZE0",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 127
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 248
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 195
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 150
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 105
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 240
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      },
+      {
+        "path": "\\TON1",
+        "kind": "integer",
+        "value": 4095
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 195
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 150
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 105
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 240
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      },
+      {
+        "path": "\\PATT",
+        "kind": "integer",
+        "value": 1223
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 99
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 250
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 195
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 150
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 105
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 240
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      }
+    ]
+  },
+  {
+    "label": "byte-three-writeaszeros-r1",
+    "aml_sha256": "66ee0810134d6ac59a2d24c0d66f3d1d4e73e214f9686a08e212397d6181b387",
+    "raw_log_sha256": "491e1dca47899f68c0024034762dcbabd7d4eee5d313f75228ffc8562a8dae9a",
+    "observations": [
+      {
+        "path": "\\TZE0",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 195
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 150
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 105
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 240
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      },
+      {
+        "path": "\\TON1",
+        "kind": "integer",
+        "value": 4095
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 128
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 7
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 195
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 150
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 105
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 240
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      },
+      {
+        "path": "\\PATT",
+        "kind": "integer",
+        "value": 1223
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 128
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 99
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 2
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 195
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 150
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 105
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 240
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      }
+    ]
+  },
+  {
+    "label": "byte-three-writeaszeros-r2",
+    "aml_sha256": "7dd1b08c52da90e3c7b3950cf05b4ab3ff57b02e431a8f58c4e24428c7168f2f",
+    "raw_log_sha256": "e70a1dcbaf37666ba4b2cf81d11b250152dc4f78b86203b292ab74d398f4e06f",
+    "observations": [
+      {
+        "path": "\\TZE0",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 195
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 150
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 105
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 240
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      },
+      {
+        "path": "\\TON1",
+        "kind": "integer",
+        "value": 4095
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 128
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 7
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 195
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 150
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 105
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 240
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      },
+      {
+        "path": "\\PATT",
+        "kind": "integer",
+        "value": 1223
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 128
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 99
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 2
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 195
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 150
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 105
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 240
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      }
+    ]
+  },
+  {
+    "label": "word-three-preserve-r1",
+    "aml_sha256": "13ea2bd2515a01c339ed487ed5945d846192cbcc5b29344634be3ea077aea91e",
+    "raw_log_sha256": "ab1ad3f7c64108d1f1b35eaa32ca18d99eb115d7871e2905b53ce701561c5380",
+    "observations": [
+      {
+        "path": "\\TZE0",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 165
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 2
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 148
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 105
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 240
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      },
+      {
+        "path": "\\TON1",
+        "kind": "integer",
+        "value": 8388607
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 165
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 250
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 151
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 105
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 240
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      },
+      {
+        "path": "\\PATT",
+        "kind": "integer",
+        "value": 1193159
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 165
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 58
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 166
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 145
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 148
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 105
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 240
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      }
+    ]
+  },
+  {
+    "label": "word-three-preserve-r2",
+    "aml_sha256": "bd3c681a83c706a478737f9ebc2e82321115fb5ccd28c6ae2d7a6094ec715b9a",
+    "raw_log_sha256": "1fc68a33e53b1b402f431d381f7960f78505b0c61803c285f43b1ebdce60d954",
+    "observations": [
+      {
+        "path": "\\TZE0",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 165
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 2
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 148
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 105
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 240
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      },
+      {
+        "path": "\\TON1",
+        "kind": "integer",
+        "value": 8388607
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 165
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 250
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 151
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 105
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 240
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      },
+      {
+        "path": "\\PATT",
+        "kind": "integer",
+        "value": 1193159
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 165
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 58
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 166
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 145
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 148
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 105
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 240
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      }
+    ]
+  },
+  {
+    "label": "word-three-writeasones-r1",
+    "aml_sha256": "75d6368433652647b401c39357da09851c890392ec7cd338e29627868f7658e3",
+    "raw_log_sha256": "2fe615085dfdafe00d69a1fbc42c1584cd219d904db38c054cd61ee87fbdeda2",
+    "observations": [
+      {
+        "path": "\\TZE0",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 7
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 252
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 240
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      },
+      {
+        "path": "\\TON1",
+        "kind": "integer",
+        "value": 8388607
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 240
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      },
+      {
+        "path": "\\PATT",
+        "kind": "integer",
+        "value": 1193159
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 63
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 166
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 145
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 252
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 240
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      }
+    ]
+  },
+  {
+    "label": "word-three-writeasones-r2",
+    "aml_sha256": "de6d78e3804aac539653229a32c0c5435a17cf9a14b0d4a56282b903c9cb7d71",
+    "raw_log_sha256": "d8cf9ba7aeebd3aa1e3edb7db4b1561b895d3bbc0359c32101190ade84f03e45",
+    "observations": [
+      {
+        "path": "\\TZE0",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 7
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 252
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 240
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      },
+      {
+        "path": "\\TON1",
+        "kind": "integer",
+        "value": 8388607
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 240
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      },
+      {
+        "path": "\\PATT",
+        "kind": "integer",
+        "value": 1193159
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 63
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 166
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 145
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 252
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 240
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      }
+    ]
+  },
+  {
+    "label": "word-three-writeaszeros-r1",
+    "aml_sha256": "0a227b99730605851f459fbcb32008fae2ec73561a4de23bad60b6891bc27e70",
+    "raw_log_sha256": "581bd8e0acab94a60f31e5995302c0b851425c17df33103a4188cbcf1a4292de",
+    "observations": [
+      {
+        "path": "\\TZE0",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 240
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      },
+      {
+        "path": "\\TON1",
+        "kind": "integer",
+        "value": 8388607
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 248
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 3
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 240
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      },
+      {
+        "path": "\\PATT",
+        "kind": "integer",
+        "value": 1193159
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 56
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 166
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 145
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 240
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      }
+    ]
+  },
+  {
+    "label": "word-three-writeaszeros-r2",
+    "aml_sha256": "23760607fa8bf8788dd6a0662328956c0e35f35b1af73bf74e066ce0b6b49aea",
+    "raw_log_sha256": "fe6eaa80c3c9ff85fa4582656c5df0e8e08e088011b78b0d8366918c6ca5c26c",
+    "observations": [
+      {
+        "path": "\\TZE0",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 240
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      },
+      {
+        "path": "\\TON1",
+        "kind": "integer",
+        "value": 8388607
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 248
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 3
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 240
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      },
+      {
+        "path": "\\PATT",
+        "kind": "integer",
+        "value": 1193159
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 56
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 166
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 145
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 240
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      }
+    ]
+  },
+  {
+    "label": "dword-two-preserve-r1",
+    "aml_sha256": "940fd95b2ef0c0adcaf7302e4f1bdfa59dc91b935e259b69fb7d9aa1e7baf8b8",
+    "raw_log_sha256": "596850a3723b81b21b984ef5ffaf7d91631a9300fbe423742deae7d1d21e12c7",
+    "observations": [
+      {
+        "path": "\\TZE0",
+        "kind": "buffer",
+        "bytes": [
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 165
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 90
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 60
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 3
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      },
+      {
+        "path": "\\TON1",
+        "kind": "buffer",
+        "bytes": [
+          255,
+          255,
+          255,
+          255,
+          0
+        ]
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 165
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 90
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 60
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 251
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 7
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      },
+      {
+        "path": "\\PATT",
+        "kind": "buffer",
+        "bytes": [
+          199,
+          52,
+          18,
+          90,
+          0
+        ]
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 165
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 90
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 60
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 59
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 166
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 145
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 208
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 2
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      }
+    ]
+  },
+  {
+    "label": "dword-two-preserve-r2",
+    "aml_sha256": "cd83c7bd21dde91e448a6feea336391c361d2bfbec145b4db1d7b2bddaa95e83",
+    "raw_log_sha256": "bb3ab1e6cd89c3955bba11ed0e38ba8b4af4afa6c846a5fc3ef20d9707aea826",
+    "observations": [
+      {
+        "path": "\\TZE0",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 165
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 90
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 60
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 3
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      },
+      {
+        "path": "\\TON1",
+        "kind": "integer",
+        "value": 137438953471
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 165
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 90
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 60
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 251
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      },
+      {
+        "path": "\\PATT",
+        "kind": "integer",
+        "value": 1511142599
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 165
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 90
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 60
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 59
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 166
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 145
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 208
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 2
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      }
+    ]
+  },
+  {
+    "label": "dword-two-writeasones-r1",
+    "aml_sha256": "541d14eb0ef7c79dbc8a4922e2fb270df7987f7aa1bbf888b514b57053685803",
+    "raw_log_sha256": "a0a742cdb049c758bf037c8609167dff1be35da7e69099927be54d5134405c21",
+    "observations": [
+      {
+        "path": "\\TZE0",
+        "kind": "buffer",
+        "bytes": [
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 7
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      },
+      {
+        "path": "\\TON1",
+        "kind": "buffer",
+        "bytes": [
+          255,
+          255,
+          255,
+          255,
+          0
+        ]
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 7
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      },
+      {
+        "path": "\\PATT",
+        "kind": "buffer",
+        "bytes": [
+          199,
+          52,
+          18,
+          90,
+          0
+        ]
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 63
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 166
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 145
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 208
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 2
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      }
+    ]
+  },
+  {
+    "label": "dword-two-writeasones-r2",
+    "aml_sha256": "d44453008f32af261ca7b3f96226dce4983c033faa7432614753a2bb6348c6b8",
+    "raw_log_sha256": "ab9e73bcf21fcdbeb78a421790f15f3edb934d3ab13087e25522aa2336940445",
+    "observations": [
+      {
+        "path": "\\TZE0",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 7
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      },
+      {
+        "path": "\\TON1",
+        "kind": "integer",
+        "value": 137438953471
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      },
+      {
+        "path": "\\PATT",
+        "kind": "integer",
+        "value": 1511142599
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 63
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 166
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 145
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 208
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 2
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      }
+    ]
+  },
+  {
+    "label": "dword-two-writeaszeros-r1",
+    "aml_sha256": "3f16c73242cea23b7bbf2dfade78585422d7feff4b5f46e12e1dcb77b3e08bd1",
+    "raw_log_sha256": "42e6829b5fe9badb814a1ffa28ab0a4bf234c8b32044ccf3f7f0fe70b7796c73",
+    "observations": [
+      {
+        "path": "\\TZE0",
+        "kind": "buffer",
+        "bytes": [
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      },
+      {
+        "path": "\\TON1",
+        "kind": "buffer",
+        "bytes": [
+          255,
+          255,
+          255,
+          255,
+          0
+        ]
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 248
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 7
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      },
+      {
+        "path": "\\PATT",
+        "kind": "buffer",
+        "bytes": [
+          199,
+          52,
+          18,
+          90,
+          0
+        ]
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 56
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 166
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 145
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 208
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 2
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      }
+    ]
+  },
+  {
+    "label": "dword-two-writeaszeros-r2",
+    "aml_sha256": "fdd986bd5dde70b2e81f02e4c8a351977d9ce0aa9903c1129c7301110a950240",
+    "raw_log_sha256": "0532781f96e9c01158bca1d5a066278c13c7302cbb96e7840382d38482b3ed80",
+    "observations": [
+      {
+        "path": "\\TZE0",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      },
+      {
+        "path": "\\TON1",
+        "kind": "integer",
+        "value": 137438953471
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 248
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      },
+      {
+        "path": "\\PATT",
+        "kind": "integer",
+        "value": 1511142599
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 56
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 166
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 145
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 208
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 2
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      }
+    ]
+  },
+  {
+    "label": "any-nine-preserve-r1",
+    "aml_sha256": "f7b66a98b02ea78cf08e6eec858f25468e8552dcffafeda7c166c7993edd0aa5",
+    "raw_log_sha256": "540cd0f8d04345bcb39761232d4658994d19c7172a0d0dde951f7d12fbbe0c32",
+    "observations": [
+      {
+        "path": "\\TZE0",
+        "kind": "buffer",
+        "bytes": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 37
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      },
+      {
+        "path": "\\TON1",
+        "kind": "buffer",
+        "bytes": [
+          255,
+          255,
+          255,
+          255,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 165
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 127
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      },
+      {
+        "path": "\\PATT",
+        "kind": "buffer",
+        "bytes": [
+          199,
+          52,
+          18,
+          90,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 165
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 99
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 26
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 9
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 45
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      }
+    ]
+  },
+  {
+    "label": "any-nine-preserve-r2",
+    "aml_sha256": "fcb69640597018043d0eca12db0b9a5b0219042a06879bd5b831391e98040d7b",
+    "raw_log_sha256": "12d5ef3c5eb3ee4b44869a99c810776ed81350fcf7d24069b4f162b2cbc585c8",
+    "observations": [
+      {
+        "path": "\\TZE0",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 37
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      },
+      {
+        "path": "\\TON1",
+        "kind": "integer",
+        "value": 18446744073709551615
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 165
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 127
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      },
+      {
+        "path": "\\PATT",
+        "kind": "integer",
+        "value": 1511142599
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 165
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 99
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 26
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 9
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 45
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      }
+    ]
+  },
+  {
+    "label": "any-nine-writeasones-r1",
+    "aml_sha256": "2740354c07ba0e68eef5f09e9501b4344b0bd0c3edb6d8bf66db4a7a1a6d5aa9",
+    "raw_log_sha256": "8888a0087805c014755aad20610c10acf9600a1cca90809e31af7088e7f51ef1",
+    "observations": [
+      {
+        "path": "\\TZE0",
+        "kind": "buffer",
+        "bytes": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 127
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 128
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      },
+      {
+        "path": "\\TON1",
+        "kind": "buffer",
+        "bytes": [
+          255,
+          255,
+          255,
+          255,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 127
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 128
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      },
+      {
+        "path": "\\PATT",
+        "kind": "buffer",
+        "bytes": [
+          199,
+          52,
+          18,
+          90,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 99
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 26
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 9
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 45
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 128
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      }
+    ]
+  },
+  {
+    "label": "any-nine-writeasones-r2",
+    "aml_sha256": "a17e4edeb969caf9e48a8d69db466c24159d9e981d3129f09dae9dcc6773f2da",
+    "raw_log_sha256": "0ce1fb40209dcf4980c6699b0c20038d4dcccc7a968608d4190b96e12a17a5b3",
+    "observations": [
+      {
+        "path": "\\TZE0",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 127
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 128
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      },
+      {
+        "path": "\\TON1",
+        "kind": "integer",
+        "value": 18446744073709551615
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      },
+      {
+        "path": "\\PATT",
+        "kind": "integer",
+        "value": 1511142599
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 99
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 26
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 9
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 45
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 128
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      }
+    ]
+  },
+  {
+    "label": "any-nine-writeaszeros-r1",
+    "aml_sha256": "6ba6788a59b1e14ce67eb287d5ddb8bfd2025b6bf3e27cc6a8d4edc86115bb71",
+    "raw_log_sha256": "cbe469f5a1d1d5c3d9cba080d25ca3727ec2302e77b7557af4b608c26b69addf",
+    "observations": [
+      {
+        "path": "\\TZE0",
+        "kind": "buffer",
+        "bytes": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      },
+      {
+        "path": "\\TON1",
+        "kind": "buffer",
+        "bytes": [
+          255,
+          255,
+          255,
+          255,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 128
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 127
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      },
+      {
+        "path": "\\PATT",
+        "kind": "buffer",
+        "bytes": [
+          199,
+          52,
+          18,
+          90,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 128
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 99
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 26
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 9
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 45
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      }
+    ]
+  },
+  {
+    "label": "any-nine-writeaszeros-r2",
+    "aml_sha256": "57aa2b82a607690fb4fc32dc2030e050da8835912d95050492b76ca9fafea942",
+    "raw_log_sha256": "b1ee5d3dd52ac9ec2c0899ad213805d59e029cd273d3302c6d18180ebd2eb893",
+    "observations": [
+      {
+        "path": "\\TZE0",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      },
+      {
+        "path": "\\TON1",
+        "kind": "integer",
+        "value": 18446744073709551615
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 128
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 127
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      },
+      {
+        "path": "\\PATT",
+        "kind": "integer",
+        "value": 1511142599
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 128
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 99
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 26
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 9
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 45
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      }
+    ]
+  }
+]

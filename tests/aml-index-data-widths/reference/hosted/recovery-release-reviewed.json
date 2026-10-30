@@ -1,0 +1,20 @@
+{
+  "source": "/home/doc/git/.acpi-proof-work/index-data-recovery-status-KPu17k6W/source",
+  "output": "/home/doc/git/.acpi-proof-work/index-data-recovery-status-KPu17k6W/source/tests/aml-index-data-widths/results/release-r7b7u7mo",
+  "mode": "release",
+  "inputs": 231,
+  "references": 16,
+  "tools": 5,
+  "runtime_sources": 1582,
+  "binaries": 1,
+  "artifacts": 315,
+  "stages": 2,
+  "logs": {
+    "bank_access_tests": "Bank access checks 4046"
+  },
+  "ALI": 77,
+  "dependencies": 1061,
+  "strict_commands": 76,
+  "audit_sha256": "639a18fd6a41925dbeb9f29ea7eea306d375610f7b8ac1976cd0671e1b6346a0",
+  "scope": "Hosted runtime evidence for the exact selected source/profile only; no native delivery or whole-interpreter proof."
+}

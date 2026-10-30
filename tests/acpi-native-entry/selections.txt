@@ -1,0 +1,13 @@
+acpi_native_instance.adb
+acpi_native_endpoint.adb
+acpi_native_server.adb
+acpi_native_snapshot_load.adb
+acpi_native_snapshot_read.adb
+acpi_native_log.adb
+acpi_clock_source.adb
+acpi_observer_endpoint.adb
+acpi_snapshot_startup.adb
+acpi_snapshot_reader.adb
+main.adb
+startup.ads
+startup.adb

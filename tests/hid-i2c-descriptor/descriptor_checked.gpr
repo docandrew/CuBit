@@ -1,0 +1,10 @@
+project Descriptor_Checked is
+ for Source_Dirs use (".", "../../userspace/services/acpi/hid-i2c");
+ for Source_Files use ("hid_i2c_descriptors.ads", "hid_i2c_descriptors.adb", "descriptor_tests.adb");
+ for Main use ("descriptor_tests.adb");
+ for Object_Dir use external ("HID_DESCRIPTOR_BUILD") & "/obj";
+ for Exec_Dir use external ("HID_DESCRIPTOR_BUILD") & "/bin";
+ package Compiler is
+  for Default_Switches ("Ada") use ("-O1", "-gnat2022", "-gnatwa", "-gnatwe", "-gnata", "-gnato");
+ end Compiler;
+end Descriptor_Checked;

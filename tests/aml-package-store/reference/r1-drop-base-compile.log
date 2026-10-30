@@ -1,0 +1,9 @@
+
+Intel ACPI Component Architecture
+ASL+ Optimizing Compiler/Disassembler version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+ASL Input:     /home/doc/git/.acpi-proof-work/store-owner-transition-raw-control-6h73pyip/cases/base1.asl -      73 bytes      1 keywords      0 source lines
+AML Output:    /home/doc/git/.acpi-proof-work/store-owner-transition-raw-control-6h73pyip/cases/base1.aml -      42 bytes      0 opcodes       1 named objects
+
+Compilation successful. 0 Errors, 0 Warnings, 0 Remarks, 0 Optimizations

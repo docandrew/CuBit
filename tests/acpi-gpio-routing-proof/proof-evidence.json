@@ -1,0 +1,35 @@
+{
+  "source": "/home/doc/git/.acpi-proof-work/gpio-wire-absolute-4c5ij0wW/source",
+  "output": "/home/doc/git/.acpi-proof-work/gpio-wire-absolute-4c5ij0wW/source/tests/acpi-gpio-routing-proof/results/prove-oEpJFUT2",
+  "units": [
+    {
+      "unit": "acpi_resource_data-gpio_connections",
+      "spark_sha256": "1bd25a2c1716b79bf224e05ddcd02452c76d968f2a037fcb15affc7fb1fdee65",
+      "entities": 12,
+      "flow_checks": 30,
+      "proof_checks": 238,
+      "valid_goals": 405,
+      "unresolved": 0,
+      "skipped": 0,
+      "assume": 0
+    },
+    {
+      "unit": "acpi_pci_routes",
+      "spark_sha256": "cfe13d7af82f0d2edbdcdc04fd007cb65e26057b231a3d019f749aa85805fc58",
+      "entities": 2,
+      "flow_checks": 2,
+      "proof_checks": 9,
+      "valid_goals": 14,
+      "unresolved": 0,
+      "skipped": 0,
+      "assume": 0
+    }
+  ],
+  "totals": {
+    "entities": 14,
+    "flow_checks": 32,
+    "proof_checks": 247,
+    "valid_goals": 419
+  },
+  "scope": "Selected two-unit GPIO/PCI runtime safety; successful GPIO header, wire offsets, lengths/count and common/connection field correspondence; pin-read availability/value; exact PCI address classification; initialization/dependencies/termination. Not valid-input acceptance completeness, exact error classification, name/controller validity, hardware authority, service-reader/namespace or whole AML/native correctness."
+}

@@ -1,0 +1,41 @@
+{
+  "assumptions": [
+  ],
+  "entities": {
+    " 1": {
+      "name": "AML_Execution_Limits",
+      "sloc": [
+        {
+          "file": "aml_execution_limits.ads",
+          "line": 1
+        }
+      ]
+    },
+    " 2": {
+      "name": "AML_Execution_Limits.Charged_Field_Work",
+      "sloc": [
+        {
+          "file": "aml_execution_limits.ads",
+          "line": 20
+        }
+      ]
+    }
+  },
+  "progress": "PROGRESS_MARKING",
+  "skip_flow_proof": [
+  ],
+  "skip_proof": [
+  ],
+  "spark": {
+    " 1": "all",
+    " 2": "all"
+  },
+  "stop_reason": "STOP_REASON_CHECK_MODE",
+  "timings": {
+    "global": {
+      "globals (advanced)": 2.11999999010004E-04,
+      "globals (basic)": 3.65100009366870E-03,
+      "marking": 1.18100002873689E-03
+    }
+  }
+}

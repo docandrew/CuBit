@@ -1,5 +1,0 @@
-# No raw hardware authority. Its launcher offers it a provider-bound endpoint
-# with the configuration call made through a kernel-stamped bootstrap endpoint.
-(executable-manifest v1
-  (identity "com.cubit.acpi")
-  (version "0.1.0"))

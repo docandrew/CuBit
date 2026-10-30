@@ -1,0 +1,14 @@
+[
+  "/nix/store/9xvbsfi448cx9fjk4ivla9fsq390a8gn-gnatprove-fsf-15_2025-06-10/bin/gnatprove",
+  "-P",
+  "/home/doc/git/.acpi-proof-work/field-work-proof-wMIRNym5/source/tests/aml-work-proof/work_proof.gpr",
+  "-XWORK_PROOF_OBJECTS=/home/doc/git/.acpi-proof-work/field-work-proof-wMIRNym5/source/tests/aml-work-proof/result-prove-eCG1XwfD/obj",
+  "-u",
+  "aml_execution_limits.ads",
+  "--mode=prove",
+  "-j1",
+  "--report=all",
+  "--level=1",
+  "--prover=cvc5,z3",
+  "--timeout=5"
+]

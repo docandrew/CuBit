@@ -1,0 +1,36 @@
+resources.asl      6:         Name (_CRS, ResourceTemplate () {})
+Warning  3150 -        Empty Resource Template (END_TAG only) ^ 
+
+resources.asl     57:     Device (DVC6)
+Warning  3141 -  Missing dependency ^  (Device has a _PRS, missing a _CRS, required)
+
+resources.asl     57:     Device (DVC6)
+Warning  3141 -  Missing dependency ^  (Device has a _PRS, missing a _SRS, required)
+
+resources.asl    137:     Device (DVCE)
+Warning  3141 -  Missing dependency ^  (Device has a _PRS, missing a _CRS, required)
+
+resources.asl    137:     Device (DVCE)
+Warning  3141 -  Missing dependency ^  (Device has a _PRS, missing a _SRS, required)
+
+resources.asl    191:         Name (BSHT, Buffer (0) {})
+Remark   2008 -                                  ^ Effective AML buffer length is zero
+
+resources.asl    217:         Method (RPNM, 0) { Name (TEMP, Package () {MTH0}) Return (TEMP) }
+Remark   2173 -                                          ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\PIRQ.RPNM)
+
+resources.asl    217:         Method (RPNM, 0) { Name (TEMP, Package () {MTH0}) Return (TEMP) }
+Remark   2120 -                         ^ Control Method should be made Serialized due to creation of named objects within (\PIRQ.RPNM)
+
+resources.asl    238:             Package () {},
+Remark   2095 -                              ^ Effective AML package length is zero
+
+
+Intel ACPI Component Architecture
+ASL+ Optimizing Compiler/Disassembler version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+ASL Input:     resources.asl -   10689 bytes     97 keywords      0 source lines
+AML Output:    resources.aml -    2360 bytes      9 opcodes      88 named objects
+
+Compilation successful. 0 Errors, 5 Warnings, 4 Remarks, 31 Optimizations

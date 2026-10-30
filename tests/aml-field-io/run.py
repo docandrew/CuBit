@@ -41,7 +41,7 @@ def verify_inputs():
     for c in closures.values():
         inventory(ROOT, c['sources'])
 verify_inputs()
-assert len(closures) == 2
+assert len(closures) == 6
 if a.validate_only:
     print('The focused source inventory and source/reference pins verified; selected: ' + ', '.join(selected) + '; no compile.')
     raise SystemExit(0)

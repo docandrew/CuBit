@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "kind": "historical-hosted-runtime-receipts",
+  "checks_per_profile": 373,
+  "release": {
+    "source": "/home/doc/git/.acpi-proof-work/region-client-frozen-IO4e1Jr5/source",
+    "output": "/home/doc/git/.acpi-proof-work/region-client-frozen-IO4e1Jr5/source/tests/acpi-region-client/results/release-b0u78m1n",
+    "mode": "release",
+    "inputs": 164,
+    "references": 0,
+    "tools": 5,
+    "runtime_sources": 1582,
+    "binaries": 1,
+    "artifacts": 55,
+    "stages": 2,
+    "logs": {
+      "region_client_tests": "Region client checks 373"
+    },
+    "ALI": 12,
+    "dependencies": 109,
+    "strict_commands": 11,
+    "audit_sha256": "693d4a6f3ffac8a5107114219eca797a9beed0bb191060e9467e1a796cd9ef7a",
+    "scope": "Hosted runtime evidence for the exact selected source/profile only; no native delivery or whole-interpreter proof."
+  },
+  "checked": {
+    "source": "/home/doc/git/.acpi-proof-work/region-client-frozen-IO4e1Jr5/source",
+    "output": "/home/doc/git/.acpi-proof-work/region-client-frozen-IO4e1Jr5/source/tests/acpi-region-client/results/checked-nce0nnt1",
+    "mode": "checked",
+    "inputs": 164,
+    "references": 0,
+    "tools": 5,
+    "runtime_sources": 1582,
+    "binaries": 1,
+    "artifacts": 55,
+    "stages": 2,
+    "logs": {
+      "region_client_tests": "Region client checks 373"
+    },
+    "ALI": 12,
+    "dependencies": 165,
+    "strict_commands": 11,
+    "audit_sha256": "211b33bda8a557e5c807158a0db9e710b2b882329e08c45500c06d12ca312b10",
+    "scope": "Hosted runtime evidence for the exact selected source/profile only; no native delivery or whole-interpreter proof."
+  },
+  "scope": "Real backend policy/dispatcher with explicit hosted transport and hardware callbacks. Exact compiled source carry must be verified for publication; no native, physical hardware or new SPARK proof evidence. Original output paths are provenance, never executable fallbacks."
+}

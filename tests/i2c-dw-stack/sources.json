@@ -1,0 +1,45 @@
+{
+  "production": {
+    "userspace/services/i2c-dw/transfer/dw_i2c_transfer.ads": "725e563b0cabe33fa0b4a152ff0a85d02c032fa258f7544a5e0417f5eb19d429",
+    "userspace/services/i2c-dw/transfer/dw_i2c_transfer.adb": "36eb964220cc438dd823abd2805a59c74c0f3f720282af03e6d84e8022bd8bf0",
+    "userspace/services/i2c-dw/transfer/dw_i2c_registers.ads": "bc489efad780b31a556acc96fec29822de8ae364a16ae4fdff357b749b6c411d",
+    "userspace/services/i2c-dw/transfer/dw_i2c_registers.adb": "835982d2793c24b6f27ed7a07f09cfa0f4b3f845b0c77e599b8e240548c75707",
+    "userspace/services/i2c-dw/setup/dw_i2c_configuration.ads": "587cebd90a4fa540fe6ba261cfd944da52d4ad14851b771bf055cb513deb02e1",
+    "userspace/services/i2c-dw/setup/dw_i2c_configuration.adb": "c5b5cf95ceb053bfcbb4aa8ea1cf722aeaf28e2393f07e725109d049c8a64a47",
+    "userspace/services/i2c-dw/lpss/intel_lpss_i2c_profile.ads": "770750ca0e04a827d9257de048b33702d14662addcfa2bebb3b1b247cad6fad9",
+    "userspace/services/i2c-dw/lpss/intel_lpss_i2c_profile.adb": "14a2642b2af890a8a2f5ca47ed21465b67d882fa7b3c9b5bb1a9cf6f31ea13a8",
+    "userspace/services/i2c-dw/lpss/intel_lpss_i2c_reset.ads": "cfc0f6288c52dcda9f4c8b512802df76df2eede27559eb26c96d191478341b20",
+    "userspace/services/i2c-dw/lpss/intel_lpss_i2c_reset.adb": "897e6184ee73e50b6e6230eaefdd7a8d11f4141c94cfe15db184821c477298e6",
+    "userspace/services/i2c-dw/owner/dw_i2c_owner.ads": "ea5fac2fb8e7c3245a45fc12aa46401e194d5a1db7977a8887022c2c867c0be7",
+    "userspace/services/i2c-dw/owner/dw_i2c_owner.adb": "00d0f8499e9127a8b024a4befba698d79f6377e5deaf9aa5ed57aacd91c3ef7a",
+    "userspace/lib/i2c-admission/i2c_configure_replies.ads": "6286411cb273d3b882c5288cb3cbdd0f82fa34197c52351720351a1b1e416ffc",
+    "userspace/lib/i2c-admission/i2c_configure_replies.adb": "e6b29ae8df14a9116e996ec54210a08d43f89ad7fc0ade5fdb24090be3f4e721"
+  },
+  "mains": [
+    {
+      "name": "transfer_tests",
+      "checks": 61056,
+      "label": "DesignWare transfer checks"
+    },
+    {
+      "name": "register_tests",
+      "checks": 196742,
+      "label": "DesignWare register checks"
+    },
+    {
+      "name": "configuration_tests",
+      "checks": 5148,
+      "label": "DesignWare configuration checks"
+    },
+    {
+      "name": "lpss_tests",
+      "checks": 3995445,
+      "label": "LPSS I2C checks"
+    },
+    {
+      "name": "owner_tests",
+      "checks": 331768,
+      "label": "I2C composed owner checks"
+    }
+  ]
+}

@@ -1,5 +1,5 @@
 project startup_policy_tests_checked is
- for Source_Dirs use ("../../tests/acpi-startup-policy", "../../userspace/lib/acpi", "../../userspace/services/acpi", "../../shared/firmware");
+ for Source_Dirs use ("../../shared/firmware", "../acpi-startup-policy", "../../userspace/services/acpi", "../../userspace/services/acpi/lib");
  Build_Root := external ("SERVICE_MILESTONE_BUILD", "build-startup_policy_tests-checked");
  for Object_Dir use Build_Root & "/obj";
  for Exec_Dir use Build_Root & "/bin";

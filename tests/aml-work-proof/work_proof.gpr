@@ -1,0 +1,8 @@
+project Work_Proof is
+ for Source_Dirs use ("../../userspace/services/acpi/lib");
+ for Source_Files use ("aml_execution_limits.ads");
+ for Object_Dir use external ("WORK_PROOF_OBJECTS");
+ package Compiler is
+  for Default_Switches ("Ada") use ("-gnat2022", "-gnatwa", "-gnatwe", "-gnata", "-gnato");
+ end Compiler;
+end Work_Proof;

@@ -1,5 +1,5 @@
 project Release is
- for Source_Dirs use (".", "../../userspace/lib/acpi", "../../shared/firmware");
+ for Source_Dirs use (".", "../../userspace/services/acpi/lib", "../../shared/firmware");
  for Main use ("name_reference_oracle_tests.adb");
  for Object_Dir use "obj-release"; for Exec_Dir use "bin-release";
  package Compiler is

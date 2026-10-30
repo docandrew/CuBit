@@ -37,6 +37,7 @@ package ACPI_Bootstrap with SPARK_Mode is
    type Device_Report is record
       Stage : Device_Phase := Devices_Not_Started;
       Charged, Status_Methods, Initialization_Methods, Errors : Natural := 0;
+      Regions_Attempted : Boolean := False;
       Region_Status : ACPI_Device_Policy.Region_Outcome := ACPI_Device_Policy.Regions_Unavailable;
       First_Error_Node : ACPI_Service.Namespace.Node_ID := ACPI_Service.Namespace.Root;
       First_Error : AML_Execute.Execution_Status := AML_Execute.No_Return;
@@ -63,7 +64,8 @@ package ACPI_Bootstrap with SPARK_Mode is
    function Fatal_Diagnostic (Session : State) return ACPI_Fatal_Diagnostics.Observation
      with Global => null;
    -- Snapshot completion and device readiness are distinct. The current service
-   -- has no registered region provider, so its region phase is unavailable.
+   -- has no registered hardware provider: actual hardware declarations leave
+   -- its region phase unavailable, while an empty requirement can complete.
    function Device_Completion (Session : State) return Device_Report;
    function Startup_Charged (Session : State) return Natural
      with Pre => Valid (Session), Post => Startup_Charged'Result <= Default_Startup_Budget;
@@ -176,12 +178,50 @@ package ACPI_Bootstrap with SPARK_Mode is
              and then Completion (Session) = Completion (Session)'Old
          else Model (Session) = Model (Session)'Old);
 
+   -- Trusted controller selects an actual device driver, including its region
+   -- barrier and provisioned evaluator. Run is process-lifetime state: it is
+   -- never reset/replayed. A consumed Run cannot report readiness for a new
+   -- snapshot. Table completion and device readiness remain separate outcomes.
+   generic
+      with package Device_Driver is new ACPI_Device_Initialization
+        (Core => ACPI_Service, others => <>);
+   package With_Driver is
+      pragma Unevaluated_Use_Of_Old (Allow);
+   procedure Finish
+     (Session : in out State; Run : in out Device_Driver.Session;
+      Budget : Startup_Budget := Default_Startup_Budget)
+     with Pre => Valid (Session), Post => Valid (Session)
+       and then Started (Session) = Started (Session)'Old
+       and then Expected (Session) = Expected (Session)'Old
+       and then Installed (Session) = Installed (Session)'Old
+       and then Catalog_Model (Session) = Catalog_Model (Session)'Old
+       and then (if Current (Session)'Old = Receiving and then
+           Installed (Session)'Old = Expected (Session)'Old then
+             Current (Session) in Complete | Failed
+             and then Completion (Session).Stage /= Not_Attempted
+             and then Completion (Session).Execution.Modules.Charged <= Budget
+             and then Startup_Charged (Session) <= Budget
+             and then (if Current (Session) = Complete then
+               Completion (Session).Stage = Finished
+               and then Completion (Session).Execution_Status = ACPI_Service.Values.Available
+               and then Completion (Session).Execution.Phase = ACPI_Service.Module_Execution_Reported
+               and then Completion (Session).Execution.Preparation = ACPI_Service.Values.Firmware_Prepared
+               and then Completion (Session).Execution.Modules.Outcome = ACPI_Service.Values.Modules_Completed
+               and then Members_Initialized (Session) and then Pending_Members (Session) = 0)
+         elsif Current (Session)'Old = Receiving then
+             Current (Session) = Failed and then Core_Model (Session) = Core_Model (Session)'Old
+             and then Members_Initialized (Session) = Members_Initialized (Session)'Old
+             and then Member_Initialization (Session) = Member_Initialization (Session)'Old
+             and then Completion (Session) = Completion (Session)'Old
+         else Model (Session) = Model (Session)'Old);
+   end With_Driver;
+
 private
-   procedure Unavailable_Regions
+   procedure Unconfigured_Regions
      (Service : aliased in out ACPI_Service.State; Budget : Natural;
       Charged : out Natural; Outcome : out ACPI_Device_Policy.Region_Outcome);
    package Devices is new ACPI_Device_Initialization
-     (Core => ACPI_Service, Initialize_Regions => Unavailable_Regions);
+     (Core => ACPI_Service, Initialize_Regions => Unconfigured_Regions);
    type State_Model (Table_Capacity, Byte_Capacity : Positive) is record
       Core : ACPI_Service.State_Model (Table_Capacity, Byte_Capacity);
       Stage : Phase;

@@ -1,0 +1,11 @@
+{
+  "tests/aml-table-region-import/reference/compile.log": "68efcd999622bb3ca525397d813c2a6cd031172d5907060e8a5f514b76fcce35",
+  "tests/aml-table-region-import/reference/evidence.sha256": "3dcca2a1dd054123673a1ed2d868c6bd18bedee8959255a300e78e8bfbf39ff6",
+  "tests/aml-table-region-import/reference/hosted/checked-reviewed.json": "d636bdb47f5721ce49d2418a01de7a513b3533f429fa05db7de84582c7aa1a2b",
+  "tests/aml-table-region-import/reference/hosted/release-reviewed.json": "353d135796392aa1adc1c80f08d42c0e0b780f393d63236d3896ca091e21772d",
+  "tests/aml-table-region-import/reference/inputs.sha256": "2f596e7d05f6f5d0589bd6cf2033daa208b63284a95fe8fa7d03f900e8c97dfc",
+  "tests/aml-table-region-import/reference/reference.log": "946532752d94b069fcc222bb810a0960a5cf7af22672c2e1cb3c75f2733b53d5",
+  "tests/aml-table-region-import/reference/selectors.aml": "41d0fe5b7b854e60da61b8c5b76f671bb1c148bae2ae01acaf1181b3cc9512a3",
+  "tests/aml-table-region-import/reference/selectors.asl": "5ebd14cc0981f5ff3234bd149ba09af6a8e3a1ab5bb103d3a5e7a536342183f4",
+  "tests/aml-table-region-import/reference/status.tsv": "d2d70804ecd697d5a9c3ede742b29e5e7f86572fff79369985db325a6aba3d3a"
+}

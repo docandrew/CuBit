@@ -1,25 +1,13 @@
-with ACPI_Endpoint;
 with ACPI_Requests;
-with ACPI_Native_Blocks;
 with CuBit.Messages;
--- Serialized native IPC runner. The launcher owns Server and Adapter for the
--- process lifetime, including after a fatal return with pending grant cleanup.
--- Config and Provider must be bound by trusted startup before Run.
-with CuBit.Handles;
 package ACPI_Native_Server is
-   type Stop_Reason is
-     (Invalid_Configuration, Wait_Unavailable, Clock_Unavailable,
-      Unexpected_Completion);
-   -- Called once before Run. Only kernel-stamped launcher authority may set
-   -- configuration. On runtime failure Accepted=False and outputs are unusable.
-   procedure Await_Configuration
-     (Config : out ACPI_Endpoint.Configuration;
-      Provider : out CuBit.Handles.Endpoint;
-      Accepted : out Boolean);
-   procedure Run
-     (Server : in out ACPI_Requests.State;
-      Adapter : in out ACPI_Native_Blocks.State;
-      Config : ACPI_Endpoint.Configuration;
-      Provider : CuBit.Handles.Endpoint;
-      Reason : out Stop_Reason);
+   type Stop_Reason is (Wait_Unavailable, Unexpected_Completion);
+   procedure Run (Server : in out ACPI_Requests.State; Reason : out Stop_Reason);
+   generic
+      with procedure Dispatch_Message
+        (Server : in out ACPI_Requests.State; From : CuBit.Messages.Process_ID;
+         Request : CuBit.Messages.Message; Reply : out CuBit.Messages.Message);
+   package With_Dispatch is
+      procedure Serve (Server : in out ACPI_Requests.State; Reason : out Stop_Reason);
+   end With_Dispatch;
 end ACPI_Native_Server;

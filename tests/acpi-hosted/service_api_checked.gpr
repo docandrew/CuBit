@@ -1,5 +1,5 @@
 project Service_API_checked is
- for Source_Dirs use ("../aml-core", "../../userspace/lib/acpi", "../../userspace/services/acpi", "../../shared/firmware");
+ for Source_Dirs use ("../aml-core", "../../userspace/services/acpi/lib", "../../userspace/services/acpi", "../../shared/firmware");
  for Object_Dir use "service-api-checked/obj";
  for Exec_Dir use "service-api-checked";
  for Main use ("service_tests.adb", "literal_value_tests.adb", "service_field_execution_tests.adb", "field_boundary_tests.adb", "field_declaration_tests.adb", "region_service_tests.adb", "bootstrap_tests.adb");

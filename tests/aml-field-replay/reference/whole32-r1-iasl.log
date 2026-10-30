@@ -1,0 +1,18 @@
+/home/doc/git/.acpi-proof-work/field-core-normal-oracle-proposal-mhs6804e/whole32-r1.asl      9:         Return (0x123456789ABCDEF0)
+Warning  3038 -                                                                 Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/field-core-normal-oracle-proposal-mhs6804e/whole32-r1.asl     15:         Divide (One, Local0, Local1, Local2)
+Warning  3144 -                                                                                Method Local is set but never used ^  (Local1)
+
+/home/doc/git/.acpi-proof-work/field-core-normal-oracle-proposal-mhs6804e/whole32-r1.asl     15:         Divide (One, Local0, Local1, Local2)
+Warning  3144 -                                                                                        Method Local is set but never used ^  (Local2)
+
+
+Intel ACPI Component Architecture
+ASL+ Optimizing Compiler/Disassembler version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+ASL Input:     /home/doc/git/.acpi-proof-work/field-core-normal-oracle-proposal-mhs6804e/whole32-r1.asl -     847 bytes     27 keywords      0 source lines
+AML Output:    /home/doc/git/.acpi-proof-work/field-core-normal-oracle-proposal-mhs6804e/results/whole32-r1.aml -     236 bytes     18 opcodes       9 named objects
+
+Compilation successful. 0 Errors, 3 Warnings, 0 Remarks, 0 Optimizations

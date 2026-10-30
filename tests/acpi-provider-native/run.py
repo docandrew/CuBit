@@ -11,7 +11,7 @@ ROOT = HERE.parents[1]
 p = argparse.ArgumentParser()
 p.add_argument('--mode', choices=['release', 'checked'], default='release')
 p.add_argument('--validate-only', action='store_true')
-p.add_argument('--selection', nargs='+', metavar='LABEL', help='Explicit unique closure labels; default: all 7')
+p.add_argument('--selection', nargs='+', metavar='LABEL', help='Explicit unique closure labels; default: all 10')
 a = p.parse_args()
 sha = lambda p: hashlib.sha256(p.read_bytes()).hexdigest()
 manifest_file = HERE / 'source-manifest.json'
@@ -43,9 +43,9 @@ def verify_inputs():
     for copy, original in json.loads((HERE / 'mirrors.json').read_text()).items():
         assert sha(ROOT / copy) == sha(ROOT / original), (copy, original)
 verify_inputs()
-assert len(closures) == 7
+assert len(closures) == 10
 if a.validate_only:
-    print('All 7 source inventories and source/reference pins verified; selected: ' + ', '.join(selected) + '; no compile.')
+    print('All 10 source inventories and source/reference pins verified; selected: ' + ', '.join(selected) + '; no compile.')
     raise SystemExit(0)
 assert os.environ.get('TMPDIR') == '/home/doc/cubit-build-tmp'
 resource.setrlimit(resource.RLIMIT_STACK, (64 * 1024 * 1024,) * 2)

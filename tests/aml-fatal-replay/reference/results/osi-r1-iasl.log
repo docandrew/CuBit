@@ -1,0 +1,9 @@
+
+Intel ACPI Component Architecture
+ASL+ Optimizing Compiler/Disassembler version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+ASL Input:     /home/doc/git/.acpi-proof-work/aml-fatal-normal-names-yk5xpkv8/osi-r1.asl -     312 bytes     12 keywords      0 source lines
+AML Output:    /home/doc/git/.acpi-proof-work/aml-fatal-normal-names-yk5xpkv8/results/osi-r1.aml -     126 bytes      6 opcodes       6 named objects
+
+Compilation successful. 0 Errors, 0 Warnings, 0 Remarks, 0 Optimizations

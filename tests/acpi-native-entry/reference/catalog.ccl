@@ -1,0 +1,52 @@
+# The services and registration roles procmgr's children may name in their
+# manifests. Numbers are service roles; a program gets its capabilities by
+# binding name in its startup table (CAP-002). No policy approval is implied.
+# (client X) names the typed handle a service's startup entry is handed out
+# as (CuBit.Handles.Services.X, CAP-003): a log publisher can only be bound
+# to a Logstore endpoint, a launcher only made from a Process_Manager one.
+(service-catalog v1
+  (service network-stack 3 read-write)
+  (service process-manager 4 read-write (client Process_Manager))
+  (service filesystem 6 read-write)
+  (service device-manager 7 read-write)
+  (service mixer 9 read-write)
+  (service config 11 read-write (client Config))
+  (service logstore 13 read-write (client Logstore))
+  (service ipc-test 14 read-write)
+  (service desktop 15 read-write)
+  (service display 16 read-write)
+  (service gpu 17 read-write)
+  (service ccl-test-host 18 read-write)
+  (service clock 19 read-write)
+  (service mixer-control 20 read-write)
+  (service log-observer 21 read-write (client Log_Observer))
+  (service clock-control 22 read-write)
+  (service tls 23 read-write)
+  (service metrics 24 read-write)
+  (service metrics-observer 25 read-write)
+  (service process-observer 26 read-write)
+  (service log-control 27 read-write)
+  # The dictionary, thesaurus and spelling service (docs/lexicon.md).
+  (service lexicon 28 read-write)
+  # The ACPI namespace service (acpi.svc); clients get the observer badge
+  # (ACPI_Protocol.Observer_Tag).
+  (service acpi 29 read-write)
+  # Startup only: CuBit.Disk_Install, CuBit.Installer_Protocol.
+  (service disk-install 30 read-write)
+  (service installer 31 read-write)
+  (service i2c 32 read-write)
+  (notification keyboard 1 publish-and-manage)
+  (notification mouse 10 publish-and-manage)
+  (notification ipc-test-registration 14 publish-and-manage)
+  # Registration: a service registers its role with a notification over it
+  # (procmgr grants these only to the identities its policy names).
+  (notification logstore 13 publish-and-manage)
+  (notification desktop 15 publish-and-manage)
+  (notification display 16 publish-and-manage)
+  (notification ccl-test-host 18 publish-and-manage)
+  (notification clock 19 publish-and-manage)
+  (notification tls 23 publish-and-manage)
+  (notification metrics 24 publish-and-manage)
+  (notification lexicon 28 publish-and-manage)
+  (notification acpi 29 publish-and-manage)
+  (notification installer 31 publish-and-manage))

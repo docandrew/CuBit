@@ -1,0 +1,102 @@
+{
+  "schema": 1,
+  "kind": "selected-current-field-plan-safety-contract-proof",
+  "unit": "aml_field_plans",
+  "level": 1,
+  "entities": 10,
+  "flow_results": 11,
+  "valid_goals": 8,
+  "unresolved": 0,
+  "source_sha256": {
+    "userspace/lib/acpi/acpi_fadt-transactions.adb": "aa6907caeb5d911c74e8e866c72180e3e70ac205ba8755bf1d4c599beb11d6eb",
+    "userspace/lib/acpi/acpi_fadt-transactions.ads": "a1ea946249aef284cafea4079d07b08ba5b17c2030df9106eccbc70cc634e10f",
+    "userspace/lib/acpi/acpi_fadt.adb": "7058da752f0644899a6c97fd3ea2722cba927bf08e4f0e7c5736f16ee2e2c10d",
+    "userspace/lib/acpi/acpi_fadt.ads": "00993f2a74b7740317a12200e8cbf29db30a52a839cacec7485b04a411e3f752",
+    "userspace/lib/acpi/aml_decode.adb": "9fee3a0bb3c6aaa12ccc34eb7df4ffcba8488b337b7f8613284d10495006ea87",
+    "userspace/lib/acpi/aml_decode.ads": "3f312c98587da55cabbd1a800b8dd4634a7adbc502e95e1fbbac11ac91567bfa",
+    "userspace/lib/acpi/aml_field_datums.adb": "5af67ff7681da04c0eda590d25bae840093df64424d7e0ecacdbc9e02d4c79bb",
+    "userspace/lib/acpi/aml_field_datums.ads": "f1f8b4e505c44cdf2b12d8dab10cf072ab0ab5235c222465f572790320997072",
+    "userspace/lib/acpi/aml_field_layout.adb": "7baaf697ec1b774d969ef559da732ba249e892b0aa04ea2a919eda7197f0af5a",
+    "userspace/lib/acpi/aml_field_layout.ads": "90ca517c567cd4ffc1fb0a53828f8c10b803d9aa8dc7f19eb01f90d2bb065659",
+    "userspace/lib/acpi/aml_field_plans.adb": "58caa861eb8aa92fe5ec2c6fe60bc24326e0c8d75e8706cca8c616ced826778a",
+    "userspace/lib/acpi/aml_field_plans.ads": "0a73ece7e14d286ddf36485e0187cdc4fc24bfe3c40dbbfc261d7e4f41c57778",
+    "shared/firmware/firmware_tables.adb": "120555c25910e45212c229526c232c0b1afae7f63effd04fdd54a5f567690cfa",
+    "shared/firmware/firmware_tables.ads": "cdd038a8b009c7009c8f6286b34b6ab7d3c0bf7be8410ca782b0831780ae1ef4",
+    "tests/aml-field-geometry/geometry_proof.gpr": "370677f5b1acb5fba92bdc49e2922b1376dd5a2d1b0915e86ed7d07c95acc02d",
+    "tests/aml-field-geometry/prove.sh": "7b62c9e600f35a22fecf7e5c2b08d4380facf958c9ecfca0b137bb1270b2591d",
+    "tests/aml-field-geometry/proof-tools.json": "1caf9c23c3de89808024cf2351fdbcc6fe050a77f65e86390bc4c0fd913fe30d"
+  },
+  "retained_sha256": {
+    "tests/aml-field-geometry/reference/current-plans/check/audit.json": "8be9459444b7979a629242e1c6455f6fddfe60594deb76be2747859375af2a7f",
+    "tests/aml-field-geometry/reference/current-plans/check/check.log": "8517610e45437e0d5b9ddd6222d971c59f3fa5f0905c4e0abb9cc969c254b6ff",
+    "tests/aml-field-geometry/reference/current-plans/check/command.json": "e937584f654c95f226e862af4a8057846c29e6b79dfacb0b8ba50522e1406b60",
+    "tests/aml-field-geometry/reference/current-plans/check/gnatprove.out": "4e76fe1c2ddd318d7500dcd7c69faa8158d7ea2f6647104204f77cd83668a14b",
+    "tests/aml-field-geometry/reference/current-plans/check/origin.json": "ca464728b8080cd052f29d24153ce8ba73dc0174df6c8a5dd5940e62c68b5db9",
+    "tests/aml-field-geometry/reference/current-plans/check/unit.spark": "e440023019fd8dfbafb645dc95eb58fec76919cca79193c9c6f8cf9b7718c126",
+    "tests/aml-field-geometry/reference/current-plans/flow/audit.json": "0dcee8e3fb0684140fff9a0a0aea3856739d6e0c6e9206b320488d1f90eb1129",
+    "tests/aml-field-geometry/reference/current-plans/flow/command.json": "e4b4702470e938772ae3a8f9788690fc872b8fd254a1bf525db0efa3e28c07f0",
+    "tests/aml-field-geometry/reference/current-plans/flow/flow.log": "d5a63f5cf7933ab74907d33717017a52952fe0aaf0b92842ea8de7e2bd5a65ff",
+    "tests/aml-field-geometry/reference/current-plans/flow/gnatprove.out": "220d47cf075a93e59905e2a0614085a6ebfb7a50ccb356975dfa9ede634f4edb",
+    "tests/aml-field-geometry/reference/current-plans/flow/origin.json": "1508500d0f5769cf43d927b8934b1eb138717957cb46f7aabf5d1a2ec299c53c",
+    "tests/aml-field-geometry/reference/current-plans/flow/unit.spark": "54d2b36b72a778c3714b3f0234a84f44097c85a4abbdd28863abf27bec0e8fd6",
+    "tests/aml-field-geometry/reference/current-plans/prove/audit.json": "bfdc6fe12c1661cf3becce08a60780218a55783327114e5febeb63ab0a812e81",
+    "tests/aml-field-geometry/reference/current-plans/prove/command.json": "027ec07d0619ccc2855ece54aee3392f728b0f93e23abfe5cc57d25499681f78",
+    "tests/aml-field-geometry/reference/current-plans/prove/gnatprove.out": "a8e4bc46609758a8f5eefc52be6ad5bda7eae7f500a2fa81507b2024a98b4576",
+    "tests/aml-field-geometry/reference/current-plans/prove/origin.json": "58fdb7ac1a5aa202d2612bdf27e02743a236e4c4ee1f40ba705b208de5e7790d",
+    "tests/aml-field-geometry/reference/current-plans/prove/prove.log": "d334c455bb10628f3090fcfa7b730b93b94e760ebe67d6d23fad55476177d609",
+    "tests/aml-field-geometry/reference/current-plans/prove/unit.spark": "3f57b4d48391f00e11812208d34187fcda74f2e1582257b03fda8afc2035df90"
+  },
+  "obligations": [
+    {
+      "file": "aml_field_plans.adb",
+      "line": 68,
+      "col": 49,
+      "rule": "VC_RANGE_CHECK"
+    },
+    {
+      "file": "aml_field_plans.ads",
+      "line": 19,
+      "col": 20,
+      "rule": "VC_POSTCONDITION"
+    },
+    {
+      "file": "aml_field_plans.adb",
+      "line": 73,
+      "col": 86,
+      "rule": "VC_RANGE_CHECK"
+    },
+    {
+      "file": "aml_field_plans.adb",
+      "line": 73,
+      "col": 23,
+      "rule": "VC_PRECONDITION"
+    },
+    {
+      "file": "aml_field_plans.adb",
+      "line": 80,
+      "col": 53,
+      "rule": "VC_PRECONDITION"
+    },
+    {
+      "file": "aml_field_plans.adb",
+      "line": 96,
+      "col": 48,
+      "rule": "VC_DIVISION_CHECK"
+    },
+    {
+      "file": "aml_field_plans.adb",
+      "line": 96,
+      "col": 81,
+      "rule": "VC_RANGE_CHECK"
+    },
+    {
+      "file": "aml_field_plans.ads",
+      "line": 30,
+      "col": 41,
+      "rule": "VC_POSTCONDITION"
+    }
+  ],
+  "actual_source": "/home/doc/git/.acpi-proof-work/bank-catalog-atomicity-EunyJxV9/source",
+  "scope": "Selected helper safety and existing contracts only. Dependency contracts and arithmetic/runtime models are assumptions or separately historical evidence. No whole interpreter, banked-I/O or native proof.",
+  "retention": "Portable summaries, exact proof trees, commands, logs and original audits retained. Original audits record additional artifacts kept at their original outputs; those additional files are not asserted present in this snapshot."
+}

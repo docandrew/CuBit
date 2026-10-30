@@ -1,0 +1,23 @@
+============================
+Most difficult proved checks
+============================
+
+No check found with max time greater than 1 second
+
+========================
+Detailed analysis report
+========================
+
+Analyzed 1 unit
+in unit aml_field_plans, 10 subprograms and packages out of 10 analyzed
+flow analysis and proof skipped for this unit (only SPARK_Mode checking was requested)
+  AML_Field_Plans at aml_field_plans.ads:5 not analyzed
+  AML_Field_Plans.Buffer_Length at aml_field_plans.ads:29 not analyzed
+  AML_Field_Plans.Count at aml_field_plans.ads:17 not analyzed
+  AML_Field_Plans.Datum_At at aml_field_plans.ads:21 not analyzed
+  AML_Field_Plans.Matches at aml_field_plans.ads:24 not analyzed
+  AML_Field_Plans.Plan at aml_field_plans.ads:32 not analyzed
+  AML_Field_Plans.Prepare at aml_field_plans.ads:18 not analyzed
+  AML_Field_Plans.Result_Form at aml_field_plans.ads:27 not analyzed
+  AML_Field_Plans.Rule at aml_field_plans.ads:20 not analyzed
+  AML_Field_Plans.Valid at aml_field_plans.ads:16 not analyzed

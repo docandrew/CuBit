@@ -1,0 +1,20 @@
+{
+  "source": "/home/doc/git/.acpi-proof-work/table-region-import-scalar-mNavJa1f/source",
+  "output": "/home/doc/git/.acpi-proof-work/table-region-import-scalar-mNavJa1f/source/tests/aml-table-region-import/results/release-nllelrpl",
+  "mode": "release",
+  "inputs": 228,
+  "references": 7,
+  "tools": 5,
+  "runtime_sources": 1582,
+  "binaries": 1,
+  "artifacts": 319,
+  "stages": 2,
+  "logs": {
+    "table_region_import_tests": "Table region import checks 39"
+  },
+  "ALI": 78,
+  "dependencies": 1137,
+  "strict_commands": 77,
+  "audit_sha256": "fe1d7be8157dcc5e45190e1d22a0de576fb80f43adfa7cd734267c0af29e08ca",
+  "scope": "Hosted runtime evidence for the exact selected source/profile only; no native delivery or whole-interpreter proof."
+}

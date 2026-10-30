@@ -1,0 +1,20 @@
+{
+  "source": "/home/doc/git/.acpi-proof-work/index-wide-pressure-maavWdxP/source",
+  "output": "/home/doc/git/.acpi-proof-work/index-wide-pressure-maavWdxP/source/tests/aml-index-data-widths/results/checked-8ptzhzzw",
+  "mode": "checked",
+  "inputs": 231,
+  "references": 18,
+  "tools": 5,
+  "runtime_sources": 1582,
+  "binaries": 1,
+  "artifacts": 315,
+  "stages": 2,
+  "logs": {
+    "bank_access_tests": "Bank access checks 4046"
+  },
+  "ALI": 77,
+  "dependencies": 1376,
+  "strict_commands": 76,
+  "audit_sha256": "7d8cadd5b66bef3316f3ce6303fdfb7cce18ef24b74383e428106e0b5fae738e",
+  "scope": "Hosted runtime evidence for the exact selected source/profile only; no native delivery or whole-interpreter proof."
+}

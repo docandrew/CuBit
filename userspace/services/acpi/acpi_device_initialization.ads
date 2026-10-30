@@ -12,6 +12,12 @@ generic
    with procedure Initialize_Regions
      (Service : aliased in out Core.State; Budget : Natural;
       Charged : out Natural; Outcome : out ACPI_Device_Policy.Region_Outcome);
+   -- Optional trusted evaluator closes over an explicitly provisioned context.
+   -- It retains full result/cleanup semantics; provisioning and _REG are separate.
+   with procedure Evaluate_Named
+     (Service : aliased in out Core.State; Item : Core.Node_Descriptor;
+      Budget : Natural; Result : out Core.Values.Result;
+      Status : out Core.Values.Access_Status) is Core.Evaluate_Named;
 package ACPI_Device_Initialization with SPARK_Mode is
    type Phase is (Not_Started, Preparing, Awaiting_Regions, Walking,
       Completed, Completed_With_Errors, Incomplete, Failed);
@@ -27,6 +33,7 @@ package ACPI_Device_Initialization with SPARK_Mode is
       Stage : Phase := Not_Started;
       Charged : Natural := 0;
       Status_Methods, Initialization_Methods, Errors : Natural := 0;
+      Regions_Attempted : Boolean := False;
       Region_Status : ACPI_Device_Policy.Region_Outcome := ACPI_Device_Policy.Regions_Unavailable;
       First_Error_Node : Core.Namespace.Node_ID := Core.Namespace.Root;
       First_Error : AML_Execute.Execution_Status := AML_Execute.No_Return;

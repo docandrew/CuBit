@@ -1,0 +1,9 @@
+project Checked is
+ for Source_Dirs use ("fixtures/actual");
+ for Object_Dir use external ("NATIVE_API_BUILD");
+ package Compiler is
+  for Default_Switches ("Ada") use ("-O1", "-gnat2022", "-gnatwa", "-gnatwe", "-gnatc", "-gnata", "-gnato");
+  -- Preserve the unedited generated body; silence its redundant with only.
+  for Switches ("startup.adb") use ("-O1", "-gnat2022", "-gnatwa", "-gnatwe", "-gnatwR", "-gnatc", "-gnata", "-gnato");
+ end Compiler;
+end Checked;

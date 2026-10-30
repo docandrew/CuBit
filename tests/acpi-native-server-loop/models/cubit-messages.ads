@@ -1,0 +1,65 @@
+pragma Ada_2022;
+with Interfaces; use Interfaces;
+with System;
+with Capability_ABI;
+with CuBit.Process_IDs;
+package CuBit.Messages is
+   type Protocol_Flags is new Capability_ABI.Protocol_Flags;
+   type IPC_Flags is new Capability_ABI.IPC_Flags;
+   No_IPC_Flags : constant IPC_Flags := (others => False);
+   type MessageTag is record
+      label : Unsigned_32 := 0;
+      length : Unsigned_8 := 0;
+      protocol : Protocol_Flags := 0;
+      ipc : IPC_Flags := No_IPC_Flags;
+      reserved : Unsigned_16 := 0;
+   end record;
+   function Flag_Byte (Tag : MessageTag) return Unsigned_8 is
+     (Capability_ABI.Flag_Byte (Capability_ABI.Protocol_Flags (Tag.protocol), Capability_ABI.IPC_Flags (Tag.ipc)));
+   type MessageWords is array (0 .. 3) of Unsigned_64;
+   type Message is record
+      tag : MessageTag;
+      authorityTag : Unsigned_64 := 0;
+      words : MessageWords := [others => 0];
+   end record;
+   NULL_MESSAGE : constant Message := (others => <>);
+   Kernel_Reply_First : constant Unsigned_32 := 16#FFFF_0000#;
+   REPLY_TIMEOUT : constant Unsigned_32 := 16#FFFF_0001#;
+   subtype Process_ID is CuBit.Process_IDs.Process_ID;
+   No_Process : Process_ID renames CuBit.Process_IDs.No_Process;
+   function "=" (Left, Right : Process_ID) return Boolean renames CuBit.Process_IDs."=";
+   function From_Word (Word : Unsigned_64) return Process_ID renames CuBit.Process_IDs.From_Word;
+   function To_Word (Process : Process_ID) return Unsigned_64 renames CuBit.Process_IDs.To_Word;
+   Wait_Forever : constant Unsigned_64 := Unsigned_64'Last;
+   SYSCALL_GETTIME : constant Unsigned_64 := 27;
+   type Activity_Result is (Work_Available, Deadline_Reached, Unavailable);
+   type CompletionEntry is record Occupied : Boolean := False; end record;
+   function Wait_For_Activity_Until (Deadline : Unsigned_64) return Activity_Result;
+   function Poll_Completion (result : System.Address) return Unsigned_64;
+   procedure Poll_Any_Ipc (from : out Process_ID; msg : out Message; found : out Boolean);
+   function syscall (call : Unsigned_64; arg0 : Unsigned_64 := 0; arg1 : Unsigned_64 := 0;
+      arg2 : Unsigned_64 := 0; arg3 : Unsigned_64 := 0; arg4 : Unsigned_64 := 0; arg5 : Unsigned_64 := 0) return Unsigned_64;
+   function reply (replyTo : Process_ID; msg : Message) return Unsigned_64;
+   procedure debugPrint (str : String);
+   -- Deterministic modeled I/O controls, absent from the production API.
+   type Message_Log is array (Positive range 1 .. 16) of Message;
+   type Process_Log is array (Positive range 1 .. 16) of Process_ID;
+   type Deadline_Log is array (Positive range 1 .. 16) of Unsigned_64;
+   type Test_State is record
+      Queue, Replies : Message_Log := [others => NULL_MESSAGE];
+      Senders, Reply_To : Process_Log := [others => No_Process];
+      Deadlines : Deadline_Log := [others => 0];
+      Queued, Taken, Reply_Count, Wait_Count, Clock_Count, Poll_Count, Completion_Count : Natural := 0;
+      Now : Unsigned_64 := 10;
+      Completion : Unsigned_64 := 0;
+      Reply_Result : Unsigned_64 := 1;
+      Wake_Credits : Natural := 0;
+      Offer_OK : Boolean := True;
+      Offers_Taken : Natural := 0;
+      Debug_Count : Natural := 0;
+      Offer_From : Process_ID := No_Process;
+   end record;
+   Test : Test_State;
+   procedure Reset;
+   procedure Enqueue (From : Process_ID; Item : Message);
+end CuBit.Messages;

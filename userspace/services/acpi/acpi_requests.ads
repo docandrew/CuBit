@@ -40,7 +40,10 @@ package ACPI_Requests with SPARK_Mode is
    Metrics_Completion_Access_Page : constant Unsigned_64 := 14;
    Metrics_Module_State_Page : constant Unsigned_64 := 15;
    Metrics_Module_Error_Page : constant Unsigned_64 := 16;
-   Metrics_Last_Page : constant Unsigned_64 := Metrics_Module_Error_Page;
+   -- [region barrier attempted, Region_Status_Code, zero]. The status is only
+   -- an attempted outcome when word1 is1; neither word grants authority.
+   Metrics_Region_Attempt_Page : constant Unsigned_64 := 17;
+   Metrics_Last_Page : constant Unsigned_64 := Metrics_Region_Attempt_Page;
    type Finish_Stage_Code is
      (Finish_Not_Attempted_Code,
       Finish_Freeze_Failed_Code,

@@ -1,5 +1,5 @@
 project Checked is
- for Source_Dirs use (".", "../acpi-integration", "../acpi-integration/mocks", "../aml-core", "../aml-explicit-format", "../aml-tostring", "../aml-tobuffer", "../aml-tointeger", "../../userspace/lib/acpi", "../../userspace/services/acpi", "../../userspace/services/acpi/native", "../../shared/firmware");
+ for Source_Dirs use (".", "../acpi-integration", "../acpi-integration/mocks", "../aml-core", "../aml-explicit-format", "../aml-tostring", "../aml-tobuffer", "../aml-tointeger", "../../userspace/services/acpi/lib", "../../userspace/services/acpi", "../acpi-table-import-model", "../../shared/firmware");
  for Object_Dir use "build-checked/obj";
  for Exec_Dir use "build-checked";
  for Main use ("match_owner_tests.adb", "match_collecting_tests.adb", "match_core_tests.adb", "match_runner.adb", "format_collecting_tests.adb", "format_capture_tests.adb");

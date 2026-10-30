@@ -1,0 +1,237 @@
+Input file region32.aml, Length 0x432 (1074) bytes
+
+Intel ACPI Component Architecture
+AML Execution/Debug Utility version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+
+
+ACPI: RSDP 0x00005555555FF180 000024 (v02 Intel )
+ACPI: XSDT 0x0000555555601D90 000034 (v00 Intel  AcpiExec 00001001 INTL 20260408)
+ACPI: FACP 0x00005555555FEFA0 000114 (v05 Intel  AcpiExec 00001001 INTL 20260408)
+ACPI: DSDT 0x0000555555608160 000432 (v01 CUBIT  REGWIDE  00000001 INTL 20260408)
+ACPI: FACS 0x00005555555FF140 000040
+
+ACPI table initialization:
+Table [DSDT: REGWIDE ] (id 01) -   54 Objects with   0 Devices,   1 Regions,   27 Methods (0/27/0 Serial/Non/Cvt)
+ACPI: 1 ACPI AML tables successfully acquired and loaded
+
+Final data object initialization: Namespace contains 63 (0x3F) objects
+Initializing General Purpose Events (GPEs):
+    Initialized GPE 00 to 7F [_GPE] 16 regs on interrupt 0x0 (SCI)
+    Initialized GPE 80 to FF [_GPE] 16 regs on interrupt 0x0 (SCI)
+Initializing Device/Processor/Thermal objects and executing _INI/_STA methods:
+    Executed 0 _INI methods requiring 0 _STA executions (examined 2 objects)
+Evaluating \INIT
+Evaluation of \INIT returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000000
+
+Evaluating \RD80
+Evaluation of \RD80 returned object 0x555555601dd0, external buffer length 28
+  [Buffer] Length 0A =     0000: 10 21 32 43 54 65 76 87 98 A9                    // .!2CTev...
+
+Evaluating \INIT
+Evaluation of \INIT returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000000
+
+Evaluating \RU80
+Evaluation of \RU80 returned object 0x555555601dd0, external buffer length 28
+  [Buffer] Length 0A =     0000: 11 22 33 44 55 66 77 88 99 AA                    // ."3DUfw...
+
+Evaluating \INIT
+Evaluation of \INIT returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000000
+
+Evaluating \RP73
+Evaluation of \RP73 returned object 0x555555601dd0, external buffer length 28
+  [Buffer] Length 0A =     0000: 10 21 32 43 54 65 76 87 98 01                    // .!2CTev...
+
+Evaluating \INIT
+Evaluation of \INIT returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000000
+
+Evaluating \RW80
+Evaluation of \RW80 returned object 0x555555601dd0, external buffer length 28
+  [Buffer] Length 0A =     0000: 10 21 32 43 54 65 76 87 98 A9                    // .!2CTev...
+
+Evaluating \INIT
+Evaluation of \INIT returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000000
+
+Evaluating \RQ80
+Evaluation of \RQ80 returned object 0x555555601dd0, external buffer length 28
+  [Buffer] Length 0A =     0000: 10 21 32 43 54 65 76 87 98 A9                    // .!2CTev...
+
+Evaluating \INIT
+Evaluation of \INIT returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000000
+
+Evaluating \RB80
+Evaluation of \RB80 returned object 0x555555601dd0, external buffer length 28
+  [Buffer] Length 0A =     0000: 10 21 32 43 54 65 76 87 98 A9                    // .!2CTev...
+
+Evaluating \INIT
+Evaluation of \INIT returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000000
+
+Evaluating \RBU0
+Evaluation of \RBU0 returned object 0x555555601dd0, external buffer length 28
+  [Buffer] Length 0A =     0000: 11 22 33 44 55 66 77 88 99 AA                    // ."3DUfw...
+
+Evaluating \INIT
+Evaluation of \INIT returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000000
+
+Evaluating \RBP3
+Evaluation of \RBP3 returned object 0x555555601dd0, external buffer length 28
+  [Buffer] Length 0A =     0000: 10 21 32 43 54 65 76 87 98 01                    // .!2CTev...
+
+Evaluating \INIT
+Evaluation of \INIT returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000000
+
+Evaluating \RBW0
+Evaluation of \RBW0 returned object 0x555555601dd0, external buffer length 28
+  [Buffer] Length 0A =     0000: 10 21 32 43 54 65 76 87 98 A9                    // .!2CTev...
+
+Evaluating \INIT
+Evaluation of \INIT returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000000
+
+Evaluating \RBQ0
+Evaluation of \RBQ0 returned object 0x555555601dd0, external buffer length 28
+  [Buffer] Length 0A =     0000: 10 21 32 43 54 65 76 87 98 A9                    // .!2CTev...
+
+Evaluating \INIT
+Evaluation of \INIT returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000000
+
+Evaluating \SD80
+Evaluation of \SD80 returned object 0x555555601dd0, external buffer length 28
+  [Buffer] Length 0A =     0000: 00 01 02 03 04 05 06 07 08 09                    // ..........
+
+Evaluating \INIT
+Evaluation of \INIT returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000000
+
+Evaluating \SB80
+Evaluation of \SB80 returned object 0x555555601dd0, external buffer length 28
+  [Buffer] Length 0A =     0000: 00 01 02 03 04 05 06 07 08 09                    // ..........
+
+Evaluating \INIT
+Evaluation of \INIT returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000000
+
+Evaluating \SDU0
+Evaluation of \SDU0 returned object 0x555555601dd0, external buffer length 28
+  [Buffer] Length 0A =     0000: 00 10 20 30 40 50 60 70 80 90                    // .. 0@P`p..
+
+Evaluating \INIT
+Evaluation of \INIT returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000000
+
+Evaluating \SBU0
+Evaluation of \SBU0 returned object 0x555555601dd0, external buffer length 28
+  [Buffer] Length 0A =     0000: 00 10 20 30 40 50 60 70 80 90                    // .. 0@P`p..
+
+Evaluating \INIT
+Evaluation of \INIT returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000000
+
+Evaluating \SDO0
+Evaluation of \SDO0 returned object 0x555555601dd0, external buffer length 28
+  [Buffer] Length 0A =     0000: 0F 10 20 30 40 50 60 70 80 90                    // .. 0@P`p..
+
+Evaluating \INIT
+Evaluation of \INIT returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000000
+
+Evaluating \SBO0
+Evaluation of \SBO0 returned object 0x555555601dd0, external buffer length 28
+  [Buffer] Length 0A =     0000: 0F 10 20 30 40 50 60 70 80 90                    // .. 0@P`p..
+
+Evaluating \INIT
+Evaluation of \INIT returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000000
+
+Evaluating \SDZ0
+Evaluation of \SDZ0 returned object 0x555555601dd0, external buffer length 28
+  [Buffer] Length 0A =     0000: 00 10 20 30 40 50 60 70 80 90                    // .. 0@P`p..
+
+Evaluating \INIT
+Evaluation of \INIT returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000000
+
+Evaluating \SBZ0
+Evaluation of \SBZ0 returned object 0x555555601dd0, external buffer length 28
+  [Buffer] Length 0A =     0000: 00 10 20 30 40 50 60 70 80 90                    // .. 0@P`p..
+
+Evaluating \INIT
+Evaluation of \INIT returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000000
+
+Evaluating \SDIN
+Evaluation of \SDIN returned object 0x555555601dd0, external buffer length 28
+  [Buffer] Length 0A =     0000: 78 56 34 12 00 00 00 00 00 00                    // xV4.......
+
+Evaluating \INIT
+Evaluation of \INIT returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000000
+
+Evaluating \SBIN
+Evaluation of \SBIN returned object 0x555555601dd0, external buffer length 28
+  [Buffer] Length 0A =     0000: 78 56 34 12 00 00 00 00 00 00                    // xV4.......
+
+Evaluating \INIT
+Evaluation of \INIT returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000000
+
+Evaluating \SDSH
+Evaluation of \SDSH returned object 0x555555601dd0, external buffer length 28
+  [Buffer] Length 0A =     0000: 12 34 56 00 00 00 00 00 00 00                    // .4V.......
+
+Evaluating \INIT
+Evaluation of \INIT returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000000
+
+Evaluating \SBSH
+Evaluation of \SBSH returned object 0x555555601dd0, external buffer length 28
+  [Buffer] Length 0A =     0000: 12 34 56 00 00 00 00 00 00 00                    // .4V.......
+
+Evaluating \INIT
+Evaluation of \INIT returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000000
+
+Evaluating \SW80
+Evaluation of \SW80 returned object 0x555555601dd0, external buffer length 28
+  [Buffer] Length 0A =     0000: 00 01 02 03 04 05 06 07 08 09                    // ..........
+
+Evaluating \INIT
+Evaluation of \INIT returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000000
+
+Evaluating \SQ80
+Evaluation of \SQ80 returned object 0x555555601dd0, external buffer length 28
+  [Buffer] Length 0A =     0000: 00 01 02 03 04 05 06 07 08 09                    // ..........
+
+Evaluating \INIT
+Evaluation of \INIT returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000000
+
+Evaluating \SBW0
+Evaluation of \SBW0 returned object 0x555555601dd0, external buffer length 28
+  [Buffer] Length 0A =     0000: 00 01 02 03 04 05 06 07 08 09                    // ..........
+
+Evaluating \INIT
+Evaluation of \INIT returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000000
+
+Evaluating \SBQ0
+Evaluation of \SBQ0 returned object 0x555555601dd0, external buffer length 28
+  [Buffer] Length 0A =     0000: 00 01 02 03 04 05 06 07 08 09                    // ..........
+
+0x55555560afe0 Length 0x0048   utcache-0453 [Operand Object]       Method  RefCount 0x0001
+0x555555607ce0 Length 0x0023  nsxfname-0723 [Not a Descriptor] 
+0x555555607ba0 Length 0x0023  nsxfname-0723 [Not a Descriptor] 
+0x5555556079f0 Length 0x0048   utcache-0453 [Operand Object]       Method  RefCount 0x0001
+ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)

@@ -1,0 +1,21 @@
+Error    6126 -  Compiler aborting due to parser-detected syntax error(s)
+
+
+/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r1-frombcd-immediate-store.asl      5:  Method (TEST, 0) {  Return (FromBCD (DerefOf (RefOf (SRC0)), Zero)) }
+Error    6126 -                                                                                                                                     syntax error ^ 
+
+Error    6126 -  Compiler aborting due to parser-detected syntax error(s)
+
+
+/home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r1-frombcd-immediate-store.asl      5:  Method (TEST, 0) {  Return (FromBCD (DerefOf (RefOf (SRC0)), Zero)) }
+Error    6126 -                                                                                                                                     syntax error ^ 
+
+
+Intel ACPI Component Architecture
+ASL+ Optimizing Compiler/Disassembler version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+Input file:    /home/doc/git/.acpi-proof-work/format-bcd-oracle-arrsb3nn/r1-frombcd-immediate-store.asl - Compilation aborted due to parser-detected syntax error(s)
+
+Compilation failed. 2 Errors, 0 Warnings, 0 Remarks
+No AML files were generated due to syntax error(s)

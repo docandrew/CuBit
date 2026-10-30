@@ -42,7 +42,7 @@ procedure Field_Core_Replay_Tests is
    end Transact;
    package P is new ACPI_Field_Hosted_Provider (Hardware, Transact);
    package F is new C.Field_IO
-     (P.Context, P.Pending, P.Describe, P.Dispatch, P.Reconciled);
+     (P.Context, P.Pending, P.Describe, P.Dispatch, P.Reconciled, Authorize_Target => P.Authorize);
    Checks : Natural := 0;
    procedure Check (OK : Boolean; Why : String) is
    begin

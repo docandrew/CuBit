@@ -1,0 +1,15 @@
+/home/doc/git/.acpi-proof-work/runtime-package-order-oracle-uf19aslc/selfsize-r1.asl      5:  Method (TEST, 0) { Store (Zero, MARK) Name (P000, Package (2) { Buffer (Add (Increment (MARK), SizeOf (P000))) {}, One }) Return (SizeOf (DerefOf (Index (P000, Zero)))) }
+Remark   2173 -              Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\TEST)
+
+/home/doc/git/.acpi-proof-work/runtime-package-order-oracle-uf19aslc/selfsize-r1.asl      5:  Method (TEST, 0) { Store (Zero, MARK) Name (P000, Package (2) { Buffer (Add (Increment (MARK), SizeOf (P000))) {}, One }) Return (SizeOf (DerefOf (Index (P000, Zero)))) }
+Remark   2120 -        Control Method should be made Serialized due to creation of named objects within ^  (\TEST)
+
+
+Intel ACPI Component Architecture
+ASL+ Optimizing Compiler/Disassembler version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+ASL Input:     /home/doc/git/.acpi-proof-work/runtime-package-order-oracle-uf19aslc/selfsize-r1.asl -     287 bytes     13 keywords      0 source lines
+AML Output:    /home/doc/git/.acpi-proof-work/runtime-package-order-oracle-uf19aslc/results/selfsize-r1.aml -     100 bytes      9 opcodes       4 named objects
+
+Compilation successful. 0 Errors, 0 Warnings, 2 Remarks, 0 Optimizations

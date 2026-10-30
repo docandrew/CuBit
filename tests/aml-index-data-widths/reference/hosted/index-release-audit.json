@@ -1,0 +1,20 @@
+{
+  "source": "/home/doc/git/.acpi-proof-work/index-data-update-Ho0dUXUe/source",
+  "output": "/home/doc/git/.acpi-proof-work/index-data-update-Ho0dUXUe/source/tests/aml-index-widths/results/release-v4ucw11p",
+  "mode": "release",
+  "inputs": 230,
+  "references": 11,
+  "tools": 5,
+  "runtime_sources": 1582,
+  "binaries": 1,
+  "artifacts": 315,
+  "stages": 2,
+  "logs": {
+    "index_width_tests": "Index width checks 342"
+  },
+  "ALI": 77,
+  "dependencies": 1058,
+  "strict_commands": 76,
+  "audit_sha256": "a45d7302a818cb632a2fd73d034e8e84c688bd847de70e2dd27e0e63bb63a466",
+  "scope": "Hosted runtime evidence for the exact selected source/profile only; no native delivery or whole-interpreter proof."
+}

@@ -1,0 +1,8 @@
+project Resource_Proof is
+ for Source_Dirs use ("../../userspace/services/acpi/resource-data", "../../shared/firmware");
+ for Source_Files use ("acpi_resource_data.ads", "acpi_resource_data.adb", "firmware_tables.ads", "firmware_tables.adb");
+ for Object_Dir use external ("RESOURCE_PROOF_OBJECTS");
+ package Compiler is
+  for Default_Switches ("Ada") use ("-gnat2022", "-gnatwa", "-gnatwe", "-gnata", "-gnato");
+ end Compiler;
+end Resource_Proof;

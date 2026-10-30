@@ -1,0 +1,61 @@
+CuBit development shell
+  Build:  make -C kernel world
+  Test:   tests/headless/run.sh --test desktop-display
+  Run:    make -C kernel run-desktop
+
+Intel ACPI Component Architecture
+ASL+ Optimizing Compiler/Disassembler version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+ASL Input:     power_source.asl -    2042 bytes     94 keywords      0 source lines
+AML Output:    power_source.aml -     612 bytes     63 opcodes      31 named objects
+Hex Dump:      power_source.hex -    6164 bytes
+
+Compilation successful. 0 Errors, 0 Warnings, 0 Remarks, 5 Optimizations
+Input file power_source.aml, Length 0x264 (612) bytes
+
+Intel ACPI Component Architecture
+AML Execution/Debug Utility version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+
+
+ACPI: RSDP 0x00005555555FF180 000024 (v02 Intel )
+ACPI: XSDT 0x0000555555601D90 000034 (v00 Intel  AcpiExec 00001001 INTL 20260408)
+ACPI: FACP 0x00005555555FEFA0 000114 (v05 Intel  AcpiExec 00001001 INTL 20260408)
+ACPI: DSDT 0x0000555555608160 000264 (v02 CUBIT  POWSRC   00000001 INTL 20260408)
+ACPI: FACS 0x00005555555FF140 000040
+
+ACPI table initialization:
+Table [DSDT: POWSRC  ] (id 01) -   31 Objects with   6 Devices,   0 Regions,    9 Methods (0/9/0 Serial/Non/Cvt)
+ACPI: 1 ACPI AML tables successfully acquired and loaded
+
+Final data object initialization: Namespace contains 40 (0x28) objects
+Initializing General Purpose Events (GPEs):
+    Initialized GPE 00 to 7F [_GPE] 16 regs on interrupt 0x0 (SCI)
+    Initialized GPE 80 to FF [_GPE] 16 regs on interrupt 0x0 (SCI)
+Evaluating \AC00._HID
+Evaluation of \AC00._HID returned object 0x555555601dd0, external buffer length 28
+  [String] Length 08 = "ACPI0003"
+
+Evaluating \AC00._PSR
+Evaluation of \AC00._PSR returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000000
+
+Evaluating \NAM0._PSR
+Evaluation of \NAM0._PSR returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000001
+
+Evaluating \ORCL
+Evaluation of \ORCL returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000001
+
+Evaluating \ALH0._HID
+Evaluation of \ALH0._HID returned object 0x555555601dd0, external buffer length 28
+  [String] Length 08 = "ACPI0003"
+
+0x55555560a1f0 Length 0x0048   utcache-0453 [Operand Object]       Method  RefCount 0x0001
+0x555555607ce0 Length 0x0023  nsxfname-0723 [Not a Descriptor] 
+0x555555607ba0 Length 0x0023  nsxfname-0723 [Not a Descriptor] 
+0x5555556079f0 Length 0x0048   utcache-0453 [Operand Object]       Method  RefCount 0x0001
+ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)

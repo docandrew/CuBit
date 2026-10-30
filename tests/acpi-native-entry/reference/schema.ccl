@@ -1,0 +1,129 @@
+# The executable manifest as CCL types (docs/ccl-typed-manifests.md).
+# A manifest.ccl is one expression of type Executable_Manifest, checked
+# against these declarations. The manifest tool reads the checked value by
+# field and alternative name, then writes the ELF sections. The functions at
+# the end are ordinary definitions (smart constructors), not keywords.
+
+(type Access (enum Read Write Read_Write))
+(type Notify_Access (enum Publish Manage Publish_And_Manage))
+(type Service_Request (record (service String) (binding String) (access Access Access.Read_Write)))
+(type Notification_Request (record (notification String) (access Notify_Access) (binding String)))
+(type Framebuffer_Request (record (binding String) (access Access Access.Read_Write)))
+(type Network_Action (enum TCP_Connect TCP_Listen UDP_Connect))
+(type Network_Request (record
+  (action Network_Action) (address String) (prefix Integer)
+  (first_port Integer) (last_port Integer) (resolve_names Boolean)
+  (connections Integer) (binding String)))
+(type Device_Memory_Request (record
+  (binding String) (index Integer) (max_bytes Integer) (access Access Access.Read_Write)))
+(type IO_Port_Request (record (binding String) (index Integer) (count Integer)))
+(type Interrupt_Mode (enum MSI_X MSI Line Platform_Line))
+(type Interrupt_Request (record
+  (binding String) (mode Interrupt_Mode) (vectors Integer 1) (index Integer 0)))
+(type DMA_Request (record (binding String) (bytes Integer)))
+(type Scheduling_Request (record (binding String) (budget_us Integer) (period_us Integer)))
+(type Request (variant
+  (Service Service_Request) (Notification Notification_Request) (Network Network_Request)
+  (Framebuffer Framebuffer_Request) (Render String) (Optional_Render String) (Device_Memory Device_Memory_Request)
+  (IO_Ports IO_Port_Request) (Interrupt Interrupt_Request) (DMA DMA_Request)
+  (Scheduling Scheduling_Request)
+  (Firmware_Snapshot String)))
+(type File_Right (enum Read Write Execute Create))
+(type Scope_Place (variant (Everything) (Under String)))
+(type Access_Scope (record (rights (List File_Right)) (place Scope_Place)))
+(type Scope (variant (Filesystem Access_Scope) (Config Access_Scope) (TLS String)))
+# A program's inlets and outlets (docs/ccl-launch-parameters.md, "Inlets and
+# outlets, not stdio"): any number, each with a fully qualified name
+# (unix.stderr, com.cubit.stdlog), an element type, a signal kind and its
+# ring's size. A ported Unix program maps its file descriptors onto them
+# (porting glue).
+(type Element (enum Text Raw_Bytes Integers Log_Records))
+(type Signal (enum Stream Level Edge))
+(type Outlet (record (name String) (element Element) (signal Signal Signal.Stream) (pages Integer 1)))
+(type Inlet (record (name String) (element Element) (signal Signal Signal.Stream) (pages Integer 1)))
+(type Descriptor (record (number Integer) (name String)))
+# What a driver drives (docs/device-matching.md). PCI_IDs: vendor, device
+# range first..last. Write IDs in hex.
+(type PCI_IDs (record (vendor Integer) (first Integer) (last Integer)))
+(type PCI_Class (record (class Integer) (subclass Integer) (interface Integer)))
+(type USB_Class (record (class Integer) (subclass Integer) (protocol Integer)))
+(type Platform_Device (enum PS2_Controller ATA_Primary CMOS_RTC))
+(type Device_Match (variant
+  (PCI_IDs PCI_IDs) (PCI_Class PCI_Class) (ACPI_ID String) (USB_Class USB_Class)
+  (Platform Platform_Device)))
+(type Launch (record (program String) (invoked_as (List String) [])))
+# Legacy argv mapping for a ported Unix tool (docs/ccl-launch-parameters.md,
+# "Legacy tools"): what its argv may hold and how it is rendered; file values
+# become delegated places. Pieces are written with the variant's
+# constructors: helper functions would exceed the CCL program's 16-function
+# limit. Native programs declare typed parameters instead (parameters).
+(type Argv_Kind (enum Input_File Output_File Input_Directory Output_Directory Flag Text))
+# in_arguments false: a file or directory delegated as a place only, never
+# rendered into argv (a work directory, a toolchain).
+(type Argv_Parameter (record (name String) (kind Argv_Kind) (many Boolean false) (required Boolean true) (in_arguments Boolean true)))
+(type Conditional_Literal (record (parameter String) (text String)))
+(type Argv_Piece (variant (Literal String) (Value String) (When_Set Conditional_Literal)))
+(type Argv_Mapping (record (parameters (List Argv_Parameter)) (pieces (List Argv_Piece))))
+(type Argv (variant (None) (Mapped Argv_Mapping)))
+# Typed program parameters (docs/ccl-launch-parameters.md): the record type,
+# declared with its field types in the manifest's own (type ...) forms ahead
+# of the Executable_Manifest, whose fields are the parameters. A launcher
+# supplies one value of it, immutable for the process's lifetime. None: the
+# program accepts no arguments, and supplying any refuses the launch.
+(type Parameter_Signature (variant (None) (Declared String)))
+# CAP-002: a request's binding is its startup name (Startup.<Name>). Names in
+# `optional` may be left absent at launch; every other request is required.
+# Standard_Limit is CuBit.Startup_Tables.Standard_Handle_Limit (4096).
+(type Handle_Limit (variant (Standard_Limit) (At_Most Integer) (Kernel_Limit)))
+# A server's channel limits per contract (docs/capability-handles.md section 4)
+# and its service class: Urgent before Interactive (the compositor) before Normal
+# (Display's to intel-gpu).
+# Each limit is spelled out: (Channel_Limit.At_Most N), or Server_Limit for
+# as many as the server can serve right now (like Kernel_Limit for handles).
+(type Channel_Class (enum Normal Interactive Urgent))
+(type Channel_Limit (variant (Server_Limit) (At_Most Integer)))
+(type Channel_Offer (record (contract String) (per_client Channel_Limit) (total Channel_Limit)
+  (class Channel_Class Channel_Class.Normal)))
+# Catalog and Connect (step 4): interfaces offered and used, aliases.
+# Refused while non-empty; their payloads become typed records then.
+(type Connection (variant (Offers String) (Uses String) (Alias String)))
+(type Executable_Manifest (record
+  (identity String) (version String)
+  (requests (List Request) []) (scopes (List Scope) [])
+  (optional (List String) []) (handles Handle_Limit Handle_Limit.Standard_Limit)
+  (channels (List Channel_Offer) []) (connections (List Connection) [])
+  (drives (List Device_Match) []) (requests_none Boolean false)
+  (may_launch (List Launch) [])
+  (parameters Parameter_Signature Parameter_Signature.None) (argv Argv Argv.None)
+  (outlets (List Outlet) []) (inlets (List Inlet) []) (descriptors (List Descriptor) [])))
+
+(define (service (name String) (binding String)) Request
+  (Request.Service (Service_Request name binding)))
+(define (notification (name String) (rights Notify_Access) (binding String)) Request
+  (Request.Notification (Notification_Request name rights binding)))
+(define (network (action Network_Action) (address String) (prefix Integer) (first-port Integer)
+                 (last-port Integer) (dns Boolean) (connections Integer) (binding String)) Request
+  (Request.Network (Network_Request action address prefix first-port last-port dns connections binding)))
+(define (framebuffer (binding String)) Request (Request.Framebuffer (Framebuffer_Request binding)))
+(define (render (binding String)) Request (Request.Render binding))
+(define (device-memory (binding String) (bar Integer) (max-bytes Integer) (rights Access)) Request
+  (Request.Device_Memory (Device_Memory_Request binding bar max-bytes rights)))
+(define (io-ports (binding String) (bar Integer) (ports Integer)) Request
+  (Request.IO_Ports (IO_Port_Request binding bar ports)))
+(define (interrupt (binding String) (mode Interrupt_Mode) (vectors Integer)) Request
+  (Request.Interrupt (Interrupt_Request binding mode vectors)))
+(define (platform-interrupt (binding String) (resource Integer)) Request
+  (Request.Interrupt (Interrupt_Request binding Interrupt_Mode.Platform_Line index => resource)))
+(define (dma (binding String) (bytes Integer)) Request (Request.DMA (DMA_Request binding bytes)))
+(define (scheduling (binding String) (budget-us Integer) (period-us Integer)) Request
+  (Request.Scheduling (Scheduling_Request binding budget-us period-us)))
+(define (filesystem (rights (List File_Right)) (path String)) Scope
+  (Scope.Filesystem (Access_Scope rights (Scope_Place.Under path))))
+(define (filesystem-all (rights (List File_Right))) Scope
+  (Scope.Filesystem (Access_Scope rights Scope_Place.Everything)))
+(define (config (rights (List File_Right)) (prefix String)) Scope
+  (Scope.Config (Access_Scope rights (Scope_Place.Under prefix))))
+(define (config-all (rights (List File_Right))) Scope
+  (Scope.Config (Access_Scope rights Scope_Place.Everything)))
+(define (tls (pattern String)) Scope (Scope.TLS pattern))
+

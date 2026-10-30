@@ -1,0 +1,86 @@
+{
+  "schema": 1,
+  "kind": "historical-hosted-AML-provider-and-API-receipts",
+  "checks_per_profile": 6885,
+  "runtime": {
+    "release": {
+      "source": "/home/doc/git/.acpi-proof-work/field-remote-frozen-MhSxHHe8/source",
+      "output": "/home/doc/git/.acpi-proof-work/field-remote-frozen-MhSxHHe8/source/tests/acpi-field-remote/results/release-m9kfvwem",
+      "mode": "release",
+      "inputs": 216,
+      "references": 0,
+      "tools": 5,
+      "runtime_sources": 1582,
+      "binaries": 1,
+      "artifacts": 343,
+      "stages": 2,
+      "logs": {
+        "remote_field_tests": "Remote Field checks 6885"
+      },
+      "ALI": 84,
+      "dependencies": 1129,
+      "strict_commands": 83,
+      "audit_sha256": "a6661d9a98bd2e13aafbb8d26aa60eef46d30e115de19c2f1c1c5796cf33d6ef",
+      "scope": "Hosted runtime evidence for the exact selected source/profile only; no native delivery or whole-interpreter proof."
+    },
+    "checked": {
+      "source": "/home/doc/git/.acpi-proof-work/field-remote-frozen-MhSxHHe8/source",
+      "output": "/home/doc/git/.acpi-proof-work/field-remote-frozen-MhSxHHe8/source/tests/acpi-field-remote/results/checked-l180ptpf",
+      "mode": "checked",
+      "inputs": 216,
+      "references": 0,
+      "tools": 5,
+      "runtime_sources": 1582,
+      "binaries": 1,
+      "artifacts": 343,
+      "stages": 2,
+      "logs": {
+        "remote_field_tests": "Remote Field checks 6885"
+      },
+      "ALI": 84,
+      "dependencies": 1474,
+      "strict_commands": 83,
+      "audit_sha256": "d215ca28833255deade09925ae9de0ca2502f33eca4b70690763c91f25dc9bf6",
+      "scope": "Hosted runtime evidence for the exact selected source/profile only; no native delivery or whole-interpreter proof."
+    }
+  },
+  "compile_only_API": {
+    "release": {
+      "source": "/home/doc/git/.acpi-proof-work/field-remote-frozen-wyIIFDAQ/source",
+      "output": "/home/doc/git/.acpi-proof-work/field-remote-frozen-wyIIFDAQ/source/tests/acpi-field-remote/results/release-b2vzel91",
+      "mode": "release",
+      "inputs": 216,
+      "references": 0,
+      "tools": 5,
+      "runtime_sources": 1582,
+      "binaries": 0,
+      "artifacts": 8,
+      "stages": 1,
+      "logs": {},
+      "ALI": 1,
+      "dependencies": 125,
+      "strict_commands": 1,
+      "audit_sha256": "770513fbbb2582d6d795a4ea67812fbdf6523bd9e237ca8284fe7154626ef9d0",
+      "scope": "Compile-only exact reached units and strict requested-profile flags. No link, runtime or proof."
+    },
+    "checked": {
+      "source": "/home/doc/git/.acpi-proof-work/field-remote-frozen-MhSxHHe8/source",
+      "output": "/home/doc/git/.acpi-proof-work/field-remote-frozen-MhSxHHe8/source/tests/acpi-field-remote/results/checked-8bncl9aq",
+      "mode": "checked",
+      "inputs": 216,
+      "references": 0,
+      "tools": 5,
+      "runtime_sources": 1582,
+      "binaries": 0,
+      "artifacts": 8,
+      "stages": 1,
+      "logs": {},
+      "ALI": 1,
+      "dependencies": 127,
+      "strict_commands": 1,
+      "audit_sha256": "8d4b853c7c322f99dec42c953478b7f75a3facfea3fe873a41e2e7196372ab3f",
+      "scope": "Compile-only exact reached units and strict requested-profile flags. No link, runtime or proof."
+    }
+  },
+  "scope": "Actual Core/AML/provider/client/backend with hosted packet transport/hardware. Native binding compiled against exact runtime specs, no link/runtime. Ninety retained ACPICA store images reused unchanged; originals/mirrors pinned. Terminal evidence and arena-consumption facts are trusted controller inputs. No native startup/provisioning/backing, physical behavior or new SPARK proof claim. Original receipt paths are provenance only; source carry verified separately."
+}

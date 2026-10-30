@@ -1,0 +1,20 @@
+{
+  "source": "/home/doc/git/.acpi-proof-work/index-width-matrix-3cAPbdC9/source",
+  "output": "/home/doc/git/.acpi-proof-work/index-width-matrix-3cAPbdC9/source/tests/aml-index-widths/results/release-j9k4pgrn",
+  "mode": "release",
+  "inputs": 228,
+  "references": 9,
+  "tools": 5,
+  "runtime_sources": 1582,
+  "binaries": 1,
+  "artifacts": 315,
+  "stages": 2,
+  "logs": {
+    "index_width_tests": "Index width checks 342"
+  },
+  "ALI": 77,
+  "dependencies": 1058,
+  "strict_commands": 76,
+  "audit_sha256": "d61683fb2e56abc5ac7b68cac40831905ceafa3a5be90bb51f9bac122c771277",
+  "scope": "Hosted runtime evidence for the exact selected source/profile only; no native delivery or whole-interpreter proof."
+}

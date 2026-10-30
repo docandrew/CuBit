@@ -1,5 +1,5 @@
 project Condref_oracle_checked is
- for Source_Dirs use (".", "../../userspace/lib/acpi", "../../userspace/services/acpi", "../../shared/firmware");
+ for Source_Dirs use (".", "../../userspace/services/acpi/lib", "../../userspace/services/acpi", "../../shared/firmware");
  for Object_Dir use "build-checked/obj";
  for Exec_Dir use "build-checked";
  for Main use ("condref_oracle_tests.adb");

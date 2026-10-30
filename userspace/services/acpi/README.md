@@ -1,5 +1,54 @@
 # ACPI service core
 
+## Direct-entry architecture
+
+The current native entry in `native/` declares a process-manager-launched
+`acpi.svc`. Generated `Startup.Tables` supplies the kernel's sealed, read-only
+snapshot authority. Startup copies bounded chunks into owned, descriptor-sized
+storage, validates and initializes the namespace, and registers the observer
+endpoint only after obtaining a complete owner. The kernel retains early-boot
+ACPI responsibilities; no firmware pages or arbitrary physical addresses are
+mapped into this service by this interface.
+
+One serialized event loop owns the service state. It dispatches stamped
+observer requests, attempts each reply once, and sleeps through the runtime's
+activity wait when idle. Upload/configure/provider authority is absent from
+this entry. SCI/GPE/EC delivery, device-state refresh and CCL subscriptions are
+future integration work, not implemented native event handling. ACPI supplies
+firmware mechanisms; power policy and I2C/HID controller operations belong to
+their respective services and drivers.
+
+The direct startup, Fatal-report lifetime, owner lifecycle and observer loop
+have hosted functional tests. Actual service linking, stack fit, boot, logger
+delivery and hardware events still require native validation. The whole AML
+interpreter is not yet SPARK-proved; earlier scoped proofs apply only to their
+recorded units and assumptions. See `native/README.md` for the entry contract.
+
+## Source layout
+
+The ACPI service owns its implementation library in `lib/`. It contains the
+AML interpreter and ACPI-specific pure helpers; it is not a general userspace
+library. The adjacent privileged backend consumes a small register-validation
+subset through an explicit source list.
+
+| Directory | Responsibility |
+| --- | --- |
+| `lib/` | AML values, namespace, decoding, execution and fixed-table helpers |
+| This directory | Service lifecycle, snapshot admission, requests and device policy |
+| `resource-data/` | Pure decoding of device resource descriptors |
+| `resource-consumer/`, `pci-routing/`, `lid/`, `hid-i2c/` | Typed consumers of the service namespace |
+| `field-client/`, `region-init/` | Scoped OperationRegion access and initialization |
+| `native/`, `native-clock/`, `provider-native/`, `request-driver/` | CuBit adapters and injectable transport logic |
+| `../acpi-backend/` | Privileged access policy and envelope adapter; not yet a running service |
+| `../../../shared/firmware/` | Portable firmware table parsers also used by the kernel |
+
+Early boot discovery and CPU/interrupt setup remain in `kernel/src/acpi.*`.
+Hosted tests live under `tests/acpi-*` and `tests/aml-*`. Historical validation
+records retain the paths and hashes of the sources they originally checked;
+they are not evidence of native integration or a complete interpreter proof.
+
+## Implementation and validation records
+
 Hosted checkpoint (2026-10-14): static Alias lookup preserves source-node
 identity and method scope. `Find_Child` selects physical bindings; `Find_Object`
 returns a discriminated canonical lookup, including a valid root result distinct
@@ -20,10 +69,10 @@ operations and full AML semantics remain incomplete. Run `python3 tests/acpi-hos
 or use `--mode checked` inside the Nix shell. The public group also runs 8,568
 protocol checks per profile; see the coverage ledger for exact scope.
 
-`ACPI_Service` is the pure service state machine. A native entry point,
-identity manifest, configuration decoder and IPC runner exist, but real provider
-startup and service launch are not integrated. CCL bindings, SCI/EC handling
-and hardware callbacks remain unfinished.
+`ACPI_Service` is the pure service state machine. Historical provider/configure
+models remain in explicitly hosted tests; the native entry uses direct snapshot
+startup instead. Native service launch validation, SCI/EC handling and hardware
+callbacks remain unfinished.
 
 Runtime AML BufferField support includes all six Create* field instructions,
 authenticated bit views into owned Buffers, bounded reads/writes, and field-value
@@ -85,9 +134,10 @@ These are explicit development budgets, not ACPI specification limits.
 Service, Bootstrap and Requests state are limited objects: construct them in
 place with explicit table-count, aggregate-byte and single-table discriminants
 when different budgets are needed. Requests also takes `Initial_Revision`.
-There is no copying `Fresh` constructor; the native instance names its default
-budgets and initial revision zero explicitly. Discovery-driven capacity selection
-is still a startup-integration task.
+There is no copying `Fresh` constructor. The direct native loader selects table
+count, aggregate table storage and largest-table bounds from validated snapshot
+metadata, with initial revision zero. This removes the fixed table-byte defaults
+from that entry; interpreter node/method/result budgets remain separate limits.
 
 After all advertised tables have been admitted, Bootstrap `Finish_Snapshot`
 initializes static package members once and retains the Bound/Missing/Unsupported

@@ -1,0 +1,15 @@
+{
+  "tests/aml-field-depth/reference/compile256.log": "98d6df5ce637ccb9979c8e6d315e1df1ff88a1a2045dfa5e9af98668eb1cd252",
+  "tests/aml-field-depth/reference/status.tsv": "509c8b7b9e31fcf9362d2b9dcb66efbd8677b8a2698b229d03650ad37e58865f",
+  "tests/aml-field-depth/reference/expected.tsv": "fbb128c6c2761cae374597f32c72aae00c09cac48b6e55844762a9d4cf4d1d06",
+  "tests/aml-field-depth/reference/compile128.log": "49a3c791c9b2f7f3efa2d9799f5151caa0f5a7c0e1236f486a99b47dfcceeb0e",
+  "tests/aml-field-depth/reference/depth128.aml": "926b669160faca17800d53b687ec56e7a6f31e238089ff3d5dc308627b0f308c",
+  "tests/aml-field-depth/reference/actual256.tsv": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "tests/aml-field-depth/reference/reference128.log": "1ad1911d0a1d120786bab4ba5edfcf99980ca7e0f3733bee3ba7cd0cc894d94a",
+  "tests/aml-field-depth/reference/reference256.log": "d3bd73f6c1421c485a51860dae4a19d7e8ae07b10ef30febd375e8a772df6b1e",
+  "tests/aml-field-depth/reference/actual128.tsv": "fbb128c6c2761cae374597f32c72aae00c09cac48b6e55844762a9d4cf4d1d06",
+  "tests/aml-field-depth/reference/inputs.sha256": "117c94b5229bc2644e1dc725cda2f038a9615711a442ff9ae07a5f8696fce612",
+  "tests/aml-field-depth/reference/depth256.aml": "f03d613e5eb10040ab301ecc417be2ee7ca1142e35644f8c8e8cca32652e7d65",
+  "tests/aml-field-depth/reference/depth128.asl": "f40983850f28118bc56ed6e13d6ccfb2fd3ac5879cc052b6e5f78b6a82d6cfc0",
+  "tests/aml-field-depth/reference/depth256.asl": "edf914e38e1d936772e4066b004f9095f2110a05431380b12c21aba8835134d8"
+}

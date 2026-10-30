@@ -1,0 +1,12 @@
+/home/doc/git/.acpi-proof-work/store-owner-transition-raw-control-6h73pyip/cases/r1-drop.asl      8: Method (EXPR, 0) { Return (Store (PASS (Index (PKG0, Zero)), Local0)) }
+Warning  3144 -                                                                                                                    Method Local is set but never used ^  (Local0)
+
+
+Intel ACPI Component Architecture
+ASL+ Optimizing Compiler/Disassembler version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+ASL Input:     /home/doc/git/.acpi-proof-work/store-owner-transition-raw-control-6h73pyip/cases/r1-drop.asl -     650 bytes     27 keywords      0 source lines
+AML Output:    /home/doc/git/.acpi-proof-work/store-owner-transition-raw-control-6h73pyip/cases/r1-drop.aml -     228 bytes     18 opcodes       9 named objects
+
+Compilation successful. 0 Errors, 1 Warnings, 0 Remarks, 0 Optimizations

@@ -4,7 +4,6 @@ package body ACPI_Service_Core with SPARK_Mode is
    use type Firmware_Tables.Admission;
    use type AML_Table_Backing.State;
    use type Namespace.Load_Status;
-   use type AML_Execute.Execution_Status;
 
    function Method_Storage_Capacity return Positive is (Aggregate_Method_Capacity);
    function Valid (Service : State) return Boolean is
@@ -42,6 +41,13 @@ package body ACPI_Service_Core with SPARK_Mode is
         Budget, Result, Status);
       Service.Stats.Objects := Values.Node_Count (Service.Tree);
    end Evaluate_Named;
+   procedure Read_Region_Descriptor
+     (Service : State; Item : Node_Descriptor;
+      Description : out Namespace.Operation_Region_Attributes;
+      Status : out Values.Access_Status) is
+   begin
+      Values.Read_Region_Descriptor (Service.Tree, Item, Description, Status);
+   end Read_Region_Descriptor;
    procedure Read_Field_Descriptor
      (Service : State; Node : Namespace.Node_ID;
       Description : out Values.Field_Description; Key : out Values.Field_Key;
@@ -171,6 +177,25 @@ package body ACPI_Service_Core with SPARK_Mode is
    begin
       Values.Take_Notification (Service.Tree, Item, Present, Status);
    end Take_Notification;
+   procedure Create_Buffer_Result
+     (Service : in out State; Data : AML_Decode.Bytes;
+      Result : out Values.Result; Status : out Values.Access_Status) is
+   begin
+      Values.Create_Buffer (Service.Tree, Data, Result, Status);
+   end Create_Buffer_Result;
+   procedure Create_Empty_Package_Result
+     (Service : in out State; Result : out Values.Result; Status : out Values.Access_Status) is
+   begin
+      Values.Create_Empty_Package (Service.Tree, Result, Status);
+   end Create_Empty_Package_Result;
+   procedure Invoke_With_Arguments
+     (Service : aliased in out State; Node : Namespace.Node_ID; Args : Values.Arguments;
+      Argument_Count : Values.Argument_Count; Budget : Natural; Result : out Values.Result;
+      Status : out Values.Access_Status) is
+   begin
+      Values.Invoke (Service.Tree, Service.Backing, Node, Args, Argument_Count, Budget, Result, Status);
+      Service.Stats.Objects := Values.Node_Count (Service.Tree);
+   end Invoke_With_Arguments;
    procedure Invoke_Retained
      (Service : aliased in out State; Node : Namespace.Node_ID; Args : AML_Execute.Arguments;
       Argument_Count : Natural; Budget : Natural; Result : out Values.Result;
@@ -178,8 +203,7 @@ package body ACPI_Service_Core with SPARK_Mode is
       Arguments : Values.Arguments := [others => (Values.Immediate_Argument, 0)];
    begin
       for I in 1 .. Argument_Count loop Arguments (I - 1).Number := Args (I - 1); end loop;
-      Values.Invoke (Service.Tree, Service.Backing, Node, Arguments, Argument_Count, Budget, Result, Status);
-      Service.Stats.Objects := Values.Node_Count (Service.Tree);
+      Invoke_With_Arguments (Service, Node, Arguments, Argument_Count, Budget, Result, Status);
    end Invoke_Retained;
    package body Field_IO is
       procedure Bind
@@ -189,6 +213,39 @@ package body ACPI_Service_Core with SPARK_Mode is
       begin
          Adapter.Bind (Service.Tree, IO, Key, Target, Item.Inner, Status);
       end Bind;
+      procedure Clear (Items : out Binding_Set) is
+      begin
+         Adapter.Clear (Items.Inner);
+      end Clear;
+      procedure Add_Region_Register
+        (Service : State; IO : IO_Context; Region : Node_Descriptor;
+         Target : AML_Field_Access.Target; Allow_Read, Allow_Write : Boolean;
+         Items : in out Binding_Set; Status : out Values.Access_Status) is
+      begin
+         Adapter.Add_Region_Register (Service.Tree, IO, Region, Target,
+           Allow_Read, Allow_Write, Items.Inner, Status);
+      end Add_Region_Register;
+      procedure Add_Binding
+        (Service : State; IO : IO_Context; Key : Values.Field_Key;
+         Target : AML_Field_Access.Target; Items : in out Binding_Set;
+         Status : out Values.Access_Status) is
+      begin
+         Adapter.Add_Binding (Service.Tree, IO, Key, Target, Items.Inner, Status);
+      end Add_Binding;
+      procedure Add_Read_Binding
+        (Service : State; IO : IO_Context; Key : Values.Field_Key;
+         Targets : AML_Field_Targets.Vector; Count : AML_Field_Plans.Datum_Count;
+         Items : in out Binding_Set; Status : out Values.Access_Status) is
+      begin
+         Adapter.Add_Read_Binding (Service.Tree, IO, Key, Targets, Count, Items.Inner, Status);
+      end Add_Read_Binding;
+      procedure Add_Write_Binding
+        (Service : State; IO : IO_Context; Key : Values.Field_Key;
+         Targets : AML_Field_Targets.Vector; Count : AML_Field_Plans.Datum_Count;
+         Items : in out Binding_Set; Status : out Values.Access_Status) is
+      begin
+         Adapter.Add_Write_Binding (Service.Tree, IO, Key, Targets, Count, Items.Inner, Status);
+      end Add_Write_Binding;
       function Uncertain (Service : State) return AML_Field_Access.Observation is
         (Adapter.Uncertain (Service.Tree));
       function Original_Field (Service : State) return AML_References.Reference is
@@ -201,6 +258,26 @@ package body ACPI_Service_Core with SPARK_Mode is
       begin
          Adapter.Reconcile (Service.Tree, IO, Expected, Status);
       end Reconcile;
+      procedure Invoke_With_Arguments
+        (Service : aliased in out State; IO : in out IO_Context; Item : Binding;
+         Node : Namespace.Node_ID; Args : Values.Arguments;
+         Argument_Count : Values.Argument_Count; Budget : Natural; Result : out Values.Result;
+         Status : out Values.Access_Status) is
+      begin
+         Adapter.Invoke (Service.Tree, IO, Item.Inner, Service.Backing, Node,
+           Args, Argument_Count, Budget, Result, Status);
+         Service.Stats.Objects := Values.Node_Count (Service.Tree);
+      end Invoke_With_Arguments;
+      procedure Invoke_With_Arguments
+        (Service : aliased in out State; IO : in out IO_Context; Items : Binding_Set;
+         Node : Namespace.Node_ID; Args : Values.Arguments;
+         Argument_Count : Values.Argument_Count; Budget : Natural; Result : out Values.Result;
+         Status : out Values.Access_Status) is
+      begin
+         Adapter.Invoke (Service.Tree, IO, Items.Inner, Service.Backing, Node,
+           Args, Argument_Count, Budget, Result, Status);
+         Service.Stats.Objects := Values.Node_Count (Service.Tree);
+      end Invoke_With_Arguments;
       procedure Invoke_Retained
         (Service : aliased in out State; IO : in out IO_Context; Item : Binding;
          Node : Namespace.Node_ID; Args : AML_Execute.Arguments;
@@ -209,20 +286,36 @@ package body ACPI_Service_Core with SPARK_Mode is
          Arguments : Values.Arguments := [others => (Values.Immediate_Argument, 0)];
       begin
          for I in 1 .. Argument_Count loop Arguments (I - 1).Number := Args (I - 1); end loop;
-         Adapter.Invoke (Service.Tree, IO, Item.Inner, Service.Backing, Node,
-           Arguments, Argument_Count, Budget, Result, Status);
-         Service.Stats.Objects := Values.Node_Count (Service.Tree);
+         Invoke_With_Arguments (Service, IO, Item, Node, Arguments,
+           Argument_Count, Budget, Result, Status);
       end Invoke_Retained;
-      procedure Invoke_Scalar
-        (Service : aliased in out State; IO : in out IO_Context; Item : Binding;
+      procedure Invoke_Retained
+        (Service : aliased in out State; IO : in out IO_Context; Items : Binding_Set;
          Node : Namespace.Node_ID; Args : AML_Execute.Arguments;
-         Argument_Count : Natural; Budget : Natural; Result : out AML_Execute.Execution_Result) is
-         Outcome : Values.Result;
-         Status : Values.Access_Status;
+         Argument_Count : Natural; Budget : Natural; Result : out Values.Result;
+         Status : out Values.Access_Status) is
+         Arguments : Values.Arguments := [others => (Values.Immediate_Argument, 0)];
+      begin
+         for I in 1 .. Argument_Count loop Arguments (I - 1).Number := Args (I - 1); end loop;
+         Invoke_With_Arguments (Service, IO, Items, Node, Arguments,
+           Argument_Count, Budget, Result, Status);
+      end Invoke_Retained;
+      procedure Evaluate_Named
+        (Service : aliased in out State; IO : in out IO_Context;
+         Items : Binding_Set; Item : Node_Descriptor; Budget : Natural;
+         Result : out Values.Result; Status : out Values.Access_Status) is
+      begin
+         Adapter.Evaluate_Named (Service.Tree, IO, Items.Inner, Service.Backing,
+           Item, Service.Width, Budget, Result, Status);
+         Service.Stats.Objects := Values.Node_Count (Service.Tree);
+      end Evaluate_Named;
+      procedure Finish_Scalar
+        (Service : in out State; Outcome : Values.Result;
+         Access_Result : Values.Access_Status; Result : out AML_Execute.Execution_Result) is
+         Status : Values.Access_Status := Access_Result;
          Handle : Values.Value_Handle;
          subtype Failure_Status is AML_Execute.Payload_Free_Failure;
       begin
-         Invoke_Retained (Service, IO, Item, Node, Args, Argument_Count, Budget, Outcome, Status);
          -- An effectful failure must survive even an inconsistent access code.
          if Outcome.Status = AML_Execute.Field_Indeterminate then
             Result := (AML_Execute.Field_Indeterminate, Outcome.Charged);
@@ -237,11 +330,35 @@ package body ACPI_Service_Core with SPARK_Mode is
          elsif Outcome.Status = AML_Execute.Fatal_Requested then
             Result := (Status => AML_Execute.Fatal_Requested, Charged => Outcome.Charged, Fatal => Outcome.Fatal);
          else Result := (Failure_Status (Outcome.Status), Outcome.Charged); end if;
+      end Finish_Scalar;
+      procedure Invoke_Scalar
+        (Service : aliased in out State; IO : in out IO_Context; Item : Binding;
+         Node : Namespace.Node_ID; Args : AML_Execute.Arguments;
+         Argument_Count : Natural; Budget : Natural; Result : out AML_Execute.Execution_Result) is
+         Outcome : Values.Result;
+         Status : Values.Access_Status;
+      begin
+         Invoke_Retained (Service, IO, Item, Node, Args, Argument_Count, Budget, Outcome, Status);
+         Finish_Scalar (Service, Outcome, Status, Result);
       end Invoke_Scalar;
+      procedure Invoke_Scalar
+        (Service : aliased in out State; IO : in out IO_Context; Items : Binding_Set;
+         Node : Namespace.Node_ID; Args : AML_Execute.Arguments;
+         Argument_Count : Natural; Budget : Natural; Result : out AML_Execute.Execution_Result) is
+         Outcome : Values.Result;
+         Status : Values.Access_Status;
+      begin
+         Invoke_Retained (Service, IO, Items, Node, Args, Argument_Count, Budget, Outcome, Status);
+         Finish_Scalar (Service, Outcome, Status, Result);
+      end Invoke_Scalar;
+
    end Field_IO;
    procedure Describe_Result (Service : State; Handle : Values.Value_Handle;
       Description : out Values.Value_Description; Status : out Values.Access_Status) is
    begin Values.Describe (Service.Tree, Handle, Description, Status); end Describe_Result;
+   procedure Read_Result_Device (Service : State; Handle : Values.Value_Handle;
+      Item : out Node_Descriptor; Status : out Values.Access_Status) is
+   begin Values.Read_Device_Metadata (Service.Tree, Handle, Item, Status); end Read_Result_Device;
    procedure Read_Result_Bytes (Service : State; Handle : Values.Value_Handle; Offset : Natural;
       Data : out AML_Decode.Bytes; Copied : out Natural; Status : out Values.Access_Status) is
    begin Values.Read_Bytes (Service.Tree, Handle, Offset, Data, Copied, Status); end Read_Result_Bytes;

@@ -48,6 +48,34 @@ package ACPI_Endpoint with SPARK_Mode is
        and then (if Classify (Config, Stamp) = No_Authority then
          Reply.Label = Reply_Error and then
          Reply.Data = [Unsigned_64 (Outcome'Pos (Denied)), 0, 0, 0]);
+   --  The service owner selects this handler at instantiation. The received
+   --  kernel stamp still passes through the same authority classification.
+   generic
+      with procedure Handle_Request
+        (Server : in out ACPI_Requests.State; Origin : ACPI_Requests.Authority;
+         Request : ACPI_Requests.Packet; Reply : out ACPI_Requests.Response)
+      with Pre => ACPI_Requests.Valid (Server),
+        Post => (ACPI_Requests.Model (Server)'Old = ACPI_Requests.Model (Server)
+          or else Origin = ACPI_Requests.Snapshot_Provider)
+          and then ACPI_Requests.Valid (Server)
+          and then (for all Word of Reply.Data => Word <= ACPI_Requests.Max_Revision)
+          and then (if Origin = ACPI_Requests.No_Authority then
+            Reply.Status = ACPI_Requests.Denied and then Reply.Data = [0, 0, 0, 0]);
+   package With_Handler with SPARK_Mode is
+   procedure Route
+     (Server : in out State; Config : Configuration;
+      Stamp : Unsigned_64; Request : Packet; Reply : out Packet) with
+     Pre => ACPI_Requests.Valid (Server),
+     Post => (Model (Server)'Old = Model (Server)
+         or else Classify (Config, Stamp) = Snapshot_Provider)
+       and then ACPI_Requests.Valid (Server) and then Reply.Length = 4 and then Reply.Flags = 0 and then Reply.Reserved = 0
+       and then Reply.Label in Reply_OK | Reply_Error
+       and then (for all Word of Reply.Data => Word <= Max_Revision)
+       and then (if Classify (Config, Stamp) = No_Authority then
+         Reply.Label = Reply_Error and then
+         Reply.Data = [Unsigned_64 (Outcome'Pos (Denied)), 0, 0, 0]);
+   end With_Handler;
+
    -- Typed bulk adapter boundary; no wire address is accepted. Mapping and
    -- stability obligations are those of ACPI_Requests.Import_Block.
    procedure Dispatch_Block

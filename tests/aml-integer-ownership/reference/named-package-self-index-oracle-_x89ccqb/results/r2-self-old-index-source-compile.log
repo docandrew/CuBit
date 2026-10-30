@@ -1,0 +1,12 @@
+/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/cases/r2-self-old-index.asl      5: Method (TEST, 0) { Index (SRC0, Zero, Local0) Store (SRC0, SRC0) Store (0x66, Index (SRC0, Zero)) Return (DerefOf (Local0)) }
+Warning  3023 -                                                                                                                                  Duplicate value in list ^  (Source is the same as Target)
+
+
+Intel ACPI Component Architecture
+ASL+ Optimizing Compiler/Disassembler version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+ASL Input:     /home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/cases/r2-self-old-index.asl -     565 bytes     29 keywords      0 source lines
+AML Output:    /home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/cases/r2-self-old-index.aml -     181 bytes     20 opcodes       9 named objects
+
+Compilation successful. 0 Errors, 1 Warnings, 0 Remarks, 0 Optimizations

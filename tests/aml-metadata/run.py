@@ -34,7 +34,7 @@ def pin(path,expected=None):
     if expected is not None and h!=expected:raise ValueError('initial source mismatch: '+str(path))
     if str(path) in inputs and inputs[str(path)]!=h:raise ValueError('source hash collision')
     inputs[str(path)]=h
-for directory in ['userspace/lib/acpi','userspace/services/acpi','shared/firmware','tests/aml-alias','tests/aml-metadata','tests/aml-metadata-normalization','tests/aml-metadata-owner','tests/aml-metadata-root','tests/aml-metadata-execute']:
+for directory in ['userspace/services/acpi/lib','userspace/services/acpi','shared/firmware','tests/aml-alias','tests/aml-metadata','tests/aml-metadata-normalization','tests/aml-metadata-owner','tests/aml-metadata-root','tests/aml-metadata-execute']:
     for path in (ROOT/directory).rglob('*'):
         relative=path.relative_to(ROOT)
         if any(part.startswith('build-') or part in ('results','__pycache__','evidence') for part in relative.parts):continue

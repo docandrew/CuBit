@@ -1,0 +1,4 @@
+{
+  "tests/acpi-bootstrap-driver/hosted_capture.py": "tests/acpi-resource-data/hosted_capture.py",
+  "tests/acpi-bootstrap-driver/source_guards.py": "tests/acpi-resource-data/source_guards.py"
+}

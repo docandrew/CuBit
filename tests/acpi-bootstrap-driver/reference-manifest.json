@@ -1,0 +1,8 @@
+{
+  "tests/acpi-bootstrap-driver/reference/compile.log": "4e32df3feb3b192b1c8825f0fae83873bdbdb54e384b08f1334f704af9ea46fe",
+  "tests/acpi-bootstrap-driver/reference/evidence.sha256": "2496e466c409013d9efbe069e66ad6c88bece77a82bd5efe1bef145418f2671b",
+  "tests/acpi-bootstrap-driver/reference/reference.log": "361c7d86c7e2be75d16058b555b3c8028fd16dfe812fc9d6c516292bb77a705c",
+  "tests/acpi-bootstrap-driver/reference/startup.aml": "fd61415b4bc91ef5c199d485961054d2b308e7c4026b661aa1a34e652a3c4e03",
+  "tests/acpi-bootstrap-driver/reference/startup.asl": "8e4eb5bc2158013297a5c5f752f66b1393ac2ee28de629ea9c399a4e741d5789",
+  "tests/acpi-bootstrap-driver/reference/status.tsv": "d2d70804ecd697d5a9c3ede742b29e5e7f86572fff79369985db325a6aba3d3a"
+}

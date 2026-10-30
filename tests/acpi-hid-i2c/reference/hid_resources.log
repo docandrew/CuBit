@@ -1,0 +1,143 @@
+CuBit development shell
+  Build:  make -C kernel world
+  Test:   tests/headless/run.sh --test desktop-display
+  Run:    make -C kernel run-desktop
+hid_resources.asl     47:     Name (EMPT, ResourceTemplate () {})
+Warning  3150 -        Empty Resource Template (END_TAG only) ^ 
+
+
+Intel ACPI Component Architecture
+ASL+ Optimizing Compiler/Disassembler version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+ASL Input:     hid_resources.asl -    3309 bytes     63 keywords      0 source lines
+AML Output:    hid_resources.aml -     845 bytes     44 opcodes      19 named objects
+Hex Dump:      hid_resources.hex -    8343 bytes
+
+Compilation successful. 0 Errors, 1 Warnings, 0 Remarks, 2 Optimizations
+Input file hid_resources.aml, Length 0x34D (845) bytes
+
+Intel ACPI Component Architecture
+AML Execution/Debug Utility version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+
+
+ACPI: RSDP 0x00005555555FF180 000024 (v02 Intel )
+ACPI: XSDT 0x0000555555601D90 000034 (v00 Intel  AcpiExec 00001001 INTL 20260408)
+ACPI: FACP 0x00005555555FEFA0 000114 (v05 Intel  AcpiExec 00001001 INTL 20260408)
+ACPI: DSDT 0x0000555555608160 00034D (v02 CUBIT  HIDRES   00000001 INTL 20260408)
+ACPI: FACS 0x00005555555FF140 000040
+
+ACPI table initialization:
+Table [DSDT: HIDRES  ] (id 01) -   19 Objects with   1 Devices,   0 Regions,    6 Methods (0/6/0 Serial/Non/Cvt)
+ACPI: 1 ACPI AML tables successfully acquired and loaded
+
+Final data object initialization: Namespace contains 28 (0x1C) objects
+Initializing General Purpose Events (GPEs):
+    Initialized GPE 00 to 7F [_GPE] 16 regs on interrupt 0x0 (SCI)
+    Initialized GPE 80 to FF [_GPE] 16 regs on interrupt 0x0 (SCI)
+Evaluating \ORCL
+Evaluation of \ORCL returned object 0x555555601dd0, external buffer length 58
+  [Buffer] Length 3A = 
+    0000: 8E 16 00 02 00 01 02 00 00 01 07 00 80 1A 06 00  // ................
+    0010: 15 00 AA 5C 49 32 43 30 00 8C 1C 00 01 00 01 00  // ...\I2C0........
+    0020: 02 00 01 00 00 00 00 17 00 00 19 00 1F 00 00 00  // ................
+    0030: 2A 00 5C 47 50 49 4F 00 79 00                    // *.\GPIO.y.
+
+Evaluating \SETM
+No object was returned from evaluation of \SETM
+Evaluating \ORCL
+Evaluation of \ORCL returned object 0x555555601dd0, external buffer length 38
+  [Buffer] Length 1A = 
+    0000: 8E 15 00 01 02 01 02 01 00 01 06 00 40 42 0F 00  // ............@B..
+    0010: FF 02 5E 49 32 43 31 00 79 00                    // ..^I2C1.y.
+
+Evaluating \SETM
+No object was returned from evaluation of \SETM
+Evaluating \ORCL
+Evaluation of \ORCL returned object 0x555555601dd0, external buffer length 40
+  [Buffer] Length 21 = 
+    0000: 8C 1C 00 01 00 01 00 19 00 03 00 00 7B 00 17 00  // ............{...
+    0010: 00 19 00 1F 00 00 00 34 12 5C 47 50 49 4F 00 79  // .......4.\GPIO.y
+    0020: 00                                               // .
+
+Evaluating \SETM
+No object was returned from evaluation of \SETM
+Evaluating \ORCL
+Evaluation of \ORCL returned object 0x555555601dd0, external buffer length 70
+  [Buffer] Length 51 = 
+    0000: 8E 15 00 01 00 01 02 00 00 01 06 00 80 1A 06 00  // ................
+    0010: 15 00 5C 49 32 43 30 00 8E 15 00 01 00 01 02 00  // ..\I2C0.........
+    0020: 00 01 06 00 80 1A 06 00 16 00 5C 49 32 43 31 00  // ..........\I2C1.
+    0030: 8C 1C 00 01 00 01 00 02 00 01 00 00 00 00 17 00  // ................
+    0040: 00 19 00 1F 00 00 00 2A 00 5C 47 50 49 4F 00 79  // .......*.\GPIO.y
+    0050: 00                                               // .
+
+Evaluating \SETM
+No object was returned from evaluation of \SETM
+Evaluating \ORCL
+Evaluation of \ORCL returned object 0x555555601dd0, external buffer length 70
+  [Buffer] Length 58 = 
+    0000: 8E 15 00 01 00 01 02 00 00 01 06 00 80 1A 06 00  // ................
+    0010: 15 00 5C 49 32 43 30 00 8C 1C 00 01 00 01 00 02  // ..\I2C0.........
+    0020: 00 01 00 00 00 00 17 00 00 19 00 1F 00 00 00 2A  // ...............*
+    0030: 00 5C 47 50 49 4F 00 8C 1C 00 01 00 01 00 00 00  // .\GPIO..........
+    0040: 02 00 00 00 00 17 00 00 19 00 1F 00 00 00 2B 00  // ..............+.
+    0050: 5C 47 50 49 4F 00 79 00                          // \GPIO.y.
+
+Evaluating \SETM
+No object was returned from evaluation of \SETM
+Evaluating \ORCL
+Evaluation of \ORCL returned object 0x555555601dd0, external buffer length 98
+  [Buffer] Length 7B = 
+    0000: 47 01 00 01 00 01 01 08 8C 1C 00 01 01 01 00 01  // G...............
+    0010: 00 03 00 00 00 00 17 00 00 19 00 1F 00 00 00 30  // ...............0
+    0020: 00 5C 47 50 49 4F 00 8E 18 00 01 00 02 02 00 00  // .\GPIO..........
+    0030: 01 09 00 40 42 0F 00 08 00 00 01 00 5C 53 50 49  // ...@B.......\SPI
+    0040: 30 00 8E 15 00 01 00 01 02 00 00 01 06 00 80 1A  // 0...............
+    0050: 06 00 15 00 5C 49 32 43 30 00 8C 1C 00 01 00 01  // ....\I2C0.......
+    0060: 00 02 00 01 00 00 00 00 17 00 00 19 00 1F 00 00  // ................
+    0070: 00 2A 00 5C 47 50 49 4F 00 79 00                 // .*.\GPIO.y.
+
+Evaluating \SETM
+No object was returned from evaluation of \SETM
+Evaluating \ORCL
+Evaluation of \ORCL returned object 0x555555601dd0, external buffer length 28
+  [Buffer] Length 0D =     0000: 31 00 47 01 00 01 00 01 01 08 38 79 00           // 1.G.......8y.
+
+Evaluating \SETM
+No object was returned from evaluation of \SETM
+Evaluating \ORCL
+Evaluation of \ORCL returned object 0x555555601dd0, external buffer length 20
+  [Buffer] Length 02 =     0000: 79 00                                            // y.
+
+Evaluating \SETM
+No object was returned from evaluation of \SETM
+Evaluating \TPD0._STA
+Evaluation of \TPD0._STA returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 000000000000000D
+
+Evaluating \ORCL
+Evaluation of \ORCL returned object 0x555555601dd0, external buffer length 58
+  [Buffer] Length 3A = 
+    0000: 8E 16 00 02 00 01 02 00 00 01 07 00 80 1A 06 00  // ................
+    0010: 15 00 AA 5C 49 32 43 30 00 8C 1C 00 01 00 01 00  // ...\I2C0........
+    0020: 02 00 01 00 00 00 00 17 00 00 19 00 1F 00 00 00  // ................
+    0030: 2A 00 5C 47 50 49 4F 00 79 00                    // *.\GPIO.y.
+
+0x55555560c270 Length 0x0048   utcache-0453 [Operand Object]       String  RefCount 0x0001
+0x55555560c1a0 Length 0x0048   utcache-0453 [Operand Object]       String  RefCount 0x0001
+0x55555560c120 Length 0x0048   utcache-0453 [Operand Object]       String  RefCount 0x0001
+0x55555560c070 Length 0x0009  utobject-0450 [Not a Descriptor - too small]
+0x55555560bff0 Length 0x0048   utcache-0453 [Operand Object]       String  RefCount 0x0001
+0x55555560bfa0 Length 0x0009  utobject-0450 [Not a Descriptor - too small]
+0x555555609f00 Length 0x0048   utcache-0453 [Operand Object]       Method  RefCount 0x0001
+0x555555609dc0 Length 0x0048   utcache-0453 [Operand Object]       String  RefCount 0x0001
+0x555555609d40 Length 0x0048   utcache-0453 [Operand Object]       String  RefCount 0x0001
+0x5555556097b0 Length 0x0008  utobject-0450 [Not a Descriptor - too small]
+0x555555607ce0 Length 0x0023  nsxfname-0723 [Not a Descriptor] 
+0x555555607ba0 Length 0x0023  nsxfname-0723 [Not a Descriptor] 
+0x5555556079f0 Length 0x0048   utcache-0453 [Operand Object]       Method  RefCount 0x0001
+0x555555607240 Length 0x0008  utobject-0450 [Not a Descriptor - too small]
+ACPI Error: 14 (0xE) Outstanding cache allocations (20260408/uttrack-902)

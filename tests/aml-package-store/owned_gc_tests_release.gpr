@@ -1,5 +1,5 @@
 project owned_gc_tests_release is
- for Source_Dirs use ("../../tests/aml-scalar-owned-gc", "../../userspace/lib/acpi", "../../userspace/services/acpi", "../../shared/firmware");
+ for Source_Dirs use ("../../shared/firmware", "../aml-scalar-owned-gc", "../../userspace/services/acpi", "../../userspace/services/acpi/lib");
  Build_Root := external ("PACKAGE_STORE_BUILD", "build-owned_gc_tests-release");
  for Object_Dir use Build_Root & "/obj";
  for Exec_Dir use Build_Root & "/bin";

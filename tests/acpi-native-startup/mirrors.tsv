@@ -1,0 +1,7 @@
+tests/acpi-native-startup/boundary/acpi_native_instance.adb	userspace/services/acpi/native/acpi_native_instance.adb
+tests/acpi-native-startup/boundary/acpi_native_instance.ads	userspace/services/acpi/native/acpi_native_instance.ads
+tests/acpi-native-startup/boundary/acpi_native_log.ads	userspace/services/acpi/native/acpi_native_log.ads
+tests/acpi-native-startup/boundary/acpi_native_snapshot_load.ads	userspace/services/acpi/native/acpi_native_snapshot_load.ads
+tests/acpi-native-startup/boundary/acpi_native_snapshot_read.ads	userspace/services/acpi/native/acpi_native_snapshot_read.ads
+tests/acpi-native-startup/boundary/acpi_native_server.ads	userspace/services/acpi/native/acpi_native_server.ads
+tests/acpi-native-startup/boundary/acpi_clock_source.ads	userspace/services/acpi/native-clock/acpi_clock_source.ads

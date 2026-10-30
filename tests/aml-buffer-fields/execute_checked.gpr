@@ -1,5 +1,5 @@
 project Execute_Checked is
- for Source_Dirs use (".","../aml-core","../acpi-integration/mocks","../../userspace/services/acpi","../../userspace/services/acpi/native","../../userspace/lib/acpi","../../shared/firmware");
+ for Source_Dirs use (".","../aml-core","../acpi-integration/mocks","../../userspace/services/acpi","../acpi-table-import-model","../../userspace/services/acpi/lib","../../shared/firmware");
  for Object_Dir use "build-checked/obj";
  for Exec_Dir use "build-checked";
  for Main use ("field_execute_tests.adb","field_status_tests.adb","field_runner.adb","copy_index_policy_tests.adb");

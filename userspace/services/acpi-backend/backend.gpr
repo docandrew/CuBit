@@ -1,6 +1,6 @@
 library project Backend is
    for Languages use ("Ada");
-   for Source_Dirs use (".", "native", "../../lib/acpi", "../../../shared/firmware", "../../../shared/hardware");
+   for Source_Dirs use (".", "native", "../acpi/lib", "../../../shared/firmware", "../../../shared/hardware");
    -- Privileged backend closure deliberately excludes the AML interpreter and
    -- table service. Changes to this list must preserve that separation.
    for Source_Files use

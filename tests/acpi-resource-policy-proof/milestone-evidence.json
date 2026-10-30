@@ -1,0 +1,46 @@
+{
+  "source": "/home/doc/git/.acpi-proof-work/resource-policy-proof-04NavOxW/source",
+  "output": "/home/doc/git/.acpi-proof-work/resource-policy-proof-04NavOxW/source/tests/acpi-resource-policy-proof/results/prove-5InLNd20",
+  "units": [
+    {
+      "unit": "acpi_resource_data-address_spaces-geometry",
+      "spark_sha256": "4043a5fec2a5a38524c17ea9b7b888cfe645ad9c3f507a740ac6d078b2c3c20b",
+      "entities": 4,
+      "flow_checks": 8,
+      "proof_checks": 21,
+      "valid_goals": 33,
+      "unresolved": 0,
+      "skipped": 0,
+      "assume": 0
+    },
+    {
+      "unit": "acpi_resource_data-memory_ranges",
+      "spark_sha256": "93956634cacdc39bf41440de62cd088cf2dc267b9fdddc80cd811e1146d6a1b4",
+      "entities": 3,
+      "flow_checks": 6,
+      "proof_checks": 30,
+      "valid_goals": 56,
+      "unresolved": 0,
+      "skipped": 0,
+      "assume": 0
+    },
+    {
+      "unit": "acpi_resource_data-generic_registers",
+      "spark_sha256": "ed0dd3921c8b37508a8ee89052f6afa27393873c1056a46d21e10351401cdfb7",
+      "entities": 2,
+      "flow_checks": 3,
+      "proof_checks": 28,
+      "valid_goals": 109,
+      "unresolved": 0,
+      "skipped": 0,
+      "assume": 0
+    }
+  ],
+  "totals": {
+    "entities": 9,
+    "flow_checks": 17,
+    "proof_checks": 79,
+    "valid_goals": 198
+  },
+  "scope": "Selected three-unit runtime safety, geometry feasible-witness and decoder extent contracts, initialization/dependencies/termination; not feasibility completeness, full descriptor field-value/checksum equivalence, allocation/bridge/translation/resource authority or whole AML correctness."
+}

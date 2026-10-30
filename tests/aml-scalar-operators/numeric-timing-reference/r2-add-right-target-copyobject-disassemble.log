@@ -1,0 +1,16 @@
+File appears to be binary: found 60 non-ASCII characters, disassembling
+Binary file appears to be a valid ACPI table, disassembling
+Input file /home/doc/git/.acpi-proof-work/numeric-source-timing-oracle-scok9jqu/r2-add-right-target-copyobject.aml, Length 0x9F (159) bytes
+ACPI: DSDT 0x0000000000000000 00009F (v02 CUBIT  NUMTIME  00000001 INTL 20260408)
+Pass 1 parse of [DSDT]
+Pass 2 parse of [DSDT]
+Parsing Deferred Opcodes (Methods/Buffers/Packages/Regions)
+
+Parsing completed
+
+Intel ACPI Component Architecture
+ASL+ Optimizing Compiler/Disassembler version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+Disassembly completed
+ASL Output:    /home/doc/git/.acpi-proof-work/numeric-source-timing-oracle-scok9jqu/r2-add-right-target-copyobject.dsl - 1474 bytes

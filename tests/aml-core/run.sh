@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Hosted only; use nix develop -c bash tests/aml-core/run.sh [--prove] [--acpica].
+# Hosted only. Export TMPDIR=/home/doc/cubit-build-tmp before Nix, and use
+# nix develop --command env TMPDIR=/home/doc/cubit-build-tmp bash tests/aml-core/run.sh [--prove] [--acpica].
 set -euo pipefail
 # Hosted checked builds copy bounded snapshot models for runtime contracts.
 # This explicit test budget is not a native whole-call-chain stack proof.
@@ -21,9 +22,8 @@ alr exec -- gprbuild -p -P ../tests/aml-core/snapshots/snapshots.gpr
 ../tests/aml-core/build/snapshots/snapshot_tests
 alr exec -- gprbuild -p -P ../tests/aml-core/aml.gpr
 alr exec -- gprbuild -p -P ../tests/aml-core/backing.gpr
-python3 ../tests/aml-core/native-loop/prepare.py
-alr exec -- gprbuild -p -P ../tests/aml-core/native-loop/acpi_loop.gpr
-../tests/aml-core/build/native-loop/loop_tests
+bash ../tests/acpi-native-server-loop/run.sh --mode checked
+python3 ../tests/aml-core/native-blocks/prepare.py
 alr exec -- gprbuild -p -P ../tests/aml-core/native-blocks/blocks.gpr
 ../tests/aml-core/build/blocks/block_tests
 alr exec -- gprbuild -p -P ../tests/aml-core/transactions/transactions.gpr
@@ -98,10 +98,7 @@ if [[ $prove == yes ]]; then
         -u firmware_tables-snapshots.adb --mode=all --level=2 \
         --prover=cvc5,z3 --checks-as-errors=on -j2 \
         2>&1 | tee ../tests/aml-core/build/snapshot-proof.log
-    alr exec -- gnatprove -P ../tests/aml-core/native-loop/acpi_loop.gpr \
-        -u acpi_launch.adb --mode=all --level=2 \
-        --prover=cvc5,z3 --checks-as-errors=on -j2 \
-        2>&1 | tee ../tests/aml-core/build/launch-proof.log
+    bash ../tests/acpi-native-server-loop/prove.sh
     alr exec -- gnatprove -P ../tests/aml-core/hardware-grants/grants.gpr \
         -u hardware_grants.adb hardware_catalog.adb hardware_authority.ads --mode=all --level=2 \
         --prover=cvc5,z3 --checks-as-errors=on -j2 \

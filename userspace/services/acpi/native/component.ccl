@@ -1,0 +1,11 @@
+(Component name => "acpi" kind => (Kind.Service Launcher.Process_Manager)
+  source => (Source.Ada (Ada_Source
+    language => Ada_Language.Ada_2022
+    sources => ["userspace/services/acpi"
+                "userspace/services/acpi/lib"
+                "userspace/services/acpi/native-clock"
+                "userspace/services/acpi/snapshot"
+                "userspace/services/acpi/request-driver"
+                "shared/firmware"
+                "shared/acpi"]
+    link_extra => [(Link_Argument.Text "-Wl,-z,stack-size=67108864")])))

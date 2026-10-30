@@ -1,5 +1,5 @@
 project Increment_checked is
- for Source_Dirs use (".", "../aml-core", "../../userspace/lib/acpi", "../../userspace/services/acpi", "../../shared/firmware");
+ for Source_Dirs use (".", "../aml-core", "../../userspace/services/acpi/lib", "../../userspace/services/acpi", "../../shared/firmware");
  for Object_Dir use "build-increment-checked";
  for Main use ("increment_tests.adb", "debug_target_tests.adb", "debug_owned_tests.adb", "debug_oracle_runner.adb");
  package Compiler is

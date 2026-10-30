@@ -1,5 +1,5 @@
 project Condref_checked is
- for Source_Dirs use (".", "../../userspace/lib/acpi", "../../userspace/services/acpi", "../../shared/firmware");
+ for Source_Dirs use (".", "../../userspace/services/acpi/lib", "../../userspace/services/acpi", "../../shared/firmware");
  for Object_Dir use "build-checked/obj";
  for Exec_Dir use "build-checked";
  for Main use ("condref_tests.adb", "name_reservation_tests.adb", "integer_origin_tests.adb", "runtime_name_tests.adb", "reference_model_tests.adb", "copy_compound_quota_tests.adb", "copy_boundary_extended_tests.adb", "package_store_atomicity_tests.adb");

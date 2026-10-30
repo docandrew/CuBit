@@ -1,0 +1,22 @@
+{
+  "cases": [
+    {
+      "case": "constant-n64",
+      "aml": "tests/aml-aslts-constant/reference/constant-n64.aml",
+      "aml_sha256": "4511397cba4f3d5e1e1ab9884df1d8e47f106b2443bb0eaeb95b679547ac4ec2",
+      "expected_MN00": 0,
+      "expected_ERRS": 0,
+      "repeats": 2,
+      "expected_RMRC": [
+        1,
+        2
+      ],
+      "expected_record": ":STST:functional:constant:CST1:PASS:"
+    }
+  ],
+  "not_run": [
+    "all other entrypoints/configurations; no full corpus claim"
+  ],
+  "oracle_receipt": "aslts-constant-normal-Gml9JjTP; MN00/ERRS zero twice, RMRC1/2; full RP0P debugger dumps overflow, teardown cache diagnostic retained",
+  "configuration": "Original functional/constant with normal upstream common n64 flags; no force or suppression"
+}

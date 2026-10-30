@@ -1,0 +1,4 @@
+iasl-r1 0
+acpiexec-r1 0
+iasl-r2 0
+acpiexec-r2 0

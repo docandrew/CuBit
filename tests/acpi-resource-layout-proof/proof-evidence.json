@@ -1,0 +1,46 @@
+{
+  "source": "/home/doc/git/.acpi-proof-work/resource-layout-bounded-UyD1WFxC/source",
+  "output": "/home/doc/git/.acpi-proof-work/resource-layout-bounded-UyD1WFxC/source/tests/acpi-resource-layout-proof/results/prove-wec7VtkC",
+  "units": [
+    {
+      "unit": "acpi_resource_data-dma_descriptors",
+      "spark_sha256": "bcfed56ced634b8c0d1957665c7dcd2c750835bb4ca1b2571785a4266b01ffb4",
+      "entities": 3,
+      "flow_checks": 4,
+      "proof_checks": 39,
+      "valid_goals": 66,
+      "unresolved": 0,
+      "skipped": 0,
+      "assume": 0
+    },
+    {
+      "unit": "acpi_resource_data-dependent_groups",
+      "spark_sha256": "809b2c07f79ea3f25bb4f60e9e31631148116923d63bb4e61c99f1576d83ce87",
+      "entities": 5,
+      "flow_checks": 6,
+      "proof_checks": 101,
+      "valid_goals": 194,
+      "unresolved": 0,
+      "skipped": 0,
+      "assume": 0
+    },
+    {
+      "unit": "acpi_resource_data-address_spaces-extended_descriptors",
+      "spark_sha256": "9277a7c4ba70e3adf79279b671d2e9300fca98422e25f97adbdf800bab2af8c5",
+      "entities": 5,
+      "flow_checks": 11,
+      "proof_checks": 66,
+      "valid_goals": 154,
+      "unresolved": 0,
+      "skipped": 0,
+      "assume": 0
+    }
+  ],
+  "totals": {
+    "entities": 13,
+    "flow_checks": 21,
+    "proof_checks": 206,
+    "valid_goals": 414
+  },
+  "scope": "Selected DMA, dependent-group and Extended Address runtime safety, decoder extent and group output contracts, initialization/dependencies and loop progress; not grammar completeness, full descriptor field-value/checksum equivalence, allocation/bridge/translation/resource authority or whole AML correctness."
+}

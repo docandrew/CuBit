@@ -1,6 +1,6 @@
 project Blocks is
    for Source_Dirs use (".", "../../../userspace/services/acpi",
-     "../../../userspace/services/acpi/native", "../../../userspace/lib/acpi",
+     "../../acpi-table-import-model", "../../../userspace/services/acpi/lib",
      "../../../shared/firmware", "../../../shared/capabilities",
      "../build/handles");
    for Object_Dir use "../build/blocks/obj";

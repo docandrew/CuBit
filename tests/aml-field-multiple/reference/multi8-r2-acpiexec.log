@@ -1,0 +1,127 @@
+Input file /home/doc/git/.acpi-proof-work/field-multiple-normal-oracle-ilbufegh/results/multi8-r2.aml, Length 0x140 (320) bytes
+
+Intel ACPI Component Architecture
+AML Execution/Debug Utility version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+
+
+ACPI: RSDP 0x00005555555FF180 000024 (v02 Intel )
+ACPI: XSDT 0x0000555555601D90 000034 (v00 Intel  AcpiExec 00001001 INTL 20260408)
+ACPI: FACP 0x00005555555FEFA0 000114 (v05 Intel  AcpiExec 00001001 INTL 20260408)
+ACPI: DSDT 0x0000555555608160 000140 (v02 CUBIT  MULTIFLD 00000001 INTL 20260408)
+ACPI: FACS 0x00005555555FF140 000040
+
+ACPI table initialization:
+Table [DSDT: MULTIFLD] (id 01) -   14 Objects with   0 Devices,   1 Regions,    9 Methods (0/9/0 Serial/Non/Cvt)
+ACPI: 1 ACPI AML tables successfully acquired and loaded
+
+Final data object initialization: Namespace contains 23 (0x17) objects
+Initializing General Purpose Events (GPEs):
+    Initialized GPE 00 to 7F [_GPE] 16 regs on interrupt 0x0 (SCI)
+    Initialized GPE 80 to FF [_GPE] 16 regs on interrupt 0x0 (SCI)
+Initializing Device/Processor/Thermal objects and executing _INI/_STA methods:
+    Executed 0 _INI methods requiring 0 _STA executions (examined 2 objects)
+Evaluating \TEST
+Evaluation of \TEST returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000025
+
+Evaluating \OBS0
+Evaluation of \OBS0 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 000000000000000C
+
+Evaluating \PR01
+Evaluation of \PR01 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000012
+
+Evaluating \PR02
+Evaluation of \PR02 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000013
+
+Evaluating \PR03
+Evaluation of \PR03 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000077
+
+Evaluating \FAIL
+ACPI Error: Divide by zero (20260408/utmath-705)
+Failed at AML Offset 00019, Opcode 0078: Divide (One, Local0, Local1, Local2)
+
+Initialized Local Variables for Method [BAD0]:
+    Local0: 0x55555560bd40 <Obj>             Integer 0000000000000000
+
+No Arguments are initialized for method [BAD0]
+
+ACPI Error: Aborting method \BAD0 due to previous error (AE_AML_DIVIDE_BY_ZERO) (20260408/psparse-688)
+ACPI Error: Aborting method \FAIL due to previous error (AE_AML_DIVIDE_BY_ZERO) (20260408/psparse-688)
+ACPI Error: AE_AML_DIVIDE_BY_ZERO, while executing \FAIL from AML Debugger (20260408/dbexec-334)
+Evaluation of \FAIL failed with status AE_AML_DIVIDE_BY_ZERO
+Evaluating \OBS0
+Evaluation of \OBS0 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 000000000000000D
+
+Evaluating \PR01
+Evaluation of \PR01 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000044
+
+Evaluating \PR02
+Evaluation of \PR02 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000013
+
+Evaluating \PR03
+Evaluation of \PR03 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000077
+
+Evaluating \TEST
+Evaluation of \TEST returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000025
+
+Evaluating \OBS0
+Evaluation of \OBS0 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 000000000000000C
+
+Evaluating \PR01
+Evaluation of \PR01 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000012
+
+Evaluating \PR02
+Evaluation of \PR02 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000013
+
+Evaluating \PR03
+Evaluation of \PR03 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000077
+
+Evaluating \FAIL
+ACPI Error: Divide by zero (20260408/utmath-705)
+Failed at AML Offset 00019, Opcode 0078: Divide (One, Local0, Local1, Local2)
+
+Initialized Local Variables for Method [BAD0]:
+    Local0: 0x55555560bdc0 <Obj>             Integer 0000000000000000
+
+No Arguments are initialized for method [BAD0]
+
+ACPI Error: Aborting method \BAD0 due to previous error (AE_AML_DIVIDE_BY_ZERO) (20260408/psparse-688)
+ACPI Error: Aborting method \FAIL due to previous error (AE_AML_DIVIDE_BY_ZERO) (20260408/psparse-688)
+ACPI Error: AE_AML_DIVIDE_BY_ZERO, while executing \FAIL from AML Debugger (20260408/dbexec-334)
+Evaluation of \FAIL failed with status AE_AML_DIVIDE_BY_ZERO
+Evaluating \OBS0
+Evaluation of \OBS0 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 000000000000000D
+
+Evaluating \PR01
+Evaluation of \PR01 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000044
+
+Evaluating \PR02
+Evaluation of \PR02 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000013
+
+Evaluating \PR03
+Evaluation of \PR03 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000077
+
+0x555555608df0 Length 0x0048   utcache-0453 [Operand Object]       Method  RefCount 0x0001
+0x555555607ce0 Length 0x0023  nsxfname-0723 [Not a Descriptor] 
+0x555555607ba0 Length 0x0023  nsxfname-0723 [Not a Descriptor] 
+0x5555556079f0 Length 0x0048   utcache-0453 [Operand Object]       Method  RefCount 0x0001
+ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)

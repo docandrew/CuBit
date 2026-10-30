@@ -92,6 +92,52 @@ package body ACPI_Provider_Transport is
       Interest := (if Startup=Required then Awaiting else Not_Requested);
       Accepted:=True;
    end Initialize;
+   procedure Initialize_Snapshot
+     (Target : CuBit.Handles.Endpoint;
+      Items : ACPI_Snapshot_Manifest.Catalog; Expected_Count : Natural;
+      Data : Firmware_Tables.Bytes; Limits : Deadlines;
+      Result : out Snapshot_Startup_Result;
+      Startup : Startup_Notifications := Disabled)
+   is
+      use type ACPI_Snapshot_Manifest.Outcome;
+      Accepted : Boolean;
+   begin
+      Result := (others => <>);
+      if Attempted then return; end if;
+      Result.Sizing := ACPI_Snapshot_Manifest.Analyze
+        (Items, Expected_Count,
+         (Max_Catalog_Tables, Max_Catalog_Bytes, Max_Catalog_Bytes));
+      if Result.Sizing.Status /= ACPI_Snapshot_Manifest.Approved then
+         Attempted := True;
+         Result.Status := Manifest_Rejected;
+         return;
+      end if;
+      if Result.Sizing.Needed.Bytes /=
+        ACPI_Snapshot_Manifest.Byte_Count (Data'Length)
+      then
+         Attempted := True;
+         Result.Status := Data_Length_Mismatch;
+         return;
+      end if;
+      declare
+         Packed : Table_Slices (1 .. Result.Sizing.Needed.Tables);
+         Offset : Natural := 0;
+      begin
+         for I in Items'Range loop
+            Packed (I - Items'First + 1) :=
+              ((Positive (Items (I).ID),
+                (if Items (I).Name = "DSDT" then ACPI_Service.DSDT
+                 elsif Items (I).Name = "SSDT" then ACPI_Service.SSDT
+                 else ACPI_Service.Description), Items (I).Extent), Offset);
+            Offset := Offset + Items (I).Extent;
+         end loop;
+         -- Initialize owns allocation/copy/startup state and consumes Attempted.
+         -- Keep one implementation for grant staging and notification policy.
+         Initialize (Target, Packed, Data, Limits, Accepted, Startup);
+         Result.Status :=
+           (if Accepted then Snapshot_Initialized else Transport_Unavailable);
+      end;
+   end Initialize_Snapshot;
    procedure Call (Request : Packet; At_Time : Unsigned_64;
       Reply : out Packet; Known : out Boolean) is
       M : CuBit.Messages.Message := CuBit.Messages.NULL_MESSAGE;

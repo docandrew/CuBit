@@ -1,0 +1,30 @@
+bank.asl     11:         BankField (REG0, BNK0, BVAL (), ByteAcc, NoLock, Preserve)
+Remark   2173 -                       ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\DYNB)
+
+bank.asl     18:         BankField (REG0, BNK0, BVAL (), ByteAcc, NoLock, Preserve)
+Remark   2173 -                       ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\DYNW)
+
+bank.asl     25:         BankField (REG0, BNK0, BVAL (), ByteAcc, NoLock, Preserve)
+Remark   2173 -                       ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\DYNP)
+
+bank.asl     32:         BankField (REG0, BNK0, BVAL (), ByteAcc, NoLock, WriteAsOnes)
+Remark   2173 -                       ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\DYNO)
+
+bank.asl     39:         BankField (REG0, BNK0, BVAL (), ByteAcc, NoLock, WriteAsZeros)
+Remark   2173 -                       ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\DYNZ)
+
+bank.asl     46:         BankField (REG0, BNK0, BVAL (), ByteAcc, NoLock, Preserve)
+Remark   2173 -                       ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\DYNM)
+
+bank.asl     56:             BankField (REG0, BNK0, Local0, ByteAcc, NoLock, Preserve)
+Remark   2173 -                           ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\LOOP)
+
+
+Intel ACPI Component Architecture
+ASL+ Optimizing Compiler/Disassembler version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+ASL Input:     bank.asl -    1841 bytes     44 keywords      0 source lines
+AML Output:    bank.aml -     429 bytes     23 opcodes      21 named objects
+
+Compilation successful. 0 Errors, 0 Warnings, 7 Remarks, 0 Optimizations

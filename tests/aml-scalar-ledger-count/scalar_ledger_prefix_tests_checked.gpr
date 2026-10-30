@@ -1,5 +1,5 @@
 project scalar_ledger_prefix_tests_checked is
- for Source_Dirs use (".", "../aml-scalar-transport", "../../userspace/lib/acpi", "../../shared/firmware", "../../shared/capabilities");
+ for Source_Dirs use ("../../shared/capabilities", "../../shared/firmware", ".", "../aml-scalar-transport", "../../userspace/services/acpi/lib");
  Build_Root := external ("SERVICE_MILESTONE_BUILD", "build-checked");
  for Object_Dir use Build_Root & "/obj";
  for Exec_Dir use Build_Root & "/bin";

@@ -1,0 +1,12 @@
+/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/r1-arg-target-source.asl      3: Method (HELP, 1) { ToInteger (Arg0, Local1) Return (Arg0) }
+Warning  3144 -                                                                                                     Method Local is set but never used ^  (Local1)
+
+
+Intel ACPI Component Architecture
+ASL+ Optimizing Compiler/Disassembler version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+ASL Input:     /home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/r1-arg-target-source.asl -     213 bytes      5 keywords      0 source lines
+AML Output:    /home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/r1-arg-target-source.aml -      96 bytes      3 opcodes       2 named objects
+
+Compilation successful. 0 Errors, 1 Warnings, 0 Remarks, 0 Optimizations

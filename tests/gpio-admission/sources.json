@@ -1,0 +1,8 @@
+{
+  "production": {
+    "userspace/lib/gpio-admission/gpio_channel_badges.ads": "3b8a652567742389b483e5898d103a8b9d11aa9237deadb038df5d2ff3fb7e0b",
+    "userspace/lib/gpio-admission/gpio_channel_badges.adb": "41e109af16df9ea986349d0ea184386a489858e999a44cbe2e048588dc39b709"
+  },
+  "checks_per_profile": 2752586,
+  "scope": "GPIO_Channel_Badges pure codec only"
+}

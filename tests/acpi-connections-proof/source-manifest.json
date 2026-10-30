@@ -1,0 +1,19 @@
+{
+  "shared/firmware/firmware_tables.adb": "120555c25910e45212c229526c232c0b1afae7f63effd04fdd54a5f567690cfa",
+  "shared/firmware/firmware_tables.ads": "cdd038a8b009c7009c8f6286b34b6ab7d3c0bf7be8410ca782b0831780ae1ef4",
+  "tests/acpi-connections-proof/README.md": "462aae03bd3fcfc65384fb0389f21d8a3013fb70c7619b2509c2945b336430ca",
+  "tests/acpi-connections-proof/capture_phase.py": "6a305152749fb706f0366659a0bd40705e4c92e0dca21acb49f8111c6d168880",
+  "tests/acpi-connections-proof/check-result.sh": "861faab4762ab69755283efd0ab795aba05aeb72ab115e8388e92a4283cd4f71",
+  "tests/acpi-connections-proof/connections_proof.gpr": "5e01495a9599e74b4813585181f334f2e34d2ba8ab35c647ebe838ec00e6b979",
+  "tests/acpi-connections-proof/proof-evidence.json": "d8a3953578218a8e646d1a3fe299987caf7081b52f7e9c494d210b9789712160",
+  "tests/acpi-connections-proof/run.sh": "0cc310b753a7610c0e4e8b91f643ea97ba97c73efda15a28b552cb07ffe90374",
+  "tests/acpi-field-remote/hosted_capture.py": "bb667e639c2ba2c9c11aa0fb09e30f0bd768b8728290657fcff4ef090da231db",
+  "userspace/services/acpi/resource-data/acpi_resource_data-clock_inputs.adb": "79fd163302ff436cf67572a6b4aa1e9cf05b136004b8475450382f34406937b0",
+  "userspace/services/acpi/resource-data/acpi_resource_data-clock_inputs.ads": "01f5e44999cd50f48d39cf24f064107ef78cc20be424c519fc29c22c7cb93878",
+  "userspace/services/acpi/resource-data/acpi_resource_data-pin_descriptors.adb": "592f6fab558eb0e77b29fdbe6c45fc823bb19e87e004a637231324ffca8dfc7d",
+  "userspace/services/acpi/resource-data/acpi_resource_data-pin_descriptors.ads": "764d890b51737779e7d5f3ea5b159f52d6ae24ec284dabf7742f53517d1b5026",
+  "userspace/services/acpi/resource-data/acpi_resource_data-serial_connections.adb": "d455b628f613ecd7c93be68b655f450a9aaa647013698c4004512be6245beaa4",
+  "userspace/services/acpi/resource-data/acpi_resource_data-serial_connections.ads": "b4684deb47f4ac561d60a206a7d105b436d4ed1107ad13fdd7c612b373c91490",
+  "userspace/services/acpi/resource-data/acpi_resource_data.adb": "8ecf9d25b2f2984eea61216cdb290b4420ef1ce2d8c844ebccc9128c97263512",
+  "userspace/services/acpi/resource-data/acpi_resource_data.ads": "704a461f20c90cbde9e15c34fc457373b2fed6d3e948d4706daa2ffe55ee8532"
+}

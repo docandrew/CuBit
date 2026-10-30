@@ -1,0 +1,42 @@
+[
+  {
+    "label": "method-r1",
+    "source": "method-r1.asl",
+    "batch": "execute RSET; execute \\_SB.DVA0._STA; execute \\_SB.DVA0._INI; execute OBS0; execute PR01; execute PR02; execute PR03; execute RSET; execute \\_SB.DVA0._STA; execute \\_SB.DVA0._INI; execute OBS0; execute PR01; execute PR02; execute PR03"
+  },
+  {
+    "label": "method-r2",
+    "source": "method-r2.asl",
+    "batch": "execute RSET; execute \\_SB.DVA0._STA; execute \\_SB.DVA0._INI; execute OBS0; execute PR01; execute PR02; execute PR03; execute RSET; execute \\_SB.DVA0._STA; execute \\_SB.DVA0._INI; execute OBS0; execute PR01; execute PR02; execute PR03"
+  },
+  {
+    "label": "direct-r1",
+    "source": "direct-r1.asl",
+    "batch": "execute RSET; execute \\_SB.DVA0._STA; execute \\_SB.DVA0._INI; execute OBS0; execute PR01; execute PR02; execute PR03; execute RSET; execute \\_SB.DVA0._STA; execute \\_SB.DVA0._INI; execute OBS0; execute PR01; execute PR02; execute PR03"
+  },
+  {
+    "label": "direct-r2",
+    "source": "direct-r2.asl",
+    "batch": "execute RSET; execute \\_SB.DVA0._STA; execute \\_SB.DVA0._INI; execute OBS0; execute PR01; execute PR02; execute PR03; execute RSET; execute \\_SB.DVA0._STA; execute \\_SB.DVA0._INI; execute OBS0; execute PR01; execute PR02; execute PR03"
+  },
+  {
+    "label": "failure-r1",
+    "source": "failure-r1.asl",
+    "batch": "execute RSET; execute \\_SB.DVA0._STA; execute \\_SB.DVA0._INI; execute OBS0; execute PR01; execute PR02; execute PR03; execute RSET; execute \\_SB.DVA0._STA; execute \\_SB.DVA0._INI; execute OBS0; execute PR01; execute PR02; execute PR03"
+  },
+  {
+    "label": "failure-r2",
+    "source": "failure-r2.asl",
+    "batch": "execute RSET; execute \\_SB.DVA0._STA; execute \\_SB.DVA0._INI; execute OBS0; execute PR01; execute PR02; execute PR03; execute RSET; execute \\_SB.DVA0._STA; execute \\_SB.DVA0._INI; execute OBS0; execute PR01; execute PR02; execute PR03"
+  },
+  {
+    "label": "compound-r1",
+    "source": "compound-r1.asl",
+    "batch": "execute RSET; execute \\_SB.DVA0._STA; execute \\_SB.DVA0._INI; execute OBS0; execute PR01; execute PR02; execute PR03; execute RSET; execute \\_SB.DVA0._STA; execute \\_SB.DVA0._INI; execute OBS0; execute PR01; execute PR02; execute PR03"
+  },
+  {
+    "label": "compound-r2",
+    "source": "compound-r2.asl",
+    "batch": "execute RSET; execute \\_SB.DVA0._STA; execute \\_SB.DVA0._INI; execute OBS0; execute PR01; execute PR02; execute PR03; execute RSET; execute \\_SB.DVA0._STA; execute \\_SB.DVA0._INI; execute OBS0; execute PR01; execute PR02; execute PR03"
+  }
+]

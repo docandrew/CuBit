@@ -1,0 +1,18 @@
+/home/doc/git/.acpi-proof-work/captured-name-oracle-restored-8pxl61ma/cases/r2-escaped-runtime-self.asl      2: Name (SAVE, Package () {})
+Remark   2095 -                                                                                   Effective AML package length is zero ^ 
+
+/home/doc/git/.acpi-proof-work/captured-name-oracle-restored-8pxl61ma/cases/r2-escaped-runtime-self.asl      3: Method (MAKE, 0) { Name (TEMP, Package () { TEMP }) Store (TEMP, SAVE) Return (Zero) }
+Remark   2173 -             Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\MAKE)
+
+/home/doc/git/.acpi-proof-work/captured-name-oracle-restored-8pxl61ma/cases/r2-escaped-runtime-self.asl      3: Method (MAKE, 0) { Name (TEMP, Package () { TEMP }) Store (TEMP, SAVE) Return (Zero) }
+Remark   2120 -                          Control Method should be made Serialized due to creation of named objects within ^  (\MAKE)
+
+
+Intel ACPI Component Architecture
+ASL+ Optimizing Compiler/Disassembler version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+ASL Input:     /home/doc/git/.acpi-proof-work/captured-name-oracle-restored-8pxl61ma/cases/r2-escaped-runtime-self.asl -     284 bytes     12 keywords      0 source lines
+AML Output:    /home/doc/git/.acpi-proof-work/captured-name-oracle-restored-8pxl61ma/cases/r2-escaped-runtime-self.aml -     104 bytes      7 opcodes       5 named objects
+
+Compilation successful. 0 Errors, 0 Warnings, 3 Remarks, 0 Optimizations

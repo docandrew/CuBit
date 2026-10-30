@@ -1,0 +1,22 @@
+{
+  "tests/aml-index-data64/reference/bank-compile.log": "90b93afed481e13c2a78a5106363bf0da021ddf82028005909d1e9032174e942",
+  "tests/aml-index-data64/reference/bank-evidence.sha256": "3981889bd85cf85177b9b79b24c60931bb0448154aba40a720f9fc2f0cb34b02",
+  "tests/aml-index-data64/reference/bank-inputs.sha256": "e2a830526caf0e2ac730bdf2b2f25781051e35a26df768c8a1578826d258a6f5",
+  "tests/aml-index-data64/reference/bank-reference.log": "7c25c7170b6b7f919d7dcf5583cd72451c44953b5c5270d9209cdb47c45b7530",
+  "tests/aml-index-data64/reference/bank-status.tsv": "d2d70804ecd697d5a9c3ede742b29e5e7f86572fff79369985db325a6aba3d3a",
+  "tests/aml-index-data64/reference/bank.aml": "1745a6201e348a792251bf102c3d112e0023c09d1e1a9ff4aaffa1a20e7576bf",
+  "tests/aml-index-data64/reference/bank.asl": "d9c385e03e5ea84c8275def1c5a8ec7d6bd5056db318703d03ec990cf735e098",
+  "tests/aml-index-data64/reference/bank32-compile.log": "ac1cc6a9559280fc01962f2b7d1403298f92677b7070571e7308522a8cfd7049",
+  "tests/aml-index-data64/reference/bank32-evidence.sha256": "6a4695553e5bce72bf1d7984eef513f7eaa0ef11d7401a7228b588a75943e48f",
+  "tests/aml-index-data64/reference/bank32-inputs.sha256": "ab47f44ce2357c80534164369e0c77fdd8363433a608cc465ca0c31ca134a6bd",
+  "tests/aml-index-data64/reference/bank32-reference.log": "dfb2b55d81bfc07e7bca66ab862ca78e842724e8c9da44722dbf2210047df721",
+  "tests/aml-index-data64/reference/bank32-status.tsv": "d2d70804ecd697d5a9c3ede742b29e5e7f86572fff79369985db325a6aba3d3a",
+  "tests/aml-index-data64/reference/bank32.aml": "ddd70e04fb60089e1af4f808a8260bb6d9d183d0d054837db57abe2a7a135113",
+  "tests/aml-index-data64/reference/bank32.asl": "f7b7ce53e2b6c7799368999ca9c16c399bbbce183121dbe740b35179061160de",
+  "tests/aml-index-data64/reference/expected32.tsv": "ba77f320347465966035b635db066b7354cbe106b42d0a9ef455e4db8001354c",
+  "tests/aml-index-data64/reference/expected64.tsv": "29d5f59a3fcad61e0f0797bbfd71155ca015e0324f3c8a8811d85105ac0ad15c",
+  "tests/aml-index-data64/reference/hosted/data64-checked-audit.json": "27b75bf2fd7c692e10a81e964e513a1565aedecc27c1758d1179ff17b25cf35e",
+  "tests/aml-index-data64/reference/hosted/data64-release-audit.json": "494f5423cf73db2777242a139940af41183a8a923950a2774e017a914dbfff56",
+  "tests/aml-index-data64/reference/hosted/widths-checked-audit.json": "5f115fcbea75071fbabc86f87504693dd36cae8c7d2bab465aa9e2e3ff6b4fe9",
+  "tests/aml-index-data64/reference/hosted/widths-release-audit.json": "cd9b1588705abe591842b838d7a2d7f35c70bec0aa175b5db4c790916f44b937"
+}

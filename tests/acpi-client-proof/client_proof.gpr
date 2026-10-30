@@ -1,0 +1,19 @@
+project Client_Proof is
+ for Source_Dirs use
+   ("model", "../../userspace/services/acpi-backend", "../../userspace/services/acpi/field-client",
+    "../../userspace/services/acpi/field-client/provider", "../../userspace/services/acpi/lib",
+    "../../shared/firmware");
+ for Source_Files use
+   ("client_proof_model.ads", "client_proof_model.adb",
+    "acpi_region_protocol.ads", "acpi_region_client.ads", "acpi_region_client.adb",
+    "acpi_field_remote_provider.ads", "acpi_field_remote_provider.adb",
+    "aml_identity.ads", "aml_identity-issuer.ads", "aml_identity-issuer.adb",
+    "aml_field_access.ads", "aml_field_layout.ads", "aml_field_layout.adb",
+    "aml_field_datums.ads", "aml_field_datums.adb", "aml_decode.ads", "aml_decode.adb",
+    "acpi_fadt.ads", "acpi_fadt.adb", "acpi_fadt-transactions.ads", "acpi_fadt-transactions.adb",
+    "firmware_tables.ads", "firmware_tables.adb");
+ for Object_Dir use external ("CLIENT_PROOF_OBJECTS");
+ package Compiler is
+  for Default_Switches ("Ada") use ("-gnat2022", "-gnatwa", "-gnatwe", "-gnata", "-gnato");
+ end Compiler;
+end Client_Proof;

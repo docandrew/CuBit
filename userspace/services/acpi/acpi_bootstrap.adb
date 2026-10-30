@@ -1,14 +1,31 @@
 pragma Ada_2022;
 package body ACPI_Bootstrap with SPARK_Mode is
    use type Devices.Phase;
-   procedure Unavailable_Regions
+   use type ACPI_Service.Namespace.Object_Kind;
+   procedure Unconfigured_Regions
      (Service : aliased in out ACPI_Service.State; Budget : Natural;
       Charged : out Natural; Outcome : out ACPI_Device_Policy.Region_Outcome) is
-      pragma Unreferenced (Service, Budget);
+      pragma Unreferenced (Budget);
+      Item : ACPI_Service.Node_Descriptor;
+      Status : ACPI_Service.Values.Access_Status;
    begin
       Charged := 0;
       Outcome := ACPI_Device_Policy.Regions_Unavailable;
-   end Unavailable_Regions;
+      ACPI_Service.Describe_Node (Service, ACPI_Service.Namespace.Root, Item, Status);
+      if Status /= ACPI_Service.Values.Available then return; end if;
+      for Node in ACPI_Service.Namespace.Node_ID range 1 .. ACPI_Service.Namespace_Node_Count (Service) loop
+         ACPI_Service.Describe_Node (Service, Node, Item, Status);
+         if Status = ACPI_Service.Values.Available then
+            if ACPI_Service.Values.Node_Kind (Item) in
+              ACPI_Service.Namespace.Operation_Region_Object | ACPI_Service.Namespace.Uninitialized_Region_Object
+            then return; end if;
+         elsif Status /= ACPI_Service.Values.Invalid_Value then return;
+         end if;
+      end loop;
+      -- Copied table regions need no hardware handler. This is an empty
+      -- hardware requirement at the barrier, never permission for later I/O.
+      Outcome := ACPI_Device_Policy.No_Regions_Required;
+   end Unconfigured_Regions;
    function Device_Completion (Session : State) return Device_Report is (Session.Device_Data);
    function Fatal_Diagnostic (Session : State) return ACPI_Fatal_Diagnostics.Observation is
    begin
@@ -38,7 +55,7 @@ package body ACPI_Bootstrap with SPARK_Mode is
         when Devices.Failed => Devices_Failed),
       Charged => Item.Charged, Status_Methods => Item.Status_Methods,
       Initialization_Methods => Item.Initialization_Methods, Errors => Item.Errors,
-      Region_Status => Item.Region_Status, First_Error_Node => Item.First_Error_Node,
+      Regions_Attempted => Item.Regions_Attempted, Region_Status => Item.Region_Status, First_Error_Node => Item.First_Error_Node,
       First_Error => Item.First_Error, Fatal => Item.Fatal, Fatal_Initializer => Item.Fatal_Initializer);
    pragma Unevaluated_Use_Of_Old (Allow);
    function Valid (Session : State) return Boolean is (ACPI_Service.Valid (Session.Core));
@@ -156,8 +173,12 @@ package body ACPI_Bootstrap with SPARK_Mode is
       -- count at this boundary before exposing Receiving/Complete again.
       if ACPI_Service.Observe (Session.Core).Tables > Session.Required then Session.Stage := Failed; end if;
    end Import_Table;
-   procedure Finish
-     (Session : in out State; Budget : Startup_Budget := Default_Startup_Budget) is
+   generic
+      with procedure Initialize_Devices (Session : in out State; Budget : Natural);
+   procedure Finish_Session
+     (Session : in out State; Budget : Startup_Budget);
+   procedure Finish_Session
+     (Session : in out State; Budget : Startup_Budget) is
    begin
       if Session.Stage /= Receiving then return; end if;
       -- Consume this one-shot session before any operation that can fail.
@@ -194,20 +215,66 @@ package body ACPI_Bootstrap with SPARK_Mode is
         (Session.Core, Session.Notify_Requested, Session.Notify_Status);
       if Session.Notify_Status /= ACPI_Service.Values.Available then return; end if;
       Session.Notify_Enabled := Session.Notify_Requested;
-      declare
-         Accepted : Boolean;
-      begin
-         Devices.Begin_Initialization (Session.Device_Run, Session.Core,
-           Budget - Session.Completion_Data.Execution.Modules.Charged, Accepted);
-         if Accepted and then Devices.Observe (Session.Device_Run).Stage = Devices.Awaiting_Regions then
-            Devices.Complete_Initialization (Session.Device_Run, Session.Core, Accepted);
-         end if;
-         Session.Device_Data := Public_Report (Devices.Observe (Session.Device_Run));
-      end;
+      Initialize_Devices (Session, Budget - Session.Completion_Data.Execution.Modules.Charged);
       -- Method declarations and provisional members must be cleaned at return.
       -- Do not label the retained snapshot complete if that invariant is lost.
       if ACPI_Service.Pending_Members (Session.Core) /= 0 then return; end if;
       Session.Completion_Data.Stage := Finished;
       Session.Stage := Complete;
+   end Finish_Session;
+   procedure Finish
+     (Session : in out State; Budget : Startup_Budget := Default_Startup_Budget) is
+      procedure Initialize_Default (Current : in out State; Remaining : Natural) is
+         Accepted : Boolean;
+      begin
+         Devices.Begin_Initialization (Current.Device_Run, Current.Core, Remaining, Accepted);
+         if Accepted and then Devices.Observe (Current.Device_Run).Stage = Devices.Awaiting_Regions then
+            Devices.Complete_Initialization (Current.Device_Run, Current.Core, Accepted);
+         end if;
+         Current.Device_Data := Public_Report (Devices.Observe (Current.Device_Run));
+      end Initialize_Default;
+      procedure Complete is new Finish_Session (Initialize_Default);
+   begin
+      Complete (Session, Budget);
    end Finish;
+   package body With_Driver is
+   procedure Finish
+     (Session : in out State; Run : in out Device_Driver.Session;
+      Budget : Startup_Budget := Default_Startup_Budget) is
+      use type Device_Driver.Phase;
+      procedure Initialize_Controlled (Current : in out State; Remaining : Natural) is
+         Accepted : Boolean;
+         Item : Device_Driver.Report;
+      begin
+         if Device_Driver.Observe (Run).Stage /= Device_Driver.Not_Started then
+            Current.Device_Data := (Stage => Devices_Failed,
+              First_Error => AML_Execute.Unsupported_Value, others => <>);
+            return;
+         end if;
+         Device_Driver.Begin_Initialization (Run, Current.Core, Remaining, Accepted);
+         if Accepted and then Device_Driver.Observe (Run).Stage = Device_Driver.Awaiting_Regions then
+            Device_Driver.Complete_Initialization (Run, Current.Core, Accepted);
+         end if;
+         Item := Device_Driver.Observe (Run);
+         pragma Assert (Item.Charged <= Remaining);
+         Current.Device_Data :=
+           (Stage => (case Item.Stage is
+              when Device_Driver.Not_Started => Devices_Not_Started,
+              when Device_Driver.Preparing => Devices_Preparing,
+              when Device_Driver.Awaiting_Regions => Devices_Awaiting_Regions,
+              when Device_Driver.Walking => Devices_Walking,
+              when Device_Driver.Completed => Devices_Completed,
+              when Device_Driver.Completed_With_Errors => Devices_Completed_With_Errors,
+              when Device_Driver.Incomplete => Devices_Incomplete,
+              when Device_Driver.Failed => Devices_Failed),
+            Charged => Item.Charged, Status_Methods => Item.Status_Methods,
+            Initialization_Methods => Item.Initialization_Methods, Errors => Item.Errors,
+            Regions_Attempted => Item.Regions_Attempted, Region_Status => Item.Region_Status, First_Error_Node => Item.First_Error_Node,
+            First_Error => Item.First_Error, Fatal => Item.Fatal, Fatal_Initializer => Item.Fatal_Initializer);
+      end Initialize_Controlled;
+      procedure Complete is new Finish_Session (Initialize_Controlled);
+   begin
+      Complete (Session, Budget);
+   end Finish;
+   end With_Driver;
 end ACPI_Bootstrap;

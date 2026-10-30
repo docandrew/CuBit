@@ -1,0 +1,8 @@
+project Proof is
+ for Source_Dirs use ("source");
+ for Source_Files use ("gpio_channel_badges.ads", "gpio_channel_badges.adb");
+ for Object_Dir use "proof/obj";
+ package Compiler is
+  for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato");
+ end Compiler;
+end Proof;

@@ -1,0 +1,233 @@
+Input file /home/doc/git/.acpi-proof-work/field-qword-reference-split-6Al2cF2d/results/aligned-WriteAsZeros-r2-b.aml, Length 0x263 (611) bytes
+
+Intel ACPI Component Architecture
+AML Execution/Debug Utility version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+
+
+ACPI: RSDP 0x00005555555FF180 000024 (v02 Intel )
+ACPI: XSDT 0x0000555555601D90 000034 (v00 Intel  AcpiExec 00001001 INTL 20260408)
+ACPI: FACP 0x00005555555FEFA0 000114 (v05 Intel  AcpiExec 00001001 INTL 20260408)
+ACPI: DSDT 0x0000555555608160 000263 (v02 CUBIT  QWORDIO  00000001 INTL 20260408)
+ACPI: FACS 0x00005555555FF140 000040
+
+ACPI table initialization:
+Table [DSDT: QWORDIO ] (id 01) -   41 Objects with   0 Devices,   1 Regions,   23 Methods (0/23/0 Serial/Non/Cvt)
+ACPI: 1 ACPI AML tables successfully acquired and loaded
+
+Final data object initialization: Namespace contains 50 (0x32) objects
+Initializing General Purpose Events (GPEs):
+    Initialized GPE 00 to 7F [_GPE] 16 regs on interrupt 0x0 (SCI)
+    Initialized GPE 80 to FF [_GPE] 16 regs on interrupt 0x0 (SCI)
+Initializing Device/Processor/Thermal objects and executing _INI/_STA methods:
+    Executed 0 _INI methods requiring 0 _STA executions (examined 2 objects)
+Evaluating \PATT
+Evaluation of \PATT returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 000000005A1234C7
+
+Evaluating \P000
+Evaluation of \P000 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 00000000000000C7
+
+Evaluating \P001
+Evaluation of \P001 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000034
+
+Evaluating \P002
+Evaluation of \P002 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000012
+
+Evaluating \P003
+Evaluation of \P003 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 000000000000005A
+
+Evaluating \P004
+Evaluation of \P004 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000000
+
+Evaluating \P005
+Evaluation of \P005 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000000
+
+Evaluating \P006
+Evaluation of \P006 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000000
+
+Evaluating \P007
+Evaluation of \P007 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000000
+
+Evaluating \P008
+Evaluation of \P008 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000033
+
+Evaluating \P009
+Evaluation of \P009 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 00000000000000CC
+
+Evaluating \P010
+Evaluation of \P010 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000087
+
+Evaluating \P011
+Evaluation of \P011 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000078
+
+Evaluating \P012
+Evaluation of \P012 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000058
+
+Evaluating \P013
+Evaluation of \P013 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000065
+
+Evaluating \P014
+Evaluation of \P014 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000072
+
+Evaluating \P015
+Evaluation of \P015 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 000000000000008F
+
+Evaluating \BUFR
+Evaluation of \BUFR returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 3CA569965A1234C7
+
+Evaluating \P000
+Evaluation of \P000 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 00000000000000C7
+
+Evaluating \P001
+Evaluation of \P001 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000034
+
+Evaluating \P002
+Evaluation of \P002 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000012
+
+Evaluating \P003
+Evaluation of \P003 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 000000000000005A
+
+Evaluating \P004
+Evaluation of \P004 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000096
+
+Evaluating \P005
+Evaluation of \P005 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000069
+
+Evaluating \P006
+Evaluation of \P006 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 00000000000000A5
+
+Evaluating \P007
+Evaluation of \P007 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 000000000000003C
+
+Evaluating \P008
+Evaluation of \P008 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000033
+
+Evaluating \P009
+Evaluation of \P009 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 00000000000000CC
+
+Evaluating \P010
+Evaluation of \P010 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000087
+
+Evaluating \P011
+Evaluation of \P011 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000078
+
+Evaluating \P012
+Evaluation of \P012 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000058
+
+Evaluating \P013
+Evaluation of \P013 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000065
+
+Evaluating \P014
+Evaluation of \P014 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000072
+
+Evaluating \P015
+Evaluation of \P015 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 000000000000008F
+
+Evaluating \STRG
+Evaluation of \STRG returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000021327A41
+
+Evaluating \P000
+Evaluation of \P000 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000041
+
+Evaluating \P001
+Evaluation of \P001 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 000000000000007A
+
+Evaluating \P002
+Evaluation of \P002 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000032
+
+Evaluating \P003
+Evaluation of \P003 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000021
+
+Evaluating \P004
+Evaluation of \P004 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000000
+
+Evaluating \P005
+Evaluation of \P005 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000000
+
+Evaluating \P006
+Evaluation of \P006 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000000
+
+Evaluating \P007
+Evaluation of \P007 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000000
+
+Evaluating \P008
+Evaluation of \P008 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000033
+
+Evaluating \P009
+Evaluation of \P009 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 00000000000000CC
+
+Evaluating \P010
+Evaluation of \P010 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000087
+
+Evaluating \P011
+Evaluation of \P011 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000078
+
+Evaluating \P012
+Evaluation of \P012 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000058
+
+Evaluating \P013
+Evaluation of \P013 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000065
+
+Evaluating \P014
+Evaluation of \P014 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000072
+
+Evaluating \P015
+Evaluation of \P015 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 000000000000008F
+
+0x55555560a360 Length 0x0048   utcache-0453 [Operand Object]       Method  RefCount 0x0001
+0x555555607ce0 Length 0x0023  nsxfname-0723 [Not a Descriptor] 
+0x555555607ba0 Length 0x0023  nsxfname-0723 [Not a Descriptor] 
+0x5555556079f0 Length 0x0048   utcache-0453 [Operand Object]       Method  RefCount 0x0001
+ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)

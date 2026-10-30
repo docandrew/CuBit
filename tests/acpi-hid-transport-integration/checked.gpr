@@ -1,0 +1,9 @@
+project Checked is
+ for Source_Dirs use (".", "../../shared/firmware", "../../shared/hardware", "../../userspace/services/acpi", "../../userspace/services/acpi/hid-i2c", "../../userspace/services/acpi/lib", "../../userspace/services/acpi/lid", "../../userspace/services/acpi/pci-routing", "../../userspace/services/acpi/power", "../../userspace/services/acpi/region-init", "../../userspace/services/acpi/request-driver", "../../userspace/services/acpi/resource-consumer", "../../userspace/services/acpi/resource-data", "../../shared/acpi");
+ for Main use ("hid_discovery_tests.adb");
+ for Object_Dir use external ("HID_I2C_INTEGRATION_BUILD") & "/obj";
+ for Exec_Dir use external ("HID_I2C_INTEGRATION_BUILD") & "/bin";
+ package Compiler is
+  for Default_Switches ("Ada") use ("-O1", "-gnat2022", "-gnatwa", "-gnatwe", "-gnata", "-gnato");
+ end Compiler;
+end Checked;

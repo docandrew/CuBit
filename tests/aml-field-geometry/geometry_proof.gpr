@@ -1,0 +1,8 @@
+project Geometry_Proof is
+ for Source_Dirs use ("../../userspace/services/acpi/lib", "../../shared/firmware");
+ for Source_Files use ("acpi_fadt-transactions.adb", "acpi_fadt-transactions.ads", "acpi_fadt.adb", "acpi_fadt.ads", "aml_decode.adb", "aml_decode.ads", "aml_field_datums.adb", "aml_field_datums.ads", "aml_field_layout.adb", "aml_field_layout.ads", "aml_field_plans.adb", "aml_field_plans.ads", "firmware_tables.adb", "firmware_tables.ads");
+ for Object_Dir use external ("PLAN_PROOF_OBJECTS");
+ package Compiler is
+ for Default_Switches ("Ada") use ("-gnat2022", "-gnatwa", "-gnatwe", "-gnata", "-gnato");
+ end Compiler;
+end Geometry_Proof;

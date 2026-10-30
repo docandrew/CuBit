@@ -21,6 +21,20 @@ package ACPI_Native_Blocks is
       Config : ACPI_Endpoint.Configuration; Stamp : Interfaces.Unsigned_64;
       Provider : CuBit.Handles.Endpoint;
       Request : ACPI_Requests.Packet; Reply : out ACPI_Requests.Packet);
+   -- The service owner selects ordinary packet handling. Bulk grants always
+   -- use this adapter's existing validation, acquisition and return path.
+   generic
+      with procedure Dispatch_Packet
+        (Server : in out ACPI_Requests.State;
+         Config : ACPI_Endpoint.Configuration; Stamp : Interfaces.Unsigned_64;
+         Request : ACPI_Requests.Packet; Reply : out ACPI_Requests.Packet);
+   package With_Endpoint is
+      procedure Route
+        (Adapter : in out State; Server : in out ACPI_Requests.State;
+         Config : ACPI_Endpoint.Configuration; Stamp : Interfaces.Unsigned_64;
+         Provider : CuBit.Handles.Endpoint;
+         Request : ACPI_Requests.Packet; Reply : out ACPI_Requests.Packet);
+   end With_Endpoint;
    function Pending (Adapter : State) return Boolean;
    -- Retry a previous return before accepting another grant. Never discard
    -- Adapter while Pending, except during process teardown handled by kernel.

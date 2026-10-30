@@ -81,7 +81,7 @@ package body ACPI_Native_Blocks is
       Retry_Return (Adapter);
       Status := (if Adapter.Held then Cleanup_Pending else Processed);
    end Import_Grant;
-   procedure Dispatch
+   procedure Dispatch_Grant
      (Adapter : in out State; Server : in out ACPI_Requests.State;
       Config : ACPI_Endpoint.Configuration; Stamp : Interfaces.Unsigned_64;
       Provider : CuBit.Handles.Endpoint;
@@ -91,10 +91,6 @@ package body ACPI_Native_Blocks is
       Result : ACPI_Requests.Response := (ACPI_Requests.Denied, [others => 0]);
       Status : Import_Status;
    begin
-      if Request.Label /= Import_Table_Grant then
-         ACPI_Endpoint.Dispatch (Server, Config, Stamp, Request, Reply);
-         return;
-      end if;
       Reply := ACPI_Endpoint.Encode (Result);
       if Origin /= ACPI_Requests.Snapshot_Provider then return; end if;
       Result := (ACPI_Requests.Malformed,
@@ -120,5 +116,31 @@ package body ACPI_Native_Blocks is
       end if;
       -- Cleanup_Pending already imported exactly once. Return its result and
       -- retain Adapter: only Retry_Return may retry the outstanding cleanup.
+   end Dispatch_Grant;
+   procedure Dispatch
+     (Adapter : in out State; Server : in out ACPI_Requests.State;
+      Config : ACPI_Endpoint.Configuration; Stamp : Interfaces.Unsigned_64;
+      Provider : CuBit.Handles.Endpoint;
+      Request : ACPI_Requests.Packet; Reply : out ACPI_Requests.Packet) is
+   begin
+      if Request.Label = Import_Table_Grant then
+         Dispatch_Grant (Adapter, Server, Config, Stamp, Provider, Request, Reply);
+      else
+         ACPI_Endpoint.Dispatch (Server, Config, Stamp, Request, Reply);
+      end if;
    end Dispatch;
+   package body With_Endpoint is
+      procedure Route
+        (Adapter : in out State; Server : in out ACPI_Requests.State;
+         Config : ACPI_Endpoint.Configuration; Stamp : Interfaces.Unsigned_64;
+         Provider : CuBit.Handles.Endpoint;
+         Request : ACPI_Requests.Packet; Reply : out ACPI_Requests.Packet) is
+      begin
+         if Request.Label = Import_Table_Grant then
+            Dispatch_Grant (Adapter, Server, Config, Stamp, Provider, Request, Reply);
+         else
+            Dispatch_Packet (Server, Config, Stamp, Request, Reply);
+         end if;
+      end Route;
+   end With_Endpoint;
 end ACPI_Native_Blocks;

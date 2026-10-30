@@ -1,0 +1,24 @@
+/home/doc/git/.acpi-proof-work/runtime-package-root-oracle-x4j04dl3/roots-r2.asl      5:  Method (CNUM, 1) { Store (Buffer (64) {0xA5}, Local0) Increment (MARK) Return (Arg0) }
+Warning  3144 -                                                                                          Method Local is set but never used ^  (Local0)
+
+/home/doc/git/.acpi-proof-work/runtime-package-root-oracle-x4j04dl3/roots-r2.asl      6:  Method (PRES, 0) { Store (Buffer (128) {0x5A}, Local0) Return (Zero) }
+Warning  3144 -                                                                                           Method Local is set but never used ^  (Local0)
+
+/home/doc/git/.acpi-proof-work/runtime-package-root-oracle-x4j04dl3/roots-r2.asl      7:  Method (PASS, 2) { Return (Arg0) }
+Remark   2146 -                                                       Method Argument is never used ^  (Arg1)
+
+/home/doc/git/.acpi-proof-work/runtime-package-root-oracle-x4j04dl3/roots-r2.asl      8:  Method (NAM0, 0) { Name (TEMP, Package () {
+Remark   2173 -                                                                                                      ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\NAM0)
+
+/home/doc/git/.acpi-proof-work/runtime-package-root-oracle-x4j04dl3/roots-r2.asl      8:  Method (NAM0, 0) { Name (TEMP, Package () {
+Remark   2120 -    Control Method should be made Serialized due to creation of named objects within ^  (\NAM0)
+
+
+Intel ACPI Component Architecture
+ASL+ Optimizing Compiler/Disassembler version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+ASL Input:     /home/doc/git/.acpi-proof-work/runtime-package-root-oracle-x4j04dl3/roots-r2.asl -    1160 bytes     22 keywords      0 source lines
+AML Output:    /home/doc/git/.acpi-proof-work/runtime-package-root-oracle-x4j04dl3/results/roots-r2.aml -     332 bytes     12 opcodes      10 named objects
+
+Compilation successful. 0 Errors, 2 Warnings, 3 Remarks, 3 Optimizations

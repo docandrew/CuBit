@@ -1,0 +1,5 @@
+tests/acpi-battery
+userspace/services/acpi
+userspace/services/acpi/lib
+userspace/services/acpi/power
+shared/firmware

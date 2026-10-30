@@ -1,0 +1,34 @@
+{
+  "gnatprove": {
+    "path": "/nix/store/9xvbsfi448cx9fjk4ivla9fsq390a8gn-gnatprove-fsf-15_2025-06-10/bin/gnatprove",
+    "sha256": "ef4dd76057294453d4cc43781aa0f25fad9b351533e380cc9a60a9b86fa797ef"
+  },
+  "gprbuild": {
+    "path": "/nix/store/3xpy8h5k8fdlfi1v43iwfap0zv5n4bmp-gprbuild-25.0.0/bin/gprbuild",
+    "sha256": "98d565f501e7840286e90daeddf276ff4c0bdb16e09f94e6ad7835b8063d7ee2"
+  },
+  "gnatls": {
+    "path": "/nix/store/a6xads67a2s6pb2d297lr5fxjk2lhcpc-gnat-wrapper-15.3.0/bin/gnatls",
+    "sha256": "4e9ac2f8b9c8de37bd724dd191e5f6768952a4dd25bcefd8e60a84c8262cf361"
+  },
+  "gnatbind": {
+    "path": "/nix/store/a6xads67a2s6pb2d297lr5fxjk2lhcpc-gnat-wrapper-15.3.0/bin/gnatbind",
+    "sha256": "a6e0efb740f0d6bc7b96f4a6b1718a8684a5200bd53023baff8b169620368546"
+  },
+  "cvc5": {
+    "path": "/nix/store/kpamqxdkwynzxyzhqj4csy6h5qj0pz21-cvc5-1.3.4/bin/cvc5",
+    "sha256": "06fba7a8fe0e188ba77e049c4b08acf932f5280183830dfc5838f420678626d1"
+  },
+  "z3": {
+    "path": "/nix/store/c92vyfgscj1s8xnmgfiqvqk3ic35jcz1-z3-4.16.0/bin/z3",
+    "sha256": "796dbda9afa35f2369d00e90c329d31a7d49afac75a683ddd14647f2c77f607a"
+  },
+  "python": {
+    "path": "/nix/store/3n4qphl9s728sz8frmpqqrv9b1m87g68-python3-3.14.7/bin/python3.14",
+    "sha256": "ee3549b0a0c65576b13b32abd410551ec8af9b2307cd726c89295de24213192f"
+  },
+  "gcc": {
+    "path": "/nix/store/a6xads67a2s6pb2d297lr5fxjk2lhcpc-gnat-wrapper-15.3.0/bin/gcc",
+    "sha256": "216c8e207c60cee4b90866c28a4a89d424e37fecc03526d2ba825a2d2d58a1ef"
+  }
+}

@@ -1,0 +1,536 @@
+[
+  {
+    "label": "multi8-r1",
+    "aml_sha256": "8217c1381edaa64f575646a7998668f2989f812455a2f0cbfe17accc1d5d7e7b",
+    "observations": [
+      {
+        "method": "TEST",
+        "value": 37
+      },
+      {
+        "method": "OBS0",
+        "value": 12
+      },
+      {
+        "method": "PR01",
+        "value": 18
+      },
+      {
+        "method": "PR02",
+        "value": 19
+      },
+      {
+        "method": "PR03",
+        "value": 119
+      },
+      {
+        "method": "FAIL",
+        "value": "AE_AML_DIVIDE_BY_ZERO"
+      },
+      {
+        "method": "OBS0",
+        "value": 13
+      },
+      {
+        "method": "PR01",
+        "value": 68
+      },
+      {
+        "method": "PR02",
+        "value": 19
+      },
+      {
+        "method": "PR03",
+        "value": 119
+      },
+      {
+        "method": "TEST",
+        "value": 37
+      },
+      {
+        "method": "OBS0",
+        "value": 12
+      },
+      {
+        "method": "PR01",
+        "value": 18
+      },
+      {
+        "method": "PR02",
+        "value": 19
+      },
+      {
+        "method": "PR03",
+        "value": 119
+      },
+      {
+        "method": "FAIL",
+        "value": "AE_AML_DIVIDE_BY_ZERO"
+      },
+      {
+        "method": "OBS0",
+        "value": 13
+      },
+      {
+        "method": "PR01",
+        "value": 68
+      },
+      {
+        "method": "PR02",
+        "value": 19
+      },
+      {
+        "method": "PR03",
+        "value": 119
+      }
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  },
+  {
+    "label": "multi8-r2",
+    "aml_sha256": "f0e7a70b5947d7c666da1abec3e33de2e7d5cd298c1bb92f367895d3b4a140e9",
+    "observations": [
+      {
+        "method": "TEST",
+        "value": 37
+      },
+      {
+        "method": "OBS0",
+        "value": 12
+      },
+      {
+        "method": "PR01",
+        "value": 18
+      },
+      {
+        "method": "PR02",
+        "value": 19
+      },
+      {
+        "method": "PR03",
+        "value": 119
+      },
+      {
+        "method": "FAIL",
+        "value": "AE_AML_DIVIDE_BY_ZERO"
+      },
+      {
+        "method": "OBS0",
+        "value": 13
+      },
+      {
+        "method": "PR01",
+        "value": 68
+      },
+      {
+        "method": "PR02",
+        "value": 19
+      },
+      {
+        "method": "PR03",
+        "value": 119
+      },
+      {
+        "method": "TEST",
+        "value": 37
+      },
+      {
+        "method": "OBS0",
+        "value": 12
+      },
+      {
+        "method": "PR01",
+        "value": 18
+      },
+      {
+        "method": "PR02",
+        "value": 19
+      },
+      {
+        "method": "PR03",
+        "value": 119
+      },
+      {
+        "method": "FAIL",
+        "value": "AE_AML_DIVIDE_BY_ZERO"
+      },
+      {
+        "method": "OBS0",
+        "value": 13
+      },
+      {
+        "method": "PR01",
+        "value": 68
+      },
+      {
+        "method": "PR02",
+        "value": 19
+      },
+      {
+        "method": "PR03",
+        "value": 119
+      }
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  },
+  {
+    "label": "multi16-r1",
+    "aml_sha256": "1259a2c22a55934e36951df76a27d3c5d7e18c1a043c53ea64f95a9ea46032d0",
+    "observations": [
+      {
+        "method": "TEST",
+        "value": 9321
+      },
+      {
+        "method": "OBS0",
+        "value": 12
+      },
+      {
+        "method": "PR01",
+        "value": 4660
+      },
+      {
+        "method": "PR02",
+        "value": 4661
+      },
+      {
+        "method": "PR03",
+        "value": 119
+      },
+      {
+        "method": "FAIL",
+        "value": "AE_AML_DIVIDE_BY_ZERO"
+      },
+      {
+        "method": "OBS0",
+        "value": 13
+      },
+      {
+        "method": "PR01",
+        "value": 17476
+      },
+      {
+        "method": "PR02",
+        "value": 4661
+      },
+      {
+        "method": "PR03",
+        "value": 119
+      },
+      {
+        "method": "TEST",
+        "value": 9321
+      },
+      {
+        "method": "OBS0",
+        "value": 12
+      },
+      {
+        "method": "PR01",
+        "value": 4660
+      },
+      {
+        "method": "PR02",
+        "value": 4661
+      },
+      {
+        "method": "PR03",
+        "value": 119
+      },
+      {
+        "method": "FAIL",
+        "value": "AE_AML_DIVIDE_BY_ZERO"
+      },
+      {
+        "method": "OBS0",
+        "value": 13
+      },
+      {
+        "method": "PR01",
+        "value": 17476
+      },
+      {
+        "method": "PR02",
+        "value": 4661
+      },
+      {
+        "method": "PR03",
+        "value": 119
+      }
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  },
+  {
+    "label": "multi16-r2",
+    "aml_sha256": "5418330df18a0075d9050c2311dd64a594fbb625be636c645fed7165db8e003d",
+    "observations": [
+      {
+        "method": "TEST",
+        "value": 9321
+      },
+      {
+        "method": "OBS0",
+        "value": 12
+      },
+      {
+        "method": "PR01",
+        "value": 4660
+      },
+      {
+        "method": "PR02",
+        "value": 4661
+      },
+      {
+        "method": "PR03",
+        "value": 119
+      },
+      {
+        "method": "FAIL",
+        "value": "AE_AML_DIVIDE_BY_ZERO"
+      },
+      {
+        "method": "OBS0",
+        "value": 13
+      },
+      {
+        "method": "PR01",
+        "value": 17476
+      },
+      {
+        "method": "PR02",
+        "value": 4661
+      },
+      {
+        "method": "PR03",
+        "value": 119
+      },
+      {
+        "method": "TEST",
+        "value": 9321
+      },
+      {
+        "method": "OBS0",
+        "value": 12
+      },
+      {
+        "method": "PR01",
+        "value": 4660
+      },
+      {
+        "method": "PR02",
+        "value": 4661
+      },
+      {
+        "method": "PR03",
+        "value": 119
+      },
+      {
+        "method": "FAIL",
+        "value": "AE_AML_DIVIDE_BY_ZERO"
+      },
+      {
+        "method": "OBS0",
+        "value": 13
+      },
+      {
+        "method": "PR01",
+        "value": 17476
+      },
+      {
+        "method": "PR02",
+        "value": 4661
+      },
+      {
+        "method": "PR03",
+        "value": 119
+      }
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  },
+  {
+    "label": "multi32-r1",
+    "aml_sha256": "0fc1e6d6b68a9a147347e91fe4bbd182696ad30accce2088208616e86543efb9",
+    "observations": [
+      {
+        "method": "TEST",
+        "value": 610839793
+      },
+      {
+        "method": "OBS0",
+        "value": 12
+      },
+      {
+        "method": "PR01",
+        "value": 305419896
+      },
+      {
+        "method": "PR02",
+        "value": 305419897
+      },
+      {
+        "method": "PR03",
+        "value": 119
+      },
+      {
+        "method": "FAIL",
+        "value": "AE_AML_DIVIDE_BY_ZERO"
+      },
+      {
+        "method": "OBS0",
+        "value": 13
+      },
+      {
+        "method": "PR01",
+        "value": 2271560481
+      },
+      {
+        "method": "PR02",
+        "value": 305419897
+      },
+      {
+        "method": "PR03",
+        "value": 119
+      },
+      {
+        "method": "TEST",
+        "value": 610839793
+      },
+      {
+        "method": "OBS0",
+        "value": 12
+      },
+      {
+        "method": "PR01",
+        "value": 305419896
+      },
+      {
+        "method": "PR02",
+        "value": 305419897
+      },
+      {
+        "method": "PR03",
+        "value": 119
+      },
+      {
+        "method": "FAIL",
+        "value": "AE_AML_DIVIDE_BY_ZERO"
+      },
+      {
+        "method": "OBS0",
+        "value": 13
+      },
+      {
+        "method": "PR01",
+        "value": 2271560481
+      },
+      {
+        "method": "PR02",
+        "value": 305419897
+      },
+      {
+        "method": "PR03",
+        "value": 119
+      }
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  },
+  {
+    "label": "multi32-r2",
+    "aml_sha256": "b6bc7ea8d230317d17582cf57be173e67388103eba6597a292e9e2b215548dc6",
+    "observations": [
+      {
+        "method": "TEST",
+        "value": 610839793
+      },
+      {
+        "method": "OBS0",
+        "value": 12
+      },
+      {
+        "method": "PR01",
+        "value": 305419896
+      },
+      {
+        "method": "PR02",
+        "value": 305419897
+      },
+      {
+        "method": "PR03",
+        "value": 119
+      },
+      {
+        "method": "FAIL",
+        "value": "AE_AML_DIVIDE_BY_ZERO"
+      },
+      {
+        "method": "OBS0",
+        "value": 13
+      },
+      {
+        "method": "PR01",
+        "value": 2271560481
+      },
+      {
+        "method": "PR02",
+        "value": 305419897
+      },
+      {
+        "method": "PR03",
+        "value": 119
+      },
+      {
+        "method": "TEST",
+        "value": 610839793
+      },
+      {
+        "method": "OBS0",
+        "value": 12
+      },
+      {
+        "method": "PR01",
+        "value": 305419896
+      },
+      {
+        "method": "PR02",
+        "value": 305419897
+      },
+      {
+        "method": "PR03",
+        "value": 119
+      },
+      {
+        "method": "FAIL",
+        "value": "AE_AML_DIVIDE_BY_ZERO"
+      },
+      {
+        "method": "OBS0",
+        "value": 13
+      },
+      {
+        "method": "PR01",
+        "value": 2271560481
+      },
+      {
+        "method": "PR02",
+        "value": 305419897
+      },
+      {
+        "method": "PR03",
+        "value": 119
+      }
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  }
+]

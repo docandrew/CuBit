@@ -1,0 +1,64 @@
+CuBit development shell
+  Build:  make -C kernel world
+  Test:   tests/headless/run.sh --test desktop-display
+  Run:    make -C kernel run-desktop
+sleep_objects.asl     14:         If (LEqual (MODE, 3)) { Return (Package () {}) }
+Remark   2095 -                         Effective AML package length is zero ^ 
+
+
+Intel ACPI Component Architecture
+ASL+ Optimizing Compiler/Disassembler version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+ASL Input:     sleep_objects.asl -    1060 bytes     46 keywords      0 source lines
+AML Output:    sleep_objects.aml -     300 bytes     37 opcodes       9 named objects
+Hex Dump:      sleep_objects.hex -    3243 bytes
+
+Compilation successful. 0 Errors, 0 Warnings, 1 Remarks, 4 Optimizations
+Input file sleep_objects.aml, Length 0x12C (300) bytes
+
+Intel ACPI Component Architecture
+AML Execution/Debug Utility version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+
+
+ACPI: RSDP 0x00005555555FF180 000024 (v02 Intel )
+ACPI: XSDT 0x0000555555601D90 000034 (v00 Intel  AcpiExec 00001001 INTL 20260408)
+ACPI: FACP 0x00005555555FEFA0 000114 (v05 Intel  AcpiExec 00001001 INTL 20260408)
+ACPI: DSDT 0x0000555555608160 00012C (v02 CUBIT  SLEEPO   00000001 INTL 20260408)
+ACPI: FACS 0x00005555555FF140 000040
+
+ACPI table initialization:
+Table [DSDT: SLEEPO  ] (id 01) -    9 Objects with   0 Devices,   0 Regions,    4 Methods (0/4/0 Serial/Non/Cvt)
+ACPI: 1 ACPI AML tables successfully acquired and loaded
+
+Final data object initialization: Namespace contains 18 (0x12) objects
+Initializing General Purpose Events (GPEs):
+    Initialized GPE 00 to 7F [_GPE] 16 regs on interrupt 0x0 (SCI)
+    Initialized GPE 80 to FF [_GPE] 16 regs on interrupt 0x0 (SCI)
+Evaluating \ORCL
+Evaluation of \ORCL returned object 0x555555601dd0, external buffer length 78
+  [Package] Contains 4 Elements:
+    [Integer] = 0000000000000001
+    [Integer] = 0000000000000002
+    [Integer] = 0000000000000000
+    [Integer] = 0000000000000000
+
+Evaluating \_S0
+Evaluation of \_S0 returned object 0x555555601dd0, external buffer length 48
+  [Package] Contains 2 Elements:
+    [Integer] = 0000000000000000
+    [Integer] = 0000000000000000
+
+Evaluating \_S2
+Evaluation of \_S2 returned object 0x555555601dd0, external buffer length 48
+  [Package] Contains 2 Elements:
+    [Integer] = 0000000000000003
+    [Integer] = 0000000000000004
+
+0x555555609000 Length 0x0048   utcache-0453 [Operand Object]       Method  RefCount 0x0001
+0x555555607ce0 Length 0x0023  nsxfname-0723 [Not a Descriptor] 
+0x555555607ba0 Length 0x0023  nsxfname-0723 [Not a Descriptor] 
+0x5555556079f0 Length 0x0048   utcache-0453 [Operand Object]       Method  RefCount 0x0001
+ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)

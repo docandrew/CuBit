@@ -1,0 +1,12 @@
+/home/doc/git/.acpi-proof-work/aml-fatal-normal-names-yk5xpkv8/wide-r1.asl      6:  Method (TEST, 0) { Fatal (0xA5, 0x12345678, 0xFEDCBA9876543210) Store (0x77, MARK) Return (0x88) }
+Warning  3038 -                                                                                Truncating 64-bit constant found in 32-bit table ^ 
+
+
+Intel ACPI Component Architecture
+ASL+ Optimizing Compiler/Disassembler version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+ASL Input:     /home/doc/git/.acpi-proof-work/aml-fatal-normal-names-yk5xpkv8/wide-r1.asl -     272 bytes     10 keywords      0 source lines
+AML Output:    /home/doc/git/.acpi-proof-work/aml-fatal-normal-names-yk5xpkv8/results/wide-r1.aml -     101 bytes      5 opcodes       5 named objects
+
+Compilation successful. 0 Errors, 1 Warnings, 0 Remarks, 0 Optimizations

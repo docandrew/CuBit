@@ -71,7 +71,7 @@ begin
 end Probe;
 ''')
 root.joinpath('probe.gpr').write_text('''project Probe is
- for Source_Dirs use (".", "REPO/userspace/lib/acpi", "REPO/shared/firmware");
+ for Source_Dirs use (".", "REPO/userspace/services/acpi/lib", "REPO/shared/firmware");
  for Object_Dir use "obj"; for Exec_Dir use "."; for Main use ("probe.adb");
  package Compiler is for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato"); end Compiler;
 end Probe;

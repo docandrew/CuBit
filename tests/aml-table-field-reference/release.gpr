@@ -1,5 +1,5 @@
 project Release is
- for Source_Dirs use (".","../../userspace/lib/acpi","../../userspace/services/acpi","../../shared/firmware");
+ for Source_Dirs use (".","../../userspace/services/acpi/lib","../../userspace/services/acpi","../../shared/firmware");
  for Object_Dir use "build-release/obj";
  for Exec_Dir use "build-release";
  for Main use ("table_field_reference_runner.adb");

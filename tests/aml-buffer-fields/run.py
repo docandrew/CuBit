@@ -40,7 +40,7 @@ result_root.mkdir(exist_ok=True)
 logs = Path(tempfile.mkdtemp(prefix=mode + '-', dir=result_root))
 report = {'mode': mode, 'state': 'running', 'outcomes': [],
           'scope': 'Hosted regressions and cached ACPICA comparison; no proof or native validation'}
-source_dirs = ['userspace/lib/acpi', 'userspace/services/acpi', 'shared/firmware']
+source_dirs = ['userspace/services/acpi/lib', 'userspace/services/acpi', 'shared/firmware']
 source_dirs += ['tests/' + name for name in
     ['aml-buffer-fields', 'aml-buffer-field-integration', 'aml-field-supplement',
      'aml-field-adapters', 'aml-core', 'aml-debug', 'aml-retention',

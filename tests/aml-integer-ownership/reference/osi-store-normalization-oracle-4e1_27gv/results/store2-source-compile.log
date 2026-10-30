@@ -1,0 +1,15 @@
+/home/doc/git/.acpi-proof-work/osi-store-normalization-oracle-4e1_27gv/cases/store2.asl      7: Method (LEXP, 0) { Return (Store (_OSI ("CuBitProbeSupported"), Local0)) }
+Warning  3144 -                                                                                                                  Method Local is set but never used ^  (Local0)
+
+/home/doc/git/.acpi-proof-work/osi-store-normalization-oracle-4e1_27gv/cases/store2.asl     17: Method (SHRS, 1) { Store (Arg0, Local0) Return (Arg0) }
+Warning  3144 -                                                                                  Method Local is set but never used ^  (Local0)
+
+
+Intel ACPI Component Architecture
+ASL+ Optimizing Compiler/Disassembler version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+ASL Input:     /home/doc/git/.acpi-proof-work/osi-store-normalization-oracle-4e1_27gv/cases/store2.asl -    1425 bytes     57 keywords      0 source lines
+AML Output:    /home/doc/git/.acpi-proof-work/osi-store-normalization-oracle-4e1_27gv/cases/store2.aml -     598 bytes     37 opcodes      20 named objects
+
+Compilation successful. 0 Errors, 2 Warnings, 0 Remarks, 0 Optimizations

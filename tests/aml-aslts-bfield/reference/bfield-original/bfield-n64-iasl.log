@@ -1,0 +1,327 @@
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/cntl/common.asl    390:     Method (RPT0, 0, NotSerialized)
+Remark   2120 -                     Control Method should be made Serialized due to creation of named objects within ^  (\RPT0)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/cntl/common.asl    394:         Name (B000, Buffer (0x04){})
+Remark   2173 -                                                                                                        ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\RPT0)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/cntl/common.asl    917:         Name (LPN0, 0x00)
+Remark   2173 -                                                                                                        ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\PRN0)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/cntl/common.asl    918:         Name (LPC0, 0x00)
+Remark   2173 -                                                                                                        ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\PRN0)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/cntl/common.asl   1137:         Name (N000, 0x00)
+Remark   2173 -                                                                                                        ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\SFT0)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/cntl/common.asl   1138:         Name (NCUR, 0x00)
+Remark   2173 -                                                                                                        ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\SFT0)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/cntl/common.asl   1155:         Name (B000, Buffer (Local0){})
+Remark   2173 -                                                                                                        ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\SFT0)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/cntl/common.asl   1186:         Divide (Local1, 0x08, Local2, Local0)
+Warning  3144 -                                                                                       Method Local is set but never used ^  (Local2)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/cntl/common.asl   1201:         Name (PREV, 0x00)
+Remark   2173 -                                                                                                        ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/cntl/common.asl   1202:         Name (MS00, 0x00)
+Remark   2173 -                                                                                                        ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/cntl/common.asl   1203:         Name (MS01, 0x00)
+Remark   2173 -                                                                                                        ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/cntl/common.asl   1204:         Name (MS02, 0x00)
+Remark   2173 -                                                                                                        ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/cntl/common.asl   1205:         Name (MS03, 0x00)
+Remark   2173 -                                                                                                        ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/cntl/common.asl   1206:         Name (TAIL, 0x00)
+Remark   2173 -                                                                                                        ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/cntl/common.asl   1207:         Name (LBT0, 0x00)
+Remark   2173 -                                                                                                        ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/cntl/common.asl   1210:         Name (LPN0, 0x00)
+Remark   2173 -                                                                                                        ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/cntl/common.asl   1211:         Name (LPC0, 0x00)
+Remark   2173 -                                                                                                        ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/cntl/common.asl   1214:         Name (NB01, 0x00)
+Remark   2173 -                                                                                                        ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/cntl/common.asl   1217:         Name (NREG, 0x00)
+Remark   2173 -                                                                                                        ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/cntl/common.asl   1220:         Name (NB08, 0x00)
+Remark   2173 -                                                                                                        ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/cntl/common.asl   1223:         Name (NB09, 0x00)
+Remark   2173 -                                                                                                        ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/cntl/common.asl   1226:         Name (REST, 0x00)
+Remark   2173 -                                                                                                        ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/cntl/common.asl   1240:         Name (B000, Buffer (NB01){})
+Remark   2173 -                                                                                                        ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/cntl/common.asl   1362:         Name (TMP0, 0x00)
+Remark   2173 -                                                                                                        ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\M4C0)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/cntl/common.asl   1363:         Name (TMP1, 0x00)
+Remark   2173 -                                                                                                        ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\M4C0)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/cntl/common.asl   1406:         Name (S000, " ")
+Remark   2173 -                                                                                                        ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\M4A1)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/cntl/common.asl   1422:         DataTableRegion (HDR, "DSDT", "", "")
+Remark   2173 -   Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\STRT)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/cntl/common.asl   2021:         Name (LPN0, 0x00)
+Remark   2173 -                                                                                                        ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\RERR)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/cntl/common.asl   2022:         Name (LPC0, 0x00)
+Remark   2173 -                                                                                                        ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\RERR)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/cntl/common.asl   2069:         Name (LPN0, 0x00)
+Remark   2173 -                                                                                                        ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\RRM0)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/cntl/common.asl   2070:         Name (LPC0, 0x00)
+Remark   2173 -                                                                                                        ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\RRM0)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/cntl/common.asl   2159:     Method (TRC0, 3, NotSerialized)
+Remark   2146 -                                                                        Method Argument is never used ^  (Arg0)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/cntl/common.asl   2177:     Method (TRC1, 3, NotSerialized)
+Remark   2146 -                                                                        Method Argument is never used ^  (Arg0)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/cntl/common.asl   2240:         Divide (Local1, 0x000F4240, Local0, Local2)
+Warning  3144 -                                                                                             Method Local is set but never used ^  (Local0)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/cntl/ehandle.asl    793:         Name (EBUF, Buffer (ISZC){})
+Remark   2173 -                                                                                                         ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\ST16)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/cntl/ehandle.asl    796:         Name (RBUF, Buffer (0x04){})
+Remark   2173 -                                                                                                         ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\ST16)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/cntl/ehandle.asl    917:     Method (CH06, 3, NotSerialized)
+Remark   2146 -                                                                         Method Argument is never used ^  (Arg1)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/cntl/ehandle.asl    934:     Method (CH07, 7, NotSerialized)
+Remark   2146 -                                                                         Method Argument is never used ^  (Arg4)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/cntl/ehandle.asl   1038:             Local7 = 0x01
+Warning  3144 -                                                                      Method Local is set but never used ^  (Local7)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/collections/functional/bfield/crbuffield.asl    137:         Name (PR00, 0x00)
+Remark   2173 -                      Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\M210)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/collections/functional/bfield/crbuffield.asl    143:         Name (B001, Buffer (Arg6){})
+Remark   2173 -                      Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\M210)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/collections/functional/bfield/crbuffield.asl    144:         Name (B002, Buffer (Arg6){})
+Remark   2173 -                      Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\M210)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/collections/functional/bfield/crbuffield.asl    281:         Name (BSZ0, 0x00)
+Remark   2173 -                      Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\M211)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/collections/functional/bfield/crbuffield.asl    285:         Name (BSZ1, 0x00)
+Remark   2173 -                      Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\M211)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/collections/functional/bfield/crbuffield.asl    288:         Name (N000, 0x00)
+Remark   2173 -                      Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\M211)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/collections/functional/bfield/crbuffield.asl    289:         Name (NCUR, 0x00)
+Remark   2173 -                      Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\M211)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/collections/functional/bfield/crbuffield.asl    320:         Name (PR00, 0x00)
+Remark   2173 -                      Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\M212)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/collections/functional/bfield/crbuffield.asl    326:         Name (B001, Buffer (Arg2){})
+Remark   2173 -                      Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\M212)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/collections/functional/bfield/crbuffield.asl    327:         Name (B002, Buffer (Arg2){})
+Remark   2173 -                      Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\M212)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/collections/functional/bfield/crbuffield.asl    490:         Name (BSZ0, 0x00)
+Remark   2173 -                      Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\M213)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/collections/functional/bfield/crbuffield.asl    494:         Name (BSZ1, 0x00)
+Remark   2173 -                      Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\M213)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/collections/functional/bfield/crbuffield.asl    497:         Name (N000, 0x00)
+Remark   2173 -                      Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\M213)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/collections/functional/bfield/crbuffield.asl    498:         Name (NCUR, 0x00)
+Remark   2173 -                      Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\M213)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/collections/functional/bfield/crbuffield.asl    528:         Name (PR00, 0x00)
+Remark   2173 -                      Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\M214)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/collections/functional/bfield/crbuffield.asl    536:         Name (B001, Buffer (Arg2){})
+Remark   2173 -                      Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\M214)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/collections/functional/bfield/crbuffield.asl    537:         Name (B002, Buffer (Arg2){})
+Remark   2173 -                      Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\M214)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/collections/functional/bfield/crbuffield.asl    712:         Name (BSZ0, 0x00)
+Remark   2173 -                      Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\M215)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/collections/functional/bfield/crbuffield.asl    716:         Name (BSZ1, 0x00)
+Remark   2173 -                      Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\M215)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/collections/functional/bfield/crbuffield.asl    719:         Name (N000, 0x00)
+Remark   2173 -                      Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\M215)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/collections/functional/bfield/crbuffield.asl    720:         Name (NCUR, 0x00)
+Remark   2173 -                      Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\M215)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/collections/functional/bfield/crbuffield.asl    755:         Name (PR00, 0x00)
+Remark   2173 -                      Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\M216)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/collections/functional/bfield/crbuffield.asl    763:         Name (B001, Buffer (Arg2){})
+Remark   2173 -                      Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\M216)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/collections/functional/bfield/crbuffield.asl    764:         Name (B002, Buffer (Arg2){})
+Remark   2173 -                      Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\M216)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/collections/functional/bfield/crbuffield.asl    939:         Name (BSZ0, 0x00)
+Remark   2173 -                      Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\M217)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/collections/functional/bfield/crbuffield.asl    943:         Name (BSZ1, 0x00)
+Remark   2173 -                      Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\M217)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/collections/functional/bfield/crbuffield.asl    946:         Name (N000, 0x00)
+Remark   2173 -                      Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\M217)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/collections/functional/bfield/crbuffield.asl    947:         Name (NCUR, 0x00)
+Remark   2173 -                      Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\M217)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/collections/functional/bfield/crbuffield.asl    990:         Name (PR00, 0x00)
+Remark   2173 -                      Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\M218)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/collections/functional/bfield/crbuffield.asl    991:         Name (ERR0, 0x00)
+Remark   2173 -                      Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\M218)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/collections/functional/bfield/crbuffield.asl    993:         Name (BB00, Buffer (0x08){})
+Remark   2173 -                      Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\M218)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/collections/functional/bfield/crbuffield.asl    996:         Name (BB01, Buffer (0x08)
+Remark   2173 -                      Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\M218)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/collections/functional/bfield/crbuffield.asl   1002:         Name (BB02, Buffer (0x08)
+Remark   2173 -                      Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\M218)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/collections/functional/bfield/crbuffield.asl   1013:         Name (B001, Buffer (Arg2){})
+Remark   2173 -                      Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\M218)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/collections/functional/bfield/crbuffield.asl   1014:         Name (B002, Buffer (Arg2){})
+Remark   2173 -                      Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\M218)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/collections/functional/bfield/crbuffield.asl   1338:         Name (BSZ0, 0x00)
+Remark   2173 -                      Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\M219)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/collections/functional/bfield/crbuffield.asl   1342:         Name (BSZ1, 0x00)
+Remark   2173 -                      Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\M219)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/collections/functional/bfield/crbuffield.asl   1345:         Name (N000, 0x00)
+Remark   2173 -                      Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\M219)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/collections/functional/bfield/crbuffield.asl   1346:         Name (NCUR, 0x00)
+Remark   2173 -                      Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\M219)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/collections/functional/bfield/crbuffield.asl   1412:     Method (M21A, 6, Serialized)
+Remark   2146 -                                                                                                     Method Argument is never used ^  (Arg1)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/collections/functional/bfield/crbuffield.asl   1414:         Name (PR00, 0x00)
+Remark   2173 -                      Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\M21A)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/collections/functional/bfield/crbuffield.asl   1422:         Name (B001, Buffer (Arg4){})
+Remark   2173 -                      Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\M21A)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/collections/functional/bfield/crbuffield.asl   1423:         Name (B002, Buffer (Arg4){})
+Remark   2173 -                      Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\M21A)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/collections/functional/bfield/crbuffield.asl   1426:         Name (INT1, 0x00)
+Remark   2089 -                                                                                                            Object is not referenced ^  (Name [INT1] is within a method [M21A])
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/collections/functional/bfield/crbuffield.asl   1426:         Name (INT1, 0x00)
+Remark   2173 -                      Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\M21A)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/collections/functional/bfield/crbuffield.asl   1500:         Name (PR00, 0x00)
+Remark   2089 -                                                                                                            Object is not referenced ^  (Name [PR00] is within a method [M21B])
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/collections/functional/bfield/crbuffield.asl   1500:         Name (PR00, 0x00)
+Remark   2173 -                      Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\M21B)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/collections/functional/bfield/crbuffield.asl   1501:         Name (INT2, 0x00)
+Remark   2089 -                                                                                                            Object is not referenced ^  (Name [INT2] is within a method [M21B])
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/collections/functional/bfield/crbuffield.asl   1501:         Name (INT2, 0x00)
+Remark   2173 -                      Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\M21B)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/collections/functional/bfield/crbuffield.asl   1504:         Name (LPN1, 0x00)
+Remark   2173 -                      Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\M21B)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/collections/functional/bfield/crbuffield.asl   1505:         Name (LPC1, 0x00)
+Remark   2173 -                      Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\M21B)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/collections/functional/bfield/crbuffield.asl   1508:         Name (LPN2, 0x00)
+Remark   2173 -                      Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\M21B)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/collections/functional/bfield/crbuffield.asl   1509:         Name (LPC2, 0x00)
+Remark   2173 -                      Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\M21B)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/collections/functional/bfield/crbuffield.asl   1512:         Name (BSZ0, 0x00)
+Remark   2173 -                      Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\M21B)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/collections/functional/bfield/crbuffield.asl   1516:         Name (BSF0, 0x00)
+Remark   2173 -                      Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\M21B)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/collections/functional/bfield/crbuffield.asl   1519:         Name (BSB0, 0x00)
+Remark   2173 -                      Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\M21B)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/collections/functional/bfield/crbuffield.asl   1522:         Name (FB00, 0x00)
+Remark   2173 -                      Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\M21B)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/collections/functional/bfield/crbuffield.asl   1525:         Name (LB00, 0x00)
+Remark   2173 -                      Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\M21B)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/collections/functional/bfield/crbuffield.asl   1636:         Name (LPN0, 0x00)
+Remark   2173 -                      Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\M21C)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/collections/functional/bfield/crbuffield.asl   1637:         Name (LPC0, 0x00)
+Remark   2173 -                      Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\M21C)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/collections/functional/bfield/crbuffield.asl   1640:         Name (LPN1, 0x00)
+Remark   2173 -                      Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\M21C)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/collections/functional/bfield/crbuffield.asl   1641:         Name (LPC1, 0x00)
+Remark   2173 -                      Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\M21C)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/collections/functional/bfield/crbuffield.asl   1644:         Name (LPN2, 0x00)
+Remark   2173 -                      Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\M21C)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/collections/functional/bfield/crbuffield.asl   1645:         Name (LPC2, 0x00)
+Remark   2173 -                      Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\M21C)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/collections/functional/bfield/crbuffield.asl   1648:         Name (IB00, 0x00)
+Remark   2173 -                      Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\M21C)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/collections/functional/bfield/crbuffield.asl   1651:         Name (NB00, 0x00)
+Remark   2173 -                      Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\M21C)
+
+/home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/collections/functional/bfield/crbuffield.asl   1708:         Name (P000, Package (0x06)
+Remark   2173 -                      Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\M21D)
+
+
+Intel ACPI Component Architecture
+ASL+ Optimizing Compiler/Disassembler version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+ASL Input:     /home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/src/runtime/collections/functional/bfield/MAIN.asl -    2103 bytes   2435 keywords      0 source lines
+AML Output:    /home/doc/git/.acpi-proof-work/aslts-bfield-normal-oracle-vhxcnk87/results/bfield-n64.aml -   25721 bytes   1923 opcodes     512 named objects
+
+Compilation successful. 0 Errors, 3 Warnings, 103 Remarks, 1000 Optimizations, 2 Constants Folded

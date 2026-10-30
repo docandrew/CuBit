@@ -1,0 +1,92 @@
+Input file /home/doc/git/.acpi-proof-work/runtime-event-slot-timing-oracle-389irq1f/results/event-r2.aml, Length 0xB0 (176) bytes
+
+Intel ACPI Component Architecture
+AML Execution/Debug Utility version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+
+
+ACPI: RSDP 0x00005555555FF180 000024 (v02 Intel )
+ACPI: XSDT 0x0000555555601D90 000034 (v00 Intel  AcpiExec 00001001 INTL 20260408)
+ACPI: FACP 0x00005555555FEFA0 000114 (v05 Intel  AcpiExec 00001001 INTL 20260408)
+ACPI: DSDT 0x0000555555608160 0000B0 (v02 CUBIT  EVSLOTS  00000001 INTL 20260408)
+ACPI: FACS 0x00005555555FF140 000040
+
+ACPI table initialization:
+Table [DSDT: EVSLOTS ] (id 01) -    8 Objects with   0 Devices,   0 Regions,    7 Methods (7/0/0 Serial/Non/Cvt)
+ACPI: 1 ACPI AML tables successfully acquired and loaded
+
+Final data object initialization: Namespace contains 17 (0x11) objects
+Initializing General Purpose Events (GPEs):
+    Initialized GPE 00 to 7F [_GPE] 16 regs on interrupt 0x0 (SCI)
+    Initialized GPE 80 to FF [_GPE] 16 regs on interrupt 0x0 (SCI)
+Initializing Device/Processor/Thermal objects and executing _INI/_STA methods:
+    Executed 0 _INI methods requiring 0 _STA executions (examined 2 objects)
+Evaluating \DRET
+0x4 Outstanding allocations after evaluation of \DRET
+Evaluation of \DRET returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000000
+
+Evaluating \DRET
+Evaluation of \DRET returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000000
+
+Evaluating \LOCL
+ACPI Error: Needed type [Event], found [Integer] 0x7ffff7f7e040 (20260408/exresop-219)
+ACPI Error: AE_AML_OPERAND_TYPE, While resolving operands for [Wait] (20260408/dswexec-613)
+Failed at AML Offset 0000A, Opcode 5B25: Wait (Local0, -Return Value- ())
+
+Initialized Local Variables for Method [LOCL]:
+    Local0: 0x7ffff7f7e040 <Obj>             Integer 0000000000000000
+
+No Arguments are initialized for method [LOCL]
+
+ACPI Error: Aborting method \LOCL due to previous error (AE_AML_OPERAND_TYPE) (20260408/psparse-688)
+ACPI Error: AE_AML_OPERAND_TYPE, while executing \LOCL from AML Debugger (20260408/dbexec-334)
+0x1 Outstanding allocations after evaluation of \LOCL
+Evaluation of \LOCL failed with status AE_AML_OPERAND_TYPE
+Evaluating \LOCL
+ACPI Error: Needed type [Event], found [Integer] 0x7ffff7f84040 (20260408/exresop-219)
+ACPI Error: AE_AML_OPERAND_TYPE, While resolving operands for [Wait] (20260408/dswexec-613)
+Failed at AML Offset 0000A, Opcode 5B25: Wait (Local0, -Return Value- ())
+
+Initialized Local Variables for Method [LOCL]:
+    Local0: 0x7ffff7f84040 <Obj>             Integer 0000000000000000
+
+No Arguments are initialized for method [LOCL]
+
+ACPI Error: Aborting method \LOCL due to previous error (AE_AML_OPERAND_TYPE) (20260408/psparse-688)
+ACPI Error: AE_AML_OPERAND_TYPE, while executing \LOCL from AML Debugger (20260408/dbexec-334)
+Evaluation of \LOCL failed with status AE_AML_OPERAND_TYPE
+Evaluating \ARGT
+ACPI Error: Needed type [Event], found [Integer] 0x7ffff7f74040 (20260408/exresop-219)
+ACPI Error: AE_AML_OPERAND_TYPE, While resolving operands for [Wait] (20260408/dswexec-613)
+Failed at AML Offset 00004, Opcode 5B25: Wait (Arg0, -Return Value- ())
+No Local Variables are initialized for Method [PASS]
+
+Initialized Arguments for Method [PASS]:  (1 arguments defined for method invocation)
+    Arg0:   0x7ffff7f74040 <Obj>             Integer 0000000000000000
+
+ACPI Error: Aborting method \PASS due to previous error (AE_AML_OPERAND_TYPE) (20260408/psparse-688)
+ACPI Error: Aborting method \ARGT due to previous error (AE_AML_OPERAND_TYPE) (20260408/psparse-688)
+ACPI Error: AE_AML_OPERAND_TYPE, while executing \ARGT from AML Debugger (20260408/dbexec-334)
+0x2 Outstanding allocations after evaluation of \ARGT
+Evaluation of \ARGT failed with status AE_AML_OPERAND_TYPE
+Evaluating \ARGT
+ACPI Error: Needed type [Event], found [Integer] 0x55555560b1e0 (20260408/exresop-219)
+ACPI Error: AE_AML_OPERAND_TYPE, While resolving operands for [Wait] (20260408/dswexec-613)
+Failed at AML Offset 00004, Opcode 5B25: Wait (Arg0, -Return Value- ())
+No Local Variables are initialized for Method [PASS]
+
+Initialized Arguments for Method [PASS]:  (1 arguments defined for method invocation)
+    Arg0:   0x55555560b1e0 <Obj>             Integer 0000000000000000
+
+ACPI Error: Aborting method \PASS due to previous error (AE_AML_OPERAND_TYPE) (20260408/psparse-688)
+ACPI Error: Aborting method \ARGT due to previous error (AE_AML_OPERAND_TYPE) (20260408/psparse-688)
+ACPI Error: AE_AML_OPERAND_TYPE, while executing \ARGT from AML Debugger (20260408/dbexec-334)
+Evaluation of \ARGT failed with status AE_AML_OPERAND_TYPE
+0x5555556086c0 Length 0x0048   utcache-0453 [Operand Object]       Method  RefCount 0x0001
+0x555555607ce0 Length 0x0023  nsxfname-0723 [Not a Descriptor] 
+0x555555607ba0 Length 0x0023  nsxfname-0723 [Not a Descriptor] 
+0x5555556079f0 Length 0x0048   utcache-0453 [Operand Object]       Method  RefCount 0x0001
+ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)

@@ -77,3 +77,25 @@ caller-exclusive synchronous access throughout invocation and callbacks;
 callbacks must not reenter the same State. Per-call lock state does not serialize
 separate callers. The negative Package-Mutex IPKG remains Unsupported_Value
 with recovery; no positive temporary-package ReleaseIndex coverage is claimed.
+
+## Startup without hardware regions
+
+The default bootstrap permits device initialization when its namespace scan
+finds no hardware OperationRegion declarations. A declared hardware region
+still reports unavailable even when no Field uses it. This does not install a
+handler or grant hardware access. Snapshot completion remains separate from the
+device outcome.
+
+Focused `bootstrap_device_tests` and `startup_metrics_tests` passed 49 and 57
+checks in both release and assertion-enabled profiles. They cover root/system
+bus ordering, device `_STA`/`_INI`, ordinary errors, retained device Fatal
+diagnostics, no replay, startup fuel, metrics and unconfigured memory/IO/PCI/EC
+declarations. This is hosted regression evidence, with no new proof or native
+execution claim. The compatibility selections are recorded separately.
+
+Release compatibility passed completion metrics 732, bootstrap catalog 115,
+bootstrap migration 44, provider orchestration 165 and notification polling 379.
+The checked completion-metrics program compiled but exceeded its unchanged
+30-second runtime cap. It includes the public 100,000-fuel exhaustion loop;
+the timed-out run does not establish checked completion-metrics coverage.
+The timeout is retained independently of the focused 106-check/profile pass.

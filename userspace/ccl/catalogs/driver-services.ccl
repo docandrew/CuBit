@@ -26,4 +26,6 @@
   (notification filesystem 6 publish-and-manage)
   (notification config 11 publish-and-manage)
   (notification netmgr 12 publish-and-manage)
-  (notification gpu 17 publish-and-manage))
+  (notification gpu 17 publish-and-manage)
+  (service i2c 32 read-write)
+  (notification i2c 32 publish-and-manage))

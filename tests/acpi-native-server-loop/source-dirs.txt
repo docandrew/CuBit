@@ -1,0 +1,8 @@
+tests/acpi-native-server-loop/models
+tests/acpi-native-server-loop/boundary
+userspace/services/acpi
+userspace/services/acpi/lib
+userspace/services/acpi/request-driver
+userspace/services/acpi/region-init
+shared/firmware
+shared/acpi

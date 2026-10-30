@@ -1,5 +1,5 @@
 project Revision_release is
- for Source_Dirs use (".", "../../userspace/lib/acpi", "../../userspace/services/acpi", "../../shared/firmware");
+ for Source_Dirs use (".", "../../userspace/services/acpi/lib", "../../userspace/services/acpi", "../../shared/firmware");
  for Object_Dir use "revision-release";
  for Main use ("revision_tests.adb");
  package Compiler is

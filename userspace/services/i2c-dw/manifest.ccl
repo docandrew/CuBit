@@ -1,0 +1,12 @@
+# Per-controller generic PCI launch. No interrupt is requested until MSI/EOI
+# is implemented. Client endpoint badges supply the admitted target and speed.
+(Executable_Manifest
+  identity => "com.cubit.i2c-dw"
+  version => "0.1.0"
+  drives => [(Device_Match.PCI_IDs (PCI_IDs 0x8086 0x54E8 0x54E9))]
+  requests => [
+    (device-memory "registers" 0 4096 Access.Read_Write)
+    (notification "i2c" Notify_Access.Manage "registration")
+    (service "device-manager" "ready")
+    (service "logstore" "logstore")]
+  optional => ["registration" "logstore"])

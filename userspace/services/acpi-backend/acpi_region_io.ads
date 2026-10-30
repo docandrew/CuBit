@@ -29,7 +29,7 @@ package ACPI_Region_IO with SPARK_Mode is
        when ACPI_FADT.Transactions.Word_Access => Value <= 16#FFFF#,
        when ACPI_FADT.Transactions.Dword_Access => Value <= 16#FFFF_FFFF#,
        when ACPI_FADT.Transactions.Qword_Access => True);
-   type Outcome is (Denied, Malformed, Done, Indeterminate, Backend_Fault);
+   type Outcome is new ACPI_Region_Protocol.Outcome;
    type Response is record
       Status : Outcome := Denied;
       Value : Unsigned_64 := 0;
@@ -51,9 +51,9 @@ package ACPI_Region_IO with SPARK_Mode is
          and then Reply.Pending_Ticket = Receipt (Region)
          and then Reply.Pending_Ticket /= 0
        else Reply.Pending_Ticket = 0);
-   Read_Operation : constant Unsigned_32 := 0;
-   Write_Operation : constant Unsigned_32 := 1;
-   Operation_Reply : constant Unsigned_32 := 16#F002#;
+   Read_Operation : constant Unsigned_32 := ACPI_Region_Protocol.Read_Operation;
+   Write_Operation : constant Unsigned_32 := ACPI_Region_Protocol.Write_Operation;
+   Operation_Reply : constant Unsigned_32 := ACPI_Region_Protocol.Operation_Reply;
    -- Separate scoped endpoint protocol. Exactly four words:
    -- [record epoch, named register ID, value, zero]. Address, offset and width
    -- come exclusively from the trusted epoch-bound record. Reads require

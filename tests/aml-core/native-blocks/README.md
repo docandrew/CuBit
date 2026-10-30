@@ -62,3 +62,13 @@ reset. Exact before/after equality uses Ghost models in checked mode, while
 release retains scalar checks. Separate blocks_release.gpr and blocks_checked.gpr
 use disjoint output directories; checked enables both -gnata and -gnato. The
 64 MiB hosted stack is not evidence of native stack sufficiency.
+
+## Direct-entry migration
+
+This target now uses the historical adapter from tests/acpi-table-import-model
+with actual Requests/Core and modeled grants. It does not exercise the current
+native service, which has no grant upload/provider endpoint. The old native
+loop/Configure tests have been replaced by tests/acpi-native-server-loop; native
+Start and local import are tested separately. Run prepare.py here before the
+standalone GPR build to capture the real handle declarations. Historical counts
+above are predecessor evidence, not new native validation.

@@ -1,0 +1,8 @@
+# Sealed immutable tables only; no raw hardware authority or provider endpoint.
+(Executable_Manifest
+  identity => "com.cubit.acpi"
+  version => "0.1.0"
+  requests => [
+    (service "logstore" "logstore")
+    (Request.Firmware_Snapshot "tables")
+    (notification "acpi" Notify_Access.Manage "registration")])

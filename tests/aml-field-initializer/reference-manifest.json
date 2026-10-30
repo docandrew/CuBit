@@ -1,0 +1,23 @@
+{
+  "tests/aml-field-initializer/region-reference/batch.txt": "fa17a90d10cf41b04186e5f0994e5fb3efa1e07a5ef6c48f542f17134a00286f",
+  "tests/aml-field-initializer/region-reference/region-r1-acpiexec.log": "e6bc80354a36e0cfabb2347e8a67eebe47d505c9e3a9e83e51683a4368895bce",
+  "tests/aml-field-initializer/region-reference/region-r1-iasl.log": "e01a7dfcea64c8a13ee1eb4f3e33bf5faa3d93733cfbdfb46b2e7e322f70547f",
+  "tests/aml-field-initializer/region-reference/region-r1-values.tsv": "ad436bf27b03557bcc478ced46a359f2383d81e3ef86ae92cb979feb882a0aa9",
+  "tests/aml-field-initializer/region-reference/region-r1.aml": "b4d9328cc8fc719c576dc190cfd951ad778a52a2179fba5934683fc4669d2de6",
+  "tests/aml-field-initializer/region-reference/region-r1.asl": "78c57c20a94a10a595b116cf6bbd50903272669e2e5f0d26521ee79351897df3",
+  "tests/aml-field-initializer/region-reference/region-r2-acpiexec.log": "47073d7dc72bd16254d5da3f3bc43f58421e51fdce5934f43f78ec29d0587fab",
+  "tests/aml-field-initializer/region-reference/region-r2-iasl.log": "c2a55be1f457e4107ff898190a61f4cfd0f0f89460788d3735391e798ecbb307",
+  "tests/aml-field-initializer/region-reference/region-r2-values.tsv": "ad436bf27b03557bcc478ced46a359f2383d81e3ef86ae92cb979feb882a0aa9",
+  "tests/aml-field-initializer/region-reference/region-r2.aml": "a96456000f1cf4fbda55f2ce4f934f3848ac8038e615feda45011d9dbe4365d8",
+  "tests/aml-field-initializer/region-reference/region-r2.asl": "5d1d2ad2bec0df152e063ba6dc080815d3a8cf85825d4de2a272d46963d61e2a",
+  "tests/aml-field-initializer/region-reference/status.txt": "e8a086b90bdf205bdd6d607d62cd362fe4f0c9de1983acd139dd152fa3cc224b",
+  "tests/aml-field-initializer/region-reference/tools.sha256": "e8d296f3d9269628a8e4b33d6aea09a2b5fee899979d1bbc16967729e840f7ef",
+  "tests/aml-field-initializer/lid-reference/commands.txt": "ff2cfe878352b24dfde5bd6f06dbe4a3f844deb3d1972b6600c8d861ed3927ba",
+  "tests/aml-field-initializer/lid-reference/compile.log": "ae5f643b21a47fc7ca3d13e6834d1be6f1c33e8f0e83e80852e33607cd1245f4",
+  "tests/aml-field-initializer/lid-reference/execute.log": "eb64430d6c83014f5ba56e21c1229503f9ee243d9b418ac6546db614f40a2183",
+  "tests/aml-field-initializer/lid-reference/lid.aml": "9b2fb737fd9f20b8ee9337b1be64d11e53a6a064c9e68df26378fcd5ff2ee039",
+  "tests/aml-field-initializer/lid-reference/lid.asl": "446b0f563c65c84e3e642b4be34a2f39136e494b67a40b314520e621f4f75b15",
+  "tests/aml-field-initializer/lid-reference/status.txt": "acf1307ae28c8a567cb8fa27317234d562770bf9db4daea1835be3549211a453",
+  "tests/aml-field-initializer/lid-reference/tools.sha256": "3353a85604c024793d64bb832c2fed69269c079ab3b9304c3bf0ffa170936a86",
+  "tests/aml-field-initializer/lid-reference/values.tsv": "be60d4c4cae0b7683d50ac1e810b0989e07b47b3b7c0966a05ea49a3f4191a94"
+}

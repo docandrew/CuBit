@@ -27,7 +27,7 @@ jobs=[]
 for item in json.loads((HERE/'selections.json').read_text())[args.selection]:
  rel=item['main'];label=args.mode+'-'+Path(rel).parent.name+'-'+Path(rel).stem
  P=D/'projects'/label;P.mkdir(parents=True);obj=D/'build'/label/'obj';binary=D/'build'/label/'bin'
- dirs=[S/Path(rel).parent]+[S/x for x in item['extra_sources']]+[S/'userspace/lib/acpi',S/'userspace/services/acpi',S/'shared/firmware'];sources={}
+ dirs=[S/Path(rel).parent]+[S/x for x in item['extra_sources']]+[S/'userspace/services/acpi/lib',S/'userspace/services/acpi',S/'shared/firmware'];sources={}
  for folder in dirs:
   for q in folder.glob('*.ad?'):
    assert q.name not in sources or sources[q.name]==str(q),q.name

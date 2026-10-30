@@ -81,7 +81,11 @@ begin
          Handle (S, Snapshot_Provider, (Label => Finish_Snapshot, Data => [Prior,0,0,0], others => <>), Reply);
          Check (Revision (S) = Prior+1);
          Query (S, Metrics_Device_State_Page,
-           [Revision (S), (if Failed_Startup then 0 else 6),2,0]);
+           [Revision (S),
+            (if Failed_Startup then Unsigned_64 (Device_Phase_Code'Enum_Rep (Device_Not_Started_Code))
+             else Unsigned_64 (Device_Phase_Code'Enum_Rep (Device_Completed_Code))),
+            (if Failed_Startup then Unsigned_64 (Region_Status_Code'Enum_Rep (Regions_Unavailable_Code))
+             else Unsigned_64 (Region_Status_Code'Enum_Rep (No_Regions_Required_Code))),0]);
          Query (S, Metrics_Device_Calls_Page, [Revision (S),0,0,0]);
          Handle (S, Observer, (Label => Read_Metrics, Data => [Metrics_Startup_Fuel_Page,0,0,0], others => <>), Fuel);
          Check (Fuel.Status = OK and then Fuel.Data (1) = Fuel.Data (2)+Fuel.Data (3) and then Fuel.Data (2) = 0);
@@ -106,7 +110,9 @@ begin
       Check (Reply.Status = OK);
       Handle (S, Snapshot_Provider, (Label => Finish_Snapshot, Data => [Revision (S),0,0,0], others => <>), Reply);
       Check (Reply.Status = OK and then Current (S) = Complete);
-      Query (S, Metrics_Device_State_Page, [Revision (S),6,2,1]);
+      Query (S, Metrics_Device_State_Page,
+        [Revision (S),Unsigned_64 (Device_Phase_Code'Enum_Rep (Device_Completed_With_Errors_Code)),
+         Unsigned_64 (Region_Status_Code'Enum_Rep (No_Regions_Required_Code)),1]);
       Query (S, Metrics_Device_Calls_Page, [Revision (S),0,2,0]);
       -- Stable wire code19 is Unknown_Name; first device error belongs to root0.
       Query (S, Metrics_Device_Error_Page, [Revision (S),19,0,0]);

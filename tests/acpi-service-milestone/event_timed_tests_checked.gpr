@@ -1,5 +1,5 @@
 project event_timed_tests_checked is
- for Source_Dirs use ("../../tests/aml-runtime-event", "../../userspace/lib/acpi", "../../userspace/services/acpi", "../../shared/firmware");
+ for Source_Dirs use ("../../shared/firmware", "../aml-runtime-event", "../../userspace/services/acpi", "../../userspace/services/acpi/lib");
  Build_Root := external ("SERVICE_MILESTONE_BUILD", "build-event_timed_tests-checked");
  for Object_Dir use Build_Root & "/obj";
  for Exec_Dir use Build_Root & "/bin";

@@ -1,5 +1,5 @@
 project adapter_5_release is
- for Source_Dirs use ("../aml-core", "../../userspace/lib/acpi", "../../shared/firmware");
+ for Source_Dirs use ("../aml-core", "../../userspace/services/acpi/lib", "../../shared/firmware");
  for Object_Dir use "build-5-release";
  package Compiler is
   for Default_Switches ("Ada") use ("-O1", "-gnat2022", "-gnatwa", "-gnatwe", "-gnatp", "-gnatwF");

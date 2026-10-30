@@ -1,0 +1,20 @@
+{
+  "source": "/home/doc/git/.acpi-proof-work/index-field-publication-OzYYTLwz/source",
+  "output": "/home/doc/git/.acpi-proof-work/index-field-publication-OzYYTLwz/source/tests/aml-field-reset/results/checked-wihjvnah",
+  "mode": "checked",
+  "inputs": 187,
+  "references": 0,
+  "tools": 5,
+  "runtime_sources": 1582,
+  "binaries": 1,
+  "artifacts": 299,
+  "stages": 2,
+  "logs": {
+    "field_io_core_tests": "Field IO Core checks 42"
+  },
+  "ALI": 73,
+  "dependencies": 1258,
+  "strict_commands": 72,
+  "audit_sha256": "e3fdfde985a4ce4f93783de408e8b84c6c42fa402d36f2af38cd6b0d5074733d",
+  "scope": "Hosted runtime evidence for the exact selected source/profile only; no native delivery or whole-interpreter proof."
+}
