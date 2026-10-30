@@ -1,4 +1,5 @@
 with CCL.Interfaces.Logs;
+with CCL.Binding_Blocks;
 with CCL.Objects;
 with CCL_Log_IO;
 package body CCL_Log_Bindings is
@@ -7,7 +8,8 @@ package body CCL_Log_Bindings is
    use type CCL.Catalog.Grant_Result;
    use type CCL.Host_Values.Value_Kind;
    package Logs renames CCL.Interfaces.Logs;
-   FIRST_BINDING : constant Interfaces.Unsigned_32 := 16#0005_0001#;
+   FIRST_BINDING : constant Interfaces.Unsigned_32 :=
+     CCL.Binding_Blocks.First (CCL.Binding_Blocks.Log);
    function Binding_Of (Op : Logs.Operation) return Interfaces.Unsigned_32 is
      (FIRST_BINDING + Logs.Operation'Pos (Op));
    --  The LogEntries and Severity bindings as this catalog resolved them.

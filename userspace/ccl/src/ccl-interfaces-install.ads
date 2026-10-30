@@ -1,4 +1,5 @@
 with Interfaces;
+with CCL.Binding_Blocks;
 with CCL.Catalog;
 with CCL.Objects;
 
@@ -101,7 +102,7 @@ package CCL.Interfaces.Install with SPARK_Mode is
    type Operation is (Disks, Install, Progress);
    function Name (Item : Operation) return String is
      (case Item is when Disks => "disks", when Install => "install", when Progress => "progress");
-   FIRST_BINDING : constant Unsigned_32 := 16#000D_0001#;
+   FIRST_BINDING : constant Unsigned_32 := CCL.Binding_Blocks.First (CCL.Binding_Blocks.Install);
    function Binding_Of (Item : Operation) return Unsigned_32 is
      (FIRST_BINDING + Operation'Pos (Item));
 

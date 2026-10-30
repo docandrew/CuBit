@@ -1,3 +1,4 @@
+with CCL.Binding_Blocks;
 with CCL.Interfaces.Config;
 with CCL_Config_IO;
 package body CCL_Config_Bindings is
@@ -5,10 +6,14 @@ package body CCL_Config_Bindings is
    use type CCL.Catalog.Catalog_Error;
    use type CCL.Catalog.Grant_Result;
    use type CCL.Host_Values.Value_Kind;
+   FIRST_BINDING : constant Interfaces.Unsigned_32 :=
+     CCL.Binding_Blocks.First (CCL.Binding_Blocks.Config);
    Bindings : constant array (CCL.Interfaces.Config.Operation) of Interfaces.Unsigned_32 :=
-     [CCL.Interfaces.Config.Get => 16#0004_0001#, CCL.Interfaces.Config.Keys => 16#0004_0002#];
+     [for Op in CCL.Interfaces.Config.Operation =>
+        FIRST_BINDING + CCL.Interfaces.Config.Operation'Pos (Op)];
    function Handles (Binding : Interfaces.Unsigned_32) return Boolean is
-     (Binding in 16#0004_0001# .. 16#0004_0002#);
+     (Binding in FIRST_BINDING ..
+                 FIRST_BINDING + CCL.Interfaces.Config.Operation'Pos (CCL.Interfaces.Config.Operation'Last));
    procedure Install
      (Catalog : in out CCL.Catalog.Interface_Catalog;
       Grants : in out CCL.Catalog.Granted_Bindings; Success : out Boolean)

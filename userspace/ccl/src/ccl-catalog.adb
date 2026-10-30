@@ -654,6 +654,9 @@ is
                      Grant_Existing
                   else Conflicting_Runtime_Binding);
                return;
+            elsif Item.Entries (Position).Binding = Binding then
+               Result := Conflicting_Runtime_Binding;
+               return;
             end if;
          end loop;
       end if;

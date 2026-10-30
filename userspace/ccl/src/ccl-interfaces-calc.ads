@@ -1,4 +1,5 @@
 with Interfaces;
+with CCL.Binding_Blocks;
 with CCL.Catalog;
 with CCL.Objects;
 with CCL.Types;
@@ -81,7 +82,7 @@ package CCL.Interfaces.Calc with SPARK_Mode is
      (case Item is when Evaluate => "evaluate", when Calc => "calc", when Evaluate_With => "evaluate-with");
    --  The operations callable by their bare names (CCL.Catalog.Mark_Command).
    function Is_Command (Item : Operation) return Boolean is (Item = Calc);
-   FIRST_BINDING : constant Unsigned_32 := 16#000C_0001#;
+   FIRST_BINDING : constant Unsigned_32 := CCL.Binding_Blocks.First (CCL.Binding_Blocks.Calc);
    function Binding_Of (Item : Operation) return Unsigned_32 is
      (FIRST_BINDING + Operation'Pos (Item));
 

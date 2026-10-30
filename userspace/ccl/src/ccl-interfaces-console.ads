@@ -1,4 +1,5 @@
 with Interfaces;
+with CCL.Binding_Blocks;
 with CCL.Catalog;
 with CCL.Objects;
 with CCL.Types;
@@ -64,7 +65,7 @@ package CCL.Interfaces.Console with SPARK_Mode is
      (case Item is
          when Title => "title", when Set_Notation => "notation",
          when Set_Theme => "theme", when Stats => "stats");
-   FIRST_BINDING : constant Unsigned_32 := 16#0007_0001#;
+   FIRST_BINDING : constant Unsigned_32 := CCL.Binding_Blocks.First (CCL.Binding_Blocks.Console);
    function Binding_Of (Item : Operation) return Unsigned_32 is
      (FIRST_BINDING + Operation'Pos (Item));
    MAX_TITLE : constant := 64;

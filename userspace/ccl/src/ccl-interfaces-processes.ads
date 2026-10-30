@@ -1,4 +1,5 @@
 with Interfaces;
+with CCL.Binding_Blocks;
 with CCL.Catalog;
 with CCL.Objects;
 with CCL.Types;
@@ -54,7 +55,7 @@ package CCL.Interfaces.Processes with SPARK_Mode is
 
    type Operation is (List);
    function Name (Item : Operation) return String is (case Item is when List => "list");
-   FIRST_BINDING : constant Unsigned_32 := 16#0009_0001#;
+   FIRST_BINDING : constant Unsigned_32 := CCL.Binding_Blocks.First (CCL.Binding_Blocks.Processes);
    function Binding_Of (Item : Operation) return Unsigned_32 is
      (FIRST_BINDING + Operation'Pos (Item));
 

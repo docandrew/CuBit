@@ -225,6 +225,10 @@ is
 
    function Length (Item : Granted_Bindings) return Grant_Count;
 
+   --  A binding number names one operation: granting an operation under a
+   --  second number, or a number another operation already holds, is
+   --  Conflicting_Runtime_Binding (two interfaces sharing a binding block
+   --  would otherwise route one's calls to the other).
    procedure Install
      (Item      : in out Granted_Bindings;
       Operation : Resolved_Operation;

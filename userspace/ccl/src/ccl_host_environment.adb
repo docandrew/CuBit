@@ -1,4 +1,5 @@
 with CCL.Interfaces.Clock;
+with CCL.Binding_Blocks;
 with CCL.Interfaces.Timer;
 with CCL_Stream_Table;
 with CCL_Config_Bindings;
@@ -23,8 +24,9 @@ package body CCL_Host_Environment is
    use type CCL.Catalog.Grant_Result;
    use type CCL.Host_Values.Value_Kind;
 
-   CLOCK_BINDING : constant Interfaces.Unsigned_32 := 16#0001_0001#;
-   TIMER_EVERY_BINDING : constant Interfaces.Unsigned_32 := 16#0001_0002#;
+   CLOCK_BINDING : constant Interfaces.Unsigned_32 :=
+     CCL.Binding_Blocks.First (CCL.Binding_Blocks.Host_Clock);
+   TIMER_EVERY_BINDING : constant Interfaces.Unsigned_32 := CLOCK_BINDING + 1;
 
    Streams : CCL_Stream_Table.Table;
 

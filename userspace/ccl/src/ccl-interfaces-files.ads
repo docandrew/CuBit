@@ -1,4 +1,5 @@
 with Interfaces;
+with CCL.Binding_Blocks;
 with CCL.Catalog;
 with CCL.Objects;
 with CCL.Types;
@@ -81,7 +82,7 @@ package CCL.Interfaces.Files with SPARK_Mode is
    function Name (Item : Operation) return String is
      (case Item is
          when Home => "home", when Enter => "enter", when Up => "up", when List => "list");
-   FIRST_BINDING : constant Unsigned_32 := 16#0008_0001#;
+   FIRST_BINDING : constant Unsigned_32 := CCL.Binding_Blocks.First (CCL.Binding_Blocks.Files);
    function Binding_Of (Item : Operation) return Unsigned_32 is
      (FIRST_BINDING + Operation'Pos (Item));
 

@@ -1,4 +1,5 @@
 with Interfaces;
+with CCL.Binding_Blocks;
 with CCL.Catalog;
 with CCL.Objects;
 with CCL.Types;
@@ -91,7 +92,7 @@ package CCL.Interfaces.Images with SPARK_Mode is
    --  Scale's largest factor.
    MAXIMUM_SCALE : constant := 16;
    --  The runtime binding of each operation, the same in every host.
-   FIRST_BINDING : constant Unsigned_32 := 16#0006_0001#;
+   FIRST_BINDING : constant Unsigned_32 := CCL.Binding_Blocks.First (CCL.Binding_Blocks.Images);
    function Binding_Of (Item : Operation) return Unsigned_32 is
      (FIRST_BINDING + Operation'Pos (Item));
    --  A file name in (image.load "name.qoi").

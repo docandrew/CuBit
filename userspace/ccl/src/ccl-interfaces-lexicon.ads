@@ -1,4 +1,5 @@
 with Interfaces;
+with CCL.Binding_Blocks;
 with CCL.Catalog;
 with CCL.Objects;
 with CCL.Types;
@@ -110,7 +111,7 @@ package CCL.Interfaces.Lexicon with SPARK_Mode is
    --  The operations callable by their bare names.
    function Is_Command (Item : Operation) return Boolean is
      (Item in Dict | Synonym | Thesaurus | Spell_Check);
-   FIRST_BINDING : constant Unsigned_32 := 16#000B_0001#;
+   FIRST_BINDING : constant Unsigned_32 := CCL.Binding_Blocks.First (CCL.Binding_Blocks.Lexicon);
    function Binding_Of (Item : Operation) return Unsigned_32 is
      (FIRST_BINDING + Operation'Pos (Item));
 

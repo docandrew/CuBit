@@ -1,4 +1,5 @@
 with CCL_Application;
+with CCL.Binding_Blocks;
 with CCL_Config_IO;
 with CCL.Types;
 with CCL.Objects;
@@ -10,6 +11,7 @@ with CCL_Native_Bindings;
 package body CCL_Native_Execution is
    package H renames Config_Object_Client.Resources.Runs;
    package D renames Config_Object_Interfaces;
+   use type Interfaces.Unsigned_32;
    use type Interfaces.Unsigned_64;
    use type CCL.Catalog.Grant_Result;
    use type CCL.VM.Execution_Status;
@@ -23,8 +25,8 @@ package body CCL_Native_Execution is
    Interface_Key : constant CCL.Catalog.Descriptor_Digest :=
      [16#ccfe8bcee8ae4eb9#, 16#b2878bd96530f7ef#, 16#80016f6c212082c6#, 16#dba9f7116d2bded8#];
    Bindings : constant H.Binding_Table :=
-     [D.Open_Collection => 16#0005_0001#, D.Read_Value => 16#0005_0002#,
-      D.Write_Value => 16#0005_0003#, D.Close_Collection => 16#0005_0004#];
+     [for Action in D.Operation =>
+        CCL.Binding_Blocks.First (CCL.Binding_Blocks.Config_Values) + D.Operation'Pos (Action)];
    Host : H.Runner (1);
    Tokens : Interfaces.Unsigned_64 := 0;
    Dirty : Boolean := False;

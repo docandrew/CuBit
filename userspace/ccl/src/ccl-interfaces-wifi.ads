@@ -1,4 +1,5 @@
 with Interfaces;
+with CCL.Binding_Blocks;
 with CCL.Catalog;
 with CCL.Objects;
 with CCL.Types;
@@ -59,7 +60,7 @@ package CCL.Interfaces.Wifi with SPARK_Mode is
 
    type Operation is (Scan);
    function Name (Item : Operation) return String is (case Item is when Scan => "scan");
-   FIRST_BINDING : constant Unsigned_32 := 16#000D_0001#;
+   FIRST_BINDING : constant Unsigned_32 := CCL.Binding_Blocks.First (CCL.Binding_Blocks.Wifi);
    function Binding_Of (Item : Operation) return Unsigned_32 is
      (FIRST_BINDING + Operation'Pos (Item));
 

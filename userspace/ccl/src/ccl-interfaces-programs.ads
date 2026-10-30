@@ -1,4 +1,5 @@
 with Interfaces;
+with CCL.Binding_Blocks;
 with CCL.Catalog;
 with CCL.Objects;
 with CuBit.Program_Descriptions;
@@ -72,7 +73,7 @@ package CCL.Interfaces.Programs is
    --  Operations per program: run, its outlets, outlets and outcome.
    MAXIMUM_OPERATIONS : constant := 3 + PD.Maximum_Connectors;
    subtype Program_Index is Natural range 0 .. MAXIMUM_PROGRAMS - 1;
-   FIRST_BINDING : constant Unsigned_32 := 16#000A_0000#;
+   FIRST_BINDING : constant Unsigned_32 := CCL.Binding_Blocks.Base (CCL.Binding_Blocks.Programs);
    BINDINGS_PER_PROGRAM : constant := 64;
 
    --  Binding for operation Number (0: run, 1 .. Connector_Total: the
