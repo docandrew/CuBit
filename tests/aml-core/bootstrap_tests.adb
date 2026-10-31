@@ -12,13 +12,13 @@ procedure Bootstrap_Tests is
    type State_Access is access State;
    procedure Free is new Ada.Unchecked_Deallocation (State, State_Access);
    Session_Ptr : State_Access := null;
-   Before : State_Model (ACPI_Service.Max_Tables, ACPI_Service.Max_Total_Bytes) with Ghost;
+   Before : State_Model (ACPI_Service.Max_Tables, ACPI_Service.Max_Total_Bytes, Load_Capacity => ACPI_Service.Max_Tables) with Ghost;
    Before_Tree : ACPI_Service.Values.Audit_Value with Ghost;
    procedure Reset_Fixture (Count : Natural) is
       Accepted : Boolean;
    begin
       Free (Session_Ptr);
-      Session_Ptr := new State (ACPI_Service.Max_Tables, ACPI_Service.Max_Total_Bytes, ACPI_Service.Max_Table_Bytes);
+      Session_Ptr := new State (ACPI_Service.Max_Tables, ACPI_Service.Max_Total_Bytes, ACPI_Service.Max_Table_Bytes, Load_Capacity => ACPI_Service.Max_Tables);
       Start (Session_Ptr.all, Count, Accepted);
    end Reset_Fixture;
    Outcome : ACPI_Service.Install_Status;
@@ -117,7 +117,7 @@ begin
      and Completion (Session_Ptr.all).Stage = Finished and Observe (Session_Ptr.all).Objects = ACPI_Service.Values.Firmware_Seed_Count + 1);
    declare
       Length : constant Positive := 1_048_577;
-      Large : State (35, Length + 34 * 36, Length);
+      Large : State (35, Length + 34 * 36, Length, Load_Capacity => 35);
       Accepted : Boolean;
       Data : Firmware_Tables.Bytes :=
         Table (ACPI_Service.Description, [1 .. Length - 36 => 16#A5#]);
@@ -139,7 +139,7 @@ begin
       Checks := Checks + 1; pragma Assert (Table_Info (Large, 2).Extent = Length);
       Checks := Checks + 1; pragma Assert (Table_Byte (Large, 2, Length - 1) = 16#A5#);
       declare
-         Saved : constant State_Model (Large.Table_Capacity, Large.Byte_Capacity) := Model (Large) with Ghost;
+         Saved : constant State_Model (Large.Table_Capacity, Large.Byte_Capacity, Load_Capacity => Large.Load_Capacity) := Model (Large) with Ghost;
       begin
          Import_Table (Large, 36, ACPI_Service.SSDT, SSDT, Outcome);
          Checks := Checks + 1; pragma Assert (Outcome = ACPI_Service.Wrong_Order and Model (Large) = Saved);
@@ -149,7 +149,7 @@ begin
    end;
    for Count in 0 .. 4 loop
       declare
-         S : State (3, 108, 36);
+         S : State (3, 108, 36, Load_Capacity => 3);
          Accepted : Boolean;
       begin
          Start (S, Count, Accepted);

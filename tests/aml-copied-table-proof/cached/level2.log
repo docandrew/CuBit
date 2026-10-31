@@ -1,0 +1,143 @@
+Phase 1 of 3: generation of data representation information ...
+Phase 2 of 3: generation of Global contracts ...
+Phase 3 of 3: flow analysis and proof ...
+Summary logged in /home/doc/cubit-build-tmp/aml-copied-table-proof-ZLHorH/level2/obj/gnatprove/gnatprove.out
+aml_copied_tables.adb:10:22: info: length check proved
+aml_copied_tables.adb:10:44: info: length check proved
+aml_copied_tables.adb:15:23: info: index check proved
+aml_copied_tables.adb:16:32: info: index check proved
+aml_copied_tables.adb:17:32: info: index check proved
+aml_copied_tables.adb:17:56: info: overflow check proved
+aml_copied_tables.adb:17:72: info: index check proved
+aml_copied_tables.adb:18:47: info: index check proved
+aml_copied_tables.adb:19:27: info: index check proved
+aml_copied_tables.adb:20:36: info: index check proved
+aml_copied_tables.adb:20:62: info: overflow check proved
+aml_copied_tables.adb:20:80: info: index check proved
+aml_copied_tables.adb:21:34: info: index check proved
+aml_copied_tables.adb:21:62: info: index check proved
+aml_copied_tables.adb:21:74: info: overflow check proved
+aml_copied_tables.adb:21:92: info: index check proved
+aml_copied_tables.adb:23:28: info: index check proved
+aml_copied_tables.adb:23:44: info: overflow check proved
+aml_copied_tables.adb:23:65: info: index check proved
+aml_copied_tables.adb:25:33: info: index check proved
+aml_copied_tables.adb:25:43: info: range check proved
+aml_copied_tables.adb:25:55: info: overflow check proved
+aml_copied_tables.adb:25:59: info: overflow check proved
+aml_copied_tables.adb:25:59: info: index check proved
+aml_copied_tables.adb:28:07: info: initialization of "Name" proved
+aml_copied_tables.adb:29:07: info: initialization of "Header" proved
+aml_copied_tables.adb:30:07: info: initialization of "Allowed" proved
+aml_copied_tables.adb:30:16: info: initialization of "Equal" proved
+aml_copied_tables.adb:33:19: info: postcondition proved
+aml_copied_tables.adb:33:45: info: overflow check proved
+aml_copied_tables.adb:34:75: info: overflow check proved
+aml_copied_tables.adb:42:36: info: overflow check proved
+aml_copied_tables.adb:43:59: info: overflow check proved
+aml_copied_tables.adb:50:07: info: precondition proved
+aml_copied_tables.adb:51:80: info: overflow check proved
+aml_copied_tables.adb:51:80: info: index check proved
+aml_copied_tables.adb:54:58: info: overflow check proved
+aml_copied_tables.adb:54:81: info: overflow check proved
+aml_copied_tables.adb:54:81: info: index check proved
+aml_copied_tables.adb:58:75: info: range check proved
+aml_copied_tables.adb:60:33: info: range check proved
+aml_copied_tables.adb:61:07: info: precondition proved
+aml_copied_tables.adb:62:14: info: discriminant check proved
+aml_copied_tables.adb:62:31: info: range check proved
+aml_copied_tables.adb:62:68: info: overflow check proved
+aml_copied_tables.adb:64:52: info: discriminant check proved
+aml_copied_tables.adb:66:33: info: loop invariant preservation proved
+aml_copied_tables.adb:66:33: info: loop invariant initialization proved
+aml_copied_tables.adb:67:33: info: loop invariant preservation proved
+aml_copied_tables.adb:67:33: info: loop invariant initialization proved
+aml_copied_tables.adb:68:33: info: loop invariant preservation proved
+aml_copied_tables.adb:68:33: info: loop invariant initialization proved
+aml_copied_tables.adb:69:33: info: loop invariant initialization proved
+aml_copied_tables.adb:69:33: info: loop invariant preservation proved
+aml_copied_tables.adb:69:79: info: range check proved
+aml_copied_tables.adb:70:10: info: precondition proved
+aml_copied_tables.adb:71:27: info: index check proved
+aml_copied_tables.adb:72:13: info: precondition proved
+aml_copied_tables.adb:75:19: info: precondition proved
+aml_copied_tables.adb:75:80: info: overflow check proved
+aml_copied_tables.adb:75:80: info: index check proved
+aml_copied_tables.adb:83:46: info: overflow check proved
+aml_copied_tables.adb:84:07: info: precondition proved
+aml_copied_tables.adb:86:33: info: overflow check proved
+aml_copied_tables.adb:86:33: info: index check proved
+aml_copied_tables.adb:86:62: info: overflow check proved
+aml_copied_tables.adb:86:62: info: index check proved
+aml_copied_tables.adb:87:33: info: loop invariant initialization proved
+aml_copied_tables.adb:87:33: info: loop invariant preservation proved
+aml_copied_tables.adb:88:33: info: loop invariant initialization proved
+aml_copied_tables.adb:88:33: info: loop invariant preservation proved
+aml_copied_tables.adb:89:33: info: loop invariant initialization proved
+aml_copied_tables.adb:89:33: info: loop invariant preservation proved
+aml_copied_tables.adb:90:33: info: loop invariant preservation proved
+aml_copied_tables.adb:90:33: info: loop invariant initialization proved
+aml_copied_tables.adb:91:33: info: loop invariant initialization proved
+aml_copied_tables.adb:91:33: info: loop invariant preservation proved
+aml_copied_tables.adb:91:79: info: range check proved
+aml_copied_tables.adb:92:33: info: loop invariant initialization proved
+aml_copied_tables.adb:92:33: info: loop invariant preservation proved
+aml_copied_tables.adb:95:51: info: overflow check proved
+aml_copied_tables.adb:95:51: info: range check proved
+aml_copied_tables.adb:99:24: info: index check proved
+aml_copied_tables.adb:100:35: info: overflow check proved
+aml_copied_tables.adb:103:25: info: assertion proved
+aml_copied_tables.adb:103:39: info: index check proved
+aml_copied_tables.adb:110:12: info: length check proved
+aml_copied_tables.adb:112:19: info: precondition proved
+aml_copied_tables.adb:112:50: info: range check proved
+aml_copied_tables.adb:112:60: info: precondition proved
+aml_copied_tables.adb:112:79: info: overflow check proved
+aml_copied_tables.adb:114:22: info: precondition proved
+aml_copied_tables.adb:114:49: info: overflow check proved
+aml_copied_tables.adb:114:49: info: range check proved
+aml_copied_tables.adb:114:54: info: overflow check proved
+aml_copied_tables.adb:116:13: info: loop invariant initialization proved
+aml_copied_tables.adb:116:13: info: loop invariant preservation proved
+aml_copied_tables.adb:117:20: info: index check proved
+aml_copied_tables.adb:117:25: info: precondition proved
+aml_copied_tables.adb:117:52: info: overflow check proved
+aml_copied_tables.adb:117:52: info: range check proved
+aml_copied_tables.adb:117:57: info: overflow check proved
+aml_copied_tables.ads:16:09: info: default initial condition proved
+aml_copied_tables.ads:21:13: info: implicit aspect Always_Terminates on "Model" has been proved, subprogram will terminate
+aml_copied_tables.ads:22:14: info: postcondition proved
+aml_copied_tables.ads:24:13: info: implicit aspect Always_Terminates on "Count" has been proved, subprogram will terminate
+aml_copied_tables.ads:25:13: info: implicit aspect Always_Terminates on "Used_Bytes" has been proved, subprogram will terminate
+aml_copied_tables.ads:26:13: info: implicit aspect Always_Terminates on "Valid" has been proved, subprogram will terminate
+aml_copied_tables.ads:27:13: info: implicit aspect Always_Terminates on "Present" has been proved, subprogram will terminate
+aml_copied_tables.ads:28:13: info: implicit aspect Always_Terminates on "Length" has been proved, subprogram will terminate
+aml_copied_tables.ads:30:13: info: implicit aspect Always_Terminates on "Byte_At" has been proved, subprogram will terminate
+aml_copied_tables.ads:32:26: info: precondition proved
+aml_copied_tables.ads:51:63: info: initialization of "Result" proved
+aml_copied_tables.ads:52:41: info: postcondition proved
+aml_copied_tables.ads:57:45: info: overflow check proved
+aml_copied_tables.ads:58:64: info: overflow check proved
+aml_copied_tables.ads:60:20: info: precondition proved
+aml_copied_tables.ads:69:07: info: initialization of "Data" proved
+aml_copied_tables.ads:69:27: info: initialization of "Copied" proved
+aml_copied_tables.ads:71:16: info: postcondition proved
+aml_copied_tables.ads:72:29: info: precondition proved
+aml_copied_tables.ads:73:23: info: range check proved
+aml_copied_tables.ads:73:34: info: precondition proved
+aml_copied_tables.ads:73:53: info: overflow check proved
+aml_copied_tables.ads:76:18: info: index check proved
+aml_copied_tables.ads:76:23: info: precondition proved
+aml_copied_tables.ads:76:50: info: overflow check proved
+aml_copied_tables.ads:76:50: info: range check proved
+aml_copied_tables.ads:76:55: info: overflow check proved
+aml_copied_tables.ads:77:47: info: index check proved
+aml_copied_tables.ads:82:07: info: range check proved
+aml_copied_tables.ads:83:07: info: range check proved
+aml_copied_tables.ads:87:07: info: range check proved
+aml_copied_tables.ads:88:07: info: range check proved
+aml_copied_tables.ads:88:46: info: length check proved
+  in default value of private type at aml_copied_tables.ads:16
+aml_copied_tables.ads:97:21: info: index check proved
+aml_copied_tables.ads:97:31: info: range check proved
+aml_copied_tables.ads:97:35: info: range check proved

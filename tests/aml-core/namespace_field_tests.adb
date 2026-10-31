@@ -1,3 +1,4 @@
+with AML_Table_Sources;
 with AML_Delays;
 with Ada.Text_IO; use Ada.Text_IO;
 with AML_Namespace;
@@ -15,7 +16,7 @@ procedure Namespace_Field_Tests is
    Status : Bind_Status;
    Loaded : Load_Status;
    Checks : Natural := 0;
-   Region : constant Table_Region := (Table => 2, Extent => 36);
+   Region : constant Table_Region := (Item => (AML_Table_Sources.Boot_Source, 2), Extent => 36);
    Field : constant Table_Field := (Region => Region, Offset => 7, Bits => 65);
    procedure Check (OK : Boolean) is
    begin
@@ -32,7 +33,7 @@ begin
    Check (Status = Bound and then Kind (Tree, Field_Node) = Table_Field_Object
      and then Field_Data (Tree, Field_Node) = Field and then not Has_Integer (Tree, Field_Node));
    Before := Tree;
-   Bind_Table_Region (Tree, Root, "RGN0", (1, 1), Node, Status);
+   Bind_Table_Region (Tree, Root, "RGN0", ((AML_Table_Sources.Boot_Source, 1), 1), Node, Status);
    Check (Status = Binding_Duplicate and then Node = Root and then Tree = Before);
    Bind_Table_Field (Tree, Root, "0BAD", Field, Node, Status);
    Check (Status = Binding_Invalid and then Tree = Before);

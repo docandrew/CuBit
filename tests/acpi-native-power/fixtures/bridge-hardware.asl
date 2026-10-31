@@ -1,0 +1,4 @@
+DefinitionBlock ("", "DSDT", 2, "CUBIT", "PWRSTART", 1) { OperationRegion (REG0, EmbeddedControl, Zero, One) Device (LID0) { Name (_HID, EisaId ("PNP0C0D")) Name (LCNT, Zero) Method (_STA, 0) { Increment (LCNT)  Return (0x0F) } Method (_INI, 0) { Noop } Method (_LID, 0) {  Return (One) } }
+Device (AC00) { Name (_HID, "ACPI0003") Name (_STA, 0x0F) Method (_PSR, 0) { Return (One) } }
+Device (BAT0) { Name (_HID, EisaId ("PNP0C0A")) Name (PRES, 0x1F) Method (_STA, 0) { Return (PRES) } Method (_BIX, 0) { Return (Package (20) {0,1,42000,40000,1,11000,2000,1000,12,100000,0xFFFFFFFF,10,500,5,1,10,"CUBIT","SER1","LION",""}) } Method (_BST, 0) { Return (Package (4) {1,100,20000,11000}) } }
+Device (BAT1) { Method (_HID, 0) { Return ("PNP0C0A") } Name (_STA, 0x1F) Method (_BIX, 0) { Return (\BAT0._BIX ()) } Method (_BST, 0) {  Return (Package (4) {1,100,5000,11000}) } } }

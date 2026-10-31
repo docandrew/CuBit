@@ -1,5 +1,5 @@
 project Owner_Transition_release is
- for Source_Dirs use (".", "../aml-core", "../../userspace/services/acpi/lib", "../../userspace/services/acpi", "../../shared/firmware");
+ for Source_Dirs use (".", "../aml-core", "../../userspace/services/acpi/lib", "../../userspace/services/acpi", "../../shared/firmware", "../../userspace/services/acpi/resource-consumer");
  Build_Root := external ("AML_OWNER_TRANSITION_BUILD", "build-owner-transition-release");
  for Object_Dir use Build_Root & "/obj";
  for Exec_Dir use Build_Root;

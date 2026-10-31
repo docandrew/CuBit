@@ -24,6 +24,17 @@ delivery and hardware events still require native validation. The whole AML
 interpreter is not yet SPARK-proved; earlier scoped proofs apply only to their
 recorded units and assumptions. See `native/README.md` for the entry contract.
 
+The service-owned [passive discovery entry](passive/README.md) now connects
+Requests to Find, Describe and resource queries without exposing mutable Core
+state. Requests supplies its exact generation; Bootstrap supplies catalog/member
+readiness. Static queries do not invoke AML methods or Fields and may work while
+hardware initialization is unavailable. Method-valued data remains explicit;
+resource descriptions confer no hardware authority. The generated native query
+request/reply binding and loan/session dispatch are still integration work; the
+current native entry serves observer metrics and tables. See the
+[owner composition tests](../../../tests/acpi-query-owner/README.md) for hosted
+coverage and the distinction between modeled grants and native execution.
+
 ## Source layout
 
 The ACPI service owns its implementation library in `lib/`. It contains the
@@ -35,6 +46,8 @@ subset through an explicit source list.
 | --- | --- |
 | `lib/` | AML values, namespace, decoding, execution and fixed-table helpers |
 | This directory | Service lifecycle, snapshot admission, requests and device policy |
+| `passive/` | Copied discovery queries, service-owner bridge and bounded loan/reply lifecycle |
+| `power/` | Battery and power-source observations and caches; power policy remains separate |
 | `resource-data/` | Pure decoding of device resource descriptors |
 | `resource-consumer/`, `pci-routing/`, `lid/`, `hid-i2c/` | Typed consumers of the service namespace |
 | `field-client/`, `region-init/` | Scoped OperationRegion access and initialization |

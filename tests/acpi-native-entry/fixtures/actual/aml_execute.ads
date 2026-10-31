@@ -84,7 +84,7 @@ package AML_Execute with SPARK_Mode, Pure is
    type Execution_Status is
      (Returned, Object_Returned, Reference_Returned, Metadata_Returned, No_Return, Truncated, Unsupported, Uninitialized,
       Missing_Argument, Budget_Exceeded, Invalid_Method, Argument_Mismatch, Mutex_Order, Duplicate_Name, Namespace_Limit, Expression_Limit, Block_Limit, Bad_Package, Invalid_Control,
-      Unknown_Name, Unsupported_Value, Bad_Name, Call_Limit, Division_By_Zero, Empty_Buffer, Missing_Result, Value_Limit, Numeric_Overflow, Invalid_Delay, Delay_Failed, Package_Limit, Invalid_Match_Operation, No_Resource_End_Tag, Invalid_Resource_Type, Bad_Resource_Length, Resource_Buffer_Length, Invalid_Field_Length, Buffer_Field_Limit, Notify_Limit, Mutex_Not_Acquired, Field_Indeterminate, Fatal_Requested, Module_Completed);
+      Unknown_Name, Unsupported_Value, Bad_Name, Call_Limit, Division_By_Zero, Empty_Buffer, Missing_Result, Value_Limit, Numeric_Overflow, Invalid_Delay, Delay_Failed, Package_Limit, Invalid_Match_Operation, No_Resource_End_Tag, Invalid_Resource_Type, Bad_Resource_Length, Resource_Buffer_Length, Invalid_Field_Length, Buffer_Field_Limit, Notify_Limit, Mutex_Not_Acquired, Invalid_Table_Length, Field_Indeterminate, Fatal_Requested, Module_Completed);
    -- Module_Completed is success only at authenticated root EOF, never failure.
    subtype Execution_Failure is Execution_Status range No_Return .. Fatal_Requested;
    -- Status-only adapters cannot fabricate a fatal request without its payload.
@@ -144,6 +144,9 @@ package AML_Execute with SPARK_Mode, Pure is
    Max_Expression_Depth : constant Positive := 64;
    subtype Call_Budget is Natural range 0 .. 32;
    subtype Sync_Level is Natural range 0 .. 15;
+   -- Trusted embedding policy,not an AML operand or hardware permission.
+   -- Owner providers must still independently admit each requested operation.
+   type Module_Effects_Policy is (Restrict_Module_Effects, Use_Owner_Providers);
    -- This synchronous executor requires exclusive ownership of its context.
    -- No operation currently yields to another AML thread or acquires a Mutex.
    function Method_Level (Flags : AML_Decode.Byte) return Sync_Level;
@@ -211,6 +214,19 @@ package AML_Execute with SPARK_Mode, Pure is
    type Binding_Purpose is (Inspect_Binding, Evaluate_Binding, Reference_Target, Namespace_Identity);
    -- Immutable external data travels explicitly through recursive calls. A
    -- limited formal prevents copying the backing store into executor frames.
+   Load_Table_Operand_Count : constant Positive := 6;
+   subtype Load_Table_Operand_Index is Natural range 0 .. Load_Table_Operand_Count - 1;
+   type Load_Table_Operands is array (Load_Table_Operand_Index) of Datum;
+   type Load_Table_Disposition is (Load_Not_Prepared, Load_Handled, Load_Module_Prepared);
+   type Load_Table_Token is new Natural;
+   No_Load_Table : constant Load_Table_Token := 0;
+   type Load_Table_Plan is record
+      Disposition : Load_Table_Disposition := Load_Not_Prepared;
+      Token : Load_Table_Token := No_Load_Table;
+      Scope, Body_Length : Natural := 0;
+   end record;
+   -- Raw evaluated operands. Conversion, table selection, declaration ownership,
+   -- cleanup and readiness belong to the authenticated namespace owner.
    generic
       type Context is limited private;
       type Read_Context (<>) is limited private;
@@ -551,8 +567,58 @@ package AML_Execute with SPARK_Mode, Pure is
          Scope : Natural; Region_Path, Bank_Path : AML_Names.Name_Result;
          Bank_Value : AML_Decode.Integer_Value; Flags : AML_Decode.Byte;
          Entries : AML_Decode.Bytes; Status : in out Execution_Status) is null;
+      -- Called once with all six operands retained in the current expression
+      -- census and resolved through the normal call-argument transport. The
+      -- owner must authenticate Lease, preserve the caller, and charge no more
+      -- than Budget. Status begins Unsupported; the default does no work.
+      -- This hook does not itself admit a table or grant hardware authority.
+      with procedure Request_Load_Table
+        (Environment : in out Context; Input : aliased Read_Context;
+         Lease : AML_Declaration_Contexts.Lease; Scope : Natural;
+         Width : AML_Decode.Integer_Width; Operands : Load_Table_Operands;
+         Budget : Natural; Charged : in out Natural; Succeeded : in out Boolean;
+         Status : in out Execution_Status; Plan : in out Load_Table_Plan) is null;
+      -- Source is a retained namespace identity. Resolve/authenticate only after
+      -- the target expression has been evaluated. Default refuses the request.
+      with procedure Request_Load_Source
+        (Environment : in out Context; Input : aliased Read_Context;
+         Lease : AML_Declaration_Contexts.Lease; Scope : Natural;
+         Width : AML_Decode.Integer_Width; Source : Datum;
+         Budget : Natural; Charged : in out Natural; Succeeded : in out Boolean;
+         Status : in out Execution_Status; Plan : in out Load_Table_Plan) is null;
+      -- Prepared plans are finalized once even when copying/admission/execution
+      -- fails. Copy only immutable owned body bytes; no physical-address input.
+      -- The VM charges Body_Length before allocating/copying this temporary
+      -- storage, and executes it using the existing invocation's Run routine.
+      with procedure Copy_Load_Table_Body
+        (Environment : in out Context; Input : aliased Read_Context;
+         Plan : Load_Table_Plan; Data : in out AML_Decode.Bytes;
+         Status : in out Execution_Status) is null;
+      -- Called after immutable body copy succeeds and immediately before Run.
+      -- A reservation is not consumed on copy/call/budget admission failure.
+      with procedure Begin_Load_Table_Module
+        (Environment : in out Context; Input : aliased Read_Context;
+         Plan : Load_Table_Plan; Status : in out Execution_Status) is null;
+      with procedure Finish_Load_Table
+        (Environment : in out Context; Input : aliased Read_Context;
+         Lease : AML_Declaration_Contexts.Lease; Plan : Load_Table_Plan;
+         Operands : Load_Table_Operands; Module_Result : Execution_Result;
+         Budget : Natural; Charged : in out Natural; Succeeded : in out Boolean;
+         Status : in out Execution_Status) is null;
+      -- Offered only after a fully consumed root Divide statement has failed
+      -- in module-level execution and its expression roots/packages are closed.
+      -- The owner records the diagnostic and may continue at this exact next
+      -- term. No rewinding/replay, allocation, collection or AML reentry here.
+      -- Default policy propagates the error. Resource/uncertain/fatal failures
+      -- and failures inside incomplete expressions are never offered.
+      with procedure Handle_Module_Divide_Error
+        (Environment : in out Context; Lease : AML_Declaration_Contexts.Lease;
+         Resume_Offset, Charged : Natural; Continue_Execution : in out Boolean) is null;
       -- Context validity is checked around the actual call by Invoke_Delay.
       -- A formal-aspect instantiation triggers GNAT 15.3 decl.cc:479.
+      -- Owner-only metadata loading during a restricted bootstrap session.
+      -- This does not relax inherited hardware, delay or notification gates.
+      Allow_Restricted_Table_Loads : Boolean := False;
    procedure Execute_From_Source
      (Code : AML_Decode.Bytes; Width : AML_Decode.Integer_Width;
       Args : Value_Arguments; Argument_Count : Natural; Budget : Natural;
@@ -560,7 +626,8 @@ package AML_Execute with SPARK_Mode, Pure is
       Source : aliased AML_Byte_Sources.Storage; Source_First : Natural;
       Calls_Left : Call_Budget := 32; Current_Sync : Sync_Level := 0;
       Request : AML_Declaration_Contexts.Request := AML_Declaration_Contexts.Method_Request;
-      Implementation : Method_Implementation := AML_Implementation)
+      Implementation : Method_Implementation := AML_Implementation;
+      Initial_Effects : Module_Effects_Policy := Restrict_Module_Effects)
      with Always_Terminates,
           Pre => Argument_Count <= 7 and then not Result_Out'Constrained
             and then Context_Valid (Environment),

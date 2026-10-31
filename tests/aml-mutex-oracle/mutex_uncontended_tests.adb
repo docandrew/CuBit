@@ -14,7 +14,7 @@ procedure Mutex_Uncontended_Tests is
    use type C.Values.Access_Status;
    use type C.Values.Module_Outcome;
    use type AML_Execute.Execution_Status;
-   Service : aliased C.State (1, 4096, 4096);
+   Service : aliased C.State (1, 4096, 4096, 1);
    Stage : C.Stage_Status;
    Frozen : C.Freeze_Status;
    Report : C.Execution_Report;

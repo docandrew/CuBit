@@ -11,16 +11,12 @@ procedure Request_Tests is
    procedure Free is new Ada.Unchecked_Deallocation (State, State_Access);
    Server : State_Access := null;
    Before : State_Model
-     (ACPI_Service.Max_Tables, ACPI_Service.Max_Total_Bytes,
-      ACPI_Service.Max_Table_Bytes) with Ghost;
+     (ACPI_Service.Max_Tables, ACPI_Service.Max_Total_Bytes, ACPI_Service.Max_Table_Bytes, Load_Capacity => ACPI_Service.Max_Tables) with Ghost;
    procedure Reset (Initial_Revision : Revision_Number := 0) is
    begin
       Free (Server);
       Server := new State
-        (Table_Capacity => ACPI_Service.Max_Tables,
-         Byte_Capacity => ACPI_Service.Max_Total_Bytes,
-         Table_Byte_Limit => ACPI_Service.Max_Table_Bytes,
-         Initial_Revision => Initial_Revision);
+        (Table_Capacity => ACPI_Service.Max_Tables, Byte_Capacity => ACPI_Service.Max_Total_Bytes, Table_Byte_Limit => ACPI_Service.Max_Table_Bytes, Initial_Revision => Initial_Revision, Load_Capacity => ACPI_Service.Max_Tables);
    end Reset;
    Reply : Response;
    function Table (Length : Positive := 42; SSDT : Boolean := False) return Firmware_Tables.Bytes is
@@ -368,7 +364,7 @@ begin
    -- may open, but a partial payload must never commit as a complete table.
    declare
       Length : constant := 1_048_577;
-      Large : State (2, Length + 36, Length, 0);
+      Large : State (2, Length + 36, Length, Load_Capacity => 2, Initial_Revision => 0);
       Token : Revision_Number;
    begin
       Handle (Large, Snapshot_Provider,

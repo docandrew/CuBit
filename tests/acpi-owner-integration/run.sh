@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Keep source and artifact inventories independent of the invoking locale.
+export LC_ALL=C
 set -euo pipefail
 here=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 python3 "$here/verify.py"

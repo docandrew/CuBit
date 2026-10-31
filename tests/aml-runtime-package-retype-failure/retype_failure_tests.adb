@@ -23,7 +23,7 @@ procedure Retype_Failure_Tests is
    procedure Run (Label : String; Table : AML_Decode.Bytes;
                   Expected_Status : AML_Execute.Execution_Status;
                   Expected_Value, Expected_Mark, Expected_Done : AML_Decode.Integer_Value) is
-      A : aliased C.State (1, Table'Length, Table'Length);
+      A : aliased C.State (1, Table'Length, Table'Length, 1);
       Staged : C.Stage_Status;
       Frozen : C.Freeze_Status;
       Report : C.Execution_Report;

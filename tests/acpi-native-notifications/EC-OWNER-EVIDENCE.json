@@ -1,0 +1,104 @@
+{
+  "state": "private bounded same-Core EC/native owner composition tested",
+  "directory": "/home/doc/cubit-build-tmp/acpi-native-notifications-qxdRyr",
+  "functional_session": 11031,
+  "functional_exit_code": 0,
+  "checks": 4936,
+  "runtimes": 36,
+  "commands": 42,
+  "alis": 260,
+  "counts": {
+    "checked": {
+      "1": {
+        "normal": 159,
+        "hardware": 20,
+        "owner-fatal": 151,
+        "owner-drain": 150,
+        "owner-idle": 150,
+        "source-fail": 151,
+        "owner-fanout": 151,
+        "source-exception": 151,
+        "route-exception": 151
+      },
+      "2": {
+        "normal": 159,
+        "hardware": 20,
+        "owner-fatal": 151,
+        "owner-drain": 150,
+        "owner-idle": 150,
+        "source-fail": 151,
+        "owner-fanout": 151,
+        "source-exception": 151,
+        "route-exception": 151
+      }
+    },
+    "release": {
+      "1": {
+        "normal": 159,
+        "hardware": 20,
+        "owner-fatal": 151,
+        "owner-drain": 150,
+        "owner-idle": 150,
+        "source-fail": 151,
+        "owner-fanout": 151,
+        "source-exception": 151,
+        "route-exception": 151
+      },
+      "2": {
+        "normal": 159,
+        "hardware": 20,
+        "owner-fatal": 151,
+        "owner-drain": 150,
+        "owner-idle": 150,
+        "source-fail": 151,
+        "owner-fanout": 151,
+        "source-exception": 151,
+        "route-exception": 151
+      }
+    }
+  },
+  "semantic": [
+    {
+      "profile": "checked",
+      "directory": "/home/doc/git/.acpi-proof-work/native-ec-owner-work/semantic/tests/acpi-native-entry/results/checked-nYcm2U8k",
+      "selections": 45,
+      "alis": 44,
+      "objects": 0
+    },
+    {
+      "profile": "release",
+      "directory": "/home/doc/git/.acpi-proof-work/native-ec-owner-work/semantic/tests/acpi-native-entry/results/release-wD6gtvMW",
+      "selections": 45,
+      "alis": 44,
+      "objects": 0
+    }
+  ],
+  "semantic_session": 65752,
+  "semantic_exit_code": 0,
+  "production": [
+    {
+      "path": "userspace/services/acpi/native/acpi_native_server-with_ec_events.ads",
+      "before": null,
+      "after": "2f036f6637ddb82e18645abe168b0da5c4a94a0d717eb6a11aa5bc0438ebd213"
+    },
+    {
+      "path": "userspace/services/acpi/native/acpi_native_server-with_ec_events.adb",
+      "before": null,
+      "after": "4ad618feeaa97838dec11eb725bf613680f0da518dc33c44db0e01c4e37dde11"
+    }
+  ],
+  "guards": 387,
+  "shared_afterimages_verified": 1617,
+  "source_published": false,
+  "new_proof": false,
+  "owner_or_caller_proved": false,
+  "native_executed": false,
+  "hardware_validated": false,
+  "new_acpica_interpreter_run": false,
+  "acpica": "Pinned ordinary iASL fixtures; scheduling/stop owner policy has no interpreter equivalence claim",
+  "assumptions": "Bounded non-reentrant source/fanout callbacks; source metadata/order/wakes/health; all-consumer invalidation; containing service stops other Core callers and owns hardware/source drain. Native allocation/runtime behavior is not validated.",
+  "all_own_jobs_terminal": true,
+  "goal": "active and incomplete",
+  "private_validation": "/home/doc/git/.acpi-proof-work/native-ec-owner-work/VALIDATED.json",
+  "publication_evidence": "/home/doc/git/.acpi-proof-work/native-ec-owner-publication-work/PUBLICATION.json"
+}

@@ -1,0 +1,137 @@
+{
+  "scope": "Nested module frame/initializer context and explicit embedding effect policy; no Load/LoadTable opcode admission",
+  "functional": {
+    "output": "/home/doc/cubit-build-tmp/aml-module-execution-context-OdyPLI",
+    "checks": 1260,
+    "checks_per_profile": 630,
+    "processes": 24,
+    "commands": 34
+  },
+  "proof": {
+    "output": "/home/doc/cubit-build-tmp/aml-module-frame-proof-ysqto3",
+    "levels": {
+      "1": {
+        "entities": 12,
+        "proof": 21,
+        "flow": 10,
+        "functional_posts": [
+          "AML_Module_Frames.Empty",
+          "AML_Module_Frames.Pop",
+          "AML_Module_Frames.Push"
+        ],
+        "attempts": 54,
+        "imported": [
+          "AML_Frame_Handles.Belongs_To",
+          "AML_Frame_Handles.Has_Authority",
+          "AML_Frame_Handles.Present"
+        ]
+      },
+      "2": {
+        "entities": 12,
+        "proof": 21,
+        "flow": 10,
+        "functional_posts": [
+          "AML_Module_Frames.Empty",
+          "AML_Module_Frames.Pop",
+          "AML_Module_Frames.Push"
+        ],
+        "attempts": 54,
+        "imported": [
+          "AML_Frame_Handles.Belongs_To",
+          "AML_Frame_Handles.Has_Authority",
+          "AML_Frame_Handles.Present"
+        ]
+      }
+    },
+    "scope": "Bounded stack functional postconditions/safety only; real helper interfaces remain modular dependencies; no namespace/interpreter proof",
+    "original_audit_cases": 16,
+    "portable_reproduced": true
+  },
+  "field": {
+    "output": "/home/doc/cubit-build-tmp/aml-append-field-regression-Fg0C9c",
+    "checks_per_profile": 1676,
+    "commands": 8
+  },
+  "suites": {
+    "acpi-native-entry": {
+      "checked": {
+        "directory": "/home/doc/git/.acpi-proof-work/module-context-publication-work/candidate/tests/acpi-native-entry/results/checked-LfeGSrgc",
+        "alis": 35,
+        "objects": 0,
+        "selections": 36
+      },
+      "release": {
+        "directory": "/home/doc/git/.acpi-proof-work/module-context-publication-work/candidate/tests/acpi-native-entry/results/release-LodDZqv7",
+        "alis": 35,
+        "objects": 0,
+        "selections": 36
+      }
+    },
+    "acpi-native-startup": {
+      "checked": {
+        "directory": "/home/doc/git/.acpi-proof-work/module-context-publication-work/candidate/tests/acpi-native-startup/results/checked-o5xqw7Wt",
+        "alis": 106,
+        "checks": 1228,
+        "processes": 76
+      },
+      "release": {
+        "directory": "/home/doc/git/.acpi-proof-work/module-context-publication-work/candidate/tests/acpi-native-startup/results/release-uJJoROJy",
+        "alis": 106,
+        "checks": 1228,
+        "processes": 76
+      }
+    }
+  },
+  "prior_core_startup": {
+    "output": "/home/doc/cubit-build-tmp/aml-append-startup-regression-o4A0jW",
+    "checks": 78
+  },
+  "reference": {
+    "output": "/home/doc/cubit-build-tmp/aml-nested-module-reference-oTYypL",
+    "rows": [
+      {
+        "revision": 1,
+        "integers": [
+          "0x0",
+          "0x1234",
+          "0xffffffff",
+          "0x1",
+          "0x1"
+        ],
+        "semantic_match": true,
+        "diagnostics": [
+          "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+        ]
+      },
+      {
+        "revision": 2,
+        "integers": [
+          "0x0",
+          "0x1234",
+          "0xffffffffffffffff",
+          "0x1",
+          "0x1"
+        ],
+        "semantic_match": true,
+        "diagnostics": [
+          "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+        ]
+      }
+    ],
+    "scope": "Self-authored ACPICA reference: LoadTable inside method preserves caller Local0 while loaded OEM module invokes method with Timer; not CuBit loading,ASLTS completion,proof or hardware",
+    "commands": 6,
+    "previous_private_reference_revalidated": true
+  },
+  "metadata": {
+    "catalogs": 130,
+    "source_hash_rows": 57307,
+    "stale": 0,
+    "historical_proof_files_preserved": 5,
+    "runtime_claim": "None for unexecuted suites; source/project selection only"
+  },
+  "new_proof": true,
+  "native_executed": false,
+  "hardware_validated": false,
+  "all_own_jobs_terminal": true,
+  "goal": "active and incomplete"
+}

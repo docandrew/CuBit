@@ -48,9 +48,9 @@ begin
    Header (Bad_MCFG, "MCFG"); Bad_SLIT (37) := 2; Header (Bad_SLIT, "SLIT");
    Header (Empty_SLIT, "SLIT");
    declare
-      Core : ACPI_Service.State (6, 512, 128);
+      Core : ACPI_Service.State (6, 512, 128, 6);
       Status : ACPI_Service.Install_Status;
-      Prior : ACPI_Service.State_Model (6, 512) with Ghost;
+      Prior : ACPI_Service.State_Model (6, 512, 6) with Ghost;
       procedure Install (ID : Positive; Kind : ACPI_Service.Table_Kind; Data : Bytes) is
       begin
          ACPI_Service.Install (Core, ID, Kind, Data, Status);
@@ -70,11 +70,11 @@ begin
       pragma Assert (ACPI_Service."=" (ACPI_Service.Model (Core), Prior));
    end;
    declare
-      Server : State (6, 512, 128, 19);
+      Server : State (6, 512, 128, Load_Capacity => 6, Initial_Revision => 19);
       Adapter : ACPI_Native_Blocks.State;
       Reply : Response;
       Wire : Packet;
-      Before : State_Model (6, 512, 128) with Ghost;
+      Before : State_Model (6, 512, 128, Load_Capacity => 6) with Ghost;
       procedure Query (Label : Unsigned_32; Table_Index, A, B : Unsigned_64;
                        Expected : Outcome; Data : Response_Words := [others => 0]) is
          Prior : constant Revision_Number := Revision (Server);

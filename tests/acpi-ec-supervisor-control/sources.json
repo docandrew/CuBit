@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "inputs": [
+    {
+      "path": "userspace/services/acpi/native/acpi_ec_supervisor_control.ads",
+      "sha256": "f79872b836c8c3678ea08b0dae85141e7f8f7cb186210657b4c805976dec9a05"
+    },
+    {
+      "path": "userspace/services/acpi/native/acpi_ec_supervisor_control.adb",
+      "sha256": "441cc668792fd08e25d2b6ae075cc2d2823cab830c1d7095824c3bb26e4b4bf4"
+    },
+    {
+      "path": "userspace/services/acpi/ec/acpi_ec_event_types.ads",
+      "sha256": "d1e128f4c693e0ef3505ac1891974cd1789245ef7c5c0e6be6857b228317cdc5"
+    }
+  ],
+  "tests": [
+    {
+      "path": "control_tests.adb",
+      "sha256": "b5ae63ba4894e4bafedb6492c0e4b79f70dda1698607ddd406b57ff26d62b9fc"
+    }
+  ]
+}

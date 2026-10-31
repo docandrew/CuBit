@@ -1,0 +1,171 @@
+{
+  "inputs": {
+    "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl": "1c6a21c90ff6f846e27a98dbb3106362c706f67db8ceca21ccd81ab76a7d9dcb",
+    "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec": "a161f8b3a0b94b4301c1d0f2ccca6c0f808d2998cd4c9e037a9d7b218c88dcfe",
+    "/home/doc/git/.acpi-proof-work/dynamic-load-reference-work/reference/dynamic-r1.asl": "74f1dc32883229d706d2e38a2563f8b5e595b2ad94cae1fceb70b230744cfee3",
+    "/home/doc/git/.acpi-proof-work/dynamic-load-reference-work/reference/dynamic-r1.aml": "4a0d82d3d304a630c4d6cfc72b367f5226469205e87b431be4f9aeb6c81f718e",
+    "/home/doc/git/.acpi-proof-work/dynamic-load-reference-work/reference/loader-r1.asl": "24c87ff442b708bddb750369bbb8481bd781704ec3567ffd9ace36962cc414df",
+    "/home/doc/git/.acpi-proof-work/dynamic-load-reference-work/reference/loader-r1.aml": "fc1607bec25da89d3ebb1abee8c70e8b99a7ce4f62b4d15f616d664bdce12cc4",
+    "/home/doc/git/.acpi-proof-work/dynamic-load-reference-work/reference/dynamic-r2.asl": "d28769d56245a8067b42b7301a3005ff3ab58c884c2bb695f0c2d4b3eace003e",
+    "/home/doc/git/.acpi-proof-work/dynamic-load-reference-work/reference/dynamic-r2.aml": "5b136655b4819494bfe1300319a25dbc7345750ab3f51161e01f266282813abd",
+    "/home/doc/git/.acpi-proof-work/dynamic-load-reference-work/reference/loader-r2.asl": "18f2318d9a132b8649c973703c0e47b9a3f1950bc9596d6c2513919dc9df5b07",
+    "/home/doc/git/.acpi-proof-work/dynamic-load-reference-work/reference/loader-r2.aml": "2fcc5b6786f47650bca754b808a5cf4b81bed5f5b94f22b53879953c3f71e173"
+  },
+  "commands": [
+    {
+      "label": "ssdt-r1",
+      "args": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-oa",
+        "-r",
+        "1",
+        "-p",
+        "/home/doc/git/.acpi-proof-work/dynamic-load-reference-work/reference/dynamic-r1",
+        "/home/doc/git/.acpi-proof-work/dynamic-load-reference-work/reference/dynamic-r1.asl"
+      ],
+      "status": 0,
+      "signal": null,
+      "error": null
+    },
+    {
+      "label": "dsdt-r1",
+      "args": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-oa",
+        "-r",
+        "1",
+        "-p",
+        "/home/doc/git/.acpi-proof-work/dynamic-load-reference-work/reference/loader-r1",
+        "/home/doc/git/.acpi-proof-work/dynamic-load-reference-work/reference/loader-r1.asl"
+      ],
+      "status": 0,
+      "signal": null,
+      "error": null
+    },
+    {
+      "label": "execute-r1",
+      "args": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-dr",
+        "-b",
+        "evaluate BCNT; evaluate LDTB; evaluate LTGT; evaluate TTYP; evaluate BCNT; evaluate DNUM; evaluate MUT8; evaluate DNUM; evaluate MISS; evaluate BCNT",
+        "/home/doc/git/.acpi-proof-work/dynamic-load-reference-work/reference/loader-r1.aml"
+      ],
+      "status": 0,
+      "signal": null,
+      "error": null
+    },
+    {
+      "label": "ssdt-r2",
+      "args": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-oa",
+        "-r",
+        "2",
+        "-p",
+        "/home/doc/git/.acpi-proof-work/dynamic-load-reference-work/reference/dynamic-r2",
+        "/home/doc/git/.acpi-proof-work/dynamic-load-reference-work/reference/dynamic-r2.asl"
+      ],
+      "status": 0,
+      "signal": null,
+      "error": null
+    },
+    {
+      "label": "dsdt-r2",
+      "args": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+        "-oa",
+        "-r",
+        "2",
+        "-p",
+        "/home/doc/git/.acpi-proof-work/dynamic-load-reference-work/reference/loader-r2",
+        "/home/doc/git/.acpi-proof-work/dynamic-load-reference-work/reference/loader-r2.asl"
+      ],
+      "status": 0,
+      "signal": null,
+      "error": null
+    },
+    {
+      "label": "execute-r2",
+      "args": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-dr",
+        "-b",
+        "evaluate BCNT; evaluate LDTB; evaluate LTGT; evaluate TTYP; evaluate BCNT; evaluate DNUM; evaluate MUT8; evaluate DNUM; evaluate MISS; evaluate BCNT",
+        "/home/doc/git/.acpi-proof-work/dynamic-load-reference-work/reference/loader-r2.aml"
+      ],
+      "status": 0,
+      "signal": null,
+      "error": null
+    }
+  ],
+  "rows": [
+    {
+      "revision": 1,
+      "image_bytes": 62,
+      "source_method_literal_offset": 61,
+      "integers": [
+        "0x0",
+        "0xffffffff",
+        "0xffffffff",
+        "0x1",
+        "0x1",
+        "0x2a",
+        "0x63",
+        "0x2a",
+        "0x0",
+        "0x1"
+      ],
+      "semantic_match": true,
+      "assertions": [
+        "module counter0before and1after load",
+        "load success equals nonzero target",
+        "ObjectType target is Integer",
+        "loaded method returns42",
+        "source method literal changes to99",
+        "loaded method still returns42",
+        "missing LoadTable returns0",
+        "module counter unchanged by missing LoadTable"
+      ],
+      "diagnostics": [
+        "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+      ]
+    },
+    {
+      "revision": 2,
+      "image_bytes": 62,
+      "source_method_literal_offset": 61,
+      "integers": [
+        "0x0",
+        "0xffffffffffffffff",
+        "0xffffffffffffffff",
+        "0x1",
+        "0x1",
+        "0x2a",
+        "0x63",
+        "0x2a",
+        "0x0",
+        "0x1"
+      ],
+      "semantic_match": true,
+      "assertions": [
+        "module counter0before and1after load",
+        "load success equals nonzero target",
+        "ObjectType target is Integer",
+        "loaded method returns42",
+        "source method literal changes to99",
+        "loaded method still returns42",
+        "missing LoadTable returns0",
+        "module counter unchanged by missing LoadTable"
+      ],
+      "diagnostics": [
+        "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+      ]
+    }
+  ],
+  "scope": "Normal ACPICA Boolean result,buffer copy lifetime,module effect and missing LoadTable only; no CuBit Load implementation,Unload behavior,malformed-input matrix or proof",
+  "new_proof": false,
+  "cubit_executed": false,
+  "native_executed": false,
+  "hardware_validated": false
+}

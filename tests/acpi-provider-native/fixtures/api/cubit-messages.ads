@@ -141,6 +141,10 @@ package CuBit.Messages is
    --  acpi.svc: the ACPI namespace service; its clients' endpoints carry
    --  ACPI_Protocol.Observer_Tag (shared/acpi).
    DRIVER_ACPI     : constant Unsigned_64 := 29;
+   --  wifi.svc (docs/wifi.md): Wi-Fi drivers attach to it
+   --  (CuBit.Wifi_Driver); its controllers call it (CuBit.Wifi_Control).
+   --  30 .. 32 are taken by roles declared with their protocols.
+   DRIVER_WIFI     : constant Unsigned_64 := 33;
 
    --  Scheduler latency classes. Values match kernel Process.LatencyClass.
    LATENCY_BACKGROUND  : constant Unsigned_64 := 0;

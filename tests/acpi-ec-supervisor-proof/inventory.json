@@ -1,0 +1,595 @@
+{
+  "source_sha256": {
+    "acpi_ec_supervisor_control.ads": "f79872b836c8c3678ea08b0dae85141e7f8f7cb186210657b4c805976dec9a05",
+    "acpi_ec_supervisor_control.adb": "441cc668792fd08e25d2b6ae075cc2d2823cab830c1d7095824c3bb26e4b4bf4",
+    "acpi_ec_event_types.ads": "d1e128f4c693e0ef3505ac1891974cd1789245ef7c5c0e6be6857b228317cdc5"
+  },
+  "entities": [
+    "ACPI_EC_Supervisor_Control",
+    "ACPI_EC_Supervisor_Control.Cleanup_Allowed",
+    "ACPI_EC_Supervisor_Control.Confirm",
+    "ACPI_EC_Supervisor_Control.Confirmation_Allowed",
+    "ACPI_EC_Supervisor_Control.Enter_Advance",
+    "ACPI_EC_Supervisor_Control.Enter_Cleanup",
+    "ACPI_EC_Supervisor_Control.Entry_Closed",
+    "ACPI_EC_Supervisor_Control.Finish_Advance",
+    "ACPI_EC_Supervisor_Control.Finish_Cleanup",
+    "ACPI_EC_Supervisor_Control.Notice_Valid",
+    "ACPI_EC_Supervisor_Control.Report_Complete",
+    "ACPI_EC_Supervisor_Control.Request_Stop",
+    "ACPI_EC_Supervisor_Control.Retain",
+    "ACPI_EC_Supervisor_Control.Retain_Allowed",
+    "ACPI_EC_Supervisor_Control.State",
+    "ACPI_EC_Supervisor_Control.Stop_Decision",
+    "ACPI_EC_Supervisor_Control.Valid",
+    "ACPI_EC_Supervisor_Control.View"
+  ],
+  "proof": [
+    "ACPI_EC_Supervisor_Control.Confirm:acpi_ec_supervisor_control.adb:25:42:VC_DISCRIMINANT_CHECK",
+    "ACPI_EC_Supervisor_Control.Confirm:acpi_ec_supervisor_control.ads:69:16:VC_POSTCONDITION",
+    "ACPI_EC_Supervisor_Control.Confirmation_Allowed:acpi_ec_supervisor_control.ads:64:35:VC_DISCRIMINANT_CHECK",
+    "ACPI_EC_Supervisor_Control.Enter_Advance:acpi_ec_supervisor_control.ads:32:16:VC_POSTCONDITION",
+    "ACPI_EC_Supervisor_Control.Enter_Cleanup:acpi_ec_supervisor_control.ads:75:16:VC_POSTCONDITION",
+    "ACPI_EC_Supervisor_Control.Finish_Advance:acpi_ec_supervisor_control.ads:38:16:VC_POSTCONDITION",
+    "ACPI_EC_Supervisor_Control.Finish_Cleanup:acpi_ec_supervisor_control.ads:81:16:VC_POSTCONDITION",
+    "ACPI_EC_Supervisor_Control.Request_Stop:acpi_ec_supervisor_control.ads:48:16:VC_POSTCONDITION",
+    "ACPI_EC_Supervisor_Control.Retain:acpi_ec_supervisor_control.adb:19:42:VC_DISCRIMINANT_CHECK",
+    "ACPI_EC_Supervisor_Control.Retain:acpi_ec_supervisor_control.ads:58:16:VC_POSTCONDITION",
+    "ACPI_EC_Supervisor_Control.State:acpi_ec_supervisor_control.ads:15:9:VC_DEFAULT_INITIAL_CONDITION",
+    "ACPI_EC_Supervisor_Control.Valid:acpi_ec_supervisor_control.ads:21:43:VC_DISCRIMINANT_CHECK"
+  ],
+  "flow": [
+    "ACPI_EC_Supervisor_Control.Cleanup_Allowed:acpi_ec_supervisor_control.ads:28:13:SUBPROGRAM_TERMINATION",
+    "ACPI_EC_Supervisor_Control.Cleanup_Allowed:acpi_ec_supervisor_control.ads:29:47:GLOBAL_WRONG",
+    "ACPI_EC_Supervisor_Control.Confirm:acpi_ec_supervisor_control.ads:67:14:SUBPROGRAM_TERMINATION",
+    "ACPI_EC_Supervisor_Control.Confirm:acpi_ec_supervisor_control.ads:67:65:UNINITIALIZED",
+    "ACPI_EC_Supervisor_Control.Confirm:acpi_ec_supervisor_control.ads:68:11:GLOBAL_WRONG",
+    "ACPI_EC_Supervisor_Control.Confirmation_Allowed:acpi_ec_supervisor_control.ads:62:13:SUBPROGRAM_TERMINATION",
+    "ACPI_EC_Supervisor_Control.Confirmation_Allowed:acpi_ec_supervisor_control.ads:64:58:GLOBAL_WRONG",
+    "ACPI_EC_Supervisor_Control.Enter_Advance:acpi_ec_supervisor_control.ads:30:14:SUBPROGRAM_TERMINATION",
+    "ACPI_EC_Supervisor_Control.Enter_Advance:acpi_ec_supervisor_control.ads:30:50:UNINITIALIZED",
+    "ACPI_EC_Supervisor_Control.Enter_Advance:acpi_ec_supervisor_control.ads:31:11:GLOBAL_WRONG",
+    "ACPI_EC_Supervisor_Control.Enter_Cleanup:acpi_ec_supervisor_control.ads:73:14:SUBPROGRAM_TERMINATION",
+    "ACPI_EC_Supervisor_Control.Enter_Cleanup:acpi_ec_supervisor_control.ads:73:50:UNINITIALIZED",
+    "ACPI_EC_Supervisor_Control.Enter_Cleanup:acpi_ec_supervisor_control.ads:74:11:GLOBAL_WRONG",
+    "ACPI_EC_Supervisor_Control.Entry_Closed:acpi_ec_supervisor_control.ads:24:13:SUBPROGRAM_TERMINATION",
+    "ACPI_EC_Supervisor_Control.Entry_Closed:acpi_ec_supervisor_control.ads:25:78:GLOBAL_WRONG",
+    "ACPI_EC_Supervisor_Control.Finish_Advance:acpi_ec_supervisor_control.ads:35:14:SUBPROGRAM_TERMINATION",
+    "ACPI_EC_Supervisor_Control.Finish_Advance:acpi_ec_supervisor_control.ads:36:11:GLOBAL_WRONG",
+    "ACPI_EC_Supervisor_Control.Finish_Cleanup:acpi_ec_supervisor_control.ads:78:14:SUBPROGRAM_TERMINATION",
+    "ACPI_EC_Supervisor_Control.Finish_Cleanup:acpi_ec_supervisor_control.ads:79:11:GLOBAL_WRONG",
+    "ACPI_EC_Supervisor_Control.Notice_Valid:acpi_ec_supervisor_control.ads:17:13:SUBPROGRAM_TERMINATION",
+    "ACPI_EC_Supervisor_Control.Notice_Valid:acpi_ec_supervisor_control.ads:18:87:GLOBAL_WRONG",
+    "ACPI_EC_Supervisor_Control.Report_Complete:acpi_ec_supervisor_control.ads:26:13:SUBPROGRAM_TERMINATION",
+    "ACPI_EC_Supervisor_Control.Report_Complete:acpi_ec_supervisor_control.ads:27:56:GLOBAL_WRONG",
+    "ACPI_EC_Supervisor_Control.Request_Stop:acpi_ec_supervisor_control.ads:46:14:SUBPROGRAM_TERMINATION",
+    "ACPI_EC_Supervisor_Control.Request_Stop:acpi_ec_supervisor_control.ads:46:49:UNINITIALIZED",
+    "ACPI_EC_Supervisor_Control.Request_Stop:acpi_ec_supervisor_control.ads:47:11:GLOBAL_WRONG",
+    "ACPI_EC_Supervisor_Control.Retain:acpi_ec_supervisor_control.ads:55:14:SUBPROGRAM_TERMINATION",
+    "ACPI_EC_Supervisor_Control.Retain:acpi_ec_supervisor_control.ads:56:7:UNINITIALIZED",
+    "ACPI_EC_Supervisor_Control.Retain:acpi_ec_supervisor_control.ads:57:11:GLOBAL_WRONG",
+    "ACPI_EC_Supervisor_Control.Retain_Allowed:acpi_ec_supervisor_control.ads:52:13:SUBPROGRAM_TERMINATION",
+    "ACPI_EC_Supervisor_Control.Retain_Allowed:acpi_ec_supervisor_control.ads:54:70:GLOBAL_WRONG",
+    "ACPI_EC_Supervisor_Control.Stop_Decision:acpi_ec_supervisor_control.ads:41:13:SUBPROGRAM_TERMINATION",
+    "ACPI_EC_Supervisor_Control.Stop_Decision:acpi_ec_supervisor_control.ads:45:67:GLOBAL_WRONG",
+    "ACPI_EC_Supervisor_Control.Valid:acpi_ec_supervisor_control.ads:19:13:SUBPROGRAM_TERMINATION",
+    "ACPI_EC_Supervisor_Control.Valid:acpi_ec_supervisor_control.ads:23:90:GLOBAL_WRONG",
+    "ACPI_EC_Supervisor_Control.View:acpi_ec_supervisor_control.ads:16:13:SUBPROGRAM_TERMINATION",
+    "ACPI_EC_Supervisor_Control.View:acpi_ec_supervisor_control.ads:16:54:GLOBAL_WRONG"
+  ],
+  "proof_shapes": [
+    {
+      "signature": "ACPI_EC_Supervisor_Control.Confirm:acpi_ec_supervisor_control.adb:25:42:VC_DISCRIMINANT_CHECK",
+      "leaves": [
+        [
+          "Trivial"
+        ],
+        [
+          "CVC5"
+        ]
+      ]
+    },
+    {
+      "signature": "ACPI_EC_Supervisor_Control.Confirm:acpi_ec_supervisor_control.ads:69:16:VC_POSTCONDITION",
+      "leaves": [
+        [
+          "CVC5"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "Trivial"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "CVC5"
+        ]
+      ]
+    },
+    {
+      "signature": "ACPI_EC_Supervisor_Control.Confirmation_Allowed:acpi_ec_supervisor_control.ads:64:35:VC_DISCRIMINANT_CHECK",
+      "leaves": [
+        [
+          "CVC5"
+        ]
+      ]
+    },
+    {
+      "signature": "ACPI_EC_Supervisor_Control.Enter_Advance:acpi_ec_supervisor_control.ads:32:16:VC_POSTCONDITION",
+      "leaves": [
+        [
+          "CVC5"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "Trivial"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "CVC5"
+        ]
+      ]
+    },
+    {
+      "signature": "ACPI_EC_Supervisor_Control.Enter_Cleanup:acpi_ec_supervisor_control.ads:75:16:VC_POSTCONDITION",
+      "leaves": [
+        [
+          "CVC5"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "Trivial"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "CVC5"
+        ]
+      ]
+    },
+    {
+      "signature": "ACPI_EC_Supervisor_Control.Finish_Advance:acpi_ec_supervisor_control.ads:38:16:VC_POSTCONDITION",
+      "leaves": [
+        [
+          "CVC5"
+        ],
+        [
+          "Trivial"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "CVC5"
+        ]
+      ]
+    },
+    {
+      "signature": "ACPI_EC_Supervisor_Control.Finish_Cleanup:acpi_ec_supervisor_control.ads:81:16:VC_POSTCONDITION",
+      "leaves": [
+        [
+          "CVC5"
+        ],
+        [
+          "Trivial"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "CVC5"
+        ]
+      ]
+    },
+    {
+      "signature": "ACPI_EC_Supervisor_Control.Request_Stop:acpi_ec_supervisor_control.ads:48:16:VC_POSTCONDITION",
+      "leaves": [
+        [
+          "CVC5"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "Trivial"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "CVC5"
+        ]
+      ]
+    },
+    {
+      "signature": "ACPI_EC_Supervisor_Control.Retain:acpi_ec_supervisor_control.adb:19:42:VC_DISCRIMINANT_CHECK",
+      "leaves": [
+        [
+          "Trivial"
+        ],
+        [
+          "CVC5"
+        ]
+      ]
+    },
+    {
+      "signature": "ACPI_EC_Supervisor_Control.Retain:acpi_ec_supervisor_control.ads:58:16:VC_POSTCONDITION",
+      "leaves": [
+        [
+          "CVC5"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "Trivial"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "CVC5"
+        ]
+      ]
+    },
+    {
+      "signature": "ACPI_EC_Supervisor_Control.State:acpi_ec_supervisor_control.ads:15:9:VC_DEFAULT_INITIAL_CONDITION",
+      "leaves": [
+        [
+          "Trivial"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "CVC5"
+        ]
+      ]
+    },
+    {
+      "signature": "ACPI_EC_Supervisor_Control.Valid:acpi_ec_supervisor_control.ads:21:43:VC_DISCRIMINANT_CHECK",
+      "leaves": [
+        [
+          "CVC5"
+        ]
+      ]
+    }
+  ],
+  "claims": [
+    {
+      "claim": "ACPI_EC_Supervisor_Control:CLAIM_AORTE",
+      "dependencies": []
+    },
+    {
+      "claim": "ACPI_EC_Supervisor_Control.Cleanup_Allowed:CLAIM_AORTE",
+      "dependencies": [
+        "ACPI_EC_Supervisor_Control.View:CLAIM_AORTE",
+        "ACPI_EC_Supervisor_Control.View:CLAIM_EFFECTS"
+      ]
+    },
+    {
+      "claim": "ACPI_EC_Supervisor_Control.Confirm:CLAIM_AORTE",
+      "dependencies": [
+        "ACPI_EC_Supervisor_Control.Confirmation_Allowed:CLAIM_AORTE",
+        "ACPI_EC_Supervisor_Control.Confirmation_Allowed:CLAIM_EFFECTS",
+        "ACPI_EC_Supervisor_Control.Valid:CLAIM_AORTE",
+        "ACPI_EC_Supervisor_Control.Valid:CLAIM_EFFECTS",
+        "ACPI_EC_Supervisor_Control.View:CLAIM_AORTE",
+        "ACPI_EC_Supervisor_Control.View:CLAIM_EFFECTS"
+      ]
+    },
+    {
+      "claim": "ACPI_EC_Supervisor_Control.Confirm:CLAIM_POST",
+      "dependencies": [
+        "ACPI_EC_Supervisor_Control.Confirmation_Allowed:CLAIM_AORTE",
+        "ACPI_EC_Supervisor_Control.Confirmation_Allowed:CLAIM_EFFECTS",
+        "ACPI_EC_Supervisor_Control.Valid:CLAIM_AORTE",
+        "ACPI_EC_Supervisor_Control.Valid:CLAIM_EFFECTS",
+        "ACPI_EC_Supervisor_Control.View:CLAIM_AORTE",
+        "ACPI_EC_Supervisor_Control.View:CLAIM_EFFECTS"
+      ]
+    },
+    {
+      "claim": "ACPI_EC_Supervisor_Control.Confirmation_Allowed:CLAIM_AORTE",
+      "dependencies": [
+        "ACPI_EC_Supervisor_Control.View:CLAIM_AORTE",
+        "ACPI_EC_Supervisor_Control.View:CLAIM_EFFECTS"
+      ]
+    },
+    {
+      "claim": "ACPI_EC_Supervisor_Control.Enter_Advance:CLAIM_AORTE",
+      "dependencies": [
+        "ACPI_EC_Supervisor_Control.Valid:CLAIM_AORTE",
+        "ACPI_EC_Supervisor_Control.Valid:CLAIM_EFFECTS",
+        "ACPI_EC_Supervisor_Control.View:CLAIM_AORTE",
+        "ACPI_EC_Supervisor_Control.View:CLAIM_EFFECTS"
+      ]
+    },
+    {
+      "claim": "ACPI_EC_Supervisor_Control.Enter_Advance:CLAIM_POST",
+      "dependencies": [
+        "ACPI_EC_Supervisor_Control.Valid:CLAIM_AORTE",
+        "ACPI_EC_Supervisor_Control.Valid:CLAIM_EFFECTS",
+        "ACPI_EC_Supervisor_Control.View:CLAIM_AORTE",
+        "ACPI_EC_Supervisor_Control.View:CLAIM_EFFECTS"
+      ]
+    },
+    {
+      "claim": "ACPI_EC_Supervisor_Control.Enter_Cleanup:CLAIM_AORTE",
+      "dependencies": [
+        "ACPI_EC_Supervisor_Control.Cleanup_Allowed:CLAIM_AORTE",
+        "ACPI_EC_Supervisor_Control.Cleanup_Allowed:CLAIM_EFFECTS",
+        "ACPI_EC_Supervisor_Control.Valid:CLAIM_AORTE",
+        "ACPI_EC_Supervisor_Control.Valid:CLAIM_EFFECTS",
+        "ACPI_EC_Supervisor_Control.View:CLAIM_AORTE",
+        "ACPI_EC_Supervisor_Control.View:CLAIM_EFFECTS"
+      ]
+    },
+    {
+      "claim": "ACPI_EC_Supervisor_Control.Enter_Cleanup:CLAIM_POST",
+      "dependencies": [
+        "ACPI_EC_Supervisor_Control.Cleanup_Allowed:CLAIM_AORTE",
+        "ACPI_EC_Supervisor_Control.Cleanup_Allowed:CLAIM_EFFECTS",
+        "ACPI_EC_Supervisor_Control.Valid:CLAIM_AORTE",
+        "ACPI_EC_Supervisor_Control.Valid:CLAIM_EFFECTS",
+        "ACPI_EC_Supervisor_Control.View:CLAIM_AORTE",
+        "ACPI_EC_Supervisor_Control.View:CLAIM_EFFECTS"
+      ]
+    },
+    {
+      "claim": "ACPI_EC_Supervisor_Control.Entry_Closed:CLAIM_AORTE",
+      "dependencies": [
+        "ACPI_EC_Supervisor_Control.View:CLAIM_AORTE",
+        "ACPI_EC_Supervisor_Control.View:CLAIM_EFFECTS"
+      ]
+    },
+    {
+      "claim": "ACPI_EC_Supervisor_Control.Finish_Advance:CLAIM_AORTE",
+      "dependencies": [
+        "ACPI_EC_Supervisor_Control.Valid:CLAIM_AORTE",
+        "ACPI_EC_Supervisor_Control.Valid:CLAIM_EFFECTS",
+        "ACPI_EC_Supervisor_Control.View:CLAIM_AORTE",
+        "ACPI_EC_Supervisor_Control.View:CLAIM_EFFECTS"
+      ]
+    },
+    {
+      "claim": "ACPI_EC_Supervisor_Control.Finish_Advance:CLAIM_POST",
+      "dependencies": [
+        "ACPI_EC_Supervisor_Control.Valid:CLAIM_AORTE",
+        "ACPI_EC_Supervisor_Control.Valid:CLAIM_EFFECTS",
+        "ACPI_EC_Supervisor_Control.View:CLAIM_AORTE",
+        "ACPI_EC_Supervisor_Control.View:CLAIM_EFFECTS"
+      ]
+    },
+    {
+      "claim": "ACPI_EC_Supervisor_Control.Finish_Cleanup:CLAIM_AORTE",
+      "dependencies": [
+        "ACPI_EC_Supervisor_Control.Valid:CLAIM_AORTE",
+        "ACPI_EC_Supervisor_Control.Valid:CLAIM_EFFECTS",
+        "ACPI_EC_Supervisor_Control.View:CLAIM_AORTE",
+        "ACPI_EC_Supervisor_Control.View:CLAIM_EFFECTS"
+      ]
+    },
+    {
+      "claim": "ACPI_EC_Supervisor_Control.Finish_Cleanup:CLAIM_POST",
+      "dependencies": [
+        "ACPI_EC_Supervisor_Control.Valid:CLAIM_AORTE",
+        "ACPI_EC_Supervisor_Control.Valid:CLAIM_EFFECTS",
+        "ACPI_EC_Supervisor_Control.View:CLAIM_AORTE",
+        "ACPI_EC_Supervisor_Control.View:CLAIM_EFFECTS"
+      ]
+    },
+    {
+      "claim": "ACPI_EC_Supervisor_Control.Notice_Valid:CLAIM_AORTE",
+      "dependencies": []
+    },
+    {
+      "claim": "ACPI_EC_Supervisor_Control.Report_Complete:CLAIM_AORTE",
+      "dependencies": [
+        "ACPI_EC_Supervisor_Control.View:CLAIM_AORTE",
+        "ACPI_EC_Supervisor_Control.View:CLAIM_EFFECTS"
+      ]
+    },
+    {
+      "claim": "ACPI_EC_Supervisor_Control.Request_Stop:CLAIM_AORTE",
+      "dependencies": [
+        "ACPI_EC_Supervisor_Control.Stop_Decision:CLAIM_AORTE",
+        "ACPI_EC_Supervisor_Control.Stop_Decision:CLAIM_EFFECTS",
+        "ACPI_EC_Supervisor_Control.Valid:CLAIM_AORTE",
+        "ACPI_EC_Supervisor_Control.Valid:CLAIM_EFFECTS",
+        "ACPI_EC_Supervisor_Control.View:CLAIM_AORTE",
+        "ACPI_EC_Supervisor_Control.View:CLAIM_EFFECTS"
+      ]
+    },
+    {
+      "claim": "ACPI_EC_Supervisor_Control.Request_Stop:CLAIM_POST",
+      "dependencies": [
+        "ACPI_EC_Supervisor_Control.Stop_Decision:CLAIM_AORTE",
+        "ACPI_EC_Supervisor_Control.Stop_Decision:CLAIM_EFFECTS",
+        "ACPI_EC_Supervisor_Control.Valid:CLAIM_AORTE",
+        "ACPI_EC_Supervisor_Control.Valid:CLAIM_EFFECTS",
+        "ACPI_EC_Supervisor_Control.View:CLAIM_AORTE",
+        "ACPI_EC_Supervisor_Control.View:CLAIM_EFFECTS"
+      ]
+    },
+    {
+      "claim": "ACPI_EC_Supervisor_Control.Retain_Allowed:CLAIM_AORTE",
+      "dependencies": [
+        "ACPI_EC_Supervisor_Control.Notice_Valid:CLAIM_AORTE",
+        "ACPI_EC_Supervisor_Control.Notice_Valid:CLAIM_EFFECTS",
+        "ACPI_EC_Supervisor_Control.View:CLAIM_AORTE",
+        "ACPI_EC_Supervisor_Control.View:CLAIM_EFFECTS"
+      ]
+    },
+    {
+      "claim": "ACPI_EC_Supervisor_Control.Retain:CLAIM_AORTE",
+      "dependencies": [
+        "ACPI_EC_Supervisor_Control.Retain_Allowed:CLAIM_AORTE",
+        "ACPI_EC_Supervisor_Control.Retain_Allowed:CLAIM_EFFECTS",
+        "ACPI_EC_Supervisor_Control.Valid:CLAIM_AORTE",
+        "ACPI_EC_Supervisor_Control.Valid:CLAIM_EFFECTS",
+        "ACPI_EC_Supervisor_Control.View:CLAIM_AORTE",
+        "ACPI_EC_Supervisor_Control.View:CLAIM_EFFECTS"
+      ]
+    },
+    {
+      "claim": "ACPI_EC_Supervisor_Control.Retain:CLAIM_POST",
+      "dependencies": [
+        "ACPI_EC_Supervisor_Control.Retain_Allowed:CLAIM_AORTE",
+        "ACPI_EC_Supervisor_Control.Retain_Allowed:CLAIM_EFFECTS",
+        "ACPI_EC_Supervisor_Control.Valid:CLAIM_AORTE",
+        "ACPI_EC_Supervisor_Control.Valid:CLAIM_EFFECTS",
+        "ACPI_EC_Supervisor_Control.View:CLAIM_AORTE",
+        "ACPI_EC_Supervisor_Control.View:CLAIM_EFFECTS"
+      ]
+    },
+    {
+      "claim": "ACPI_EC_Supervisor_Control.State:CLAIM_AORTE",
+      "dependencies": []
+    },
+    {
+      "claim": "ACPI_EC_Supervisor_Control.Stop_Decision:CLAIM_AORTE",
+      "dependencies": [
+        "ACPI_EC_Supervisor_Control.View:CLAIM_AORTE",
+        "ACPI_EC_Supervisor_Control.View:CLAIM_EFFECTS"
+      ]
+    },
+    {
+      "claim": "ACPI_EC_Supervisor_Control.Valid:CLAIM_AORTE",
+      "dependencies": [
+        "ACPI_EC_Supervisor_Control.Notice_Valid:CLAIM_AORTE",
+        "ACPI_EC_Supervisor_Control.Notice_Valid:CLAIM_EFFECTS",
+        "ACPI_EC_Supervisor_Control.View:CLAIM_AORTE",
+        "ACPI_EC_Supervisor_Control.View:CLAIM_EFFECTS"
+      ]
+    },
+    {
+      "claim": "ACPI_EC_Supervisor_Control.View:CLAIM_AORTE",
+      "dependencies": []
+    }
+  ]
+}

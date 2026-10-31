@@ -40,3 +40,18 @@ exact runtime declarations for the concrete native binding. The separate gate
 in tests/acpi-client-proof proves client transition contracts and selected
 provider runtime safety at default capacities. Complete provider functional
 history/admission and native QEMU/hardware acceptance remain unfinished.
+
+
+## EmbeddedControl Fields
+
+The common provider accepts bounded EmbeddedControl geometry (space3) using
+byte-width named descriptors. The declared region must fit entirely in logical
+EC cells0..255; ordinary Fields require explicit ByteAcc and NoLock. Memory/IO
+behavior is unchanged. Each datum still requires its own independently admitted
+named register; no EC cell number or hardware address is added to wire requests.
+
+The hosted tests/acpi-ec-fields suite joins actual AML/Field/provider code to
+the deferred EC endpoint,catalog and transaction engine. Hardware,clock,protocol
+ownership and authenticated transport metadata are modeled. Whole-Field Lock,
+native admission,reservation/GlobalLock,startup and interrupts remain pending.
+Selected layout/plan proofs do not prove this provider or the whole interpreter.

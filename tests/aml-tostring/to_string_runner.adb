@@ -11,7 +11,7 @@ procedure To_String_Runner is
    use type AML_Execute.Execution_Status;
    package IO renames Ada.Streams.Stream_IO;
    File : IO.File_Type;
-   Service : aliased State (Max_Tables, Max_Total_Bytes, Max_Table_Bytes);
+   Service : aliased State (Max_Tables, Max_Total_Bytes, Max_Table_Bytes, Load_Capacity => Max_Tables);
    Held : ACPI_Test_Results.Holder;
    Status : Install_Status;
    Result : Values.Result;

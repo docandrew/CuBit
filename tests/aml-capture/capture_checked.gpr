@@ -1,6 +1,6 @@
 project capture_checked is
  Build_Root := external ("CAPTURE_BUILD", "build-capture_checked");
- for Source_Dirs use ("../../shared/firmware", "../aml-format-bcd", "../aml-match-routing", "../aml-scalar-operators", "../aml-scalar-owned-gc", "../aml-scalar-transport", "../aml-staged-field-routing", "../../userspace/services/acpi/lib");
+ for Source_Dirs use ("../../shared/firmware", "../aml-format-bcd", "../aml-match-routing", "../aml-scalar-operators", "../aml-scalar-owned-gc", "../aml-scalar-transport", "../aml-staged-field-routing", "../../userspace/services/acpi/lib", "../../userspace/services/acpi/resource-consumer");
  for Object_Dir use Build_Root & "/obj";
  for Exec_Dir use Build_Root & "/bin";
  for Main use ("numeric_source_timing_tests.adb", "numeric_cleanup_tests.adb", "divide_target_timing_tests.adb", "format_bcd_tests.adb", "mid_tostring_timing_tests.adb", "concat_source_timing_tests.adb", "named_source_timing_tests.adb", "reference_source_timing_tests.adb", "scalar_transport_tests.adb", "scalar_operator_tests.adb", "owned_gc_tests.adb", "match_tests.adb", "staged_field_tests.adb", "resource_buffer_timing_tests.adb", "resource_conversion_tests.adb");

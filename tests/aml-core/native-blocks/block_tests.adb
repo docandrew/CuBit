@@ -16,12 +16,12 @@ procedure Block_Tests is
    Small_Table_Limit : constant := 65_536;
    subtype Scenario_Index is Positive range 1 .. 8;
    type Scenario_States is array (Scenario_Index) of aliased
-     ACPI_Requests.State (2, Small_Table_Limit, Small_Table_Limit, 0);
+     ACPI_Requests.State (2, Small_Table_Limit, Small_Table_Limit, 2, 0);
    Instances : Scenario_States;
    Next_Instance : Scenario_Index := Scenario_Index'First;
-   Exhausted : aliased ACPI_Requests.State (2, Small_Table_Limit, Small_Table_Limit, Max_Revision);
+   Exhausted : aliased ACPI_Requests.State (2, Small_Table_Limit, Small_Table_Limit, 2, Max_Revision);
    Server : access ACPI_Requests.State := Instances (Next_Instance)'Access;
-   Before : ACPI_Requests.State_Model (2, Small_Table_Limit, Small_Table_Limit) with Ghost;
+   Before : ACPI_Requests.State_Model (2, Small_Table_Limit, Small_Table_Limit, 2) with Ghost;
    procedure Fresh_Instance is
    begin
       Next_Instance := Next_Instance + 1;
@@ -231,7 +231,7 @@ begin
    declare
       Length : constant := 1_048_577;
       Total : constant := Length + 34 * 36;
-      Large : ACPI_Requests.State (35, Total, Length, 0);
+      Large : ACPI_Requests.State (35, Total, Length, 35, 0);
       Loan : ACPI_Native_Blocks.State;
       Base : constant Unsigned_64 := 2 ** 32;
       function Make_Table (Signature : String; Size : Positive) return Firmware_Tables.Bytes is
@@ -312,7 +312,7 @@ begin
    -- Execution occurs after admission from owned bytes, including while a grant
    -- return is pending; no new acquisition or provider memory read at Finish.
    declare
-      Owned_Server : ACPI_Requests.State (1, 128, 128, 0);
+      Owned_Server : ACPI_Requests.State (1, 128, 128, 1, 0);
       Loan : ACPI_Native_Blocks.State;
       Code : aliased Firmware_Tables.Bytes (1 .. 42) := [others => 0];
       Sum : Firmware_Tables.Byte := 0;

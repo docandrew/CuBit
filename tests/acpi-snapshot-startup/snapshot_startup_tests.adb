@@ -3,8 +3,11 @@ with Ada.Text_IO; use Ada.Text_IO;
 with Ada.Unchecked_Deallocation;
 with Interfaces;
 with ACPI_Requests;
+with ACPI_Bootstrap;
 with ACPI_Snapshot_Startup;
 with ACPI_Snapshot_Reader;
+with ACPI_Startup_Diagnostics;
+with Ada.Strings.Fixed;
 procedure Snapshot_Startup_Tests is
    package L renames ACPI_Snapshot_Startup;
    package R renames ACPI_Snapshot_Reader;
@@ -114,6 +117,14 @@ begin
    Check (Owner.Table_Capacity = 2, "exact inventory capacity");
    Check (ACPI_Requests.Current (Owner.all) = ACPI_Requests.Complete, "actual Core startup completes");
    Check (ACPI_Requests.Observe (Owner.all).Tables = 2, "both tables retained");
+   declare
+      Before : constant ACPI_Requests.Revision_Number := ACPI_Requests.Revision (Owner.all);
+      Device : constant ACPI_Bootstrap.Device_Report := ACPI_Requests.Device_Completion (Owner.all);
+   begin
+      Check (ACPI_Startup_Diagnostics.Device_Initialization_Completed (Device), "actual device initialization completed");
+      Check (Device.Regions_Attempted, "actual region barrier observed");
+      Check (ACPI_Requests.Revision (Owner.all) = Before, "copied device outcome preserves revision");
+   end;
    Check (Copies = 18 and Describe_Calls = 2, "bounded copies no metadata retries");
    Successful_Clock_Calls := Clock_Calls;
    Free (Owner);
@@ -161,6 +172,11 @@ begin
    -- A valid checksum with malformed AML must never become a serving owner.
    Reset; DSDT (DSDT'Last) := 16#FE#; DSDT (10) := DSDT (10) - (16#FE# - 16#A3#);
    Refusal (L.Startup_Refused);
+   Check (Result.Completion.Execution.Failed_Table_ID = 1,
+     "AML failure identifies DSDT rather than last copied OEM table");
+   Check (Ada.Strings.Fixed.Index
+     (ACPI_Startup_Diagnostics.Format (Result.Completion), "table= 1") > 0,
+     "copied failure diagnostic survives candidate cleanup");
    for Position in 1 .. Successful_Clock_Calls loop
       Reset; Clock_Failure_At := Position;
       Load (100, Owner, Result);

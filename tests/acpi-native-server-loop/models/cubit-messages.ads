@@ -35,7 +35,9 @@ package CuBit.Messages is
    type Activity_Result is (Work_Available, Deadline_Reached, Unavailable);
    type CompletionEntry is record Occupied : Boolean := False; end record;
    function Wait_For_Activity_Until (Deadline : Unsigned_64) return Activity_Result;
+   function Poll_Event (msg : out Message; publisher : out Process_ID) return Boolean;
    function Poll_Completion (result : System.Address) return Unsigned_64;
+   procedure Poll_Service_Request (from : out Process_ID; msg : out Message; found : out Boolean);
    procedure Poll_Any_Ipc (from : out Process_ID; msg : out Message; found : out Boolean);
    function syscall (call : Unsigned_64; arg0 : Unsigned_64 := 0; arg1 : Unsigned_64 := 0;
       arg2 : Unsigned_64 := 0; arg3 : Unsigned_64 := 0; arg4 : Unsigned_64 := 0; arg5 : Unsigned_64 := 0) return Unsigned_64;
@@ -49,7 +51,11 @@ package CuBit.Messages is
       Queue, Replies : Message_Log := [others => NULL_MESSAGE];
       Senders, Reply_To : Process_Log := [others => No_Process];
       Deadlines : Deadline_Log := [others => 0];
+      Events : Message_Log := [others => NULL_MESSAGE];
+      Publishers : Process_Log := [others => No_Process];
+      Events_Queued, Events_Taken, Event_Polls, First_IPC_Event_Count : Natural := 0;
       Queued, Taken, Reply_Count, Wait_Count, Clock_Count, Poll_Count, Completion_Count : Natural := 0;
+      Mixed_Polls : Natural := 0;
       Now : Unsigned_64 := 10;
       Completion : Unsigned_64 := 0;
       Reply_Result : Unsigned_64 := 1;
@@ -62,4 +68,5 @@ package CuBit.Messages is
    Test : Test_State;
    procedure Reset;
    procedure Enqueue (From : Process_ID; Item : Message);
+   procedure Enqueue_Event (Publisher : Process_ID; Item : Message);
 end CuBit.Messages;

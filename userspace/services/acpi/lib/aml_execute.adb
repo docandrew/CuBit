@@ -16,6 +16,7 @@ package body AML_Execute with SPARK_Mode is
    Notify_Op : constant Byte := 16#86#;
    BreakPoint_Op : constant Byte := 16#CC#;
    Copy_Object_Op : constant Byte := 16#9D#;
+   Divide_Op : constant Byte := 16#78#;
    To_Integer_Op : constant Byte := 16#99#;
    Concatenate_Resources_Op : constant Byte := 16#84#;
    Match_Op : constant Byte := 16#89#;
@@ -46,13 +47,19 @@ package body AML_Execute with SPARK_Mode is
       Source : aliased AML_Byte_Sources.Storage; Source_First : Natural;
       Calls_Left : Call_Budget := 32; Current_Sync : Sync_Level := 0;
       Request : AML_Declaration_Contexts.Request := AML_Declaration_Contexts.Method_Request;
-      Implementation : Method_Implementation := AML_Implementation)
+      Implementation : Method_Implementation := AML_Implementation;
+      Initial_Effects : Module_Effects_Policy := Restrict_Module_Effects)
    is
+      Load_Table_Extension : constant AML_Decode.Byte := 16#1F#;
+      Load_Source_Extension : constant AML_Decode.Byte := 16#20#;
       Pending_Fatal : AML_Fatal.Observation;
-      -- Invocation-local copied data, shared by recursive Run calls; no host effect.
-      -- Loading policy belongs to the entire invocation, including real nested
-      -- methods; declaration lifetime still follows each Run's own Intent.
-      Loading_Effects_Restricted : constant Boolean := AML_Declaration_Contexts.Is_Module (Request);
+      -- Recursive Run calls share policy and preserve suspended caller roots.
+      -- Bootstrap restrictions are independent of module declaration lifetime.
+      -- Descendants inherit any active restriction; future runtime loads may
+      -- use admitted effects without escaping a restricted startup ancestor.
+      subtype Module_Depth is Natural range 0 .. AML_Frame_Handles.Max_Active_Frames;
+      Restricted_Modules : Module_Depth := 0;
+      function Loading_Effects_Restricted return Boolean is (Restricted_Modules /= 0);
       Frame_Cell_Count : constant Positive := AML_Frame_Handles.Cell_ID'Pos
         (AML_Frame_Handles.Cell_ID'Last) + 1;
       Incoming_Argument_Slots : constant Positive := Value_Arguments'Length;
@@ -252,11 +259,13 @@ package body AML_Execute with SPARK_Mode is
          Caller_Frame : AML_Frame_Handles.Frame_Handle;
          Intent : AML_Declaration_Contexts.Request;
          Body_Implementation : Method_Implementation;
-         Sources : Argument_Locations; Returned_Location : out Scalar_Location)
+         Sources : Argument_Locations; Returned_Location : out Scalar_Location;
+         Effects : Module_Effects_Policy := Use_Owner_Providers)
         with Pre => Context_Valid (Environment) and then Frames.Valid (Registry)
           and then Argument_Count <= 7 and then not Result_Out'Constrained,
           Post => Context_Valid (Environment) and then Frames.Valid (Registry)
-            and then Result_Out.Charged <= Budget,
+            and then Result_Out.Charged <= Budget
+            and then Restricted_Modules = Restricted_Modules'Old,
           Always_Terminates,
           Subprogram_Variant => (Decreases => Calls_Left, Decreases => Natural'(4))
       is
@@ -273,6 +282,7 @@ package body AML_Execute with SPARK_Mode is
       Serialized_Entered : Boolean := False;
       Entry_Status : Execution_Status := Returned;
       Module_Root : constant Boolean := AML_Declaration_Contexts.Is_Module (Intent);
+      Restrict_Module : constant Boolean := Module_Root and then Effects = Restrict_Module_Effects;
       Active_Lease : AML_Declaration_Contexts.Lease := AML_Declaration_Contexts.No_Lease;
       use type AML_Declaration_Contexts.Region_Reservation;
       Current_Lexical_Scope : Natural := Scope;
@@ -295,6 +305,8 @@ package body AML_Execute with SPARK_Mode is
              Subprogram_Variant => (Decreases => Calls_Left, Decreases => Natural'(3))
       is
       subtype Failure_Status is Execution_Failure;
+      type Resume_Point is (No_Resume_Point, Complete_Divide_Statement);
+      Failed_Statement : Resume_Point := No_Resume_Point;
       function Failure (Status : Execution_Status; Charged : Natural)
          return Execution_Result is
          Safe_Status : constant Payload_Free_Failure :=
@@ -878,6 +890,8 @@ package body AML_Execute with SPARK_Mode is
             Right_Slot : Slot_Number := 0;
             Right_Location : Scalar_Location := 0;
             Is_Call : Boolean := False;
+            Is_Load_Table : Boolean := False;
+            Is_Load_Source : Boolean := False;
             Method_ID : Natural := 0;
             Parameters : Natural range 0 .. 7 := 0;
             Given : Natural range 0 .. 7 := 0;
@@ -887,6 +901,37 @@ package body AML_Execute with SPARK_Mode is
          end record;
          Stack : array (Positive range 1 .. Max_Expression_Depth) of Frame;
          Depth : Natural range 0 .. Max_Expression_Depth := 0;
+         procedure Locate_Divide_Statement_End is
+            Cursor : Natural := Offset;
+            Remaining : Natural := Depth;
+         begin
+            -- The failing Divide has already consumed both of its targets.
+            -- Only enclosing Stores still awaiting their source are admitted.
+            -- Parse their simple named destinations without looking up or
+            -- evaluating them. Never replay an expression to find its end.
+            while Remaining > 1 loop
+               if Stack (Remaining - 1).Op /= 16#70#
+                 or else Stack (Remaining - 1).Has_Left
+                 or else Cursor = Parse_Limit
+               then return; end if;
+               declare
+                  use AML_Simple_Targets;
+                  Target : constant Target_Result := Read_Target
+                    (Code (Code'First + Cursor .. Code'First + (Parse_Limit - 1)));
+               begin
+                  if Target.Kind /= Name_Target or else Target.Path.Count = 0
+                    or else Target.Consumed = 0
+                    or else Target.Consumed > Parse_Limit - Cursor
+                  then return; end if;
+                  if Charged = Budget then S := Budget_Exceeded; return; end if;
+                  Charged := Charged + 1;
+                  Cursor := Cursor + Target.Consumed;
+               end;
+               Remaining := Remaining - 1;
+            end loop;
+            Offset := Cursor;
+            Failed_Statement := Complete_Divide_Statement;
+         end Locate_Divide_Statement_End;
          procedure Collect_Targets
            (Count : in out Target_Number; Total : Target_Number;
             Targets : in out Target_List; Waiting : out Boolean;
@@ -2076,6 +2121,13 @@ package body AML_Execute with SPARK_Mode is
                end if;
                if Stack (Level).Is_Call then
                   for I in 1 .. Stack (Level).Given loop Add (Stack (Level).Actuals (I - 1)); end loop;
+                  if Stack (Level).Is_Load_Source then
+                     for I in 1 .. Stack (Level).Target_Count loop
+                        if Stack (Level).Targets (I).Kind = Reference_Target then
+                           Add ((Reference_Datum, Stack (Level).Targets (I).Ref));
+                        end if;
+                     end loop;
+                  end if;
                else
                   if Stack (Level).Has_Left then
                      Add (Stack (Level).Left);
@@ -2314,7 +2366,30 @@ package body AML_Execute with SPARK_Mode is
                   end;
                elsif B = 16#5B# then
                   if Parse_Limit - Offset < 2 then S := Truncated; return; end if;
-                  if Code (Code'First + Offset + 1) = Revision_Extension then
+                  if Code (Code'First + Offset + 1) = Load_Table_Extension then
+                     if Loading_Effects_Restricted and then not Allow_Restricted_Table_Loads then S := Unsupported; return; end if;
+                     if Depth = Max_Expression_Depth then S := Expression_Limit; return; end if;
+                     Depth := Depth + 1;
+                     Stack (Depth) := (Is_Call => True, Is_Load_Table => True,
+                       Parameters => Load_Table_Operand_Count, others => <>);
+                     Offset := Offset + 2; Have_Value := False;
+                  elsif Code (Code'First + Offset + 1) = Load_Source_Extension then
+                     if Loading_Effects_Restricted and then not Allow_Restricted_Table_Loads then S := Unsupported; return; end if;
+                     if Depth = Max_Expression_Depth then S := Expression_Limit; return; end if;
+                     Offset := Offset + 2;
+                     if Offset = Parse_Limit then S := Truncated; return; end if;
+                     Path := AML_Names.Read_Name (Code (Code'First + Offset .. Code'First + (Parse_Limit - 1)));
+                     if Path.Kind /= AML_Names.Accepted or else Path.Count = 0 then
+                        S := (if Path.Kind = AML_Names.Truncated then Truncated else Bad_Name); return;
+                     end if;
+                     Lookup (Environment, Input, Current_Lexical_Scope, Path, Width, Namespace_Identity, Bound);
+                     if Bound.Status = Missing_Binding then S := Unknown_Name; return;
+                     elsif Bound.Status /= Reference_Binding then S := Unsupported_Value; return; end if;
+                     Offset := Offset + Path.Consumed;
+                     Depth := Depth + 1;
+                     Stack (Depth) := (Is_Call => True, Is_Load_Source => True, Parameters => 1, others => <>);
+                     V := (Reference_Datum, Bound.Ref);
+                  elsif Code (Code'First + Offset + 1) = Revision_Extension then
                      Offset := Offset + Revision_Bytes;
                      V := (Value_Kind => Integer_Datum, Number => Interpreter_Revision,
                            Origin => Ordinary_Integer);
@@ -2898,8 +2973,8 @@ package body AML_Execute with SPARK_Mode is
                      end;
                   elsif Stack (Depth).Is_Call then
                      if Stack (Depth).Given >= Stack (Depth).Parameters then
-                        S := Argument_Mismatch; return;
-                     end if;
+                        if not Stack (Depth).Is_Load_Source then S := Argument_Mismatch; return; end if;
+                     else
                      Stack (Depth).Actuals (Stack (Depth).Given) := V;
                      Stack (Depth).Slots (Stack (Depth).Given) := Pending_Slot;
                      if Tracking and then Pending_Slot = 0 and then Pending_Identity /= 0 then
@@ -2912,14 +2987,121 @@ package body AML_Execute with SPARK_Mode is
                      end if;
                      Stack (Depth).Given := Stack (Depth).Given + 1;
                      if Stack (Depth).Given < Stack (Depth).Parameters then exit; end if;
+                     end if;
                      for I in 0 .. Stack (Depth).Given - 1 loop
                         Argument_Item := Stack (Depth).Actuals (I);
                         Resolve_Expression_Slot (Stack (Depth).Slots (I), Argument_Item, S, Stack (Depth).Locations (I), Expression_Root'Val (I));
                         if S /= Returned then return; end if;
                         Stack (Depth).Actuals (I) := Argument_Item;
                      end loop;
-                     Dispatch (Stack (Depth).Method_ID, Stack (Depth).Actuals,
-                               Stack (Depth).Given, not Allow_No_Return or Depth > 1, V, S, Stack (Depth).Locations);
+                     if Stack (Depth).Is_Load_Source and then not Stack (Depth).Targets_Ready then
+                        Stack (Depth).Right := Stack (Depth).Actuals (0);
+                        Stack (Depth).Target_Total := 1; Stack (Depth).Collecting_Targets := True;
+                        Collect_Targets (Stack (Depth).Target_Count, 1, Stack (Depth).Targets, Waiting_For_Target, S);
+                        if S /= Returned then return; end if;
+                        if Waiting_For_Target then exit; end if;
+                        Stack (Depth).Collecting_Targets := False; Stack (Depth).Targets_Ready := True;
+                     end if;
+                     if Stack (Depth).Is_Load_Source
+                       and then Stack (Depth).Targets (1).Kind = Name_Target
+                     then
+                        -- Resolve the target operand before table capture/effects.
+                        -- Keep its authenticated identity across module execution.
+                        Publish_Live;
+                        Lookup (Environment, Input, Current_Lexical_Scope,
+                          Stack (Depth).Targets (1).Path, Width, Reference_Target, Bound);
+                        if Bound.Status = Missing_Binding then S := Unknown_Name; return;
+                        elsif Bound.Status /= Reference_Binding then S := Unsupported_Value; return; end if;
+                        Stack (Depth).Targets (1) := (Kind => Reference_Target, Ref => Bound.Ref, others => <>);
+                     end if;
+                     if Stack (Depth).Is_Load_Table or else Stack (Depth).Is_Load_Source then
+                        declare
+                           Operands : Load_Table_Operands;
+                           Plan : Load_Table_Plan;
+                           Load_Charge, Finish_Charge : Natural := 0;
+                           Succeeded : Boolean := False;
+                           Module_Result : Execution_Result;
+                           Returned_Source : Scalar_Location := 0;
+                        begin
+                           Operands := [others => (Integer_Datum, 0, Ordinary_Integer)];
+                           if Stack (Depth).Is_Load_Table then
+                              for I in Operands'Range loop Operands (I) := Stack (Depth).Actuals (I); end loop;
+                           end if;
+                           Publish_Live;
+                           S := Unsupported;
+                           if Stack (Depth).Is_Load_Source then
+                              Request_Load_Source (Environment, Input, Active_Lease,
+                                Current_Lexical_Scope, Width, Stack (Depth).Actuals (0), Budget - Charged,
+                                Load_Charge, Succeeded, S, Plan);
+                           else
+                              Request_Load_Table (Environment, Input, Active_Lease,
+                                Current_Lexical_Scope, Width, Operands, Budget - Charged,
+                                Load_Charge, Succeeded, S, Plan);
+                           end if;
+                           if Load_Charge > Budget - Charged then
+                              Charged := Budget; S := Budget_Exceeded;
+                           else Charged := Charged + Load_Charge;
+                           end if;
+                           if Plan.Disposition = Load_Module_Prepared then
+                              if S /= Returned then
+                                 Module_Result := Failure (S, 0);
+                              elsif Plan.Token = No_Load_Table then
+                                 Module_Result := (Unsupported_Value, 0);
+                              elsif Calls_Left = 0 then Module_Result := (Call_Limit, 0);
+                              elsif Plan.Body_Length > Budget - Charged then
+                                 Module_Result := (Budget_Exceeded, 0);
+                              else
+                                 declare
+                                    Module_Source : aliased AML_Byte_Sources.Storage (Plan.Body_Length);
+                                 begin
+                                    Charged := Charged + Plan.Body_Length;
+                                    Publish_Live;
+                                    S := Unsupported;
+                                    Copy_Load_Table_Body (Environment, Input, Plan, Module_Source.Bytes, S);
+                                    if S = Returned then Begin_Load_Table_Module (Environment, Input, Plan, S); end if;
+                                    if S /= Returned then Module_Result := Failure (S, 0);
+                                    else
+                                       Publish_Live;
+                                       Run (Module_Source.Bytes, Module_Source, 0, Width,
+                                         [others => (Integer_Datum, 0, Ordinary_Integer)], 0,
+                                         Budget - Charged, Plan.Scope, Module_Result,
+                                         Calls_Left - 1, Plan.Scope, 0, Call_Frame,
+                                         AML_Declaration_Contexts.Module_Request, AML_Implementation,
+                                         [others => 0], Returned_Source, Use_Owner_Providers);
+                                       Charged := Charged + Module_Result.Charged;
+                                       if Returned_Source /= 0 then Clear_If_Present (Returned_Source); end if;
+                                    end if;
+                                 end;
+                              end if;
+                              if Module_Result.Status = Fatal_Requested and then not Pending_Fatal.Present then
+                                 Pending_Fatal := (Present => True, Item => Module_Result.Fatal);
+                              end if;
+                              Publish_Live;
+                              Succeeded := False; S := Unsupported;
+                              Finish_Load_Table (Environment, Input, Active_Lease, Plan,
+                                Operands, Module_Result, Budget - Charged, Finish_Charge, Succeeded, S);
+                              if Finish_Charge > Budget - Charged then
+                                 Charged := Budget; S := Budget_Exceeded;
+                              else Charged := Charged + Finish_Charge;
+                              end if;
+                              -- Cleanup cannot turn failed module execution into success.
+                              if Module_Result.Status /= Module_Completed then
+                                 S := (if Module_Result.Status in Execution_Failure then Module_Result.Status else Unsupported_Value);
+                              end if;
+                           elsif Plan.Disposition /= Load_Handled and then S = Returned then
+                              S := Unsupported_Value;
+                           end if;
+                           if S /= Returned then return; end if;
+                           V := (Integer_Datum, (if Succeeded then AML_Integers.Normalize (Integer_Value'Last, Width) else 0), Ordinary_Integer);
+                           if Stack (Depth).Is_Load_Source then
+                              Publish_Live ([V]); Apply_Target (Stack (Depth).Targets (1), V, S);
+                              if S /= Returned then return; end if;
+                           end if;
+                        end;
+                     else
+                        Dispatch (Stack (Depth).Method_ID, Stack (Depth).Actuals,
+                                  Stack (Depth).Given, not Allow_No_Return or Depth > 1, V, S, Stack (Depth).Locations);
+                     end if;
                      if S /= Returned then return; end if;
                   elsif Stack (Depth).Op = Concatenate_Op then
                      if not Stack (Depth).Has_Left then
@@ -3352,6 +3534,44 @@ package body AML_Execute with SPARK_Mode is
                         if S /= Returned then return; end if;
                      end;
                      end if;
+                     -- Unwrapping a Local/Arg may reveal a named field only
+                     -- after resolving its reference cell. Evaluate that live
+                     -- field through the ordinary authenticated operand reader.
+                     if Pending_Slot /= 0 and then V.Value_Kind = Metadata_Datum then
+                        declare Metadata : Reference_Metadata; begin
+                           Describe_Metadata_Value (Environment, V.Metadata, Metadata);
+                           if Metadata.Kind /= Metadata_Only then S := Unsupported_Value; return; end if;
+                           if Metadata.Object_Type in Field_Metadata | Buffer_Field_Metadata then
+                              if V.Metadata.Mode /= Live_Namespace or else
+                                AML_References.Kind (V.Metadata.Namespace_Identity) /= AML_References.Named_Cell
+                              then S := Unsupported_Value; return; end if;
+                              declare
+                                 Ref : constant AML_References.Reference := V.Metadata.Namespace_Identity;
+                                 Here : constant AML_Names.Name_Result :=
+                                   (Kind => AML_Names.Accepted, Rooted => False,
+                                    Parents => 0, Count => 0, Parts => [others => "____"], Consumed => 1);
+                                 Binding : Binding_Result;
+                              begin
+                                 Publish_Live ([V]);
+                                 Lookup (Environment, Input, Natural (AML_References.Named_Node (Ref)),
+                                   Here, Width, Evaluate_Binding, Binding);
+                                 case Binding.Status is
+                                    when Integer_Binding => V := (Integer_Datum, Binding.Value, Binding.Origin);
+                                    when Non_Integer_Binding => V := (Object_Datum, Binding.Object);
+                                    when Failed_Binding =>
+                                       S := (if Binding.Failure in Payload_Free_Failure then
+                                         Binding.Failure else Unsupported_Value);
+                                       return;
+                                    when others => S := Unsupported_Value; return;
+                                 end case;
+                                 Capture_Result (V, 0, 0, Transfer_Operand);
+                                 if S /= Returned then return; end if;
+                                 Complete_Integer_Result (V, S);
+                                 if S /= Returned then return; end if;
+                              end;
+                           end if;
+                        end;
+                     end if;
                   elsif Stack (Depth).Op = Copy_Object_Op then
                      Resolve_Expression_Slot (Pending_Slot, V, S, Pending_Identity);
                      if S /= Returned then return; end if;
@@ -3555,11 +3775,17 @@ package body AML_Execute with SPARK_Mode is
                   end if;
                   Advance_Numeric
                     (Stack (Depth), Pending_Slot, V, Waiting_For_Target, S);
-                  if S /= Returned then return; end if;
+                  if S /= Returned then
+                     if S = Division_By_Zero and then Module_Root
+                       and then Stack (Depth).Op = Divide_Op and then Stack (Depth).Targets_Ready
+                     then Locate_Divide_Statement_End;
+                     end if;
+                     return;
+                  end if;
                   if Waiting_For_Target then exit; end if;
                   end if;
                   Pending_Slot := 0;
-                  if not Stack (Depth).Is_Call and then Tracking then
+                  if (not Stack (Depth).Is_Call or else Stack (Depth).Is_Load_Table or else Stack (Depth).Is_Load_Source) and then Tracking then
                      declare Stored : Transport.Outcome; begin
                         if V.Value_Kind = Integer_Datum and then (Stack (Depth).Op = 16#70# or else No_Op_Integer) then
                            pragma Assert (Result_Identity /= 0);
@@ -3614,7 +3840,7 @@ package body AML_Execute with SPARK_Mode is
                and then S /= Object_Returned and then S /= Reference_Returned and then S /= Metadata_Returned
       is
       begin
-         Operand_Location := 0;
+         Operand_Location := 0; Failed_Statement := No_Resume_Point;
          Evaluate_Operand (V, S, Allow_No_Return, Require_Integer, Package_Name => Package_Name);
          -- Clear saved actual roots on every expression exit, including errors.
          if Tracking then
@@ -4085,7 +4311,9 @@ package body AML_Execute with SPARK_Mode is
                      end if;
                      Body_Result := Failure (Fatal_Requested, Charged); return;
                   end;
-               elsif Code (Code'First + Offset) = AML_Mutexes.Acquire_Opcode then
+               elsif Code (Code'First + Offset) in AML_Mutexes.Acquire_Opcode |
+                 Load_Table_Extension | Load_Source_Extension
+               then
                   Offset := Offset - 1;
                   Operand (Value, State);
                   if State /= Returned then Body_Result := Failure (State, Charged); return; end if;
@@ -4625,12 +4853,36 @@ package body AML_Execute with SPARK_Mode is
                Offset := Offset - 1;
                Charged := Charged - 1;
                Operand (Value, State);
-               if State /= Returned then Body_Result := Failure (State, Charged); return; end if;
+               if State /= Returned then
+                  declare Continue_Execution : Boolean := False; begin
+                     if Module_Root and then State = Division_By_Zero
+                       and then Failed_Statement = Complete_Divide_Statement
+                       and then not Pending_Fatal.Present
+                     then
+                        if Tracking then Clear_If_Present (Pending_Location (Call_Frame)); end if;
+                        Handle_Module_Divide_Error (Environment, Active_Lease, Offset,
+                          Charged, Continue_Execution);
+                     end if;
+                     if not Continue_Execution then Body_Result := Failure (State, Charged); return; end if;
+                  end;
+               end if;
             when 16#72# | 16#74# | Increment_Op | Decrement_Op | 16#77# .. 16#82# | 16#85#
                | 16#83# | 16#87# | 16#88# | 16#8E# | 16#90# .. 16#95# | To_Integer_Op | To_Buffer_Op | Mid_Op | To_String_Op | Decimal_String_Op | Hexadecimal_String_Op | Match_Op | Concatenate_Resources_Op | Concatenate_Op =>
                Offset := Offset - 1;
                Operand (Value, State);
-               if State /= Returned then Body_Result := Failure (State, Charged); return; end if;
+               if State /= Returned then
+                  declare Continue_Execution : Boolean := False; begin
+                     if Module_Root and then State = Division_By_Zero
+                       and then Failed_Statement = Complete_Divide_Statement
+                       and then not Pending_Fatal.Present
+                     then
+                        if Tracking then Clear_If_Present (Pending_Location (Call_Frame)); end if;
+                        Handle_Module_Divide_Error (Environment, Active_Lease, Offset,
+                          Charged, Continue_Execution);
+                     end if;
+                     if not Continue_Execution then Body_Result := Failure (State, Charged); return; end if;
+                  end;
+               end if;
             when 16#41# .. 16#5A# | 16#5F# | 16#5C# | 16#5E# | 16#2E# | 16#2F# =>
                Offset := Offset - 1;
                Operand (Value, State, Allow_No_Return => True);
@@ -4655,6 +4907,9 @@ package body AML_Execute with SPARK_Mode is
       end if;
       if not Frame_Root_Capacity (Environment) then
          Result_Out := (Status => Value_Limit, Charged => 0); return;
+      end if;
+      if Restrict_Module and then Restricted_Modules = Module_Depth'Last then
+         Result_Out := (Status => Call_Limit, Charged => 0); return;
       end if;
       Frames.Open_Frame (Registry, Call_Frame, Frame_Status);
       if Frame_Status /= Frames.Ready then
@@ -4685,6 +4940,7 @@ package body AML_Execute with SPARK_Mode is
       else Allowed := False;
       end if;
       if Allowed then
+         if Restrict_Module then Restricted_Modules := Restricted_Modules + 1; end if;
          if not Module_Root and then (Method_Flags and 8) /= 0 then
             Entry_Status := Unsupported_Value;
             Enter_Serialized_Method (Environment, Method_ID, Call_Frame, Entry_Status);
@@ -4836,6 +5092,7 @@ package body AML_Execute with SPARK_Mode is
             end;
          end if;
          End_Call (Environment, Active_Lease);
+         if Restrict_Module then Restricted_Modules := Restricted_Modules - 1; end if;
       else
          if Arguments_Ready then Result_Out := (Status => Namespace_Limit, Charged => 0);
          else Result_Out := (Status => Value_Limit, Charged => 0); end if;
@@ -4892,7 +5149,8 @@ package body AML_Execute with SPARK_Mode is
       begin
          Run (Code, Source, Source_First, Width, Args, Argument_Count, Budget, Scope, Result_Out, Calls_Left,
            Scope, (if AML_Declaration_Contexts.Is_Module (Request) or else not Root_Method.Exists then 0 else Root_Method.Flags),
-           AML_Frame_Handles.No_Frame, Request, Implementation, [others => 0], Root_Result_Location);
+           AML_Frame_Handles.No_Frame, Request, Implementation, [others => 0], Root_Result_Location,
+           Effects => Initial_Effects);
       end;
       Transport.Clear_All (Values);
    end Execute_From_Source;

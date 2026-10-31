@@ -1,0 +1,147 @@
+{
+  "reference": {
+    "/home/doc/git/.acpi-proof-work/dynamic-load-reference-work/reference": [
+      {
+        "revision": 1,
+        "image_bytes": 62,
+        "source_method_literal_offset": 61,
+        "integers": [
+          "0x0",
+          "0xffffffff",
+          "0xffffffff",
+          "0x1",
+          "0x1",
+          "0x2a",
+          "0x63",
+          "0x2a",
+          "0x0",
+          "0x1"
+        ],
+        "semantic_match": true,
+        "assertions": [
+          "module counter0before and1after load",
+          "load success equals nonzero target",
+          "ObjectType target is Integer",
+          "loaded method returns42",
+          "source method literal changes to99",
+          "loaded method still returns42",
+          "missing LoadTable returns0",
+          "module counter unchanged by missing LoadTable"
+        ],
+        "diagnostics": [
+          "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+        ]
+      },
+      {
+        "revision": 2,
+        "image_bytes": 62,
+        "source_method_literal_offset": 61,
+        "integers": [
+          "0x0",
+          "0xffffffffffffffff",
+          "0xffffffffffffffff",
+          "0x1",
+          "0x1",
+          "0x2a",
+          "0x63",
+          "0x2a",
+          "0x0",
+          "0x1"
+        ],
+        "semantic_match": true,
+        "assertions": [
+          "module counter0before and1after load",
+          "load success equals nonzero target",
+          "ObjectType target is Integer",
+          "loaded method returns42",
+          "source method literal changes to99",
+          "loaded method still returns42",
+          "missing LoadTable returns0",
+          "module counter unchanged by missing LoadTable"
+        ],
+        "diagnostics": [
+          "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+        ]
+      }
+    ],
+    "/home/doc/cubit-build-tmp/aml-dynamic-load-reference-57pJlR": [
+      {
+        "revision": 1,
+        "image_bytes": 62,
+        "source_method_literal_offset": 61,
+        "integers": [
+          "0x0",
+          "0xffffffff",
+          "0xffffffff",
+          "0x1",
+          "0x1",
+          "0x2a",
+          "0x63",
+          "0x2a",
+          "0x0",
+          "0x1"
+        ],
+        "semantic_match": true,
+        "assertions": [
+          "module counter0before and1after load",
+          "load success equals nonzero target",
+          "ObjectType target is Integer",
+          "loaded method returns42",
+          "source method literal changes to99",
+          "loaded method still returns42",
+          "missing LoadTable returns0",
+          "module counter unchanged by missing LoadTable"
+        ],
+        "diagnostics": [
+          "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+        ]
+      },
+      {
+        "revision": 2,
+        "image_bytes": 62,
+        "source_method_literal_offset": 61,
+        "integers": [
+          "0x0",
+          "0xffffffffffffffff",
+          "0xffffffffffffffff",
+          "0x1",
+          "0x1",
+          "0x2a",
+          "0x63",
+          "0x2a",
+          "0x0",
+          "0x1"
+        ],
+        "semantic_match": true,
+        "assertions": [
+          "module counter0before and1after load",
+          "load success equals nonzero target",
+          "ObjectType target is Integer",
+          "loaded method returns42",
+          "source method literal changes to99",
+          "loaded method still returns42",
+          "missing LoadTable returns0",
+          "module counter unchanged by missing LoadTable"
+        ],
+        "diagnostics": [
+          "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+        ]
+      }
+    ]
+  },
+  "portable_reproduced": true,
+  "evidence_negatives": [
+    "changed log with updated artifact hash rejected by semantic reparse",
+    "missing original source linkage rejected",
+    "failed semantic result flag rejected",
+    "changed runner rejected"
+  ],
+  "semantics": "ACPI6.6 Load and LoadTable return Boolean; current spec history deprecates Unload since6.3. This corrects A17 implementation planning without removing its encoding/compatibility audit",
+  "cubit_executed": false,
+  "new_proof": false,
+  "native_executed": false,
+  "hardware_validated": false,
+  "all_own_jobs_terminal": true,
+  "scope": "Self-authored normal ACPICA reference cases,not a CuBit loader implementation,full dynamic-load matrix,Unload runtime result or additional original ASLTS entrypoint",
+  "goal": "active and incomplete"
+}

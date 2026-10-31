@@ -40,25 +40,28 @@ The datum helper body is unchanged. Older receipts in EVIDENCE.json retain
 their historical scope. The fresh plan checkpoint below records acceptance
 of the current Qword-capable plan body separately.
 
-## Current selected plan proof checkpoint
+## Current EC Field geometry proof checkpoint
 
-The current Qword-capable `AML_Field_Plans` body now has a fresh level-1 run:
-all 10 selected entities are in SPARK, 11 flow results are informational and all
-8 safety/contract obligations have successful prover trees. No source, contract,
-acceptance count or prover limit changed to obtain this result.
+The current layout and plan helpers have fresh level-1 and level-2 runs. At
+each level all12selected entities are in SPARK,15flow results are informational
+and all15safety/contract checks prove,including3postconditions. CVC5 alone
+timed out on one plan postcondition; the existing CVC5/Z3 pair succeeded with
+the same five-second solver limit. No contract was weakened or assumed.
 
-Run `bash tests/aml-field-geometry/check_plan_proof.sh` to check the retained
-record without executing a prover. `CURRENT-PLAN-PROOF.json` pins all 14 explicit
-GPR source files plus the GPR, recipe and tool-pin file, and the retained result
-snapshots. Original source/output paths remain provenance. Only selected logs,
-commands, audits and complete result trees are retained here; the original
-additional artifacts remain at their recorded output. The checker does not
-assert that omitted artifacts are present or require the old compiler installation.
+Run `bash tests/aml-field-geometry/check_plan_proof.sh` to validate current
+source hashes, retained complete result trees and exact proof commands without
+executing a prover. The schema-2 CURRENT-PLAN-PROOF.json pins14explicit source
+files and the retained evidence under reference/ec-fields/. Original private
+project paths remain provenance; retained logs are not a portable build recipe.
+Use the existing `prove.sh plans prove` for a fresh selected plan proof, or a
+fresh equivalent project selecting AML_Field_Layout at levels1/2.
 
-The eight obligations cover three range checks, one division check, two call
-preconditions and two existing postconditions. This is not a complete functional
-proof of masks, offsets, admission or every return value. Dependency contracts
-and standard runtime arithmetic models remain assumptions or separate historical
-evidence. Namespace, executor, banked I/O and native correctness are not proved
-by this helper run. The reproduction recipe remains `plans check`, then inspect,
-`plans flow`, then inspect, and `plans prove`, as described above.
+The original Qword plan record and checker remain under reference/current-plans/
+as original-current-plan-proof.json and original-check-plan-proof.sh. Historical
+evidence hashes are preserved rather than relabeled as current EC proof.
+
+These prove helper runtime safety and their stated contracts,not complete
+functional correctness of every admission decision,mask or offset. Dependency
+contracts and standard runtime arithmetic models remain assumptions or separate
+historical evidence. The interpreter,remote provider,banked I/O and native
+hardware are not proved by these selected runs.

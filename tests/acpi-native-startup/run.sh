@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Keep source and artifact inventories independent of the invoking locale.
+export LC_ALL=C
 set -euo pipefail
 here=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 root=$(cd "$here/../.." && pwd)
@@ -15,7 +17,7 @@ verify () {
   test "$(realpath "$original")" = "$root/$original"
   cmp "$copy" "$original"
  done < "$here/mirrors.tsv"
- test "$(wc -l < "$here/cases.tsv")" = 52
+ test "$(wc -l < "$here/cases.tsv")" = 88
 }
 verify
 if [ "${1:-}" = --validate-only ]; then
@@ -48,7 +50,9 @@ while IFS=$'\t' read -r scenario width broken; do
  grep -Eq '^Native owner checks [0-9]+$' "$log"
  printf '%s %s %s: %s\n' "$scenario" "$width" "$broken" "$(cat "$log")" >> "$out/test.log"
 done < "$here/cases.tsv"
-test "$case_number" = 52
+test "$case_number" = 88
+nice -n 19 timeout --kill-after=2s 30 "$out/bin/notes_tests" > "$out/notes.log" 2>&1
+grep -Fx 'Module note checks 31' "$out/notes.log"
 count=0
 for ali in "$out/obj/"*.ali; do
  case "$ali" in */b__*) continue;; esac
@@ -58,11 +62,11 @@ for ali in "$out/obj/"*.ali; do
  else grep -Fxq 'A -gnatp' "$ali"; ! grep -Fxq 'A -gnata' "$ali"; fi
  count=$((count + 1))
 done
-test "$count" = 97
+test "$count" = 131
 printf 'Source ALIs: %s\n' "$count"
 total=$(awk '{sum += $NF} END {print sum}' "$out/test.log")
-test "$total" = 564
+test "$total" = 1892
 printf 'Native owner total checks %s\n' "$total"
-sha256sum "$out/bin/owner_tests" "$out/obj/"*.ali "$out/test.log" > "$out/artifacts.sha256"
+sha256sum "$out/bin/owner_tests" "$out/bin/notes_tests" "$out/obj/"*.ali "$out/test.log" "$out/notes.log" > "$out/artifacts.sha256"
 verify
-printf '%s\n' 'Hosted native owner passed52fresh processes; real runtime/kernel behavior unvalidated.'
+printf '%s\n' 'Hosted native owner passed88startup cases and one diagnostic cursor process; real runtime/kernel behavior unvalidated.'

@@ -1,0 +1,1 @@
+DefinitionBlock ("", "OEM1", 2, "CUBIT", "APPEND", 1) { External (\CNT0, IntObj) Increment (\CNT0) External (PRM0, IntObj) External (\OBS0, IntObj) Store (PRM0, \OBS0) Name (DUM0, 0x22) Name (NEWV, 0x2A) Method (NVAL, 0) { Return (NEWV) }  External (\DST0.PRM0, IntObj) CopyObject ("2A", \DST0.PRM0) }

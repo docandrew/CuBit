@@ -1,5 +1,5 @@
 project Observer_release is
- for Source_Dirs use (".", "../../tests/aml-core", "../../userspace/services/acpi/lib", "../../userspace/services/acpi", "../../shared/firmware");
+ for Source_Dirs use (".", "../../tests/aml-core", "../../userspace/services/acpi/lib", "../../userspace/services/acpi", "../../shared/firmware", "../../userspace/services/acpi/resource-consumer");
  for Object_Dir use "observer-release";
  for Main use ("observer_cost.adb", "service_tests.adb");
  package Compiler is

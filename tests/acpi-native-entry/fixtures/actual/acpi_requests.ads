@@ -164,7 +164,7 @@ package ACPI_Requests with SPARK_Mode is
       Error_Buffer_Field_Limit,
       Error_Notify_Limit,
       Error_Module_Completed,
-      Error_Mutex_Not_Acquired, Error_Fatal_Requested, Error_Field_Indeterminate);
+      Error_Mutex_Not_Acquired, Error_Fatal_Requested, Error_Field_Indeterminate, Error_Invalid_Table_Length);
    for Startup_Error_Code use
      (Error_Returned => 0,
       Error_Object_Returned => 1,
@@ -207,7 +207,7 @@ package ACPI_Requests with SPARK_Mode is
       Error_Notify_Limit => 38,
       Error_Module_Completed => 39,
       Error_Mutex_Not_Acquired => 40, Error_Fatal_Requested => 41,
-      Error_Field_Indeterminate => 42);
+      Error_Field_Indeterminate => 42, Error_Invalid_Table_Length => 43);
    Start_Snapshot : constant Unsigned_32 := 1;
    Begin_Table : constant Unsigned_32 := 2;
    Write_Chunk : constant Unsigned_32 := 3;
@@ -289,13 +289,13 @@ package ACPI_Requests with SPARK_Mode is
       Status : Outcome := Malformed;
       Data : Response_Words := [others => 0];
    end record;
-   type State (Table_Capacity, Byte_Capacity, Table_Byte_Limit : Positive; Initial_Revision : Revision_Number) is limited private
+   type State (Table_Capacity, Byte_Capacity, Table_Byte_Limit, Load_Capacity : Positive; Initial_Revision : Revision_Number) is limited private
      with Default_Initial_Condition => Valid (State)
        and then Revision (State) = State.Initial_Revision
        and then Current (State) = Idle and then not Table_Open (State)
        and then Received (State) = 0;
    function Valid (Server : State) return Boolean;
-   type State_Model (Table_Capacity, Byte_Capacity, Table_Byte_Limit : Positive) is private with Ghost;
+   type State_Model (Table_Capacity, Byte_Capacity, Table_Byte_Limit, Load_Capacity : Positive) is private with Ghost;
    function Model (Server : State) return State_Model with Ghost,
      Post => Model'Result.Table_Capacity = Server.Table_Capacity
        and then Model'Result.Byte_Capacity = Server.Byte_Capacity
@@ -305,6 +305,12 @@ package ACPI_Requests with SPARK_Mode is
    function Table_Open (Server : State) return Boolean;
    function Received (Server : State) return Natural;
    function Completion (Server : State) return ACPI_Bootstrap.Finish_Report;
+   -- Copied initialization outcome; no AML, state change or new wire authority.
+   function Device_Completion (Server : State) return ACPI_Bootstrap.Device_Report
+     with Global => null;
+   -- Copied observation only; does not add a wire operation or authority.
+   function Module_Errors (Server : State) return ACPI_Service.Module_Error_Observation
+     with Global => null;
    -- In-process read-only observation, not a new wire operation or authority.
    -- Caller correlates this copied record with Revision(Server); a revision
    -- change does not erase an already retained fatal from this session.
@@ -356,8 +362,8 @@ private
    -- Private wire codec; deliberately independent of internal enum positions.
    function Error_Code (Item : AML_Execute.Execution_Status) return Startup_Error_Code;
    package Receipts is new ACPI_Notification_Receipts (Max_Revision);
-   type State_Model (Table_Capacity, Byte_Capacity, Table_Byte_Limit : Positive) is record
-      Boot : ACPI_Bootstrap.State_Model (Table_Capacity, Byte_Capacity);
+   type State_Model (Table_Capacity, Byte_Capacity, Table_Byte_Limit, Load_Capacity : Positive) is record
+      Boot : ACPI_Bootstrap.State_Model (Table_Capacity, Byte_Capacity, Load_Capacity);
       Initial_Revision, Version : Revision_Number;
       Receipt : Receipts.State;
       Staged_Notification : ACPI_Service.Notification_Observation;
@@ -368,9 +374,9 @@ private
       Buffer_Data : Firmware_Tables.Bytes (1 .. Table_Byte_Limit);
    end record;
    function Consistent (Server : State) return Boolean;
-   type State (Table_Capacity, Byte_Capacity, Table_Byte_Limit : Positive; Initial_Revision : Revision_Number) is limited record
+   type State (Table_Capacity, Byte_Capacity, Table_Byte_Limit, Load_Capacity : Positive; Initial_Revision : Revision_Number) is limited record
       Boot : ACPI_Bootstrap.State
-        (Table_Capacity, Byte_Capacity, Table_Byte_Limit);
+        (Table_Capacity, Byte_Capacity, Table_Byte_Limit, Load_Capacity);
       Version : Revision_Number := Initial_Revision;
       Receipt : Receipts.State;
       Staged_Notification : ACPI_Service.Notification_Observation;

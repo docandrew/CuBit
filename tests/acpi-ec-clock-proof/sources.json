@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "sources": {
+    "userspace/services/acpi/ec/acpi_ec_clock_policy.ads": "df39eacead116a468da1e1f4d5788611ad4e58bb4916f43aa8328f52002d8e36",
+    "userspace/services/acpi/ec/acpi_ec_clock_policy.adb": "34d58ce3c7c1947837ea7470a79ecfa12cc24950a0e5a4397ddd8c2b898ee6d0",
+    "userspace/services/acpi/ec/acpi_ec_types.ads": "e96562a5f128130c03a0191b8fa33e9a6ee108314341463dddeb20d11b1ffcb9"
+  }
+}

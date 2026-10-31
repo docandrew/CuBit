@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Keep source and artifact inventories independent of the invoking locale.
+export LC_ALL=C
 set -euo pipefail
 here=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 root=$(cd "$here/../.." && pwd)
@@ -37,9 +39,9 @@ for tool in gprbuild; do
  sha256sum "$path" >> "$out/tools.sha256"
 done
 mapfile -t units < "$here/selections.txt"
-test "${#units[@]}" = 13
+test "${#units[@]}" = 62
 nice -n 19 timeout --kill-after=2s 180 gprbuild -p -c -u -j1 -P "$here/$profile.gpr" "-XNATIVE_API_BUILD=$out" "${units[@]}" 2>&1 | head -c 1048576 > "$out/compile.log"
-test "$(find "$out" -maxdepth 1 -name '*.ali' | wc -l)" = 12
+test "$(find "$out" -maxdepth 1 -name '*.ali' | wc -l)" = 59
 test "$(find "$out" -maxdepth 1 -name '*.o' | wc -l)" = 0
 for ali in "$out/"*.ali; do
  grep -Fxq 'A -gnatc' "$ali"; grep -Fxq 'A -gnatwe' "$ali"

@@ -1,0 +1,65 @@
+{
+  "inputs": {
+    "/nix/store/9xvbsfi448cx9fjk4ivla9fsq390a8gn-gnatprove-fsf-15_2025-06-10/bin/gnatprove": "ef4dd76057294453d4cc43781aa0f25fad9b351533e380cc9a60a9b86fa797ef",
+    "/home/doc/git/.acpi-proof-work/fadt-sleep-proof-work/candidate/shared/firmware/firmware_tables.ads": "cdd038a8b009c7009c8f6286b34b6ab7d3c0bf7be8410ca782b0831780ae1ef4",
+    "/home/doc/cubit-build-tmp/fadt-sleep-proof-vGPYY8/source/firmware_tables.ads": "cdd038a8b009c7009c8f6286b34b6ab7d3c0bf7be8410ca782b0831780ae1ef4",
+    "/home/doc/git/.acpi-proof-work/fadt-sleep-proof-work/candidate/shared/firmware/firmware_tables.adb": "120555c25910e45212c229526c232c0b1afae7f63effd04fdd54a5f567690cfa",
+    "/home/doc/cubit-build-tmp/fadt-sleep-proof-vGPYY8/source/firmware_tables.adb": "120555c25910e45212c229526c232c0b1afae7f63effd04fdd54a5f567690cfa",
+    "/home/doc/git/.acpi-proof-work/fadt-sleep-proof-work/candidate/userspace/services/acpi/lib/acpi_fadt.ads": "00993f2a74b7740317a12200e8cbf29db30a52a839cacec7485b04a411e3f752",
+    "/home/doc/cubit-build-tmp/fadt-sleep-proof-vGPYY8/source/acpi_fadt.ads": "00993f2a74b7740317a12200e8cbf29db30a52a839cacec7485b04a411e3f752",
+    "/home/doc/git/.acpi-proof-work/fadt-sleep-proof-work/candidate/userspace/services/acpi/lib/acpi_fadt.adb": "7058da752f0644899a6c97fd3ea2722cba927bf08e4f0e7c5736f16ee2e2c10d",
+    "/home/doc/cubit-build-tmp/fadt-sleep-proof-vGPYY8/source/acpi_fadt.adb": "7058da752f0644899a6c97fd3ea2722cba927bf08e4f0e7c5736f16ee2e2c10d",
+    "/home/doc/git/.acpi-proof-work/fadt-sleep-proof-work/candidate/userspace/services/acpi/lib/acpi_fadt-registers.ads": "eb8a1ad9eae107b98b38d0fba21b9df6f07d40cbaac3b2e25bbec07e8b74e9df",
+    "/home/doc/cubit-build-tmp/fadt-sleep-proof-vGPYY8/source/acpi_fadt-registers.ads": "eb8a1ad9eae107b98b38d0fba21b9df6f07d40cbaac3b2e25bbec07e8b74e9df",
+    "/home/doc/git/.acpi-proof-work/fadt-sleep-proof-work/candidate/userspace/services/acpi/lib/acpi_fadt-registers.adb": "2ecd70f15b923ec248550895cfa52adc353239441ff1f28dd6469ac642e56ed6",
+    "/home/doc/cubit-build-tmp/fadt-sleep-proof-vGPYY8/source/acpi_fadt-registers.adb": "2ecd70f15b923ec248550895cfa52adc353239441ff1f28dd6469ac642e56ed6",
+    "/home/doc/git/.acpi-proof-work/fadt-sleep-proof-work/candidate/userspace/services/acpi/lib/acpi_fadt-sleep_registers.ads": "498f7c6da9c9a584ca808edfa1063430e07fa2ff8672ad3e758e09ac046b5de2",
+    "/home/doc/cubit-build-tmp/fadt-sleep-proof-vGPYY8/source/acpi_fadt-sleep_registers.ads": "498f7c6da9c9a584ca808edfa1063430e07fa2ff8672ad3e758e09ac046b5de2",
+    "/home/doc/git/.acpi-proof-work/fadt-sleep-proof-work/candidate/userspace/services/acpi/lib/acpi_fadt-sleep_registers.adb": "f6b74b0e1ef868c3ef1348d24addf407ba9a03994b5f12e0f9fbf72c1f916e51",
+    "/home/doc/cubit-build-tmp/fadt-sleep-proof-vGPYY8/source/acpi_fadt-sleep_registers.adb": "f6b74b0e1ef868c3ef1348d24addf407ba9a03994b5f12e0f9fbf72c1f916e51",
+    "/home/doc/cubit-build-tmp/fadt-sleep-proof-vGPYY8/level1/proof.gpr": "3ff017dce32ea1178a7a092f8e1e333c359218f3f7e37fbb652e77b4a7a5a3c5",
+    "/home/doc/cubit-build-tmp/fadt-sleep-proof-vGPYY8/level2/proof.gpr": "3ff017dce32ea1178a7a092f8e1e333c359218f3f7e37fbb652e77b4a7a5a3c5"
+  },
+  "commands": [
+    {
+      "level": 1,
+      "args": [
+        "/nix/store/9xvbsfi448cx9fjk4ivla9fsq390a8gn-gnatprove-fsf-15_2025-06-10/bin/gnatprove",
+        "-P",
+        "/home/doc/cubit-build-tmp/fadt-sleep-proof-vGPYY8/level1/proof.gpr",
+        "-u",
+        "acpi_fadt-sleep_registers.adb",
+        "--mode=prove",
+        "-j1",
+        "--report=all",
+        "--level=1",
+        "--prover=cvc5,z3",
+        "--timeout=5"
+      ],
+      "status": 0,
+      "signal": null,
+      "error": null
+    },
+    {
+      "level": 2,
+      "args": [
+        "/nix/store/9xvbsfi448cx9fjk4ivla9fsq390a8gn-gnatprove-fsf-15_2025-06-10/bin/gnatprove",
+        "-P",
+        "/home/doc/cubit-build-tmp/fadt-sleep-proof-vGPYY8/level2/proof.gpr",
+        "-u",
+        "acpi_fadt-sleep_registers.adb",
+        "--mode=prove",
+        "-j1",
+        "--report=all",
+        "--level=2",
+        "--prover=cvc5,z3",
+        "--timeout=5"
+      ],
+      "status": 0,
+      "signal": null,
+      "error": null
+    }
+  ],
+  "accepted": true,
+  "scope": "Actual FADT sleep classifier postcondition and safety under actual Registers.Describe interface; not parser bodies,Core,native authority or whole-service proof"
+}

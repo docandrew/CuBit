@@ -1,0 +1,1111 @@
+{
+  "assumptions": [
+    {
+      "assumptions": [
+        {
+          "arg": 2,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 3,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 2,
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "arg": 3,
+          "predicate": "CLAIM_AORTE"
+        }
+      ],
+      "claim": {
+        "arg": 1,
+        "predicate": "CLAIM_POST"
+      }
+    },
+    {
+      "assumptions": [
+        {
+          "arg": 2,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 3,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 2,
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "arg": 3,
+          "predicate": "CLAIM_AORTE"
+        }
+      ],
+      "claim": {
+        "arg": 1,
+        "predicate": "CLAIM_AORTE"
+      }
+    }
+  ],
+  "entities": {
+    " 1": {
+      "name": "Channel_Proof_Model.Channels.Prepare",
+      "sloc": [
+        {
+          "file": "acpi_hid_i2c_channels.ads",
+          "line": 33
+        },
+        {
+          "file": "channel_proof_model.ads",
+          "line": 6
+        }
+      ]
+    },
+    " 2": {
+      "name": "GPIO_Channel_Badges.Valid",
+      "sloc": [
+        {
+          "file": "gpio_channel_badges.ads",
+          "line": 20
+        }
+      ]
+    },
+    " 3": {
+      "name": "I2C_Channel_Badges.Valid",
+      "sloc": [
+        {
+          "file": "i2c_channel_badges.ads",
+          "line": 26
+        }
+      ]
+    }
+  },
+  "flow": [
+    {
+      "check_tree": {
+      },
+      "col": 13,
+      "entity": 1,
+      "file": "acpi_hid_i2c_channels.ads",
+      "how_proved": "flow",
+      "line": 33,
+      "msg_id": 0,
+      "rule": "SUBPROGRAM_TERMINATION",
+      "severity": "info"
+    },
+    {
+      "check_tree": {
+      },
+      "col": 11,
+      "entity": 1,
+      "file": "acpi_hid_i2c_channels.ads",
+      "how_proved": "flow",
+      "line": 34,
+      "msg_id": 1,
+      "rule": "GLOBAL_WRONG",
+      "severity": "info"
+    }
+  ],
+  "pragma_assume": [
+  ],
+  "progress": "PROGRESS_PROOF",
+  "proof": [
+    {
+      "check_col": 32,
+      "check_file": "acpi_hid_i2c_channels.adb",
+      "check_line": 8,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 1.63400000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 32,
+      "entity": 1,
+      "file": "acpi_hid_i2c_channels.adb",
+      "how_proved": "prover",
+      "line": 8,
+      "msg_id": 2,
+      "rule": "VC_DISCRIMINANT_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 1,
+          "max_steps": 1,
+          "max_time": 1.63400005549192E-02
+        }
+      }
+    },
+    {
+      "check_col": 46,
+      "check_file": "acpi_hid_i2c_channels.adb",
+      "check_line": 10,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 1.50200000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 46,
+      "entity": 1,
+      "file": "acpi_hid_i2c_channels.adb",
+      "how_proved": "prover",
+      "line": 10,
+      "msg_id": 3,
+      "rule": "VC_DISCRIMINANT_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 1,
+          "max_steps": 1,
+          "max_time": 1.50199998170137E-02
+        }
+      }
+    },
+    {
+      "check_col": 41,
+      "check_file": "acpi_hid_i2c_channels.adb",
+      "check_line": 11,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 1.20000000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 41,
+      "entity": 1,
+      "file": "acpi_hid_i2c_channels.adb",
+      "how_proved": "prover",
+      "line": 11,
+      "msg_id": 4,
+      "rule": "VC_DISCRIMINANT_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 1,
+          "max_steps": 1,
+          "max_time": 1.20000001043081E-02
+        }
+      }
+    },
+    {
+      "check_col": 38,
+      "check_file": "acpi_hid_i2c_channels.adb",
+      "check_line": 26,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 309,
+              "time": 2.72320000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 97,
+              "time": 1.45700000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 38,
+      "entity": 1,
+      "file": "acpi_hid_i2c_channels.adb",
+      "how_proved": "prover",
+      "line": 26,
+      "msg_id": 5,
+      "rule": "VC_RANGE_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 2,
+          "max_steps": 309,
+          "max_time": 2.72320006042719E-02
+        }
+      }
+    },
+    {
+      "check_col": 44,
+      "check_file": "acpi_hid_i2c_channels.adb",
+      "check_line": 27,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 61,
+              "time": 1.34760000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 44,
+      "entity": 1,
+      "file": "acpi_hid_i2c_channels.adb",
+      "how_proved": "prover",
+      "line": 27,
+      "msg_id": 6,
+      "rule": "VC_DISCRIMINANT_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 1,
+          "max_steps": 61,
+          "max_time": 1.34760001674294E-02
+        }
+      }
+    },
+    {
+      "check_col": 43,
+      "check_file": "acpi_hid_i2c_channels.adb",
+      "check_line": 30,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 44,
+              "time": 1.49220000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 43,
+      "entity": 1,
+      "file": "acpi_hid_i2c_channels.adb",
+      "how_proved": "prover",
+      "line": 30,
+      "msg_id": 7,
+      "rule": "VC_DISCRIMINANT_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 1,
+          "max_steps": 44,
+          "max_time": 1.49219995364547E-02
+        }
+      }
+    },
+    {
+      "check_col": 30,
+      "check_file": "acpi_hid_i2c_channels.ads",
+      "check_line": 40,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 190,
+              "time": 1.76530000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 30,
+      "entity": 1,
+      "file": "acpi_hid_i2c_channels.ads",
+      "how_proved": "prover",
+      "line": 40,
+      "msg_id": 8,
+      "rule": "VC_DISCRIMINANT_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 1,
+          "max_steps": 190,
+          "max_time": 1.76529996097088E-02
+        }
+      }
+    },
+    {
+      "check_col": 31,
+      "check_file": "acpi_hid_i2c_channels.ads",
+      "check_line": 41,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 200,
+              "time": 1.99810000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 31,
+      "entity": 1,
+      "file": "acpi_hid_i2c_channels.ads",
+      "how_proved": "prover",
+      "line": 41,
+      "msg_id": 9,
+      "rule": "VC_DISCRIMINANT_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 1,
+          "max_steps": 200,
+          "max_time": 1.99810005724430E-02
+        }
+      }
+    },
+    {
+      "check_col": 31,
+      "check_file": "acpi_hid_i2c_channels.ads",
+      "check_line": 42,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 205,
+              "time": 2.04050000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 31,
+      "entity": 1,
+      "file": "acpi_hid_i2c_channels.ads",
+      "how_proved": "prover",
+      "line": 42,
+      "msg_id": 10,
+      "rule": "VC_DISCRIMINANT_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 1,
+          "max_steps": 205,
+          "max_time": 2.04050000756979E-02
+        }
+      }
+    },
+    {
+      "check_col": 37,
+      "check_file": "acpi_hid_i2c_channels.ads",
+      "check_line": 44,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 224,
+              "time": 2.02920000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 37,
+      "entity": 1,
+      "file": "acpi_hid_i2c_channels.ads",
+      "how_proved": "prover",
+      "line": 44,
+      "msg_id": 11,
+      "rule": "VC_DISCRIMINANT_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 1,
+          "max_steps": 224,
+          "max_time": 2.02920008450747E-02
+        }
+      }
+    },
+    {
+      "check_col": 37,
+      "check_file": "acpi_hid_i2c_channels.ads",
+      "check_line": 45,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 228,
+              "time": 2.10530000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 37,
+      "entity": 1,
+      "file": "acpi_hid_i2c_channels.ads",
+      "how_proved": "prover",
+      "line": 45,
+      "msg_id": 12,
+      "rule": "VC_DISCRIMINANT_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 1,
+          "max_steps": 228,
+          "max_time": 2.10529994219542E-02
+        }
+      }
+    },
+    {
+      "check_col": 35,
+      "check_file": "acpi_hid_i2c_channels.ads",
+      "check_line": 47,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 131,
+              "time": 1.69540000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 35,
+      "entity": 1,
+      "file": "acpi_hid_i2c_channels.ads",
+      "how_proved": "prover",
+      "line": 47,
+      "msg_id": 13,
+      "rule": "VC_DISCRIMINANT_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 1,
+          "max_steps": 131,
+          "max_time": 1.69539991766214E-02
+        }
+      }
+    },
+    {
+      "check_col": 73,
+      "check_file": "acpi_hid_i2c_channels.ads",
+      "check_line": 47,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 136,
+              "time": 1.74310000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 73,
+      "entity": 1,
+      "file": "acpi_hid_i2c_channels.ads",
+      "how_proved": "prover",
+      "line": 47,
+      "msg_id": 14,
+      "rule": "VC_DISCRIMINANT_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 1,
+          "max_steps": 136,
+          "max_time": 1.74310002475977E-02
+        }
+      }
+    },
+    {
+      "check_col": 35,
+      "check_file": "acpi_hid_i2c_channels.ads",
+      "check_line": 48,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 145,
+              "time": 1.78410000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 35,
+      "entity": 1,
+      "file": "acpi_hid_i2c_channels.ads",
+      "how_proved": "prover",
+      "line": 48,
+      "msg_id": 15,
+      "rule": "VC_DISCRIMINANT_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 1,
+          "max_steps": 145,
+          "max_time": 1.78410001099110E-02
+        }
+      }
+    },
+    {
+      "check_col": 35,
+      "check_file": "acpi_hid_i2c_channels.ads",
+      "check_line": 49,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 423,
+              "time": 2.62580000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 35,
+      "entity": 1,
+      "file": "acpi_hid_i2c_channels.ads",
+      "how_proved": "prover",
+      "line": 49,
+      "msg_id": 16,
+      "rule": "VC_DISCRIMINANT_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 1,
+          "max_steps": 423,
+          "max_time": 2.62579992413521E-02
+        }
+      }
+    },
+    {
+      "check_col": 37,
+      "check_file": "acpi_hid_i2c_channels.ads",
+      "check_line": 50,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 500,
+              "time": 2.59790000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 37,
+      "entity": 1,
+      "file": "acpi_hid_i2c_channels.ads",
+      "how_proved": "prover",
+      "line": 50,
+      "msg_id": 17,
+      "rule": "VC_DISCRIMINANT_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 1,
+          "max_steps": 500,
+          "max_time": 2.59789992123842E-02
+        }
+      }
+    },
+    {
+      "check_col": 51,
+      "check_file": "acpi_hid_i2c_channels.ads",
+      "check_line": 53,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 493,
+              "time": 2.78030000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 51,
+      "entity": 1,
+      "file": "acpi_hid_i2c_channels.ads",
+      "how_proved": "prover",
+      "line": 53,
+      "msg_id": 18,
+      "rule": "VC_DISCRIMINANT_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 1,
+          "max_steps": 493,
+          "max_time": 2.78030000627041E-02
+        }
+      }
+    },
+    {
+      "check_col": 46,
+      "check_file": "acpi_hid_i2c_channels.ads",
+      "check_line": 54,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 486,
+              "time": 2.87430000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 46,
+      "entity": 1,
+      "file": "acpi_hid_i2c_channels.ads",
+      "how_proved": "prover",
+      "line": 54,
+      "msg_id": 19,
+      "rule": "VC_DISCRIMINANT_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 1,
+          "max_steps": 486,
+          "max_time": 2.87430007010698E-02
+        }
+      }
+    },
+    {
+      "check_col": 35,
+      "check_file": "acpi_hid_i2c_channels.ads",
+      "check_line": 56,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 487,
+              "time": 2.99490000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 35,
+      "entity": 1,
+      "file": "acpi_hid_i2c_channels.ads",
+      "how_proved": "prover",
+      "line": 56,
+      "msg_id": 20,
+      "rule": "VC_DISCRIMINANT_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 1,
+          "max_steps": 487,
+          "max_time": 2.99490001052618E-02
+        }
+      }
+    },
+    {
+      "check_col": 40,
+      "check_file": "acpi_hid_i2c_channels.ads",
+      "check_line": 57,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 890,
+              "time": 5.55560000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 611,
+              "time": 3.84100000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 40,
+      "entity": 1,
+      "file": "acpi_hid_i2c_channels.ads",
+      "how_proved": "prover",
+      "line": 57,
+      "msg_id": 21,
+      "rule": "VC_RANGE_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 2,
+          "max_steps": 890,
+          "max_time": 5.55559992790222E-02
+        }
+      }
+    },
+    {
+      "check_col": 46,
+      "check_file": "acpi_hid_i2c_channels.ads",
+      "check_line": 58,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 556,
+              "time": 3.15680000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 46,
+      "entity": 1,
+      "file": "acpi_hid_i2c_channels.ads",
+      "how_proved": "prover",
+      "line": 58,
+      "msg_id": 22,
+      "rule": "VC_DISCRIMINANT_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 1,
+          "max_steps": 556,
+          "max_time": 3.15679982304573E-02
+        }
+      }
+    },
+    {
+      "check_col": 45,
+      "check_file": "acpi_hid_i2c_channels.ads",
+      "check_line": 61,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 541,
+              "time": 3.33410000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 45,
+      "entity": 1,
+      "file": "acpi_hid_i2c_channels.ads",
+      "how_proved": "prover",
+      "line": 61,
+      "msg_id": 23,
+      "rule": "VC_DISCRIMINANT_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 1,
+          "max_steps": 541,
+          "max_time": 3.33410017192364E-02
+        }
+      }
+    },
+    {
+      "check_col": 12,
+      "check_file": "acpi_hid_i2c_channels.ads",
+      "check_line": 36,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "Trivial": {
+              "result": "Valid",
+              "steps": 2,
+              "time": 0
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 615,
+              "time": 4.27680000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 369,
+              "time": 3.19280000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 594,
+              "time": 4.22500000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 738,
+              "time": 4.37710000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 400,
+              "time": 3.46490000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 418,
+              "time": 3.41470000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 403,
+              "time": 3.92700000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 633,
+              "time": 4.44920000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 690,
+              "time": 4.89250000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 369,
+              "time": 3.60850000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 646,
+              "time": 5.64630000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 361,
+              "time": 3.62170000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 342,
+              "time": 3.18340000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 329,
+              "time": 3.73700000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 245,
+              "time": 2.66990000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 12,
+      "entity": 1,
+      "file": "acpi_hid_i2c_channels.ads",
+      "how_proved": "prover",
+      "line": 36,
+      "msg_id": 24,
+      "rule": "VC_POSTCONDITION",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 15,
+          "max_steps": 738,
+          "max_time": 5.64629994332790E-02
+        },
+        "Trivial": {
+          "count": 1,
+          "max_steps": 2,
+          "max_time": 0.00000000000000E+00
+        }
+      }
+    }
+  ],
+  "skip_flow_proof": [
+  ],
+  "skip_proof": [
+  ],
+  "spark": {
+    " 1": "all"
+  },
+  "stop_reason": "STOP_REASON_NONE",
+  "timings": {
+    " 1": {
+      "gnat2why.vc_generation": 1.35867798328400E+00,
+      "gnatwhy3.init": 4.70663011074066E-01,
+      "gnatwhy3.register_vcs": 1.06362998485565E-01,
+      "gnatwhy3.run_vcs": 3.30000002577435E-05,
+      "gnatwhy3.save_session": 2.13530007749796E-02,
+      "gnatwhy3.schedule_vcs": 9.20473992824554E-01,
+      "gnatwhy3.transformations.counterexamples_dependent_intros": 3.72439995408058E-02,
+      "gnatwhy3.transformations.detect_polymorphism": 1.28119988366961E-02,
+      "gnatwhy3.transformations.discriminate_if_poly": 3.09989991365001E-05,
+      "gnatwhy3.transformations.eliminate_algebraic_if_poly": 2.53170002251863E-02,
+      "gnatwhy3.transformations.eliminate_builtin": 1.72349996864796E-02,
+      "gnatwhy3.transformations.eliminate_definition_conditionally": 2.45360005646944E-02,
+      "gnatwhy3.transformations.eliminate_epsilon": 2.18710005283356E-02,
+      "gnatwhy3.transformations.eliminate_gnatprove_guard_epsilon": 2.37569995224476E-02,
+      "gnatwhy3.transformations.eliminate_inductive": 1.95369981229305E-02,
+      "gnatwhy3.transformations.eliminate_literal": 2.89789997041225E-02,
+      "gnatwhy3.transformations.eliminate_projections_sums": 2.98089981079102E-02,
+      "gnatwhy3.transformations.encoding_smt_if_poly": 3.19989994750358E-05,
+      "gnatwhy3.transformations.inline_trivial": 7.38642990589142E-01,
+      "gnatwhy3.transformations.prepare_for_counterexmp": 4.09989988838788E-05,
+      "gnatwhy3.transformations.remove_unused": 3.08874011039734E-01,
+      "gnatwhy3.transformations.simplify_formula": 3.26530002057552E-02,
+      "gnatwhy3.transformations.split_goal_wp_conj": 5.69280013442039E-02
+    },
+    "global": {
+      "flow analysis": 3.94118994474411E-01,
+      "globals (advanced)": 3.11299995519221E-03,
+      "globals (basic)": 1.55969997867942E-02,
+      "init_why_sections": 1.79334998130798E-01,
+      "marking": 4.17530015110970E-02,
+      "properties (advanced)": 5.61000022571534E-04,
+      "translation of standard": 4.15190011262894E-02
+    }
+  }
+}

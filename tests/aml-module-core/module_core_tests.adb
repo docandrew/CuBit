@@ -93,7 +93,7 @@ procedure Module_Core_Tests is
 begin
    for Revision in Unsigned_8 range 1 .. 2 loop
       declare
-         Service : aliased State (3, 8192, 4096);
+         Service : aliased State (3, 8192, 4096, Load_Capacity => 3);
          Access_Result : Values.Access_Status;
          Report : Execution_Report;
          Initialization : Namespace.Initialization_Report;
@@ -155,7 +155,7 @@ begin
       end;
    end loop;
    declare
-      Service : State (2, 4096, 2048);
+      Service : State (2, 4096, 2048, Load_Capacity => 2);
       Access_Result : Values.Access_Status;
       Report : Execution_Report;
       Frozen : Freeze_Status;
@@ -208,7 +208,7 @@ begin
       use type Small.Execution_Phase_Result;
       use type Small.Import_Phase;
       use type Small.State_Model;
-      Service : Small.State (1, 4096, 4096);
+      Service : Small.State (1, 4096, 4096, 1);
       Staged_Result : Small.Stage_Status;
       Frozen : Small.Freeze_Status;
       Access_Result : Small.Values.Access_Status;

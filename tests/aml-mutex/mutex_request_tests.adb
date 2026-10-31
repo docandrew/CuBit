@@ -10,7 +10,7 @@ procedure Mutex_Request_Tests is
    Payload : constant Bytes := [16#5B#, 1] & Enc ("M000") & [0, 16#5B#, 16#27#] & Enc ("M000");
    Raw : Bytes (1 .. 36 + Payload'Length) := [others => 0];
    Sum : Unsigned_8 := 0;
-   S : State (1, 256, 256, 0);
+   S : State (1, 256, 256, Load_Capacity => 1, Initial_Revision => 0);
    Reply : Response;
    Checks : Natural := 0;
    procedure Check (Good : Boolean; Label : String) is

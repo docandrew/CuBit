@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "inputs": [
+    {
+      "path": "userspace/services/acpi/ec/acpi_ec_types.ads",
+      "sha256": "e96562a5f128130c03a0191b8fa33e9a6ee108314341463dddeb20d11b1ffcb9"
+    },
+    {
+      "path": "userspace/services/acpi/ec/acpi_ec_clock_policy.ads",
+      "sha256": "df39eacead116a468da1e1f4d5788611ad4e58bb4916f43aa8328f52002d8e36"
+    },
+    {
+      "path": "userspace/services/acpi/ec/acpi_ec_clock_policy.adb",
+      "sha256": "34d58ce3c7c1947837ea7470a79ecfa12cc24950a0e5a4397ddd8c2b898ee6d0"
+    },
+    {
+      "path": "userspace/services/acpi/ec/acpi_ec_clock_adapter.ads",
+      "sha256": "fa89066efb4fddfe5ac4afb6d24c8963229aef827525f8987bd7c4130ee5fe7e"
+    },
+    {
+      "path": "userspace/services/acpi/ec/acpi_ec_clock_adapter.adb",
+      "sha256": "042f3ea59b26f361d01abdcdc18e0176120b492a9fdfd0654bc9632795ec6a1c"
+    }
+  ],
+  "tests": [
+    {
+      "path": "ec_clock_tests.adb",
+      "sha256": "c79a568d6cd1cabcdfec6e9f016c00c7515f9b9180fa7af9ad1eb20ca7d4c4b5"
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+project Test is
+ Profile := external ("PROFILE", "checked");
+ for Source_Dirs use ("source");
+ for Main use ("dynamic_tests.adb");
+ for Object_Dir use Profile & "/obj";
+ for Exec_Dir use Profile & "/bin";
+ package Compiler is
+  case Profile is
+   when "checked" => for Default_Switches ("Ada") use ("-gnat2022","-gnatwa","-gnatwe","-gnata","-gnato","-O2");
+   when "release" => for Default_Switches ("Ada") use ("-gnat2022","-gnatwa","-gnatwe","-gnatp","-O3");
+   when others => null;
+  end case;
+ end Compiler;
+end Test;

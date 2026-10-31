@@ -85,7 +85,7 @@ procedure Index_Width_Tests is
      elsif Case_Name = "large" then 16_384 else raise Program_Error with "unknown size");
    Name : constant AML_Names.Segment := (if Case_Name = "small" then "R512" elsif Case_Name = "medium" then "R4K0" else "R16K");
    Raw : constant AML_Decode.Bytes := Index_Width_Oracle.Table64;
-   Service : aliased C.State (1, Raw'Length, Raw'Length);
+   Service : aliased C.State (1, Raw'Length, Raw'Length, 1);
    IO : Context;
    Items : F.Binding_Set;
    Stage : C.Stage_Status;

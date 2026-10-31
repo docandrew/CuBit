@@ -3,6 +3,10 @@ with ACPI_Device_Initialization;
 generic
    with package Device_Driver is new ACPI_Device_Initialization
      (Core => ACPI_Service, others => <>);
+      with procedure Execute_Module_Startup
+        (Service : in out ACPI_Service.State; Budget : Natural;
+         Report : out ACPI_Service.Execution_Report;
+         Status : out ACPI_Service.Values.Access_Status) is ACPI_Service.Execute_Frozen;
 package ACPI_Requests.With_Driver with SPARK_Mode is
    pragma Unevaluated_Use_Of_Old (Allow);
    -- Service-owner selected driver and process-lifetime Run. No wire-selected

@@ -1,0 +1,62 @@
+{
+  "accepted": true,
+  "commands": [
+    {
+      "level": 1,
+      "args": [
+        "/nix/store/9xvbsfi448cx9fjk4ivla9fsq390a8gn-gnatprove-fsf-15_2025-06-10/bin/gnatprove",
+        "-P",
+        "/home/doc/cubit-build-tmp/aml-copied-table-proof-ZLHorH/level1/proof.gpr",
+        "-u",
+        "aml_copied_tables.adb",
+        "--level=1",
+        "--timeout=5",
+        "-j1",
+        "--report=all",
+        "--prover=cvc5"
+      ],
+      "status": 0,
+      "signal": null,
+      "error": null
+    },
+    {
+      "level": 2,
+      "args": [
+        "/nix/store/9xvbsfi448cx9fjk4ivla9fsq390a8gn-gnatprove-fsf-15_2025-06-10/bin/gnatprove",
+        "-P",
+        "/home/doc/cubit-build-tmp/aml-copied-table-proof-ZLHorH/level2/proof.gpr",
+        "-u",
+        "aml_copied_tables.adb",
+        "--level=2",
+        "--timeout=5",
+        "-j1",
+        "--report=all",
+        "--prover=cvc5"
+      ],
+      "status": 0,
+      "signal": null,
+      "error": null
+    }
+  ],
+  "inputs": {
+    "/nix/store/9xvbsfi448cx9fjk4ivla9fsq390a8gn-gnatprove-fsf-15_2025-06-10/bin/gnatprove": "ef4dd76057294453d4cc43781aa0f25fad9b351533e380cc9a60a9b86fa797ef",
+    "/nix/store/kpamqxdkwynzxyzhqj4csy6h5qj0pz21-cvc5-1.3.4/bin/cvc5": "06fba7a8fe0e188ba77e049c4b08acf932f5280183830dfc5838f420678626d1",
+    "/home/doc/git/.acpi-proof-work/owned-table-coherent-work/candidate/tests/aml-copied-table-proof/run.mjs": "fb1813d5f944196d62cbf1b8f441b533670138435ec30ad69dc14461d58c4064",
+    "/home/doc/git/.acpi-proof-work/owned-table-coherent-work/candidate/tests/aml-copied-table-proof/run.sh": "1147b073ac02ea69879d33589b0dc8b25cd8ca27c41d8e5cb3cfb5091e18d8cf",
+    "/home/doc/git/.acpi-proof-work/owned-table-coherent-work/candidate/tests/aml-copied-table-proof/check-proof.mjs": "a48f1715354f77c71e3469e3cba8e0a0c7509532147bab25818ab45ce4ce2c24",
+    "/home/doc/git/.acpi-proof-work/owned-table-coherent-work/candidate/tests/aml-copied-table-proof/sources.json": "55307d32ee118e543d893741f1f1094ebd5672332f533707531aff86b8bcc1b9",
+    "/home/doc/git/.acpi-proof-work/owned-table-coherent-work/candidate/shared/firmware/firmware_tables.ads": "cdd038a8b009c7009c8f6286b34b6ab7d3c0bf7be8410ca782b0831780ae1ef4",
+    "/home/doc/cubit-build-tmp/aml-copied-table-proof-ZLHorH/source/firmware_tables.ads": "cdd038a8b009c7009c8f6286b34b6ab7d3c0bf7be8410ca782b0831780ae1ef4",
+    "/home/doc/git/.acpi-proof-work/owned-table-coherent-work/candidate/shared/firmware/firmware_tables.adb": "7aca727a78cb7c10e67c044db1200401a0c28072d917e6e3718233a620e2d316",
+    "/home/doc/cubit-build-tmp/aml-copied-table-proof-ZLHorH/source/firmware_tables.adb": "7aca727a78cb7c10e67c044db1200401a0c28072d917e6e3718233a620e2d316",
+    "/home/doc/git/.acpi-proof-work/owned-table-coherent-work/candidate/userspace/services/acpi/lib/aml_copied_tables.ads": "38e2e1306eb0d7e3b40bf90c89b7279a30ce266c9a9fb778c06a70cf7a5bd8b6",
+    "/home/doc/cubit-build-tmp/aml-copied-table-proof-ZLHorH/source/aml_copied_tables.ads": "38e2e1306eb0d7e3b40bf90c89b7279a30ce266c9a9fb778c06a70cf7a5bd8b6",
+    "/home/doc/git/.acpi-proof-work/owned-table-coherent-work/candidate/userspace/services/acpi/lib/aml_copied_tables.adb": "13c5adabdc2b708d18d831807682c4897f953e73a93a3903532e28d3852577e4",
+    "/home/doc/cubit-build-tmp/aml-copied-table-proof-ZLHorH/source/aml_copied_tables.adb": "13c5adabdc2b708d18d831807682c4897f953e73a93a3903532e28d3852577e4",
+    "/home/doc/cubit-build-tmp/aml-copied-table-proof-ZLHorH/level1/proof.gpr": "a6894758764a8172a5d4a393eb98c8506110124153bdaa3bb34543b80fb96e52",
+    "/home/doc/cubit-build-tmp/aml-copied-table-proof-ZLHorH/level2/proof.gpr": "a6894758764a8172a5d4a393eb98c8506110124153bdaa3bb34543b80fb96e52"
+  },
+  "checks_per_level": 138,
+  "negative_checks": 16,
+  "scope": "Store safety and selected exact window/refusal model framing contracts only; parser body proof is separate. No complete import byte-prefix semantics or interpreter/native proof."
+}

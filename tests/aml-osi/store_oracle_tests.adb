@@ -27,7 +27,7 @@ procedure Store_Oracle_Tests is
    end record;
    type Expectations is array (Positive range <>) of Expected_Result;
    procedure Run (Revision : Positive; First, Second : Bytes; Expected : Expectations) is
-      Service : aliased S.State (2, 8192, 4096);
+      Service : aliased S.State (2, 8192, 4096, 2);
       Stage : S.Stage_Status;
       Frozen : S.Freeze_Status;
       Report : S.Execution_Report;

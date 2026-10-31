@@ -1,5 +1,5 @@
 project core_release is
- for Source_Dirs use ("../../tests/aml-core", "../../userspace/services/acpi/lib", "../../userspace/services/acpi", "../acpi-table-import-model", "../../shared/firmware");
+ for Source_Dirs use ("../../tests/aml-core", "../../userspace/services/acpi/lib", "../../userspace/services/acpi", "../acpi-table-import-model", "../../shared/firmware", "../../userspace/services/acpi/resource-consumer");
  for Object_Dir use "core_release";
  for Main use ("typed_tests.adb", "store_tests.adb", "call_tests.adb");
  package Compiler is

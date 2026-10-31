@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "inputs": [
+    {
+      "path": "userspace/services/acpi/ec/acpi_ec_types.ads",
+      "sha256": "e96562a5f128130c03a0191b8fa33e9a6ee108314341463dddeb20d11b1ffcb9"
+    },
+    {
+      "path": "userspace/services/acpi/ec/acpi_ec_query_scans.ads",
+      "sha256": "591ddbc473777aa0cf469cbde73e851074ebd1430eed0a07e5aacfb2b5a1ef52"
+    },
+    {
+      "path": "userspace/services/acpi/ec/acpi_ec_query_scans.adb",
+      "sha256": "cd494ab8abeb9c3ee028e984b6bd1c6f386d83004fe5b2bbd714cf1e519ad2d0"
+    }
+  ]
+}

@@ -8,7 +8,7 @@ HERE=Path(__file__).resolve().parent; ROOT=HERE.parents[1]
 def digest(p):return hashlib.sha256(p.read_bytes()).hexdigest()
 def interrupted(signum,frame):raise CaptureInterrupted(str(signum))
 signal.signal(signal.SIGTERM,interrupted);signal.signal(signal.SIGINT,interrupted)
-ap=argparse.ArgumentParser();ap.add_argument('--profile',choices=['release'],required=True);ap.add_argument('--selection',choices=['local-n64'],default='local-n64');args=ap.parse_args()
+ap=argparse.ArgumentParser();ap.add_argument('--profile',choices=['release','checked'],required=True);ap.add_argument('--selection',choices=['local-n64'],default='local-n64');args=ap.parse_args()
 manifest_path=HERE/'source-inputs.json';manifest_bytes=manifest_path.read_bytes();manifest=json.loads(manifest_bytes)
 inventory=json.loads((HERE/'source-inventory.json').read_text())
 corpus=json.loads((HERE/'corpus.json').read_text())
@@ -74,6 +74,13 @@ for line in log.read_text().splitlines():
  compiler_tools[str(tool)]=digest(tool);compiled.append({'path':str(f),'sha256':digest(f),'generated':generated})
 if not any(Path(x['path']).name=='aslts_ordered_runner.adb' for x in compiled):raise RuntimeError('main compilation absent')
 deps={}
+for selected in OBJ.glob('*.ali'):
+ if selected.name.startswith('b__'):continue
+ flags=selected.read_text(errors='replace').splitlines()
+ if 'A -gnatwe' not in flags:raise RuntimeError('warnings not checked '+str(selected))
+ if args.profile=='checked':
+  if 'A -gnata' not in flags or 'A -gnato' not in flags or 'A -gnatp' in flags:raise RuntimeError('unchecked ALI '+str(selected))
+ elif 'A -gnatp' not in flags or 'A -gnata' in flags:raise RuntimeError('wrong release ALI '+str(selected))
 for ali in OBJ.glob('*.ali'):
  for line in ali.read_text(errors='replace').splitlines():
   if not line.startswith('D '):continue
@@ -92,7 +99,7 @@ cases=corpus['cases']
 if [c['case'] for c in cases]!=['local-n64']:raise RuntimeError('selection must be exact original local n64')
 for c in cases:
  if digest(exe)!=binary:raise RuntimeError('binary changed')
- status,log=stage(c['case'],[exe,ROOT/c['aml']],64)
+ status,log=stage(c['case'],[exe,ROOT/c['aml']],30)
  good=status==0 and len(re.findall(r'^RESULT\s+0\s*$',log.read_text(),re.M))==2 and len(re.findall(r'^ERRS_RESULT\s+0\s*$',log.read_text(),re.M))==2 and log.read_text().count('MN00_STATUS RETURNED')==2 and log.read_text().count('ERRS_STATUS RETURNED')==2 and re.findall(r'^COMPLETION RMRC\s+(\d+) ALL_RECORDS_CMO0_PASS RETAINED_RESTORED$',log.read_text(),re.M)==['1','2']
  rows[-1]['selected_case_pass']=good
  if not good:

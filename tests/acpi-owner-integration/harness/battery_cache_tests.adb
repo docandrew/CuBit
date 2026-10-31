@@ -64,7 +64,7 @@ procedure Battery_Cache_Tests is
          B.Publish_Refresh (Target, State, Read_Clock, True, Report);
       end if;
    end Collect_And_Publish;
-   Service : aliased C.State (1, 4096, 4096);
+   Service : aliased C.State (1, 4096, 4096, 1);
    Device, Setter : C.Node_Descriptor;
    Binding : B.Binding_Result;
    Report : B.Refresh_Report;

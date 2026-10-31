@@ -1,0 +1,204 @@
+{
+  "proofs": {
+    "/home/doc/cubit-build-tmp/fadt-sleep-proof-vGPYY8": [
+      {
+        "level": 1,
+        "entities": 3,
+        "flow": 7,
+        "checks": 7,
+        "posts": 1,
+        "attempts": {
+          "CVC5:Valid": 27,
+          "Trivial:Valid": 2
+        },
+        "modular_dependencies": [
+          "ACPI_FADT.Registers.Describe",
+          "ACPI_FADT.Hardware_Reduced"
+        ],
+        "explicit_assume": 0
+      },
+      {
+        "level": 2,
+        "entities": 3,
+        "flow": 7,
+        "checks": 7,
+        "posts": 1,
+        "attempts": {
+          "CVC5:Valid": 27,
+          "Trivial:Valid": 2
+        },
+        "modular_dependencies": [
+          "ACPI_FADT.Registers.Describe",
+          "ACPI_FADT.Hardware_Reduced"
+        ],
+        "explicit_assume": 0
+      }
+    ],
+    "/home/doc/cubit-build-tmp/acpi-sleep-register-proof-yj0iyA": [
+      {
+        "level": 1,
+        "entities": 3,
+        "flow": 7,
+        "checks": 7,
+        "posts": 1,
+        "attempts": {
+          "CVC5:Valid": 27,
+          "Trivial:Valid": 2
+        },
+        "modular_dependencies": [
+          "ACPI_FADT.Registers.Describe",
+          "ACPI_FADT.Hardware_Reduced"
+        ],
+        "explicit_assume": 0
+      },
+      {
+        "level": 2,
+        "entities": 3,
+        "flow": 7,
+        "checks": 7,
+        "posts": 1,
+        "attempts": {
+          "CVC5:Valid": 27,
+          "Trivial:Valid": 2
+        },
+        "modular_dependencies": [
+          "ACPI_FADT.Registers.Describe",
+          "ACPI_FADT.Hardware_Reduced"
+        ],
+        "explicit_assume": 0
+      }
+    ]
+  },
+  "hosted": {
+    "directory": "/home/doc/cubit-build-tmp/acpi-native-power-XvTs6G",
+    "checks_per_profile": 924,
+    "processes_per_profile": 42,
+    "commands": 104,
+    "counts": {
+      "checked": {
+        "1": {
+          "normal": 34,
+          "absent": 22,
+          "invalid": 20,
+          "changed": 20,
+          "blocked": 20,
+          "source": 20,
+          "empty": 20,
+          "hardware": 20,
+          "fatal": 20,
+          "limit": 22,
+          "zero": 20,
+          "fuel": 20,
+          "unstarted": 16,
+          "log-error": 18,
+          "fadt": 25,
+          "fadt-paired": 25,
+          "fadt-reduced": 25,
+          "fadt-none": 25,
+          "fadt-invalid": 23,
+          "fadt-duplicate": 24,
+          "fadt-short": 23
+        },
+        "2": {
+          "normal": 34,
+          "absent": 22,
+          "invalid": 20,
+          "changed": 20,
+          "blocked": 20,
+          "source": 20,
+          "empty": 20,
+          "hardware": 20,
+          "fatal": 20,
+          "limit": 22,
+          "zero": 20,
+          "fuel": 20,
+          "unstarted": 16,
+          "log-error": 18,
+          "fadt": 25,
+          "fadt-paired": 25,
+          "fadt-reduced": 25,
+          "fadt-none": 25,
+          "fadt-invalid": 23,
+          "fadt-duplicate": 24,
+          "fadt-short": 23
+        }
+      },
+      "release": {
+        "1": {
+          "normal": 34,
+          "absent": 22,
+          "invalid": 20,
+          "changed": 20,
+          "blocked": 20,
+          "source": 20,
+          "empty": 20,
+          "hardware": 20,
+          "fatal": 20,
+          "limit": 22,
+          "zero": 20,
+          "fuel": 20,
+          "unstarted": 16,
+          "log-error": 18,
+          "fadt": 25,
+          "fadt-paired": 25,
+          "fadt-reduced": 25,
+          "fadt-none": 25,
+          "fadt-invalid": 23,
+          "fadt-duplicate": 24,
+          "fadt-short": 23
+        },
+        "2": {
+          "normal": 34,
+          "absent": 22,
+          "invalid": 20,
+          "changed": 20,
+          "blocked": 20,
+          "source": 20,
+          "empty": 20,
+          "hardware": 20,
+          "fatal": 20,
+          "limit": 22,
+          "zero": 20,
+          "fuel": 20,
+          "unstarted": 16,
+          "log-error": 18,
+          "fadt": 25,
+          "fadt-paired": 25,
+          "fadt-reduced": 25,
+          "fadt-none": 25,
+          "fadt-invalid": 23,
+          "fadt-duplicate": 24,
+          "fadt-short": 23
+        }
+      }
+    }
+  },
+  "semantic": {
+    "checked": {
+      "directory": "/home/doc/git/.acpi-proof-work/fadt-sleep-proof-work/candidate/tests/acpi-native-entry/results/checked-tEQBwQPv",
+      "selections": 36,
+      "alis": 35,
+      "objects": 0
+    },
+    "release": {
+      "directory": "/home/doc/git/.acpi-proof-work/fadt-sleep-proof-work/candidate/tests/acpi-native-entry/results/release-b54oaztU",
+      "selections": 36,
+      "alis": 35,
+      "objects": 0
+    }
+  },
+  "metadata_only_suites": [
+    "acpi-native-startup",
+    "acpi-native-server-loop",
+    "acpi-battery",
+    "acpi-hid-transport-integration",
+    "acpi-snapshot-startup"
+  ],
+  "scope": "Actual pure sleep classifier selection/refusal/low-idle/fallback postcondition and safety under actual sibling/parent helper interfaces. Eight actual pure sources,no Core stub; helper bodies,parser provenance,catalog/owner/native/hardware and whole AML/service correctness are not proved here",
+  "new_proof": true,
+  "new_acpica_interpreter_run": false,
+  "native_executed": false,
+  "hardware_validated": false,
+  "all_own_jobs_terminal": true,
+  "goal": "active and incomplete"
+}

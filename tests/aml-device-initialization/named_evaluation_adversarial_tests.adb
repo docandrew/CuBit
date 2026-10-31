@@ -26,7 +26,7 @@ procedure Named_Evaluation_Adversarial_Tests is
    use type C.Freeze_Status;
    use type C.Install_Status;
    use type AML_Execute.Execution_Status;
-   Global_Service : aliased C.State (1, 4096, 4096);
+   Global_Service : aliased C.State (1, 4096, 4096, 1);
    Clock_Item : C.Node_Descriptor := V.No_Node;
    Callback_Status : V.Access_Status := V.Available;
    Callback_Charged : Natural := Natural'Last;
@@ -132,7 +132,7 @@ begin
       Item : C.Node_Descriptor;
       Value : V.Result;
       Status : V.Access_Status;
-      Other : aliased C.State (1,4096,4096);
+      Other : aliased C.State (1, 4096, 4096, 1);
    begin
       Locate (Global_Service, "BUSY", Item);
       C.Evaluate_Named (Global_Service, Item, 100, Value, Status);
@@ -172,7 +172,7 @@ begin
    end;
    -- Static provider metadata is not access authority; no missing/default path.
    declare
-      Service : aliased C.State (1,4096,4096);
+      Service : aliased C.State (1, 4096, 4096, 1);
       Installed : C.Install_Status;
       Members : N.Initialization_Report;
       Status : V.Access_Status;
@@ -193,7 +193,7 @@ begin
    -- External named field and ordinary method field reads share exact width rules.
    for Revision in Unsigned_8 range 1 .. 2 loop
       declare
-         Service : aliased C.State (1,4096,4096);
+         Service : aliased C.State (1, 4096, 4096, 1);
          Item, Reader : C.Node_Descriptor;
          Value : V.Result;
          Status : V.Access_Status;

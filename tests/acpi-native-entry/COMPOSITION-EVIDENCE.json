@@ -1,0 +1,62 @@
+{
+  "scope": "Actual same-Core EC receiver -> receipt broker -> native notification owner -> native server loop -> two lid and AC caches,with explicitly modeled IPC/event/logging transport",
+  "hosted": {
+    "directory": "/home/doc/cubit-build-tmp/acpi-native-notifications-0Uzxo3",
+    "checks_per_profile": 324,
+    "commands": 14,
+    "counts": {
+      "checked": {
+        "1": {
+          "normal": 144,
+          "hardware": 18
+        },
+        "2": {
+          "normal": 144,
+          "hardware": 18
+        }
+      },
+      "release": {
+        "1": {
+          "normal": 144,
+          "hardware": 18
+        },
+        "2": {
+          "normal": 144,
+          "hardware": 18
+        }
+      }
+    }
+  },
+  "semantic": {
+    "checked": {
+      "directory": "/home/doc/git/.acpi-proof-work/native-notification-composition-work/candidate/tests/acpi-native-entry/results/checked-mrblVxb2",
+      "selections": 31,
+      "alis": 30,
+      "objects": 0
+    },
+    "release": {
+      "directory": "/home/doc/git/.acpi-proof-work/native-notification-composition-work/candidate/tests/acpi-native-entry/results/release-Y5U5gYkn",
+      "selections": 31,
+      "alis": 30,
+      "objects": 0
+    }
+  },
+  "exception_policy": "Observation_Complete cleared and Last reset before each pump; unexpected callback exception propagates without old successful observation,automatic retry or dispatch; explicit repaired-owner attempt resumes retained receipt",
+  "initial_failures": [
+    {
+      "directory": "/home/doc/cubit-build-tmp/acpi-native-notifications-UfQRhw",
+      "reason": "Incorrect test expectation: _LID raw6 is nonzero/open,not closed; no production defect established"
+    },
+    {
+      "directory": "/home/doc/cubit-build-tmp/acpi-native-notifications-7GiSiO",
+      "reason": "Test-local Raised variable declared in wrong block; ordinary compile failure corrected"
+    }
+  ],
+  "new_proof": false,
+  "new_acpica_interpreter_run": false,
+  "acpica": "Existing fixtures compile with normal iASL; interpreter unchanged,no new equivalence claim",
+  "native_executed": false,
+  "hardware_validated": false,
+  "all_own_jobs_terminal": true,
+  "goal": "active and incomplete"
+}

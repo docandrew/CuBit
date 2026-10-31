@@ -113,7 +113,7 @@ procedure ASLTS_Ordered_Runner is
    Table_Data : constant Firmware_Tables.Bytes := Read_Input;
    -- Admit the checked table size explicitly. Only the two named instance
    -- budgets above differ; object/frame/fuel and retained-root quotas do not.
-   Service : aliased State (1, Table_Data'Length, Table_Data'Length);
+   Service : aliased State (1, Table_Data'Length, Table_Data'Length, Load_Capacity => 1);
    Stage : Stage_Status;
    Frozen : Freeze_Status;
    Access_Result : Values.Access_Status;

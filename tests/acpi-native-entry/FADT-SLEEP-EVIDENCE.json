@@ -1,0 +1,147 @@
+{
+  "scope": "Native power startup logs a read-only sleep-register model from exactly one retained FADT; no Sx AML execution or transition introduced",
+  "hosted": {
+    "directory": "/home/doc/cubit-build-tmp/acpi-native-power-NIIPDd",
+    "checks_per_profile": 924,
+    "processes_per_profile": 42,
+    "commands": 104,
+    "counts": {
+      "checked": {
+        "1": {
+          "normal": 34,
+          "absent": 22,
+          "invalid": 20,
+          "changed": 20,
+          "blocked": 20,
+          "source": 20,
+          "empty": 20,
+          "hardware": 20,
+          "fatal": 20,
+          "limit": 22,
+          "zero": 20,
+          "fuel": 20,
+          "unstarted": 16,
+          "log-error": 18,
+          "fadt": 25,
+          "fadt-paired": 25,
+          "fadt-reduced": 25,
+          "fadt-none": 25,
+          "fadt-invalid": 23,
+          "fadt-duplicate": 24,
+          "fadt-short": 23
+        },
+        "2": {
+          "normal": 34,
+          "absent": 22,
+          "invalid": 20,
+          "changed": 20,
+          "blocked": 20,
+          "source": 20,
+          "empty": 20,
+          "hardware": 20,
+          "fatal": 20,
+          "limit": 22,
+          "zero": 20,
+          "fuel": 20,
+          "unstarted": 16,
+          "log-error": 18,
+          "fadt": 25,
+          "fadt-paired": 25,
+          "fadt-reduced": 25,
+          "fadt-none": 25,
+          "fadt-invalid": 23,
+          "fadt-duplicate": 24,
+          "fadt-short": 23
+        }
+      },
+      "release": {
+        "1": {
+          "normal": 34,
+          "absent": 22,
+          "invalid": 20,
+          "changed": 20,
+          "blocked": 20,
+          "source": 20,
+          "empty": 20,
+          "hardware": 20,
+          "fatal": 20,
+          "limit": 22,
+          "zero": 20,
+          "fuel": 20,
+          "unstarted": 16,
+          "log-error": 18,
+          "fadt": 25,
+          "fadt-paired": 25,
+          "fadt-reduced": 25,
+          "fadt-none": 25,
+          "fadt-invalid": 23,
+          "fadt-duplicate": 24,
+          "fadt-short": 23
+        },
+        "2": {
+          "normal": 34,
+          "absent": 22,
+          "invalid": 20,
+          "changed": 20,
+          "blocked": 20,
+          "source": 20,
+          "empty": 20,
+          "hardware": 20,
+          "fatal": 20,
+          "limit": 22,
+          "zero": 20,
+          "fuel": 20,
+          "unstarted": 16,
+          "log-error": 18,
+          "fadt": 25,
+          "fadt-paired": 25,
+          "fadt-reduced": 25,
+          "fadt-none": 25,
+          "fadt-invalid": 23,
+          "fadt-duplicate": 24,
+          "fadt-short": 23
+        }
+      }
+    }
+  },
+  "suites": {
+    "acpi-native-startup": {
+      "checked": {
+        "directory": "/home/doc/git/.acpi-proof-work/fadt-sleep-model-work/candidate/tests/acpi-native-startup/results/checked-N3IR2rrn",
+        "alis": 105,
+        "checks": 1228,
+        "processes": 76
+      },
+      "release": {
+        "directory": "/home/doc/git/.acpi-proof-work/fadt-sleep-model-work/candidate/tests/acpi-native-startup/results/release-4Mz69GmL",
+        "alis": 105,
+        "checks": 1228,
+        "processes": 76
+      }
+    },
+    "acpi-native-entry": {
+      "checked": {
+        "directory": "/home/doc/git/.acpi-proof-work/fadt-sleep-model-work/candidate/tests/acpi-native-entry/results/checked-9rna6lqt",
+        "alis": 35,
+        "objects": 0,
+        "selections": 36
+      },
+      "release": {
+        "directory": "/home/doc/git/.acpi-proof-work/fadt-sleep-model-work/candidate/tests/acpi-native-entry/results/release-K6k7RCX1",
+        "alis": 35,
+        "objects": 0,
+        "selections": 36
+      }
+    }
+  },
+  "classification": "Legacy A-only/paired/none and HW-reduced byte control,missing/duplicate/invalid FADT,invalid block geometry,B-only inconsistency,legacy fallback and low-idle flag; PCI space is descriptive only,not PCI GAS target validation or admitted backend",
+  "initial_compile_error": "Test-only redundant Revision_Number use clause after importing Interfaces; removed under warnings-as-errors",
+  "proof": "New classifier is SPARK-marked but no new proof run; functional mapping is hosted-tested,not proved",
+  "new_proof": false,
+  "new_acpica_interpreter_run": false,
+  "acpica": "Existing AML fixtures compile with normal iASL; no AML semantics changed or new table/runtime oracle claimed",
+  "native_executed": false,
+  "hardware_validated": false,
+  "all_own_jobs_terminal": true,
+  "goal": "active and incomplete"
+}

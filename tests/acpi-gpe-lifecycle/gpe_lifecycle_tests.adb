@@ -23,7 +23,7 @@ procedure GPE_Lifecycle_Tests is
       Raise_Enable, Fail_Handler, Unknown_Handler, Budget_Handler, Overcharge_Handler,
       Raise_Handler, Empty_Handler);
    Fault : Fault_Kind := No_Fault;
-   Service : aliased C.State (1, 4096, 4096);
+   Service : aliased C.State (1, 4096, 4096, 1);
    Methods : array (Source_ID) of C.Node_Descriptor := [others => C.Values.No_Node];
    Lid_Node : C.Namespace.Node_ID;
    Trace : String (1 .. 8) := [others => ' '];

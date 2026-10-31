@@ -46,7 +46,7 @@ procedure Resource_Core_Tests is
      Fail_Method ("BUF0", [16#77#,0,16#79#,0]) &
      Method ("CLRM", [16#70#,0] & Name ("MARK") & [16#A4#,0]);
    Data : constant Firmware_Tables.Bytes := Table (Code);
-   Tree : aliased S.State (1, 1024, 1024);
+   Tree : aliased S.State (1, 1024, 1024, 1);
    Installed : S.Install_Status;
    Report : S.Namespace.Initialization_Report;
    Access_Result : S.Values.Access_Status;

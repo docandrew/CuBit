@@ -137,7 +137,7 @@ procedure Device_Traversal_Tests is
 begin
    -- Explicit _SB scope reopening: only one SB initializer, before region callback.
    declare
-      Service : aliased C.State (1, 8192, 8192);
+      Service : aliased C.State (1, 8192, 8192, 1);
       Run : Init.Session;
       Accepted : Boolean;
       Code : constant Bytes := Name ("ORDR", [0]) & Name ("ROOT", [0]) &
@@ -159,7 +159,7 @@ begin
    -- Data/method/missing _STA and failed _STA: children continue except prune.
    for Mode in 0 .. 4 loop
       declare
-         Service : aliased C.State (1, 8192, 8192);
+         Service : aliased C.State (1, 8192, 8192, 1);
          Run : Init.Session;
          Accepted : Boolean;
          Status_Code : constant Bytes :=
@@ -191,7 +191,7 @@ begin
    -- Zero and small budgets are explicit partial initialization, never success.
    for Fuel in 0 .. 1 loop
       declare
-         Service : aliased C.State (1, 4096, 4096);
+         Service : aliased C.State (1, 4096, 4096, 1);
          Run : Init.Session;
          Accepted : Boolean;
          Calls : constant Natural := Region_Calls;
@@ -209,7 +209,7 @@ begin
    end loop;
    -- Physical descriptor credentials cannot be replayed in another live arena.
    declare
-      A, B : aliased C.State (1, 4096, 4096);
+      A, B : aliased C.State (1, 4096, 4096, 1);
       Node : C.Namespace.Node_ID;
       Item : C.Node_Descriptor;
       Status : C.Values.Access_Status;
@@ -222,7 +222,7 @@ begin
    end;
    -- Real Copy_And_Attach permits Device replacement; topology must detect it.
    declare
-      Service : aliased C.State (1, 4096, 4096);
+      Service : aliased C.State (1, 4096, 4096, 1);
       Run : Init.Session;
       Accepted : Boolean;
       Node : C.Namespace.Node_ID;

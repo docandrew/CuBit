@@ -37,7 +37,7 @@ procedure Region_Alias_Tests is
    end Invoke;
    package R is new ACPI_Region_Initialization (C, Context, Handler_Ready, PCI_Root, Invoke);
    use type R.Phase, R.Notice_Result;
-   Service, Foreign : aliased C.State (1, 4096, 4096);
+   Service, Foreign : aliased C.State (1, 4096, 4096, 1);
    Owner : Context;
    Checks : Natural := 0;
    Run : R.Session;

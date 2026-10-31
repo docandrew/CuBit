@@ -103,8 +103,7 @@ procedure Index_Field_Tests is
    end Authorize;
    package F is new C.Field_IO (Context, Pending, Describe, Dispatch, Confirmed,
      Authorize_Target => Authorize);
-   Service : aliased C.State (1, Index_Field_Oracle.Raw_Table'Length,
-     Index_Field_Oracle.Raw_Table'Length);
+   Service : aliased C.State (1, Index_Field_Oracle.Raw_Table'Length, Index_Field_Oracle.Raw_Table'Length, 1);
    IO : Context;
    Items : F.Binding_Set;
    Staged : C.Stage_Status;
@@ -180,7 +179,7 @@ procedure Index_Field_Tests is
       Reserved_Access_Code : constant AML_Decode.Byte := 6;
       Checksum_Position : constant Positive := 10;
       Sum : AML_Decode.Byte := 0;
-      Bad : aliased C.State (1, Raw'Length, Raw'Length);
+      Bad : aliased C.State (1, Raw'Length, Raw'Length, 1);
       Bad_IO : Context;
       Bad_Items : F.Binding_Set;
       Report : C.Execution_Report;

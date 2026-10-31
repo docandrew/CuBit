@@ -1,7 +1,7 @@
 fee522bb08f415780d00566608c767b2cbb68adceb86de7ff916de11762c0ec9  tests/acpi-leaf-policy-proof/README.md
 8d0631a01dc631a8eb9027f677d32733bcd90ef85ad95938544e2372f6f6f5b7  tests/acpi-leaf-policy-proof/audit.sh
 247d8e54755d738af5c6d370b24889f9293be753698e50bc5ae0b00dd78c8482  tests/acpi-leaf-policy-proof/proof.gpr
-f28fdbeff049c6b1ca9fbbb0904055f982a2802370d6265a03f2d80d8cdec458  tests/acpi-leaf-policy-proof/run.sh
+72807a85aa9e3d1d28239d93b2dec11316df6a9004157244202e749202c4f624  tests/acpi-leaf-policy-proof/run.sh
 2f29b334a5e1801d05fb405ee89ec91c6379b55553448755fce66e149dc09849  userspace/services/acpi/hid-i2c/hid_i2c_descriptors.adb
 9b2369243cbbf2d99f71e15eaa5940a808f44444c285287d89762451585f5db4  userspace/services/acpi/hid-i2c/hid_i2c_descriptors.ads
 9c3dd39ff74698e57638e7d6c9cd6015ca5ec984d3508823ac59b3df1634492b  userspace/services/acpi/hid-i2c/hid_i2c_wire.adb

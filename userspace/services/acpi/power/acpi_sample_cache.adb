@@ -1,4 +1,9 @@
 package body ACPI_Sample_Cache with SPARK_Mode is
+   procedure Clear (Cache : in out State; New_Status : Cache_Status)
+     with Post => Revision (Cache) = Revision (Cache)'Old
+       and then Status (Cache) = New_Status
+       and then Stored_Value (Cache) = Empty_Sample
+       and then Stored_Time (Cache) = (Available => False, Value => 0);
    procedure Clear (Cache : in out State; New_Status : Cache_Status) is
    begin
       Cache.Current := New_Status;

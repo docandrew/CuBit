@@ -1,0 +1,10 @@
+import fs from 'node:fs';import crypto from 'node:crypto';import {spawnSync} from 'node:child_process';
+const sha=f=>crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex'),aml=process.argv[2],tool='/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec';
+if(!aml||process.env.TMPDIR!=='/home/doc/cubit-build-tmp')throw Error('Expected compiled fixture and TMPDIR');
+const out=fs.mkdtempSync(process.env.TMPDIR+'/ec-event-oracle-'),pins={[aml]:sha(aml),[tool]:sha(tool)},args=[tool,'-l','-di','-dr','-fv','0','-b','execute EC00._Q01; evaluate EVCT; evaluate EVST; evaluate LID0._LID; evaluate EC01._Q03',aml];
+const r=spawnSync('nice',['-n','19','timeout','--kill-after=2s','5',...args],{encoding:'utf8',maxBuffer:1048576,timeout:8000}),log=(r.stdout??'')+(r.stderr??'');fs.writeFileSync(out+'/acpica.log',log.slice(0,1048576));
+for(const[f,h]of Object.entries(pins))if(sha(f)!==h)throw Error('Input drift');
+const integers=[...log.matchAll(/^\s*\[Integer\] = ([0-9A-F]+)/gm)].map(m=>Number.parseInt(m[1],16));
+const buffer=/\[Buffer\] Length 02 =\s+0000: 01 02\s+\/\//.test(log),notify=/Received a Device Notify on \[LID0\].*Value 0x80/.test(log);
+const accepted=buffer&&notify&&r.status===0&&!r.error&&!r.signal&&Buffer.byteLength(log)<=1048576&&!/Evaluation of .* failed|Aborting method|Could not resolve symbol/.test(log)&&JSON.stringify(integers)===JSON.stringify([1,0,0]);
+fs.writeFileSync(out+'/RESULT.json',JSON.stringify({accepted,args,status:r.status,signal:r.signal,error:r.error?.message??null,integers,buffer_bytes:buffer?[1,2]:null,lid_notify:notify,inputs:pins,scope:'Independent AML handler semantics with ACPICA simulated zero-filled OperationRegion,not physical EC protocol/interrupt/IPC behavior.'},null,2)+'\n');console.log(JSON.stringify({out,accepted,integers}));if(!accepted)process.exit(1);

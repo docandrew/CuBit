@@ -26,7 +26,7 @@ package body AML_Field_Plans with SPARK_Mode is
       Datums : AML_Field_Datums.Plan;
    begin
       if Field.Form /= AML_Field_Layout.Ordinary_Field or else Field.Has_Connection
-        or else Field.Region.Space not in AML_Field_Layout.Memory_Space | AML_Field_Layout.IO_Space
+        or else Field.Region.Space not in AML_Field_Layout.Memory_Space | AML_Field_Layout.IO_Space | AML_Field_Layout.Embedded_Control_Space
         or else Field.Bit_Length = 0 or else Field.Bit_Length > Maximum_Bits
         or else Field.Region.Length = 0
         or else Field.Region.Base > AML_Decode.Integer_Value'Last - (Field.Region.Length - 1)
@@ -38,6 +38,12 @@ package body AML_Field_Plans with SPARK_Mode is
       if Field.Region.Space = AML_Field_Layout.IO_Space
         and then (Field.Region.Base > AML_Field_Layout.IO_Last_Address
           or else Field.Region.Length - 1 > AML_Field_Layout.IO_Last_Address - Field.Region.Base)
+      then return (others => <>); end if;
+      if Field.Region.Space = AML_Field_Layout.Embedded_Control_Space and then
+        (Field.Region.Base > AML_Field_Layout.EC_Last_Cell
+         or else Field.Region.Length - 1 > AML_Field_Layout.EC_Last_Cell - Field.Region.Base
+         or else Field.Effective_Access /= Byte_Code
+         or else (Field.Flags and Access_Mask) /= Byte_Code)
       then return (others => <>); end if;
       case Field.Effective_Access is
          when Any_Code | Byte_Code => Width := ACPI_FADT.Transactions.Byte_Access;

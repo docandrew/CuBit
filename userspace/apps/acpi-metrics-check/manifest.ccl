@@ -1,0 +1,8 @@
+# acpi-native-smoke (tests/headless): reads the real acpi.svc's observer
+# metrics through the declared "acpi" endpoint, which procmgr badges with
+# the observer tag.
+(Executable_Manifest
+  identity => "com.cubit.acpi-metrics-check"
+  version => "0.1.0"
+  requests => [
+    (service "acpi" "acpi")])

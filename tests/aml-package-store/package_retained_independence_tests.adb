@@ -23,7 +23,7 @@ procedure Package_Retained_Independence_Tests is
    procedure Check (Good : Boolean; Message : String) is
    begin Checks := Checks + 1; if not Good then raise Program_Error with Message; end if; end Check;
    procedure Run (Revision : Positive; First, Second : Bytes) is
-      Service : aliased S.State (2, 8192, 4096);
+      Service : aliased S.State (2, 8192, 4096, 2);
       Stage : S.Stage_Status;
       Frozen : S.Freeze_Status;
       Report : S.Execution_Report;

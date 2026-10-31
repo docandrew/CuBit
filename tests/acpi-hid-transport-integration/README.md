@@ -20,7 +20,7 @@ report prefix/suffix and scratch handling. Missing/ambiguous/alternative
 resources, disabled/absent/nonfunctioning devices and unavailable controller
 binding perform no lower IO. No implicit retry occurs.
 
-Checked (-gnata -gnato) and release (-gnatp) profiles must agree, with 86 local
+Checked (-gnata -gnato) and release (-gnatp) profiles must agree, with 90 local
 source ALIs per profile and actual compiler switches verified. ACPICA20260408,
 repair disabled, must match six expected integer values. Fixture diagnostic3150
 is its intentional empty-resource case;2095 is its real empty fourth _DSM
@@ -36,3 +36,10 @@ Lenovo firmware dump, logging-delivery test, HID report semantic/input test or
 proof of the complete service. Real controller/GPIO resolution, power timing,
 EC/region IO, snapshot export/launch and laptop validation remain open. No new
 SPARK proof is claimed for this regression; hosted GPRs are test recipes only.
+
+
+The controlled module-startup milestone is recorded in MODULE-STARTUP-EVIDENCE.json.
+Its current-source input/closure refresh does not renew historical proof results.
+Fresh hosted checks cover both profiles; no native execution or hardware
+authority/region connection follows from these tests. The native API gate
+selects 59 units and produces 56 ALIs with zero objects per profile.

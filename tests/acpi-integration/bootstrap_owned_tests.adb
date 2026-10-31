@@ -32,7 +32,7 @@ begin
    Data (10) := 0 - Sum;
    for Count in 0 .. 4 loop
       declare
-         S : State (3, 256, 128);
+         S : State (3, 256, 128, Load_Capacity => 3);
          OK : Boolean;
          Status : ACPI_Service.Install_Status;
       begin
@@ -69,7 +69,7 @@ begin
       end;
    end loop;
    declare
-      S : State (2, 256, 128);
+      S : State (2, 256, 128, Load_Capacity => 2);
       OK : Boolean;
       Status : ACPI_Service.Install_Status;
       Bad : Firmware_Tables.Bytes := Data;
@@ -90,7 +90,7 @@ begin
    begin
       for Mode in 0 .. 2 loop
          declare
-            S : State (2, 256, 128);
+            S : State (2, 256, 128, Load_Capacity => 2);
             OK : Boolean;
             Status : ACPI_Service.Install_Status;
             Before : ACPI_Service.Values.Audit_Value;

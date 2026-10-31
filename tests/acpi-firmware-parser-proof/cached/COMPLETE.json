@@ -1,0 +1,58 @@
+{
+  "accepted": true,
+  "commands": [
+    {
+      "level": 1,
+      "args": [
+        "/nix/store/9xvbsfi448cx9fjk4ivla9fsq390a8gn-gnatprove-fsf-15_2025-06-10/bin/gnatprove",
+        "-P",
+        "/home/doc/cubit-build-tmp/aml-copied-table-proof-VeSBFl/level1/proof.gpr",
+        "-u",
+        "firmware_tables.adb",
+        "--level=1",
+        "--timeout=5",
+        "-j1",
+        "--report=all",
+        "--prover=cvc5"
+      ],
+      "status": 0,
+      "signal": null,
+      "error": null
+    },
+    {
+      "level": 2,
+      "args": [
+        "/nix/store/9xvbsfi448cx9fjk4ivla9fsq390a8gn-gnatprove-fsf-15_2025-06-10/bin/gnatprove",
+        "-P",
+        "/home/doc/cubit-build-tmp/aml-copied-table-proof-VeSBFl/level2/proof.gpr",
+        "-u",
+        "firmware_tables.adb",
+        "--level=2",
+        "--timeout=5",
+        "-j1",
+        "--report=all",
+        "--prover=cvc5"
+      ],
+      "status": 0,
+      "signal": null,
+      "error": null
+    }
+  ],
+  "inputs": {
+    "/nix/store/9xvbsfi448cx9fjk4ivla9fsq390a8gn-gnatprove-fsf-15_2025-06-10/bin/gnatprove": "ef4dd76057294453d4cc43781aa0f25fad9b351533e380cc9a60a9b86fa797ef",
+    "/nix/store/kpamqxdkwynzxyzhqj4csy6h5qj0pz21-cvc5-1.3.4/bin/cvc5": "06fba7a8fe0e188ba77e049c4b08acf932f5280183830dfc5838f420678626d1",
+    "/home/doc/git/.acpi-proof-work/owned-source-publication-work/candidate/tests/acpi-firmware-parser-proof/run.mjs": "06990c04a34baeb4d65fca097254570c6e506c4e1abde46b7e15b7ee9697c94b",
+    "/home/doc/git/.acpi-proof-work/owned-source-publication-work/candidate/tests/acpi-firmware-parser-proof/run.sh": "1147b073ac02ea69879d33589b0dc8b25cd8ca27c41d8e5cb3cfb5091e18d8cf",
+    "/home/doc/git/.acpi-proof-work/owned-source-publication-work/candidate/tests/acpi-firmware-parser-proof/check-proof.mjs": "c995bc442bda21ba11c01152690871b641557e293a8f59c4ad36fb57d7323230",
+    "/home/doc/git/.acpi-proof-work/owned-source-publication-work/candidate/tests/acpi-firmware-parser-proof/sources.json": "6822cdd5390479fa8af0dd10822ad468fdda80f03fda40e08883196aec00cf15",
+    "/home/doc/git/.acpi-proof-work/owned-source-publication-work/candidate/shared/firmware/firmware_tables.ads": "cdd038a8b009c7009c8f6286b34b6ab7d3c0bf7be8410ca782b0831780ae1ef4",
+    "/home/doc/cubit-build-tmp/aml-copied-table-proof-VeSBFl/source/firmware_tables.ads": "cdd038a8b009c7009c8f6286b34b6ab7d3c0bf7be8410ca782b0831780ae1ef4",
+    "/home/doc/git/.acpi-proof-work/owned-source-publication-work/candidate/shared/firmware/firmware_tables.adb": "7aca727a78cb7c10e67c044db1200401a0c28072d917e6e3718233a620e2d316",
+    "/home/doc/cubit-build-tmp/aml-copied-table-proof-VeSBFl/source/firmware_tables.adb": "7aca727a78cb7c10e67c044db1200401a0c28072d917e6e3718233a620e2d316",
+    "/home/doc/cubit-build-tmp/aml-copied-table-proof-VeSBFl/level1/proof.gpr": "a6894758764a8172a5d4a393eb98c8506110124153bdaa3bb34543b80fb96e52",
+    "/home/doc/cubit-build-tmp/aml-copied-table-proof-VeSBFl/level2/proof.gpr": "a6894758764a8172a5d4a393eb98c8506110124153bdaa3bb34543b80fb96e52"
+  },
+  "checks_per_level": 61,
+  "negative_checks": 16,
+  "scope": "Firmware parser safety, flow, termination and accepted extent contracts only. No full signature/checksum theorem, hardware mapping authority or interpreter/native proof."
+}

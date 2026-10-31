@@ -1,0 +1,44 @@
+{
+  "inputs": [
+    {
+      "path": "userspace/services/acpi/power/acpi_observation_values.ads",
+      "sha256": "7760f50ff72db3a27bbf69a49384af677e83f67a025d45d79be52c3c452725b1",
+      "kind": "ada"
+    },
+    {
+      "path": "userspace/services/acpi/power/acpi_sample_cache.ads",
+      "sha256": "3ea2a2a7240b51f71076f47a0389d92e4e29ad9c8d35ec23f2806d107b76d360",
+      "kind": "ada"
+    },
+    {
+      "path": "userspace/services/acpi/power/acpi_sample_cache.adb",
+      "sha256": "f420d1d4e59f240b016756129b5725cb4df2c01605a81d0aa0be3f62a2ad62be",
+      "kind": "ada"
+    },
+    {
+      "path": "tests/acpi-observation-cache/cache_proof_instances.ads",
+      "sha256": "7dbc3925112cdd2bd6869bc768f5e6816066eea569ff2088e8b83cdbb99cf2f2",
+      "kind": "ada"
+    },
+    {
+      "path": "tests/acpi-observation-cache/cache_policy_tests.adb",
+      "sha256": "1cfc2cb1480ca487aeb5da22f4883a16b4c4dc6a6f1a9a0f8150a132b2403d4e",
+      "kind": "ada"
+    },
+    {
+      "path": "tests/acpi-observation-cache/run.sh",
+      "sha256": "0b65ba4914a90345ca77b7f7d4b55dfecfa3372a5066c691a761d69d1e949f7d",
+      "kind": "metadata"
+    },
+    {
+      "path": "tests/acpi-observation-cache/run.mjs",
+      "sha256": "a8009b2f327421ff5959d2f49801bb08fd28707bb46b497a84d01fc040f7edd2",
+      "kind": "metadata"
+    },
+    {
+      "path": "tests/acpi-observation-cache/README.md",
+      "sha256": "3b7ddc4059805db7c285992dee5dc11f9209ff94857ad47b7846aa5b6e617b67",
+      "kind": "metadata"
+    }
+  ]
+}

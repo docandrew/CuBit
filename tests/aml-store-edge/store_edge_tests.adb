@@ -46,7 +46,7 @@ procedure Store_Edge_Tests is
    end record;
    type Expectations is array (Positive range <>) of Expected_Result;
    procedure Run (Label : String; Revision : Positive; First, Second : Bytes; Expected : Expectations) is
-      Service : aliased S.State (2, 8192, 4096);
+      Service : aliased S.State (2, 8192, 4096, 2);
       Stage : S.Stage_Status;
       Frozen : S.Freeze_Status;
       Report : S.Execution_Report;

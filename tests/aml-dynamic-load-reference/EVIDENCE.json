@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "artifacts": {
+    "reference/COMPLETE.json": "5b8ecb9ecc7d195965b1410b9387c02b724cf725bbf0848bcf1d2132943bdb79",
+    "reference/commands.json": "ae3b42e4fd06429fd5d23f33dd9caa10497471511887c39daa3abeec1ae40633",
+    "reference/dsdt-r1.log": "9237996851f5162a716a2404084ef3aa7b5cf9ab192da569a0591ac90fb32968",
+    "reference/dsdt-r2.log": "da70167acb3e02744f20d84ec74ebc0198222eb33b423f459a66798c37fb6219",
+    "reference/dynamic-r1.aml": "4a0d82d3d304a630c4d6cfc72b367f5226469205e87b431be4f9aeb6c81f718e",
+    "reference/dynamic-r1.asl": "74f1dc32883229d706d2e38a2563f8b5e595b2ad94cae1fceb70b230744cfee3",
+    "reference/dynamic-r2.aml": "5b136655b4819494bfe1300319a25dbc7345750ab3f51161e01f266282813abd",
+    "reference/dynamic-r2.asl": "d28769d56245a8067b42b7301a3005ff3ab58c884c2bb695f0c2d4b3eace003e",
+    "reference/execute-r1.log": "6b4572d67e452adf13dd03253ffdc00f9f9e6ad13969e1feb2a6919846cf815d",
+    "reference/execute-r2.log": "cc5ec11e1e5e8f3a0fd5e90d165b13f8e77fb7e35921da34bdd75763649e232e",
+    "reference/loader-r1.aml": "fc1607bec25da89d3ebb1abee8c70e8b99a7ce4f62b4d15f616d664bdce12cc4",
+    "reference/loader-r1.asl": "24c87ff442b708bddb750369bbb8481bd781704ec3567ffd9ace36962cc414df",
+    "reference/loader-r2.aml": "2fcc5b6786f47650bca754b808a5cf4b81bed5f5b94f22b53879953c3f71e173",
+    "reference/loader-r2.asl": "18f2318d9a132b8649c973703c0e47b9a3f1950bc9596d6c2513919dc9df5b07",
+    "reference/ssdt-r1.log": "cc241e27c67b3b7875d75f42c3ed4fbc5a83c51c358d7940efdef2b378abe1c1",
+    "reference/ssdt-r2.log": "34feaedebb55bf52f29dedfcb5fff0ac3ea6b4cd30e5f490c5ba79d0d14f62f5"
+  },
+  "scope": "Normal ACPICA Boolean result,buffer copy lifetime,module effect and missing LoadTable only; no CuBit Load implementation,Unload behavior,malformed-input matrix or proof",
+  "tool_hashes": {
+    "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl": "1c6a21c90ff6f846e27a98dbb3106362c706f67db8ceca21ccd81ab76a7d9dcb",
+    "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec": "a161f8b3a0b94b4301c1d0f2ccca6c0f808d2998cd4c9e037a9d7b218c88dcfe"
+  },
+  "source": "Self-authored standard ASL fixtures,not an additional original upstream ASLTS entrypoint",
+  "new_proof": false,
+  "cubit_executed": false,
+  "native_executed": false,
+  "hardware_validated": false,
+  "sources": {
+    "run.mjs": "dccc5e71a4f00c3be113ee8e7a23b9b98ec2a9c0f4883b540a9a84dd54177466",
+    "run.sh": "3e69ffe13604c91b2f60671a8b409ea3f582d56103d4e4ccf3247ead4e6b7a9d"
+  }
+}

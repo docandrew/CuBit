@@ -19,7 +19,7 @@ begin
    Data (10) := 0 - Sum;
    for Bulk in Boolean loop
       declare
-         S : State (2, 256, 128, 0);
+         S : State (2, 256, 128, Load_Capacity => 2, Initial_Revision => 0);
          Reply : Response;
          Request : Packet;
          Source : Firmware_Tables.Bytes := Data;
@@ -96,7 +96,7 @@ begin
    end loop;
    for Initial in Max_Revision - 1 .. Max_Revision loop
       declare
-         S : State (1, 128, 128, Initial);
+         S : State (1, 128, 128, Load_Capacity => 1, Initial_Revision => Initial);
          Reply : Response;
       begin
          Handle (S, Snapshot_Provider, (Label => Start_Snapshot, Data => [Initial, 1, 0, 0], others => <>), Reply);

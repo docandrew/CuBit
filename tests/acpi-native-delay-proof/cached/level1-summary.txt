@@ -1,0 +1,41 @@
+=========================
+Summary of SPARK analysis
+=========================
+
+--------------------------------------------------------------------------------------------------
+SPARK Analysis results        Total       Flow                      Provers   Justified   Unproved
+--------------------------------------------------------------------------------------------------
+Data Dependencies                 .          .                            .           .          .
+Flow Dependencies                 .          .                            .           .          .
+Initialization                    6          6                            .           .          .
+Non-Aliasing                      .          .                            .           .          .
+Run-time Checks                   5          .                     5 (CVC5)           .          .
+Assertions                        6          .                     6 (CVC5)           .          .
+Functional Contracts              4          .    4 (CVC5 82%, Trivial 18%)           .          .
+LSP Verification                  .          .                            .           .          .
+Termination                       2          1                     1 (CVC5)           .          .
+Concurrency                       .          .                            .           .          .
+--------------------------------------------------------------------------------------------------
+Total                            23    7 (30%)                     16 (70%)           .          .
+
+
+max steps used for successful proof: 3556
+
+============================
+Most difficult proved checks
+============================
+
+No check found with max time greater than 1 second
+
+========================
+Detailed analysis report
+========================
+
+Analyzed 1 unit
+in unit delay_proof_model, 6 subprograms and packages out of 6 analyzed
+  Delay_Proof_Model at delay_proof_model.ads:6 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Delay_Proof_Model.Run_One at delay_proof_model.ads:8 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Delay_Proof_Model.Waits at delay_proof_model.ads:7 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Delay_Proof_Model.Waits.Duration at acpi_delay_waits.ads:27, instantiated at delay_proof_model.ads:7 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (2 checks)
+  Delay_Proof_Model.Waits.Run at acpi_delay_waits.ads:32, instantiated at delay_proof_model.ads:7 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (12 checks)
+  Delay_Proof_Model.Waits.Run.Sample at acpi_delay_waits.adb:14, instantiated at delay_proof_model.ads:7 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (2 checks)

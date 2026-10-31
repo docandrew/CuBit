@@ -1,0 +1,55 @@
+{
+  "scope": "Native server generic bounded serialized owner-work step: events precede local work,one IPC opportunity between batches,pending runnable local work prevents idle sleep,owner refusal stops before new dispatch; default observer stays idle",
+  "suites": {
+    "acpi-native-server-loop": {
+      "checked": {
+        "directory": "/home/doc/git/.acpi-proof-work/native-owner-turn-work/candidate/tests/acpi-native-server-loop/results/checked-EAkEqMm7",
+        "alis": 104,
+        "checks": 753,
+        "processes": 1
+      },
+      "release": {
+        "directory": "/home/doc/git/.acpi-proof-work/native-owner-turn-work/candidate/tests/acpi-native-server-loop/results/release-Kx2B0aRW",
+        "alis": 104,
+        "checks": 753,
+        "processes": 1
+      }
+    },
+    "acpi-native-startup": {
+      "checked": {
+        "directory": "/home/doc/git/.acpi-proof-work/native-owner-turn-work/candidate/tests/acpi-native-startup/results/checked-C1nRMXdQ",
+        "alis": 103,
+        "checks": 1228,
+        "processes": 76
+      },
+      "release": {
+        "directory": "/home/doc/git/.acpi-proof-work/native-owner-turn-work/candidate/tests/acpi-native-startup/results/release-GcjsDibT",
+        "alis": 103,
+        "checks": 1228,
+        "processes": 76
+      }
+    },
+    "acpi-native-entry": {
+      "checked": {
+        "directory": "/home/doc/git/.acpi-proof-work/native-owner-turn-work/candidate/tests/acpi-native-entry/results/checked-wZQzMEQJ",
+        "alis": 29,
+        "objects": 0,
+        "selections": 30
+      },
+      "release": {
+        "directory": "/home/doc/git/.acpi-proof-work/native-owner-turn-work/candidate/tests/acpi-native-entry/results/release-MnNWLbsY",
+        "alis": 29,
+        "objects": 0,
+        "selections": 30
+      }
+    }
+  },
+  "owner_callback_assumptions": "bounded,non-reentrant,no blocking peer IPC; Pending only for runnable local work; callback retains uncertain state and cleanup; no automatic reset or replay",
+  "new_proof": false,
+  "new_acpica_interpreter_run": false,
+  "interpreter_changed": false,
+  "native_executed": false,
+  "hardware_validated": false,
+  "all_own_jobs_terminal": true,
+  "goal": "active and incomplete"
+}

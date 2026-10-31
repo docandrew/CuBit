@@ -51,6 +51,7 @@ procedure Field_IO_Core_Tests is
    package VF is new V.Field_IO
      (P.Context, P.Pending, P.Describe, P.Dispatch, P.Reconciled, Authorize_Target => P.Authorize);
    Checks : Natural := 0;
+   type Method_Names is array (Positive range <>) of String (1 .. 4);
    procedure Check (OK : Boolean; Why : String) is
    begin
       Checks := Checks + 1;
@@ -76,6 +77,8 @@ procedure Field_IO_Core_Tests is
                  & [Unsigned_8 (8 * T.Octets (Width))])
         & Method ("READ", [16#A4#] & Enc ("FLD0"))
         & Method ("NEST", [16#A4#] & Enc ("READ"))
+        & Method ("LREF", [16#5B#,16#12#] & Enc ("FLD0") & [16#60#,16#A4#,16#83#,16#60#])
+        & Block ([16#14#], Enc ("AREF") & [1,16#5B#,16#12#] & Enc ("FLD0") & [16#68#,16#A4#,16#83#,16#68#])
         & Method ("DREF", [16#A4#,16#83#,16#71#] & Enc ("FLD0"))
         & Block ([16#14#], Enc ("WRIT") & [1,16#70#,16#68#] & Enc ("FLD0") & [16#A4#,0])
         & Block ([16#14#], Enc ("REFW") & [1,16#70#,16#71#] & Enc ("FLD0")
@@ -119,9 +122,34 @@ procedure Field_IO_Core_Tests is
       Check (Status = V.Available, "reset field");
       V.Read_Field_Descriptor (A, Field, Description, Key, Status);
       Check (Status = V.Available, "reset descriptor");
+      V.Find_Child (A, N.Root, "LREF", Node, Status);
+      Check (Status = V.Available, "unprovisioned reference method");
+      V.Invoke (A, Input, Node, [others => (V.Immediate_Argument, 0)],
+                0, 1000, Result, Status);
+      Check (Status = V.Available and then Result.Status = E.Unsupported_Value,
+             "unprovisioned reference read refused");
+      Check (P.Observe_Hardware (IO).Reads = 0 and then
+             P.Observe_Hardware (IO).Writes = 0, "unprovisioned reference has no I/O");
       P.Install (IO, 7, Configuration, True, OK); Check (OK, "reset provider install");
       Target.Provider := P.Identity (IO);
       VF.Bind (A, IO, Key, Target, Binding, Status); Check (Status = V.Available, "reset binding");
+      for Name of Method_Names'(["READ", "LREF", "AREF"]) loop
+         declare Before : constant Hardware := P.Observe_Hardware (IO); begin
+            V.Find_Child (A, N.Root, Name, Node, Status);
+            Check (Status = V.Available, "provisioned reference method");
+            VF.Invoke (A, IO, Binding, Input, Node, [others => (V.Immediate_Argument, 0)],
+                       (if Name = "AREF" then 1 else 0), 1000, Result, Status);
+            Check (Status = V.Available and then Result.Status = E.Returned and then
+                   Result.Number = 16#5A#, "provisioned reference reads named register");
+            Check (P.Observe_Hardware (IO).Reads = Before.Reads + 1 and then
+                   P.Observe_Hardware (IO).Writes = Before.Writes, "one reference read, no writes");
+            VF.Invoke (A, IO, Binding, Input, Node, [others => (V.Immediate_Argument, 0)],
+                       (if Name = "AREF" then 1 else 0), 0, Result, Status);
+            Check (Status = V.Available and then Result.Status = E.Budget_Exceeded and then
+                   P.Observe_Hardware (IO).Reads = Before.Reads + 1 and then
+                   P.Observe_Hardware (IO).Writes = Before.Writes, "zero budget no register access");
+         end;
+      end loop;
       V.Find_Child (A, N.Root, "UNKN", Node, Status);
       Check (Status = V.Available, "reset method");
       VF.Invoke (A, IO, Binding, Input, Node, [others => (V.Immediate_Argument, 0)],

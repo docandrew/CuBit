@@ -118,7 +118,7 @@ procedure Named_Evaluation_Tests is
 begin
    -- Admission is Ready-only, even though older observation allows scalar Loading.
    declare
-      Service : aliased C.State (1, 4096, 4096);
+      Service : aliased C.State (1, 4096, 4096, 1);
       Value : C.Values.Result;
       Status : C.Values.Access_Status;
       A : C.Values.Arena;
@@ -133,7 +133,7 @@ begin
    end;
    for Flag of Bytes'[0, 1, 8] loop
       declare
-         Service : aliased C.State (1, 4096, 4096);
+         Service : aliased C.State (1, 4096, 4096, 1);
          Run : Init.Session;
          Accepted : Boolean;
          Parent, Item, Counter : C.Node_Descriptor;
@@ -169,7 +169,7 @@ begin
    end loop;
    -- Owned table-backed field value is evaluated, not its field metadata.
    declare
-      Service : aliased C.State (1, 4096, 4096);
+      Service : aliased C.State (1, 4096, 4096, 1);
       Parent, Item : C.Node_Descriptor;
       Value : C.Values.Result;
       Status : C.Values.Access_Status;
@@ -189,7 +189,7 @@ begin
    end;
    -- Wide _STA returns a real retained buffer; strict status typing releases it.
    declare
-      Service : aliased C.State (1, 4096, 4096);
+      Service : aliased C.State (1, 4096, 4096, 1);
       Run : Init.Session;
       Accepted : Boolean;
       Parent, Item, Counter : C.Node_Descriptor;

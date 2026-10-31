@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "sources": {
+    "shared/firmware/firmware_tables.ads": "cdd038a8b009c7009c8f6286b34b6ab7d3c0bf7be8410ca782b0831780ae1ef4",
+    "shared/firmware/firmware_tables.adb": "7aca727a78cb7c10e67c044db1200401a0c28072d917e6e3718233a620e2d316",
+    "userspace/services/acpi/lib/aml_copied_tables.ads": "38e2e1306eb0d7e3b40bf90c89b7279a30ce266c9a9fb778c06a70cf7a5bd8b6",
+    "userspace/services/acpi/lib/aml_copied_tables.adb": "13c5adabdc2b708d18d831807682c4897f953e73a93a3903532e28d3852577e4",
+    "tests/aml-copied-tables/store_tests.adb": "1b92bf7d98abdd5c935fb3f5efac5180b7b7165a5ef021e42dd276add145d258"
+  },
+  "fixtures": {
+    "tests/aml-copied-tables/fixture.asl": "7fceba8f49e3122082bb144d4e965d5bc4afefb593fb863e9a2a11883fe2b3aa"
+  },
+  "scripts": {
+    "run.mjs": "a8fc60b05112d5fc3223f93e6a59e80541719f70a989ff07a79792157ad2943e",
+    "run.sh": "1147b073ac02ea69879d33589b0dc8b25cd8ca27c41d8e5cb3cfb5091e18d8cf"
+  },
+  "tools": {
+    "gprbuild": "98d565f501e7840286e90daeddf276ff4c0bdb16e09f94e6ad7835b8063d7ee2",
+    "iasl": "1c6a21c90ff6f846e27a98dbb3106362c706f67db8ceca21ccd81ab76a7d9dcb"
+  }
+}

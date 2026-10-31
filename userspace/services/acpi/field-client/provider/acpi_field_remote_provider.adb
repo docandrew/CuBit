@@ -22,7 +22,11 @@ package body ACPI_Field_Remote_Provider with SPARK_Mode is
         and then (Item.Readable or else Item.Writable)
         and then (Item.Writable or else Item.Write_Mask = 0)
         and then Item.Write_Mask <= AML_Field_Datums.Width_Mask (G.Width)
-        and then G.Region.Space in L.Memory_Space | L.IO_Space
+        and then G.Region.Space in L.Memory_Space | L.IO_Space | L.Embedded_Control_Space
+        and then (if G.Region.Space = L.Embedded_Control_Space then
+          G.Width = T.Byte_Access and then G.Region.Base <= L.EC_Last_Cell
+          and then G.Region.Length /= 0
+          and then G.Region.Length - 1 <= L.EC_Last_Cell - G.Region.Base)
         and then G.Region.Length /= 0
         and then G.Region.Length - 1 <= Interfaces.Unsigned_64'Last - G.Region.Base
         and then G.Byte_Offset < G.Region.Length

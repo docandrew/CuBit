@@ -103,7 +103,7 @@ begin
          Third_Written : constant Unsigned_64 := D.Expected (Case_ID, 5).Value;
          Failed_First_Write : constant Unsigned_64 := D.Expected (Case_ID, 8).Value;
          Completed_Source_Marker : constant Unsigned_64 := D.Expected (Case_ID, 2).Value;
-         S : aliased C.State (1, 4096, 4096);
+         S : aliased C.State (1, 4096, 4096, 1);
          IO, Other : P.Context;
          Items : F.Binding_Set;
          Targets : array (Register_Index) of A.Target;

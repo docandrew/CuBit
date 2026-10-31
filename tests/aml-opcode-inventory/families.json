@@ -1,0 +1,152 @@
+{
+  "A01": [
+    "Zero",
+    "One",
+    "ByteConst",
+    "WordConst",
+    "DwordConst",
+    "String",
+    "QwordConst",
+    "Ones"
+  ],
+  "A02": [
+    "Alias",
+    "Name",
+    "Scope",
+    "External",
+    "Device",
+    "Processor",
+    "PowerResource",
+    "ThermalZone"
+  ],
+  "A03": [
+    "Add",
+    "Subtract",
+    "Increment",
+    "Decrement",
+    "Multiply",
+    "Divide",
+    "ShiftLeft",
+    "ShiftRight",
+    "And",
+    "NAnd",
+    "Or",
+    "NOr",
+    "XOr",
+    "Not",
+    "FindSetLeftBit",
+    "FindSetRightBit",
+    "Mod",
+    "LAnd",
+    "LOr",
+    "LNot",
+    "LEqual",
+    "LGreater",
+    "LLess"
+  ],
+  "A04": [
+    "If",
+    "Else",
+    "While",
+    "Noop",
+    "Return",
+    "Break",
+    "Continue"
+  ],
+  "A05": [
+    "Method",
+    "Local0",
+    "Local1",
+    "Local2",
+    "Local3",
+    "Local4",
+    "Local5",
+    "Local6",
+    "Local7",
+    "Arg0",
+    "Arg1",
+    "Arg2",
+    "Arg3",
+    "Arg4",
+    "Arg5",
+    "Arg6"
+  ],
+  "A06": [
+    "Store",
+    "CopyObject"
+  ],
+  "A07": [
+    "RefOf",
+    "DerefOf",
+    "Index",
+    "CondRefOf"
+  ],
+  "A08": [
+    "DataTableRegion"
+  ],
+  "A09": [
+    "Field",
+    "IndexField",
+    "BankField"
+  ],
+  "A10": [
+    "OperationRegion"
+  ],
+  "A12": [
+    "CreateDWordField",
+    "CreateWordField",
+    "CreateByteField",
+    "CreateBitField",
+    "CreateQWordField",
+    "CreateField"
+  ],
+  "A13": [
+    "Buffer",
+    "Package"
+  ],
+  "A14": [
+    "Concatenate",
+    "ConcatenateResTemplate",
+    "SizeOf",
+    "Match",
+    "ObjectType",
+    "Mid"
+  ],
+  "A15": [
+    "ToBuffer",
+    "ToDecimalString",
+    "ToHexString",
+    "ToInteger",
+    "ToString",
+    "FromBCD",
+    "ToBCD"
+  ],
+  "A17": [
+    "LoadTable",
+    "Load",
+    "Unload"
+  ],
+  "A18": [
+    "Mutex",
+    "Event",
+    "Acquire",
+    "Signal",
+    "Wait",
+    "Reset",
+    "Release"
+  ],
+  "A19": [
+    "Stall",
+    "Sleep",
+    "Timer"
+  ],
+  "A20": [
+    "Notify"
+  ],
+  "A21": [
+    "Revision",
+    "Debug",
+    "Fatal",
+    "BreakPoint"
+  ]
+}

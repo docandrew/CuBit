@@ -1,0 +1,56 @@
+{
+  "assumptions": [
+  ],
+  "entities": {
+    " 1": {
+      "name": "I2C_Channel_Badges.Valid",
+      "sloc": [
+        {
+          "file": "i2c_channel_badges.ads",
+          "line": 26
+        }
+      ]
+    }
+  },
+  "flow": [
+    {
+      "check_tree": {
+      },
+      "col": 13,
+      "entity": 1,
+      "file": "i2c_channel_badges.ads",
+      "how_proved": "flow",
+      "line": 26,
+      "msg_id": 0,
+      "rule": "SUBPROGRAM_TERMINATION",
+      "severity": "info"
+    }
+  ],
+  "pragma_assume": [
+  ],
+  "progress": "PROGRESS_PROOF",
+  "proof": [
+  ],
+  "skip_flow_proof": [
+  ],
+  "skip_proof": [
+  ],
+  "spark": {
+    " 1": "all"
+  },
+  "stop_reason": "STOP_REASON_NONE",
+  "timings": {
+    " 1": {
+      "gnat2why.vc_generation": 1.05313003063202E-01
+    },
+    "global": {
+      "flow analysis": 5.92199992388487E-03,
+      "globals (advanced)": 7.28000013623387E-04,
+      "globals (basic)": 1.05990003794432E-02,
+      "init_why_sections": 5.85100008174777E-03,
+      "marking": 5.25300018489361E-03,
+      "properties (advanced)": 1.53000000864267E-04,
+      "translation of standard": 4.17920015752316E-02
+    }
+  }
+}

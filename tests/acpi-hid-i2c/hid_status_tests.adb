@@ -16,7 +16,7 @@ procedure HID_Status_Tests is
       Namespace_Node_Capacity => 128, Aggregate_Method_Capacity => 4096,
       Retained_Result_Capacity => 8);
    package Q is new ACPI_HID_I2C (C);
-   Service, Other : aliased C.State (1, 4096, 4096);
+   Service, Other : aliased C.State (1, 4096, 4096, 1);
    Checks, Calls : Natural := 0;
    Overcharge : Boolean := False;
    Reject_Execution : Boolean := False;

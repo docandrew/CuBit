@@ -1,0 +1,38 @@
+{
+  "status": "private-tested-ready-for-publication",
+  "checks": 544,
+  "processes": 36,
+  "scenarios_per_profile": 18,
+  "behavioral": "/home/doc/cubit-build-tmp/ec-receive-rKxvY9/COMPLETE.json",
+  "behavioral_sha256": "0bd7ec0081ea758155e11c41793be3f6cf997846d8285d64413db88033c7ea5b",
+  "semantic": "/home/doc/cubit-build-tmp/ec-progress-semantic-18TAlz/COMPLETE.json",
+  "semantic_sha256": "66c24a0b14f895db5b049c247b38eea5525ac32c6179d4ec8c00911854ae0c40",
+  "actual_runtime_specs": 222,
+  "semantic_sources": 252,
+  "zero_objects": true,
+  "compiled_units": 22,
+  "source_files": 36,
+  "production": [
+    {
+      "path": "userspace/services/acpi/ec/native/acpi_ec_backend_controller-with_receive.adb",
+      "sha256": "7fec1d4ad3428f69d4907d0bb11115b978c5ae0ffeee4968d05304e4e683f8bb"
+    },
+    {
+      "path": "userspace/services/acpi/ec/native/acpi_ec_backend_controller-with_receive.ads",
+      "sha256": "5d9ec42da52b2a957d564428b494bb82cfe22e6fcee357f8214637023503e7a7"
+    },
+    {
+      "path": "userspace/services/acpi/ec/native/acpi_ec_native_queues.adb",
+      "sha256": "79de72395ed7ee902e4c939da6245a0d4c5ce90bc0f43e07691cf5a53e77c5c4"
+    },
+    {
+      "path": "userspace/services/acpi/ec/native/acpi_ec_native_queues.ads",
+      "sha256": "14536b98b9f4f3cbd01b4bc82fa84f520f6d58845386cea07b10abf6b5db8322"
+    }
+  ],
+  "scope": "Actual controller receive child and native queue adapters with modeled kernel queues, hardware and source/control hooks. No source privilege or hardware ownership is derived from messages; default hooks admit nothing.",
+  "new_proof": false,
+  "native_executed": false,
+  "hardware_validated": false,
+  "goal": "active and incomplete"
+}

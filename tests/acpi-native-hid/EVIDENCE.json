@@ -1,0 +1,58 @@
+{
+  "native_adapter": {
+    "directory": "/home/doc/cubit-build-tmp/acpi-native-hid-icJbKt",
+    "checks_per_profile": 312,
+    "processes_per_profile": 20,
+    "commands": 52,
+    "first_matrix": "/home/doc/cubit-build-tmp/acpi-native-hid-48sFHm"
+  },
+  "suites": {
+    "acpi-native-startup": {
+      "checked": {
+        "directory": "/home/doc/git/.acpi-proof-work/native-hid-detection-work/candidate/tests/acpi-native-startup/results/checked-w1r3wLa2",
+        "time": 1793119352678.1355,
+        "alis": 102,
+        "checks": 948,
+        "processes": 64
+      },
+      "release": {
+        "directory": "/home/doc/git/.acpi-proof-work/native-hid-detection-work/candidate/tests/acpi-native-startup/results/release-XXzbfSzS",
+        "time": 1793119395044.667,
+        "alis": 102,
+        "checks": 948,
+        "processes": 64
+      }
+    },
+    "acpi-native-entry": {
+      "checked": {
+        "directory": "/home/doc/git/.acpi-proof-work/native-hid-detection-work/candidate/tests/acpi-native-entry/results/checked-YUuYXjEf",
+        "time": 1793119283224.2642,
+        "alis": 17,
+        "selections": 18
+      },
+      "release": {
+        "directory": "/home/doc/git/.acpi-proof-work/native-hid-detection-work/candidate/tests/acpi-native-entry/results/release-E2Zd8z36",
+        "time": 1793119296961.4365,
+        "alis": 17,
+        "selections": 18
+      }
+    }
+  },
+  "component_metadata": "Current CCL Build_Declarations host tool resolves modified component as process-manager acpi.svc with explicit source closure; no native build",
+  "component_inputs": "/home/doc/git/.acpi-proof-work/native-hid-detection-work/COMPONENT-INPUTS.json",
+  "reference": {
+    "path": "/home/doc/cubit-build-tmp/hid-owner-oracle-6vNiW1/RESULT.json",
+    "sha256": "18db8d92b9726df80b2eba47cfb178185c839fef6bb832db3df9401b391d1b80",
+    "same_aml": true,
+    "new_oracle_run": false,
+    "qualified_teardown": [
+      "ACPI Error: 14 (0xE) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  },
+  "new_proof": false,
+  "native_executed": false,
+  "hardware_validated": false,
+  "hardware_or_launcher_authority_added": false,
+  "all_own_jobs_terminal": true,
+  "goal": "active and incomplete"
+}

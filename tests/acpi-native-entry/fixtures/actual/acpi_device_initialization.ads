@@ -42,6 +42,13 @@ package ACPI_Device_Initialization with SPARK_Mode is
    end record;
    type Session is limited private;
    function Observe (Run : Session) return Report;
+   -- Process-lifetime controller admission, separate from the device walk.
+   -- Claim before module evaluation; no reset/rearm operation exists.
+   function Startup_Claimed (Run : Session) return Boolean;
+   procedure Claim_Startup (Run : in out Session; Accepted : out Boolean)
+     with Post => Startup_Claimed (Run)
+       and Accepted = (not Startup_Claimed (Run)'Old)
+       and Observe (Run) = Observe (Run)'Old;
    function Observe_Node (Run : Session; Node : Core.Namespace.Node_ID) return Node_Report;
    -- Runs the compatibility root _INI and then \_SB._INI exactly once.
    -- Neither success here nor namespace Ready means region/device initialization.
@@ -66,6 +73,7 @@ private
    type Node_Reports is array (Node_ID) of Node_Report;
    type Session is limited record
       Info : Report;
+      Claimed : Boolean := False;
       Budget : Natural := 0;
       Last : Node_ID := Core.Namespace.Root;
       Nodes : Descriptions := [others => Core.Values.No_Node];

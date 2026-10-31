@@ -28,7 +28,7 @@ procedure HID_Discovery_Tests is
    use type D.Queries.Call_Count;
    use type D.Resources.R.Byte_Count;
    use type Firmware_Tables.Byte;
-   Service, Other : aliased C.State (1, 4096, 4096);
+   Service, Other : aliased C.State (1, 4096, 4096, 1);
    Run : D.Session;
    Action : D.Action_Result;
    Info : D.Report;

@@ -22,10 +22,7 @@ procedure Provider_Bootstrap_Tests is
      [(41,ACPI_Service.DSDT,First'Length),(97,ACPI_Service.SSDT,Second'Length)];
    procedure Run (Mode : Scenario) is
       Server : ACPI_Requests.State
-        ((if Mode=Capacity_Tables then 1 else 2),
-         (if Mode=Capacity_Total then First'Length+Second'Length-1 else 2048),
-         (if Mode=Capacity_Single then First'Length-1 else 2048),
-        (if Mode=Exhausted then Max_Revision else 0));
+        ((if Mode=Capacity_Tables then 1 else 2), (if Mode=Capacity_Total then First'Length+Second'Length-1 else 2048), (if Mode=Capacity_Single then First'Length-1 else 2048), (if Mode=Capacity_Tables then 1 else 2), (if Mode=Exhausted then Max_Revision else 0));
       Config : constant ACPI_Endpoint.Configuration := (10,11);
       Import_Calls, Finish_Calls, Mutations, Cleanup_Calls : Natural := 0;
       Provider_Loan : Boolean := False;

@@ -25,7 +25,8 @@ package AML_Declaration_Contexts with SPARK_Mode, Pure is
        Post => Present (Make_Scope'Result)
          and then Node_Of (Make_Scope'Result) = Node
          and then Stamp_Of (Make_Scope'Result) = Stamp;
-   -- Lease stamp authenticates the invocation for module root, not a node.
+   -- Module invocation stamps and lexical entry incarnations are independent.
+   -- Scope_Of remains the definition lifetime owner(root for every module).
    function Entry_Identity (Item : Lease) return Scope_Identity;
    subtype Lexical_Depth is Natural range 0 .. AML_Execution_Limits.Max_Lexical_Depth;
    type State is private;
@@ -70,6 +71,21 @@ package AML_Declaration_Contexts with SPARK_Mode, Pure is
          and then Lexical_Top (Store, Item) = Entry_Identity (Item)
          and then Lexical_Count (Store, Item) = 0
        else Store = Store'Old and then Item = No_Lease);
+   -- The embedding owner authenticates the selected live scope and frame.
+   procedure Open_Module (Store : in out State;
+      Frame : AML_Frame_Handles.Frame_Handle; Initial_Scope : Scope_Identity;
+      Invocation : AML_Frame_Handles.Invocation_Serial;
+      Item : out Lease; Allowed : out Boolean)
+     with Pre => Valid (Store), Post => Valid (Store)
+       and then (if Allowed then Added_Lease (Store, Store'Old, Item)
+          and then Is_Live (Store, Item) and then Is_Module (Item)
+          and then Scope_Of (Item) = Natural (Node_Of (Root_Scope))
+          and then Stamp_Of (Item) = Natural (Invocation)
+          and then Frame_Of (Item) = Frame
+          and then Entry_Identity (Item) = Initial_Scope
+          and then Lexical_Top (Store, Item) = Initial_Scope
+          and then Lexical_Count (Store, Item) = 0
+        else Store = Store'Old and then Item = No_Lease);
    procedure Close (Store : in out State; Item : Lease)
      with Pre => Valid (Store), Post => Valid (Store)
        and then Removed_Lease (Store, Store'Old, Item)
@@ -101,6 +117,8 @@ private
       Intent : Request := (Kind => No_Request);
       Frame : AML_Frame_Handles.Frame_Handle := AML_Frame_Handles.No_Frame;
       Scope, Stamp : Natural := 0;
+      Entry_Node : Scope_Node := 0;
+      Entry_Stamp : Scope_Incarnation := 0;
    end record;
    No_Lease : constant Lease := (others => <>);
    type Entries is array (Positive range 1 .. Max_Active_Executions) of Lease;

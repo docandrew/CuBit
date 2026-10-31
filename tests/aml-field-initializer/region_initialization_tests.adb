@@ -211,7 +211,7 @@ begin
       for Case_ID in Scenario loop
          Selected := Case_ID;
          declare
-            S, Other : aliased C.State (1,4096,4096);
+            S, Other : aliased C.State (1, 4096, 4096, 1);
             Context : Controller;
             Run : Regions.Session;
             OK : Boolean;
@@ -297,7 +297,7 @@ begin
    Selected := Ordinary;
    for Revision in Unsigned_8 range 1 .. 2 loop
       declare
-         S : aliased C.State (1,4096,4096);
+         S : aliased C.State (1, 4096, 4096, 1);
          Context : Controller;
          Region_Run : Regions.Session;
          OK : Boolean;

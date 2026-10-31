@@ -113,7 +113,7 @@ procedure Field_Binding_Set_Tests is
 begin
    for Revision in Unsigned_8 range 1 .. 2 loop
       declare
-         S, Other : aliased C.State (1, 4096, 4096);
+         S, Other : aliased C.State (1, 4096, 4096, 1);
          IO, Foreign : Context;
          Items, Empty, Partial : F.Binding_Set;
          One : F.Binding;

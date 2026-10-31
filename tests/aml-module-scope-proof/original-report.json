@@ -1,0 +1,59 @@
+{
+  "inputs": {
+    "/nix/store/9xvbsfi448cx9fjk4ivla9fsq390a8gn-gnatprove-fsf-15_2025-06-10/bin/gnatprove": "ef4dd76057294453d4cc43781aa0f25fad9b351533e380cc9a60a9b86fa797ef",
+    "/home/doc/git/.acpi-proof-work/selected-root-publication-work/candidate/userspace/services/acpi/lib/aml_declaration_contexts.ads": "5a5a75c1d8f1df22a9903a018762c157d1f2681521924c6b54175607d2c14f51",
+    "/home/doc/cubit-build-tmp/module-scope-proof-CIzxAB/source/aml_declaration_contexts.ads": "5a5a75c1d8f1df22a9903a018762c157d1f2681521924c6b54175607d2c14f51",
+    "/home/doc/git/.acpi-proof-work/selected-root-publication-work/candidate/userspace/services/acpi/lib/aml_declaration_contexts.adb": "8ebe0908b0e5155525dd0a673749e11bb1f62ab6bd04f1482dfbafc46184a4be",
+    "/home/doc/cubit-build-tmp/module-scope-proof-CIzxAB/source/aml_declaration_contexts.adb": "8ebe0908b0e5155525dd0a673749e11bb1f62ab6bd04f1482dfbafc46184a4be",
+    "/home/doc/git/.acpi-proof-work/selected-root-publication-work/candidate/userspace/services/acpi/lib/aml_frame_handles.ads": "db70ab1e360b3887e8ccd0fd38c1b6a143472fd5309e5fa36d92d640c4a33f37",
+    "/home/doc/cubit-build-tmp/module-scope-proof-CIzxAB/source/aml_frame_handles.ads": "db70ab1e360b3887e8ccd0fd38c1b6a143472fd5309e5fa36d92d640c4a33f37",
+    "/home/doc/git/.acpi-proof-work/selected-root-publication-work/candidate/userspace/services/acpi/lib/aml_execution_limits.ads": "0f39494ae4418a3c8c639e2875c41ed9bec40c28849eed3f147940757a150794",
+    "/home/doc/cubit-build-tmp/module-scope-proof-CIzxAB/source/aml_execution_limits.ads": "0f39494ae4418a3c8c639e2875c41ed9bec40c28849eed3f147940757a150794",
+    "/home/doc/git/.acpi-proof-work/selected-root-publication-work/candidate/userspace/services/acpi/lib/aml_identity.ads": "95e1f372b2c7cecef6fcc75119cb616c2aa22eb9398e5997a250a1f6b342785f",
+    "/home/doc/cubit-build-tmp/module-scope-proof-CIzxAB/source/aml_identity.ads": "95e1f372b2c7cecef6fcc75119cb616c2aa22eb9398e5997a250a1f6b342785f",
+    "/home/doc/cubit-build-tmp/module-scope-proof-CIzxAB/level1/proof.gpr": "3ff017dce32ea1178a7a092f8e1e333c359218f3f7e37fbb652e77b4a7a5a3c5",
+    "/home/doc/cubit-build-tmp/module-scope-proof-CIzxAB/level2/proof.gpr": "3ff017dce32ea1178a7a092f8e1e333c359218f3f7e37fbb652e77b4a7a5a3c5"
+  },
+  "commands": [
+    {
+      "level": 1,
+      "args": [
+        "/nix/store/9xvbsfi448cx9fjk4ivla9fsq390a8gn-gnatprove-fsf-15_2025-06-10/bin/gnatprove",
+        "-P",
+        "/home/doc/cubit-build-tmp/module-scope-proof-CIzxAB/level1/proof.gpr",
+        "-u",
+        "aml_declaration_contexts.adb",
+        "--mode=prove",
+        "-j1",
+        "--report=all",
+        "--level=1",
+        "--prover=cvc5,z3",
+        "--timeout=5"
+      ],
+      "status": 0,
+      "signal": null,
+      "error": null
+    },
+    {
+      "level": 2,
+      "args": [
+        "/nix/store/9xvbsfi448cx9fjk4ivla9fsq390a8gn-gnatprove-fsf-15_2025-06-10/bin/gnatprove",
+        "-P",
+        "/home/doc/cubit-build-tmp/module-scope-proof-CIzxAB/level2/proof.gpr",
+        "-u",
+        "aml_declaration_contexts.adb",
+        "--mode=prove",
+        "-j1",
+        "--report=all",
+        "--level=2",
+        "--prover=cvc5,z3",
+        "--timeout=5"
+      ],
+      "status": 0,
+      "signal": null,
+      "error": null
+    }
+  ],
+  "accepted": true,
+  "scope": "Actual declaration-lease bookkeeping functional contracts and safety; lexical entry/invocation/lifetime separation under actual frame helper interfaces; no namespace,AML or service proof"
+}

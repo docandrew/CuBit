@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Keep source and artifact inventories independent of the invoking locale.
+export LC_ALL=C
 set -euo pipefail
 here=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 root=$(cd "$here/../.." && pwd)
@@ -24,7 +26,13 @@ test "${TMPDIR:-}" = /home/doc/cubit-build-tmp
 ulimit -s 65536
 ulimit -c 0
 mkdir -p "$here/results"
-out=$(mktemp -d "$here/results/run-XXXXXXXX")
+if [ -n "${ACPI_HID_TEST_RESUME:-}" ]; then
+ out=$(realpath -- "$ACPI_HID_TEST_RESUME")
+ test "$(dirname -- "$out")" = "$(realpath -- "$here/results")"
+ case "$(basename -- "$out")" in run-*) ;; *) exit 2;; esac
+else
+ out=$(mktemp -d "$here/results/run-XXXXXXXX")
+fi
 printf '%s\n' "$out"
 oracle=/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin
 for tool in gprbuild gnatbind gnatlink; do
@@ -52,7 +60,8 @@ for profile in checked release; do
  nice -n 19 timeout --kill-after=2s 30 "$build/bin/hid_discovery_tests" "$out/discovery.aml" 2>&1 | head -c 1048576 > "$out/$profile-test.log"
  cat "$out/$profile-test.log"
  grep -Fx 'HID I2C discovery checks 428' "$out/$profile-test.log"
- test "$(find "$build/obj" -maxdepth 1 -name '*.ali' ! -name 'b__*' | wc -l)" = 86
+ find "$build/obj" -maxdepth 1 -name '*.ali' ! -name 'b__*' -printf '%f\n' | LC_ALL=C sort > "$out/$profile-local-units.actual"
+ diff -u "$here/local-units.expected" "$out/$profile-local-units.actual"
  for ali in "$build/obj/"*.ali; do
   case "$ali" in */b__*) continue;; esac
   grep -Fxq 'A -gnatwe' "$ali"

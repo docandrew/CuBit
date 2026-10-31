@@ -1387,6 +1387,18 @@ firmware-check: ccl-build user_runtime ccl-manifest
 	$(CCL_BUILD) ../userspace/apps/firmware-check/component.ccl
 	cp ../userspace/apps/firmware-check/build/firmware-check.app isodir/boot/firmware-check.app
 
+# The real acpi.svc (userspace/services/acpi/native) and the observer
+# metrics client for headless --test acpi-native-smoke.
+.PHONY : acpi-native acpi-metrics-check
+acpi-native: ccl-build user_runtime ccl-manifest
+	mkdir -p ../userspace/services/acpi/native/build
+	$(CCL_BUILD) ../userspace/services/acpi/native/component.ccl
+
+acpi-metrics-check: ccl-build user_runtime ccl-manifest
+	mkdir -p ../userspace/apps/acpi-metrics-check/build
+	$(CCL_BUILD) ../userspace/apps/acpi-metrics-check/component.ccl
+	cp ../userspace/apps/acpi-metrics-check/build/acpi-metrics-check.app isodir/boot/acpi-metrics-check.app
+
 # Test-only stand-in for acpi.svc's "acpi" service (never in world/images).
 .PHONY : acpi-standin
 acpi-standin: ccl-build user_runtime ccl-manifest

@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "inputs": [
+    {
+      "path": "shared/firmware/firmware_tables.ads",
+      "sha256": "cdd038a8b009c7009c8f6286b34b6ab7d3c0bf7be8410ca782b0831780ae1ef4"
+    },
+    {
+      "path": "shared/firmware/firmware_tables.adb",
+      "sha256": "120555c25910e45212c229526c232c0b1afae7f63effd04fdd54a5f567690cfa"
+    },
+    {
+      "path": "userspace/services/acpi/lib/acpi_fadt.ads",
+      "sha256": "00993f2a74b7740317a12200e8cbf29db30a52a839cacec7485b04a411e3f752"
+    },
+    {
+      "path": "userspace/services/acpi/lib/acpi_fadt.adb",
+      "sha256": "7058da752f0644899a6c97fd3ea2722cba927bf08e4f0e7c5736f16ee2e2c10d"
+    },
+    {
+      "path": "userspace/services/acpi/lib/aml_decode.ads",
+      "sha256": "3f312c98587da55cabbd1a800b8dd4634a7adbc502e95e1fbbac11ac91567bfa"
+    },
+    {
+      "path": "userspace/services/acpi/lib/aml_decode.adb",
+      "sha256": "9fee3a0bb3c6aaa12ccc34eb7df4ffcba8488b337b7f8613284d10495006ea87"
+    },
+    {
+      "path": "userspace/services/acpi/lib/aml_names.ads",
+      "sha256": "e5fca936d4c27a135a61ae102d423d3840b156af3194916ac4e7c180add2d990"
+    },
+    {
+      "path": "userspace/services/acpi/lib/aml_names.adb",
+      "sha256": "c38d13f5f5fe640e775a1bdfc3e74eb64ecb58a92f6993cd8f8c3e656537dd61"
+    },
+    {
+      "path": "userspace/services/acpi/ec/acpi_ec_boot_table.ads",
+      "sha256": "caf2910214bc46694c86c413317dfc7fd278f3341bac149e0b1eb73615b84dce"
+    },
+    {
+      "path": "userspace/services/acpi/ec/acpi_ec_boot_table.adb",
+      "sha256": "2e462ec1e5676c5488773015ba00ca91e96752cccf4b25560e6530476553d59e"
+    }
+  ],
+  "tests": [
+    {
+      "path": "ec_boot_table_tests.adb",
+      "sha256": "e082623c72bcb82396f03c6a82aed75d4dc53db572ba0fb73578f9e5a52a7b89"
+    },
+    {
+      "path": "fixtures.mjs",
+      "sha256": "326c9e87269400454562b42e4508002dedffc1a98de7a1ebf32202ac7e085e63"
+    },
+    {
+      "path": "reference/ecdt-template.asl",
+      "sha256": "7a1e40d8b2cebbeb2760efa5079312fc19d8b1d3b6d3e6c4c3d986e0c383b6d4"
+    }
+  ]
+}

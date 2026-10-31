@@ -11,7 +11,8 @@ package body ACPI_Requests with SPARK_Mode is
      (ACPI_Bootstrap.Valid (Server.Boot) and then Receipts.Valid (Server.Receipt));
    function Model (Server : State) return State_Model is
      (Table_Capacity => Server.Table_Capacity, Byte_Capacity => Server.Byte_Capacity,
-      Table_Byte_Limit => Server.Table_Byte_Limit, Boot => ACPI_Bootstrap.Model (Server.Boot),
+      Table_Byte_Limit => Server.Table_Byte_Limit, Load_Capacity => Server.Load_Capacity,
+      Boot => ACPI_Bootstrap.Model (Server.Boot),
       Initial_Revision => Server.Initial_Revision,
       Version => Server.Version, Receipt => Server.Receipt,
       Staged_Notification => Server.Staged_Notification, Open => Server.Open, ID => Server.ID,
@@ -24,6 +25,10 @@ package body ACPI_Requests with SPARK_Mode is
    function Received (Server : State) return Natural is (Server.Used);
    function Completion (Server : State) return ACPI_Bootstrap.Finish_Report is
      (ACPI_Bootstrap.Completion (Server.Boot));
+   function Device_Completion (Server : State) return ACPI_Bootstrap.Device_Report is
+     (ACPI_Bootstrap.Device_Completion (Server.Boot));
+   function Module_Errors (Server : State) return ACPI_Service.Module_Error_Observation is
+     (ACPI_Bootstrap.Module_Errors (Server.Boot));
    function Fatal_Diagnostic (Server : State) return ACPI_Fatal_Diagnostics.Observation is
      (ACPI_Bootstrap.Fatal_Diagnostic (Server.Boot));
    function Observe (Server : State) return ACPI_Service.Metrics is (ACPI_Bootstrap.Observe (Server.Boot));
@@ -61,7 +66,7 @@ package body ACPI_Requests with SPARK_Mode is
      (case Item is
         when ACPI_Bootstrap.Not_Attempted => Finish_Not_Attempted_Code,
         when ACPI_Bootstrap.Freeze_Failed => Finish_Freeze_Failed_Code,
-        when ACPI_Bootstrap.Execution_Failed => Finish_Execution_Failed_Code,
+        when ACPI_Bootstrap.Execution_Failed | ACPI_Bootstrap.Driver_Reused => Finish_Execution_Failed_Code,
         when ACPI_Bootstrap.Members_Failed => Finish_Members_Failed_Code,
         when ACPI_Bootstrap.Finished => Finish_Finished_Code);
    function Freeze_Code (Item : ACPI_Service.Freeze_Status) return Freeze_Outcome_Code is
@@ -157,7 +162,8 @@ package body ACPI_Requests with SPARK_Mode is
         when AML_Execute.Module_Completed => Error_Module_Completed,
         when AML_Execute.Mutex_Not_Acquired => Error_Mutex_Not_Acquired,
         when AML_Execute.Fatal_Requested => Error_Fatal_Requested,
-        when AML_Execute.Field_Indeterminate => Error_Field_Indeterminate);
+        when AML_Execute.Field_Indeterminate => Error_Field_Indeterminate,
+        when AML_Execute.Invalid_Table_Length => Error_Invalid_Table_Length);
    -- Read requests cannot modify the snapshot or its upload state.
    procedure Read_Request (Server : State; Request : Packet; Reply : out Response)
      with Pre => Consistent (Server) and then Valid (Server) and then

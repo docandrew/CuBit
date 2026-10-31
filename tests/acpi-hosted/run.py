@@ -2,11 +2,12 @@
 """Portable Linux-hosted ACPI checks. Requires the repository's Nix shell."""
 from pathlib import Path
 import argparse, json, math, os, re, resource, subprocess, sys, tempfile, time
+from hosted_capture import capture
 root = Path(__file__).resolve().parents[2]
 parser = argparse.ArgumentParser()
 parser.add_argument('--mode', choices=['release', 'checked'], default='release')
 parser.add_argument('--group', choices=['focused', 'features', 'fixtures', 'adapters', 'compile-original', 'original-tests', 'corrections', 'capacity', 'static-buffer', 'static-buffer-oracle', 'service-api', 'mixed-comparison', 'tail-conditionals', 'to-buffer', 'delay', 'delay-policy', 'mid', 'to-string', 'explicit-format', 'match', 'resource-templates', 'buffer-fields', 'notify-alias', 'metadata', 'buffer-sizing', 'buffer-dynamic', 'table-fields', 'capture', 'package-store', 'integer-ownership', 'service-milestone', 'runtime-packages', 'breakpoint', 'scalar-ledger', 'all'], default='focused')
-parser.add_argument('--test-timeout', type=float, default=180.0, help='maximum seconds per test (default:180)')
+parser.add_argument('--test-timeout', type=float, default=30.0, help='maximum seconds per test (default:30)')
 parser.add_argument('--skip-main', action='append', default=[], help='explicitly omit a previously validated main; recorded in report')
 parser.add_argument('--ledger-selection', nargs='+', help='Explicit scalar-ledger closure labels only')
 args = parser.parse_args()
@@ -108,16 +109,19 @@ report = {'mode': mode, 'group': args.group, 'test_timeout_seconds': args.test_t
 def save():
     (logs / 'results.json').write_text(json.dumps(report, indent=2) + '\n')
 def run(cmd, label, timeout=None, cwd=root):
+    if timeout is None and label != 'buffer-fields-suite':
+        timeout = 180 if cmd[0] == 'gprbuild' else 30
     row = {'command': cmd, 'label': label, 'state': 'running', 'timeout_seconds': timeout, 'cwd': str(cwd)}
     report['outcomes'].append(row)
     save()
     started = time.monotonic()
     try:
-        with (logs / (label + '.log')).open('w') as output:
-            completed = subprocess.run(cmd, cwd=cwd, stdout=output, stderr=subprocess.STDOUT, timeout=timeout)
-        row.update(state='passed' if completed.returncode == 0 else 'failed', exit_code=completed.returncode)
-        if completed.returncode:
-            raise RuntimeError(label + ' failed: ' + str(completed.returncode))
+        status = capture(cmd, cwd, logs / (label + '.log'), timeout)
+        row.update(state='passed' if status == 0 else
+                   (status if status in ('timeout', 'log_limit') else 'failed'),
+                   exit_code=status if isinstance(status, int) else None)
+        if status != 0:
+            raise RuntimeError(label + ' failed: ' + str(status))
     except subprocess.TimeoutExpired:
         row.update(state='timeout', exit_code=None)
         raise
@@ -154,7 +158,11 @@ try:
             # Explicitly compile every callback adapter, even projects with mains.
             run(['gprbuild', '-p', '-j1', '-P', str(project), '-u', 'timer_verification.adb'], project.stem + '-timer-build')
         if (mains or compile_only) and args.group != 'original-tests':
-            run(['gprbuild', '-p', '-j1', '-P', str(project)], project.stem + '-build')
+            if not mains:
+                raise RuntimeError('Compile selection needs explicit mains: ' + name)
+            for main in mains:
+                run(['gprbuild', '-p', '-j1', '-P', str(project), main],
+                    project.stem + '-' + Path(main).stem + '-build')
         if args.group == 'static-buffer-oracle':
             run(['python3', str(root / 'tests/aml-static-buffer/compare.py'), '--mode', mode],
                 project.stem + '-cached-comparison', timeout=36 * 30 + 60)

@@ -114,7 +114,7 @@ procedure Field_Partial_Write_Tests is
    procedure Exercise (Revision : Unsigned_8; Width : T.Access_Width;
       Update : Rule; Source : Source_Kind; Policy_Mode : Natural := 0; Fault_Mode : Natural := 0;
       Any_Field : Boolean := False; IO_Space : Boolean := False) is
-      S : aliased C.State (1, 4096, 4096);
+      S : aliased C.State (1, 4096, 4096, 1);
       IO : P.Context;
       Items, Read_Only : F.Binding_Set;
       Targets : AML_Field_Targets.Vector := [others => A.No_Target];

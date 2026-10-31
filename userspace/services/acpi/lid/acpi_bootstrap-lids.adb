@@ -76,4 +76,40 @@ package body ACPI_Bootstrap.Lids with SPARK_Mode is
       Admission := Admitted;
       Driver.Query (Session.Core, Item.Device, Budget, Report);
    end Query;
+   procedure Sample_Ready (Session : in out State; Budget : Natural;
+      Report : out Sampling_Report) is
+      Item : Binding;
+      Admission : Query_Admission;
+      use type Driver.Device_Status.Status_Outcome, Driver.Query_Outcome;
+   begin
+      Report := (others => <>);
+      Find (Session, Budget, Item, Report.Search);
+      Report.Charged := Report.Search.Charged;
+      case Report.Search.Outcome is
+         when Not_Ready => Report.Outcome := Not_Ready; return;
+         when No_Match => Report.Outcome := No_Match; return;
+         when Incomplete => Report.Outcome := Budget_Exhausted; return;
+         when Failed => Report.Outcome := Search_Failed; return;
+         when Found => null;
+      end case;
+      Driver.Device_Status.Observe_Status
+        (Session.Core, Item.Device, Budget - Report.Charged, Report.Device_Status);
+      Report.Charged := Report.Charged + Report.Device_Status.Charged;
+      if Report.Device_Status.Outcome /= Driver.Device_Status.Status_Available then
+         Report.Outcome := (if Report.Device_Status.Outcome = Driver.Device_Status.Budget_Exhausted
+           then Budget_Exhausted else Status_Failed); return;
+      end if;
+      if not Driver.Device_Status.Usable (Report.Device_Status) then
+         Report.Outcome := Device_Unavailable; return;
+      end if;
+      Query (Session, Item, Budget - Report.Charged, Admission, Report.Query);
+      if Report.Query.Charged > Budget - Report.Charged then
+         Report.Outcome := Provider_Contract_Error; return;
+      end if;
+      Report.Charged := Report.Charged + Report.Query.Charged;
+      Report.Outcome := (if Admission /= Admitted then Not_Ready
+        elsif Report.Query.Outcome = Driver.Sampled then Sampled
+        elsif Report.Query.Outcome = Driver.Budget_Exhausted then Budget_Exhausted
+        else Query_Failed);
+   end Sample_Ready;
 end ACPI_Bootstrap.Lids;

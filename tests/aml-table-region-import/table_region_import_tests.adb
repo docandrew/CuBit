@@ -8,8 +8,7 @@ procedure Table_Region_Import_Tests is
    use type Values.Access_Status;
    use type AML_Execute.Execution_Status;
    use type AML_Decode.Integer_Value;
-   Service : aliased State (1, Table_Region_Oracle.Raw_Table'Length,
-     Table_Region_Oracle.Raw_Table'Length);
+   Service : aliased State (1, Table_Region_Oracle.Raw_Table'Length, Table_Region_Oracle.Raw_Table'Length, Load_Capacity => 1);
    Staged_Result : Stage_Status;
    Frozen : Freeze_Status;
    Status : Values.Access_Status;

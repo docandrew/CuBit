@@ -1,0 +1,133 @@
+{
+  "checks": 40556,
+  "processes": 284,
+  "profiles": [
+    "checked",
+    "release"
+  ],
+  "production_paths": 14,
+  "source_guards": 6307,
+  "actual_runtime_semantic_api": [
+    {
+      "directory": "/home/doc/git/.acpi-proof-work/module-startup-publication-DtkXPG/candidate/tests/acpi-native-entry/results/checked-H2JCRoK1",
+      "selections": 59,
+      "ALIs": 56,
+      "objects": 0
+    },
+    {
+      "directory": "/home/doc/git/.acpi-proof-work/module-startup-publication-DtkXPG/candidate/tests/acpi-native-entry/results/release-iesWyKnw",
+      "selections": 59,
+      "ALIs": 56,
+      "objects": 0
+    }
+  ],
+  "catalog_consistency": {
+    "catalogs": 145,
+    "repository_rows": 62490,
+    "closed_source_selections": 177,
+    "unchanged_local_references_not_rebased": 67,
+    "new_proof": false,
+    "scope": "Current candidate input/closure consistency only; historical runtime/proof reports are not renewed."
+  },
+  "source_scope": [
+    {
+      "name": "acpi_bootstrap.adb",
+      "origin": "/home/doc/git/cubit/userspace/services/acpi/acpi_bootstrap.adb",
+      "before": "ec514e23bc968d0e846643cd646a824b44f7d53d918c04c1da151dd7f2d5e831",
+      "after": "6a403db954f8d4a179c9311e78e3d3aa318a6c5c3afcc5cc86a2f8bb556485d3"
+    },
+    {
+      "name": "acpi_bootstrap.ads",
+      "origin": "/home/doc/git/cubit/userspace/services/acpi/acpi_bootstrap.ads",
+      "before": "24354979f070e5d8617806a9892146f79f2a5c0e1fa7d9adfd807a785e74167f",
+      "after": "23dc5115f53140947e1892a0f55011200db4d73c5a3dfd73416cf3459ab51b0d"
+    },
+    {
+      "name": "acpi_device_initialization.adb",
+      "origin": "/home/doc/git/cubit/userspace/services/acpi/acpi_device_initialization.adb",
+      "before": "c0fe562b850c566805ab3c8f112e47f64cc3fbbc3125317215622c4136d7dd27",
+      "after": "e96b8caf16a6b41c374a26c318ccb2df5fb994f8c2760833ee80f28e3e8375bf"
+    },
+    {
+      "name": "acpi_device_initialization.ads",
+      "origin": "/home/doc/git/cubit/userspace/services/acpi/acpi_device_initialization.ads",
+      "before": "6204f03b5d9e18d6d2da56b5831b47e4f709e4c8ca724204b896704b9f761d65",
+      "after": "15e2abd2a3cb867d9e05679db48a89bbb51ec26fbeca0a6e30c1150cadd87957"
+    },
+    {
+      "name": "acpi_requests.adb",
+      "origin": "/home/doc/git/cubit/userspace/services/acpi/acpi_requests.adb",
+      "before": "1351c9311587fa86ab48d2c15cde4e87815d3ee1ee7127d462fda6f92543cde4",
+      "after": "f262754ebd2d4bbcda1d762f09256e852bb9c10b50342206d1c065346fc2bca7"
+    },
+    {
+      "name": "acpi_service_core.adb",
+      "origin": "/home/doc/git/cubit/userspace/services/acpi/acpi_service_core.adb",
+      "before": "588fb837f5627940489f2872b311d11388c315711910ff3a6abf47638a3a474f",
+      "after": "ea59b41059f0b47ea76d853f94887027dbeec783954d1cd27f33e36aae7abc7d"
+    },
+    {
+      "name": "acpi_service_core.ads",
+      "origin": "/home/doc/git/cubit/userspace/services/acpi/acpi_service_core.ads",
+      "before": "a54ff477c36860cc7e8ee2d0196f900909d8408d8bf1ab998798584965f855cd",
+      "after": "fd2a7682e28fd3e66f8033bbb8f0db8235004cef1eba79d0c50e5174cf1f2e4e"
+    },
+    {
+      "name": "aml_namespace.adb",
+      "origin": "/home/doc/git/cubit/userspace/services/acpi/lib/aml_namespace.adb",
+      "before": "d4b98e60926e8ba338d1b165a28f47b44328b4206007ca01df4c82fa158517d4",
+      "after": "28faa5ba6c3fbc4b3cfe65ab860a2d98454ab5a0c07cadb592ad783a9c249401"
+    },
+    {
+      "name": "aml_namespace.ads",
+      "origin": "/home/doc/git/cubit/userspace/services/acpi/lib/aml_namespace.ads",
+      "before": "024793e55c569eff87bb964d4e34d774e3b3446bad32407605012343ddf2e67e",
+      "after": "000f40c1db58c5c8fb38e03c8af6b4b37202d29cf330491d42574193c337c5bb"
+    },
+    {
+      "name": "acpi_startup_diagnostics.adb",
+      "origin": "/home/doc/git/cubit/userspace/services/acpi/snapshot/acpi_startup_diagnostics.adb",
+      "before": "3f2c0c6a2bf0ea2e7edd301b8a79014c29485c6606b21171517490cd605c443c",
+      "after": "8ad30f9a4a8d5678a1d70092a8f56c590f6b1cc8f9104f894f4b02bc11ae160f"
+    },
+    {
+      "name": "acpi_requests-with_driver.adb",
+      "origin": "/home/doc/git/cubit/userspace/services/acpi/request-driver/acpi_requests-with_driver.adb",
+      "before": "345250752b8bad946feac2f80e4b8dc4397c74e1cffa5d9a4383cc0d2b59b56d",
+      "after": "6271cdf82b840d13179b5dd87106f4b5dfc1e85a160726f5bdd5cdffaa3c8c06"
+    },
+    {
+      "name": "acpi_requests-with_driver.ads",
+      "origin": "/home/doc/git/cubit/userspace/services/acpi/request-driver/acpi_requests-with_driver.ads",
+      "before": "1350783d8b33f47ecb8b428ebfec0de20b4b52fdcbe1d671cddb733e7762d899",
+      "after": "79d7c202ac5711aebb3215dfc96632a681820d45e767e58d53378bb225dc797a"
+    },
+    {
+      "name": "acpi_snapshot_startup-with_driver.ads",
+      "origin": "/home/doc/git/cubit/userspace/services/acpi/snapshot/acpi_snapshot_startup-with_driver.ads",
+      "before": "b2a623284fc018092f18f44de7eed5040234b6121f94cea51c83c5b6fa12f269",
+      "after": "1349b21c3a60b07754cc68b6e24d9231f9e67dec5dcb376d1a9d62def3a8ef50"
+    },
+    {
+      "name": "acpi_snapshot_startup-with_driver.adb",
+      "origin": "/home/doc/git/cubit/userspace/services/acpi/snapshot/acpi_snapshot_startup-with_driver.adb",
+      "before": "ad6d52931058666c4980ed3b6ca2fd3464b0f37b71097ff21b4811eda0ae8d10",
+      "after": "64bfba9f0fbf02db04a5b9fcbbe4d608e7819f6d356b837abc03da9dd588de96"
+    }
+  ],
+  "source_model": "Named targets independently provisioned by the trusted owner; target set/count have configured bounds. No target, endpoint, authority or physical address is selected by wire words.",
+  "scope": "Actual copied snapshot -> trusted module executor -> namespace Field IO -> modeled EC -> real root _INI -> modeled region barrier. Failure retains owner/partial namespace as needed, and a persistent driver claim prevents fresh-context/direct-bootstrap reuse before module effects.",
+  "assumed": "Trusted callback identity/catalog preservation, serialized non-reentrant entry, independently admitted provider authority and process-lifetime backing/context retention. The modeled region barrier is not native region connection.",
+  "new_proof": false,
+  "native_executed": false,
+  "hardware_validated": false,
+  "full_goal": "active and incomplete",
+  "remaining": [
+    "Native provider admission, controller reservation or Global Lock, deadlines, region connection (_REG) and recovery lifetime.",
+    "Native snapshot facade selection and actual EC/backend launch/event enrollment.",
+    "Composed/banked/index/multi-register module fields and dynamic runtime binding integration.",
+    "Full service/interpreter SPARK proofs and native/QEMU/laptop acceptance.",
+    "Separate copied-loader/parser cohort remains owner-gated and requires coherent rebase."
+  ],
+  "historical_evidence": "Earlier proof/runtime evidence remains historical; refreshing current input catalogs does not renew those results."
+}

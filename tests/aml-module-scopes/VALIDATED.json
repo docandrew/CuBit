@@ -1,0 +1,148 @@
+{
+  "scope": "Typed selected module root,independent entry/invocation/lifetime bookkeeping; no Load/LoadTable opcode admission",
+  "functional": {
+    "output": "/home/doc/cubit-build-tmp/aml-selected-module-root-T5GNRt",
+    "checks": 2088,
+    "checks_per_profile": 1044,
+    "processes": 40,
+    "commands": 50
+  },
+  "proof": {
+    "output": "/home/doc/cubit-build-tmp/aml-module-scope-proof-8nD37M",
+    "levels": {
+      "1": {
+        "entities": 42,
+        "proof": 82,
+        "flow": 37,
+        "functional_posts": [
+          "AML_Declaration_Contexts.Close",
+          "AML_Declaration_Contexts.Empty",
+          "AML_Declaration_Contexts.Make_Scope",
+          "AML_Declaration_Contexts.Open",
+          "AML_Declaration_Contexts.Open_At",
+          "AML_Declaration_Contexts.Open_Module",
+          "AML_Declaration_Contexts.Pop_Scope",
+          "AML_Declaration_Contexts.Push_Scope"
+        ],
+        "attempts": 295,
+        "imported": [
+          "AML_Frame_Handles.Present"
+        ]
+      },
+      "2": {
+        "entities": 42,
+        "proof": 82,
+        "flow": 37,
+        "functional_posts": [
+          "AML_Declaration_Contexts.Close",
+          "AML_Declaration_Contexts.Empty",
+          "AML_Declaration_Contexts.Make_Scope",
+          "AML_Declaration_Contexts.Open",
+          "AML_Declaration_Contexts.Open_At",
+          "AML_Declaration_Contexts.Open_Module",
+          "AML_Declaration_Contexts.Pop_Scope",
+          "AML_Declaration_Contexts.Push_Scope"
+        ],
+        "attempts": 295,
+        "imported": [
+          "AML_Frame_Handles.Present"
+        ]
+      }
+    },
+    "scope": "Declaration ledger functional contracts/safety only; actual frame Present interface is a modular dependency; no namespace/interpreter proof",
+    "original_audit_cases": 16,
+    "portable_reproduced": true
+  },
+  "scoped_lease": {
+    "output": "/home/doc/cubit-build-tmp/aml-module-scope-ledger-xvcweK",
+    "checks_per_profile": 53,
+    "commands": 4
+  },
+  "field": {
+    "output": "/home/doc/cubit-build-tmp/aml-append-field-regression-Hwufyy",
+    "checks_per_profile": 1676,
+    "commands": 8
+  },
+  "suites": {
+    "acpi-native-entry": {
+      "checked": {
+        "directory": "/home/doc/git/.acpi-proof-work/selected-root-publication-work/candidate/tests/acpi-native-entry/results/checked-D6BTnN0z",
+        "alis": 35,
+        "objects": 0,
+        "selections": 36
+      },
+      "release": {
+        "directory": "/home/doc/git/.acpi-proof-work/selected-root-publication-work/candidate/tests/acpi-native-entry/results/release-sIWmR53H",
+        "alis": 35,
+        "objects": 0,
+        "selections": 36
+      }
+    },
+    "acpi-native-startup": {
+      "checked": {
+        "directory": "/home/doc/git/.acpi-proof-work/selected-root-publication-work/candidate/tests/acpi-native-startup/results/checked-92q2bFOV",
+        "alis": 106,
+        "checks": 1228,
+        "processes": 76
+      },
+      "release": {
+        "directory": "/home/doc/git/.acpi-proof-work/selected-root-publication-work/candidate/tests/acpi-native-startup/results/release-uZ9PhpoJ",
+        "alis": 106,
+        "checks": 1228,
+        "processes": 76
+      }
+    }
+  },
+  "prior_core_startup": {
+    "output": "/home/doc/cubit-build-tmp/aml-append-startup-regression-hHXRc6",
+    "checks": 78
+  },
+  "reference": {
+    "output": "/home/doc/cubit-build-tmp/aml-selected-root-reference-Bht82T",
+    "rows": [
+      {
+        "revision": 1,
+        "integers": [
+          "0x0",
+          "0x1234",
+          "0xffffffff",
+          "0x2a",
+          "0x1"
+        ],
+        "semantic_match": true,
+        "diagnostics": [
+          "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+        ]
+      },
+      {
+        "revision": 2,
+        "integers": [
+          "0x0",
+          "0x1234",
+          "0xffffffffffffffff",
+          "0x2a",
+          "0x1"
+        ],
+        "semantic_match": true,
+        "diagnostics": [
+          "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+        ]
+      }
+    ],
+    "scope": "Self-authored ACPICA reference: LoadTable selected Device root places NVAL beneath DEV0,returns42,preserves caller Local0 and commits global counter once; not CuBit loading,ASLTS completion,proof or hardware",
+    "commands": 6,
+    "previous_private_reference_revalidated": true
+  },
+  "metadata": {
+    "catalogs": 131,
+    "source_hash_rows": 57664,
+    "stale": 0,
+    "historical_proof_files_preserved": 5,
+    "runtime_claim": "None for unexecuted suites; source/project selection only"
+  },
+  "new_proof": true,
+  "native_executed": false,
+  "hardware_validated": false,
+  "all_own_jobs_terminal": true,
+  "goal": "active and incomplete"
+}

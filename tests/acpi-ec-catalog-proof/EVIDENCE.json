@@ -1,0 +1,64 @@
+{
+  "proof": [
+    {
+      "level": 1,
+      "path": "/home/doc/cubit-build-tmp/acpi-ec-catalog-proof-nf92aF/level1/AUDIT.json",
+      "sha256": "8a88066181016965766060cdc90f4ef949ba13b007c8277d888c65efb95064da",
+      "proof_checks": 65,
+      "flow_checks": 60,
+      "SPARK_entities": 44,
+      "valid_CVC5": 191,
+      "trusted_callbacks": [
+        "EC_Proof_Boundary.Clock",
+        "EC_Proof_Boundary.Owned",
+        "EC_Proof_Boundary.Read",
+        "EC_Proof_Boundary.Write"
+      ]
+    },
+    {
+      "level": 2,
+      "path": "/home/doc/cubit-build-tmp/acpi-ec-catalog-proof-nf92aF/level2/AUDIT.json",
+      "sha256": "8a88066181016965766060cdc90f4ef949ba13b007c8277d888c65efb95064da",
+      "proof_checks": 65,
+      "flow_checks": 60,
+      "SPARK_entities": 44,
+      "valid_CVC5": 191,
+      "trusted_callbacks": [
+        "EC_Proof_Boundary.Clock",
+        "EC_Proof_Boundary.Owned",
+        "EC_Proof_Boundary.Read",
+        "EC_Proof_Boundary.Write"
+      ]
+    }
+  ],
+  "hosted_checks": 54182,
+  "runtime_processes": 70,
+  "ec": {
+    "path": "/home/doc/cubit-build-tmp/acpi-ec-gardI4/COMPLETE.json",
+    "sha256": "a74101091cc288e721cd97dd6734709e6d5573c515ed5d80376d119a74ccb827",
+    "checks": 52126,
+    "processes": 6
+  },
+  "drain": {
+    "path": "/home/doc/cubit-build-tmp/ec-drain-wzOf7C/COMPLETE.json",
+    "sha256": "a283d5f15d82ac48bc1a2654b742c2453d650fd0165ab7c1c52f9160ce7af00b",
+    "checks": 2056,
+    "processes": 64
+  },
+  "semantic": {
+    "path": "/home/doc/cubit-build-tmp/ec-progress-semantic-XY5UGQ/COMPLETE.json",
+    "sha256": "ef78b9d42342e25554d081566fc69efbcf907b4ecde3608e1cb96cc2cb07b096",
+    "sources": 252,
+    "runtime_specs": 222,
+    "objects": 0
+  },
+  "negative_audit": {
+    "path": "/home/doc/git/.acpi-proof-work/ec-catalog-contract-20261029/NEGATIVE-AUDIT.json",
+    "sha256": "2c5fe15e196a5de768fce6dacb3656cd1092ba8b7f41afcc8806b83d27a8140a",
+    "rejected": 40
+  },
+  "new_proof": true,
+  "native_executed": false,
+  "hardware_validated": false,
+  "goal_complete": false
+}

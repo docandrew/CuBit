@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Keep source and artifact inventories independent of the invoking locale.
+export LC_ALL=C
 set -euo pipefail
 here=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 root=$(cd "$here/../.." && pwd)
@@ -18,7 +20,13 @@ test "${TMPDIR:-}" = /home/doc/cubit-build-tmp
 ulimit -s 65536
 ulimit -c 0
 mkdir -p "$here/results"
-out=$(mktemp -d "$here/results/run-XXXXXXXX")
+if [ -n "${ACPI_BATTERY_TEST_RESUME:-}" ]; then
+ out=$(realpath -- "$ACPI_BATTERY_TEST_RESUME")
+ test "$(dirname -- "$out")" = "$(realpath -- "$here/results")"
+ case "$(basename -- "$out")" in run-*) ;; *) exit 2;; esac
+else
+ out=$(mktemp -d "$here/results/run-XXXXXXXX")
+fi
 printf '%s\n' "$out"
 for tool in gprbuild gnatbind gnatlink; do
  tool_path=$(realpath "$(command -v "$tool")")
@@ -27,7 +35,7 @@ for tool in gprbuild gnatbind gnatlink; do
  sha256sum "$tool_path" >> "$out/tools.sha256"
 done
 oracle=/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin
-mkdir "$out/reference"
+mkdir -p "$out/reference"
 for tool in iasl acpiexec; do sha256sum "$oracle/$tool" >> "$out/tools.sha256"; done
 nice -n 19 timeout --kill-after=2s 5 "$oracle/iasl" -p "$out/reference/battery" "$here/battery_observer.asl" > "$out/iasl.log" 2>&1
 nice -n 19 timeout --kill-after=2s 5 "$oracle/acpiexec" -dr -b 'evaluate BAT0._HID; evaluate BAT0._BST; evaluate NAM0._HID; evaluate NAM0._BST; evaluate ORCL; evaluate SETM 9 1; evaluate BAT0._HID; evaluate BAT0._BST; evaluate RCNT; evaluate BAT0._STA; evaluate SETP 1; evaluate BAT0._STA; evaluate SETP 4; evaluate BAT0._STA' "$out/reference/battery.aml" > "$out/acpiexec.log" 2>&1
@@ -50,12 +58,13 @@ for profile in checked release; do
    expected='battery status checks 14237'; alis=2; args=()
   else
    project="$here/observer_$profile.gpr"; variable=BATTERY_OBSERVER_BUILD; main=battery_observer_tests
-   expected='ACPI battery observer checks 330'; alis=78; args=("$out/reference/battery.aml")
+   expected='ACPI battery observer checks 330'; alis=84; args=("$out/reference/battery.aml")
   fi
   nice -n 19 timeout --kill-after=2s 180 gprbuild -p -v -j1 -P "$project" "-X$variable=$build" 2>&1 | head -c 1048576 > "$out/$model-$profile-build.log"
   nice -n 19 timeout --kill-after=2s 30 "$build/bin/$main" "${args[@]}" 2>&1 | head -c 1048576 > "$out/$model-$profile-test.log"
   grep -Fx "$expected" "$out/$model-$profile-test.log"
-  test "$(find "$build/obj" -maxdepth 1 -name '*.ali' ! -name 'b__*' | wc -l)" = "$alis"
+  find "$build/obj" -maxdepth 1 -name '*.ali' ! -name 'b__*' -printf '%f\n' | LC_ALL=C sort > "$out/$model-$profile-units.actual"
+  diff -u "$here/$model-units.expected" "$out/$model-$profile-units.actual"
   for ali in "$build/obj/"*.ali; do
    case "$ali" in */b__*) continue;; esac
    grep -Fxq 'A -gnatwe' "$ali"

@@ -73,7 +73,7 @@ procedure Bank_Access_Tests is
    begin Checks := Checks + 1; if not Good then raise Program_Error with Why; end if; end Check;
    procedure Run (Deep : Boolean; Expanded : Boolean := False) is
       Depth : constant Positive := (if Deep then 256 else 128);
-      Service : aliased C.State (1, Bank_Access_Oracle.Table256'Length, Bank_Access_Oracle.Table256'Length);
+      Service : aliased C.State (1, Bank_Access_Oracle.Table256'Length, Bank_Access_Oracle.Table256'Length, 1);
       IO : Context;
       Items : F.Binding_Set;
       Stage : C.Stage_Status;

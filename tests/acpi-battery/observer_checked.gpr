@@ -1,5 +1,5 @@
 project Observer_Checked is
- for Source_Dirs use (".", "../../userspace/services/acpi", "../../userspace/services/acpi/lib", "../../userspace/services/acpi/power", "../../shared/firmware");
+ for Source_Dirs use (".", "../../userspace/services/acpi", "../../userspace/services/acpi/lib", "../../userspace/services/acpi/power", "../../userspace/services/acpi/resource-consumer", "../../userspace/services/acpi/resource-data", "../../shared/firmware", "../../shared/acpi");
  for Main use ("battery_observer_tests.adb");
  for Object_Dir use external ("BATTERY_OBSERVER_BUILD") & "/obj";
  for Exec_Dir use external ("BATTERY_OBSERVER_BUILD") & "/bin";

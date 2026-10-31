@@ -1,0 +1,14 @@
+{
+  "scope": "Hosted catalog observation/native logging hook with hosted logger only; no new proof/native/runtime/hardware acceptance",
+  "out": "/home/doc/cubit-build-tmp/acpi-ec-boot-notes-dBhfow",
+  "complete_sha256": "f846a3da55ebc6809a87f2724d61cca71e2a7f8148d40bff9eb087dc3d0b01aa",
+  "input_manifest_sha256": "38ea049b9d89f47bdae668082f2cfb71ae02985bb78b950a7333b436d88135a4",
+  "checks": 376,
+  "runtime_processes": 24,
+  "ACPICA_ECDT_roundtrip_bytes": true,
+  "template_origin": {
+    "origin": "/home/doc/git/cubit/tests/acpi-ec-boot/reference/ecdt-template.asl",
+    "sha256": "7a1e40d8b2cebbeb2760efa5079312fc19d8b1d3b6d3e6c4c3d986e0c383b6d4",
+    "transformation": "Set Namepath using the existing ECDT fixture recipe"
+  }
+}

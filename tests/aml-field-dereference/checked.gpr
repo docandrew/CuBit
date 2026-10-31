@@ -1,0 +1,9 @@
+project Field_Dereference_checked is
+ for Source_Dirs use (".", "../../userspace/services/acpi/lib", "../../userspace/services/acpi", "../../shared/firmware", "../../userspace/services/acpi/resource-consumer");
+ for Object_Dir use "build-checked/obj";
+ for Exec_Dir use "build-checked";
+ for Main use ("field_dereference_tests.adb", "field_callback_status_tests.adb");
+ package Compiler is
+  for Default_Switches ("Ada") use ("-O1", "-gnat2022", "-gnatwa", "-gnatwe", "-gnata", "-gnato");
+ end Compiler;
+end Field_Dereference_checked;

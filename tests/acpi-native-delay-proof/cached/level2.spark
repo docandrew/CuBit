@@ -1,0 +1,1186 @@
+{
+  "assumptions": [
+    {
+      "assumptions": [
+      ],
+      "claim": {
+        "arg": 3,
+        "predicate": "CLAIM_AORTE"
+      }
+    },
+    {
+      "assumptions": [
+        {
+          "arg": 1,
+          "predicate": "CLAIM_POST"
+        },
+        {
+          "arg": 1,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 1,
+          "predicate": "CLAIM_AORTE"
+        }
+      ],
+      "claim": {
+        "arg": 4,
+        "predicate": "CLAIM_AORTE"
+      }
+    },
+    {
+      "assumptions": [
+        {
+          "arg": 2,
+          "predicate": "CLAIM_POST"
+        },
+        {
+          "arg": 3,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 2,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 7,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 3,
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "arg": 2,
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "arg": 7,
+          "predicate": "CLAIM_AORTE"
+        }
+      ],
+      "claim": {
+        "arg": 1,
+        "predicate": "CLAIM_POST"
+      }
+    },
+    {
+      "assumptions": [
+        {
+          "arg": 2,
+          "predicate": "CLAIM_POST"
+        },
+        {
+          "arg": 3,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 2,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 7,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 3,
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "arg": 2,
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "arg": 7,
+          "predicate": "CLAIM_AORTE"
+        }
+      ],
+      "claim": {
+        "arg": 1,
+        "predicate": "CLAIM_AORTE"
+      }
+    },
+    {
+      "assumptions": [
+      ],
+      "claim": {
+        "arg": 6,
+        "predicate": "CLAIM_AORTE"
+      }
+    },
+    {
+      "assumptions": [
+        {
+          "arg": 8,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 8,
+          "predicate": "CLAIM_AORTE"
+        }
+      ],
+      "claim": {
+        "arg": 2,
+        "predicate": "CLAIM_POST"
+      }
+    },
+    {
+      "assumptions": [
+        {
+          "arg": 8,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 8,
+          "predicate": "CLAIM_AORTE"
+        }
+      ],
+      "claim": {
+        "arg": 2,
+        "predicate": "CLAIM_AORTE"
+      }
+    },
+    {
+      "assumptions": [
+        {
+          "arg": 6,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 6,
+          "predicate": "CLAIM_AORTE"
+        }
+      ],
+      "claim": {
+        "arg": 5,
+        "predicate": "CLAIM_AORTE"
+      }
+    }
+  ],
+  "entities": {
+    " 1": {
+      "name": "Delay_Proof_Model.Waits.Run",
+      "sloc": [
+        {
+          "file": "acpi_delay_waits.ads",
+          "line": 32
+        },
+        {
+          "file": "delay_proof_model.ads",
+          "line": 7
+        }
+      ]
+    },
+    " 2": {
+      "name": "Delay_Proof_Model.Waits.Run.Sample",
+      "sloc": [
+        {
+          "file": "acpi_delay_waits.adb",
+          "line": 14
+        },
+        {
+          "file": "delay_proof_model.ads",
+          "line": 7
+        }
+      ]
+    },
+    " 3": {
+      "name": "Delay_Proof_Model.Waits.Duration",
+      "sloc": [
+        {
+          "file": "acpi_delay_waits.ads",
+          "line": 27
+        },
+        {
+          "file": "delay_proof_model.ads",
+          "line": 7
+        }
+      ]
+    },
+    " 4": {
+      "name": "Delay_Proof_Model.Run_One",
+      "sloc": [
+        {
+          "file": "delay_proof_model.ads",
+          "line": 8
+        }
+      ]
+    },
+    " 5": {
+      "name": "Delay_Proof_Model",
+      "sloc": [
+        {
+          "file": "delay_proof_model.ads",
+          "line": 6
+        }
+      ]
+    },
+    " 6": {
+      "name": "Delay_Proof_Model.Waits",
+      "sloc": [
+        {
+          "file": "delay_proof_model.ads",
+          "line": 7
+        }
+      ]
+    },
+    " 7": {
+      "name": "Proof_Inputs.Sleep_Raw",
+      "sloc": [
+        {
+          "file": "proof_inputs.ads",
+          "line": 7
+        }
+      ]
+    },
+    " 8": {
+      "name": "Proof_Inputs.Read_Raw",
+      "sloc": [
+        {
+          "file": "proof_inputs.ads",
+          "line": 5
+        }
+      ]
+    }
+  },
+  "flow": [
+    {
+      "check_tree": {
+      },
+      "col": 36,
+      "entity": 1,
+      "file": "acpi_delay_waits.ads",
+      "how_proved": "flow",
+      "line": 33,
+      "msg_id": 0,
+      "rule": "UNINITIALIZED",
+      "severity": "info"
+    },
+    {
+      "check_tree": {
+      },
+      "col": 7,
+      "entity": 1,
+      "file": "acpi_delay_waits.adb",
+      "how_proved": "flow",
+      "line": 12,
+      "msg_id": 1,
+      "rule": "UNINITIALIZED",
+      "severity": "info"
+    },
+    {
+      "check_tree": {
+      },
+      "col": 17,
+      "entity": 1,
+      "file": "acpi_delay_waits.adb",
+      "how_proved": "flow",
+      "line": 12,
+      "msg_id": 2,
+      "rule": "UNINITIALIZED",
+      "severity": "info"
+    },
+    {
+      "check_tree": {
+      },
+      "col": 25,
+      "entity": 2,
+      "file": "acpi_delay_waits.adb",
+      "how_proved": "flow",
+      "line": 14,
+      "msg_id": 3,
+      "rule": "UNINITIALIZED",
+      "severity": "info"
+    },
+    {
+      "check_tree": {
+      },
+      "col": 10,
+      "entity": 2,
+      "file": "acpi_delay_waits.adb",
+      "how_proved": "flow",
+      "line": 25,
+      "msg_id": 4,
+      "rule": "UNINITIALIZED",
+      "severity": "info"
+    },
+    {
+      "check_tree": {
+      },
+      "col": 13,
+      "entity": 3,
+      "file": "acpi_delay_waits.ads",
+      "how_proved": "flow",
+      "line": 27,
+      "msg_id": 5,
+      "rule": "SUBPROGRAM_TERMINATION",
+      "severity": "info"
+    },
+    {
+      "check_tree": {
+      },
+      "col": 42,
+      "entity": 4,
+      "file": "delay_proof_model.ads",
+      "how_proved": "flow",
+      "line": 9,
+      "msg_id": 6,
+      "rule": "UNINITIALIZED",
+      "severity": "info"
+    }
+  ],
+  "pragma_assume": [
+  ],
+  "progress": "PROGRESS_PROOF",
+  "proof": [
+    {
+      "check_col": 51,
+      "check_file": "acpi_delay_waits.adb",
+      "check_line": 6,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 4.14200000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 51,
+      "entity": 3,
+      "file": "acpi_delay_waits.adb",
+      "how_proved": "prover",
+      "line": 6,
+      "msg_id": 7,
+      "rule": "VC_DISCRIMINANT_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 1,
+          "max_steps": 1,
+          "max_time": 4.14199987426400E-03
+        }
+      }
+    },
+    {
+      "check_col": 51,
+      "check_file": "acpi_delay_waits.adb",
+      "check_line": 7,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 1.09290000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 51,
+      "entity": 3,
+      "file": "acpi_delay_waits.adb",
+      "how_proved": "prover",
+      "line": 7,
+      "msg_id": 8,
+      "rule": "VC_DISCRIMINANT_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 1,
+          "max_steps": 1,
+          "max_time": 1.09289996325970E-02
+        }
+      }
+    },
+    {
+      "check_col": 7,
+      "check_file": "acpi_delay_waits.adb",
+      "check_line": 41,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 1.13190000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 7,
+      "entity": 1,
+      "file": "acpi_delay_waits.adb",
+      "how_proved": "prover",
+      "line": 41,
+      "msg_id": 9,
+      "rule": "VC_PRECONDITION",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 1,
+          "max_steps": 1,
+          "max_time": 1.13190002739429E-02
+        }
+      }
+    },
+    {
+      "check_col": 47,
+      "check_file": "acpi_delay_waits.adb",
+      "check_line": 61,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 1.39110000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 3556,
+              "time": 5.61730000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 47,
+      "entity": 1,
+      "file": "acpi_delay_waits.adb",
+      "how_proved": "prover",
+      "line": 61,
+      "msg_id": 10,
+      "rule": "VC_RANGE_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 2,
+          "max_steps": 3556,
+          "max_time": 5.61730004847050E-02
+        }
+      }
+    },
+    {
+      "check_col": 50,
+      "check_file": "acpi_delay_waits.adb",
+      "check_line": 58,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 8.00800000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 50,
+      "entity": 1,
+      "file": "acpi_delay_waits.adb",
+      "how_proved": "prover",
+      "line": 58,
+      "msg_id": 11,
+      "rule": "VC_RANGE_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 1,
+          "max_steps": 1,
+          "max_time": 8.00800044089556E-03
+        }
+      }
+    },
+    {
+      "check_col": 10,
+      "check_file": "acpi_delay_waits.adb",
+      "check_line": 67,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 21,
+              "time": 2.11130000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 10,
+      "entity": 1,
+      "file": "acpi_delay_waits.adb",
+      "how_proved": "prover",
+      "line": 67,
+      "msg_id": 12,
+      "rule": "VC_PRECONDITION",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 1,
+          "max_steps": 21,
+          "max_time": 2.11130008101463E-02
+        }
+      }
+    },
+    {
+      "check_col": 33,
+      "check_file": "acpi_delay_waits.adb",
+      "check_line": 50,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 6.50900000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 8.50600000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 33,
+      "entity": 1,
+      "file": "acpi_delay_waits.adb",
+      "how_proved": "prover",
+      "line": 50,
+      "msg_id": 13,
+      "rule": "VC_LOOP_INVARIANT_PRESERV",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 2,
+          "max_steps": 1,
+          "max_time": 8.50600004196167E-03
+        }
+      }
+    },
+    {
+      "check_col": 33,
+      "check_file": "acpi_delay_waits.adb",
+      "check_line": 50,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 5.91900000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 6.98800000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 33,
+      "entity": 1,
+      "file": "acpi_delay_waits.adb",
+      "how_proved": "prover",
+      "line": 50,
+      "msg_id": 14,
+      "rule": "VC_LOOP_INVARIANT_INIT",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 2,
+          "max_steps": 1,
+          "max_time": 6.98800012469292E-03
+        }
+      }
+    },
+    {
+      "check_col": 33,
+      "check_file": "acpi_delay_waits.adb",
+      "check_line": 49,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 1.38730000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 33,
+      "entity": 1,
+      "file": "acpi_delay_waits.adb",
+      "how_proved": "prover",
+      "line": 49,
+      "msg_id": 15,
+      "rule": "VC_LOOP_INVARIANT_INIT",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 1,
+          "max_steps": 1,
+          "max_time": 1.38729996979237E-02
+        }
+      }
+    },
+    {
+      "check_col": 33,
+      "check_file": "acpi_delay_waits.adb",
+      "check_line": 49,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 79,
+              "time": 2.04830000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 33,
+      "entity": 1,
+      "file": "acpi_delay_waits.adb",
+      "how_proved": "prover",
+      "line": 49,
+      "msg_id": 16,
+      "rule": "VC_LOOP_INVARIANT_PRESERV",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 1,
+          "max_steps": 79,
+          "max_time": 2.04830002039671E-02
+        }
+      }
+    },
+    {
+      "check_col": 33,
+      "check_file": "acpi_delay_waits.adb",
+      "check_line": 48,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 8.28000000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 1.08890000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 33,
+      "entity": 1,
+      "file": "acpi_delay_waits.adb",
+      "how_proved": "prover",
+      "line": 48,
+      "msg_id": 17,
+      "rule": "VC_LOOP_INVARIANT_INIT",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 2,
+          "max_steps": 1,
+          "max_time": 1.08890002593398E-02
+        }
+      }
+    },
+    {
+      "check_col": 33,
+      "check_file": "acpi_delay_waits.adb",
+      "check_line": 48,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 4.78300000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 35,
+              "time": 1.86820000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 33,
+      "entity": 1,
+      "file": "acpi_delay_waits.adb",
+      "how_proved": "prover",
+      "line": 48,
+      "msg_id": 18,
+      "rule": "VC_LOOP_INVARIANT_PRESERV",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 2,
+          "max_steps": 35,
+          "max_time": 1.86819992959499E-02
+        }
+      }
+    },
+    {
+      "check_col": 31,
+      "check_file": "acpi_delay_waits.adb",
+      "check_line": 51,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 71,
+              "time": 2.41410000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 31,
+      "entity": 1,
+      "file": "acpi_delay_waits.adb",
+      "how_proved": "prover",
+      "line": 51,
+      "msg_id": 19,
+      "rule": "VC_LOOP_VARIANT",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 1,
+          "max_steps": 71,
+          "max_time": 2.41410005837679E-02
+        }
+      }
+    },
+    {
+      "check_col": 19,
+      "check_file": "acpi_delay_waits.ads",
+      "check_line": 34,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "Trivial": {
+              "result": "Valid",
+              "steps": 2,
+              "time": 0
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 3172,
+              "time": 6.35500000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 3221,
+              "time": 6.51440000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 316,
+              "time": 4.29560000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 307,
+              "time": 4.31850000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 19,
+      "entity": 1,
+      "file": "acpi_delay_waits.ads",
+      "how_proved": "prover",
+      "line": 34,
+      "msg_id": 20,
+      "rule": "VC_POSTCONDITION",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 4,
+          "max_steps": 3221,
+          "max_time": 6.51440024375916E-02
+        },
+        "Trivial": {
+          "count": 1,
+          "max_steps": 2,
+          "max_time": 0.00000000000000E+00
+        }
+      }
+    },
+    {
+      "check_col": 43,
+      "check_file": "acpi_delay_waits.adb",
+      "check_line": 29,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 6.02600000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 1.09130000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 43,
+      "entity": 2,
+      "file": "acpi_delay_waits.adb",
+      "how_proved": "prover",
+      "line": 29,
+      "msg_id": 21,
+      "rule": "VC_RANGE_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 2,
+          "max_steps": 1,
+          "max_time": 1.09130004420877E-02
+        }
+      }
+    },
+    {
+      "check_col": 19,
+      "check_file": "acpi_delay_waits.adb",
+      "check_line": 16,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "Trivial": {
+              "result": "Valid",
+              "steps": 2,
+              "time": 0
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 27,
+              "time": 2.15820000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "Trivial": {
+              "result": "Valid",
+              "steps": 2,
+              "time": 0
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 9.98600000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 1.08940000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 58,
+              "time": 2.46230000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 39,
+              "time": 2.23870000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 35,
+              "time": 2.30260000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 35,
+              "time": 2.27560000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 40,
+              "time": 2.15580000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 19,
+      "entity": 2,
+      "file": "acpi_delay_waits.adb",
+      "how_proved": "prover",
+      "line": 16,
+      "msg_id": 22,
+      "rule": "VC_POSTCONDITION",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 8,
+          "max_steps": 58,
+          "max_time": 2.46229991316795E-02
+        },
+        "Trivial": {
+          "count": 2,
+          "max_steps": 2,
+          "max_time": 0.00000000000000E+00
+        }
+      }
+    }
+  ],
+  "skip_flow_proof": [
+  ],
+  "skip_proof": [
+  ],
+  "spark": {
+    " 1": "all",
+    " 2": "all",
+    " 3": "all",
+    " 4": "all",
+    " 5": "all",
+    " 6": "all"
+  },
+  "stop_reason": "STOP_REASON_NONE",
+  "timings": {
+    " 1": {
+      "gnat2why.vc_generation": 5.63750006258488E-02,
+      "gnatwhy3.init": 2.69338995218277E-01,
+      "gnatwhy3.register_vcs": 1.12210996448994E-01,
+      "gnatwhy3.run_vcs": 2.30000005103648E-05,
+      "gnatwhy3.save_session": 2.13179998099804E-02,
+      "gnatwhy3.schedule_vcs": 1.03958003222942E-01,
+      "gnatwhy3.transformations.counterexamples_dependent_intros": 1.88009981065989E-02,
+      "gnatwhy3.transformations.detect_polymorphism": 2.97700008377433E-03,
+      "gnatwhy3.transformations.discriminate_if_poly": 1.20000004244503E-05,
+      "gnatwhy3.transformations.eliminate_algebraic_if_poly": 6.27999892458320E-03,
+      "gnatwhy3.transformations.eliminate_builtin": 4.14900016039610E-03,
+      "gnatwhy3.transformations.eliminate_definition_conditionally": 3.13799898140132E-03,
+      "gnatwhy3.transformations.eliminate_epsilon": 4.35699895024300E-03,
+      "gnatwhy3.transformations.eliminate_gnatprove_guard_epsilon": 5.44299883767962E-03,
+      "gnatwhy3.transformations.eliminate_inductive": 3.53999901562929E-03,
+      "gnatwhy3.transformations.eliminate_literal": 5.04299905151129E-03,
+      "gnatwhy3.transformations.eliminate_projections_sums": 4.22200001776218E-03,
+      "gnatwhy3.transformations.encoding_smt_if_poly": 9.99900021270150E-06,
+      "gnatwhy3.transformations.inline_trivial": 7.37959966063499E-02,
+      "gnatwhy3.transformations.prepare_for_counterexmp": 1.10000000859145E-05,
+      "gnatwhy3.transformations.remove_unused": 2.62059997767210E-02,
+      "gnatwhy3.transformations.simplify_formula": 5.63800008967519E-03,
+      "gnatwhy3.transformations.split_goal_wp_conj": 6.54760003089905E-02
+    },
+    " 2": {
+      "gnat2why.vc_generation": 5.54520003497601E-02,
+      "gnatwhy3.init": 2.49534994363785E-01,
+      "gnatwhy3.register_vcs": 2.80479993671179E-02,
+      "gnatwhy3.run_vcs": 1.70000002981396E-05,
+      "gnatwhy3.save_session": 8.17099865525961E-03,
+      "gnatwhy3.schedule_vcs": 1.75940003246069E-02,
+      "gnatwhy3.transformations.counterexamples_dependent_intros": 8.17000027745962E-03,
+      "gnatwhy3.transformations.detect_polymorphism": 1.23099901247770E-03,
+      "gnatwhy3.transformations.discriminate_if_poly": 7.99900044512469E-06,
+      "gnatwhy3.transformations.eliminate_algebraic_if_poly": 2.44800001382828E-03,
+      "gnatwhy3.transformations.eliminate_builtin": 2.63900007121265E-03,
+      "gnatwhy3.transformations.eliminate_definition_conditionally": 1.24500005040318E-03,
+      "gnatwhy3.transformations.eliminate_epsilon": 1.72299903351814E-03,
+      "gnatwhy3.transformations.eliminate_gnatprove_guard_epsilon": 1.83299905620515E-03,
+      "gnatwhy3.transformations.eliminate_inductive": 1.15899904631078E-03,
+      "gnatwhy3.transformations.eliminate_literal": 1.68200000189245E-03,
+      "gnatwhy3.transformations.eliminate_projections_sums": 1.26399903092533E-03,
+      "gnatwhy3.transformations.encoding_smt_if_poly": 6.00000021222513E-06,
+      "gnatwhy3.transformations.inline_trivial": 3.37949991226196E-02,
+      "gnatwhy3.transformations.prepare_for_counterexmp": 7.00000009601354E-06,
+      "gnatwhy3.transformations.remove_unused": 9.67099890112877E-03,
+      "gnatwhy3.transformations.simplify_formula": 1.76100002136081E-03,
+      "gnatwhy3.transformations.split_goal_wp_conj": 1.41810001805425E-02
+    },
+    " 3": {
+      "gnat2why.vc_generation": 9.77979972958565E-02,
+      "gnatwhy3.init": 2.38236993551254E-01,
+      "gnatwhy3.register_vcs": 2.64400010928512E-03,
+      "gnatwhy3.run_vcs": 1.99900000552589E-06,
+      "gnatwhy3.save_session": 1.01699901279062E-03,
+      "gnatwhy3.schedule_vcs": 1.48099986836314E-02,
+      "gnatwhy3.transformations.counterexamples_dependent_intros": 2.53599905408919E-03,
+      "gnatwhy3.transformations.detect_polymorphism": 4.40000003436580E-05,
+      "gnatwhy3.transformations.discriminate_if_poly": 0.00000000000000E+00,
+      "gnatwhy3.transformations.eliminate_algebraic_if_poly": 2.81999004073441E-04,
+      "gnatwhy3.transformations.eliminate_builtin": 1.38100003823638E-03,
+      "gnatwhy3.transformations.eliminate_definition_conditionally": 1.57999005750753E-04,
+      "gnatwhy3.transformations.eliminate_epsilon": 3.45000007655472E-04,
+      "gnatwhy3.transformations.eliminate_gnatprove_guard_epsilon": 1.72999003552832E-04,
+      "gnatwhy3.transformations.eliminate_inductive": 2.55999009823427E-04,
+      "gnatwhy3.transformations.eliminate_literal": 2.76000006124377E-04,
+      "gnatwhy3.transformations.eliminate_projections_sums": 4.29000006988645E-04,
+      "gnatwhy3.transformations.encoding_smt_if_poly": 9.99000008050643E-07,
+      "gnatwhy3.transformations.inline_trivial": 5.07800001651049E-03,
+      "gnatwhy3.transformations.prepare_for_counterexmp": 0.00000000000000E+00,
+      "gnatwhy3.transformations.remove_unused": 1.85400003101677E-03,
+      "gnatwhy3.transformations.simplify_formula": 2.16000000364147E-04,
+      "gnatwhy3.transformations.split_goal_wp_conj": 2.13999906554818E-03
+    },
+    " 4": {
+      "gnat2why.vc_generation": 1.29699995741248E-02
+    },
+    "global": {
+      "flow analysis": 3.86330001056194E-02,
+      "globals (advanced)": 1.95399997755885E-03,
+      "globals (basic)": 1.24289998784661E-02,
+      "init_why_sections": 1.34060001000762E-02,
+      "marking": 5.52400015294552E-03,
+      "properties (advanced)": 1.46000005770475E-04,
+      "translation of standard": 4.06979992985725E-02
+    }
+  }
+}

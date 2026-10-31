@@ -1,0 +1,34 @@
+Phase 1 of 3: generation of data representation information ...
+Phase 2 of 3: generation of Global contracts ...
+Phase 3 of 3: flow analysis and proof ...
+Summary logged in /home/doc/cubit-build-tmp/acpi-hid-channel-proof-7POCmr/level2/obj/gnatprove/gnatprove.out
+acpi_hid_i2c_channels.ads:33:13: info: implicit aspect Always_Terminates on "Prepare" has been proved, subprogram will terminate, in instantiation at channel_proof_model.ads:6
+acpi_hid_i2c_channels.ads:34:11: info: data dependencies proved, in instantiation at channel_proof_model.ads:6
+acpi_hid_i2c_channels.ads:36:12: info: postcondition proved, in instantiation at channel_proof_model.ads:6
+acpi_hid_i2c_channels.ads:40:30: info: discriminant check proved, in instantiation at channel_proof_model.ads:6
+acpi_hid_i2c_channels.ads:41:31: info: discriminant check proved, in instantiation at channel_proof_model.ads:6
+acpi_hid_i2c_channels.ads:42:31: info: discriminant check proved, in instantiation at channel_proof_model.ads:6
+acpi_hid_i2c_channels.ads:44:37: info: discriminant check proved, in instantiation at channel_proof_model.ads:6
+acpi_hid_i2c_channels.ads:45:37: info: discriminant check proved, in instantiation at channel_proof_model.ads:6
+acpi_hid_i2c_channels.ads:47:35: info: discriminant check proved, in instantiation at channel_proof_model.ads:6
+acpi_hid_i2c_channels.ads:47:73: info: discriminant check proved, in instantiation at channel_proof_model.ads:6
+acpi_hid_i2c_channels.ads:48:35: info: discriminant check proved, in instantiation at channel_proof_model.ads:6
+acpi_hid_i2c_channels.ads:49:35: info: discriminant check proved, in instantiation at channel_proof_model.ads:6
+acpi_hid_i2c_channels.ads:50:37: info: discriminant check proved, in instantiation at channel_proof_model.ads:6
+acpi_hid_i2c_channels.ads:53:51: info: discriminant check proved, in instantiation at channel_proof_model.ads:6
+acpi_hid_i2c_channels.ads:54:46: info: discriminant check proved, in instantiation at channel_proof_model.ads:6
+acpi_hid_i2c_channels.ads:56:35: info: discriminant check proved, in instantiation at channel_proof_model.ads:6
+acpi_hid_i2c_channels.ads:57:40: info: range check proved, in instantiation at channel_proof_model.ads:6
+acpi_hid_i2c_channels.ads:58:46: info: discriminant check proved, in instantiation at channel_proof_model.ads:6
+acpi_hid_i2c_channels.ads:61:45: info: discriminant check proved, in instantiation at channel_proof_model.ads:6
+acpi_hid_i2c_channels.adb:8:32: info: discriminant check proved, in instantiation at channel_proof_model.ads:6
+acpi_hid_i2c_channels.adb:10:46: info: discriminant check proved, in instantiation at channel_proof_model.ads:6
+acpi_hid_i2c_channels.adb:11:41: info: discriminant check proved, in instantiation at channel_proof_model.ads:6
+acpi_hid_i2c_channels.adb:26:38: info: range check proved, in instantiation at channel_proof_model.ads:6
+acpi_hid_i2c_channels.adb:27:44: info: discriminant check proved, in instantiation at channel_proof_model.ads:6
+acpi_hid_i2c_channels.adb:30:43: info: discriminant check proved, in instantiation at channel_proof_model.ads:6
+
+acpi_hid_i2c_channels.adb:2:14: warning: generic compilation unit is not analyzed [generic-not-analyzed]
+    2 |package body ACPI_HID_I2C_Channels with SPARK_Mode is
+      |             ^~~~~~~~~~~~~~~~~~~~~
+  only instantiations of the generic will be analyzed

@@ -1,5 +1,5 @@
 project Release is
- for Source_Dirs use (".","../../userspace/services/acpi/lib","../../userspace/services/acpi","../../shared/firmware");
+ for Source_Dirs use (".","../../userspace/services/acpi/lib","../../userspace/services/acpi","../../shared/firmware", "../../userspace/services/acpi/resource-consumer");
  for Object_Dir use "build-replay-release/obj";
  for Exec_Dir use "build-replay-release";
  for Main use ("notify_replay.adb");

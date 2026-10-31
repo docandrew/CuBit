@@ -1,5 +1,5 @@
 project Debug_release is
- for Source_Dirs use (".", "../aml-core", "../../userspace/services/acpi/lib", "../../userspace/services/acpi", "../../shared/firmware");
+ for Source_Dirs use (".", "../aml-core", "../../userspace/services/acpi/lib", "../../userspace/services/acpi", "../../shared/firmware", "../../userspace/services/acpi/resource-consumer");
  for Object_Dir use "build-release";
  for Main use ("debug_target_tests.adb", "debug_owned_tests.adb", "debug_oracle_runner.adb");
  package Compiler is

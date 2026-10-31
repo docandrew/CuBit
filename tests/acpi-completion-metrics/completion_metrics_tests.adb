@@ -62,7 +62,7 @@ procedure Completion_Metrics_Tests is
 begin
    for Case_ID in Scenario loop
       declare
-         S : State (2,512,256,0);
+         S : State (2, 512, 256, Load_Capacity => 2, Initial_Revision => 0);
          Reply : Response;
          Prior : Revision_Number;
          -- A real module-level While(One){Noop} consumes the service's unchanged
@@ -123,7 +123,7 @@ begin
       end;
    end loop;
    declare
-      S : State (2,512,256,0);
+      S : State (2, 512, 256, Load_Capacity => 2, Initial_Revision => 0);
       Reply : Response;
       Prior : Revision_Number;
    begin

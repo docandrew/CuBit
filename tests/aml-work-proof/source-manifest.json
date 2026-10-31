@@ -23,7 +23,7 @@
   "tests/aml-work-proof/reference/current/prove/origin-artifacts.json": "b6cc415298914e19fbaad168f90de0b4634fa777493cb912c200f41d8d02333c",
   "tests/aml-work-proof/reference/current/prove/prove.log": "31c90155d706d457e5d5124cd24bb772dead6575cba531f7eced50a374f6a444",
   "tests/aml-work-proof/reference/current/prove/unit.spark": "3a2f84b71a180d37b48f0abed7c6c7ad350cfaf06708dd8ac0d347548541bd1b",
-  "tests/aml-work-proof/run.sh": "8749ffb2354171c02ab9c1be88d39d97a03d01ea2b55cf5808e100410a7b66b1",
+  "tests/aml-work-proof/run.sh": "1460006da47dae79fd3fd2d479fa7e4f521dc0f6da24b82747a2af75dbc63033",
   "tests/aml-work-proof/work_proof.gpr": "19d5204dae2f13b42ac5aef5f3a09c9f4e57a1c2c339be996f8b2698bccb3c8f",
   "userspace/services/acpi/lib/aml_execution_limits.ads": "0f39494ae4418a3c8c639e2875c41ed9bec40c28849eed3f147940757a150794"
 }

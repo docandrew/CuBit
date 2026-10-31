@@ -1,0 +1,19 @@
+{
+  "checks": 170,
+  "flow": 14,
+  "prover": 156,
+  "unproved": 0,
+  "justified": 0,
+  "assume_statements": 0,
+  "scope": "Default empty/unique/idle initialization; exact transition acceptance/results; unrelated-slot preservation; identity uniqueness established by initialization/Reset and preserved by mutations; root session admission; declared invariants/runtime checks/termination. Isolated registry only, not namespace/VM/Core/caller correctness or full ACPI semantics.",
+  "source_hashes": {
+    "userspace/services/acpi/lib/aml_identity.ads": "95e1f372b2c7cecef6fcc75119cb616c2aa22eb9398e5997a250a1f6b342785f",
+    "userspace/services/acpi/lib/aml_definition_loads.ads": "5be30555e28bb0f3fd654227d4f68a050d9ae4374bda95dc04973eccc27bc81b",
+    "userspace/services/acpi/lib/aml_definition_loads.adb": "be0a05d0e33c993cff97eaafec71706fe853a93afab18870f79310b84bda9a47"
+  },
+  "authoritative_evidence": "/home/doc/git/.acpi-proof-work/session-admission-proof-work/REGISTRY-PROVED.json",
+  "new_proof_this_publication": false,
+  "whole_interpreter_proved": false,
+  "native_executed": false,
+  "hardware_validated": false
+}

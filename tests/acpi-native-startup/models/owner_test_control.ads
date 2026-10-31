@@ -4,13 +4,15 @@ with ACPI_Snapshot_Startup;
 with Interfaces;
 package Owner_Test_Control is
    type Scenario is
-     (Success, Module_Fatal, Root_Fatal, Bus_Fatal, Device_Fatal,
+     (Success, Stop_Request, Detection_Cleanup, Detection_Exception, Detection_Recovery, Power_Cleanup, Power_Exception, Module_Fatal, Root_Fatal, Bus_Fatal, Device_Fatal,
       Ordinary_Error, Unconfigured_Region, Clock_Unavailable, Clock_Overflow,
-      Snapshot_Refused, Copy_Refused, Register_Refused, Load_Exception);
+      Snapshot_Refused, Copy_Refused, Register_Refused, Load_Exception, Recovered, Recovered_Then_Failed, Recovery_Log_Failure);
    Selected : Scenario := Success;
    Width : AML_Decode.Integer_Width := AML_Decode.Bits_64;
    Broken_Critical : Boolean := False;
    Loads, Registrations, Serves, Native_Reads, Copies, Clock_Reads : Natural := 0;
+   Detections, Detected_At : Natural := 0;
+   Power_Detections, Power_Detected_At : Natural := 0;
    Sequence, Load_Completed_At, Registered_At, Served_At : Natural := 0;
    Passed_Deadline : ACPI_Snapshot_Startup.R.Tick := 0;
    Registered_Role : Interfaces.Unsigned_64 := 0;
@@ -25,6 +27,6 @@ package Owner_Test_Control is
    end record;
    type Records is array (Positive range 1 .. Log_Capacity) of Record_Item;
    Log : Records;
-   Log_Count, Critical_Attempts : Natural := 0;
+   Log_Count, Critical_Attempts, Recovery_Attempts : Natural := 0;
    procedure Write (Severity : Level; Text : String);
 end Owner_Test_Control;

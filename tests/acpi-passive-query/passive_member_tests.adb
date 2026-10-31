@@ -98,7 +98,7 @@ procedure Passive_Member_Tests is
    use type H.Outcome;
    use type H.Diagnostic;
    use type R.U32;
-   Service, Other : aliased C.State (1, 4096, 4096);
+   Service, Other : aliased C.State (1, 4096, 4096, 1);
    Data : Firmware_Tables.Bytes (Natural'Last - 63 .. Natural'Last);
    Items : P.Atoms (Natural'Last - 3 .. Natural'Last);
    Result : P.Report;
@@ -291,7 +291,7 @@ procedure Passive_Member_Tests is
       end;
       All_Matches ("NONE0000", False, 8, C.Max_Namespace_Nodes, []);
       Build (Item, "", Frame);
-      declare Uninitialized : C.State (1, 4096, 4096); begin
+      declare Uninitialized : C.State (1, 4096, 4096, 1); begin
          Q.Search (Uninitialized, Scope, Frame, C.Max_Namespace_Nodes, Nodes, Scratch, Atoms, Result);
          Check (Result.Status = Q.Namespace_Not_Ready and then Result.Copied_Nodes = 0,
            "owner ready flag cannot expose an uninitialized namespace");

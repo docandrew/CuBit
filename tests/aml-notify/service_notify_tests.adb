@@ -20,8 +20,8 @@ procedure Service_Notify_Tests is
    use type AML_Execute.Execution_Status;
    subtype Bytes is Firmware_Tables.Bytes;
    type Service_Access is access all State;
-   S : constant Service_Access := new State (2, 4096, 4096);
-   Other : constant Service_Access := new State (2, 4096, 4096);
+   S : constant Service_Access := new State (2, 4096, 4096, Load_Capacity => 2);
+   Other : constant Service_Access := new State (2, 4096, 4096, Load_Capacity => 2);
    Checks : Natural := 0;
    Status : Values.Access_Status;
    Loaded : Install_Status;

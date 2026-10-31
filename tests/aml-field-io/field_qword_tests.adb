@@ -98,7 +98,7 @@ procedure Field_Qword_Tests is
    end Table;
    procedure Exercise (Revision : Unsigned_8; First : Natural; Update : Rule;
       Source : Source_Kind; Policy : Natural := 0; Fault : Natural := 0) is
-      S : aliased C.State (1,4096,4096);
+      S : aliased C.State (1, 4096, 4096, 1);
       IO : P.Context;
       Items, Read_Only : F.Binding_Set;
       Targets : AML_Field_Targets.Vector := [others => A.No_Target];

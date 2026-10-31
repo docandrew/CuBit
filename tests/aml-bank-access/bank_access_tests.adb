@@ -158,7 +158,7 @@ procedure Bank_Access_Tests is
    begin Accepted := Expected.Present and then not Pending (IO) and then Expected = IO.Confirmed; end Confirmed;
    package F is new C.Field_IO (Context, Pending, Describe, Dispatch, Confirmed,
      Maximum_Bindings => 3, Authorize_Target => Authorize);
-   Service : aliased C.State (1, Bank_Access_Oracle.Raw_Table'Length, Bank_Access_Oracle.Raw_Table'Length);
+   Service : aliased C.State (1, Bank_Access_Oracle.Raw_Table'Length, Bank_Access_Oracle.Raw_Table'Length, 1);
    IO : Context;
    Items : F.Binding_Set;
    Direct_Items, Read_Items : F.Binding_Set;
@@ -446,7 +446,7 @@ begin
       Items := Saved;
    end;
    declare
-      Other : aliased C.State (1, Bank_Access_Oracle.Raw_Table'Length, Bank_Access_Oracle.Raw_Table'Length);
+      Other : aliased C.State (1, Bank_Access_Oracle.Raw_Table'Length, Bank_Access_Oracle.Raw_Table'Length, 1);
       Other_Region, Other_Method : C.Node_Descriptor;
       Node : C.Namespace.Node_ID;
       Outcome : C.Values.Result;
@@ -582,7 +582,7 @@ begin
       package Limited_IO is new C.Field_IO (Context, Pending, Describe, Dispatch, Confirmed,
         Maximum_Bindings => 3, Authorize_Target => Authorize, Maximum_Requests => 3);
       Limited_Service : aliased C.State
-        (1, Bank_Access_Oracle.Raw_Table'Length, Bank_Access_Oracle.Raw_Table'Length);
+        (1, Bank_Access_Oracle.Raw_Table'Length, Bank_Access_Oracle.Raw_Table'Length, 1);
       Bus : Context;
       Bindings : Limited_IO.Binding_Set;
       Region_Node : C.Node_Descriptor;

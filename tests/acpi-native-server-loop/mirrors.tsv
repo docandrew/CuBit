@@ -4,3 +4,13 @@ tests/acpi-native-server-loop/boundary/acpi_native_server.ads	userspace/services
 tests/acpi-native-server-loop/boundary/acpi_native_server.adb	userspace/services/acpi/native/acpi_native_server.adb
 tests/acpi-native-server-loop/models/cubit-refusal_notes.ads	userspace/runtime/gnat/cubit-refusal_notes.ads
 tests/acpi-native-server-loop/models/cubit-refusal_notes.adb	userspace/runtime/gnat/cubit-refusal_notes.adb
+tests/acpi-native-server-loop/boundary/acpi_system_events.ads	userspace/services/acpi/native/acpi_system_events.ads
+tests/acpi-native-server-loop/boundary/acpi_system_events.adb	userspace/services/acpi/native/acpi_system_events.adb
+tests/acpi-native-server-loop/boundary/acpi_log_lifetime.ads	userspace/services/acpi/native/acpi_log_lifetime.ads
+tests/acpi-native-server-loop/boundary/acpi_log_lifetime.adb	userspace/services/acpi/native/acpi_log_lifetime.adb
+tests/acpi-native-server-loop/boundary/acpi_native_events.ads	userspace/services/acpi/native/acpi_native_events.ads
+tests/acpi-native-server-loop/boundary/acpi_native_events.adb	userspace/services/acpi/native/acpi_native_events.adb
+tests/acpi-native-server-loop/models/cubit-control_events.ads	userspace/runtime/gnat/cubit-control_events.ads
+tests/acpi-native-server-loop/models/cubit-grant_references.ads	userspace/runtime/gnat/cubit-grant_references.ads
+tests/acpi-native-server-loop/boundary/acpi_native_module_notes.ads	userspace/services/acpi/native/acpi_native_module_notes.ads
+tests/acpi-native-server-loop/boundary/acpi_native_module_notes.adb	userspace/services/acpi/native/acpi_native_module_notes.adb

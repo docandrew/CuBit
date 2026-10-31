@@ -14,7 +14,7 @@ begin
    for Bulk in Boolean loop
       for Bad_AML in Boolean loop
          declare
-            S : State (1, 128, 128, 7);
+            S : State (1, 128, 128, Load_Capacity => 1, Initial_Revision => 7);
             Reply : Response;
             Data : constant Firmware_Tables.Bytes := Migration_Tables.Make
               ((if Bad_AML then Firmware_Tables.Bytes'[16#FE#]

@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "inputs": [
+    {
+      "path": "userspace/services/acpi/events/acpi_gpe_lifecycle.ads",
+      "sha256": "c908b36a50cae2bdf1dc05ae6ee52281a7bc0c48e345a7b8de82f2e1b17fc45e"
+    },
+    {
+      "path": "userspace/services/acpi/events/acpi_gpe_lifecycle.adb",
+      "sha256": "a76edbf27f589643bb0443dd19a4fddf73ec962f825b28e161e6b206a4b3cb70"
+    }
+  ],
+  "tests": [
+    {
+      "path": "deferred_tests.adb",
+      "sha256": "a1fe2a9d6d4e099cef334c2d31e68bf6aa8824794fff37ceb13dec3725796d41"
+    }
+  ]
+}

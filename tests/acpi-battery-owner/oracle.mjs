@@ -1,0 +1,12 @@
+import fs from 'node:fs';import crypto from 'node:crypto';import {spawnSync} from 'node:child_process';
+const sha=f=>crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex'),aml=process.argv[2],tool='/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec';
+if(!aml||process.env.TMPDIR!=='/home/doc/cubit-build-tmp')throw Error('Fixture and TMPDIR required');
+const out=fs.mkdtempSync(process.env.TMPDIR+'/battery-owner-oracle-'),pins={[aml]:sha(aml),[tool]:sha(tool),[process.argv[1]]:sha(process.argv[1])};
+const args=[tool,'-b','evaluate BAT0._STA; evaluate BAT0._BST; execute EC00._Q01; evaluate BAT0._BST; execute EC00._Q02; evaluate BAT0._STA; execute EC00._Q02; evaluate BAT0._STA',aml];
+const r=spawnSync('nice',['-n','19','timeout','--kill-after=2s','5',...args],{encoding:'utf8',maxBuffer:1048576,timeout:8000}),log=(r.stdout??'')+(r.stderr??'');fs.writeFileSync(out+'/acpica.log',log.slice(0,1048576));
+for(const[f,h]of Object.entries(pins))if(sha(f)!==h)throw Error('Input drift');
+const integers=[...log.matchAll(/^\s*\[Integer\] = ([0-9A-F]+)/gm)].map(m=>Number.parseInt(m[1],16)),diagnostics=log.split('\n').filter(s=>/ACPI Error/.test(s));
+const recognized_teardown=diagnostics.length===1&&/^ACPI Error: 4 \(0x4\) Outstanding cache allocations \(20260408\/uttrack-902\)$/.test(diagnostics[0]);
+const semantic_match=r.status===0&&!r.signal&&!r.error&&Buffer.byteLength(log)<=1048576&&!/Evaluation of .* failed|Aborting method|Could not resolve symbol/.test(log)&&JSON.stringify(integers)===JSON.stringify([31,1,100,20000,11000,1,100,19900,11000,15,31])&&[...log.matchAll(/Received a Device Notify on \[BAT0\].*Value 0x80/g)].length===1&&[...log.matchAll(/Received a Device Notify on \[BAT0\].*Value 0x81/g)].length===2;
+const accepted=semantic_match&&(diagnostics.length===0||recognized_teardown);
+fs.writeFileSync(out+'/RESULT.json',JSON.stringify({accepted,semantic_match,clean_tool_log:diagnostics.length===0,diagnostics,recognized_teardown,integers,args,status:r.status,signal:r.signal,error:r.error?.message??null,inputs:pins,scope:'Independent exact-fixture BST/presence/EC-handler Notify semantic observations only; ACPICA exit allocation diagnostics explicitly qualified. Not battery collector/cache/broker, hardware or native validation.'},null,2)+'\n');console.log({out,accepted,semantic_match,integers,diagnostics});if(!accepted)process.exit(1);

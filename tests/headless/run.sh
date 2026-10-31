@@ -325,7 +325,7 @@ case "$TEST_NAME" in
         ;;
     grant-forward|grant-forward-intermediary-exit|grant-forward-owner-exit|grant-forward-desktop|config-tree|config-inspection|log-authority|log-fields|metrics|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
         ;;
-    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|multi-instance|program-parameters|usb-hotplug|wifi-crypto)
+    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|acpi-native-smoke|multi-instance|program-parameters|usb-hotplug|wifi-crypto)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -678,6 +678,13 @@ with open(sys.argv[1], "wb") as f:
     futex)
         # Threads of one process on every CPU at once (default four).
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-futex.ccl"
+        ;;
+    acpi-native-smoke)
+        # The real acpi.svc on q35 (build: make -C kernel acpi-native
+        # acpi-metrics-check). 2 GiB until MEM-004: CuAlloc's first small
+        # allocation backs a whole 16 MiB arena.
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-acpi-native-smoke.ccl"
+        QEMU_MEMORY="${QEMU_MEMORY:-2G}"
         ;;
     firmware-snapshot)
         # FIRMWARE_SNAPSHOT over q35's ACPI tables: the approved reader,
@@ -1775,6 +1782,23 @@ if [ -n "$INIT_PROFILE" ]; then
             if ! debugfs -w -R "write $FIRMWARE_SOURCE $FIRMWARE_TARGET" \
               "$TEMP_DISK" >/dev/null 2>&1; then
                 echo "headless: failed to install $FIRMWARE_TARGET" >&2
+                exit 1
+            fi
+        done
+    fi
+    if [ "$TEST_NAME" = "acpi-native-smoke" ]; then
+        for ACPI_PAIR in logstore.svc:logstore.svc acpi-metrics-check.app:acpi-metrics-check.app \
+                         ../../../userspace/services/acpi/native/build/acpi.svc:acpi.svc; do
+            ACPI_SOURCE="$KERNEL_DIR/isodir/boot/${ACPI_PAIR%%:*}"
+            ACPI_TARGET="${ACPI_PAIR##*:}"
+            if [ ! -f "$ACPI_SOURCE" ]; then
+                echo "headless: build ${ACPI_PAIR%%:*} first (make -C kernel acpi-native acpi-metrics-check)" >&2
+                exit 1
+            fi
+            debugfs -w -R "rm $ACPI_TARGET" "$TEMP_DISK" >/dev/null 2>&1
+            if ! debugfs -w -R "write $ACPI_SOURCE $ACPI_TARGET" \
+              "$TEMP_DISK" >/dev/null 2>&1; then
+                echo "headless: failed to install $ACPI_TARGET" >&2
                 exit 1
             fi
         done
@@ -4776,6 +4800,32 @@ clock-check: write to the clock page armed
                   fault && /reclaimProcess: stopped PID/ { found = 1 }
                   END { exit !found }' "$SERIAL_LOG"; then
             echo "headless: clock checks failed, or the page write was not refused" >&2
+            exit 1
+        fi
+        ;;
+    acpi-native-smoke)
+        required_markers="
+acpi: stage service-start ok
+acpi: stage snapshot ok tables= 7 bytes= 9351
+acpi: stage aml-startup ok FINISHED
+acpi: stage sleep-registers ok 
+acpi: stage registration ok observer-only
+acpi: bring-up reached registration (4/4) hardware-pending
+acpi-metrics-check: metrics reply well formed PASS
+acpi-metrics-check: phase complete PASS
+acpi-metrics-check: every expected table installed PASS
+acpi-metrics-check: revision stable across reads PASS
+TEST: PASS acpi-metrics
+"
+        # Without provisioned hardware regions the device walk stops at the
+        # first OperationRegion and HID, power and sleep discovery wait on
+        # it (ACPI agent's decode, 2026-10-30): exactly these are accepted
+        # (sleep registers come from the FADT alone, so they must be ok);
+        # any other failed stage, recovery, heap exhaustion or exit fails.
+        if grep -aE '^acpi: stage [a-z-]+ fail' "$SERIAL_LOG" |
+           grep -avE '^acpi: stage (devices fail  6 regions= 2 errors= 0 fuel= 0|hid-discovery fail  1 search= 0 query= 0 |power-discovery fail  1 phase= 0 fuel= 0 )' ||
+           grep -aqE 'recovery=TRUE|Ada heap: cannot allocate|com\.cubit\.acpi pid[0-9]+ exited|acpi-metrics-check: .* FAIL' "$SERIAL_LOG"; then
+            echo "headless: acpi.svc bring-up or metrics check failed" >&2
             exit 1
         fi
         ;;

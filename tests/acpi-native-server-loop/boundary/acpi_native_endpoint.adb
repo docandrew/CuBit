@@ -11,13 +11,9 @@ package body ACPI_Native_Endpoint is
         ACPI_Protocol.Role_Tag (Request.authorityTag);
    begin
       if not ACPI_Protocol.Is_Observer (Stamp) then
-         begin
-            CuBit.Refusal_Notes.Warn_Once
-              ("acpi", From'Image & " observer",
-               "process" & From'Image & " undeclared observer");
-         exception
-            when others => null; -- A logging failure does not authorize dispatch.
-         end;
+         CuBit.Refusal_Notes.Warn_Once
+           ("acpi", From'Image & " observer",
+            "process" & From'Image & " undeclared observer");
       end if;
       ACPI_Observer_Endpoint.Dispatch (Server, Stamp,
         (Label => Request.tag.label, Length => Request.tag.length,

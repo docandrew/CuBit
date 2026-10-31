@@ -1,0 +1,63 @@
+{
+  "scope": "Receiver-domain Fatal latch and diagnostic; future owning service must stop other Core callers. No new native enrollment or whole-service correctness",
+  "baseline": {
+    "directory": "/home/doc/cubit-build-tmp/acpi-native-notifications-AohmTk",
+    "terminal_session": 21980,
+    "exit_code": 1,
+    "reproduced_assertion": "fresh EC event must not execute after a fatal firmware result"
+  },
+  "candidate": {
+    "directory": "/home/doc/cubit-build-tmp/acpi-native-notifications-XLovBN",
+    "initial_runner_session": 69499,
+    "initial_runner_exit_code": 1,
+    "initial_runner_reason": "Expected count153; nine explicit and four helper checks require157; first checked runtime succeeded",
+    "continuation_session": 69961,
+    "continuation_exit_code": 0,
+    "checks": 700,
+    "commands": 14,
+    "runtime_processes": 8,
+    "alis": 258,
+    "counts": {
+      "checked": {
+        "1": {
+          "normal": 157,
+          "hardware": 18
+        },
+        "2": {
+          "normal": 157,
+          "hardware": 18
+        }
+      },
+      "release": {
+        "1": {
+          "normal": 157,
+          "hardware": 18
+        },
+        "2": {
+          "normal": 157,
+          "hardware": 18
+        }
+      }
+    }
+  },
+  "production": [
+    {
+      "path": "userspace/services/acpi/ec/acpi_ec_event_receiver.ads",
+      "before": "628cb8ce56b649920ac462020fed83cff38c92ae5433a46ab7f095bb55549aa8",
+      "after": "31c69aa9cf51c08704df3988bdfcef6e14b01c4b048392ca3978736d82a35a8c"
+    },
+    {
+      "path": "userspace/services/acpi/ec/acpi_ec_event_receiver.adb",
+      "before": "23068e7bfdcfc91536368e6dd3f50f1e0899d5e706aa6db24b0a1d4cf91fa153",
+      "after": "b18709f3912861a09766dd20c2d102b472b6dac5fd2a7eb00e799c37444d04d3"
+    }
+  ],
+  "source_selection_repairs": "Six actual module-note/diagnostic/resource-name units were absent from the old hosted composition selection; added without production changes",
+  "private_validation": "/home/doc/git/.acpi-proof-work/ec-fatal-recovery-work/VALIDATED.json",
+  "publication_evidence": "/home/doc/git/.acpi-proof-work/ec-fatal-recovery-publication-work/PUBLICATION.json",
+  "new_proof": false,
+  "receiver_or_caller_proved": false,
+  "native_executed": false,
+  "hardware_validated": false,
+  "goal": "active and incomplete"
+}

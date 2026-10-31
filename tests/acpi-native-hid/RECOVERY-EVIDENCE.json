@@ -1,0 +1,117 @@
+{
+  "problem": "Native HID only exposed retained cleanup; fatal/Field/provider uncertainty with no retained CRS could continue into power sampling and registration",
+  "fix": "Separate Recovery_Needed flag,checked search and all probe stages,in-flight conservative recovery,Owner_Error exception latch; native startup refuses power/registration on either cleanup or recovery",
+  "hosted": {
+    "directory": "/home/doc/cubit-build-tmp/acpi-native-hid-tunfuY",
+    "checks_per_profile": 532,
+    "processes_per_profile": 30,
+    "commands": 80,
+    "cases": {
+      "checked": {
+        "1": {
+          "normal": 18,
+          "hardware": 18,
+          "missing": 18,
+          "budget": 18,
+          "small": 18,
+          "zero": 18,
+          "fuel": 18,
+          "limit": 18,
+          "unstarted": 14,
+          "empty": 18,
+          "fatal-cid": 18,
+          "fatal-sta": 18,
+          "fatal-crs": 18,
+          "fatal-dsm": 18,
+          "log-error": 18
+        },
+        "2": {
+          "normal": 18,
+          "hardware": 18,
+          "missing": 18,
+          "budget": 18,
+          "small": 18,
+          "zero": 18,
+          "fuel": 18,
+          "limit": 18,
+          "unstarted": 14,
+          "empty": 18,
+          "fatal-cid": 18,
+          "fatal-sta": 18,
+          "fatal-crs": 18,
+          "fatal-dsm": 18,
+          "log-error": 18
+        }
+      },
+      "release": {
+        "1": {
+          "normal": 18,
+          "hardware": 18,
+          "missing": 18,
+          "budget": 18,
+          "small": 18,
+          "zero": 18,
+          "fuel": 18,
+          "limit": 18,
+          "unstarted": 14,
+          "empty": 18,
+          "fatal-cid": 18,
+          "fatal-sta": 18,
+          "fatal-crs": 18,
+          "fatal-dsm": 18,
+          "log-error": 18
+        },
+        "2": {
+          "normal": 18,
+          "hardware": 18,
+          "missing": 18,
+          "budget": 18,
+          "small": 18,
+          "zero": 18,
+          "fuel": 18,
+          "limit": 18,
+          "unstarted": 14,
+          "empty": 18,
+          "fatal-cid": 18,
+          "fatal-sta": 18,
+          "fatal-crs": 18,
+          "fatal-dsm": 18,
+          "log-error": 18
+        }
+      }
+    }
+  },
+  "suites": {
+    "acpi-native-startup": {
+      "checked": {
+        "directory": "/home/doc/git/.acpi-proof-work/hid-recovery-review-work/candidate/tests/acpi-native-startup/results/checked-0NzQ2StX",
+        "alis": 103,
+        "checks": 1228
+      },
+      "release": {
+        "directory": "/home/doc/git/.acpi-proof-work/hid-recovery-review-work/candidate/tests/acpi-native-startup/results/release-jC8dwxUg",
+        "alis": 103,
+        "checks": 1228
+      }
+    },
+    "acpi-native-entry": {
+      "checked": {
+        "directory": "/home/doc/git/.acpi-proof-work/hid-recovery-review-work/candidate/tests/acpi-native-entry/results/checked-8NpcLL3v",
+        "alis": 27,
+        "selections": 28
+      },
+      "release": {
+        "directory": "/home/doc/git/.acpi-proof-work/hid-recovery-review-work/candidate/tests/acpi-native-entry/results/release-alLTkn2G",
+        "alis": 27,
+        "selections": 28
+      }
+    }
+  },
+  "new_acpica_interpreter_run": false,
+  "acpica": "All new fixtures compile with normal iASL; fatal opcode handling is host policy,not claimed equivalent to ACPICA OS signal behavior",
+  "new_proof": false,
+  "native_executed": false,
+  "hardware_validated": false,
+  "all_own_jobs_terminal": true,
+  "goal": "active and incomplete"
+}

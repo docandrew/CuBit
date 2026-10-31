@@ -1,6 +1,8 @@
 pragma Ada_2022;
 with ACPI_Service_Core;
+with ACPI_Device_Status;
 with AML_Decode;
+with ACPI_Observation_Values;
 with AML_Execute;
 generic
    with package Core is new ACPI_Service_Core (<>);
@@ -13,8 +15,13 @@ generic
       Status : out Core.Values.Access_Status) is Core.Evaluate_Named;
 package ACPI_Lid with SPARK_Mode is
    pragma Unevaluated_Use_Of_Old (Allow);
+   package Device_Status is new ACPI_Device_Status (Core, Evaluate_Named);
    use type AML_Decode.Integer_Value;
-   type Lid_State is (Unknown, Closed, Open);
+   subtype Lid_State is ACPI_Observation_Values.Lid_State;
+   use type Lid_State;
+   Unknown : constant Lid_State := ACPI_Observation_Values.Unknown;
+   Closed : constant Lid_State := ACPI_Observation_Values.Closed;
+   Open : constant Lid_State := ACPI_Observation_Values.Open;
    type Query_Outcome is (Sampled, Invalid_Device, Missing_Lid, Lookup_Failed,
       Evaluation_Failed, Wrong_Result_Type, Identity_Changed, Cleanup_Failed,
       Budget_Exhausted, Provider_Contract_Error);

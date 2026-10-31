@@ -16,12 +16,12 @@ begin
    for Malformed in Boolean loop
       for Budget in Startup_Budget range 0 .. 1 loop
          declare
-            S : State (2, 256, 128);
+            S : State (2, 256, 128, Load_Capacity => 2);
             Accepted : Boolean;
             Result : ACPI_Service.Install_Status;
             Source : Firmware_Tables.Bytes := (if Malformed then Bad else Good);
             Fuel : constant Startup_Budget := (if Budget = 0 then 0 else 64);
-            Before : State_Model (2, 256) with Ghost;
+            Before : State_Model (2, 256, Load_Capacity => 2) with Ghost;
          begin
             Start (S, 1, Accepted); Check (Accepted);
             Import_Table (S, 77, ACPI_Service.DSDT, Source, Result);
@@ -52,7 +52,7 @@ begin
       end loop;
    end loop;
    declare
-      S : State (2, 256, 128);
+      S : State (2, 256, 128, Load_Capacity => 2);
       Accepted : Boolean;
       Result : ACPI_Service.Install_Status;
    begin

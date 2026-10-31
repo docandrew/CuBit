@@ -6,7 +6,7 @@ The backend owns independently admitted region records and resource authority;
 the AML service receives only scoped endpoint access and immutable table copies.
 The explicit native library source list excludes AML and table-service code.
 
-This is not a running service. There is no startup manifest, receive loop,
+This is not a running service. There is no startup manifest, running backend process,
 resource-admission authority, hardware callback, FACS lock adapter or MMIO access.
 The native envelope adapter uses only the kernel-received authorityTag; payload
 words and reserved fields cannot substitute for it. Pending cleanup tickets stay
@@ -27,3 +27,6 @@ policy for group installation, attenuated child grants, descendant revocation
 and authenticated access reservation. Boot provisioning, current-caller syscall
 dispatch and actual hardware transactions still need to connect those policies
 to the running system. See the service contract.
+
+
+An optional EC backend family/receive composition now lives in userspace/services/acpi/ec/native/acpi_ec_backend_owner.ad[sb] and its With_Receive child. It keeps the actual engine/catalog/reply/publisher/controller instances private and enforces one receive owner. Hosted tests: tests/acpi-ec-native-owner. This is a library composition,not a launched backend or an admission/hardware/FACS implementation. Its exact source closure excludes AML/table execution. Native provisioning and lifecycle integration remain pending.

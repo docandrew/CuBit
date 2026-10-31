@@ -21,6 +21,7 @@ package body Firmware_Tables with SPARK_Mode is
 
    function Read_Root (Data : Bytes) return Root_Result is
       Magic : constant String := "RSD PTR ";
+      Extended_Root_Header_Size : constant := 36;
       Revision : Byte;
       Length : Long_Long_Integer;
       Extent : Positive;
@@ -47,16 +48,20 @@ package body Firmware_Tables with SPARK_Mode is
       elsif Revision = 1 then
          return (Status => Unsupported_Revision);
       end if;
-      if Data'Length < 36 then
+      if Data'Length < Extended_Root_Header_Size then
          return (Status => Truncated);
       end if;
       Length := Long_Long_Integer (U32 (Data, 20));
-      if Length < 36 then
+      if Length < Extended_Root_Header_Size then
          return (Status => Invalid_Length);
-      elsif Length > Long_Long_Integer (Data'Length) then
+      elsif Length > Long_Long_Integer (Positive'Last) then
          return (Status => Truncated);
       end if;
       Extent := Positive (Length);
+      if Extent < Extended_Root_Header_Size or else Extent > Data'Length then
+         return (Status => Truncated);
+      end if;
+      pragma Assert_And_Cut (Extent in Extended_Root_Header_Size .. Data'Length);
       if Sum (Data (Data'First .. Data'First + (Extent - 1))) /= 0 then
          return (Status => Bad_Checksum);
       end if;
@@ -89,10 +94,14 @@ package body Firmware_Tables with SPARK_Mode is
       Length := Long_Long_Integer (U32 (Data, 4));
       if Length < Table_Header_Size then
          return (Status => Invalid_Length);
-      elsif Length > Long_Long_Integer (Data'Length) then
+      elsif Length > Long_Long_Integer (Positive'Last) then
          return (Status => Truncated);
       end if;
       Extent := Positive (Length);
+      if Extent < Table_Header_Size or else Extent > Data'Length then
+         return (Status => Truncated);
+      end if;
+      pragma Assert_And_Cut (Extent in Table_Header_Size .. Data'Length);
       if Sum (Data (Data'First .. Data'First + (Extent - 1))) /= 0 then
          return (Status => Bad_Checksum);
       end if;

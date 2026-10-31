@@ -51,7 +51,7 @@ procedure Field_Declaration_Tests is
      Method ("TRUN", Field (Skip_Header & Enc ("FLD0")) & [16#A4#,0]) &
      Method ("OVER", Field ([0,16#40#,16#20#] & Named) & [16#A4#,0]) &
      Method ("ACCS", Field (Skip_Header & [1,1,0] & Named) & [16#A4#] & Enc ("FLD0"));
-   Service : aliased State (Max_Tables, Max_Total_Bytes, Max_Table_Bytes);
+   Service : aliased State (Max_Tables, Max_Total_Bytes, Max_Table_Bytes, Load_Capacity => Max_Tables);
    Installed : Install_Status;
    Region : Namespace.Node_ID;
    Bound : Namespace.Bind_Status;

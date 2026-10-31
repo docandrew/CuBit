@@ -9,7 +9,7 @@ package body ACPI_Snapshot_Startup is
    use type R.Outcome;
    use type ACPI_Requests.Outcome;
    use type ACPI_Requests.Phase;
-   procedure Load
+   procedure Load_Using
      (Deadline : R.Tick; Owner : out State_Access; Result : out Report)
    is
       type Descriptions is array (Positive range <>) of Description;
@@ -23,6 +23,7 @@ package body ACPI_Snapshot_Startup is
       Items : Descriptions_Access;
       Data : Bytes_Access;
       Candidate : State_Access;
+      Completion_Entered : Boolean := False;
       Last_Time : R.Tick := 0;
       Have_Time : Boolean := False;
       Reversed : Boolean := False;
@@ -94,7 +95,8 @@ package body ACPI_Snapshot_Startup is
          -- Construct the limited owner IN PLACE. Neither initialized arenas nor
          -- tables are copied through a fixed-size default instance.
          Candidate := new ACPI_Requests.State
-           (Positive (Result.Catalog.Tables), Positive (Total), Positive (Largest), 0);
+           (Positive (Result.Catalog.Tables), Positive (Total), Positive (Largest),
+            Positive (Result.Catalog.Tables), 0);
          ACPI_Requests.Handle (Candidate.all, ACPI_Requests.Snapshot_Provider,
            (Label => ACPI_Requests.Start_Snapshot,
             Data => [0, Result.Catalog.Tables, 0, 0], others => <>), Reply);
@@ -120,14 +122,14 @@ package body ACPI_Snapshot_Startup is
             if Reply.Status /= ACPI_Requests.OK then Result.Status := Admission_Refused; return; end if;
          end loop;
          if not Timely then return; end if;
-         ACPI_Requests.Handle (Candidate.all, ACPI_Requests.Snapshot_Provider,
-           (Label => ACPI_Requests.Finish_Snapshot,
-            Data => [ACPI_Requests.Revision (Candidate.all), 0, 0, 0], others => <>), Reply);
+         Completion_Entered := True;
+         Complete_Startup (Candidate.all, Reply);
          Result.Admission := Reply.Status;
          Result.Completion := ACPI_Requests.Completion (Candidate.all);
          -- Copy before any failed candidate is released. A device initializer
          -- Fatal may also coexist with a complete retained table catalog.
          Result.Fatal := ACPI_Requests.Fatal_Diagnostic (Candidate.all);
+         Result.Module_Errors := ACPI_Requests.Module_Errors (Candidate.all);
          if Reply.Status /= ACPI_Requests.OK or else
            ACPI_Requests.Current (Candidate.all) /= ACPI_Requests.Complete
          then Result.Status := Startup_Refused; return; end if;
@@ -137,18 +139,33 @@ package body ACPI_Snapshot_Startup is
       end Attempt;
       procedure Cleanup is
       begin
+         if Retain_Failed_Owner and then Completion_Entered and then Candidate /= null then
+            Owner := Candidate; Candidate := null; Result.Owner_Retained := True;
+         end if;
          if Data /= null then Data.all := [others => 0]; Free (Data); end if;
-         Free (Items); Free (Candidate);
+         Free (Items);
+         Free (Candidate);
       end Cleanup;
    begin
       Owner := null; Result := (others => <>);
-      begin
-         Attempt;
-      exception
-         when Storage_Error => Result.Status := Allocation_Failed;
-      end;
+      -- Allocation and callbacks must return normally. Native resource
+      -- exhaustion or an unexpected failure terminates the process. Cleanup
+      -- and retained ownership below cover every legal typed refusal.
+      Attempt;
       Cleanup;
-   exception
-      when others => Cleanup; raise;
+   end Load_Using;
+   procedure Default_Completion
+     (Server : in out ACPI_Requests.State; Reply : out ACPI_Requests.Response) is
+   begin
+      ACPI_Requests.Handle (Server, ACPI_Requests.Snapshot_Provider,
+        (Label => ACPI_Requests.Finish_Snapshot,
+         Data => [ACPI_Requests.Revision (Server), 0, 0, 0], others => <>), Reply);
+   end Default_Completion;
+   procedure Load
+     (Deadline : R.Tick; Owner : out State_Access; Result : out Report) is
+      procedure Import_And_Complete is new Load_Using
+        (Info, Describe, Chunk_Max, Read_Part, Clock, Default_Completion, False);
+   begin
+      Import_And_Complete (Deadline, Owner, Result);
    end Load;
 end ACPI_Snapshot_Startup;

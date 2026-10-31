@@ -1,0 +1,52 @@
+{
+  "state": "Private ECDT integration and portable hosted suite passed; publication metadata closure pending",
+  "api": [
+    {
+      "profile": "release",
+      "out": "/home/doc/git/.acpi-proof-work/ec-boot-notes-xL3MY2/integration/candidate/tests/acpi-native-entry/results/release-bFsBZ1Xu",
+      "selections": 58,
+      "alis": 55,
+      "objects": 0,
+      "log_sha256": "cc530b1d41b3ac20eaece4d14c4922a5072fc4f1c62b1c873fa62fb8c5db4416"
+    },
+    {
+      "profile": "checked",
+      "out": "/home/doc/git/.acpi-proof-work/ec-boot-notes-xL3MY2/integration/candidate/tests/acpi-native-entry/results/checked-aD3rc0U7",
+      "selections": 58,
+      "alis": 55,
+      "objects": 0,
+      "log_sha256": "079f390924d4c856bc7932fc83670dd64a5ea80d8e208cb0bf279e972e64a9d4"
+    }
+  ],
+  "startup": [
+    {
+      "profile": "release",
+      "out": "/home/doc/git/.acpi-proof-work/ec-boot-notes-xL3MY2/integration/candidate/tests/acpi-native-startup/results/release-ywwcaM5K",
+      "checks": 2193,
+      "processes": 89,
+      "log_sha256": "a8c4a6f7d7a093495627b9751caa8524a3047ab873d34aef3ce91bc991e8151d"
+    },
+    {
+      "profile": "checked",
+      "out": "/home/doc/git/.acpi-proof-work/ec-boot-notes-xL3MY2/integration/candidate/tests/acpi-native-startup/results/checked-8YWUfP81",
+      "checks": 2193,
+      "processes": 89,
+      "log_sha256": "72af08ac87e8f11440debf8daf025e9cb1ed7a97ba4c20f4af615f9421eb91d8"
+    }
+  ],
+  "CCL": "Retained reader check passed against copied current schema/defaults; not freshly built reader",
+  "shared_guard_rows_rechecked": 1139,
+  "shared_changes": false,
+  "native_executed": false,
+  "hardware_validated": false,
+  "new_proof": false,
+  "jobs": [],
+  "portable": {
+    "out": "/home/doc/cubit-build-tmp/acpi-ec-boot-notes-dBhfow",
+    "complete_sha256": "f846a3da55ebc6809a87f2724d61cca71e2a7f8148d40bff9eb087dc3d0b01aa",
+    "source_and_tool_hashes_rechecked": 353,
+    "checks": 376,
+    "processes": 24
+  },
+  "scope": "Actual-runtime declarations and -gnatc, no object/link/native execution"
+}

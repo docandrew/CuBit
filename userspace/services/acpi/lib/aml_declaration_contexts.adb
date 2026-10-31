@@ -5,14 +5,21 @@ package body AML_Declaration_Contexts with SPARK_Mode is
    function Node_Of (Item : Scope_Identity) return Scope_Node is (Item.Node);
    function Stamp_Of (Item : Scope_Identity) return Scope_Incarnation is (Item.Stamp);
    function Entry_Identity (Item : Lease) return Scope_Identity is
-     (if Item = No_Lease then No_Scope elsif Item.Scope = 0 then Root_Scope
-      else (Exists => True, Node => Scope_Node (Item.Scope), Stamp => Scope_Incarnation (Item.Stamp)));
+     (if Item = No_Lease then No_Scope elsif Item.Entry_Node = 0 then Root_Scope
+      else (Exists => True, Node => Item.Entry_Node, Stamp => Item.Entry_Stamp));
    function Initial_Stack (Item : Lease) return Lexical_Stack is
      ((Depth => 0, Items => [0 => Entry_Identity (Item), others => No_Scope]));
+   function Entry_Compatible (Item : Lease) return Boolean is
+     (if Is_Module (Item) then Item.Scope = Natural (Node_Of (Root_Scope))
+      else Item.Intent = Method_Request and then Item.Entry_Node = Scope_Node (Item.Scope)
+        and then Item.Entry_Stamp =
+          (if Item.Scope = Natural (Node_Of (Root_Scope)) then 0 else Scope_Incarnation (Item.Stamp)));
    function Valid (Store : State) return Boolean is
      (for all I in Store.Items'Range =>
        (if Store.Items (I) = No_Lease then Store.Scopes (I) = Empty_Stack else
          Store.Items (I).Slot = I and then AML_Frame_Handles.Present (Store.Items (I).Frame)
+         and then Entry_Compatible (Store.Items (I))
+         and then (Store.Items (I).Entry_Node /= 0 or else Store.Items (I).Entry_Stamp = 0)
          and then Store.Scopes (I).Items (0) = Entry_Identity (Store.Items (I))
          and then (for all K in Lexical_Depth =>
            (if K <= Store.Scopes (I).Depth then
@@ -38,13 +45,32 @@ package body AML_Declaration_Contexts with SPARK_Mode is
    function Scope_Of (Item : Lease) return Natural is (Item.Scope);
    function Stamp_Of (Item : Lease) return Natural is (Item.Stamp);
    function Frame_Of (Item : Lease) return AML_Frame_Handles.Frame_Handle is (Item.Frame);
-   procedure Open (Store : in out State; Intent : Request;
+   procedure Open_At (Store : in out State; Intent : Request;
       Frame : AML_Frame_Handles.Frame_Handle; Scope, Stamp : Natural;
-      Item : out Lease; Allowed : out Boolean) is
+      Initial_Scope : Scope_Identity;
+      Item : out Lease; Allowed : out Boolean)
+     with Pre => Valid (Store), Post => Valid (Store)
+       and then (if Allowed then Added_Lease (Store, Store'Old, Item)
+          and then Is_Live (Store, Item) and then Frame_Of (Item) = Frame
+          and then Scope_Of (Item) = Scope and then Stamp_Of (Item) = Stamp
+          and then Is_Module (Item) = Is_Module (Intent)
+          and then Entry_Identity (Item) = Initial_Scope
+          and then Lexical_Top (Store, Item) = Initial_Scope
+          and then Lexical_Count (Store, Item) = 0
+        else Store = Store'Old and then Item = No_Lease)
+   is
       Free : Lease_Slot := 0;
    begin
       Item := No_Lease; Allowed := False;
-      if (Intent /= Method_Request and then Intent /= Module_Request) or else not AML_Frame_Handles.Present (Frame) then return; end if;
+      if (Intent /= Method_Request and then Intent /= Module_Request) or else not AML_Frame_Handles.Present (Frame) or else not Present (Initial_Scope) then return; end if;
+      if Node_Of (Initial_Scope) = Node_Of (Root_Scope)
+        and then Stamp_Of (Initial_Scope) /= Stamp_Of (Root_Scope) then return; end if;
+      if Is_Module (Intent) then
+         if Scope /= Natural (Node_Of (Root_Scope)) then return; end if;
+      elsif Node_Of (Initial_Scope) /= Scope_Node (Scope)
+        or else Stamp_Of (Initial_Scope) /=
+          (if Scope = Natural (Node_Of (Root_Scope)) then 0 else Scope_Incarnation (Stamp)) then return;
+      end if;
       for I in Store.Items'Range loop
          if Store.Items (I) = No_Lease then
             if Free = 0 then Free := I; end if;
@@ -55,9 +81,29 @@ package body AML_Declaration_Contexts with SPARK_Mode is
               Store.Items (J) = No_Lease or else Store.Items (J).Frame /= Frame);
       end loop;
       if Free = 0 then return; end if;
-      Item := (Slot => Free, Intent => Intent, Frame => Frame, Scope => Scope, Stamp => Stamp);
+      Item := (Slot => Free, Intent => Intent, Frame => Frame, Scope => Scope, Stamp => Stamp,
+        Entry_Node => Node_Of (Initial_Scope), Entry_Stamp => Stamp_Of (Initial_Scope));
       Store.Items (Free) := Item; Store.Scopes (Free) := Initial_Stack (Item); Allowed := True;
+   end Open_At;
+   procedure Open (Store : in out State; Intent : Request;
+      Frame : AML_Frame_Handles.Frame_Handle; Scope, Stamp : Natural;
+      Item : out Lease; Allowed : out Boolean) is
+   begin
+      Item := No_Lease; Allowed := False;
+      -- Non-root module scopes require an explicit lexical identity.
+      if Is_Module (Intent) and then Scope /= Natural (Node_Of (Root_Scope)) then return; end if;
+      Open_At (Store, Intent, Frame, Scope, Stamp,
+        (if Scope = Natural (Node_Of (Root_Scope)) then Root_Scope
+         else Make_Scope (Scope_Node (Scope), Scope_Incarnation (Stamp))), Item, Allowed);
    end Open;
+   procedure Open_Module (Store : in out State;
+      Frame : AML_Frame_Handles.Frame_Handle; Initial_Scope : Scope_Identity;
+      Invocation : AML_Frame_Handles.Invocation_Serial;
+      Item : out Lease; Allowed : out Boolean) is
+   begin
+      Open_At (Store, Module_Request, Frame, Natural (Node_Of (Root_Scope)),
+        Natural (Invocation), Initial_Scope, Item, Allowed);
+   end Open_Module;
    procedure Close (Store : in out State; Item : Lease) is
    begin
       if Is_Live (Store, Item) then

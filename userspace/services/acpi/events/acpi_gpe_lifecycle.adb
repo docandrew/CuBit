@@ -6,25 +6,31 @@ package body ACPI_GPE_Lifecycle with SPARK_Mode is
         (case Run.Info.Stage is
            when Idle => Run.Info.Source = Unknown_State
               and then Run.Info.Charged = 0
-              and then Run.Info.Reason = No_Failure,
-           when Clearing_Edge | Ready | Executing =>
+              and then Run.Info.Reason = No_Failure and then not Run.Info.Deferred
+              and then Run.Info.Handler_Budget = 0,
+           when Clearing_Edge | Ready =>
               Run.Info.Source = Known_Masked and then Run.Info.Charged = 0
-              and then Run.Info.Reason = No_Failure,
+              and then Run.Info.Reason = No_Failure and then not Run.Info.Deferred,
+           when Executing => Run.Info.Source = Known_Masked
+              and then Run.Info.Charged = 0 and then Run.Info.Reason = No_Failure
+              and then Run.Info.Handler_Budget > 0,
            when Handler_Done | Clearing_Level =>
               Run.Info.Source = Known_Masked
               and then Run.Info.Handler_Status = Handler_Succeeded
               and then Run.Info.Charged = Run.Info.Reported_Charge
+              and then Run.Info.Charged <= Run.Info.Handler_Budget and then not Run.Info.Deferred
               and then Run.Info.Reason = No_Failure,
            when Finished => Run.Info.Source = Known_Enabled
               and then Run.Info.Handler_Status = Handler_Succeeded
               and then Run.Info.Charged = Run.Info.Reported_Charge
+              and then Run.Info.Charged <= Run.Info.Handler_Budget and then not Run.Info.Deferred
               and then Run.Info.Reason = No_Failure,
            when others => True);
       -- The callback may report any outcome. Its physical effects and
       -- termination remain backend obligations; this contract tracks only
       -- the controller's report and preserves the handler accounting.
       procedure Perform (Run : in out Session; Kind : Operation; Success : out Boolean)
-        with Pre =>
+        with Always_Terminates, Pre =>
           (case Kind is
              when Mask_Source => Run.Info.Stage = Masking
                and then Run.Info.Source = Unknown_State,
@@ -38,6 +44,8 @@ package body ACPI_GPE_Lifecycle with SPARK_Mode is
           and then Run.Info.Handler_Status = Run.Info.Handler_Status'Old
           and then Run.Info.Charged = Run.Info.Charged'Old
           and then Run.Info.Reported_Charge = Run.Info.Reported_Charge'Old
+          and then Run.Info.Handler_Budget = Run.Info.Handler_Budget'Old
+          and then Run.Info.Deferred = Run.Info.Deferred'Old
           and then Run.Info.Last_Operation = Kind
           and then
             (if Success then Run.Info.Stage = Run.Info.Stage'Old
@@ -52,7 +60,7 @@ package body ACPI_GPE_Lifecycle with SPARK_Mode is
                and then Run.Info.Reason /= No_Failure
                and then Run.Info.Source /= Known_Enabled)
       is
-         Outcome : IO_Outcome := Completion_Unknown;
+         Outcome : IO_Outcome;
       begin
          Success := False; Run.Info.Last_Operation := Kind;
          if Kind = Enable_Source then Run.Info.Source := Unknown_State; end if;
@@ -95,18 +103,20 @@ package body ACPI_GPE_Lifecycle with SPARK_Mode is
          end if;
          Run.Info.Stage := Ready;
       end Start;
-      procedure Service
-        (Run : in out Session; Budget : Natural; Result : out Action_Result) is
-         Outcome : Handler_Outcome := Handler_Completion_Unknown;
-         Charge : Natural := 0;
+      procedure Record_Completion
+        (Run : in out Session; Outcome : Handler_Outcome; Charge : Natural)
+        with Always_Terminates, Pre => Valid (Run) and then Run.Info.Stage = Executing,
+          Post => Valid (Run) and then Run.Info.Source = Known_Masked
+            and then not Run.Info.Deferred
+            and then Run.Info.Stage in Handler_Done | Failed
+            and then Run.Info.Charged <= Run.Info.Handler_Budget
+            and then Run.Info.Handler_Budget = Run.Info.Handler_Budget'Old;
+      procedure Record_Completion
+        (Run : in out Session; Outcome : Handler_Outcome; Charge : Natural) is
       begin
-         Result := Wrong_Phase; if Run.Info.Stage /= Ready then return; end if;
-         Result := No_Budget; if Budget = 0 then return; end if;
-         Result := Accepted; Run.Info.Stage := Executing;
-         Run.Info.Last_Operation := Invoke_Handler;
-         Invoke (Run.ID, Budget, Outcome, Charge);
+         Run.Info.Deferred := False;
          Run.Info.Handler_Status := Outcome; Run.Info.Reported_Charge := Charge;
-         if Charge > Budget then
+         if Charge > Run.Info.Handler_Budget then
             Run.Info.Reason := Provider_Contract_Error; Run.Info.Stage := Failed; return;
          end if;
          Run.Info.Charged := Charge;
@@ -117,11 +127,42 @@ package body ACPI_GPE_Lifecycle with SPARK_Mode is
             when others => Run.Info.Reason := Handler_Error;
          end case;
          Run.Info.Stage := Failed;
+      end Record_Completion;
+      procedure Service
+        (Run : in out Session; Budget : Natural; Result : out Action_Result) is
+         Outcome : Handler_Outcome;
+         Charge : Natural;
+      begin
+         Result := Wrong_Phase; if Run.Info.Stage /= Ready then return; end if;
+         Result := No_Budget; if Budget = 0 then return; end if;
+         Result := Accepted; Run.Info.Stage := Executing;
+         Run.Info.Last_Operation := Invoke_Handler;
+         Run.Info.Handler_Budget := Budget; Run.Info.Deferred := False;
+         Invoke (Run.ID, Budget, Outcome, Charge);
+         Record_Completion (Run, Outcome, Charge);
       exception
          when others =>
             Run.Info.Stage := Failed; Run.Info.Reason := Callback_Exception;
-            Run.Info.Handler_Status := Handler_Completion_Unknown;
+            Run.Info.Handler_Status := Handler_Completion_Unknown; Run.Info.Deferred := False;
       end Service;
+      procedure Begin_Deferred
+        (Run : in out Session; Budget : Natural; Result : out Action_Result) is
+      begin
+         Result := Wrong_Phase; if Run.Info.Stage /= Ready then return; end if;
+         Result := No_Budget; if Budget = 0 then return; end if;
+         Result := Accepted; Run.Info.Stage := Executing;
+         Run.Info.Last_Operation := Invoke_Handler;
+         Run.Info.Handler_Budget := Budget; Run.Info.Deferred := True;
+      end Begin_Deferred;
+      procedure Complete_Deferred
+        (Run : in out Session; Outcome : Handler_Outcome; Charged : Natural;
+         Result : out Action_Result) is
+      begin
+         Result := Wrong_Phase;
+         if Run.Info.Stage /= Executing or else not Run.Info.Deferred then return; end if;
+         Result := Accepted;
+         Record_Completion (Run, Outcome, Charged);
+      end Complete_Deferred;
       procedure Finish (Run : in out Session; Result : out Action_Result) is
          Success : Boolean;
       begin

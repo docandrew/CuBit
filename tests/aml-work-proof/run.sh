@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Keep source and artifact inventories independent of the invoking locale.
+export LC_ALL=C
 set -euo pipefail
 task_here=$(cd -- "$(dirname -- "$0")" && pwd)
 task_root=$(cd -- "$task_here/../.." && pwd)

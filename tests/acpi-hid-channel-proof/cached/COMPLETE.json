@@ -1,0 +1,218 @@
+{
+  "accepted": true,
+  "commands": [
+    {
+      "name": "prepare",
+      "level": 1,
+      "args": [
+        "/nix/store/9xvbsfi448cx9fjk4ivla9fsq390a8gn-gnatprove-fsf-15_2025-06-10/bin/gnatprove",
+        "-P",
+        "/home/doc/cubit-build-tmp/acpi-hid-channel-proof-7POCmr/level1/proof.gpr",
+        "-u",
+        "channel_proof_model.ads",
+        "--limit-subp=acpi_hid_i2c_channels.adb:6",
+        "--level=1",
+        "--timeout=5",
+        "-j1",
+        "--report=all",
+        "--prover=cvc5"
+      ],
+      "status": 0,
+      "signal": null,
+      "error": null
+    },
+    {
+      "name": "i2c-valid",
+      "level": 1,
+      "args": [
+        "/nix/store/9xvbsfi448cx9fjk4ivla9fsq390a8gn-gnatprove-fsf-15_2025-06-10/bin/gnatprove",
+        "-P",
+        "/home/doc/cubit-build-tmp/acpi-hid-channel-proof-7POCmr/level1/proof.gpr",
+        "-u",
+        "i2c_channel_badges.ads",
+        "--limit-subp=i2c_channel_badges.ads:26",
+        "--level=1",
+        "--timeout=5",
+        "-j1",
+        "--report=all",
+        "--prover=cvc5"
+      ],
+      "status": 0,
+      "signal": null,
+      "error": null
+    },
+    {
+      "name": "gpio-valid",
+      "level": 1,
+      "args": [
+        "/nix/store/9xvbsfi448cx9fjk4ivla9fsq390a8gn-gnatprove-fsf-15_2025-06-10/bin/gnatprove",
+        "-P",
+        "/home/doc/cubit-build-tmp/acpi-hid-channel-proof-7POCmr/level1/proof.gpr",
+        "-u",
+        "gpio_channel_badges.ads",
+        "--limit-subp=gpio_channel_badges.ads:20",
+        "--level=1",
+        "--timeout=5",
+        "-j1",
+        "--report=all",
+        "--prover=cvc5"
+      ],
+      "status": 0,
+      "signal": null,
+      "error": null
+    },
+    {
+      "name": "prepare",
+      "level": 2,
+      "args": [
+        "/nix/store/9xvbsfi448cx9fjk4ivla9fsq390a8gn-gnatprove-fsf-15_2025-06-10/bin/gnatprove",
+        "-P",
+        "/home/doc/cubit-build-tmp/acpi-hid-channel-proof-7POCmr/level2/proof.gpr",
+        "-u",
+        "channel_proof_model.ads",
+        "--limit-subp=acpi_hid_i2c_channels.adb:6",
+        "--level=2",
+        "--timeout=5",
+        "-j1",
+        "--report=all",
+        "--prover=cvc5"
+      ],
+      "status": 0,
+      "signal": null,
+      "error": null
+    },
+    {
+      "name": "i2c-valid",
+      "level": 2,
+      "args": [
+        "/nix/store/9xvbsfi448cx9fjk4ivla9fsq390a8gn-gnatprove-fsf-15_2025-06-10/bin/gnatprove",
+        "-P",
+        "/home/doc/cubit-build-tmp/acpi-hid-channel-proof-7POCmr/level2/proof.gpr",
+        "-u",
+        "i2c_channel_badges.ads",
+        "--limit-subp=i2c_channel_badges.ads:26",
+        "--level=2",
+        "--timeout=5",
+        "-j1",
+        "--report=all",
+        "--prover=cvc5"
+      ],
+      "status": 0,
+      "signal": null,
+      "error": null
+    },
+    {
+      "name": "gpio-valid",
+      "level": 2,
+      "args": [
+        "/nix/store/9xvbsfi448cx9fjk4ivla9fsq390a8gn-gnatprove-fsf-15_2025-06-10/bin/gnatprove",
+        "-P",
+        "/home/doc/cubit-build-tmp/acpi-hid-channel-proof-7POCmr/level2/proof.gpr",
+        "-u",
+        "gpio_channel_badges.ads",
+        "--limit-subp=gpio_channel_badges.ads:20",
+        "--level=2",
+        "--timeout=5",
+        "-j1",
+        "--report=all",
+        "--prover=cvc5"
+      ],
+      "status": 0,
+      "signal": null,
+      "error": null
+    },
+    {
+      "name": "checked-build",
+      "args": [
+        "/nix/store/3xpy8h5k8fdlfi1v43iwfap0zv5n4bmp-gprbuild-25.0.0/bin/gprbuild",
+        "-p",
+        "-j1",
+        "-P",
+        "/home/doc/cubit-build-tmp/acpi-hid-channel-proof-7POCmr/checked.gpr"
+      ],
+      "status": 0,
+      "signal": null,
+      "error": null
+    },
+    {
+      "name": "checked-test",
+      "args": [
+        "/home/doc/cubit-build-tmp/acpi-hid-channel-proof-7POCmr/checked-bin/policy_main"
+      ],
+      "status": 0,
+      "signal": null,
+      "error": null
+    },
+    {
+      "name": "release-build",
+      "args": [
+        "/nix/store/3xpy8h5k8fdlfi1v43iwfap0zv5n4bmp-gprbuild-25.0.0/bin/gprbuild",
+        "-p",
+        "-j1",
+        "-P",
+        "/home/doc/cubit-build-tmp/acpi-hid-channel-proof-7POCmr/release.gpr"
+      ],
+      "status": 0,
+      "signal": null,
+      "error": null
+    },
+    {
+      "name": "release-test",
+      "args": [
+        "/home/doc/cubit-build-tmp/acpi-hid-channel-proof-7POCmr/release-bin/policy_main"
+      ],
+      "status": 0,
+      "signal": null,
+      "error": null
+    }
+  ],
+  "recipes": {
+    "run.sh": "d150e6e1ea933848ff2193c2849f38d356bebb5adebec7034c188b6963bd889f",
+    "run.mjs": "6f6a9aefe2852e5ebbf2ff836022f5c65a3f1195f6057c2c26dbc74a553f78bf",
+    "check.mjs": "c43f670467b5c20e3dc74cbf19e41db6ad48ea7a77d44088fb071b622b044a8c",
+    "audit.mjs": "4101fa56c661e5fe49ecea732d39cc2eb9306f5b7c43908567bc676a6113ea21",
+    "channel_proof_model.ads": "4c5be513c8666dce992725a27a4120f4e869d39b6f8b5843dcee9f70dac5a68c",
+    "policy_main.adb": "8a0048fc4085bac002ac9306eaaf1f4eda8eac094bbc606931f441f04a6fb68f",
+    "sources.json": "bd2fb57311e4a7bef9cec93d84892b406778e1ed90db222649c806475b483fe8"
+  },
+  "source_copies": {
+    "firmware_tables.ads": "cdd038a8b009c7009c8f6286b34b6ab7d3c0bf7be8410ca782b0831780ae1ef4",
+    "firmware_tables.adb": "7aca727a78cb7c10e67c044db1200401a0c28072d917e6e3718233a620e2d316",
+    "acpi_resource_data.ads": "704a461f20c90cbde9e15c34fc457373b2fed6d3e948d4706daa2ffe55ee8532",
+    "acpi_resource_data.adb": "8ecf9d25b2f2984eea61216cdb290b4420ef1ce2d8c844ebccc9128c97263512",
+    "acpi_resource_data-serial_connections.ads": "b4684deb47f4ac561d60a206a7d105b436d4ed1107ad13fdd7c612b373c91490",
+    "acpi_resource_data-serial_connections.adb": "d455b628f613ecd7c93be68b655f450a9aaa647013698c4004512be6245beaa4",
+    "acpi_resource_data-gpio_connections.ads": "a5e65894f7798743a43461e0755cd4f05a2fdbc3ff36b85dfab0e76c42a6453b",
+    "acpi_resource_data-gpio_connections.adb": "2536574e481a7dc1d0b62ec3ce14e74281f647f3c6c6ea60b069b5e8474fe1c9",
+    "acpi_hid_i2c_resources.ads": "cd3ed3fc3588ac18db6276dde1aec75e4793e2fc50965d19632f771bee9263dc",
+    "acpi_hid_i2c_resources.adb": "0662d302cd74f01bbbafd6cbeb1e4dfb98830f21641630d47a45793713eaf867",
+    "hid_i2c_descriptors.ads": "9b2369243cbbf2d99f71e15eaa5940a808f44444c285287d89762451585f5db4",
+    "hid_i2c_descriptors.adb": "2f29b334a5e1801d05fb405ee89ec91c6379b55553448755fce66e149dc09849",
+    "acpi_hid_i2c_candidate.ads": "9847aee45f93a6311b520eb952dd76f22cfffd02a34dc30e0a960edd6000b6af",
+    "acpi_hid_i2c_candidate.adb": "4c5cbdd31d5d26bd722143c44884e7871ce78f570e69c8ca268aaf8c4b58a683",
+    "acpi_hid_i2c_channels.ads": "f9523740ca114f647ea69fc754553791abaa2562d81fef974233f9f889faf799",
+    "acpi_hid_i2c_channels.adb": "519a606bf968354e79d3de3a90eaccda14d0589d08cf7c6ee009e690bcd28116",
+    "i2c_channel_badges.ads": "e6ac1559f8a052c12de21f8f2afc06f2cd0b2821430f0959dd4428f11c5a9ce5",
+    "i2c_channel_badges.adb": "1a9447f272ec1ad54b4755407786810cbf512a52713cb17ee5475cf6ed582dbd",
+    "gpio_channel_badges.ads": "3b8a652567742389b483e5898d103a8b9d11aa9237deadb038df5d2ff3fb7e0b",
+    "gpio_channel_badges.adb": "41e109af16df9ea986349d0ea184386a489858e999a44cbe2e048588dc39b709",
+    "hid_channel_policy_tests.adb": "f399123d8fa4ee986009c643b09640ed4dc3efc8c0291313d1bc1b9d773bcda2"
+  },
+  "tools": {
+    "gnatprove": {
+      "path": "/nix/store/9xvbsfi448cx9fjk4ivla9fsq390a8gn-gnatprove-fsf-15_2025-06-10/bin/gnatprove",
+      "sha256": "ef4dd76057294453d4cc43781aa0f25fad9b351533e380cc9a60a9b86fa797ef"
+    },
+    "gprbuild": {
+      "path": "/nix/store/3xpy8h5k8fdlfi1v43iwfap0zv5n4bmp-gprbuild-25.0.0/bin/gprbuild",
+      "sha256": "98d565f501e7840286e90daeddf276ff4c0bdb16e09f94e6ad7835b8063d7ee2"
+    },
+    "cvc5": {
+      "path": "/nix/store/kpamqxdkwynzxyzhqj4csy6h5qj0pz21-cvc5-1.3.4/bin/cvc5",
+      "sha256": "06fba7a8fe0e188ba77e049c4b08acf932f5280183830dfc5838f420678626d1"
+    }
+  },
+  "negative_controls": 24,
+  "hosted_checks_per_profile": 325,
+  "scope": "Native-sized typed description adapter only; no hardware authority, parser, discovery or whole-interpreter proof"
+}

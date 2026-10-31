@@ -17,3 +17,10 @@ The trusted owner
 must establish device identity, initialization/regions, _BIX units/technology,
 notification/cache policy and native IO before publishing battery state.
 Missing/error observations remain unknown, not battery absence.
+
+
+The controlled module-startup milestone is recorded in MODULE-STARTUP-EVIDENCE.json.
+Its current-source input/closure refresh does not renew historical proof results.
+Fresh hosted checks cover both profiles; no native execution or hardware
+authority/region connection follows from these tests. The native API gate
+selects 59 units and produces 56 ALIs with zero objects per profile.

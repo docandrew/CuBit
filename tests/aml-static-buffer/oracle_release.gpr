@@ -1,5 +1,5 @@
 project Oracle_release is
- for Source_Dirs use (".", "../../userspace/services/acpi/lib", "../../userspace/services/acpi", "../../shared/firmware");
+ for Source_Dirs use (".", "../../userspace/services/acpi/lib", "../../userspace/services/acpi", "../../shared/firmware", "../../userspace/services/acpi/resource-consumer");
  for Object_Dir use "oracle-release/obj";
  for Exec_Dir use "oracle-release";
  for Main use ("static_buffer_oracle_runner.adb");

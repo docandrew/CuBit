@@ -1,0 +1,15 @@
+Phase 1 of 3: generation of data representation information ...
+Phase 2 of 3: generation of Global contracts ...
+Phase 3 of 3: flow analysis and proof ...
+Summary logged in /home/doc/cubit-build-tmp/ec-field-proof-p8RmCV/aml_field_layout-level2/obj/gnatprove/gnatprove.out
+aml_field_layout.adb:18:07: info: initialization of "Address" proved
+aml_field_layout.adb:19:07: info: initialization of "Expected_Access" proved
+aml_field_layout.adb:51:34: info: division check proved
+aml_field_layout.adb:52:34: info: division check proved
+aml_field_layout.ads:33:13: info: implicit aspect Always_Terminates on "Admitted" has been proved, subprogram will terminate
+aml_field_layout.ads:34:27: info: data dependencies proved
+aml_field_layout.ads:35:15: info: postcondition proved
+aml_field_layout.ads:46:36: info: division check proved
+aml_field_layout.ads:47:36: info: division check proved
+aml_field_layout.ads:49:27: info: overflow check proved
+aml_field_layout.ads:49:27: info: range check proved

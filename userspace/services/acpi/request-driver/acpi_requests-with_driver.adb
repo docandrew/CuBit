@@ -1,6 +1,6 @@
 pragma Ada_2022;
 package body ACPI_Requests.With_Driver with SPARK_Mode is
-   package Controlled is new ACPI_Bootstrap.With_Driver (Device_Driver);
+   package Controlled is new ACPI_Bootstrap.With_Driver (Device_Driver, Execute_Module_Startup);
    procedure Handle (Server : in out State; Run : in out Device_Driver.Session;
       Origin : Authority; Request : Packet; Reply : out Response) is
       Initial_Version : constant Revision_Number := Server.Version;

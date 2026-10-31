@@ -14,7 +14,11 @@ with AML_Retained_Roots;
 with AML_Retained_Identities;
 with AML_Objects.Byte_References;
 with AML_Identity;
+with AML_Definition_Loads;
+with AML_Copied_Tables;
+with AML_Table_Sources;
 with AML_Frame_Handles;
+with AML_Module_Frames;
 with AML_Frame_Roots;
 with AML_References;
 with AML_Objects.Package_References;
@@ -58,6 +62,7 @@ generic
    Block_Capacity : AML_Execution_Limits.Continuation_Capacity :=
      AML_Execution_Limits.Default_Continuation_Capacity;
 package AML_Namespace with SPARK_Mode is
+   use type AML_Table_Sources.Source_Kind;
    use type AML_Decode.Integer_Value;
    use type AML_Decode.Integer_Origin;
    use type AML_References.Node_Incarnation;
@@ -73,6 +78,12 @@ package AML_Namespace with SPARK_Mode is
    -- Aggregate offsets/counts are independent of individual method lengths.
    subtype Aggregate_Method_Count is Natural range 0 .. Aggregate_Method_Capacity;
    Root : constant Node_ID := 0;
+   -- Definition identities describe namespace provenance, not hardware or IPC
+   -- authority. Issued globally; never a table address, table index or node ID.
+   subtype Definition_Identity is AML_Definition_Loads.Definition_Identity;
+   use type Definition_Identity;
+   No_Definition : constant Definition_Identity := Definition_Identity (AML_Identity.No_Identity);
+   function Has_Definition (Item : Definition_Identity) return Boolean is (Item /= No_Definition);
    type State is private;
    -- High-water slot count. During execution, removed temporary slots below a
    -- live slot remain reserved; Present/Child distinguish these from live nodes.
@@ -86,6 +97,8 @@ package AML_Namespace with SPARK_Mode is
      with Pre => Node > Root and then Node <= Count (Tree);
    function Present (Tree : State; Node : Node_ID) return Boolean
      with Pre => Node <= Count (Tree);
+   function Definition_Of (Tree : State; Node : Node_ID) return Definition_Identity
+     with Pre => Node <= Count (Tree) and then Present (Tree, Node);
    function Value_Usage (Tree : State) return AML_Objects.Usage;
    function Method_Usage (Tree : State) return Aggregate_Method_Count;
    function Parent (Tree : State; Node : Node_ID) return Node_ID
@@ -240,7 +253,7 @@ package AML_Namespace with SPARK_Mode is
    -- these records. A field keeps the resolved region value, not a recyclable
    -- namespace node ID. Dynamic declaration callers supply their method Owner.
    type Table_Region is record
-      Table : Positive := 1;
+      Item : AML_Table_Sources.Source := AML_Table_Sources.Absent_Source;
       Extent : Positive := 1;
    end record;
    type Table_Field is record
@@ -484,6 +497,18 @@ package Owned with SPARK_Mode is
    type Retention_State is private;
    function Retention_Model (A : Arena) return Retention_State with Ghost;
    function Fatal_Observation (A : Arena) return AML_Fatal.Observation;
+   type Module_Error_Count is range 0 .. 2 ** 32 - 1;
+   type Module_Error_Kind is (Module_Division_By_Zero);
+   -- Descriptive history only. Definition identities never confer authority.
+   -- Count saturates; the last observation survives namespace rollback/Reset.
+   -- Offset and charge are local to the failing module execution.
+   type Module_Error_Observation is record
+      Count : Module_Error_Count := 0;
+      Kind : Module_Error_Kind := Module_Division_By_Zero;
+      Definition : Definition_Identity := No_Definition;
+      Resume_Offset, Charged : Natural := 0;
+   end record;
+   function Module_Errors (A : Arena) return Module_Error_Observation;
    function Retained_Count (A : Arena) return Retained_Root_Count;
    function Retention_Added (A : Arena; Before : Retention_State;
                              Root : Retained_Root; Value : AML_Execute.Datum) return Boolean with Ghost;
@@ -1352,6 +1377,7 @@ package Owned with SPARK_Mode is
          Failure : AML_Execute.Execution_Failure := AML_Execute.No_Return;
          Fatal : AML_Fatal.Observation;
       end record;
+      function Module_Errors (A : Arena) return Module_Error_Observation;
       function Import_Model (A : Arena) return Import_State with Ghost;
       function Module_Transient_Free (A : Arena) return Boolean with Ghost;
       function Invocation_Model (A : Arena) return AML_Frame_Handles.Invocation_Serial with Ghost;
@@ -1442,6 +1468,9 @@ package Owned with SPARK_Mode is
          Item : out Node_Descriptor; Status : out Access_Status)
         with Pre => Valid (A);
       -- Binding identity includes owner, incarnation, parent and name; data kind may change.
+      procedure Describe_Definition (A : Arena; Item : Node_Descriptor;
+         Definition : out Definition_Identity; Status : out Access_Status)
+        with Pre => Valid (A), Post => (if Status /= Available then Definition = No_Definition);
       function Current_Binding (A : Arena; Item : Node_Descriptor) return Boolean
         with Pre => Valid (A);
       -- Stronger snapshot check additionally requires the observed object kind.
@@ -1496,6 +1525,15 @@ package Owned with SPARK_Mode is
       -- valid namespace object and remains distinct from Not_Found.
       procedure Find_Object (A : Arena; Parent : Node_ID; Part : AML_Names.Segment;
          Result : out Lookup_Result; Status : out Access_Status);
+      -- Read-only semantic path lookup from an authenticated current scope.
+      -- Empty paths denote that scope; callers implement omitted-operand defaults.
+      -- A failed lookup returns No_Node, never a namespace-root descriptor.
+      procedure Resolve_Node (A : Arena; Scope : Node_Descriptor;
+         Path : AML_Names.Name_Result; Item : out Node_Descriptor;
+         Outcome : out Lookup_Status; Status : out Access_Status)
+        with Pre => Valid (A),
+          Post => (if Status = Available and then Outcome = Found then
+             Current_Node (A, Item) else Item = No_Node);
       procedure Bind_Table_Region (A : in out Arena; Scope : Node_ID;
          Part : AML_Names.Segment; Region : Table_Region; Node : out Node_ID;
          Outcome : out Bind_Status; Status : out Access_Status; Owner : Node_ID := Root);
@@ -1518,6 +1556,10 @@ package Owned with SPARK_Mode is
       -- Authenticated zero-argument evaluation. Method fuel is unchanged;
       -- non-method resolution consumes one bounded unit, including read errors.
       Named_Evaluation_Charge : constant Positive := 1;
+      procedure Evaluate_Registered (A : in out Arena; Loads : in out AML_Definition_Loads.State; Copies : in out AML_Copied_Tables.State;
+         Input : aliased AML_Table_Backing.State; Item : Node_Descriptor;
+         Width : AML_Decode.Integer_Width; Budget : Natural; Outcome : out Result; Status : out Access_Status)
+        with Pre => Valid (A) and then AML_Definition_Loads.Valid (Loads), Post => Valid (A);
       procedure Evaluate_Named (A : in out Arena; Input : aliased AML_Table_Backing.State;
          Item : Node_Descriptor; Width : AML_Decode.Integer_Width; Budget : Natural;
          Outcome : out Result; Status : out Access_Status)
@@ -1530,6 +1572,32 @@ package Owned with SPARK_Mode is
               then Status = Available and then Outcome.Handle /= No_Value
                 and then Retained_Count (A) = Retained_Count (A)'Old + 1
               else Retained_Count (A) = Retained_Count (A)'Old);
+      -- Terminal owner barrier after effects have committed. Namespace values,
+      -- pins and notifications survive; ordinary evaluation requires Ready.
+      procedure Require_Module_Recovery (A : in out Arena; Status : out Access_Status)
+        with Pre => Valid (A), Post => Valid (A)
+          and then Generation (A) = Generation (A)'Old
+          and then Retention_Model (A) = Retention_Model (A)'Old
+          and then Notification_Model (A) = Notification_Model (A)'Old
+          and then Namespace_Equal (Audit (A), Audit (A)'Old)
+          and then (if Status = Available then Current (A) = Loading
+             and then Import_Model (A) = Module_Failed
+           else Current (A) = Current (A)'Old and then Import_Model (A) = Import_Model (A)'Old);
+      Parameter_Store_Charge : constant Positive := 1;
+      -- Trusted owner adapter for ordinary named data and local buffer fields.
+      -- Uses AML Direct_Target Store semantics. No AML evaluation, collection,
+      -- hardware-field dispatch or extra pins. Binding identity is revalidated;
+      -- the live target type may differ from its pre-module descriptor snapshot.
+      procedure Store_Parameter_Data (A : in out Arena; Target : Node_Descriptor;
+         Item : Argument; Width : AML_Decode.Integer_Width; Budget : Natural;
+         Charged : out Natural; Outcome : out AML_Execute.Execution_Status;
+         Status : out Access_Status)
+        with Pre => Valid (A), Post => Valid (A) and then Charged <= Budget
+          and then Current (A) = Current (A)'Old
+          and then Generation (A) = Generation (A)'Old
+          and then Retention_Model (A) = Retention_Model (A)'Old
+          and then (if Status /= Available or else Outcome /= AML_Execute.Returned then
+             Audit (A) = Audit (A)'Old);
       -- Reads data only. No AML execution, field materialization or dereference.
       -- Compound success transfers one independent pin to the caller.
       procedure Observe_Named_Value (A : in out Arena; Node : Node_ID;
@@ -1562,6 +1630,68 @@ package Owned with SPARK_Mode is
               and then Node_Count (A) = Firmware_Seed_Count
               and then Canonical_Firmware_Initial_State (A)
               and then Import_Model (A) = Import_Undecided);
+      type Append_Attempt is limited private;
+      function Attempt_Definition (Attempt : Append_Attempt) return Definition_Identity;
+      function Consumed (Attempt : Append_Attempt) return Boolean
+        with Post => Consumed'Result = Has_Definition (Attempt_Definition (Attempt));
+      type Append_Outcome is (Append_Not_Started, Append_Completed,
+        Append_Failed, Append_Initialization_Failed, Append_Already_Consumed, Append_Budget_Refused);
+      type Append_Report is record
+         Definition : Definition_Identity := No_Definition;
+         Outcome : Append_Outcome := Append_Not_Started;
+         Charged : Natural := 0;
+         Failure : AML_Execute.Execution_Failure := AML_Execute.No_Return;
+         Initialization : Initialization_Report;
+         Fatal : AML_Fatal.Observation;
+         Recovery_Needed : Boolean := False;
+      end record;
+      -- Internal idle-owner primitive,not Load/LoadTable opcode admission.
+      -- Retained values remain owned; active callers and notification capture
+      -- are refused. Input is stable owned backing; Width is trusted policy.
+      -- A consumed attempt cannot replay on another index/arena. This is not
+      -- a global duplicate-table registry or a dynamic table-owner identity.
+      -- Failure preserves committed effects and moves to Loading/Module_Failed
+      -- to prevent further AML; no whole-tree rollback or automatic retry.
+      -- Complete table ownership/readiness and nested-load orchestration are
+      -- still required before exposing this through an AML loader or service.
+      type Module_Root_Kind is (Namespace_Root, Selected_Root);
+      type Module_Root (Kind : Module_Root_Kind := Namespace_Root) is record
+         case Kind is
+            when Namespace_Root => null;
+            when Selected_Root => Scope : Node_Descriptor;
+         end case;
+      end record;
+      Namespace_Module_Root : constant Module_Root;
+      -- Selected_Root with No_Node is invalid; a missing lookup never defaults
+      -- to namespace root. The descriptor is revalidated against this owner.
+      procedure Append_Ready_Module (A : in out Arena;
+         Input : aliased AML_Table_Backing.State; Index : Positive;
+         Width : AML_Decode.Integer_Width; Budget : Natural;
+         Attempt : in out Append_Attempt; Report : out Append_Report; Status : out Access_Status;
+         Root_At : Module_Root := Namespace_Module_Root)
+        with Pre => Valid (A), Post => Valid (A) and then Report.Charged <= Budget
+          and then Retained_Count (A) = Retained_Count (A)'Old
+          and then Retention_Model (A) = Retention_Model (A)'Old
+          and then (if Status = Available then Module_Transient_Free (A))
+          and then Invocation_Model (A) >= Invocation_Model (A)'Old;
+      -- The exclusive service owner lends its single registry to the namespace.
+      -- The same immutable Input must back these slots for the registry lifetime.
+      -- Future active loaders borrow this same state; no parallel consumed flags.
+      procedure Append_Registered_Module (A : in out Arena; Loads : in out AML_Definition_Loads.State; Copies : in out AML_Copied_Tables.State;
+         Input : aliased AML_Table_Backing.State; Index : Positive;
+         Width : AML_Decode.Integer_Width; Budget : Natural;
+         Existing_Index : out Natural; Report : out Append_Report; Status : out Access_Status;
+         Root_At : Module_Root := Namespace_Module_Root)
+        with Pre => Valid (A), Post => Valid (A) and then Report.Charged <= Budget;
+      procedure Require_Registered_Recovery (A : in out Arena; Loads : in out AML_Definition_Loads.State; Copies : in out AML_Copied_Tables.State;
+         Index : Positive; Status : out Access_Status)
+        with Pre => Valid (A), Post => Valid (A);
+      -- Frozen-catalog bootstrap: metadata loading is admitted, provider
+      -- effects remain restricted and new child records close on table rollback.
+      procedure Execute_Registered_Modules (A : in out Arena; Loads : in out AML_Definition_Loads.State; Copies : in out AML_Copied_Tables.State;
+         Input : aliased AML_Table_Backing.State; Budget : Natural; Report : out Module_Report; Status : out Access_Status)
+        with Pre => Valid (A) and then AML_Definition_Loads.Valid (Loads),
+          Post => Valid (A) and then Report.Charged <= Budget;
       procedure Execute_Modules (A : in out Arena;
          Input : aliased AML_Table_Backing.State; Budget : Natural;
          Report : out Module_Report; Status : out Access_Status)
@@ -1585,6 +1715,11 @@ package Owned with SPARK_Mode is
       -- Resolve static table descriptors only against owned immutable bytes.
       procedure Seal_With_Tables (A : in out Arena; Input : aliased AML_Table_Backing.State;
          Report : out Initialization_Report; Status : out Access_Status);
+      -- Exclusive-owner invocation using the same registry as retained appends.
+      procedure Invoke_Registered (A : in out Arena; Loads : in out AML_Definition_Loads.State; Copies : in out AML_Copied_Tables.State;
+         Input : aliased AML_Table_Backing.State; Node : Node_ID; Args : Arguments; Count : Argument_Count;
+         Budget : Natural; Outcome : out Result; Status : out Access_Status)
+        with Pre => Valid (A) and then AML_Definition_Loads.Valid (Loads), Post => Valid (A);
       procedure Invoke (A : in out Arena; Input : aliased AML_Table_Backing.State;
          Node : Node_ID; Args : Arguments; Count : Argument_Count;
          Budget : Natural; Outcome : out Result; Status : out Access_Status)
@@ -1643,6 +1778,27 @@ package Owned with SPARK_Mode is
            AML_Execution_Limits.Default_Field_Work_Limit;
       package Field_IO is
          pragma Unevaluated_Use_Of_Old (Allow);
+         type Module_Target_Count is new Natural range 0 .. Maximum_Bindings;
+         subtype Module_Target_Position is Positive range 1 .. Maximum_Bindings;
+         type Module_Target_Set is array (Module_Target_Position) of AML_Field_Access.Target;
+         -- Trusted startup-only named cells, selected before module execution.
+         -- Firmware supplies no targets. Geometry and current identities are
+         -- rechecked for reachable direct/bank/index Field dependencies.
+         -- No address IO API. Targets after Count must be No_Target.
+         -- Missing/ambiguous cells and mixed required providers refuse before
+         -- dispatch. Unrelated provisioned targets need not share a provider.
+         -- The owning arena, IO and registry must survive failures/uncertainty;
+         -- namespace rollback never rolls back provider effects or receipts.
+         -- Existing executor layout/lock/width restrictions remain explicit.
+         -- Preparation shares the remaining work allowance with composed
+         -- execution; selector/data requests share one per-operation counter.
+         procedure Execute_Registered_Modules
+           (A : in out Arena; IO : in out IO_Context;
+            Targets : Module_Target_Set; Count : Module_Target_Count;
+            Loads : in out AML_Definition_Loads.State; Copies : in out AML_Copied_Tables.State; Input : aliased AML_Table_Backing.State;
+            Budget : Natural; Report : out Module_Report; Status : out Access_Status)
+           with Pre => Valid (A) and then AML_Definition_Loads.Valid (Loads),
+             Post => Valid (A) and then Report.Charged <= Budget;
          type Binding is private;
          No_Binding : constant Binding;
          type Binding_Set is private;
@@ -1670,6 +1826,18 @@ package Owned with SPARK_Mode is
             Targets : AML_Field_Targets.Vector; Count : AML_Field_Plans.Datum_Count;
             Items : in out Binding_Set; Status : out Access_Status);
 
+         procedure Invoke_Registered
+           (A : in out Arena; Loads : in out AML_Definition_Loads.State; Copies : in out AML_Copied_Tables.State; IO : in out IO_Context;
+            Items : Binding_Set; Input : aliased AML_Table_Backing.State; Node : Node_ID;
+            Args : Arguments; Count : Argument_Count; Budget : Natural; Outcome : out Result; Status : out Access_Status);
+         procedure Invoke_Registered
+           (A : in out Arena; Loads : in out AML_Definition_Loads.State; Copies : in out AML_Copied_Tables.State; IO : in out IO_Context;
+            Item : Binding; Input : aliased AML_Table_Backing.State; Node : Node_ID;
+            Args : Arguments; Count : Argument_Count; Budget : Natural; Outcome : out Result; Status : out Access_Status);
+         procedure Evaluate_Registered
+           (A : in out Arena; Loads : in out AML_Definition_Loads.State; Copies : in out AML_Copied_Tables.State; IO : in out IO_Context;
+            Items : Binding_Set; Input : aliased AML_Table_Backing.State; Item : Node_Descriptor;
+            Width : AML_Decode.Integer_Width; Budget : Natural; Outcome : out Result; Status : out Access_Status);
          procedure Bind
            (A : Arena; IO : IO_Context; Key : Field_Key; Target : AML_Field_Access.Target;
             Item : out Binding; Status : out Access_Status);
@@ -1744,9 +1912,15 @@ package Owned with SPARK_Mode is
          No_Binding : constant Binding := (others => <>);
       end Field_IO;
 
+      -- Drop one authenticated pin in Ready or terminal Module_Failed state.
+      -- Cleanup preserves the owner phase; it does not resume a failed owner.
       procedure Release (A : in out Arena; Handle : in out Value_Handle;
-         Status : out Access_Status) with Pre => Valid (A), Post => Valid (A) and then
-           (if Status = Available then Handle = No_Value
+         Status : out Access_Status) with Pre => Valid (A), Post => Valid (A)
+           and then Current (A) = Current (A)'Old
+           and then Import_Model (A) = Import_Model (A)'Old
+           and then Invocation_Model (A) = Invocation_Model (A)'Old
+           and then Audit (A) = Audit (A)'Old
+           and then (if Status = Available then Handle = No_Value
               and then Pin_Removed (A, Retention_Model (A)'Old, Handle'Old)
               and then Retained_Count (A) = Retained_Count (A)'Old - 1
             else Handle = Handle'Old and then Retention_Model (A) = Retention_Model (A)'Old);
@@ -1790,10 +1964,16 @@ package Owned with SPARK_Mode is
          Tag : Object_Kind := Scope_Object;
       end record;
       No_Node : constant Node_Descriptor := (others => <>);
+      Namespace_Module_Root : constant Module_Root := (Kind => Namespace_Root);
       type Field_Key is record
          Field, Region : Reference := AML_References.No_Reference;
       end record;
       No_Field_Key : constant Field_Key := (others => <>);
+      type Append_Attempt is limited record
+         Used : Boolean := False;
+         Definition : Definition_Identity := No_Definition;
+      end record
+        with Type_Invariant => Append_Attempt.Used = Has_Definition (Append_Attempt.Definition);
       type Audit_Value is record
          Tree : State;
          Import : Import_State;
@@ -1904,6 +2084,7 @@ private
       Frame_Roots : Frame_Pins.State := Frame_Pins.Empty;
       Notifications : Notification_State;
       Last_Fatal : AML_Fatal.Observation;
+      Recovered_Module_Errors : Module_Error_Observation;
       -- Outside Tree; Reset and module rollback deliberately preserve this.
       Field_Uncertain : AML_Field_Access.Observation;
       Uncertain_Field, Uncertain_Region : Reference := AML_References.No_Reference;
@@ -1937,6 +2118,7 @@ private
       Initializer_Frame : AML_Frame_Handles.Frame_Handle := AML_Frame_Handles.No_Frame;
       Incarnation : AML_References.Node_Incarnation := 0;
       Owner : Node_ID := Root;
+      Definition : Definition_Identity := No_Definition;
       Active_Calls : Natural := 0;
       Up : Node_ID := Root;
       Part : AML_Names.Segment := "____";
@@ -2003,11 +2185,12 @@ private
    package Pending is new AML_Pending_Members
      (Node_ID, Max_Pending_Members, Max_Pending_Segments);
    type State is record
-      Module_Frame : AML_Frame_Handles.Frame_Handle := AML_Frame_Handles.No_Frame;
+      Module_Frames : AML_Module_Frames.State := AML_Module_Frames.Empty;
       Journal : Pending.State := Pending.Empty;
       Timer_State : AML_Clock.State := AML_Clock.Fresh;
       Used : Node_ID := 0;
       Last_Stamp : AML_References.Node_Incarnation := 0;
+      Current_Definition : Definition_Identity := No_Definition;
       Items : Entries;
       -- Root is a physical scope; this optional semantic payload is never an Items index.
       Root_Value : AML_Objects.Object_ID := 0;
@@ -2016,6 +2199,7 @@ private
       Code_Used : Aggregate_Method_Count := 0;
    end record
      with Type_Invariant =>
+       AML_Module_Frames.Valid (State.Module_Frames) and then
        Pending.Valid (State.Journal) and then
        AML_Objects.Valid (State.Values) and then
        (State.Root_Value = 0 or else
@@ -2030,8 +2214,7 @@ private
           (if State.Items (I).Initializing then
              State.Items (I).Alive and then
              (if State.Items (I).Owner = Root then
-                AML_Frame_Handles.Present (State.Module_Frame)
-                and then State.Items (I).Initializer_Frame = State.Module_Frame
+                AML_Module_Frames.Contains (State.Module_Frames, State.Items (I).Initializer_Frame)
               else State.Items (State.Items (I).Owner).Alive
                 and then State.Items (State.Items (I).Owner).Object_Type = Method_Object
                 and then State.Items (State.Items (I).Owner).Active_Calls > 0)
@@ -2052,7 +2235,8 @@ private
           (if State.Items (I).Object_Type = Region_Field_Object then
              Valid_Field_Descriptor (State.Items, I)) and then
           (if State.Items (I).Object_Type = Table_Field_Object then
-             AML_Field_Data.Fits (State.Items (I).Table_Binding.Region.Extent,
+             State.Items (I).Table_Binding.Region.Item.Kind /= AML_Table_Sources.No_Source
+             and then AML_Field_Data.Fits (State.Items (I).Table_Binding.Region.Extent,
                State.Items (I).Table_Binding.Offset, State.Items (I).Table_Binding.Bits)) and then
           State.Items (I).Method_Offset <= State.Code_Used and then
           State.Items (I).Method_Size <= State.Code_Used - State.Items (I).Method_Offset and then

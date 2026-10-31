@@ -1,5 +1,5 @@
 project Static_Buffer_checked is
- for Source_Dirs use (".", "../../userspace/services/acpi/lib", "../../userspace/services/acpi", "../../shared/firmware");
+ for Source_Dirs use (".", "../../userspace/services/acpi/lib", "../../userspace/services/acpi", "../../shared/firmware", "../../userspace/services/acpi/resource-consumer");
  for Object_Dir use "build-checked/obj";
  for Exec_Dir use "build-checked";
  for Main use ("static_buffer_count_tests.adb", "static_buffer_edge_tests.adb");

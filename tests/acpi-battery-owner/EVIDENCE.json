@@ -1,0 +1,83 @@
+{
+  "hosted_run": "/home/doc/cubit-build-tmp/acpi-battery-owner-bl953E",
+  "hosted_result": {
+    "counts": {
+      "checked": {
+        "1": {
+          "normal": 68,
+          "hardware": 17
+        },
+        "2": {
+          "normal": 68,
+          "hardware": 17
+        }
+      },
+      "release": {
+        "1": {
+          "normal": 68,
+          "hardware": 17
+        },
+        "2": {
+          "normal": 68,
+          "hardware": 17
+        }
+      }
+    },
+    "commands": 14,
+    "hosted": true,
+    "new_proof": false,
+    "native_executed": false,
+    "hardware_validated": false
+  },
+  "source_pins": 348,
+  "checks_per_profile": 170,
+  "reference": "/home/doc/cubit-build-tmp/battery-owner-oracle-R76RbH",
+  "reference_result": {
+    "accepted": true,
+    "semantic_match": true,
+    "clean_tool_log": false,
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "recognized_teardown": true,
+    "integers": [
+      31,
+      1,
+      100,
+      20000,
+      11000,
+      1,
+      100,
+      19900,
+      11000,
+      15,
+      31
+    ],
+    "args": [
+      "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+      "-b",
+      "evaluate BAT0._STA; evaluate BAT0._BST; execute EC00._Q01; evaluate BAT0._BST; execute EC00._Q02; evaluate BAT0._STA; execute EC00._Q02; evaluate BAT0._STA",
+      "/home/doc/cubit-build-tmp/acpi-battery-owner-bl953E/bridge-r2.aml"
+    ],
+    "status": 0,
+    "signal": null,
+    "error": null,
+    "inputs": {
+      "/home/doc/cubit-build-tmp/acpi-battery-owner-bl953E/bridge-r2.aml": "be5a702558773cb3be0798dbe6415c6b64a8ec82b53ffc6d4bd8cd6622f19a36",
+      "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec": "a161f8b3a0b94b4301c1d0f2ccca6c0f808d2998cd4c9e037a9d7b218c88dcfe",
+      "/home/doc/git/cubit/tests/acpi-battery-owner/oracle.mjs": "4077f1a9322ec2627c7595e7886ab24f540b708fda1cf58ab4dbdd0b1ad3e489"
+    },
+    "scope": "Independent exact-fixture BST/presence/EC-handler Notify semantic observations only; ACPICA exit allocation diagnostics explicitly qualified. Not battery collector/cache/broker, hardware or native validation."
+  },
+  "artifacts": {
+    "/home/doc/cubit-build-tmp/acpi-battery-owner-bl953E/COMPLETE.json": "b727207f7188bbdc50838b49c2193a57a9762b66e153caaffb7d589ded2ec9ec",
+    "/home/doc/cubit-build-tmp/acpi-battery-owner-bl953E/inputs.json": "2342a42a11034d82752826705e43b3243c4fed1f24c8d8d0cac2dff348679144",
+    "/home/doc/cubit-build-tmp/acpi-battery-owner-bl953E/commands.json": "4f7f81833fc42d74f151c6c5faaf8a6d48f6b71c4b6d5c37fb43a46a2f2ac484",
+    "/home/doc/cubit-build-tmp/battery-owner-oracle-R76RbH/RESULT.json": "439c4427ac4e164a1bde4658dc1ea114d0a561d6df3de6cd44b35addc265c803",
+    "/home/doc/cubit-build-tmp/battery-owner-oracle-R76RbH/acpica.log": "3a2d84205030e62e10001a6c4070487f39656d62e9c47b0f3a47fbc49bb45fad"
+  },
+  "new_proof": false,
+  "native_executed": false,
+  "hardware_validated": false,
+  "full_goal": "active and incomplete"
+}

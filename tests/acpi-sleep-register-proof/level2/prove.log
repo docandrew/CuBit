@@ -1,0 +1,18 @@
+Phase 1 of 3: generation of data representation information ...
+Phase 2 of 3: generation of Global contracts ...
+Phase 3 of 3: flow analysis and proof ...
+Summary logged in /home/doc/cubit-build-tmp/fadt-sleep-proof-vGPYY8/level2/obj/gnatprove/gnatprove.out
+acpi_fadt-sleep_registers.adb:4:07: info: initialization of "R" proved
+acpi_fadt-sleep_registers.adb:5:07: info: initialization of "A" proved
+acpi_fadt-sleep_registers.adb:5:10: info: initialization of "B" proved
+acpi_fadt-sleep_registers.adb:22:09: info: discriminant check proved
+acpi_fadt-sleep_registers.adb:23:09: info: discriminant check proved
+acpi_fadt-sleep_registers.adb:25:68: info: discriminant check proved
+acpi_fadt-sleep_registers.adb:26:68: info: discriminant check proved
+acpi_fadt-sleep_registers.ads:20:13: info: implicit aspect Always_Terminates on "Descriptions_Agree" has been proved, subprogram will terminate
+acpi_fadt-sleep_registers.ads:50:92: info: discriminant check proved
+acpi_fadt-sleep_registers.ads:53:92: info: discriminant check proved
+acpi_fadt-sleep_registers.ads:55:18: info: data dependencies proved
+acpi_fadt-sleep_registers.ads:60:13: info: implicit aspect Always_Terminates on "Describe" has been proved, subprogram will terminate
+acpi_fadt-sleep_registers.ads:61:11: info: data dependencies proved
+acpi_fadt-sleep_registers.ads:61:35: info: postcondition proved

@@ -67,7 +67,7 @@ procedure Orphan_Reg_Tests is
    end Release;
    package O is new R.Orphans (Provider_Ready, Release);
    use type O.Phase, O.Outcome, O.Action_Result;
-   Service, Foreign : aliased C.State (1, 4096, 4096);
+   Service, Foreign : aliased C.State (1, 4096, 4096, 1);
    Device : C.Node_Descriptor;
    Space : O.Address_Space := O.Embedded_Controller;
    Run : O.State;

@@ -18,6 +18,7 @@ package body ACPI_Region_Initialization with SPARK_Mode is
    Disconnect_Code : constant AML_Decode.Integer_Value := 0;
    Notice_Arguments : constant Natural := 2;
    function Observe (Run : Session) return Report is (Run.Info);
+   function Pending (Run : Session) return Boolean is (Run.Handle /= V.No_Value);
    function Observe_Region (Run : Session; Node : Node_ID) return Notice_Result is
      (Run.Items (Node).Notice);
    function Outcome (Run : Session) return ACPI_Device_Policy.Region_Outcome is
@@ -32,6 +33,14 @@ package body ACPI_Region_Initialization with SPARK_Mode is
       Run.Info.Stage := Failed; Run.Info.Error_Node := Node; Run.Info.Error := Error;
       if Run.Items (Node).Present then Run.Items (Node).Notice := Evaluation_Failed; end if;
    end Stop;
+   procedure Release (Run : in out Session; Service : in out Core.State) is
+   begin
+      if not Pending (Run) then return; end if;
+      Release_Result (Service, Run.Handle, Run.Info.Cleanup_Result);
+      if Run.Info.Cleanup_Result /= V.Available or else Pending (Run) then
+         Stop (Run, Run.Pending_Node, AML_Execute.Unsupported_Value);
+      end if;
+   end Release;
    procedure Find_Method
      (Service : Core.State; Scope : Node_ID; Method : out Core.Node_Descriptor;
       Status : out V.Access_Status) is
@@ -95,8 +104,7 @@ package body ACPI_Region_Initialization with SPARK_Mode is
      (Run : in out Session; Service : aliased in out Core.State;
       Context : in out Controller; Budget : Natural; Connecting_Now : Boolean) is
       Result : V.Result;
-      Status, Released : V.Access_Status;
-      Handle : V.Value_Handle;
+      Status : V.Access_Status;
       Args : constant AML_Execute.Arguments := [others => 0];
       Actuals : AML_Execute.Arguments;
    begin
@@ -118,21 +126,33 @@ package body ACPI_Region_Initialization with SPARK_Mode is
                Run.Items (Node).Notice := Evaluation_Failed;
                Invoke (Service, Context, V.Position (Run.Items (Node).Method), Actuals,
                   Notice_Arguments, Budget - Run.Info.Charged, Result, Status);
-               if Result.Charged > Budget - Run.Info.Charged then
-                  Stop (Run, Node, AML_Execute.Budget_Exceeded); return;
-               end if;
-               Run.Info.Charged := Run.Info.Charged + Result.Charged;
                Run.Info.Methods := Run.Info.Methods + 1;
-               if Result.Status = AML_Execute.Fatal_Requested then
-                  Run.Info.Fatal := (Present => True, Item => Result.Fatal);
-               end if;
+               Run.Info.Reported_Charge := Result.Charged;
+               -- Capture ownership before inspecting budget/status: even a
+               -- refused callback report may have created a retained result.
                if Result.Status in AML_Execute.Object_Returned | AML_Execute.Reference_Returned |
                  AML_Execute.Metadata_Returned
                then
-                  Handle := Result.Handle;
-                  Core.Release_Result (Service, Handle, Released);
-                  if Released /= V.Available or else Handle /= V.No_Value then
+                  Run.Handle := Result.Handle;
+                  Run.Pending_Node := Node;
+                  if not Pending (Run) then
                      Stop (Run, Node, AML_Execute.Unsupported_Value); return;
+                  end if;
+               end if;
+               if Result.Status = AML_Execute.Fatal_Requested then
+                  Run.Info.Fatal := (Present => True, Item => Result.Fatal);
+               end if;
+               if Result.Charged > Budget - Run.Info.Charged then
+                  Stop (Run, Node, AML_Execute.Budget_Exceeded);
+                  Release (Run, Service); return;
+               end if;
+               Run.Info.Charged := Run.Info.Charged + Result.Charged;
+               if Result.Status in AML_Execute.Object_Returned | AML_Execute.Reference_Returned |
+                 AML_Execute.Metadata_Returned
+               then
+                  Release (Run, Service);
+                  if Run.Info.Stage = Failed then
+                     return;
                   end if;
                elsif Result.Status not in AML_Execute.Returned | AML_Execute.No_Return then
                   Stop (Run, Node, Result.Status); return;
@@ -186,9 +206,21 @@ package body ACPI_Region_Initialization with SPARK_Mode is
       Accepted := Run.Info.Stage = Connected;
       if not Accepted then return; end if;
       Run.Info.Stage := Disconnecting; Run.Info.Methods := 0; Run.Info.Charged := 0;
+      Run.Info.Reported_Charge := 0; Run.Info.Cleanup_Result := V.Available;
       for Item of Run.Items loop
          if Item.Present then Item.Notice := Not_Attempted; end if;
       end loop;
       Run_Notices (Run, Service, Context, Budget, False);
    end Disconnect;
+   procedure Close
+     (Run : in out Session; Service : in out Core.State;
+      Action : out Cleanup_Action) is
+   begin
+      Action := No_Pending_Result;
+      if not Pending (Run) then return; end if;
+      Action := Wrong_Context;
+      if not Core.Current_Binding (Service, Run.Owner) then return; end if;
+      Action := Attempted;
+      Release (Run, Service);
+   end Close;
 end ACPI_Region_Initialization;

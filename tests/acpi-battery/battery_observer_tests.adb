@@ -32,7 +32,7 @@ procedure Battery_Observer_Tests is
    use type Q.Query_Outcome;
    use type Q.Identification_Outcome;
    use type Q.Presence_Outcome;
-   Service, Other : aliased C.State (1, 4096, 4096);
+   Service, Other : aliased C.State (1, 4096, 4096, 1);
    Checks, Calls : Natural := 0;
    Overcharge : Boolean := False;
    procedure Check (OK : Boolean; Label_Text : String) is

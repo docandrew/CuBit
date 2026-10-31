@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Keep source and artifact inventories independent of the invoking locale.
+export LC_ALL=C
 set -euo pipefail
 here=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 root=$(cd "$here/../.." && pwd)
@@ -38,7 +40,7 @@ for tool in gprbuild gnatbind gnatlink; do
 done
 nice -n 19 timeout --kill-after=2s 180 gprbuild -p -j1 -P "$here/$profile.gpr" "-XOBSERVER_BUILD=$out" 2>&1 | head -c 1048576 > "$out/build.log"
 nice -n 19 timeout --kill-after=2s 30 "$out/bin/observer_tests" 2>&1 | head -c 1048576 > "$out/test.log"
-grep -Fx 'Observer and native runner checks 711' "$out/test.log"
+grep -Fx 'Observer and native runner checks 760' "$out/test.log"
 count=0
 for ali in "$out/obj/"*.ali; do
  case "$ali" in */b__*) continue;; esac
@@ -48,7 +50,7 @@ for ali in "$out/obj/"*.ali; do
  else grep -Fxq 'A -gnatp' "$ali"; ! grep -Fxq 'A -gnata' "$ali"; fi
  count=$((count + 1))
 done
-test "$count" = 96
+test "$count" = 112
 sha256sum "$out/bin/observer_tests" "$out/obj/"*.ali > "$out/artifacts.sha256"
 verify
 printf '%s\n' 'Hosted observer runner passed; kernel/native/hardware behavior unvalidated.'

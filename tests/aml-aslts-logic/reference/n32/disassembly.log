@@ -1,0 +1,16 @@
+
+Intel ACPI Component Architecture
+ASL+ Optimizing Compiler/Disassembler version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+Disassembly completed
+ASL Output:    /home/doc/git/.acpi-proof-work/aslts-logic32-original-work/oracle/logic-n32.dsl - 98629 bytes
+File appears to be binary: found 4965 non-ASCII characters, disassembling
+Binary file appears to be a valid ACPI table, disassembling
+Input file /home/doc/git/.acpi-proof-work/aslts-logic32-original-work/oracle/logic-n32.aml, Length 0x5D64 (23908) bytes
+ACPI: DSDT 0x0000000000000000 005D64 (v01 Intel  Many     00000001 INTL 20260408)
+Pass 1 parse of [DSDT]
+Pass 2 parse of [DSDT]
+Parsing Deferred Opcodes (Methods/Buffers/Packages/Regions)
+
+Parsing completed

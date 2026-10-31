@@ -1,0 +1,67 @@
+{
+  "aml_sha256": "aec94e1830d5b5c6303c3e473d5ef254b3e16238efb495bffd56ad07b1bb9b68",
+  "aml_bytes": 24007,
+  "batch": "execute MN00;execute ERRS;execute MN00;execute ERRS",
+  "repair_disabled": true,
+  "segments": [
+    {
+      "method": "MN00",
+      "integers": [
+        "0000000000000000"
+      ],
+      "records": [
+        ":STST:functional:logic:LAN0:PASS:",
+        ":STST:functional:logic:LN00:PASS:",
+        ":STST:functional:logic:LOR0:PASS:",
+        ":STST:functional:logic:LEQ0:PASS:",
+        ":STST:functional:logic:LGR0:PASS:",
+        ":STST:functional:logic:LGE0:PASS:",
+        ":STST:functional:logic:LL00:PASS:",
+        ":STST:functional:logic:LLE0:PASS:",
+        ":STST:functional:logic:LNE0:PASS:"
+      ]
+    },
+    {
+      "method": "ERRS",
+      "integers": [
+        "0000000000000000"
+      ],
+      "records": []
+    },
+    {
+      "method": "MN00",
+      "integers": [
+        "0000000000000000"
+      ],
+      "records": [
+        ":STST:functional:logic:LAN0:PASS:",
+        ":STST:functional:logic:LN00:PASS:",
+        ":STST:functional:logic:LOR0:PASS:",
+        ":STST:functional:logic:LEQ0:PASS:",
+        ":STST:functional:logic:LGR0:PASS:",
+        ":STST:functional:logic:LGE0:PASS:",
+        ":STST:functional:logic:LL00:PASS:",
+        ":STST:functional:logic:LLE0:PASS:",
+        ":STST:functional:logic:LNE0:PASS:",
+        ":STST:functional:logic:LAN0:PASS:",
+        ":STST:functional:logic:LN00:PASS:",
+        ":STST:functional:logic:LOR0:PASS:",
+        ":STST:functional:logic:LEQ0:PASS:",
+        ":STST:functional:logic:LGR0:PASS:",
+        ":STST:functional:logic:LGE0:PASS:",
+        ":STST:functional:logic:LL00:PASS:",
+        ":STST:functional:logic:LLE0:PASS:",
+        ":STST:functional:logic:LNE0:PASS:"
+      ]
+    },
+    {
+      "method": "ERRS",
+      "integers": [
+        "0000000000000000"
+      ],
+      "records": []
+    }
+  ],
+  "full_log_sha256": "87c4e30c3f9049c372d7de392d4b37ce8a1c5b71d4f099797e5b37f6f052c609",
+  "exit_zero_is_not_conformance": true
+}

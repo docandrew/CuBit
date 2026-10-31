@@ -8,12 +8,14 @@ package CuBit.Config_Inspection with Pure, SPARK_Mode is
    type Operation is (Read_Value, List_Keys, Probe);
    for Operation use
      (Read_Value => 16#0606#, List_Keys => 16#0607#, Probe => 16#0608#);
+   --  Secret: the key holds a Secret setting (setting-catalog.ccl class
+   --  Secret) that is present; its value is never returned here.
    type Status is
-     (OK, Denied, Missing, Too_Large, Invalid_Request, Unavailable);
+     (OK, Denied, Missing, Too_Large, Invalid_Request, Unavailable, Secret);
    for Status use
      (OK => 16#F000#, Denied => 16#F007#, Missing => 16#F060#,
       Too_Large => 16#F061#, Invalid_Request => 16#F062#,
-      Unavailable => 16#F063#);
+      Unavailable => 16#F063#, Secret => 16#F064#);
    type Context_ID is new Interfaces.Unsigned_32;
    Machine_Context : constant Context_ID := 0;
    Maximum_Text : constant := 1_024;

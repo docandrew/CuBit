@@ -1,5 +1,8 @@
 pragma Ada_2022;
+with AML_Table_Readers;
+with AML_Table_Sources;
 package body ACPI_Service_Core with SPARK_Mode is
+   use type Values.Append_Outcome;
    pragma Unevaluated_Use_Of_Old (Allow);
    use type Firmware_Tables.Admission;
    use type AML_Table_Backing.State;
@@ -34,12 +37,40 @@ package body ACPI_Service_Core with SPARK_Mode is
    procedure Find_Object (Service : State; Parent : Namespace.Node_ID; Part : AML_Names.Segment;
       Result : out Namespace.Lookup_Result; Status : out Values.Access_Status) is
    begin Values.Find_Object (Service.Tree, Parent, Part, Result, Status); end Find_Object;
+   procedure Resolve_Node (Service : State; Scope : Node_Descriptor;
+      Path : AML_Names.Name_Result; Item : out Node_Descriptor;
+      Outcome : out Namespace.Lookup_Status; Status : out Values.Access_Status) is
+   begin Values.Resolve_Node (Service.Tree, Scope, Path, Item, Outcome, Status); end Resolve_Node;
+   procedure Store_Parameter_Data (Service : in out State; Target : Node_Descriptor;
+      Item : Values.Argument; Budget : Natural; Charged : out Natural;
+      Outcome : out AML_Execute.Execution_Status; Status : out Values.Access_Status) is
+   begin
+      Values.Store_Parameter_Data (Service.Tree, Target, Item, Service.Width,
+        Budget, Charged, Outcome, Status);
+   end Store_Parameter_Data;
+   procedure Complete_Owned_Invocation (Service : in out State) is
+   begin
+      Service.Stats.Objects := Values.Node_Count (Service.Tree);
+      for I in 1 .. Service.Load_Capacity loop
+         if AML_Definition_Loads.Phase (Service.Loads, I) = AML_Definition_Loads.Failed then
+            Service.Import_State := Catalog_Failed;
+         end if;
+      end loop;
+   end Complete_Owned_Invocation;
+   procedure Stage_Copied_Source (Service : in out State; Data : Firmware_Tables.Bytes;
+      Fuel : Natural; Report : out AML_Copied_Tables.Report; Status : out Values.Access_Status) is
+   begin
+      Report := (others => <>); Status := Values.Wrong_Phase;
+      if Service.Import_State /= Catalog_Staging or else AML_Definition_Loads.Active (Service.Loads)
+        or else Values.Node_Count (Service.Tree) /= Namespace.Root then return; end if;
+      AML_Copied_Tables.Retain (Service.Copies, Data, Fuel, Report); Status := Values.Available;
+   end Stage_Copied_Source;
    procedure Evaluate_Named (Service : aliased in out State; Item : Node_Descriptor;
       Budget : Natural; Result : out Values.Result; Status : out Values.Access_Status) is
    begin
-      Values.Evaluate_Named (Service.Tree, Service.Backing, Item, Service.Width,
+      Values.Evaluate_Registered (Service.Tree, Service.Loads, Service.Copies, Service.Backing, Item, Service.Width,
         Budget, Result, Status);
-      Service.Stats.Objects := Values.Node_Count (Service.Tree);
+      Complete_Owned_Invocation (Service);
    end Evaluate_Named;
    procedure Read_Region_Descriptor
      (Service : State; Item : Node_Descriptor;
@@ -136,13 +167,31 @@ package body ACPI_Service_Core with SPARK_Mode is
      (Table_Capacity => Service.Table_Capacity, Byte_Capacity => Service.Byte_Capacity,
       Catalog => Service.Catalog, Backing => Service.Backing,
       Tables => Service.Stats.Tables, Bytes => Service.Stats.Bytes);
+   function Load_Model (Service : State) return Table_Load_Model with Ghost is
+      Result : Table_Load_Model (1 .. Service.Load_Capacity);
+   begin
+      for I in Result'Range loop
+         Result (I) := ((case AML_Definition_Loads.Phase (Service.Loads, I) is
+           when AML_Definition_Loads.Retained => Retained,
+           when AML_Definition_Loads.Loading => Loading_Definition,
+           when AML_Definition_Loads.Loaded => Loaded_Definition,
+           when AML_Definition_Loads.Failed => Failed_Definition),
+           Namespace.Has_Definition (AML_Definition_Loads.Definition (Service.Loads, I)),
+           AML_Definition_Loads.Definition (Service.Loads, I));
+      end loop;
+      return Result;
+   end Load_Model;
+   function Module_Errors (Service : State) return Module_Error_Observation is
+     (Values.Module_Errors (Service.Tree));
    function Model (Service : State) return State_Model is
      (Table_Capacity => Service.Table_Capacity, Byte_Capacity => Service.Byte_Capacity,
-      Catalog => Catalog_Snapshot (Service), Tree => Audit (Service),
+      Load_Capacity => Service.Load_Capacity,
+      Catalog => Catalog_Snapshot (Service), Loads => Load_Model (Service),
+      Copies => AML_Copied_Tables.Model (Service.Copies), Tree => Audit (Service),
       Stats => Service.Stats, Width => Service.Width, Table_Limit => Service.Table_Byte_Limit,
       Import_State => Service.Import_State,
       Generation => Values.Generation (Service.Tree),
-      Notifications => Values.Notification_Model (Service.Tree));
+      Notifications => Values.Notification_Model (Service.Tree), Errors => Module_Errors (Service));
    function Same_Catalog (Service, Prior : State) return Boolean is
      (Service.Catalog = Prior.Catalog and then Service.Backing = Prior.Backing
       and then Service.Stats.Tables = Prior.Stats.Tables and then Service.Stats.Bytes = Prior.Stats.Bytes);
@@ -193,8 +242,8 @@ package body ACPI_Service_Core with SPARK_Mode is
       Argument_Count : Values.Argument_Count; Budget : Natural; Result : out Values.Result;
       Status : out Values.Access_Status) is
    begin
-      Values.Invoke (Service.Tree, Service.Backing, Node, Args, Argument_Count, Budget, Result, Status);
-      Service.Stats.Objects := Values.Node_Count (Service.Tree);
+      Values.Invoke_Registered (Service.Tree, Service.Loads, Service.Copies, Service.Backing, Node, Args, Argument_Count, Budget, Result, Status);
+      Complete_Owned_Invocation (Service);
    end Invoke_With_Arguments;
    procedure Invoke_Retained
      (Service : aliased in out State; Node : Namespace.Node_ID; Args : AML_Execute.Arguments;
@@ -205,7 +254,30 @@ package body ACPI_Service_Core with SPARK_Mode is
       for I in 1 .. Argument_Count loop Arguments (I - 1).Number := Args (I - 1); end loop;
       Invoke_With_Arguments (Service, Node, Arguments, Argument_Count, Budget, Result, Status);
    end Invoke_Retained;
+   generic
+      with procedure Run_Modules
+        (Service : in out State; Budget : Natural;
+         Report : out Values.Module_Report; Status : out Values.Access_Status);
+   procedure Execute_Frozen_Using
+     (Service : in out State; Budget : Natural; Report : out Execution_Report;
+      Status : out Values.Access_Status);
    package body Field_IO is
+      procedure Execute_Frozen
+        (Service : in out State; IO : in out IO_Context;
+         Targets : Module_Target_Set; Count : Module_Target_Count;
+         Budget : Natural; Report : out Execution_Report; Status : out Values.Access_Status) is
+         procedure Run_Modules
+           (Service : in out State; Budget : Natural;
+            Report : out Values.Module_Report; Status : out Values.Access_Status) is
+         begin
+            Adapter.Execute_Registered_Modules (Service.Tree, IO,
+              Adapter.Module_Target_Set (Targets), Adapter.Module_Target_Count (Count),
+              Service.Loads, Service.Copies, Service.Backing, Budget, Report, Status);
+         end Run_Modules;
+         procedure Execute is new Execute_Frozen_Using (Run_Modules);
+      begin
+         Execute (Service, Budget, Report, Status);
+      end Execute_Frozen;
       procedure Bind
         (Service : State; IO : IO_Context; Key : Values.Field_Key;
          Target : AML_Field_Access.Target; Item : out Binding;
@@ -264,9 +336,9 @@ package body ACPI_Service_Core with SPARK_Mode is
          Argument_Count : Values.Argument_Count; Budget : Natural; Result : out Values.Result;
          Status : out Values.Access_Status) is
       begin
-         Adapter.Invoke (Service.Tree, IO, Item.Inner, Service.Backing, Node,
+         Adapter.Invoke_Registered (Service.Tree, Service.Loads, Service.Copies, IO, Item.Inner, Service.Backing, Node,
            Args, Argument_Count, Budget, Result, Status);
-         Service.Stats.Objects := Values.Node_Count (Service.Tree);
+         Complete_Owned_Invocation (Service);
       end Invoke_With_Arguments;
       procedure Invoke_With_Arguments
         (Service : aliased in out State; IO : in out IO_Context; Items : Binding_Set;
@@ -274,9 +346,9 @@ package body ACPI_Service_Core with SPARK_Mode is
          Argument_Count : Values.Argument_Count; Budget : Natural; Result : out Values.Result;
          Status : out Values.Access_Status) is
       begin
-         Adapter.Invoke (Service.Tree, IO, Items.Inner, Service.Backing, Node,
+         Adapter.Invoke_Registered (Service.Tree, Service.Loads, Service.Copies, IO, Items.Inner, Service.Backing, Node,
            Args, Argument_Count, Budget, Result, Status);
-         Service.Stats.Objects := Values.Node_Count (Service.Tree);
+         Complete_Owned_Invocation (Service);
       end Invoke_With_Arguments;
       procedure Invoke_Retained
         (Service : aliased in out State; IO : in out IO_Context; Item : Binding;
@@ -305,9 +377,9 @@ package body ACPI_Service_Core with SPARK_Mode is
          Items : Binding_Set; Item : Node_Descriptor; Budget : Natural;
          Result : out Values.Result; Status : out Values.Access_Status) is
       begin
-         Adapter.Evaluate_Named (Service.Tree, IO, Items.Inner, Service.Backing,
+         Adapter.Evaluate_Registered (Service.Tree, Service.Loads, Service.Copies, IO, Items.Inner, Service.Backing,
            Item, Service.Width, Budget, Result, Status);
-         Service.Stats.Objects := Values.Node_Count (Service.Tree);
+         Complete_Owned_Invocation (Service);
       end Evaluate_Named;
       procedure Finish_Scalar
         (Service : in out State; Outcome : Values.Result;
@@ -408,7 +480,8 @@ package body ACPI_Service_Core with SPARK_Mode is
          Status : Values.Access_Status;
       begin
          Values.Bind_Table_Region (Service.Tree, Scope, Part,
-            (Table => Index, Extent => Table_Info (Service, Index).Extent), Node, Result, Status, Owner);
+            (Item => (AML_Table_Sources.Boot_Source, AML_Table_Sources.Boot_Table_ID (Index)),
+             Extent => Table_Info (Service, Index).Extent), Node, Result, Status, Owner);
       end;
       Service.Stats.Objects := Values.Node_Count (Service.Tree);
    end Declare_Table_Region;
@@ -434,13 +507,27 @@ package body ACPI_Service_Core with SPARK_Mode is
       return AML_Field_Data.Read_Result is
       Field : Namespace.Table_Field;
       Status : Values.Access_Status;
+      Read_Status : AML_Table_Readers.Read_Status;
+      use type AML_Table_Readers.Read_Status;
+      View : AML_Table_Readers.Field_View;
+      Content : AML_Decode.Buffer_Storage := [others => 0];
+      Length : Natural;
    begin
       Values.Read_Table_Field (Service.Tree, Node, Field, Status);
       if Status /= Values.Available then return (Status => AML_Decode.Malformed); end if;
-      if Field.Region.Table > Service.Stats.Tables or else
-        Field.Region.Extent /= Table_Info (Service, Field.Region.Table).Extent
-      then return (Status => AML_Decode.Malformed); end if;
-      return Table_Field (Service, Field.Region.Table, Field.Offset, Field.Bits);
+      View := (Field.Region.Item, Field.Region.Extent, Field.Offset, Field.Bits);
+      if not AML_Table_Readers.Valid_Field (Service.Backing, Service.Copies, View) then
+         return (Status => AML_Decode.Malformed);
+      elsif Field.Bits > AML_Field_Data.Max_Bits then
+         return (Status => AML_Decode.Limit_Exceeded);
+      end if;
+      Length := AML_Table_Readers.Field_Length (View);
+      for I in 1 .. Length loop
+         AML_Table_Readers.Read_Field_Byte
+           (Service.Backing, Service.Copies, View, I - 1, Content (I), Read_Status);
+         if Read_Status /= AML_Table_Readers.Readable then return (Status => AML_Decode.Malformed); end if;
+      end loop;
+      return (Status => AML_Decode.Accepted, Length => Length, Content => Content);
    end Read_Namespace_Field;
    procedure Count_Rejection (Service : in out State) is
    begin
@@ -597,7 +684,62 @@ package body ACPI_Service_Core with SPARK_Mode is
       end if;
    end Stage_Table;
 
-   procedure Execute_Frozen
+   procedure Describe_Definition (Service : State; Item : Node_Descriptor;
+      Definition : out Namespace.Definition_Identity; Status : out Values.Access_Status) is
+   begin Values.Describe_Definition (Service.Tree, Item, Definition, Status); end Describe_Definition;
+   function Retained_Definition (Service : State; Index : Positive)
+      return Namespace.Definition_Identity is
+   begin
+      if Index > Service.Stats.Tables then return Namespace.No_Definition; end if;
+      return AML_Definition_Loads.Definition (Service.Loads, Index);
+   end Retained_Definition;
+   function Retained_Load_State (Service : State; Index : Positive)
+      return Retained_Table_Phase is
+   begin
+      if Index > Service.Stats.Tables then return Not_Retained; end if;
+      if Service.Catalog (Index).Metadata.Signature in "DSDT" | "SSDT" then return Boot_Managed; end if;
+      return (case AML_Definition_Loads.Phase (Service.Loads, Index) is
+         when AML_Definition_Loads.Retained => Retained,
+         when AML_Definition_Loads.Loading => Loading_Definition,
+         when AML_Definition_Loads.Loaded => Loaded_Definition,
+         when AML_Definition_Loads.Failed => Failed_Definition);
+   end Retained_Load_State;
+   procedure Append_Retained_Module (Service : in out State; Index : Positive;
+      Budget : Natural; Report : out Retained_Load_Report;
+      Status : out Values.Access_Status;
+      Root_At : Values.Module_Root := Values.Namespace_Module_Root) is
+      Definition : Namespace.Definition_Identity;
+   begin
+      Report := (others => <>); Status := Values.Wrong_Phase;
+      if Service.Import_State /= Catalog_Executed then return; end if;
+      if Index > Service.Stats.Tables then Status := Values.Invalid_Value; return; end if;
+      Values.Append_Registered_Module (Service.Tree, Service.Loads, Service.Copies, Service.Backing, Index, Service.Width,
+        Budget, Report.Existing_Index, Report.Append, Status, Root_At);
+      Definition := Retained_Definition (Service, Index);
+      if Report.Existing_Index /= 0 then
+         Report.Outcome := Retained_Load_Already_Present;
+         Report.Definition := AML_Definition_Loads.Definition (Service.Loads, Report.Existing_Index);
+         -- An idempotent service result did not invoke the append stage.
+         Report.Append := (others => <>);
+      elsif Namespace.Has_Definition (Definition) then
+         Report.Definition := Definition;
+         if Report.Append.Outcome = Values.Append_Completed then Report.Outcome := Retained_Load_Completed;
+         elsif Retained_Load_State (Service, Index) = Failed_Definition then
+            Service.Import_State := Catalog_Failed; Report.Outcome := Retained_Load_Failed;
+         end if;
+         Service.Stats.Objects := Values.Node_Count (Service.Tree);
+      end if;
+   end Append_Retained_Module;
+   procedure Require_Load_Recovery (Service : in out State; Index : Positive;
+      Status : out Values.Access_Status) is
+   begin
+      Status := Values.Wrong_Phase;
+      if Service.Import_State /= Catalog_Executed then return; end if;
+      if Index > Service.Stats.Tables then Status := Values.Invalid_Value; return; end if;
+      Values.Require_Registered_Recovery (Service.Tree, Service.Loads, Service.Copies, Index, Status);
+      if Status = Values.Available then Service.Import_State := Catalog_Failed; end if;
+   end Require_Load_Recovery;
+   procedure Execute_Frozen_Using
      (Service : in out State; Budget : Natural; Report : out Execution_Report;
       Status : out Values.Access_Status) is
    begin
@@ -615,7 +757,7 @@ package body ACPI_Service_Core with SPARK_Mode is
          Report.Phase := Preparation_Failed;
          return;
       end if;
-      Values.Execute_Modules (Service.Tree, Service.Backing, Budget, Report.Modules, Status);
+      Run_Modules (Service, Budget, Report.Modules, Status);
       Report.Phase := Module_Execution_Reported;
       if Report.Modules.Failed_Table in 1 .. Service.Stats.Tables then
          Report.Failed_Table_ID := Service.Catalog (Report.Modules.Failed_Table).Metadata.ID;
@@ -625,6 +767,19 @@ package body ACPI_Service_Core with SPARK_Mode is
         and then Status = Values.Available and then Report.Modules.Outcome = Values.Modules_Completed then
          Service.Import_State := Catalog_Executed;
       end if;
+   end Execute_Frozen_Using;
+   procedure Default_Modules
+     (Service : in out State; Budget : Natural;
+      Report : out Values.Module_Report; Status : out Values.Access_Status) is
+   begin
+      Values.Execute_Registered_Modules (Service.Tree, Service.Loads, Service.Copies, Service.Backing, Budget, Report, Status);
+   end Default_Modules;
+   procedure Execute_Frozen
+     (Service : in out State; Budget : Natural; Report : out Execution_Report;
+      Status : out Values.Access_Status) is
+      procedure Execute is new Execute_Frozen_Using (Default_Modules);
+   begin
+      Execute (Service, Budget, Report, Status);
    end Execute_Frozen;
 
    procedure Freeze_Catalog (Service : in out State; Result : out Freeze_Status) is

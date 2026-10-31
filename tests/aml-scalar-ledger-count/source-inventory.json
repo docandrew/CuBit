@@ -21,6 +21,8 @@
   "userspace/services/acpi/lib": [
     "acpi_fadt-registers.adb",
     "acpi_fadt-registers.ads",
+    "acpi_fadt-sleep_registers.adb",
+    "acpi_fadt-sleep_registers.ads",
     "acpi_fadt-transactions.adb",
     "acpi_fadt-transactions.ads",
     "acpi_fadt.adb",
@@ -43,12 +45,16 @@
     "aml_concatenation.ads",
     "aml_container_headers.adb",
     "aml_container_headers.ads",
+    "aml_copied_tables.adb",
+    "aml_copied_tables.ads",
     "aml_data.adb",
     "aml_data.ads",
     "aml_declaration_contexts.adb",
     "aml_declaration_contexts.ads",
     "aml_decode.adb",
     "aml_decode.ads",
+    "aml_definition_loads.adb",
+    "aml_definition_loads.ads",
     "aml_delays.adb",
     "aml_delays.ads",
     "aml_events.adb",
@@ -90,6 +96,8 @@
     "aml_metadata_kinds.ads",
     "aml_mixed_comparison.adb",
     "aml_mixed_comparison.ads",
+    "aml_module_frames.adb",
+    "aml_module_frames.ads",
     "aml_mutex_invocations.adb",
     "aml_mutex_invocations.ads",
     "aml_mutexes.ads",
@@ -136,7 +144,11 @@
     "aml_table_backing.adb",
     "aml_table_backing.ads",
     "aml_table_code.adb",
-    "aml_table_code.ads"
+    "aml_table_code.ads",
+    "aml_table_readers.adb",
+    "aml_table_readers.ads",
+    "aml_table_sources.adb",
+    "aml_table_sources.ads"
   ],
   "shared/firmware": [
     "firmware_tables-catalog.adb",
@@ -159,6 +171,8 @@
     "firmware_tables-provisioning.ads",
     "firmware_tables-slit.adb",
     "firmware_tables-slit.ads",
+    "firmware_tables-snapshots-transfers.adb",
+    "firmware_tables-snapshots-transfers.ads",
     "firmware_tables-snapshots.adb",
     "firmware_tables-snapshots.ads",
     "firmware_tables-srat.adb",
@@ -170,5 +184,13 @@
     "capability_abi.adb",
     "capability_abi.ads",
     "channel_wake_abi.ads"
+  ],
+  "userspace/services/acpi/resource-consumer": [
+    "acpi_controller_source.adb",
+    "acpi_controller_source.ads",
+    "acpi_resource_names.adb",
+    "acpi_resource_names.ads",
+    "acpi_resource_reader.adb",
+    "acpi_resource_reader.ads"
   ]
 }

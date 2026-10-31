@@ -1,5 +1,5 @@
 project Quota_release is
-   for Source_Dirs use (".", "mocks", "../support/handles", "../support/handles/runtime", "../../shared/capabilities", "../../userspace/services/acpi/lib", "../../userspace/services/acpi", "../acpi-table-import-model", "../../shared/firmware");
+   for Source_Dirs use (".", "mocks", "../support/handles", "../support/handles/runtime", "../../shared/capabilities", "../../userspace/services/acpi/lib", "../../userspace/services/acpi", "../acpi-table-import-model", "../../shared/firmware", "../../userspace/services/acpi/resource-consumer");
    for Object_Dir use "build-quota-release/obj";
    for Exec_Dir use "build-quota-release";
    for Main use ("quota_store_tests.adb", "string_store_tests.adb", "string_replace_tests.adb");

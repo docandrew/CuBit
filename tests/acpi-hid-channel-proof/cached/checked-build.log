@@ -1,0 +1,22 @@
+Setup
+   [mkdir]        object directory for project Host
+   [mkdir]        exec directory for project Host
+Compile
+   [Ada]          policy_main.adb
+   [Ada]          hid_channel_policy_tests.adb
+   [Ada]          acpi_hid_i2c_candidate.adb
+   [Ada]          acpi_hid_i2c_channels.adb
+   [Ada]          acpi_hid_i2c_resources.adb
+   [Ada]          firmware_tables.adb
+   [Ada]          gpio_channel_badges.adb
+   [Ada]          hid_i2c_descriptors.adb
+   [Ada]          i2c_channel_badges.adb
+   [Ada]          acpi_resource_data.adb
+   [Ada]          acpi_resource_data-gpio_connections.adb
+   [Ada]          acpi_resource_data-serial_connections.adb
+Bind
+   [gprbind]      policy_main.bexch
+   [Ada]          policy_main.ali
+Link
+   [link]         policy_main.adb
+checked.gpr:1:14: warning: file name does not match project name, should be "host.gpr"

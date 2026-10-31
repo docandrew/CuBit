@@ -1,3 +1,4 @@
+with AML_Table_Sources;
 with AML_Delays;
 with Ada.Text_IO;
 with AML_Decode; use AML_Decode;
@@ -44,8 +45,8 @@ procedure Condref_Tests is
    begin
       Reset (A, OK); Check (OK);
       Load (A, Prefix & Method_Data ([84,69,83,84], Code), W, L); Check (L = Loaded);
-      Bind_Table_Region (A, Root, "REG0", (1,1), Node, Bound_Status); Check (Bound_Status = Bound and Node = 7);
-      Bind_Table_Field (A, Root, "FLD0", ((1,1),0,8), Node, Bound_Status); Check (Bound_Status = Bound and Node = 8);
+      Bind_Table_Region (A, Root, "REG0", ((AML_Table_Sources.Boot_Source, 1), 1), Node, Bound_Status); Check (Bound_Status = Bound and Node = 7);
+      Bind_Table_Field (A, Root, "FLD0", (((AML_Table_Sources.Boot_Source, 1), 1),0,8), Node, Bound_Status); Check (Bound_Status = Bound and Node = 8);
       Load (A, Bytes'(1=>16#08#) & Pkg & Bytes'(16#12#,5,3,0,0,0), W, L); Check(L=Loaded);
    end Prepare;
    procedure Run (Code : Bytes; W : Integer_Width; Expected : Execution_Status;

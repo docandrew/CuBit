@@ -115,7 +115,7 @@ procedure Field_Event_Combined_Tests is
 begin
    for Revision in Unsigned_8 range 1 .. 2 loop
       declare
-         Service : aliased C.State (1, 4096, 4096);
+         Service : aliased C.State (1, 4096, 4096, 1);
          Run : Init.Session;
          Accepted : Boolean;
          Parent, Status_Field, Wide_Field, Event_Item, Poll_Item, Counter : C.Node_Descriptor;

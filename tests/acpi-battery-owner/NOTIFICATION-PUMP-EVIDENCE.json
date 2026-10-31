@@ -1,0 +1,82 @@
+{
+  "scope": "Bounded serialized owner notification pump,using existing guarded local fanout on claim and ACK; partial fanout or ACK fanout failure retains the same receipt for idempotent retry; no AML execution in the pump",
+  "suites": {
+    "acpi-ec-owner": {
+      "directory": "/home/doc/cubit-build-tmp/acpi-ec-owner-qR4Rl1",
+      "checks_per_profile": 262,
+      "commands": 14,
+      "counts": {
+        "checked": {
+          "1": {
+            "normal": 114,
+            "hardware": 17
+          },
+          "2": {
+            "normal": 114,
+            "hardware": 17
+          }
+        },
+        "release": {
+          "1": {
+            "normal": 114,
+            "hardware": 17
+          },
+          "2": {
+            "normal": 114,
+            "hardware": 17
+          }
+        }
+      }
+    },
+    "acpi-battery-owner": {
+      "directory": "/home/doc/cubit-build-tmp/acpi-battery-owner-Yfwa0u",
+      "checks_per_profile": 180,
+      "commands": 14,
+      "counts": {
+        "checked": {
+          "1": {
+            "normal": 73,
+            "hardware": 17
+          },
+          "2": {
+            "normal": 73,
+            "hardware": 17
+          }
+        },
+        "release": {
+          "1": {
+            "normal": 73,
+            "hardware": 17
+          },
+          "2": {
+            "normal": 73,
+            "hardware": 17
+          }
+        }
+      }
+    },
+    "acpi-native-entry": {
+      "checked": {
+        "directory": "/home/doc/git/.acpi-proof-work/notification-pump-work/candidate/tests/acpi-native-entry/results/checked-SecYGjNb",
+        "selections": 30,
+        "alis": 29,
+        "objects": 0
+      },
+      "release": {
+        "directory": "/home/doc/git/.acpi-proof-work/notification-pump-work/candidate/tests/acpi-native-entry/results/release-J8SF6Tlk",
+        "selections": 30,
+        "alis": 29,
+        "objects": 0
+      }
+    }
+  },
+  "initial_run": "EC initial normal114 functional checks passed,but stale exact count94 caused the runner to refuse completion; catalog corrected to114/17 and full run passed",
+  "startup_inventory": "230 files,metadata refresh only; no new startup runtime pass",
+  "new_proof": false,
+  "new_acpica_interpreter_run": false,
+  "acpica": "Existing EC/battery fixtures compiled by normal iASL; no interpreter semantic changes or new equivalence claim",
+  "native_executed": false,
+  "hardware_validated": false,
+  "all_own_jobs_terminal": true,
+  "goal": "active and incomplete"
+}

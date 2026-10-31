@@ -1,0 +1,4609 @@
+{
+  "schema": 1,
+  "reference": {
+    "commit": "232ff3f8ae1a4da11c709f61d9154482cfe8e6df",
+    "archive_sha256": "91addf34cf6f00c310dcff1d456c2e04629c2b45efe409385068e9fc5e9fe43b",
+    "files": {
+      "source/include/amlcode.h": {
+        "file": "reference/amlcode.h",
+        "sha256": "27974af36d0bcd62d562b8d4701f9e7251464484bea4587b6df3edcec80ae05a"
+      },
+      "source/components/parser/psopcode.c": {
+        "file": "reference/psopcode.c",
+        "sha256": "551f3fb3539c8ad271d022dc40738fd2afeadfda5c2ef8081128dc21902744d4"
+      },
+      "source/components/parser/psopinfo.c": {
+        "file": "reference/psopinfo.c",
+        "sha256": "0e076ef1f1ec8e2465b656fda0714debf70518dbd277a632333a2dcb49c60678"
+      }
+    },
+    "scope": "Pinned ACPICA interpreter dispatch inventory; ACPI normative grammar audit remains separate"
+  },
+  "scope": "Encoded instructions in pinned ACPICA dispatch/header intersection; not semantic coverage or a normative ACPI completeness claim",
+  "counts": {
+    "opcode_info_entries": 131,
+    "short_dispatch_entries": 256,
+    "extended_dispatch_entries": 137,
+    "instructions": 113,
+    "short_instructions": 84,
+    "extended_instructions": 29,
+    "parser_internal_dispatches": 14,
+    "tooling_dispatches": 1,
+    "field_list_subencodings": 4,
+    "compound_encodings": 3,
+    "obsolete_not_dispatched": 2
+  },
+  "instructions": [
+    {
+      "encoding": 0,
+      "hex": "0x00",
+      "table": "short",
+      "index": 0,
+      "name": "Zero",
+      "classification": "instruction",
+      "symbols": [
+        "AML_ZERO_OP",
+        "AML_FIELD_OFFSET_OP"
+      ],
+      "info": {
+        "name": "Zero",
+        "argument_schema": "ARGP_ZERO_OP",
+        "runtime_schema": "ARGI_ZERO_OP",
+        "object_type": "ACPI_TYPE_INTEGER",
+        "class": "AML_CLASS_ARGUMENT",
+        "type": "AML_TYPE_CONSTANT",
+        "flags": "AML_CONSTANT"
+      },
+      "coverage_family": "A01",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 1,
+      "hex": "0x01",
+      "table": "short",
+      "index": 1,
+      "name": "One",
+      "classification": "instruction",
+      "symbols": [
+        "AML_ONE_OP",
+        "AML_FIELD_ACCESS_OP"
+      ],
+      "info": {
+        "name": "One",
+        "argument_schema": "ARGP_ONE_OP",
+        "runtime_schema": "ARGI_ONE_OP",
+        "object_type": "ACPI_TYPE_INTEGER",
+        "class": "AML_CLASS_ARGUMENT",
+        "type": "AML_TYPE_CONSTANT",
+        "flags": "AML_CONSTANT"
+      },
+      "coverage_family": "A01",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 6,
+      "hex": "0x06",
+      "table": "short",
+      "index": 2,
+      "name": "Alias",
+      "classification": "instruction",
+      "symbols": [
+        "AML_ALIAS_OP"
+      ],
+      "info": {
+        "name": "Alias",
+        "argument_schema": "ARGP_ALIAS_OP",
+        "runtime_schema": "ARGI_ALIAS_OP",
+        "object_type": "ACPI_TYPE_LOCAL_ALIAS",
+        "class": "AML_CLASS_NAMED_OBJECT",
+        "type": "AML_TYPE_NAMED_SIMPLE",
+        "flags": "AML_HAS_ARGS | AML_NSOBJECT | AML_NSOPCODE | AML_NSNODE | AML_NAMED"
+      },
+      "coverage_family": "A02",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 8,
+      "hex": "0x08",
+      "table": "short",
+      "index": 3,
+      "name": "Name",
+      "classification": "instruction",
+      "symbols": [
+        "AML_NAME_OP"
+      ],
+      "info": {
+        "name": "Name",
+        "argument_schema": "ARGP_NAME_OP",
+        "runtime_schema": "ARGI_NAME_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_NAMED_OBJECT",
+        "type": "AML_TYPE_NAMED_COMPLEX",
+        "flags": "AML_HAS_ARGS | AML_NSOBJECT | AML_NSOPCODE | AML_NSNODE | AML_NAMED"
+      },
+      "coverage_family": "A02",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 10,
+      "hex": "0x0A",
+      "table": "short",
+      "index": 4,
+      "name": "ByteConst",
+      "classification": "instruction",
+      "symbols": [
+        "AML_BYTE_OP"
+      ],
+      "info": {
+        "name": "ByteConst",
+        "argument_schema": "ARGP_BYTE_OP",
+        "runtime_schema": "ARGI_BYTE_OP",
+        "object_type": "ACPI_TYPE_INTEGER",
+        "class": "AML_CLASS_ARGUMENT",
+        "type": "AML_TYPE_LITERAL",
+        "flags": "AML_CONSTANT"
+      },
+      "coverage_family": "A01",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 11,
+      "hex": "0x0B",
+      "table": "short",
+      "index": 5,
+      "name": "WordConst",
+      "classification": "instruction",
+      "symbols": [
+        "AML_WORD_OP"
+      ],
+      "info": {
+        "name": "WordConst",
+        "argument_schema": "ARGP_WORD_OP",
+        "runtime_schema": "ARGI_WORD_OP",
+        "object_type": "ACPI_TYPE_INTEGER",
+        "class": "AML_CLASS_ARGUMENT",
+        "type": "AML_TYPE_LITERAL",
+        "flags": "AML_CONSTANT"
+      },
+      "coverage_family": "A01",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 12,
+      "hex": "0x0C",
+      "table": "short",
+      "index": 6,
+      "name": "DwordConst",
+      "classification": "instruction",
+      "symbols": [
+        "AML_DWORD_OP"
+      ],
+      "info": {
+        "name": "DwordConst",
+        "argument_schema": "ARGP_DWORD_OP",
+        "runtime_schema": "ARGI_DWORD_OP",
+        "object_type": "ACPI_TYPE_INTEGER",
+        "class": "AML_CLASS_ARGUMENT",
+        "type": "AML_TYPE_LITERAL",
+        "flags": "AML_CONSTANT"
+      },
+      "coverage_family": "A01",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 13,
+      "hex": "0x0D",
+      "table": "short",
+      "index": 7,
+      "name": "String",
+      "classification": "instruction",
+      "symbols": [
+        "AML_STRING_OP"
+      ],
+      "info": {
+        "name": "String",
+        "argument_schema": "ARGP_STRING_OP",
+        "runtime_schema": "ARGI_STRING_OP",
+        "object_type": "ACPI_TYPE_STRING",
+        "class": "AML_CLASS_ARGUMENT",
+        "type": "AML_TYPE_LITERAL",
+        "flags": "AML_CONSTANT"
+      },
+      "coverage_family": "A01",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 14,
+      "hex": "0x0E",
+      "table": "short",
+      "index": 110,
+      "name": "QwordConst",
+      "classification": "instruction",
+      "symbols": [
+        "AML_QWORD_OP"
+      ],
+      "info": {
+        "name": "QwordConst",
+        "argument_schema": "ARGP_QWORD_OP",
+        "runtime_schema": "ARGI_QWORD_OP",
+        "object_type": "ACPI_TYPE_INTEGER",
+        "class": "AML_CLASS_ARGUMENT",
+        "type": "AML_TYPE_LITERAL",
+        "flags": "AML_CONSTANT"
+      },
+      "coverage_family": "A01",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 16,
+      "hex": "0x10",
+      "table": "short",
+      "index": 8,
+      "name": "Scope",
+      "classification": "instruction",
+      "symbols": [
+        "AML_SCOPE_OP"
+      ],
+      "info": {
+        "name": "Scope",
+        "argument_schema": "ARGP_SCOPE_OP",
+        "runtime_schema": "ARGI_SCOPE_OP",
+        "object_type": "ACPI_TYPE_LOCAL_SCOPE",
+        "class": "AML_CLASS_NAMED_OBJECT",
+        "type": "AML_TYPE_NAMED_NO_OBJ",
+        "flags": "AML_HAS_ARGS | AML_NSOBJECT | AML_NSOPCODE | AML_NSNODE | AML_NAMED"
+      },
+      "coverage_family": "A02",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 17,
+      "hex": "0x11",
+      "table": "short",
+      "index": 9,
+      "name": "Buffer",
+      "classification": "instruction",
+      "symbols": [
+        "AML_BUFFER_OP"
+      ],
+      "info": {
+        "name": "Buffer",
+        "argument_schema": "ARGP_BUFFER_OP",
+        "runtime_schema": "ARGI_BUFFER_OP",
+        "object_type": "ACPI_TYPE_BUFFER",
+        "class": "AML_CLASS_CREATE",
+        "type": "AML_TYPE_CREATE_OBJECT",
+        "flags": "AML_HAS_ARGS | AML_DEFER | AML_CONSTANT"
+      },
+      "coverage_family": "A13",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 18,
+      "hex": "0x12",
+      "table": "short",
+      "index": 10,
+      "name": "Package",
+      "classification": "instruction",
+      "symbols": [
+        "AML_PACKAGE_OP"
+      ],
+      "info": {
+        "name": "Package",
+        "argument_schema": "ARGP_PACKAGE_OP",
+        "runtime_schema": "ARGI_PACKAGE_OP",
+        "object_type": "ACPI_TYPE_PACKAGE",
+        "class": "AML_CLASS_CREATE",
+        "type": "AML_TYPE_CREATE_OBJECT",
+        "flags": "AML_HAS_ARGS | AML_DEFER | AML_CONSTANT"
+      },
+      "coverage_family": "A13",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 19,
+      "hex": "0x13",
+      "table": "short",
+      "index": 111,
+      "name": "Package",
+      "classification": "instruction",
+      "symbols": [
+        "AML_VARIABLE_PACKAGE_OP"
+      ],
+      "info": {
+        "name": "Package",
+        "argument_schema": "/* Var */  ARGP_VAR_PACKAGE_OP",
+        "runtime_schema": "ARGI_VAR_PACKAGE_OP",
+        "object_type": "ACPI_TYPE_PACKAGE",
+        "class": "AML_CLASS_CREATE",
+        "type": "AML_TYPE_CREATE_OBJECT",
+        "flags": "AML_HAS_ARGS | AML_DEFER"
+      },
+      "coverage_family": "A13",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 20,
+      "hex": "0x14",
+      "table": "short",
+      "index": 11,
+      "name": "Method",
+      "classification": "instruction",
+      "symbols": [
+        "AML_METHOD_OP"
+      ],
+      "info": {
+        "name": "Method",
+        "argument_schema": "ARGP_METHOD_OP",
+        "runtime_schema": "ARGI_METHOD_OP",
+        "object_type": "ACPI_TYPE_METHOD",
+        "class": "AML_CLASS_NAMED_OBJECT",
+        "type": "AML_TYPE_NAMED_COMPLEX",
+        "flags": "AML_HAS_ARGS | AML_NSOBJECT | AML_NSOPCODE | AML_NSNODE | AML_NAMED | AML_DEFER"
+      },
+      "coverage_family": "A05",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 21,
+      "hex": "0x15",
+      "table": "short",
+      "index": 129,
+      "name": "External",
+      "classification": "instruction",
+      "symbols": [
+        "AML_EXTERNAL_OP"
+      ],
+      "info": {
+        "name": "External",
+        "argument_schema": "ARGP_EXTERNAL_OP",
+        "runtime_schema": "ARGI_EXTERNAL_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_NAMED_OBJECT",
+        "type": "AML_TYPE_NAMED_SIMPLE",
+        "flags": "AML_HAS_ARGS | AML_NSOBJECT | AML_NSOPCODE | AML_NSNODE | AML_NAMED"
+      },
+      "coverage_family": "A02",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 96,
+      "hex": "0x60",
+      "table": "short",
+      "index": 12,
+      "name": "Local0",
+      "classification": "instruction",
+      "symbols": [
+        "AML_FIRST_LOCAL_OP",
+        "AML_LOCAL0"
+      ],
+      "info": {
+        "name": "Local0",
+        "argument_schema": "ARGP_LOCAL0",
+        "runtime_schema": "ARGI_LOCAL0",
+        "object_type": "ACPI_TYPE_LOCAL_REFERENCE",
+        "class": "AML_CLASS_ARGUMENT",
+        "type": "AML_TYPE_LOCAL_VARIABLE",
+        "flags": "0"
+      },
+      "coverage_family": "A05",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 97,
+      "hex": "0x61",
+      "table": "short",
+      "index": 13,
+      "name": "Local1",
+      "classification": "instruction",
+      "symbols": [
+        "AML_LOCAL1"
+      ],
+      "info": {
+        "name": "Local1",
+        "argument_schema": "ARGP_LOCAL1",
+        "runtime_schema": "ARGI_LOCAL1",
+        "object_type": "ACPI_TYPE_LOCAL_REFERENCE",
+        "class": "AML_CLASS_ARGUMENT",
+        "type": "AML_TYPE_LOCAL_VARIABLE",
+        "flags": "0"
+      },
+      "coverage_family": "A05",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 98,
+      "hex": "0x62",
+      "table": "short",
+      "index": 14,
+      "name": "Local2",
+      "classification": "instruction",
+      "symbols": [
+        "AML_LOCAL2"
+      ],
+      "info": {
+        "name": "Local2",
+        "argument_schema": "ARGP_LOCAL2",
+        "runtime_schema": "ARGI_LOCAL2",
+        "object_type": "ACPI_TYPE_LOCAL_REFERENCE",
+        "class": "AML_CLASS_ARGUMENT",
+        "type": "AML_TYPE_LOCAL_VARIABLE",
+        "flags": "0"
+      },
+      "coverage_family": "A05",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 99,
+      "hex": "0x63",
+      "table": "short",
+      "index": 15,
+      "name": "Local3",
+      "classification": "instruction",
+      "symbols": [
+        "AML_LOCAL3"
+      ],
+      "info": {
+        "name": "Local3",
+        "argument_schema": "ARGP_LOCAL3",
+        "runtime_schema": "ARGI_LOCAL3",
+        "object_type": "ACPI_TYPE_LOCAL_REFERENCE",
+        "class": "AML_CLASS_ARGUMENT",
+        "type": "AML_TYPE_LOCAL_VARIABLE",
+        "flags": "0"
+      },
+      "coverage_family": "A05",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 100,
+      "hex": "0x64",
+      "table": "short",
+      "index": 16,
+      "name": "Local4",
+      "classification": "instruction",
+      "symbols": [
+        "AML_LOCAL4"
+      ],
+      "info": {
+        "name": "Local4",
+        "argument_schema": "ARGP_LOCAL4",
+        "runtime_schema": "ARGI_LOCAL4",
+        "object_type": "ACPI_TYPE_LOCAL_REFERENCE",
+        "class": "AML_CLASS_ARGUMENT",
+        "type": "AML_TYPE_LOCAL_VARIABLE",
+        "flags": "0"
+      },
+      "coverage_family": "A05",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 101,
+      "hex": "0x65",
+      "table": "short",
+      "index": 17,
+      "name": "Local5",
+      "classification": "instruction",
+      "symbols": [
+        "AML_LOCAL5"
+      ],
+      "info": {
+        "name": "Local5",
+        "argument_schema": "ARGP_LOCAL5",
+        "runtime_schema": "ARGI_LOCAL5",
+        "object_type": "ACPI_TYPE_LOCAL_REFERENCE",
+        "class": "AML_CLASS_ARGUMENT",
+        "type": "AML_TYPE_LOCAL_VARIABLE",
+        "flags": "0"
+      },
+      "coverage_family": "A05",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 102,
+      "hex": "0x66",
+      "table": "short",
+      "index": 18,
+      "name": "Local6",
+      "classification": "instruction",
+      "symbols": [
+        "AML_LOCAL6"
+      ],
+      "info": {
+        "name": "Local6",
+        "argument_schema": "ARGP_LOCAL6",
+        "runtime_schema": "ARGI_LOCAL6",
+        "object_type": "ACPI_TYPE_LOCAL_REFERENCE",
+        "class": "AML_CLASS_ARGUMENT",
+        "type": "AML_TYPE_LOCAL_VARIABLE",
+        "flags": "0"
+      },
+      "coverage_family": "A05",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 103,
+      "hex": "0x67",
+      "table": "short",
+      "index": 19,
+      "name": "Local7",
+      "classification": "instruction",
+      "symbols": [
+        "AML_LOCAL7"
+      ],
+      "info": {
+        "name": "Local7",
+        "argument_schema": "ARGP_LOCAL7",
+        "runtime_schema": "ARGI_LOCAL7",
+        "object_type": "ACPI_TYPE_LOCAL_REFERENCE",
+        "class": "AML_CLASS_ARGUMENT",
+        "type": "AML_TYPE_LOCAL_VARIABLE",
+        "flags": "0"
+      },
+      "coverage_family": "A05",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 104,
+      "hex": "0x68",
+      "table": "short",
+      "index": 20,
+      "name": "Arg0",
+      "classification": "instruction",
+      "symbols": [
+        "AML_FIRST_ARG_OP",
+        "AML_ARG0"
+      ],
+      "info": {
+        "name": "Arg0",
+        "argument_schema": "ARGP_ARG0",
+        "runtime_schema": "ARGI_ARG0",
+        "object_type": "ACPI_TYPE_LOCAL_REFERENCE",
+        "class": "AML_CLASS_ARGUMENT",
+        "type": "AML_TYPE_METHOD_ARGUMENT",
+        "flags": "0"
+      },
+      "coverage_family": "A05",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 105,
+      "hex": "0x69",
+      "table": "short",
+      "index": 21,
+      "name": "Arg1",
+      "classification": "instruction",
+      "symbols": [
+        "AML_ARG1"
+      ],
+      "info": {
+        "name": "Arg1",
+        "argument_schema": "ARGP_ARG1",
+        "runtime_schema": "ARGI_ARG1",
+        "object_type": "ACPI_TYPE_LOCAL_REFERENCE",
+        "class": "AML_CLASS_ARGUMENT",
+        "type": "AML_TYPE_METHOD_ARGUMENT",
+        "flags": "0"
+      },
+      "coverage_family": "A05",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 106,
+      "hex": "0x6A",
+      "table": "short",
+      "index": 22,
+      "name": "Arg2",
+      "classification": "instruction",
+      "symbols": [
+        "AML_ARG2"
+      ],
+      "info": {
+        "name": "Arg2",
+        "argument_schema": "ARGP_ARG2",
+        "runtime_schema": "ARGI_ARG2",
+        "object_type": "ACPI_TYPE_LOCAL_REFERENCE",
+        "class": "AML_CLASS_ARGUMENT",
+        "type": "AML_TYPE_METHOD_ARGUMENT",
+        "flags": "0"
+      },
+      "coverage_family": "A05",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 107,
+      "hex": "0x6B",
+      "table": "short",
+      "index": 23,
+      "name": "Arg3",
+      "classification": "instruction",
+      "symbols": [
+        "AML_ARG3"
+      ],
+      "info": {
+        "name": "Arg3",
+        "argument_schema": "ARGP_ARG3",
+        "runtime_schema": "ARGI_ARG3",
+        "object_type": "ACPI_TYPE_LOCAL_REFERENCE",
+        "class": "AML_CLASS_ARGUMENT",
+        "type": "AML_TYPE_METHOD_ARGUMENT",
+        "flags": "0"
+      },
+      "coverage_family": "A05",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 108,
+      "hex": "0x6C",
+      "table": "short",
+      "index": 24,
+      "name": "Arg4",
+      "classification": "instruction",
+      "symbols": [
+        "AML_ARG4"
+      ],
+      "info": {
+        "name": "Arg4",
+        "argument_schema": "ARGP_ARG4",
+        "runtime_schema": "ARGI_ARG4",
+        "object_type": "ACPI_TYPE_LOCAL_REFERENCE",
+        "class": "AML_CLASS_ARGUMENT",
+        "type": "AML_TYPE_METHOD_ARGUMENT",
+        "flags": "0"
+      },
+      "coverage_family": "A05",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 109,
+      "hex": "0x6D",
+      "table": "short",
+      "index": 25,
+      "name": "Arg5",
+      "classification": "instruction",
+      "symbols": [
+        "AML_ARG5"
+      ],
+      "info": {
+        "name": "Arg5",
+        "argument_schema": "ARGP_ARG5",
+        "runtime_schema": "ARGI_ARG5",
+        "object_type": "ACPI_TYPE_LOCAL_REFERENCE",
+        "class": "AML_CLASS_ARGUMENT",
+        "type": "AML_TYPE_METHOD_ARGUMENT",
+        "flags": "0"
+      },
+      "coverage_family": "A05",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 110,
+      "hex": "0x6E",
+      "table": "short",
+      "index": 26,
+      "name": "Arg6",
+      "classification": "instruction",
+      "symbols": [
+        "AML_ARG6"
+      ],
+      "info": {
+        "name": "Arg6",
+        "argument_schema": "ARGP_ARG6",
+        "runtime_schema": "ARGI_ARG6",
+        "object_type": "ACPI_TYPE_LOCAL_REFERENCE",
+        "class": "AML_CLASS_ARGUMENT",
+        "type": "AML_TYPE_METHOD_ARGUMENT",
+        "flags": "0"
+      },
+      "coverage_family": "A05",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 112,
+      "hex": "0x70",
+      "table": "short",
+      "index": 27,
+      "name": "Store",
+      "classification": "instruction",
+      "symbols": [
+        "AML_STORE_OP"
+      ],
+      "info": {
+        "name": "Store",
+        "argument_schema": "ARGP_STORE_OP",
+        "runtime_schema": "ARGI_STORE_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_EXECUTE",
+        "type": "AML_TYPE_EXEC_1A_1T_1R",
+        "flags": "AML_FLAGS_EXEC_1A_1T_1R"
+      },
+      "coverage_family": "A06",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 113,
+      "hex": "0x71",
+      "table": "short",
+      "index": 28,
+      "name": "RefOf",
+      "classification": "instruction",
+      "symbols": [
+        "AML_REF_OF_OP"
+      ],
+      "info": {
+        "name": "RefOf",
+        "argument_schema": "ARGP_REF_OF_OP",
+        "runtime_schema": "ARGI_REF_OF_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_EXECUTE",
+        "type": "AML_TYPE_EXEC_1A_0T_1R",
+        "flags": "AML_FLAGS_EXEC_1A_0T_1R"
+      },
+      "coverage_family": "A07",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 114,
+      "hex": "0x72",
+      "table": "short",
+      "index": 29,
+      "name": "Add",
+      "classification": "instruction",
+      "symbols": [
+        "AML_ADD_OP"
+      ],
+      "info": {
+        "name": "Add",
+        "argument_schema": "ARGP_ADD_OP",
+        "runtime_schema": "ARGI_ADD_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_EXECUTE",
+        "type": "AML_TYPE_EXEC_2A_1T_1R",
+        "flags": "AML_FLAGS_EXEC_2A_1T_1R | AML_MATH | AML_CONSTANT"
+      },
+      "coverage_family": "A03",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 115,
+      "hex": "0x73",
+      "table": "short",
+      "index": 30,
+      "name": "Concatenate",
+      "classification": "instruction",
+      "symbols": [
+        "AML_CONCATENATE_OP"
+      ],
+      "info": {
+        "name": "Concatenate",
+        "argument_schema": "ARGP_CONCAT_OP",
+        "runtime_schema": "ARGI_CONCAT_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_EXECUTE",
+        "type": "AML_TYPE_EXEC_2A_1T_1R",
+        "flags": "AML_FLAGS_EXEC_2A_1T_1R | AML_CONSTANT"
+      },
+      "coverage_family": "A14",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 116,
+      "hex": "0x74",
+      "table": "short",
+      "index": 31,
+      "name": "Subtract",
+      "classification": "instruction",
+      "symbols": [
+        "AML_SUBTRACT_OP"
+      ],
+      "info": {
+        "name": "Subtract",
+        "argument_schema": "ARGP_SUBTRACT_OP",
+        "runtime_schema": "ARGI_SUBTRACT_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_EXECUTE",
+        "type": "AML_TYPE_EXEC_2A_1T_1R",
+        "flags": "AML_FLAGS_EXEC_2A_1T_1R | AML_MATH | AML_CONSTANT"
+      },
+      "coverage_family": "A03",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 117,
+      "hex": "0x75",
+      "table": "short",
+      "index": 32,
+      "name": "Increment",
+      "classification": "instruction",
+      "symbols": [
+        "AML_INCREMENT_OP"
+      ],
+      "info": {
+        "name": "Increment",
+        "argument_schema": "ARGP_INCREMENT_OP",
+        "runtime_schema": "ARGI_INCREMENT_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_EXECUTE",
+        "type": "AML_TYPE_EXEC_1A_0T_1R",
+        "flags": "AML_FLAGS_EXEC_1A_0T_1R | AML_CONSTANT"
+      },
+      "coverage_family": "A03",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 118,
+      "hex": "0x76",
+      "table": "short",
+      "index": 33,
+      "name": "Decrement",
+      "classification": "instruction",
+      "symbols": [
+        "AML_DECREMENT_OP"
+      ],
+      "info": {
+        "name": "Decrement",
+        "argument_schema": "ARGP_DECREMENT_OP",
+        "runtime_schema": "ARGI_DECREMENT_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_EXECUTE",
+        "type": "AML_TYPE_EXEC_1A_0T_1R",
+        "flags": "AML_FLAGS_EXEC_1A_0T_1R | AML_CONSTANT"
+      },
+      "coverage_family": "A03",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 119,
+      "hex": "0x77",
+      "table": "short",
+      "index": 34,
+      "name": "Multiply",
+      "classification": "instruction",
+      "symbols": [
+        "AML_MULTIPLY_OP"
+      ],
+      "info": {
+        "name": "Multiply",
+        "argument_schema": "ARGP_MULTIPLY_OP",
+        "runtime_schema": "ARGI_MULTIPLY_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_EXECUTE",
+        "type": "AML_TYPE_EXEC_2A_1T_1R",
+        "flags": "AML_FLAGS_EXEC_2A_1T_1R | AML_MATH | AML_CONSTANT"
+      },
+      "coverage_family": "A03",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 120,
+      "hex": "0x78",
+      "table": "short",
+      "index": 35,
+      "name": "Divide",
+      "classification": "instruction",
+      "symbols": [
+        "AML_DIVIDE_OP"
+      ],
+      "info": {
+        "name": "Divide",
+        "argument_schema": "ARGP_DIVIDE_OP",
+        "runtime_schema": "ARGI_DIVIDE_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_EXECUTE",
+        "type": "AML_TYPE_EXEC_2A_2T_1R",
+        "flags": "AML_FLAGS_EXEC_2A_2T_1R | AML_CONSTANT"
+      },
+      "coverage_family": "A03",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 121,
+      "hex": "0x79",
+      "table": "short",
+      "index": 36,
+      "name": "ShiftLeft",
+      "classification": "instruction",
+      "symbols": [
+        "AML_SHIFT_LEFT_OP"
+      ],
+      "info": {
+        "name": "ShiftLeft",
+        "argument_schema": "ARGP_SHIFT_LEFT_OP",
+        "runtime_schema": "ARGI_SHIFT_LEFT_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_EXECUTE",
+        "type": "AML_TYPE_EXEC_2A_1T_1R",
+        "flags": "AML_FLAGS_EXEC_2A_1T_1R | AML_MATH | AML_CONSTANT"
+      },
+      "coverage_family": "A03",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 122,
+      "hex": "0x7A",
+      "table": "short",
+      "index": 37,
+      "name": "ShiftRight",
+      "classification": "instruction",
+      "symbols": [
+        "AML_SHIFT_RIGHT_OP"
+      ],
+      "info": {
+        "name": "ShiftRight",
+        "argument_schema": "ARGP_SHIFT_RIGHT_OP",
+        "runtime_schema": "ARGI_SHIFT_RIGHT_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_EXECUTE",
+        "type": "AML_TYPE_EXEC_2A_1T_1R",
+        "flags": "AML_FLAGS_EXEC_2A_1T_1R | AML_MATH | AML_CONSTANT"
+      },
+      "coverage_family": "A03",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 123,
+      "hex": "0x7B",
+      "table": "short",
+      "index": 38,
+      "name": "And",
+      "classification": "instruction",
+      "symbols": [
+        "AML_BIT_AND_OP"
+      ],
+      "info": {
+        "name": "And",
+        "argument_schema": "ARGP_BIT_AND_OP",
+        "runtime_schema": "ARGI_BIT_AND_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_EXECUTE",
+        "type": "AML_TYPE_EXEC_2A_1T_1R",
+        "flags": "AML_FLAGS_EXEC_2A_1T_1R | AML_MATH | AML_CONSTANT"
+      },
+      "coverage_family": "A03",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 124,
+      "hex": "0x7C",
+      "table": "short",
+      "index": 39,
+      "name": "NAnd",
+      "classification": "instruction",
+      "symbols": [
+        "AML_BIT_NAND_OP"
+      ],
+      "info": {
+        "name": "NAnd",
+        "argument_schema": "ARGP_BIT_NAND_OP",
+        "runtime_schema": "ARGI_BIT_NAND_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_EXECUTE",
+        "type": "AML_TYPE_EXEC_2A_1T_1R",
+        "flags": "AML_FLAGS_EXEC_2A_1T_1R | AML_MATH | AML_CONSTANT"
+      },
+      "coverage_family": "A03",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 125,
+      "hex": "0x7D",
+      "table": "short",
+      "index": 40,
+      "name": "Or",
+      "classification": "instruction",
+      "symbols": [
+        "AML_BIT_OR_OP"
+      ],
+      "info": {
+        "name": "Or",
+        "argument_schema": "ARGP_BIT_OR_OP",
+        "runtime_schema": "ARGI_BIT_OR_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_EXECUTE",
+        "type": "AML_TYPE_EXEC_2A_1T_1R",
+        "flags": "AML_FLAGS_EXEC_2A_1T_1R | AML_MATH | AML_CONSTANT"
+      },
+      "coverage_family": "A03",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 126,
+      "hex": "0x7E",
+      "table": "short",
+      "index": 41,
+      "name": "NOr",
+      "classification": "instruction",
+      "symbols": [
+        "AML_BIT_NOR_OP"
+      ],
+      "info": {
+        "name": "NOr",
+        "argument_schema": "ARGP_BIT_NOR_OP",
+        "runtime_schema": "ARGI_BIT_NOR_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_EXECUTE",
+        "type": "AML_TYPE_EXEC_2A_1T_1R",
+        "flags": "AML_FLAGS_EXEC_2A_1T_1R | AML_MATH | AML_CONSTANT"
+      },
+      "coverage_family": "A03",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 127,
+      "hex": "0x7F",
+      "table": "short",
+      "index": 42,
+      "name": "XOr",
+      "classification": "instruction",
+      "symbols": [
+        "AML_BIT_XOR_OP"
+      ],
+      "info": {
+        "name": "XOr",
+        "argument_schema": "ARGP_BIT_XOR_OP",
+        "runtime_schema": "ARGI_BIT_XOR_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_EXECUTE",
+        "type": "AML_TYPE_EXEC_2A_1T_1R",
+        "flags": "AML_FLAGS_EXEC_2A_1T_1R | AML_MATH | AML_CONSTANT"
+      },
+      "coverage_family": "A03",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 128,
+      "hex": "0x80",
+      "table": "short",
+      "index": 43,
+      "name": "Not",
+      "classification": "instruction",
+      "symbols": [
+        "AML_BIT_NOT_OP"
+      ],
+      "info": {
+        "name": "Not",
+        "argument_schema": "ARGP_BIT_NOT_OP",
+        "runtime_schema": "ARGI_BIT_NOT_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_EXECUTE",
+        "type": "AML_TYPE_EXEC_1A_1T_1R",
+        "flags": "AML_FLAGS_EXEC_1A_1T_1R | AML_CONSTANT"
+      },
+      "coverage_family": "A03",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 129,
+      "hex": "0x81",
+      "table": "short",
+      "index": 44,
+      "name": "FindSetLeftBit",
+      "classification": "instruction",
+      "symbols": [
+        "AML_FIND_SET_LEFT_BIT_OP"
+      ],
+      "info": {
+        "name": "FindSetLeftBit",
+        "argument_schema": "ARGP_FIND_SET_LEFT_BIT_OP",
+        "runtime_schema": "ARGI_FIND_SET_LEFT_BIT_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_EXECUTE",
+        "type": "AML_TYPE_EXEC_1A_1T_1R",
+        "flags": "AML_FLAGS_EXEC_1A_1T_1R | AML_CONSTANT"
+      },
+      "coverage_family": "A03",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 130,
+      "hex": "0x82",
+      "table": "short",
+      "index": 45,
+      "name": "FindSetRightBit",
+      "classification": "instruction",
+      "symbols": [
+        "AML_FIND_SET_RIGHT_BIT_OP"
+      ],
+      "info": {
+        "name": "FindSetRightBit",
+        "argument_schema": "ARGP_FIND_SET_RIGHT_BIT_OP",
+        "runtime_schema": "ARGI_FIND_SET_RIGHT_BIT_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_EXECUTE",
+        "type": "AML_TYPE_EXEC_1A_1T_1R",
+        "flags": "AML_FLAGS_EXEC_1A_1T_1R | AML_CONSTANT"
+      },
+      "coverage_family": "A03",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 131,
+      "hex": "0x83",
+      "table": "short",
+      "index": 46,
+      "name": "DerefOf",
+      "classification": "instruction",
+      "symbols": [
+        "AML_DEREF_OF_OP"
+      ],
+      "info": {
+        "name": "DerefOf",
+        "argument_schema": "ARGP_DEREF_OF_OP",
+        "runtime_schema": "ARGI_DEREF_OF_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_EXECUTE",
+        "type": "AML_TYPE_EXEC_1A_0T_1R",
+        "flags": "AML_FLAGS_EXEC_1A_0T_1R"
+      },
+      "coverage_family": "A07",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 132,
+      "hex": "0x84",
+      "table": "short",
+      "index": 112,
+      "name": "ConcatenateResTemplate",
+      "classification": "instruction",
+      "symbols": [
+        "AML_CONCATENATE_TEMPLATE_OP"
+      ],
+      "info": {
+        "name": "ConcatenateResTemplate",
+        "argument_schema": "ARGP_CONCAT_RES_OP",
+        "runtime_schema": "ARGI_CONCAT_RES_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_EXECUTE",
+        "type": "AML_TYPE_EXEC_2A_1T_1R",
+        "flags": "AML_FLAGS_EXEC_2A_1T_1R | AML_CONSTANT"
+      },
+      "coverage_family": "A14",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 133,
+      "hex": "0x85",
+      "table": "short",
+      "index": 113,
+      "name": "Mod",
+      "classification": "instruction",
+      "symbols": [
+        "AML_MOD_OP"
+      ],
+      "info": {
+        "name": "Mod",
+        "argument_schema": "ARGP_MOD_OP",
+        "runtime_schema": "ARGI_MOD_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_EXECUTE",
+        "type": "AML_TYPE_EXEC_2A_1T_1R",
+        "flags": "AML_FLAGS_EXEC_2A_1T_1R | AML_CONSTANT"
+      },
+      "coverage_family": "A03",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 134,
+      "hex": "0x86",
+      "table": "short",
+      "index": 47,
+      "name": "Notify",
+      "classification": "instruction",
+      "symbols": [
+        "AML_NOTIFY_OP"
+      ],
+      "info": {
+        "name": "Notify",
+        "argument_schema": "ARGP_NOTIFY_OP",
+        "runtime_schema": "ARGI_NOTIFY_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_EXECUTE",
+        "type": "AML_TYPE_EXEC_2A_0T_0R",
+        "flags": "AML_FLAGS_EXEC_2A_0T_0R"
+      },
+      "coverage_family": "A20",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 135,
+      "hex": "0x87",
+      "table": "short",
+      "index": 48,
+      "name": "SizeOf",
+      "classification": "instruction",
+      "symbols": [
+        "AML_SIZE_OF_OP"
+      ],
+      "info": {
+        "name": "SizeOf",
+        "argument_schema": "ARGP_SIZE_OF_OP",
+        "runtime_schema": "ARGI_SIZE_OF_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_EXECUTE",
+        "type": "AML_TYPE_EXEC_1A_0T_1R",
+        "flags": "AML_FLAGS_EXEC_1A_0T_1R | AML_NO_OPERAND_RESOLVE"
+      },
+      "coverage_family": "A14",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 136,
+      "hex": "0x88",
+      "table": "short",
+      "index": 49,
+      "name": "Index",
+      "classification": "instruction",
+      "symbols": [
+        "AML_INDEX_OP"
+      ],
+      "info": {
+        "name": "Index",
+        "argument_schema": "ARGP_INDEX_OP",
+        "runtime_schema": "ARGI_INDEX_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_EXECUTE",
+        "type": "AML_TYPE_EXEC_2A_1T_1R",
+        "flags": "AML_FLAGS_EXEC_2A_1T_1R"
+      },
+      "coverage_family": "A07",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 137,
+      "hex": "0x89",
+      "table": "short",
+      "index": 50,
+      "name": "Match",
+      "classification": "instruction",
+      "symbols": [
+        "AML_MATCH_OP"
+      ],
+      "info": {
+        "name": "Match",
+        "argument_schema": "ARGP_MATCH_OP",
+        "runtime_schema": "ARGI_MATCH_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_EXECUTE",
+        "type": "AML_TYPE_EXEC_6A_0T_1R",
+        "flags": "AML_FLAGS_EXEC_6A_0T_1R | AML_CONSTANT"
+      },
+      "coverage_family": "A14",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 138,
+      "hex": "0x8A",
+      "table": "short",
+      "index": 51,
+      "name": "CreateDWordField",
+      "classification": "instruction",
+      "symbols": [
+        "AML_CREATE_DWORD_FIELD_OP"
+      ],
+      "info": {
+        "name": "CreateDWordField",
+        "argument_schema": "ARGP_CREATE_DWORD_FIELD_OP",
+        "runtime_schema": "ARGI_CREATE_DWORD_FIELD_OP",
+        "object_type": "ACPI_TYPE_BUFFER_FIELD",
+        "class": "AML_CLASS_CREATE",
+        "type": "AML_TYPE_CREATE_FIELD",
+        "flags": "AML_HAS_ARGS | AML_NSOBJECT | AML_NSNODE | AML_DEFER | AML_CREATE"
+      },
+      "coverage_family": "A12",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 139,
+      "hex": "0x8B",
+      "table": "short",
+      "index": 52,
+      "name": "CreateWordField",
+      "classification": "instruction",
+      "symbols": [
+        "AML_CREATE_WORD_FIELD_OP"
+      ],
+      "info": {
+        "name": "CreateWordField",
+        "argument_schema": "ARGP_CREATE_WORD_FIELD_OP",
+        "runtime_schema": "ARGI_CREATE_WORD_FIELD_OP",
+        "object_type": "ACPI_TYPE_BUFFER_FIELD",
+        "class": "AML_CLASS_CREATE",
+        "type": "AML_TYPE_CREATE_FIELD",
+        "flags": "AML_HAS_ARGS | AML_NSOBJECT | AML_NSNODE | AML_DEFER | AML_CREATE"
+      },
+      "coverage_family": "A12",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 140,
+      "hex": "0x8C",
+      "table": "short",
+      "index": 53,
+      "name": "CreateByteField",
+      "classification": "instruction",
+      "symbols": [
+        "AML_CREATE_BYTE_FIELD_OP"
+      ],
+      "info": {
+        "name": "CreateByteField",
+        "argument_schema": "ARGP_CREATE_BYTE_FIELD_OP",
+        "runtime_schema": "ARGI_CREATE_BYTE_FIELD_OP",
+        "object_type": "ACPI_TYPE_BUFFER_FIELD",
+        "class": "AML_CLASS_CREATE",
+        "type": "AML_TYPE_CREATE_FIELD",
+        "flags": "AML_HAS_ARGS | AML_NSOBJECT | AML_NSNODE | AML_DEFER | AML_CREATE"
+      },
+      "coverage_family": "A12",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 141,
+      "hex": "0x8D",
+      "table": "short",
+      "index": 54,
+      "name": "CreateBitField",
+      "classification": "instruction",
+      "symbols": [
+        "AML_CREATE_BIT_FIELD_OP"
+      ],
+      "info": {
+        "name": "CreateBitField",
+        "argument_schema": "ARGP_CREATE_BIT_FIELD_OP",
+        "runtime_schema": "ARGI_CREATE_BIT_FIELD_OP",
+        "object_type": "ACPI_TYPE_BUFFER_FIELD",
+        "class": "AML_CLASS_CREATE",
+        "type": "AML_TYPE_CREATE_FIELD",
+        "flags": "AML_HAS_ARGS | AML_NSOBJECT | AML_NSNODE | AML_DEFER | AML_CREATE"
+      },
+      "coverage_family": "A12",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 142,
+      "hex": "0x8E",
+      "table": "short",
+      "index": 55,
+      "name": "ObjectType",
+      "classification": "instruction",
+      "symbols": [
+        "AML_OBJECT_TYPE_OP"
+      ],
+      "info": {
+        "name": "ObjectType",
+        "argument_schema": "ARGP_OBJECT_TYPE_OP",
+        "runtime_schema": "ARGI_OBJECT_TYPE_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_EXECUTE",
+        "type": "AML_TYPE_EXEC_1A_0T_1R",
+        "flags": "AML_FLAGS_EXEC_1A_0T_1R | AML_NO_OPERAND_RESOLVE"
+      },
+      "coverage_family": "A14",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 143,
+      "hex": "0x8F",
+      "table": "short",
+      "index": 114,
+      "name": "CreateQWordField",
+      "classification": "instruction",
+      "symbols": [
+        "AML_CREATE_QWORD_FIELD_OP"
+      ],
+      "info": {
+        "name": "CreateQWordField",
+        "argument_schema": "ARGP_CREATE_QWORD_FIELD_OP",
+        "runtime_schema": "ARGI_CREATE_QWORD_FIELD_OP",
+        "object_type": "ACPI_TYPE_BUFFER_FIELD",
+        "class": "AML_CLASS_CREATE",
+        "type": "AML_TYPE_CREATE_FIELD",
+        "flags": "AML_HAS_ARGS | AML_NSOBJECT | AML_NSNODE | AML_DEFER | AML_CREATE"
+      },
+      "coverage_family": "A12",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 144,
+      "hex": "0x90",
+      "table": "short",
+      "index": 56,
+      "name": "LAnd",
+      "classification": "instruction",
+      "symbols": [
+        "AML_LOGICAL_AND_OP"
+      ],
+      "info": {
+        "name": "LAnd",
+        "argument_schema": "ARGP_LAND_OP",
+        "runtime_schema": "ARGI_LAND_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_EXECUTE",
+        "type": "AML_TYPE_EXEC_2A_0T_1R",
+        "flags": "AML_FLAGS_EXEC_2A_0T_1R | AML_LOGICAL_NUMERIC | AML_CONSTANT"
+      },
+      "coverage_family": "A03",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 145,
+      "hex": "0x91",
+      "table": "short",
+      "index": 57,
+      "name": "LOr",
+      "classification": "instruction",
+      "symbols": [
+        "AML_LOGICAL_OR_OP"
+      ],
+      "info": {
+        "name": "LOr",
+        "argument_schema": "ARGP_LOR_OP",
+        "runtime_schema": "ARGI_LOR_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_EXECUTE",
+        "type": "AML_TYPE_EXEC_2A_0T_1R",
+        "flags": "AML_FLAGS_EXEC_2A_0T_1R | AML_LOGICAL_NUMERIC | AML_CONSTANT"
+      },
+      "coverage_family": "A03",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 146,
+      "hex": "0x92",
+      "table": "short",
+      "index": 58,
+      "name": "LNot",
+      "classification": "instruction",
+      "symbols": [
+        "AML_LOGICAL_NOT_OP"
+      ],
+      "info": {
+        "name": "LNot",
+        "argument_schema": "ARGP_LNOT_OP",
+        "runtime_schema": "ARGI_LNOT_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_EXECUTE",
+        "type": "AML_TYPE_EXEC_1A_0T_1R",
+        "flags": "AML_FLAGS_EXEC_1A_0T_1R | AML_CONSTANT"
+      },
+      "coverage_family": "A03",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 147,
+      "hex": "0x93",
+      "table": "short",
+      "index": 59,
+      "name": "LEqual",
+      "classification": "instruction",
+      "symbols": [
+        "AML_LOGICAL_EQUAL_OP"
+      ],
+      "info": {
+        "name": "LEqual",
+        "argument_schema": "ARGP_LEQUAL_OP",
+        "runtime_schema": "ARGI_LEQUAL_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_EXECUTE",
+        "type": "AML_TYPE_EXEC_2A_0T_1R",
+        "flags": "AML_FLAGS_EXEC_2A_0T_1R | AML_LOGICAL | AML_CONSTANT"
+      },
+      "coverage_family": "A03",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 148,
+      "hex": "0x94",
+      "table": "short",
+      "index": 60,
+      "name": "LGreater",
+      "classification": "instruction",
+      "symbols": [
+        "AML_LOGICAL_GREATER_OP"
+      ],
+      "info": {
+        "name": "LGreater",
+        "argument_schema": "ARGP_LGREATER_OP",
+        "runtime_schema": "ARGI_LGREATER_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_EXECUTE",
+        "type": "AML_TYPE_EXEC_2A_0T_1R",
+        "flags": "AML_FLAGS_EXEC_2A_0T_1R | AML_LOGICAL | AML_CONSTANT"
+      },
+      "coverage_family": "A03",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 149,
+      "hex": "0x95",
+      "table": "short",
+      "index": 61,
+      "name": "LLess",
+      "classification": "instruction",
+      "symbols": [
+        "AML_LOGICAL_LESS_OP"
+      ],
+      "info": {
+        "name": "LLess",
+        "argument_schema": "ARGP_LLESS_OP",
+        "runtime_schema": "ARGI_LLESS_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_EXECUTE",
+        "type": "AML_TYPE_EXEC_2A_0T_1R",
+        "flags": "AML_FLAGS_EXEC_2A_0T_1R | AML_LOGICAL | AML_CONSTANT"
+      },
+      "coverage_family": "A03",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 150,
+      "hex": "0x96",
+      "table": "short",
+      "index": 115,
+      "name": "ToBuffer",
+      "classification": "instruction",
+      "symbols": [
+        "AML_TO_BUFFER_OP"
+      ],
+      "info": {
+        "name": "ToBuffer",
+        "argument_schema": "ARGP_TO_BUFFER_OP",
+        "runtime_schema": "ARGI_TO_BUFFER_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_EXECUTE",
+        "type": "AML_TYPE_EXEC_1A_1T_1R",
+        "flags": "AML_FLAGS_EXEC_1A_1T_1R | AML_CONSTANT"
+      },
+      "coverage_family": "A15",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 151,
+      "hex": "0x97",
+      "table": "short",
+      "index": 116,
+      "name": "ToDecimalString",
+      "classification": "instruction",
+      "symbols": [
+        "AML_TO_DECIMAL_STRING_OP"
+      ],
+      "info": {
+        "name": "ToDecimalString",
+        "argument_schema": "ARGP_TO_DEC_STR_OP",
+        "runtime_schema": "ARGI_TO_DEC_STR_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_EXECUTE",
+        "type": "AML_TYPE_EXEC_1A_1T_1R",
+        "flags": "AML_FLAGS_EXEC_1A_1T_1R | AML_CONSTANT"
+      },
+      "coverage_family": "A15",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 152,
+      "hex": "0x98",
+      "table": "short",
+      "index": 117,
+      "name": "ToHexString",
+      "classification": "instruction",
+      "symbols": [
+        "AML_TO_HEX_STRING_OP"
+      ],
+      "info": {
+        "name": "ToHexString",
+        "argument_schema": "ARGP_TO_HEX_STR_OP",
+        "runtime_schema": "ARGI_TO_HEX_STR_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_EXECUTE",
+        "type": "AML_TYPE_EXEC_1A_1T_1R",
+        "flags": "AML_FLAGS_EXEC_1A_1T_1R | AML_CONSTANT"
+      },
+      "coverage_family": "A15",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 153,
+      "hex": "0x99",
+      "table": "short",
+      "index": 118,
+      "name": "ToInteger",
+      "classification": "instruction",
+      "symbols": [
+        "AML_TO_INTEGER_OP"
+      ],
+      "info": {
+        "name": "ToInteger",
+        "argument_schema": "ARGP_TO_INTEGER_OP",
+        "runtime_schema": "ARGI_TO_INTEGER_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_EXECUTE",
+        "type": "AML_TYPE_EXEC_1A_1T_1R",
+        "flags": "AML_FLAGS_EXEC_1A_1T_1R | AML_CONSTANT"
+      },
+      "coverage_family": "A15",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 156,
+      "hex": "0x9C",
+      "table": "short",
+      "index": 119,
+      "name": "ToString",
+      "classification": "instruction",
+      "symbols": [
+        "AML_TO_STRING_OP"
+      ],
+      "info": {
+        "name": "ToString",
+        "argument_schema": "ARGP_TO_STRING_OP",
+        "runtime_schema": "ARGI_TO_STRING_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_EXECUTE",
+        "type": "AML_TYPE_EXEC_2A_1T_1R",
+        "flags": "AML_FLAGS_EXEC_2A_1T_1R | AML_CONSTANT"
+      },
+      "coverage_family": "A15",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 157,
+      "hex": "0x9D",
+      "table": "short",
+      "index": 120,
+      "name": "CopyObject",
+      "classification": "instruction",
+      "symbols": [
+        "AML_COPY_OBJECT_OP"
+      ],
+      "info": {
+        "name": "CopyObject",
+        "argument_schema": "ARGP_COPY_OP",
+        "runtime_schema": "ARGI_COPY_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_EXECUTE",
+        "type": "AML_TYPE_EXEC_1A_1T_1R",
+        "flags": "AML_FLAGS_EXEC_1A_1T_1R"
+      },
+      "coverage_family": "A06",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 158,
+      "hex": "0x9E",
+      "table": "short",
+      "index": 121,
+      "name": "Mid",
+      "classification": "instruction",
+      "symbols": [
+        "AML_MID_OP"
+      ],
+      "info": {
+        "name": "Mid",
+        "argument_schema": "ARGP_MID_OP",
+        "runtime_schema": "ARGI_MID_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_EXECUTE",
+        "type": "AML_TYPE_EXEC_3A_1T_1R",
+        "flags": "AML_FLAGS_EXEC_3A_1T_1R | AML_CONSTANT"
+      },
+      "coverage_family": "A14",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 159,
+      "hex": "0x9F",
+      "table": "short",
+      "index": 122,
+      "name": "Continue",
+      "classification": "instruction",
+      "symbols": [
+        "AML_CONTINUE_OP"
+      ],
+      "info": {
+        "name": "Continue",
+        "argument_schema": "ARGP_CONTINUE_OP",
+        "runtime_schema": "ARGI_CONTINUE_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_CONTROL",
+        "type": "AML_TYPE_CONTROL",
+        "flags": "0"
+      },
+      "coverage_family": "A04",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 160,
+      "hex": "0xA0",
+      "table": "short",
+      "index": 62,
+      "name": "If",
+      "classification": "instruction",
+      "symbols": [
+        "AML_IF_OP"
+      ],
+      "info": {
+        "name": "If",
+        "argument_schema": "ARGP_IF_OP",
+        "runtime_schema": "ARGI_IF_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_CONTROL",
+        "type": "AML_TYPE_CONTROL",
+        "flags": "AML_HAS_ARGS"
+      },
+      "coverage_family": "A04",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 161,
+      "hex": "0xA1",
+      "table": "short",
+      "index": 63,
+      "name": "Else",
+      "classification": "instruction",
+      "symbols": [
+        "AML_ELSE_OP"
+      ],
+      "info": {
+        "name": "Else",
+        "argument_schema": "ARGP_ELSE_OP",
+        "runtime_schema": "ARGI_ELSE_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_CONTROL",
+        "type": "AML_TYPE_CONTROL",
+        "flags": "AML_HAS_ARGS"
+      },
+      "coverage_family": "A04",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 162,
+      "hex": "0xA2",
+      "table": "short",
+      "index": 64,
+      "name": "While",
+      "classification": "instruction",
+      "symbols": [
+        "AML_WHILE_OP"
+      ],
+      "info": {
+        "name": "While",
+        "argument_schema": "ARGP_WHILE_OP",
+        "runtime_schema": "ARGI_WHILE_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_CONTROL",
+        "type": "AML_TYPE_CONTROL",
+        "flags": "AML_HAS_ARGS"
+      },
+      "coverage_family": "A04",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 163,
+      "hex": "0xA3",
+      "table": "short",
+      "index": 65,
+      "name": "Noop",
+      "classification": "instruction",
+      "symbols": [
+        "AML_NOOP_OP"
+      ],
+      "info": {
+        "name": "Noop",
+        "argument_schema": "ARGP_NOOP_OP",
+        "runtime_schema": "ARGI_NOOP_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_CONTROL",
+        "type": "AML_TYPE_CONTROL",
+        "flags": "0"
+      },
+      "coverage_family": "A04",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 164,
+      "hex": "0xA4",
+      "table": "short",
+      "index": 66,
+      "name": "Return",
+      "classification": "instruction",
+      "symbols": [
+        "AML_RETURN_OP"
+      ],
+      "info": {
+        "name": "Return",
+        "argument_schema": "ARGP_RETURN_OP",
+        "runtime_schema": "ARGI_RETURN_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_CONTROL",
+        "type": "AML_TYPE_CONTROL",
+        "flags": "AML_HAS_ARGS"
+      },
+      "coverage_family": "A04",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 165,
+      "hex": "0xA5",
+      "table": "short",
+      "index": 67,
+      "name": "Break",
+      "classification": "instruction",
+      "symbols": [
+        "AML_BREAK_OP"
+      ],
+      "info": {
+        "name": "Break",
+        "argument_schema": "ARGP_BREAK_OP",
+        "runtime_schema": "ARGI_BREAK_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_CONTROL",
+        "type": "AML_TYPE_CONTROL",
+        "flags": "0"
+      },
+      "coverage_family": "A04",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 204,
+      "hex": "0xCC",
+      "table": "short",
+      "index": 68,
+      "name": "BreakPoint",
+      "classification": "instruction",
+      "symbols": [
+        "AML_BREAKPOINT_OP"
+      ],
+      "info": {
+        "name": "BreakPoint",
+        "argument_schema": "ARGP_BREAK_POINT_OP",
+        "runtime_schema": "ARGI_BREAK_POINT_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_CONTROL",
+        "type": "AML_TYPE_CONTROL",
+        "flags": "0"
+      },
+      "coverage_family": "A21",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 255,
+      "hex": "0xFF",
+      "table": "short",
+      "index": 69,
+      "name": "Ones",
+      "classification": "instruction",
+      "symbols": [
+        "AML_ONES_OP"
+      ],
+      "info": {
+        "name": "Ones",
+        "argument_schema": "ARGP_ONES_OP",
+        "runtime_schema": "ARGI_ONES_OP",
+        "object_type": "ACPI_TYPE_INTEGER",
+        "class": "AML_CLASS_ARGUMENT",
+        "type": "AML_TYPE_CONSTANT",
+        "flags": "AML_CONSTANT"
+      },
+      "coverage_family": "A01",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 23297,
+      "hex": "0x5B01",
+      "table": "extended",
+      "index": 70,
+      "name": "Mutex",
+      "classification": "instruction",
+      "symbols": [
+        "AML_MUTEX_OP"
+      ],
+      "info": {
+        "name": "Mutex",
+        "argument_schema": "ARGP_MUTEX_OP",
+        "runtime_schema": "ARGI_MUTEX_OP",
+        "object_type": "ACPI_TYPE_MUTEX",
+        "class": "AML_CLASS_NAMED_OBJECT",
+        "type": "AML_TYPE_NAMED_SIMPLE",
+        "flags": "AML_HAS_ARGS | AML_NSOBJECT | AML_NSOPCODE | AML_NSNODE | AML_NAMED"
+      },
+      "coverage_family": "A18",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 23298,
+      "hex": "0x5B02",
+      "table": "extended",
+      "index": 71,
+      "name": "Event",
+      "classification": "instruction",
+      "symbols": [
+        "AML_EVENT_OP"
+      ],
+      "info": {
+        "name": "Event",
+        "argument_schema": "ARGP_EVENT_OP",
+        "runtime_schema": "ARGI_EVENT_OP",
+        "object_type": "ACPI_TYPE_EVENT",
+        "class": "AML_CLASS_NAMED_OBJECT",
+        "type": "AML_TYPE_NAMED_SIMPLE",
+        "flags": "AML_NSOBJECT | AML_NSOPCODE | AML_NSNODE | AML_NAMED"
+      },
+      "coverage_family": "A18",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 23314,
+      "hex": "0x5B12",
+      "table": "extended",
+      "index": 72,
+      "name": "CondRefOf",
+      "classification": "instruction",
+      "symbols": [
+        "AML_CONDITIONAL_REF_OF_OP"
+      ],
+      "info": {
+        "name": "CondRefOf",
+        "argument_schema": "ARGP_COND_REF_OF_OP",
+        "runtime_schema": "ARGI_COND_REF_OF_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_EXECUTE",
+        "type": "AML_TYPE_EXEC_1A_1T_1R",
+        "flags": "AML_FLAGS_EXEC_1A_1T_1R"
+      },
+      "coverage_family": "A07",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 23315,
+      "hex": "0x5B13",
+      "table": "extended",
+      "index": 73,
+      "name": "CreateField",
+      "classification": "instruction",
+      "symbols": [
+        "AML_CREATE_FIELD_OP"
+      ],
+      "info": {
+        "name": "CreateField",
+        "argument_schema": "ARGP_CREATE_FIELD_OP",
+        "runtime_schema": "ARGI_CREATE_FIELD_OP",
+        "object_type": "ACPI_TYPE_BUFFER_FIELD",
+        "class": "AML_CLASS_CREATE",
+        "type": "AML_TYPE_CREATE_FIELD",
+        "flags": "AML_HAS_ARGS | AML_NSOBJECT | AML_NSNODE | AML_DEFER | AML_FIELD | AML_CREATE"
+      },
+      "coverage_family": "A12",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 23327,
+      "hex": "0x5B1F",
+      "table": "extended",
+      "index": 123,
+      "name": "LoadTable",
+      "classification": "instruction",
+      "symbols": [
+        "AML_LOAD_TABLE_OP"
+      ],
+      "info": {
+        "name": "LoadTable",
+        "argument_schema": "ARGP_LOAD_TABLE_OP",
+        "runtime_schema": "ARGI_LOAD_TABLE_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_EXECUTE",
+        "type": "AML_TYPE_EXEC_6A_0T_1R",
+        "flags": "AML_FLAGS_EXEC_6A_0T_1R"
+      },
+      "coverage_family": "A17",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 23328,
+      "hex": "0x5B20",
+      "table": "extended",
+      "index": 74,
+      "name": "Load",
+      "classification": "instruction",
+      "symbols": [
+        "AML_LOAD_OP"
+      ],
+      "info": {
+        "name": "Load",
+        "argument_schema": "ARGP_LOAD_OP",
+        "runtime_schema": "ARGI_LOAD_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_EXECUTE",
+        "type": "AML_TYPE_EXEC_1A_1T_1R",
+        "flags": "AML_FLAGS_EXEC_1A_1T_1R"
+      },
+      "coverage_family": "A17",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 23329,
+      "hex": "0x5B21",
+      "table": "extended",
+      "index": 75,
+      "name": "Stall",
+      "classification": "instruction",
+      "symbols": [
+        "AML_STALL_OP"
+      ],
+      "info": {
+        "name": "Stall",
+        "argument_schema": "ARGP_STALL_OP",
+        "runtime_schema": "ARGI_STALL_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_EXECUTE",
+        "type": "AML_TYPE_EXEC_1A_0T_0R",
+        "flags": "AML_FLAGS_EXEC_1A_0T_0R"
+      },
+      "coverage_family": "A19",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 23330,
+      "hex": "0x5B22",
+      "table": "extended",
+      "index": 76,
+      "name": "Sleep",
+      "classification": "instruction",
+      "symbols": [
+        "AML_SLEEP_OP"
+      ],
+      "info": {
+        "name": "Sleep",
+        "argument_schema": "ARGP_SLEEP_OP",
+        "runtime_schema": "ARGI_SLEEP_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_EXECUTE",
+        "type": "AML_TYPE_EXEC_1A_0T_0R",
+        "flags": "AML_FLAGS_EXEC_1A_0T_0R"
+      },
+      "coverage_family": "A19",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 23331,
+      "hex": "0x5B23",
+      "table": "extended",
+      "index": 77,
+      "name": "Acquire",
+      "classification": "instruction",
+      "symbols": [
+        "AML_ACQUIRE_OP"
+      ],
+      "info": {
+        "name": "Acquire",
+        "argument_schema": "ARGP_ACQUIRE_OP",
+        "runtime_schema": "ARGI_ACQUIRE_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_EXECUTE",
+        "type": "AML_TYPE_EXEC_2A_0T_1R",
+        "flags": "AML_FLAGS_EXEC_2A_0T_1R"
+      },
+      "coverage_family": "A18",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 23332,
+      "hex": "0x5B24",
+      "table": "extended",
+      "index": 78,
+      "name": "Signal",
+      "classification": "instruction",
+      "symbols": [
+        "AML_SIGNAL_OP"
+      ],
+      "info": {
+        "name": "Signal",
+        "argument_schema": "ARGP_SIGNAL_OP",
+        "runtime_schema": "ARGI_SIGNAL_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_EXECUTE",
+        "type": "AML_TYPE_EXEC_1A_0T_0R",
+        "flags": "AML_FLAGS_EXEC_1A_0T_0R"
+      },
+      "coverage_family": "A18",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 23333,
+      "hex": "0x5B25",
+      "table": "extended",
+      "index": 79,
+      "name": "Wait",
+      "classification": "instruction",
+      "symbols": [
+        "AML_WAIT_OP"
+      ],
+      "info": {
+        "name": "Wait",
+        "argument_schema": "ARGP_WAIT_OP",
+        "runtime_schema": "ARGI_WAIT_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_EXECUTE",
+        "type": "AML_TYPE_EXEC_2A_0T_1R",
+        "flags": "AML_FLAGS_EXEC_2A_0T_1R"
+      },
+      "coverage_family": "A18",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 23334,
+      "hex": "0x5B26",
+      "table": "extended",
+      "index": 80,
+      "name": "Reset",
+      "classification": "instruction",
+      "symbols": [
+        "AML_RESET_OP"
+      ],
+      "info": {
+        "name": "Reset",
+        "argument_schema": "ARGP_RESET_OP",
+        "runtime_schema": "ARGI_RESET_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_EXECUTE",
+        "type": "AML_TYPE_EXEC_1A_0T_0R",
+        "flags": "AML_FLAGS_EXEC_1A_0T_0R"
+      },
+      "coverage_family": "A18",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 23335,
+      "hex": "0x5B27",
+      "table": "extended",
+      "index": 81,
+      "name": "Release",
+      "classification": "instruction",
+      "symbols": [
+        "AML_RELEASE_OP"
+      ],
+      "info": {
+        "name": "Release",
+        "argument_schema": "ARGP_RELEASE_OP",
+        "runtime_schema": "ARGI_RELEASE_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_EXECUTE",
+        "type": "AML_TYPE_EXEC_1A_0T_0R",
+        "flags": "AML_FLAGS_EXEC_1A_0T_0R"
+      },
+      "coverage_family": "A18",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 23336,
+      "hex": "0x5B28",
+      "table": "extended",
+      "index": 82,
+      "name": "FromBCD",
+      "classification": "instruction",
+      "symbols": [
+        "AML_FROM_BCD_OP"
+      ],
+      "info": {
+        "name": "FromBCD",
+        "argument_schema": "ARGP_FROM_BCD_OP",
+        "runtime_schema": "ARGI_FROM_BCD_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_EXECUTE",
+        "type": "AML_TYPE_EXEC_1A_1T_1R",
+        "flags": "AML_FLAGS_EXEC_1A_1T_1R | AML_CONSTANT"
+      },
+      "coverage_family": "A15",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 23337,
+      "hex": "0x5B29",
+      "table": "extended",
+      "index": 83,
+      "name": "ToBCD",
+      "classification": "instruction",
+      "symbols": [
+        "AML_TO_BCD_OP"
+      ],
+      "info": {
+        "name": "ToBCD",
+        "argument_schema": "ARGP_TO_BCD_OP",
+        "runtime_schema": "ARGI_TO_BCD_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_EXECUTE",
+        "type": "AML_TYPE_EXEC_1A_1T_1R",
+        "flags": "AML_FLAGS_EXEC_1A_1T_1R | AML_CONSTANT"
+      },
+      "coverage_family": "A15",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 23338,
+      "hex": "0x5B2A",
+      "table": "extended",
+      "index": 84,
+      "name": "Unload",
+      "classification": "instruction",
+      "symbols": [
+        "AML_UNLOAD_OP"
+      ],
+      "info": {
+        "name": "Unload",
+        "argument_schema": "ARGP_UNLOAD_OP",
+        "runtime_schema": "ARGI_UNLOAD_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_EXECUTE",
+        "type": "AML_TYPE_EXEC_1A_0T_0R",
+        "flags": "AML_FLAGS_EXEC_1A_0T_0R"
+      },
+      "coverage_family": "A17",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 23344,
+      "hex": "0x5B30",
+      "table": "extended",
+      "index": 85,
+      "name": "Revision",
+      "classification": "instruction",
+      "symbols": [
+        "AML_REVISION_OP"
+      ],
+      "info": {
+        "name": "Revision",
+        "argument_schema": "ARGP_REVISION_OP",
+        "runtime_schema": "ARGI_REVISION_OP",
+        "object_type": "ACPI_TYPE_INTEGER",
+        "class": "AML_CLASS_ARGUMENT",
+        "type": "AML_TYPE_CONSTANT",
+        "flags": "0"
+      },
+      "coverage_family": "A21",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 23345,
+      "hex": "0x5B31",
+      "table": "extended",
+      "index": 86,
+      "name": "Debug",
+      "classification": "instruction",
+      "symbols": [
+        "AML_DEBUG_OP"
+      ],
+      "info": {
+        "name": "Debug",
+        "argument_schema": "ARGP_DEBUG_OP",
+        "runtime_schema": "ARGI_DEBUG_OP",
+        "object_type": "ACPI_TYPE_LOCAL_REFERENCE",
+        "class": "AML_CLASS_ARGUMENT",
+        "type": "AML_TYPE_CONSTANT",
+        "flags": "0"
+      },
+      "coverage_family": "A21",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 23346,
+      "hex": "0x5B32",
+      "table": "extended",
+      "index": 87,
+      "name": "Fatal",
+      "classification": "instruction",
+      "symbols": [
+        "AML_FATAL_OP"
+      ],
+      "info": {
+        "name": "Fatal",
+        "argument_schema": "ARGP_FATAL_OP",
+        "runtime_schema": "ARGI_FATAL_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_EXECUTE",
+        "type": "AML_TYPE_EXEC_3A_0T_0R",
+        "flags": "AML_FLAGS_EXEC_3A_0T_0R"
+      },
+      "coverage_family": "A21",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 23347,
+      "hex": "0x5B33",
+      "table": "extended",
+      "index": 126,
+      "name": "Timer",
+      "classification": "instruction",
+      "symbols": [
+        "AML_TIMER_OP"
+      ],
+      "info": {
+        "name": "Timer",
+        "argument_schema": "ARGP_TIMER_OP",
+        "runtime_schema": "ARGI_TIMER_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_EXECUTE",
+        "type": "AML_TYPE_EXEC_0A_0T_1R",
+        "flags": "AML_FLAGS_EXEC_0A_0T_1R | AML_NO_OPERAND_RESOLVE"
+      },
+      "coverage_family": "A19",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 23424,
+      "hex": "0x5B80",
+      "table": "extended",
+      "index": 88,
+      "name": "OperationRegion",
+      "classification": "instruction",
+      "symbols": [
+        "AML_REGION_OP"
+      ],
+      "info": {
+        "name": "OperationRegion",
+        "argument_schema": "ARGP_REGION_OP",
+        "runtime_schema": "ARGI_REGION_OP",
+        "object_type": "ACPI_TYPE_REGION",
+        "class": "AML_CLASS_NAMED_OBJECT",
+        "type": "AML_TYPE_NAMED_COMPLEX",
+        "flags": "AML_HAS_ARGS | AML_NSOBJECT | AML_NSOPCODE | AML_NSNODE | AML_NAMED | AML_DEFER"
+      },
+      "coverage_family": "A10",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 23425,
+      "hex": "0x5B81",
+      "table": "extended",
+      "index": 89,
+      "name": "Field",
+      "classification": "instruction",
+      "symbols": [
+        "AML_FIELD_OP"
+      ],
+      "info": {
+        "name": "Field",
+        "argument_schema": "ARGP_FIELD_OP",
+        "runtime_schema": "ARGI_FIELD_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_NAMED_OBJECT",
+        "type": "AML_TYPE_NAMED_FIELD",
+        "flags": "AML_HAS_ARGS | AML_NSOBJECT | AML_NSOPCODE | AML_FIELD"
+      },
+      "coverage_family": "A09",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 23426,
+      "hex": "0x5B82",
+      "table": "extended",
+      "index": 90,
+      "name": "Device",
+      "classification": "instruction",
+      "symbols": [
+        "AML_DEVICE_OP"
+      ],
+      "info": {
+        "name": "Device",
+        "argument_schema": "ARGP_DEVICE_OP",
+        "runtime_schema": "ARGI_DEVICE_OP",
+        "object_type": "ACPI_TYPE_DEVICE",
+        "class": "AML_CLASS_NAMED_OBJECT",
+        "type": "AML_TYPE_NAMED_NO_OBJ",
+        "flags": "AML_HAS_ARGS | AML_NSOBJECT | AML_NSOPCODE | AML_NSNODE | AML_NAMED"
+      },
+      "coverage_family": "A02",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 23427,
+      "hex": "0x5B83",
+      "table": "extended",
+      "index": 91,
+      "name": "Processor",
+      "classification": "instruction",
+      "symbols": [
+        "AML_PROCESSOR_OP"
+      ],
+      "info": {
+        "name": "Processor",
+        "argument_schema": "ARGP_PROCESSOR_OP",
+        "runtime_schema": "ARGI_PROCESSOR_OP",
+        "object_type": "ACPI_TYPE_PROCESSOR",
+        "class": "AML_CLASS_NAMED_OBJECT",
+        "type": "AML_TYPE_NAMED_SIMPLE",
+        "flags": "AML_HAS_ARGS | AML_NSOBJECT | AML_NSOPCODE | AML_NSNODE | AML_NAMED"
+      },
+      "coverage_family": "A02",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 23428,
+      "hex": "0x5B84",
+      "table": "extended",
+      "index": 92,
+      "name": "PowerResource",
+      "classification": "instruction",
+      "symbols": [
+        "AML_POWER_RESOURCE_OP"
+      ],
+      "info": {
+        "name": "PowerResource",
+        "argument_schema": "ARGP_POWER_RES_OP",
+        "runtime_schema": "ARGI_POWER_RES_OP",
+        "object_type": "ACPI_TYPE_POWER",
+        "class": "AML_CLASS_NAMED_OBJECT",
+        "type": "AML_TYPE_NAMED_SIMPLE",
+        "flags": "AML_HAS_ARGS | AML_NSOBJECT | AML_NSOPCODE | AML_NSNODE | AML_NAMED"
+      },
+      "coverage_family": "A02",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 23429,
+      "hex": "0x5B85",
+      "table": "extended",
+      "index": 93,
+      "name": "ThermalZone",
+      "classification": "instruction",
+      "symbols": [
+        "AML_THERMAL_ZONE_OP"
+      ],
+      "info": {
+        "name": "ThermalZone",
+        "argument_schema": "ARGP_THERMAL_ZONE_OP",
+        "runtime_schema": "ARGI_THERMAL_ZONE_OP",
+        "object_type": "ACPI_TYPE_THERMAL",
+        "class": "AML_CLASS_NAMED_OBJECT",
+        "type": "AML_TYPE_NAMED_NO_OBJ",
+        "flags": "AML_HAS_ARGS | AML_NSOBJECT | AML_NSOPCODE | AML_NSNODE | AML_NAMED"
+      },
+      "coverage_family": "A02",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 23430,
+      "hex": "0x5B86",
+      "table": "extended",
+      "index": 94,
+      "name": "IndexField",
+      "classification": "instruction",
+      "symbols": [
+        "AML_INDEX_FIELD_OP"
+      ],
+      "info": {
+        "name": "IndexField",
+        "argument_schema": "ARGP_INDEX_FIELD_OP",
+        "runtime_schema": "ARGI_INDEX_FIELD_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_NAMED_OBJECT",
+        "type": "AML_TYPE_NAMED_FIELD",
+        "flags": "AML_HAS_ARGS | AML_NSOBJECT | AML_NSOPCODE | AML_FIELD"
+      },
+      "coverage_family": "A09",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 23431,
+      "hex": "0x5B87",
+      "table": "extended",
+      "index": 95,
+      "name": "BankField",
+      "classification": "instruction",
+      "symbols": [
+        "AML_BANK_FIELD_OP"
+      ],
+      "info": {
+        "name": "BankField",
+        "argument_schema": "ARGP_BANK_FIELD_OP",
+        "runtime_schema": "ARGI_BANK_FIELD_OP",
+        "object_type": "ACPI_TYPE_LOCAL_BANK_FIELD",
+        "class": "AML_CLASS_NAMED_OBJECT",
+        "type": "AML_TYPE_NAMED_FIELD",
+        "flags": "AML_HAS_ARGS | AML_NSOBJECT | AML_NSOPCODE | AML_FIELD | AML_DEFER"
+      },
+      "coverage_family": "A09",
+      "semantic_status": "not-established-by-inventory"
+    },
+    {
+      "encoding": 23432,
+      "hex": "0x5B88",
+      "table": "extended",
+      "index": 124,
+      "name": "DataTableRegion",
+      "classification": "instruction",
+      "symbols": [
+        "AML_DATA_REGION_OP"
+      ],
+      "info": {
+        "name": "DataTableRegion",
+        "argument_schema": "ARGP_DATA_REGION_OP",
+        "runtime_schema": "ARGI_DATA_REGION_OP",
+        "object_type": "ACPI_TYPE_REGION",
+        "class": "AML_CLASS_NAMED_OBJECT",
+        "type": "AML_TYPE_NAMED_COMPLEX",
+        "flags": "AML_HAS_ARGS | AML_NSOBJECT | AML_NSOPCODE | AML_NSNODE | AML_NAMED | AML_DEFER"
+      },
+      "coverage_family": "A08",
+      "semantic_status": "not-established-by-inventory"
+    }
+  ],
+  "excluded_dispatches": [
+    {
+      "encoding": 45,
+      "hex": "0x2D",
+      "table": "short",
+      "index": 99,
+      "name": "-NamePath-",
+      "classification": "parser-internal",
+      "symbols": [
+        "AML_INT_NAMEPATH_OP"
+      ],
+      "info": {
+        "name": "-NamePath-",
+        "argument_schema": "ARGP_NAMEPATH_OP",
+        "runtime_schema": "ARGI_NAMEPATH_OP",
+        "object_type": "ACPI_TYPE_LOCAL_REFERENCE",
+        "class": "AML_CLASS_ARGUMENT",
+        "type": "AML_TYPE_LITERAL",
+        "flags": "AML_NSOBJECT | AML_NSNODE"
+      }
+    },
+    {
+      "encoding": 48,
+      "hex": "0x30",
+      "table": "short",
+      "index": 103,
+      "name": "-NamedField-",
+      "classification": "parser-internal",
+      "symbols": [
+        "AML_INT_NAMEDFIELD_OP"
+      ],
+      "info": {
+        "name": "-NamedField-",
+        "argument_schema": "ARGP_NAMEDFIELD_OP",
+        "runtime_schema": "ARGI_NAMEDFIELD_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_INTERNAL",
+        "type": "AML_TYPE_BOGUS",
+        "flags": "AML_NSOBJECT | AML_NSOPCODE | AML_NSNODE | AML_NAMED"
+      }
+    },
+    {
+      "encoding": 49,
+      "hex": "0x31",
+      "table": "short",
+      "index": 102,
+      "name": "-ReservedField-",
+      "classification": "parser-internal",
+      "symbols": [
+        "AML_INT_RESERVEDFIELD_OP"
+      ],
+      "info": {
+        "name": "-ReservedField-",
+        "argument_schema": "ARGP_RESERVEDFIELD_OP",
+        "runtime_schema": "ARGI_RESERVEDFIELD_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_INTERNAL",
+        "type": "AML_TYPE_BOGUS",
+        "flags": "0"
+      }
+    },
+    {
+      "encoding": 50,
+      "hex": "0x32",
+      "table": "short",
+      "index": 104,
+      "name": "-AccessField-",
+      "classification": "parser-internal",
+      "symbols": [
+        "AML_INT_ACCESSFIELD_OP"
+      ],
+      "info": {
+        "name": "-AccessField-",
+        "argument_schema": "ARGP_ACCESSFIELD_OP",
+        "runtime_schema": "ARGI_ACCESSFIELD_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_INTERNAL",
+        "type": "AML_TYPE_BOGUS",
+        "flags": "0"
+      }
+    },
+    {
+      "encoding": 51,
+      "hex": "0x33",
+      "table": "short",
+      "index": 101,
+      "name": "-ByteList-",
+      "classification": "parser-internal",
+      "symbols": [
+        "AML_INT_BYTELIST_OP"
+      ],
+      "info": {
+        "name": "-ByteList-",
+        "argument_schema": "ARGP_BYTELIST_OP",
+        "runtime_schema": "ARGI_BYTELIST_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_ARGUMENT",
+        "type": "AML_TYPE_LITERAL",
+        "flags": "0"
+      }
+    },
+    {
+      "encoding": 52,
+      "hex": "0x34",
+      "table": "short",
+      "index": 105,
+      "name": "-StaticString",
+      "classification": "parser-internal",
+      "symbols": [],
+      "info": {
+        "name": "-StaticString",
+        "argument_schema": "ARGP_STATICSTRING_OP",
+        "runtime_schema": "ARGI_STATICSTRING_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_INTERNAL",
+        "type": "AML_TYPE_BOGUS",
+        "flags": "0"
+      }
+    },
+    {
+      "encoding": 53,
+      "hex": "0x35",
+      "table": "short",
+      "index": 100,
+      "name": "-MethodCall-",
+      "classification": "parser-internal",
+      "symbols": [
+        "AML_INT_METHODCALL_OP"
+      ],
+      "info": {
+        "name": "-MethodCall-",
+        "argument_schema": "ARGP_METHODCALL_OP",
+        "runtime_schema": "ARGI_METHODCALL_OP",
+        "object_type": "ACPI_TYPE_METHOD",
+        "class": "AML_CLASS_METHOD_CALL",
+        "type": "AML_TYPE_METHOD_CALL",
+        "flags": "AML_HAS_ARGS | AML_NSOBJECT | AML_NSNODE"
+      }
+    },
+    {
+      "encoding": 54,
+      "hex": "0x36",
+      "table": "short",
+      "index": 106,
+      "name": "-Return Value-",
+      "classification": "parser-internal",
+      "symbols": [
+        "AML_INT_RETURN_VALUE_OP"
+      ],
+      "info": {
+        "name": "-Return Value-",
+        "argument_schema": "ARG_NONE",
+        "runtime_schema": "ARG_NONE",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_RETURN_VALUE",
+        "type": "AML_TYPE_RETURN",
+        "flags": "AML_HAS_ARGS | AML_HAS_RETVAL"
+      }
+    },
+    {
+      "encoding": 55,
+      "hex": "0x37",
+      "table": "short",
+      "index": 125,
+      "name": "[EvalSubTree]",
+      "classification": "parser-internal",
+      "symbols": [
+        "AML_INT_EVAL_SUBTREE_OP"
+      ],
+      "info": {
+        "name": "[EvalSubTree]",
+        "argument_schema": "ARGP_SCOPE_OP",
+        "runtime_schema": "ARGI_SCOPE_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_NAMED_OBJECT",
+        "type": "AML_TYPE_NAMED_NO_OBJ",
+        "flags": "AML_HAS_ARGS | AML_NSOBJECT | AML_NSOPCODE | AML_NSNODE"
+      }
+    },
+    {
+      "encoding": 56,
+      "hex": "0x38",
+      "table": "short",
+      "index": 127,
+      "name": "-ConnectField-",
+      "classification": "parser-internal",
+      "symbols": [
+        "AML_INT_CONNECTION_OP"
+      ],
+      "info": {
+        "name": "-ConnectField-",
+        "argument_schema": "ARGP_CONNECTFIELD_OP",
+        "runtime_schema": "ARGI_CONNECTFIELD_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_INTERNAL",
+        "type": "AML_TYPE_BOGUS",
+        "flags": "AML_HAS_ARGS"
+      }
+    },
+    {
+      "encoding": 57,
+      "hex": "0x39",
+      "table": "short",
+      "index": 128,
+      "name": "-ExtAccessField-",
+      "classification": "parser-internal",
+      "symbols": [
+        "AML_INT_EXTACCESSFIELD_OP"
+      ],
+      "info": {
+        "name": "-ExtAccessField-",
+        "argument_schema": "ARGP_CONNECTFIELD_OP",
+        "runtime_schema": "ARGI_CONNECTFIELD_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_INTERNAL",
+        "type": "AML_TYPE_BOGUS",
+        "flags": "0"
+      }
+    },
+    {
+      "encoding": 166,
+      "hex": "0xA6",
+      "table": "short",
+      "index": 96,
+      "name": "LNotEqual",
+      "classification": "parser-internal",
+      "symbols": [],
+      "info": {
+        "name": "LNotEqual",
+        "argument_schema": "ARGP_LNOTEQUAL_OP",
+        "runtime_schema": "ARGI_LNOTEQUAL_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_INTERNAL",
+        "type": "AML_TYPE_BOGUS",
+        "flags": "AML_HAS_ARGS | AML_CONSTANT"
+      }
+    },
+    {
+      "encoding": 167,
+      "hex": "0xA7",
+      "table": "short",
+      "index": 97,
+      "name": "LLessEqual",
+      "classification": "parser-internal",
+      "symbols": [],
+      "info": {
+        "name": "LLessEqual",
+        "argument_schema": "ARGP_LLESSEQUAL_OP",
+        "runtime_schema": "ARGI_LLESSEQUAL_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_INTERNAL",
+        "type": "AML_TYPE_BOGUS",
+        "flags": "AML_HAS_ARGS | AML_CONSTANT"
+      }
+    },
+    {
+      "encoding": 168,
+      "hex": "0xA8",
+      "table": "short",
+      "index": 98,
+      "name": "LGreaterEqual",
+      "classification": "parser-internal",
+      "symbols": [],
+      "info": {
+        "name": "LGreaterEqual",
+        "argument_schema": "ARGP_LGREATEREQUAL_OP",
+        "runtime_schema": "ARGI_LGREATEREQUAL_OP",
+        "object_type": "ACPI_TYPE_ANY",
+        "class": "AML_CLASS_INTERNAL",
+        "type": "AML_TYPE_BOGUS",
+        "flags": "AML_HAS_ARGS | AML_CONSTANT"
+      }
+    },
+    {
+      "encoding": 169,
+      "hex": "0xA9",
+      "table": "short",
+      "index": 130,
+      "name": "Comment",
+      "classification": "tooling-comment-extension",
+      "symbols": [
+        "AML_COMMENT_OP"
+      ],
+      "info": {
+        "name": "Comment",
+        "argument_schema": "ARGP_COMMENT_OP",
+        "runtime_schema": "ARGI_COMMENT_OP",
+        "object_type": "ACPI_TYPE_STRING",
+        "class": "AML_CLASS_ARGUMENT",
+        "type": "AML_TYPE_LITERAL",
+        "flags": "AML_CONSTANT"
+      }
+    }
+  ],
+  "non_instruction_routes": [
+    {
+      "encoding": 2,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 3,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 4,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 5,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 7,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 9,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 15,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 22,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 24,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 25,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 26,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 27,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 28,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 29,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 30,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 31,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 32,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 33,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 34,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 35,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 36,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 37,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 38,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 39,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 40,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 41,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 42,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 43,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 44,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 46,
+      "route": "_PFX"
+    },
+    {
+      "encoding": 47,
+      "route": "_PFX"
+    },
+    {
+      "encoding": 58,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 59,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 60,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 61,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 62,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 63,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 64,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 65,
+      "route": "_ASC"
+    },
+    {
+      "encoding": 66,
+      "route": "_ASC"
+    },
+    {
+      "encoding": 67,
+      "route": "_ASC"
+    },
+    {
+      "encoding": 68,
+      "route": "_ASC"
+    },
+    {
+      "encoding": 69,
+      "route": "_ASC"
+    },
+    {
+      "encoding": 70,
+      "route": "_ASC"
+    },
+    {
+      "encoding": 71,
+      "route": "_ASC"
+    },
+    {
+      "encoding": 72,
+      "route": "_ASC"
+    },
+    {
+      "encoding": 73,
+      "route": "_ASC"
+    },
+    {
+      "encoding": 74,
+      "route": "_ASC"
+    },
+    {
+      "encoding": 75,
+      "route": "_ASC"
+    },
+    {
+      "encoding": 76,
+      "route": "_ASC"
+    },
+    {
+      "encoding": 77,
+      "route": "_ASC"
+    },
+    {
+      "encoding": 78,
+      "route": "_ASC"
+    },
+    {
+      "encoding": 79,
+      "route": "_ASC"
+    },
+    {
+      "encoding": 80,
+      "route": "_ASC"
+    },
+    {
+      "encoding": 81,
+      "route": "_ASC"
+    },
+    {
+      "encoding": 82,
+      "route": "_ASC"
+    },
+    {
+      "encoding": 83,
+      "route": "_ASC"
+    },
+    {
+      "encoding": 84,
+      "route": "_ASC"
+    },
+    {
+      "encoding": 85,
+      "route": "_ASC"
+    },
+    {
+      "encoding": 86,
+      "route": "_ASC"
+    },
+    {
+      "encoding": 87,
+      "route": "_ASC"
+    },
+    {
+      "encoding": 88,
+      "route": "_ASC"
+    },
+    {
+      "encoding": 89,
+      "route": "_ASC"
+    },
+    {
+      "encoding": 90,
+      "route": "_ASC"
+    },
+    {
+      "encoding": 91,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 92,
+      "route": "_PFX"
+    },
+    {
+      "encoding": 93,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 94,
+      "route": "_PFX"
+    },
+    {
+      "encoding": 95,
+      "route": "_ASC"
+    },
+    {
+      "encoding": 111,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 154,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 155,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 170,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 171,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 172,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 173,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 174,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 175,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 176,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 177,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 178,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 179,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 180,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 181,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 182,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 183,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 184,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 185,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 186,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 187,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 188,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 189,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 190,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 191,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 192,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 193,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 194,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 195,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 196,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 197,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 198,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 199,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 200,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 201,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 202,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 203,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 205,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 206,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 207,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 208,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 209,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 210,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 211,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 212,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 213,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 214,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 215,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 216,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 217,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 218,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 219,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 220,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 221,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 222,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 223,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 224,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 225,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 226,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 227,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 228,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 229,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 230,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 231,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 232,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 233,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 234,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 235,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 236,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 237,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 238,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 239,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 240,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 241,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 242,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 243,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 244,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 245,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 246,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 247,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 248,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 249,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 250,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 251,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 252,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 253,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 254,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23296,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23299,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23300,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23301,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23302,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23303,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23304,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23305,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23306,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23307,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23308,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23309,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23310,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23311,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23312,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23313,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23316,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23317,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23318,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23319,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23320,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23321,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23322,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23323,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23324,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23325,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23326,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23339,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23340,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23341,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23342,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23343,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23348,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23349,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23350,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23351,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23352,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23353,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23354,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23355,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23356,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23357,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23358,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23359,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23360,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23361,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23362,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23363,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23364,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23365,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23366,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23367,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23368,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23369,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23370,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23371,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23372,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23373,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23374,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23375,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23376,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23377,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23378,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23379,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23380,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23381,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23382,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23383,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23384,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23385,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23386,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23387,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23388,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23389,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23390,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23391,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23392,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23393,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23394,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23395,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23396,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23397,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23398,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23399,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23400,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23401,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23402,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23403,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23404,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23405,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23406,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23407,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23408,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23409,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23410,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23411,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23412,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23413,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23414,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23415,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23416,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23417,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23418,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23419,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23420,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23421,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23422,
+      "route": "_UNK"
+    },
+    {
+      "encoding": 23423,
+      "route": "_UNK"
+    }
+  ],
+  "header_classification": [
+    {
+      "symbol": "AML_ZERO_OP",
+      "value": 0,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_ONE_OP",
+      "value": 1,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_ALIAS_OP",
+      "value": 6,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_NAME_OP",
+      "value": 8,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_BYTE_OP",
+      "value": 10,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_WORD_OP",
+      "value": 11,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_DWORD_OP",
+      "value": 12,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_STRING_OP",
+      "value": 13,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_QWORD_OP",
+      "value": 14,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_SCOPE_OP",
+      "value": 16,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_BUFFER_OP",
+      "value": 17,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_PACKAGE_OP",
+      "value": 18,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_VARIABLE_PACKAGE_OP",
+      "value": 19,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_METHOD_OP",
+      "value": 20,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_EXTERNAL_OP",
+      "value": 21,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_DUAL_NAME_PREFIX",
+      "value": 46,
+      "classification": "prefix"
+    },
+    {
+      "symbol": "AML_MULTI_NAME_PREFIX",
+      "value": 47,
+      "classification": "prefix"
+    },
+    {
+      "symbol": "AML_EXTENDED_PREFIX",
+      "value": 91,
+      "classification": "prefix"
+    },
+    {
+      "symbol": "AML_ROOT_PREFIX",
+      "value": 92,
+      "classification": "prefix"
+    },
+    {
+      "symbol": "AML_PARENT_PREFIX",
+      "value": 94,
+      "classification": "prefix"
+    },
+    {
+      "symbol": "AML_FIRST_LOCAL_OP",
+      "value": 96,
+      "classification": "calculation-alias"
+    },
+    {
+      "symbol": "AML_LOCAL0",
+      "value": 96,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_LOCAL1",
+      "value": 97,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_LOCAL2",
+      "value": 98,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_LOCAL3",
+      "value": 99,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_LOCAL4",
+      "value": 100,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_LOCAL5",
+      "value": 101,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_LOCAL6",
+      "value": 102,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_LOCAL7",
+      "value": 103,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_FIRST_ARG_OP",
+      "value": 104,
+      "classification": "calculation-alias"
+    },
+    {
+      "symbol": "AML_ARG0",
+      "value": 104,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_ARG1",
+      "value": 105,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_ARG2",
+      "value": 106,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_ARG3",
+      "value": 107,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_ARG4",
+      "value": 108,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_ARG5",
+      "value": 109,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_ARG6",
+      "value": 110,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_STORE_OP",
+      "value": 112,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_REF_OF_OP",
+      "value": 113,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_ADD_OP",
+      "value": 114,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_CONCATENATE_OP",
+      "value": 115,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_SUBTRACT_OP",
+      "value": 116,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_INCREMENT_OP",
+      "value": 117,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_DECREMENT_OP",
+      "value": 118,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_MULTIPLY_OP",
+      "value": 119,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_DIVIDE_OP",
+      "value": 120,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_SHIFT_LEFT_OP",
+      "value": 121,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_SHIFT_RIGHT_OP",
+      "value": 122,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_BIT_AND_OP",
+      "value": 123,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_BIT_NAND_OP",
+      "value": 124,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_BIT_OR_OP",
+      "value": 125,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_BIT_NOR_OP",
+      "value": 126,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_BIT_XOR_OP",
+      "value": 127,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_BIT_NOT_OP",
+      "value": 128,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_FIND_SET_LEFT_BIT_OP",
+      "value": 129,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_FIND_SET_RIGHT_BIT_OP",
+      "value": 130,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_DEREF_OF_OP",
+      "value": 131,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_CONCATENATE_TEMPLATE_OP",
+      "value": 132,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_MOD_OP",
+      "value": 133,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_NOTIFY_OP",
+      "value": 134,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_SIZE_OF_OP",
+      "value": 135,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_INDEX_OP",
+      "value": 136,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_MATCH_OP",
+      "value": 137,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_CREATE_DWORD_FIELD_OP",
+      "value": 138,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_CREATE_WORD_FIELD_OP",
+      "value": 139,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_CREATE_BYTE_FIELD_OP",
+      "value": 140,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_CREATE_BIT_FIELD_OP",
+      "value": 141,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_OBJECT_TYPE_OP",
+      "value": 142,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_CREATE_QWORD_FIELD_OP",
+      "value": 143,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_LOGICAL_AND_OP",
+      "value": 144,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_LOGICAL_OR_OP",
+      "value": 145,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_LOGICAL_NOT_OP",
+      "value": 146,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_LOGICAL_EQUAL_OP",
+      "value": 147,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_LOGICAL_GREATER_OP",
+      "value": 148,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_LOGICAL_LESS_OP",
+      "value": 149,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_TO_BUFFER_OP",
+      "value": 150,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_TO_DECIMAL_STRING_OP",
+      "value": 151,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_TO_HEX_STRING_OP",
+      "value": 152,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_TO_INTEGER_OP",
+      "value": 153,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_TO_STRING_OP",
+      "value": 156,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_COPY_OBJECT_OP",
+      "value": 157,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_MID_OP",
+      "value": 158,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_CONTINUE_OP",
+      "value": 159,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_IF_OP",
+      "value": 160,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_ELSE_OP",
+      "value": 161,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_WHILE_OP",
+      "value": 162,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_NOOP_OP",
+      "value": 163,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_RETURN_OP",
+      "value": 164,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_BREAK_OP",
+      "value": 165,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_COMMENT_OP",
+      "value": 169,
+      "classification": "tooling-comment-extension"
+    },
+    {
+      "symbol": "AML_BREAKPOINT_OP",
+      "value": 204,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_ONES_OP",
+      "value": 255,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_LOGICAL_GREATER_EQUAL_OP",
+      "value": 37525,
+      "classification": "compound-of-two-instructions"
+    },
+    {
+      "symbol": "AML_LOGICAL_LESS_EQUAL_OP",
+      "value": 37524,
+      "classification": "compound-of-two-instructions"
+    },
+    {
+      "symbol": "AML_LOGICAL_NOT_EQUAL_OP",
+      "value": 37523,
+      "classification": "compound-of-two-instructions"
+    },
+    {
+      "symbol": "AML_EXTENDED_OPCODE",
+      "value": 23296,
+      "classification": "prefix"
+    },
+    {
+      "symbol": "AML_MUTEX_OP",
+      "value": 23297,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_EVENT_OP",
+      "value": 23298,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_SHIFT_RIGHT_BIT_OP",
+      "value": 23312,
+      "classification": "obsolete-not-dispatched"
+    },
+    {
+      "symbol": "AML_SHIFT_LEFT_BIT_OP",
+      "value": 23313,
+      "classification": "obsolete-not-dispatched"
+    },
+    {
+      "symbol": "AML_CONDITIONAL_REF_OF_OP",
+      "value": 23314,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_CREATE_FIELD_OP",
+      "value": 23315,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_LOAD_TABLE_OP",
+      "value": 23327,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_LOAD_OP",
+      "value": 23328,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_STALL_OP",
+      "value": 23329,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_SLEEP_OP",
+      "value": 23330,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_ACQUIRE_OP",
+      "value": 23331,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_SIGNAL_OP",
+      "value": 23332,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_WAIT_OP",
+      "value": 23333,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_RESET_OP",
+      "value": 23334,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_RELEASE_OP",
+      "value": 23335,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_FROM_BCD_OP",
+      "value": 23336,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_TO_BCD_OP",
+      "value": 23337,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_UNLOAD_OP",
+      "value": 23338,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_REVISION_OP",
+      "value": 23344,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_DEBUG_OP",
+      "value": 23345,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_FATAL_OP",
+      "value": 23346,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_TIMER_OP",
+      "value": 23347,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_REGION_OP",
+      "value": 23424,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_FIELD_OP",
+      "value": 23425,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_DEVICE_OP",
+      "value": 23426,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_PROCESSOR_OP",
+      "value": 23427,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_POWER_RESOURCE_OP",
+      "value": 23428,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_THERMAL_ZONE_OP",
+      "value": 23429,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_INDEX_FIELD_OP",
+      "value": 23430,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_BANK_FIELD_OP",
+      "value": 23431,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_DATA_REGION_OP",
+      "value": 23432,
+      "classification": "instruction"
+    },
+    {
+      "symbol": "AML_FIELD_OFFSET_OP",
+      "value": 0,
+      "classification": "field-list-subencoding"
+    },
+    {
+      "symbol": "AML_FIELD_ACCESS_OP",
+      "value": 1,
+      "classification": "field-list-subencoding"
+    },
+    {
+      "symbol": "AML_FIELD_CONNECTION_OP",
+      "value": 2,
+      "classification": "field-list-subencoding"
+    },
+    {
+      "symbol": "AML_FIELD_EXT_ACCESS_OP",
+      "value": 3,
+      "classification": "field-list-subencoding"
+    },
+    {
+      "symbol": "AML_INT_NAMEPATH_OP",
+      "value": 45,
+      "classification": "parser-internal"
+    },
+    {
+      "symbol": "AML_INT_NAMEDFIELD_OP",
+      "value": 48,
+      "classification": "parser-internal"
+    },
+    {
+      "symbol": "AML_INT_RESERVEDFIELD_OP",
+      "value": 49,
+      "classification": "parser-internal"
+    },
+    {
+      "symbol": "AML_INT_ACCESSFIELD_OP",
+      "value": 50,
+      "classification": "parser-internal"
+    },
+    {
+      "symbol": "AML_INT_BYTELIST_OP",
+      "value": 51,
+      "classification": "parser-internal"
+    },
+    {
+      "symbol": "AML_INT_METHODCALL_OP",
+      "value": 53,
+      "classification": "parser-internal"
+    },
+    {
+      "symbol": "AML_INT_RETURN_VALUE_OP",
+      "value": 54,
+      "classification": "parser-internal"
+    },
+    {
+      "symbol": "AML_INT_EVAL_SUBTREE_OP",
+      "value": 55,
+      "classification": "parser-internal"
+    },
+    {
+      "symbol": "AML_INT_CONNECTION_OP",
+      "value": 56,
+      "classification": "parser-internal"
+    },
+    {
+      "symbol": "AML_INT_EXTACCESSFIELD_OP",
+      "value": 57,
+      "classification": "parser-internal"
+    }
+  ],
+  "family_map": "families.json",
+  "dynamic_table_lifecycle_gap": [
+    {
+      "hex": "0x5B1F",
+      "name": "LoadTable",
+      "status": "Modern Boolean-result loading remains pending per A17; reference evidence does not implement CuBit loading"
+    },
+    {
+      "hex": "0x5B20",
+      "name": "Load",
+      "status": "Modern Boolean-result loading remains pending per A17; reference evidence does not implement CuBit loading"
+    },
+    {
+      "hex": "0x5B2A",
+      "name": "Unload",
+      "status": "Deprecated since ACPI6.3; encoding/operand/refusal compatibility policy remains pending"
+    }
+  ]
+}

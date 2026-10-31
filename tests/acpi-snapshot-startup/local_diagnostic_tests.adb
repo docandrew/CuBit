@@ -7,6 +7,7 @@ with Firmware_Tables;
 with ACPI_Requests;
 with ACPI_Service;
 with ACPI_Fatal_Diagnostics;
+with ACPI_Module_Diagnostics;
 with ACPI_Snapshot_Startup;
 with Root_Test_Support; use Root_Test_Support;
 procedure Local_Diagnostic_Tests is
@@ -21,6 +22,9 @@ procedure Local_Diagnostic_Tests is
    use type Firmware_Tables.Bytes;
    use type AML_Decode.Integer_Width;
    use type ACPI_Fatal_Diagnostics.Observation;
+   use type ACPI_Module_Diagnostics.Observation;
+   use type ACPI_Module_Diagnostics.Count;
+   use type ACPI_Service.Namespace.Definition_Identity;
    subtype Bytes is Firmware_Tables.Bytes;
    type Bytes_Access is access Bytes;
    procedure Free is new Ada.Unchecked_Deallocation (Bytes, Bytes_Access);
@@ -28,8 +32,11 @@ procedure Local_Diagnostic_Tests is
    Data : Bytes_Access;
    Checks : Natural := 0;
    type Scenario is (No_Fatal, Module_Fatal, Root_Fatal, Bus_Fatal, Device_Fatal,
-                     Ordinary_Error, Unconfigured_Region);
+                     Ordinary_Error, Unconfigured_Region, Recovered, Recovered_Then_Failed);
    Fatal : constant Bytes := [16#5B#,16#32#,16#A7#,16#78#,16#56#,16#34#,16#F2#,16#0A#,16#55#];
+   Recovery : constant Bytes := [8] & Enc ("DERR") & [0,8] & Enc ("RSM0") &
+     [0,16#70#,16#78#,1] & Enc ("DERR") & [0,0] & Enc ("DERR") &
+     [16#70#,16#0A#,91] & Enc ("RSM0");
    procedure Check (Good : Boolean; Label : String) is
    begin
       Checks := Checks + 1;
@@ -70,6 +77,8 @@ begin
       for Case_ID in Scenario loop
          declare
             Payload : constant Bytes := (case Case_ID is
+              when Recovered => Recovery,
+              when Recovered_Then_Failed => Recovery & Bytes'[16#5B#,16#21#,1],
               when No_Fatal => [16#A3#],
               when Module_Fatal => Fatal,
               when Root_Fatal => Method ("_INI", Fatal),
@@ -78,11 +87,12 @@ begin
               when Ordinary_Error => Block ([16#5B#,16#82#], Enc ("DEV0") & Method ("_INI", [16#FE#])),
               when Unconfigured_Region => [16#5B#,16#80#] & Enc ("REG0") & [3,0,1] &
                 Block ([16#5B#,16#82#], Enc ("DEV0") & Method ("_INI", Fatal)));
-            Reference : Q.State (1, 512, 512, 0);
+            Reference : Q.State (1, 512, 512, 1, 0);
             Reply : Q.Response;
             Owner : L.State_Access;
             Result : L.Report;
             Expected : ACPI_Fatal_Diagnostics.Observation;
+            Expected_Recovery, Copied_Recovery, Expected_Details : ACPI_Module_Diagnostics.Observation;
             Wanted : constant Boolean := Case_ID in Module_Fatal .. Device_Fatal;
          begin
             Data := new Bytes'(Table (Payload, Width));
@@ -95,12 +105,28 @@ begin
             Q.Handle (Reference, Q.Snapshot_Provider,
               (Label => Q.Finish_Snapshot, Data => [Q.Revision (Reference),0,0,0], others => <>), Reply);
             Expected := Q.Fatal_Diagnostic (Reference);
+            Expected_Recovery := Q.Module_Errors (Reference);
+            Check (Expected_Recovery.Count = (if Case_ID in Recovered | Recovered_Then_Failed then 1 else 0),
+              "actual interpreter recovered module error reachability");
             Check (Expected.Present = Wanted, "reference fatal reachability");
             Load (100, Owner, Result);
+            Copied_Recovery := Result.Module_Errors;
+            Expected_Details := Expected_Recovery;
+            -- Compare all error fields while normalizing only the per-load token.
+            Expected_Details.Definition := Copied_Recovery.Definition;
+            Check (Copied_Recovery = Expected_Details,
+              "snapshot copies module error details before owner release");
+            if Copied_Recovery.Count /= 0 then
+               Check (Copied_Recovery.Definition /= ACPI_Service.Namespace.No_Definition,
+                 "copied recovery retains issued identity");
+               Check (Copied_Recovery.Definition /= Expected_Recovery.Definition,
+                 "independent loads issue independent opaque identities");
+            end if;
             Check (Result.Fatal = Expected, "startup retains exact Fatal and context");
             Check ((Result.Status = L.Loaded) = (Q.Current (Reference) = Q.Complete),
                    "fatal retention does not change startup outcome");
             if Owner /= null then
+               Check (Q.Module_Errors (Owner.all) = Result.Module_Errors, "live module observation matches snapshot");
                Check (Q.Fatal_Diagnostic (Owner.all) = Result.Fatal, "live owner matches copied report");
             else
                Check (Result.Status = L.Startup_Refused, "failed startup publishes no owner");
@@ -109,6 +135,12 @@ begin
             Data.all := [others => 0]; Free (Data);
             -- The report must survive both owner teardown and source overwrite.
             Check (Result.Fatal = Expected, "Fatal is independent copied data");
+            Check (Result.Module_Errors = Copied_Recovery, "module report survives owner/source teardown");
+            if Case_ID = Recovered then
+               Check (Result.Status = L.Loaded, "recovered AML publishes complete owner");
+            elsif Case_ID = Recovered_Then_Failed then
+               Check (Result.Status = L.Startup_Refused and Owner = null, "later refusal retains diagnostic only");
+            end if;
             if Wanted then
                Check (Result.Fatal.Item.Literal.Kind = 16#A7# and
                  Result.Fatal.Item.Literal.Code = 16#F2345678# and

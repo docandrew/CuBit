@@ -1,0 +1,10 @@
+project checked is
+   Build_Root := external ("ASLTS_BUILD", "build-release");
+   for Source_Dirs use (".", "../../userspace/services/acpi/lib", "../../userspace/services/acpi", "../../shared/firmware", "../../shared/capabilities", "../../userspace/services/acpi/resource-consumer");
+   for Object_Dir use Build_Root & "/obj";
+   for Exec_Dir use Build_Root & "/bin";
+   for Main use ("aslts_ordered_runner.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-O1", "-gnat2022", "-gnatwa", "-gnatwe", "-fstack-usage", "-gnata", "-gnato");
+   end Compiler;
+end checked;

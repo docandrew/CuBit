@@ -114,7 +114,7 @@ procedure Field_Initializer_Tests is
    -- Register/notification behavior is hosted, not SCI/GPE/EC integration.
    procedure Test_Lid is
       use type C.Namespace.Notification_Class;
-      S : aliased C.State (1, 4096, 4096);
+      S : aliased C.State (1, 4096, 4096, 1);
       IO : P.Context;
       Items : F.Binding_Set;
       Status : C.Values.Access_Status;
@@ -267,7 +267,7 @@ procedure Field_Initializer_Tests is
          Check (Status = C.Values.Available and then not Present, "lid notification consumed once");
       end loop;
       declare
-         Bad : aliased C.State (1, 4096, 4096);
+         Bad : aliased C.State (1, 4096, 4096, 1);
          Bad_Device : C.Node_Descriptor;
          Bad_Node : C.Namespace.Node_ID;
          -- Constructed negative AML, not ACPICA reference observations.
@@ -369,7 +369,7 @@ begin
    for Revision in Unsigned_8 range 1 .. 2 loop
       for Case_ID in Scenario loop
          declare
-            S : aliased C.State (1, 4096, 4096);
+            S : aliased C.State (1, 4096, 4096, 1);
             IO, Other : P.Context;
             Items : F.Binding_Set;
             Targets : array (Register_Index) of A.Target;

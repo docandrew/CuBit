@@ -39,11 +39,11 @@ procedure SRAT_Query_Tests is
       for B of Data loop Sum := Sum + B; end loop;
       Data (10) := 0 - Sum;
    end Seal;
-   Server : State (4, 1024, 256, 29);
+   Server : State (4, 1024, 256, Load_Capacity => 4, Initial_Revision => 29);
    Adapter : ACPI_Native_Blocks.State;
    Config : constant ACPI_Endpoint.Configuration := (Observer_Tag => 10, Provider_Tag => 11);
    Reply : Response;
-   Before : State_Model (4, 1024, 256) with Ghost;
+   Before : State_Model (4, 1024, 256, Load_Capacity => 4) with Ghost;
    procedure Query (Label : Unsigned_32; Table_Index, A, B : Unsigned_64;
                     Expected : Outcome; Data : Response_Words := [others => 0]) is
       Prior : constant Revision_Number := Revision (Server);

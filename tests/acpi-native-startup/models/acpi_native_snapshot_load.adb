@@ -12,6 +12,8 @@ package body ACPI_Native_Snapshot_Load is
    use type R.F.Bytes;
    subtype Bytes is R.F.Bytes;
    Fatal : constant Bytes := [16#5B#,16#32#,16#A7#,16#78#,16#56#,16#34#,16#F2#,16#0A#,16#55#];
+   Recovery : constant Bytes := [8] & Enc ("DERR") & [0,8] & Enc ("RSM0") &
+     [0,16#70#,16#78#,1] & Enc ("DERR") & [0,0] & Enc ("DERR") & [16#70#,16#0A#,91] & Enc ("RSM0");
    function Table (Code : Bytes) return Bytes is
       Raw : Bytes (1 .. R.F.Table_Header_Size + Code'Length) := [others => 0];
       Sum : Unsigned_8 := 0;
@@ -26,6 +28,8 @@ package body ACPI_Native_Snapshot_Load is
    procedure Load
      (Deadline : R.Tick; Owner : out L.State_Access; Result : out Report) is
       Payload : constant Bytes := (case T.Selected is
+        when T.Recovered | T.Recovery_Log_Failure => Recovery,
+        when T.Recovered_Then_Failed => Recovery & Bytes'[16#5B#,16#21#,1],
         when T.Module_Fatal => Fatal,
         when T.Root_Fatal => Method ("_INI", Fatal),
         when T.Bus_Fatal => Block ([16#10#], Enc ("_SB_") & Method ("_INI", Fatal)),
@@ -76,4 +80,22 @@ package body ACPI_Native_Snapshot_Load is
       T.Last_Load := Result.Startup;
       T.Sequence := T.Sequence + 1; T.Load_Completed_At := T.Sequence;
    end Load;
+   -- This owner fixture models Load itself. Private real-kernel adapters are
+   -- deliberately unavailable here; actual adapters have their own hosted suite.
+   procedure Read_Catalog
+     (Diagnostics : in out Report; Item : out L.Inventory; Status : out R.Copy_Status) is
+      pragma Unreferenced (Diagnostics, Item, Status);
+   begin raise Program_Error with "unmodeled native catalog adapter"; end Read_Catalog;
+   procedure Read_Description
+     (Diagnostics : in out Report; ID : Positive; Item : out L.Description; Status : out R.Copy_Status) is
+      pragma Unreferenced (Diagnostics, ID, Item, Status);
+   begin raise Program_Error with "unmodeled native descriptor adapter"; end Read_Description;
+   procedure Read_Chunk
+     (Diagnostics : in out Report; ID : R.S.Table_ID; Offset : Natural;
+      Into : out R.F.Bytes; Copied : out R.Byte_Count; Status : out R.Copy_Status) is
+      pragma Unreferenced (Diagnostics, ID, Offset, Into, Copied, Status);
+   begin raise Program_Error with "unmodeled native chunk adapter"; end Read_Chunk;
+   procedure Read_Clock (Now : out R.Tick; Available : out Boolean) is
+      pragma Unreferenced (Now, Available);
+   begin raise Program_Error with "unmodeled native clock adapter"; end Read_Clock;
 end ACPI_Native_Snapshot_Load;

@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "sources": {
+    "shared/firmware/firmware_tables.ads": "cdd038a8b009c7009c8f6286b34b6ab7d3c0bf7be8410ca782b0831780ae1ef4",
+    "shared/firmware/firmware_tables.adb": "7aca727a78cb7c10e67c044db1200401a0c28072d917e6e3718233a620e2d316",
+    "userspace/services/acpi/lib/aml_copied_tables.ads": "38e2e1306eb0d7e3b40bf90c89b7279a30ce266c9a9fb778c06a70cf7a5bd8b6",
+    "userspace/services/acpi/lib/aml_copied_tables.adb": "13c5adabdc2b708d18d831807682c4897f953e73a93a3903532e28d3852577e4"
+  },
+  "artifacts": {
+    "cached/COMPLETE.json": "2332c3df4aa3e228e291e5b8f5c5f161042c6fc4d06bcdc1e70cd0ed94572fcd",
+    "cached/level1.spark": "9717eef048ff657054e12ca67a350cef0c77460a86060ea961f4d77c46ecd206",
+    "cached/level1-summary.txt": "d0fd91235096829219edd178b0eac3da991914729d7936a373a8752bfa14483d",
+    "cached/level1-project.gpr": "a6894758764a8172a5d4a393eb98c8506110124153bdaa3bb34543b80fb96e52",
+    "cached/level1.log": "619014011f083b291dcab30958a932fac83dfc4316c4f9eec98019994c9ef107",
+    "cached/level2.spark": "4bfe427a22fc8e1ec6173e49ce1bdd3ffbf1071fdc789ce336fd70219a8fd099",
+    "cached/level2-summary.txt": "cfd0e4453833f08aafa30f05f3fe2d0a8ae1d6e0b149b2a0c5609c6e00d1c74d",
+    "cached/level2-project.gpr": "a6894758764a8172a5d4a393eb98c8506110124153bdaa3bb34543b80fb96e52",
+    "cached/level2.log": "ee6be9cabe7503f9ee4cc7f81040b69d021998484ab197dc85a69dfecda9fe42"
+  },
+  "results": [
+    {
+      "level": 1,
+      "spark": "cached/level1.spark"
+    },
+    {
+      "level": 2,
+      "spark": "cached/level2.spark"
+    }
+  ],
+  "original_run": "/home/doc/cubit-build-tmp/aml-copied-table-proof-ZLHorH",
+  "scope": "Current named-length copied-store safety and selected exact window/refusal model framing contracts; no full successful import byte semantics or interpreter/native proof.",
+  "negative_checks": 16,
+  "native_executed": false,
+  "hardware_validated": false
+}

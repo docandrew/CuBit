@@ -1,0 +1,40 @@
+=========================
+Summary of SPARK analysis
+=========================
+
+---------------------------------------------------------------------------------------------------
+SPARK Analysis results        Total        Flow                      Provers   Justified   Unproved
+---------------------------------------------------------------------------------------------------
+Data Dependencies                 .           .                            .           .          .
+Flow Dependencies                 .           .                            .           .          .
+Initialization                    6           6                            .           .          .
+Non-Aliasing                      .           .                            .           .          .
+Run-time Checks                  41           .                    41 (CVC5)           .          .
+Assertions                        2           .                     2 (CVC5)           .          .
+Functional Contracts              8           .    8 (CVC5 89%, Trivial 11%)           .          .
+LSP Verification                  .           .                            .           .          .
+Termination                       4           4                            .           .          .
+Concurrency                       .           .                            .           .          .
+---------------------------------------------------------------------------------------------------
+Total                            61    10 (16%)                     51 (84%)           .          .
+
+
+max steps used for successful proof: 806
+
+============================
+Most difficult proved checks
+============================
+
+No check found with max time greater than 1 second
+
+========================
+Detailed analysis report
+========================
+
+Analyzed 1 unit
+in unit firmware_tables, 5 subprograms and packages out of 5 analyzed
+  Firmware_Tables at firmware_tables.ads:6 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Firmware_Tables.Read_Root at firmware_tables.ads:39 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (24 checks)
+  Firmware_Tables.Read_Table at firmware_tables.ads:43 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (15 checks)
+  Firmware_Tables.Sum at firmware_tables.adb:13 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Firmware_Tables.U32 at firmware_tables.adb:5 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (12 checks)

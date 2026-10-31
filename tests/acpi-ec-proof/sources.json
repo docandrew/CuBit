@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "inputs": [
+    {
+      "path": "userspace/services/acpi/ec/acpi_ec_types.ads",
+      "sha256": "e96562a5f128130c03a0191b8fa33e9a6ee108314341463dddeb20d11b1ffcb9"
+    },
+    {
+      "path": "userspace/services/acpi/ec/acpi_ec_transactions.ads",
+      "sha256": "01fa46c2f3501ba93472291712bbe22dd7086af4800196f7bda0ea82c050561b"
+    },
+    {
+      "path": "userspace/services/acpi/ec/acpi_ec_transactions.adb",
+      "sha256": "b00b5622f0e0409f401258fc487af60a7ea8d1b6d4bcd65065332f85b101a151"
+    }
+  ],
+  "helpers": [
+    {
+      "path": "proof/ec_proof_boundary.ads",
+      "sha256": "8681fa964bcddbfcbb2d236c21013852a7a5f410e2e02f02d9d4e95fcf39e69a"
+    },
+    {
+      "path": "proof/ec_proof_instance.ads",
+      "sha256": "3685b9efb034f1499c04ee101be238e226cb4392f3c8b2670a0ceb020f809ce1"
+    },
+    {
+      "path": "audit.mjs",
+      "sha256": "877c906636d403a5187ec84ed2fa92dcfe5112894161c3ac215281280df8a6e8"
+    }
+  ]
+}

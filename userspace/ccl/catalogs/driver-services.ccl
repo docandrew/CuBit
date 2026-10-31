@@ -32,4 +32,6 @@
   (notification gpu 17 publish-and-manage)
   (service i2c 32 read-write)
   (notification i2c 32 publish-and-manage)
-  (notification wifi 33 publish-and-manage))
+  (notification wifi 33 publish-and-manage)
+  (service gpio 34 read-write)
+  (notification gpio 34 publish-and-manage))

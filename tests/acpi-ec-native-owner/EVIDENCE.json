@@ -1,0 +1,50 @@
+{
+  "hosted": {
+    "path": "/home/doc/cubit-build-tmp/ec-native-owner-rVWcOk/COMPLETE.json",
+    "sha256": "8cc11780ad06f3bcf802974445d6dc5a99f9d64a13659a090bad430ea949eb41",
+    "checks": 1658,
+    "runtime_processes": 90,
+    "sources": 47,
+    "compiled_units": 29
+  },
+  "semantic": {
+    "path": "/home/doc/cubit-build-tmp/ec-progress-semantic-hCoD6I/COMPLETE.json",
+    "sha256": "625bae4f3314a996fbed3b213afa2172c27b63638d8c36f5d9ae1468ae0924fb",
+    "sources": 260,
+    "runtime_specs": 222,
+    "objects": 0
+  },
+  "policy_proof": {
+    "path": "/home/doc/cubit-build-tmp/ec-scan-policy-proof-P8mlIS/COMPLETE.json",
+    "sha256": "6bef15a5429c22df330f9603e8b3543cde9bcc9583fd08bcb6e36874357faad1",
+    "reports": [
+      {
+        "level": 1,
+        "entities": 11,
+        "proof": 9,
+        "flow": 19,
+        "valid_CVC5": 47,
+        "valid_Trivial": 21,
+        "external_dependencies": 0,
+        "skips": 0,
+        "rejected_controls": 20
+      },
+      {
+        "level": 2,
+        "entities": 11,
+        "proof": 9,
+        "flow": 19,
+        "valid_CVC5": 47,
+        "valid_Trivial": 21,
+        "external_dependencies": 0,
+        "skips": 0,
+        "rejected_controls": 20
+      }
+    ],
+    "scope": "Actual scan allowance policy only, under its contracts; no whole driver or hardware proof."
+  },
+  "new_proof": true,
+  "whole_service_proved": false,
+  "native_executed": false,
+  "hardware_validated": false
+}

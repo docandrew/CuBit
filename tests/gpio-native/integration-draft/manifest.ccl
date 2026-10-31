@@ -1,0 +1,29 @@
+# Every value is launcher-supplied policy, not guessed firmware data.
+(type GPIO_Capacity (range 1 257))
+(type GPIO_Budget (range 1 65535))
+(type GPIO_Pages (range 1 1024))
+(type GPIO_Burst (range 1 64))
+(type GPIO_Milliseconds (range 1 9223372036854775807))
+(type GPIO_Timing (record
+  (startup GPIO_Milliseconds) (admission GPIO_Milliseconds) (cleanup GPIO_Milliseconds)
+  (readiness GPIO_Milliseconds) (poll_interval GPIO_Milliseconds)
+  (poll_window GPIO_Milliseconds) (progress GPIO_Milliseconds)))
+(type GPIO_Work (record (events GPIO_Burst) (requests GPIO_Burst) (steps GPIO_Burst)))
+(type GPIO_Parameters (record
+  (capacity GPIO_Capacity) (operation_budget GPIO_Budget) (startup_budget GPIO_Budget)
+  (pages_per_resource GPIO_Pages) (work GPIO_Work) (timing GPIO_Timing)))
+
+# Requires coordinator-owned ACPI-memory/process request schema support.
+# GPIO polling mode: no parent interrupt request.
+(Executable_Manifest identity => "com.cubit.gpio" version => "0.1.0"
+  drives => [(Device_Match.ACPI_ID "INTC1057")]
+  requests => [
+    (acpi-memory "community0" 0 4194304 Access.Read_Write)
+    (acpi-memory "community1" 1 4194304 Access.Read_Write)
+    (acpi-memory "community4" 2 4194304 Access.Read_Write)
+    (acpi-memory "community5" 3 4194304 Access.Read_Write)
+    (process "launcher")
+    (notification "gpio" Notify_Access.Manage "registration")
+    (service "device-manager" "ready") (service "logstore" "logstore")]
+  optional => ["community0" "community1" "community4" "community5" "logstore"]
+  parameters => (Parameter_Signature.Declared "GPIO_Parameters"))

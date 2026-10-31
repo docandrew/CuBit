@@ -1,5 +1,5 @@
 project Adapter_original_release is
- for Source_Dirs use ("../../tests/aml-core", "../../tests/aml-debug", "../../userspace/services/acpi/lib", "../../userspace/services/acpi", "../../shared/firmware");
+ for Source_Dirs use ("../../tests/aml-core", "../../tests/aml-debug", "../../userspace/services/acpi/lib", "../../userspace/services/acpi", "../../shared/firmware", "../../userspace/services/acpi/resource-consumer");
  for Object_Dir use "adapter-original-release";
  for Main use ("readonly_input_tests.adb", "region_executor_tests.adb", "timer_executor_tests.adb", "debug_target_tests.adb");
  package Compiler is

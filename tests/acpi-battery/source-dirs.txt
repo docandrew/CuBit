@@ -3,3 +3,6 @@ userspace/services/acpi
 userspace/services/acpi/lib
 userspace/services/acpi/power
 shared/firmware
+userspace/services/acpi/resource-consumer
+userspace/services/acpi/resource-data
+shared/acpi

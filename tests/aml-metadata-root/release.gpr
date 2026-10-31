@@ -1,5 +1,5 @@
 project Release is
- for Source_Dirs use (".", "../../userspace/services/acpi/lib", "../../shared/firmware");
+ for Source_Dirs use (".", "../../userspace/services/acpi/lib", "../../shared/firmware", "../../userspace/services/acpi/resource-consumer");
  for Object_Dir use "build-release/obj";
  for Exec_Dir use "build-release";
  for Main use ("metadata_root_owner_tests.adb", "metadata_root_gc_tests.adb");

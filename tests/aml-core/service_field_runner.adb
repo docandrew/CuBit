@@ -37,7 +37,7 @@ procedure Service_Field_Runner is
       B (10) := 0 - Sum;
       return B;
    end Table;
-   Service : aliased State (Max_Tables, Max_Total_Bytes, Max_Table_Bytes);
+   Service : aliased State (Max_Tables, Max_Total_Bytes, Max_Table_Bytes, Load_Capacity => Max_Tables);
    Held : ACPI_Test_Results.Holder;
    Status : Install_Status;
    Bound : Namespace.Bind_Status;

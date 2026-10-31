@@ -1,0 +1,85 @@
+{
+  "sources": {
+    "userspace/services/acpi/ec/acpi_ec_clock_policy.ads": "df39eacead116a468da1e1f4d5788611ad4e58bb4916f43aa8328f52002d8e36",
+    "userspace/services/acpi/ec/acpi_ec_clock_policy.adb": "34d58ce3c7c1947837ea7470a79ecfa12cc24950a0e5a4397ddd8c2b898ee6d0",
+    "userspace/services/acpi/ec/acpi_ec_types.ads": "e96562a5f128130c03a0191b8fa33e9a6ee108314341463dddeb20d11b1ffcb9"
+  },
+  "recipes": {
+    "run.sh": "3e69ffe13604c91b2f60671a8b409ea3f582d56103d4e4ccf3247ead4e6b7a9d",
+    "run.mjs": "1cbe892e1d440f88962ea3727e8097662c2b0993971eea48d7f9e27871cc2fb1",
+    "check.mjs": "1ebe435ef010c3c548f35f9598a82620f43c0a0fcbb9c2c86aabe7fdc7e138f9",
+    "audit.mjs": "608eb9c541502679d34e27e38dda0300e8a19ba0ba7b5b53533a377d01b84f26",
+    "sources.json": "c7a2345ca130d930c6dfebb348e39b73ee20ff80e5b2ad9bca6a2102f666245f"
+  },
+  "tools": {
+    "gnatprove": {
+      "path": "/nix/store/9xvbsfi448cx9fjk4ivla9fsq390a8gn-gnatprove-fsf-15_2025-06-10/bin/gnatprove",
+      "sha256": "ef4dd76057294453d4cc43781aa0f25fad9b351533e380cc9a60a9b86fa797ef"
+    },
+    "gprbuild": {
+      "path": "/nix/store/3xpy8h5k8fdlfi1v43iwfap0zv5n4bmp-gprbuild-25.0.0/bin/gprbuild",
+      "sha256": "98d565f501e7840286e90daeddf276ff4c0bdb16e09f94e6ad7835b8063d7ee2"
+    },
+    "cvc5": {
+      "path": "/nix/store/kpamqxdkwynzxyzhqj4csy6h5qj0pz21-cvc5-1.3.4/bin/cvc5",
+      "sha256": "06fba7a8fe0e188ba77e049c4b08acf932f5280183830dfc5838f420678626d1"
+    }
+  },
+  "commands": [
+    {
+      "args": [
+        "/nix/store/9xvbsfi448cx9fjk4ivla9fsq390a8gn-gnatprove-fsf-15_2025-06-10/bin/gnatprove",
+        "-P",
+        "/home/doc/cubit-build-tmp/acpi-ec-clock-proof-gU4kgt/level1/proof.gpr",
+        "-u",
+        "acpi_ec_clock_policy.adb",
+        "--level=1",
+        "--timeout=5",
+        "-j1",
+        "--report=all",
+        "--prover=cvc5",
+        "--checks-as-errors=on"
+      ],
+      "status": 0,
+      "signal": null,
+      "error": null
+    },
+    {
+      "args": [
+        "/nix/store/9xvbsfi448cx9fjk4ivla9fsq390a8gn-gnatprove-fsf-15_2025-06-10/bin/gnatprove",
+        "-P",
+        "/home/doc/cubit-build-tmp/acpi-ec-clock-proof-gU4kgt/level2/proof.gpr",
+        "-u",
+        "acpi_ec_clock_policy.adb",
+        "--level=2",
+        "--timeout=5",
+        "-j1",
+        "--report=all",
+        "--prover=cvc5",
+        "--checks-as-errors=on"
+      ],
+      "status": 0,
+      "signal": null,
+      "error": null
+    }
+  ],
+  "reports": {
+    "1": {
+      "proof": 10,
+      "flow": 4,
+      "entities": 3,
+      "dependency_assumptions": 0,
+      "skips": 0,
+      "negative_controls": 20
+    },
+    "2": {
+      "proof": 10,
+      "flow": 4,
+      "entities": 3,
+      "dependency_assumptions": 0,
+      "skips": 0,
+      "negative_controls": 20
+    }
+  },
+  "scope": "Pure EC clock policy Decode/Slice only; no callback, clock hardware, interpreter or native proof."
+}

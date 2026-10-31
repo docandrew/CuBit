@@ -1,0 +1,78 @@
+{
+  "hosted_run": "/home/doc/cubit-build-tmp/acpi-hid-owner-25jCBB",
+  "hosted_result": {
+    "counts": {
+      "checked": {
+        "1": {
+          "normal": 46,
+          "hardware": 21,
+          "missing": 44
+        },
+        "2": {
+          "normal": 46,
+          "hardware": 21,
+          "missing": 44
+        }
+      },
+      "release": {
+        "1": {
+          "normal": 46,
+          "hardware": 21,
+          "missing": 44
+        },
+        "2": {
+          "normal": 46,
+          "hardware": 21,
+          "missing": 44
+        }
+      }
+    },
+    "commands": 20,
+    "hosted": true,
+    "new_proof": false,
+    "native_executed": false,
+    "hardware_validated": false
+  },
+  "source_pins": 404,
+  "checks_per_profile": 222,
+  "reference": "/home/doc/cubit-build-tmp/hid-owner-oracle-7sICix",
+  "reference_result": {
+    "accepted": true,
+    "semantic_match": true,
+    "clean_tool_log": false,
+    "diagnostics": [
+      "ACPI Error: 14 (0xE) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "recognized_teardown": true,
+    "integers": [
+      15
+    ],
+    "resource_hex": "8e1500020001020000010600801a060015005c49324330008c1c00010001000200010000000017000019001f0000002a005c4750494f007900",
+    "args": [
+      "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+      "-b",
+      "evaluate TPD0._CID; evaluate TPD0._STA; evaluate TPD0._CRS",
+      "/home/doc/cubit-build-tmp/acpi-hid-owner-25jCBB/bridge-r2.aml"
+    ],
+    "status": 0,
+    "signal": null,
+    "error": null,
+    "inputs": {
+      "/home/doc/cubit-build-tmp/acpi-hid-owner-25jCBB/bridge-r2.aml": "abcadf7fa0af180a6200fe6f0991a72335cfd9411363ec2f04866bf091d098cd",
+      "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec": "a161f8b3a0b94b4301c1d0f2ccca6c0f808d2998cd4c9e037a9d7b218c88dcfe",
+      "/home/doc/git/.acpi-proof-work/hid-enumeration-work/oracle.mjs": "54dfdd77c6449b24238f742c979ab6de6c7715634780ead2f23798811294ddc9"
+    },
+    "scope": "Independent exact-fixture CID/STA/CRS observations only; not DSM, service bridge, controller resolution, provider authority or native/hardware acceptance. Exit diagnostic explicitly qualified."
+  },
+  "artifacts": {
+    "/home/doc/cubit-build-tmp/acpi-hid-owner-25jCBB/COMPLETE.json": "2d9e4a8c6a5fdd21716dde989d393fd20fcb38e241b69248e709bff5d3df5e53",
+    "/home/doc/cubit-build-tmp/acpi-hid-owner-25jCBB/inputs.json": "1648a8d82f221176aee8b369d06b25ebead20df1938be47f3997fb4d33327d9f",
+    "/home/doc/cubit-build-tmp/acpi-hid-owner-25jCBB/commands.json": "d5489d8a743464c26a857583932a9903804d99174f5cb0437189d566e1dbfb94",
+    "/home/doc/cubit-build-tmp/hid-owner-oracle-7sICix/RESULT.json": "50615d5ba6f51f2bfa836d8ed59e000875c7928348e1c4d37dfd38247584a238",
+    "/home/doc/cubit-build-tmp/hid-owner-oracle-7sICix/acpica.log": "9a307ab89d3be30e03150ba3925d05a79d1c4b202496ab4d9dbffb78947deffa"
+  },
+  "new_proof": false,
+  "native_executed": false,
+  "hardware_validated": false,
+  "full_goal": "active and incomplete"
+}

@@ -138,8 +138,7 @@ procedure Bank_Capacity_Tests is
       use type Small.Values.Module_Outcome;
       package SF is new Small.Field_IO (Context, Pending, Describe, Dispatch, Confirmed,
         Maximum_Bindings => 3, Authorize_Target => Authorize);
-      Limited_Service : aliased Small.State (1, Bank_Access_Oracle.Raw_Table'Length,
-        Bank_Access_Oracle.Raw_Table'Length);
+      Limited_Service : aliased Small.State (1, Bank_Access_Oracle.Raw_Table'Length, Bank_Access_Oracle.Raw_Table'Length, 1);
       Model : Context;
       Bindings : SF.Binding_Set;
       Staged : Small.Stage_Status;

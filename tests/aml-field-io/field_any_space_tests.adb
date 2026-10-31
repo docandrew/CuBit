@@ -132,7 +132,7 @@ begin
    for Revision in Unsigned_8 range 1 .. 2 loop
       for Space in Unsigned_8 range 0 .. 1 loop
          declare
-            S : aliased C.State (1, 4096, 4096);
+            S : aliased C.State (1, 4096, 4096, 1);
             IO : Context;
             Items, Bad : F.Binding_Set;
             Targets, Reversed : AML_Field_Targets.Vector := [others => A.No_Target];

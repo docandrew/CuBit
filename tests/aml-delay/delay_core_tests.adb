@@ -33,7 +33,7 @@ procedure Delay_Core_Tests is
    Data : constant Firmware_Tables.Bytes := Table
      ([16#14#,12,16#54#,16#45#,16#53#,16#54#,0,16#5B#,16#22#,1,16#A4#,16#0A#,7,
        16#14#,14,16#42#,16#41#,16#44#,16#30#,0,16#5B#,16#21#,16#0B#,0,1,16#A4#,16#0A#,7]);
-   Tree : aliased S.State (1, 512, 512);
+   Tree : aliased S.State (1, 512, 512, 1);
    Installed : S.Install_Status;
    Report : S.Namespace.Initialization_Report;
    Access_Result : S.Values.Access_Status;

@@ -1,0 +1,61 @@
+[
+  {
+    "label": "compile",
+    "args": [
+      "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+      "-oa",
+      "-r",
+      "1",
+      "-of",
+      "-cr",
+      "-vs",
+      "-l",
+      "-sc",
+      "-sa",
+      "-ic",
+      "-ta",
+      "-ts",
+      "-so",
+      "-lm",
+      "-ln",
+      "-ls",
+      "-li",
+      "-p",
+      "/home/doc/git/.acpi-proof-work/aslts-logic32-original-work/oracle/logic-n32",
+      "/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/logic/MAIN.asl"
+    ],
+    "cwd": "/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/logic",
+    "status": 0,
+    "signal": null,
+    "error": null
+  },
+  {
+    "label": "disassembly",
+    "args": [
+      "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+      "-d",
+      "/home/doc/git/.acpi-proof-work/aslts-logic32-original-work/oracle/logic-n32.aml"
+    ],
+    "cwd": "/home/doc/git/.acpi-proof-work/aslts-logic32-original-work/oracle",
+    "status": 0,
+    "signal": null,
+    "error": null
+  },
+  {
+    "label": "runtime",
+    "args": [
+      "/nix/store/97d5ygrvqj55f4nx1x34wfdcc7qn11c0-coreutils-9.11/bin/stdbuf",
+      "-oL",
+      "-eL",
+      "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+      "-dr",
+      "-b",
+      "execute MN00;execute ERRS;execute MN00;execute ERRS",
+      "/home/doc/git/.acpi-proof-work/aslts-logic32-original-work/oracle/logic-n32.aml"
+    ],
+    "cwd": "/home/doc/git/.acpi-proof-work/aslts-logic32-original-work/oracle",
+    "status": 0,
+    "signal": null,
+    "error": null
+  }
+]

@@ -55,3 +55,17 @@ References:
 
 Current evidence is private Linux-hosted regression testing. It is not a
 registered native component, a new proof result, or validation of any laptop.
+
+
+Status-checked power sampling prerequisite: Bootstrap/Requests Lids and
+Power_Sources now expose Sample_Ready for same-Core first-match search, direct
+STA eligibility and fixed LID/PSR observation under one budget. It refuses
+absent/disabled/nonfunctioning or failed-status devices before member invocation.
+These ordered observations are not a live cache, atomic snapshot or authority.
+Raw query/cache APIs retain their caller status obligations. Native power
+startup wiring, battery status, event invalidation/publication and transitions
+remain unfinished. Common STA code is shared with HID in ACPI_Device_Status.
+Hosted274sampling,312native-HID,382HID-owner checks/profile; actual-runtime
+25semantic selections/24ALIs/305mirrors with zero objects. No new proof or native
+execution. Independent STA reference is qualified by the known4cache exit
+diagnostic. Receipt: /home/doc/git/.acpi-proof-work/checked-power-sampling-work/APPLIED.json

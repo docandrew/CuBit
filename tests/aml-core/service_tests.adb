@@ -20,11 +20,11 @@ procedure Service_Tests is
    -- noncopyable owner; production exposes no reset or copying operation.
    type State_Access is access State;
    procedure Free is new Ada.Unchecked_Deallocation (State, State_Access);
-   Service_Ptr : State_Access := new State (Max_Tables, Max_Total_Bytes, Max_Table_Bytes);
+   Service_Ptr : State_Access := new State (Max_Tables, Max_Total_Bytes, Max_Table_Bytes, Load_Capacity => Max_Tables);
    procedure Reset_Fixture is
    begin
       Free (Service_Ptr);
-      Service_Ptr := new State (Max_Tables, Max_Total_Bytes, Max_Table_Bytes);
+      Service_Ptr := new State (Max_Tables, Max_Total_Bytes, Max_Table_Bytes, Load_Capacity => Max_Tables);
    end Reset_Fixture;
    Result : Install_Status;
    Data : Firmware_Tables.Bytes (1 .. 42) := [others => 0];
@@ -244,7 +244,7 @@ begin
    declare
       package IDs renames Firmware_Tables.Identifiers;
       use type IDs.Identity;
-      S : State (Max_Tables, Max_Total_Bytes, Max_Table_Bytes);
+      S : State (Max_Tables, Max_Total_Bytes, Max_Table_Bytes, Load_Capacity => Max_Tables);
       Query : IDs.Selection := (Name => "OEMX", others => <>);
       function Table_With_ID (Ident : IDs.Identity) return Firmware_Tables.Bytes is
          Raw : Firmware_Tables.Bytes (7 .. 42) := [others => 0];
@@ -314,7 +314,7 @@ begin
    -- retained table is adjacent in the backing array. Mutating input cannot
    -- affect the service-owned copy.
    declare
-      S : State (Max_Tables, Max_Total_Bytes, Max_Table_Bytes);
+      S : State (Max_Tables, Max_Total_Bytes, Max_Table_Bytes, Load_Capacity => Max_Tables);
       Source : Firmware_Tables.Bytes := Description_Table ("TEST", 72);
       Expected : constant Firmware_Tables.Bytes := Source;
       Bits : AML_Field_Data.Read_Result;
@@ -349,7 +349,7 @@ begin
       Check (Table_Field (S, 2, Natural'Last, 1).Status = AML_Decode.Truncated);
    end;
    declare
-      S : State (Max_Tables, Max_Total_Bytes, Max_Table_Bytes);
+      S : State (Max_Tables, Max_Total_Bytes, Max_Table_Bytes, Load_Capacity => Max_Tables);
       Region, Field, Node : Namespace.Node_ID;
       Bound : Namespace.Bind_Status;
       Prior : Values.Audit_Value;
@@ -387,7 +387,7 @@ begin
    -- retained large table even after the caller overwrites its source.
    declare
       Length : constant Positive := 1_048_577;
-      S : State (40, Length + 39 * 36, Length);
+      S : State (40, Length + 39 * 36, Length, Load_Capacity => 40);
       Source : Firmware_Tables.Bytes := Description_Table ("LARG", Length, 17);
       Last_Byte : constant Firmware_Tables.Byte := Source (Source'Last);
       Region, Field : Namespace.Node_ID;
@@ -425,8 +425,7 @@ begin
    for Case_ID in 0 .. 2 loop
       declare
          S : State
-           (3, (if Case_ID = 1 then 72 else 73),
-            (if Case_ID = 2 then 36 else 37));
+           (3, (if Case_ID = 1 then 72 else 73), (if Case_ID = 2 then 36 else 37), Load_Capacity => 3);
       begin
          Install (S, 1, DSDT, Named_Table (0, 0), Result);
          Check (Result = Installed);

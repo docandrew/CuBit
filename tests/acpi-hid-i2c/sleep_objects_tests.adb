@@ -25,7 +25,7 @@ procedure Sleep_Objects_Tests is
    use type Q.Register_Model;
    use type Q.Sleep_Type;
    use type Q.Sleep_Field;
-   Service : aliased C.State (1, 4096, 4096);
+   Service : aliased C.State (1, 4096, 4096, 1);
    Checks : Natural := 0;
    Report : Q.Query_Report;
    procedure Check (OK : Boolean; Label_Text : String) is

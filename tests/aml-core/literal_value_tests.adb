@@ -62,7 +62,7 @@ procedure Literal_Value_Tests is
      Method ("SIZE", [16#70#] & Buffer_Code & [16#60#,16#A4#,16#87#,16#60#]) &
      Method ("BIGN", [16#A4#,16#11#,5,16#0B#,
        Unsigned_8 (Big_Buffer_Length mod 256), Unsigned_8 (Big_Buffer_Length / 256), 0]);
-   Service : aliased State (Max_Tables, Max_Total_Bytes, Max_Table_Bytes);
+   Service : aliased State (Max_Tables, Max_Total_Bytes, Max_Table_Bytes, Load_Capacity => Max_Tables);
    Held : ACPI_Test_Results.Holder;
    Status : Install_Status;
    R : Values.Result;

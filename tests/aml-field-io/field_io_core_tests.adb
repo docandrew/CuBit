@@ -92,7 +92,7 @@ begin
    for Revision in Unsigned_8 range 1 .. 2 loop
       for Width in T.Access_Width range T.Byte_Access .. T.Dword_Access loop
          declare
-            S : aliased C.State (1, 4096, 4096);
+            S : aliased C.State (1, 4096, 4096, 1);
             IO, Other : P.Context;
             Item, Bad : F.Binding;
             Configuration : ACPI_Region_Policy.Configuration :=

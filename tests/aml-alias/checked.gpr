@@ -1,5 +1,5 @@
 project Checked is
- for Source_Dirs use (".", "../../userspace/services/acpi/lib", "../../shared/firmware");
+ for Source_Dirs use (".", "../../userspace/services/acpi/lib", "../../shared/firmware", "../../userspace/services/acpi/resource-consumer");
  for Object_Dir use "build-checked/obj";
  for Exec_Dir use "build-checked";
  for Main use ("alias_namespace_tests.adb", "alias_runtime_tests.adb", "root_reference_tests.adb");

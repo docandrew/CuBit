@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with AML_Table_Sources;
 with Ada.Text_IO;
 with AML_Decode; use AML_Decode;
 with AML_Execute; use AML_Execute;
@@ -75,10 +76,10 @@ begin
       NS.Load_Names (Tree, Code, Width, Loaded);
       Check (Loaded = NS.Loaded);
       NS.Bind_Table_Region
-        (Tree, NS.Root, "REG0", (Table => 1, Extent => 64), Region_Node, Bound);
+        (Tree, NS.Root, "REG0", (Item => (AML_Table_Sources.Boot_Source, 1), Extent => 64), Region_Node, Bound);
       Check (Bound = NS.Bound and then Region_Node > NS.Root);
       NS.Bind_Table_Field
-        (Tree, NS.Root, "FLD0", ((Table => 1, Extent => 64), 36 * 8 + 1, 5),
+        (Tree, NS.Root, "FLD0", ((Item => (AML_Table_Sources.Boot_Source, 1), Extent => 64), 36 * 8 + 1, 5),
          Field_Node, Bound);
       Check (Bound = NS.Bound and then Field_Node > NS.Root);
       -- D6 bits 1..5 are 01011 = 11, independent of AML integer width.

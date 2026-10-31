@@ -20,6 +20,11 @@ generic
       Node : Core.Namespace.Node_ID; Args : AML_Execute.Arguments;
       Argument_Count : Natural; Budget : Natural; Result : out Core.Values.Result;
       Status : out Core.Values.Access_Status);
+   -- Trusted callbacks preserve Core/result ownership, never reset/reenter it,
+   -- and obey Core's release contract (including retaining a refused handle).
+   with procedure Release_Result
+     (Service : in out Core.State; Handle : in out Core.Values.Value_Handle;
+      Status : out Core.Values.Access_Status) is Core.Release_Result;
 package ACPI_Region_Initialization with SPARK_Mode is
    type Phase is (Not_Started, Preparing, Connecting, Connected,
       Disconnecting, Disconnected, Failed);
@@ -30,11 +35,15 @@ package ACPI_Region_Initialization with SPARK_Mode is
       Stage : Phase := Not_Started;
       Regions, Methods : Region_Count := 0;
       Charged : Natural := 0;
+      Reported_Charge : Natural := 0;
+      Cleanup_Result : Core.Values.Access_Status := Core.Values.Available;
       Error_Node : Core.Namespace.Node_ID := Core.Namespace.Root;
       Error : AML_Execute.Execution_Status := AML_Execute.No_Return;
       Fatal : AML_Fatal.Observation;
    end record;
    type Session is limited private;
+   type Cleanup_Action is (Attempted, Wrong_Context, No_Pending_Result);
+   function Pending (Run : Session) return Boolean;
    function Observe (Run : Session) return Report;
    function Observe_Region (Run : Session; Node : Core.Namespace.Node_ID) return Notice_Result;
    function Outcome (Run : Session) return ACPI_Device_Policy.Region_Outcome;
@@ -50,6 +59,14 @@ package ACPI_Region_Initialization with SPARK_Mode is
      (Run : in out Session; Service : aliased in out Core.State;
       Context : in out Controller; Budget : Natural; Accepted : out Boolean)
      with Pre => Core.Valid (Service), Post => Core.Valid (Service);
+   -- A failed result release remains owned by this session. Cleanup may run
+   -- after region/method changes, but only in the original Core lifetime.
+   -- Close never reruns AML, restores connectivity or resets a failed session.
+   -- Preserve the session and its Core/backing while Pending is true.
+   procedure Close
+     (Run : in out Session; Service : in out Core.State;
+      Action : out Cleanup_Action)
+     with Pre => Core.Valid (Service), Post => Core.Valid (Service);
 private
    subtype Node_ID is Core.Namespace.Node_ID;
    type Entry_State is record
@@ -63,6 +80,8 @@ private
    type Session is limited record
       Info : Report;
       Owner : Core.Node_Descriptor := Core.Values.No_Node;
+      Handle : Core.Values.Value_Handle := Core.Values.No_Value;
+      Pending_Node : Node_ID := Core.Namespace.Root;
       Items : Entries;
    end record;
 end ACPI_Region_Initialization;

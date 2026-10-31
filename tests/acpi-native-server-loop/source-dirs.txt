@@ -6,3 +6,4 @@ userspace/services/acpi/request-driver
 userspace/services/acpi/region-init
 shared/firmware
 shared/acpi
+userspace/services/acpi/resource-consumer

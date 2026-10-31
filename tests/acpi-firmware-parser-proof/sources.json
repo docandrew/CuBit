@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "sources": {
+    "shared/firmware/firmware_tables.ads": "cdd038a8b009c7009c8f6286b34b6ab7d3c0bf7be8410ca782b0831780ae1ef4",
+    "shared/firmware/firmware_tables.adb": "7aca727a78cb7c10e67c044db1200401a0c28072d917e6e3718233a620e2d316"
+  }
+}

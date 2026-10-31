@@ -9,6 +9,8 @@ package AML_Field_Layout with SPARK_Mode, Pure is
    Bits_Per_Byte : constant := 8;
    Memory_Space : constant AML_Decode.Byte := 0;
    IO_Space : constant AML_Decode.Byte := 1;
+   Embedded_Control_Space : constant AML_Decode.Byte := 3;
+   EC_Last_Cell : constant AML_Decode.Integer_Value := 255;
    IO_Last_Address : constant AML_Decode.Integer_Value := 16#FFFF#;
    type Field_Form is (Ordinary_Field, Bank_Field, Index_Field);
    type Region_Geometry is record
@@ -34,9 +36,13 @@ package AML_Field_Layout with SPARK_Mode, Pure is
          Field.Form = Ordinary_Field and then not Field.Has_Connection
          and then Field.Region = Register.Region
          and then Field.Region.Length /= 0
-         and then Field.Region.Space in Memory_Space | IO_Space
+         and then Field.Region.Space in Memory_Space | IO_Space | Embedded_Control_Space
          and then (if Register.Width = ACPI_FADT.Transactions.Qword_Access
            then Field.Region.Space = Memory_Space)
+         and then (if Field.Region.Space = Embedded_Control_Space then
+           Register.Width = ACPI_FADT.Transactions.Byte_Access
+           and then Field.Region.Base <= EC_Last_Cell
+           and then Field.Region.Length - 1 <= EC_Last_Cell - Field.Region.Base)
          and then Field.Bit_Offset mod Bits_Per_Byte = 0
          and then Field.Bit_Offset / Bits_Per_Byte = Register.Byte_Offset
          and then Field.Bit_Length = AML_Decode.Integer_Value

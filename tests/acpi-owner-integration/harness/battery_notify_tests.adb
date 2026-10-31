@@ -50,7 +50,7 @@ procedure Battery_Notify_Tests is
    use type E.Routing_Result;
    use type W.Words;
    Cache, Other_Cache : B.State;
-   Service : aliased C.State (1, 4096, 4096);
+   Service : aliased C.State (1, 4096, 4096, 1);
    Last_Event : C.Notification_Observation;
    procedure Check (OK : Boolean; Text : String) is
    begin

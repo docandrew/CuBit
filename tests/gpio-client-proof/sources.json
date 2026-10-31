@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "inputs": [
+    {
+      "path": "userspace/lib/gpio-admission/gpio_client_controls.ads",
+      "sha256": "533f16adfc8c1026ebb97df65db01944c98b5d06cce1ae0632a4417e6dde5e69"
+    },
+    {
+      "path": "userspace/lib/gpio-admission/gpio_client_controls.adb",
+      "sha256": "56127368e27c424041daabab3f0dbbba5271ed8734a7e3a2965376834693616e"
+    },
+    {
+      "path": "userspace/lib/gpio-admission/gpio_control_wire.ads",
+      "sha256": "4d47763db6f1783f0bf7686d5f79a8798082114e1d4d730351aba55efad94b50"
+    },
+    {
+      "path": "userspace/lib/gpio-admission/gpio_control_wire.adb",
+      "sha256": "70216dc0db50c8a97323adff0029bf642c5068f1b3140c88e65a8650d486fbc6"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit.ads",
+      "sha256": "ad85bc92372bca950674268c2b1b5507b5edc382b13176f73304a2db5725f52c"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-process_ids.ads",
+      "sha256": "d012ffd2942827ef674e11921492508bfc46f0787553c94fb1c745cdcbe5d48a"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-process_ids.adb",
+      "sha256": "0670a89f145f4ae0006e7f4014d9c9c6e28e6e7cc4cae29c54edf205d5ff2478"
+    }
+  ],
+  "local": [
+    {
+      "path": "proof/gpio_client_proof_boundary.ads",
+      "sha256": "b0bee9c810d9ab59bb35b22e41ebc2b76d25b3d12ad02f658da464bd7faab869"
+    },
+    {
+      "path": "proof/gpio_client_proof_instance.ads",
+      "sha256": "8e22178ea9579d6f33cd81f086d675d967e0f7dd54455254599151dc613e7ead"
+    }
+  ],
+  "audit_sha256": "1b56336201fdaef59ed783b1b8012de54d146dafbbe97d71cf6025a92fd171c0"
+}

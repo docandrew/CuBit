@@ -71,7 +71,7 @@ procedure Bootstrap_Device_Tests is
    end Load;
 begin
    declare
-      S : State (1,1024,1024);
+      S : State (1, 1024, 1024, Load_Capacity => 1);
    begin
       Load (S); Finish (S);
       Check (Current (S) = Complete and Completion (S).Stage = Finished, "snapshot complete independently");
@@ -94,7 +94,7 @@ begin
       end;
    end;
    declare
-      S : State (1,1024,1024);
+      S : State (1, 1024, 1024, Load_Capacity => 1);
       Image : constant Bytes := Migration_Tables.Make (Block ([16#5B#,16#82#],Enc ("DEV0") &
         Method ("_INI",[16#5B#,16#32#,1,1,0,0,0,16#0A#,16#42#])));
    begin
@@ -117,7 +117,7 @@ begin
    -- even when no Field currently refers to the region.
    for Space in Unsigned_8 range 0 .. 3 loop
       declare
-         S : State (1,1024,1024);
+         S : State (1, 1024, 1024, Load_Capacity => 1);
          Region : constant Bytes := [16#5B#,16#80#] & Enc ("REG0") & [Space,0,1];
          Image : constant Bytes := Migration_Tables.Make (Region & Code);
       begin
@@ -131,7 +131,7 @@ begin
       end;
    end loop;
    declare
-      S : State (1,1024,1024);
+      S : State (1, 1024, 1024, Load_Capacity => 1);
       Ready_Status : constant Bytes := Block ([16#A0#],
         [16#93#] & Enc ("MARK") & [16#0A#,2,16#A4#,16#0A#,15]) & [16#A4#,0];
       Device_Code : constant Bytes := Block ([16#A0#],
@@ -152,7 +152,7 @@ begin
         "no-hardware startup retains aggregate fuel");
    end;
    declare
-      S : State (1,1024,1024);
+      S : State (1, 1024, 1024, Load_Capacity => 1);
    begin
       Load (S); Finish (S, Startup_Budget (Module_Cost));
       Check (Current (S) = Complete, "zero residual does not erase completed snapshot");
@@ -161,7 +161,7 @@ begin
         "no reset of exhausted startup fuel");
    end;
    declare
-      S : State (1,1024,1024);
+      S : State (1, 1024, 1024, Load_Capacity => 1);
    begin
       Load (S); Finish (S,0);
       Check (Current (S) = Failed and Device_Completion (S).Stage = Devices_Not_Started,

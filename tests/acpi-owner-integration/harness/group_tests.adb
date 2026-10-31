@@ -47,7 +47,7 @@ procedure Group_Tests is
    use type B.Refresh_Result;
    use type O.Outcome;
    Group : G.Owner;
-   Service : aliased C.State (1, 4096, 4096);
+   Service : aliased C.State (1, 4096, 4096, 1);
    Device, Other_Device, Setter, Sender : C.Node_Descriptor;
    Binding : B.Binding_Result;
    Report : B.Refresh_Report;

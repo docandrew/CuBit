@@ -23,6 +23,25 @@ package ACPI_Bootstrap.Lids with SPARK_Mode is
    procedure Query (Session : in out State; Item : Binding; Budget : Natural;
       Admission : out Query_Admission; Report : out Driver.Query_Report)
      with Pre => Valid (Session), Post => Valid (Session);
+   type Sampling_Outcome is (Not_Attempted, Not_Ready, No_Match, Search_Failed,
+      Budget_Exhausted, Status_Failed, Device_Unavailable, Query_Failed,
+      Sampled, Provider_Contract_Error);
+   type Sampling_Report is record
+      Outcome : Sampling_Outcome := Not_Attempted;
+      Search : Discovery_Report;
+      Device_Status : Driver.Device_Status.Status_Report;
+      Query : Driver.Query_Report;
+      Charged : Natural := 0;
+   end record;
+   -- Fixed first-match startup observation, not a live/fresh cache or authority.
+   -- Search, direct _STA and member query share one budget. Status failure or
+   -- absent/disabled/nonfunctioning device prevents the member query. Returned
+   -- objects are cleaned by the fixed evaluators; cleanup failures are retained
+   -- in the reports and must stop subsequent owner AML/reset. No automatic retry.
+   procedure Sample_Ready (Session : in out State; Budget : Natural;
+      Report : out Sampling_Report)
+     with Pre => Valid (Session), Post => Valid (Session)
+       and then Report.Charged <= Budget;
 private
    type Binding is record
       Device : ACPI_Service.Node_Descriptor := ACPI_Service.Values.No_Node;

@@ -3,12 +3,12 @@ with Firmware_Tables;
 -- Owned immutable-reader storage. This carries RAM bytes, never hardware authority.
 package AML_Byte_Sources with SPARK_Mode, Pure is
    pragma Elaborate_Body;
-   type Storage (Length : Natural) is tagged record
+   type Storage (Length : Natural) is record
       Bytes : Firmware_Tables.Bytes (1 .. Length) := [others => 0];
    end record;
    function Source_Length (Data : aliased Storage) return Natural;
    function Source_Byte (Data : aliased Storage; Index : Natural)
-      return Firmware_Tables.Byte with Pre'Class => Index < Data.Length;
+      return Firmware_Tables.Byte with Pre => Index < Data.Length;
    function Fits_Window (Data : Storage; First, Count : Natural) return Boolean is
      (First <= Data.Length and then Count <= Data.Length - First);
    function Corresponds

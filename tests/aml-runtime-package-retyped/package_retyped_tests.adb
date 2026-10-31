@@ -24,7 +24,7 @@ procedure Package_Retyped_Tests is
    end Check;
    procedure Run (Label : String; Table : AML_Decode.Bytes;
                   Expected_Type : AML_Decode.Integer_Value) is
-      A : aliased C.State (1, Table'Length, Table'Length);
+      A : aliased C.State (1, Table'Length, Table'Length, 1);
       Staged : C.Stage_Status;
       Frozen : C.Freeze_Status;
       Report : C.Execution_Report;

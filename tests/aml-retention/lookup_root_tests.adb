@@ -1,3 +1,4 @@
+with AML_Table_Sources;
 with Ada.Text_IO;
 with AML_Decode; use AML_Decode;
 with AML_Execute; use AML_Execute;
@@ -52,7 +53,7 @@ begin
             Reset (A, OK); Check (OK); Timers := 0; Lookup_Test_Seen := 0;
             Input.Count := (if Current = Invalid_Backing then 0 else 1);
             Load (A, Fixture, Width, Loaded_Status); Check (Loaded_Status = Loaded);
-            Bind_Table_Field (A, Root, "FLD0", ((Table => 1, Extent => 64), 0,
+            Bind_Table_Field (A, Root, "FLD0", ((Item => (AML_Table_Sources.Boot_Source, 1), Extent => 64), 0,
               (if Current = Scalar_Field then 8 else 72)), Node, Bound_Status);
             Check (Bound_Status = Bound);
             Invoke (A, Input, 1, [others => (Integer_Datum,0,Ordinary_Integer)], 0, 100, Result);

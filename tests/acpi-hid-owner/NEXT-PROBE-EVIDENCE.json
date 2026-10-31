@@ -1,0 +1,78 @@
+{
+  "hosted_directory": "/home/doc/cubit-build-tmp/acpi-hid-owner-6iCupP",
+  "complete": {
+    "counts": {
+      "checked": {
+        "1": {
+          "normal": 55,
+          "hardware": 24,
+          "missing": 53,
+          "budget": 59
+        },
+        "2": {
+          "normal": 55,
+          "hardware": 24,
+          "missing": 53,
+          "budget": 59
+        }
+      },
+      "release": {
+        "1": {
+          "normal": 55,
+          "hardware": 24,
+          "missing": 53,
+          "budget": 59
+        },
+        "2": {
+          "normal": 55,
+          "hardware": 24,
+          "missing": 53,
+          "budget": 59
+        }
+      }
+    },
+    "commands": 26,
+    "hosted": true,
+    "new_proof": false,
+    "native_executed": false,
+    "hardware_validated": false
+  },
+  "checks_per_profile": 382,
+  "source_count": 405,
+  "oracle_directory": "/home/doc/cubit-build-tmp/hid-owner-oracle-6vNiW1",
+  "oracle": {
+    "accepted": true,
+    "semantic_match": true,
+    "clean_tool_log": false,
+    "diagnostics": [
+      "ACPI Error: 14 (0xE) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "recognized_teardown": true,
+    "integers": [
+      15
+    ],
+    "resource_hex": "8e1500020001020000010600801a060015005c49324330008c1c00010001000200010000000017000019001f0000002a005c4750494f007900",
+    "args": [
+      "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+      "-b",
+      "evaluate TPD0._CID; evaluate TPD0._STA; evaluate TPD0._CRS",
+      "/home/doc/cubit-build-tmp/acpi-hid-owner-6iCupP/bridge-budget-r2.aml"
+    ],
+    "status": 0,
+    "signal": null,
+    "error": null,
+    "inputs": {
+      "/home/doc/cubit-build-tmp/acpi-hid-owner-6iCupP/bridge-budget-r2.aml": "8dd827bab2032e481d7bd24c6ea84963fff1297f3eebf01e1bb12fb58159f35c",
+      "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec": "a161f8b3a0b94b4301c1d0f2ccca6c0f808d2998cd4c9e037a9d7b218c88dcfe",
+      "/home/doc/git/.acpi-proof-work/hid-next-probe-work/candidate/tests/acpi-hid-owner/oracle.mjs": "54dfdd77c6449b24238f742c979ab6de6c7715634780ead2f23798811294ddc9"
+    },
+    "scope": "Independent exact-fixture CID/STA/CRS observations only; not DSM, service bridge, controller resolution, provider authority or native/hardware acceptance. Exit diagnostic explicitly qualified."
+  },
+  "existing_first_matrix": "/home/doc/cubit-build-tmp/acpi-hid-owner-Xilgja",
+  "production_changes": "Same-Core Begin_Next_Probe composes search/probe with one budget; no wire endpoint or hardware authority",
+  "new_proof": false,
+  "native_executed": false,
+  "hardware_validated": false,
+  "all_own_jobs_terminal": true,
+  "goal": "active and incomplete"
+}

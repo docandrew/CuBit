@@ -1,0 +1,12 @@
+{
+  "sources": {
+    "userspace/services/acpi/lib/aml_declaration_contexts.ads": "5a5a75c1d8f1df22a9903a018762c157d1f2681521924c6b54175607d2c14f51",
+    "userspace/services/acpi/lib/aml_declaration_contexts.adb": "8ebe0908b0e5155525dd0a673749e11bb1f62ab6bd04f1482dfbafc46184a4be",
+    "userspace/services/acpi/lib/aml_execution_limits.ads": "0f39494ae4418a3c8c639e2875c41ed9bec40c28849eed3f147940757a150794",
+    "userspace/services/acpi/lib/aml_frame_handles.ads": "db70ab1e360b3887e8ccd0fd38c1b6a143472fd5309e5fa36d92d640c4a33f37",
+    "userspace/services/acpi/lib/aml_identity.ads": "95e1f372b2c7cecef6fcc75119cb616c2aa22eb9398e5997a250a1f6b342785f",
+    "userspace/services/acpi/lib/aml_identity-issuer.ads": "81d472790b5ec30583b7ebbe261f8a89e369353b03b2919673c2beb03eb10271",
+    "userspace/services/acpi/lib/aml_identity-issuer.adb": "5ab1fa2f4280dce78230303d838d9668d7edfb3af61e0641a776923cfe698397",
+    "tests/aml-module-scopes/module_scope_tests.adb": "1cd988648ebf3b4e64b9fc6d5185bb08222263a8ef5852b208b4d7062c5fa39e"
+  }
+}

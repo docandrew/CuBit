@@ -12,7 +12,10 @@ package AML_Field_Plans with SPARK_Mode, Pure is
    type Read_Form is (Integer_Result, Buffer_Result);
    type Plan is private;
    -- Geometry only. Every datum still requires a separate trusted named target.
-   -- NoLock ordinary Memory/IO fields through 64 bits; AnyAcc uses byte datums.
+   -- NoLock ordinary Memory/IO and bounded byte-access EmbeddedControl fields
+   -- through64bits. Each EC datum names a logical cell, never an IO port.
+   -- Memory/IO AnyAcc uses byte datums; EC requires explicit ByteAcc.
+   -- Lock still requires separate scoped support.
    function Valid (Item : Plan) return Boolean;
    function Count (Item : Plan) return Datum_Count;
    function Prepare (Field : AML_Field_Layout.Field_Geometry) return Plan

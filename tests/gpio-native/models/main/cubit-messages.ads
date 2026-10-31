@@ -1,0 +1,22 @@
+with Interfaces;
+with CuBit.Handles;
+with CuBit.Process_IDs;
+package CuBit.Messages is
+   SYSCALL_GETTIME : constant Interfaces.Unsigned_64 := 27;
+   SYSCALL_SLEEP : constant Interfaces.Unsigned_64 := 28;
+   SYSCALL_YIELD : constant Interfaces.Unsigned_64 := 118;
+   Wait_Forever : constant Interfaces.Unsigned_64 := Interfaces.Unsigned_64'Last;
+   NO_COMPLETION_TOKEN : constant Interfaces.Unsigned_64 := 0;
+   type MessageTag is record label : Interfaces.Unsigned_32 := 0; end record;
+   type Message is record tag : MessageTag; end record;
+   NULL_TAG : constant MessageTag := (label => 0);
+   NULL_MESSAGE : constant Message := (tag => NULL_TAG);
+   type Activity_Result is (Work_Available, Deadline_Reached, Unavailable);
+   function Own_Process return CuBit.Process_IDs.Process_ID;
+   function syscall (Number : Interfaces.Unsigned_64; Value : Interfaces.Unsigned_64 := 0) return Interfaces.Unsigned_64;
+   function Wait_For_Activity_Until (Deadline : Interfaces.Unsigned_64) return Activity_Result;
+   function capSend (Target : CuBit.Handles.Endpoint; Msg : Message; Deadline : Interfaces.Unsigned_64) return MessageTag;
+   function capSubmit (Target : CuBit.Handles.Endpoint; Msg : Message; Token : Interfaces.Unsigned_64) return Boolean;
+   function registerDriver (Role : Interfaces.Unsigned_64; Authority : CuBit.Handles.Notification) return Interfaces.Unsigned_64;
+   procedure debugPrint (Text : String);
+end CuBit.Messages;

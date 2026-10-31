@@ -1,0 +1,10 @@
+{
+  "manifest_path": "userspace/services/hid-i2c/manifest.ccl",
+  "manifest_sha256": "92fbb7b57713b7c71567dd358f403828d53c98aab36c2a9f99c83ad7634366b3",
+  "schema_sha256": "348f13f239b991e5c53c64d2b33d6d91130d3a211f61f9ac37a07e9d8f9ab7be",
+  "descriptor_sha256": "ac70e49e47019a5b8fa3dc10430b1c891e0bc70cecd9738a27cc8495a1f9f765",
+  "descriptor_identity": "41b4bf30d05d9a2d77bb660330fd7815acf97ff6c056c0b870d254fa35548b23",
+  "descriptor_root": "HID_Parameters",
+  "tool_sha256": "0cb94732251f7ca4a96fc1498f409e804ed2b45b7f5e3b66a4d418fe7caa6429",
+  "fixture_scope": "Exact generated Parameters; coordinates supplied by report geometry, native launch block modeled"
+}

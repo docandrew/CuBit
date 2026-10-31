@@ -1,5 +1,5 @@
 project Checked is
- for Source_Dirs use (".", "../../userspace/services/acpi/lib", "../../shared/firmware");
+ for Source_Dirs use (".", "../../userspace/services/acpi/lib", "../../shared/firmware", "../../userspace/services/acpi/resource-consumer");
  for Main use ("staged_lifetime_tests.adb");
  for Object_Dir use "obj-checked"; for Exec_Dir use "bin-checked";
  package Compiler is

@@ -13,7 +13,6 @@ procedure Event_Declaration_Tests is
    use type E.Execution_Status;
    use type N.Load_Status;
    use type N.State;
-   use type N.Object_Kind;
    A : N.Owned.Arena;
    Input : aliased AML_Table_Backing.State (1, 1);
    Outcome : E.Execution_Result;

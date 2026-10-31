@@ -137,7 +137,7 @@ procedure Bank_Width_Tests is
    end Check;
    procedure Exercise (Revision : AML_Decode.Byte) is
       Raw : constant AML_Decode.Bytes := (if Revision = 1 then Bank_Width_Oracle.Table32 else Bank_Width_Oracle.Table64);
-      Service : aliased C.State (1, Raw'Length, Raw'Length);
+      Service : aliased C.State (1, Raw'Length, Raw'Length, 1);
       IO : Context;
       Items : F.Binding_Set;
       Staged : C.Stage_Status;

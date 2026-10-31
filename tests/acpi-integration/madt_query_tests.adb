@@ -34,11 +34,11 @@ procedure MADT_Query_Tests is
       for B of Data loop Sum := Sum + B; end loop;
       Data (10) := 0 - Sum;
    end Seal;
-   Server : State (4, 512, 160, 29);
+   Server : State (4, 512, 160, Load_Capacity => 4, Initial_Revision => 29);
    Adapter : ACPI_Native_Blocks.State;
    Config : constant ACPI_Endpoint.Configuration := (Observer_Tag => 10, Provider_Tag => 11);
    Reply : Response;
-   Before : State_Model (4, 512, 160) with Ghost;
+   Before : State_Model (4, 512, 160, Load_Capacity => 4) with Ghost;
    procedure Query (Label : Unsigned_32; Table_Index, A, B : Unsigned_64;
                     Expected : Outcome; Data : Response_Words := [others => 0]) is
       Prior : constant Revision_Number := Revision (Server);
@@ -153,7 +153,7 @@ begin
    Query (Read_MADT_Record, 3, 1, 0, Table_Rejected);
    -- Distinct fields catch serialization swaps hidden by all-ones maxima.
    declare
-      Other : State (2, 256, 160, 0);
+      Other : State (2, 256, 160, Load_Capacity => 2, Initial_Revision => 0);
       Distinct : Bytes := MADT_Data;
       type Expected_Rows is array (Positive range 1 .. 8) of Response_Words;
       Expected : constant Expected_Rows :=
@@ -162,7 +162,7 @@ begin
          [0, 39, 40, 16#2345#], [0, 16#76543210#, 16#FEDCBA98#, 0],
          [0, 16#12345678#, 16#23456789#, 16#3456789A#],
          [0, 16#456789AB#, 41, 16#4567#]];
-      Other_Before : State_Model (2, 256, 160) with Ghost;
+      Other_Before : State_Model (2, 256, 160, Load_Capacity => 2) with Ghost;
       procedure Put (Offset, Width : Natural; Value : Unsigned_64) is
          Rest : Unsigned_64 := Value;
       begin

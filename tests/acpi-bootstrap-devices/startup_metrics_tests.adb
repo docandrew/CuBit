@@ -55,7 +55,7 @@ procedure Startup_Metrics_Tests is
 begin
    for Failed_Startup in Boolean loop
       declare
-         S : State (1,256,256,0);
+         S : State (1, 256, 256, Load_Capacity => 1, Initial_Revision => 0);
          Reply, Fuel : Response;
          Prior : Revision_Number;
       begin
@@ -97,7 +97,7 @@ begin
       end;
    end loop;
    declare
-      S : State (1,256,256,0);
+      S : State (1, 256, 256, Load_Capacity => 1, Initial_Revision => 0);
       Reply, Fuel : Response;
       -- Root fails at an actually missing name; system-bus initializer still runs.
       Raw : constant Bytes := Migration_Tables.Make

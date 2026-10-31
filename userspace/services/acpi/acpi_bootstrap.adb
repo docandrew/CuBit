@@ -26,6 +26,8 @@ package body ACPI_Bootstrap with SPARK_Mode is
       -- hardware requirement at the barrier, never permission for later I/O.
       Outcome := ACPI_Device_Policy.No_Regions_Required;
    end Unconfigured_Regions;
+   function Module_Errors (Session : State) return ACPI_Service.Module_Error_Observation is
+     (ACPI_Service.Module_Errors (Session.Core));
    function Device_Completion (Session : State) return Device_Report is (Session.Device_Data);
    function Fatal_Diagnostic (Session : State) return ACPI_Fatal_Diagnostics.Observation is
    begin
@@ -63,6 +65,7 @@ package body ACPI_Bootstrap with SPARK_Mode is
      (ACPI_Service.Model (Session.Core));
    function Model (Session : State) return State_Model is
      (Table_Capacity => Session.Table_Capacity, Byte_Capacity => Session.Byte_Capacity,
+      Load_Capacity => Session.Load_Capacity,
       Core => Core_Model (Session), Stage => Session.Stage, Required => Session.Required,
       Begun => Session.Begun, Initialized => Session.Initialized,
       Initialization => Session.Initialization, Completion_Data => Session.Completion_Data,
@@ -175,6 +178,11 @@ package body ACPI_Bootstrap with SPARK_Mode is
    end Import_Table;
    generic
       with procedure Initialize_Devices (Session : in out State; Budget : Natural);
+      with procedure Execute_Module_Startup
+        (Service : in out ACPI_Service.State; Budget : Natural;
+         Report : out ACPI_Service.Execution_Report;
+         Status : out ACPI_Service.Values.Access_Status) is ACPI_Service.Execute_Frozen;
+
    procedure Finish_Session
      (Session : in out State; Budget : Startup_Budget);
    procedure Finish_Session
@@ -189,9 +197,14 @@ package body ACPI_Bootstrap with SPARK_Mode is
       ACPI_Service.Freeze_Catalog (Session.Core, Session.Completion_Data.Freeze);
       if Session.Completion_Data.Freeze /= ACPI_Service.Catalog_Frozen_OK then return; end if;
       Session.Completion_Data.Stage := Execution_Failed;
-      ACPI_Service.Execute_Frozen
+      Execute_Module_Startup
         (Session.Core, Budget, Session.Completion_Data.Execution,
          Session.Completion_Data.Execution_Status);
+      -- Check the trusted adapter boundary before subtracting reported work.
+      -- A violating adapter poisons startup; never clamp or certify its cost.
+      if Session.Completion_Data.Execution.Modules.Charged > Budget then
+         raise Program_Error with "module executor exceeded startup budget";
+      end if;
       if Session.Completion_Data.Execution_Status /= ACPI_Service.Values.Available
         or else Session.Completion_Data.Execution.Phase /= ACPI_Service.Module_Execution_Reported
         or else Session.Completion_Data.Execution.Preparation /= ACPI_Service.Values.Firmware_Prepared
@@ -242,6 +255,7 @@ package body ACPI_Bootstrap with SPARK_Mode is
      (Session : in out State; Run : in out Device_Driver.Session;
       Budget : Startup_Budget := Default_Startup_Budget) is
       use type Device_Driver.Phase;
+      Claimed : Boolean;
       procedure Initialize_Controlled (Current : in out State; Remaining : Natural) is
          Accepted : Boolean;
          Item : Device_Driver.Report;
@@ -272,8 +286,18 @@ package body ACPI_Bootstrap with SPARK_Mode is
             Regions_Attempted => Item.Regions_Attempted, Region_Status => Item.Region_Status, First_Error_Node => Item.First_Error_Node,
             First_Error => Item.First_Error, Fatal => Item.Fatal, Fatal_Initializer => Item.Fatal_Initializer);
       end Initialize_Controlled;
-      procedure Complete is new Finish_Session (Initialize_Controlled);
+      procedure Complete is new Finish_Session (Initialize_Controlled, Execute_Module_Startup);
    begin
+      if Session.Stage = Receiving then
+         Device_Driver.Claim_Startup (Run, Claimed);
+         if not Claimed then
+            Session.Stage := Failed;
+            Session.Completion_Data.Stage := Driver_Reused;
+            Session.Device_Data := (Stage => Devices_Failed,
+              First_Error => AML_Execute.Unsupported_Value, others => <>);
+            return;
+         end if;
+      end if;
       Complete (Session, Budget);
    end Finish;
    end With_Driver;

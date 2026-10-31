@@ -23,7 +23,7 @@ procedure Event_Escape_Tests is
       if not Good then raise Program_Error with Message; end if;
    end Check;
    procedure Run (Table : Bytes; Width : Integer_Width) is
-      Service : aliased S.State (1, 4096, 4096);
+      Service : aliased S.State (1, 4096, 4096, 1);
       Stage : S.Stage_Status;
       Frozen : S.Freeze_Status;
       Report : S.Execution_Report;

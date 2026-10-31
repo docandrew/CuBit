@@ -1,0 +1,98 @@
+{
+  "hosted": {
+    "runs": [
+      {
+        "profile": "checked",
+        "directory": "/home/doc/git/.acpi-proof-work/native-events-work/candidate/tests/acpi-native-server-loop/results/checked-u3JECuPH",
+        "checks": 726,
+        "alis": 104,
+        "executable_sha256": "a7aa04968a2e9389f4852a5d873185afb6c1221de5c48e672ba56b84454d28d1",
+        "test_log_sha256": "171b0bdb903328c376cebb63f6eef031717893d73d281c209a469208f995394d",
+        "artifact_manifest_sha256": "2c6cf419ff4231099c6752382a898e920ebfb04fdcdcf19e636ceae544648875"
+      },
+      {
+        "profile": "release",
+        "directory": "/home/doc/git/.acpi-proof-work/native-events-work/candidate/tests/acpi-native-server-loop/results/release-d1E8RqwI",
+        "checks": 726,
+        "alis": 104,
+        "executable_sha256": "8f310549438c3a580b43c74f393d690b89129b3b5d82673c11560a3f6b811a84",
+        "test_log_sha256": "171b0bdb903328c376cebb63f6eef031717893d73d281c209a469208f995394d",
+        "artifact_manifest_sha256": "499b874a00464923afacfebc464be859c62d3254a8d8da51c4c306337ad2f1e2"
+      }
+    ],
+    "final_gate": "Tightened only expected test/ALI counts after runs; all Ada sources unchanged, saved outputs revalidated against final exact gate.",
+    "ada_sources_changed_after_execution": false,
+    "native_executed": false,
+    "hardware_validated": false,
+    "new_proof": false
+  },
+  "semantic_run": "/home/doc/cubit-build-tmp/acpi-event-semantic-tuK8us",
+  "semantic": {
+    "selected_units": 6,
+    "source_files": 557,
+    "profiles": [
+      "checked",
+      "release"
+    ],
+    "commands": 2,
+    "objects": 0,
+    "actual_runtime": true,
+    "startup": "Imported function declarations with actual current types, not generated binding/launch execution",
+    "new_proof": false,
+    "native_executed": false,
+    "hardware_validated": false
+  },
+  "preexisting_noncurrent_gates": {
+    "native_entry": "Before change: aml_field_layout.ads mirror mismatch; no passing gate claimed",
+    "native_startup": "Before change: field layout/plans, region initializer and instance checksum mismatches; no passing gate claimed"
+  },
+  "legacy_pin_reconciliations": [
+    {
+      "path": "userspace/services/acpi/lib/aml_field_layout.adb",
+      "legacy": "7baaf697ec1b774d969ef559da732ba249e892b0aa04ea2a919eda7197f0af5a",
+      "current": "99345a0403f538486ff77247297bfea5a2b3476e872d95c957f483b15e8df9e5",
+      "authority": "/home/doc/git/.acpi-proof-work/aslts-functional-preflight-v2-work/PUBLISHED-SINCE-CHECKPOINT.json"
+    },
+    {
+      "path": "userspace/services/acpi/lib/aml_field_layout.ads",
+      "legacy": "90ca517c567cd4ffc1fb0a53828f8c10b803d9aa8dc7f19eb01f90d2bb065659",
+      "current": "e018fd6bfd063c2781fc6177d4b630f62959077dce8768f37b3907ee38a5d637",
+      "authority": "/home/doc/git/.acpi-proof-work/aslts-functional-preflight-v2-work/PUBLISHED-SINCE-CHECKPOINT.json"
+    },
+    {
+      "path": "userspace/services/acpi/lib/aml_field_plans.adb",
+      "legacy": "58caa861eb8aa92fe5ec2c6fe60bc24326e0c8d75e8706cca8c616ced826778a",
+      "current": "e8975c5c746bfaf37d4ab74fc3a8d4d78b0696a73dfdc8753f97b58981c06bc1",
+      "authority": "/home/doc/git/.acpi-proof-work/aslts-functional-preflight-v2-work/PUBLISHED-SINCE-CHECKPOINT.json"
+    },
+    {
+      "path": "userspace/services/acpi/lib/aml_field_plans.ads",
+      "legacy": "0a73ece7e14d286ddf36485e0187cdc4fc24bfe3c40dbbfc261d7e4f41c57778",
+      "current": "f9c024dfafe7025dadebd17e3447c5579bc7aae9716e7e90935b97816e038c62",
+      "authority": "/home/doc/git/.acpi-proof-work/aslts-functional-preflight-v2-work/PUBLISHED-SINCE-CHECKPOINT.json"
+    }
+  ],
+  "artifacts": {
+    "/home/doc/git/.acpi-proof-work/native-events-work/candidate/tests/acpi-native-server-loop/results/checked-u3JECuPH/test.log": "171b0bdb903328c376cebb63f6eef031717893d73d281c209a469208f995394d",
+    "/home/doc/git/.acpi-proof-work/native-events-work/candidate/tests/acpi-native-server-loop/results/checked-u3JECuPH/build.log": "9fbf7ec8a6f6702b8130e8c5b130e4fc4697dd8992aa7ef8bf7fb68ec2bf1445",
+    "/home/doc/git/.acpi-proof-work/native-events-work/candidate/tests/acpi-native-server-loop/results/checked-u3JECuPH/artifacts.sha256": "2c6cf419ff4231099c6752382a898e920ebfb04fdcdcf19e636ceae544648875",
+    "/home/doc/git/.acpi-proof-work/native-events-work/candidate/tests/acpi-native-server-loop/results/checked-u3JECuPH/tools.sha256": "1b075b3c5aa07e10c64f43edd51c69cb7fd7eae9f1c4c4bcd551ea03b05e2d4e",
+    "/home/doc/git/.acpi-proof-work/native-events-work/candidate/tests/acpi-native-server-loop/results/release-d1E8RqwI/test.log": "171b0bdb903328c376cebb63f6eef031717893d73d281c209a469208f995394d",
+    "/home/doc/git/.acpi-proof-work/native-events-work/candidate/tests/acpi-native-server-loop/results/release-d1E8RqwI/build.log": "9fbf7ec8a6f6702b8130e8c5b130e4fc4697dd8992aa7ef8bf7fb68ec2bf1445",
+    "/home/doc/git/.acpi-proof-work/native-events-work/candidate/tests/acpi-native-server-loop/results/release-d1E8RqwI/artifacts.sha256": "499b874a00464923afacfebc464be859c62d3254a8d8da51c4c306337ad2f1e2",
+    "/home/doc/git/.acpi-proof-work/native-events-work/candidate/tests/acpi-native-server-loop/results/release-d1E8RqwI/tools.sha256": "1b075b3c5aa07e10c64f43edd51c69cb7fd7eae9f1c4c4bcd551ea03b05e2d4e",
+    "/home/doc/git/.acpi-proof-work/native-events-work/HOSTED-VALIDATED.json": "64295a977ffc057889e69746a43845b2b1ec8deaf3613fcab392db546283453c",
+    "/home/doc/git/.acpi-proof-work/native-events-work/RECONCILED-LEGACY-INPUTS.json": "605d75e0375edd65ac304d6c0f3d602636807f8ccae7ae304ac98871873caac3",
+    "/home/doc/git/.acpi-proof-work/native-events-work/evidence/hosted-inputs.sha256": "01fd9e7ccb2abd8546e9944ded48b49bdd335bdec45458070f194e5c385ddd31",
+    "/home/doc/git/.acpi-proof-work/native-events-work/evidence/hosted-run.sh": "d5d675f601e5e4dc9575400f3a09e7cd879af8d6aaeb5d0f7596864e21d7d23d",
+    "/home/doc/cubit-build-tmp/acpi-event-semantic-tuK8us/COMPLETE.json": "13b8db8bca0b83acf125b8ec7421d8f6283e3906435e8056dbb00da7efcbdfb2",
+    "/home/doc/cubit-build-tmp/acpi-event-semantic-tuK8us/inputs.json": "8ee24118d7f7c1c52a9cd1ca43ef00948547968ea1f3e13200378bb9b843486d",
+    "/home/doc/cubit-build-tmp/acpi-event-semantic-tuK8us/commands.json": "aac1d8bb9ab86d87291c7ff400cf4ab48fbac05ef220f1ad211fa5274f63d962"
+  },
+  "new_proof": false,
+  "native_executed": false,
+  "hardware_validated": false,
+  "global_logger_changed": false,
+  "all_own_jobs_terminal": true,
+  "full_goal": "active and incomplete"
+}

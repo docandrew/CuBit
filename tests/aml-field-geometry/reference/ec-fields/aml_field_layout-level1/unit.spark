@@ -1,0 +1,687 @@
+{
+  "assumptions": [
+    {
+      "assumptions": [
+        {
+          "arg": 3,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 4,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 3,
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "arg": 4,
+          "predicate": "CLAIM_AORTE"
+        }
+      ],
+      "claim": {
+        "arg": 1,
+        "predicate": "CLAIM_POST"
+      }
+    },
+    {
+      "assumptions": [
+        {
+          "arg": 3,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 4,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 3,
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "arg": 4,
+          "predicate": "CLAIM_AORTE"
+        }
+      ],
+      "claim": {
+        "arg": 1,
+        "predicate": "CLAIM_AORTE"
+      }
+    },
+    {
+      "assumptions": [
+      ],
+      "claim": {
+        "arg": 2,
+        "predicate": "CLAIM_AORTE"
+      }
+    }
+  ],
+  "entities": {
+    " 1": {
+      "name": "AML_Field_Layout.Admitted",
+      "sloc": [
+        {
+          "file": "aml_field_layout.ads",
+          "line": 33
+        }
+      ]
+    },
+    " 2": {
+      "name": "AML_Field_Layout",
+      "sloc": [
+        {
+          "file": "aml_field_layout.ads",
+          "line": 5
+        }
+      ]
+    },
+    " 3": {
+      "name": "ACPI_FADT.Transactions.Aligned",
+      "sloc": [
+        {
+          "file": "acpi_fadt-transactions.ads",
+          "line": 10
+        }
+      ]
+    },
+    " 4": {
+      "name": "ACPI_FADT.Transactions.Octets",
+      "sloc": [
+        {
+          "file": "acpi_fadt-transactions.ads",
+          "line": 7
+        }
+      ]
+    }
+  },
+  "flow": [
+    {
+      "check_tree": {
+      },
+      "col": 7,
+      "entity": 1,
+      "file": "aml_field_layout.adb",
+      "how_proved": "flow",
+      "line": 18,
+      "msg_id": 0,
+      "rule": "UNINITIALIZED",
+      "severity": "info"
+    },
+    {
+      "check_tree": {
+      },
+      "col": 7,
+      "entity": 1,
+      "file": "aml_field_layout.adb",
+      "how_proved": "flow",
+      "line": 19,
+      "msg_id": 1,
+      "rule": "UNINITIALIZED",
+      "severity": "info"
+    },
+    {
+      "check_tree": {
+      },
+      "col": 13,
+      "entity": 1,
+      "file": "aml_field_layout.ads",
+      "how_proved": "flow",
+      "line": 33,
+      "msg_id": 2,
+      "rule": "SUBPROGRAM_TERMINATION",
+      "severity": "info"
+    },
+    {
+      "check_tree": {
+      },
+      "col": 27,
+      "entity": 1,
+      "file": "aml_field_layout.ads",
+      "how_proved": "flow",
+      "line": 34,
+      "msg_id": 3,
+      "rule": "GLOBAL_WRONG",
+      "severity": "info"
+    }
+  ],
+  "pragma_assume": [
+  ],
+  "progress": "PROGRESS_PROOF",
+  "proof": [
+    {
+      "check_col": 34,
+      "check_file": "aml_field_layout.adb",
+      "check_line": 51,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 8.27300000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 34,
+      "entity": 1,
+      "file": "aml_field_layout.adb",
+      "how_proved": "prover",
+      "line": 51,
+      "msg_id": 4,
+      "rule": "VC_DIVISION_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 1,
+          "max_steps": 1,
+          "max_time": 8.27299989759922E-03
+        }
+      }
+    },
+    {
+      "check_col": 34,
+      "check_file": "aml_field_layout.adb",
+      "check_line": 52,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 8.51000000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 34,
+      "entity": 1,
+      "file": "aml_field_layout.adb",
+      "how_proved": "prover",
+      "line": 52,
+      "msg_id": 5,
+      "rule": "VC_DIVISION_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 1,
+          "max_steps": 1,
+          "max_time": 8.51000007241964E-03
+        }
+      }
+    },
+    {
+      "check_col": 36,
+      "check_file": "aml_field_layout.ads",
+      "check_line": 46,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 56,
+              "time": 1.52400000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 36,
+      "entity": 1,
+      "file": "aml_field_layout.ads",
+      "how_proved": "prover",
+      "line": 46,
+      "msg_id": 6,
+      "rule": "VC_DIVISION_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 1,
+          "max_steps": 56,
+          "max_time": 1.52399996295571E-02
+        }
+      }
+    },
+    {
+      "check_col": 36,
+      "check_file": "aml_field_layout.ads",
+      "check_line": 47,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 63,
+              "time": 1.64710000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 36,
+      "entity": 1,
+      "file": "aml_field_layout.ads",
+      "how_proved": "prover",
+      "line": 47,
+      "msg_id": 7,
+      "rule": "VC_DIVISION_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 1,
+          "max_steps": 63,
+          "max_time": 1.64710003882647E-02
+        }
+      }
+    },
+    {
+      "check_col": 27,
+      "check_file": "aml_field_layout.ads",
+      "check_line": 49,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 280,
+              "time": 2.68880000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 279,
+              "time": 2.34230000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 27,
+      "entity": 1,
+      "file": "aml_field_layout.ads",
+      "how_proved": "prover",
+      "line": 49,
+      "msg_id": 8,
+      "rule": "VC_OVERFLOW_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 2,
+          "max_steps": 280,
+          "max_time": 2.68879998475313E-02
+        }
+      }
+    },
+    {
+      "check_col": 27,
+      "check_file": "aml_field_layout.ads",
+      "check_line": 49,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 292,
+              "time": 2.46650000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 27,
+      "entity": 1,
+      "file": "aml_field_layout.ads",
+      "how_proved": "prover",
+      "line": 49,
+      "msg_id": 9,
+      "rule": "VC_RANGE_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 1,
+          "max_steps": 292,
+          "max_time": 2.46649999171495E-02
+        }
+      }
+    },
+    {
+      "check_col": 15,
+      "check_file": "aml_field_layout.ads",
+      "check_line": 35,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "Trivial": {
+              "result": "Valid",
+              "steps": 2,
+              "time": 0
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 77,
+              "time": 1.94900000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 77,
+              "time": 1.65830000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 76,
+              "time": 1.63780000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "Trivial": {
+              "result": "Valid",
+              "steps": 2,
+              "time": 0
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 167,
+              "time": 2.11300000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 75,
+              "time": 1.74760000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 76,
+              "time": 1.67580000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 75,
+              "time": 1.70000000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 75,
+              "time": 1.60150000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 2683,
+              "time": 2.72211000000000E-01
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 75,
+              "time": 1.84730000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 75,
+              "time": 1.73890000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "Trivial": {
+              "result": "Valid",
+              "steps": 2,
+              "time": 0
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 75,
+              "time": 1.75620000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 75,
+              "time": 1.67780000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 75,
+              "time": 1.71740000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "Trivial": {
+              "result": "Valid",
+              "steps": 2,
+              "time": 0
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 75,
+              "time": 1.81480000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 75,
+              "time": 1.68170000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 75,
+              "time": 1.64880000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 75,
+              "time": 1.92410000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 75,
+              "time": 1.71560000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 15,
+      "entity": 1,
+      "file": "aml_field_layout.ads",
+      "how_proved": "prover",
+      "line": 35,
+      "msg_id": 10,
+      "rule": "VC_POSTCONDITION",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 19,
+          "max_steps": 2683,
+          "max_time": 2.72210985422134E-01
+        },
+        "Trivial": {
+          "count": 4,
+          "max_steps": 2,
+          "max_time": 0.00000000000000E+00
+        }
+      }
+    }
+  ],
+  "skip_flow_proof": [
+  ],
+  "skip_proof": [
+  ],
+  "spark": {
+    " 1": "all",
+    " 2": "all"
+  },
+  "stop_reason": "STOP_REASON_NONE",
+  "timings": {
+    " 1": {
+      "gnat2why.vc_generation": 2.15480998158455E-01,
+      "gnatwhy3.init": 2.90163010358810E-01,
+      "gnatwhy3.register_vcs": 7.89609998464584E-02,
+      "gnatwhy3.run_vcs": 1.89990005310392E-05,
+      "gnatwhy3.save_session": 8.76799877732992E-03,
+      "gnatwhy3.schedule_vcs": 1.09826996922493E-01,
+      "gnatwhy3.transformations.counterexamples_dependent_intros": 2.69019994884729E-02,
+      "gnatwhy3.transformations.detect_polymorphism": 6.87299901619554E-03,
+      "gnatwhy3.transformations.discriminate_if_poly": 1.80000006366754E-05,
+      "gnatwhy3.transformations.eliminate_algebraic_if_poly": 1.59929990768433E-02,
+      "gnatwhy3.transformations.eliminate_builtin": 8.10100045055151E-03,
+      "gnatwhy3.transformations.eliminate_definition_conditionally": 9.34300012886524E-03,
+      "gnatwhy3.transformations.eliminate_epsilon": 1.03000001981854E-02,
+      "gnatwhy3.transformations.eliminate_gnatprove_guard_epsilon": 1.03749986737967E-02,
+      "gnatwhy3.transformations.eliminate_inductive": 7.96000007539988E-03,
+      "gnatwhy3.transformations.eliminate_literal": 1.04029988870025E-02,
+      "gnatwhy3.transformations.eliminate_projections_sums": 1.07739986851811E-02,
+      "gnatwhy3.transformations.encoding_smt_if_poly": 1.89990005310392E-05,
+      "gnatwhy3.transformations.inline_trivial": 1.38275995850563E-01,
+      "gnatwhy3.transformations.prepare_for_counterexmp": 1.80000006366754E-05,
+      "gnatwhy3.transformations.remove_unused": 4.39900010824203E-02,
+      "gnatwhy3.transformations.simplify_formula": 1.32339987903833E-02,
+      "gnatwhy3.transformations.split_goal_wp_conj": 4.07380014657974E-02
+    },
+    "global": {
+      "flow analysis": 5.97039982676506E-02,
+      "globals (advanced)": 2.09599989466369E-03,
+      "globals (basic)": 1.27010000869632E-02,
+      "init_why_sections": 1.29019999876618E-02,
+      "marking": 7.45799997821450E-03,
+      "properties (advanced)": 9.40000027185306E-05,
+      "translation of standard": 4.09779995679855E-02
+    }
+  }
+}

@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Keep source and artifact inventories independent of the invoking locale.
+export LC_ALL=C
 set -euo pipefail
 here=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 root=$(cd "$here/../.." && pwd)
@@ -33,11 +35,12 @@ for tool in gprbuild gnatbind gnatlink; do
  sha256sum "$path" >> "$out/tools.sha256"
 done
 nice -n 19 timeout --kill-after=2s 180 gprbuild -p -j1 -P "$here/$profile.gpr" "-XSNAPSHOT_STARTUP_BUILD=$out" 2>&1 | head -c 1048576 > "$out/build.log"
-for program in snapshot_startup_tests local_diagnostic_tests; do
+for program in snapshot_startup_tests local_diagnostic_tests startup_diagnostic_format_tests; do
  nice -n 19 timeout --kill-after=2s 30 "$out/bin/$program" 2>&1 | head -c 1048576 > "$out/$program.log"
 done
-grep -Fx 'Direct snapshot startup checks 508' "$out/snapshot_startup_tests.log"
-grep -Fx 'Local startup diagnostic checks 142' "$out/local_diagnostic_tests.log"
+grep -Fx 'Direct snapshot startup checks 513' "$out/snapshot_startup_tests.log"
+grep -Fx 'Local startup diagnostic checks 258' "$out/local_diagnostic_tests.log"
+grep -Fx 'Startup diagnostic formatting checks 402' "$out/startup_diagnostic_format_tests.log"
 count=0
 for ali in "$out/obj/"*.ali; do
  case "$ali" in */b__*) continue;; esac
@@ -47,7 +50,7 @@ for ali in "$out/obj/"*.ali; do
  else grep -Fxq 'A -gnatp' "$ali"; ! grep -Fxq 'A -gnata' "$ali"; fi
  count=$((count + 1))
 done
-test "$count" = 86
+test "$count" = 95
 sha256sum "$out/bin/"* "$out/obj/"*.ali > "$out/artifacts.sha256"
 verify
 printf '%s\n' 'Hosted startup passed; native heap, kernel and hardware remain unvalidated.'

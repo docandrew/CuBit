@@ -22,6 +22,8 @@ package ACPI_GPE_Lifecycle with SPARK_Mode is
       IO_Status : IO_Outcome := Completion_Unknown;
       Handler_Status : Handler_Outcome := Not_Invoked;
       Charged, Reported_Charge : Natural := 0;
+      Handler_Budget : Natural := 0;
+      Deferred : Boolean := False;
       Reason : Failure_Reason := No_Failure;
    end record;
    generic
@@ -43,7 +45,8 @@ package ACPI_GPE_Lifecycle with SPARK_Mode is
          Charged : out Natural);
    package Driver with SPARK_Mode is
       pragma Unevaluated_Use_Of_Old (Allow);
-      type Session is limited private;
+      type Session is limited private
+        with Default_Initial_Condition => Valid (Session);
       function Observe (Run : Session) return Report;
       function Valid (Run : Session) return Boolean;
       -- One Session per attributable delivered event. Consumed/faulted sessions
@@ -51,7 +54,7 @@ package ACPI_GPE_Lifecycle with SPARK_Mode is
       procedure Start
         (Run : in out Session; Source : Source_ID; Trigger : Trigger_Kind;
          Result : out Action_Result)
-        with Pre => Valid (Run), Post => Valid (Run)
+        with Always_Terminates, Pre => Valid (Run), Post => Valid (Run)
           and then Result =
             (if Observe (Run).Stage'Old /= Idle then Wrong_Phase
              elsif Source = No_Source then Invalid_Source else Accepted)
@@ -62,7 +65,7 @@ package ACPI_GPE_Lifecycle with SPARK_Mode is
       -- reentrant/duplicate dispatch, including after errors/uncertainty.
       procedure Service
         (Run : in out Session; Budget : Natural; Result : out Action_Result)
-        with Pre => Valid (Run), Post => Valid (Run)
+        with Always_Terminates, Pre => Valid (Run), Post => Valid (Run)
           and then Result =
             (if Observe (Run).Stage'Old /= Ready then Wrong_Phase
              elsif Budget = 0 then No_Budget else Accepted)
@@ -71,11 +74,42 @@ package ACPI_GPE_Lifecycle with SPARK_Mode is
             and then Observe (Run).Source = Known_Masked)
           and then (if Result = Accepted then Observe (Run).Charged <= Budget
                     else Observe (Run) = Observe (Run)'Old);
+      -- Serialized trusted owner only: claim a handler without invoking any
+      -- callback. Source ownership/control and backing must remain held across
+      -- all deferred work. No raw wire completion or caller-selected source.
+      procedure Begin_Deferred
+        (Run : in out Session; Budget : Natural; Result : out Action_Result)
+        with Always_Terminates, Pre => Valid (Run), Post => Valid (Run)
+          and then Result =
+            (if Observe (Run).Stage'Old /= Ready then Wrong_Phase
+             elsif Budget = 0 then No_Budget else Accepted)
+          and then (if Result = Accepted then
+            Observe (Run).Stage = Executing and then Observe (Run).Deferred
+            and then Observe (Run).Handler_Budget = Budget
+            and then Observe (Run).Source = Known_Masked
+          else Observe (Run) = Observe (Run)'Old);
+      -- Record exactly one attributable completion from that deferred owner.
+      -- No callback, clearing, enabling or cancellation occurs. Overcharge is
+      -- a contract error, not clamped success. Unknown/failed completion keeps
+      -- the source masked and never permits Finish. Deferred=False is only
+      -- logical completion storage, not hardware quiescence or exit permission.
+      procedure Complete_Deferred
+        (Run : in out Session; Outcome : Handler_Outcome; Charged : Natural;
+         Result : out Action_Result)
+        with Always_Terminates, Pre => Valid (Run), Post => Valid (Run)
+          and then Result =
+            (if Observe (Run).Stage'Old = Executing and then Observe (Run).Deferred'Old
+             then Accepted else Wrong_Phase)
+          and then (if Result = Accepted then
+            not Observe (Run).Deferred and then Observe (Run).Source = Known_Masked
+            and then Observe (Run).Stage in Handler_Done | Failed
+            and then Observe (Run).Charged <= Observe (Run).Handler_Budget
+          else Observe (Run) = Observe (Run)'Old);
       -- Only a successful handler can acknowledge a level source and re-enable.
       -- No automatic retry/replay after refused, uncertain or raised callbacks.
       -- A failed enable may leave source state unknown; never report it masked.
       procedure Finish (Run : in out Session; Result : out Action_Result)
-        with Pre => Valid (Run), Post => Valid (Run)
+        with Always_Terminates, Pre => Valid (Run), Post => Valid (Run)
           and then Result =
             (if Observe (Run).Stage'Old = Handler_Done then Accepted else Wrong_Phase)
           and then (if Result = Accepted then Observe (Run).Stage in Finished | Failed)

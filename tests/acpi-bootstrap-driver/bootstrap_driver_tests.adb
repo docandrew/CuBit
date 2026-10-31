@@ -136,7 +136,7 @@ procedure Bootstrap_Driver_Tests is
      renames Controlled.Finish;
    Run : Driver.Session;
    Raw : constant Bootstrap_Driver_Oracle.Bytes := Bootstrap_Driver_Oracle.Raw_Table;
-   Session : B.State (1, Raw'Length, Raw'Length);
+   Session : B.State (1, Raw'Length, Raw'Length, 1);
    Issued : Boolean;
    procedure Load (Item : in out B.State) is
       Accepted : Boolean;
@@ -150,7 +150,7 @@ procedure Bootstrap_Driver_Tests is
       use type R.Outcome;
       use type R.Phase;
       use type R.Response_Words;
-      Server : R.State (1, Raw'Length, Raw'Length, 0);
+      Server : R.State (1, Raw'Length, Raw'Length, 1, 0);
       Packet : R.Packet;
       Reply : R.Response;
       Config : constant ACPI_Endpoint.Configuration :=
@@ -231,7 +231,7 @@ procedure Bootstrap_Driver_Tests is
          Send (R.Snapshot_Provider, R.Finish_Snapshot, [3,0,0,0], R.Wrong_Order);
          Check (R.Revision (Server) = 3 and then IO.Calls = Calls and then IO.Preparations = Prep,
            "repeated wire finish never replays driver effects");
-         declare Exhausted : R.State (1, Raw'Length, Raw'Length, R.Max_Revision); begin
+         declare Exhausted : R.State (1, Raw'Length, Raw'Length, 1, R.Max_Revision); begin
             Packet := (Label => R.Finish_Snapshot, Data => [R.Max_Revision,0,0,0], others => <>);
             Request_Driver.Handle (Exhausted, Run, R.Snapshot_Provider, Packet, Reply);
             Check (Reply.Status = R.Resource_Limit and then R.Revision (Exhausted) = R.Max_Revision
@@ -239,7 +239,7 @@ procedure Bootstrap_Driver_Tests is
          end;
       end;
       if Mode = "request" then
-         declare Other : R.State (1, Raw'Length, Raw'Length, 0); begin
+         declare Other : R.State (1, Raw'Length, Raw'Length, 1, 0); begin
             Packet := (Label => R.Start_Snapshot, Data => [0,1,0,0], others => <>);
             Request_Driver.Handle (Other, Run, R.Snapshot_Provider, Packet, Reply);
             Check (Reply.Status = R.OK, "reused run fresh request snapshot start");
@@ -247,7 +247,7 @@ procedure Bootstrap_Driver_Tests is
             Check (Reply.Status = R.OK, "reused run fresh request snapshot import");
             Packet := (Label => R.Finish_Snapshot, Data => [2,0,0,0], others => <>);
             Request_Driver.Handle (Other, Run, R.Snapshot_Provider, Packet, Reply);
-            Check (Reply.Status = R.OK and then R.Current (Other) = R.Complete
+            Check (Reply.Status = R.Incomplete and then R.Current (Other) = R.Failed
               and then IO.Calls = 1 and then IO.Preparations = 1, "consumed wire driver run never replays");
             Packet := (Label => R.Read_Metrics, Data => [R.Metrics_Device_State_Page,0,0,0], others => <>);
             Request_Driver.Handle (Other, Run, R.Observer, Packet, Reply);
@@ -321,9 +321,9 @@ begin
            "repeated finish never replays or recharges");
       end;
       if Mode = "reuse" then
-         declare Other : B.State (1, Raw'Length, Raw'Length); begin
+         declare Other : B.State (1, Raw'Length, Raw'Length, 1); begin
             Load (Other); Finish_Controlled (Other, Run);
-            Check (B.Current (Other) = B.Complete and then B.Device_Completion (Other).Stage = B.Devices_Failed,
+            Check (B.Current (Other) = B.Failed and then B.Device_Completion (Other).Stage = B.Devices_Failed,
               "consumed controller run cannot report fresh readiness");
             Check (IO.Calls = 1 and then IO.Preparations = 1, "consumed controller run causes no new device effects");
          end;
@@ -356,7 +356,7 @@ begin
             Check (Admission = Lids.Admitted and then Result.Outcome = Lid_Driver.Sampled
               and then Result.State = Lid_Driver.Open and then Result.Raw = Bootstrap_Driver_Oracle.Expected
               and then IO.Calls = Calls + 1, "bootstrap-owned lid query uses provisioned Field register");
-            declare Other : B.State (1, Raw'Length, Raw'Length); begin
+            declare Other : B.State (1, Raw'Length, Raw'Length, 1); begin
                Lids.Query (Other, Item, 1000, Admission, Result);
                Check (Admission = Lids.Not_Ready and then Result.State = Lid_Driver.Unknown
                  and then IO.Calls = Calls + 1, "binding does not bypass another session readiness");

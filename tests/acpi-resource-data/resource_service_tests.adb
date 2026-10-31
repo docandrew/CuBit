@@ -130,7 +130,7 @@ procedure Resource_Service_Tests is
    use type Values.Access_Status;
    use type Values.Value_Handle;
    use type Values.Value_Kind;
-   Service : aliased State (1,Resource_Oracle.Raw_Table'Length,Resource_Oracle.Raw_Table'Length);
+   Service : aliased State (1, Resource_Oracle.Raw_Table'Length, Resource_Oracle.Raw_Table'Length, Load_Capacity => 1);
    Staged_Result : Stage_Status;
    Frozen : Freeze_Status;
    Access_Result : Values.Access_Status;
@@ -550,7 +550,7 @@ procedure Resource_Service_Tests is
         and then (for all I in 7 .. Data'Last => Data (I) = 0), "retry same retained result");
       Counter_One;
       Check (Retained_Results (Service) = Before + 1, "reader neither releases nor adds roots");
-      declare Other : State (1, Resource_Oracle.Raw_Table'Length, Resource_Oracle.Raw_Table'Length); begin
+      declare Other : State (1, Resource_Oracle.Raw_Table'Length, Resource_Oracle.Raw_Table'Length, Load_Capacity => 1); begin
          Reader.Copy_Template (Other, Handle, Data, Report);
          Check (Report.Status = Reader.Invalid_Result and then Report.Copied = 0
            and then (for all B of Data => B = 0), "wrong service handle rejected");

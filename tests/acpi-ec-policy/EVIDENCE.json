@@ -1,0 +1,131 @@
+{
+  "version": 1,
+  "sources": {
+    "userspace/services/acpi/ec/acpi_ec_event_policy.ads": "c28279fdcfa62ca762156d73437c36e925621618c9df5440bd2140ee38e4dba7",
+    "userspace/services/acpi/ec/acpi_ec_event_policy.adb": "fdc911dac0bf6ac5c0b2a24c68c2d1ea19fdf98da1ccdbcb30d36afc7bbf5468",
+    "userspace/services/acpi/ec/acpi_ec_event_types.ads": "d1e128f4c693e0ef3505ac1891974cd1789245ef7c5c0e6be6857b228317cdc5",
+    "userspace/runtime/gnat/cubit.ads": "ad85bc92372bca950674268c2b1b5507b5edc382b13176f73304a2db5725f52c",
+    "userspace/runtime/gnat/cubit-process_ids.ads": "d012ffd2942827ef674e11921492508bfc46f0787553c94fb1c745cdcbe5d48a",
+    "userspace/runtime/gnat/cubit-process_ids.adb": "0670a89f145f4ae0006e7f4014d9c9c6e28e6e7cc4cae29c54edf205d5ff2478"
+  },
+  "artifacts": {
+    "level1/prove.log": "326a7fd6e033e923856abac31bb4620f0519422425c065f54ddcf460c05a28d3",
+    "level1/unit.spark": "317492aee0d0bb39bc20e4d77946db52d864255dd53e52c02820d1c6bcd16711",
+    "level1/original-proof.gpr": "3ff017dce32ea1178a7a092f8e1e333c359218f3f7e37fbb652e77b4a7a5a3c5",
+    "level2/prove.log": "1e7443a54a7c9397905ae80484454a7cc596eb8ab79afcece6f3f79897e0bf9e",
+    "level2/unit.spark": "bcf885604b319bc87a1aa2946f9ddb4e7a994851786349cbac466d089ea47675",
+    "level2/original-proof.gpr": "3ff017dce32ea1178a7a092f8e1e333c359218f3f7e37fbb652e77b4a7a5a3c5",
+    "original-report.json": "75414970f04c972b5ab1837bd2bc92a5197c5ffd39359ebcdbcfa660dd3b1790"
+  },
+  "results": [
+    {
+      "level": 1,
+      "args": [
+        "gnatprove",
+        "-P",
+        "/home/doc/cubit-build-tmp/ec-policy-proof-6VSF84/level1/proof.gpr",
+        "-u",
+        "acpi_ec_event_policy.adb",
+        "--mode=prove",
+        "-j1",
+        "--report=all",
+        "--level=1",
+        "--prover=cvc5,z3",
+        "--timeout=5"
+      ],
+      "status": 0,
+      "signal": null,
+      "error": null,
+      "accepted": true,
+      "entities": 13,
+      "flow": 11,
+      "proof": 10,
+      "posts": 5,
+      "unresolved": [],
+      "spark": "level1/unit.spark"
+    },
+    {
+      "level": 2,
+      "args": [
+        "gnatprove",
+        "-P",
+        "/home/doc/cubit-build-tmp/ec-policy-proof-6VSF84/level2/proof.gpr",
+        "-u",
+        "acpi_ec_event_policy.adb",
+        "--mode=prove",
+        "-j1",
+        "--report=all",
+        "--level=2",
+        "--prover=cvc5,z3",
+        "--timeout=5"
+      ],
+      "status": 0,
+      "signal": null,
+      "error": null,
+      "accepted": true,
+      "entities": 13,
+      "flow": 11,
+      "proof": 10,
+      "posts": 5,
+      "unresolved": [],
+      "spark": "level2/unit.spark"
+    }
+  ],
+  "valid_attempts_per_level": {
+    "CVC5": 96,
+    "Trivial": 11
+  },
+  "scope": "Pure binding,authentication/token and guard/settlement transition contracts only. Receiver Core/scope checks,truthful metadata/observations,transport ordering,AML and native hardware correctness remain separate obligations.",
+  "negative_audit": [
+    {
+      "level": 1,
+      "kind": "empty",
+      "rejected": true
+    },
+    {
+      "level": 1,
+      "kind": "non-SPARK",
+      "rejected": true
+    },
+    {
+      "level": 1,
+      "kind": "missing-post",
+      "rejected": true
+    },
+    {
+      "level": 1,
+      "kind": "unproved",
+      "rejected": true
+    },
+    {
+      "level": 1,
+      "kind": "skipped",
+      "rejected": true
+    },
+    {
+      "level": 2,
+      "kind": "empty",
+      "rejected": true
+    },
+    {
+      "level": 2,
+      "kind": "non-SPARK",
+      "rejected": true
+    },
+    {
+      "level": 2,
+      "kind": "missing-post",
+      "rejected": true
+    },
+    {
+      "level": 2,
+      "kind": "unproved",
+      "rejected": true
+    },
+    {
+      "level": 2,
+      "kind": "skipped",
+      "rejected": true
+    }
+  ]
+}

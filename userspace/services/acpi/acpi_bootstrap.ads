@@ -23,7 +23,8 @@ package ACPI_Bootstrap with SPARK_Mode is
    Default_Startup_Budget : constant Natural := 100_000;
    subtype Startup_Budget is Natural range 0 .. Default_Startup_Budget;
    type Finish_Stage is
-     (Not_Attempted, Freeze_Failed, Execution_Failed, Members_Failed, Finished);
+     (Not_Attempted, Freeze_Failed, Execution_Failed, Members_Failed, Finished,
+      Driver_Reused);
    type Finish_Report is record
       Stage : Finish_Stage := Not_Attempted;
       Freeze : ACPI_Service.Freeze_Status := ACPI_Service.Freeze_Wrong_Phase;
@@ -45,20 +46,24 @@ package ACPI_Bootstrap with SPARK_Mode is
       Fatal_Initializer : ACPI_Service.Namespace.Node_ID := ACPI_Service.Namespace.Root;
    end record;
    type Phase is (Receiving, Complete, Failed);
-   type State (Table_Capacity, Byte_Capacity, Table_Byte_Limit : Positive) is limited private
+   type State (Table_Capacity, Byte_Capacity, Table_Byte_Limit, Load_Capacity : Positive) is limited private
      with Default_Initial_Condition => Valid (State) and then not Started (State)
        and then Current (State) = Failed and then Expected (State) = 0
        and then Installed (State) = 0;
    function Valid (Session : State) return Boolean;
    function Started (Session : State) return Boolean;
-   type State_Model (Table_Capacity, Byte_Capacity : Positive) is private with Ghost;
+   type State_Model (Table_Capacity, Byte_Capacity, Load_Capacity : Positive) is private with Ghost;
    function Model (Session : State) return State_Model with Ghost,
      Post => Model'Result.Table_Capacity = Session.Table_Capacity
-       and then Model'Result.Byte_Capacity = Session.Byte_Capacity;
+       and then Model'Result.Byte_Capacity = Session.Byte_Capacity
+       and then Model'Result.Load_Capacity = Session.Load_Capacity;
    function Core_Model (Session : State) return ACPI_Service.State_Model with Ghost,
      Post => Core_Model'Result.Table_Capacity = Session.Table_Capacity
-       and then Core_Model'Result.Byte_Capacity = Session.Byte_Capacity;
+       and then Core_Model'Result.Byte_Capacity = Session.Byte_Capacity
+       and then Core_Model'Result.Load_Capacity = Session.Load_Capacity;
    function Completion (Session : State) return Finish_Report;
+   function Module_Errors (Session : State) return ACPI_Service.Module_Error_Observation
+     with Global => null;
    -- Read-only copied request and authoritative evaluation context; no delivery
    -- or namespace authority is granted. A fresh session starts absent.
    function Fatal_Diagnostic (Session : State) return ACPI_Fatal_Diagnostics.Observation
@@ -185,6 +190,13 @@ package ACPI_Bootstrap with SPARK_Mode is
    generic
       with package Device_Driver is new ACPI_Device_Initialization
         (Core => ACPI_Service, others => <>);
+      -- Trusted module actual must honor Execute_Frozen's owner/catalog and
+      -- fuel contract and preserve lower provider obligations on every exit.
+      -- Provisioning, region connection and failure recovery are independent.
+      with procedure Execute_Module_Startup
+        (Service : in out ACPI_Service.State; Budget : Natural;
+         Report : out ACPI_Service.Execution_Report;
+         Status : out ACPI_Service.Values.Access_Status) is ACPI_Service.Execute_Frozen;
    package With_Driver is
       pragma Unevaluated_Use_Of_Old (Allow);
    procedure Finish
@@ -222,8 +234,8 @@ private
       Charged : out Natural; Outcome : out ACPI_Device_Policy.Region_Outcome);
    package Devices is new ACPI_Device_Initialization
      (Core => ACPI_Service, Initialize_Regions => Unconfigured_Regions);
-   type State_Model (Table_Capacity, Byte_Capacity : Positive) is record
-      Core : ACPI_Service.State_Model (Table_Capacity, Byte_Capacity);
+   type State_Model (Table_Capacity, Byte_Capacity, Load_Capacity : Positive) is record
+      Core : ACPI_Service.State_Model (Table_Capacity, Byte_Capacity, Load_Capacity);
       Stage : Phase;
       Required : Natural;
       Begun : Boolean;
@@ -235,8 +247,8 @@ private
       Notify_Requested, Notify_Enabled : Boolean := False;
       Notify_Status : ACPI_Service.Values.Access_Status := ACPI_Service.Values.Wrong_Phase;
    end record;
-   type State (Table_Capacity, Byte_Capacity, Table_Byte_Limit : Positive) is limited record
-      Core : aliased ACPI_Service.State (Table_Capacity, Byte_Capacity, Table_Byte_Limit);
+   type State (Table_Capacity, Byte_Capacity, Table_Byte_Limit, Load_Capacity : Positive) is limited record
+      Core : aliased ACPI_Service.State (Table_Capacity, Byte_Capacity, Table_Byte_Limit, Load_Capacity);
       Device_Run : Devices.Session;
       Begun : Boolean := False;
       Initialized : Boolean := False;

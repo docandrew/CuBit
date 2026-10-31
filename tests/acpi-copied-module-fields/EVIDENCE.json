@@ -1,0 +1,22 @@
+{
+  "scope": "Fresh portable hosted suite, not native or new proof",
+  "record": "/home/doc/cubit-build-tmp/acpi-copied-module-fields-Tx0bUh/COMPLETE.json",
+  "record_sha256": "9ea4391e98a44f086c26e0447b3303e0a667b1dd6699736102553217869305c7",
+  "sources_sha256": "e64b0af352414af16d33d96d6317f7319bc537cf51bb8a2f1cd0edd92ab0ecde",
+  "runner_sha256": "7a5b1ed7367ad0399e676f15340326c6e5dc4ed24e2b83dd34d71574181c54ba",
+  "checks": 152,
+  "processes": 8,
+  "compiled_units_per_profile": 81,
+  "profiles": [
+    "checked",
+    "release"
+  ],
+  "aml_widths": [
+    32,
+    64
+  ],
+  "provider": "modeled",
+  "native_executed": false,
+  "hardware_validated": false,
+  "new_proof": false
+}

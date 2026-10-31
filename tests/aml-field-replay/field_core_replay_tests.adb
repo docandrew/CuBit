@@ -53,7 +53,7 @@ begin
    for Case_ID in D.Case_Number loop
       declare
          Width : constant T.Access_Width := D.Width (Case_ID);
-         S : aliased C.State (1, 4096, 4096);
+         S : aliased C.State (1, 4096, 4096, 1);
          IO : P.Context;
          Item : F.Binding;
          Configuration : ACPI_Region_Policy.Configuration :=

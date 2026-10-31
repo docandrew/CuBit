@@ -21,7 +21,7 @@ procedure HID_Identity_Tests is
    use type AML_Execute.Execution_Status;
    use type AML_Decode.Integer_Value;
    use type Q.Identification_Outcome;
-   Service, Other : aliased C.State (1, 4096, 4096);
+   Service, Other : aliased C.State (1, 4096, 4096, 1);
    Checks : Natural := 0;
    procedure Check (OK : Boolean; Label_Text : String) is
    begin

@@ -40,6 +40,8 @@ procedure Module_Policy_Tests is
          Binding := (Status => Integer_Binding, Value => Integer_Value (Environment.Marks), Origin => Ordinary_Integer); return;
       elsif Path.Parts (1) = "SIDE" then
          Binding := (Status => Method_Binding, Method_ID => 3, Parameters => 0); return;
+      elsif Path.Parts (1) = "DLY1" then
+         Binding := (Status => Method_Binding, Method_ID => 8, Parameters => 0); return;
       elsif Path.Parts (1) = "DLY0" then
          Binding := (Status => Method_Binding, Method_ID => 4, Parameters => 0); return;
       elsif Path.Parts (1) = "TM00" then
@@ -79,6 +81,8 @@ procedure Module_Policy_Tests is
          return (Exists => True, Implementation => AML_Execute.AML_Implementation, Length => 3, Code => (Length => 3, Bytes => [16#A4#,16#5B#,16#33#]), Width => Bits_64, Flags => 0, Scope => 5);
       elsif ID = 6 then
          return (Exists => True, Implementation => AML_Execute.AML_Implementation, Length => 9, Code => (Length => 9, Bytes => [16#86#,77,65,82,75,83,73,68,69]), Width => Bits_64, Flags => 0, Scope => 6);
+      elsif ID = 8 then
+         return (Exists => True, Implementation => AML_Execute.AML_Implementation, Length => 6, Code => (Length => 6, Bytes => [16#5B#,16#22#,83,73,68,69]), Width => Bits_64, Flags => 0, Scope => 8);
       elsif ID = 7 then
          return (Exists => True, Implementation => AML_Execute.AML_Implementation, Length => 5, Code => (Length => 5, Bytes => [16#70#,1,16#60#,16#A4#,16#60#]), Width => Bits_64, Flags => 0, Scope => 7);
       else
@@ -684,13 +688,14 @@ procedure Module_Policy_Tests is
          Calls_Left : AML_Execute.Call_Budget := 32;
          Current_Sync : AML_Execute.Sync_Level := 0;
          Request : AML_Declaration_Contexts.Request := AML_Declaration_Contexts.Method_Request;
-         Implementation : AML_Execute.Method_Implementation := AML_Execute.AML_Implementation)
+         Implementation : AML_Execute.Method_Implementation := AML_Execute.AML_Implementation;
+         Initial_Effects : AML_Execute.Module_Effects_Policy := AML_Execute.Restrict_Module_Effects)
       is
          Source : aliased constant AML_Byte_Sources.Storage :=
            (Length => Code'Length, Bytes => Code);
       begin
          Execute_Source (Code, Width, Args, Argument_Count, Budget, Input, Environment,
-           Scope, Result_Out, Source, 0, Calls_Left, Current_Sync, Request, Implementation);
+           Scope, Result_Out, Source, 0, Calls_Left, Current_Sync, Request, Implementation, Initial_Effects);
       end Execute;
    Input : aliased Backing (1);
    Environment : Mutable;
@@ -748,5 +753,35 @@ begin
    Check (Result.Status = No_Return and then Environment.Active = 0);
    Execute (Alias_Code, Bits_64, [others => <>], 0, 100, Input, Environment, 0, Result);
    Check (Result.Status = Unsupported and then Environment.Aliases = 2);
+   for Width in Integer_Width loop
+      declare
+         Timers_Before : constant Natural := Environment.Timers;
+         Delays_Before : constant Natural := Environment.Delays;
+         Marks_Before : constant Natural := Environment.Marks;
+      begin
+         Execute ([84,77,48,48], Width, [others => <>], 0, 100, Input, Environment, 0, Result,
+           Request => AML_Declaration_Contexts.Module_Request, Initial_Effects => Use_Owner_Providers);
+         Check (Result.Status = Module_Completed and then Environment.Timers = Timers_Before + 1
+           and then Environment.Active = 0 and then Result.Charged <= 100);
+         Execute ([84,77,48,48], Width, [others => <>], 0, 100, Input, Environment, 0, Result,
+           Request => AML_Declaration_Contexts.Module_Request);
+         Check (Result.Status = Unsupported and then Environment.Timers = Timers_Before + 1
+           and then Environment.Active = 0);
+         Execute ([68,76,89,49], Width, [others => <>], 0, 100, Input, Environment, 0, Result,
+           Request => AML_Declaration_Contexts.Module_Request, Initial_Effects => Use_Owner_Providers);
+         Check (Result.Status = Unsupported and then Environment.Delays = Delays_Before + 1
+           and then Environment.Marks = Marks_Before + 1 and then Environment.Active = 0);
+         Execute ([68,76,89,49], Width, [others => <>], 0, 100, Input, Environment, 0, Result,
+           Request => AML_Declaration_Contexts.Module_Request);
+         Check (Result.Status = Unsupported and then Environment.Delays = Delays_Before + 1
+           and then Environment.Marks = Marks_Before + 1 and then Environment.Active = 0);
+         Execute ([16#A4#,1], Width, [others => <>], 0, 100, Input, Environment, 0, Result,
+           Request => AML_Declaration_Contexts.Module_Request, Initial_Effects => Use_Owner_Providers);
+         Check (Result.Status = Unsupported and then Environment.Active = 0);
+         Execute ([16#A4#,16#5B#,16#33#], Width, [others => <>], 0, 100, Input, Environment, 0, Result);
+         Check (Result.Status = Returned and then Environment.Timers = Timers_Before + 2
+           and then Environment.Active = 0);
+      end;
+   end loop;
    Ada.Text_IO.Put_Line ("AML module policy checks:" & Checks'Image);
 end Module_Policy_Tests;

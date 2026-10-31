@@ -1,12 +1,9 @@
 with ACPI_Sample_Cache;
-with AML_Decode;
+with ACPI_Observation_Values;
 generic
 package ACPI_Bootstrap.Lids.Cached with SPARK_Mode is
-   type Sample is record
-      State : Driver.Lid_State := Driver.Unknown;
-      Raw : AML_Decode.Integer_Value := 0;
-   end record;
-   Empty_Sample : constant Sample := (others => <>);
+   subtype Sample is ACPI_Observation_Values.Lid_Sample;
+   Empty_Sample : constant Sample := ACPI_Observation_Values.Empty_Lid_Sample;
    package Samples is new ACPI_Sample_Cache (Sample, Empty_Sample);
    type Cache is limited private;
    procedure Bind (Data : in out Cache; Session : in out State; Budget : Natural;

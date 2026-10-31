@@ -1,5 +1,5 @@
 project retained_tests_release is
- for Source_Dirs use ("../../shared/firmware", "../aml-retention", "../../userspace/services/acpi", "../../userspace/services/acpi/lib");
+ for Source_Dirs use ("../../shared/firmware", "../aml-retention", "../../userspace/services/acpi", "../../userspace/services/acpi/lib", "../../userspace/services/acpi/resource-consumer");
  Build_Root := external ("SERVICE_MILESTONE_BUILD", "build-retained_tests-release");
  for Object_Dir use Build_Root & "/obj";
  for Exec_Dir use Build_Root & "/bin";

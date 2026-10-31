@@ -1,0 +1,191 @@
+ASL Input:     /home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/logic/MAIN.asl -    2100 bytes   1729 keywords      0 source lines
+AML Output:    /home/doc/git/.acpi-proof-work/aslts-logic32-original-work/oracle/logic-n32.aml -   23908 bytes   1263 opcodes     466 named objects
+Source Output: /home/doc/git/.acpi-proof-work/aslts-logic32-original-work/oracle/logic-n32.src -  157853 bytes
+Preprocessor:  /home/doc/git/.acpi-proof-work/aslts-logic32-original-work/oracle/logic-n32.i -    2100 bytes
+Listing File:  /home/doc/git/.acpi-proof-work/aslts-logic32-original-work/oracle/logic-n32.lst -  693673 bytes
+Hex Dump:      /home/doc/git/.acpi-proof-work/aslts-logic32-original-work/oracle/logic-n32.hex -  236561 bytes
+Namespace:     /home/doc/git/.acpi-proof-work/aslts-logic32-original-work/oracle/logic-n32.nsp -  117812 bytes
+ASM Source:    /home/doc/git/.acpi-proof-work/aslts-logic32-original-work/oracle/logic-n32.asm -  778296 bytes
+C Source:      /home/doc/git/.acpi-proof-work/aslts-logic32-original-work/oracle/logic-n32.c -  871831 bytes
+C Include:     /home/doc/git/.acpi-proof-work/aslts-logic32-original-work/oracle/logic-n32.h -   20763 bytes
+Offset Table:  /home/doc/git/.acpi-proof-work/aslts-logic32-original-work/oracle/logic-n32.offset.h -   51214 bytes
+Device Map:    /home/doc/git/.acpi-proof-work/aslts-logic32-original-work/oracle/logic-n32.map -     361 bytes
+
+Compilation successful. 0 Errors, 21 Warnings, 38 Remarks, 0 Optimizations
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/common.asl    390:     Method (RPT0, 0, NotSerialized)
+Remark   2120 -                                 Control Method should be made Serialized due to creation of named objects within ^  (\RPT0)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/common.asl    394:         Name (B000, Buffer (0x04){})
+Remark   2173 -     Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\RPT0)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/common.asl    917:         Name (LPN0, 0x00)
+Remark   2173 -     Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\PRN0)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/common.asl    918:         Name (LPC0, 0x00)
+Remark   2173 -     Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\PRN0)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/common.asl   1137:         Name (N000, 0x00)
+Remark   2173 -     Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\SFT0)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/common.asl   1138:         Name (NCUR, 0x00)
+Remark   2173 -     Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\SFT0)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/common.asl   1155:         Name (B000, Buffer (Local0){})
+Remark   2173 -     Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\SFT0)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/common.asl   1186:         Divide (Local1, 0x08, Local2, Local0)
+Warning  3144 -                                                                                                   Method Local is set but never used ^  (Local2)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/common.asl   1201:         Name (PREV, 0x00)
+Remark   2173 -     Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/common.asl   1202:         Name (MS00, 0x00)
+Remark   2173 -     Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/common.asl   1203:         Name (MS01, 0x00)
+Remark   2173 -     Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/common.asl   1204:         Name (MS02, 0x00)
+Remark   2173 -     Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/common.asl   1205:         Name (MS03, 0x00)
+Remark   2173 -     Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/common.asl   1206:         Name (TAIL, 0x00)
+Remark   2173 -     Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/common.asl   1207:         Name (LBT0, 0x00)
+Remark   2173 -     Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/common.asl   1210:         Name (LPN0, 0x00)
+Remark   2173 -     Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/common.asl   1211:         Name (LPC0, 0x00)
+Remark   2173 -     Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/common.asl   1214:         Name (NB01, 0x00)
+Remark   2173 -     Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/common.asl   1217:         Name (NREG, 0x00)
+Remark   2173 -     Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/common.asl   1220:         Name (NB08, 0x00)
+Remark   2173 -     Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/common.asl   1223:         Name (NB09, 0x00)
+Remark   2173 -     Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/common.asl   1226:         Name (REST, 0x00)
+Remark   2173 -     Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/common.asl   1240:         Name (B000, Buffer (NB01){})
+Remark   2173 -     Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/common.asl   1362:         Name (TMP0, 0x00)
+Remark   2173 -     Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\M4C0)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/common.asl   1363:         Name (TMP1, 0x00)
+Remark   2173 -     Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\M4C0)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/common.asl   1406:         Name (S000, " ")
+Remark   2173 -     Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\M4A1)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/common.asl   1422:         DataTableRegion (HDR, "DSDT", "", "")
+Remark   2173 -               Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\STRT)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/common.asl   1442:         If ((REV < 0x02))
+Remark   2132 -                                64-bit return value will be truncated to 32 bits (DSDT or SSDT version < 2) ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/common.asl   2021:         Name (LPN0, 0x00)
+Remark   2173 -     Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\RERR)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/common.asl   2022:         Name (LPC0, 0x00)
+Remark   2173 -     Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\RERR)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/common.asl   2069:         Name (LPN0, 0x00)
+Remark   2173 -     Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\RRM0)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/common.asl   2070:         Name (LPC0, 0x00)
+Remark   2173 -     Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\RRM0)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/common.asl   2107:         Local6 = (Local7 - TMT0) /* \TMT0 */
+Remark   2132 -                                    64-bit return value will be truncated to 32 bits (DSDT or SSDT version < 2) ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/common.asl   2159:     Method (TRC0, 3, NotSerialized)
+Remark   2146 -                                                                                    Method Argument is never used ^  (Arg0)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/common.asl   2177:     Method (TRC1, 3, NotSerialized)
+Remark   2146 -                                                                                    Method Argument is never used ^  (Arg0)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/common.asl   2240:         Divide (Local1, 0x000F4240, Local0, Local2)
+Warning  3144 -                                                                                                         Method Local is set but never used ^  (Local0)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/ehandle.asl    793:         Name (EBUF, Buffer (ISZC){})
+Remark   2173 -      Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\ST16)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/ehandle.asl    796:         Name (RBUF, Buffer (0x04){})
+Remark   2173 -      Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\ST16)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/ehandle.asl    917:     Method (CH06, 3, NotSerialized)
+Remark   2146 -                                                                                     Method Argument is never used ^  (Arg1)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/ehandle.asl    934:     Method (CH07, 7, NotSerialized)
+Remark   2146 -                                                                                     Method Argument is never used ^  (Arg4)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/ehandle.asl   1038:             Local7 = 0x01
+Warning  3144 -                                                                                  Method Local is set but never used ^  (Local7)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/logic/logical.asl    227:         0x12345678BDEFAC98,
+Warning  3038 -                                                                                                    Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/logic/logical.asl    228:         0x12345678BDEFAC98,
+Warning  3038 -                                                                                                    Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/logic/logical.asl    229:         0xF234567811994657,
+Warning  3038 -                                                                                                    Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/logic/logical.asl    230:         0xF234567811994657,
+Warning  3038 -                                                                                                    Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/logic/logical.asl    233:         0xFFFFFFFFFFFFFFFF,
+Warning  3038 -                                                                                                    Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/logic/logical.asl    234:         0xFFFFFFFFFFFFFFFF,
+Warning  3038 -                                                                                                    Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/logic/logical.asl    235:         0x0400000000000000,
+Warning  3038 -                                                                                                    Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/logic/logical.asl    236:         0x0000001000000000,
+Warning  3038 -                                                                                                    Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/logic/logical.asl    237:         0x2000000000000000,
+Warning  3038 -                                                                                                    Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/logic/logical.asl    238:         0x4000000000000000,
+Warning  3038 -                                                                                                    Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/logic/logical.asl    239:         0x8000000000000000,
+Warning  3038 -                                                                                                    Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/logic/logical.asl    241:         0x4000000000000000,
+Warning  3038 -                                                                                                    Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/logic/logical.asl    242:         0x8000000000000000,
+Warning  3038 -                                                                                                    Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/logic/logical.asl    243:         0x0400000000000000,
+Warning  3038 -                                                                                                    Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/logic/logical.asl    250:         0x8000000000000000
+Warning  3038 -                                                                                                    Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/logic/logical.asl    268:         0xFFFFFFFFFFFFFFFF,
+Warning  3038 -                                                                                                    Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/logic/logical.asl    269:         0x12334567BDCFEB46,
+Warning  3038 -                                                                                                    Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/logic/logical.asl    270:         0xFBDEC6709BCDFE18
+Warning  3038 -                                                                                                    Truncating 64-bit constant found in 32-bit table ^ 
+

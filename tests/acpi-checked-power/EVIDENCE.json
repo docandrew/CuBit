@@ -1,0 +1,205 @@
+{
+  "runs": {
+    "sampling": {
+      "directory": "/home/doc/cubit-build-tmp/acpi-checked-power-3Gv868",
+      "checks_per_profile": 274,
+      "commands": 68,
+      "counts": {
+        "checked": {
+          "1": {
+            "ready": 14,
+            "absent": 12,
+            "disabled": 12,
+            "broken": 12,
+            "wrong": 12,
+            "default": 12,
+            "empty": 11,
+            "hardware": 11,
+            "unstarted": 7,
+            "zero": 11,
+            "fuel": 11,
+            "noini": 12
+          },
+          "2": {
+            "ready": 14,
+            "absent": 12,
+            "disabled": 12,
+            "broken": 12,
+            "wrong": 12,
+            "default": 12,
+            "empty": 11,
+            "hardware": 11,
+            "unstarted": 7,
+            "zero": 11,
+            "fuel": 11,
+            "noini": 12
+          }
+        },
+        "release": {
+          "1": {
+            "ready": 14,
+            "absent": 12,
+            "disabled": 12,
+            "broken": 12,
+            "wrong": 12,
+            "default": 12,
+            "empty": 11,
+            "hardware": 11,
+            "unstarted": 7,
+            "zero": 11,
+            "fuel": 11,
+            "noini": 12
+          },
+          "2": {
+            "ready": 14,
+            "absent": 12,
+            "disabled": 12,
+            "broken": 12,
+            "wrong": 12,
+            "default": 12,
+            "empty": 11,
+            "hardware": 11,
+            "unstarted": 7,
+            "zero": 11,
+            "fuel": 11,
+            "noini": 12
+          }
+        }
+      }
+    },
+    "native_hid": {
+      "directory": "/home/doc/cubit-build-tmp/acpi-native-hid-qcTNhD",
+      "checks_per_profile": 312,
+      "commands": 52,
+      "counts": {
+        "checked": {
+          "1": {
+            "normal": 16,
+            "hardware": 16,
+            "missing": 16,
+            "budget": 16,
+            "small": 16,
+            "zero": 16,
+            "fuel": 16,
+            "limit": 16,
+            "unstarted": 12,
+            "empty": 16
+          },
+          "2": {
+            "normal": 16,
+            "hardware": 16,
+            "missing": 16,
+            "budget": 16,
+            "small": 16,
+            "zero": 16,
+            "fuel": 16,
+            "limit": 16,
+            "unstarted": 12,
+            "empty": 16
+          }
+        },
+        "release": {
+          "1": {
+            "normal": 16,
+            "hardware": 16,
+            "missing": 16,
+            "budget": 16,
+            "small": 16,
+            "zero": 16,
+            "fuel": 16,
+            "limit": 16,
+            "unstarted": 12,
+            "empty": 16
+          },
+          "2": {
+            "normal": 16,
+            "hardware": 16,
+            "missing": 16,
+            "budget": 16,
+            "small": 16,
+            "zero": 16,
+            "fuel": 16,
+            "limit": 16,
+            "unstarted": 12,
+            "empty": 16
+          }
+        }
+      }
+    },
+    "hid_owner": {
+      "directory": "/home/doc/cubit-build-tmp/acpi-hid-owner-FiR8Xh",
+      "checks_per_profile": 382,
+      "commands": 26,
+      "counts": {
+        "checked": {
+          "1": {
+            "normal": 55,
+            "hardware": 24,
+            "missing": 53,
+            "budget": 59
+          },
+          "2": {
+            "normal": 55,
+            "hardware": 24,
+            "missing": 53,
+            "budget": 59
+          }
+        },
+        "release": {
+          "1": {
+            "normal": 55,
+            "hardware": 24,
+            "missing": 53,
+            "budget": 59
+          },
+          "2": {
+            "normal": 55,
+            "hardware": 24,
+            "missing": 53,
+            "budget": 59
+          }
+        }
+      }
+    }
+  },
+  "semantic": {
+    "checked": {
+      "directory": "/home/doc/git/.acpi-proof-work/checked-power-sampling-work/candidate/tests/acpi-native-entry/results/checked-TVm4lApG",
+      "selections": 25,
+      "alis": 24,
+      "objects": 0
+    },
+    "release": {
+      "directory": "/home/doc/git/.acpi-proof-work/checked-power-sampling-work/candidate/tests/acpi-native-entry/results/release-X0bl6yUj",
+      "selections": 25,
+      "alis": 24,
+      "objects": 0
+    }
+  },
+  "fixtures": 305,
+  "reference": {
+    "directory": "/home/doc/git/.acpi-proof-work/checked-power-sampling-work/oracle",
+    "new_run": true,
+    "scope": "Direct STA values only,after ACPICA initialization,repair disabled; ready[15,15],absent[0,0],noini[0,0]. Not our sample gate or fuel/native correctness.",
+    "clean_tool_logs": false,
+    "qualified_diagnostic": "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+  },
+  "earlier_attempts": {
+    "normal_ada_compile_failures": [
+      "/home/doc/cubit-build-tmp/acpi-checked-power-hFC8bD",
+      "/home/doc/cubit-build-tmp/acpi-checked-power-bnUF3R",
+      "/home/doc/cubit-build-tmp/acpi-native-hid-TYjzAn",
+      "/home/doc/cubit-build-tmp/acpi-native-hid-gMNhsi"
+    ],
+    "fixture_assumption_corrected": "/home/doc/cubit-build-tmp/acpi-checked-power-igQW1s: expected post-init second STA call,but initializer skips STA without INI work; fixture now forces initialization plus separate no-INI case",
+    "intermediate_pass": "/home/doc/cubit-build-tmp/acpi-checked-power-Iboqfj:268checks before tight-budget assertions",
+    "metadata_preparation_failure": "/home/doc/git/.acpi-proof-work/checked-power-sampling-work/entry-preparation-failed: JS map basename callback corrected"
+  },
+  "startup_closure_refresh": "Metadata-only,226files; no new functional startup run claimed",
+  "new_proof": false,
+  "native_power_startup_wired": false,
+  "native_executed": false,
+  "hardware_validated": false,
+  "all_own_jobs_terminal": true,
+  "goal": "active and incomplete"
+}

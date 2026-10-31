@@ -23,7 +23,7 @@ procedure Power_Source_Tests is
    use type Q.Query_Outcome;
    use type Q.Source_State;
    use type Q.Identification_Outcome;
-   Service, Other : aliased C.State (1, 4096, 4096);
+   Service, Other : aliased C.State (1, 4096, 4096, 1);
    Checks, Calls : Natural := 0;
    Overcharge : Boolean := False;
    procedure Check (OK : Boolean; Label_Text : String) is
@@ -42,7 +42,6 @@ procedure Power_Source_Tests is
    end Evaluate;
    package B is new ACPI_Power_Source (C, Evaluate);
    use type B.Query_Outcome;
-   use type B.Source_State;
    use type B.Identification_Outcome;
    function Find (State : C.State; Name : String) return C.Node_Descriptor is
       Node : C.Namespace.Node_ID;

@@ -68,7 +68,7 @@ procedure Field_Object_Store_Tests is
 begin
    for Case_ID in D.Case_Number loop
       declare
-         S : aliased C.State (1, 4096, 4096);
+         S : aliased C.State (1, 4096, 4096, 1);
          IO : P.Context;
          Items : F.Binding_Set;
          Targets : array (Register_Index) of A.Target;

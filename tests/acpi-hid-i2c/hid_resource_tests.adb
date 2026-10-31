@@ -43,7 +43,7 @@ procedure HID_Resource_Tests is
    use type G.Interrupt_Mode;
    use type G.Interrupt_Polarity;
    use type Firmware_Tables.Byte;
-   Service : aliased C.State (1, 4096, 4096);
+   Service : aliased C.State (1, 4096, 4096, 1);
    Checks : Natural := 0;
    procedure Check (OK : Boolean; Label_Text : String) is
    begin

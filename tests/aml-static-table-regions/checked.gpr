@@ -1,5 +1,5 @@
 project checked is
- for Source_Dirs use (".", "../aml-core", "../../userspace/services/acpi/lib", "../../userspace/services/acpi", "../../shared/firmware");
+ for Source_Dirs use (".", "../aml-core", "../../userspace/services/acpi/lib", "../../userspace/services/acpi", "../../shared/firmware", "../../userspace/services/acpi/resource-consumer");
  for Object_Dir use "build-checked/obj";
  for Exec_Dir use "build-checked";
  for Main use ("static_table_service_tests.adb");

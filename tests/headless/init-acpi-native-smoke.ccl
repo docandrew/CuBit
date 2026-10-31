@@ -1,0 +1,11 @@
+# The real acpi.svc (userspace/services/acpi/native) on q35's firmware:
+# snapshot copy, AML startup, then observer registration; acpi-metrics-check
+# reads its metrics through the declared, observer-badged endpoint.
+# Device, HID, power and sleep stages stop at the unprovisioned-region
+# barrier (no hardware regions are granted yet); this is observer plumbing,
+# not device or power validation.
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "acpi.svc" (priority 4) (firmware-snapshot approve-declared))
+  (start "acpi-metrics-check.app" (priority 3))
+)

@@ -36,7 +36,7 @@ procedure Retained_Argument_Tests is
       Checks := Checks + 1;
       if not OK then raise Program_Error with Label_Text; end if;
    end Check;
-   Service, Other : aliased C.State (1, 4096, 4096);
+   Service, Other : aliased C.State (1, 4096, 4096, 1);
    type IO_Context is record
       Is_Pending : Boolean := False;
       Calls : Natural := 0;

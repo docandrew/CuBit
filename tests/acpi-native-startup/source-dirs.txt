@@ -7,3 +7,9 @@ userspace/services/acpi/request-driver
 userspace/services/acpi/region-init
 shared/firmware
 shared/acpi
+userspace/services/acpi/resource-consumer
+userspace/services/acpi/hid-i2c
+userspace/services/acpi/resource-data
+userspace/lib/i2c-admission
+userspace/lib/gpio-admission
+userspace/services/acpi/ec

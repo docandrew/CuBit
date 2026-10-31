@@ -79,8 +79,8 @@ begin
          declare
             Code : constant Bytes := (if In_Ini then Method ("_INI", Fatal) else Fatal);
             Raw : constant Bytes := Table (Code, Width);
-            Boot : ACPI_Bootstrap.State (1,256,256);
-            Server : State (1,256,256,0);
+            Boot : ACPI_Bootstrap.State (1, 256, 256, 1);
+            Server : State (1, 256, 256, Load_Capacity => 1, Initial_Revision => 0);
             Accepted : Boolean;
             Installed : ACPI_Service.Install_Status;
             Wire : Packet;
@@ -135,7 +135,7 @@ begin
                Prior : constant Revision_Number := Revision (Server);
                Before : constant State_Model := Model (Server) with Ghost;
                Seen : constant ACPI_Fatal_Diagnostics.Observation := Fatal_Diagnostic (Server);
-               Fresh : State (1,256,256,97);
+               Fresh : State (1, 256, 256, Load_Capacity => 1, Initial_Revision => 97);
             begin
                Diagnostic (Seen, In_Ini, Width);
                Check (Revision (Fresh) = 97 and then not Fatal_Diagnostic (Fresh).Present,
@@ -166,8 +166,8 @@ begin
          Code : constant Bytes := Method ("_INI", Divide_By_Zero) &
            Block ([16#10#], Enc ("_SB_") & Method ("_INI", Fatal));
          Raw : constant Bytes := Table (Code, Width);
-         Boot : ACPI_Bootstrap.State (1,256,256);
-         Server : State (1,256,256,0);
+         Boot : ACPI_Bootstrap.State (1, 256, 256, 1);
+         Server : State (1, 256, 256, Load_Capacity => 1, Initial_Revision => 0);
          Accepted : Boolean;
          Installed : ACPI_Service.Install_Status;
          Wire : Packet;

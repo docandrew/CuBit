@@ -1,0 +1,14 @@
+import fs from 'node:fs';import path from 'node:path';import crypto from 'node:crypto';
+export function audit(r){const selected=Object.keys(r.spark??{});if(selected.length!==12||selected.some(k=>r.spark[k]!=='all')||r.stop_reason!=='STOP_REASON_NONE'||r.pragma_assume?.length||r.skip_proof?.length||r.skip_flow_proof?.length||r.proof?.length!==21||r.flow?.length!==10||[...r.proof,...r.flow].some(x=>x.severity!=='info'))throw Error('Incomplete proof');const entities=new Map(Object.entries(r.entities).map(([k,v])=>[Number(k),v]));const posts=r.proof.filter(x=>x.rule==='VC_POSTCONDITION').map(x=>entities.get(x.entity)?.name).sort();if(JSON.stringify(posts)!==JSON.stringify(['AML_Module_Frames.Empty','AML_Module_Frames.Pop','AML_Module_Frames.Push']))throw Error('Missing functional post');let attempts=0;function walk(o){if(!o||typeof o!=='object')return;if(o.proof_attempts)for(const a of Object.values(o.proof_attempts)){if(a.result!=='Valid')throw Error('Nonvalid attempt');attempts++;}for(const v of Object.values(o))if(v&&typeof v==='object')walk(v);}walk(r.proof);if(!attempts)throw Error('No prover attempts');const imported=[...entities.values()].filter(e=>!e.name.startsWith('AML_Module_Frames')).map(e=>e.name).sort();if(JSON.stringify(imported)!==JSON.stringify(['AML_Frame_Handles.Belongs_To','AML_Frame_Handles.Has_Authority','AML_Frame_Handles.Present']))throw Error('Unexpected imported helper');return {entities:selected.length,proof:r.proof.length,flow:r.flow.length,functional_posts:posts,attempts,imported};}
+
+const sha=p=>crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex');
+export function check(root,here){
+ const e=JSON.parse(fs.readFileSync(here+'/EVIDENCE.json'));
+ for(const[rel,h]of Object.entries({...e.artifacts,...e.scripts})){const p=path.resolve(here,rel);if(!p.startsWith(here+'/')||fs.realpathSync(p)!==p||sha(p)!==h)throw Error('Cached artifact/script drift '+rel);}
+ for(const[rel,h]of Object.entries(e.sources))if(sha(root+'/'+rel)!==h||sha(here+'/source/'+path.basename(rel))!==h)throw Error('Actual source selection drift');
+ const old=JSON.parse(fs.readFileSync(here+'/original-report.json'));
+ if(old.commands.length!==2||old.commands.some(c=>c.status!==0||c.error||c.signal)||!old.accepted)throw Error('Original proof command verdict');
+ for(const[p,h]of Object.entries(old.inputs)){if(e.tools[p]){if(e.tools[p]!==h||sha(p)!==h)throw Error('Original tool linkage');}else{const rel=e.input_map[p];if(!rel||e.artifacts[rel]!==h||sha(here+'/'+rel)!==h)throw Error('Original input linkage');}}
+ for(const level of [1,2]){const c=old.commands.find(c=>c.level===level);if(!c||!c.args.includes('aml_module_frames.adb')||!c.args.includes('--level='+level)||!e.input_map[c.args[c.args.indexOf('-P')+1]])throw Error('Command target linkage');audit(JSON.parse(fs.readFileSync(here+'/level'+level+'/proof.spark')));}
+ return true;
+}

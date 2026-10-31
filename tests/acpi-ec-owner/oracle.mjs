@@ -1,0 +1,12 @@
+import fs from 'node:fs';import crypto from 'node:crypto';import {spawnSync} from 'node:child_process';
+const sha=f=>crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex'),aml=process.argv[2],tool='/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec';
+if(!aml||process.env.TMPDIR!=='/home/doc/cubit-build-tmp')throw Error('Expected fixture and TMPDIR');
+const out=fs.mkdtempSync(process.env.TMPDIR+'/ec-owner-oracle-'),pins={[aml]:sha(aml),[tool]:sha(tool)},args=[tool,'-b','evaluate LID0._LID; evaluate AC00._PSR; execute EC00._Q01; evaluate LID0._LID; execute EC00._Q02; evaluate AC00._PSR; execute EC00._Q03; evaluate LID0._LID; evaluate AC00._PSR',aml];
+const r=spawnSync('nice',['-n','19','timeout','--kill-after=2s','5',...args],{encoding:'utf8',maxBuffer:1048576,timeout:8000}),log=(r.stdout??'')+(r.stderr??'');fs.writeFileSync(out+'/acpica.log',log.slice(0,1048576));
+for(const[f,h]of Object.entries(pins))if(sha(f)!==h)throw Error('Input drift');
+const integers=[...log.matchAll(/^\s*\[Integer\] = ([0-9A-F]+)/gm)].map(m=>Number.parseInt(m[1],16));
+const diagnostics=log.split('\n').filter(line=>/ACPI Error/.test(line));
+const recognized_teardown=diagnostics.length===1&&/^ACPI Error: 4 \(0x4\) Outstanding cache allocations \(20260408\/uttrack-902\)$/.test(diagnostics[0]);
+const semantic_match=r.status===0&&!r.error&&!r.signal&&Buffer.byteLength(log)<=1048576&&!/Evaluation of .* failed|Aborting method|Could not resolve symbol/.test(log)&&JSON.stringify(integers)===JSON.stringify([0,0,1,1,2,0])&&[...log.matchAll(/Received a Device Notify on \[LID0\].*Value 0x80/g)].length===2&&[...log.matchAll(/Received a Device Notify on \[AC00\].*Value 0x80/g)].length===2;
+const accepted=semantic_match&&(diagnostics.length===0||recognized_teardown);
+fs.writeFileSync(out+'/RESULT.json',JSON.stringify({accepted,semantic_match,clean_tool_log:diagnostics.length===0,diagnostics,recognized_teardown,args,status:r.status,signal:r.signal,error:r.error?.message??null,integers,inputs:{...pins,[process.argv[1]]:sha(process.argv[1])},scope:'Independent same-fixture Q01/Q02/Q03/Notify/LID/PSR semantic observations only. This ACPICA build reports four outstanding cache allocations on exit; no clean-tool-log, EC hardware, IPC, source-admission or CuBit broker/cache execution claim.'},null,2)+'\n');console.log(JSON.stringify({out,accepted,semantic_match,clean_tool_log:diagnostics.length===0,integers}));if(!accepted)process.exit(1);

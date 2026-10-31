@@ -59,7 +59,7 @@ procedure Static_Buffer_Oracle_Runner is
       end;
    end Read_Input;
    Table_Data : constant Firmware_Tables.Bytes := Read_Input;
-   Service : aliased State (Max_Tables, Max_Total_Bytes, Table_Data'Length);
+   Service : aliased State (Max_Tables, Max_Total_Bytes, Table_Data'Length, Load_Capacity => Max_Tables);
    Installed_Status : Install_Status;
    Access_Result : Values.Access_Status;
    Report : Namespace.Initialization_Report;

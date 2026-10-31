@@ -1,6 +1,8 @@
 pragma Ada_2022;
 with ACPI_Service_Core;
+with ACPI_Device_Status;
 with AML_Decode;
+with ACPI_Observation_Values;
 with AML_Execute;
 generic
    with package Core is new ACPI_Service_Core (<>);
@@ -12,10 +14,15 @@ generic
       Status : out Core.Values.Access_Status) is Core.Evaluate_Named;
 package ACPI_Power_Source with SPARK_Mode is
    pragma Unevaluated_Use_Of_Old (Allow);
+   package Device_Status is new ACPI_Device_Status (Core, Evaluate_Named);
    use type AML_Decode.Integer_Value;
    Offline_Code : constant AML_Decode.Integer_Value := 0;
    Online_Code : constant AML_Decode.Integer_Value := 1;
-   type Source_State is (Unknown, Offline, Online);
+   subtype Source_State is ACPI_Observation_Values.Power_Source_State;
+   use type Source_State;
+   Unknown : constant Source_State := ACPI_Observation_Values.Unknown;
+   Offline : constant Source_State := ACPI_Observation_Values.Offline;
+   Online : constant Source_State := ACPI_Observation_Values.Online;
    type Query_Outcome is (Sampled, Invalid_Device, Missing_PSR, Lookup_Failed,
       Evaluation_Failed, Wrong_Result_Type, Invalid_Status_Value,
       Identity_Changed, Budget_Exhausted, Cleanup_Failed, Provider_Contract_Error);

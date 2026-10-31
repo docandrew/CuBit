@@ -42,7 +42,7 @@ procedure Field_Boundary_Tests is
      [16#5B#, 16#81#, 14] & Enc ("RGN0") & [1,0,16#40#,16#12#] &
      Enc ("FLD0") & [8,16#A4#] & Enc ("FLD0");
    procedure Exercise (Code : Bytes; Budget : Natural; Complete : Boolean) is
-      Service : aliased State (Max_Tables, Max_Total_Bytes, Max_Table_Bytes);
+      Service : aliased State (Max_Tables, Max_Total_Bytes, Max_Table_Bytes, Load_Capacity => Max_Tables);
       Status : Install_Status;
       Bound : Namespace.Bind_Status;
       Region : Namespace.Node_ID;

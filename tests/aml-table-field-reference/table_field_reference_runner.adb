@@ -24,7 +24,7 @@ procedure Table_Field_Reference_Runner is
    use type AML_Execute.Execution_Status;
    package IO renames Ada.Streams.Stream_IO;
    type State_Access is access all State;
-   Service : constant State_Access := new State (1, Table_Byte_Capacity, Table_Byte_Capacity);
+   Service : constant State_Access := new State (1, Table_Byte_Capacity, Table_Byte_Capacity, Load_Capacity => 1);
    File : IO.File_Type;
    Loaded : Install_Status;
    Access_Result : Values.Access_Status;

@@ -31,9 +31,9 @@ begin
    Header (DSDT_Data, "DSDT"); Header (SSDT_Data, "SSDT");
    for Premature in Boolean loop
       declare
-         Server : State (2, 256, 128, 11);
+         Server : State (2, 256, 128, Load_Capacity => 2, Initial_Revision => 11);
          Reply : Response;
-         Before : State_Model (2, 256, 128) with Ghost;
+         Before : State_Model (2, 256, 128, Load_Capacity => 2) with Ghost;
          procedure Metrics (Page : Unsigned_64; Expected : Response_Words;
                             Status : Outcome := OK) is
             Prior : constant Revision_Number := Revision (Server);

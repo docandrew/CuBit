@@ -159,7 +159,7 @@ procedure Bank_Access_Tests is
    begin Accepted := Expected.Present and then not Pending (IO) and then Expected = IO.Confirmed; end Confirmed;
    package F is new C.Field_IO (Context, Pending, Describe, Dispatch, Confirmed,
      Maximum_Bindings => 4, Authorize_Target => Authorize);
-   Service : aliased C.State (1, Bank_Access_Oracle.Raw_Table'Length, Bank_Access_Oracle.Raw_Table'Length);
+   Service : aliased C.State (1, Bank_Access_Oracle.Raw_Table'Length, Bank_Access_Oracle.Raw_Table'Length, 1);
    IO : Context;
    Items : F.Binding_Set;
    Stage : C.Stage_Status;

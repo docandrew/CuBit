@@ -1,0 +1,47 @@
+{
+  "sources": {
+    "userspace/services/acpi/lib/aml_declaration_contexts.ads": "5a5a75c1d8f1df22a9903a018762c157d1f2681521924c6b54175607d2c14f51",
+    "userspace/services/acpi/lib/aml_declaration_contexts.adb": "8ebe0908b0e5155525dd0a673749e11bb1f62ab6bd04f1482dfbafc46184a4be",
+    "userspace/services/acpi/lib/aml_frame_handles.ads": "db70ab1e360b3887e8ccd0fd38c1b6a143472fd5309e5fa36d92d640c4a33f37",
+    "userspace/services/acpi/lib/aml_execution_limits.ads": "0f39494ae4418a3c8c639e2875c41ed9bec40c28849eed3f147940757a150794",
+    "userspace/services/acpi/lib/aml_identity.ads": "95e1f372b2c7cecef6fcc75119cb616c2aa22eb9398e5997a250a1f6b342785f"
+  },
+  "artifacts": {
+    "source/aml_declaration_contexts.ads": "5a5a75c1d8f1df22a9903a018762c157d1f2681521924c6b54175607d2c14f51",
+    "source/aml_declaration_contexts.adb": "8ebe0908b0e5155525dd0a673749e11bb1f62ab6bd04f1482dfbafc46184a4be",
+    "source/aml_frame_handles.ads": "db70ab1e360b3887e8ccd0fd38c1b6a143472fd5309e5fa36d92d640c4a33f37",
+    "source/aml_execution_limits.ads": "0f39494ae4418a3c8c639e2875c41ed9bec40c28849eed3f147940757a150794",
+    "source/aml_identity.ads": "95e1f372b2c7cecef6fcc75119cb616c2aa22eb9398e5997a250a1f6b342785f",
+    "level1/proof.gpr": "3ff017dce32ea1178a7a092f8e1e333c359218f3f7e37fbb652e77b4a7a5a3c5",
+    "level2/proof.gpr": "3ff017dce32ea1178a7a092f8e1e333c359218f3f7e37fbb652e77b4a7a5a3c5",
+    "level1/proof.spark": "5ce2e5aec4bebcbb0dd90b3700c0b7013526c3ac500c46af8343e3d05f3bcd08",
+    "level1/prove.log": "6f276e62cee00858ecae3d92a1c343c207308a26d31538a529d53cf7c7d38372",
+    "level2/proof.spark": "81d3759b8f164a5afcbabdcbfae859e073b55e34f696ab61eb9d68f58db0e469",
+    "level2/prove.log": "5f3e720d575a769c70ebc644dd5c229d8751d401ea49e27a2bef8fdd2f474e17",
+    "original-report.json": "7337c18fe28cef7089d893f9e0710897d5a8e4ff304bd262f9f02e3d9800cc46",
+    "PROOF-AUDIT.json": "0376de17448e89ea4eaafd0a758da158ac834b825d364a53d9520a6342ee9944"
+  },
+  "scripts": {
+    "run.mjs": "e7c7cc5dad66e0897acc1239ad9099ad1c8cba2d00424245e047a1f482a0c8ab",
+    "run.sh": "3e69ffe13604c91b2f60671a8b409ea3f582d56103d4e4ccf3247ead4e6b7a9d",
+    "check-proof.mjs": "d0f0cf55fb707fe73b8718132949c702a6af2861b485e9cb9ab99b85fea92571"
+  },
+  "input_map": {
+    "/home/doc/git/.acpi-proof-work/selected-root-publication-work/candidate/userspace/services/acpi/lib/aml_declaration_contexts.ads": "source/aml_declaration_contexts.ads",
+    "/home/doc/cubit-build-tmp/module-scope-proof-CIzxAB/source/aml_declaration_contexts.ads": "source/aml_declaration_contexts.ads",
+    "/home/doc/git/.acpi-proof-work/selected-root-publication-work/candidate/userspace/services/acpi/lib/aml_declaration_contexts.adb": "source/aml_declaration_contexts.adb",
+    "/home/doc/cubit-build-tmp/module-scope-proof-CIzxAB/source/aml_declaration_contexts.adb": "source/aml_declaration_contexts.adb",
+    "/home/doc/git/.acpi-proof-work/selected-root-publication-work/candidate/userspace/services/acpi/lib/aml_frame_handles.ads": "source/aml_frame_handles.ads",
+    "/home/doc/cubit-build-tmp/module-scope-proof-CIzxAB/source/aml_frame_handles.ads": "source/aml_frame_handles.ads",
+    "/home/doc/git/.acpi-proof-work/selected-root-publication-work/candidate/userspace/services/acpi/lib/aml_execution_limits.ads": "source/aml_execution_limits.ads",
+    "/home/doc/cubit-build-tmp/module-scope-proof-CIzxAB/source/aml_execution_limits.ads": "source/aml_execution_limits.ads",
+    "/home/doc/git/.acpi-proof-work/selected-root-publication-work/candidate/userspace/services/acpi/lib/aml_identity.ads": "source/aml_identity.ads",
+    "/home/doc/cubit-build-tmp/module-scope-proof-CIzxAB/source/aml_identity.ads": "source/aml_identity.ads",
+    "/home/doc/cubit-build-tmp/module-scope-proof-CIzxAB/level1/proof.gpr": "level1/proof.gpr",
+    "/home/doc/cubit-build-tmp/module-scope-proof-CIzxAB/level2/proof.gpr": "level2/proof.gpr"
+  },
+  "tools": {
+    "/nix/store/9xvbsfi448cx9fjk4ivla9fsq390a8gn-gnatprove-fsf-15_2025-06-10/bin/gnatprove": "ef4dd76057294453d4cc43781aa0f25fad9b351533e380cc9a60a9b86fa797ef"
+  },
+  "scope": "Actual declaration-lease bookkeeping functional contracts and safety; lexical entry/invocation/lifetime separation under actual frame helper interfaces; no namespace,AML or service proof"
+}
