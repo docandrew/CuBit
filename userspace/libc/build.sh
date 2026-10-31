@@ -95,8 +95,10 @@ install -m 0644 "$here/link.ld" "$sysroot/lib/cubit.ld"
 
 # C++: nixpkgs' musl cross gcc (libstdc++ built against musl headers of the
 # same version); cubit-c++ links it with this libc instead of its own.
+# --out-link keeps a GC root beside the build: with --no-link a garbage
+# collection deleted the compiler that cross-gcc still named.
 nix build --inputs-from "$here/../.." nixpkgs#pkgsCross.musl64.buildPackages.gcc \
-    --no-link --print-out-paths | grep -v -- '-man$' | head -1 > "$build/cross-gcc.new"
+    --out-link "$build/cross-gcc-root" --print-out-paths | grep -v -- '-man$' | head -1 > "$build/cross-gcc.new"
 # Renamed into place: concurrent builds read it through cubit-c++.
 mv "$build/cross-gcc.new" "$build/cross-gcc"
 # Rust's musl-family std links -lunwind: the musl cross gcc's unwinder

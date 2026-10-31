@@ -2412,6 +2412,19 @@ package body Process is
         unlockAddressSpace (pid);
     end kernelUserFault;
 
+    --  The runtime discards enumeration names (system.ads), so 'Image
+    --  would print a position.
+    function Result_Name (result : Page_Allocation_Result) return String is
+       (case result is
+           when Page_Added                 => "Page_Added",
+           when Frame_Tracking_Full        => "Frame_Tracking_Full",
+           when Frame_Quota_Full           => "Frame_Quota_Full",
+           when Physical_Memory_Exhausted  => "Physical_Memory_Exhausted",
+           when Tracking_Storage_Exhausted => "Tracking_Storage_Exhausted",
+           when Frame_Ownership_Failed     => "Frame_Ownership_Failed",
+           when Page_Table_Exhausted       => "Page_Table_Exhausted",
+           when Mapping_Already_Present    => "Mapping_Already_Present");
+
     procedure pageFault (pid : ProcessID; addr : System.Address; Write : Boolean)
     is
         ignore : System.Address;
@@ -2453,6 +2466,18 @@ package body Process is
 
         if admission = Page_Admission.Admitted then
             if result /= Page_Added then
+                --  Name the actual failure and who holds memory, so a
+                --  per-process limit is not mistaken for exhausted RAM
+                --  (MEM-004). Unlocked reads: a diagnostic snapshot only.
+                println ("PAGE-ALLOCATION-FAILED: " &
+                         Result_Name (result) &
+                         " free-frames" & Natural'Image (BuddyAllocator.getFreeFrames));
+                for Holder in ProcessID loop
+                    if proctab (Holder).frames.length > 0 then
+                        print ("  frames"); print (Natural'Image (proctab (Holder).frames.length));
+                        print (" "); println (proctab (Holder).name);
+                    end if;
+                end loop;
                 IPC.notifySupervisor
                   (pid => pid, faultLabel => IPC_Labels.EVENT_PROCESS_FAULT,
                    detail0 => 14, detail1 => Unsigned_64 (To_Integer (addr)),

@@ -36,7 +36,10 @@ KEEP_LOGS=0
 CHECK_EXT2=0
 QEMU_ACCEL=""
 QEMU_CPUS=4
-# Guest memory; cases that need more (servo) raise the default.
+# Guest memory; cases that need more (servo) raise the default. The
+# default is 256 MiB: the idle bootstrap set takes about 81 MiB of frames
+# (netstack 19.6, procmgr 14.8, filesystem 11.4, tls 10.8 at 2026-10-31),
+# and 128 MiB (about 106 usable) ran tls-service out of pages (MEM-004).
 QEMU_MEMORY="${QEMU_MEMORY:-}"
 QEMU_CPUS_EXPLICIT=0
 QEMU_DISPLAY=none
@@ -4118,7 +4121,7 @@ if [ "$TEST_NAME" = "bench-net" ] && [ -z "${BENCH_NET_PCAP:-}" ]; then PCAP_ARG
         -machine q35 \
         -cpu "$QEMU_CPU_MODEL" \
         -smp "$QEMU_CPUS" \
-        -m "${QEMU_MEMORY:-128M}" \
+        -m "${QEMU_MEMORY:-256M}" \
         -cdrom cubit_kernel.iso \
         -serial "file:$SERIAL_LOG" \
         -display "$QEMU_DISPLAY" \
