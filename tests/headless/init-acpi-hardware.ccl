@@ -1,0 +1,18 @@
+# ACPI hardware windows and the role-35 register endpoint
+# (coordination/acpi-region-boundary.md): acpi-hardware-check stands in for
+# acpi-backend.svc's launch (its firmware snapshot reader and hardware
+# windows approved on one entry) and for acpi.svc's register client (the
+# (acpi-registers approve-declared) frontend badge). The same image without
+# the hardware approval is refused at launch; a client declaring the
+# register service without approval gets no endpoint. acpi-registers-standin
+# registers role 35 as the backend will.
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "acpi-registers-standin.app" (priority 4))
+  (start "acpi-hardware-check.app" (priority 3)
+    (firmware-snapshot approve-declared) (acpi-hardware approve-declared)
+    (acpi-registers approve-declared))
+  (start "acpi-hardware-denied.app" (priority 3)
+    (firmware-snapshot approve-declared) (acpi-registers approve-declared))
+  (start "acpi-registers-client.app" (priority 3))
+)

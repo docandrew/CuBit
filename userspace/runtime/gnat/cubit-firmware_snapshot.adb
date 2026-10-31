@@ -12,6 +12,9 @@ package body CuBit.Firmware_Snapshot with SPARK_Mode is
      ((Handle => CuBit.Handles.Startup.Firmware_Snapshot_Named
                    (Label, CuBit.Startup_Tables.Firmware_Snapshot)));
 
+   function Held (Handle : CuBit.Handles.Firmware_Snapshot) return Authority is
+     ((Handle => Handle));
+
    function To_Outcome (Item : ABI.Outcome) return Outcome is
      (case Item is
          when ABI.Ok               => Ok,

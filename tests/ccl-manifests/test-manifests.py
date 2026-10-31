@@ -1094,7 +1094,8 @@ class Manifests(unittest.TestCase):
         """The generated body withs only what its spec lacks: a Logstore
         client's spec already withs CuBit.Handles.Services."""
         for name, requests in [('logged', '(service "logstore" "logstore")'),
-                               ('firmware', '(Request.Firmware_Snapshot "tables")')]:
+                               ('firmware', '(Request.Firmware_Snapshot "tables")'),
+                               ('acpi', '(Request.Firmware_Snapshot "tables") (Request.ACPI_Hardware "hardware")')]:
             with self.subTest(name=name):
                 source = ('(Executable_Manifest identity => "com.cubit.test.' + name +
                           '" version => "1" requests => [' + requests + '])')
@@ -1126,6 +1127,57 @@ class Manifests(unittest.TestCase):
                     'never optional')
         self.reject(typed.replace('"tables")]', '"tables") (Request.Firmware_Snapshot "more")]'),
                     self.NATIVE, 'a second firmware snapshot request')
+
+    def test_acpi_hardware_request(self):
+        """ACPI hardware windows (coordination/acpi-region-boundary.md):
+        (Request.ACPI_Hardware "hardware") is a required read-write
+        .cubit.caps request (kind 13) and startup entry (kind 14) whose
+        Startup function returns CuBit.ACPI_Windows.Grant; never optional,
+        never twice, and its binding leaves room for the window names. It
+        sits beside the backend's own firmware snapshot reader."""
+        typed = ('(Executable_Manifest identity => "com.cubit.acpi-backend" version => "1" '
+                 'requests => [(Request.Firmware_Snapshot "tables") (Request.ACPI_Hardware "hardware")])')
+        result = self.compile(typed, self.NATIVE)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        sections = self.sections(result.stdout)
+        caps = sections['.cubit.caps']
+        self.assertEqual(struct.unpack_from('<IHH', caps, 0), (0x43424954, 1, 2))
+        self.assertEqual(struct.unpack_from('<BBHIQ', caps, 8), (12, 1, 0, 0, 0))
+        self.assertEqual(struct.unpack_from('<BBHIQ', caps, 24), (13, 3, 0, 0, 0))
+        self.assertEqual(self.startup(sections['.cubit.startup'])[1],
+                         [('tables', 13, 1, 1, 0), ('hardware', 14, 1, 1, 0)])
+        generated = (self.directory / 'startup.ads').read_text()
+        self.assertIn('with CuBit.ACPI_Windows.Launch;', generated)
+        self.assertIn('   function Hardware return Standard.CuBit.ACPI_Windows.Grant is\n'
+                      '     (Standard.CuBit.ACPI_Windows.Launch.Named ("hardware"));', generated)
+        self.assertIn('Standard.CuBit.Startup_Tables.ACPI_Hardware, '
+                      'Standard.CuBit.Startup_Tables.Required', generated)
+        self.reject(typed.replace('])', '] optional => ["hardware"])'), self.NATIVE,
+                    'never optional')
+        self.reject(typed.replace('"hardware")]', '"hardware") (Request.ACPI_Hardware "more")]'),
+                    self.NATIVE, 'a second ACPI hardware request')
+        # The window names (binding + "-io-NN") must stay startup names.
+        longest = 'h' * 58
+        self.assertEqual(self.compile(typed.replace('"hardware"', f'"{longest}"'),
+                                      self.NATIVE).returncode, 0)
+        self.reject(typed.replace('"hardware"', f'"{longest}x"'), self.NATIVE,
+                    'too long for its window names')
+
+    def test_acpi_registers_role(self):
+        """Catalog role 35: acpi.svc's client endpoint and the backend's
+        registration notification."""
+        typed = ('(Executable_Manifest identity => "com.cubit.acpi" version => "1" '
+                 'requests => [(Request.Firmware_Snapshot "tables") (service "acpi-registers" "registers")])')
+        result = self.compile(typed, self.NATIVE)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        caps = self.sections(result.stdout)['.cubit.caps']
+        self.assertEqual(struct.unpack_from('<BBHIQ', caps, 24), (2, 3, 0, 35, 0))
+        backend = ('(Executable_Manifest identity => "com.cubit.acpi-backend" version => "1" '
+                   'requests => [(notification "acpi-registers" Notify_Access.Manage "registration")])')
+        result = self.compile(backend, self.NATIVE)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        caps = self.sections(result.stdout)['.cubit.caps']
+        self.assertEqual(struct.unpack_from('<BBHIQ', caps, 8), (7, 2, 0, 35, 0))
 
     def test_startup_channel_limits(self):
         def channels(text):

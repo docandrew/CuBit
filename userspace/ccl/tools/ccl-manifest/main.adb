@@ -454,6 +454,7 @@ procedure Main is
          when ST.Scheduling   => "Scheduling",
          when ST.Process      => "Process",
          when ST.Firmware_Snapshot => "Firmware_Snapshot",
+         when ST.ACPI_Hardware => "ACPI_Hardware",
          when ST.DMA | ST.Resource => "");
 
    --  An enumeration literal's image in Ada's mixed case (IO and DMA stay
@@ -472,6 +473,8 @@ procedure Main is
          Result (Result'First + 1) := 'O';
       elsif Result = "Dma" then
          Result := "DMA";
+      elsif Result'Length >= 5 and then Result (Result'First .. Result'First + 4) = "Acpi_" then
+         Result (Result'First .. Result'First + 3) := "ACPI";
       end if;
       return Result;
    end Mixed;
@@ -564,7 +567,8 @@ procedure Main is
          when ST.Scheduling    => "Scheduling",
          when ST.Process       => "Process",
          when ST.Resource      => "Resource",
-         when ST.Firmware_Snapshot => "FirmwareSnapshot");
+         when ST.Firmware_Snapshot => "FirmwareSnapshot",
+         when ST.ACPI_Hardware => "AcpiHardware");
 
    --  The Rust startup accessors (CAP-003): module startup, one function
    --  per endpoint binding, taking the program's startup table
@@ -926,9 +930,15 @@ procedure Main is
       Put_Line (Output, "pragma Ada_2022;");
       if (for some Binding of Result.Bindings (1 .. Result.Binding_Count) =>
             CCL.Manifests."=" (Binding.Client, CCL.Manifests.Plain) and then Handle_Type (Binding.Kind) /= ""
-            and then ST."/=" (Binding.Kind, ST.Firmware_Snapshot))
+            and then ST."/=" (Binding.Kind, ST.Firmware_Snapshot)
+            and then ST."/=" (Binding.Kind, ST.ACPI_Hardware))
       then
          Put_Line (Output, "with CuBit.Handles.Startup;");
+      end if;
+      if (for some Binding of Result.Bindings (1 .. Result.Binding_Count) =>
+            ST."=" (Binding.Kind, ST.ACPI_Hardware))
+      then
+         Put_Line (Output, "with CuBit.ACPI_Windows.Launch;");
       end if;
       if (for some Binding of Result.Bindings (1 .. Result.Binding_Count) =>
             ST."=" (Binding.Kind, ST.Firmware_Snapshot))
@@ -965,6 +975,12 @@ procedure Main is
                Put_Line (Output, "   function " & Ada_Name (Name) &
                          " return Standard.CuBit.Firmware_Snapshot.Authority is");
                Put_Line (Output, "     (Standard.CuBit.Firmware_Snapshot.Named (""" & Name & """));");
+            elsif ST."=" (Binding.Kind, ST.ACPI_Hardware) then
+               --  Never optional; its windows are the launcher's entries
+               --  named after it (CuBit.ACPI_Hardware_Authority.IO_Label).
+               Put_Line (Output, "   function " & Ada_Name (Name) &
+                         " return Standard.CuBit.ACPI_Windows.Grant is");
+               Put_Line (Output, "     (Standard.CuBit.ACPI_Windows.Launch.Named (""" & Name & """));");
             elsif CCL.Manifests."/=" (Binding.Client, CCL.Manifests.Plain) then
                declare
                   Typed : constant String := "Standard.CuBit.Handles.Services." &

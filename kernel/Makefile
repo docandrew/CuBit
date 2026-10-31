@@ -1407,6 +1407,23 @@ acpi-standin: ccl-build user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/acpi-standin/build
 	$(CCL_BUILD) ../userspace/apps/acpi-standin/component.ccl
 
+# ACPI hardware windows and the role-35 register endpoint
+# (coordination/acpi-region-boundary.md): headless --test acpi-hardware.
+# The stand-in and the unapproved client are test-only (never in images).
+.PHONY : acpi-hardware-check acpi-registers-standin acpi-registers-client
+acpi-hardware-check: ccl-build user_runtime ccl-manifest
+	mkdir -p ../userspace/apps/acpi-hardware-check/build
+	$(CCL_BUILD) ../userspace/apps/acpi-hardware-check/component.ccl
+	cp ../userspace/apps/acpi-hardware-check/build/acpi-hardware-check.app isodir/boot/acpi-hardware-check.app
+
+acpi-registers-standin: ccl-build user_runtime ccl-manifest
+	mkdir -p ../userspace/apps/acpi-registers-standin/build
+	$(CCL_BUILD) ../userspace/apps/acpi-registers-standin/component.ccl
+
+acpi-registers-client: ccl-build user_runtime ccl-manifest
+	mkdir -p ../userspace/apps/acpi-registers-client/build
+	$(CCL_BUILD) ../userspace/apps/acpi-registers-client/component.ccl
+
 firmware-undeclared: ccl-build user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/firmware-undeclared/build
 	$(CCL_BUILD) ../userspace/apps/firmware-undeclared/component.ccl

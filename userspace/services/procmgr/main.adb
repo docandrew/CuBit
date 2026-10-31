@@ -73,7 +73,12 @@ with CuBit.File_Access;
 with CuBit.Network_Authority;
 with CuBit.Render_Authority;
 with CuBit.Firmware_Snapshot_Authority;
+with CuBit.Firmware_Snapshot;
+with CuBit.ACPI_Hardware_Authority;
+with CuBit.ACPI_Fixed_Windows;
+with CuBit.ACPI_Window_Exchange;
 with ACPI_Protocol;
+with ACPI_Register_Roles;
 with CuBit.Render_Startup;
 with CuBit.Launch_Policy; use CuBit.Launch_Policy;
 with CuBit.Capability_Grants;
@@ -879,6 +884,85 @@ procedure main is
    CAP_TYPE_DEVICE_MEM    : constant Unsigned_64 := 7;
    CAP_TYPE_FIRMWARE_SNAPSHOT : constant Unsigned_64 :=
      CuBit.Handles.ABI.Kind'Enum_Rep (CuBit.Handles.ABI.Firmware_Snapshot);
+   CAP_TYPE_IO_PORTS : constant Unsigned_64 :=
+     CuBit.Handles.ABI.Kind'Enum_Rep (CuBit.Handles.ABI.IO_Ports);
+
+   ---------------------------------------------------------------------------
+   --  The ACPI fixed-hardware I/O windows (coordination/acpi-region-boundary.md,
+   --  slice 1): the FADT's PM1, PM timer and GPE blocks and the ECDT's EC
+   --  ports, read once through procmgr's firmware snapshot reader (the
+   --  snapshot is sealed at boot). devmgr grants each window
+   --  (CuBit.ACPI_Window_Exchange) unless other holders have its ports.
+   ---------------------------------------------------------------------------
+   ACPI_Windows_Read : Boolean := False;
+   ACPI_Fixed : CuBit.ACPI_Fixed_Windows.Window_List;
+   --  The most of a table read: past the FADT's last 64-bit block (ACPI 6.5's
+   --  FADT is 276 bytes) and the ECDT's EC registers.
+   ACPI_Table_Read_Bytes : constant := 512;
+
+   function acpiWindows return CuBit.ACPI_Fixed_Windows.Window_List is
+      package FS renames CuBit.Firmware_Snapshot;
+      package AF renames CuBit.ACPI_Fixed_Windows;
+      use type FS.Outcome, FS.Byte_Count;
+
+      --  The first bytes (at most ACPI_Table_Read_Bytes) of the snapshot's
+      --  table named Signature; Length 0 when there is none.
+      procedure Read_Table
+        (Tables : FS.Authority; Count : Unsigned_32; Signature : String;
+         Into : out AF.Byte_Array; Length : out Natural)
+      is
+         Described : FS.Table_Description;
+         Status : FS.Outcome;
+      begin
+         Into := [others => 0];
+         Length := 0;
+         for T in 1 .. FS.Table_ID (Count) loop
+            FS.Describe (Tables, T, Described, Status);
+            if Status = FS.Ok
+              and then (for all I in FS.Signature_Index =>
+                          Described.Signature (I) = Character'Pos (Signature (Signature'First + I - 1)))
+            then
+               declare
+                  Wanted : constant Natural :=
+                    Natural (FS.Byte_Count'Min (Described.Extent, FS.Byte_Count (Into'Length)));
+                  Chunk : FS.Byte_Array (1 .. Wanted);
+                  Copied : FS.Byte_Count;
+               begin
+                  FS.Copy_Part (Tables, T, 0, Chunk, Copied, Status);
+                  if Status = FS.Ok and then Copied = FS.Byte_Count (Wanted) then
+                     for I in 1 .. Wanted loop
+                        Into (I) := Chunk (I);
+                     end loop;
+                     Length := Wanted;
+                  end if;
+               end;
+               return;
+            end if;
+         end loop;
+      end Read_Table;
+   begin
+      if not ACPI_Windows_Read then
+         ACPI_Windows_Read := True;
+         declare
+            Tables : constant FS.Authority := FS.Held (PH.Firmware_Snapshot_Reader);
+            Catalog : FS.Catalog_Info;
+            Status : FS.Outcome;
+            FADT, ECDT : AF.Byte_Array (1 .. ACPI_Table_Read_Bytes);
+            FADT_Length, ECDT_Length : Natural := 0;
+         begin
+            FS.Info (Tables, Catalog, Status);
+            if Status = FS.Ok and then Catalog.Ready then
+               Read_Table (Tables, Catalog.Table_Count, AF.FADT_Signature, FADT, FADT_Length);
+               Read_Table (Tables, Catalog.Table_Count, AF.ECDT_Signature, ECDT, ECDT_Length);
+            end if;
+            AF.Compute (FADT (1 .. FADT_Length), ECDT (1 .. ECDT_Length), ACPI_Fixed);
+            debugPrint ("procmgr: ACPI fixed windows" & Natural'Image (ACPI_Fixed.Count) &
+                        " (FADT" & Natural'Image (FADT_Length) & " bytes, ECDT" &
+                        Natural'Image (ECDT_Length) & ")" & LF);
+         end;
+      end if;
+      return ACPI_Fixed;
+   end acpiWindows;
 
    ---------------------------------------------------------------------------
    --  readU16 - read a little-endian Unsigned_16 from elfBuf at byte offset
@@ -1223,7 +1307,7 @@ procedure main is
    --  The startup kinds whose requests are in .cubit.caps.
    function In_Caps (Kind : ST.Capability_Kind) return Boolean is
      (Kind in ST.Endpoint | ST.Notification | ST.Framebuffer | ST.Render | ST.Network
-              | ST.Firmware_Snapshot);
+              | ST.Firmware_Snapshot | ST.ACPI_Hardware);
 
    procedure readManifest
      (elfSize : Unsigned_64;
@@ -1353,6 +1437,8 @@ procedure main is
                         when ST.Network      => Kind /= CuBit.Network_Authority.Manifest_Request,
                         when ST.Firmware_Snapshot =>
                           Kind /= CuBit.Firmware_Snapshot_Authority.Manifest_Request,
+                        when ST.ACPI_Hardware =>
+                          Kind /= CuBit.ACPI_Hardware_Authority.Manifest_Request,
                         when others          => True)
                   then
                      reading := Requests_Disagree;
@@ -1402,7 +1488,8 @@ procedure main is
       Role = DRIVER_DISPLAY or else Role = DRIVER_CCL_TEST or else
       Role = DRIVER_CLOCK or else Role = CuBit.TLS_Protocol.Service_Role or else
       Role = CuBit.Metric_Protocol.Publisher_Service_Role or else Role = DRIVER_LEXICON or else
-      Role = DRIVER_ACPI or else Role = CuBit.Installer_Protocol.Service_Role);
+      Role = DRIVER_ACPI or else Role = CuBit.Installer_Protocol.Service_Role or else
+      Role = DRIVER_ACPI_REGISTERS);
 
    --  For each launched-service role: the live process procmgr started with
    --  its registration, until that process exits.
@@ -1547,6 +1634,9 @@ procedure main is
       elsif Role = DRIVER_ACPI then
          --  An impostor would answer for the machine's firmware.
          return systemStartup and then Identity = "com.cubit.acpi";
+      elsif Role = DRIVER_ACPI_REGISTERS then
+         --  An impostor would see (and answer) every register access.
+         return systemStartup and then Identity = "com.cubit.acpi-backend";
       elsif Role = CuBit.Installer_Protocol.Service_Role then
          --  An impostor would see what is installed where, and refuse it.
          return systemStartup and then Identity = "com.cubit.installer";
@@ -2535,10 +2625,13 @@ procedure main is
       approveRender : Boolean := False;
       systemStartup : Boolean := False;
       startupRole : CCL.Configurations.Startup_Role := CCL.Configurations.Application;
-      approveFirmwareSnapshot : Boolean := False)
+      approveFirmwareSnapshot : Boolean := False;
+      approveACPIHardware : Boolean := False;
+      approveACPIRegisters : Boolean := False)
       return Process_ID
    is
       package SB renames CuBit.Startup_Builder;
+      package AHA renames CuBit.ACPI_Hardware_Authority;
       package LA renames CuBit.Launch_Arguments;
       use type SB.Mint_Outcome, ST.Capability_Kind;
       elfSize       : Unsigned_64;
@@ -2565,6 +2658,12 @@ procedure main is
       Block_Length : LA.Block_Length := pendingArgumentBytes;
       --  Registrations procmgr approved, offered to devmgr once it runs.
       Offer_Logstore, Offer_Desktop : Boolean := False;
+      --  The ACPI hardware windows installed in the child (Mint_ACPI_Hardware),
+      --  in ascending port order: appended to its startup table as
+      --  AHA.IO_Label (ACPI_Binding, K).
+      ACPI_Window_Words : array (AHA.IO_Window_Number) of Unsigned_64 := [others => ST.No_Handle];
+      ACPI_Window_Total : Natural range 0 .. AHA.Maximum_IO_Windows := 0;
+      ACPI_Binding : ST.Name;
       use type CuBit.Render_Startup.Requirement, CuBit.Render_Startup.Attempt;
       -- Transitional installed-system-app policy, like Desktop_Approval for
       -- browsers. Exact boot-namespace name, never a supplied path/identity;
@@ -2702,6 +2801,9 @@ procedure main is
          isInstaller : constant Boolean := Role = CuBit.Installer_Protocol.Service_Role;
          --  An ACPI client: its one client role, the observer badge.
          isACPI : constant Boolean := Role = DRIVER_ACPI;
+         --  acpi.svc's endpoint to the backend's named registers: the full
+         --  frontend scope, only for an entry approving it.
+         isACPIRegisters : constant Boolean := Role = DRIVER_ACPI_REGISTERS;
          use CuBit.Authority_Policy;
          Authority : constant Bootstrap_Authority :=
            (if isAudioControl then Master_Audio
@@ -2713,10 +2815,11 @@ procedure main is
             elsif isLogControl then Log_Control
             elsif isDiskInstall then Disk_Installation
             elsif isInstaller then Installer_Use
+            elsif isACPIRegisters then ACPI_Register_Frontend
             else Log_Publication);
          Approval : constant Decision := Evaluate
            (Requested => True,
-            Installation_Approved => Bootstrap_Approves (Authority, systemStartup) or else
+            Installation_Approved => Startup_Approves (Authority, systemStartup, approveACPIRegisters) or else
               (isLogObserver and then Log_Viewer_Approved) or else
               (isProcessObserver and then Process_Viewer_Approved) or else
               (isLogControl and then Log_Control_Approved),
@@ -2743,7 +2846,7 @@ procedure main is
          -- the other startup-only authorities.
          if (isAudioControl or isLogObserver or isClockControl
              or isMetricObserver or isProcessObserver or isLogControl
-             or isDiskInstall or isInstaller)
+             or isDiskInstall or isInstaller or isACPIRegisters)
            and then Approval /= Approved
          then
             recordAuthority
@@ -2760,6 +2863,10 @@ procedure main is
 
          if isACPI then
             Issued_Tag := Unsigned_64 (ACPI_Protocol.Observer_Tag);
+         elsif isACPIRegisters then
+            --  A fixed compile-time stamp; the copy keeps no Grant, so the
+            --  holder can never re-badge it (Manifest_Rights).
+            Issued_Tag := Unsigned_64 (ACPI_Register_Roles.Frontend_Tag);
          elsif isAudioControl then
             Issued_Tag := CuBit.Audio_Control.Authority_Tag;
          elsif isClockControl then
@@ -2979,6 +3086,94 @@ procedure main is
             CAP_TYPE_FIRMWARE_SNAPSHOT, True, Outcome = SB.Granted, Mask (H.Read_Only), 0, 0);
       end Mint_Firmware_Snapshot;
 
+      --  The ACPI hardware windows (Request.ACPI_Hardware): only for a program
+      --  the trusted startup plan started and approved, (acpi-hardware
+      --  approve-declared). Each window devmgr grants is installed as its own
+      --  read-write I/O-port capability (no Grant), exactly its range; a window
+      --  devmgr refuses (another holder has a port of it) is left out, never
+      --  narrowed or widened. The declared entry holds the first window's
+      --  handle; the windows are appended after the table is built.
+      procedure Mint_ACPI_Hardware
+        (R : Caps_Request; Index : ST.Entry_Index; Item : ST.Startup_Entry;
+         Handle : out Unsigned_64; Outcome : out SB.Mint_Outcome)
+      is
+         package AX renames CuBit.ACPI_Window_Exchange;
+         package AF renames CuBit.ACPI_Fixed_Windows;
+         Windows : AF.Window_List;
+      begin
+         Handle := ST.No_Handle;
+         Outcome := SB.Refused_By_Policy;
+         if Manifest_Rights (Unsigned_64 (R.Rights)) /= H.Read_Write or else R.Param0 /= 0
+           or else R.Param1 /= 0 or else Item.Label.Length > AHA.Maximum_Binding_Length
+         then
+            Warnings.Warn ("procmgr: ACPI hardware request malformed for pid" & Image (newPID));
+         elsif not (systemStartup and then approveACPIHardware) then
+            Warnings.Warn ("procmgr: ACPI hardware refused: " & name &
+                           " is not approved by the startup plan");
+         else
+            Windows := acpiWindows;
+            if Windows.Count > AHA.Maximum_IO_Windows
+              or else View.Declared.Count + SB.Self_Entries + Windows.Count > ST.Maximum_Entries
+            then
+               Outcome := SB.Limit_Reached;
+               Warnings.Warn ("procmgr: ACPI hardware refused: " & name &
+                              "'s startup table has no room for its windows");
+            else
+               Outcome := SB.Granted;
+               for W of Windows.Windows (1 .. Windows.Count) loop
+                  declare
+                     Request : Message := NULL_MESSAGE;
+                     Received : HIPC.Carried;
+                     Tag : MessageTag;
+                     Placed : SB.Mint_Outcome := SB.Not_Available;
+                     Word : Unsigned_64 := ST.No_Handle;
+                  begin
+                     Request.tag := (label => AX.Window_Request, length => AX.Request_Words,
+                                     protocol => 0, ipc => <>, reserved => 0);
+                     Request.words (AX.First_Word) := Unsigned_64 (W.First);
+                     Request.words (AX.Count_Word) := Unsigned_64 (W.Count);
+                     Tag := HIPC.Call_Accepting
+                       (PH.Device_Manager, Request, CuBit.Messages.Wait_Forever, Received);
+                     if Tag.label = AX.Reply_OK then
+                        declare
+                           Taken : constant HIPC.Accepted_IO_Ports := HIPC.Accept_IO_Ports (Received);
+                           Ignore : HIPC.Close_Result;
+                        begin
+                           if Taken.OK then
+                              Install (Copy (Taken.Value, H.Read_Write), Word, Placed);
+                              Ignore := HIPC.Close (Taken.Value);
+                           end if;
+                        end;
+                     end if;
+                     if Placed = SB.Granted then
+                        ACPI_Window_Total := ACPI_Window_Total + 1;
+                        ACPI_Window_Words (ACPI_Window_Total) := Word;
+                     elsif Placed in SB.Limit_Reached | SB.Out_Of_Memory then
+                        Outcome := Placed;   --  the child's table: the launch fails
+                     else
+                        Warnings.Warn ("procmgr: ACPI window" & Unsigned_16'Image (W.First) & " +" &
+                                       Unsigned_32'Image (W.Count) & " left out for " & name &
+                                       ": devmgr refused it (its ports are held)");
+                     end if;
+                  end;
+                  exit when Outcome /= SB.Granted;
+               end loop;
+               if Outcome = SB.Granted and then ACPI_Window_Total = 0 then
+                  Outcome := SB.Not_Available;
+                  Warnings.Warn ("procmgr: ACPI hardware refused: no admissible window for " & name);
+               end if;
+               if Outcome = SB.Granted then
+                  Handle := ACPI_Window_Words (1);
+                  ACPI_Binding := Item.Label;
+               end if;
+            end if;
+         end if;
+         recordAuthority
+           (newPID, Index, AUTH_SOURCE_CONFIG_POLICY, AUTH_REASON_MANIFEST_REQUEST,
+            CAP_TYPE_IO_PORTS, True, Outcome = SB.Granted, Mask (H.Read_Write),
+            0, Unsigned_64 (ACPI_Window_Total));
+      end Mint_ACPI_Hardware;
+
       procedure Mint
         (Into : in out Build_Context; Item : ST.Startup_Entry; Index : ST.Entry_Index;
          Handle : out Unsigned_64; Outcome : out SB.Mint_Outcome)
@@ -3000,6 +3195,7 @@ procedure main is
             when ST.Framebuffer  => Mint_Framebuffer (R, Index, Handle, Outcome);
             when ST.Network      => Mint_Network (R, Index, Handle, Outcome);
             when ST.Firmware_Snapshot => Mint_Firmware_Snapshot (R, Index, Handle, Outcome);
+            when ST.ACPI_Hardware => Mint_ACPI_Hardware (R, Index, Item, Handle, Outcome);
             when ST.Render =>
                --  The session devmgr admitted before the table was built;
                --  a software start has none.
@@ -3595,6 +3791,29 @@ procedure main is
             Discard_Authorized_Child;
             return No_Process;
          end if;
+         --  The ACPI windows, after the built entries, each under its own
+         --  name (CuBit.ACPI_Hardware_Authority): never in place of a
+         --  declared name, never past the table.
+         for K in 1 .. ACPI_Window_Total loop
+            declare
+               Label : constant ST.Name := ST.To_Name
+                 (AHA.IO_Label (String (ACPI_Binding.Text (1 .. ACPI_Binding.Length)), K));
+            begin
+               if Built.Count = ST.Maximum_Entries or else ST.Find (Built, Label) /= 0
+                 or else not ST.Valid_Name (Label)
+               then
+                  Warnings.Warn ("procmgr: launch of " & name &
+                                 " refused: its ACPI window names do not fit its startup table");
+                  Failure := LA.Startup_Table_Invalid;
+                  Discard_Authorized_Child;
+                  return No_Process;
+               end if;
+               Built.Count := Built.Count + 1;
+               Built.Entries (Built.Count) :=
+                 (Label => Label, Kind => ST.IO_Ports, Requirement => ST.Required,
+                  State => ST.Granted, Handle => ACPI_Window_Words (K));
+            end;
+         end loop;
          ST.Encode (Built, Encoded, Encoded_Length);
          for K in 1 .. Block_Length loop
             launchEnvelope (K) := launchBlock (K);
@@ -3696,6 +3915,8 @@ procedure main is
       systemStartup : Boolean := False;
       startupRole : CCL.Configurations.Startup_Role := CCL.Configurations.Application;
       approveFirmwareSnapshot : Boolean := False;
+      approveACPIHardware : Boolean := False;
+      approveACPIRegisters : Boolean := False;
       Failure : out CuBit.Launch_Arguments.Launch_Failure)
       return Process_ID
    is
@@ -3705,7 +3926,8 @@ procedure main is
    begin
       Result := Spawn_Attempt
         (False, No_Process, Retry, Identity, Failure, name, priority, requester, sandboxMode,
-         cwd, approveNetwork, approveRender, systemStartup, startupRole, approveFirmwareSnapshot);
+         cwd, approveNetwork, approveRender, systemStartup, startupRole, approveFirmwareSnapshot,
+         approveACPIHardware, approveACPIRegisters);
       if Result = No_Process and then Retry then
          -- Exactly one fresh attempt, with no broker request. The failed
          -- attempt's launcher resources stay retained independently.
@@ -3713,7 +3935,7 @@ procedure main is
          Result := Spawn_Attempt
            (True, Identity, Retry, Retry_Identity, Failure, name, priority, requester,
             sandboxMode, cwd, approveNetwork, approveRender, systemStartup, startupRole,
-            approveFirmwareSnapshot);
+            approveFirmwareSnapshot, approveACPIHardware, approveACPIRegisters);
       end if;
       return Result;
    end spawnByName;
@@ -4323,6 +4545,8 @@ procedure main is
               (Name, Unsigned_64 (Item.Priority), systemStartup => True, startupRole => Item.Role,
                approveRender => Render_Granted (Item, Name),
                approveFirmwareSnapshot => Item.Approve_Firmware_Snapshot,
+               approveACPIHardware => Item.Approve_ACPI_Hardware,
+               approveACPIRegisters => Item.Approve_ACPI_Registers,
                approveNetwork =>
                  (if Item.Approval = Approve_Declared then Declared_Network
                   else No_Network),

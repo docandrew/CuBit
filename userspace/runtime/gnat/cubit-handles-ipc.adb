@@ -181,6 +181,17 @@ package body CuBit.Handles.IPC is
       return (OK => True, Value => K.To_Device_Memory (Item.Word));
    end Accept_Device_Memory;
 
+   function Accept_IO_Ports (Item : Carried) return Accepted_IO_Ports is
+      D : constant Description := Kind_Of (Item);
+   begin
+      if not D.Current then
+         return (OK => False, Why => D.Why);
+      elsif D.Kind /= ABI.IO_Ports then
+         return (OK => False, Why => ABI.Wrong_Kind);
+      end if;
+      return (OK => True, Value => K.To_IO_Ports (Item.Word));
+   end Accept_IO_Ports;
+
    function Accept_Interrupt (Item : Carried) return Accepted_Interrupt is
       D : constant Description := Kind_Of (Item);
    begin

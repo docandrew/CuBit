@@ -355,3 +355,29 @@ bash tests/ccl-build/run.sh
 make -C kernel rtw89 wifi-crypto-check
 bash tests/headless/run.sh --test wifi-crypto --accel kvm
 ```
+
+## acpi-hardware (ACPI region boundary, slice 1)
+
+`(Request.ACPI_Hardware "<binding>")` and catalog role 35 `acpi-registers`
+(coordination/acpi-region-boundary.md). Hosted: the manifest compiler's
+caps/startup encoding, never-optional, at-most-once and binding-length
+refusals, the generated `Startup.<Binding> return CuBit.ACPI_Windows.Grant`
+(strict compile), role 35 in the catalog; the startup-plan approvals
+`(acpi-hardware approve-declared)` and `(acpi-registers approve-declared)`,
+each once and combinable with `(firmware-snapshot approve-declared)` on one
+entry; the FADT/ECDT window computation and devmgr's port-claim ledger
+(proved at level 2 with `--prove`). Native (q35, KVM): the approved grant is
+non-empty, sorted, disjoint, each handle exactly its range without grant,
+equal to the FADT fixed blocks, the PM timer advances through its window;
+the same image without the hardware approval is refused at launch; the
+role-35 client gets the Frontend_Tag badge only with approval and cannot
+re-badge or derive it.
+
+```sh
+python3 tests/ccl-manifests/test-manifests.py -k acpi -k firmware -k strict
+python3 tests/ccl-configurations/test-configurations.py
+bash tests/acpi-hardware-windows/run.sh --prove
+make -C kernel world CUBIT_COMPOSITOR_TIMING=on
+make -C kernel acpi-hardware-check acpi-registers-standin acpi-registers-client
+bash tests/headless/run.sh --test acpi-hardware --accel kvm
+```

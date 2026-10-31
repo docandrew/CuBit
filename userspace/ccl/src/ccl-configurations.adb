@@ -180,6 +180,19 @@ package body CCL.Configurations with SPARK_Mode => On is
          Executable : Key_Text;
          Have_Priority, Have_Network, Have_Role, Have_Mode, Have_Device,
            Have_Scheduling, Have_Deadline, Have_Render, Have_Firmware, Have_Arguments : Boolean := False;
+         Have_ACPI_Hardware, Have_ACPI_Registers : Boolean := False;
+
+         --  (<name> deny) or (<name> approve-declared), once.
+         procedure Declared_Approval (Seen : in out Boolean; Approved : out Boolean) is
+         begin
+            Approved := False;
+            if Seen then Fail (Duplicate_Field); end if;
+            Read_Symbol (Reader, Name);
+            if Matches (Name, "approve-declared") then Approved := True;
+            elsif not Matches (Name, "deny") then Fail (Invalid_Approval);
+            end if;
+            Seen := True;
+         end Declared_Approval;
          Priority : Integer_64 := 5;
          Approval : Network_Approval := Deny;
          Role : Startup_Role := Application;
@@ -262,6 +275,10 @@ package body CCL.Configurations with SPARK_Mode => On is
                else Fail (Invalid_Approval);
                end if;
                Have_Firmware := True;
+            elsif Matches (Name, "acpi-hardware") then
+               Declared_Approval (Have_ACPI_Hardware, Item.Approve_ACPI_Hardware);
+            elsif Matches (Name, "acpi-registers") then
+               Declared_Approval (Have_ACPI_Registers, Item.Approve_ACPI_Registers);
             elsif Matches (Name, "role") then
                if Have_Role then Fail (Duplicate_Field); end if;
                Read_Symbol (Reader, Name);

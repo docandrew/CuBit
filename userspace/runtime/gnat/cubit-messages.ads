@@ -145,6 +145,11 @@ package CuBit.Messages is
    --  (CuBit.Wifi_Driver); its controllers call it (CuBit.Wifi_Control).
    --  30 .. 32 are taken by roles declared with their protocols.
    DRIVER_WIFI     : constant Unsigned_64 := 33;
+   --  acpi-backend.svc's named ACPI registers (34 is gpio.svc's): acpi.svc's
+   --  endpoint carries ACPI_Register_Roles.Frontend_Tag (shared/acpi),
+   --  minted only for a startup entry approving (acpi-registers
+   --  approve-declared).
+   DRIVER_ACPI_REGISTERS : constant Unsigned_64 := 35;
 
    --  Scheduler latency classes. Values match kernel Process.LatencyClass.
    LATENCY_BACKGROUND  : constant Unsigned_64 := 0;

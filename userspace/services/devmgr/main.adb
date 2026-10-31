@@ -18,6 +18,8 @@ with CuBit.Handles.Boot_Roots;
 with CuBit.Handles.Control;
 with CuBit.Handles.IPC;
 with CuBit.Service_Exchange;
+with CuBit.ACPI_Window_Exchange;
+with Devmgr_Port_Claims;
 with CuBit.Disk_Install;
 with CuBit.Block_Devices;
 with CuBit.Startup_Tables;
@@ -180,6 +182,11 @@ procedure main is
    Root : CuBit.Handles.Boot_Roots.Roots;
 
    Read_Write_Grant : constant H.Rights := (Read | Write | Grant => True, others => False);
+
+   --  Who holds which I/O ports: the kernel's and devmgr's own ranges,
+   --  drivers' ranges (Give_Ports) and the ACPI windows procmgr asked for
+   --  (CuBit.ACPI_Window_Exchange). Set in the body.
+   Port_Claims : Devmgr_Port_Claims.Ledger;
 
    --  PCI device info (found during scanning)
    type PCIDeviceInfo is record
@@ -2051,9 +2058,43 @@ procedure main is
 
    --  Answer an I/O port binding of child.
    procedure Give_Ports (child : DL.Child; Name : String; First, Count : Unsigned_64) is
+      Granted : Boolean;
    begin
-      DL.Give (child, Name, H.Narrowed (Root.IO_Ports_Root, H.Read_Write, First, Count));
+      --  Never ports of an ACPI window (Devmgr_Port_Claims).
+      Devmgr_Port_Claims.Take (Port_Claims, First, Count, Devmgr_Port_Claims.Driver, Granted);
+      if Granted then
+         DL.Give (child, Name, H.Narrowed (Root.IO_Ports_Root, H.Read_Write, First, Count));
+      else
+         Warnings.Warn ("devmgr: ports " & Hex (First) & " +" & Hex (Count) &
+                        " refused for " & Name & ": held by an ACPI window or out of range");
+      end if;
    end Give_Ports;
+
+   --  procmgr asks for one ACPI I/O window for a program its startup plan
+   --  approved (CuBit.ACPI_Window_Exchange): claimed for ACPI for the rest
+   --  of the boot, never ports a driver, devmgr or the kernel holds.
+   procedure Give_ACPI_Window (From : Process_ID; Msg : Message) is
+      package AX renames CuBit.ACPI_Window_Exchange;
+      First : constant Unsigned_64 := Msg.words (AX.First_Word);
+      Count : constant Unsigned_64 := Msg.words (AX.Count_Word);
+      Granted : Boolean := False;
+   begin
+      if Count in 1 .. AX.Maximum_Window_Ports then
+         Devmgr_Port_Claims.Take (Port_Claims, First, Count, Devmgr_Port_Claims.ACPI, Granted);
+      end if;
+      if not Granted then
+         Warnings.Warn ("devmgr: ACPI window " & Hex (First) & " +" & Hex (Count) &
+                        " refused: ports already held, or not a window");
+         Refuse (From, Answered => False);
+      elsif not Answer_With
+        (From, [First, Count, 0, 0], AX.Request_Words,
+         H.Narrowed (Root.IO_Ports_Root, Read_Write_Grant, First, Count))
+      then
+         Warnings.Warn ("devmgr: ACPI window " & Hex (First) & " not transferred");
+      else
+         debugPrint ("devmgr: ACPI window " & Hex (First) & " +" & Hex (Count) & " granted" & LF);
+      end if;
+   end Give_ACPI_Window;
 
    ---------------------------------------------------------------------------
    -- Setup the NVMe driver of inventory entry I: PCI config, DMA,
@@ -3407,6 +3448,7 @@ begin
       return;
    end if;
    Root := Devmgr_Authority.Roots;
+   Devmgr_Port_Claims.Initialize (Port_Claims);
    DL.Configure (Root.Process_Root, Root.Notifications);
    declare
       Accepted : Boolean;
@@ -4525,6 +4567,13 @@ begin
                Refuse (from, Answered => H.Valid (Provider));
             end if;
          end;
+      elsif msg.tag = (label => CuBit.ACPI_Window_Exchange.Window_Request,
+                       length => CuBit.ACPI_Window_Exchange.Request_Words, protocol => 0,
+                       ipc => Accepting, reserved => 0)
+        and then procmgrPID /= No_Process and then from = procmgrPID
+        and then msg.authorityTag = Intel_GPU_Broker_Request.Authority_Tag
+      then
+         Give_ACPI_Window (from, msg);
       elsif msg.tag = (label => CuBit.Disk_Install.Open_Disk,
                        length => CuBit.Disk_Install.Open_Words, protocol => 0,
                        ipc => Accepting, reserved => 0)

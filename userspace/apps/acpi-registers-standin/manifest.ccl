@@ -1,0 +1,10 @@
+# Test-only stand-in for acpi-backend.svc's register endpoint (tests/headless,
+# acpi-hardware): registers role 35 ("acpi-registers") exactly as the backend
+# will and reports the badge every request carries. Never part of a
+# production image: procmgr lets com.cubit.acpi-backend register only from
+# the startup plan.
+(Executable_Manifest
+  identity => "com.cubit.acpi-backend"
+  version => "0.0.1"
+  requests => [
+    (notification "acpi-registers" Notify_Access.Manage "registration")])

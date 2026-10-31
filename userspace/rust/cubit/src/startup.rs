@@ -53,9 +53,10 @@ pub enum Kind {
     Process = 11,
     Resource = 12,
     FirmwareSnapshot = 13,
+    AcpiHardware = 14,
 }
 
-const LAST_KIND: u8 = Kind::FirmwareSnapshot as u8;
+const LAST_KIND: u8 = Kind::AcpiHardware as u8;
 
 /// Whether a program's launch needs a startup capability
 /// (CuBit.Startup_Tables.Need).

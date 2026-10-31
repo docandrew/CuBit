@@ -1,0 +1,8 @@
+# Declares acpi.svc's role-35 client endpoint without the startup plan's
+# approval (tests/headless, acpi-hardware): it must get nothing. Optional so
+# the program runs and reports it.
+(Executable_Manifest
+  identity => "com.cubit.acpi-registers-client"
+  version => "0.0.1"
+  requests => [(service "acpi-registers" "registers")]
+  optional => ["registers"])

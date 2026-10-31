@@ -70,6 +70,31 @@ class Configurations(unittest.TestCase):
         self.reject(base % '(firmware-snapshot deny) (firmware-snapshot approve-declared)',
                     'DUPLICATE_FIELD')
 
+    def test_acpi_approvals_require_explicit_entries(self):
+        """(acpi-hardware approve-declared) and (acpi-registers
+        approve-declared): explicit, once each, and combinable with the
+        firmware snapshot reader's approval on one entry."""
+        base = '(startup v1 (start "acpi-backend.svc" (priority 5) %s))'
+        for clause in ('', '(acpi-hardware deny)', '(acpi-registers deny)'):
+            result = self.compile(base % clause)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout, 'acpi-backend.svc pri=5\n')
+        result = self.compile(base % '(firmware-snapshot approve-declared) (acpi-hardware approve-declared)')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout,
+                         'acpi-backend.svc pri=5 firmware-snapshot=approved acpi-hardware=approved\n')
+        result = self.compile(
+            '(startup v1 (start "acpi.svc" (priority 5) (firmware-snapshot approve-declared)'
+            ' (acpi-registers approve-declared)))')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout,
+                         'acpi.svc pri=5 firmware-snapshot=approved acpi-registers=approved\n')
+        for name in ('acpi-hardware', 'acpi-registers'):
+            for clause in (f'({name})', f'({name} all)', f'({name} approve-declared extra)',
+                           f'({name} "hardware")'):
+                self.reject(base % clause)
+            self.reject(base % f'({name} deny) ({name} approve-declared)', 'DUPLICATE_FIELD')
+
     def test_all_existing_profiles(self):
         fixtures = sorted(FIXTURES.rglob('*.conf'))
         self.assertEqual(len(fixtures), 28)

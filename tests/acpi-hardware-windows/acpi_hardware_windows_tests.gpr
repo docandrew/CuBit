@@ -1,0 +1,19 @@
+--  Hosted tests and proofs of the ACPI fixed-hardware windows and devmgr's
+--  port-claim ledger (run.sh).
+project ACPI_Hardware_Windows_Tests is
+   for Source_Dirs use (".", "../../userspace/runtime/gnat", "../../userspace/services/devmgr");
+   for Source_Files use
+     ("main.adb", "cubit.ads", "cubit-acpi_fixed_windows.ads", "cubit-acpi_fixed_windows.adb",
+      "cubit-acpi_hardware_authority.ads", "cubit-startup_tables.ads", "cubit-startup_tables.adb",
+      "devmgr_port_claims.ads", "devmgr_port_claims.adb", "cubit-authority_policy.ads");
+   for Object_Dir use "build/obj";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-gnat2022", "-O2", "-gnata", "-gnato", "-gnatwa", "-gnatwe");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=2", "--checks-as-errors=on");
+   end Prove;
+end ACPI_Hardware_Windows_Tests;

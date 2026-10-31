@@ -18,6 +18,7 @@ with CCL.Types;
 with CuBit.Failures;
 with CuBit.Program_Descriptions;
 with CuBit.Startup_Tables;
+with CuBit.ACPI_Hardware_Authority;
 
 package body CCL.Manifests.Typed with SPARK_Mode => On is
    use Standard.Interfaces;
@@ -381,6 +382,26 @@ package body CCL.Manifests.Typed with SPARK_Mode => On is
                Item.Kind := Firmware_Snapshot_Request;
                Item.Rights := Read_Only;
                Binding (Body_Cursor, Item);
+         elsif Kind = "ACPI_Hardware" then
+               --  One grant per program (coordination/acpi-region-boundary.md);
+               --  its windows' startup names extend the binding.
+               for Existing of Decl.Requests (1 .. Decl.Count) loop
+                  if Existing.Kind = ACPI_Hardware_Request then
+                     Fail (Duplicate_Field, "a second ACPI hardware request",
+                           "declare (Request.ACPI_Hardware ...) once");
+                     return;
+                  end if;
+               end loop;
+               if Text (Body_Cursor)'Length > CuBit.ACPI_Hardware_Authority.Maximum_Binding_Length then
+                  Fail (Invalid_Binding_Name,
+                        "ACPI hardware binding """ & Text (Body_Cursor) & """ is too long for its window names",
+                        "use at most" & Natural'Image (CuBit.ACPI_Hardware_Authority.Maximum_Binding_Length) &
+                        " characters");
+                  return;
+               end if;
+               Item.Kind := ACPI_Hardware_Request;
+               Item.Rights := Read_Write;
+               Binding (Body_Cursor, Item);
          elsif Kind = "Network" then
                Item.Kind := Network_Request;
                Item.Rights := Read_Write;
@@ -522,6 +543,11 @@ package body CCL.Manifests.Typed with SPARK_Mode => On is
                end if;
                if Decl.Requests (Found).Kind = Firmware_Snapshot_Request then
                   Fail (Not_Yet_Supported, """" & Name & """ is a firmware snapshot reader, never optional",
+                        "remove it from optional; the startup entry approves the launch or refuses it");
+                  return;
+               end if;
+               if Decl.Requests (Found).Kind = ACPI_Hardware_Request then
+                  Fail (Not_Yet_Supported, """" & Name & """ is an ACPI hardware grant, never optional",
                         "remove it from optional; the startup entry approves the launch or refuses it");
                   return;
                end if;

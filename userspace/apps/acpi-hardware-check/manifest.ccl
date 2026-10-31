@@ -1,0 +1,15 @@
+# ACPI hardware windows regression (tests/headless, acpi-hardware): stands
+# in for acpi-backend.svc's launch (coordination/acpi-region-boundary.md).
+# The startup plan approves its firmware snapshot reader and its hardware
+# windows on one entry; the same image without the hardware approval must be
+# refused at launch. "registers" is the role-35 client endpoint acpi.svc
+# gets: optional here, badged with the frontend scope only when the entry
+# approves (acpi-registers approve-declared).
+(Executable_Manifest
+  identity => "com.cubit.acpi-hardware-check"
+  version => "0.1.0"
+  requests => [
+    (Request.Firmware_Snapshot "tables")
+    (Request.ACPI_Hardware "hardware")
+    (service "acpi-registers" "registers")]
+  optional => ["registers"])

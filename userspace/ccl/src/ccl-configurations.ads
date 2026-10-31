@@ -65,6 +65,14 @@ package CCL.Configurations with SPARK_Mode => On is
       --  approves the manifest's declared firmware snapshot reader
       --  (Firmware_Snapshot_ABI). Never claimed by the executable itself.
       Approve_Firmware_Snapshot : Boolean := False;
+      --  (acpi-hardware approve-declared): the plan approves the manifest's
+      --  declared ACPI hardware windows (Request.ACPI_Hardware); procmgr
+      --  grants them to nothing else (coordination/acpi-region-boundary.md).
+      Approve_ACPI_Hardware : Boolean := False;
+      --  (acpi-registers approve-declared): the plan approves the manifest's
+      --  declared "acpi-registers" client endpoint, which procmgr badges
+      --  with the full frontend scope (ACPI_Register_Roles.Frontend_Tag).
+      Approve_ACPI_Registers : Boolean := False;
       Scheduling_Budget, Scheduling_Period : CCL.Scheduling_Limits.Microseconds :=
         CCL.Scheduling_Limits.Microseconds'First;
       Has_Ready_Deadline : Boolean := False;

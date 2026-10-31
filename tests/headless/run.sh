@@ -78,7 +78,7 @@ Mesa native tests: --test softpipe, opengl, buffer, mesa-window, mesa-sync, mesa
 
 Options:
   --build              Run make world before booting QEMU
-  --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-console, logs, ccl-remote, capability-security, network-authority, bench-net, bench-fs, threads, futex, clock, avx, wifi-crypto, rust-std, libc, processes, control-events, binutils, gcc, gnat, servo, bench-spread, timesync, tls-probe, tls-service, wget-https, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, text, calculator, lexicon, dictionary, clipboard, key-repeat, desktop-doom, desktop-virtio-vga, desktop-vm, virtio-gpu, virtio-vga-primary, launch-failure, fs-coherence-CASE, startup-health, firmware-snapshot, or boot-timeline (--accel kvm --timeout 60)
+  --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-console, logs, ccl-remote, capability-security, network-authority, bench-net, bench-fs, threads, futex, clock, avx, wifi-crypto, rust-std, libc, processes, control-events, binutils, gcc, gnat, servo, bench-spread, timesync, tls-probe, tls-service, wget-https, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, text, calculator, lexicon, dictionary, clipboard, key-repeat, desktop-doom, desktop-virtio-vga, desktop-vm, virtio-gpu, virtio-vga-primary, launch-failure, fs-coherence-CASE, startup-health, firmware-snapshot, acpi-hardware, or boot-timeline (--accel kvm --timeout 60)
   --timeout SECONDS    QEMU runtime before timeout is treated as success
                        (default 25; 180 for desktop tests, see DESKTOP_TIMEOUT_SECONDS)
   --accel NAME         QEMU accelerator (for example: tcg,thread=multi)
@@ -325,7 +325,7 @@ case "$TEST_NAME" in
         ;;
     grant-forward|grant-forward-intermediary-exit|grant-forward-owner-exit|grant-forward-desktop|config-tree|config-inspection|log-authority|log-fields|metrics|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
         ;;
-    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|acpi-native-smoke|multi-instance|program-parameters|usb-hotplug|wifi-crypto)
+    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|acpi-hardware|acpi-native-smoke|multi-instance|program-parameters|usb-hotplug|wifi-crypto)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -690,6 +690,11 @@ with open(sys.argv[1], "wb") as f:
         # FIRMWARE_SNAPSHOT over q35's ACPI tables: the approved reader,
         # the same image unapproved, and a program with no reader.
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-firmware-snapshot.ccl"
+        ;;
+    acpi-hardware)
+        # ACPI hardware windows (q35: FADT PM1, PM timer and GPE0, no EC)
+        # and the role-35 register endpoint's frontend badge.
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-acpi-hardware.ccl"
         ;;
     clock)
         # docs/fast-clock.md: the clock publication page. The kernel
@@ -1782,6 +1787,28 @@ if [ -n "$INIT_PROFILE" ]; then
             if ! debugfs -w -R "write $FIRMWARE_SOURCE $FIRMWARE_TARGET" \
               "$TEMP_DISK" >/dev/null 2>&1; then
                 echo "headless: failed to install $FIRMWARE_TARGET" >&2
+                exit 1
+            fi
+        done
+    fi
+    if [ "$TEST_NAME" = "acpi-hardware" ]; then
+        # acpi-hardware-denied.app is acpi-hardware-check.app under another
+        # name: the same declaration, without (acpi-hardware approve-declared).
+        for HARDWARE_PAIR in logstore.svc:logstore.svc \
+                             acpi-hardware-check.app:acpi-hardware-check.app \
+                             acpi-hardware-check.app:acpi-hardware-denied.app \
+                             ../../../userspace/apps/acpi-registers-standin/build/acpi-registers-standin.app:acpi-registers-standin.app \
+                             ../../../userspace/apps/acpi-registers-client/build/acpi-registers-client.app:acpi-registers-client.app; do
+            HARDWARE_SOURCE="$KERNEL_DIR/isodir/boot/${HARDWARE_PAIR%%:*}"
+            HARDWARE_TARGET="${HARDWARE_PAIR##*:}"
+            if [ ! -f "$HARDWARE_SOURCE" ]; then
+                echo "headless: build ${HARDWARE_PAIR%%:*} first (make -C kernel acpi-hardware-check acpi-registers-standin acpi-registers-client)" >&2
+                exit 1
+            fi
+            debugfs -w -R "rm $HARDWARE_TARGET" "$TEMP_DISK" >/dev/null 2>&1
+            if ! debugfs -w -R "write $HARDWARE_SOURCE $HARDWARE_TARGET" \
+              "$TEMP_DISK" >/dev/null 2>&1; then
+                echo "headless: failed to install $HARDWARE_TARGET" >&2
                 exit 1
             fi
         done
@@ -4860,6 +4887,42 @@ TEST: PASS firmware-undeclared
            grep -qF 'acpi-standin: probe observer=no' "$SERIAL_LOG" ||
            [ "$(grep -cF 'firmware-check: starting' "$SERIAL_LOG")" -ne 1 ]; then
             echo "headless: firmware snapshot checks failed, or the unapproved image ran" >&2
+            exit 1
+        fi
+        ;;
+    acpi-hardware)
+        required_markers="
+acpi-registers-standin: registered
+acpi-hardware-check: grant has I/O windows PASS
+acpi-hardware-check: slice 1 grants no memory windows PASS
+acpi-hardware-check: windows sorted and disjoint PASS
+acpi-hardware-check: window 1 handle covers exactly its range PASS
+acpi-hardware-check: window 1 read-write without grant PASS
+acpi-hardware-check: window 1 refuses the next port PASS
+acpi-hardware-check: FADT read PASS
+acpi-hardware-check: q35 has no ECDT PASS
+acpi-hardware-check: windows are exactly the FADT fixed blocks PASS
+acpi-hardware-check: PM timer inside a window PASS
+acpi-hardware-check: PM timer advances through its window PASS
+acpi-hardware-check: registers endpoint granted PASS
+acpi-registers-standin: probe frontend=yes
+acpi-hardware-check: registers endpoint carries the frontend badge PASS
+acpi-hardware-check: registers endpoint holds no grant right PASS
+acpi-hardware-check: registers endpoint cannot be re-badged or derived PASS
+acpi-hardware-check: refused re-badging leaves the frontend badge PASS
+TEST: PASS acpi-hardware
+procmgr: ACPI hardware refused: acpi-hardware-denied.app is not approved by the startup plan
+procmgr: init spawn failed: acpi-hardware-denied.app
+acpi-registers-client: no registers endpoint without approval PASS
+TEST: PASS acpi-registers-client
+"
+        # The unapproved image never runs; no check fails; no port I/O
+        # outside a window other than the deliberate next-port probes.
+        if grep -aF 'acpi-hardware-check: ' "$SERIAL_LOG" | grep -qF ' FAIL' ||
+           grep -aqF 'TEST: FAIL acpi-' "$SERIAL_LOG" ||
+           grep -aqF 'acpi-registers-standin: probe frontend=no' "$SERIAL_LOG" ||
+           [ "$(grep -acF 'acpi-hardware-check: starting' "$SERIAL_LOG")" -ne 1 ]; then
+            echo "headless: ACPI hardware checks failed, or the unapproved image ran" >&2
             exit 1
         fi
         ;;
