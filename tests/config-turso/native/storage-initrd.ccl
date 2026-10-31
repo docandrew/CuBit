@@ -17,4 +17,5 @@
   (file bootstrap "xhci" "xhci.drv")
   (file bootstrap "config" "config.svc")
   (file bootstrap "netmgr" "netmgr.svc")
-  (file bootstrap "procmgr" "procmgr.svc"))
+  (file bootstrap "procmgr" "procmgr.svc")
+  (file bootstrap "wifi" "wifi.svc"))

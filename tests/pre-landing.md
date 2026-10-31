@@ -120,14 +120,17 @@ CCL_CONSOLE_DEMO=wifi tests/headless/run.sh --test ccl-console --accel kvm --tim
 tests/headless/run.sh --test ccl-workbench --accel kvm --timeout 600
 ```
 
-## block-requests (HW-001)
+## block-requests and block-driver (HW-001, DEV-002)
 
-The shared Block.Device.V1 front end (CuBit.Block_Requests and the
-CuBit.Block_Device_Server generic) that nvme, ata, ramdisk and the USB
-optical service use: request checks, grant acquire and return, replies,
-in every driver's configuration (flush, FUA, read only, absent, faulted).
-The RAM disk's own regression (tests/ram-block) runs on it unchanged.
-Proofs: the front end against the fixtures and the runtime's own specs.
+The shared Block.Device.V1 front end (CuBit.Block_Requests) and the block
+driver contract every provider instantiates: CuBit.Block_Driver (async
+slots, deadlines, kept replies, write admission, OP_IDENTIFY_DEVICE) and
+CuBit.Block_Sync_Driver over it (nvme, ata, ramdisk). tests/block-driver
+drives the generic through a fake four-slot device; tests/ram-block and
+tests/block-requests run the RAM disk and every driver configuration
+(flush, FUA, read only, absent, faulted) through the production loop.
+Proofs: the front end against the fixtures and the runtime's own specs
+(the Block_Driver body itself is not yet proved; see DEV-002).
 
 ```sh
 make -C kernel test-block-requests prove-block-requests

@@ -6,7 +6,9 @@ Run Linux-hosted tests in Nix:
 nix develop -c bash -c 'cd kernel && alr exec -- gprbuild -p -P ../tests/ram-block/ram_block_tests.gpr && ../tests/ram-block/build/main'
 ```
 
-This compiles the production RAM block dispatcher. Only the kernel grant API
+This compiles the production RAM block device and the shared
+`CuBit.Block_Driver` loop (DEV-002), fed through the block-driver test
+fixtures (scripted requests, recorded answers). Only the kernel grant API
 is replaced by an instrumented fixture. It checks description/volatile flags,
 bounded initialization, rejected rebinding, 36 rejected requests (including
 unsupported flush), both access directions, stale/foreign grants, buffer bounds,

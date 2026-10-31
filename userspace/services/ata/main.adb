@@ -18,7 +18,9 @@ with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Block_Devices; use CuBit.Block_Devices;
 with CuBit.Block_Requests; use CuBit.Block_Requests;
-with CuBit.Block_Device_Server;
+with CuBit.Block_Sync_Driver;
+with CuBit.Block_Work; use CuBit.Block_Work;
+with CuBit.Device_Identities;
 with CuBit.Handles;
 with Startup;
 
@@ -400,12 +402,10 @@ procedure main is
    --  The block count is capped to 28-bit LBAs and Count to MAX_PIO_SECTORS,
    --  so both conversions are exact.
    procedure transfer
-     (state  : Device_State;
-      item   : Transfer_Request;
+     (item   : Transfer_Request;
       buffer : System.Address;
       moved  : out Unsigned_64)
    is
-      pragma Unreferenced (state);
    begin
       if item.Direction = Device_Read then
          moved := readSectors
@@ -416,17 +416,16 @@ procedure main is
       end if;
    end transfer;
 
-   procedure flush (state : Device_State; durable : out Boolean) is
-      pragma Unreferenced (state);
+   procedure flush (durable : out Boolean) is
    begin
       durable := not writeCacheEnabled or else flushCache;
    end flush;
 
-   package Block_Server is new CuBit.Block_Device_Server (transfer, flush);
+   --  Writes stay open to every client that reaches the driver until devmgr
+   --  mints ATA write badges (DEV-002).
+   package Block_Server is new CuBit.Block_Sync_Driver
+     (Writes => Any_Client_Writes, Transfer => transfer, Flush => flush);
 
-   --  Main message loop variables
-   sender : Process_ID;
-   msg    : Message;
 begin
    debugPrint ("ATA Driver: Starting..." & LF);
 
@@ -459,15 +458,8 @@ begin
    debugPrint ("ATA: registered, entering message loop" & LF);
 
    --  Main IPC message loop
+   Block_Server.Start (deviceState, CuBit.Device_Identities.No_Identity);
    loop
-      receive (sender, msg);
-
-      declare
-         response : Message;
-         ignore   : Unsigned_64;
-      begin
-         Block_Server.Handle (deviceState, sender, msg, response);
-         ignore := reply (sender, response);
-      end;
+      Block_Server.Serve_One;
    end loop;
 end main;

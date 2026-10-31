@@ -17,8 +17,6 @@ procedure Main is
    Index : Natural;
    Image : System.Address;
    Image_Size, Heap : Unsigned_64;
-   Request, Response : Message;
-   Sender : Process_ID;
    Ignore : Unsigned_64;
    Tag : MessageTag;
 begin
@@ -69,8 +67,6 @@ begin
            authorityTag => 0, words => [others => 0]),
       CuBit.Messages.Wait_Forever);
    loop
-      receive (Sender, Request);
-      Ram_Device.Handle (Sender, Request, Response);
-      Ignore := reply (Sender, Response);
+      Ram_Device.Serve_One;
    end loop;
 end Main;

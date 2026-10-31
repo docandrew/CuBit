@@ -2,6 +2,7 @@ with Ada.Text_IO; use Ada.Text_IO;
 with Interfaces; use Interfaces;
 with System;
 with Ram_Device;
+with Block_Script;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Memory_Grants; use CuBit.Memory_Grants;
 with CuBit.Block_Devices; use CuBit.Block_Devices;
@@ -14,6 +15,14 @@ procedure Main is
    OK : Boolean;
    Failures : Natural := 0;
 
+   --  One request through the production CuBit.Block_Driver loop.
+   procedure Handle (Owner : Process_ID; Item : Message; Answer : out Message) is
+   begin
+      Block_Script.Push (Item, Owner);
+      Ram_Device.Serve_One;
+      Answer := Block_Script.Last.Response;
+   end Handle;
+
    procedure Transfer (Op : Unsigned_32; LBA, Count : Unsigned_64) is
    begin
       Request := (tag => (label => Op, length => 4,
@@ -25,7 +34,7 @@ procedure Main is
       Prior_Buffer : constant String := Buffer;
    begin
       Before := Disk;
-      Ram_Device.Handle (Owner, Request, Response);
+      Handle (Owner, Request, Response);
       pragma Assert (Response.tag.label = REPLY_ERROR and Response.words (0) = 0);
       pragma Assert (Disk = Before and Buffer = Prior_Buffer and Active = 0);
       Failures := Failures + 1;
@@ -48,7 +57,7 @@ begin
 
    Request := NULL_MESSAGE;
    Request.tag.label := OP_DESCRIBE_DEVICE;
-   Ram_Device.Handle (42, Request, Response);
+   Handle (42, Request, Response);
    pragma Assert (Response.tag.label = REPLY_OK and Response.tag.length = 4);
    OK := Decode_Description
      (Response.words (0), Response.words (1), Response.words (2),
@@ -97,14 +106,14 @@ begin
    Buffer := [others => 'W'];
    Transfer (OP_WRITE_BLOCKS, 15, 1);
    Allow_Write := False; -- writes only need to READ the caller's grant
-   Ram_Device.Handle (42, Request, Response);
+   Handle (42, Request, Response);
    pragma Assert (Response.tag.label = REPLY_OK and Response.words (0) = 512);
    pragma Assert (Disk (1 .. 7680) = [1 .. 7680 => 'D']);
    pragma Assert (Disk (7681 .. 8192) = [7681 .. 8192 => 'W'] and Active = 0);
    Allow_Write := True; Allow_Read := False;
    Buffer := [others => '?'];
    Transfer (OP_READ_BLOCKS, 15, 1);
-   Ram_Device.Handle (42, Request, Response);
+   Handle (42, Request, Response);
    pragma Assert (Response.tag.label = REPLY_OK and Response.words (0) = 512);
    pragma Assert (Buffer (1 .. 512) = [1 .. 512 => 'W']);
    pragma Assert (Buffer (513 .. 4096) = [513 .. 4096 => '?'] and Active = 0);
@@ -112,14 +121,14 @@ begin
    Transfer (OP_READ_BLOCKS, 0, 9); Reject; -- grant smaller than transfer
    Transfer (OP_WRITE_BLOCKS, 0, 8);
    Buffer := [others => 'M'];
-   Ram_Device.Handle (42, Request, Response);
+   Handle (42, Request, Response);
    pragma Assert (Response.tag.label = REPLY_OK and Response.words (0) = 4096);
    pragma Assert (Disk (1 .. 4096) = [1 .. 4096 => 'M']);
 
    Allow_Return := False;
    Transfer (OP_WRITE_BLOCKS, 0, 1);
    Buffer := [others => 'X'];
-   Ram_Device.Handle (42, Request, Response);
+   Handle (42, Request, Response);
    pragma Assert (Response.tag.label = REPLY_ERROR and Response.words (0) = 0);
    pragma Assert (Disk (1 .. 512) = [1 .. 512 => 'X'] and Active = 0);
    --  A failed return reports uncertainty, never a falsely successful write.

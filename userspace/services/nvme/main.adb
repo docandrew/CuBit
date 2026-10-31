@@ -20,7 +20,9 @@ with CuBit.Launch_Configurations;
 with Launch_Configuration;
 with CuBit.Block_Devices; use CuBit.Block_Devices;
 with CuBit.Block_Requests; use CuBit.Block_Requests;
-with CuBit.Block_Device_Server;
+with CuBit.Block_Sync_Driver;
+with CuBit.Block_Work; use CuBit.Block_Work;
+with CuBit.Device_Identities;
 with CuBit.Busy_Poll;
 with CuBit.NVMe_Control;
 with CuBit.Device_Interrupts;
@@ -86,12 +88,10 @@ procedure main is
 
    --  Count is at most Max_Transfer, which fits 32 bits.
    procedure transfer
-     (state  : Device_State;
-      item   : Transfer_Request;
+     (item   : Transfer_Request;
       buffer : System.Address;
       moved  : out Unsigned_64)
    is
-      pragma Unreferenced (state);
    begin
       if item.Direction = Device_Read then
          moved := NVMe.readBlocks
@@ -105,8 +105,7 @@ procedure main is
 
    --  Without a volatile write cache every completed write is already
    --  durable: the barrier needs no controller command.
-   procedure flush (state : Device_State; durable : out Boolean) is
-      pragma Unreferenced (state);
+   procedure flush (durable : out Boolean) is
    begin
 #if nvme_io_profile = "on" then
       flushes := flushes + 1;
@@ -117,11 +116,12 @@ procedure main is
       durable := not NVMe.volatileWriteCache or else NVMe.flush;
    end flush;
 
-   package Block_Server is new CuBit.Block_Device_Server (transfer, flush);
+   --  Writes stay open to every client that reaches the driver until devmgr
+   --  mints NVMe write badges (DEV-002).
+   package Block_Server is new CuBit.Block_Sync_Driver
+     (Writes => Any_Client_Writes, Transfer => transfer, Flush => flush);
 
-   --  Main message loop variables
-   sender   : Process_ID;
-   msg      : Message;
+   --  Bring-up variables
    bar0Phys : Unsigned_64;
    dmaPhys  : Unsigned_64;
    --  devmgr's startup configuration (CuBit.NVMe_Control).
@@ -242,15 +242,8 @@ begin
    debugPrint ("NVMe Driver: Ready, entering message loop." & LF);
 
    --  6. IPC receive loop
+   Block_Server.Start (deviceState, CuBit.Device_Identities.No_Identity);
    loop
-      receive (sender, msg);
-
-      declare
-         response : Message;
-         ignore   : Unsigned_64;
-      begin
-         Block_Server.Handle (deviceState, sender, msg, response);
-         ignore := reply (sender, response);
-      end;
+      Block_Server.Serve_One;
    end loop;
 end main;

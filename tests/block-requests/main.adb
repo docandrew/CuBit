@@ -12,6 +12,7 @@ with CuBit.Disk_Install;
 with CuBit.Authority_Policy;
 with CuBit.Device_Identities;
 with Proof_Device; use Proof_Device;
+with Block_Script;
 
 procedure Main is
    Owner : constant Process_ID := 42;
@@ -46,12 +47,24 @@ procedure Main is
 
    Response : Message;
 
+   --  One request to a device in State, through the production driver loop.
+   procedure Handle
+     (State : Device_State; Sender : Process_ID; Item : Message;
+      Answer : out Message) is
+   begin
+      Current := State;
+      Server.Start (State, CuBit.Device_Identities.No_Identity);
+      Block_Script.Push (Item, Sender);
+      Server.Serve_One;
+      Answer := Block_Script.Last.Response;
+   end Handle;
+
    procedure Expect_Reject (State : Device_State; Item : Message) is
       Before_Transfers : constant Natural := Transfers;
       Before_Flushes : constant Natural := Flush_Calls;
       Before_Acquires : constant Natural := Acquires;
    begin
-      Server.Handle (State, Owner, Item, Response);
+      Handle (State, Owner, Item, Response);
       pragma Assert (Response.tag.label = REPLY_ERROR and
                      Response.tag.length = 1 and Response.words (0) = 0);
       pragma Assert (Transfers = Before_Transfers and
@@ -67,7 +80,7 @@ procedure Main is
    is
       Before : constant Natural := Transfers;
    begin
-      Server.Handle (State, Owner, Item, Response);
+      Handle (State, Owner, Item, Response);
       pragma Assert (Transfers = Before + 1 and Active = 0);
       pragma Assert (Last_Item.Direction = Direction and
                      Last_Item.Force_Unit_Access = FUA and
@@ -83,7 +96,7 @@ procedure Main is
    OK : Boolean;
 begin
    --  Describe: each presence answers as the protocol says.
-   Server.Handle (NVMe, Owner, Bare (OP_DESCRIBE_DEVICE), Response);
+   Handle (NVMe, Owner, Bare (OP_DESCRIBE_DEVICE), Response);
    pragma Assert (Response.tag.label = REPLY_OK and Response.tag.length = 4);
    OK := Decode_Description
      (Response.words (0), Response.words (1), Response.words (2),
@@ -93,17 +106,17 @@ begin
                   Description.maxTransferBlocks = 32 and
                   Has_Volatile_Cache (Description) and
                   Supports_FUA (Description) and Can_Persist (Description));
-   Server.Handle (Optical, Owner, Bare (OP_DESCRIBE_DEVICE), Response);
+   Handle (Optical, Owner, Bare (OP_DESCRIBE_DEVICE), Response);
    OK := Decode_Description
      (Response.words (0), Response.words (1), Response.words (2),
       Response.words (3), Description);
    pragma Assert (OK and Is_Read_Only (Description) and
                   Description.media = Optical_Media);
-   Server.Handle ((Presence => No_Device), Owner, Bare (OP_DESCRIBE_DEVICE),
+   Handle ((Presence => No_Device), Owner, Bare (OP_DESCRIBE_DEVICE),
                   Response);
    pragma Assert (Response.tag.label = REPLY_NO_DEVICE and
                   Response.tag.length = 1 and Response.words (0) = 0);
-   Server.Handle ((Presence => Faulted), Owner, Bare (OP_DESCRIBE_DEVICE),
+   Handle ((Presence => Faulted), Owner, Bare (OP_DESCRIBE_DEVICE),
                   Response);
    pragma Assert (Response.tag.label = REPLY_ERROR);
    pragma Assert (Acquires = 0 and Transfers = 0);
@@ -115,8 +128,18 @@ begin
       Item.tag.length := 1; Expect_Reject (NVMe, Item);
       Item.tag.length := 0; Item.tag.protocol := 1; Expect_Reject (NVMe, Item);
       Item.tag.protocol := 0; Item.tag.reserved := 1; Expect_Reject (NVMe, Item);
-      Expect_Reject (NVMe, Bare (16#0214#));
-      Expect_Reject (NVMe, Request (16#0214#, 0, 1));
+      Expect_Reject (NVMe, Bare (OP_IDENTIFY_DEVICE));
+   end;
+
+   --  Every driver answers a well-formed identify itself (DEV-002): the
+   --  device sees no transfer and the grant goes back.
+   declare
+      Before : constant Natural := Transfers;
+   begin
+      Handle (NVMe, Owner, Request (OP_IDENTIFY_DEVICE, 0, 1), Response);
+      pragma Assert (Response.tag.label = REPLY_OK and Response.words (0) = 4096
+                     and Transfers = Before and Active = 0);
+      Checks := Checks + 1;
    end;
 
    --  NVMe: reads, writes, FUA only on writes, short transfers.
@@ -145,7 +168,7 @@ begin
 
    --  A short transfer is an error that keeps the completed prefix.
    Short_By := 512;
-   Server.Handle (NVMe, Owner, Request (OP_READ_BLOCKS, 0, 1), Response);
+   Handle (NVMe, Owner, Request (OP_READ_BLOCKS, 0, 1), Response);
    pragma Assert (Response.tag.label = REPLY_ERROR and
                   Response.words (0) = 4096 - 512 and Active = 0);
    Short_By := 0;
@@ -153,23 +176,23 @@ begin
    declare
       Before : constant Natural := Transfers;
    begin
-      Server.Handle (NVMe, Owner, Request (OP_READ_BLOCKS, 0, 2), Response);
+      Handle (NVMe, Owner, Request (OP_READ_BLOCKS, 0, 2), Response);
       pragma Assert (Response.tag.label = REPLY_ERROR and
                      Response.words (0) = 0 and Transfers = Before);
-      Server.Handle (NVMe, 43, Request (OP_READ_BLOCKS, 0, 1), Response);
+      Handle (NVMe, 43, Request (OP_READ_BLOCKS, 0, 1), Response);
       pragma Assert (Response.tag.label = REPLY_ERROR and Transfers = Before);
    end;
    --  A failed grant return makes the outcome uncertain: zero bytes.
    Allow_Return := False;
-   Server.Handle (NVMe, Owner, Request (OP_WRITE_BLOCKS, 0, 1), Response);
+   Handle (NVMe, Owner, Request (OP_WRITE_BLOCKS, 0, 1), Response);
    pragma Assert (Response.tag.label = REPLY_ERROR and Response.words (0) = 0);
    Allow_Return := True;
 
    --  Flush goes to the driver only when advertised, and reports its result.
-   Server.Handle (NVMe, Owner, Bare (OP_FLUSH_DEVICE), Response);
+   Handle (NVMe, Owner, Bare (OP_FLUSH_DEVICE), Response);
    pragma Assert (Response.tag.label = REPLY_OK and Flush_Calls = 1);
    Flush_Result := False;
-   Server.Handle (NVMe, Owner, Bare (OP_FLUSH_DEVICE), Response);
+   Handle (NVMe, Owner, Bare (OP_FLUSH_DEVICE), Response);
    pragma Assert (Response.tag.label = REPLY_ERROR and Flush_Calls = 2);
    Flush_Result := True;
    declare
@@ -218,7 +241,7 @@ begin
       Write.authorityTag := Write_Authority_Tag;
       Expect_Transfer (Granted_View (UFS, Authority_Of (Write.authorityTag)),
                        Write, Device_Write);
-      Server.Handle (Unbadged, Owner, Bare (OP_DESCRIBE_DEVICE), Response);
+      Handle (Unbadged, Owner, Bare (OP_DESCRIBE_DEVICE), Response);
       OK := Decode_Description
         (Response.words (0), Response.words (1), Response.words (2),
          Response.words (3), Description);

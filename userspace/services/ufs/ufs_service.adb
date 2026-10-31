@@ -3,13 +3,12 @@
 --  Copyright (C) 2026 Jon Andrew
 ------------------------------------------------------------------------------
 with Interfaces; use Interfaces;
+with System;
 with System.Storage_Elements;
-with CuBit.Messages; use CuBit.Messages;
-with CuBit.Handles;
-with CuBit.Handles.IPC;
 with CuBit.Block_Devices; use CuBit.Block_Devices;
 with CuBit.Block_Requests; use CuBit.Block_Requests;
-with CuBit.Busy_Poll;
+with CuBit.Block_Work; use CuBit.Block_Work;
+with CuBit.Block_Driver;
 with CuBit.Device_Identities;
 with CuBit.String;
 with SCSI;
@@ -24,116 +23,18 @@ package body UFS_Service is
    --  (Linux's SCSI default is 30 s).
    Command_Microseconds : constant := 30_000_000;
 
-   --  What a busy slot is doing: a block transfer holds the caller's grant;
-   --  a cache flush (SYNCHRONIZE CACHE) holds none.
-   type Work_Kind is (Block_Transfer, Cache_Flush);
-
-   type Request_Record is record
-      Busy    : Boolean := False;
-      Kind    : Work_Kind := Block_Transfer;
-      Granted : Loan;
-      Reply   : CuBit.Handles.Reply := CuBit.Handles.No_Reply;
-      Command : SCSI.Command_Block;
-      Started : Unsigned_64 := 0;
-   end record;
-
-   Requests : array (Slot) of Request_Record;
-   Device : Device_State := (Presence => Faulted);
    Unit : UFS_UPIU.Logical_Unit := 0;
-   Timeouts : Unsigned_64 := 0;
-   Refused_Writes : Unsigned_64 := 0;
-   --  What OP_IDENTIFY_DEVICE reports (its string descriptors).
-   Device_Identity : CuBit.Device_Identities.Identity;
+   --  The command each busy slot carries (Finish_SCSI needs it back).
+   Commands : array (Slot) of SCSI.Command_Block;
+   --  The last expired command, for the timeout log line.
+   Last_Expired : Slot := Slot'First;
+   Last_Aborted : Boolean := False;
 
    --  What the unit offers a holder of the write grant. UFS devices keep a
    --  volatile write cache: SYNCHRONIZE CACHE commits it, and a FUA write
-   --  is durable on completion. Everyone else sees the unit read only
-   --  (Granted_View).
+   --  is durable on completion. Everyone else sees the unit read only.
    Unit_Features : constant Device_Features :=
      FEATURE_FLUSH or FEATURE_VOLATILE_CACHE or FEATURE_FUA;
-
-   procedure Start (Device : UFS_Identify.Identity) is
-   begin
-      Unit := Device.Unit;
-      Device_Identity :=
-        (Model  => CuBit.Device_Identities.To_Text
-                     (Device.Model.Value (1 .. Device.Model.Length)),
-         Serial => CuBit.Device_Identities.To_Text
-                     (Device.Serial.Value (1 .. Device.Serial.Length)));
-      UFS_Service.Device :=
-        (Presence      => Available,
-         Blocks        => Device.Blocks,
-         Logical_Size  => Device.Block_Size,
-         Physical_Size => Device.Block_Size,
-         Max_Transfer  => Buffer_Bytes / Unsigned_64 (Device.Block_Size),
-         Features      => Unit_Features,
-         Media         => Fixed_Media);
-   end Start;
-
-   function Outstanding return Boolean is
-     (for some Item of Requests => Item.Busy);
-
-   procedure Answer (Item : Slot; Response : Message) is
-      Ignored : Unsigned_64;
-   begin
-      Ignored := replyCap (Requests (Item).Reply, Response);
-      Requests (Item) := (others => <>);
-   end Answer;
-
-   procedure Complete (Item : Slot) is
-      Current : Request_Record renames Requests (Item);
-      Outcome : constant SCSI_Outcome := Finish_SCSI (Item, Current.Command);
-      Expected : Unsigned_64;
-      Moved : Unsigned_64 := 0;
-      Response : Message;
-      Copied : System.Address;
-      pragma Unreferenced (Copied);
-   begin
-      if Current.Kind = Cache_Flush then
-         if Outcome.Result /= Passed then
-            UFS_Log.Note ("flush failed" & Failure_Text (Outcome));
-         end if;
-         Answer (Item, Status_Reply (Outcome.Result = Passed, 0));
-         return;
-      end if;
-      Expected := Bytes (Current.Granted.Item);
-      if Outcome.Result = Passed and then Unsigned_64 (Outcome.Moved) = Expected
-      then
-         --  Only a whole, successful read reaches the caller's grant (a
-         --  write's data was copied out of it before its command started).
-         if Current.Granted.Item.Direction = Device_Read then
-            Copied := CuBit.String.memcpy
-              (Current.Granted.Buffer, UFS_Controller.Buffer (Item),
-               System.Storage_Elements.Storage_Count (Expected));
-         end if;
-         Moved := Expected;
-      elsif Current.Granted.Item.Direction = Device_Write then
-         UFS_Log.Note ("write failed" & Failure_Text (Outcome) &
-                       UFS_Log.Field ("lba", Current.Granted.Item.First_Block));
-      end if;
-      Settle (Current.Granted, Moved, Response);
-      Answer (Item, Response);
-   end Complete;
-
-   procedure Expire (Item : Slot) is
-      Aborted : Boolean;
-      Response : Message;
-   begin
-      UFS_Controller.Abort_Slot (Item, Unit, Aborted);
-      Timeouts := Timeouts + 1;
-      --  Counted, not flooded: the first, then each doubling.
-      if (Timeouts and (Timeouts - 1)) = 0 then
-         UFS_Log.Note ("io timeout" & UFS_Log.Field ("slot", Unsigned_64 (Item)) &
-                       UFS_Log.Field ("aborted", Boolean'Pos (Aborted)) &
-                       UFS_Log.Field ("count", Timeouts));
-      end if;
-      if Requests (Item).Kind = Cache_Flush then
-         Answer (Item, Status_Reply (False, 0));
-      else
-         Settle (Requests (Item).Granted, 0, Response);
-         Answer (Item, Response);
-      end if;
-   end Expire;
 
    function Read_Command (Item : Transfer_Request) return SCSI.Command_Block is
      (if Item.First_Block <= Unsigned_64 (Unsigned_32'Last)
@@ -152,157 +53,114 @@ package body UFS_Service is
       else SCSI.Write_16 (Item.First_Block, SCSI.Block_Count_16 (Item.Count),
                           Item.Block_Bytes, Item.Force_Unit_Access));
 
-   procedure Respond (To : Process_ID; Response : Message) is
-      Ignored : Unsigned_64;
+   procedure Copy (Target, Source : System.Address; Count : Unsigned_64) is
+      Copied : System.Address;
+      pragma Unreferenced (Copied);
    begin
-      Ignored := reply (To, Response);
-   end Respond;
+      Copied := CuBit.String.memcpy
+        (Target, Source, System.Storage_Elements.Storage_Count (Count));
+   end Copy;
 
-   --  Saves the sender's reply capability for slot Free. False: it could
-   --  not be saved (the caller answers at once).
-   function Keep_Reply (Free : Slot) return Boolean is
-      Saved : constant CuBit.Handles.IPC.Saved_Reply :=
-        CuBit.Handles.IPC.Save_Reply;
+   procedure Post (Item : Slot; Work : Work_Order) is
    begin
-      if Saved.Saved then
-         Requests (Free).Reply := Saved.Handle;
-      end if;
-      return Saved.Saved;
-   end Keep_Reply;
-
-   procedure Begin_Work
-     (Free : Slot; Kind : Work_Kind; Command : SCSI.Command_Block) is
-   begin
-      Requests (Free).Kind := Kind;
-      Requests (Free).Command := Command;
-      Requests (Free).Started := CuBit.Busy_Poll.Now;
-      Requests (Free).Busy := True;
-      Start_SCSI (Free, Unit, Command);
-   end Begin_Work;
-
-   --  OP_IDENTIFY_DEVICE: the identity record into the caller's grant,
-   --  at once (no device command), the rest of the block zero.
-   procedure Identify (Sender : Process_ID; Item : Transfer_Request) is
-      package DId renames CuBit.Device_Identities;
-      Granted : Loan;
-      Admitted : Boolean;
-      Response : Message;
-   begin
-      Admit (Sender, Item, Granted, Admitted);
-      if not Admitted then
-         Respond (Sender, Status_Reply (False, 0));
-         return;
-      end if;
-      declare
-         Block : DId.Byte_Array (1 .. Natural (Bytes (Item)))
-           with Import, Address => Granted.Buffer;
-      begin
-         Block := [others => 0];
-         Block (1 .. DId.Record_Bytes) := DId.Encode (Device_Identity);
-      end;
-      Settle (Granted, Bytes (Item), Response);
-      Respond (Sender, Response);
-   end Identify;
-
-   --  Takes one request into Free. Found: there was one.
-   procedure Accept_Request (Free : Slot; Found : out Boolean) is
-      Sender : Process_ID;
-      Request : Message;
-      Admitted : Boolean;
-      Response : Message;
-   begin
-      Poll_Service_Request (Sender, Request, Found);
-      if not Found then
-         return;
-      end if;
-      declare
-         --  The unit as this sender may use it: writes only through the
-         --  write grant's badge (the kernel stamps authorityTag).
-         View : constant Device_State :=
-           Granted_View (Device, Authority_Of (Request.authorityTag));
-         Decoded : constant Decoded_Request := Decode (Request, View);
-         Identity_Request : constant Identify_Request :=
-           Decode_Identify (Request, View);
-      begin
-         if Identity_Request.Valid then
-            Identify (Sender, Identity_Request.Data);
-            return;
-         end if;
-         case Decoded.Kind is
-            when Describe =>
-               Respond (Sender, Describe_Reply (View));
-            when Rejected =>
-               if Request.tag.label = OP_WRITE_BLOCKS
-                 and then Authority_Of (Request.authorityTag) = Read_Only_Access
-               then
-                  Refused_Writes := Refused_Writes + 1;
-                  --  Counted, not flooded: the first, then each doubling.
-                  if (Refused_Writes and (Refused_Writes - 1)) = 0 then
-                     UFS_Log.Note ("write refused: no write grant" &
-                                   UFS_Log.Field ("count", Refused_Writes));
-                  end if;
-               end if;
-               Respond (Sender, Status_Reply (False, 0));
-            when Flush =>
-               if not Keep_Reply (Free) then
-                  Respond (Sender, Status_Reply (False, 0));
-                  return;
-               end if;
-               Begin_Work (Free, Cache_Flush, SCSI.Synchronize_Cache);
-            when Transfer =>
-               Admit (Sender, Decoded.Data, Requests (Free).Granted, Admitted);
-               if not Admitted then
-                  Respond (Sender, Status_Reply (False, 0));
-                  return;
-               end if;
-               if not Keep_Reply (Free) then
-                  Settle (Requests (Free).Granted, 0, Response);
-                  Respond (Sender, Status_Reply (False, 0));
-                  return;
-               end if;
-               if Decoded.Data.Direction = Device_Write then
-                  --  The controller only sees the slot's bounce buffer.
-                  declare
-                     Copied : System.Address;
-                     pragma Unreferenced (Copied);
-                  begin
-                     Copied := CuBit.String.memcpy
-                       (UFS_Controller.Buffer (Free),
-                        Requests (Free).Granted.Buffer,
-                        System.Storage_Elements.Storage_Count
-                          (Bytes (Decoded.Data)));
-                  end;
-                  Begin_Work (Free, Block_Transfer, Write_Command (Decoded.Data));
-               else
-                  Begin_Work (Free, Block_Transfer, Read_Command (Decoded.Data));
-               end if;
-         end case;
-      end;
-   end Accept_Request;
-
-   procedure Poll (Progressed : out Boolean) is
-      Found : Boolean;
-   begin
-      Progressed := False;
-      for Item in Slot loop
-         if Requests (Item).Busy then
-            if UFS_Controller.Completed (Item) then
-               Complete (Item);
-               Progressed := True;
-            elsif not CuBit.Busy_Poll.Within
-                        (Requests (Item).Started, Command_Microseconds)
-            then
-               Expire (Item);
-               Progressed := True;
+      case Work.Kind is
+         when Cache_Flush =>
+            Commands (Item) := SCSI.Synchronize_Cache;
+         when Block_Transfer =>
+            if Work.Granted.Item.Direction = Device_Write then
+               --  The controller only sees the slot's bounce buffer.
+               Copy (UFS_Controller.Buffer (Item), Work.Granted.Buffer,
+                     Bytes (Work.Granted.Item));
+               Commands (Item) := Write_Command (Work.Granted.Item);
+            else
+               Commands (Item) := Read_Command (Work.Granted.Item);
             end if;
-         end if;
-      end loop;
-      for Item in Slot loop
-         if not Requests (Item).Busy then
-            Accept_Request (Item, Found);
-            exit when not Found;
-            Progressed := True;
-         end if;
-      end loop;
-   end Poll;
+      end case;
+      Start_SCSI (Item, Unit, Commands (Item));
+   end Post;
+
+   function Finished (Item : Slot) return Boolean is
+     (UFS_Controller.Completed (Item));
+
+   procedure Collect (Item : Slot; Work : Work_Order; Outcome : out Work_Outcome)
+   is
+      Result : constant SCSI_Outcome := Finish_SCSI (Item, Commands (Item));
+      Succeeded : constant Boolean := Result.Result = Passed;
+   begin
+      case Work.Kind is
+         when Cache_Flush =>
+            if not Succeeded then
+               UFS_Log.Note ("flush failed" & Failure_Text (Result));
+            end if;
+            Outcome := (Passed => Succeeded, Moved => 0);
+         when Block_Transfer =>
+            Outcome := (Passed => Succeeded, Moved => Unsigned_64 (Result.Moved));
+            if Succeeded and then Outcome.Moved = Bytes (Work.Granted.Item) then
+               --  Only a whole, successful read reaches the caller's grant.
+               if Work.Granted.Item.Direction = Device_Read then
+                  Copy (Work.Granted.Buffer, UFS_Controller.Buffer (Item),
+                        Outcome.Moved);
+               end if;
+            elsif Work.Granted.Item.Direction = Device_Write then
+               UFS_Log.Note ("write failed" & Failure_Text (Result) &
+                             UFS_Log.Field ("lba", Work.Granted.Item.First_Block));
+            else
+               --  Nothing of a failed or short read reached the caller.
+               Outcome.Moved := 0;
+            end if;
+      end case;
+   end Collect;
+
+   procedure Cancel (Item : Slot) is
+   begin
+      UFS_Controller.Abort_Slot (Item, Unit, Last_Aborted);
+      Last_Expired := Item;
+   end Cancel;
+
+   procedure Note (Event : Driver_Event; Count : Unsigned_64) is
+   begin
+      case Event is
+         when Command_Expired =>
+            UFS_Log.Note ("io timeout" &
+                          UFS_Log.Field ("slot", Unsigned_64 (Last_Expired)) &
+                          UFS_Log.Field ("aborted", Boolean'Pos (Last_Aborted)) &
+                          UFS_Log.Field ("count", Count));
+         when Write_Refused =>
+            UFS_Log.Note ("write refused: no write grant" &
+                          UFS_Log.Field ("count", Count));
+      end case;
+   end Note;
+
+   package Driver is new CuBit.Block_Driver
+     (Slot                  => Slot,
+      Writes                => Write_Grant_Required,
+      Deadline_Microseconds => Command_Microseconds,
+      Post                  => Post,
+      Finished              => Finished,
+      Collect               => Collect,
+      Cancel                => Cancel,
+      Note                  => Note);
+
+   procedure Start (Device : UFS_Identify.Identity) is
+   begin
+      Unit := Device.Unit;
+      Driver.Start
+        (State =>
+           (Presence      => Available,
+            Blocks        => Device.Blocks,
+            Logical_Size  => Device.Block_Size,
+            Physical_Size => Device.Block_Size,
+            Max_Transfer  => Buffer_Bytes / Unsigned_64 (Device.Block_Size),
+            Features      => Unit_Features,
+            Media         => Fixed_Media),
+         Identity =>
+           (Model  => CuBit.Device_Identities.To_Text
+                        (Device.Model.Value (1 .. Device.Model.Length)),
+            Serial => CuBit.Device_Identities.To_Text
+                        (Device.Serial.Value (1 .. Device.Serial.Length))));
+   end Start;
+
+   procedure Poll (Progressed : out Boolean) renames Driver.Poll;
+
+   function Outstanding return Boolean is (Driver.Outstanding);
 end UFS_Service;

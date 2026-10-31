@@ -389,10 +389,12 @@ test-block-requests:
 	../tests/block-requests/build/main
 	$(ALR) gprbuild -p -P../tests/ram-block/ram_block_tests.gpr
 	../tests/ram-block/build/main
+	$(ALR) gprbuild -p -P../tests/block-driver/block_driver_tests.gpr
+	../tests/block-driver/build/main
 
 prove-block-requests:
 	$(ALR) gnatprove -P../tests/block-requests/block_requests_tests.gpr \
-		-u cubit-block_requests.adb cubit-disk_install.adb proof_device.adb \
+		-u cubit-block_requests.adb cubit-disk_install.adb \
 		--level=2 --report=all --checks-as-errors=on -j2
 	$(ALR) gnatprove -P../tests/block-requests/runtime_proof.gpr \
 		-u cubit-block_requests.adb cubit-disk_install.adb cubit-device_identities.adb cubit-installer_protocol.adb --level=2 --report=all --checks-as-errors=on -j2

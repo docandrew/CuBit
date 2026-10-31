@@ -1,11 +1,10 @@
-package body Proof_Device with SPARK_Mode is
+package body Proof_Device is
    procedure Transfer
-     (State : Device_State; Item : Transfer_Request;
-      Buffer : System.Address; Moved : out Unsigned_64)
+     (Item : Transfer_Request; Buffer : System.Address; Moved : out Unsigned_64)
    is
       pragma Unreferenced (Buffer);
    begin
-      pragma Assert (Item.Block_Bytes = State.Logical_Size);
+      pragma Assert (Valid_Transfer (Current, Item));
       Last_Item := Item;
       if Transfers < Natural'Last then
          Transfers := Transfers + 1;
@@ -13,9 +12,9 @@ package body Proof_Device with SPARK_Mode is
       Moved := (if Short_By <= Bytes (Item) then Bytes (Item) - Short_By else 0);
    end Transfer;
 
-   procedure Flush (State : Device_State; Durable : out Boolean) is
-      pragma Unreferenced (State);
+   procedure Flush (Durable : out Boolean) is
    begin
+      pragma Assert (Flushes (Current));
       if Flush_Calls < Natural'Last then
          Flush_Calls := Flush_Calls + 1;
       end if;

@@ -36,6 +36,9 @@ package CuBit.Device_Identities with Pure, SPARK_Mode is
       Serial : Identity_Text;
    end record;
 
+   --  A device that reports no model or serial.
+   No_Identity : constant Identity := (others => <>);
+
    --  Text from S: its printable prefix, at most Maximum_Text characters.
    function To_Text (S : String) return Identity_Text
      with Post => Well_Formed (To_Text'Result);
