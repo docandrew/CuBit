@@ -3,8 +3,9 @@
 # every request: BAR2 (the MAC register window), one MSI vector, the DMA
 # region the driver carves into rings and buffers, devmgr's endpoint for the
 # readiness report, a logstore publisher, and netstack's endpoint badged as
-# the network driver's authority (the Wireless interface, its link and scan
-# reports; docs/net-link.md). The Realtek firmware is not requested here: it
+# the network driver's authority (the Wireless interface, its link, scan
+# reports and Ethernet frames; docs/net-link.md), and wifi.svc's endpoint
+# (CuBit.Wifi_Driver: joins, temporal keys, management and EAPOL frames). The Realtek firmware is not requested here: it
 # is embedded in the driver at build time (component.ccl, docs/wifi.md).
 (Executable_Manifest
   identity => "com.cubit.driver.rtw89"
@@ -17,8 +18,10 @@
     (dma "rings" 1048576)
     # The Wireless interface (CuBit.Net_Link): link and scan reports.
     (service "network-stack" "netstack")
+    # wifi.svc: the connection manager this driver serves (W3/W4).
+    (service "wifi" "wifi")
     (service "device-manager" "device-manager")
     # Stage lines reach the boot-logs view through logstore.
     (service "logstore" "logstore")]
-  # Without netstack the scan still runs and is logged.
-  optional => ["device" "logstore" "netstack"])
+  # Without netstack or wifi.svc the scan still runs and is logged.
+  optional => ["device" "logstore" "netstack" "wifi"])

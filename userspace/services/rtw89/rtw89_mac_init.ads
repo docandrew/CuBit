@@ -21,6 +21,8 @@ with RTW89_Outcomes; use RTW89_Outcomes;
 with RTW89_MMIO;
 with RTW89_Bringup;
 with RTW89_Efuse;
+with RTW89_H2C;
+with Interfaces; use Interfaces;
 
 package RTW89_MAC_Init is
 
@@ -40,6 +42,29 @@ package RTW89_MAC_Init is
    --  our address, default CMAC table and macid unpause H2Cs.
    procedure Add_Station (DMA : RTW89_Bringup.Region; Address : RTW89_Efuse.MAC_Address;
                           Result : out Outcome)
+     with Pre => RTW89_MMIO.Attached;
+
+   --  The station's address CAM entry (rtw89_fw_h2c_cam): its BSS, net
+   --  type, AID and security entries.
+   procedure Update_Station (DMA : RTW89_Bringup.Region; Station : RTW89_H2C.Station;
+                             Result : out Outcome)
+     with Pre => RTW89_MMIO.Attached;
+
+   --  Associated (rtw89_core_sta_link_assoc, rtw89_mac_port_update): port
+   --  0 to INFRA with the BSS's beacon interval, join info connected, the
+   --  address CAM entry with the AID.
+   procedure Associate (DMA : RTW89_Bringup.Region; Station : RTW89_H2C.Station; Interval : Unsigned_16;
+                        Result : out Outcome)
+     with Pre => RTW89_MMIO.Attached;
+
+   --  Back to not associated: join info disconnected, the CAM entry
+   --  (Station, normally without a peer), port 0 to NO_LINK.
+   procedure Disassociate (DMA : RTW89_Bringup.Region; Station : RTW89_H2C.Station; Result : out Outcome)
+     with Pre => RTW89_MMIO.Attached;
+
+   --  A temporal key into security CAM entry Index (rtw89_cam_send_sec_key_cmd).
+   procedure Install_Key (DMA : RTW89_Bringup.Region; Index : RTW89_H2C.Security_CAM_Index;
+                          Key : RTW89_H2C.Key_16; Result : out Outcome)
      with Pre => RTW89_MMIO.Attached;
 
    --  The passive-scan receive filter: beacons and probe responses of

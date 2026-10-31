@@ -23,6 +23,8 @@ package CCL_Native_Bindings is
    --  netstack's endpoint for inspection only (interfaces, wifi.scan): a
    --  plain network-stack service, no network authority.
    function Network_Stack    return CuBit.Handles.Endpoint;   --  "network-stack"
+   --  wifi.svc: (wifi.join), (wifi.leave), (wifi.status), (wifi.passphrase).
+   function Wifi             return CuBit.Handles.Endpoint;   --  "wifi"
    function Lexicon          return CuBit.Handles.Endpoint;   --  "lexicon"
    function Installer        return CuBit.Handles.Endpoint;   --  "installer"
 end CCL_Native_Bindings;

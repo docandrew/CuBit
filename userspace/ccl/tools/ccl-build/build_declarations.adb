@@ -88,12 +88,45 @@ package body Build_Declarations is
       end if;
    end Evaluate;
 
+   --  Text without its comments ('#' to the end of the line, outside
+   --  string literals), each line ending kept: the checker sees the same
+   --  lines and columns, and comments do not count against the language's
+   --  source capacity (CCL.Language.MAX_SOURCE_LENGTH, ccl-capacity.md M1),
+   --  which the schema and the catalog would otherwise exceed together.
+   Comment_Start : constant Character := '#';
+   function Without_Comments (Text : String) return String is
+      Result : String (1 .. Text'Length);
+      Last : Natural := 0;
+      Comment, Quoted, Escaped : Boolean := False;
+   begin
+      for C of Text loop
+         if Comment then
+            Comment := C /= ASCII.LF;
+         elsif Escaped then
+            Escaped := False;
+         elsif Quoted then
+            if C = '\' then Escaped := True; elsif C = '"' then Quoted := False; end if;
+         elsif C = Comment_Start then
+            Comment := True;
+         elsif C = '"' then
+            Quoted := True;
+         end if;
+         if not Comment then
+            Last := Last + 1;
+            Result (Last) := C;
+         end if;
+      end loop;
+      return Result (1 .. Last);
+   end Without_Comments;
+
    --  Reading a captured value by field and alternative name.
    generic
       type Result_Type is private;
       with procedure Read_Value (Object : Views.Snapshot; Result : out Result_Type);
-   procedure Read_Document (Source, Schema, Root_Type : String; Result : out Result_Type);
-   procedure Read_Document (Source, Schema, Root_Type : String; Result : out Result_Type) is
+   procedure Read_Document (Commented_Source, Commented_Schema, Root_Type : String; Result : out Result_Type);
+   procedure Read_Document (Commented_Source, Commented_Schema, Root_Type : String; Result : out Result_Type) is
+      Source : constant String := Without_Comments (Commented_Source);
+      Schema : constant String := Without_Comments (Commented_Schema);
       Failure : Unbounded_String;
       Done : Boolean := False;
       Value : Result_Type;
@@ -144,6 +177,12 @@ package body Build_Declarations is
       raise Declaration_Error with "the schema has no field " & Name;
    end Named;
 
+   function Has_Field (Object : Views.Snapshot; At_Cursor : Views.Cursor; Name : String) return Boolean is
+      Shape : constant CCL.Types.Description := Views.Describe (Object, At_Cursor);
+   begin
+      return (for some Part in 1 .. Shape.Count => CCL.Types.Image (Shape.Parts (Part).Identifier) = Name);
+   end Has_Field;
+
    function Field (Object : Views.Snapshot; At_Cursor : Views.Cursor; Name : String) return Unbounded_String is
      (To_Unbounded_String (Views.Text (Object, Named (Object, At_Cursor, Name))));
 
@@ -179,13 +218,33 @@ package body Build_Declarations is
      ((Name => Field (Object, At_Cursor, "name"), Identity => Field (Object, At_Cursor, "identity"),
        Prefix => Field (Object, At_Cursor, "prefix")));
 
-   --  Ada_Code's fields, as they appear in Ada_Code and in Ada_Source.
+   --  Ada_Code's fields, as they appear in Ada_Code and in Ada_Source
+   --  (which has no warnings or instruction_sets: a component's own code is
+   --  always reported and on the target's baseline).
    function Code_Of (Object : Views.Snapshot; At_Cursor : Views.Cursor) return Ada_Code is
-     ((Language => Ada_Language'Value (Alternative (Object, Named (Object, At_Cursor, "language"))),
-       Level => Optimization'Value (Alternative (Object, Named (Object, At_Cursor, "optimization"))),
-       Run_Time_Checks => Checks'Value (Alternative (Object, Named (Object, At_Cursor, "checks"))),
-       Frames => Frame_Pointer'Value (Alternative (Object, Named (Object, At_Cursor, "frame_pointer"))),
-       Value_Range_Propagation => Flag (Object, Named (Object, At_Cursor, "value_range_propagation"))));
+      Result : Ada_Code :=
+        (Language => Ada_Language'Value (Alternative (Object, Named (Object, At_Cursor, "language"))),
+         Level => Optimization'Value (Alternative (Object, Named (Object, At_Cursor, "optimization"))),
+         Run_Time_Checks => Checks'Value (Alternative (Object, Named (Object, At_Cursor, "checks"))),
+         Frames => Frame_Pointer'Value (Alternative (Object, Named (Object, At_Cursor, "frame_pointer"))),
+         Value_Range_Propagation => Flag (Object, Named (Object, At_Cursor, "value_range_propagation")),
+         others => <>);
+   begin
+      if Has_Field (Object, At_Cursor, "warnings") then
+         Result.Warn := Warnings'Value (Alternative (Object, Named (Object, At_Cursor, "warnings")));
+      end if;
+      if Has_Field (Object, At_Cursor, "instruction_sets") then
+         declare
+            Sets : constant Views.Cursor := Named (Object, At_Cursor, "instruction_sets");
+         begin
+            for I in 1 .. Views.Length (Object, Sets) loop
+               Result.Instructions (Instruction_Set'Value (Alternative (Object, Views.Element (Object, Sets, I)))) :=
+                 True;
+            end loop;
+         end;
+      end if;
+      return Result;
+   end Code_Of;
 
    procedure Unit_Codes (Object : Views.Snapshot; At_Cursor : Views.Cursor; Into : out Unit_Code_Vectors.Vector) is
    begin
@@ -201,6 +260,29 @@ package body Build_Declarations is
          end;
       end loop;
    end Unit_Codes;
+
+   --  SHA256_Digest: eight 32-bit words, big-endian, the hex digest's order.
+   Digest_Words : constant := 8;
+   Word_Bytes : constant := Storehouse.Digest_Bytes / Digest_Words;
+   Byte_Bits : constant := 8;
+
+   function Digest_Of (Object : Views.Snapshot; At_Cursor : Views.Cursor) return Storehouse.Digest is
+      use type Interfaces.Unsigned_64;
+      Result : Storehouse.Digest;
+   begin
+      for W in 1 .. Digest_Words loop
+         declare
+            Word : constant Interfaces.Unsigned_64 :=
+              Views.Scalar (Object, Named (Object, At_Cursor, "w" & Character'Val (Character'Pos ('0') + W))).First;
+         begin
+            for B in 1 .. Word_Bytes loop
+               Result ((W - 1) * Word_Bytes + B) := Storehouse.Byte
+                 (Interfaces.Shift_Right (Word, Byte_Bits * (Word_Bytes - B)) and 16#FF#);
+            end loop;
+         end;
+      end loop;
+      return Result;
+   end Digest_Of;
 
    procedure Parameters_Value (Object : Views.Snapshot; Result : out Parameters) is
       Root : constant Views.Cursor := Views.Root (Object);
@@ -235,8 +317,23 @@ package body Build_Declarations is
          declare
             Item : constant Views.Cursor := Views.Element (Object, Libraries, I);
             L : Library;
+            Origin : constant Views.Cursor := Named (Object, Item, "origin");
+            Code : constant Views.Cursor := Named (Object, Item, "code");
          begin
             L.Name := Field (Object, Item, "name");
+            L.Origin := Library_Origin'Value (Alternative (Object, Origin));
+            if L.Origin = Fetch then
+               declare
+                  Pin : constant Views.Cursor := Views.Payload (Object, Origin);
+               begin
+                  L.Fetched := (Name => L.Name, URL => Field (Object, Pin, "url"),
+                                Format => Archive_Format'Value (Alternative (Object, Named (Object, Pin, "format"))),
+                                Tree => Digest_Of (Object, Named (Object, Pin, "tree")));
+               end;
+            end if;
+            if Alternative (Object, Code) = "Profile" then
+               L.Profile := To_Unbounded_String (Views.Text (Object, Views.Payload (Object, Code)));
+            end if;
             Texts (Object, Named (Object, Item, "sources"), L.Sources);
             Unit_Codes (Object, Named (Object, Item, "units"), L.Units);
             Texts (Object, Named (Object, Item, "archives"), L.Archives);
@@ -281,28 +378,6 @@ package body Build_Declarations is
         when Application => ".app", when Service => ".svc",
         when Driver => ".drv", when Tool => "");
 
-   --  SHA256_Digest: eight 32-bit words, big-endian, the hex digest's order.
-   Digest_Words : constant := 8;
-   Word_Bytes : constant := Storehouse.Digest_Bytes / Digest_Words;
-   Byte_Bits : constant := 8;
-
-   function Digest_Of (Object : Views.Snapshot; At_Cursor : Views.Cursor) return Storehouse.Digest is
-      use type Interfaces.Unsigned_64;
-      Result : Storehouse.Digest;
-   begin
-      for W in 1 .. Digest_Words loop
-         declare
-            Word : constant Interfaces.Unsigned_64 :=
-              Views.Scalar (Object, Named (Object, At_Cursor, "w" & Character'Val (Character'Pos ('0') + W))).First;
-         begin
-            for B in 1 .. Word_Bytes loop
-               Result ((W - 1) * Word_Bytes + B) := Storehouse.Byte
-                 (Interfaces.Shift_Right (Word, Byte_Bits * (Word_Bytes - B)) and 16#FF#);
-            end loop;
-         end;
-      end loop;
-      return Result;
-   end Digest_Of;
 
    procedure Blobs_Of (Object : Views.Snapshot; At_Cursor : Views.Cursor; Into : out Blob_Vectors.Vector) is
    begin
@@ -361,6 +436,7 @@ package body Build_Declarations is
    --  the same intent gives the same command line, so the same step.
    Debug_Switch : constant String := "-g";
    All_Warnings : constant String := "-gnatwa";
+   No_Warnings : constant String := "-gnatws";
    No_Propagation_Warnings : constant String := "-gnatw.X";
    function Level_Switch (Level : Optimization) return String is
      (case Level is when Normal => "-O2", when Maximum => "-O3");
@@ -370,6 +446,30 @@ package body Build_Declarations is
    Omit_Frame_Pointer : constant String := "-fomit-frame-pointer";
    No_Value_Range_Propagation : constant String := "-fno-tree-vrp";
    GNAT_Switch_Prefix : constant String := "-gnat";
+   --  Each instruction set's switches, as SPARKTLSCrypto's own project
+   --  file gives them for its accelerated units.
+   type Switch_Text is access constant String;
+   type Switch_List is array (Positive range <>) of Switch_Text;
+   AES : aliased constant String := "-maes";
+   PCLMUL : aliased constant String := "-mpclmul";
+   SSSE3 : aliased constant String := "-mssse3";
+   BMI2 : aliased constant String := "-mbmi2";
+   ADX_Switch : aliased constant String := "-madx";
+   AVX2_Switch : aliased constant String := "-mavx2";
+   AVX512F : aliased constant String := "-mavx512f";
+   AVX512DQ : aliased constant String := "-mavx512dq";
+   AVX512BW : aliased constant String := "-mavx512bw";
+   AVX512VL : aliased constant String := "-mavx512vl";
+   AVX512IFMA : aliased constant String := "-mavx512ifma";
+   VAES : aliased constant String := "-mvaes";
+   VPCLMULQDQ : aliased constant String := "-mvpclmulqdq";
+   function Instruction_Switches (Set : Instruction_Set) return Switch_List is
+     (case Set is
+        when AES_NI => [AES'Access, PCLMUL'Access, SSSE3'Access],
+        when ADX => [BMI2'Access, ADX_Switch'Access],
+        when AVX2 => [1 => AVX2_Switch'Access],
+        when AVX512 => [AVX512F'Access, AVX512DQ'Access, AVX512BW'Access, AVX512VL'Access,
+                        AVX512IFMA'Access, VAES'Access, VPCLMULQDQ'Access]);
 
    function Switches_For (Debug : Boolean; Code : Ada_Code; Target : String_Vectors.Vector)
      return String_Vectors.Vector
@@ -377,7 +477,7 @@ package body Build_Declarations is
       Result : String_Vectors.Vector;
    begin
       if Debug then Result.Append (Debug_Switch); end if;
-      Result.Append (All_Warnings);
+      Result.Append (case Code.Warn is when Reported => All_Warnings, when Suppressed => No_Warnings);
       Result.Append (No_Propagation_Warnings);
       Result.Append (Level_Switch (Code.Level));
       if Code.Language = Ada_2022 then Result.Append (Ada_2022_Switch); end if;
@@ -386,6 +486,13 @@ package body Build_Declarations is
       if Code.Frames = Omitted then Result.Append (Omit_Frame_Pointer); end if;
       Result.Append (Target);
       if not Code.Value_Range_Propagation then Result.Append (No_Value_Range_Propagation); end if;
+      for Set in Instruction_Set loop
+         if Code.Instructions (Set) then
+            for S of Instruction_Switches (Set) loop
+               Result.Append (S.all);
+            end loop;
+         end if;
+      end loop;
       return Result;
    end Switches_For;
 
@@ -434,6 +541,26 @@ package body Build_Declarations is
       end if;
    end Check_Blob;
 
+   --  A fetched library: its name places its tree, so it is a kebab name;
+   --  its URL is http or https (the pinned tree, not the transport, makes
+   --  the bytes trustworthy).
+   procedure Check_Library (L : Library) is
+      Name : constant String := To_String (L.Name);
+      URL : constant String := To_String (L.Fetched.URL);
+   begin
+      if L.Origin = Fetch then
+         if not Is_Component_Name (Name) then
+            raise Declaration_Error with "library name """ & Name &
+              """ is not a lowercase kebab name (a-z, 0-9 and single hyphens, starting with a letter)";
+         end if;
+         if not (Starts_With (URL, HTTPS_Scheme) or else Starts_With (URL, HTTP_Scheme))
+           or else (for some C of URL => C not in '!' .. '~')
+         then
+            raise Declaration_Error with "library """ & Name & """: " & URL & " is not an http:// or https:// URL";
+         end if;
+      end if;
+   end Check_Library;
+
    procedure Read_Component
      (Source, Schema, Directory : String; Profile : Parameters; Known : Build_Catalog;
       Program : out Ada_Program)
@@ -471,7 +598,8 @@ package body Build_Declarations is
          for U of Units loop
             Program.Units.Append
               (Unit_Switches'(Files => U.Files,
-                Switches => Switches_For (Declared.Debug_Info, Code_Named (To_String (U.Profile)), Profile.Target)));
+                Switches => Switches_For (Declared.Debug_Info, Code_Named (To_String (U.Profile)), Profile.Target),
+                Directory => <>));
          end loop;
       end Add_Units;
 
@@ -481,14 +609,36 @@ package body Build_Declarations is
             if D = Directory then
                raise Declaration_Error with "sources names the component's own directory " & D;
             end if;
+            if D = External_Directory or else Starts_With (D, External_Directory & "/") then
+               raise Declaration_Error with "sources names " & D & ": " & External_Directory &
+                 "/ is where fetched trees are placed, never a repository path";
+            end if;
             if not Program.Sources.Contains (D) then
                Program.Sources.Append (D);
             end if;
          end loop;
       end Add_Sources;
+
+      --  A library's paths as steps see them: a fetched tree's under
+      --  External_Directory / its name.
+      function Placed (L : Library; Paths : String_Vectors.Vector) return String_Vectors.Vector is
+         Result : String_Vectors.Vector;
+      begin
+         for P of Paths loop
+            if not Storehouse.Paths.Is_Relative (P) then
+               raise Declaration_Error with "library """ & To_String (L.Name) & """: " & P &
+                 " is not a relative path without . or ..";
+            end if;
+            Result.Append (if L.Origin = Fetch then External_Directory & "/" & To_String (L.Name) & "/" & P else P);
+         end loop;
+         return Result;
+      end Placed;
    begin
       Read_Component_Document (Source, Schema, "Component", Declared);
       Program := (others => <>);
+      for L of Known.Libraries loop
+         Check_Library (L);
+      end loop;
       if not Is_Component_Name (To_String (Declared.Name)) then
          raise Declaration_Error with "name """ & To_String (Declared.Name) &
            """ is not a lowercase kebab name (a-z, 0-9 and single hyphens, starting with a letter)";
@@ -522,9 +672,26 @@ package body Build_Declarations is
             for L of Known.Libraries loop
                if To_String (L.Name) = Name then
                   Found := True;
-                  Add_Sources (L.Sources);
+                  if L.Origin = Fetch then
+                     for D of Placed (L, L.Sources) loop
+                        if not Program.Sources.Contains (D) then
+                           Program.Sources.Append (D);
+                        end if;
+                     end loop;
+                     Program.Trees.Append (L.Fetched);
+                  else
+                     Add_Sources (L.Sources);
+                  end if;
                   Add_Units (L.Units);
-                  Program.Archives.Append (L.Archives);
+                  if Length (L.Profile) > 0 then
+                     for D of Placed (L, L.Sources) loop
+                        Program.Directory_Code.Append
+                          (Unit_Switches'(Files => <>, Directory => To_Unbounded_String (D),
+                            Switches => Switches_For (Declared.Debug_Info, Code_Named (To_String (L.Profile)),
+                                                      Profile.Target)));
+                     end loop;
+                  end if;
+                  Program.Archives.Append (Placed (L, L.Archives));
                end if;
             end loop;
             if not Found then

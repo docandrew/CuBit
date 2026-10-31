@@ -52,6 +52,8 @@ package body RTW89_RX with SPARK_Mode is
       D.A1_Match := (W3 and A1_Match_Bit) /= 0;
       D.CRC_Error := (W3 and CRC32_Error_Bit) /= 0;
       D.ICV_Error := (W3 and ICV_Error_Bit) /= 0;
+      D.HW_Decrypted := (W3 and HW_Decrypt_Bit) /= 0;
+      D.SW_Decrypt := (W3 and SW_Decrypt_Bit) /= 0;
       if D.Long then
          W4 := U32 (B, Descriptor_At + 16);
          D.Frame := Frame_Type'Val (Natural (W4 and Frame_Type_Mask));

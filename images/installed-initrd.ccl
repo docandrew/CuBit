@@ -29,5 +29,6 @@
   (file bootstrap "generic-check" "generic-check.drv")
   (file bootstrap "config" "config.svc")
   (file bootstrap "netmgr" "netmgr.svc")
+  (file bootstrap "wifi" "wifi.svc")
   (file bootstrap "procmgr" "procmgr.svc")
 )

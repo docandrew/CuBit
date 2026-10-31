@@ -1,8 +1,10 @@
 # rtw89.drv: the RTL8852BE bring-up driver (docs/wifi.md). The Realtek
 # firmware is embedded unmodified (D6), with its licence in the bundle.
+# Chip-independent 802.11 parsing comes from the generic Wi-Fi library
+# (userspace/lib/wifi); the driver holds no Wi-Fi crypto (wifi.svc does).
 (Component name => "rtw89" kind => Kind.Driver
   source => (Source.Ada (Ada_Source
-    sources => ["userspace/services/rtw89/spark" "userspace/services/rtw89/crypto"]
+    sources => ["userspace/services/rtw89/spark" "userspace/lib/wifi"]
     language => Ada_Language.Ada_2022
     optimization => Optimization.Maximum
     checks => Checks.Suppressed))

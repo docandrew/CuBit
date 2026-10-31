@@ -1,4 +1,5 @@
 with CuBit.Config_Inspection;
+with CCL.Setting_Secrets;
 
 package body Config_Authority with SPARK_Mode is
    use type Interfaces.Unsigned_64;
@@ -33,6 +34,13 @@ package body Config_Authority with SPARK_Mode is
       return 0;
    end Revision;
 
+   --  A Secret setting (class Secret in the catalog) is served only under
+   --  a scope that names its key or family explicitly: a broader scope
+   --  (config-all, or a prefix above the family) does not reach it.
+   function Names_Secret (Scope, Key : String) return Boolean is
+     (not CCL.Setting_Secrets.Is_Secret (Key)
+      or else CCL.Setting_Secrets.Starts (Scope, CCL.Setting_Secrets.Secret_Scope (Key)));
+
    function Allows
      (State : Authority_State; Subject : Subject_ID; Key : String;
       Requested : Operation) return Boolean is
@@ -42,7 +50,8 @@ package body Config_Authority with SPARK_Mode is
          (for some I in 1 .. Item.Rules.Count =>
             Item.Rules.Entries (I).Allowed (Requested) and then
             CuBit.Config_Inspection.Contains
-              (Item.Rules.Entries (I).Scope (1 .. Item.Rules.Entries (I).Length), Key))));
+              (Item.Rules.Entries (I).Scope (1 .. Item.Rules.Entries (I).Length), Key) and then
+            Names_Secret (Item.Rules.Entries (I).Scope (1 .. Item.Rules.Entries (I).Length), Key))));
 
    function Other_Profiles_Unchanged
      (Before, After : Authority_State; Subject : Subject_ID) return Boolean is

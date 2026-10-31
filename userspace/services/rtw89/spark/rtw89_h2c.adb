@@ -39,20 +39,73 @@ package body RTW89_H2C with SPARK_Mode is
    BSSID_Mask_All    : constant Unsigned_32 := 16#3F#;  --  BSSID_MATCH_ALL
    BSSID_Mask_Shift  : constant := 2;
 
-   function Address_CAM (Own : Address) return Bytes is
-      Hash : constant Unsigned_8 := Own (1) xor Own (2) xor Own (3) xor Own (4) xor Own (5) xor Own (6);
-      W : constant Words (0 .. 14) :=
-        [1  => Unsigned_32'(CAM_Entry_Index) or Shift_Left (Unsigned_32'(CAM_Entry_Length), CAM_Length_Shift),
-         2  => CAM_Valid or Shift_Left (Unsigned_32 (Hash), CAM_SMA_Hash_Shift),
-         4  => Pack (Own (1), Own (2), Own (3), Own (4)),
-         5  => Pack (Own (5), Own (6), 0, 0),
-         9  => Shift_Left (Security_Normal, Security_Mode_Shift),
-         12 => Shift_Left (BSSID_CAM_Length, BSSID_Length_Shift),
-         13 => BSSID_Valid or Shift_Left (BSSID_Mask_All, BSSID_Mask_Shift),
-         others => 0];
+   Net_Type_Shift    : constant := 1;               --  ADDR_CAM_W2_NET_TYPE [2:1]
+   CAM_TMA_Hash_Shift : constant := 24;
+   AID_Mask          : constant Unsigned_32 := 16#FFF#;
+   Key_ID_Shift      : constant := 18;              --  SEC_ENT0_KEYID [19:18], 2 bits a slot
+   Key_ID_Width      : constant := 2;
+   Entry_Valid_Mask  : constant Unsigned_32 := 16#FF#;  --  W10 SEC_ENT_VALID [7:0]
+   Entry_Shift       : constant := 8;               --  W10 SEC_ENT0 [15:8]
+   Entry_Width       : constant := 8;
+   BSSID_Byte_Shift  : constant := 16;              --  W13 BSSID0 [23:16]
+
+   function Hash (A : Address) return Unsigned_8 is
+     (A (1) xor A (2) xor A (3) xor A (4) xor A (5) xor A (6));
+
+   function Station_CAM (S : Station) return Bytes is
+      Own : Address renames S.Own;
+      Peer : Address renames S.Peer;
+      Valid_Bits : Unsigned_32 := 0;
+      Key_IDs : Unsigned_32 := 0;
+      Entries : array (Security_Slot) of Unsigned_32 := [others => 0];
+   begin
+      for Slot in Security_Slot loop
+         if S.Keys (Slot).Valid then
+            Valid_Bits := Valid_Bits or Shift_Left (1, Slot);
+            Key_IDs := Key_IDs or Shift_Left (Unsigned_32 (S.Keys (Slot).Key), Key_ID_Shift + Key_ID_Width * Slot);
+            Entries (Slot) := Unsigned_32 (S.Keys (Slot).Index);
+         end if;
+      end loop;
+      declare
+         W : constant Words (0 .. 14) :=
+           [1  => Unsigned_32'(CAM_Entry_Index) or Shift_Left (Unsigned_32'(CAM_Entry_Length), CAM_Length_Shift),
+            2  => CAM_Valid or Shift_Left (Unsigned_32 (Net_Type'Enum_Rep (S.Kind)), Net_Type_Shift)
+                  or Shift_Left (Unsigned_32 (Hash (Own)), CAM_SMA_Hash_Shift)
+                  or Shift_Left (Unsigned_32 (Hash (Peer)), CAM_TMA_Hash_Shift),
+            4  => Pack (Own (1), Own (2), Own (3), Own (4)),
+            5  => Pack (Own (5), Own (6), Peer (1), Peer (2)),
+            6  => Pack (Peer (3), Peer (4), Peer (5), Peer (6)),
+            9  => (if S.Kind = Infrastructure then Unsigned_32 (S.AID) and AID_Mask else 0)
+                  or Shift_Left (Security_Normal, Security_Mode_Shift) or Key_IDs,
+            10 => (Valid_Bits and Entry_Valid_Mask) or Shift_Left (Entries (0), Entry_Shift)
+                  or Shift_Left (Entries (1), Entry_Shift + Entry_Width)
+                  or Shift_Left (Entries (2), Entry_Shift + 2 * Entry_Width),
+            11 => Entries (3) or Shift_Left (Entries (4), Entry_Width)
+                  or Shift_Left (Entries (5), 2 * Entry_Width) or Shift_Left (Entries (6), 3 * Entry_Width),
+            12 => Shift_Left (BSSID_CAM_Length, BSSID_Length_Shift),
+            13 => BSSID_Valid or Shift_Left (BSSID_Mask_All, BSSID_Mask_Shift)
+                  or Shift_Left (Unsigned_32 (Peer (1)), BSSID_Byte_Shift)
+                  or Shift_Left (Unsigned_32 (Peer (2)), BSSID_Byte_Shift + 8),
+            14 => Pack (Peer (3), Peer (4), Peer (5), Peer (6)),
+            others => 0];
+      begin
+         return To_Bytes (W);
+      end;
+   end Station_CAM;
+
+   Security_Length_Shift : constant := 16;
+
+   function Security_CAM (Index : Security_CAM_Index; Key : Key_16) return Bytes is
+      W : constant Words (0 .. 5) :=
+        [0 => Unsigned_32 (Index) or Shift_Left (Unsigned_32'(Security_CAM_Length), Security_Length_Shift),
+         1 => Key_Type_CCMP_128,
+         2 => Pack (Key (1), Key (2), Key (3), Key (4)),
+         3 => Pack (Key (5), Key (6), Key (7), Key (8)),
+         4 => Pack (Key (9), Key (10), Key (11), Key (12)),
+         5 => Pack (Key (13), Key (14), Key (15), Key (16))];
    begin
       return To_Bytes (W);
-   end Address_CAM;
+   end Security_CAM;
 
    --  CMAC table fields (fw.h FCTRL / CCTRL).
    CMAC_Operation   : constant Unsigned_32 := 2 ** 7;

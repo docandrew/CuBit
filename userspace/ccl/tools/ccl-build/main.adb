@@ -17,7 +17,9 @@ with Storehouse.Hex;
 --
 --    ccl-build build --store DIR --source-root DIR [--import NAME=PATH]...
 --                    [--out DIR] DIR/component.ccl
---                    (with build-params.ccl and build-catalog.ccl)
+--                    (with build-params.ccl and build-catalog.ccl; NAME is a
+--                    toolchain's, or a fetched library's to seed its tree
+--                    without network)
 --    ccl-build check --source-root DIR DIR/component.ccl...   (type-check only)
 --    ccl-build verify --store DIR
 --    ccl-build import --store DIR TREE   (copy a tree in, print its identity)
@@ -93,39 +95,56 @@ procedure Main is
       return "";
    end Import_Path;
 
+   procedure Import (Store : Build_Store.Store; Name : String; Identity : Storehouse.Digest);
+
    --  The toolchain tree the parameters pin: in the store already, or
    --  imported from the host directory --import NAME=PATH names (a Nix
    --  store tree is recorded in place, another directory copied).
    function Toolchain (Store : Build_Store.Store; Pin : Build_Declarations.Toolchain) return Storehouse.Digest is
       Name : constant String := To_String (Pin.Name);
       Pinned : constant String := To_String (Pin.Identity);
-      Path : constant String := Import_Path (Name);
-      Identity, Imported : Storehouse.Digest;
    begin
       if not Storehouse.Hex.Is_Name (Pinned) then
          raise Usage_Error with "toolchain " & Name & ": identity is not 64 lowercase hex digits";
       end if;
-      Identity := Storehouse.Hex.Parse (Pinned);
-      if Store.Contains (Storehouse.Tree, Identity) then
-         return Identity;
-      end if;
-      if Path = "" then
+      if not Store.Contains (Storehouse.Tree, Storehouse.Hex.Parse (Pinned)) and then Import_Path (Name) = "" then
          raise Usage_Error with "toolchain " & Name & " is not in the store; give --import " & Name & "=PATH";
       end if;
+      Import (Store, Name, Storehouse.Hex.Parse (Pinned));
+      return Storehouse.Hex.Parse (Pinned);
+   end Toolchain;
+
+   --  A pinned tree (a toolchain, a fetched library's tree) not yet in the
+   --  store, imported from the host directory --import NAME=PATH names when
+   --  one is given: a Nix store tree is recorded in place, another copied.
+   --  A tree whose identity is not the pin is refused.
+   procedure Import (Store : Build_Store.Store; Name : String; Identity : Storehouse.Digest) is
+      Path : constant String := Import_Path (Name);
+      Nix : constant Boolean := Path'Length > Build_Store.Nix_Store'Length
+        and then Path (Path'First .. Path'First + Build_Store.Nix_Store'Length - 1) = Build_Store.Nix_Store;
+      Imported : Storehouse.Digest;
+   begin
+      if Store.Contains (Storehouse.Tree, Identity) or else Path = "" then
+         return;
+      end if;
       Put_Line ("importing " & Name & " from " & Path);
-      if Path'Length > Build_Store.Nix_Store'Length
-        and then Path (Path'First .. Path'First + Build_Store.Nix_Store'Length - 1) = Build_Store.Nix_Store
-      then
+      --  Hashed first, so a tree that is not the pinned one is never stored
+      --  (Put_Tree and Record_Nix_Tree hash it again as they store it).
+      Imported := Build_Store.Hash_Tree (Path, Absolute_Links => Nix);
+      if Imported /= Identity then
+         --  Identities first: GNAT bounds exception messages.
+         raise Usage_Error with Name & " pins " & Storehouse.Hex.Image (Identity) & "; it has identity " &
+           Storehouse.Hex.Image (Imported) & " at " & Path;
+      end if;
+      if Nix then
          Store.Record_Nix_Tree (Path, Imported);
       else
          Store.Put_Tree (Path, Imported);
       end if;
       if Imported /= Identity then
-         raise Usage_Error with Path & " has identity " & Storehouse.Hex.Image (Imported) & "; " &
-           Name & " pins " & Pinned;
+         raise Usage_Error with Path & " changed while it was imported";
       end if;
-      return Identity;
-   end Toolchain;
+   end Import;
 
    --  A component's directory relative to the source tree's root: the
    --  directory of its component.ccl, which must lie in the tree.
@@ -190,6 +209,10 @@ procedure Main is
       Build_Declarations.Read_Component
         (Read_File (Argument (Argument_Count)), Schema,
          Component_Directory (Source_Root, Argument (Argument_Count)), Profile, Known, Program);
+      --  A fetched tree may be seeded offline, against the same pin.
+      for T of Program.Trees loop
+         Import (Store, To_String (T.Name), T.Tree);
+      end loop;
       Build_Ada_Programs.Build
         (Store, Source_Root, Profile, Program,
          Toolchain (Store, Profile.Compiler_Tools), Toolchain (Store, Profile.Binutils), Result);

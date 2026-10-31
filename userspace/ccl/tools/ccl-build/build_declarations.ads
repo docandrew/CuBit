@@ -29,12 +29,17 @@ package Build_Declarations is
    type Optimization is (Normal, Maximum);
    type Checks is (Enabled, Suppressed);
    type Frame_Pointer is (Omitted, Kept);
+   type Warnings is (Reported, Suppressed);
+   type Instruction_Set is (AES_NI, ADX, AVX2, AVX512);
+   type Instruction_Sets is array (Instruction_Set) of Boolean;
    type Ada_Code is record
       Language : Ada_Language := Ada_2012;
       Level : Optimization := Normal;
       Run_Time_Checks : Checks := Enabled;
       Frames : Frame_Pointer := Omitted;
       Value_Range_Propagation : Boolean := True;
+      Warn : Warnings := Reported;
+      Instructions : Instruction_Sets := [others => False];
    end record;
 
    type Code_Profile is record
@@ -50,8 +55,28 @@ package Build_Declarations is
    end record;
    package Unit_Code_Vectors is new Ada.Containers.Vectors (Positive, Unit_Code);
 
+   --  A source tree from outside the repository (Library_Origin.Fetch): a
+   --  gzip'd tar archive whose single top directory is removed, pinned by
+   --  its Storehouse tree identity. Steps see it at External_Directory /
+   --  Name, so its paths never meet the repository's.
+   type Archive_Format is (Tar_Gz);
+   type Fetched_Tree is record
+      Name : Unbounded_String;           --  the library's name
+      URL : Unbounded_String;
+      Format : Archive_Format := Tar_Gz;
+      Tree : Storehouse.Digest := [others => 0];
+   end record;
+   package Tree_Vectors is new Ada.Containers.Vectors (Positive, Fetched_Tree);
+   External_Directory : constant String := "external";
+
+   type Library_Origin is (Repository, Fetch);
    type Library is record
       Name : Unbounded_String;
+      Origin : Library_Origin := Repository;
+      Fetched : Fetched_Tree;            --  Fetch only
+      --  Library_Code.Profile: the profile its units are compiled with;
+      --  empty for the program's code.
+      Profile : Unbounded_String;
       Sources, Archives : String_Vectors.Vector;
       Units : Unit_Code_Vectors.Vector;
    end record;
@@ -81,9 +106,11 @@ package Build_Declarations is
       Linker : Link_Vectors.Vector;
    end record;
 
-   --  Switches for some units instead of the program's.
+   --  Switches for some units instead of the program's: units named in
+   --  Files, or (when Files is empty) every unit in Directory.
    type Unit_Switches is record
       Files, Switches : String_Vectors.Vector;
+      Directory : Unbounded_String;
    end record;
    package Unit_Switch_Vectors is new Ada.Containers.Vectors (Positive, Unit_Switches);
 
@@ -113,10 +140,13 @@ package Build_Declarations is
       Compiler, Binder, Binder_Unit : String_Vectors.Vector;
       Linker : Link_Vectors.Vector;
       --  Its own unit groups, then its libraries'; a unit's switches are
-      --  the first group naming it.
+      --  the first group naming it, then its library's code, if any.
       Units : Unit_Switch_Vectors.Vector;
+      Directory_Code : Unit_Switch_Vectors.Vector;
       Archives : String_Vectors.Vector;
       Blobs : Blob_Vectors.Vector;
+      --  Fetched trees its libraries' paths lie in.
+      Trees : Tree_Vectors.Vector;
    end record;
 
    --  The file a component is declared in, in its own directory.

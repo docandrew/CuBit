@@ -6,6 +6,8 @@ with Interfaces; use Interfaces;
 with CuBit.Wifi_Scan;
 with RTW89_RX; use RTW89_RX;
 with RTW89_H2C;
+with RTW89_TX;
+with RTW89_TX_Power;
 with RTW89_Channel_Values;
 with RTW89_PHY_Tables;
 with RTW89_Tables_8852B;
@@ -178,6 +180,88 @@ begin
              and then T (37 .. 40) = [0, 0, 16#20#, 0] and then T (53 .. 56) = [0, 16#0E#, 0, 0]
              and then T (57 .. 60) = [0, 0, 16#FF#, 16#FF#] and then T (61 .. 64) = [0, 0, 16#0C#, 16#0F#],
              "h2c: default CMAC table");
+   end;
+
+   --  Associated station CAM (W3/W4): INFRA, TMA and BSSID entry = AP,
+   --  AID, pairwise key in slot 0 (CAM 4, key 0), group in slot 2 (CAM 5,
+   --  key 1). Words worked out from cam.c rtw89_cam_fill_addr_cam_info.
+   declare
+      use RTW89_H2C;
+      Own : constant Address := [16#94#, 16#97#, 16#4F#, 16#28#, 16#7C#, 16#87#];
+      AP  : constant Address := [16#00#, 16#0C#, 16#41#, 16#82#, 16#B2#, 16#55#];
+      Keys : Key_Entries := No_Keys;
+      CAM : Bytes (1 .. Address_CAM_Bytes);
+      Own_Hash : constant Unsigned_8 := 16#94# xor 16#97# xor 16#4F# xor 16#28# xor 16#7C# xor 16#87#;
+      AP_Hash : constant Unsigned_8 := 16#0C# xor 16#41# xor 16#82# xor 16#B2# xor 16#55#;
+   begin
+      Keys (Pairwise_Slot) := (True, 4, 0);
+      Keys (Group_Slot) := (True, 5, 1);
+      CAM := Station_CAM ((Own => Own, Peer => AP, Kind => Infrastructure, AID => 1, Keys => Keys));
+      Check (CAM (9 .. 12) = [16#05#, 0, Own_Hash, AP_Hash], "h2c: station CAM w2 valid, INFRA, hashes");
+      Check (CAM (21 .. 28) = [16#7C#, 16#87#, 16#00#, 16#0C#, 16#41#, 16#82#, 16#B2#, 16#55#],
+             "h2c: station CAM w5/w6 SMA tail, TMA");
+      --  w9: AID 1, mode NORMAL (2 << 16), slot 2 key id 1 at [23:22].
+      Check (CAM (37 .. 40) = [1, 0, 16#42#, 0], "h2c: station CAM w9 AID, mode, key ids");
+      --  w10: valid slots 0 and 2 (0x05), entry0 4, entry1 0, entry2 5.
+      Check (CAM (41 .. 44) = [16#05#, 4, 0, 5], "h2c: station CAM w10 security entries");
+      Check (CAM (53 .. 60) = [16#FD#, 0, 16#00#, 16#0C#, 16#41#, 16#82#, 16#B2#, 16#55#],
+             "h2c: station CAM w13/w14 BSSID");
+      Check (Join_Info_Connected = [0, 0, 0, 16#06#], "h2c: join info connected 0x06000000");
+      Check (Security_CAM (4, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16])
+             = [4, 0, 20, 0, 6, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
+             "h2c: security CAM entry");
+   end;
+
+   --  Transmit power (W3), worked out from rtw8852b_table.c and phy.c:
+   --  byrate 0x50 (20 dBm, RF units) is 0x28 in MAC units; worldwide
+   --  2.4 GHz channel 1 limits: 1 path CCK 56 -> 28, OFDM/MCS 58 -> 29;
+   --  2 paths CCK 44 -> 22, OFDM/MCS 46 -> 23, MCS with beamforming 34 -> 17.
+   declare
+      use RTW89_TX_Power;
+      R : constant Byrate_Array := Byrate (CuBit.Wifi_Scan.Band_2_4_GHz);
+      L : constant Limit_Array := Limits (CuBit.Wifi_Scan.Band_2_4_GHz, 1);
+      L5 : constant Limit_Array := Limits (CuBit.Wifi_Scan.Band_5_GHz, 36);
+   begin
+      Check (R (0) = 16#2828_2828# and then R (1) = 16#2828_2828# and then R (2) = 16#2426_2828#,
+             "txpwr: byrate CCK, OFDM 0-3, OFDM 4-7");
+      Check (R (5) = 16#1A1C_1E20#, "txpwr: byrate MCS 8-11 (0x34383c40 / 2)");
+      Check (Offset (CuBit.Wifi_Scan.Band_2_4_GHz) = 0, "txpwr: rate offsets zero");
+      Check (L (0) = 16#0000_001C# and then L (1) = 16#001D_001D#, "txpwr: 1-path limits, channel 1");
+      Check (L (10) = 16#0000_0016# and then L (11) = 16#1117_0017#, "txpwr: 2-path limits, channel 1");
+      Check (L (2) = 0 and then L (9) = 0, "txpwr: wider-channel limits zero at 20 MHz");
+      Check (L5 (0) = 0 and then (L5 (1) and 16#FF#) = 16#15#, "txpwr: 5 GHz channel 36: no CCK, OFDM 42 -> 21");
+      Check (Reference (0) = 16#02B2_7000#, "txpwr: BB reference at 0 dBm");
+   end;
+
+   --  TX WD pages (W3/W4), against rtw89_build_txwd_* field layouts.
+   declare
+      use RTW89_TX;
+      P : Page;
+   begin
+      P := Fill ((On => B0MG, Station => 0, Size => 30, Frame_Bus => 16#1_2345_6780#,
+                  Page_Sequence => 3, Rate => Rate_OFDM_6, others => <>));
+      --  body0: WD info, channel 8, WD page, SSN select 1, mode 1.
+      Check (P (0 .. 3) = [16#85#, 0, 16#48#, 0], "tx: mgmt body0");
+      --  body2: qsel 0x12 << 17, size 30.
+      Check (P (8 .. 11) = [30, 0, 16#24#, 0], "tx: mgmt body2");
+      --  info0: use rate, disable fallback, rate 4 << 16.
+      Check (P (24 .. 27) = [0, 16#04#, 16#04#, 16#40#], "tx: mgmt info0");
+      Check (P (40 .. 43) = [0, 0, 0, 16#88#], "tx: info4 HW RTS and RTS (unicast)");
+      Check (P (48 .. 49) = [3, 16#80#], "tx: wp seq0 valid");
+      Check (P (56 .. 63) = [30, 0, 16#41#, 16#80#, 16#80#, 16#67#, 16#45#, 16#23#],
+             "tx: address info length, MSDU LS | count 1 | DMA hi, low address");
+      P := Fill ((On => ACH0, Station => 0, Size => 1000, Frame_Bus => 16#1000#, Page_Sequence => 0,
+                  SW_Sequence => 16#123#, Rate => Rate_OFDM_24, Header_Bytes => 24, Group => True,
+                  Encrypt => True, Security_Entry => 4));
+      --  body0: WD info, channel 0, header 12 words << 11, WD page.
+      Check (P (0 .. 3) = [16#80#, 16#60#, 16#40#, 0], "tx: data body0");
+      Check (P (8 .. 11) = [16#E8#, 16#03#, 0, 0], "tx: data body2 qsel BE");
+      Check (P (12 .. 15) = [16#23#, 16#01#, 0, 0], "tx: data sequence");
+      --  info2: CCMP (6 << 9), HW encrypt, CAM 4.
+      Check (P (32 .. 35) = [16#04#, 16#0D#, 0, 0], "tx: data info2 security");
+      Check (P (40 .. 43) = [0, 0, 0, 16#80#], "tx: group frame without RTS");
+      Check (Report_Sequence (16#0003_0000#) = 3 and then Report_Sequence (16#FFFF_FFFF#) = 16#7FFF#,
+             "tx: release report sequence");
    end;
 
    --  Channel values (seq-bbrf.md 3.5, 3.6).

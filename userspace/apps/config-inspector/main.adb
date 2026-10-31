@@ -51,6 +51,7 @@ procedure Main is
         when P.OK => "Ready",
         when P.Denied => "Config read authority denied",
         when P.Missing => "Entry no longer exists; refresh the tree",
+        when P.Secret => "Secret: present (its value is never shown)",
         when P.Too_Large => "Result exceeds the 1024-byte inspector limit; not truncated",
         when P.Invalid_Request => "Invalid Config response or unsupported namespace",
         when P.Unavailable => "Config service unavailable");

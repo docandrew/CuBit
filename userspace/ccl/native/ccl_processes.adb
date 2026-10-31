@@ -73,6 +73,7 @@ package body CCL_Processes is
          begin
             if State in STATE_OFFSET .. STATE_OFFSET + Processes.Run_State'Pos (Processes.Run_State'Last) then
                Item.Pid := Natural (U32 (Base + PO.Pid_Offset));
+               Item.Process := U64 (Base + PO.Pid_Offset);
                Item.Name_Length := Name_Length;
                for I in 1 .. Name_Length loop
                   Item.Name (I) := Character'Val (Page (Base + PO.Name_Offset + I - 1));

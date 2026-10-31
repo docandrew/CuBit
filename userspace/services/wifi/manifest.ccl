@@ -1,0 +1,14 @@
+# wifi.svc's authority (docs/wifi.md "Process structure", "Capability
+# layout and key custody"): its role registration (Wi-Fi drivers attach to
+# it, controllers call it), devmgr's endpoint for readiness and its log
+# publisher, and Config for the Secret family wifi.secret. (passphrases),
+# which only this manifest names, read and written. It holds no endpoint to
+# any driver: the driver attaches and parks its command waits here.
+(Executable_Manifest
+  identity => "com.cubit.wifi"
+  version => "0.1.0"
+  requests => [
+    (notification "wifi" Notify_Access.Manage "registration")
+    (service "config" "config")
+    (service "device-manager" "ready")]
+  scopes => [(config [File_Right.Read File_Right.Write] "wifi.secret.")])

@@ -26,21 +26,52 @@
 # proved.
 (type Checks (enum Enabled Suppressed))
 (type Frame_Pointer (enum Omitted Kept))
+# Reported is -gnatwa; Suppressed (-gnatws) is for code maintained
+# elsewhere, such as a fetched crate.
+(type Warnings (enum Reported Suppressed))
+# Instruction sets beyond the target's baseline, for units that run them
+# only after checking the processor (SPARKTLSCrypto's accelerated tiers).
+(type Instruction_Set (enum AES_NI ADX AVX2 AVX512))
 # value_range_propagation false is SPARKNaCl's -fno-tree-vrp workaround.
 (type Ada_Code (record
   (language Ada_Language Ada_Language.Ada_2012) (optimization Optimization Optimization.Normal)
   (checks Checks Checks.Enabled) (frame_pointer Frame_Pointer Frame_Pointer.Omitted)
-  (value_range_propagation Boolean true)))
+  (value_range_propagation Boolean true) (warnings Warnings Warnings.Reported)
+  (instruction_sets (List Instruction_Set) [])))
 
 # A named code profile (build-catalog.ccl) and units compiled with one.
 (type Code_Profile (record (name String) (code Ada_Code)))
 (type Unit_Code (record (files (List String)) (profile String)))
 
+# A SHA-256 digest as eight 32-bit words of the hex digest, in order.
+(type Digest_Word (range 0 4294967295))
+(type SHA256_Digest (record (w1 Digest_Word) (w2 Digest_Word) (w3 Digest_Word) (w4 Digest_Word)
+  (w5 Digest_Word) (w6 Digest_Word) (w7 Digest_Word) (w8 Digest_Word)))
+
+# Where a library's files are: in the source tree, or in a source tree
+# fetched from outside it (docs/ccl-build.md, "Fetchers are fixed-output
+# steps"). A fetched tree is a gzip'd tar archive, downloaded once, its
+# single top directory removed, and pinned by its Storehouse tree identity
+# (what `ccl-build hash-tree DIR` prints), as eight words like
+# SHA256_Digest. A mismatch is refused and nothing is stored; afterwards
+# the tree is answered from the store, with no network. The first build
+# without network may seed it with --import NAME=PATH, which is checked
+# against the same pin. A fetched library's sources and archives are
+# relative to its tree.
+(type Archive_Format (enum Tar_Gz))
+(type Fetched_Tree (record (url String) (format Archive_Format) (tree SHA256_Digest)))
+(type Library_Origin (variant (Repository) (Fetch Fetched_Tree)))
+# How a library's units are compiled: with the program's code, or with a
+# named code profile (a unit group naming a unit still comes first).
+(type Library_Code (variant (Program_Code) (Profile String)))
+
 # A library components name: source directories compiled into each user,
 # units with their own code profile, and archives built elsewhere, linked
 # after the component's objects (the font library).
 (type Library (record
-  (name String) (sources (List String) []) (units (List Unit_Code) []) (archives (List String) [])))
+  (name String) (origin Library_Origin Library_Origin.Repository)
+  (code Library_Code Library_Code.Program_Code)
+  (sources (List String) []) (units (List Unit_Code) []) (archives (List String) [])))
 
 (type Parameters (record
   (toolchain Toolchain) (binutils Toolchain) (runtime String)
@@ -78,11 +109,9 @@
 
 # Bytes linked into a program (docs/device-matching.md, "Firmware"): a
 # file under firmware/ or a download, pinned by its SHA-256 as eight
-# 32-bit words of the hex digest, in order. ccl-build hashes the bytes and
-# refuses a mismatch; Ada reads them from the generated package Embedded.
-(type Digest_Word (range 0 4294967295))
-(type SHA256_Digest (record (w1 Digest_Word) (w2 Digest_Word) (w3 Digest_Word) (w4 Digest_Word)
-  (w5 Digest_Word) (w6 Digest_Word) (w7 Digest_Word) (w8 Digest_Word)))
+# 32-bit words of the hex digest, in order (SHA256_Digest, above).
+# ccl-build hashes the bytes and refuses a mismatch; Ada reads them from
+# the generated package Embedded.
 (type Pinned (record (location String) (sha256 SHA256_Digest)))
 (type Blob_Source (variant (Vendored Pinned) (Fetch Pinned)))
 (type Blob (record (name String) (source Blob_Source) (licence String)))
@@ -93,3 +122,5 @@
   (Blob_Source.Vendored (Pinned path digest)))
 (define (fetch (url String) (digest SHA256_Digest)) Blob_Source
   (Blob_Source.Fetch (Pinned url digest)))
+(define (fetch_tar_gz (url String) (tree SHA256_Digest)) Library_Origin
+  (Library_Origin.Fetch (Fetched_Tree url Archive_Format.Tar_Gz tree)))

@@ -10,6 +10,8 @@ package CCL_Processes is
    MAXIMUM_IDENTITY : constant := 64;
    type Listed is record
       Pid : Natural := 0;
+      --  The whole process identity (Pid is its low 32 bits, as shown).
+      Process : Interfaces.Unsigned_64 := 0;
       Name : String (1 .. MAXIMUM_NAME) := [others => ' '];
       Name_Length : Natural range 0 .. MAXIMUM_NAME := 0;
       --  The manifest identity (com.cubit.x), "" when procmgr did not start it.

@@ -75,6 +75,17 @@ package RTW89_PHY is
                           Locked : out Boolean; Result : out Outcome)
      with Pre => RTW89_MMIO.Attached;
 
+   --  Transmit (NET-WIFI-001 W3; rtw89_phy_dm_init's tail and
+   --  rtw89_set_channel's set_txpwr). Power_Trim: the thermal and PA-bias
+   --  trims from the efuse (rtw8852bx_power_trim). TX_Power_Control: the
+   --  BB power reference (rtw8852bx_set_txpwr_ctrl). TX_Power: power by
+   --  rate, rate offsets, spectrum shaping and worldwide limits for the
+   --  channel (RTW89_TX_Power), done by Set_Channel on every switch. No
+   --  TSSI, IQK or DPK yet: open-loop power at the reference.
+   procedure Power_Trim (Card : Board) with Pre => RTW89_MMIO.Attached;
+   procedure TX_Power_Control with Pre => RTW89_MMIO.Attached;
+   procedure TX_Power (Band : WS.Band; Channel : WS.Channel_Number) with Pre => RTW89_MMIO.Attached;
+
    --  RX DC offset calibration on the current channel (both paths).
    procedure RX_DC_Calibrate with Pre => RTW89_MMIO.Attached;
 

@@ -16,7 +16,7 @@ project Durable_Turso is
       "config_object_dispatch.ads", "config_object_dispatch.adb",
       "config_object_receiver.ads", "config_object_receiver.adb",
       "config_object_service.ads", "config_object_service.adb",
-      "config_collections.ads", "config_collections.adb", "config_authority.ads", "cubit-process_ids.ads", "cubit-process_ids.adb", "config_authority.adb",
+      "config_collections.ads", "config_collections.adb", "config_authority.ads", "cubit-process_ids.ads", "cubit-process_ids.adb", "config_authority.adb", "ccl-setting_secrets.ads",
       "cubit-config_inspection.ads", "cubit-config_inspection.adb",
       "config_worker_receiver.ads", "config_worker_receiver.adb",
       "config_worker_channel.ads", "config_worker_channel.adb",

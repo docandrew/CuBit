@@ -25,6 +25,7 @@ with Config_Authority;
 with Config_Authority_Wire;
 with Config_Store;
 with CCL.Setting_Kinds;
+with CCL.Setting_Secrets;
 with CCL.Setting_Codecs.Checks;
 with CuBit.Config_Protocol;
 with Config_Typed_Service;
@@ -81,7 +82,11 @@ procedure main is
    is
       use type Config_Authority.Operation;
    begin
-      if isAdmin (sender) then
+      --  devmgr and procmgr may seed and manage settings, but read no
+      --  secret: a Secret setting is read only through a scope naming it.
+      if isAdmin (sender) and then
+        not (rights = ACL_READ and then CCL.Setting_Secrets.Is_Secret (key))
+      then
          return True;
       end if;
 
@@ -259,7 +264,15 @@ procedure main is
          Buffer : String (1 .. PAGE_SIZE) with Import, Address => Address;
          Key : constant String := Buffer (1 .. Key_Length);
       begin
-         if not checkAccess (sender, Key, ACL_READ) then
+         if msg.tag.label = Operation'Enum_Rep (Read_Value)
+           and then CCL.Setting_Secrets.Is_Secret (Key)
+           and then not checkAccess (sender, Key, ACL_READ)
+           and then checkAccess (sender, "", ACL_READ)
+         then
+            --  A global inspector learns only whether a secret is there.
+            Config_Store.Read (store, Key, Stored_Value, Found);
+            Result := (if Found then Secret else Missing);
+         elsif not checkAccess (sender, Key, ACL_READ) then
             Result := Denied;
             Report_Refusal
               (sender, (if msg.tag.label = Operation'Enum_Rep (Read_Value) then "read" else "list"),
@@ -279,7 +292,11 @@ procedure main is
                   Item : constant Config_Store.Key_Text := Config_Store.Key_At (store, I);
                begin
                   if Item.Length > 0 and then Contains (Key, Item.Data (1 .. Item.Length))
-                    and then checkAccess (sender, Item.Data (1 .. Item.Length), ACL_READ)
+                    and then (checkAccess (sender, Item.Data (1 .. Item.Length), ACL_READ)
+                              --  A secret's name, for a global inspector to show
+                              --  redacted (Read_Value answers Secret).
+                              or else (CCL.Setting_Secrets.Is_Secret (Item.Data (1 .. Item.Length))
+                                       and then checkAccess (sender, "", ACL_READ)))
                   then
                      if Item.Length + 1 > Maximum_Text - Output.Length then
                         Result := Too_Large; exit;

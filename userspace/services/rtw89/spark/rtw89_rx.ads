@@ -75,6 +75,8 @@ package RTW89_RX with Pure, SPARK_Mode is
    Bandwidth_Shift    : constant := 30;                        --  [31:30]
    --  dw3
    A1_Match_Bit       : constant Unsigned_32 := 2 ** 0;
+   SW_Decrypt_Bit     : constant Unsigned_32 := 2 ** 1;        --  AX_RXD_SW_DEC
+   HW_Decrypt_Bit     : constant Unsigned_32 := 2 ** 2;        --  AX_RXD_HW_DEC
    CRC32_Error_Bit    : constant Unsigned_32 := 2 ** 9;
    ICV_Error_Bit      : constant Unsigned_32 := 2 ** 10;
    --  dw4 (long only)
@@ -107,6 +109,8 @@ package RTW89_RX with Pure, SPARK_Mode is
       A1_Match      : Boolean := False;
       CRC_Error     : Boolean := False;
       ICV_Error     : Boolean := False;
+      HW_Decrypted  : Boolean := False;        --  decrypted (CCMP header and MIC left in place)
+      SW_Decrypt    : Boolean := False;        --  the hardware asks software to decrypt
       Frame         : Frame_Type := Unknown;
       Single        : Boolean := False;        --  first and last segment in one buffer
    end record;

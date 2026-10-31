@@ -1,0 +1,6 @@
+# WiFi_Crypto's known-answer self-test (rtw89's) run natively by
+# wifi-crypto-check, with SPARKNaCl and SPARKTLSCrypto compiled by ccl-build.
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "wifi-crypto-check.app" (priority 3))
+)

@@ -12,7 +12,7 @@ package body CCL.Interfaces.Wifi with SPARK_Mode is
    procedure Define_Types (Bound : out Contracts; Accepted : out Boolean) is
       Checked : CCL.Language.Analysis_Result;
       Types : CCL.Types.Registry;
-      Network_Type, List_Type : CCL.Types.Type_Reference;
+      Network_Type, List_Type, Status_Type : CCL.Types.Type_Reference;
       Listed : CCL.Types.List_Result;
    begin
       Bound := (others => <>);
@@ -26,6 +26,8 @@ package body CCL.Interfaces.Wifi with SPARK_Mode is
       Accepted := Listed in CCL.Types.List_Specialized | CCL.Types.List_Already_Specialized;
       if Accepted then CCL.Objects.Bind (Types, Network_Type, NETWORK_KEY, Bound.Network, Accepted); end if;
       if Accepted then CCL.Objects.Bind (Types, List_Type, NETWORKS_KEY, Bound.Networks, Accepted); end if;
+      Status_Type := CCL.Types.Find (Types, CCL.Types.Named ("Wifi_Status"));
+      if Accepted then CCL.Objects.Bind (Types, Status_Type, STATUS_KEY, Bound.Connection, Accepted); end if;
    end Define_Types;
 
    procedure Publish
@@ -41,6 +43,33 @@ package body CCL.Interfaces.Wifi with SPARK_Mode is
         (Argument => CCL.Host_Values.Integer_Value,
          Result => CCL.Host_Values.Object_Value, Result_Schema => NETWORKS_KEY,
          Authority => CCL.VM.Observe_Authority, others => <>);
+      --  Joining and leaving act on the system; each answers the status.
+      JOIN_CONTRACT : constant CCL.Host_Values.Import_Declaration :=
+        (Argument => CCL.Host_Values.Text_Value, Argument_Text_Limit => MAXIMUM_SSID_ARGUMENT,
+         Result => CCL.Host_Values.Object_Value, Result_Schema => STATUS_KEY,
+         Authority => CCL.VM.Control_Authority, others => <>);
+      LEAVE_CONTRACT : constant CCL.Host_Values.Import_Declaration :=
+        (Argument => CCL.Host_Values.Integer_Value,
+         Result => CCL.Host_Values.Object_Value, Result_Schema => STATUS_KEY,
+         Authority => CCL.VM.Control_Authority, others => <>);
+      STATUS_CONTRACT : constant CCL.Host_Values.Import_Declaration :=
+        (Argument => CCL.Host_Values.Integer_Value,
+         Result => CCL.Host_Values.Object_Value, Result_Schema => STATUS_KEY,
+         Authority => CCL.VM.Observe_Authority, others => <>);
+      --  The passphrase never reaches the program: the console asks for it.
+      PASSPHRASE_CONTRACT : constant CCL.Host_Values.Import_Declaration :=
+        (Argument => CCL.Host_Values.Text_Value, Argument_Text_Limit => MAXIMUM_SSID_ARGUMENT,
+         Result => CCL.Host_Values.Text_Value, Result_Text_Limit => 192,
+         Authority => CCL.VM.Control_Authority, others => <>);
+      procedure Add (Item : Operation; Parameters : Natural; Contract : CCL.Host_Values.Import_Declaration) is
+      begin
+         if Error = CCL.Catalog.Catalog_Valid then
+            CCL.Catalog.Define_Host_Operation (Name (Item), Parameters, Contract, Entry_Operation, Error);
+         end if;
+         if Error = CCL.Catalog.Catalog_Valid then
+            CCL.Catalog.Add_Operation (Descriptor, Entry_Operation, Error);
+         end if;
+      end Add;
       procedure Publish_Schema (Contract : CCL.Objects.Binding) is
       begin
          if Accepted then
@@ -53,14 +82,14 @@ package body CCL.Interfaces.Wifi with SPARK_Mode is
       Define_Types (Bound, Accepted);
       Publish_Schema (Bound.Network);
       Publish_Schema (Bound.Networks);
+      Publish_Schema (Bound.Connection);
       if not Accepted then return; end if;
       CCL.Catalog.Define_Interface ("wifi", 1, 0, DIGEST, Descriptor, Error);
-      if Error = CCL.Catalog.Catalog_Valid then
-         CCL.Catalog.Define_Host_Operation (Name (Scan), 0, SCAN_CONTRACT, Entry_Operation, Error);
-      end if;
-      if Error = CCL.Catalog.Catalog_Valid then
-         CCL.Catalog.Add_Operation (Descriptor, Entry_Operation, Error);
-      end if;
+      Add (Scan, 0, SCAN_CONTRACT);
+      Add (Join, 1, JOIN_CONTRACT);
+      Add (Leave, 0, LEAVE_CONTRACT);
+      Add (Status, 0, STATUS_CONTRACT);
+      Add (Passphrase, 1, PASSPHRASE_CONTRACT);
       if Error = CCL.Catalog.Catalog_Valid then
          CCL.Catalog.Publish (Item, Descriptor, Error);
       end if;

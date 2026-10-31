@@ -4,13 +4,14 @@
 --  (CuBit.Wifi_Scan). run.sh builds and runs them.
 project RTW89_Tests is
    Runtime := "../../userspace/runtime/gnat";
-   for Source_Dirs use (".", "../../userspace/services/rtw89/spark", Runtime);
+   for Source_Dirs use (".", "../../userspace/services/rtw89/spark", "../../userspace/lib/wifi", Runtime);
    for Source_Files use
      ("cubit.ads", "cubit-channel_rings.ads", "cubit-channel_rings.adb",
       "cubit-slot_rings.ads", "cubit-slot_rings.adb", "cubit-frame_rings.ads",
       "cubit-net_link.ads", "cubit-net_link.adb", "cubit-wifi_scan.ads", "cubit-wifi_scan.adb",
       "rtw89_efuse.ads", "rtw89_efuse.adb", "rtw89_firmware.ads", "rtw89_firmware.adb",
-      "rtw89_descriptors.ads", "rtw89_rx.ads", "rtw89_rx.adb",
+      "rtw89_descriptors.ads", "rtw89_rx.ads", "rtw89_rx.adb", "rtw89_tx.ads", "rtw89_tx.adb", "rtw89_tx_power.ads", "rtw89_tx_power.adb",
+      "rtw89_tx_power_8852b.ads",
       "ieee80211_beacons.ads", "ieee80211_beacons.adb",
       "wifi_bss_table.ads", "wifi_bss_table.adb", "wifi_channel_plan.ads",
       "rtw89_phy_tables.ads", "rtw89_phy_tables.adb", "rtw89_tables_8852b.ads",

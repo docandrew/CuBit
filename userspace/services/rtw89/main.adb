@@ -7,7 +7,8 @@
 --  W1 (docs/wifi.md): bring-up to "firmware ready", then the normal-mode
 --  start (MAC init, BB/RF tables, antenna grant, calibration, receive
 --  path) and a passive scan of the world regulatory domain's channels,
---  published to netstack as typed data (CuBit.Wifi_Scan).
+--  published to netstack and wifi.svc as typed data (CuBit.Wifi_Scan);
+--  W3/W4: the station wifi.svc drives (RTW89_Station, CuBit.Wifi_Driver).
 --
 --  @description
 --  One line per stage, to logstore and serial, in the bring-up convention
@@ -17,10 +18,12 @@
 --  then one scan summary line per pass that changes what was heard.
 --  Stages 1-12 are rtw89's probe (chip_info_setup), after which the MAC is
 --  powered off as rtw89 does; stages 13-23 are rtw89_core_start, the
---  station interface and the scan. The radio only listens: no frame is
---  queued for transmission and no probe request is ever sent (world
---  regulatory domain: passive only). On a failure the MAC is powered off
---  and the driver exits; devmgr logs the exit and boot continues.
+--  station interface and the scan. The scan only listens: no probe
+--  request is ever sent (world regulatory domain: passive only). The
+--  radio transmits only for a join wifi.svc asks for, on the channel the
+--  BSS was heard on, at the worldwide power limits; one line per command
+--  ("command 0x.... ok|fail"). On a failure the MAC is powered off and
+--  the driver exits; devmgr logs the exit and boot continues.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
 with Interfaces; use Interfaces;
@@ -44,6 +47,13 @@ with RTW89_MAC_Init;
 with RTW89_PHY;
 with RTW89_Receive;
 with RTW89_Link;
+with RTW89_Wifi_Link;
+with RTW89_Station;
+with RTW89_Transmit;
+with Wifi_Station_Path;
+with CuBit.Monotonic;
+with CuBit.Kernel_ABI;
+with CuBit.Wifi_Driver;
 with RTW89_Text; use RTW89_Text;
 with Wifi_BSS_Table;
 with Wifi_Channel_Plan;
@@ -51,6 +61,7 @@ with Wifi_Channel_Plan;
 procedure Main is
    use type RTW89_Launch.Acquire_Status;
    use type RTW89_Link.Attach_Status;
+   use type RTW89_Wifi_Link.Attach_Status;
 
    package WS renames CuBit.Wifi_Scan;
    package MR renames RTW89_MAC_Registers;
@@ -284,12 +295,142 @@ procedure Main is
    Last_Total : Natural := Natural'Last;
    Halted_Reported : Boolean := False;
 
+   ---------------------------------------------------------------------------
+   --  What wakes the driver besides its polls (NET-WIFI-001 W3/W4): wifi.svc's
+   --  answer to the parked Command_Wait (a command), netstack's answer to
+   --  the parked Transmit_Wait (frames to send). Frames go out before the
+   --  command that came with them; each command is reported with Done.
+   ---------------------------------------------------------------------------
+   procedure Service is
+      Entry_Found : CuBit.Messages.CompletionEntry;
+      Sender : CuBit.Messages.Process_ID;
+      Request : CuBit.Messages.Message;
+      Found : Boolean;
+      Ignore : Unsigned_64;
+   begin
+      while CuBit.Messages.Poll_Completion (Entry_Found'Address) = 1 loop
+         if not RTW89_Wifi_Link.Take (Entry_Found) then
+            Found := RTW89_Link.Take (Entry_Found);
+         end if;
+      end loop;
+      --  Nobody calls the driver; anything that does is refused.
+      loop
+         CuBit.Messages.Poll_Service_Request (Sender, Request, Found);
+         exit when not Found;
+         Ignore := CuBit.Messages.reply
+           (Sender, (tag => (label => CuBit.Kernel_ABI.Reply_Error, length => 0, protocol => 0, ipc => <>, reserved => 0),
+                     authorityTag => 0, words => [others => 0]));
+      end loop;
+      RTW89_Station.Send_Queued (DMA);
+      loop
+         declare
+            C : constant RTW89_Wifi_Link.Pending_Command := RTW89_Wifi_Link.Next_Command;
+            Result : CuBit.Wifi_Driver.Outcome;
+            use type CuBit.Wifi_Driver.Outcome;
+         begin
+            exit when not C.Present;
+            RTW89_Station.Command (DMA, Board, C.Label, C.Words, Result);
+            if C.Label /= CuBit.Wifi_Driver.Label (CuBit.Wifi_Driver.Transmit) then
+               RTW89_Wifi_Link.Done (C.Label, Result);
+               Line ("command 0x" & Hex (Unsigned_64 (C.Label), 4) & " "
+                     & (if Result = CuBit.Wifi_Driver.Done then "ok" else "fail outcome="
+                        & Dec (Unsigned_64 (CuBit.Wifi_Driver.Outcome'Enum_Rep (Result))))
+                     & (if RTW89_Station.Joined then " joined ch=" & Dec (Unsigned_64 (RTW89_Station.Channel))
+                        else ""),
+                     Warning => Result /= CuBit.Wifi_Driver.Done, Serial_Only => False);
+            end if;
+            RTW89_Station.Send_Queued (DMA);
+         end;
+      end loop;
+      RTW89_Wifi_Link.Park;
+      RTW89_Link.Park;
+   end Service;
+
+   ---------------------------------------------------------------------------
+   --  The data path while joined: one line a second when anything moved,
+   --  and a line for each EAPOL frame in or out (NET-WIFI-001 W3/W4).
+   ---------------------------------------------------------------------------
+   Health_Interval_Ms : constant := 1_000;
+   Last_Health_Ms : Unsigned_64 := 0;
+   Last_Station : RTW89_Station.Statistics;
+   Last_Transmit : RTW89_Transmit.Statistics;
+
+   procedure Report_Data_Path is
+      S : constant RTW89_Station.Statistics := RTW89_Station.Counts;
+      T : constant RTW89_Transmit.Statistics := RTW89_Transmit.Counts;
+      Now : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
+      use type RTW89_Station.Statistics;
+      use type RTW89_Transmit.Statistics;
+      function Drops return String is
+         Text : String (1 .. 400);
+         Last : Natural := 0;
+         procedure Add (Item : String) is
+         begin
+            if Last + Item'Length <= Text'Length then
+               Text (Last + 1 .. Last + Item'Length) := Item;
+               Last := Last + Item'Length;
+            end if;
+         end Add;
+      begin
+         for R in S.Dropped'Range loop
+            if S.Dropped (R) /= Last_Station.Dropped (R) then
+               Add (" drop-" & Wifi_Station_Path.Drop_Reason'Image (R) & "="
+                    & Dec (Unsigned_64 (S.Dropped (R) - Last_Station.Dropped (R))));
+            end if;
+         end loop;
+         return Text (1 .. Last);
+      end Drops;
+   begin
+      if S.EAPOL_In /= Last_Station.EAPOL_In then
+         Line ("eapol rx count=" & Dec (Unsigned_64 (S.EAPOL_In)) & " len="
+               & Dec (Unsigned_64 (RTW89_Station.Last_EAPOL_Length)) & " key-info=0x"
+               & Hex (Unsigned_64 (RTW89_Station.Last_EAPOL_Information), 4) & " to wifi.svc");
+      end if;
+      if S.EAPOL_Out /= Last_Station.EAPOL_Out then
+         Line ("eapol tx count=" & Dec (Unsigned_64 (S.EAPOL_Out)) & " data-sent="
+               & Dec (Unsigned_64 (S.Sent_Data)) & " data-dropped=" & Dec (Unsigned_64 (S.Dropped_Data)));
+      end if;
+      if Now - Last_Health_Ms >= Health_Interval_Ms and then (S /= Last_Station or else T /= Last_Transmit) then
+         Line ("data rx=" & Dec (Unsigned_64 (S.Data_Frames - Last_Station.Data_Frames))
+               & " to-wifi=" & Dec (Unsigned_64 (S.To_Wifi - Last_Station.To_Wifi))
+               & " to-net=" & Dec (Unsigned_64 (S.To_Netstack - Last_Station.To_Netstack))
+               & " tx-sent=" & Dec (Unsigned_64 (T.Sent - Last_Transmit.Sent))
+               & " tx-no-room=" & Dec (Unsigned_64 (T.No_Room - Last_Transmit.No_Room))
+               & " released=" & Dec (Unsigned_64 (T.Reports - Last_Transmit.Reports))
+               & " done=" & Dec (Unsigned_64 (T.By_Status (0) - Last_Transmit.By_Status (0)))
+               & " retry-limit=" & Dec (Unsigned_64 (T.By_Status (1) - Last_Transmit.By_Status (1)))
+               & " lifetime=" & Dec (Unsigned_64 (T.By_Status (2) - Last_Transmit.By_Status (2)))
+               & " macid-drop=" & Dec (Unsigned_64 (T.By_Status (3) - Last_Transmit.By_Status (3)))
+               & Drops);
+         Last_Health_Ms := Now;
+         Last_Station := S;
+         Last_Transmit := T;
+      elsif S.EAPOL_In /= Last_Station.EAPOL_In or else S.EAPOL_Out /= Last_Station.EAPOL_Out then
+         Last_Station.EAPOL_In := S.EAPOL_In;
+         Last_Station.EAPOL_Out := S.EAPOL_Out;
+      end if;
+   end Report_Data_Path;
+
+   --  Sleep Milliseconds, waking for wifi.svc's and netstack's answers.
+   procedure Pause (Milliseconds : Natural) is
+      Deadline : constant Unsigned_64 := CuBit.Messages.Deadline_After (Unsigned_64 (Milliseconds));
+      Activity : CuBit.Messages.Activity_Result;
+      use type CuBit.Messages.Activity_Result;
+   begin
+      loop
+         Activity := CuBit.Messages.Wait_For_Activity_Until (Deadline);
+         Service;
+         exit when Activity = CuBit.Messages.Unavailable or else CuBit.Monotonic.Milliseconds >= Deadline;
+      end loop;
+   end Pause;
+
    procedure Listen (Band : WS.Band; Channel : WS.Channel_Number; Milliseconds : Natural;
                      Table : in out Wifi_BSS_Table.Table) is
    begin
       for Tick in 1 .. Milliseconds / Poll_Interval_Ms loop
-         RTW89_MMIO.Sleep (Poll_Interval_Ms);
+         Pause (Poll_Interval_Ms);
          RTW89_Receive.Poll (DMA, Band, Channel, Table, Counts);
+         exit when RTW89_Station.Joined;
       end loop;
    end Listen;
 
@@ -304,6 +445,8 @@ procedure Main is
       Unlocked := 0;
       First_Failure := Success;
       for P of Wifi_Channel_Plan.World_Passive loop
+         --  A join (wifi.svc) took the radio: stop retuning.
+         exit when RTW89_Station.Joined;
          RTW89_Receive.Restart;
          RTW89_PHY.Set_Channel (Board, P.On_Band, P.Channel, Locked, Switch);
          if not Locked then
@@ -325,6 +468,8 @@ procedure Main is
         & " 5GHz=" & Dec (Unsigned_64 (R.Summary.On_5));
    begin
       RTW89_Link.Publish (R);
+      RTW89_Wifi_Link.Publish (R);
+      RTW89_Station.Remember_Scan (R);
       if R.Summary.Count = 0 then
          Line ("scan summary pass=" & Dec (Unsigned_64 (Passes)) & " " & Detail & " strongest=none",
                Warning => R.Summary.Total = 0, Serial_Only => not To_Logstore);
@@ -647,6 +792,10 @@ begin
          return;
       end if;
       Passed (RFK, "rck dack rxdck timeouts=" & Dec (Unsigned_64 (Timeouts)));
+      --  rtw89_phy_dm_init's tail: the BB power reference and the efuse
+      --  power trims (W3: the radio may transmit from here on).
+      RTW89_PHY.TX_Power_Control;
+      RTW89_PHY.Power_Trim (Board);
 
       RTW89_PHY.Configure_RX_Paths (Board);
       RTW89_MAC_Init.Start (DMA, Result);
@@ -715,6 +864,14 @@ begin
       else
          Failed (Attach, RTW89_Link.Name (Linked));
       end if;
+      RTW89_Station.Initialize ([for I in CuBit.Net_Link.Octet_Index => MAC_Address (I)]);
+      declare
+         Joined_Wifi : RTW89_Wifi_Link.Attach_Status;
+      begin
+         RTW89_Wifi_Link.Attach ([for I in CuBit.Net_Link.Octet_Index => MAC_Address (I)], Joined_Wifi);
+         Line ("wifi.svc " & RTW89_Wifi_Link.Name (Joined_Wifi),
+               Warning => Joined_Wifi /= RTW89_Wifi_Link.Attached);
+      end;
       Report_Pass (Table, To_Logstore => True);
       Summary_Line;
       declare
@@ -727,6 +884,8 @@ begin
       --  Keep listening: a pass every Rescan_Interval_Ms, published each
       --  time; a summary line reaches logstore when the count changes.
       ------------------------------------------------------------------------
+      --  While joined to a BSS (wifi.svc's Join), only that channel:
+      --  frames to and from the air every Poll_Interval_Ms, no scan.
       loop
          declare
             Idle : Wifi_BSS_Table.Table := Wifi_BSS_Table.Empty;
@@ -734,13 +893,22 @@ begin
               Wifi_Channel_Plan.World_Passive (Wifi_Channel_Plan.Plan_Length);
             Previous : constant Natural := Last_Total;
          begin
-            for Tick in 1 .. Rescan_Interval_Ms / Idle_Poll_Ms loop
-               RTW89_MMIO.Sleep (Idle_Poll_Ms);
-               RTW89_Receive.Poll (DMA, Last.On_Band, Last.Channel, Idle, Counts);
-            end loop;
-            Scan_Pass (Table, Unlocked, Switch_Failure);
-            Check_Firmware;
-            Report_Pass (Table, To_Logstore => Table.Count /= Previous);
+            if RTW89_Station.Joined then
+               Pause (Poll_Interval_Ms);
+               RTW89_Receive.Poll (DMA, RTW89_Station.Band, RTW89_Station.Channel, Idle, Counts);
+               Report_Data_Path;
+            else
+               for Tick in 1 .. Rescan_Interval_Ms / Idle_Poll_Ms loop
+                  Pause (Idle_Poll_Ms);
+                  exit when RTW89_Station.Joined;
+                  RTW89_Receive.Poll (DMA, Last.On_Band, Last.Channel, Idle, Counts);
+               end loop;
+               if not RTW89_Station.Joined then
+                  Scan_Pass (Table, Unlocked, Switch_Failure);
+                  Check_Firmware;
+                  Report_Pass (Table, To_Logstore => Table.Count /= Previous);
+               end if;
+            end if;
          end;
       end loop;
    end;

@@ -7,7 +7,9 @@
 --  buffer is copied out of DMA memory once, decoded by the proved
 --  RTW89_RX and IEEE80211_Beacons, and each beacon or probe response is
 --  folded into the scan's BSS list with the signal of its PPDU status.
---  RPQ (release reports) is drained too, so it can never stall the ring.
+--  RPQ (release reports) is drained too: each entry frees a transmit slot
+--  (RTW89_Transmit). While the station is joined (RTW89_Station), every
+--  802.11 frame goes to it instead of the scan.
 --
 --  @description
 --  Ring protocol from rtw89 pci.c (rtw89_pci_rxbd_recalc,

@@ -19,7 +19,12 @@
 (type Value (variant (Typed CCL_Type) (Text) (Address) (Count) (Collection)))
 # Declaration_Managed: set only by a reviewed configuration; Application
 # State: the program keeps it (docs/config-declarative-state.md).
-(type Class (enum Declaration_Managed Application_State))
+# Secret: a credential (the seed of SEC-022's keystore): Config never
+# returns it through config-all, an inspector or a log (an inspector sees
+# only that it is present), and reads and writes it only for a scope that
+# names its key or family explicitly, which only the owning service's
+# manifest declares. Not encrypted at rest yet.
+(type Class (enum Declaration_Managed Application_State Secret))
 # codec: the Ada package programs read the value with ("" for the built-in
 # Text, Address and Count codecs); its Value type and Decode, and Encode
 # for a writable one.

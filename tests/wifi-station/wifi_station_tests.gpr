@@ -1,0 +1,40 @@
+--  Hosted tests and proofs for the chip-independent Wi-Fi station units
+--  (userspace/lib/wifi: RSN, EAPOL-Key, key data, the 4-way handshake,
+--  management frames, the join state machine) and the wifi.svc <-> driver
+--  contract (CuBit.Wifi_Driver). run.sh builds and runs them. Checks on
+--  (-gnata -gnato); the crates come from sparktls_host.gpr.
+with "../../userspace/lib/tls/sparktls_host.gpr";
+project Wifi_Station_Tests is
+   Runtime := "../../userspace/runtime/gnat";
+   for Languages use ("Ada");
+   for Source_Dirs use
+     (".", "../../userspace/lib/wifi", "../../userspace/lib/wifi/supplicant",
+      "../../userspace/lib/wifi/crypto", Runtime);
+   for Source_Files use
+     ("station_tests.adb",
+      "wifi_rsn.ads", "wifi_rsn.adb", "wifi_eapol.ads", "wifi_eapol.adb",
+      "wifi_key_data.ads", "wifi_key_data.adb", "wifi_handshake.ads", "wifi_handshake.adb", "wifi_station.ads", "wifi_station.adb",
+      "ieee80211_beacons.ads", "ieee80211_beacons.adb",
+      "ieee80211_management.ads", "ieee80211_management.adb",
+      "wifi_mlme.ads", "wifi_mlme.adb", "wifi_replay.ads", "wifi_replay.adb", "wifi_station_path.ads", "wifi_station_path.adb", "ieee80211_data.ads", "ieee80211_data.adb",
+      "wifi_crypto.ads", "wifi_crypto-hmac_g.ads", "wifi_crypto-hmac_g.adb",
+      "wifi_crypto-pbkdf2_g.ads", "wifi_crypto-pbkdf2_g.adb",
+      "wifi_crypto-legacy_wpa2.ads", "wifi_crypto-legacy_wpa2.adb",
+      "wifi_crypto-aes_key_wrap.ads", "wifi_crypto-aes_key_wrap_g.ads",
+      "wifi_crypto-aes_key_wrap_g.adb",
+      "cubit.ads", "cubit-channel_rings.ads", "cubit-channel_rings.adb",
+      "cubit-slot_rings.ads", "cubit-slot_rings.adb", "cubit-frame_rings.ads",
+      "cubit-net_link.ads", "cubit-net_link.adb", "cubit-wifi_scan.ads", "cubit-wifi_scan.adb",
+      "cubit-wifi_driver.ads", "cubit-wifi_driver.adb",
+      "cubit-wifi_control.ads", "cubit-wifi_control.adb");
+   for Object_Dir use "build/obj";
+   for Exec_Dir use "build";
+   for Main use ("station_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-gnat2022", "-O2", "-gnata", "-gnato", "-gnatwa", "-gnatwJ", "-gnatw.X", "-gnatwe", "-I-");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=2", "--checks-as-errors=on");
+   end Prove;
+end Wifi_Station_Tests;

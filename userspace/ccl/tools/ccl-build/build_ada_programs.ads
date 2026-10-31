@@ -24,6 +24,11 @@ package Build_Ada_Programs is
       Not_Reproducible : Natural := 0;
    end record;
 
+   --  Places a fetched tree in Store unless it is there (Ran False): the
+   --  download, unpacked, is stored only when its tree identity is the
+   --  pinned one; otherwise Step_Error names both and nothing is stored.
+   procedure Fetch_Tree (Store : Build_Store.Store; T : Build_Declarations.Fetched_Tree; Ran : out Boolean);
+
    --  Builds Program from the tree at Source_Root with Profile's runtime and
    --  manifest tools, the compiler tree Compiler and the binutils tree
    --  Binutils (both already in Store). Each step is logged as it finishes.

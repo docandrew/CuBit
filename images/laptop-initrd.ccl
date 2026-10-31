@@ -24,6 +24,7 @@
   (file bootstrap "ufs" "ufs.drv")
   (file bootstrap "config" "config.svc")
   (file bootstrap "netmgr" "netmgr.svc")
+  (file bootstrap "wifi" "wifi.svc")
   (file bootstrap "procmgr" "procmgr.svc")
   (file bootstrap "logstore" "logstore.svc")
   (file bootstrap "clock" "clock.svc")

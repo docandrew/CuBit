@@ -191,6 +191,51 @@ procedure Main is
       Settings_Read := True;
    end Read_Settings;
 
+   --  CCL.Setting_Secrets (next to CCL.Setting_Kinds): the keys and
+   --  families of class Secret, for Config's authority (config.svc).
+   procedure Emit_Setting_Secrets (Path : String) is
+      Output : Ada.Text_IO.File_Type;
+      use Setting_Catalogs;
+      First : Boolean := True;
+   begin
+      Create (Output, Out_File, Path);
+      Put_Line (Output, "--  Generated from userspace/ccl/interfaces/settings/ by");
+      Put_Line (Output, "--  ccl-manifest --setting-kinds (CAP-003); do not edit. Regenerate with");
+      Put_Line (Output, "--  make -C kernel setting-kinds after changing the catalog.");
+      Put_Line (Output, "pragma Ada_2022;");
+      Put_Line (Output, "");
+      Put_Line (Output, "--  The settings of class Secret (setting-catalog.ccl): Config serves them");
+      Put_Line (Output, "--  only to a scope that names their key or family (Secret_Scope).");
+      Put_Line (Output, "package CCL.Setting_Secrets with SPARK_Mode, Pure is");
+      Put_Line (Output, "");
+      Put_Line (Output, "   function Starts (Key, Prefix : String) return Boolean is");
+      Put_Line (Output, "     (Key'Length >= Prefix'Length");
+      Put_Line (Output, "      and then Key (Key'First .. Key'First + Prefix'Length - 1) = Prefix);");
+      Put_Line (Output, "");
+      Put_Line (Output, "   --  The secret key or family Key belongs to; empty when it is no secret.");
+      Put_Line (Output, "   function Secret_Scope (Key : String) return String is");
+      for I in 1 .. Settings.Count loop
+         if Settings.Settings (I).Kind = Secret then
+            declare
+               Name : constant String := Image (Settings.Settings (I).Key);
+            begin
+               Put_Line (Output, (if First then "     (if " else "      elsif ") &
+                         (if Settings.Settings (I).Form = Family
+                          then "Key'Length > " & Ada.Strings.Fixed.Trim (Natural'Image (Name'Length), Ada.Strings.Left)
+                               & " and then Starts (Key, """ & Name & """)"
+                          else "Key = """ & Name & """") &
+                         " then """ & Name & """");
+            end;
+            First := False;
+         end if;
+      end loop;
+      Put_Line (Output, (if First then "     ("""");" else "      else """");"));
+      Put_Line (Output, "");
+      Put_Line (Output, "   function Is_Secret (Key : String) return Boolean is (Secret_Scope (Key)'Length > 0);");
+      Put_Line (Output, "end CCL.Setting_Secrets;");
+      Close (Output);
+   end Emit_Setting_Secrets;
+
    --  CCL.Setting_Kinds (userspace/ccl/src/ccl-setting_kinds.ads): the
    --  setting kinds CCL.Typed_Settings checks values against, generated
    --  from the catalog's CCL-typed settings (ccl-manifest --setting-kinds
@@ -274,6 +319,8 @@ procedure Main is
       Put_Line (Output, "         when Untyped => """");");
       Put_Line (Output, "end CCL.Setting_Kinds;");
       Close (Output);
+      Emit_Setting_Secrets
+        (Ada.Directories.Containing_Directory (Path) & "/ccl-setting_secrets.ads");
    end Emit_Setting_Kinds;
 
    --  Every Config scope names settings in the catalog (CAP-003): false,

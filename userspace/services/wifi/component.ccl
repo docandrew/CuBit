@@ -1,0 +1,12 @@
+# wifi.svc: the Wi-Fi connection manager and supplicant (docs/wifi.md).
+# The chip-independent 802.11 units come from the generic Wi-Fi library;
+# the supplicant and the Wi-Fi crypto (with the pinned SPARKNaCl and
+# SPARKTLSCrypto crates) are linked here only: the driver holds no
+# credentials and no crypto.
+(Component name => "wifi" kind => (Kind.Service Launcher.Device_Manager)
+  source => (Source.Ada (Ada_Source
+    sources => ["userspace/lib/wifi" "userspace/lib/wifi/supplicant"]
+    language => Ada_Language.Ada_2022
+    optimization => Optimization.Maximum
+    checks => Checks.Suppressed
+    libraries => ["wifi-crypto" "sparknacl" "sparktlscrypto"])))

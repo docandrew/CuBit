@@ -202,6 +202,7 @@ private
    end record;
    type Shown_Array is array (CCL.Sessions.History_Index) of Shown_Source;
 
+   SECRET_CHARACTERS : constant := 63;   --  a WPA2 passphrase (802.11 J.4.1)
    type View_State is limited record
       Session : CCL.Sessions.Session;
       Meta : Meta_Array := [others => <>];
@@ -236,5 +237,11 @@ private
       --  A short message for the status line, until the next edit.
       Notice : String (1 .. 120) := [others => ' '];
       Notice_Length : Natural range 0 .. 120 := 0;
+      --  Secret entry ((wifi.passphrase "ssid")): what is typed is shown
+      --  as dots, never enters the input or history, and goes to wifi.svc
+      --  on Enter (CCL_Wifi.Store_Passphrase); Escape cancels.
+      Secret_Entry : Boolean := False;
+      Secret : String (1 .. SECRET_CHARACTERS) := [others => ' '];
+      Secret_Length : Natural range 0 .. SECRET_CHARACTERS := 0;
    end record;
 end CCL_Console_View;

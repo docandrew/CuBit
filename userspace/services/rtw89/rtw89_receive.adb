@@ -14,6 +14,8 @@ with RTW89_Layout; use RTW89_Layout;
 with RTW89_RX;
 with RTW89_Text; use RTW89_Text;
 with IEEE80211_Beacons;
+with RTW89_Station;
+with RTW89_Transmit;
 
 package body RTW89_Receive is
    use type RTW89_RX.Status;
@@ -23,6 +25,9 @@ package body RTW89_Receive is
    use type WS.Band;
    package NL renames CuBit.Net_Link;
    package MR renames RTW89_MAC_Registers;
+
+   --  A release report entry (pci.h rtw89_pci_rpp_fmt): one word.
+   Release_Entry_Bytes : constant := 4;
 
    --  The snapshot every buffer is copied into before it is decoded.
    Snapshot : RTW89_RX.Buffer := [others => 0];
@@ -56,8 +61,8 @@ package body RTW89_Receive is
      (To_Address (Integer_Address (DMA.Virtual + Unsigned_64 (RX_Buffer_Offset (Channel, Slot)))));
 
    --  Copy the bytes the device says it wrote (bounded by the buffer).
-   procedure Copy_Out (DMA : RTW89_Bringup.Region; Slot : Natural) is
-      Source : RTW89_RX.Buffer with Import, Volatile, Address => Buffer_Address (DMA, RXQ, Slot);
+   procedure Copy_Out (DMA : RTW89_Bringup.Region; Slot : Natural; Channel : RX_Channel := RXQ) is
+      Source : RTW89_RX.Buffer with Import, Volatile, Address => Buffer_Address (DMA, Channel, Slot);
       Info_Word : Unsigned_32;
       Size : Natural;
    begin
@@ -173,13 +178,28 @@ package body RTW89_Receive is
       Size : RTW89_RX.Payload_Length;
       Result : RTW89_RX.Status;
    begin
-      --  Release reports: consumed and returned unread.
+      --  Release reports: each 32-bit entry after the descriptor frees the
+      --  transmit slot whose WD page it names (pci.c
+      --  rtw89_pci_release_tx_skbs).
       Write32 (MR.PCIE_HISR00, MR.HISR00_RPQ_ACK);
       Filled := Hardware_Index (RPQ);
       if Filled /= Next_RPQ then
-         Counts.Release_Reports := Counts.Release_Reports
-           + (Filled - Next_RPQ + RX_Ring_Entries) mod RX_Ring_Entries;
-         Next_RPQ := Filled;
+         while Next_RPQ /= Filled loop
+            Copy_Out (DMA, Next_RPQ, RPQ);
+            Counts.Release_Reports := Counts.Release_Reports + 1;
+            RTW89_RX.Decode (Snapshot, D, Size, Result);
+            if Result = RTW89_RX.Decoded and then D.Kind = RTW89_RX.TX_Release_Host then
+               declare
+                  Offset : Natural := D.Payload_First;
+               begin
+                  while Offset + Release_Entry_Bytes <= Size loop
+                     RTW89_Transmit.Released (RTW89_RX.U32 (Snapshot, Offset));
+                     Offset := Offset + Release_Entry_Bytes;
+                  end loop;
+               end;
+            end if;
+            Next_RPQ := (Next_RPQ + 1) mod RX_Ring_Entries;
+         end loop;
          Write16 (RX_Rings (RPQ).Index, Unsigned_16 (Next_RPQ));
       end if;
 
@@ -198,7 +218,22 @@ package body RTW89_Receive is
             case D.Kind is
                when RTW89_RX.WIFI =>
                   Counts.Frames := Counts.Frames + 1;
-                  if D.CRC_Error or else D.ICV_Error then
+                  if D.CRC_Error then
+                     Counts.CRC_Errors := Counts.CRC_Errors + 1;
+                  elsif RTW89_Station.Joined then
+                     --  Joined: every frame to the station (it filters by BSS).
+                     if D.Length > RTW89_RX.FCS_Bytes then
+                        declare
+                           Length : constant Natural := D.Length - RTW89_RX.FCS_Bytes;
+                           Frame : RTW89_Station.Frame_Bytes (0 .. Length - 1);
+                        begin
+                           for I in Frame'Range loop
+                              Frame (I) := Snapshot (D.Payload_First + I);
+                           end loop;
+                           RTW89_Station.From_Air (Frame, D.HW_Decrypted, D.ICV_Error or else D.SW_Decrypt);
+                        end;
+                     end if;
+                  elsif D.ICV_Error then
                      Counts.CRC_Errors := Counts.CRC_Errors + 1;
                   elsif D.Length >= IEEE80211_Beacons.Minimum_Frame + RTW89_RX.FCS_Bytes then
                      Take_Frame (D, Heard_Band, Heard_On, Table, Counts);

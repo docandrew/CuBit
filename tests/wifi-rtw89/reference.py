@@ -51,6 +51,8 @@ def decode_frame(f):
     ds = 0
     ht = 0
     rsn = False
+    rates = False
+    ext_rates = False
     elements = 0
     skipped = 0
     pos = body + 12
@@ -82,6 +84,14 @@ def decode_frame(f):
         elif eid == 48:
             if elen >= 2 and not rsn:
                 rsn = True
+                taken = True
+        elif eid == 1:
+            if elen > 0 and not rates:
+                rates = True
+                taken = True
+        elif eid == 50:
+            if elen > 0 and not ext_rates:
+                ext_rates = True
                 taken = True
         if not taken:
             skipped += 1

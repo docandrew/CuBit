@@ -35,6 +35,7 @@
   (file optical "config-storage" "apps/config-storage.svc")
   (file optical "servo" "apps/cubitshell.app")
   (file optical "netmgr" "apps/netmgr.svc")
+  (file optical "wifi" "apps/wifi.svc")
   (file optical "procmgr" "apps/procmgr.svc")
   (file optical "logstore" "apps/logstore.svc")
   (file optical "clock" "apps/clock.svc")

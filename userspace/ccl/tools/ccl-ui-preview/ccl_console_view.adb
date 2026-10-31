@@ -1,4 +1,5 @@
 with CCL.Completions;
+with CCL_Wifi;
 with CCL.Hints;
 with CCL.Highlighting;
 with CCL.Image_Store;
@@ -876,6 +877,10 @@ package body CCL_Console_View is
             return;
          end if;
          Run_Source (Text);
+         if CCL_Wifi.Passphrase_Requested then
+            State.Secret_Entry := True;
+            State.Secret_Length := 0;
+         end if;
       end Submit;
 
       procedure Move_Row (Delta_Rows : Integer) is
@@ -915,9 +920,46 @@ package body CCL_Console_View is
               (if Event.X > G_Input.x then (Event.X - G_Input.x + Column_Width / 2) / Column_Width else 0)),
             Extend);
       end Place_From_Pointer;
+      --  Secret entry: only characters, Backspace, Enter and Escape count.
+      procedure Secret_Key is
+         Result : CCL_Wifi.Control_Result;
+         use type CCL_Wifi.Control_Result;
+      begin
+         case Event.Kind is
+            when Text_Input =>
+               if Event.Character_Value in ' ' .. '~' and then State.Secret_Length < SECRET_CHARACTERS then
+                  State.Secret_Length := State.Secret_Length + 1;
+                  State.Secret (State.Secret_Length) := Event.Character_Value;
+               end if;
+            when Backspace =>
+               if State.Secret_Length > 0 then
+                  State.Secret (State.Secret_Length) := ' ';
+                  State.Secret_Length := State.Secret_Length - 1;
+               end if;
+            when Enter | Run =>
+               CCL_Wifi.Store_Passphrase (State.Secret (1 .. State.Secret_Length), Result);
+               State.Secret := [others => ' '];
+               State.Secret_Length := 0;
+               State.Secret_Entry := False;
+               Set_Notice (State, (if Result = CCL_Wifi.Done then "Passphrase stored with wifi.svc"
+                                   else "Passphrase not stored: " & CCL_Wifi.Explain (Result)));
+            when Escape =>
+               CCL_Wifi.Cancel_Passphrase;
+               State.Secret := [others => ' '];
+               State.Secret_Length := 0;
+               State.Secret_Entry := False;
+               Set_Notice (State, "Passphrase entry cancelled");
+            when others =>
+               null;
+         end case;
+      end Secret_Key;
    begin
       Submitted := False;
       Redraw := True;
+      if State.Secret_Entry then
+         Secret_Key;
+         return;
+      end if;
       if Event.Kind in Text_Input | Backspace | Delete | Escape then
          State.Notice_Length := 0;
       end if;
@@ -1959,7 +2001,13 @@ package body CCL_Console_View is
                   end;
                end loop;
             end;
-            if Text'Length = 0 then
+            if State.Secret_Entry then
+               --  Stars only: the passphrase itself is never drawn.
+               Fill_Rect (IC, G.Input, DOCK);
+               Draw_Code_Text (IC, G.Input.x, G.Input.y + 1,
+                 "passphrase for """ & CCL_Wifi.Requested_SSID & """: "
+                 & [1 .. State.Secret_Length => '*'], ACCENT, DOCK);
+            elsif Text'Length = 0 then
                Draw_Code_Text (IC, G.Input.x, G.Input.y + 1, "an expression, or :env", FAINT, DOCK);
             end if;
             --  Ghost text: the rest of the selected completion.

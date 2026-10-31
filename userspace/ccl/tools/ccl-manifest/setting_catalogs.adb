@@ -144,6 +144,7 @@ package body Setting_Catalogs is
          end if;
          New_Setting.Kind :=
            (if Alt (Named (At_Cursor, "class")) = "Application_State" then Application_State
+            elsif Alt (Named (At_Cursor, "class")) = "Secret" then Secret
             else Declaration_Managed);
          New_Setting.Codec := To_Text (Text (Named (At_Cursor, "codec")));
          New_Setting.File := To_Text (File);

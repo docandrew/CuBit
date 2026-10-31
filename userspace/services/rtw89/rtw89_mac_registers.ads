@@ -377,6 +377,10 @@ package RTW89_MAC_Registers with Pure is
    TSF_UDT_EN         : constant Unsigned_32 := 2 ** 3;
    RX_BSSID_FIT_EN    : constant Unsigned_32 := 2 ** 4;
    NET_TYPE_MASK      : constant Unsigned_32 := 16#0000_0C00#;
+   NET_TYPE_SHIFT     : constant := 10;
+   NET_TYPE_INFRA     : constant Unsigned_32 := 2;          --  RTW89_NET_TYPE_INFRA
+   TSFTR_RST          : constant Unsigned_32 := 2 ** 5;
+   BCN_CNT_TMR_P0     : constant Register := 16#C434#;
    BCNTX_EN           : constant Unsigned_32 := 2 ** 12;
    TBTT_PROHIB_EN     : constant Unsigned_32 := 2 ** 13;
    BRK_SETUP          : constant Unsigned_32 := 2 ** 16;

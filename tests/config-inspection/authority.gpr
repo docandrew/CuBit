@@ -1,7 +1,8 @@
 project Authority is
-   for Source_Dirs use (".", "build/source", "../../userspace/services/config");
+   for Source_Dirs use (".", "build/source", "../../userspace/services/config", "../../userspace/ccl/src");
    for Source_Files use ("authority_tests.adb", "config_authority.ads", "config_authority.adb",
-                         "cubit.ads", "cubit-process_ids.ads", "cubit-process_ids.adb", "cubit-config_inspection.ads", "cubit-config_inspection.adb");
+                         "cubit.ads", "cubit-process_ids.ads", "cubit-process_ids.adb", "cubit-config_inspection.ads", "cubit-config_inspection.adb",
+                         "ccl.ads", "ccl-setting_secrets.ads");
    for Object_Dir use "build/authority";
    for Exec_Dir use "build/authority";
    for Main use ("authority_tests.adb");

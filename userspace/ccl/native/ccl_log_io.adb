@@ -6,6 +6,7 @@ with CuBit.Log_Protocol;
 with CuBit.Log_Records;
 with CuBit.Logging;
 with CuBit.Service_Names;
+with CCL_Processes;
 with CCL.Interfaces.Logs;
 with CCL_Native_Bindings;
 with CuBit.Handles;
@@ -46,15 +47,92 @@ package body CCL_Log_IO is
 
    --  A service name, or a process written in decimal (its Image): the log
    --  source word the log protocol carries.
+   --  A program by name: a running process whose name is Service, or
+   --  whose name before its extension is ("rtw89" for rtw89.drv), or whose
+   --  manifest identity ends in "." & Service (com.cubit.wifi); the
+   --  newest such process. 0 when none runs (or the process list is not
+   --  granted).
+   function First_Dot (Name : String) return Natural is
+   begin
+      for C in Name'Range loop
+         if Name (C) = '.' then
+            return C;
+         end if;
+      end loop;
+      return 0;
+   end First_Dot;
+
+   function Program_Source (Service : String) return Unsigned_64 is
+      Entries : CCL_Processes.Listing;
+      Count : CCL_Processes.Listed_Count;
+      Total : Natural;
+      Result : CCL_Processes.Result_Kind;
+      Found : Unsigned_64 := 0;
+      Newest : Unsigned_64 := Unsigned_64'Last;
+      use type CCL_Processes.Result_Kind;
+   begin
+      if Service'Length = 0 then
+         return 0;
+      end if;
+      CCL_Processes.List (Entries, Count, Total, Result);
+      if Result /= CCL_Processes.Listed_All then
+         return 0;
+      end if;
+      for I in 1 .. Count loop
+         declare
+            Name : constant String := Entries (I).Name (1 .. Entries (I).Name_Length);
+            Identity : constant String := Entries (I).Identity (1 .. Entries (I).Identity_Length);
+            Dot : constant Natural := First_Dot (Name);
+            Stem : constant String := (if Dot = 0 then Name else Name (Name'First .. Dot - 1));
+            Suffix : constant String := "." & Service;
+         begin
+            if (Name = Service or else Stem = Service
+                or else (Identity'Length > Suffix'Length
+                         and then Identity (Identity'Last - Suffix'Length + 1 .. Identity'Last) = Suffix))
+              and then Entries (I).Age_Ms <= Newest
+            then
+               Found := Entries (I).Process;
+               Newest := Entries (I).Age_Ms;
+            end if;
+         end;
+      end loop;
+      return Found;
+   end Program_Source;
+
    function Source_Of (Service : String) return Unsigned_64 is
       Process : CuBit.Messages.Process_ID;
       Valid : Boolean;
    begin
       CuBit.Process_IDs.Parse (Service, Process, Valid);
-      if not Valid then
-         Process := CuBit.Service_Names.Process_Of (Service);
+      if Valid then
+         --  A pid as :ps shows it (its low 32 bits): the running process it
+         --  names, by its whole identity.
+         declare
+            Word : constant Unsigned_64 := CuBit.Messages.To_Word (Process);
+            Entries : CCL_Processes.Listing;
+            Count : CCL_Processes.Listed_Count;
+            Total : Natural;
+            Result : CCL_Processes.Result_Kind;
+            use type CCL_Processes.Result_Kind;
+         begin
+            if Word <= Unsigned_64 (Unsigned_32'Last) then
+               CCL_Processes.List (Entries, Count, Total, Result);
+               if Result = CCL_Processes.Listed_All then
+                  for I in 1 .. Count loop
+                     if Unsigned_64 (Entries (I).Pid) = Word then
+                        return Entries (I).Process;
+                     end if;
+                  end loop;
+               end if;
+            end if;
+            return Word;
+         end;
       end if;
-      return CuBit.Messages.To_Word (Process);
+      Process := CuBit.Service_Names.Process_Of (Service);
+      if CuBit.Messages."/=" (Process, CuBit.Messages.No_Process) then
+         return CuBit.Messages.To_Word (Process);
+      end if;
+      return Program_Source (Service);
    end Source_Of;
 
    function Level_Of (Level : L.Severity) return Logs.Severity is
@@ -101,8 +179,8 @@ package body CCL_Log_IO is
       Why := (others => <>);
       if not Success then
          Why := Failures.Failed
-           (Failures.Not_Found, "no running service is named """ & Service & """",
-            "name a running service, or give its process number");
+           (Failures.Not_Found, "no running service or program is named """ & Service & """",
+            "name a running service or program (rtw89, wifi), or give its process number");
          return;
       end if;
       CuBit.Logging.Subscribe (Reader, Result, Source => Source);

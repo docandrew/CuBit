@@ -71,6 +71,8 @@ package IEEE80211_Beacons with Pure, SPARK_Mode is
    Element_DS_Params    : constant Unsigned_8 := 3;    --  WLAN_EID_DS_PARAMS
    Element_RSN          : constant Unsigned_8 := 48;   --  WLAN_EID_RSN
    Element_HT_Operation : constant Unsigned_8 := 61;   --  WLAN_EID_HT_OPERATION
+   Element_Rates        : constant Unsigned_8 := 1;    --  WLAN_EID_SUPP_RATES
+   Element_Extended_Rates : constant Unsigned_8 := 50; --  WLAN_EID_EXT_SUPP_RATES
    Element_Vendor       : constant Unsigned_8 := 221;  --  WLAN_EID_VENDOR_SPECIFIC
 
    SSID_Octets          : constant := 32;               --  IEEE80211_MAX_SSID_LEN
@@ -93,6 +95,14 @@ package IEEE80211_Beacons with Pure, SPARK_Mode is
    --  Elements seen (bounded: a body holds at most Maximum_Frame / 2).
    subtype Element_Count is Natural range 0 .. Maximum_Frame / Element_Header_Bytes;
 
+   --  Where an element's data lies in the frame (Length 0: absent).
+   subtype Element_Length is Natural range 0 .. 255;
+   type Element_Place is record
+      First  : Frame_Index := 0;
+      Length : Element_Length := 0;
+   end record;
+   No_Place : constant Element_Place := (0, 0);
+
    type Decoded is record
       Kind          : Frame_Kind := Beacon;
       BSSID         : Address := [others => 0];
@@ -105,6 +115,9 @@ package IEEE80211_Beacons with Pure, SPARK_Mode is
       Capability    : Unsigned_16 := 0;
       Interval      : Unsigned_16 := 0;
       RSN           : Boolean := False;
+      RSN_Element   : Element_Place := No_Place;     --  the first RSN element's data
+      Rates         : Element_Place := No_Place;     --  Supported Rates
+      Extended_Rates : Element_Place := No_Place;    --  Extended Supported Rates
       Elements      : Element_Count := 0;
       Skipped       : Element_Count := 0;            --  unknown, vendor or repeated
    end record;
@@ -139,10 +152,16 @@ package IEEE80211_Beacons with Pure, SPARK_Mode is
 
    --  Decode Frame (an MPDU without its FCS). Info is meaningful only
    --  when Result = Accepted.
+   function Inside (P : Element_Place; Length : Natural) return Boolean is
+     (P.First + P.Length <= Length);
+
    procedure Decode (Frame : Frame_Bytes; Info : out Decoded; Result : out Status)
    with Pre  => Frame'First = 0,
         Post => (if Result = Accepted then
-                   Frame'Length >= Minimum_Frame and then Normal (Info));
+                   Frame'Length >= Minimum_Frame and then Normal (Info)
+                   and then Inside (Info.RSN_Element, Frame'Length)
+                   and then Inside (Info.Rates, Frame'Length)
+                   and then Inside (Info.Extended_Rates, Frame'Length));
 
    --  The channel the BSS says it is on: its DS Parameter Set, else its HT
    --  Operation's primary channel, else the channel it was heard on.

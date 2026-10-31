@@ -9,7 +9,6 @@ with System.Machine_Code;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Handles;
-with CuBit.Frame_Rings;
 with CuBit.Grant_References;
 with CuBit.Memory_Grants;
 with Startup;
@@ -133,6 +132,138 @@ package body RTW89_Link is
       Status := Attached;
       Publish_Link ((Condition => NL.Down, Reason => NL.Not_Associated));
    end Attach;
+
+   procedure Report_Up (Detail : NL.Up_Detail) is
+   begin
+      if Is_Attached then
+         Publish_Link ((Condition => NL.Up, Detail => Detail));
+      end if;
+   end Report_Up;
+
+   procedure Report_Down (Reason : NL.Down_Reason) is
+   begin
+      if Is_Attached then
+         Publish_Link ((Condition => NL.Down, Reason => Reason));
+      end if;
+   end Report_Down;
+
+   package Frame_Ring renames Frames.Rings;
+   Receive_Producer : Frame_Ring.Producer := Frame_Ring.New_Producer;
+   Transmit_Consumer : Frame_Ring.Consumer := Frame_Ring.New_Consumer;
+   Delivered_Since_Ring : Boolean := False;
+   Parked : Boolean := False;
+   Wake_Epoch : Unsigned_32 := 0;
+   Counted : Statistics;
+   --  The Transmit_Wait's completion token (RTW89_Wifi_Link has its own).
+   Transmit_Token : constant Unsigned_64 := 16#4E45_5453#;   --  "NETS"
+
+   function Load (Offset : Natural) return Unsigned_32 is
+      Cell : Unsigned_32 with Volatile, Import, Address => Grant_Base + Storage_Offset (Offset);
+   begin
+      return Cell;
+   end Load;
+
+   procedure Deliver (Frame : Frame_Bytes) is
+      OK : Boolean;
+   begin
+      if not Is_Attached or else Frame'Length not in Frames.Minimum_Frame .. Frames.Maximum_Frame then
+         Counted.Dropped := Counted.Dropped + 1;
+         return;
+      end if;
+      Frame_Ring.Accept_Consumed (Receive_Producer, Frame_Ring.Index (Load (Frames.Receive_Header_At + Frames.Consumed_At)), OK);
+      if not OK or else Frame_Ring.Space (Receive_Producer) = 0 then
+         Counted.Dropped := Counted.Dropped + 1;
+         return;
+      end if;
+      declare
+         Slot_At : constant Natural := Frames.Receive_Slot_At (Frame_Ring.Next_Slot (Receive_Producer));
+         Cells : Frame_Bytes (0 .. Frames.Slot_Bytes - 1) with Import, Volatile,
+           Address => Grant_Base + Storage_Offset (Slot_At);
+      begin
+         for I in 0 .. Frame'Length - 1 loop
+            Cells (Frames.Frame_At + I) := Frame (Frame'First + I);
+         end loop;
+         Store (Slot_At + Frames.Length_At, Unsigned_32 (Frame'Length));
+      end;
+      Frame_Ring.Commit (Receive_Producer);
+      Fence;
+      Store (Frames.Receive_Header_At + Frames.Produced_At, Unsigned_32 (Receive_Producer.Produced));
+      Counted.Delivered := Counted.Delivered + 1;
+      Delivered_Since_Ring := True;
+   end Deliver;
+
+   procedure Ring_Receive is
+   begin
+      if Delivered_Since_Ring then
+         Delivered_Since_Ring := False;
+         Ring;
+      end if;
+   end Ring_Receive;
+
+   procedure Next_Frame (Frame : out Ethernet_Buffer; Length : out Natural; Found : out Boolean) is
+      OK : Boolean;
+   begin
+      Frame := [others => 0];
+      Length := 0;
+      Found := False;
+      if not Is_Attached then
+         return;
+      end if;
+      Fence;
+      Frame_Ring.Accept_Produced (Transmit_Consumer, Frame_Ring.Index (Load (Frames.Transmit_Header_At + Frames.Produced_At)), OK);
+      if not OK then
+         return;
+      end if;
+      while Transmit_Consumer.Available > 0 and then not Found loop
+         declare
+            Slot_At : constant Natural := Frames.Transmit_Slot_At (Frame_Ring.Head_Slot (Transmit_Consumer));
+            Size : constant Unsigned_32 := Load (Slot_At + Frames.Length_At);
+            Cells : Frame_Bytes (0 .. Frames.Slot_Bytes - 1) with Import, Volatile,
+              Address => Grant_Base + Storage_Offset (Slot_At);
+         begin
+            if Frames.Fits (Size) then
+               Length := Natural (Size);
+               for I in 0 .. Length - 1 loop
+                  Frame (I) := Cells (Frames.Frame_At + I);
+               end loop;
+               Found := True;
+               Counted.Taken := Counted.Taken + 1;
+            end if;
+         end;
+         Frame_Ring.Release (Transmit_Consumer);
+      end loop;
+      Store (Frames.Transmit_Header_At + Frames.Consumed_At, Unsigned_32 (Transmit_Consumer.Consumed));
+   end Next_Frame;
+
+   function Take (Entry_Found : CuBit.Messages.CompletionEntry) return Boolean is
+   begin
+      if Entry_Found.token /= Transmit_Token then
+         return False;
+      end if;
+      Parked := False;
+      return True;
+   end Take;
+
+   procedure Park is
+   begin
+      if not Is_Attached or else Parked then
+         return;
+      end if;
+      --  A new wake epoch: netstack answers this wait when it queues
+      --  frames after seeing it (docs/net-link.md).
+      Wake_Epoch := (if Wake_Epoch = Unsigned_32'Last then 1 else Wake_Epoch + 1);
+      Store (Frames.Transmit_Header_At + Frames.Wake_At, Wake_Epoch);
+      Fence;
+      Parked := capSubmit
+        (Netstack,
+         (tag => (label => NL.Label (NL.Transmit_Wait),
+                  length => Unsigned_8 (NL.Request_Words (NL.Transmit_Wait)),
+                  protocol => 0, ipc => <>, reserved => 0),
+          authorityTag => 0, words => [0 => NL.Handle_Word (Handle), others => 0]),
+         Transmit_Token);
+   end Park;
+
+   function Counts return Statistics is (Counted);
 
    procedure Publish (Result : WS.Scan_Result) is
       Block : WS.Block;

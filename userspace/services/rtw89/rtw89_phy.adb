@@ -9,6 +9,7 @@ with RTW89_MMIO; use RTW89_MMIO;
 with RTW89_PHY_Tables;
 with RTW89_Tables_8852B;
 with RTW89_Channel_Values; use RTW89_Channel_Values;
+with RTW89_TX_Power;
 
 package body RTW89_PHY is
    use type WS.Band;
@@ -1232,6 +1233,99 @@ package body RTW89_PHY is
       end loop;
    end TSSI_Hold;
 
+   ---------------------------------------------------------------------------
+   --  Transmit power (W3)
+   ---------------------------------------------------------------------------
+   package TP renames RTW89_TX_Power;
+
+   --  Thermal and PA-bias trim (phycap 0x5DF/0x5DC, 0x5DE/0x5DB).
+   Thermal_Trim_Address : constant array (RF_Path) of Natural := [A => 16#5DF#, B => 16#5DC#];
+   PA_Bias_Address      : constant array (RF_Path) of Natural := [A => 16#5DE#, B => 16#5DB#];
+   RR_TM2      : constant Unsigned_32 := 16#43#;
+   RR_TM2_OFF  : constant Unsigned_32 := 16#000F_0000#;
+   RR_BIASA    : constant Unsigned_32 := 16#60#;
+   RR_BIASA_TXA : constant Unsigned_32 := 16#000F_0000#;
+   RR_BIASA_TXG : constant Unsigned_32 := 16#0000_F000#;
+   Low_Nibble_Mask : constant Unsigned_8 := 16#0F#;
+
+   procedure Power_Trim (Card : Board) is
+      function Programmed (Address : Natural) return Boolean is
+        (Card.Phycap (Address - Phycap_First) /= RTW89_Efuse.Unprogrammed);
+      Thermal_PG : constant Boolean := (for some P in RF_Path => Programmed (Thermal_Trim_Address (P)));
+      PA_PG : constant Boolean := (for some P in RF_Path => Programmed (PA_Bias_Address (P)));
+   begin
+      if Thermal_PG then
+         for P in RF_Path loop
+            declare
+               Raw : constant Unsigned_8 := Card.Phycap (Thermal_Trim_Address (P) - Phycap_First);
+               --  __thm_setting: bit 0 to bit 3, bits 4:1 to 2:0.
+               Setting : constant Unsigned_32 :=
+                 Shift_Left (Unsigned_32 (Raw and 1), 3) or Shift_Right (Unsigned_32 (Raw and 16#1F#), 1);
+            begin
+               RF_Write (P, RR_TM2, RR_TM2_OFF, Setting);
+            end;
+         end loop;
+      end if;
+      if PA_PG then
+         for P in RF_Path loop
+            declare
+               Raw : constant Unsigned_8 := Card.Phycap (PA_Bias_Address (P) - Phycap_First);
+            begin
+               RF_Write (P, RR_BIASA, RR_BIASA_TXG, Unsigned_32 (Raw and Low_Nibble_Mask));
+               RF_Write (P, RR_BIASA, RR_BIASA_TXA, Unsigned_32 (Shift_Right (Raw, 4)));
+            end;
+         end loop;
+      end if;
+   end Power_Trim;
+
+   procedure Write_Reference is
+      Value : constant Unsigned_32 := TP.Reference (0);
+   begin
+      BB_Mask (TP.Reference_Path_A + TP.Reference_OFDM, TP.BB_Reference_Mask, Value);
+      BB_Mask (TP.Reference_Path_B + TP.Reference_OFDM, TP.BB_Reference_Mask, Value);
+      BB_Mask (TP.Reference_Path_A + TP.Reference_CCK, TP.BB_Reference_Mask, Value);
+      BB_Mask (TP.Reference_Path_B + TP.Reference_CCK, TP.BB_Reference_Mask, Value);
+   end Write_Reference;
+
+   procedure TX_Power_Control is
+   begin
+      Field32 (Register (TP.PWR_RATE_CTRL), TP.PWR_REF_MASK, Shift_Of (TP.PWR_REF_MASK), 0);
+      Write_Reference;
+   end TX_Power_Control;
+
+   procedure TX_Power (Band : WS.Band; Channel : WS.Channel_Number) is
+      Rates : constant TP.Byrate_Array := TP.Byrate (Band);
+   begin
+      if not TP.Supported (Band, Channel) then
+         return;
+      end if;
+      for I in Rates'Range loop
+         Write32 (Register (TP.PWR_BY_RATE + 4 * I), Rates (I));
+      end loop;
+      Field32 (Register (TP.PWR_RATE_OFST_CTRL), TP.PWR_OFFSET_MASK, 0, TP.Offset (Band));
+      if Band = WS.Band_2_4_GHz then
+         declare
+            DFIR : constant TP.DFIR_Array := (if Channel = 14 then TP.DFIR_Sharp_14 else TP.DFIR_Flat);
+         begin
+            for I in DFIR'Range loop
+               BB_Write (BB_Address (TP.TXFIR0 + 4 * I), DFIR (I));
+            end loop;
+         end;
+      end if;
+      BB_Mask (TP.DCFO_OPT, TP.TXSHAPE_TRIANGULAR_MASK, TP.Triangular_Worldwide);
+      declare
+         L : constant TP.Limit_Array := TP.Limits (Band, Channel);
+      begin
+         for I in L'Range loop
+            Write32 (Register (TP.PWR_LMT + 4 * I), L (I));
+         end loop;
+      end;
+      for I in 0 .. TP.Paths * TP.RU_Limit_Words_Per_Path - 1 loop
+         Write32 (Register (TP.PWR_RU_LMT + 4 * I), 0);
+      end loop;
+      Write_Reference;   --  set_txpwr_diff with no antenna gain or SAR offset
+   end TX_Power;
+
    procedure Set_Channel (Card : Board; Band : WS.Band; Channel : WS.Channel_Number;
                           Locked : out Boolean; Result : out Outcome) is
       Two_G : constant Boolean := Band = WS.Band_2_4_GHz;
@@ -1333,6 +1427,7 @@ package body RTW89_PHY is
          BB_Mask (R_RXCCA, RXCCA_DIS, 0);
       end if;
       BB_Mask (R_PD_CTRL, PD_HIT_DIS, 0);
+      TX_Power (Band, Channel);
       Locked := Synthesizer_Locked;
       if not Locked then
          Result := Failure (Synthesizer_Unlocked, Register (BB_Base + RF_Direct_Base (A)),

@@ -110,6 +110,7 @@ procedure main is
    DRIVER_NETMGR   : constant Unsigned_64 := 12;
    DRIVER_DESKTOP  : constant Unsigned_64 := 15;
    DRIVER_GPU      : constant Unsigned_64 := 17;
+   DRIVER_WIFI     : constant Unsigned_64 := 33;
 
    --  Address where kernel mapped the initrd into our space; we map it at
    --  the same address into the filesystem and the RAM block driver.
@@ -410,12 +411,13 @@ procedure main is
    ps2PID        : Process_ID := No_Process;
    configPID     : Process_ID := No_Process;
    netmgrPID     : Process_ID := No_Process;
+   wifiPID       : Process_ID := No_Process;
    virtioGpuPID  : Process_ID := No_Process;
    virtioInputPID : Process_ID := No_Process;
    --  Their launches (Devmgr_Launches).
    filesystemChild, ataChild, ramdiskChild, netstackChild,
      procmgrChild, mixerChild, ps2Child,
-     configChild, netmgrChild, virtioGpuChild,
+     configChild, netmgrChild, wifiChild, virtioGpuChild,
      virtioInputChild : DL.Child := DL.No_Child;
 
    --  CPIO archive
@@ -1292,7 +1294,8 @@ procedure main is
          cpu := 3;
       elsif strEq (name, "netstack.svc") or
             strEq (name, "virtio-net.drv") or
-            strEq (name, "netmgr.svc")
+            strEq (name, "netmgr.svc") or
+            strEq (name, "wifi.svc")
       then
          if numCPUs > 1 then
             cpu := 1;
@@ -1615,6 +1618,8 @@ procedure main is
    Intel_Log_Issuance : constant CuBit.Log_Protocol.Publication_Issuance := 2;
    --  netmgr's link and configuration lines (docs/net-link.md).
    Netmgr_Log_Issuance : constant CuBit.Log_Protocol.Publication_Issuance := 3;
+   --  wifi.svc's join and connection lines (docs/wifi.md).
+   Wifi_Log_Issuance : constant CuBit.Log_Protocol.Publication_Issuance := 4;
 
    procedure Refuse (From : Process_ID; Answered : Boolean) is
       ignore : Unsigned_64;
@@ -4087,6 +4092,28 @@ begin
    end if;
 
    -----------------------------------------------------------------------
+   -- Phase 3c: Spawn the Wi-Fi connection manager (docs/wifi.md). Wi-Fi
+   -- drivers (generic launch, later) attach to it; the console calls it.
+   -- Its Config scope is the Secret family wifi.secret. (passphrases).
+   -----------------------------------------------------------------------
+   wifiChild := spawnFromBootStorage ("wifi.svc", 5);
+   wifiPID := PID_Of (wifiChild);
+   if wifiPID /= No_Process then
+      sendDeclaredConfigScopes (wifiChild, "wifi.svc");
+      assignCPU (wifiChild, "wifi.svc");
+      if DL.Start (wifiChild) then
+         debugPrint ("devmgr: wifi started" & LF);
+         if waitReady (wifiPID) then
+            DL.Provide (Unsigned_32 (DRIVER_WIFI), DL.Mailbox (wifiChild));
+         else
+            wifiPID := No_Process;
+         end if;
+      else
+         wifiPID := No_Process;
+      end if;
+   end if;
+
+   -----------------------------------------------------------------------
    -- Phase 4: Spawn audio services (HDA driver + mixer)
    -----------------------------------------------------------------------
 
@@ -4576,7 +4603,7 @@ begin
          end;
       elsif msg.tag = (label => 16#0228#, length => 0, protocol => 0, ipc => Accepting, reserved => 0) and then
         (Instance_Of (from, "xhci.drv") /= 0 or else
-         (from /= No_Process and then from = netmgrPID)) and then
+         (from /= No_Process and then (from = netmgrPID or else from = wifiPID))) and then
         msg.words = [0, 0, 0, 0]
       then
          --  A log publisher for a child started before logstore (every
@@ -4588,8 +4615,9 @@ begin
              H.Badged (Logstore_Endpoint, H.Read_Write,
                        CuBit.Log_Protocol.Publisher_Tag
                          (Driver_Log_Budget,
-                          (if from /= netmgrPID then XHCI_Log_Issuance
-                           else Netmgr_Log_Issuance))))
+                          (if from = netmgrPID then Netmgr_Log_Issuance
+                           elsif from = wifiPID then Wifi_Log_Issuance
+                           else XHCI_Log_Issuance))))
          then
             Refuse (from, Answered => H.Valid (Logstore_Endpoint));
          end if;

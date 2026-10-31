@@ -8,7 +8,28 @@
        value_range_propagation => false))
     # The UI toolkit's pixel loops: -O3 with checks on.
     (Code_Profile "pixel-loop" (Ada_Code language => Ada_Language.Ada_2022
-       optimization => Optimization.Maximum value_range_propagation => false))]
+       optimization => Optimization.Maximum value_range_propagation => false))
+    # The pinned SPARK crates, as userspace/lib/tls/sparktls_cubit.gpr
+    # compiles them: -O2, checks off (their absence of run-time errors is
+    # proved upstream), no value-range propagation (SPARKNaCl's GCC
+    # workaround, applied to every crate), their warnings not ours.
+    (Code_Profile "crate" (Ada_Code language => Ada_Language.Ada_2022
+       checks => Checks.Suppressed value_range_propagation => false warnings => Warnings.Suppressed))
+    # SPARKTLSCrypto's accelerated units, with the instruction switches
+    # its own project file gives them. Each runs only after its CPUID (and,
+    # for AVX, XCR0) check selects it, and never in a Portable_Only build.
+    (Code_Profile "crate-aes-ni" (Ada_Code language => Ada_Language.Ada_2022
+       checks => Checks.Suppressed value_range_propagation => false warnings => Warnings.Suppressed
+       instruction_sets => [Instruction_Set.AES_NI]))
+    (Code_Profile "crate-adx" (Ada_Code language => Ada_Language.Ada_2022
+       checks => Checks.Suppressed value_range_propagation => false warnings => Warnings.Suppressed
+       instruction_sets => [Instruction_Set.ADX]))
+    (Code_Profile "crate-avx2" (Ada_Code language => Ada_Language.Ada_2022
+       checks => Checks.Suppressed value_range_propagation => false warnings => Warnings.Suppressed
+       instruction_sets => [Instruction_Set.AVX2]))
+    (Code_Profile "crate-avx512" (Ada_Code language => Ada_Language.Ada_2022
+       checks => Checks.Suppressed value_range_propagation => false warnings => Warnings.Suppressed
+       instruction_sets => [Instruction_Set.AVX512]))]
   libraries => [
     # The UI toolkit, compiled into each application that uses it, with
     # the font library built by userspace/rust (make ui-fonts-native).
@@ -16,4 +37,37 @@
       sources => ["userspace/lib/ui" "userspace/lib/theme" "userspace/lib/compositor"
                   "userspace/lib/display" "userspace/allocator/src"]
       units => [(Unit_Code ["client_raster.adb" "client_glyph_blend.adb"] "pixel-loop")]
-      archives => ["userspace/rust/build/font-native/libcubit_fonts.a"])])
+      archives => ["userspace/rust/build/font-native/libcubit_fonts.a"])
+    # SPARKNaCl and SPARKTLSCrypto, fetched at the commits flake.nix pins
+    # (the same trees: their identities match the flake inputs'). Debug
+    # and PDebug print with Text_IO; no CuBit unit reaches them.
+    (Library name => "sparknacl"
+      origin => (fetch_tar_gz
+        "https://codeload.github.com/rod-chapman/SPARKNaCl/tar.gz/49e3bddf092561ce2b74c134a35acff91a2da9a4"
+        (SHA256_Digest 0xbbe6c3c8 0xf44de5c2 0xae0c70b5 0x3e6d874a
+                       0x810de5f3 0x004d45ce 0x8f8b21af 0xb1f46aaf))
+      code => (Library_Code.Profile "crate")
+      sources => ["src"])
+    (Library name => "sparktlscrypto"
+      origin => (fetch_tar_gz
+        "https://codeload.github.com/docandrew/sparktlscrypto/tar.gz/b89c8bee8013498ac9008f92f4fd5480740e60df"
+        (SHA256_Digest 0xa1677d54 0x03d8c0b9 0x7e6ed5c0 0x70b91503
+                       0x31df2517 0x79044f82 0x857b81df 0x1a1caade))
+      code => (Library_Code.Profile "crate")
+      # The portable tier (Portable_Only): the accelerated units are still
+      # compiled where withed but never selected, so only the code
+      # tests/wifi-crypto proves against runs. tls.svc, when it migrates,
+      # adds the "enabled" tier (CPUID dispatch) as sparktls_cubit.gpr has.
+      sources => ["src" "src/tiers/disabled"]
+      units => [(Unit_Code ["sparktlscrypto-aes_ni.adb" "sparktlscrypto-ghash_ni.adb"] "crate-aes-ni")
+                (Unit_Code ["sparktlscrypto-bignat64_adx.adb"] "crate-adx")
+                (Unit_Code ["sparktlscrypto-p256_gather_avx2.adb"] "crate-avx2")
+                (Unit_Code ["sparktlscrypto-aes_gcm_avx512.adb" "sparktlscrypto-chacha20_avx512.adb"
+                            "sparktlscrypto-poly1305_avx512.adb" "sparktlscrypto-poly1305_avx512_ifma.adb"]
+                           "crate-avx512")])
+    # wifi.svc's 802.11 crypto (docs/wifi.md, W2): compositions of
+    # the two crates, every unit proved (tests/wifi-crypto/run.sh --prove).
+    # A component using it names the crates too.
+    (Library name => "wifi-crypto"
+      code => (Library_Code.Profile "proved")
+      sources => ["userspace/lib/wifi/crypto"])])

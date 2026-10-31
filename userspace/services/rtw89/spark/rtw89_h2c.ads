@@ -37,6 +37,8 @@ package RTW89_H2C with Pure, SPARK_Mode is
    Function_Join_Info  : constant Unsigned_8 := 0;    --  H2C_FUNC_MAC_JOININFO
    Function_Role_Maintain : constant Unsigned_8 := 4; --  H2C_FUNC_MAC_FWROLE_MAINTAIN
    Class_FW_Offload    : constant Unsigned_8 := 9;    --  H2C_CL_MAC_FW_OFLD
+   Class_Security_CAM  : constant Unsigned_8 := 16#A#;  --  H2C_CL_MAC_SEC_CAM
+   Function_Security_CAM : constant Unsigned_8 := 1;  --  H2C_FUNC_MAC_SEC_UPD
    Function_MACID_Pause : constant Unsigned_8 := 8;   --  H2C_FUNC_MAC_MACID_PAUSE
    Function_Offload_Config : constant Unsigned_8 := 16#14#;  --  H2C_FUNC_OFLD_CFG
 
@@ -57,6 +59,7 @@ package RTW89_H2C with Pure, SPARK_Mode is
    Update_Mode_Create : constant := 0;
    Wifi_Role_Station  : constant := 1;
    Net_Type_No_Link   : constant := 0;
+   Net_Type_Infrastructure : constant := 2;       --  RTW89_NET_TYPE_INFRA
    Role_Wifi_Role_Shift : constant := 13;       --  [16:13]
    Join_Disconnect_Bit  : constant := 2 ** 8;   --  OP: dis_conn
    Join_Net_Type_Shift  : constant := 24;       --  [25:24]
@@ -76,12 +79,64 @@ package RTW89_H2C with Pure, SPARK_Mode is
                  or Shift_Left (Unsigned_32'(Net_Type_No_Link), Join_Net_Type_Shift)
                  or Shift_Left (Unsigned_32'(Wifi_Role_Station), Join_Wifi_Role_Shift)));
 
-   --  The address CAM entry (v0, 15 words) for our own address with no
-   --  peer: entry 0, 0x40 bytes, valid; BSSID entry 0 (8 bytes, mask
-   --  "match all"), security entries in normal mode.
+   --  rtw89_fw_h2c_join_info, associated (op 0): the station is in an
+   --  infrastructure BSS.
+   function Join_Info_Connected return Bytes is
+     (Word_Bytes (Unsigned_32 (Own_MACID)
+                 or Shift_Left (Unsigned_32'(Net_Type_Infrastructure), Join_Net_Type_Shift)
+                 or Shift_Left (Unsigned_32'(Wifi_Role_Station), Join_Wifi_Role_Shift)));
+
+   ---------------------------------------------------------------------------
+   --  The address CAM entry (v0, 15 words: rtw89_cam_fill_addr_cam_info,
+   --  rtw89_cam_fill_bssid_cam_info) for our own address (SMA) and the
+   --  BSS (TMA and BSSID CAM entry 0): entry 0, 0x40 bytes, security
+   --  entries in normal mode (slots 0..1 pairwise, 2..4 group, 5..6 BIP).
+   ---------------------------------------------------------------------------
+   type Net_Type is (No_Link, Infrastructure);
+   for Net_Type use (No_Link => Net_Type_No_Link, Infrastructure => Net_Type_Infrastructure);
+   subtype Association_ID is Natural range 0 .. 16#FFF#;
+   subtype Security_Slot is Natural range 0 .. 6;
+   Pairwise_Slot : constant Security_Slot := 0;
+   Group_Slot    : constant Security_Slot := 2;
+   subtype Security_CAM_Index is Natural range 0 .. 127;   --  scam_num 128
+   subtype Key_ID is Natural range 0 .. 3;
+   type Key_Entry is record
+      Valid : Boolean := False;
+      Index : Security_CAM_Index := 0;
+      Key   : Key_ID := 0;
+   end record;
+   type Key_Entries is array (Security_Slot) of Key_Entry;
+   No_Keys : constant Key_Entries := [others => <>];
+   No_Peer : constant Address := [others => 0];
+
+   type Station is record
+      Own   : Address := [others => 0];
+      Peer  : Address := No_Peer;          --  the BSSID (No_Peer: none yet)
+      Kind  : Net_Type := No_Link;
+      AID   : Association_ID := 0;
+      Keys  : Key_Entries := No_Keys;
+   end record;
+
    Address_CAM_Bytes : constant := 60;
-   function Address_CAM (Own : Address) return Bytes
+   function Station_CAM (S : Station) return Bytes
+   with Post => Station_CAM'Result'First = 1 and then Station_CAM'Result'Length = Address_CAM_Bytes;
+
+   --  Our own address, no peer (scanning, W1).
+   function Address_CAM (Own : Address) return Bytes is
+     (Station_CAM ((Own => Own, others => <>)))
    with Post => Address_CAM'Result'First = 1 and then Address_CAM'Result'Length = Address_CAM_Bytes;
+
+   ---------------------------------------------------------------------------
+   --  A security CAM entry (rtw89_cam_get_sec_key_cmd, H2C_SEC_CAM_LEN):
+   --  w0 index [7:0], offset [15:8] (0), length [23:16] (RTW89_SEC_CAM_LEN);
+   --  w1 key type [3:0] (no extended key, no SPP); w2..w5 the 16 key octets.
+   ---------------------------------------------------------------------------
+   Security_CAM_Bytes : constant := 24;
+   Security_CAM_Length : constant := 20;
+   Key_Type_CCMP_128 : constant := 6;
+   subtype Key_16 is Bytes (1 .. 16);
+   function Security_CAM (Index : Security_CAM_Index; Key : Key_16) return Bytes
+   with Post => Security_CAM'Result'First = 1 and then Security_CAM'Result'Length = Security_CAM_Bytes;
 
    --  The default CMAC table for macid 0 (17 words: values 0 .. 7, write
    --  masks 8 .. 15, word 16). Two TX paths (A and B).

@@ -16,6 +16,9 @@
   # what it prepared for that name): hda for mixer, the ramdisk for
   # filesystem.
   (service launcher-peer 30 read-write)
+  # wifi.svc (docs/wifi.md): Wi-Fi drivers attach to it; the console joins,
+  # leaves and stores passphrases through it.
+  (service wifi 33 read-write)
   (notification keyboard 1 publish-and-manage)
   (notification ata 2 publish-and-manage)
   (notification nvme 5 publish-and-manage)
@@ -28,4 +31,5 @@
   (notification netmgr 12 publish-and-manage)
   (notification gpu 17 publish-and-manage)
   (service i2c 32 read-write)
-  (notification i2c 32 publish-and-manage))
+  (notification i2c 32 publish-and-manage)
+  (notification wifi 33 publish-and-manage))

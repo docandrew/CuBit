@@ -35,6 +35,8 @@
   (service disk-install 30 read-write)
   (service installer 31 read-write)
   (service i2c 32 read-write)
+  # wifi.svc (docs/wifi.md): (wifi.join), (wifi.passphrase) ...
+  (service wifi 33 read-write)
   (notification keyboard 1 publish-and-manage)
   (notification mouse 10 publish-and-manage)
   (notification ipc-test-registration 14 publish-and-manage)

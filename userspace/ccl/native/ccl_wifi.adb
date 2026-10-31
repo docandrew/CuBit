@@ -6,6 +6,7 @@ with CuBit.Grant_References;
 with CuBit.Net_Link;
 with CuBit.Net_Management;
 with CuBit.Wifi_Scan;
+with CuBit.Wifi_Control;
 with CCL_Native_Bindings;
 
 --  wifi.scan on CuBit: for each Wireless interface netstack reports
@@ -180,4 +181,208 @@ package body CCL_Wifi is
          end if;
       end loop;
    end Scan;
+
+   ---------------------------------------------------------------------------
+   --  The connection, through wifi.svc (CuBit.Wifi_Control).
+   ---------------------------------------------------------------------------
+   package WC renames CuBit.Wifi_Control;
+   --  wifi.svc answers at once: a missed deadline means it is gone.
+   Call_Deadline_MS : constant Unsigned_64 := 2_000;
+
+   function SSID_Of (Text : String; Valid : out Boolean) return WC.SSID is
+      S : WC.SSID;
+   begin
+      Valid := Text'Length in 1 .. WC.Maximum_SSID;
+      if Valid then
+         S.Length := Text'Length;
+         for I in 1 .. Text'Length loop
+            S.Octets (I) := Character'Pos (Text (Text'First + I - 1));
+         end loop;
+         Valid := WC.Normal (S);
+      end if;
+      return S;
+   end SSID_Of;
+
+   function Result_Of (Tag : CuBit.Messages.MessageTag; Word : Unsigned_64) return Control_Result is
+     (if Tag.label = REPLY_OK then Done
+      elsif Tag.label /= REPLY_ERR then Unavailable
+      elsif Word = WC.Refusal'Enum_Rep (WC.No_Radio) then No_Radio
+      elsif Word = WC.Refusal'Enum_Rep (WC.Not_Found) then Not_Found
+      elsif Word = WC.Refusal'Enum_Rep (WC.Not_Joinable) then Not_Joinable
+      elsif Word = WC.Refusal'Enum_Rep (WC.No_Passphrase) then No_Passphrase
+      elsif Word = WC.Refusal'Enum_Rep (WC.Busy) then Busy
+      elsif Word = WC.Refusal'Enum_Rep (WC.Not_Stored) then Not_Stored
+      else Malformed);
+
+   function Call (Op : WC.Operation; W : CuBit.Messages.MessageWords; Length : Natural;
+                  Answer : out CuBit.Messages.MessageWords) return CuBit.Messages.MessageTag is
+      M : CuBit.Messages.Message := CuBit.Messages.NULL_MESSAGE;
+      Tag : CuBit.Messages.MessageTag;
+   begin
+      M.tag := (label => WC.Label (Op), length => Unsigned_8 (Length), protocol => 0, ipc => <>, reserved => 0);
+      M.words := W;
+      Tag := CuBit.Messages.capCall (CCL_Native_Bindings.Wifi, M, CuBit.Messages.Deadline_After (Call_Deadline_MS));
+      Answer := M.words;
+      return Tag;
+   end Call;
+
+   procedure Get_Status (Status : out Connection; Result : out Control_Result) is
+      Answer : CuBit.Messages.MessageWords;
+      Tag : CuBit.Messages.MessageTag;
+   begin
+      Status := (others => <>);
+      if not CuBit.Handles.Valid (CCL_Native_Bindings.Wifi) then
+         Result := Not_Granted;
+         return;
+      end if;
+      Tag := Call (WC.Status, [others => 0], 0, Answer);
+      Result := Result_Of (Tag, Answer (0));
+      if Result /= Done then
+         return;
+      end if;
+      declare
+         State_Word : constant Unsigned_64 := Answer (0) and 16#FF#;
+         Failure : constant Natural := Natural (Shift_Right (Answer (0), WC.Failure_Shift) and 16#FF#);
+         Band_Word : constant Unsigned_64 := Shift_Right (Answer (0), WC.Band_Shift) and 16#FF#;
+      begin
+         Status.State := (if State_Word <= Wifi.State'Pos (Wifi.State'Last)
+                          then Wifi.State'Val (State_Word) else Wifi.No_Radio);
+         declare
+            Text : constant String :=
+              (if Failure > WC.Failure'Pos (WC.Failure'Last) then "unknown"
+               else (case WC.Failure'Val (Failure) is
+                       when WC.None => "",
+                       when WC.Authentication_Refused => "authentication refused",
+                       when WC.Authentication_Timeout => "authentication timed out",
+                       when WC.Association_Refused => "association refused",
+                       when WC.Association_Timeout => "association timed out",
+                       when WC.Handshake_Failed => "4-way handshake failed",
+                       when WC.Handshake_Timeout => "4-way handshake timed out",
+                       when WC.Deauthenticated => "deauthenticated",
+                       when WC.Disassociated => "disassociated",
+                       when WC.Left => "left"));
+            Shown : constant Natural := Natural'Min (Text'Length, MAXIMUM_FAILURE_TEXT);
+         begin
+            Status.Failure (1 .. Shown) := Text (Text'First .. Text'First + Shown - 1);
+            Status.Failure_Length := Shown;
+         end;
+         Status.On_Band := (if Band_Word = WS.Band'Enum_Rep (WS.Band_5_GHz) then Wifi.Band_5_GHz
+                            else Wifi.Band_2_4_GHz);
+         Status.Channel := Natural (Shift_Right (Answer (0), WC.Channel_Shift) and 16#FF#);
+         if NL.Valid_Address_Word (Answer (1)) then
+            declare
+               Item : Listed;
+            begin
+               Fill_BSSID (Item, NL.Address_Of (Answer (1)));
+               Status.BSSID := Item.BSSID;
+            end;
+         end if;
+      end;
+   end Get_Status;
+
+   procedure Join (SSID : String; Status : out Connection; Result : out Control_Result) is
+      Valid : Boolean;
+      S : constant WC.SSID := SSID_Of (SSID, Valid);
+      Answer : CuBit.Messages.MessageWords;
+      Tag : CuBit.Messages.MessageTag;
+   begin
+      Status := (others => <>);
+      if not CuBit.Handles.Valid (CCL_Native_Bindings.Wifi) then
+         Result := Not_Granted;
+         return;
+      elsif not Valid then
+         Result := Malformed;
+         return;
+      end if;
+      declare
+         W : constant WC.Words4 := WC.Encode (S);
+      begin
+         Tag := Call (WC.Join, [W (0), W (1), W (2), W (3)], WC.SSID_Words, Answer);
+      end;
+      Result := Result_Of (Tag, Answer (0));
+      if Result = Done then
+         Get_Status (Status, Result);
+      end if;
+   end Join;
+
+   procedure Leave (Status : out Connection; Result : out Control_Result) is
+      Answer : CuBit.Messages.MessageWords;
+      Tag : CuBit.Messages.MessageTag;
+   begin
+      Status := (others => <>);
+      if not CuBit.Handles.Valid (CCL_Native_Bindings.Wifi) then
+         Result := Not_Granted;
+         return;
+      end if;
+      Tag := Call (WC.Leave, [others => 0], 0, Answer);
+      Result := Result_Of (Tag, Answer (0));
+      if Result = Done then
+         Get_Status (Status, Result);
+      end if;
+   end Leave;
+
+   Pending_SSID : String (1 .. WC.Maximum_SSID) := [others => ' '];
+   Pending_Length : Natural range 0 .. WC.Maximum_SSID := 0;
+   Pending : Boolean := False;
+
+   procedure Request_Passphrase (SSID : String; Result : out Control_Result) is
+      Valid : Boolean;
+      S : constant WC.SSID := SSID_Of (SSID, Valid);
+      pragma Unreferenced (S);
+   begin
+      if not CuBit.Handles.Valid (CCL_Native_Bindings.Wifi) then
+         Result := Not_Granted;
+      elsif not Valid then
+         Result := Malformed;
+      else
+         Pending_SSID (1 .. SSID'Length) := SSID;
+         Pending_Length := SSID'Length;
+         Pending := True;
+         Result := Done;
+      end if;
+   end Request_Passphrase;
+
+   function Passphrase_Requested return Boolean is (Pending);
+   function Requested_SSID return String is (Pending_SSID (1 .. Pending_Length));
+
+   procedure Cancel_Passphrase is
+   begin
+      Pending := False;
+      Pending_SSID := [others => ' '];
+      Pending_Length := 0;
+   end Cancel_Passphrase;
+
+   --  The page lent to wifi.svc for one Set_Passphrase: SSID, passphrase.
+   Secret_Page : String (1 .. WC.Page_Bytes) := [others => ASCII.NUL]
+     with Alignment => WC.Page_Bytes, Volatile;
+
+   procedure Store_Passphrase (Passphrase : String; Result : out Control_Result) is
+      Loan : CuBit.Memory_Grants.Grant_Reference;
+      Lent, Revoked : Boolean;
+      Answer : CuBit.Messages.MessageWords;
+      Tag : CuBit.Messages.MessageTag;
+   begin
+      if not Pending then
+         Result := Malformed;
+         return;
+      elsif Passphrase'Length not in WC.Passphrase_Length then
+         Result := Malformed;
+         Cancel_Passphrase;
+         return;
+      end if;
+      Secret_Page (1 .. Pending_Length) := Pending_SSID (1 .. Pending_Length);
+      Secret_Page (Pending_Length + 1 .. Pending_Length + Passphrase'Length) := Passphrase;
+      CuBit.Memory_Grants.Create_Via_Capability (CCL_Native_Bindings.Wifi, Secret_Page'Address, 1, False, Loan, Lent);
+      if not Lent then
+         Result := Unavailable;
+      else
+         Tag := Call (WC.Set_Passphrase,
+                      [Loan.slot, Loan.generation, WC.Lengths_Word (Pending_Length, Passphrase'Length), 0], 3,
+                      Answer);
+         CuBit.Memory_Grants.Revoke (Loan, Revoked);
+         Result := Result_Of (Tag, Answer (0));
+      end if;
+      Secret_Page := [others => ASCII.NUL];
+      Cancel_Passphrase;
+   end Store_Passphrase;
 end CCL_Wifi;

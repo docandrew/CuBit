@@ -78,7 +78,7 @@ Mesa native tests: --test softpipe, opengl, buffer, mesa-window, mesa-sync, mesa
 
 Options:
   --build              Run make world before booting QEMU
-  --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-console, logs, ccl-remote, capability-security, network-authority, bench-net, bench-fs, threads, futex, clock, avx, rust-std, libc, processes, control-events, binutils, gcc, gnat, servo, bench-spread, timesync, tls-probe, tls-service, wget-https, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, text, calculator, lexicon, dictionary, clipboard, key-repeat, desktop-doom, desktop-virtio-vga, desktop-vm, virtio-gpu, virtio-vga-primary, launch-failure, fs-coherence-CASE, startup-health, firmware-snapshot, or boot-timeline (--accel kvm --timeout 60)
+  --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-console, logs, ccl-remote, capability-security, network-authority, bench-net, bench-fs, threads, futex, clock, avx, wifi-crypto, rust-std, libc, processes, control-events, binutils, gcc, gnat, servo, bench-spread, timesync, tls-probe, tls-service, wget-https, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, text, calculator, lexicon, dictionary, clipboard, key-repeat, desktop-doom, desktop-virtio-vga, desktop-vm, virtio-gpu, virtio-vga-primary, launch-failure, fs-coherence-CASE, startup-health, firmware-snapshot, or boot-timeline (--accel kvm --timeout 60)
   --timeout SECONDS    QEMU runtime before timeout is treated as success
                        (default 25; 180 for desktop tests, see DESKTOP_TIMEOUT_SECONDS)
   --accel NAME         QEMU accelerator (for example: tcg,thread=multi)
@@ -325,7 +325,7 @@ case "$TEST_NAME" in
         ;;
     grant-forward|grant-forward-intermediary-exit|grant-forward-owner-exit|grant-forward-desktop|config-tree|config-inspection|log-authority|log-fields|metrics|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
         ;;
-    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|multi-instance|program-parameters|usb-hotplug)
+    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|multi-instance|program-parameters|usb-hotplug|wifi-crypto)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -699,6 +699,11 @@ with open(sys.argv[1], "wb") as f:
         # across thousands of switches (kernel XSAVE isolation).
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-avx.ccl"
         if [ "$QEMU_CPUS_EXPLICIT" = 0 ]; then QEMU_CPUS=1; fi
+        ;;
+    wifi-crypto)
+        # rtw89's WiFi_Crypto known-answer self-test, natively, without the
+        # device (make wifi-crypto-check: the crates are fetched by ccl-build).
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-wifi-crypto.ccl"
         ;;
     rust-std)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-rust-std.ccl"
@@ -1818,6 +1823,16 @@ if [ -n "$INIT_PROFILE" ]; then
             if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/$DEVMEM_IMAGE $DEVMEM_IMAGE" \
               "$TEMP_DISK" >/dev/null 2>&1; then
                 echo "headless: failed to install $DEVMEM_IMAGE" >&2
+                exit 1
+            fi
+        done
+    fi
+    if [ "$TEST_NAME" = "wifi-crypto" ]; then
+        for WIFI_CRYPTO_IMAGE in logstore.svc wifi-crypto-check.app; do
+            debugfs -w -R "rm $WIFI_CRYPTO_IMAGE" "$TEMP_DISK" >/dev/null 2>&1
+            if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/$WIFI_CRYPTO_IMAGE $WIFI_CRYPTO_IMAGE" \
+              "$TEMP_DISK" >/dev/null 2>&1; then
+                echo "headless: failed to install $WIFI_CRYPTO_IMAGE" >&2
                 exit 1
             fi
         done
@@ -3162,6 +3177,23 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
             send_text '(wifi.scan)'
             sleep 2
             send_text '(length (wifi.scan))'
+            sleep 2
+            # The connection (W3/W4) through wifi.svc: no radio, so the
+            # status says so and a join is refused; the passphrase goes
+            # through the console's secret entry to wifi.svc, which stores
+            # it as a Secret setting the console's config-all cannot read.
+            send_text '(wifi.status)'
+            sleep 2
+            send_text '(wifi.join "CuBitTest")'
+            sleep 2
+            send_text '(wifi.passphrase "CuBitTest")'
+            sleep 2
+            send_text 'correct horse battery'
+            sleep 2
+            send_text '(config.get "wifi.secret.437542697454657374")'
+            sleep 2
+            # Logs by program name, not only by catalog role.
+            send_text '(logs.recent "wifi")'
             sleep 2
             printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-demo-wifi.ppm" | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
             sleep 0.5
@@ -4711,6 +4743,11 @@ rust-std: thread with a custom stack PASS
 RUST-STD: PASS
 "
         ;;
+    wifi-crypto)
+        required_markers="
+wifi-crypto-check: pbkdf2-sha1-pmk=ok aes-cmac=ok xmd-sha256=ok PASS
+"
+        ;;
     avx)
         required_markers="
 Process: user FP/SIMD state saved with XSAVEOPT
@@ -5073,6 +5110,12 @@ ccl-console: REPL completed: Calc_Number: (Calc_Number true \"0\" \"1\" \"0\" Ca
             required_markers="$required_markers
 ccl-console: REPL completed: List<Wifi_Network>: (list-of Wifi_Network)
 ccl-console: REPL completed: Integer: 0
+wifi: starting
+ccl-console: REPL completed: Wifi_Status: (Wifi_Status Wifi_State.No_Radio \"\" \"00:00:00:00:00:00\"
+wifi: no Wi-Fi radio is attached
+ccl-console: REPL completed: config.get failed
+wifi: passphrase stored for \"CuBitTest\"
+ccl-console: REPL completed: List<LogEntry>: [(LogEntry
 "
         elif [ "${CCL_CONSOLE_DEMO:-}" = clipboard ]; then
             required_markers="$required_markers
@@ -5746,6 +5789,15 @@ EOF
 if [ "$missing" -ne 0 ]; then
     echo "headless: serial log: $SERIAL_LOG" >&2
     exit 1
+fi
+
+if [ "$TEST_NAME" = "ccl-console" ] && [ "${CCL_CONSOLE_DEMO:-}" = wifi ]; then
+    # The passphrase typed into the secret entry never reaches a log.
+    if grep -qF 'correct horse' "$SERIAL_LOG"; then
+        echo "headless: the passphrase reached the serial log" >&2
+        echo "headless: serial log: $SERIAL_LOG" >&2
+        exit 1
+    fi
 fi
 
 if [ "$TEST_NAME" = "ufs-write" ]; then

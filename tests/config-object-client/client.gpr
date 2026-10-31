@@ -12,7 +12,7 @@ project Client is
       "config_object_receiver.ads", "config_object_receiver.adb",
       "config_object_dispatch.ads", "config_object_dispatch.adb",
       "config_typed_store.ads", "config_typed_store.adb", "config_objects.ads", "config_objects.adb",
-      "config_collections.ads", "config_collections.adb", "config_authority.ads", "cubit-process_ids.ads", "cubit-process_ids.adb", "config_authority.adb",
+      "config_collections.ads", "config_collections.adb", "config_authority.ads", "cubit-process_ids.ads", "cubit-process_ids.adb", "config_authority.adb", "ccl-setting_secrets.ads",
       "cubit-config_inspection.ads", "cubit-config_inspection.adb",
       "config_object_messages.ads", "config_object_messages.adb",
       "config_worker_protocol.ads", "config_worker_protocol.adb",

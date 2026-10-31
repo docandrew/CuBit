@@ -3,11 +3,9 @@
 --  Copyright (C) 2026 Jon Andrew
 ------------------------------------------------------------------------------
 pragma Ada_2022;
-with Interfaces; use Interfaces;
 with RTW89_Registers; use RTW89_Registers;
 with RTW89_MAC_Registers; use RTW89_MAC_Registers;
 with RTW89_MMIO; use RTW89_MMIO;
-with RTW89_H2C;
 
 package body RTW89_MAC_Init is
 
@@ -366,17 +364,32 @@ package body RTW89_MAC_Init is
    end Start;
 
    ---------------------------------------------------------------------------
-   procedure Port_Update is
+   --  rtw89_mac_port_update for port 0, a station: NO_LINK (not
+   --  associated) or INFRA (associated, Interval the BSS's beacon interval).
+   procedure Port_Config (Infrastructure : Boolean; Interval : Unsigned_16) is
    begin
-      --  The port is not enabled yet at the first add (func_sw skipped).
+      --  func_sw: an enabled port is stopped for a beacon interval first.
+      if (Read32 (PORT_CFG_P0) and PORT_FUNC_EN) /= 0 then
+         RTW89_MMIO.Sleep (RTW89_MMIO.Milliseconds'Min (Unsigned_64 (Interval) + 1, RTW89_MMIO.Milliseconds'Last));
+         Clear32 (PORT_CFG_P0, PORT_FUNC_EN or BRK_SETUP);
+         Set32 (PORT_CFG_P0, TSFTR_RST);
+         Write32 (BCN_CNT_TMR_P0, 0);
+      end if;
       Clear32 (PORT_CFG_P0, TXBCN_RPT_EN);
       Clear32 (PORT_CFG_P0, RXBCN_RPT_EN);
-      Clear32 (PORT_CFG_P0, NET_TYPE_MASK);                 --  NO_LINK
-      Clear32 (PORT_CFG_P0, TBTT_PROHIB_EN or BRK_SETUP);
-      Clear32 (PORT_CFG_P0, RX_BSSID_FIT_EN);
-      Clear32 (PORT_CFG_P0, TSF_UDT_EN);
+      Field32 (PORT_CFG_P0, NET_TYPE_MASK, NET_TYPE_SHIFT, (if Infrastructure then NET_TYPE_INFRA else 0));
+      if Infrastructure then
+         Set32 (PORT_CFG_P0, TBTT_PROHIB_EN or BRK_SETUP);    --  bcn_prct
+         Set32 (PORT_CFG_P0, RX_BSSID_FIT_EN);                --  rx_sw
+         Set32 (PORT_CFG_P0, TSF_UDT_EN);                     --  rx_sync
+      else
+         Clear32 (PORT_CFG_P0, TBTT_PROHIB_EN or BRK_SETUP);
+         Clear32 (PORT_CFG_P0, RX_BSSID_FIT_EN);
+         Clear32 (PORT_CFG_P0, TSF_UDT_EN);
+      end if;
       Clear32 (PORT_CFG_P0, BCNTX_EN);
-      Field32 (BCN_SPACE_P0, BCN_SPACE_MASK, 0, BCN_INTERVAL_DEF);
+      Field32 (BCN_SPACE_P0, BCN_SPACE_MASK, 0,
+               (if Infrastructure and then Interval /= 0 then Unsigned_32 (Interval) else BCN_INTERVAL_DEF));
       Write8 (HIQ_WIN_P0, 0);
       Set8 (MD_TSFT_STMP_CTL, UPD_HGQMD_AND_TIMEOUT);
       Write16 (DTIM_CTRL_P0, Read16 (DTIM_CTRL_P0) and not DTIM_NUM_MASK);
@@ -393,7 +406,49 @@ package body RTW89_MAC_Init is
       Delay_For (BCN_ERLY_SET_DLY_US);
       Field32 (BCN_EARLY_P0, BCN_ERLY_MASK, 0, BCN_ERLY_DEF);
       Clear32 (BCN_PSR_RPT_P0, BCAID_P0_MASK);
+   end Port_Config;
+
+   procedure Port_Update is
+   begin
+      Port_Config (Infrastructure => False, Interval => 0);
    end Port_Update;
+
+   procedure Update_Station (DMA : RTW89_Bringup.Region; Station : RTW89_H2C.Station;
+                             Result : out Outcome) is
+   begin
+      Result := Success;
+      H2C (DMA, RTW89_H2C.Class_Address_CAM, RTW89_H2C.Function_Address_CAM,
+           RTW89_H2C.Station_CAM (Station), Done_Ack => True, Result => Result);
+   end Update_Station;
+
+   procedure Associate (DMA : RTW89_Bringup.Region; Station : RTW89_H2C.Station; Interval : Unsigned_16;
+                        Result : out Outcome) is
+   begin
+      Result := Success;
+      Port_Config (Infrastructure => True, Interval => Interval);
+      H2C (DMA, RTW89_H2C.Class_Media_Report, RTW89_H2C.Function_Join_Info,
+           RTW89_H2C.Join_Info_Connected, Done_Ack => True, Result => Result);
+      H2C (DMA, RTW89_H2C.Class_Address_CAM, RTW89_H2C.Function_Address_CAM,
+           RTW89_H2C.Station_CAM (Station), Done_Ack => True, Result => Result);
+   end Associate;
+
+   procedure Disassociate (DMA : RTW89_Bringup.Region; Station : RTW89_H2C.Station; Result : out Outcome) is
+   begin
+      Result := Success;
+      H2C (DMA, RTW89_H2C.Class_Media_Report, RTW89_H2C.Function_Join_Info,
+           RTW89_H2C.Join_Info_Disconnected, Done_Ack => True, Result => Result);
+      H2C (DMA, RTW89_H2C.Class_Address_CAM, RTW89_H2C.Function_Address_CAM,
+           RTW89_H2C.Station_CAM (Station), Done_Ack => True, Result => Result);
+      Port_Config (Infrastructure => False, Interval => 0);
+   end Disassociate;
+
+   procedure Install_Key (DMA : RTW89_Bringup.Region; Index : RTW89_H2C.Security_CAM_Index;
+                          Key : RTW89_H2C.Key_16; Result : out Outcome) is
+   begin
+      Result := Success;
+      H2C (DMA, RTW89_H2C.Class_Security_CAM, RTW89_H2C.Function_Security_CAM,
+           RTW89_H2C.Security_CAM (Index, Key), Done_Ack => False, Result => Result);
+   end Install_Key;
 
    procedure Add_Station (DMA : RTW89_Bringup.Region; Address : RTW89_Efuse.MAC_Address;
                           Result : out Outcome) is

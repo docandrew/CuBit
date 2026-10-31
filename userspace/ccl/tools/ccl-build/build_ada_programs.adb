@@ -68,8 +68,17 @@ package body Build_Ada_Programs is
    --  assembler output here does (ld warns otherwise).
    Stack_Note : constant String := "empty";
    Stack_Note_Section : constant String := ".note.GNU-stack=";
-   --  The host program that downloads a Fetch blob, found on PATH.
+   --  The host program that downloads a Fetch blob or tree, found on PATH.
    Fetcher_Name : constant String := "curl";
+   --  The host programs that unpack a fetched Tar_Gz tree, found on PATH,
+   --  the names their files have in its work directory, and the one
+   --  top directory a source archive holds, which is removed.
+   Decompressor_Name : constant String := "gzip";
+   Archiver_Name : constant String := "tar";
+   Archive_File : constant String := "archive.tar.gz";
+   Unpacked_Archive_File : constant String := "archive.tar";
+   Unpacked_Tree : constant String := "tree";
+   Top_Directories : constant := 1;
    Build_Id_Switch : constant String := "-Wl,--build-id=sha1";
 
    package Name_Sets is new Ada.Containers.Indefinite_Ordered_Sets (String);
@@ -149,8 +158,8 @@ package body Build_Ada_Programs is
    function Symbol_Name (Name : String) return String is
      (Embedded_Symbol_Prefix & Ada.Characters.Handling.To_Lower (Ada_Name (Name)));
 
-   --  The fetcher's absolute path, from this tool's PATH.
-   function Fetcher return String is
+   --  A host program's absolute path, from this tool's PATH.
+   function Host_Program (Name : String) return String is
       Search : constant String :=
         (if Ada.Environment_Variables.Exists ("PATH") then Ada.Environment_Variables.Value ("PATH") else "");
       First : Positive := Search'First;
@@ -161,7 +170,7 @@ package body Build_Ada_Programs is
          begin
             if Last = 0 then Last := Search'Last + 1; end if;
             declare
-               Candidate : constant String := Search (First .. Last - 1) / Fetcher_Name;
+               Candidate : constant String := Search (First .. Last - 1) / Name;
             begin
                if Last > First and then Ada.Directories.Exists (Candidate)
                  and then Build_POSIX.Is_Executable (Candidate)
@@ -172,8 +181,8 @@ package body Build_Ada_Programs is
             First := Last + 1;
          end;
       end loop;
-      raise Step_Error with Fetcher_Name & " is not on PATH: a Fetch blob that is not yet stored needs it";
-   end Fetcher;
+      raise Step_Error with Name & " is not on PATH: a Fetch blob or tree that is not yet stored needs it";
+   end Host_Program;
 
    --  Downloads URL into File with an empty environment, following
    --  redirects, over http or https only.
@@ -185,7 +194,7 @@ package body Build_Ada_Programs is
          Null_Ptr];
       Status : Integer;
    begin
-      Build_POSIX.Run (Fetcher, Arguments, Directory, "", Status);
+      Build_POSIX.Run (Host_Program (Fetcher_Name), Arguments, Directory, "", Status);
       for A of Arguments loop
          Free (A);
       end loop;
@@ -194,6 +203,76 @@ package body Build_Ada_Programs is
            Integer'Image (Status) & ")";
       end if;
    end Download;
+
+   --  Runs a host program with an empty environment, failing on a nonzero
+   --  exit status.
+   procedure Run_Host (Name : String; Arguments : in out Build_POSIX.Argument_List;
+                       Directory, Standard_Output, What : String) is
+      use Interfaces.C.Strings;
+      Status : Integer;
+   begin
+      Build_POSIX.Run (Host_Program (Name), Arguments, Directory, Standard_Output, Status);
+      for A of Arguments loop
+         Free (A);
+      end loop;
+      if Status /= 0 then
+         raise Step_Error with What & " failed (" & Name & " exit status" & Integer'Image (Status) & ")";
+      end if;
+   end Run_Host;
+
+   procedure Fetch_Tree (Store : Build_Store.Store; T : Build_Declarations.Fetched_Tree; Ran : out Boolean) is
+      use Interfaces.C.Strings;
+      Name : constant String := To_String (T.Name);
+      URL : constant String := To_String (T.URL);
+   begin
+      Ran := False;
+      if Store.Contains (Tree, T.Tree) then
+         return;
+      end if;
+      declare
+         Work : constant String := Store.New_Work;
+         Unpacked : constant String := Work / Unpacked_Tree;
+         Identity : Digest;
+      begin
+         Download (URL, Work / Archive_File, Work);
+         case T.Format is
+            when Tar_Gz =>
+               declare
+                  Decompress : Build_POSIX.Argument_List :=
+                    [New_String (Decompressor_Name), New_String ("-d"), New_String ("-c"),
+                     New_String (Work / Archive_File), Null_Ptr];
+                  Unpack : Build_POSIX.Argument_List :=
+                    [New_String (Archiver_Name), New_String ("-x"), New_String ("-f"),
+                     New_String (Work / Unpacked_Archive_File),
+                     New_String ("--strip-components=" & Ada.Strings.Fixed.Trim
+                                   (Natural'Image (Top_Directories), Ada.Strings.Left)),
+                     New_String ("--no-same-owner"), New_String ("-C"), New_String (Unpacked), Null_Ptr];
+               begin
+                  Run_Host (Decompressor_Name, Decompress, Work, Work / Unpacked_Archive_File,
+                            "decompressing " & URL);
+                  Ada.Directories.Create_Directory (Unpacked);
+                  Run_Host (Archiver_Name, Unpack, Work, "", "unpacking " & URL);
+               end;
+         end case;
+         Identity := Build_Store.Hash_Tree (Unpacked);
+         if Identity /= T.Tree then
+            Build_Store.Remove (Work);
+            --  Identities first: GNAT bounds exception messages, and a long
+            --  URL may be cut off.
+            raise Step_Error with "tree identity is " & Storehouse.Hex.Image (Identity) & ", pinned " &
+              Storehouse.Hex.Image (T.Tree) & ": library " & Name & " from " & URL;
+         end if;
+         Store.Put_Tree (Unpacked, Identity);
+         Build_Store.Remove (Work);
+         Ran := True;
+      exception
+         when Step_Error | Build_POSIX.POSIX_Error | Build_Store.Store_Error =>
+            if Ada.Directories.Exists (Work) then
+               Build_Store.Remove (Work);
+            end if;
+            raise;
+      end;
+   end Fetch_Tree;
 
    procedure Build
      (Store : Build_Store.Store; Source_Root : String;
@@ -211,13 +290,34 @@ package body Build_Ada_Programs is
 
       --  A unit's switches: the first group naming it (the program's own,
       --  then its libraries'); otherwise the program's.
-      function Switches_For (File : String) return String_Vectors.Vector is
+      function Switches_For (File, Unit_Directory : String) return String_Vectors.Vector is
       begin
          for G of Program.Units loop
             if G.Files.Contains (File) then return G.Switches; end if;
          end loop;
+         for G of Program.Directory_Code loop
+            if To_String (G.Directory) = Unit_Directory then return G.Switches; end if;
+         end loop;
          return Program.Compiler;
       end Switches_For;
+
+      --  Where a path in the steps' layout is on this host: in a fetched
+      --  tree's store entry, or in the source tree.
+      function Host_Path (Path : String) return String is
+      begin
+         for T of Program.Trees loop
+            declare
+               Placed : constant String := External_Directory / To_String (T.Name);
+            begin
+               if Path = Placed then
+                  return Store.Path_Of (Tree, T.Tree);
+               elsif Inside (Path, Placed) then
+                  return Store.Path_Of (Tree, T.Tree) / Path (Path'First + Placed'Length + 1 .. Path'Last);
+               end if;
+            end;
+         end loop;
+         return Source_Root / Path;
+      end Host_Path;
 
       --  Snapshots of the source tree, each stored once per build.
       Snapshots : Identity_Maps.Map;
@@ -228,9 +328,9 @@ package body Build_Ada_Programs is
          Need_Relative (Path, "source");
          if not Snapshots.Contains (Key) then
             if Kind = Tree then
-               Store.Put_Tree (Source_Root / Path, Identity);
+               Store.Put_Tree (Host_Path (Path), Identity);
             else
-               Store.Put_File (Source_Root / Path, Kind, Identity);
+               Store.Put_File (Host_Path (Path), Kind, Identity);
             end if;
             Snapshots.Insert (Key, Identity);
          end if;
@@ -277,7 +377,7 @@ package body Build_Ada_Programs is
          Item : Directory_Entry_Type;
       begin
          Need_Relative (Source_Directory, "source directory");
-         Start_Search (Search, Source_Root / Source_Directory, "", [Ordinary_File => True, others => False]);
+         Start_Search (Search, Host_Path (Source_Directory), "", [Ordinary_File => True, others => False]);
          while More_Entries (Search) loop
             Get_Next_Entry (Search, Item);
             if (Ends_With (Simple_Name (Item), Spec_Suffix) or else Ends_With (Simple_Name (Item), Body_Suffix))
@@ -486,6 +586,15 @@ package body Build_Ada_Programs is
       end Write_Embedded;
    begin
       Result := (others => <>);
+      --  Fetched trees first: their files are sources like the tree's.
+      for T of Program.Trees loop
+         declare
+            Ran : Boolean;
+         begin
+            Fetch_Tree (Store, T, Ran);
+            Log (Ran, T.Tree, "fetch " & To_String (T.Name));
+         end;
+      end loop;
       Need_Relative (Directory, "directory");
       Need_Relative (Runtime, "runtime");
       Add_Search_Path (Source_Path_File, Library => False);
@@ -688,7 +797,7 @@ package body Build_Ada_Programs is
             Tools (S);
             Path_Of (S, Runtime, "--RTS=");
             Reproducible (S);
-            Literals (S, Switches_For (File));
+            Literals (S, Switches_For (File, Unit_Directory));
             --  The unit's own directory is searched first, then these.
             for D of Search_Directories loop
                if D /= Unit_Directory then

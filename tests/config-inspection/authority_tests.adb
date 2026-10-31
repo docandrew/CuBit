@@ -67,4 +67,31 @@ begin
    pragma Assert (Result = Installed and Allows (State, P (100), "anything", Write_Config));
    pragma Assert (not Allows (State, P (1), "desktop.theme", Read_Config));
    Ada.Text_IO.Put_Line ("PASS Config authority: default deny, isolation, replacement, revocation and capacity");
+
+   --  Secret settings (class Secret, wifi.secret.): only a scope naming
+   --  the family reaches them, never config-all or a broader prefix.
+   declare
+      Secrets : Authority_State;
+      All_Keys, Wifi, Owner, Member : Rule_Set;
+      Key : constant String := "wifi.secret.436f6865726572";
+   begin
+      Append (All_Keys, "", Read_Write, Accepted);
+      Install (Secrets, P (10), All_Keys, Result);
+      pragma Assert (not Allows (Secrets, P (10), Key, Read_Config), "config-all reads no secret");
+      pragma Assert (not Allows (Secrets, P (10), Key, Write_Config), "config-all writes no secret");
+      pragma Assert (Allows (Secrets, P (10), "wifi.other", Read_Config), "config-all reads the rest");
+      Append (Wifi, "wifi.", Read_Write, Accepted);
+      Install (Secrets, P (11), Wifi, Result);
+      pragma Assert (not Allows (Secrets, P (11), Key, Read_Config), "a broader prefix reads no secret");
+      Append (Owner, "wifi.secret.", Read_Write, Accepted);
+      Install (Secrets, P (12), Owner, Result);
+      pragma Assert (Allows (Secrets, P (12), Key, Read_Config), "the family's scope reads it");
+      pragma Assert (Allows (Secrets, P (12), Key, Write_Config), "the family's scope writes it");
+      pragma Assert (not Allows (Secrets, P (13), Key, Read_Config), "an undeclared reader is refused");
+      Append (Member, Key, Read_Only, Accepted);
+      Install (Secrets, P (14), Member, Result);
+      pragma Assert (Allows (Secrets, P (14), Key, Read_Config), "a scope naming the key reads it");
+      pragma Assert (not Allows (Secrets, P (14), "wifi.secret.00", Read_Config), "but no other member");
+   end;
+   Ada.Text_IO.Put_Line ("PASS Config authority: secret settings only under a scope naming them");
 end Authority_Tests;

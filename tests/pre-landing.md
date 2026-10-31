@@ -103,6 +103,23 @@ Typed Config collections survive a restart of the store.
 bash tests/headless/run.sh --test config-objects-reopen --accel kvm
 ```
 
+## ccl-bindings (binding-number collision, 2026-10-30)
+
+Every CCL interface a host grants takes its runtime binding numbers from
+CCL.Binding_Blocks, and CCL.Catalog.Install refuses a number another
+operation holds. wifi.scan once reused system.disks' number and the
+console routed every (system.disks) to Wi-Fi; native config-values sat in
+Log's block. The environment probe fails on any collision; the console
+demos exercise each interface end to end. Run them for any change to CCL
+bindings, catalogs or the console.
+
+```sh
+make -C kernel test-ccl-install
+CCL_CONSOLE_DEMO=install tests/headless/run.sh --test ccl-console --accel kvm --timeout 600
+CCL_CONSOLE_DEMO=wifi tests/headless/run.sh --test ccl-console --accel kvm --timeout 600
+tests/headless/run.sh --test ccl-workbench --accel kvm --timeout 600
+```
+
 ## block-requests (HW-001)
 
 The shared Block.Device.V1 front end (CuBit.Block_Requests and the
@@ -307,7 +324,7 @@ bash tests/headless/run.sh --test tls-service --accel kvm
 
 ## wifi-crypto (W2)
 
-The Wi-Fi driver's crypto units (WiFi_Crypto, userspace/services/rtw89/crypto;
+The Wi-Fi driver's crypto units (WiFi_Crypto, userspace/lib/wifi/crypto;
 docs/wifi.md, W2), Linux-hosted against the flake's pinned, unmodified
 SPARKTLSCrypto and SPARKNaCl: HMAC_G (HMAC-SHA1 in Legacy_WPA2, and
 HMAC_SHA256), PBKDF2-HMAC-SHA1 and the 802.11 PRF, AES key wrap, AES-CMAC,
@@ -318,4 +335,20 @@ from RFC 2202, 4231, 6070, 3394, 4493, 3610 and 9380, NIST SP 800-38B, IEEE
 
 ```sh
 bash tests/wifi-crypto/run.sh --prove
+```
+
+## ccl-build fetched library trees; WiFi_Crypto natively
+
+ccl-build fetches SPARKNaCl and SPARKTLSCrypto as pinned trees
+(build-catalog.ccl). tests/ccl-build/run.sh checks the fetched-tree
+fixture: a wrong identity is refused and not stored, the library's profile
+applies to its units only, the store answers with the server stopped, and
+--import seeds a tree, a wrong seed being refused. rtw89 links WiFi_Crypto
+and both crates. Its start-up self-test (WiFi_Crypto.Self_Test) runs
+natively in wifi-crypto-check (needs network on the first build).
+
+```sh
+bash tests/ccl-build/run.sh
+make -C kernel rtw89 wifi-crypto-check
+bash tests/headless/run.sh --test wifi-crypto --accel kvm
 ```

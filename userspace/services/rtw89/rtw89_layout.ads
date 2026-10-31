@@ -53,8 +53,25 @@ package RTW89_Layout with Pure is
       + (RX_Channel'Pos (Channel) * RX_Ring_Entries + Slot) * RX_Buffer_Bytes)
    with Pre => Slot < RX_Ring_Entries;
 
-   Used_Bytes : constant := RX_Buffers_Offset
+   RX_End : constant := RX_Buffers_Offset
      + (RX_Channel'Pos (RX_Channel'Last) + 1) * RX_Ring_Entries * RX_Buffer_Bytes;
+
+   --  Transmit slots for the management channel (B0MG) and the
+   --  best-effort data channel (ACH0): each slot is the WD page
+   --  (RTW89_TX.Page_Bytes) at its start and the frame at Frame_In_Slot,
+   --  within 2 KiB, so neither crosses a 4 KiB boundary. A slot is reused
+   --  only after the release report (RPQ) names its WD page.
+   TX_Slot_Bytes  : constant := 2048;
+   TX_Slots       : constant := 32;
+   Frame_In_Slot  : constant := 128;
+   Maximum_TX_Frame : constant := TX_Slot_Bytes - Frame_In_Slot;
+   TX_Slots_Offset : constant := RX_End;
+   type Data_Channel is (Management_Channel, Data_Best_Effort);
+   function TX_Slot_Offset (On : Data_Channel; Slot : Natural) return Natural is
+     (TX_Slots_Offset + (Data_Channel'Pos (On) * TX_Slots + Slot) * TX_Slot_Bytes)
+   with Pre => Slot < TX_Slots;
+
+   Used_Bytes : constant := TX_Slots_Offset + 2 * TX_Slots * TX_Slot_Bytes;
    pragma Assert (Used_Bytes <= Region_Bytes);
    pragma Assert (TX_Rings_Offset + 7 * TX_Ring_Bytes <= RX_Rings_Offset);
    pragma Assert (RX_Rings_Offset + 2 * Page_Bytes <= Command_Offset);

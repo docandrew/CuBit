@@ -76,6 +76,7 @@ package body CCL_Processes is
                      end loop;
                      if Open > 0 and then Close > Open and then Close + 2 <= Line'Last then
                         Got.Pid := Natural'Value (Pid_Text);
+                        Got.Process := Interfaces.Unsigned_64 (Got.Pid);
                         Got.Name_Length := Natural'Min (Close - Open - 1, MAXIMUM_NAME);
                         Got.Name (1 .. Got.Name_Length) := Line (Open + 1 .. Open + Got.Name_Length);
                         Got.State := State_Of (Line (Close + 2));

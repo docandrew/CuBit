@@ -1,0 +1,7 @@
+# wifi-crypto-check.app: rtw89's WiFi_Crypto self-test, natively, without
+# the Wi-Fi device (headless --test wifi-crypto). Built like the driver:
+# WiFi_Crypto and the fetched crates with their own profiles.
+(Component name => "wifi-crypto-check" kind => Kind.Application
+  source => (Source.Ada (Ada_Source
+    libraries => ["wifi-crypto" "sparknacl" "sparktlscrypto"]
+    language => Ada_Language.Ada_2022)))

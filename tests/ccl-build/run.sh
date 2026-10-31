@@ -204,6 +204,72 @@ check "with the server stopped, the store answers" "$tool" build --store "$fetch
     "${imports[@]}" "$blob_root/$fetched/component.ccl" >"$scratch/fetch-offline.log" 2>&1
 check "offline: the fetch is a hit" step_hit "$scratch/fetch-offline.log" "fetch guc-firmware"
 
+echo "== fetched library trees (docs/ccl-build.md, \"Fetchers are fixed-output steps\")"
+# A library whose sources are a gzip'd tar archive from a local HTTP server,
+# pinned by its Storehouse tree identity, as build-catalog.ccl pins
+# SPARKNaCl and SPARKTLSCrypto.
+fails() { ! "$@"; }
+tree_root=$scratch/tree-root
+cp -a "$blob_root" "$tree_root"
+tree_fixture=tests/ccl-build/fetched-tree
+mkdir -p "$tree_root/$tree_fixture"
+cp "$here/fetched-tree/main.adb" "$here/fetched-tree/manifest.ccl" "$here/fetched-tree/component.ccl" \
+    "$tree_root/$tree_fixture/"
+# One top directory, as GitHub's source archives have; ccl-build removes it.
+tree_serve=$scratch/tree-serve
+mkdir -p "$tree_serve/greeting-1.0"
+cp -a "$here/fetched-tree/greeting/." "$tree_serve/greeting-1.0/"
+tar -czf "$tree_serve/greeting.tar.gz" -C "$tree_serve" greeting-1.0
+tree_identity=$("$tool" hash-tree "$tree_serve/greeting-1.0")
+wrong_identity=$("$tool" hash-tree "$here/fetched-tree")
+catalog() {  # catalog IDENTITY URL: the fixture's catalog, pinning IDENTITY
+    python3 -I "$here/fill-catalog.py" "$here/fetched-tree/build-catalog.ccl" "$1" "$2" \
+        >"$tree_root/build-catalog.ccl"
+}
+tree_port=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')
+python3 -m http.server --bind 127.0.0.1 --directory "$tree_serve" "$tree_port" >"$scratch/tree-http.log" 2>&1 &
+server=$!
+for _ in $(seq 1 50); do curl -sf -o /dev/null "http://127.0.0.1:$tree_port/" && break; sleep 0.1; done
+tree_url=http://127.0.0.1:$tree_port/greeting.tar.gz
+tree_store=$scratch/tree-store
+tree_build() {  # tree_build LOG STORE [extra args]
+    local log=$1 at=$2; shift 2
+    "$tool" build --store "$at" --source-root "$tree_root" "${imports[@]}" "$@" \
+        "$tree_root/$tree_fixture/component.ccl" >"$log" 2>&1
+}
+catalog "$wrong_identity" "$tree_url"
+check "a fetched tree with a wrong identity is refused" fails tree_build "$scratch/tree-wrong.log" "$tree_store"
+check "the refusal names the fetched tree's identity" grep -qF "tree identity is $tree_identity, pinned $wrong_identity" "$scratch/tree-wrong.log"
+check "a refused tree is not stored" test ! -e "$tree_store/trees/$tree_identity"
+catalog "$tree_identity" "$tree_url"
+check "a fetched tree with the pinned identity builds" tree_build "$scratch/tree.log" "$tree_store" --out "$scratch/out-tree"
+cat "$scratch/tree.log"
+check "the fetch ran" step_ran "$scratch/tree.log" "fetch greeting"
+check "the fetched unit is compiled" step_ran "$scratch/tree.log" "compile fetched_greeting.adb"
+check "the tree is stored by its identity" test -d "$tree_store/trees/$tree_identity"
+check "the library's units have its profile" grep -qx "A -fno-tree-vrp" \
+    "$scratch/out-tree/$tree_fixture/build/fetched_greeting.ali"
+check "the library's profile suppresses warnings" grep -qx "A -gnatws" \
+    "$scratch/out-tree/$tree_fixture/build/fetched_greeting.ali"
+check "the program's own units keep the program's code" fails grep -qx "A -fno-tree-vrp" \
+    "$scratch/out-tree/$tree_fixture/build/main.ali"
+kill "$server"
+wait "$server" 2>/dev/null || true
+server=
+check "with the server stopped, the store answers" tree_build "$scratch/tree-offline.log" "$tree_store"
+check "offline: the fetch is a hit" step_hit "$scratch/tree-offline.log" "fetch greeting"
+check "offline: nothing ran" test "$(ran "$scratch/tree-offline.log")" = 0
+seeded_store=$scratch/seeded-store
+check "a fresh store with no server and no seed fails" fails tree_build "$scratch/tree-unseeded.log" "$seeded_store"
+check "a seed whose identity differs is refused" fails tree_build "$scratch/tree-bad-seed.log" "$seeded_store" \
+    --import "greeting=$here/fetched-tree"
+check "the refused seed is named" grep -qF "greeting pins $tree_identity; it has identity $wrong_identity" \
+    "$scratch/tree-bad-seed.log"
+check "--import seeds the tree without network" tree_build "$scratch/tree-seeded.log" "$seeded_store" \
+    --import "greeting=$tree_serve/greeting-1.0"
+check "seeded: the fetch is a hit" step_hit "$scratch/tree-seeded.log" "fetch greeting"
+check "tree store verifies" "$tool" verify --store "$tree_store"
+
 echo "== crash: SIGKILL while copying a tree into the store"
 crash_store=$scratch/crash-store
 victim_tree=$scratch/victim-tree

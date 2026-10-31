@@ -64,7 +64,9 @@ package body IEEE80211_Beacons with SPARK_Mode is
       while Position < Last loop
          pragma Loop_Invariant
            (Position >= Minimum_Frame and then Last = Frame'Length and then Normal (Info)
-            and then Info.Elements <= (Position - Minimum_Frame) / Element_Header_Bytes);
+            and then Info.Elements <= (Position - Minimum_Frame) / Element_Header_Bytes
+            and then Inside (Info.RSN_Element, Last) and then Inside (Info.Rates, Last)
+            and then Inside (Info.Extended_Rates, Last));
          pragma Loop_Variant (Increases => Position);
          if Last - Position < Element_Header_Bytes then
             Result := Element_Overrun;
@@ -118,6 +120,17 @@ package body IEEE80211_Beacons with SPARK_Mode is
                   First_Of_Kind := Length >= RSN_Minimum_Length and then not Info.RSN;
                   if First_Of_Kind then
                      Info.RSN := True;
+                     Info.RSN_Element := (Data, Length);
+                  end if;
+               when Element_Rates =>
+                  First_Of_Kind := Info.Rates.Length = 0 and then Length > 0;
+                  if First_Of_Kind then
+                     Info.Rates := (Data, Length);
+                  end if;
+               when Element_Extended_Rates =>
+                  First_Of_Kind := Info.Extended_Rates.Length = 0 and then Length > 0;
+                  if First_Of_Kind then
+                     Info.Extended_Rates := (Data, Length);
                   end if;
                when others =>
                   First_Of_Kind := False;

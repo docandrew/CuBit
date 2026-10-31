@@ -1,0 +1,4 @@
+# WiFi_Crypto known-answer self-test (rtw89's), natively. No authority.
+(executable-manifest v1
+  (identity "com.cubit.wifi-crypto-check")
+  (version "0.1.0"))

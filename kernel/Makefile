@@ -1330,6 +1330,14 @@ rust-std-hello: ccl-manifest
 	bash ../userspace/rust/std/build-hello.sh
 	cp ../userspace/rust/build/rust-std-hello.app isodir/boot/rust-std-hello.app
 
+# rtw89's WiFi_Crypto self-test without the device (headless --test
+# wifi-crypto); SPARKNaCl and SPARKTLSCrypto are fetched, pinned trees.
+.PHONY : wifi-crypto-check
+wifi-crypto-check: ccl-build user_runtime ccl-manifest
+	mkdir -p ../userspace/apps/wifi-crypto-check/build
+	$(CCL_BUILD) ../userspace/apps/wifi-crypto-check/component.ccl
+	cp ../userspace/apps/wifi-crypto-check/build/wifi-crypto-check.app isodir/boot/wifi-crypto-check.app
+
 .PHONY : avx-check
 avx-check: ccl-build user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/avx-check/build
@@ -1943,6 +1951,13 @@ netmgr: ccl-build user_runtime ccl-manifest
 	$(CCL_BUILD) ../userspace/services/netmgr/component.ccl
 	cp ../userspace/services/netmgr/build/netmgr.svc isodir/boot/netmgr.svc
 
+# wifi.svc: the Wi-Fi connection manager and supplicant (docs/wifi.md).
+.PHONY : wifi
+wifi: ccl-build user_runtime ccl-manifest
+	mkdir -p ../userspace/services/wifi/build
+	$(CCL_BUILD) ../userspace/services/wifi/component.ccl
+	cp ../userspace/services/wifi/build/wifi.svc isodir/boot/wifi.svc
+
 # Build the userspace device manager
 .PHONY : devmgr
 devmgr: user_runtime intel-buffer-layout-check
@@ -2035,7 +2050,7 @@ servo: libc ccl-manifest
 # to the staging targets: copying an old service beside a newly rebuilt driver
 # can silently violate their capability/protocol contract.
 INITRD_SERVICES := filesystem ramdisk ata nvme netstack virtio-net virtio-gpu hda \
-	mixer ps2 xhci virtio-input intel-gpu ufs generic-check rtw89 config netmgr procmgr devmgr
+	mixer ps2 xhci virtio-input intel-gpu ufs generic-check rtw89 config netmgr wifi procmgr devmgr
 
 # Binaries used by the graphical desktop session. Keep this as a separate
 # staging target so run-desktop can build/copy them into isodir first, then
@@ -2082,7 +2097,7 @@ $(CAPABILITY_SECURITY_DISK): capability-test ../tests/headless/init-capability-s
 # all services have been staged so a parallel caller cannot capture a partial
 # archive.
 CAPABILITY_SECURITY_STAGE1 := filesystem ramdisk ata nvme netstack virtio-net \
-	virtio-gpu hda mixer ps2 xhci virtio-input intel-gpu ufs generic-check rtw89 config netmgr procmgr devmgr
+	virtio-gpu hda mixer ps2 xhci virtio-input intel-gpu ufs generic-check rtw89 config netmgr wifi procmgr devmgr
 
 .PHONY : capability-security-image
 capability-security-image: cubit_kernel $(CAPABILITY_SECURITY_STAGE1) $(CAPABILITY_SECURITY_DISK)
@@ -2102,7 +2117,7 @@ initrd: $(INITRD_SERVICES) ccl-image ../images/development-initrd.ccl $(CCL_IMAG
 # this separate from the normal two-stage image: the laptop must reach a
 # desktop and diagnostic UI before AHCI or any other block driver works.
 LAPTOP_LIVE_STAGE1 := filesystem ramdisk ata nvme netstack virtio-net virtio-gpu hda \
-	mixer ps2 xhci virtio-input intel-gpu ufs rtw89 config netmgr procmgr devmgr
+	mixer ps2 xhci virtio-input intel-gpu ufs rtw89 config netmgr wifi procmgr devmgr
 LAPTOP_LIVE_STAGE2 := logstore clock display desktop ccl-workbench ccl-console logs devices files config-inspector boot-logs \
 	storage-check doom sameboy
 LAPTOP_LIVE_RW_DISK := laptop_live_rw.img
@@ -2288,7 +2303,7 @@ check-declarations:
 	python3 ../tools/check_declarations.py --self-test
 	python3 ../tools/check_declarations.py --root ..
 
-world: check-declarations trace-viewer test-programs $(IMAGE_ONLY_BINARIES) cubit_kernel doom sameboy sleep thread-check futex-check firmware-check firmware-undeclared clock-check avx-check devmem-check fault-check oom-check stall-check bench-spread capability-test storage-check ipctest-server ipctest-client bench-ipc-server bench-ipc-client ccl-test-host clock timesync tls ccl-vm ccl-workbench filesystem ata nvme ufs installer virtio-net virtio-gpu netstack wget devices files text calculator lexicon dictionary config-inspector desktop-shell procmgr shell hda mixer ps2 xhci virtio-input config config-storage netmgr logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso
+world: check-declarations trace-viewer test-programs $(IMAGE_ONLY_BINARIES) cubit_kernel doom sameboy sleep thread-check futex-check firmware-check firmware-undeclared clock-check avx-check wifi-crypto-check devmem-check fault-check oom-check stall-check bench-spread capability-test storage-check ipctest-server ipctest-client bench-ipc-server bench-ipc-client ccl-test-host clock timesync tls ccl-vm ccl-workbench filesystem ata nvme ufs installer virtio-net virtio-gpu netstack wget devices files text calculator lexicon dictionary config-inspector desktop-shell procmgr shell hda mixer ps2 xhci virtio-input config config-storage netmgr wifi logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso
 
 .PHONY : headless-test
 headless-test: world

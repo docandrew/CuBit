@@ -42,12 +42,15 @@ $ref compare "$work/tables.ada" "$work/tables.py"
 if [[ -n ${RTW89_TABLE_SOURCE:-} ]]; then
     python3 -I "$here/../../userspace/services/rtw89/tools/generate_tables.py" --check \
         "$RTW89_TABLE_SOURCE" "$here/../../userspace/services/rtw89/spark/rtw89_tables_8852b.ads"
+    python3 -I "$here/../../userspace/services/rtw89/tools/generate_txpwr.py" --check \
+        "$RTW89_TABLE_SOURCE" "$here/../../userspace/services/rtw89/spark/rtw89_tx_power_8852b.ads"
 fi
 
 if [[ ${1:-} == --prove ]]; then
-    alr exec -- gnatprove -P "$here/rtw89_tests.gpr" \
+    systemd-run --user --scope -q -p MemoryMax=24G -p MemorySwapMax=0 \
+      alr exec -- gnatprove -P "$here/rtw89_tests.gpr" \
         -u rtw89_efuse.adb -u rtw89_firmware.adb -u rtw89_descriptors.ads \
         -u cubit-wifi_scan.adb -u rtw89_rx.adb -u ieee80211_beacons.adb -u wifi_bss_table.adb \
-        -u wifi_channel_plan.ads -u rtw89_phy_tables.adb -u rtw89_h2c.adb -u rtw89_channel_values.ads \
+        -u wifi_channel_plan.ads -u rtw89_phy_tables.adb -u rtw89_h2c.adb -u rtw89_channel_values.ads -u rtw89_tx.adb -u rtw89_tx_power.adb \
         --level=2 -j2 --checks-as-errors=on
 fi

@@ -27,7 +27,7 @@ package Setting_Catalogs is
    --  The catalog's Shape, Value and Class alternatives.
    type Shape is (Single, Family);
    type Value_Kind is (Typed, Text, Address, Count, Collection);
-   type Class is (Declaration_Managed, Application_State);
+   type Class is (Declaration_Managed, Application_State, Secret);
 
    type Setting is record
       Key    : Bounded_Text;
