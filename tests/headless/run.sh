@@ -328,7 +328,7 @@ case "$TEST_NAME" in
         ;;
     grant-forward|grant-forward-intermediary-exit|grant-forward-owner-exit|grant-forward-desktop|config-tree|config-inspection|log-authority|log-fields|metrics|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
         ;;
-    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|acpi-hardware|acpi-native-smoke|multi-instance|program-parameters|usb-hotplug|wifi-crypto)
+    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|acpi-hardware|acpi-native-smoke|acpi-pair-smoke|multi-instance|program-parameters|usb-hotplug|wifi-crypto)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -687,6 +687,12 @@ with open(sys.argv[1], "wb") as f:
         # acpi-metrics-check). 2 GiB until MEM-004: CuAlloc's first small
         # allocation backs a whole 16 MiB arena.
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-acpi-native-smoke.ccl"
+        QEMU_MEMORY="${QEMU_MEMORY:-2G}"
+        ;;
+    acpi-pair-smoke)
+        # The real acpi-backend.svc and acpi.svc on q35 (build: make -C
+        # kernel acpi-backend-native acpi-native acpi-metrics-check).
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-acpi-pair-smoke.ccl"
         QEMU_MEMORY="${QEMU_MEMORY:-2G}"
         ;;
     firmware-snapshot)
@@ -1816,13 +1822,17 @@ if [ -n "$INIT_PROFILE" ]; then
             fi
         done
     fi
-    if [ "$TEST_NAME" = "acpi-native-smoke" ]; then
+    if [ "$TEST_NAME" = "acpi-native-smoke" ] || [ "$TEST_NAME" = "acpi-pair-smoke" ]; then
+        ACPI_BACKEND_PAIR=""
+        if [ "$TEST_NAME" = "acpi-pair-smoke" ]; then
+            ACPI_BACKEND_PAIR=../../../userspace/services/acpi/backend/native/build/acpi-backend.svc:acpi-backend.svc
+        fi
         for ACPI_PAIR in logstore.svc:logstore.svc acpi-metrics-check.app:acpi-metrics-check.app \
-                         ../../../userspace/services/acpi/native/build/acpi.svc:acpi.svc; do
+                         ../../../userspace/services/acpi/native/build/acpi.svc:acpi.svc $ACPI_BACKEND_PAIR; do
             ACPI_SOURCE="$KERNEL_DIR/isodir/boot/${ACPI_PAIR%%:*}"
             ACPI_TARGET="${ACPI_PAIR##*:}"
             if [ ! -f "$ACPI_SOURCE" ]; then
-                echo "headless: build ${ACPI_PAIR%%:*} first (make -C kernel acpi-native acpi-metrics-check)" >&2
+                echo "headless: build ${ACPI_PAIR%%:*} first (make -C kernel acpi-backend-native acpi-native acpi-metrics-check)" >&2
                 exit 1
             fi
             debugfs -w -R "rm $ACPI_TARGET" "$TEMP_DISK" >/dev/null 2>&1
@@ -4856,6 +4866,19 @@ TEST: PASS acpi-metrics
            grep -avE '^acpi: stage (devices fail  6 regions= 2 errors= 0 fuel= 0|hid-discovery fail  1 search= 0 query= 0 |power-discovery fail  1 phase= 0 fuel= 0 )' ||
            grep -aqE 'recovery=TRUE|Ada heap: cannot allocate|com\.cubit\.acpi pid[0-9]+ exited|acpi-metrics-check: .* FAIL' "$SERIAL_LOG"; then
             echo "headless: acpi.svc bring-up or metrics check failed" >&2
+            exit 1
+        fi
+        ;;
+    acpi-pair-smoke)
+        required_markers="
+acpi-backend: stage hardware ok windows=
+acpi-backend: stage registration ok
+acpi: stage register-provider ok named=
+acpi: stage aml-startup ok FINISHED
+acpi-metrics-check: phase complete PASS
+"
+        if grep -aqE '^acpi-backend: stage [a-z-]+ fail|^acpi: stage register-provider (fail|unavailable)|recovery=TRUE|Ada heap: cannot allocate|com\.cubit\.acpi(-backend)? pid[0-9]+ exited|acpi-metrics-check: .* FAIL' "$SERIAL_LOG"; then
+            echo "headless: acpi-backend.svc/acpi.svc pair bring-up failed" >&2
             exit 1
         fi
         ;;

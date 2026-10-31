@@ -38,6 +38,10 @@
   # wifi.svc (docs/wifi.md): (wifi.join), (wifi.passphrase) ...
   (service wifi 33 read-write)
   (service gpio 34 read-write)
+  # acpi-backend.svc's named ACPI registers: only a startup entry approving
+  # (acpi-registers approve-declared) gets this endpoint, badged with
+  # ACPI_Register_Roles.Frontend_Tag; the backend registers the role.
+  (service acpi-registers 35 read-write)
   (notification keyboard 1 publish-and-manage)
   (notification mouse 10 publish-and-manage)
   (notification ipc-test-registration 14 publish-and-manage)
@@ -52,4 +56,5 @@
   (notification metrics 24 publish-and-manage)
   (notification lexicon 28 publish-and-manage)
   (notification acpi 29 publish-and-manage)
-  (notification installer 31 publish-and-manage))
+  (notification installer 31 publish-and-manage)
+  (notification acpi-registers 35 publish-and-manage))

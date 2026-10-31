@@ -3,7 +3,7 @@ const w=path.dirname(fileURLToPath(import.meta.url));let root=path.resolve(w,'..
 function copy(f){const name=path.basename(f),dest=out+'/source/'+name;if(fs.existsSync(dest))throw Error('Duplicate '+name);fs.copyFileSync(f,dest);pins[f]=sha(f);pins[dest]=sha(dest);sources.push(name);}
 for(const dir of ['userspace/runtime/gnat','shared/capabilities'])for(const n of fs.readdirSync(root+'/'+dir).filter(n=>n.endsWith('.ads')))copy(root+'/'+dir+'/'+n);
 for(const stem of ['acpi_ec_types','acpi_ec_transactions','acpi_ec_registers','acpi_ec_endpoint'])for(const ext of ['ads','adb']){const f=root+'/userspace/services/acpi/ec/'+stem+'.'+ext;if(fs.existsSync(f))copy(f);}
-copy(root+'/userspace/services/acpi-backend/acpi_region_protocol.ads');
+copy(root+'/userspace/services/acpi/backend/acpi_region_protocol.ads');
 for(const ext of ['ads','adb'])copy(unitRoot+'/userspace/services/acpi/ec/native/acpi_ec_native_calls.'+ext);
 copy(w+'/native_semantic_tests.adb');const commands=[];
 function verify(){for(const[f,h]of Object.entries(pins))if(sha(f)!==h)throw Error('Source drift '+f);}

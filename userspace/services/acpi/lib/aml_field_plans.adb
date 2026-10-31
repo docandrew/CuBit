@@ -1,9 +1,9 @@
 pragma Ada_2022;
 with ACPI_FADT.Transactions;
+with AML_Register_Views;
 package body AML_Field_Plans with SPARK_Mode is
    use type AML_Decode.Byte;
    use type AML_Field_Layout.Field_Form;
-   use type AML_Field_Layout.Region_Geometry;
    use type ACPI_FADT.Transactions.Access_Width;
    Access_Mask : constant AML_Decode.Byte := 16#0F#;
    Lock_Mask : constant AML_Decode.Byte := 16#10#;
@@ -85,9 +85,8 @@ package body AML_Field_Plans with SPARK_Mode is
       declare
          Datum : constant AML_Field_Datums.Datum := Datum_At (Item, Position);
       begin
-         return Register.Region = Item.Geometry.Region
-           and then Register.Byte_Offset = AML_Decode.Integer_Value (Datum.Offset)
-           and then Register.Width = Datum.Access_Width;
+         return AML_Register_Views.Same_Transaction
+           (Register, (Item.Geometry.Region, AML_Decode.Integer_Value (Datum.Offset), Datum.Access_Width));
       end;
    end Matches;
 

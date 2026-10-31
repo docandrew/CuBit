@@ -153,3 +153,14 @@ Native controlled-loader integration evidence is recorded in
 NATIVE-CONTROLLED-LOAD-EVIDENCE.json. The API gate now selects 60 units and emits
 57 ALIs with zero objects per profile. Hosted kernel/startup/clock models are
 not native authentication, provider admission or hardware validation.
+
+## Controlled startup and optional register endpoint
+
+The current owner fixture mirrors the controlled native entry. It models an
+absent optional endpoint, executes the actual shared evaluator and controlled
+snapshot/device initializer, and refuses any accidental native transport or IPC
+clock call. The modeled kernel source invokes the real controlled loader with
+the entry's module callback. The obsolete uncontrolled modeled entry is refused.
+All 88 startup scenarios pass in each profile (1,892 owner plus 31 diagnostic assertions
+per profile,152 source ALIs). Expected trusted-boundary exceptions remain caught
+only by the hosted test boundary; no native exception recovery is claimed.

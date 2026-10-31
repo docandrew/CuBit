@@ -1,3 +1,5 @@
+shared/acpi/acpi_inventory_protocol.adb
+shared/acpi/acpi_inventory_protocol.ads
 shared/acpi/acpi_passive_query-fields.adb
 shared/acpi/acpi_passive_query-fields.ads
 shared/acpi/acpi_passive_query-pages.adb
@@ -12,6 +14,7 @@ shared/acpi/acpi_protocol.ads
 shared/acpi/acpi_query_transport.adb
 shared/acpi/acpi_query_transport.ads
 shared/acpi/acpi_region_protocol.ads
+shared/acpi/acpi_register_roles.ads
 shared/firmware/firmware_tables-catalog.adb
 shared/firmware/firmware_tables-catalog.ads
 shared/firmware/firmware_tables-copies.adb
@@ -74,6 +77,10 @@ userspace/services/acpi/acpi_service_core.adb
 userspace/services/acpi/acpi_service_core.ads
 userspace/services/acpi/acpi_snapshot_provider.adb
 userspace/services/acpi/acpi_snapshot_provider.ads
+userspace/services/acpi/acpi_startup_evaluation.adb
+userspace/services/acpi/acpi_startup_evaluation.ads
+userspace/services/acpi/acpi_unprovisioned_regions.adb
+userspace/services/acpi/acpi_unprovisioned_regions.ads
 userspace/services/acpi/lib/acpi_fadt-registers.adb
 userspace/services/acpi/lib/acpi_fadt-registers.ads
 userspace/services/acpi/lib/acpi_fadt-sleep_registers.adb
@@ -182,6 +189,8 @@ userspace/services/acpi/lib/aml_persistent_owner_graph.ads
 userspace/services/acpi/lib/aml_reference_frames.adb
 userspace/services/acpi/lib/aml_reference_frames.ads
 userspace/services/acpi/lib/aml_references.ads
+userspace/services/acpi/lib/aml_register_views.adb
+userspace/services/acpi/lib/aml_register_views.ads
 userspace/services/acpi/lib/aml_resource_templates.adb
 userspace/services/acpi/lib/aml_resource_templates.ads
 userspace/services/acpi/lib/aml_retained_identities.ads

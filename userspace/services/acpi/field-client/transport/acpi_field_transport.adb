@@ -1,0 +1,26 @@
+pragma Ada_2022;
+with Interfaces;
+with ACPI_Inventory_Transport;
+with ACPI_Register_Transport;
+with AML_Field_Access;
+package body ACPI_Field_Transport is
+   package Proto renames ACPI_Inventory_Protocol;
+   package Metadata is new ACPI_Inventory_Transport (AML_Field_Access.Default_Maximum_Registers);
+   use type Interfaces.Unsigned_32;
+   procedure Read_Clock (Now : out Proto.Wire.Time_Instant; Available : out Boolean) is
+   begin Metadata.Read_Clock (Now, Available); end Read_Clock;
+   procedure Exchange
+     (Transport : in out State; Destination : CuBit.Handles.Endpoint;
+      Deadline : Proto.Wire.Time_Instant; Item : Proto.Wire.Packet;
+      Reply : out Proto.Wire.Packet; Delivered : out Proto.Wire.Delivery) is
+      pragma Unreferenced (Transport);
+      Meta : Metadata.State;
+      Scalar : ACPI_Register_Transport.State;
+   begin
+      if Item.Label = Proto.Header_Operation or else Item.Label = Proto.Part_Operation then
+         Metadata.Exchange (Meta, Destination, Deadline, Item, Reply, Delivered);
+      else
+         ACPI_Register_Transport.Exchange (Scalar, Destination, Deadline, Item, Reply, Delivered);
+      end if;
+   end Exchange;
+end ACPI_Field_Transport;

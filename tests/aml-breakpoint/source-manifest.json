@@ -29,7 +29,7 @@
   "tests/aml-breakpoint/breakpoint_tests.adb": "b79aafad3b5a832738482815402f8e1010e7f6fe9fb26da3b5eb388ce5352dc0",
   "tests/aml-breakpoint/breakpoint_tests_checked.gpr": "a93be077dbaf41c53dd99579d5f5d3bed92c123edfb2c37db2a1e0de627cd69e",
   "tests/aml-breakpoint/breakpoint_tests_release.gpr": "4756c2609429f283995d43a965e761e86bd9c2d77f07d774edef7a87b93c32db",
-  "tests/aml-breakpoint/closure.json": "73e13d8ba3288b8fa2f8ab65fba10aab7d2bbcba69453ce9ff4ba84e1b67c287",
+  "tests/aml-breakpoint/closure.json": "de9756e1deeb97393d1af5495e8b34c5ecd4e58e99959fa1352500dc7a52df64",
   "tests/aml-breakpoint/hosted_capture.py": "bb667e639c2ba2c9c11aa0fb09e30f0bd768b8728290657fcff4ef090da231db",
   "tests/aml-breakpoint/reference-manifest.json": "2860784c7f6713a95e6c9f22bdbed0db3a5eb2c9be2e0702d9127ed810c45e28",
   "tests/aml-breakpoint/reference/hosted/checked-terminal-review.json": "e8c34c2fc3db54cc601acbe7d27c148f9fb6ee5e7cc0089ddd2b66e24353e60a",
@@ -151,7 +151,7 @@
   "userspace/services/acpi/lib/aml_field_datums.ads": "f1f8b4e505c44cdf2b12d8dab10cf072ab0ab5235c222465f572790320997072",
   "userspace/services/acpi/lib/aml_field_layout.adb": "99345a0403f538486ff77247297bfea5a2b3476e872d95c957f483b15e8df9e5",
   "userspace/services/acpi/lib/aml_field_layout.ads": "e018fd6bfd063c2781fc6177d4b630f62959077dce8768f37b3907ee38a5d637",
-  "userspace/services/acpi/lib/aml_field_plans.adb": "e8975c5c746bfaf37d4ab74fc3a8d4d78b0696a73dfdc8753f97b58981c06bc1",
+  "userspace/services/acpi/lib/aml_field_plans.adb": "0c627d409a1be24e2f220b5747d6bd20aaea6002d01d6025ae9166701b1e50a6",
   "userspace/services/acpi/lib/aml_field_plans.ads": "f9c024dfafe7025dadebd17e3447c5579bc7aae9716e7e90935b97816e038c62",
   "userspace/services/acpi/lib/aml_field_targets.ads": "f7f31a99a302555d179fdb437797a0588b545c16cf4c5e7b64d8dc55fd5bd19e",
   "userspace/services/acpi/lib/aml_fields.adb": "43f072f104ae103633840e365afef64cf4688e64daa935c62216e6d668794b5b",
@@ -177,7 +177,7 @@
   "userspace/services/acpi/lib/aml_mutexes.ads": "e0ac360bbdaaafd1b11c2e327d742b5a86670247098aa7811a8bd149fe449594",
   "userspace/services/acpi/lib/aml_names.adb": "c38d13f5f5fe640e775a1bdfc3e74eb64ecb58a92f6993cd8f8c3e656537dd61",
   "userspace/services/acpi/lib/aml_names.ads": "e5fca936d4c27a135a61ae102d423d3840b156af3194916ac4e7c180add2d990",
-  "userspace/services/acpi/lib/aml_namespace.adb": "710acef29bda47f746eb9424a51e8da5522e64c762d72460ce05c7e5619c71e5",
+  "userspace/services/acpi/lib/aml_namespace.adb": "60e7f1429823223d07d236afea7c606376a6c5089a4bcb796f2d81a4711a61cf",
   "userspace/services/acpi/lib/aml_namespace.ads": "5861d6cd6c4839b0cbabf95cdfd8fc139a1db2bd9038f896bcbc1e9dabaffdf2",
   "userspace/services/acpi/lib/aml_object_identifiers.ads": "a41e1817dd858963d79a952d943979b67ab6a167bca2e85f5a1488369fe0bcba",
   "userspace/services/acpi/lib/aml_objects-byte_references.adb": "5d639dd2623b5b8da7f5de384fb1dd7673d27a2c7f80992b0b5af59253b13a1d",
@@ -236,5 +236,9 @@
   "userspace/services/acpi/resource-consumer/acpi_resource_names.adb": "2718bdf05cf75100ec03d7331ed2c70bc307741633cd821b12ffc33ea007e3b6",
   "userspace/services/acpi/resource-consumer/acpi_resource_names.ads": "92938b7f8276c2386c012745dd92492701fd2b1e9fa64f9a319360a7944a5d74",
   "userspace/services/acpi/resource-consumer/acpi_resource_reader.adb": "ba3351a3337fb0bcde99f8d41d45f2b4a43e8dcc629c437f8ac5b644210bc7d7",
-  "userspace/services/acpi/resource-consumer/acpi_resource_reader.ads": "8b7e9f92b3734ddc09dbf27c0a030a8f60b50785b6ca9fae9b464d3b321fb669"
+  "userspace/services/acpi/resource-consumer/acpi_resource_reader.ads": "8b7e9f92b3734ddc09dbf27c0a030a8f60b50785b6ca9fae9b464d3b321fb669",
+  "userspace/services/acpi/lib/aml_register_views.adb": "7b605e9108701cbf312c871cc105f53cfa3d695e92b756ff1cedbdda836dec42",
+  "userspace/services/acpi/lib/aml_register_views.ads": "9d01b19ad28e3b11ad0769080c613bfab59a21829cb602aa18c86bd4eb63e624",
+  "userspace/services/acpi/lib/acpi_fadt-sleep_registers.adb": "f6b74b0e1ef868c3ef1348d24addf407ba9a03994b5f12e0f9fbf72c1f916e51",
+  "userspace/services/acpi/lib/acpi_fadt-sleep_registers.ads": "498f7c6da9c9a584ca808edfa1063430e07fa2ff8672ad3e758e09ac046b5de2"
 }

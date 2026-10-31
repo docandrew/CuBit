@@ -16,6 +16,15 @@ with ACPI_Startup_Diagnostics;
 with ACPI_Native_EC_Boot_Notes;
 with CuBit.Messages;
 with Startup;
+with ACPI_Service;
+with ACPI_Device_Initialization;
+with ACPI_Device_Policy;
+with ACPI_Unprovisioned_Regions;
+with ACPI_Native_Evaluation;
+with ACPI_Native_Fields;
+with ACPI_Native_Snapshot_Load.With_Driver;
+with CuBit.Handles.Startup;
+with CuBit.Monotonic;
 package body ACPI_Native_Instance is
    package L renames ACPI_Snapshot_Startup;
    use type L.Outcome;
@@ -24,6 +33,25 @@ package body ACPI_Native_Instance is
    use type L.R.Tick;
    -- Native monotonic samples and snapshot deadlines are microseconds.
    Startup_Timeout_Microseconds : constant L.R.Tick := 10_000_000;
+   -- Separate absolute deadlines: snapshot/delays use microseconds; register
+   -- IPC uses GETTIME milliseconds. Their raw epochs are never interconverted.
+   Startup_Timeout_Milliseconds : constant Unsigned_64 := 10_000;
+   package Empty_Regions is new ACPI_Unprovisioned_Regions (ACPI_Service);
+   procedure Initialize_Regions
+     (Service : aliased in out ACPI_Service.State; Budget : Natural;
+      Charged : out Natural; Outcome : out ACPI_Device_Policy.Region_Outcome) is
+      Accepted : Boolean;
+   begin
+      Charged := 0; Outcome := ACPI_Device_Policy.Regions_Unavailable;
+      ACPI_Native_Evaluation.Prepare_Fields (Service, Accepted);
+      if not Accepted then return; end if;
+      Empty_Regions.Initialize (Service, Budget, Charged, Outcome);
+   end Initialize_Regions;
+   package Driver is new ACPI_Device_Initialization
+     (ACPI_Service, Initialize_Regions, ACPI_Native_Evaluation.Evaluate_Named);
+   package Loader is new ACPI_Native_Snapshot_Load.With_Driver
+     (Driver, ACPI_Native_Evaluation.Execute_Module_Startup);
+   Device_Run : Driver.Session;
    Owner : L.State_Access;
    Started : Boolean := False;
    function Hex (Value : Unsigned_64) return String is
@@ -45,7 +73,9 @@ package body ACPI_Native_Instance is
       Reason : ACPI_Native_Server.Stop_Reason;
       Detection : ACPI_Native_HID_Detection.Report;
       Power : ACPI_Native_Power_Detection.Report;
-      Delay_Accepted : Boolean;
+      Delay_Accepted, Provider_Accepted : Boolean;
+      Registers : constant CuBit.Handles.Startup.Optional_Endpoint := Startup.Registers;
+      Register_Now : Unsigned_64;
       Devices : ACPI_Bootstrap.Device_Report;
       procedure Attempt is
       begin
@@ -64,8 +94,27 @@ package body ACPI_Native_Instance is
          ACPI_Native_Log.Warning ("acpi: stage delay-budget fail ALREADY_CLOSED");
          return;
       end if;
-      ACPI_Native_Snapshot_Load.Load
-        (L.R.Tick (Clock) + Startup_Timeout_Microseconds, Owner, Result);
+      if Registers.Present then
+         Register_Now := CuBit.Monotonic.Milliseconds;
+         if Register_Now >= Unsigned_64'Last - Startup_Timeout_Milliseconds then
+            ACPI_Native_Log.Warning ("acpi: stage register-provider fail DEADLINE_OVERFLOW"); return;
+         end if;
+         ACPI_Native_Fields.Begin_Startup (Registers.Value,
+           ACPI_Native_Fields.Wire.Time_Instant (Register_Now + Startup_Timeout_Milliseconds), Provider_Accepted);
+         if Provider_Accepted then ACPI_Native_Evaluation.Select_Registers (Provider_Accepted); end if;
+         if not Provider_Accepted then
+            ACPI_Native_Log.Warning ("acpi: stage register-provider fail " & ACPI_Native_Fields.Observe.Stage'Image);
+            ACPI_Native_Log.Warning ("acpi: bring-up reached service-start (1/4)"); return;
+         end if;
+         ACPI_Native_Log.Info ("acpi: stage register-provider ok named=" & Natural'Image (ACPI_Native_Fields.Observe.Registers));
+      else
+         ACPI_Native_Evaluation.Select_Observer (Provider_Accepted);
+         if not Provider_Accepted then
+            ACPI_Native_Log.Warning ("acpi: stage register-provider fail ALREADY_SELECTED"); return;
+         end if;
+         ACPI_Native_Log.Info ("acpi: stage register-provider unavailable observer-only");
+      end if;
+      Loader.Load (Device_Run, L.R.Tick (Clock) + Startup_Timeout_Microseconds, Owner, Result);
       if Result.Startup.Fatal.Present then
          ACPI_Native_Log.Critical
            (ACPI_Fatal_Diagnostics.Format (Result.Startup.Fatal));
@@ -116,6 +165,7 @@ package body ACPI_Native_Instance is
          ACPI_Native_Log.Warning ("acpi: bring-up reached power-discovery (3/4)");
          return;
       end if;
+      ACPI_Native_Evaluation.Close_Startup;
       ACPI_Native_Delays.Close_Startup;
       Registration_Result := CuBit.Messages.registerDriver
         (CuBit.Messages.DRIVER_ACPI, Startup.Registration);
@@ -140,6 +190,7 @@ package body ACPI_Native_Instance is
       -- Expected failures return typed outcomes from Attempt. The native
       -- runtime terminates unexpected failures; it has no exception handlers.
       Attempt;
+      ACPI_Native_Evaluation.Close_Startup;
       ACPI_Native_Delays.Close_Startup;
    end Start;
 end ACPI_Native_Instance;

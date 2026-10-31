@@ -269,3 +269,17 @@ Native controlled-loader integration evidence is recorded in
 NATIVE-CONTROLLED-LOAD-EVIDENCE.json. The API gate now selects 60 units and emits
 57 ALIs with zero objects per profile. Hosted kernel/startup/clock models are
 not native authentication, provider admission or hardware validation.
+
+## Optional register endpoint and hardware grant interface
+
+The frontend now declares optional Startup.Registers, generated as the raw
+CuBit.Handles.Startup.Optional_Endpoint. Current fixture generation was checked
+with a private host tool built from the exact coordinator launcher patch, rather
+than substituting handwritten Startup declarations. The backend's separate
+generated Startup.Hardware returns CuBit.ACPI_Windows.Grant through Launch.Named.
+Runtime/catalog patch afterimages are external coordinator inputs, not ACPI-owned
+shared edits. The semantic API runner still checks 62 selections and 59 ALIs per profile
+with zero objects. The separate actual-native-compiler gate checks both complete
+application closures plus generated Startup bodies (428 commands total). These
+checks execute neither elaboration nor native hardware. Historical evidence
+records above retain their original source/tool scope.

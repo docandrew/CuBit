@@ -141,6 +141,12 @@ package CuBit.Handles.IPC is
          when False => Why   : Refusal := ABI.Wrong_Kind;
       end case;
    end record;
+   type Accepted_IO_Ports (OK : Boolean := False) is record
+      case OK is
+         when True  => Value : IO_Ports;
+         when False => Why   : Refusal := ABI.Wrong_Kind;
+      end case;
+   end record;
    type Accepted_Interrupt (OK : Boolean := False) is record
       case OK is
          when True  => Value : Interrupt;
@@ -155,6 +161,7 @@ package CuBit.Handles.IPC is
    end record;
    function Accept_Endpoint (Item : Carried) return Accepted_Endpoint;
    function Accept_Device_Memory (Item : Carried) return Accepted_Device_Memory;
+   function Accept_IO_Ports (Item : Carried) return Accepted_IO_Ports;
    function Accept_Interrupt (Item : Carried) return Accepted_Interrupt;
    function Accept_Notification (Item : Carried) return Accepted_Notification;
 

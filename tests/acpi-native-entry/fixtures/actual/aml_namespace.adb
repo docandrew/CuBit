@@ -3,6 +3,7 @@ with AML_Table_Readers;
 with Interfaces;
 with ACPI_Resource_Names;
 with AML_Field_Datums;
+with AML_Register_Views;
 with ACPI_FADT.Transactions;
 with AML_Mutexes;
 with AML_Persistent_Owner_Graph;
@@ -10814,7 +10815,6 @@ package body Owned with SPARK_Mode is
          function Key_Of (Item : Binding) return Field_Key is
            ((Field => Item.Field, Region => Item.Region));
          use type AML_Field_Layout.Register_Geometry;
-         use type AML_Field_Layout.Region_Geometry;
          use type AML_Field_Access.Observation;
          function Key_Matches (E : Owned.Arena; Key : Field_Key) return Boolean is
             F, R : Node_ID;
@@ -10855,7 +10855,7 @@ package body Owned with SPARK_Mode is
             if E.Field_Uncertain.Present or else Pending (IO)
               or else not Key_Matches (E, Key) then return; end if;
             Describe_Target (IO, Target, Geometry, Allowed);
-            if not Allowed or else not AML_Field_Layout.Admitted (Geometry_Of (E, Key), Geometry)
+            if not Allowed or else not AML_Register_Views.Admitted (Geometry_Of (E, Key), Geometry)
             then return; end if;
             Item := (Field => Key.Field, Region => Key.Region, Target => Target,
                      Geometry => Geometry, others => <>);
@@ -10897,6 +10897,7 @@ package body Owned with SPARK_Mode is
             Items : in out Binding_Set; Status : out Access_Status) is
             Geometry : AML_Field_Layout.Register_Geometry;
             Whole : AML_Field_Layout.Field_Geometry;
+            View : AML_Register_Views.View;
             R : Operation_Region_Attributes;
             Identity : Reference;
             Allowed : Boolean;
@@ -10920,16 +10921,17 @@ package body Owned with SPARK_Mode is
             Describe_Target (IO, Target, Geometry, Allowed);
             if not Allowed then return; end if;
             R := A.Inner.Tree.Items (Region.Node).Operation_Info;
-            if Geometry.Region /= AML_Field_Layout.Region_Geometry'
-              (Space => AML_Decode.Byte (R.Space), Base => R.Address, Length => R.Length)
-              or else Geometry.Byte_Offset > AML_Decode.Integer_Value'Last / AML_Field_Layout.Bits_Per_Byte then return; end if;
+            View := AML_Register_Views.Rebase (Geometry,
+              (Space => AML_Decode.Byte (R.Space), Base => R.Address, Length => R.Length));
+            if not View.Allowed or else View.Value.Byte_Offset >
+              AML_Decode.Integer_Value'Last / AML_Field_Layout.Bits_Per_Byte then return; end if;
             Access_Code := AML_Decode.Byte (ACPI_FADT.Transactions.Access_Width'Pos (Geometry.Width) + 1);
-            Whole := (Region => Geometry.Region,
-              Bit_Offset => Geometry.Byte_Offset * AML_Field_Layout.Bits_Per_Byte,
+            Whole := (Region => View.Value.Region,
+              Bit_Offset => View.Value.Byte_Offset * AML_Field_Layout.Bits_Per_Byte,
               Bit_Length => AML_Decode.Integer_Value (AML_Field_Layout.Bits_Per_Byte *
                 ACPI_FADT.Transactions.Octets (Geometry.Width)),
               Flags => Access_Code, Effective_Access => Access_Code, others => <>);
-            if not AML_Field_Layout.Admitted (Whole, Geometry) then return; end if;
+            if not AML_Register_Views.Admitted (Whole, Geometry) then return; end if;
             if Allow_Read then
                Authorize_Target (IO, Target, False, Allowed); if not Allowed then return; end if;
             end if;
@@ -11079,7 +11081,7 @@ package body Owned with SPARK_Mode is
                  or else not Key_Matches (E, Key_Of (Item)) then return False; end if;
                if Item.Read_Count = 0 then
                   Check_Target (Item.Target, Item.Geometry, Writing);
-                  return Allowed and then AML_Field_Layout.Admitted (Geometry_Of (E, Key_Of (Item)), Current);
+                  return Allowed and then AML_Register_Views.Admitted (Geometry_Of (E, Key_Of (Item)), Current);
                end if;
                if (Writing and then not Item.Writes_Enabled)
                  or else Geometry_Of (E, Key_Of (Item)) /= Item.Read_Field
@@ -11303,7 +11305,7 @@ package body Owned with SPARK_Mode is
             end if;
             Describe_Target (Context, Item.Target, Current, Allowed);
             if not Allowed or else Current /= Item.Geometry
-              or else not AML_Field_Layout.Admitted (Geometry_Of (E, Key_Of (Item)), Current)
+              or else not AML_Register_Views.Admitted (Geometry_Of (E, Key_Of (Item)), Current)
               -- Qword bindings must use the planned path above, including its
               -- allocation-before-effects and width-dependent result handling.
               or else Current.Width = ACPI_FADT.Transactions.Qword_Access
@@ -11466,9 +11468,9 @@ package body Owned with SPARK_Mode is
                  or else (not Writing and then not Item.Allow_Read) then return False; end if;
                Describe_Target (Context, Item.Target, Current, Allowed);
                if not Allowed or else Current /= Item.Geometry
-                 or else Current.Region /= F.Region_Geometry
-                 or else Current.Byte_Offset /= AML_Decode.Integer_Value (D.Offset)
-                 or else Current.Width /= D.Access_Width then return False; end if;
+                 or else not AML_Register_Views.Same_Transaction
+                   (Current, (F.Region_Geometry, AML_Decode.Integer_Value (D.Offset), D.Access_Width))
+               then return False; end if;
                Authorize_Target (Context, Item.Target, Writing, Allowed); return Allowed;
             end Data_Allowed;
             procedure Select_Region_Target (F : Frame; Choice : out Binding_Slot;
@@ -12110,9 +12112,8 @@ package body Owned with SPARK_Mode is
                         exit when Module_Target_Count (Position) > Count;
                         Charge (Current); if not Current then return; end if;
                         Describe_Target (Context, Targets (Position), Register, Current);
-                        if Current and then Register.Region = Geometry.Region
-                          and then Register.Byte_Offset = AML_Decode.Integer_Value (D.Offset)
-                          and then Register.Width = D.Access_Width then
+                        if Current and then AML_Register_Views.Same_Transaction
+                          (Register, (Geometry.Region, AML_Decode.Integer_Value (D.Offset), D.Access_Width)) then
                            if Found then return; end if;
                            Found := True; Chosen := Targets (Position); Chosen_Geometry := Register;
                         end if;

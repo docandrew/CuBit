@@ -8,7 +8,7 @@ function copy(f){const n=path.basename(f),dest=out+'/source/'+n;if(fs.existsSync
 let runtimeSpecs=0;for(const dir of ['userspace/runtime/gnat','shared/capabilities'])for(const n of fs.readdirSync(root+'/'+dir).filter(n=>n.endsWith('.ads'))){copy(root+'/'+dir+'/'+n);runtimeSpecs++;}
 for(const stem of ['acpi_ec_types','acpi_ec_transactions','acpi_ec_registers','acpi_ec_endpoint','acpi_ec_event_types','acpi_ec_event_publisher','acpi_ec_clock_policy','acpi_ec_clock_adapter'])for(const ext of ['ads','adb']){const f=unitRoot+'/userspace/services/acpi/ec/'+stem+'.'+ext;if(fs.existsSync(f))copy(f);}
 for(const stem of ['acpi_ec_native_calls','acpi_ec_backend_progress','acpi_ec_native_clock','acpi_ec_backend_waits','acpi_ec_backend_controller'])for(const ext of ['ads','adb'])copy(unitRoot+'/userspace/services/acpi/ec/native/'+stem+'.'+ext);
-copy(root+'/userspace/services/acpi-backend/acpi_region_protocol.ads');copy(here+'/native_semantic_tests.adb');
+copy(root+'/userspace/services/acpi/backend/acpi_region_protocol.ads');copy(here+'/native_semantic_tests.adb');
 if(runtimeSpecs<150||Object.values(origin).some(f=>f.includes('/fixtures/')))throw Error('Runtime scope');
 const tool=fs.realpathSync(process.env.PATH.split(':').map(d=>d+'/gprbuild').find(fs.existsSync));if(!tool.startsWith('/nix/store/'))throw Error('Nix required');pins[tool]=sha(tool);const commands=[];
 function verify(){for(const[f,h]of Object.entries(pins))if(sha(f)!==h)throw Error('Drift '+f);}

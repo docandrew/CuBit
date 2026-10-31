@@ -1,6 +1,6 @@
 project Client_Proof is
  for Source_Dirs use
-   ("model", "../../userspace/services/acpi-backend", "../../userspace/services/acpi/field-client",
+   ("model", "../../userspace/services/acpi/backend", "../../userspace/services/acpi/field-client",
     "../../userspace/services/acpi/field-client/provider", "../../userspace/services/acpi/lib",
     "../../shared/firmware");
  for Source_Files use

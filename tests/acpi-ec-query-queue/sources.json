@@ -2,12 +2,20 @@
   "version": 1,
   "inputs": [
     {
+      "path": "shared/acpi/acpi_region_protocol.ads",
+      "sha256": "d7f69bcc7c8411f70281fe5c6770851820c18c75520526d9716b0180518a64de"
+    },
+    {
       "path": "shared/capabilities/capability_abi.adb",
       "sha256": "f280df7b0e8291913387a6bd4607a7e18b3025d5cb512c07f102ad90b682af20"
     },
     {
       "path": "shared/capabilities/capability_abi.ads",
       "sha256": "34dcb0be4c952d0bb2f52278b1e9ed99cc32ad95dc9c97fdd3fbfa2efd920892"
+    },
+    {
+      "path": "shared/capabilities/channel_wake_abi.ads",
+      "sha256": "ef921b0ac679aff21ba9bbe4909f07b0ca904a03842b9596feee06d3b33bfeea"
     },
     {
       "path": "tests/acpi-ec-native-calls/fixtures/cubit-handles-ipc.ads",
@@ -18,12 +26,24 @@
       "sha256": "a36144ed500c6c166a53e7a664fe5bc88fdfd612144f8a0c1ba842e60db7e1dd"
     },
     {
+      "path": "tests/acpi-ec-query-queue/queue_tests.adb",
+      "sha256": "bf9a63098fe0b952fe32b6a790a2e76d284900f67dd62f2ed48c260f4ee03386"
+    },
+    {
       "path": "tests/acpi-native-server-loop/models/cubit-messages.adb",
       "sha256": "34eb8f807d2fdb30aa78ae9d8440b369dc5246583ec3d852d06fe9846fb03772"
     },
     {
       "path": "tests/acpi-native-server-loop/models/cubit-messages.ads",
       "sha256": "082c8af5974170cad1c025d4a832f43d2ac448d0c0e6061eabc0bd8a58bf9e18"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-control_events.ads",
+      "sha256": "9917bc1c897c36acaac0b8968d7fa6be527bd1bd5cefe42d3d92eadec04b6511"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-grant_references.ads",
+      "sha256": "929c3ba1f4d612d6d0f3ee62b2a76f27540a8b6dd0946564dc84ba6b4f67814e"
     },
     {
       "path": "userspace/runtime/gnat/cubit-handles.ads",
@@ -40,10 +60,6 @@
     {
       "path": "userspace/runtime/gnat/cubit.ads",
       "sha256": "ad85bc92372bca950674268c2b1b5507b5edc382b13176f73304a2db5725f52c"
-    },
-    {
-      "path": "shared/acpi/acpi_region_protocol.ads",
-      "sha256": "d7f69bcc7c8411f70281fe5c6770851820c18c75520526d9716b0180518a64de"
     },
     {
       "path": "userspace/services/acpi/ec/acpi_ec_clock_policy.adb",
@@ -72,6 +88,14 @@
     {
       "path": "userspace/services/acpi/ec/acpi_ec_event_types.ads",
       "sha256": "d1e128f4c693e0ef3505ac1891974cd1789245ef7c5c0e6be6857b228317cdc5"
+    },
+    {
+      "path": "userspace/services/acpi/ec/acpi_ec_query_scans.adb",
+      "sha256": "cd494ab8abeb9c3ee028e984b6bd1c6f386d83004fe5b2bbd714cf1e519ad2d0"
+    },
+    {
+      "path": "userspace/services/acpi/ec/acpi_ec_query_scans.ads",
+      "sha256": "591ddbc473777aa0cf469cbde73e851074ebd1430eed0a07e5aacfb2b5a1ef52"
     },
     {
       "path": "userspace/services/acpi/ec/acpi_ec_registers.adb",
@@ -110,6 +134,22 @@
       "sha256": "9034ae0058a514ab871b4a1b00b9b5d098d5c3c9e0658e596531467fbcd8ca1a"
     },
     {
+      "path": "userspace/services/acpi/ec/native/acpi_ec_backend_owner-with_receive.adb",
+      "sha256": "db1ea4c93e99ca0b3b6fe9287738b7d72a4d3bafa4d97622fd652d3851d6fd89"
+    },
+    {
+      "path": "userspace/services/acpi/ec/native/acpi_ec_backend_owner-with_receive.ads",
+      "sha256": "1ec682c1aa4568ad496405a18fbf5771eab0d69fc5c492be6d73c46eed0141f1"
+    },
+    {
+      "path": "userspace/services/acpi/ec/native/acpi_ec_backend_owner.adb",
+      "sha256": "63b2b0e3bf0d816aca2854a8e0c9901aaec9aec1c1decface92c3d5ca8f455bf"
+    },
+    {
+      "path": "userspace/services/acpi/ec/native/acpi_ec_backend_owner.ads",
+      "sha256": "1137dff637249873573f7f14da635e1e8708a4d1d85d26d8ef5b367bb309d996"
+    },
+    {
       "path": "userspace/services/acpi/ec/native/acpi_ec_backend_progress.adb",
       "sha256": "000799edcc5acbfdb0413eafd30f045583bb8b236cba64b9173dbe7f7520849a"
     },
@@ -142,60 +182,20 @@
       "sha256": "a013ecd089aa9ed6186cd02e2aa0510658dc599880cd30dcd301d4e22d852224"
     },
     {
-      "path": "userspace/services/acpi/ec/native/acpi_ec_backend_owner.ads",
-      "sha256": "1137dff637249873573f7f14da635e1e8708a4d1d85d26d8ef5b367bb309d996"
-    },
-    {
-      "path": "userspace/services/acpi/ec/native/acpi_ec_backend_owner.adb",
-      "sha256": "63b2b0e3bf0d816aca2854a8e0c9901aaec9aec1c1decface92c3d5ca8f455bf"
-    },
-    {
-      "path": "userspace/services/acpi/ec/native/acpi_ec_backend_owner-with_receive.ads",
-      "sha256": "1ec682c1aa4568ad496405a18fbf5771eab0d69fc5c492be6d73c46eed0141f1"
-    },
-    {
-      "path": "userspace/services/acpi/ec/native/acpi_ec_backend_owner-with_receive.adb",
-      "sha256": "db1ea4c93e99ca0b3b6fe9287738b7d72a4d3bafa4d97622fd652d3851d6fd89"
-    },
-    {
-      "path": "tests/acpi-ec-query-queue/queue_tests.adb",
-      "sha256": "bf9a63098fe0b952fe32b6a790a2e76d284900f67dd62f2ed48c260f4ee03386"
-    },
-    {
-      "path": "userspace/services/acpi/native/acpi_system_events.ads",
-      "sha256": "142a82065679756bba8d908118095dad8d7e9443ebdec3c0c4e119e732c2426c"
-    },
-    {
-      "path": "userspace/services/acpi/native/acpi_system_events.adb",
-      "sha256": "adf9ba3f3a895302e50f0d0315b9646b3f1ec38a1a89520787e2bef0f22a856d"
-    },
-    {
-      "path": "userspace/runtime/gnat/cubit-control_events.ads",
-      "sha256": "9917bc1c897c36acaac0b8968d7fa6be527bd1bd5cefe42d3d92eadec04b6511"
-    },
-    {
-      "path": "userspace/runtime/gnat/cubit-grant_references.ads",
-      "sha256": "929c3ba1f4d612d6d0f3ee62b2a76f27540a8b6dd0946564dc84ba6b4f67814e"
-    },
-    {
-      "path": "shared/capabilities/channel_wake_abi.ads",
-      "sha256": "ef921b0ac679aff21ba9bbe4909f07b0ca904a03842b9596feee06d3b33bfeea"
-    },
-    {
-      "path": "userspace/services/acpi/ec/acpi_ec_query_scans.ads",
-      "sha256": "591ddbc473777aa0cf469cbde73e851074ebd1430eed0a07e5aacfb2b5a1ef52"
-    },
-    {
-      "path": "userspace/services/acpi/ec/acpi_ec_query_scans.adb",
-      "sha256": "cd494ab8abeb9c3ee028e984b6bd1c6f386d83004fe5b2bbd714cf1e519ad2d0"
+      "path": "userspace/services/acpi/events/acpi_gpe_lifecycle.adb",
+      "sha256": "a76edbf27f589643bb0443dd19a4fddf73ec962f825b28e161e6b206a4b3cb70"
     },
     {
       "path": "userspace/services/acpi/events/acpi_gpe_lifecycle.ads",
       "sha256": "c908b36a50cae2bdf1dc05ae6ee52281a7bc0c48e345a7b8de82f2e1b17fc45e"
     },
     {
-      "path": "userspace/services/acpi/events/acpi_gpe_lifecycle.adb",
-      "sha256": "a76edbf27f589643bb0443dd19a4fddf73ec962f825b28e161e6b206a4b3cb70"
+      "path": "userspace/services/acpi/native/acpi_system_events.adb",
+      "sha256": "adf9ba3f3a895302e50f0d0315b9646b3f1ec38a1a89520787e2bef0f22a856d"
+    },
+    {
+      "path": "userspace/services/acpi/native/acpi_system_events.ads",
+      "sha256": "142a82065679756bba8d908118095dad8d7e9443ebdec3c0c4e119e732c2426c"
     }
   ],
   "units": [

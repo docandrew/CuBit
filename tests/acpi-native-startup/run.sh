@@ -62,7 +62,7 @@ for ali in "$out/obj/"*.ali; do
  else grep -Fxq 'A -gnatp' "$ali"; ! grep -Fxq 'A -gnata' "$ali"; fi
  count=$((count + 1))
 done
-test "$count" = 131
+test "$count" = 152
 printf 'Source ALIs: %s\n' "$count"
 total=$(awk '{sum += $NF} END {print sum}' "$out/test.log")
 test "$total" = 1892

@@ -1,31 +1,12 @@
 pragma Ada_2022;
+with ACPI_Unprovisioned_Regions;
 package body ACPI_Bootstrap with SPARK_Mode is
    use type Devices.Phase;
-   use type ACPI_Service.Namespace.Object_Kind;
+   package Unconfigured is new ACPI_Unprovisioned_Regions (ACPI_Service);
    procedure Unconfigured_Regions
      (Service : aliased in out ACPI_Service.State; Budget : Natural;
-      Charged : out Natural; Outcome : out ACPI_Device_Policy.Region_Outcome) is
-      pragma Unreferenced (Budget);
-      Item : ACPI_Service.Node_Descriptor;
-      Status : ACPI_Service.Values.Access_Status;
-   begin
-      Charged := 0;
-      Outcome := ACPI_Device_Policy.Regions_Unavailable;
-      ACPI_Service.Describe_Node (Service, ACPI_Service.Namespace.Root, Item, Status);
-      if Status /= ACPI_Service.Values.Available then return; end if;
-      for Node in ACPI_Service.Namespace.Node_ID range 1 .. ACPI_Service.Namespace_Node_Count (Service) loop
-         ACPI_Service.Describe_Node (Service, Node, Item, Status);
-         if Status = ACPI_Service.Values.Available then
-            if ACPI_Service.Values.Node_Kind (Item) in
-              ACPI_Service.Namespace.Operation_Region_Object | ACPI_Service.Namespace.Uninitialized_Region_Object
-            then return; end if;
-         elsif Status /= ACPI_Service.Values.Invalid_Value then return;
-         end if;
-      end loop;
-      -- Copied table regions need no hardware handler. This is an empty
-      -- hardware requirement at the barrier, never permission for later I/O.
-      Outcome := ACPI_Device_Policy.No_Regions_Required;
-   end Unconfigured_Regions;
+      Charged : out Natural; Outcome : out ACPI_Device_Policy.Region_Outcome)
+     renames Unconfigured.Initialize;
    function Module_Errors (Session : State) return ACPI_Service.Module_Error_Observation is
      (ACPI_Service.Module_Errors (Session.Core));
    function Device_Completion (Session : State) return Device_Report is (Session.Device_Data);

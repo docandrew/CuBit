@@ -71,6 +71,10 @@ package CuBit.Firmware_Snapshot with SPARK_Mode is
    function Named (Label : String) return Authority
    with Global => CuBit.Startup_State.Loaded_Table;
 
+   --  A reader handle this process holds by other means (procmgr's from
+   --  its launch configuration, to compute the ACPI hardware windows).
+   function Held (Handle : CuBit.Handles.Firmware_Snapshot) return Authority;
+
    procedure Info (A : Authority; Result : out Catalog_Info; Status : out Outcome)
    with Post => (if Status = Ok
                  then Result.Version = Firmware_Snapshot_ABI.Interface_Version

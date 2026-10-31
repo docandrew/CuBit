@@ -1,0 +1,14 @@
+# The real acpi-backend.svc and acpi.svc on q35's firmware
+# (coordination/acpi-region-boundary.md): the backend gets the FADT
+# fixed-block I/O windows and registers role 35. acpi.svc connects through
+# its frontend-badged registers endpoint before AML startup, so the
+# register-provider stage selects the backend instead of observer-only.
+# q35 has no EC; this is PM1/GPE/PM-timer plumbing, not laptop validation.
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "acpi-backend.svc" (priority 4)
+    (firmware-snapshot approve-declared) (acpi-hardware approve-declared))
+  (start "acpi.svc" (priority 3)
+    (firmware-snapshot approve-declared) (acpi-registers approve-declared))
+  (start "acpi-metrics-check.app" (priority 2))
+)

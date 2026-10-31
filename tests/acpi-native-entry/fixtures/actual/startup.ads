@@ -17,6 +17,10 @@ package Startup with SPARK_Mode, Elaborate_Body is
    function Tables return Standard.CuBit.Firmware_Snapshot.Authority is
      (Standard.CuBit.Firmware_Snapshot.Named ("tables"));
 
+   --  Endpoint "registers", optional.
+   function Registers return Standard.CuBit.Handles.Startup.Optional_Endpoint is
+     (Standard.CuBit.Handles.Startup.Optional_Endpoint_Named ("registers", Standard.CuBit.Startup_Tables.Endpoint));
+
    --  Notification "registration", required.
    function Registration return Standard.CuBit.Handles.Notification is
      (Standard.CuBit.Handles.Startup.Notification_Named ("registration", Standard.CuBit.Startup_Tables.Notification));
@@ -26,5 +30,6 @@ package Startup with SPARK_Mode, Elaborate_Body is
    Expected : constant Standard.CuBit.Startup_State.Expectations :=
      [(Standard.CuBit.Startup_Tables.To_Name ("logstore"), Standard.CuBit.Startup_Tables.Endpoint, Standard.CuBit.Startup_Tables.Required),
       (Standard.CuBit.Startup_Tables.To_Name ("tables"), Standard.CuBit.Startup_Tables.Firmware_Snapshot, Standard.CuBit.Startup_Tables.Required),
+      (Standard.CuBit.Startup_Tables.To_Name ("registers"), Standard.CuBit.Startup_Tables.Endpoint, Standard.CuBit.Startup_Tables.Optional),
       (Standard.CuBit.Startup_Tables.To_Name ("registration"), Standard.CuBit.Startup_Tables.Notification, Standard.CuBit.Startup_Tables.Required)];
 end Startup;

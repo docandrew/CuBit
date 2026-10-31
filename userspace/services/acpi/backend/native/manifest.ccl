@@ -1,0 +1,8 @@
+(Executable_Manifest
+  identity => "com.cubit.acpi-backend"
+  version => "0.1.0"
+  requests => [
+    (service "logstore" "logstore")
+    (Request.Firmware_Snapshot "tables")
+    (Request.ACPI_Hardware "hardware")
+    (notification "acpi-registers" Notify_Access.Manage "registration")])

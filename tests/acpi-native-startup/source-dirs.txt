@@ -13,3 +13,7 @@ userspace/services/acpi/resource-data
 userspace/lib/i2c-admission
 userspace/lib/gpio-admission
 userspace/services/acpi/ec
+userspace/services/acpi/field-client/provider
+userspace/services/acpi/field-client/provider/startup
+userspace/services/acpi/field-client/inventory
+userspace/services/acpi/field-client

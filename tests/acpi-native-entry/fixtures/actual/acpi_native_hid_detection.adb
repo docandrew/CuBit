@@ -3,11 +3,13 @@ with ACPI_HID_I2C_Discovery;
 with ACPI_HID_I2C_Resolved;
 with ACPI_Requests.HID_Devices;
 with ACPI_Native_Log;
+with ACPI_Native_Evaluation;
 with Firmware_Tables;
 with AML_Execute;
 package body ACPI_Native_HID_Detection is
    package Core renames ACPI_Service;
-   package Discovery is new ACPI_HID_I2C_Discovery (Core);
+   package Discovery is new ACPI_HID_I2C_Discovery
+     (Core, ACPI_Native_Evaluation.Invoke_With_Arguments, ACPI_Native_Evaluation.Evaluate_Named);
    -- Own controller-source/vendor spans without truncation. Longer spans fail
    -- explicitly; this is a diagnostic budget, never firmware authority.
    package Resolver is new ACPI_HID_I2C_Resolved (Core, Candidates);

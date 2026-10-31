@@ -2,12 +2,20 @@
   "version": 1,
   "inputs": [
     {
+      "path": "shared/acpi/acpi_region_protocol.ads",
+      "sha256": "d7f69bcc7c8411f70281fe5c6770851820c18c75520526d9716b0180518a64de"
+    },
+    {
       "path": "shared/capabilities/capability_abi.adb",
       "sha256": "f280df7b0e8291913387a6bd4607a7e18b3025d5cb512c07f102ad90b682af20"
     },
     {
       "path": "shared/capabilities/capability_abi.ads",
       "sha256": "34dcb0be4c952d0bb2f52278b1e9ed99cc32ad95dc9c97fdd3fbfa2efd920892"
+    },
+    {
+      "path": "tests/acpi-ec-drain/drain_tests.adb",
+      "sha256": "d524c154e824a27e31731396bd3e9330d28e6ccdcd53490bc76b4d271ffb6da4"
     },
     {
       "path": "tests/acpi-ec-native-calls/fixtures/cubit-handles-ipc.ads",
@@ -40,10 +48,6 @@
     {
       "path": "userspace/runtime/gnat/cubit.ads",
       "sha256": "ad85bc92372bca950674268c2b1b5507b5edc382b13176f73304a2db5725f52c"
-    },
-    {
-      "path": "shared/acpi/acpi_region_protocol.ads",
-      "sha256": "d7f69bcc7c8411f70281fe5c6770851820c18c75520526d9716b0180518a64de"
     },
     {
       "path": "userspace/services/acpi/ec/acpi_ec_clock_policy.adb",
@@ -140,10 +144,6 @@
     {
       "path": "userspace/services/acpi/ec/native/acpi_ec_native_queues.ads",
       "sha256": "a013ecd089aa9ed6186cd02e2aa0510658dc599880cd30dcd301d4e22d852224"
-    },
-    {
-      "path": "tests/acpi-ec-drain/drain_tests.adb",
-      "sha256": "d524c154e824a27e31731396bd3e9330d28e6ccdcd53490bc76b4d271ffb6da4"
     }
   ],
   "units": [
