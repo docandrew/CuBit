@@ -57,7 +57,7 @@
     "userspace/services/acpi/acpi_notification_receipts.ads": "546b09c2402ed2098c56dd84018b61045a2f92881eaf2cb39da76a55779352f8",
     "userspace/services/acpi/acpi_requests.adb": "f8b0e7dcbb3d3a56b165ea1063458ec90d4e30de5bcc5e0359f10a60ab487719",
     "userspace/services/acpi/acpi_requests.ads": "7ef7a30966b61bdfd597e4817ac8b8fdd9e7601f0f7760b1f2bd20b33936d088",
-    "userspace/services/acpi/native/acpi_service.ads": "26ed5730e3b4bbb03bc7acf4379794d2f801633bfde0c58d936611d206d376de",
+    "userspace/services/acpi/native/acpi_service.ads": "92e08a9b5cb64c2d1f6844cf698f47d8d0937e939d4eb7f0241d74457291fae3",
     "userspace/services/acpi/acpi_service_core.adb": "8768a90a0b1cbf2d3a0c82c32f7be35f617f2e5da40ec18d24dc71a8bbd055ab",
     "userspace/services/acpi/acpi_service_core.ads": "cbc33234dc5398cd4def46bf8a59478b3981557bc418606d926e1bfbbc47325c",
     "userspace/services/acpi/acpi_snapshot_provider.adb": "7175e15e929245181a233ce3e2ec9f55f3c4488a1760f0d1d447d041e346f2c6",

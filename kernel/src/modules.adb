@@ -33,6 +33,7 @@ with Util;
 with Physical_Range_Map;
 with Device_Memory_Diagnostics;
 with Device_Memory_Authority;
+with Device_Memory_Admission;
 with Physical_Ranges;
 with Service_Registry;
 with TextIO; use TextIO;
@@ -48,7 +49,8 @@ package body Modules with SPARK_Mode => Off is
        "devmgr's configuration carries one handle per firmware-memory root");
     pragma Compile_Time_Error
       (Capabilities.FIRMWARE_NVS_TAG /= Capability_ABI.Firmware_NVS_Tag
-       or else Capabilities.FIRMWARE_CONTROL_TAG /= Capability_ABI.Firmware_Control_Tag,
+       or else Capabilities.FIRMWARE_CONTROL_TAG /= Capability_ABI.Firmware_Control_Tag
+       or else Capabilities.FIRMWARE_PCI_CONFIG_TAG /= Capability_ABI.Firmware_PCI_Config_Tag,
        "the kernel and the runtime must agree on the firmware-memory tags");
 
     initrdAddr  : Virtmem.PhysAddress := 0;
@@ -461,13 +463,17 @@ package body Modules with SPARK_Mode => Off is
 
             -- Firmware-memory roots (the ACPI hardware grant): one
             -- CAP_DEVICE_MEM per run of whole ACPI NVS pages (tagged
-            -- FIRMWARE_NVS_TAG) and the FACS page (FIRMWARE_CONTROL_TAG),
-            -- in ascending order (Physical_Ranges.Firmware_Runs). Only
-            -- MAP_DEVICE into the holder maps them, write-back, and no
+            -- FIRMWARE_NVS_TAG), the FACS page (FIRMWARE_CONTROL_TAG) and
+            -- PCI segment 0 bus 0's ECAM slice (FIRMWARE_PCI_CONFIG_TAG), in
+            -- ascending order (Physical_Ranges.Firmware_Runs). Only
+            -- MAP_DEVICE into the holder maps them, NVS and the FACS page
+            -- write-back, PCI configuration uncached and read-only (its root
+            -- has no write right, so no derivation has one either), and no
             -- device-memory capability maps their NVS pages
             -- (Device_Memory_Authority). devmgr claims them for ACPI and
             -- hands them, exactly, to the program procmgr's startup plan
-            -- approves (acpi-hardware approve-declared).
+            -- approves (acpi-hardware approve-declared; the PCI slice only
+            -- with acpi-pci-config approve-declared too).
             declare
                 Runs     : Physical_Ranges.Firmware_Run_Array;
                 Count    : Physical_Ranges.Firmware_Root_Count;
@@ -478,7 +484,10 @@ package body Modules with SPARK_Mode => Off is
                 handles.Firmware_Count := Count;
                 for Index in 1 .. Count loop
                     place ((capType      => Capabilities.CAP_DEVICE_MEM,
-                            rights       => RW_GRANT,
+                            rights       =>
+                              (if Device_Memory_Authority.Firmware_Mode
+                                    (Runs (Index).Kind, Device_Memory_Admission.Read_Write)
+                               then RW_GRANT else READ_GRANT),
                             authorityTag => Device_Memory_Authority.Tag_Of (Runs (Index).Kind),
                             object       => (ref   => Runs (Index).First,
                                              param => Runs (Index).Last - Runs (Index).First + 1),

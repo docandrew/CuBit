@@ -16,6 +16,7 @@ package body Devmgr_Authority is
    Held : BR.Roots;
 
    package MC renames Devmgr_Memory_Claims;
+   package AMC renames CuBit.ACPI_Memory_Classes;
    pragma Compile_Time_Error
      (MC.Maximum_Claims /= BR.Maximum_Firmware_Roots,
       "one ACPI claim per firmware-memory root");
@@ -57,17 +58,21 @@ package body Devmgr_Authority is
               CuBit.Handles.IPC.Describe (Held.Firmware (R));
             Granted : Boolean := False;
          begin
+            --  NVS and the FACS page come read-write, PCI configuration
+            --  read-only (its kernel root has no write right): each with
+            --  exactly its kind's rights, and grant.
             if D.Current and then D.Kind = H.ABI.Device_Memory
-              and then (D.Authority_Tag = H.ABI.Firmware_NVS_Tag
-                        or else D.Authority_Tag = H.ABI.Firmware_Control_Tag)
-              and then D.Held.Read and then D.Held.Write and then D.Held.Grant
+              and then AMC.Firmware_Tag (D.Authority_Tag)
+              and then D.Held.Read and then D.Held.Grant
+              and then D.Held.Write = AMC.Writable_Of (AMC.Kind_Of (D.Authority_Tag))
             then
                MC.Claim_ACPI (Claims, D.Object, D.Parameter, Granted);
             end if;
             if Granted then
                Window_Count := Window_Count + 1;
                Windows (Window_Count) :=
-                 (Memory => Held.Firmware (R), First => D.Object, Bytes => D.Parameter);
+                 (Memory => Held.Firmware (R), First => D.Object, Bytes => D.Parameter,
+                  Kind => AMC.Kind_Of (D.Authority_Tag));
             else
                Refused := Refused + 1;
             end if;

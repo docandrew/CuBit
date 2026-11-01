@@ -133,11 +133,14 @@ package Capability_ABI with Pure, SPARK_Mode is
    --  tags (the ACPI hardware grant, kernel Physical_Ranges "Firmware
    --  memory"): Firmware_NVS_Tag, a run of whole ACPI NVS pages, mapped
    --  write-back; Firmware_Control_Tag, the FACS page alone (the Global
-   --  Lock), mapped write-back whatever its firmware class. None maps
-   --  another's pages.
+   --  Lock), mapped write-back whatever its firmware class;
+   --  Firmware_PCI_Config_Tag, PCI segment 0 bus 0's ECAM slice from the
+   --  MCFG (256 functions of 4 KiB), mapped uncached and only read-only (the
+   --  kernel root carries no write right). None maps another's pages.
    ---------------------------------------------------------------------------
-   Firmware_NVS_Tag     : constant Unsigned_64 := 16#4657_4D45_4D00_0001#;  --  "FWMEM", 1
-   Firmware_Control_Tag : constant Unsigned_64 := 16#4657_4D45_4D00_0002#;  --  "FWMEM", 2
+   Firmware_NVS_Tag        : constant Unsigned_64 := 16#4657_4D45_4D00_0001#;  --  "FWMEM", 1
+   Firmware_Control_Tag    : constant Unsigned_64 := 16#4657_4D45_4D00_0002#;  --  "FWMEM", 2
+   Firmware_PCI_Config_Tag : constant Unsigned_64 := 16#4657_4D45_4D00_0004#;  --  "FWMEM", 4
 
    ---------------------------------------------------------------------------
    --  Message tag flags: one byte of the tag, two typed components.

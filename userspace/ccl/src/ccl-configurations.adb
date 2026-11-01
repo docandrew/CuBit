@@ -180,7 +180,7 @@ package body CCL.Configurations with SPARK_Mode => On is
          Executable : Key_Text;
          Have_Priority, Have_Network, Have_Role, Have_Mode, Have_Device,
            Have_Scheduling, Have_Deadline, Have_Render, Have_Firmware, Have_Arguments : Boolean := False;
-         Have_ACPI_Hardware, Have_ACPI_Registers : Boolean := False;
+         Have_ACPI_Hardware, Have_ACPI_Registers, Have_ACPI_PCI_Config : Boolean := False;
 
          --  (<name> deny) or (<name> approve-declared), once.
          procedure Declared_Approval (Seen : in out Boolean; Approved : out Boolean) is
@@ -279,6 +279,8 @@ package body CCL.Configurations with SPARK_Mode => On is
                Declared_Approval (Have_ACPI_Hardware, Item.Approve_ACPI_Hardware);
             elsif Matches (Name, "acpi-registers") then
                Declared_Approval (Have_ACPI_Registers, Item.Approve_ACPI_Registers);
+            elsif Matches (Name, "acpi-pci-config") then
+               Declared_Approval (Have_ACPI_PCI_Config, Item.Approve_ACPI_PCI_Config);
             elsif Matches (Name, "role") then
                if Have_Role then Fail (Duplicate_Field); end if;
                Read_Symbol (Reader, Name);
@@ -361,6 +363,11 @@ package body CCL.Configurations with SPARK_Mode => On is
             Close_Form (Reader);
          end loop;
          if not Have_Priority then Fail (Missing_Field); end if;
+         --  The PCI configuration window is part of the ACPI hardware grant:
+         --  approving it alone grants nothing, so it is refused.
+         if Item.Approve_ACPI_PCI_Config and then not Item.Approve_ACPI_Hardware then
+            Fail (Invalid_Approval);
+         end if;
          --  A per-device driver exists to receive device resources, and only
          --  a per-device driver may be granted them.
          if Item.Mode = Per_Device xor Item.Approve_Device then Fail (Invalid_Launch_Mode); end if;

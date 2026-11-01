@@ -73,6 +73,12 @@ package CCL.Configurations with SPARK_Mode => On is
       --  declared "acpi-registers" client endpoint, which procmgr badges
       --  with the full frontend scope (ACPI_Register_Roles.Frontend_Tag).
       Approve_ACPI_Registers : Boolean := False;
+      --  (acpi-pci-config approve-declared): on an entry that also approves
+      --  acpi-hardware, the grant includes the read-only, uncached PCI
+      --  segment 0 bus 0 configuration window (ACPI-PCI-001, the kernel's
+      --  Firmware_PCI_Config_Tag root). Off unless written: an entry without
+      --  it never sees the window. Without acpi-hardware it is refused.
+      Approve_ACPI_PCI_Config : Boolean := False;
       Scheduling_Budget, Scheduling_Period : CCL.Scheduling_Limits.Microseconds :=
         CCL.Scheduling_Limits.Microseconds'First;
       Has_Ready_Deadline : Boolean := False;

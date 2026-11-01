@@ -1450,6 +1450,15 @@ acpi-registers-client: ccl-build user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/acpi-registers-client/build
 	$(CCL_BUILD) ../userspace/apps/acpi-registers-client/component.ccl
 
+# ACPI-PCI-001: the opt-in read-only PCI segment 0 bus 0 window of the ACPI
+# hardware grant (headless --test acpi-pci-config). Test-only (never in
+# world/images).
+.PHONY : acpi-pci-check
+acpi-pci-check: ccl-build user_runtime ccl-manifest
+	mkdir -p ../userspace/apps/acpi-pci-check/build
+	$(CCL_BUILD) ../userspace/apps/acpi-pci-check/component.ccl
+	cp ../userspace/apps/acpi-pci-check/build/acpi-pci-check.app isodir/boot/acpi-pci-check.app
+
 firmware-undeclared: ccl-build user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/firmware-undeclared/build
 	$(CCL_BUILD) ../userspace/apps/firmware-undeclared/component.ccl

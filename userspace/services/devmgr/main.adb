@@ -19,6 +19,7 @@ with CuBit.Handles.Control;
 with CuBit.Handles.IPC;
 with CuBit.Service_Exchange;
 with CuBit.ACPI_Window_Exchange;
+with CuBit.ACPI_Memory_Classes;
 with Devmgr_Port_Claims;
 with CuBit.Disk_Install;
 with CuBit.Block_Devices;
@@ -2098,9 +2099,11 @@ procedure main is
 
    --  procmgr asks for ACPI firmware-memory window K (CuBit.ACPI_Window_
    --  Exchange, Memory_Window_Request): the K-th root claimed for ACPI at
-   --  start (Devmgr_Authority), whole, with read, write and grant.
+   --  start (Devmgr_Authority), whole, with read, grant, and write when its
+   --  kind is writable (PCI configuration never is).
    procedure Give_ACPI_Memory_Window (From : Process_ID; Msg : Message) is
       package AX renames CuBit.ACPI_Window_Exchange;
+      Read_Grant : constant H.Rights := (Read | Grant => True, others => False);
       K : constant Unsigned_64 := Msg.words (AX.Window_Word);
    begin
       if K not in 1 .. Unsigned_64 (Devmgr_Authority.ACPI_Window_Count) then
@@ -2111,7 +2114,9 @@ procedure main is
          W : constant Devmgr_Authority.ACPI_Window := Devmgr_Authority.ACPI_Window_At (Positive (K));
       begin
          if not Answer_With (From, [W.First, W.Bytes, 0, 0], AX.Request_Words,
-                             H.Copy (W.Memory, Read_Write_Grant))
+                             H.Copy (W.Memory,
+                                     (if CuBit.ACPI_Memory_Classes.Writable_Of (W.Kind)
+                                      then Read_Write_Grant else Read_Grant)))
          then
             Warnings.Warn ("devmgr: ACPI memory window " & Hex (W.First) & " not transferred");
          else

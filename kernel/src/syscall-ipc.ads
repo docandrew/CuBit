@@ -22,7 +22,8 @@ is
 
     -- MAP_DEVICE: arg4 = the CAP_DEVICE_MEM handle covering the pages:
     -- device memory (untagged) maps uncached, firmware memory (the ACPI
-    -- hardware grant's NVS runs and FACS page) write-back.
+    -- hardware grant's NVS runs and FACS page) write-back, and PCI segment
+    -- 0 bus 0 configuration (the grant's ECAM slice) uncached, read-only.
     procedure handleMapDevice (callerPID : Process.ProcessID;
                                arg0, arg1, arg2, arg3, arg4 : Unsigned_64;
                                retval    : out Unsigned_64);

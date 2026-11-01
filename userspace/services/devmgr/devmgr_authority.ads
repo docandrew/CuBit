@@ -12,10 +12,11 @@
 --  roots or a kernel object SPAWN gave it; devmgr itself maps device pages
 --  and programs hardware through them.
 --
---  The firmware-memory roots (the kernel's ACPI NVS runs and FACS page) are
---  claimed for ACPI at Initialize (Devmgr_Memory_Claims) and handed, whole,
---  only to the program procmgr's startup plan approves
---  (CuBit.ACPI_Window_Exchange). No device-memory range that touches one of
+--  The firmware-memory roots (the kernel's ACPI NVS runs, FACS page and
+--  PCI segment 0 bus 0 ECAM slice) are claimed for ACPI at Initialize
+--  (Devmgr_Memory_Claims) and handed, whole, only to the program procmgr's
+--  startup plan approves (CuBit.ACPI_Window_Exchange; the PCI slice only
+--  with acpi-pci-config approved too). No device-memory range that touches one of
 --  their pages is ever covered (Device_Region), so neither a driver nor
 --  devmgr itself can map or be given them.
 ------------------------------------------------------------------------------
@@ -23,6 +24,7 @@ pragma Ada_2022;
 with Interfaces; use Interfaces;
 with CuBit.Handles;
 with CuBit.Handles.Boot_Roots;
+with CuBit.ACPI_Memory_Classes;
 
 package Devmgr_Authority is
 
@@ -51,6 +53,9 @@ package Devmgr_Authority is
    type ACPI_Window is record
       Memory : H.Device_Memory := H.No_Device_Memory;
       First, Bytes : Unsigned_64 := 0;
+      --  What its kernel tag says it is (CuBit.ACPI_Memory_Classes): PCI
+      --  configuration is held, and handed on, read-only.
+      Kind : CuBit.ACPI_Memory_Classes.Memory_Kind := CuBit.ACPI_Memory_Classes.ACPI_NVS;
    end record;
    function ACPI_Window_Count return Natural;
    function ACPI_Window_At (K : Positive) return ACPI_Window

@@ -33,6 +33,17 @@ package body Physical_Ranges with SPARK_Mode is
       end if;
    end Set_Control;
 
+   procedure Set_PCI_Config (M : in out Map; Bus_Zero : Unsigned_64) is
+   begin
+      if Bus_Zero mod Page_Bytes = 0 and then Bus_Zero <= Address_Limit - PCI_Bus_Bytes then
+         M.PCI_Config_Known := True;
+         M.PCI_Config_Page := Bus_Zero / Page_Bytes;
+      else
+         M.PCI_Config_Known := False;
+         M.PCI_Config_Page := 0;
+      end if;
+   end Set_PCI_Config;
+
    procedure Seal (M : in out Map) is
    begin
       M.Sealed := True;
@@ -240,26 +251,37 @@ package body Physical_Ranges with SPARK_Mode is
    begin
       for P in Page_Of (First) .. Page_Of (Last) loop
          pragma Assert (Firmware_Page (M, P, Kind));
-         -- Every span touching P has a control class, and one of them
-         -- (wholly containing P) touches it, so Class_Of is that class or
-         -- another touching span's.
          case Kind is
-            when NVS_Memory =>
-               pragma Assert (NVS_Page (M, P));
-            when Control_Memory =>
-               pragma Assert (Control_Page_Admitted (M, P));
+            when NVS_Memory | Control_Memory =>
+               -- Every span touching P has a control class, and one of them
+               -- (wholly containing P) touches it, so Class_Of is that class
+               -- or another touching span's.
+               if Kind = NVS_Memory then
+                  pragma Assert (NVS_Page (M, P));
+               else
+                  pragma Assert (Control_Page_Admitted (M, P));
+               end if;
+               pragma Assert
+                 (for all I in 1 .. M.Count =>
+                    (if Touches (M.Spans (I), P) then Control_Class (M.Spans (I).Class)));
+               pragma Assert
+                 (for some I in 1 .. M.Count =>
+                    Control_Class (M.Spans (I).Class) and then Within (M.Spans (I), P)
+                    and then Touches (M.Spans (I), P));
+               pragma Assert (Class_Of (M, P) /= Unreported);
+               pragma Assert (Control_Class (Class_Of (M, P)));
+            when PCI_Config_Memory =>
+               -- Every span touching P is device-mappable, so Class_Of is
+               -- one of their classes or Unreported (bus space).
+               pragma Assert (PCI_Config_Page_Admitted (M, P));
+               pragma Assert
+                 (for all I in 1 .. M.Count =>
+                    (if Touches (M.Spans (I), P) then Device_Mappable (M.Spans (I).Class)));
+               pragma Assert (Device_Mappable (Class_Of (M, P)));
          end case;
-         pragma Assert
-           (for all I in 1 .. M.Count =>
-              (if Touches (M.Spans (I), P) then Control_Class (M.Spans (I).Class)));
-         pragma Assert
-           (for some I in 1 .. M.Count =>
-              Control_Class (M.Spans (I).Class) and then Within (M.Spans (I), P)
-              and then Touches (M.Spans (I), P));
-         pragma Assert (Class_Of (M, P) /= Unreported);
-         pragma Assert (Control_Class (Class_Of (M, P)));
+         pragma Assert (Firmware_Class (Kind, Class_Of (M, P)));
          pragma Loop_Invariant
-           (for all Q in Page_Of (First) .. P => Control_Class (Class_Of (M, Q)));
+           (for all Q in Page_Of (First) .. P => Firmware_Class (Kind, Class_Of (M, Q)));
       end loop;
    end Lemma_Firmware_Range_Excludes_RAM;
 
@@ -390,6 +412,9 @@ package body Physical_Ranges with SPARK_Mode is
       Found : Boolean;
       Low, High : Page_Number;
       Control_Pending : Boolean;
+      PCI_Pending : Boolean;
+      -- The control page, or the PCI slice, comes before the next NVS run.
+      Control_Next, PCI_Next : Boolean;
 
       -- Records pages [First_Page, Last_Page_Of] as the next run if it is
       -- verified firmware memory above every recorded run, short enough,
@@ -429,13 +454,33 @@ package body Physical_Ranges with SPARK_Mode is
          return;
       end if;
       Control_Pending := Control_Page_Admitted (M, M.Control_Page);
-      -- Each round records the control page or consumes at least one NVS
-      -- candidate, so Count + 2 rounds enumerate them all.
-      for Round in 0 .. M.Count + 1 loop
+      PCI_Pending := In_PCI_Config (M, M.PCI_Config_Page);
+      -- Each round records the control page, considers the PCI slice, or
+      -- consumes at least one NVS candidate, so Count + 3 rounds enumerate
+      -- them all.
+      for Round in 0 .. M.Count + 2 loop
          Next_NVS_Run (M, From, Found, Low, High);
-         if Control_Pending and then M.Control_Page >= From
-           and then (not Found or else M.Control_Page < Low)
-         then
+         Control_Next := Control_Pending and then M.Control_Page >= From
+           and then (not Found or else M.Control_Page < Low);
+         PCI_Next := PCI_Pending and then In_PCI_Config (M, M.PCI_Config_Page)
+           and then M.PCI_Config_Page >= From
+           and then (not Found or else M.PCI_Config_Page < Low)
+           and then (not Control_Next or else M.PCI_Config_Page < M.Control_Page);
+         if PCI_Next then
+            -- The slice exactly, or nothing (Emit re-checks every page);
+            -- only a recorded slice moves the search past it.
+            PCI_Pending := False;
+            declare
+               Before : constant Firmware_Root_Count := Count;
+               Last_Of : constant Page_Number := M.PCI_Config_Page + (PCI_Bus_Pages - 1);
+            begin
+               Emit (M.PCI_Config_Page, Last_Of, PCI_Config_Memory);
+               if Count /= Before then
+                  exit when Last_Of = Last_Page;
+                  From := Last_Of + 1;
+               end if;
+            end;
+         elsif Control_Next then
             Control_Pending := False;
             Emit (M.Control_Page, M.Control_Page, Control_Memory);
             if M.Control_Page < Last_Page then
@@ -468,6 +513,10 @@ package body Physical_Ranges with SPARK_Mode is
          pragma Loop_Invariant
            (for all I in Count + 1 .. Max_Firmware_Roots => Runs (I) = No_Firmware_Run);
       end loop;
+      -- A slice the search passed without recording is left out, not lost.
+      if PCI_Pending and then Left_Out < Natural'Last then
+         Left_Out := Left_Out + 1;
+      end if;
    end Firmware_Runs;
 
 end Physical_Ranges;

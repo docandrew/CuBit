@@ -17,7 +17,9 @@
 --  overlapping give the empty Grant (nothing admitted). Then the memory
 --  windows Memory_Label (Label, 1), ... likewise: each must be a current
 --  firmware-memory capability (a kernel firmware-memory tag,
---  CuBit.ACPI_Memory_Classes) with read and write, covering whole pages;
+--  CuBit.ACPI_Memory_Classes) with read, and write exactly when its kind
+--  is writable (Writable_Of: PCI configuration is read-only), covering
+--  whole pages;
 --  First_Page and Pages are what the kernel says it covers, and Kind and
 --  Cache what its kernel tag says (an unknown tag empties the grant). A
 --  grant with no window of either kind is empty too; a memory-only grant

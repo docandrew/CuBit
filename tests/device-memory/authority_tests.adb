@@ -12,6 +12,7 @@ with Device_Memory_Admission;
 with Device_Memory_Authority; use Device_Memory_Authority;
 with Physical_Ranges; use Physical_Ranges;
 with Device_Memory_Publication;
+with Capability_Install;
 
 procedure Authority_Tests is
    package DMA renames Device_Memory_Admission;
@@ -725,6 +726,307 @@ procedure Authority_Tests is
       end loop;
    end Firmware_Oracle;
 
+   --  PCI configuration (ACPI-PCI-001): segment 0 bus 0's ECAM slice from
+   --  the MCFG is a kernel-only firmware-memory kind, its root exactly the
+   --  1 MiB slice, mapped uncached and only read-only; no other capability
+   --  maps it as firmware memory and none can be derived into one.
+   procedure PCI_Config is
+      pragma Compile_Time_Error
+        (PCI_Bus_Pages /= 256 or else PCI_Bus_Bytes /= MiB, "one bus is 256 functions, 1 MiB");
+      ECAM_Base  : constant Unsigned_64 := 16#B000_0000#;   --  q35's MCFG base
+      ECAM_End   : constant Unsigned_64 := 16#BFFF_FFFF#;   --  buses 0 .. 255
+      Slice_Last : constant Unsigned_64 := ECAM_Base + PCI_Bus_Bytes - 1;
+      Top_First  : constant Unsigned_64 := 16#0FFE_0000#;
+      Top_Last   : constant Unsigned_64 := 16#0FFF_FFFF#;
+      FACS_Q35   : constant Unsigned_64 := 16#0FFE_0040#;
+      READ_GRANT : constant CapabilityRights :=
+        [RIGHT_READ | RIGHT_GRANT => True, others => False];
+      RW_GRANT   : constant CapabilityRights :=
+        [RIGHT_READ | RIGHT_WRITE | RIGHT_GRANT => True, others => False];
+      function Cap (Base, Bytes : Unsigned_64; Rights : CapabilityRights;
+                    Tag : Authority_Tag := FIRMWARE_PCI_CONFIG_TAG) return Capability is
+        ((capType => CAP_DEVICE_MEM, rights => Rights, authorityTag => Tag,
+          object => (ref => Base, param => Bytes), gen => INITIAL_GENERATION));
+      function PCI (M : Map; Base, Bytes : Unsigned_64) return Boolean is
+        (Firmware_Bytes (M, Base, Bytes, PCI_Config_Memory));
+      Root : constant Capability := Cap (ECAM_Base, PCI_Bus_Bytes, READ_GRANT);
+      R : Firmware_Run_Array;
+      N : Firmware_Root_Count;
+      Left : Natural;
+      S : Map := Empty_Map;
+   begin
+      --  q35 (SeaBIOS): the FACS page in the top reserved span, MCFG at
+      --  0xB000_0000 in a reserved span.
+      Add (S, 16#10_0000#, Top_First - 1, Usable_RAM);
+      Add (S, Top_First, Top_Last, Firmware_Reserved);
+      Add (S, ECAM_Base, ECAM_End, Firmware_Reserved);
+      Add (S, 0, Low_Memory_Limit - 1, Low_Memory);
+      Set_Control (S, FACS_Q35);
+      Set_PCI_Config (S, ECAM_Base);
+      Expect (S.PCI_Config_Known and then S.PCI_Config_Page = ECAM_Base / Page, "pci: slice recorded");
+      Seal (S);
+      Expect (S.PCI_Config_Known and then S.Control_Known, "pci: sealing keeps the slice");
+      Firmware_Runs (S, R, N, Left);
+      Expect (N = 2 and then Left = 0, "pci q35: the FACS root and the PCI root");
+      Expect (R (1).Kind = Control_Memory and then R (1).First = Top_First,
+              "pci q35: FACS root first (ascending)");
+      Expect (R (2) = (First => ECAM_Base, Last => Slice_Last, Kind => PCI_Config_Memory),
+              "pci q35: the PCI root is exactly bus 0's 1 MiB");
+      --  Exact range: the slice, no page more.
+      Expect (PCI (S, ECAM_Base, PCI_Bus_Bytes), "pci: whole slice is PCI configuration");
+      Expect (PCI (S, ECAM_Base, Page), "pci: host bridge function page");
+      Expect (PCI (S, Slice_Last + 1 - Page, Page), "pci: last function page");
+      Expect (not PCI (S, Slice_Last + 1, Page), "pci: bus 1 refused");
+      Expect (not PCI (S, ECAM_Base, PCI_Bus_Bytes + Page), "pci: slice plus one page refused");
+      Expect (not PCI (S, ECAM_Base - Page, Page), "pci: page below refused");
+      Expect (not PCI (S, ECAM_Base + 16#10#, Page), "pci: unaligned refused");
+      Expect (not PCI (S, ECAM_Base, 0), "pci: zero size refused");
+      Expect (not Firmware_Bytes (S, ECAM_Base, Page, NVS_Memory)
+              and then not Firmware_Bytes (S, ECAM_Base, Page, Control_Memory),
+              "pci: the slice is no other firmware kind");
+      Expect (not PCI (S, Top_First, Page), "pci: FACS page is not PCI configuration");
+      --  Device memory still names ECAM (devmgr's claim ledger keeps the
+      --  slice ACPI's); the two authorities stay distinct by tag.
+      Expect (Device_Bytes (S, ECAM_Base, Page), "pci: ECAM is still device-mappable");
+      --  Read-only and uncached: the root's rights, and the kernel's mode
+      --  rule even for a capability that claimed a write right.
+      Expect (Authorize_Firmware (Root, S, ECAM_Base, Page, Read_Only), "pci root maps read-only");
+      Expect (Authorize_Firmware (Root, S, ECAM_Base, PCI_Bus_Bytes, Read_Only),
+              "pci root maps the whole slice read-only");
+      Expect (not Authorize_Firmware (Root, S, ECAM_Base, Page, Read_Write),
+              "pci root: writable mapping refused");
+      Expect (not Authorize_Firmware (Cap (ECAM_Base, PCI_Bus_Bytes, RW_GRANT), S, ECAM_Base, Page,
+                                      Read_Write)
+              and then Authorize_Firmware (Cap (ECAM_Base, PCI_Bus_Bytes, RW_GRANT), S, ECAM_Base,
+                                           Page, Read_Only),
+              "pci: a write right never makes a writable mapping");
+      Expect (not Firmware_Mode (PCI_Config_Memory, Read_Write)
+              and then Firmware_Mode (PCI_Config_Memory, Read_Only)
+              and then Firmware_Mode (NVS_Memory, Read_Write)
+              and then Firmware_Mode (Control_Memory, Read_Write),
+              "pci: only PCI configuration is read-only");
+      Expect (not Write_Back (PCI_Config_Memory) and then Write_Back (NVS_Memory)
+              and then Write_Back (Control_Memory), "pci: uncached, NVS/FACS write-back");
+      Expect (not Authorize_Firmware (Root, S, Slice_Last + 1, Page, Read_Only),
+              "pci root: bus 1 refused");
+      Expect (not Authorize_Firmware (Cap (ECAM_Base, 2 * PCI_Bus_Bytes, READ_GRANT), S,
+                                      Slice_Last + 1, Page, Read_Only),
+              "pci: a wider capability still maps only bus 0");
+      Expect (not Authorize_Firmware (Root, S, Top_First, Page, Read_Only),
+              "pci root: the FACS page refused");
+      --  Only the PCI tag is PCI authority.
+      Expect (not Authorize_Firmware (Cap (ECAM_Base, PCI_Bus_Bytes, READ_GRANT, NO_AUTHORITY_TAG),
+                                      S, ECAM_Base, Page, Read_Only),
+              "pci: untagged device memory is not PCI authority");
+      Expect (not Authorize_Firmware (Cap (ECAM_Base, PCI_Bus_Bytes, READ_GRANT, FIRMWARE_NVS_TAG),
+                                      S, ECAM_Base, Page, Read_Only)
+              and then not Authorize_Firmware
+                             (Cap (ECAM_Base, PCI_Bus_Bytes, READ_GRANT, FIRMWARE_CONTROL_TAG),
+                              S, ECAM_Base, Page, Read_Only),
+              "pci: NVS and control tags do not map PCI configuration");
+      Expect (not Authorize_Firmware (Cap (Top_First, Page, READ_GRANT), S, Top_First, Page, Read_Only),
+              "pci: the PCI tag does not map the FACS page");
+      Expect (not Authorize (Root, S, ECAM_Base, Page, Read_Only),
+              "pci: the PCI root is not device authority");
+      Expect (Device_Memory_Authority.Kind_Of (FIRMWARE_PCI_CONFIG_TAG) = PCI_Config_Memory
+              and then Device_Memory_Authority.Tag_Of (PCI_Config_Memory) = FIRMWARE_PCI_CONFIG_TAG
+              and then Device_Memory_Authority.Firmware_Tag (FIRMWARE_PCI_CONFIG_TAG),
+              "pci: the tag names the kind");
+      --  Kernel-only: no copy of a device-memory capability gains the tag,
+      --  and no copy of the root gains a write right or a wider range.
+      declare
+         package CI renames Capability_Install;
+         Device : constant Capability := Cap (ECAM_Base, PCI_Bus_Bytes, RW_GRANT, NO_AUTHORITY_TAG);
+         Narrow : Capability := Root;
+      begin
+         Expect (not CI.Is_Derivation (Cap (ECAM_Base, PCI_Bus_Bytes, RW_GRANT), Device),
+                 "pci: device memory cannot be retagged as PCI configuration");
+         Expect (not CI.Is_Derivation (Cap (ECAM_Base, PCI_Bus_Bytes, RW_GRANT), Root),
+                 "pci: no copy of the root gains a write right");
+         Expect (not CI.Is_Derivation (Cap (ECAM_Base, 2 * PCI_Bus_Bytes, READ_GRANT), Root),
+                 "pci: no copy of the root covers more than bus 0");
+         Expect (not CI.Is_Derivation (Cap (ECAM_Base, PCI_Bus_Bytes, READ_GRANT, FIRMWARE_NVS_TAG),
+                                       Root),
+                 "pci: no copy of the root changes its tag");
+         Narrow.object := (ref => ECAM_Base, param => Page);
+         Narrow.rights := [RIGHT_READ => True, others => False];
+         Expect (CI.Is_Derivation (Narrow, Root)
+                 and then Authorize_Firmware (Narrow, S, ECAM_Base, Page, Read_Only)
+                 and then not Authorize_Firmware (Narrow, S, ECAM_Base + Page, Page, Read_Only),
+                 "pci: a narrowed read-only copy maps only its own function");
+      end;
+
+      --  ECAM in bus space (no span names it) is admitted too.
+      declare
+         M : Map := Empty_Map;
+      begin
+         Add (M, 16#10_0000#, 16#7FFF_FFFF#, Usable_RAM);
+         Set_PCI_Config (M, 16#E000_0000#);
+         Seal (M);
+         Firmware_Runs (M, R, N, Left);
+         Expect (N = 1 and then Left = 0
+                 and then R (1) = (First => 16#E000_0000#, Last => 16#E00F_FFFF#,
+                                   Kind => PCI_Config_Memory),
+                 "pci: ECAM in bus space is the PCI root");
+      end;
+      --  A slice any non-device page touches is left out whole.
+      declare
+         M : Map := Empty_Map;
+      begin
+         Add (M, ECAM_Base, ECAM_End, Firmware_Reserved);
+         Add (M, ECAM_Base + 16#8_0000#, ECAM_Base + 16#8_0FFF#, Usable_RAM);
+         Set_PCI_Config (M, ECAM_Base);
+         Seal (M);
+         Firmware_Runs (M, R, N, Left);
+         Expect (N = 0 and then Left = 1, "pci: slice touching RAM left out whole");
+         Expect (not PCI (M, ECAM_Base + 16#8_0000#, Page) and then PCI (M, ECAM_Base, Page),
+                 "pci: the RAM page is refused, never mapped");
+         M := Empty_Map;
+         Add (M, ECAM_Base, ECAM_End, Firmware_Reserved);
+         Add (M, Slice_Last + 1 - Page, Slice_Last + 1 - Page + 16#FF#, Kernel_MMIO);
+         Set_PCI_Config (M, ECAM_Base);
+         Seal (M);
+         Firmware_Runs (M, R, N, Left);
+         Expect (N = 0 and then Left = 1, "pci: slice sharing a page with kernel MMIO left out");
+         M := Empty_Map;
+         Add (M, ECAM_Base, ECAM_Base + 16#FFF#, ACPI_NVS);
+         Set_PCI_Config (M, ECAM_Base);
+         Seal (M);
+         Firmware_Runs (M, R, N, Left);
+         Expect (N = 1 and then Left = 1 and then R (1).Kind = NVS_Memory,
+                 "pci: an NVS page in the slice stays NVS, the slice is left out");
+      end;
+      --  Malformed bases, and maps that authorize nothing.
+      declare
+         M : Map := Empty_Map;
+      begin
+         Set_PCI_Config (M, ECAM_Base + 16#800#);
+         Expect (not M.PCI_Config_Known, "pci: unaligned base ignored");
+         Set_PCI_Config (M, Address_Limit - PCI_Bus_Bytes);
+         Expect (M.PCI_Config_Known and then M.PCI_Config_Page = Last_PCI_Bus_Page,
+                 "pci: highest slice below the limit");
+         Set_PCI_Config (M, Address_Limit - PCI_Bus_Bytes + Page);
+         Expect (not M.PCI_Config_Known, "pci: slice reaching the limit ignored");
+         Set_PCI_Config (M, Unsigned_64'Last - 16#FFF#);
+         Expect (not M.PCI_Config_Known, "pci: wrapping base ignored");
+         Set_PCI_Config (M, ECAM_Base);
+         Firmware_Runs (M, R, N, Left);
+         Expect (N = 0 and then not PCI (M, ECAM_Base, Page), "pci: unsealed map authorizes nothing");
+         Invalidate (M);
+         Seal (M);
+         Firmware_Runs (M, R, N, Left);
+         Expect (N = 0 and then not PCI (M, ECAM_Base, Page), "pci: incomplete map authorizes nothing");
+         M := Empty_Map;
+         Add (M, ECAM_Base, ECAM_End, Firmware_Reserved);
+         Seal (M);
+         Firmware_Runs (M, R, N, Left);
+         Expect (N = 0 and then Left = 0 and then not PCI (M, ECAM_Base, Page),
+                 "pci: no MCFG, no root");
+      end;
+      --  The eight-root budget: a slice above eight NVS runs is left out
+      --  (counted); one below them takes the first root.
+      declare
+         M : Map := Empty_Map;
+      begin
+         for I in 0 .. Unsigned_64 (Max_Firmware_Roots - 1) loop
+            Add (M, 16#5000_0000# + I * 16#10_0000#, 16#5000_0FFF# + I * 16#10_0000#, ACPI_NVS);
+         end loop;
+         Set_PCI_Config (M, ECAM_Base);
+         Seal (M);
+         Firmware_Runs (M, R, N, Left);
+         Expect (N = Max_Firmware_Roots and then Left = 1
+                 and then (for all I in 1 .. N => R (I).Kind = NVS_Memory),
+                 "pci: slice past the root budget left out");
+         M := Empty_Map;
+         for I in 0 .. Unsigned_64 (Max_Firmware_Roots - 1) loop
+            Add (M, 16#C000_0000# + I * 16#10_0000#, 16#C000_0FFF# + I * 16#10_0000#, ACPI_NVS);
+         end loop;
+         Set_PCI_Config (M, ECAM_Base);
+         Seal (M);
+         Firmware_Runs (M, R, N, Left);
+         Expect (N = Max_Firmware_Roots and then Left = 1
+                 and then R (1) = (First => ECAM_Base, Last => Slice_Last, Kind => PCI_Config_Memory)
+                 and then (for all I in 2 .. N => R (I - 1).Last < R (I).First),
+                 "pci: slice below NVS runs takes the first root, ascending");
+      end;
+   end PCI_Config;
+
+   --  Random maps around a PCI slice: the PCI root exists exactly when no
+   --  non-device span touches the slice, is exactly the slice, ascends with
+   --  the other roots, and the other roots are unaffected.
+   procedure PCI_Config_Oracle is
+      Pages : constant := 600;
+      Seed : Unsigned_64 := 16#D1B5_4A32_D192_ED03#;
+      function Next return Unsigned_64 is
+      begin
+         Seed := Seed xor Shift_Left (Seed, 13);
+         Seed := Seed xor Shift_Right (Seed, 7);
+         Seed := Seed xor Shift_Left (Seed, 17);
+         return Seed;
+      end Next;
+      Kinds : constant array (0 .. 5) of Range_Class :=
+        [ACPI_NVS, Firmware_Reserved, Firmware_Reserved, Usable_RAM, ACPI_Tables, Kernel_MMIO];
+   begin
+      for Round in 1 .. 2000 loop
+         declare
+            M, Plain : Map := Empty_Map;
+            Spans : constant Natural := Natural (Next mod 6) + 1;
+            Slice : constant Unsigned_64 := Next mod (Pages - PCI_Bus_Pages);
+            R, Q : Firmware_Run_Array;
+            N, NQ : Firmware_Root_Count;
+            Left, Left_Q : Natural;
+            First, Last : Unsigned_64;
+            K : Range_Class;
+            Clean : Boolean := True;
+            Found : Natural := 0;
+         begin
+            for I in 1 .. Spans loop
+               First := Next mod (Pages * Page);
+               Last := Unsigned_64'Min (First + Next mod (40 * Page), Pages * Page - 1);
+               K := Kinds (Natural (Next mod 6));
+               Add (M, First, Last, K);
+               Add (Plain, First, Last, K);
+               if not Device_Mappable (K) and then Last / Page >= Slice
+                 and then First / Page < Slice + PCI_Bus_Pages
+               then
+                  Clean := False;
+               end if;
+            end loop;
+            Set_PCI_Config (M, Slice * Page);
+            Seal (M);
+            Seal (Plain);
+            Firmware_Runs (M, R, N, Left);
+            Firmware_Runs (Plain, Q, NQ, Left_Q);
+            for I in 1 .. N loop
+               Expect (Firmware_Range (M, R (I).First, R (I).Last, R (I).Kind),
+                       "pci oracle: root is firmware memory");
+               if I > 1 then
+                  Expect (R (I - 1).Last < R (I).First, "pci oracle: roots ascend");
+               end if;
+               if R (I).Kind = PCI_Config_Memory then
+                  Found := Found + 1;
+                  Expect (R (I).First = Slice * Page
+                          and then R (I).Last = (Slice + PCI_Bus_Pages) * Page - 1,
+                          "pci oracle: PCI root is exactly the slice");
+               end if;
+            end loop;
+            Expect (Found = (if Clean then 1 else 0), "pci oracle: PCI root iff the slice is clean");
+            Expect (Left = Left_Q + (if Clean then 0 else 1), "pci oracle: an unclean slice is left out");
+            Expect (N = NQ + Found, "pci oracle: other roots unchanged in number");
+            declare
+               J : Natural := 0;
+            begin
+               for I in 1 .. N loop
+                  if R (I).Kind /= PCI_Config_Memory then
+                     J := J + 1;
+                     Expect (J <= NQ and then R (I) = Q (J), "pci oracle: other roots unchanged");
+                  end if;
+               end loop;
+            end;
+         end;
+      end loop;
+   end PCI_Config_Oracle;
+
    --  Denial explanations (the kernel's records) and the reader's ring
    --  arithmetic.
    procedure Explanations is
@@ -793,6 +1095,8 @@ begin
    Oracle;
    Firmware;
    Firmware_Oracle;
+   PCI_Config;
+   PCI_Config_Oracle;
    Explanations;
    if Failures = 0 then
       Ada.Text_IO.Put_Line ("PASS: device-memory authority" & Natural'Image (Checks) & " checks");

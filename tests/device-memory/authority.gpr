@@ -3,11 +3,18 @@
 --  target (tests/prove-all.targets: device-memory-authority).
 project Authority is
    for Source_Dirs use (".", "fixture", "../../kernel/src",
-     "../../shared/publications", "../../shared/time");
+     "../../shared/publications", "../../shared/time",
+     "../../shared/capabilities", "../../shared/interrupts");
+   --  Capability_Install (and what it needs): the PCI-configuration tests
+   --  check that no derivation retags, widens or adds a write right.
    for Source_Files use ("authority_tests.adb", "capabilities.ads", "device_memory_admission.ads",
      "device_memory_publication.ads", "clock_publication.ads", "clock_publication.adb",
      "physical_ranges.ads", "physical_ranges.adb",
-     "device_memory_authority.ads", "device_memory_authority.adb");
+     "device_memory_authority.ads", "device_memory_authority.adb",
+     "capability_install.ads", "capability_install.adb",
+     "capability_abi.ads", "capability_abi.adb",
+     "realtime_admission.ads", "realtime_admission.adb",
+     "device_vector_abi.ads", "device_vector_abi.adb");
    for Object_Dir use "build-authority";
    for Exec_Dir use "build-authority";
    for Main use ("authority_tests.adb");

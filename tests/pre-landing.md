@@ -429,3 +429,36 @@ make -C kernel world CUBIT_COMPOSITOR_TIMING=on
 make -C kernel acpi-hardware-check acpi-registers-standin acpi-registers-client
 bash tests/headless/run.sh --test acpi-hardware --accel kvm
 ```
+
+## acpi-pci-config (ACPI-PCI-001, kernel/devmgr/procmgr half)
+
+A kernel-only firmware-memory kind, `Capability_ABI.Firmware_PCI_Config_Tag`:
+PCI segment 0 bus 0's ECAM slice from the MCFG (exactly 1 MiB, 256
+functions), its kernel root READ+GRANT only, mapped uncached and only
+read-only (`Device_Memory_Authority.Firmware_Mode`/`Write_Back`); devmgr
+claims it beside the NVS/FACS roots (one of the eight firmware roots) and
+closes it to device memory; procmgr installs it read-only, and only for an
+entry that also approves `(acpi-pci-config approve-declared)` (refused
+without `(acpi-hardware approve-declared)`). Off by default: no image or
+other test approves it, and without the approval the grant is exactly the
+slice-2 one (acpi-hardware checks that no program gets the window).
+Hosted: tests/device-memory (exact slice, read-only even with a write
+right, uncached, other tags refused, no derivation retags/widens/adds
+write, eight-root budget, random-map oracle; authority.gpr proved at level
+2), the startup-plan approval in tests/ccl-configurations. Native (q35,
+KVM): the approved stand-in gets the window at its own MCFG's base, held
+read-only without grant, a writable mapping and bus 1 refused, reads the
+host bridge IDs devmgr enumerated at 00:00.0, and its write to the
+read-only mapping is a write-protection fault; the same image without the
+approval gets the grant without the window; capability-security checks no
+forged handle maps the slice.
+
+```sh
+(cd kernel && alr exec -- gprbuild -p -P ../tests/device-memory/authority.gpr && ../tests/device-memory/build-authority/authority_tests)
+python3 tests/ccl-configurations/test-configurations.py
+make -C kernel world CUBIT_COMPOSITOR_TIMING=on
+make -C kernel acpi-pci-check acpi-hardware-check acpi-registers-standin acpi-registers-client
+bash tests/headless/run.sh --test acpi-pci-config --accel kvm
+bash tests/headless/run.sh --test acpi-hardware --accel kvm
+bash tests/headless/run.sh --test capability-security --accel kvm
+```

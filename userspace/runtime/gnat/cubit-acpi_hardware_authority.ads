@@ -16,9 +16,11 @@ with CuBit.Startup_Tables;
 --  a memory window procmgr refuses the launch. The declared entry holds the
 --  first I/O window's handle, or, with none (a hardware-reduced platform has
 --  no FADT fixed I/O blocks), the first memory window's.
---  Each firmware-memory window (slice 2: an ACPI NVS run or the FACS page)
---  is its own Device_Memory entry after the I/O windows, named
---  Memory_Label (Binding, K), in ascending address order.
+--  Each firmware-memory window (slice 2: an ACPI NVS run or the FACS page;
+--  ACPI-PCI-001: PCI segment 0 bus 0's ECAM slice, read-only, only with
+--  (acpi-pci-config approve-declared) too) is its own Device_Memory entry
+--  after the I/O windows, named Memory_Label (Binding, K), K counting only
+--  the windows installed, in ascending address order.
 --  CuBit.ACPI_Windows.Launch reads them back as a CuBit.ACPI_Windows.Grant.
 package CuBit.ACPI_Hardware_Authority with Pure, SPARK_Mode is
 

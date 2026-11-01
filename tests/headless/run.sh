@@ -81,7 +81,7 @@ Mesa native tests: --test softpipe, opengl, buffer, mesa-window, mesa-sync, mesa
 
 Options:
   --build              Run make world before booting QEMU
-  --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-console, logs, ccl-remote, capability-security, network-authority, bench-net, bench-fs, threads, futex, secondary-stacks, clock, avx, wifi-crypto, rust-std, libc, processes, control-events, binutils, gcc, gnat, servo, bench-spread, timesync, tls-probe, tls-service, wget-https, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, text, calculator, lexicon, dictionary, clipboard, key-repeat, desktop-doom, desktop-virtio-vga, desktop-vm, virtio-gpu, virtio-vga-primary, launch-failure, fs-coherence-CASE, startup-health, firmware-snapshot, acpi-hardware, or boot-timeline (--accel kvm --timeout 60)
+  --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-console, logs, ccl-remote, capability-security, network-authority, bench-net, bench-fs, threads, futex, secondary-stacks, clock, avx, wifi-crypto, rust-std, libc, processes, control-events, binutils, gcc, gnat, servo, bench-spread, timesync, tls-probe, tls-service, wget-https, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, text, calculator, lexicon, dictionary, clipboard, key-repeat, desktop-doom, desktop-virtio-vga, desktop-vm, virtio-gpu, virtio-vga-primary, launch-failure, fs-coherence-CASE, startup-health, firmware-snapshot, acpi-hardware, acpi-pci-config, or boot-timeline (--accel kvm --timeout 60)
   --timeout SECONDS    QEMU runtime before timeout is treated as success
                        (default 25; 180 for desktop tests, see DESKTOP_TIMEOUT_SECONDS)
   --accel NAME         QEMU accelerator (for example: tcg,thread=multi)
@@ -329,7 +329,7 @@ case "$TEST_NAME" in
         ;;
     grant-forward|grant-forward-intermediary-exit|grant-forward-owner-exit|grant-forward-desktop|config-tree|config-inspection|log-authority|log-fields|log-retention|metrics|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
         ;;
-    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|secondary-stacks|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|acpi-hardware|acpi-native-smoke|acpi-pair-smoke|multi-instance|program-parameters|usb-hotplug|wifi-crypto|acpi-register-probe)
+    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|secondary-stacks|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|acpi-hardware|acpi-pci-config|acpi-native-smoke|acpi-pair-smoke|multi-instance|program-parameters|usb-hotplug|wifi-crypto|acpi-register-probe)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -720,6 +720,13 @@ with open(sys.argv[1], "wb") as f:
         # span at the top of RAM) and the role-35 register endpoint's
         # frontend badge.
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-acpi-hardware.ccl"
+        ;;
+    acpi-pci-config)
+        # ACPI-PCI-001: the opt-in read-only, uncached PCI segment 0 bus 0
+        # window (q35's MCFG at 0xB000_0000) of the ACPI hardware grant;
+        # the same image without (acpi-pci-config approve-declared) gets
+        # the grant without it (build: make -C kernel acpi-pci-check).
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-acpi-pci-config.ccl"
         ;;
     clock)
         # docs/fast-clock.md: the clock publication page. The kernel
@@ -1844,6 +1851,27 @@ if [ -n "$INIT_PROFILE" ]; then
             if ! debugfs -w -R "write $HARDWARE_SOURCE $HARDWARE_TARGET" \
               "$TEMP_DISK" >/dev/null 2>&1; then
                 echo "headless: failed to install $HARDWARE_TARGET" >&2
+                exit 1
+            fi
+        done
+    fi
+    if [ "$TEST_NAME" = "acpi-pci-config" ]; then
+        # acpi-pci-unapproved.app is acpi-pci-check.app under another name:
+        # the same declaration, approved for the hardware grant but not for
+        # PCI configuration.
+        for PCI_PAIR in logstore.svc:logstore.svc \
+                        acpi-pci-check.app:acpi-pci-check.app \
+                        acpi-pci-check.app:acpi-pci-unapproved.app; do
+            PCI_SOURCE="$KERNEL_DIR/isodir/boot/${PCI_PAIR%%:*}"
+            PCI_TARGET="${PCI_PAIR##*:}"
+            if [ ! -f "$PCI_SOURCE" ]; then
+                echo "headless: build ${PCI_PAIR%%:*} first (make -C kernel acpi-pci-check)" >&2
+                exit 1
+            fi
+            debugfs -w -R "rm $PCI_TARGET" "$TEMP_DISK" >/dev/null 2>&1
+            if ! debugfs -w -R "write $PCI_SOURCE $PCI_TARGET" \
+              "$TEMP_DISK" >/dev/null 2>&1; then
+                echo "headless: failed to install $PCI_TARGET" >&2
                 exit 1
             fi
         done
@@ -5015,6 +5043,78 @@ TEST: PASS acpi-registers-client
             echo "headless: ACPI hardware checks failed, or the unapproved image ran" >&2
             exit 1
         fi
+        # The PCI configuration window is opt-in: no entry here approves it.
+        if grep -aqF '(PCI configuration, read-only) installed' "$SERIAL_LOG" ||
+           grep -aqF 'ACPI PCI configuration approved' "$SERIAL_LOG"; then
+            echo "headless: a PCI configuration window reached an unapproved program" >&2
+            exit 1
+        fi
+        ;;
+    acpi-pci-config)
+        required_markers="
+Segment 0 bus 0 ECAM:  0x00000000B0000000
+Modules: devmgr firmware-memory root 0x00000000B0000000 .. 0x00000000B00FFFFF
+devmgr: ACPI memory window 0xB0000000 +0x100000 claimed, closed to device memory
+procmgr: ACPI memory window 1 installed for acpi-pci-unapproved.app
+acpi-pci-check: no PCI configuration window; grant has
+acpi-pci-check: grant without PCI configuration intact
+procmgr: ACPI PCI configuration approved for acpi-pci-check.app
+procmgr: ACPI memory window 2 (PCI configuration, read-only) installed for acpi-pci-check.app
+acpi-pci-check: exactly one PCI configuration window PASS
+acpi-pci-check: windows sorted and disjoint PASS
+acpi-pci-check: the rest of the grant is unchanged (I/O and write-back firmware windows) PASS
+acpi-pci-check: handle covers exactly bus 0 (1 MiB) PASS
+acpi-pci-check: window is the MCFG's segment 0 bus 0 slice PASS
+acpi-pci-check: kind and cache mode from its kernel tag (PCI_Config, uncached) PASS
+acpi-pci-check: read-only without grant PASS
+acpi-pci-check: cannot be copied on PASS
+acpi-pci-check: writable mapping refused PASS
+acpi-pci-check: bus 1 (the page past the window) refused PASS
+acpi-pci-check: the page before the window refused PASS
+acpi-pci-check: host bridge function 00:00.0 maps read-only PASS
+acpi-pci-check: host bridge vendor ID read through the window PASS
+TEST: PASS acpi-pci-config
+acpi-pci-check: attempting forbidden write at 0000600000000000
+"
+        # One run of each image; nothing fails; the unapproved image never
+        # gets the window; devmgr closed the slice to device memory; the
+        # forbidden write is a write-protection fault of acpi-pci-check.app
+        # at the mapped page; the host bridge IDs read through the window
+        # are the ones devmgr enumerated at 00:00.0 through 0xCF8/0xCFC.
+        if grep -aF 'acpi-pci-check: ' "$SERIAL_LOG" | grep -qF ' FAIL' ||
+           grep -aqF 'TEST: FAIL acpi-pci-config' "$SERIAL_LOG" ||
+           grep -aqF 'still open to device memory' "$SERIAL_LOG" ||
+           grep -aqF '(PCI configuration, read-only) installed for acpi-pci-unapproved.app' "$SERIAL_LOG" ||
+           grep -aqF 'ACPI PCI configuration approved for acpi-pci-unapproved.app' "$SERIAL_LOG" ||
+           [ "$(grep -acF 'acpi-pci-check: starting' "$SERIAL_LOG")" -ne 2 ] ||
+           [ "$(grep -acF 'TEST: PASS acpi-pci-config' "$SERIAL_LOG")" -ne 1 ] ||
+           [ "$(grep -acF 'acpi-pci-check: no PCI configuration window' "$SERIAL_LOG")" -ne 1 ]; then
+            echo "headless: ACPI PCI configuration checks failed, or the unapproved image got the window" >&2
+            exit 1
+        fi
+        if ! python3 -I - "$SERIAL_LOG" <<'PCI_CHECK'
+import re, sys
+text = open(sys.argv[1], errors="replace").read().replace("\r", "")
+read = re.search(r"^acpi-pci-check: host bridge 00:00\.0 ([0-9A-F]{4}):([0-9A-F]{4})$", text, re.M)
+assert read, "no host bridge IDs read through the window"
+ids = f"{read.group(1)}:{read.group(2)}"
+enumerated = re.search(r"^devmgr: match 00:00\.0 ([0-9A-F]{4}:[0-9A-F]{4}) class", text, re.M)
+assert enumerated, "devmgr did not report 00:00.0"
+assert enumerated.group(1) == ids, f"window read {ids}, devmgr enumerated {enumerated.group(1)}"
+marker = text.index("acpi-pci-check: attempting forbidden write at 0000600000000000")
+loaded = re.findall(r"Loaded module acpi-pci-check\.a\S* w/ process ID\s+(\d+)\b", text[:marker])
+assert loaded, "no process identity for acpi-pci-check.app"
+pid = int(loaded[-1])
+fault = re.search(rf"USER-MEMORY-FAULT: pid\s+{pid}\s+address\s+{0x600000000000}\s+kind=write-protection\b",
+                  text[marker:])
+assert fault, "the write to the read-only PCI configuration mapping did not fault"
+assert "forbidden write was not stopped" not in text, "the write was not stopped"
+print(f"PASS: host bridge {ids} through the window matches devmgr; the write faulted (pid {pid})")
+PCI_CHECK
+        then
+            echo "headless: PCI configuration window read/fault check failed" >&2
+            exit 1
+        fi
         ;;
     futex)
         required_markers="
@@ -5436,6 +5536,7 @@ capability-test: startup table holds only the self entries, with the declared li
 capability-test: self entries are current handles PASS
 capability-test: no firmware-memory window without the ACPI hardware grant PASS
 capability-test: firmware pages never map through a forged or foreign handle PASS
+capability-test: PCI configuration never maps through a forged or foreign handle PASS
 capability-test: no ambient capability at any old slot number PASS
 capability-test: forged future generation refused PASS
 capability-test: forged slot past the table refused PASS

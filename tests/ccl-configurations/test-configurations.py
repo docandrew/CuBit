@@ -95,6 +95,33 @@ class Configurations(unittest.TestCase):
                 self.reject(base % clause)
             self.reject(base % f'({name} deny) ({name} approve-declared)', 'DUPLICATE_FIELD')
 
+    def test_acpi_pci_config_approval_is_opt_in(self):
+        """(acpi-pci-config approve-declared) (ACPI-PCI-001): explicit, once,
+        and only beside (acpi-hardware approve-declared): alone it would
+        approve a window of a grant the entry does not have."""
+        base = '(startup v1 (start "acpi-backend.svc" (priority 5) %s))'
+        hardware = '(firmware-snapshot approve-declared) (acpi-hardware approve-declared)'
+        result = self.compile(base % hardware)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn('acpi-pci-config', result.stdout)
+        result = self.compile(base % (hardware + ' (acpi-pci-config deny)'))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout,
+                         'acpi-backend.svc pri=5 firmware-snapshot=approved acpi-hardware=approved\n')
+        result = self.compile(base % (hardware + ' (acpi-pci-config approve-declared)'))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout,
+                         'acpi-backend.svc pri=5 firmware-snapshot=approved acpi-hardware=approved'
+                         ' acpi-pci-config=approved\n')
+        self.reject(base % '(acpi-pci-config approve-declared)', 'INVALID_APPROVAL')
+        self.reject(base % '(acpi-hardware deny) (acpi-pci-config approve-declared)',
+                    'INVALID_APPROVAL')
+        for clause in ('(acpi-pci-config)', '(acpi-pci-config all)',
+                       '(acpi-pci-config approve-declared extra)', '(acpi-pci-config "hardware")'):
+            self.reject(base % (hardware + ' ' + clause))
+        self.reject(base % (hardware + ' (acpi-pci-config deny) (acpi-pci-config approve-declared)'),
+                    'DUPLICATE_FIELD')
+
     def test_all_existing_profiles(self):
         fixtures = sorted(FIXTURES.rglob('*.conf'))
         self.assertEqual(len(fixtures), 28)

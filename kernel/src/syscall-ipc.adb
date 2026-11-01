@@ -382,8 +382,10 @@ package body Syscall.IPC is
         virtAddr : constant Integer_Address := Integer_Address (arg1);
         numPages : constant Unsigned_64 := arg2;
         capAllowed : Boolean;
-        -- Firmware memory (write-back), not device memory (uncached).
-        firmware : Boolean;
+        -- Firmware memory, not device memory; and if so, mapped write-back
+        -- (NVS, the FACS page) rather than uncached (PCI configuration).
+        firmware  : Boolean;
+        writeBack : Boolean;
         ok : Boolean := True;
         -- arg4 names the CAP_DEVICE_MEM this mapping relies on.
         authority : constant Capabilities.Capability := deviceMemoryOf (callerPID, arg4);
@@ -417,8 +419,9 @@ package body Syscall.IPC is
         -- Device-mappable pages only (CAP-001): RAM, kernel memory, boot
         -- modules, ACPI memory and kernel MMIO are refused whatever
         -- CAP_DEVICE_MEM the caller holds. Or, through a firmware-memory
-        -- capability only, whole firmware pages (ACPI NVS and the FACS
-        -- page), mapped write-back.
+        -- capability only, whole firmware pages of its kind: ACPI NVS and
+        -- the FACS page mapped write-back, PCI segment 0 bus 0 configuration
+        -- uncached and read-only (Device_Memory_Authority.Firmware_Mode).
         capAllowed := Device_Memory_Authority.Authorize
           (authority, Physical_Range_Map.Kernel_Map,
            arg0, numPages * Unsigned_64 (Virtmem.PAGE_SIZE),
@@ -430,6 +433,8 @@ package body Syscall.IPC is
            (if arg3 = 0 then Device_Memory_Admission.Read_Write
             else Device_Memory_Admission.Read_Only));
         capAllowed := capAllowed or else firmware;
+        writeBack := firmware and then Device_Memory_Authority.Write_Back
+          (Device_Memory_Authority.Kind_Of (authority.authorityTag));
 
         if not capAllowed then
             Device_Memory_Diagnostics.Record_Denial
@@ -463,7 +468,7 @@ package body Syscall.IPC is
                     virt    => virtAddr +
                         Integer_Address (
                             i * Unsigned_64 (Virtmem.PAGE_SIZE)),
-                    flags   => (if firmware then
+                    flags   => (if writeBack then
                                   (if arg3 = 1 then Virtmem.PG_USERDATARO
                                    else Virtmem.PG_USERDATA)
                                 elsif arg3 = 1 then

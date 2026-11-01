@@ -4,7 +4,9 @@ with ACPI_Service_Core;
 with ACPI_Clock_Source;
 package ACPI_Service is new ACPI_Service_Core (Perform_Delay => ACPI_Native_Delays.Perform,
    Read_Microseconds => ACPI_Clock_Source.Read,
-   -- The Lenovo DSDT's initial Field declaration exceeds 2,048 nodes.
-   -- This bounded native capacity clears that declaration; hardware-region
-   -- admission and complete firmware startup remain independent requirements.
-   Namespace_Node_Capacity => 4_096);
+   -- The captured Lenovo DSDT plus 24 SSDTs has 8,134 ACPICA namespace
+   -- nodes. Keep bounded headroom for other tables and temporary declarations;
+   -- the aggregate method store is independent of the single-method limit.
+   -- Snapshot startup constructs this large owner once on the CuAlloc heap.
+   Namespace_Node_Capacity => 16_384,
+   Aggregate_Method_Capacity => 1_048_576);

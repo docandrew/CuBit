@@ -64,6 +64,12 @@ package body Physical_Range_Map with SPARK_Mode => Off is
       if acpi.facsAddr /= 0 then
          PR.Set_Control (Kernel_Map, acpi.facsAddr);
       end if;
+      -- PCI segment 0 bus 0's ECAM slice (the MCFG's): firmware memory
+      -- (read-only, uncached) when every page of it is device-mappable;
+      -- nothing when the MCFG names none.
+      if acpi.pciConfigBus0 /= 0 then
+         PR.Set_PCI_Config (Kernel_Map, acpi.pciConfigBus0);
+      end if;
       PR.Seal (Kernel_Map);
 
       print ("Physical ranges: ");

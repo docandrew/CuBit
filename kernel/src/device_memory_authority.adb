@@ -17,8 +17,22 @@ package body Device_Memory_Authority with SPARK_Mode is
    is
    begin
       return Firmware_Holds (Cap, Base, Bytes, Mode)
+        and then Firmware_Mode (Kind_Of (Cap.authorityTag), Mode)
         and then Physical_Ranges.Firmware_Bytes (M, Base, Bytes, Kind_Of (Cap.authorityTag));
    end Authorize_Firmware;
+
+   procedure Lemma_PCI_Config_Read_Only_Uncached
+     (Cap : Capability; M : Physical_Ranges.Map;
+      Base, Bytes : Unsigned_64; Mode : Access_Mode) is
+   begin
+      pragma Assert (Kind_Of (Cap.authorityTag) = Physical_Ranges.PCI_Config_Memory);
+      for P in Physical_Ranges.Page_Of (Base) .. Physical_Ranges.Page_Of (Base + (Bytes - 1)) loop
+         pragma Assert (Physical_Ranges.Firmware_Page (M, P, Physical_Ranges.PCI_Config_Memory));
+         pragma Assert (Physical_Ranges.In_PCI_Config (M, P));
+         pragma Loop_Invariant
+           (for all Q in Physical_Ranges.Page_Of (Base) .. P => Physical_Ranges.In_PCI_Config (M, Q));
+      end loop;
+   end Lemma_PCI_Config_Read_Only_Uncached;
 
    procedure Lemma_Authorities_Disjoint
      (Cap : Capability; M : Physical_Ranges.Map;

@@ -1,0 +1,14 @@
+# ACPI-PCI-001: the opt-in PCI configuration window of the ACPI hardware
+# grant (kernel tag Firmware_PCI_Config_Tag: PCI segment 0 bus 0's ECAM
+# slice from the MCFG, read-only, uncached). acpi-pci-check stands in for
+# acpi-backend.svc approved with (acpi-pci-config approve-declared);
+# acpi-pci-unapproved.app is the same image with the hardware grant but
+# without that approval, and must get the grant without the window.
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "acpi-pci-unapproved.app" (priority 3)
+    (firmware-snapshot approve-declared) (acpi-hardware approve-declared))
+  (start "acpi-pci-check.app" (priority 3)
+    (firmware-snapshot approve-declared) (acpi-hardware approve-declared)
+    (acpi-pci-config approve-declared))
+)

@@ -2633,7 +2633,8 @@ procedure main is
       startupRole : CCL.Configurations.Startup_Role := CCL.Configurations.Application;
       approveFirmwareSnapshot : Boolean := False;
       approveACPIHardware : Boolean := False;
-      approveACPIRegisters : Boolean := False)
+      approveACPIRegisters : Boolean := False;
+      approvePCIConfig : Boolean := False)
       return Process_ID
    is
       package SB renames CuBit.Startup_Builder;
@@ -3172,6 +3173,11 @@ procedure main is
                --  runs and FACS page, each the kernel's root exactly,
                --  installed read-write without grant, until devmgr has no
                --  further window. Each must fit the child's startup table.
+               --  devmgr's PCI configuration window (ACPI-PCI-001, kernel tag
+               --  Firmware_PCI_Config_Tag) is installed read-only, and only
+               --  when the plan also approves (acpi-pci-config
+               --  approve-declared); otherwise it is closed unseen and the
+               --  installed windows are numbered as if it did not exist.
                if Outcome = SB.Granted then
                   for K in AHA.Memory_Window_Number loop
                      declare
@@ -3180,6 +3186,7 @@ procedure main is
                         Tag : MessageTag;
                         Placed : SB.Mint_Outcome := SB.Not_Available;
                         Word : Unsigned_64 := ST.No_Handle;
+                        Skipped : Boolean := False;
                      begin
                         Request.tag := (label => AX.Memory_Window_Request, length => AX.Request_Words,
                                         protocol => 0, ipc => <>, reserved => 0);
@@ -3187,37 +3194,53 @@ procedure main is
                         Tag := HIPC.Call_Accepting
                           (PH.Device_Manager, Request, CuBit.Messages.Wait_Forever, Received);
                         exit when Tag.label /= AX.Reply_OK;
-                        if View.Declared.Count + SB.Self_Entries + ACPI_Window_Total + K
-                             > ST.Maximum_Entries
-                        then
-                           Placed := SB.Limit_Reached;
-                        else
-                           declare
-                              Taken : constant HIPC.Accepted_Device_Memory :=
-                                HIPC.Accept_Device_Memory (Received);
-                              Ignore : HIPC.Close_Result;
-                           begin
-                              if Taken.OK then
-                                 Install (Copy (Taken.Value, H.Read_Write), Word, Placed);
-                                 Ignore := HIPC.Close (Taken.Value);
-                              end if;
-                           end;
-                        end if;
-                        if Placed = SB.Granted then
-                           ACPI_Memory_Total := K;
-                           ACPI_Memory_Words (K) := Word;
-                           debugPrint ("procmgr: ACPI memory window" & Natural'Image (K) &
-                                       " installed for " & name & LF);
-                        else
-                           Outcome := (if Placed in SB.Limit_Reached | SB.Out_Of_Memory then Placed
-                                       else SB.Not_Available);
-                           Warnings.Warn ("procmgr: ACPI hardware refused: " & name &
-                                          "'s firmware-memory window" & Natural'Image (K) &
-                                          " could not be installed");
-                        end if;
+                        declare
+                           Taken : constant HIPC.Accepted_Device_Memory :=
+                             HIPC.Accept_Device_Memory (Received);
+                           What : constant HIPC.Description :=
+                             (if Taken.OK then HIPC.Describe (Taken.Value)
+                              else (Current => False, Why => H.ABI.Invalid_Handle));
+                           PCI : constant Boolean :=
+                             What.Current
+                             and then What.Authority_Tag = H.ABI.Firmware_PCI_Config_Tag;
+                           Ignore : HIPC.Close_Result;
+                        begin
+                           if PCI and then not approvePCIConfig then
+                              Skipped := True;
+                           elsif View.Declared.Count + SB.Self_Entries + ACPI_Window_Total
+                                   + ACPI_Memory_Total + 1 > ST.Maximum_Entries
+                           then
+                              Placed := SB.Limit_Reached;
+                           elsif Taken.OK then
+                              Install (Copy (Taken.Value,
+                                             (if PCI then H.Read_Only else H.Read_Write)),
+                                       Word, Placed);
+                           end if;
+                           if Taken.OK then
+                              Ignore := HIPC.Close (Taken.Value);
+                           end if;
+                           if Skipped then
+                              null;
+                           elsif Placed = SB.Granted then
+                              ACPI_Memory_Total := ACPI_Memory_Total + 1;
+                              ACPI_Memory_Words (ACPI_Memory_Total) := Word;
+                              debugPrint ("procmgr: ACPI memory window" & Natural'Image (ACPI_Memory_Total) &
+                                          (if PCI then " (PCI configuration, read-only)" else "") &
+                                          " installed for " & name & LF);
+                           else
+                              Outcome := (if Placed in SB.Limit_Reached | SB.Out_Of_Memory then Placed
+                                          else SB.Not_Available);
+                              Warnings.Warn ("procmgr: ACPI hardware refused: " & name &
+                                             "'s firmware-memory window" & Natural'Image (K) &
+                                             " could not be installed");
+                           end if;
+                        end;
                         exit when Outcome /= SB.Granted;
                      end;
                   end loop;
+                  if approvePCIConfig then
+                     debugPrint ("procmgr: ACPI PCI configuration approved for " & name & LF);
+                  end if;
                end if;
                --  A grant is never empty: at least one I/O or memory window
                --  (a hardware-reduced platform has no fixed I/O blocks). The
@@ -4006,6 +4029,7 @@ procedure main is
       approveFirmwareSnapshot : Boolean := False;
       approveACPIHardware : Boolean := False;
       approveACPIRegisters : Boolean := False;
+      approvePCIConfig : Boolean := False;
       Failure : out CuBit.Launch_Arguments.Launch_Failure)
       return Process_ID
    is
@@ -4016,7 +4040,7 @@ procedure main is
       Result := Spawn_Attempt
         (False, No_Process, Retry, Identity, Failure, name, priority, requester, sandboxMode,
          cwd, approveNetwork, approveRender, systemStartup, startupRole, approveFirmwareSnapshot,
-         approveACPIHardware, approveACPIRegisters);
+         approveACPIHardware, approveACPIRegisters, approvePCIConfig);
       if Result = No_Process and then Retry then
          -- Exactly one fresh attempt, with no broker request. The failed
          -- attempt's launcher resources stay retained independently.
@@ -4024,7 +4048,7 @@ procedure main is
          Result := Spawn_Attempt
            (True, Identity, Retry, Retry_Identity, Failure, name, priority, requester,
             sandboxMode, cwd, approveNetwork, approveRender, systemStartup, startupRole,
-            approveFirmwareSnapshot, approveACPIHardware, approveACPIRegisters);
+            approveFirmwareSnapshot, approveACPIHardware, approveACPIRegisters, approvePCIConfig);
       end if;
       return Result;
    end spawnByName;
@@ -4636,6 +4660,7 @@ procedure main is
                approveFirmwareSnapshot => Item.Approve_Firmware_Snapshot,
                approveACPIHardware => Item.Approve_ACPI_Hardware,
                approveACPIRegisters => Item.Approve_ACPI_Registers,
+               approvePCIConfig => Item.Approve_ACPI_PCI_Config,
                approveNetwork =>
                  (if Item.Approval = Approve_Declared then Declared_Network
                   else No_Network),
