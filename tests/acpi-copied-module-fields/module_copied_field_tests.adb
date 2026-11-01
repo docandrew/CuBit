@@ -149,6 +149,7 @@ begin
          Check (Status = C.Values.Available and then Report.Modules.Charged <= 10000, "bounded module execution report");
          if Mode = "normal" then
             Check (Report.Modules.Outcome = C.Values.Modules_Completed, "module completed");
+            Check (not Report.Modules.Field_Failure.Present, "successful module has no field failure");
             Check (IO.First = 16#44# and then IO.Second = 16#E1# and then IO.Calls = 3, "exact ordered writes across copied LoadTable");
             declare
                Initial : C.Namespace.Initialization_Report;
@@ -190,6 +191,11 @@ begin
             Check (IO.First = 16#44# and then IO.Second = 16#33# and then IO.Calls = 4, "module read feeds named register write");
          elsif Mode = "unknown" then
             Check (Report.Modules.Outcome = C.Values.Module_Rejected and then Report.Modules.Failure = E.Field_Indeterminate, "uncertain module stopped");
+            Check (Report.Modules.Field_Failure.Present and then Report.Modules.Field_Failure.Name = "FLD2"
+              and then Report.Modules.Field_Failure.Region_Known and then Report.Modules.Field_Failure.Region = "REG0"
+              and then Report.Modules.Field_Failure.Space = AML_Field_Layout.Embedded_Control_Space
+              and then Report.Modules.Field_Failure.For_Write and then Report.Modules.Field_Failure.Failure = E.Field_Indeterminate,
+              "copied-table uncertain field metadata retained");
             Check (IO.First = 16#33# and then IO.Second = 16#E1# and then IO.Calls = 2 and then Pending (IO)
               and then F.Uncertain (Service) = IO.Receipt, "effects and matching receipt retained");
          elsif Mode = "fatal" then
@@ -198,9 +204,16 @@ begin
          else
             Check (Report.Modules.Outcome = C.Values.Module_Rejected and then IO.Calls = 0, "unprovisioned, forged, ambiguous, denied, stale or default cannot dispatch");
          end if;
+         if Mode in "denied" | "default" then
+            Check (Report.Modules.Field_Failure.Present and then Report.Modules.Field_Failure.Name = "FLD1"
+              and then Report.Modules.Field_Failure.Region_Known and then Report.Modules.Field_Failure.Region = "REG0"
+              and then Report.Modules.Field_Failure.Space = AML_Field_Layout.Embedded_Control_Space
+              and then Report.Modules.Field_Failure.For_Write, "refused field metadata survives rollback");
+         end if;
          Before := IO.Calls;
          F.Execute_Frozen (Service, IO, Targets, Count, 10000, Report, Status);
          Check (Status /= C.Values.Available and then IO.Calls = Before, "same owner cannot replay a completed or failed module");
+         Check (not Report.Modules.Field_Failure.Present, "unattempted call does not reuse old field diagnostic");
       end;
    end loop;
    Ada.Text_IO.Put_Line ("Module copied field checks" & Checks'Image);

@@ -1915,6 +1915,19 @@ log-fields-check: ccl-build user_runtime ccl-manifest
 	$(CCL_BUILD) ../userspace/apps/log-fields-check/component.ccl
 	cp ../userspace/apps/log-fields-check/build/log-fields-check.app isodir/boot/log-fields-check.app
 
+# LOG-002: per-source log retention (headless --test log-retention).
+.PHONY : log-flood
+log-flood: ccl-build user_runtime ccl-manifest
+	mkdir -p ../userspace/apps/log-flood/build
+	$(CCL_BUILD) ../userspace/apps/log-flood/component.ccl
+	cp ../userspace/apps/log-flood/build/log-flood.app isodir/boot/log-flood.app
+
+.PHONY : log-retention-check
+log-retention-check: ccl-build user_runtime ccl-manifest log-flood
+	mkdir -p ../userspace/apps/log-retention-check/build
+	$(CCL_BUILD) ../userspace/apps/log-retention-check/component.ccl
+	cp ../userspace/apps/log-retention-check/build/log-retention-check.app isodir/boot/log-retention-check.app
+
 # Standard desktop-session build: nonblocking typed metrics, with a matching
 # startup collector. Keep bare `desktop` for profiles without metrics.svc.
 .PHONY : desktop-metrics
@@ -2338,7 +2351,7 @@ iso: cubit_kernel initrd
 # runs a binary left over from an older ABI (a stale one passes or fails for
 # the wrong reason).
 TEST_PROGRAMS := logs boot-logs timesync-test ccl-console log-check \
-	log-fields-check libc-check cxx-check network-check net-link-check \
+	log-fields-check log-retention-check libc-check cxx-check network-check net-link-check \
 	net-multi-check timesync-check \
 	tls-probe tls-check config-check desktop-check display-check clipboard-check \
 	metrics-check grant-forward ccl-control input-stress bench-storage \

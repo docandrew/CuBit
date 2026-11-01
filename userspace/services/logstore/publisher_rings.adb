@@ -101,6 +101,8 @@ package body Publisher_Rings is
       Pending : Boolean := False;
    begin
       Drain_One (R, Store, Budgets, Minimum, Now_Ms, Pending);
+      --  Its history stays, but gives way first to a new source (LOG-002).
+      Log_Fanout.Retire (Store, To_Word (R.Owner));
       Channels.Release (R.Link);
       Channels.Close (R.Link);
       R := (others => <>);

@@ -1371,9 +1371,18 @@ package Owned with SPARK_Mode is
       type Import_State is (Import_Undecided, Legacy_Import, Module_Active,
         Module_Complete, Module_Failed);
       type Module_Outcome is (Catalog_Rejected, Modules_Completed, Module_Rejected);
+      -- Copied diagnostic metadata, never a node handle or hardware authority.
+      -- The first failed Field access survives rollback of a failed module.
+      type Field_Failure_Observation is record
+         Present, Region_Known, For_Write : Boolean := False;
+         Name, Region : AML_Names.Segment := "____";
+         Space : AML_Decode.Byte := 0;
+         Failure : AML_Execute.Execution_Failure := AML_Execute.No_Return;
+      end record;
       type Module_Report is record
          Outcome : Module_Outcome := Catalog_Rejected;
          Completed, Failed_Table, Charged : Natural := 0;
+         Field_Failure : Field_Failure_Observation;
          Failure : AML_Execute.Execution_Failure := AML_Execute.No_Return;
          Fatal : AML_Fatal.Observation;
       end record;

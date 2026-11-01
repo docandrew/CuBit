@@ -16,7 +16,11 @@ it does not boot the native adapter or build an ISO.
 
 The regression test covers publisher-only subscription denial, zero caller
 denial, stolen subscription handles, wrong-authority reads and closes,
-independent subscriber queues, overflow reporting, retained history, stale
+independent subscriber queues, overflow reporting, per-source retained
+history (LOG-002: a flooding source cannot evict a quiet source's boot
+records; replay merges sources in publish order, incrementally, with a gap
+only for records given up while the reader was due them; the persistent
+log's order and loss count; slot reuse prefers ended sources), stale
 handles after close/reopen, distinct launch tags at the same PID, idempotent
 subscription retries, lease renewal/expiration, and subscriber capacity exhaustion. Denied reads
 return no event contents or loss counts and do not consume the victim's queue.

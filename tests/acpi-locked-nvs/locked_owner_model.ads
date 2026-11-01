@@ -12,6 +12,7 @@ package Locked_Owner_Model is
    Word : Interfaces.Unsigned_32 := 0;
    Checks, Loads, Changes, Acquires, Releases, Queries_Lock, Legacy_Reads : Natural := 0;
    Late_Load : Boolean := False;
+   Drop_Termination_Replies : Boolean := Mode = 11;
    IPC_Now : W.Time_Instant := 500;
    procedure Check (Good : Boolean);
    procedure Clock (Value : out Interfaces.Unsigned_64; Available : out Boolean);

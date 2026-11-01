@@ -45,6 +45,7 @@ test "$(find "$out" -maxdepth 1 -name '*.ali' | wc -l)" = 59
 test "$(find "$out" -maxdepth 1 -name '*.o' | wc -l)" = 0
 for ali in "$out/"*.ali; do
  grep -Fxq 'A -gnatc' "$ali"; grep -Fxq 'A -gnatwe' "$ali"
+ grep -Fxq 'A -gnatw.X' "$ali"
  if [ "$profile" = checked ]; then
   grep -Fxq 'A -gnata' "$ali"; grep -Fxq 'A -gnato' "$ali"; ! grep -Fxq 'A -gnatp' "$ali"
  else grep -Fxq 'A -gnatp' "$ali"; ! grep -Fxq 'A -gnata' "$ali"; fi

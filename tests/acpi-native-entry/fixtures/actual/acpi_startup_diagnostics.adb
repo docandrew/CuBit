@@ -4,6 +4,7 @@ with AML_Execute;
 package body ACPI_Startup_Diagnostics is
    use type ACPI_Service.Execution_Phase_Result;
    use type ACPI_Bootstrap.Device_Phase;
+   use type ACPI_Bootstrap.Finish_Stage;
    function Execution_Name (Item : AML_Execute.Execution_Status) return String is
      (case Item is
         when AML_Execute.Returned => "RETURNED",
@@ -106,6 +107,34 @@ package body ACPI_Startup_Diagnostics is
         when ACPI_Device_Policy.No_Regions_Required => "NO_REGIONS_REQUIRED",
         when ACPI_Device_Policy.Regions_Unavailable => "REGIONS_UNAVAILABLE",
         when ACPI_Device_Policy.Region_Initialization_Failed => "REGION_INITIALIZATION_FAILED");
+
+   function Format_Field_Failure (Item : ACPI_Bootstrap.Finish_Report) return String is
+      function Space_Name return String is
+      begin
+         if not Item.Execution.Modules.Field_Failure.Region_Known then return "UNKNOWN"; end if;
+         case Item.Execution.Modules.Field_Failure.Space is
+            when 0 => return "SYSTEM_MEMORY";
+            when 1 => return "SYSTEM_IO";
+            when 2 => return "PCI_CONFIG";
+            when 3 => return "EMBEDDED_CONTROL";
+            when 4 => return "SMBUS";
+            when 5 => return "SYSTEM_CMOS";
+            when 8 => return "GPIO";
+            when 9 => return "GENERIC_SERIAL_BUS";
+            when others => return "OTHER" & Item.Execution.Modules.Field_Failure.Space'Image;
+         end case;
+      end Space_Name;
+   begin
+      if Item.Stage /= ACPI_Bootstrap.Execution_Failed or else
+        Item.Execution.Phase /= ACPI_Service.Module_Execution_Reported or else
+        not Item.Execution.Modules.Field_Failure.Present
+      then return "acpi: stage aml-field ok NONE"; end if;
+      return "acpi: stage aml-field fail " & Execution_Name (Item.Execution.Modules.Field_Failure.Failure)
+        & " name=" & Item.Execution.Modules.Field_Failure.Name
+        & " region=" & Item.Execution.Modules.Field_Failure.Region
+        & " space=" & Space_Name
+        & " direction=" & (if Item.Execution.Modules.Field_Failure.For_Write then "WRITE" else "READ");
+   end Format_Field_Failure;
 
    function Format (Item : ACPI_Bootstrap.Finish_Report) return String is
    begin

@@ -15,6 +15,7 @@ with ACPI_Requests;
 with ACPI_Startup_Diagnostics;
 with ACPI_Native_EC_Boot_Notes;
 with CuBit.Messages;
+with CuBit.Firmware_Snapshot;
 with Startup;
 with ACPI_Service;
 with ACPI_Device_Initialization;
@@ -37,6 +38,61 @@ package body ACPI_Native_Instance is
    -- Separate absolute deadlines: snapshot/delays use microseconds; register
    -- IPC uses GETTIME milliseconds. Their raw epochs are never interconverted.
    Startup_Timeout_Milliseconds : constant Unsigned_64 := 10_000;
+   -- Discard_Names in the native runtime makes enum Image numeric. Keep
+   -- explicit names for the failure stages visible in laptop boot photos.
+   function Name (Item : L.Outcome) return String is
+     (case Item is
+        when L.Loaded => "LOADED",
+        when L.Source_Refused => "SOURCE_REFUSED",
+        when L.Inventory_Not_Ready => "INVENTORY_NOT_READY",
+        when L.Invalid_Inventory => "INVALID_INVENTORY",
+        when L.Representation_Limit => "REPRESENTATION_LIMIT",
+        when L.Invalid_Description => "INVALID_DESCRIPTION",
+        when L.Inventory_Mismatch => "INVENTORY_MISMATCH",
+        when L.Clock_Unavailable => "CLOCK_UNAVAILABLE",
+        when L.Clock_Reversed => "CLOCK_REVERSED",
+        when L.Deadline_Expired => "DEADLINE_EXPIRED",
+        when L.Copy_Refused => "COPY_REFUSED",
+        when L.Admission_Refused => "ADMISSION_REFUSED",
+        when L.Startup_Refused => "STARTUP_REFUSED",
+        when L.Startup_Already_Consumed => "STARTUP_ALREADY_CONSUMED");
+   function Name (Item : ACPI_Requests.Outcome) return String is
+     (case Item is
+        when ACPI_Requests.OK => "OK",
+        when ACPI_Requests.Denied => "DENIED",
+        when ACPI_Requests.Malformed => "MALFORMED",
+        when ACPI_Requests.Stale => "STALE",
+        when ACPI_Requests.Wrong_Order => "WRONG_ORDER",
+        when ACPI_Requests.Resource_Limit => "RESOURCE_LIMIT",
+        when ACPI_Requests.Table_Rejected => "TABLE_REJECTED",
+        when ACPI_Requests.Incomplete => "INCOMPLETE",
+        when ACPI_Requests.Not_Found => "NOT_FOUND",
+        when ACPI_Requests.Wrong_Table_Kind => "WRONG_TABLE_KIND",
+        when ACPI_Requests.Index_Out_Of_Range => "INDEX_OUT_OF_RANGE",
+        when ACPI_Requests.Unsupported_Record_Kind => "UNSUPPORTED_RECORD_KIND");
+   function Name (Item : L.R.Outcome) return String is
+     (case Item is
+        when L.R.Copied_Table => "COPIED_TABLE",
+        when L.R.Wrong_Capacity => "WRONG_CAPACITY",
+        when L.R.Invalid_Descriptor => "INVALID_DESCRIPTOR",
+        when L.R.Clock_Unavailable => "CLOCK_UNAVAILABLE",
+        when L.R.Clock_Reversed => "CLOCK_REVERSED",
+        when L.R.Deadline_Expired => "DEADLINE_EXPIRED",
+        when L.R.Source_Refused => "SOURCE_REFUSED",
+        when L.R.Short_Copy => "SHORT_COPY",
+        when L.R.Excess_Copy => "EXCESS_COPY",
+        when L.R.Table_Refused => "TABLE_REFUSED",
+        when L.R.Metadata_Mismatch => "METADATA_MISMATCH");
+   function Name (Item : CuBit.Firmware_Snapshot.Outcome) return String is
+     (case Item is
+        when CuBit.Firmware_Snapshot.Ok => "OK",
+        when CuBit.Firmware_Snapshot.Not_Ready => "NOT_READY",
+        when CuBit.Firmware_Snapshot.Unknown_Table => "UNKNOWN_TABLE",
+        when CuBit.Firmware_Snapshot.Beyond_End => "BEYOND_END",
+        when CuBit.Firmware_Snapshot.Empty_Before_End => "EMPTY_BEFORE_END",
+        when CuBit.Firmware_Snapshot.Copy_Failed => "COPY_FAILED",
+        when CuBit.Firmware_Snapshot.Not_Authorized => "NOT_AUTHORIZED",
+        when CuBit.Firmware_Snapshot.Malformed => "MALFORMED");
    package Empty_Regions is new ACPI_Unprovisioned_Regions (ACPI_Service);
    procedure Initialize_Regions
      (Service : aliased in out ACPI_Service.State; Budget : Natural;
@@ -123,11 +179,15 @@ package body ACPI_Native_Instance is
       ACPI_Native_Module_Notes.Observe (Result.Startup.Module_Errors);
       if Result.Startup.Status /= L.Loaded or else Owner = null then
          ACPI_Native_Log.Warning
-           ("acpi: stage snapshot fail " & Result.Startup.Status'Image &
+           ("acpi: stage snapshot fail " & Name (Result.Startup.Status) &
             " table=" & Natural'Image (Result.Startup.Table) &
-            " admission=" & Result.Startup.Admission'Image &
-            " copy=" & Result.Startup.Copy.Status'Image);
+            " admission=" & Name (Result.Startup.Admission) &
+            " copy=" & Name (Result.Startup.Copy.Status));
          if Result.Startup.Status = L.Startup_Refused then
+            if Result.Startup.Completion.Execution.Modules.Field_Failure.Present then
+               ACPI_Native_Log.Warning
+                 (ACPI_Startup_Diagnostics.Format_Field_Failure (Result.Startup.Completion));
+            end if;
             ACPI_Native_Log.Warning
               (ACPI_Startup_Diagnostics.Format (Result.Startup.Completion));
             ACPI_Native_Log.Warning
@@ -138,8 +198,8 @@ package body ACPI_Native_Instance is
          end if;
          if Result.Last_Copy.Available then
             ACPI_Native_Log.Warning
-              ("acpi: stage snapshot-detail fail " & Result.Startup.Status'Image &
-               " last-copy-status=" & Result.Last_Copy.Status'Image &
+              ("acpi: stage snapshot-detail fail " & Name (Result.Startup.Status) &
+               " last-copy-status=" & Name (Result.Last_Copy.Status) &
                " table=0x" & Hex (Unsigned_64 (Result.Last_Copy.Table)) &
                " offset=0x" & Hex (Unsigned_64 (Result.Last_Copy.Offset)) &
                " copied=0x" & Hex (Unsigned_64 (Result.Last_Copy.Copied)));

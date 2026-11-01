@@ -6,14 +6,14 @@
 --  The persistent log (docs/log-persistence-design.md, first slice): on an
 --  installed system (storage.system-volume names its root, "ufs:0"), every
 --  record logstore keeps is also appended, as one text line, to
---  @<volume>/logstore.log, so a later boot can read it. The RAM FIFO stays
---  as it is; this is a second consumer of the same records.
+--  @<volume>/logstore.log, so a later boot can read it. It reads the
+--  broker's per-source histories in publish order, like a subscriber.
 --
 --  The volume attaches after logstore starts (its driver is started once
 --  logstore runs), so the file is opened lazily and retried every
 --  Retry_Milliseconds; records published before then wait in the broker's
---  persistent queue (bounded: the number dropped is written when the file
---  opens). Writes are flushed every Flush_Milliseconds and whenever the
+--  histories (bounded per source, each source's boot window kept: the
+--  number given up before the file took them is written when it opens). Writes are flushed every Flush_Milliseconds and whenever the
 --  queue empties after a write.
 ------------------------------------------------------------------------------
 with Interfaces; use Interfaces;

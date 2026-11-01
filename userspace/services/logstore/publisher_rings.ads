@@ -16,7 +16,7 @@ with Log_Budgets;
 --  grant events say so (Ended). Its records are drained first, so what a
 --  publisher wrote just before it ended is kept.
 package Publisher_Rings is
-   Maximum_Publishers : constant := 64;
+   Maximum_Publishers : constant := Log_Fanout.Publishing_Sources;
    --  Records taken from one channel per pass, so one busy publisher cannot
    --  hold the loop.
    Batch_Records : constant := 256;

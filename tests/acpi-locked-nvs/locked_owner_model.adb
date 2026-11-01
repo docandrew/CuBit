@@ -94,7 +94,9 @@ package body Locked_Owner_Model is
                if Mode in 4 | 10 and then Input.Kind = P.Read_Datum then Now := 100_001; end if;
             end if;
             if (Mode = 2 and then Lock_Input.Valid and then Lock_Input.Kind = LP.Acquire)
-              or else (Mode = 8 and then Lock_Input.Valid and then Lock_Input.Kind = LP.Release)
+              or else (Mode in 8 | 11 and then Lock_Input.Valid and then Lock_Input.Kind = LP.Release)
+              or else (Drop_Termination_Replies and then Lock_Input.Valid
+                and then Lock_Input.Kind = LP.Query_Termination)
               or else (Mode = 3 and then Input.Valid and then Input.Kind = P.Read_Datum)
             then Delivered := W.Completion_Unknown; end if;
          end Exchange;

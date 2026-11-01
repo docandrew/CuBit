@@ -644,11 +644,11 @@
     },
     {
       "path": "userspace/services/acpi/lib/aml_namespace.adb",
-      "sha256": "19d0377d29262c85602c261ecb62401ace6b9b1e9fdb0fea4ac028df936501af"
+      "sha256": "6e8cd01ea1043d8d1226cff47a4f76de7429bde6e4ef0d209dd9b84d2dfc33b5"
     },
     {
       "path": "userspace/services/acpi/lib/aml_namespace.ads",
-      "sha256": "5e6af1b2c7041da7c3c035e4bb480a82b21d91875b3902a05bd1704ba86f48ed"
+      "sha256": "3ab0745b4b18ab2dd10b71702ed6df423b703e43c599f8574246a40985c7579e"
     },
     {
       "path": "userspace/services/acpi/lib/aml_object_identifiers.ads",

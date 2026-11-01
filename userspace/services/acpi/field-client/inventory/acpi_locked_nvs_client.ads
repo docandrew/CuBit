@@ -50,6 +50,7 @@ package ACPI_Locked_NVS_Client with SPARK_Mode is
    -- A later explicit field operation uses a new lease and descriptor.
    procedure Retire (State : in out Context; Held : Lease.Context; Result : out Outcome);
 private
+   function Consistent (State : Context) return Boolean;
    type Context is limited record
       Stage : Phase := Ready;
       Working, Bound, Seen_Clock, Clock_Broken, Pending_Read : Boolean := False;
@@ -61,5 +62,6 @@ private
       ID : P.Record_ID := P.No_Record;
       Datum : P.Geometry := P.Empty_Geometry;
       Remote : P.Read_Outcome := P.No_Data;
-   end record;
+   end record
+     with Type_Invariant => Consistent (Context);
 end ACPI_Locked_NVS_Client;

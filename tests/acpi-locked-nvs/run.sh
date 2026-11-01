@@ -19,7 +19,7 @@ done < "$suite_dir/inputs.sha256"
 for profile in checked release; do
   mkdir -p "$task_build/$profile"
   nice -n 19 timeout --kill-after=2s 180 gprbuild -q -p -j1 -P "$task_build/inputs/tests/acpi-locked-nvs/$profile.gpr" -XACPI_TEST_SNAPSHOT="$task_build/inputs" -XACPI_TEST_BUILD="$task_build" > "$task_build/$profile/build.log" 2>&1
-  for scenario in {0..10}; do
+  for scenario in {0..11}; do
     nice -n 19 timeout --kill-after=2s 30 "$task_build/$profile/locked_owner_tests" "$scenario" > "$task_build/$profile/case-$scenario.log" 2>&1
     tail -n 1 "$task_build/$profile/case-$scenario.log"
   done

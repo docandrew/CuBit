@@ -87,13 +87,34 @@ begin
             Assert_At (77, Result.Status = AML_Execute.Unsupported and then Acquires = Before and then Loads = 3 * Datums);
          else
             Assert_At (79, Report.Modules.Outcome /= C.Values.Modules_Completed and then Legacy_Reads = 0);
-            Assert_At (80, Loads = (if Mode in 3 | 4 | 8 | 10 then 1 else 0));
+            Assert_At (80, Loads = (if Mode in 3 | 4 | 8 | 10 | 11 then 1 else 0));
             if Mode in 1 | 5 | 6 | 7 then Assert_At (81, Acquires = 0); end if;
          end if;
          Owner.Close_Startup;
          Assert_At (84, Word = 0 and then Acquires = Releases);
          if Mode = 8 then Assert_At (85, Releases = 1 and then Queries_Lock = 2); end if;
          Before := Releases; Owner.Close_Startup; Assert_At (86, Releases = Before);
+         if Mode = 11 then
+            -- Physical release completed, but every termination reply was lost.
+            -- Close must retain uncertainty and issue queries rather than replay.
+            Assert_At (88, Owner.Observe.IO_Pending and then Releases = 1);
+            Before := Queries_Lock;
+            Owner.Close_Startup;
+            Assert_At (89, Owner.Observe.IO_Pending and then Releases = 1
+              and then Queries_Lock > Before and then Loads = 1);
+            Owner.Prepare_Fields (Service, Good);
+            Assert_At (90, not Good and then Loads = 1 and then Acquires = 1);
+            Drop_Termination_Replies := False;
+            Before := Queries_Lock;
+            Owner.Close_Startup;
+            Assert_At (91, Releases = 1 and then Queries_Lock > Before);
+            -- Positive cleanup evidence does not rearm a failed provider.
+            Owner.Prepare_Fields (Service, Good);
+            Assert_At (92, not Good and then Owner.Observe.IO_Pending);
+            Before := Queries_Lock;
+            Owner.Close_Startup;
+            Assert_At (93, Releases = 1 and then Queries_Lock = Before);
+         end if;
          Assert_At (87, C.Valid (Service) and then C.Retained_Results (Service) = 0);
    Ada.Text_IO.Put_Line ("Locked owner checks" & Checks'Image);
    end Run;

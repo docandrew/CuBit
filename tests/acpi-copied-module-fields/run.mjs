@@ -8,7 +8,7 @@ const check=(ok,why)=>{if(!ok)throw Error(why)};
 const validateOnly=process.argv.length===3&&process.argv[2]==='--validate-only';
 check(process.argv.length===2||validateOnly,'Usage: run.sh [--validate-only]');
 const catalog=here+'/sources.json',manifest=JSON.parse(fs.readFileSync(catalog));
-check(manifest.version===1&&manifest.expected_alis===81,'source schema');
+check(manifest.version===1&&manifest.expected_alis===82,'source schema');
 const pins={[catalog]:sha(catalog)},names=new Set();
 for(const group of ['sources','fixtures','scripts'])for(const [rel,h] of Object.entries(manifest[group])){
  check(!path.isAbsolute(rel)&&!rel.split('/').includes('..'),'unsafe input');
@@ -54,5 +54,5 @@ for(const profile of ['release','checked']){
  console.log(profile+' joined cases passed');
 }
 check(JSON.stringify(results.release)===JSON.stringify(results.checked),'profile disagreement');verify();
-const checks=Object.values(results).flatMap(Object.values).reduce((a,b)=>a+b,0);check(checks===152,'total count');
+const checks=Object.values(results).flatMap(Object.values).reduce((a,b)=>a+b,0);check(checks===184,'total count');
 fs.writeFileSync(out+'/INPUTS.json',JSON.stringify(pins,null,2)+'\n');fs.writeFileSync(out+'/COMPLETE.json',JSON.stringify({checks,processes:8,results,alis,commands:commands.length,reference:{duplicate_status:'AE_ALREADY_EXISTS',marker:90,outstanding_cache_allocations:4,scope:'Separate ordinary duplicate-load reference, not hardware/startup equivalence'},new_proof:false,native_executed:false,hardware_validated:false,scope:'Actual private merged Core/AML copied LoadTable during controlled module Field startup; modeled provider/rights/uncertainty'},null,2)+'\n');console.log(JSON.stringify({checks,processes:8,alis}));

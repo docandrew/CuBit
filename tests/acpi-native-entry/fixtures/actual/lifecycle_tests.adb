@@ -17,6 +17,7 @@ with ACPI_Backend_Catalog;
 with ACPI_Backend_Inventory;
 with ACPI_Backend_Binding_Types;
 with ACPI_Inventory_Protocol;
+with ACPI_NVS_Protocol;
 with ACPI_Register_Roles;
 with Composed_Fixture;
 procedure Lifecycle_Tests is
@@ -25,7 +26,7 @@ procedure Lifecycle_Tests is
    package Wire renames Proto.Wire;
    package T renames Proto.T;
    package B renames ACPI_Backend_Binding_Types;
-   use type T.Access_Width, B.Outcome, Wire.Time_Instant;
+   use type T.Access_Width, B.Outcome, Wire.Time_Instant, Wire.Packet;
    First_Port : constant Unsigned_16 := 16#600#;
    Window_Length : constant Unsigned_64 := 16;
    Admitted_Cells : constant Positive := 12;
@@ -93,7 +94,12 @@ procedure Lifecycle_Tests is
       pragma Unreferenced (Transport);
    begin
       Assert (Destination in 1 | 2 and then Deadline = 100); Calls := Calls + 1;
-      if Item.Label in Proto.Header_Operation | Proto.Part_Operation then
+      if Item.Label = ACPI_NVS_Protocol.Header_Operation then
+         -- This fixture admits scalar port registers and no NVS data records.
+         -- The composed owner still requires a valid, explicit inventory reply.
+         Assert (Item = ACPI_NVS_Protocol.Header_Request);
+         Reply := ACPI_NVS_Protocol.Header_Result (1, 0);
+      elsif Item.Label in Proto.Header_Operation | Proto.Part_Operation then
          Inventory.Dispatch (Hardware, (if Destination = 1 then Scope else Readonly_Scope), Item, Reply);
       else Backend.Dispatch (Hardware, (if Destination = 1 then Scope else Readonly_Scope), Item, Reply); end if;
       Delivered := Wire.Reply_Received;

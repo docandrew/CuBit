@@ -85,11 +85,16 @@ package ACPI_Locked_NVS_Protocol with Pure, SPARK_Mode is
       Outcome : Read_Outcome := No_Data;
       Value : Unsigned_64 := 0;
    end record;
-   function Valid_Result (Kind : Operation; Item : Reply) return Boolean;
+   function Valid_Result (Kind : Operation; Item : Reply) return Boolean
+     with Post => (if Valid_Result'Result and then Item.Kind = Prepared
+       then Item.Descriptor /= No_Descriptor and then Valid (Item.Datum));
    function Encode_Reply (Kind : Operation; Item : Reply) return Packet
      with Pre => Valid_Result (Kind, Item);
    function Decode_Reply (Kind : Operation; Item : Packet;
-     Width : T.Access_Width := T.Byte_Access) return Reply;
+     Width : T.Access_Width := T.Byte_Access) return Reply
+     with Post => (if Decode_Reply'Result.Valid then Valid_Result (Kind, Decode_Reply'Result)
+       and then (if Decode_Reply'Result.Kind = Prepared
+         then Decode_Reply'Result.Descriptor /= No_Descriptor));
    -- Selection replies echo [status, descriptor, record, packed geometry].
    -- Read replies echo [packed kind/outcome, descriptor, sequence, value].
    -- Callers must match descriptor and sequence to their request; descriptor

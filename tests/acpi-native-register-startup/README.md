@@ -1,7 +1,9 @@
 # Hosted ACPI startup and query regression
 
 This suite runs actual AML Core, inventory/provider ownership, startup selection,
-module execution and query callbacks with modeled IPC and hardware. It does not
+module execution and query callbacks with modeled IPC and hardware. The scalar
+backend fixture explicitly reports an empty NVS inventory and grants no NVS
+data access. It does not
 run a native CuBit service or prove the interpreter.
 
 Export TMPDIR=/home/doc/cubit-build-tmp **before** entering nix develop, and keep
@@ -17,7 +19,7 @@ build resources.
 The runner verifies sources.json, makes regular private source copies and compiles
 only those copies. It checks original and copied hashes before/after commands and
 refuses directory inventory changes. Checked builds use assertions/overflow
-checks; release function testing uses -gnatp. A passing run reports 1,530 assertions
+checks; release function testing uses -gnatp. A passing run reports 1,570 assertions
 in 30 scenario processes across both profiles. Scenarios cover missing endpoints,
 finite deadlines and clock failures, one-shot module startup, refused selection,
 observer scalar/Buffer queries, register-backed argument calls, uncertain field

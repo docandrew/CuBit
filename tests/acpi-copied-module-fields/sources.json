@@ -136,8 +136,8 @@
     "userspace/services/acpi/lib/aml_mutexes.ads": "e0ac360bbdaaafd1b11c2e327d742b5a86670247098aa7811a8bd149fe449594",
     "userspace/services/acpi/lib/aml_names.adb": "c38d13f5f5fe640e775a1bdfc3e74eb64ecb58a92f6993cd8f8c3e656537dd61",
     "userspace/services/acpi/lib/aml_names.ads": "e5fca936d4c27a135a61ae102d423d3840b156af3194916ac4e7c180add2d990",
-    "userspace/services/acpi/lib/aml_namespace.adb": "19d0377d29262c85602c261ecb62401ace6b9b1e9fdb0fea4ac028df936501af",
-    "userspace/services/acpi/lib/aml_namespace.ads": "5e6af1b2c7041da7c3c035e4bb480a82b21d91875b3902a05bd1704ba86f48ed",
+    "userspace/services/acpi/lib/aml_namespace.adb": "6e8cd01ea1043d8d1226cff47a4f76de7429bde6e4ef0d209dd9b84d2dfc33b5",
+    "userspace/services/acpi/lib/aml_namespace.ads": "3ab0745b4b18ab2dd10b71702ed6df423b703e43c599f8574246a40985c7579e",
     "userspace/services/acpi/lib/aml_object_identifiers.ads": "a41e1817dd858963d79a952d943979b67ab6a167bca2e85f5a1488369fe0bcba",
     "userspace/services/acpi/lib/aml_objects-byte_references.adb": "5d639dd2623b5b8da7f5de384fb1dd7673d27a2c7f80992b0b5af59253b13a1d",
     "userspace/services/acpi/lib/aml_objects-byte_references.ads": "2148763246707ce4489362db319fe12c1269c622b802f157f9a48ff55613cb8a",
@@ -362,8 +362,10 @@
     "userspace/services/acpi/lib/aml_table_sources.adb": "f3b6fdea3d677002763ad7d88cf52b7d9aff2fcbf6334e0f378abcadb7cc705e",
     "userspace/services/acpi/lib/aml_table_readers.ads": "a5b10752b71ed805bd96ef9c358bb680ea44ea3fced6f8a7a04cb161d7954a40",
     "userspace/services/acpi/lib/aml_table_readers.adb": "64fe840ebc24ef43f35140558608901223ce8a35e0cd8eedf29c1074f308447a",
-    "tests/acpi-copied-module-fields/module_copied_field_tests.adb": "e966c61120f17c3a919a42e9e562ea8f053fc109efdee15e8a1e101444f94ed9",
-    "shared/acpi/acpi_region_protocol.ads": "d7f69bcc7c8411f70281fe5c6770851820c18c75520526d9716b0180518a64de"
+    "tests/acpi-copied-module-fields/module_copied_field_tests.adb": "34508dffce0ce5fb88770bd8ddceabb227db4d257fb4cb2d6e00a9c2c016b38d",
+    "shared/acpi/acpi_region_protocol.ads": "d7f69bcc7c8411f70281fe5c6770851820c18c75520526d9716b0180518a64de",
+    "userspace/services/acpi/lib/aml_register_views.ads": "18b87232fbe28b28b7ed26a7325ff471e3cf30fcb59faaac6f18fd703199d267",
+    "userspace/services/acpi/lib/aml_register_views.adb": "9aae086733de674194e65fba58c2e97f680ae96743325f3e60787213dd1fa104"
   },
   "fixtures": {
     "tests/acpi-copied-module-fields/fixtures/boot1.asl": "b5d3ccfeec39370c8ff13f327fdc524115db944082dfb4daf0969c0ef8399554",
@@ -373,9 +375,9 @@
     "tests/acpi-copied-module-fields/fixtures/duplicate-table.asl": "0c2655c38666d71be76d5912b36b371dd2fede2325c59f039a9c12d7212035e1"
   },
   "scripts": {
-    "tests/acpi-copied-module-fields/run.mjs": "7a5b1ed7367ad0399e676f15340326c6e5dc4ed24e2b83dd34d71574181c54ba",
+    "tests/acpi-copied-module-fields/run.mjs": "b07f43817473156cd8f6fb77a0f7b1cfa705c83a16df12acabb226ba91aff64c",
     "tests/acpi-copied-module-fields/run.sh": "0d65e8e2f41396bd5f411617f96e6c775ff94dd944a0ae549d73a2979349c61e",
-    "tests/acpi-copied-module-fields/README.md": "31f50aaeaf9e644e4d2a641433b0213253377c6bd01514632cde7d0218ff378f"
+    "tests/acpi-copied-module-fields/README.md": "17ca2b19d59c9bd3d2bb85c9fef3d5740ceb3fef027163a17015ac0d6d82e294"
   },
   "compiled_fixtures": {
     "boot1": "ea54b7f86e26deec94e9a7799cf094addd81c4ad57f2f7a61bcbcd79a7c26b24",
@@ -390,10 +392,10 @@
     "acpiexec": "a161f8b3a0b94b4301c1d0f2ccca6c0f808d2998cd4c9e037a9d7b218c88dcfe"
   },
   "cases": {
-    "normal": 32,
-    "unknown": 16,
-    "denied": 14,
-    "default": 14
+    "normal": 36,
+    "unknown": 20,
+    "denied": 18,
+    "default": 18
   },
-  "expected_alis": 81
+  "expected_alis": 82
 }

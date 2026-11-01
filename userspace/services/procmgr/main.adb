@@ -959,6 +959,12 @@ procedure main is
             debugPrint ("procmgr: ACPI fixed windows" & Natural'Image (ACPI_Fixed.Count) &
                         " (FADT" & Natural'Image (FADT_Length) & " bytes, ECDT" &
                         Natural'Image (ECDT_Length) & ")" & LF);
+            if ACPI_Fixed.Count = 0 then
+               Warnings.Warn ("procmgr: ACPI fixed windows 0 (snapshot " &
+                              (if Status = FS.Ok and then Catalog.Ready then "ready" else "not ready") &
+                              ", FADT" & Natural'Image (FADT_Length) & " bytes, ECDT" &
+                              Natural'Image (ECDT_Length) & ")");
+            end if;
          end;
       end if;
       return ACPI_Fixed;

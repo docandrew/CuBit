@@ -110,7 +110,8 @@ fs-coherence-CASE: one cross-process coherence case, CASE from
 bench-latency: tests/sched-latency (build tests/sched-latency/build-cubit.sh
   and bench-ipc-server first); defaults to 300 s. QEMU quits at its done marker.
 Logging fixture: log-authority (build logstore procmgr clock log-check first).
-Observability: log-fields (build logstore log-fields-check first); metrics
+Observability: log-fields (build logstore log-fields-check first); log-retention
+(build logstore log-retention-check first); metrics
   (build metricsvc metrics-check; needs procmgr metrics tag issuance).
 Render denial: render-launch-policy (build procmgr devmgr devices render-launch-policy first).
 Rust fixture: rust-native (build rust-probe ccl-test-host clock first).
@@ -326,7 +327,7 @@ case "$TEST_NAME" in
     config-objects|config-objects-reopen|config-objects-benchmark|config-storage)
         CONFIG_STORAGE_TEST=1
         ;;
-    grant-forward|grant-forward-intermediary-exit|grant-forward-owner-exit|grant-forward-desktop|config-tree|config-inspection|log-authority|log-fields|metrics|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
+    grant-forward|grant-forward-intermediary-exit|grant-forward-owner-exit|grant-forward-desktop|config-tree|config-inspection|log-authority|log-fields|log-retention|metrics|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
         ;;
     boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|secondary-stacks|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|acpi-hardware|acpi-native-smoke|acpi-pair-smoke|multi-instance|program-parameters|usb-hotplug|wifi-crypto|acpi-register-probe)
         ;;
@@ -540,7 +541,7 @@ case "$TEST_NAME" in
     log-authority)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-log-authority.ccl"
         ;;
-    log-fields|metrics)
+    log-fields|log-retention|metrics)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-$TEST_NAME.ccl"
         ;;
     grant-forward|grant-forward-intermediary-exit|grant-forward-owner-exit|grant-forward-desktop|gpu-viewer)
@@ -2377,9 +2378,11 @@ SERVO_PAGES_EOF
             fi
         done
     fi
-    if [ "$TEST_NAME" = "log-fields" ] || [ "$TEST_NAME" = "metrics" ]; then
+    if [ "$TEST_NAME" = "log-fields" ] || [ "$TEST_NAME" = "log-retention" ] || [ "$TEST_NAME" = "metrics" ]; then
         if [ "$TEST_NAME" = "log-fields" ]; then
             OBSERVABILITY_IMAGES="logstore.svc log-fields-check.app"
+        elif [ "$TEST_NAME" = "log-retention" ]; then
+            OBSERVABILITY_IMAGES="logstore.svc log-flood.app log-retention-check.app"
         else
             OBSERVABILITY_IMAGES="logstore.svc metrics.svc metrics-check.app"
         fi
@@ -4330,6 +4333,14 @@ TEST: PASS log-authority
         required_markers="
 logstore: authorized typed diagnostics ready
 TEST: PASS log-fields
+"
+        ;;
+    log-retention)
+        required_markers="
+logstore: authorized typed diagnostics ready
+TEST: PASS log-retention-quiet-source
+TEST: PASS log-retention-full-history
+TEST: PASS log-retention
 "
         ;;
     metrics)

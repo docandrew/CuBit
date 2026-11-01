@@ -44,6 +44,24 @@ refused its required "ntp" entry; now any refusal fails the test
 bash tests/headless/run.sh --test logs --accel kvm
 ```
 
+## log-retention (LOG-002)
+
+One chatty source cannot erase another's log history. log-flood writes
+4,000 records after log-retention-check (the quiet source) published 10
+boot records; then a subscription filtered to the quiet source (what
+`(logs.recent "acpi-backend")` does) still replays all 10 in order, and a
+full-history subscription replays the retained window in publish order
+with no gap. Failed before: logstore kept one 512-record history shared
+by every source, so the flood evicted the quiet records, and a new
+subscription began with a gap counting every evicted record ("--- 269
+records lost before delivery ---" in the Logs app). The hosted core
+regression is `tests/log-fanout/run.sh`.
+
+```sh
+make -C kernel world
+bash tests/headless/run.sh --test log-retention --accel kvm
+```
+
 ## native-gprbuild-config
 
 Native fixture scripts resolve the gprbuild configuration before their

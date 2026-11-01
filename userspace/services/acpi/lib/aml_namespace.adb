@@ -9974,13 +9974,43 @@ package body Owned with SPARK_Mode is
             Gate := Allocation_Allowed;
          end Collect_Before;
 
+         procedure Observe_Module_Field
+           (E : in out Owned.Arena; Context : in out Module_IO; Ref : Reference;
+            Width : AML_Decode.Integer_Width; For_Write : Boolean;
+            Value : in out AML_Execute.Datum; Result : out AML_Execute.Execution_Status) is
+         begin
+            Module_Field_Operation (E, Context, Ref, Width, For_Write, Value, Result);
+            if Result = AML_Execute.Returned or else Report.Field_Failure.Present
+              or else AML_References.Kind (Ref) /= AML_References.Named_Cell
+              or else not Named_Identity_Matches (E, Ref) then return; end if;
+            declare
+               Node : constant Node_ID := Node_ID (AML_References.Named_Node (Ref));
+            begin
+               if E.Tree.Items (Node).Object_Type /= Region_Field_Object then return; end if;
+               Report.Field_Failure :=
+                 (Present => True, Region_Known => False, For_Write => For_Write,
+                  Name => E.Tree.Items (Node).Part, Region => "____", Space => 0,
+                  Failure => (if Result in AML_Execute.Execution_Failure then Result else AML_Execute.Unsupported_Value));
+               declare Region : constant Node_ID := E.Tree.Items (Node).Region_Field_Info.Region; begin
+               if Region > Root and then Region <= E.Tree.Used
+                 and then E.Tree.Items (Region).Object_Type = Operation_Region_Object
+                 and then E.Tree.Items (Region).Incarnation = E.Tree.Items (Node).Region_Field_Info.Incarnation
+                 and then not E.Tree.Items (Region).Initializing then
+                  Report.Field_Failure.Region_Known := True;
+                  Report.Field_Failure.Region := E.Tree.Items (Region).Part;
+                  Report.Field_Failure.Space := AML_Decode.Byte (E.Tree.Items (Region).Operation_Info.Space);
+               end if;
+               end;
+            end;
+         end Observe_Module_Field;
+
          procedure Ignore_Module_Result (E : in out Owned.Arena; Result : AML_Execute.Execution_Result) is
             pragma Unreferenced (E, Result);
          begin null; end Ignore_Module_Result;
          procedure Run_Standalone is new Run_Context_Session
-           (Module_IO, Module_Field_Operation, Ignore_Module_Result, Collect_Before);
+           (Module_IO, Observe_Module_Field, Ignore_Module_Result, Collect_Before);
          procedure Run_Registered is new Run_Registered_Context_Session
-           (Module_IO, Module_Field_Operation, Ignore_Module_Result, Collect_Before);
+           (Module_IO, Observe_Module_Field, Ignore_Module_Result, Collect_Before);
          procedure Run (E : in out Owned.Arena; Backing : aliased AML_Table_Backing.State;
             Code : AML_Decode.Bytes; Source : aliased AML_Byte_Sources.Storage; Source_First : Natural;
             Width : AML_Decode.Integer_Width; Scope : Node_ID; Args : AML_Execute.Value_Arguments;

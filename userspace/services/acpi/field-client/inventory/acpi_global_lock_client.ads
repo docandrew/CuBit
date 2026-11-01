@@ -16,6 +16,7 @@ generic
 package ACPI_Global_Lock_Client with SPARK_Mode is
    package P renames ACPI_Global_Lock_Protocol;
    package W renames ACPI_Region_Protocol;
+   use type P.Ticket;
    type Phase is (Fresh, Ready, Held, Uncertain);
    type Outcome is (Initialized, Acquired, Needs_Cleanup, Released, Backend_Refused,
      Not_Ready, Invalid_Peer, Invalid_Deadline, Already_Initialized,
@@ -37,12 +38,16 @@ package ACPI_Global_Lock_Client with SPARK_Mode is
      with Post => (if Result = Acquired then Observe (State).Stage = Held
        and then Observe (State).Usable and then Observe (State).Cleanup_Required);
    -- Metadata only, including for uncertain cleanup. Not access authority.
-   function Ticket (State : Context) return P.Ticket;
+   function Ticket (State : Context) return P.Ticket
+     with Post => (if Observe (State).Cleanup_Required then P.Valid (Ticket'Result));
    -- Borrowed peer metadata only; the caller must not close the retained
    -- endpoint. Stop_Using revokes local data admission without losing duty.
    function Bound_Peer (State : Context) return Peer;
    procedure Stop_Using (State : in out Context);
-   procedure Check_Usable (State : in out Context; Result : out Outcome);
+   procedure Check_Usable (State : in out Context; Result : out Outcome)
+     with Post => Ticket (State) = Ticket (State)'Old
+       and then (if Result = Acquired then Observe (State).Stage = Held
+         and then Observe (State).Usable and then Observe (State).Cleanup_Required);
    -- Cleanup/recovery have their own explicit finite IPC deadline and never
    -- use the expired data deadline to suppress cleanup. No release is resent
    -- after possible delivery; Recover queries the saved original outcomes.
@@ -57,6 +62,7 @@ package ACPI_Global_Lock_Client with SPARK_Mode is
      with Post => (if Result /= Reentered then not Observe (State).Usable)
        and then (if Result = Released then not Observe (State).Cleanup_Required);
 private
+   function Consistent (State : Context) return Boolean;
    type Context is limited record
       Stage : Phase := Fresh;
       Destination : Peer := No_Peer;
@@ -64,5 +70,6 @@ private
       Last_IPC_Clock : W.Time_Instant := 0;
       Last_Clock, Nonce, Data_Deadline : Interfaces.Unsigned_64 := 0;
       Held_Ticket : P.Ticket := P.No_Ticket;
-   end record;
+   end record
+     with Type_Invariant => Consistent (Context);
 end ACPI_Global_Lock_Client;

@@ -55,8 +55,13 @@ package ACPI_Global_Lock_Protocol with Pure, SPARK_Mode is
       Outcome : Lock_Outcome := Not_Ready;
       Token : Ticket := No_Ticket;
    end record;
-   function Valid_Result (Kind : Operation; Result : Reply) return Boolean;
+   function Valid_Result (Kind : Operation; Result : Reply) return Boolean
+     with Post => (if Valid_Result'Result and then Kind = Prepare and then Result.Kind = Ready
+       then Valid (Result.Token));
    function Encode_Reply (Kind : Operation; Result : Reply) return Packet
      with Pre => Valid_Result (Kind, Result);
-   function Decode_Reply (Item : Packet; Kind : Operation) return Reply;
+   function Decode_Reply (Item : Packet; Kind : Operation) return Reply
+     with Post => (if Decode_Reply'Result.Valid then Valid_Result (Kind, Decode_Reply'Result)
+       and then (if Kind = Prepare and then Decode_Reply'Result.Kind = Ready
+         then Valid (Decode_Reply'Result.Token)));
 end ACPI_Global_Lock_Protocol;

@@ -1,6 +1,9 @@
 pragma Ada_2022;
 package body ACPI_Global_Lock_Client with SPARK_Mode is
    use type Interfaces.Unsigned_64, W.Time_Instant, W.Delivery, P.Reply_Kind, P.Lock_Outcome;
+   function Consistent (State : Context) return Boolean is
+     ((if State.Usable then State.Stage = Held)
+      and then (if State.Stage in Held | Uncertain then P.Valid (State.Held_Ticket)));
    function Observe (State : Context) return Statistics is
      ((State.Stage, State.Working, State.Usable, State.Stage in Held | Uncertain));
    function Ticket (State : Context) return P.Ticket is (State.Held_Ticket);

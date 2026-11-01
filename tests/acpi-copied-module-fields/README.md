@@ -12,8 +12,8 @@ True, duplicate-load refusal without extra I/O/result roots, and one-shot startu
 An uncertain second write preserves the exact receipt and completed effects;
 denied writes and the default hardware-free executor perform no I/O.
 
-Four cases run at both AML widths in checked/release profiles:152 checks in8
-processes,81 compiled Ada units/profile. Provider identity, permissions, hardware,
+Four cases run at both AML widths in checked/release profiles:184 checks in8
+processes,82 compiled Ada units/profile. Provider identity, permissions, hardware,
 transport and completion are modeled. This is not a native EC controller test,
 physical ownership/lifetime validation or a new SPARK proof.
 
@@ -26,3 +26,8 @@ The full table-loading, definition lifetime and interpreter objective remains op
 Fresh private output, one compiler job, nice19,64MiB stack,core0,180seconds/build,
 30seconds/runtime and1MiB logs. Checked uses assertions/overflow checks; release
 uses -gnatp. Each source/tool/runner/fixture and compiled profile is checked.
+
+The first failed Field is copied into the module report before rollback, including
+its name, live region identity/space and access direction. Tests cover copied-table
+uncertainty, a refused/default write, successful absence, and a refused retry that
+does not reuse a prior diagnostic. This metadata grants no hardware authority.

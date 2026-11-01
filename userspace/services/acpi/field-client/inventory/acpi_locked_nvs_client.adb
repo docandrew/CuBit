@@ -2,6 +2,10 @@ pragma Ada_2022;
 package body ACPI_Locked_NVS_Client with SPARK_Mode is
    use type W.Time_Instant, W.Delivery, P.Reply_Kind, P.Read_Outcome, P.Record_ID,
      P.Descriptor_ID, P.Read_Sequence, P.Geometry, P.Lease_Ticket, Lease.Outcome, Lease.Phase;
+   function Consistent (State : Context) return Boolean is
+     (if State.Pending_Read then State.Stage = Uncertain and then State.Bound
+       and then Lease.P.Valid (State.Ticket)
+       and then State.Descriptor /= P.No_Descriptor and then State.Sequence /= P.No_Read);
    function Observe (State : Context) return Statistics is
      ((State.Stage, State.Working, State.Pending_Read, State.Remote));
    function Finite (Deadline : W.Time_Instant) return Boolean is
