@@ -118,9 +118,9 @@ package Process is
 
     BAD_HEAP_ADDRESS       : constant System.Address := To_Address (16#DEAD_DEAD_DEAD_DEAD#);
 
-    -- The user runtime's secondary stack starts at the bottom of the main
-    -- stack and grows into it: Process_Layout.Secondary_Stack_Address, a
-    -- constant the runtime uses without asking the kernel.
+    -- The user runtime's secondary stacks are not in any primary stack:
+    -- each thread's is its own owned-memory reservation (Owned_Memory
+    -- Reserve/Commit_Prefix), which the runtime makes and grows itself.
 
     subtype ProcessPriority is Integer range -1..100;
 

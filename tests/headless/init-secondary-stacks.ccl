@@ -1,0 +1,7 @@
+# Per-thread growable secondary stacks (CuBit.Thread_Areas): one
+# secondary-stack-check process, its main thread and two extra threads at
+# once, then a deliberate reservation exhaustion that must end it cleanly.
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "secondary-stack-check.app" (priority 3))
+)

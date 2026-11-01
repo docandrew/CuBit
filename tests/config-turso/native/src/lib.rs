@@ -28,8 +28,13 @@ extern "C" fn __cubit_language_start(_initial_stack: u64, _payload_length: u64) 
     #[cfg(feature = "turso")]
     {
         unsafe extern "C" {
+            fn cubit_rust_runtime_start();
             fn config_worker_probeinit();
         }
+        // SAFETY: once, first: the std runtime installs the main thread's
+        // thread pointer, through which the Ada runtime finds the thread's
+        // secondary stack.
+        unsafe { cubit_rust_runtime_start() };
         // SAFETY: called once before any Ada entrypoint, including its native
         // storage dependencies. Zero-filled BSS is not Ada package elaboration.
         unsafe { config_worker_probeinit() };

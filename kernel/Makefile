@@ -1381,6 +1381,14 @@ futex-check: ccl-build user_runtime ccl-manifest
 	$(CCL_BUILD) ../userspace/apps/futex-check/component.ccl
 	cp ../userspace/apps/futex-check/build/futex-check.app isodir/boot/futex-check.app
 
+# Per-thread growable secondary stacks (CuBit.Thread_Areas): headless
+# --test secondary-stacks.
+.PHONY : secondary-stack-check
+secondary-stack-check: ccl-build user_runtime ccl-manifest
+	mkdir -p ../userspace/apps/secondary-stack-check/build
+	$(CCL_BUILD) ../userspace/apps/secondary-stack-check/component.ccl
+	cp ../userspace/apps/secondary-stack-check/build/secondary-stack-check.app isodir/boot/secondary-stack-check.app
+
 # FIRMWARE_SNAPSHOT checks (shared/boot/firmware_snapshot_abi.ads):
 # headless --test firmware-snapshot.
 .PHONY : firmware-check firmware-undeclared
@@ -2342,7 +2350,7 @@ check-declarations:
 	python3 ../tools/check_declarations.py --self-test
 	python3 ../tools/check_declarations.py --root ..
 
-world: check-declarations trace-viewer test-programs $(IMAGE_ONLY_BINARIES) cubit_kernel doom sameboy sleep thread-check futex-check firmware-check firmware-undeclared clock-check avx-check wifi-crypto-check devmem-check fault-check oom-check stall-check bench-spread capability-test storage-check ipctest-server ipctest-client bench-ipc-server bench-ipc-client ccl-test-host clock timesync tls ccl-vm ccl-workbench filesystem ata nvme ufs installer virtio-net virtio-gpu netstack wget devices files text calculator lexicon dictionary config-inspector desktop-shell procmgr shell hda mixer ps2 xhci virtio-input config config-storage netmgr wifi logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso
+world: check-declarations trace-viewer test-programs $(IMAGE_ONLY_BINARIES) cubit_kernel doom sameboy sleep thread-check futex-check secondary-stack-check firmware-check firmware-undeclared clock-check avx-check wifi-crypto-check devmem-check fault-check oom-check stall-check bench-spread capability-test storage-check ipctest-server ipctest-client bench-ipc-server bench-ipc-client ccl-test-host clock timesync tls ccl-vm ccl-workbench filesystem ata nvme ufs installer virtio-net virtio-gpu netstack wget devices files text calculator lexicon dictionary config-inspector desktop-shell procmgr shell hda mixer ps2 xhci virtio-input config config-storage netmgr wifi logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso
 
 .PHONY : headless-test
 headless-test: world

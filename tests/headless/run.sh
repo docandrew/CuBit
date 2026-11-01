@@ -81,7 +81,7 @@ Mesa native tests: --test softpipe, opengl, buffer, mesa-window, mesa-sync, mesa
 
 Options:
   --build              Run make world before booting QEMU
-  --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-console, logs, ccl-remote, capability-security, network-authority, bench-net, bench-fs, threads, futex, clock, avx, wifi-crypto, rust-std, libc, processes, control-events, binutils, gcc, gnat, servo, bench-spread, timesync, tls-probe, tls-service, wget-https, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, text, calculator, lexicon, dictionary, clipboard, key-repeat, desktop-doom, desktop-virtio-vga, desktop-vm, virtio-gpu, virtio-vga-primary, launch-failure, fs-coherence-CASE, startup-health, firmware-snapshot, acpi-hardware, or boot-timeline (--accel kvm --timeout 60)
+  --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-console, logs, ccl-remote, capability-security, network-authority, bench-net, bench-fs, threads, futex, secondary-stacks, clock, avx, wifi-crypto, rust-std, libc, processes, control-events, binutils, gcc, gnat, servo, bench-spread, timesync, tls-probe, tls-service, wget-https, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, text, calculator, lexicon, dictionary, clipboard, key-repeat, desktop-doom, desktop-virtio-vga, desktop-vm, virtio-gpu, virtio-vga-primary, launch-failure, fs-coherence-CASE, startup-health, firmware-snapshot, acpi-hardware, or boot-timeline (--accel kvm --timeout 60)
   --timeout SECONDS    QEMU runtime before timeout is treated as success
                        (default 25; 180 for desktop tests, see DESKTOP_TIMEOUT_SECONDS)
   --accel NAME         QEMU accelerator (for example: tcg,thread=multi)
@@ -328,7 +328,7 @@ case "$TEST_NAME" in
         ;;
     grant-forward|grant-forward-intermediary-exit|grant-forward-owner-exit|grant-forward-desktop|config-tree|config-inspection|log-authority|log-fields|metrics|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
         ;;
-    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|acpi-hardware|acpi-native-smoke|acpi-pair-smoke|multi-instance|program-parameters|usb-hotplug|wifi-crypto)
+    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|secondary-stacks|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|acpi-hardware|acpi-native-smoke|acpi-pair-smoke|multi-instance|program-parameters|usb-hotplug|wifi-crypto)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -681,6 +681,13 @@ with open(sys.argv[1], "wb") as f:
     futex)
         # Threads of one process on every CPU at once (default four).
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-futex.ccl"
+        ;;
+    secondary-stacks)
+        # secondary-stack-check (build: make -C kernel secondary-stack-check):
+        # three threads' stacks at once, then a 256 MiB secondary-stack
+        # reservation grown until it refuses.
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-secondary-stacks.ccl"
+        QEMU_MEMORY="${QEMU_MEMORY:-1G}"
         ;;
     acpi-native-smoke)
         # The real acpi.svc on q35 (build: make -C kernel acpi-native
@@ -1775,6 +1782,16 @@ if [ -n "$INIT_PROFILE" ]; then
             if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/$THREADS_IMAGE $THREADS_IMAGE" \
               "$TEMP_DISK" >/dev/null 2>&1; then
                 echo "headless: failed to install $THREADS_IMAGE" >&2
+                exit 1
+            fi
+        done
+    fi
+    if [ "$TEST_NAME" = "secondary-stacks" ]; then
+        for STACKS_IMAGE in logstore.svc secondary-stack-check.app; do
+            debugfs -w -R "rm $STACKS_IMAGE" "$TEMP_DISK" >/dev/null 2>&1
+            if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/$STACKS_IMAGE $STACKS_IMAGE" \
+              "$TEMP_DISK" >/dev/null 2>&1; then
+                echo "headless: failed to install $STACKS_IMAGE (make -C kernel secondary-stack-check)" >&2
                 exit 1
             fi
         done
@@ -4971,6 +4988,33 @@ futex-check: exiting with live threads
                   seen && /reclaimProcess: stopped PID/ { found = 1 }
                   END { exit !found }' "$SERIAL_LOG"; then
             echo "headless: futex checks failed, or the process was not reaped" >&2
+            exit 1
+        fi
+        ;;
+    secondary-stacks)
+        required_markers="
+secondary-stack-check: main thread: 20 MiB primary, 9 MiB secondary, all intact PASS
+secondary-stack-check: main thread's secondary stack is outside its primary stack PASS
+secondary-stack-check: extra threads started with their own areas PASS
+secondary-stack-check: main thread again, alongside the extra threads, intact PASS
+secondary-stack-check: extra thread 1: 20 MiB primary, 9 MiB secondary, intact PASS
+secondary-stack-check: extra thread 2: 20 MiB primary, 9 MiB secondary, intact PASS
+secondary-stack-check: every thread has its own secondary-stack region PASS
+secondary-stack-check: ended threads gave back their secondary stacks PASS
+TEST: PASS secondary-stacks
+secondary-stack-check: exhausting the secondary-stack reservation
+User-space exception at s-secsta.adb line
+"
+        # The exhaustion ends the program through the runtime's report and
+        # Storage_Error (the last-chance handler), after the PASS line and
+        # before any other output of it: no corruption, no fault.
+        if grep -F 'secondary-stack-check: ' "$SERIAL_LOG" | grep -qF ' FAIL' ||
+           ! awk '/secondary-stack-check: exhausting the secondary-stack reservation/ { seen = 1; next }
+                  seen && /secondary stack overflow: request=[0-9]+ top=[0-9]+ max=[0-9]+ committed=[0-9]+ reservation=[0-9]+ \((reservation exhausted|commit refused)\)/ { report = 1; next }
+                  report && /User-space exception at s-secsta.adb line/ { found = 1 }
+                  END { exit !found }' "$SERIAL_LOG" ||
+           grep -aE 'killed|Page fault|PAGE FAULT' "$SERIAL_LOG" | grep -qi 'secondary-stack-check'; then
+            echo "headless: secondary-stack checks failed, or the exhaustion was not reported cleanly" >&2
             exit 1
         fi
         ;;

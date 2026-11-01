@@ -32,7 +32,7 @@ pairs = {
     "Release_Owned_Reservation": "SYSCALL_RELEASE_OWNED_RESERVATION",
     "Send_Control": "SYSCALL_SEND_CONTROL",
     "Read_Statistics": "SYSCALL_READ_STATISTICS", "Publish": "SYSCALL_PUBLISH",
-    "Thread_Exit": "SYSCALL_THREAD_EXIT", "Futex_Wait": "SYSCALL_FUTEX_WAIT",
+    "Thread_Create": "SYSCALL_THREAD_CREATE", "Thread_Exit": "SYSCALL_THREAD_EXIT", "Futex_Wait": "SYSCALL_FUTEX_WAIT",
     "Futex_Wake": "SYSCALL_FUTEX_WAKE",
     "Create_Shared_Memory_Grant_Via_Capability": "SYSCALL_CREATE_SHARED_MEMORY_GRANT_VIA_CAPABILITY",
     "Get_Owned_Shared_Memory_Grant_Generation": "SYSCALL_GET_OWNED_SHARED_MEMORY_GRANT_GENERATION",

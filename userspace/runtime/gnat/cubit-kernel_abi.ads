@@ -44,6 +44,8 @@ package CuBit.Kernel_ABI with Pure, SPARK_Mode is
    Acquire_Shared_Memory_Grant_Via_Capability : constant System_Call := 112;
    Wait_For_IPC_Or_Completion_Until_Monotonic_Millisecond :
      constant System_Call := 113;
+   --  Entry, stack pointer, argument (RDI), FS base, exit word.
+   Thread_Create                : constant System_Call := 90;
    Thread_Exit                  : constant System_Call := 91;
    Futex_Wait                   : constant System_Call := 92;
    Futex_Wake                   : constant System_Call := 93;

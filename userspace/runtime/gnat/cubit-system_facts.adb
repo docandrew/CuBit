@@ -7,7 +7,6 @@ with System;
 with System.Storage_Elements;
 with CuBit.Kernel_ABI;
 with CuBit.Kernel_Calls;
-with Process_Layout;
 with System_Publications;
 
 package body CuBit.System_Facts is
@@ -15,9 +14,6 @@ package body CuBit.System_Facts is
    package Pages renames System_Publications;
 
    --  The reader's types and constants are the shared layout's.
-   pragma Compile_Time_Error
-     (Secondary_Stack_Address /= Process_Layout.Secondary_Stack_Address,
-      "secondary stack address differs from Process_Layout");
    pragma Compile_Time_Error
      (SP.Statistics'Size /= Pages.Statistics'Size or else
       SP.Published_Value'Enum_Rep (SP.Wall_Clock_Offset) /=

@@ -351,16 +351,6 @@ package body CuBit.Messages is
          syscall (SYSCALL_WRITE, STDOUT, toNum (str'Address), str'Length);
    end debugPrint;
 
-   function getSecondaryStack return System.Secondary_Stack.SS_Stack_Ptr
-   is
-      function toPtr is
-         new Ada.Unchecked_Conversion
-            (Source => Unsigned_64,
-             Target => System.Secondary_Stack.SS_Stack_Ptr);
-   begin
-      return toPtr (CuBit.System_Facts.Secondary_Stack_Address);
-   end getSecondaryStack;
-
    --  saveReplyCap
    --  SAVE_REPLY_CAP: RDI=destSlot
    --  Returns: RAX=1 on success, 0 on failure

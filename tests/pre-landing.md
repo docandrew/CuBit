@@ -120,6 +120,25 @@ CCL_CONSOLE_DEMO=wifi tests/headless/run.sh --test ccl-console --accel kvm --tim
 tests/headless/run.sh --test ccl-workbench --accel kvm --timeout 600
 ```
 
+## secondary-stacks (per-thread secondary stacks, 2026-10-31)
+
+Each thread's Ada secondary stack is its own owned-memory reservation
+(CuBit.Secondary_Stack_Layout), found through an ELF thread-local slot
+(CuBit.Thread_Areas). It used to sit at a fixed address 16 MiB under the
+stack top, and acpi.svc's 64 MiB primary stack grew through it. The check
+uses >16 MiB of primary and 9 MiB of secondary stack in three threads,
+verifies regions and release, then exhausts a reservation and must get the
+clean report. Run it for any change to the user runtime's secondary stack,
+crt0, link scripts, TLS or thread start/exit (libc, Rust std, raw threads).
+
+```sh
+tests/secondary-stack-layout/run.sh
+tests/headless/run.sh --test secondary-stacks --accel kvm --timeout 300
+tests/headless/run.sh --test acpi-native-smoke --accel kvm --timeout 300
+tests/headless/run.sh --test threads --accel kvm --timeout 300
+tests/headless/run.sh --test rust-std --accel kvm --timeout 300
+```
+
 ## block-requests and block-driver (HW-001, DEV-002)
 
 The shared Block.Device.V1 front end (CuBit.Block_Requests) and the block

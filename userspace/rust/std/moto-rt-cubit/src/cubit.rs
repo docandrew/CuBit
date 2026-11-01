@@ -30,6 +30,10 @@ unsafe extern "C" {
     static cubit_std_time: Option<unsafe extern "C" fn(bool, *mut u64, *mut u32) -> bool>;
     #[linkage = "extern_weak"]
     static cubit_std_random: Option<unsafe extern "C" fn(*mut u8, usize) -> bool>;
+    // The user runtime's thread exit (CuBit.Thread_Areas), in programs with
+    // Ada that uses the secondary stack: gives back the thread's stack.
+    #[linkage = "extern_weak"]
+    static __cubit_secondary_stack_release: Option<unsafe extern "C" fn()>;
 }
 
 fn hooked_allocator() -> Option<(unsafe extern "C" fn(usize, usize) -> *mut u8,
@@ -60,6 +64,16 @@ pub fn ensure_installed() {
             core::hint::spin_loop();
         }
     }
+}
+
+/// For a program whose Rust library is hosted by Ada (it defines its own
+/// __cubit_language_start: the Turso probe, the Config storage worker):
+/// install the runtime, and with it the main thread's thread pointer, before
+/// any Ada code runs. The Ada runtime finds each thread's secondary stack
+/// through the thread pointer (CuBit.Thread_Areas).
+#[unsafe(no_mangle)]
+pub extern "C" fn cubit_rust_runtime_start() {
+    ensure_installed();
 }
 
 // --- syscalls ---------------------------------------------------------------
@@ -320,6 +334,12 @@ extern "C" fn rt_futex_wake_all(futex: *const AtomicU32) {
 }
 
 // --- thread-local storage: keys index a per-thread block at the FS base ----
+//
+// The block is also an x86-64 ELF thread control block: its first word is
+// its own address and the program's static TLS segment (PT_TLS) lies below
+// it, so ELF thread-local variables of code linked into the program (the
+// Ada runtime's secondary-stack slot, CuBit.Thread_Areas) work in every
+// thread this runtime makes.
 
 const MAX_KEYS: usize = 256;
 
@@ -331,7 +351,30 @@ struct TlsBlock {
 
 static NEXT_KEY: AtomicUsize = AtomicUsize::new(1); // key 0 is never handed out
 static DTORS: [AtomicU64; MAX_KEYS] = [const { AtomicU64::new(0) }; MAX_KEYS];
-static mut MAIN_TLS: TlsBlock = TlsBlock { this: core::ptr::null_mut(), values: [core::ptr::null_mut(); MAX_KEYS] };
+
+/// The static TLS segment, from the linker script (userspace/c/link.ld):
+/// its image, the image's bytes, and the block the linker lays out below
+/// the thread pointer (the segment's bytes rounded up to its alignment).
+struct StaticTls {
+    image: *const u8,
+    image_bytes: usize,
+    block_bytes: usize,
+    align: usize,
+}
+
+fn static_tls() -> StaticTls {
+    let (image, image_bytes, bytes, align): (usize, usize, usize, usize);
+    // Absolute symbols: their addresses are the values. Read through asm so
+    // the compiler assumes nothing of an address that may be zero.
+    unsafe {
+        asm!("lea {}, [rip + __cubit_tls_start]", out(reg) image, options(nostack, nomem));
+        asm!("lea {}, [rip + __cubit_tls_image_bytes]", out(reg) image_bytes, options(nostack, nomem));
+        asm!("lea {}, [rip + __cubit_tls_bytes]", out(reg) bytes, options(nostack, nomem));
+        asm!("lea {}, [rip + __cubit_tls_align]", out(reg) align, options(nostack, nomem));
+    }
+    let align = align.max(align_of::<TlsBlock>());
+    StaticTls { image: image as *const u8, image_bytes, block_bytes: bytes.next_multiple_of(align), align }
+}
 
 fn tls_block() -> *mut TlsBlock {
     let block: *mut TlsBlock;
@@ -339,12 +382,33 @@ fn tls_block() -> *mut TlsBlock {
     block
 }
 
+/// A new block with a copy of the static TLS image below it (the rest of
+/// the TLS block zero, as heap_alloc returns it).
 fn new_tls_block() -> *mut TlsBlock {
-    let block = heap_alloc(size_of::<TlsBlock>(), align_of::<TlsBlock>()) as *mut TlsBlock;
-    if !block.is_null() {
-        unsafe { (*block).this = block };
+    let tls = static_tls();
+    let base = heap_alloc(tls.block_bytes + size_of::<TlsBlock>(), tls.align);
+    if base.is_null() {
+        return core::ptr::null_mut();
     }
+    let block = unsafe {
+        core::ptr::copy_nonoverlapping(tls.image, base, tls.image_bytes);
+        base.add(tls.block_bytes) as *mut TlsBlock
+    };
+    unsafe { (*block).this = block };
     block
+}
+
+fn free_tls_block(block: *mut TlsBlock) {
+    let tls = static_tls();
+    heap_free(unsafe { (block as *mut u8).sub(tls.block_bytes) },
+              tls.block_bytes + size_of::<TlsBlock>(), tls.align);
+}
+
+/// Give back the Ada runtime's secondary stack of this thread, if any.
+fn release_secondary_stack() {
+    if let Some(release) = unsafe { __cubit_secondary_stack_release } {
+        unsafe { release() };
+    }
 }
 
 extern "C" fn rt_tls_create(dtor: u64) -> usize {
@@ -410,6 +474,7 @@ extern "C" fn thread_entry(record: *mut ThreadRecord) -> ! {
     let (f, arg) = unsafe { ((*record).thread_fn, (*record).arg) };
     f(arg);
     run_tls_dtors();
+    release_secondary_stack();
     loop {
         unsafe { syscall(SYS_THREAD_EXIT, 0, 0, 0, 0, 0) };
     }
@@ -441,7 +506,7 @@ extern "C" fn rt_thread_spawn(thread_fn: extern "C" fn(u64), stack_size: usize, 
     };
     if tid == u64::MAX {
         heap_free(stack, stack_size, 4096);
-        heap_free(tls as *mut u8, size_of::<TlsBlock>(), align_of::<TlsBlock>());
+        free_tls_block(tls);
         heap_free(record as *mut u8, size_of::<ThreadRecord>(), align_of::<ThreadRecord>());
         return crate::error::E_OUT_OF_MEMORY as u64;
     }
@@ -462,7 +527,7 @@ extern "C" fn rt_thread_join(handle: u64) -> ErrorCode {
     // The thread is in the kernel for good: its stack and blocks are free.
     unsafe {
         heap_free((*record).stack, (*record).stack_size, 4096);
-        heap_free((*record).tls as *mut u8, size_of::<TlsBlock>(), align_of::<TlsBlock>());
+        free_tls_block((*record).tls);
     }
     heap_free(record as *mut u8, size_of::<ThreadRecord>(), align_of::<ThreadRecord>());
     E_OK
@@ -584,7 +649,6 @@ fn set(slot: &AtomicU64, f: *const ()) {
 
 /// Fill the table and give the installing thread (the main thread) its
 /// thread-local block. Called once, through ensure_installed.
-#[allow(static_mut_refs)]
 fn install() {
     let v = &VTABLE;
     // Every entry starts as "not implemented"; the table is a run of AtomicU64.
@@ -638,14 +702,18 @@ fn install() {
     set(&v.num_cpus, rt_num_cpus as *const ());
 
     // The main thread's thread-local block. Threads this runtime creates
-    // get their own at THREAD_CREATE; nothing else on CuBit sets FS.
+    // get their own at THREAD_CREATE; nothing else on CuBit sets FS in a
+    // Rust program.
     unsafe {
-        MAIN_TLS.this = &raw mut MAIN_TLS;
         let current: u64;
         asm!("rdfsbase {}", out(reg) current, options(nostack));
         if current == 0 {
-            let base = &raw mut MAIN_TLS as u64;
-            asm!("wrfsbase {}", in(reg) base, options(nostack));
+            let block = new_tls_block();
+            if block.is_null() {
+                debug_write(b"cubit-rt: no thread-local block for the main thread\n");
+                exit_process(101);
+            }
+            asm!("wrfsbase {}", in(reg) block as u64, options(nostack));
         }
     }
 }

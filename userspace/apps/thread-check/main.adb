@@ -11,6 +11,9 @@
 --  context switches. Its FS base must survive every switch unchanged, and
 --  its user GS base must read as zero afterwards (user GS is unsupported and
 --  cleared on dispatch), so neither can carry the other instance's value.
+--  The FS base is this thread's thread pointer (its secondary stack is
+--  found through it, CuBit.Thread_Areas): it is restored before anything
+--  uses that again.
 ------------------------------------------------------------------------------
 with Interfaces; use Interfaces;
 with System.Machine_Code; use System.Machine_Code;
@@ -63,7 +66,9 @@ procedure Main is
    end Check;
 
    PID : constant Unsigned_64 := syscall (SYSCALL_GETPID);
-   --  Canonical, distinct per instance; FS is never dereferenced here.
+   --  Canonical, distinct per instance; FS is never dereferenced while it
+   --  holds this value (nothing in the loop uses the secondary stack).
+   Thread_Pointer : constant Unsigned_64 := Read_FS;
    FS_Value : constant Unsigned_64 := 16#0000_5A5A_0000_0000# + PID * 16#1000#;
    GS_Value : constant Unsigned_64 := 16#0000_3C3C_0000_0000# + PID * 16#1000#;
    FS_Kept, GS_Cleared : Boolean := True;
@@ -82,6 +87,7 @@ begin
          GS_Cleared := False;
       end if;
    end loop;
+   Write_FS (Thread_Pointer);
    Check (FS_Kept, "fs base survives context switches");
    Check (GS_Cleared, "user gs base cleared across context switches");
 

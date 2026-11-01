@@ -33,6 +33,24 @@ SECTIONS
         KEEP(*(.note.gnu.build-id))
     }
 
+    /* Thread-local data: the static TLS segment (PT_TLS), its image then
+     * its zero-initialized rest. CuBit.Thread_Areas (the user runtime's
+     * per-thread secondary-stack slot) and Rust std's thread blocks copy
+     * it below each thread pointer they make, from the symbols after it. */
+    . = ALIGN(4096);
+    .tdata : ALIGN(8)
+    {
+        *(.tdata .tdata.*)
+    }
+    .tbss : ALIGN(8)
+    {
+        *(.tbss .tbss.*)
+    }
+    __cubit_tls_start = ADDR(.tdata);
+    __cubit_tls_image_bytes = SIZEOF(.tdata);
+    __cubit_tls_bytes = ADDR(.tbss) + SIZEOF(.tbss) - ADDR(.tdata);
+    __cubit_tls_align = MAX(ALIGNOF(.tdata), ALIGNOF(.tbss));
+
     .data : ALIGN(4096)
     {
         *(.data .data.*)

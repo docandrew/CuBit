@@ -237,6 +237,13 @@ package body CuBit.Libc_System_Calls is
       return Now;
    end Realtime_Milliseconds;
 
+   --  The user runtime's thread exit (CuBit.Thread_Areas): gives back the
+   --  thread's secondary stack. Weak: present only in programs whose Ada
+   --  uses the secondary stack.
+   procedure Release_Secondary_Stack
+   with Import, Convention => C, External_Name => "__cubit_secondary_stack_release";
+   pragma Weak_External (Release_Secondary_Stack);
+
    procedure Exit_Process (Code : int) with No_Return;
    procedure Exit_Process (Code : int) is
       Ignore : Unsigned_64;
@@ -988,6 +995,12 @@ package body CuBit.Libc_System_Calls is
          when SYS_set_robust_list | SYS_sigaltstack =>
             return 0;
          when SYS_exit =>
+            --  musl's pthread_exit, joinable threads (detached ones end in
+            --  __unmapself). The thread-local block is still this thread's:
+            --  a joiner waits for the kernel to clear the thread-list lock.
+            if Release_Secondary_Stack'Address /= System.Null_Address then
+               Release_Secondary_Stack;
+            end if;
             loop
                R := To_Long (Kernel (K.Thread_Exit));
             end loop;

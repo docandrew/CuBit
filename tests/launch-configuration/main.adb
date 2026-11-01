@@ -6,7 +6,6 @@ with Ada.Command_Line;
 with Interfaces; use Interfaces;
 with Launch_Configuration; use Launch_Configuration;
 with System_Publications;
-with Process_Layout;
 with Round_Trips;
 
 procedure Main is
@@ -264,8 +263,6 @@ begin
    Check (System_Publications.Statistics'Size = 24 * 8, "statistics size");
    Check (System_Publications.Wall_Clock_Address =
             16#0000_5B00_0000_3000#, "wall clock address");
-   Check (Process_Layout.Secondary_Stack_Address = 16#0000_7FFF_FF00_0000#,
-          "secondary stack address");
 
    Put_Line ("launch-configuration:" & Checks'Image & " checks," & Failed'Image & " failed");
    if Failed /= 0 then

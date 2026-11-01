@@ -12,6 +12,7 @@ mod std_hooks;
 mod storage;
 
 unsafe extern "C" {
+    fn cubit_rust_runtime_start();
     fn config_storage_hostinit();
     fn cubit_config_storage_path(buffer: *mut u8, capacity: u64, length: *mut u64) -> u32;
     fn cubit_config_storage_run(database: *mut core::ffi::c_void) -> u32;
@@ -22,6 +23,10 @@ unsafe extern "C" {
 // the Ada host is initialized first.
 #[unsafe(no_mangle)]
 extern "C" fn __cubit_language_start(_initial_stack: u64, _payload_length: u64) -> ! {
+    // SAFETY: single-threaded startup, exactly once. The std runtime first:
+    // it installs the main thread's thread pointer, through which the Ada
+    // runtime finds the thread's secondary stack.
+    unsafe { cubit_rust_runtime_start() };
     // SAFETY: single-threaded startup, exactly once, before any Ada entrypoint.
     // The GNAT-generated binder initializes the full Ada library closure;
     // zeroed BSS alone does not elaborate package constants or bodies.

@@ -5,8 +5,8 @@
  * Start code of the Ada services and freestanding C programs: _start is
  * the shared one (userspace/runtime/start/cubit_start.S), which keeps the
  * launch block's lengths and calls __cubit_language_start below. That
- * zeroes BSS, runs the C constructors, calls main(), then exits with
- * main's return value. An Ada main is a procedure: when Ada.Command_Line
+ * zeroes BSS, installs the main thread's thread area, runs the C
+ * constructors, calls main(), then exits with main's return value. An Ada main is a procedure: when Ada.Command_Line
  * set an exit status, that is the exit code instead of main's RAX.
  */
 
@@ -23,6 +23,7 @@ __cubit_exit_status_set:         .quad 0
 
 .section .text
 .global __cubit_language_start
+.weak __cubit_thread_start
 .global _exit
 
 __cubit_language_start:
@@ -41,6 +42,16 @@ __cubit_language_start:
     xorq    %rax, %rax
     rep     stosq
 .bss_done:
+
+    /* The main thread's thread pointer (static TLS) and secondary stack
+     * (CuBit.Thread_Areas.Start_Main), before any constructor or Ada code
+     * can use them. Weak: a program that never uses the secondary stack
+     * links none, and its FS base stays zero. */
+    leaq    __cubit_thread_start(%rip), %rax
+    testq   %rax, %rax
+    jz      .thread_done
+    call    *%rax
+.thread_done:
 
     /* Run C constructors (libnsfb surface registration uses these). */
     leaq    __init_array_start(%rip), %r12

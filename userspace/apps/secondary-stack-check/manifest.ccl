@@ -1,0 +1,5 @@
+# Per-thread growable secondary stack regression checks
+# (CuBit.Thread_Areas, CuBit.Secondary_Stack_Layout). No authority.
+(executable-manifest v1
+  (identity "com.cubit.secondary-stack-check")
+  (version "0.1.0"))

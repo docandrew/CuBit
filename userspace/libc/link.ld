@@ -48,6 +48,13 @@ SECTIONS
     {
         *(.tbss .tbss.*)
     }
+    /* The static TLS segment, as userspace/c/link.ld names it (musl finds
+     * it through the program headers; CuBit.Thread_Areas and Rust std's
+     * thread blocks through these). */
+    __cubit_tls_start = ADDR(.tdata);
+    __cubit_tls_image_bytes = SIZEOF(.tdata);
+    __cubit_tls_bytes = ADDR(.tbss) + SIZEOF(.tbss) - ADDR(.tdata);
+    __cubit_tls_align = MAX(ALIGNOF(.tdata), ALIGNOF(.tbss));
 
     .data : ALIGN(4096)
     {

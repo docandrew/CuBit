@@ -16,10 +16,10 @@ package Process_Layout with Pure, SPARK_Mode is
 
    --  Top of the main thread's stack, exclusive.
    Stack_Top : constant := 16#0000_8000_0000_0000#;
-   --  The main thread's initial stack.
+   --  The main thread's initial stack (the bootstrap process's; ELF
+   --  programs declare theirs in PT_GNU_STACK). No secondary stack lives
+   --  in any primary stack: each thread's is its own owned-memory
+   --  reservation (CuBit.Thread_Areas).
    Initial_Stack_Bytes : constant := 16 * 1024 * 1024;
-   --  The secondary stack of the user runtime starts at the bottom of the
-   --  main stack and grows into it (__gnat_get_secondary_stack).
-   Secondary_Stack_Address : constant := Stack_Top - Initial_Stack_Bytes;
 
 end Process_Layout;
