@@ -35,6 +35,10 @@ generic
    Mapping_Page_Limit : Positive;
 package ACPI_Backend_Catalog is
    use Interfaces;
+   package Bindings is new ACPI_Backend_Bindings
+     (Memory_Authority, No_Memory, Port_Authority, No_Ports,
+      Inspect_Memory, Inspect_Ports, Map_Memory, Read_Clock,
+      Maximum_Windows, Virtual_First, Virtual_Limit, Mapping_Page_Limit);
    package W renames ACPI_Backend_Windows;
    package B renames ACPI_Backend_Binding_Types;
    package P renames ACPI_Region_Policy;
@@ -42,6 +46,14 @@ package ACPI_Backend_Catalog is
    type Revision_Number is new Unsigned_64;
    No_Revision : constant Revision_Number := 0;
    type Context is limited private;
+   -- Trusted backend view adapters only. No IPC may forward caller addresses
+   -- here. Bindings types are public; this catalog's retained state stays
+   -- private and no mutable backing context is exported.
+   function Describe_Window (State : Context; ID : W.Window_ID) return W.Window_Result;
+   function Select_Access
+     (State : Context; ID : W.Window_ID; Space : P.Address_Space;
+      Address : Unsigned_64; Width : W.T.Access_Width; For_Write : Boolean)
+      return Bindings.Access_View;
    -- Backend-local typed handles, never exported by inventory or scalar IPC.
    subtype Memory_Handle is Memory_Authority;
    subtype Port_Handle is Port_Authority;
@@ -109,10 +121,6 @@ package ACPI_Backend_Catalog is
    end record;
    function Observe (State : Context) return Statistics;
 private
-   package Bindings is new ACPI_Backend_Bindings
-     (Memory_Authority, No_Memory, Port_Authority, No_Ports,
-      Inspect_Memory, Inspect_Ports, Map_Memory, Read_Clock,
-      Maximum_Windows, Virtual_First, Virtual_Limit, Mapping_Page_Limit);
    type Slot_Count is new Natural range 0 .. Maximum_Registers;
    subtype Slot_Index is Slot_Count range 1 .. Slot_Count'Last;
    type Register_Entry is record

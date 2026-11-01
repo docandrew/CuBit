@@ -12,6 +12,10 @@
 --   16#0001# - 16#00FF#  Filesystem operations
 --   16#0100# - 16#01FF#  Process operations
 --   16#0200# - 16#02FF#  Device operations
+--     16#0280# - 16#02BF#  acpi-backend.svc's role-35 endpoint: NVS data
+--                          records 16#0280#.., Global Lock 16#0290#..
+--                          (replies 16#F280#..); the scalar register
+--                          protocol keeps 16#0100#/16#0101# (shared/acpi)
 --   16#0300# - 16#03FF#  Memory operations
 --   16#0400# - 16#04FF#  Network operations
 --   16#F000# - 16#FFFF#  Status/error reply labels

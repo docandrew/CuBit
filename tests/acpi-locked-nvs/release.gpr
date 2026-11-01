@@ -1,0 +1,34 @@
+project Release is
+ Snapshot := external ("ACPI_TEST_SNAPSHOT");
+ Output := external ("ACPI_TEST_BUILD") & "/release";
+ for Source_Dirs use (Snapshot & "/userspace/services/acpi",
+   Snapshot & "/userspace/services/acpi/lib",
+   Snapshot & "/userspace/services/acpi/snapshot",
+   Snapshot & "/userspace/services/acpi/field-client",
+   Snapshot & "/userspace/services/acpi/field-client/provider",
+   Snapshot & "/userspace/services/acpi/field-client/provider/startup",
+   Snapshot & "/userspace/services/acpi/field-client/inventory",
+   Snapshot & "/userspace/services/acpi/field-client/transport",
+   Snapshot & "/userspace/services/acpi/backend",
+   Snapshot & "/userspace/services/acpi/ec",
+   Snapshot & "/userspace/services/acpi/request-driver",
+   Snapshot & "/shared/acpi",
+   Snapshot & "/shared/firmware",
+   Snapshot & "/tests/acpi-locked-nvs",
+   Snapshot & "/userspace/services/acpi/native-clock",
+   Snapshot & "/userspace/services/acpi/region-init",
+   Snapshot & "/userspace/services/acpi/hid-i2c",
+   Snapshot & "/userspace/services/acpi/passive",
+   Snapshot & "/userspace/services/acpi/resource-consumer",
+   Snapshot & "/userspace/services/acpi/resource-data",
+   Snapshot & "/userspace/lib/i2c-admission",
+   Snapshot & "/userspace/lib/gpio-admission",
+   Snapshot & "/userspace/services/acpi/lid",
+   Snapshot & "/userspace/services/acpi/power");
+ for Object_Dir use Output & "/obj";
+ for Exec_Dir use Output;
+ for Main use ("locked_owner_tests.adb");
+ package Compiler is
+  for Default_Switches ("Ada") use ("-O0", "-gnat2022", "-gnatwa", "-gnatwe", "-gnatp");
+ end Compiler;
+end Release;

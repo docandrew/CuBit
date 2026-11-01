@@ -64,6 +64,12 @@ procedure Main is
    Inspected    : constant Unsigned_64 := 0;
    --  One generation step in a handle word (generation << 32 | slot).
    Generation_Step : constant Unsigned_64 := 2 ** ABI.Slot_Field_Bits;
+   --  The ACPI hardware grant's binding name in acpi-backend.svc's manifest
+   --  (its windows are "hardware-io-K" and "hardware-mem-K").
+   ACPI_Binding : constant String := "hardware";
+   --  A firmware page (the BIOS ROM area) and where a mapping of it would go.
+   Firmware_Probe : constant Unsigned_64 := 16#000F_0000#;
+   Probe_Virtual  : constant Unsigned_64 := 16#6000_0000_0000#;
    Slot_Mask       : constant Unsigned_64 := Generation_Step - 1;
    --  Tokens of this test's requests to itself.
    Self_Token_First : constant Unsigned_64 := 16#CA9_0000#;
@@ -195,6 +201,19 @@ begin
    Check (Valid (Self) and then Valid (Self_Process)
           and then Names_Entry (Self_Word),
           "self entries are current handles");
+
+   --  Firmware memory (the ACPI hardware grant's NVS runs and FACS page)
+   --  reaches only a program that declares Request.ACPI_Hardware and whose
+   --  startup entry approves it: this one has no grant entry and no window,
+   --  and no word it can forge names one (a firmware page maps only through
+   --  a kernel firmware-memory capability, never one of another kind).
+   Check (CuBit.Startup_State.Granted (ACPI_Binding, ST.ACPI_Hardware) = ST.No_Handle
+          and then not CuBit.Handles.Startup.Optional_Device_Memory_Named
+                         (ACPI_Binding & "-mem-1").Present,
+          "no firmware-memory window without the ACPI hardware grant");
+   Check (syscall (70, Firmware_Probe, Probe_Virtual, 1, 1, Self_Word) /= 0  -- capability-check: forged on purpose
+          and then syscall (70, Firmware_Probe, Probe_Virtual, 1, 1, Self_Word + Generation_Step) /= 0,  -- capability-check: forged on purpose
+          "firmware pages never map through a forged or foreign handle");
 
    --  No ambient authority by number: every word a slot was once written
    --  as (generation 0) names nothing, kernel tables included.

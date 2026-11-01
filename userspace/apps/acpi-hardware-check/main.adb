@@ -17,8 +17,18 @@
 --  endpoint: it carries ACPI_Register_Roles.Frontend_Tag
 --  (acpi-registers-standin reports the kernel-stamped tag), and no copy of
 --  it can be re-badged or derived at all.
+--
+--  Slice 2, the firmware-memory windows: at least one; sorted and
+--  disjoint; each handle a firmware-memory capability covering exactly its
+--  whole pages, read-write without grant, that cannot be copied on, whose
+--  kind and cache mode in the grant are exactly what its kernel tag says
+--  (CuBit.ACPI_Memory_Classes); one of them holds the FACS page this
+--  program finds in its own FADT, write-back (on q35 it is the control
+--  kind: SeaBIOS has no NVS), and mapping it shows the FACS signature; the
+--  page just past (and just before) each window is refused.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with System;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Handles; use CuBit.Handles;
@@ -29,6 +39,7 @@ with CuBit.Handles.Devices;
 with CuBit.ACPI_Windows; use CuBit.ACPI_Windows;
 with CuBit.ACPI_Windows.Launch;
 with CuBit.ACPI_Fixed_Windows;
+with CuBit.ACPI_Memory_Classes;
 with CuBit.Firmware_Snapshot;
 with ACPI_Register_Roles;
 with Startup;
@@ -40,6 +51,7 @@ procedure Main is
    package AF renames CuBit.ACPI_Fixed_Windows;
    use type ABI.Kind;
    use type FS.Outcome, FS.Byte_Count;
+   use type CuBit.ACPI_Memory_Classes.Memory_Kind, CuBit.ACPI_Memory_Classes.Cache_Mode;
 
    Failures : Natural := 0;
 
@@ -67,6 +79,15 @@ procedure Main is
    Probe_Label     : constant Unsigned_32 := 16#AC35#;     --  the stand-in's probe
    REPLY_OK        : constant Unsigned_32 := 16#F000#;
    Probe_Deadline_Ms : constant := 2_000;
+   --  The FADT's FACS addresses (ACPI 6.5, 5.2.9): FIRMWARE_CTRL (32-bit)
+   --  and X_FIRMWARE_CTRL (64-bit, when the FADT reaches it).
+   Firmware_Ctrl_Offset   : constant := 36;
+   X_Firmware_Ctrl_Offset : constant := 132;
+   Page_Bytes             : constant := 4096;
+   --  Where this program maps firmware pages (its own address space).
+   Window_Virtual         : constant := 16#6000_0000_0000#;
+   --  "FACS" as the little-endian signature word.
+   FACS_Signature         : constant Unsigned_32 := 16#5343_4146#;
    --  Any other tag a holder might try to stamp on its copy.
    Forged_Tag      : constant Unsigned_64 := 16#5245_4241_4447_4521#;
 
@@ -116,7 +137,7 @@ procedure Main is
 begin
    debugPrint ("acpi-hardware-check: starting" & LF);
    Check (G.IO_Used > 0, "grant has I/O windows");
-   Check (G.Memory_Used = 0, "slice 1 grants no memory windows");
+   Check (G.Memory_Used > 0, "grant has memory windows");
    Check (CuBit.ACPI_Windows.Launch.Well_Formed (G), "windows sorted and disjoint");
 
    for K in 1 .. G.IO_Used loop
@@ -152,6 +173,98 @@ begin
                       Expected.Windows (K).First = G.IO (K).First
                       and then Expected.Windows (K).Count = G.IO (K).Count),
           "windows are exactly the FADT fixed blocks");
+
+   --  The firmware-memory windows.
+   for K in 1 .. G.Memory_Used loop
+      declare
+         W : constant Memory_Window := G.Memory (K);
+         D : constant IPC.Description := IPC.Describe (W.Memory);
+         Past : constant Unsigned_64 := (W.First_Page + W.Pages) * Page_Bytes;
+      begin
+         debugPrint ("acpi-hardware-check: memory window page " & Image (W.First_Page) & " +" &
+                     Image (W.Pages) & LF);
+         Check (D.Current and then D.Kind = ABI.Device_Memory
+                and then D.Object = W.First_Page * Page_Bytes
+                and then D.Parameter = W.Pages * Page_Bytes,
+                "memory window " & Image (Unsigned_64 (K)) & " handle covers exactly its pages");
+         Check (D.Current and then CuBit.ACPI_Memory_Classes.Firmware_Tag (D.Authority_Tag),
+                "memory window " & Image (Unsigned_64 (K)) & " is firmware memory");
+         --  The grant's kind and cache mode are the kernel tag's, not the
+         --  launcher's.
+         Check (D.Current and then CuBit.ACPI_Memory_Classes.Firmware_Tag (D.Authority_Tag)
+                and then W.Kind = CuBit.ACPI_Memory_Classes.Kind_Of (D.Authority_Tag)
+                and then W.Cache = CuBit.ACPI_Memory_Classes.Cache_Of (W.Kind)
+                and then W.Cache = CuBit.ACPI_Memory_Classes.Write_Back,
+                "memory window " & Image (Unsigned_64 (K)) & " kind and cache mode from its kernel tag");
+         Check (D.Current and then D.Held.Read and then D.Held.Write and then not D.Held.Grant,
+                "memory window " & Image (Unsigned_64 (K)) & " read-write without grant");
+         Check (not Valid (Device_Memory'(CuBit.Handles.Control.Derive (Copy (W.Memory, Read_Only))))
+                and then not Valid (Device_Memory'(CuBit.Handles.Control.Derive
+                                       (Narrowed (W.Memory, Read_Only, W.First_Page * Page_Bytes,
+                                                  Page_Bytes)))),
+                "memory window " & Image (Unsigned_64 (K)) & " cannot be copied on");
+         Check (not CuBit.Handles.Devices.Map_Device (W.Memory, Past, Window_Virtual, 1, True),
+                "memory window " & Image (Unsigned_64 (K)) & " refuses the next page");
+         if W.First_Page > 0 then
+            Check (not CuBit.Handles.Devices.Map_Device
+                         (W.Memory, (W.First_Page - 1) * Page_Bytes, Window_Virtual, 1, True),
+                   "memory window " & Image (Unsigned_64 (K)) & " refuses the page before");
+         end if;
+      end;
+   end loop;
+
+   --  The FACS page, from this program's own FADT, is in a window and maps.
+   declare
+      FACS : Unsigned_64 := 0;
+      Found : Natural := 0;
+   begin
+      for I in 0 .. 3 loop
+         FACS := FACS or Shift_Left (Unsigned_64 (FADT (Firmware_Ctrl_Offset + 1 + I)), 8 * I);
+      end loop;
+      if FADT_Length >= X_Firmware_Ctrl_Offset + 8 then
+         declare
+            Extended : Unsigned_64 := 0;
+         begin
+            for I in 0 .. 7 loop
+               Extended := Extended or
+                 Shift_Left (Unsigned_64 (FADT (X_Firmware_Ctrl_Offset + 1 + I)), 8 * I);
+            end loop;
+            if Extended /= 0 then
+               FACS := Extended;
+            end if;
+         end;
+      end if;
+      debugPrint ("acpi-hardware-check: FACS at " & Image (FACS) & LF);
+      for K in 1 .. G.Memory_Used loop
+         if FACS / Page_Bytes >= G.Memory (K).First_Page
+           and then FACS / Page_Bytes - G.Memory (K).First_Page < G.Memory (K).Pages
+         then
+            Found := K;
+         end if;
+      end loop;
+      Check (FACS /= 0 and then Found /= 0, "FACS page inside a memory window");
+      Check (Found /= 0 and then G.Memory (Found).Cache = CuBit.ACPI_Memory_Classes.Write_Back
+             and then (G.Memory (Found).Kind = CuBit.ACPI_Memory_Classes.ACPI_NVS
+                       or else G.Memory (Found).Pages = 1),
+             "FACS window is write-back (an NVS run, or the FACS page alone)");
+      if Found /= 0 then
+         declare
+            Page : constant Unsigned_64 := FACS - FACS mod Page_Bytes;
+            Mapped : constant Boolean := CuBit.Handles.Devices.Map_Device
+              (G.Memory (Found).Memory, Page, Window_Virtual, 1, True);
+         begin
+            Check (Mapped, "FACS page maps through its window");
+            if Mapped then
+               declare
+                  Signature : Unsigned_32 with Import, Volatile,
+                    Address => System'To_Address (Window_Virtual + FACS mod Page_Bytes);
+               begin
+                  Check (Signature = FACS_Signature, "FACS signature read through its window");
+               end;
+            end if;
+         end;
+      end if;
+   end;
 
    --  The PM timer advances when read twice through its window.
    declare

@@ -41,7 +41,7 @@ package Launch_Configuration with Pure, SPARK_Mode is
    Magic : constant Unsigned_64 := 16#4746_4354_4942_5543#;  --  "CUBITCFG"
    Word_Bytes   : constant := 8;
    Header_Words : constant := 3;
-   Maximum_Fields : constant := 24;
+   Maximum_Fields : constant := 33;
    Maximum_Words  : constant := Header_Words + Maximum_Fields;
 
    subtype Word_Count is Natural range 0 .. Maximum_Words;
@@ -107,11 +107,19 @@ package Launch_Configuration with Pure, SPARK_Mode is
    --  port space, the legacy interrupt lines, every service role's
    --  notification, real-time scheduling, reading the sealed firmware-table
    --  snapshot (FIRMWARE_SNAPSHOT), and one device-memory root per maximal
-   --  run of device-mappable pages (largest first).
+   --  run of device-mappable pages (largest first). Last, the
+   --  firmware-memory roots (kernel Physical_Ranges.Firmware_Runs): one per
+   --  run of ACPI NVS pages and the FACS page, in ascending address order,
+   --  tagged Capability_ABI.Firmware_NVS_Tag or Firmware_Control_Tag;
+   --  devmgr claims them for the ACPI hardware grant.
    Maximum_Device_Roots : constant := 8;
    subtype Device_Root_Count is Natural range 0 .. Maximum_Device_Roots;
    subtype Device_Root_Index is Positive range 1 .. Maximum_Device_Roots;
    type Root_Handles is array (Device_Root_Index) of Unsigned_64;
+   Maximum_Firmware_Roots : constant := 8;
+   subtype Firmware_Root_Count is Natural range 0 .. Maximum_Firmware_Roots;
+   subtype Firmware_Root_Index is Positive range 1 .. Maximum_Firmware_Roots;
+   type Firmware_Root_Handles is array (Firmware_Root_Index) of Unsigned_64;
 
    type Device_Manager_Handles is record
       Self              : Unsigned_64 := 0;
@@ -128,8 +136,14 @@ package Launch_Configuration with Pure, SPARK_Mode is
       Firmware_Snapshot : Unsigned_64 := 0;
       Root_Count        : Device_Root_Count := 0;
       Device_Roots      : Root_Handles := [others => 0];
+      Firmware_Count    : Firmware_Root_Count := 0;
+      Firmware_Roots    : Firmware_Root_Handles := [others => 0];
    end record;
    Device_Manager_Handle_Fields : constant := 12;
+   --  The firmware-memory roots' words: the count, then the roots.
+   Firmware_Root_Words : constant := 1 + Maximum_Firmware_Roots;
+   --  Where they start in an encoded configuration.
+   Firmware_First_Word : constant := 7 + Device_Manager_Handle_Fields + 1 + Maximum_Device_Roots;
 
    --  A handle word: its generation (high half) is never zero.
    function Is_Handle (Word : Unsigned_64) return Boolean is
@@ -145,7 +159,10 @@ package Launch_Configuration with Pure, SPARK_Mode is
       and then Is_Handle (H.Scheduling) and then Is_Handle (H.Firmware_Snapshot)
       and then (for all R in Device_Root_Index =>
                   (if R <= H.Root_Count then Is_Handle (H.Device_Roots (R))
-                   else H.Device_Roots (R) = 0)));
+                   else H.Device_Roots (R) = 0))
+      and then (for all R in Firmware_Root_Index =>
+                  (if R <= H.Firmware_Count then Is_Handle (H.Firmware_Roots (R))
+                   else H.Firmware_Roots (R) = 0)));
 
    --  Kernel to devmgr: the boot image's size, the boot framebuffer's
    --  physical pages, and its handles.
@@ -322,7 +339,8 @@ package Launch_Configuration with Pure, SPARK_Mode is
 
    function Field_Count (Kind : Configuration_Kind) return Natural is
      (case Kind is
-         when Device_Manager    => 3 + Device_Manager_Handle_Fields + 1 + Maximum_Device_Roots,
+         when Device_Manager    =>
+           3 + Device_Manager_Handle_Fields + 1 + Maximum_Device_Roots + Firmware_Root_Words,
          when Process_Manager   => 2 + Process_Manager_Handle_Fields,
          when Boot_Image_Reader => 1,
          when NVMe_Controller | HDA_Controller => 3,
@@ -368,6 +386,23 @@ package Launch_Configuration with Pure, SPARK_Mode is
    with Pre => W'Length = Device_Manager_Handle_Fields + 1 + Maximum_Device_Roots
                and then W'First = 7;
 
+   --  The firmware-memory roots' words (Words (28 .. 36)).
+   function Firmware_Words (H : Device_Manager_Handles) return Word_Array is
+     [Unsigned_64 (H.Firmware_Count),
+      H.Firmware_Roots (1), H.Firmware_Roots (2), H.Firmware_Roots (3),
+      H.Firmware_Roots (4), H.Firmware_Roots (5), H.Firmware_Roots (6),
+      H.Firmware_Roots (7), H.Firmware_Roots (8)]
+   with Post => Firmware_Words'Result'First = 1
+                and then Firmware_Words'Result'Length = Firmware_Root_Words;
+
+   --  The count is in range, the roots in use are handles, the rest zero.
+   function Firmware_Valid (W : Word_Array) return Boolean is
+     (W (W'First) <= Maximum_Firmware_Roots
+      and then (for all R in Firmware_Root_Index =>
+                  (if Unsigned_64 (R) <= W (W'First) then Is_Handle (W (W'First + R))
+                   else W (W'First + R) = 0)))
+   with Pre => W'Length = Firmware_Root_Words and then W'First = Firmware_First_Word;
+
    function Encode (Value : Device_Manager_Configuration) return Encoded
    with Post => Encode'Result.Length = Header_Words + Field_Count (Device_Manager)
                 and then Header_Valid (Encode'Result.Words (1 .. Encode'Result.Length),
@@ -376,7 +411,10 @@ package Launch_Configuration with Pure, SPARK_Mode is
                 and then Encode'Result.Words (5) = Value.Framebuffer.First
                 and then Encode'Result.Words (6) = Value.Framebuffer.Bytes
                 and then (for all I in 1 .. Device_Manager_Handle_Fields + 1 + Maximum_Device_Roots =>
-                            Encode'Result.Words (6 + I) = Handle_Words (Value.Handles) (I));
+                            Encode'Result.Words (6 + I) = Handle_Words (Value.Handles) (I))
+                and then (for all I in 1 .. Firmware_Root_Words =>
+                            Encode'Result.Words (Firmware_First_Word - 1 + I) =
+                              Firmware_Words (Value.Handles) (I));
    --  The handles' words, in field order (Words (6 .. 21)).
    function Process_Handle_Words (H : Process_Manager_Handles) return Word_Array is
      [H.Self, H.Self_Process, H.Self_Grantable, H.Process_Root, H.Registration,
@@ -449,13 +487,19 @@ package Launch_Configuration with Pure, SPARK_Mode is
                          and then Words (4) in Byte_Count
                          and then Words (5) in Physical_Address
                          and then Words (6) in Byte_Count
-                         and then Handles_Valid (Words (7 .. 27)))
+                         and then Handles_Valid (Words (7 .. 27))
+                         and then Firmware_Valid
+                           (Words (Firmware_First_Word ..
+                                   Firmware_First_Word + Firmware_Root_Words - 1)))
                 and then (if Valid then
                             Value.Boot_Image = Words (4)
                             and then Value.Framebuffer.First = Words (5)
                             and then Value.Framebuffer.Bytes = Words (6)
                             and then (for all I in 1 .. 21 =>
-                                        Handle_Words (Value.Handles) (I) = Words (6 + I)));
+                                        Handle_Words (Value.Handles) (I) = Words (6 + I))
+                            and then (for all I in 1 .. Firmware_Root_Words =>
+                                        Firmware_Words (Value.Handles) (I) =
+                                          Words (Firmware_First_Word - 1 + I)));
    procedure Decode
      (Words : Word_Array; Value : out Process_Manager_Configuration; Valid : out Boolean)
    with Post => Valid = (Header_Valid (Words, Process_Manager)

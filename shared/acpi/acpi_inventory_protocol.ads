@@ -8,11 +8,14 @@ package ACPI_Inventory_Protocol with SPARK_Mode, Pure is
    use Interfaces;
    package Wire renames ACPI_Region_Protocol;
    package T renames ACPI_FADT.Transactions;
+   use type T.Access_Width;
    Header_Operation : constant Unsigned_32 := 16#100#;
    Part_Operation : constant Unsigned_32 := 16#101#;
    Header_Reply : constant Unsigned_32 := 16#F102#;
    Part_Reply : constant Unsigned_32 := 16#F103#;
-   Version : constant Unsigned_64 := 1;
+   Version : constant Unsigned_64 := 2;
+   type Address_Space is (Memory_Space, IO_Space, Embedded_Control_Space);
+   EC_Last_Cell : constant Unsigned_64 := 255;
    type Outcome is (Denied, Malformed, Stale, Ready);
    type Part_Kind is (Identity_Part, Region_Part, Register_Part);
    type Payload is array (Natural range 0 .. 2) of Unsigned_64;
@@ -20,7 +23,8 @@ package ACPI_Inventory_Protocol with SPARK_Mode, Pure is
    type Width_Set is array (T.Access_Width) of Boolean;
    type Description is record
       ID, Epoch, Base, Length, Offset : Unsigned_64 := 0;
-      IO_Space, Readable, Writable, Delegable, Exact_Write_Safe : Boolean := False;
+      Space : Address_Space := Memory_Space;
+      Readable, Writable, Delegable, Exact_Write_Safe : Boolean := False;
       Widths : Width_Set := [others => False];
       Width : T.Access_Width := T.Byte_Access;
       Write_Mask : Unsigned_64 := 0;
@@ -30,7 +34,7 @@ package ACPI_Inventory_Protocol with SPARK_Mode, Pure is
        when T.Word_Access => 16#FFFF#, when T.Dword_Access => 16#FFFF_FFFF#,
        when T.Qword_Access => Unsigned_64'Last);
    function Valid (Item : Description) return Boolean is
-     (Item.ID /= 0 and then Item.Epoch /= 0 and then Item.Base /= 0
+     (Item.ID /= 0 and then Item.Epoch /= 0 and then (Item.Space = Embedded_Control_Space or else Item.Base /= 0)
       and then Item.Length /= 0 and then Item.Length - 1 <= Unsigned_64'Last - Item.Base
       and then Item.Offset < Item.Length
       and then Unsigned_64 (T.Octets (Item.Width)) <= Item.Length - Item.Offset
@@ -38,9 +42,14 @@ package ACPI_Inventory_Protocol with SPARK_Mode, Pure is
       and then (Item.Readable or Item.Writable) and then Item.Widths (Item.Width)
       and then (Item.Write_Mask and not Width_Mask (Item.Width)) = 0
       and then (if Item.Writable then Item.Exact_Write_Safe else Item.Write_Mask = 0)
-      and then (if Item.IO_Space then Item.Base <= Unsigned_64 (Unsigned_16'Last)
+      and then (if Item.Space = IO_Space then Item.Base <= Unsigned_64 (Unsigned_16'Last)
         and then Item.Length - 1 <= Unsigned_64 (Unsigned_16'Last) - Item.Base
-        and then not Item.Widths (T.Qword_Access)));
+        and then not Item.Widths (T.Qword_Access))
+      and then (if Item.Space = Embedded_Control_Space then
+        Item.Base <= EC_Last_Cell
+        and then Item.Length - 1 <= EC_Last_Cell - Item.Base
+        and then Item.Width = T.Byte_Access
+        and then Item.Widths = Width_Set'[T.Byte_Access => True, others => False]));
    function Header_Request return Wire.Packet is
      ((Label => Header_Operation, others => <>));
    function Part_Request

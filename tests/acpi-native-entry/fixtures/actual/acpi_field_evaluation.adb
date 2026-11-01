@@ -5,7 +5,7 @@ package body ACPI_Field_Evaluation is
    function Observe (Run : Context) return Bindings.Report is
      (Bindings.Observe (Run.Cache));
    procedure Export
-     (Run : in out Context; Service : Core.State; IO : Provider.Context;
+     (Run : in out Context; Service : Core.State; IO : in out Provider.Context;
       Items : out Bindings.Fields.Binding_Set; Accepted : out Boolean)
    is
       Report : Bindings.Report;
@@ -18,7 +18,7 @@ package body ACPI_Field_Evaluation is
       Bindings.Copy_Bindings (Run.Cache, Service, IO, Items, Accepted);
    end Export;
    procedure Prepare
-     (Run : in out Context; Service : Core.State; IO : Provider.Context;
+     (Run : in out Context; Service : Core.State; IO : in out Provider.Context;
       Accepted : out Boolean)
    is
       Items : Bindings.Fields.Binding_Set;

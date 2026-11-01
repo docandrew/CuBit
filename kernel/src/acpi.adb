@@ -781,12 +781,25 @@ package body acpi is
                       fadt.flags'Position + fadt.flags'Size / 8;
                     extendedDSDTEnd : constant Unsigned_32 :=
                       fadt.exDsdt'Position + fadt.exDsdt'Size / 8;
+                    extendedControlEnd : constant Unsigned_32 :=
+                      fadt.exFirmwareControl'Position + fadt.exFirmwareControl'Size / 8;
                     dsdtPhysical : Unsigned_64;
                     begin
                         if tableLength < legacyBytes then
                             println ("ACPI: truncated FADT");
                             return False;
                         end if;
+                        facsAddr := Unsigned_64 (fadt.firmwareControl);
+                        if tableLength >= extendedControlEnd then
+                            declare
+                                extended : constant Unsigned_64 := fadt.exFirmwareControl;
+                            begin
+                                if extended /= 0 then
+                                    facsAddr := extended;
+                                end if;
+                            end;
+                        end if;
+                        print (" FACS address:          "); println (facsAddr);
                         dsdtPhysical := Unsigned_64 (fadt.dsdt);
                         if tableLength >= extendedDSDTEnd then
                             declare

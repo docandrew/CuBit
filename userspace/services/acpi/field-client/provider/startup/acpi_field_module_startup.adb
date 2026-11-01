@@ -1,6 +1,5 @@
 pragma Ada_2022;
 package body ACPI_Field_Module_Startup is
-   use type Provider.Startup_State;
    procedure Execute_Frozen
      (Service : in out Core.State; IO : in out Provider.Context;
       Budget : Natural; Report : out Core.Execution_Report;
@@ -11,7 +10,7 @@ package body ACPI_Field_Module_Startup is
       Accepted : Boolean;
    begin
       Report := (others => <>); Status := Core.Values.Wrong_Phase;
-      if Provider.Status (IO) /= Provider.Ready then return; end if;
+      if not Provider.Ready (IO) then return; end if;
       if Provider.Pending (IO) then Status := Core.Values.Busy; return; end if;
       if Count > Maximum_Bindings then Status := Core.Values.Out_Of_Bounds; return; end if;
       for Index in 1 .. Count loop

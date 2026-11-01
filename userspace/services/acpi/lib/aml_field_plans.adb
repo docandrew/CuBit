@@ -20,7 +20,8 @@ package body AML_Field_Plans with SPARK_Mode is
    Qword_Code : constant AML_Decode.Byte := 4;
    Narrow_Bits : constant AML_Decode.Integer_Value := 32;
 
-   function Prepare (Field : AML_Field_Layout.Field_Geometry) return Plan is
+   function Prepare (Field : AML_Field_Layout.Field_Geometry;
+      Allow_Locked_Read : Boolean := False) return Plan is
       Width : ACPI_FADT.Transactions.Access_Width;
       Update : AML_Field_Datums.Update_Rule;
       Datums : AML_Field_Datums.Plan;
@@ -31,7 +32,8 @@ package body AML_Field_Plans with SPARK_Mode is
         or else Field.Region.Length = 0
         or else Field.Region.Base > AML_Decode.Integer_Value'Last - (Field.Region.Length - 1)
         or else (Field.Flags and Reserved_Mask) /= 0
-        or else (Field.Flags and Lock_Mask) /= 0
+        or else ((Field.Flags and Lock_Mask) /= 0 and then
+          (not Allow_Locked_Read or else Field.Region.Space /= AML_Field_Layout.Memory_Space))
         or else (Field.Flags and Access_Mask) > Last_Access
         or else Field.Attribute /= 0 or else Field.Access_Length /= 0
       then return (others => <>); end if;

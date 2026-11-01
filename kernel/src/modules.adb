@@ -32,6 +32,7 @@ with Publication_Pages;
 with Util;
 with Physical_Range_Map;
 with Device_Memory_Diagnostics;
+with Device_Memory_Authority;
 with Physical_Ranges;
 with Service_Registry;
 with TextIO; use TextIO;
@@ -42,6 +43,13 @@ package body Modules with SPARK_Mode => Off is
     pragma Compile_Time_Error
       (Physical_Ranges.Max_Roots /= Launch_Configuration.Maximum_Device_Roots,
        "devmgr's configuration carries one handle per device-memory root");
+    pragma Compile_Time_Error
+      (Physical_Ranges.Max_Firmware_Roots /= Launch_Configuration.Maximum_Firmware_Roots,
+       "devmgr's configuration carries one handle per firmware-memory root");
+    pragma Compile_Time_Error
+      (Capabilities.FIRMWARE_NVS_TAG /= Capability_ABI.Firmware_NVS_Tag
+       or else Capabilities.FIRMWARE_CONTROL_TAG /= Capability_ABI.Firmware_Control_Tag,
+       "the kernel and the runtime must agree on the firmware-memory tags");
 
     initrdAddr  : Virtmem.PhysAddress := 0;
     initrdSize  : Storage_Count := 0;
@@ -449,6 +457,42 @@ package body Modules with SPARK_Mode => Off is
                     print (" .. ");
                     println (Runs (Index).Last);
                 end loop;
+            end;
+
+            -- Firmware-memory roots (the ACPI hardware grant): one
+            -- CAP_DEVICE_MEM per run of whole ACPI NVS pages (tagged
+            -- FIRMWARE_NVS_TAG) and the FACS page (FIRMWARE_CONTROL_TAG),
+            -- in ascending order (Physical_Ranges.Firmware_Runs). Only
+            -- MAP_DEVICE into the holder maps them, write-back, and no
+            -- device-memory capability maps their NVS pages
+            -- (Device_Memory_Authority). devmgr claims them for ACPI and
+            -- hands them, exactly, to the program procmgr's startup plan
+            -- approves (acpi-hardware approve-declared).
+            declare
+                Runs     : Physical_Ranges.Firmware_Run_Array;
+                Count    : Physical_Ranges.Firmware_Root_Count;
+                Left_Out : Natural;
+            begin
+                Physical_Ranges.Firmware_Runs
+                  (Physical_Range_Map.Kernel_Map, Runs, Count, Left_Out);
+                handles.Firmware_Count := Count;
+                for Index in 1 .. Count loop
+                    place ((capType      => Capabilities.CAP_DEVICE_MEM,
+                            rights       => RW_GRANT,
+                            authorityTag => Device_Memory_Authority.Tag_Of (Runs (Index).Kind),
+                            object       => (ref   => Runs (Index).First,
+                                             param => Runs (Index).Last - Runs (Index).First + 1),
+                            gen          => Capabilities.INITIAL_GENERATION),
+                           handles.Firmware_Roots (Index));
+                    print ("Modules: devmgr firmware-memory root ");
+                    print (Runs (Index).First);
+                    print (" .. ");
+                    println (Runs (Index).Last);
+                end loop;
+                if Left_Out > 0 then
+                    print ("Modules: firmware-memory runs left out: ");
+                    println (Left_Out);
+                end if;
             end;
             installDevmgrConfiguration (devmgrPID, handles);
         end;

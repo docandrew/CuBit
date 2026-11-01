@@ -392,10 +392,21 @@ the same image without the hardware approval is refused at launch; the
 role-35 client gets the Frontend_Tag badge only with approval and cannot
 re-badge or derive it.
 
+Slice 2 (firmware memory): the kernel's firmware-memory roots (ACPI NVS
+runs, the FACS page) and their authority are hosted-tested and proved in
+tests/device-memory (authority.gpr, level 2; 13 firmware mutants killed by
+the hosted tests); devmgr's ACPI memory claims and the windows' kernel-tag
+classes in tests/acpi-hardware-windows. Native (q35 has no NVS; SeaBIOS
+puts the FACS in its reserved span at the top of RAM): one write-back
+control window, exactly the FACS page, its signature readable, the pages
+around it refused, closed to device memory in devmgr; capability-security
+checks that no other program has or can forge a window.
+
 ```sh
 python3 tests/ccl-manifests/test-manifests.py -k acpi -k firmware -k strict
 python3 tests/ccl-configurations/test-configurations.py
 bash tests/acpi-hardware-windows/run.sh --prove
+(cd kernel && alr exec -- gprbuild -p -P ../tests/device-memory/authority.gpr && ../tests/device-memory/build-authority/authority_tests)
 make -C kernel world CUBIT_COMPOSITOR_TIMING=on
 make -C kernel acpi-hardware-check acpi-registers-standin acpi-registers-client
 bash tests/headless/run.sh --test acpi-hardware --accel kvm

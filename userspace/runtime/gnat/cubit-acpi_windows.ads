@@ -18,6 +18,7 @@
 pragma Ada_2022;
 with Interfaces;
 with CuBit.Handles;
+with CuBit.ACPI_Memory_Classes;
 
 package CuBit.ACPI_Windows with SPARK_Mode is
    use type Interfaces.Unsigned_64;
@@ -38,10 +39,36 @@ package CuBit.ACPI_Windows with SPARK_Mode is
       Count : Port_Count := Port_Count'First;
    end record;
 
+   --  What a memory window is and how the kernel maps it, from its own
+   --  capability's kernel tag (CuBit.ACPI_Memory_Classes), never from the
+   --  launcher.
+   --
+   --  Mapping contract (slice 2):
+   --  * Map with CuBit.Handles.Devices.Map_Device (Memory, Physical,
+   --    Virtual, Pages, Read_Only), i.e. MAP_DEVICE through this window's
+   --    own handle. Physical is a page address inside the window; the
+   --    caller chooses Virtual: page aligned, in the user range, and NOT
+   --    inside the owned-memory aperture (Owned_Memory_Layout, which the
+   --    kernel refuses) or a received grant; drivers use a fixed device
+   --    area such as 16#6000_0000_0000#. At most 1024 pages per call,
+   --    mapped eagerly by that call: map the pages a region needs, on
+   --    demand (a whole 12,208-page NVS run is 12 calls and 24 page-table
+   --    pages). The kernel maps every firmware page write-back (Cache).
+   --  * Kind and Cache are what INSPECT_CAPABILITY (CuBit.Handles.IPC.
+   --    Describe (Memory).Authority_Tag) says; Launch.Named fills them.
+   --  * No unmap call exists: a mapping lasts until the process exits.
+   --    devmgr's ACPI claim on the window is never released for the rest
+   --    of the boot (frozen whether or not mapped), and a restarted backend
+   --    is granted the same window again.
+   subtype Memory_Kind is CuBit.ACPI_Memory_Classes.Memory_Kind;
+   subtype Cache_Mode  is CuBit.ACPI_Memory_Classes.Cache_Mode;
+
    type Memory_Window is record
       Memory     : CuBit.Handles.Device_Memory := CuBit.Handles.No_Device_Memory;  --  whole pages only
       First_Page : Page_Number := Page_Number'First;
       Pages      : Page_Count := Page_Count'First;
+      Kind       : Memory_Kind := CuBit.ACPI_Memory_Classes.ACPI_NVS;
+      Cache      : Cache_Mode := CuBit.ACPI_Memory_Classes.Uncached;
    end record;
 
    type IO_Windows     is array (1 .. Maximum_IO_Windows) of IO_Window;

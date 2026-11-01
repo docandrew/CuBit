@@ -1776,6 +1776,21 @@ package Owned with SPARK_Mode is
            AML_Execution_Limits.Default_Field_Request_Limit;
          Maximum_Work : AML_Execution_Limits.Field_Work_Limit :=
            AML_Execution_Limits.Default_Field_Work_Limit;
+         -- Bounded metadata-only callback; receives no Arena alias. Outputs
+         -- start at No_Target/False, and the result is independently checked.
+         with procedure Resolve_Module_Target
+           (IO : in out IO_Context; Geometry : AML_Field_Layout.Register_Geometry;
+            Target : in out AML_Field_Access.Target; Accepted : in out Boolean) is null;
+      -- Trusted whole-root Field transaction hooks. No arena alias is passed.
+      -- A refused begin must preserve any cleanup duty inside IO; End_Field
+      -- runs after every normal completion of an accepted begin. These hooks
+      -- alone do not admit Lock-rule Fields or cover composed child frames.
+      with procedure Begin_Field
+        (IO : in out IO_Context; Requires_Lock, For_Write : Boolean;
+         Accepted : in out Boolean) is null;
+      with procedure End_Field
+        (IO : in out IO_Context; Accepted : in out Boolean) is null;
+      Allow_Locked_NVS_Reads : Boolean := False;
       package Field_IO is
          pragma Unevaluated_Use_Of_Old (Allow);
          type Module_Target_Count is new Natural range 0 .. Maximum_Bindings;

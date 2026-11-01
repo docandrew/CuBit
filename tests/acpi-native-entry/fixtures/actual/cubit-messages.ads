@@ -13,10 +13,6 @@ with CuBit.Process_IDs;
 with CuBit.Handles;
 with Capability_ABI;
 
-pragma Warnings (Off, "internal GNAT unit");
-with System.Secondary_Stack;
-pragma Warnings (On, "internal GNAT unit");
-
 package CuBit.Messages is
 
    --  Syscall Numbers
@@ -509,9 +505,5 @@ package CuBit.Messages is
      (driver : Unsigned_64; authority : CuBit.Handles.Notification) return Unsigned_64;
 
    procedure debugPrint (str : String);
-
-   function getSecondaryStack return System.Secondary_Stack.SS_Stack_Ptr
-      with Export, Convention => C,
-            External_Name => "__gnat_get_secondary_stack";
 
 end CuBit.Messages;

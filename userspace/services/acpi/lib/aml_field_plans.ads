@@ -15,10 +15,12 @@ package AML_Field_Plans with SPARK_Mode, Pure is
    -- NoLock ordinary Memory/IO and bounded byte-access EmbeddedControl fields
    -- through64bits. Each EC datum names a logical cell, never an IO port.
    -- Memory/IO AnyAcc uses byte datums; EC requires explicit ByteAcc.
-   -- Lock still requires separate scoped support.
+   -- Lock is default-closed; optional Memory read planning requires an
+   -- independently installed whole-field guard and backend NVS authority.
    function Valid (Item : Plan) return Boolean;
    function Count (Item : Plan) return Datum_Count;
-   function Prepare (Field : AML_Field_Layout.Field_Geometry) return Plan
+   function Prepare (Field : AML_Field_Layout.Field_Geometry;
+      Allow_Locked_Read : Boolean := False) return Plan
       with Post => (if Count (Prepare'Result) > 0 then Valid (Prepare'Result));
    function Rule (Item : Plan) return AML_Field_Datums.Update_Rule;
    function Datum_At (Item : Plan; Position : Datum_Position)

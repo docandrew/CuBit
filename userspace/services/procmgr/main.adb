@@ -2663,6 +2663,10 @@ procedure main is
       --  AHA.IO_Label (ACPI_Binding, K).
       ACPI_Window_Words : array (AHA.IO_Window_Number) of Unsigned_64 := [others => ST.No_Handle];
       ACPI_Window_Total : Natural range 0 .. AHA.Maximum_IO_Windows := 0;
+      --  Then its firmware-memory windows, ascending by address, appended
+      --  as AHA.Memory_Label (ACPI_Binding, K).
+      ACPI_Memory_Words : array (AHA.Memory_Window_Number) of Unsigned_64 := [others => ST.No_Handle];
+      ACPI_Memory_Total : Natural range 0 .. AHA.Maximum_Memory_Windows := 0;
       ACPI_Binding : ST.Name;
       use type CuBit.Render_Startup.Requirement, CuBit.Render_Startup.Attempt;
       -- Transitional installed-system-app policy, like Desktop_Approval for
@@ -3158,13 +3162,72 @@ procedure main is
                   end;
                   exit when Outcome /= SB.Granted;
                end loop;
-               if Outcome = SB.Granted and then ACPI_Window_Total = 0 then
-                  Outcome := SB.Not_Available;
-                  Warnings.Warn ("procmgr: ACPI hardware refused: no admissible window for " & name);
-               end if;
+               --  The firmware-memory windows (slice 2): devmgr's ACPI NVS
+               --  runs and FACS page, each the kernel's root exactly,
+               --  installed read-write without grant, until devmgr has no
+               --  further window. Each must fit the child's startup table.
                if Outcome = SB.Granted then
-                  Handle := ACPI_Window_Words (1);
-                  ACPI_Binding := Item.Label;
+                  for K in AHA.Memory_Window_Number loop
+                     declare
+                        Request : Message := NULL_MESSAGE;
+                        Received : HIPC.Carried;
+                        Tag : MessageTag;
+                        Placed : SB.Mint_Outcome := SB.Not_Available;
+                        Word : Unsigned_64 := ST.No_Handle;
+                     begin
+                        Request.tag := (label => AX.Memory_Window_Request, length => AX.Request_Words,
+                                        protocol => 0, ipc => <>, reserved => 0);
+                        Request.words (AX.Window_Word) := Unsigned_64 (K);
+                        Tag := HIPC.Call_Accepting
+                          (PH.Device_Manager, Request, CuBit.Messages.Wait_Forever, Received);
+                        exit when Tag.label /= AX.Reply_OK;
+                        if View.Declared.Count + SB.Self_Entries + ACPI_Window_Total + K
+                             > ST.Maximum_Entries
+                        then
+                           Placed := SB.Limit_Reached;
+                        else
+                           declare
+                              Taken : constant HIPC.Accepted_Device_Memory :=
+                                HIPC.Accept_Device_Memory (Received);
+                              Ignore : HIPC.Close_Result;
+                           begin
+                              if Taken.OK then
+                                 Install (Copy (Taken.Value, H.Read_Write), Word, Placed);
+                                 Ignore := HIPC.Close (Taken.Value);
+                              end if;
+                           end;
+                        end if;
+                        if Placed = SB.Granted then
+                           ACPI_Memory_Total := K;
+                           ACPI_Memory_Words (K) := Word;
+                           debugPrint ("procmgr: ACPI memory window" & Natural'Image (K) &
+                                       " installed for " & name & LF);
+                        else
+                           Outcome := (if Placed in SB.Limit_Reached | SB.Out_Of_Memory then Placed
+                                       else SB.Not_Available);
+                           Warnings.Warn ("procmgr: ACPI hardware refused: " & name &
+                                          "'s firmware-memory window" & Natural'Image (K) &
+                                          " could not be installed");
+                        end if;
+                        exit when Outcome /= SB.Granted;
+                     end;
+                  end loop;
+               end if;
+               --  A grant is never empty: at least one I/O or memory window
+               --  (a hardware-reduced platform has no fixed I/O blocks). The
+               --  declared entry holds the first one's handle.
+               if Outcome = SB.Granted then
+                  case AHA.Declared_Holds (ACPI_Window_Total, ACPI_Memory_Total) is
+                     when AHA.First_IO_Window =>
+                        Handle := ACPI_Window_Words (1);
+                        ACPI_Binding := Item.Label;
+                     when AHA.First_Memory_Window =>
+                        Handle := ACPI_Memory_Words (1);
+                        ACPI_Binding := Item.Label;
+                     when AHA.No_Window =>
+                        Outcome := SB.Not_Available;
+                        Warnings.Warn ("procmgr: ACPI hardware refused: no admissible window for " & name);
+                  end case;
                end if;
             end if;
          end if;
@@ -3812,6 +3875,26 @@ procedure main is
                Built.Entries (Built.Count) :=
                  (Label => Label, Kind => ST.IO_Ports, Requirement => ST.Required,
                   State => ST.Granted, Handle => ACPI_Window_Words (K));
+            end;
+         end loop;
+         for K in 1 .. ACPI_Memory_Total loop
+            declare
+               Label : constant ST.Name := ST.To_Name
+                 (AHA.Memory_Label (String (ACPI_Binding.Text (1 .. ACPI_Binding.Length)), K));
+            begin
+               if Built.Count = ST.Maximum_Entries or else ST.Find (Built, Label) /= 0
+                 or else not ST.Valid_Name (Label)
+               then
+                  Warnings.Warn ("procmgr: launch of " & name &
+                                 " refused: its ACPI memory window names do not fit its startup table");
+                  Failure := LA.Startup_Table_Invalid;
+                  Discard_Authorized_Child;
+                  return No_Process;
+               end if;
+               Built.Count := Built.Count + 1;
+               Built.Entries (Built.Count) :=
+                 (Label => Label, Kind => ST.Device_Memory, Requirement => ST.Required,
+                  State => ST.Granted, Handle => ACPI_Memory_Words (K));
             end;
          end loop;
          ST.Encode (Built, Encoded, Encoded_Length);

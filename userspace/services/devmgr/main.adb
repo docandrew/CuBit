@@ -2096,6 +2096,31 @@ procedure main is
       end if;
    end Give_ACPI_Window;
 
+   --  procmgr asks for ACPI firmware-memory window K (CuBit.ACPI_Window_
+   --  Exchange, Memory_Window_Request): the K-th root claimed for ACPI at
+   --  start (Devmgr_Authority), whole, with read, write and grant.
+   procedure Give_ACPI_Memory_Window (From : Process_ID; Msg : Message) is
+      package AX renames CuBit.ACPI_Window_Exchange;
+      K : constant Unsigned_64 := Msg.words (AX.Window_Word);
+   begin
+      if K not in 1 .. Unsigned_64 (Devmgr_Authority.ACPI_Window_Count) then
+         Refuse (From, Answered => False);   --  the windows end
+         return;
+      end if;
+      declare
+         W : constant Devmgr_Authority.ACPI_Window := Devmgr_Authority.ACPI_Window_At (Positive (K));
+      begin
+         if not Answer_With (From, [W.First, W.Bytes, 0, 0], AX.Request_Words,
+                             H.Copy (W.Memory, Read_Write_Grant))
+         then
+            Warnings.Warn ("devmgr: ACPI memory window " & Hex (W.First) & " not transferred");
+         else
+            debugPrint ("devmgr: ACPI memory window " & Hex (W.First) & " +" & Hex (W.Bytes) &
+                        " granted" & LF);
+         end if;
+      end;
+   end Give_ACPI_Memory_Window;
+
    ---------------------------------------------------------------------------
    -- Setup the NVMe driver of inventory entry I: PCI config, DMA,
    -- capabilities, for that controller alone.
@@ -3449,6 +3474,24 @@ begin
    end if;
    Root := Devmgr_Authority.Roots;
    Devmgr_Port_Claims.Initialize (Port_Claims);
+   for K in 1 .. Devmgr_Authority.ACPI_Window_Count loop
+      declare
+         W : constant Devmgr_Authority.ACPI_Window := Devmgr_Authority.ACPI_Window_At (K);
+      begin
+         --  From here on no device-memory range touching it is covered.
+         if Devmgr_Authority.Covered (W.First, W.Bytes) then
+            Warnings.Warn ("devmgr: ACPI memory window " & Hex (W.First) &
+                           " still open to device memory");
+         else
+            debugPrint ("devmgr: ACPI memory window " & Hex (W.First) & " +" & Hex (W.Bytes) &
+                        " claimed, closed to device memory" & LF);
+         end if;
+      end;
+   end loop;
+   if Devmgr_Authority.ACPI_Windows_Refused > 0 then
+      Warnings.Warn ("devmgr: firmware-memory roots not claimed for ACPI:" &
+                     Natural'Image (Devmgr_Authority.ACPI_Windows_Refused));
+   end if;
    DL.Configure (Root.Process_Root, Root.Notifications);
    declare
       Accepted : Boolean;
@@ -4574,6 +4617,13 @@ begin
         and then msg.authorityTag = Intel_GPU_Broker_Request.Authority_Tag
       then
          Give_ACPI_Window (from, msg);
+      elsif msg.tag = (label => CuBit.ACPI_Window_Exchange.Memory_Window_Request,
+                       length => CuBit.ACPI_Window_Exchange.Request_Words, protocol => 0,
+                       ipc => Accepting, reserved => 0)
+        and then procmgrPID /= No_Process and then from = procmgrPID
+        and then msg.authorityTag = Intel_GPU_Broker_Request.Authority_Tag
+      then
+         Give_ACPI_Memory_Window (from, msg);
       elsif msg.tag = (label => CuBit.Disk_Install.Open_Disk,
                        length => CuBit.Disk_Install.Open_Words, protocol => 0,
                        ipc => Accepting, reserved => 0)

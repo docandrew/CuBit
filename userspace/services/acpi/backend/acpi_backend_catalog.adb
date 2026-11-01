@@ -245,4 +245,11 @@ package body ACPI_Backend_Catalog is
       end loop;
       return Item;
    end Observe;
+   function Describe_Window (State : Context; ID : W.Window_ID) return W.Window_Result is
+     (Bindings.Describe (State.Windows, ID));
+   function Select_Access
+     (State : Context; ID : W.Window_ID; Space : P.Address_Space;
+      Address : Unsigned_64; Width : W.T.Access_Width; For_Write : Boolean)
+      return Bindings.Access_View is
+     (Bindings.Select_Access (State.Windows, ID, Space, Address, Width, For_Write));
 end ACPI_Backend_Catalog;

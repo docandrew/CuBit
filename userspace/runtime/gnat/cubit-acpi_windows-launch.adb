@@ -8,6 +8,7 @@ package body CuBit.ACPI_Windows.Launch with SPARK_Mode => Off is
    package ST renames CuBit.Startup_Tables;
    package HS renames CuBit.Handles.Startup;
    package Labels renames CuBit.ACPI_Hardware_Authority;
+   use type Labels.Declared_Source;
    use type CuBit.Handles.ABI.Kind;
 
    --  The port space's size (ports 0 .. 65535).
@@ -46,9 +47,42 @@ package body CuBit.ACPI_Windows.Launch with SPARK_Mode => Off is
             end;
          end;
       end loop;
+      --  The firmware-memory windows: whole pages the kernel's capability
+      --  covers, tagged as firmware memory.
+      for K in Labels.Memory_Window_Number loop
+         declare
+            Found : constant HS.Optional_Device_Memory :=
+              HS.Optional_Device_Memory_Named (Labels.Memory_Label (Label, K));
+         begin
+            exit when not Found.Present;
+            declare
+               What : constant CuBit.Handles.IPC.Description :=
+                 CuBit.Handles.IPC.Describe (Found.Value);
+            begin
+               if not What.Current
+                 or else What.Kind /= CuBit.Handles.ABI.Device_Memory
+                 or else not (What.Held.Read and then What.Held.Write)
+                 or else not CuBit.ACPI_Memory_Classes.Admits
+                               (What.Authority_Tag, What.Object, What.Parameter)
+               then
+                  return Empty;
+               end if;
+               Result.Memory (K) :=
+                 (Memory     => Found.Value,
+                  First_Page => What.Object / Page_Bytes,
+                  Pages      => What.Parameter / Page_Bytes,
+                  Kind       => CuBit.ACPI_Memory_Classes.Kind_Of (What.Authority_Tag),
+                  Cache      => CuBit.ACPI_Memory_Classes.Cache_Of
+                                  (CuBit.ACPI_Memory_Classes.Kind_Of (What.Authority_Tag)));
+               Result.Memory_Used := K;
+            end;
+         end;
+      end loop;
       --  The declared entry holds the first window's handle: a grant is
-      --  never empty, and is all or nothing.
-      if Result.IO_Used = 0 or else not Well_Formed (Result) then
+      --  never empty (an I/O or a memory window), and is all or nothing.
+      if Labels.Declared_Holds (Result.IO_Used, Result.Memory_Used) = Labels.No_Window
+        or else not Well_Formed (Result)
+      then
          return Empty;
       end if;
       return Result;

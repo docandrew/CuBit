@@ -382,6 +382,8 @@ package body Syscall.IPC is
         virtAddr : constant Integer_Address := Integer_Address (arg1);
         numPages : constant Unsigned_64 := arg2;
         capAllowed : Boolean;
+        -- Firmware memory (write-back), not device memory (uncached).
+        firmware : Boolean;
         ok : Boolean := True;
         -- arg4 names the CAP_DEVICE_MEM this mapping relies on.
         authority : constant Capabilities.Capability := deviceMemoryOf (callerPID, arg4);
@@ -414,12 +416,20 @@ package body Syscall.IPC is
 
         -- Device-mappable pages only (CAP-001): RAM, kernel memory, boot
         -- modules, ACPI memory and kernel MMIO are refused whatever
-        -- CAP_DEVICE_MEM the caller holds.
+        -- CAP_DEVICE_MEM the caller holds. Or, through a firmware-memory
+        -- capability only, whole firmware pages (ACPI NVS and the FACS
+        -- page), mapped write-back.
         capAllowed := Device_Memory_Authority.Authorize
           (authority, Physical_Range_Map.Kernel_Map,
            arg0, numPages * Unsigned_64 (Virtmem.PAGE_SIZE),
            (if arg3 = 0 then Device_Memory_Admission.Read_Write
             else Device_Memory_Admission.Read_Only));
+        firmware := not capAllowed and then Device_Memory_Authority.Authorize_Firmware
+          (authority, Physical_Range_Map.Kernel_Map,
+           arg0, numPages * Unsigned_64 (Virtmem.PAGE_SIZE),
+           (if arg3 = 0 then Device_Memory_Admission.Read_Write
+            else Device_Memory_Admission.Read_Only));
+        capAllowed := capAllowed or else firmware;
 
         if not capAllowed then
             Device_Memory_Diagnostics.Record_Denial
@@ -453,7 +463,10 @@ package body Syscall.IPC is
                     virt    => virtAddr +
                         Integer_Address (
                             i * Unsigned_64 (Virtmem.PAGE_SIZE)),
-                    flags   => (if arg3 = 1 then
+                    flags   => (if firmware then
+                                  (if arg3 = 1 then Virtmem.PG_USERDATARO
+                                   else Virtmem.PG_USERDATA)
+                                elsif arg3 = 1 then
                                   Virtmem.PG_USERIO and not Virtmem.PG_WRITABLE
                                 else Virtmem.PG_USERIO),
                     myP4    => Process.addrtab(callerPID),

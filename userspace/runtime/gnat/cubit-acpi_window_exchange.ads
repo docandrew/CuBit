@@ -23,6 +23,16 @@
 --  I/O-port capability covering exactly the range, with read, write and
 --  grant (procmgr installs a copy without grant); Reply_Error carries
 --  nothing.
+--
+--  Memory_Window_Request (slice 2): the same kind of call, words
+--  (Window_Word) = K (1 .. Maximum_Memory_Windows). devmgr answers with its
+--  K-th ACPI firmware-memory window, ascending by address: the kernel's
+--  firmware-memory root itself (an ACPI NVS run or the FACS page), claimed
+--  for ACPI since devmgr started, never narrowed or widened. REPLY_OK
+--  carries it with read, write and grant, and words (First_Word) = its first
+--  physical byte, words (Bytes_Word) = its length (procmgr installs a copy
+--  without grant; the program reads the extent back from the kernel, never
+--  these words). Reply_Error: there is no K-th window (the windows end).
 ------------------------------------------------------------------------------
 with Interfaces; use Interfaces;
 
@@ -36,6 +46,12 @@ package CuBit.ACPI_Window_Exchange with Pure, SPARK_Mode is
 
    --  An FADT block's length is one byte; an EC register is one port.
    Maximum_Window_Ports : constant := 255;
+
+   Memory_Window_Request : constant Unsigned_32 := 16#024C#;
+   Window_Word : constant := 0;
+   Bytes_Word  : constant := 1;
+   --  CuBit.ACPI_Windows.Maximum_Memory_Windows.
+   Maximum_Memory_Windows : constant := 16;
 
    Reply_OK    : constant Unsigned_32 := 16#F000#;
    Reply_Error : constant Unsigned_32 := 16#F001#;

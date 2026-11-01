@@ -392,6 +392,339 @@ procedure Authority_Tests is
    end Oracle;
 
 
+   --  Firmware memory (the ACPI hardware grant, slice 2): which pages a
+   --  firmware-memory capability maps, the firmware roots the kernel mints,
+   --  and that the two authorities never cross.
+   procedure Firmware is
+      --  Firmware memory of either kind.
+      function Any_Firmware (M : Map; Base, Bytes : Unsigned_64) return Boolean is
+        (Firmware_Bytes (M, Base, Bytes, NVS_Memory)
+         or else Firmware_Bytes (M, Base, Bytes, Control_Memory));
+      function Firmware_Cap (Base, Bytes : Unsigned_64;
+                             Rights : CapabilityRights := Capabilities.READ_WRITE;
+                             Tag : Authority_Tag := FIRMWARE_NVS_TAG)
+        return Capability is
+        ((capType => CAP_DEVICE_MEM, rights => Rights, authorityTag => Tag,
+          object => (ref => Base, param => Bytes), gen => INITIAL_GENERATION));
+      function Device_Cap (Base, Bytes : Unsigned_64) return Capability is
+        ((capType => CAP_DEVICE_MEM, rights => Capabilities.READ_WRITE,
+          authorityTag => NO_AUTHORITY_TAG,
+          object => (ref => Base, param => Bytes), gen => INITIAL_GENERATION));
+      R : Firmware_Run_Array;
+      N : Firmware_Root_Count;
+      Left : Natural;
+
+      --  The laptop's map (coordinator, 2026-10-31): one 12,208-page NVS
+      --  run below a device-reserved span; the FACS somewhere in the NVS.
+      NVS_First  : constant Unsigned_64 := 16#3EB7_F000#;
+      NVS_Last   : constant Unsigned_64 := 16#41B2_EFFF#;
+      Dev_First  : constant Unsigned_64 := 16#41C0_0000#;
+      Dev_Last   : constant Unsigned_64 := 16#47FF_FFFF#;
+      SANV_Page  : constant Unsigned_64 := 16#41AE_3000#;
+      L : Map := Empty_Map;
+      --  SeaBIOS q35: no NVS; the ACPI tables and the FACS in a reserved
+      --  span at the top of RAM.
+      Top_First  : constant Unsigned_64 := 16#0FFE_0000#;
+      Top_Last   : constant Unsigned_64 := 16#0FFF_FFFF#;
+      FACS_Q35   : constant Unsigned_64 := 16#0FFE_0040#;
+      S : Map := Empty_Map;
+      --  Coalescing, alignment and refusals on one synthetic map.
+      C : Map := Empty_Map;
+   begin
+      Add (L, 16#10_0000#, NVS_First - 1, Usable_RAM);
+      Add (L, NVS_First, NVS_Last, ACPI_NVS);
+      Add (L, Dev_First, Dev_Last, Firmware_Reserved);
+      Add (L, 16#1_0000_0000#, 16#2_7FFF_FFFF#, Usable_RAM);
+      Add (L, 0, Low_Memory_Limit - 1, Low_Memory);
+      Set_Control (L, 16#41AE_5000#);
+      Seal (L);
+      Firmware_Runs (L, R, N, Left);
+      Expect (N = 1 and then Left = 0, "laptop: one firmware root");
+      Expect (R (1).First = NVS_First and then R (1).Last = NVS_Last,
+              "laptop: the root is exactly the NVS run");
+      Expect ((R (1).Last - R (1).First + 1) / Page = 12_208, "laptop: 12,208 pages");
+      Expect (Any_Firmware (L, SANV_Page, Page), "laptop: SANV page is firmware memory");
+      Expect (R (1).Kind = NVS_Memory
+              and then Firmware_Bytes (L, SANV_Page, Page, NVS_Memory)
+              and then not Firmware_Bytes (L, SANV_Page, Page, Control_Memory),
+              "laptop: the NVS run is NVS memory, not the control page");
+      --  A FACS inside the NVS run is mapped through the NVS root: no
+      --  control root is minted for it (N = 1 above).
+      Expect (Firmware_Bytes (L, 16#41AE_5000#, Page, NVS_Memory),
+              "laptop: a FACS inside NVS is in the NVS root");
+      Expect (Any_Firmware (L, NVS_First, NVS_Last - NVS_First + 1), "laptop: whole NVS run");
+      Expect (not Any_Firmware (L, NVS_First - Page, Page), "laptop: RAM page below NVS refused");
+      Expect (not Any_Firmware (L, NVS_First - Page, 2 * Page), "laptop: one page into RAM refused");
+      Expect (not Any_Firmware (L, NVS_Last + 1, Page), "laptop: page above NVS refused");
+      Expect (not Any_Firmware (L, Dev_First, Page), "laptop: device-reserved span is not firmware");
+      Expect (not Any_Firmware (L, SANV_Page + 16#418#, Page), "laptop: unaligned range refused");
+      Expect (not Device_Bytes (L, SANV_Page, Page), "laptop: NVS is never device memory");
+      Expect (Device_Bytes (L, Dev_First, Page), "laptop: device-reserved stays device memory");
+      --  Authorization: only a firmware capability, only firmware pages.
+      Expect (Authorize_Firmware (Firmware_Cap (NVS_First, NVS_Last - NVS_First + 1), L,
+                                  SANV_Page, Page, Read_Write), "firmware cap maps an NVS page");
+      Expect (Authorize_Firmware (Firmware_Cap (NVS_First, NVS_Last - NVS_First + 1,
+                                                Capabilities.READ_ONLY),
+                                  L, SANV_Page, Page, Read_Only), "read-only firmware cap, read-only");
+      Expect (not Authorize_Firmware (Firmware_Cap (NVS_First, NVS_Last - NVS_First + 1,
+                                                    Capabilities.READ_ONLY),
+                                      L, SANV_Page, Page, Read_Write),
+              "read-only firmware cap, write refused");
+      Expect (not Authorize_Firmware (Firmware_Cap (SANV_Page, Page), L, SANV_Page + Page, Page,
+                                      Read_Write),
+              "firmware cap: page past the capability refused");
+      Expect (not Authorize (Device_Cap (0, 4 * GiB), L, SANV_Page, Page, Read_Write),
+              "device cap covering NVS refused");
+      Expect (not Authorize_Firmware (Device_Cap (NVS_First, NVS_Last - NVS_First + 1), L,
+                                      SANV_Page, Page, Read_Write),
+              "untagged cap is not firmware authority");
+      Expect (not Authorize (Firmware_Cap (Dev_First, Dev_Last - Dev_First + 1), L, Dev_First, Page,
+                             Read_Write),
+              "firmware cap is not device authority");
+      Expect (not Authorize_Firmware (Firmware_Cap (Dev_First, Dev_Last - Dev_First + 1), L,
+                                      Dev_First, Page, Read_Write), "firmware cap: device page refused");
+      Expect (not Authorize_Firmware (Firmware_Cap (0, 8 * GiB), L, 16#0400_0000#, Page, Read_Write),
+              "firmware cap: RAM refused");
+      Expect (not Authorize_Firmware (Firmware_Cap (0, 8 * GiB), L, 0, Page, Read_Write),
+              "firmware cap: low memory refused");
+      declare
+         T : Capability := Firmware_Cap (NVS_First, NVS_Last - NVS_First + 1);
+      begin
+         T.authorityTag := FIRMWARE_CONTROL_TAG + 1;
+         Expect (not Authorize_Firmware (T, L, SANV_Page, Page, Read_Write), "other tag refused");
+         T.capType := CAP_IOPORT;
+         T.authorityTag := FIRMWARE_NVS_TAG;
+         Expect (not Authorize_Firmware (T, L, SANV_Page, Page, Read_Write), "other kind refused");
+      end;
+      Expect (not Any_Firmware (L, SANV_Page, 0), "zero size");
+      Expect (not Any_Firmware (L, Unsigned_64'Last - 4095, 8192), "wrapping");
+      Expect (not Any_Firmware (L, Address_Limit, Page), "at the physical limit");
+
+      --  q35: the FACS page alone, though its span is reserved.
+      Add (S, 16#10_0000#, Top_First - 1, Usable_RAM);
+      Add (S, Top_First, Top_Last, Firmware_Reserved);
+      Add (S, 16#B000_0000#, 16#BFFF_FFFF#, Firmware_Reserved);
+      Add (S, 0, Low_Memory_Limit - 1, Low_Memory);
+      Set_Control (S, FACS_Q35);
+      Seal (S);
+      Firmware_Runs (S, R, N, Left);
+      Expect (N = 1 and then Left = 0, "q35: one firmware root");
+      Expect (R (1).First = Top_First and then R (1).Last = Top_First + Page - 1,
+              "q35: the root is exactly the FACS page");
+      Expect (Any_Firmware (S, Top_First, Page), "q35: FACS page is firmware memory");
+      Expect (R (1).Kind = Control_Memory
+              and then Firmware_Bytes (S, Top_First, Page, Control_Memory)
+              and then not Firmware_Bytes (S, Top_First, Page, NVS_Memory),
+              "q35: the FACS page is the control kind, never NVS");
+      Expect (Authorize_Firmware (Firmware_Cap (Top_First, Page, Tag => FIRMWARE_CONTROL_TAG), S,
+                                  Top_First, Page, Read_Write)
+              and then not Authorize_Firmware (Firmware_Cap (Top_First, Page), S,
+                                               Top_First, Page, Read_Write),
+              "q35: only the control tag maps the FACS page");
+      Expect (Device_Memory_Authority.Kind_Of (FIRMWARE_NVS_TAG) = NVS_Memory
+              and then Device_Memory_Authority.Kind_Of (FIRMWARE_CONTROL_TAG) = Control_Memory
+              and then Device_Memory_Authority.Tag_Of (NVS_Memory) = FIRMWARE_NVS_TAG
+              and then Device_Memory_Authority.Tag_Of (Control_Memory) = FIRMWARE_CONTROL_TAG
+              and then not Device_Memory_Authority.Firmware_Tag (NO_AUTHORITY_TAG),
+              "tags name the kinds");
+      Expect (not Any_Firmware (S, Top_First + Page, Page), "q35: the rest of the span is not");
+      Expect (not Any_Firmware (S, 16#B000_0000#, Page), "q35: ECAM is not firmware memory");
+      Expect (not Any_Firmware (S, Top_First, 2 * Page), "q35: FACS page plus one refused");
+      --  Without a FACS, or with one in RAM or ACPI tables: no roots.
+      declare
+         M : Map := Empty_Map;
+      begin
+         Add (M, 16#10_0000#, Top_First - 1, Usable_RAM);
+         Add (M, Top_First, Top_Last, ACPI_Tables);
+         Set_Control (M, Top_First);
+         Seal (M);
+         Firmware_Runs (M, R, N, Left);
+         Expect (N = 0, "FACS in ACPI tables: no root");
+         M := Empty_Map;
+         Add (M, 16#10_0000#, Top_First - 1, Usable_RAM);
+         Set_Control (M, 16#0400_0040#);
+         Seal (M);
+         Firmware_Runs (M, R, N, Left);
+         Expect (N = 0, "FACS in RAM: no root");
+         M := Empty_Map;
+         Add (M, Top_First, Top_Last, Firmware_Reserved);
+         Set_Control (M, FACS_Q35);
+         Firmware_Runs (M, R, N, Left);
+         Expect (N = 0, "unsealed map: no roots");
+         Add (M, 16#2000_0000#, 16#2000_0FFF#, ACPI_NVS);
+         Expect (not Any_Firmware (M, 16#2000_0000#, Page), "unsealed map: no firmware memory");
+         Invalidate (M);
+         Seal (M);
+         Expect (not Any_Firmware (M, 16#2000_0000#, Page), "incomplete map: no firmware memory");
+         M := Empty_Map;
+         Add (M, Top_First, Top_Last, Firmware_Reserved);
+         Set_Control (M, Address_Limit);
+         Expect (not M.Control_Known, "a FACS beyond the physical limit is ignored");
+         M := Empty_Map;
+         Add (M, Top_First, Top_Last, Firmware_Reserved);
+         Add (M, Top_First, Top_First + 16#FF#, Kernel_MMIO);
+         Set_Control (M, FACS_Q35);
+         Seal (M);
+         Firmware_Runs (M, R, N, Left);
+         Expect (N = 0, "FACS page shared with kernel MMIO: no root");
+      end;
+
+      --  Coalescing, page alignment, overlap and sub-page refusals.
+      Add (C, 16#0F00_0000#, 16#1000_07FF#, Usable_RAM);          -- shares page 0x10000
+      Add (C, 16#1000_0800#, 16#1000_2FFF#, ACPI_NVS);            -- whole pages 0x10001..2
+      Add (C, 16#1000_3000#, 16#1000_4FFF#, ACPI_NVS);            -- adjacent: coalesced
+      Add (C, 16#2000_0000#, 16#2000_3FFF#, ACPI_NVS);            -- overlapped below
+      Add (C, 16#2000_2000#, 16#2000_2FFF#, Boot_Module);
+      Add (C, 16#3000_0100#, 16#3000_0EFF#, ACPI_NVS);            -- no whole page
+      Add (C, 16#4000_0000#, 16#4000_0FFF#, ACPI_NVS);
+      Add (C, 16#4000_1000#, 16#4000_1FFF#, ACPI_Tables);         -- adjacent other class
+      Set_Control (C, 16#2000_0010#);                              -- in an NVS root
+      Seal (C);
+      Firmware_Runs (C, R, N, Left);
+      Expect (N = 4 and then Left = 0, "synthetic: four roots");
+      Expect (R (1) = (First => 16#1000_1000#, Last => 16#1000_4FFF#, Kind => NVS_Memory),
+              "adjacent NVS spans coalesced, never rounded into RAM");
+      Expect (R (2) = (First => 16#2000_0000#, Last => 16#2000_1FFF#, Kind => NVS_Memory),
+              "NVS run ends before a page another class touches");
+      Expect (R (3) = (First => 16#2000_3000#, Last => 16#2000_3FFF#, Kind => NVS_Memory),
+              "and resumes after it");
+      Expect (R (4) = (First => 16#4000_0000#, Last => 16#4000_0FFF#, Kind => NVS_Memory),
+              "single NVS page, not extended into ACPI tables");
+      Expect (not Any_Firmware (C, 16#1000_0000#, Page), "page shared with RAM refused");
+      Expect (not Any_Firmware (C, 16#2000_2000#, Page), "page a boot module touches refused");
+      Expect (Any_Firmware (C, 16#2000_3000#, Page), "the next NVS page is firmware memory");
+      Expect (not Any_Firmware (C, 16#3000_0000#, Page), "sub-page NVS refused");
+      Expect (not Any_Firmware (C, 16#4000_1000#, Page), "ACPI tables refused");
+
+      --  Capacity: more runs than roots.
+      declare
+         M : Map := Empty_Map;
+      begin
+         for I in 0 .. Unsigned_64 (Max_Firmware_Roots + 1) loop
+            Add (M, 16#5000_0000# + I * 16#10_0000#, 16#5000_0FFF# + I * 16#10_0000#, ACPI_NVS);
+         end loop;
+         Seal (M);
+         Firmware_Runs (M, R, N, Left);
+         Expect (N = Max_Firmware_Roots and then Left = 2, "runs past the roots left out");
+         Expect (R (1).First = 16#5000_0000#
+                 and then (for all I in 2 .. N => R (I - 1).Last < R (I).First),
+                 "roots ascending");
+         --  A run too long to grant is left out whole.
+         M := Empty_Map;
+         Add (M, 16#1_0000_0000#,
+              16#1_0000_0000# + Unsigned_64 (Max_Firmware_Run_Pages + 1) * Page - 1, ACPI_NVS);
+         Seal (M);
+         Firmware_Runs (M, R, N, Left);
+         Expect (N = 0 and then Left = 1, "over-long run left out whole");
+         --  ... but the FACS page in it keeps a root of its own.
+         M := Empty_Map;
+         Add (M, 16#1_0000_0000#,
+              16#1_0000_0000# + Unsigned_64 (Max_Firmware_Run_Pages + 1) * Page - 1, ACPI_NVS);
+         Set_Control (M, 16#1_0000_2040#);
+         Seal (M);
+         Firmware_Runs (M, R, N, Left);
+         Expect (N = 1 and then Left = 1
+                 and then R (1) = (First => 16#1_0000_2000#, Last => 16#1_0000_2FFF#, Kind => Control_Memory),
+                 "FACS page of a left-out run is its own root");
+      end;
+   end Firmware;
+
+   --  Independent oracle for the firmware roots on small random maps:
+   --  every root is whole NVS pages (or the admitted FACS page alone),
+   --  roots ascend and are maximal, and every NVS page is in a root.
+   procedure Firmware_Oracle is
+      Pages : constant := 40;
+      Seed : Unsigned_64 := 16#9E37_79B9_7F4A_7C15#;
+      function Next return Unsigned_64 is
+      begin
+         Seed := Seed xor Shift_Left (Seed, 13);
+         Seed := Seed xor Shift_Right (Seed, 7);
+         Seed := Seed xor Shift_Left (Seed, 17);
+         return Seed;
+      end Next;
+      Kinds : constant array (0 .. 4) of Range_Class :=
+        [ACPI_NVS, ACPI_NVS, Firmware_Reserved, Usable_RAM, ACPI_Tables];
+      type Span_List is array (1 .. 8) of Span;
+   begin
+      for Round in 1 .. 3000 loop
+         declare
+            M : Map := Empty_Map;
+            List : Span_List;
+            Spans : constant Natural := Natural (Next mod 8) + 1;
+            R : Firmware_Run_Array;
+            N : Firmware_Root_Count;
+            Left : Natural;
+            First, Last : Unsigned_64;
+            K : Range_Class;
+            Control : constant Unsigned_64 := Next mod (Pages * Page);
+
+            --  Page P by brute force: every touching span NVS (or, for the
+            --  FACS page, firmware-reserved), and one holds it whole.
+            function Whole (P : Unsigned_64; Admit : Boolean) return Boolean is
+               Held : Boolean := False;
+            begin
+               for I in 1 .. Spans loop
+                  if List (I).First / Page <= P and then P <= List (I).Last / Page then
+                     if List (I).Class /= ACPI_NVS
+                       and then not (Admit and then List (I).Class = Firmware_Reserved)
+                     then
+                        return False;
+                     end if;
+                     if List (I).First <= P * Page and then P * Page + Page - 1 <= List (I).Last then
+                        Held := True;
+                     end if;
+                  end if;
+               end loop;
+               return Held;
+            end Whole;
+            function NVS (P : Unsigned_64) return Boolean is (Whole (P, False));
+         begin
+            for I in 1 .. Spans loop
+               First := Next mod (Pages * Page);
+               Last := Unsigned_64'Min (First + Next mod (5 * Page), Pages * Page - 1);
+               K := Kinds (Natural (Next mod 5));
+               List (I) := (First => First, Last => Last, Class => K);
+               Add (M, First, Last, K);
+            end loop;
+            Set_Control (M, Control);
+            Seal (M);
+            Firmware_Runs (M, R, N, Left);
+            declare
+               function In_Root (P : Unsigned_64) return Boolean is
+                 (for some I in 1 .. N => R (I).First / Page <= P and then P <= R (I).Last / Page);
+            begin
+               Expect (Left = 0, "oracle: nothing left out");
+               for I in 1 .. N loop
+                  Expect (Firmware_Range (M, R (I).First, R (I).Last, R (I).Kind),
+                          "oracle: root is firmware memory");
+                  if I > 1 then
+                     Expect (R (I - 1).Last < R (I).First, "oracle: roots ascend");
+                  end if;
+                  for P in R (I).First / Page .. R (I).Last / Page loop
+                     Expect ((if R (I).Kind = NVS_Memory then NVS (P)
+                              else P = Control / Page and then R (I).Last - R (I).First = Page - 1
+                                   and then Whole (P, True)),
+                             "oracle: NVS roots are NVS pages, a control root the FACS page alone");
+                  end loop;
+                  if R (I).Kind = NVS_Memory then
+                     if R (I).First >= Page then
+                        Expect (not NVS (R (I).First / Page - 1), "oracle: root maximal below");
+                     end if;
+                     Expect (not NVS (R (I).Last / Page + 1), "oracle: root maximal above");
+                  end if;
+               end loop;
+               for P in 0 .. Unsigned_64 (Pages) loop
+                  if NVS (P) then
+                     Expect (In_Root (P), "oracle: every NVS page is in a root");
+                  end if;
+               end loop;
+               Expect ((not Whole (Control / Page, True)) or else In_Root (Control / Page),
+                       "oracle: an admitted FACS page is in a root");
+            end;
+         end;
+      end loop;
+   end Firmware_Oracle;
+
    --  Denial explanations (the kernel's records) and the reader's ring
    --  arithmetic.
    procedure Explanations is
@@ -458,6 +791,8 @@ begin
    Authorization;
    Attenuation;
    Oracle;
+   Firmware;
+   Firmware_Oracle;
    Explanations;
    if Failures = 0 then
       Ada.Text_IO.Put_Line ("PASS: device-memory authority" & Natural'Image (Checks) & " checks");

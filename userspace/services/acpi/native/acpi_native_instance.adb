@@ -20,6 +20,7 @@ with ACPI_Service;
 with ACPI_Device_Initialization;
 with ACPI_Device_Policy;
 with ACPI_Unprovisioned_Regions;
+with AML_Execute;
 with ACPI_Native_Evaluation;
 with ACPI_Native_Fields;
 with ACPI_Native_Snapshot_Load.With_Driver;
@@ -129,6 +130,11 @@ package body ACPI_Native_Instance is
          if Result.Startup.Status = L.Startup_Refused then
             ACPI_Native_Log.Warning
               (ACPI_Startup_Diagnostics.Format (Result.Startup.Completion));
+            ACPI_Native_Log.Warning
+              ("acpi: stage aml-limits ok CONFIGURED nodes=" &
+               Positive'Image (ACPI_Service.Max_Namespace_Nodes) &
+               " method-bytes=" & ACPI_Service.Namespace.Aggregate_Method_Count'Last'Image &
+               " single-method=" & Positive'Image (AML_Execute.Max_Method_Bytes));
          end if;
          if Result.Last_Copy.Available then
             ACPI_Native_Log.Warning

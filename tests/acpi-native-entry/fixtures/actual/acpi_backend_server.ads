@@ -16,12 +16,24 @@ generic
    with procedure Handle_Event
      (Publisher : CuBit.Messages.Process_ID; Item : CuBit.Messages.Message; Stop : out Boolean);
    with procedure Quarantine_Notice (Item : Catalog.Statistics);
+   -- Optional protocol owned by the same serialized receive loop. Leave
+   -- Handled false for unknown labels; consume malformed owned labels too.
+   -- No receiver, retry or reentrant dispatch may be introduced here.
+   with procedure Handle_Additional_Request
+     (From : CuBit.Messages.Process_ID; Request : CuBit.Messages.Message; Response : in out CuBit.Messages.Message;
+      Handled : in out Boolean) is null;
+   -- Runs between completed requests, before polling new work. A finite
+   -- absolute MONOTONIC MILLISECOND deadline schedules the next maintenance
+   -- wake; never cast a microsecond lease deadline without unit conversion.
+   -- Both inputs reset each iteration. Null preserves Wait_Forever.
+   with procedure Maintain
+     (Deadline : in out Interfaces.Unsigned_64; Proceed : in out Boolean) is null;
 package ACPI_Backend_Server is
-   type Reason is (Not_Running, Stop_Requested, Unexpected_Completion, Wait_Unavailable, Unexpected_Deadline);
+   type Reason is (Not_Running, Stop_Requested, Unexpected_Completion, Wait_Unavailable, Unexpected_Deadline, Maintenance_Stopped);
    type Counter is new Interfaces.Unsigned_64;
    type Report is record
       Status : Reason := Not_Running;
-      Requests, Lost_Replies, Events : Counter := 0;
+      Requests, Lost_Replies, Events, Deadline_Wakes : Counter := 0;
       Counter_Saturated, Quarantine_Noted : Boolean := False;
    end record;
    -- One serialized backend loop; received stamps and full process identities

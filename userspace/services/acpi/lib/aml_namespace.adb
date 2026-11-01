@@ -10855,7 +10855,7 @@ package body Owned with SPARK_Mode is
             if E.Field_Uncertain.Present or else Pending (IO)
               or else not Key_Matches (E, Key) then return; end if;
             Describe_Target (IO, Target, Geometry, Allowed);
-            if not Allowed or else not AML_Register_Views.Admitted (Geometry_Of (E, Key), Geometry)
+            if not Allowed or else not AML_Register_Views.Admitted (Geometry_Of (E, Key), Geometry, Allow_Locked_NVS_Reads)
             then return; end if;
             Item := (Field => Key.Field, Region => Key.Region, Target => Target,
                      Geometry => Geometry, others => <>);
@@ -10864,7 +10864,7 @@ package body Owned with SPARK_Mode is
                -- result required when this field exceeds the AML integer width.
                declare
                   Field : constant AML_Field_Layout.Field_Geometry := Geometry_Of (E, Key);
-                  Plan : constant AML_Field_Plans.Plan := AML_Field_Plans.Prepare (Field);
+                  Plan : constant AML_Field_Plans.Plan := AML_Field_Plans.Prepare (Field, Allow_Locked_NVS_Reads);
                   First : constant AML_Field_Plans.Datum_Position := AML_Field_Plans.Datum_Position'First;
                begin
                   if not AML_Field_Plans.Valid (Plan) or else AML_Field_Plans.Count (Plan) /= 1
@@ -10988,7 +10988,7 @@ package body Owned with SPARK_Mode is
                if Items.Entries (I).Field = Key.Field then return; end if;
             end loop;
             Field := Geometry_Of (A.Inner, Key);
-            Plan := AML_Field_Plans.Prepare (Field);
+            Plan := AML_Field_Plans.Prepare (Field, Allow_Locked_NVS_Reads);
             if not AML_Field_Plans.Valid (Plan) or else AML_Field_Plans.Count (Plan) /= Count
             then return; end if;
             for Position in AML_Field_Plans.Datum_Position loop
@@ -11026,6 +11026,7 @@ package body Owned with SPARK_Mode is
                Plan : constant AML_Field_Plans.Plan := AML_Field_Plans.Prepare
                  (Candidate.Entries (Candidate.Count).Read_Field);
             begin
+               if not AML_Field_Plans.Valid (Plan) then return; end if;
                for Position in AML_Field_Plans.Datum_Position range 1 .. Count loop
                   Authorize_Target (IO, Targets (Position), True, Allowed);
                   if not Allowed then return; end if;
@@ -11068,7 +11069,8 @@ package body Owned with SPARK_Mode is
          function Binding_Accessible (E : Owned.Arena; Context : IO_Context; Item : Binding; Writing : Boolean) return Boolean is
                Current : AML_Field_Layout.Register_Geometry;
                Allowed : Boolean;
-               Field_Plan : constant AML_Field_Plans.Plan := AML_Field_Plans.Prepare (Item.Read_Field);
+               Field_Plan : constant AML_Field_Plans.Plan := AML_Field_Plans.Prepare
+                 (Item.Read_Field, Allow_Locked_NVS_Reads and then not Writing);
                procedure Check_Target (Target : AML_Field_Access.Target;
                  Expected : AML_Field_Layout.Register_Geometry; Write_Access : Boolean) is
                begin
@@ -11081,7 +11083,8 @@ package body Owned with SPARK_Mode is
                  or else not Key_Matches (E, Key_Of (Item)) then return False; end if;
                if Item.Read_Count = 0 then
                   Check_Target (Item.Target, Item.Geometry, Writing);
-                  return Allowed and then AML_Register_Views.Admitted (Geometry_Of (E, Key_Of (Item)), Current);
+                  return Allowed and then AML_Register_Views.Admitted (Geometry_Of (E, Key_Of (Item)), Current,
+                    Allow_Locked_NVS_Reads and then not Writing);
                end if;
                if (Writing and then not Item.Writes_Enabled)
                  or else Geometry_Of (E, Key_Of (Item)) /= Item.Read_Field
@@ -11143,7 +11146,8 @@ package body Owned with SPARK_Mode is
                if (For_Write and then not Item.Writes_Enabled)
                  or else Geometry_Of (E, Key_Of (Item)) /= Item.Read_Field then return; end if;
                declare
-                  Plan : constant AML_Field_Plans.Plan := AML_Field_Plans.Prepare (Item.Read_Field);
+                  Plan : constant AML_Field_Plans.Plan := AML_Field_Plans.Prepare
+                    (Item.Read_Field, Allow_Locked_NVS_Reads and then not For_Write);
                   Accumulator : AML_Decode.Integer_Value := 0;
                   procedure Read_Datums is
                   begin
@@ -11305,7 +11309,8 @@ package body Owned with SPARK_Mode is
             end if;
             Describe_Target (Context, Item.Target, Current, Allowed);
             if not Allowed or else Current /= Item.Geometry
-              or else not AML_Register_Views.Admitted (Geometry_Of (E, Key_Of (Item)), Current)
+              or else not AML_Register_Views.Admitted (Geometry_Of (E, Key_Of (Item)), Current,
+                Allow_Locked_NVS_Reads and then not For_Write)
               -- Qword bindings must use the planned path above, including its
               -- allocation-before-effects and width-dependent result handling.
               or else Current.Width = ACPI_FADT.Transactions.Qword_Access
@@ -11397,6 +11402,7 @@ package body Owned with SPARK_Mode is
                Node : Node_ID := Root;
                Info : Region_Field_Attributes;
                Writing : Boolean := False;
+               Transaction_Open : Boolean := False;
                Input, Accumulator, Pending_Value, Previous_Raw : AML_Decode.Integer_Value := 0;
                Position, Number : Composed_Datum_Count := 0;
                Next_Dependency : Natural range 0 .. 3 := 0;
@@ -11617,9 +11623,34 @@ package body Owned with SPARK_Mode is
             end Push_Into;
             procedure Push (Identity : Reference; Writing : Boolean; Number : AML_Decode.Integer_Value;
               Good : out Boolean) is
+               Lock_Mask : constant AML_Decode.Byte := 16#10#;
+               Child_Frame : constant Boolean := Top > 0;
             begin
                Push_Into (Stack, Top, Identity, Writing, Number, Good);
+               if not Good or else not Child_Frame then return; end if;
+               -- The root transaction belongs to Perform_Bound_Field. Each
+               -- executed child owns one nested scope; preflight opens none.
+               Good := (Stack (Top).Info.Raw_Flags and Lock_Mask) = 0;
+               Begin_Field (Context,
+                 (Stack (Top).Info.Raw_Flags and Lock_Mask) /= 0, Writing, Good);
+               if Good then
+                  Stack (Top).Transaction_Open := True;
+               else
+                  Top := Top - 1;
+                  Status := (if Pending (Context) then AML_Execute.Field_Indeterminate
+                    else AML_Execute.Unsupported_Value);
+               end if;
             end Push;
+            procedure Close_Top (Good : out Boolean) is
+            begin
+               Good := True;
+               if Stack (Top).Transaction_Open then
+                  Stack (Top).Transaction_Open := False;
+                  End_Field (Context, Good);
+               end if;
+               Top := Top - 1;
+               if not Good then Status := AML_Execute.Field_Indeterminate; end if;
+            end Close_Top;
             procedure Preflight (Identity : Reference; For_Writing : Boolean; Number : AML_Decode.Integer_Value; Good : out Boolean) is
                Frames : Frame_Array;
                Depth : Frame_Count := 0;
@@ -11825,6 +11856,7 @@ package body Owned with SPARK_Mode is
                end case;
             end Bank_Transfer;
             procedure Execute (Good : out Boolean) is
+               procedure Run (Good : out Boolean) is
                Accepted, Charged : Boolean;
                Child : Reference;
                Number : AML_Decode.Integer_Value;
@@ -11852,10 +11884,13 @@ package body Owned with SPARK_Mode is
                                  end if;
                                  Last_Scalar := Datum.Number;
                               else Last_Scalar := 0; end if;
-                              Top := Top - 1;
+                              Close_Top (Accepted);
+                              if not Accepted then Good := False; return; end if;
                            end;
                         elsif Stack (Top).Position = Stack (Top).Number then
-                           Last_Scalar := Stack (Top).Accumulator; Top := Top - 1;
+                           Last_Scalar := Stack (Top).Accumulator;
+                           Close_Top (Accepted);
+                           if not Accepted then Good := False; return; end if;
                         else
                            if Stack (Top).Info.Organization /= Indexed_Register_Field then
                               Select_Region_Target (Stack (Top), Selected, Accepted);
@@ -11898,6 +11933,17 @@ package body Owned with SPARK_Mode is
                   end case;
                end loop;
                Status := AML_Execute.Returned; Good := True;
+               end Run;
+               Closed : Boolean;
+            begin
+               Run (Good);
+               -- Unwind every accepted child scope after any normal early
+               -- return, including work exhaustion and uncertain dispatch.
+               while Top > 0 loop
+                  pragma Loop_Variant (Decreases => Top);
+                  Close_Top (Closed);
+                  if not Closed then Good := False; end if;
+               end loop;
             end Execute;
             Good : Boolean;
          begin
@@ -11962,11 +12008,11 @@ package body Owned with SPARK_Mode is
             Work_Allowance : AML_Execution_Limits.Field_Work_Count := Maximum_Work) is
             use type AML_Execution_Limits.Field_Work_Count;
             Remaining : AML_Execution_Limits.Field_Request_Count := Maximum_Requests;
-         begin
-            if E.Field_Uncertain.Present or else Pending (Context) then
-               Status := AML_Execute.Field_Indeterminate; return;
-            end if;
-            if Work_Allowance = 0 then Status := AML_Execute.Value_Limit; return; end if;
+            Lock_Mask : constant AML_Decode.Byte := 16#10#;
+            Requires_Lock : Boolean := False;
+            Accepted : Boolean;
+            procedure Run_Field is
+            begin
             if AML_References.Kind (Ref) = AML_References.Named_Cell
               and then Named_Identity_Matches (E, Ref)
             then
@@ -11979,6 +12025,38 @@ package body Owned with SPARK_Mode is
                end;
             end if;
             Perform_Direct_Field (E, Context, Items, Ref, Width, For_Write, Value, Status, Remaining);
+            end Run_Field;
+         begin
+            if E.Field_Uncertain.Present or else Pending (Context) then
+               Status := AML_Execute.Field_Indeterminate; return;
+            end if;
+            if Work_Allowance = 0 then Status := AML_Execute.Value_Limit; return; end if;
+            if AML_References.Kind (Ref) = AML_References.Named_Cell
+              and then Named_Identity_Matches (E, Ref)
+            then
+               declare
+                  N : constant Node_ID := Node_ID (AML_References.Named_Node (Ref));
+               begin
+                  if E.Tree.Items (N).Object_Type = Region_Field_Object then
+                     Requires_Lock :=
+                       (E.Tree.Items (N).Region_Field_Info.Raw_Flags and Lock_Mask) /= 0;
+                  end if;
+               end;
+            end if;
+            if Requires_Lock and then (For_Write or else not Allow_Locked_NVS_Reads) then
+               Status := AML_Execute.Unsupported_Value; return;
+            end if;
+            Accepted := not Requires_Lock;
+            Begin_Field (Context, Requires_Lock, For_Write, Accepted);
+            if not Accepted then
+               Status := (if Pending (Context) then AML_Execute.Field_Indeterminate
+                 else AML_Execute.Unsupported_Value);
+               return;
+            end if;
+            Run_Field;
+            Accepted := True;
+            End_Field (Context, Accepted);
+            if not Accepted then Status := AML_Execute.Field_Indeterminate; end if;
          end Perform_Bound_Field;
       procedure Execute_Registered_Modules
         (A : in out Arena; IO : in out IO_Context;
@@ -12015,6 +12093,22 @@ package body Owned with SPARK_Mode is
                end if;
                Allowed := Prepared.Owner = E.Token and then Prepared.Provider = Target.Provider;
             end Select_Provider;
+            procedure Resolve_Datum
+              (Desired : AML_Field_Layout.Register_Geometry;
+               Target : out AML_Field_Access.Target;
+               Geometry : out AML_Field_Layout.Register_Geometry; Allowed : out Boolean) is
+               Current : Boolean;
+            begin
+               Target := AML_Field_Access.No_Target; Geometry := (others => <>); Allowed := False;
+               Charge (Current); if not Current then return; end if;
+               Resolve_Module_Target (Context, Desired, Target, Allowed);
+               if Pending (Context) then
+                  Allowed := False; Status := AML_Execute.Field_Indeterminate; return;
+               end if;
+               if not Allowed or else Target = AML_Field_Access.No_Target then Allowed := False; return; end if;
+               Describe_Target (Context, Target, Geometry, Current);
+               Allowed := Current and then AML_Register_Views.Same_Transaction (Geometry, Desired);
+            end Resolve_Datum;
             procedure Bind_Direct (Node : Node_ID; Allowed : out Boolean) is
                Key : Field_Key := No_Field_Key;
                Candidate, Selected : Binding;
@@ -12041,7 +12135,7 @@ package body Owned with SPARK_Mode is
                   end if;
                end loop;
                if not Found then
-                  Field := Geometry_Of (E, Key); Plan := AML_Field_Plans.Prepare (Field);
+                  Field := Geometry_Of (E, Key); Plan := AML_Field_Plans.Prepare (Field, Allow_Locked_NVS_Reads);
                   if not AML_Field_Plans.Valid (Plan) then return; end if;
                   Selected := No_Binding;
                   Selected.Field := Key.Field; Selected.Region := Key.Region;
@@ -12060,6 +12154,12 @@ package body Owned with SPARK_Mode is
                            Selected.Read_Geometries (Datum) := Geometry;
                         end if;
                      end loop;
+                     if not Matched then
+                        declare D : constant AML_Field_Datums.Datum := AML_Field_Plans.Datum_At (Plan, Datum); begin
+                           Resolve_Datum ((Field.Region, AML_Decode.Integer_Value (D.Offset), D.Access_Width),
+                             Selected.Read_Targets (Datum), Selected.Read_Geometries (Datum), Matched);
+                        end;
+                     end if;
                      if not Matched or else Selected.Read_Targets (Datum).Provider /=
                        Selected.Read_Targets (AML_Field_Plans.Datum_Position'First).Provider then return; end if;
                   end loop;
@@ -12118,6 +12218,10 @@ package body Owned with SPARK_Mode is
                            Found := True; Chosen := Targets (Position); Chosen_Geometry := Register;
                         end if;
                      end loop;
+                     if not Found then
+                        Resolve_Datum ((Geometry.Region, AML_Decode.Integer_Value (D.Offset), D.Access_Width),
+                          Chosen, Chosen_Geometry, Found);
+                     end if;
                      if not Found then return; end if;
                      Select_Provider (Chosen, Current); if not Current then return; end if;
                      Duplicate := False;

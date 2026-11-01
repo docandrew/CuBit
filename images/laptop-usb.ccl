@@ -36,6 +36,9 @@
   (file optical "servo" "apps/cubitshell.app")
   (file optical "netmgr" "apps/netmgr.svc")
   (file optical "wifi" "apps/wifi.svc")
+  # ACPI: the AML frontend and the hardware backend (coordination/acpi-region-boundary.md).
+  (file optical "acpi" "apps/acpi.svc")
+  (file optical "acpi-backend" "apps/acpi-backend.svc")
   (file optical "procmgr" "apps/procmgr.svc")
   (file optical "logstore" "apps/logstore.svc")
   (file optical "clock" "apps/clock.svc")

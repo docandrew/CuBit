@@ -45,7 +45,8 @@ begin
          Process_Root => H (3), PCI_Ports => H (4), Registration => H (5),
          Vector_Authority => H (6), IO_Ports => H (7), Legacy_Interrupts => H (8),
          Notifications => H (9), Scheduling => H (10), Firmware_Snapshot => H (14),
-         Root_Count => 3, Device_Roots => [H (11), H (12), H (13), others => 0]);
+         Root_Count => 3, Device_Roots => [H (11), H (12), H (13), others => 0],
+         Firmware_Count => 2, Firmware_Roots => [H (15), H (16), others => 0]);
       V : Device_Manager_Configuration :=
         (Boot_Image => 40 * 1024 * 1024, Framebuffer => (16#FD00_0000#, 16#30_0000#),
          Handles => Handles);
@@ -61,6 +62,14 @@ begin
       V.Handles.Device_Roots := [for R in Device_Root_Index => H (20 + Unsigned_64 (R))];
       Round_Trips.Device_Manager (V, D, OK);
       Check (OK and then D = V, "device manager with every root");
+      V.Handles.Firmware_Count := Maximum_Firmware_Roots;
+      V.Handles.Firmware_Roots := [for R in Firmware_Root_Index => H (30 + Unsigned_64 (R))];
+      Round_Trips.Device_Manager (V, D, OK);
+      Check (OK and then D = V, "device manager with every firmware-memory root");
+      V.Handles.Firmware_Count := 0;
+      V.Handles.Firmware_Roots := [others => 0];
+      Round_Trips.Device_Manager (V, D, OK);
+      Check (OK and then D = V, "device manager without firmware-memory roots");
       --  Refusals: a named handle that is not one, a root count past the
       --  array, a root in use that is zero, an unused root that is not.
       V := (Boot_Image => 1, Framebuffer => (0, 0), Handles => Handles);
@@ -86,6 +95,19 @@ begin
          W (19) := 2;
          Decode (W, D, OK);
          Check (not OK, "a handle in an unused root refused");
+      end;
+      declare
+         W : Word_Array := E.Words (1 .. E.Length);
+      begin
+         W (Firmware_First_Word) := Maximum_Firmware_Roots + 1;
+         Decode (W, D, OK);
+         Check (not OK, "firmware-memory root count past the array refused");
+         W (Firmware_First_Word) := 3;
+         Decode (W, D, OK);
+         Check (not OK, "a zero firmware-memory root in use refused");
+         W (Firmware_First_Word) := 1;
+         Decode (W, D, OK);
+         Check (not OK, "a handle in an unused firmware-memory root refused");
       end;
    end;
    declare

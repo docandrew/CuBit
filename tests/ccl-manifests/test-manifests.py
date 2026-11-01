@@ -1156,8 +1156,9 @@ class Manifests(unittest.TestCase):
                     'never optional')
         self.reject(typed.replace('"hardware")]', '"hardware") (Request.ACPI_Hardware "more")]'),
                     self.NATIVE, 'a second ACPI hardware request')
-        # The window names (binding + "-io-NN") must stay startup names.
-        longest = 'h' * 58
+        # The window names (binding + "-io-NN" and, the longer, binding +
+        # "-mem-NN") must stay startup names.
+        longest = 'h' * 57
         self.assertEqual(self.compile(typed.replace('"hardware"', f'"{longest}"'),
                                       self.NATIVE).returncode, 0)
         self.reject(typed.replace('"hardware"', f'"{longest}x"'), self.NATIVE,

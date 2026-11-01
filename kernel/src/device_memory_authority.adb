@@ -11,6 +11,41 @@ package body Device_Memory_Authority with SPARK_Mode is
         and then Holds (Cap, Base, Bytes, Mode);
    end Authorize;
 
+   function Authorize_Firmware
+     (Cap : Capability; M : Physical_Ranges.Map;
+      Base, Bytes : Unsigned_64; Mode : Access_Mode) return Boolean
+   is
+   begin
+      return Firmware_Holds (Cap, Base, Bytes, Mode)
+        and then Physical_Ranges.Firmware_Bytes (M, Base, Bytes, Kind_Of (Cap.authorityTag));
+   end Authorize_Firmware;
+
+   procedure Lemma_Authorities_Disjoint
+     (Cap : Capability; M : Physical_Ranges.Map;
+      Base, Bytes : Unsigned_64; Mode : Access_Mode)
+   is
+   begin
+      if Physical_Ranges.Device_Bytes (M, Base, Bytes)
+        and then Physical_Ranges.NVS_Page (M, Physical_Ranges.Page_Of (Base))
+      then
+         -- An NVS span wholly contains the first page, so it touches the
+         -- range, which Blocker_Free forbids for a non-mappable class.
+         pragma Assert
+           (for some I in 1 .. M.Count =>
+              M.Spans (I).Class = Physical_Ranges.ACPI_NVS
+              and then Physical_Ranges.Touches (M.Spans (I), Physical_Ranges.Page_Of (Base)));
+         pragma Assert (False);
+      end if;
+   end Lemma_Authorities_Disjoint;
+
+   procedure Lemma_Firmware_Mapping_Excludes_RAM
+     (Cap : Capability; M : Physical_Ranges.Map;
+      Base, Bytes : Unsigned_64; Mode : Access_Mode) is
+   begin
+      Physical_Ranges.Lemma_Firmware_Range_Excludes_RAM
+        (M, Base, Base + (Bytes - 1), Kind_Of (Cap.authorityTag));
+   end Lemma_Firmware_Mapping_Excludes_RAM;
+
    function Explain_Mint
      (M : Physical_Ranges.Map; Base, Bytes : Unsigned_64) return Explanation
    is

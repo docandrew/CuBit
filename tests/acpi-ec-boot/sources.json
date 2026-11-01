@@ -7,7 +7,7 @@
     },
     {
       "path": "shared/firmware/firmware_tables.adb",
-      "sha256": "120555c25910e45212c229526c232c0b1afae7f63effd04fdd54a5f567690cfa"
+      "sha256": "7aca727a78cb7c10e67c044db1200401a0c28072d917e6e3718233a620e2d316"
     },
     {
       "path": "userspace/services/acpi/lib/acpi_fadt.ads",

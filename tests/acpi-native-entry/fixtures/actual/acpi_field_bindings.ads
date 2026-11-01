@@ -1,12 +1,12 @@
 pragma Ada_2022;
 with ACPI_Service_Core;
-with ACPI_Field_Inventory_Owner;
+with ACPI_Field_Provider_View;
 with ACPI_Field_Module_Startup;
 with AML_Field_Access;
 with AML_Identity;
 generic
    with package Core is new ACPI_Service_Core (<>);
-   with package Provider is new ACPI_Field_Inventory_Owner (<>);
+   with package Provider is new ACPI_Field_Provider_View (<>);
    Maximum_Bindings : Positive := AML_Field_Access.Default_Maximum_Bindings;
 package ACPI_Field_Bindings is
    package Startup is new ACPI_Field_Module_Startup (Core, Provider, Maximum_Bindings);
@@ -30,7 +30,7 @@ package ACPI_Field_Bindings is
    -- This does not install controllers, connect regions, run _REG or establish
    -- complete region/field-graph coverage. The region barrier remains separate.
    procedure Build
-     (Run : in out Context; Service : Core.State; IO : Provider.Context; Result : out Report);
+     (Run : in out Context; Service : Core.State; IO : in out Provider.Context; Result : out Report);
    -- Copied bindings are metadata. Check the original service/provider context
    -- before exporting; all normal Field_IO liveness/rights/uncertainty checks
    -- remain mandatory on every use. No refresh/reset/rearm exists.

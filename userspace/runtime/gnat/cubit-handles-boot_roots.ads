@@ -18,6 +18,13 @@ package CuBit.Handles.Boot_Roots is
    subtype Root_Count is Natural range 0 .. Maximum_Device_Roots;
    subtype Root_Index is Positive range 1 .. Maximum_Device_Roots;
    type Device_Roots is array (Root_Index) of Device_Memory;
+   --  Firmware memory (Capability_ABI.Firmware_NVS_Tag, Firmware_Control_
+   --  Tag): the ACPI NVS runs and the FACS page, ascending, for the ACPI
+   --  hardware grant.
+   Maximum_Firmware_Roots : constant := Launch_Configuration.Maximum_Firmware_Roots;
+   subtype Firmware_Root_Count is Natural range 0 .. Maximum_Firmware_Roots;
+   subtype Firmware_Root_Index is Positive range 1 .. Maximum_Firmware_Roots;
+   type Firmware_Roots is array (Firmware_Root_Index) of Device_Memory;
 
    type Roots is record
       Valid             : Boolean := False;
@@ -35,6 +42,8 @@ package CuBit.Handles.Boot_Roots is
       Firmware_Snapshot_Root : Firmware_Snapshot;  --  READ and GRANT
       Count             : Root_Count := 0;
       Memory            : Device_Roots := [others => No_Device_Memory];
+      Firmware_Count    : Firmware_Root_Count := 0;
+      Firmware          : Firmware_Roots := [others => No_Device_Memory];
    end record;
 
    --  devmgr's roots, from its launch configuration.

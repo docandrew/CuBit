@@ -40,7 +40,10 @@ package body CuBit.Handles.Boot_Roots is
             Firmware_Snapshot_Root => K.To_Firmware_Snapshot (H.Firmware_Snapshot),
             Count             => H.Root_Count,
             Memory            =>
-              [for R in Root_Index => K.To_Device_Memory (H.Device_Roots (R))]);
+              [for R in Root_Index => K.To_Device_Memory (H.Device_Roots (R))],
+            Firmware_Count    => H.Firmware_Count,
+            Firmware          =>
+              [for R in Firmware_Root_Index => K.To_Device_Memory (H.Firmware_Roots (R))]);
       end;
       return Result;
    end Get;

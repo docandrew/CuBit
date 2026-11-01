@@ -1,0 +1,5 @@
+(Executable_Manifest
+  identity => "com.cubit.acpi-register-probe"
+  version => "0.1.0"
+  requests => [(service "logstore" "logstore")
+               (service "acpi-registers" "registers")])

@@ -59,9 +59,6 @@ package CuBit.System_Facts is
       for Published_Value use (Wall_Clock_Offset => 1, Boot_Display_Native => 2);
    end SP;
 
-   --  Where the user runtime's secondary stack starts (Process_Layout).
-   Secondary_Stack_Address : constant := 16#0000_7FFF_FF00_0000#;
-
    --  Logical processors the kernel found (ACPI MADT).
    function Processor_Count return Unsigned_64;
 

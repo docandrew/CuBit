@@ -1,0 +1,9 @@
+(Component name => "acpi-register-probe" kind => Kind.Application
+  source => (Source.Ada (Ada_Source
+    language => Ada_Language.Ada_2022
+    sources => ["tests/acpi-register-probe/support"
+                "userspace/services/acpi/lib"
+                "userspace/services/acpi/field-client"
+                "userspace/services/acpi/field-client/inventory"
+                "userspace/services/acpi/field-client/transport"
+                "shared/acpi" "shared/firmware"])))

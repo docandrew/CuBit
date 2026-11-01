@@ -1,5 +1,13 @@
+shared/acpi/acpi_field_protocol_frames.adb
+shared/acpi/acpi_field_protocol_frames.ads
+shared/acpi/acpi_global_lock_protocol.adb
+shared/acpi/acpi_global_lock_protocol.ads
 shared/acpi/acpi_inventory_protocol.adb
 shared/acpi/acpi_inventory_protocol.ads
+shared/acpi/acpi_locked_nvs_protocol.adb
+shared/acpi/acpi_locked_nvs_protocol.ads
+shared/acpi/acpi_nvs_protocol.adb
+shared/acpi/acpi_nvs_protocol.ads
 shared/acpi/acpi_passive_query-fields.adb
 shared/acpi/acpi_passive_query-fields.ads
 shared/acpi/acpi_passive_query-pages.adb

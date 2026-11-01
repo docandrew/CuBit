@@ -328,7 +328,7 @@ case "$TEST_NAME" in
         ;;
     grant-forward|grant-forward-intermediary-exit|grant-forward-owner-exit|grant-forward-desktop|config-tree|config-inspection|log-authority|log-fields|metrics|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
         ;;
-    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|secondary-stacks|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|acpi-hardware|acpi-native-smoke|acpi-pair-smoke|multi-instance|program-parameters|usb-hotplug|wifi-crypto)
+    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|secondary-stacks|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|acpi-hardware|acpi-native-smoke|acpi-pair-smoke|multi-instance|program-parameters|usb-hotplug|wifi-crypto|acpi-register-probe)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -696,6 +696,12 @@ with open(sys.argv[1], "wb") as f:
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-acpi-native-smoke.ccl"
         QEMU_MEMORY="${QEMU_MEMORY:-2G}"
         ;;
+    acpi-register-probe)
+        # Named read-only PM-timer reads through acpi-backend.svc (build:
+        # make -C kernel acpi-backend-native acpi-register-probe).
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-acpi-register-probe.ccl"
+        QEMU_MEMORY="${QEMU_MEMORY:-2G}"
+        ;;
     acpi-pair-smoke)
         # The real acpi-backend.svc and acpi.svc on q35 (build: make -C
         # kernel acpi-backend-native acpi-native acpi-metrics-check).
@@ -708,8 +714,10 @@ with open(sys.argv[1], "wb") as f:
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-firmware-snapshot.ccl"
         ;;
     acpi-hardware)
-        # ACPI hardware windows (q35: FADT PM1, PM timer and GPE0, no EC)
-        # and the role-35 register endpoint's frontend badge.
+        # ACPI hardware windows (q35: FADT PM1, PM timer and GPE0, no EC;
+        # firmware memory: no ACPI NVS, the FACS page in SeaBIOS's reserved
+        # span at the top of RAM) and the role-35 register endpoint's
+        # frontend badge.
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-acpi-hardware.ccl"
         ;;
     clock)
@@ -1839,17 +1847,19 @@ if [ -n "$INIT_PROFILE" ]; then
             fi
         done
     fi
-    if [ "$TEST_NAME" = "acpi-native-smoke" ] || [ "$TEST_NAME" = "acpi-pair-smoke" ]; then
-        ACPI_BACKEND_PAIR=""
-        if [ "$TEST_NAME" = "acpi-pair-smoke" ]; then
-            ACPI_BACKEND_PAIR=../../../userspace/services/acpi/backend/native/build/acpi-backend.svc:acpi-backend.svc
-        fi
-        for ACPI_PAIR in logstore.svc:logstore.svc acpi-metrics-check.app:acpi-metrics-check.app \
-                         ../../../userspace/services/acpi/native/build/acpi.svc:acpi.svc $ACPI_BACKEND_PAIR; do
+    if [ "$TEST_NAME" = "acpi-native-smoke" ] || [ "$TEST_NAME" = "acpi-pair-smoke" ] ||
+       [ "$TEST_NAME" = "acpi-register-probe" ]; then
+        ACPI_BACKEND=../../../userspace/services/acpi/backend/native/build/acpi-backend.svc:acpi-backend.svc
+        case "$TEST_NAME" in
+            acpi-native-smoke) ACPI_FILES="acpi-metrics-check.app:acpi-metrics-check.app ../../../userspace/services/acpi/native/build/acpi.svc:acpi.svc" ;;
+            acpi-pair-smoke) ACPI_FILES="acpi-metrics-check.app:acpi-metrics-check.app ../../../userspace/services/acpi/native/build/acpi.svc:acpi.svc $ACPI_BACKEND" ;;
+            acpi-register-probe) ACPI_FILES="$ACPI_BACKEND ../../../tests/acpi-register-probe/native/build/acpi-register-probe.app:acpi-register-probe.app" ;;
+        esac
+        for ACPI_PAIR in logstore.svc:logstore.svc $ACPI_FILES; do
             ACPI_SOURCE="$KERNEL_DIR/isodir/boot/${ACPI_PAIR%%:*}"
             ACPI_TARGET="${ACPI_PAIR##*:}"
             if [ ! -f "$ACPI_SOURCE" ]; then
-                echo "headless: build ${ACPI_PAIR%%:*} first (make -C kernel acpi-backend-native acpi-native acpi-metrics-check)" >&2
+                echo "headless: build ${ACPI_PAIR%%:*} first (make -C kernel acpi-backend-native acpi-native acpi-metrics-check acpi-register-probe)" >&2
                 exit 1
             fi
             debugfs -w -R "rm $ACPI_TARGET" "$TEMP_DISK" >/dev/null 2>&1
@@ -4880,9 +4890,20 @@ TEST: PASS acpi-metrics
         # (sleep registers come from the FADT alone, so they must be ok);
         # any other failed stage, recovery, heap exhaustion or exit fails.
         if grep -aE '^acpi: stage [a-z-]+ fail' "$SERIAL_LOG" |
-           grep -avE '^acpi: stage (devices fail  6 regions= 2 errors= 0 fuel= 0|hid-discovery fail  1 search= 0 query= 0 |power-discovery fail  1 phase= 0 fuel= 0 )' ||
+           grep -avE '^acpi: stage (devices fail DEVICES_INCOMPLETE regions=REGIONS_UNAVAILABLE errors= 0 fuel= 0|hid-discovery fail  1 search= 0 query= 0 |power-discovery fail  1 phase= 0 fuel= 0 )' ||
            grep -aqE 'recovery=TRUE|Ada heap: cannot allocate|com\.cubit\.acpi pid[0-9]+ exited|acpi-metrics-check: .* FAIL' "$SERIAL_LOG"; then
             echo "headless: acpi.svc bring-up or metrics check failed" >&2
+            exit 1
+        fi
+        ;;
+    acpi-register-probe)
+        required_markers="
+acpi-backend: stage registration ok
+stage timer ok COUNTER_CHANGED
+TEST: PASS acpi-register-probe
+"
+        if grep -aqE '^acpi-backend: stage [a-z-]+ fail|TEST: FAIL acpi-register-probe|com\.cubit\.acpi-backend pid[0-9]+ (exited|stopped)' "$SERIAL_LOG"; then
+            echo "headless: named PM-timer probe failed" >&2
             exit 1
         fi
         ;;
@@ -4937,7 +4958,7 @@ TEST: PASS firmware-undeclared
         required_markers="
 acpi-registers-standin: registered
 acpi-hardware-check: grant has I/O windows PASS
-acpi-hardware-check: slice 1 grants no memory windows PASS
+acpi-hardware-check: grant has memory windows PASS
 acpi-hardware-check: windows sorted and disjoint PASS
 acpi-hardware-check: window 1 handle covers exactly its range PASS
 acpi-hardware-check: window 1 read-write without grant PASS
@@ -4945,6 +4966,19 @@ acpi-hardware-check: window 1 refuses the next port PASS
 acpi-hardware-check: FADT read PASS
 acpi-hardware-check: q35 has no ECDT PASS
 acpi-hardware-check: windows are exactly the FADT fixed blocks PASS
+acpi-hardware-check: memory window 1 handle covers exactly its pages PASS
+acpi-hardware-check: memory window 1 is firmware memory PASS
+acpi-hardware-check: memory window 1 kind and cache mode from its kernel tag PASS
+acpi-hardware-check: FACS window is write-back (an NVS run, or the FACS page alone) PASS
+acpi-hardware-check: memory window 1 read-write without grant PASS
+acpi-hardware-check: memory window 1 cannot be copied on PASS
+acpi-hardware-check: memory window 1 refuses the next page PASS
+acpi-hardware-check: memory window 1 refuses the page before PASS
+acpi-hardware-check: FACS page inside a memory window PASS
+acpi-hardware-check: FACS page maps through its window PASS
+acpi-hardware-check: FACS signature read through its window PASS
+claimed, closed to device memory
+procmgr: ACPI memory window 1 installed for acpi-hardware-check.app
 acpi-hardware-check: PM timer inside a window PASS
 acpi-hardware-check: PM timer advances through its window PASS
 acpi-hardware-check: registers endpoint granted PASS
@@ -4964,6 +4998,8 @@ TEST: PASS acpi-registers-client
         if grep -aF 'acpi-hardware-check: ' "$SERIAL_LOG" | grep -qF ' FAIL' ||
            grep -aqF 'TEST: FAIL acpi-' "$SERIAL_LOG" ||
            grep -aqF 'acpi-registers-standin: probe frontend=no' "$SERIAL_LOG" ||
+           grep -aqF 'still open to device memory' "$SERIAL_LOG" ||
+           grep -aqF 'installed for acpi-hardware-denied.app' "$SERIAL_LOG" ||
            [ "$(grep -acF 'acpi-hardware-check: starting' "$SERIAL_LOG")" -ne 1 ]; then
             echo "headless: ACPI hardware checks failed, or the unapproved image ran" >&2
             exit 1
@@ -5387,6 +5423,8 @@ capability-test: syscall registers blocking return PASS
 capability-test: getpid PASS
 capability-test: startup table holds only the self entries, with the declared limit PASS
 capability-test: self entries are current handles PASS
+capability-test: no firmware-memory window without the ACPI hardware grant PASS
+capability-test: firmware pages never map through a forged or foreign handle PASS
 capability-test: no ambient capability at any old slot number PASS
 capability-test: forged future generation refused PASS
 capability-test: forged slot past the table refused PASS

@@ -3,6 +3,8 @@ with Interfaces;
 with ACPI_Inventory_Transport;
 with ACPI_Register_Transport;
 with AML_Field_Access;
+with ACPI_Field_Protocol_Frames;
+with ACPI_Field_Protocol_Transport;
 package body ACPI_Field_Transport is
    package Proto renames ACPI_Inventory_Protocol;
    package Metadata is new ACPI_Inventory_Transport (AML_Field_Access.Default_Maximum_Registers);
@@ -19,6 +21,8 @@ package body ACPI_Field_Transport is
    begin
       if Item.Label = Proto.Header_Operation or else Item.Label = Proto.Part_Operation then
          Metadata.Exchange (Meta, Destination, Deadline, Item, Reply, Delivered);
+      elsif ACPI_Field_Protocol_Frames.Owned_Label (Item.Label) then
+         ACPI_Field_Protocol_Transport.Exchange (Destination, Deadline, Item, Reply, Delivered);
       else
          ACPI_Register_Transport.Exchange (Scalar, Destination, Deadline, Item, Reply, Delivered);
       end if;

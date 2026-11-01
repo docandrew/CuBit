@@ -6,6 +6,7 @@
 ------------------------------------------------------------------------------
 pragma Ada_2022;
 with CuBit.Handles.IPC;
+with Devmgr_Memory_Claims;
 
 package body Devmgr_Authority is
 
@@ -13,6 +14,15 @@ package body Devmgr_Authority is
    use type H.ABI.Kind;
 
    Held : BR.Roots;
+
+   package MC renames Devmgr_Memory_Claims;
+   pragma Compile_Time_Error
+     (MC.Maximum_Claims /= BR.Maximum_Firmware_Roots,
+      "one ACPI claim per firmware-memory root");
+   Claims : MC.Ledger;
+   Windows : array (BR.Firmware_Root_Index) of ACPI_Window;
+   Window_Count : BR.Firmware_Root_Count := 0;
+   Refused : Natural := 0;
 
    type Extent is record
       First, Bytes : Unsigned_64 := 0;
@@ -36,14 +46,47 @@ package body Devmgr_Authority is
             end if;
          end;
       end loop;
+      --  The firmware-memory roots: ACPI's before any driver exists.
+      MC.Initialize (Claims);
+      Windows := [others => (others => <>)];
+      Window_Count := 0;
+      Refused := 0;
+      for R in 1 .. Held.Firmware_Count loop
+         declare
+            D : constant CuBit.Handles.IPC.Description :=
+              CuBit.Handles.IPC.Describe (Held.Firmware (R));
+            Granted : Boolean := False;
+         begin
+            if D.Current and then D.Kind = H.ABI.Device_Memory
+              and then (D.Authority_Tag = H.ABI.Firmware_NVS_Tag
+                        or else D.Authority_Tag = H.ABI.Firmware_Control_Tag)
+              and then D.Held.Read and then D.Held.Write and then D.Held.Grant
+            then
+               MC.Claim_ACPI (Claims, D.Object, D.Parameter, Granted);
+            end if;
+            if Granted then
+               Window_Count := Window_Count + 1;
+               Windows (Window_Count) :=
+                 (Memory => Held.Firmware (R), First => D.Object, Bytes => D.Parameter);
+            else
+               Refused := Refused + 1;
+            end if;
+         end;
+      end loop;
    end Initialize;
+
+   function ACPI_Window_Count return Natural is (Window_Count);
+   function ACPI_Window_At (K : Positive) return ACPI_Window is (Windows (K));
+   function ACPI_Windows_Refused return Natural is (Refused);
 
    function Valid return Boolean is (Held.Valid);
    function Roots return BR.Roots is (Held);
 
    function Device_Region (Physical, Bytes : Unsigned_64) return H.Device_Memory is
    begin
-      if Bytes = 0 or else Physical > Unsigned_64'Last - Bytes then
+      if Bytes = 0 or else Physical > Unsigned_64'Last - Bytes
+        or else not MC.Clear_Of_ACPI (Claims, Physical, Bytes)
+      then
          return H.No_Device_Memory;
       end if;
       for R in 1 .. Held.Count loop

@@ -4,11 +4,14 @@ package body ACPI_Inventory_Protocol with SPARK_Mode is
    Write_Bit : constant Unsigned_64 := 2 ** 1;
    Delegate_Bit : constant Unsigned_64 := 2 ** 2;
    Exact_Bit : constant Unsigned_64 := 2 ** 3;
-   IO_Bit : constant Unsigned_64 := 2 ** 4;
+   IO_Tag : constant Unsigned_64 := 16#10#;
+   EC_Tag : constant Unsigned_64 := 16#30#;
+   Space_Mask : constant Unsigned_64 := 16#30#;
+   Reserved_Space_Tag : constant Unsigned_64 := 16#20#;
    Width_First_Bit : constant := 8;
    Width_Bits : constant Unsigned_64 := 16#F00#;
    Known_Bits : constant Unsigned_64 :=
-     Read_Bit or Write_Bit or Delegate_Bit or Exact_Bit or IO_Bit or Width_Bits;
+     Read_Bit or Write_Bit or Delegate_Bit or Exact_Bit or Space_Mask or Width_Bits;
    function Decode_Header (Item : Wire.Packet) return Header is
      (if Item.Label = Header_Reply and then Envelope_Valid (Item)
        and then Item.Data (0) = Outcome'Pos (Ready) and then Item.Data (1) /= 0
@@ -24,7 +27,8 @@ package body ACPI_Inventory_Protocol with SPARK_Mode is
         (if Item.Writable then Write_Bit else 0) or
         (if Item.Delegable then Delegate_Bit else 0) or
         (if Item.Exact_Write_Safe then Exact_Bit else 0) or
-        (if Item.IO_Space then IO_Bit else 0);
+        (case Item.Space is when Memory_Space => 0, when IO_Space => IO_Tag,
+         when Embedded_Control_Space => EC_Tag);
    begin
       for Width in T.Access_Width loop
          if Item.Widths (Width) then
@@ -39,7 +43,8 @@ package body ACPI_Inventory_Protocol with SPARK_Mode is
       Flags : constant Unsigned_64 := Item (Identity_Part) (2);
       Value : Description;
    begin
-      if (Flags and not Known_Bits) /= 0 or else Item (Register_Part) (2) /= 0
+      if (Flags and not Known_Bits) /= 0
+        or else (Flags and Space_Mask) = Reserved_Space_Tag or else Item (Register_Part) (2) /= 0
         or else Item (Register_Part) (0) > T.Access_Width'Pos (T.Access_Width'Last)
       then return (Valid => False); end if;
       Value.ID := Item (Identity_Part) (0); Value.Epoch := Item (Identity_Part) (1);
@@ -51,7 +56,9 @@ package body ACPI_Inventory_Protocol with SPARK_Mode is
       Value.Writable := (Flags and Write_Bit) /= 0;
       Value.Delegable := (Flags and Delegate_Bit) /= 0;
       Value.Exact_Write_Safe := (Flags and Exact_Bit) /= 0;
-      Value.IO_Space := (Flags and IO_Bit) /= 0;
+      Value.Space := (case Flags and Space_Mask is
+         when IO_Tag => IO_Space, when EC_Tag => Embedded_Control_Space,
+         when others => Memory_Space);
       for Width in T.Access_Width loop
          Value.Widths (Width) :=
            (Flags and Shift_Left (Unsigned_64'(1), Width_First_Bit + T.Access_Width'Pos (Width))) /= 0;

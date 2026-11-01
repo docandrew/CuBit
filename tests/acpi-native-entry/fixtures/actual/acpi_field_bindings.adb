@@ -13,12 +13,11 @@ package body ACPI_Field_Bindings is
    package Datums renames AML_Field_Datums;
    package A renames AML_Field_Access;
    use type N.Object_Kind, N.Field_Organization, V.Access_Status;
-   use type Provider.Startup_State;
    use type AML_Field_Targets.Vector, AML_Identity.Identity;
    Maximum_Direct_Bits : constant N.Encoded_Field_Bits := N.Encoded_Field_Bits (Plans.Maximum_Bits);
    function Observe (Run : Context) return Report is (Run.Info);
    procedure Build
-     (Run : in out Context; Service : Core.State; IO : Provider.Context; Result : out Report)
+     (Run : in out Context; Service : Core.State; IO : in out Provider.Context; Result : out Report)
    is
       Needed : array (N.Node_ID) of Boolean := [others => False];
       Items : Fields.Binding_Set;
@@ -61,7 +60,7 @@ package body ACPI_Field_Bindings is
       Result := (Status => Already_Consumed, others => <>);
       if Run.Stage /= Fresh then return; end if;
       Run.Stage := Building;
-      if Provider.Status (IO) /= Provider.Ready then
+      if not Provider.Ready (IO) then
          Fail (N.Root, Provider_Unavailable, V.Wrong_Phase); return;
       elsif Provider.Pending (IO) then
          Fail (N.Root, Pending_IO, V.Busy); return;
@@ -123,7 +122,7 @@ package body ACPI_Field_Bindings is
                      Bit_Length => AML_Decode.Integer_Value (Field.Field.Bits),
                      Flags => Field.Field.Raw_Flags, Effective_Access => Field.Field.Access_Type,
                      Attribute => Field.Field.Attribute, Access_Length => Field.Field.Access_Length, others => <>);
-                  Plan : constant Plans.Plan := Plans.Prepare (Meta);
+                  Plan : constant Plans.Plan := Plans.Prepare (Meta, Provider.Supports_Locked_NVS_Reads);
                   Read_Targets, Write_Targets : AML_Field_Targets.Vector;
                   Can_Read, Can_Write, Any_Readable : Boolean;
                begin

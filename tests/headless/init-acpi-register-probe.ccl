@@ -1,0 +1,12 @@
+# The ACPI agent's read-only named PM-timer probe (tests/acpi-register-probe)
+# against the real acpi-backend.svc on q35: the probe holds a frontend-badged
+# role-35 endpoint (approved here as a trusted test scope), loads the
+# backend's named inventory and reads the PM timer by ID and epoch until the
+# low 24 bits change, within one 2 s budget. No acpi.svc; no hardware grant
+# to the probe.
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "acpi-backend.svc" (priority 4)
+    (firmware-snapshot approve-declared) (acpi-hardware approve-declared))
+  (start "acpi-register-probe.app" (priority 3) (acpi-registers approve-declared))
+)

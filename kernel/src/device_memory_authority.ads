@@ -14,8 +14,20 @@ with Device_Memory_Publication;
 -- require the physical range to be device-mappable in the boot
 -- classification, so RAM, kernel memory, boot modules, ACPI memory and
 -- kernel-driven MMIO are refused whatever capability a process holds.
+--
+-- Firmware memory (the ACPI hardware grant, slice 2) is a separate,
+-- narrower authority: a CAP_DEVICE_MEM tagged FIRMWARE_NVS_TAG or
+-- FIRMWARE_CONTROL_TAG, which only the kernel's firmware-memory roots carry,
+-- maps only firmware pages of its own kind (Physical_Ranges.Firmware_Range:
+-- whole ACPI NVS pages, or the FACS page), write-back, and only through
+-- MAP_DEVICE into the holder itself. A device-memory capability (untagged)
+-- never maps a firmware page and a firmware-memory one never maps a device
+-- page. The tag is what the holder reads back (INSPECT) as the memory's
+-- kind and cache mode: no launcher word can claim it.
 -------------------------------------------------------------------------------
 package Device_Memory_Authority with SPARK_Mode is
+
+   use type Physical_Ranges.Firmware_Kind;
 
    subtype Access_Mode is Device_Memory_Admission.Access_Mode;
 
@@ -26,6 +38,7 @@ package Device_Memory_Authority with SPARK_Mode is
      (Cap : Capability; Base, Bytes : Unsigned_64; Mode : Access_Mode)
       return Boolean
    is (Cap.capType = CAP_DEVICE_MEM
+       and then Cap.authorityTag = NO_AUTHORITY_TAG
        and then Device_Memory_Admission.Covers
                   (Cap.object.ref, Cap.object.param, Base, Bytes)
        and then Device_Memory_Admission.Allows
@@ -39,6 +52,71 @@ package Device_Memory_Authority with SPARK_Mode is
         Post => Authorize'Result =
                   (Physical_Ranges.Device_Bytes (M, Base, Bytes)
                    and then Holds (Cap, Base, Bytes, Mode));
+
+   -- The firmware-memory tags, and the kind each names.
+   function Firmware_Tag (Tag : Authority_Tag) return Boolean is
+     (Tag = FIRMWARE_NVS_TAG or else Tag = FIRMWARE_CONTROL_TAG);
+   function Kind_Of (Tag : Authority_Tag) return Physical_Ranges.Firmware_Kind is
+     (if Tag = FIRMWARE_CONTROL_TAG then Physical_Ranges.Control_Memory
+      else Physical_Ranges.NVS_Memory)
+   with Pre => Firmware_Tag (Tag);
+   function Tag_Of (Kind : Physical_Ranges.Firmware_Kind) return Authority_Tag is
+     (case Kind is
+         when Physical_Ranges.NVS_Memory     => FIRMWARE_NVS_TAG,
+         when Physical_Ranges.Control_Memory => FIRMWARE_CONTROL_TAG)
+   with Post => Firmware_Tag (Tag_Of'Result) and then Kind_Of (Tag_Of'Result) = Kind;
+
+   -- Cap is a firmware-memory capability covering [Base, Base + Bytes) with
+   -- the rights Mode needs.
+   function Firmware_Holds
+     (Cap : Capability; Base, Bytes : Unsigned_64; Mode : Access_Mode)
+      return Boolean
+   is (Cap.capType = CAP_DEVICE_MEM
+       and then Firmware_Tag (Cap.authorityTag)
+       and then Device_Memory_Admission.Covers
+                  (Cap.object.ref, Cap.object.param, Base, Bytes)
+       and then Device_Memory_Admission.Allows
+                  (Cap.rights (RIGHT_READ), Cap.rights (RIGHT_WRITE), Mode));
+
+   -- May a process holding Cap map the firmware pages [Base, Base + Bytes)
+   -- of Cap's kind into itself in Mode? (Write-back: Physical_Ranges,
+   -- "Firmware memory".)
+   function Authorize_Firmware
+     (Cap : Capability; M : Physical_Ranges.Map;
+      Base, Bytes : Unsigned_64; Mode : Access_Mode) return Boolean
+   with Pre  => Physical_Ranges.Well_Formed (M),
+        Post => Authorize_Firmware'Result =
+                  (Firmware_Holds (Cap, Base, Bytes, Mode)
+                   and then Physical_Ranges.Firmware_Bytes
+                              (M, Base, Bytes, Kind_Of (Cap.authorityTag)));
+
+   -- The two authorities never overlap: no capability is both, and an NVS
+   -- page is never device memory. (The FACS page may be firmware-reserved,
+   -- which device memory also names; devmgr's ledger keeps it ACPI's.)
+   procedure Lemma_Authorities_Disjoint
+     (Cap : Capability; M : Physical_Ranges.Map;
+      Base, Bytes : Unsigned_64; Mode : Access_Mode)
+   with Ghost, Global => null,
+        Pre  => Physical_Ranges.Well_Formed (M),
+        Post => not (Holds (Cap, Base, Bytes, Mode)
+                     and then Firmware_Holds (Cap, Base, Bytes, Mode))
+                and then
+                (if Physical_Ranges.Device_Bytes (M, Base, Bytes) then
+                   not Physical_Ranges.NVS_Page (M, Physical_Ranges.Page_Of (Base)));
+
+   -- A firmware mapping authorized here is ACPI NVS or firmware-reserved
+   -- pages only: never RAM, kernel memory, a boot module, ACPI tables or
+   -- kernel MMIO.
+   procedure Lemma_Firmware_Mapping_Excludes_RAM
+     (Cap : Capability; M : Physical_Ranges.Map;
+      Base, Bytes : Unsigned_64; Mode : Access_Mode)
+   with Ghost, Global => null,
+        Pre  => Physical_Ranges.Well_Formed (M)
+                and then Authorize_Firmware (Cap, M, Base, Bytes, Mode),
+        Post => (for all P in Physical_Ranges.Page_Of (Base) ..
+                              Physical_Ranges.Page_Of (Base + (Bytes - 1)) =>
+                   Physical_Ranges.Control_Class
+                     (Physical_Ranges.Class_Of (M, P)));
 
    -- May policy mint a CAP_DEVICE_MEM naming [Base, Base + Bytes)? Policy
    -- still chooses who gets which device; the kernel only refuses ranges

@@ -26,6 +26,10 @@ package acpi is
     ioapicID    : Unsigned_32 := 0;
     -- Checked HPET register window, zero when firmware advertises none.
     hpetAddr    : Virtmem.PhysAddress := 0;
+    -- The FACS (ACPI Global Lock) the FADT names: X_FIRMWARE_CTRL when the
+    -- FADT is long enough and it is nonzero, else FIRMWARE_CTRL; zero when
+    -- there is none. Physical_Ranges' control page (firmware memory).
+    facsAddr    : Unsigned_64 := 0;
 
     type ACPIVersion is (AcpiVersion1, AcpiVersion2);
 

@@ -1,11 +1,11 @@
 pragma Ada_2022;
 with ACPI_Service_Core;
-with ACPI_Field_Inventory_Owner;
+with ACPI_Field_Provider_View;
 with ACPI_Field_Bindings;
 with AML_Field_Access;
 generic
    with package Core is new ACPI_Service_Core (<>);
-   with package Provider is new ACPI_Field_Inventory_Owner (<>);
+   with package Provider is new ACPI_Field_Provider_View (<>);
    Maximum_Bindings : Positive := AML_Field_Access.Default_Maximum_Bindings;
 package ACPI_Field_Evaluation is
    package Bindings is new ACPI_Field_Bindings (Core, Provider, Maximum_Bindings);
@@ -17,7 +17,7 @@ package ACPI_Field_Evaluation is
    -- barrier. This never establishes region readiness or runs _REG.
    -- IO and Service remain caller-owned; no alias or buffer is retained.
    procedure Prepare
-     (Run : in out Context; Service : Core.State; IO : Provider.Context;
+     (Run : in out Context; Service : Core.State; IO : in out Provider.Context;
       Accepted : out Boolean);
    procedure Evaluate_Named
      (Run : in out Context; Service : aliased in out Core.State;

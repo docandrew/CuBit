@@ -1,7 +1,17 @@
 pragma Ada_2022;
+with Interfaces;
+with ACPI_Field_Clock;
 with ACPI_Service_Core;
+with ACPI_Global_Lock_Client;
+with ACPI_Locked_NVS_Client;
+with ACPI_Field_Lease_Scope;
+with ACPI_Field_Scoped_Provider;
+with ACPI_Global_Lock_Protocol;
 with ACPI_Inventory_Protocol;
 with ACPI_Field_Inventory_Owner;
+with ACPI_Field_NVS_Provider;
+with ACPI_Field_Combined_Provider;
+with ACPI_Field_Provider_View;
 with ACPI_Field_Evaluation;
 with AML_Field_Access;
 generic
@@ -20,6 +30,10 @@ generic
    Maximum_Registers : Positive := AML_Field_Access.Default_Maximum_Registers;
    Maximum_Bindings : Positive := AML_Field_Access.Default_Maximum_Bindings;
    Maximum_Confirmations : Positive := AML_Field_Access.Default_Maximum_Confirmations;
+   -- Independent microsecond clock: never derive it from the IPC epoch.
+   -- Default unavailable preserves NoLock-only behavior for other callers.
+   with procedure Read_Lease_Clock
+     (Now : out Interfaces.Unsigned_64; Available : out Boolean) is ACPI_Field_Clock.Unavailable;
 package ACPI_Field_Startup_Owner is
    package Wire renames ACPI_Inventory_Protocol.Wire;
    type Phase is (Fresh, Provisioning, Ready, Failed, Closed);
@@ -58,10 +72,41 @@ package ACPI_Field_Startup_Owner is
    function Uncertain return AML_Field_Access.Observation;
 private
    procedure Read_Window (Now, Deadline : out Wire.Time_Instant);
-   package Provider is new ACPI_Field_Inventory_Owner
+   package Scalar is new ACPI_Field_Inventory_Owner
      (Transport_State, Endpoint, No_Endpoint, Read_Clock, Exchange, Read_Window,
       Maximum_Registers, Maximum_Confirmations);
-   package Evaluation is new ACPI_Field_Evaluation (Core, Provider, Maximum_Bindings);
+   procedure Read_NVS_Deadline (Deadline : out Wire.Time_Instant);
+   package Memory is new ACPI_Field_NVS_Provider
+     (Transport_State, Endpoint, No_Endpoint, Read_Clock, Exchange, Read_NVS_Deadline, Maximum_Bindings);
+   package Plain is new ACPI_Field_Combined_Provider
+     (Endpoint, Scalar, Memory, Read_Clock, Read_Window, Maximum_Registers + Maximum_Bindings);
+   function Plain_Ready (IO : Plain.Context) return Boolean;
+   package Plain_View is new ACPI_Field_Provider_View
+     (Plain.Context, Plain_Ready, Plain.Identity, Plain.Pending, Plain.Register_Count,
+      Plain.Export_Target, Plain.Select_Target, Plain.Describe, Plain.Authorize,
+      Plain.Dispatch, Plain.Reconciled, Plain.Resolve_Module_Target);
+   package Lease is new ACPI_Global_Lock_Client
+     (Transport_State, Endpoint, No_Endpoint, Read_Lease_Clock, Read_Clock, Exchange);
+   package Locked_NVS is new ACPI_Locked_NVS_Client
+     (Transport_State, Endpoint, No_Endpoint, Read_Clock, Exchange, Lease);
+   package Lease_Scope is new ACPI_Field_Lease_Scope
+     (Transport_State, Endpoint, No_Endpoint, Read_Clock, Exchange, Lease, Locked_NVS,
+      Positive (Core.Namespace.Node_ID'Last));
+   procedure Read_Lease_Window
+     (Lease_Deadline : out Interfaces.Unsigned_64;
+      IPC_Deadline : out Wire.Time_Instant; Available : out Boolean);
+   procedure Read_Cleanup_Deadline (Deadline : out Wire.Time_Instant);
+   package Provider is new ACPI_Field_Scoped_Provider
+     (Transport_State, Endpoint, No_Endpoint, Plain.Context, Plain.Initialize,
+      Plain_View, Plain.Describe_Scoped_Read, Lease_Scope, Read_Lease_Window,
+      Read_NVS_Deadline, Read_Cleanup_Deadline, ACPI_Global_Lock_Protocol.Attempt_Budget'Last);
+   function Provider_Ready (IO : Provider.Context) return Boolean;
+   package View is new ACPI_Field_Provider_View
+     (Provider.Context, Provider_Ready, Provider.Identity, Provider.Pending, Provider.Register_Count,
+      Provider.Export_Target, Provider.Select_Target, Provider.Describe, Provider.Authorize,
+      Provider.Dispatch, Provider.Reconciled, Provider.Resolve_Module_Target,
+      Provider.Begin_Field, Provider.End_Field, Locked_NVS_Reads => True);
+   package Evaluation is new ACPI_Field_Evaluation (Core, View, Maximum_Bindings);
    Stage : Phase := Fresh;
    Until_Time, Last_Sample : Wire.Time_Instant := 0;
    Module_Attempted, Module_Completed : Boolean := False;

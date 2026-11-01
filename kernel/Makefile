@@ -1403,6 +1403,7 @@ firmware-check: ccl-build user_runtime ccl-manifest
 acpi-native: ccl-build user_runtime ccl-manifest
 	mkdir -p ../userspace/services/acpi/native/build
 	$(CCL_BUILD) ../userspace/services/acpi/native/component.ccl
+	cp ../userspace/services/acpi/native/build/acpi.svc isodir/boot/acpi.svc
 
 # The real acpi-backend.svc (userspace/services/acpi/backend/native):
 # hardware windows and the role-35 register endpoint for acpi.svc.
@@ -1411,6 +1412,15 @@ acpi-native: ccl-build user_runtime ccl-manifest
 acpi-backend-native: ccl-build user_runtime ccl-manifest
 	mkdir -p ../userspace/services/acpi/backend/native/build
 	$(CCL_BUILD) ../userspace/services/acpi/backend/native/component.ccl
+	cp ../userspace/services/acpi/backend/native/build/acpi-backend.svc isodir/boot/acpi-backend.svc
+
+# ACPI agent's read-only named PM-timer probe (tests/acpi-register-probe),
+# a role-35 client of acpi-backend.svc: headless --test acpi-register-probe.
+# Test-only (never in world/images).
+.PHONY : acpi-register-probe
+acpi-register-probe: ccl-build user_runtime ccl-manifest
+	mkdir -p ../tests/acpi-register-probe/native/build
+	$(CCL_BUILD) ../tests/acpi-register-probe/native/component.ccl
 
 acpi-metrics-check: ccl-build user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/acpi-metrics-check/build

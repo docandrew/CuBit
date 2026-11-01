@@ -1,8 +1,10 @@
 ------------------------------------------------------------------------------
 --  Hosted tests: the ACPI fixed-hardware I/O windows procmgr computes
 --  (CuBit.ACPI_Fixed_Windows), the window startup names
---  (CuBit.ACPI_Hardware_Authority) and devmgr's port-claim ledger
---  (Devmgr_Port_Claims). Synthetic FADT/ECDT bytes, laid out per ACPI 6.5.
+--  (CuBit.ACPI_Hardware_Authority), devmgr's port-claim ledger
+--  (Devmgr_Port_Claims), its ACPI memory-claim ledger
+--  (Devmgr_Memory_Claims) and the memory windows' kernel-tag classes
+--  (CuBit.ACPI_Memory_Classes). Synthetic FADT/ECDT bytes, laid out per ACPI 6.5.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
 with Ada.Text_IO; use Ada.Text_IO;
@@ -11,6 +13,9 @@ with CuBit.ACPI_Fixed_Windows; use CuBit.ACPI_Fixed_Windows;
 with CuBit.ACPI_Hardware_Authority;
 with CuBit.Startup_Tables;
 with Devmgr_Port_Claims;
+with Devmgr_Memory_Claims;
+with CuBit.ACPI_Memory_Classes;
+with Capability_ABI;
 with CuBit.Authority_Policy;
 
 procedure Main is
@@ -165,6 +170,7 @@ begin
    declare
       package AHA renames CuBit.ACPI_Hardware_Authority;
       package ST renames CuBit.Startup_Tables;
+      use type AHA.Declared_Source;
       Longest : constant String (1 .. AHA.Maximum_Binding_Length) := [others => 'h'];
    begin
       Check (AHA.IO_Label ("hardware", 1) = "hardware-io-1"
@@ -172,6 +178,114 @@ begin
              "window labels");
       Check (ST.Valid_Name_Text (AHA.IO_Label (Longest, AHA.Maximum_IO_Windows)),
              "the longest binding's labels are startup names");
+      Check (AHA.Memory_Label ("hardware", 1) = "hardware-mem-1"
+             and then AHA.Memory_Label ("hardware", 16) = "hardware-mem-16",
+             "memory window labels");
+      Check (ST.Valid_Name_Text (AHA.Memory_Label (Longest, AHA.Maximum_Memory_Windows)),
+             "the longest binding's memory labels are startup names");
+      --  A grant is admitted with a window of either kind: memory-only
+      --  (a hardware-reduced platform, no FADT fixed I/O blocks) too; with
+      --  neither it is refused. The declared entry holds the first window.
+      Check (AHA.Declared_Holds (0, 1) = AHA.First_Memory_Window
+             and then AHA.Declared_Holds (0, AHA.Maximum_Memory_Windows) = AHA.First_Memory_Window,
+             "a memory-only grant is admitted, declared on its first memory window");
+      Check (AHA.Declared_Holds (0, 0) = AHA.No_Window, "a grant with no window is refused");
+      Check (AHA.Declared_Holds (3, 0) = AHA.First_IO_Window
+             and then AHA.Declared_Holds (1, 2) = AHA.First_IO_Window,
+             "with I/O windows the declared entry holds the first I/O window");
+      Check ((for all K in 1 .. AHA.Maximum_IO_Windows =>
+                (for all J in 1 .. AHA.Maximum_Memory_Windows =>
+                   AHA.IO_Label ("hardware", K) /= AHA.Memory_Label ("hardware", J))),
+             "I/O and memory labels never collide");
+   end;
+
+   ---------------------------------------------------------------------------
+   --  A memory window's kind and cache mode come from its kernel tag; any
+   --  other capability (device memory, an unknown tag, partial pages) is
+   --  no firmware window, whatever a startup entry calls it.
+   ---------------------------------------------------------------------------
+   declare
+      use CuBit.ACPI_Memory_Classes;
+      NVS     : constant Unsigned_64 := Capability_ABI.Firmware_NVS_Tag;
+      Control : constant Unsigned_64 := Capability_ABI.Firmware_Control_Tag;
+      Page    : constant := Page_Bytes;
+   begin
+      Check (Firmware_Tag (NVS) and then Kind_Of (NVS) = ACPI_NVS
+             and then Cache_Of (Kind_Of (NVS)) = Write_Back,
+             "the NVS tag is an NVS window, write-back");
+      Check (Firmware_Tag (Control) and then Kind_Of (Control) = Firmware_Control
+             and then Cache_Of (Kind_Of (Control)) = Write_Back,
+             "the control tag is the FACS page, write-back");
+      Check (not Firmware_Tag (0) and then not Firmware_Tag (NVS + 2)
+             and then not Firmware_Tag (NVS - 1) and then not Firmware_Tag (Unsigned_64'Last),
+             "no other tag is firmware memory");
+      Check (Admits (NVS, 16#3EB7_F000#, 12_208 * Page)
+             and then Admits (Control, 16#0FFE_0000#, Page),
+             "the laptop's NVS run and the q35 FACS page admitted");
+      Check (not Admits (0, 16#3EB7_F000#, Page), "untagged device memory refused");
+      Check (not Admits (NVS + 7, 16#3EB7_F000#, Page), "an unknown tag refused");
+      Check (not Admits (NVS, 16#3EB7_F018#, Page)
+             and then not Admits (NVS, 16#3EB7_F000#, Page + 1)
+             and then not Admits (NVS, 16#3EB7_F000#, 0),
+             "partial or empty pages refused");
+      Check (not Admits (NVS, Page_Limit * Page, Page)
+             and then not Admits (NVS, (Page_Limit - 1) * Page, 2 * Page),
+             "pages past the physical limit refused");
+   end;
+
+   ---------------------------------------------------------------------------
+   --  devmgr's ACPI memory claims (the firmware-memory windows).
+   ---------------------------------------------------------------------------
+   declare
+      use Devmgr_Memory_Claims;
+      Ledger_Value : Ledger;
+      Granted : Boolean;
+      --  The laptop's NVS run and the q35 FACS page.
+      NVS_First : constant := 16#3EB7_F000#;
+      NVS_Bytes : constant := 16#41B2_F000# - 16#3EB7_F000#;
+      FACS_Page : constant := 16#0FFE_0000#;
+   begin
+      Initialize (Ledger_Value);
+      Claim_ACPI (Ledger_Value, NVS_First, NVS_Bytes, Granted);
+      Check (Granted, "an NVS run claimed for ACPI");
+      Claim_ACPI (Ledger_Value, FACS_Page, Page_Bytes, Granted);
+      Check (Granted, "the FACS page claimed for ACPI");
+      Claim_ACPI (Ledger_Value, NVS_First, NVS_Bytes, Granted);
+      Check (Granted and then Ledger_Value.Count = 2, "the same window again granted, not duplicated");
+      Claim_ACPI (Ledger_Value, NVS_First + Page_Bytes, Page_Bytes, Granted);
+      Check (not Granted, "a different window inside an ACPI claim refused");
+      Claim_ACPI (Ledger_Value, NVS_First - Page_Bytes, 2 * Page_Bytes, Granted);
+      Check (not Granted, "a window overlapping an ACPI claim's first page refused");
+      Claim_ACPI (Ledger_Value, 16#5000_0800#, Page_Bytes, Granted);
+      Check (not Granted, "an unaligned window refused");
+      Claim_ACPI (Ledger_Value, 16#5000_0000#, 16#800#, Granted);
+      Check (not Granted, "a partial page refused");
+      Claim_ACPI (Ledger_Value, 16#5000_0000#, 0, Granted);
+      Check (not Granted, "an empty window refused");
+      Claim_ACPI (Ledger_Value, Byte_Limit - Page_Bytes, 2 * Page_Bytes, Granted);
+      Check (not Granted, "a window past the physical limit refused");
+      Check (Clear_Of_ACPI (Ledger_Value, 16#FEB0_0000#, 16#4000#), "a BAR elsewhere is clear");
+      Check (Clear_Of_ACPI (Ledger_Value, NVS_First - Page_Bytes, Page_Bytes),
+             "the page just below an ACPI claim is clear");
+      Check (Clear_Of_ACPI (Ledger_Value, NVS_First + NVS_Bytes, Page_Bytes),
+             "the page just above an ACPI claim is clear");
+      Check (not Clear_Of_ACPI (Ledger_Value, NVS_First - 1, 2),
+             "a range one byte into an ACPI claim is not clear");
+      Check (not Clear_Of_ACPI (Ledger_Value, FACS_Page + 16#40#, 4),
+             "bytes inside the FACS page are not clear");
+      Check (not Clear_Of_ACPI (Ledger_Value, 0, 16#1_0000_0000#),
+             "a root spanning an ACPI claim is not clear");
+      Check (not Clear_Of_ACPI (Ledger_Value, 16#FEB0_0000#, 0)
+             and then not Clear_Of_ACPI (Ledger_Value, Unsigned_64'Last, 2),
+             "empty and wrapping ranges are not clear");
+      for K in 1 .. Maximum_Claims loop
+         Claim_ACPI (Ledger_Value, Unsigned_64 (16#6000_0000# + K * 16#10_0000#), Page_Bytes, Granted);
+      end loop;
+      Check (Ledger_Value.Count = Maximum_Claims, "the ledger fills");
+      Claim_ACPI (Ledger_Value, 16#7000_0000#, Page_Bytes, Granted);
+      Check (not Granted, "a full ledger refuses new windows");
+      Claim_ACPI (Ledger_Value, FACS_Page, Page_Bytes, Granted);
+      Check (Granted, "a full ledger still re-grants a held window");
    end;
 
    ---------------------------------------------------------------------------

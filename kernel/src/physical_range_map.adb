@@ -59,6 +59,11 @@ package body Physical_Range_Map with SPARK_Mode => Off is
          PR.Invalidate (Kernel_Map);
       end if;
       Add_Register_Page (acpi.hpetAddr);
+      -- The FACS page: firmware memory (write-back) when it is a whole
+      -- NVS or firmware-reserved page; nothing when the FADT names none.
+      if acpi.facsAddr /= 0 then
+         PR.Set_Control (Kernel_Map, acpi.facsAddr);
+      end if;
       PR.Seal (Kernel_Map);
 
       print ("Physical ranges: ");

@@ -7,7 +7,11 @@ package body Round_Trips with SPARK_Mode is
                              Valid : out Boolean) is
       E : constant Encoded := Encode (Value);
       H : constant Word_Array := Handle_Words (Value.Handles) with Ghost;
+      F : constant Word_Array := Firmware_Words (Value.Handles) with Ghost;
    begin
+      pragma Assert (for all I in 1 .. Firmware_Root_Words =>
+                       E.Words (Firmware_First_Word - 1 + I) = F (I));
+      pragma Assert (Firmware_Valid (E.Words (28 .. 36)));
       pragma Assert (for all I in 1 .. 21 => E.Words (6 + I) = H (I));
       pragma Assert (Handles_Valid (E.Words (7 .. 27)));
       Decode (E.Words (1 .. E.Length), Decoded, Valid);
@@ -16,6 +20,10 @@ package body Round_Trips with SPARK_Mode is
         (for all I in 1 .. 21 => Handle_Words (Decoded.Handles) (I) = H (I));
       pragma Assert (Decoded.Handles.Root_Count = Value.Handles.Root_Count);
       pragma Assert (Decoded.Handles.Device_Roots = Value.Handles.Device_Roots);
+      pragma Assert
+        (for all I in 1 .. Firmware_Root_Words => Firmware_Words (Decoded.Handles) (I) = F (I));
+      pragma Assert (Decoded.Handles.Firmware_Count = Value.Handles.Firmware_Count);
+      pragma Assert (Decoded.Handles.Firmware_Roots = Value.Handles.Firmware_Roots);
       pragma Assert (Decoded.Handles = Value.Handles);
    end Device_Manager;
 

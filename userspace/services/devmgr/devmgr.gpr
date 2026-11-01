@@ -30,6 +30,7 @@ project Devmgr is
        "devmgr_launches.ads", "devmgr_launches.adb",
        "devmgr_authority.ads", "devmgr_authority.adb",
        "devmgr_port_claims.ads", "devmgr_port_claims.adb",
+       "devmgr_memory_claims.ads", "devmgr_memory_claims.adb",
        "fs_attachments.ads",
        "ccl-resource_sections.ads", "ccl-resource_sections.adb",
        "boot_rtc.ads", "boot_rtc.adb", "rtc_decode.ads", "rtc_decode.adb", "rtc_sampling.ads", "rtc_sampling.adb", "civil_time.ads", "civil_time.adb",

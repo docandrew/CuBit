@@ -44,7 +44,10 @@ package body ACPI_Field_Inventory_Owner is
             Entries (Index) :=
               (Register => A.Register_ID (Item.ID), Epoch => Item.Epoch,
                Geometry => (Region =>
-                 (Space => (if Item.IO_Space then L.IO_Space else L.Memory_Space),
+                 (Space => (case Item.Space is
+                    when ACPI_Inventory_Protocol.Memory_Space => L.Memory_Space,
+                    when ACPI_Inventory_Protocol.IO_Space => L.IO_Space,
+                    when ACPI_Inventory_Protocol.Embedded_Control_Space => L.Embedded_Control_Space),
                   Base => Item.Base, Length => Item.Length),
                  Byte_Offset => Item.Offset, Width => Item.Width),
                Readable => Item.Readable, Writable => Item.Writable,

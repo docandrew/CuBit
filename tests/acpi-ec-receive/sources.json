@@ -11,7 +11,7 @@
     },
     {
       "path": "shared/capabilities/capability_abi.ads",
-      "sha256": "34dcb0be4c952d0bb2f52278b1e9ed99cc32ad95dc9c97fdd3fbfa2efd920892"
+      "sha256": "3d5d15cc1e0d4826bf2a6d0bdb87a7f25f49eddd64d3674414925365ade17fe4"
     },
     {
       "path": "tests/acpi-ec-native-calls/fixtures/cubit-handles-ipc.ads",

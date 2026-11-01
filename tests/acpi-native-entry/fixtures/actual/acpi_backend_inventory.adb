@@ -43,7 +43,8 @@ package body ACPI_Backend_Inventory is
            (ID => Description.Item.Register_Authority.Resource_ID,
             Epoch => Description.Epoch, Base => Description.Item.Base,
             Length => Description.Item.Length, Offset => Description.Item.Register_Offset,
-            IO_Space => Description.Item.Space = Catalog.P.IO_Space,
+            Space => (if Description.Item.Space = Catalog.P.IO_Space
+              then Proto.IO_Space else Proto.Memory_Space),
             Readable => Description.Item.Register_Authority.Readable,
             Writable => Description.Item.Register_Authority.Writable,
             Delegable => Description.Item.Register_Authority.Delegable,

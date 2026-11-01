@@ -125,6 +125,21 @@ package Capability_ABI with Pure, SPARK_Mode is
      Right_Read or Right_Write or Right_Execute or Right_Grant or Right_Revoke;
 
    ---------------------------------------------------------------------------
+   --  Device-memory tags, as INSPECT_CAPABILITY reports them. The kernel
+   --  fixes a device-memory capability's tag when it makes the root; no
+   --  derivation sets or changes it, so the tag is the authenticated record
+   --  of what the memory is and how the kernel maps it. Untagged: device
+   --  memory (device-mappable pages, mapped uncached). The firmware-memory
+   --  tags (the ACPI hardware grant, kernel Physical_Ranges "Firmware
+   --  memory"): Firmware_NVS_Tag, a run of whole ACPI NVS pages, mapped
+   --  write-back; Firmware_Control_Tag, the FACS page alone (the Global
+   --  Lock), mapped write-back whatever its firmware class. None maps
+   --  another's pages.
+   ---------------------------------------------------------------------------
+   Firmware_NVS_Tag     : constant Unsigned_64 := 16#4657_4D45_4D00_0001#;  --  "FWMEM", 1
+   Firmware_Control_Tag : constant Unsigned_64 := 16#4657_4D45_4D00_0002#;  --  "FWMEM", 2
+
+   ---------------------------------------------------------------------------
    --  Message tag flags: one byte of the tag, two typed components.
    --  Protocol_Flags (the low four bits) belong to the protocol between the
    --  two processes; the kernel delivers them unchanged. A protocol that

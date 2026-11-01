@@ -58,6 +58,8 @@ package body Launch_Configuration with SPARK_Mode is
       Result.Words (5) := Value.Framebuffer.First;
       Result.Words (6) := Value.Framebuffer.Bytes;
       Result.Words (7 .. 27) := Handle_Words (Value.Handles);
+      Result.Words (Firmware_First_Word .. Firmware_First_Word + Firmware_Root_Words - 1) :=
+        Firmware_Words (Value.Handles);
       return Result;
    end Encode;
 
@@ -138,7 +140,9 @@ package body Launch_Configuration with SPARK_Mode is
       Valid := Header_Valid (Words, Device_Manager)
         and then Is_Bytes (Words (4)) and then Is_Address (Words (5))
         and then Is_Bytes (Words (6))
-        and then Handles_Valid (Words (7 .. 27));
+        and then Handles_Valid (Words (7 .. 27))
+        and then Firmware_Valid
+          (Words (Firmware_First_Word .. Firmware_First_Word + Firmware_Root_Words - 1));
       if Valid then
          Value := (Boot_Image  => Words (4),
                    Framebuffer => (First => Words (5), Bytes => Words (6)),
@@ -156,7 +160,10 @@ package body Launch_Configuration with SPARK_Mode is
                       Scheduling        => Words (17),
                       Firmware_Snapshot => Words (18),
                       Root_Count        => Device_Root_Count (Words (19)),
-                      Device_Roots      => [for R in Device_Root_Index => Words (19 + R)]));
+                      Device_Roots      => [for R in Device_Root_Index => Words (19 + R)],
+                      Firmware_Count    => Firmware_Root_Count (Words (Firmware_First_Word)),
+                      Firmware_Roots    =>
+                        [for R in Firmware_Root_Index => Words (Firmware_First_Word + R)]));
       end if;
    end Decode;
 

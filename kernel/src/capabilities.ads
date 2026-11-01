@@ -89,6 +89,14 @@ is
 
     NO_AUTHORITY_TAG : constant Authority_Tag := 0;
 
+    -- The tags of a firmware-memory CAP_DEVICE_MEM (Capability_ABI.
+    -- Firmware_NVS_Tag, Firmware_Control_Tag; Device_Memory_Authority): an
+    -- ACPI NVS run, or the FACS page. Set only on the kernel's
+    -- firmware-memory roots, never by a derivation (Capability_Install
+    -- tags only untagged endpoints and notifications).
+    FIRMWARE_NVS_TAG     : constant Authority_Tag := 16#4657_4D45_4D00_0001#;
+    FIRMWARE_CONTROL_TAG : constant Authority_Tag := 16#4657_4D45_4D00_0002#;
+
     ---------------------------------------------------------------------------
     -- Generation Counter
     --

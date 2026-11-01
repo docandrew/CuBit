@@ -1,10 +1,18 @@
 pragma Ada_2022;
 with AML_Execute;
 package body ACPI_Field_Startup_Owner is
-   use type Wire.Time_Instant;
+   use type Wire.Time_Instant, Interfaces.Unsigned_64;
+   use type Plain.Startup_State;
+   Lease_Microseconds : constant Interfaces.Unsigned_64 := 100_000;
+   Lease_IPC_Milliseconds : constant Wire.Time_Instant := 100;
+   Cleanup_IPC_Milliseconds : constant Wire.Time_Instant := 25;
+   function Plain_Ready (IO : Plain.Context) return Boolean is
+     (Plain.Status (IO) = Plain.Ready);
    use type Provider.Startup_State;
    use type Core.Values.Access_Status, Core.Execution_Phase_Result, Core.Values.Module_Outcome;
    Provider_Symbol : constant AML_Field_Access.Endpoint_ID := 1;
+   function Provider_Ready (IO : Provider.Context) return Boolean is
+     (Provider.Status (IO) = Provider.Ready);
    function Observe return Report is
      ((Stage, Module_Attempted, Module_Completed, Provider.Pending (IO), Provider.Register_Count (IO)));
    procedure Read_Window (Now, Deadline : out Wire.Time_Instant) is
@@ -18,6 +26,38 @@ package body ACPI_Field_Startup_Owner is
       end if;
       Last_Sample := Now; Deadline := Until_Time;
    end Read_Window;
+   procedure Read_NVS_Deadline (Deadline : out Wire.Time_Instant) is
+      Ignored : Wire.Time_Instant;
+   begin Read_Window (Ignored, Deadline); end Read_NVS_Deadline;
+   procedure Read_Lease_Window
+     (Lease_Deadline : out Interfaces.Unsigned_64;
+      IPC_Deadline : out Wire.Time_Instant; Available : out Boolean) is
+      Microseconds : Interfaces.Unsigned_64 := 0;
+      Now, Until_IPC : Wire.Time_Instant;
+   begin
+      Lease_Deadline := 0; IPC_Deadline := Wire.No_Finite_Deadline;
+      Available := False;
+      Read_Window (Now, Until_IPC);
+      if Until_IPC = Wire.No_Finite_Deadline then return; end if;
+      Read_Lease_Clock (Microseconds, Available);
+      if not Available or else Microseconds >= Interfaces.Unsigned_64'Last - Lease_Microseconds
+        or else Now >= Wire.No_Finite_Deadline - Lease_IPC_Milliseconds then
+         Available := False; return;
+      end if;
+      Lease_Deadline := Microseconds + Lease_Microseconds;
+      IPC_Deadline := Wire.Time_Instant'Min (Until_IPC, Now + Lease_IPC_Milliseconds);
+   end Read_Lease_Window;
+   procedure Read_Cleanup_Deadline (Deadline : out Wire.Time_Instant) is
+      Now : Wire.Time_Instant := 0;
+      Available : Boolean := False;
+   begin
+      -- Cleanup remains possible after startup/data expiry or Stage=Closed.
+      Deadline := Wire.No_Finite_Deadline;
+      Read_Clock (Now, Available);
+      if Available and then Now < Wire.No_Finite_Deadline - Cleanup_IPC_Milliseconds then
+         Deadline := Now + Cleanup_IPC_Milliseconds;
+      end if;
+   end Read_Cleanup_Deadline;
    function Usable return Boolean is
       Now, Deadline : Wire.Time_Instant;
    begin
@@ -46,7 +86,11 @@ package body ACPI_Field_Startup_Owner is
       Accepted := Usable;
    end Begin_Startup;
    procedure Close_Startup is
-   begin Stage := Closed; end Close_Startup;
+      Completed : Boolean;
+   begin
+      Stage := Closed;
+      Provider.Cleanup (IO, Completed);
+   end Close_Startup;
    procedure Execute_Module_Startup
      (Service : in out Core.State; Budget : Natural;
       Result : out Core.Execution_Report; Status : out Core.Values.Access_Status) is

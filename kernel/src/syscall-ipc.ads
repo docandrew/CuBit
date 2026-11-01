@@ -20,7 +20,9 @@ is
                            arg0, arg1, arg2 : Unsigned_64;
                            retval     : out Unsigned_64);
 
-    -- MAP_DEVICE: arg4 = the CAP_DEVICE_MEM handle covering the pages.
+    -- MAP_DEVICE: arg4 = the CAP_DEVICE_MEM handle covering the pages:
+    -- device memory (untagged) maps uncached, firmware memory (the ACPI
+    -- hardware grant's NVS runs and FACS page) write-back.
     procedure handleMapDevice (callerPID : Process.ProcessID;
                                arg0, arg1, arg2, arg3, arg4 : Unsigned_64;
                                retval    : out Unsigned_64);

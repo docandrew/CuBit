@@ -2,9 +2,11 @@ pragma Ada_2022;
 with CuBit.Handles.IPC;
 with CuBit.Handles.Devices;
 with CuBit.Monotonic;
+with ACPI_Backend_Firmware_Native;
 package body ACPI_Backend_Kernel_Handles is
    package B renames ACPI_Backend_Binding_Types;
    use type CuBit.Handles.ABI.Kind;
+   use type Interfaces.Unsigned_64;
    function Decode (Item : CuBit.Handles.IPC.Description; Expected : CuBit.Handles.ABI.Kind)
      return B.Description is
    begin
@@ -17,7 +19,17 @@ package body ACPI_Backend_Kernel_Handles is
    end Decode;
    procedure Inspect_Memory
      (Authority : CuBit.Handles.Device_Memory; Item : out B.Description) is
-   begin Item := Decode (CuBit.Handles.IPC.Describe (Authority), CuBit.Handles.ABI.Device_Memory); end Inspect_Memory;
+      package F renames ACPI_Backend_Firmware_Native;
+      Actual : constant F.Policy.Report := F.Inspect (Authority);
+      use type F.Policy.Outcome;
+   begin
+      Item := (others => <>);
+      if Actual.Status /= F.Policy.Admitted then return; end if;
+      Item := (True, B.Memory_Resource,
+        Interfaces.Unsigned_64 (Actual.Memory.First_Page) * F.Policy.M.Page_Bytes,
+        Interfaces.Unsigned_64 (Actual.Memory.Pages) * F.Policy.M.Page_Bytes,
+        True, True, False);
+   end Inspect_Memory;
    procedure Inspect_Ports
      (Authority : CuBit.Handles.IO_Ports; Item : out B.Description) is
    begin Item := Decode (CuBit.Handles.IPC.Describe (Authority), CuBit.Handles.ABI.IO_Ports); end Inspect_Ports;

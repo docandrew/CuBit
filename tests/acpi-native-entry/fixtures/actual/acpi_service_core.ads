@@ -356,6 +356,22 @@ package ACPI_Service_Core with SPARK_Mode is
         AML_Execution_Limits.Default_Field_Request_Limit;
       Maximum_Work : AML_Execution_Limits.Field_Work_Limit :=
         AML_Execution_Limits.Default_Field_Work_Limit;
+      -- Trusted metadata-only resolution for early module Fields. No arena
+      -- alias, I/O, grant creation or _REG readiness may come from this hook.
+      -- Default null preserves the existing fixed-target-only admission.
+      with procedure Resolve_Module_Target
+        (IO : in out IO_Context; Geometry : AML_Field_Layout.Register_Geometry;
+         Target : in out AML_Field_Access.Target; Accepted : in out Boolean) is null;
+      -- Trusted whole-root Field transaction hooks. No arena alias is passed.
+      -- A refused begin must preserve any cleanup duty inside IO; End_Field
+      -- runs after every normal completion of an accepted begin. These hooks
+      -- alone do not admit Lock-rule Fields or cover composed child frames.
+      with procedure Begin_Field
+        (IO : in out IO_Context; Requires_Lock, For_Write : Boolean;
+         Accepted : in out Boolean) is null;
+      with procedure End_Field
+        (IO : in out IO_Context; Accepted : in out Boolean) is null;
+      Allow_Locked_NVS_Reads : Boolean := False;
    package Field_IO is
       pragma Unevaluated_Use_Of_Old (Allow);
       type Module_Target_Count is new Natural range 0 .. Maximum_Bindings;
@@ -502,7 +518,7 @@ package ACPI_Service_Core with SPARK_Mode is
    private
       package Adapter is new Values.Field_IO
         (IO_Context, Pending, Describe_Target, Dispatch, Completion_Confirmed, Maximum_Bindings,
-         Authorize_Target, Maximum_Requests, Maximum_Work);
+         Authorize_Target, Maximum_Requests, Maximum_Work, Resolve_Module_Target, Begin_Field, End_Field, Allow_Locked_NVS_Reads);
       type Binding is record
          Inner : Adapter.Binding := Adapter.No_Binding;
       end record;
