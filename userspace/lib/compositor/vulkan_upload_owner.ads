@@ -4,7 +4,9 @@ package Vulkan_Upload_Owner with SPARK_Mode is
    package C renames Vulkan_Context_Owner;
    package V renames C.V;
    use type A.State, A.Ticket, A.Phase, C.State, C.Child, C.Phase, System.Address;
-   subtype Capacity_Range is Positive range 1 .. 16 * 1024 * 1024;
+   -- Sized by the caller from what it stages (a whole frame of the actual
+   -- mode for readback, LIM-001); the aggregate budget is the ceiling.
+   subtype Capacity_Range is Positive;
    type Phase is (Fresh, Live, Closed, Quarantined);
    type Transfer_Direction is (Upload, Readback);
    type State is private;

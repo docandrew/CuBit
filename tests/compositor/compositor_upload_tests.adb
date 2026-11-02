@@ -43,14 +43,25 @@ begin
       end loop;
       First := 0; Chunks := 0;
       while First < 2160 loop
-         G.Row_Chunk (3840, 2160, G.Edge (First), 65536, Kind, P, OK);
+         G.Row_Chunk (3840, 2160, G.Edge (First), 2160, 65536, Kind, P, OK);
          pragma Assert (OK and G.Area (P).Y = First and G.Area (P).Height > 0);
          First := First + G.Area (P).Height; Chunks := Chunks + 1;
       end loop;
       pragma Assert (First = 2160 and Chunks > 1);
-      G.Row_Chunk (65535, 65535, 0, 1, Kind, P, OK); pragma Assert (not OK);
+      G.Row_Chunk (65535, 65535, 0, 65535, 1, Kind, P, OK); pragma Assert (not OK);
       G.Make (65535, 65535, G.Byte_Count'Last, (0, 0, 65535, 65535), 0, 0, Kind, P, OK);
       pragma Assert (not OK);
+      --  LIM-001: staging sized from the actual mode. A whole 3840x2160
+      --  frame (33,177,600 bytes in BGRA) is one plan and one row chunk;
+      --  the old 16 MiB Byte_Count could not even name that capacity.
+      G.Make (3840, 2160, 3840 * 2160 * G.Pixel_Bytes (Kind), (0, 0, 3840, 2160), 0, 0, Kind, P, OK);
+      pragma Assert (OK and G.End_Byte (P) = 3840 * 2160 * G.Pixel_Bytes (Kind));
+      G.Row_Chunk (3840, 2160, 0, 2160, 3840 * 2160 * G.Pixel_Bytes (Kind), Kind, P, OK);
+      pragma Assert (OK and G.Area (P).Height = 2160);
+      G.Make (3840, 2160, 3840 * 2160 * G.Pixel_Bytes (Kind) - 1, (0, 0, 3840, 2160), 0, 0, Kind, P, OK);
+      pragma Assert (not OK);
+      G.Make (7680, 4320, 7680 * 4320 * G.Pixel_Bytes (Kind), (0, 0, 7680, 4320), 0, 0, Kind, P, OK);
+      pragma Assert (OK);
    end loop;
    Ada.Text_IO.Put_Line ("PASS upload geometry:" & Natural'Image (Count) & " enumerated address cases, 4K row tiling, undersized staging and extreme extents");
 end Compositor_Upload_Tests;

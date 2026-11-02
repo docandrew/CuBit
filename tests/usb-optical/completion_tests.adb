@@ -3,10 +3,14 @@ with Interfaces; use Interfaces;
 with XHCI_Completions; use XHCI_Completions;
 
 procedure Completion_Tests is
-   State : Mailboxes;
+   --  LIM-001: as many slots as the controller enables (QEMU's qemu-xhci
+   --  and Intel PCH controllers report 64), not a fixed 8.
+   Enabled_Slots : constant := 64;
+   State : Mailboxes (Slots => Enabled_Slots);
    Result : Route_Result;
    Item : Event;
    Found : Boolean;
+   type Slot_List is array (Positive range <>) of Slot_Number;
    function Transfer (Slot, Endpoint : Natural; Sequence : Unsigned_32)
       return Event is
      ((ParameterLo => Sequence, ParameterHi => 0, Status => 16#0100_0000#,
@@ -16,7 +20,7 @@ begin
    Clear (State);
    --  Fill every endpoint independently. Both success and error completions
    --  belong to their original endpoint, not whichever class is waiting.
-   for Slot in Slot_Number range 1 .. Maximum_Slots loop
+   for Slot in Slot_Number range 1 .. Enabled_Slots loop
       for Endpoint in Endpoint_Number range 1 .. 31 loop
          for Sequence in 1 .. Queue_Depth loop
             Route (State, Transfer (Slot, Endpoint, Unsigned_32 (Sequence)), Result);
@@ -32,7 +36,7 @@ begin
    pragma Assert (Result = Queued);
    Take (State, 0, 0, Item, Found);
    pragma Assert (Found and Item.ParameterLo = 1);
-   for Slot in reverse Slot_Number range 1 .. Maximum_Slots loop
+   for Slot in reverse Slot_Number range 1 .. Enabled_Slots loop
       for Endpoint in reverse Endpoint_Number range 1 .. 31 loop
          for Sequence in 1 .. Queue_Depth loop
             Take (State, Slot, Endpoint, Item, Found);
@@ -61,7 +65,7 @@ begin
    end loop;
    for Slot in 0 .. 255 loop
       Route (State, Transfer (Slot, 1, 0), Result);
-      if Slot in 1 .. Maximum_Slots then
+      if Slot in 1 .. Enabled_Slots then
          pragma Assert (Result = Queued);
       else
          pragma Assert (Result = Invalid_Target);
@@ -73,5 +77,27 @@ begin
    pragma Assert (Result = Not_A_Completion);
    Clear (State);
    pragma Assert (Pending (State, 1, 1) = 0);
+   --  The ninth and the last enabled slot route and drain like the first.
+   for Slot of Slot_List'(9, Enabled_Slots) loop
+      Route (State, Transfer (Slot, 3, 77), Result);
+      pragma Assert (Result = Queued);
+      pragma Assert (Pending (State, Slot, 3) = 1);
+      Clear_Slot (State, Slot);
+      pragma Assert (Pending (State, Slot, 3) = 0);
+   end loop;
+   --  Every protocol slot ID, when the controller enables all 255.
+   declare
+      Full : Mailboxes (Slots => PROTOCOL_MAX_SLOTS);
+   begin
+      Clear (Full);
+      for Slot in Slot_Number range 1 .. PROTOCOL_MAX_SLOTS loop
+         Route (Full, Transfer (Slot, 31, Unsigned_32 (Slot)), Result);
+         pragma Assert (Result = Queued);
+      end loop;
+      for Slot in Slot_Number range 1 .. PROTOCOL_MAX_SLOTS loop
+         Take (Full, Slot, 31, Item, Found);
+         pragma Assert (Found and Item.ParameterLo = Unsigned_32 (Slot));
+      end loop;
+   end;
    Ada.Text_IO.Put_Line ("XHCI-COMPLETIONS: PASS isolated bounded mailboxes");
 end Completion_Tests;

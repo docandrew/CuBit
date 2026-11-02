@@ -20,6 +20,7 @@ with Launch_Configuration;
 with Boot_Log;
 with XHCI;
 with XHCI_Capabilities;
+with XHCI_DMA_Layout;
 with XHCI_Configure_Reply;
 with XHCI_Controller_Identity;
 with Optical_Service;
@@ -36,8 +37,6 @@ procedure main is
    CONFIGURE_WORDS   : constant := 4;
    REPLY_OK          : constant Unsigned_32 := 16#F000#;
    REPLY_ERR         : constant Unsigned_32 := 16#F001#;
-   PAGES_MASK        : constant Unsigned_64 := 16#FFFF_FFFF#;
-   SCRATCHPAD_SHIFT  : constant := 32;
    STATISTICS_INTERVAL_MS : constant Unsigned_64 := 1_000;
    --  Report events between statistics checks (keeps clock reads out of
    --  the report hot path).
@@ -299,8 +298,10 @@ begin
    if sender = No_Process or else
       sender /= Registered_Driver (DRIVER_DEVMGR) or else
       msg.tag.label /= OP_XHCI_CONFIGURE or else msg.tag.length /= CONFIGURE_WORDS or else
-      Shift_Right (msg.words (1), SCRATCHPAD_SHIFT) >
+      XHCI_DMA_Layout.Scratchpads_Of (msg.words (1)) >
         Unsigned_64 (XHCI_Capabilities.Scratchpad_Buffer_Count'Last) or else
+      XHCI_DMA_Layout.Slots_Of (msg.words (1)) not in
+        Unsigned_64 (XHCI_DMA_Layout.Slot_Count'First) .. Unsigned_64 (XHCI_DMA_Layout.Slot_Count'Last) or else
       not CI.Well_Formed (msg.words (3))
    then
       Boot_Log.Line ("xhci: " & Location & " stage configure fail invalid message", True);
@@ -334,9 +335,10 @@ begin
 
    XHCI.Initialize
      (barPhys  => msg.words (0),
-      barPages => msg.words (1) and PAGES_MASK,
+      barPages => msg.words (1) and XHCI_DMA_Layout.CONFIG_PAGES_MASK,
       dmaPhys  => msg.words (2),
-      expectedScratchpads => Natural (Shift_Right (msg.words (1), SCRATCHPAD_SHIFT)),
+      expectedScratchpads => Natural (XHCI_DMA_Layout.Scratchpads_Of (msg.words (1))),
+      expectedSlots => Natural (XHCI_DMA_Layout.Slots_Of (msg.words (1))),
       result   => initResult);
 
    if initResult /= XHCI.INIT_OK then

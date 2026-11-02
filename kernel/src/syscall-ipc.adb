@@ -37,6 +37,7 @@ with Owned_Memory_Layout;
 with PerCpuData;
 with PerCPUData;
 with Channel_Wake_ABI;
+with Contiguous_Memory;
 with Process;
 with Process_Identities;
 with Process.DMA;
@@ -63,6 +64,11 @@ use type Capabilities.Operations.OperationStatus;
 
 package body Syscall.IPC is
     use type Process_Capabilities.Tables.Slot_Base;
+    -- ALLOC_DMA's largest order is the one userspace sizes DMA by
+    -- (shared/launch Contiguous_Memory, LIM-001).
+    pragma Compile_Time_Error
+      (Natural (BuddyAllocator.Order'Last) /= Contiguous_Memory.Maximum_Order,
+       "the kernel's largest contiguous block is not the one userspace sizes DMA by");
     -- Shared-memory grant flags (arg3 of the create-grant calls): bit 0
     -- read-write, then these.
     Grant_Flag_Forwardable : constant Unsigned_64 := 2;

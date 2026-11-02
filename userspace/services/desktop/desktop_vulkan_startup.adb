@@ -483,7 +483,9 @@ package body Desktop_Vulkan_Startup with SPARK_Mode,
    end Cancel_Write;
    procedure Stage_Write (Ticket : Write_Ticket; Producer_Retired : Boolean; Result : out Source_Result) is
       End_Byte : G.Byte_Count;
-      Next : Natural;
+      -- Wide: End_Byte may be near G.Byte_Count'Last (staging is sized
+      -- from the actual mode, LIM-001) and rounding up must not wrap.
+      Next : Long_Long_Integer;
    begin
       Result := Source_Rejected;
       if Writer /= Producing or else Ticket /= Active_Write or else Ticket = No_Write or else
@@ -493,10 +495,11 @@ package body Desktop_Vulkan_Startup with SPARK_Mode,
          CP.Cancel (Coverage (Ticket.Index), Ticket.Chunk, False); Writer := Unsafe; Result := Source_Unsafe; return;
       end if;
       End_Byte := G.End_Byte (Write_Plan);
-      Next := (End_Byte + Staging_Alignment - 1) / Staging_Alignment * Staging_Alignment;
+      Next := (Long_Long_Integer (End_Byte) + Staging_Alignment - 1) / Staging_Alignment * Staging_Alignment;
       Batch (Ticket.Index) := (Staged => True, Chunk => Ticket.Chunk, Plan => Write_Plan,
                                Discard => Write_Discard);
-      Batch_Used := (if Next > G.Byte_Count'Last then G.Byte_Count'Last else Next);
+      Batch_Used := (if Next > Long_Long_Integer (G.Byte_Count'Last) then G.Byte_Count'Last
+                     else G.Byte_Count (Next));
       Writer := Staged;
       Result := Source_Accepted;
    end Stage_Write;

@@ -864,13 +864,16 @@ class Manifests(unittest.TestCase):
                 ('(interrupt irq msix (vectors 33))', 'INVALID_DEVICE_RESOURCE'),
                 ('(interrupt irq edge)', 'INVALID_DEVICE_RESOURCE'),
                 ('(dma buf (bytes 0))', 'INVALID_DEVICE_RESOURCE'),
-                ('(dma buf (bytes 67112960))', 'INVALID_DEVICE_RESOURCE'),
+                # LIM-001: one page past the kernel's largest contiguous block
+                # (2 ** 13 pages, shared/launch/contiguous_memory.ads).
+                ('(dma buf (bytes 33558528))', 'INVALID_DEVICE_RESOURCE'),
+                ('(dma buf (bytes 67108864))', 'INVALID_DEVICE_RESOURCE'),
                 ('(io-ports p (bar 0) (count 65537))', 'INVALID_DEVICE_RESOURCE'),
                 ('(dma regs (bytes 4096))', 'DUPLICATE_BINDING')]:
             with self.subTest(form=form):
                 self.reject(extra.format(form), diagnostic=diagnostic)
         for form in ('(interrupt irq line)', '(interrupt irq msi (vectors 32))',
-                     '(io-ports p (bar 5) (count 65536))', '(dma buf (bytes 67108864))'):
+                     '(io-ports p (bar 5) (count 65536))', '(dma buf (bytes 33554432))'):
             with self.subTest(form=form):
                 self.assertEqual(self.compile(extra.format(form)).returncode, 0)
 

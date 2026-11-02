@@ -35,7 +35,10 @@ is
     MIN_PHYS_ALLOC : constant := 16#100000#;
 
     -- 2^MAX_BUDDY_ORDER is the largest contiguous memory chunks that
-    -- we keep track of in our physical BuddyAllocator
+    -- we keep track of in our physical BuddyAllocator. Shared with
+    -- userspace as Contiguous_Memory.Maximum_Order (shared/launch), which
+    -- devmgr sizes DMA by and the manifest compiler's DMA ceiling equals;
+    -- Syscall.IPC (ALLOC_DMA) checks the two agree when compiled (LIM-001).
     MAX_BUDDY_ORDER : constant := 13;
 
     -- This is the number of times that a slab allocator will expand and

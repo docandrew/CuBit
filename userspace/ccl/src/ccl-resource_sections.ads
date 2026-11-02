@@ -38,7 +38,9 @@ package CCL.Resource_Sections with Pure, SPARK_Mode => On is
    PCI_BAR_COUNT : constant := 6;
    MAX_PLATFORM_RESOURCES : constant := 8;
    MAX_DEVICE_MEMORY_BYTES : constant := 256 * 1_024 * 1_024;
-   MAX_DMA_BYTES : constant := 64 * 1_024 * 1_024;
+   --  The kernel's largest contiguous block (shared/launch Contiguous_Memory:
+   --  2 ** 13 pages); devmgr checks the two are equal when it is compiled.
+   MAX_DMA_BYTES : constant := 32 * 1_024 * 1_024;
    IO_PORT_SPACE : constant := 65_536;
    MAX_INTERRUPT_VECTORS : constant := 32;
    PCI_ID_LAST : constant := 16#FFFF#;

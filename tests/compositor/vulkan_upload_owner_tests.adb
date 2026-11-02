@@ -51,6 +51,20 @@ begin
          end if;
       end;
    end loop;
+   --  LIM-001: a readback of a whole 3840x2160 frame (33,177,600 bytes),
+   --  sized from the mode; the old Capacity_Range stopped at 16 MiB.
+   declare
+      Frame : constant := 3840 * 2160 * 4;
+      S : O.State; Context : C.State; Submission : V.State;
+      Budget : A.State := A.Open (2 * Frame); OK, Released : Boolean;
+   begin
+      Reset; Context_Set (0, 0); Mock (U64 (Frame), 1, 0, 0, 0, 0);
+      C.Initialize (Context, Addr (31), OK); pragma Assert (OK); Submission := V.Open (C.Context (Context));
+      O.Initialize (S, Context, Submission, Addr (44), Frame, Budget, OK, O.Readback);
+      pragma Assert (OK and O.Capacity (S) = Frame and A.Charged (Budget) = Frame);
+      O.Close (S, Context, Budget, True, Released);
+      pragma Assert (Released and A.Charged (Budget) = 0);
+   end;
    declare
       S : O.State; Context : C.State; Submission : V.State;
       Budget : A.State := A.Open (40960); Held : array (1 .. 8) of A.Ticket;
@@ -71,5 +85,5 @@ begin
       end loop;
       pragma Assert (Binds = 32 and Releases = 32);
    end;
-   Ada.Text_IO.Put_Line ("PASS upload owner: 13 fault/retirement cases, real-size budget, ninth slot, 32 reuses, other allocations retained");
+   Ada.Text_IO.Put_Line ("PASS upload owner: 13 fault/retirement cases, real-size budget, ninth slot, 32 reuses, other allocations retained, 4K frame readback");
 end Vulkan_Upload_Owner_Tests;

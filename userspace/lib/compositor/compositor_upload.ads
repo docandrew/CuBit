@@ -2,7 +2,9 @@
 -- synchronize producers, or mark a partially initialized image publishable.
 package Compositor_Upload with SPARK_Mode, Pure is
    subtype Edge is Natural range 0 .. 65535;
-   subtype Byte_Count is Natural range 0 .. 16 * 1024 * 1024;
+   -- Staging capacity as allocated (sized from the actual mode, LIM-001);
+   -- Natural is the GPU accounting's own range.
+   subtype Byte_Count is Natural;
    type Pixel_Format is (BGRA8, R8);
    type Rectangle is record X, Y, Width, Height : Edge := 0; end record;
    type Plan is private;

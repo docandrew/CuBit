@@ -201,8 +201,13 @@ package body XHCI is
 
    subtype TRB is XHCI_Completions.Event;
    NULL_TRB : constant TRB := (others => 0);
-   subtype Device_Index is Positive range 1 .. XHCI_Completions.Maximum_Slots;
-   subtype Slot_Or_None is Natural range 0 .. XHCI_Completions.Maximum_Slots;
+   --  Slot IDs as the protocol defines them; the slots in use are
+   --  1 .. enabledSlots (HCSPARAMS1 MaxSlots, as devmgr allocated for).
+   subtype Device_Index is Positive range 1 .. XHCI_Completions.PROTOCOL_MAX_SLOTS;
+   subtype Slot_Or_None is Natural range 0 .. XHCI_Completions.PROTOCOL_MAX_SLOTS;
+   pragma Compile_Time_Error
+     (XHCI_Completions.PROTOCOL_MAX_SLOTS /= XHCI_DMA_Layout.PROTOCOL_MAX_SLOTS,
+      "completion mailboxes and the DMA layout disagree on the slot ID range");
    subtype Root_Port_Number is Positive range 1 .. MAX_ROOT_PORTS;
    subtype Port_Or_None is Natural range 0 .. MAX_ROOT_PORTS;
 
@@ -330,10 +335,11 @@ package body XHCI is
       descriptorBytes, hidReports : Byte_Array (0 .. 4095);
       bulkOutRing, bulkInRing : Page_TRBs;
    end record with Convention => C, Size => DEVICE_PAGES * 4096 * 8;
+   --  Only slots 1 .. enabledSlots are inside the allocation.
    type Device_DMA_Array is array (Device_Index) of Device_DMA_Area with Convention => C;
    pragma Compile_Time_Error
-     (Device_DMA_Array'Size /= MAX_DEVICE_SLOTS * DEVICE_PAGES * 4096 * 8,
-      "native device DMA array does not match shared allocation layout");
+     (Device_DMA_Area'Size /= DEVICE_STRIDE * 8,
+      "native device DMA area does not match shared allocation layout");
    deviceDMA : Device_DMA_Array with Import,
      Address => To_Address (Integer_Address (DMA_VIRT_BASE + DEVICE_CONTEXT_OFFSET));
    dcbaa : Address_Array (0 .. 255) with Import,
@@ -421,10 +427,16 @@ package body XHCI is
    connectedPorts : Natural := 0;
    contextStride  : Natural := CONTEXT_DWORDS_32;
    activeSlot     : Slot_Or_None := 0;
+   --  The slots the controller has enabled (CONFIG MaxSlotsEn), which
+   --  devmgr's DMA allocation covers.
+   enabledSlots   : Slot_Or_None := 0;
+   function Live_Slot (Slot : Natural) return Boolean is (Slot in 1 .. enabledSlots);
 
    events   : R.Consumer := R.Fresh_Consumer;
    commands : R.Producer := R.Fresh_Producer;
-   completionMailboxes : XHCI_Completions.Mailboxes;
+   --  Sized to enabledSlots at Initialize (CuAlloc).
+   type Mailboxes_Access is access XHCI_Completions.Mailboxes;
+   mailboxStore : Mailboxes_Access := null;
    ehbPending : Boolean := False;
    hotplugArmed : Boolean := False;
 
@@ -498,14 +510,14 @@ package body XHCI is
    begin
       health.Events := health.Events + 1;
       if Kind = TRB_TRANSFER_EVENT and then
-        Slot_Of (Item.Control) in 1 .. XHCI_Completions.Maximum_Slots and then
+        Live_Slot (Natural (Slot_Of (Item.Control))) and then
         slotRetired (Device_Index (Slot_Of (Item.Control)))
       then
          --  A detached device's late completion: its slot is being disabled.
          health.Dropped := health.Dropped + 1;
          return;
       end if;
-      XHCI_Completions.Route (completionMailboxes, Item, Result);
+      XHCI_Completions.Route (mailboxStore.all, Item, Result);
       case Result is
          when XHCI_Completions.Queued =>
             if Kind = TRB_TRANSFER_EVENT then
@@ -560,7 +572,7 @@ package body XHCI is
          Control := Read32 (DMA (EVENT_RING_OFFSET + Unsigned_64 (events.Head) * R.TRB_Bytes), 12);
          exit when not R.Owned (events, Control);
          Item := Event_At (events.Head, Control);
-         if not XHCI_Completions.Has_Room (completionMailboxes, Item) then
+         if not XHCI_Completions.Has_Room (mailboxStore.all, Item) then
             --  Left in the ring until its consumer takes its backlog: a
             --  mailbox never overflows and nothing is lost.
             health.Mailbox_Waits := health.Mailbox_Waits + 1;
@@ -619,7 +631,7 @@ package body XHCI is
       Pointer : Unsigned_64;
    begin
       loop
-         XHCI_Completions.Take (completionMailboxes, 0, 0, Item, Found);
+         XHCI_Completions.Take (mailboxStore.all, 0, 0, Item, Found);
          exit when not Found;
          Pointer := (Unsigned_64 (Item.ParameterLo) or Shift_Left (Unsigned_64 (Item.ParameterHi), 32))
            and not Unsigned_64 (R.TRB_Bytes - 1);
@@ -739,7 +751,7 @@ package body XHCI is
    begin
       C.Result := Result;
       C.Active := False;
-      if C.Slot in Device_Index then
+      if Live_Slot (C.Slot) then
          ep0State (C.Slot).Busy := False;
          if Result /= Control_OK then
             --  Quarantine the ring after an error or timeout; an endpoint
@@ -757,7 +769,7 @@ package body XHCI is
       Residual : Unsigned_32;
    begin
       while C.Active loop
-         XHCI_Completions.Take (completionMailboxes, C.Slot, EP0_DCI, Item, Found);
+         XHCI_Completions.Take (mailboxStore.all, C.Slot, EP0_DCI, Item, Found);
          exit when not Found;
          Pointer := Unsigned_64 (Item.ParameterLo) or Shift_Left (Unsigned_64 (Item.ParameterHi), 32);
          Code := Code_Of (Item.Status);
@@ -1091,7 +1103,7 @@ package body XHCI is
    end Build_Pipe_Configure;
 
    function Context_Halted (P : Pipe_State) return Boolean is
-     (P.Slot in Device_Index and then
+     (Live_Slot (P.Slot) and then
       State_Of (deviceDMA (P.Slot).deviceContext (P.DCI * contextStride)) = EP_HALTED);
 
    PORTPMSC_OFFSET : constant Storage_Offset := 4;   --  5.4.9, after PORTSC
@@ -1144,7 +1156,7 @@ package body XHCI is
       if P.Slot = 0 or else not P.Started then
          return;
       end if;
-      XHCI_Completions.Take (completionMailboxes, P.Slot, P.DCI, Item, Found);
+      XHCI_Completions.Take (mailboxStore.all, P.Slot, P.DCI, Item, Found);
       if not Found then
          return;
       end if;
@@ -1352,7 +1364,7 @@ package body XHCI is
          if storageSlot = 0 then
             Fault;
          else
-            XHCI_Completions.Take (completionMailboxes, storageSlot,
+            XHCI_Completions.Take (mailboxStore.all, storageSlot,
               (if bulkPhase = Command_Out then storageOutDCI else storageInDCI), Item, Found);
             if not hotplugArmed then
                Progressed := Collect_Event or else Found;
@@ -1426,7 +1438,7 @@ package body XHCI is
    procedure Retire_Slot (Slot : Device_Index) is
    begin
       slotRetired (Slot) := True;
-      XHCI_Completions.Clear_Slot (completionMailboxes, Slot);
+      XHCI_Completions.Clear_Slot (mailboxStore.all, Slot);
       for K in Pipe_Kind loop
          if pipes (K).Slot = Slot then
             if command.Busy and then command.Owner = Owner_Of (K) then
@@ -1451,13 +1463,13 @@ package body XHCI is
       ep0State (Slot) := (others => <>);
       slotPort (Slot) := 0;
       slotRetired (Slot) := False;
-      XHCI_Completions.Clear_Slot (completionMailboxes, Slot);
+      XHCI_Completions.Clear_Slot (mailboxStore.all, Slot);
    end Free_Slot;
 
    function Slots_Of (Port : Root_Port_Number) return Natural is
       Count : Natural := 0;
    begin
-      for S in Device_Index loop
+      for S in 1 .. enabledSlots loop
          if slotPort (S) = Port then
             Count := Count + 1;
          end if;
@@ -1718,7 +1730,7 @@ package body XHCI is
          Stage ("enable-slot", False, "timeout usbsts=" & H32 (Read32 (operational, OP_USBSTS)) &
                 " crcr=" & H32 (Read32 (operational, OP_CRCR)));
          Result := INIT_COMMAND_TIMEOUT; return;
-      elsif Code /= CC_SUCCESS or else Slot_Id not in Device_Index then
+      elsif Code /= CC_SUCCESS or else not Live_Slot (Slot_Id) then
          Stage ("enable-slot", False, "cc=" & Code_Name (Code) & " slot=" & D (Slot_Id));
          Result := INIT_COMMAND_FAILED; return;
       end if;
@@ -2093,12 +2105,13 @@ package body XHCI is
       barPages : Unsigned_64;
       dmaPhys  : Unsigned_64;
       expectedScratchpads : XHCI_Capabilities.Scratchpad_Buffer_Count;
+      expectedSlots : XHCI_DMA_Layout.Slot_Count;
       result   : out Init_Result)
    is
       Cap_Dword, HCS1, HCS2, HCC1, Page_Sizes : Unsigned_32;
       Max_Slots_Value : Natural;
       Scratchpads : XHCI_Capabilities.Scratchpad_Buffer_Count;
-      Layout : constant Allocation := Plan (expectedScratchpads);
+      Layout : constant Allocation := Plan (expectedScratchpads, expectedSlots);
       Halt_Ms, Reset_Ms, Ready_Ms, Run_Ms : Unsigned_64 := 0;
       Settle_Events : Natural := 0;
       Ignore : Unsigned_64;
@@ -2111,11 +2124,11 @@ package body XHCI is
       maxPorts := 0;
       connectedPorts := 0;
       activeSlot := 0;
+      enabledSlots := 0;
       dmaPhysical := dmaPhys;
       commands := R.Fresh_Producer;
       events := R.Fresh_Consumer;
       command := (others => <>);
-      XHCI_Completions.Clear (completionMailboxes);
       ep0State := [others => (others => <>)];
       pipes := [others => (others => <>)];
       storageSlot := 0;
@@ -2188,6 +2201,14 @@ package body XHCI is
          result := INIT_PAGE_SIZE_UNSUPPORTED;
          return;
       end if;
+      --  devmgr sized the device areas from the same register; it may have
+      --  allocated fewer (a DMA ceiling), never more.
+      if expectedSlots > Max_Slots_Value then
+         Stage ("identify", False, "slots=" & D (Max_Slots_Value) & " allocated-for=" &
+                D (Natural (expectedSlots)));
+         result := INIT_DMA_LAYOUT_MISMATCH;
+         return;
+      end if;
       if Scratchpads /= expectedScratchpads then
          Stage ("identify", False, "scratchpads=" & D (Natural (Scratchpads)) & " allocated-for=" &
                 D (Natural (expectedScratchpads)));
@@ -2219,6 +2240,12 @@ package body XHCI is
          return;
       end if;
 
+      --  The completion mailboxes for exactly the slots enabled below.
+      if mailboxStore = null or else mailboxStore.Slots /= expectedSlots then
+         mailboxStore := new XHCI_Completions.Mailboxes (Slots => expectedSlots);
+      end if;
+      XHCI_Completions.Clear (mailboxStore.all);
+      enabledSlots := expectedSlots;
       declare
          Bytes : array (Natural range 0 .. Pages (Layout) * 4096 - 1) of Unsigned_8
            with Import, Address => DMA (0);
@@ -2230,13 +2257,13 @@ package body XHCI is
       if Scratchpads > 0 then
          declare
             Pointers : Address_Array (0 .. Scratchpads - 1)
-              with Import, Address => DMA (SCRATCH_ARRAY_OFFSET);
+              with Import, Address => DMA (Layout.Scratch_Array);
          begin
             for I in Pointers'Range loop
                Pointers (I) := dmaPhys + Layout.Scratch_First + Unsigned_64 (I) * PAGE_SIZE;
             end loop;
          end;
-         dcbaa (0) := Phys (SCRATCH_ARRAY_OFFSET);
+         dcbaa (0) := Phys (Layout.Scratch_Array);
       end if;
       Init_Ring (COMMAND_RING_OFFSET);
       erst := (ringBase => Phys (EVENT_RING_OFFSET), ringSize => R.Event_Entries, reserved => 0);
@@ -2247,8 +2274,7 @@ package body XHCI is
       Write32 (runtimeBase + RT_INTR0, INTR_ERSTSZ, ONE_SEGMENT);
       Write64 (runtimeBase + RT_INTR0, INTR_ERDP, Phys (EVENT_RING_OFFSET));
       Write64 (runtimeBase + RT_INTR0, INTR_ERSTBA, Phys (ERST_OFFSET));
-      Write32 (operational, OP_CONFIG,
-               Unsigned_32 (Natural'Min (Max_Slots_Value, XHCI_Completions.Maximum_Slots)));
+      Write32 (operational, OP_CONFIG, Unsigned_32 (enabledSlots));
       Write32 (operational, OP_USBCMD, USBCMD_RUN);
       if not Wait_For_Bits (operational, OP_USBSTS, USBSTS_HCH, 0, Register_Wait_Ms, Run_Ms) then
          Stage ("reset", False, "run-timeout usbsts=" & H32 (Read32 (operational, OP_USBSTS)));
@@ -2369,7 +2395,7 @@ package body XHCI is
             Log ("port " & D (Natural (Port)) & " " & PM.Phase_Name (Was) & " fail gave up " &
                  Port_Text (Status), True);
          when PM.Release_Slots =>
-            for S in Device_Index loop
+            for S in 1 .. enabledSlots loop
                if slotPort (S) = Port and then not slotRetired (S) then
                   Retire_Slot (S);
                   Count := Count + 1;
@@ -2545,7 +2571,7 @@ package body XHCI is
          end if;
          if Engine_Command_Finished then
             if engine.Step = Engine_Enable and then command.Code = CC_SUCCESS and then
-              command.Slot in Device_Index
+              Live_Slot (command.Slot)
             then
                engine.Slot := command.Slot;
                slotPort (engine.Slot) := engine.Port;
@@ -2556,7 +2582,7 @@ package body XHCI is
          return;
       end if;
 
-      Desc := (if engine.Slot in Device_Index then Descriptor_Buffer (engine.Slot) else 0);
+      Desc := (if Live_Slot (engine.Slot) then Descriptor_Buffer (engine.Slot) else 0);
       case engine.Step is
          when Engine_Idle => null;
 
@@ -2566,7 +2592,7 @@ package body XHCI is
                Code := command.Code;
                Slot_Id := command.Slot;
                Release_Command;
-               if Code /= CC_SUCCESS or else Slot_Id not in Device_Index then
+               if Code /= CC_SUCCESS or else not Live_Slot (Slot_Id) then
                   Engine_Done (False, "enable fail cc=" & Code_Name (Code));
                   return;
                end if;
@@ -2792,7 +2818,7 @@ package body XHCI is
       if not Command_Free then
          return;
       end if;
-      for S in Device_Index loop
+      for S in 1 .. enabledSlots loop
          if slotRetired (S) and then not (engine.Step /= Engine_Idle and then engine.Slot = S) then
             disablingSlot := S;
             Issue_Command (Command_TRB (TRB_DISABLE_SLOT, S), Release_Owner);
@@ -2843,7 +2869,7 @@ package body XHCI is
                   health.Port_Resets := health.Port_Resets + 1;
                   Count := 0;
                   PM.Recover (ports (Port));
-                  for S in Device_Index loop
+                  for S in 1 .. enabledSlots loop
                      if slotPort (S) = Port and then not slotRetired (S) then
                         Retire_Slot (S);
                         Count := Count + 1;
@@ -3027,7 +3053,7 @@ package body XHCI is
          Deadline := Unsigned_64'Min (Deadline, engine.Control.Deadline);
       end if;
       if (engine.Step /= Engine_Idle and then not engine.Issued) or else
-        (disablingSlot = 0 and then (for some S in Device_Index => slotRetired (S)))
+        (disablingSlot = 0 and then (for some S in 1 .. enabledSlots => slotRetired (S)))
       then
          Deadline := Unsigned_64'Min (Deadline, Soon);
       end if;

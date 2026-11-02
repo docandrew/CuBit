@@ -62,6 +62,7 @@ with CuBit.File_Access;
 with Cpio;
 with Deferred_Warnings;
 with XHCI_DMA_Layout;
+with Contiguous_Memory;
 with XHCI_Capabilities;
 with XHCI_Configure_Reply;
 with XHCI_Controller_Identity;
@@ -2902,6 +2903,20 @@ procedure main is
       return size;
    end probeMemoryBARSize;
 
+   --  The bytes of the one DMA request Item's manifest declares: its named
+   --  ceiling. 0 when it declares none.
+   function Declared_DMA_Bytes (Item : DL.Child) return Unsigned_64 is
+      use type CCL.Resource_Sections.Resource_Kind;
+      Plan : constant CCL.Resource_Sections.Section_Plan := DL.Resources_Of (Item);
+   begin
+      for K in 1 .. Plan.Count loop
+         if Plan.Entries (K).Kind = CCL.Resource_Sections.DMA then
+            return Plan.Entries (K).Amount;
+         end if;
+      end loop;
+      return 0;
+   end Declared_DMA_Bytes;
+
    ---------------------------------------------------------------------------
    -- Setup xHCI: grant the driver only its precisely sized BAR and a bounded
    -- DMA arena, then send the physical configuration over a private endpoint.
@@ -2931,6 +2946,7 @@ procedure main is
       irqRet    : Unsigned_64;
 
       scratchpads : XHCI_Capabilities.Scratchpad_Buffer_Count;
+      reportedSlots : Natural;
       dmaLayout : XHCI_DMA_Layout.Allocation;
       --  Bootstrap-only, uncached capability-register mapping, one page per
       --  controller. devmgr already owns physical mapping authority; it
@@ -3000,12 +3016,41 @@ procedure main is
       end if;
       declare
          type Capability_Register is new Unsigned_32 with Volatile_Full_Access;
+         --  HCSPARAMS1 and HCSPARAMS2 (xHCI 1.2 sections 5.3.3, 5.3.4).
+         structural : Capability_Register with Import,
+           Address => To_Address (Integer_Address (probePage + 4));
          parameters : Capability_Register with Import,
            Address => To_Address (Integer_Address (probePage + 8));
+         HCSPARAMS1_SLOTS_MASK : constant Unsigned_32 := 16#FF#;
       begin
          scratchpads := XHCI_Capabilities.Scratchpad_Count (Unsigned_32 (parameters));
+         reportedSlots := Natural (Unsigned_32 (structural) and HCSPARAMS1_SLOTS_MASK);
       end;
-      dmaLayout := XHCI_DMA_Layout.Plan (scratchpads);
+      if reportedSlots = 0 then
+         Warnings.Warn ("devmgr: " & Name & " reports no device slots (HCSPARAMS1 MaxSlots=0)");
+         return;
+      end if;
+      --  One device area per slot the controller reports, within the DMA
+      --  ceiling its manifest declares (LIM-001: sized from the hardware).
+      declare
+         Ceiling : constant Unsigned_64 := Declared_DMA_Bytes (child);
+         Fitting : constant Natural :=
+           XHCI_DMA_Layout.Slots_Within (scratchpads, reportedSlots, Ceiling);
+      begin
+         if Fitting = 0 then
+            Warnings.Warn ("devmgr: " & Name & " CAPACITY xhci-dma-ceiling limit=" &
+              Unsigned_64'Image (Ceiling) & " demand=" &
+              Unsigned_64'Image (XHCI_DMA_Layout.Bytes (XHCI_DMA_Layout.Plan (scratchpads, 1))) &
+              " bytes (one slot)");
+            return;
+         elsif Fitting < reportedSlots then
+            Warnings.Warn ("devmgr: " & Name & " CAPACITY xhci-dma-ceiling limit=" &
+              Unsigned_64'Image (Ceiling) & " demand=" &
+              Unsigned_64'Image (XHCI_DMA_Layout.Bytes (XHCI_DMA_Layout.Plan (scratchpads, reportedSlots))) &
+              " bytes; slots" & Natural'Image (Fitting) & " of" & Natural'Image (reportedSlots));
+         end if;
+         dmaLayout := XHCI_DMA_Layout.Plan (scratchpads, Fitting);
+      end;
       dmaPhys := allocDma (instances (I).PID, Unsigned_64 (dmaLayout.Order), DMA_VIRT_BASE,
                            DL.Control (child));
       if dmaPhys = reterr then
@@ -3036,10 +3081,12 @@ procedure main is
          authorityTag => 0,
          words =>
            [0 => bar0Phys,
-            --  Low 32 bits: BAR pages. High 32 bits: allocation's scratchpad
-            --  count. Driver checks it against a fresh HCSPARAMS2 read before
-            --  accessing DMA; this does not grant arbitrary allocation size.
-            1 => barPages or Shift_Left (Unsigned_64 (scratchpads), 32),
+            --  BAR pages, the allocation's scratchpad count and its device
+            --  slots (XHCI_DMA_Layout.Configuration_Word). The driver checks
+            --  them against fresh HCSPARAMS reads before accessing DMA; this
+            --  does not grant arbitrary allocation size.
+            1 => XHCI_DMA_Layout.Configuration_Word
+              (Unsigned_32 (barPages), dmaLayout, scratchpads),
             2 => dmaPhys,
             --  The interrupt mode devmgr programmed, and the controller's
             --  PCI identity for its log lines and quirk table.
@@ -3090,7 +3137,18 @@ procedure main is
    --  devmgr. Where they are reaches it as a Generic_PCI launch
    --  configuration; MSI-X stays masked until it reports ready.
    ---------------------------------------------------------------------------
-   DMA_MAX_ORDER : constant := 14;   --  2 ** 14 pages: CCL.Resource_Sections.MAX_DMA_BYTES
+   --  One definition of the largest DMA region (LIM-001): the kernel's
+   --  buddy order (Contiguous_Memory), which the manifest compiler's
+   --  ceiling must equal, so every declared DMA request is allocatable.
+   pragma Compile_Time_Error
+     (CCL.Resource_Sections.MAX_DMA_BYTES /= Contiguous_Memory.Maximum_Bytes,
+      "the manifest DMA ceiling is not the kernel's largest contiguous block");
+   pragma Compile_Time_Error
+     (CCL.Resource_Sections.PAGE_BYTES /= Contiguous_Memory.Page_Bytes,
+      "the manifest and the kernel disagree on the page size");
+   pragma Compile_Time_Error
+     (2 ** XHCI_DMA_Layout.Allocation_Order'Last > Contiguous_Memory.Maximum_Pages,
+      "the largest xHCI allocation exceeds the kernel's largest contiguous block");
    --  Generic drivers launched, awaiting or past their readiness report:
    --  at most one per inventory entry.
    Generic_Capacity : constant := CuBit.Devices.MAX_PCI_DEVICES;
@@ -3221,13 +3279,21 @@ procedure main is
                         Order : Unsigned_64 := 0;
                         Physical : Unsigned_64;
                      begin
-                        while Shift_Left (Unsigned_64'(1), Natural (Order)) < Pages
-                          and then Order < DMA_MAX_ORDER
-                        loop
-                           Order := Order + 1;
-                        end loop;
-                        Physical := allocDma (PID, Order, DMA_VIRT_BASE, DL.Control (Child));
-                        if Physical = reterr then
+                        --  The compiler admits 1 .. MAX_DMA_BYTES (checked above to
+                        --  be the kernel's largest block); refuse anything else
+                        --  by name rather than allocate a smaller region.
+                        if Pages not in 1 .. Contiguous_Memory.Maximum_Pages then
+                           Refuse ("CAPACITY dma-region limit=" &
+                             Unsigned_64'Image (Unsigned_64 (Contiguous_Memory.Maximum_Bytes)) &
+                             " demand=" & Unsigned_64'Image (R.Amount) & " bytes");
+                           Physical := reterr;
+                        else
+                           Order := Unsigned_64 (Contiguous_Memory.Order_For (Natural (Pages)));
+                           Physical := allocDma (PID, Order, DMA_VIRT_BASE, DL.Control (Child));
+                        end if;
+                        if Failed then
+                           null;
+                        elsif Physical = reterr then
                            Refuse ("DMA allocation of" & Unsigned_64'Image (R.Amount) & " bytes failed");
                         else
                            Config.DMA := (First => Physical,

@@ -1,0 +1,17 @@
+--  Hosted tests and proof of the shared largest-contiguous-block definition
+--  (shared/launch/contiguous_memory.ads, LIM-001). From kernel/ in the Nix
+--  shell:
+--    alr exec -- gprbuild -p -P ../tests/contiguous-memory/contiguous_memory_tests.gpr
+--    ../tests/contiguous-memory/build/order_tests
+--    alr exec -- gnatprove -P ../tests/contiguous-memory/contiguous_memory_tests.gpr \
+--      -u contiguous_memory.adb --level=2 --checks-as-errors=on -j2
+project Contiguous_Memory_Tests is
+   for Source_Dirs use (".", "../../shared/launch");
+   for Source_Files use ("order_tests.adb", "contiguous_memory.ads", "contiguous_memory.adb");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("order_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O1");
+   end Compiler;
+end Contiguous_Memory_Tests;

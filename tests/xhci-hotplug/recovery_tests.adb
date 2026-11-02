@@ -82,7 +82,7 @@ procedure Recovery_Tests is
    S : Selection;
    Id : CI.Identity;
    Q : CI.Quirk_Set;
-   Boxes : XHCI_Completions.Mailboxes;
+   Boxes : XHCI_Completions.Mailboxes (Slots => 8);
    Route : XHCI_Completions.Route_Result;
    use type XHCI_Completions.Route_Result;
    function Transfer (Slot, DCI : Unsigned_32) return XHCI_Completions.Event is

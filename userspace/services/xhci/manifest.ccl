@@ -11,7 +11,10 @@
     (device-memory "registers" 0 65536 Access.Read_Write)
     # Interrupter 0. MSI-X when the controller has it, else one MSI.
     (interrupt "events" Interrupt_Mode.MSI_X 1)
-    (dma "rings" 4194304)
+    # Every device slot and scratchpad the protocol allows (255 slots, 1023
+    # scratchpads: 3079 pages, a 16 MiB order); devmgr allocates what the
+    # controller reports (HCSPARAMS1/2).
+    (dma "rings" 16777216)
     (notification "mouse" Notify_Access.Publish "mouse-events")
     (notification "keyboard" Notify_Access.Publish "keyboard-events")
     (service "device-manager" "ready")])

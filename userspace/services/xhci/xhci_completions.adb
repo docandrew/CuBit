@@ -11,15 +11,16 @@ package body XHCI_Completions with SPARK_Mode => On is
    --  endpoint, a Command Completion Event to (0, 0); others are not
    --  completions (the event ring's owner handles them).
    procedure Target
-     (Item : Event; Kind : out Target_Kind;
+     (Item : Event; Slots : Slot_Number; Kind : out Target_Kind;
       Slot : out Slot_Number; Endpoint : out Endpoint_Number)
+   with Post => Slot <= Slots
    is
       Event_Type : constant TRB_Type := Type_Of (Item.Control);
    begin
       Slot := 0;
       Endpoint := 0;
       if Event_Type = TRB_TRANSFER_EVENT then
-         if Slot_Of (Item.Control) not in 1 .. Maximum_Slots or else
+         if Slot_Of (Item.Control) not in 1 .. Unsigned_32 (Slots) or else
             Endpoint_Of (Item.Control) = 0
          then
             Kind := Bad_Target;
@@ -37,7 +38,7 @@ package body XHCI_Completions with SPARK_Mode => On is
 
    procedure Clear (State : out Mailboxes) is
    begin
-      State := (Queues => [others => [others => (others => <>)]]);
+      State.Queues := [others => [others => (others => <>)]];
    end Clear;
 
    procedure Route
@@ -47,7 +48,7 @@ package body XHCI_Completions with SPARK_Mode => On is
       Slot : Slot_Number;
       Endpoint : Endpoint_Number;
    begin
-      Target (Item, Kind, Slot, Endpoint);
+      Target (Item, State.Slots, Kind, Slot, Endpoint);
       case Kind is
          when Not_Routed =>
             Result := Not_A_Completion;
@@ -95,7 +96,7 @@ package body XHCI_Completions with SPARK_Mode => On is
       Slot : Slot_Number;
       Endpoint : Endpoint_Number;
    begin
-      Target (Item, Kind, Slot, Endpoint);
+      Target (Item, State.Slots, Kind, Slot, Endpoint);
       return Kind /= Mailbox_Target or else
         State.Queues (Slot, Endpoint).Count < Queue_Depth;
    end Has_Room;

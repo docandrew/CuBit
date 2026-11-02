@@ -329,7 +329,7 @@ case "$TEST_NAME" in
         ;;
     grant-forward|grant-forward-intermediary-exit|grant-forward-owner-exit|grant-forward-desktop|config-tree|config-inspection|log-authority|log-fields|log-retention|metrics|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
         ;;
-    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|secondary-stacks|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|acpi-hardware|acpi-pci-config|acpi-native-smoke|acpi-pair-smoke|multi-instance|program-parameters|usb-hotplug|wifi-crypto|acpi-register-probe)
+    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|secondary-stacks|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|acpi-hardware|acpi-pci-config|acpi-native-smoke|acpi-pair-smoke|multi-instance|program-parameters|usb-hotplug|usb-slots|wifi-crypto|acpi-register-probe)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -931,6 +931,11 @@ with open(sys.argv[1], "wb") as f:
         # hotplug through the monitor (tests/usb-hotplug).
         INIT_PROFILE="$ROOT_DIR/tests/multi-instance/init.ccl"
         ;;
+    usb-slots)
+        # LIM-001: more USB devices than the old fixed 8 device slots; the
+        # slot count comes from HCSPARAMS1 MaxSlots (tests/usb-slots).
+        INIT_PROFILE="$ROOT_DIR/tests/multi-instance/init.ccl"
+        ;;
     startup-health)
         # CAP-003: the full desktop boots with no refusal, every service
         # registers, and the apps' records reach logstore (boot-logs prints
@@ -1344,7 +1349,7 @@ if [ -n "$INIT_PROFILE" ]; then
     fi
     if [ "$TEST_NAME" = "generic-launch" ] || [ "$TEST_NAME" = "ufs" ] ||
        [ "$TEST_NAME" = "ufs-write" ] || [ "$TEST_NAME" = "multi-instance" ] ||
-       [ "$TEST_NAME" = "usb-hotplug" ]; then
+       [ "$TEST_NAME" = "usb-hotplug" ] || [ "$TEST_NAME" = "usb-slots" ]; then
         # boot-logs prints the records logstore keeps (the base disk lacks it):
         # generic drivers (generic-check, ufs) and devmgr log through logstore.
         for GENERIC_IMAGE in logstore.svc boot-logs.app; do
@@ -2690,6 +2695,17 @@ if [ "$TEST_NAME" = "multi-instance" ]; then
         -device scsi-cd,bus=usbbot.0,lun=0,drive=usbcd
         -drive "file=$TEMP_SECOND_NVME,if=none,id=nvme1,format=raw"
         -device nvme,serial=cubitnvme1,drive=nvme1)
+fi
+# usb-slots: one controller with eight USB hubs (one on the root port, seven
+# on its ports 1-7) and a boot mouse on the first hub's port 8: the mouse is
+# the ninth device slot (tests/usb-slots).
+if [ "$TEST_NAME" = "usb-slots" ]; then
+    TEST_DEVICE_ARGS=(-device qemu-xhci,id=xhcis
+        -device usb-hub,bus=xhcis.0,port=1)
+    for HUB_PORT in 1 2 3 4 5 6 7; do
+        TEST_DEVICE_ARGS+=(-device "usb-hub,bus=xhcis.0,port=1.$HUB_PORT")
+    done
+    TEST_DEVICE_ARGS+=(-device usb-mouse,bus=xhcis.0,port=1.8)
 fi
 # usb-hotplug: two controllers, the boot mouse on the second; the driver
 # script hot-plugs devices through the HMP monitor (tests/usb-hotplug).
@@ -4087,6 +4103,15 @@ case "$TEST_NAME" in
         INPUT_INJECTOR_PID=$!
         ;;
 esac
+if [ "$TEST_NAME" = "usb-slots" ]; then
+    # Quit once devmgr has every controller's reply (the timeout is only
+    # the bound); check.py reads the rest.
+    QMP_SOCKET="$(qemu_socket qmp)"
+    QMP_ARGS=(-qmp "unix:$QMP_SOCKET,server=on,wait=off")
+    python3 "$ROOT_DIR/tests/headless/stop-on-markers.py" \
+        "$SERIAL_LOG" "$QMP_SOCKET" "$TIMEOUT_SECONDS" "devmgr: startup complete, entering service loop" &
+    INPUT_INJECTOR_PID=$!
+fi
 if [ "$TEST_NAME" = "control-events" ]; then
     QMP_SOCKET="$(qemu_socket qmp)"
     QMP_ARGS=(-qmp "unix:$QMP_SOCKET,server=on,wait=off")
@@ -5888,6 +5913,12 @@ calculator: closed
 devmgr: startup complete, entering service loop
 "
         ;;
+    usb-slots)
+        # tests/usb-slots/check.py checks the slots and the ninth device.
+        required_markers="
+devmgr: startup complete, entering service loop
+"
+        ;;
     multi-instance)
         # tests/multi-instance/check.py checks each instance by location.
         required_markers="
@@ -6143,6 +6174,12 @@ fi
 
 if [ "$TEST_NAME" = "usb-hotplug" ]; then
     if ! python3 "$ROOT_DIR/tests/usb-hotplug/check.py" "$SERIAL_LOG"; then
+        echo "headless: serial log: $SERIAL_LOG" >&2
+        exit 1
+    fi
+fi
+if [ "$TEST_NAME" = "usb-slots" ]; then
+    if ! python3 "$ROOT_DIR/tests/usb-slots/check.py" "$SERIAL_LOG"; then
         echo "headless: serial log: $SERIAL_LOG" >&2
         exit 1
     fi

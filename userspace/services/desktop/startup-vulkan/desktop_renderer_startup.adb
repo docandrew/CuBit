@@ -13,7 +13,7 @@ with Desktop_Startup_Progress;
 with Desktop_Logs;
 with Desktop_GPU_Calls;
 package body Desktop_Renderer_Startup with SPARK_Mode,
-  Refined_State => (Observed => (Admission, Device_Created)) is
+  Refined_State => (Observed => (Admission, Device_Created, Mode_Width, Mode_Height)) is
    use Interfaces;
    --  The longest one GPU-service reply may take before Desktop gives up the
    --  GPU path for software (IPC-004). A legitimate operation is far below it;
@@ -29,6 +29,8 @@ package body Desktop_Renderer_Startup with SPARK_Mode,
    type Slot_Admission is (Admitted, Empty_Slot, Unknown_Slot);
    Admission : Slot_Admission := Unknown_Slot;
    Device_Created : Boolean := False;
+   -- The mode Run was asked for (its frame and GPU budget derive from it).
+   Mode_Width, Mode_Height : Unsigned_64 := 0;
    procedure Run
      (Configuration : Boolean; Width, Height : Unsigned_64;
       Epoch : Compositor_Pool.ID;
@@ -42,6 +44,8 @@ package body Desktop_Renderer_Startup with SPARK_Mode,
       Evidence := (others => False);
       Diagnostic := (others => <>);
       Admission := Unknown_Slot;
+      Mode_Width := Width;
+      Mode_Height := Height;
       Desktop_GPU_Calls.Bound (GPU_Call_Timeout_Ms);
       --  procmgr installs the render entry only for an admitted session.
       Evidence.Admitted := CuBit.Handles.Valid (Desktop_Endpoints.Render);
@@ -61,7 +65,7 @@ package body Desktop_Renderer_Startup with SPARK_Mode,
       if Evidence.Device and then Evidence.Configuration then
          Step.Enter (Desktop_Breadcrumbs.Targets_Before);
       GPU.Configure_Targets (Unsigned_32 (Width), Unsigned_32 (Height),
-           Epoch, 128 * 1024 * 1024, Evidence.Targets);
+           Epoch, Desktop_Startup_Layout.GPU_Budget_Bytes (Width, Height), Evidence.Targets);
       Step.Enter (Desktop_Breadcrumbs.Targets_After);
          if Evidence.Targets then Step.Enter (Desktop_Breadcrumbs.Pipeline_Before);
       GPU.Prepare_Pipeline (Evidence.Pipeline);
@@ -116,6 +120,19 @@ package body Desktop_Renderer_Startup with SPARK_Mode,
          else
             debugPrint ("DESKTOP-VULKAN: pipeline failure diagnostic unavailable" & ASCII.LF);
          end if;
+      end if;
+      -- A mode past the representational ceilings is a named refusal.
+      if Mode_Width /= 0 and then Mode_Height /= 0 and then
+        not Desktop_Startup_Layout.Supported (Mode_Width, Mode_Height)
+      then
+         debugPrint ("DESKTOP-VULKAN: CAPACITY desktop-gpu-budget mode=" &
+           Mode_Width'Image & "x" & Mode_Height'Image & " limit=" &
+           Desktop_Startup_Layout.Capacity_Limit'Image & " demand=" &
+           Desktop_Startup_Layout.GPU_Budget_Demand (Mode_Width, Mode_Height)'Image &
+           (if Mode_Width > Desktop_Startup_Layout.Maximum_Edge or else
+               Mode_Height > Desktop_Startup_Layout.Maximum_Edge
+            then " edge-limit=" & Desktop_Startup_Layout.Maximum_Edge'Image else "") &
+           ASCII.LF);
       end if;
       -- Report the first unmet gate, not an inferred allocation/quota cause.
       if not Evidence.Admitted then

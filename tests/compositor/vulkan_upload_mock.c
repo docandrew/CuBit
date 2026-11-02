@@ -11,6 +11,9 @@ uint32_t upload_mock_binds(void){return binds;}
 uint32_t upload_mock_releases(void){return releases;}
 uint32_t cubit_vulkan_upload_prepare(void *p,uint32_t c,uint64_t *b,uint32_t *t)
 {(void)p;(void)c;*b=bytes;*t=types;return prepare;}
+/* Readback storage is prepared the same way (vulkan_upload_buffer.c). */
+uint32_t cubit_vulkan_readback_prepare(void *p,uint32_t c,uint64_t *b,uint32_t *t)
+{return cubit_vulkan_upload_prepare(p,c,b,t);}
 uint32_t cubit_vulkan_upload_bind(void *p,uint64_t b,uint32_t t,void **m)
 {(void)p;(void)t;++binds;assert(!real_map||b<=sizeof staging);
  *m=null_map?0:real_map?(void *)staging:(void *)(uintptr_t)4096;return bind;}

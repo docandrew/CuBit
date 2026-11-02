@@ -16,6 +16,7 @@ with Interfaces; use Interfaces;
 with System;
 with USB_Optical;
 with XHCI_Capabilities;
+with XHCI_DMA_Layout;
 with XHCI_Controller_Identity;
 with USB_Keyboards;
 
@@ -63,6 +64,9 @@ package XHCI is
       barPages : Unsigned_64;
       dmaPhys  : Unsigned_64;
       expectedScratchpads : XHCI_Capabilities.Scratchpad_Buffer_Count;
+      --  The device slots devmgr's DMA allocation covers (at most the
+      --  controller's HCSPARAMS1 MaxSlots); the controller enables these.
+      expectedSlots : XHCI_DMA_Layout.Slot_Count;
       result   : out Init_Result);
 
    function Port_Count return Natural;
