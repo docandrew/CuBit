@@ -12,8 +12,12 @@
 --  Each Get decodes the block the kernel mapped at
 --  Launch_Configuration.Block_Address with the proved decoder; Valid is
 --  False when there is none, or it is not a configuration of that kind.
+--  devmgr's block is variable-length (one word per root): Get decodes it
+--  in place, and Root_Word reads a root's handle word from it afterwards
+--  (the block stays mapped, read-only, for the process's life).
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with Interfaces;
 with Launch_Configuration;
 
 package CuBit.Launch_Configurations is
@@ -21,6 +25,9 @@ package CuBit.Launch_Configurations is
    package LC renames Launch_Configuration;
 
    procedure Get (Value : out LC.Device_Manager_Configuration; Valid : out Boolean);
+   --  The word at Index of devmgr's block, which Get accepted with at least
+   --  Index words.
+   function Root_Word (Index : LC.Word_Index) return Interfaces.Unsigned_64;
    procedure Get (Value : out LC.Process_Manager_Configuration; Valid : out Boolean);
    procedure Get (Value : out LC.Boot_Image_Configuration; Valid : out Boolean);
    procedure Get (Kind  : LC.Configuration_Kind;

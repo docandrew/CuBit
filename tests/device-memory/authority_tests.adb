@@ -30,6 +30,50 @@ procedure Authority_Tests is
       end if;
    end Expect;
 
+   --  The firmware roots, collected from the kernel's enumeration
+   --  (First_Firmware_Cursor, Next_Firmware_Run) into an array of this
+   --  test's own size: the NVS, control and PCI roots (Firmware_Runs) or the
+   --  firmware-data roots (Data_Runs). The kernel itself keeps no array.
+   Test_Roots : constant := 4096;
+   subtype Firmware_Root_Count is Natural range 0 .. Test_Roots;
+   type Firmware_Run_Array is array (1 .. Test_Roots) of Firmware_Run;
+
+   procedure Collect
+     (M : Map; Data : Boolean; R : out Firmware_Run_Array; N : out Firmware_Root_Count;
+      Left : out Natural)
+   is
+      C : Firmware_Cursor := First_Firmware_Cursor (M);
+      Found : Boolean;
+      Run : Firmware_Run;
+   begin
+      R := [others => No_Firmware_Run];
+      N := 0;
+      Left := 0;
+      loop
+         Next_Firmware_Run (M, C, Found, Run, Left);
+         exit when not Found;
+         if (Run.Kind = Data_Memory) = Data then
+            N := N + 1;
+            R (N) := Run;
+         end if;
+      end loop;
+   end Collect;
+
+   procedure Firmware_Runs
+     (M : Map; R : out Firmware_Run_Array; N : out Firmware_Root_Count; Left : out Natural) is
+   begin
+      Collect (M, False, R, N, Left);
+   end Firmware_Runs;
+
+   procedure Data_Runs
+     (M : Map; R : out Firmware_Run_Array; N : out Firmware_Root_Count; Left : out Natural) is
+   begin
+      Collect (M, True, R, N, Left);
+   end Data_Runs;
+
+   --  The old fixed root budget (LIM-001b removed it): tests go past it.
+   Old_Root_Budget : constant := 8;
+
    KiB : constant := 1024;
    MiB : constant := 1024 * KiB;
    GiB : constant Unsigned_64 := 1024 * MiB;
@@ -597,16 +641,18 @@ procedure Authority_Tests is
       Expect (not Any_Firmware (C, 16#3000_0000#, Page), "sub-page NVS refused");
       Expect (not Any_Firmware (C, 16#4000_1000#, Page), "ACPI tables refused");
 
-      --  Capacity: more runs than roots.
+      --  Capacity (LIM-001b): every run is a root, far past the old fixed
+      --  budget of eight.
       declare
          M : Map := Empty_Map;
+         Many : constant := 12 * Old_Root_Budget;
       begin
-         for I in 0 .. Unsigned_64 (Max_Firmware_Roots + 1) loop
+         for I in 0 .. Unsigned_64 (Many - 1) loop
             Add (M, 16#5000_0000# + I * 16#10_0000#, 16#5000_0FFF# + I * 16#10_0000#, ACPI_NVS);
          end loop;
          Seal (M);
          Firmware_Runs (M, R, N, Left);
-         Expect (N = Max_Firmware_Roots and then Left = 2, "runs past the roots left out");
+         Expect (N = Many and then Left = 0, "every NVS run is a root, past the old budget");
          Expect (R (1).First = 16#5000_0000#
                  and then (for all I in 2 .. N => R (I - 1).Last < R (I).First),
                  "roots ascending");
@@ -923,28 +969,29 @@ procedure Authority_Tests is
          Expect (N = 0 and then Left = 0 and then not PCI (M, ECAM_Base, Page),
                  "pci: no MCFG, no root");
       end;
-      --  The eight-root budget: a slice above eight NVS runs is left out
-      --  (counted); one below them takes the first root.
+      --  No root budget (LIM-001b): a slice above the old eight NVS runs
+      --  keeps its root, last; one below them takes the first.
       declare
          M : Map := Empty_Map;
       begin
-         for I in 0 .. Unsigned_64 (Max_Firmware_Roots - 1) loop
+         for I in 0 .. Unsigned_64 (Old_Root_Budget - 1) loop
             Add (M, 16#5000_0000# + I * 16#10_0000#, 16#5000_0FFF# + I * 16#10_0000#, ACPI_NVS);
          end loop;
          Set_PCI_Config (M, ECAM_Base);
          Seal (M);
          Firmware_Runs (M, R, N, Left);
-         Expect (N = Max_Firmware_Roots and then Left = 1
-                 and then (for all I in 1 .. N => R (I).Kind = NVS_Memory),
-                 "pci: slice past the root budget left out");
+         Expect (N = Old_Root_Budget + 1 and then Left = 0
+                 and then (for all I in 1 .. N - 1 => R (I).Kind = NVS_Memory)
+                 and then R (N) = (First => ECAM_Base, Last => Slice_Last, Kind => PCI_Config_Memory),
+                 "pci: slice past the old root budget keeps its root");
          M := Empty_Map;
-         for I in 0 .. Unsigned_64 (Max_Firmware_Roots - 1) loop
+         for I in 0 .. Unsigned_64 (Old_Root_Budget - 1) loop
             Add (M, 16#C000_0000# + I * 16#10_0000#, 16#C000_0FFF# + I * 16#10_0000#, ACPI_NVS);
          end loop;
          Set_PCI_Config (M, ECAM_Base);
          Seal (M);
          Firmware_Runs (M, R, N, Left);
-         Expect (N = Max_Firmware_Roots and then Left = 1
+         Expect (N = Old_Root_Budget + 1 and then Left = 0
                  and then R (1) = (First => ECAM_Base, Last => Slice_Last, Kind => PCI_Config_Memory)
                  and then (for all I in 2 .. N => R (I - 1).Last < R (I).First),
                  "pci: slice below NVS runs takes the first root, ascending");
@@ -1027,6 +1074,347 @@ procedure Authority_Tests is
       end loop;
    end PCI_Config_Oracle;
 
+   --  Table-named firmware data (Data_Memory): whole pages of reserved or
+   --  NVS spans that are no other kind's and hold no ACPI table, mapped
+   --  uncached and read-write, enumerated after the other roots.
+   procedure Firmware_Data is
+      Top_First  : constant Unsigned_64 := 16#0FFE_0000#;
+      Top_Last   : constant Unsigned_64 := 16#0FFF_FFFF#;
+      FACS_Q35   : constant Unsigned_64 := 16#0FFE_0040#;
+      --  SeaBIOS: the FACS (64 bytes) then the DSDT and the rest in the
+      --  same reserved span; the root table further up.
+      DSDT_First : constant Unsigned_64 := 16#0FFE_0080#;
+      DSDT_Last  : constant Unsigned_64 := 16#0FFE_1FFF#;
+      Root_First : constant Unsigned_64 := 16#0FFE_2400#;
+      Root_Last  : constant Unsigned_64 := 16#0FFE_243F#;
+      ECAM_Base  : constant Unsigned_64 := 16#B000_0000#;
+      ECAM_End   : constant Unsigned_64 := 16#BFFF_FFFF#;
+      RCRB_First : constant Unsigned_64 := 16#FED1_C000#;
+      RCRB_Last  : constant Unsigned_64 := 16#FED1_FFFF#;
+      RW_GRANT   : constant CapabilityRights :=
+        [RIGHT_READ | RIGHT_WRITE | RIGHT_GRANT => True, others => False];
+      function Cap (Base, Bytes : Unsigned_64; Tag : Authority_Tag := FIRMWARE_DATA_TAG)
+        return Capability is
+        ((capType => CAP_DEVICE_MEM, rights => RW_GRANT, authorityTag => Tag,
+          object => (ref => Base, param => Bytes), gen => INITIAL_GENERATION));
+      function Data (M : Map; Base, Bytes : Unsigned_64) return Boolean is
+        (Firmware_Bytes (M, Base, Bytes, Data_Memory));
+      R : Firmware_Run_Array;
+      N : Firmware_Root_Count;
+      Left : Natural;
+      S : Map := Empty_Map;
+   begin
+      Add (S, 16#10_0000#, Top_First - 1, Usable_RAM);
+      Add (S, Top_First, Top_Last, Firmware_Reserved);
+      Add (S, ECAM_Base, ECAM_End, Firmware_Reserved);
+      Add (S, RCRB_First, RCRB_Last, Firmware_Reserved);
+      Add (S, 0, Low_Memory_Limit - 1, Low_Memory);
+      Add_Table (S, DSDT_First, DSDT_Last);
+      Add_Table (S, Root_First, Root_Last);
+      Set_Control (S, FACS_Q35);
+      Set_PCI_Config (S, ECAM_Base);
+      Seal (S);
+      Data_Runs (S, R, N, Left);
+      Expect (N = 3 and then Left = 0, "data q35: three data runs");
+      Expect (R (1) = (First => Top_First + 3 * Page, Last => Top_Last, Kind => Data_Memory),
+              "data q35: the reserved top above the FACS page and tables");
+      Expect (R (2) = (First => ECAM_Base + PCI_Bus_Bytes,
+                       Last => ECAM_Base + PCI_Bus_Bytes + Unsigned_64 (Max_Firmware_Run_Pages) * Page - 1,
+                       Kind => Data_Memory)
+              or else R (2) = (First => ECAM_Base + PCI_Bus_Bytes, Last => ECAM_End, Kind => Data_Memory),
+              "data q35: ECAM above the PCI slice");
+      Expect (R (N) = (First => RCRB_First, Last => RCRB_Last, Kind => Data_Memory),
+              "data q35: the chipset's reserved block");
+      Expect ((for all I in 2 .. N => R (I - 1).Last < R (I).First), "data runs ascend");
+      --  The other roots are unchanged: the FACS page and the PCI slice.
+      declare
+         F : Firmware_Run_Array;
+         NF : Firmware_Root_Count;
+      begin
+         Firmware_Runs (S, F, NF, Left);
+         Expect (NF = 2 and then F (1).Kind = Control_Memory and then F (2).Kind = PCI_Config_Memory,
+                 "data q35: control and PCI roots unchanged");
+      end;
+      --  What is never data.
+      Expect (not Data (S, Top_First, Page), "data: the FACS page is not data");
+      Expect (not Data (S, Top_First + Page, Page), "data: a page holding a table is not data");
+      Expect (not Data (S, Root_First - 16#400#, Page), "data: the root table's page is not data");
+      Expect (Data (S, Top_First + 3 * Page, Page), "data: the page above the tables is data");
+      Expect (not Data (S, ECAM_Base, Page) and then not Data (S, ECAM_Base + PCI_Bus_Bytes - Page, Page),
+              "data: the PCI slice is not data");
+      Expect (Data (S, ECAM_Base + PCI_Bus_Bytes, Page), "data: bus 1's page is data (reserved)");
+      Expect (not Data (S, 16#0400_0000#, Page), "data: RAM is not data");
+      Expect (not Data (S, Top_First - Page, 2 * Page), "data: one page into RAM refused");
+      Expect (not Data (S, 16#E000_0000#, Page), "data: bus space is not data");
+      Expect (not Data (S, Top_First + 3 * Page + 16#10#, Page), "data: unaligned refused");
+      Expect (not Data (S, Top_First + 3 * Page, 0), "data: zero size refused");
+      --  Authorization: the data tag maps data pages only, read-write,
+      --  uncached; no other tag maps them and it maps no other kind.
+      Expect (Authorize_Firmware (Cap (Top_First, Top_Last - Top_First + 1), S,
+                                  Top_First + 3 * Page, Page, Read_Write),
+              "data cap maps a data page read-write");
+      Expect (Authorize_Firmware (Cap (RCRB_First, RCRB_Last - RCRB_First + 1), S,
+                                  RCRB_First, RCRB_Last - RCRB_First + 1, Read_Only),
+              "data cap maps the whole reserved block read-only too");
+      Expect (not Authorize_Firmware (Cap (Top_First, Top_Last - Top_First + 1), S,
+                                      Top_First, Page, Read_Write),
+              "data cap: the FACS page refused");
+      Expect (not Authorize_Firmware (Cap (Top_First, Top_Last - Top_First + 1), S,
+                                      Top_First + Page, Page, Read_Only),
+              "data cap: a table page refused");
+      Expect (not Authorize_Firmware (Cap (ECAM_Base, ECAM_End - ECAM_Base + 1), S,
+                                      ECAM_Base, Page, Read_Only),
+              "data cap: the PCI slice refused");
+      Expect (not Authorize_Firmware (Cap (0, 8 * GiB), S, 16#0400_0000#, Page, Read_Write),
+              "data cap: RAM refused");
+      Expect (not Authorize_Firmware (Cap (Top_First, Top_Last - Top_First + 1, FIRMWARE_NVS_TAG),
+                                      S, Top_First + 3 * Page, Page, Read_Write)
+              and then not Authorize_Firmware
+                             (Cap (Top_First, Top_Last - Top_First + 1, FIRMWARE_CONTROL_TAG),
+                              S, Top_First + 3 * Page, Page, Read_Write),
+              "data: NVS and control tags do not map data pages");
+      Expect (not Authorize_Firmware (Cap (Top_First, Page), S, Top_First, Page, Read_Write)
+              and then Authorize_Firmware (Cap (Top_First, Page, FIRMWARE_CONTROL_TAG), S,
+                                           Top_First, Page, Read_Write),
+              "data: the FACS page stays the control tag's");
+      Expect (not Authorize (Cap (Top_First, Top_Last - Top_First + 1), S, Top_First + 3 * Page,
+                             Page, Read_Write),
+              "data: a data cap is not device authority");
+      Expect (Device_Memory_Authority.Kind_Of (FIRMWARE_DATA_TAG) = Data_Memory
+              and then Device_Memory_Authority.Tag_Of (Data_Memory) = FIRMWARE_DATA_TAG
+              and then Device_Memory_Authority.Firmware_Tag (FIRMWARE_DATA_TAG)
+              and then (for all K in Firmware_Kind =>
+                          Device_Memory_Authority.Kind_Of (Device_Memory_Authority.Tag_Of (K)) = K),
+              "data: tag and kind round trip");
+      Expect (FIRMWARE_DATA_TAG = 16#4657_4D45_4D00_0005#, "data: the agreed tag value");
+      Expect (Firmware_Mode (Data_Memory, Read_Write) and then Firmware_Mode (Data_Memory, Read_Only)
+              and then not Write_Back (Data_Memory),
+              "data: read-write, uncached");
+      --  Kernel-only: no device-memory copy gains the tag, no copy of a data
+      --  root widens.
+      declare
+         package CI renames Capability_Install;
+         Root : constant Capability := Cap (RCRB_First, RCRB_Last - RCRB_First + 1);
+         Narrow : Capability := Root;
+      begin
+         Expect (not CI.Is_Derivation (Root, Cap (RCRB_First, RCRB_Last - RCRB_First + 1,
+                                                  NO_AUTHORITY_TAG)),
+                 "data: device memory cannot be retagged as firmware data");
+         Expect (not CI.Is_Derivation (Cap (RCRB_First, 2 * (RCRB_Last - RCRB_First + 1)), Root),
+                 "data: no copy of a data root covers more");
+         Narrow.object := (ref => RCRB_First + Page, param => Page);
+         Narrow.rights := [RIGHT_READ | RIGHT_WRITE => True, others => False];
+         Expect (CI.Is_Derivation (Narrow, Root)
+                 and then Authorize_Firmware (Narrow, S, RCRB_First + Page, Page, Read_Write)
+                 and then not Authorize_Firmware (Narrow, S, RCRB_First, Page, Read_Write),
+                 "data: a narrowed copy maps exactly its envelope");
+      end;
+
+      --  NVS pages stay NVS (write-back), never data; a reserved page an NVS
+      --  span only partly touches is data.
+      declare
+         M : Map := Empty_Map;
+      begin
+         Add (M, 16#4000_0000#, 16#4000_1FFF#, Firmware_Reserved);
+         Add (M, 16#4000_2000#, 16#4000_3FFF#, ACPI_NVS);
+         Add (M, 16#4000_4000#, 16#4000_7FFF#, Firmware_Reserved);
+         Add (M, 16#4000_5800#, 16#4000_5FFF#, ACPI_NVS);   --  half a page
+         Add (M, 16#4000_6000#, 16#4000_6FFF#, ACPI_NVS);   --  inside reserved
+         Seal (M);
+         Data_Runs (M, R, N, Left);
+         Expect (N = 2
+                 and then R (1) = (First => 16#4000_0000#, Last => 16#4000_1FFF#, Kind => Data_Memory)
+                 and then R (2) = (First => 16#4000_4000#, Last => 16#4000_7FFF#, Kind => Data_Memory),
+                 "data: NVS pages cut the data run; pages reserved spans share stay data");
+         Expect (not Data (M, 16#4000_2000#, Page) and then Firmware_Bytes (M, 16#4000_2000#, Page,
+                                                                         NVS_Memory),
+                 "data: the NVS page is NVS, not data");
+         Expect (Data (M, 16#4000_6000#, Page)
+                 and then not Firmware_Bytes (M, 16#4000_6000#, Page, NVS_Memory),
+                 "data: an NVS span inside a reserved one is data, never also NVS");
+         --  Pages another class touches are never data.
+         M := Empty_Map;
+         Add (M, 16#4000_0000#, 16#4000_7FFF#, Firmware_Reserved);
+         Add (M, 16#4000_3000#, 16#4000_30FF#, Kernel_MMIO);
+         Add (M, 16#4000_6000#, 16#4000_6FFF#, Usable_RAM);
+         Seal (M);
+         Data_Runs (M, R, N, Left);
+         Expect (N = 3
+                 and then R (1) = (First => 16#4000_0000#, Last => 16#4000_2FFF#, Kind => Data_Memory)
+                 and then R (2) = (First => 16#4000_4000#, Last => 16#4000_5FFF#, Kind => Data_Memory)
+                 and then R (3) = (First => 16#4000_7000#, Last => 16#4000_7FFF#, Kind => Data_Memory),
+                 "data: kernel MMIO and RAM pages cut data runs");
+         --  A partial reserved page at a span's edge is not data.
+         M := Empty_Map;
+         Add (M, 16#4000_0800#, 16#4000_27FF#, Firmware_Reserved);
+         Seal (M);
+         Data_Runs (M, R, N, Left);
+         Expect (N = 1 and then R (1) = (First => 16#4000_1000#, Last => 16#4000_1FFF#,
+                                         Kind => Data_Memory),
+                 "data: only whole pages");
+         --  Tables that could not all be recorded: no data at all.
+         M := Empty_Map;
+         Add (M, 16#4000_0000#, 16#4000_7FFF#, Firmware_Reserved);
+         for I in 0 .. Unsigned_64 (Max_Table_Extents) loop
+            Add_Table (M, 16#9000_0000# + I * 16#100#, 16#9000_00FF# + I * 16#100#);
+         end loop;
+         Expect (not M.Tables_Complete, "data: one table too many is recorded as incomplete");
+         Seal (M);
+         Data_Runs (M, R, N, Left);
+         Expect (N = 0 and then not Data (M, 16#4000_0000#, Page),
+                 "data: an incomplete table record admits no data");
+         --  An unsealed or incomplete map: nothing.
+         M := Empty_Map;
+         Add (M, 16#4000_0000#, 16#4000_7FFF#, Firmware_Reserved);
+         Data_Runs (M, R, N, Left);
+         Expect (N = 0, "data: unsealed map, no data runs");
+         Invalidate (M);
+         Seal (M);
+         Data_Runs (M, R, N, Left);
+         Expect (N = 0, "data: incomplete map, no data runs");
+         --  A long reserved stretch is several runs, each at most
+         --  Max_Firmware_Run_Pages, covering it exactly.
+         M := Empty_Map;
+         Add (M, 16#1_0000_0000#,
+              16#1_0000_0000# + Unsigned_64 (2 * Max_Firmware_Run_Pages + 3) * Page - 1,
+              Firmware_Reserved);
+         Seal (M);
+         Data_Runs (M, R, N, Left);
+         Expect (N = 3 and then Left = 0
+                 and then R (1).First = 16#1_0000_0000#
+                 and then (R (1).Last - R (1).First + 1) / Page = Max_Firmware_Run_Pages
+                 and then R (2).First = R (1).Last + 1
+                 and then R (3).First = R (2).Last + 1
+                 and then R (3).Last = 16#1_0000_0000# + Unsigned_64 (2 * Max_Firmware_Run_Pages + 3) * Page - 1,
+                 "data: a long stretch in consecutive bounded runs");
+         --  Many reserved islands: every one is a root (no budget).
+         M := Empty_Map;
+         for I in 0 .. Unsigned_64 (12 * Old_Root_Budget - 1) loop
+            Add (M, 16#6000_0000# + I * 16#10_0000#, 16#6000_1FFF# + I * 16#10_0000#,
+                 Firmware_Reserved);
+         end loop;
+         Seal (M);
+         Data_Runs (M, R, N, Left);
+         Expect (N = 12 * Old_Root_Budget and then Left = 0, "data: every island a root");
+      end;
+   end Firmware_Data;
+
+   --  Independent oracle for firmware data on small random maps: every
+   --  data root's pages are data by brute force, roots ascend, are
+   --  disjoint from the other roots, and every data page is in a root.
+   procedure Firmware_Data_Oracle is
+      Pages : constant := 64;
+      Seed : Unsigned_64 := 16#2545_F491_4F6C_DD1D#;
+      function Next return Unsigned_64 is
+      begin
+         Seed := Seed xor Shift_Left (Seed, 13);
+         Seed := Seed xor Shift_Right (Seed, 7);
+         Seed := Seed xor Shift_Left (Seed, 17);
+         return Seed;
+      end Next;
+      Kinds : constant array (0 .. 5) of Range_Class :=
+        [ACPI_NVS, Firmware_Reserved, Firmware_Reserved, Usable_RAM, ACPI_Tables, Kernel_MMIO];
+      type Span_List is array (1 .. 8) of Span;
+      type Extent_List is array (1 .. 3) of Extent;
+   begin
+      for Round in 1 .. 3000 loop
+         declare
+            M : Map := Empty_Map;
+            List : Span_List;
+            Tables : Extent_List;
+            Spans : constant Natural := Natural (Next mod 8) + 1;
+            Table_Total : constant Natural := Natural (Next mod 4);
+            Control : constant Unsigned_64 := Next mod (Pages * Page);
+            Slice : constant Unsigned_64 := Next mod (2 * Pages);
+            R, F : Firmware_Run_Array;
+            N, NF : Firmware_Root_Count;
+            Left : Natural;
+            First, Last : Unsigned_64;
+            K : Range_Class;
+
+            function Touch (First, Last, P : Unsigned_64) return Boolean is
+              (First / Page <= P and then P <= Last / Page);
+            function Whole (First, Last, P : Unsigned_64) return Boolean is
+              (First <= P * Page and then P * Page + Page - 1 <= Last);
+            --  Page P by brute force.
+            function Is_Data (P : Unsigned_64) return Boolean is
+               Held, NVS_Only, NVS_Held : Boolean := False;
+               All_NVS : Boolean := True;
+            begin
+               for I in 1 .. Spans loop
+                  if Touch (List (I).First, List (I).Last, P) then
+                     if List (I).Class not in ACPI_NVS | Firmware_Reserved then
+                        return False;
+                     end if;
+                     if List (I).Class /= ACPI_NVS then
+                        All_NVS := False;
+                     end if;
+                     if Whole (List (I).First, List (I).Last, P) then
+                        Held := True;
+                        if List (I).Class = ACPI_NVS then
+                           NVS_Held := True;
+                        end if;
+                     end if;
+                  end if;
+               end loop;
+               NVS_Only := All_NVS and then NVS_Held;
+               for I in 1 .. Table_Total loop
+                  if Touch (Tables (I).First, Tables (I).Last, P) then
+                     return False;
+                  end if;
+               end loop;
+               return Held and then not NVS_Only and then P /= Control / Page
+                 and then not (P >= Slice and then P < Slice + PCI_Bus_Pages);
+            end Is_Data;
+            function In_Root (P : Unsigned_64) return Boolean is
+              (for some I in 1 .. N => R (I).First / Page <= P and then P <= R (I).Last / Page);
+         begin
+            for I in 1 .. Spans loop
+               First := Next mod (Pages * Page);
+               Last := Unsigned_64'Min (First + Next mod (12 * Page), Pages * Page - 1);
+               K := Kinds (Natural (Next mod 6));
+               List (I) := (First => First, Last => Last, Class => K);
+               Add (M, First, Last, K);
+            end loop;
+            for I in 1 .. Table_Total loop
+               First := Next mod (Pages * Page);
+               Last := Unsigned_64'Min (First + Next mod (2 * Page), Pages * Page - 1);
+               Tables (I) := (First => First, Last => Last);
+               Add_Table (M, First, Last);
+            end loop;
+            Set_Control (M, Control);
+            Set_PCI_Config (M, Slice * Page);
+            Seal (M);
+            Data_Runs (M, R, N, Left);
+            Firmware_Runs (M, F, NF, Left);
+            for I in 1 .. N loop
+               Expect (Firmware_Range (M, R (I).First, R (I).Last, Data_Memory),
+                       "data oracle: root is firmware data");
+               if I > 1 then
+                  Expect (R (I - 1).Last < R (I).First, "data oracle: roots ascend");
+               end if;
+               for P in R (I).First / Page .. R (I).Last / Page loop
+                  Expect (Is_Data (P), "data oracle: root pages are data by brute force");
+                  Expect ((for all J in 1 .. NF =>
+                             P < F (J).First / Page or else P > F (J).Last / Page),
+                          "data oracle: no page in another root");
+               end loop;
+               --  Maximal (no budget here: the map is small).
+               if R (I).First >= Page then
+                  Expect (not Is_Data (R (I).First / Page - 1) or else
+                          (I > 1 and then R (I - 1).Last = R (I).First - 1),
+                          "data oracle: root maximal below");
+               end if;
+            end loop;
+            for P in 0 .. Unsigned_64 (2 * Pages) loop
+               if Is_Data (P) then
+                  Expect (In_Root (P), "data oracle: every data page is in a root");
+               end if;
+            end loop;
+         end;
+      end loop;
+   end Firmware_Data_Oracle;
+
    --  Denial explanations (the kernel's records) and the reader's ring
    --  arithmetic.
    procedure Explanations is
@@ -1097,6 +1485,8 @@ begin
    Firmware_Oracle;
    PCI_Config;
    PCI_Config_Oracle;
+   Firmware_Data;
+   Firmware_Data_Oracle;
    Explanations;
    if Failures = 0 then
       Ada.Text_IO.Put_Line ("PASS: device-memory authority" & Natural'Image (Checks) & " checks");

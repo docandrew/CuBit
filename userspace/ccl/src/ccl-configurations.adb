@@ -180,7 +180,8 @@ package body CCL.Configurations with SPARK_Mode => On is
          Executable : Key_Text;
          Have_Priority, Have_Network, Have_Role, Have_Mode, Have_Device,
            Have_Scheduling, Have_Deadline, Have_Render, Have_Firmware, Have_Arguments : Boolean := False;
-         Have_ACPI_Hardware, Have_ACPI_Registers, Have_ACPI_PCI_Config : Boolean := False;
+         Have_ACPI_Hardware, Have_ACPI_Registers, Have_ACPI_PCI_Config,
+           Have_ACPI_Firmware_Data : Boolean := False;
 
          --  (<name> deny) or (<name> approve-declared), once.
          procedure Declared_Approval (Seen : in out Boolean; Approved : out Boolean) is
@@ -281,6 +282,8 @@ package body CCL.Configurations with SPARK_Mode => On is
                Declared_Approval (Have_ACPI_Registers, Item.Approve_ACPI_Registers);
             elsif Matches (Name, "acpi-pci-config") then
                Declared_Approval (Have_ACPI_PCI_Config, Item.Approve_ACPI_PCI_Config);
+            elsif Matches (Name, "acpi-firmware-data") then
+               Declared_Approval (Have_ACPI_Firmware_Data, Item.Approve_ACPI_Firmware_Data);
             elsif Matches (Name, "role") then
                if Have_Role then Fail (Duplicate_Field); end if;
                Read_Symbol (Reader, Name);
@@ -366,6 +369,10 @@ package body CCL.Configurations with SPARK_Mode => On is
          --  The PCI configuration window is part of the ACPI hardware grant:
          --  approving it alone grants nothing, so it is refused.
          if Item.Approve_ACPI_PCI_Config and then not Item.Approve_ACPI_Hardware then
+            Fail (Invalid_Approval);
+         end if;
+         --  So is the firmware-data endpoint.
+         if Item.Approve_ACPI_Firmware_Data and then not Item.Approve_ACPI_Hardware then
             Fail (Invalid_Approval);
          end if;
          --  A per-device driver exists to receive device resources, and only

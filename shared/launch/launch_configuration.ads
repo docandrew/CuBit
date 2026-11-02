@@ -22,6 +22,12 @@
 --     2  field count (Field_Count (Kind))
 --     3  the fields, in the order of the Kind's record below
 --
+--  devmgr's configuration is the one variable-length kind: the kernel
+--  reports one handle per device-memory and firmware-memory root it finds
+--  in the boot classification, however many there are (LIM-001). Its two
+--  root counts lead its fields, so a reader knows the length before any
+--  root: Device_Manager_Fields (Device_Roots, Firmware_Roots) fields.
+--
 --  Decoding is total and proved free of run-time errors; a decoder refuses
 --  any block that is not a header for its kind followed by in-range fields.
 --  tests/launch-configuration proves that decoding an encoder's output
@@ -41,17 +47,27 @@ package Launch_Configuration with Pure, SPARK_Mode is
    Magic : constant Unsigned_64 := 16#4746_4354_4942_5543#;  --  "CUBITCFG"
    Word_Bytes   : constant := 8;
    Header_Words : constant := 3;
-   Maximum_Fields : constant := 33;
+   --  The most fields of a fixed-length kind (Generic_PCI's), and of
+   --  devmgr's configuration before its roots.
+   Maximum_Fields : constant := 23;
    Maximum_Words  : constant := Header_Words + Maximum_Fields;
+   --  The largest block: the kernel's ceiling on a launch configuration
+   --  (Process_Launch, 64 KiB). A named ceiling, not a count of anything.
+   Maximum_Block_Bytes : constant := 64 * 1024;
+   Maximum_Block_Words : constant := Maximum_Block_Bytes / Word_Bytes;
 
-   subtype Word_Count is Natural range 0 .. Maximum_Words;
-   subtype Word_Index is Positive range 1 .. Maximum_Words;
+   subtype Word_Count is Natural range 0 .. Maximum_Block_Words;
+   subtype Word_Index is Positive range 1 .. Maximum_Block_Words;
    type Word_Array is array (Word_Index range <>) of Unsigned_64;
+
+   --  A fixed-length kind's block (and devmgr's prefix) fits Maximum_Words.
+   subtype Fixed_Word_Count is Word_Count range 0 .. Maximum_Words;
+   subtype Fixed_Word_Index is Word_Index range 1 .. Maximum_Words;
 
    --  An encoded configuration: Words (1 .. Length).
    type Encoded is record
-      Words  : Word_Array (Word_Index) := [others => 0];
-      Length : Word_Count := 0;
+      Words  : Word_Array (Fixed_Word_Index) := [others => 0];
+      Length : Fixed_Word_Count := 0;
    end record;
 
    --  x86-64 physical addresses have at most 52 bits.
@@ -106,21 +122,14 @@ package Launch_Configuration with Pure, SPARK_Mode is
    --  ports, its own registration, the device-vector authority, the I/O
    --  port space, the legacy interrupt lines, every service role's
    --  notification, real-time scheduling, reading the sealed firmware-table
-   --  snapshot (FIRMWARE_SNAPSHOT), and one device-memory root per maximal
-   --  run of device-mappable pages (largest first). Last, the
-   --  firmware-memory roots (kernel Physical_Ranges.Firmware_Runs): one per
-   --  run of ACPI NVS pages and the FACS page, in ascending address order,
-   --  tagged Capability_ABI.Firmware_NVS_Tag or Firmware_Control_Tag;
-   --  devmgr claims them for the ACPI hardware grant.
-   Maximum_Device_Roots : constant := 8;
-   subtype Device_Root_Count is Natural range 0 .. Maximum_Device_Roots;
-   subtype Device_Root_Index is Positive range 1 .. Maximum_Device_Roots;
-   type Root_Handles is array (Device_Root_Index) of Unsigned_64;
-   Maximum_Firmware_Roots : constant := 8;
-   subtype Firmware_Root_Count is Natural range 0 .. Maximum_Firmware_Roots;
-   subtype Firmware_Root_Index is Positive range 1 .. Maximum_Firmware_Roots;
-   type Firmware_Root_Handles is array (Firmware_Root_Index) of Unsigned_64;
-
+   --  snapshot (FIRMWARE_SNAPSHOT). After these named handles, the block
+   --  carries one device-memory root per maximal run of device-mappable
+   --  pages, ascending, then the firmware-memory roots (kernel
+   --  Physical_Ranges.Next_Firmware_Run): ACPI NVS runs, the FACS page,
+   --  the PCI configuration slice and table-named firmware data, each
+   --  tagged with its kind (Capability_ABI.Firmware_*_Tag); devmgr claims
+   --  them for the ACPI hardware grant. As many of each as the kernel
+   --  found: the counts lead the fields.
    type Device_Manager_Handles is record
       Self              : Unsigned_64 := 0;
       Self_Process      : Unsigned_64 := 0;
@@ -134,43 +143,76 @@ package Launch_Configuration with Pure, SPARK_Mode is
       Notifications     : Unsigned_64 := 0;
       Scheduling        : Unsigned_64 := 0;
       Firmware_Snapshot : Unsigned_64 := 0;
-      Root_Count        : Device_Root_Count := 0;
-      Device_Roots      : Root_Handles := [others => 0];
-      Firmware_Count    : Firmware_Root_Count := 0;
-      Firmware_Roots    : Firmware_Root_Handles := [others => 0];
    end record;
    Device_Manager_Handle_Fields : constant := 12;
-   --  The firmware-memory roots' words: the count, then the roots.
-   Firmware_Root_Words : constant := 1 + Maximum_Firmware_Roots;
-   --  Where they start in an encoded configuration.
-   Firmware_First_Word : constant := 7 + Device_Manager_Handle_Fields + 1 + Maximum_Device_Roots;
 
    --  A handle word: its generation (high half) is never zero.
    function Is_Handle (Word : Unsigned_64) return Boolean is
      (Shift_Right (Word, 32) /= 0);
 
-   --  Every named handle is one, and exactly the roots in use are.
+   --  Every named handle is one.
    function Handles_Well_Formed (H : Device_Manager_Handles) return Boolean is
      (Is_Handle (H.Self) and then Is_Handle (H.Self_Process)
       and then Is_Handle (H.Self_Grantable) and then Is_Handle (H.Process_Root)
       and then Is_Handle (H.PCI_Ports) and then Is_Handle (H.Registration)
       and then Is_Handle (H.Vector_Authority) and then Is_Handle (H.IO_Ports)
       and then Is_Handle (H.Legacy_Interrupts) and then Is_Handle (H.Notifications)
-      and then Is_Handle (H.Scheduling) and then Is_Handle (H.Firmware_Snapshot)
-      and then (for all R in Device_Root_Index =>
-                  (if R <= H.Root_Count then Is_Handle (H.Device_Roots (R))
-                   else H.Device_Roots (R) = 0))
-      and then (for all R in Firmware_Root_Index =>
-                  (if R <= H.Firmware_Count then Is_Handle (H.Firmware_Roots (R))
-                   else H.Firmware_Roots (R) = 0)));
+      and then Is_Handle (H.Scheduling) and then Is_Handle (H.Firmware_Snapshot));
 
-   --  Kernel to devmgr: the boot image's size, the boot framebuffer's
-   --  physical pages, and its handles.
+   --  devmgr's words: the header, the two root counts, the boot image,
+   --  the framebuffer (first, bytes), the named handles, then one word per
+   --  device root and one per firmware root.
+   Device_Roots_Word      : constant := Header_Words + 1;
+   Firmware_Roots_Word    : constant := Header_Words + 2;
+   Boot_Image_Word        : constant := Header_Words + 3;
+   Framebuffer_First_Word : constant := Header_Words + 4;
+   Framebuffer_Bytes_Word : constant := Header_Words + 5;
+   First_Handle_Word      : constant := Header_Words + 6;
+   Device_Manager_Prefix_Fields : constant := 5 + Device_Manager_Handle_Fields;
+   Device_Manager_Prefix_Words  : constant := Header_Words + Device_Manager_Prefix_Fields;
+   --  The roots one block can carry, together. Counts are words, as on
+   --  the wire, so a decoded count is the word itself.
+   Maximum_Roots : constant := Maximum_Block_Words - Device_Manager_Prefix_Words;
+   subtype Root_Count is Unsigned_64 range 0 .. Maximum_Roots;
+   subtype Root_Index is Positive range 1 .. Maximum_Roots;
+
+   function Roots_Fit (Device_Roots, Firmware_Roots : Root_Count) return Boolean is
+     (Device_Roots <= Maximum_Roots - Firmware_Roots);
+
+   function Device_Manager_Fields
+     (Device_Roots, Firmware_Roots : Root_Count) return Unsigned_64
+   is (Device_Manager_Prefix_Fields + Device_Roots + Firmware_Roots)
+   with Pre  => Roots_Fit (Device_Roots, Firmware_Roots),
+        Post => Device_Manager_Fields'Result <= Maximum_Block_Words - Header_Words;
+
+   --  The whole block's length in words.
+   function Device_Manager_Last
+     (Device_Roots, Firmware_Roots : Root_Count) return Word_Index
+   is (Word_Index (Header_Words + Device_Manager_Fields (Device_Roots, Firmware_Roots)))
+   with Pre => Roots_Fit (Device_Roots, Firmware_Roots);
+
+   --  Where device root I's handle is, and firmware root I's after
+   --  Device_Roots device roots.
+   function Device_Root_Word (I : Root_Index) return Word_Index is
+     (Device_Manager_Prefix_Words + I);
+   function Firmware_Root_Word (Device_Roots : Root_Count; I : Root_Index) return Word_Index is
+     (Word_Index (Device_Manager_Prefix_Words + Device_Roots + Unsigned_64 (I)))
+   with Pre => Unsigned_64 (I) <= Maximum_Roots - Device_Roots;
+
+   --  Kernel to devmgr: how many roots of each kind follow, the boot
+   --  image's size, the boot framebuffer's physical pages, and its named
+   --  handles.
    type Device_Manager_Configuration is record
-      Boot_Image  : Byte_Count := 0;
-      Framebuffer : Physical_Span;
-      Handles     : Device_Manager_Handles;
+      Device_Roots   : Root_Count := 0;
+      Firmware_Roots : Root_Count := 0;
+      Boot_Image     : Byte_Count := 0;
+      Framebuffer    : Physical_Span;
+      Handles        : Device_Manager_Handles;
    end record;
+
+   function Device_Manager_Length (Value : Device_Manager_Configuration) return Word_Index is
+     (Device_Manager_Last (Value.Device_Roots, Value.Firmware_Roots))
+   with Pre => Roots_Fit (Value.Device_Roots, Value.Firmware_Roots);
 
    --  procmgr's handles, installed by devmgr (its launcher) before it runs
    --  (CAP-002): handle words in procmgr's table. procmgr launches every
@@ -337,10 +379,10 @@ package Launch_Configuration with Pure, SPARK_Mode is
       and then (if Value.DMA.Bytes = 0 then Value.DMA_Virtual = 0)
       and then Valid_Vectors (Value.Delivery, Value.Vectors));
 
+   --  A fixed-length kind's field count (devmgr's before its roots).
    function Field_Count (Kind : Configuration_Kind) return Natural is
      (case Kind is
-         when Device_Manager    =>
-           3 + Device_Manager_Handle_Fields + 1 + Maximum_Device_Roots + Firmware_Root_Words,
+         when Device_Manager    => Device_Manager_Prefix_Fields,
          when Process_Manager   => 2 + Process_Manager_Handle_Fields,
          when Boot_Image_Reader => 1,
          when NVMe_Controller | HDA_Controller => 3,
@@ -351,70 +393,67 @@ package Launch_Configuration with Pure, SPARK_Mode is
          when XHCI_Controller   => 3)
    with Post => Field_Count'Result <= Maximum_Fields;
 
-   --  Words (1 .. Length) is a header for Kind with the right length.
+   --  Words (1 .. Length) is a header for fixed-length Kind with the
+   --  right length (devmgr's: Device_Manager_Valid).
    function Header_Valid
      (Words : Word_Array; Kind : Configuration_Kind) return Boolean
-   is (Words'First = 1
+   is (Kind /= Device_Manager
+       and then Words'First = 1
        and then Words'Length = Header_Words + Field_Count (Kind)
        and then Words (1) = Magic
        and then Words (2) = Configuration_Kind'Enum_Rep (Kind)
        and then Words (3) = Unsigned_64 (Field_Count (Kind)));
 
    --  Encoders: the header for the kind, then the fields in order.
-   --  The handles' words, in field order (Words (7 .. 27)).
+   --  devmgr's named handles' words, in field order.
    function Handle_Words (H : Device_Manager_Handles) return Word_Array is
      [H.Self, H.Self_Process, H.Self_Grantable, H.Process_Root, H.PCI_Ports,
       H.Registration, H.Vector_Authority, H.IO_Ports, H.Legacy_Interrupts,
-      H.Notifications, H.Scheduling, H.Firmware_Snapshot, Unsigned_64 (H.Root_Count),
-      H.Device_Roots (1), H.Device_Roots (2), H.Device_Roots (3),
-      H.Device_Roots (4), H.Device_Roots (5), H.Device_Roots (6),
-      H.Device_Roots (7), H.Device_Roots (8)]
+      H.Notifications, H.Scheduling, H.Firmware_Snapshot]
    with Post => Handle_Words'Result'First = 1
-                and then Handle_Words'Result'Length =
-                         Device_Manager_Handle_Fields + 1 + Maximum_Device_Roots;
+                and then Handle_Words'Result'Length = Device_Manager_Handle_Fields;
 
-   --  Every named handle is one, the root count is in range, the roots in
-   --  use are handles and the rest are zero.
-   function Handles_Valid (W : Word_Array) return Boolean is
-     ((for all I in W'First .. W'First + (Device_Manager_Handle_Fields - 1) =>
-         Is_Handle (W (I)))
-      and then W (W'First + Device_Manager_Handle_Fields) <= Maximum_Device_Roots
-      and then (for all R in Device_Root_Index =>
-                  (if Unsigned_64 (R) <= W (W'First + Device_Manager_Handle_Fields)
-                   then Is_Handle (W (W'First + Device_Manager_Handle_Fields + R))
-                   else W (W'First + Device_Manager_Handle_Fields + R) = 0)))
-   with Pre => W'Length = Device_Manager_Handle_Fields + 1 + Maximum_Device_Roots
-               and then W'First = 7;
+   --  Words is a whole devmgr block: its header, counts that fit and match
+   --  its length, in-range fields, and a handle in every named handle and
+   --  every root word.
+   function Device_Manager_Valid (Words : Word_Array) return Boolean is
+     (Words'First = 1
+      and then Words'Length >= Device_Manager_Prefix_Words
+      and then Words (1) = Magic
+      and then Words (2) = Configuration_Kind'Enum_Rep (Device_Manager)
+      and then Words (Device_Roots_Word) <= Maximum_Roots
+      and then Words (Firmware_Roots_Word) <= Maximum_Roots
+      and then Roots_Fit (Words (Device_Roots_Word), Words (Firmware_Roots_Word))
+      and then Words (3) = Device_Manager_Fields (Words (Device_Roots_Word),
+                                                  Words (Firmware_Roots_Word))
+      and then Words'Last = Device_Manager_Last (Words (Device_Roots_Word),
+                                                 Words (Firmware_Roots_Word))
+      and then Words (Boot_Image_Word) in Byte_Count
+      and then Words (Framebuffer_First_Word) in Physical_Address
+      and then Words (Framebuffer_Bytes_Word) in Byte_Count
+      and then (for all I in First_Handle_Word .. Words'Last => Is_Handle (Words (I))));
 
-   --  The firmware-memory roots' words (Words (28 .. 36)).
-   function Firmware_Words (H : Device_Manager_Handles) return Word_Array is
-     [Unsigned_64 (H.Firmware_Count),
-      H.Firmware_Roots (1), H.Firmware_Roots (2), H.Firmware_Roots (3),
-      H.Firmware_Roots (4), H.Firmware_Roots (5), H.Firmware_Roots (6),
-      H.Firmware_Roots (7), H.Firmware_Roots (8)]
-   with Post => Firmware_Words'Result'First = 1
-                and then Firmware_Words'Result'Length = Firmware_Root_Words;
+   --  devmgr's block up to its roots; the caller appends Device_Roots then
+   --  Firmware_Roots handle words (Device_Root_Word, Firmware_Root_Word).
+   function Encode_Prefix (Value : Device_Manager_Configuration) return Encoded
+   with Pre  => Roots_Fit (Value.Device_Roots, Value.Firmware_Roots),
+        Post => Encode_Prefix'Result.Length = Device_Manager_Prefix_Words
+                and then Encode_Prefix'Result.Words (1) = Magic
+                and then Encode_Prefix'Result.Words (2) =
+                           Configuration_Kind'Enum_Rep (Device_Manager)
+                and then Encode_Prefix'Result.Words (3) =
+                           Device_Manager_Fields (Value.Device_Roots, Value.Firmware_Roots)
+                and then Encode_Prefix'Result.Words (Device_Roots_Word) = Value.Device_Roots
+                and then Encode_Prefix'Result.Words (Firmware_Roots_Word) = Value.Firmware_Roots
+                and then Encode_Prefix'Result.Words (Boot_Image_Word) = Value.Boot_Image
+                and then Encode_Prefix'Result.Words (Framebuffer_First_Word) =
+                           Value.Framebuffer.First
+                and then Encode_Prefix'Result.Words (Framebuffer_Bytes_Word) =
+                           Value.Framebuffer.Bytes
+                and then (for all I in 1 .. Device_Manager_Handle_Fields =>
+                            Encode_Prefix'Result.Words (First_Handle_Word - 1 + I) =
+                              Handle_Words (Value.Handles) (I));
 
-   --  The count is in range, the roots in use are handles, the rest zero.
-   function Firmware_Valid (W : Word_Array) return Boolean is
-     (W (W'First) <= Maximum_Firmware_Roots
-      and then (for all R in Firmware_Root_Index =>
-                  (if Unsigned_64 (R) <= W (W'First) then Is_Handle (W (W'First + R))
-                   else W (W'First + R) = 0)))
-   with Pre => W'Length = Firmware_Root_Words and then W'First = Firmware_First_Word;
-
-   function Encode (Value : Device_Manager_Configuration) return Encoded
-   with Post => Encode'Result.Length = Header_Words + Field_Count (Device_Manager)
-                and then Header_Valid (Encode'Result.Words (1 .. Encode'Result.Length),
-                                       Device_Manager)
-                and then Encode'Result.Words (4) = Value.Boot_Image
-                and then Encode'Result.Words (5) = Value.Framebuffer.First
-                and then Encode'Result.Words (6) = Value.Framebuffer.Bytes
-                and then (for all I in 1 .. Device_Manager_Handle_Fields + 1 + Maximum_Device_Roots =>
-                            Encode'Result.Words (6 + I) = Handle_Words (Value.Handles) (I))
-                and then (for all I in 1 .. Firmware_Root_Words =>
-                            Encode'Result.Words (Firmware_First_Word - 1 + I) =
-                              Firmware_Words (Value.Handles) (I));
    --  The handles' words, in field order (Words (6 .. 21)).
    function Process_Handle_Words (H : Process_Manager_Handles) return Word_Array is
      [H.Self, H.Self_Process, H.Self_Grantable, H.Process_Root, H.Registration,
@@ -483,23 +522,17 @@ package Launch_Configuration with Pure, SPARK_Mode is
    --  by in-range fields; then Value holds the fields.
    procedure Decode
      (Words : Word_Array; Value : out Device_Manager_Configuration; Valid : out Boolean)
-   with Post => Valid = (Header_Valid (Words, Device_Manager)
-                         and then Words (4) in Byte_Count
-                         and then Words (5) in Physical_Address
-                         and then Words (6) in Byte_Count
-                         and then Handles_Valid (Words (7 .. 27))
-                         and then Firmware_Valid
-                           (Words (Firmware_First_Word ..
-                                   Firmware_First_Word + Firmware_Root_Words - 1)))
+   with Post => Valid = Device_Manager_Valid (Words)
                 and then (if Valid then
-                            Value.Boot_Image = Words (4)
-                            and then Value.Framebuffer.First = Words (5)
-                            and then Value.Framebuffer.Bytes = Words (6)
-                            and then (for all I in 1 .. 21 =>
-                                        Handle_Words (Value.Handles) (I) = Words (6 + I))
-                            and then (for all I in 1 .. Firmware_Root_Words =>
-                                        Firmware_Words (Value.Handles) (I) =
-                                          Words (Firmware_First_Word - 1 + I)));
+                            Value.Device_Roots = Words (Device_Roots_Word)
+                            and then Value.Firmware_Roots = Words (Firmware_Roots_Word)
+                            and then Value.Boot_Image = Words (Boot_Image_Word)
+                            and then Value.Framebuffer.First = Words (Framebuffer_First_Word)
+                            and then Value.Framebuffer.Bytes = Words (Framebuffer_Bytes_Word)
+                            and then (for all I in 1 .. Device_Manager_Handle_Fields =>
+                                        Handle_Words (Value.Handles) (I) =
+                                          Words (First_Handle_Word - 1 + I))
+                            and then Handles_Well_Formed (Value.Handles));
    procedure Decode
      (Words : Word_Array; Value : out Process_Manager_Configuration; Valid : out Boolean)
    with Post => Valid = (Header_Valid (Words, Process_Manager)

@@ -8,23 +8,20 @@
 --  (Launch_Configuration.Device_Manager_Handles). Every capability devmgr
 --  hands out is a narrowed copy of one of these, or a kernel object SPAWN
 --  gave it. Only devmgr has them; for any other process Valid is False.
+--
+--  The roots are as many as the kernel found (LIM-001b): Get reports how
+--  many, and Device_Root / Firmware_Root read each from the launch block.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
 with Launch_Configuration;
 
 package CuBit.Handles.Boot_Roots is
 
-   Maximum_Device_Roots : constant := Launch_Configuration.Maximum_Device_Roots;
-   subtype Root_Count is Natural range 0 .. Maximum_Device_Roots;
-   subtype Root_Index is Positive range 1 .. Maximum_Device_Roots;
-   type Device_Roots is array (Root_Index) of Device_Memory;
-   --  Firmware memory (Capability_ABI.Firmware_NVS_Tag, Firmware_Control_
-   --  Tag): the ACPI NVS runs and the FACS page, ascending, for the ACPI
-   --  hardware grant.
-   Maximum_Firmware_Roots : constant := Launch_Configuration.Maximum_Firmware_Roots;
-   subtype Firmware_Root_Count is Natural range 0 .. Maximum_Firmware_Roots;
-   subtype Firmware_Root_Index is Positive range 1 .. Maximum_Firmware_Roots;
-   type Firmware_Roots is array (Firmware_Root_Index) of Device_Memory;
+   --  The device-memory roots, ascending, then the firmware-memory roots
+   --  (Capability_ABI.Firmware_*_Tag: ACPI NVS runs, the FACS page, the PCI
+   --  configuration slice, then table-named firmware data).
+   subtype Root_Count is Natural range 0 .. Launch_Configuration.Maximum_Roots;
+   subtype Root_Index is Positive range 1 .. Launch_Configuration.Maximum_Roots;
 
    type Roots is record
       Valid             : Boolean := False;
@@ -41,13 +38,17 @@ package CuBit.Handles.Boot_Roots is
       Scheduling_Root   : Scheduling;
       Firmware_Snapshot_Root : Firmware_Snapshot;  --  READ and GRANT
       Count             : Root_Count := 0;
-      Memory            : Device_Roots := [others => No_Device_Memory];
-      Firmware_Count    : Firmware_Root_Count := 0;
-      Firmware          : Firmware_Roots := [others => No_Device_Memory];
+      Firmware_Count    : Root_Count := 0;
    end record;
 
    --  devmgr's roots, from its launch configuration.
    function Get return Roots;
+
+   --  Device-memory root I and firmware-memory root I of R.
+   function Device_Root (R : Roots; I : Root_Index) return Device_Memory
+   with Pre => R.Valid and then I <= R.Count;
+   function Firmware_Root (R : Roots; I : Root_Index) return Device_Memory
+   with Pre => R.Valid and then I <= R.Firmware_Count;
 
    --  procmgr's handles, installed by devmgr (Launch_Configuration.
    --  Process_Manager_Handles); Valid False in any other process.

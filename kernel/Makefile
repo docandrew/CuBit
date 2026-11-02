@@ -1459,6 +1459,15 @@ acpi-pci-check: ccl-build user_runtime ccl-manifest
 	$(CCL_BUILD) ../userspace/apps/acpi-pci-check/component.ccl
 	cp ../userspace/apps/acpi-pci-check/build/acpi-pci-check.app isodir/boot/acpi-pci-check.app
 
+# Table-named firmware data: devmgr's narrowed, uncached windows over the
+# kernel's Firmware_Data_Tag roots (headless --test acpi-firmware-data).
+# Test-only (never in world/images).
+.PHONY : acpi-data-check
+acpi-data-check: ccl-build user_runtime ccl-manifest
+	mkdir -p ../userspace/apps/acpi-data-check/build
+	$(CCL_BUILD) ../userspace/apps/acpi-data-check/component.ccl
+	cp ../userspace/apps/acpi-data-check/build/acpi-data-check.app isodir/boot/acpi-data-check.app
+
 firmware-undeclared: ccl-build user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/firmware-undeclared/build
 	$(CCL_BUILD) ../userspace/apps/firmware-undeclared/component.ccl

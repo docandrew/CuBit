@@ -1,0 +1,17 @@
+# Table-named firmware data (kernel tag Firmware_Data_Tag; devmgr's
+# Data_Window_Request, CuBit.Firmware_Data_Exchange): the opt-in
+# firmware-data endpoint of the ACPI hardware grant. acpi-data-check stands
+# in for acpi-backend.svc approved with (acpi-firmware-data
+# approve-declared); it is also approved for the read-only PCI configuration
+# window, through which it finds a PCI BAR to ask for. acpi-data-unapproved
+# .app is the same image with the hardware grant but without that approval:
+# it gets no endpoint, and devmgr refuses it through the ordinary one. No
+# image or init plan approves acpi-firmware-data; only this test does.
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "acpi-data-unapproved.app" (priority 3)
+    (firmware-snapshot approve-declared) (acpi-hardware approve-declared))
+  (start "acpi-data-check.app" (priority 3)
+    (firmware-snapshot approve-declared) (acpi-hardware approve-declared)
+    (acpi-pci-config approve-declared) (acpi-firmware-data approve-declared))
+)

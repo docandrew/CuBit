@@ -17,6 +17,24 @@ package body Physical_Ranges with SPARK_Mode is
          Class => Class);
    end Add;
 
+   procedure Add_Table (M : in out Map; First, Last : Unsigned_64) is
+   begin
+      if First > Last or else First >= Address_Limit or else not M.Tables_Complete then
+         return;
+      elsif M.Tables_Used = Max_Table_Extents then
+         M.Tables_Complete := False;
+         return;
+      end if;
+      M.Tables_Used := M.Tables_Used + 1;
+      M.Tables (M.Tables_Used) :=
+        (First => First, Last => Unsigned_64'Min (Last, Address_Limit - 1));
+   end Add_Table;
+
+   procedure Tables_Unknown (M : in out Map) is
+   begin
+      M.Tables_Complete := False;
+   end Tables_Unknown;
+
    procedure Invalidate (M : in out Map) is
    begin
       M.Complete := False;
@@ -252,14 +270,16 @@ package body Physical_Ranges with SPARK_Mode is
       for P in Page_Of (First) .. Page_Of (Last) loop
          pragma Assert (Firmware_Page (M, P, Kind));
          case Kind is
-            when NVS_Memory | Control_Memory =>
+            when NVS_Memory | Control_Memory | Data_Memory =>
                -- Every span touching P has a control class, and one of them
                -- (wholly containing P) touches it, so Class_Of is that class
                -- or another touching span's.
                if Kind = NVS_Memory then
                   pragma Assert (NVS_Page (M, P));
-               else
+               elsif Kind = Control_Memory then
                   pragma Assert (Control_Page_Admitted (M, P));
+               else
+                  pragma Assert (Data_Page_Admitted (M, P));
                end if;
                pragma Assert
                  (for all I in 1 .. M.Count =>
@@ -284,6 +304,8 @@ package body Physical_Ranges with SPARK_Mode is
            (for all Q in Page_Of (First) .. P => Firmware_Class (Kind, Class_Of (M, Q)));
       end loop;
    end Lemma_Firmware_Range_Excludes_RAM;
+
+   procedure Lemma_Data_Page_Alone (M : Map; P : Page_Number) is null;
 
    -- The whole pages inside span I when it is ACPI NVS: [Low, High], or
    -- Usable False.
@@ -404,119 +426,315 @@ package body Physical_Ranges with SPARK_Mode is
       High := Page_Number'Min (High, Stop);
    end Next_NVS_Run;
 
-   procedure Firmware_Runs
-     (M : Map; Runs : out Firmware_Run_Array; Count : out Firmware_Root_Count;
-      Left_Out : out Natural)
+   function First_Firmware_Cursor (M : Map) return Firmware_Cursor is
+     (if M.Sealed and then M.Complete
+      then (Phase           => Admitted_Runs,
+            From            => 0,
+            Control_Pending => Control_Page_Admitted (M, M.Control_Page),
+            PCI_Pending     => In_PCI_Config (M, M.PCI_Config_Page))
+      else (Phase => Finished, From => 0, Control_Pending => False, PCI_Pending => False));
+
+   ---------------------------------------------------------------------------
+   -- Uniform stretches (firmware data)
+   ---------------------------------------------------------------------------
+
+   -- Within, in pages: P is wholly inside S exactly when it is at or after
+   -- S's first whole page and before its first page past the last whole one.
+   procedure Lemma_Within_Pages (S : Span; P : Page_Number)
+     with Ghost, Global => null,
+          Post => Within (S, P) = (Ceil_Page (S.First) <= P and then P < Whole_End (S.Last))
    is
-      From : Page_Number := 0;
-      Found : Boolean;
+   begin
+      pragma Assert ((S.First <= P * Page_Bytes) = (Ceil_Page (S.First) <= P));
+      pragma Assert ((P * Page_Bytes + (Page_Bytes - 1) <= S.Last) = (P < Whole_End (S.Last)));
+   end Lemma_Within_Pages;
+
+   -- A span steady over [A, B] touches, and holds whole, every page of it
+   -- alike.
+   procedure Lemma_Span_Steady (S : Span; A, B, P : Page_Number)
+     with Ghost, Global => null,
+          Pre  => A <= P and then P <= B and then Span_Steady (S, A, B),
+          Post => Touches (S, P) = Touches (S, A) and then Within (S, P) = Within (S, A)
+   is
+   begin
+      Lemma_Within_Pages (S, P);
+      Lemma_Within_Pages (S, A);
+   end Lemma_Span_Steady;
+
+   procedure Lemma_Uniform_Data (M : Map; A, B, P : Page_Number) is
+   begin
+      for I in 1 .. M.Count loop
+         Lemma_Span_Steady (M.Spans (I), A, B, P);
+         pragma Loop_Invariant
+           (for all J in 1 .. I =>
+              Touches (M.Spans (J), P) = Touches (M.Spans (J), A)
+              and then Within (M.Spans (J), P) = Within (M.Spans (J), A));
+      end loop;
+      pragma Assert (Data_Page_Admitted (M, P) = Data_Page_Admitted (M, A));
+      pragma Assert (NVS_Page (M, P) = NVS_Page (M, A));
+      pragma Assert (Table_Page (M, P) = Table_Page (M, A));
+      pragma Assert (In_PCI_Config (M, P) = In_PCI_Config (M, A));
+      pragma Assert ((P = M.Control_Page) = (A = M.Control_Page));
+   end Lemma_Uniform_Data;
+
+   -- The last page of the uniform stretch starting at A: the page before
+   -- the nearest change above A (Uniform's boundaries), or the last page.
+   function Stretch_End (M : Map; A : Page_Number) return Page_Number
+     with Pre  => Well_Formed (M),
+          Post => Stretch_End'Result >= A and then Uniform (M, A, Stretch_End'Result)
+   is
+      B : Page_Number := Last_Page;
+
+      -- Move B below C when C changes something above A.
+      procedure Cut (C : Unsigned_64)
+        with Pre  => B >= A,
+             Post => B <= B'Old and then B >= A and then Steady (C, A, B)
+      is
+      begin
+         if C > A and then C - 1 < B then
+            B := C - 1;
+         end if;
+      end Cut;
+   begin
+      for I in 1 .. M.Count loop
+         Cut (Page_Of (M.Spans (I).First));
+         Cut (Page_Of (M.Spans (I).Last) + 1);
+         Cut (Ceil_Page (M.Spans (I).First));
+         Cut (Whole_End (M.Spans (I).Last));
+         pragma Loop_Invariant (B >= A);
+         pragma Loop_Invariant (for all J in 1 .. I => Span_Steady (M.Spans (J), A, B));
+      end loop;
+      for I in 1 .. M.Tables_Used loop
+         Cut (Page_Of (M.Tables (I).First));
+         Cut (Page_Of (M.Tables (I).Last) + 1);
+         pragma Loop_Invariant (B >= A);
+         pragma Loop_Invariant (for all J in 1 .. M.Count => Span_Steady (M.Spans (J), A, B));
+         pragma Loop_Invariant (for all J in 1 .. I => Extent_Steady (M.Tables (J), A, B));
+      end loop;
+      Cut (M.Control_Page);
+      Cut (M.Control_Page + 1);
+      Cut (M.PCI_Config_Page);
+      Cut (M.PCI_Config_Page + PCI_Bus_Pages);
+      return B;
+   end Stretch_End;
+
+   -- The lowest data page at or after From: From or the first page of a
+   -- stretch (Uniform's boundaries), the first of them that is a data page.
+   -- Not trusted beyond what it checks: Low is a data page at or after
+   -- From.
+   procedure Next_Data_Start
+     (M : Map; From : Page_Number; Found : out Boolean; Low : out Page_Number)
+     with Pre  => Well_Formed (M),
+          Post => (if Found then Low >= From and then Data_Page (M, Low))
+   is
+      procedure Consider (C : Unsigned_64)
+        with Pre  => (if Found then Low >= From and then Data_Page (M, Low)),
+             Post => (if Found then Low >= From and then Data_Page (M, Low))
+                     and then (if Found'Old then Found)
+      is
+      begin
+         if C >= From and then C <= Last_Page and then (not Found or else C < Low)
+           and then Data_Page (M, C)
+         then
+            Found := True;
+            Low := C;
+         end if;
+      end Consider;
+   begin
+      Found := False;
+      Low := From;
+      Consider (From);
+      for I in 1 .. M.Count loop
+         Consider (Page_Of (M.Spans (I).First));
+         Consider (Page_Of (M.Spans (I).Last) + 1);
+         Consider (Ceil_Page (M.Spans (I).First));
+         Consider (Whole_End (M.Spans (I).Last));
+         pragma Loop_Invariant (if Found then Low >= From and then Data_Page (M, Low));
+      end loop;
+      for I in 1 .. M.Tables_Used loop
+         Consider (Page_Of (M.Tables (I).First));
+         Consider (Page_Of (M.Tables (I).Last) + 1);
+         pragma Loop_Invariant (if Found then Low >= From and then Data_Page (M, Low));
+      end loop;
+      Consider (M.Control_Page);
+      Consider (M.Control_Page + 1);
+      Consider (M.PCI_Config_Page);
+      Consider (M.PCI_Config_Page + PCI_Bus_Pages);
+   end Next_Data_Start;
+
+   procedure Next_Firmware_Run
+     (M : Map; Cursor : in out Firmware_Cursor;
+      Found : out Boolean; Run : out Firmware_Run; Left_Out : in out Natural)
+   is
+      Start : constant Firmware_Cursor := Cursor with Ghost;
+      NVS_Found : Boolean;
       Low, High : Page_Number;
-      Control_Pending : Boolean;
-      PCI_Pending : Boolean;
       -- The control page, or the PCI slice, comes before the next NVS run.
       Control_Next, PCI_Next : Boolean;
 
-      -- Records pages [First_Page, Last_Page_Of] as the next run if it is
-      -- verified firmware memory above every recorded run, short enough,
-      -- and there is room; otherwise counts it left out.
-      procedure Emit (First_Page, Last_Page_Of : Page_Number; Kind : Firmware_Kind)
-        with Pre  => First_Page <= Last_Page_Of
-                     and then (for all I in 1 .. Count =>
-                                 Firmware_Range (M, Runs (I).First, Runs (I).Last, Runs (I).Kind))
-                     and then (for all I in 2 .. Count => Runs (I - 1).Last < Runs (I).First)
-                     and then (for all I in Count + 1 .. Max_Firmware_Roots =>
-                                 Runs (I) = No_Firmware_Run),
-             Post => (for all I in 1 .. Count =>
-                        Firmware_Range (M, Runs (I).First, Runs (I).Last, Runs (I).Kind))
-                     and then (for all I in 2 .. Count => Runs (I - 1).Last < Runs (I).First)
-                     and then (for all I in Count + 1 .. Max_Firmware_Roots =>
-                                 Runs (I) = No_Firmware_Run)
+      -- Pages [First_Page, Last_Page_Of] are the run if they are verified
+      -- firmware memory of Kind and short enough; otherwise they are counted
+      -- left out.
+      procedure Try (First_Page, Last_Page_Of : Page_Number; Kind : Firmware_Kind)
+        with Pre  => First_Page <= Last_Page_Of and then not Found,
+             Post => (if Found then
+                        Run = (First => First_Page * Page_Bytes,
+                               Last  => Last_Page_Of * Page_Bytes + (Page_Bytes - 1),
+                               Kind  => Kind)
+                        and then Firmware_Range (M, Run.First, Run.Last, Run.Kind))
       is
          First : constant Address := First_Page * Page_Bytes;
          Last  : constant Address := Last_Page_Of * Page_Bytes + (Page_Bytes - 1);
       begin
-         if Count < Max_Firmware_Roots
-           and then Last_Page_Of - First_Page < Max_Firmware_Run_Pages
-           and then (Count = 0 or else Runs (Count).Last < First)
+         if Last_Page_Of - First_Page < Max_Firmware_Run_Pages
            and then Firmware_Range (M, First, Last, Kind)
          then
-            Count := Count + 1;
-            Runs (Count) := (First => First, Last => Last, Kind => Kind);
+            Found := True;
+            Run := (First => First, Last => Last, Kind => Kind);
          elsif Left_Out < Natural'Last then
             Left_Out := Left_Out + 1;
          end if;
-      end Emit;
+      end Try;
+
+      -- The admitted phase is over: a PCI slice the search passed without
+      -- recording is left out, not lost; firmware data comes next.
+      procedure End_Admitted
+        with Pre  => Cursor.Phase = Admitted_Runs,
+             Post => Cursor.Phase = Data_Runs and then Cursor.From = 0
+      is
+      begin
+         if Cursor.PCI_Pending and then Left_Out < Natural'Last then
+            Left_Out := Left_Out + 1;
+         end if;
+         Cursor := (Phase => Data_Runs, From => 0, Control_Pending => False,
+                    PCI_Pending => False);
+      end End_Admitted;
    begin
-      Runs := [others => No_Firmware_Run];
-      Count := 0;
-      Left_Out := 0;
+      Found := False;
+      Run := No_Firmware_Run;
       if not (M.Sealed and then M.Complete) then
+         Cursor.Phase := Finished;
          return;
       end if;
-      Control_Pending := Control_Page_Admitted (M, M.Control_Page);
-      PCI_Pending := In_PCI_Config (M, M.PCI_Config_Page);
-      -- Each round records the control page, considers the PCI slice, or
-      -- consumes at least one NVS candidate, so Count + 3 rounds enumerate
-      -- them all.
-      for Round in 0 .. M.Count + 2 loop
-         Next_NVS_Run (M, From, Found, Low, High);
-         Control_Next := Control_Pending and then M.Control_Page >= From
-           and then (not Found or else M.Control_Page < Low);
-         PCI_Next := PCI_Pending and then In_PCI_Config (M, M.PCI_Config_Page)
-           and then M.PCI_Config_Page >= From
-           and then (not Found or else M.PCI_Config_Page < Low)
-           and then (not Control_Next or else M.PCI_Config_Page < M.Control_Page);
-         if PCI_Next then
-            -- The slice exactly, or nothing (Emit re-checks every page);
-            -- only a recorded slice moves the search past it.
-            PCI_Pending := False;
-            declare
-               Before : constant Firmware_Root_Count := Count;
-               Last_Of : constant Page_Number := M.PCI_Config_Page + (PCI_Bus_Pages - 1);
-            begin
-               Emit (M.PCI_Config_Page, Last_Of, PCI_Config_Memory);
-               if Count /= Before then
-                  exit when Last_Of = Last_Page;
-                  From := Last_Of + 1;
+
+      -- NVS runs, the control page and the PCI slice, ascending. Each round
+      -- records the control page, considers the PCI slice, or consumes at
+      -- least one NVS candidate, so Count + 3 rounds enumerate them all.
+      if Cursor.Phase = Admitted_Runs then
+         for Round in 0 .. M.Count + 2 loop
+            pragma Loop_Invariant (not Found and then Cursor.Phase = Admitted_Runs
+                                   and then Cursor.From >= Start.From);
+            Next_NVS_Run (M, Cursor.From, NVS_Found, Low, High);
+            Control_Next := Cursor.Control_Pending and then M.Control_Page >= Cursor.From
+              and then (not NVS_Found or else M.Control_Page < Low);
+            PCI_Next := Cursor.PCI_Pending and then In_PCI_Config (M, M.PCI_Config_Page)
+              and then M.PCI_Config_Page >= Cursor.From
+              and then (not NVS_Found or else M.PCI_Config_Page < Low)
+              and then (not Control_Next or else M.PCI_Config_Page < M.Control_Page);
+            if PCI_Next then
+               -- The slice exactly, or nothing (Try re-checks every page);
+               -- only a recorded slice moves the search past it.
+               Cursor.PCI_Pending := False;
+               declare
+                  Last_Of : constant Page_Number := M.PCI_Config_Page + (PCI_Bus_Pages - 1);
+               begin
+                  Try (M.PCI_Config_Page, Last_Of, PCI_Config_Memory);
+                  if Found then
+                     if Last_Of = Last_Page then
+                        End_Admitted;
+                     else
+                        Cursor.From := Last_Of + 1;
+                     end if;
+                     return;
+                  end if;
+               end;
+            elsif Control_Next then
+               Cursor.Control_Pending := False;
+               Try (M.Control_Page, M.Control_Page, Control_Memory);
+               if M.Control_Page < Last_Page then
+                  Cursor.From := M.Control_Page + 1;
+               else
+                  End_Admitted;
                end if;
-            end;
-         elsif Control_Next then
-            Control_Pending := False;
-            Emit (M.Control_Page, M.Control_Page, Control_Memory);
-            if M.Control_Page < Last_Page then
-               From := M.Control_Page + 1;
-            else
-               exit;
-            end if;
-         elsif Found then
-            declare
-               Before : constant Firmware_Root_Count := Count;
-            begin
-               Emit (Low, High, NVS_Memory);
-               if Control_Pending and then M.Control_Page in Low .. High then
-                  Control_Pending := False;
+               if Found or else Cursor.Phase /= Admitted_Runs then
+                  exit;
+               end if;
+            elsif NVS_Found then
+               Try (Low, High, NVS_Memory);
+               if Cursor.Control_Pending and then M.Control_Page in Low .. High then
+                  Cursor.Control_Pending := False;
                   -- A run left out still leaves the control page its own.
-                  if Count = Before then
-                     Emit (M.Control_Page, M.Control_Page, Control_Memory);
+                  if not Found then
+                     Try (M.Control_Page, M.Control_Page, Control_Memory);
                   end if;
                end if;
-            end;
-            exit when High = Last_Page;
-            From := High + 1;
-         else
-            exit;
+               if High = Last_Page then
+                  End_Admitted;
+               else
+                  Cursor.From := High + 1;
+               end if;
+               if Found or else Cursor.Phase /= Admitted_Runs then
+                  exit;
+               end if;
+            else
+               End_Admitted;
+               exit;
+            end if;
+         end loop;
+         if Found then
+            return;
          end if;
-         pragma Loop_Invariant
-           (for all I in 1 .. Count =>
-              Firmware_Range (M, Runs (I).First, Runs (I).Last, Runs (I).Kind));
-         pragma Loop_Invariant (for all I in 2 .. Count => Runs (I - 1).Last < Runs (I).First);
-         pragma Loop_Invariant
-           (for all I in Count + 1 .. Max_Firmware_Roots => Runs (I) = No_Firmware_Run);
-      end loop;
-      -- A slice the search passed without recording is left out, not lost.
-      if PCI_Pending and then Left_Out < Natural'Last then
-         Left_Out := Left_Out + 1;
+         if Cursor.Phase = Admitted_Runs then
+            End_Admitted;
+         end if;
       end if;
-   end Firmware_Runs;
+
+      -- Firmware data, ascending, a uniform stretch at a time: Low is a data
+      -- page, so its whole stretch is (Lemma_Uniform_Data); the run grows
+      -- while the next stretch starts with a data page, up to
+      -- Max_Firmware_Run_Pages. Each stretch ends at a boundary, so the
+      -- boundaries bound the growth.
+      if Cursor.Phase = Data_Runs then
+         Next_Data_Start (M, Cursor.From, Found, Low);
+         if not Found then
+            Cursor.Phase := Finished;
+            return;
+         end if;
+         High := Stretch_End (M, Low);
+         for P in Low .. High loop
+            Lemma_Uniform_Data (M, Low, High, P);
+            pragma Loop_Invariant (for all Q in Low .. P => Data_Page (M, Q));
+         end loop;
+         for Round in 0 .. 4 * M.Count + 2 * M.Tables_Used + 4 loop
+            pragma Loop_Invariant (Low <= High and then (for all Q in Low .. High => Data_Page (M, Q)));
+            exit when High = Last_Page or else High - Low + 1 >= Max_Firmware_Run_Pages
+              or else not Data_Page (M, High + 1);
+            declare
+               Next_End : constant Page_Number := Stretch_End (M, High + 1);
+            begin
+               for P in High + 1 .. Next_End loop
+                  Lemma_Uniform_Data (M, High + 1, Next_End, P);
+                  pragma Loop_Invariant (for all Q in High + 1 .. P => Data_Page (M, Q));
+               end loop;
+               High := Next_End;
+            end;
+         end loop;
+         if High - Low >= Max_Firmware_Run_Pages then
+            High := Low + (Max_Firmware_Run_Pages - 1);
+         end if;
+         Run := (First => Low * Page_Bytes, Last => High * Page_Bytes + (Page_Bytes - 1),
+                 Kind => Data_Memory);
+         pragma Assert (for all Q in Page_Of (Run.First) .. Page_Of (Run.Last) =>
+                          Firmware_Page (M, Q, Data_Memory));
+         if High = Last_Page then
+            Cursor.Phase := Finished;
+         else
+            Cursor.From := High + 1;
+         end if;
+         return;
+      end if;
+
+      Cursor.Phase := Finished;
+   end Next_Firmware_Run;
 
 end Physical_Ranges;

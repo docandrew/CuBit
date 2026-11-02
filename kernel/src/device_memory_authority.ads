@@ -17,13 +17,14 @@ with Device_Memory_Publication;
 --
 -- Firmware memory (the ACPI hardware grant, slice 2) is a separate,
 -- narrower authority: a CAP_DEVICE_MEM tagged FIRMWARE_NVS_TAG,
--- FIRMWARE_CONTROL_TAG or FIRMWARE_PCI_CONFIG_TAG, which only the kernel's
--- firmware-memory roots carry, maps only firmware pages of its own kind
--- (Physical_Ranges.Firmware_Range: whole ACPI NVS pages, the FACS page, or
--- PCI segment 0 bus 0's ECAM slice), and only through MAP_DEVICE into the
--- holder itself: NVS and the FACS page write-back, PCI configuration
--- uncached and read-only whatever rights a capability claims
--- (ACPI-PCI-001; its kernel root has no write right either). A
+-- FIRMWARE_CONTROL_TAG, FIRMWARE_PCI_CONFIG_TAG or FIRMWARE_DATA_TAG,
+-- which only the kernel's firmware-memory roots carry, maps only firmware
+-- pages of its own kind (Physical_Ranges.Firmware_Range: whole ACPI NVS
+-- pages, the FACS page, PCI segment 0 bus 0's ECAM slice, or table-named
+-- firmware data), and only through MAP_DEVICE into the holder itself: NVS
+-- and the FACS page write-back, PCI configuration uncached and read-only
+-- whatever rights a capability claims (ACPI-PCI-001; its kernel root has
+-- no write right either), firmware data uncached and read-write. A
 -- device-memory capability (untagged) never maps a firmware page through
 -- this authority and a firmware-memory one never maps a device page. The
 -- tag is what the holder reads back (INSPECT) as the memory's kind and
@@ -61,21 +62,30 @@ package Device_Memory_Authority with SPARK_Mode is
    -- The firmware-memory tags, and the kind each names.
    function Firmware_Tag (Tag : Authority_Tag) return Boolean is
      (Tag = FIRMWARE_NVS_TAG or else Tag = FIRMWARE_CONTROL_TAG
-      or else Tag = FIRMWARE_PCI_CONFIG_TAG);
+      or else Tag = FIRMWARE_PCI_CONFIG_TAG or else Tag = FIRMWARE_DATA_TAG);
    function Kind_Of (Tag : Authority_Tag) return Physical_Ranges.Firmware_Kind is
      (if Tag = FIRMWARE_CONTROL_TAG then Physical_Ranges.Control_Memory
       elsif Tag = FIRMWARE_PCI_CONFIG_TAG then Physical_Ranges.PCI_Config_Memory
+      elsif Tag = FIRMWARE_DATA_TAG then Physical_Ranges.Data_Memory
       else Physical_Ranges.NVS_Memory)
    with Pre => Firmware_Tag (Tag);
    function Tag_Of (Kind : Physical_Ranges.Firmware_Kind) return Authority_Tag is
      (case Kind is
          when Physical_Ranges.NVS_Memory        => FIRMWARE_NVS_TAG,
          when Physical_Ranges.Control_Memory    => FIRMWARE_CONTROL_TAG,
-         when Physical_Ranges.PCI_Config_Memory => FIRMWARE_PCI_CONFIG_TAG)
+         when Physical_Ranges.PCI_Config_Memory => FIRMWARE_PCI_CONFIG_TAG,
+         when Physical_Ranges.Data_Memory       => FIRMWARE_DATA_TAG)
    with Post => Firmware_Tag (Tag_Of'Result) and then Kind_Of (Tag_Of'Result) = Kind;
 
+   -- Kind_Of and Tag_Of are inverse on the firmware tags.
+   procedure Lemma_Tag_Round_Trip (Tag : Authority_Tag)
+   with Ghost, Global => null,
+        Pre  => Firmware_Tag (Tag),
+        Post => Tag_Of (Kind_Of (Tag)) = Tag;
+
    -- The access modes a firmware kind may be mapped in: PCI configuration
-   -- only read-only (configuration writes stay devmgr's), the others either.
+   -- only read-only (configuration writes stay devmgr's), the others
+   -- (firmware data included) either.
    function Firmware_Mode
      (Kind : Physical_Ranges.Firmware_Kind; Mode : Access_Mode) return Boolean
    is (Kind /= Physical_Ranges.PCI_Config_Memory
@@ -83,9 +93,10 @@ package Device_Memory_Authority with SPARK_Mode is
 
    -- How the kernel maps a firmware kind: write-back for NVS and the FACS
    -- page (Physical_Ranges, "Firmware memory"), uncached for PCI
-   -- configuration (device registers).
+   -- configuration (device registers) and for firmware data (a reserved
+   -- span may be firmware RAM or chipset MMIO; uncached is right for both).
    function Write_Back (Kind : Physical_Ranges.Firmware_Kind) return Boolean is
-     (Kind /= Physical_Ranges.PCI_Config_Memory);
+     (Kind in Physical_Ranges.NVS_Memory | Physical_Ranges.Control_Memory);
 
    -- Cap is a firmware-memory capability covering [Base, Base + Bytes) with
    -- the rights Mode needs.
@@ -125,6 +136,26 @@ package Device_Memory_Authority with SPARK_Mode is
                 and then (for all P in Physical_Ranges.Page_Of (Base) ..
                                        Physical_Ranges.Page_Of (Base + (Bytes - 1)) =>
                             Physical_Ranges.In_PCI_Config (M, P));
+
+   -- Firmware data is mapped uncached, may be mapped writable, and never
+   -- aliases a page of another firmware kind (so never a write-back page:
+   -- not NVS, not the FACS page) nor the PCI slice or an ACPI table's page.
+   procedure Lemma_Data_Uncached_Alone
+     (Cap : Capability; M : Physical_Ranges.Map;
+      Base, Bytes : Unsigned_64; Mode : Access_Mode)
+   with Ghost, Global => null,
+        Pre  => Physical_Ranges.Well_Formed (M)
+                and then Authorize_Firmware (Cap, M, Base, Bytes, Mode)
+                and then Cap.authorityTag = FIRMWARE_DATA_TAG,
+        Post => not Write_Back (Kind_Of (Cap.authorityTag))
+                and then Firmware_Mode (Kind_Of (Cap.authorityTag), Device_Memory_Admission.Read_Write)
+                and then (for all P in Physical_Ranges.Page_Of (Base) ..
+                                       Physical_Ranges.Page_Of (Base + (Bytes - 1)) =>
+                            Physical_Ranges.Data_Page (M, P)
+                            and then not Physical_Ranges.NVS_Page (M, P)
+                            and then not Physical_Ranges.Control_Page_Admitted (M, P)
+                            and then not Physical_Ranges.In_PCI_Config (M, P)
+                            and then not Physical_Ranges.Table_Page (M, P));
 
    -- The two authorities never overlap: no capability is both, and an NVS
    -- page is never device memory. (The FACS page may be firmware-reserved,

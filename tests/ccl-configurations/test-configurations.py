@@ -122,6 +122,50 @@ class Configurations(unittest.TestCase):
         self.reject(base % (hardware + ' (acpi-pci-config deny) (acpi-pci-config approve-declared)'),
                     'DUPLICATE_FIELD')
 
+    def test_acpi_firmware_data_approval_is_opt_in(self):
+        """(acpi-firmware-data approve-declared) (table-named firmware data,
+        CuBit.Firmware_Data_Exchange): explicit, once, and only beside
+        (acpi-hardware approve-declared), like acpi-pci-config."""
+        base = '(startup v1 (start "acpi-backend.svc" (priority 5) %s))'
+        hardware = '(firmware-snapshot approve-declared) (acpi-hardware approve-declared)'
+        result = self.compile(base % hardware)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn('acpi-firmware-data', result.stdout)
+        result = self.compile(base % (hardware + ' (acpi-firmware-data deny)'))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout,
+                         'acpi-backend.svc pri=5 firmware-snapshot=approved acpi-hardware=approved\n')
+        result = self.compile(base % (hardware + ' (acpi-firmware-data approve-declared)'))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout,
+                         'acpi-backend.svc pri=5 firmware-snapshot=approved acpi-hardware=approved'
+                         ' acpi-firmware-data=approved\n')
+        result = self.compile(base % (hardware + ' (acpi-pci-config approve-declared)'
+                                      ' (acpi-firmware-data approve-declared)'))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout,
+                         'acpi-backend.svc pri=5 firmware-snapshot=approved acpi-hardware=approved'
+                         ' acpi-pci-config=approved acpi-firmware-data=approved\n')
+        self.reject(base % '(acpi-firmware-data approve-declared)', 'INVALID_APPROVAL')
+        self.reject(base % '(acpi-hardware deny) (acpi-firmware-data approve-declared)',
+                    'INVALID_APPROVAL')
+        for clause in ('(acpi-firmware-data)', '(acpi-firmware-data all)',
+                       '(acpi-firmware-data approve-declared extra)',
+                       '(acpi-firmware-data "hardware")'):
+            self.reject(base % (hardware + ' ' + clause))
+        self.reject(base % (hardware + ' (acpi-firmware-data deny)'
+                            ' (acpi-firmware-data approve-declared)'), 'DUPLICATE_FIELD')
+
+    def test_no_shipped_plan_approves_firmware_data(self):
+        """Only the headless firmware-data test approves it: every image and
+        init plan leaves it off."""
+        for plan in sorted(ROOT.glob('**/*.ccl')):
+            relative = plan.relative_to(ROOT).as_posix()
+            if relative.startswith(('.', 'tests/headless/init-acpi-firmware-data.ccl')) or '/build/' in relative:
+                continue
+            text = plan.read_text(errors='replace')
+            self.assertNotIn('(acpi-firmware-data approve-declared)', text, relative)
+
     def test_all_existing_profiles(self):
         fixtures = sorted(FIXTURES.rglob('*.conf'))
         self.assertEqual(len(fixtures), 28)

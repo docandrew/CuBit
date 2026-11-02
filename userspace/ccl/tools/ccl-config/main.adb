@@ -100,6 +100,9 @@ begin
                   if Item.Approve_ACPI_Hardware then Put (" acpi-hardware=approved"); end if;
                   if Item.Approve_ACPI_Registers then Put (" acpi-registers=approved"); end if;
                   if Item.Approve_ACPI_PCI_Config then Put (" acpi-pci-config=approved"); end if;
+                  if Item.Approve_ACPI_Firmware_Data then
+                     Put (" acpi-firmware-data=approved");
+                  end if;
                   case Item.Render is
                      when Render_Denied => null;
                      when Render_Declared => Put (" render=declared");

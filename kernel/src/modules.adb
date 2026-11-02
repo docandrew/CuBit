@@ -13,6 +13,7 @@
 with BuddyAllocator;
 with Capabilities;
 with Capability_ABI;
+with Firmware_Data_ABI;
 with InterruptNumbers;
 with Process_Capabilities;
 with Device_Vector_ABI;
@@ -42,15 +43,13 @@ with Virtmem;
 package body Modules with SPARK_Mode => Off is
 
     pragma Compile_Time_Error
-      (Physical_Ranges.Max_Roots /= Launch_Configuration.Maximum_Device_Roots,
-       "devmgr's configuration carries one handle per device-memory root");
-    pragma Compile_Time_Error
-      (Physical_Ranges.Max_Firmware_Roots /= Launch_Configuration.Maximum_Firmware_Roots,
-       "devmgr's configuration carries one handle per firmware-memory root");
+      (Launch_Configuration.Maximum_Block_Bytes > Process_Launch.Maximum_Bytes,
+       "devmgr's configuration must fit a launch block");
     pragma Compile_Time_Error
       (Capabilities.FIRMWARE_NVS_TAG /= Capability_ABI.Firmware_NVS_Tag
        or else Capabilities.FIRMWARE_CONTROL_TAG /= Capability_ABI.Firmware_Control_Tag
-       or else Capabilities.FIRMWARE_PCI_CONFIG_TAG /= Capability_ABI.Firmware_PCI_Config_Tag,
+       or else Capabilities.FIRMWARE_PCI_CONFIG_TAG /= Capability_ABI.Firmware_PCI_Config_Tag
+       or else Capabilities.FIRMWARE_DATA_TAG /= Firmware_Data_ABI.Firmware_Data_Tag,
        "the kernel and the runtime must agree on the firmware-memory tags");
 
     initrdAddr  : Virtmem.PhysAddress := 0;
@@ -205,52 +204,74 @@ package body Modules with SPARK_Mode => Off is
     end Initrd_Pages;
 
     ---------------------------------------------------------------------------
-    -- installDevmgrConfiguration
-    -- devmgr's typed launch configuration (Launch_Configuration): the boot
-    -- image's size and the boot framebuffer's pages. Installed as a launch
-    -- block, exactly as SYSCALL_INSTALL_LAUNCH_ARGUMENTS would, before its
-    -- first instruction.
+    -- The device manager's typed launch configuration (Launch_Configuration):
+    -- the boot image's size, the boot framebuffer's pages, its named handles
+    -- and one handle per root, as many as the classification has. Installed
+    -- as a launch block, exactly as SYSCALL_INSTALL_LAUNCH_ARGUMENTS would,
+    -- before its first instruction: Open_Configuration maps the pages the
+    -- block needs and writes the prefix, Put_Root_Word each root's handle,
+    -- Close_Configuration starts it with RDI = the block's length.
     ---------------------------------------------------------------------------
-    procedure installDevmgrConfiguration
-      (pid : Process.ProcessID; handles : Launch_Configuration.Device_Manager_Handles) is
+    Config_Page_Bytes : constant := Process_Launch.Page_Bytes;
+    Config_Words_Per_Page : constant := Config_Page_Bytes / Launch_Configuration.Word_Bytes;
+    Maximum_Config_Pages : constant :=
+      (Launch_Configuration.Maximum_Block_Bytes + Config_Page_Bytes - 1) / Config_Page_Bytes;
+    subtype Config_Page_Count is Natural range 0 .. Maximum_Config_Pages;
+    subtype Config_Page_Index is Positive range 1 .. Maximum_Config_Pages;
+    configPages : array (Config_Page_Index) of System.Address := (others => System.Null_Address);
+    configLength : Launch_Configuration.Word_Count := 0;
+
+    procedure Put_Word (index : Launch_Configuration.Word_Index; value : Unsigned_64) is
+        page : constant Config_Page_Index := (index - 1) / Config_Words_Per_Page + 1;
+        offset : constant Storage_Offset :=
+          Storage_Offset (((index - 1) mod Config_Words_Per_Page) * Launch_Configuration.Word_Bytes);
+        target : Unsigned_64 with Import, Address => configPages (page) + offset;
+    begin
+        target := value;
+    end Put_Word;
+
+    procedure Open_Configuration
+      (pid : Process.ProcessID; value : Launch_Configuration.Device_Manager_Configuration)
+    is
         use type Process.Page_Allocation_Result;
         package LC renames Launch_Configuration;
-        Framebuffer : LC.Physical_Span;
-        Block : LC.Encoded;
-        storage : System.Address;
+        Prefix : constant LC.Encoded := LC.Encode_Prefix (value);
+        Length : constant LC.Word_Index :=
+          LC.Device_Manager_Last (value.Device_Roots, value.Firmware_Roots);
+        Pages : constant Config_Page_Count :=
+          (Length * LC.Word_Bytes + Config_Page_Bytes - 1) / Config_Page_Bytes;
         result : Process.Page_Allocation_Result;
-        Ignore : System.Address;
     begin
-        if Multiboot.Has_Graphics then
-            Framebuffer :=
-              (First => Unsigned_64 (Multiboot.Framebuffer.Map_First),
-               Bytes => Unsigned_64 (Multiboot.Framebuffer.Map_Limit) -
-                        Unsigned_64 (Multiboot.Framebuffer.Map_First));
-        end if;
-        Block := LC.Encode (LC.Device_Manager_Configuration'
-          (Boot_Image  => Unsigned_64 (initrdSize),
-           Framebuffer => Framebuffer,
-           Handles     => handles));
         Process.lockAddressSpace (pid);
         Process.proctab (pid).frames.capacity :=
-          Process.proctab (pid).frames.capacity + 1;
-        Process.tryAddPage
-          (proc    => Process.proctab (pid),
-           mapTo   => To_Address (Process_Launch.Arguments_Base),
-           storage => storage,
-           result  => result,
-           flags   => Virtmem.PG_USERDATARO);
+          Process.proctab (pid).frames.capacity + Pages;
+        for page in 1 .. Pages loop
+            Process.tryAddPage
+              (proc    => Process.proctab (pid),
+               mapTo   => To_Address (Integer_Address (Process_Launch.Arguments_Base) +
+                                      Integer_Address (page - 1) * Config_Page_Bytes),
+               storage => configPages (page),
+               result  => result,
+               flags   => Virtmem.PG_USERDATARO);
+            if result /= Process.Page_Added then
+                Process.unlockAddressSpace (pid);
+                raise ModuleException with "No page for the device manager's configuration";
+            end if;
+        end loop;
         Process.unlockAddressSpace (pid);
-        if result /= Process.Page_Added then
-            raise ModuleException with "No page for the device manager's configuration";
-        end if;
         -- Fresh frames are zeroed.
-        Ignore := Util.memcpy (storage, Block.Words'Address,
-                               Storage_Count (Block.Length * LC.Word_Bytes));
+        for index in 1 .. Prefix.Length loop
+            Put_Word (index, Prefix.Words (index));
+        end loop;
+        configLength := Length;
+    end Open_Configuration;
+
+    procedure Close_Configuration (pid : Process.ProcessID) is
+    begin
         Process.threadOf (pid).kernelStack.interruptFrame.rdi :=
-          Unsigned_64 (Block.Length * LC.Word_Bytes);
+          Unsigned_64 (configLength * Launch_Configuration.Word_Bytes);
         Process.proctab (pid).launch := Process_Launch.Arguments_Installed;
-    end installDevmgrConfiguration;
+    end Close_Configuration;
 
     ---------------------------------------------------------------------------
     -- setup
@@ -349,6 +370,7 @@ package body Modules with SPARK_Mode => Off is
         declare
             package LC renames Launch_Configuration;
             handles : LC.Device_Manager_Handles;
+            Framebuffer_Span : LC.Physical_Span;
             GRANT_ONLY : constant Capabilities.CapabilityRights :=
               (Capabilities.RIGHT_GRANT => True, others => False);
             READ_GRANT : constant Capabilities.CapabilityRights :=
@@ -384,6 +406,12 @@ package body Modules with SPARK_Mode => Off is
                 object       => (ref => ref, param => param),
                 gen          => Capabilities.INITIAL_GENERATION));
         begin
+            if Multiboot.Has_Graphics then
+                Framebuffer_Span :=
+                  (First => Unsigned_64 (Multiboot.Framebuffer.Map_First),
+                   Bytes => Unsigned_64 (Multiboot.Framebuffer.Map_Limit) -
+                            Unsigned_64 (Multiboot.Framebuffer.Map_First));
+            end if;
             handles.Self := Process.proctab(devmgrPID).selfHandle;
             handles.Self_Process := Process.proctab(devmgrPID).selfProcessHandle;
             -- An untagged endpoint to itself: the children's "ready" and
@@ -438,72 +466,138 @@ package body Modules with SPARK_Mode => Off is
             -- run of device-mappable pages in the boot classification (PCI
             -- holes, firmware-reserved MMIO such as ECAM, and everything
             -- above the top of described memory, so BARs above 4 GiB are
-            -- covered), largest first. Never RAM, kernel memory, boot
-            -- modules, ACPI memory or kernel MMIO. devmgr maps BARs and
-            -- hands drivers subranges of these; the initrd it shares is a
-            -- boot module, not device memory.
-            declare
-                Runs  : Physical_Ranges.Run_Array;
-                Count : Physical_Ranges.Root_Count;
-            begin
-                Physical_Ranges.Largest_Device_Runs
-                  (Physical_Range_Map.Kernel_Map, Runs, Count);
-                handles.Root_Count := Count;
-                for Index in 1 .. Count loop
-                    place (root (Capabilities.CAP_DEVICE_MEM, RW_GRANT,
-                                 Runs (Index).First,
-                                 Runs (Index).Last - Runs (Index).First + 1),
-                           handles.Device_Roots (Index));
-                    print ("Modules: devmgr device root ");
-                    print (Runs (Index).First);
-                    print (" .. ");
-                    println (Runs (Index).Last);
-                end loop;
-            end;
-
+            -- covered), ascending, every one of them (LIM-001b). Never RAM,
+            -- kernel memory, boot modules, ACPI memory or kernel MMIO.
+            -- devmgr maps BARs and hands drivers subranges of these; the
+            -- initrd it shares is a boot module, not device memory.
+            --
             -- Firmware-memory roots (the ACPI hardware grant): one
             -- CAP_DEVICE_MEM per run of whole ACPI NVS pages (tagged
-            -- FIRMWARE_NVS_TAG), the FACS page (FIRMWARE_CONTROL_TAG) and
-            -- PCI segment 0 bus 0's ECAM slice (FIRMWARE_PCI_CONFIG_TAG), in
-            -- ascending order (Physical_Ranges.Firmware_Runs). Only
-            -- MAP_DEVICE into the holder maps them, NVS and the FACS page
-            -- write-back, PCI configuration uncached and read-only (its root
-            -- has no write right, so no derivation has one either), and no
-            -- device-memory capability maps their NVS pages
-            -- (Device_Memory_Authority). devmgr claims them for ACPI and
-            -- hands them, exactly, to the program procmgr's startup plan
-            -- approves (acpi-hardware approve-declared; the PCI slice only
-            -- with acpi-pci-config approve-declared too).
+            -- FIRMWARE_NVS_TAG), the FACS page (FIRMWARE_CONTROL_TAG), PCI
+            -- segment 0 bus 0's ECAM slice (FIRMWARE_PCI_CONFIG_TAG), then
+            -- the table-named firmware-data runs (FIRMWARE_DATA_TAG)
+            -- (Physical_Ranges.Next_Firmware_Run). Only MAP_DEVICE into the
+            -- holder maps them, NVS and the FACS page write-back, PCI
+            -- configuration uncached and read-only (its root has no write
+            -- right, so no derivation has one either), firmware data
+            -- uncached, and no device-memory capability maps their NVS
+            -- pages (Device_Memory_Authority). devmgr claims the NVS, FACS
+            -- and PCI roots for ACPI and hands them, exactly, to the program
+            -- procmgr's startup plan approves (acpi-hardware
+            -- approve-declared; the PCI slice only with acpi-pci-config
+            -- approve-declared too); it keeps the data roots and narrows one
+            -- envelope at a time for a program approved with
+            -- acpi-firmware-data.
+            --
+            -- Two passes over the same deterministic enumeration: count, so
+            -- the configuration's pages can be sized, then place.
             declare
-                Runs     : Physical_Ranges.Firmware_Run_Array;
-                Count    : Physical_Ranges.Firmware_Root_Count;
-                Left_Out : Natural;
+                package PR renames Physical_Ranges;
+                M : PR.Map renames Physical_Range_Map.Kernel_Map;
+                Device_Total, Firmware_Total : Natural := 0;
+                Left_Out : Natural := 0;
+                Kept_Device, Kept_Firmware : LC.Root_Count;
+                Found : Boolean;
+                First, Last : PR.Address;
+                Run : PR.Firmware_Run;
+                Cursor : PR.Firmware_Cursor;
+                From : PR.Page_Number;
+
+                function Firmware_Root (R : PR.Firmware_Run) return Capabilities.Capability is
+                  ((capType      => Capabilities.CAP_DEVICE_MEM,
+                    rights       =>
+                      (if Device_Memory_Authority.Firmware_Mode
+                            (R.Kind, Device_Memory_Admission.Read_Write)
+                       then RW_GRANT else READ_GRANT),
+                    authorityTag => Device_Memory_Authority.Tag_Of (R.Kind),
+                    object       => (ref => R.First, param => R.Last - R.First + 1),
+                    gen          => Capabilities.INITIAL_GENERATION));
             begin
-                Physical_Ranges.Firmware_Runs
-                  (Physical_Range_Map.Kernel_Map, Runs, Count, Left_Out);
-                handles.Firmware_Count := Count;
-                for Index in 1 .. Count loop
-                    place ((capType      => Capabilities.CAP_DEVICE_MEM,
-                            rights       =>
-                              (if Device_Memory_Authority.Firmware_Mode
-                                    (Runs (Index).Kind, Device_Memory_Admission.Read_Write)
-                               then RW_GRANT else READ_GRANT),
-                            authorityTag => Device_Memory_Authority.Tag_Of (Runs (Index).Kind),
-                            object       => (ref   => Runs (Index).First,
-                                             param => Runs (Index).Last - Runs (Index).First + 1),
-                            gen          => Capabilities.INITIAL_GENERATION),
-                           handles.Firmware_Roots (Index));
-                    print ("Modules: devmgr firmware-memory root ");
-                    print (Runs (Index).First);
+                From := 0;
+                loop
+                    PR.Next_Device_Run (M, From, Found, First, Last);
+                    exit when not Found;
+                    Device_Total := Device_Total + 1;
+                    exit when PR.Page_Of (Last) = PR.Last_Page;
+                    From := PR.Page_Of (Last) + 1;
+                end loop;
+                Cursor := PR.First_Firmware_Cursor (M);
+                loop
+                    PR.Next_Firmware_Run (M, Cursor, Found, Run, Left_Out);
+                    exit when not Found;
+                    Firmware_Total := Firmware_Total + 1;
+                end loop;
+                -- The block's ceiling is far above any real classification
+                -- (Physical_Ranges.Max_Spans bounds the runs); say so if not.
+                Kept_Device := LC.Root_Count (Natural'Min (Device_Total, LC.Maximum_Roots));
+                Kept_Firmware := LC.Root_Count
+                  (Natural'Min (Firmware_Total, LC.Maximum_Roots - Natural (Kept_Device)));
+                if Natural (Kept_Device) /= Device_Total
+                  or else Natural (Kept_Firmware) /= Firmware_Total
+                then
+                    print ("Modules: CAPACITY devmgr roots: demand ");
+                    print (Device_Total + Firmware_Total);
+                    print (", limit ");
+                    println (Integer (LC.Maximum_Roots));
+                end if;
+                Open_Configuration
+                  (devmgrPID,
+                   (Device_Roots   => Kept_Device,
+                    Firmware_Roots => Kept_Firmware,
+                    Boot_Image     => Unsigned_64 (initrdSize),
+                    Framebuffer    => Framebuffer_Span,
+                    Handles        => handles));
+
+                From := 0;
+                for Index in 1 .. Natural (Kept_Device) loop
+                    PR.Next_Device_Run (M, From, Found, First, Last);
+                    exit when not Found;
+                    declare
+                        word : Unsigned_64;
+                    begin
+                        place (root (Capabilities.CAP_DEVICE_MEM, RW_GRANT,
+                                     First, Last - First + 1), word);
+                        Put_Word (LC.Device_Root_Word (Index), word);
+                    end;
+                    print ("Modules: devmgr device root ");
+                    print (First);
                     print (" .. ");
-                    println (Runs (Index).Last);
+                    println (Last);
+                    exit when PR.Page_Of (Last) = PR.Last_Page;
+                    From := PR.Page_Of (Last) + 1;
+                end loop;
+                Cursor := PR.First_Firmware_Cursor (M);
+                Left_Out := 0;
+                for Index in 1 .. Natural (Kept_Firmware) loop
+                    PR.Next_Firmware_Run (M, Cursor, Found, Run, Left_Out);
+                    exit when not Found;
+                    declare
+                        word : Unsigned_64;
+                    begin
+                        place (Firmware_Root (Run), word);
+                        Put_Word (LC.Firmware_Root_Word (Kept_Device, Index), word);
+                    end;
+                    print ("Modules: devmgr firmware-memory root ");
+                    print (Run.First);
+                    print (" .. ");
+                    print (Run.Last);
+                    println ((case Run.Kind is
+                                when PR.NVS_Memory        => " (NVS)",
+                                when PR.Control_Memory    => " (FACS)",
+                                when PR.PCI_Config_Memory => " (PCI configuration)",
+                                when PR.Data_Memory       => " (firmware data)"));
                 end loop;
                 if Left_Out > 0 then
                     print ("Modules: firmware-memory runs left out: ");
                     println (Left_Out);
                 end if;
+                print ("Modules: devmgr roots: ");
+                print (Integer (Kept_Device));
+                print (" device, ");
+                print (Integer (Kept_Firmware));
+                println (" firmware");
             end;
-            installDevmgrConfiguration (devmgrPID, handles);
+            Close_Configuration (devmgrPID);
         end;
 
         println ("Modules: Starting device manager.");

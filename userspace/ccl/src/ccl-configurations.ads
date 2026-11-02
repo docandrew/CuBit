@@ -79,6 +79,12 @@ package CCL.Configurations with SPARK_Mode => On is
       --  Firmware_PCI_Config_Tag root). Off unless written: an entry without
       --  it never sees the window. Without acpi-hardware it is refused.
       Approve_ACPI_PCI_Config : Boolean := False;
+      --  (acpi-firmware-data approve-declared): on an entry that also
+      --  approves acpi-hardware, the grant includes devmgr's firmware-data
+      --  endpoint (CuBit.Firmware_Data_Exchange: table-named firmware data,
+      --  the kernel's Firmware_Data_Tag roots, one envelope per request).
+      --  Off unless written. Without acpi-hardware it is refused.
+      Approve_ACPI_Firmware_Data : Boolean := False;
       Scheduling_Budget, Scheduling_Period : CCL.Scheduling_Limits.Microseconds :=
         CCL.Scheduling_Limits.Microseconds'First;
       Has_Ready_Deadline : Boolean := False;

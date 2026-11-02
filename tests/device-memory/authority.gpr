@@ -2,7 +2,7 @@
 --  and attenuation. Hosted tests (authority_tests) and the SPARK proof
 --  target (tests/prove-all.targets: device-memory-authority).
 project Authority is
-   for Source_Dirs use (".", "fixture", "../../kernel/src",
+   for Source_Dirs use (".", "../../kernel/src",
      "../../shared/publications", "../../shared/time",
      "../../shared/capabilities", "../../shared/interrupts");
    --  Capability_Install (and what it needs): the PCI-configuration tests

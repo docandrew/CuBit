@@ -3,28 +3,40 @@ with Interfaces; use Interfaces;
 package body Round_Trips with SPARK_Mode is
 
    procedure Device_Manager (Value : Device_Manager_Configuration;
+                             Roots : Word_Array;
                              Decoded : out Device_Manager_Configuration;
                              Valid : out Boolean) is
-      E : constant Encoded := Encode (Value);
+      E : constant Encoded := Encode_Prefix (Value);
       H : constant Word_Array := Handle_Words (Value.Handles) with Ghost;
-      F : constant Word_Array := Firmware_Words (Value.Handles) with Ghost;
+      Length : constant Word_Index := Device_Manager_Length (Value);
+      Block : Word_Array (1 .. Length) := [others => 0];
    begin
-      pragma Assert (for all I in 1 .. Firmware_Root_Words =>
-                       E.Words (Firmware_First_Word - 1 + I) = F (I));
-      pragma Assert (Firmware_Valid (E.Words (28 .. 36)));
-      pragma Assert (for all I in 1 .. 21 => E.Words (6 + I) = H (I));
-      pragma Assert (Handles_Valid (E.Words (7 .. 27)));
-      Decode (E.Words (1 .. E.Length), Decoded, Valid);
+      Block (1 .. Device_Manager_Prefix_Words) := E.Words (1 .. Device_Manager_Prefix_Words);
+      Block (Device_Manager_Prefix_Words + 1 .. Length) := Roots;
+      pragma Assert (for all I in 1 .. Device_Manager_Prefix_Words => Block (I) = E.Words (I));
+      pragma Assert (Block (Device_Roots_Word) = Value.Device_Roots);
+      pragma Assert (Block (Firmware_Roots_Word) = Value.Firmware_Roots);
+      pragma Assert (Block (Boot_Image_Word) = Value.Boot_Image);
+      pragma Assert (Block (Framebuffer_First_Word) = Value.Framebuffer.First);
+      pragma Assert (Block (Framebuffer_Bytes_Word) = Value.Framebuffer.Bytes);
+      pragma Assert (for all I in 1 .. Device_Manager_Handle_Fields =>
+                       Block (First_Handle_Word - 1 + I) = H (I));
+      pragma Assert (for all I in First_Handle_Word .. Device_Manager_Prefix_Words =>
+                       Is_Handle (Block (I)));
+      pragma Assert (for all I in Device_Manager_Prefix_Words + 1 .. Length =>
+                       Block (I) = Roots (I - Device_Manager_Prefix_Words));
+      pragma Assert (for all I in First_Handle_Word .. Length => Is_Handle (Block (I)));
+      pragma Assert (Device_Manager_Valid (Block));
+      Decode (Block, Decoded, Valid);
       pragma Assert (Valid);
       pragma Assert
-        (for all I in 1 .. 21 => Handle_Words (Decoded.Handles) (I) = H (I));
-      pragma Assert (Decoded.Handles.Root_Count = Value.Handles.Root_Count);
-      pragma Assert (Decoded.Handles.Device_Roots = Value.Handles.Device_Roots);
-      pragma Assert
-        (for all I in 1 .. Firmware_Root_Words => Firmware_Words (Decoded.Handles) (I) = F (I));
-      pragma Assert (Decoded.Handles.Firmware_Count = Value.Handles.Firmware_Count);
-      pragma Assert (Decoded.Handles.Firmware_Roots = Value.Handles.Firmware_Roots);
+        (for all I in 1 .. Device_Manager_Handle_Fields =>
+           Handle_Words (Decoded.Handles) (I) = H (I));
       pragma Assert (Decoded.Handles = Value.Handles);
+      pragma Assert (Decoded.Device_Roots = Value.Device_Roots
+                     and then Decoded.Firmware_Roots = Value.Firmware_Roots
+                     and then Decoded.Boot_Image = Value.Boot_Image
+                     and then Decoded.Framebuffer = Value.Framebuffer);
    end Device_Manager;
 
    procedure Process_Manager (Value : Process_Manager_Configuration;

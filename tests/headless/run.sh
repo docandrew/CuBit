@@ -81,7 +81,7 @@ Mesa native tests: --test softpipe, opengl, buffer, mesa-window, mesa-sync, mesa
 
 Options:
   --build              Run make world before booting QEMU
-  --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-console, logs, ccl-remote, capability-security, network-authority, bench-net, bench-fs, threads, futex, secondary-stacks, clock, avx, wifi-crypto, rust-std, libc, processes, control-events, binutils, gcc, gnat, servo, bench-spread, timesync, tls-probe, tls-service, wget-https, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, text, calculator, lexicon, dictionary, clipboard, key-repeat, desktop-doom, desktop-virtio-vga, desktop-vm, virtio-gpu, virtio-vga-primary, launch-failure, fs-coherence-CASE, startup-health, firmware-snapshot, acpi-hardware, acpi-pci-config, or boot-timeline (--accel kvm --timeout 60)
+  --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-console, logs, ccl-remote, capability-security, network-authority, bench-net, bench-fs, threads, futex, secondary-stacks, clock, avx, wifi-crypto, rust-std, libc, processes, control-events, binutils, gcc, gnat, servo, bench-spread, timesync, tls-probe, tls-service, wget-https, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, text, calculator, lexicon, dictionary, clipboard, key-repeat, desktop-doom, desktop-virtio-vga, desktop-vm, virtio-gpu, virtio-vga-primary, launch-failure, fs-coherence-CASE, startup-health, firmware-snapshot, acpi-hardware, acpi-pci-config, acpi-firmware-data, or boot-timeline (--accel kvm --timeout 60)
   --timeout SECONDS    QEMU runtime before timeout is treated as success
                        (default 25; 180 for desktop tests, see DESKTOP_TIMEOUT_SECONDS)
   --accel NAME         QEMU accelerator (for example: tcg,thread=multi)
@@ -329,7 +329,7 @@ case "$TEST_NAME" in
         ;;
     grant-forward|grant-forward-intermediary-exit|grant-forward-owner-exit|grant-forward-desktop|config-tree|config-inspection|log-authority|log-fields|log-retention|metrics|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
         ;;
-    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|secondary-stacks|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|acpi-hardware|acpi-pci-config|acpi-native-smoke|acpi-pair-smoke|multi-instance|program-parameters|usb-hotplug|usb-slots|wifi-crypto|acpi-register-probe)
+    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|secondary-stacks|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|acpi-hardware|acpi-pci-config|acpi-firmware-data|acpi-native-smoke|acpi-pair-smoke|multi-instance|program-parameters|usb-hotplug|usb-slots|wifi-crypto|acpi-register-probe)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -727,6 +727,13 @@ with open(sys.argv[1], "wb") as f:
         # the same image without (acpi-pci-config approve-declared) gets
         # the grant without it (build: make -C kernel acpi-pci-check).
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-acpi-pci-config.ccl"
+        ;;
+    acpi-firmware-data)
+        # Table-named firmware data: devmgr's narrowed, uncached windows
+        # over the kernel's Firmware_Data_Tag roots, for a program approved
+        # with (acpi-firmware-data approve-declared); the same image without
+        # it is refused (build: make -C kernel acpi-data-check).
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-acpi-firmware-data.ccl"
         ;;
     clock)
         # docs/fast-clock.md: the clock publication page. The kernel
@@ -1877,6 +1884,27 @@ if [ -n "$INIT_PROFILE" ]; then
             if ! debugfs -w -R "write $PCI_SOURCE $PCI_TARGET" \
               "$TEMP_DISK" >/dev/null 2>&1; then
                 echo "headless: failed to install $PCI_TARGET" >&2
+                exit 1
+            fi
+        done
+    fi
+    if [ "$TEST_NAME" = "acpi-firmware-data" ]; then
+        # acpi-data-unapproved.app is acpi-data-check.app under another name:
+        # the same declaration, approved for the hardware grant but not for
+        # firmware data.
+        for DATA_PAIR in logstore.svc:logstore.svc \
+                         acpi-data-check.app:acpi-data-check.app \
+                         acpi-data-check.app:acpi-data-unapproved.app; do
+            DATA_SOURCE="$KERNEL_DIR/isodir/boot/${DATA_PAIR%%:*}"
+            DATA_TARGET="${DATA_PAIR##*:}"
+            if [ ! -f "$DATA_SOURCE" ]; then
+                echo "headless: build ${DATA_PAIR%%:*} first (make -C kernel acpi-data-check)" >&2
+                exit 1
+            fi
+            debugfs -w -R "rm $DATA_TARGET" "$TEMP_DISK" >/dev/null 2>&1
+            if ! debugfs -w -R "write $DATA_SOURCE $DATA_TARGET" \
+              "$TEMP_DISK" >/dev/null 2>&1; then
+                echo "headless: failed to install $DATA_TARGET" >&2
                 exit 1
             fi
         done
@@ -5138,6 +5166,48 @@ print(f"PASS: host bridge {ids} through the window matches devmgr; the write fau
 PCI_CHECK
         then
             echo "headless: PCI configuration window read/fault check failed" >&2
+            exit 1
+        fi
+        ;;
+    acpi-firmware-data)
+        required_markers="
+(firmware data)
+devmgr: roots:
+procmgr: ACPI firmware data approved for acpi-data-check.app
+acpi-data-check: no firmware-data endpoint
+acpi-data-check: unapproved request refused (NOT_APPROVED)
+devmgr: firmware data refused: no acpi-firmware-data approval
+acpi-data-check: a request through device-manager refused (not the badge) PASS
+acpi-data-check: the reply names the envelope PASS
+acpi-data-check: the grant is carried PASS
+acpi-data-check: a reserved page granted as firmware data PASS
+acpi-data-check: the handle covers exactly the page PASS
+acpi-data-check: its kernel tag is firmware data (uncached) PASS
+acpi-data-check: read-write without grant PASS
+acpi-data-check: cannot be copied on PASS
+acpi-data-check: the page past the envelope refused PASS
+acpi-data-check: maps read-write (uncached) PASS
+acpi-data-check: reads the page PASS
+acpi-data-check: the same request id is answered the same PASS
+devmgr: firmware data request
+acpi-data-check: an ECAM page of bus 0 refused (Overlaps_PCI_Config) PASS
+acpi-data-check: an ECAM page of bus 1 refused (Overlaps_PCI_Config) PASS
+acpi-data-check: a RAM page refused (Not_Firmware_Class) PASS
+acpi-data-check: a device BAR page refused (Overlaps_Device) PASS
+acpi-data-check: the FACS page refused (Overlaps_Control) PASS
+acpi-data-check: a request without pages refused (Malformed) PASS
+TEST: PASS acpi-firmware-data
+"
+        # One run of each image; nothing fails; the unapproved image never
+        # gets the endpoint; the granted page was claimed for ACPI.
+        if grep -aF 'acpi-data-check: ' "$SERIAL_LOG" | grep -qF ' FAIL' ||
+           grep -aqF 'TEST: FAIL acpi-firmware-data' "$SERIAL_LOG" ||
+           grep -aqF 'ACPI firmware data approved for acpi-data-unapproved.app' "$SERIAL_LOG" ||
+           grep -aqF 'CAPACITY' "$SERIAL_LOG" ||
+           [ "$(grep -acF 'acpi-data-check: starting' "$SERIAL_LOG")" -ne 2 ] ||
+           [ "$(grep -acF 'TEST: PASS acpi-firmware-data' "$SERIAL_LOG")" -ne 1 ] ||
+           [ "$(grep -acF 'acpi-data-check: no firmware-data endpoint' "$SERIAL_LOG")" -ne 1 ]; then
+            echo "headless: ACPI firmware-data checks failed, or the unapproved image got the endpoint" >&2
             exit 1
         fi
         ;;

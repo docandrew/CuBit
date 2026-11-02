@@ -21,6 +21,12 @@ with CuBit.Service_Exchange;
 with CuBit.ACPI_Window_Exchange;
 with CuBit.ACPI_Memory_Classes;
 with Devmgr_Port_Claims;
+with Devmgr_Memory_Claims;
+with Devmgr_Data_Windows;
+with Devmgr_Growable;
+with Devmgr_Heap;
+with CuBit.Firmware_Data_Exchange;
+with CuBit.Firmware_Snapshot;
 with CuBit.Disk_Install;
 with CuBit.Block_Devices;
 with CuBit.Startup_Tables;
@@ -188,9 +194,16 @@ procedure main is
    Read_Write_Grant : constant H.Rights := (Read | Write | Grant => True, others => False);
 
    --  Who holds which I/O ports: the kernel's and devmgr's own ranges,
-   --  drivers' ranges (Give_Ports) and the ACPI windows procmgr asked for
-   --  (CuBit.ACPI_Window_Exchange). Set in the body.
-   Port_Claims : Devmgr_Port_Claims.Ledger;
+   --  drivers' ranges (Give_Ports, given back when the driver exits) and
+   --  the ACPI windows procmgr asked for (CuBit.ACPI_Window_Exchange). On
+   --  the heap: as many as are held (LIM-001b). Set in the body.
+   package Ledgers renames Devmgr_Authority.Ledgers;
+   use type Ledgers.Port_Store.Growth_Status;
+   Port_Claims : Ledgers.Port_Ledger;
+
+   --  A ledger or record store that could not grow: named, with the
+   --  demand and the capacity kept.
+   procedure Warn_Capacity (What : String; Report : Ledgers.Capacity_Report);
 
    --  PCI device info (found during scanning)
    type PCIDeviceInfo is record
@@ -1021,6 +1034,17 @@ procedure main is
                Warnings.Inform (Line);
             end if;
          end;
+         --  Its I/O ports are free again (a restarted driver claims them
+         --  anew); ACPI windows and other drivers' ports stay.
+         declare
+            Released : Natural;
+         begin
+            Ledgers.Release_Owner (Port_Claims, To_Word (Child), Released);
+            if Released > 0 then
+               debugPrint ("devmgr: ports of " & Name (1 .. Length) & " released:" &
+                           Natural'Image (Released) & LF);
+            end if;
+         end;
       end loop;
    end Log_Child_Exits;
 
@@ -1632,6 +1656,11 @@ procedure main is
    --  wifi.svc's join and connection lines (docs/wifi.md).
    Wifi_Log_Issuance : constant CuBit.Log_Protocol.Publication_Issuance := 4;
 
+   procedure Warn_Capacity (What : String; Report : Ledgers.Capacity_Report) is
+   begin
+      Warnings.Warn ("devmgr: " & Ledgers.Capacity_Text (What, Report));
+   end Warn_Capacity;
+
    procedure Refuse (From : Process_ID; Answered : Boolean) is
       ignore : Unsigned_64;
    begin
@@ -2078,11 +2107,22 @@ procedure main is
    --  Answer an I/O port binding of child.
    procedure Give_Ports (child : DL.Child; Name : String; First, Count : Unsigned_64) is
       Granted : Boolean;
+      Report : Ledgers.Capacity_Report;
+      Owner : constant Unsigned_64 := To_Word (DL.PID (child));
    begin
-      --  Never ports of an ACPI window (Devmgr_Port_Claims).
-      Devmgr_Port_Claims.Take (Port_Claims, First, Count, Devmgr_Port_Claims.Driver, Granted);
+      --  Never ports of an ACPI window (Devmgr_Port_Claims); the driver's
+      --  until it exits.
+      if Owner = Devmgr_Port_Claims.No_Owner then
+         Granted := False;
+      else
+         Ledgers.Take (Port_Claims, First, Count, Devmgr_Port_Claims.Driver, Owner, Granted, Report);
+      end if;
       if Granted then
          DL.Give (child, Name, H.Narrowed (Root.IO_Ports_Root, H.Read_Write, First, Count));
+      elsif Owner /= Devmgr_Port_Claims.No_Owner
+        and then Report.Status /= Ledgers.Port_Store.Grown
+      then
+         Warn_Capacity ("port claims (ports " & Hex (First) & " for " & Name & ")", Report);
       else
          Warnings.Warn ("devmgr: ports " & Hex (First) & " +" & Hex (Count) &
                         " refused for " & Name & ": held by an ACPI window or out of range");
@@ -2097,9 +2137,14 @@ procedure main is
       First : constant Unsigned_64 := Msg.words (AX.First_Word);
       Count : constant Unsigned_64 := Msg.words (AX.Count_Word);
       Granted : Boolean := False;
+      Report : Ledgers.Capacity_Report;
    begin
       if Count in 1 .. AX.Maximum_Window_Ports then
-         Devmgr_Port_Claims.Take (Port_Claims, First, Count, Devmgr_Port_Claims.ACPI, Granted);
+         Ledgers.Take (Port_Claims, First, Count, Devmgr_Port_Claims.ACPI,
+                       Devmgr_Port_Claims.No_Owner, Granted, Report);
+         if not Granted and then Report.Status /= Ledgers.Port_Store.Grown then
+            Warn_Capacity ("port claims (ACPI window " & Hex (First) & ")", Report);
+         end if;
       end if;
       if not Granted then
          Warnings.Warn ("devmgr: ACPI window " & Hex (First) & " +" & Hex (Count) &
@@ -3526,6 +3571,398 @@ procedure main is
       end;
    end Open_Install_Disk;
 
+   ---------------------------------------------------------------------------
+   --  Table-named firmware data (CuBit.Firmware_Data_Exchange): one
+   --  envelope at a time, for a program procmgr started approved with
+   --  (acpi-firmware-data approve-declared), through the endpoint badge only
+   --  procmgr mints for it. Devmgr_Data_Windows decides; this does the
+   --  rest: gathers what devmgr knows (its roots, the MCFG's ECAM
+   --  allocations, every PCI BAR's base page, its claim ledger), claims a
+   --  granted envelope for ACPI for the rest of the boot, derives one
+   --  capability per answered request and keeps it, and answers a repeated
+   --  request id from the record, never deriving again.
+   ---------------------------------------------------------------------------
+   package FDX renames CuBit.Firmware_Data_Exchange;
+   package DW renames Devmgr_Data_Windows;
+   use type FDX.Disposition;
+
+   type Data_Answer is record
+      Owner      : Unsigned_64 := 0;      --  the requester's process identity
+      Request    : Unsigned_64 := 0;      --  its request id
+      Answer     : FDX.Disposition := FDX.Malformed;
+      First_Page : Unsigned_64 := 0;
+      Pages      : Unsigned_64 := 0;
+      Grant      : H.Device_Memory := H.No_Device_Memory;  --  devmgr's copy
+   end record;
+   package Answer_Store is new Devmgr_Growable
+     (Data_Answer, Devmgr_Heap.Allocate, Devmgr_Heap.Release);
+   package Root_Store is new Devmgr_Growable
+     (DW.Root, Devmgr_Heap.Allocate, Devmgr_Heap.Release);
+   package Range_Store is new Devmgr_Growable
+     (DW.Page_Range, Devmgr_Heap.Allocate, Devmgr_Heap.Release);
+   use type Answer_Store.Growth_Status;
+   use type Root_Store.Growth_Status;
+   use type Range_Store.Growth_Status;
+
+   Data_Answers  : Answer_Store.Store;
+   Data_Roots    : Root_Store.Store;     --  every firmware root, by kind
+   Device_Ranges : Range_Store.Store;    --  every device-memory root
+   ECAM_Ranges   : Range_Store.Store;    --  every MCFG allocation
+   Data_Facts_Read : Boolean := False;
+   Data_Facts_Whole : Boolean := True;   --  False: a store could not grow
+
+   --  As a Capacity_Report, for Warn_Capacity.
+   function Report_Of (Status : Unsigned_64; Demand, Limit, Requested : Unsigned_64)
+     return Ledgers.Capacity_Report is
+     ((Status    => Ledgers.Port_Store.Growth_Status'Val (Status),
+       Demand    => Demand, Limit => Limit, Requested => Requested));
+
+   procedure Note_Growth (What : String; Report : Range_Store.Capacity_Report) is
+   begin
+      if Report.Status /= Range_Store.Grown then
+         Data_Facts_Whole := False;
+         Warn_Capacity (What, Report_Of (Range_Store.Growth_Status'Pos (Report.Status),
+                                         Report.Demand, Report.Limit, Report.Requested));
+      end if;
+   end Note_Growth;
+
+   --  PCI segment allocations from the MCFG (PCI Firmware 3.2, 4.1.2):
+   --  from byte 44, 16 bytes each: base (8, bus 0's address), segment (2),
+   --  start bus (1), end bus (1), reserved (4). Bus B's functions are the
+   --  1 MiB at base + B << 20.
+   MCFG_Signature   : constant String := "MCFG";
+   MCFG_Fixed_Bytes : constant := 44;
+   MCFG_Entry_Bytes : constant := 16;
+   MCFG_Start_Bus   : constant := 10;
+   MCFG_End_Bus     : constant := 11;
+   MCFG_Base_Bytes  : constant := 8;
+   PCI_Bus_Shift    : constant := 20;
+   Byte_Bits        : constant := 8;
+
+   procedure Read_ECAM is
+      package FS renames CuBit.Firmware_Snapshot;
+      use type FS.Outcome, FS.Byte_Count;
+      Tables : constant FS.Authority := FS.Held (Root.Firmware_Snapshot_Root);
+      Catalog : FS.Catalog_Info;
+      D : FS.Table_Description;
+      Status : FS.Outcome;
+   begin
+      FS.Info (Tables, Catalog, Status);
+      if Status /= FS.Ok then
+         return;
+      end if;
+      for T in 1 .. FS.Table_ID (Catalog.Table_Count) loop
+         FS.Describe (Tables, T, D, Status);
+         if Status = FS.Ok
+           and then (for all I in FS.Signature_Index =>
+                       D.Signature (I) = Character'Pos (MCFG_Signature (MCFG_Signature'First + I - 1)))
+         then
+            declare
+               Wanted : constant Natural :=
+                 Natural (FS.Byte_Count'Min (D.Extent, FS.Chunk_Max));
+               Bytes : FS.Byte_Array (1 .. Wanted);
+               Copied : FS.Byte_Count;
+               At_Byte : Natural := MCFG_Fixed_Bytes;
+               function Little (From, Count : Natural) return Unsigned_64 is
+                  Value : Unsigned_64 := 0;
+               begin
+                  for K in 0 .. Count - 1 loop
+                     Value := Value or Shift_Left (Unsigned_64 (Bytes (From + K + 1)), Byte_Bits * K);
+                  end loop;
+                  return Value;
+               end Little;
+            begin
+               FS.Copy_Part (Tables, T, 0, Bytes, Copied, Status);
+               if Status = FS.Ok then
+                  while At_Byte + MCFG_Entry_Bytes <= Natural (Copied) loop
+                     declare
+                        Base : constant Unsigned_64 := Little (At_Byte, MCFG_Base_Bytes);
+                        First_Bus : constant Unsigned_64 :=
+                          Unsigned_64 (Bytes (At_Byte + MCFG_Start_Bus + 1));
+                        Last_Bus : constant Unsigned_64 :=
+                          Unsigned_64 (Bytes (At_Byte + MCFG_End_Bus + 1));
+                        Item : constant DW.Page_Range :=
+                          (First_Page => (Base + Shift_Left (First_Bus, PCI_Bus_Shift)) / PAGE_BYTES,
+                           Pages      => Shift_Left (Last_Bus - First_Bus + 1, PCI_Bus_Shift)
+                                           / PAGE_BYTES);
+                        Report : Range_Store.Capacity_Report;
+                     begin
+                        if Last_Bus >= First_Bus and then DW.Valid_Range (Item) then
+                           Range_Store.Append (ECAM_Ranges, Item, Report);
+                           Note_Growth ("firmware-data facts (ECAM)", Report);
+                        end if;
+                     end;
+                     At_Byte := At_Byte + MCFG_Entry_Bytes;
+                  end loop;
+               end if;
+            end;
+         end if;
+      end loop;
+   end Read_ECAM;
+
+   --  What devmgr knows that does not change after boot: its roots and the
+   --  MCFG. Read at the first request.
+   procedure Read_Data_Facts is
+      package AMC renames CuBit.ACPI_Memory_Classes;
+      Report : Range_Store.Capacity_Report;
+      Grown : Root_Store.Capacity_Report;
+   begin
+      Data_Facts_Read := True;
+      for K in 1 .. Devmgr_Authority.ACPI_Window_Count loop
+         declare
+            W : constant Devmgr_Authority.ACPI_Window := Devmgr_Authority.ACPI_Window_At (K);
+         begin
+            Root_Store.Append
+              (Data_Roots,
+               (Pages => (First_Page => W.First / PAGE_BYTES, Pages => W.Bytes / PAGE_BYTES),
+                Kind  => (case W.Kind is
+                            when AMC.ACPI_NVS         => DW.NVS_Root,
+                            when AMC.Firmware_Control => DW.Control_Root,
+                            when AMC.PCI_Config       => DW.PCI_Config_Root)),
+               Grown);
+            Data_Facts_Whole := Data_Facts_Whole and then Grown.Status = Root_Store.Grown;
+         end;
+      end loop;
+      for K in 1 .. Devmgr_Authority.Data_Root_Count loop
+         declare
+            R : constant Devmgr_Authority.Data_Root := Devmgr_Authority.Data_Root_At (K);
+         begin
+            Root_Store.Append
+              (Data_Roots,
+               (Pages => (First_Page => R.First / PAGE_BYTES, Pages => R.Bytes / PAGE_BYTES),
+                Kind  => DW.Data_Root),
+               Grown);
+            Data_Facts_Whole := Data_Facts_Whole and then Grown.Status = Root_Store.Grown;
+         end;
+      end loop;
+      for K in 1 .. Devmgr_Authority.Device_Root_Count loop
+         declare
+            First, Bytes : Unsigned_64;
+            Item : DW.Page_Range;
+         begin
+            Devmgr_Authority.Device_Root_Extent (K, First, Bytes);
+            Item := (First_Page => First / PAGE_BYTES, Pages => Bytes / PAGE_BYTES);
+            if DW.Valid_Range (Item) then
+               Range_Store.Append (Device_Ranges, Item, Report);
+               Note_Growth ("firmware-data facts (device roots)", Report);
+            end if;
+         end;
+      end loop;
+      Read_ECAM;
+   end Read_Data_Facts;
+
+   --  Every PCI BAR's base page, read from configuration space without the
+   --  sizing probe (which would stop a running device's decoding): a BAR
+   --  devmgr has handed to a driver is in the claim ledger whole.
+   PCI_HEADER_LAYOUT_MASK : constant Unsigned_8 := 16#7F#;
+   PCI_HEADER_GENERAL     : constant Unsigned_8 := 0;
+   PCI_HEADER_BRIDGE      : constant Unsigned_8 := 1;
+   PCI_GENERAL_BARS       : constant := 6;
+   PCI_BRIDGE_BARS        : constant := 2;
+   procedure Read_BAR_Pages (Into : in out Range_Store.Store) is
+      Report : Range_Store.Capacity_Report;
+   begin
+      for I in 1 .. inventoryCount loop
+         declare
+            dev : constant PCIDeviceInfo := inventory (I).location;
+            layout : constant Unsigned_8 :=
+              pciReadConfig8 (dev.bus, dev.slot, dev.func, PCI_HEADER_TYPE) and PCI_HEADER_LAYOUT_MASK;
+            bars : constant Natural :=
+              (if layout = PCI_HEADER_GENERAL then PCI_GENERAL_BARS
+               elsif layout = PCI_HEADER_BRIDGE then PCI_BRIDGE_BARS else 0);
+            index : Natural := 0;
+            low : Unsigned_32;
+            base : Unsigned_64;
+            wide : Boolean;
+         begin
+            while index < bars loop
+               low := pciReadConfig32 (dev.bus, dev.slot, dev.func,
+                                       PCI_BASEADDR_0 + Unsigned_8 (index) * PCI_BAR_BYTES);
+               wide := (low and PCI_BAR_TYPE_MASK) = PCI_BAR_TYPE_64;
+               if (low and PCI_BAR_IO) = 0 then
+                  base := Unsigned_64 (low and PCI_BAR_ADDRESS_MASK);
+                  if wide and then index + 1 < bars then
+                     base := base or Shift_Left
+                       (Unsigned_64 (pciReadConfig32
+                          (dev.bus, dev.slot, dev.func,
+                           PCI_BASEADDR_0 + Unsigned_8 (index + 1) * PCI_BAR_BYTES)), 32);
+                  end if;
+                  if base /= 0 and then DW.Valid_Range ((First_Page => base / PAGE_BYTES, Pages => 1)) then
+                     Range_Store.Append (Into, (First_Page => base / PAGE_BYTES, Pages => 1), Report);
+                     Note_Growth ("firmware-data facts (BARs)", Report);
+                  end if;
+               end if;
+               index := index + (if wide and then (low and PCI_BAR_IO) = 0 then 2 else 1);
+            end loop;
+         end;
+      end loop;
+   end Read_BAR_Pages;
+
+   --  The answer to (Owner, Request) given before, or 0.
+   function Answered_Before (Owner, Request : Unsigned_64) return Natural is
+   begin
+      for K in 1 .. Answer_Store.Length (Data_Answers) loop
+         declare
+            A : constant Data_Answer := Answer_Store.Element_At (Data_Answers, K);
+         begin
+            if A.Owner = Owner and then A.Request = Request then
+               return K;
+            end if;
+         end;
+      end loop;
+      return 0;
+   end Answered_Before;
+
+   procedure Reply_Data (From : Process_ID; A : Data_Answer) is
+      Words : constant MessageWords :=
+        [FDX.Reply_Request_Word    => A.Request,
+         FDX.Disposition_Word      => FDX.Disposition'Enum_Rep (A.Answer),
+         FDX.Reply_First_Page_Word => (if FDX.Granted (A.Answer) then A.First_Page else 0),
+         FDX.Reply_Page_Count_Word => (if FDX.Granted (A.Answer) then A.Pages else 0)];
+      Msg : constant Message :=
+        (tag => (label => FDX.Data_Window_Request, length => FDX.Reply_Words,
+                 protocol => 0, ipc => <>, reserved => 0),
+         authorityTag => 0, words => Words);
+      ignore : Unsigned_64;
+   begin
+      if FDX.Granted (A.Answer) and then H.Valid (A.Grant) then
+         declare
+            Result : constant IPC.Reply_Result :=
+              IPC.Reply_With (From, Msg, H.Copy (A.Grant, H.Read_Write));
+         begin
+            case Result.Outcome is
+               when IPC.Transferred => null;
+               when IPC.Delivered_Refused =>
+                  Warnings.Warn ("devmgr: firmware data grant refused by the requester's table: " &
+                                 H.Refusal'Image (Result.Why));
+               when IPC.Refused =>
+                  ignore := reply (From, Msg);
+            end case;
+         end;
+      else
+         ignore := reply (From, Msg);
+      end if;
+   end Reply_Data;
+
+   procedure Serve_Data_Window (From : Process_ID; Msg : Message) is
+      First_Page : constant Unsigned_64 := Msg.words (FDX.First_Page_Word);
+      Pages      : constant Unsigned_64 := Msg.words (FDX.Page_Count_Word);
+      Request    : constant Unsigned_64 := Msg.words (FDX.Request_Word);
+      Owner      : constant Unsigned_64 := To_Word (From);
+      A : Data_Answer := (Owner => Owner, Request => Request, First_Page => First_Page,
+                          Pages => Pages, others => <>);
+      Previous : Natural;
+      Room : Answer_Store.Capacity_Report;
+   begin
+      if Msg.authorityTag /= FDX.Authority_Tag then
+         A.Answer := FDX.Not_Approved;
+         Warnings.Warn ("devmgr: firmware data refused: no acpi-firmware-data approval");
+         Reply_Data (From, A);
+         return;
+      elsif not FDX.Well_Formed (First_Page, Pages, Request) then
+         A.Answer := FDX.Malformed;
+         Reply_Data (From, A);
+         return;
+      end if;
+      Previous := Answered_Before (Owner, Request);
+      if Previous /= 0 then
+         --  A repeated request id: the original answer, the same grant.
+         Reply_Data (From, Answer_Store.Element_At (Data_Answers, Previous));
+         debugPrint ("devmgr: firmware data request" & Unsigned_64'Image (Request) &
+                     " reconciled" & LF);
+         return;
+      end if;
+      if not Data_Facts_Read then
+         Read_Data_Facts;
+      end if;
+      --  Room for this answer first: a grant is never made that a repeated
+      --  request could not find.
+      Answer_Store.Reserve (Data_Answers, Answer_Store.Length (Data_Answers) + 1, Room);
+      if Room.Status /= Answer_Store.Grown or else not Data_Facts_Whole then
+         A.Answer := FDX.Capacity;
+         if Room.Status /= Answer_Store.Grown then
+            Warn_Capacity ("firmware-data answers",
+                           Report_Of (Answer_Store.Growth_Status'Pos (Room.Status),
+                                      Room.Demand, Room.Limit, Room.Requested));
+         end if;
+         Reply_Data (From, A);
+         return;
+      end if;
+      declare
+         BARs : Range_Store.Store;
+         Envelope : constant DW.Page_Range := (First_Page => First_Page, Pages => Pages);
+         Physical : constant Unsigned_64 := First_Page * PAGE_BYTES;
+         Bytes : constant Unsigned_64 := Pages * PAGE_BYTES;
+         Decision : DW.Decision;
+      begin
+         Read_BAR_Pages (BARs);
+         declare
+            Firmware : constant DW.Root_Array (1 .. Root_Store.Length (Data_Roots))
+            with Import, Address => Root_Store.Block (Data_Roots);
+            Devices : constant DW.Range_Array (1 .. Range_Store.Length (Device_Ranges))
+            with Import, Address => Range_Store.Block (Device_Ranges);
+            ECAM : constant DW.Range_Array (1 .. Range_Store.Length (ECAM_Ranges))
+            with Import, Address => Range_Store.Block (ECAM_Ranges);
+            Bases : constant DW.Range_Array (1 .. Range_Store.Length (BARs))
+            with Import, Address => Range_Store.Block (BARs);
+         begin
+            Decision := DW.Decide
+              (Envelope, Firmware, Devices, ECAM, Bases,
+               Device_Claimed => not Devmgr_Authority.Clear_Of_Devices (Physical, Bytes));
+            A.Answer := Decision.Answer;
+            if Decision.Answer = FDX.Granted_Data then
+               declare
+                  Claimed : Devmgr_Memory_Claims.Claim_Result;
+                  Report : Ledgers.Capacity_Report;
+                  use type Devmgr_Memory_Claims.Claim_Result;
+                  R : constant Devmgr_Authority.Data_Root :=
+                    Devmgr_Authority.Data_Root_At
+                      (Decision.Root - Devmgr_Authority.ACPI_Window_Count);
+               begin
+                  --  ACPI's for the rest of the boot, then the one narrowed
+                  --  capability this request ever gets.
+                  Devmgr_Authority.Claim_Data (Physical, Bytes, Claimed, Report);
+                  case Claimed is
+                     when Devmgr_Memory_Claims.Granted =>
+                        A.Grant := CuBit.Handles.Control.Derive
+                          (H.Narrowed (R.Memory, Read_Write_Grant, Physical, Bytes));
+                        if not H.Valid (A.Grant) then
+                           A.Answer := FDX.No_Root;
+                        end if;
+                     when Devmgr_Memory_Claims.Overlaps_Device =>
+                        A.Answer := FDX.Overlaps_Device;
+                     when Devmgr_Memory_Claims.Needs_Room =>
+                        A.Answer := FDX.Capacity;
+                        Warn_Capacity ("memory claims (firmware data)", Report);
+                     when others =>
+                        A.Answer := FDX.No_Root;
+                  end case;
+               end;
+            elsif Decision.Answer = FDX.Reused_NVS then
+               declare
+                  W : constant Devmgr_Authority.ACPI_Window :=
+                    Devmgr_Authority.ACPI_Window_At (Decision.Root);
+               begin
+                  --  The NVS root's own tag and cache mode, never an
+                  --  uncached alias; already ACPI's.
+                  A.Grant := CuBit.Handles.Control.Derive
+                    (H.Narrowed (W.Memory, Read_Write_Grant, Physical, Bytes));
+                  if not H.Valid (A.Grant) then
+                     A.Answer := FDX.No_Root;
+                  end if;
+               end;
+            end if;
+         end;
+         Range_Store.Clear (BARs);
+      end;
+      --  Recorded whatever the answer (room was reserved): a repeated
+      --  request id gets it again.
+      Answer_Store.Append (Data_Answers, A, Room);
+      Reply_Data (From, A);
+      Warnings.Inform ("devmgr: firmware data " & Hex (First_Page * PAGE_BYTES) & " +" &
+                       Hex (Pages * PAGE_BYTES) & ": " & FDX.Name (A.Answer));
+   end Serve_Data_Window;
+
    --  Generic drivers start once logstore runs, so their bring-up lines
    --  reach it from their first one (the bring-up logging convention): a
    --  (service "logstore" ...) request is answered with a publisher
@@ -3567,7 +4004,18 @@ begin
       return;
    end if;
    Root := Devmgr_Authority.Roots;
-   Devmgr_Port_Claims.Initialize (Port_Claims);
+   declare
+      Report : Ledgers.Capacity_Report;
+   begin
+      Ledgers.Initialize (Port_Claims, Report);
+      if Report.Status /= Ledgers.Port_Store.Grown then
+         Warn_Capacity ("port claims", Report);
+      end if;
+   end;
+   debugPrint ("devmgr: roots:" & Natural'Image (Root.Count) & " device," &
+               Natural'Image (Root.Firmware_Count) & " firmware (" &
+               Natural'Image (Devmgr_Authority.ACPI_Window_Count) & " ACPI windows," &
+               Natural'Image (Devmgr_Authority.Data_Root_Count) & " firmware-data)" & LF);
    for K in 1 .. Devmgr_Authority.ACPI_Window_Count loop
       declare
          W : constant Devmgr_Authority.ACPI_Window := Devmgr_Authority.ACPI_Window_At (K);
@@ -4718,6 +5166,11 @@ begin
         and then msg.authorityTag = Intel_GPU_Broker_Request.Authority_Tag
       then
          Give_ACPI_Memory_Window (from, msg);
+      elsif msg.tag = (label => FDX.Data_Window_Request,
+                       length => FDX.Request_Words, protocol => 0,
+                       ipc => Accepting, reserved => 0)
+      then
+         Serve_Data_Window (from, msg);
       elsif msg.tag = (label => CuBit.Disk_Install.Open_Disk,
                        length => CuBit.Disk_Install.Open_Words, protocol => 0,
                        ipc => Accepting, reserved => 0)

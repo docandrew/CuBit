@@ -31,6 +31,10 @@ project Devmgr is
        "devmgr_authority.ads", "devmgr_authority.adb",
        "devmgr_port_claims.ads", "devmgr_port_claims.adb",
        "devmgr_memory_claims.ads", "devmgr_memory_claims.adb",
+       --  The ledgers and records on the heap (LIM-001b), firmware data.
+       "devmgr_growable.ads", "devmgr_growable.adb", "devmgr_heap.ads", "devmgr_heap.adb",
+       "devmgr_claim_ledgers.ads", "devmgr_claim_ledgers.adb",
+       "devmgr_data_windows.ads", "devmgr_data_windows.adb",
        "fs_attachments.ads",
        "ccl-resource_sections.ads", "ccl-resource_sections.adb",
        "boot_rtc.ads", "boot_rtc.adb", "rtc_decode.ads", "rtc_decode.adb", "rtc_sampling.ads", "rtc_sampling.adb", "civil_time.ads", "civil_time.adb",

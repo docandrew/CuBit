@@ -37,13 +37,28 @@ package body CuBit.Launch_Configurations is
       end if;
    end Read;
 
+   --  The installed block's length in words, when it is whole words of a
+   --  block's size.
+   function Block_Length return LC.Word_Count is
+     (if Launch_Length mod LC.Word_Bytes = 0
+        and then Launch_Length <= LC.Maximum_Block_Words * LC.Word_Bytes
+      then LC.Word_Count (Launch_Length / LC.Word_Bytes) else 0);
+
    procedure Get (Value : out LC.Device_Manager_Configuration; Valid : out Boolean) is
-      Words : LC.Word_Array (1 .. LC.Maximum_Words);
-      Length : LC.Word_Count;
+      Length : constant LC.Word_Count := Block_Length;
+      Mapped : constant LC.Word_Array (1 .. Length)
+      with Import, Address => System'To_Address (LC.Block_Address);
    begin
-      Read (Words, Length);
-      LC.Decode (Words (1 .. Length), Value, Valid);
+      LC.Decode (Mapped, Value, Valid);
    end Get;
+
+   function Root_Word (Index : LC.Word_Index) return Unsigned_64 is
+      Length : constant LC.Word_Count := Block_Length;
+      Mapped : constant LC.Word_Array (1 .. Length)
+      with Import, Address => System'To_Address (LC.Block_Address);
+   begin
+      return (if Index <= Length then Mapped (Index) else 0);
+   end Root_Word;
 
    procedure Get (Value : out LC.Process_Manager_Configuration; Valid : out Boolean) is
       Words : LC.Word_Array (1 .. LC.Maximum_Words);

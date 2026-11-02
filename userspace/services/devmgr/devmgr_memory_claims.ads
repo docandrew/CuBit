@@ -3,24 +3,35 @@
 --  Copyright (C) 2026 Jon Andrew
 --
 --  @summary
---  Which physical pages are ACPI's: devmgr's record of the firmware-memory
---  windows it holds for the ACPI hardware grant (the kernel's NVS runs and
---  FACS page), so no driver and no devmgr mapping ever overlaps them
---  (CuBit.ACPI_Window_Exchange, coordination/acpi-region-boundary.md).
+--  Which physical pages are ACPI's and which a device's: devmgr's record of
+--  the firmware-memory windows it holds for the ACPI hardware grant (the
+--  kernel's NVS runs, FACS page and PCI slice), the table-named firmware
+--  data it has granted, and the device memory it has handed out or mapped,
+--  so ACPI and devices never share a page (CuBit.ACPI_Window_Exchange,
+--  CuBit.Firmware_Data_Exchange, coordination/acpi-region-boundary.md).
 --
 --  @description
 --  The kernel enforces each capability's own range and keeps NVS pages out
---  of device memory, but the FACS page may be firmware-reserved, which
---  device memory also names; this ledger is the exclusivity record. Claims
---  are whole pages and are never removed: a window stays ACPI's for the rest
---  of the boot, whether or not it is mapped (claims are frozen).
+--  of device memory, but firmware-reserved pages (the FACS page, firmware
+--  data) are device memory to the kernel too; this ledger is the
+--  exclusivity record. Claims are pages and are never removed: an ACPI
+--  window or data envelope stays ACPI's for the rest of the boot, whether
+--  or not it is mapped, and so does a page handed to a device. It is the
+--  proved core over an array the caller provides and grows
+--  (Devmgr_Claim_Ledgers keeps it on the heap, LIM-001b).
 --
---  * An ACPI claim is refused unless it is whole pages, inside the
---    kernel's physical limit, and either the same as or disjoint from every
---    earlier claim (the same window again is granted: a restarted backend).
---  * Any other range (a driver's BAR, devmgr's own mapping) is clear only
---    if no page of it, partial pages included, is in an ACPI claim.
---  * A full ledger refuses every new claim (fail closed).
+--  * An ACPI window is whole pages inside the kernel's physical limit,
+--    the same as or disjoint from every earlier ACPI claim (the same window
+--    again is granted: a restarted backend), and disjoint from every device
+--    claim.
+--  * A firmware-data envelope is whole pages, disjoint from every ACPI
+--    window and every device claim; it may overlap other data envelopes
+--    (several declarations can share a page; all are uncached, all ACPI's).
+--  * A device claim (a driver's window, devmgr's own mapping) covers every
+--    page its bytes touch and is disjoint from every ACPI claim; device
+--    claims may overlap each other (devmgr's own concern).
+--  * A claim that needs a new entry when the array is full is Needs_Room:
+--    the caller grows the array and asks again.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
 with Interfaces; use Interfaces;
@@ -32,29 +43,25 @@ package Devmgr_Memory_Claims with Pure, SPARK_Mode is
    Page_Limit : constant := 2 ** 35;
    Byte_Limit : constant := Page_Limit * Page_Bytes;
 
+   type Holder is (ACPI_Window, ACPI_Data, Device);
+
+   function Is_ACPI (By : Holder) return Boolean is (By /= Device);
+
    --  Pages [First, Ends).
    type Claim is record
       First : Unsigned_64 := 0;
       Ends  : Unsigned_64 := 0;
+      By    : Holder := Device;
    end record;
 
-   --  One per firmware-memory root (Launch_Configuration.
-   --  Maximum_Firmware_Roots; checked where both are seen).
-   Maximum_Claims : constant := 8;
-   subtype Claim_Count is Natural range 0 .. Maximum_Claims;
-   subtype Claim_Index is Positive range 1 .. Maximum_Claims;
-   type Claim_Array is array (Claim_Index) of Claim;
-
-   type Ledger is record
-      Count  : Claim_Count := 0;
-      Claims : Claim_Array := [others => (others => <>)];
-   end record;
+   type Claim_Array is array (Positive range <>) of Claim;
 
    --  Every claim is a nonempty page range inside the limit.
-   function Valid (Item : Ledger) return Boolean is
-     (for all K in 1 .. Item.Count =>
-        Item.Claims (K).First < Item.Claims (K).Ends
-        and then Item.Claims (K).Ends <= Page_Limit);
+   function Valid (Claims : Claim_Array; Count : Natural) return Boolean is
+     (Count <= Claims'Last
+      and then (for all K in 1 .. Count =>
+                  Claims (K).First < Claims (K).Ends and then Claims (K).Ends <= Page_Limit))
+   with Pre => Claims'First = 1;
 
    --  [Physical, Physical + Bytes) is whole pages inside the limit.
    function Whole_Pages (Physical, Bytes : Unsigned_64) return Boolean is
@@ -65,42 +72,76 @@ package Devmgr_Memory_Claims with Pure, SPARK_Mode is
    function Valid_Bytes (Physical, Bytes : Unsigned_64) return Boolean is
      (Bytes > 0 and then Bytes - 1 <= Unsigned_64'Last - Physical);
 
+   --  [Physical, Physical + Bytes) is nonempty and inside the limit.
+   function In_Limit (Physical, Bytes : Unsigned_64) return Boolean is
+     (Bytes > 0 and then Physical < Byte_Limit and then Bytes <= Byte_Limit - Physical);
+
    --  No page of [Physical, Physical + Bytes) is in claim C.
    function Disjoint (C : Claim; Physical, Bytes : Unsigned_64) return Boolean is
      ((Physical + (Bytes - 1)) / Page_Bytes < C.First or else Physical / Page_Bytes >= C.Ends)
    with Pre => Valid_Bytes (Physical, Bytes);
 
-   --  The ACPI claim for whole pages [Physical, Physical + Bytes).
-   function Pages_Of (Physical, Bytes : Unsigned_64) return Claim is
-     ((First => Physical / Page_Bytes, Ends => (Physical + Bytes) / Page_Bytes))
-   with Pre => Whole_Pages (Physical, Bytes);
+   --  The pages [Physical, Physical + Bytes) touches, partial ones too.
+   function Pages_Of (Physical, Bytes : Unsigned_64; By : Holder) return Claim is
+     ((First => Physical / Page_Bytes, Ends => (Physical + (Bytes - 1)) / Page_Bytes + 1,
+       By => By))
+   with Pre => In_Limit (Physical, Bytes);
 
-   procedure Initialize (Item : out Ledger)
-   with Post => Item.Count = 0 and then Valid (Item);
+   type Claim_Result is
+     (Granted,          --  recorded (or already recorded exactly)
+      Overlaps_ACPI,    --  a page of it is an ACPI window or data envelope
+      Overlaps_Device,  --  a page of it is a device's
+      Malformed,        --  not whole pages (ACPI), empty, or past the limit
+      Needs_Room);      --  a new entry, and the array is full
 
-   --  Claim whole pages [Physical, Physical + Bytes) for ACPI.
-   procedure Claim_ACPI
-     (Item : in out Ledger; Physical, Bytes : Unsigned_64; Granted : out Boolean)
-   with Pre  => Valid (Item),
-        Post => Valid (Item)
-                and then Item.Count >= Item'Old.Count
-                and then (for all K in 1 .. Item'Old.Count =>
-                            Item.Claims (K) = Item'Old.Claims (K))
+   --  Who may not share a page with a claim by By: ACPI windows exclude
+   --  everything but the same window; data excludes windows and devices;
+   --  devices exclude ACPI.
+   function Conflicts (Earlier : Holder; By : Holder) return Boolean is
+     (case By is
+        when ACPI_Window => True,
+        when ACPI_Data   => Earlier /= ACPI_Data,
+        when Device      => Earlier /= Device);
+
+   procedure Claim_Pages
+     (Claims : in out Claim_Array; Count : in out Natural;
+      Physical, Bytes : Unsigned_64; By : Holder; Result : out Claim_Result)
+   with Pre  => Claims'First = 1 and then Valid (Claims, Count),
+        Post => Valid (Claims, Count)
+                and then Count >= Count'Old
+                and then (for all K in 1 .. Count'Old => Claims (K) = Claims'Old (K))
+                and then (if Result /= Granted then Count = Count'Old)
+                and then (if Result = Needs_Room then Count'Old = Claims'Last)
                 and then
-                (if Granted then
-                   Whole_Pages (Physical, Bytes)
-                   --  It is recorded, and it never partly overlaps another.
-                   and then (for some K in 1 .. Item.Count =>
-                               Item.Claims (K) = Pages_Of (Physical, Bytes))
-                   and then (for all K in 1 .. Item'Old.Count =>
-                               Item'Old.Claims (K) = Pages_Of (Physical, Bytes)
-                               or else Disjoint (Item'Old.Claims (K), Physical, Bytes))
-                 else Item.Count = Item'Old.Count);
+                (if Result = Granted then
+                   In_Limit (Physical, Bytes)
+                   and then (if Is_ACPI (By) then Whole_Pages (Physical, Bytes))
+                   --  It is recorded, and shares no page with a claim it
+                   --  conflicts with (an ACPI window: but itself).
+                   and then (for some K in 1 .. Count =>
+                               Claims (K) = Pages_Of (Physical, Bytes, By))
+                   and then (for all K in 1 .. Count'Old =>
+                               (if Conflicts (Claims'Old (K).By, By)
+                                then Disjoint (Claims'Old (K), Physical, Bytes)
+                                     or else (By = ACPI_Window
+                                              and then Claims'Old (K) =
+                                                         Pages_Of (Physical, Bytes, By)))));
 
-   --  No page of [Physical, Physical + Bytes) is ACPI's: a driver or devmgr
-   --  may have it.
-   function Clear_Of_ACPI (Item : Ledger; Physical, Bytes : Unsigned_64) return Boolean is
-     (Valid_Bytes (Physical, Bytes)
-      and then (for all K in 1 .. Item.Count => Disjoint (Item.Claims (K), Physical, Bytes)));
+   --  No page of [Physical, Physical + Bytes) is ACPI's (a window or data):
+   --  a driver or devmgr may have it.
+   function Clear_Of_ACPI
+     (Claims : Claim_Array; Count : Natural; Physical, Bytes : Unsigned_64) return Boolean
+   is (Valid_Bytes (Physical, Bytes)
+       and then (for all K in 1 .. Count =>
+                   not Is_ACPI (Claims (K).By) or else Disjoint (Claims (K), Physical, Bytes)))
+   with Pre => Claims'First = 1 and then Count <= Claims'Last;
+
+   --  No page of [Physical, Physical + Bytes) is a device's.
+   function Clear_Of_Devices
+     (Claims : Claim_Array; Count : Natural; Physical, Bytes : Unsigned_64) return Boolean
+   is (Valid_Bytes (Physical, Bytes)
+       and then (for all K in 1 .. Count =>
+                   Claims (K).By /= Device or else Disjoint (Claims (K), Physical, Bytes)))
+   with Pre => Claims'First = 1 and then Count <= Claims'Last;
 
 end Devmgr_Memory_Claims;

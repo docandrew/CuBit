@@ -34,6 +34,21 @@ package body Device_Memory_Authority with SPARK_Mode is
       end loop;
    end Lemma_PCI_Config_Read_Only_Uncached;
 
+   procedure Lemma_Tag_Round_Trip (Tag : Authority_Tag) is null;
+
+   procedure Lemma_Data_Uncached_Alone
+     (Cap : Capability; M : Physical_Ranges.Map;
+      Base, Bytes : Unsigned_64; Mode : Access_Mode) is
+   begin
+      pragma Assert (Kind_Of (Cap.authorityTag) = Physical_Ranges.Data_Memory);
+      for P in Physical_Ranges.Page_Of (Base) .. Physical_Ranges.Page_Of (Base + (Bytes - 1)) loop
+         pragma Assert (Physical_Ranges.Firmware_Page (M, P, Physical_Ranges.Data_Memory));
+         pragma Assert (Physical_Ranges.Data_Page (M, P));
+         pragma Loop_Invariant
+           (for all Q in Physical_Ranges.Page_Of (Base) .. P => Physical_Ranges.Data_Page (M, Q));
+      end loop;
+   end Lemma_Data_Uncached_Alone;
+
    procedure Lemma_Authorities_Disjoint
      (Cap : Capability; M : Physical_Ranges.Map;
       Base, Bytes : Unsigned_64; Mode : Access_Mode)

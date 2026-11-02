@@ -38,15 +38,21 @@ package body CuBit.Handles.Boot_Roots is
             Notifications     => K.To_Notification (H.Notifications),
             Scheduling_Root   => K.To_Scheduling (H.Scheduling),
             Firmware_Snapshot_Root => K.To_Firmware_Snapshot (H.Firmware_Snapshot),
-            Count             => H.Root_Count,
-            Memory            =>
-              [for R in Root_Index => K.To_Device_Memory (H.Device_Roots (R))],
-            Firmware_Count    => H.Firmware_Count,
-            Firmware          =>
-              [for R in Firmware_Root_Index => K.To_Device_Memory (H.Firmware_Roots (R))]);
+            Count             => Root_Count (Configuration.Device_Roots),
+            Firmware_Count    => Root_Count (Configuration.Firmware_Roots));
       end;
       return Result;
    end Get;
+
+   function Device_Root (R : Roots; I : Root_Index) return Device_Memory is
+     (K.To_Device_Memory
+        (CuBit.Launch_Configurations.Root_Word (Launch_Configuration.Device_Root_Word (I))));
+
+   function Firmware_Root (R : Roots; I : Root_Index) return Device_Memory is
+     (K.To_Device_Memory
+        (CuBit.Launch_Configurations.Root_Word
+           (Launch_Configuration.Firmware_Root_Word
+              (Launch_Configuration.Root_Count (R.Count), I))));
 
    function Process_Manager return Launcher_Handles is
       Configuration : Launch_Configuration.Process_Manager_Configuration;

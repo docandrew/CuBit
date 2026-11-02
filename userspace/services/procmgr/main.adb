@@ -77,6 +77,7 @@ with CuBit.Firmware_Snapshot;
 with CuBit.ACPI_Hardware_Authority;
 with CuBit.ACPI_Fixed_Windows;
 with CuBit.ACPI_Window_Exchange;
+with CuBit.Firmware_Data_Exchange;
 with ACPI_Protocol;
 with ACPI_Register_Roles;
 with CuBit.Render_Startup;
@@ -2634,7 +2635,8 @@ procedure main is
       approveFirmwareSnapshot : Boolean := False;
       approveACPIHardware : Boolean := False;
       approveACPIRegisters : Boolean := False;
-      approvePCIConfig : Boolean := False)
+      approvePCIConfig : Boolean := False;
+      approveFirmwareData : Boolean := False)
       return Process_ID
    is
       package SB renames CuBit.Startup_Builder;
@@ -2674,6 +2676,9 @@ procedure main is
       --  as AHA.Memory_Label (ACPI_Binding, K).
       ACPI_Memory_Words : array (AHA.Memory_Window_Number) of Unsigned_64 := [others => ST.No_Handle];
       ACPI_Memory_Total : Natural range 0 .. AHA.Maximum_Memory_Windows := 0;
+      --  Then devmgr's firmware-data endpoint (CuBit.Firmware_Data_Exchange),
+      --  when the plan approves it: appended as Data_Label (ACPI_Binding).
+      ACPI_Data_Word : Unsigned_64 := ST.No_Handle;
       ACPI_Binding : ST.Name;
       use type CuBit.Render_Startup.Requirement, CuBit.Render_Startup.Attempt;
       -- Transitional installed-system-app policy, like Desktop_Approval for
@@ -3241,6 +3246,35 @@ procedure main is
                   if approvePCIConfig then
                      debugPrint ("procmgr: ACPI PCI configuration approved for " & name & LF);
                   end if;
+               end if;
+               --  Table-named firmware data: devmgr's endpoint badged for
+               --  the grant (CuBit.Firmware_Data_Exchange.Authority_Tag),
+               --  without Grant, only when the plan also approves
+               --  (acpi-firmware-data approve-declared). devmgr answers
+               --  Data_Window_Request through this badge and nothing else.
+               if Outcome = SB.Granted and then approveFirmwareData then
+                  declare
+                     Placed : SB.Mint_Outcome := SB.Not_Available;
+                  begin
+                     if View.Declared.Count + SB.Self_Entries + ACPI_Window_Total
+                          + ACPI_Memory_Total + 1 > ST.Maximum_Entries
+                     then
+                        Placed := SB.Limit_Reached;
+                     elsif Valid (PH.Device_Inspection) then
+                        Install (Badged (PH.Device_Inspection, H.Read_Write,
+                                         CuBit.Firmware_Data_Exchange.Authority_Tag),
+                                 ACPI_Data_Word, Placed);
+                     end if;
+                     if Placed = SB.Granted then
+                        debugPrint ("procmgr: ACPI firmware data approved for " & name & LF);
+                     else
+                        ACPI_Data_Word := ST.No_Handle;
+                        Outcome := (if Placed in SB.Limit_Reached | SB.Out_Of_Memory then Placed
+                                    else SB.Not_Available);
+                        Warnings.Warn ("procmgr: ACPI hardware refused: " & name &
+                                       "'s firmware-data endpoint could not be installed");
+                     end if;
+                  end;
                end if;
                --  A grant is never empty: at least one I/O or memory window
                --  (a hardware-reduced platform has no fixed I/O blocks). The
@@ -3926,6 +3960,27 @@ procedure main is
                   State => ST.Granted, Handle => ACPI_Memory_Words (K));
             end;
          end loop;
+         if ACPI_Data_Word /= ST.No_Handle then
+            declare
+               Label : constant ST.Name := ST.To_Name
+                 (CuBit.Firmware_Data_Exchange.Data_Label
+                    (String (ACPI_Binding.Text (1 .. ACPI_Binding.Length))));
+            begin
+               if Built.Count = ST.Maximum_Entries or else ST.Find (Built, Label) /= 0
+                 or else not ST.Valid_Name (Label)
+               then
+                  Warnings.Warn ("procmgr: launch of " & name &
+                                 " refused: its firmware-data endpoint name does not fit its startup table");
+                  Failure := LA.Startup_Table_Invalid;
+                  Discard_Authorized_Child;
+                  return No_Process;
+               end if;
+               Built.Count := Built.Count + 1;
+               Built.Entries (Built.Count) :=
+                 (Label => Label, Kind => ST.Endpoint, Requirement => ST.Required,
+                  State => ST.Granted, Handle => ACPI_Data_Word);
+            end;
+         end if;
          ST.Encode (Built, Encoded, Encoded_Length);
          for K in 1 .. Block_Length loop
             launchEnvelope (K) := launchBlock (K);
@@ -4030,6 +4085,7 @@ procedure main is
       approveACPIHardware : Boolean := False;
       approveACPIRegisters : Boolean := False;
       approvePCIConfig : Boolean := False;
+      approveFirmwareData : Boolean := False;
       Failure : out CuBit.Launch_Arguments.Launch_Failure)
       return Process_ID
    is
@@ -4040,7 +4096,7 @@ procedure main is
       Result := Spawn_Attempt
         (False, No_Process, Retry, Identity, Failure, name, priority, requester, sandboxMode,
          cwd, approveNetwork, approveRender, systemStartup, startupRole, approveFirmwareSnapshot,
-         approveACPIHardware, approveACPIRegisters, approvePCIConfig);
+         approveACPIHardware, approveACPIRegisters, approvePCIConfig, approveFirmwareData);
       if Result = No_Process and then Retry then
          -- Exactly one fresh attempt, with no broker request. The failed
          -- attempt's launcher resources stay retained independently.
@@ -4048,7 +4104,8 @@ procedure main is
          Result := Spawn_Attempt
            (True, Identity, Retry, Retry_Identity, Failure, name, priority, requester,
             sandboxMode, cwd, approveNetwork, approveRender, systemStartup, startupRole,
-            approveFirmwareSnapshot, approveACPIHardware, approveACPIRegisters, approvePCIConfig);
+            approveFirmwareSnapshot, approveACPIHardware, approveACPIRegisters, approvePCIConfig,
+            approveFirmwareData);
       end if;
       return Result;
    end spawnByName;
@@ -4661,6 +4718,7 @@ procedure main is
                approveACPIHardware => Item.Approve_ACPI_Hardware,
                approveACPIRegisters => Item.Approve_ACPI_Registers,
                approvePCIConfig => Item.Approve_ACPI_PCI_Config,
+               approveFirmwareData => Item.Approve_ACPI_Firmware_Data,
                approveNetwork =>
                  (if Item.Approval = Approve_Declared then Declared_Network
                   else No_Network),

@@ -7,7 +7,8 @@ pragma Ada_2022;
 package body Launch_Configuration with SPARK_Mode is
 
    function Header (Kind : Configuration_Kind) return Encoded
-   with Post => Header'Result.Length = Header_Words + Field_Count (Kind)
+   with Pre  => Kind /= Device_Manager,
+        Post => Header'Result.Length = Header_Words + Field_Count (Kind)
                 and then Header'Result.Words (1) = Magic
                 and then Header'Result.Words (2) = Configuration_Kind'Enum_Rep (Kind)
                 and then Header'Result.Words (3) = Unsigned_64 (Field_Count (Kind));
@@ -51,17 +52,22 @@ package body Launch_Configuration with SPARK_Mode is
               7 => Digit (Func)];
    end Location_Image;
 
-   function Encode (Value : Device_Manager_Configuration) return Encoded is
-      Result : Encoded := Header (Device_Manager);
+   function Encode_Prefix (Value : Device_Manager_Configuration) return Encoded is
+      Result : Encoded;
    begin
-      Result.Words (4) := Value.Boot_Image;
-      Result.Words (5) := Value.Framebuffer.First;
-      Result.Words (6) := Value.Framebuffer.Bytes;
-      Result.Words (7 .. 27) := Handle_Words (Value.Handles);
-      Result.Words (Firmware_First_Word .. Firmware_First_Word + Firmware_Root_Words - 1) :=
-        Firmware_Words (Value.Handles);
+      Result.Words (1) := Magic;
+      Result.Words (2) := Configuration_Kind'Enum_Rep (Device_Manager);
+      Result.Words (3) := Device_Manager_Fields (Value.Device_Roots, Value.Firmware_Roots);
+      Result.Words (Device_Roots_Word) := Value.Device_Roots;
+      Result.Words (Firmware_Roots_Word) := Value.Firmware_Roots;
+      Result.Words (Boot_Image_Word) := Value.Boot_Image;
+      Result.Words (Framebuffer_First_Word) := Value.Framebuffer.First;
+      Result.Words (Framebuffer_Bytes_Word) := Value.Framebuffer.Bytes;
+      Result.Words (First_Handle_Word .. Device_Manager_Prefix_Words) :=
+        Handle_Words (Value.Handles);
+      Result.Length := Device_Manager_Prefix_Words;
       return Result;
-   end Encode;
+   end Encode_Prefix;
 
    function Encode (Value : Process_Manager_Configuration) return Encoded is
       Result : Encoded := Header (Process_Manager);
@@ -137,33 +143,26 @@ package body Launch_Configuration with SPARK_Mode is
    is
    begin
       Value := (others => <>);
-      Valid := Header_Valid (Words, Device_Manager)
-        and then Is_Bytes (Words (4)) and then Is_Address (Words (5))
-        and then Is_Bytes (Words (6))
-        and then Handles_Valid (Words (7 .. 27))
-        and then Firmware_Valid
-          (Words (Firmware_First_Word .. Firmware_First_Word + Firmware_Root_Words - 1));
+      Valid := Device_Manager_Valid (Words);
       if Valid then
-         Value := (Boot_Image  => Words (4),
-                   Framebuffer => (First => Words (5), Bytes => Words (6)),
-                   Handles     =>
-                     (Self              => Words (7),
-                      Self_Process      => Words (8),
-                      Self_Grantable    => Words (9),
-                      Process_Root      => Words (10),
-                      PCI_Ports         => Words (11),
-                      Registration      => Words (12),
-                      Vector_Authority  => Words (13),
-                      IO_Ports          => Words (14),
-                      Legacy_Interrupts => Words (15),
-                      Notifications     => Words (16),
-                      Scheduling        => Words (17),
-                      Firmware_Snapshot => Words (18),
-                      Root_Count        => Device_Root_Count (Words (19)),
-                      Device_Roots      => [for R in Device_Root_Index => Words (19 + R)],
-                      Firmware_Count    => Firmware_Root_Count (Words (Firmware_First_Word)),
-                      Firmware_Roots    =>
-                        [for R in Firmware_Root_Index => Words (Firmware_First_Word + R)]));
+         Value := (Device_Roots   => Words (Device_Roots_Word),
+                   Firmware_Roots => Words (Firmware_Roots_Word),
+                   Boot_Image     => Words (Boot_Image_Word),
+                   Framebuffer    => (First => Words (Framebuffer_First_Word),
+                                      Bytes => Words (Framebuffer_Bytes_Word)),
+                   Handles        =>
+                     (Self              => Words (First_Handle_Word),
+                      Self_Process      => Words (First_Handle_Word + 1),
+                      Self_Grantable    => Words (First_Handle_Word + 2),
+                      Process_Root      => Words (First_Handle_Word + 3),
+                      PCI_Ports         => Words (First_Handle_Word + 4),
+                      Registration      => Words (First_Handle_Word + 5),
+                      Vector_Authority  => Words (First_Handle_Word + 6),
+                      IO_Ports          => Words (First_Handle_Word + 7),
+                      Legacy_Interrupts => Words (First_Handle_Word + 8),
+                      Notifications     => Words (First_Handle_Word + 9),
+                      Scheduling        => Words (First_Handle_Word + 10),
+                      Firmware_Snapshot => Words (First_Handle_Word + 11)));
       end if;
    end Decode;
 

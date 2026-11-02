@@ -1,0 +1,23 @@
+--  Hosted tests and proofs of devmgr's claim ledgers on the heap (LIM-001b)
+--  and its firmware-data decision (run.sh).
+project Devmgr_Claims_Tests is
+   for Source_Dirs use (".", "../../userspace/services/devmgr", "../../userspace/runtime/gnat");
+   for Source_Files use
+     ("main.adb", "test_heap.ads", "test_heap.adb",
+      "cubit.ads", "cubit-firmware_data_exchange.ads",
+      "devmgr_port_claims.ads", "devmgr_port_claims.adb",
+      "devmgr_memory_claims.ads", "devmgr_memory_claims.adb",
+      "devmgr_growable.ads", "devmgr_growable.adb",
+      "devmgr_claim_ledgers.ads", "devmgr_claim_ledgers.adb",
+      "devmgr_data_windows.ads", "devmgr_data_windows.adb");
+   for Object_Dir use "build/obj";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-gnat2022", "-O2", "-gnata", "-gnato", "-gnatwa", "-gnatwe");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=2", "--checks-as-errors=on");
+   end Prove;
+end Devmgr_Claims_Tests;

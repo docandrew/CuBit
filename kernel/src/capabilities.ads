@@ -91,13 +91,15 @@ is
 
     -- The tags of a firmware-memory CAP_DEVICE_MEM (Capability_ABI.
     -- Firmware_NVS_Tag, Firmware_Control_Tag, Firmware_PCI_Config_Tag;
-    -- Device_Memory_Authority): an ACPI NVS run, the FACS page, or PCI
-    -- segment 0 bus 0's ECAM slice (read-only, uncached). Set only on the
+    -- Firmware_Data_ABI.Firmware_Data_Tag; Device_Memory_Authority): an ACPI NVS run, the
+    -- FACS page, PCI segment 0 bus 0's ECAM slice (read-only, uncached), or
+    -- table-named firmware data (read-write, uncached). Set only on the
     -- kernel's firmware-memory roots, never by a derivation
     -- (Capability_Install tags only untagged endpoints and notifications).
     FIRMWARE_NVS_TAG        : constant Authority_Tag := 16#4657_4D45_4D00_0001#;
     FIRMWARE_CONTROL_TAG    : constant Authority_Tag := 16#4657_4D45_4D00_0002#;
     FIRMWARE_PCI_CONFIG_TAG : constant Authority_Tag := 16#4657_4D45_4D00_0004#;
+    FIRMWARE_DATA_TAG       : constant Authority_Tag := 16#4657_4D45_4D00_0005#;
 
     ---------------------------------------------------------------------------
     -- Generation Counter

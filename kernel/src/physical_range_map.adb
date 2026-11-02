@@ -3,6 +3,7 @@ with System.Storage_Elements; use System.Storage_Elements;
 
 with acpi;
 with Boot_Modules;
+with Firmware_Tables.Catalog;
 with Config;
 with Multiboot;
 with TextIO; use TextIO;
@@ -11,6 +12,7 @@ with Virtmem;
 package body Physical_Range_Map with SPARK_Mode => Off is
 
    package PR renames Physical_Ranges;
+   use type Firmware_Tables.Catalog.Phase;
 
    -- The x86 interrupt-message window: the local APIC registers and every
    -- MSI/MSI-X write target. Architectural, independent of firmware tables.
@@ -27,6 +29,9 @@ package body Physical_Range_Map with SPARK_Mode => Off is
      (Config.MAX_BOOT_MEMORY_REGIONS + Boot_Modules.Maximum_Modules
       + acpi.MAX_IOAPICS + Fixed_Spans > PR.Max_Spans,
       "Physical classification cannot hold every boot description");
+   pragma Compile_Time_Error
+     (Firmware_Tables.Catalog.Max_Tables > PR.Max_Table_Extents,
+      "Physical classification cannot hold every sealed table");
 
    procedure Add_Register_Page (Physical : Virtmem.PhysAddress) is
    begin
@@ -70,14 +75,34 @@ package body Physical_Range_Map with SPARK_Mode => Off is
       if acpi.pciConfigBus0 /= 0 then
          PR.Set_PCI_Config (Kernel_Map, acpi.pciConfigBus0);
       end if;
+      -- The sealed ACPI tables (the admitted catalog, root table included):
+      -- never firmware data, whatever span holds them. Without the catalog
+      -- nothing is firmware data.
+      if acpi.Table_Inventory_State = Firmware_Tables.Catalog.Ready then
+         for Index in 1 .. acpi.Table_Count loop
+            declare
+               D : constant Firmware_Tables.Catalog.Descriptor := acpi.Table_Source (Index);
+            begin
+               PR.Add_Table (Kernel_Map, D.Physical, D.Physical + Unsigned_64 (D.Extent - 1));
+            end;
+         end loop;
+      else
+         PR.Tables_Unknown (Kernel_Map);
+      end if;
       PR.Seal (Kernel_Map);
 
       print ("Physical ranges: ");
       print (Integer (Kernel_Map.Count));
+      print (" spans, ");
+      print (Integer (Kernel_Map.Tables_Used));
+      print (" tables");
+      if not Kernel_Map.Tables_Complete then
+         print (" (incomplete: no firmware data)");
+      end if;
       if Kernel_Map.Complete then
-         println (" spans, sealed");
+         println (", sealed");
       else
-         println (" spans, INCOMPLETE: no device-memory authority");
+         println (", INCOMPLETE: no device-memory authority");
       end if;
    end Seal_From_Boot;
 

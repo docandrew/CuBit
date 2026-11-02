@@ -238,54 +238,60 @@ begin
    ---------------------------------------------------------------------------
    declare
       use Devmgr_Memory_Claims;
-      Ledger_Value : Ledger;
-      Granted : Boolean;
+      Claims : Claim_Array (1 .. 16) := [others => <>];
+      Count : Natural := 0;
+      Result : Claim_Result;
+      Old_Window_Limit : constant Positive := 8;
       --  The laptop's NVS run and the q35 FACS page.
       NVS_First : constant := 16#3EB7_F000#;
       NVS_Bytes : constant := 16#41B2_F000# - 16#3EB7_F000#;
       FACS_Page : constant := 16#0FFE_0000#;
    begin
-      Initialize (Ledger_Value);
-      Claim_ACPI (Ledger_Value, NVS_First, NVS_Bytes, Granted);
-      Check (Granted, "an NVS run claimed for ACPI");
-      Claim_ACPI (Ledger_Value, FACS_Page, Page_Bytes, Granted);
-      Check (Granted, "the FACS page claimed for ACPI");
-      Claim_ACPI (Ledger_Value, NVS_First, NVS_Bytes, Granted);
-      Check (Granted and then Ledger_Value.Count = 2, "the same window again granted, not duplicated");
-      Claim_ACPI (Ledger_Value, NVS_First + Page_Bytes, Page_Bytes, Granted);
-      Check (not Granted, "a different window inside an ACPI claim refused");
-      Claim_ACPI (Ledger_Value, NVS_First - Page_Bytes, 2 * Page_Bytes, Granted);
-      Check (not Granted, "a window overlapping an ACPI claim's first page refused");
-      Claim_ACPI (Ledger_Value, 16#5000_0800#, Page_Bytes, Granted);
-      Check (not Granted, "an unaligned window refused");
-      Claim_ACPI (Ledger_Value, 16#5000_0000#, 16#800#, Granted);
-      Check (not Granted, "a partial page refused");
-      Claim_ACPI (Ledger_Value, 16#5000_0000#, 0, Granted);
-      Check (not Granted, "an empty window refused");
-      Claim_ACPI (Ledger_Value, Byte_Limit - Page_Bytes, 2 * Page_Bytes, Granted);
-      Check (not Granted, "a window past the physical limit refused");
-      Check (Clear_Of_ACPI (Ledger_Value, 16#FEB0_0000#, 16#4000#), "a BAR elsewhere is clear");
-      Check (Clear_Of_ACPI (Ledger_Value, NVS_First - Page_Bytes, Page_Bytes),
+      Claim_Pages (Claims, Count, NVS_First, NVS_Bytes, ACPI_Window, Result);
+      Check (Result = Granted, "an NVS run claimed for ACPI");
+      Claim_Pages (Claims, Count, FACS_Page, Page_Bytes, ACPI_Window, Result);
+      Check (Result = Granted, "the FACS page claimed for ACPI");
+      Claim_Pages (Claims, Count, NVS_First, NVS_Bytes, ACPI_Window, Result);
+      Check (Result = Granted and then Count = 2, "the same window again granted, not duplicated");
+      Claim_Pages (Claims, Count, NVS_First + Page_Bytes, Page_Bytes, ACPI_Window, Result);
+      Check (Result /= Granted, "a different window inside an ACPI claim refused");
+      Claim_Pages (Claims, Count, NVS_First - Page_Bytes, 2 * Page_Bytes, ACPI_Window, Result);
+      Check (Result /= Granted, "a window overlapping an ACPI claim's first page refused");
+      Claim_Pages (Claims, Count, 16#5000_0800#, Page_Bytes, ACPI_Window, Result);
+      Check (Result /= Granted, "an unaligned window refused");
+      Claim_Pages (Claims, Count, 16#5000_0000#, 16#800#, ACPI_Window, Result);
+      Check (Result /= Granted, "a partial page refused");
+      Claim_Pages (Claims, Count, 16#5000_0000#, 0, ACPI_Window, Result);
+      Check (Result /= Granted, "an empty window refused");
+      Claim_Pages (Claims, Count, Byte_Limit - Page_Bytes, 2 * Page_Bytes, ACPI_Window, Result);
+      Check (Result /= Granted, "a window past the physical limit refused");
+      Check (Clear_Of_ACPI (Claims, Count, 16#FEB0_0000#, 16#4000#), "a BAR elsewhere is clear");
+      Check (Clear_Of_ACPI (Claims, Count, NVS_First - Page_Bytes, Page_Bytes),
              "the page just below an ACPI claim is clear");
-      Check (Clear_Of_ACPI (Ledger_Value, NVS_First + NVS_Bytes, Page_Bytes),
+      Check (Clear_Of_ACPI (Claims, Count, NVS_First + NVS_Bytes, Page_Bytes),
              "the page just above an ACPI claim is clear");
-      Check (not Clear_Of_ACPI (Ledger_Value, NVS_First - 1, 2),
+      Check (not Clear_Of_ACPI (Claims, Count, NVS_First - 1, 2),
              "a range one byte into an ACPI claim is not clear");
-      Check (not Clear_Of_ACPI (Ledger_Value, FACS_Page + 16#40#, 4),
+      Check (not Clear_Of_ACPI (Claims, Count, FACS_Page + 16#40#, 4),
              "bytes inside the FACS page are not clear");
-      Check (not Clear_Of_ACPI (Ledger_Value, 0, 16#1_0000_0000#),
+      Check (not Clear_Of_ACPI (Claims, Count, 0, 16#1_0000_0000#),
              "a root spanning an ACPI claim is not clear");
-      Check (not Clear_Of_ACPI (Ledger_Value, 16#FEB0_0000#, 0)
-             and then not Clear_Of_ACPI (Ledger_Value, Unsigned_64'Last, 2),
+      Check (not Clear_Of_ACPI (Claims, Count, 16#FEB0_0000#, 0)
+             and then not Clear_Of_ACPI (Claims, Count, Unsigned_64'Last, 2),
              "empty and wrapping ranges are not clear");
-      for K in 1 .. Maximum_Claims loop
-         Claim_ACPI (Ledger_Value, Unsigned_64 (16#6000_0000# + K * 16#10_0000#), Page_Bytes, Granted);
+      for K in 1 .. Old_Window_Limit + 1 loop
+         Claim_Pages (Claims, Count, Unsigned_64 (16#6000_0000# + K * 16#10_0000#), Page_Bytes, ACPI_Window, Result);
+         Check (Result = Granted, "memory claims past the old eight-window ceiling granted");
       end loop;
-      Check (Ledger_Value.Count = Maximum_Claims, "the ledger fills");
-      Claim_ACPI (Ledger_Value, 16#7000_0000#, Page_Bytes, Granted);
-      Check (not Granted, "a full ledger refuses new windows");
-      Claim_ACPI (Ledger_Value, FACS_Page, Page_Bytes, Granted);
-      Check (Granted, "a full ledger still re-grants a held window");
+      Check (Count > Old_Window_Limit, "more than eight ACPI windows recorded");
+      for K in 1 .. Claims'Length loop
+         Claim_Pages (Claims, Count, Unsigned_64 (16#6000_0000# + K * 16#10_0000#), Page_Bytes, ACPI_Window, Result);
+      end loop;
+      Check (Count = Claims'Length, "the ledger fills");
+      Claim_Pages (Claims, Count, 16#7000_0000#, Page_Bytes, ACPI_Window, Result);
+      Check (Result = Needs_Room, "a full caller array requests room for a new window");
+      Claim_Pages (Claims, Count, FACS_Page, Page_Bytes, ACPI_Window, Result);
+      Check (Result = Granted, "a full ledger still re-grants a held window");
    end;
 
    ---------------------------------------------------------------------------
@@ -309,39 +315,60 @@ begin
    ---------------------------------------------------------------------------
    declare
       use Devmgr_Port_Claims;
-      Ledger_Value : Ledger;
-      Granted : Boolean;
+      Claims : Claim_Array (1 .. 64) := [others => <>];
+      Count : Natural := 0;
+      Result : Take_Result;
+      Driver_A : constant Owner_Word := 16#1_0000_0021#;
+      Driver_B : constant Owner_Word := 16#2_0000_0021#;
+      Old_Port_Limit : constant Positive := 48;
    begin
-      Initialize (Ledger_Value);
-      Take (Ledger_Value, 16#600#, 4, ACPI, Granted);
-      Check (Granted, "ACPI window on free ports granted");
-      Take (Ledger_Value, 16#600#, 4, ACPI, Granted);
-      Check (Granted, "the same ACPI window again (restarted backend) granted");
-      Take (Ledger_Value, 16#602#, 4, ACPI, Granted);
-      Check (not Granted, "a different overlapping ACPI window refused");
-      Take (Ledger_Value, 16#603#, 1, Driver, Granted);
-      Check (not Granted, "a driver claim inside an ACPI window refused");
-      Take (Ledger_Value, 16#70#, 2, ACPI, Granted);
-      Check (not Granted, "an ACPI window over devmgr's CMOS ports refused");
-      Take (Ledger_Value, 16#3F8#, 1, ACPI, Granted);
-      Check (not Granted, "an ACPI window over the kernel's console refused");
-      Take (Ledger_Value, 16#1F0#, 8, Driver, Granted);
-      Check (Granted, "a driver claim elsewhere granted");
-      Take (Ledger_Value, 16#1F0#, 8, Driver, Granted);
-      Check (Granted, "the same driver claim again granted");
-      Take (Ledger_Value, 16#1F4#, 1, ACPI, Granted);
-      Check (not Granted, "an ACPI window over a driver's ports refused");
-      Take (Ledger_Value, 16#FFFF#, 2, ACPI, Granted);
-      Check (not Granted, "a range past the port space refused");
-      Take (Ledger_Value, 16#800#, 0, ACPI, Granted);
-      Check (not Granted, "an empty range refused");
-      for K in 1 .. Maximum_Claims loop
-         Take (Ledger_Value, Unsigned_64 (16#2000# + 4 * K), 1, Driver, Granted);
+      Initialize (Claims, Count);
+      Take (Claims, Count, 16#600#, 4, ACPI, No_Owner, Result);
+      Check (Result = Granted, "ACPI window on free ports granted");
+      Take (Claims, Count, 16#600#, 4, ACPI, No_Owner, Result);
+      Check (Result = Granted, "the same ACPI window again (restarted backend) granted");
+      Take (Claims, Count, 16#602#, 4, ACPI, No_Owner, Result);
+      Check (Result /= Granted, "a different overlapping ACPI window refused");
+      Take (Claims, Count, 16#603#, 1, Driver, Driver_A, Result);
+      Check (Result /= Granted, "a driver claim inside an ACPI window refused");
+      Take (Claims, Count, 16#70#, 2, ACPI, No_Owner, Result);
+      Check (Result /= Granted, "an ACPI window over devmgr's CMOS ports refused");
+      Take (Claims, Count, 16#3F8#, 1, ACPI, No_Owner, Result);
+      Check (Result /= Granted, "an ACPI window over the kernel's console refused");
+      Take (Claims, Count, 16#1F0#, 8, Driver, Driver_A, Result);
+      Check (Result = Granted, "a driver claim elsewhere granted");
+      Take (Claims, Count, 16#1F0#, 8, Driver, Driver_A, Result);
+      Check (Result = Granted, "the same driver claim again granted");
+      Take (Claims, Count, 16#1F4#, 1, ACPI, No_Owner, Result);
+      Check (Result /= Granted, "an ACPI window over a driver's ports refused");
+      Take (Claims, Count, 16#FFFF#, 2, ACPI, No_Owner, Result);
+      Check (Result /= Granted, "a range past the port space refused");
+      Take (Claims, Count, 16#800#, 0, ACPI, No_Owner, Result);
+      Check (Result /= Granted, "an empty range refused");
+      Take (Claims, Count, 16#2F0#, 8, Driver, Driver_B, Result);
+      Check (Result = Granted, "another full-width driver identity recorded");
+      for K in 1 .. Old_Port_Limit + 1 loop
+         Take (Claims, Count, Unsigned_64 (16#2000# + 4 * K), 1, Driver, Driver_A, Result);
+         Check (Result = Granted, "port claims past the old forty-eight ceiling granted");
       end loop;
-      Take (Ledger_Value, 16#9000#, 1, ACPI, Granted);
-      Check (not Granted, "a full ledger refuses new ranges");
-      Take (Ledger_Value, 16#600#, 4, ACPI, Granted);
-      Check (Granted, "a full ledger still re-grants a held ACPI window");
+      Check (Count > Old_Port_Limit, "more than forty-eight port claims recorded");
+      for K in 1 .. Claims'Length loop
+         Take (Claims, Count, Unsigned_64 (16#2000# + 4 * K), 1, Driver, Driver_A, Result);
+      end loop;
+      Take (Claims, Count, 16#9000#, 1, ACPI, No_Owner, Result);
+      Check (Result = Needs_Room, "a full caller array requests room for a new port claim");
+      Take (Claims, Count, 16#600#, 4, ACPI, No_Owner, Result);
+      Check (Result = Granted, "a full ledger still re-grants a held ACPI window");
+      Release_Owner (Claims, Count, Driver_A);
+      Check ((for all K in 1 .. Count => Claims (K).Owner /= Driver_A)
+        and then (for some K in 1 .. Count => Claims (K).Owner = Driver_B),
+        "release compares the full opaque owner, including high bits");
+      Take (Claims, Count, 16#2F0#, 1, ACPI, No_Owner, Result);
+      Check (Result = Refused, "the other driver's ports remain claimed after release");
+      Take (Claims, Count, 16#1F0#, 8, ACPI, No_Owner, Result);
+      Check (Result = Granted, "an exited driver's ports can be claimed again");
+      Take (Claims, Count, 16#600#, 1, Driver, Driver_A, Result);
+      Check (Result = Refused, "owner release retains the ACPI window");
    end;
 
    if Failures = 0 then

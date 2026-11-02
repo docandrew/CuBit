@@ -36,7 +36,9 @@ procedure Main is
       return Seed;
    end Next;
 begin
-   --  Round trips for every kind.
+   --  Round trips for every kind. devmgr's block is variable-length: as
+   --  many roots as the kernel found (LIM-001b), well past the old fixed 8
+   --  device and 8 firmware roots.
    declare
       --  Handle words: generation in the high half, slot in the low half.
       function H (Slot : Unsigned_64) return Unsigned_64 is (2 ** 32 + Slot);
@@ -44,70 +46,102 @@ begin
         (Self => H (0), Self_Process => H (1), Self_Grantable => H (2),
          Process_Root => H (3), PCI_Ports => H (4), Registration => H (5),
          Vector_Authority => H (6), IO_Ports => H (7), Legacy_Interrupts => H (8),
-         Notifications => H (9), Scheduling => H (10), Firmware_Snapshot => H (14),
-         Root_Count => 3, Device_Roots => [H (11), H (12), H (13), others => 0],
-         Firmware_Count => 2, Firmware_Roots => [H (15), H (16), others => 0]);
+         Notifications => H (9), Scheduling => H (10), Firmware_Snapshot => H (14));
+      Old_Fixed_Roots : constant := 8;
+      Many_Device : constant := 5 * Old_Fixed_Roots;
+      Many_Firmware : constant := 7 * Old_Fixed_Roots;
+      All_Roots : constant Word_Array (1 .. Many_Device + Many_Firmware) :=
+        [for I in 1 .. Many_Device + Many_Firmware => H (100 + Unsigned_64 (I))];
       V : Device_Manager_Configuration :=
-        (Boot_Image => 40 * 1024 * 1024, Framebuffer => (16#FD00_0000#, 16#30_0000#),
+        (Device_Roots => 3, Firmware_Roots => 2,
+         Boot_Image => 40 * 1024 * 1024, Framebuffer => (16#FD00_0000#, 16#30_0000#),
          Handles => Handles);
       D : Device_Manager_Configuration; OK : Boolean;
-      E : Encoded;
+
+      --  The whole block for V with All_Roots' first roots.
+      function Block_Of (Value : Device_Manager_Configuration) return Word_Array is
+         E : constant Encoded := Encode_Prefix (Value);
+         R : constant Natural := Natural (Value.Device_Roots + Value.Firmware_Roots);
+      begin
+         return E.Words (1 .. E.Length) & All_Roots (1 .. R);
+      end Block_Of;
    begin
-      Round_Trips.Device_Manager (V, D, OK);
+      Round_Trips.Device_Manager (V, All_Roots (1 .. 5), D, OK);
       Check (OK and then D = V, "device manager round trip");
       V.Framebuffer := (0, 0);
-      Round_Trips.Device_Manager (V, D, OK);
+      Round_Trips.Device_Manager (V, All_Roots (1 .. 5), D, OK);
       Check (OK and then D = V, "device manager without framebuffer");
-      V.Handles.Root_Count := Maximum_Device_Roots;
-      V.Handles.Device_Roots := [for R in Device_Root_Index => H (20 + Unsigned_64 (R))];
-      Round_Trips.Device_Manager (V, D, OK);
-      Check (OK and then D = V, "device manager with every root");
-      V.Handles.Firmware_Count := Maximum_Firmware_Roots;
-      V.Handles.Firmware_Roots := [for R in Firmware_Root_Index => H (30 + Unsigned_64 (R))];
-      Round_Trips.Device_Manager (V, D, OK);
-      Check (OK and then D = V, "device manager with every firmware-memory root");
-      V.Handles.Firmware_Count := 0;
-      V.Handles.Firmware_Roots := [others => 0];
-      Round_Trips.Device_Manager (V, D, OK);
-      Check (OK and then D = V, "device manager without firmware-memory roots");
-      --  Refusals: a named handle that is not one, a root count past the
-      --  array, a root in use that is zero, an unused root that is not.
-      V := (Boot_Image => 1, Framebuffer => (0, 0), Handles => Handles);
-      E := Encode (V);
-      for Bad in 7 .. 18 loop
+      V.Device_Roots := 0;
+      V.Firmware_Roots := 0;
+      Round_Trips.Device_Manager (V, All_Roots (1 .. 0), D, OK);
+      Check (OK and then D = V, "device manager without roots");
+      V.Device_Roots := Many_Device;
+      V.Firmware_Roots := Many_Firmware;
+      Round_Trips.Device_Manager (V, All_Roots, D, OK);
+      Check (OK and then D = V, "device manager with more roots than the old fixed block");
+      declare
+         W : constant Word_Array := Block_Of (V);
+      begin
+         Check (W'Last = Device_Manager_Length (V)
+                and then W'Length > Maximum_Words,
+                "devmgr's block grows with its roots");
+         Check (W (Device_Root_Word (1)) = All_Roots (1)
+                and then W (Device_Root_Word (Many_Device)) = All_Roots (Many_Device)
+                and then W (Firmware_Root_Word (Many_Device, 1)) = All_Roots (Many_Device + 1)
+                and then W (Firmware_Root_Word (Many_Device, Many_Firmware)) =
+                           All_Roots (Many_Device + Many_Firmware),
+                "root words where Device_Root_Word and Firmware_Root_Word say");
+      end;
+      Check (Roots_Fit (Maximum_Roots, 0) and then not Roots_Fit (Maximum_Roots, 1)
+             and then Device_Manager_Last (Maximum_Roots, 0) = Maximum_Block_Words,
+             "the most roots fill the block ceiling exactly");
+      --  Refusals: a named handle or root that is not one, counts that do
+      --  not match the length, counts past the ceiling, a kind mismatch.
+      V := (Device_Roots => 3, Firmware_Roots => 4, Boot_Image => 1,
+            Framebuffer => (0, 0), Handles => Handles);
+      for Bad in First_Handle_Word .. Device_Manager_Length (V) loop
          declare
-            W : Word_Array := E.Words (1 .. E.Length);
+            W : Word_Array := Block_Of (V);
          begin
             W (Bad) := 5;   --  a refusal-sized word, generation zero
             Decode (W, D, OK);
-            Check (not OK, "named handle without a generation refused");
+            Check (not OK, "a handle or root word without a generation refused");
          end;
       end loop;
       declare
-         W : Word_Array := E.Words (1 .. E.Length);
+         W : Word_Array := Block_Of (V);
       begin
-         W (19) := Maximum_Device_Roots + 1;
          Decode (W, D, OK);
-         Check (not OK, "root count past the array refused");
-         W (19) := 4;
+         Check (OK and then D = V, "the refusal fixture itself decodes");
+         W (Device_Roots_Word) := 4;
          Decode (W, D, OK);
-         Check (not OK, "a zero root in use refused");
-         W (19) := 2;
+         Check (not OK, "a device root count past the block refused");
+         W (Device_Roots_Word) := 2;
          Decode (W, D, OK);
-         Check (not OK, "a handle in an unused root refused");
-      end;
-      declare
-         W : Word_Array := E.Words (1 .. E.Length);
-      begin
-         W (Firmware_First_Word) := Maximum_Firmware_Roots + 1;
+         Check (not OK, "a device root count short of the block refused");
+         W (Device_Roots_Word) := 3;
+         W (3) := W (3) + 1;
          Decode (W, D, OK);
-         Check (not OK, "firmware-memory root count past the array refused");
-         W (Firmware_First_Word) := 3;
+         Check (not OK, "a field count that disagrees with the counts refused");
+         W := Block_Of (V);
+         W (Firmware_Roots_Word) := Unsigned_64 (Maximum_Roots) + 1;
          Decode (W, D, OK);
-         Check (not OK, "a zero firmware-memory root in use refused");
-         W (Firmware_First_Word) := 1;
+         Check (not OK, "a firmware root count past the ceiling refused");
+         W := Block_Of (V);
+         W (Device_Roots_Word) := Unsigned_64'Last;
          Decode (W, D, OK);
-         Check (not OK, "a handle in an unused firmware-memory root refused");
+         Check (not OK, "a huge device root count refused");
+         W := Block_Of (V);
+         W (2) := Configuration_Kind'Enum_Rep (Process_Manager);
+         Decode (W, D, OK);
+         Check (not OK, "a process manager kind refused");
+         W := Block_Of (V);
+         Decode (W (1 .. W'Last - 1), D, OK);
+         Check (not OK, "a short devmgr block refused");
+         Decode (W & [H (999)], D, OK);
+         Check (not OK, "a long devmgr block refused");
+         Decode (W (1 .. Device_Manager_Prefix_Words - 1), D, OK);
+         Check (not OK, "a block shorter than the prefix refused");
       end;
    end;
    declare
@@ -251,9 +285,13 @@ begin
       end;
    end;
 
-   --  Random words never decode, and never raise (-gnata -gnato).
+   --  Random words never decode, and never raise (-gnata -gnato). Half
+   --  carry a devmgr header whose counts match the block (2 + 3 roots).
    declare
-      W : Word_Array (1 .. 26);
+      Random_Device_Roots : constant := 2;
+      Random_Firmware_Roots : constant := 3;
+      W : Word_Array (1 .. Device_Manager_Prefix_Words + Random_Device_Roots
+                             + Random_Firmware_Roots);
       D : Device_Manager_Configuration; OK : Boolean;
       Accepted : Natural := 0;
    begin
@@ -264,12 +302,16 @@ begin
          if Round mod 2 = 0 then
             W (1) := Magic;
             W (2) := Configuration_Kind'Enum_Rep (Device_Manager);
-            W (3) := Unsigned_64 (Field_Count (Device_Manager));
+            W (3) := Device_Manager_Fields (Random_Device_Roots, Random_Firmware_Roots);
+            W (Device_Roots_Word) := Random_Device_Roots;
+            W (Firmware_Roots_Word) := Random_Firmware_Roots;
          end if;
          Decode (W, D, OK);
          if OK then
             Accepted := Accepted + 1;
-            Check (D.Boot_Image = W (4) and then D.Framebuffer.First = W (5),
+            Check (D.Boot_Image = W (Boot_Image_Word)
+                   and then D.Framebuffer.First = W (Framebuffer_First_Word)
+                   and then D.Device_Roots = Random_Device_Roots,
                    "accepted random block decodes its fields");
          end if;
       end loop;

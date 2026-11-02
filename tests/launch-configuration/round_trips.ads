@@ -5,10 +5,17 @@ with Launch_Configuration; use Launch_Configuration;
 
 package Round_Trips with SPARK_Mode is
 
+   --  devmgr's block: the prefix, then Roots (its device roots, then its
+   --  firmware roots), decodes as the value, with every root in place.
    procedure Device_Manager (Value : Device_Manager_Configuration;
+                             Roots : Word_Array;
                              Decoded : out Device_Manager_Configuration;
                              Valid : out Boolean)
-   with Pre  => Handles_Well_Formed (Value.Handles),
+   with Pre  => Handles_Well_Formed (Value.Handles)
+                and then Roots_Fit (Value.Device_Roots, Value.Firmware_Roots)
+                and then Roots'First = 1
+                and then Roots'Length = Device_Manager_Length (Value) - Device_Manager_Prefix_Words
+                and then (for all I in Roots'Range => Is_Handle (Roots (I))),
         Post => Valid and then Decoded = Value;
 
    procedure Process_Manager (Value : Process_Manager_Configuration;
