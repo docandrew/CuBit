@@ -90,6 +90,14 @@
       "sha256": "f0f7480e38a524ec5a188742b9bee28a9e4e4435cf6798ee7ece565937b033b1"
     },
     {
+      "path": "userspace/services/acpi/acpi_capacity_diagnostics.adb",
+      "sha256": "5442daaf2e52fdfce7d8817b288b74f253b1e9c15168218a93281ca9ba12b83b"
+    },
+    {
+      "path": "userspace/services/acpi/acpi_capacity_diagnostics.ads",
+      "sha256": "a7d5634c95358094b285201d190bf76ba8cad46b7b207a52b0d3ad4102064a81"
+    },
+    {
       "path": "userspace/services/acpi/acpi_device_initialization.adb",
       "sha256": "e96b8caf16a6b41c374a26c318ccb2df5fb994f8c2760833ee80f28e3e8375bf"
     },
@@ -184,6 +192,30 @@
     {
       "path": "userspace/services/acpi/ec/acpi_requests-ec_boot_notes.ads",
       "sha256": "408b04775a7db1c137d32f8096f8bffb44455b92534f02811c4c28cac194f4f4"
+    },
+    {
+      "path": "userspace/services/acpi/field-client/provider/acpi_capacity_growth.adb",
+      "sha256": "05b252f3b5d3c0c801ae9504188b16337672454721d09710d4e25298838badcc"
+    },
+    {
+      "path": "userspace/services/acpi/field-client/provider/acpi_capacity_growth.ads",
+      "sha256": "eca1e985fce2810b94cb3eb00e929ab1bb175261469da78b30ac4d5f624a9a1e"
+    },
+    {
+      "path": "userspace/services/acpi/field-client/provider/acpi_target_heap.adb",
+      "sha256": "f2b3b47e2f3fec96159988d63717ada69e2d49c8ad3c15257c81830965eeb75c"
+    },
+    {
+      "path": "userspace/services/acpi/field-client/provider/acpi_target_heap.ads",
+      "sha256": "911864c46e0356435b770e1c32aac33a9c32c9067dee7d9ddab384d10ea700be"
+    },
+    {
+      "path": "userspace/services/acpi/field-client/provider/acpi_target_storage.adb",
+      "sha256": "f70fc559c7c6c0c3b053ca0c0bcdf9505cf2a6fa38353252d80eff03b3c8d77b"
+    },
+    {
+      "path": "userspace/services/acpi/field-client/provider/acpi_target_storage.ads",
+      "sha256": "9428fc73629290ecd7fa41373e2f3af090db3d673c1ffdfbb67cb191eeaeebdb"
     },
     {
       "path": "userspace/services/acpi/lib/acpi_fadt-transactions.adb",
@@ -707,11 +739,11 @@
     },
     {
       "path": "userspace/services/acpi/snapshot/acpi_startup_diagnostics.adb",
-      "sha256": "f9446f7fc63584e40b503a6c91e1cf2af46f9a043edd7c46c2bd7a0636937c7d"
+      "sha256": "5e0b9b12f428324238b9f8a1b74e4bef4d41566fa0d410feb9c9af8b05769385"
     },
     {
       "path": "userspace/services/acpi/snapshot/acpi_startup_diagnostics.ads",
-      "sha256": "80f488d2c7de4653c10ad7d4ebeb904e606743d0f5f942f235a6930fe8c61142"
+      "sha256": "a24ad382d9b4552326b09b5018ce6e172a108e75b824f849fe7410f337dd0d88"
     }
   ],
   "expected": {

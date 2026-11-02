@@ -74,6 +74,10 @@ tests/acpi-native-entry/fixtures/actual/acpi_bootstrap-sleep_states.adb
 tests/acpi-native-entry/fixtures/actual/acpi_bootstrap-sleep_states.ads
 tests/acpi-native-entry/fixtures/actual/acpi_bootstrap.adb
 tests/acpi-native-entry/fixtures/actual/acpi_bootstrap.ads
+tests/acpi-native-entry/fixtures/actual/acpi_capacity_diagnostics.adb
+tests/acpi-native-entry/fixtures/actual/acpi_capacity_diagnostics.ads
+tests/acpi-native-entry/fixtures/actual/acpi_capacity_growth.adb
+tests/acpi-native-entry/fixtures/actual/acpi_capacity_growth.ads
 tests/acpi-native-entry/fixtures/actual/acpi_clock_source.adb
 tests/acpi-native-entry/fixtures/actual/acpi_clock_source.ads
 tests/acpi-native-entry/fixtures/actual/acpi_controller_source.ads
@@ -376,6 +380,10 @@ tests/acpi-native-entry/fixtures/actual/acpi_startup_evaluation.adb
 tests/acpi-native-entry/fixtures/actual/acpi_startup_evaluation.ads
 tests/acpi-native-entry/fixtures/actual/acpi_system_events.adb
 tests/acpi-native-entry/fixtures/actual/acpi_system_events.ads
+tests/acpi-native-entry/fixtures/actual/acpi_target_heap.adb
+tests/acpi-native-entry/fixtures/actual/acpi_target_heap.ads
+tests/acpi-native-entry/fixtures/actual/acpi_target_storage.adb
+tests/acpi-native-entry/fixtures/actual/acpi_target_storage.ads
 tests/acpi-native-entry/fixtures/actual/acpi_unprovisioned_regions.adb
 tests/acpi-native-entry/fixtures/actual/acpi_unprovisioned_regions.ads
 tests/acpi-native-entry/fixtures/actual/aml_bcd.adb

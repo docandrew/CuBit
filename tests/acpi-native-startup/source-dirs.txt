@@ -1,3 +1,4 @@
+tests/acpi-target-heap-model
 tests/acpi-native-startup/models
 tests/acpi-native-startup/boundary
 userspace/services/acpi

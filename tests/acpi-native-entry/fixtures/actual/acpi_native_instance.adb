@@ -186,7 +186,8 @@ package body ACPI_Native_Instance is
          if Result.Startup.Status = L.Startup_Refused then
             if Result.Startup.Completion.Execution.Modules.Field_Failure.Present then
                ACPI_Native_Log.Warning
-                 (ACPI_Startup_Diagnostics.Format_Field_Failure (Result.Startup.Completion));
+                 (ACPI_Startup_Diagnostics.Format_Field_Failure
+                    (Result.Startup.Completion, ACPI_Native_Fields.Observe.Capacity));
             end if;
             ACPI_Native_Log.Warning
               (ACPI_Startup_Diagnostics.Format (Result.Startup.Completion));

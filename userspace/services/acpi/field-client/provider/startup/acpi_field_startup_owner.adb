@@ -13,8 +13,12 @@ package body ACPI_Field_Startup_Owner is
    Provider_Symbol : constant AML_Field_Access.Endpoint_ID := 1;
    function Provider_Ready (IO : Provider.Context) return Boolean is
      (Provider.Status (IO) = Provider.Ready);
+   procedure Record_Capacity_Failure (Item : ACPI_Capacity_Diagnostics.Report) is
+   begin
+      if not ACPI_Capacity_Diagnostics.Present (Last_Capacity) then Last_Capacity := Item; end if;
+   end Record_Capacity_Failure;
    function Observe return Report is
-     ((Stage, Module_Attempted, Module_Completed, Provider.Pending (IO), Provider.Register_Count (IO)));
+     ((Stage, Module_Attempted, Module_Completed, Provider.Pending (IO), Provider.Register_Count (IO), Last_Capacity));
    procedure Read_Window (Now, Deadline : out Wire.Time_Instant) is
       Available : Boolean;
    begin
@@ -99,6 +103,7 @@ package body ACPI_Field_Startup_Owner is
       if Module_Attempted then return; end if;
       Module_Attempted := True;
       if not Usable then return; end if;
+      Last_Capacity := ACPI_Capacity_Diagnostics.No_Report;
       Evaluation.Bindings.Startup.Execute_Frozen (Service, IO, Budget, Result, Status);
       Module_Completed := Status = Core.Values.Available
         and then Result.Phase = Core.Module_Execution_Reported
@@ -109,6 +114,7 @@ package body ACPI_Field_Startup_Owner is
    begin
       Accepted := False;
       if not Module_Completed or else not Usable then return; end if;
+      Last_Capacity := ACPI_Capacity_Diagnostics.No_Report;
       Evaluation.Prepare (Cache, Service, IO, Accepted);
    end Prepare_Fields;
    procedure Evaluate_Named
@@ -118,6 +124,7 @@ package body ACPI_Field_Startup_Owner is
    begin
       Result := (AML_Execute.Unsupported_Value, 0); Status := Core.Values.Wrong_Phase;
       if not Module_Completed or else not Usable then return; end if;
+      Last_Capacity := ACPI_Capacity_Diagnostics.No_Report;
       Evaluation.Evaluate_Named (Cache, Service, IO, Item, Budget, Result, Status);
    end Evaluate_Named;
    procedure Invoke_With_Arguments
@@ -128,6 +135,7 @@ package body ACPI_Field_Startup_Owner is
    begin
       Result := (AML_Execute.Unsupported_Value, 0); Status := Core.Values.Wrong_Phase;
       if not Module_Completed or else not Usable then return; end if;
+      Last_Capacity := ACPI_Capacity_Diagnostics.No_Report;
       Evaluation.Invoke_With_Arguments
         (Cache, Service, IO, Node, Args, Argument_Count, Budget, Result, Status);
    end Invoke_With_Arguments;

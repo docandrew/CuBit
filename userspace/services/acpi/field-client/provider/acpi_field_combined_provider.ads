@@ -1,4 +1,6 @@
 pragma Ada_2022;
+with ACPI_Capacity_Diagnostics;
+with ACPI_Target_Storage;
 with AML_Field_Access;
 with AML_Field_Layout;
 with AML_Identity;
@@ -14,7 +16,9 @@ generic
      (Now : out ACPI_Inventory_Protocol.Wire.Time_Instant; Available : out Boolean);
    with procedure Read_Window
      (Now, Deadline : out ACPI_Inventory_Protocol.Wire.Time_Instant);
-   Maximum_Targets : Positive := 2 * AML_Field_Access.Default_Maximum_Registers;
+   Initial_Target_Capacity : Positive := 2 * AML_Field_Access.Default_Maximum_Registers;
+   with procedure Record_Capacity_Failure
+     (Item : ACPI_Capacity_Diagnostics.Report) is null;
 package ACPI_Field_Combined_Provider is
    type Startup_State is (Fresh, Initializing, Ready, Failed);
    type Context is limited private;
@@ -62,22 +66,22 @@ private
    package A renames AML_Field_Access;
    package L renames AML_Field_Layout;
    type Lane is (Named_Register, NVS_Data);
-   subtype Target_Count is Natural range 0 .. Maximum_Targets;
-   subtype Target_Index is Positive range 1 .. Maximum_Targets;
+   subtype Target_Index is Positive;
    type Association is record
       Path : Lane := Named_Register;
       Inner : A.Target := A.No_Target;
       Geometry : L.Register_Geometry;
    end record;
-   type Associations is array (Target_Index) of Association;
+   -- Heap storage grows on demand; ordinals remain stable across growth.
+   package Storage is new ACPI_Target_Storage
+     (Association, Initial_Target_Capacity);
    type Context is limited record
       Stage : Startup_State := Fresh;
       Token : AML_Identity.Identity := AML_Identity.No_Identity;
       Symbol : A.Endpoint_ID := A.No_Endpoint;
       Registers : Scalar.Context;
       NVS : Memory.Context;
-      Count : Target_Count := 0;
-      Rows : Associations;
+      Rows : Storage.Context;
       Issued : A.Counter := 0;
       Working : Boolean := False;
       Captured, Fault : A.Observation;

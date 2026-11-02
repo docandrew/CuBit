@@ -2,6 +2,7 @@ pragma Ada_2022;
 with AML_Identity.Issuer;
 with AML_Register_Views;
 package body ACPI_Field_Combined_Provider is
+   use type Storage.Outcome;
    use type A.Counter, A.Endpoint_ID, A.Target, A.Completion, AML_Identity.Identity;
    use type L.Register_Geometry, Scalar.Startup_State;
    Epoch : constant A.Counter := 1;
@@ -18,21 +19,28 @@ package body ACPI_Field_Combined_Provider is
    function Matches (IO : Context; Target : A.Target) return Boolean is
      (Target.Provider = IO.Token and then IO.Token /= AML_Identity.No_Identity
       and then Target.Endpoint = IO.Symbol and then Target.Epoch = Epoch
-      and then Target.Register in 1 .. A.Register_ID (IO.Count));
+      and then Target.Register in 1 .. A.Register_ID (Storage.Length (IO.Rows)));
    procedure Add
      (IO : in out Context; Path : Lane; Inner : A.Target; Geometry : L.Register_Geometry;
       Target : out A.Target; Accepted : out Boolean) is
+      Slot : Natural;
+      Stored : Storage.Outcome;
    begin
       Target := A.No_Target; Accepted := False;
-      for I in 1 .. IO.Count loop
-         if IO.Rows (I).Path = Path and then IO.Rows (I).Inner = Inner then
-            if IO.Rows (I).Geometry /= Geometry then return; end if;
+      for I in 1 .. Storage.Length (IO.Rows) loop
+         if Storage.Read (IO.Rows, I).Path = Path and then Storage.Read (IO.Rows, I).Inner = Inner then
+            if Storage.Read (IO.Rows, I).Geometry /= Geometry then return; end if;
             Target := At_Index (IO, I); Accepted := True; return;
          end if;
       end loop;
-      if Inner = A.No_Target or else IO.Count = Maximum_Targets then return; end if;
-      IO.Count := IO.Count + 1; IO.Rows (IO.Count) := (Path, Inner, Geometry);
-      Target := At_Index (IO, IO.Count); Accepted := True;
+      if Inner = A.No_Target then return; end if;
+      Storage.Append (IO.Rows, (Path, Inner, Geometry), Slot, Stored);
+      if Stored /= Storage.Stored then
+         Record_Capacity_Failure (Storage.Capacity_Failure
+           (IO.Rows, ACPI_Capacity_Diagnostics.Combined_Targets));
+         return;
+      end if;
+      Target := At_Index (IO, Slot); Accepted := True;
    end Add;
    procedure Initialize
      (IO : in out Context; Destination : Peer; Symbol : A.Endpoint_ID;
@@ -60,11 +68,11 @@ package body ACPI_Field_Combined_Provider is
       end loop;
       IO.Working := False; IO.Stage := Ready; Accepted := True;
    end Initialize;
-   function Register_Count (IO : Context) return Natural is (if Live (IO) then IO.Count else 0);
+   function Register_Count (IO : Context) return Natural is (if Live (IO) then Storage.Length (IO.Rows) else 0);
    procedure Export_Target
      (IO : Context; Ordinal : Positive; Target : out A.Target; Accepted : out Boolean) is
    begin
-      Target := A.No_Target; Accepted := Live (IO) and then Ordinal <= IO.Count;
+      Target := A.No_Target; Accepted := Live (IO) and then Ordinal <= Storage.Length (IO.Rows);
       if Accepted then Target := At_Index (IO, Ordinal); end if;
    end Export_Target;
    type Named_Match is (Absent, Unique, Ambiguous, Unavailable);
@@ -134,7 +142,7 @@ package body ACPI_Field_Combined_Provider is
    begin
       Geometry := (others => <>); Accepted := False;
       if not Live (IO) or else not Matches (IO, Target) then return; end if;
-      Row := IO.Rows (Target_Index (Target.Register));
+      Row := Storage.Read (IO.Rows, Target_Index (Target.Register));
       case Row.Path is
          when Named_Register => Scalar.Describe (IO.Registers, Row.Inner, Geometry, Accepted);
          when NVS_Data => Memory.Describe (IO.NVS, Row.Inner, Geometry, Accepted);
@@ -147,7 +155,7 @@ package body ACPI_Field_Combined_Provider is
    begin
       Accepted := False;
       if not Live (IO) or else not Matches (IO, Target) or else IO.Issued = A.Counter'Last then return; end if;
-      Row := IO.Rows (Target_Index (Target.Register));
+      Row := Storage.Read (IO.Rows, Target_Index (Target.Register));
       case Row.Path is
          when Named_Register => Scalar.Authorize (IO.Registers, Row.Inner, For_Write, Accepted);
          when NVS_Data => Memory.Authorize (IO.NVS, Row.Inner, For_Write, Accepted);
@@ -161,7 +169,7 @@ package body ACPI_Field_Combined_Provider is
    begin
       ID := D.No_Record; Datum := D.Empty_Geometry; Accepted := False;
       if not Live (IO) or else not Matches (IO, Target) then return; end if;
-      declare Row : Association renames IO.Rows (Target_Index (Target.Register)); begin
+      declare Row : constant Association := Storage.Read (IO.Rows, Target_Index (Target.Register)); begin
          if Row.Path /= NVS_Data then return; end if;
          Memory.Describe_Scoped_Read (IO.NVS, Row.Inner, ID, Datum, Accepted);
       end;
@@ -175,7 +183,7 @@ package body ACPI_Field_Combined_Provider is
    begin
       Reply := (others => <>); Authorize (IO, Item.Destination, Item.For_Write, Good);
       if not Good or else (not Item.For_Write and then Item.Value /= 0) then return; end if;
-      Row := IO.Rows (Target_Index (Item.Destination.Register));
+      Row := Storage.Read (IO.Rows, Target_Index (Item.Destination.Register));
       IO.Working := True; IO.Issued := IO.Issued + 1;
       Read_Window (Window_Start, Deadline); Read_Clock (Before, Good);
       if not Good or else Deadline = ACPI_Inventory_Protocol.Wire.No_Finite_Deadline

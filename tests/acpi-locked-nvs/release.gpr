@@ -1,7 +1,7 @@
 project Release is
  Snapshot := external ("ACPI_TEST_SNAPSHOT");
  Output := external ("ACPI_TEST_BUILD") & "/release";
- for Source_Dirs use (Snapshot & "/userspace/services/acpi",
+ for Source_Dirs use (Snapshot & "/tests/acpi-target-heap-model", Snapshot & "/userspace/services/acpi",
    Snapshot & "/userspace/services/acpi/lib",
    Snapshot & "/userspace/services/acpi/snapshot",
    Snapshot & "/userspace/services/acpi/field-client",
@@ -28,6 +28,10 @@ project Release is
  for Object_Dir use Output & "/obj";
  for Exec_Dir use Output;
  for Main use ("locked_owner_tests.adb");
+ for Excluded_Source_Files use ("acpi_target_heap.adb");
+ package Naming is
+  for Body ("ACPI_Target_Heap") use "acpi_target_heap_host.adb";
+ end Naming;
  package Compiler is
   for Default_Switches ("Ada") use ("-O0", "-gnat2022", "-gnatwa", "-gnatwe", "-gnatp");
  end Compiler;

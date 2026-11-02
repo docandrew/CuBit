@@ -48,7 +48,8 @@ package body CuBit.ACPI_Windows.Launch with SPARK_Mode => Off is
          end;
       end loop;
       --  The firmware-memory windows: whole pages the kernel's capability
-      --  covers, tagged as firmware memory.
+      --  covers, tagged as firmware memory, readable, and writable exactly
+      --  when its kind is (PCI configuration never is).
       for K in Labels.Memory_Window_Number loop
          declare
             Found : constant HS.Optional_Device_Memory :=
@@ -61,9 +62,11 @@ package body CuBit.ACPI_Windows.Launch with SPARK_Mode => Off is
             begin
                if not What.Current
                  or else What.Kind /= CuBit.Handles.ABI.Device_Memory
-                 or else not (What.Held.Read and then What.Held.Write)
                  or else not CuBit.ACPI_Memory_Classes.Admits
                                (What.Authority_Tag, What.Object, What.Parameter)
+                 or else not What.Held.Read
+                 or else What.Held.Write /= CuBit.ACPI_Memory_Classes.Writable_Of
+                                              (CuBit.ACPI_Memory_Classes.Kind_Of (What.Authority_Tag))
                then
                   return Empty;
                end if;

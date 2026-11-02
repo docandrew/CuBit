@@ -53,7 +53,12 @@ package CuBit.ACPI_Windows with SPARK_Mode is
    --    area such as 16#6000_0000_0000#. At most 1024 pages per call,
    --    mapped eagerly by that call: map the pages a region needs, on
    --    demand (a whole 12,208-page NVS run is 12 calls and 24 page-table
-   --    pages). The kernel maps every firmware page write-back (Cache).
+   --    pages). The kernel maps NVS and the FACS page write-back, and PCI
+   --    configuration (ACPI-PCI-001) uncached and only with Read_Only
+   --    (Cache; CuBit.ACPI_Memory_Classes.Writable_Of).
+   --  * A PCI configuration window is granted only when the startup plan
+   --    also approves (acpi-pci-config approve-declared); without it the
+   --    grant holds no PCI_Config window at all.
    --  * Kind and Cache are what INSPECT_CAPABILITY (CuBit.Handles.IPC.
    --    Describe (Memory).Authority_Tag) says; Launch.Named fills them.
    --  * No unmap call exists: a mapping lasts until the process exits.

@@ -108,7 +108,9 @@ package body ACPI_Startup_Diagnostics is
         when ACPI_Device_Policy.Regions_Unavailable => "REGIONS_UNAVAILABLE",
         when ACPI_Device_Policy.Region_Initialization_Failed => "REGION_INITIALIZATION_FAILED");
 
-   function Format_Field_Failure (Item : ACPI_Bootstrap.Finish_Report) return String is
+   function Format_Field_Failure
+     (Item : ACPI_Bootstrap.Finish_Report;
+      Capacity : ACPI_Capacity_Diagnostics.Report := ACPI_Capacity_Diagnostics.No_Report) return String is
       function Space_Name return String is
       begin
          if not Item.Execution.Modules.Field_Failure.Region_Known then return "UNKNOWN"; end if;
@@ -129,11 +131,16 @@ package body ACPI_Startup_Diagnostics is
         Item.Execution.Phase /= ACPI_Service.Module_Execution_Reported or else
         not Item.Execution.Modules.Field_Failure.Present
       then return "acpi: stage aml-field ok NONE"; end if;
-      return "acpi: stage aml-field fail " & Execution_Name (Item.Execution.Modules.Field_Failure.Failure)
+      return "acpi: stage aml-field fail " & (if ACPI_Capacity_Diagnostics.Present (Capacity)
+           and then Item.Execution.Modules.Field_Failure.Failure in AML_Execute.Unsupported_Value
+           then "CAPACITY"
+           else Execution_Name (Item.Execution.Modules.Field_Failure.Failure))
         & " name=" & Item.Execution.Modules.Field_Failure.Name
         & " region=" & Item.Execution.Modules.Field_Failure.Region
         & " space=" & Space_Name
-        & " direction=" & (if Item.Execution.Modules.Field_Failure.For_Write then "WRITE" else "READ");
+        & " direction=" & (if Item.Execution.Modules.Field_Failure.For_Write then "WRITE" else "READ")
+        & (if ACPI_Capacity_Diagnostics.Present (Capacity)
+           then " " & ACPI_Capacity_Diagnostics.Format (Capacity) else "");
    end Format_Field_Failure;
 
    function Format (Item : ACPI_Bootstrap.Finish_Report) return String is

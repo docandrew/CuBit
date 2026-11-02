@@ -1,4 +1,5 @@
 [
+  "tests/acpi-target-heap-model",
   "shared/acpi",
   "shared/boot",
   "shared/firmware",

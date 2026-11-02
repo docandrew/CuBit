@@ -1,4 +1,6 @@
 pragma Ada_2022;
+with ACPI_Capacity_Diagnostics;
+with ACPI_Target_Storage;
 with AML_Identity;
 with ACPI_Locked_NVS_Protocol;
 with AML_Field_Access;
@@ -17,7 +19,9 @@ generic
       Item : ACPI_NVS_Protocol.Packet; Reply : out ACPI_NVS_Protocol.Packet;
       Delivered : out ACPI_NVS_Protocol.Wire.Delivery);
    with procedure Read_Deadline (Deadline : out ACPI_NVS_Protocol.Wire.Time_Instant);
-   Maximum_Targets : Positive := AML_Field_Access.Default_Maximum_Registers;
+   Initial_Target_Capacity : Positive := AML_Field_Access.Default_Maximum_Registers;
+   with procedure Record_Capacity_Failure
+     (Item : ACPI_Capacity_Diagnostics.Report) is null;
 package ACPI_Field_NVS_Provider is
    type Phase is (Fresh, Provisioning, Ready, Failed);
    type Context is limited private;
@@ -61,21 +65,21 @@ private
      (Channel : in out Channel_State; Destination : Peer; Deadline : P.Wire.Time_Instant;
       Item : P.Packet; Reply : out P.Packet; Delivered : out P.Wire.Delivery);
    package Client is new ACPI_NVS_Client (Channel_State, Peer, No_Peer, Read_Clock, Exchange_Tracked);
-   subtype Target_Count is Natural range 0 .. Maximum_Targets;
-   subtype Target_Index is Positive range 1 .. Maximum_Targets;
+   subtype Target_Index is Positive;
    type Association is record
       Geometry : AML_Field_Layout.Register_Geometry;
       Record_ID, Offset : Client.Word := 0;
    end record;
-   type Associations is array (Target_Index) of Association;
+   -- Heap storage grows on demand; ordinals remain stable across growth.
+   package Storage is new ACPI_Target_Storage
+     (Association, Initial_Target_Capacity);
    type Context is limited record
       Stage : Phase := Fresh;
       Issuer : AML_Identity.Identity := AML_Identity.No_Identity;
       Symbol : AML_Field_Access.Endpoint_ID := AML_Field_Access.No_Endpoint;
       Lower : Client.Context;
       Channel : Channel_State;
-      Count : Target_Count := 0;
-      Items : Associations;
+      Items : Storage.Context;
       Issued : AML_Field_Access.Counter := 0;
       Working : Boolean := False;
       Captured, Fault : AML_Field_Access.Observation;

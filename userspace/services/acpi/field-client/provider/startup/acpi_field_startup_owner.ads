@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with ACPI_Capacity_Diagnostics;
 with Interfaces;
 with ACPI_Field_Clock;
 with ACPI_Service_Core;
@@ -41,6 +42,7 @@ package ACPI_Field_Startup_Owner is
       Stage : Phase := Fresh;
       Module_Attempted, Module_Completed, IO_Pending : Boolean := False;
       Registers : Natural := 0;
+      Capacity : ACPI_Capacity_Diagnostics.Report := ACPI_Capacity_Diagnostics.No_Report;
    end record;
    function Observe return Report;
    -- One package instance is one serialized process lifetime. Destination
@@ -71,15 +73,17 @@ package ACPI_Field_Startup_Owner is
      with Pre => Core.Valid (Service) and then not Result'Constrained;
    function Uncertain return AML_Field_Access.Observation;
 private
+   Last_Capacity : ACPI_Capacity_Diagnostics.Report := ACPI_Capacity_Diagnostics.No_Report;
+   procedure Record_Capacity_Failure (Item : ACPI_Capacity_Diagnostics.Report);
    procedure Read_Window (Now, Deadline : out Wire.Time_Instant);
    package Scalar is new ACPI_Field_Inventory_Owner
      (Transport_State, Endpoint, No_Endpoint, Read_Clock, Exchange, Read_Window,
       Maximum_Registers, Maximum_Confirmations);
    procedure Read_NVS_Deadline (Deadline : out Wire.Time_Instant);
    package Memory is new ACPI_Field_NVS_Provider
-     (Transport_State, Endpoint, No_Endpoint, Read_Clock, Exchange, Read_NVS_Deadline, Maximum_Bindings);
+     (Transport_State, Endpoint, No_Endpoint, Read_Clock, Exchange, Read_NVS_Deadline, Maximum_Bindings, Record_Capacity_Failure);
    package Plain is new ACPI_Field_Combined_Provider
-     (Endpoint, Scalar, Memory, Read_Clock, Read_Window, Maximum_Registers + Maximum_Bindings);
+     (Endpoint, Scalar, Memory, Read_Clock, Read_Window, Maximum_Registers + Maximum_Bindings, Record_Capacity_Failure);
    function Plain_Ready (IO : Plain.Context) return Boolean;
    package Plain_View is new ACPI_Field_Provider_View
      (Plain.Context, Plain_Ready, Plain.Identity, Plain.Pending, Plain.Register_Count,

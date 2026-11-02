@@ -2,6 +2,26 @@
   "version": 1,
   "inputs": [
     {
+      "path": "shared/acpi/acpi_field_protocol_frames.adb",
+      "sha256": "77f8164c2f8aa5fffb414f5e4c152a035004bb8eb96fc38003278a6fe3906d0a",
+      "kind": "ada"
+    },
+    {
+      "path": "shared/acpi/acpi_field_protocol_frames.ads",
+      "sha256": "fbfb188f2f214b8be0f949c2448bfeaeebc7b2c6ac575608f1122d81d01f946c",
+      "kind": "ada"
+    },
+    {
+      "path": "shared/acpi/acpi_global_lock_protocol.adb",
+      "sha256": "dcdb98355a24878b31e752205c1d398a6faaab11168912f0ca32503f06afc929",
+      "kind": "ada"
+    },
+    {
+      "path": "shared/acpi/acpi_global_lock_protocol.ads",
+      "sha256": "da8a30b403e4af90a46e3b2c30d199e19a5adbab4697dc760ec27abca00ef6b7",
+      "kind": "ada"
+    },
+    {
       "path": "shared/acpi/acpi_inventory_protocol.adb",
       "sha256": "0580d3efe6633dabd18e3a1c5b76768da30ca47552b26eef164408062e48bcb0",
       "kind": "ada"
@@ -9,6 +29,26 @@
     {
       "path": "shared/acpi/acpi_inventory_protocol.ads",
       "sha256": "21ebfe8f250e06985e360810deae35c374a043e032b6a64bb0225c37a9808328",
+      "kind": "ada"
+    },
+    {
+      "path": "shared/acpi/acpi_locked_nvs_protocol.adb",
+      "sha256": "d00b625a05345e1191e1e6fc5c3dda753b2448376961c0369d311433b9390aba",
+      "kind": "ada"
+    },
+    {
+      "path": "shared/acpi/acpi_locked_nvs_protocol.ads",
+      "sha256": "fbabc9f5b2ae8812104939b8ab2079530fe290157ac5948751e3760d624afc32",
+      "kind": "ada"
+    },
+    {
+      "path": "shared/acpi/acpi_nvs_protocol.adb",
+      "sha256": "91144adca7302f4b3dbeb155924badcb67b3b88eb5b35e98ddb089bf59e0be91",
+      "kind": "ada"
+    },
+    {
+      "path": "shared/acpi/acpi_nvs_protocol.ads",
+      "sha256": "d9e44886e0bf055276fca31ea9da9f5586b2b4bf3bc50e141921cbcd9098c249",
       "kind": "ada"
     },
     {
@@ -88,7 +128,7 @@
     },
     {
       "path": "shared/capabilities/capability_abi.ads",
-      "sha256": "3d5d15cc1e0d4826bf2a6d0bdb87a7f25f49eddd64d3674414925365ade17fe4",
+      "sha256": "845dec7e6ce5b6e8aa2fb618ca6710322c949cd16ede3dcd213b9dd4b96e01bc",
       "kind": "ada"
     },
     {
@@ -375,6 +415,14 @@
       "path": "userspace/services/acpi/acpi_bootstrap.ads",
       "kind": "ada",
       "sha256": "f0f7480e38a524ec5a188742b9bee28a9e4e4435cf6798ee7ece565937b033b1"
+    },
+    {
+      "path": "userspace/services/acpi/acpi_capacity_diagnostics.adb",
+      "sha256": "5442daaf2e52fdfce7d8817b288b74f253b1e9c15168218a93281ca9ba12b83b"
+    },
+    {
+      "path": "userspace/services/acpi/acpi_capacity_diagnostics.ads",
+      "sha256": "a7d5634c95358094b285201d190bf76ba8cad46b7b207a52b0d3ad4102064a81"
     },
     {
       "path": "userspace/services/acpi/acpi_device_initialization.adb",
@@ -742,6 +790,26 @@
       "kind": "ada"
     },
     {
+      "path": "userspace/services/acpi/field-client/inventory/acpi_global_lock_client_native.adb",
+      "sha256": "de0f3117c8f06910308864f69e6ee6a45f633174ebce1bb448ff2c3ec6955ef7",
+      "kind": "ada"
+    },
+    {
+      "path": "userspace/services/acpi/field-client/inventory/acpi_global_lock_client_native.ads",
+      "sha256": "120f93df4e9d8fde29070f53de5baac4f23e6cf90ba8ff39df21cf3d783bafba",
+      "kind": "ada"
+    },
+    {
+      "path": "userspace/services/acpi/field-client/inventory/acpi_global_lock_client.adb",
+      "sha256": "c7557b8181330a9cea1e0e62f9a9eb07a9536d3e7c0bb40a4ffd6903753aa756",
+      "kind": "ada"
+    },
+    {
+      "path": "userspace/services/acpi/field-client/inventory/acpi_global_lock_client.ads",
+      "sha256": "179921d4496e96a99d92887070e3b2c7c4bbbd34d6dc32480d1e4693502cc8ab",
+      "kind": "ada"
+    },
+    {
       "path": "userspace/services/acpi/field-client/inventory/acpi_inventory_client.adb",
       "sha256": "c7fc5c68fa0e333fe898aae8cd71226eda8aeed88d1d7daee7b4c93cde00b282",
       "kind": "ada"
@@ -762,6 +830,44 @@
       "kind": "ada"
     },
     {
+      "path": "userspace/services/acpi/field-client/inventory/acpi_locked_nvs_client.adb",
+      "sha256": "001290fa6c8390c219fc745729ce82f7a133810944091527cf06f0f83f0f03cf",
+      "kind": "ada"
+    },
+    {
+      "path": "userspace/services/acpi/field-client/inventory/acpi_locked_nvs_client.ads",
+      "sha256": "ee84595f8321cd170e6c74a40dbf110f2f3496a045aa3e682c28e17b5bc054ed",
+      "kind": "ada"
+    },
+    {
+      "path": "userspace/services/acpi/field-client/inventory/acpi_nvs_client.adb",
+      "sha256": "52763353d9b372a6aeeec14a70a1d9a20dc5eebbb0ad27c9216244c85b0490cc",
+      "kind": "ada"
+    },
+    {
+      "path": "userspace/services/acpi/field-client/inventory/acpi_nvs_client.ads",
+      "sha256": "6f7187a96890e5b373abf8c9a76704c146461c647e076ed3c37c123de9906b64",
+      "kind": "ada"
+    },
+    {
+      "path": "userspace/services/acpi/field-client/provider/acpi_capacity_growth.adb",
+      "sha256": "05b252f3b5d3c0c801ae9504188b16337672454721d09710d4e25298838badcc"
+    },
+    {
+      "path": "userspace/services/acpi/field-client/provider/acpi_capacity_growth.ads",
+      "sha256": "eca1e985fce2810b94cb3eb00e929ab1bb175261469da78b30ac4d5f624a9a1e"
+    },
+    {
+      "path": "userspace/services/acpi/field-client/provider/acpi_field_combined_provider.adb",
+      "sha256": "3f32f52148aeb2cdcf92bc437626398700c598bf7ee50aba6668f301447d4c7e",
+      "kind": "ada"
+    },
+    {
+      "path": "userspace/services/acpi/field-client/provider/acpi_field_combined_provider.ads",
+      "sha256": "dc193eb9f1c1c45d62c1bd2319eba18feca4c8adc492a2fa6044eafa4766fdb0",
+      "kind": "ada"
+    },
+    {
       "path": "userspace/services/acpi/field-client/provider/acpi_field_inventory_owner.adb",
       "sha256": "a044f615f34e12447794680c634e3b41155786afd200a498d7e6332fe90f139d",
       "kind": "ada"
@@ -769,6 +875,31 @@
     {
       "path": "userspace/services/acpi/field-client/provider/acpi_field_inventory_owner.ads",
       "sha256": "95b1acdfcbcaffbc398225583e2dae20b3e1c94615197ebb5416e16fcd9f47ec",
+      "kind": "ada"
+    },
+    {
+      "path": "userspace/services/acpi/field-client/provider/acpi_field_lease_scope.adb",
+      "sha256": "77f4de39bd305e2c6ffe656838dcfc3a45b91c503da8ec081a5c35ecd5e8d243",
+      "kind": "ada"
+    },
+    {
+      "path": "userspace/services/acpi/field-client/provider/acpi_field_lease_scope.ads",
+      "sha256": "a80ff56baba135b18536cfeb13af54070f2521f57995cf66e0a8bb4078fac163",
+      "kind": "ada"
+    },
+    {
+      "path": "userspace/services/acpi/field-client/provider/acpi_field_nvs_provider.adb",
+      "sha256": "105e336939f77c52effb3b30b6b2f9f012634b0e69252dbd7674c130b90a808a",
+      "kind": "ada"
+    },
+    {
+      "path": "userspace/services/acpi/field-client/provider/acpi_field_nvs_provider.ads",
+      "sha256": "0d7c3af1be09971be3a4c1b4d97d8e1e5d2afde552d9713231caf33449678398",
+      "kind": "ada"
+    },
+    {
+      "path": "userspace/services/acpi/field-client/provider/acpi_field_provider_view.ads",
+      "sha256": "ebeb04d5103257c0387a582001534fe987d94090a9e87ac3f74cb38ebcdfbc4c",
       "kind": "ada"
     },
     {
@@ -782,6 +913,32 @@
       "kind": "ada"
     },
     {
+      "path": "userspace/services/acpi/field-client/provider/acpi_field_scoped_provider.adb",
+      "sha256": "ccc40ea15fe4aafc30dca5b452782570d001e9b3460efb88646281b0a05afaa3",
+      "kind": "ada"
+    },
+    {
+      "path": "userspace/services/acpi/field-client/provider/acpi_field_scoped_provider.ads",
+      "sha256": "09dbe40a6a13be176c5162ce6b1457872dde5e1fe750328bb5012c085e5223b9",
+      "kind": "ada"
+    },
+    {
+      "path": "userspace/services/acpi/field-client/provider/acpi_target_heap.adb",
+      "sha256": "f2b3b47e2f3fec96159988d63717ada69e2d49c8ad3c15257c81830965eeb75c"
+    },
+    {
+      "path": "userspace/services/acpi/field-client/provider/acpi_target_heap.ads",
+      "sha256": "911864c46e0356435b770e1c32aac33a9c32c9067dee7d9ddab384d10ea700be"
+    },
+    {
+      "path": "userspace/services/acpi/field-client/provider/acpi_target_storage.adb",
+      "sha256": "f70fc559c7c6c0c3b053ca0c0bcdf9505cf2a6fa38353252d80eff03b3c8d77b"
+    },
+    {
+      "path": "userspace/services/acpi/field-client/provider/acpi_target_storage.ads",
+      "sha256": "9428fc73629290ecd7fa41373e2f3af090db3d673c1ffdfbb67cb191eeaeebdb"
+    },
+    {
       "path": "userspace/services/acpi/field-client/provider/startup/acpi_field_bindings.adb",
       "sha256": "5b507e7e20d5136b815cb214664001c486f102b86f4724cc19260d122e6aa48d",
       "kind": "ada"
@@ -789,6 +946,16 @@
     {
       "path": "userspace/services/acpi/field-client/provider/startup/acpi_field_bindings.ads",
       "sha256": "fb5ef9d530b2b32ba9df2757a4e6873ab97dd56bde321b77ad70d9466bb3d96b",
+      "kind": "ada"
+    },
+    {
+      "path": "userspace/services/acpi/field-client/provider/startup/acpi_field_clock.adb",
+      "sha256": "7a0df16dafe04ff0c5c20ed3a0184196182f7493b94b288d79a42586f7d4e4db",
+      "kind": "ada"
+    },
+    {
+      "path": "userspace/services/acpi/field-client/provider/startup/acpi_field_clock.ads",
+      "sha256": "0a6495fec7292a817e4956ee5ed5a21b77cea73c3e0db83582f4938fe4affb4e",
       "kind": "ada"
     },
     {
@@ -813,12 +980,22 @@
     },
     {
       "path": "userspace/services/acpi/field-client/provider/startup/acpi_field_startup_owner.adb",
-      "sha256": "2fd1d3a98b9362ad44e655af49b0172bbcd0c84246a03921ea0b70b827896ef8",
+      "sha256": "2cf6a07b3ce9304e7f40b1fe15f20dd7a44697e2a2e48bdbbc66f3ec42e0122f",
       "kind": "ada"
     },
     {
       "path": "userspace/services/acpi/field-client/provider/startup/acpi_field_startup_owner.ads",
-      "sha256": "846107ab3407169093721c93a970c7618d18040c33e8db72a2673539408678b7",
+      "sha256": "425261736a53d22de3701b017c12eb5d5c6503d2545726e9b49eb52b4a511cce",
+      "kind": "ada"
+    },
+    {
+      "path": "userspace/services/acpi/field-client/transport/acpi_field_protocol_transport.adb",
+      "sha256": "fbc7c482e36caab1d1920843747d4ddabefe86fe4cede2f370bccbec62419853",
+      "kind": "ada"
+    },
+    {
+      "path": "userspace/services/acpi/field-client/transport/acpi_field_protocol_transport.ads",
+      "sha256": "8da094292980c01e24ee074038f31b11a6682b913c75c5f8697e687f5bc95cfe",
       "kind": "ada"
     },
     {
@@ -2335,151 +2512,6 @@
       "path": "userspace/services/acpi/resource-data/acpi_resource_data.ads",
       "kind": "ada",
       "sha256": "704a461f20c90cbde9e15c34fc457373b2fed6d3e948d4706daa2ffe55ee8532"
-    },
-    {
-      "path": "userspace/services/acpi/field-client/provider/acpi_field_provider_view.ads",
-      "sha256": "ebeb04d5103257c0387a582001534fe987d94090a9e87ac3f74cb38ebcdfbc4c",
-      "kind": "ada"
-    },
-    {
-      "path": "userspace/services/acpi/field-client/provider/startup/acpi_field_clock.ads",
-      "sha256": "0a6495fec7292a817e4956ee5ed5a21b77cea73c3e0db83582f4938fe4affb4e",
-      "kind": "ada"
-    },
-    {
-      "path": "userspace/services/acpi/field-client/provider/startup/acpi_field_clock.adb",
-      "sha256": "7a0df16dafe04ff0c5c20ed3a0184196182f7493b94b288d79a42586f7d4e4db",
-      "kind": "ada"
-    },
-    {
-      "path": "userspace/services/acpi/field-client/inventory/acpi_global_lock_client.ads",
-      "sha256": "179921d4496e96a99d92887070e3b2c7c4bbbd34d6dc32480d1e4693502cc8ab",
-      "kind": "ada"
-    },
-    {
-      "path": "userspace/services/acpi/field-client/inventory/acpi_global_lock_client.adb",
-      "sha256": "c7557b8181330a9cea1e0e62f9a9eb07a9536d3e7c0bb40a4ffd6903753aa756",
-      "kind": "ada"
-    },
-    {
-      "path": "userspace/services/acpi/field-client/inventory/acpi_locked_nvs_client.ads",
-      "sha256": "ee84595f8321cd170e6c74a40dbf110f2f3496a045aa3e682c28e17b5bc054ed",
-      "kind": "ada"
-    },
-    {
-      "path": "userspace/services/acpi/field-client/inventory/acpi_locked_nvs_client.adb",
-      "sha256": "001290fa6c8390c219fc745729ce82f7a133810944091527cf06f0f83f0f03cf",
-      "kind": "ada"
-    },
-    {
-      "path": "userspace/services/acpi/field-client/provider/acpi_field_lease_scope.ads",
-      "sha256": "a80ff56baba135b18536cfeb13af54070f2521f57995cf66e0a8bb4078fac163",
-      "kind": "ada"
-    },
-    {
-      "path": "userspace/services/acpi/field-client/provider/acpi_field_lease_scope.adb",
-      "sha256": "77f4de39bd305e2c6ffe656838dcfc3a45b91c503da8ec081a5c35ecd5e8d243",
-      "kind": "ada"
-    },
-    {
-      "path": "userspace/services/acpi/field-client/provider/acpi_field_scoped_provider.ads",
-      "sha256": "09dbe40a6a13be176c5162ce6b1457872dde5e1fe750328bb5012c085e5223b9",
-      "kind": "ada"
-    },
-    {
-      "path": "userspace/services/acpi/field-client/provider/acpi_field_scoped_provider.adb",
-      "sha256": "ccc40ea15fe4aafc30dca5b452782570d001e9b3460efb88646281b0a05afaa3",
-      "kind": "ada"
-    },
-    {
-      "path": "shared/acpi/acpi_global_lock_protocol.ads",
-      "sha256": "da8a30b403e4af90a46e3b2c30d199e19a5adbab4697dc760ec27abca00ef6b7",
-      "kind": "ada"
-    },
-    {
-      "path": "shared/acpi/acpi_global_lock_protocol.adb",
-      "sha256": "dcdb98355a24878b31e752205c1d398a6faaab11168912f0ca32503f06afc929",
-      "kind": "ada"
-    },
-    {
-      "path": "userspace/services/acpi/field-client/provider/acpi_field_nvs_provider.ads",
-      "sha256": "35c8638b77fb627e87e432bf6ccb4a791ebc394f9396af4c49ff7fc7e0598507",
-      "kind": "ada"
-    },
-    {
-      "path": "userspace/services/acpi/field-client/provider/acpi_field_nvs_provider.adb",
-      "sha256": "33735c77db366ef8ee137eb3e8253cd05e3b03800fec8f2024cd2440b0c1f404",
-      "kind": "ada"
-    },
-    {
-      "path": "userspace/services/acpi/field-client/provider/acpi_field_combined_provider.ads",
-      "sha256": "bb061f51ce2ad91798fdbe0eb569e6242c6e48af24cfc342ec92430f93215722",
-      "kind": "ada"
-    },
-    {
-      "path": "userspace/services/acpi/field-client/provider/acpi_field_combined_provider.adb",
-      "sha256": "9b5ac6be8c3ba588594f8d9ec2531b04872cc40ec1ca30dcd276e6a1a7232e45",
-      "kind": "ada"
-    },
-    {
-      "path": "shared/acpi/acpi_field_protocol_frames.ads",
-      "sha256": "fbfb188f2f214b8be0f949c2448bfeaeebc7b2c6ac575608f1122d81d01f946c",
-      "kind": "ada"
-    },
-    {
-      "path": "shared/acpi/acpi_field_protocol_frames.adb",
-      "sha256": "77f8164c2f8aa5fffb414f5e4c152a035004bb8eb96fc38003278a6fe3906d0a",
-      "kind": "ada"
-    },
-    {
-      "path": "userspace/services/acpi/field-client/transport/acpi_field_protocol_transport.ads",
-      "sha256": "8da094292980c01e24ee074038f31b11a6682b913c75c5f8697e687f5bc95cfe",
-      "kind": "ada"
-    },
-    {
-      "path": "userspace/services/acpi/field-client/transport/acpi_field_protocol_transport.adb",
-      "sha256": "fbc7c482e36caab1d1920843747d4ddabefe86fe4cede2f370bccbec62419853",
-      "kind": "ada"
-    },
-    {
-      "path": "userspace/services/acpi/field-client/inventory/acpi_global_lock_client_native.ads",
-      "sha256": "120f93df4e9d8fde29070f53de5baac4f23e6cf90ba8ff39df21cf3d783bafba",
-      "kind": "ada"
-    },
-    {
-      "path": "userspace/services/acpi/field-client/inventory/acpi_global_lock_client_native.adb",
-      "sha256": "de0f3117c8f06910308864f69e6ee6a45f633174ebce1bb448ff2c3ec6955ef7",
-      "kind": "ada"
-    },
-    {
-      "path": "shared/acpi/acpi_locked_nvs_protocol.ads",
-      "sha256": "fbabc9f5b2ae8812104939b8ab2079530fe290157ac5948751e3760d624afc32",
-      "kind": "ada"
-    },
-    {
-      "path": "shared/acpi/acpi_locked_nvs_protocol.adb",
-      "sha256": "d00b625a05345e1191e1e6fc5c3dda753b2448376961c0369d311433b9390aba",
-      "kind": "ada"
-    },
-    {
-      "path": "userspace/services/acpi/field-client/inventory/acpi_nvs_client.ads",
-      "sha256": "6f7187a96890e5b373abf8c9a76704c146461c647e076ed3c37c123de9906b64",
-      "kind": "ada"
-    },
-    {
-      "path": "userspace/services/acpi/field-client/inventory/acpi_nvs_client.adb",
-      "sha256": "52763353d9b372a6aeeec14a70a1d9a20dc5eebbb0ad27c9216244c85b0490cc",
-      "kind": "ada"
-    },
-    {
-      "path": "shared/acpi/acpi_nvs_protocol.ads",
-      "sha256": "d9e44886e0bf055276fca31ea9da9f5586b2b4bf3bc50e141921cbcd9098c249",
-      "kind": "ada"
-    },
-    {
-      "path": "shared/acpi/acpi_nvs_protocol.adb",
-      "sha256": "91144adca7302f4b3dbeb155924badcb67b3b88eb5b35e98ddb089bf59e0be91",
-      "kind": "ada"
     }
   ],
   "cases": {

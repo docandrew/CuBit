@@ -27,12 +27,16 @@
 --  Memory_Window_Request (slice 2): the same kind of call, words
 --  (Window_Word) = K (1 .. Maximum_Memory_Windows). devmgr answers with its
 --  K-th ACPI firmware-memory window, ascending by address: the kernel's
---  firmware-memory root itself (an ACPI NVS run or the FACS page), claimed
---  for ACPI since devmgr started, never narrowed or widened. REPLY_OK
---  carries it with read, write and grant, and words (First_Word) = its first
---  physical byte, words (Bytes_Word) = its length (procmgr installs a copy
---  without grant; the program reads the extent back from the kernel, never
---  these words). Reply_Error: there is no K-th window (the windows end).
+--  firmware-memory root itself (an ACPI NVS run, the FACS page, or PCI
+--  segment 0 bus 0's ECAM slice), claimed for ACPI since devmgr started,
+--  never narrowed or widened. REPLY_OK carries it with read and grant, and
+--  write unless it is PCI configuration (CuBit.ACPI_Memory_Classes.
+--  Writable_Of), and words (First_Word) = its first physical byte, words
+--  (Bytes_Word) = its length (procmgr installs a copy without grant, and the
+--  PCI slice only for a program the startup plan approves with
+--  acpi-pci-config; the program reads the extent and kind back from the
+--  kernel, never these words). Reply_Error: there is no K-th window (the
+--  windows end).
 ------------------------------------------------------------------------------
 with Interfaces; use Interfaces;
 

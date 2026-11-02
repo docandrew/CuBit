@@ -1,8 +1,12 @@
 project Release is
- for Source_Dirs use ("models", "boundary", "../../userspace/services/acpi", "../../userspace/services/acpi/lib", "../../userspace/services/acpi/snapshot", "../../userspace/services/acpi/request-driver", "../../userspace/services/acpi/region-init", "../../shared/firmware", "../../shared/acpi", "../../userspace/services/acpi/resource-consumer", "../../userspace/services/acpi/hid-i2c", "../../userspace/services/acpi/resource-data", "../../userspace/services/acpi/ec", "../../userspace/lib/i2c-admission", "../../userspace/lib/gpio-admission", "../../userspace/services/acpi/field-client/provider", "../../userspace/services/acpi/field-client/provider/startup", "../../userspace/services/acpi/field-client/inventory", "../../userspace/services/acpi/field-client");
+ for Source_Dirs use ("../acpi-target-heap-model", "models", "boundary", "../../userspace/services/acpi", "../../userspace/services/acpi/lib", "../../userspace/services/acpi/snapshot", "../../userspace/services/acpi/request-driver", "../../userspace/services/acpi/region-init", "../../shared/firmware", "../../shared/acpi", "../../userspace/services/acpi/resource-consumer", "../../userspace/services/acpi/hid-i2c", "../../userspace/services/acpi/resource-data", "../../userspace/services/acpi/ec", "../../userspace/lib/i2c-admission", "../../userspace/lib/gpio-admission", "../../userspace/services/acpi/field-client/provider", "../../userspace/services/acpi/field-client/provider/startup", "../../userspace/services/acpi/field-client/inventory", "../../userspace/services/acpi/field-client");
  for Main use ("owner_tests.adb", "notes_tests.adb");
  for Object_Dir use external ("OWNER_BUILD") & "/obj";
  for Exec_Dir use external ("OWNER_BUILD") & "/bin";
+ for Excluded_Source_Files use ("acpi_target_heap.adb");
+ package Naming is
+  for Body ("ACPI_Target_Heap") use "acpi_target_heap_host.adb";
+ end Naming;
  package Compiler is
   for Default_Switches ("Ada") use ("-O1", "-gnat2022", "-gnatwa", "-gnatwe", "-gnatp");
  end Compiler;

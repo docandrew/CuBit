@@ -56,7 +56,7 @@
     },
     {
       "path": "shared/capabilities/capability_abi.ads",
-      "sha256": "3d5d15cc1e0d4826bf2a6d0bdb87a7f25f49eddd64d3674414925365ade17fe4"
+      "sha256": "845dec7e6ce5b6e8aa2fb618ca6710322c949cd16ede3dcd213b9dd4b96e01bc"
     },
     {
       "path": "shared/firmware/firmware_tables-catalog.adb",
@@ -179,6 +179,14 @@
       "sha256": "ad85bc92372bca950674268c2b1b5507b5edc382b13176f73304a2db5725f52c"
     },
     {
+      "path": "userspace/services/acpi/acpi_capacity_diagnostics.adb",
+      "sha256": "5442daaf2e52fdfce7d8817b288b74f253b1e9c15168218a93281ca9ba12b83b"
+    },
+    {
+      "path": "userspace/services/acpi/acpi_capacity_diagnostics.ads",
+      "sha256": "a7d5634c95358094b285201d190bf76ba8cad46b7b207a52b0d3ad4102064a81"
+    },
+    {
       "path": "userspace/services/acpi/acpi_device_policy.adb",
       "sha256": "c42daea43c1ae1f7df4fea3adcc9f355f67c37eff471ec819635fb8c04032561",
       "kind": "ada"
@@ -273,6 +281,30 @@
     {
       "path": "userspace/services/acpi/events/acpi_gpe_methods.ads",
       "sha256": "de1c8ae0f381249d8e3a071c894bfe5cafa695f46c93b049ef2f8d6bdaa0534a"
+    },
+    {
+      "path": "userspace/services/acpi/field-client/provider/acpi_capacity_growth.adb",
+      "sha256": "05b252f3b5d3c0c801ae9504188b16337672454721d09710d4e25298838badcc"
+    },
+    {
+      "path": "userspace/services/acpi/field-client/provider/acpi_capacity_growth.ads",
+      "sha256": "eca1e985fce2810b94cb3eb00e929ab1bb175261469da78b30ac4d5f624a9a1e"
+    },
+    {
+      "path": "userspace/services/acpi/field-client/provider/acpi_target_heap.adb",
+      "sha256": "f2b3b47e2f3fec96159988d63717ada69e2d49c8ad3c15257c81830965eeb75c"
+    },
+    {
+      "path": "userspace/services/acpi/field-client/provider/acpi_target_heap.ads",
+      "sha256": "911864c46e0356435b770e1c32aac33a9c32c9067dee7d9ddab384d10ea700be"
+    },
+    {
+      "path": "userspace/services/acpi/field-client/provider/acpi_target_storage.adb",
+      "sha256": "f70fc559c7c6c0c3b053ca0c0bcdf9505cf2a6fa38353252d80eff03b3c8d77b"
+    },
+    {
+      "path": "userspace/services/acpi/field-client/provider/acpi_target_storage.ads",
+      "sha256": "9428fc73629290ecd7fa41373e2f3af090db3d673c1ffdfbb67cb191eeaeebdb"
     },
     {
       "path": "userspace/services/acpi/lib/acpi_fadt-transactions.adb",

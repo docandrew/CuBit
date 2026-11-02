@@ -4,6 +4,7 @@ with AML_Decode;
 package body ACPI_Field_NVS_Provider is
    package A renames AML_Field_Access;
    package L renames AML_Field_Layout;
+   use type Storage.Outcome;
    use type AML_Decode.Byte;
    use type A.Counter, A.Endpoint_ID, AML_Identity.Identity;
    use type L.Register_Geometry, Client.Phase, Client.Outcome, P.Wire.Delivery;
@@ -42,6 +43,8 @@ package body ACPI_Field_NVS_Provider is
       Record_Item : Client.Description;
       Available : Boolean;
       Match, Offset : Client.Word := 0;
+      Slot : Natural;
+      Stored : Storage.Outcome;
    begin
       Target := A.No_Target; Accepted := False;
       if not Live (IO) or else Geometry.Region.Space /= L.Memory_Space
@@ -62,24 +65,28 @@ package body ACPI_Field_NVS_Provider is
          end if;
       end loop;
       if Match = 0 then return; end if;
-      for I in 1 .. IO.Count loop
-         if IO.Items (I).Geometry = Geometry then
+      for I in 1 .. Storage.Length (IO.Items) loop
+         if Storage.Read (IO.Items, I).Geometry = Geometry then
             Target := (IO.Issuer, IO.Symbol, Provider_Epoch, A.Register_ID (I)); Accepted := True; return;
          end if;
       end loop;
-      if IO.Count = Maximum_Targets then return; end if;
-      IO.Count := IO.Count + 1; IO.Items (IO.Count) := (Geometry, Match, Offset);
-      Target := (IO.Issuer, IO.Symbol, Provider_Epoch, A.Register_ID (IO.Count)); Accepted := True;
+      Storage.Append (IO.Items, (Geometry, Match, Offset), Slot, Stored);
+      if Stored /= Storage.Stored then
+         Record_Capacity_Failure (Storage.Capacity_Failure
+           (IO.Items, ACPI_Capacity_Diagnostics.NVS_Targets));
+         return;
+      end if;
+      Target := (IO.Issuer, IO.Symbol, Provider_Epoch, A.Register_ID (Slot)); Accepted := True;
    end Install;
    function Matches (IO : Context; Target : A.Target) return Boolean is
      (Target.Provider = IO.Issuer and then IO.Issuer /= AML_Identity.No_Identity
       and then Target.Endpoint = IO.Symbol and then Target.Epoch = Provider_Epoch
-      and then Target.Register in 1 .. A.Register_ID (IO.Count));
+      and then Target.Register in 1 .. A.Register_ID (Storage.Length (IO.Items)));
    procedure Describe
      (IO : Context; Target : A.Target; Geometry : out L.Register_Geometry; Accepted : out Boolean) is
    begin
       Geometry := (others => <>); Accepted := Live (IO) and then Matches (IO, Target);
-      if Accepted then Geometry := IO.Items (Target_Index (Target.Register)).Geometry; end if;
+      if Accepted then Geometry := Storage.Read (IO.Items, Target_Index (Target.Register)).Geometry; end if;
    end Describe;
    procedure Authorize (IO : Context; Target : A.Target; For_Write : Boolean; Accepted : out Boolean) is
    begin Accepted := not For_Write and then Live (IO) and then Matches (IO, Target)
@@ -93,7 +100,7 @@ package body ACPI_Field_NVS_Provider is
       ID := D.No_Record; Datum := D.Empty_Geometry;
       Authorize (IO, Target, False, Accepted);
       if not Accepted then return; end if;
-      declare Row : Association renames IO.Items (Target_Index (Target.Register)); begin
+      declare Row : constant Association := Storage.Read (IO.Items, Target_Index (Target.Register)); begin
          ID := D.Record_ID (Row.Record_ID); Datum := (Row.Offset, Row.Geometry.Width);
          Accepted := D.Valid (Datum);
          if not Accepted then ID := D.No_Record; Datum := D.Empty_Geometry; end if;
@@ -112,8 +119,8 @@ package body ACPI_Field_NVS_Provider is
       IO.Working := True; IO.Issued := IO.Issued + 1;
       IO.Channel.Delivered := P.Wire.Not_Dispatched;
       Read_Deadline (Deadline);
-      Client.Read (IO.Lower, IO.Channel, IO.Items (Slot).Record_ID, IO.Items (Slot).Offset,
-        IO.Items (Slot).Geometry.Width, Deadline, Value, Result);
+      Client.Read (IO.Lower, IO.Channel, Storage.Read (IO.Items, Slot).Record_ID, Storage.Read (IO.Items, Slot).Offset,
+        Storage.Read (IO.Items, Slot).Geometry.Width, Deadline, Value, Result);
       IO.Working := False;
       if Result = Client.Read_Complete then
          Reply := (A.Completed, IO.Issuer, Value, A.No_Operation);
