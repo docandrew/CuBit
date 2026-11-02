@@ -1,13 +1,9 @@
-# Alloy desktop wallpaper
-
-`cubit-alloy.png` is the unmodified 1024x768 image supplied by the project
-owner as `cubit-alloy-cybersecurity-anime-wallpaper-v3-1024x768.png` on
-2026-09-12. It is not a Bluecurve or IBM asset. No third-party license or
-independent provenance verification is asserted here; confirm redistribution
-terms with the project owner before including this artwork in a public release.
+# Desktop wallpapers
 
 The current default is the owner's unmodified `wallpaper2.png` (5120x1440).
-The same provenance/redistribution caveat above applies to it.
+It is supplied by the project owner; no third-party license or independent
+provenance verification is asserted here, so confirm redistribution terms with
+the project owner before including this artwork in a public release.
 `tools/build_wallpaper_assets.py` validates its size/opacity, reduces it to a
 2048x576 raster (Lanczos) and writes it losslessly as `cubes.qoi` in the asset
 package `Assets/cubit-wallpapers/1/` on each image's system volume
