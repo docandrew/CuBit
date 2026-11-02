@@ -940,6 +940,15 @@ procedure Main is
             ST."=" (Binding.Kind, ST.ACPI_Hardware))
       then
          Put_Line (Output, "with CuBit.ACPI_Windows.Launch;");
+         --  Its firmware-data endpoint (Hardware_Data below).
+         Put_Line (Output, "with CuBit.Firmware_Data_Exchange;");
+         if not (for some Binding of Result.Bindings (1 .. Result.Binding_Count) =>
+                   CCL.Manifests."=" (Binding.Client, CCL.Manifests.Plain) and then Handle_Type (Binding.Kind) /= ""
+                   and then ST."/=" (Binding.Kind, ST.Firmware_Snapshot)
+                   and then ST."/=" (Binding.Kind, ST.ACPI_Hardware))
+         then
+            Put_Line (Output, "with CuBit.Handles.Startup;");
+         end if;
       end if;
       if (for some Binding of Result.Bindings (1 .. Result.Binding_Count) =>
             ST."=" (Binding.Kind, ST.Firmware_Snapshot))
@@ -982,6 +991,13 @@ procedure Main is
                Put_Line (Output, "   function " & Ada_Name (Name) &
                          " return Standard.CuBit.ACPI_Windows.Grant is");
                Put_Line (Output, "     (Standard.CuBit.ACPI_Windows.Launch.Named (""" & Name & """));");
+               --  devmgr's firmware-data endpoint, badged for this grant: present
+               --  only when the plan approved (acpi-firmware-data approve-declared)
+               --  (CuBit.Firmware_Data_Exchange.Data_Label).
+               Put_Line (Output, "   function " & Ada_Name (Name) &
+                         "_Data return Standard.CuBit.Handles.Startup.Optional_Endpoint is");
+               Put_Line (Output, "     (Standard.CuBit.Handles.Startup.Optional_Endpoint_Named");
+               Put_Line (Output, "        (Standard.CuBit.Firmware_Data_Exchange.Data_Label (""" & Name & """)));");
             elsif CCL.Manifests."/=" (Binding.Client, CCL.Manifests.Plain) then
                declare
                   Typed : constant String := "Standard.CuBit.Handles.Services." &

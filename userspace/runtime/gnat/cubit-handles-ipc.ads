@@ -109,6 +109,10 @@ package CuBit.Handles.IPC is
          when Refused => Why  : Refusal := ABI.Limit_Reached;
       end case;
    end record;
+   --  Giving up whatever a reply carried, whatever its kind: Present is
+   --  closed like any handle; Absent and Refused hold nothing and report
+   --  Closed. Item is left as it was, so a failed close keeps the handle.
+   function Close (Item : Carried) return Close_Result;
 
    --  What a delivered reply (or an asynchronous completion's message)
    --  carries, from the flags only the kernel sets.

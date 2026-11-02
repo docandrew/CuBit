@@ -77,6 +77,8 @@ package body CuBit.Handles.IPC is
    function Close (Item : Interrupt) return Close_Result is (Closing (K.Word (Item)));
    function Close (Item : Notification) return Close_Result is (Closing (K.Word (Item)));
    function Close (Item : Scheduling) return Close_Result is (Closing (K.Word (Item)));
+   function Close (Item : Carried) return Close_Result is
+     (if Item.Kind = Present then Closing (Item.Word) else (Closed => True));
 
    function Describing (Word : Unsigned_64) return Description is
       Info   : aliased ABI.Inspection := [others => 0];
