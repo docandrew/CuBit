@@ -66,7 +66,7 @@ procedure Index_Width_Tests is
       Found : Boolean;
    begin
       Locate (Target.Register, S, Found);
-      Geometry := (Region => (Space => 0, Base => 16#1000#, Length => 32),
+      Geometry := (Region => (Space => 0, Base => 16#1000#, Length => 32, PCI => (Known => False)),
         Byte_Offset => AML_Decode.Integer_Value (Offset (S)), Width => Width (S));
       Accepted := Found and then IO.Owner /= AML_Identity.No_Identity
         and then Target.Provider = IO.Owner and then Target.Endpoint = 7 and then Target.Epoch = 1;

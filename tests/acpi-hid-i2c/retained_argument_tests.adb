@@ -47,7 +47,7 @@ procedure Retained_Argument_Tests is
    procedure Describe (Context : IO_Context; Target : AML_Field_Access.Target;
      Geometry : out AML_Field_Layout.Register_Geometry; Accepted : out Boolean) is
    begin
-      Geometry := (Region => (Space => 0, Base => 16#1000#, Length => 1), others => <>);
+      Geometry := (Region => (Space => 0, Base => 16#1000#, Length => 1, PCI => (Known => False)), others => <>);
       Accepted := not Context.Is_Pending and then
         Target = AML_Field_Access.Target'(Context.Owner, 7, 1, 1);
    end Describe;

@@ -28,7 +28,7 @@ procedure EC_Field_Geometry_Tests is
    procedure Check (Condition : Boolean) is
    begin Checks := Checks + 1; if not Condition then raise Program_Error with "EC geometry" & Checks'Image; end if; end Check;
    Field : L.Field_Geometry :=
-     (Region => (Space => L.Embedded_Control_Space, Base => 0, Length => 256),
+     (Region => (Space => L.Embedded_Control_Space, Base => 0, Length => 256, PCI => (Known => False)),
       Bit_Offset => 0, Bit_Length => 8, Flags => 1, Effective_Access => 1, others => <>);
    Register : L.Register_Geometry := (Region => Field.Region, Width => T.Byte_Access, others => <>);
    Item : P.Plan;
@@ -75,7 +75,7 @@ begin
       Descriptor.Geometry := Register;
       Check (Provider.Valid (Descriptor) = (Width = T.Byte_Access));
    end loop;
-   Register := (Region => (Space => L.Embedded_Control_Space, Base => 255, Length => 1), others => <>);
+   Register := (Region => (Space => L.Embedded_Control_Space, Base => 255, Length => 1, PCI => (Known => False)), others => <>);
    Descriptor.Geometry := Register; Check (Provider.Valid (Descriptor));
    Descriptor.Geometry.Region.Base := 256; Check (not Provider.Valid (Descriptor));
    Descriptor.Geometry.Region.Base := 0; Descriptor.Geometry.Region.Length := 257; Check (not Provider.Valid (Descriptor));

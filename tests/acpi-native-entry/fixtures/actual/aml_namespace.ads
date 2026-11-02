@@ -36,6 +36,7 @@ with AML_Execution_Limits;
 with AML_Table_Backing;
 with AML_Objects;
 with AML_Field_Data;
+with ACPI_PCI_Config_Reads;
 --  Stable namespace IDs; temporary method declarations are reclaimed at last exit. IDs are scoped to one State lifetime;
 --  they are not capabilities or externally reusable service handles.
 generic
@@ -61,6 +62,7 @@ generic
        is AML_Events.Unavailable_Timeout;
    Block_Capacity : AML_Execution_Limits.Continuation_Capacity :=
      AML_Execution_Limits.Default_Continuation_Capacity;
+   Enable_PCI_Context : Boolean := False;
 package AML_Namespace with SPARK_Mode is
    use type AML_Table_Sources.Source_Kind;
    use type AML_Decode.Integer_Value;
@@ -220,6 +222,7 @@ package AML_Namespace with SPARK_Mode is
       Space : Region_Space_ID := 0;
       Address, Length : AML_Decode.Integer_Value := 0;
       Width : AML_Decode.Integer_Width := AML_Decode.Bits_64;
+      PCI : AML_Field_Layout.PCI_Route := (Known => False);
       Access_State : Region_Access_State := No_Access;
    end record;
    -- PkgLength encodes exactly 28 bits; cumulative field position is UINT32.
@@ -2100,10 +2103,22 @@ private
    subtype Mutex_Frame_Index is AML_Frame_Handles.Frame_Index range 1 .. AML_Frame_Handles.Max_Active_Frames;
    type Mutex_Frame_Array is array (Mutex_Frame_Index) of AML_Frame_Handles.Frame_Handle;
    type Mutex_Token_Array is array (Mutex_Frame_Index) of Mutex_Registry.Method_Token;
+   type PCI_Setup_Phase is (PCI_Up, PCI_HID, PCI_CID, PCI_ADR, PCI_SEG, PCI_BBN, PCI_Done);
+   type PCI_Setup_Work is record
+      Active : Boolean := False;
+      Ticket : AML_Execute.Field_Context_Ticket := 0;
+      Field, Region, Device, Walk, Host : Reference := AML_References.No_Reference;
+      Stage : PCI_Setup_Phase := PCI_Up;
+      Location : ACPI_PCI_Config_Reads.Location;
+   end record;
+   type PCI_Setup_Array is array (Node_ID) of PCI_Setup_Work;
+
    type Arena is limited record
       Token : AML_Identity.Identity := AML_Identity.No_Identity;
       Tree : State := Empty;
       Invocation_Issued : AML_Frame_Handles.Invocation_Serial := 0;
+      PCI_Work : PCI_Setup_Array;
+      PCI_Issued : AML_Execute.Field_Context_Ticket := 0;
       Retention : Pins.State;
       Frame_Roots : Frame_Pins.State := Frame_Pins.Empty;
       Notifications : Notification_State;

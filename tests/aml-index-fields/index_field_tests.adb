@@ -54,7 +54,7 @@ procedure Index_Field_Tests is
    procedure Describe (IO : Context; Target : A.Target;
      Geometry : out AML_Field_Layout.Register_Geometry; Accepted : out Boolean) is
    begin
-      Geometry := (Region => (Space => 1, Base => 16#1230#, Length => 2),
+      Geometry := (Region => (Space => 1, Base => 16#1230#, Length => 2, PCI => (Known => False)),
         Byte_Offset => (if Target.Register = Data_Register then 1 else 0),
         Width => ACPI_FADT.Transactions.Byte_Access);
       Accepted := IO.Owner /= AML_Identity.No_Identity and then Target.Provider = IO.Owner

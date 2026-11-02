@@ -262,7 +262,7 @@ procedure Remote_Field_Tests is
          ACPI_Region_Policy.Install (Regions (Slot (Position)),Config,OK);
          if not OK then raise Program_Error with "backend installation"; end if;
          P.Install (IO,(Register => IDs (Positive (Position)), Epoch => 1,
-           Geometry => (Region => (Space => 0, Base => Config.Base, Length => Config.Length),
+           Geometry => (Region => (Space => 0, Base => Config.Base, Length => Config.Length, PCI => (Known => False)),
              Byte_Offset => Config.Register_Offset, Width => Config.Register_Width),
            Readable => Config.Readable, Writable => Config.Writable,
            Exact_Write_Safe => Policy /= 4, Write_Mask => Config.Register_Authority.Write_Mask),OK);
@@ -314,7 +314,7 @@ procedure Remote_Field_Tests is
                "explicit trusted backend regrant advances epoch");
             P.Revoke_Register (IO,Targets (1),OK); Check (OK,"revoke old metadata before replacement");
             P.Install (IO,(Register => IDs (1),Epoch => 2,
-              Geometry => (Region => (Space => 0,Base => Config.Base,Length => Config.Length),
+              Geometry => (Region => (Space => 0,Base => Config.Base,Length => Config.Length, PCI => (Known => False)),
                 Byte_Offset => 0,Width => T.Qword_Access),Readable => True,Writable => True,
               Exact_Write_Safe => True,Write_Mask => Unsigned_64'Last),OK);
             Check (OK,"new epoch metadata association");
@@ -399,7 +399,7 @@ procedure Remote_Field_Tests is
       P.Initialize (IO,2,8,OK); Check (not OK,"no retarget");
       P.Initialize (Other,1,7,OK); Check (OK,"other context");
       D := (Register => IDs (1), Epoch => 1,
-        Geometry => (Region => (Space => 0, Base => 16#1000#, Length => 16),
+        Geometry => (Region => (Space => 0, Base => 16#1000#, Length => 16, PCI => (Known => False)),
           Byte_Offset => 0, Width => T.Qword_Access),
         Readable => True, Writable => True, Exact_Write_Safe => True,
         Write_Mask => Unsigned_64'Last);
@@ -481,7 +481,7 @@ procedure Remote_Field_Tests is
          Register_Offset => 0, Register_Width => T.Qword_Access);
       D : P.Descriptor :=
         (Register => A.Register_ID (Config.Register_Authority.Resource_ID), Epoch => 1,
-         Geometry => (Region => (Space => 0, Base => Config.Base, Length => Config.Length),
+         Geometry => (Region => (Space => 0, Base => Config.Base, Length => Config.Length, PCI => (Known => False)),
            Byte_Offset => 0, Width => T.Qword_Access), Readable => True, Writable => True,
          Exact_Write_Safe => True, Write_Mask => Unsigned_64'Last);
       Target : A.Target;
@@ -515,7 +515,7 @@ procedure Remote_Field_Tests is
    procedure Exercise_Exact_Layout is
       package L renames AML_Field_Layout;
       Field : L.Field_Geometry :=
-        (Region => (Space => L.Memory_Space,Base => 16#1000#,Length => 16),
+        (Region => (Space => L.Memory_Space,Base => 16#1000#,Length => 16, PCI => (Known => False)),
          Bit_Offset => 0,Bit_Length => 64,Flags => 4,Effective_Access => 4,others => <>);
       Register : L.Register_Geometry := (Region => Field.Region,Byte_Offset => 0,Width => T.Qword_Access);
    begin

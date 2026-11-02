@@ -53,6 +53,9 @@ package Devmgr_Launches is
       with procedure Warn (Text : String);
    procedure Forward_Refusals;
 
+   --  A handle refusal's name, for devmgr's warnings.
+   function Text (Why : H.Refusal) return String;
+
    --  The endpoint a (service ...) request for Role resolves to: untagged,
    --  with Grant (a child gets a copy with the rights it asked for).
    procedure Provide (Role : Unsigned_32; Service : H.Endpoint);

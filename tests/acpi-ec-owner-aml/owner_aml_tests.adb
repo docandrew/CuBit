@@ -456,7 +456,7 @@ begin
    EC_Device := Find (C.Namespace.Root, "EC00"); Lid_Device := Find (C.Namespace.Root, "LID0");
    Provider.Initialize (IO, 1, 7, Accepted); Check (Accepted);
    Provider.Install (IO, (Register => Register_ID, Epoch => Epoch,
-      Geometry => (Region => (Space => AML_Field_Layout.Embedded_Control_Space, Base => 0, Length => 256),
+      Geometry => (Region => (Space => AML_Field_Layout.Embedded_Control_Space, Base => 0, Length => 256, PCI => (Known => False)),
          Byte_Offset => 16#10#, Width => T.Byte_Access),
       Readable => True, Writable => True, Exact_Write_Safe => True, Write_Mask => 16#FF#), Accepted); Check (Accepted);
    Targets (1) := (Provider.Identity (IO), 7, Epoch, Register_ID);

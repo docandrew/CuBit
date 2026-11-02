@@ -67,3 +67,8 @@ evidence and changes layout admission and Namespace binding. No new proof of
 that functionality is claimed. In particular, the earlier Admitted proof that
 excluded Qword is historical. Run this recipe on the current pinned inputs to
 obtain fresh selected proof results; registration alone is not a proof rerun.
+
+The PCI route metadata update refreshes this maintained recipe and input pins,
+including the shared protocol directory and pure PCI planner dependency. It
+does not rerun or renew the historical proof counts above. Fresh results must
+be obtained and audited against these exact current inputs.

@@ -5,7 +5,7 @@ in the pinned Nix environment, with `TMPDIR=/home/doc/cubit-build-tmp` set befor
 entering Nix. Run `bash tests/aml-bank-access/check_reference.sh` to verify the
 saved normal ACPICA observations without invoking ACPICA or building anything.
 
-The actual service core passes 516 checks in each profile. Banked fields use an
+The actual service core is exercised in both checked and release profiles. Banked fields use an
 explicit trusted `Field_IO.Add_Region_Register` catalog associated with a live
 OperationRegion descriptor, copied named target and geometry, and separate read
 and write permissions. Ordinary Field bindings do not imply catalog entries.
@@ -45,3 +45,5 @@ cases cover preflight denial of the last target, late permission/geometry change
 known failures, malformed completed acknowledgements and clearing bindings while
 completion is unresolved. These are hosted provider-model cases; they are not
 hardware fault measurements or a proof of every interruption point.
+
+Catalog geometry permits a wider provider enclosing region when rebasing preserves the exact named scalar transaction inside the AML declaration. A positive fixture checks this admission without register or selector effects; wrong space/base, out-of-region, overflow and crossing-end geometries still refuse. The old exact-length expectation failed identically on the unchanged shared-tree baseline.

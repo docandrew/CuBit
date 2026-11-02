@@ -1,5 +1,6 @@
 pragma Ada_2022;
 with AML_Decode;
+with ACPI_PCI_Config_Reads;
 with ACPI_FADT.Transactions;
 -- Geometry only: supplied register geometry is NOT an authorization token.
 package AML_Field_Layout with SPARK_Mode, Pure is
@@ -9,14 +10,23 @@ package AML_Field_Layout with SPARK_Mode, Pure is
    Bits_Per_Byte : constant := 8;
    Memory_Space : constant AML_Decode.Byte := 0;
    IO_Space : constant AML_Decode.Byte := 1;
+   PCI_Config_Space : constant AML_Decode.Byte := 2;
    Embedded_Control_Space : constant AML_Decode.Byte := 3;
    EC_Last_Cell : constant AML_Decode.Integer_Value := 255;
    IO_Last_Address : constant AML_Decode.Integer_Value := 16#FFFF#;
    type Field_Form is (Ordinary_Field, Bank_Field, Index_Field);
+   subtype PCI_Route is ACPI_PCI_Config_Reads.Route;
    type Region_Geometry is record
       Space : AML_Decode.Byte := Memory_Space;
       Base, Length : AML_Decode.Integer_Value := 0;
+      PCI : PCI_Route;
    end record;
+   function Domain_Valid (Item : Region_Geometry) return Boolean is
+     (if Item.Space = PCI_Config_Space then
+        Item.PCI.Known and then Item.Base < ACPI_PCI_Config_Reads.Function_Bytes
+        and then Item.Length /= 0
+        and then Item.Length <= ACPI_PCI_Config_Reads.Function_Bytes - Item.Base
+      else not Item.PCI.Known);
    type Field_Geometry is record
       Region : Region_Geometry;
       Bit_Offset, Bit_Length : AML_Decode.Integer_Value := 0;
@@ -37,7 +47,8 @@ package AML_Field_Layout with SPARK_Mode, Pure is
          Field.Form = Ordinary_Field and then not Field.Has_Connection
          and then Field.Region = Register.Region
          and then Field.Region.Length /= 0
-         and then Field.Region.Space in Memory_Space | IO_Space | Embedded_Control_Space
+         and then Field.Region.Space in Memory_Space | IO_Space | PCI_Config_Space | Embedded_Control_Space
+         and then Domain_Valid (Field.Region)
          and then (if Register.Width = ACPI_FADT.Transactions.Qword_Access
            then Field.Region.Space = Memory_Space)
          and then (if Field.Region.Space = Embedded_Control_Space then

@@ -27,7 +27,8 @@ package body AML_Field_Plans with SPARK_Mode is
       Datums : AML_Field_Datums.Plan;
    begin
       if Field.Form /= AML_Field_Layout.Ordinary_Field or else Field.Has_Connection
-        or else Field.Region.Space not in AML_Field_Layout.Memory_Space | AML_Field_Layout.IO_Space | AML_Field_Layout.Embedded_Control_Space
+        or else Field.Region.Space not in AML_Field_Layout.Memory_Space | AML_Field_Layout.IO_Space | AML_Field_Layout.PCI_Config_Space | AML_Field_Layout.Embedded_Control_Space
+        or else not AML_Field_Layout.Domain_Valid (Field.Region)
         or else Field.Bit_Length = 0 or else Field.Bit_Length > Maximum_Bits
         or else Field.Region.Length = 0
         or else Field.Region.Base > AML_Decode.Integer_Value'Last - (Field.Region.Length - 1)
@@ -52,7 +53,7 @@ package body AML_Field_Plans with SPARK_Mode is
          when Word_Code => Width := ACPI_FADT.Transactions.Word_Access;
          when Dword_Code => Width := ACPI_FADT.Transactions.Dword_Access;
          when Qword_Code =>
-            if Field.Region.Space = AML_Field_Layout.IO_Space then
+            if Field.Region.Space in AML_Field_Layout.IO_Space | AML_Field_Layout.PCI_Config_Space then
                return (others => <>);
             end if;
             Width := ACPI_FADT.Transactions.Qword_Access;

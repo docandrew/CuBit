@@ -8,14 +8,15 @@ package AML_Register_Views with SPARK_Mode, Pure is
    package L renames AML_Field_Layout;
    package T renames ACPI_FADT.Transactions;
    use type AML_Decode.Integer_Value, AML_Decode.Byte;
-   use type L.Region_Geometry, L.Field_Form, T.Access_Width;
+   use type L.Region_Geometry, L.Field_Form, T.Access_Width, L.PCI_Route;
    subtype Register_Byte_Count is AML_Decode.Integer_Value range 1 .. 8;
    function Octets (Width : T.Access_Width) return Register_Byte_Count is
      (case Width is when T.Byte_Access => 1, when T.Word_Access => 2,
        when T.Dword_Access => 4, when T.Qword_Access => 8)
      with Post => Octets'Result = AML_Decode.Integer_Value (T.Octets (Width));
    function Valid_Region (Item : L.Region_Geometry) return Boolean is
-     (Item.Space in L.Memory_Space | L.IO_Space | L.Embedded_Control_Space
+     (Item.Space in L.Memory_Space | L.IO_Space | L.PCI_Config_Space | L.Embedded_Control_Space
+      and then L.Domain_Valid (Item)
       and then Item.Length /= 0
       and then Item.Length - 1 <= AML_Decode.Integer_Value'Last - Item.Base
       and then (if Item.Space = L.IO_Space then Item.Base <= L.IO_Last_Address
@@ -39,12 +40,13 @@ package AML_Register_Views with SPARK_Mode, Pure is
          and then Last_Address'Result <= Item.Region.Base + (Item.Region.Length - 1);
    function Same_Transaction (Left, Right : L.Register_Geometry) return Boolean is
      (Valid_Register (Left) and then Valid_Register (Right)
-      and then Left.Region.Space = Right.Region.Space and then Left.Width = Right.Width
+      and then Left.Region.Space = Right.Region.Space and then Left.Region.PCI = Right.Region.PCI
+      and then Left.Width = Right.Width
       and then First_Address (Left) = First_Address (Right)
       and then Last_Address (Left) = Last_Address (Right));
    function Can_Rebase (Canonical : L.Register_Geometry; Region : L.Region_Geometry) return Boolean is
      (Valid_Register (Canonical) and then Valid_Region (Region)
-      and then Canonical.Region.Space = Region.Space
+      and then Canonical.Region.Space = Region.Space and then Canonical.Region.PCI = Region.PCI
       and then First_Address (Canonical) >= Region.Base
       and then First_Address (Canonical) - Region.Base < Region.Length
       and then Octets (Canonical.Width) <=

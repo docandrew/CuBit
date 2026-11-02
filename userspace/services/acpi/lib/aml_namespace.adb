@@ -6669,6 +6669,231 @@ package body Owned with SPARK_Mode is
             Field_Operation (E, IO, Ref, Width, False, Value, Status);
          else Readers.Read_Field_At_Entry (E, Ref, Width, Value, Status); end if;
       end Read_Field_At_Entry;
+      use type AML_Execute.Field_Context_Ticket;
+      function PCI_Region (E : Arena; Ref : Reference) return Node_ID is
+         Field, Region : Node_ID;
+      begin
+         if AML_References.Kind (Ref) /= AML_References.Named_Cell
+           or else not Named_Identity_Matches (E, Ref) then return Root; end if;
+         Field := Node_ID (AML_References.Named_Node (Ref));
+         if E.Tree.Items (Field).Object_Type /= Region_Field_Object then return Root; end if;
+         Region := E.Tree.Items (Field).Region_Field_Info.Region;
+         if Region = Root or else Region > E.Tree.Used
+           or else not E.Tree.Items (Region).Alive
+           or else E.Tree.Items (Region).Object_Type /= Operation_Region_Object
+           or else E.Tree.Items (Region).Incarnation /= E.Tree.Items (Field).Region_Field_Info.Incarnation
+           or else E.Tree.Items (Region).Operation_Info.Space /= Region_Space_ID (AML_Field_Layout.PCI_Config_Space) then return Root; end if;
+         return Region;
+      end PCI_Region;
+      function PCI_Work_Current (E : Arena; Work : PCI_Setup_Work) return Boolean is
+        (Work.Active and then Named_Identity_Matches (E, Work.Field)
+         and then Named_Identity_Matches (E, Work.Region)
+         and then Named_Identity_Matches (E, Work.Device)
+         and then (Work.Walk = AML_References.No_Reference or else Named_Identity_Matches (E, Work.Walk))
+         and then (Work.Host = AML_References.No_Reference or else Named_Identity_Matches (E, Work.Host))
+         and then PCI_Region (E, Work.Field) = Node_ID (AML_References.Named_Node (Work.Region)));
+      function PCI_Work_At (E : Arena; Ref : Reference;
+         Ticket : AML_Execute.Field_Context_Ticket) return Node_ID is
+      begin
+         for N in Node_ID range Root + 1 .. E.Tree.Used loop
+            if E.PCI_Work (N).Active and then E.PCI_Work (N).Ticket = Ticket
+              and then E.PCI_Work (N).Field = Ref then return N; end if;
+         end loop;
+         return Root;
+      end PCI_Work_At;
+      procedure PCI_Property
+        (E : Arena; Scope : Node_ID; Name : AML_Names.Segment;
+         Binding : out AML_Execute.Binding_Result; Missing : out Boolean) is
+         Located : constant Lookup_Result := Canonical_Child (E.Tree, Scope, Name);
+         Good : Boolean;
+         Ref : Reference;
+      begin
+         Missing := Located.Status = Not_Found;
+         Binding := (AML_Execute.Integer_Binding, 0, AML_Decode.Ordinary_Integer);
+         if Missing then return; end if;
+         if Located.Status /= Found or else Located.Node = Root then
+            Binding := (AML_Execute.Failed_Binding, AML_Execute.Unsupported_Value); return;
+         end if;
+         if E.Tree.Items (Located.Node).Object_Type = Method_Object then
+            Binding := (AML_Execute.Method_Binding, Natural (Located.Node),
+              Natural (E.Tree.Items (Located.Node).Method_Flags and 7));
+         else
+            Make_Named_Identity (E, Natural (Located.Node), Ref, Good);
+            if Good then Binding := (AML_Execute.Reference_Binding, Ref);
+            else Binding := (AML_Execute.Failed_Binding, AML_Execute.Unsupported_Value); end if;
+         end if;
+      end PCI_Property;
+      function PCI_ID_Matches (E : Arena; Item : AML_Execute.Datum) return Boolean is
+         PNP_PCI : constant AML_Decode.Integer_Value := 16#030A_D041#;
+         PNP_PCIE : constant AML_Decode.Integer_Value := 16#080A_D041#;
+         ID : AML_Objects.Object_ID;
+         Text : String (1 .. 7);
+      begin
+         if Item.Value_Kind = AML_Execute.Integer_Datum then
+            return Item.Number mod 2 ** 32 in PNP_PCI | PNP_PCIE;
+         elsif Item.Value_Kind /= AML_Execute.Object_Datum
+           or else not Has_Source (E, Item.Object.Source)
+           or else Item.Object.ID /= AML_References.Source (Item.Object.Source) then return False; end if;
+         ID := Item.Object.ID;
+         if AML_Objects.Kind (E.Tree.Values, ID) /= AML_Objects.String_Object
+           or else AML_Objects.Length (E.Tree.Values, ID) not in 7 .. 8 then return False; end if;
+         if AML_Objects.Length (E.Tree.Values, ID) = 8
+           and then AML_Objects.Stored_Byte (E.Tree.Values, ID, 7) /= 0 then return False; end if;
+         for I in Text'Range loop
+            Text (I) := Character'Val (AML_Objects.Stored_Byte (E.Tree.Values, ID, I - 1));
+         end loop;
+         return Text in "PNP0A03" | "PNP0A08";
+      end PCI_ID_Matches;
+      function PCI_CID_Matches (E : Arena; Item : AML_Execute.Datum) return Boolean is
+         ID, Element : AML_Objects.Object_ID;
+         Value : AML_Execute.Datum;
+         Status : AML_Execute.Execution_Status;
+      begin
+         if PCI_ID_Matches (E, Item) then return True; end if;
+         if Item.Value_Kind /= AML_Execute.Object_Datum or else not Has_Source (E, Item.Object.Source)
+           or else Item.Object.ID /= AML_References.Source (Item.Object.Source) then return False; end if;
+         ID := Item.Object.ID;
+         if AML_Objects.Kind (E.Tree.Values, ID) /= AML_Objects.Package_Object then return False; end if;
+         if AML_Objects.Length (E.Tree.Values, ID) = 0 then return False; end if;
+         for I in 0 .. AML_Objects.Length (E.Tree.Values, ID) - 1 loop
+            Element := AML_Objects.Element (E.Tree.Values, ID, I);
+            if Element /= AML_Objects.No_Object then
+               Read_Source (E, AML_References.Bind_Object (E.Token,
+                 AML_Objects.Address_Of (E.Tree.Values, Element)), Value, Status);
+               if Status = AML_Execute.Returned and then Value.Value_Kind = AML_Execute.Reference_Datum then
+                  declare Ref : constant Reference := Value.Ref; begin Resolve_Value (E, Ref, Value, Status); end;
+               end if;
+               if Status = AML_Execute.Returned and then PCI_ID_Matches (E, Value) then return True; end if;
+            end if;
+         end loop;
+         return False;
+      end PCI_CID_Matches;
+      procedure PCI_Request_Root
+        (E : in out Arena; N : Node_ID; Step : in out AML_Execute.Field_Context_Step) is
+         Missing : Boolean;
+         W : PCI_Setup_Work renames E.PCI_Work (N);
+      begin
+         Step := (Phase => AML_Execute.Context_Value, others => <>);
+         if W.Walk = AML_References.No_Reference then
+            Step.Phase := AML_Execute.Context_Failed; return;
+         else
+            W.Stage := PCI_HID;
+            PCI_Property (E, Node_ID (AML_References.Named_Node (W.Walk)), "_HID", Step.Property, Missing);
+            if Missing then W.Stage := PCI_Up; end if;
+         end if;
+      end PCI_Request_Root;
+      procedure PCI_Up_One
+        (E : in out Arena; N : Node_ID; Step : in out AML_Execute.Field_Context_Step) is
+         Up : Node_ID;
+         Good : Boolean;
+      begin
+         Up := Parent (E.Tree, Node_ID (AML_References.Named_Node (E.PCI_Work (N).Walk)));
+         if Up = Root then E.PCI_Work (N).Walk := AML_References.No_Reference;
+         else
+            Make_Named_Identity (E, Natural (Up), E.PCI_Work (N).Walk, Good);
+            if not Good then Step := (Phase => AML_Execute.Context_Failed, others => <>); return; end if;
+         end if;
+         PCI_Request_Root (E, N, Step);
+      end PCI_Up_One;
+      procedure PCI_Begin
+        (E : in out Arena; Ref : Reference; Ticket : in out AML_Execute.Field_Context_Ticket;
+         Step : in out AML_Execute.Field_Context_Step) is
+         N, D : Node_ID;
+         Good : Boolean;
+      begin
+         if not Enable_PCI_Context then return; end if;
+         N := PCI_Region (E, Ref);
+         if N = Root or else E.Tree.Items (N).Operation_Info.PCI.Known then return; end if;
+         Step := (Phase => AML_Execute.Context_Failed, others => <>);
+         if E.PCI_Work (N).Active or else E.PCI_Issued = AML_Execute.Field_Context_Ticket'Last then return; end if;
+         D := Parent (E.Tree, N);
+         while D /= Root and then E.Tree.Items (D).Object_Type /= Device_Object loop
+            D := Parent (E.Tree, D);
+         end loop;
+         if D = Root then return; end if;
+         E.PCI_Issued := E.PCI_Issued + 1;
+         E.PCI_Work (N) := (Active => True, Ticket => E.PCI_Issued, Field => Ref, others => <>);
+         Ticket := E.PCI_Issued;
+         Make_Named_Identity (E, Natural (N), E.PCI_Work (N).Region, Good);
+         if not Good then return; end if;
+         Make_Named_Identity (E, Natural (D), E.PCI_Work (N).Device, Good);
+         if not Good then return; end if;
+         E.PCI_Work (N).Walk := E.PCI_Work (N).Device;
+         PCI_Request_Root (E, N, Step);
+      end PCI_Begin;
+      procedure PCI_Advance
+        (E : in out Arena; Ref : Reference; Ticket : AML_Execute.Field_Context_Ticket;
+         Value : AML_Execute.Datum; Step : in out AML_Execute.Field_Context_Step) is
+         N : constant Node_ID := PCI_Work_At (E, Ref, Ticket);
+         Missing : Boolean;
+         Host_Node, Up : Node_ID;
+         Device, Func, Number : AML_Decode.Integer_Value;
+      begin
+         Step := (Phase => AML_Execute.Context_Failed, others => <>);
+         if N = Root or else not PCI_Work_Current (E, E.PCI_Work (N)) then return; end if;
+         declare W : PCI_Setup_Work renames E.PCI_Work (N); begin
+         case W.Stage is
+            when PCI_Up => PCI_Up_One (E, N, Step); return;
+            when PCI_HID =>
+               if PCI_ID_Matches (E, Value) then W.Host := W.Walk;
+               else
+                  W.Stage := PCI_CID; Step.Phase := AML_Execute.Context_Value;
+                  PCI_Property (E, Node_ID (AML_References.Named_Node (W.Walk)), "_CID", Step.Property, Missing);
+                  return;
+               end if;
+            when PCI_CID =>
+               if PCI_CID_Matches (E, Value) then W.Host := W.Walk;
+               else PCI_Up_One (E, N, Step); return; end if;
+            when PCI_ADR | PCI_SEG | PCI_BBN =>
+               if Value.Value_Kind /= AML_Execute.Integer_Datum then return; end if;
+               Number := Value.Number mod 2 ** 16;
+               case W.Stage is
+                  when PCI_ADR =>
+                     Device := (Value.Number / 2 ** 16) mod 2 ** 16; Func := Number;
+                     if Device > AML_Decode.Integer_Value (ACPI_PCI_Config_Reads.Device_Number'Last)
+                       or else Func > AML_Decode.Integer_Value (ACPI_PCI_Config_Reads.Function_Number'Last) then return; end if;
+                     W.Location.Device := ACPI_PCI_Config_Reads.Device_Number (Device);
+                     W.Location.Func := ACPI_PCI_Config_Reads.Function_Number (Func);
+                     W.Stage := PCI_SEG;
+                  when PCI_SEG => W.Location.Segment := ACPI_PCI_Config_Reads.Segment_Number (Number); W.Stage := PCI_BBN;
+                  when PCI_BBN =>
+                     if Number > AML_Decode.Integer_Value (ACPI_PCI_Config_Reads.Bus_Number'Last) then return; end if;
+                     W.Location.Bus := ACPI_PCI_Config_Reads.Bus_Number (Number); W.Stage := PCI_Done;
+                  when others => null;
+               end case;
+               if W.Stage = PCI_Done then Step.Phase := AML_Execute.Context_Ready; return; end if;
+               Host_Node := (if W.Host = AML_References.No_Reference then Root else Node_ID (AML_References.Named_Node (W.Host)));
+               Step.Phase := AML_Execute.Context_Value;
+               PCI_Property (E, Host_Node, (if W.Stage = PCI_SEG then "_SEG" else "_BBN"), Step.Property, Missing);
+               return;
+            when others => return;
+         end case;
+         -- This slice does not silently guess the secondary bus of a bridge.
+         Host_Node := Node_ID (AML_References.Named_Node (W.Host));
+         Up := Node_ID (AML_References.Named_Node (W.Device));
+         if Up /= Host_Node then
+            Up := Parent (E.Tree, Up);
+            while Up /= Host_Node and then Up /= Root loop
+               if E.Tree.Items (Up).Object_Type = Device_Object then return; end if;
+               Up := Parent (E.Tree, Up);
+            end loop;
+         end if;
+         W.Stage := PCI_ADR; Step.Phase := AML_Execute.Context_Value;
+         PCI_Property (E, Node_ID (AML_References.Named_Node (W.Device)), "_ADR", Step.Property, Missing);
+         end;
+      end PCI_Advance;
+      procedure PCI_Finish
+        (E : in out Arena; Ref : Reference; Ticket : AML_Execute.Field_Context_Ticket; Completed : Boolean) is
+      begin
+         for N in Node_ID range Root + 1 .. Node_ID'Last loop
+            if E.PCI_Work (N).Active and then E.PCI_Work (N).Ticket = Ticket and then E.PCI_Work (N).Field = Ref then
+               if Completed and then E.PCI_Work (N).Stage = PCI_Done and then PCI_Work_Current (E, E.PCI_Work (N)) then
+                  E.Tree.Items (N).Operation_Info.PCI := (Known => True, Device => E.PCI_Work (N).Location);
+               end if;
+               E.PCI_Work (N) := (others => <>); return;
+            end if;
+         end loop;
+      end PCI_Finish;
       procedure Lookup (E : in out Arena; Backing : aliased AML_Table_Backing.State;
         Scope : Natural; Path : AML_Names.Name_Result; Width : AML_Decode.Integer_Width;
         Purpose : AML_Execute.Binding_Purpose; Binding : out AML_Execute.Binding_Result)
@@ -6686,6 +6911,9 @@ package body Owned with SPARK_Mode is
               and then E.Tree.Items (Located.Node).Object_Type = Region_Field_Object then
                Make_Named_Identity (E, Natural (Located.Node), Ref, OK);
                if not OK then Binding := (AML_Execute.Failed_Binding, AML_Execute.Unsupported_Value); return; end if;
+               if Enable_PCI_Context and then PCI_Region (E, Ref) /= Root then
+                  Binding := (AML_Execute.Field_Binding, Ref); return;
+               end if;
                Read_Field_At_Entry (E, Ref, Width, Value, Read_Status);
                if Read_Status = AML_Execute.Returned then
                   case Value.Value_Kind is
@@ -7968,6 +8196,8 @@ package body Owned with SPARK_Mode is
       type Pending_Authority is record
          Destination : AML_References.Object_Handle := AML_References.No_Object_Handle;
          Scope_Stamp : Natural := 0;
+         Field : Reference := AML_References.No_Reference;
+         Field_Resolved : Boolean := False;
       end record;
       Pending_Authorities : array (Positive range 1 .. Max_Pending_Members)
         of Pending_Authority := [others => <>];
@@ -8192,7 +8422,7 @@ package body Owned with SPARK_Mode is
             if Added /= Pending.Appended then Status := AML_Execute.Value_Limit; return; end if;
             Pending_Authorities (Pending.Count (Builder_Journal)) :=
               (Destination => Builders (Token.Position).Source,
-               Scope_Stamp => (if Scope = Root then 0 else Natural (E.Tree.Items (Node_ID (Scope)).Incarnation)));
+               Scope_Stamp => (if Scope = Root then 0 else Natural (E.Tree.Items (Node_ID (Scope)).Incarnation)), others => <>);
          end if;
          Last_Builder_Stamp := Last_Builder_Stamp + 1;
          Builders (Token.Position).Consumed_Elements := Builders (Token.Position).Consumed_Elements + 1;
@@ -8200,6 +8430,111 @@ package body Owned with SPARK_Mode is
          Token.Stamp := Last_Builder_Stamp;
          Status := AML_Execute.Returned;
       end Defer_Runtime_Package_Name;
+      function Package_Field_Current
+        (E : Arena; Lease : AML_Declaration_Contexts.Lease;
+         Token : Runtime_Package_Token; Cursor : Natural) return Boolean
+      is
+      begin
+         if not Builder_Matches (E, Lease, Token)
+           or else Cursor <= Builders (Token.Position).Journal_Start
+           or else Cursor > Pending.Count (Builder_Journal) then return False; end if;
+         declare
+            Member : constant Pending.Member_Result := Pending.Item (Builder_Journal, Cursor);
+            Authority : Pending_Authority renames Pending_Authorities (Cursor);
+         begin
+            return Member.Found
+              and then Member.Package_ID = AML_References.Source (Builders (Token.Position).Source)
+              and then Authority.Destination = Builders (Token.Position).Source
+              and then Has_Source (E, Authority.Destination)
+              and then Member.Scope <= E.Tree.Used
+              and then (Member.Scope = Root or else
+                (E.Tree.Items (Member.Scope).Alive and then
+                 Natural (E.Tree.Items (Member.Scope).Incarnation) = Authority.Scope_Stamp))
+              and then AML_Objects.Kind (E.Tree.Values, Member.Package_ID) = AML_Objects.Package_Object
+              and then Member.Element < AML_Objects.Length (E.Tree.Values, Member.Package_ID);
+         end;
+      end Package_Field_Current;
+      procedure Next_Runtime_Package_Field
+        (E : in out Arena; Lease : AML_Declaration_Contexts.Lease;
+         Token : Runtime_Package_Token; Cursor : in out Natural;
+         Binding : in out AML_Execute.Binding_Result; Done : in out Boolean)
+      is
+         Member : Pending.Member_Result;
+         Located : Lookup_Result;
+         Good : Boolean;
+      begin
+         if not Enable_PCI_Context then return; end if;
+         Binding := (AML_Execute.Failed_Binding, AML_Execute.Unsupported_Value);
+         if not Builder_Matches (E, Lease, Token) then Done := False; return; end if;
+         -- Module names remain in the cross-table deferred binding journal.
+         if AML_Declaration_Contexts.Is_Module (Lease) then return; end if;
+         if Cursor = 0 then Cursor := Builders (Token.Position).Journal_Start; end if;
+         if Cursor < Builders (Token.Position).Journal_Start
+           or else Cursor > Pending.Count (Builder_Journal) then Done := False; return; end if;
+         if Cursor = Pending.Count (Builder_Journal) then return; end if;
+         Cursor := Cursor + 1; Done := False;
+         Binding := (Status => AML_Execute.Missing_Binding);
+         Member := Pending.Item (Builder_Journal, Cursor);
+         if not Member.Found then
+            Binding := (AML_Execute.Failed_Binding, AML_Execute.Unsupported_Value); return;
+         end if;
+         if Member.Package_ID /= AML_References.Source (Builders (Token.Position).Source) then return; end if;
+         if not Package_Field_Current (E, Lease, Token, Cursor) then
+            Binding := (AML_Execute.Failed_Binding, AML_Execute.Unsupported_Value); return;
+         end if;
+         if Pending_Authorities (Cursor).Field_Resolved then return; end if;
+         Located := Resolve_Object (E.Tree, Member.Scope, Member.Path);
+         if Located.Status /= Found or else Located.Node = Root
+           or else E.Tree.Items (Located.Node).Object_Type /= Region_Field_Object then return; end if;
+         Make_Named_Identity (E, Natural (Located.Node), Pending_Authorities (Cursor).Field, Good);
+         if not Good then
+            Binding := (AML_Execute.Failed_Binding, AML_Execute.Unsupported_Value); return;
+         end if;
+         Binding := (AML_Execute.Field_Binding, Pending_Authorities (Cursor).Field);
+      end Next_Runtime_Package_Field;
+      procedure Complete_Runtime_Package_Field
+        (E : in out Arena; Lease : AML_Declaration_Contexts.Lease;
+         Token : Runtime_Package_Token; Cursor : Natural;
+         Item : AML_Execute.Datum; Status : in out AML_Execute.Execution_Status)
+      is
+         Gate : Allocation_Hook_Status;
+         Child : AML_Objects.Object_ID;
+         Allocated : AML_Objects.Allocation_Status;
+         Root_Value : AML_Execute.Datum;
+         function Current return Boolean is
+           (Package_Field_Current (E, Lease, Token, Cursor)
+            and then not Pending_Authorities (Cursor).Field_Resolved
+            and then AML_References.Kind (Pending_Authorities (Cursor).Field) = AML_References.Named_Cell
+            and then Named_Identity_Matches (E, Pending_Authorities (Cursor).Field)
+            and then E.Tree.Items (Node_ID (AML_References.Named_Node
+              (Pending_Authorities (Cursor).Field))).Object_Type = Region_Field_Object);
+      begin
+         Status := AML_Execute.Unsupported_Value;
+         if not Enable_PCI_Context or else AML_Declaration_Contexts.Is_Module (Lease)
+           or else not Current then return; end if;
+         declare Member : constant Pending.Member_Result := Pending.Item (Builder_Journal, Cursor); begin
+            Root_Value := (AML_Execute.Object_Datum,
+              (Source => Builders (Token.Position).Source, ID => Member.Package_ID,
+               Type_Code => 4, Size => AML_Objects.Length (E.Tree.Values, Member.Package_ID), others => <>));
+            Before_Allocation (E, [Root_Value, Item], Gate);
+            if Gate /= Allocation_Allowed or else not Current then return; end if;
+            case Item.Value_Kind is
+               when AML_Execute.Integer_Datum =>
+                  AML_Objects.New_Integer (E.Tree.Values, Item.Number, Child, Allocated, Item.Origin);
+                  if Allocated /= AML_Objects.Allocated then Status := AML_Execute.Value_Limit; return; end if;
+               when AML_Execute.Object_Datum =>
+                  if not Has_Source (E, Item.Object.Source)
+                    or else Item.Object.ID /= AML_References.Source (Item.Object.Source)
+                    or else AML_Objects.Kind (E.Tree.Values, Item.Object.ID) not in
+                      AML_Objects.Buffer_Object | AML_Objects.String_Object then return; end if;
+                  Child := Item.Object.ID;
+               when others => return;
+            end case;
+            AML_Objects.Set_Element (E.Tree.Values, Member.Package_ID, Member.Element, Child);
+            Pending_Authorities (Cursor).Field_Resolved := True;
+            Status := AML_Execute.Returned;
+         end;
+      end Complete_Runtime_Package_Field;
       procedure Bind_Live_Builder_Members
         (E : Arena; Candidate : in out State; First : Natural;
          Owner : AML_Identity.Identity;
@@ -8226,6 +8561,10 @@ package body Owned with SPARK_Mode is
                  or else AML_Objects.Kind (Candidate.Values, Member.Package_ID) /= AML_Objects.Package_Object
                  or else Member.Element >= AML_Objects.Length (Candidate.Values, Member.Package_ID)
                then return; end if;
+               if Pending_Authorities (I).Field_Resolved then
+                  Leaf := AML_Objects.Element (Candidate.Values, Member.Package_ID, Member.Element);
+                  if Leaf = AML_Objects.No_Object or else not AML_Objects.Is_Live (Candidate.Values, Leaf) then return; end if;
+               else
                Located := Resolve_Object (Candidate, Member.Scope, Member.Path);
                if Located.Status /= Found then return; end if;
                if Located.Node = Root or else Kind (Candidate, Located.Node) = Metadata_Value_Object
@@ -8264,6 +8603,7 @@ package body Owned with SPARK_Mode is
                    Candidate.Items (Located.Node).Object_Type = Reference_Object)
                then Leaf := Candidate.Items (Located.Node).Object_Ref;
                else return;
+               end if;
                end if;
                AML_Objects.Set_Element (Candidate.Values, Member.Package_ID, Member.Element, Leaf);
             end;
@@ -8527,7 +8867,11 @@ package body Owned with SPARK_Mode is
          Copy_Load_Table_Body => Copy_Load,
          Begin_Load_Table_Module => Begin_Load,
          Finish_Load_Table => Finish_Load,
-         Handle_Module_Divide_Error => Recover_Module_Divide);
+         Handle_Module_Divide_Error => Recover_Module_Divide,
+         Next_Runtime_Package_Field => Next_Runtime_Package_Field,
+         Complete_Runtime_Package_Field => Complete_Runtime_Package_Field,
+         Begin_Field_Context => PCI_Begin, Advance_Field_Context => PCI_Advance,
+         Finish_Field_Context => PCI_Finish);
    begin
       -- Unknown external completion survives tree rollback and Reset. Even
       -- the default rejecting-provider entry cannot restart AML implicitly.
@@ -10868,7 +11212,7 @@ package body Owned with SPARK_Mode is
             R : constant Operation_Region_Attributes :=
               E.Tree.Items (Node_ID (AML_References.Named_Node (Key.Region))).Operation_Info;
          begin
-            return (Region => (Space => AML_Decode.Byte (R.Space), Base => R.Address, Length => R.Length),
+            return (Region => (Space => AML_Decode.Byte (R.Space), Base => R.Address, Length => R.Length, PCI => R.PCI),
               Bit_Offset => AML_Decode.Integer_Value (F.Offset),
               Bit_Length => AML_Decode.Integer_Value (F.Bits), Flags => F.Raw_Flags,
               Effective_Access => F.Access_Type, Attribute => F.Attribute,
@@ -10952,7 +11296,7 @@ package body Owned with SPARK_Mode is
             if not Allowed then return; end if;
             R := A.Inner.Tree.Items (Region.Node).Operation_Info;
             View := AML_Register_Views.Rebase (Geometry,
-              (Space => AML_Decode.Byte (R.Space), Base => R.Address, Length => R.Length));
+              (Space => AML_Decode.Byte (R.Space), Base => R.Address, Length => R.Length, PCI => R.PCI));
             if not View.Allowed or else View.Value.Byte_Offset >
               AML_Decode.Integer_Value'Last / AML_Field_Layout.Bits_Per_Byte then return; end if;
             Access_Code := AML_Decode.Byte (ACPI_FADT.Transactions.Access_Width'Pos (Geometry.Width) + 1);
@@ -11609,7 +11953,7 @@ package body Owned with SPARK_Mode is
                end if;
                Region_Info := E.Tree.Items (F.Info.Region).Operation_Info;
                Geometry := (Region => (Space => AML_Decode.Byte (Region_Info.Space),
-                   Base => Region_Info.Address, Length => Region_Info.Length),
+                   Base => Region_Info.Address, Length => Region_Info.Length, PCI => Region_Info.PCI),
                  Bit_Offset => AML_Decode.Integer_Value (F.Info.Offset), Bit_Length => AML_Decode.Integer_Value (F.Info.Bits),
                  Flags => F.Info.Raw_Flags, Effective_Access => F.Info.Access_Type,
                  Attribute => F.Info.Attribute, Access_Length => F.Info.Access_Length, others => <>);
@@ -12222,7 +12566,7 @@ package body Owned with SPARK_Mode is
                Make_Named_Identity (E, Natural (Info.Region), Region, Current);
                if not Current then return; end if;
                declare R : constant Operation_Region_Attributes := E.Tree.Items (Info.Region).Operation_Info; begin
-                  Geometry := (Region => (Space => AML_Decode.Byte (R.Space), Base => R.Address, Length => R.Length),
+                  Geometry := (Region => (Space => AML_Decode.Byte (R.Space), Base => R.Address, Length => R.Length, PCI => R.PCI),
                      Bit_Offset => AML_Decode.Integer_Value (Info.Offset), Bit_Length => AML_Decode.Integer_Value (Info.Bits),
                      Flags => Info.Raw_Flags, Effective_Access => Info.Access_Type,
                      Attribute => Info.Attribute, Access_Length => Info.Access_Length, others => <>);

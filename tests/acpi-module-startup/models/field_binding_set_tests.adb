@@ -42,7 +42,7 @@ procedure Field_Binding_Set_Tests is
    procedure Describe (IO : Context; Target : A.Target;
       Geometry : out AML_Field_Layout.Register_Geometry; Accepted : out Boolean) is
    begin
-      Geometry := (Region => (Space => 0, Base => 16#1000#, Length => 2),
+      Geometry := (Region => (Space => 0, Base => 16#1000#, Length => 2, PCI => (Known => False)),
          Byte_Offset => (if Target.Register = First_ID then 0 else 1),
          Width => ACPI_FADT.Transactions.Byte_Access);
       Accepted := not Pending (IO) and then Target.Provider = IO.Owner

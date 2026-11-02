@@ -41,7 +41,7 @@ procedure Module_Composed_Tests is
    procedure Describe (IO : Context; Target : A.Target;
       Geometry : out AML_Field_Layout.Register_Geometry; Accepted : out Boolean) is
    begin
-      Geometry := (Region => (Space => 3, Base => 0, Length => 2),
+      Geometry := (Region => (Space => 3, Base => 0, Length => 2, PCI => (Known => False)),
          Byte_Offset => (if Target.Register = Selector_ID or else
            (Selected = Geometry_Drift and then IO.Selector_Writes > 0) then 0 else 1),
          Width => ACPI_FADT.Transactions.Byte_Access);

@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with AML_Execute;
 with ACPI_Service_Core;
 with ACPI_Field_Startup_Owner;
 generic
@@ -18,6 +19,12 @@ package ACPI_Startup_Evaluation is
    procedure Prepare_Fields (Service : Core.State; Accepted : out Boolean);
    procedure Evaluate_Named
      (Service : aliased in out Core.State; Item : Core.Node_Descriptor;
+      Budget : Natural; Result : out Core.Values.Result; Status : out Core.Values.Access_Status)
+     with Pre => Core.Valid (Service) and then not Result'Constrained;
+   -- Integer arguments use the same selected provider and current bindings.
+   procedure Invoke_Retained
+     (Service : aliased in out Core.State; Node : Core.Namespace.Node_ID;
+      Args : AML_Execute.Arguments; Argument_Count : Core.Values.Argument_Count;
       Budget : Natural; Result : out Core.Values.Result; Status : out Core.Values.Access_Status)
      with Pre => Core.Valid (Service) and then not Result'Constrained;
    procedure Invoke_With_Arguments

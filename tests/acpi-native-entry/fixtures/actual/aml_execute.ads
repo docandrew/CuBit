@@ -102,10 +102,10 @@ package AML_Execute with SPARK_Mode, Pure is
          when others => null;
       end case;
    end record;
-   type Binding_Status is (Integer_Binding, Method_Binding, Missing_Binding, Non_Integer_Binding, Failed_Binding, Reference_Binding, Metadata_Binding);
+   type Binding_Status is (Integer_Binding, Method_Binding, Missing_Binding, Non_Integer_Binding, Failed_Binding, Reference_Binding, Metadata_Binding, Field_Binding);
    type Binding_Result (Status : Binding_Status := Missing_Binding) is record
       case Status is
-         when Reference_Binding => Ref : AML_References.Reference;
+         when Reference_Binding | Field_Binding => Ref : AML_References.Reference;
          when Metadata_Binding => Metadata : Metadata_Value;
          when Failed_Binding => Failure : Execution_Status;
          when Integer_Binding =>
@@ -118,6 +118,15 @@ package AML_Execute with SPARK_Mode, Pure is
             Object : Object_Value;
          when others => null;
       end case;
+   end record;
+   -- Internal progress only: no device descriptor or hardware authority.
+   type Field_Context_Ticket is new AML_Decode.Integer_Value;
+   No_Field_Context : constant Field_Context_Ticket := 0;
+   type Field_Context_Phase is (Context_Ready, Context_Value, Context_Failed);
+   type Field_Context_Step is record
+      Phase : Field_Context_Phase := Context_Ready;
+      Property : Binding_Result;
+      Failure : Payload_Free_Failure := Unsupported_Value;
    end record;
    Max_Method_Bytes : constant := AML_Execution_Limits.Max_Method_Code_Bytes;
    subtype Method_Length is Natural range 0 .. Max_Method_Bytes;
@@ -547,6 +556,18 @@ package AML_Execute with SPARK_Mode, Pure is
       with procedure Finish_Runtime_Package
         (Environment : in out Context; Lease : AML_Declaration_Contexts.Lease;
          Token : in out Runtime_Package_Token; Binding : out Binding_Result);
+      -- Progress deferred field members at package finish, before committing
+      -- the builder. Hooks authenticate metadata/destinations; only the VM
+      -- executes AML or performs the field read in its current invocation.
+      -- Defaults leave existing adapters unchanged (Done is initialized True).
+      with procedure Next_Runtime_Package_Field
+        (Environment : in out Context; Lease : AML_Declaration_Contexts.Lease;
+         Token : Runtime_Package_Token; Cursor : in out Natural;
+         Binding : in out Binding_Result; Done : in out Boolean) is null;
+      with procedure Complete_Runtime_Package_Field
+        (Environment : in out Context; Lease : AML_Declaration_Contexts.Lease;
+         Token : Runtime_Package_Token; Cursor : Natural;
+         Item : Datum; Status : in out Execution_Status) is null;
       -- Called on every expression exit BEFORE its root publication is cleared.
       -- This operation may invalidate session records, but must not allocate,
       -- collect, execute AML, or restore a pre-evaluation arena snapshot.
@@ -619,6 +640,22 @@ package AML_Execute with SPARK_Mode, Pure is
       -- Owner-only metadata loading during a restricted bootstrap session.
       -- This does not relax inherited hardware, delay or notification gates.
       Allow_Restricted_Table_Loads : Boolean := False;
+      -- Metadata setup may request normal zero-argument AML property calls.
+      -- Actuals must return normally, never evaluate AML/reenter themselves,
+      -- and validate the live reference/ticket before consuming any result.
+      -- Advance borrows its Value only for that call; retaining an object or
+      -- reference requires independently established live owner roots.
+      -- Ticket zero owns no cleanup; nested refusal cannot finish its caller.
+      with procedure Begin_Field_Context
+        (Environment : in out Context; Ref : AML_References.Reference;
+         Ticket : in out Field_Context_Ticket; Step : in out Field_Context_Step) is null;
+      with procedure Advance_Field_Context
+        (Environment : in out Context; Ref : AML_References.Reference;
+         Ticket : Field_Context_Ticket; Value : Datum;
+         Step : in out Field_Context_Step) is null;
+      with procedure Finish_Field_Context
+        (Environment : in out Context; Ref : AML_References.Reference;
+         Ticket : Field_Context_Ticket; Completed : Boolean) is null;
    procedure Execute_From_Source
      (Code : AML_Decode.Bytes; Width : AML_Decode.Integer_Width;
       Args : Value_Arguments; Argument_Count : Natural; Budget : Natural;

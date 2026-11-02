@@ -6,8 +6,11 @@
   (start "display.svc" (priority 5))
   # ACPI: the backend holds the FADT I/O windows and serves named
   # registers; acpi.svc (AML, no hardware authority) connects to it.
+  # It also gets the read-only PCI segment 0 bus 0 window (ECAM), which
+  # serves AML PCI_Config fields and SystemMemory aliases of that window.
   (start "acpi-backend.svc" (priority 5)
-    (firmware-snapshot approve-declared) (acpi-hardware approve-declared))
+    (firmware-snapshot approve-declared) (acpi-hardware approve-declared)
+    (acpi-pci-config approve-declared))
   (start "acpi.svc" (priority 4)
     (firmware-snapshot approve-declared) (acpi-registers approve-declared))
   # Dictionary, thesaurus and spelling (docs/lexicon.md).

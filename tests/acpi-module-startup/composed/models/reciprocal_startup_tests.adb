@@ -45,7 +45,7 @@ procedure Reciprocal_Startup_Tests is
       for Candidate in Slot loop
          if Registers (Candidate) = Target.Register then S := Candidate; Found := True; end if;
       end loop;
-      Geometry := (Region => (Space => 0, Base => 16#1000#, Length => 4),
+      Geometry := (Region => (Space => 0, Base => 16#1000#, Length => 4, PCI => (Known => False)),
          Byte_Offset => (if Selected = Geometry_Drift and then S = Data_Port and then IO.Calls > 0
             then 3 else Unsigned_64 (Slot'Pos (S))),
          Width => ACPI_FADT.Transactions.Byte_Access);

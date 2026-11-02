@@ -41,7 +41,7 @@ procedure Bank_Access_Tests is
    procedure Describe (IO : Context; Target : A.Target;
      Geometry : out AML_Field_Layout.Register_Geometry; Accepted : out Boolean) is
    begin
-      Geometry := (Region => (Space => 0, Base => 16#1000#, Length => 2),
+      Geometry := (Region => (Space => 0, Base => 16#1000#, Length => 2, PCI => (Known => False)),
         Byte_Offset => (if Target.Register = IDs (Selector) then 0 else 1),
         Width => ACPI_FADT.Transactions.Byte_Access);
       Accepted := IO.Owner /= AML_Identity.No_Identity and then Target.Provider = IO.Owner

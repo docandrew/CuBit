@@ -46,7 +46,7 @@ procedure Field_Plan_Tests is
       Checks := Checks + 1;
    end Check;
    function Baseline return L.Field_Geometry is
-     (Region => (Space => L.Memory_Space, Base => 16#4000#, Length => 32),
+     (Region => (Space => L.Memory_Space, Base => 16#4000#, Length => 32, PCI => (Known => False)),
       Bit_Offset => 3, Bit_Length => 5, Flags => 1, Effective_Access => 1,
       others => <>);
    procedure Reject (Value : L.Field_Geometry) is
@@ -119,13 +119,13 @@ begin
    Field.Region.Base := 16#10000#; Reject (Field);
    Field := Baseline; Field.Region.Space := L.IO_Space;
    Field.Region.Base := 16#FFFF#; Field.Region.Length := 2; Reject (Field);
-   Field := Baseline; Field.Region := (L.IO_Space, 16#FFFF#, 1);
+   Field := Baseline; Field.Region := (L.IO_Space, 16#FFFF#, 1, PCI => (Known => False));
    Field.Bit_Offset := 0; Field.Bit_Length := 8; Item := P.Prepare (Field);
    Check (P.Valid (Item)); Check (P.Count (Item) = 1);
-   Field.Region := (L.IO_Space, 0, 16#10000#);
+   Field.Region := (L.IO_Space, 0, 16#10000#, PCI => (Known => False));
    Field.Bit_Offset := 16#FFFF# * L.Bits_Per_Byte; Item := P.Prepare (Field);
    Check (P.Valid (Item)); Check (P.Count (Item) = 1);
-   Field.Region := (L.Memory_Space, AML_Decode.Integer_Value'Last, 1);
+   Field.Region := (L.Memory_Space, AML_Decode.Integer_Value'Last, 1, PCI => (Known => False));
    Field.Bit_Offset := 0; Item := P.Prepare (Field);
    Check (P.Valid (Item)); Check (P.Count (Item) = 1);
    Check (not P.Matches (Item, 2, Register));

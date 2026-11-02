@@ -9,4 +9,4 @@ package ACPI_Service is new ACPI_Service_Core (Perform_Delay => ACPI_Native_Dela
    -- the aggregate method store is independent of the single-method limit.
    -- Snapshot startup constructs this large owner once on the CuAlloc heap.
    Namespace_Node_Capacity => 16_384,
-   Aggregate_Method_Capacity => 1_048_576);
+   Aggregate_Method_Capacity => 1_048_576, Enable_PCI_Context => True);

@@ -45,7 +45,7 @@ procedure Provider_Tests is
       Initial_Target_Capacity => 2, Record_Capacity_Failure => Record_Failure);
    IO, Other : Memory.Context;
    Saved : array (Positive range 1 .. 129) of A.Target;
-   Geometry : L.Register_Geometry := ((L.Memory_Space, 16#1000#, 16#4000#), 0, P.T.Byte_Access);
+   Geometry : L.Register_Geometry := ((L.Memory_Space, 16#1000#, 16#4000#, PCI => (Known => False)), 0, P.T.Byte_Access);
    Target : A.Target;
    Described : L.Register_Geometry;
    Good : Boolean;
@@ -81,14 +81,14 @@ begin
       Memory.Authorize (Other, Saved (I), False, Good); Check (not Good);
    end loop;
    Check (ACPI_Target_Heap_Test_Control.Attempts = Before);
-   Refuse (((L.Memory_Space, 16#5000#, 1), 0, P.T.Byte_Access));
-   Refuse (((L.Memory_Space, 16#4FFF#, 2), 0, P.T.Byte_Access));
-   Refuse (((L.Memory_Space, Interfaces.Unsigned_64'Last, 2), 0, P.T.Byte_Access));
-   Refuse (((L.IO_Space, 16#1000#, 16#4000#), 0, P.T.Byte_Access));
-   Refuse (((L.Memory_Space, 16#1000#, 0), 0, P.T.Byte_Access));
-   Refuse (((L.Memory_Space, 16#1000#, 16#4000#), 16#4000#, P.T.Byte_Access));
-   Refuse (((L.Memory_Space, 16#1000#, 16#4000#), 1, P.T.Word_Access));
-   Refuse (((L.Memory_Space, 16#1000#, 16#4000#), 16#3FFF#, P.T.Word_Access));
+   Refuse (((L.Memory_Space, 16#5000#, 1, PCI => (Known => False)), 0, P.T.Byte_Access));
+   Refuse (((L.Memory_Space, 16#4FFF#, 2, PCI => (Known => False)), 0, P.T.Byte_Access));
+   Refuse (((L.Memory_Space, Interfaces.Unsigned_64'Last, 2, PCI => (Known => False)), 0, P.T.Byte_Access));
+   Refuse (((L.IO_Space, 16#1000#, 16#4000#, PCI => (Known => False)), 0, P.T.Byte_Access));
+   Refuse (((L.Memory_Space, 16#1000#, 0, PCI => (Known => False)), 0, P.T.Byte_Access));
+   Refuse (((L.Memory_Space, 16#1000#, 16#4000#, PCI => (Known => False)), 16#4000#, P.T.Byte_Access));
+   Refuse (((L.Memory_Space, 16#1000#, 16#4000#, PCI => (Known => False)), 1, P.T.Word_Access));
+   Refuse (((L.Memory_Space, 16#1000#, 16#4000#, PCI => (Known => False)), 16#3FFF#, P.T.Word_Access));
    Check (Failures = 0);
    ACPI_Target_Heap_Test_Control.Successful_Allocation_Budget := 0;
    for I in 130 .. 257 loop

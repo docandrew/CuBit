@@ -47,7 +47,7 @@ procedure Bootstrap_Driver_Tests is
    procedure Describe (IO : Context; Target : A.Target;
      Geometry : out AML_Field_Layout.Register_Geometry; Accepted : out Boolean) is
    begin
-      Geometry := (Region => (Space => 0, Base => 16#1000#, Length => 1),
+      Geometry := (Region => (Space => 0, Base => 16#1000#, Length => 1, PCI => (Known => False)),
         Byte_Offset => 0, Width => ACPI_FADT.Transactions.Byte_Access);
       Accepted := IO.Ready and then Target.Provider = IO.Owner and then Target.Endpoint = 7
         and then Target.Epoch = 1 and then Target.Register = Register_ID;

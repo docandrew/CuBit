@@ -28,7 +28,7 @@ package body ACPI_Backend_Kernel_Handles is
       Item := (True, B.Memory_Resource,
         Interfaces.Unsigned_64 (Actual.Memory.First_Page) * F.Policy.M.Page_Bytes,
         Interfaces.Unsigned_64 (Actual.Memory.Pages) * F.Policy.M.Page_Bytes,
-        True, True, False);
+        True, F.Policy.M.Writable_Of (Actual.Memory.Kind), False);
    end Inspect_Memory;
    procedure Inspect_Ports
      (Authority : CuBit.Handles.IO_Ports; Item : out B.Description) is

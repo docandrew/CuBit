@@ -7,11 +7,13 @@ with AML_Identity;
 with ACPI_Locked_NVS_Protocol;
 with ACPI_Field_Inventory_Owner;
 with ACPI_Field_NVS_Provider;
+with ACPI_Field_PCI_Provider;
 with ACPI_Inventory_Protocol;
 generic
    type Peer is private;
    with package Scalar is new ACPI_Field_Inventory_Owner (Endpoint => Peer, others => <>);
    with package Memory is new ACPI_Field_NVS_Provider (Peer => Peer, others => <>);
+   with package PCI is new ACPI_Field_PCI_Provider (Peer => Peer, others => <>);
    with procedure Read_Clock
      (Now : out ACPI_Inventory_Protocol.Wire.Time_Instant; Available : out Boolean);
    with procedure Read_Window
@@ -19,6 +21,7 @@ generic
    Initial_Target_Capacity : Positive := 2 * AML_Field_Access.Default_Maximum_Registers;
    with procedure Record_Capacity_Failure
      (Item : ACPI_Capacity_Diagnostics.Report) is null;
+   Enable_PCI : Boolean := False;
 package ACPI_Field_Combined_Provider is
    type Startup_State is (Fresh, Initializing, Ready, Failed);
    type Context is limited private;
@@ -65,7 +68,7 @@ package ACPI_Field_Combined_Provider is
 private
    package A renames AML_Field_Access;
    package L renames AML_Field_Layout;
-   type Lane is (Named_Register, NVS_Data);
+   type Lane is (Named_Register, NVS_Data, PCI_Data);
    subtype Target_Index is Positive;
    type Association is record
       Path : Lane := Named_Register;
@@ -81,6 +84,7 @@ private
       Symbol : A.Endpoint_ID := A.No_Endpoint;
       Registers : Scalar.Context;
       NVS : Memory.Context;
+      Config : PCI.Context;
       Rows : Storage.Context;
       Issued : A.Counter := 0;
       Working : Boolean := False;

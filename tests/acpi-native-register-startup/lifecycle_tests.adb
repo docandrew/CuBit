@@ -246,11 +246,17 @@ begin
          Assert (Status /= Core.Values.Available and then Lifecycle.Observe.Stage = Lifecycle.Failed);
          Lifecycle.Execute_Module_Startup (Service, 100_000, Execution, Status);
          Assert (Status /= Core.Values.Available and then Calls = Before);
-      elsif Scenario = "normal" then
+      elsif Scenario = "normal" or else Scenario = "raw" then
          Selected.Select_Registers (Accepted); Assert (Accepted and then Selected.Current = Selected.Register_Provider);
          Selected.Select_Observer (Accepted); Assert (not Accepted);
          Selected.Evaluate_Named (Service, Core.Values.No_Node, 100_000, Value, Status);
          Assert (Status /= Core.Values.Available and then Value.Charged = 0 and then Calls = Before);
+         if Scenario = "raw" then
+            Selected.Invoke_Retained (Service, Core.Namespace.Root,
+              [others => 0], 0, 100_000, Value, Status);
+            Assert (Status = Core.Values.Wrong_Phase and then Value.Charged = 0
+              and then Calls = Before and then Core.Retained_Results (Service) = 0);
+         end if;
          Selected.Execute_Module_Startup (Service, 100_000, Execution, Status);
          Assert (Status = Core.Values.Available and then Lifecycle.Observe.Module_Completed
            and then Execution.Modules.Outcome = Core.Values.Modules_Completed and then Calls = Before);
@@ -265,6 +271,22 @@ begin
          Driver.Complete_Initialization (Run, Service, Accepted);
          Assert (Accepted and then Driver.Observe (Run).Stage = Driver.Incomplete and then Barrier_Calls = 1);
          Assert (Calls = Before and then Memory (2) = 0);
+         if Scenario = "raw" then
+            Find ("RGN2"); Before := Calls;
+            Selected.Invoke_Retained (Service, Found.Node,
+              [0 => 1, 1 => 1, others => 0], 2, 0, Value, Status);
+            Assert (Value.Status = AML_Execute.Budget_Exceeded and then Value.Charged = 0
+              and then Calls = Before and then Core.Retained_Results (Service) = 0);
+            Selected.Invoke_Retained (Service, Found.Node,
+              [0 => 1, 1 => 1, others => 0], 2, 100_000, Value, Status);
+            Assert (Status = Core.Values.Available and then Value.Status = AML_Execute.Returned
+              and then Value.Number = 2 and then Memory (0) = 1
+              and then Core.Retained_Results (Service) = 0);
+            Selected.Invoke_Retained (Service, Found.Node,
+              [0 => 0, 1 => 16#42#, others => 0], 2, 100_000, Value, Status);
+            Assert (Status = Core.Values.Available and then Value.Status = AML_Execute.Returned
+              and then Value.Number = 16#42# and then Memory (0) = 16#42#);
+         end if;
          Find ("GUID"); Core.Observe_Named_Value (Service, Found.Node, Value, Status);
          Assert (Status = Core.Values.Available and then Value.Status = AML_Execute.Object_Returned);
          Input := Value.Handle; Assert (Core.Retained_Results (Service) = 1);
@@ -290,15 +312,25 @@ begin
            and then Core.Retained_Results (Service) = 1);
          Core.Release_Result (Service, Input, Status); Assert (Status = Core.Values.Available and then Core.Retained_Results (Service) = 0);
          Find ("BRW0"); Incomplete_Selector := True; Saved_Writes := Writes;
+         if Scenario = "raw" then
+            Selected.Invoke_Retained (Service, Found.Node,
+              [others => 16#EF#], 1, 100_000, Value, Status);
+         else
          Selected.Invoke_With_Arguments (Service, Found.Node,
            [others => (Core.Values.Immediate_Argument, 16#EF#)], 1, 100_000, Value, Status);
+         end if;
          Assert (Value.Status = AML_Execute.Field_Indeterminate and then Writes = Saved_Writes + 1
            and then Lifecycle.Observe.IO_Pending and then Lifecycle.Uncertain.Present);
          Before := Calls;
          Selected.Close_Startup;
          Assert (Lifecycle.Observe.IO_Pending and then Lifecycle.Uncertain.Present);
+         if Scenario = "raw" then
+            Selected.Invoke_Retained (Service, Found.Node,
+              [others => 16#EF#], 1, 100_000, Value, Status);
+         else
          Selected.Invoke_With_Arguments (Service, Found.Node,
            [others => (Core.Values.Immediate_Argument, 16#EF#)], 1, 100_000, Value, Status);
+         end if;
          Assert (Status /= Core.Values.Available and then Value.Charged = 0 and then Calls = Before and then Writes = Saved_Writes + 1);
          Selected.Prepare_Fields (Service, Accepted); Assert (not Accepted and then Calls = Before);
       else raise Program_Error with "unknown scenario";

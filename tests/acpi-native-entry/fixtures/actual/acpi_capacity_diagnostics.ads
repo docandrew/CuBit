@@ -1,7 +1,7 @@
 pragma Ada_2022;
 with Interfaces;
 package ACPI_Capacity_Diagnostics with SPARK_Mode is
-   type Cache_Kind is (No_Cache, NVS_Targets, Combined_Targets);
+   type Cache_Kind is (No_Cache, NVS_Targets, Combined_Targets, PCI_Targets);
    type Failure_Kind is (No_Failure, Process_Heap, Entry_Representation, Byte_Representation);
    type Entry_Count is new Interfaces.Unsigned_64;
    type Byte_Count is new Interfaces.Unsigned_64;

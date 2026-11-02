@@ -1,5 +1,4 @@
 pragma Ada_2022;
-with AML_Execute;
 package body ACPI_Field_Evaluation is
    use type Bindings.Outcome;
    function Observe (Run : Context) return Bindings.Report is
@@ -42,6 +41,24 @@ package body ACPI_Field_Evaluation is
       if Provider.Pending (IO) then Status := Core.Values.Busy; return; end if;
       Bindings.Fields.Evaluate_Named (Service, IO, Items, Item, Budget, Result, Status);
    end Evaluate_Named;
+   procedure Invoke_Retained
+     (Run : in out Context; Service : aliased in out Core.State;
+      IO : in out Provider.Context; Node : Core.Namespace.Node_ID;
+      Args : AML_Execute.Arguments; Argument_Count : Core.Values.Argument_Count;
+      Budget : Natural; Result : out Core.Values.Result;
+      Status : out Core.Values.Access_Status)
+   is
+      Items : Bindings.Fields.Binding_Set;
+      Accepted : Boolean;
+   begin
+      Result := (AML_Execute.Unsupported_Value, 0);
+      Status := Core.Values.Wrong_Phase;
+      Export (Run, Service, IO, Items, Accepted);
+      if not Accepted then return; end if;
+      if Provider.Pending (IO) then Status := Core.Values.Busy; return; end if;
+      Bindings.Fields.Invoke_Retained
+        (Service, IO, Items, Node, Args, Natural (Argument_Count), Budget, Result, Status);
+   end Invoke_Retained;
    procedure Invoke_With_Arguments
      (Run : in out Context; Service : aliased in out Core.State;
       IO : in out Provider.Context; Node : Core.Namespace.Node_ID;

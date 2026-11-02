@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with AML_Execute;
 with ACPI_Capacity_Diagnostics;
 with Interfaces;
 with ACPI_Field_Clock;
@@ -11,6 +12,8 @@ with ACPI_Global_Lock_Protocol;
 with ACPI_Inventory_Protocol;
 with ACPI_Field_Inventory_Owner;
 with ACPI_Field_NVS_Provider;
+with ACPI_Field_PCI_Provider;
+with ACPI_PCI_Protocol;
 with ACPI_Field_Combined_Provider;
 with ACPI_Field_Provider_View;
 with ACPI_Field_Evaluation;
@@ -35,6 +38,7 @@ generic
    -- Default unavailable preserves NoLock-only behavior for other callers.
    with procedure Read_Lease_Clock
      (Now : out Interfaces.Unsigned_64; Available : out Boolean) is ACPI_Field_Clock.Unavailable;
+   Enable_PCI : Boolean := False;
 package ACPI_Field_Startup_Owner is
    package Wire renames ACPI_Inventory_Protocol.Wire;
    type Phase is (Fresh, Provisioning, Ready, Failed, Closed);
@@ -65,6 +69,13 @@ package ACPI_Field_Startup_Owner is
       Budget : Natural; Result : out Core.Values.Result;
       Status : out Core.Values.Access_Status)
      with Pre => Core.Valid (Service) and then not Result'Constrained;
+   -- Integer arguments use the same selected provider and current bindings.
+   procedure Invoke_Retained
+     (Service : aliased in out Core.State; Node : Core.Namespace.Node_ID;
+      Args : AML_Execute.Arguments; Argument_Count : Core.Values.Argument_Count;
+      Budget : Natural; Result : out Core.Values.Result;
+      Status : out Core.Values.Access_Status)
+     with Pre => Core.Valid (Service) and then not Result'Constrained;
    procedure Invoke_With_Arguments
      (Service : aliased in out Core.State; Node : Core.Namespace.Node_ID;
       Args : Core.Values.Arguments; Argument_Count : Core.Values.Argument_Count;
@@ -82,8 +93,17 @@ private
    procedure Read_NVS_Deadline (Deadline : out Wire.Time_Instant);
    package Memory is new ACPI_Field_NVS_Provider
      (Transport_State, Endpoint, No_Endpoint, Read_Clock, Exchange, Read_NVS_Deadline, Maximum_Bindings, Record_Capacity_Failure);
+   procedure Read_PCI_Clock
+     (Now : out ACPI_PCI_Protocol.Microsecond_Deadline; Available : out Boolean);
+   procedure Read_PCI_Deadline
+     (IPC_Deadline : out Wire.Time_Instant;
+      Data_Deadline : out ACPI_PCI_Protocol.Microsecond_Deadline);
+   package PCI is new ACPI_Field_PCI_Provider
+     (Transport_State, Endpoint, No_Endpoint, Read_Clock, Read_PCI_Clock,
+      Exchange, Read_PCI_Deadline, Maximum_Bindings, Record_Capacity_Failure);
    package Plain is new ACPI_Field_Combined_Provider
-     (Endpoint, Scalar, Memory, Read_Clock, Read_Window, Maximum_Registers + Maximum_Bindings, Record_Capacity_Failure);
+     (Endpoint, Scalar, Memory, PCI, Read_Clock, Read_Window, Maximum_Registers + Maximum_Bindings,
+      Record_Capacity_Failure, Enable_PCI);
    function Plain_Ready (IO : Plain.Context) return Boolean;
    package Plain_View is new ACPI_Field_Provider_View
      (Plain.Context, Plain_Ready, Plain.Identity, Plain.Pending, Plain.Register_Count,

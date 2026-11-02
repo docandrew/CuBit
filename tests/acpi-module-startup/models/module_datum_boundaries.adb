@@ -29,7 +29,7 @@ procedure Module_Datum_Boundaries is
    procedure Describe (IO : Context; Target : A.Target;
      Geometry : out AML_Field_Layout.Register_Geometry; Accepted : out Boolean) is
    begin
-      Geometry := (Region => (Space => 3, Base => 0, Length => Unsigned_64 (Cell_Count)),
+      Geometry := (Region => (Space => 3, Base => 0, Length => Unsigned_64 (Cell_Count), PCI => (Known => False)),
         Byte_Offset => 0, Width => ACPI_FADT.Transactions.Byte_Access);
       Accepted := not Pending (IO) and then Target.Provider = IO.Owner and then Target.Endpoint = 7
         and then Target.Epoch = 1 and then Target.Register in First_ID .. ID (Cell_Index'Last);

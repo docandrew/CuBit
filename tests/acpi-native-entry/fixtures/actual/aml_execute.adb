@@ -991,11 +991,18 @@ package body AML_Execute with SPARK_Mode is
          end Collect_Targets;
          procedure Publish_Live (Extra : Expression_Values := [])
            with Pre => Extra'Length <= Value_Arguments'Length;
+         Context_Depth : Natural range 0 .. Call_Budget'Last := 0;
+         procedure Prepare_Field_Context
+           (Ref : AML_References.Reference; Status : out Execution_Status);
          procedure Read_Reference_Value
            (Ref : AML_References.Reference; Value : out Datum; Status : out Execution_Status)
          is
          begin
             Publish_Live ([(Reference_Datum, Ref)]);
+            Prepare_Field_Context (Ref, Status);
+            if Status /= Returned then
+               Value := (Integer_Datum, 0, Ordinary_Integer); return;
+            end if;
             Read_Reference_At_Entry (Ref, Value, Status);
          end Read_Reference_Value;
          procedure Resolve_Expression_Slot
@@ -1885,6 +1892,10 @@ package body AML_Execute with SPARK_Mode is
             Location : constant Transport.Slot := Expression_Location (Call_Frame, Depth, Saved_Result);
          begin
             Publish_Live ([(Reference_Datum, Ref)]);
+            Prepare_Field_Context (Ref, Status);
+            if Status /= Returned then
+               Value := (Integer_Datum, 0, Ordinary_Integer); return;
+            end if;
             Read_Reference_Provenance_At_Entry (Ref, Value, Provenance, Status);
             if Status = Returned and then Provenance.Kind = Owned_Integer_Scalar then
                -- Authentication is authoritative; a malformed descriptor never
@@ -2083,6 +2094,7 @@ package body AML_Execute with SPARK_Mode is
                   when Missing_Binding => Status := Unknown_Name; return;
                   when Integer_Binding => Type_Code := 1;
                   when Method_Binding => Type_Code := 8;
+                  when Field_Binding => Type_Code := 5;
                   when Non_Integer_Binding => Type_Code := Object.Object.Type_Code; Size := Object.Object.Size;
                end case;
             else
@@ -2170,7 +2182,35 @@ package body AML_Execute with SPARK_Mode is
             Publish_Live;
          end Start_Package;
          procedure Finish_Package is
+            Cursor : Natural := 0;
+            Done : Boolean;
+            Property : Binding_Result;
+            Value : Datum;
          begin
+            loop
+               Publish_Live;
+               Done := True; Property := (Status => Missing_Binding);
+               Next_Runtime_Package_Field (Environment, Active_Lease,
+                 Stack (Depth).Package_Token, Cursor, Property, Done);
+               exit when Done;
+               if Charged = Budget then S := Budget_Exceeded; return; end if;
+               Charged := Charged + 1;
+               case Property.Status is
+                  when Missing_Binding => null;
+                  when Field_Binding =>
+                     Read_Reference_Value (Property.Ref, Value, S);
+                     if S /= Returned then return; end if;
+                     Publish_Live ([Value]);
+                     S := Unsupported_Value;
+                     Complete_Runtime_Package_Field (Environment, Active_Lease,
+                       Stack (Depth).Package_Token, Cursor, Value, S);
+                     if S /= Returned then return; end if;
+                  when Failed_Binding =>
+                     S := (if Property.Failure in Payload_Free_Failure then
+                       Property.Failure else Unsupported_Value); return;
+                  when others => S := Unsupported_Value; return;
+               end case;
+            end loop;
             Publish_Live;
             Finish_Runtime_Package (Environment, Active_Lease, Stack (Depth).Package_Token, Bound);
             if Bound.Status /= Non_Integer_Binding then
@@ -2270,6 +2310,62 @@ package body AML_Execute with SPARK_Mode is
             end if;
             end;
          end Dispatch;
+         procedure Prepare_Field_Context
+           (Ref : AML_References.Reference; Status : out Execution_Status) is
+            Ticket : Field_Context_Ticket := No_Field_Context;
+            Step : Field_Context_Step;
+            Property : Datum;
+            Entered : Boolean := False;
+            procedure Complete is
+            begin
+               Status := Returned;
+               Begin_Field_Context (Environment, Ref, Ticket, Step);
+               if Step.Phase = Context_Ready then return; end if;
+               if Step.Phase = Context_Failed then Status := Step.Failure; return; end if;
+               if Ticket = No_Field_Context then Status := Unsupported_Value; return; end if;
+               if Context_Depth = Call_Budget'Last then Status := Expression_Limit; return; end if;
+               Context_Depth := Context_Depth + 1; Entered := True;
+               loop
+                  pragma Loop_Variant (Decreases => Budget - Charged);
+                  if Charged = Budget then Status := Budget_Exceeded; return; end if;
+                  Charged := Charged + 1;
+                  case Step.Property.Status is
+                     when Integer_Binding =>
+                        Property := (Integer_Datum, Step.Property.Value, Step.Property.Origin);
+                     when Method_Binding =>
+                        if Step.Property.Parameters /= 0 then Status := Argument_Mismatch; return; end if;
+                        Dispatch (Step.Property.Method_ID,
+                          [others => (Integer_Datum, 0, Ordinary_Integer)], 0, True, Property, Status);
+                     when Reference_Binding | Field_Binding =>
+                        Read_Reference_Value (Step.Property.Ref, Property, Status);
+                     when Non_Integer_Binding => Property := (Object_Datum, Step.Property.Object);
+                     when Metadata_Binding => Property := (Metadata_Datum, Step.Property.Metadata);
+                     when Failed_Binding =>
+                        Status := (if Step.Property.Failure in Payload_Free_Failure then
+                          Step.Property.Failure else Unsupported_Value);
+                     when Missing_Binding => Status := Unknown_Name;
+                  end case;
+                  if Status /= Returned then return; end if;
+                  Publish_Live ([Property]);
+                  Step := (Phase => Context_Failed, others => <>);
+                  Advance_Field_Context (Environment, Ref, Ticket, Property, Step);
+                  if Tracking and then Pending_Identity /= 0 then
+                     Clear_If_Present (Pending_Identity); Pending_Identity := 0;
+                  end if;
+                  if Step.Phase = Context_Ready then return; end if;
+                  if Step.Phase = Context_Failed then Status := Step.Failure; return; end if;
+               end loop;
+            end Complete;
+         begin
+            Complete;
+            if Tracking and then Pending_Identity /= 0 and then Ticket /= No_Field_Context then
+               Clear_If_Present (Pending_Identity); Pending_Identity := 0;
+            end if;
+            if Entered then Context_Depth := Context_Depth - 1; end if;
+            if Ticket /= No_Field_Context then
+               Finish_Field_Context (Environment, Ref, Ticket, Status = Returned);
+            end if;
+         end Prepare_Field_Context;
          procedure Evaluate_Core is
          begin
          V := (Value_Kind => Integer_Datum, Number => 0, Origin => AML_Decode.Ordinary_Integer);
@@ -2685,6 +2781,9 @@ package body AML_Execute with SPARK_Mode is
                   case Bound.Status is
                      when Failed_Binding => S := (if Bound.Failure in Execution_Failure then Bound.Failure else Unsupported_Value); return;
                      when Reference_Binding => V := (Value_Kind => Reference_Datum, Ref => Bound.Ref);
+                     when Field_Binding =>
+                        Read_Reference_Value (Bound.Ref, V, S);
+                        if S /= Returned then return; end if;
                      when Metadata_Binding => V := (Metadata_Datum, Bound.Metadata);
                      when Integer_Binding =>
                         if Allow_No_Return and Depth = 0 then S := Unsupported; return; end if;
@@ -3527,7 +3626,7 @@ package body AML_Execute with SPARK_Mode is
                         if S = Uninitialized and then AML_References.Kind (V.Ref) = AML_References.Frame_Cell then
                            S := No_Return; return;
                         end if;
-                        if S not in Returned | Uninitialized | Unsupported_Value | Value_Limit | Buffer_Field_Limit | Field_Indeterminate then S := Unsupported_Value; end if;
+                        if S not in Returned | Payload_Free_Failure then S := Unsupported_Value; end if;
                         if S /= Returned then return; end if;
                         V := Resolved;
                         Complete_Integer_Result (V, S);
@@ -3557,6 +3656,8 @@ package body AML_Execute with SPARK_Mode is
                                    Here, Width, Evaluate_Binding, Binding);
                                  case Binding.Status is
                                     when Integer_Binding => V := (Integer_Datum, Binding.Value, Binding.Origin);
+                                    when Field_Binding => Read_Reference_Value (Binding.Ref, V, S);
+                                       if S /= Returned then return; end if;
                                     when Non_Integer_Binding => V := (Object_Datum, Binding.Object);
                                     when Failed_Binding =>
                                        S := (if Binding.Failure in Payload_Free_Failure then

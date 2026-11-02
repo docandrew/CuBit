@@ -18,6 +18,8 @@ shared/acpi/acpi_passive_query-resource_records.adb
 shared/acpi/acpi_passive_query-resource_records.ads
 shared/acpi/acpi_passive_query.adb
 shared/acpi/acpi_passive_query.ads
+shared/acpi/acpi_pci_protocol.adb
+shared/acpi/acpi_pci_protocol.ads
 shared/acpi/acpi_protocol.ads
 shared/acpi/acpi_query_transport.adb
 shared/acpi/acpi_query_transport.ads
@@ -224,6 +226,8 @@ userspace/services/acpi/field-client/provider/acpi_field_lease_scope.ads
 userspace/services/acpi/field-client/provider/acpi_field_lease_scope_native.ads
 userspace/services/acpi/field-client/provider/acpi_field_nvs_provider.adb
 userspace/services/acpi/field-client/provider/acpi_field_nvs_provider.ads
+userspace/services/acpi/field-client/provider/acpi_field_pci_provider.adb
+userspace/services/acpi/field-client/provider/acpi_field_pci_provider.ads
 userspace/services/acpi/field-client/provider/acpi_field_provider_view.ads
 userspace/services/acpi/field-client/provider/acpi_field_remote_provider.adb
 userspace/services/acpi/field-client/provider/acpi_field_remote_provider.ads
@@ -275,6 +279,10 @@ userspace/services/acpi/lib/acpi_fadt-transactions.adb
 userspace/services/acpi/lib/acpi_fadt-transactions.ads
 userspace/services/acpi/lib/acpi_fadt.adb
 userspace/services/acpi/lib/acpi_fadt.ads
+userspace/services/acpi/lib/acpi_pci_config_reads.adb
+userspace/services/acpi/lib/acpi_pci_config_reads.ads
+userspace/services/acpi/lib/acpi_pci_memory_reads.adb
+userspace/services/acpi/lib/acpi_pci_memory_reads.ads
 userspace/services/acpi/lib/aml_bcd.adb
 userspace/services/acpi/lib/aml_bcd.ads
 userspace/services/acpi/lib/aml_buffer_bits.adb

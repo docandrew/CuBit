@@ -1,5 +1,4 @@
 pragma Ada_2022;
-with AML_Execute;
 package body ACPI_Startup_Evaluation is
    use type Registers.Phase, Core.Values.Access_Status, Core.Execution_Phase_Result, Core.Values.Module_Outcome;
    function Current return Mode is (Selected);
@@ -58,6 +57,19 @@ package body ACPI_Startup_Evaluation is
          when others => null;
       end case;
    end Evaluate_Named;
+   procedure Invoke_Retained
+     (Service : aliased in out Core.State; Node : Core.Namespace.Node_ID;
+      Args : AML_Execute.Arguments; Argument_Count : Core.Values.Argument_Count;
+      Budget : Natural; Result : out Core.Values.Result; Status : out Core.Values.Access_Status) is
+   begin
+      Result := (AML_Execute.Unsupported_Value, 0); Status := Core.Values.Wrong_Phase;
+      if not Module_Completed then return; end if;
+      case Selected is
+         when Observer => Core.Invoke_Retained (Service, Node, Args, Natural (Argument_Count), Budget, Result, Status);
+         when Register_Provider => Registers.Invoke_Retained (Service, Node, Args, Argument_Count, Budget, Result, Status);
+         when others => null;
+      end case;
+   end Invoke_Retained;
    procedure Invoke_With_Arguments
      (Service : aliased in out Core.State; Node : Core.Namespace.Node_ID;
       Args : Core.Values.Arguments; Argument_Count : Core.Values.Argument_Count;

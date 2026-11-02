@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with AML_Execute;
 with ACPI_Service_Core;
 with ACPI_Field_Provider_View;
 with ACPI_Field_Bindings;
@@ -22,6 +23,14 @@ package ACPI_Field_Evaluation is
    procedure Evaluate_Named
      (Run : in out Context; Service : aliased in out Core.State;
       IO : in out Provider.Context; Item : Core.Node_Descriptor;
+      Budget : Natural; Result : out Core.Values.Result;
+      Status : out Core.Values.Access_Status)
+     with Pre => Core.Valid (Service) and then not Result'Constrained;
+   -- Integer arguments use the same selected provider and current bindings.
+   procedure Invoke_Retained
+     (Run : in out Context; Service : aliased in out Core.State;
+      IO : in out Provider.Context; Node : Core.Namespace.Node_ID;
+      Args : AML_Execute.Arguments; Argument_Count : Core.Values.Argument_Count;
       Budget : Natural; Result : out Core.Values.Result;
       Status : out Core.Values.Access_Status)
      with Pre => Core.Valid (Service) and then not Result'Constrained;

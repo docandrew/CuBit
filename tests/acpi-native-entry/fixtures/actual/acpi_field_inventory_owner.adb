@@ -48,7 +48,7 @@ package body ACPI_Field_Inventory_Owner is
                     when ACPI_Inventory_Protocol.Memory_Space => L.Memory_Space,
                     when ACPI_Inventory_Protocol.IO_Space => L.IO_Space,
                     when ACPI_Inventory_Protocol.Embedded_Control_Space => L.Embedded_Control_Space),
-                  Base => Item.Base, Length => Item.Length),
+                  Base => Item.Base, Length => Item.Length, PCI => (Known => False)),
                  Byte_Offset => Item.Offset, Width => Item.Width),
                Readable => Item.Readable, Writable => Item.Writable,
                Exact_Write_Safe => Item.Exact_Write_Safe, Write_Mask => Item.Write_Mask);

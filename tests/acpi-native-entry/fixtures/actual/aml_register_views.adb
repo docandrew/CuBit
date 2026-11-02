@@ -15,7 +15,7 @@ package body AML_Register_Views with SPARK_Mode is
       Size : constant Register_Byte_Count := Octets (Canonical.Width);
    begin
       if not Valid_Register (Canonical) or else not Valid_Region (Region)
-        or else Canonical.Region.Space /= Region.Space
+        or else Canonical.Region.Space /= Region.Space or else Canonical.Region.PCI /= Region.PCI
         or else First_Address (Canonical) < Region.Base then return (Allowed => False); end if;
       Offset := First_Address (Canonical) - Region.Base;
       if Offset >= Region.Length or else Size > Region.Length - Offset then return (Allowed => False); end if;

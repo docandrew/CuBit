@@ -1,5 +1,4 @@
 pragma Ada_2022;
-with AML_Execute;
 package body ACPI_Field_Startup_Owner is
    use type Wire.Time_Instant, Interfaces.Unsigned_64;
    use type Plain.Startup_State;
@@ -33,6 +32,21 @@ package body ACPI_Field_Startup_Owner is
    procedure Read_NVS_Deadline (Deadline : out Wire.Time_Instant) is
       Ignored : Wire.Time_Instant;
    begin Read_Window (Ignored, Deadline); end Read_NVS_Deadline;
+   procedure Read_PCI_Clock
+     (Now : out ACPI_PCI_Protocol.Microsecond_Deadline; Available : out Boolean) is
+      Value : Interfaces.Unsigned_64;
+   begin
+      Read_Lease_Clock (Value, Available);
+      Now := ACPI_PCI_Protocol.Microsecond_Deadline (Value);
+   end Read_PCI_Clock;
+   procedure Read_PCI_Deadline
+     (IPC_Deadline : out Wire.Time_Instant;
+      Data_Deadline : out ACPI_PCI_Protocol.Microsecond_Deadline) is
+      Ignored : Wire.Time_Instant;
+   begin
+      Read_Window (Ignored, IPC_Deadline);
+      Data_Deadline := ACPI_PCI_Protocol.Data_Deadline_For (IPC_Deadline);
+   end Read_PCI_Deadline;
    procedure Read_Lease_Window
      (Lease_Deadline : out Interfaces.Unsigned_64;
       IPC_Deadline : out Wire.Time_Instant; Available : out Boolean) is
@@ -127,6 +141,18 @@ package body ACPI_Field_Startup_Owner is
       Last_Capacity := ACPI_Capacity_Diagnostics.No_Report;
       Evaluation.Evaluate_Named (Cache, Service, IO, Item, Budget, Result, Status);
    end Evaluate_Named;
+   procedure Invoke_Retained
+     (Service : aliased in out Core.State; Node : Core.Namespace.Node_ID;
+      Args : AML_Execute.Arguments; Argument_Count : Core.Values.Argument_Count;
+      Budget : Natural; Result : out Core.Values.Result;
+      Status : out Core.Values.Access_Status) is
+   begin
+      Result := (AML_Execute.Unsupported_Value, 0); Status := Core.Values.Wrong_Phase;
+      if not Module_Completed or else not Usable then return; end if;
+      Last_Capacity := ACPI_Capacity_Diagnostics.No_Report;
+      Evaluation.Invoke_Retained
+        (Cache, Service, IO, Node, Args, Argument_Count, Budget, Result, Status);
+   end Invoke_Retained;
    procedure Invoke_With_Arguments
      (Service : aliased in out Core.State; Node : Core.Namespace.Node_ID;
       Args : Core.Values.Arguments; Argument_Count : Core.Values.Argument_Count;

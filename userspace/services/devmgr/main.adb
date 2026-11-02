@@ -131,6 +131,8 @@ procedure main is
    --  A legacy PCI interrupt line's vector (the IOAPIC routes line N to
    --  LEGACY_VECTOR_BASE + N).
    LEGACY_VECTOR_BASE : constant Unsigned_64 := 32;
+   --  Legacy lines with a fixed vector (LEGACY_VECTOR_BASE + line).
+   ISA_LINES          : constant Unsigned_8 := 16;
 
    --  PCI config I/O ports
    PCI_CONFIG_ADDR : constant Unsigned_16 := 16#0CF8#;
@@ -1863,6 +1865,9 @@ procedure main is
       msix : constant Unsigned_8 := Unsigned_8 (facts.MSIX);
       msi  : constant Unsigned_8 := Unsigned_8 (facts.MSI);
       cpu  : constant Natural := cpuOf (DL.PID (owner));
+      --  The last vector allocation the kernel refused, for the warning.
+      refused : Boolean := False;
+      why     : CuBit.Handles.Refusal := CuBit.Handles.ABI.Invalid_Argument;
    begin
       F := (Device => dev, Owner => owner, others => <>);
       if not request.Present then
@@ -1908,7 +1913,10 @@ procedure main is
                   nextTableWindow := nextTableWindow + 1;
                   F.Vectors := CuBit.Device_Interrupts.Allocate
                     (DL.PID (owner), DL.Space (owner), count, cpu, Root.Vector_Authority);
-                  if F.Vectors.Valid then
+                  if not F.Vectors.Valid then
+                     refused := True;
+                     why := F.Vectors.Why;
+                  else
                      Bind_Vectors (F);
                      F.Mode := MSIX_Mode;
                      F.Capability := msix;
@@ -1926,7 +1934,10 @@ procedure main is
       if F.Mode = Polled and then msi /= 0 then
          F.Vectors := CuBit.Device_Interrupts.Allocate
            (DL.PID (owner), DL.Space (owner), 1, cpu, Root.Vector_Authority);
-         if F.Vectors.Valid then
+         if not F.Vectors.Valid then
+            refused := True;
+            why := F.Vectors.Why;
+         else
             Bind_Vectors (F);
             F.Mode := MSI_Mode;
             F.Capability := msi;
@@ -1938,6 +1949,12 @@ procedure main is
                Message_Functions.Prepare_MSI (F.Vectors.Head, F.Vectors.Destination);
             end if;
          end if;
+      end if;
+      if F.Mode = Polled then
+         Warnings.Warn ("devmgr: " & name & " " & Location_Text (dev) &
+           " has no message vector (MSI-X cap" & Unsigned_8'Image (msix) &
+           ", MSI cap" & Unsigned_8'Image (msi) & ")" &
+           (if refused then ": vector allocation refused, " & DL.Text (why) else ""));
       end if;
       Report (F, name);
    end Setup_Message_Interrupts;
@@ -2411,7 +2428,13 @@ procedure main is
       Setup_Message_Interrupts (dev, child, "hda.drv", instances (I).Interrupts);
       msiReady := instances (I).Interrupts.Mode /= Polled;
 
-      if not msiReady then
+      if not msiReady and then irqLine >= ISA_LINES then
+         --  Only the ISA lines have a fixed vector. A higher I/O APIC input
+         --  (or 16#FF#, unrouted) needs the ACPI _PRT routing, which devmgr
+         --  does not have yet, so the interrupt binding stays unanswered.
+         Warnings.Warn ("devmgr: HDA legacy INTx line" & Unsigned_8'Image (irqLine) &
+                        " has no ISA vector; needs MSI or ACPI _PRT routing");
+      elsif not msiReady then
          --  Compatibility fallback. The long-term legacy-INTx path needs a
          --  mask/ack/unmask protocol before it can offer the same latency.
          --  The line's capability answers the manifest's interrupt binding.

@@ -50,7 +50,7 @@ procedure Wide_Startup_Tests is
       Accepted := not Pending (IO) and then Target.Provider in IO.Owner | IO.Other
         and then Target.Endpoint = 7 and then Target.Epoch = 1
         and then Target.Register in First_ID .. ID (Last_Offset);
-      Geometry := (Region => (Space => 0, Base => 16#1000#, Length => 11),
+      Geometry := (Region => (Space => 0, Base => 16#1000#, Length => 11, PCI => (Known => False)),
          Byte_Offset => (if Accepted then Unsigned_64 (Target.Register - First_ID) else 0),
          Width => ACPI_FADT.Transactions.Byte_Access);
    end Describe;

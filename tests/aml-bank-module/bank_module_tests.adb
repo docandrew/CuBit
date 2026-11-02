@@ -60,7 +60,7 @@ procedure Bank_Module_Tests is
       Found : Boolean;
    begin
       Locate (Target.Register, S, Found);
-      Geometry := (Region => (Space => 0, Base => 16#1000#, Length => 4),
+      Geometry := (Region => (Space => 0, Base => 16#1000#, Length => 4, PCI => (Known => False)),
         Byte_Offset => AML_Decode.Integer_Value (Slot'Pos (S)), Width => ACPI_FADT.Transactions.Byte_Access);
       if S /= Bank_Port then
          case (if IO.Change_Geometry_After_Bank and then IO.Bank_Writes > 0

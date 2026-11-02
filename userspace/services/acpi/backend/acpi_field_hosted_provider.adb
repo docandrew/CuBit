@@ -91,7 +91,7 @@ package body ACPI_Field_Hosted_Provider is
          then return; end if;
          Geometry := (Region => (Space => (if C.Space = ACPI_Region_Policy.Memory_Space
            then AML_Field_Layout.Memory_Space else AML_Field_Layout.IO_Space),
-           Base => C.Base, Length => C.Length),
+           Base => C.Base, Length => C.Length, PCI => (Known => False)),
            Byte_Offset => C.Register_Offset, Width => C.Register_Width);
          Accepted := True;
       end;

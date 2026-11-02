@@ -334,7 +334,7 @@ begin
 
    declare
       Region : AML_Field_Layout.Region_Geometry :=
-        (Space => AML_Field_Layout.Embedded_Control_Space, Base => 0, Length => 256);
+        (Space => AML_Field_Layout.Embedded_Control_Space, Base => 0, Length => 256, PCI => (Known => False));
       Item : Backend.Admission :=
         (Register => Backend.Register_ID'Last, Epoch => Backend.Epoch_ID'Last,
          Owner => Sender, Cell => 0, Readable => True, Writable => True,
@@ -356,7 +356,7 @@ begin
          Check (Built.Item.Readable and Built.Item.Writable
            and Built.Item.Exact_Write_Safe and Built.Item.Write_Mask = 16#0F#);
          Region := (Space => AML_Field_Layout.Embedded_Control_Space,
-                    Base => AML_Decode.Integer_Value (Cell), Length => 1);
+                    Base => AML_Decode.Integer_Value (Cell), Length => 1, PCI => (Known => False));
          Built := Bindings.Build (Item, Sender, Region);
          Check (Built.Status = Bindings.Ready and then Built.Item.Geometry.Byte_Offset = 0);
       end loop;
@@ -419,7 +419,7 @@ begin
    Provider.Initialize (IO, 1, 7, Accepted); Check (Accepted);
    declare
       Region : constant AML_Field_Layout.Region_Geometry :=
-        (Space => AML_Field_Layout.Embedded_Control_Space, Base => 0, Length => 256);
+        (Space => AML_Field_Layout.Embedded_Control_Space, Base => 0, Length => 256, PCI => (Known => False));
       Admitted : constant Backend.Admission :=
         (Register => Backend.Register_ID (Register_ID), Epoch => 1, Owner => Sender,
          Cell => 16#10#, Readable => True, Writable => True,

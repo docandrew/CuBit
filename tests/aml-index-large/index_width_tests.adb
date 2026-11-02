@@ -45,7 +45,7 @@ procedure Index_Width_Tests is
    procedure Describe (IO : Context; Target : A.Target;
      Geometry : out AML_Field_Layout.Register_Geometry; Accepted : out Boolean) is
    begin
-      Geometry := ((Space => 0, Base => 16#1000#, Length => 16),
+      Geometry := ((Space => 0, Base => 16#1000#, Length => 16, PCI => (Known => False)),
         (if Target.Register = Index_ID then 0 else 8),
         (if Target.Register = Index_ID then T.Qword_Access else T.Byte_Access));
       Accepted := IO.Owner /= AML_Identity.No_Identity and then Target.Provider = IO.Owner

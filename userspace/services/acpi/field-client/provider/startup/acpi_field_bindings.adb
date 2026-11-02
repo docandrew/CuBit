@@ -93,7 +93,7 @@ package body ACPI_Field_Bindings is
                Provider.Describe (IO, Target, Geometry, Accepted);
                if not Accepted then Fail (Index, Binding_Refused, V.Invalid_Value); return; end if;
                if AML_Register_Views.Can_Rebase (Geometry,
-                 (AML_Decode.Byte (Region.Space), Region.Address, Region.Length)) then
+                 (AML_Decode.Byte (Region.Space), Region.Address, Region.Length, Region.PCI)) then
                   Provider.Authorize (IO, Target, False, Reading);
                   Provider.Authorize (IO, Target, True, Writing);
                   if Reading or Writing then
@@ -117,7 +117,7 @@ package body ACPI_Field_Bindings is
                Run.Info.Direct_Fields := Run.Info.Direct_Fields + 1;
                declare
                   Meta : constant L.Field_Geometry :=
-                    (Region => (AML_Decode.Byte (Field.Region.Space), Field.Region.Address, Field.Region.Length),
+                    (Region => (AML_Decode.Byte (Field.Region.Space), Field.Region.Address, Field.Region.Length, Field.Region.PCI),
                      Bit_Offset => AML_Decode.Integer_Value (Field.Field.Offset),
                      Bit_Length => AML_Decode.Integer_Value (Field.Field.Bits),
                      Flags => Field.Field.Raw_Flags, Effective_Access => Field.Field.Access_Type,

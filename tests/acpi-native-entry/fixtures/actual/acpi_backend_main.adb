@@ -19,6 +19,9 @@ with ACPI_Native_Events;
 with ACPI_FADT;
 with ACPI_FADT.Registers;
 with ACPI_Backend_NVS_Native;
+with ACPI_Backend_PCI_Reads;
+with ACPI_Backend_PCI_Dispatch;
+with ACPI_PCI_Protocol;
 with ACPI_Backend_Locked_NVS;
 with ACPI_Backend_NVS_Endpoint;
 with ACPI_NVS_Protocol;
@@ -147,12 +150,38 @@ begin
          end loop;
          return False;
       end Is_NVS;
+      function Is_PCI (Window : Catalog.W.Window_ID) return Boolean is
+         use type Catalog.W.Window_ID, Catalog.W.P.Address_Space;
+      begin
+         for I in 1 .. Grant.Memory_Used loop
+            if Window = Catalog.W.Window_ID (Grant.IO_Used + I) then
+               declare
+                  Actual : constant Firmware.Policy.Report := Firmware.Inspect_Claim
+                    (Grant.Memory (I).Memory, Grant.Memory (I).First_Page, Grant.Memory (I).Pages,
+                     Grant.Memory (I).Kind, Grant.Memory (I).Cache);
+                  View : constant Catalog.W.Window_Result := Catalog.Describe_Window (Hardware, Window);
+               begin
+                  return Actual.Status = Firmware.Policy.Admitted
+                    and then Firmware.Policy.Allows_PCI_Reads (Actual.Memory)
+                    and then View.Allowed and then View.Value.Space = Catalog.W.P.Memory_Space
+                    and then View.Value.Base = Actual.Memory.First_Page * Memory_Classes.Page_Bytes
+                    and then View.Value.Length = Actual.Memory.Pages * Memory_Classes.Page_Bytes;
+               end;
+            end if;
+         end loop;
+         return False;
+      end Is_PCI;
       package NVS_Native is new ACPI_Backend_NVS_Native
         (Catalog, Hardware, Is_NVS, CuBit.ACPI_Windows.Maximum_Memory_Windows);
       package NVS renames NVS_Native.Records;
       NVS_State : NVS.Context;
       NVS_Status : NVS.Outcome;
       package NVS_Endpoint is new ACPI_Backend_NVS_Endpoint (NVS);
+      package PCI is new ACPI_Backend_PCI_Reads
+        (Catalog, Hardware, Is_PCI, ACPI_Backend_Kernel_Handles.Read_Clock, NVS_Native.Transfer);
+      package PCI_Dispatch is new ACPI_Backend_PCI_Dispatch (PCI);
+      PCI_State : PCI.Context;
+      PCI_Status : PCI.Outcome;
       type Lock_Scope is new Unsigned_64;
       procedure Lock_Clock (Value : out Unsigned_64; Good : out Boolean) is
          Raw : B.Tick;
@@ -241,7 +270,7 @@ begin
       begin
          if Space = Catalog.W.P.Memory_Space then
             for I in 1 .. Grant.Memory_Used loop
-               if Firmware.Policy.Control_Conflict (Validated_Memory (I), Address, Unsigned_64 (Catalog.W.T.Octets (Width))) then
+               if Firmware.Policy.Generic_Field_Conflict (Validated_Memory (I), Address, Unsigned_64 (Catalog.W.T.Octets (Width))) then
                   return Catalog.W.No_Window;
                end if;
             end loop;
@@ -378,6 +407,13 @@ begin
                      when others => ACPI_NVS_Protocol.Read), ACPI_NVS_Protocol.Unavailable);
                Response.tag.label := Output.Label; Response.tag.length := Output.Length;
                Response.words := CuBit.Messages.MessageWords (Output.Data);
+            elsif ACPI_PCI_Protocol.Owned_Label (Request.tag.label) then
+               Output := ACPI_PCI_Protocol.Error_Reply
+                 ((if Request.tag.label = ACPI_PCI_Protocol.Header_Operation then ACPI_PCI_Protocol.Header
+                   elsif Request.tag.label = ACPI_PCI_Protocol.Describe_Operation then ACPI_PCI_Protocol.Describe
+                   else ACPI_PCI_Protocol.Read), ACPI_PCI_Protocol.Unavailable);
+               Response.tag.label := Output.Label; Response.tag.length := Output.Length;
+               Response.words := CuBit.Messages.MessageWords (Output.Data);
             else
                Response.tag.label := ACPI_Region_Protocol.Operation_Reply; Response.tag.length := 4;
             end if;
@@ -385,7 +421,15 @@ begin
          end if;
          Handled := Request.tag.label in ACPI_NVS_Protocol.Header_Operation |
            ACPI_NVS_Protocol.Describe_Operation | ACPI_NVS_Protocol.Read_Operation;
-         if Handled then NVS_Endpoint.Dispatch (NVS_State, Request, Response); end if;
+         if Handled then NVS_Endpoint.Dispatch (NVS_State, Request, Response); return; end if;
+         Handled := ACPI_PCI_Protocol.Owned_Label (Request.tag.label);
+         if Handled then
+            PCI_Dispatch.Dispatch (PCI_State, Request.authorityTag, Input, Output);
+            Response := CuBit.Messages.NULL_MESSAGE;
+            Response.tag := (label => Output.Label, length => Output.Length,
+              protocol => CuBit.Messages.Protocol_Flags (Output.Flags), ipc => <>, reserved => Output.Reserved);
+            Response.words := CuBit.Messages.MessageWords (Output.Data);
+         end if;
       end Additional_Request;
       package Server is new ACPI_Backend_Server
         (Catalog, ACPI_Backend_Loop_Native.Poll_Completion, CuBit.Messages.Poll_Event,
@@ -439,7 +483,7 @@ begin
       begin
          if Timer.Code = Registers.Described and then Timer.Space = Registers.System_Memory then
             for I in 1 .. Grant.Memory_Used loop
-               if Firmware.Policy.Control_Conflict
+               if Firmware.Policy.Generic_Field_Conflict
                  (Validated_Memory (I), Timer.Base, Unsigned_64 (Timer.Length))
                then
                   ACPI_Native_Log.Warning ("acpi-backend: stage hardware fail CONTROL_TIMER_REFUSED");
@@ -494,6 +538,28 @@ begin
       if not Startup_Time_Remains then
          ACPI_Native_Log.Warning ("acpi-backend: stage global-lock fail CLOCK_OR_DEADLINE"); return;
       end if;
+      declare
+         Selected : Catalog.W.Window_ID := Catalog.W.No_Window;
+         use type PCI.Outcome;
+      begin
+         for I in 1 .. Grant.Memory_Used loop
+            if Firmware.Policy.Allows_PCI_Reads (Validated_Memory (I)) then
+               if Selected /= Catalog.W.No_Window then
+                  ACPI_Native_Log.Warning ("acpi-backend: stage pci-config fail DUPLICATE_BUS_ZERO"); return;
+               end if;
+               Selected := Catalog.W.Window_ID (Grant.IO_Used + I);
+            end if;
+         end loop;
+         if Selected = Catalog.W.No_Window then
+            ACPI_Native_Log.Info ("acpi-backend: stage pci-config skip NO_APPROVED_WINDOW");
+         else
+            PCI.Configure (PCI_State, Unsigned_64 (ACPI_Register_Roles.Frontend_Tag), 1, Selected, PCI_Status);
+            if PCI_Status /= PCI.Configured then
+               ACPI_Native_Log.Warning ("acpi-backend: stage pci-config fail " & PCI_Status'Image); return;
+            end if;
+            ACPI_Native_Log.Info ("acpi-backend: stage pci-config ok READ_ONLY segment=0 bus=0");
+         end if;
+      end;
       Prepare_Lock;
       if not Lock_Requests.Observe (Lock_State).Configured then
          ACPI_Native_Log.Info ("acpi-backend: stage scoped-nvs skip LOCK_UNAVAILABLE");

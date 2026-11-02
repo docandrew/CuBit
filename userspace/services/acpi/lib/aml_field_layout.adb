@@ -21,7 +21,8 @@ package body AML_Field_Layout with SPARK_Mode is
    begin
       if Field.Form /= Ordinary_Field or else Field.Has_Connection
         or else Field.Region /= Register.Region
-        or else Field.Region.Space not in Memory_Space | IO_Space | Embedded_Control_Space
+        or else Field.Region.Space not in Memory_Space | IO_Space | PCI_Config_Space | Embedded_Control_Space
+        or else not Domain_Valid (Field.Region)
         or else Field.Region.Length = 0
         or else (Register.Width = ACPI_FADT.Transactions.Qword_Access
           and then Field.Region.Space /= Memory_Space)

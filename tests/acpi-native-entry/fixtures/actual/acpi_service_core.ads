@@ -46,6 +46,7 @@ generic
      is AML_Events.Unavailable_Timeout;
    Block_Capacity : AML_Execution_Limits.Continuation_Capacity :=
      AML_Execution_Limits.Default_Continuation_Capacity;
+   Enable_PCI_Context : Boolean := False;
    Copied_Table_Capacity : Natural := 0;
    Copied_Byte_Capacity : Natural := 0;
 package ACPI_Service_Core with SPARK_Mode is
@@ -58,7 +59,7 @@ package ACPI_Service_Core with SPARK_Mode is
       Max_Pending_Notifications => Notification_Capacity,
       Supported_Interfaces => Supported_Interfaces,
       Wait_Event_Timeout => Wait_Event_Timeout,
-      Block_Capacity => Block_Capacity);
+      Block_Capacity => Block_Capacity, Enable_PCI_Context => Enable_PCI_Context);
    package Values is new Namespace.Owned.Collecting;
    use type AML_Execute.Execution_Status;
    use type AML_Copied_Tables.Outcome;

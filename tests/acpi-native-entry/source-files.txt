@@ -20,6 +20,10 @@ tests/acpi-native-entry/fixtures/actual/acpi_backend_memory_access.adb
 tests/acpi-native-entry/fixtures/actual/acpi_backend_memory_access.ads
 tests/acpi-native-entry/fixtures/actual/acpi_backend_native_bindings.ads
 tests/acpi-native-entry/fixtures/actual/acpi_backend_native_catalog.ads
+tests/acpi-native-entry/fixtures/actual/acpi_backend_pci_dispatch.adb
+tests/acpi-native-entry/fixtures/actual/acpi_backend_pci_dispatch.ads
+tests/acpi-native-entry/fixtures/actual/acpi_backend_pci_reads.adb
+tests/acpi-native-entry/fixtures/actual/acpi_backend_pci_reads.ads
 tests/acpi-native-entry/fixtures/actual/acpi_backend_pm_timer.adb
 tests/acpi-native-entry/fixtures/actual/acpi_backend_pm_timer.ads
 tests/acpi-native-entry/fixtures/actual/acpi_backend_port_access.adb
@@ -162,6 +166,8 @@ tests/acpi-native-entry/fixtures/actual/acpi_field_module_startup.adb
 tests/acpi-native-entry/fixtures/actual/acpi_field_module_startup.ads
 tests/acpi-native-entry/fixtures/actual/acpi_field_nvs_provider.adb
 tests/acpi-native-entry/fixtures/actual/acpi_field_nvs_provider.ads
+tests/acpi-native-entry/fixtures/actual/acpi_field_pci_provider.adb
+tests/acpi-native-entry/fixtures/actual/acpi_field_pci_provider.ads
 tests/acpi-native-entry/fixtures/actual/acpi_field_provider_view.ads
 tests/acpi-native-entry/fixtures/actual/acpi_field_remote_provider.adb
 tests/acpi-native-entry/fixtures/actual/acpi_field_remote_provider.ads
@@ -279,6 +285,12 @@ tests/acpi-native-entry/fixtures/actual/acpi_passive_search.adb
 tests/acpi-native-entry/fixtures/actual/acpi_passive_search.ads
 tests/acpi-native-entry/fixtures/actual/acpi_passive_status.adb
 tests/acpi-native-entry/fixtures/actual/acpi_passive_status.ads
+tests/acpi-native-entry/fixtures/actual/acpi_pci_config_reads.adb
+tests/acpi-native-entry/fixtures/actual/acpi_pci_config_reads.ads
+tests/acpi-native-entry/fixtures/actual/acpi_pci_memory_reads.adb
+tests/acpi-native-entry/fixtures/actual/acpi_pci_memory_reads.ads
+tests/acpi-native-entry/fixtures/actual/acpi_pci_protocol.adb
+tests/acpi-native-entry/fixtures/actual/acpi_pci_protocol.ads
 tests/acpi-native-entry/fixtures/actual/acpi_power_source.adb
 tests/acpi-native-entry/fixtures/actual/acpi_power_source.ads
 tests/acpi-native-entry/fixtures/actual/acpi_protocol.ads

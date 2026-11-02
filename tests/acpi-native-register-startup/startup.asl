@@ -33,6 +33,7 @@ DefinitionBlock ("", "DSDT", 2, "CUBIT", "VIEWCOMP", 1)
             Method (_INI) { Store (0x44, \DAT2) }
         }
     }
+    Method (RGN2, 2) { Store (Arg1, DAT0) Return (Add (Arg0, Arg1)) }
     Name (GUID, Buffer () { 0x10, 0x20, 0x30, 0x40 })
     Method (MTH4, 4) { Store (Arg2, DAT0) Return (Arg0) }
 }

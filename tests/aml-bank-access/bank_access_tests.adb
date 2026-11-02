@@ -28,7 +28,7 @@ procedure Bank_Access_Tests is
    use type A.Operation_ID;
    use type A.Observation;
    type Slot is (Bank_Port, Data_Zero, Data_One, Extra_Port);
-   type Geometry_Mode is (Matching, Wrong_Space, Wrong_Base, Wrong_Length,
+   type Geometry_Mode is (Matching, Wider_Region, Wrong_Space, Wrong_Base,
      Outside_Region, Overflow_Offset, Crossing_End, Shifted_Offset);
    type Fault_Kind is (No_Fault, Unknown_Before_Effect, Unknown_After_Effect,
      Known_Failure, Malformed_Completion);
@@ -67,7 +67,7 @@ procedure Bank_Access_Tests is
       Found : Boolean;
    begin
       Locate (Target.Register, S, Found);
-      Geometry := (Region => (Space => 0, Base => 16#1000#, Length => 4),
+      Geometry := (Region => (Space => 0, Base => 16#1000#, Length => 4, PCI => (Known => False)),
         Byte_Offset => AML_Decode.Integer_Value (Slot'Pos (S)), Width => ACPI_FADT.Transactions.Byte_Access);
       if S /= Bank_Port then
          case (if IO.Change_Geometry_After_Bank and then IO.Bank_Writes > 0
@@ -75,7 +75,7 @@ procedure Bank_Access_Tests is
             when Matching => null;
             when Wrong_Space => Geometry.Region.Space := 1;
             when Wrong_Base => Geometry.Region.Base := 16#2000#;
-            when Wrong_Length => Geometry.Region.Length := 5;
+            when Wider_Region => Geometry.Region.Length := 5;
             when Outside_Region => Geometry.Byte_Offset := 4;
             when Overflow_Offset => Geometry.Byte_Offset := AML_Decode.Integer_Value'Last;
             when Crossing_End =>
@@ -382,6 +382,23 @@ begin
      and then IO.Data (Bank_Port) = 1,
      "reexecuted two-field declaration captures the second selector before access");
    Temporary_Gone ("LOOP");
+   -- The catalog authorizes a named scalar transaction. Its enclosing region
+   -- may be wider than the AML declaration; rebasing must preserve that exact
+   -- datum and stay within the declaration. No provider operation is issued.
+   declare
+      Fresh : F.Binding_Set;
+      Saved_Calls : constant Natural := IO.Calls;
+      Saved_Bank_Writes : constant Natural := IO.Bank_Writes;
+   begin
+      F.Clear (Fresh); IO.Geometry := Wider_Region;
+      F.Add_Region_Register (Service, IO, Region,
+        (IO.Owner, 7, 1, IDs (Data_Zero)), True, True, Fresh, Status);
+      Check (Status = C.Values.Available,
+        "same named scalar transaction rebases from a wider provider region");
+      Check (IO.Calls = Saved_Calls and then IO.Bank_Writes = Saved_Bank_Writes,
+        "catalog rebasing has no register or bank-selector effects");
+      IO.Geometry := Matching;
+   end;
    for Mode in Geometry_Mode range Wrong_Space .. Crossing_End loop
       declare Fresh : F.Binding_Set; begin
          F.Clear (Fresh); IO.Geometry := Mode;

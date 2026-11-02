@@ -1,15 +1,16 @@
 pragma Ada_2022;
 with AML_Identity.Issuer;
+with AML_Decode;
 with AML_Register_Views;
 package body ACPI_Field_Combined_Provider is
-   use type Storage.Outcome;
+   use type Storage.Outcome, AML_Decode.Byte;
    use type A.Counter, A.Endpoint_ID, A.Target, A.Completion, AML_Identity.Identity;
    use type L.Register_Geometry, Scalar.Startup_State;
    Epoch : constant A.Counter := 1;
    function Status (IO : Context) return Startup_State is (IO.Stage);
    function Identity (IO : Context) return AML_Identity.Identity is (IO.Token);
    function Pending (IO : Context) return Boolean is
-     (IO.Working or else IO.Captured.Present or else Scalar.Pending (IO.Registers) or else Memory.Pending (IO.NVS));
+     (IO.Working or else IO.Captured.Present or else Scalar.Pending (IO.Registers) or else Memory.Pending (IO.NVS) or else PCI.Pending (IO.Config));
    function Uncertain (IO : Context) return A.Observation is (IO.Captured);
    function Completed_Fault (IO : Context) return A.Observation is (IO.Fault);
    function Live (IO : Context) return Boolean is
@@ -55,6 +56,9 @@ package body ACPI_Field_Combined_Provider is
       if not Good then IO.Stage := Failed; IO.Working := False; return; end if;
       Memory.Initialize (IO.NVS, Destination, Symbol, Deadline, Good);
       if not Good then IO.Stage := Failed; IO.Working := False; return; end if;
+      -- An absent/disabled PCI window must not disable independent named/NVS reads.
+      -- Header failure leaves only the PCI lane unavailable for this lifetime.
+      if Enable_PCI then PCI.Initialize (IO.Config, Destination, Symbol, Deadline, Good); end if;
       AML_Identity.Issuer.Issue (IO.Token, Good);
       if not Good then IO.Stage := Failed; IO.Working := False; return; end if;
       IO.Symbol := Symbol;
@@ -104,6 +108,15 @@ package body ACPI_Field_Combined_Provider is
       Good : Boolean;
    begin
       Target := A.No_Target; Accepted := False; if not Live (IO) then return; end if;
+      if Geometry.Region.Space = L.PCI_Config_Space then
+         if not Enable_PCI then return; end if;
+         PCI.Install (IO.Config, Geometry, Inner, Good, For_Write);
+         if Good then
+            PCI.Describe (IO.Config, Inner, Canonical, Good);
+            if Good then Add (IO, PCI_Data, Inner, Canonical, Target, Accepted); end if;
+         end if;
+         return;
+      end if;
       Match_Named (IO, Geometry, Inner, Canonical, Match);
       if Match = Unique then
          Scalar.Authorize (IO.Registers, Inner, For_Write, Good);
@@ -113,6 +126,12 @@ package body ACPI_Field_Combined_Provider is
          if Good then
             Memory.Describe (IO.NVS, Inner, Canonical, Good);
             if Good then Add (IO, NVS_Data, Inner, Canonical, Target, Accepted); end if;
+         elsif Enable_PCI then
+            PCI.Install (IO.Config, Geometry, Inner, Good);
+            if Good then
+               PCI.Describe (IO.Config, Inner, Canonical, Good);
+               if Good then Add (IO, PCI_Data, Inner, Canonical, Target, Accepted); end if;
+            end if;
          end if;
       end if;
    end Select_Target;
@@ -125,6 +144,15 @@ package body ACPI_Field_Combined_Provider is
       Good : Boolean;
    begin
       Target := A.No_Target; Accepted := False; if not Live (IO) then return; end if;
+      if Geometry.Region.Space = L.PCI_Config_Space then
+         if not Enable_PCI then return; end if;
+         PCI.Install (IO.Config, Geometry, Inner, Good);
+         if Good then
+            PCI.Describe (IO.Config, Inner, Canonical, Good);
+            if Good then Add (IO, PCI_Data, Inner, Canonical, Target, Accepted); end if;
+         end if;
+         return;
+      end if;
       Match_Named (IO, Geometry, Inner, Canonical, Match);
       if Match = Unique then
          Add (IO, Named_Register, Inner, Canonical, Target, Accepted);
@@ -133,6 +161,12 @@ package body ACPI_Field_Combined_Provider is
          if Good then
             Memory.Describe (IO.NVS, Inner, Canonical, Good);
             if Good then Add (IO, NVS_Data, Inner, Canonical, Target, Accepted); end if;
+         elsif Enable_PCI then
+            PCI.Install (IO.Config, Geometry, Inner, Good);
+            if Good then
+               PCI.Describe (IO.Config, Inner, Canonical, Good);
+               if Good then Add (IO, PCI_Data, Inner, Canonical, Target, Accepted); end if;
+            end if;
          end if;
       end if;
    end Resolve_Module_Target;
@@ -146,6 +180,7 @@ package body ACPI_Field_Combined_Provider is
       case Row.Path is
          when Named_Register => Scalar.Describe (IO.Registers, Row.Inner, Geometry, Accepted);
          when NVS_Data => Memory.Describe (IO.NVS, Row.Inner, Geometry, Accepted);
+         when PCI_Data => PCI.Describe (IO.Config, Row.Inner, Geometry, Accepted);
       end case;
       Accepted := Accepted and then Geometry = Row.Geometry;
       if not Accepted then Geometry := (others => <>); end if;
@@ -159,6 +194,7 @@ package body ACPI_Field_Combined_Provider is
       case Row.Path is
          when Named_Register => Scalar.Authorize (IO.Registers, Row.Inner, For_Write, Accepted);
          when NVS_Data => Memory.Authorize (IO.NVS, Row.Inner, For_Write, Accepted);
+         when PCI_Data => PCI.Authorize (IO.Config, Row.Inner, For_Write, Accepted);
       end case;
    end Authorize;
    procedure Describe_Scoped_Read
@@ -192,6 +228,7 @@ package body ACPI_Field_Combined_Provider is
       case Row.Path is
          when Named_Register => Scalar.Dispatch (IO.Registers, (Row.Inner, Item.For_Write, Item.Value), Lower);
          when NVS_Data => Memory.Dispatch (IO.NVS, (Row.Inner, Item.For_Write, Item.Value), Lower);
+         when PCI_Data => PCI.Dispatch (IO.Config, (Row.Inner, Item.For_Write, Item.Value), Lower);
       end case;
       Read_Clock (After, Good);
       IO.Working := False;

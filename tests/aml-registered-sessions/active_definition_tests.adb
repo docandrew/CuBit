@@ -35,7 +35,7 @@ procedure Active_Definition_Tests is
    procedure Describe (IO : IO_Context; Target : A.Target;
       Geometry : out AML_Field_Layout.Register_Geometry; Accepted : out Boolean) is
    begin
-      Geometry := (Region => (Space => 0, Base => 16#1000#, Length => 1),
+      Geometry := (Region => (Space => 0, Base => 16#1000#, Length => 1, PCI => (Known => False)),
         Byte_Offset => 0, Width => ACPI_FADT.Transactions.Byte_Access);
       Accepted := Target.Provider = IO.Owner and then Target.Endpoint = Named_Endpoint
         and then Target.Epoch = 1 and then Target.Register = Named_Register;

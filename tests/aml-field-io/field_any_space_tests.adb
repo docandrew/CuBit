@@ -57,7 +57,7 @@ procedure Field_Any_Space_Tests is
       for I in Slot loop
          if Target.Register = Registers (I) then Position := Natural (I); end if;
       end loop;
-      Geometry := (Region => (Space => IO.Space, Base => 16#1000#, Length => 12),
+      Geometry := (Region => (Space => IO.Space, Base => 16#1000#, Length => 12, PCI => (Known => False)),
          Byte_Offset => (if Position = 9 and then IO.Wrong_Last_Geometry then 11
             elsif Position = 0 then 0 else
             Unsigned_64 ((Position - 1) * T.Octets (IO.Width))), Width => IO.Width);

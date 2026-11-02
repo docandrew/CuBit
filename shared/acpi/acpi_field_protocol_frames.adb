@@ -1,18 +1,21 @@
 pragma Ada_2022;
 with ACPI_NVS_Protocol;
+with ACPI_PCI_Protocol;
 with ACPI_Global_Lock_Protocol;
 with ACPI_Locked_NVS_Protocol;
 package body ACPI_Field_Protocol_Frames with SPARK_Mode is
    package N renames ACPI_NVS_Protocol;
+   package C renames ACPI_PCI_Protocol;
    package G renames ACPI_Global_Lock_Protocol;
    package D renames ACPI_Locked_NVS_Protocol;
    use type Interfaces.Unsigned_32, D.Reply_Kind;
    function Owned_Label (Label : Interfaces.Unsigned_32) return Boolean is
      (Label in N.Header_Operation | N.Describe_Operation | N.Read_Operation
-      or else G.Owned_Label (Label) or else D.Owned_Label (Label));
+      or else G.Owned_Label (Label) or else D.Owned_Label (Label) or else C.Owned_Label (Label));
    function Request_Valid (Item : Packet) return Boolean is
    begin
-      if G.Owned_Label (Item.Label) then return G.Decode_Request (Item).Valid;
+      if C.Owned_Label (Item.Label) then return C.Decode_Request (Item).Valid;
+      elsif G.Owned_Label (Item.Label) then return G.Decode_Request (Item).Valid;
       elsif D.Owned_Label (Item.Label) then return D.Decode_Request (Item).Valid;
       else return N.Decode_Request (Item).Valid;
       end if;
@@ -20,7 +23,11 @@ package body ACPI_Field_Protocol_Frames with SPARK_Mode is
    function Reply_Valid (Request, Reply : Packet) return Boolean is
    begin
       if not Request_Valid (Request) then return False; end if;
-      if G.Owned_Label (Request.Label) then return G.Decode_Reply (Reply, G.Decode_Request (Request).Kind).Valid;
+      if C.Owned_Label (Request.Label) then
+         declare Input : constant C.Request := C.Decode_Request (Request); begin
+            return C.Decode_Reply (Reply, Input.Kind, Input.Width).Valid;
+         end;
+      elsif G.Owned_Label (Request.Label) then return G.Decode_Reply (Reply, G.Decode_Request (Request).Kind).Valid;
       elsif D.Owned_Label (Request.Label) then
          declare
             Input : constant D.Request := D.Decode_Request (Request);

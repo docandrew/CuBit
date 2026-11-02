@@ -20,6 +20,10 @@ tests/acpi-native-entry/fixtures/actual/acpi_backend_memory_access.adb	userspace
 tests/acpi-native-entry/fixtures/actual/acpi_backend_memory_access.ads	userspace/services/acpi/backend/acpi_backend_memory_access.ads
 tests/acpi-native-entry/fixtures/actual/acpi_backend_native_bindings.ads	userspace/services/acpi/backend/native/acpi_backend_native_bindings.ads
 tests/acpi-native-entry/fixtures/actual/acpi_backend_native_catalog.ads	userspace/services/acpi/backend/native/acpi_backend_native_catalog.ads
+tests/acpi-native-entry/fixtures/actual/acpi_backend_pci_dispatch.adb	userspace/services/acpi/backend/acpi_backend_pci_dispatch.adb
+tests/acpi-native-entry/fixtures/actual/acpi_backend_pci_dispatch.ads	userspace/services/acpi/backend/acpi_backend_pci_dispatch.ads
+tests/acpi-native-entry/fixtures/actual/acpi_backend_pci_reads.adb	userspace/services/acpi/backend/acpi_backend_pci_reads.adb
+tests/acpi-native-entry/fixtures/actual/acpi_backend_pci_reads.ads	userspace/services/acpi/backend/acpi_backend_pci_reads.ads
 tests/acpi-native-entry/fixtures/actual/acpi_backend_pm_timer.adb	userspace/services/acpi/backend/acpi_backend_pm_timer.adb
 tests/acpi-native-entry/fixtures/actual/acpi_backend_pm_timer.ads	userspace/services/acpi/backend/acpi_backend_pm_timer.ads
 tests/acpi-native-entry/fixtures/actual/acpi_backend_port_access.adb	userspace/services/acpi/backend/native/acpi_backend_port_access.adb
@@ -108,6 +112,8 @@ tests/acpi-native-entry/fixtures/actual/acpi_field_module_startup.adb	userspace/
 tests/acpi-native-entry/fixtures/actual/acpi_field_module_startup.ads	userspace/services/acpi/field-client/provider/startup/acpi_field_module_startup.ads
 tests/acpi-native-entry/fixtures/actual/acpi_field_nvs_provider.adb	userspace/services/acpi/field-client/provider/acpi_field_nvs_provider.adb
 tests/acpi-native-entry/fixtures/actual/acpi_field_nvs_provider.ads	userspace/services/acpi/field-client/provider/acpi_field_nvs_provider.ads
+tests/acpi-native-entry/fixtures/actual/acpi_field_pci_provider.adb	userspace/services/acpi/field-client/provider/acpi_field_pci_provider.adb
+tests/acpi-native-entry/fixtures/actual/acpi_field_pci_provider.ads	userspace/services/acpi/field-client/provider/acpi_field_pci_provider.ads
 tests/acpi-native-entry/fixtures/actual/acpi_field_provider_view.ads	userspace/services/acpi/field-client/provider/acpi_field_provider_view.ads
 tests/acpi-native-entry/fixtures/actual/acpi_field_scoped_provider.ads	userspace/services/acpi/field-client/provider/acpi_field_scoped_provider.ads
 tests/acpi-native-entry/fixtures/actual/acpi_field_startup_owner.adb	userspace/services/acpi/field-client/provider/startup/acpi_field_startup_owner.adb
@@ -182,6 +188,12 @@ tests/acpi-native-entry/fixtures/actual/acpi_nvs_protocol.ads	shared/acpi/acpi_n
 tests/acpi-native-entry/fixtures/actual/acpi_observation_values.ads	userspace/services/acpi/power/acpi_observation_values.ads
 tests/acpi-native-entry/fixtures/actual/acpi_observer_endpoint.adb	userspace/services/acpi/request-driver/acpi_observer_endpoint.adb
 tests/acpi-native-entry/fixtures/actual/acpi_observer_endpoint.ads	userspace/services/acpi/request-driver/acpi_observer_endpoint.ads
+tests/acpi-native-entry/fixtures/actual/acpi_pci_config_reads.adb	userspace/services/acpi/lib/acpi_pci_config_reads.adb
+tests/acpi-native-entry/fixtures/actual/acpi_pci_config_reads.ads	userspace/services/acpi/lib/acpi_pci_config_reads.ads
+tests/acpi-native-entry/fixtures/actual/acpi_pci_memory_reads.adb	userspace/services/acpi/lib/acpi_pci_memory_reads.adb
+tests/acpi-native-entry/fixtures/actual/acpi_pci_memory_reads.ads	userspace/services/acpi/lib/acpi_pci_memory_reads.ads
+tests/acpi-native-entry/fixtures/actual/acpi_pci_protocol.adb	shared/acpi/acpi_pci_protocol.adb
+tests/acpi-native-entry/fixtures/actual/acpi_pci_protocol.ads	shared/acpi/acpi_pci_protocol.ads
 tests/acpi-native-entry/fixtures/actual/acpi_power_source.adb	userspace/services/acpi/power/acpi_power_source.adb
 tests/acpi-native-entry/fixtures/actual/acpi_power_source.ads	userspace/services/acpi/power/acpi_power_source.ads
 tests/acpi-native-entry/fixtures/actual/acpi_protocol.ads	shared/acpi/acpi_protocol.ads
