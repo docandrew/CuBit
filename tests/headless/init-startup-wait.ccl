@@ -1,0 +1,20 @@
+# procmgr's startup waits (CAP-003; startup-wait headless test): a client
+# requiring the test-only "startup-wait-test" service is refused at once
+# when nothing started provides it; waits, then is refused, when its
+# provider ends before registering or misses its ready deadline; and waits,
+# then starts, when its provider registers late (after 2.5 s, longer than
+# procmgr's old fixed one-second wait). Entries start in order: a waiting
+# client holds the later ones back, never procmgr's service loop.
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "startup-wait-client.app" (priority 3))
+  (start "startup-wait-provider.app" (priority 4)
+    (arguments (Provider_Parameters behaviour => Wait_Behaviour.Never_Register after => 1500)))
+  (start "startup-wait-client.app" (priority 3))
+  (start "startup-wait-provider.app" (priority 4) (ready-deadline-ms 1000)
+    (arguments (Provider_Parameters behaviour => Wait_Behaviour.Never_Register after => 4000)))
+  (start "startup-wait-client.app" (priority 3))
+  (start "startup-wait-provider.app" (priority 4)
+    (arguments (Provider_Parameters behaviour => Wait_Behaviour.Register_Late after => 2500)))
+  (start "startup-wait-client.app" (priority 3))
+)

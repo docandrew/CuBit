@@ -1829,6 +1829,15 @@ program-parameters-test: ccl-build user_runtime ccl-manifest
 	cp ../tests/program-parameters/check/build/parameters-check.app isodir/boot/parameters-check.app
 	cp ../tests/program-parameters/plain/build/parameters-plain.app isodir/boot/parameters-plain.app
 
+# procmgr's startup waits (CAP-003): the headless startup-wait test's late
+# provider of the test-only startup-wait-test service and its client.
+.PHONY : startup-wait-test
+startup-wait-test: ccl-build user_runtime ccl-manifest
+	$(CCL_BUILD) ../tests/startup-wait/provider/component.ccl
+	$(CCL_BUILD) ../tests/startup-wait/client/component.ccl
+	cp ../tests/startup-wait/provider/build/startup-wait-provider.app isodir/boot/startup-wait-provider.app
+	cp ../tests/startup-wait/client/build/startup-wait-client.app isodir/boot/startup-wait-client.app
+
 # Build the userspace HDA audio driver
 .PHONY : hda
 hda: ccl-build user_runtime ccl-manifest

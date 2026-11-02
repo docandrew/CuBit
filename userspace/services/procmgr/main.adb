@@ -17,6 +17,7 @@
 ------------------------------------------------------------------------------
 with Deferred_Warnings;
 with Ada.Unchecked_Conversion;
+with Ada.Unchecked_Deallocation;
 with Config_Worker_Startup;
 with Interfaces; use Interfaces;
 with CCL.Configurations;
@@ -89,6 +90,7 @@ with Intel_GPU_Broker_Request;
 with Intel_Render_Launch_Client;
 with CuBit.Input;
 with CuBit.Refusal_Notes;
+with CuBit.Startup_Wait_Test;
 
 procedure main is
    function Image (Process : Process_ID) return String
@@ -1478,10 +1480,11 @@ procedure main is
    end record;
    Providers : array (Service_Role) of Provider;
 
-   --  How long a launch waits for its service to register, and how often
-   --  it looks: the startup plan resumes a service and goes on to its
-   --  clients at once, so one started just before them may not have
-   --  registered yet. Bounded by an explicit deadline, never forever.
+   --  How long a launch waits for the provider of a role procmgr does not
+   --  launch itself (devmgr's drivers, the free roles), whose start it does
+   --  not see; and how often a waiting launch looks again. Bounded by an
+   --  explicit deadline, never forever. A provider procmgr launched is
+   --  waited for until its own ready deadline instead (Registrant_Ready_By).
    Registration_Wait_Ms : constant := 1_000;
    Registration_Poll_Ms : constant := 50;
 
@@ -1496,17 +1499,121 @@ procedure main is
       Role = DRIVER_CLOCK or else Role = CuBit.TLS_Protocol.Service_Role or else
       Role = CuBit.Metric_Protocol.Publisher_Service_Role or else Role = DRIVER_LEXICON or else
       Role = DRIVER_ACPI or else Role = CuBit.Installer_Protocol.Service_Role or else
-      Role = DRIVER_ACPI_REGISTERS);
+      Role = DRIVER_ACPI_REGISTERS or else Role = CuBit.Startup_Wait_Test.Service_Role);
 
    --  For each launched-service role: the live process procmgr started with
    --  its registration, until that process exits.
    Registrants : array (Service_Role) of Process_ID := [others => No_Process];
+   --  And when (monotonic milliseconds) it must have registered by: its
+   --  start plus its startup entry's (ready-deadline-ms N). An entry that
+   --  declares none has the plan's named ceiling,
+   --  CCL.Configurations.MAX_READY_DEADLINE_MS (Launch_Entry's default).
+   Registrant_Ready_By : array (Service_Role) of Unsigned_64 := [others => 0];
 
-   --  Whether a provider for Role may still register: a launched-service
-   --  role only while its registrant lives; any other role may be devmgr's.
-   function registrationPending (Role : Service_Role) return Boolean is
-     (if Launched_Service_Role (Role) then Registrants (Role) /= No_Process
-      else True);
+   --  The ready deadline of a launch the startup plan did not make (OP_LAUNCH,
+   --  OP_SPAWN), which cannot say (ready-deadline-ms N): the plan's ceiling.
+   Unplanned_Ready_Deadline : constant CCL.Configurations.Ready_Deadline :=
+     CCL.Configurations.MAX_READY_DEADLINE_MS;
+
+   ---------------------------------------------------------------------------
+   --  Launches waiting for a starting provider (CAP-003). A service entry
+   --  whose provider has started but not registered yet does not refuse the
+   --  launch: the launch is parked before its child is spawned, the service
+   --  loop goes on, and the launch runs once every awaited provider has
+   --  registered. A required entry refuses it, typed, when its provider ends
+   --  first or misses its deadline; an optional one is then started without.
+   --  A required service nothing started provides refuses it at once.
+   ---------------------------------------------------------------------------
+   type Provider_State is
+     (Provider_Registered,   --  resolve the entry now
+      Provider_Starting,     --  started, alive, not registered, before its deadline
+      No_Provider,           --  nothing procmgr started provides it
+      Provider_Exited,       --  the provider awaited ended before registering
+      Deadline_Passed);      --  it did not register by its deadline
+   subtype Wait_Refusal is Provider_State range No_Provider .. Deadline_Passed;
+
+   --  The refusal's stable name in the log (native enumeration images are
+   --  positions), and what it means.
+   function Refusal_Name (Why : Wait_Refusal) return String is
+     (case Why is
+        when No_Provider     => "NO_PROVIDER",
+        when Provider_Exited => "PROVIDER_EXITED",
+        when Deadline_Passed => "DEADLINE_PASSED");
+   function Refusal_Text (Why : Wait_Refusal) return String is
+     (case Why is
+        when No_Provider     => "no started program provides it",
+        when Provider_Exited => "its provider ended before it registered",
+        when Deadline_Passed => "its provider did not register by its deadline");
+
+   --  One service entry a parked launch waits for.
+   type Awaited_Service is record
+      Label    : ST.Name;
+      Role     : Service_Role := 0;
+      --  The registrant awaited; No_Process for a role procmgr does not
+      --  launch, which only its deadline ends.
+      Provider : Process_ID := No_Process;
+      Deadline : Unsigned_64 := 0;   --  monotonic milliseconds
+      Required : Boolean := True;
+      Resolved : Boolean := False;
+   end record;
+   type Awaited_Services is array (ST.Entry_Index range <>) of Awaited_Service;
+   type Awaited_Access is access Awaited_Services;
+   procedure Free is new Ada.Unchecked_Deallocation (Awaited_Services, Awaited_Access);
+
+   --  Where Role's provider is now, for a launch about to wait for it.
+   procedure classifyProvider
+     (Role : Service_Role; Now : Unsigned_64;
+      State : out Provider_State; Provider : out Process_ID; Deadline : out Unsigned_64) is
+   begin
+      Provider := No_Process;
+      Deadline := Now;
+      if (Valid (Providers (Role).Service) and then Providers (Role).Holder = No_Process)
+        or else Registered_Driver (Role) /= No_Process
+      then
+         State := Provider_Registered;
+      elsif Launched_Service_Role (Role) then
+         if Registrants (Role) = No_Process then
+            State := No_Provider;
+         else
+            Provider := Registrants (Role);
+            Deadline := Registrant_Ready_By (Role);
+            State := (if Now >= Deadline then Deadline_Passed else Provider_Starting);
+         end if;
+      else
+         Deadline := Now + Registration_Wait_Ms;
+         State := Provider_Starting;
+      end if;
+   end classifyProvider;
+
+   --  Where an awaited provider is now.
+   function awaitedState (Item : Awaited_Service; Now : Unsigned_64) return Provider_State is
+     (if Registered_Driver (Item.Role) /= No_Process then Provider_Registered
+      elsif Item.Provider /= No_Process and then Registrants (Item.Role) /= Item.Provider
+      then Provider_Exited
+      elsif Now >= Item.Deadline then Deadline_Passed
+      else Provider_Starting);
+
+   --  The role whose service answers a manifest's service request for Role.
+   function Provider_Role_Of (Role : Unsigned_64) return Unsigned_64 is
+     (if Role = CuBit.Audio_Control.Service_Role then DRIVER_MIXER
+      elsif Role = CuBit.Clock_Control.Service_Role then DRIVER_CLOCK
+      elsif Role = CuBit.Log_Protocol.Observer_Service_Role
+        or else Role = CuBit.Log_Protocol.Control_Service_Role then DRIVER_LOGSTORE
+      elsif Role = CuBit.Metric_Protocol.Observer_Service_Role
+      then CuBit.Metric_Protocol.Publisher_Service_Role
+      elsif Role = CuBit.Process_Observer.Observer_Service_Role then DRIVER_PROCMGR
+      elsif Role = CuBit.Disk_Install.Service_Role then DRIVER_DEVMGR
+      else Role);
+
+   --  Say why Program's launch is refused for its required service Label.
+   procedure reportWaitRefusal
+     (Program : String; Label : ST.Name; Role : Service_Role; Why : Wait_Refusal) is
+   begin
+      Warnings.Warn
+        ("procmgr: launch of " & Program & " refused: required service """ &
+         String (Label.Text (1 .. Label.Length)) & """ (role" & Unsigned_64'Image (Role) &
+         ") " & Refusal_Name (Why) & ": " & Refusal_Text (Why) & " (CAP-003)");
+   end reportWaitRefusal;
 
    procedure setFixedProviders is
    begin
@@ -1521,29 +1628,17 @@ procedure main is
       end if;
    end setFixedProviders;
 
-   --  Required: the launch needs the service, so it waits the bounded
-   --  registration time for it; an optional one is waited for only while a
-   --  provider may still register (registrationPending).
-   function providerFor
-     (Role : Service_Role; Required : Boolean) return CuBit.Handles.Endpoint
-   is
+   --  The registered provider of Role now, or none; it never waits. A
+   --  launch waits for a starting provider before it gets here, parked
+   --  (Spawn_Attempt's Await_Providers, resumeParked).
+   function providerFor (Role : Service_Role) return CuBit.Handles.Endpoint is
       P : Provider renames Providers (Role);
       Registered : Process_ID := No_Process;
-      Deadline : Unsigned_64;
-      Ignore : Unsigned_64;
    begin
       if Valid (P.Service) and then P.Holder = No_Process then
          return P.Service;
       end if;
       Registered := Registered_Driver (Role);
-      if Registered = No_Process and then (Required or else registrationPending (Role)) then
-         Deadline := syscall (SYSCALL_GETTIME) + Registration_Wait_Ms;
-         loop
-            Ignore := syscall (SYSCALL_SLEEP, Registration_Poll_Ms);
-            Registered := Registered_Driver (Role);
-            exit when Registered /= No_Process or else syscall (SYSCALL_GETTIME) >= Deadline;
-         end loop;
-      end if;
       if Registered = No_Process then
          return H.No_Endpoint;
       elsif Valid (P.Service) and then P.Holder = Registered then
@@ -1647,6 +1742,9 @@ procedure main is
       elsif Role = CuBit.Installer_Protocol.Service_Role then
          --  An impostor would see what is installed where, and refuse it.
          return systemStartup and then Identity = "com.cubit.installer";
+      elsif Role = CuBit.Startup_Wait_Test.Service_Role then
+         --  Test only (tests/startup-wait): from a test's startup plan.
+         return systemStartup and then Identity = "com.cubit.startup-wait-test";
       end if;
       return False;
    end registrationAllowed;
@@ -2636,7 +2734,13 @@ procedure main is
       approveACPIHardware : Boolean := False;
       approveACPIRegisters : Boolean := False;
       approvePCIConfig : Boolean := False;
-      approveFirmwareData : Boolean := False)
+      approveFirmwareData : Boolean := False;
+      --  The time it has to register a role it provides (Registrant_Ready_By).
+      readyDeadlineMs : CCL.Configurations.Ready_Deadline;
+      --  Whether it may wait for a starting provider; if it must, Waits
+      --  names what for, and nothing was spawned (Await_Providers).
+      mayWait : Boolean;
+      Waits : out Awaited_Access)
       return Process_ID
    is
       package SB renames CuBit.Startup_Builder;
@@ -2791,17 +2895,13 @@ procedure main is
          end if;
       end Install;
 
-      --  A service endpoint: the role's provider, badged with the tag the
-      --  role's protocol issues (none: an untagged copy without Grant).
-      procedure Mint_Service
-        (R : Caps_Request; Index : ST.Entry_Index; Item : ST.Startup_Entry;
-         Handle : out Unsigned_64; Outcome : out SB.Mint_Outcome; Logged : out Boolean)
-      is
-         use type ST.Need;
-         Role : constant Unsigned_64 := Unsigned_64 (R.Param0);
+      --  Whether a service request for Role is for a startup-only authority
+      --  this launch is not approved for: startup approval, or the trusted
+      --  Desktop's narrowly selected system log viewer. This exception
+      --  grants observation only, not the other startup-only authorities.
+      function Startup_Only_Denied (Role : Unsigned_64) return Boolean is
          isAudioControl : constant Boolean := Role = CuBit.Audio_Control.Service_Role;
          isLogObserver : constant Boolean := Role = CuBit.Log_Protocol.Observer_Service_Role;
-         isLogPublisher : constant Boolean := Role = DRIVER_LOGSTORE;
          isClockControl : constant Boolean := Role = CuBit.Clock_Control.Service_Role;
          isMetricObserver : constant Boolean :=
            Role = CuBit.Metric_Protocol.Observer_Service_Role;
@@ -2815,8 +2915,6 @@ procedure main is
          isDiskInstall : constant Boolean := Role = CuBit.Disk_Install.Service_Role;
          --  installer.svc's clients: they can ask for a disk to be erased.
          isInstaller : constant Boolean := Role = CuBit.Installer_Protocol.Service_Role;
-         --  An ACPI client: its one client role, the observer badge.
-         isACPI : constant Boolean := Role = DRIVER_ACPI;
          --  acpi.svc's endpoint to the backend's named registers: the full
          --  frontend scope, only for an entry approving it.
          isACPIRegisters : constant Boolean := Role = DRIVER_ACPI_REGISTERS;
@@ -2841,15 +2939,38 @@ procedure main is
               (isLogControl and then Log_Control_Approved),
             Session_Approved => True,
             Issuer_Allowed => True);
+      begin
+         return (isAudioControl or isLogObserver or isClockControl
+                 or isMetricObserver or isProcessObserver or isLogControl
+                 or isDiskInstall or isInstaller or isACPIRegisters)
+           and then Approval /= Approved;
+      end Startup_Only_Denied;
+
+      --  A service endpoint: the role's provider, badged with the tag the
+      --  role's protocol issues (none: an untagged copy without Grant).
+      procedure Mint_Service
+        (R : Caps_Request; Index : ST.Entry_Index; Item : ST.Startup_Entry;
+         Handle : out Unsigned_64; Outcome : out SB.Mint_Outcome; Logged : out Boolean)
+      is
+         use type ST.Need;
+         Role : constant Unsigned_64 := Unsigned_64 (R.Param0);
+         isAudioControl : constant Boolean := Role = CuBit.Audio_Control.Service_Role;
+         isLogObserver : constant Boolean := Role = CuBit.Log_Protocol.Observer_Service_Role;
+         isLogPublisher : constant Boolean := Role = DRIVER_LOGSTORE;
+         isClockControl : constant Boolean := Role = CuBit.Clock_Control.Service_Role;
+         isMetricObserver : constant Boolean :=
+           Role = CuBit.Metric_Protocol.Observer_Service_Role;
+         isMetricPublisher : constant Boolean :=
+           Role = CuBit.Metric_Protocol.Publisher_Service_Role;
+         isProcessObserver : constant Boolean :=
+           Role = CuBit.Process_Observer.Observer_Service_Role;
+         isLogControl : constant Boolean := Role = CuBit.Log_Protocol.Control_Service_Role;
+         isDiskInstall : constant Boolean := Role = CuBit.Disk_Install.Service_Role;
+         --  An ACPI client: its one client role, the observer badge.
+         isACPI : constant Boolean := Role = DRIVER_ACPI;
+         isACPIRegisters : constant Boolean := Role = DRIVER_ACPI_REGISTERS;
          --  The role whose service answers this one.
-         Provider_Role : constant Unsigned_64 :=
-           (if isAudioControl then DRIVER_MIXER
-            elsif isClockControl then DRIVER_CLOCK
-            elsif isLogObserver or isLogControl then DRIVER_LOGSTORE
-            elsif isMetricObserver then CuBit.Metric_Protocol.Publisher_Service_Role
-            elsif isProcessObserver then DRIVER_PROCMGR
-            elsif isDiskInstall then DRIVER_DEVMGR
-            else Role);
+         Provider_Role : constant Unsigned_64 := Provider_Role_Of (Role);
          Kept : constant H.Rights := Manifest_Rights (Unsigned_64 (R.Rights));
          Issued_Tag : Unsigned_64 := 0;
          Service : CuBit.Handles.Endpoint;
@@ -2857,14 +2978,7 @@ procedure main is
          Handle := ST.No_Handle;
          Outcome := SB.Refused_By_Policy;
          Logged := False;
-         -- Startup approval or the trusted Desktop's narrowly selected
-         -- system log viewer. This exception grants observation only, not
-         -- the other startup-only authorities.
-         if (isAudioControl or isLogObserver or isClockControl
-             or isMetricObserver or isProcessObserver or isLogControl
-             or isDiskInstall or isInstaller or isACPIRegisters)
-           and then Approval /= Approved
-         then
+         if Startup_Only_Denied (Role) then
             recordAuthority
               (newPID, Index, AUTH_SOURCE_MANIFEST, AUTH_REASON_STARTUP_REQUIRED,
                CAP_TYPE_ENDPOINT, True, False, Mask (Kept), Role, 0);
@@ -2875,7 +2989,7 @@ procedure main is
             Outcome := SB.Not_Available;
             return;
          end if;
-         Service := providerFor (Provider_Role, Item.Requirement = ST.Required);
+         Service := providerFor (Provider_Role);
 
          if isACPI then
             Issued_Tag := Unsigned_64 (ACPI_Protocol.Observer_Tag);
@@ -2996,6 +3110,8 @@ procedure main is
             --  Write is registration: this process may provide the role.
             if Kept.Write and then Launched_Service_Role (Role) then
                Registrants (Role) := newPID;
+               Registrant_Ready_By (Role) :=
+                 syscall (SYSCALL_GETTIME) + Unsigned_64 (readyDeadlineMs);
             end if;
          end if;
       end Mint_Notification;
@@ -3361,7 +3477,60 @@ procedure main is
       end Report;
 
       procedure Build is new SB.Build (Build_Context, Mint, Report);
+
+      --  CAP-003 startup waits, before the child exists: the service entries
+      --  whose provider has started but not registered yet, in Waits when
+      --  this launch may wait. A required entry that nothing started
+      --  provides, or whose provider is already past its deadline, refuses
+      --  the launch here, typed. An entry for a startup-only authority this
+      --  launch may not have is left to Mint_Service, which refuses it.
+      procedure Await_Providers (Refused : out Boolean) is
+         use type ST.Need;
+         Now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+         --  Bounded by the manifest's own table (ST.Maximum_Entries); only
+         --  the entries found are kept, on the heap.
+         Found : Awaited_Services (ST.Entry_Index);
+         Count : ST.Entry_Count := 0;
+         State : Provider_State;
+         Provider : Process_ID;
+         Deadline : Unsigned_64;
+      begin
+         Refused := False;
+         for I in 1 .. View.Declared.Count loop
+            if View.Declared.Entries (I).Kind = ST.Endpoint and then View.Request_Of (I) /= 0 then
+               declare
+                  Item : ST.Startup_Entry renames View.Declared.Entries (I);
+                  Role : constant Unsigned_64 :=
+                    Unsigned_64 (View.Caps (View.Request_Of (I)).Param0);
+                  Provider_Role : constant Unsigned_64 := Provider_Role_Of (Role);
+                  Required : constant Boolean := Item.Requirement = ST.Required;
+               begin
+                  if Provider_Role <= Maximum_Role and then not Startup_Only_Denied (Role) then
+                     classifyProvider (Provider_Role, Now, State, Provider, Deadline);
+                     if State in Wait_Refusal and then Required then
+                        reportWaitRefusal (name, Item.Label, Provider_Role, State);
+                        Refused := True;
+                        return;
+                     elsif State = Provider_Starting and then mayWait then
+                        Count := Count + 1;
+                        Found (Count) :=
+                          (Label => Item.Label, Role => Provider_Role, Provider => Provider,
+                           Deadline => Deadline, Required => Required, Resolved => False);
+                        debugPrint ("procmgr: launch of " & name & " waits for service """ &
+                                    String (Item.Label.Text (1 .. Item.Label.Length)) &
+                                    """ (role" & Unsigned_64'Image (Provider_Role) &
+                                    ") to register (CAP-003)" & LF);
+                     end if;
+                  end if;
+               end;
+            end if;
+         end loop;
+         if Count > 0 then
+            Waits := new Awaited_Services'(Found (1 .. Count));
+         end if;
+      end Await_Providers;
    begin
+      Waits := null;
       Retry := False;
       Identity := No_Process;
       --  Refined below where a failure has a more specific reason.
@@ -3409,6 +3578,19 @@ procedure main is
               when others => LA.Manifest_Refused);
          return No_Process;
       end if;
+
+      --  A starting provider is waited for, parked, before anything runs.
+      declare
+         Refused : Boolean;
+      begin
+         Await_Providers (Refused);
+         if Refused then
+            Failure := LA.Service_Unavailable;
+            return No_Process;
+         elsif Waits /= null then
+            return No_Process;
+         end if;
+      end;
 
       t0 := syscall (SYSCALL_GETTIME);
       declare
@@ -4086,6 +4268,9 @@ procedure main is
       approveACPIRegisters : Boolean := False;
       approvePCIConfig : Boolean := False;
       approveFirmwareData : Boolean := False;
+      readyDeadlineMs : CCL.Configurations.Ready_Deadline;
+      mayWait : Boolean;
+      Waits : out Awaited_Access;
       Failure : out CuBit.Launch_Arguments.Launch_Failure)
       return Process_ID
    is
@@ -4096,19 +4281,107 @@ procedure main is
       Result := Spawn_Attempt
         (False, No_Process, Retry, Identity, Failure, name, priority, requester, sandboxMode,
          cwd, approveNetwork, approveRender, systemStartup, startupRole, approveFirmwareSnapshot,
-         approveACPIHardware, approveACPIRegisters, approvePCIConfig, approveFirmwareData);
+         approveACPIHardware, approveACPIRegisters, approvePCIConfig, approveFirmwareData,
+         readyDeadlineMs, mayWait, Waits);
       if Result = No_Process and then Retry then
          -- Exactly one fresh attempt, with no broker request. The failed
-         -- attempt's launcher resources stay retained independently.
+         -- attempt's launcher resources stay retained independently. The
+         -- first got past its waits, so this one never waits.
          debugPrint ("procmgr: render retry software with fresh child" & LF);
          Result := Spawn_Attempt
            (True, Identity, Retry, Retry_Identity, Failure, name, priority, requester,
             sandboxMode, cwd, approveNetwork, approveRender, systemStartup, startupRole,
             approveFirmwareSnapshot, approveACPIHardware, approveACPIRegisters, approvePCIConfig,
-            approveFirmwareData);
+            approveFirmwareData, readyDeadlineMs, False, Waits);
       end if;
       return Result;
    end spawnByName;
+
+   ---------------------------------------------------------------------------
+   --  Parked launches (CAP-003 startup waits): launches waiting for their
+   --  starting providers, oldest first, on the heap (CuAlloc), as many as
+   --  are waiting. The service loop looks at them every
+   --  Registration_Poll_Ms while any is parked (resumeParked); registration
+   --  is the kernel's registry publication (Registered_Driver), which
+   --  procmgr reads without a call, and a provider's end is its
+   --  EVENT_CHILD_EXIT, which clears its Registrants entry.
+   --  A startup plan entry holds the plan's later entries back (they start
+   --  in order); an OP_LAUNCH or OP_SPAWN request keeps its requester's
+   --  reply, saved, and is served again from its message when its waits end.
+   ---------------------------------------------------------------------------
+   type Parked_Kind is (Plan_Launch, Launch_Request, Spawn_Request);
+   type Parked_Launch;
+   type Parked_Access is access Parked_Launch;
+   type Parked_Launch (Name_Length : Natural) is record
+      Kind         : Parked_Kind := Plan_Launch;
+      --  For its refusal.
+      Name         : String (1 .. Name_Length);
+      --  Plan_Launch: its plan entry.
+      Entry_Number : CCL.Configurations.Launch_Number := 0;
+      --  Requests: the requester, its request and its saved reply.
+      Sender       : Process_ID := No_Process;
+      Request      : Message := NULL_MESSAGE;
+      Answer       : H.Reply := H.No_Reply;
+      Waits        : Awaited_Access;
+      Next         : Parked_Access;
+   end record;
+   procedure Free is new Ada.Unchecked_Deallocation (Parked_Launch, Parked_Access);
+   Parked_First, Parked_Last : Parked_Access := null;
+
+   procedure park (Item : Parked_Access) is
+   begin
+      if Parked_Last = null then
+         Parked_First := Item;
+      else
+         Parked_Last.Next := Item;
+      end if;
+      Parked_Last := Item;
+   end park;
+
+   --  A request served again once its waits end: answered through the reply
+   --  saved when it was parked, and never parked again.
+   Deferred_Answer : H.Reply := H.No_Reply;
+   function servingDeferred return Boolean is (H.Valid (Deferred_Answer));
+
+   --  Answer the OP_LAUNCH or OP_SPAWN request being served.
+   procedure answerRequest (dest : Process_ID; label : Unsigned_32; word0 : Unsigned_64) is
+   begin
+      if servingDeferred then
+         declare
+            Answer : Message := NULL_MESSAGE;
+            Ignore : Boolean;
+         begin
+            Answer.tag := (label => label, length => 1, protocol => 0, ipc => <>, reserved => 0);
+            Answer.words := [0 => word0, others => 0];
+            --  Used up either way; a requester gone since has no one to tell.
+            Ignore := HIPC.Answer (Deferred_Answer, Answer);
+            Deferred_Answer := H.No_Reply;
+         end;
+      else
+         sendReply (dest, label, word0);
+      end if;
+   end answerRequest;
+
+   --  Park the request being served until its Waits end, keeping its reply;
+   --  False (Waits freed) when the reply cannot be kept.
+   function parkRequest
+     (Kind : Parked_Kind; sender : Process_ID; msg : Message; Name : String;
+      Waits : in out Awaited_Access) return Boolean
+   is
+      Saved : constant HIPC.Saved_Reply := HIPC.Save_Reply;
+   begin
+      if not Saved.Saved then
+         debugPrint ("procmgr: launch of " & Name & " cannot wait: its reply was not kept" & LF);
+         Free (Waits);
+         return False;
+      end if;
+      park (new Parked_Launch'
+              (Name_Length => Name'Length, Kind => Kind, Name => Name, Entry_Number => 0,
+               Sender => sender, Request => msg, Answer => Saved.Handle, Waits => Waits,
+               Next => null));
+      Waits := null;
+      return True;
+   end parkRequest;
 
    ---------------------------------------------------------------------------
    --  handleLaunch
@@ -4133,10 +4406,11 @@ procedure main is
       Ok, Returned : Boolean;
       newPID    : Process_ID;
       Failure   : LA.Launch_Failure := LA.Spawn_Failed;
+      Waits     : Awaited_Access;
 
       procedure Fail (Reason : LA.Launch_Failure) is
       begin
-         sendReply (sender, REPLY_ERR, LA.Launch_Failure'Enum_Rep (Reason));
+         answerRequest (sender, REPLY_ERR, LA.Launch_Failure'Enum_Rep (Reason));
       end Fail;
    begin
       if msg.tag.length /= LA.Launch_Request_Words
@@ -4260,11 +4534,21 @@ procedure main is
          attenuateFor := sender;
          attenuationRefused := False;
          directoryRefused := False;
-         newPID := spawnByName (Name, Priority, sender, Failure => Failure);
+         newPID := spawnByName
+           (Name, Priority, sender, readyDeadlineMs => Unplanned_Ready_Deadline,
+            mayWait => not servingDeferred, Waits => Waits, Failure => Failure);
          pendingArgumentBytes := 0;
          pendingGrantBytes := 0;
          pendingRings := (others => <>);
          attenuateFor := No_Process;
+         --  Waiting for a starting provider: served again from this
+         --  request once it registers (resumeParked).
+         if Waits /= null then
+            if parkRequest (Launch_Request, sender, msg, Name, Waits) then
+               return;
+            end if;
+            Failure := LA.Service_Unavailable;
+         end if;
       end;
 
       if newPID = No_Process and then directoryRefused then
@@ -4290,16 +4574,8 @@ procedure main is
       elsif newPID = No_Process then
          Fail (Failure);
       else
-         declare
-            Reply_Message : Message := NULL_MESSAGE;
-            Ignore : Unsigned_64;
-         begin
-            Reply_Message.tag :=
-              (label => REPLY_OK, length => 1, protocol => 0, ipc => <>, reserved => 0);
-            --  The child's identity (KERN-003): its exit event names it alike.
-            Reply_Message.words := [0 => To_Word (newPID), others => 0];
-            Ignore := reply (sender, Reply_Message);
-         end;
+         --  The child's identity (KERN-003): its exit event names it alike.
+         answerRequest (sender, REPLY_OK, To_Word (newPID));
       end if;
    end handleLaunch;
 
@@ -4515,10 +4791,11 @@ procedure main is
       cwd         : String (1 .. MAX_CWD);
       newPID      : Process_ID;
       Failure     : CuBit.Launch_Arguments.Launch_Failure;
+      Waits       : Awaited_Access;
 
       procedure Fail (Reason : CuBit.Launch_Arguments.Launch_Failure) is
       begin
-         sendReply (sender, REPLY_ERR, CuBit.Launch_Arguments.Launch_Failure'Enum_Rep (Reason));
+         answerRequest (sender, REPLY_ERR, CuBit.Launch_Arguments.Launch_Failure'Enum_Rep (Reason));
       end Fail;
    begin
       if nameLen = 0 or else nameLen > MAX_NAME or else
@@ -4572,19 +4849,33 @@ procedure main is
             newPID := spawnByName (name (1 .. nameLen), priority,
                                    sender,
                                    sandboxMode, cwd (1 .. cwdLen), approval,
-                                   approveRender => render, Failure => Failure);
+                                   approveRender => render,
+                                   readyDeadlineMs => Unplanned_Ready_Deadline,
+                                   mayWait => not servingDeferred, Waits => Waits,
+                                   Failure => Failure);
          else
             newPID := spawnByName (name (1 .. nameLen), priority,
                                    sender,
                                    sandboxMode, approveNetwork => approval,
-                                   approveRender => render, Failure => Failure);
+                                   approveRender => render,
+                                   readyDeadlineMs => Unplanned_Ready_Deadline,
+                                   mayWait => not servingDeferred, Waits => Waits,
+                                   Failure => Failure);
          end if;
       end;
+      --  Waiting for a starting provider: served again from this request
+      --  once it registers (resumeParked).
+      if Waits /= null then
+         if parkRequest (Spawn_Request, sender, msg, name (1 .. nameLen), Waits) then
+            return;
+         end if;
+         Failure := CuBit.Launch_Arguments.Service_Unavailable;
+      end if;
 
       if newPID = No_Process then
          Fail (Failure);
       else
-         sendReply (sender, REPLY_OK, To_Word (newPID));
+         answerRequest (sender, REPLY_OK, To_Word (newPID));
       end if;
    end handleSpawn;
 
@@ -4650,13 +4941,91 @@ procedure main is
 
    ---------------------------------------------------------------------------
    --  processInitCCL
-   --  Read init.ccl from the filesystem, parse entries, and spawn each.
-   --  Format: one filename per line, optional "pri=N" suffix.
-   --  Lines starting with '#' and blank lines are skipped.
+   --  Read init.ccl from the filesystem, compile it, and start its entries
+   --  in order (continuePlan). An entry waiting for a starting provider is
+   --  parked and holds the later ones back, while the service loop runs.
    ---------------------------------------------------------------------------
+   --  The compiled startup plan; it owns its strings before spawnByName
+   --  overwrites elfBuf.
+   Startup_Plan : CCL.Configurations.Compilation_Result;
+   --  How many of its entries were started or refused; the plan is running
+   --  until all were.
+   Plan_Done : CCL.Configurations.Launch_Number := 0;
+   Plan_Running : Boolean := False;
+
+   --  Start plan entry Number; Waits: it waits, parked, instead.
+   procedure launchPlanEntry
+     (Number : Positive; mayWait : Boolean; Waits : out Awaited_Access)
+   is
+      use CCL.Configurations;
+      Item : Launch_Entry renames Startup_Plan.Plan.Launches (Number);
+      Name : String renames Item.Executable.Data (1 .. Item.Executable.Length);
+      PID : Process_ID;
+      Failure : CuBit.Launch_Arguments.Launch_Failure;
+   begin
+      --  These bounded milestones are also retained by the firmware
+      --  boot panel until display.svc takes ownership.  They make a
+      --  physical boot stall attributable to one launch boundary,
+      --  without turning the panel into an unbounded serial log.
+      debugPrint ("procmgr: init launch ");
+      printDec (Unsigned_32 (Number));
+      debugPrint ("/" & Unsigned_32'Image (Unsigned_32 (Startup_Plan.Plan.Launch_Count)) & ": " & Name & LF);
+      pendingParameters := Item.Arguments;
+      PID := spawnByName
+        (Name, Unsigned_64 (Item.Priority), systemStartup => True, startupRole => Item.Role,
+         approveRender => Render_Granted (Item, Name),
+         approveFirmwareSnapshot => Item.Approve_Firmware_Snapshot,
+         approveACPIHardware => Item.Approve_ACPI_Hardware,
+         approveACPIRegisters => Item.Approve_ACPI_Registers,
+         approvePCIConfig => Item.Approve_ACPI_PCI_Config,
+         approveFirmwareData => Item.Approve_ACPI_Firmware_Data,
+         approveNetwork =>
+           (if Item.Approval = Approve_Declared then Declared_Network
+            else No_Network),
+         readyDeadlineMs => Item.Ready_Deadline_Ms,
+         mayWait => mayWait, Waits => Waits,
+         Failure => Failure);
+      pendingParameters := (others => <>);
+      if Waits /= null then
+         debugPrint ("procmgr: init launch waits: " & Name & LF);
+      elsif PID = No_Process then
+         debugPrint ("procmgr: init spawn failed: " & Name & ": " &
+                     CuBit.Launch_Failure_Text.Explanation (Failure) & LF);
+      else
+         debugPrint ("procmgr: init launched: " & Name & LF);
+      end if;
+   end launchPlanEntry;
+
+   --  Start the plan's next entries until one waits or none is left.
+   procedure continuePlan is
+      Waits : Awaited_Access;
+   begin
+      while Plan_Running and then Plan_Done < Startup_Plan.Plan.Launch_Count loop
+         launchPlanEntry (Plan_Done + 1, True, Waits);
+         if Waits /= null then
+            declare
+               Item : CCL.Configurations.Launch_Entry renames
+                 Startup_Plan.Plan.Launches (Plan_Done + 1);
+            begin
+               park (new Parked_Launch'
+                       (Name_Length => Item.Executable.Length, Kind => Plan_Launch,
+                        Name => Item.Executable.Data (1 .. Item.Executable.Length),
+                        Entry_Number => Plan_Done + 1, Sender => No_Process,
+                        Request => NULL_MESSAGE, Answer => H.No_Reply, Waits => Waits,
+                        Next => null));
+            end;
+            return;
+         end if;
+         Plan_Done := Plan_Done + 1;
+      end loop;
+      if Plan_Running then
+         Plan_Running := False;
+         CuBit.Boot_Milestones.Mark (CuBit.Boot_Milestone_Codes.Startup_Profile_Launched, PH.Registration);
+      end if;
+   end continuePlan;
+
    procedure processInitCCL is
       use CCL.Configurations;
-      Plan : Compilation_Result;
       Source_Size : Unsigned_64;
    begin
       CuBit.Boot_Milestones.Mark (CuBit.Boot_Milestone_Codes.Startup_Profile_Started, PH.Registration);
@@ -4680,66 +5049,127 @@ procedure main is
          Source : String (1 .. Natural (Source_Size))
            with Import, Address => elfBuf;
       begin
-         Compile (Source, Plan);
+         Compile (Source, Startup_Plan);
       end;
-      if not Plan.Success or else Plan.Plan.Kind /= Startup_Profile then
-         debugPrint ("procmgr: init.ccl rejected at" & Plan.Position'Image &
-                     ": " & Diagnostic_Name (Plan.Diagnostic) &
+      if not Startup_Plan.Success or else Startup_Plan.Plan.Kind /= Startup_Profile then
+         debugPrint ("procmgr: init.ccl rejected at" & Startup_Plan.Position'Image &
+                     ": " & Diagnostic_Name (Startup_Plan.Diagnostic) &
                      " (expected startup profile)" & LF);
          return;
       end if;
-      --  The entire plan owns its strings before spawnByName overwrites elfBuf.
       debugPrint ("procmgr: init.ccl: ");
-      printDec (Unsigned_32 (Plan.Plan.Launch_Count));
+      printDec (Unsigned_32 (Startup_Plan.Plan.Launch_Count));
       debugPrint (" entries" & LF);
-      declare
-         Entry_Number : Natural := 0;
-      begin
-      for Item of Plan.Plan.Launches (1 .. Plan.Plan.Launch_Count) loop
-         declare
-            Name : String renames
-              Item.Executable.Data (1 .. Item.Executable.Length);
-            PID : Process_ID;
-            Failure : CuBit.Launch_Arguments.Launch_Failure;
-         begin
-            Entry_Number := Entry_Number + 1;
-            --  These bounded milestones are also retained by the firmware
-            --  boot panel until display.svc takes ownership.  They make a
-            --  physical boot stall attributable to one launch boundary,
-            --  without turning the panel into an unbounded serial log.
-            debugPrint ("procmgr: init launch ");
-            printDec (Unsigned_32 (Entry_Number));
-            debugPrint ("/" & Unsigned_32'Image (Unsigned_32 (Plan.Plan.Launch_Count)) & ": " & Name & LF);
-            pendingParameters := Item.Arguments;
-            PID := spawnByName
-              (Name, Unsigned_64 (Item.Priority), systemStartup => True, startupRole => Item.Role,
-               approveRender => Render_Granted (Item, Name),
-               approveFirmwareSnapshot => Item.Approve_Firmware_Snapshot,
-               approveACPIHardware => Item.Approve_ACPI_Hardware,
-               approveACPIRegisters => Item.Approve_ACPI_Registers,
-               approvePCIConfig => Item.Approve_ACPI_PCI_Config,
-               approveFirmwareData => Item.Approve_ACPI_Firmware_Data,
-               approveNetwork =>
-                 (if Item.Approval = Approve_Declared then Declared_Network
-                  else No_Network),
-               Failure => Failure);
-            pendingParameters := (others => <>);
-            if PID = No_Process then
-               debugPrint ("procmgr: init spawn failed: " & Name & ": " &
-                           CuBit.Launch_Failure_Text.Explanation (Failure) & LF);
-            else
-               debugPrint ("procmgr: init launched: " & Name & LF);
-            end if;
-         end;
-      end loop;
-      end;
-      CuBit.Boot_Milestones.Mark (CuBit.Boot_Milestone_Codes.Startup_Profile_Launched, PH.Registration);
+      Plan_Done := 0;
+      Plan_Running := True;
+      continuePlan;
    end processInitCCL;
+
+   ---------------------------------------------------------------------------
+   --  resumeParked
+   --  Look at every parked launch: one whose required provider ended or
+   --  missed its deadline is refused, typed; one whose waits all ended is
+   --  started (a plan entry, then the plan's next entries) or its request
+   --  served again, answering through its saved reply.
+   ---------------------------------------------------------------------------
+   procedure resumeParked is
+      Now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+      Previous : Parked_Access := null;
+      Item : Parked_Access := Parked_First;
+      Following : Parked_Access;
+      Refusal : Provider_State;
+      Refused_At : Natural;
+      Pending : Boolean;
+      Resume_Plan : Boolean := False;
+   begin
+      while Item /= null loop
+         Following := Item.Next;
+         Refused_At := 0;
+         Refusal := Provider_Registered;
+         Pending := False;
+         for I in Item.Waits'Range loop
+            if not Item.Waits (I).Resolved then
+               declare
+                  State : constant Provider_State := awaitedState (Item.Waits (I), Now);
+               begin
+                  if State = Provider_Starting then
+                     Pending := True;
+                  elsif State in Wait_Refusal and then Item.Waits (I).Required then
+                     Refusal := State;
+                     Refused_At := I;
+                     exit;
+                  else
+                     --  Registered; or an optional entry it starts without.
+                     Item.Waits (I).Resolved := True;
+                  end if;
+               end;
+            end if;
+         end loop;
+         if Refused_At /= 0 or else not Pending then
+            --  Done waiting: off the list first, so serving it (which may
+            --  park other launches) never sees it.
+            if Previous = null then
+               Parked_First := Following;
+            else
+               Previous.Next := Following;
+            end if;
+            if Parked_Last = Item then
+               Parked_Last := Previous;
+            end if;
+            if Refused_At /= 0 then
+               reportWaitRefusal
+                 (Item.Name, Item.Waits (Refused_At).Label, Item.Waits (Refused_At).Role, Refusal);
+            end if;
+            case Item.Kind is
+               when Plan_Launch =>
+                  if Refused_At /= 0 then
+                     debugPrint ("procmgr: init spawn failed: " & Item.Name & ": " &
+                                 CuBit.Launch_Failure_Text.Explanation
+                                   (CuBit.Launch_Arguments.Service_Unavailable) & LF);
+                  else
+                     declare
+                        Again : Awaited_Access;
+                     begin
+                        launchPlanEntry (Item.Entry_Number, False, Again);
+                     end;
+                  end if;
+                  Plan_Done := Item.Entry_Number;
+                  Resume_Plan := True;
+               when Launch_Request | Spawn_Request =>
+                  Deferred_Answer := Item.Answer;
+                  if Refused_At /= 0 then
+                     answerRequest
+                       (Item.Sender, REPLY_ERR, CuBit.Launch_Arguments.Launch_Failure'Enum_Rep
+                          (CuBit.Launch_Arguments.Service_Unavailable));
+                  elsif Item.Kind = Launch_Request then
+                     handleLaunch (Item.Sender, Item.Request);
+                  else
+                     handleSpawn (Item.Sender, Item.Request);
+                  end if;
+                  --  Every path answers; never leave the requester waiting.
+                  if servingDeferred then
+                     answerRequest
+                       (Item.Sender, REPLY_ERR, CuBit.Launch_Arguments.Launch_Failure'Enum_Rep
+                          (CuBit.Launch_Arguments.Spawn_Failed));
+                  end if;
+            end case;
+            Free (Item.Waits);
+            Free (Item);
+         else
+            Previous := Item;
+         end if;
+         Item := Following;
+      end loop;
+      if Resume_Plan then
+         continuePlan;
+      end if;
+   end resumeParked;
 
    ---------------------------------------------------------------------------
    --  Main variables
    ---------------------------------------------------------------------------
    sender : Process_ID;
+   received : Boolean;
    msg    : Message;
 
 begin
@@ -4847,95 +5277,107 @@ begin
 
    debugPrint ("procmgr: ready, entering receive loop" & LF);
 
-   --  Main service loop
+   --  Main service loop. While launches are parked it also wakes every
+   --  Registration_Poll_Ms to look at their providers (resumeParked).
    loop
-      receive (sender, msg);
+      if Parked_First = null then
+         receive (sender, msg);
+         received := True;
+      else
+         receiveUntil
+           (syscall (SYSCALL_GETTIME) + Registration_Poll_Ms, sender, msg, received);
+      end if;
       Warnings.Pump;
 
-      case msg.tag.label is
-         when OP_SPAWN =>
-            handleSpawn (sender, msg);
-         when OP_LAUNCH =>
-            handleLaunch (sender, msg);
-         when LAuth.Table_Operation =>
-            handleLaunchTable (sender, msg);
-         when CuBit.Launch_Grants.Places_Operation =>
-            handleDelegatedPlaces (sender, msg);
-         when CuBit.Program_Descriptions.Description_Operation =>
-            handleProgramDescription (sender, msg);
-         when CuBit.Process_Observer.List_Label =>
-            handleProcessList (sender, msg);
-         when CuBit.Boot_Milestone_Codes.Timeline_Label =>
-            handleBootTimeline (sender, msg);
-         when EVENT_CHILD_EXIT =>
-            --  A process retired (the kernel tells procmgr of each; only the
-            --  kernel posts this label, with no sender). Act only if it is
-            --  really gone, too.
-            if sender = No_Process and then CuBit.Child_Exits.Valid
-                 (msg.tag.length, msg.words (0), msg.words (1), msg.words (2))
-              and then not processListed (From_Word (msg.words (0)))
-            then
-               declare
-                  Exited : constant Process_ID := From_Word (msg.words (0));
-                  Known  : constant Records.Index := Records.Find (Exited);
-                  Report : constant CuBit.Child_Exits.Report :=
-                    CuBit.Child_Exits.Decode (msg.words (0), msg.words (1), msg.words (2));
-                  use type CuBit.Child_Exits.Termination_Kind;
-               begin
-                  --  Processes procmgr launched, by manifest identity; the
-                  --  kernel's "kernel: process killed" record says why when
-                  --  one faulted. Others (devmgr's) are devmgr's to log.
-                  --  A launch procmgr withdrew before resuming it never ran;
-                  --  the withdrawal was reported where procmgr decided it.
-                  if Known /= 0 and then Records.Values (Known).Valid
-                    and then not Records.Values (Known).Resumed
-                  then
-                     Warnings.Inform
-                       ("procmgr: launch attempt " &
-                        Records.Values (Known).Identity (1 .. Records.Values (Known).Identity_Length) &
-                        " pid" & Image (Exited) & " withdrawn before it ran");
-                  elsif Known /= 0 and then Records.Values (Known).Valid then
-                     declare
-                        Line : constant String :=
-                          "procmgr: process " &
-                          Records.Values (Known).Identity (1 .. Records.Values (Known).Identity_Length) &
-                          " pid" & Image (Exited) &
-                          (if Report.Kind = CuBit.Child_Exits.Stopped
-                           then " stopped (killed or faulted)"
-                           else " exited code" & Unsigned_64'Image (Report.Code));
-                     begin
-                        if Report.Kind = CuBit.Child_Exits.Stopped or else Report.Code /= 0 then
-                           Warnings.Warn (Line);
-                        else
-                           Warnings.Inform (Line);
-                        end if;
-                     end;
-                  end if;
-                  for Registrant of Registrants loop
-                     if Registrant = Exited then
-                        Registrant := No_Process;
+      if received then
+         case msg.tag.label is
+            when OP_SPAWN =>
+               handleSpawn (sender, msg);
+            when OP_LAUNCH =>
+               handleLaunch (sender, msg);
+            when LAuth.Table_Operation =>
+               handleLaunchTable (sender, msg);
+            when CuBit.Launch_Grants.Places_Operation =>
+               handleDelegatedPlaces (sender, msg);
+            when CuBit.Program_Descriptions.Description_Operation =>
+               handleProgramDescription (sender, msg);
+            when CuBit.Process_Observer.List_Label =>
+               handleProcessList (sender, msg);
+            when CuBit.Boot_Milestone_Codes.Timeline_Label =>
+               handleBootTimeline (sender, msg);
+            when EVENT_CHILD_EXIT =>
+               --  A process retired (the kernel tells procmgr of each; only the
+               --  kernel posts this label, with no sender). Act only if it is
+               --  really gone, too.
+               if sender = No_Process and then CuBit.Child_Exits.Valid
+                    (msg.tag.length, msg.words (0), msg.words (1), msg.words (2))
+                 and then not processListed (From_Word (msg.words (0)))
+               then
+                  declare
+                     Exited : constant Process_ID := From_Word (msg.words (0));
+                     Known  : constant Records.Index := Records.Find (Exited);
+                     Report : constant CuBit.Child_Exits.Report :=
+                       CuBit.Child_Exits.Decode (msg.words (0), msg.words (1), msg.words (2));
+                     use type CuBit.Child_Exits.Termination_Kind;
+                  begin
+                     --  Processes procmgr launched, by manifest identity; the
+                     --  kernel's "kernel: process killed" record says why when
+                     --  one faulted. Others (devmgr's) are devmgr's to log.
+                     --  A launch procmgr withdrew before resuming it never ran;
+                     --  the withdrawal was reported where procmgr decided it.
+                     if Known /= 0 and then Records.Values (Known).Valid
+                       and then not Records.Values (Known).Resumed
+                     then
+                        Warnings.Inform
+                          ("procmgr: launch attempt " &
+                           Records.Values (Known).Identity (1 .. Records.Values (Known).Identity_Length) &
+                           " pid" & Image (Exited) & " withdrawn before it ran");
+                     elsif Known /= 0 and then Records.Values (Known).Valid then
+                        declare
+                           Line : constant String :=
+                             "procmgr: process " &
+                             Records.Values (Known).Identity (1 .. Records.Values (Known).Identity_Length) &
+                             " pid" & Image (Exited) &
+                             (if Report.Kind = CuBit.Child_Exits.Stopped
+                              then " stopped (killed or faulted)"
+                              else " exited code" & Unsigned_64'Image (Report.Code));
+                        begin
+                           if Report.Kind = CuBit.Child_Exits.Stopped or else Report.Code /= 0 then
+                              Warnings.Warn (Line);
+                           else
+                              Warnings.Inform (Line);
+                           end if;
+                        end;
                      end if;
-                  end loop;
-                  releaseRings (Exited);
-                  forgetLaunchState (Exited);
-                  if Known /= 0 and then Records.Values (Known).Valid then
-                     closeChildHandles
-                       (Records.Values (Known).Control, Records.Values (Known).Mailbox);
-                  end if;
-                  Records.Remove (Exited);
-                  clearAuthorityForPID (Exited);
-                  releaseNetworkOwner (Exited);
-                  releaseFilesystemOwner (Exited);
-               end;
-            end if;
-         when CuBit.Control_Events.Grant_Revoked_Label
-            | CuBit.Control_Events.Grant_Returned_Label =>
-            --  A launcher revoked a ring procmgr holds for a child: the
-            --  child's derived grant goes with it, and procmgr returns its
-            --  own hold when the child ends (releaseRings). Not a request.
-            null;
-         when others =>
-            sendReply (sender, REPLY_ERR, 0);
-      end case;
+                     for Registrant of Registrants loop
+                        if Registrant = Exited then
+                           Registrant := No_Process;
+                        end if;
+                     end loop;
+                     releaseRings (Exited);
+                     forgetLaunchState (Exited);
+                     if Known /= 0 and then Records.Values (Known).Valid then
+                        closeChildHandles
+                          (Records.Values (Known).Control, Records.Values (Known).Mailbox);
+                     end if;
+                     Records.Remove (Exited);
+                     clearAuthorityForPID (Exited);
+                     releaseNetworkOwner (Exited);
+                     releaseFilesystemOwner (Exited);
+                  end;
+               end if;
+            when CuBit.Control_Events.Grant_Revoked_Label
+               | CuBit.Control_Events.Grant_Returned_Label =>
+               --  A launcher revoked a ring procmgr holds for a child: the
+               --  child's derived grant goes with it, and procmgr returns its
+               --  own hold when the child ends (releaseRings). Not a request.
+               null;
+            when others =>
+               sendReply (sender, REPLY_ERR, 0);
+         end case;
+      end if;
+      if Parked_First /= null then
+         resumeParked;
+      end if;
    end loop;
 end main;

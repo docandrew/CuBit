@@ -1,0 +1,16 @@
+# startup-wait-provider (tests/startup-wait, headless test startup-wait):
+# a provider of the test-only "startup-wait-test" service that registers
+# late, or ends without registering, as its typed parameters say. procmgr
+# lets only com.cubit.startup-wait-test register the role, and only from
+# the startup plan.
+(type Wait_Milliseconds (range 1 600000))
+(type Wait_Behaviour (enum Register_Late Never_Register))
+(type Provider_Parameters (record
+  (behaviour Wait_Behaviour)
+  (after Wait_Milliseconds)))
+(Executable_Manifest
+  identity => "com.cubit.startup-wait-test"
+  version => "0.1.0"
+  parameters => (Parameter_Signature.Declared "Provider_Parameters")
+  requests => [
+    (notification "startup-wait-test" Notify_Access.Manage "registration")])

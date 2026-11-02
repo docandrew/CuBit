@@ -329,7 +329,7 @@ case "$TEST_NAME" in
         ;;
     grant-forward|grant-forward-intermediary-exit|grant-forward-owner-exit|grant-forward-desktop|config-tree|config-inspection|log-authority|log-fields|log-retention|metrics|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
         ;;
-    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|secondary-stacks|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|acpi-hardware|acpi-pci-config|acpi-firmware-data|acpi-native-smoke|acpi-pair-smoke|multi-instance|program-parameters|usb-hotplug|usb-slots|wifi-crypto|acpi-register-probe)
+    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|secondary-stacks|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|acpi-hardware|acpi-pci-config|acpi-firmware-data|acpi-native-smoke|acpi-pair-smoke|multi-instance|program-parameters|startup-wait|usb-hotplug|usb-slots|wifi-crypto|acpi-register-probe)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -813,6 +813,11 @@ with open(sys.argv[1], "wb") as f:
         # docs/ccl-launch-parameters.md: typed program parameters from the
         # startup plan, checked by procmgr, decoded by the program.
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-program-parameters.ccl"
+        ;;
+    startup-wait)
+        # procmgr's startup waits (CAP-003): a client waits, parked, for a
+        # provider that is starting; typed refusals when it is not.
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-startup-wait.ccl"
         ;;
     servo)
         # Servo (docs/servo-port.md): an 85 MB program whose heap grows
@@ -2045,6 +2050,21 @@ if [ -n "$INIT_PROFILE" ]; then
             if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/$PROCESS_IMAGE $PROCESS_IMAGE" \
               "$TEMP_DISK" >/dev/null 2>&1; then
                 echo "headless: failed to install $PROCESS_IMAGE" >&2
+                exit 1
+            fi
+        done
+    fi
+    if [ "$TEST_NAME" = "startup-wait" ]; then
+        # The late provider and its client (tests/startup-wait).
+        if ! make -C "$KERNEL_DIR" startup-wait-test >/dev/null; then
+            echo "headless: failed to build the startup-wait test programs" >&2
+            exit 1
+        fi
+        for WAIT_IMAGE in logstore.svc startup-wait-provider.app startup-wait-client.app; do
+            debugfs -w -R "rm $WAIT_IMAGE" "$TEMP_DISK" >/dev/null 2>&1
+            if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/$WAIT_IMAGE $WAIT_IMAGE" \
+              "$TEMP_DISK" >/dev/null 2>&1; then
+                echo "headless: failed to install $WAIT_IMAGE" >&2
                 exit 1
             fi
         done
@@ -4820,6 +4840,29 @@ control-check: the launcher is told its ring came back PASS
 control-check: the launcher flooded the producer throughout, and the child still got through PASS
 CONTROL-CHECK: PASS
 "
+        ;;
+    startup-wait)
+        # In plan order: no provider; one that ends first; one that misses
+        # its ready deadline; one that registers late, after 2.5 s.
+        required_markers="
+procmgr: launch of startup-wait-client.app refused: required service \"provider\" (role 36) NO_PROVIDER: no started program provides it (CAP-003)
+startup-wait-provider: ends in 1500 ms without registering
+procmgr: launch of startup-wait-client.app waits for service \"provider\" (role 36) to register (CAP-003)
+startup-wait-provider: ending unregistered
+procmgr: launch of startup-wait-client.app refused: required service \"provider\" (role 36) PROVIDER_EXITED: its provider ended before it registered (CAP-003)
+startup-wait-provider: ends in 4000 ms without registering
+procmgr: launch of startup-wait-client.app refused: required service \"provider\" (role 36) DEADLINE_PASSED: its provider did not register by its deadline (CAP-003)
+startup-wait-provider: registers in 2500 ms
+startup-wait-provider: registered
+procmgr: init launched: startup-wait-client.app
+startup-wait-client: started
+startup-wait-client: provider answered PASS
+"
+        if [ "$(grep -c 'startup-wait-client: started' "$SERIAL_LOG")" -ne 1 ] ||
+           [ "$(grep -c 'procmgr: init spawn failed: startup-wait-client.app: a service it requires is not running' "$SERIAL_LOG")" -ne 3 ]; then
+            echo "headless: a refused client ran, or the late provider's client did not" >&2
+            exit 1
+        fi
         ;;
     program-parameters)
         required_markers="

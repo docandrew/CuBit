@@ -1,0 +1,8 @@
+# startup-wait-client (tests/startup-wait, headless test startup-wait):
+# requires the test-only "startup-wait-test" service, so procmgr starts it
+# only once its provider has registered (CAP-003 startup waits).
+(Executable_Manifest
+  identity => "com.cubit.startup-wait-client"
+  version => "0.1.0"
+  requests => [
+    (service "startup-wait-test" "provider")])
