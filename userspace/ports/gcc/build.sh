@@ -68,8 +68,11 @@ configure_args=(
     --enable-default-pie=no --with-system-zlib=no)
 mkdir -p "$build/obj"
 cd "$build/obj"
-# Reconfigured from scratch when the options change.
-if [ ! -f Makefile ] || [ "$(cat configure.args 2>/dev/null)" != "${configure_args[*]}" ]; then
+# Reconfigured from scratch when the options or the source directory change:
+# configure records absolute paths, so a tree configured in another checkout
+# (or a removed worktree) must not be reused.
+configure_key="$build/src ${configure_args[*]}"
+if [ ! -f Makefile ] || [ "$(cat configure.args 2>/dev/null)" != "$configure_key" ]; then
     find . -mindepth 1 -delete
     CC="$root/userspace/libc/cubit-cc" CFLAGS="-O2" \
     CXX="$root/userspace/libc/cubit-c++" CXXFLAGS="-O2" LDFLAGS="-static" \
@@ -79,7 +82,7 @@ if [ ! -f Makefile ] || [ "$(cat configure.args 2>/dev/null)" != "${configure_ar
     AS_FOR_TARGET=as LD_FOR_TARGET=ld AR_FOR_TARGET=ar NM_FOR_TARGET=nm \
     RANLIB_FOR_TARGET=ranlib OBJDUMP_FOR_TARGET=objdump READELF_FOR_TARGET=readelf \
     "$build/src/configure" "${configure_args[@]}" > configure.log 2>&1
-    echo "${configure_args[*]}" > configure.args
+    echo "$configure_key" > configure.args
 fi
 # make does not know the libc: relink the programs against the current one.
 rm -f gcc/cc1 gcc/gnat1 gcc/gnatbind gcc/xgcc

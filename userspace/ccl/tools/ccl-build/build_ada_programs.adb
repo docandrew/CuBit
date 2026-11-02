@@ -20,6 +20,9 @@ package body Build_Ada_Programs is
    Body_Suffix : constant String := ".adb";
    Object_Suffix : constant String := ".o";
    ALI_Suffix : constant String := ".ali";
+   --  -fstack-usage (Build_Declarations.Switches_For) writes one per compile,
+   --  empty for a unit with no code; kept so frame sizes can be inspected.
+   Stack_Usage_Suffix : constant String := ".su";
    Binder_Prefix : constant String := "b__";
    Generated_Directory : constant String := "generated";
    Startup_Spec : constant String := "startup.ads";
@@ -789,6 +792,7 @@ package body Build_Ada_Programs is
             Add_Runtime (S);
             Declare_Output (S, Objects / (Base (File) & Object_Suffix));
             Declare_Output (S, Objects / (Base (File) & ALI_Suffix));
+            Declare_Output (S, Objects / (Base (File) & Stack_Usage_Suffix));
             S.Tool := Toolchain_Tool;
             Literal (S, "-c");
             Literal (S, "-x");
